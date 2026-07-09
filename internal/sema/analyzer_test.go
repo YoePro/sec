@@ -1121,6 +1121,254 @@ impl Vehicle {
 	assertSemaErrors(t, errors, expected)
 }
 
+func TestFunctionDeclarations(t *testing.T) {
+	input := `
+fn add(a: int, b: int) int {
+	return a + b
+}
+
+fn noop() void {
+	return
+}
+`
+
+	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
+	assertSemaErrors(t, errors, nil)
+
+	add := analyzer.functions["add"]
+	if add.ReturnType.Name != "int" || len(add.Parameters) != 2 {
+		t.Fatalf("wrong add function: %+v", add)
+	}
+
+	noop := analyzer.functions["noop"]
+	if noop.ReturnType.Name != "void" || len(noop.Parameters) != 0 {
+		t.Fatalf("wrong noop function: %+v", noop)
+	}
+}
+
+func TestFunctionCalls(t *testing.T) {
+	input := `
+fn Add(a: int, b: int) int {
+	return a + b
+}
+
+let x := Add(1, 2)
+let y: int := Add(3, 4)
+`
+
+	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
+	assertSemaErrors(t, errors, nil)
+
+	if analyzer.symbols["x"].Type.Name != "int" {
+		t.Fatalf("wrong x type: %+v", analyzer.symbols["x"])
+	}
+	if analyzer.symbols["y"].Type.Name != "int" {
+		t.Fatalf("wrong y type: %+v", analyzer.symbols["y"])
+	}
+}
+
+func TestFunctionCallTypeErrors(t *testing.T) {
+	input := `
+fn Add(a: int, b: int) int {
+	return a + b
+}
+
+let v: float := Add(2, 4)
+let w: int := Add(1.5, 1.5)
+`
+
+	errors := analyzeSource(t, input)
+
+	expected := []string{
+		"cannot initialize float with int at 6:17",
+		"argument 1 to Add must be int, got decimal at 7:19",
+		"argument 2 to Add must be int, got decimal at 7:24",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestFunctionCallWrongArgumentCount(t *testing.T) {
+	input := `
+fn Add(a: int, b: int) int {
+	return a + b
+}
+
+let wrongCount := Add(1)
+`
+
+	errors := analyzeSource(t, input)
+
+	expected := []string{
+		"function Add expects 2 arguments, got 1 at 6:19",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestCallSyntaxStillSupportsConversions(t *testing.T) {
+	input := `
+enum Color {
+	red,
+	green,
+}
+
+let explicitColor: Color := Color(1)
+let explicitInt: int := int(Color.green)
+`
+
+	errors := analyzeSource(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestFunctionDuplicateParameter(t *testing.T) {
+	input := `
+fn bad(a: int, a: int) int {
+	return a
+}
+`
+
+	errors := analyzeSource(t, input)
+
+	expected := []string{
+		`duplicate parameter "a" at 2:16`,
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestFunctionMustReturn(t *testing.T) {
+	input := `
+fn bad() int {
+}
+`
+
+	errors := analyzeSource(t, input)
+
+	expected := []string{
+		"function bad must return int at 2:4",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestFunctionReturnTypeMismatch(t *testing.T) {
+	input := `
+fn bad() int {
+	return true
+}
+`
+
+	errors := analyzeSource(t, input)
+
+	expected := []string{
+		"function bad must return int, got bool at 3:9",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestFunctionBoolExpressions(t *testing.T) {
+	input := `
+fn IsPositive(a: int) bool {
+	return a > 0
+}
+
+fn Logic(a: bool, b: bool) bool {
+	return !a || (a && b)
+}
+`
+
+	errors := analyzeSource(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestLogicalOperatorsRequireBool(t *testing.T) {
+	input := `
+fn BadAnd(a: int) bool {
+	return a && true
+}
+
+fn BadNot(a: int) bool {
+	return !a
+}
+`
+
+	errors := analyzeSource(t, input)
+
+	expected := []string{
+		"operator && requires bool operands at 3:11",
+		"operator ! requires bool operand at 7:9",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestFunctionUnknownReturnTypeDoesNotCascade(t *testing.T) {
+	input := `
+fn UnknownReturn() UnknownType {
+	return 0
+}
+`
+
+	errors := analyzeSource(t, input)
+
+	expected := []string{
+		"unknown type UnknownType at 2:20",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestResultReturnExpressions(t *testing.T) {
+	input := `
+enum IOError {
+	InvalidValue,
+}
+
+fn OkResult() Result[int, IOError] {
+	return Ok(1)
+}
+
+fn ErrResult() Result[int, IOError] {
+	return Err(IOError.InvalidValue)
+}
+`
+
+	errors := analyzeSource(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestResultReturnExpressionErrors(t *testing.T) {
+	input := `
+enum IOError {
+	InvalidValue,
+}
+
+fn BadOk() Result[int, IOError] {
+	return Ok(IOError.InvalidValue)
+}
+
+fn BadErr() Result[int, IOError] {
+	return Err(1)
+}
+
+fn Plain() Result[int, IOError] {
+	return 1
+}
+`
+
+	errors := analyzeSource(t, input)
+
+	expected := []string{
+		"function BadOk must return Ok(int), got Ok(IOError) at 7:19",
+		"function BadErr must return Err(IOError), got Err(int) at 11:13",
+		"function Plain returning Result[int, IOError] must return Ok(...) or Err(...) at 15:9",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
 func analyzeSource(t *testing.T, input string) []Error {
 	t.Helper()
 

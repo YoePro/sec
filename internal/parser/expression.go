@@ -11,6 +11,8 @@ type precedence int
 
 const (
 	LOWEST  precedence = iota
+	OR                 // ||
+	AND                // &&
 	EQUALS             // == !=
 	COMPARE            // < <= > >=
 	SUM                // + -
@@ -21,6 +23,8 @@ const (
 )
 
 var precedences = map[lexer.TokenType]precedence{
+	lexer.OR:       OR,
+	lexer.AND:      AND,
 	lexer.EQ:       EQUALS,
 	lexer.NEQ:      EQUALS,
 	lexer.LT:       COMPARE,
@@ -125,6 +129,8 @@ func (p *Parser) parseExpression(currentPrecedence precedence) ast.Expression {
 			lexer.PERCENT,
 			lexer.EQ,
 			lexer.NEQ,
+			lexer.AND,
+			lexer.OR,
 			lexer.LT,
 			lexer.LTE,
 			lexer.GT,
@@ -152,25 +158,60 @@ func (p *Parser) parseConversionExpression(left ast.Expression) ast.Expression {
 		return nil
 	}
 
-	expr := &ast.ConversionExpression{
-		Token: ident.Token,
-		Type: &ast.TypeReference{
-			Token: ident.Token,
-			Name:  ident.Value,
-		},
-	}
-
-	p.nextToken()
-	expr.Value = p.parseExpression(LOWEST)
-	if expr.Value == nil {
+	args, ok := p.parseCallArguments()
+	if !ok {
 		return nil
 	}
 
-	if !p.expectPeek(lexer.RPAREN) {
-		return nil
+	if ident.Value == "Ok" || ident.Value == "Err" {
+		if len(args) != 1 {
+			p.addError("%s expects 1 argument at %d:%d", ident.Value, ident.Token.Line, ident.Token.Column)
+			return nil
+		}
+		if ident.Value == "Ok" {
+			return &ast.OkExpression{Token: ident.Token, Value: args[0]}
+		}
+		return &ast.ErrExpression{Token: ident.Token, Value: args[0]}
 	}
 
-	return expr
+	return &ast.CallExpression{
+		Token:     ident.Token,
+		Function:  ident,
+		Arguments: args,
+	}
+}
+
+func (p *Parser) parseCallArguments() ([]ast.Expression, bool) {
+	args := []ast.Expression{}
+
+	if p.peekToken.Type == lexer.RPAREN {
+		p.nextToken()
+		return args, true
+	}
+
+	for {
+		p.nextToken()
+		arg := p.parseExpression(LOWEST)
+		if arg == nil {
+			return nil, false
+		}
+		args = append(args, arg)
+
+		switch p.peekToken.Type {
+		case lexer.COMMA:
+			p.nextToken()
+			if p.peekToken.Type == lexer.RPAREN {
+				p.nextToken()
+				return args, true
+			}
+		case lexer.RPAREN:
+			p.nextToken()
+			return args, true
+		default:
+			p.addError("expected ',' or ')' after argument at %d:%d", p.peekToken.Line, p.peekToken.Column)
+			return nil, false
+		}
+	}
 }
 
 func (p *Parser) parseStructLiteralExpression(left ast.Expression) ast.Expression {

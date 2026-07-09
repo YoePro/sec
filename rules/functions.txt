@@ -1,0 +1,328 @@
+Implement first version of function declarations.
+
+Syntax:
+
+    fn name(param: Type, param: Type) ReturnType {
+        statements
+    }
+
+Rules:
+- Parameters use name: Type.
+- Parameters are comma-separated.
+- Trailing comma is allowed.
+- Return type is required for now.
+- void is used for no return value.
+- Function body creates a new scope.
+- Parameters are immutable local symbols by default.
+- Duplicate parameter names are invalid.
+- Return expression must match declared return type.
+- A non-void function must return.
+- A void function may use `return` without expression.
+- Comparison operators return bool:
+  - `==`
+  - `!=`
+  - `<`
+  - `<=`
+  - `>`
+  - `>=`
+- Logical `&&` and `||` require bool operands and return bool.
+- Prefix `!` requires a bool operand and returns bool.
+- Function calls use:
+
+    Name(arg, arg)
+
+- Function call argument count must match the declaration.
+- Function call arguments must be assignable to the corresponding parameter type.
+- Function call expression type is the declared return type.
+- Parser does not decide whether `Name(...)` is a function call or conversion.
+  It should parse this as a call-like expression and let semantic analysis
+  resolve `Name` as a function, type, enum or another callable construct.
+
+Parser:
+- Add FunctionStatement / FunctionDeclaration AST node.
+- Parse name, parameters, return type, body.
+- Body can initially support:
+  - let declarations
+  - assignments
+  - return statements
+
+AST:
+FunctionDeclaration:
+    Token
+    Name *Identifier
+    Parameters []Parameter
+    ReturnType *TypeReference
+    Body *BlockStatement
+
+Parameter:
+    Name *Identifier
+    Type *TypeReference
+
+BlockStatement:
+    Statements []Statement
+
+ReturnStatement:
+    Token
+    Value Expression // nil for `return`
+
+Sema:
+- Register functions before checking bodies.
+- Function names must be unique in module scope.
+- Parameter types must exist.
+- Return type must exist.
+- Function body has child scope.
+- Parameters are defined in function scope.
+- Check return type compatibility.
+- Check duplicate parameter names.
+
+Tests:
+Valid:
+
+    fn add(a: int, b: int) int {
+        return a + b
+    }
+
+    fn noop() void {
+        return
+    }
+
+    let x := add(1, 2)
+    let y: int := add(3, 4)
+
+Invalid:
+
+    fn bad(a: int, a: int) int {
+        return a
+    }
+
+Expected:
+    duplicate parameter "a"
+
+    fn bad() int {
+    }
+
+Expected:
+    function bad must return int
+
+    fn bad() int {
+        return true
+    }
+
+Expected:
+    function bad must return int, got bool
+
+---
+Implement the first language-level support for Result, Ok, Err and try.
+
+Goal
+====
+
+Do NOT implement full error handling yet.
+
+This iteration should establish the language model and AST so later work can build on it without redesign.
+
+Language model
+==============
+
+Result is a normal generic type:
+
+    Result[ValueType, ErrorType]
+
+The parser must not special-case Result as a type.
+It is parsed as an ordinary generic TypeReference.
+
+Ok and Err are language builtins.
+
+Examples:
+
+    return Ok(speed)
+
+    return Err(IOError.InvalidValue)
+
+A function returning Result[T,E] may return either:
+
+    Ok(value)
+
+or
+
+    Err(error)
+
+Parser
+======
+
+Implement parsing for:
+
+    Ok(expr)
+
+    Err(expr)
+
+These should produce dedicated AST nodes:
+
+    OkExpression
+    ErrExpression
+
+instead of generic CallExpression.
+
+Reason:
+The compiler will later give them special semantic meaning.
+
+AST
+===
+
+Add:
+
+    OkExpression
+        Token
+        Value Expression
+
+    ErrExpression
+        Token
+        Value Expression
+
+Parser should recognize:
+
+    Ok(...)
+    Err(...)
+
+before generic CallExpression.
+
+Result return checking
+======================
+
+For functions returning:
+
+    Result[T,E]
+
+allow:
+
+    return Ok(expr)
+
+where expr is assignable to T.
+
+allow:
+
+    return Err(expr)
+
+where expr is assignable to E.
+
+Reject:
+
+    return Ok(errorValue)
+
+    return Err(resultValue)
+
+Reject plain returns:
+
+    return value
+
+inside Result-returning functions.
+
+Sema
+====
+
+Implement only basic validation.
+
+For:
+
+    fn Foo() Result[int, IOError]
+
+verify:
+
+    Ok(...)
+        matches Result value type.
+
+    Err(...)
+        matches Result error type.
+
+Do NOT implement propagation.
+
+Do NOT implement pattern matching.
+
+Do NOT implement exhaustive analysis.
+
+try
+===
+
+Add parser support only.
+
+Syntax:
+
+    try expression
+
+Example:
+
+    let speed := try CalculateSpeed()
+
+Create:
+
+    TryExpression
+        Token
+        Expression
+
+No semantic behavior yet.
+
+The sema may simply verify:
+
+- expression type is Result[...]
+- otherwise report:
+
+    try requires Result expression
+
+No propagation or lowering yet.
+
+Tests
+=====
+
+Valid:
+
+    fn Good() Result[int, IOError] {
+        return Ok(123)
+    }
+
+    fn Fail() Result[int, IOError] {
+        return Err(IOError.InvalidValue)
+    }
+
+Invalid:
+
+    fn Bad() Result[int, IOError] {
+        return Ok(IOError.InvalidValue)
+    }
+
+Expected:
+
+    Ok value must be int, got IOError
+
+Invalid:
+
+    fn Bad() Result[int, IOError] {
+        return Err(123)
+    }
+
+Expected:
+
+    Err value must be IOError, got int
+
+Invalid:
+
+    fn Bad() Result[int, IOError] {
+        return 123
+    }
+
+Expected:
+
+    Result-returning function must return Ok(...) or Err(...)
+
+Parser:
+
+    let x := try Foo()
+
+should parse successfully.
+
+Sema:
+
+    try 123
+
+Expected:
+
+    try requires Result expression

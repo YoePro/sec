@@ -34,7 +34,7 @@ property TopSpeed Speed {
 
 
 // 3. Funktioner med enheter, mönstermatchning och flera returvärden
-fn calculate_speed(dist Meter, time Second) Result[Speed, IOError] {
+fn calculate_speed(dist: Meter, time: Second) Result[Speed, IOError] {
     if time <= 0.0 {
         return Err(IOError.InvalidValue)
     }
@@ -49,11 +49,13 @@ fn main() void {
 
     // 5. Felhantering med try-block
     let current_speed := try calculate_speed(distance, time) {
-        Err(InvalidValue) => {
-            fmt.println("Kunde inte beräkna hastighet: ogiltig tid.")
-            return
+        match {
+            Err(InvalidValue) => {
+                fmt.println("Kunde inte beräkna hastighet: ogiltig tid.")
+                return
+            }
+            Err(error) => return Err(error) // Automatisk propagering
         }
-        Err(error) => return Err(error) // Automatisk propagering
     }
 
     // Stränginterpolation

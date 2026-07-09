@@ -1,0 +1,81 @@
+module main
+
+// ----------------------------------------------------------------------
+// Valid functions
+// ----------------------------------------------------------------------
+
+fn Add(a: int, b: int) int {
+    return a + b
+}
+
+fn Sub(a: int, b: int) int {
+    return a - b
+}
+
+fn Mul(a: int, b: int) int {
+    return a * b
+}
+
+fn Div(a: int, b: int) int {
+    return a / b
+}
+
+fn Neg(a: int) int {
+    return -a
+}
+
+fn IsPositive(a: int) bool {
+    return a > 0
+}
+
+fn DoNothing() void {
+    return
+}
+
+let x := Add(1, 2)
+let y: int := Add(3, 4)
+
+let ok := Add(1, 2)
+
+
+// Invalid
+let wrongCount := Add(1)
+let wrongType := Add(1, true)
+let unknown := Missing(1, 2)
+let v: float := Add(2,4)
+let w: int := Add(1.5, 1.5)
+
+/*
+// ----------------------------------------------------------------------
+// Invalid functions
+// ----------------------------------------------------------------------
+
+// Duplicate parameter
+fn Duplicate(a: int, a: int) int {
+    return a
+}
+
+// Missing return
+fn MissingReturn(a: int) int {
+}
+
+// Wrong return type
+fn WrongReturn() int {
+    return true
+}
+
+// Returning value from void
+fn VoidReturnsValue() void {
+    return 123
+}
+
+// Unknown parameter type
+fn UnknownType(a: UnknownType) void {
+    return
+}
+
+// Unknown return type
+fn UnknownReturn() UnknownType {
+    return 0
+}
+*/

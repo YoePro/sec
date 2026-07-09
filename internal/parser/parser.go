@@ -70,6 +70,9 @@ func (p *Parser) parseStatement() ast.Statement {
 	case lexer.ENUM:
 		return p.parseEnumDeclaration()
 
+	case lexer.FN:
+		return p.parseFunctionDeclaration()
+
 	case lexer.STRUCT:
 		return p.parseStructStatement()
 
@@ -78,6 +81,9 @@ func (p *Parser) parseStatement() ast.Statement {
 
 	case lexer.LET:
 		return p.parseLetStatement()
+
+	case lexer.RETURN:
+		return p.parseReturnStatement()
 
 	case lexer.IDENT:
 		if p.peekToken.Type == lexer.MUT || p.peekToken.Type == lexer.COLON || p.peekToken.Type == lexer.LT || p.peekToken.Type == lexer.LBRACKET {
@@ -296,6 +302,129 @@ func (p *Parser) parseEnumDeclaration() *ast.EnumDeclaration {
 	return enum
 }
 
+func (p *Parser) parseFunctionDeclaration() *ast.FunctionDeclaration {
+	fn := &ast.FunctionDeclaration{Token: p.curToken}
+
+	if !p.expectPeek(lexer.IDENT) {
+		return nil
+	}
+	fn.Name = &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme}
+
+	if !p.expectPeek(lexer.LPAREN) {
+		return nil
+	}
+
+	fn.Parameters = p.parseParameters()
+	if fn.Parameters == nil {
+		return nil
+	}
+
+	if !p.expectPeekTypeStart() {
+		return nil
+	}
+	fn.ReturnType = p.parseTypeReference()
+
+	fn.Body = p.parseFunctionBlockStatement()
+	if fn.Body == nil {
+		return nil
+	}
+
+	return fn
+}
+
+func (p *Parser) parseParameters() []*ast.Parameter {
+	parameters := []*ast.Parameter{}
+
+	if p.peekToken.Type == lexer.RPAREN {
+		p.nextToken()
+		return parameters
+	}
+
+	for {
+		if !p.expectPeek(lexer.IDENT) {
+			return nil
+		}
+
+		parameter := &ast.Parameter{
+			Token: p.curToken,
+			Name:  &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme},
+		}
+
+		if !p.expectPeek(lexer.COLON) {
+			return nil
+		}
+
+		if !p.expectPeekTypeStart() {
+			return nil
+		}
+		parameter.Type = p.parseTypeReference()
+		parameters = append(parameters, parameter)
+
+		switch p.peekToken.Type {
+		case lexer.COMMA:
+			p.nextToken()
+			if p.peekToken.Type == lexer.RPAREN {
+				p.nextToken()
+				return parameters
+			}
+		case lexer.RPAREN:
+			p.nextToken()
+			return parameters
+		default:
+			p.addError("expected ',' or ')' after parameter at %d:%d", p.peekToken.Line, p.peekToken.Column)
+			return nil
+		}
+	}
+}
+
+func (p *Parser) parseFunctionBlockStatement() *ast.BlockStatement {
+	if !p.expectPeek(lexer.LBRACE) {
+		return nil
+	}
+
+	block := &ast.BlockStatement{Token: p.curToken}
+
+	p.nextToken()
+	for p.curToken.Type != lexer.RBRACE && p.curToken.Type != lexer.EOF {
+		if p.curToken.Type == lexer.COMMENT {
+			p.nextToken()
+			continue
+		}
+
+		stmt := p.parseStatement()
+		if stmt != nil {
+			block.Statements = append(block.Statements, stmt)
+			p.nextToken()
+			continue
+		}
+
+		p.skipStatement()
+	}
+
+	if p.curToken.Type == lexer.EOF {
+		p.addError("unterminated function body")
+		return nil
+	}
+
+	return block
+}
+
+func (p *Parser) parseReturnStatement() ast.Statement {
+	stmt := &ast.ReturnStatement{Token: p.curToken}
+
+	if p.peekToken.Type == lexer.RBRACE || p.peekToken.Type == lexer.EOF || p.isStatementStart(p.peekToken.Type) {
+		return stmt
+	}
+
+	p.nextToken()
+	stmt.Value = p.parseExpression(LOWEST)
+	if stmt.Value == nil {
+		return nil
+	}
+
+	return stmt
+}
+
 func (p *Parser) parseStructStatement() ast.Statement {
 	stmt := &ast.StructStatement{
 		Token: p.curToken,
@@ -488,6 +617,12 @@ func (p *Parser) parseImplStatement() ast.Statement {
 				continue
 			}
 			stmt.Members = append(stmt.Members, enum)
+		case lexer.FN:
+			fn := p.parseFunctionDeclaration()
+			if fn == nil {
+				continue
+			}
+			stmt.Members = append(stmt.Members, fn)
 		case lexer.PROPERTY:
 			property := p.parsePropertyDeclaration()
 			if property == nil {
@@ -974,7 +1109,7 @@ func (p *Parser) expectPeekTypeStart() bool {
 }
 
 func isTypeStart(tokenType lexer.TokenType) bool {
-	return tokenType == lexer.IDENT || tokenType == lexer.LBRACKET
+	return tokenType == lexer.IDENT || tokenType == lexer.LBRACKET || tokenType == lexer.VOID
 }
 
 func (p *Parser) nextToken() {

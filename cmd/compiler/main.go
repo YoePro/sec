@@ -219,6 +219,9 @@ func printASTStatement(stmt ast.Statement, prefix string, last bool) {
 	case *ast.EnumDeclaration:
 		printASTEnum(stmt, prefix, last)
 
+	case *ast.FunctionDeclaration:
+		printASTFunction(stmt, prefix, last)
+
 	case *ast.StructStatement:
 		printASTBranch(prefix, last, "Struct")
 		childrenPrefix := childPrefix(prefix, last)
@@ -239,6 +242,9 @@ func printASTStatement(stmt ast.Statement, prefix string, last bool) {
 
 	case *ast.AssignmentStatement:
 		printASTAssignment(stmt, prefix, last)
+
+	case *ast.ReturnStatement:
+		printASTReturn(stmt, prefix, last)
 
 	case *ast.ImplStatement:
 		printASTImpl(stmt, prefix, last)
@@ -270,6 +276,8 @@ func printASTImplMember(prefix string, member ast.ImplMember, last bool) {
 		printASTTypeDecl(member, prefix, last)
 	case *ast.EnumDeclaration:
 		printASTEnum(member, prefix, last)
+	case *ast.FunctionDeclaration:
+		printASTFunction(member, prefix, last)
 	case *ast.PropertyDeclaration:
 		printASTBranch(prefix, last, "Property")
 		children := []string{
@@ -383,6 +391,28 @@ func printASTEnum(stmt *ast.EnumDeclaration, prefix string, last bool) {
 	printASTLeaves(childPrefix(prefix, last), children)
 }
 
+func printASTFunction(stmt *ast.FunctionDeclaration, prefix string, last bool) {
+	printASTBranch(prefix, last, "Function")
+	childrenPrefix := childPrefix(prefix, last)
+	printASTLeaf(childrenPrefix, false, "Name: "+stmt.Name.Value)
+	printASTLeaf(childrenPrefix, false, "Parameters: "+formatParameters(stmt.Parameters))
+	printASTLeaf(childrenPrefix, false, "Return: "+formatTypeRef(stmt.ReturnType))
+	printASTBranch(childrenPrefix, true, "Body")
+	bodyPrefix := childPrefix(childrenPrefix, true)
+	for i, bodyStmt := range stmt.Body.Statements {
+		printASTStatement(bodyStmt, bodyPrefix, i == len(stmt.Body.Statements)-1)
+	}
+}
+
+func printASTReturn(stmt *ast.ReturnStatement, prefix string, last bool) {
+	printASTBranch(prefix, last, "Return")
+	if stmt.Value == nil {
+		printASTLeaf(childPrefix(prefix, last), true, "Value: <nil>")
+		return
+	}
+	printASTExpression(childPrefix(prefix, last), true, "Value", stmt.Value)
+}
+
 func printASTField(prefix string, field *ast.StructField, last bool) {
 	printASTBranch(prefix, last, "Field")
 	children := []string{
@@ -473,6 +503,12 @@ func formatASTExpression(expr ast.Expression) string {
 		return "Infix(" + expr.Operator + ")"
 	case *ast.MemberExpression:
 		return "Member(" + expr.Property.Value + ")"
+	case *ast.CallExpression:
+		return "Call(" + expr.Function.Value + ")"
+	case *ast.OkExpression:
+		return "Ok"
+	case *ast.ErrExpression:
+		return "Err"
 	case *ast.StructLiteral:
 		return "StructLiteral(" + formatTypeRef(expr.Type) + ")"
 	default:
@@ -511,6 +547,9 @@ func printStatement(stmt ast.Statement) {
 	case *ast.EnumDeclaration:
 		printEnum(stmt)
 
+	case *ast.FunctionDeclaration:
+		printFunction(stmt)
+
 	case *ast.StructStatement:
 		fmt.Printf("Struct %s\n", stmt.Name.Value)
 		printStructFields(stmt.Fields)
@@ -525,6 +564,9 @@ func printStatement(stmt ast.Statement) {
 
 	case *ast.AssignmentStatement:
 		printAssignment(stmt)
+
+	case *ast.ReturnStatement:
+		printReturn(stmt)
 
 	case *ast.ImplStatement:
 		printImpl(stmt)
@@ -576,6 +618,14 @@ func printEnum(stmt *ast.EnumDeclaration) {
 	}
 }
 
+func printFunction(stmt *ast.FunctionDeclaration) {
+	fmt.Printf("Function %s(%s) %s\n", stmt.Name.Value, formatParameters(stmt.Parameters), formatTypeRef(stmt.ReturnType))
+	for _, bodyStmt := range stmt.Body.Statements {
+		fmt.Print("  ")
+		printStatement(bodyStmt)
+	}
+}
+
 func printLet(stmt *ast.LetStatement) {
 	fmt.Print("Let ")
 
@@ -600,6 +650,14 @@ func printAssignment(stmt *ast.AssignmentStatement) {
 	fmt.Printf("Assignment %s %s %s\n", stmt.Target.String(), stmt.Operator, stmt.Value.String())
 }
 
+func printReturn(stmt *ast.ReturnStatement) {
+	if stmt.Value == nil {
+		fmt.Println("Return")
+		return
+	}
+	fmt.Printf("Return %s\n", stmt.Value.String())
+}
+
 func printImpl(stmt *ast.ImplStatement) {
 	fmt.Printf("Impl %s\n", formatTypeRef(stmt.Target))
 	for _, member := range stmt.Members {
@@ -618,6 +676,9 @@ func printImpl(stmt *ast.ImplStatement) {
 			}
 		case *ast.PropertyDeclaration:
 			fmt.Printf("  Property %s: %s\n", member.Name.Value, formatTypeRef(member.Type))
+		case *ast.FunctionDeclaration:
+			fmt.Print("  ")
+			printFunction(member)
 		default:
 			fmt.Printf("  %T %q\n", member, member.TokenLiteral())
 		}
@@ -628,6 +689,17 @@ func formatEnumValue(value *ast.EnumValue) string {
 	out := value.Name.Value
 	if value.Initializer != nil {
 		out += " = " + value.Initializer.String()
+	}
+	return out
+}
+
+func formatParameters(parameters []*ast.Parameter) string {
+	out := ""
+	for i, param := range parameters {
+		if i > 0 {
+			out += ", "
+		}
+		out += param.Name.Value + ": " + formatTypeRef(param.Type)
 	}
 	return out
 }

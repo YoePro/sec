@@ -12,6 +12,7 @@ import (
 
 type Analyzer struct {
 	types             map[string]Type
+	functions         map[string]Function
 	implBlocks        map[string]lexer.Token
 	currentImplTarget string
 	symbols           map[string]Symbol
@@ -29,6 +30,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.errors = nil
 	a.symbols = map[string]Symbol{}
 	a.constInts = map[string]*big.Int{}
+	a.functions = map[string]Function{}
 	a.implBlocks = map[string]lexer.Token{}
 	a.currentImplTarget = ""
 	a.registerTypeDeclarations(program)
@@ -37,15 +39,17 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.analyzeEnumDeclarations(program)
 	a.analyzeImplTypeDeclarations(program)
 	a.registerImplDeclarations(program)
+	a.registerFunctionDeclarations(program)
 
 	for _, stmt := range program.Statements {
 		switch stmt.(type) {
-		case *ast.TypeDeclStatement, *ast.EnumDeclaration, *ast.ImplStatement:
+		case *ast.TypeDeclStatement, *ast.EnumDeclaration, *ast.ImplStatement, *ast.FunctionDeclaration:
 			continue
 		}
 		a.analyzeStatement(stmt)
 	}
 
+	a.analyzeFunctionBodies(program)
 	a.analyzeImplBodies(program)
 
 	return a.errors
@@ -189,6 +193,8 @@ func (a *Analyzer) analyzeStatement(stmt ast.Statement) {
 		a.analyzeTypeDeclaration(stmt)
 	case *ast.EnumDeclaration:
 		a.types[stmt.Name.Value] = a.typeFromEnumDeclaration(stmt.Name.Value, stmt)
+	case *ast.FunctionDeclaration:
+		a.registerFunctionDeclaration(stmt)
 	case *ast.LetStatement:
 		a.analyzeLetStatement(stmt)
 	case *ast.LetGroupStatement:
@@ -204,6 +210,172 @@ func (a *Analyzer) analyzeStatement(stmt ast.Statement) {
 			a.resolveType(field.Type)
 		}
 	}
+}
+
+func (a *Analyzer) registerFunctionDeclarations(program *ast.Program) {
+	for _, stmt := range program.Statements {
+		fn, ok := stmt.(*ast.FunctionDeclaration)
+		if !ok {
+			continue
+		}
+		a.registerFunctionDeclaration(fn)
+	}
+}
+
+func (a *Analyzer) registerFunctionDeclaration(fn *ast.FunctionDeclaration) {
+	if previous, exists := a.functions[fn.Name.Value]; exists {
+		_ = previous
+		a.addErrorAtToken(fn.Name.Token, "duplicate function %q", fn.Name.Value)
+		return
+	}
+
+	function := Function{Name: fn.Name.Value, Token: fn.Name.Token}
+
+	seenParams := map[string]lexer.Token{}
+	for _, param := range fn.Parameters {
+		if _, exists := seenParams[param.Name.Value]; exists {
+			a.addErrorAtToken(param.Name.Token, "duplicate parameter %q", param.Name.Value)
+			continue
+		}
+		seenParams[param.Name.Value] = param.Name.Token
+
+		paramType, ok := a.resolveType(param.Type)
+		if !ok {
+			continue
+		}
+		function.Parameters = append(function.Parameters, FunctionParameter{
+			Name:  param.Name.Value,
+			Type:  paramType,
+			Token: param.Name.Token,
+		})
+	}
+
+	returnType, ok := a.resolveType(fn.ReturnType)
+	if ok {
+		function.ReturnType = returnType
+	} else {
+		function.ReturnType = Type{Kind: InvalidType}
+	}
+
+	a.functions[fn.Name.Value] = function
+}
+
+func (a *Analyzer) analyzeFunctionBodies(program *ast.Program) {
+	for _, stmt := range program.Statements {
+		fn, ok := stmt.(*ast.FunctionDeclaration)
+		if !ok {
+			continue
+		}
+		a.analyzeFunctionBody(fn)
+	}
+}
+
+func (a *Analyzer) analyzeFunctionBody(fn *ast.FunctionDeclaration) {
+	function, ok := a.functions[fn.Name.Value]
+	if !ok || function.ReturnType.Kind == InvalidType {
+		return
+	}
+
+	previousSymbols := a.symbols
+	previousConstInts := a.constInts
+	a.symbols = copySymbols(previousSymbols)
+	a.constInts = copyConstInts(previousConstInts)
+	defer func() {
+		a.symbols = previousSymbols
+		a.constInts = previousConstInts
+	}()
+
+	for _, param := range function.Parameters {
+		a.symbols[param.Name] = Symbol{Name: param.Name, Type: param.Type, Mutable: false, Token: param.Token}
+		delete(a.constInts, param.Name)
+	}
+
+	hasReturn := false
+	for _, stmt := range fn.Body.Statements {
+		if returnStmt, ok := stmt.(*ast.ReturnStatement); ok {
+			hasReturn = true
+			a.analyzeReturnStatement(fn.Name.Value, function.ReturnType, returnStmt)
+			continue
+		}
+		a.analyzeStatement(stmt)
+	}
+
+	if !hasReturn && function.ReturnType.Kind != VoidType {
+		a.addErrorAtToken(fn.Name.Token, "function %s must return %s", fn.Name.Value, typeDisplayName(function.ReturnType))
+	}
+}
+
+func (a *Analyzer) analyzeReturnStatement(functionName string, returnType Type, stmt *ast.ReturnStatement) {
+	if stmt.Value == nil {
+		if returnType.Kind != VoidType {
+			a.addErrorAtToken(stmt.Token, "function %s must return %s", functionName, typeDisplayName(returnType))
+		}
+		return
+	}
+
+	if returnType.Kind == ResultType {
+		a.analyzeResultReturnStatement(functionName, returnType, stmt)
+		return
+	}
+
+	valueType, _ := a.inferExpression(stmt.Value)
+	if valueType.Kind == InvalidType {
+		return
+	}
+
+	if returnType.Kind == VoidType {
+		a.addErrorAtToken(expressionToken(stmt.Value), "function %s must return void, got %s", functionName, typeDisplayName(valueType))
+		return
+	}
+
+	if !canInitialize(returnType, valueType, stmt.Value) {
+		a.addErrorAtToken(expressionToken(stmt.Value), "function %s must return %s, got %s", functionName, typeDisplayName(returnType), typeDisplayName(valueType))
+	}
+}
+
+func (a *Analyzer) analyzeResultReturnStatement(functionName string, returnType Type, stmt *ast.ReturnStatement) {
+	if len(returnType.TypeArgs) != 2 {
+		return
+	}
+
+	switch expr := stmt.Value.(type) {
+	case *ast.OkExpression:
+		valueType, _ := a.inferExpression(expr.Value)
+		if valueType.Kind == InvalidType {
+			return
+		}
+		expected := returnType.TypeArgs[0]
+		if !canInitialize(expected, valueType, expr.Value) {
+			a.addErrorAtToken(expressionToken(expr.Value), "function %s must return Ok(%s), got Ok(%s)", functionName, typeDisplayName(expected), typeDisplayName(valueType))
+		}
+	case *ast.ErrExpression:
+		valueType, _ := a.inferExpression(expr.Value)
+		if valueType.Kind == InvalidType {
+			return
+		}
+		expected := returnType.TypeArgs[1]
+		if !canInitialize(expected, valueType, expr.Value) {
+			a.addErrorAtToken(expressionToken(expr.Value), "function %s must return Err(%s), got Err(%s)", functionName, typeDisplayName(expected), typeDisplayName(valueType))
+		}
+	default:
+		a.addErrorAtToken(expressionToken(stmt.Value), "function %s returning %s must return Ok(...) or Err(...)", functionName, typeDisplayName(returnType))
+	}
+}
+
+func copySymbols(in map[string]Symbol) map[string]Symbol {
+	out := make(map[string]Symbol, len(in))
+	for name, symbol := range in {
+		out[name] = symbol
+	}
+	return out
+}
+
+func copyConstInts(in map[string]*big.Int) map[string]*big.Int {
+	out := make(map[string]*big.Int, len(in))
+	for name, value := range in {
+		out[name] = new(big.Int).Set(value)
+	}
+	return out
 }
 
 func (a *Analyzer) analyzeTypeDeclaration(stmt *ast.TypeDeclStatement) {
@@ -629,6 +801,11 @@ func (a *Analyzer) inferPropertyBodyExpression(target Type, setter *ast.Property
 			return Type{Kind: InvalidType}, false
 		}
 		return targetType, true
+	case *ast.CallExpression:
+		typ, _ := a.inferCallExpression(expr)
+		return typ, typ.Kind != InvalidType
+	case *ast.OkExpression, *ast.ErrExpression:
+		return Type{Kind: InvalidType}, false
 	case *ast.PrefixExpression:
 		rightType, ok := a.inferPropertyBodyExpression(target, setter, setterType, expr.Right)
 		if !ok {
@@ -672,6 +849,18 @@ func (a *Analyzer) inferPropertyBodyInfixExpression(target Type, setter *ast.Pro
 	rightType, rightOK := a.inferPropertyBodyExpression(target, setter, setterType, expr.Right)
 	if !leftOK || !rightOK || leftType.Kind == InvalidType || rightType.Kind == InvalidType {
 		return Type{Kind: InvalidType}, false
+	}
+
+	if isLogicalOperator(expr.Operator) {
+		if leftType.Kind != BoolType || rightType.Kind != BoolType {
+			a.addErrorAtToken(expr.Token, "operator %s requires bool operands", expr.Operator)
+			return Type{Kind: InvalidType}, false
+		}
+		return Type{Name: "bool", Kind: BoolType}, true
+	}
+
+	if isComparisonOperator(expr.Operator) {
+		return Type{Name: "bool", Kind: BoolType}, true
 	}
 
 	if leftType.Kind == DecimalType || rightType.Kind == DecimalType {
@@ -829,8 +1018,12 @@ func (a *Analyzer) resolveType(ref *ast.TypeReference) (Type, bool) {
 		return Type{Name: "slice", Kind: InvalidType}, ok
 	}
 
+	typeArgs := make([]Type, 0, len(ref.TypeArgs))
 	for _, arg := range ref.TypeArgs {
-		a.resolveType(arg)
+		argType, ok := a.resolveType(arg)
+		if ok {
+			typeArgs = append(typeArgs, argType)
+		}
 	}
 
 	name := a.resolveTypeName(ref.Name)
@@ -838,6 +1031,15 @@ func (a *Analyzer) resolveType(ref *ast.TypeReference) (Type, bool) {
 	typ, ok := a.types[name]
 	if !ok {
 		a.addErrorAtToken(ref.Token, "unknown type %s", ref.Name)
+		return Type{Kind: InvalidType}, false
+	}
+
+	typ.TypeArgs = typeArgs
+	if typ.Kind == ResultType && len(ref.TypeArgs) != 2 {
+		a.addErrorAtToken(ref.Token, "Result requires 2 type arguments")
+		return Type{Kind: InvalidType}, false
+	}
+	if len(typeArgs) != len(ref.TypeArgs) {
 		return Type{Kind: InvalidType}, false
 	}
 
@@ -872,6 +1074,14 @@ func (a *Analyzer) inferExpression(expr ast.Expression) (Type, expressionValue) 
 		return a.inferInfixExpression(expr)
 	case *ast.ConversionExpression:
 		return a.inferConversionExpression(expr)
+	case *ast.CallExpression:
+		return a.inferCallExpression(expr)
+	case *ast.OkExpression:
+		a.addErrorAtToken(expr.Token, "Ok can only be returned from Result-returning function")
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	case *ast.ErrExpression:
+		a.addErrorAtToken(expr.Token, "Err can only be returned from Result-returning function")
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	case *ast.MemberExpression:
 		typ, ok := a.inferMemberExpression(expr)
 		if !ok {
@@ -1041,11 +1251,75 @@ func (a *Analyzer) inferConversionExpression(expr *ast.ConversionExpression) (Ty
 	return targetType, expressionValue{Display: expr.String()}
 }
 
+func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressionValue) {
+	function, ok := a.functions[expr.Function.Value]
+	if !ok {
+		return a.inferCallAsConversion(expr)
+	}
+
+	if len(expr.Arguments) != len(function.Parameters) {
+		a.addErrorAtToken(expr.Function.Token, "function %s expects %d arguments, got %d", expr.Function.Value, len(function.Parameters), len(expr.Arguments))
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+
+	for i, arg := range expr.Arguments {
+		argType, _ := a.inferExpression(arg)
+		if argType.Kind == InvalidType {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
+
+		param := function.Parameters[i]
+		if !canInitialize(param.Type, argType, arg) {
+			a.addErrorAtToken(expressionToken(arg), "argument %d to %s must be %s, got %s", i+1, expr.Function.Value, typeDisplayName(param.Type), typeDisplayName(argType))
+		}
+	}
+
+	return function.ReturnType, expressionValue{Display: expr.String()}
+}
+
+func (a *Analyzer) inferCallAsConversion(expr *ast.CallExpression) (Type, expressionValue) {
+	typeName := a.resolveTypeName(expr.Function.Value)
+	targetType, ok := a.types[typeName]
+	if !ok {
+		a.addErrorAtToken(expr.Function.Token, "unknown function or type %s", expr.Function.Value)
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+
+	if len(expr.Arguments) != 1 {
+		a.addErrorAtToken(expr.Function.Token, "conversion to %s expects 1 argument, got %d", expr.Function.Value, len(expr.Arguments))
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+
+	valueType, _ := a.inferExpression(expr.Arguments[0])
+	if valueType.Kind == InvalidType {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+
+	if !canExplicitConvert(targetType, valueType) {
+		a.addErrorAtToken(expr.Function.Token, "cannot convert %s to %s", typeDisplayName(valueType), typeDisplayName(targetType))
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+
+	return targetType, expressionValue{Display: expr.String()}
+}
+
 func (a *Analyzer) inferInfixExpression(expr *ast.InfixExpression) (Type, expressionValue) {
 	leftType, _ := a.inferExpression(expr.Left)
 	rightType, _ := a.inferExpression(expr.Right)
 	if leftType.Kind == InvalidType || rightType.Kind == InvalidType {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+
+	if isLogicalOperator(expr.Operator) {
+		if leftType.Kind != BoolType || rightType.Kind != BoolType {
+			a.addErrorAtToken(expr.Token, "operator %s requires bool operands", expr.Operator)
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
+		return Type{Name: "bool", Kind: BoolType}, expressionValue{Display: expr.String()}
+	}
+
+	if isComparisonOperator(expr.Operator) {
+		return Type{Name: "bool", Kind: BoolType}, expressionValue{Display: expr.String()}
 	}
 
 	if leftType.Kind == DecimalType || rightType.Kind == DecimalType {
@@ -1068,6 +1342,10 @@ func (a *Analyzer) inferInfixExpression(expr *ast.InfixExpression) (Type, expres
 }
 
 func (a *Analyzer) inferDecimalInfixExpression(expr *ast.InfixExpression, leftType Type, rightType Type) (Type, expressionValue) {
+	if isComparisonOperator(expr.Operator) {
+		return Type{Name: "bool", Kind: BoolType}, expressionValue{Display: expr.String()}
+	}
+
 	if leftType.Kind == DecimalType && (rightType.Kind == IntType || rightType.Kind == UintType) {
 		switch expr.Operator {
 		case "*", "/":
@@ -1087,6 +1365,8 @@ func (a *Analyzer) inferDecimalInfixExpression(expr *ast.InfixExpression, leftTy
 	}
 
 	switch expr.Operator {
+	case "==", "!=", "<", "<=", ">", ">=":
+		return Type{Name: "bool", Kind: BoolType}, expressionValue{Display: expr.String()}
 	case "+", "-":
 		if sameConcreteType(leftType, rightType) {
 			return leftType, expressionValue{Display: expr.String()}
@@ -1141,6 +1421,10 @@ func (a *Analyzer) inferPrefixExpression(expr *ast.PrefixExpression) (Type, expr
 			}
 		}
 	case "!":
+		if rightType.Kind != BoolType {
+			a.addErrorAtToken(expr.Token, "operator ! requires bool operand")
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
 		return Type{Name: "bool", Kind: BoolType}, expressionValue{Display: expr.String()}
 	}
 
@@ -1291,6 +1575,19 @@ func infixVerb(operator string) string {
 	}
 }
 
+func isComparisonOperator(operator string) bool {
+	switch operator {
+	case "==", "!=", "<", "<=", ">", ">=":
+		return true
+	default:
+		return false
+	}
+}
+
+func isLogicalOperator(operator string) bool {
+	return operator == "&&" || operator == "||"
+}
+
 func isUntypedNumericExpression(expr ast.Expression) bool {
 	if isNumericLiteral(expr) {
 		return true
@@ -1300,7 +1597,33 @@ func isUntypedNumericExpression(expr ast.Expression) bool {
 	return ok
 }
 
+func (a *Analyzer) isExplicitConversionExpression(expr ast.Expression) bool {
+	switch expr := expr.(type) {
+	case *ast.ConversionExpression:
+		return true
+	case *ast.CallExpression:
+		if len(expr.Arguments) != 1 {
+			return false
+		}
+		_, ok := a.types[a.resolveTypeName(expr.Function.Value)]
+		return ok
+	default:
+		return false
+	}
+}
+
 func typeDisplayName(typ Type) string {
+	if typ.Name != "" && len(typ.TypeArgs) > 0 {
+		out := typ.Name + "["
+		for i, arg := range typ.TypeArgs {
+			if i > 0 {
+				out += ", "
+			}
+			out += typeDisplayName(arg)
+		}
+		out += "]"
+		return out
+	}
 	if typ.Name != "" {
 		return typ.Name
 	}
@@ -1326,6 +1649,8 @@ func expressionToken(expr ast.Expression) lexer.Token {
 	case *ast.InfixExpression:
 		return expr.Token
 	case *ast.ConversionExpression:
+		return expr.Token
+	case *ast.CallExpression:
 		return expr.Token
 	case *ast.MemberExpression:
 		return expr.Token

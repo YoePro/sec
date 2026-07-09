@@ -86,7 +86,7 @@ func (a *Analyzer) checkIntegerExpressionRange(typ Type, expr ast.Expression) bo
 }
 
 func (a *Analyzer) checkIntegerAssignmentRange(symbol Symbol, stmt *ast.AssignmentStatement) bool {
-	if hasContracts(symbol.Type) && !isContractCheckableExpression(stmt.Value) {
+	if hasContracts(symbol.Type) && !a.isContractCheckableExpression(stmt.Value) {
 		return false
 	}
 
@@ -98,13 +98,12 @@ func (a *Analyzer) checkIntegerAssignmentRange(symbol Symbol, stmt *ast.Assignme
 	return a.checkIntegerValueRange(symbol.Type, result, expressionToken(stmt.Value))
 }
 
-func isContractCheckableExpression(expr ast.Expression) bool {
+func (a *Analyzer) isContractCheckableExpression(expr ast.Expression) bool {
 	if isUntypedNumericExpression(expr) {
 		return true
 	}
 
-	_, ok := expr.(*ast.ConversionExpression)
-	return ok
+	return a.isExplicitConversionExpression(expr)
 }
 
 func (a *Analyzer) checkIntegerLiteralRange(typ Type, expr ast.Expression) bool {

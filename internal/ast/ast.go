@@ -290,6 +290,43 @@ func (as *AssignmentStatement) TokenLiteral() string {
 	return as.Token.Lexeme
 }
 
+type FunctionDeclaration struct {
+	Token      lexer.Token
+	Name       *Identifier
+	Parameters []*Parameter
+	ReturnType *TypeReference
+	Body       *BlockStatement
+}
+
+func (fd *FunctionDeclaration) statementNode() {}
+
+func (fd *FunctionDeclaration) implMemberNode() {}
+
+func (fd *FunctionDeclaration) TokenLiteral() string {
+	return fd.Token.Lexeme
+}
+
+type Parameter struct {
+	Token lexer.Token
+	Name  *Identifier
+	Type  *TypeReference
+}
+
+func (p *Parameter) TokenLiteral() string {
+	return p.Token.Lexeme
+}
+
+type ReturnStatement struct {
+	Token lexer.Token
+	Value Expression
+}
+
+func (rs *ReturnStatement) statementNode() {}
+
+func (rs *ReturnStatement) TokenLiteral() string {
+	return rs.Token.Lexeme
+}
+
 type StructStatement struct {
 	Token  lexer.Token
 	Name   *Identifier
@@ -425,6 +462,68 @@ func (ce *ConversionExpression) String() string {
 	return ce.Type.Name + "(" + value + ")"
 }
 
+type CallExpression struct {
+	Token     lexer.Token
+	Function  *Identifier
+	Arguments []Expression
+}
+
+func (ce *CallExpression) expressionNode() {}
+
+func (ce *CallExpression) TokenLiteral() string {
+	return ce.Token.Lexeme
+}
+
+func (ce *CallExpression) String() string {
+	out := ce.Function.Value + "("
+	for i, arg := range ce.Arguments {
+		if i > 0 {
+			out += ", "
+		}
+		out += arg.String()
+	}
+	out += ")"
+	return out
+}
+
+type OkExpression struct {
+	Token lexer.Token
+	Value Expression
+}
+
+func (oe *OkExpression) expressionNode() {}
+
+func (oe *OkExpression) TokenLiteral() string {
+	return oe.Token.Lexeme
+}
+
+func (oe *OkExpression) String() string {
+	value := "<nil>"
+	if oe.Value != nil {
+		value = oe.Value.String()
+	}
+	return "Ok(" + value + ")"
+}
+
+type ErrExpression struct {
+	Token lexer.Token
+	Value Expression
+}
+
+func (ee *ErrExpression) expressionNode() {}
+
+func (ee *ErrExpression) TokenLiteral() string {
+	return ee.Token.Lexeme
+}
+
+func (ee *ErrExpression) String() string {
+	value := "<nil>"
+	if ee.Value != nil {
+		value = ee.Value.String()
+	}
+	return "Err(" + value + ")"
+}
+
 type ImplStatement struct {
 	Token   lexer.Token
 	Target  *TypeReference
@@ -464,8 +563,9 @@ type PropertySetter struct {
 }
 
 type BlockStatement struct {
-	Token  lexer.Token
-	Tokens []lexer.Token
+	Token      lexer.Token
+	Tokens     []lexer.Token
+	Statements []Statement
 }
 
 func (bs *BlockStatement) TokenLiteral() string {

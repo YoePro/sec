@@ -20,6 +20,7 @@ const (
 	StringType  TypeKind = "string"
 	CharType    TypeKind = "char"
 	RuneType    TypeKind = "rune"
+	ResultType  TypeKind = "result"
 	StructType  TypeKind = "struct"
 	VoidType    TypeKind = "void"
 )
@@ -39,6 +40,7 @@ type Type struct {
 	Contracts  []Contract
 	EnumValues []string
 	EnumConsts map[string]EnumValue
+	TypeArgs   []Type
 	Fields     []StructField
 	Properties []Property
 }
@@ -66,6 +68,19 @@ type Property struct {
 	Type     Type
 	Token    lexer.Token
 	Fallible bool
+}
+
+type Function struct {
+	Name       string
+	Parameters []FunctionParameter
+	ReturnType Type
+	Token      lexer.Token
+}
+
+type FunctionParameter struct {
+	Name  string
+	Type  Type
+	Token lexer.Token
 }
 
 type Dimension struct {
@@ -160,6 +175,7 @@ func builtinTypes() map[string]Type {
 		"byte":    unsignedType("byte", 255),
 		"char":    {Name: "char", Kind: CharType},
 		"rune":    {Name: "rune", Kind: RuneType},
+		"Result":  {Name: "Result", Kind: ResultType},
 		"decimal": {Name: "decimal", Kind: DecimalType},
 		"float":   {Name: "float", Kind: FloatType},
 		"float32": {Name: "float32", Kind: FloatType},

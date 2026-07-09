@@ -931,6 +931,79 @@ enum Status int {
 	}
 }
 
+func TestParseFunctionDeclaration(t *testing.T) {
+	input := `
+fn add(a: int, b: int,) int {
+	return a + b
+}
+
+fn noop() void {
+	return
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Statements) != 2 {
+		t.Fatalf("wrong statement count. got=%d want=2", len(program.Statements))
+	}
+
+	add, ok := program.Statements[0].(*ast.FunctionDeclaration)
+	if !ok {
+		t.Fatalf("first statement is not FunctionDeclaration. got=%T", program.Statements[0])
+	}
+	if add.Name.Value != "add" || len(add.Parameters) != 2 || add.ReturnType.Name != "int" {
+		t.Fatalf("wrong add function: %+v", add)
+	}
+	if len(add.Body.Statements) != 1 {
+		t.Fatalf("wrong add body statement count. got=%d want=1", len(add.Body.Statements))
+	}
+	if _, ok := add.Body.Statements[0].(*ast.ReturnStatement); !ok {
+		t.Fatalf("add body is not return statement. got=%T", add.Body.Statements[0])
+	}
+
+	noop := program.Statements[1].(*ast.FunctionDeclaration)
+	if noop.Name.Value != "noop" || len(noop.Parameters) != 0 || noop.ReturnType.Name != "void" {
+		t.Fatalf("wrong noop function: %+v", noop)
+	}
+	returnStmt := noop.Body.Statements[0].(*ast.ReturnStatement)
+	if returnStmt.Value != nil {
+		t.Fatalf("expected void return without value, got %+v", returnStmt.Value)
+	}
+}
+
+func TestParseOkErrExpressions(t *testing.T) {
+	input := `
+fn Foo() Result[int, IOError] {
+	return Ok(1)
+}
+
+fn Bar() Result[int, IOError] {
+	return Err(IOError.InvalidValue)
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	foo := program.Statements[0].(*ast.FunctionDeclaration)
+	fooReturn := foo.Body.Statements[0].(*ast.ReturnStatement)
+	if _, ok := fooReturn.Value.(*ast.OkExpression); !ok {
+		t.Fatalf("Foo return is not OkExpression. got=%T", fooReturn.Value)
+	}
+
+	bar := program.Statements[1].(*ast.FunctionDeclaration)
+	barReturn := bar.Body.Statements[0].(*ast.ReturnStatement)
+	if _, ok := barReturn.Value.(*ast.ErrExpression); !ok {
+		t.Fatalf("Bar return is not ErrExpression. got=%T", barReturn.Value)
+	}
+}
+
 func TestParseImplRejectsLet(t *testing.T) {
 	input := `
 impl Vehicle {

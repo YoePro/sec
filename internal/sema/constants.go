@@ -59,6 +59,11 @@ func (a *Analyzer) integerConstantValue(expr ast.Expression) (*big.Int, bool) {
 		return new(big.Int).Set(value), true
 	case *ast.ConversionExpression:
 		return a.integerConstantValue(expr.Value)
+	case *ast.CallExpression:
+		if a.isExplicitConversionExpression(expr) {
+			return a.integerConstantValue(expr.Arguments[0])
+		}
+		return nil, false
 	case *ast.PrefixExpression:
 		if expr.Operator != "-" {
 			return nil, false

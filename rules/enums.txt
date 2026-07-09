@@ -1,0 +1,86 @@
+Implement enum declarations.
+
+Syntax:
+
+    enum Name {
+        A,
+        B,
+        C,
+    }
+
+    enum Name int {
+        A = 1,
+        B,
+        C,
+    }
+
+    impl Vehicle {
+        enum FuelType {
+            petrol,
+            diesel,
+            electric,
+        }
+    }
+
+Rules:
+- Enum values are comma-separated.
+- Trailing comma is allowed.
+- Default underlying type is int.
+- Optional underlying type may be given after enum name.
+- First value defaults to 0.
+- A value without explicit initializer gets previous numeric value + 1.
+- Explicit initializer must be an integer constant expression.
+- Enum value names must be unique inside the enum.
+- Different enums may reuse value names.
+- Nested enum full name is TypeName.EnumName.
+- Nested enum values are accessed as TypeName.EnumName.value.
+- Outside the impl block, nested enum types must be referenced with the owner
+  type for readability:
+
+    Vehicle.FuelTypes
+
+  not:
+
+    FuelTypes
+
+- Inside impl Vehicle, nested enum types and values are referenced without the
+  owner type:
+
+    FuelTypes
+    FuelTypes.Petrol
+
+- Module enum values are accessed as EnumName.value.
+- Enum values have the enum type, not int.
+- Assigning int to enum is invalid unless explicit conversion is used.
+- Assigning enum to int is invalid unless explicit conversion is used.
+
+Valid:
+
+    enum Color {
+        red,
+        green,
+        blue,
+    }
+
+    enum Status int {
+        unknown = 0,
+        active = 10,
+        paused,
+        disabled = 99,
+    }
+
+    let c: Color := Color.red
+    let s: Status := Status.paused
+
+Invalid:
+
+    let c: Color := 1
+    let i: int := Color.red
+
+Sema:
+- register enum as named type
+- register variants as typed constants under enum namespace
+- reject duplicate enum variants
+- reject unknown underlying type
+- reject non-integer underlying type for now
+- reject non-constant enum initializer

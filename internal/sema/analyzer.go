@@ -11,10 +11,12 @@ import (
 )
 
 type Analyzer struct {
-	types     map[string]Type
-	symbols   map[string]Symbol
-	constInts map[string]*big.Int
-	errors    []Error
+	types             map[string]Type
+	implBlocks        map[string]lexer.Token
+	currentImplTarget string
+	symbols           map[string]Symbol
+	constInts         map[string]*big.Int
+	errors            []Error
 }
 
 func NewAnalyzer() *Analyzer {
@@ -27,27 +29,100 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.errors = nil
 	a.symbols = map[string]Symbol{}
 	a.constInts = map[string]*big.Int{}
+	a.implBlocks = map[string]lexer.Token{}
+	a.currentImplTarget = ""
 	a.registerTypeDeclarations(program)
+	a.registerImplTypeDeclarations(program)
 	a.analyzeTypeDeclarations(program)
+	a.analyzeEnumDeclarations(program)
+	a.analyzeImplTypeDeclarations(program)
+	a.registerImplDeclarations(program)
 
 	for _, stmt := range program.Statements {
-		if _, ok := stmt.(*ast.TypeDeclStatement); ok {
+		switch stmt.(type) {
+		case *ast.TypeDeclStatement, *ast.EnumDeclaration, *ast.ImplStatement:
 			continue
 		}
 		a.analyzeStatement(stmt)
 	}
+
+	a.analyzeImplBodies(program)
 
 	return a.errors
 }
 
 func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 	for _, stmt := range program.Statements {
-		typeDecl, ok := stmt.(*ast.TypeDeclStatement)
-		if !ok || typeDecl.Name == nil {
+		switch stmt := stmt.(type) {
+		case *ast.TypeDeclStatement:
+			if stmt.Name == nil {
+				continue
+			}
+			a.types[stmt.Name.Value] = Type{Name: stmt.Name.Value, Kind: InvalidType}
+		case *ast.EnumDeclaration:
+			if stmt.Name == nil {
+				continue
+			}
+			a.types[stmt.Name.Value] = Type{Name: stmt.Name.Value, Kind: InvalidType}
+		}
+	}
+}
+
+func (a *Analyzer) registerImplTypeDeclarations(program *ast.Program) {
+	for _, stmt := range program.Statements {
+		impl, ok := stmt.(*ast.ImplStatement)
+		if !ok {
 			continue
 		}
 
-		a.types[typeDecl.Name.Value] = Type{Name: typeDecl.Name.Value, Kind: InvalidType}
+		target, ok := a.types[impl.Target.Name]
+		if !ok {
+			a.addErrorAtToken(impl.Target.Token, "unknown impl target %s", impl.Target.Name)
+			continue
+		}
+		if !target.Named && target.Kind != InvalidType {
+			a.addErrorAtToken(impl.Target.Token, "impl target %s is not a named type", impl.Target.Name)
+			continue
+		}
+		if previous, exists := a.implBlocks[impl.Target.Name]; exists {
+			_ = previous
+			a.addErrorAtToken(impl.Target.Token, "duplicate impl block for %s", impl.Target.Name)
+			continue
+		}
+		a.implBlocks[impl.Target.Name] = impl.Target.Token
+
+		nested := map[string]lexer.Token{}
+		for _, member := range impl.Members {
+			name, token, ok := implNestedTypeName(member)
+			if !ok {
+				continue
+			}
+			if _, exists := nested[name]; exists {
+				a.addErrorAtToken(token, "duplicate nested type %q in impl %s", name, impl.Target.Name)
+				continue
+			}
+			nested[name] = token
+
+			qualified := impl.Target.Name + "." + name
+			a.types[qualified] = Type{Name: qualified, Kind: InvalidType}
+		}
+	}
+}
+
+func implNestedTypeName(member ast.ImplMember) (string, lexer.Token, bool) {
+	switch member := member.(type) {
+	case *ast.TypeDeclStatement:
+		if member.Name == nil {
+			return "", lexer.Token{}, false
+		}
+		return member.Name.Value, member.Name.Token, true
+	case *ast.EnumDeclaration:
+		if member.Name == nil {
+			return "", lexer.Token{}, false
+		}
+		return member.Name.Value, member.Name.Token, true
+	default:
+		return "", lexer.Token{}, false
 	}
 }
 
@@ -62,10 +137,58 @@ func (a *Analyzer) analyzeTypeDeclarations(program *ast.Program) {
 	}
 }
 
+func (a *Analyzer) analyzeEnumDeclarations(program *ast.Program) {
+	for _, stmt := range program.Statements {
+		enum, ok := stmt.(*ast.EnumDeclaration)
+		if !ok {
+			continue
+		}
+		a.types[enum.Name.Value] = a.typeFromEnumDeclaration(enum.Name.Value, enum)
+	}
+}
+
+func (a *Analyzer) analyzeImplTypeDeclarations(program *ast.Program) {
+	for _, stmt := range program.Statements {
+		impl, ok := stmt.(*ast.ImplStatement)
+		if !ok {
+			continue
+		}
+		if _, ok := a.implBlocks[impl.Target.Name]; !ok {
+			continue
+		}
+
+		for _, member := range impl.Members {
+			switch member := member.(type) {
+			case *ast.TypeDeclStatement:
+				qualified := impl.Target.Name + "." + member.Name.Value
+				a.withImplTarget(impl.Target.Name, func() {
+					a.analyzeNestedTypeDeclaration(qualified, member)
+				})
+			case *ast.EnumDeclaration:
+				qualified := impl.Target.Name + "." + member.Name.Value
+				a.withImplTarget(impl.Target.Name, func() {
+					a.types[qualified] = a.typeFromEnumDeclaration(qualified, member)
+				})
+			}
+		}
+	}
+}
+
+func (a *Analyzer) withImplTarget(target string, fn func()) {
+	previous := a.currentImplTarget
+	a.currentImplTarget = target
+	defer func() {
+		a.currentImplTarget = previous
+	}()
+	fn()
+}
+
 func (a *Analyzer) analyzeStatement(stmt ast.Statement) {
 	switch stmt := stmt.(type) {
 	case *ast.TypeDeclStatement:
 		a.analyzeTypeDeclaration(stmt)
+	case *ast.EnumDeclaration:
+		a.types[stmt.Name.Value] = a.typeFromEnumDeclaration(stmt.Name.Value, stmt)
 	case *ast.LetStatement:
 		a.analyzeLetStatement(stmt)
 	case *ast.LetGroupStatement:
@@ -75,7 +198,7 @@ func (a *Analyzer) analyzeStatement(stmt ast.Statement) {
 	case *ast.AssignmentStatement:
 		a.analyzeAssignmentStatement(stmt)
 	case *ast.ImplStatement:
-		a.analyzeImplStatement(stmt)
+		a.registerImplStatement(stmt)
 	case *ast.StructStatement:
 		for _, field := range stmt.Fields {
 			a.resolveType(field.Type)
@@ -113,9 +236,43 @@ func (a *Analyzer) analyzeTypeDeclaration(stmt *ast.TypeDeclStatement) {
 	}
 }
 
+func (a *Analyzer) analyzeNestedTypeDeclaration(qualifiedName string, stmt *ast.TypeDeclStatement) {
+	if stmt.StructType != nil {
+		a.types[qualifiedName] = a.typeFromStructDeclarationWithName(qualifiedName, stmt)
+		return
+	}
+
+	var baseType Type
+	var baseTypeOK bool
+	if stmt.BaseType != nil {
+		baseType, baseTypeOK = a.resolveType(stmt.BaseType)
+	}
+
+	if stmt.AssignedType != nil {
+		baseType, baseTypeOK = a.resolveType(stmt.AssignedType)
+	}
+
+	if contract, ok := stmt.Contract.(*ast.RangeContract); ok && baseTypeOK {
+		if contract.Min != nil {
+			a.checkIntegerLiteralRange(baseType, contract.Min)
+		}
+		if contract.Max != nil {
+			a.checkIntegerLiteralRange(baseType, contract.Max)
+		}
+	}
+
+	if baseTypeOK {
+		a.types[qualifiedName] = a.typeFromDeclarationWithName(qualifiedName, stmt, baseType)
+	}
+}
+
 func (a *Analyzer) typeFromStructDeclaration(stmt *ast.TypeDeclStatement) Type {
+	return a.typeFromStructDeclarationWithName(stmt.Name.Value, stmt)
+}
+
+func (a *Analyzer) typeFromStructDeclarationWithName(name string, stmt *ast.TypeDeclStatement) Type {
 	typ := Type{
-		Name:       stmt.Name.Value,
+		Name:       name,
 		Kind:       StructType,
 		Named:      true,
 		Declared:   true,
@@ -126,7 +283,7 @@ func (a *Analyzer) typeFromStructDeclaration(stmt *ast.TypeDeclStatement) Type {
 	for _, field := range stmt.StructType.Fields {
 		if previous, exists := seen[field.Name.Value]; exists {
 			_ = previous
-			a.addErrorAtToken(field.Name.Token, "duplicate field %q in struct %s", field.Name.Value, stmt.Name.Value)
+			a.addErrorAtToken(field.Name.Token, "duplicate field %q in struct %s", field.Name.Value, name)
 			continue
 		}
 		seen[field.Name.Value] = field.Name.Token
@@ -147,6 +304,66 @@ func (a *Analyzer) typeFromStructDeclaration(stmt *ast.TypeDeclStatement) Type {
 	return typ
 }
 
+func (a *Analyzer) typeFromEnumDeclaration(name string, enum *ast.EnumDeclaration) Type {
+	underlying := a.types["int"]
+	if enum.UnderlyingType != nil {
+		resolved, ok := a.resolveType(enum.UnderlyingType)
+		if !ok {
+			return Type{Name: name, Kind: InvalidType}
+		}
+		underlying = resolved
+	}
+
+	if underlying.Kind != IntType && underlying.Kind != UintType {
+		token := enum.Name.Token
+		if enum.UnderlyingType != nil {
+			token = enum.UnderlyingType.Token
+		}
+		a.addErrorAtToken(token, "enum %s underlying type must be integer, got %s", name, typeDisplayName(underlying))
+		return Type{Name: name, Kind: InvalidType}
+	}
+
+	typ := Type{
+		Name:       name,
+		Kind:       EnumType,
+		Named:      true,
+		Declared:   true,
+		Underlying: underlying.Name,
+		EnumConsts: map[string]EnumValue{},
+	}
+
+	seen := map[string]lexer.Token{}
+	previous := big.NewInt(-1)
+	for _, value := range enum.Values {
+		if _, exists := seen[value.Name.Value]; exists {
+			a.addErrorAtToken(value.Token, "duplicate enum value %q in enum %s", value.Name.Value, name)
+			continue
+		}
+		seen[value.Name.Value] = value.Token
+
+		next := new(big.Int).Add(previous, big.NewInt(1))
+		if value.Initializer != nil {
+			constValue, ok := constantIntegerValue(value.Initializer)
+			if !ok {
+				a.addErrorAtToken(expressionToken(value.Initializer), "enum value %s.%s initializer must be integer constant", name, value.Name.Value)
+				continue
+			}
+			next = constValue
+		}
+
+		a.checkIntegerValueRange(underlying, next, value.Token)
+		previous = new(big.Int).Set(next)
+		typ.EnumValues = append(typ.EnumValues, value.Name.Value)
+		typ.EnumConsts[value.Name.Value] = EnumValue{
+			Name:  value.Name.Value,
+			Value: new(big.Int).Set(next),
+			Token: value.Token,
+		}
+	}
+
+	return typ
+}
+
 func semaStructTags(tags []ast.StructTag) []StructTag {
 	out := make([]StructTag, 0, len(tags))
 	for _, tag := range tags {
@@ -155,19 +372,31 @@ func semaStructTags(tags []ast.StructTag) []StructTag {
 	return out
 }
 
-func (a *Analyzer) analyzeImplStatement(stmt *ast.ImplStatement) {
+func (a *Analyzer) registerImplDeclarations(program *ast.Program) {
+	for _, stmt := range program.Statements {
+		impl, ok := stmt.(*ast.ImplStatement)
+		if !ok {
+			continue
+		}
+		a.registerImplStatement(impl)
+	}
+}
+
+func (a *Analyzer) registerImplStatement(stmt *ast.ImplStatement) {
 	target, ok := a.types[stmt.Target.Name]
 	if !ok {
-		a.addErrorAtToken(stmt.Target.Token, "unknown impl target %s", stmt.Target.Name)
 		return
 	}
 
-	if !target.Named {
-		a.addErrorAtToken(stmt.Target.Token, "impl target %s is not a named type", stmt.Target.Name)
+	if !target.Named && target.Kind != InvalidType {
 		return
 	}
 
 	properties := map[string]lexer.Token{}
+	for _, property := range target.Properties {
+		properties[property.Name] = property.Token
+	}
+
 	targetChanged := false
 	for _, member := range stmt.Members {
 		property, ok := member.(*ast.PropertyDeclaration)
@@ -182,8 +411,12 @@ func (a *Analyzer) analyzeImplStatement(stmt *ast.ImplStatement) {
 		}
 		properties[property.Name.Value] = property.Name.Token
 
-		propertyType, ok := a.resolveType(property.Type)
-		if !ok {
+		var propertyType Type
+		var typeOK bool
+		a.withImplTarget(stmt.Target.Name, func() {
+			propertyType, typeOK = a.resolveType(property.Type)
+		})
+		if !typeOK {
 			continue
 		}
 
@@ -194,12 +427,43 @@ func (a *Analyzer) analyzeImplStatement(stmt *ast.ImplStatement) {
 			Fallible: property.Setter != nil && property.Setter.Fallible,
 		})
 		targetChanged = true
-
-		a.analyzePropertyBody(target, property, propertyType)
 	}
 
 	if targetChanged {
 		a.types[target.Name] = target
+	}
+}
+
+func (a *Analyzer) analyzeImplBodies(program *ast.Program) {
+	for _, stmt := range program.Statements {
+		impl, ok := stmt.(*ast.ImplStatement)
+		if !ok {
+			continue
+		}
+		a.analyzeImplBody(impl)
+	}
+}
+
+func (a *Analyzer) analyzeImplBody(stmt *ast.ImplStatement) {
+	target, ok := a.types[stmt.Target.Name]
+	if !ok || !target.Named {
+		return
+	}
+
+	for _, member := range stmt.Members {
+		property, ok := member.(*ast.PropertyDeclaration)
+		if !ok {
+			continue
+		}
+
+		registeredProperty, ok := lookupPropertyByToken(target, property.Name.Value, property.Name.Token)
+		if !ok {
+			continue
+		}
+
+		a.withImplTarget(stmt.Target.Name, func() {
+			a.analyzePropertyBody(target, property, registeredProperty.Type)
+		})
 	}
 }
 
@@ -344,6 +608,9 @@ func (a *Analyzer) inferPropertyBodyExpression(target Type, setter *ast.Property
 		if fieldType, ok := lookupStructField(target, expr.Value); ok {
 			return fieldType, true
 		}
+		if property, ok := lookupProperty(target, expr.Value); ok {
+			return property.Type, true
+		}
 		if symbol, ok := a.symbols[expr.Value]; ok {
 			return symbol.Type, true
 		}
@@ -379,6 +646,9 @@ func (a *Analyzer) inferPropertyBodyExpression(target Type, setter *ast.Property
 	case *ast.InfixExpression:
 		return a.inferPropertyBodyInfixExpression(target, setter, setterType, expr)
 	case *ast.MemberExpression:
+		if enumType, ok := a.inferEnumValueExpression(expr); ok {
+			return enumType, true
+		}
 		objectType, ok := a.inferPropertyBodyExpression(target, setter, setterType, expr.Object)
 		if !ok || objectType.Kind == InvalidType {
 			return Type{Kind: InvalidType}, ok
@@ -434,6 +704,9 @@ func (a *Analyzer) resolveBodyValueType(target Type, setter *ast.PropertySetter,
 			if field.Name == token.Lexeme {
 				return field.Type, true
 			}
+		}
+		if property, ok := lookupProperty(target, token.Lexeme); ok {
+			return property.Type, true
 		}
 	}
 
@@ -560,7 +833,9 @@ func (a *Analyzer) resolveType(ref *ast.TypeReference) (Type, bool) {
 		a.resolveType(arg)
 	}
 
-	typ, ok := a.types[ref.Name]
+	name := a.resolveTypeName(ref.Name)
+
+	typ, ok := a.types[name]
 	if !ok {
 		a.addErrorAtToken(ref.Token, "unknown type %s", ref.Name)
 		return Type{Kind: InvalidType}, false
@@ -645,6 +920,10 @@ func (a *Analyzer) inferStructLiteral(expr *ast.StructLiteral) (Type, expression
 }
 
 func (a *Analyzer) inferMemberExpression(expr *ast.MemberExpression) (Type, bool) {
+	if enumType, ok := a.inferEnumValueExpression(expr); ok {
+		return enumType, true
+	}
+
 	objectType, _ := a.inferExpression(expr.Object)
 	if objectType.Kind == InvalidType {
 		return Type{Kind: InvalidType}, false
@@ -660,6 +939,52 @@ func (a *Analyzer) inferMemberExpression(expr *ast.MemberExpression) (Type, bool
 
 	a.addErrorAtToken(expr.Property.Token, "unknown member %s on %s", expr.Property.Value, typeDisplayName(objectType))
 	return Type{Kind: InvalidType}, false
+}
+
+func (a *Analyzer) inferEnumValueExpression(expr *ast.MemberExpression) (Type, bool) {
+	typeName, ok := typePathFromExpression(expr.Object)
+	if !ok {
+		return Type{}, false
+	}
+	typeName = a.resolveTypeName(typeName)
+
+	typ, ok := a.types[typeName]
+	if !ok || typ.Kind != EnumType {
+		return Type{}, false
+	}
+	if _, ok := typ.EnumConsts[expr.Property.Value]; !ok {
+		a.addErrorAtToken(expr.Property.Token, "unknown enum value %s.%s", typeName, expr.Property.Value)
+		return Type{Kind: InvalidType}, true
+	}
+	return typ, true
+}
+
+func (a *Analyzer) resolveTypeName(name string) string {
+	if a.currentImplTarget == "" || strings.Contains(name, ".") {
+		return name
+	}
+
+	qualified := a.currentImplTarget + "." + name
+	if _, ok := a.types[qualified]; ok {
+		return qualified
+	}
+
+	return name
+}
+
+func typePathFromExpression(expr ast.Expression) (string, bool) {
+	switch expr := expr.(type) {
+	case *ast.Identifier:
+		return expr.Value, true
+	case *ast.MemberExpression:
+		left, ok := typePathFromExpression(expr.Object)
+		if !ok {
+			return "", false
+		}
+		return left + "." + expr.Property.Value, true
+	default:
+		return "", false
+	}
 }
 
 func (a *Analyzer) lookupPropertyOnMember(expr *ast.MemberExpression) (Property, bool) {
@@ -682,6 +1007,15 @@ func lookupStructField(typ Type, name string) (Type, bool) {
 func lookupProperty(typ Type, name string) (Property, bool) {
 	for _, property := range typ.Properties {
 		if property.Name == name {
+			return property, true
+		}
+	}
+	return Property{}, false
+}
+
+func lookupPropertyByToken(typ Type, name string, token lexer.Token) (Property, bool) {
+	for _, property := range typ.Properties {
+		if property.Name == name && property.Token.Line == token.Line && property.Token.Column == token.Column {
 			return property, true
 		}
 	}
@@ -860,6 +1194,10 @@ func canInitialize(target Type, value Type, expr ast.Expression) bool {
 		return true
 	}
 
+	if target.Kind == EnumType || value.Kind == EnumType {
+		return target.Kind == EnumType && value.Kind == EnumType && target.Name == value.Name
+	}
+
 	if isNominal(target) && target.Name != value.Name {
 		return isUntypedNumericExpression(expr)
 	}
@@ -889,6 +1227,14 @@ func canExplicitConvert(target Type, value Type) bool {
 		return false
 	}
 
+	if target.Kind == EnumType && isIntegerType(value) {
+		return true
+	}
+
+	if isIntegerType(target) && value.Kind == EnumType {
+		return true
+	}
+
 	if target.Kind == value.Kind {
 		return true
 	}
@@ -905,7 +1251,11 @@ func hasContracts(typ Type) bool {
 }
 
 func isNominal(typ Type) bool {
-	return typ.Named && (hasContracts(typ) || !typ.Dimension.IsZero())
+	return typ.Named && (typ.Kind == EnumType || hasContracts(typ) || !typ.Dimension.IsZero())
+}
+
+func isIntegerType(typ Type) bool {
+	return typ.Kind == IntType || typ.Kind == UintType
 }
 
 func sameConcreteType(left Type, right Type) bool {

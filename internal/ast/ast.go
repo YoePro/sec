@@ -59,8 +59,35 @@ type TypeDeclStatement struct {
 
 func (tds *TypeDeclStatement) statementNode() {}
 
+func (tds *TypeDeclStatement) implMemberNode() {}
+
 func (tds *TypeDeclStatement) TokenLiteral() string {
 	return tds.Token.Lexeme
+}
+
+type EnumDeclaration struct {
+	Token          lexer.Token
+	Name           *Identifier
+	UnderlyingType *TypeReference
+	Values         []*EnumValue
+}
+
+func (ed *EnumDeclaration) statementNode() {}
+
+func (ed *EnumDeclaration) implMemberNode() {}
+
+func (ed *EnumDeclaration) TokenLiteral() string {
+	return ed.Token.Lexeme
+}
+
+type EnumValue struct {
+	Token       lexer.Token
+	Name        *Identifier
+	Initializer Expression
+}
+
+func (ev *EnumValue) TokenLiteral() string {
+	return ev.Token.Lexeme
 }
 
 // Identifier represents a named symbol.

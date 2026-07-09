@@ -16,6 +16,7 @@ const (
 	UintType    TypeKind = "uint"
 	FloatType   TypeKind = "float"
 	DecimalType TypeKind = "decimal"
+	EnumType    TypeKind = "enum"
 	StringType  TypeKind = "string"
 	CharType    TypeKind = "char"
 	RuneType    TypeKind = "rune"
@@ -36,8 +37,16 @@ type Type struct {
 	MinUint    *uint64
 	MaxUint    *uint64
 	Contracts  []Contract
+	EnumValues []string
+	EnumConsts map[string]EnumValue
 	Fields     []StructField
 	Properties []Property
+}
+
+type EnumValue struct {
+	Name  string
+	Value *big.Int
+	Token lexer.Token
 }
 
 type StructField struct {

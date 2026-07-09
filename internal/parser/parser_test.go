@@ -679,6 +679,108 @@ type Bad struct {
 	}
 }
 
+func TestParseMalformedStructFieldMissingColonRecovery(t *testing.T) {
+	input := `
+type B struct {
+	y int,
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+
+	expected := "missing ':' after struct field name \"y\" at 3:2"
+	if len(p.Errors()) != 1 {
+		t.Fatalf("wrong parser error count. got=%d want=1 errors=%v", len(p.Errors()), p.Errors())
+	}
+	if p.Errors()[0] != expected {
+		t.Fatalf("wrong parser error. got=%q want=%q", p.Errors()[0], expected)
+	}
+	if len(program.Statements) != 1 {
+		t.Fatalf("wrong statement count. got=%d want=1", len(program.Statements))
+	}
+}
+
+func TestParseMalformedStructFieldContinuesAfterComma(t *testing.T) {
+	input := `
+type B struct {
+	y int,
+	z: int,
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+
+	expected := "missing ':' after struct field name \"y\" at 3:2"
+	if len(p.Errors()) != 1 {
+		t.Fatalf("wrong parser error count. got=%d want=1 errors=%v", len(p.Errors()), p.Errors())
+	}
+	if p.Errors()[0] != expected {
+		t.Fatalf("wrong parser error. got=%q want=%q", p.Errors()[0], expected)
+	}
+
+	typeDecl, ok := program.Statements[0].(*ast.TypeDeclStatement)
+	if !ok {
+		t.Fatalf("statement is not TypeDeclStatement. got=%T", program.Statements[0])
+	}
+	if len(typeDecl.StructType.Fields) != 1 {
+		t.Fatalf("wrong field count. got=%d want=1", len(typeDecl.StructType.Fields))
+	}
+	if typeDecl.StructType.Fields[0].Name.Value != "z" {
+		t.Fatalf("wrong recovered field. got=%q want=z", typeDecl.StructType.Fields[0].Name.Value)
+	}
+}
+
+func TestParseContinuesAfterMalformedStructField(t *testing.T) {
+	input := `
+type B struct {
+	y int,
+}
+
+type C struct {
+	z: int,
+}
+
+let a := 10
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+
+	expected := "missing ':' after struct field name \"y\" at 3:2"
+	if len(p.Errors()) != 1 {
+		t.Fatalf("wrong parser error count. got=%d want=1 errors=%v", len(p.Errors()), p.Errors())
+	}
+	if p.Errors()[0] != expected {
+		t.Fatalf("wrong parser error. got=%q want=%q", p.Errors()[0], expected)
+	}
+	if len(program.Statements) != 3 {
+		t.Fatalf("wrong statement count. got=%d want=3", len(program.Statements))
+	}
+
+	b, ok := program.Statements[0].(*ast.TypeDeclStatement)
+	if !ok || b.Name.Value != "B" || b.StructType == nil {
+		t.Fatalf("first statement is not struct type B. got=%T %+v", program.Statements[0], program.Statements[0])
+	}
+
+	c, ok := program.Statements[1].(*ast.TypeDeclStatement)
+	if !ok || c.Name.Value != "C" || c.StructType == nil {
+		t.Fatalf("second statement is not struct type C. got=%T %+v", program.Statements[1], program.Statements[1])
+	}
+	if len(c.StructType.Fields) != 1 || c.StructType.Fields[0].Name.Value != "z" {
+		t.Fatalf("wrong C fields: %+v", c.StructType.Fields)
+	}
+
+	letStmt, ok := program.Statements[2].(*ast.LetStatement)
+	if !ok || letStmt.Name.Value != "a" {
+		t.Fatalf("third statement is not let a. got=%T %+v", program.Statements[2], program.Statements[2])
+	}
+}
+
 func TestParseStructFieldTags(t *testing.T) {
 	input := `
 type User struct {
@@ -757,6 +859,98 @@ impl Vehicle {
 	}
 }
 
+func TestParseImplWithNestedTypeAndEnum(t *testing.T) {
+	input := `
+impl Vehicle {
+	type Engine struct {
+		power: Kilowatt,
+	}
+
+	enum FuelType {
+		petrol,
+		diesel,
+		electric,
+	}
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	implStmt, ok := program.Statements[0].(*ast.ImplStatement)
+	if !ok {
+		t.Fatalf("statement is not ImplStatement. got=%T", program.Statements[0])
+	}
+	if len(implStmt.Members) != 2 {
+		t.Fatalf("wrong impl member count. got=%d want=2", len(implStmt.Members))
+	}
+	if _, ok := implStmt.Members[0].(*ast.TypeDeclStatement); !ok {
+		t.Fatalf("first impl member is not TypeDeclStatement. got=%T", implStmt.Members[0])
+	}
+	enumDecl, ok := implStmt.Members[1].(*ast.EnumDeclaration)
+	if !ok {
+		t.Fatalf("second impl member is not EnumDeclaration. got=%T", implStmt.Members[1])
+	}
+	if enumDecl.Name.Value != "FuelType" || len(enumDecl.Values) != 3 {
+		t.Fatalf("wrong enum declaration: %+v", enumDecl)
+	}
+}
+
+func TestParseEnumWithUnderlyingTypeAndInitializers(t *testing.T) {
+	input := `
+enum Status int {
+	unknown = 0,
+	active = 10,
+	paused,
+	disabled = 99,
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	enumDecl, ok := program.Statements[0].(*ast.EnumDeclaration)
+	if !ok {
+		t.Fatalf("statement is not EnumDeclaration. got=%T", program.Statements[0])
+	}
+	if enumDecl.Name.Value != "Status" {
+		t.Fatalf("wrong enum name. got=%q want=Status", enumDecl.Name.Value)
+	}
+	if enumDecl.UnderlyingType == nil || enumDecl.UnderlyingType.Name != "int" {
+		t.Fatalf("wrong underlying type: %+v", enumDecl.UnderlyingType)
+	}
+	if len(enumDecl.Values) != 4 {
+		t.Fatalf("wrong value count. got=%d want=4", len(enumDecl.Values))
+	}
+	if enumDecl.Values[0].Initializer == nil || enumDecl.Values[2].Initializer != nil {
+		t.Fatalf("wrong enum initializers: %+v", enumDecl.Values)
+	}
+}
+
+func TestParseImplRejectsLet(t *testing.T) {
+	input := `
+impl Vehicle {
+	let x := 1
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	p.ParseProgram()
+
+	expected := "impl block may only contain type, enum, property, and fn declarations at 3:2"
+	if len(p.Errors()) != 1 {
+		t.Fatalf("wrong parser error count. got=%d want=1 errors=%v", len(p.Errors()), p.Errors())
+	}
+	if p.Errors()[0] != expected {
+		t.Fatalf("wrong parser error. got=%q want=%q", p.Errors()[0], expected)
+	}
+}
+
 func TestParsePropertySetterMissingValueParameter(t *testing.T) {
 	input := `
 impl Vehicle {
@@ -777,6 +971,63 @@ impl Vehicle {
 	}
 	if p.Errors()[0] != expected {
 		t.Fatalf("wrong parser error. got=%q want=%q", p.Errors()[0], expected)
+	}
+}
+
+func TestParseInvalidPropertyDeclarationRecovery(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name: "missing colon after property name",
+			input: `
+impl Vehicle {
+	property NoType {
+		get {
+			return _speed
+		}
+	}
+}
+`,
+			expected: "expected ':' after property name NoType at 3:18",
+		},
+		{
+			name: "missing property name",
+			input: `
+impl Vehicle {
+	property {
+	}
+}
+`,
+			expected: "property declaration missing name at 3:11",
+		},
+		{
+			name: "missing property type",
+			input: `
+impl Vehicle {
+	property Name: {
+	}
+}
+`,
+			expected: "property Name missing type after ':' at 3:17",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			l := lexer.New(tt.input)
+			p := New(l)
+			p.ParseProgram()
+
+			if len(p.Errors()) != 1 {
+				t.Fatalf("wrong parser error count. got=%d want=1 errors=%v", len(p.Errors()), p.Errors())
+			}
+			if p.Errors()[0] != tt.expected {
+				t.Fatalf("wrong parser error. got=%q want=%q", p.Errors()[0], tt.expected)
+			}
+		})
 	}
 }
 

@@ -67,6 +67,9 @@ func (p *Parser) parseStatement() ast.Statement {
 	case lexer.TYPE:
 		return p.parseTypeDeclStatement()
 
+	case lexer.ENUM:
+		return p.parseEnumDeclaration()
+
 	case lexer.STRUCT:
 		return p.parseStructStatement()
 
@@ -222,6 +225,77 @@ func (p *Parser) parseTypeDeclStatement() ast.Statement {
 	return stmt
 }
 
+func (p *Parser) parseEnumDeclaration() *ast.EnumDeclaration {
+	enum := &ast.EnumDeclaration{Token: p.curToken}
+
+	if !p.expectPeek(lexer.IDENT) {
+		return nil
+	}
+	enum.Name = &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme}
+
+	if p.peekToken.Type != lexer.LBRACE {
+		if !p.expectPeekTypeStart() {
+			return nil
+		}
+		enum.UnderlyingType = p.parseTypeReference()
+	}
+
+	if !p.expectPeek(lexer.LBRACE) {
+		return nil
+	}
+
+	seenValue := false
+	for p.peekToken.Type != lexer.RBRACE && p.peekToken.Type != lexer.EOF {
+		p.nextToken()
+		if p.curToken.Type == lexer.COMMENT {
+			continue
+		}
+		if p.curToken.Type != lexer.IDENT {
+			p.addError("expected enum value name, got %q at %d:%d", p.curToken.Lexeme, p.curToken.Line, p.curToken.Column)
+			p.skipCurrentBlock()
+			return nil
+		}
+
+		seenValue = true
+		value := &ast.EnumValue{
+			Token: p.curToken,
+			Name:  &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme},
+		}
+		if p.peekToken.Type == lexer.ASSIGN {
+			p.nextToken()
+			p.nextToken()
+			value.Initializer = p.parseExpression(LOWEST)
+			if value.Initializer == nil {
+				return nil
+			}
+		}
+		enum.Values = append(enum.Values, value)
+
+		switch p.peekToken.Type {
+		case lexer.COMMA:
+			p.nextToken()
+		case lexer.RBRACE:
+			continue
+		default:
+			p.addError("expected ',' or '}' after enum value at %d:%d", p.peekToken.Line, p.peekToken.Column)
+			for p.peekToken.Type != lexer.RBRACE && p.peekToken.Type != lexer.EOF {
+				p.nextToken()
+			}
+			return enum
+		}
+	}
+
+	if !seenValue {
+		p.addError("enum %s must declare at least one value", enum.Name.Value)
+	}
+
+	if !p.expectPeek(lexer.RBRACE) {
+		return enum
+	}
+
+	return enum
+}
+
 func (p *Parser) parseStructStatement() ast.Statement {
 	stmt := &ast.StructStatement{
 		Token: p.curToken,
@@ -294,6 +368,9 @@ func (p *Parser) parseStructFields() []*ast.StructField {
 
 		if p.peekToken.Type != lexer.COLON {
 			p.addError("missing ':' after struct field name %q at %d:%d", field.Name.Value, field.Name.Token.Line, field.Name.Token.Column)
+			if p.skipMalformedStructField() {
+				continue
+			}
 			return fields
 		}
 
@@ -343,6 +420,19 @@ func (p *Parser) parseStructFields() []*ast.StructField {
 	return fields
 }
 
+func (p *Parser) skipMalformedStructField() bool {
+	for p.peekToken.Type != lexer.COMMA && p.peekToken.Type != lexer.RBRACE && p.peekToken.Type != lexer.EOF {
+		p.nextToken()
+	}
+
+	if p.peekToken.Type == lexer.COMMA {
+		p.nextToken()
+		return true
+	}
+
+	return false
+}
+
 func (p *Parser) parseStructTag(token lexer.Token) ([]ast.StructTag, bool) {
 	raw := strings.TrimPrefix(strings.TrimSuffix(token.Lexeme, "`"), "`")
 	if strings.TrimSpace(raw) == "" {
@@ -385,12 +475,31 @@ func (p *Parser) parseImplStatement() ast.Statement {
 		}
 
 		switch p.curToken.Type {
+		case lexer.TYPE:
+			parsed := p.parseTypeDeclStatement()
+			typeDecl, ok := parsed.(*ast.TypeDeclStatement)
+			if !ok {
+				continue
+			}
+			stmt.Members = append(stmt.Members, typeDecl)
+		case lexer.ENUM:
+			enum := p.parseEnumDeclaration()
+			if enum == nil {
+				continue
+			}
+			stmt.Members = append(stmt.Members, enum)
 		case lexer.PROPERTY:
 			property := p.parsePropertyDeclaration()
 			if property == nil {
-				return nil
+				continue
 			}
 			stmt.Members = append(stmt.Members, property)
+		case lexer.STRUCT:
+			p.addError("impl block may only contain type, enum, property, and fn declarations at %d:%d", p.curToken.Line, p.curToken.Column)
+			return nil
+		case lexer.LET:
+			p.addError("impl block may only contain type, enum, property, and fn declarations at %d:%d", p.curToken.Line, p.curToken.Column)
+			return nil
 		default:
 			p.addError("unexpected token %q in impl block at %d:%d", p.curToken.Lexeme, p.curToken.Line, p.curToken.Column)
 			return nil
@@ -407,17 +516,46 @@ func (p *Parser) parseImplStatement() ast.Statement {
 func (p *Parser) parsePropertyDeclaration() *ast.PropertyDeclaration {
 	property := &ast.PropertyDeclaration{Token: p.curToken}
 
-	if !p.expectPeek(lexer.IDENT) {
+	if p.peekToken.Type != lexer.IDENT {
+		p.nextToken()
+		p.addError("property declaration missing name at %d:%d", p.curToken.Line, p.curToken.Column)
+		if p.curToken.Type == lexer.LBRACE {
+			p.skipCurrentBlock()
+		}
 		return nil
 	}
+	p.nextToken()
 	property.Name = &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme}
 
-	if !p.expectPeek(lexer.COLON) {
+	if p.peekToken.Type != lexer.COLON {
+		p.nextToken()
+		p.addError(
+			"expected ':' after property name %s at %d:%d",
+			property.Name.Value,
+			p.curToken.Line,
+			p.curToken.Column,
+		)
+		if p.curToken.Type == lexer.LBRACE {
+			p.skipCurrentBlock()
+		}
 		return nil
 	}
-	if !p.expectPeekTypeStart() {
+	p.nextToken()
+
+	if !isTypeStart(p.peekToken.Type) {
+		p.nextToken()
+		p.addError(
+			"property %s missing type after ':' at %d:%d",
+			property.Name.Value,
+			p.curToken.Line,
+			p.curToken.Column,
+		)
+		if p.curToken.Type == lexer.LBRACE {
+			p.skipCurrentBlock()
+		}
 		return nil
 	}
+	p.nextToken()
 	property.Type = p.parseTypeReference()
 
 	if !p.expectPeek(lexer.LBRACE) {
@@ -434,6 +572,7 @@ func (p *Parser) parsePropertyDeclaration() *ast.PropertyDeclaration {
 			}
 			property.Getter = p.parseBlockStatement()
 			if property.Getter == nil {
+				p.skipPropertyRemainder()
 				return nil
 			}
 		case lexer.SET:
@@ -443,10 +582,12 @@ func (p *Parser) parsePropertyDeclaration() *ast.PropertyDeclaration {
 			}
 			property.Setter = p.parsePropertySetter(property.Name.Value, false)
 			if property.Setter == nil {
+				p.skipPropertyRemainder()
 				return nil
 			}
 		case lexer.TRY:
 			if !p.expectPeek(lexer.SET) {
+				p.skipPropertyRemainder()
 				return nil
 			}
 			if property.Setter != nil {
@@ -455,6 +596,7 @@ func (p *Parser) parsePropertyDeclaration() *ast.PropertyDeclaration {
 			}
 			property.Setter = p.parsePropertySetter(property.Name.Value, true)
 			if property.Setter == nil {
+				p.skipPropertyRemainder()
 				return nil
 			}
 		case lexer.COMMENT:
@@ -488,6 +630,9 @@ func (p *Parser) parsePropertySetter(propertyName string, fallible bool) *ast.Pr
 			p.curToken.Line,
 			p.curToken.Column,
 		)
+		if p.curToken.Type == lexer.LBRACE {
+			p.skipCurrentBlock()
+		}
 		return nil
 	}
 	p.nextToken()
@@ -499,6 +644,41 @@ func (p *Parser) parsePropertySetter(propertyName string, fallible bool) *ast.Pr
 	}
 
 	return setter
+}
+
+func (p *Parser) skipCurrentBlock() {
+	if p.curToken.Type != lexer.LBRACE {
+		return
+	}
+
+	depth := 1
+	for depth > 0 {
+		p.nextToken()
+		switch p.curToken.Type {
+		case lexer.EOF:
+			return
+		case lexer.LBRACE:
+			depth++
+		case lexer.RBRACE:
+			depth--
+		}
+	}
+}
+
+func (p *Parser) skipPropertyRemainder() {
+	depth := 0
+	for p.peekToken.Type != lexer.EOF {
+		p.nextToken()
+		switch p.curToken.Type {
+		case lexer.LBRACE:
+			depth++
+		case lexer.RBRACE:
+			if depth == 0 {
+				return
+			}
+			depth--
+		}
+	}
 }
 
 func (p *Parser) parseBlockStatement() *ast.BlockStatement {
@@ -535,6 +715,14 @@ func (p *Parser) parseTypeReference() *ast.TypeReference {
 	ref := &ast.TypeReference{
 		Token: p.curToken,
 		Name:  p.curToken.Lexeme,
+	}
+
+	for p.peekToken.Type == lexer.DOT {
+		p.nextToken()
+		if !p.expectPeek(lexer.IDENT) {
+			return ref
+		}
+		ref.Name += "." + p.curToken.Lexeme
 	}
 
 	if p.peekToken.Type == lexer.LT {
@@ -770,7 +958,7 @@ func (p *Parser) expectPeekNumber() bool {
 }
 
 func (p *Parser) expectPeekTypeStart() bool {
-	if p.peekToken.Type == lexer.IDENT || p.peekToken.Type == lexer.LBRACKET {
+	if isTypeStart(p.peekToken.Type) {
 		p.nextToken()
 		return true
 	}
@@ -783,6 +971,10 @@ func (p *Parser) expectPeekTypeStart() bool {
 	)
 
 	return false
+}
+
+func isTypeStart(tokenType lexer.TokenType) bool {
+	return tokenType == lexer.IDENT || tokenType == lexer.LBRACKET
 }
 
 func (p *Parser) nextToken() {
@@ -819,6 +1011,7 @@ func (p *Parser) isStatementStart(t lexer.TokenType) bool {
 	case lexer.MODULE,
 		lexer.IMPORT,
 		lexer.TYPE,
+		lexer.ENUM,
 		lexer.STRUCT,
 		lexer.INTERFACE,
 		lexer.IMPL,

@@ -216,6 +216,9 @@ func printASTStatement(stmt ast.Statement, prefix string, last bool) {
 	case *ast.TypeDeclStatement:
 		printASTTypeDecl(stmt, prefix, last)
 
+	case *ast.EnumDeclaration:
+		printASTEnum(stmt, prefix, last)
+
 	case *ast.StructStatement:
 		printASTBranch(prefix, last, "Struct")
 		childrenPrefix := childPrefix(prefix, last)
@@ -263,6 +266,10 @@ func printASTImpl(stmt *ast.ImplStatement, prefix string, last bool) {
 
 func printASTImplMember(prefix string, member ast.ImplMember, last bool) {
 	switch member := member.(type) {
+	case *ast.TypeDeclStatement:
+		printASTTypeDecl(member, prefix, last)
+	case *ast.EnumDeclaration:
+		printASTEnum(member, prefix, last)
 	case *ast.PropertyDeclaration:
 		printASTBranch(prefix, last, "Property")
 		children := []string{
@@ -353,6 +360,27 @@ func printASTTypeDecl(stmt *ast.TypeDeclStatement, prefix string, last bool) {
 	for i, field := range stmt.StructType.Fields {
 		printASTField(structPrefix, field, i == len(stmt.StructType.Fields)-1)
 	}
+}
+
+func printASTEnum(stmt *ast.EnumDeclaration, prefix string, last bool) {
+	printASTBranch(prefix, last, "Enum")
+
+	children := []string{"Name: " + stmt.Name.Value}
+	if stmt.UnderlyingType != nil {
+		children = append(children, "Underlying: "+formatTypeRef(stmt.UnderlyingType))
+	}
+	if len(stmt.Values) > 0 {
+		values := ""
+		for i, value := range stmt.Values {
+			if i > 0 {
+				values += ", "
+			}
+			values += formatEnumValue(value)
+		}
+		children = append(children, "Values: "+values)
+	}
+
+	printASTLeaves(childPrefix(prefix, last), children)
 }
 
 func printASTField(prefix string, field *ast.StructField, last bool) {
@@ -480,6 +508,9 @@ func printStatement(stmt ast.Statement) {
 	case *ast.TypeDeclStatement:
 		printTypeDecl(stmt)
 
+	case *ast.EnumDeclaration:
+		printEnum(stmt)
+
 	case *ast.StructStatement:
 		fmt.Printf("Struct %s\n", stmt.Name.Value)
 		printStructFields(stmt.Fields)
@@ -534,6 +565,17 @@ func printTypeDecl(stmt *ast.TypeDeclStatement) {
 	}
 }
 
+func printEnum(stmt *ast.EnumDeclaration) {
+	fmt.Printf("Enum %s", stmt.Name.Value)
+	if stmt.UnderlyingType != nil {
+		fmt.Printf(" %s", formatTypeRef(stmt.UnderlyingType))
+	}
+	fmt.Println()
+	for _, value := range stmt.Values {
+		fmt.Printf("  Value %s\n", formatEnumValue(value))
+	}
+}
+
 func printLet(stmt *ast.LetStatement) {
 	fmt.Print("Let ")
 
@@ -562,12 +604,32 @@ func printImpl(stmt *ast.ImplStatement) {
 	fmt.Printf("Impl %s\n", formatTypeRef(stmt.Target))
 	for _, member := range stmt.Members {
 		switch member := member.(type) {
+		case *ast.TypeDeclStatement:
+			fmt.Print("  ")
+			printTypeDecl(member)
+		case *ast.EnumDeclaration:
+			fmt.Printf("  Enum %s", member.Name.Value)
+			if member.UnderlyingType != nil {
+				fmt.Printf(" %s", formatTypeRef(member.UnderlyingType))
+			}
+			fmt.Println()
+			for _, value := range member.Values {
+				fmt.Printf("    Value %s\n", formatEnumValue(value))
+			}
 		case *ast.PropertyDeclaration:
 			fmt.Printf("  Property %s: %s\n", member.Name.Value, formatTypeRef(member.Type))
 		default:
 			fmt.Printf("  %T %q\n", member, member.TokenLiteral())
 		}
 	}
+}
+
+func formatEnumValue(value *ast.EnumValue) string {
+	out := value.Name.Value
+	if value.Initializer != nil {
+		out += " = " + value.Initializer.String()
+	}
+	return out
 }
 
 func printStructFields(fields []*ast.StructField) {

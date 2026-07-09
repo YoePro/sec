@@ -646,6 +646,229 @@ impl MissingType {
 	assertSemaErrors(t, errors, expected)
 }
 
+func TestDuplicateImplBlock(t *testing.T) {
+	input := `
+type Vehicle struct {
+}
+
+impl Vehicle {
+}
+
+impl Vehicle {
+}
+`
+
+	errors := analyzeSource(t, input)
+
+	expected := []string{
+		"duplicate impl block for Vehicle at 8:6",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestNestedEnumForwardReference(t *testing.T) {
+	input := `
+type Vehicle struct {
+	fuel_type: Vehicle.FuelType,
+}
+
+impl Vehicle {
+	enum FuelType {
+		petrol,
+		diesel,
+		electric,
+	}
+}
+`
+
+	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
+	assertSemaErrors(t, errors, nil)
+
+	typ := analyzer.types["Vehicle"]
+	if len(typ.Fields) != 1 || typ.Fields[0].Type.Name != "Vehicle.FuelType" {
+		t.Fatalf("wrong field type: %+v", typ.Fields)
+	}
+	enumType := analyzer.types["Vehicle.FuelType"]
+	if enumType.Kind != EnumType || len(enumType.EnumValues) != 3 {
+		t.Fatalf("wrong enum type: %+v", enumType)
+	}
+}
+
+func TestNestedTypeRequiresQualifiedNameOutsideImpl(t *testing.T) {
+	input := `
+type Vehicle struct {
+	fuel_type: FuelTypes,
+}
+
+impl Vehicle {
+	enum FuelTypes {
+		Petrol,
+	}
+}
+
+let mut ft: FuelTypes := FuelTypes.Petrol
+`
+
+	errors := analyzeSource(t, input)
+
+	expected := []string{
+		"unknown type FuelTypes at 3:13",
+		"unknown type FuelTypes at 12:13",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestNestedTypeShortNameInsideImpl(t *testing.T) {
+	input := `
+type Vehicle struct {
+	fuel_type: Vehicle.FuelTypes,
+}
+
+impl Vehicle {
+	enum FuelTypes {
+		Petrol,
+	}
+
+	property FuelType: FuelTypes {
+		get {
+			return FuelTypes.Petrol
+		}
+	}
+}
+
+let mut ft: Vehicle.FuelTypes := Vehicle.FuelTypes.Petrol
+`
+
+	errors := analyzeSource(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestNestedEnumDuplicateValue(t *testing.T) {
+	input := `
+type Vehicle struct {
+}
+
+impl Vehicle {
+	enum FuelType {
+		petrol,
+		petrol,
+	}
+}
+`
+
+	errors := analyzeSource(t, input)
+
+	expected := []string{
+		`duplicate enum value "petrol" in enum Vehicle.FuelType at 8:3`,
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestEnumValuesAndNamespaceConstants(t *testing.T) {
+	input := `
+enum Color {
+	red,
+	green,
+	blue,
+}
+
+enum Status int {
+	unknown = 0,
+	active = 10,
+	paused,
+	disabled = 99,
+}
+
+let c: Color := Color.red
+let s: Status := Status.paused
+let explicitColor: Color := Color(1)
+let explicitInt: int := int(Color.green)
+`
+
+	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
+	assertSemaErrors(t, errors, nil)
+
+	color := analyzer.types["Color"]
+	if color.Kind != EnumType || color.EnumConsts["green"].Value.String() != "1" {
+		t.Fatalf("wrong Color enum: %+v", color)
+	}
+
+	status := analyzer.types["Status"]
+	if status.Kind != EnumType || status.EnumConsts["paused"].Value.String() != "11" {
+		t.Fatalf("wrong Status enum: %+v", status)
+	}
+
+	if analyzer.symbols["c"].Type.Name != "Color" {
+		t.Fatalf("wrong c type: %+v", analyzer.symbols["c"])
+	}
+	if analyzer.symbols["explicitInt"].Type.Name != "int" {
+		t.Fatalf("wrong explicitInt type: %+v", analyzer.symbols["explicitInt"])
+	}
+}
+
+func TestEnumImplicitIntegerAssignmentsAreInvalid(t *testing.T) {
+	input := `
+enum Color {
+	red,
+	green,
+}
+
+let c: Color := 1
+let i: int := Color.red
+`
+
+	errors := analyzeSource(t, input)
+
+	expected := []string{
+		"cannot initialize Color with int at 7:17",
+		"cannot initialize int with Color at 8:20",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestEnumUnderlyingTypeErrors(t *testing.T) {
+	input := `
+enum BadUnknown Missing {
+	a,
+}
+
+enum BadString string {
+	a,
+}
+`
+
+	errors := analyzeSource(t, input)
+
+	expected := []string{
+		"unknown type Missing at 2:17",
+		"enum BadString underlying type must be integer, got string at 6:16",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestEnumInitializerMustBeIntegerConstant(t *testing.T) {
+	input := `
+let x := 1
+
+enum Bad {
+	a = x,
+}
+`
+
+	errors := analyzeSource(t, input)
+
+	expected := []string{
+		"enum value Bad.a initializer must be integer constant at 5:6",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
 func TestImplPropertyChecks(t *testing.T) {
 	input := `
 type Speed decimal<m/s>
@@ -780,6 +1003,63 @@ vehicle.TopSpeed = speed
 	if current.Type.Name != "Speed" {
 		t.Fatalf("wrong property type. got=%q want=Speed", current.Type.Name)
 	}
+}
+
+func TestPropertyAccessBeforeImplDeclaration(t *testing.T) {
+	input := `
+type Speed decimal<m/s>
+
+type Vehicle struct {
+	_speed: Speed,
+}
+
+let speed: Speed := 10
+let vehicle := Vehicle{ _speed: speed }
+let current := vehicle.TopSpeed
+
+impl Vehicle {
+	property TopSpeed: Speed {
+		get {
+			return _speed
+		}
+	}
+}
+`
+
+	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
+	assertSemaErrors(t, errors, nil)
+
+	current := analyzer.symbols["current"]
+	if current.Type.Name != "Speed" {
+		t.Fatalf("wrong property type. got=%q want=Speed", current.Type.Name)
+	}
+}
+
+func TestPropertyBodyCanReferenceLaterPropertyInSameImpl(t *testing.T) {
+	input := `
+type Speed decimal<m/s>
+
+type Vehicle struct {
+	_speed: Speed,
+}
+
+impl Vehicle {
+	property Current: Speed {
+		get {
+			return TopSpeed
+		}
+	}
+
+	property TopSpeed: Speed {
+		get {
+			return _speed
+		}
+	}
+}
+`
+
+	errors := analyzeSource(t, input)
+	assertSemaErrors(t, errors, nil)
 }
 
 func TestPropertyBodyChecks(t *testing.T) {

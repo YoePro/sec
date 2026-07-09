@@ -164,6 +164,21 @@ Expected parser error for missing comma:
 
     expected ',' or '}' after struct field
 
+Malformed struct field recovery:
+
+If a struct field name is followed by something other than `:`, emit one
+field-specific parser error:
+
+    missing ':' after struct field name "y" at line:column
+
+Then skip tokens until `,` or `}`.
+
+If `,` is found, consume it and continue parsing the next field.
+If `}` is found, finish the struct.
+
+The parser must not emit assignment, operator or expression errors for tokens
+inside the malformed field.
+
 
 Sema requirements for structs
 =============================
@@ -349,6 +364,35 @@ Parser rules
 5. A property may have at most one get and one set.
 6. `try set` marks setter as fallible.
 7. Setter parameter is an identifier.
+
+Invalid property declarations should recover at the property boundary.
+The parser should emit one clear error per malformed property and skip the
+entire property block when the next token is `{`.
+
+Missing ':' after the property name:
+
+    property NoType {
+        get {
+            return _speed
+        }
+    }
+
+Expected parser error:
+
+    expected ':' after property name NoType at line:column
+
+The parser must not emit cascading errors for `get` or `return` inside that
+malformed property.
+
+The same one-error recovery applies to:
+
+    property {
+    }
+
+and:
+
+    property Name: {
+    }
 
 AST nodes
 ---------
@@ -584,3 +628,310 @@ Recommended implementation order
 10. Add sema check: duplicate property names.
 
 Do not attempt full getter/setter body type checking yet unless block and return sema are already ready.
+
+
+Impl block model update
+=======================
+
+Impl semantic analysis is two-pass.
+
+Pass 1 registers impl member signatures.
+Pass 2 checks impl member bodies.
+
+Reason:
+All properties on a type must be known before any ordinary expression or
+property body is type checked.
+
+This allows:
+
+    let current := vehicle.TopSpeed
+
+even when the `impl Vehicle` block appears later in the file.
+
+It also allows property bodies to reference properties declared later in the
+same impl block:
+
+    impl Vehicle {
+        property Current: Speed {
+            get {
+                return TopSpeed
+            }
+        }
+
+        property TopSpeed: Speed {
+            get {
+                return _speed
+            }
+        }
+    }
+
+Semantic order
+--------------
+
+1. Register type declarations.
+2. Analyze type declarations.
+3. Register impl member signatures:
+   - impl target must exist
+   - impl target must be a named type
+   - property names must be unique on the target type
+   - property types must exist
+4. Analyze ordinary statements:
+   - let
+   - assignment
+   - struct statements
+5. Analyze impl member bodies:
+   - getter return type checks
+   - setter body checks
+   - fallible setter body checks
+
+Rules
+-----
+
+Properties are part of the named target type.
+
+Duplicate property names are rejected for the target type, including duplicate
+properties declared across separate impl blocks.
+
+Getter and setter bodies may resolve:
+
+1. target struct fields
+2. target properties
+3. visible symbols where supported by current sema
+
+Impl block model update
+=======================
+
+Decision:
+A type may have at most one impl block.
+
+Rationale:
+The impl block is the type-local namespace and behavior block.
+Allowing multiple impl blocks would spread the type definition across the codebase and make the type harder to understand.
+
+Rule:
+Valid:
+
+    type Vehicle struct {
+        fuel_type: Vehicle.FuelType,
+    }
+
+    impl Vehicle {
+        type Engine struct {
+            power: Kilowatt,
+        }
+
+        enum FuelType {
+            petrol,
+            diesel,
+            electric,
+        }
+
+        property FuelType: Vehicle.FuelType {
+            get {
+                return fuel_type
+            }
+
+            set value {
+                fuel_type = value
+            }
+        }
+    }
+
+Invalid:
+
+    impl Vehicle {
+    }
+
+    impl Vehicle {
+    }
+
+Expected sema error:
+
+    duplicate impl block for Vehicle
+
+
+Nested types inside impl
+========================
+
+The impl block may contain nested type declarations.
+
+Allowed:
+
+    impl Vehicle {
+        type Engine struct {
+            power: Kilowatt,
+        }
+
+        type FuelTank struct {
+            capacity: Liter,
+        }
+
+        enum FuelType {
+            petrol,
+            diesel,
+            electric,
+        }
+    }
+
+Not allowed:
+
+    impl Vehicle {
+        struct Engine {
+            power: Kilowatt,
+        }
+    }
+
+Reason:
+`type` always introduces a named type.
+This rule is consistent whether the type is declared at module level or nested inside an impl block.
+
+
+Data layout rule
+================
+
+Only `type Name struct { ... }` defines stored data layout.
+
+The impl block may not contain stored fields or `let` declarations.
+
+Invalid:
+
+    impl Vehicle {
+        let current_speed: Speed
+    }
+
+Expected parser or sema error:
+
+    impl block may only contain type, enum, property, and fn declarations
+
+
+Forward references to nested types
+==================================
+
+A struct may refer to nested types declared later in its impl block.
+
+Valid:
+
+    type Vehicle struct {
+        engine: Vehicle.Engine,
+        fuel_type: Vehicle.FuelType,
+    }
+
+    impl Vehicle {
+        type Engine struct {
+            power: Kilowatt,
+        }
+
+        enum FuelType {
+            petrol,
+            diesel,
+            electric,
+        }
+    }
+
+This requires sema to use at least two passes:
+
+Pass 1:
+- register module-level type names
+- register impl targets
+- register nested type names such as Vehicle.Engine and Vehicle.FuelType
+
+Pass 2:
+- resolve struct fields
+- resolve nested type declarations
+- resolve properties and methods
+
+
+Name resolution
+===============
+
+Outside the type:
+
+    Vehicle.Engine
+    Vehicle.FuelType
+
+Inside impl Vehicle, nested types may be referenced either fully qualified or short:
+
+    Engine
+    FuelType
+    Vehicle.Engine
+    Vehicle.FuelType
+
+Recommended:
+Support fully qualified names first.
+Short names inside impl may be implemented later.
+
+
+Enum naming
+===========
+
+Nested enum values are accessed through the enum type.
+
+Example:
+
+    Vehicle.FuelType.petrol
+
+Enum values must be unique inside the enum.
+
+Different enums may reuse value names.
+
+Valid:
+
+    impl Vehicle {
+        enum FuelType {
+            petrol,
+            diesel,
+        }
+
+        enum EngineState {
+            off,
+            idle,
+            running,
+        }
+    }
+
+
+Implementation requirements
+===========================
+
+Parser:
+- impl TypeName { ... } may contain:
+  - type declarations
+  - enum declarations
+  - property declarations
+  - fn declarations later
+- impl may not contain raw `struct Name { ... }`
+- impl may not contain `let`
+
+Sema:
+- reject more than one impl block for the same type
+- register nested types as qualified names
+- allow struct fields to reference qualified nested types
+- reject duplicate nested type names inside the same impl
+- reject unknown impl target type
+- reject unknown nested type references
+
+Tests:
+- one impl block per type is valid
+- two impl blocks for same type are invalid
+- struct field may reference Vehicle.Engine before Vehicle.Engine is declared
+- impl Vehicle may declare type Engine struct { ... }
+- impl Vehicle may declare enum FuelType { ... }
+- impl Vehicle may not declare struct Engine { ... }
+- impl Vehicle may not declare let x := 1
+
+Nested type name resolution
+===========================
+
+Outside the impl block, nested types must be referenced with their full qualified name:
+
+    Vehicle.FuelTypes
+    Vehicle.Engine
+
+Inside `impl Vehicle`, nested types may be referenced by short name:
+
+    FuelTypes
+    Engine
+
+The fully qualified form is also valid inside impl:
+
+    Vehicle.FuelTypes

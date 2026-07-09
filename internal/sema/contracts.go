@@ -8,8 +8,12 @@ import (
 )
 
 func (a *Analyzer) typeFromDeclaration(stmt *ast.TypeDeclStatement, baseType Type) Type {
+	return a.typeFromDeclarationWithName(stmt.Name.Value, stmt, baseType)
+}
+
+func (a *Analyzer) typeFromDeclarationWithName(name string, stmt *ast.TypeDeclStatement, baseType Type) Type {
 	typ := baseType
-	typ.Name = stmt.Name.Value
+	typ.Name = name
 	typ.Named = true
 	typ.Declared = true
 	typ.Underlying = baseType.Name

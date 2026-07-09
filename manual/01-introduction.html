@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Introduction - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+</head>
+<body>
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+        <div class="sidebar-section">This page</div>
+        <a href="#introduction">Introduction</a>
+        <a href="#what-sec-is">What Sec Is</a>
+        <a href="#design-goals">Design Goals</a>
+        <a href="#safety-model">Safety Model</a>
+        <a href="#explicitness">Explicitness</a>
+        <a href="#runtime-model">Runtime Model</a>
+        <a href="#example-program">Example Program</a>
+        <a href="#non-goals">Non-Goals</a>
+        <div class="sidebar-section">Pages</div>
+        <a href="index.html">Index</a>
+        <a href="02-basic-syntax.html">Basic Syntax</a>
+        <a href="03-types.html">Types</a>
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Introduction</div>
+        <h1 id="introduction">Introduction</h1>
+
+        <div class="section" id="what-sec-is">
+            <h2>What Sec Is</h2>
+            <p>
+                Sec is a compiled programming language designed for high-performance native programs.
+                The intended backend is LLVM, and the language is designed so the compiler can generate
+                efficient machine code without relying on a large runtime by default.
+            </p>
+            <p>
+                Sec is statically typed. Types are not only storage descriptions; they can also describe
+                domain meaning. A value of type <code>CustomerID</code> and a value of type <code>ProductID</code>
+                may both be represented as integers internally, but they are not the same type in the
+                program model.
+            </p>
+            <p>
+                The language is designed around the idea that safe and correct code should be the easy
+                path. Unsafe operations are allowed when needed, but they must be visible in the source code.
+            </p>
+        </div>
+
+        <div class="section" id="design-goals">
+            <h2>Design Goals</h2>
+            <p>The following goals guide the language design:</p>
+            <ul>
+                <li><strong>Compiled by default.</strong> Sec programs are compiled before execution.</li>
+                <li><strong>High performance.</strong> The language should allow predictable native performance.</li>
+                <li><strong>Strong static typing.</strong> Type errors should be caught at compile time whenever possible.</li>
+                <li><strong>Semantic typing.</strong> Types should express domain intent, not only memory layout.</li>
+                <li><strong>Safe by default.</strong> Safe code should not allow null references, dangling references, or unchecked pointer arithmetic.</li>
+                <li><strong>Explicit unsafe code.</strong> Code that escapes the safe model must be marked with <code>unsafe</code>.</li>
+                <li><strong>No hidden magic.</strong> Imports do not execute code, allocations should be visible, and initialization is explicit.</li>
+                <li><strong>One concept, one syntax.</strong> Syntax should not have several unrelated meanings.</li>
+                <li><strong>One symbol, one meaning.</strong> Symbols are reserved for narrow, consistent meaning families.</li>
+                <li><strong>Official formatting.</strong> Sec should have a standard formatter with a gofmt-like philosophy.</li>
+                <li><strong>Minimal runtime by default.</strong> Runtime services are opt-in rather than assumed.</li>
+            </ul>
+        </div>
+
+        <div class="section" id="safety-model">
+            <h2>Safety Model</h2>
+            <p>
+                Sec aims to make safe code the normal form of code. The language uses ownership and borrow
+                checking concepts inspired by Rust, but with a preference for simpler rules where possible.
+            </p>
+            <p>
+                Safe Sec code should prevent common classes of memory errors. References cannot outlive the
+                value they refer to. Mutable references require exclusive access. Null is not part of safe
+                reference handling; absence is represented explicitly with <code>Option[T]</code>.
+            </p>
+            <div class="rule">
+                <strong>Rule:</strong> Safe code may use values, references, slices, collections, and owned heap
+                values, but it may not use raw pointer arithmetic or null references.
+            </div>
+        </div>
+
+        <div class="section" id="explicitness">
+            <h2>Explicitness</h2>
+            <p>
+                Sec prefers visible operations over implicit behavior. This affects several parts of the language:
+            </p>
+            <ul>
+                <li>Mutation requires a mutable binding.</li>
+                <li>Fallible operations must be handled with <code>try</code>, <code>match</code>, or explicit error handling.</li>
+                <li>Imports make symbols available, but they do not initialize systems or change program state.</li>
+                <li>Unsafe operations require an <code>unsafe</code> context.</li>
+                <li>Absence is represented with <code>Option[T]</code>, not with implicit null values.</li>
+            </ul>
+        </div>
+
+        <div class="section" id="runtime-model">
+            <h2>Runtime Model</h2>
+            <p>
+                Sec does not assume a garbage collector by default. It should be possible to write programs
+                with predictable memory behavior and no hidden allocation. Heap allocation, shared ownership,
+                task scheduling, channels, and other runtime services may exist, but the language design keeps
+                them explicit.
+            </p>
+            <p>
+                This does not mean the standard library must be small. It means the core language should not
+                hide major runtime behavior behind syntax that appears simple but performs complex work.
+            </p>
+        </div>
+
+        <div class="section" id="example-program">
+            <h2>Example Program</h2>
+            <p>The following example shows several core ideas in a small Sec-style program.</p>
+            <pre><code>module cmd.demo
+
+import (
+    "fmt"
+)
+
+type Percent int range 0..100
+
+type User struct {
+    Name: string,
+    Completion: Percent,
+}
+
+fn main() void {
+    completion := try Percent(90)
+
+    user := User{
+        Name: "Anna",
+        Completion: completion,
+    }
+
+    fmt.Println($"{user.Name}: {user.Completion}")
+}</code></pre>
+            <p>
+                The type <code>Percent</code> is not just an integer. It is a constrained semantic type.
+                The conversion <code>try Percent(90)</code> is explicit because a runtime value may fail validation.
+            </p>
+        </div>
+
+        <div class="section" id="non-goals">
+            <h2>Non-Goals</h2>
+            <p>Some features are intentionally not part of the initial language direction:</p>
+            <ul>
+                <li>No classical inheritance model.</li>
+                <li>No implicit package initialization.</li>
+                <li>No hidden compiler directives inside comments.</li>
+                <li>No C-style <code>for(init; condition; increment)</code> loop.</li>
+                <li>No <code>++</code> or <code>--</code> operators.</li>
+                <li>No separate primitive <code>any</code> type.</li>
+                <li>No <code>nil</code> value in safe code.</li>
+            </ul>
+        </div>
+
+        <div class="next-links">
+            <a href="index.html">Previous: Index</a>
+            <a href="02-basic-syntax.html">Next: Basic Syntax</a>
+        </div>
+    </main>
+</div>
+</body>
+</html>

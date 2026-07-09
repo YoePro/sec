@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+</head>
+<body>
+<div class="layout">
+    <nav class="sidebar" aria-label="Manual navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+        <div class="sidebar-section">Start</div>
+        <a href="#overview">Overview</a>
+        <a href="#manual-structure">Manual Structure</a>
+        <a href="#reading-order">Reading Order</a>
+        <div class="sidebar-section">Pages</div>
+        <a href="01-introduction.html">Introduction</a>
+        <a href="02-basic-syntax.html">Basic Syntax</a>
+        <a href="03-types.html">Types</a>
+    </nav>
+
+    <main class="content">
+        <h1 id="overview">Sec Language Manual</h1>
+
+        <div class="section" id="purpose">
+            <h2>Purpose</h2>
+            <p>
+                This manual explains the Sec programming language for programmers who want to read,
+                write, and reason about Sec code. It is a human-facing language manual, not a compiler
+                implementation document.
+            </p>
+            <p>
+                The manual favors precise rules, short examples, and explicit explanations. Sec is designed
+                to be a compiled, statically typed, high-performance language with strong safety rules and
+                minimal hidden behavior.
+            </p>
+        </div>
+
+        <div class="section" id="manual-structure">
+            <h2>Manual Structure</h2>
+            <p>
+                The manual is split into multiple HTML pages. Each major topic gets its own page so that
+                the left navigation can point directly to sections and subsections using anchors.
+            </p>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Page</th>
+                            <th>Topic</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><a href="01-introduction.html">Introduction</a></td>
+                            <td>Design goals, language philosophy, and what Sec tries to optimize for.</td>
+                        </tr>
+                        <tr>
+                            <td><a href="02-basic-syntax.html">Basic Syntax</a></td>
+                            <td>Files, modules, comments, blocks, keywords, and core punctuation.</td>
+                        </tr>
+                        <tr>
+                            <td><a href="03-types.html">Types</a></td>
+                            <td>Primitive types, semantic types, constrained types, units, and absence.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="section" id="reading-order">
+            <h2>Recommended Reading Order</h2>
+            <ol>
+                <li>Read the introduction to understand the design direction.</li>
+                <li>Read the syntax page before studying larger examples.</li>
+                <li>Read the type system page early, because Sec code is built around semantic typing.</li>
+            </ol>
+        </div>
+
+        <div class="next-links">
+            <span></span>
+            <a href="01-introduction.html">Next: Introduction</a>
+        </div>
+    </main>
+</div>
+</body>
+</html>

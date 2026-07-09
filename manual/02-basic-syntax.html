@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Basic Syntax - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+</head>
+<body>
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+        <div class="sidebar-section">This page</div>
+        <a href="#basic-syntax">Basic Syntax</a>
+        <a href="#source-files">Source Files</a>
+        <a href="#modules">Modules</a>
+        <a href="#imports">Imports</a>
+        <a href="#blocks">Blocks</a>
+        <a href="#comments">Comments</a>
+        <a href="#declarations">Declarations</a>
+        <a href="#punctuation">Punctuation</a>
+        <a href="#formatting">Formatting</a>
+        <div class="sidebar-section">Pages</div>
+        <a href="index.html">Index</a>
+        <a href="01-introduction.html">Introduction</a>
+        <a href="03-types.html">Types</a>
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Basic Syntax</div>
+        <h1 id="basic-syntax">Basic Syntax</h1>
+
+        <div class="section" id="source-files">
+            <h2>Source Files</h2>
+            <p>
+                Sec source files use the <code>.sec</code> extension. A source file belongs to exactly one module,
+                and the module declaration appears at the top of the file.
+            </p>
+            <pre><code>module internal.storage</code></pre>
+            <p>
+                Multiple files may belong to the same module when they are placed in the same module directory.
+                The module name must match the directory structure used by the project.
+            </p>
+        </div>
+
+        <div class="section" id="modules">
+            <h2>Modules</h2>
+            <p>
+                A <code>module</code> declaration defines the namespace seen by the compiler. It does not define a
+                project. Project-level metadata belongs in <code>sec.module</code>, not in ordinary source files.
+            </p>
+            <pre><code>module cmd.server</code></pre>
+            <p>
+                Executable entry points normally live under <code>cmd</code>. Unlike Go, executables do not all share
+                a generic <code>main</code> package name. The module name reflects the executable's logical location.
+            </p>
+            <pre><code>module cmd.server
+
+fn main() void {
+}</code></pre>
+        </div>
+
+        <div class="section" id="imports">
+            <h2>Imports</h2>
+            <p>
+                Imports are explicit and only make symbols available. Importing a module must not execute code,
+                initialize subsystems, register handlers, or change program state.
+            </p>
+            <pre><code>import (
+    "fmt"
+    "internal/storage"
+    "modules/database"
+)</code></pre>
+            <p>The last path component becomes the default module name.</p>
+            <pre><code>storage.Load(...)
+database.Open(...)</code></pre>
+            <p>Aliases are supported when two imports would otherwise have the same visible name.</p>
+            <pre><code>import (
+    db "modules/database"
+    extdb "github/foo/database"
+)</code></pre>
+            <div class="rule">
+                <strong>Rule:</strong> Dot-imports and blank imports are not supported. Imports never execute code.
+            </div>
+        </div>
+
+        <div class="section" id="blocks">
+            <h2>Blocks</h2>
+            <p>
+                Braces define blocks. Blocks are used for functions, control flow, unsafe regions, match bodies,
+                struct literals, and other grouped constructs.
+            </p>
+            <pre><code>if ready {
+    run()
+}</code></pre>
+            <p>
+                Parentheses are not required around normal conditions. The formatter removes redundant parentheses
+                where the syntax is already clear.
+            </p>
+            <pre><code>if value in 1..10 {
+    print(value)
+}</code></pre>
+        </div>
+
+        <div class="section" id="comments">
+            <h2>Comments</h2>
+            <h3 id="single-line-comments">Single-Line Comments</h3>
+            <pre><code>// This is a single-line comment.</code></pre>
+            <p>Everything after <code>//</code> until the end of the line is ignored.</p>
+
+            <h3 id="block-comments">Block Comments</h3>
+            <pre><code>/*
+    This is a block comment.
+    It may span multiple lines.
+*/</code></pre>
+            <p>Block comments may be nested.</p>
+            <pre><code>/*
+    Outer comment
+
+    /*
+        Inner comment
+    */
+
+    Still inside outer comment.
+*/</code></pre>
+
+            <h3 id="documentation-comments">Documentation Comments</h3>
+            <p>
+                Documentation uses normal comments. There is no separate documentation-comment syntax in the
+                initial language design.
+            </p>
+            <pre><code>// Calculates the average speed.
+fn CalculateSpeed(...) decimal&lt;m/s&gt; {
+}</code></pre>
+            <div class="rule">
+                <strong>Rule:</strong> Comments are not language semantics. Compiler directives are not hidden in comments.
+            </div>
+        </div>
+
+        <div class="section" id="declarations">
+            <h2>Declarations</h2>
+            <p>Sec uses short, explicit declaration keywords.</p>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Keyword</th>
+                            <th>Meaning</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><code>module</code></td><td>Declares the source file's module.</td></tr>
+                        <tr><td><code>import</code></td><td>Imports symbols from another module.</td></tr>
+                        <tr><td><code>type</code></td><td>Declares a named type.</td></tr>
+                        <tr><td><code>fn</code></td><td>Declares a function or method.</td></tr>
+                        <tr><td><code>let</code></td><td>Declares an immutable binding.</td></tr>
+                        <tr><td><code>let mut</code></td><td>Declares a mutable binding.</td></tr>
+                        <tr><td><code>impl</code></td><td>Declares behavior for a type or an interface implementation.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="section" id="punctuation">
+            <h2>Punctuation</h2>
+            <p>Sec reserves punctuation for narrow meanings.</p>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Syntax</th>
+                            <th>Meaning</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><code>()</code></td><td>Function parameters and calls.</td></tr>
+                        <tr><td><code>{}</code></td><td>Blocks, struct bodies, enum bodies, union bodies, and literals.</td></tr>
+                        <tr><td><code>[]</code></td><td>Generics and collection forms.</td></tr>
+                        <tr><td><code>&lt;&gt;</code></td><td>Units of measure.</td></tr>
+                        <tr><td><code>@</code></td><td>Attributes.</td></tr>
+                        <tr><td><code>#</code></td><td>Compiler directives.</td></tr>
+                        <tr><td><code>...</code></td><td>Expansion or spread.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <p>
+                The spread operator <code>...</code> always belongs to the expansion meaning family. It is used for
+                variadic parameters, argument expansion, and struct copy/update syntax.
+            </p>
+        </div>
+
+        <div class="section" id="formatting">
+            <h2>Formatting</h2>
+            <p>
+                Sec is intended to have an official formatter. The formatter should make formatting decisions
+                boring and consistent, similar to the philosophy behind gofmt.
+            </p>
+            <p>
+                The language should not require programmers to argue about alignment, brace placement, or
+                redundant parentheses. The canonical formatted output is the style of the language.
+            </p>
+        </div>
+
+        <div class="next-links">
+            <a href="01-introduction.html">Previous: Introduction</a>
+            <a href="03-types.html">Next: Types</a>
+        </div>
+    </main>
+</div>
+</body>
+</html>

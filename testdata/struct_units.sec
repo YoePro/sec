@@ -1,0 +1,76 @@
+module main
+
+type Meter decimal<m>
+type Second decimal<s>
+type Speed decimal<m/s>
+
+type Vehicle struct {
+    _speed: Speed `json:"speed"`,
+}
+
+impl Vehicle {
+    property TopSpeed: Speed {
+        get {
+            return _speed
+        }
+
+        try set value {
+            _speed = value
+        }
+    }
+}
+
+let speed: Speed := 50 
+let vehicle := Vehicle{ _speed: speed }
+
+let current := vehicle._speed
+let top := vehicle.TopSpeed 
+
+//vehicle.TopSpeed = speed // should fail: fallible property assignment requires try
+type Money decimal<SEK>
+impl Vehicle {
+    property Broken: Speed {
+        set value {
+            return _speed
+        }
+    }
+
+    property TopSpeed: Speed { get { return _speed } }
+    property TopSpeed: Speed { get { return _speed } }
+
+    property BadGet: Speed {
+        get {
+            return Money(5.90)
+        }
+    }
+
+    property ReallyBad: Speed {
+         get {
+
+         }
+    }
+
+    // property EvenWorse: Speed {
+
+    // }
+
+    // property {
+
+    // }
+
+    property Gustaf: Speed {
+        set {
+        }
+    }
+}
+
+
+let mut money: Money := 5.90
+
+/*
+money += speed // should fail: Money vs Speed/unit mismatch
+
+let bad := Vehicle{ missing: speed }
+let dup := Vehicle{ _speed: speed, _speed: speed }
+let wrong := Vehicle{ _speed: money }
+*/

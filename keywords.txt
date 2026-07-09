@@ -1,0 +1,19 @@
+bevisade:
+assert, await,case,defer,discard,else,enum,fallthrough,false,fn,for,if,get,import,impl,in,interface,let,
+match,module,mut,panic,property,range,ref,return,require,set,spawn,struct,switch,true,try,type,union,unsafe,where,while
+
+INTE:
+const, sec
+
+Typer:
+beslutade:
+bool, byte, char, decimal, float, float32, float64, int, int8, int16, int32, int64, 
+uint, uint8, uint16, uint32, uint64, rune, string, void, 
+
+I bibliotek så ej nyckelord:
+date, datetime, duration, time, uuid, int128, uint128
+
+missade:
+assert, panic, range
+
+ 

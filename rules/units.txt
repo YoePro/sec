@@ -1,0 +1,348 @@
+Semantic rules: named types, contracts and units
+================================================
+
+Implementation status
+---------------------
+
+Implemented now:
+
+- named range types and named unit types are real semantic types.
+- sema reads all type declarations before checking let/assignment statements.
+- named type registry stores name, underlying type, unit, range contracts and named=true.
+- numeric literals can initialize named range/unit types in declaration context.
+- variables are not implicitly converted into named range/unit types.
+- explicit conversion syntax exists:
+
+    Percent(x)
+
+- compile-time known conversions into range-constrained types are checked at compile time.
+- compound assignment between different named types is rejected with a type error:
+
+    cannot add Speed to Money
+
+- decimal unit dimensions are represented internally as:
+
+    Dimension{Base: map[string]int}
+
+- decimal division/multiplication can derive dimensions.
+- if a declared decimal type exists for a derived dimension, sema can infer that type:
+
+    Meter / Second -> Speed
+
+- decimal literals infer as decimal by default:
+
+    let x := 3.14
+
+- explicit float declarations can still use decimal literals:
+
+    let f: float64 := 3.14
+
+- currency squared is rejected for now:
+
+    Money * Money
+
+Not implemented yet:
+
+- runtime contract checks for non-constant explicit conversions.
+- strict rejection of raw literals in assignment after declaration.
+- full unit algebra diagnostics and all invalid algebra cases beyond the currently implemented ones.
+- exponent syntax such as m^2 or m².
+
+
+1. Named type identity
+----------------------
+
+A user-defined type is a distinct type, even if it has the same storage type.
+
+Example:
+
+    type Percent int range 0..100
+    type Age int range 0..130
+
+Percent and Age are different types.
+
+This must be rejected:
+
+    let a: Age := 20
+    let p: Percent := a
+
+Reason:
+Variables already have a type. They are never implicitly converted into another named type.
+
+
+2. Untyped literals
+-------------------
+
+Untyped numeric literals may be assigned directly to a named type if they fit the underlying type and satisfy all contracts.
+
+Valid:
+
+    let p: Percent := 90
+    let m: Money := 5.90
+    let s: Speed := 50
+
+Invalid:
+
+    let p: Percent := 101
+    let p: Percent := -1
+
+Important:
+The literal is checked against the target type before assignment.
+
+
+3. Explicit conversion
+----------------------
+
+Conversion from another variable/expression into a named type must be explicit.
+
+Valid:
+
+    let x := 90
+    let p: Percent := Percent(x)
+
+Invalid:
+
+    let x := 90
+    let p: Percent := x
+
+If x is compile-time known, Percent(x) may be checked at compile time.
+If x is not compile-time known, Percent(x) must generate a runtime contract check.
+
+
+4. Assignment
+-------------
+
+Assignment requires the assigned value to match the target variable type.
+
+Valid:
+
+    let mut p: Percent := 10
+    p = Percent(20)
+
+Invalid:
+
+    let mut p: Percent := 10
+    p = 20
+
+Questionable but recommended invalid:
+Do not allow raw literals in assignment to named types after declaration.
+
+Reason:
+Declaration context may shape an untyped literal, but assignment should preserve strict type identity.
+
+So:
+
+    let mut p: Percent := 10
+    p = 20          // error
+    p = Percent(20) // ok
+
+
+5. Compound assignment
+----------------------
+
+Compound assignment is equivalent to assignment after applying the operator.
+
+    p += x
+
+means:
+
+    p = p + x
+
+Rules:
+- p must be mutable.
+- operator must be valid for p and x.
+- result type must be assignable to p.
+- contracts must still hold.
+
+Example:
+
+    type Percent int range 0..100
+
+    let mut p: Percent := 0
+    p += Percent(50)  // ok
+    p += Percent(51)  // compile-time error if p is known to be 50
+
+Recommended:
+Do not allow:
+
+    p += 50
+
+Require:
+
+    p += Percent(50)
+
+unless we explicitly decide that compound assignment accepts untyped literals in target context.
+
+
+6. Contracts
+------------
+
+A contract restricts allowed values of a named type.
+
+Example:
+
+    type Percent int range 0..100
+
+Valid:
+    0
+    50
+    100
+
+Invalid:
+    -1
+    101
+
+For range contracts:
+- inclusive range: 0..100 includes both 0 and 100
+- exclusive upper range: 0..<100 includes 0 but excludes 100
+- open lower: ..100
+- open upper: 0..
+
+Compile-time constants must be checked at compile time.
+
+Runtime values must generate runtime checks when explicitly converted into a constrained type.
+
+
+7. Units
+--------
+
+A decimal unit creates a dimension.
+
+Examples:
+
+    type Money decimal<SEK>
+    type Meter decimal<m>
+    type Second decimal<s>
+    type Speed decimal<m/s>
+
+Units are part of type semantics.
+
+Addition and subtraction:
+- allowed only between identical units/dimensions.
+- normally also require same named type.
+
+Invalid:
+
+    let mut mo: Money := 5.90
+    let sp: Speed := 50
+    mo += sp
+
+Error:
+
+    cannot add Speed to Money
+
+
+8. Unit algebra
+---------------
+
+For multiplication and division, units are algebraic.
+
+Rules:
+- multiplication adds unit exponents
+- division subtracts unit exponents
+- equal numerator and denominator cancel out
+
+Examples:
+
+    Meter / Second -> decimal<m/s>
+    Speed * Second -> decimal<m>
+    Meter / Meter -> decimal
+    Money / Money -> decimal
+    Money * int -> Money
+    Money / int -> Money
+
+Recommended invalid:
+
+    Money * Money
+
+unless there is an explicit use case for SEK^2.
+
+
+9. Matching derived unit types
+------------------------------
+
+If an operation produces a unit dimension and a named type exists for that dimension, sema may resolve to that named type.
+
+Example:
+
+    type Meter decimal<m>
+    type Second decimal<s>
+    type Speed decimal<m/s>
+
+    let d: Meter := 100
+    let t: Second := 10
+    let v := d / t
+
+v may infer as Speed.
+
+If no named type exists, v may infer as anonymous decimal<m/s>.
+
+
+10. Type inference
+------------------
+
+Untyped integer literal:
+
+    let x := 10
+
+Recommended inferred type:
+
+    int
+
+Untyped decimal literal:
+
+    let x := 3.14
+
+Recommended inferred type:
+
+    decimal
+
+Not float64.
+
+Reason:
+Sec decimal is exact and should be the safe default. Float must be explicit:
+
+    let f: float64 := 3.14
+
+
+11. Implementation structure
+----------------------------
+
+Suggested sema structures:
+
+    Type
+        Name
+        Kind
+        Declared bool
+        Dimension
+        Contracts []Contract
+
+    Dimension
+        Base map[string]int
+
+    RangeContract
+        Min
+        Max
+        ExclusiveUpper
+
+    Symbol
+        Name
+        Type
+        Mutable
+        Token
+
+    Analyzer
+        types
+        symbols
+        constInts
+
+Checks should be implemented in this order:
+
+1. Register builtin types.
+2. Register named type declarations.
+3. Resolve type references.
+4. Check let declarations.
+5. Check assignments.
+6. Check expression types.
+7. Check contracts.
+8. Check unit algebra.

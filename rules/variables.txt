@@ -1,0 +1,116 @@
+Variable declarations
+=====================
+
+Implementation status
+---------------------
+
+Implemented:
+
+- existing let declarations:
+
+    let a := 9
+    let mut a := 9
+    let a: int := 9
+    let mut a: int
+
+- comma-separated let declarations:
+
+    let a := 9, b := "hello", c := true
+    let mut a := 9, b := "hello", c := false
+
+- type-first mutable declarations without initializers:
+
+    int mut: a, b, c
+
+- type-first immutable declarations with initializers:
+
+    float: a := 5.4, pi := 3.14
+
+- type-first immutable declarations without initializers are rejected:
+
+    int: a, b, c
+
+  Error:
+
+    immutable typed declaration requires initializer for "a"
+
+
+Language rule
+-------------
+
+Variables are immutable by default.
+
+Immutable declarations must have an initializer unless an explicit language rule later gives them a meaningful value.
+
+Mutable typed declarations may omit initializers for now:
+
+    int mut: a, b, c
+
+This is equivalent to declaring three mutable variables of type int.
+
+
+Grammar sketch
+--------------
+
+LetDeclaration
+    := "let" ["mut"] LetDeclarator { "," LetDeclarator }
+
+TypedDeclaration
+    := TypeReference ["mut"] ":" TypedDeclarator { "," TypedDeclarator }
+
+LetDeclarator
+    := Identifier [ ":" TypeReference ] [ ":=" Expression ]
+
+TypedDeclarator
+    := Identifier [ ":=" Expression ]
+
+
+----
+Update variable declaration grammar.
+
+Supported forms:
+
+1. Inferred declarations:
+   let a := expr
+   let a := expr, b := expr, c := expr
+
+2. Mutable inferred declarations:
+   let mut a := expr
+   let mut a := expr, b := expr, c := expr
+
+3. Typed mutable declarations without initializer:
+   Type mut: a, b, c
+
+4. Typed declarations with initializer:
+   Type: a := expr, b := expr
+
+Rejected forms:
+   Type: a, b, c
+   let a: Type
+   let a
+   let mut a
+
+AST:
+Either update LetStatement to support grouped declarations, or introduce:
+
+VariableDeclStatement {
+    Token
+    ExplicitType *TypeReference
+    Mutable bool
+    Declarations []VariableDeclarator
+}
+
+VariableDeclarator {
+    Name *Identifier
+    Value Expression // nil only allowed when Mutable == true and ExplicitType != nil
+}
+
+Sema rules:
+- each declarator creates one symbol
+- redeclaration is checked per name
+- immutable declarations must have an initializer
+- typed mutable declarations may omit initializer
+- typed immutable declarations may not omit initializer
+- let mutable declarations with explicit type may omit initializer
+- explicit type applies to all declarators in the statement
+- let declarations infer type per declarator

@@ -1,0 +1,28 @@
+module main
+
+let mut ready := !true
+
+let mut a := 10
+let b := 9
+let mut c := a + b
+int mut: i
+let x := 1 + 2 * 3
+let y := 1 * 2 + 3
+let z := a + b * c
+let _a := 1 + 2 * 3 - 4
+let b := 1 * 2 + 3 * 4
+let c := _a + b * c - d / e
+let d := !ready
+let e := -42
+let f := !!enabled
+let g := -a * b
+let x := (1 + 2) * 3
+let y := (a + b) * (c - d)
+let mut speed: decimal<m/s>
+type Percent int range 0..99
+
+// Erronous declarations
+let mut __a: uint := 5 // Redeclaration
+// let u: uint := -5  // Cannot set negative value to an uint
+// a = u - 6 // u is undefined
+b = a // b is immutable

@@ -1,0 +1,33 @@
+{
+  "name": "sec-syntax",
+  "displayName": "SEC Language",
+  "description": "SEC is a compiled, high-performance language with strong static typing, semantic typing, units-of-measure, generics, explicit unsafe code, and support for comments and string interpolation.",
+  "version": "0.1.0",
+  "publisher": "sec-lang",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/YoePro/sec-syntax"
+  },
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": ["Programming Languages"],
+  "contributes": {
+    "languages": [
+      {
+        "id": "sec",
+        "aliases": ["SEC", "SEC Language", "sec"],
+        "extensions": [".sec"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "sec",
+        "scopeName": "source.sec",
+        "path": "./syntaxes/sec.tmLanguage.json"
+      }
+    ]
+  }
+}

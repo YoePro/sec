@@ -1,0 +1,873 @@
+Programming Language Design Notes v0.2
+Design Philosophy
+LLVM backend.
+Compiled language.
+High performance.
+Strong static typing.
+Semantic typing.
+It should be easy to do the right thing.
+It should be easy to write safe code.
+Unsafe code must be explicit.
+No hidden magic.
+One concept = one syntax.
+One symbol = one meaning.
+Official formatter (gofmt philosophy).
+Minimal runtime by default.
+Primitive Types
+bool
+byte
+char
+rune
+int
+uint
+float
+decimal
+string
+bytes
+
+decimal is a built-in type.
+
+Mutability
+let
+let mut
+
+Immutable by default.
+
+Type Definitions
+type CustomerID int
+type ProductID int
+
+type Percent int range 0..100
+type Port int range 1..65535
+
+type Meter decimal<m>
+type SEK decimal<SEK>
+
+type Email string
+
+Types describe semantics, not only storage.
+
+Type Contracts
+
+Possible built-in contracts:
+
+range
+regex
+minLength
+maxLength
+precision
+scale
+validate { ... }
+
+Compile-time validation whenever possible.
+
+Unknown values require explicit validation.
+
+p := try Percent(value)
+Units of Measure
+decimal<m>
+decimal<kg>
+decimal<m/s>
+decimal<SEK>
+
+<> is reserved for units.
+
+Generics
+Vec[T]
+Map[K,V]
+Result[T,E]
+Option[T]
+
+[] is reserved for generics.
+
+Any
+
+No separate any primitive type.
+
+If needed, use a top-level empty interface:
+
+type Any interface {}
+
+Preferred order:
+
+T          generic compile-time type
+interface  behavior contract
+Any        truly unknown runtime value
+Collections
+[N]T
+[]T
+
+Vec[T]
+Set[T]
+Map[K,V]
+
+Vector[N,T]
+Matrix[R,C,T]
+
+Vector/Matrix are mathematical types.
+
+Memory layout containers such as SoA belong in the standard library, not core syntax.
+
+Strings
+
+UTF-8
+
+string
+bytes
+rune
+
+Interpolation
+
+$"Hello {name}"
+Object Model
+
+No classical inheritance.
+
+Based on
+
+struct
+methods
+interfaces
+delegation
+properties
+
+Composition before inheritance.
+
+Properties
+
+Read-only
+
+property Total decimal<SEK> {
+    get {
+        return Price * Vat
+    }
+}
+
+Setter
+
+property Name string {
+    get {
+    }
+
+    set value {
+    }
+}
+
+Fallible setter
+
+property Name string {
+    get {
+    }
+
+    try set value {
+    }
+}
+
+Usage
+
+try user.Name = "Jonas"
+
+Rules
+
+Normal field assignment is direct.
+Read-only property assignment is forbidden.
+Fallible property assignment requires try.
+Properties may be computed, validated, triggers, lazy, or cached.
+Properties only contain get, set, or try set.
+Other behavior belongs in methods.
+Functions
+fn
+
+Supports
+
+local functions
+lambdas
+recursion
+multiple return values
+
+void exists for functions that return no value.
+
+Error Handling
+
+Based on
+
+Result[T,E]
+Option[T]
+
+Errors are typed.
+
+type IOError =
+    FileNotFound
+    AccessDenied
+    Timeout
+try
+
+Normal
+
+value := try expr
+
+Equivalent semantics
+
+Ok(value)  -> continue
+Err(error) -> return Err(error)
+
+Local error handling
+
+value := try expr {
+    Err(FileNotFound) => defaultConfig()
+    Err(AccessDenied) => return Err(NoAccess)
+    Err(error) => return Err(error)
+}
+
+Rules
+
+Ok(...) is always implicit.
+A try block is an Err-handler block, not a match.
+Only Err(...) handlers are allowed.
+Missing errors automatically propagate.
+Errors may be ignored only explicitly.
+
+Example explicit ignore:
+
+value := try expr {
+    Err(error) => discard error
+}
+match
+
+General pattern matching.
+
+match expr {
+    Ok(value) => ...
+    Err(error) => ...
+}
+
+Used for
+
+Result
+Option
+Union types
+Pattern matching
+
+_ may not hide Err.
+
+defer
+defer {
+}
+
+Always executed when leaving the current function.
+
+Control Flow
+if
+if condition {
+}
+
+No mandatory parentheses.
+
+Formatter removes redundant parentheses.
+
+switch
+
+For value matching.
+
+Supports
+
+case 1,2,3
+
+case 10..20
+
+case < 0
+
+case >= 100
+
+Explicit
+
+fallthrough
+
+Rules
+
+No implicit fallthrough.
+fallthrough continues only to the next case.
+continue is only for loops.
+fallthrough is only for switch.
+Loops
+
+while is for conditional repetition.
+
+while condition {
+}
+
+for is for iteration.
+
+for item in collection {
+}
+
+for key, value in map {
+}
+
+for i in 0..<10 {
+}
+
+Infinite loop:
+
+for {
+}
+
+No C-style loop:
+
+for(init; condition; increment)
+Ranges
+1..10
+1..<10
+1..
+..10
+
+Used in
+
+if value in 1..10
+
+switch
+
+for
+
+Also used in type definitions.
+
+Operators
+
+Arithmetic
+
++
+-
+*
+/
+%
+
+Bitwise
+
+&
+|
+^
+~
+<<
+>>
+
+Assignment
+
+=
++=
+-=
+*=
+/=
+%=
+
+&=
+|=
+^=
+<<=
+>>=
+
+No
+
+++
+--
+Visibility
+
+Proposal:
+
+Name      public
+
+_name     package/module
+
+__name    private
+Memory Model
+
+Ownership model inspired by Rust.
+
+T
+ref T
+mut ref T
+?ref T
+
+[]T
+Vec[T]
+Box[T]
+
+unsafe *T
+
+Goals
+
+No GC by default.
+No hidden allocation.
+Safe by default.
+Explicit unsafe.
+Borrow checking.
+Easier than Rust where possible.
+
+Rules
+
+many ref T allowed
+one mut ref T requires exclusive access
+references cannot outlive owners
+no null in safe code
+no pointer arithmetic in safe code
+Threads / Tasks / Concurrency
+
+Working direction:
+
+spawn
+await
+
+spawn starts a block as a task.
+
+a := spawn {
+    doWork()
+}
+
+await a
+
+spawn is block-based, not loop-specific.
+
+a := spawn {
+    while running {
+        poll()
+    }
+}
+
+b := spawn {
+    for item in items {
+        process(item)
+    }
+}
+
+await a
+await b
+
+If a spawned task can fail, awaiting follows normal error handling.
+
+result := try await a
+
+Possible future concepts:
+
+Task[T]
+Channel[T]
+select
+cancel
+scope
+
+Early design rules:
+
+spawn starts concurrent work.
+await waits for completion.
+spawn while should not be special syntax.
+Loops stay loops.
+Tasks are blocks.
+Errors from tasks must not disappear silently.
+Shared mutable state must follow borrow/concurrency rules.
+Message passing may be preferred for shared work.
+Structured concurrency should be investigated.
+
+Open thread questions:
+
+OS threads vs lightweight tasks.
+Scheduler or no scheduler.
+Channels in core syntax or standard library.
+Cancellation model.
+Whether await is a keyword or function-like primitive.
+Whether spawned tasks must be joined before scope exit.
+Syntax
+()    functions
+{}    blocks
+[]    generics
+<>    units
+@     attributes
+#     compiler directives
+
+Memory Model
+
+Ownership model inspired by Rust, but intentionally simpler.
+
+Goals
+
+No GC by default.
+No hidden allocation.
+Safe by default.
+Explicit unsafe.
+Borrow checking.
+Easier than Rust where possible.
+No explicit lifetime annotations.
+
+Core types
+
+T            owned value
+ref T        shared immutable reference
+mut ref T    exclusive mutable reference
+?ref T       optional reference
+
+[]T          slice/view
+Vec[T]       owned collection
+Box[T]       owned heap allocation
+
+unsafe *T    raw pointer
+
+Core rules
+
+Many ref T are allowed.
+
+Only one mut ref T may exist at a time.
+
+A mut ref may not coexist with any ref.
+
+References may never outlive their owner.
+
+No null in safe code.
+
+No pointer arithmetic in safe code.
+Borrow Checker
+
+The borrow checker is block-oriented.
+
+References are validated within lexical scopes.
+
+Example
+
+fn main() void {
+
+    user := User{name: "Jonas"}
+
+    {
+        name := ref user.name
+        println(name)
+    }
+
+    // name is no longer valid here
+}
+
+Returning a local reference is forbidden.
+
+fn bad() ref User {
+
+    user := User{name: "Jonas"}
+
+    return ref user
+}
+
+Compile error.
+
+Function Return Rule
+
+No explicit lifetime annotations exist.
+
+If a function returns a reference, that reference must clearly originate from the first reference parameter.
+
+Allowed
+
+fn Name(user: ref User) ref string {
+    return ref user.name
+}
+
+Allowed
+
+fn Item(list: ref List[Item], index: int) ref Item {
+    return ref list[index]
+}
+
+Not allowed
+
+fn Pick(a: ref User, b: ref User, useA: bool) ref User
+
+because the compiler cannot determine a single originating lifetime.
+
+Instead, return
+
+an owned value,
+an index,
+a handle,
+or redesign the API.
+Design Principle
+
+When ownership becomes ambiguous, the language prefers explicit ownership over increasingly complex borrow analysis.
+
+The language should guide the programmer toward simple, safe APIs rather than making the borrow checker increasingly sophisticated.
+
+Interfaces
+
+Sec uses interfaces to describe behavior.
+
+Interfaces are explicitly implemented.
+
+Example
+
+type Reader interface {
+    fn read(buffer: []byte) Result[int, IOError]
+}
+
+Implementing an interface
+
+type FileReader struct {
+    handle: unsafe *void
+}
+
+impl Reader for FileReader {
+
+    fn read(buffer: []byte) Result[int, IOError] {
+        ...
+    }
+}
+
+Adding normal methods
+
+impl FileReader {
+
+    fn close() Result[void, IOError] {
+        ...
+    }
+}
+
+Rules
+
+Interfaces define behavior, never inheritance.
+A type does not automatically implement an interface.
+Every interface implementation must be explicit.
+The compiler verifies that every required member exists.
+Missing or incompatible members produce compile-time errors.
+Separation of Data and Behavior
+
+A fundamental design principle of Sec is that data and behavior are intentionally separated.
+
+A struct describes what an object is.
+
+An impl block describes what an object can do.
+
+An interface describes what behavior other code may rely on.
+
+Example
+
+type FileReader struct {
+    handle: unsafe *void
+}
+
+The structure contains only data.
+
+Behavior is defined separately.
+
+impl FileReader {
+
+    fn close() Result[void, IOError] {
+        ...
+    }
+
+    fn seek(offset: int) Result[void, IOError] {
+        ...
+    }
+}
+
+Contracts are also defined separately.
+
+impl Reader for FileReader {
+
+    fn read(buffer: []byte) Result[int, IOError] {
+        ...
+    }
+}
+
+This separation makes large code bases easier to understand.
+
+When reading code, the programmer immediately knows whether they are looking at:
+
+data,
+behavior,
+or externally visible contracts.
+
+The goal is to minimize hidden coupling and make every responsibility explicit.
+
+Why impl?
+
+Sec intentionally uses the short keyword impl rather than longer forms such as implements.
+
+Reasons:
+
+It is concise and visually consistent with other core keywords (fn, mut, ref, try).
+It is written relatively infrequently—typically once per type or interface implementation.
+It clearly marks the beginning of an implementation block.
+It separates implementation from declaration, reinforcing the language philosophy that types describe data, while implementation blocks describe behavior.
+
+Modules and Project Layout
+
+Sec distinguishes between language concepts and project concepts.
+
+Each concept has exactly one responsibility.
+
+module
+
+A module is a language construct.
+
+Every source file belongs to exactly one module.
+
+Example
+
+module internal.storage
+
+or
+
+module cmd.projA
+
+A module defines the namespace visible to the compiler.
+
+sec.module
+
+sec.module defines the project.
+
+Example
+
+module myproject
+
+sec 0.1
+
+require github/foo/bar 1.2.0
+require company/database 2.1.0
+
+The project file contains:
+
+Project name
+Language version
+External dependencies
+Build configuration (future)
+Package metadata (future)
+
+It is not part of the language itself.
+
+Project Layout
+
+A recommended project layout is
+
+myproject/
+
+    sec.module
+
+    cmd/
+        projA/
+            main.sec
+
+        projB/
+            main.sec
+
+    internal/
+        storage/
+        network/
+        parser/
+
+    modules/
+        crypto/
+        http/
+        database/
+cmd
+
+cmd contains executable applications.
+
+Each directory represents one executable.
+
+Example
+
+cmd/projA
+cmd/projB
+
+Both contain
+
+fn main() {
+}
+
+but belong to different modules.
+
+Example
+
+module cmd.projA
+module cmd.projB
+
+Unlike Go, Sec does not require every executable to belong to a generic main package.
+
+The module name reflects the logical location of the executable.
+
+internal
+
+internal is a reserved language concept.
+
+Modules inside internal are always private to the current project.
+
+Imports are therefore intentionally short.
+
+Example
+
+import (
+    "internal/storage"
+    "internal/network"
+)
+
+The current project name is implicit.
+
+If an external dependency also contains an internal directory, it must always be qualified.
+
+Example
+
+import (
+    "github/foo/internal/storage"
+)
+
+This keeps local imports short while avoiding ambiguity.
+
+modules
+
+modules contains reusable project modules.
+
+Example
+
+import (
+    "modules/database"
+    "modules/http"
+)
+
+Modules may later be published independently.
+
+Standard Library
+
+Standard library modules are imported directly.
+
+Example
+
+import (
+    "fmt"
+    "json"
+    "time"
+)
+
+The compiler resolves these automatically as standard library modules.
+
+Import Philosophy
+
+Imports should immediately reveal where code originates.
+
+fmt                    Standard Library
+
+internal/storage       Local private module
+
+modules/database       Local reusable module
+
+github/foo/bar         External dependency
+
+No additional prefixes are required for local project code.
+
+The origin of every imported module is immediately obvious.
+
+Design Philosophy
+
+The module system follows the same principles as the language itself.
+
+module is a language concept.
+sec.module defines the project.
+internal defines project-private visibility.
+modules contains reusable project code.
+cmd defines executable entry points.
+
+Each concept has exactly one responsibility.
+
+Nothing serves two different purposes.
+
+This separation makes both the compiler and the project structure predictable, scalable, and easy to understand.

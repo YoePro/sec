@@ -1,0 +1,74 @@
+module main
+
+import "time"
+
+bool mut: a
+int mut: b
+int8 mut: c
+int16 mut: d
+int32 mut: e
+int64 mut: f
+
+uint mut: g
+uint8 mut: h
+uint16 mut: i
+uint32 mut: j
+uint64 mut: k
+
+float32 mut: l
+float64 mut: m
+
+decimal mut: n
+
+byte mut: o
+rune mut: p
+char mut: q 
+
+string mut: r
+
+/*
+let s: duration // in time libary 
+let t: time // in time library 
+let u: date // in time library
+let v: datetime // in time library
+*/
+
+let _a: int := 90
+let mut _b: int
+
+decimal<m> mut: _c
+let mut D: decimal<m/s>
+
+// let e: Result[int, IOError]
+
+type Percent int range 0..100
+type Age uint8<y> range 0..130
+type Money decimal<SEK> 
+type Speed decimal<m/s>
+type Angle decimal<deg>
+type Port uint16 range 1..65535
+type Range1 int range 0..
+type Range2 int range 0..<100
+type Range3 int range ..100
+type Range4 float range -273.1..
+type Meter decimal<m>
+type Name string
+type Payload []byte
+
+let mut precent: Percent := 0
+precent +=50
+precent = Percent(_a)
+
+let mut mo: Money := 5.90
+let mut sp: Speed := 50
+
+sp += mo
+
+
+// Faulty 
+//let bad:
+//type Broken
+//type _D int range 0...
+// type Range5 int8 range 0..1000
+// let _b: bool := "test"
+// let w: uuid // Should fail - not a native type

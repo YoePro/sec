@@ -1,0 +1,586 @@
+Structs, impl blocks, properties and struct field tags
+======================================================
+
+Implementation status
+=====================
+
+Implemented
+-----------
+
+- Parser supports named struct declarations through:
+
+    type Name struct { ... }
+
+- Parser requires struct fields to use typed identifier syntax:
+
+    name: Type
+
+- Parser requires commas between fields.
+- Parser allows a trailing comma before "}".
+- Parser reports:
+
+    expected ',' or '}' after struct field
+
+  when fields are missing commas.
+
+- Sema registers:
+
+    type Name struct { ... }
+
+  as a named struct type.
+
+- Sema resolves each field type.
+- Sema reports unknown field types.
+- Sema rejects duplicate field names inside the same struct.
+- Mutable let declarations can use registered struct types without initializer:
+
+    let mut c: Coordinate
+
+- Lexer tokenizes backtick raw strings as RAW_STRING.
+- Parser accepts optional struct field tags after field type.
+- Parser validates basic Go-style struct tag syntax.
+- AST preserves struct field tags.
+- Sema preserves struct field tags as metadata.
+- Parser supports shallow impl blocks:
+
+    impl Vehicle { }
+
+- Parser supports shallow property declarations inside impl blocks.
+- Sema checks that impl target types exist.
+- Sema checks property types exist.
+- Sema rejects duplicate property names inside the same impl.
+- Parser supports struct literals:
+
+    Vehicle{ _speed: speed }
+
+- Sema checks struct literal fields, duplicate fields and field value types.
+- Parser supports field/member access:
+
+    vehicle._speed
+    vehicle.TopSpeed
+
+- Sema resolves struct fields and properties through member access.
+- Sema rejects assignment to fallible properties unless later syntax marks it as try.
+- Sema performs first shallow getter/setter body checks:
+  - getter `return field` type must match property type when statically visible.
+  - getter return expressions must be assignable to the property type.
+  - constructor calls such as `Money(5.90)` in getter returns resolve to the named type.
+  - getters with no return statement are rejected.
+  - non-fallible setter may not return `Err(...)`.
+  - simple setter field assignment type is checked.
+
+Not implemented yet
+-------------------
+
+- Method integration with struct types.
+- Full property integration with struct types.
+- Method parsing inside impl blocks.
+- Complete getter/setter body type checking.
+- `try` property assignment syntax.
+
+
+Language model
+==============
+
+Sec does not have classes.
+
+Data is declared with struct.
+Behavior is declared with impl.
+Computed or controlled access is declared with property.
+Interfaces describe behavior contracts.
+
+Structs define data only.
+Impl blocks define behavior for an existing type.
+Properties define controlled access to data or computed values.
+
+
+Struct field declarations
+=========================
+
+Struct fields use the same typed identifier syntax as let declarations and function parameters:
+
+    name: Type
+
+Fields are comma-separated.
+A trailing comma is allowed.
+
+Valid:
+
+    type Coordinate struct {
+        x: Meter,
+        y: Meter,
+        z: Meter,
+    }
+
+    type Coordinate struct { x: Meter, y: Meter, z: Meter }
+
+Invalid:
+
+    type Coordinate struct {
+        x: Meter
+        y: Meter
+    }
+
+Reason:
+Field lists should not depend on line breaks.
+All list-like constructs should use commas consistently.
+
+
+Struct grammar
+==============
+
+StructType
+    := "struct" "{" [StructFieldList] "}"
+
+StructFieldList
+    := StructField { "," StructField } [ "," ]
+
+StructField
+    := Identifier ":" TypeReference [StructTagLiteral]
+
+StructTagLiteral
+    := RawStringLiteral
+
+
+Parser requirements for structs
+===============================
+
+Already implemented behavior should be preserved.
+Do not regress working struct parsing.
+
+Required behavior:
+
+1. `type Name struct { ... }` declares a named struct type.
+2. Struct fields require ':' between field name and field type.
+3. Struct fields require commas between fields.
+4. Trailing comma before '}' is allowed.
+5. Preserve existing AST field structure where possible.
+6. Parser errors should be clear:
+   - missing ':' after field name
+   - missing ',' between struct fields
+   - missing type after ':'
+
+Expected parser error for missing comma:
+
+    expected ',' or '}' after struct field
+
+
+Sema requirements for structs
+=============================
+
+Already implemented behavior should be preserved.
+Do not regress existing sema checks.
+
+Required behavior:
+
+1. Register struct as a named type.
+2. Resolve each field type.
+3. Report unknown field types.
+4. Reject duplicate field names inside the same struct.
+5. Allow use of struct type in mutable let declarations without initializer:
+
+    let mut c: Coordinate
+
+6. Do not allow field tags to affect type checking yet.
+7. Preserve field tags for later reflection, serialization or code generation.
+
+
+Struct tests
+============
+
+Parser tests
+------------
+
+Valid multi-line struct:
+
+    type Coordinate struct {
+        x: Meter,
+        y: Meter,
+        z: Meter,
+    }
+
+Valid single-line struct:
+
+    type Coordinate struct { x: Meter, y: Meter, z: Meter }
+
+Invalid missing commas:
+
+    type Bad struct {
+        x: Meter
+        y: Meter
+    }
+
+Expected parser error:
+
+    expected ',' or '}' after struct field
+
+Sema pass test
+--------------
+
+    type Meter decimal<m>
+
+    type Coordinate struct {
+        x: Meter,
+        y: Meter,
+        z: Meter,
+    }
+
+    let mut c: Coordinate
+
+This should pass.
+
+Duplicate field test
+--------------------
+
+    type Bad struct {
+        x: int,
+        x: int,
+    }
+
+Expected sema error:
+
+    duplicate field "x" in struct Bad
+
+Unknown field type test
+-----------------------
+
+    type Bad struct {
+        x: UnknownType,
+    }
+
+Expected sema error:
+
+    unknown type UnknownType
+
+
+Impl blocks
+===========
+
+Core syntax
+-----------
+
+    impl Vehicle {
+        fn stop() void {
+            .
+        }
+    }
+
+Parser rules
+------------
+
+1. `impl TypeName { ... }` declares behavior for an existing type.
+2. Impl target must be parsed as a TypeReference.
+3. Impl members may later include:
+   - methods
+   - properties
+4. Empty impl blocks may be allowed during early implementation.
+
+AST nodes
+---------
+
+ImplStatement:
+    Target *TypeReference
+    Members []ImplMember
+
+ImplMember interface:
+    MethodDeclaration
+    PropertyDeclaration
+
+Sema rules
+----------
+
+1. Impl target type must exist.
+2. Cannot implement methods/properties for unknown type.
+3. Impl does not declare data fields.
+4. Impl attaches behavior to an existing named type.
+
+Invalid example
+---------------
+
+    impl MissingType {
+    }
+
+Expected sema error:
+
+    unknown impl target MissingType
+
+
+Properties
+==========
+
+Properties define computed or controlled access.
+Properties are behavior, so they belong inside impl blocks.
+
+Core syntax
+-----------
+
+    type Speed decimal<m/s>
+
+    type Vehicle struct {
+        _speed: Speed,
+    }
+
+    impl Vehicle {
+        property TopSpeed: Speed {
+            get {
+                return _speed
+            }
+
+            try set value {
+                if value < Speed(0.0) {
+                    return Err(IOError.InvalidValue)
+                }
+
+                _speed = value
+            }
+        }
+    }
+
+Parser rules
+------------
+
+1. `property Name: Type { ... }` is only valid inside impl.
+2. Property type must be parsed as TypeReference.
+3. Property blocks may contain:
+   - `get { ... }`
+   - `set value { ... }`
+   - `try set value { ... }`
+4. A property must have at least get or set.
+5. A property may have at most one get and one set.
+6. `try set` marks setter as fallible.
+7. Setter parameter is an identifier.
+
+AST nodes
+---------
+
+PropertyDeclaration:
+    Name *Identifier
+    Type *TypeReference
+    Getter *BlockStatement
+    Setter *PropertySetter
+
+PropertySetter:
+    Token
+    Fallible bool
+    Parameter *Identifier
+    Body *BlockStatement
+
+Sema rules
+----------
+
+First implementation should only perform shallow checks.
+Full getter/setter body type checking can come later when block/function sema is stronger.
+
+Required now:
+
+1. Property name must be unique inside the impl/type.
+2. Property type must exist.
+3. Setter parameter type is the property type.
+4. Private backing fields may start with `_`.
+5. Getter return type must be assignable to property type.
+6. Non-fallible setter may not return Err.
+7. Fallible setter must be called/assigned through `try` when try syntax exists.
+
+Later requirements:
+
+1. Accessing property from outside uses normal member syntax:
+
+    vehicle.TopSpeed
+
+2. Assigning fallible property requires try:
+
+    try vehicle.TopSpeed = speed {
+        Err(error) => ...
+    }
+
+Getter return rule
+------------------
+
+A property getter must return a value assignable to the property type.
+
+Example:
+
+    property BadGet: Speed {
+        get {
+            return Money(5.90)
+        }
+    }
+
+Expected sema error:
+
+    getter BadGet must return Speed, got Money
+
+Constructor-style conversions in getter returns resolve to the named type:
+
+    Money(5.90)
+
+has type Money, not plain decimal.
+
+If the getter has no return statement, sema reports:
+
+    getter BadGet must return Speed
+
+Invalid examples
+----------------
+
+Duplicate property:
+
+    impl Vehicle {
+        property Speed: int { get { return _speed } }
+        property Speed: int { get { return _speed } }
+    }
+
+Expected sema error:
+
+    duplicate property "Speed" in impl Vehicle
+
+Setter without try but returning Err:
+
+    property TopSpeed: Speed {
+        set value {
+            return Err(IOError.InvalidValue)
+        }
+    }
+
+This check may be implemented later when return/body sema is available.
+
+Fallible property assignment without try:
+
+    vehicle.TopSpeed = speed
+
+This check may be implemented later when member access and property assignment are available.
+
+Valid example
+-------------
+
+    type Speed decimal<m/s>
+
+    type Vehicle struct {
+        _speed: Speed,
+    }
+
+    impl Vehicle {
+        property TopSpeed: Speed {
+            get {
+                return _speed
+            }
+
+            try set value {
+                _speed = value
+            }
+        }
+    }
+
+
+Struct field tags
+=================
+
+Sec supports Go-inspired struct field tags.
+
+Tags are metadata attached to struct fields.
+They are inspired by Go struct tags and should follow the same basic model.
+
+Syntax
+------
+
+    type User struct {
+        ID: int `json:"id" xml:"id" db:"user_id"`,
+        Name: string `json:"name" xml:"name"`,
+        Password: string `json:"-"`,
+    }
+
+Rules
+-----
+
+1. Tags are optional.
+2. Tags belong to struct fields.
+3. Tag syntax follows Go's struct tag model:
+
+    key:"value" key:"value"
+
+4. Multiple tags are allowed.
+5. Common keys include json, xml, db, yaml and csv.
+6. The compiler must not hard-code allowed tag keys.
+7. Tags are metadata, not type semantics.
+8. Tags must be preserved in AST for later reflection, codegen or serialization.
+9. Invalid tag syntax should be a parser error.
+10. Duplicate keys on the same field may become a warning later, but not required now.
+
+Lexer requirement
+-----------------
+
+Backtick strings must be tokenized.
+
+Recommended token:
+
+    RAW_STRING
+
+Example:
+
+    `json:"id" xml:"id"`
+
+This is useful for struct tags and may also be useful for raw strings later.
+
+AST update
+----------
+
+StructField:
+    Name *Identifier
+    Type *TypeReference
+    Tags []StructTag
+
+StructTag:
+    Key string
+    Value string
+
+Parser examples
+---------------
+
+Valid:
+
+    type User struct {
+        ID: int `json:"id"`,
+        Name: string `json:"name" xml:"name"`,
+        Password: string `json:"-"`,
+    }
+
+Invalid:
+
+    type User struct {
+        ID: int `json:id`,
+    }
+
+Expected parser error:
+
+    invalid struct field tag
+
+Sema rules for tags
+-------------------
+
+1. Do not treat tags as type rules yet.
+2. Preserve them.
+3. Do not restrict tag keys to json/xml/db/yaml/csv.
+4. Duplicate keys may be warned about later.
+
+Important:
+Tags are field metadata. They should work for json, xml, db, yaml, csv or any future serializer without compiler changes.
+
+
+Recommended implementation order
+================================
+
+1. Preserve current struct parsing and sema behavior.
+2. Add RAW_STRING/backtick token support in lexer if missing.
+3. Parse optional struct field tags after TypeReference.
+4. Store tags in StructField.
+5. Add parser tests for tags.
+6. Add shallow impl parsing:
+
+    impl Vehicle { }
+
+7. Add shallow property parsing inside impl.
+8. Add sema check: impl target exists.
+9. Add sema check: property type exists.
+10. Add sema check: duplicate property names.
+
+Do not attempt full getter/setter body type checking yet unless block and return sema are already ready.

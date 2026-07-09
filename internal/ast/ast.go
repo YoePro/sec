@@ -1,0 +1,484 @@
+package ast
+
+import (
+	"sec/internal/lexer"
+	"strings"
+)
+
+// Node is the base interface for all AST nodes.
+type Node interface {
+	TokenLiteral() string
+}
+
+// Statement represents a top-level or block-level instruction.
+type Statement interface {
+	Node
+	statementNode()
+}
+
+// Expression represents a value-producing AST node.
+type Expression interface {
+	Node
+	expressionNode()
+	String() string
+}
+
+// Program is the root node for a parsed Sec source file.
+type Program struct {
+	Statements []Statement
+}
+
+func (p *Program) TokenLiteral() string {
+	if len(p.Statements) == 0 {
+		return ""
+	}
+
+	return p.Statements[0].TokenLiteral()
+}
+
+// --------------------------------------------------------------------
+// Type declarations
+// --------------------------------------------------------------------
+
+// TypeDeclStatement represents:
+//
+//	type Percent int range 0..100
+//	type Meter decimal<m>
+//	type Email string
+//	type IOError = FileNotFound AccessDenied InvalidValue
+type TypeDeclStatement struct {
+	Token lexer.Token // TYPE token
+
+	Name         *Identifier
+	BaseType     *TypeReference
+	AssignedType *TypeReference
+	Variants     []*Identifier
+	StructType   *StructType
+	Contract     Contract
+}
+
+func (tds *TypeDeclStatement) statementNode() {}
+
+func (tds *TypeDeclStatement) TokenLiteral() string {
+	return tds.Token.Lexeme
+}
+
+// Identifier represents a named symbol.
+type Identifier struct {
+	Token lexer.Token
+	Value string
+}
+
+func (i *Identifier) expressionNode() {}
+
+func (i *Identifier) TokenLiteral() string {
+	return i.Token.Lexeme
+}
+
+func (i *Identifier) String() string {
+	return i.Value
+}
+
+// TypeReference represents a type usage:
+//
+//	int
+//	decimal<m>
+//	Vec[T]
+//	[]byte
+type TypeReference struct {
+	Token lexer.Token
+
+	Name string
+
+	// ElementType is used for slice types such as []byte.
+	ElementType *TypeReference
+
+	// Unit is used for unit types such as decimal<m> or decimal<SEK>.
+	Unit string
+
+	// TypeArgs is used for generic types such as Vec[T], Map[K,V], Result[T,E].
+	TypeArgs []*TypeReference
+}
+
+func (tr *TypeReference) TokenLiteral() string {
+	return tr.Token.Lexeme
+}
+
+// --------------------------------------------------------------------
+// Contracts
+// --------------------------------------------------------------------
+
+type Contract interface {
+	Node
+	contractNode()
+}
+
+// RangeContract represents:
+//
+//	range 0..100
+//	range 1..65535
+type RangeContract struct {
+	Token lexer.Token // "range" identifier token for now
+
+	Min       Expression
+	Max       Expression
+	Exclusive bool
+}
+
+func (rc *RangeContract) contractNode() {}
+
+func (rc *RangeContract) TokenLiteral() string {
+	return rc.Token.Lexeme
+}
+
+// --------------------------------------------------------------------
+// Literals
+// --------------------------------------------------------------------
+
+type IntegerLiteral struct {
+	Token lexer.Token
+	Value int64
+}
+
+func (il *IntegerLiteral) expressionNode() {}
+
+func (il *IntegerLiteral) TokenLiteral() string {
+	return il.Token.Lexeme
+}
+
+func (il *IntegerLiteral) String() string {
+	return il.Token.Lexeme
+}
+
+type FloatLiteral struct {
+	Token lexer.Token
+	Value float64
+}
+
+func (fl *FloatLiteral) expressionNode() {}
+
+func (fl *FloatLiteral) TokenLiteral() string {
+	return fl.Token.Lexeme
+}
+
+func (fl *FloatLiteral) String() string {
+	return fl.Token.Lexeme
+}
+
+type StringLiteral struct {
+	Token lexer.Token
+	Value string
+}
+
+func (sl *StringLiteral) expressionNode() {}
+
+func (sl *StringLiteral) TokenLiteral() string {
+	return sl.Token.Lexeme
+}
+
+func (sl *StringLiteral) String() string {
+	return sl.Token.Lexeme
+}
+
+type ModuleStatement struct {
+	Token lexer.Token
+	Path  string
+}
+
+func (ms *ModuleStatement) statementNode() {}
+
+func (ms *ModuleStatement) TokenLiteral() string {
+	return ms.Token.Lexeme
+}
+
+type ImportStatement struct {
+	Token lexer.Token
+	Alias string
+	Path  string
+}
+
+func (is *ImportStatement) statementNode() {}
+
+func (is *ImportStatement) TokenLiteral() string {
+	return is.Token.Lexeme
+}
+
+type CommentStatement struct {
+	Token lexer.Token
+	Text  string
+}
+
+func (cs *CommentStatement) statementNode() {}
+
+func (cs *CommentStatement) TokenLiteral() string {
+	return cs.Token.Lexeme
+}
+
+func (p *Program) String() string {
+	var out strings.Builder
+
+	for _, stmt := range p.Statements {
+		out.WriteString(stmt.TokenLiteral())
+		out.WriteString("\n")
+	}
+
+	return out.String()
+}
+
+type LetStatement struct {
+	Token   lexer.Token
+	Mutable bool
+	Name    *Identifier
+	Type    *TypeReference
+	Value   Expression
+}
+
+func (ls *LetStatement) statementNode() {}
+
+func (ls *LetStatement) TokenLiteral() string {
+	return ls.Token.Lexeme
+}
+
+type LetGroupStatement struct {
+	Token lexer.Token
+	Lets  []*LetStatement
+}
+
+func (lgs *LetGroupStatement) statementNode() {}
+
+func (lgs *LetGroupStatement) TokenLiteral() string {
+	return lgs.Token.Lexeme
+}
+
+type AssignmentStatement struct {
+	Token    lexer.Token
+	Target   Expression
+	Operator string
+	Value    Expression
+}
+
+func (as *AssignmentStatement) statementNode() {}
+
+func (as *AssignmentStatement) TokenLiteral() string {
+	return as.Token.Lexeme
+}
+
+type StructStatement struct {
+	Token  lexer.Token
+	Name   *Identifier
+	Fields []*StructField
+}
+
+func (ss *StructStatement) statementNode() {}
+
+func (ss *StructStatement) TokenLiteral() string {
+	return ss.Token.Lexeme
+}
+
+type StructField struct {
+	Token lexer.Token
+	Name  *Identifier
+	Type  *TypeReference
+	Tags  []StructTag
+}
+
+func (sf *StructField) TokenLiteral() string {
+	return sf.Token.Lexeme
+}
+
+type StructTag struct {
+	Key   string
+	Value string
+}
+
+type StructType struct {
+	Token  lexer.Token
+	Fields []*StructField
+}
+
+func (st *StructType) TokenLiteral() string {
+	return st.Token.Lexeme
+}
+
+type BooleanLiteral struct {
+	Token lexer.Token
+	Value bool
+}
+
+func (bl *BooleanLiteral) expressionNode() {}
+
+func (bl *BooleanLiteral) TokenLiteral() string {
+	return bl.Token.Lexeme
+}
+
+func (bl *BooleanLiteral) String() string {
+	return bl.Token.Lexeme
+}
+
+type InterpolatedStringLiteral struct {
+	Token lexer.Token
+	Value string
+}
+
+func (isl *InterpolatedStringLiteral) expressionNode() {}
+
+func (isl *InterpolatedStringLiteral) TokenLiteral() string {
+	return isl.Token.Lexeme
+}
+
+func (isl *InterpolatedStringLiteral) String() string {
+	return isl.Token.Lexeme
+}
+
+type PrefixExpression struct {
+	Token    lexer.Token
+	Operator string
+	Right    Expression
+}
+
+func (pe *PrefixExpression) expressionNode() {}
+
+func (pe *PrefixExpression) TokenLiteral() string {
+	return pe.Token.Lexeme
+}
+
+func (pe *PrefixExpression) String() string {
+	if pe.Right == nil {
+		return "(" + pe.Operator + "<nil>)"
+	}
+
+	return "(" + pe.Operator + pe.Right.String() + ")"
+}
+
+type InfixExpression struct {
+	Token    lexer.Token
+	Left     Expression
+	Operator string
+	Right    Expression
+}
+
+func (ie *InfixExpression) expressionNode() {}
+
+func (ie *InfixExpression) TokenLiteral() string {
+	return ie.Token.Lexeme
+}
+
+func (ie *InfixExpression) String() string {
+	left := "<nil>"
+	if ie.Left != nil {
+		left = ie.Left.String()
+	}
+
+	right := "<nil>"
+	if ie.Right != nil {
+		right = ie.Right.String()
+	}
+
+	return "(" + left + " " + ie.Operator + " " + right + ")"
+}
+
+type ConversionExpression struct {
+	Token lexer.Token
+	Type  *TypeReference
+	Value Expression
+}
+
+func (ce *ConversionExpression) expressionNode() {}
+
+func (ce *ConversionExpression) TokenLiteral() string {
+	return ce.Token.Lexeme
+}
+
+func (ce *ConversionExpression) String() string {
+	value := "<nil>"
+	if ce.Value != nil {
+		value = ce.Value.String()
+	}
+
+	return ce.Type.Name + "(" + value + ")"
+}
+
+type ImplStatement struct {
+	Token   lexer.Token
+	Target  *TypeReference
+	Members []ImplMember
+}
+
+func (is *ImplStatement) statementNode() {}
+
+func (is *ImplStatement) TokenLiteral() string {
+	return is.Token.Lexeme
+}
+
+type ImplMember interface {
+	Node
+	implMemberNode()
+}
+
+type PropertyDeclaration struct {
+	Token  lexer.Token
+	Name   *Identifier
+	Type   *TypeReference
+	Getter *BlockStatement
+	Setter *PropertySetter
+}
+
+func (pd *PropertyDeclaration) implMemberNode() {}
+
+func (pd *PropertyDeclaration) TokenLiteral() string {
+	return pd.Token.Lexeme
+}
+
+type PropertySetter struct {
+	Token     lexer.Token
+	Fallible  bool
+	Parameter *Identifier
+	Body      *BlockStatement
+}
+
+type BlockStatement struct {
+	Token  lexer.Token
+	Tokens []lexer.Token
+}
+
+func (bs *BlockStatement) TokenLiteral() string {
+	return bs.Token.Lexeme
+}
+
+type MemberExpression struct {
+	Token    lexer.Token
+	Object   Expression
+	Property *Identifier
+}
+
+func (me *MemberExpression) expressionNode() {}
+
+func (me *MemberExpression) TokenLiteral() string {
+	return me.Token.Lexeme
+}
+
+func (me *MemberExpression) String() string {
+	return me.Object.String() + "." + me.Property.Value
+}
+
+type StructLiteral struct {
+	Token  lexer.Token
+	Type   *TypeReference
+	Fields []*StructLiteralField
+}
+
+func (sl *StructLiteral) expressionNode() {}
+
+func (sl *StructLiteral) TokenLiteral() string {
+	return sl.Token.Lexeme
+}
+
+func (sl *StructLiteral) String() string {
+	return sl.Type.Name + "{...}"
+}
+
+type StructLiteralField struct {
+	Token lexer.Token
+	Name  *Identifier
+	Value Expression
+}

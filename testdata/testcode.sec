@@ -1,0 +1,85 @@
+module main
+
+import "std/fmt"
+
+// 1. Typer och strikta kontrakt (Ingen dold magi)
+
+type Percent int range 0..100
+type Meter decimal<m>
+type Second decimal<s>
+type Speed decimal<m/s>
+
+type IOError =
+    FileNotFound
+    AccessDenied
+    InvalidValue
+
+// 2. Objektmodell med egenskaper och fallible setters
+type Vehicle struct {
+    _speed: Speed,
+}
+
+property TopSpeed Speed {
+    get {
+        return _speed
+    }
+    
+    try set value {
+        if value < 0.0 {
+            return Err(IOError.InvalidValue)
+        }
+        _speed = value
+    }
+}
+
+
+// 3. Funktioner med enheter, mönstermatchning och flera returvärden
+fn calculate_speed(dist Meter, time Second) Result[Speed, IOError] {
+    if time <= 0.0 {
+        return Err(IOError.InvalidValue)
+    }
+    return Ok(dist / time)
+}
+
+fn main() void {
+    // 4. Immuterbart som standard, explicit muterbart
+    let distance := Meter(100.50)
+    let time := Second(9.58) // Usain Bolt-tempo
+    let mut car := Vehicle{ _speed: Speed(0.0) }
+
+    // 5. Felhantering med try-block
+    let current_speed := try calculate_speed(distance, time) {
+        Err(InvalidValue) => {
+            fmt.println("Kunde inte beräkna hastighet: ogiltig tid.")
+            return
+        }
+        Err(error) => return Err(error) // Automatisk propagering
+    }
+
+    // Stränginterpolation
+    fmt.println($"Beräknad hastighet: {current_speed}")
+
+    // 6. Fallible property assignment (kräver try)
+    try car.TopSpeed = current_speed {
+        Err(error) => fmt.println("Kunde inte sätta toppfart!")
+    }
+
+    // 7. Kontrollflöde och loopar (Inga parenteser, exklusiv range)
+    let score := Percent(85)
+    if score in 80..<100 {
+        fmt.println("Mycket väl godkänt!")
+    }
+
+    // Concurrency: Blockbaserad spawn och await
+    let task := spawn {
+        for i in 1..5 {
+            fmt.println($"Arbetar i bakgrunden... {i}")
+        }
+    }
+    
+    defer {
+        fmt.println("Programmet avslutas, städar resurser...")
+    }
+
+    await task
+}

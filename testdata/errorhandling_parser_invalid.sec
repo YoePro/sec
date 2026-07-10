@@ -1,0 +1,35 @@
+module main
+
+type Speed decimal<m/s>
+
+enum IOError {
+    InvalidValue,
+}
+
+fn ReadSpeed() Result[Speed, IOError] {
+    return Ok(Speed(10))
+}
+
+fn MissingArrow() Speed {
+    let speed := try ReadSpeed() {
+        Err(error) Speed(0)
+    }
+
+    return speed
+}
+
+fn BrokenMatch() Speed {
+    let speed := match ReadSpeed() {
+        Ok(value) value
+        Err(error) => Speed(0)
+    }
+
+    return speed
+}
+
+fn MissingClosingBrace() Speed {
+    let speed := try ReadSpeed() {
+        Err(error) => Speed(0)
+
+    return speed
+}

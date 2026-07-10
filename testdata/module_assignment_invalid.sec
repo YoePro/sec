@@ -1,0 +1,5 @@
+module main
+
+let mut speed: int := 10
+
+speed = 20

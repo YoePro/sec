@@ -95,6 +95,12 @@ func (p *Parser) parseExpression(currentPrecedence precedence) ast.Expression {
 	case lexer.MINUS, lexer.NOT:
 		left = p.parsePrefixExpression()
 
+	case lexer.TRY:
+		left = p.parseTryExpression()
+
+	case lexer.MATCH:
+		left = p.parseMatchExpression()
+
 	case lexer.LPAREN:
 		left = p.parseGroupedExpression()
 
@@ -109,6 +115,10 @@ func (p *Parser) parseExpression(currentPrecedence precedence) ast.Expression {
 	}
 
 	for p.peekToken.Type != lexer.EOF && currentPrecedence < p.peekPrecedence() {
+		if p.stopBeforeBrace && p.peekToken.Type == lexer.LBRACE {
+			return left
+		}
+
 		switch p.peekToken.Type {
 		case lexer.LPAREN:
 			p.nextToken()
@@ -145,6 +155,102 @@ func (p *Parser) parseExpression(currentPrecedence precedence) ast.Expression {
 	}
 
 	return left
+}
+
+func (p *Parser) parseMatchExpression() *ast.MatchExpression {
+	expr := &ast.MatchExpression{Token: p.curToken}
+	p.nextToken()
+
+	previousStopBeforeBrace := p.stopBeforeBrace
+	p.stopBeforeBrace = true
+	expr.Subject = p.parseExpression(PREFIX)
+	p.stopBeforeBrace = previousStopBeforeBrace
+	if expr.Subject == nil {
+		return nil
+	}
+
+	if p.peekToken.Type != lexer.LBRACE {
+		p.addError("expected '{' after match expression at %d:%d", p.peekToken.Line, p.peekToken.Column)
+		return nil
+	}
+	p.nextToken()
+
+	expr.Arms = p.parseMatchArmBlock()
+	if expr.Arms == nil {
+		return nil
+	}
+	return expr
+}
+
+func (p *Parser) parseMatchArmBlock() []*ast.MatchArm {
+	arms := []*ast.MatchArm{}
+
+	for {
+		p.nextToken()
+		if p.curToken.Type == lexer.RBRACE {
+			return arms
+		}
+		if p.curToken.Type == lexer.EOF {
+			p.addError("unterminated match block")
+			return nil
+		}
+
+		arm := p.parseMatchArm()
+		if arm == nil {
+			p.skipMatchArm()
+			if p.curToken.Type == lexer.RBRACE {
+				return arms
+			}
+			continue
+		}
+		arms = append(arms, arm)
+	}
+}
+
+func (p *Parser) parseMatchArm() *ast.MatchArm {
+	arm := &ast.MatchArm{Token: p.curToken}
+	pattern := p.parseExpression(LOWEST)
+	if pattern == nil {
+		return nil
+	}
+	arm.Pattern = pattern
+
+	if p.peekToken.Type != lexer.ARROW {
+		p.addError("expected '=>' after match pattern at %d:%d", p.peekToken.Line, p.peekToken.Column)
+		return nil
+	}
+	p.nextToken()
+
+	switch p.peekToken.Type {
+	case lexer.LBRACE:
+		arm.BlockBody = p.parseBlockStatement()
+	case lexer.RETURN:
+		p.nextToken()
+		returnStmt := p.parseReturnStatement()
+		if returnStmt == nil {
+			return nil
+		}
+		arm.ReturnBody = returnStmt.(*ast.ReturnStatement)
+	default:
+		p.nextToken()
+		body := p.parseExpression(LOWEST)
+		if body == nil {
+			return nil
+		}
+		arm.Body = body
+	}
+
+	return arm
+}
+
+func (p *Parser) skipMatchArm() {
+	for p.curToken.Type != lexer.RBRACE && p.curToken.Type != lexer.EOF {
+		if p.peekToken.Type == lexer.RBRACE {
+			p.nextToken()
+			return
+		}
+		p.nextToken()
+	}
 }
 
 func (p *Parser) parseConversionExpression(left ast.Expression) ast.Expression {
@@ -211,6 +317,122 @@ func (p *Parser) parseCallArguments() ([]ast.Expression, bool) {
 			p.addError("expected ',' or ')' after argument at %d:%d", p.peekToken.Line, p.peekToken.Column)
 			return nil, false
 		}
+	}
+}
+
+func (p *Parser) parseTryExpression() ast.Expression {
+	expr := &ast.TryExpression{Token: p.curToken}
+	p.nextToken()
+
+	previousStopBeforeBrace := p.stopBeforeBrace
+	p.stopBeforeBrace = true
+	expr.Expression = p.parseExpression(PREFIX)
+	p.stopBeforeBrace = previousStopBeforeBrace
+	if expr.Expression == nil {
+		return nil
+	}
+
+	if p.peekToken.Type == lexer.LBRACE {
+		p.nextToken()
+		expr.Handlers = p.parseTryHandlerBlock()
+		if expr.Handlers == nil {
+			return nil
+		}
+	}
+	return expr
+}
+
+func (p *Parser) parseTryHandlerBlock() []*ast.TryHandler {
+	handlers := []*ast.TryHandler{}
+
+	for {
+		p.nextToken()
+		if p.curToken.Type == lexer.RBRACE {
+			return handlers
+		}
+		if p.curToken.Type == lexer.EOF {
+			p.addError("unterminated try handler block")
+			return nil
+		}
+
+		handler := p.parseTryHandler()
+		if handler == nil {
+			p.skipTryHandler()
+			if p.curToken.Type == lexer.RBRACE {
+				return handlers
+			}
+			continue
+		}
+		handlers = append(handlers, handler)
+
+		if p.isTryHandlerBlockRecoveryStart(p.peekToken.Type) {
+			p.addError("expected '}' after try handler block before %q at %d:%d", p.peekToken.Lexeme, p.peekToken.Line, p.peekToken.Column)
+			return handlers
+		}
+	}
+}
+
+func (p *Parser) isTryHandlerBlockRecoveryStart(t lexer.TokenType) bool {
+	switch t {
+	case lexer.RETURN,
+		lexer.LET,
+		lexer.IF,
+		lexer.FOR,
+		lexer.MATCH,
+		lexer.TRY:
+		return true
+	default:
+		return false
+	}
+}
+
+func (p *Parser) parseTryHandler() *ast.TryHandler {
+	handler := &ast.TryHandler{Token: p.curToken}
+	pattern := p.parseExpression(LOWEST)
+	if pattern == nil {
+		return nil
+	}
+	handler.Pattern = pattern
+
+	if p.peekToken.Type != lexer.ARROW {
+		p.addError("expected '=>' after try handler pattern at %d:%d", p.peekToken.Line, p.peekToken.Column)
+		return nil
+	}
+	p.nextToken()
+
+	switch p.peekToken.Type {
+	case lexer.LBRACE:
+		handler.BlockBody = p.parseBlockStatement()
+	case lexer.RETURN:
+		p.nextToken()
+		returnStmt := p.parseReturnStatement()
+		if returnStmt == nil {
+			return nil
+		}
+		handler.ReturnBody = returnStmt.(*ast.ReturnStatement)
+	default:
+		p.nextToken()
+		body := p.parseExpression(LOWEST)
+		if body == nil {
+			return nil
+		}
+		handler.Body = body
+	}
+
+	return handler
+}
+
+func (p *Parser) skipTryHandler() {
+	for p.curToken.Type != lexer.RBRACE && p.curToken.Type != lexer.EOF {
+		if p.peekToken.Type == lexer.RBRACE {
+			p.nextToken()
+			return
+		}
+		if p.peekToken.Type == lexer.ARROW {
+			p.nextToken()
+			continue
+		}
+		p.nextToken()
 	}
 }
 

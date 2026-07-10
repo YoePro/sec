@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Types - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+</head>
+<body>
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+        <div class="sidebar-section">This page</div>
+        <a href="#types">Types</a>
+        <a href="#primitive-types">Primitive Types</a>
+        <a href="#semantic-types">Semantic Types</a>
+        <a href="#constrained-types">Constrained Types</a>
+        <a href="#conversion-and-validation">Conversion and Validation</a>
+        <a href="#default-values">Default Values</a>
+        <a href="#units">Units of Measure</a>
+        <a href="#strings">Strings</a>
+        <a href="#absence">Absence</a>
+        <a href="#any">Any</a>
+        <div class="sidebar-section">Pages</div>
+        <a href="index.html">Index</a>
+        <a href="01-introduction.html">Introduction</a>
+        <a href="02-basic-syntax.html">Basic Syntax</a>
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Types</div>
+        <h1 id="types">Types</h1>
+
+        <div class="section" id="primitive-types">
+            <h2>Primitive Types</h2>
+            <p>Sec has a small set of primitive types.</p>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Type</th>
+                            <th>Purpose</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><code>bool</code></td><td>Boolean value, either <code>true</code> or <code>false</code>.</td></tr>
+                        <tr><td><code>byte</code></td><td>Single byte value.</td></tr>
+                        <tr><td><code>char</code></td><td>Character value.</td></tr>
+                        <tr><td><code>rune</code></td><td>Unicode code point.</td></tr>
+                        <tr><td><code>int</code></td><td>Signed integer.</td></tr>
+                        <tr><td><code>uint</code></td><td>Unsigned integer.</td></tr>
+                        <tr><td><code>float</code></td><td>Floating-point number.</td></tr>
+                        <tr><td><code>decimal</code></td><td>Built-in decimal number.</td></tr>
+                        <tr><td><code>string</code></td><td>UTF-8 text.</td></tr>
+                        <tr><td><code>bytes</code></td><td>Byte sequence.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <p>
+                <code>decimal</code> is a built-in type because financial, measurement, and business programs
+                often need decimal behavior that should not be modeled with binary floating-point numbers.
+            </p>
+        </div>
+
+        <div class="section" id="semantic-types">
+            <h2>Semantic Types</h2>
+            <p>
+                A Sec type may describe meaning, not only representation. This is a central part of the language.
+            </p>
+            <pre><code>type CustomerID int
+type ProductID int</code></pre>
+            <p>
+                Even if both types are based on <code>int</code>, they represent different concepts. Code should not
+                accidentally pass a product ID where a customer ID is required.
+            </p>
+            <pre><code>fn LoadCustomer(id: CustomerID) Result[Customer, CustomerError] {
+}</code></pre>
+            <p>
+                This allows the compiler to catch domain mistakes that would otherwise be invisible if everything
+                were represented as plain integers or strings.
+            </p>
+        </div>
+
+        <div class="section" id="constrained-types">
+            <h2>Constrained Types</h2>
+            <p>
+                A type may add constraints to the underlying representation. Constraints describe what values
+                are valid for that type.
+            </p>
+            <pre><code>type Percent int range 0..100
+type Port int range 1..65535</code></pre>
+            <p>Possible built-in contracts include:</p>
+            <ul>
+                <li><code>range</code></li>
+                <li><code>regex</code></li>
+                <li><code>minLength</code></li>
+                <li><code>maxLength</code></li>
+                <li><code>precision</code></li>
+                <li><code>scale</code></li>
+                <li><code>validate { ... }</code></li>
+            </ul>
+            <div class="rule">
+                <strong>Rule:</strong> Compile-time validation is performed whenever the value is known at compile time.
+                Runtime values require explicit validation.
+            </div>
+        </div>
+
+        <div class="section" id="conversion-and-validation">
+            <h2>Conversion and Validation</h2>
+            <p>
+                Creating a constrained value from an unknown runtime value may fail. Such construction is fallible
+                and therefore uses <code>try</code>.
+            </p>
+            <pre><code>value := readNumber()
+percent := try Percent(value)</code></pre>
+            <p>
+                If the compiler can prove that a literal is valid, construction can be accepted at compile time.
+                If the literal is invalid, compilation fails.
+            </p>
+            <pre><code>ok := Percent(90)      // valid
+bad := Percent(150)    // compile-time error</code></pre>
+            <p>
+                Assignment between different semantic types is not automatic, even if the underlying representation
+                is the same.
+            </p>
+            <pre><code>type CustomerID int
+type ProductID int
+
+customer := CustomerID(10)
+product := ProductID(10)
+
+customer = product // type error</code></pre>
+        </div>
+
+        <div class="section" id="default-values">
+            <h2>Default Values</h2>
+            <p>Primitive types have default values.</p>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Type</th>
+                            <th>Default</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><code>int</code></td><td><code>0</code></td></tr>
+                        <tr><td><code>uint</code></td><td><code>0</code></td></tr>
+                        <tr><td><code>float</code></td><td><code>0.0</code></td></tr>
+                        <tr><td><code>decimal</code></td><td><code>0.0</code></td></tr>
+                        <tr><td><code>bool</code></td><td><code>false</code></td></tr>
+                        <tr><td><code>string</code></td><td><code>""</code></td></tr>
+                        <tr><td><code>bytes</code></td><td>empty byte sequence</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <p>
+                A constrained type has a default value only if the underlying default value satisfies the constraint.
+            </p>
+            <pre><code>type Percent int range 0..100
+// Percent can default to 0.
+
+type Port int range 1..65535
+// Port cannot default to 0, because 0 is invalid.</code></pre>
+        </div>
+
+        <div class="section" id="units">
+            <h2>Units of Measure</h2>
+            <p>
+                Units are written with angle brackets. The <code>&lt;&gt;</code> syntax is reserved for units of measure.
+            </p>
+            <pre><code>type Meter decimal&lt;m&gt;
+type Speed decimal&lt;m/s&gt;
+type SEK decimal&lt;SEK&gt;</code></pre>
+            <p>
+                Values with incompatible units cannot be mixed by accident.
+            </p>
+            <pre><code>type Money decimal&lt;SEK&gt;
+type Speed decimal&lt;m/s&gt;
+
+let mut amount: Money = 5.90
+let mut speed: Speed = 50
+
+amount += speed // unit error</code></pre>
+            <p>
+                Units are part of the type. They are not comments and not runtime metadata only. The compiler uses
+                them to reject invalid operations.
+            </p>
+        </div>
+
+        <div class="section" id="strings">
+            <h2>Strings</h2>
+            <p>
+                Sec strings are UTF-8 text. Binary data should use <code>bytes</code>, not <code>string</code>.
+            </p>
+            <pre><code>name := "Anna"
+message := $"Hello {name}"</code></pre>
+            <p>
+                String interpolation uses the <code>$"..."</code> form. Expressions inside braces are evaluated and
+                inserted into the resulting string.
+            </p>
+        </div>
+
+        <div class="section" id="absence">
+            <h2>Absence</h2>
+            <p>
+                Sec does not introduce <code>nil</code>. Absence is represented with <code>Option[T]</code>.
+            </p>
+            <pre><code>type Option[T] union {
+    Some(T)
+    None
+}</code></pre>
+            <p>
+                JSON <code>null</code> and SQL <code>NULL</code> map to <code>None</code> when the target field is optional.
+            </p>
+            <pre><code>type CustomerRow struct {
+    Name: Option[string],
+    Port: Option[Port],
+}</code></pre>
+            <div class="rule">
+                <strong>Rule:</strong> <code>T</code> always contains a valid value. <code>Option[T]</code> contains either
+                <code>Some(T)</code> or <code>None</code>.
+            </div>
+        </div>
+
+        <div class="section" id="any">
+            <h2>Any</h2>
+            <p>
+                Sec does not have a separate primitive <code>any</code> type. If a truly unknown runtime value is needed,
+                it can be represented by a top-level empty interface.
+            </p>
+            <pre><code>type Any interface {}</code></pre>
+            <p>The preferred order is:</p>
+            <ol>
+                <li>Use generic type parameters for compile-time type variation.</li>
+                <li>Use interfaces for behavior contracts.</li>
+                <li>Use <code>Any</code> only for truly unknown runtime values.</li>
+            </ol>
+        </div>
+
+        <div class="next-links">
+            <a href="02-basic-syntax.html">Previous: Basic Syntax</a>
+            <span></span>
+        </div>
+    </main>
+</div>
+</body>
+</html>

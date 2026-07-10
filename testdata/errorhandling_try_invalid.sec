@@ -1,0 +1,52 @@
+module main
+
+type Speed decimal<m/s>
+type Money decimal<SEK>
+
+enum IOError {
+    InvalidValue,
+}
+
+enum ParseError {
+    InvalidNumber,
+}
+
+fn ReadSpeed() Result[Speed, IOError] {
+    return Ok(Speed(10))
+}
+
+fn ParseSpeed() Result[Speed, ParseError] {
+    return Err(ParseError.InvalidNumber)
+}
+
+fn InvalidTryValue() Speed {
+    let speed := try Speed(10)
+    return speed
+}
+
+fn CannotPropagate() Speed {
+    return try ReadSpeed()
+}
+
+fn WrongErrorPropagation() Result[Speed, IOError] {
+    let speed := try ParseSpeed()
+    return Ok(speed)
+}
+
+fn WrongFallbackType() Speed {
+    let speed := try ReadSpeed() {
+        Err(error) => Money(0)
+    }
+
+    return speed
+}
+
+fn MissingHandlerValue() Speed {
+    let speed := try ReadSpeed() {
+        Err(error) => {
+            let ignored := error
+        }
+    }
+
+    return speed
+}

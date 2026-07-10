@@ -9,6 +9,7 @@ type Meter decimal<m>
 type Second decimal<s>
 type Speed decimal<m/s>
 
+
 type IOError =
     FileNotFound
     AccessDenied
@@ -19,19 +20,20 @@ type Vehicle struct {
     _speed: Speed,
 }
 
-property TopSpeed Speed {
-    get {
-        return _speed
-    }
-    
-    try set value {
-        if value < 0.0 {
-            return Err(IOError.InvalidValue)
+impl Vehicle {
+    property TopSpeed Speed {
+        get {
+            return _speed
         }
-        _speed = value
+        
+        try set value {
+            if value < 0.0 {
+                return Err(IOError.InvalidValue)
+            }
+            _speed = value
+        }
     }
 }
-
 
 // 3. Funktioner med enheter, mönstermatchning och flera returvärden
 fn calculate_speed(dist: Meter, time: Second) Result[Speed, IOError] {

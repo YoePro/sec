@@ -1,0 +1,648 @@
+Error handling: Result, Ok, Err, try and match
+=================================================
+
+Purpose
+=======
+
+Sec uses explicit, typed error handling.
+
+The core model consists of:
+
+    Result[ValueType, ErrorType]
+    Ok(value)
+    Err(error)
+    try expression
+    try assignment { ... }
+    match expression { ... }
+
+Goals:
+
+- errors are explicit in function signatures,
+- error propagation is visible,
+- handled errors are type-checked,
+- no hidden exceptions are introduced,
+- `match` remains the general pattern-matching construct,
+- `try` provides concise Result unwrapping and error handling.
+
+
+Result
+======
+
+`Result` is a normal generic type with exactly two type arguments:
+
+    Result[ValueType, ErrorType]
+
+Rules:
+
+- `Result` must have exactly two type arguments.
+- Both type arguments must resolve to valid types.
+- The first type argument is the success type.
+- The second type argument is the error type.
+- A value of `Result[T, E]` is either `Ok(T)` or `Err(E)`.
+
+Invalid:
+
+    Result[int]
+    Result[int, IOError, string]
+
+Expected errors:
+
+    Result requires exactly 2 type arguments, got 1
+    Result requires exactly 2 type arguments, got 3
+
+
+Ok and Err
+==========
+
+`Ok` and `Err` are language-level constructs.
+
+Examples:
+
+    return Ok(speed)
+    return Err(IOError.InvalidValue)
+
+AST:
+
+    OkExpression
+        Token
+        Value Expression
+
+    ErrExpression
+        Token
+        Value Expression
+
+Rules:
+
+- `Ok` must contain exactly one expression.
+- `Err` must contain exactly one expression.
+- In a function returning `Result[T, E]`:
+  - `Ok(expr)` requires `expr` assignable to `T`.
+  - `Err(expr)` requires `expr` assignable to `E`.
+- A plain value may not be returned from a Result-returning function.
+
+
+Simple try propagation
+======================
+
+Syntax:
+
+    try expression
+
+Example:
+
+    fn UseSpeed() Result[Speed, IOError] {
+        let speed := try ReadSpeed()
+        return Ok(speed)
+    }
+
+AST:
+
+    TryExpression
+        Token
+        Expression
+        Handlers []TryHandler
+
+Rules:
+
+- the expression must have type `Result[T, E]`,
+- the resulting expression type is `T`,
+- the error type `E` is propagated from the current function,
+- the enclosing function must return `Result[U, E]`,
+- the success type of the enclosing Result does not need to equal `T`,
+- the propagated error type must match exactly,
+- implicit conversion between different error types is not allowed.
+
+Invalid propagation:
+
+    fn ParseSpeed() Result[Speed, ParseError] {
+        return Err(ParseError.InvalidNumber)
+    }
+
+    fn UseSpeed() Result[Speed, IOError] {
+        let speed := try ParseSpeed()
+        return Ok(speed)
+    }
+
+Expected:
+
+    cannot propagate ParseError from function returning Result[Speed, IOError]
+
+Invalid non-Result context:
+
+    fn UseSpeed() Speed {
+        return try ReadSpeed()
+    }
+
+Expected:
+
+    cannot use try in function returning Speed
+
+Invalid operand:
+
+    let value := try 123
+
+Expected:
+
+    try requires Result expression
+
+
+Try with local handlers
+=======================
+
+A `try` expression may provide a local error-handler block.
+
+Syntax:
+
+    let value := try operation() {
+        Err(pattern) => handler
+    }
+
+Example:
+
+    let current_speed := try calculate_speed(distance, time) {
+        Err(IOError.InvalidValue) => {
+            fmt.println("Invalid time.")
+            return
+        }
+
+        Err(error) => return Err(error)
+    }
+
+The `match` keyword is not required inside a try handler block.
+
+Reason:
+
+- the try block is already a specialized error-matching context,
+- every handler matches the error branch,
+- an additional `match` keyword would add syntax without meaning.
+
+
+Try handler semantics
+=====================
+
+For an operation of type `Result[T, E]`:
+
+- `Ok(value)` makes the try expression evaluate to `value` of type `T`.
+- `Err(error)` selects the first matching handler.
+- handlers are checked from top to bottom.
+- a named binding such as `Err(error)` binds the complete error value.
+- a qualified enum variant such as `Err(IOError.InvalidValue)` matches one specific value.
+
+A handler body may be:
+
+1. A block:
+
+    Err(IOError.InvalidValue) => {
+        fmt.println("Invalid value.")
+        return
+    }
+
+2. A return statement:
+
+    Err(error) => return Err(error)
+
+3. An expression producing a fallback value:
+
+    Err(error) => Speed(0)
+
+
+Value-context requirements
+==========================
+
+When `try` appears in value context, every handler path must:
+
+- return from the enclosing function,
+- propagate or return an `Err(...)`,
+- terminate control flow,
+- or produce a fallback value assignable to the success type `T`.
+
+Invalid:
+
+    let speed := try calculate_speed() {
+        Err(error) => fmt.println("failed")
+    }
+
+Expected:
+
+    try handler must return, propagate, terminate or produce Speed
+
+Valid fallback:
+
+    let speed := try calculate_speed() {
+        Err(error) => Speed(0)
+    }
+
+Valid early return:
+
+    let speed := try calculate_speed() {
+        Err(error) => return Speed(0)
+    }
+
+Valid propagation:
+
+    let speed := try calculate_speed() {
+        Err(error) => return Err(error)
+    }
+
+
+Try assignment
+==============
+
+Fallible property assignment uses `try` with assignment syntax.
+
+Example:
+
+    try car.TopSpeed = current_speed {
+        Err(error) => fmt.println("Could not set top speed.")
+    }
+
+Grammar:
+
+    TryAssignment
+        := "try" Assignment TryHandlerBlock
+
+Rules:
+
+- the assignment target must have a fallible setter,
+- the setter error type becomes the handler error type,
+- assignment success produces no value,
+- handlers do not need to produce a fallback value,
+- a fallible setter assignment without `try` is invalid.
+
+Invalid:
+
+    car.TopSpeed = current_speed
+
+Expected:
+
+    assigning fallible property TopSpeed requires try
+
+
+Try grammar
+===========
+
+    TryExpression
+        := "try" Expression [TryHandlerBlock]
+
+    TryAssignment
+        := "try" Assignment TryHandlerBlock
+
+    TryHandlerBlock
+        := "{" TryHandler { TryHandler } "}"
+
+    TryHandler
+        := ErrPattern "=>" HandlerBody
+
+    ErrPattern
+        := "Err" "(" ErrorPattern ")"
+
+    ErrorPattern
+        := QualifiedName
+         | Identifier
+
+    HandlerBody
+        := Expression
+         | ReturnStatement
+         | BlockStatement
+
+Initial supported patterns:
+
+    Err(IOError.InvalidValue)
+    Err(error)
+
+
+Handler ordering and coverage
+=============================
+
+Handlers are checked from top to bottom.
+
+Specific patterns should appear before catch-all bindings.
+
+Invalid or unreachable:
+
+    Err(error) => return Err(error)
+    Err(IOError.InvalidValue) => Speed(0)
+
+Expected warning or error:
+
+    unreachable try handler for IOError.InvalidValue
+
+Recommended rule:
+
+- `try expression` without a handler block propagates automatically.
+- `try expression` with a handler block handles locally.
+- unmatched errors in a handler block are not automatically propagated.
+- a handler block must therefore be exhaustive.
+
+For enum error types, exhaustiveness can be checked statically.
+
+Catch-all:
+
+    Err(error) => ...
+
+Non-exhaustive:
+
+    Err(IOError.InvalidValue) => ...
+
+Expected:
+
+    non-exhaustive try handlers for IOError
+
+
+General match
+=============
+
+`match` is the general pattern-matching construct.
+
+It is not limited to Result or errors.
+
+Syntax:
+
+    match expression {
+        pattern => handler
+        pattern => handler
+    }
+
+Examples:
+
+    match result {
+        Ok(value) => value
+        Err(error) => return Err(error)
+    }
+
+    match fuel_type {
+        Vehicle.FuelTypes.Petrol => ...
+        Vehicle.FuelTypes.Diesel => ...
+        Vehicle.FuelTypes.Gas => ...
+        Vehicle.FuelTypes.Electric => ...
+    }
+
+
+Match AST
+=========
+
+    MatchExpression
+        Token
+        Subject Expression
+        Arms []MatchArm
+
+    MatchArm
+        Pattern Pattern
+        Body HandlerBody
+
+Rules:
+
+- the subject expression is evaluated once,
+- arms are checked from top to bottom,
+- the first matching arm is selected,
+- patterns must be compatible with the subject type,
+- duplicate or unreachable arms are rejected,
+- match arms must be exhaustive when used as an expression,
+- all value-producing arms must produce compatible types.
+
+
+Match as expression
+===================
+
+Example:
+
+    let text := match status {
+        Status.Active => "active"
+        Status.Disabled => "disabled"
+    }
+
+All arms must produce assignable values of one common type.
+
+Invalid:
+
+    let value := match status {
+        Status.Active => 1
+        Status.Disabled => "disabled"
+    }
+
+Expected:
+
+    match arms must produce compatible types, got int and string
+
+
+Match as control flow
+=====================
+
+A match may be used only for control flow:
+
+    match result {
+        Ok(value) => {
+            fmt.println(value)
+        }
+
+        Err(error) => {
+            fmt.println(error)
+        }
+    }
+
+In statement context, arms do not need to produce a common value.
+Coverage rules still apply unless a catch-all pattern is present.
+
+
+Initial match patterns
+======================
+
+The first implementation should support:
+
+1. Enum variants:
+
+    Status.Active
+    Vehicle.FuelTypes.Petrol
+
+2. Result patterns:
+
+    Ok(value)
+    Err(error)
+
+3. Literal patterns:
+
+    0
+    1
+    true
+    false
+    "text"
+
+4. Identifier binding / catch-all:
+
+    other
+    error
+    value
+
+5. Optional wildcard later:
+
+    _
+
+Recommended:
+Support identifier binding first. Add `_` when discard semantics are finalized.
+
+
+Result matching
+===============
+
+General Result handling uses `match`:
+
+    match ReadSpeed() {
+        Ok(speed) => fmt.println(speed)
+        Err(error) => fmt.println(error)
+    }
+
+Unlike `try`, a general Result match must mention both `Ok` and `Err` when exhaustive.
+
+Non-exhaustive:
+
+    match ReadSpeed() {
+        Ok(speed) => fmt.println(speed)
+    }
+
+Expected:
+
+    non-exhaustive match for Result[Speed, IOError]: missing Err
+
+
+Difference between try and match
+================================
+
+Use `try` when the success value should continue through normal execution and only errors need special handling.
+
+    let speed := try calculate_speed() {
+        Err(error) => return Err(error)
+    }
+
+Use `match` when both success and error branches are explicit control flow.
+
+    match calculate_speed() {
+        Ok(speed) => fmt.println(speed)
+        Err(error) => fmt.println(error)
+    }
+
+Summary:
+
+    try:
+        unwraps Ok automatically,
+        handlers only describe Err branches.
+
+    match:
+        handles all branches explicitly,
+        works with Result, enums and other matchable values.
+
+
+Type compatibility
+==================
+
+Named types remain distinct in try and match handlers.
+
+Example:
+
+    type Speed decimal<m/s>
+    type Money decimal<SEK>
+
+    let speed := try operation() {
+        Err(error) => Money(0)
+    }
+
+If the Result success type is Speed, this is invalid.
+
+Expected:
+
+    try handler must produce Speed, got Money
+
+Error types are also exact named types.
+`ParseError` is not assignable to `IOError` merely because both are enums.
+
+
+Control-flow analysis
+=====================
+
+Sema must track whether handler bodies:
+
+- complete normally,
+- return from the enclosing function,
+- produce a value,
+- propagate an error,
+- terminate execution.
+
+This is required for:
+
+- value-producing try expressions,
+- non-void functions,
+- match expressions,
+- exhaustive return checking.
+
+An initial control-flow result may use:
+
+    FlowContinues
+    FlowReturns
+    FlowTerminates
+    FlowProducesValue
+
+
+Parser recovery
+===============
+
+Malformed try and match constructs should produce one primary error and recover at the next:
+
+- handler arrow `=>`,
+- closing `}`,
+- next statement boundary.
+
+Examples:
+
+    Err(error) {
+        ...
+    }
+
+Expected:
+
+    expected '=>' after try handler pattern
+
+    match value {
+        Status.Active => 1
+        Status.Disabled 2
+    }
+
+Expected:
+
+    expected '=>' after match pattern
+
+Avoid cascading errors from tokens inside a malformed handler.
+
+
+Implementation phases
+=====================
+
+Phase 1:
+- simple `try expression`,
+- Result type validation,
+- propagation error-type checking,
+- Ok/Err return checking.
+
+Phase 2:
+- try handler blocks,
+- `Err(enumVariant)`,
+- `Err(identifier)`,
+- exhaustive handler checking,
+- fallback expressions,
+- return/propagation handlers.
+
+Phase 3:
+- try assignment for fallible properties,
+- local handler validation,
+- setter error-type checking.
+
+Phase 4:
+- general match expressions,
+- enum patterns,
+- Ok/Err patterns,
+- literal patterns,
+- identifier bindings,
+- exhaustiveness.
+
+Phase 5:
+- unreachable-arm detection,
+- richer patterns,
+- optimizer/lowering support.

@@ -1,6 +1,8 @@
 package sema
 
 import (
+	"os"
+	"strings"
 	"testing"
 
 	"sec/internal/ast"
@@ -25,6 +27,37 @@ let e: uuid := 1
 		"value -5 overflows uint at 6:16",
 		"cannot initialize bool with string at 7:16",
 		"unknown type uuid at 8:8",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestModuleDeclarationIsRequired(t *testing.T) {
+	errors := analyzeSourceRaw(t, `
+let a := 1
+`)
+
+	expected := []string{
+		"missing module declaration",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestExecutableCodeIsNotAllowedAtModuleScope(t *testing.T) {
+	input := `
+module main
+
+let mut i := 0
+i += 1
+return i
+`
+
+	errors := analyzeSource(t, input)
+
+	expected := []string{
+		"assignment is not allowed at module scope at 5:1",
+		"return is not allowed at module scope at 6:1",
 	}
 
 	assertSemaErrors(t, errors, expected)
@@ -81,8 +114,10 @@ func TestDecimalInitializersAndAssignments(t *testing.T) {
 let pi: decimal := 3.141592
 let neg: decimal := -0.5
 let mut p: decimal := 1
-p += .1
-p += 0.1
+fn Test() void {
+	p += .1
+	p += 0.1
+}
 `
 
 	errors := analyzeSource(t, input)
@@ -94,14 +129,16 @@ func TestDecimalDoesNotImplicitlyAcceptFloatVariables(t *testing.T) {
 let f: float64 := 3.14
 let d: decimal := f
 let mut p: decimal := 1
-p += f
+fn Test() void {
+	p += f
+}
 `
 
 	errors := analyzeSource(t, input)
 
 	expected := []string{
 		"cannot initialize decimal with float64 at 3:19",
-		"cannot add float64 to decimal at 5:6",
+		"cannot add float64 to decimal at 6:7",
 	}
 
 	assertSemaErrors(t, errors, expected)
@@ -158,18 +195,20 @@ module main
 
 let mut a: uint := 5
 let u: uint := 6
-a = u - 6
-let u: uint := 7
-u = 1
-missing = 1
+fn Test() void {
+	a = u - 6
+	let u: uint := 7
+	u = 1
+	missing = 1
+}
 `
 
 	errors := analyzeSource(t, input)
 
 	expected := []string{
-		"variable \"u\" already declared at 7:5, previous declaration at 5:5",
-		"cannot assign to immutable variable u at 8:1",
-		"undefined variable missing at 9:1",
+		"variable \"u\" already declared at 8:6, previous declaration at 5:5",
+		"cannot assign to immutable variable u at 9:2",
+		"undefined variable missing at 10:2",
 	}
 
 	assertSemaErrors(t, errors, expected)
@@ -181,8 +220,10 @@ int mut: a, b, c
 float: f := 5.4, pi := 3.14
 let x := 9, s := "hello", ok := true
 let mut ma := 9, ms := "hello", mok := false
-a = x
-ma = 10
+fn Test() void {
+	a = x
+	ma = 10
+}
 `
 
 	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
@@ -213,21 +254,23 @@ func TestNamedIntegerRangeChecksConstantExpressions(t *testing.T) {
 type Percent int range 0..100
 
 let mut p: Percent := 50
-p = 100
-p = 101
-p = 10 * 10
-p = 50 + 51
-p = 50
-p += 20
-p += 60
+fn Test() void {
+	p = 100
+	p = 101
+	p = 10 * 10
+	p = 50 + 51
+	p = 50
+	p += 20
+	p += 60
+}
 `
 
 	errors := analyzeSource(t, input)
 
 	expected := []string{
-		"value 101 violates range contract Percent 0..100 at 6:5",
-		"value 101 violates range contract Percent 0..100 at 8:8",
-		"value 130 violates range contract Percent 0..100 at 11:6",
+		"value 101 violates range contract Percent 0..100 at 7:6",
+		"value 101 violates range contract Percent 0..100 at 9:9",
+		"value 130 violates range contract Percent 0..100 at 12:7",
 	}
 
 	assertSemaErrors(t, errors, expected)
@@ -268,17 +311,19 @@ type Percent int range 0..100
 let _a: int := 90
 let _tooMuch: int := 101
 let mut precent: Percent := 0
-precent += 50
-precent += _a
-precent = Percent(_a)
-precent = Percent(_tooMuch)
+fn Test() void {
+	precent += 50
+	precent += _a
+	precent = Percent(_a)
+	precent = Percent(_tooMuch)
+}
 `
 
 	errors := analyzeSource(t, input)
 
 	expected := []string{
-		"cannot add int to Percent at 8:12",
-		"value 101 violates range contract Percent 0..100 at 10:11",
+		"cannot add int to Percent at 9:13",
+		"value 101 violates range contract Percent 0..100 at 11:12",
 	}
 
 	assertSemaErrors(t, errors, expected)
@@ -286,6 +331,8 @@ precent = Percent(_tooMuch)
 
 func TestNamedRangeTypeStoresContract(t *testing.T) {
 	input := `
+module main
+
 type Percent int range 0..100
 `
 
@@ -354,13 +401,15 @@ type Speed decimal<m/s>
 
 let mut mo: Money := 5.90
 let mut sp: Speed := 50
-mo += sp
+fn Test() void {
+	mo += sp
+}
 `
 
 	errors := analyzeSource(t, input)
 
 	expected := []string{
-		"cannot add Speed to Money at 7:7",
+		"cannot add Speed to Money at 8:8",
 	}
 
 	assertSemaErrors(t, errors, expected)
@@ -463,13 +512,15 @@ func TestImplicitLetDefinesImmutableSymbol(t *testing.T) {
 	input := `
 let mut a := 10
 let b := 9
-b = a
+fn Test() void {
+	b = a
+}
 `
 
 	errors := analyzeSource(t, input)
 
 	expected := []string{
-		"cannot assign to immutable variable b at 4:1",
+		"cannot assign to immutable variable b at 5:2",
 	}
 
 	assertSemaErrors(t, errors, expected)
@@ -493,14 +544,16 @@ func TestRedeclarationDoesNotReplaceExistingSymbol(t *testing.T) {
 	input := `
 let mut a: uint := 5
 let a: int := 1
-a = -1
+fn Test() void {
+	a = -1
+}
 `
 
 	errors := analyzeSource(t, input)
 
 	expected := []string{
 		"variable \"a\" already declared at 3:5, previous declaration at 2:9",
-		"value -1 overflows uint at 4:5",
+		"value -1 overflows uint at 5:6",
 	}
 
 	assertSemaErrors(t, errors, expected)
@@ -988,13 +1041,15 @@ impl Vehicle {
 let speed: Speed := 10
 let mut vehicle := Vehicle{ _speed: speed }
 let current := vehicle.TopSpeed
-vehicle.TopSpeed = speed
+fn Test() void {
+	vehicle.TopSpeed = speed
+}
 `
 
 	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
 
 	expected := []string{
-		"assigning fallible property TopSpeed requires try at 22:9",
+		"assigning fallible property TopSpeed requires try at 23:10",
 	}
 
 	assertSemaErrors(t, errors, expected)
@@ -1135,14 +1190,156 @@ fn noop() void {
 	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
 	assertSemaErrors(t, errors, nil)
 
-	add := analyzer.functions["add"]
+	add := analyzer.functions["add"][0]
 	if add.ReturnType.Name != "int" || len(add.Parameters) != 2 {
 		t.Fatalf("wrong add function: %+v", add)
 	}
 
-	noop := analyzer.functions["noop"]
+	noop := analyzer.functions["noop"][0]
 	if noop.ReturnType.Name != "void" || len(noop.Parameters) != 0 {
 		t.Fatalf("wrong noop function: %+v", noop)
+	}
+}
+
+func TestFunctionOverloads(t *testing.T) {
+	input := `
+fn Pick(a: int) int {
+	return a
+}
+
+fn Pick(a: string) string {
+	return a
+}
+
+let i := Pick(1)
+let s := Pick("hello")
+`
+
+	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
+	assertSemaErrors(t, errors, nil)
+
+	if len(analyzer.functions["Pick"]) != 2 {
+		t.Fatalf("wrong overload count. got=%d want=2", len(analyzer.functions["Pick"]))
+	}
+	if analyzer.symbols["i"].Type.Name != "int" {
+		t.Fatalf("wrong i type: %+v", analyzer.symbols["i"])
+	}
+	if analyzer.symbols["s"].Type.Name != "string" {
+		t.Fatalf("wrong s type: %+v", analyzer.symbols["s"])
+	}
+}
+
+func TestDuplicateFunctionSignature(t *testing.T) {
+	input := `
+fn Pick(a: int) int {
+	return a
+}
+
+fn Pick(value: int) int {
+	return value
+}
+`
+
+	errors := analyzeSource(t, input)
+
+	expected := []string{
+		`duplicate function "Pick" with same signature at 6:4`,
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestReturnTypeCannotDistinguishOverload(t *testing.T) {
+	input := `
+fn Pick(a: int) int {
+	return a
+}
+
+fn Pick(value: int) string {
+	return "value"
+}
+`
+
+	errors := analyzeSource(t, input)
+
+	expected := []string{
+		`duplicate function "Pick" with same signature at 6:4`,
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestAmbiguousFunctionOverload(t *testing.T) {
+	input := `
+type Percent int range 0..100
+type Score int range 0..100
+
+fn Pick(a: Percent) Percent {
+	return a
+}
+
+fn Pick(a: Score) Score {
+	return a
+}
+
+let p := Pick(10)
+`
+
+	errors := analyzeSource(t, input)
+
+	expected := []string{
+		"ambiguous call to Pick at 13:10",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestOverloadExactMatchPreferredOverConversion(t *testing.T) {
+	input := `
+fn Print(value: int) int {
+	return value
+}
+
+fn Print(value: int64) int64 {
+	return value
+}
+
+let x := Print(10)
+`
+
+	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
+	assertSemaErrors(t, errors, nil)
+
+	if analyzer.symbols["x"].Type.Name != "int" {
+		t.Fatalf("wrong x type. got=%q want=int", analyzer.symbols["x"].Type.Name)
+	}
+}
+
+func TestOverloadNamedTypesRemainDistinct(t *testing.T) {
+	input := `
+type Percent int range 0..100
+
+fn Set(value: int) int {
+	return value
+}
+
+fn Set(value: Percent) Percent {
+	return value
+}
+
+let p: Percent := 50
+let selectedNamed := Set(p)
+let selectedInt := Set(50)
+`
+
+	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
+	assertSemaErrors(t, errors, nil)
+
+	if analyzer.symbols["selectedNamed"].Type.Name != "Percent" {
+		t.Fatalf("wrong selectedNamed type. got=%q want=Percent", analyzer.symbols["selectedNamed"].Type.Name)
+	}
+	if analyzer.symbols["selectedInt"].Type.Name != "int" {
+		t.Fatalf("wrong selectedInt type. got=%q want=int", analyzer.symbols["selectedInt"].Type.Name)
 	}
 }
 
@@ -1369,6 +1566,257 @@ fn Plain() Result[int, IOError] {
 	assertSemaErrors(t, errors, expected)
 }
 
+func TestTryResultExpression(t *testing.T) {
+	input := `
+module main
+
+type Speed decimal<m/s>
+
+enum IOError {
+	FileNotFound,
+	AccessDenied,
+	InvalidValue,
+}
+
+fn CalculateSpeed() Result[Speed, IOError] {
+	return Ok(Speed(42.5))
+}
+
+fn FailCalculation() Result[Speed, IOError] {
+	return Err(IOError.InvalidValue)
+}
+
+fn UseResult() Result[Speed, IOError] {
+	let speed := try CalculateSpeed()
+
+	return Ok(speed)
+}
+`
+
+	errors := analyzeSource(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestResultAndTryErrors(t *testing.T) {
+	input := `
+module main
+
+type Speed decimal<m/s>
+
+enum IOError {
+	FileNotFound,
+	AccessDenied,
+	InvalidValue,
+}
+
+fn WrongOkType() Result[Speed, IOError] {
+	return Ok(IOError.InvalidValue)
+}
+
+fn WrongErrType() Result[Speed, IOError] {
+	return Err(Speed(10))
+}
+
+fn PlainReturn() Result[Speed, IOError] {
+	return Speed(10)
+}
+
+fn InvalidTry() Speed {
+	let speed := try Speed(10)
+
+	return speed
+}
+`
+
+	errors := analyzeSource(t, input)
+
+	expected := []string{
+		"function WrongOkType must return Ok(Speed), got Ok(IOError) at 13:19",
+		"function WrongErrType must return Err(IOError), got Err(Speed) at 17:13",
+		"function PlainReturn returning Result[Speed, IOError] must return Ok(...) or Err(...) at 21:9",
+		"try requires Result expression at 25:15",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestTryRequiresCompatibleFunctionResultContext(t *testing.T) {
+	input := `
+module main
+
+type Speed decimal<m/s>
+
+enum IOError {
+	InvalidValue,
+}
+
+enum ParseError {
+	InvalidNumber,
+}
+
+fn ReadSpeed() Result[Speed, IOError] {
+	return Ok(Speed(10))
+}
+
+fn ParseSpeed() Result[Speed, ParseError] {
+	return Err(ParseError.InvalidNumber)
+}
+
+fn WrongPropagation() Result[Speed, IOError] {
+	let speed := try ParseSpeed()
+	return Ok(speed)
+}
+
+fn CannotPropagate() Speed {
+	return try ReadSpeed()
+}
+`
+
+	errors := analyzeSource(t, input)
+
+	expected := []string{
+		"cannot propagate ParseError from function returning Result[Speed, IOError] at 23:15",
+		"cannot use try in function returning Speed at 28:9",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestTryHandlersCanHandleLocally(t *testing.T) {
+	input := `
+module main
+
+type Speed decimal<m/s>
+
+enum IOError {
+	InvalidValue,
+}
+
+enum ParseError {
+	InvalidNumber,
+}
+
+fn ParseSpeed() Result[Speed, ParseError] {
+	return Err(ParseError.InvalidNumber)
+}
+
+fn UseFallback() Speed {
+	let speed := try ParseSpeed() {
+		Err(error) => Speed(0)
+	}
+	return speed
+}
+
+fn ConvertError() Result[Speed, IOError] {
+	let speed := try ParseSpeed() {
+		Err(error) => return Err(IOError.InvalidValue)
+	}
+	return Ok(speed)
+}
+`
+
+	errors := analyzeSource(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestTryHandlerErrors(t *testing.T) {
+	input := `
+module main
+
+type Speed decimal<m/s>
+type Money decimal<SEK>
+
+enum IOError {
+	InvalidValue,
+	AccessDenied,
+}
+
+fn ReadSpeed() Result[Speed, IOError] {
+	return Err(IOError.InvalidValue)
+}
+
+fn WrongFallback() Speed {
+	let speed := try ReadSpeed() {
+		Err(error) => Money(0)
+	}
+	return speed
+}
+
+fn MissingHandler() Speed {
+	let speed := try ReadSpeed() {
+		Err(IOError.InvalidValue) => Speed(0)
+	}
+	return speed
+}
+`
+
+	errors := analyzeSource(t, input)
+
+	expected := []string{
+		"try handler must produce Speed, got Money at 18:17",
+		"non-exhaustive try handlers for IOError at 24:15",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestErrorHandlingValidFixture(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/errorhandling_valid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	errors := analyzeSourceRaw(t, string(input))
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestErrorHandlingMatchInvalidFixture(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/errorhandling_match_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	errors := analyzeSourceRaw(t, string(input))
+
+	expected := []string{
+		"non-exhaustive match for Result[Speed, IOError]: missing Err at 17:18",
+		"non-exhaustive match for IOError at 25:17",
+		"match arms must produce compatible types, got int and string at 36:29",
+		"match pattern must match Result[Speed, IOError], got IOError at 45:16",
+		"duplicate match arm for IOError.InvalidValue at 55:9",
+		"unreachable match arm at 65:9",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestResultTypeArgumentCountErrors(t *testing.T) {
+	input := `
+module main
+
+enum IOError {
+	InvalidValue,
+}
+
+fn MissingResultArgument() Result[int] {
+	return Ok(1)
+}
+
+fn TooManyResultArguments() Result[int, IOError, string] {
+	return Ok(1)
+}
+`
+
+	errors := analyzeSource(t, input)
+
+	expected := []string{
+		"Result requires exactly 2 type arguments, got 1 at 8:28",
+		"Result requires exactly 2 type arguments, got 3 at 12:29",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
 func analyzeSource(t *testing.T, input string) []Error {
 	t.Helper()
 
@@ -1377,6 +1825,18 @@ func analyzeSource(t *testing.T, input string) []Error {
 }
 
 func analyzeSourceWithAnalyzer(t *testing.T, input string) (*Analyzer, []Error) {
+	t.Helper()
+	return analyzeSourceWithAnalyzerRaw(t, ensureModuleForTest(input))
+}
+
+func analyzeSourceRaw(t *testing.T, input string) []Error {
+	t.Helper()
+
+	_, errors := analyzeSourceWithAnalyzerRaw(t, input)
+	return errors
+}
+
+func analyzeSourceWithAnalyzerRaw(t *testing.T, input string) (*Analyzer, []Error) {
 	t.Helper()
 
 	l := lexer.New(input)
@@ -1389,6 +1849,13 @@ func analyzeSourceWithAnalyzer(t *testing.T, input string) (*Analyzer, []Error) 
 
 	analyzer := NewAnalyzer()
 	return analyzer, analyzer.Analyze(program)
+}
+
+func ensureModuleForTest(input string) string {
+	if strings.Contains(input, "module ") {
+		return input
+	}
+	return input + "\nmodule test\n"
 }
 
 func parseExpressionSource(t *testing.T, input string) ast.Expression {

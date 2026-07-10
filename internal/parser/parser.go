@@ -16,6 +16,8 @@ type Parser struct {
 
 	curToken  lexer.Token
 	peekToken lexer.Token
+
+	stopBeforeBrace bool
 }
 
 func New(l *lexer.Lexer) *Parser {
@@ -85,6 +87,9 @@ func (p *Parser) parseStatement() ast.Statement {
 	case lexer.RETURN:
 		return p.parseReturnStatement()
 
+	case lexer.MATCH:
+		return p.parseMatchStatement()
+
 	case lexer.IDENT:
 		if p.peekToken.Type == lexer.MUT || p.peekToken.Type == lexer.COLON || p.peekToken.Type == lexer.LT || p.peekToken.Type == lexer.LBRACKET {
 			errorsBefore := len(p.errors)
@@ -106,14 +111,24 @@ func (p *Parser) parseStatement() ast.Statement {
 	}
 }
 
+func (p *Parser) parseMatchStatement() ast.Statement {
+	expr := p.parseMatchExpression()
+	if expr == nil {
+		return nil
+	}
+	return &ast.MatchStatement{Token: expr.Token, Match: expr}
+}
+
 func (p *Parser) parseModuleStatement() ast.Statement {
 	stmt := &ast.ModuleStatement{
 		Token: p.curToken,
 	}
 
-	if !p.expectPeek(lexer.IDENT) {
+	if p.peekToken.Type != lexer.IDENT {
+		p.addError("module declaration missing name at %d:%d", p.curToken.Line, p.curToken.Column)
 		return nil
 	}
+	p.nextToken()
 
 	stmt.Path = p.parseDottedPath()
 

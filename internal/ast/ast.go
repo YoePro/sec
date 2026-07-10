@@ -524,6 +524,71 @@ func (ee *ErrExpression) String() string {
 	return "Err(" + value + ")"
 }
 
+type TryExpression struct {
+	Token      lexer.Token
+	Expression Expression
+	Handlers   []*TryHandler
+}
+
+func (te *TryExpression) expressionNode() {}
+
+func (te *TryExpression) TokenLiteral() string {
+	return te.Token.Lexeme
+}
+
+func (te *TryExpression) String() string {
+	if te.Expression == nil {
+		return "try <nil>"
+	}
+	return "try " + te.Expression.String()
+}
+
+type TryHandler struct {
+	Token      lexer.Token
+	Pattern    Expression
+	Body       Expression
+	ReturnBody *ReturnStatement
+	BlockBody  *BlockStatement
+}
+
+type MatchStatement struct {
+	Token lexer.Token
+	Match *MatchExpression
+}
+
+func (ms *MatchStatement) statementNode() {}
+
+func (ms *MatchStatement) TokenLiteral() string {
+	return ms.Token.Lexeme
+}
+
+type MatchExpression struct {
+	Token   lexer.Token
+	Subject Expression
+	Arms    []*MatchArm
+}
+
+func (me *MatchExpression) expressionNode() {}
+
+func (me *MatchExpression) TokenLiteral() string {
+	return me.Token.Lexeme
+}
+
+func (me *MatchExpression) String() string {
+	if me.Subject == nil {
+		return "match <nil>"
+	}
+	return "match " + me.Subject.String()
+}
+
+type MatchArm struct {
+	Token      lexer.Token
+	Pattern    Expression
+	Body       Expression
+	ReturnBody *ReturnStatement
+	BlockBody  *BlockStatement
+}
+
 type ImplStatement struct {
 	Token   lexer.Token
 	Target  *TypeReference

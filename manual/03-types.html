@@ -3,24 +3,51 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Types - Sec Language Manual</title>
+    <title>Variables and Basic Types - Sec Language Manual</title>
     <link rel="stylesheet" href="manual.css">
 </head>
 <body>
 <div class="layout">
     <nav class="sidebar" aria-label="Section navigation">
         <h2 class="sidebar-title">Sec Manual</h2>
-        <div class="sidebar-section">This page</div>
-        <a href="#types">Types</a>
-        <a href="#primitive-types">Primitive Types</a>
-        <a href="#semantic-types">Semantic Types</a>
-        <a href="#constrained-types">Constrained Types</a>
-        <a href="#conversion-and-validation">Conversion and Validation</a>
-        <a href="#default-values">Default Values</a>
-        <a href="#units">Units of Measure</a>
-        <a href="#strings">Strings</a>
-        <a href="#absence">Absence</a>
-        <a href="#any">Any</a>
+
+        <div class="sidebar-section">Variables</div>
+        <a href="#variables">Variables</a>
+        <a href="#declaration-and-inference">Declaration and Inference</a>
+        <a href="#valid-variable-declarations">Valid Declarations</a>
+        <a href="#invalid-variable-declarations">Invalid Declarations</a>
+        <a href="#immutable-by-default">Immutable by Default</a>
+        <a href="#mutable-variables">Mutable Variables</a>
+        <a href="#assignment">Assignment</a>
+        <a href="#scope">Scope</a>
+        <a href="#shadowing">Shadowing</a>
+        <a href="#initialization">Initialization</a>
+
+        <div class="sidebar-section">Basic Types</div>
+        <a href="#basic-types">Overview</a>
+        <a href="#bool">bool</a>
+        <a href="#byte">byte</a>
+        <a href="#char">char</a>
+        <a href="#decimal">decimal</a>
+        <a href="#float">float</a>
+        <a href="#float32">float32</a>
+        <a href="#float64">float64</a>
+        <a href="#int">int</a>
+        <a href="#int8">int8</a>
+        <a href="#int16">int16</a>
+        <a href="#int32">int32</a>
+        <a href="#int64">int64</a>
+        <a href="#uint">uint</a>
+        <a href="#uint8">uint8</a>
+        <a href="#uint16">uint16</a>
+        <a href="#uint32">uint32</a>
+        <a href="#uint64">uint64</a>
+        <a href="#rune">rune</a>
+        <a href="#string">string</a>
+        <a href="#void">void</a>
+        <a href="#any">any</a>
+        <a href="#choosing-a-type">Choosing a Type</a>
+
         <div class="sidebar-section">Pages</div>
         <a href="index.html">Index</a>
         <a href="01-introduction.html">Introduction</a>
@@ -28,220 +55,970 @@
     </nav>
 
     <main class="content">
-        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Types</div>
-        <h1 id="types">Types</h1>
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Variables and Basic Types</div>
 
-        <div class="section" id="primitive-types">
-            <h2>Primitive Types</h2>
-            <p>Sec has a small set of primitive types.</p>
-            <div class="table-wrap">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Type</th>
-                            <th>Purpose</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr><td><code>bool</code></td><td>Boolean value, either <code>true</code> or <code>false</code>.</td></tr>
-                        <tr><td><code>byte</code></td><td>Single byte value.</td></tr>
-                        <tr><td><code>char</code></td><td>Character value.</td></tr>
-                        <tr><td><code>rune</code></td><td>Unicode code point.</td></tr>
-                        <tr><td><code>int</code></td><td>Signed integer.</td></tr>
-                        <tr><td><code>uint</code></td><td>Unsigned integer.</td></tr>
-                        <tr><td><code>float</code></td><td>Floating-point number.</td></tr>
-                        <tr><td><code>decimal</code></td><td>Built-in decimal number.</td></tr>
-                        <tr><td><code>string</code></td><td>UTF-8 text.</td></tr>
-                        <tr><td><code>bytes</code></td><td>Byte sequence.</td></tr>
-                    </tbody>
-                </table>
-            </div>
-            <p>
-                <code>decimal</code> is a built-in type because financial, measurement, and business programs
-                often need decimal behavior that should not be modeled with binary floating-point numbers.
-            </p>
-        </div>
+        <h1 id="variables">Variables and Basic Types</h1>
 
-        <div class="section" id="semantic-types">
-            <h2>Semantic Types</h2>
-            <p>
-                A Sec type may describe meaning, not only representation. This is a central part of the language.
-            </p>
-            <pre><code>type CustomerID int
-type ProductID int</code></pre>
-            <p>
-                Even if both types are based on <code>int</code>, they represent different concepts. Code should not
-                accidentally pass a product ID where a customer ID is required.
-            </p>
-            <pre><code>fn LoadCustomer(id: CustomerID) Result[Customer, CustomerError] {
-}</code></pre>
-            <p>
-                This allows the compiler to catch domain mistakes that would otherwise be invisible if everything
-                were represented as plain integers or strings.
-            </p>
-        </div>
+        <p>
+            Variables give names to values. Every variable in Sec has a type, a scope, and a defined
+            mutability. Sec is statically typed, so the compiler determines the type of every variable
+            during compilation. A variable cannot silently change from one type to another while the
+            program is running.
+        </p>
 
-        <div class="section" id="constrained-types">
-            <h2>Constrained Types</h2>
+        <p>
+            Sec variables are immutable by default. This is a deliberate safety rule rather than a
+            restriction added for style. A value can only be reassigned when the declaration explicitly
+            includes <code>mut</code>.
+        </p>
+
+        <div class="section" id="declaration-and-inference">
+            <h2>Declaration and Type Inference</h2>
+
             <p>
-                A type may add constraints to the underlying representation. Constraints describe what values
-                are valid for that type.
+                A variable may be declared with an initial value. When the type is obvious from that value,
+                the compiler can infer the type.
             </p>
-            <pre><code>type Percent int range 0..100
-type Port int range 1..65535</code></pre>
-            <p>Possible built-in contracts include:</p>
-            <ul>
-                <li><code>range</code></li>
-                <li><code>regex</code></li>
-                <li><code>minLength</code></li>
-                <li><code>maxLength</code></li>
-                <li><code>precision</code></li>
-                <li><code>scale</code></li>
-                <li><code>validate { ... }</code></li>
-            </ul>
+            <p>
+                Every variable declaration must begin with <code>let</code>. The declaration keyword is
+                mandatory even when the compiler can infer the variable's type from its initial value.
+                Sec does not permit a bare name followed by <code>:=</code> to introduce a variable.
+            </p>
+
             <div class="rule">
-                <strong>Rule:</strong> Compile-time validation is performed whenever the value is known at compile time.
-                Runtime values require explicit validation.
+                <strong>Rule:</strong> <code>let</code> declares an immutable variable.
+                <code>let mut</code> declares a mutable variable. The operator <code>:=</code> assigns
+                the initial value as part of the declaration.
             </div>
-        </div>
 
-        <div class="section" id="conversion-and-validation">
-            <h2>Conversion and Validation</h2>
-            <p>
-                Creating a constrained value from an unknown runtime value may fail. Such construction is fallible
-                and therefore uses <code>try</code>.
-            </p>
-            <pre><code>value := readNumber()
-percent := try Percent(value)</code></pre>
-            <p>
-                If the compiler can prove that a literal is valid, construction can be accepted at compile time.
-                If the literal is invalid, compilation fails.
-            </p>
-            <pre><code>ok := Percent(90)      // valid
-bad := Percent(150)    // compile-time error</code></pre>
-            <p>
-                Assignment between different semantic types is not automatic, even if the underlying representation
-                is the same.
-            </p>
-            <pre><code>type CustomerID int
-type ProductID int
+            <h3 id="valid-variable-declarations">Valid Declarations</h3>
 
-customer := CustomerID(10)
-product := ProductID(10)
+            <pre><code>let b := 8          // immutable, inferred type
+let b: int := 9     // immutable, explicit type
+let mut b: int      // mutable, explicit type, not initialized here
+let mut b := 10     // mutable, inferred type</code></pre>
 
-customer = product // type error</code></pre>
-        </div>
+            <h3 id="invalid-variable-declarations">Invalid Declarations</h3>
 
-        <div class="section" id="default-values">
-            <h2>Default Values</h2>
-            <p>Primitive types have default values.</p>
-            <div class="table-wrap">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Type</th>
-                            <th>Default</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr><td><code>int</code></td><td><code>0</code></td></tr>
-                        <tr><td><code>uint</code></td><td><code>0</code></td></tr>
-                        <tr><td><code>float</code></td><td><code>0.0</code></td></tr>
-                        <tr><td><code>decimal</code></td><td><code>0.0</code></td></tr>
-                        <tr><td><code>bool</code></td><td><code>false</code></td></tr>
-                        <tr><td><code>string</code></td><td><code>""</code></td></tr>
-                        <tr><td><code>bytes</code></td><td>empty byte sequence</td></tr>
-                    </tbody>
-                </table>
-            </div>
-            <p>
-                A constrained type has a default value only if the underlying default value satisfies the constraint.
-            </p>
-            <pre><code>type Percent int range 0..100
-// Percent can default to 0.
+            <pre><code>b := 8 // compile-time error: missing let</code></pre>
 
-type Port int range 1..65535
-// Port cannot default to 0, because 0 is invalid.</code></pre>
-        </div>
+            <p>
+                The compiler treats the final example as invalid because <code>:=</code> is not itself a
+                declaration keyword. Requiring <code>let</code> makes every declaration immediately visible
+                and distinguishes declarations from later assignments.
+            </p>
 
-        <div class="section" id="units">
-            <h2>Units of Measure</h2>
-            <p>
-                Units are written with angle brackets. The <code>&lt;&gt;</code> syntax is reserved for units of measure.
-            </p>
-            <pre><code>type Meter decimal&lt;m&gt;
-type Speed decimal&lt;m/s&gt;
-type SEK decimal&lt;SEK&gt;</code></pre>
-            <p>
-                Values with incompatible units cannot be mixed by accident.
-            </p>
-            <pre><code>type Money decimal&lt;SEK&gt;
-type Speed decimal&lt;m/s&gt;
+            <pre><code>let name := "Anna"
+let age := 42
+let enabled := true</code></pre>
 
-let mut amount: Money = 5.90
-let mut speed: Speed = 50
+            <p>
+                In this example, the compiler infers that <code>name</code> is a <code>string</code>,
+                <code>age</code> is an integer type, and <code>enabled</code> is a <code>bool</code>.
+                Type inference does not make the language dynamically typed. The inferred type is fixed
+                at compile time and remains the type of the variable throughout its lifetime.
+            </p>
 
-amount += speed // unit error</code></pre>
             <p>
-                Units are part of the type. They are not comments and not runtime metadata only. The compiler uses
-                them to reject invalid operations.
+                A type may also be written explicitly when the programmer wants to document the intended
+                representation or when inference would be ambiguous.
             </p>
-        </div>
 
-        <div class="section" id="strings">
-            <h2>Strings</h2>
-            <p>
-                Sec strings are UTF-8 text. Binary data should use <code>bytes</code>, not <code>string</code>.
-            </p>
-            <pre><code>name := "Anna"
-message := $"Hello {name}"</code></pre>
-            <p>
-                String interpolation uses the <code>$"..."</code> form. Expressions inside braces are evaluated and
-                inserted into the resulting string.
-            </p>
-        </div>
+            <pre><code>let retryCount: int32 := 3
+let price: decimal := 19.95
+let ratio: float64 := 0.75</code></pre>
 
-        <div class="section" id="absence">
-            <h2>Absence</h2>
-            <p>
-                Sec does not introduce <code>nil</code>. Absence is represented with <code>Option[T]</code>.
-            </p>
-            <pre><code>type Option[T] union {
-    Some(T)
-    None
-}</code></pre>
-            <p>
-                JSON <code>null</code> and SQL <code>NULL</code> map to <code>None</code> when the target field is optional.
-            </p>
-            <pre><code>type CustomerRow struct {
-    Name: Option[string],
-    Port: Option[Port],
-}</code></pre>
             <div class="rule">
-                <strong>Rule:</strong> <code>T</code> always contains a valid value. <code>Option[T]</code> contains either
-                <code>Some(T)</code> or <code>None</code>.
+                <strong>Rule:</strong> Once declared, a variable has one static type. Assignment may replace
+                its value, but it may not replace its type.
             </div>
+
+            <pre><code>let value := 10
+value = 20       // same type
+value = "twenty" // compile-time type error</code></pre>
+        </div>
+
+        <div class="section" id="immutable-by-default">
+            <h2>Immutable by Default</h2>
+
+            <p>
+                A normal variable declaration creates an immutable binding. After the variable has received
+                its initial value, that binding cannot be assigned another value.
+            </p>
+
+            <pre><code>let port := 8080
+port = 8081 // compile-time error</code></pre>
+
+            <p>
+                Immutability makes the flow of data easier to understand. When a reader encounters an
+                immutable variable, they know that the name continues to refer to the same value for the
+                remainder of its scope. The reader does not need to search the entire function for later
+                assignments before understanding the current value.
+            </p>
+
+            <p>
+                Immutable-by-default code also helps the compiler. A value that cannot change is easier to
+                analyze, easier to optimize, and safer to share with other parts of a program.
+            </p>
+
+            <h3 id="binding-immutability">Binding Immutability</h3>
+
+            <p>
+                Immutability applies to the variable binding. It means that the variable cannot be assigned
+                a different value. Whether data reachable through a reference or contained in a more complex
+                type can change is governed by the rules of that type and Sec's reference and ownership model.
+            </p>
+
+            <p>
+                For basic value types, the result is straightforward: an immutable variable cannot be
+                changed after initialization.
+            </p>
+
+            <pre><code>let count := 5
+count += 1 // compile-time error</code></pre>
+
+            <div class="rule">
+                <strong>Rule:</strong> A variable is immutable unless its declaration explicitly contains
+                <code>mut</code>.
+            </div>
+        </div>
+
+        <div class="section" id="mutable-variables">
+            <h2>Mutable Variables</h2>
+
+            <p>
+                Add <code>mut</code> when a variable must receive a new value after initialization.
+                Mutability is therefore visible at the declaration site rather than discovered later by
+                reading assignments elsewhere in the function.
+            </p>
+
+            <pre><code>let mut retryCount := 0
+retryCount += 1
+retryCount = 0</code></pre>
+
+            <p>
+                The <code>mut</code> modifier permits reassignment. It does not weaken static typing and does
+                not permit the variable to contain arbitrary types.
+            </p>
+
+            <pre><code>let mut retryCount := 0
+retryCount = 3       // valid
+retryCount = "three" // compile-time type error</code></pre>
+
+            <p>
+                Mutability should describe a real requirement of the algorithm. It should not be added
+                automatically to every declaration. Values such as configuration, identifiers, function
+                inputs, and intermediate results often do not need to change.
+            </p>
+
+            <h3 id="minimal-mutability">Use the Smallest Mutable Scope</h3>
+
+            <p>
+                When mutation is necessary, keep the mutable variable in the smallest practical scope.
+                This limits the amount of code that can change it and makes its possible states easier to
+                reason about.
+            </p>
+
+            <pre><code>let total := calculateBaseTotal(order)
+
+{
+    let mut adjustedTotal := total
+    adjustedTotal += calculateTax(order)
+    adjustedTotal -= calculateDiscount(order)
+    print(adjustedTotal)
+}</code></pre>
+        </div>
+
+        <div class="section" id="assignment">
+            <h2>Assignment</h2>
+
+            <p>
+                Assignment replaces the current value of a mutable variable. The assigned expression must
+                be assignable to the variable's declared type.
+            </p>
+
+            <pre><code>let mut temperature: float64 := 18.5
+temperature = 19.0</code></pre>
+
+            <p>
+                Compound assignment operators read the current value, apply an operation, and assign the
+                result back to the same variable. Because they perform assignment, they also require a
+                mutable variable.
+            </p>
+
+            <pre><code>let mut count := 10
+count += 5
+count -= 2
+count *= 3
+count /= 2
+count %= 4</code></pre>
+
+            <p>
+                Sec does not use the increment and decrement operators <code>++</code> and <code>--</code>.
+                Use explicit compound assignment instead.
+            </p>
+
+            <pre><code>let mut index := 0
+index += 1</code></pre>
+        </div>
+
+        <div class="section" id="scope">
+            <h2>Scope</h2>
+
+            <p>
+                A variable exists only inside its scope. A block delimited by <code>{</code> and <code>}</code>
+                creates a nested scope. A name declared in that block is not available after the block ends.
+            </p>
+
+            <pre><code>fn Example() void {
+    let message := "outside"
+
+    {
+        let detail := "inside"
+        print(message)
+        print(detail)
+    }
+
+    print(message)
+    print(detail) // compile-time error: detail is out of scope
+}</code></pre>
+
+            <p>
+                Function parameters are local symbols in the function body. They are immutable by default,
+                just like other variables.
+            </p>
+
+            <pre><code>fn PrintUser(name: string, age: int) void {
+    print(name)
+    print(age)
+
+    age = 43 // compile-time error
+}</code></pre>
+        </div>
+
+        <div class="section" id="shadowing">
+            <h2>Shadowing</h2>
+
+            <p>
+                Shadowing occurs when a nested scope declares a new variable with the same name as a variable
+                in an outer scope. The inner declaration is a different variable; it does not mutate the
+                outer variable.
+            </p>
+
+            <pre><code>let value := 10
+
+{
+    let value := 20
+    print(value) // 20
+}
+
+print(value) // 10</code></pre>
+
+            <p>
+                Shadowing can be useful when a name represents the same conceptual role at a more specific
+                stage of processing. It should not be used to hide unrelated values, because that makes code
+                harder to read.
+            </p>
+        </div>
+
+        <div class="section" id="initialization">
+            <h2>Initialization</h2>
+
+            <p>
+                A variable must contain a valid value before it is read. An initializer establishes the
+                variable's first value and normally establishes its inferred type.
+            </p>
+
+            <pre><code>let name := "Anna"
+let count := 0</code></pre>
+
+            <p>
+                Basic types have defined zero or empty values where applicable. Domain-specific and
+                constrained types may only have a default value when that value satisfies the type's rules.
+                A later chapter describes default values and constrained types in detail.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> Sec does not permit reading an uninitialized variable.
+            </div>
+        </div>
+
+        <h1 id="basic-types">Basic Types</h1>
+
+        <p>
+            Basic types are built directly into the language. They form the foundation used to construct
+            domain types, structures, collections, interfaces, and other abstractions.
+        </p>
+
+        <p>The decided basic types are:</p>
+
+        <pre><code>bool
+byte
+char
+decimal
+float
+float32
+float64
+int
+int8
+int16
+int32
+int64
+uint
+uint8
+uint16
+uint32
+uint64
+rune
+string
+void
+any</code></pre>
+
+        <div class="section" id="bool">
+            <h2><code>bool</code></h2>
+
+            <p>
+                <code>bool</code> represents a logical truth value. It has exactly two values:
+                <code>true</code> and <code>false</code>.
+            </p>
+
+            <pre><code>let enabled := true
+let finished := false</code></pre>
+
+            <p>
+                Conditions in <code>if</code>, <code>while</code>, logical operators, and match guards require
+                boolean expressions. Sec does not implicitly convert integers, strings, references, or other
+                values into booleans.
+            </p>
+
+            <pre><code>let count := 3
+
+if count {        // compile-time error
+}
+
+if count &gt; 0 {    // valid
+}</code></pre>
+
+            <p>The logical operators are:</p>
+
+            <pre><code>!value
+left &amp;&amp; right
+left || right</code></pre>
+
+            <p>
+                Comparison operators such as <code>==</code>, <code>!=</code>, <code>&lt;</code>,
+                <code>&lt;=</code>, <code>&gt;</code>, and <code>&gt;=</code> produce <code>bool</code> results
+                when they are supported by the operand types.
+            </p>
+
+            <p>The default value of <code>bool</code> is <code>false</code>.</p>
+        </div>
+
+        <div class="section" id="byte">
+            <h2><code>byte</code></h2>
+
+            <p>
+                <code>byte</code> represents one byte of raw data. It is intended for binary formats,
+                buffers, network data, encoded files, cryptographic material, and other data where the
+                individual unit is a byte rather than a number with domain meaning.
+            </p>
+
+            <pre><code>header: byte = 0x7F</code></pre>
+
+            <p>
+                Although a byte can be interpreted numerically, <code>byte</code> communicates that the value
+                is part of a binary representation. Use <code>uint8</code> when the value is conceptually an
+                unsigned eight-bit integer and <code>byte</code> when it is conceptually raw data.
+            </p>
+
+            <pre><code>packetType: byte = 0x02
+retryCount: uint8 = 2</code></pre>
+
+            <p>
+                Text should normally use <code>string</code>, <code>char</code>, or <code>rune</code> rather than
+                <code>byte</code>. A UTF-8 character may occupy more than one byte.
+            </p>
+
+            <p>The default value of <code>byte</code> is zero.</p>
+        </div>
+
+        <div class="section" id="char">
+            <h2><code>char</code></h2>
+
+            <p>
+                <code>char</code> represents a character value. It is used when code works with a single
+                textual character rather than a complete string.
+            </p>
+
+            <pre><code>separator: char = ','
+answer: char = 'Y'</code></pre>
+
+            <p>
+                A character literal uses single quotes. A string literal uses double quotes.
+            </p>
+
+            <pre><code>letter: char = 'A'
+word: string = "A"</code></pre>
+
+            <p>
+                <code>char</code> and <code>rune</code> are distinct types. Use <code>rune</code> when the code
+                explicitly works with Unicode code points. Use <code>char</code> when the value is treated as a
+                character in normal text processing. Conversion between the types must remain explicit when
+                required by an API.
+            </p>
+
+            <p>
+                A character is not interchangeable with a one-character string. The former is one value;
+                the latter is a string containing one textual element.
+            </p>
+        </div>
+
+        <div class="section" id="decimal">
+            <h2><code>decimal</code></h2>
+
+            <p>
+                <code>decimal</code> represents decimal numeric values. It is intended for calculations where
+                decimal representation and predictable base-10 behavior are more important than the speed or
+                range characteristics of binary floating-point arithmetic.
+            </p>
+
+            <pre><code>let price: decimal := 19.95
+taxRate: decimal = 0.25
+let total := price + price * taxRate</code></pre>
+
+            <p>
+                Typical uses include money, tax, accounting, measurements expressed and rounded in decimal,
+                and business rules that require decimal precision.
+            </p>
+
+            <p>
+                Binary floating-point types cannot represent every decimal fraction exactly. For example,
+                a value such as <code>0.1</code> generally has an approximate binary representation. Code that
+                requires decimal semantics should therefore use <code>decimal</code> rather than <code>float</code>,
+                <code>float32</code>, or <code>float64</code>.
+            </p>
+
+            <pre><code>unitPrice: decimal = 0.10
+quantity: decimal = 3
+let total := unitPrice * quantity</code></pre>
+
+            <p>
+                <code>decimal</code> is also the natural foundation for semantic types with units or currencies.
+            </p>
+
+            <pre><code>type SEK decimal&lt;SEK&gt;
+type Meter decimal&lt;m&gt;</code></pre>
+
+            <p>The default value of <code>decimal</code> is decimal zero.</p>
+        </div>
+
+        <div class="section" id="float">
+            <h2><code>float</code></h2>
+
+            <p>
+                <code>float</code> is the general binary floating-point type. It is suitable for scientific,
+                graphical, statistical, simulation, and engineering calculations where fractional values,
+                large ranges, and floating-point performance are required.
+            </p>
+
+            <pre><code>temperature: float = 21.5
+ratio: float = 2.0 / 3.0</code></pre>
+
+            <p>
+                Floating-point values are approximate. Equality comparisons should therefore be used with
+                care when results have passed through arithmetic operations.
+            </p>
+
+            <pre><code>let result := calculateValue()
+let closeEnough := abs(result - expected) &lt; tolerance</code></pre>
+
+            <p>
+                Use <code>float32</code> or <code>float64</code> when an exact storage width is part of the data
+                format, external interface, memory layout, or numerical requirements. Use <code>float</code> when
+                the exact width is not the important part of the program's meaning.
+            </p>
+
+            <p>The default value of <code>float</code> is floating-point zero.</p>
+        </div>
+
+        <div class="section" id="float32">
+            <h2><code>float32</code></h2>
+
+            <p>
+                <code>float32</code> is a 32-bit binary floating-point type. It uses less storage than
+                <code>float64</code> but provides less precision and a smaller numeric range.
+            </p>
+
+            <pre><code>vertexX: float32 = 12.5
+vertexY: float32 = -4.75</code></pre>
+
+            <p>
+                Common uses include graphics data, machine-learning tensors, large numeric arrays, external
+                binary formats, and hardware interfaces that explicitly use 32-bit floating-point values.
+            </p>
+
+            <p>
+                Do not select <code>float32</code> merely because the current values appear small. Precision
+                requirements, accumulated error, external representation, and memory cost should determine
+                the choice.
+            </p>
+
+            <p>The default value of <code>float32</code> is <code>0.0</code>.</p>
+        </div>
+
+        <div class="section" id="float64">
+            <h2><code>float64</code></h2>
+
+            <p>
+                <code>float64</code> is a 64-bit binary floating-point type. It provides greater precision
+                and range than <code>float32</code> at the cost of additional storage.
+            </p>
+
+            <pre><code>latitude: float64 = 59.3293
+longitude: float64 = 18.0686</code></pre>
+
+            <p>
+                It is appropriate when numerical precision is important, when calculations accumulate error,
+                or when an external API or file format explicitly requires a 64-bit floating-point value.
+            </p>
+
+            <p>
+                Greater precision does not make floating-point arithmetic exact. Values are still represented
+                in binary and should not be used as a substitute for <code>decimal</code> where decimal semantics
+                are required.
+            </p>
+
+            <p>The default value of <code>float64</code> is <code>0.0</code>.</p>
+        </div>
+
+        <div class="section" id="int">
+            <h2><code>int</code></h2>
+
+            <p>
+                <code>int</code> is the general signed integer type. It represents whole numbers that may be
+                negative, zero, or positive.
+            </p>
+
+            <pre><code>let temperature := -5
+let count := 42
+let offset := 0</code></pre>
+
+            <p>
+                Use <code>int</code> for ordinary counting, indexing, differences, offsets, and calculations
+                when the exact bit width is not part of the data's meaning or external representation.
+            </p>
+
+            <p>
+                Use one of the fixed-width signed integer types when the width is required by a protocol,
+                file format, memory layout, hardware interface, or interoperability boundary.
+            </p>
+
+            <pre><code>itemCount: int = 120
+protocolValue: int32 = -120</code></pre>
+
+            <p>The default value of <code>int</code> is <code>0</code>.</p>
+        </div>
+
+        <div class="section" id="int8">
+            <h2><code>int8</code></h2>
+
+            <p>
+                <code>int8</code> is an 8-bit signed integer. Its values range from -128 through 127.
+            </p>
+
+            <pre><code>adjustment: int8 = -12</code></pre>
+
+            <p>
+                Use <code>int8</code> when an external representation or compact memory layout specifically
+                requires an 8-bit signed value. For ordinary arithmetic, <code>int</code> is usually clearer.
+            </p>
+
+            <p>The default value of <code>int8</code> is <code>0</code>.</p>
+        </div>
+
+        <div class="section" id="int16">
+            <h2><code>int16</code></h2>
+
+            <p>
+                <code>int16</code> is a 16-bit signed integer. Its values range from -32,768 through 32,767.
+            </p>
+
+            <pre><code>sample: int16 = -2048</code></pre>
+
+            <p>
+                It is commonly useful for binary formats, audio samples, device registers, compact arrays,
+                and APIs that define values as signed 16-bit integers.
+            </p>
+
+            <p>The default value of <code>int16</code> is <code>0</code>.</p>
+        </div>
+
+        <div class="section" id="int32">
+            <h2><code>int32</code></h2>
+
+            <p>
+                <code>int32</code> is a 32-bit signed integer. Its values range from -2,147,483,648 through
+                2,147,483,647.
+            </p>
+
+            <pre><code>databaseValue: int32 = 1500000</code></pre>
+
+            <p>
+                Use it when a stable 32-bit representation is required, such as in external data formats,
+                database mappings, network protocols, foreign-function interfaces, or memory-sensitive
+                collections.
+            </p>
+
+            <p>The default value of <code>int32</code> is <code>0</code>.</p>
+        </div>
+
+        <div class="section" id="int64">
+            <h2><code>int64</code></h2>
+
+            <p>
+                <code>int64</code> is a 64-bit signed integer. It supports a substantially larger range than
+                <code>int32</code> and is suitable for large counters, timestamps, file positions, identifiers,
+                and external formats that specify signed 64-bit values.
+            </p>
+
+            <pre><code>fileSize: int64 = 5000000000
+timestamp: int64 = 1783670400</code></pre>
+
+            <p>
+                A large available range does not automatically make <code>int64</code> the best type for every
+                integer. Prefer <code>int</code> for normal internal arithmetic unless the width or range is part
+                of the requirement.
+            </p>
+
+            <p>The default value of <code>int64</code> is <code>0</code>.</p>
+        </div>
+
+        <div class="section" id="uint">
+            <h2><code>uint</code></h2>
+
+            <p>
+                <code>uint</code> is the general unsigned integer type. It represents zero and positive whole
+                numbers, but cannot represent negative values.
+            </p>
+
+            <pre><code>mask: uint = 15
+capacity: uint = 1024</code></pre>
+
+            <p>
+                Unsigned types are appropriate when bit-level operations or an external representation
+                specifically require unsigned values. They should not be selected only because a value is
+                expected to remain non-negative. Differences and error states may naturally require negative
+                values even when the original quantities do not.
+            </p>
+
+            <pre><code>available: uint = 5
+required: uint = 8
+// available - required needs careful handling because the mathematical result is negative.</code></pre>
+
+            <p>The default value of <code>uint</code> is <code>0</code>.</p>
+        </div>
+
+        <div class="section" id="uint8">
+            <h2><code>uint8</code></h2>
+
+            <p>
+                <code>uint8</code> is an 8-bit unsigned integer. Its values range from 0 through 255.
+            </p>
+
+            <pre><code>channel: uint8 = 255</code></pre>
+
+            <p>
+                Use <code>uint8</code> for compact unsigned numeric values and external representations that
+                explicitly require eight bits. Use <code>byte</code> instead when the value represents raw binary
+                data rather than a number.
+            </p>
+
+            <p>The default value of <code>uint8</code> is <code>0</code>.</p>
+        </div>
+
+        <div class="section" id="uint16">
+            <h2><code>uint16</code></h2>
+
+            <p>
+                <code>uint16</code> is a 16-bit unsigned integer. Its values range from 0 through 65,535.
+            </p>
+
+            <pre><code>registerValue: uint16 = 65535</code></pre>
+
+            <p>
+                It is useful for device registers, network fields, encoded dimensions, compact counters,
+                and other representations defined as unsigned 16-bit values.
+            </p>
+
+            <p>The default value of <code>uint16</code> is <code>0</code>.</p>
+        </div>
+
+        <div class="section" id="uint32">
+            <h2><code>uint32</code></h2>
+
+            <p>
+                <code>uint32</code> is a 32-bit unsigned integer. Its values range from 0 through
+                4,294,967,295.
+            </p>
+
+            <pre><code>flags: uint32 = 0x80000000</code></pre>
+
+            <p>
+                Typical uses include bit masks, protocol fields, checksums, binary file formats, and foreign
+                interfaces that require a stable unsigned 32-bit representation.
+            </p>
+
+            <p>The default value of <code>uint32</code> is <code>0</code>.</p>
+        </div>
+
+        <div class="section" id="uint64">
+            <h2><code>uint64</code></h2>
+
+            <p>
+                <code>uint64</code> is a 64-bit unsigned integer. It provides a very large non-negative range
+                and is used when an external specification, identifier space, counter, or bit representation
+                explicitly requires 64 unsigned bits.
+            </p>
+
+            <pre><code>sequenceNumber: uint64 = 10000000000</code></pre>
+
+            <p>
+                Arithmetic involving signed and unsigned values must remain explicit. The compiler should not
+                silently reinterpret a negative signed value as a very large unsigned value.
+            </p>
+
+            <p>The default value of <code>uint64</code> is <code>0</code>.</p>
+        </div>
+
+        <div class="section" id="rune">
+            <h2><code>rune</code></h2>
+
+            <p>
+                <code>rune</code> represents a Unicode code point. It is intended for Unicode-aware text
+                processing where code must examine, compare, transform, or classify individual code points.
+            </p>
+
+            <pre><code>letter: rune = 'Å'
+symbol: rune = '界'</code></pre>
+
+            <p>
+                UTF-8 is a variable-length encoding. A single rune may occupy more than one byte when encoded
+                as UTF-8. Consequently, indexing or counting bytes is not the same as indexing or counting
+                Unicode code points.
+            </p>
+
+            <pre><code>let text := "Ångström"
+// The UTF-8 byte length and rune count are different concepts.</code></pre>
+
+            <p>
+                A rune is not a string. A string may contain zero, one, or many runes. Use <code>string</code>
+                for complete text and <code>rune</code> when operating on an individual Unicode code point.
+            </p>
+        </div>
+
+        <div class="section" id="string">
+            <h2><code>string</code></h2>
+
+            <p>
+                <code>string</code> represents UTF-8 text. String literals use double quotes.
+            </p>
+
+            <pre><code>let name := "Jonas"
+let message := "Sec is statically typed."</code></pre>
+
+            <p>
+                Strings are text, not arbitrary byte buffers. Use binary containers or byte-oriented types
+                for compressed data, encrypted data, file contents that are not known to be text, and network
+                packets.
+            </p>
+
+            <p>
+                String interpolation uses a dollar sign before the string literal. Expressions inside braces
+                are evaluated and inserted into the resulting string.
+            </p>
+
+            <pre><code>let name := "Anna"
+let count := 3
+let message := $"Hello {name}, you have {count} messages."</code></pre>
+
+            <p>
+                Because strings use UTF-8, byte length, rune count, and user-perceived character count are
+                separate concepts. APIs should name these operations clearly rather than treating them as one
+                generic length operation.
+            </p>
+
+            <p>The default value of <code>string</code> is the empty string <code>""</code>.</p>
+        </div>
+
+        <div class="section" id="void">
+            <h2><code>void</code></h2>
+
+            <p>
+                <code>void</code> indicates that a function does not return a value. It is used as a function
+                return type, not as a normal value that can be stored in a variable.
+            </p>
+
+            <pre><code>fn PrintGreeting(name: string) void {
+    print($"Hello {name}")
+}</code></pre>
+
+            <p>
+                A <code>void</code> function may finish at the end of its body or use <code>return</code> without
+                an expression.
+            </p>
+
+            <pre><code>fn PrintIfPresent(value: string) void {
+    if value == "" {
+        return
+    }
+
+    print(value)
+}</code></pre>
+
+            <p>
+                Returning an expression from a <code>void</code> function is a compile-time error. Likewise, a
+                caller cannot use the call as though it produced a normal value.
+            </p>
         </div>
 
         <div class="section" id="any">
-            <h2>Any</h2>
+            <h2><code>any</code></h2>
+
             <p>
-                Sec does not have a separate primitive <code>any</code> type. If a truly unknown runtime value is needed,
-                it can be represented by a top-level empty interface.
+                <code>any</code> can hold a value of any Sec type. It is intended for situations where the
+                value's concrete type is genuinely not known at compile time.
             </p>
-            <pre><code>type Any interface {}</code></pre>
-            <p>The preferred order is:</p>
-            <ol>
-                <li>Use generic type parameters for compile-time type variation.</li>
-                <li>Use interfaces for behavior contracts.</li>
-                <li>Use <code>Any</code> only for truly unknown runtime values.</li>
-            </ol>
+
+            <pre><code>value: any = 42
+text: any = "hello"</code></pre>
+
+            <p>
+                Using <code>any</code> removes information that the compiler would otherwise use to verify
+                operations. Code must determine or constrain the contained value before performing
+                type-specific operations.
+            </p>
+
+            <p>
+                Prefer a concrete type when all values share one representation. Prefer a generic type
+                parameter when the concrete type varies but is known during compilation. Prefer an interface
+                when code depends on a defined set of behaviors. Use <code>any</code> only when none of those
+                accurately describe the problem.
+            </p>
+
+            <pre><code>// Prefer a generic function when the type is known at compile time.
+fn First[T](values: []T) T {
+    return values[0]
+}
+
+// Use any only when the value is genuinely dynamic.
+fn ReadDynamicValue(source: ref Source) any {
+    // ...
+}</code></pre>
+
+            <p>
+                Common legitimate uses may include dynamic document formats, debugging tools, generic
+                serialization boundaries, reflection-related facilities, and interoperability with systems
+                whose values are dynamically typed.
+            </p>
+
+            <div class="rule">
+                <strong>Guideline:</strong> <code>any</code> is an escape from specific static type information,
+                not a replacement for designing useful types.
+            </div>
         </div>
 
-        <div class="next-links">
-            <a href="02-basic-syntax.html">Previous: Basic Syntax</a>
-            <span></span>
+        <div class="section" id="choosing-a-type">
+            <h2>Choosing a Basic Type</h2>
+
+            <p>
+                Select a type according to the meaning and requirements of the value, not merely according to
+                the smallest representation that can contain the current example.
+            </p>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Requirement</th>
+                            <th>Typical choice</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Logical truth value</td>
+                            <td><code>bool</code></td>
+                        </tr>
+                        <tr>
+                            <td>Raw binary unit</td>
+                            <td><code>byte</code></td>
+                        </tr>
+                        <tr>
+                            <td>Single textual character</td>
+                            <td><code>char</code></td>
+                        </tr>
+                        <tr>
+                            <td>Unicode code point processing</td>
+                            <td><code>rune</code></td>
+                        </tr>
+                        <tr>
+                            <td>UTF-8 text</td>
+                            <td><code>string</code></td>
+                        </tr>
+                        <tr>
+                            <td>Ordinary signed whole number</td>
+                            <td><code>int</code></td>
+                        </tr>
+                        <tr>
+                            <td>Ordinary unsigned or bit-oriented whole number</td>
+                            <td><code>uint</code></td>
+                        </tr>
+                        <tr>
+                            <td>Externally defined integer width</td>
+                            <td><code>int8</code> through <code>int64</code>, or <code>uint8</code> through <code>uint64</code></td>
+                        </tr>
+                        <tr>
+                            <td>General binary floating-point calculation</td>
+                            <td><code>float</code></td>
+                        </tr>
+                        <tr>
+                            <td>Externally defined floating-point width</td>
+                            <td><code>float32</code> or <code>float64</code></td>
+                        </tr>
+                        <tr>
+                            <td>Money or decimal business arithmetic</td>
+                            <td><code>decimal</code></td>
+                        </tr>
+                        <tr>
+                            <td>Function returns no value</td>
+                            <td><code>void</code></td>
+                        </tr>
+                        <tr>
+                            <td>Genuinely unknown runtime value</td>
+                            <td><code>any</code></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <p>
+                Semantic types should be introduced when two values share a representation but have different
+                meanings. For example, customer identifiers and product identifiers should not remain plain
+                integers merely because both are stored as numbers.
+            </p>
+
+            <pre><code>type CustomerID int64
+type ProductID int64</code></pre>
+
+            <p>
+                The compiler can then prevent accidental mixing of concepts that happen to share the same
+                underlying representation.
+            </p>
         </div>
+
+        <nav class="page-navigation" aria-label="Page navigation">
+            <a href="02-basic-syntax.html">Previous: Basic Syntax</a>
+            <a href="index.html">Manual Index</a>
+        </nav>
     </main>
 </div>
 </body>

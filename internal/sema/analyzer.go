@@ -11,13 +11,16 @@ import (
 )
 
 type Analyzer struct {
-	types             map[string]Type
-	functions         map[string]Function
-	implBlocks        map[string]lexer.Token
-	currentImplTarget string
-	symbols           map[string]Symbol
-	constInts         map[string]*big.Int
-	errors            []Error
+	types                 map[string]Type
+	functions             map[string][]Function
+	implBlocks            map[string]lexer.Token
+	currentImplTarget     string
+	symbols               map[string]Symbol
+	constInts             map[string]*big.Int
+	currentFunctionName   string
+	currentFunctionReturn Type
+	inFunctionBody        bool
+	errors                []Error
 }
 
 func NewAnalyzer() *Analyzer {
@@ -30,9 +33,13 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.errors = nil
 	a.symbols = map[string]Symbol{}
 	a.constInts = map[string]*big.Int{}
-	a.functions = map[string]Function{}
+	a.functions = map[string][]Function{}
 	a.implBlocks = map[string]lexer.Token{}
 	a.currentImplTarget = ""
+	a.currentFunctionName = ""
+	a.currentFunctionReturn = Type{}
+	a.inFunctionBody = false
+	a.validateModuleDeclaration(program)
 	a.registerTypeDeclarations(program)
 	a.registerImplTypeDeclarations(program)
 	a.analyzeTypeDeclarations(program)
@@ -46,6 +53,10 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 		case *ast.TypeDeclStatement, *ast.EnumDeclaration, *ast.ImplStatement, *ast.FunctionDeclaration:
 			continue
 		}
+		if !isAllowedModuleStatement(stmt) {
+			a.addTopLevelStatementError(stmt)
+			continue
+		}
 		a.analyzeStatement(stmt)
 	}
 
@@ -53,6 +64,45 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.analyzeImplBodies(program)
 
 	return a.errors
+}
+
+func (a *Analyzer) validateModuleDeclaration(program *ast.Program) {
+	for _, stmt := range program.Statements {
+		if moduleStmt, ok := stmt.(*ast.ModuleStatement); ok && moduleStmt.Path != "" {
+			return
+		}
+	}
+
+	a.errors = append(a.errors, Error{Message: "missing module declaration"})
+}
+
+func isAllowedModuleStatement(stmt ast.Statement) bool {
+	switch stmt.(type) {
+	case *ast.ModuleStatement,
+		*ast.ImportStatement,
+		*ast.TypeDeclStatement,
+		*ast.EnumDeclaration,
+		*ast.ImplStatement,
+		*ast.FunctionDeclaration,
+		*ast.StructStatement,
+		*ast.LetStatement,
+		*ast.LetGroupStatement,
+		*ast.CommentStatement:
+		return true
+	default:
+		return false
+	}
+}
+
+func (a *Analyzer) addTopLevelStatementError(stmt ast.Statement) {
+	switch stmt := stmt.(type) {
+	case *ast.AssignmentStatement:
+		a.addErrorAtToken(stmt.Token, "assignment is not allowed at module scope")
+	case *ast.ReturnStatement:
+		a.addErrorAtToken(stmt.Token, "return is not allowed at module scope")
+	default:
+		a.addErrorAtToken(statementToken(stmt), "code is not allowed at module scope")
+	}
 }
 
 func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
@@ -203,6 +253,8 @@ func (a *Analyzer) analyzeStatement(stmt ast.Statement) {
 		}
 	case *ast.AssignmentStatement:
 		a.analyzeAssignmentStatement(stmt)
+	case *ast.MatchStatement:
+		a.analyzeMatchStatement(stmt)
 	case *ast.ImplStatement:
 		a.registerImplStatement(stmt)
 	case *ast.StructStatement:
@@ -223,12 +275,6 @@ func (a *Analyzer) registerFunctionDeclarations(program *ast.Program) {
 }
 
 func (a *Analyzer) registerFunctionDeclaration(fn *ast.FunctionDeclaration) {
-	if previous, exists := a.functions[fn.Name.Value]; exists {
-		_ = previous
-		a.addErrorAtToken(fn.Name.Token, "duplicate function %q", fn.Name.Value)
-		return
-	}
-
 	function := Function{Name: fn.Name.Value, Token: fn.Name.Token}
 
 	seenParams := map[string]lexer.Token{}
@@ -257,7 +303,35 @@ func (a *Analyzer) registerFunctionDeclaration(fn *ast.FunctionDeclaration) {
 		function.ReturnType = Type{Kind: InvalidType}
 	}
 
-	a.functions[fn.Name.Value] = function
+	for _, existing := range a.functions[fn.Name.Value] {
+		if sameFunctionSignature(existing, function) {
+			a.addErrorAtToken(fn.Name.Token, "duplicate function %q with same signature", fn.Name.Value)
+			return
+		}
+	}
+
+	a.functions[fn.Name.Value] = append(a.functions[fn.Name.Value], function)
+}
+
+func sameFunctionSignature(left Function, right Function) bool {
+	if len(left.Parameters) != len(right.Parameters) {
+		return false
+	}
+	for i := range left.Parameters {
+		if !sameConcreteType(left.Parameters[i].Type, right.Parameters[i].Type) {
+			return false
+		}
+	}
+	return true
+}
+
+func (a *Analyzer) lookupFunctionByToken(name string, token lexer.Token) (Function, bool) {
+	for _, function := range a.functions[name] {
+		if function.Token.Line == token.Line && function.Token.Column == token.Column {
+			return function, true
+		}
+	}
+	return Function{}, false
 }
 
 func (a *Analyzer) analyzeFunctionBodies(program *ast.Program) {
@@ -271,18 +345,27 @@ func (a *Analyzer) analyzeFunctionBodies(program *ast.Program) {
 }
 
 func (a *Analyzer) analyzeFunctionBody(fn *ast.FunctionDeclaration) {
-	function, ok := a.functions[fn.Name.Value]
+	function, ok := a.lookupFunctionByToken(fn.Name.Value, fn.Name.Token)
 	if !ok || function.ReturnType.Kind == InvalidType {
 		return
 	}
 
 	previousSymbols := a.symbols
 	previousConstInts := a.constInts
+	previousFunctionName := a.currentFunctionName
+	previousFunctionReturn := a.currentFunctionReturn
+	previousInFunctionBody := a.inFunctionBody
 	a.symbols = copySymbols(previousSymbols)
 	a.constInts = copyConstInts(previousConstInts)
+	a.currentFunctionName = fn.Name.Value
+	a.currentFunctionReturn = function.ReturnType
+	a.inFunctionBody = true
 	defer func() {
 		a.symbols = previousSymbols
 		a.constInts = previousConstInts
+		a.currentFunctionName = previousFunctionName
+		a.currentFunctionReturn = previousFunctionReturn
+		a.inFunctionBody = previousInFunctionBody
 	}()
 
 	for _, param := range function.Parameters {
@@ -806,6 +889,9 @@ func (a *Analyzer) inferPropertyBodyExpression(target Type, setter *ast.Property
 		return typ, typ.Kind != InvalidType
 	case *ast.OkExpression, *ast.ErrExpression:
 		return Type{Kind: InvalidType}, false
+	case *ast.TryExpression:
+		typ, _ := a.inferTryExpression(expr)
+		return typ, typ.Kind != InvalidType
 	case *ast.PrefixExpression:
 		rightType, ok := a.inferPropertyBodyExpression(target, setter, setterType, expr.Right)
 		if !ok {
@@ -1036,7 +1122,7 @@ func (a *Analyzer) resolveType(ref *ast.TypeReference) (Type, bool) {
 
 	typ.TypeArgs = typeArgs
 	if typ.Kind == ResultType && len(ref.TypeArgs) != 2 {
-		a.addErrorAtToken(ref.Token, "Result requires 2 type arguments")
+		a.addErrorAtToken(ref.Token, "Result requires exactly 2 type arguments, got %d", len(ref.TypeArgs))
 		return Type{Kind: InvalidType}, false
 	}
 	if len(typeArgs) != len(ref.TypeArgs) {
@@ -1082,6 +1168,10 @@ func (a *Analyzer) inferExpression(expr ast.Expression) (Type, expressionValue) 
 	case *ast.ErrExpression:
 		a.addErrorAtToken(expr.Token, "Err can only be returned from Result-returning function")
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	case *ast.TryExpression:
+		return a.inferTryExpression(expr)
+	case *ast.MatchExpression:
+		return a.inferMatchExpression(expr)
 	case *ast.MemberExpression:
 		typ, ok := a.inferMemberExpression(expr)
 		if !ok {
@@ -1252,29 +1342,119 @@ func (a *Analyzer) inferConversionExpression(expr *ast.ConversionExpression) (Ty
 }
 
 func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressionValue) {
-	function, ok := a.functions[expr.Function.Value]
-	if !ok {
+	functions, ok := a.functions[expr.Function.Value]
+	if !ok || len(functions) == 0 {
 		return a.inferCallAsConversion(expr)
 	}
 
-	if len(expr.Arguments) != len(function.Parameters) {
-		a.addErrorAtToken(expr.Function.Token, "function %s expects %d arguments, got %d", expr.Function.Value, len(function.Parameters), len(expr.Arguments))
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
-	}
-
-	for i, arg := range expr.Arguments {
+	argTypes := make([]Type, 0, len(expr.Arguments))
+	for _, arg := range expr.Arguments {
 		argType, _ := a.inferExpression(arg)
 		if argType.Kind == InvalidType {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
+		argTypes = append(argTypes, argType)
+	}
 
-		param := function.Parameters[i]
-		if !canInitialize(param.Type, argType, arg) {
-			a.addErrorAtToken(expressionToken(arg), "argument %d to %s must be %s, got %s", i+1, expr.Function.Value, typeDisplayName(param.Type), typeDisplayName(argType))
+	arityMatches := []Function{}
+	for _, function := range functions {
+		if len(function.Parameters) == len(expr.Arguments) {
+			arityMatches = append(arityMatches, function)
 		}
 	}
 
-	return function.ReturnType, expressionValue{Display: expr.String()}
+	if len(arityMatches) == 0 {
+		a.addErrorAtToken(expr.Function.Token, "function %s expects %s arguments, got %d", expr.Function.Value, formatFunctionArities(functions), len(expr.Arguments))
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+
+	matches := []overloadMatch{}
+	for _, function := range arityMatches {
+		matchesArguments := true
+		rank := 0
+		for i, arg := range expr.Arguments {
+			if !canInitialize(function.Parameters[i].Type, argTypes[i], arg) {
+				matchesArguments = false
+				break
+			}
+			rank += overloadArgumentRank(function.Parameters[i].Type, argTypes[i])
+		}
+		if matchesArguments {
+			matches = append(matches, overloadMatch{Function: function, Rank: rank})
+		}
+	}
+
+	best := bestOverloadMatches(matches)
+	if len(best) == 1 {
+		return best[0].Function.ReturnType, expressionValue{Display: expr.String()}
+	}
+
+	if len(best) > 1 {
+		a.addErrorAtToken(expr.Function.Token, "ambiguous call to %s", expr.Function.Value)
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+
+	for _, function := range arityMatches {
+		for i, arg := range expr.Arguments {
+			param := function.Parameters[i]
+			if !canInitialize(param.Type, argTypes[i], arg) {
+				a.addErrorAtToken(expressionToken(arg), "argument %d to %s must be %s, got %s", i+1, expr.Function.Value, typeDisplayName(param.Type), typeDisplayName(argTypes[i]))
+			}
+		}
+		break
+	}
+
+	return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+}
+
+type overloadMatch struct {
+	Function Function
+	Rank     int
+}
+
+func overloadArgumentRank(param Type, arg Type) int {
+	if sameConcreteType(param, arg) {
+		return 0
+	}
+	return 1
+}
+
+func bestOverloadMatches(matches []overloadMatch) []overloadMatch {
+	if len(matches) == 0 {
+		return nil
+	}
+
+	bestRank := matches[0].Rank
+	for _, match := range matches[1:] {
+		if match.Rank < bestRank {
+			bestRank = match.Rank
+		}
+	}
+
+	best := []overloadMatch{}
+	for _, match := range matches {
+		if match.Rank == bestRank {
+			best = append(best, match)
+		}
+	}
+	return best
+}
+
+func formatFunctionArities(functions []Function) string {
+	seen := map[int]bool{}
+	out := ""
+	for _, function := range functions {
+		arity := len(function.Parameters)
+		if seen[arity] {
+			continue
+		}
+		seen[arity] = true
+		if out != "" {
+			out += " or "
+		}
+		out += fmt.Sprintf("%d", arity)
+	}
+	return out
 }
 
 func (a *Analyzer) inferCallAsConversion(expr *ast.CallExpression) (Type, expressionValue) {
@@ -1301,6 +1481,340 @@ func (a *Analyzer) inferCallAsConversion(expr *ast.CallExpression) (Type, expres
 	}
 
 	return targetType, expressionValue{Display: expr.String()}
+}
+
+func (a *Analyzer) inferTryExpression(expr *ast.TryExpression) (Type, expressionValue) {
+	valueType, _ := a.inferExpression(expr.Expression)
+	if valueType.Kind == InvalidType {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+
+	if valueType.Kind != ResultType || len(valueType.TypeArgs) != 2 {
+		a.addErrorAtToken(expr.Token, "try requires Result expression")
+		return valueType, expressionValue{Display: expr.String()}
+	}
+
+	if len(expr.Handlers) > 0 {
+		a.analyzeTryHandlers(expr, valueType)
+		return valueType.TypeArgs[0], expressionValue{Display: expr.String()}
+	}
+
+	if !a.inFunctionBody {
+		a.addErrorAtToken(expr.Token, "cannot use try outside function")
+		return valueType.TypeArgs[0], expressionValue{Display: expr.String()}
+	}
+
+	if a.currentFunctionReturn.Kind != ResultType || len(a.currentFunctionReturn.TypeArgs) != 2 {
+		a.addErrorAtToken(expr.Token, "cannot use try in function returning %s", typeDisplayName(a.currentFunctionReturn))
+		return valueType.TypeArgs[0], expressionValue{Display: expr.String()}
+	}
+
+	valueErrorType := valueType.TypeArgs[1]
+	functionErrorType := a.currentFunctionReturn.TypeArgs[1]
+	if !sameConcreteType(valueErrorType, functionErrorType) {
+		a.addErrorAtToken(expr.Token, "cannot propagate %s from function returning %s", typeDisplayName(valueErrorType), typeDisplayName(a.currentFunctionReturn))
+	}
+
+	return valueType.TypeArgs[0], expressionValue{Display: expr.String()}
+}
+
+func (a *Analyzer) analyzeTryHandlers(expr *ast.TryExpression, resultType Type) {
+	successType := resultType.TypeArgs[0]
+	errorType := resultType.TypeArgs[1]
+	catchAllSeen := false
+	matchedVariants := map[string]lexer.Token{}
+
+	for _, handler := range expr.Handlers {
+		bindingName, variantName, ok := a.analyzeTryHandlerPattern(handler, errorType)
+		if !ok {
+			continue
+		}
+
+		if catchAllSeen {
+			a.addErrorAtToken(handler.Token, "unreachable try handler")
+			continue
+		}
+
+		if bindingName != "" {
+			catchAllSeen = true
+		}
+		if variantName != "" {
+			matchedVariants[variantName] = handler.Token
+		}
+
+		a.analyzeTryHandlerBody(handler, successType, errorType, bindingName)
+	}
+
+	if catchAllSeen {
+		return
+	}
+
+	if errorType.Kind == EnumType {
+		if len(matchedVariants) < len(errorType.EnumValues) {
+			a.addErrorAtToken(expr.Token, "non-exhaustive try handlers for %s", typeDisplayName(errorType))
+		}
+		return
+	}
+
+	a.addErrorAtToken(expr.Token, "non-exhaustive try handlers for %s", typeDisplayName(errorType))
+}
+
+func (a *Analyzer) analyzeTryHandlerPattern(handler *ast.TryHandler, errorType Type) (string, string, bool) {
+	errPattern, ok := handler.Pattern.(*ast.ErrExpression)
+	if !ok {
+		a.addErrorAtToken(expressionToken(handler.Pattern), "try handler pattern must be Err(...)")
+		return "", "", false
+	}
+
+	switch pattern := errPattern.Value.(type) {
+	case *ast.Identifier:
+		return pattern.Value, "", true
+	case *ast.MemberExpression:
+		patternType, ok := a.inferMemberExpression(pattern)
+		if !ok || patternType.Kind == InvalidType {
+			return "", "", false
+		}
+		if !sameConcreteType(patternType, errorType) {
+			a.addErrorAtToken(expressionToken(pattern), "try handler pattern must match %s, got %s", typeDisplayName(errorType), typeDisplayName(patternType))
+			return "", "", false
+		}
+		return "", pattern.Property.Value, true
+	default:
+		a.addErrorAtToken(expressionToken(errPattern.Value), "try handler pattern must be enum variant or identifier")
+		return "", "", false
+	}
+}
+
+func (a *Analyzer) analyzeTryHandlerBody(handler *ast.TryHandler, successType Type, errorType Type, bindingName string) {
+	previousSymbols := a.symbols
+	previousConstInts := a.constInts
+	a.symbols = copySymbols(previousSymbols)
+	a.constInts = copyConstInts(previousConstInts)
+	if bindingName != "" {
+		a.symbols[bindingName] = Symbol{Name: bindingName, Type: errorType, Mutable: false, Token: handler.Token}
+		delete(a.constInts, bindingName)
+	}
+	defer func() {
+		a.symbols = previousSymbols
+		a.constInts = previousConstInts
+	}()
+
+	if handler.ReturnBody != nil {
+		a.analyzeReturnStatement(a.currentFunctionName, a.currentFunctionReturn, handler.ReturnBody)
+		return
+	}
+
+	if handler.BlockBody != nil {
+		if !blockContainsReturn(handler.BlockBody) {
+			a.addErrorAtToken(handler.Token, "try handler must return, propagate, terminate or produce %s", typeDisplayName(successType))
+		}
+		return
+	}
+
+	if handler.Body == nil {
+		a.addErrorAtToken(handler.Token, "try handler must return, propagate, terminate or produce %s", typeDisplayName(successType))
+		return
+	}
+
+	bodyType, _ := a.inferExpression(handler.Body)
+	if bodyType.Kind == InvalidType {
+		return
+	}
+	if !canInitialize(successType, bodyType, handler.Body) {
+		a.addErrorAtToken(expressionToken(handler.Body), "try handler must produce %s, got %s", typeDisplayName(successType), typeDisplayName(bodyType))
+	}
+}
+
+func blockContainsReturn(block *ast.BlockStatement) bool {
+	for _, token := range block.Tokens {
+		if token.Type == lexer.RETURN {
+			return true
+		}
+	}
+	return false
+}
+
+func (a *Analyzer) analyzeMatchStatement(stmt *ast.MatchStatement) {
+	if stmt.Match == nil {
+		return
+	}
+	a.analyzeMatch(stmt.Match, false)
+}
+
+func (a *Analyzer) inferMatchExpression(expr *ast.MatchExpression) (Type, expressionValue) {
+	typ := a.analyzeMatch(expr, true)
+	return typ, expressionValue{Display: expr.String()}
+}
+
+type matchPatternInfo struct {
+	BindingName string
+	BindingType Type
+	Kind        string
+	Variant     string
+}
+
+func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Type {
+	subjectType, _ := a.inferExpression(expr.Subject)
+	if subjectType.Kind == InvalidType {
+		return Type{Kind: InvalidType}
+	}
+
+	seenKinds := map[string]bool{}
+	seenVariants := map[string]bool{}
+	catchAll := false
+	var resultType Type
+	hasResultType := false
+
+	for _, arm := range expr.Arms {
+		info, ok := a.analyzeMatchPattern(arm.Pattern, subjectType)
+		if !ok {
+			continue
+		}
+		if catchAll {
+			a.addErrorAtToken(arm.Token, "unreachable match arm")
+			continue
+		}
+		if info.Kind == "catchall" {
+			catchAll = true
+		}
+		if info.Kind != "" {
+			seenKinds[info.Kind] = true
+		}
+		if info.Variant != "" {
+			if seenVariants[info.Variant] {
+				a.addErrorAtToken(arm.Token, "duplicate match arm for %s.%s", typeDisplayName(subjectType), info.Variant)
+				continue
+			}
+			seenVariants[info.Variant] = true
+		}
+
+		armType := a.analyzeMatchArmBody(arm, info)
+		if !valueContext || armType.Kind == InvalidType {
+			continue
+		}
+		if !hasResultType {
+			resultType = armType
+			hasResultType = true
+			continue
+		}
+		if !canInitialize(resultType, armType, arm.Body) && !canInitialize(armType, resultType, arm.Body) {
+			a.addErrorAtToken(expressionToken(arm.Body), "match arms must produce compatible types, got %s and %s", typeDisplayName(resultType), typeDisplayName(armType))
+		}
+	}
+
+	a.checkMatchExhaustive(expr, subjectType, catchAll, seenKinds, seenVariants)
+
+	if valueContext {
+		if !hasResultType {
+			a.addErrorAtToken(expr.Token, "match expression must produce a value")
+			return Type{Kind: InvalidType}
+		}
+		return resultType
+	}
+
+	return Type{Name: "void", Kind: VoidType}
+}
+
+func (a *Analyzer) analyzeMatchPattern(pattern ast.Expression, subjectType Type) (matchPatternInfo, bool) {
+	switch pattern := pattern.(type) {
+	case *ast.OkExpression:
+		if subjectType.Kind != ResultType || len(subjectType.TypeArgs) != 2 {
+			a.addErrorAtToken(pattern.Token, "Ok pattern requires Result subject")
+			return matchPatternInfo{}, false
+		}
+		info := matchPatternInfo{Kind: "Ok"}
+		if ident, ok := pattern.Value.(*ast.Identifier); ok {
+			info.BindingName = ident.Value
+			info.BindingType = subjectType.TypeArgs[0]
+		}
+		return info, true
+	case *ast.ErrExpression:
+		if subjectType.Kind != ResultType || len(subjectType.TypeArgs) != 2 {
+			a.addErrorAtToken(pattern.Token, "Err pattern requires Result subject")
+			return matchPatternInfo{}, false
+		}
+		info := matchPatternInfo{Kind: "Err"}
+		if ident, ok := pattern.Value.(*ast.Identifier); ok {
+			info.BindingName = ident.Value
+			info.BindingType = subjectType.TypeArgs[1]
+		}
+		return info, true
+	case *ast.MemberExpression:
+		patternType, ok := a.inferMemberExpression(pattern)
+		if !ok || patternType.Kind == InvalidType {
+			return matchPatternInfo{}, false
+		}
+		if !sameConcreteType(patternType, subjectType) {
+			a.addErrorAtToken(expressionToken(pattern), "match pattern must match %s, got %s", typeDisplayName(subjectType), typeDisplayName(patternType))
+			return matchPatternInfo{}, false
+		}
+		return matchPatternInfo{Kind: "variant", Variant: pattern.Property.Value}, true
+	case *ast.Identifier:
+		return matchPatternInfo{BindingName: pattern.Value, BindingType: subjectType, Kind: "catchall"}, true
+	default:
+		patternType, _ := a.inferExpression(pattern)
+		if patternType.Kind == InvalidType {
+			return matchPatternInfo{}, false
+		}
+		if !canInitialize(subjectType, patternType, pattern) {
+			a.addErrorAtToken(expressionToken(pattern), "match pattern must match %s, got %s", typeDisplayName(subjectType), typeDisplayName(patternType))
+			return matchPatternInfo{}, false
+		}
+		return matchPatternInfo{Kind: "literal"}, true
+	}
+}
+
+func (a *Analyzer) analyzeMatchArmBody(arm *ast.MatchArm, info matchPatternInfo) Type {
+	previousSymbols := a.symbols
+	previousConstInts := a.constInts
+	a.symbols = copySymbols(previousSymbols)
+	a.constInts = copyConstInts(previousConstInts)
+	if info.BindingName != "" {
+		a.symbols[info.BindingName] = Symbol{Name: info.BindingName, Type: info.BindingType, Mutable: false, Token: arm.Token}
+		delete(a.constInts, info.BindingName)
+	}
+	defer func() {
+		a.symbols = previousSymbols
+		a.constInts = previousConstInts
+	}()
+
+	if arm.ReturnBody != nil {
+		a.analyzeReturnStatement(a.currentFunctionName, a.currentFunctionReturn, arm.ReturnBody)
+		return Type{Kind: InvalidType}
+	}
+	if arm.BlockBody != nil {
+		return Type{Kind: InvalidType}
+	}
+	if arm.Body == nil {
+		return Type{Kind: InvalidType}
+	}
+	bodyType, _ := a.inferExpression(arm.Body)
+	return bodyType
+}
+
+func (a *Analyzer) checkMatchExhaustive(expr *ast.MatchExpression, subjectType Type, catchAll bool, seenKinds map[string]bool, seenVariants map[string]bool) {
+	if catchAll {
+		return
+	}
+
+	if subjectType.Kind == ResultType && len(subjectType.TypeArgs) == 2 {
+		if !seenKinds["Ok"] {
+			a.addErrorAtToken(expr.Token, "non-exhaustive match for %s: missing Ok", typeDisplayName(subjectType))
+		}
+		if !seenKinds["Err"] {
+			a.addErrorAtToken(expr.Token, "non-exhaustive match for %s: missing Err", typeDisplayName(subjectType))
+		}
+		return
+	}
+
+	if subjectType.Kind == EnumType {
+		for _, variant := range subjectType.EnumValues {
+			if !seenVariants[variant] {
+				a.addErrorAtToken(expr.Token, "non-exhaustive match for %s", typeDisplayName(subjectType))
+				return
+			}
+		}
+	}
 }
 
 func (a *Analyzer) inferInfixExpression(expr *ast.InfixExpression) (Type, expressionValue) {
@@ -1630,6 +2144,39 @@ func typeDisplayName(typ Type) string {
 	return string(typ.Kind)
 }
 
+func statementToken(stmt ast.Statement) lexer.Token {
+	switch stmt := stmt.(type) {
+	case *ast.ModuleStatement:
+		return stmt.Token
+	case *ast.ImportStatement:
+		return stmt.Token
+	case *ast.TypeDeclStatement:
+		return stmt.Token
+	case *ast.EnumDeclaration:
+		return stmt.Token
+	case *ast.ImplStatement:
+		return stmt.Token
+	case *ast.FunctionDeclaration:
+		return stmt.Token
+	case *ast.StructStatement:
+		return stmt.Token
+	case *ast.LetStatement:
+		return stmt.Token
+	case *ast.LetGroupStatement:
+		return stmt.Token
+	case *ast.AssignmentStatement:
+		return stmt.Token
+	case *ast.ReturnStatement:
+		return stmt.Token
+	case *ast.MatchStatement:
+		return stmt.Token
+	case *ast.CommentStatement:
+		return stmt.Token
+	default:
+		return lexer.Token{}
+	}
+}
+
 func expressionToken(expr ast.Expression) lexer.Token {
 	switch expr := expr.(type) {
 	case *ast.Identifier:
@@ -1651,6 +2198,10 @@ func expressionToken(expr ast.Expression) lexer.Token {
 	case *ast.ConversionExpression:
 		return expr.Token
 	case *ast.CallExpression:
+		return expr.Token
+	case *ast.TryExpression:
+		return expr.Token
+	case *ast.MatchExpression:
 		return expr.Token
 	case *ast.MemberExpression:
 		return expr.Token

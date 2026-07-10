@@ -34,9 +34,9 @@ Rules:
 - Function call argument count must match the declaration.
 - Function call arguments must be assignable to the corresponding parameter type.
 - Function call expression type is the declared return type.
-- Parser does not decide whether `Name(...)` is a function call or conversion.
-  It should parse this as a call-like expression and let semantic analysis
-  resolve `Name` as a function, type, enum or another callable construct.
+- The parser creates a CallExpression for all `Name(...)`-shaped expressions.
+  Semantic analysis resolves the callee as a function overload, type conversion,
+  constructor or another callable entity.
 
 Parser:
 - Add FunctionStatement / FunctionDeclaration AST node.
@@ -67,7 +67,15 @@ ReturnStatement:
 
 Sema:
 - Register functions before checking bodies.
-- Function names must be unique in module scope.
+- Function names may be overloaded in module scope.
+- Overloads must have different parameter type signatures.
+- A duplicate function with the same parameter type signature is invalid.
+- Return type alone must not distinguish overloads. Call arguments must be
+  sufficient to choose the function.
+- Function call resolution chooses the overload whose parameters can accept the
+  argument expressions.
+- If no overload matches, report an argument error.
+- If multiple overloads match, report an ambiguous call.
 - Parameter types must exist.
 - Return type must exist.
 - Function body has child scope.
@@ -259,16 +267,41 @@ Create:
         Token
         Expression
 
-No semantic behavior yet.
-
-The sema may simply verify:
+Initial semantic behavior:
 
 - expression type is Result[...]
+- try expression type is the Result value type T from Result[T,E]
 - otherwise report:
 
     try requires Result expression
 
 No propagation or lowering yet.
+
+Context rule:
+
+A try expression is only valid inside a function that can propagate the same
+error type, unless the error is handled locally by a later try block syntax.
+
+Valid:
+
+    fn Use() Result[Speed, IOError] {
+        let speed := try CalculateSpeed()
+        return Ok(speed)
+    }
+
+Invalid later:
+
+    fn Use() Speed {
+        return try CalculateSpeed()
+    }
+
+Expected later:
+
+    cannot propagate IOError from function returning Speed
+
+This propagation check does not need to be implemented in the first Result/try
+step, but the AST and semantic model must keep the Result error type available
+so the check can be added without changing parsing.
 
 Tests
 =====
@@ -326,3 +359,66 @@ Sema:
 Expected:
 
     try requires Result expression
+
+Overload resolution
+===================
+
+Function overload resolution must use parameter types only.
+
+The return type is never used to select an overload.
+
+Invalid:
+
+    fn Convert(value: int) string
+    fn Convert(value: int) bool
+
+Reason:
+Both functions have the same parameter signature.
+
+Exact matches are preferred over conversions.
+
+Example:
+
+    fn Print(value: int) void
+    fn Print(value: int64) void
+
+    Print(10)
+
+The literal should first be resolved using its natural/default type.
+If both overloads remain valid with equal priority, the call is ambiguous.
+
+Named types remain distinct during overload resolution.
+
+Example:
+
+    type Percent int range 0..100
+
+    fn Set(value: int) void
+    fn Set(value: Percent) void
+
+    let p: Percent := 50
+
+    Set(p)   // selects Percent overload
+    Set(50)  // selects int overload unless explicitly converted
+
+Result validation
+=================
+
+Result must have exactly two type arguments:
+
+    Result[ValueType, ErrorType]
+
+Invalid:
+
+    Result[int]
+    Result[int, IOError, string]
+
+Both type arguments must resolve to known types.
+
+Ok and Err must contain exactly one expression.
+
+Invalid:
+
+    Ok()
+    Ok(1, 2)
+    Err()

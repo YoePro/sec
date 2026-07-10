@@ -1,0 +1,82 @@
+module main
+
+type Speed decimal<m/s>
+type Money decimal<SEK>
+
+enum IOError {
+    InvalidValue,
+    NotFound,
+    PermissionDenied,
+}
+
+fn ReadSpeed() Result[Speed, IOError] {
+    return Ok(Speed(42.5))
+}
+
+fn FailSpeed() Result[Speed, IOError] {
+    return Err(IOError.InvalidValue)
+}
+
+fn PropagateSpeed() Result[Speed, IOError] {
+    let speed := try ReadSpeed()
+    return Ok(speed)
+}
+
+fn FallbackSpeed() Speed {
+    let speed := try FailSpeed() {
+        Err(error) => Speed(0)
+    }
+
+    return speed
+}
+
+fn ReturnFromHandler() Speed {
+    let speed := try FailSpeed() {
+        Err(IOError.InvalidValue) => return Speed(0)
+        Err(error) => return Speed(1)
+    }
+
+    return speed
+}
+
+fn MatchResult() Speed {
+    let speed := match ReadSpeed() {
+        Ok(value) => value
+        Err(error) => Speed(0)
+    }
+
+    return speed
+}
+
+fn MatchEnum(error: IOError) int {
+    let code := match error {
+        IOError.InvalidValue => 1
+        IOError.NotFound => 2
+        IOError.PermissionDenied => 3
+    }
+
+    return code
+}
+
+fn MatchWithCatchAll(error: IOError) int {
+    let code := match error {
+        IOError.InvalidValue => 1
+        other => 0
+    }
+
+    return code
+}
+
+fn StatementMatch() void {
+    match ReadSpeed() {
+        Ok(speed) => {
+            let value := speed
+        }
+
+        Err(error) => {
+            let value := error
+        }
+    }
+
+    return
+}

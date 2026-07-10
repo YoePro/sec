@@ -68,6 +68,22 @@ type Email string
 
 }
 
+func TestParseModuleRequiresName(t *testing.T) {
+	l := lexer.New("module")
+	p := New(l)
+
+	p.ParseProgram()
+
+	if len(p.Errors()) != 1 {
+		t.Fatalf("wrong parser error count. got=%d want=1 errors=%v", len(p.Errors()), p.Errors())
+	}
+
+	expected := "module declaration missing name at 1:1"
+	if p.Errors()[0] != expected {
+		t.Fatalf("wrong parser error. got=%q want=%q", p.Errors()[0], expected)
+	}
+}
+
 func assertTypeDecl(
 	t *testing.T,
 	stmt ast.Statement,
@@ -1001,6 +1017,99 @@ fn Bar() Result[int, IOError] {
 	barReturn := bar.Body.Statements[0].(*ast.ReturnStatement)
 	if _, ok := barReturn.Value.(*ast.ErrExpression); !ok {
 		t.Fatalf("Bar return is not ErrExpression. got=%T", barReturn.Value)
+	}
+}
+
+func TestParseTryExpression(t *testing.T) {
+	input := `
+fn UseResult() Result[int, IOError] {
+	let value := try Calculate()
+	return Ok(value)
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	letStmt := fn.Body.Statements[0].(*ast.LetStatement)
+	if _, ok := letStmt.Value.(*ast.TryExpression); !ok {
+		t.Fatalf("let value is not TryExpression. got=%T", letStmt.Value)
+	}
+}
+
+func TestParseTryExpressionHandlers(t *testing.T) {
+	input := `
+fn UseResult() Result[int, IOError] {
+	let value := try Calculate() {
+		Err(IOError.InvalidValue) => 0
+		Err(error) => return Err(error)
+	}
+	return Ok(value)
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	letStmt := fn.Body.Statements[0].(*ast.LetStatement)
+	tryExpr, ok := letStmt.Value.(*ast.TryExpression)
+	if !ok {
+		t.Fatalf("let value is not TryExpression. got=%T", letStmt.Value)
+	}
+	if len(tryExpr.Handlers) != 2 {
+		t.Fatalf("wrong handler count. got=%d want=2", len(tryExpr.Handlers))
+	}
+	if tryExpr.Handlers[0].Body == nil {
+		t.Fatal("first handler should have expression body")
+	}
+	if tryExpr.Handlers[1].ReturnBody == nil {
+		t.Fatal("second handler should have return body")
+	}
+}
+
+func TestParseTryHandlerBlockMissingClosingBraceRecovery(t *testing.T) {
+	input := `
+fn MissingClosingBrace() Speed {
+	let speed := try ReadSpeed() {
+		Err(error) => Speed(0)
+
+	return speed
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+
+	program := p.ParseProgram()
+
+	expected := []string{
+		`expected '}' after try handler block before "return" at 6:2`,
+	}
+
+	if len(p.Errors()) != len(expected) {
+		t.Fatalf("wrong parser error count. got=%d want=%d errors=%v", len(p.Errors()), len(expected), p.Errors())
+	}
+	for i, want := range expected {
+		if p.Errors()[i] != want {
+			t.Fatalf("wrong parser error %d. got=%q want=%q", i, p.Errors()[i], want)
+		}
+	}
+
+	if len(program.Statements) != 1 {
+		t.Fatalf("wrong statement count. got=%d want=1", len(program.Statements))
+	}
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	if len(fn.Body.Statements) != 2 {
+		t.Fatalf("wrong function body statement count. got=%d want=2", len(fn.Body.Statements))
+	}
+	if _, ok := fn.Body.Statements[1].(*ast.ReturnStatement); !ok {
+		t.Fatalf("second function body statement is not ReturnStatement. got=%T", fn.Body.Statements[1])
 	}
 }
 

@@ -1,0 +1,883 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Named Types, Contracts and Units - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+</head>
+<body>
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+
+        <div class="sidebar-section">Named Types</div>
+        <a href="#named-types">Overview</a>
+        <a href="#declaring-a-named-type">Declaring a Named Type</a>
+        <a href="#underlying-type">Underlying Type</a>
+        <a href="#type-identity">Type Identity</a>
+        <a href="#why-named-types">Why Named Types Matter</a>
+        <a href="#declaration-with-literals">Declaration with Literals</a>
+        <a href="#explicit-conversion">Explicit Conversion</a>
+        <a href="#assignment">Assignment</a>
+        <a href="#compound-assignment">Compound Assignment</a>
+
+        <div class="sidebar-section">Contracts</div>
+        <a href="#contracts">Overview</a>
+        <a href="#range-contracts">Range Contracts</a>
+        <a href="#inclusive-ranges">Inclusive Ranges</a>
+        <a href="#exclusive-upper-bound">Exclusive Upper Bound</a>
+        <a href="#open-ended-ranges">Open-ended Ranges</a>
+        <a href="#contract-checking">Contract Checking</a>
+        <a href="#default-values">Default Values</a>
+
+        <div class="sidebar-section">Units</div>
+        <a href="#units">Overview</a>
+        <a href="#declaring-unit-types">Declaring Unit Types</a>
+        <a href="#unit-identity">Units and Type Identity</a>
+        <a href="#addition-and-subtraction">Addition and Subtraction</a>
+        <a href="#multiplication-and-division">Multiplication and Division</a>
+        <a href="#unit-cancellation">Unit Cancellation</a>
+        <a href="#derived-units">Derived Units</a>
+        <a href="#anonymous-unit-values">Anonymous Unit Values</a>
+        <a href="#scalars-and-units">Scalars and Units</a>
+        <a href="#unsupported-unit-algebra">Unsupported Unit Algebra</a>
+        <a href="#unit-examples">Complete Example</a>
+
+        <div class="sidebar-section">Inference</div>
+        <a href="#numeric-inference">Numeric Type Inference</a>
+        <a href="#integer-literals">Integer Literals</a>
+        <a href="#decimal-literals">Decimal Literals</a>
+        <a href="#summary-rules">Summary of Rules</a>
+
+        <div class="sidebar-section">Pages</div>
+        <a href="index.html">Index</a>
+        <a href="01-introduction.html">Introduction</a>
+        <a href="02-basic-syntax.html">Basic Syntax</a>
+        <a href="03-variables-and-basic-types.html">Variables and Basic Types</a>
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Named Types, Contracts and Units</div>
+
+        <h1 id="named-types">Named Types, Contracts and Units</h1>
+
+        <p>
+            Sec allows programmers to define new types with the <code>type</code> keyword. A named type
+            is not merely an alternative spelling for an existing type. It is a distinct semantic type
+            that allows the compiler to distinguish values that have different meanings, even when those
+            values use the same underlying representation.
+        </p>
+
+        <p>
+            Named types are a central part of Sec's type-safety model. They make it possible to represent
+            concepts such as speed, money, percentages, identifiers, distances and durations as different
+            types instead of treating all of them as interchangeable numbers.
+        </p>
+
+        <div class="section" id="declaring-a-named-type">
+            <h2>Declaring a Named Type</h2>
+
+            <p>
+                A basic named type declaration consists of the <code>type</code> keyword, the new type name,
+                and an existing underlying type.
+            </p>
+
+            <pre><code>type Speed int</code></pre>
+
+            <p>
+                This declaration creates a new type named <code>Speed</code>. Its underlying representation is
+                <code>int</code>, but <code>Speed</code> and <code>int</code> are different types.
+            </p>
+
+            <p>Named types may be created from any appropriate basic type:</p>
+
+            <pre><code>type CustomerID uint64
+
+type Temperature float64
+
+type Price decimal
+
+type Username string
+
+type Initial rune
+
+type StatusCode int32</code></pre>
+
+            <p>
+                The type name should describe the meaning of the value rather than only its storage format.
+                A declaration such as <code>type CustomerID uint64</code> communicates that the value is an
+                identifier for a customer, not an arbitrary unsigned integer.
+            </p>
+        </div>
+
+        <div class="section" id="underlying-type">
+            <h2>Underlying Type</h2>
+
+            <p>
+                Every basic named type has an underlying type. The underlying type determines the basic
+                storage representation and which fundamental operations may potentially be available.
+            </p>
+
+            <pre><code>type Speed int</code></pre>
+
+            <p>
+                Here, <code>int</code> is the underlying type of <code>Speed</code>. A <code>Speed</code> value is
+                represented using the same basic integer representation as <code>int</code>, but the compiler
+                continues to treat it as <code>Speed</code> throughout semantic analysis.
+            </p>
+
+            <p>
+                The existence of an underlying type does not make the named type interchangeable with that
+                type. Representation compatibility is not the same as semantic compatibility.
+            </p>
+        </div>
+
+        <div class="section" id="type-identity">
+            <h2>Named Type Identity</h2>
+
+            <p>
+                Every named type has its own identity. Two named types remain different even when they have
+                the same underlying type and the same contracts.
+            </p>
+
+            <pre><code>type Speed int
+
+type Money int</code></pre>
+
+            <p>
+                Both types use <code>int</code> as their underlying type. Nevertheless, a <code>Speed</code> value
+                cannot be used where a <code>Money</code> value is required.
+            </p>
+
+            <pre><code>let speed: Speed := 80
+let money: Money := speed // Compile-time error.</code></pre>
+
+            <p>
+                The compiler rejects this assignment because <code>Speed</code> and <code>Money</code> describe
+                different concepts. The fact that both are represented by integers is irrelevant to their
+                semantic identity.
+            </p>
+
+            <p>The same rule applies to types with identical contracts:</p>
+
+            <pre><code>type Percent int range 0..100
+
+type BatteryLevel int range 0..100
+
+let charge: BatteryLevel := 85
+let discount: Percent := charge // Compile-time error.</code></pre>
+
+            <p>
+                A battery level is not a percentage discount merely because both values happen to be within
+                the range from zero to one hundred.
+            </p>
+        </div>
+
+        <div class="section" id="why-named-types">
+            <h2>Why Named Types Matter</h2>
+
+            <p>
+                Programs frequently contain values that share the same physical representation but have
+                completely different meanings. Without named types, these differences exist only in variable
+                names and programmer discipline.
+            </p>
+
+            <pre><code>fn Transfer(from: uint64, to: uint64, amount: decimal) void</code></pre>
+
+            <p>
+                This function signature does not tell the compiler what the two integers represent. The caller
+                may accidentally reverse them or pass an unrelated integer.
+            </p>
+
+            <p>A named-type version allows the compiler to enforce the intended meaning:</p>
+
+            <pre><code>type AccountID uint64
+
+type Money decimal
+
+fn Transfer(from: AccountID, to: AccountID, amount: Money) void</code></pre>
+
+            <p>
+                Named types convert domain knowledge into compile-time rules. The compiler can reject many
+                category errors before the program is run.
+            </p>
+        </div>
+
+        <div class="section" id="declaration-with-literals">
+            <h2>Declaration with Untyped Literals</h2>
+
+            <p>
+                Untyped literals may be used directly when a named type is declared. The declaration provides
+                the target context that gives the literal its type.
+            </p>
+
+            <pre><code>type Speed int
+
+type Money decimal
+
+let speed: Speed := 80
+let price: Money := 49.90</code></pre>
+
+            <p>
+                In the first declaration, the integer literal <code>80</code> is checked as a possible
+                <code>Speed</code> value. In the second declaration, the decimal literal <code>49.90</code> is
+                checked as a possible <code>Money</code> value.
+            </p>
+
+            <p>
+                This rule applies to literals, not to variables. A variable already has a type and is never
+                silently reshaped into another named type.
+            </p>
+
+            <pre><code>let raw := 80
+let speed: Speed := raw // Compile-time error.</code></pre>
+
+            <p>
+                The variable <code>raw</code> has type <code>int</code>. It must be explicitly converted before it
+                can be stored as <code>Speed</code>.
+            </p>
+        </div>
+
+        <div class="section" id="explicit-conversion">
+            <h2>Explicit Conversion</h2>
+
+            <p>
+                Converting an existing value into a named type requires an explicit conversion. The target
+                type is written like a function call around the source expression.
+            </p>
+
+            <pre><code>let raw := 80
+let speed: Speed := Speed(raw)</code></pre>
+
+            <p>
+                The expression <code>Speed(raw)</code> explicitly requests conversion from the source value to
+                <code>Speed</code>. This makes the change of semantic meaning visible in the source code.
+            </p>
+
+            <p>
+                Explicit conversion does not mean that every conversion must succeed. The source value must
+                be representable by the underlying type and must satisfy every contract attached to the target
+                type.
+            </p>
+
+            <pre><code>type Percent int range 0..100
+
+let raw := 125
+let percent: Percent := Percent(raw) // Contract violation.</code></pre>
+
+            <p>
+                When the source value is known during compilation, the compiler checks the conversion during
+                compilation. A known-invalid conversion is rejected before the program can run.
+            </p>
+
+            <p>
+                When the source value is only known at runtime, conversion to a constrained type requires a
+                runtime contract check. The exact error-handling form for failed runtime conversions is covered
+                in the contracts and error-handling sections of the manual.
+            </p>
+        </div>
+
+        <div class="section" id="assignment">
+            <h2>Assignment to Named Types</h2>
+
+            <p>
+                Assignment preserves the exact type of the target variable. After a named-type variable has
+                been declared, later assignments must produce that named type.
+            </p>
+
+            <pre><code>type Speed int
+
+let mut speed: Speed := 80
+speed = Speed(90)</code></pre>
+
+            <p>The following assignment is invalid:</p>
+
+            <pre><code>speed = 90 // Compile-time error.</code></pre>
+
+            <p>
+                The literal was permitted in the original declaration because the declaration supplied target
+                context. A later assignment does not weaken the identity of the variable. The programmer must
+                explicitly construct or convert a <code>Speed</code> value.
+            </p>
+
+            <p>This distinction is intentional:</p>
+
+            <pre><code>let speed: Speed := 80       // Valid declaration.
+
+let mut limit: Speed := 100  // Valid declaration.
+limit = Speed(120)           // Valid assignment.
+limit = 120                  // Invalid assignment.</code></pre>
+
+            <p>
+                Strict assignment rules make later code easier to audit because every change from an untyped or
+                differently typed value into a named type remains explicit.
+            </p>
+        </div>
+
+        <div class="section" id="compound-assignment">
+            <h2>Compound Assignment</h2>
+
+            <p>
+                A compound assignment applies an operator and then assigns the result back to the left-hand
+                variable.
+            </p>
+
+            <pre><code>speed += increase</code></pre>
+
+            <p>Conceptually, this means:</p>
+
+            <pre><code>speed = speed + increase</code></pre>
+
+            <p>Therefore all normal assignment rules still apply:</p>
+
+            <ul>
+                <li>The left-hand variable must have been declared with <code>let mut</code>.</li>
+                <li>The operator must be valid for both operand types.</li>
+                <li>The result must have the exact type required by the left-hand variable.</li>
+                <li>All contracts of the target type must remain satisfied.</li>
+            </ul>
+
+            <pre><code>type Speed int
+
+let mut speed: Speed := 80
+let increase: Speed := 10
+
+speed += increase // Valid.</code></pre>
+
+            <p>A different named type is rejected:</p>
+
+            <pre><code>type Money int
+
+let amount: Money := 10
+speed += amount // Compile-time error.</code></pre>
+
+            <p>Raw literals are not implicitly converted during compound assignment:</p>
+
+            <pre><code>speed += 10        // Compile-time error.
+speed += Speed(10) // Valid.</code></pre>
+        </div>
+
+        <h1 id="contracts">Contracts</h1>
+
+        <p>
+            A contract restricts which values are valid for a named type. The underlying type determines how
+            a value is represented, while contracts determine which values are allowed to exist as instances
+            of that type.
+        </p>
+
+        <p>
+            A value that violates a type contract is not a valid value of that type. Contract checking is part
+            of type safety, not merely optional validation performed by application code.
+        </p>
+
+        <div class="section" id="range-contracts">
+            <h2>Range Contracts</h2>
+
+            <p>
+                A range contract restricts a numeric named type to a defined interval.
+            </p>
+
+            <pre><code>type Percent int range 0..100</code></pre>
+
+            <p>
+                The type <code>Percent</code> is distinct from <code>int</code> and accepts values from zero through
+                one hundred.
+            </p>
+
+            <pre><code>let none: Percent := 0
+let half: Percent := 50
+let all: Percent := 100</code></pre>
+
+            <p>Values outside the range are invalid:</p>
+
+            <pre><code>let negative: Percent := -1 // Compile-time error.
+let tooHigh: Percent := 101 // Compile-time error.</code></pre>
+        </div>
+
+        <div class="section" id="inclusive-ranges">
+            <h2>Inclusive Ranges</h2>
+
+            <p>
+                The <code>..</code> range form includes both endpoints.
+            </p>
+
+            <pre><code>type Percent int range 0..100</code></pre>
+
+            <p>
+                Both <code>0</code> and <code>100</code> are valid values of <code>Percent</code>.
+            </p>
+        </div>
+
+        <div class="section" id="exclusive-upper-bound">
+            <h2>Exclusive Upper Bound</h2>
+
+            <p>
+                The <code>..&lt;</code> form excludes the upper endpoint.
+            </p>
+
+            <pre><code>type ArrayIndex int range 0..&lt;100</code></pre>
+
+            <p>
+                Values from <code>0</code> through <code>99</code> are valid. The value <code>100</code> is not valid.
+            </p>
+        </div>
+
+        <div class="section" id="open-ended-ranges">
+            <h2>Open-ended Ranges</h2>
+
+            <p>A range may omit either endpoint.</p>
+
+            <pre><code>type Maximum int range ..100
+
+type NonNegative int range 0..</code></pre>
+
+            <p>
+                <code>Maximum</code> accepts values up to and including one hundred. <code>NonNegative</code>
+                accepts zero and every larger value representable by its underlying type.
+            </p>
+        </div>
+
+        <div class="section" id="contract-checking">
+            <h2>Compile-time and Runtime Contract Checking</h2>
+
+            <p>
+                Sec checks contracts as early as possible. When a value is known during compilation, a contract
+                violation is a compile-time error.
+            </p>
+
+            <pre><code>type Port int range 1..65535
+
+let port: Port := 8080  // Valid.
+let invalid: Port := 0  // Compile-time error.</code></pre>
+
+            <p>
+                An explicit conversion of a compile-time-known value is checked in the same way:
+            </p>
+
+            <pre><code>let raw := 70000
+let port: Port := Port(raw) // Compile-time error.</code></pre>
+
+            <p>
+                Values obtained from input, files, databases, networks or other runtime sources cannot always
+                be verified by the compiler. Explicit conversion of such a value must perform the appropriate
+                contract check at runtime.
+            </p>
+
+            <pre><code>let raw := ReadPortFromConfiguration()
+let port: Port := Port(raw) // Requires runtime validation.</code></pre>
+
+            <p>
+                A contract is never silently ignored merely because the value was not known during compilation.
+            </p>
+        </div>
+
+        <div class="section" id="default-values">
+            <h2>Contracts and Default Values</h2>
+
+            <p>
+                A constrained type has an implicit default value only when the default value of its underlying
+                type satisfies every contract.
+            </p>
+
+            <pre><code>type Percent int range 0..100</code></pre>
+
+            <p>
+                The default integer value is zero, and zero is valid for <code>Percent</code>. Therefore
+                <code>Percent</code> may have a valid default value.
+            </p>
+
+            <pre><code>type Port int range 1..65535</code></pre>
+
+            <p>
+                The default integer value is zero, but zero is not a valid <code>Port</code>. Therefore
+                <code>Port</code> cannot be implicitly default-initialized.
+            </p>
+        </div>
+
+        <h1 id="units">Units</h1>
+
+        <p>
+            Sec can attach units to decimal types. Units are part of the semantic type system and allow the
+            compiler to distinguish quantities such as money, distance, duration, mass and speed.
+        </p>
+
+        <p>
+            A unit is written inside angle brackets after <code>decimal</code>.
+        </p>
+
+        <pre><code>decimal&lt;m&gt;
+decimal&lt;s&gt;
+decimal&lt;kg&gt;
+decimal&lt;m/s&gt;
+decimal&lt;SEK&gt;</code></pre>
+
+        <p>
+            Unit-aware values are not decorative annotations. Their dimensions affect assignment, arithmetic,
+            type inference and compatibility checks.
+        </p>
+
+        <div class="section" id="declaring-unit-types">
+            <h2>Declaring Named Unit Types</h2>
+
+            <p>A named unit type combines a normal named type with a decimal unit.</p>
+
+            <pre><code>type Meter decimal&lt;m&gt;
+
+type Second decimal&lt;s&gt;
+
+type Speed decimal&lt;m/s&gt;
+
+type Money decimal&lt;SEK&gt;</code></pre>
+
+            <p>
+                Each declaration creates a distinct named type. The unit describes the type's physical or
+                semantic dimension, while the type name identifies the domain concept used by the program.
+            </p>
+
+            <p>Values may be declared using numeric literals:</p>
+
+            <pre><code>let distance: Meter := 100
+let duration: Second := 9.58
+let price: Money := 249.90</code></pre>
+
+            <p>
+                The target type supplies the unit context for each literal.
+            </p>
+        </div>
+
+        <div class="section" id="unit-identity">
+            <h2>Units and Named Type Identity</h2>
+
+            <p>
+                Units and named types both participate in semantic typing. Matching units do not automatically
+                erase named-type identity.
+            </p>
+
+            <pre><code>type Width decimal&lt;m&gt;
+
+type Height decimal&lt;m&gt;</code></pre>
+
+            <p>
+                <code>Width</code> and <code>Height</code> have the same unit dimension, but they remain different
+                named types.
+            </p>
+
+            <pre><code>let width: Width := 2.5
+let height: Height := width // Compile-time error.</code></pre>
+
+            <p>
+                This strictness prevents accidental mixing of values that happen to use the same measurement
+                unit but represent different roles in the program.
+            </p>
+        </div>
+
+        <div class="section" id="addition-and-subtraction">
+            <h2>Addition and Subtraction</h2>
+
+            <p>
+                Addition and subtraction require compatible dimensions. Values with unrelated units cannot be
+                added or subtracted.
+            </p>
+
+            <pre><code>type Meter decimal&lt;m&gt;
+
+type Second decimal&lt;s&gt;
+
+let a: Meter := 10
+let b: Meter := 5
+let total := a + b</code></pre>
+
+            <p>
+                Both operands represent the same dimension, so the addition is meaningful.
+            </p>
+
+            <p>The following expression is invalid:</p>
+
+            <pre><code>let distance: Meter := 100
+let duration: Second := 10
+let invalid := distance + duration // Compile-time error.</code></pre>
+
+            <p>
+                Metres and seconds describe different dimensions. There is no meaningful result type for their
+                addition.
+            </p>
+
+            <p>
+                Sec normally also preserves named-type identity. Two unrelated named types are not automatically
+                interchangeable merely because they carry the same unit.
+            </p>
+        </div>
+
+        <div class="section" id="multiplication-and-division">
+            <h2>Multiplication and Division</h2>
+
+            <p>
+                Multiplication and division use unit algebra. Multiplication adds unit exponents, while division
+                subtracts them.
+            </p>
+
+            <pre><code>Meter / Second -&gt; decimal&lt;m/s&gt;
+Speed * Second -&gt; decimal&lt;m&gt;</code></pre>
+
+            <p>
+                Unlike addition and subtraction, multiplication and division may produce a different dimension
+                from either operand.
+            </p>
+
+            <pre><code>type Meter decimal&lt;m&gt;
+type Second decimal&lt;s&gt;
+type Speed decimal&lt;m/s&gt;
+
+let distance: Meter := 100
+let duration: Second := 10
+let speed := distance / duration</code></pre>
+
+            <p>
+                Dividing distance by duration derives the dimension <code>m/s</code>. If a matching named type is
+                available, the compiler may infer that type for the result.
+            </p>
+        </div>
+
+        <div class="section" id="unit-cancellation">
+            <h2>Unit Cancellation</h2>
+
+            <p>
+                Equal dimensions in the numerator and denominator cancel each other.
+            </p>
+
+            <pre><code>Meter / Meter -&gt; decimal
+Second / Second -&gt; decimal
+Money / Money -&gt; decimal</code></pre>
+
+            <p>
+                The result is dimensionless because the unit exponents become zero.
+            </p>
+
+            <pre><code>let travelled: Meter := 50
+let planned: Meter := 100
+let completion := travelled / planned</code></pre>
+
+            <p>
+                <code>completion</code> is a plain dimensionless <code>decimal</code>, not a <code>Meter</code>.
+            </p>
+        </div>
+
+        <div class="section" id="derived-units">
+            <h2>Matching Derived Unit Types</h2>
+
+            <p>
+                When an arithmetic expression derives a unit dimension, Sec may resolve the result to an existing
+                named type with that dimension.
+            </p>
+
+            <pre><code>type Meter decimal&lt;m&gt;
+type Second decimal&lt;s&gt;
+type Speed decimal&lt;m/s&gt;
+
+let distance: Meter := 100
+let duration: Second := 10
+let speed := distance / duration</code></pre>
+
+            <p>
+                The derived dimension is <code>m/s</code>. Because <code>Speed</code> is declared with that dimension,
+                the compiler may infer <code>Speed</code> as the result type.
+            </p>
+
+            <p>
+                This allows unit-aware arithmetic to remain concise without discarding semantic type information.
+            </p>
+        </div>
+
+        <div class="section" id="anonymous-unit-values">
+            <h2>Anonymous Unit Values</h2>
+
+            <p>
+                An operation may derive a unit dimension for which no named type has been declared. In that case,
+                the result can remain an anonymous unit-aware decimal type.
+            </p>
+
+            <pre><code>type Meter decimal&lt;m&gt;
+type Second decimal&lt;s&gt;
+
+let distance: Meter := 100
+let duration: Second := 10
+let value := distance / duration</code></pre>
+
+            <p>
+                If no named <code>decimal&lt;m/s&gt;</code> type exists, <code>value</code> may have the anonymous semantic
+                type <code>decimal&lt;m/s&gt;</code>.
+            </p>
+
+            <p>
+                Anonymous unit types preserve dimensional correctness even when the programmer has not assigned
+                a domain-specific name to every possible result.
+            </p>
+        </div>
+
+        <div class="section" id="scalars-and-units">
+            <h2>Scalars and Unit Values</h2>
+
+            <p>
+                Multiplication or division by a dimensionless scalar preserves the unit dimension.
+            </p>
+
+            <pre><code>Money * int -&gt; Money
+Money / int -&gt; Money
+Meter * decimal -&gt; Meter
+Meter / decimal -&gt; Meter</code></pre>
+
+            <p>Example:</p>
+
+            <pre><code>type Money decimal&lt;SEK&gt;
+
+let unitPrice: Money := 49.90
+let quantity: int := 3
+let total := unitPrice * quantity</code></pre>
+
+            <p>
+                Multiplying by the dimensionless quantity does not change the currency dimension. The result may
+                therefore remain <code>Money</code>.
+            </p>
+        </div>
+
+        <div class="section" id="unsupported-unit-algebra">
+            <h2>Currently Unsupported Unit Algebra</h2>
+
+            <p>
+                Sec initially supports the unit operations needed for common linear calculations. Some
+                mathematically possible dimensions are intentionally rejected until their syntax and use cases
+                are fully defined.
+            </p>
+
+            <p>Multiplying a currency by itself is currently invalid:</p>
+
+            <pre><code>type Money decimal&lt;SEK&gt;
+
+let a: Money := 10
+let b: Money := 20
+let invalid := a * b // Compile-time error.</code></pre>
+
+            <p>
+                The result would have the dimension <code>SEK²</code>, which is not currently accepted as a useful
+                currency type.
+            </p>
+
+            <p>
+                Explicit exponent notation such as <code>m^2</code> or <code>m²</code> is not part of the current
+                language version. Area and other exponent-based units will be documented when that syntax is
+                finalized.
+            </p>
+        </div>
+
+        <div class="section" id="unit-examples">
+            <h2>Complete Unit Example</h2>
+
+            <pre><code>type Meter decimal&lt;m&gt;
+type Second decimal&lt;s&gt;
+type Speed decimal&lt;m/s&gt;
+
+fn CalculateSpeed(distance: Meter, duration: Second) Speed {
+    return distance / duration
+}
+
+fn main() void {
+    let distance: Meter := 100
+    let duration: Second := 9.58
+    let speed: Speed := CalculateSpeed(distance, duration)
+
+    println(speed)
+}</code></pre>
+
+            <p>
+                The function signature states exactly which dimensions are accepted and returned. Passing a
+                <code>Money</code> value as the distance or a <code>Meter</code> value as the duration is rejected
+                during compilation.
+            </p>
+        </div>
+
+        <h1 id="numeric-inference">Numeric Type Inference</h1>
+
+        <p>
+            Numeric literals do not necessarily have a final concrete type by themselves. Their type may be
+            determined by the declaration context. When no target type is present, Sec uses safe default types.
+        </p>
+
+        <div class="section" id="integer-literals">
+            <h2>Integer Literals</h2>
+
+            <p>An integer literal without target context is inferred as <code>int</code>.</p>
+
+            <pre><code>let count := 10</code></pre>
+
+            <p>
+                The inferred type of <code>count</code> is <code>int</code>.
+            </p>
+
+            <p>A target declaration may instead shape the literal into a named type:</p>
+
+            <pre><code>type Speed int
+
+let speed: Speed := 10</code></pre>
+        </div>
+
+        <div class="section" id="decimal-literals">
+            <h2>Decimal Literals</h2>
+
+            <p>
+                A decimal literal without target context is inferred as <code>decimal</code>, not
+                <code>float64</code>.
+            </p>
+
+            <pre><code>let price := 3.14</code></pre>
+
+            <p>
+                The inferred type of <code>price</code> is <code>decimal</code>. This is the safe default because
+                decimal arithmetic is exact within the supported decimal model and avoids accidental binary
+                floating-point approximation.
+            </p>
+
+            <p>Floating-point use must be explicit:</p>
+
+            <pre><code>let measurement: float64 := 3.14</code></pre>
+
+            <p>A decimal literal may also be shaped by a named decimal or unit type:</p>
+
+            <pre><code>type Money decimal&lt;SEK&gt;
+
+let price: Money := 3.14</code></pre>
+        </div>
+
+        <div class="section" id="summary-rules">
+            <h2>Summary of Rules</h2>
+
+            <ul>
+                <li>A declaration such as <code>type Speed int</code> creates a new semantic type.</li>
+                <li>A named type is distinct from its underlying type.</li>
+                <li>Two named types remain distinct even when their underlying types are identical.</li>
+                <li>Untyped literals may initialize named types in declaration context.</li>
+                <li>Variables are never implicitly converted into named types.</li>
+                <li>Conversion from an expression or variable must be explicit, such as <code>Speed(value)</code>.</li>
+                <li>Assignment to an existing named-type variable requires the exact named type.</li>
+                <li>Compound assignment follows the same identity and contract rules as normal assignment.</li>
+                <li>Contracts restrict which values may exist as a named type.</li>
+                <li>Compile-time-known contract violations are compile-time errors.</li>
+                <li>Runtime values require contract checking when explicitly converted.</li>
+                <li>Units are part of type semantics.</li>
+                <li>Addition and subtraction require compatible units.</li>
+                <li>Multiplication and division derive new dimensions algebraically.</li>
+                <li>Matching dimensions may resolve to a declared named type.</li>
+                <li>An unmatched derived dimension may remain an anonymous unit-aware decimal type.</li>
+                <li>Integer literals infer as <code>int</code> when no target context exists.</li>
+                <li>Decimal literals infer as <code>decimal</code> when no target context exists.</li>
+            </ul>
+        </div>
+
+        <div class="page-navigation">
+            <a href="03-variables-and-basic-types.html">Previous: Variables and Basic Types</a>
+            <a href="index.html">Manual Index</a>
+        </div>
+    </main>
+</div>
+</body>
+</html>

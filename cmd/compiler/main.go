@@ -246,6 +246,9 @@ func printASTStatement(stmt ast.Statement, prefix string, last bool) {
 	case *ast.ReturnStatement:
 		printASTReturn(stmt, prefix, last)
 
+	case *ast.MatchStatement:
+		printASTExpression(prefix, last, "Match", stmt.Match)
+
 	case *ast.ImplStatement:
 		printASTImpl(stmt, prefix, last)
 
@@ -439,8 +442,59 @@ func printASTExpression(prefix string, last bool, role string, expr ast.Expressi
 		printASTExpression(childrenPrefix, false, "Left", expr.Left)
 		printASTExpression(childrenPrefix, true, "Right", expr.Right)
 
+	case *ast.TryExpression:
+		printASTBranch(prefix, last, role+": Try")
+		childrenPrefix := childPrefix(prefix, last)
+		hasHandlers := len(expr.Handlers) > 0
+		printASTExpression(childrenPrefix, !hasHandlers, "Expression", expr.Expression)
+		for i, handler := range expr.Handlers {
+			printASTTryHandler(childrenPrefix, handler, i == len(expr.Handlers)-1)
+		}
+
+	case *ast.MatchExpression:
+		printASTBranch(prefix, last, role+": Match")
+		childrenPrefix := childPrefix(prefix, last)
+		printASTExpression(childrenPrefix, len(expr.Arms) == 0, "Subject", expr.Subject)
+		for i, arm := range expr.Arms {
+			printASTMatchArm(childrenPrefix, arm, i == len(expr.Arms)-1)
+		}
+
 	default:
 		printASTLeaf(prefix, last, role+": "+formatASTExpression(expr))
+	}
+}
+
+func printASTTryHandler(prefix string, handler *ast.TryHandler, last bool) {
+	printASTBranch(prefix, last, "Handler")
+	childrenPrefix := childPrefix(prefix, last)
+	printASTExpression(childrenPrefix, false, "Pattern", handler.Pattern)
+
+	switch {
+	case handler.ReturnBody != nil:
+		printASTReturn(handler.ReturnBody, childrenPrefix, true)
+	case handler.BlockBody != nil:
+		printASTLeaf(childrenPrefix, true, "Body: Block")
+	case handler.Body != nil:
+		printASTExpression(childrenPrefix, true, "Body", handler.Body)
+	default:
+		printASTLeaf(childrenPrefix, true, "Body: <nil>")
+	}
+}
+
+func printASTMatchArm(prefix string, arm *ast.MatchArm, last bool) {
+	printASTBranch(prefix, last, "Arm")
+	childrenPrefix := childPrefix(prefix, last)
+	printASTExpression(childrenPrefix, false, "Pattern", arm.Pattern)
+
+	switch {
+	case arm.ReturnBody != nil:
+		printASTReturn(arm.ReturnBody, childrenPrefix, true)
+	case arm.BlockBody != nil:
+		printASTLeaf(childrenPrefix, true, "Body: Block")
+	case arm.Body != nil:
+		printASTExpression(childrenPrefix, true, "Body", arm.Body)
+	default:
+		printASTLeaf(childrenPrefix, true, "Body: <nil>")
 	}
 }
 
@@ -502,13 +556,17 @@ func formatASTExpression(expr ast.Expression) string {
 	case *ast.InfixExpression:
 		return "Infix(" + expr.Operator + ")"
 	case *ast.MemberExpression:
-		return "Member(" + expr.Property.Value + ")"
+		return "Member(" + formatASTExpression(expr.Object) + "." + expr.Property.Value + ")"
 	case *ast.CallExpression:
 		return "Call(" + expr.Function.Value + ")"
 	case *ast.OkExpression:
-		return "Ok"
+		return "Ok(" + formatASTExpression(expr.Value) + ")"
 	case *ast.ErrExpression:
-		return "Err"
+		return "Err(" + formatASTExpression(expr.Value) + ")"
+	case *ast.TryExpression:
+		return "Try(" + formatASTExpression(expr.Expression) + ")"
+	case *ast.MatchExpression:
+		return "Match(" + formatASTExpression(expr.Subject) + ")"
 	case *ast.StructLiteral:
 		return "StructLiteral(" + formatTypeRef(expr.Type) + ")"
 	default:

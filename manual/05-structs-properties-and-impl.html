@@ -1,0 +1,982 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Structs, Properties and Impl - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+</head>
+<body>
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+
+        <div class="sidebar-section">Object Model</div>
+        <a href="#object-model">Overview</a>
+        <a href="#separation-of-responsibilities">Separation of Responsibilities</a>
+        <a href="#no-classes">No Classes</a>
+
+        <div class="sidebar-section">Structs</div>
+        <a href="#structs">Overview</a>
+        <a href="#declaring-a-struct">Declaring a Struct</a>
+        <a href="#struct-fields">Struct Fields</a>
+        <a href="#field-separators">Field Separators</a>
+        <a href="#struct-literals">Struct Literals</a>
+        <a href="#field-access">Field Access</a>
+        <a href="#field-mutability">Field Mutability</a>
+        <a href="#default-construction">Default Construction</a>
+        <a href="#struct-field-tags">Struct Field Tags</a>
+
+        <div class="sidebar-section">Impl Blocks</div>
+        <a href="#impl-blocks">Overview</a>
+        <a href="#impl-target">Impl Target</a>
+        <a href="#impl-members">Allowed Members</a>
+        <a href="#one-impl-per-type">One Impl per Type</a>
+        <a href="#impl-data-layout">No Stored Data in Impl</a>
+        <a href="#methods">Methods</a>
+
+        <div class="sidebar-section">Properties</div>
+        <a href="#properties">Overview</a>
+        <a href="#property-syntax">Property Syntax</a>
+        <a href="#read-only-properties">Read-only Properties</a>
+        <a href="#writable-properties">Writable Properties</a>
+        <a href="#computed-properties">Computed Properties</a>
+        <a href="#backing-fields">Backing Fields</a>
+        <a href="#fallible-properties">Fallible Properties</a>
+        <a href="#property-type-rules">Property Type Rules</a>
+        <a href="#property-member-access">Property Access</a>
+
+        <div class="sidebar-section">Nested Types</div>
+        <a href="#nested-types">Overview</a>
+        <a href="#nested-structs">Nested Struct Types</a>
+        <a href="#nested-enums">Nested Enums</a>
+        <a href="#qualified-names">Qualified Names</a>
+        <a href="#forward-references">Forward References</a>
+
+        <div class="sidebar-section">Summary</div>
+        <a href="#complete-example">Complete Example</a>
+        <a href="#summary-rules">Summary of Rules</a>
+
+        <div class="sidebar-section">Pages</div>
+        <a href="index.html">Index</a>
+        <a href="01-introduction.html">Introduction</a>
+        <a href="02-basic-syntax.html">Basic Syntax</a>
+        <a href="03-variables-and-basic-types.html">Variables and Basic Types</a>
+        <a href="04-named-types-contracts-and-units.html">Named Types, Contracts and Units</a>
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Structs, Properties and Impl</div>
+
+        <h1 id="object-model">Structs, Properties and Impl</h1>
+
+        <p>
+            Sec does not use classes. Instead, it separates type identity, stored data, behavior and
+            controlled access into distinct language constructs. Each construct has one responsibility,
+            and the constructs are combined to form complete application types.
+        </p>
+
+        <p>
+            A named type defines identity. A <code>struct</code> defines stored data. An <code>impl</code>
+            block defines behavior and type-local declarations. A <code>property</code> defines controlled
+            or computed access to values. Interfaces, described in a later chapter, define behavioral
+            contracts that other code may depend on.
+        </p>
+
+        <div class="section" id="separation-of-responsibilities">
+            <h2>Separation of Responsibilities</h2>
+
+            <p>Sec deliberately separates the major parts of an object-like type:</p>
+
+            <pre><code>type Vehicle struct {
+    _speed: Speed,
+}
+
+impl Vehicle {
+    property Speed: Speed {
+        get {
+            return _speed
+        }
+    }
+
+    fn Stop() void {
+        _speed = Speed(0)
+    }
+}</code></pre>
+
+            <p>In this example:</p>
+
+            <ul>
+                <li><code>type Vehicle</code> gives the type its identity.</li>
+                <li><code>struct</code> defines the data stored in each <code>Vehicle</code>.</li>
+                <li><code>impl Vehicle</code> defines behavior associated with that type.</li>
+                <li><code>property Speed</code> controls how the speed is exposed.</li>
+                <li><code>fn Stop</code> defines an operation performed by the type.</li>
+            </ul>
+
+            <p>
+                This design avoids mixing stored representation with behavior. Code that needs to understand
+                memory layout can focus on the struct declaration. Code that needs to understand behavior can
+                focus on the impl block.
+            </p>
+        </div>
+
+        <div class="section" id="no-classes">
+            <h2>No Classes</h2>
+
+            <p>
+                Sec has no class declaration and no classical implementation inheritance. A struct is not a
+                class, and an impl block does not create a hidden object or runtime type hierarchy.
+            </p>
+
+            <p>
+                Structs are value-oriented data definitions. Behavior is attached explicitly through impl
+                blocks. Reuse is achieved through composition, interfaces and normal functions rather than
+                through inheritance.
+            </p>
+        </div>
+
+        <h1 id="structs">Structs</h1>
+
+        <p>
+            A struct defines the stored fields of a named type. Structs contain data only. They do not contain
+            methods, properties, executable statements or initialization code.
+        </p>
+
+        <div class="section" id="declaring-a-struct">
+            <h2>Declaring a Struct</h2>
+
+            <p>A named struct type is declared with <code>type Name struct</code>:</p>
+
+            <pre><code>type Coordinate struct {
+    x: Meter,
+    y: Meter,
+    z: Meter,
+}</code></pre>
+
+            <p>
+                The declaration creates a distinct named type called <code>Coordinate</code>. Every value of
+                this type contains the fields <code>x</code>, <code>y</code> and <code>z</code>.
+            </p>
+
+            <p>
+                The <code>type</code> keyword is required because a struct declaration always introduces a
+                named type. Sec does not use anonymous class-like declarations.
+            </p>
+        </div>
+
+        <div class="section" id="struct-fields">
+            <h2>Struct Fields</h2>
+
+            <p>Each field uses typed identifier syntax:</p>
+
+            <pre><code>fieldName: Type</code></pre>
+
+            <p>This is the same name-first syntax used by function parameters and explicit variable types.</p>
+
+            <pre><code>type User struct {
+    id: CustomerID,
+    name: string,
+    age: Age,
+}</code></pre>
+
+            <p>
+                Field names must be unique within the struct. Declaring the same field more than once is a
+                compile-time error.
+            </p>
+
+            <pre><code>type InvalidUser struct {
+    name: string,
+    name: string,
+} // Error: duplicate field "name" in struct InvalidUser.</code></pre>
+
+            <p>
+                Every referenced field type must exist. Unknown types are rejected during semantic analysis.
+            </p>
+        </div>
+
+        <div class="section" id="field-separators">
+            <h2>Field Separators</h2>
+
+            <p>Struct fields are comma-separated. Line breaks do not separate fields.</p>
+
+            <p>Valid multi-line declaration:</p>
+
+            <pre><code>type Coordinate struct {
+    x: Meter,
+    y: Meter,
+    z: Meter,
+}</code></pre>
+
+            <p>Valid single-line declaration:</p>
+
+            <pre><code>type Coordinate struct { x: Meter, y: Meter, z: Meter }</code></pre>
+
+            <p>A trailing comma before the closing brace is allowed and recommended for multi-line structs.</p>
+
+            <p>Invalid declaration:</p>
+
+            <pre><code>type Coordinate struct {
+    x: Meter
+    y: Meter
+}</code></pre>
+
+            <p>
+                The compiler reports that a comma or closing brace was expected after the preceding field.
+                Field lists never depend on whitespace or line endings.
+            </p>
+        </div>
+
+        <div class="section" id="struct-literals">
+            <h2>Struct Literals</h2>
+
+            <p>A struct value is created with a struct literal:</p>
+
+            <pre><code>let point := Coordinate{
+    x: Meter(10),
+    y: Meter(20),
+    z: Meter(0),
+}</code></pre>
+
+            <p>
+                Struct literals use named fields. Positional struct initialization is not supported because it
+                makes code depend on declaration order and becomes difficult to read when several fields have
+                the same type.
+            </p>
+
+            <p>Invalid positional construction:</p>
+
+            <pre><code>let point := Coordinate{Meter(10), Meter(20), Meter(0)}</code></pre>
+
+            <p>
+                A field may appear at most once in a struct literal. Unknown fields and values of incompatible
+                types are compile-time errors.
+            </p>
+
+            <pre><code>let point := Coordinate{
+    x: Meter(10),
+    x: Meter(20),
+} // Error: duplicate field x.</code></pre>
+        </div>
+
+        <div class="section" id="field-access">
+            <h2>Field Access</h2>
+
+            <p>Fields are accessed with member syntax:</p>
+
+            <pre><code>let horizontal := point.x</code></pre>
+
+            <p>Member access may be chained when fields contain other struct values:</p>
+
+            <pre><code>let power := vehicle.engine.power</code></pre>
+
+            <p>
+                Access is resolved statically. The compiler verifies that each member exists on the type of the
+                preceding expression.
+            </p>
+        </div>
+
+        <div class="section" id="field-mutability">
+            <h2>Field Mutability</h2>
+
+            <p>
+                Struct fields do not declare independent mutability. Mutability belongs to the binding or
+                reference through which the struct is accessed.
+            </p>
+
+            <p>An immutable variable does not permit field assignment:</p>
+
+            <pre><code>let point := Coordinate{
+    x: Meter(10),
+    y: Meter(20),
+    z: Meter(0),
+}
+
+point.x = Meter(15) // Error: point is immutable.</code></pre>
+
+            <p>A mutable variable allows its fields to be changed:</p>
+
+            <pre><code>let mut point := Coordinate{
+    x: Meter(10),
+    y: Meter(20),
+    z: Meter(0),
+}
+
+point.x = Meter(15)</code></pre>
+
+            <p>
+                This follows Sec's general mutability rule: values are immutable unless the declaration includes
+                <code>mut</code>.
+            </p>
+        </div>
+
+        <div class="section" id="default-construction">
+            <h2>Default Construction</h2>
+
+            <p>
+                A mutable variable may be declared with a struct type and without an initializer when the struct
+                has a valid default value.
+            </p>
+
+            <pre><code>let mut coordinate: Coordinate</code></pre>
+
+            <p>
+                A struct has a valid default only when every stored field has a valid default. If any field type
+                has no default value, the struct must be initialized explicitly.
+            </p>
+
+            <p>
+                This rule is derived from the default-value rules of the field types. A struct does not invent
+                defaults for fields whose types cannot be default-constructed.
+            </p>
+        </div>
+
+        <div class="section" id="struct-field-tags">
+            <h2>Struct Field Tags</h2>
+
+            <p>
+                Struct fields may carry optional metadata tags. Tags use backtick raw-string syntax and follow
+                the same basic key-value model as Go struct tags.
+            </p>
+
+            <pre><code>type User struct {
+    id: int `json:"id" xml:"id" db:"user_id"`,
+    name: string `json:"name" xml:"name"`,
+    password: string `json:"-"`,
+}</code></pre>
+
+            <p>A field tag contains one or more metadata entries:</p>
+
+            <pre><code>key:"value" key:"value"</code></pre>
+
+            <p>
+                Tags do not affect type checking or memory layout. They are preserved as metadata for
+                serializers, database libraries, reflection, code generators and other tools.
+            </p>
+
+            <p>
+                The compiler does not hard-code a fixed set of tag names. Libraries may define their own keys.
+                Common examples include <code>json</code>, <code>xml</code>, <code>db</code>, <code>yaml</code> and
+                <code>csv</code>.
+            </p>
+
+            <p>Malformed tag syntax is a compile-time parser error.</p>
+        </div>
+
+        <h1 id="impl-blocks">Impl Blocks</h1>
+
+        <p>
+            An impl block defines behavior and type-local declarations for an existing named type. It does not
+            create a new type and does not define stored data.
+        </p>
+
+        <div class="section" id="impl-target">
+            <h2>Impl Target</h2>
+
+            <p>The basic syntax is:</p>
+
+            <pre><code>impl Vehicle {
+}</code></pre>
+
+            <p>
+                The name after <code>impl</code> is the target type. That type must already exist or be registered
+                as part of the same compilation unit.
+            </p>
+
+            <pre><code>impl MissingType {
+} // Error: unknown impl target MissingType.</code></pre>
+
+            <p>
+                An impl block attaches declarations to a named type. It cannot target an arbitrary expression or
+                an undeclared type name.
+            </p>
+        </div>
+
+        <div class="section" id="impl-members">
+            <h2>Allowed Impl Members</h2>
+
+            <p>An impl block may contain:</p>
+
+            <ul>
+                <li>properties,</li>
+                <li>methods declared with <code>fn</code>,</li>
+                <li>nested named types,</li>
+                <li>nested enums.</li>
+            </ul>
+
+            <pre><code>impl Vehicle {
+    type Engine struct {
+        power: Kilowatt,
+    }
+
+    enum FuelType {
+        petrol,
+        diesel,
+        electric,
+    }
+
+    property Speed: Speed {
+        get {
+            return _speed
+        }
+    }
+
+    fn Stop() void {
+        _speed = Speed(0)
+    }
+}</code></pre>
+
+            <p>
+                Raw fields, variable declarations and executable statements are not valid directly inside an
+                impl block.
+            </p>
+        </div>
+
+        <div class="section" id="one-impl-per-type">
+            <h2>One Impl Block per Type</h2>
+
+            <p>Each named type may have at most one impl block.</p>
+
+            <pre><code>impl Vehicle {
+    fn Start() void {
+    }
+}
+
+impl Vehicle {
+    fn Stop() void {
+    }
+} // Error: duplicate impl block for Vehicle.</code></pre>
+
+            <p>
+                This rule keeps the type-local namespace and behavior together. A reader can find all methods,
+                properties and nested declarations for a type in one place instead of searching through multiple
+                impl blocks spread across the project.
+            </p>
+        </div>
+
+        <div class="section" id="impl-data-layout">
+            <h2>No Stored Data in Impl</h2>
+
+            <p>Only a struct declaration defines stored data layout.</p>
+
+            <p>Invalid:</p>
+
+            <pre><code>impl Vehicle {
+    let currentSpeed: Speed
+}</code></pre>
+
+            <p>
+                An impl block may not contain a <code>let</code> declaration as a stored member. Local variables are
+                permitted inside methods, getters and setters, but not directly in the impl body.
+            </p>
+
+            <p>Likewise, nested structs must still be introduced with <code>type</code>:</p>
+
+            <pre><code>impl Vehicle {
+    type Engine struct {
+        power: Kilowatt,
+    }
+}</code></pre>
+
+            <p>Invalid:</p>
+
+            <pre><code>impl Vehicle {
+    struct Engine {
+        power: Kilowatt,
+    }
+}</code></pre>
+        </div>
+
+        <div class="section" id="methods">
+            <h2>Methods</h2>
+
+            <p>
+                Methods are functions declared inside an impl block. They describe operations associated with
+                the target type.
+            </p>
+
+            <pre><code>impl Vehicle {
+    fn Stop() void {
+        _speed = Speed(0)
+    }
+}</code></pre>
+
+            <p>
+                Methods may access the target type's fields and properties according to the normal visibility,
+                mutability and borrowing rules.
+            </p>
+
+            <p>
+                Full method syntax, parameters, receivers and return behavior are described in the functions and
+                methods chapter. The important structural rule here is that methods belong in <code>impl</code>, not
+                inside the struct declaration.
+            </p>
+        </div>
+
+        <h1 id="properties">Properties</h1>
+
+        <p>
+            A property defines controlled or computed access to a value associated with a named type. Properties
+            are behavior and therefore belong inside impl blocks.
+        </p>
+
+        <p>
+            From calling code, a property is accessed with the same member syntax as a field. Internally, the
+            property may read a backing field, calculate a value, validate assignments or perform other controlled
+            behavior.
+        </p>
+
+        <div class="section" id="property-syntax">
+            <h2>Property Syntax</h2>
+
+            <p>A property declaration specifies a name, a type and one or more accessors:</p>
+
+            <pre><code>property Name: Type {
+    get {
+        return value
+    }
+
+    set value {
+        storedValue = value
+    }
+}</code></pre>
+
+            <p>A property may contain:</p>
+
+            <ul>
+                <li>one <code>get</code> accessor,</li>
+                <li>one <code>set</code> accessor, or</li>
+                <li>one <code>try set</code> accessor.</li>
+            </ul>
+
+            <p>
+                A property must contain at least one accessor. It may not contain two getters or two setters.
+            </p>
+        </div>
+
+        <div class="section" id="read-only-properties">
+            <h2>Read-only Properties</h2>
+
+            <p>A property with a getter and no setter is read-only:</p>
+
+            <pre><code>impl Vehicle {
+    property Speed: Speed {
+        get {
+            return _speed
+        }
+    }
+}</code></pre>
+
+            <p>The property may be read:</p>
+
+            <pre><code>let currentSpeed := vehicle.Speed</code></pre>
+
+            <p>It may not be assigned:</p>
+
+            <pre><code>vehicle.Speed = Speed(80) // Error: property Speed is read-only.</code></pre>
+        </div>
+
+        <div class="section" id="writable-properties">
+            <h2>Writable Properties</h2>
+
+            <p>A normal setter allows assignment to the property:</p>
+
+            <pre><code>impl Vehicle {
+    property Speed: Speed {
+        get {
+            return _speed
+        }
+
+        set value {
+            _speed = value
+        }
+    }
+}</code></pre>
+
+            <p>
+                The setter parameter is declared after <code>set</code>. Its type is the property type, so the
+                example parameter <code>value</code> has type <code>Speed</code>.
+            </p>
+
+            <pre><code>vehicle.Speed = Speed(80)</code></pre>
+
+            <p>
+                The assigned value must be assignable to the property type. Named type identity remains strict;
+                an unrelated numeric value does not become <code>Speed</code> implicitly.
+            </p>
+        </div>
+
+        <div class="section" id="computed-properties">
+            <h2>Computed Properties</h2>
+
+            <p>A property does not need a backing field. Its getter may calculate the returned value:</p>
+
+            <pre><code>type Rectangle struct {
+    width: Meter,
+    height: Meter,
+}
+
+impl Rectangle {
+    property Area: decimal&lt;m*m&gt; {
+        get {
+            return width * height
+        }
+    }
+}</code></pre>
+
+            <p>
+                Calling code uses normal member syntax even though no stored <code>Area</code> field exists:
+            </p>
+
+            <pre><code>let area := rectangle.Area</code></pre>
+
+            <p>
+                This allows the internal representation to change without changing the public access syntax.
+            </p>
+        </div>
+
+        <div class="section" id="backing-fields">
+            <h2>Backing Fields</h2>
+
+            <p>A property commonly exposes or controls access to an internal field:</p>
+
+            <pre><code>type Vehicle struct {
+    _speed: Speed,
+}
+
+impl Vehicle {
+    property Speed: Speed {
+        get {
+            return _speed
+        }
+
+        set value {
+            _speed = value
+        }
+    }
+}</code></pre>
+
+            <p>
+                The field and property are separate declarations. Sec does not create an implicit hidden backing
+                field for a property.
+            </p>
+
+            <p>
+                A field beginning with a single underscore is module-private according to Sec's visibility rules.
+                Such fields are useful as internal representation while a public property exposes controlled
+                access.
+            </p>
+        </div>
+
+        <div class="section" id="fallible-properties">
+            <h2>Fallible Properties</h2>
+
+            <p>
+                Some assignments require validation or may fail for reasons that cannot be represented as a
+                simple compile-time type error. A fallible setter is declared with <code>try set</code>.
+            </p>
+
+            <pre><code>type VehicleError enum {
+    invalidSpeed,
+}
+
+impl Vehicle {
+    property Speed: Speed {
+        get {
+            return _speed
+        }
+
+        try set value {
+            if value &lt; Speed(0) {
+                return Err(VehicleError.invalidSpeed)
+            }
+
+            _speed = value
+        }
+    }
+}</code></pre>
+
+            <p>Assignment to a fallible property must explicitly use <code>try</code>:</p>
+
+            <pre><code>try vehicle.Speed = requestedSpeed</code></pre>
+
+            <p>Assignment without <code>try</code> is rejected:</p>
+
+            <pre><code>vehicle.Speed = requestedSpeed
+// Error: assignment to fallible property Speed requires try.</code></pre>
+
+            <p>
+                A normal setter may not return <code>Err(...)</code>. A setter that can fail must be declared as
+                <code>try set</code> so the possibility of failure remains visible to callers.
+            </p>
+        </div>
+
+        <div class="section" id="property-type-rules">
+            <h2>Property Type Rules</h2>
+
+            <p>The property declaration defines the type observed by callers.</p>
+
+            <pre><code>property TopSpeed: Speed {
+    get {
+        return _speed
+    }
+}</code></pre>
+
+            <p>
+                Every getter return expression must be assignable to the declared property type. Returning a
+                different named type is an error even when both types share the same underlying representation.
+            </p>
+
+            <pre><code>property InvalidSpeed: Speed {
+    get {
+        return Money(5.90)
+    }
+} // Error: getter InvalidSpeed must return Speed, got Money.</code></pre>
+
+            <p>A getter must return a value:</p>
+
+            <pre><code>property InvalidSpeed: Speed {
+    get {
+    }
+} // Error: getter InvalidSpeed must return Speed.</code></pre>
+
+            <p>
+                A setter parameter has the property type. Assignments performed inside the setter remain subject
+                to the normal assignment, named type and mutability rules.
+            </p>
+        </div>
+
+        <div class="section" id="property-member-access">
+            <h2>Property Access</h2>
+
+            <p>Fields and properties use the same member-access operator:</p>
+
+            <pre><code>let rawSpeed := vehicle._speed
+let publicSpeed := vehicle.Speed</code></pre>
+
+            <p>
+                The compiler resolves whether the member is a stored field or a property from the static type of
+                the expression. Calling code does not use explicit getter or setter function syntax.
+            </p>
+
+            <p>
+                This common syntax does not make fields and properties semantically identical. A field directly
+                accesses stored data, while a property executes its declared accessor behavior.
+            </p>
+        </div>
+
+        <h1 id="nested-types">Nested Types</h1>
+
+        <p>
+            An impl block may contain named types that logically belong to its target type. Nested types create a
+            type-local namespace without changing the rule that <code>type</code> introduces named types.
+        </p>
+
+        <div class="section" id="nested-structs">
+            <h2>Nested Struct Types</h2>
+
+            <pre><code>impl Vehicle {
+    type Engine struct {
+        power: Kilowatt,
+    }
+
+    type FuelTank struct {
+        capacity: Liter,
+    }
+}</code></pre>
+
+            <p>
+                These declarations create the named types <code>Vehicle.Engine</code> and
+                <code>Vehicle.FuelTank</code>.
+            </p>
+
+            <p>
+                The nested declaration still requires <code>type</code>. Writing <code>struct Engine</code> directly
+                is invalid.
+            </p>
+        </div>
+
+        <div class="section" id="nested-enums">
+            <h2>Nested Enums</h2>
+
+            <p>Enums may also be declared in an impl block:</p>
+
+            <pre><code>impl Vehicle {
+    enum FuelType {
+        petrol,
+        diesel,
+        electric,
+    }
+
+    enum EngineState {
+        off,
+        idle,
+        running,
+    }
+}</code></pre>
+
+            <p>Enum values are accessed through the nested enum type:</p>
+
+            <pre><code>let fuel := Vehicle.FuelType.petrol</code></pre>
+
+            <p>
+                Variant names must be unique within their enum. Different enums may reuse the same variant name.
+            </p>
+        </div>
+
+        <div class="section" id="qualified-names">
+            <h2>Qualified Names</h2>
+
+            <p>Outside the target type's impl block, nested types use their fully qualified names:</p>
+
+            <pre><code>Vehicle.Engine
+Vehicle.FuelType
+Vehicle.FuelType.electric</code></pre>
+
+            <p>Inside <code>impl Vehicle</code>, both short and fully qualified names are valid:</p>
+
+            <pre><code>Engine
+FuelType
+Vehicle.Engine
+Vehicle.FuelType</code></pre>
+
+            <p>
+                Qualification makes ownership clear and prevents unrelated nested type names from colliding in
+                the module namespace.
+            </p>
+        </div>
+
+        <div class="section" id="forward-references">
+            <h2>Forward References</h2>
+
+            <p>
+                A struct may refer to a nested type declared later in its impl block. The compiler registers type
+                names before resolving field types.
+            </p>
+
+            <pre><code>type Vehicle struct {
+    engine: Vehicle.Engine,
+    fuelType: Vehicle.FuelType,
+}
+
+impl Vehicle {
+    type Engine struct {
+        power: Kilowatt,
+    }
+
+    enum FuelType {
+        petrol,
+        diesel,
+        electric,
+    }
+}</code></pre>
+
+            <p>
+                This is valid even though the nested declarations appear after the struct. Type declarations are
+                resolved semantically rather than requiring strict textual declaration order.
+            </p>
+        </div>
+
+        <div class="section" id="complete-example">
+            <h2>Complete Example</h2>
+
+            <pre><code>type Speed decimal&lt;m/s&gt;
+type Kilowatt decimal&lt;kW&gt;
+type Liter decimal&lt;L&gt;
+
+type VehicleError enum {
+    invalidSpeed,
+}
+
+type Vehicle struct {
+    _speed: Speed,
+    engine: Vehicle.Engine,
+    fuelType: Vehicle.FuelType,
+}
+
+impl Vehicle {
+    type Engine struct {
+        power: Kilowatt,
+    }
+
+    enum FuelType {
+        petrol,
+        diesel,
+        electric,
+    }
+
+    property Speed: Speed {
+        get {
+            return _speed
+        }
+
+        try set value {
+            if value &lt; Speed(0) {
+                return Err(VehicleError.invalidSpeed)
+            }
+
+            _speed = value
+        }
+    }
+
+    property IsMoving: bool {
+        get {
+            return _speed &gt; Speed(0)
+        }
+    }
+
+    fn Stop() void {
+        _speed = Speed(0)
+    }
+}
+
+let mut vehicle := Vehicle{
+    _speed: Speed(0),
+    engine: Vehicle.Engine{
+        power: Kilowatt(100),
+    },
+    fuelType: Vehicle.FuelType.electric,
+}
+
+try vehicle.Speed = Speed(25)
+let moving := vehicle.IsMoving
+vehicle.Stop()</code></pre>
+
+            <p>
+                The example demonstrates stored fields, a nested struct, a nested enum, a writable fallible
+                property, a computed read-only property and a method. Each construct has a distinct role while
+                all of them form one coherent named type.
+            </p>
+        </div>
+
+        <div class="section" id="summary-rules">
+            <h2>Summary of Rules</h2>
+
+            <ul>
+                <li>Sec has no classes.</li>
+                <li><code>type Name struct</code> defines a named type and its stored data.</li>
+                <li>Struct fields use <code>name: Type</code> syntax.</li>
+                <li>Struct fields are comma-separated, and a trailing comma is allowed.</li>
+                <li>Struct literals use named fields.</li>
+                <li>Field mutation requires mutable access to the containing value.</li>
+                <li>Struct field tags are metadata and do not affect type semantics.</li>
+                <li>An impl block defines behavior and type-local declarations for an existing named type.</li>
+                <li>Each named type may have at most one impl block.</li>
+                <li>An impl block may not declare stored fields or top-level <code>let</code> bindings.</li>
+                <li>Methods and properties belong inside impl blocks.</li>
+                <li>A property may be read-only, writable or fallible.</li>
+                <li>A property getter must return the declared property type.</li>
+                <li>Assignment to a fallible property requires <code>try</code>.</li>
+                <li>Nested types are accessed with qualified names outside the impl block.</li>
+                <li>A struct may refer to nested types declared later in its impl block.</li>
+            </ul>
+        </div>
+
+        <div class="page-navigation">
+            <a href="04-named-types-contracts-and-units.html">Previous: Named Types, Contracts and Units</a>
+            <a href="index.html">Manual Index</a>
+        </div>
+    </main>
+</div>
+</body>
+</html>

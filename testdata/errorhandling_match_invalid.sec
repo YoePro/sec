@@ -1,0 +1,69 @@
+module main
+
+type Speed decimal<m/s>
+type Money decimal<SEK>
+
+enum IOError {
+    InvalidValue,
+    NotFound,
+    PermissionDenied,
+}
+
+fn ReadSpeed() Result[Speed, IOError] {
+    return Ok(Speed(10))
+}
+
+fn NonExhaustiveResult() Speed {
+    let speed := match ReadSpeed() {
+        Ok(value) => value
+    }
+
+    return speed
+}
+
+fn NonExhaustiveEnum(error: IOError) int {
+    let code := match error {
+        IOError.InvalidValue => 1
+        IOError.NotFound => 2
+    }
+
+    return code
+}
+
+fn IncompatibleArmTypes(error: IOError) int {
+    let value := match error {
+        IOError.InvalidValue => 1
+        IOError.NotFound => "missing"
+        IOError.PermissionDenied => 3
+    }
+
+    return value
+}
+
+fn WrongResultPattern() Speed {
+    let speed := match ReadSpeed() {
+        IOError.InvalidValue => Speed(0)
+        other => Speed(1)
+    }
+
+    return speed
+}
+
+fn DuplicateArm(error: IOError) int {
+    let code := match error {
+        IOError.InvalidValue => 1
+        IOError.InvalidValue => 2
+        other => 0
+    }
+
+    return code
+}
+
+fn UnreachableArm(error: IOError) int {
+    let code := match error {
+        other => 0
+        IOError.InvalidValue => 1
+    }
+
+    return code
+}

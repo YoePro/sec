@@ -16,6 +16,16 @@ type Statement interface {
 	statementNode()
 }
 
+type InvalidStatement struct {
+	Token lexer.Token
+}
+
+func (is *InvalidStatement) statementNode() {}
+
+func (is *InvalidStatement) TokenLiteral() string {
+	return is.Token.Lexeme
+}
+
 // Expression represents a value-producing AST node.
 type Expression interface {
 	Node
@@ -290,6 +300,17 @@ func (as *AssignmentStatement) TokenLiteral() string {
 	return as.Token.Lexeme
 }
 
+type ExpressionStatement struct {
+	Token      lexer.Token
+	Expression Expression
+}
+
+func (es *ExpressionStatement) statementNode() {}
+
+func (es *ExpressionStatement) TokenLiteral() string {
+	return es.Token.Lexeme
+}
+
 type FunctionDeclaration struct {
 	Token      lexer.Token
 	Name       *Identifier
@@ -327,6 +348,19 @@ func (rs *ReturnStatement) TokenLiteral() string {
 	return rs.Token.Lexeme
 }
 
+type IfStatement struct {
+	Token       lexer.Token
+	Condition   Expression
+	Consequence *BlockStatement
+	Alternative *BlockStatement
+}
+
+func (is *IfStatement) statementNode() {}
+
+func (is *IfStatement) TokenLiteral() string {
+	return is.Token.Lexeme
+}
+
 type StructStatement struct {
 	Token  lexer.Token
 	Name   *Identifier
@@ -340,10 +374,11 @@ func (ss *StructStatement) TokenLiteral() string {
 }
 
 type StructField struct {
-	Token lexer.Token
-	Name  *Identifier
-	Type  *TypeReference
-	Tags  []StructTag
+	Token    lexer.Token
+	Name     *Identifier
+	Type     *TypeReference
+	Contract Contract
+	Tags     []StructTag
 }
 
 func (sf *StructField) TokenLiteral() string {
@@ -439,6 +474,35 @@ func (ie *InfixExpression) String() string {
 	}
 
 	return "(" + left + " " + ie.Operator + " " + right + ")"
+}
+
+type RangeExpression struct {
+	Token     lexer.Token
+	Start     Expression
+	End       Expression
+	Exclusive bool
+}
+
+func (re *RangeExpression) expressionNode() {}
+
+func (re *RangeExpression) TokenLiteral() string {
+	return re.Token.Lexeme
+}
+
+func (re *RangeExpression) String() string {
+	start := ""
+	if re.Start != nil {
+		start = re.Start.String()
+	}
+	end := ""
+	if re.End != nil {
+		end = re.End.String()
+	}
+	operator := ".."
+	if re.Exclusive {
+		operator = "..<"
+	}
+	return start + operator + end
 }
 
 type ConversionExpression struct {

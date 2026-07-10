@@ -1,0 +1,45 @@
+Types and explicit conversions
+==============================
+
+Boolean numeric conversion
+==========================
+
+Explicit conversion from numeric values to bool is allowed.
+
+Syntax:
+
+    bool(value)
+
+Rules:
+
+- `bool(int)` is valid.
+- `bool(uint)` is valid.
+- `bool(float)` is valid.
+- `bool(decimal)` is valid.
+- All integer subtypes are valid.
+- All unsigned integer subtypes are valid.
+- All floating-point subtypes are valid.
+- Decimal is valid.
+- The conversion result is:
+  - `false` when the numeric value is zero,
+  - `true` otherwise.
+
+Examples:
+
+    bool(0)      // false
+    bool(1)      // true
+    bool(-1)     // true
+    bool(0.0)    // false
+    bool(0.1)    // true
+
+This is an explicit conversion only. Numeric values are still not implicitly
+accepted as boolean conditions.
+
+Invalid:
+
+    if 1 {
+    }
+
+Expected:
+
+    if condition must be bool, got int

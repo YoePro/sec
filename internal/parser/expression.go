@@ -31,6 +31,7 @@ var precedences = map[lexer.TokenType]precedence{
 	lexer.LTE:      COMPARE,
 	lexer.GT:       COMPARE,
 	lexer.GTE:      COMPARE,
+	lexer.IN:       COMPARE,
 	lexer.PLUS:     SUM,
 	lexer.MINUS:    SUM,
 	lexer.SLASH:    PRODUCT,
@@ -144,10 +145,15 @@ func (p *Parser) parseExpression(currentPrecedence precedence) ast.Expression {
 			lexer.LT,
 			lexer.LTE,
 			lexer.GT,
-			lexer.GTE:
+			lexer.GTE,
+			lexer.IN:
 
 			p.nextToken()
-			left = p.parseInfixExpression(left)
+			if p.curToken.Type == lexer.IN {
+				left = p.parseInExpression(left)
+			} else {
+				left = p.parseInfixExpression(left)
+			}
 
 		default:
 			return left
@@ -601,6 +607,77 @@ func (p *Parser) parseInfixExpression(left ast.Expression) ast.Expression {
 	expr.Right = p.parseExpression(prec)
 
 	return expr
+}
+
+func (p *Parser) parseInExpression(left ast.Expression) ast.Expression {
+	expr := &ast.InfixExpression{
+		Token:    p.curToken,
+		Left:     left,
+		Operator: p.curToken.Lexeme,
+	}
+
+	p.nextToken()
+	expr.Right = p.parseRangeOrExpression()
+	if expr.Right == nil {
+		return nil
+	}
+
+	return expr
+}
+
+func (p *Parser) parseRangeOrExpression() ast.Expression {
+	if p.curToken.Type == lexer.RANGE || p.curToken.Type == lexer.RANGE_EXCLUSIVE {
+		rangeExpr := &ast.RangeExpression{
+			Token:     p.curToken,
+			Exclusive: p.curToken.Type == lexer.RANGE_EXCLUSIVE,
+		}
+		if p.isExpressionStart(p.peekToken.Type) {
+			p.nextToken()
+			rangeExpr.End = p.parseExpression(COMPARE)
+		}
+		return rangeExpr
+	}
+
+	start := p.parseExpression(COMPARE)
+	if start == nil {
+		return nil
+	}
+
+	if p.peekToken.Type != lexer.RANGE && p.peekToken.Type != lexer.RANGE_EXCLUSIVE {
+		return start
+	}
+
+	p.nextToken()
+	rangeExpr := &ast.RangeExpression{
+		Token:     p.curToken,
+		Start:     start,
+		Exclusive: p.curToken.Type == lexer.RANGE_EXCLUSIVE,
+	}
+	if p.isExpressionStart(p.peekToken.Type) {
+		p.nextToken()
+		rangeExpr.End = p.parseExpression(COMPARE)
+	}
+	return rangeExpr
+}
+
+func (p *Parser) isExpressionStart(t lexer.TokenType) bool {
+	switch t {
+	case lexer.IDENT,
+		lexer.INT,
+		lexer.FLOAT,
+		lexer.STRING,
+		lexer.INTERPSTRING,
+		lexer.TRUE,
+		lexer.FALSE,
+		lexer.MINUS,
+		lexer.NOT,
+		lexer.TRY,
+		lexer.MATCH,
+		lexer.LPAREN:
+		return true
+	default:
+		return false
+	}
 }
 
 func (p *Parser) peekPrecedence() precedence {

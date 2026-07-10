@@ -1,0 +1,1448 @@
+Implement if statements and conditional branches.
+
+Syntax:
+
+if condition {
+statements
+}
+
+if condition {
+statements
+} else {
+statements
+}
+
+if condition {
+statements
+} else if condition {
+statements
+} else {
+statements
+}
+
+Condition type:
+
+* Every if condition must have type bool.
+* Sec does not use implicit truthiness.
+* Values of type int, uint, float, decimal, string, bytes, enum, Option,
+  Result, ref, pointer, collection or struct are not implicitly converted to bool.
+* A user-defined type may only be used as a condition when the expression itself
+  has type bool.
+* Parentheses around the condition are optional.
+* The formatter removes redundant outer parentheses.
+
+Valid:
+
+if true {
+}
+
+if !false {
+}
+
+if ready {
+}
+
+if !ready {
+}
+
+Invalid:
+
+if 1 {
+}
+
+if "ready" {
+}
+
+if value {
+}
+
+when value is not bool.
+
+Boolean expressions:
+
+Conditions may contain any expression whose resulting type is bool.
+
+This includes:
+
+* bool literals
+* bool variables
+* bool constants
+* bool fields
+* bool properties
+* function calls returning bool
+* method calls returning bool
+* comparison expressions
+* equality expressions
+* range membership expressions
+* logical expressions
+* parenthesized bool expressions
+* match expressions returning bool
+* other conditional expressions returning bool
+
+Boolean literals and values:
+
+if true {
+}
+
+if false {
+}
+
+if enabled {
+}
+
+if config.Enabled {
+}
+
+if user.IsActive {
+}
+
+Logical negation:
+
+The ! operator requires a bool operand and produces bool.
+
+if !enabled {
+}
+
+if !user.IsBlocked {
+}
+
+if !IsValid(value) {
+}
+
+Invalid:
+
+if !10 {
+}
+
+if !name {
+}
+
+Logical operators:
+
+Sec supports:
+
+&&
+||
+
+Both operands must have type bool.
+
+The result has type bool.
+
+Examples:
+
+if authenticated && authorized {
+}
+
+if isAdmin || isOwner {
+}
+
+if ready && !cancelled {
+}
+
+if age >= 18 && account.Active {
+}
+
+Operator precedence:
+
+1. !
+2. comparison, equality and membership operators
+3. &&
+4. ||
+
+Parentheses may be used to make grouping explicit.
+
+if ready && (isAdmin || isOwner) {
+}
+
+if (ready && isAdmin) || isOwner {
+}
+
+Short-circuit evaluation:
+
+&& and || use left-to-right short-circuit evaluation.
+
+For:
+
+left && right
+
+right is evaluated only when left is true.
+
+For:
+
+left || right
+
+right is evaluated only when left is false.
+
+Examples:
+
+if user != None && user.IsActive() {
+}
+
+if cached || LoadCache() {
+}
+
+Short-circuit behavior is guaranteed language semantics and may be relied upon
+for safety and side-effect control.
+
+Equality:
+
+Conditions may use:
+
+==
+!=
+
+Equality operators produce bool.
+
+Examples:
+
+if a == b {
+}
+
+if status != Status.disabled {
+}
+
+if name == "Jonas" {
+}
+
+if result == expected {
+}
+
+The operands must be equality-compatible.
+
+Equality follows the normal Sec equality rules.
+
+No implicit numeric, semantic-type or enum conversion is performed merely
+because an expression appears inside an if condition.
+
+Invalid:
+
+let speed: Speed := ...
+let distance: Distance := ...
+
+if speed == distance {
+}
+
+Invalid:
+
+let status: Status := Status.active
+
+if status == 1 {
+}
+
+Ordered comparisons:
+
+Conditions may use:
+
+<
+<=
+
+> =
+
+Examples:
+
+if age >= 18 {
+}
+
+if temperature < minimum {
+}
+
+if score >= passScore {
+}
+
+if start <= value && value < end {
+}
+
+Both operands must support ordered comparison.
+
+Operands must have compatible types.
+
+Semantic types and unit types retain their normal compatibility rules.
+
+Valid:
+
+let a: Speed := ...
+let b: Speed := ...
+
+if a < b {
+}
+
+Invalid:
+
+let speed: Speed := ...
+let distance: Distance := ...
+
+if speed < distance {
+}
+
+Range membership:
+
+The in operator tests whether a value belongs to a range or another supported
+membership container.
+
+Range membership produces bool.
+
+Examples:
+
+if score in 80..<100 {
+}
+
+if port in 1..65535 {
+}
+
+if value in minimum..maximum {
+}
+
+if index in 0..<items.Length {
+}
+
+if temperature in ..0 {
+}
+
+if value in 1.. {
+}
+
+Supported range forms follow the normal Sec range rules:
+
+start..end
+
+Both bounds included.
+
+start..<end
+
+Start included and end excluded.
+
+start..
+
+Open upper bound.
+
+..end
+
+Open lower bound with included end.
+
+..<end
+
+Open lower bound with excluded end.
+
+The tested value and range bounds must have compatible ordered types.
+
+Invalid:
+
+if speed in 1..100 {
+}
+
+when speed is a semantic type and the range bounds are plain int values that
+cannot be implicitly converted to Speed.
+
+Valid:
+
+let minimum: Speed := ...
+let maximum: Speed := ...
+
+if speed in minimum..<maximum {
+}
+
+General membership:
+
+The in operator may also be supported by language-defined collection types.
+
+Examples:
+
+if item in items {
+}
+
+if key in map {
+}
+
+if permission in user.Permissions {
+}
+
+The right operand must provide membership semantics for the left operand type.
+
+Membership must produce bool.
+
+Membership behavior must not be inferred from unrelated operations such as
+iteration alone.
+
+A type being iterable does not automatically mean that it supports in.
+
+Function calls:
+
+Any function call returning bool may be used directly.
+
+fn IsReady() bool {
+return true
+}
+
+if IsReady() {
+}
+
+Functions may receive arbitrary expressions as arguments.
+
+if CanAccess(user, resource) {
+}
+
+if IsBetween(score, minimum, maximum) {
+}
+
+A function returning any type other than bool cannot be used directly.
+
+Invalid:
+
+fn Count() int {
+return 10
+}
+
+if Count() {
+}
+
+Method calls:
+
+Any method call returning bool may be used directly.
+
+if user.IsActive() {
+}
+
+if connection.IsOpen() && connection.CanWrite() {
+}
+
+Methods returning non-bool values cannot be used directly.
+
+Properties and fields:
+
+A bool field or bool property may be used directly.
+
+if user.Active {
+}
+
+if connection.Ready {
+}
+
+A non-bool field or property must be compared or otherwise converted through an
+explicit bool-producing operation.
+
+Invalid:
+
+if user.Name {
+}
+
+Valid:
+
+if user.Name != "" {
+}
+
+Arithmetic expressions:
+
+Arithmetic expressions may appear inside comparisons.
+
+Examples:
+
+if total + tax > limit {
+}
+
+if width * height >= requiredArea {
+}
+
+if index + 1 < items.Length {
+}
+
+An arithmetic expression itself is not a condition.
+
+Invalid:
+
+if total + tax {
+}
+
+Bitwise expressions:
+
+Bitwise expressions may appear inside comparisons.
+
+Examples:
+
+if flags & RequiredFlags == RequiredFlags {
+}
+
+if value & 1 == 0 {
+}
+
+A bitwise expression itself is not a bool condition unless its type is bool.
+
+Invalid:
+
+if flags & RequiredFlags {
+}
+
+Sec does not treat non-zero integers as true.
+
+Enum values:
+
+Enums may be compared using normal enum equality.
+
+Examples:
+
+if direction == Direction.north {
+}
+
+if status != Status.disabled {
+}
+
+Enums are not implicitly bool.
+
+Invalid:
+
+if status {
+}
+
+Ordering comparisons for enums are not automatically available merely because
+an enum has an integer underlying representation.
+
+Invalid unless explicitly defined by the enum type:
+
+if status < Status.disabled {
+}
+
+The underlying numeric representation does not implicitly define semantic
+ordering.
+
+Option values:
+
+Option[T] is not implicitly bool.
+
+Invalid:
+
+if user {
+}
+
+when user has type Option[User].
+
+Option values must be inspected explicitly.
+
+Examples:
+
+if user == None {
+}
+
+if user != None {
+}
+
+or:
+
+let exists := match user {
+Some(_) => true
+None => false
+}
+
+if exists {
+}
+
+Pattern binding directly inside an if condition is not introduced by this rule.
+
+Not supported:
+
+if Some(user) := optionalUser {
+}
+
+Option destructuring belongs to match.
+
+Result values:
+
+Result[T, E] is not implicitly bool.
+
+Invalid:
+
+if result {
+}
+
+Result values must be handled with:
+
+* try
+* match
+* an explicit bool-returning method or function
+* explicit comparison when equality is defined
+
+Examples:
+
+if result.IsOk() {
+}
+
+match result {
+Ok(value) => ...
+Err(error) => ...
+}
+
+References:
+
+References are not implicitly bool.
+
+Invalid:
+
+if userRef {
+}
+
+A non-optional ref T always refers to a valid value and therefore does not need
+a null-style condition.
+
+An optional reference must be handled according to its explicit optional type
+rules.
+
+Sec does not introduce pointer truthiness.
+
+Unsafe pointers:
+
+Unsafe pointers are not implicitly bool.
+
+Invalid:
+
+if pointer {
+}
+
+Pointer validity, null checks and address comparisons must use explicit unsafe
+operations defined by the pointer model.
+
+The if statement itself does not create special pointer semantics.
+
+Collections:
+
+Collections are not implicitly bool.
+
+Invalid:
+
+if items {
+}
+
+if map {
+}
+
+Use an explicit bool expression.
+
+Examples:
+
+if !items.IsEmpty() {
+}
+
+if items.Length > 0 {
+}
+
+if key in map {
+}
+
+Strings and bytes:
+
+Strings and byte sequences are not implicitly bool.
+
+Invalid:
+
+if name {
+}
+
+if data {
+}
+
+Valid:
+
+if name != "" {
+}
+
+if data.Length > 0 {
+}
+
+Struct values:
+
+Struct values are not implicitly bool.
+
+Invalid:
+
+if user {
+}
+
+A struct must provide or be used through an explicit bool-producing operation.
+
+Valid:
+
+if user.IsValid() {
+}
+
+if user.Active {
+}
+
+Match expressions:
+
+A match expression returning bool may be used as a condition.
+
+Example:
+
+if match state {
+State.ready => true
+State.waiting => false
+State.failed => false
+} {
+Start()
+}
+
+All match branches must produce bool.
+
+Normal match exhaustiveness rules apply.
+
+A match statement that does not produce a value cannot be used as a condition.
+
+Nested expressions:
+
+Conditions may contain nested function calls, method calls, property access,
+indexing and other expressions when the final result is bool.
+
+Examples:
+
+if users[index].IsActive() {
+}
+
+if GetUser(id).Permissions.Contains(permission) {
+}
+
+if configuration.Network.Primary.IsAvailable() {
+}
+
+Normal safety, ownership, bounds, error and mutability rules still apply.
+
+Fallible expressions:
+
+A Result value cannot be used directly as a condition.
+
+Invalid:
+
+if LoadConfiguration() {
+}
+
+when LoadConfiguration returns Result[Configuration, IOError].
+
+The Result must first be handled.
+
+Examples:
+
+let config := try LoadConfiguration()
+
+if config.Enabled {
+}
+
+A try expression may appear inside a condition only when the successful value
+has type bool.
+
+Example:
+
+if try CheckPermission(user, resource) {
+Allow()
+}
+
+This is valid when:
+
+CheckPermission(user, resource)
+
+returns:
+
+Result[bool, PermissionError]
+
+Normal try propagation rules apply.
+
+Invalid:
+
+if try LoadConfiguration() {
+}
+
+when the successful type is Configuration rather than bool.
+
+Evaluation order:
+
+The condition is evaluated exactly once whenever execution reaches the if
+statement.
+
+Expressions are evaluated left to right according to normal expression rules.
+
+For an if / else if chain:
+
+* the first condition is evaluated first
+* later conditions are evaluated only when all previous conditions were false
+* exactly one branch is executed
+* the else branch is executed only when every condition was false
+
+Example:
+
+if First() {
+A()
+} else if Second() {
+B()
+} else {
+C()
+}
+
+Second is not called when First returns true.
+
+Branch scopes:
+
+Each branch body creates its own lexical block scope.
+
+Example:
+
+if ready {
+let message := "ready"
+println(message)
+}
+
+message is not visible after the branch.
+
+Variables declared in one branch are not visible in another branch.
+
+Invalid:
+
+if ready {
+let value := 10
+} else {
+println(value)
+}
+
+Outer variables:
+
+Variables declared outside the if statement remain visible inside every branch.
+
+let limit := 100
+
+if score > limit {
+println(limit)
+}
+
+Mutation:
+
+Mutation inside a branch follows normal mutability rules.
+
+let mut count := 0
+
+if enabled {
+count += 1
+}
+
+An immutable variable cannot be modified merely because the assignment occurs
+inside an if branch.
+
+Definite assignment:
+
+A variable declared without an initial value is considered definitely assigned
+after an if statement only when every possible branch assigns it.
+
+Example:
+
+let result: int
+
+if condition {
+result = 1
+} else {
+result = 2
+}
+
+println(result)
+
+Valid because every possible path assigns result.
+
+Invalid:
+
+let result: int
+
+if condition {
+result = 1
+}
+
+println(result)
+
+Invalid because result is unassigned when condition is false.
+
+For an else if chain, every reachable final branch must assign the variable.
+
+Example:
+
+let result: int
+
+if a {
+result = 1
+} else if b {
+result = 2
+} else {
+result = 3
+}
+
+Valid.
+
+Return and termination flow:
+
+Branches participate in normal control-flow analysis.
+
+Example:
+
+fn RequirePositive(value: int) int {
+if value <= 0 {
+return 0
+}
+
+```
+ return value
+```
+
+}
+
+A branch that always returns, propagates, terminates or otherwise cannot
+continue is marked as non-continuing by flow analysis.
+
+Example:
+
+if error {
+return Err(error)
+}
+
+UseValue()
+
+Unreachable branches:
+
+Literal conditions are legal.
+
+Examples:
+
+if true {
+}
+
+if false {
+}
+
+They are not syntax or sema errors.
+
+The compiler may report unreachable-code warnings according to the general
+unreachable-code policy.
+
+The optimizer may remove unreachable branches.
+
+The language does not reject pointless but type-correct conditions.
+
+Empty branches:
+
+Empty if and else blocks are legal.
+
+if ready {
+}
+
+if ready {
+} else {
+}
+
+The compiler or linter may warn about empty branches, but they are not sema
+errors.
+
+Else placement:
+
+else belongs to the immediately preceding if statement.
+
+The closing brace of the previous branch must precede else.
+
+Canonical formatting:
+
+if condition {
+A()
+} else {
+B()
+}
+
+The formatter places else on the same line as the preceding closing brace.
+
+Else-if:
+
+else if is parsed as one conditional chain.
+
+Example:
+
+if score >= 90 {
+grade = Grade.a
+} else if score >= 80 {
+grade = Grade.b
+} else {
+grade = Grade.c
+}
+
+No separate elseif keyword is introduced.
+
+Invalid:
+
+elseif condition {
+}
+
+Invalid:
+
+elif condition {
+}
+
+Dangling else:
+
+Because every Sec branch uses braces, dangling-else ambiguity does not exist.
+
+Invalid:
+
+if outer
+if inner {
+A()
+}
+else {
+B()
+}
+
+Braces are mandatory.
+
+Braces:
+
+Braces are mandatory for every if, else if and else body.
+
+Valid:
+
+if ready {
+Start()
+}
+
+Invalid:
+
+if ready
+Start()
+
+Invalid:
+
+if ready Start()
+
+Parentheses:
+
+Parentheses around the condition are allowed but unnecessary.
+
+Valid input:
+
+if (ready) {
+}
+
+Canonical formatted output:
+
+if ready {
+}
+
+Parentheses required for expression grouping are preserved.
+
+Input:
+
+if ready && (admin || owner) {
+}
+
+The formatter must not remove parentheses that change grouping or make the
+expression ambiguous.
+
+No declaration initializer syntax:
+
+Sec 0.1 does not introduce declaration syntax inside the if header.
+
+Not supported:
+
+if let user := FindUser(id); user.Active {
+}
+
+Not supported:
+
+if user := FindUser(id) {
+}
+
+Declarations must be written before the if statement.
+
+let user := FindUser(id)
+
+if user.Active {
+}
+
+This keeps declarations, assignment and conditions as separate concepts.
+
+No pattern condition syntax:
+
+Sec 0.1 does not introduce pattern matching inside if conditions.
+
+Not supported:
+
+if Some(user) := optionalUser {
+}
+
+Not supported:
+
+if result is Ok(value) {
+}
+
+Use match for structural or variant matching.
+
+No automatic narrowing:
+
+A comparison in an if condition does not automatically change the declared type
+of a value unless a separate narrowing rule explicitly defines that behavior.
+
+Example:
+
+if value != None {
+}
+
+does not by itself introduce an unwrapped T binding.
+
+Use match or an explicit Option operation to obtain the contained value.
+
+Side effects:
+
+Conditions may contain calls with side effects unless prohibited by another
+language rule.
+
+Example:
+
+if TryAcquireLock() {
+}
+
+Evaluation order and short-circuiting are guaranteed.
+
+However, conditions should normally describe a test rather than perform
+unrelated work.
+
+This is a style recommendation, not a sema restriction.
+
+Assignment inside conditions:
+
+Assignment is not an expression and therefore cannot be used as an if
+condition.
+
+Invalid:
+
+if ready = true {
+}
+
+This is also rejected instead of being interpreted as comparison.
+
+Use:
+
+ready = true
+
+if ready {
+}
+
+or:
+
+if ready == true {
+}
+
+The second form is legal but normally redundant.
+
+Comparison chaining:
+
+Comparison operators do not implicitly chain.
+
+Invalid:
+
+if 0 <= value < 100 {
+}
+
+This would otherwise require treating the bool result of the first comparison
+as the left operand of the second comparison.
+
+Use:
+
+if value >= 0 && value < 100 {
+}
+
+or:
+
+if value in 0..<100 {
+}
+
+Constant evaluation:
+
+When an if condition is a compile-time constant, the compiler may evaluate it
+during compilation.
+
+Examples:
+
+if true {
+}
+
+if Build.Debug {
+}
+
+if SizeOf[int]() == 8 {
+}
+
+Compile-time evaluation does not change the type rules.
+
+The condition must still have type bool.
+
+Condition examples:
+
+Valid:
+
+if true {
+}
+
+if !false {
+}
+
+if enabled {
+}
+
+if !enabled {
+}
+
+if a == b {
+}
+
+if a != b {
+}
+
+if value < maximum {
+}
+
+if value <= maximum {
+}
+
+if value > minimum {
+}
+
+if value >= minimum {
+}
+
+if score in 80..<100 {
+}
+
+if IsReady() {
+}
+
+if user.IsActive() {
+}
+
+if ready && connected {
+}
+
+if failed || cancelled {
+}
+
+if ready && !cancelled {
+}
+
+if value >= minimum && value <= maximum {
+}
+
+if value in minimum..maximum && !excluded {
+}
+
+if try HasPermission(user, resource) {
+}
+
+if match state {
+State.ready => true
+State.waiting => false
+State.failed => false
+} {
+}
+
+Invalid condition examples:
+
+if 1 {
+}
+
+if 0 {
+}
+
+if "true" {
+}
+
+if "" {
+}
+
+if items {
+}
+
+if result {
+}
+
+if optionalValue {
+}
+
+if pointer {
+}
+
+if Count() {
+}
+
+when Count returns int.
+
+if Load() {
+}
+
+when Load returns Result[T, E].
+
+if flags & Enabled {
+}
+
+when the expression type is an integer.
+
+if value = 10 {
+}
+
+because assignment is not an expression.
+
+if 0 <= value < 100 {
+}
+
+because comparison chaining is not supported.
+
+Sema:
+
+* Resolve the condition expression.
+* Require the resulting condition type to be bool.
+* Do not apply implicit truthiness conversions.
+* Validate unary ! operands as bool.
+* Validate && and || operands as bool.
+* Preserve left-to-right short-circuit semantics.
+* Validate equality operands using normal equality compatibility.
+* Validate ordered comparison operands using normal ordered compatibility.
+* Validate range membership operands and bounds.
+* Validate general membership using the right operand's supported membership
+  operation.
+* Validate calls, methods, fields, properties, indexing and nested expressions
+  using their normal rules.
+* Permit try inside a condition only when the successful expression type is
+  bool.
+* Reject Result[T, E], Option[T], references, pointers, collections, strings,
+  numeric values, enums and structs as direct conditions.
+* Create an independent lexical scope for every branch.
+* Analyze every branch for return, propagation, termination and continuation.
+* Merge definite-assignment state from all continuing branches.
+* A variable is definitely assigned after the statement only when it is assigned
+  on every continuing path.
+* Later else-if conditions are reachable only from the false path of all
+  previous conditions.
+* The else branch represents the false path of all preceding conditions.
+* Without else, preserve a path where no branch executes.
+* Permit constant true and false conditions.
+* Record unreachable branches for the general warning and flow-analysis system.
+* Require braces for every branch body.
+* Reject assignment expressions in conditions.
+* Reject declaration initializers in if headers for Sec 0.1.
+* Reject pattern-binding conditions for Sec 0.1.
+* Reject comparison chaining.
+* Reject non-bool match expressions used as conditions.
+
+AST:
+
+Suggested representation:
+
+type IfStatement struct {
+Condition: Expression
+Then: Block
+ElseIf: []ElseIfBranch
+Else: Option[Block]
+}
+
+type ElseIfBranch struct {
+Condition: Expression
+Body: Block
+}
+
+Alternatively, else-if may be represented recursively as an else branch
+containing another IfStatement.
+
+The AST should preserve the source position of:
+
+* if keyword
+* each condition
+* each branch body
+* each else keyword
+
+A flat branch list is recommended because it simplifies:
+
+* flow analysis
+* definite-assignment merging
+* diagnostics
+* formatting
+* later code generation
+
+Diagnostics:
+
+Suggested diagnostics:
+
+if condition must have type bool, got int
+
+if condition must have type bool, got string
+
+if condition must have type bool, got Option[User]
+
+if condition must have type bool, got Result[bool, IOError]
+
+left operand of && must have type bool, got int
+
+right operand of || must have type bool, got string
+
+operator ! requires bool operand, got int
+
+cannot compare Speed and Distance
+
+cannot test Speed in range of int
+
+assignment is not allowed in if condition
+
+comparison chaining is not supported; use && or a range
+
+declaration is not allowed in if condition
+
+pattern matching is not allowed in if condition; use match
+
+try expression in if condition must produce bool, got Configuration
+
+variable result may be unassigned after if statement
+
+Code generation:
+
+An if statement generates conditional control flow.
+
+Basic form:
+
+evaluate condition
+
+branch condition:
+true  -> then block
+false -> continuation block
+
+With else:
+
+evaluate condition
+
+branch condition:
+true  -> then block
+false -> else block
+
+Both continuing branches join at a common continuation block.
+
+For else-if chains:
+
+* evaluate conditions in source order
+* branch to the first matching body
+* skip all remaining conditions after a match
+* join all continuing branches at the common continuation block
+
+Branches that return, propagate or terminate do not branch to the continuation
+block.
+
+&& and || must generate short-circuit control flow rather than eagerly
+evaluating both operands.
+
+Design rules:
+
+* if tests bool expressions.
+* Sec has no implicit truthiness.
+* Braces are mandatory.
+* Parentheses are optional.
+* else if is used instead of introducing another keyword.
+* Logical operators short-circuit from left to right.
+* Assignment is not an expression.
+* Pattern matching belongs to match.
+* Error handling belongs to try and match.
+* Option and Result values are never silently interpreted as success or
+  presence.
+* Semantic types and units retain their normal compatibility rules inside
+  conditions.
+* Literal true and false conditions are legal.
+* Flow analysis must account for every possible branch.
+* One concept keeps one syntax.

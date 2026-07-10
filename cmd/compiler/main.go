@@ -243,8 +243,14 @@ func printASTStatement(stmt ast.Statement, prefix string, last bool) {
 	case *ast.AssignmentStatement:
 		printASTAssignment(stmt, prefix, last)
 
+	case *ast.ExpressionStatement:
+		printASTExpression(prefix, last, "Expression", stmt.Expression)
+
 	case *ast.ReturnStatement:
 		printASTReturn(stmt, prefix, last)
+
+	case *ast.IfStatement:
+		printASTIf(stmt, prefix, last)
 
 	case *ast.MatchStatement:
 		printASTExpression(prefix, last, "Match", stmt.Match)
@@ -256,9 +262,34 @@ func printASTStatement(stmt ast.Statement, prefix string, last bool) {
 		printASTBranch(prefix, last, "Comment")
 		printASTLeaf(childPrefix(prefix, last), true, fmt.Sprintf("Text: %q", stmt.Text))
 
+	case *ast.InvalidStatement:
+		printASTBranch(prefix, last, "Invalid")
+		printASTLeaf(childPrefix(prefix, last), true, "Token: "+stmt.TokenLiteral())
+
 	default:
 		printASTBranch(prefix, last, fmt.Sprintf("%T", stmt))
 		printASTLeaf(childPrefix(prefix, last), true, "Token: "+stmt.TokenLiteral())
+	}
+}
+
+func printASTIf(stmt *ast.IfStatement, prefix string, last bool) {
+	printASTBranch(prefix, last, "If")
+	childrenPrefix := childPrefix(prefix, last)
+	printASTExpression(childrenPrefix, false, "Condition", stmt.Condition)
+
+	hasAlternative := stmt.Alternative != nil
+	printASTBranch(childrenPrefix, !hasAlternative, "Then")
+	thenPrefix := childPrefix(childrenPrefix, !hasAlternative)
+	for i, bodyStmt := range stmt.Consequence.Statements {
+		printASTStatement(bodyStmt, thenPrefix, i == len(stmt.Consequence.Statements)-1)
+	}
+
+	if hasAlternative {
+		printASTBranch(childrenPrefix, true, "Else")
+		elsePrefix := childPrefix(childrenPrefix, true)
+		for i, bodyStmt := range stmt.Alternative.Statements {
+			printASTStatement(bodyStmt, elsePrefix, i == len(stmt.Alternative.Statements)-1)
+		}
 	}
 }
 
@@ -422,6 +453,9 @@ func printASTField(prefix string, field *ast.StructField, last bool) {
 		"Name: " + field.Name.Value,
 		"Type: " + formatTypeRef(field.Type),
 	}
+	if field.Contract != nil {
+		children = append(children, formatASTContract(field.Contract))
+	}
 	printASTLeaves(childPrefix(prefix, last), children)
 }
 
@@ -567,6 +601,8 @@ func formatASTExpression(expr ast.Expression) string {
 		return "Try(" + formatASTExpression(expr.Expression) + ")"
 	case *ast.MatchExpression:
 		return "Match(" + formatASTExpression(expr.Subject) + ")"
+	case *ast.RangeExpression:
+		return "Range(" + expr.String() + ")"
 	case *ast.StructLiteral:
 		return "StructLiteral(" + formatTypeRef(expr.Type) + ")"
 	default:
@@ -623,6 +659,9 @@ func printStatement(stmt ast.Statement) {
 	case *ast.AssignmentStatement:
 		printAssignment(stmt)
 
+	case *ast.ExpressionStatement:
+		fmt.Printf("Expression %s\n", stmt.Expression.String())
+
 	case *ast.ReturnStatement:
 		printReturn(stmt)
 
@@ -631,6 +670,9 @@ func printStatement(stmt ast.Statement) {
 
 	case *ast.CommentStatement:
 		fmt.Printf("Comment %q\n", stmt.Text)
+
+	case *ast.InvalidStatement:
+		fmt.Printf("Invalid %q\n", stmt.TokenLiteral())
 
 	default:
 		fmt.Printf("%T %q\n", stmt, stmt.TokenLiteral())

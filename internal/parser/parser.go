@@ -87,6 +87,12 @@ func (p *Parser) parseStatement() ast.Statement {
 	case lexer.RETURN:
 		return p.parseReturnStatement()
 
+	case lexer.IF:
+		return p.parseIfStatement()
+
+	case lexer.ELSE:
+		return p.parseUnexpectedElseStatement()
+
 	case lexer.MATCH:
 		return p.parseMatchStatement()
 
@@ -97,7 +103,7 @@ func (p *Parser) parseStatement() ast.Statement {
 				return stmt
 			}
 		}
-		return p.parseAssignmentStatement()
+		return p.parseExpressionOrAssignmentStatement()
 
 	case lexer.LBRACKET:
 		return p.parseTypedVariableDeclaration()
@@ -117,6 +123,78 @@ func (p *Parser) parseMatchStatement() ast.Statement {
 		return nil
 	}
 	return &ast.MatchStatement{Token: expr.Token, Match: expr}
+}
+
+func (p *Parser) parseIfStatement() ast.Statement {
+	stmt := &ast.IfStatement{Token: p.curToken}
+
+	if p.peekToken.Type == lexer.LBRACE {
+		p.addError("if statement missing condition at %d:%d", p.peekToken.Line, p.peekToken.Column)
+		p.nextToken()
+		stmt.Consequence = p.parseStatementBlock("if body")
+		return stmt
+	}
+
+	p.nextToken()
+	previousStopBeforeBrace := p.stopBeforeBrace
+	p.stopBeforeBrace = true
+	stmt.Condition = p.parseExpression(LOWEST)
+	p.stopBeforeBrace = previousStopBeforeBrace
+	if stmt.Condition == nil {
+		return nil
+	}
+
+	if p.peekToken.Type != lexer.LBRACE {
+		p.addError("expected '{' after if condition at %d:%d", p.peekToken.Line, p.peekToken.Column)
+		return stmt
+	}
+	p.nextToken()
+	stmt.Consequence = p.parseStatementBlock("if body")
+	if stmt.Consequence == nil {
+		return nil
+	}
+
+	if p.peekToken.Type != lexer.ELSE {
+		return stmt
+	}
+
+	p.nextToken()
+	switch p.peekToken.Type {
+	case lexer.IF:
+		p.nextToken()
+		elseIf := p.parseIfStatement()
+		if elseIf == nil {
+			return nil
+		}
+		elseIfStmt := elseIf.(*ast.IfStatement)
+		stmt.Alternative = &ast.BlockStatement{
+			Token:      elseIfStmt.Token,
+			Statements: []ast.Statement{elseIf},
+		}
+	case lexer.LBRACE:
+		p.nextToken()
+		stmt.Alternative = p.parseStatementBlock("else body")
+		if stmt.Alternative == nil {
+			return nil
+		}
+	default:
+		p.addError("expected 'if' or '{' after else at %d:%d", p.peekToken.Line, p.peekToken.Column)
+		return nil
+	}
+
+	return stmt
+}
+
+func (p *Parser) parseUnexpectedElseStatement() ast.Statement {
+	stmt := &ast.InvalidStatement{Token: p.curToken}
+	p.addError("else without matching if at %d:%d", p.curToken.Line, p.curToken.Column)
+
+	if p.peekToken.Type == lexer.LBRACE {
+		p.nextToken()
+		p.parseStatementBlock("else body")
+	}
+
+	return stmt
 }
 
 func (p *Parser) parseModuleStatement() ast.Statement {
@@ -397,6 +475,10 @@ func (p *Parser) parseFunctionBlockStatement() *ast.BlockStatement {
 		return nil
 	}
 
+	return p.parseStatementBlock("function body")
+}
+
+func (p *Parser) parseStatementBlock(name string) *ast.BlockStatement {
 	block := &ast.BlockStatement{Token: p.curToken}
 
 	p.nextToken()
@@ -417,7 +499,7 @@ func (p *Parser) parseFunctionBlockStatement() *ast.BlockStatement {
 	}
 
 	if p.curToken.Type == lexer.EOF {
-		p.addError("unterminated function body")
+		p.addError("unterminated %s", name)
 		return nil
 	}
 
@@ -531,6 +613,10 @@ func (p *Parser) parseStructFields() []*ast.StructField {
 		}
 
 		field.Type = p.parseTypeReference()
+		if p.peekToken.Type == lexer.RANGE_KW {
+			p.nextToken()
+			field.Contract = p.parseRangeContract()
+		}
 		if p.peekToken.Type == lexer.RAW_STRING {
 			p.nextToken()
 			tags, ok := p.parseStructTag(p.curToken)
@@ -553,7 +639,7 @@ func (p *Parser) parseStructFields() []*ast.StructField {
 		case lexer.RBRACE:
 			return fields
 		default:
-			p.addError("expected ',' or '}' after struct field")
+			p.addError("expected ',' or '}' after struct field at %d:%d", p.peekToken.Line, p.peekToken.Column)
 			for p.peekToken.Type != lexer.RBRACE && p.peekToken.Type != lexer.EOF {
 				p.nextToken()
 			}
@@ -1204,6 +1290,38 @@ func (p *Parser) parseAssignmentStatement() ast.Statement {
 		return nil
 	}
 
+	return stmt
+}
+
+func (p *Parser) parseExpressionOrAssignmentStatement() ast.Statement {
+	token := p.curToken
+	expr := p.parseExpression(LOWEST)
+	if expr == nil {
+		return nil
+	}
+
+	if !p.isAssignmentOperator(p.peekToken.Type) {
+		return &ast.ExpressionStatement{Token: token, Expression: expr}
+	}
+
+	stmt := &ast.AssignmentStatement{Token: token, Target: expr}
+	p.nextToken()
+	stmt.Operator = p.curToken.Lexeme
+	p.nextToken()
+	stmt.Value = p.parseExpression(LOWEST)
+	if stmt.Value == nil {
+		return nil
+	}
+
+	return stmt
+}
+
+func (p *Parser) parseExpressionStatement() ast.Statement {
+	stmt := &ast.ExpressionStatement{Token: p.curToken}
+	stmt.Expression = p.parseExpression(LOWEST)
+	if stmt.Expression == nil {
+		return nil
+	}
 	return stmt
 }
 

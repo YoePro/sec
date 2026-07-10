@@ -28,46 +28,25 @@ func (a *Analyzer) typeFromDeclarationWithName(name string, stmt *ast.TypeDeclSt
 		typ.Dimension = parseDimension(stmt.AssignedType.Unit)
 	}
 
-	contract, ok := stmt.Contract.(*ast.RangeContract)
+	return applyRangeContract(typ, stmt.Contract)
+}
+
+func applyRangeContract(typ Type, contractNode ast.Contract) Type {
+	contract, ok := contractNode.(*ast.RangeContract)
 	if !ok {
 		return typ
 	}
-
 	rangeContract := RangeContract{Exclusive: contract.Exclusive}
 
 	if contract.Min != nil {
 		if min, ok := constantIntegerValue(contract.Min); ok {
 			rangeContract.Min = new(big.Int).Set(min)
-			switch typ.Kind {
-			case IntType:
-				if min.IsInt64() {
-					minInt := min.Int64()
-					typ.MinInt = &minInt
-				}
-			case UintType:
-				if min.Sign() >= 0 && min.IsUint64() {
-					minUint := min.Uint64()
-					typ.MinUint = &minUint
-				}
-			}
 		}
 	}
 
 	if contract.Max != nil {
 		if max, ok := constantIntegerValue(contract.Max); ok {
 			rangeContract.Max = new(big.Int).Set(max)
-			switch typ.Kind {
-			case IntType:
-				if max.IsInt64() {
-					maxInt := max.Int64()
-					typ.MaxInt = &maxInt
-				}
-			case UintType:
-				if max.Sign() >= 0 && max.IsUint64() {
-					maxUint := max.Uint64()
-					typ.MaxUint = &maxUint
-				}
-			}
 		}
 	}
 
@@ -139,7 +118,26 @@ func (a *Analyzer) checkIntegerValueRange(typ Type, value *big.Int, token lexer.
 	}
 
 	if overflow {
-		if typ.Named && hasContracts(typ) {
+		a.addErrorAtToken(token, "value %s overflows %s", value.String(), typ.Name)
+		return true
+	}
+
+	for _, contract := range typ.Contracts {
+		rangeContract, ok := contract.(RangeContract)
+		if !ok {
+			continue
+		}
+
+		violatesMin := rangeContract.Min != nil && value.Cmp(rangeContract.Min) < 0
+		violatesMax := false
+		if rangeContract.Max != nil {
+			if rangeContract.Exclusive {
+				violatesMax = value.Cmp(rangeContract.Max) >= 0
+			} else {
+				violatesMax = value.Cmp(rangeContract.Max) > 0
+			}
+		}
+		if violatesMin || violatesMax {
 			a.addErrorAtToken(
 				token,
 				"value %s violates range contract %s %s",
@@ -149,9 +147,9 @@ func (a *Analyzer) checkIntegerValueRange(typ Type, value *big.Int, token lexer.
 			)
 			return true
 		}
-		a.addErrorAtToken(token, "value %s overflows %s", value.String(), typ.Name)
 	}
-	return overflow
+
+	return false
 }
 
 func formatRangeContract(typ Type) string {

@@ -686,13 +686,40 @@ type Bad struct {
 	p := New(l)
 	p.ParseProgram()
 
-	expected := "expected ',' or '}' after struct field"
+	expected := "expected ',' or '}' after struct field at 4:2"
 	if len(p.Errors()) != 1 {
 		t.Fatalf("wrong parser error count. got=%d want=1 errors=%v", len(p.Errors()), p.Errors())
 	}
 	if p.Errors()[0] != expected {
 		t.Fatalf("wrong parser error. got=%q want=%q", p.Errors()[0], expected)
 	}
+}
+
+func TestParseStructFieldRangeContract(t *testing.T) {
+	input := `
+type User struct {
+	Active: bool,
+	Name: string,
+	Age: int range 0..130,
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	typeDecl := program.Statements[0].(*ast.TypeDeclStatement)
+	age := typeDecl.StructType.Fields[2]
+	if age.Contract == nil {
+		t.Fatal("expected field range contract")
+	}
+	rangeContract, ok := age.Contract.(*ast.RangeContract)
+	if !ok {
+		t.Fatalf("contract is not RangeContract. got=%T", age.Contract)
+	}
+	assertLiteralValue(t, rangeContract.Min, 0)
+	assertLiteralValue(t, rangeContract.Max, 130)
 }
 
 func TestParseMalformedStructFieldMissingColonRecovery(t *testing.T) {
@@ -1110,6 +1137,231 @@ fn MissingClosingBrace() Speed {
 	}
 	if _, ok := fn.Body.Statements[1].(*ast.ReturnStatement); !ok {
 		t.Fatalf("second function body statement is not ReturnStatement. got=%T", fn.Body.Statements[1])
+	}
+}
+
+func TestParseIfElseIfElseStatement(t *testing.T) {
+	input := `
+fn Grade(score: int) int {
+	let mut result := 0
+	if score >= 90 {
+		result = 1
+	} else if score >= 80 {
+		result = 2
+	} else {
+		result = 3
+	}
+	return result
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	ifStmt, ok := fn.Body.Statements[1].(*ast.IfStatement)
+	if !ok {
+		t.Fatalf("statement is not IfStatement. got=%T", fn.Body.Statements[1])
+	}
+	if len(ifStmt.Consequence.Statements) != 1 {
+		t.Fatalf("wrong then statement count. got=%d want=1", len(ifStmt.Consequence.Statements))
+	}
+	if ifStmt.Alternative == nil || len(ifStmt.Alternative.Statements) != 1 {
+		t.Fatalf("expected else-if alternative")
+	}
+	if _, ok := ifStmt.Alternative.Statements[0].(*ast.IfStatement); !ok {
+		t.Fatalf("else-if alternative is not IfStatement. got=%T", ifStmt.Alternative.Statements[0])
+	}
+}
+
+func TestParseIfRangeMembershipCondition(t *testing.T) {
+	input := `
+fn Test(score: int) void {
+	if score in 80..<100 {
+	}
+	return
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	ifStmt := fn.Body.Statements[0].(*ast.IfStatement)
+	condition, ok := ifStmt.Condition.(*ast.InfixExpression)
+	if !ok {
+		t.Fatalf("condition is not InfixExpression. got=%T", ifStmt.Condition)
+	}
+	if condition.Operator != "in" {
+		t.Fatalf("wrong operator. got=%q want=in", condition.Operator)
+	}
+	rangeExpr, ok := condition.Right.(*ast.RangeExpression)
+	if !ok {
+		t.Fatalf("right side is not RangeExpression. got=%T", condition.Right)
+	}
+	if !rangeExpr.Exclusive {
+		t.Fatal("range should be exclusive")
+	}
+}
+
+func TestParseIfMissingConditionReportsOneError(t *testing.T) {
+	input := `
+fn MissingCondition() void {
+	if {
+	}
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+
+	expected := []string{
+		"if statement missing condition at 3:5",
+	}
+	if len(p.Errors()) != len(expected) {
+		t.Fatalf("wrong parser error count. got=%d want=%d errors=%v", len(p.Errors()), len(expected), p.Errors())
+	}
+	for i, want := range expected {
+		if p.Errors()[i] != want {
+			t.Fatalf("wrong parser error %d. got=%q want=%q", i, p.Errors()[i], want)
+		}
+	}
+
+	if len(program.Statements) != 1 {
+		t.Fatalf("wrong statement count. got=%d want=1", len(program.Statements))
+	}
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	if len(fn.Body.Statements) != 1 {
+		t.Fatalf("wrong function body count. got=%d want=1", len(fn.Body.Statements))
+	}
+	ifStmt := fn.Body.Statements[0].(*ast.IfStatement)
+	if ifStmt.Condition != nil {
+		t.Fatalf("condition should be nil after recovery, got=%T", ifStmt.Condition)
+	}
+}
+
+func TestParseInvalidIfFormsReportOneError(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name: "missing condition",
+			input: `
+fn MissingCondition() void {
+	if {
+	}
+}
+`,
+			expected: "if statement missing condition at 3:5",
+		},
+		{
+			name: "missing block",
+			input: `
+fn MissingBlock(value: bool) void {
+	if value
+}
+`,
+			expected: "expected '{' after if condition at 4:1",
+		},
+		{
+			name: "missing closing brace",
+			input: `
+fn MissingClosingBrace(value: bool) void {
+	if value {
+}
+`,
+			expected: "unterminated function body",
+		},
+		{
+			name: "else without if",
+			input: `
+fn ElseWithoutIf() void {
+	else {
+	}
+}
+`,
+			expected: "else without matching if at 3:2",
+		},
+		{
+			name: "else if without condition",
+			input: `
+fn ElseIfWithoutCondition(value: bool) void {
+	if value {
+	} else if {
+	}
+}
+`,
+			expected: "if statement missing condition at 4:12",
+		},
+		{
+			name: "statement without braces",
+			input: `
+fn StatementWithoutBraces(value: bool) void {
+	if value
+		return
+}
+`,
+			expected: "expected '{' after if condition at 4:3",
+		},
+		{
+			name: "duplicate else",
+			input: `
+fn DuplicateElse(value: bool) void {
+	if value {
+	} else {
+	} else {
+	}
+}
+`,
+			expected: "else without matching if at 5:4",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			l := lexer.New(tt.input)
+			p := New(l)
+			p.ParseProgram()
+
+			if len(p.Errors()) != 1 {
+				t.Fatalf("wrong parser error count. got=%d want=1 errors=%v", len(p.Errors()), p.Errors())
+			}
+			if p.Errors()[0] != tt.expected {
+				t.Fatalf("wrong parser error. got=%q want=%q", p.Errors()[0], tt.expected)
+			}
+		})
+	}
+}
+
+func TestParseCallExpressionStatement(t *testing.T) {
+	input := `
+fn ScopeTest(value: bool) void {
+	if value {
+		let local: int := 10
+	}
+
+	println(local)
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	if len(fn.Body.Statements) != 2 {
+		t.Fatalf("wrong statement count. got=%d want=2", len(fn.Body.Statements))
+	}
+	if _, ok := fn.Body.Statements[1].(*ast.ExpressionStatement); !ok {
+		t.Fatalf("second statement is not ExpressionStatement. got=%T", fn.Body.Statements[1])
 	}
 }
 

@@ -17,6 +17,7 @@ type Analyzer struct {
 	currentImplTarget     string
 	symbols               map[string]Symbol
 	constInts             map[string]*big.Int
+	assigned              map[string]bool
 	currentFunctionName   string
 	currentFunctionReturn Type
 	inFunctionBody        bool
@@ -33,6 +34,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.errors = nil
 	a.symbols = map[string]Symbol{}
 	a.constInts = map[string]*big.Int{}
+	a.assigned = map[string]bool{}
 	a.functions = map[string][]Function{}
 	a.implBlocks = map[string]lexer.Token{}
 	a.currentImplTarget = ""
@@ -87,7 +89,8 @@ func isAllowedModuleStatement(stmt ast.Statement) bool {
 		*ast.StructStatement,
 		*ast.LetStatement,
 		*ast.LetGroupStatement,
-		*ast.CommentStatement:
+		*ast.CommentStatement,
+		*ast.InvalidStatement:
 		return true
 	default:
 		return false
@@ -253,6 +256,14 @@ func (a *Analyzer) analyzeStatement(stmt ast.Statement) {
 		}
 	case *ast.AssignmentStatement:
 		a.analyzeAssignmentStatement(stmt)
+	case *ast.ExpressionStatement:
+		a.inferExpression(stmt.Expression)
+	case *ast.ReturnStatement:
+		if a.inFunctionBody {
+			a.analyzeReturnStatement(a.currentFunctionName, a.currentFunctionReturn, stmt)
+		}
+	case *ast.IfStatement:
+		a.analyzeIfStatement(stmt)
 	case *ast.MatchStatement:
 		a.analyzeMatchStatement(stmt)
 	case *ast.ImplStatement:
@@ -261,7 +272,84 @@ func (a *Analyzer) analyzeStatement(stmt ast.Statement) {
 		for _, field := range stmt.Fields {
 			a.resolveType(field.Type)
 		}
+	case *ast.InvalidStatement:
+		return
 	}
+}
+
+func (a *Analyzer) analyzeIfStatement(stmt *ast.IfStatement) {
+	if stmt.Condition != nil {
+		conditionType, _ := a.inferExpression(stmt.Condition)
+		if conditionType.Kind != InvalidType && conditionType.Kind != BoolType {
+			a.addErrorAtToken(expressionToken(stmt.Condition), "if condition must be bool, got %s", typeDisplayName(conditionType))
+		}
+	}
+
+	before := copyAssigned(a.assigned)
+	thenBranch := a.analyzeBranchBlock(stmt.Consequence)
+	if stmt.Alternative != nil {
+		elseBranch := a.analyzeBranchBlock(stmt.Alternative)
+		a.assigned = mergeContinuingAssigned(before, thenBranch, elseBranch)
+		return
+	}
+
+	a.assigned = mergeContinuingAssigned(before, thenBranch, branchAnalysis{
+		assigned:  before,
+		continues: true,
+	})
+}
+
+type branchAnalysis struct {
+	assigned  map[string]bool
+	continues bool
+}
+
+func (a *Analyzer) analyzeBranchBlock(block *ast.BlockStatement) branchAnalysis {
+	if block == nil {
+		return branchAnalysis{assigned: copyAssigned(a.assigned), continues: true}
+	}
+
+	previousSymbols := a.symbols
+	previousConstInts := a.constInts
+	previousAssigned := a.assigned
+	a.symbols = copySymbols(previousSymbols)
+	a.constInts = copyConstInts(previousConstInts)
+	a.assigned = copyAssigned(previousAssigned)
+	defer func() {
+		a.symbols = previousSymbols
+		a.constInts = previousConstInts
+		a.assigned = previousAssigned
+	}()
+
+	for _, stmt := range block.Statements {
+		a.analyzeStatement(stmt)
+	}
+	return branchAnalysis{
+		assigned:  copyAssigned(a.assigned),
+		continues: !blockDefinitelyReturns(block),
+	}
+}
+
+func mergeContinuingAssigned(before map[string]bool, branches ...branchAnalysis) map[string]bool {
+	var merged map[string]bool
+	foundContinuing := false
+	for _, branch := range branches {
+		if !branch.continues {
+			continue
+		}
+		if !foundContinuing {
+			merged = copyAssigned(branch.assigned)
+			foundContinuing = true
+			continue
+		}
+		for name := range before {
+			merged[name] = merged[name] && branch.assigned[name]
+		}
+	}
+	if !foundContinuing {
+		return copyAssigned(before)
+	}
+	return merged
 }
 
 func (a *Analyzer) registerFunctionDeclarations(program *ast.Program) {
@@ -352,17 +440,20 @@ func (a *Analyzer) analyzeFunctionBody(fn *ast.FunctionDeclaration) {
 
 	previousSymbols := a.symbols
 	previousConstInts := a.constInts
+	previousAssigned := a.assigned
 	previousFunctionName := a.currentFunctionName
 	previousFunctionReturn := a.currentFunctionReturn
 	previousInFunctionBody := a.inFunctionBody
 	a.symbols = copySymbols(previousSymbols)
 	a.constInts = copyConstInts(previousConstInts)
+	a.assigned = copyAssigned(previousAssigned)
 	a.currentFunctionName = fn.Name.Value
 	a.currentFunctionReturn = function.ReturnType
 	a.inFunctionBody = true
 	defer func() {
 		a.symbols = previousSymbols
 		a.constInts = previousConstInts
+		a.assigned = previousAssigned
 		a.currentFunctionName = previousFunctionName
 		a.currentFunctionReturn = previousFunctionReturn
 		a.inFunctionBody = previousInFunctionBody
@@ -371,20 +462,44 @@ func (a *Analyzer) analyzeFunctionBody(fn *ast.FunctionDeclaration) {
 	for _, param := range function.Parameters {
 		a.symbols[param.Name] = Symbol{Name: param.Name, Type: param.Type, Mutable: false, Token: param.Token}
 		delete(a.constInts, param.Name)
+		a.assigned[param.Name] = true
 	}
 
-	hasReturn := false
 	for _, stmt := range fn.Body.Statements {
-		if returnStmt, ok := stmt.(*ast.ReturnStatement); ok {
-			hasReturn = true
-			a.analyzeReturnStatement(fn.Name.Value, function.ReturnType, returnStmt)
-			continue
-		}
 		a.analyzeStatement(stmt)
 	}
 
-	if !hasReturn && function.ReturnType.Kind != VoidType {
+	if !blockDefinitelyReturns(fn.Body) && function.ReturnType.Kind != VoidType {
 		a.addErrorAtToken(fn.Name.Token, "function %s must return %s", fn.Name.Value, typeDisplayName(function.ReturnType))
+	}
+}
+
+func blockDefinitelyReturns(block *ast.BlockStatement) bool {
+	if block == nil {
+		return false
+	}
+
+	for _, stmt := range block.Statements {
+		if statementDefinitelyReturns(stmt) {
+			return true
+		}
+	}
+	return false
+}
+
+func statementDefinitelyReturns(stmt ast.Statement) bool {
+	switch stmt := stmt.(type) {
+	case *ast.ReturnStatement:
+		return true
+	case *ast.IfStatement:
+		if stmt.Alternative == nil {
+			return false
+		}
+		return blockDefinitelyReturns(stmt.Consequence) && blockDefinitelyReturns(stmt.Alternative)
+	case *ast.MatchStatement:
+		return false
+	default:
+		return false
 	}
 }
 
@@ -457,6 +572,14 @@ func copyConstInts(in map[string]*big.Int) map[string]*big.Int {
 	out := make(map[string]*big.Int, len(in))
 	for name, value := range in {
 		out[name] = new(big.Int).Set(value)
+	}
+	return out
+}
+
+func copyAssigned(in map[string]bool) map[string]bool {
+	out := make(map[string]bool, len(in))
+	for name, assigned := range in {
+		out[name] = assigned
 	}
 	return out
 }
@@ -546,6 +669,15 @@ func (a *Analyzer) typeFromStructDeclarationWithName(name string, stmt *ast.Type
 		fieldType, ok := a.resolveType(field.Type)
 		if !ok {
 			continue
+		}
+		if contract, ok := field.Contract.(*ast.RangeContract); ok {
+			if contract.Min != nil {
+				a.checkIntegerLiteralRange(fieldType, contract.Min)
+			}
+			if contract.Max != nil {
+				a.checkIntegerLiteralRange(fieldType, contract.Max)
+			}
+			fieldType = applyRangeContract(fieldType, field.Contract)
 		}
 
 		typ.Fields = append(typ.Fields, StructField{
@@ -1002,6 +1134,9 @@ func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
 	defined := false
 	if ok {
 		defined = a.defineSymbol(stmt.Name.Value, declaredType, stmt.Mutable, stmt.Name.Token)
+		if defined {
+			a.assigned[stmt.Name.Value] = stmt.Value != nil
+		}
 	}
 
 	if !ok || stmt.Value == nil || stmt.Type == nil {
@@ -1070,6 +1205,7 @@ func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement) {
 
 	if a.checkInitializerType(symbol.Type, exprType, stmt.Value) {
 		a.updateAssignedConstInt(symbol.Name, stmt)
+		a.assigned[symbol.Name] = true
 	}
 }
 
@@ -1153,6 +1289,10 @@ func (a *Analyzer) inferExpression(expr ast.Expression) (Type, expressionValue) 
 			a.addErrorAtToken(expr.Token, "undefined variable %s", expr.Value)
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
+		if assigned, ok := a.assigned[expr.Value]; ok && !assigned {
+			a.addErrorAtToken(expr.Token, "variable %s is unassigned", expr.Value)
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
 		return symbol.Type, expressionValue{Display: expr.String()}
 	case *ast.PrefixExpression:
 		return a.inferPrefixExpression(expr)
@@ -1213,6 +1353,10 @@ func (a *Analyzer) inferStructLiteral(expr *ast.StructLiteral) (Type, expression
 		valueType, _ := a.inferExpression(field.Value)
 		if valueType.Kind != InvalidType && !canInitialize(fieldType, valueType, field.Value) {
 			a.addErrorAtToken(expressionToken(field.Value), "cannot initialize field %s with %s", field.Name.Value, typeDisplayName(valueType))
+			continue
+		}
+		if valueType.Kind != InvalidType {
+			a.checkIntegerExpressionRange(fieldType, field.Value)
 		}
 	}
 
@@ -1819,8 +1963,16 @@ func (a *Analyzer) checkMatchExhaustive(expr *ast.MatchExpression, subjectType T
 
 func (a *Analyzer) inferInfixExpression(expr *ast.InfixExpression) (Type, expressionValue) {
 	leftType, _ := a.inferExpression(expr.Left)
+	if leftType.Kind == InvalidType {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+
+	if expr.Operator == "in" {
+		return a.inferMembershipExpression(expr, leftType)
+	}
+
 	rightType, _ := a.inferExpression(expr.Right)
-	if leftType.Kind == InvalidType || rightType.Kind == InvalidType {
+	if rightType.Kind == InvalidType {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 
@@ -1832,7 +1984,15 @@ func (a *Analyzer) inferInfixExpression(expr *ast.InfixExpression) (Type, expres
 		return Type{Name: "bool", Kind: BoolType}, expressionValue{Display: expr.String()}
 	}
 
-	if isComparisonOperator(expr.Operator) {
+	if isEqualityOperator(expr.Operator) {
+		if !canCompareEquality(leftType, rightType) {
+			a.addErrorAtToken(expr.Token, "cannot compare %s and %s", typeDisplayName(leftType), typeDisplayName(rightType))
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
+		return Type{Name: "bool", Kind: BoolType}, expressionValue{Display: expr.String()}
+	}
+
+	if isOrderedComparisonOperator(expr.Operator) {
 		return Type{Name: "bool", Kind: BoolType}, expressionValue{Display: expr.String()}
 	}
 
@@ -1855,8 +2015,78 @@ func (a *Analyzer) inferInfixExpression(expr *ast.InfixExpression) (Type, expres
 	return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 }
 
+func (a *Analyzer) inferMembershipExpression(expr *ast.InfixExpression, leftType Type) (Type, expressionValue) {
+	rangeExpr, ok := expr.Right.(*ast.RangeExpression)
+	if !ok {
+		a.addErrorAtToken(expr.Token, "membership requires range expression")
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+
+	if rangeExpr.Start != nil {
+		startType, _ := a.inferExpression(rangeExpr.Start)
+		if startType.Kind == InvalidType {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
+		if !canRangeBoundType(leftType, startType, rangeExpr.Start) {
+			a.addErrorAtToken(expressionToken(rangeExpr.Start), "cannot test %s in range of %s", typeDisplayName(leftType), typeDisplayName(startType))
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
+	}
+
+	if rangeExpr.End != nil {
+		endType, _ := a.inferExpression(rangeExpr.End)
+		if endType.Kind == InvalidType {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
+		if !canRangeBoundType(leftType, endType, rangeExpr.End) {
+			a.addErrorAtToken(expressionToken(rangeExpr.End), "cannot test %s in range of %s", typeDisplayName(leftType), typeDisplayName(endType))
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
+	}
+
+	return Type{Name: "bool", Kind: BoolType}, expressionValue{Display: expr.String()}
+}
+
+func canRangeBoundType(value Type, bound Type, expr ast.Expression) bool {
+	if value.Kind == InvalidType || bound.Kind == InvalidType {
+		return true
+	}
+	if isNominal(value) || isNominal(bound) {
+		return sameConcreteType(value, bound)
+	}
+	return canInitialize(value, bound, expr) || sameConcreteType(value, bound)
+}
+
+func canCompareEquality(left Type, right Type) bool {
+	if left.Kind == InvalidType || right.Kind == InvalidType {
+		return true
+	}
+
+	if isNominal(left) || isNominal(right) {
+		return sameConcreteType(left, right)
+	}
+
+	if left.Kind == right.Kind {
+		return true
+	}
+
+	if isIntegerType(left) && isIntegerType(right) {
+		return true
+	}
+
+	if isNumericType(left) && isNumericType(right) {
+		return true
+	}
+
+	return false
+}
+
 func (a *Analyzer) inferDecimalInfixExpression(expr *ast.InfixExpression, leftType Type, rightType Type) (Type, expressionValue) {
 	if isComparisonOperator(expr.Operator) {
+		if isEqualityOperator(expr.Operator) && !canCompareEquality(leftType, rightType) {
+			a.addErrorAtToken(expr.Token, "cannot compare %s and %s", typeDisplayName(leftType), typeDisplayName(rightType))
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
 		return Type{Name: "bool", Kind: BoolType}, expressionValue{Display: expr.String()}
 	}
 
@@ -1925,6 +2155,9 @@ func (a *Analyzer) inferDecimalInfixExpression(expr *ast.InfixExpression, leftTy
 
 func (a *Analyzer) inferPrefixExpression(expr *ast.PrefixExpression) (Type, expressionValue) {
 	rightType, rightValue := a.inferExpression(expr.Right)
+	if rightType.Kind == InvalidType {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
 
 	switch expr.Operator {
 	case "-":
@@ -2033,6 +2266,10 @@ func canExplicitConvert(target Type, value Type) bool {
 		return true
 	}
 
+	if target.Kind == BoolType && isNumericType(value) {
+		return true
+	}
+
 	if target.Kind == value.Kind {
 		return true
 	}
@@ -2054,6 +2291,10 @@ func isNominal(typ Type) bool {
 
 func isIntegerType(typ Type) bool {
 	return typ.Kind == IntType || typ.Kind == UintType
+}
+
+func isNumericType(typ Type) bool {
+	return typ.Kind == IntType || typ.Kind == UintType || typ.Kind == FloatType || typ.Kind == DecimalType
 }
 
 func sameConcreteType(left Type, right Type) bool {
@@ -2092,6 +2333,19 @@ func infixVerb(operator string) string {
 func isComparisonOperator(operator string) bool {
 	switch operator {
 	case "==", "!=", "<", "<=", ">", ">=":
+		return true
+	default:
+		return false
+	}
+}
+
+func isEqualityOperator(operator string) bool {
+	return operator == "==" || operator == "!="
+}
+
+func isOrderedComparisonOperator(operator string) bool {
+	switch operator {
+	case "<", "<=", ">", ">=":
 		return true
 	default:
 		return false
@@ -2166,11 +2420,17 @@ func statementToken(stmt ast.Statement) lexer.Token {
 		return stmt.Token
 	case *ast.AssignmentStatement:
 		return stmt.Token
+	case *ast.ExpressionStatement:
+		return stmt.Token
 	case *ast.ReturnStatement:
+		return stmt.Token
+	case *ast.IfStatement:
 		return stmt.Token
 	case *ast.MatchStatement:
 		return stmt.Token
 	case *ast.CommentStatement:
+		return stmt.Token
+	case *ast.InvalidStatement:
 		return stmt.Token
 	default:
 		return lexer.Token{}
@@ -2202,6 +2462,8 @@ func expressionToken(expr ast.Expression) lexer.Token {
 	case *ast.TryExpression:
 		return expr.Token
 	case *ast.MatchExpression:
+		return expr.Token
+	case *ast.RangeExpression:
 		return expr.Token
 	case *ast.MemberExpression:
 		return expr.Token

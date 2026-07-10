@@ -684,6 +684,35 @@ type User struct {
 	}
 }
 
+func TestStructFieldRangeContract(t *testing.T) {
+	input := `
+type User struct {
+	Active: bool,
+	Name: string,
+	Age: int range 0..130,
+}
+
+let ok := User{ Active: true, Name: "Ada", Age: 42 }
+let bad := User{ Active: true, Name: "Ada", Age: 131 }
+`
+
+	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
+
+	expected := []string{
+		"value 131 violates range contract int 0..130 at 9:50",
+	}
+
+	assertSemaErrors(t, errors, expected)
+
+	user := analyzer.types["User"]
+	if len(user.Fields) != 3 {
+		t.Fatalf("wrong field count. got=%d want=3", len(user.Fields))
+	}
+	if len(user.Fields[2].Type.Contracts) != 1 {
+		t.Fatalf("Age should have one range contract, got %d", len(user.Fields[2].Type.Contracts))
+	}
+}
+
 func TestImplTargetMustExist(t *testing.T) {
 	input := `
 impl MissingType {
@@ -1418,6 +1447,36 @@ let explicitInt: int := int(Color.green)
 	assertSemaErrors(t, errors, nil)
 }
 
+func TestExplicitNumericToBoolConversions(t *testing.T) {
+	input := `
+let a: bool := bool(0)
+let b: bool := bool(1)
+let c: bool := bool(-1)
+let d: bool := bool(0.0)
+let e: bool := bool(0.1)
+let i8: int8 := -1
+let u8: uint8 := 1
+let f32: float32 := 0.0
+let x: bool := bool(i8)
+let y: bool := bool(u8)
+let z: bool := bool(f32)
+
+fn Test(value: int) void {
+	if value {
+	}
+	return
+}
+`
+
+	errors := analyzeSource(t, input)
+
+	expected := []string{
+		"if condition must be bool, got int at 15:5",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
 func TestFunctionDuplicateParameter(t *testing.T) {
 	input := `
 fn bad(a: int, a: int) int {
@@ -1496,6 +1555,30 @@ fn BadNot(a: int) bool {
 	expected := []string{
 		"operator && requires bool operands at 3:11",
 		"operator ! requires bool operand at 7:9",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestEqualityRequiresCompatibleTypes(t *testing.T) {
+	input := `
+fn ValidBoolEquality(value: bool, number: int) void {
+	if value == bool(number) {
+	}
+	return
+}
+
+fn InvalidBoolEquality(value: bool, number: int) void {
+	if value == number {
+	}
+	return
+}
+`
+
+	errors := analyzeSource(t, input)
+
+	expected := []string{
+		"cannot compare bool and int at 9:11",
 	}
 
 	assertSemaErrors(t, errors, expected)
@@ -1788,6 +1871,301 @@ func TestErrorHandlingMatchInvalidFixture(t *testing.T) {
 	}
 
 	assertSemaErrors(t, errors, expected)
+}
+
+func TestIfConditionsAndBranchScopes(t *testing.T) {
+	input := `
+module main
+
+fn Test(ready: bool, score: int) int {
+	let mut result := 0
+	if ready && score >= 10 {
+		let branchOnly := 1
+		result = branchOnly
+	} else if !ready {
+		result = 2
+	} else {
+		result = 3
+	}
+	return result
+}
+`
+
+	errors := analyzeSource(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestIfConditionMustBeBool(t *testing.T) {
+	input := `
+module main
+
+enum Status {
+	Active,
+}
+
+fn Count() int {
+	return 10
+}
+
+fn Test(value: int, name: string, status: Status) void {
+	if value {
+	}
+	if name {
+	}
+	if status {
+	}
+	if Count() {
+	}
+	return
+}
+`
+
+	errors := analyzeSource(t, input)
+
+	expected := []string{
+		"if condition must be bool, got int at 13:5",
+		"if condition must be bool, got string at 15:5",
+		"if condition must be bool, got Status at 17:5",
+		"if condition must be bool, got int at 19:5",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestIfBranchesCanSatisfyFunctionReturn(t *testing.T) {
+	input := `
+module main
+
+fn Sign(value: int) int {
+	if value < 0 {
+		return -1
+	} else {
+		return 1
+	}
+}
+
+fn Grade(score: int) int {
+	if score >= 90 {
+		return 1
+	} else if score >= 80 {
+		return 2
+	} else {
+		return 3
+	}
+}
+
+fn Early(value: int) int {
+	if value < 0 {
+		return 0
+	}
+	return value
+}
+`
+
+	errors := analyzeSource(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestIfWithoutElseDoesNotSatisfyFunctionReturn(t *testing.T) {
+	input := `
+module main
+
+fn Missing(value: int) int {
+	if value < 0 {
+		return 0
+	}
+}
+`
+
+	errors := analyzeSource(t, input)
+
+	expected := []string{
+		"function Missing must return int at 4:4",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestElseIfWithoutFinalElseDoesNotSatisfyFunctionReturn(t *testing.T) {
+	input := `
+module main
+
+fn MissingReturnAfterElseIf(value: int) int {
+	if value < 0 {
+		return -1
+	} else if value == 0 {
+		return 0
+	}
+}
+`
+
+	errors := analyzeSource(t, input)
+
+	expected := []string{
+		"function MissingReturnAfterElseIf must return int at 4:4",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestIfRangeMembershipCondition(t *testing.T) {
+	input := `
+module main
+
+type Percent int range 0..100
+
+fn Test(score: int, percent: Percent) void {
+	if score in 80..<100 {
+	}
+	if score in 1.. {
+	}
+	if score in ..100 {
+	}
+	if percent in Percent(1)..<Percent(100) {
+	}
+	return
+}
+`
+
+	errors := analyzeSource(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestIfRangeMembershipTypeMismatch(t *testing.T) {
+	input := `
+module main
+
+type Percent int range 0..100
+
+fn Test(percent: Percent) void {
+	if percent in 1..100 {
+	}
+	return
+}
+`
+
+	errors := analyzeSource(t, input)
+
+	expected := []string{
+		"cannot test Percent in range of int at 7:16",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestInvalidNegatedRangeDoesNotCascade(t *testing.T) {
+	input := `
+module main
+
+fn InvalidNegatedRange(score: string) void {
+	if !(score in 0..100) {
+	}
+	return
+}
+`
+
+	errors := analyzeSource(t, input)
+
+	expected := []string{
+		"cannot test string in range of int at 5:16",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestIfBranchLocalDoesNotLeakToFollowingCall(t *testing.T) {
+	input := `
+module main
+
+fn ScopeTest(value: bool) void {
+	if value {
+		let local: int := 10
+	}
+
+	println(local)
+}
+
+fn println(s: string) void {
+	return
+}
+`
+
+	errors := analyzeSource(t, input)
+
+	expected := []string{
+		"undefined variable local at 9:10",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestIfDefiniteAssignment(t *testing.T) {
+	input := `
+module main
+
+fn AssignedInBothBranches(value: bool) int {
+	let mut result: int
+
+	if value {
+		result = 10
+	} else {
+		result = 20
+	}
+
+	return result
+}
+
+fn MissingAssignment(value: bool) int {
+	let mut result: int
+
+	if value {
+		result = 10
+	}
+
+	return result
+}
+`
+
+	errors := analyzeSource(t, input)
+
+	expected := []string{
+		"variable result is unassigned at 23:9",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestIfDefiniteAssignmentOnlyRequiresContinuingPaths(t *testing.T) {
+	input := `
+module main
+
+fn AssignmentInAllContinuingPaths(value: bool) int {
+	let mut result: int
+
+	if value {
+		result = 10
+	} else {
+		return 20
+	}
+
+	return result
+}
+
+fn AssignmentInElseOnlyWhenThenReturns(value: bool) int {
+	let mut result: int
+
+	if value {
+		return 20
+	} else {
+		result = 10
+	}
+
+	return result
+}
+`
+
+	errors := analyzeSource(t, input)
+	assertSemaErrors(t, errors, nil)
 }
 
 func TestResultTypeArgumentCountErrors(t *testing.T) {

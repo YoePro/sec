@@ -1,0 +1,186 @@
+module main
+
+/*
+fn InvalidIntCondition(value: int) void {
+    if value {
+    }
+}
+
+fn InvalidStringCondition(value: string) void {
+    if value {
+    }
+}
+
+fn InvalidArithmeticCondition(value: int) void {
+    if value + 1 {
+    }
+}
+
+fn InvalidNegation(value: int) void {
+    if !value {
+    }
+}
+
+fn InvalidAndLeft(value: int, enabled: bool) void {
+    if value && enabled {
+    }
+}
+
+fn InvalidAndRight(enabled: bool, value: int) void {
+    if enabled && value {
+    }
+}
+
+fn InvalidOrLeft(value: string, enabled: bool) void {
+    if value || enabled {
+    }
+}
+
+fn InvalidComparisonTypes(value: int, name: string) void {
+    if value == name {
+    }
+}
+
+fn InvalidOrderedComparison(value: int, name: string) void {
+    if value < name {
+    }
+}
+
+fn InvalidRangeValue(value: string) void {
+    if value in 0..100 {
+    }
+}
+
+fn InvalidRangeBounds(value: int, minimum: string) void {
+    if value in minimum..100 {
+    }
+}
+
+fn Count() int {
+    return 10
+}
+
+fn InvalidFunctionResult() void {
+    if Count() {
+    }
+}
+
+fn InvalidBoolEquality(value: bool, number: int) void {
+    if value == number {
+    }
+}
+
+fn InvalidOrderedBoolComparison(a: bool, b: bool) void {
+    if a < b {
+    }
+}
+
+fn InvalidNegatedRange(score: string) void {
+    if !(score in 0..100) {
+    }
+}
+
+fn ScopeTest(value: bool) void {
+    if value {
+        let local: int := 10
+    }
+
+    println(local)
+}
+
+fn println(s: string) void {
+    return
+}
+
+// Expect result to be unasigned 
+fn MissingAssignment(value: bool) int {
+    let mut result: int
+
+    if value {
+        result = 10
+    }
+
+    return result
+}
+
+// Should give error as one branch is missing a return
+fn MissingReturn(value: bool) int {
+    if value {
+        return 10
+    }
+}
+
+fn BranchShadowing(value: bool) void {
+    if value {
+        let number: int := 10
+    } else {
+        let number: string := "ten"
+    }
+
+    let copy := number
+}
+
+fn MutateImmutable(value: bool) void {
+    let number: int := 10
+
+    if value {
+        number = 20
+    }
+}
+
+fn InvalidNegatedRange(score: string) void {
+    if !(score in 0..100) {
+    }
+}
+
+fn InvalidElseIf(value: int) void {
+    if value > 10 {
+    } else if value {
+    } else {
+    }
+}
+*/
+
+fn MissingCondition() void {
+    if {
+    }
+}
+
+fn MissingBlock(value: bool) void {
+    if value
+}
+
+fn MissingClosingBrace(value: bool) void {
+    if value {
+}
+
+fn ElseWithoutIf() void {
+    else {
+    }
+}
+
+fn ElseIfWithoutCondition(value: bool) void {
+    if value {
+    } else if {
+    }
+}
+
+fn StatementWithoutBraces(value: bool) void {
+    if value
+        return
+}
+
+fn DuplicateElse(value: bool) void {
+    if value {
+    } else {
+    } else {
+    }
+}
+
+fn MissingReturnAfterElseIf(value: int) int {
+    if value < 0 {
+        return -1
+    } else if value == 0 {
+        return 0
+    }
+}

@@ -1,0 +1,1210 @@
+Implement switch statements.
+
+Purpose:
+
+switch is used for value-based branching.
+
+It supports two forms:
+
+* switch with a subject expression
+* switch without a subject expression
+
+switch does not perform structural pattern matching.
+
+Use match for:
+
+* union variants
+* Result
+* Option
+* destructuring
+* type patterns
+* structural patterns
+
+Syntax with subject:
+
+```
+switch expression {
+case value:
+    statements
+
+case value1, value2, value3:
+    statements
+
+case range:
+    statements
+
+case relational-case:
+    statements
+
+default:
+    statements
+}
+```
+
+Syntax without subject:
+
+```
+switch {
+case condition:
+    statements
+
+case otherCondition:
+    statements
+
+default:
+    statements
+}
+```
+
+Basic example:
+
+```
+switch status {
+case Status.ready:
+    Start()
+
+case Status.waiting:
+    Wait()
+
+case Status.failed:
+    Stop()
+
+default:
+    Reset()
+}
+```
+
+Subject evaluation:
+
+The switch subject expression is evaluated exactly once.
+
+Example:
+
+```
+switch ReadStatus() {
+case Status.ready:
+    Start()
+
+default:
+    Stop()
+}
+```
+
+ReadStatus() is called exactly once.
+
+Case order:
+
+Cases are tested from top to bottom.
+
+The first matching case is selected.
+
+After a matching case has executed, control continues after the switch unless
+the case terminates or explicitly uses fallthrough.
+
+Later case expressions are not evaluated after a case has matched.
+
+Value cases:
+
+A value case compares the switch subject with one or more case expressions.
+
+Example:
+
+```
+switch value {
+case 1:
+    One()
+
+case 2, 3, 5, 7:
+    Prime()
+
+default:
+    Other()
+}
+```
+
+A comma-separated case list means logical OR.
+
+The following:
+
+```
+case 2, 3, 5, 7:
+```
+
+means:
+
+```
+subject == 2 ||
+subject == 3 ||
+subject == 5 ||
+subject == 7
+```
+
+Case expression types:
+
+Each value case expression must be equality-compatible with the switch subject.
+
+Valid:
+
+```
+switch value {
+case 1:
+}
+```
+
+when value has type int.
+
+Invalid:
+
+```
+switch value {
+case "one":
+}
+```
+
+when value has type int.
+
+No implicit truthiness or unrelated type conversion is performed.
+
+Case expressions:
+
+Case values may be:
+
+* literals
+* constants
+* variables
+* fields
+* properties
+* function calls
+* method calls
+* other expressions compatible with the switch subject
+
+Example:
+
+```
+switch value {
+case minimum:
+    AtMinimum()
+
+case CalculateTarget():
+    AtTarget()
+}
+```
+
+Case expressions are evaluated only when execution reaches that case.
+
+They are evaluated from left to right and from top to bottom.
+
+Ranges:
+
+A case may contain a range.
+
+Examples:
+
+```
+switch score {
+case 0..<50:
+    Failed()
+
+case 50..<80:
+    Passed()
+
+case 80..100:
+    Excellent()
+}
+```
+
+Supported range forms follow the normal Sec range rules:
+
+```
+start..end
+start..<end
+start..
+..end
+..<end
+```
+
+The switch subject and range bounds must have compatible ordered types.
+
+Example:
+
+```
+switch temperature {
+case ..<0:
+    Frozen()
+
+case 0..100:
+    Liquid()
+
+case 100..:
+    BoilingOrAbove()
+}
+```
+
+Multiple ranges and values:
+
+A case may combine multiple compatible values and ranges.
+
+Example:
+
+```
+switch value {
+case 1, 3, 5, 10..<20:
+    Selected()
+
+default:
+    Other()
+}
+```
+
+Each item is tested as an alternative.
+
+The first matching case body executes once, regardless of which item matched.
+
+Relational cases:
+
+A case may use a relational operator without repeating the switch subject.
+
+Supported forms:
+
+```
+case < expression:
+case <= expression:
+case > expression:
+case >= expression:
+```
+
+Example:
+
+```
+switch value {
+case < 0:
+    Negative()
+
+case 0:
+    Zero()
+
+case > 0:
+    Positive()
+}
+```
+
+The following:
+
+```
+switch value {
+case < limit:
+    Below()
+}
+```
+
+is equivalent to:
+
+```
+if value < limit {
+    Below()
+}
+```
+
+The subject and relational operand must support ordered comparison.
+
+Combining relational cases:
+
+Multiple relational alternatives may appear in one case.
+
+Example:
+
+```
+switch value {
+case < minimum, > maximum:
+    Outside()
+
+default:
+    Inside()
+}
+```
+
+This means:
+
+```
+value < minimum || value > maximum
+```
+
+Subjectless switch:
+
+A switch without a subject evaluates bool conditions.
+
+Example:
+
+```
+switch {
+case score < 0:
+    Invalid()
+
+case score < 50:
+    Failed()
+
+case score < 80:
+    Passed()
+
+default:
+    Excellent()
+}
+```
+
+Every case expression in a subjectless switch must have type bool.
+
+Invalid:
+
+```
+switch {
+case 10:
+    Invalid()
+}
+```
+
+Invalid:
+
+```
+switch {
+case name:
+    Invalid()
+}
+```
+
+when name has type string.
+
+Multiple subjectless conditions:
+
+Comma-separated conditions mean logical OR.
+
+Example:
+
+```
+switch {
+case user.IsAdmin(), user.IsOwner():
+    Allow()
+
+case user.IsBlocked():
+    Deny()
+
+default:
+    Review()
+}
+```
+
+The conditions are evaluated left to right with short-circuit behavior.
+
+Later conditions in the same case are not evaluated after one condition returns
+true.
+
+Subjectless switch equivalence:
+
+A subjectless switch behaves similarly to an if / else if chain.
+
+Example:
+
+```
+switch {
+case a:
+    A()
+
+case b:
+    B()
+
+default:
+    C()
+}
+```
+
+is approximately equivalent to:
+
+```
+if a {
+    A()
+} else if b {
+    B()
+} else {
+    C()
+}
+```
+
+The switch form is useful when many peer conditions are being tested.
+
+Default:
+
+A switch may contain at most one default clause.
+
+default executes when no case matches.
+
+Example:
+
+```
+switch value {
+case 1:
+    One()
+
+case 2:
+    Two()
+
+default:
+    Other()
+}
+```
+
+default is optional.
+
+If no case matches and no default exists, the switch performs no branch body
+and execution continues after the switch.
+
+Default placement:
+
+default must be the final clause.
+
+Valid:
+
+```
+switch value {
+case 1:
+    One()
+
+default:
+    Other()
+}
+```
+
+Invalid:
+
+```
+switch value {
+default:
+    Other()
+
+case 1:
+    One()
+}
+```
+
+Requiring default to be last makes execution order and fallthrough behavior
+immediately visible.
+
+No implicit fallthrough:
+
+A case does not automatically continue into the next case.
+
+Example:
+
+```
+switch value {
+case 1:
+    One()
+
+case 2:
+    Two()
+}
+```
+
+When value is 1, only One() executes.
+
+No break statement is required at the end of a case.
+
+Explicit fallthrough:
+
+fallthrough explicitly transfers control to the body of the next case.
+
+Example:
+
+```
+switch value {
+case 1:
+    One()
+    fallthrough
+
+case 2:
+    OneOrTwo()
+
+default:
+    Other()
+}
+```
+
+When value is 1:
+
+* One() executes
+* control enters the next case body
+* the next case condition is not tested
+* OneOrTwo() executes
+
+fallthrough must be the final non-empty statement in a case.
+
+Invalid:
+
+```
+case 1:
+    fallthrough
+    MoreWork()
+```
+
+fallthrough is not allowed in the final case.
+
+fallthrough is not allowed in default because default must be final.
+
+fallthrough is only valid directly inside a switch case body.
+
+It may not appear inside a nested if, loop, function or other nested block and
+refer to the surrounding switch.
+
+Empty cases:
+
+An empty case is legal.
+
+Example:
+
+```
+switch value {
+case 1:
+
+case 2:
+    Two()
+}
+```
+
+The empty case does not implicitly fall through.
+
+When value is 1, no statements execute and control continues after the switch.
+
+Use explicit fallthrough when that behavior is intended.
+
+Case scopes:
+
+Each case body creates its own lexical scope.
+
+Example:
+
+```
+switch value {
+case 1:
+    let message: string := "one"
+    Print(message)
+
+case 2:
+    let message: string := "two"
+    Print(message)
+}
+```
+
+The two message declarations belong to separate scopes.
+
+A variable declared inside one case is not visible inside another case or after
+the switch.
+
+Example:
+
+```
+switch value {
+case 1:
+    let local: int := 10
+}
+
+Print(local)
+```
+
+Invalid because local is outside its scope.
+
+Outer declarations:
+
+Variables declared before the switch are visible inside every case.
+
+Normal mutability rules apply.
+
+Example:
+
+```
+let mut result: int := 0
+
+switch value {
+case 1:
+    result = 10
+
+case 2:
+    result = 20
+
+default:
+    result = 30
+}
+```
+
+No shadowing:
+
+Normal Sec no-shadowing rules apply inside switch cases.
+
+A case may not redeclare a name that is already visible from an outer scope.
+
+Separate sibling cases may declare the same name because their scopes do not
+overlap.
+
+Duplicate cases:
+
+Compile-time duplicate values are invalid.
+
+Invalid:
+
+```
+switch value {
+case 1:
+    A()
+
+case 1:
+    B()
+}
+```
+
+Diagnostic:
+
+```
+duplicate switch case value 1
+```
+
+Overlapping ranges:
+
+Compile-time ranges must not overlap.
+
+Invalid:
+
+```
+switch score {
+case 0..50:
+    A()
+
+case 40..100:
+    B()
+}
+```
+
+Diagnostic:
+
+```
+switch case range overlaps previous case
+```
+
+Value and range overlap:
+
+A compile-time value may not already be covered by an earlier compile-time
+range.
+
+Invalid:
+
+```
+switch score {
+case 0..100:
+    InRange()
+
+case 50:
+    Exact()
+}
+```
+
+Diagnostic:
+
+```
+switch case value 50 is already covered by previous case
+```
+
+Relational overlap:
+
+The compiler should detect clearly provable overlap or unreachable relational
+cases.
+
+Invalid:
+
+```
+switch value {
+case >= 0:
+    NonNegative()
+
+case > 10:
+    Large()
+}
+```
+
+The second case is unreachable because every value greater than 10 already
+matches the first case.
+
+Diagnostic:
+
+```
+unreachable switch case; previous case already covers this condition
+```
+
+Dynamic cases:
+
+When case expressions or range bounds are not compile-time values, overlap may
+not be provable.
+
+Example:
+
+```
+switch value {
+case minimum..maximum:
+    InFirst()
+
+case otherMinimum..otherMaximum:
+    InSecond()
+}
+```
+
+This is legal unless the compiler can prove that a later case is unreachable.
+
+Runtime evaluation order determines which case matches first.
+
+Enum subjects:
+
+Enum values may be used as switch subjects.
+
+Example:
+
+```
+switch direction {
+case Direction.north:
+    North()
+
+case Direction.south:
+    South()
+
+default:
+    Other()
+}
+```
+
+A switch statement over an enum is not required to be exhaustive.
+
+Use match when exhaustive handling of every enum or union variant is required.
+
+The compiler may warn when an enum switch omits known values and has no default,
+but this is not a sema error.
+
+Strings:
+
+Strings may be used as switch subjects when normal string equality is available.
+
+Example:
+
+```
+switch command {
+case "start":
+    Start()
+
+case "stop":
+    Stop()
+
+default:
+    Unknown()
+}
+```
+
+Semantic types:
+
+Semantic types retain their normal compatibility rules.
+
+Example:
+
+```
+switch speed {
+case minimumSpeed..maximumSpeed:
+    Normal()
+}
+```
+
+Valid when all values have compatible Speed types.
+
+Invalid:
+
+```
+switch speed {
+case 0..100:
+    Normal()
+}
+```
+
+when plain int values are not implicitly compatible with Speed.
+
+Units:
+
+Unit values retain their normal unit compatibility rules.
+
+Example:
+
+```
+switch distance {
+case 0<m>..<100<m>:
+    Near()
+
+case 100<m>..:
+    Far()
+}
+```
+
+Values with incompatible units cannot be compared in the same switch.
+
+bool subject:
+
+A bool value may be used as an explicit switch subject.
+
+Example:
+
+```
+switch ready {
+case true:
+    Start()
+
+case false:
+    Wait()
+}
+```
+
+This is legal but usually clearer as if / else.
+
+It is not a compiler error.
+
+Switch termination:
+
+A switch is terminating when:
+
+* it has a default clause
+* every case body terminates
+* every explicit fallthrough chain eventually reaches a terminating case
+* no reachable case can continue after the switch
+
+Example:
+
+```
+fn Classify(value: int) int {
+    switch value {
+    case < 0:
+        return -1
+
+    case 0:
+        return 0
+
+    default:
+        return 1
+    }
+}
+```
+
+This function satisfies the return requirement.
+
+Non-terminating switch:
+
+Without default, an unmatched path always exists.
+
+Example:
+
+```
+fn Invalid(value: int) int {
+    switch value {
+    case 0:
+        return 0
+    }
+}
+```
+
+Invalid because value may not match any case and the function may reach its end.
+
+Definite assignment:
+
+Definite-assignment analysis merges only paths that continue after the switch.
+
+Example:
+
+```
+fn Select(value: int) int {
+    let mut result: int
+
+    switch value {
+    case 1:
+        result = 10
+
+    case 2:
+        result = 20
+
+    default:
+        result = 30
+    }
+
+    return result
+}
+```
+
+Valid because every possible continuing path assigns result.
+
+Without default:
+
+```
+fn Invalid(value: int) int {
+    let mut result: int
+
+    switch value {
+    case 1:
+        result = 10
+    }
+
+    return result
+}
+```
+
+Invalid because value may not match any case.
+
+Break:
+
+No break is required to finish a case.
+
+The initial switch implementation does not require break for normal case
+control flow.
+
+If break is introduced as part of loop control, its interaction with switch
+must be defined separately.
+
+Do not use break as a substitute for the normal end of a switch case.
+
+Continue:
+
+continue belongs to loops.
+
+continue does not continue to the next switch case.
+
+Use fallthrough to enter the next case body.
+
+Case guards:
+
+Case guards are not included in the initial switch implementation.
+
+Not supported initially:
+
+```
+case 10..20 where user.Active:
+```
+
+Use a subjectless switch:
+
+```
+switch {
+case value in 10..20 && user.Active:
+    Handle()
+}
+```
+
+or use an if statement inside the case body.
+
+This avoids introducing a second condition syntax before it is clearly needed.
+
+Pattern matching:
+
+switch does not support:
+
+* variant binding
+* type binding
+* destructuring
+* property patterns
+* list patterns
+* wildcard patterns
+
+Not supported:
+
+```
+switch result {
+case Ok(value):
+}
+```
+
+Use match:
+
+```
+match result {
+    Ok(value) => ...
+    Err(error) => ...
+}
+```
+
+Switch expressions:
+
+switch is initially a statement.
+
+Not supported initially:
+
+```
+result := switch value {
+    case 1: 10
+    default: 20
+}
+```
+
+Use match for value-producing exhaustive branching or assign inside the switch.
+
+Example:
+
+```
+let mut result: int
+
+switch value {
+case 1:
+    result = 10
+
+default:
+    result = 20
+}
+```
+
+A switch expression may be investigated later, but it is not part of the first
+implementation.
+
+Parser:
+
+The parser must support:
+
+* switch followed by an optional subject expression
+* a required switch body
+* zero or more case clauses
+* an optional final default clause
+* comma-separated case items
+* value items
+* range items
+* relational items
+* statement lists inside case bodies
+* explicit fallthrough
+
+The parser does not perform type checking.
+
+Suggested AST:
+
+```
+type SwitchStatement struct {
+    Subject: Expression?
+    Cases: []SwitchCase
+    Default: SwitchCase?
+}
+
+type SwitchCase struct {
+    Items: []SwitchCaseItem
+    Body: Block
+}
+
+type SwitchCaseItem =
+    ValueCase(Expression)
+    RangeCase(RangeExpression)
+    RelationalCase(Operator, Expression)
+    ConditionCase(Expression)
+```
+
+ConditionCase is used only when the switch has no subject.
+
+Each case body is represented as an implicit lexical block.
+
+Sema for switch with subject:
+
+* Resolve the subject expression exactly once.
+* Determine the subject type.
+* Reject void subjects.
+* Validate every value case against equality compatibility with the subject.
+* Validate range cases against ordered compatibility with the subject.
+* Validate relational cases against ordered compatibility with the subject.
+* Validate comma-separated alternatives independently.
+* Detect duplicate compile-time values.
+* Detect overlapping compile-time ranges.
+* Detect compile-time values covered by earlier ranges.
+* Detect clearly unreachable relational cases.
+* Allow dynamic case expressions when their types are compatible.
+* Create an independent lexical scope for every case.
+* Analyze fallthrough chains.
+* Analyze termination and definite assignment.
+
+Sema for switch without subject:
+
+* Require every case item to have type bool.
+* Evaluate alternatives with left-to-right short-circuit semantics.
+* Reject non-bool case expressions.
+* Create an independent lexical scope for every case.
+* Analyze fallthrough chains.
+* Analyze termination and definite assignment.
+
+Diagnostics:
+
+Suggested diagnostics:
+
+```
+switch case must be compatible with subject type int, got string
+
+switch range must be compatible with subject type Speed, got int
+
+relational switch case requires ordered subject type
+
+subjectless switch case must be bool, got int
+
+duplicate switch case value 10
+
+switch case range overlaps previous case
+
+switch case value 50 is already covered by previous case
+
+unreachable switch case; previous case already covers this condition
+
+switch may contain only one default clause
+
+default must be the final switch clause
+
+fallthrough must be the final statement in a switch case
+
+fallthrough is not allowed in the final switch case
+
+fallthrough is only valid directly inside a switch case
+```
+
+Code generation:
+
+The subject expression is evaluated once and stored as an SSA value or local
+temporary.
+
+Cases are tested in source order.
+
+Each case body receives its own basic block.
+
+The first matching test branches to its case body.
+
+A normal case body branches to the switch continuation block unless it already
+terminates.
+
+A fallthrough case branches directly to the next case body without evaluating
+that case's tests.
+
+default is used when no case test matches.
+
+A subjectless switch generates ordered bool tests similar to an if / else-if
+chain.
+
+LLVM may later optimize constant cases into:
+
+* jump tables
+* binary decision trees
+* direct branches
+
+The source semantics do not depend on which optimization is selected.
+
+Design rules:
+
+* switch handles value-based branching.
+* switch may have a subject or no subject.
+* A subjectless switch stores all logic in case conditions.
+* The switch subject is evaluated exactly once.
+* Cases are tested from top to bottom.
+* The first matching case wins.
+* Comma-separated case items mean logical OR.
+* Ranges are first-class switch cases.
+* Relational cases avoid repeating the subject.
+* No implicit fallthrough exists.
+* fallthrough is explicit and enters only the next case body.
+* default is optional and must be last.
+* Each case body has its own lexical scope.
+* Compile-time duplicate and overlapping cases are errors.
+* switch is not pattern matching.
+* match owns variants, destructuring and exhaustiveness.
+* switch is initially a statement, not an expression.
+* No additional syntax is introduced when existing bool expressions are enough.

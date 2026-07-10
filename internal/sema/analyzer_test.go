@@ -2168,6 +2168,79 @@ fn AssignmentInElseOnlyWhenThenReturns(value: bool) int {
 	assertSemaErrors(t, errors, nil)
 }
 
+func TestSwitchValidCasesAndDefiniteAssignment(t *testing.T) {
+	input := `
+module main
+
+fn Select(value: int) int {
+	let mut result: int
+
+	switch value {
+	case < 0:
+		result = -1
+	case 0, 1, 2..<10:
+		result = 10
+	default:
+		result = 20
+	}
+
+	return result
+}
+
+fn Subjectless(value: int) int {
+	switch {
+	case value < 0:
+		return -1
+	case value == 0:
+		return 0
+	default:
+		return 1
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestSwitchSemanticErrors(t *testing.T) {
+	input := `
+module main
+
+fn Invalid(value: int, name: string) void {
+	switch value {
+	case "one":
+		return
+	case 1:
+		return
+	case 1:
+		return
+	}
+
+	switch {
+	case 10:
+		return
+	}
+
+	switch value {
+	case 3:
+		fallthrough
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+
+	expected := []string{
+		"switch case must be compatible with subject type int, got string at 6:7",
+		"duplicate switch case value 1 at 10:7",
+		"subjectless switch case must be bool, got int at 15:7",
+		"fallthrough is not allowed in the final switch case at 21:3",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
 func TestResultTypeArgumentCountErrors(t *testing.T) {
 	input := `
 module main

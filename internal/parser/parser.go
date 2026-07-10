@@ -90,11 +90,20 @@ func (p *Parser) parseStatement() ast.Statement {
 	case lexer.IF:
 		return p.parseIfStatement()
 
+	case lexer.SWITCH:
+		return p.parseSwitchStatement()
+
 	case lexer.ELSE:
 		return p.parseUnexpectedElseStatement()
 
+	case lexer.FALLTHROUGH:
+		return &ast.FallthroughStatement{Token: p.curToken}
+
 	case lexer.MATCH:
 		return p.parseMatchStatement()
+
+	case lexer.AT:
+		return p.parseExpressionOrAssignmentStatement()
 
 	case lexer.IDENT:
 		if p.peekToken.Type == lexer.MUT || p.peekToken.Type == lexer.COLON || p.peekToken.Type == lexer.LT || p.peekToken.Type == lexer.LBRACKET {
@@ -183,6 +192,219 @@ func (p *Parser) parseIfStatement() ast.Statement {
 	}
 
 	return stmt
+}
+
+func (p *Parser) parseSwitchStatement() ast.Statement {
+	stmt := &ast.SwitchStatement{Token: p.curToken}
+
+	if p.peekToken.Type != lexer.LBRACE {
+		p.nextToken()
+		previousStopBeforeBrace := p.stopBeforeBrace
+		p.stopBeforeBrace = true
+		stmt.Subject = p.parseExpression(LOWEST)
+		p.stopBeforeBrace = previousStopBeforeBrace
+		if stmt.Subject == nil {
+			return nil
+		}
+	}
+
+	if p.peekToken.Type != lexer.LBRACE {
+		p.addError("expected '{' after switch at %d:%d", p.peekToken.Line, p.peekToken.Column)
+		return stmt
+	}
+	p.nextToken()
+	p.nextToken()
+
+	for p.curToken.Type != lexer.RBRACE && p.curToken.Type != lexer.EOF {
+		if p.curToken.Type == lexer.COMMENT {
+			p.nextToken()
+			continue
+		}
+
+		switch {
+		case p.curToken.Type == lexer.CASE:
+			caseClause := p.parseSwitchCaseClause(false, stmt.Subject == nil)
+			if caseClause != nil {
+				stmt.Cases = append(stmt.Cases, caseClause)
+			}
+		case isDefaultToken(p.curToken):
+			defaultClause := p.parseSwitchCaseClause(true, stmt.Subject == nil)
+			if defaultClause != nil {
+				if stmt.Default != nil {
+					p.addError("switch may contain only one default clause at %d:%d", p.curToken.Line, p.curToken.Column)
+				} else {
+					stmt.Default = defaultClause
+				}
+			}
+			if p.curToken.Type != lexer.RBRACE && p.curToken.Type != lexer.EOF {
+				p.addError("default must be the final switch clause at %d:%d", p.curToken.Line, p.curToken.Column)
+			}
+		default:
+			p.addError("expected switch case or default at %d:%d", p.curToken.Line, p.curToken.Column)
+			p.skipStatement()
+			p.nextToken()
+		}
+	}
+
+	if p.curToken.Type == lexer.EOF {
+		p.addError("unterminated switch body")
+		return nil
+	}
+
+	return stmt
+}
+
+func (p *Parser) parseSwitchCaseClause(isDefault bool, subjectless bool) *ast.SwitchCase {
+	clause := &ast.SwitchCase{Token: p.curToken, Default: isDefault}
+
+	if isDefault {
+		if p.peekToken.Type != lexer.COLON {
+			p.addError("expected ':' after default at %d:%d", p.peekToken.Line, p.peekToken.Column)
+			p.skipSwitchClause()
+			return clause
+		}
+		p.nextToken()
+		p.nextToken()
+		clause.Body = p.parseSwitchCaseBody()
+		return clause
+	}
+
+	p.nextToken()
+	for {
+		item := p.parseSwitchCaseItem(subjectless)
+		if item == nil {
+			p.skipSwitchClause()
+			return clause
+		}
+		clause.Items = append(clause.Items, item)
+
+		switch p.peekToken.Type {
+		case lexer.COMMA:
+			p.nextToken()
+			p.nextToken()
+			continue
+		case lexer.COLON:
+			p.nextToken()
+			p.nextToken()
+			clause.Body = p.parseSwitchCaseBody()
+			return clause
+		default:
+			p.addError("expected ',' or ':' after switch case item at %d:%d", p.peekToken.Line, p.peekToken.Column)
+			p.skipSwitchClause()
+			return clause
+		}
+	}
+}
+
+func (p *Parser) parseSwitchCaseItem(subjectless bool) ast.SwitchCaseItem {
+	if subjectless {
+		value := p.parseExpression(LOWEST)
+		if value == nil {
+			return nil
+		}
+		return &ast.SwitchValueCase{Token: expressionToken(value), Value: value}
+	}
+
+	switch p.curToken.Type {
+	case lexer.LT, lexer.LTE, lexer.GT, lexer.GTE:
+		token := p.curToken
+		operator := p.curToken.Lexeme
+		p.nextToken()
+		value := p.parseExpression(COMPARE)
+		if value == nil {
+			return nil
+		}
+		return &ast.SwitchRelationalCase{Token: token, Operator: operator, Value: value}
+	case lexer.RANGE, lexer.RANGE_EXCLUSIVE:
+		rangeExpr := &ast.RangeExpression{Token: p.curToken, Exclusive: p.curToken.Type == lexer.RANGE_EXCLUSIVE}
+		if p.isExpressionStart(p.peekToken.Type) {
+			p.nextToken()
+			rangeExpr.End = p.parseExpression(COMPARE)
+		}
+		return &ast.SwitchRangeCase{Token: rangeExpr.Token, Range: rangeExpr}
+	default:
+		value := p.parseRangeOrExpression()
+		if value == nil {
+			return nil
+		}
+		if rangeExpr, ok := value.(*ast.RangeExpression); ok {
+			return &ast.SwitchRangeCase{Token: rangeExpr.Token, Range: rangeExpr}
+		}
+		return &ast.SwitchValueCase{Token: expressionToken(value), Value: value}
+	}
+}
+
+func (p *Parser) parseSwitchCaseBody() *ast.BlockStatement {
+	block := &ast.BlockStatement{Token: p.curToken}
+	for p.curToken.Type != lexer.RBRACE && p.curToken.Type != lexer.EOF && p.curToken.Type != lexer.CASE && !isDefaultToken(p.curToken) {
+		if p.curToken.Type == lexer.COMMENT {
+			p.nextToken()
+			continue
+		}
+
+		stmt := p.parseStatement()
+		if stmt != nil {
+			block.Statements = append(block.Statements, stmt)
+			p.nextToken()
+			continue
+		}
+
+		p.skipStatement()
+	}
+	return block
+}
+
+func (p *Parser) skipSwitchClause() {
+	for p.curToken.Type != lexer.RBRACE && p.curToken.Type != lexer.EOF && p.curToken.Type != lexer.CASE && !isDefaultToken(p.curToken) {
+		p.nextToken()
+	}
+}
+
+func isDefaultToken(token lexer.Token) bool {
+	return token.Type == lexer.IDENT && token.Lexeme == "default"
+}
+
+func isSwitchClauseStart(token lexer.Token) bool {
+	return token.Type == lexer.CASE || isDefaultToken(token)
+}
+
+func expressionToken(expr ast.Expression) lexer.Token {
+	switch expr := expr.(type) {
+	case *ast.Identifier:
+		return expr.Token
+	case *ast.IntegerLiteral:
+		return expr.Token
+	case *ast.FloatLiteral:
+		return expr.Token
+	case *ast.StringLiteral:
+		return expr.Token
+	case *ast.BooleanLiteral:
+		return expr.Token
+	case *ast.InterpolatedStringLiteral:
+		return expr.Token
+	case *ast.PrefixExpression:
+		return expr.Token
+	case *ast.InfixExpression:
+		return expr.Token
+	case *ast.ConversionExpression:
+		return expr.Token
+	case *ast.CallExpression:
+		return expr.Token
+	case *ast.RuntimeCallExpression:
+		return expr.Token
+	case *ast.TryExpression:
+		return expr.Token
+	case *ast.MatchExpression:
+		return expr.Token
+	case *ast.RangeExpression:
+		return expr.Token
+	case *ast.MemberExpression:
+		return expr.Token
+	case *ast.StructLiteral:
+		return expr.Token
+	default:
+		return lexer.Token{}
+	}
 }
 
 func (p *Parser) parseUnexpectedElseStatement() ast.Statement {
@@ -509,7 +731,7 @@ func (p *Parser) parseStatementBlock(name string) *ast.BlockStatement {
 func (p *Parser) parseReturnStatement() ast.Statement {
 	stmt := &ast.ReturnStatement{Token: p.curToken}
 
-	if p.peekToken.Type == lexer.RBRACE || p.peekToken.Type == lexer.EOF || p.isStatementStart(p.peekToken.Type) {
+	if p.peekToken.Type == lexer.RBRACE || p.peekToken.Type == lexer.EOF || p.isStatementStart(p.peekToken.Type) || isSwitchClauseStart(p.peekToken) {
 		return stmt
 	}
 

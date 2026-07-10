@@ -1590,3 +1590,80 @@ func TestParseTypesFile(t *testing.T) {
 		t.Fatalf("expected 43 statements, got %d", len(program.Statements))
 	}
 }
+
+func TestParseSwitchStatement(t *testing.T) {
+	input := `
+fn Test(value: int) void {
+	switch value {
+	case < 0:
+		return
+	case 0, 1, 2..<10:
+		fallthrough
+	default:
+		return
+	}
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	switchStmt, ok := fn.Body.Statements[0].(*ast.SwitchStatement)
+	if !ok {
+		t.Fatalf("statement is not SwitchStatement. got=%T", fn.Body.Statements[0])
+	}
+	if switchStmt.Subject == nil {
+		t.Fatal("expected switch subject")
+	}
+	if len(switchStmt.Cases) != 2 {
+		t.Fatalf("wrong case count. got=%d want=2", len(switchStmt.Cases))
+	}
+	if len(switchStmt.Cases[0].Items) != 1 {
+		t.Fatalf("wrong first case item count. got=%d want=1", len(switchStmt.Cases[0].Items))
+	}
+	if _, ok := switchStmt.Cases[0].Items[0].(*ast.SwitchRelationalCase); !ok {
+		t.Fatalf("first case item is not SwitchRelationalCase. got=%T", switchStmt.Cases[0].Items[0])
+	}
+	if len(switchStmt.Cases[1].Items) != 3 {
+		t.Fatalf("wrong second case item count. got=%d want=3", len(switchStmt.Cases[1].Items))
+	}
+	if _, ok := switchStmt.Cases[1].Items[2].(*ast.SwitchRangeCase); !ok {
+		t.Fatalf("third second-case item is not SwitchRangeCase. got=%T", switchStmt.Cases[1].Items[2])
+	}
+	if switchStmt.Default == nil {
+		t.Fatal("expected default clause")
+	}
+}
+
+func TestParseSubjectlessSwitchStatement(t *testing.T) {
+	input := `
+fn Test(value: int) void {
+	switch {
+	case value < 0:
+		return
+	default:
+		return
+	}
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	switchStmt, ok := fn.Body.Statements[0].(*ast.SwitchStatement)
+	if !ok {
+		t.Fatalf("statement is not SwitchStatement. got=%T", fn.Body.Statements[0])
+	}
+	if switchStmt.Subject != nil {
+		t.Fatalf("expected subjectless switch, got=%T", switchStmt.Subject)
+	}
+	if len(switchStmt.Cases) != 1 || switchStmt.Default == nil {
+		t.Fatalf("wrong switch clauses. cases=%d default=%v", len(switchStmt.Cases), switchStmt.Default != nil)
+	}
+}

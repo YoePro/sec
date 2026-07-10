@@ -264,8 +264,12 @@ func (a *Analyzer) analyzeStatement(stmt ast.Statement) {
 		}
 	case *ast.IfStatement:
 		a.analyzeIfStatement(stmt)
+	case *ast.SwitchStatement:
+		a.analyzeSwitchStatement(stmt)
 	case *ast.MatchStatement:
 		a.analyzeMatchStatement(stmt)
+	case *ast.FallthroughStatement:
+		a.addErrorAtToken(stmt.Token, "fallthrough is only valid directly inside a switch case")
 	case *ast.ImplStatement:
 		a.registerImplStatement(stmt)
 	case *ast.StructStatement:
@@ -350,6 +354,180 @@ func mergeContinuingAssigned(before map[string]bool, branches ...branchAnalysis)
 		return copyAssigned(before)
 	}
 	return merged
+}
+
+func (a *Analyzer) analyzeSwitchStatement(stmt *ast.SwitchStatement) {
+	before := copyAssigned(a.assigned)
+	var subjectType Type
+	hasSubject := stmt.Subject != nil
+	if hasSubject {
+		subjectType, _ = a.inferExpression(stmt.Subject)
+		if subjectType.Kind == VoidType {
+			a.addErrorAtToken(expressionToken(stmt.Subject), "switch subject cannot be void")
+		}
+	}
+
+	seenInts := map[string]lexer.Token{}
+	clauses := append([]*ast.SwitchCase{}, stmt.Cases...)
+	if stmt.Default != nil {
+		clauses = append(clauses, stmt.Default)
+	}
+
+	branches := make([]branchAnalysis, 0, len(clauses)+1)
+	for i, clause := range clauses {
+		if clause == nil {
+			continue
+		}
+		if clause.Default && i != len(clauses)-1 {
+			a.addErrorAtToken(clause.Token, "default must be the final switch clause")
+		}
+		a.analyzeSwitchCaseItems(clause, hasSubject, subjectType, seenInts)
+		a.analyzeSwitchFallthrough(clause, i == len(clauses)-1)
+		branches = append(branches, a.analyzeSwitchCaseBody(clause.Body))
+	}
+
+	if stmt.Default == nil {
+		branches = append(branches, branchAnalysis{assigned: before, continues: true})
+	}
+	a.assigned = mergeContinuingAssigned(before, branches...)
+}
+
+func (a *Analyzer) analyzeSwitchCaseItems(clause *ast.SwitchCase, hasSubject bool, subjectType Type, seenInts map[string]lexer.Token) {
+	if clause.Default {
+		return
+	}
+
+	for _, item := range clause.Items {
+		switch item := item.(type) {
+		case *ast.SwitchValueCase:
+			valueType, _ := a.inferExpression(item.Value)
+			if valueType.Kind == InvalidType {
+				continue
+			}
+			if hasSubject {
+				if !canCompareEquality(subjectType, valueType) {
+					a.addErrorAtToken(expressionToken(item.Value), "switch case must be compatible with subject type %s, got %s", typeDisplayName(subjectType), typeDisplayName(valueType))
+				}
+				a.checkDuplicateSwitchValue(item.Value, seenInts)
+			} else if valueType.Kind != BoolType {
+				a.addErrorAtToken(expressionToken(item.Value), "subjectless switch case must be bool, got %s", typeDisplayName(valueType))
+			}
+		case *ast.SwitchRangeCase:
+			if !hasSubject {
+				a.addErrorAtToken(item.Token, "subjectless switch case must be bool, got range")
+				continue
+			}
+			a.analyzeSwitchRangeCase(item, subjectType)
+		case *ast.SwitchRelationalCase:
+			if !hasSubject {
+				a.addErrorAtToken(item.Token, "subjectless switch case must be bool, got relational case")
+				continue
+			}
+			if !isOrderedSwitchType(subjectType) {
+				a.addErrorAtToken(item.Token, "relational switch case requires ordered subject type")
+				continue
+			}
+			valueType, _ := a.inferExpression(item.Value)
+			if valueType.Kind != InvalidType && !canCompareEquality(subjectType, valueType) {
+				a.addErrorAtToken(expressionToken(item.Value), "switch case must be compatible with subject type %s, got %s", typeDisplayName(subjectType), typeDisplayName(valueType))
+			}
+		}
+	}
+}
+
+func (a *Analyzer) analyzeSwitchRangeCase(item *ast.SwitchRangeCase, subjectType Type) {
+	if !isOrderedSwitchType(subjectType) {
+		a.addErrorAtToken(item.Token, "switch range requires ordered subject type")
+		return
+	}
+	if item.Range == nil {
+		return
+	}
+	if item.Range.Start != nil {
+		startType, _ := a.inferExpression(item.Range.Start)
+		if startType.Kind != InvalidType && !canRangeBoundType(subjectType, startType, item.Range.Start) {
+			a.addErrorAtToken(expressionToken(item.Range.Start), "switch range must be compatible with subject type %s, got %s", typeDisplayName(subjectType), typeDisplayName(startType))
+		}
+	}
+	if item.Range.End != nil {
+		endType, _ := a.inferExpression(item.Range.End)
+		if endType.Kind != InvalidType && !canRangeBoundType(subjectType, endType, item.Range.End) {
+			a.addErrorAtToken(expressionToken(item.Range.End), "switch range must be compatible with subject type %s, got %s", typeDisplayName(subjectType), typeDisplayName(endType))
+		}
+	}
+}
+
+func (a *Analyzer) checkDuplicateSwitchValue(expr ast.Expression, seen map[string]lexer.Token) {
+	value, ok := constantIntegerValue(expr)
+	if !ok {
+		return
+	}
+	key := value.String()
+	if _, exists := seen[key]; exists {
+		a.addErrorAtToken(expressionToken(expr), "duplicate switch case value %s", key)
+		return
+	}
+	seen[key] = expressionToken(expr)
+}
+
+func (a *Analyzer) analyzeSwitchFallthrough(clause *ast.SwitchCase, isFinal bool) {
+	if clause == nil || clause.Body == nil {
+		return
+	}
+	fallthroughIndex := -1
+	for i, stmt := range clause.Body.Statements {
+		if _, ok := stmt.(*ast.FallthroughStatement); ok {
+			fallthroughIndex = i
+		}
+	}
+	if fallthroughIndex == -1 {
+		return
+	}
+	if clause.Default || isFinal {
+		a.addErrorAtToken(clause.Body.Statements[fallthroughIndex].(*ast.FallthroughStatement).Token, "fallthrough is not allowed in the final switch case")
+	}
+	for i := fallthroughIndex + 1; i < len(clause.Body.Statements); i++ {
+		if _, ok := clause.Body.Statements[i].(*ast.CommentStatement); ok {
+			continue
+		}
+		a.addErrorAtToken(clause.Body.Statements[fallthroughIndex].(*ast.FallthroughStatement).Token, "fallthrough must be the final statement in a switch case")
+		return
+	}
+}
+
+func (a *Analyzer) analyzeSwitchCaseBody(block *ast.BlockStatement) branchAnalysis {
+	if block == nil {
+		return branchAnalysis{assigned: copyAssigned(a.assigned), continues: true}
+	}
+
+	previousSymbols := a.symbols
+	previousConstInts := a.constInts
+	previousAssigned := a.assigned
+	a.symbols = copySymbols(previousSymbols)
+	a.constInts = copyConstInts(previousConstInts)
+	a.assigned = copyAssigned(previousAssigned)
+	defer func() {
+		a.symbols = previousSymbols
+		a.constInts = previousConstInts
+		a.assigned = previousAssigned
+	}()
+
+	hasFallthrough := false
+	for _, stmt := range block.Statements {
+		if _, ok := stmt.(*ast.FallthroughStatement); ok {
+			hasFallthrough = true
+			continue
+		}
+		a.analyzeStatement(stmt)
+	}
+	return branchAnalysis{
+		assigned:  copyAssigned(a.assigned),
+		continues: !blockDefinitelyReturns(block) && !hasFallthrough,
+	}
+}
+
+func isOrderedSwitchType(typ Type) bool {
+	return isNumericType(typ) || typ.Kind == StringType || typ.Kind == CharType || typ.Kind == RuneType
 }
 
 func (a *Analyzer) registerFunctionDeclarations(program *ast.Program) {
@@ -496,11 +674,25 @@ func statementDefinitelyReturns(stmt ast.Statement) bool {
 			return false
 		}
 		return blockDefinitelyReturns(stmt.Consequence) && blockDefinitelyReturns(stmt.Alternative)
+	case *ast.SwitchStatement:
+		return switchDefinitelyReturns(stmt)
 	case *ast.MatchStatement:
 		return false
 	default:
 		return false
 	}
+}
+
+func switchDefinitelyReturns(stmt *ast.SwitchStatement) bool {
+	if stmt.Default == nil {
+		return false
+	}
+	for _, clause := range stmt.Cases {
+		if clause == nil || !blockDefinitelyReturns(clause.Body) {
+			return false
+		}
+	}
+	return blockDefinitelyReturns(stmt.Default.Body)
 }
 
 func (a *Analyzer) analyzeReturnStatement(functionName string, returnType Type, stmt *ast.ReturnStatement) {
@@ -1019,6 +1211,9 @@ func (a *Analyzer) inferPropertyBodyExpression(target Type, setter *ast.Property
 	case *ast.CallExpression:
 		typ, _ := a.inferCallExpression(expr)
 		return typ, typ.Kind != InvalidType
+	case *ast.RuntimeCallExpression:
+		typ, _ := a.inferRuntimeCallExpression(expr)
+		return typ, typ.Kind != InvalidType
 	case *ast.OkExpression, *ast.ErrExpression:
 		return Type{Kind: InvalidType}, false
 	case *ast.TryExpression:
@@ -1302,6 +1497,8 @@ func (a *Analyzer) inferExpression(expr ast.Expression) (Type, expressionValue) 
 		return a.inferConversionExpression(expr)
 	case *ast.CallExpression:
 		return a.inferCallExpression(expr)
+	case *ast.RuntimeCallExpression:
+		return a.inferRuntimeCallExpression(expr)
 	case *ast.OkExpression:
 		a.addErrorAtToken(expr.Token, "Ok can only be returned from Result-returning function")
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
@@ -1486,7 +1683,13 @@ func (a *Analyzer) inferConversionExpression(expr *ast.ConversionExpression) (Ty
 }
 
 func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressionValue) {
-	functions, ok := a.functions[expr.Function.Value]
+	name := callExpressionName(expr)
+	if name == "" {
+		a.addErrorAtToken(expr.Token, "unsupported call expression")
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+
+	functions, ok := a.functions[name]
 	if !ok || len(functions) == 0 {
 		return a.inferCallAsConversion(expr)
 	}
@@ -1508,7 +1711,7 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 	}
 
 	if len(arityMatches) == 0 {
-		a.addErrorAtToken(expr.Function.Token, "function %s expects %s arguments, got %d", expr.Function.Value, formatFunctionArities(functions), len(expr.Arguments))
+		a.addErrorAtToken(expr.Token, "function %s expects %s arguments, got %d", name, formatFunctionArities(functions), len(expr.Arguments))
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 
@@ -1534,7 +1737,7 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 	}
 
 	if len(best) > 1 {
-		a.addErrorAtToken(expr.Function.Token, "ambiguous call to %s", expr.Function.Value)
+		a.addErrorAtToken(expr.Token, "ambiguous call to %s", name)
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 
@@ -1542,13 +1745,48 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 		for i, arg := range expr.Arguments {
 			param := function.Parameters[i]
 			if !canInitialize(param.Type, argTypes[i], arg) {
-				a.addErrorAtToken(expressionToken(arg), "argument %d to %s must be %s, got %s", i+1, expr.Function.Value, typeDisplayName(param.Type), typeDisplayName(argTypes[i]))
+				a.addErrorAtToken(expressionToken(arg), "argument %d to %s must be %s, got %s", i+1, name, typeDisplayName(param.Type), typeDisplayName(argTypes[i]))
 			}
 		}
 		break
 	}
 
 	return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+}
+
+func callExpressionName(expr *ast.CallExpression) string {
+	if expr.Callee != nil {
+		if name, ok := typePathFromExpression(expr.Callee); ok {
+			return name
+		}
+	}
+	if expr.Function != nil {
+		return expr.Function.Value
+	}
+	return ""
+}
+
+func (a *Analyzer) inferRuntimeCallExpression(expr *ast.RuntimeCallExpression) (Type, expressionValue) {
+	// TODO: Replace hard-coded runtime hooks with proper runtime library metadata.
+	switch expr.Name {
+	case "runtime.PrintlnString":
+		if len(expr.Arguments) != 1 {
+			a.addErrorAtToken(expr.Token, "@runtime.PrintlnString expects 1 argument, got %d", len(expr.Arguments))
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
+		argType, _ := a.inferExpression(expr.Arguments[0])
+		if argType.Kind == InvalidType {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
+		if argType.Kind != StringType {
+			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "@runtime.PrintlnString argument must be string, got %s", typeDisplayName(argType))
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
+		return Type{Name: "void", Kind: VoidType}, expressionValue{Display: expr.String()}
+	default:
+		a.addErrorAtToken(expr.Token, "unknown runtime function @%s", expr.Name)
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
 }
 
 type overloadMatch struct {
@@ -1602,10 +1840,11 @@ func formatFunctionArities(functions []Function) string {
 }
 
 func (a *Analyzer) inferCallAsConversion(expr *ast.CallExpression) (Type, expressionValue) {
-	typeName := a.resolveTypeName(expr.Function.Value)
+	name := callExpressionName(expr)
+	typeName := a.resolveTypeName(name)
 	targetType, ok := a.types[typeName]
 	if !ok {
-		a.addErrorAtToken(expr.Function.Token, "unknown function or type %s", expr.Function.Value)
+		a.addErrorAtToken(expr.Token, "unknown function or type %s", name)
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 
@@ -2373,7 +2612,7 @@ func (a *Analyzer) isExplicitConversionExpression(expr ast.Expression) bool {
 		if len(expr.Arguments) != 1 {
 			return false
 		}
-		_, ok := a.types[a.resolveTypeName(expr.Function.Value)]
+		_, ok := a.types[a.resolveTypeName(callExpressionName(expr))]
 		return ok
 	default:
 		return false
@@ -2426,6 +2665,10 @@ func statementToken(stmt ast.Statement) lexer.Token {
 		return stmt.Token
 	case *ast.IfStatement:
 		return stmt.Token
+	case *ast.SwitchStatement:
+		return stmt.Token
+	case *ast.FallthroughStatement:
+		return stmt.Token
 	case *ast.MatchStatement:
 		return stmt.Token
 	case *ast.CommentStatement:
@@ -2458,6 +2701,8 @@ func expressionToken(expr ast.Expression) lexer.Token {
 	case *ast.ConversionExpression:
 		return expr.Token
 	case *ast.CallExpression:
+		return expr.Token
+	case *ast.RuntimeCallExpression:
 		return expr.Token
 	case *ast.TryExpression:
 		return expr.Token

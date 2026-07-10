@@ -4,9 +4,11 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"text/tabwriter"
 
 	"sec/internal/ast"
+	llvmcodegen "sec/internal/codegen/llvm"
 	"sec/internal/lexer"
 	"sec/internal/parser"
 	"sec/internal/sema"
@@ -15,12 +17,28 @@ import (
 func main() {
 	flag.Parse()
 
-	if flag.NArg() != 2 {
+	if flag.NArg() < 1 {
 		printUsage()
 		os.Exit(1)
 	}
 
 	command := flag.Arg(0)
+
+	if command == "emit-llvm" {
+		runEmitLLVMCommand(flag.Args()[1:])
+		return
+	}
+
+	if command == "build" {
+		runBuildCommand(flag.Args()[1:])
+		return
+	}
+
+	if flag.NArg() != 2 {
+		printUsage()
+		os.Exit(1)
+	}
+
 	file := flag.Arg(1)
 
 	data, err := os.ReadFile(file)
@@ -54,6 +72,8 @@ func main() {
 
 func printUsage() {
 	fmt.Fprintln(os.Stderr, "usage: sec <lex|token|parse|ast|sema> <file.sec>")
+	fmt.Fprintln(os.Stderr, "       sec emit-llvm <file.sec> -o <file.ll>")
+	fmt.Fprintln(os.Stderr, "       sec build <file.sec> -o <program>")
 }
 
 func runLex(input string) {
@@ -156,6 +176,67 @@ func runAST(input string) {
 }
 
 func runSema(input string) {
+	parseAndAnalyze(input)
+	fmt.Println("OK")
+}
+
+func runEmitLLVMCommand(args []string) {
+	inputFile, outputFile, ok := parseOutputCommandArgs(args)
+	if !ok {
+		printUsage()
+		os.Exit(1)
+	}
+
+	input, err := os.ReadFile(inputFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "read error: %v\n", err)
+		os.Exit(1)
+	}
+
+	program := parseAndAnalyze(string(input))
+	ir, err := llvmcodegen.Generate(program)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "codegen error: %v\n", err)
+		os.Exit(4)
+	}
+
+	if err := os.WriteFile(outputFile, []byte(ir), 0644); err != nil {
+		fmt.Fprintf(os.Stderr, "write error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func runBuildCommand(args []string) {
+	if _, _, ok := parseOutputCommandArgs(args); !ok {
+		printUsage()
+		os.Exit(1)
+	}
+
+	fmt.Fprintln(os.Stderr, "build command is registered but not implemented yet; use emit-llvm and clang for now")
+	os.Exit(1)
+}
+
+func parseOutputCommandArgs(args []string) (inputFile string, outputFile string, ok bool) {
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "-o":
+			if i+1 >= len(args) || outputFile != "" {
+				return "", "", false
+			}
+			outputFile = args[i+1]
+			i++
+		default:
+			if inputFile != "" {
+				return "", "", false
+			}
+			inputFile = args[i]
+		}
+	}
+
+	return inputFile, outputFile, inputFile != "" && outputFile != ""
+}
+
+func parseAndAnalyze(input string) *ast.Program {
 	l := lexer.New(input)
 	p := parser.New(l)
 
@@ -168,6 +249,8 @@ func runSema(input string) {
 		os.Exit(2)
 	}
 
+	resolveStdlibImports(program)
+
 	analyzer := sema.NewAnalyzer()
 	errors := analyzer.Analyze(program)
 	if len(errors) > 0 {
@@ -177,7 +260,56 @@ func runSema(input string) {
 		os.Exit(3)
 	}
 
-	fmt.Println("OK")
+	return program
+}
+
+func resolveStdlibImports(program *ast.Program) {
+	// TODO: Replace this source-level stdlib inclusion with compiled library metadata/artifacts.
+	for _, stmt := range append([]ast.Statement{}, program.Statements...) {
+		importStmt, ok := stmt.(*ast.ImportStatement)
+		if !ok {
+			continue
+		}
+		if importStmt.Path != "fmt" {
+			continue
+		}
+
+		imported := parseStdlibModule(importStmt.Path)
+		qualifyImportedModule(imported, importStmt.Path)
+		program.Statements = append(program.Statements, imported.Statements...)
+	}
+}
+
+func parseStdlibModule(name string) *ast.Program {
+	path := filepath.Join("stdlib", name, name+".sec")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "stdlib import error: %v\n", err)
+		os.Exit(1)
+	}
+
+	l := lexer.New(string(data))
+	p := parser.New(l)
+	program := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		for _, err := range p.Errors() {
+			fmt.Fprintf(os.Stderr, "stdlib parse error: %s\n", err)
+		}
+		os.Exit(2)
+	}
+
+	return program
+}
+
+func qualifyImportedModule(program *ast.Program, module string) {
+	for _, stmt := range program.Statements {
+		fn, ok := stmt.(*ast.FunctionDeclaration)
+		if !ok || fn.Name == nil {
+			continue
+		}
+		fn.Name.Value = module + "." + fn.Name.Value
+		fn.Name.Token.Lexeme = fn.Name.Value
+	}
 }
 
 func printProgram(program *ast.Program) {
@@ -252,6 +384,9 @@ func printASTStatement(stmt ast.Statement, prefix string, last bool) {
 	case *ast.IfStatement:
 		printASTIf(stmt, prefix, last)
 
+	case *ast.SwitchStatement:
+		printASTSwitch(stmt, prefix, last)
+
 	case *ast.MatchStatement:
 		printASTExpression(prefix, last, "Match", stmt.Match)
 
@@ -265,6 +400,9 @@ func printASTStatement(stmt ast.Statement, prefix string, last bool) {
 	case *ast.InvalidStatement:
 		printASTBranch(prefix, last, "Invalid")
 		printASTLeaf(childPrefix(prefix, last), true, "Token: "+stmt.TokenLiteral())
+
+	case *ast.FallthroughStatement:
+		printASTBranch(prefix, last, "Fallthrough")
 
 	default:
 		printASTBranch(prefix, last, fmt.Sprintf("%T", stmt))
@@ -290,6 +428,60 @@ func printASTIf(stmt *ast.IfStatement, prefix string, last bool) {
 		for i, bodyStmt := range stmt.Alternative.Statements {
 			printASTStatement(bodyStmt, elsePrefix, i == len(stmt.Alternative.Statements)-1)
 		}
+	}
+}
+
+func printASTSwitch(stmt *ast.SwitchStatement, prefix string, last bool) {
+	printASTBranch(prefix, last, "Switch")
+	childrenPrefix := childPrefix(prefix, last)
+	hasClauses := len(stmt.Cases) > 0 || stmt.Default != nil
+	printASTExpression(childrenPrefix, !hasClauses, "Subject", stmt.Subject)
+
+	for i, caseClause := range stmt.Cases {
+		printASTSwitchCase(childrenPrefix, caseClause, stmt.Default == nil && i == len(stmt.Cases)-1)
+	}
+	if stmt.Default != nil {
+		printASTSwitchCase(childrenPrefix, stmt.Default, true)
+	}
+}
+
+func printASTSwitchCase(prefix string, caseClause *ast.SwitchCase, last bool) {
+	label := "Case"
+	if caseClause.Default {
+		label = "Default"
+	}
+	printASTBranch(prefix, last, label)
+	childrenPrefix := childPrefix(prefix, last)
+
+	hasBody := caseClause.Body != nil && len(caseClause.Body.Statements) > 0
+	if !caseClause.Default {
+		printASTBranch(childrenPrefix, !hasBody, "Items")
+		itemsPrefix := childPrefix(childrenPrefix, !hasBody)
+		for i, item := range caseClause.Items {
+			printASTSwitchCaseItem(itemsPrefix, item, i == len(caseClause.Items)-1)
+		}
+	}
+
+	if hasBody {
+		printASTBranch(childrenPrefix, true, "Body")
+		bodyPrefix := childPrefix(childrenPrefix, true)
+		for i, bodyStmt := range caseClause.Body.Statements {
+			printASTStatement(bodyStmt, bodyPrefix, i == len(caseClause.Body.Statements)-1)
+		}
+	}
+}
+
+func printASTSwitchCaseItem(prefix string, item ast.SwitchCaseItem, last bool) {
+	switch item := item.(type) {
+	case *ast.SwitchValueCase:
+		printASTExpression(prefix, last, "Value", item.Value)
+	case *ast.SwitchRangeCase:
+		printASTExpression(prefix, last, "Range", item.Range)
+	case *ast.SwitchRelationalCase:
+		printASTBranch(prefix, last, "Relational("+item.Operator+")")
+		printASTExpression(childPrefix(prefix, last), true, "Value", item.Value)
+	default:
+		printASTLeaf(prefix, last, fmt.Sprintf("%T", item))
 	}
 }
 
@@ -592,7 +784,9 @@ func formatASTExpression(expr ast.Expression) string {
 	case *ast.MemberExpression:
 		return "Member(" + formatASTExpression(expr.Object) + "." + expr.Property.Value + ")"
 	case *ast.CallExpression:
-		return "Call(" + expr.Function.Value + ")"
+		return "Call(" + expr.String() + ")"
+	case *ast.RuntimeCallExpression:
+		return "RuntimeCall(" + expr.String() + ")"
 	case *ast.OkExpression:
 		return "Ok(" + formatASTExpression(expr.Value) + ")"
 	case *ast.ErrExpression:
@@ -664,6 +858,12 @@ func printStatement(stmt ast.Statement) {
 
 	case *ast.ReturnStatement:
 		printReturn(stmt)
+
+	case *ast.FallthroughStatement:
+		fmt.Println("Fallthrough")
+
+	case *ast.SwitchStatement:
+		fmt.Println("Switch")
 
 	case *ast.ImplStatement:
 		printImpl(stmt)

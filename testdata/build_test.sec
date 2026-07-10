@@ -1,0 +1,16 @@
+module main
+
+import "fmt"
+
+fn Pick(value: int) int {
+    if value >= 10 {
+        return 5
+    }
+
+    return 6
+}
+
+fn main() int {
+    fmt.Println("Hello")
+    return Pick(10)
+}

@@ -361,6 +361,75 @@ func (is *IfStatement) TokenLiteral() string {
 	return is.Token.Lexeme
 }
 
+type SwitchStatement struct {
+	Token   lexer.Token
+	Subject Expression
+	Cases   []*SwitchCase
+	Default *SwitchCase
+}
+
+func (ss *SwitchStatement) statementNode() {}
+
+func (ss *SwitchStatement) TokenLiteral() string {
+	return ss.Token.Lexeme
+}
+
+type SwitchCase struct {
+	Token   lexer.Token
+	Default bool
+	Items   []SwitchCaseItem
+	Body    *BlockStatement
+}
+
+type SwitchCaseItem interface {
+	Node
+	switchCaseItemNode()
+}
+
+type SwitchValueCase struct {
+	Token lexer.Token
+	Value Expression
+}
+
+func (svc *SwitchValueCase) switchCaseItemNode() {}
+
+func (svc *SwitchValueCase) TokenLiteral() string {
+	return svc.Token.Lexeme
+}
+
+type SwitchRangeCase struct {
+	Token lexer.Token
+	Range *RangeExpression
+}
+
+func (src *SwitchRangeCase) switchCaseItemNode() {}
+
+func (src *SwitchRangeCase) TokenLiteral() string {
+	return src.Token.Lexeme
+}
+
+type SwitchRelationalCase struct {
+	Token    lexer.Token
+	Operator string
+	Value    Expression
+}
+
+func (src *SwitchRelationalCase) switchCaseItemNode() {}
+
+func (src *SwitchRelationalCase) TokenLiteral() string {
+	return src.Token.Lexeme
+}
+
+type FallthroughStatement struct {
+	Token lexer.Token
+}
+
+func (fs *FallthroughStatement) statementNode() {}
+
+func (fs *FallthroughStatement) TokenLiteral() string {
+	return fs.Token.Lexeme
+}
+
 type StructStatement struct {
 	Token  lexer.Token
 	Name   *Identifier
@@ -528,6 +597,7 @@ func (ce *ConversionExpression) String() string {
 
 type CallExpression struct {
 	Token     lexer.Token
+	Callee    Expression
 	Function  *Identifier
 	Arguments []Expression
 }
@@ -539,8 +609,39 @@ func (ce *CallExpression) TokenLiteral() string {
 }
 
 func (ce *CallExpression) String() string {
-	out := ce.Function.Value + "("
+	name := "<nil>"
+	if ce.Callee != nil {
+		name = ce.Callee.String()
+	} else if ce.Function != nil {
+		name = ce.Function.Value
+	}
+
+	out := name + "("
 	for i, arg := range ce.Arguments {
+		if i > 0 {
+			out += ", "
+		}
+		out += arg.String()
+	}
+	out += ")"
+	return out
+}
+
+type RuntimeCallExpression struct {
+	Token     lexer.Token
+	Name      string
+	Arguments []Expression
+}
+
+func (rce *RuntimeCallExpression) expressionNode() {}
+
+func (rce *RuntimeCallExpression) TokenLiteral() string {
+	return rce.Token.Lexeme
+}
+
+func (rce *RuntimeCallExpression) String() string {
+	out := "@" + rce.Name + "("
+	for i, arg := range rce.Arguments {
 		if i > 0 {
 			out += ", "
 		}

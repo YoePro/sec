@@ -102,6 +102,9 @@ func (p *Parser) parseExpression(currentPrecedence precedence) ast.Expression {
 	case lexer.MATCH:
 		left = p.parseMatchExpression()
 
+	case lexer.AT:
+		left = p.parseRuntimeCallExpression()
+
 	case lexer.LPAREN:
 		left = p.parseGroupedExpression()
 
@@ -262,6 +265,19 @@ func (p *Parser) skipMatchArm() {
 func (p *Parser) parseConversionExpression(left ast.Expression) ast.Expression {
 	ident, ok := left.(*ast.Identifier)
 	if !ok {
+		member, memberOK := left.(*ast.MemberExpression)
+		if memberOK {
+			args, ok := p.parseCallArguments()
+			if !ok {
+				return nil
+			}
+			return &ast.CallExpression{
+				Token:     member.Token,
+				Callee:    member,
+				Arguments: args,
+			}
+		}
+
 		p.addError(
 			"expected conversion target before '(' at %d:%d",
 			p.curToken.Line,
@@ -288,9 +304,39 @@ func (p *Parser) parseConversionExpression(left ast.Expression) ast.Expression {
 
 	return &ast.CallExpression{
 		Token:     ident.Token,
+		Callee:    ident,
 		Function:  ident,
 		Arguments: args,
 	}
+}
+
+func (p *Parser) parseRuntimeCallExpression() ast.Expression {
+	expr := &ast.RuntimeCallExpression{Token: p.curToken}
+
+	if !p.expectPeek(lexer.IDENT) {
+		return nil
+	}
+	name := p.curToken.Lexeme
+
+	for p.peekToken.Type == lexer.DOT {
+		p.nextToken()
+		if !p.expectPeek(lexer.IDENT) {
+			return nil
+		}
+		name += "." + p.curToken.Lexeme
+	}
+	expr.Name = name
+
+	if !p.expectPeek(lexer.LPAREN) {
+		return nil
+	}
+
+	args, ok := p.parseCallArguments()
+	if !ok {
+		return nil
+	}
+	expr.Arguments = args
+	return expr
 }
 
 func (p *Parser) parseCallArguments() ([]ast.Expression, bool) {
@@ -673,6 +719,7 @@ func (p *Parser) isExpressionStart(t lexer.TokenType) bool {
 		lexer.NOT,
 		lexer.TRY,
 		lexer.MATCH,
+		lexer.AT,
 		lexer.LPAREN:
 		return true
 	default:

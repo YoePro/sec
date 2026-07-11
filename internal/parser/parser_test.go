@@ -1667,3 +1667,83 @@ fn Test(value: int) void {
 		t.Fatalf("wrong switch clauses. cases=%d default=%v", len(switchStmt.Cases), switchStmt.Default != nil)
 	}
 }
+
+func TestParseUnsafeAsmStatement(t *testing.T) {
+	input := `
+fn Test() void {
+	unsafe {
+		asm "nop"
+		asm("ret")
+	}
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	unsafeStmt, ok := fn.Body.Statements[0].(*ast.UnsafeStatement)
+	if !ok {
+		t.Fatalf("statement is not UnsafeStatement. got=%T", fn.Body.Statements[0])
+	}
+	if unsafeStmt.Body == nil || len(unsafeStmt.Body.Statements) != 2 {
+		t.Fatalf("wrong unsafe body. got=%#v", unsafeStmt.Body)
+	}
+	first, ok := unsafeStmt.Body.Statements[0].(*ast.AsmStatement)
+	if !ok {
+		t.Fatalf("first unsafe body statement is not AsmStatement. got=%T", unsafeStmt.Body.Statements[0])
+	}
+	if first.Template == nil || first.Template.Value != "nop" {
+		t.Fatalf("wrong first asm template. got=%#v", first.Template)
+	}
+	second, ok := unsafeStmt.Body.Statements[1].(*ast.AsmStatement)
+	if !ok {
+		t.Fatalf("second unsafe body statement is not AsmStatement. got=%T", unsafeStmt.Body.Statements[1])
+	}
+	if second.Template == nil || second.Template.Value != "ret" {
+		t.Fatalf("wrong second asm template. got=%#v", second.Template)
+	}
+}
+
+func TestParseInlineAsmBlock(t *testing.T) {
+	input := `
+fn _sysWrite(fd: int64, ref ptr: byte, len: int64) int64 {
+	unsafe {
+		asm {
+			"syscall"
+			inputs: rax(1), rdi(fd), rsi(ptr), rdx(len)
+			outputs: rax
+		}
+	}
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	if !fn.Parameters[1].Ref {
+		t.Fatal("ptr parameter should be ref")
+	}
+	if fn.Parameters[1].Name.Value != "ptr" || fn.Parameters[1].Type.Name != "byte" {
+		t.Fatalf("wrong ref parameter. got=%s: %s", fn.Parameters[1].Name.Value, fn.Parameters[1].Type.Name)
+	}
+	unsafeStmt := fn.Body.Statements[0].(*ast.UnsafeStatement)
+	asmStmt := unsafeStmt.Body.Statements[0].(*ast.AsmStatement)
+	if asmStmt.Block == nil {
+		t.Fatal("expected asm block")
+	}
+	if asmStmt.Block.Template == nil || asmStmt.Block.Template.Value != "syscall" {
+		t.Fatalf("wrong asm template. got=%#v", asmStmt.Block.Template)
+	}
+	if len(asmStmt.Block.Inputs) != 4 {
+		t.Fatalf("wrong input count. got=%d want=4", len(asmStmt.Block.Inputs))
+	}
+	if len(asmStmt.Block.Outputs) != 1 || asmStmt.Block.Outputs[0].Register != "rax" {
+		t.Fatalf("wrong outputs. got=%#v", asmStmt.Block.Outputs)
+	}
+}

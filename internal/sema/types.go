@@ -81,6 +81,7 @@ type FunctionParameter struct {
 	Name  string
 	Type  Type
 	Token lexer.Token
+	Ref   bool
 }
 
 type Dimension struct {

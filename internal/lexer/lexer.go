@@ -15,44 +15,46 @@ const (
 	BYTES        TokenType = "BYTES"
 	INTERPSTRING TokenType = "INTERPSTRING"
 
-	MODULE      TokenType = "MODULE"
-	IMPORT      TokenType = "IMPORT"
-	REQUIRE     TokenType = "REQUIRE"
-	SEC         TokenType = "SEC"
-	FN          TokenType = "FN"
-	LET         TokenType = "LET"
-	MUT         TokenType = "MUT"
-	TYPE        TokenType = "TYPE"
-	STRUCT      TokenType = "STRUCT"
-	INTERFACE   TokenType = "INTERFACE"
-	IMPL        TokenType = "IMPL"
-	FOR         TokenType = "FOR"
-	WHILE       TokenType = "WHILE"
-	IN          TokenType = "IN"
-	IF          TokenType = "IF"
-	ELSE        TokenType = "ELSE"
-	SWITCH      TokenType = "SWITCH"
+	ASM         TokenType = "ASM"
+	ASSERT      TokenType = "ASSERT"
+	AWAIT       TokenType = "AWAIT"
 	CASE        TokenType = "CASE"
-	FALLTHROUGH TokenType = "FALLTHROUGH"
-	MATCH       TokenType = "MATCH"
-	WHERE       TokenType = "WHERE"
-	RETURN      TokenType = "RETURN"
-	TRUE        TokenType = "TRUE"
-	FALSE       TokenType = "FALSE"
-	TRY         TokenType = "TRY"
+	DEFAULT     TokenType = "DEFAULT"
 	DEFER       TokenType = "DEFER"
 	DISCARD     TokenType = "DISCARD"
-	REF         TokenType = "REF"
-	UNSAFE      TokenType = "UNSAFE"
-	PROPERTY    TokenType = "PROPERTY"
-	GET         TokenType = "GET"
-	SET         TokenType = "SET"
+	ELSE        TokenType = "ELSE"
 	ENUM        TokenType = "ENUM"
-	UNION       TokenType = "UNION"
-	SPAWN       TokenType = "SPAWN"
-	AWAIT       TokenType = "AWAIT"
-	ASSERT      TokenType = "ASSERT"
+	FALLTHROUGH TokenType = "FALLTHROUGH"
+	FALSE       TokenType = "FALSE"
+	FN          TokenType = "FN"
+	FOR         TokenType = "FOR"
+	GET         TokenType = "GET"
+	MODULE      TokenType = "MODULE"
+	IF          TokenType = "IF"
+	IMPL        TokenType = "IMPL"
+	IMPORT      TokenType = "IMPORT"
+	IN          TokenType = "IN"
+	INTERFACE   TokenType = "INTERFACE"
+	LET         TokenType = "LET"
+	MATCH       TokenType = "MATCH"
+	MUT         TokenType = "MUT"
 	PANIC       TokenType = "PANIC"
+	PROPERTY    TokenType = "PROPERTY"
+	REF         TokenType = "REF"
+	RETURN      TokenType = "RETURN"
+	REQUIRE     TokenType = "REQUIRE"
+	SEC         TokenType = "SEC"
+	SET         TokenType = "SET"
+	SPAWN       TokenType = "SPAWN"
+	STRUCT      TokenType = "STRUCT"
+	SWITCH      TokenType = "SWITCH"
+	TRUE        TokenType = "TRUE"
+	TRY         TokenType = "TRY"
+	TYPE        TokenType = "TYPE"
+	UNION       TokenType = "UNION"
+	UNSAFE      TokenType = "UNSAFE"
+	WHERE       TokenType = "WHERE"
+	WHILE       TokenType = "WHILE"
 
 	ASSIGN  TokenType = "ASSIGN"
 	DECLARE TokenType = "DECLARE"
@@ -596,12 +598,16 @@ func (l *Lexer) advance() rune {
 
 func lookupIdent(s string) TokenType {
 	switch s {
+	case "asm":
+		return ASM
 	case "assert":
 		return ASSERT
 	case "await":
 		return AWAIT
 	case "case":
 		return CASE
+	case "default":
+		return DEFAULT
 	case "defer":
 		return DEFER
 	case "discard":

@@ -1,0 +1,23 @@
+module io
+
+fn _sysWrite(fd: int64, ref ptr: byte, len: int64) int64 {
+    unsafe {
+        // The compilator translates this block to LLVM inline-asm
+        asm {
+            "syscall"
+            inputs: rax(1), rdi(fd), rsi(ptr), rdx(len)
+            outputs: rax
+        }
+    }    
+}
+
+fn WriteString(s: string) void {
+    _sysWrite(1, s.ptr, s.len)
+}
+
+fn Println(s: string) void {
+    _sysWrite(1, s.ptr, s.len)
+
+    let nl := "\n"
+    _sysWrite(1, nl.ptr, 1)
+}

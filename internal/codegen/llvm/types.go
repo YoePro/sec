@@ -14,7 +14,20 @@ func llvmReturnType(ref *ast.TypeReference) string {
 		return "void"
 	case "int":
 		return "i32"
+	case "int64":
+		return "i64"
+	case "byte":
+		return "i8"
+	case "string":
+		return "ptr"
 	default:
 		return "void"
 	}
+}
+
+func llvmParameterType(param *ast.Parameter) string {
+	if param.Ref {
+		return "ptr"
+	}
+	return llvmReturnType(param.Type)
 }

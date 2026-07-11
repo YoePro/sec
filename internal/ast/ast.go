@@ -331,6 +331,7 @@ type Parameter struct {
 	Token lexer.Token
 	Name  *Identifier
 	Type  *TypeReference
+	Ref   bool
 }
 
 func (p *Parameter) TokenLiteral() string {
@@ -428,6 +429,45 @@ func (fs *FallthroughStatement) statementNode() {}
 
 func (fs *FallthroughStatement) TokenLiteral() string {
 	return fs.Token.Lexeme
+}
+
+type UnsafeStatement struct {
+	Token lexer.Token
+	Body  *BlockStatement
+}
+
+func (us *UnsafeStatement) statementNode() {}
+
+func (us *UnsafeStatement) TokenLiteral() string {
+	return us.Token.Lexeme
+}
+
+type AsmStatement struct {
+	Token    lexer.Token
+	Block    *AsmBlock
+	Template *StringLiteral
+}
+
+func (as *AsmStatement) statementNode() {}
+
+func (as *AsmStatement) TokenLiteral() string {
+	return as.Token.Lexeme
+}
+
+type AsmBlock struct {
+	Token    lexer.Token
+	Template *StringLiteral
+	Inputs   []AsmOperand
+	Outputs  []AsmOutput
+}
+
+type AsmOperand struct {
+	Register string
+	Value    Expression
+}
+
+type AsmOutput struct {
+	Register string
 }
 
 type StructStatement struct {

@@ -404,10 +404,64 @@ func printASTStatement(stmt ast.Statement, prefix string, last bool) {
 	case *ast.FallthroughStatement:
 		printASTBranch(prefix, last, "Fallthrough")
 
+	case *ast.UnsafeStatement:
+		printASTUnsafe(stmt, prefix, last)
+
+	case *ast.AsmStatement:
+		printASTBranch(prefix, last, "Asm")
+		childrenPrefix := childPrefix(prefix, last)
+		if stmt.Block != nil {
+			printASTAsmBlock(childrenPrefix, stmt.Block)
+			return
+		}
+		template := "<nil>"
+		if stmt.Template != nil {
+			template = fmt.Sprintf("%q", stmt.Template.Value)
+		}
+		printASTLeaf(childrenPrefix, true, "Template: "+template)
+
 	default:
 		printASTBranch(prefix, last, fmt.Sprintf("%T", stmt))
 		printASTLeaf(childPrefix(prefix, last), true, "Token: "+stmt.TokenLiteral())
 	}
+}
+
+func printASTAsmBlock(prefix string, block *ast.AsmBlock) {
+	template := "<nil>"
+	if block.Template != nil {
+		template = fmt.Sprintf("%q", block.Template.Value)
+	}
+	printASTLeaf(prefix, false, "Template: "+template)
+	printASTLeaf(prefix, len(block.Outputs) == 0, "Inputs: "+formatAsmInputs(block.Inputs))
+	if len(block.Outputs) > 0 {
+		printASTLeaf(prefix, true, "Outputs: "+formatAsmOutputs(block.Outputs))
+	}
+}
+
+func formatAsmInputs(inputs []ast.AsmOperand) string {
+	out := ""
+	for i, input := range inputs {
+		if i > 0 {
+			out += ", "
+		}
+		value := "<nil>"
+		if input.Value != nil {
+			value = input.Value.String()
+		}
+		out += input.Register + "(" + value + ")"
+	}
+	return out
+}
+
+func formatAsmOutputs(outputs []ast.AsmOutput) string {
+	out := ""
+	for i, output := range outputs {
+		if i > 0 {
+			out += ", "
+		}
+		out += output.Register
+	}
+	return out
 }
 
 func printASTIf(stmt *ast.IfStatement, prefix string, last bool) {
@@ -482,6 +536,19 @@ func printASTSwitchCaseItem(prefix string, item ast.SwitchCaseItem, last bool) {
 		printASTExpression(childPrefix(prefix, last), true, "Value", item.Value)
 	default:
 		printASTLeaf(prefix, last, fmt.Sprintf("%T", item))
+	}
+}
+
+func printASTUnsafe(stmt *ast.UnsafeStatement, prefix string, last bool) {
+	printASTBranch(prefix, last, "Unsafe")
+	childrenPrefix := childPrefix(prefix, last)
+	printASTBranch(childrenPrefix, true, "Body")
+	bodyPrefix := childPrefix(childrenPrefix, true)
+	if stmt.Body == nil {
+		return
+	}
+	for i, bodyStmt := range stmt.Body.Statements {
+		printASTStatement(bodyStmt, bodyPrefix, i == len(stmt.Body.Statements)-1)
 	}
 }
 
@@ -865,6 +932,22 @@ func printStatement(stmt ast.Statement) {
 	case *ast.SwitchStatement:
 		fmt.Println("Switch")
 
+	case *ast.UnsafeStatement:
+		fmt.Println("Unsafe")
+		if stmt.Body != nil {
+			for _, bodyStmt := range stmt.Body.Statements {
+				fmt.Print("  ")
+				printStatement(bodyStmt)
+			}
+		}
+
+	case *ast.AsmStatement:
+		if stmt.Template == nil {
+			fmt.Println("Asm")
+			return
+		}
+		fmt.Printf("Asm %q\n", stmt.Template.Value)
+
 	case *ast.ImplStatement:
 		printImpl(stmt)
 
@@ -998,6 +1081,9 @@ func formatParameters(parameters []*ast.Parameter) string {
 	for i, param := range parameters {
 		if i > 0 {
 			out += ", "
+		}
+		if param.Ref {
+			out += "ref "
 		}
 		out += param.Name.Value + ": " + formatTypeRef(param.Type)
 	}

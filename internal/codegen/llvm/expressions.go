@@ -8,12 +8,15 @@ import (
 )
 
 type value struct {
-	typ string
-	ref string
+	typ    string
+	ref    string
+	lenRef string
 }
 
 func (g *Generator) emitExpression(expr ast.Expression) (value, error) {
 	switch expr := expr.(type) {
+	case *ast.Identifier:
+		return g.emitIdentifier(expr)
 	case *ast.IntegerLiteral:
 		return value{typ: "i32", ref: expr.Token.Lexeme}, nil
 	case *ast.BooleanLiteral:
@@ -23,10 +26,73 @@ func (g *Generator) emitExpression(expr ast.Expression) (value, error) {
 		return value{typ: "i1", ref: "false"}, nil
 	case *ast.StringLiteral:
 		return g.emitStringLiteral(expr)
+	case *ast.MemberExpression:
+		return g.emitMemberExpression(expr)
+	case *ast.PrefixExpression:
+		return g.emitPrefixExpression(expr)
 	case *ast.InfixExpression:
 		return g.emitInfixExpression(expr)
 	default:
 		return value{}, fmt.Errorf("emit-llvm does not support expression %T yet", expr)
+	}
+}
+
+func (g *Generator) emitIdentifier(expr *ast.Identifier) (value, error) {
+	slot, ok := g.locals[expr.Value]
+	if !ok {
+		return value{}, fmt.Errorf("emit-llvm unknown identifier %s", expr.Value)
+	}
+	if slot.direct {
+		return value{typ: slot.typ, ref: slot.ref, lenRef: slot.lenRef}, nil
+	}
+	if slot.typ == "string" {
+		return value{typ: "string", ref: slot.ref, lenRef: slot.lenRef}, nil
+	}
+	temp := g.nextTemp()
+	g.write("  %s = load %s, ptr %s\n", temp, slot.typ, slot.ptr)
+	return value{typ: slot.typ, ref: temp}, nil
+}
+
+func (g *Generator) emitMemberExpression(expr *ast.MemberExpression) (value, error) {
+	object, err := g.emitExpression(expr.Object)
+	if err != nil {
+		return value{}, err
+	}
+	if object.typ != "string" {
+		return value{}, fmt.Errorf("emit-llvm only supports members on string for now")
+	}
+	switch expr.Property.Value {
+	case "ptr":
+		return value{typ: "ptr", ref: object.ref}, nil
+	case "len":
+		return value{typ: "i64", ref: object.lenRef}, nil
+	default:
+		return value{}, fmt.Errorf("unknown string member %s", expr.Property.Value)
+	}
+}
+
+func (g *Generator) emitPrefixExpression(expr *ast.PrefixExpression) (value, error) {
+	right, err := g.emitExpression(expr.Right)
+	if err != nil {
+		return value{}, err
+	}
+	switch expr.Operator {
+	case "-":
+		if right.typ != "i32" {
+			return value{}, fmt.Errorf("emit-llvm unary - currently expects int")
+		}
+		temp := g.nextTemp()
+		g.write("  %s = sub i32 0, %s\n", temp, right.ref)
+		return value{typ: "i32", ref: temp}, nil
+	case "!":
+		if right.typ != "i1" {
+			return value{}, fmt.Errorf("emit-llvm unary ! currently expects bool")
+		}
+		temp := g.nextTemp()
+		g.write("  %s = xor i1 %s, true\n", temp, right.ref)
+		return value{typ: "i1", ref: temp}, nil
+	default:
+		return value{}, fmt.Errorf("emit-llvm does not support prefix operator %q yet", expr.Operator)
 	}
 }
 
@@ -64,6 +130,24 @@ func (g *Generator) emitCompare(predicate string, left value, right value) value
 	return value{typ: "i1", ref: temp}
 }
 
+func (g *Generator) emitBoolAnd(left value, right value) (value, error) {
+	if left.typ != "i1" || right.typ != "i1" {
+		return value{}, fmt.Errorf("emit-llvm boolean and expects bool operands")
+	}
+	temp := g.nextTemp()
+	g.write("  %s = and i1 %s, %s\n", temp, left.ref, right.ref)
+	return value{typ: "i1", ref: temp}, nil
+}
+
+func (g *Generator) emitBoolOr(left value, right value) (value, error) {
+	if left.typ != "i1" || right.typ != "i1" {
+		return value{}, fmt.Errorf("emit-llvm boolean or expects bool operands")
+	}
+	temp := g.nextTemp()
+	g.write("  %s = or i1 %s, %s\n", temp, left.ref, right.ref)
+	return value{typ: "i1", ref: temp}, nil
+}
+
 func (g *Generator) emitStringLiteral(expr *ast.StringLiteral) (value, error) {
 	name := fmt.Sprintf("@.str.%d", g.stringID)
 	g.stringID++
@@ -73,7 +157,7 @@ func (g *Generator) emitStringLiteral(expr *ast.StringLiteral) (value, error) {
 
 	temp := g.nextTemp()
 	g.write("  %s = getelementptr inbounds [%d x i8], ptr %s, i64 0, i64 0\n", temp, len(bytes), name)
-	return value{typ: "ptr", ref: temp}, nil
+	return value{typ: "string", ref: temp, lenRef: fmt.Sprintf("%d", len(expr.Value))}, nil
 }
 
 func llvmCString(bytes []byte) string {

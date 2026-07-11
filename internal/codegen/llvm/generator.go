@@ -8,13 +8,24 @@ import (
 )
 
 type Generator struct {
-	out       strings.Builder
-	globals   strings.Builder
-	label     int
-	temp      int
-	stringID  int
-	needsPuts bool
-	blockOpen bool
+	out        strings.Builder
+	globals    strings.Builder
+	label      int
+	temp       int
+	stringID   int
+	needsPuts  bool
+	locals     map[string]local
+	functions  map[string]*ast.FunctionDeclaration
+	returnType string
+	blockOpen  bool
+}
+
+type local struct {
+	typ    string
+	ptr    string
+	ref    string
+	lenRef string
+	direct bool
 }
 
 func NewGenerator() *Generator {
@@ -29,10 +40,17 @@ func (g *Generator) Generate(program *ast.Program) (string, error) {
 	if err := validateEntrypoint(program); err != nil {
 		return "", err
 	}
+	g.functions = map[string]*ast.FunctionDeclaration{}
+	for _, stmt := range program.Statements {
+		fn, ok := stmt.(*ast.FunctionDeclaration)
+		if ok && fn.Name != nil {
+			g.functions[fn.Name.Value] = fn
+		}
+	}
 
 	for _, stmt := range program.Statements {
 		fn, ok := stmt.(*ast.FunctionDeclaration)
-		if !ok || fn.Name == nil || fn.Name.Value != "main" {
+		if !ok || fn.Name == nil {
 			continue
 		}
 		if err := g.emitFunction(fn); err != nil {

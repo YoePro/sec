@@ -2241,6 +2241,103 @@ fn Invalid(value: int, name: string) void {
 	assertSemaErrors(t, errors, expected)
 }
 
+func TestSwitchConstantCoverageErrors(t *testing.T) {
+	input := `
+module main
+
+fn Invalid(value: int) void {
+	switch value {
+	case 0..100:
+		return
+	case 50:
+		return
+	case 40..120:
+		return
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+
+	expected := []string{
+		"switch case value 50 is already covered by previous case at 8:7",
+		"switch case range overlaps previous case at 10:9",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestAsmRequiresUnsafe(t *testing.T) {
+	input := `
+module main
+
+fn Valid() void {
+	unsafe {
+		asm "nop"
+	}
+	return
+}
+
+fn Invalid() void {
+	asm "nop"
+	return
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+
+	expected := []string{
+		"asm is only allowed inside unsafe at 12:2",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestInlineAsmBlockCanReturnInt64(t *testing.T) {
+	input := `
+module main
+
+fn _sysWrite(fd: int64, ref ptr: byte, len: int64) int64 {
+	unsafe {
+		asm {
+			"syscall"
+			inputs: rax(1), rdi(fd), rsi(ptr), rdx(len)
+			outputs: rax
+		}
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestStringPtrAndLenMembers(t *testing.T) {
+	input := `
+module main
+
+fn _sysWrite(fd: int64, ref ptr: byte, len: int64) int64 {
+	unsafe {
+		asm {
+			"syscall"
+			inputs: rax(1), rdi(fd), rsi(ptr), rdx(len)
+			outputs: rax
+		}
+	}
+}
+
+fn Println(s: string) void {
+	_sysWrite(1, s.ptr, s.len)
+
+	let nl := "\n"
+	_sysWrite(1, nl.ptr, 1)
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
 func TestResultTypeArgumentCountErrors(t *testing.T) {
 	input := `
 module main

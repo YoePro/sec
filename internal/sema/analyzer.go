@@ -21,6 +21,7 @@ type Analyzer struct {
 	currentFunctionName   string
 	currentFunctionReturn Type
 	inFunctionBody        bool
+	inUnsafe              bool
 	errors                []Error
 }
 
@@ -41,6 +42,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.currentFunctionName = ""
 	a.currentFunctionReturn = Type{}
 	a.inFunctionBody = false
+	a.inUnsafe = false
 	a.validateModuleDeclaration(program)
 	a.registerTypeDeclarations(program)
 	a.registerImplTypeDeclarations(program)
@@ -270,6 +272,10 @@ func (a *Analyzer) analyzeStatement(stmt ast.Statement) {
 		a.analyzeMatchStatement(stmt)
 	case *ast.FallthroughStatement:
 		a.addErrorAtToken(stmt.Token, "fallthrough is only valid directly inside a switch case")
+	case *ast.UnsafeStatement:
+		a.analyzeUnsafeStatement(stmt)
+	case *ast.AsmStatement:
+		a.analyzeAsmStatement(stmt)
 	case *ast.ImplStatement:
 		a.registerImplStatement(stmt)
 	case *ast.StructStatement:
@@ -367,7 +373,7 @@ func (a *Analyzer) analyzeSwitchStatement(stmt *ast.SwitchStatement) {
 		}
 	}
 
-	seenInts := map[string]lexer.Token{}
+	tracker := newSwitchCoverageTracker()
 	clauses := append([]*ast.SwitchCase{}, stmt.Cases...)
 	if stmt.Default != nil {
 		clauses = append(clauses, stmt.Default)
@@ -381,7 +387,7 @@ func (a *Analyzer) analyzeSwitchStatement(stmt *ast.SwitchStatement) {
 		if clause.Default && i != len(clauses)-1 {
 			a.addErrorAtToken(clause.Token, "default must be the final switch clause")
 		}
-		a.analyzeSwitchCaseItems(clause, hasSubject, subjectType, seenInts)
+		a.analyzeSwitchCaseItems(clause, hasSubject, subjectType, tracker)
 		a.analyzeSwitchFallthrough(clause, i == len(clauses)-1)
 		branches = append(branches, a.analyzeSwitchCaseBody(clause.Body))
 	}
@@ -392,7 +398,7 @@ func (a *Analyzer) analyzeSwitchStatement(stmt *ast.SwitchStatement) {
 	a.assigned = mergeContinuingAssigned(before, branches...)
 }
 
-func (a *Analyzer) analyzeSwitchCaseItems(clause *ast.SwitchCase, hasSubject bool, subjectType Type, seenInts map[string]lexer.Token) {
+func (a *Analyzer) analyzeSwitchCaseItems(clause *ast.SwitchCase, hasSubject bool, subjectType Type, tracker *switchCoverageTracker) {
 	if clause.Default {
 		return
 	}
@@ -408,7 +414,7 @@ func (a *Analyzer) analyzeSwitchCaseItems(clause *ast.SwitchCase, hasSubject boo
 				if !canCompareEquality(subjectType, valueType) {
 					a.addErrorAtToken(expressionToken(item.Value), "switch case must be compatible with subject type %s, got %s", typeDisplayName(subjectType), typeDisplayName(valueType))
 				}
-				a.checkDuplicateSwitchValue(item.Value, seenInts)
+				a.checkSwitchValueCoverage(item.Value, tracker)
 			} else if valueType.Kind != BoolType {
 				a.addErrorAtToken(expressionToken(item.Value), "subjectless switch case must be bool, got %s", typeDisplayName(valueType))
 			}
@@ -418,6 +424,7 @@ func (a *Analyzer) analyzeSwitchCaseItems(clause *ast.SwitchCase, hasSubject boo
 				continue
 			}
 			a.analyzeSwitchRangeCase(item, subjectType)
+			a.checkSwitchRangeCoverage(item.Range, tracker)
 		case *ast.SwitchRelationalCase:
 			if !hasSubject {
 				a.addErrorAtToken(item.Token, "subjectless switch case must be bool, got relational case")
@@ -433,6 +440,22 @@ func (a *Analyzer) analyzeSwitchCaseItems(clause *ast.SwitchCase, hasSubject boo
 			}
 		}
 	}
+}
+
+type switchCoverageTracker struct {
+	values map[string]lexer.Token
+	ranges []switchConstRange
+}
+
+type switchConstRange struct {
+	min          *big.Int
+	max          *big.Int
+	maxExclusive bool
+	token        lexer.Token
+}
+
+func newSwitchCoverageTracker() *switchCoverageTracker {
+	return &switchCoverageTracker{values: map[string]lexer.Token{}}
 }
 
 func (a *Analyzer) analyzeSwitchRangeCase(item *ast.SwitchRangeCase, subjectType Type) {
@@ -457,17 +480,98 @@ func (a *Analyzer) analyzeSwitchRangeCase(item *ast.SwitchRangeCase, subjectType
 	}
 }
 
-func (a *Analyzer) checkDuplicateSwitchValue(expr ast.Expression, seen map[string]lexer.Token) {
+func (a *Analyzer) checkSwitchValueCoverage(expr ast.Expression, tracker *switchCoverageTracker) {
+	if tracker == nil {
+		return
+	}
 	value, ok := constantIntegerValue(expr)
 	if !ok {
 		return
 	}
 	key := value.String()
-	if _, exists := seen[key]; exists {
+	if _, exists := tracker.values[key]; exists {
 		a.addErrorAtToken(expressionToken(expr), "duplicate switch case value %s", key)
 		return
 	}
-	seen[key] = expressionToken(expr)
+	for _, previous := range tracker.ranges {
+		if previous.contains(value) {
+			a.addErrorAtToken(expressionToken(expr), "switch case value %s is already covered by previous case", key)
+			return
+		}
+	}
+	tracker.values[key] = expressionToken(expr)
+}
+
+func (a *Analyzer) checkSwitchRangeCoverage(expr *ast.RangeExpression, tracker *switchCoverageTracker) {
+	if tracker == nil || expr == nil {
+		return
+	}
+	current, ok := switchConstRangeFromExpression(expr)
+	if !ok {
+		return
+	}
+	for _, previous := range tracker.ranges {
+		if current.overlaps(previous) {
+			a.addErrorAtToken(expr.Token, "switch case range overlaps previous case")
+			return
+		}
+	}
+	for key := range tracker.values {
+		value, ok := new(big.Int).SetString(key, 10)
+		if ok && current.contains(value) {
+			a.addErrorAtToken(expr.Token, "switch case range overlaps previous case")
+			return
+		}
+	}
+	tracker.ranges = append(tracker.ranges, current)
+}
+
+func switchConstRangeFromExpression(expr *ast.RangeExpression) (switchConstRange, bool) {
+	out := switchConstRange{token: expr.Token, maxExclusive: expr.Exclusive}
+	if expr.Start != nil {
+		value, ok := constantIntegerValue(expr.Start)
+		if !ok {
+			return switchConstRange{}, false
+		}
+		out.min = value
+	}
+	if expr.End != nil {
+		value, ok := constantIntegerValue(expr.End)
+		if !ok {
+			return switchConstRange{}, false
+		}
+		out.max = value
+	}
+	return out, true
+}
+
+func (r switchConstRange) contains(value *big.Int) bool {
+	if r.min != nil && value.Cmp(r.min) < 0 {
+		return false
+	}
+	if r.max != nil {
+		cmp := value.Cmp(r.max)
+		if cmp > 0 || (cmp == 0 && r.maxExclusive) {
+			return false
+		}
+	}
+	return true
+}
+
+func (r switchConstRange) overlaps(other switchConstRange) bool {
+	if r.max != nil && other.min != nil {
+		cmp := r.max.Cmp(other.min)
+		if cmp < 0 || (cmp == 0 && r.maxExclusive) {
+			return false
+		}
+	}
+	if other.max != nil && r.min != nil {
+		cmp := other.max.Cmp(r.min)
+		if cmp < 0 || (cmp == 0 && other.maxExclusive) {
+			return false
+		}
+	}
+	return true
 }
 
 func (a *Analyzer) analyzeSwitchFallthrough(clause *ast.SwitchCase, isFinal bool) {
@@ -530,6 +634,79 @@ func isOrderedSwitchType(typ Type) bool {
 	return isNumericType(typ) || typ.Kind == StringType || typ.Kind == CharType || typ.Kind == RuneType
 }
 
+func (a *Analyzer) analyzeUnsafeStatement(stmt *ast.UnsafeStatement) {
+	if stmt.Body == nil {
+		return
+	}
+
+	previousSymbols := a.symbols
+	previousConstInts := a.constInts
+	previousAssigned := a.assigned
+	previousUnsafe := a.inUnsafe
+
+	a.symbols = copySymbols(previousSymbols)
+	a.constInts = copyConstInts(previousConstInts)
+	a.assigned = copyAssigned(previousAssigned)
+	a.inUnsafe = true
+
+	for _, bodyStmt := range stmt.Body.Statements {
+		a.analyzeStatement(bodyStmt)
+	}
+	if unsafeAsmReturns(stmt) && a.currentFunctionReturn.Kind != InvalidType && a.currentFunctionReturn.Kind != VoidType && a.currentFunctionReturn.Name != "int64" {
+		a.addErrorAtToken(stmt.Token, "asm output rax cannot return %s", typeDisplayName(a.currentFunctionReturn))
+	}
+
+	updatedAssigned := a.assigned
+	a.symbols = previousSymbols
+	a.constInts = previousConstInts
+	a.assigned = previousAssigned
+	a.inUnsafe = previousUnsafe
+
+	for name := range previousAssigned {
+		if updatedAssigned[name] {
+			a.assigned[name] = true
+		}
+	}
+}
+
+func (a *Analyzer) analyzeAsmStatement(stmt *ast.AsmStatement) {
+	if !a.inUnsafe {
+		a.addErrorAtToken(stmt.Token, "asm is only allowed inside unsafe")
+		return
+	}
+	if stmt.Block != nil {
+		a.analyzeAsmBlock(stmt)
+		return
+	}
+	if stmt.Template == nil {
+		a.addErrorAtToken(stmt.Token, "asm statement requires string template")
+	}
+}
+
+func unsafeAsmReturns(stmt *ast.UnsafeStatement) bool {
+	if stmt == nil || stmt.Body == nil || len(stmt.Body.Statements) != 1 {
+		return false
+	}
+	asmStmt, ok := stmt.Body.Statements[0].(*ast.AsmStatement)
+	return ok && asmStmt.Block != nil && len(asmStmt.Block.Outputs) > 0
+}
+
+func (a *Analyzer) analyzeAsmBlock(stmt *ast.AsmStatement) {
+	if stmt.Block.Template == nil {
+		a.addErrorAtToken(stmt.Token, "asm block requires string template")
+	}
+	for _, input := range stmt.Block.Inputs {
+		if input.Value == nil {
+			a.addErrorAtToken(stmt.Token, "asm input %s missing value", input.Register)
+			continue
+		}
+		a.inferExpression(input.Value)
+	}
+	if len(stmt.Block.Outputs) == 0 {
+		a.addErrorAtToken(stmt.Token, "asm block requires at least one output")
+	}
+}
+
 func (a *Analyzer) registerFunctionDeclarations(program *ast.Program) {
 	for _, stmt := range program.Statements {
 		fn, ok := stmt.(*ast.FunctionDeclaration)
@@ -559,6 +736,7 @@ func (a *Analyzer) registerFunctionDeclaration(fn *ast.FunctionDeclaration) {
 			Name:  param.Name.Value,
 			Type:  paramType,
 			Token: param.Name.Token,
+			Ref:   param.Ref,
 		})
 	}
 
@@ -676,6 +854,11 @@ func statementDefinitelyReturns(stmt ast.Statement) bool {
 		return blockDefinitelyReturns(stmt.Consequence) && blockDefinitelyReturns(stmt.Alternative)
 	case *ast.SwitchStatement:
 		return switchDefinitelyReturns(stmt)
+	case *ast.UnsafeStatement:
+		if unsafeAsmReturns(stmt) {
+			return true
+		}
+		return blockDefinitelyReturns(stmt.Body)
 	case *ast.MatchStatement:
 		return false
 	default:
@@ -1568,6 +1751,15 @@ func (a *Analyzer) inferMemberExpression(expr *ast.MemberExpression) (Type, bool
 	objectType, _ := a.inferExpression(expr.Object)
 	if objectType.Kind == InvalidType {
 		return Type{Kind: InvalidType}, false
+	}
+
+	if objectType.Kind == StringType {
+		switch expr.Property.Value {
+		case "ptr":
+			return a.types["byte"], true
+		case "len":
+			return a.types["int64"], true
+		}
 	}
 
 	if fieldType, ok := lookupStructField(objectType, expr.Property.Value); ok {
@@ -2668,6 +2860,10 @@ func statementToken(stmt ast.Statement) lexer.Token {
 	case *ast.SwitchStatement:
 		return stmt.Token
 	case *ast.FallthroughStatement:
+		return stmt.Token
+	case *ast.UnsafeStatement:
+		return stmt.Token
+	case *ast.AsmStatement:
 		return stmt.Token
 	case *ast.MatchStatement:
 		return stmt.Token

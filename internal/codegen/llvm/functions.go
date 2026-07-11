@@ -1,18 +1,31 @@
 package llvm
 
-import (
-	"fmt"
-
-	"sec/internal/ast"
-)
+import "sec/internal/ast"
 
 func (g *Generator) emitFunction(fn *ast.FunctionDeclaration) error {
-	if len(fn.Parameters) != 0 {
-		return fmt.Errorf("emit-llvm only supports parameterless functions for now: %s", fn.Name.Value)
-	}
-
 	returnType := llvmReturnType(fn.ReturnType)
-	g.write("define %s @%s() {\n", returnType, fn.Name.Value)
+	previousReturnType := g.returnType
+	g.locals = map[string]local{}
+	g.returnType = returnType
+	defer func() {
+		g.returnType = previousReturnType
+	}()
+
+	g.write("define %s @%s(", returnType, fn.Name.Value)
+	for i, param := range fn.Parameters {
+		if i > 0 {
+			g.write(", ")
+		}
+		if param.Type != nil && param.Type.Name == "string" {
+			g.write("ptr %%%s.ptr, i64 %%%s.len", param.Name.Value, param.Name.Value)
+			g.locals[param.Name.Value] = local{typ: "string", ref: "%" + param.Name.Value + ".ptr", lenRef: "%" + param.Name.Value + ".len", direct: true}
+			continue
+		}
+		paramType := llvmParameterType(param)
+		g.write("%s %%%s", paramType, param.Name.Value)
+		g.locals[param.Name.Value] = local{typ: paramType, ref: "%" + param.Name.Value, direct: true}
+	}
+	g.write(") {\n")
 	g.write("entry:\n")
 	g.blockOpen = true
 

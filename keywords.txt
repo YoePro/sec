@@ -1,5 +1,5 @@
 bevisade:
-assert, await,case,defer,discard,else,enum,fallthrough,false,fn,for,if,get,import,impl,in,interface,let,
+assert,asm,await,case,default,defer,discard,else,enum,fallthrough,false,fn,for,if,get,import,impl,in,interface,let,
 match,module,mut,panic,property,range,ref,return,require,set,spawn,struct,switch,true,try,type,union,unsafe,where,while
 
 INTE:

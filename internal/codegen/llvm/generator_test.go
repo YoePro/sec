@@ -80,6 +80,182 @@ fn main() int {
 	}
 }
 
+func TestGenerateSwitch(t *testing.T) {
+	input := `
+module main
+
+fn main() int {
+	switch 7 {
+	case < 0:
+		return -1
+	case 0:
+		return 0
+	case 1, 2..<10:
+		return 10
+	default:
+		return 20
+	}
+}
+`
+
+	program := parseAndAnalyze(t, input)
+	got, err := Generate(program)
+	if err != nil {
+		t.Fatalf("Generate returned error: %v", err)
+	}
+
+	expectedParts := []string{
+		`br label %switch.test.1`,
+		`icmp slt i32 7, 0`,
+		`icmp eq i32 7, 0`,
+		`icmp eq i32 7, 1`,
+		`icmp sge i32 7, 2`,
+		`icmp slt i32 7, 10`,
+		`or i1`,
+		`define i32 @main()`,
+		`ret i32 10`,
+		`ret i32 20`,
+	}
+
+	for _, part := range expectedParts {
+		if !strings.Contains(got, part) {
+			t.Fatalf("generated LLVM IR missing %q.\nIR:\n%s", part, got)
+		}
+	}
+}
+
+func TestGenerateSwitchAssignmentsToLocal(t *testing.T) {
+	input := `
+module main
+
+fn main() int {
+	let mut result: int
+
+	switch 7 {
+	case < 0:
+		result = -1
+	case 0:
+		result = 0
+	case 1, 2..<10:
+		result = 10
+	default:
+		result = 20
+	}
+
+	return result
+}
+`
+
+	program := parseAndAnalyze(t, input)
+	got, err := Generate(program)
+	if err != nil {
+		t.Fatalf("Generate returned error: %v", err)
+	}
+
+	expectedParts := []string{
+		`alloca i32`,
+		`store i32 10`,
+		`store i32 20`,
+		`load i32`,
+		`ret i32`,
+	}
+
+	for _, part := range expectedParts {
+		if !strings.Contains(got, part) {
+			t.Fatalf("generated LLVM IR missing %q.\nIR:\n%s", part, got)
+		}
+	}
+}
+
+func TestGenerateInlineAsmSysWriteFunction(t *testing.T) {
+	input := `
+module main
+
+fn _sysWrite(fd: int64, ref ptr: byte, len: int64) int64 {
+	unsafe {
+		asm {
+			"syscall"
+			inputs: rax(1), rdi(fd), rsi(ptr), rdx(len)
+			outputs: rax
+		}
+	}
+}
+
+fn main() int {
+	return 0
+}
+`
+
+	program := parseAndAnalyze(t, input)
+	got, err := Generate(program)
+	if err != nil {
+		t.Fatalf("Generate returned error: %v", err)
+	}
+
+	expectedParts := []string{
+		`define i64 @_sysWrite(i64 %fd, ptr %ptr, i64 %len)`,
+		`ptrtoint ptr %ptr to i64`,
+		`call i64 asm sideeffect "syscall", "={rax},{rax},{rdi},{rsi},{rdx},~{rcx},~{r11}"`,
+		`ret i64`,
+		`define i32 @main()`,
+	}
+
+	for _, part := range expectedParts {
+		if !strings.Contains(got, part) {
+			t.Fatalf("generated LLVM IR missing %q.\nIR:\n%s", part, got)
+		}
+	}
+}
+
+func TestGeneratePrintlnWithStringPtrAndLen(t *testing.T) {
+	input := `
+module main
+
+fn _sysWrite(fd: int64, ref ptr: byte, len: int64) int64 {
+	unsafe {
+		asm {
+			"syscall"
+			inputs: rax(1), rdi(fd), rsi(ptr), rdx(len)
+			outputs: rax
+		}
+	}
+}
+
+fn Println(s: string) void {
+	_sysWrite(1, s.ptr, s.len)
+
+	let nl := "\n"
+	_sysWrite(1, nl.ptr, 1)
+}
+
+fn main() int {
+	Println("hello")
+	return 0
+}
+`
+
+	program := parseAndAnalyze(t, input)
+	got, err := Generate(program)
+	if err != nil {
+		t.Fatalf("Generate returned error: %v", err)
+	}
+
+	expectedParts := []string{
+		`define void @Println(ptr %s.ptr, i64 %s.len)`,
+		`call i64 @_sysWrite(i64`,
+		`ptr %s.ptr, i64 %s.len`,
+		`private unnamed_addr constant [2 x i8] c"\0A\00"`,
+		`call void @Println(ptr`,
+		`i64 5`,
+	}
+
+	for _, part := range expectedParts {
+		if !strings.Contains(got, part) {
+			t.Fatalf("generated LLVM IR missing %q.\nIR:\n%s", part, got)
+		}
+	}
+}
+
 func parseProgram(t *testing.T, input string) *ast.Program {
 	t.Helper()
 

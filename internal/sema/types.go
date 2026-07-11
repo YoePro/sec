@@ -10,39 +10,43 @@ import (
 type TypeKind string
 
 const (
-	InvalidType TypeKind = "invalid"
-	BoolType    TypeKind = "bool"
-	IntType     TypeKind = "int"
-	UintType    TypeKind = "uint"
-	FloatType   TypeKind = "float"
-	DecimalType TypeKind = "decimal"
-	EnumType    TypeKind = "enum"
-	StringType  TypeKind = "string"
-	CharType    TypeKind = "char"
-	RuneType    TypeKind = "rune"
-	ResultType  TypeKind = "result"
-	StructType  TypeKind = "struct"
-	VoidType    TypeKind = "void"
+	InvalidType  TypeKind = "invalid"
+	BoolType     TypeKind = "bool"
+	IntType      TypeKind = "int"
+	UintType     TypeKind = "uint"
+	FloatType    TypeKind = "float"
+	DecimalType  TypeKind = "decimal"
+	EnumType     TypeKind = "enum"
+	StringType   TypeKind = "string"
+	CharType     TypeKind = "char"
+	RuneType     TypeKind = "rune"
+	ResultType   TypeKind = "result"
+	StructType   TypeKind = "struct"
+	FunctionType TypeKind = "function"
+	VoidType     TypeKind = "void"
 )
 
 type Type struct {
-	Name       string
-	Kind       TypeKind
-	Named      bool
-	Declared   bool
-	Underlying string
-	Unit       string
-	Dimension  Dimension
-	MinInt     *int64
-	MaxInt     *int64
-	MinUint    *uint64
-	MaxUint    *uint64
-	Contracts  []Contract
-	EnumValues []string
-	EnumConsts map[string]EnumValue
-	TypeArgs   []Type
-	Fields     []StructField
-	Properties []Property
+	Name                   string
+	Module                 string
+	Kind                   TypeKind
+	Named                  bool
+	Declared               bool
+	Underlying             string
+	Unit                   string
+	Dimension              Dimension
+	MinInt                 *int64
+	MaxInt                 *int64
+	MinUint                *uint64
+	MaxUint                *uint64
+	Contracts              []Contract
+	EnumValues             []string
+	EnumConsts             map[string]EnumValue
+	TypeArgs               []Type
+	FunctionParameterTypes []Type
+	FunctionReturnType     *Type
+	Fields                 []StructField
+	Properties             []Property
 }
 
 type EnumValue struct {
@@ -72,6 +76,7 @@ type Property struct {
 
 type Function struct {
 	Name       string
+	Module     string
 	Parameters []FunctionParameter
 	ReturnType Type
 	Token      lexer.Token

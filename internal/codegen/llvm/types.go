@@ -14,7 +14,11 @@ func llvmReturnType(ref *ast.TypeReference) string {
 		return "void"
 	case "int":
 		return "i32"
+	case "uint":
+		return "i32"
 	case "int64":
+		return "i64"
+	case "uint64":
 		return "i64"
 	case "byte":
 		return "i8"

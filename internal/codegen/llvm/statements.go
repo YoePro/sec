@@ -39,19 +39,226 @@ func (g *Generator) emitStatement(stmt ast.Statement) error {
 		return g.emitReturn(stmt)
 	case *ast.IfStatement:
 		return g.emitIf(stmt)
+	case *ast.ForStatement:
+		return g.emitFor(stmt)
+	case *ast.WhileStatement:
+		return g.emitWhile(stmt)
+	case *ast.BreakStatement:
+		return g.emitBreak()
+	case *ast.ContinueStatement:
+		return g.emitContinue()
 	case *ast.SwitchStatement:
 		return g.emitSwitch(stmt)
 	case *ast.UnsafeStatement:
 		return g.emitUnsafe(stmt)
 	case *ast.AsmStatement:
-		_, err := g.emitAsm(stmt)
-		return err
+		return g.emitAsmStatement(stmt)
 	case *ast.ExpressionStatement:
 		_, err := g.emitExpressionStatement(stmt.Expression)
 		return err
 	default:
 		return fmt.Errorf("emit-llvm does not support %T yet", stmt)
 	}
+}
+
+func (g *Generator) emitFor(stmt *ast.ForStatement) error {
+	if len(stmt.Bindings) == 0 && stmt.Iterable == nil {
+		return g.emitInfiniteFor(stmt)
+	}
+
+	rangeExpr, ok := stmt.Iterable.(*ast.RangeExpression)
+	if !ok {
+		return fmt.Errorf("emit-llvm currently supports only range for loops")
+	}
+	if len(stmt.Bindings) != 1 {
+		return fmt.Errorf("emit-llvm currently supports one loop binding")
+	}
+	return g.emitRangeFor(stmt, rangeExpr)
+}
+
+func (g *Generator) emitWhile(stmt *ast.WhileStatement) error {
+	if stmt.Condition == nil || stmt.Body == nil {
+		return fmt.Errorf("emit-llvm requires complete while statements")
+	}
+
+	conditionLabel := g.nextLabel("while.condition")
+	bodyLabel := g.nextLabel("while.body")
+	endLabel := g.nextLabel("while.end")
+
+	g.write("  br label %%%s\n\n", conditionLabel)
+	g.blockOpen = false
+
+	g.write("%s:\n", conditionLabel)
+	g.blockOpen = true
+	condition, err := g.emitExpression(stmt.Condition)
+	if err != nil {
+		return err
+	}
+	if condition.typ != "i1" {
+		return fmt.Errorf("emit-llvm while condition must be bool")
+	}
+	g.write("  br i1 %s, label %%%s, label %%%s\n\n", condition.ref, bodyLabel, endLabel)
+	g.blockOpen = false
+
+	g.write("%s:\n", bodyLabel)
+	g.blockOpen = true
+	g.pushLoop(endLabel, conditionLabel)
+	if err := g.emitBlock(stmt.Body); err != nil {
+		g.popLoop()
+		return err
+	}
+	g.popLoop()
+	if g.blockOpen {
+		g.write("  br label %%%s\n\n", conditionLabel)
+		g.blockOpen = false
+	}
+
+	g.write("%s:\n", endLabel)
+	g.blockOpen = true
+	return nil
+}
+
+func (g *Generator) emitInfiniteFor(stmt *ast.ForStatement) error {
+	bodyLabel := g.nextLabel("for.body")
+	endLabel := g.nextLabel("for.end")
+
+	g.write("  br label %%%s\n\n", bodyLabel)
+	g.blockOpen = false
+
+	g.write("%s:\n", bodyLabel)
+	g.blockOpen = true
+	g.pushLoop(endLabel, bodyLabel)
+	if err := g.emitBlock(stmt.Body); err != nil {
+		g.popLoop()
+		return err
+	}
+	g.popLoop()
+	if g.blockOpen {
+		g.write("  br label %%%s\n\n", bodyLabel)
+		g.blockOpen = false
+	}
+
+	g.write("%s:\n", endLabel)
+	g.blockOpen = true
+	return nil
+}
+
+func (g *Generator) emitRangeFor(stmt *ast.ForStatement, rangeExpr *ast.RangeExpression) error {
+	if rangeExpr.Start == nil || rangeExpr.End == nil {
+		return fmt.Errorf("emit-llvm range for requires finite range")
+	}
+
+	start, err := g.emitExpression(rangeExpr.Start)
+	if err != nil {
+		return err
+	}
+	end, err := g.emitExpression(rangeExpr.End)
+	if err != nil {
+		return err
+	}
+	if start.typ != end.typ {
+		return fmt.Errorf("emit-llvm range bounds must have same type")
+	}
+	if start.typ != "i32" && start.typ != "i64" {
+		return fmt.Errorf("emit-llvm range for currently supports integer bounds")
+	}
+
+	conditionLabel := g.nextLabel("for.condition")
+	bodyLabel := g.nextLabel("for.body")
+	nextLabel := g.nextLabel("for.next")
+	endLabel := g.nextLabel("for.end")
+
+	binding := stmt.Bindings[0]
+	previousLocals := g.locals
+	g.locals = copyCodegenLocals(previousLocals)
+	defer func() {
+		g.locals = previousLocals
+	}()
+
+	loopPtr := g.nextTemp()
+	g.write("  %s = alloca %s\n", loopPtr, start.typ)
+	g.write("  store %s %s, ptr %s\n", start.typ, start.ref, loopPtr)
+	if !binding.Discard {
+		g.locals[binding.Name] = local{typ: start.typ, ptr: loopPtr}
+	}
+
+	g.write("  br label %%%s\n\n", conditionLabel)
+	g.blockOpen = false
+
+	g.write("%s:\n", conditionLabel)
+	g.blockOpen = true
+	current := value{typ: start.typ, ref: g.nextTemp()}
+	g.write("  %s = load %s, ptr %s\n", current.ref, current.typ, loopPtr)
+	predicate := "sle"
+	if rangeExpr.Exclusive {
+		predicate = "slt"
+	}
+	condition := g.emitCompare(predicate, current, end)
+	g.write("  br i1 %s, label %%%s, label %%%s\n\n", condition.ref, bodyLabel, endLabel)
+	g.blockOpen = false
+
+	g.write("%s:\n", bodyLabel)
+	g.blockOpen = true
+	g.pushLoop(endLabel, nextLabel)
+	if err := g.emitBlock(stmt.Body); err != nil {
+		g.popLoop()
+		return err
+	}
+	g.popLoop()
+	if g.blockOpen {
+		g.write("  br label %%%s\n\n", nextLabel)
+		g.blockOpen = false
+	}
+
+	g.write("%s:\n", nextLabel)
+	g.blockOpen = true
+	loaded := g.nextTemp()
+	incremented := g.nextTemp()
+	g.write("  %s = load %s, ptr %s\n", loaded, start.typ, loopPtr)
+	g.write("  %s = add %s %s, 1\n", incremented, start.typ, loaded)
+	g.write("  store %s %s, ptr %s\n", start.typ, incremented, loopPtr)
+	g.write("  br label %%%s\n\n", conditionLabel)
+	g.blockOpen = false
+
+	g.write("%s:\n", endLabel)
+	g.blockOpen = true
+	return nil
+}
+
+func (g *Generator) emitBreak() error {
+	if len(g.loops) == 0 {
+		return fmt.Errorf("emit-llvm break outside loop")
+	}
+	ctx := g.loops[len(g.loops)-1]
+	g.write("  br label %%%s\n\n", ctx.breakLabel)
+	g.blockOpen = false
+	return nil
+}
+
+func (g *Generator) emitContinue() error {
+	if len(g.loops) == 0 {
+		return fmt.Errorf("emit-llvm continue outside loop")
+	}
+	ctx := g.loops[len(g.loops)-1]
+	g.write("  br label %%%s\n\n", ctx.continueLabel)
+	g.blockOpen = false
+	return nil
+}
+
+func (g *Generator) pushLoop(breakLabel string, continueLabel string) {
+	g.loops = append(g.loops, loopContext{breakLabel: breakLabel, continueLabel: continueLabel})
+}
+
+func (g *Generator) popLoop() {
+	g.loops = g.loops[:len(g.loops)-1]
+}
+
+func copyCodegenLocals(in map[string]local) map[string]local {
+	out := make(map[string]local, len(in))
+	for name, slot := range in {
+		out[name] = slot
+	}
+	return out
 }
 
 func (g *Generator) emitUnsafe(stmt *ast.UnsafeStatement) error {
@@ -89,6 +296,25 @@ func (g *Generator) emitAsm(stmt *ast.AsmStatement) (value, error) {
 	return g.emitAsmBlock(stmt.Block)
 }
 
+func (g *Generator) emitAsmStatement(stmt *ast.AsmStatement) error {
+	out, err := g.emitAsm(stmt)
+	if err != nil {
+		return err
+	}
+	if stmt.Block == nil || len(stmt.Block.Outputs) == 0 || stmt.Block.Outputs[0].Name == "" {
+		return nil
+	}
+	name := stmt.Block.Outputs[0].Name
+	if g.returnType != "" && g.returnType != "void" {
+		out, err = g.coerceValue(out, g.returnType)
+		if err != nil {
+			return err
+		}
+	}
+	g.locals[name] = local{typ: out.typ, ref: out.ref, direct: true}
+	return nil
+}
+
 func (g *Generator) emitAsmBlock(block *ast.AsmBlock) (value, error) {
 	if block.Template == nil {
 		return value{}, fmt.Errorf("asm block requires string template")
@@ -111,7 +337,9 @@ func (g *Generator) emitAsmBlock(block *ast.AsmBlock) (value, error) {
 		}
 		args = append(args, arg)
 	}
-	constraints += ",~{rcx},~{r11}"
+	for _, clobber := range asmClobbers(block) {
+		constraints += ",~{" + clobber + "}"
+	}
 
 	result := g.nextTemp()
 	g.write("  %s = call i64 asm sideeffect %q, %q(", result, block.Template.Value, constraints)
@@ -123,6 +351,13 @@ func (g *Generator) emitAsmBlock(block *ast.AsmBlock) (value, error) {
 	}
 	g.write(")\n")
 	return value{typ: "i64", ref: result}, nil
+}
+
+func asmClobbers(block *ast.AsmBlock) []string {
+	if len(block.Clobbers) > 0 {
+		return block.Clobbers
+	}
+	return []string{"rcx", "r11"}
 }
 
 func (g *Generator) coerceAsmInput(arg value) (value, error) {
@@ -141,6 +376,13 @@ func (g *Generator) coerceValue(arg value, targetType string) (value, error) {
 		temp := g.nextTemp()
 		g.write("  %s = sext i32 %s to i64\n", temp, arg.ref)
 		return value{typ: "i64", ref: temp}, nil
+	case "i64":
+		if targetType != "i32" {
+			break
+		}
+		temp := g.nextTemp()
+		g.write("  %s = trunc i64 %s to i32\n", temp, arg.ref)
+		return value{typ: "i32", ref: temp}, nil
 	case "ptr":
 		if targetType != "i64" {
 			break
@@ -206,15 +448,30 @@ func (g *Generator) emitAssignment(stmt *ast.AssignmentStatement) error {
 	if slot.direct {
 		return fmt.Errorf("emit-llvm cannot assign to parameter %s", ident.Value)
 	}
-	if stmt.Operator != "=" {
-		return fmt.Errorf("emit-llvm only supports '=' assignments for now")
-	}
 	val, err := g.emitExpression(stmt.Value)
 	if err != nil {
 		return err
 	}
 	if val.typ != slot.typ {
 		return fmt.Errorf("emit-llvm cannot assign %s to %s", val.typ, slot.typ)
+	}
+	if stmt.Operator != "=" {
+		current := g.nextTemp()
+		g.write("  %s = load %s, ptr %s\n", current, slot.typ, slot.ptr)
+		op := map[string]string{
+			"+=": "add",
+			"-=": "sub",
+			"*=": "mul",
+			"/=": "sdiv",
+		}[stmt.Operator]
+		if op == "" {
+			return fmt.Errorf("emit-llvm does not support assignment operator %q yet", stmt.Operator)
+		}
+		combined, err := g.emitIntegerBinary(op, value{typ: slot.typ, ref: current}, val)
+		if err != nil {
+			return err
+		}
+		val = combined
 	}
 	g.write("  store %s %s, ptr %s\n", slot.typ, val.ref, slot.ptr)
 	return nil
@@ -596,7 +853,7 @@ func (g *Generator) emitRuntimeCallExpression(expr *ast.RuntimeCallExpression) (
 		if err != nil {
 			return value{}, err
 		}
-		if arg.typ != "ptr" {
+		if arg.typ != "string" {
 			return value{}, fmt.Errorf("@runtime.PrintlnString currently expects string")
 		}
 		g.needsPuts = true

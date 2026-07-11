@@ -87,8 +87,17 @@ func (p *Parser) parseStatement() ast.Statement {
 	case lexer.RETURN:
 		return p.parseReturnStatement()
 
+	case lexer.TRY:
+		return p.parseTryAssignmentStatement()
+
 	case lexer.IF:
 		return p.parseIfStatement()
+
+	case lexer.FOR:
+		return p.parseForStatement()
+
+	case lexer.WHILE:
+		return p.parseWhileStatement()
 
 	case lexer.SWITCH:
 		return p.parseSwitchStatement()
@@ -99,7 +108,16 @@ func (p *Parser) parseStatement() ast.Statement {
 	case lexer.FALLTHROUGH:
 		return &ast.FallthroughStatement{Token: p.curToken}
 
+	case lexer.BREAK:
+		return &ast.BreakStatement{Token: p.curToken}
+
+	case lexer.CONTINUE:
+		return &ast.ContinueStatement{Token: p.curToken}
+
 	case lexer.UNSAFE:
+		if p.peekToken.Type == lexer.FN {
+			return p.parseUnsafeFunctionDeclaration()
+		}
 		return p.parseUnsafeStatement()
 
 	case lexer.ASM:
@@ -198,6 +216,140 @@ func (p *Parser) parseIfStatement() ast.Statement {
 	}
 
 	return stmt
+}
+
+func (p *Parser) parseForStatement() ast.Statement {
+	stmt := &ast.ForStatement{Token: p.curToken}
+
+	if p.peekToken.Type == lexer.LBRACE {
+		p.nextToken()
+		stmt.Body = p.parseStatementBlock("for body")
+		return stmt
+	}
+
+	p.nextToken()
+	first, ok := p.parseForBinding()
+	if !ok {
+		p.addError("for loop requires an iterable expression at %d:%d", p.curToken.Line, p.curToken.Column)
+		p.skipMalformedForHeader(stmt)
+		return stmt
+	}
+	stmt.Bindings = append(stmt.Bindings, first)
+
+	if p.peekToken.Type == lexer.COMMA {
+		p.nextToken()
+		p.nextToken()
+		second, ok := p.parseForBinding()
+		if !ok {
+			p.addError("expected loop binding after ',' at %d:%d", p.curToken.Line, p.curToken.Column)
+			p.skipMalformedForHeader(stmt)
+			return stmt
+		}
+		stmt.Bindings = append(stmt.Bindings, second)
+
+		if p.peekToken.Type == lexer.COMMA {
+			p.addError("too many loop bindings at %d:%d", p.peekToken.Line, p.peekToken.Column)
+			p.skipMalformedForHeader(stmt)
+			return stmt
+		}
+	}
+
+	if p.peekToken.Type == lexer.SEMICOLON || p.curToken.Type == lexer.SEMICOLON || p.peekToken.Type == lexer.DECLARE || p.peekToken.Type == lexer.ASSIGN {
+		p.addError("C-style for loops are not supported; use a range or while at %d:%d", p.curToken.Line, p.curToken.Column)
+		p.skipMalformedForHeader(stmt)
+		return stmt
+	}
+
+	if p.peekToken.Type != lexer.IN {
+		p.addError("condition-only for loops are not supported; use while at %d:%d", p.curToken.Line, p.curToken.Column)
+		p.skipMalformedForHeader(stmt)
+		return stmt
+	}
+
+	p.nextToken()
+	if p.peekToken.Type == lexer.LBRACE || p.peekToken.Type == lexer.EOF {
+		p.addError("for loop requires an iterable expression at %d:%d", p.peekToken.Line, p.peekToken.Column)
+		p.skipMalformedForHeader(stmt)
+		return stmt
+	}
+
+	p.nextToken()
+	previousStopBeforeBrace := p.stopBeforeBrace
+	p.stopBeforeBrace = true
+	stmt.Iterable = p.parseRangeOrExpression()
+	p.stopBeforeBrace = previousStopBeforeBrace
+	if stmt.Iterable == nil {
+		p.skipMalformedForHeader(stmt)
+		return stmt
+	}
+
+	if p.peekToken.Type != lexer.LBRACE {
+		p.addError("expected '{' after for iterable at %d:%d", p.peekToken.Line, p.peekToken.Column)
+		p.skipMalformedForHeader(stmt)
+		return stmt
+	}
+	p.nextToken()
+	stmt.Body = p.parseStatementBlock("for body")
+
+	return stmt
+}
+
+func (p *Parser) parseWhileStatement() ast.Statement {
+	stmt := &ast.WhileStatement{Token: p.curToken}
+
+	if p.peekToken.Type == lexer.LBRACE {
+		p.addError("while statement missing condition at %d:%d", p.peekToken.Line, p.peekToken.Column)
+		p.nextToken()
+		stmt.Body = p.parseStatementBlock("while body")
+		return stmt
+	}
+
+	p.nextToken()
+	previousStopBeforeBrace := p.stopBeforeBrace
+	p.stopBeforeBrace = true
+	stmt.Condition = p.parseExpression(LOWEST)
+	p.stopBeforeBrace = previousStopBeforeBrace
+	if stmt.Condition == nil {
+		return nil
+	}
+
+	if p.peekToken.Type != lexer.LBRACE {
+		p.addError("expected '{' after while condition at %d:%d", p.peekToken.Line, p.peekToken.Column)
+		return stmt
+	}
+	p.nextToken()
+	stmt.Body = p.parseStatementBlock("while body")
+	if stmt.Body == nil {
+		return nil
+	}
+
+	return stmt
+}
+
+func (p *Parser) parseForBinding() (ast.ForBinding, bool) {
+	switch p.curToken.Type {
+	case lexer.IDENT:
+		return ast.ForBinding{Token: p.curToken, Name: p.curToken.Lexeme}, true
+	case lexer.UNDERSCORE:
+		return ast.ForBinding{Token: p.curToken, Name: "_", Discard: true}, true
+	default:
+		return ast.ForBinding{}, false
+	}
+}
+
+func (p *Parser) skipMalformedForHeader(stmt *ast.ForStatement) {
+	for p.curToken.Type != lexer.EOF && p.curToken.Type != lexer.LBRACE && p.curToken.Type != lexer.RBRACE {
+		if p.peekToken.Type == lexer.LBRACE {
+			p.nextToken()
+			stmt.Body = p.parseStatementBlock("for body")
+			return
+		}
+		p.nextToken()
+	}
+
+	if p.curToken.Type == lexer.LBRACE {
+		stmt.Body = p.parseStatementBlock("for body")
+	}
 }
 
 func (p *Parser) parseSwitchStatement() ast.Statement {
@@ -424,8 +576,12 @@ func (p *Parser) parseAsmBlock() *ast.AsmBlock {
 	}
 	block.Template = &ast.StringLiteral{Token: p.curToken, Value: trimStringQuotes(p.curToken.Lexeme)}
 
-	for p.peekToken.Type != lexer.RBRACE && p.peekToken.Type != lexer.EOF {
-		p.nextToken()
+	p.nextToken()
+	for p.curToken.Type != lexer.RBRACE && p.curToken.Type != lexer.EOF {
+		if p.curToken.Type == lexer.COMMENT {
+			p.nextToken()
+			continue
+		}
 		if p.curToken.Type != lexer.IDENT {
 			p.addError("expected asm section at %d:%d", p.curToken.Line, p.curToken.Column)
 			p.skipCurrentBlock()
@@ -445,15 +601,17 @@ func (p *Parser) parseAsmBlock() *ast.AsmBlock {
 				return nil
 			}
 			block.Outputs = outputs
+		case "clobbers":
+			clobbers, ok := p.parseAsmClobbers()
+			if !ok {
+				return nil
+			}
+			block.Clobbers = clobbers
 		default:
 			p.addError("unknown asm section %q at %d:%d", p.curToken.Lexeme, p.curToken.Line, p.curToken.Column)
 			p.skipCurrentBlock()
 			return nil
 		}
-	}
-
-	if !p.expectPeek(lexer.RBRACE) {
-		return nil
 	}
 
 	return block
@@ -465,8 +623,17 @@ func (p *Parser) parseAsmInputs() ([]ast.AsmOperand, bool) {
 	}
 
 	inputs := []ast.AsmOperand{}
-	for {
-		if !p.expectPeek(lexer.IDENT) {
+	p.nextToken()
+	for p.curToken.Type != lexer.RBRACE && p.curToken.Type != lexer.EOF {
+		if p.curToken.Type == lexer.COMMENT || p.curToken.Type == lexer.COMMA {
+			p.nextToken()
+			continue
+		}
+		if p.curToken.Type == lexer.IDENT && p.peekToken.Type == lexer.COLON {
+			return inputs, true
+		}
+		if p.curToken.Type != lexer.IDENT {
+			p.addError("expected asm input at %d:%d", p.curToken.Line, p.curToken.Column)
 			return nil, false
 		}
 		register := p.curToken.Lexeme
@@ -482,12 +649,9 @@ func (p *Parser) parseAsmInputs() ([]ast.AsmOperand, bool) {
 			return nil, false
 		}
 		inputs = append(inputs, ast.AsmOperand{Register: register, Value: value})
-
-		if p.peekToken.Type != lexer.COMMA {
-			return inputs, true
-		}
 		p.nextToken()
 	}
+	return inputs, true
 }
 
 func (p *Parser) parseAsmOutputs() ([]ast.AsmOutput, bool) {
@@ -496,17 +660,60 @@ func (p *Parser) parseAsmOutputs() ([]ast.AsmOutput, bool) {
 	}
 
 	outputs := []ast.AsmOutput{}
-	for {
-		if !p.expectPeek(lexer.IDENT) {
-			return nil, false
+	p.nextToken()
+	for p.curToken.Type != lexer.RBRACE && p.curToken.Type != lexer.EOF {
+		if p.curToken.Type == lexer.COMMENT || p.curToken.Type == lexer.COMMA {
+			p.nextToken()
+			continue
 		}
-		outputs = append(outputs, ast.AsmOutput{Register: p.curToken.Lexeme})
-
-		if p.peekToken.Type != lexer.COMMA {
+		if p.curToken.Type == lexer.IDENT && p.peekToken.Type == lexer.COLON {
 			return outputs, true
 		}
+		if p.curToken.Type != lexer.IDENT {
+			p.addError("expected asm output at %d:%d", p.curToken.Line, p.curToken.Column)
+			return nil, false
+		}
+		output := ast.AsmOutput{Register: p.curToken.Lexeme}
+		if p.peekToken.Type == lexer.LPAREN {
+			p.nextToken()
+			if !p.expectPeek(lexer.IDENT) {
+				return nil, false
+			}
+			output.Name = p.curToken.Lexeme
+			if !p.expectPeek(lexer.RPAREN) {
+				return nil, false
+			}
+		}
+		outputs = append(outputs, output)
+
 		p.nextToken()
 	}
+	return outputs, true
+}
+
+func (p *Parser) parseAsmClobbers() ([]string, bool) {
+	if !p.expectPeek(lexer.COLON) {
+		return nil, false
+	}
+
+	clobbers := []string{}
+	p.nextToken()
+	for p.curToken.Type != lexer.RBRACE && p.curToken.Type != lexer.EOF {
+		if p.curToken.Type == lexer.COMMENT || p.curToken.Type == lexer.COMMA {
+			p.nextToken()
+			continue
+		}
+		if p.curToken.Type == lexer.IDENT && p.peekToken.Type == lexer.COLON {
+			return clobbers, true
+		}
+		if p.curToken.Type != lexer.IDENT {
+			p.addError("expected asm clobber at %d:%d", p.curToken.Line, p.curToken.Column)
+			return nil, false
+		}
+		clobbers = append(clobbers, p.curToken.Lexeme)
+		p.nextToken()
+	}
+	return clobbers, true
 }
 
 func isSwitchClauseStart(token lexer.Token) bool {
@@ -792,6 +999,18 @@ func (p *Parser) parseFunctionDeclaration() *ast.FunctionDeclaration {
 	return fn
 }
 
+func (p *Parser) parseUnsafeFunctionDeclaration() *ast.FunctionDeclaration {
+	unsafeToken := p.curToken
+	p.nextToken()
+	fn := p.parseFunctionDeclaration()
+	if fn == nil {
+		return nil
+	}
+	fn.Token = unsafeToken
+	fn.Unsafe = true
+	return fn
+}
+
 func (p *Parser) parseParameters() []*ast.Parameter {
 	parameters := []*ast.Parameter{}
 
@@ -882,7 +1101,7 @@ func (p *Parser) parseStatementBlock(name string) *ast.BlockStatement {
 func (p *Parser) parseReturnStatement() ast.Statement {
 	stmt := &ast.ReturnStatement{Token: p.curToken}
 
-	if p.peekToken.Type == lexer.RBRACE || p.peekToken.Type == lexer.EOF || p.isStatementStart(p.peekToken.Type) || isSwitchClauseStart(p.peekToken) {
+	if p.peekToken.Type == lexer.RBRACE || p.peekToken.Type == lexer.EOF || p.isReturnTerminator(p.peekToken.Type) || isSwitchClauseStart(p.peekToken) {
 		return stmt
 	}
 
@@ -893,6 +1112,34 @@ func (p *Parser) parseReturnStatement() ast.Statement {
 	}
 
 	return stmt
+}
+
+func (p *Parser) isReturnTerminator(t lexer.TokenType) bool {
+	switch t {
+	case lexer.MODULE,
+		lexer.IMPORT,
+		lexer.TYPE,
+		lexer.ENUM,
+		lexer.STRUCT,
+		lexer.INTERFACE,
+		lexer.IMPL,
+		lexer.PROPERTY,
+		lexer.FN,
+		lexer.LET,
+		lexer.RETURN,
+		lexer.IF,
+		lexer.FOR,
+		lexer.WHILE,
+		lexer.SWITCH,
+		lexer.BREAK,
+		lexer.CONTINUE,
+		lexer.UNSAFE,
+		lexer.ASM,
+		lexer.DEFER:
+		return true
+	default:
+		return false
+	}
 }
 
 func (p *Parser) parseStructStatement() ast.Statement {
@@ -1317,6 +1564,10 @@ func (p *Parser) parseBlockStatement() *ast.BlockStatement {
 }
 
 func (p *Parser) parseTypeReference() *ast.TypeReference {
+	if p.curToken.Type == lexer.FN {
+		return p.parseFunctionTypeReference()
+	}
+
 	if p.curToken.Type == lexer.LBRACKET {
 		return p.parseSliceTypeReference()
 	}
@@ -1349,6 +1600,40 @@ func (p *Parser) parseTypeReference() *ast.TypeReference {
 		p.nextToken()
 		ref.TypeArgs = p.parseTypeArgs()
 	}
+
+	return ref
+}
+
+func (p *Parser) parseFunctionTypeReference() *ast.TypeReference {
+	ref := &ast.TypeReference{
+		Token: p.curToken,
+		Name:  "fn",
+	}
+
+	if !p.expectPeek(lexer.LPAREN) {
+		return ref
+	}
+
+	for p.peekToken.Type != lexer.RPAREN && p.peekToken.Type != lexer.EOF {
+		if !p.expectPeekTypeStart() {
+			return ref
+		}
+		ref.FunctionParameterTypes = append(ref.FunctionParameterTypes, p.parseTypeReference())
+
+		if p.peekToken.Type == lexer.COMMA {
+			p.nextToken()
+			continue
+		}
+	}
+
+	if !p.expectPeek(lexer.RPAREN) {
+		return ref
+	}
+
+	if !p.expectPeekTypeStart() {
+		return ref
+	}
+	ref.FunctionReturnType = p.parseTypeReference()
 
 	return ref
 }
@@ -1583,7 +1868,7 @@ func (p *Parser) expectPeekTypeStart() bool {
 }
 
 func isTypeStart(tokenType lexer.TokenType) bool {
-	return tokenType == lexer.IDENT || tokenType == lexer.LBRACKET || tokenType == lexer.VOID
+	return tokenType == lexer.IDENT || tokenType == lexer.LBRACKET || tokenType == lexer.VOID || tokenType == lexer.FN
 }
 
 func (p *Parser) nextToken() {
@@ -1633,6 +1918,8 @@ func (p *Parser) isStatementStart(t lexer.TokenType) bool {
 		lexer.WHILE,
 		lexer.MATCH,
 		lexer.SWITCH,
+		lexer.BREAK,
+		lexer.CONTINUE,
 		lexer.UNSAFE,
 		lexer.ASM,
 		lexer.DEFER:
@@ -1665,6 +1952,33 @@ func (p *Parser) parseAssignmentStatement() ast.Statement {
 		return nil
 	}
 
+	return stmt
+}
+
+func (p *Parser) parseTryAssignmentStatement() ast.Statement {
+	stmt := &ast.TryAssignmentStatement{Token: p.curToken}
+
+	p.nextToken()
+	target := p.parseExpression(LOWEST)
+	if target == nil {
+		return nil
+	}
+
+	if !p.expectPeekAssignmentOperator() {
+		return nil
+	}
+
+	assignment := &ast.AssignmentStatement{
+		Token:    expressionToken(target),
+		Target:   target,
+		Operator: p.curToken.Lexeme,
+	}
+	p.nextToken()
+	assignment.Value = p.parseExpression(LOWEST)
+	if assignment.Value == nil {
+		return nil
+	}
+	stmt.Assignment = assignment
 	return stmt
 }
 
@@ -1903,7 +2217,7 @@ func (p *Parser) parseLetDeclarator(token lexer.Token, mutable bool, inheritedTy
 		p.nextToken()
 		colon := p.curToken
 
-		if p.peekToken.Type == lexer.EOF || p.isStatementStart(p.peekToken.Type) {
+		if p.peekToken.Type == lexer.EOF || (p.isStatementStart(p.peekToken.Type) && !isTypeStart(p.peekToken.Type)) {
 			p.addError(
 				"let statement missing type after ':' at %d:%d",
 				colon.Line,

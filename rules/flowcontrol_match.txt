@@ -1,0 +1,1345 @@
+Implement match expressions and statements.
+
+Implementation status:
+
+Implemented:
+
+* AST has `MatchExpression`, `MatchStatement` and `MatchArm`
+* parser supports match as expression and statement
+* parser supports expression arms, return arms and block arms
+* parser supports `_` as catch-all pattern
+* parser supports discard payload patterns such as `Ok(_)` and `Err(_)`
+* parser supports `return match ...`
+* sema supports Result Ok/Err matching with payload bindings
+* sema treats `_` payload patterns as discard, not bindings
+* sema supports enum variant matching
+* sema checks Result and enum exhaustiveness
+* sema detects duplicate enum match arms
+* sema detects unreachable arms after catch-all
+* sema rejects empty matches
+* sema rejects catch-all hiding Result Err
+* parser supports `where` guards
+* sema requires match guards to be bool
+* sema does not count guarded arms as exhaustive coverage
+* sema infers common branch type for expression match
+
+Not implemented yet:
+
+* union variants
+* Option-specific Some/None matching
+* structural/destructuring patterns
+* literal/range policy diagnostics beyond current expression matching behavior
+* LLVM code generation for match
+
+Purpose:
+
+match is used for structural and variant-based branching.
+
+switch is used for value comparisons and bool conditions.
+
+match is used for:
+
+* union variants
+* Result[T, E]
+* Option[T]
+* enum variants
+* variant payload binding
+* structural inspection
+* exhaustive branching
+
+match does not use implicit fallthrough.
+
+Basic syntax:
+
+```
+match expression {
+    Pattern => expression
+    Pattern => expression
+}
+```
+
+Statement bodies:
+
+```
+match expression {
+    Pattern => {
+        statements
+    }
+
+    Pattern => {
+        statements
+    }
+}
+```
+
+Expression usage:
+
+```
+result := match expression {
+    Pattern => value
+    Pattern => value
+}
+```
+
+Union example:
+
+```
+type Shape union {
+    Circle {
+        Radius: decimal
+    }
+
+    Rectangle {
+        Width: decimal
+        Height: decimal
+    }
+}
+
+area := match shape {
+    Circle(circle) => circle.Radius * circle.Radius
+    Rectangle(rectangle) => rectangle.Width * rectangle.Height
+}
+```
+
+Result example:
+
+```
+match result {
+    Ok(value) => Process(value)
+    Err(error) => Handle(error)
+}
+```
+
+Option example:
+
+```
+name := match optionalName {
+    Some(value) => value
+    None => "unknown"
+}
+```
+
+Enum example:
+
+```
+match direction {
+    Direction.north => MoveNorth()
+    Direction.east => MoveEast()
+    Direction.south => MoveSouth()
+    Direction.west => MoveWest()
+}
+```
+
+Subject evaluation:
+
+The match subject expression is evaluated exactly once.
+
+Example:
+
+```
+match ReadResult() {
+    Ok(value) => Process(value)
+    Err(error) => Handle(error)
+}
+```
+
+ReadResult() is called exactly once.
+
+Pattern selection:
+
+Patterns are tested from top to bottom.
+
+The first matching branch is selected.
+
+After a branch has matched, no later pattern or guard is evaluated.
+
+Exactly one branch executes.
+
+Exhaustiveness:
+
+match must handle every possible value of the subject type.
+
+Example:
+
+```
+match option {
+    Some(value) => Process(value)
+    None => Missing()
+}
+```
+
+This is exhaustive.
+
+Invalid:
+
+```
+match option {
+    Some(value) => Process(value)
+}
+```
+
+Diagnostic:
+
+```
+non-exhaustive match for Option[T]: missing None
+```
+
+Result exhaustiveness:
+
+Both Ok and Err must be handled.
+
+Invalid:
+
+```
+match result {
+    Ok(value) => Process(value)
+}
+```
+
+Diagnostic:
+
+```
+non-exhaustive match for Result[Value, Error]: missing Err
+```
+
+Union exhaustiveness:
+
+Every union variant must be handled unless a catch-all branch is present.
+
+Example:
+
+```
+match shape {
+    Circle(circle) => ProcessCircle(circle)
+    Rectangle(rectangle) => ProcessRectangle(rectangle)
+}
+```
+
+Enum exhaustiveness:
+
+Every enum value must be handled unless a catch-all branch is present.
+
+Example:
+
+```
+match direction {
+    Direction.north => North()
+    Direction.east => East()
+    Direction.south => South()
+    Direction.west => West()
+}
+```
+
+Catch-all pattern:
+
+The discard pattern:
+
+```
+_
+```
+
+matches every value not handled by an earlier branch.
+
+Example:
+
+```
+match direction {
+    Direction.north => North()
+    _ => Other()
+}
+```
+
+The catch-all pattern must be the final branch.
+
+Invalid:
+
+```
+match direction {
+    _ => Other()
+    Direction.north => North()
+}
+```
+
+Diagnostic:
+
+```
+unreachable match branch after catch-all pattern
+```
+
+Error hiding:
+
+A catch-all pattern must not silently hide an Err variant in error-sensitive
+contexts.
+
+Invalid:
+
+```
+match result {
+    Ok(value) => Process(value)
+    _ => Ignore()
+}
+```
+
+when the catch-all would hide Err.
+
+Result errors must be handled explicitly.
+
+Valid:
+
+```
+match result {
+    Ok(value) => Process(value)
+    Err(error) => Handle(error)
+}
+```
+
+Explicit error discard remains possible only through the defined discard rules.
+
+Variant patterns:
+
+A variant without payload is matched by its variant name.
+
+Example:
+
+```
+match direction {
+    Direction.north => North()
+    Direction.south => South()
+    _ => Other()
+}
+```
+
+Payload binding:
+
+A variant carrying data may bind its payload.
+
+Example:
+
+```
+match result {
+    Ok(value) => Process(value)
+    Err(error) => Handle(error)
+}
+```
+
+The binding exists only inside that branch.
+
+Named variant payloads:
+
+For a tagged union variant containing fields:
+
+```
+type Shape union {
+    Circle {
+        Radius: decimal
+    }
+}
+```
+
+The initial binding form binds the variant payload as one value:
+
+```
+match shape {
+    Circle(circle) => Process(circle.Radius)
+}
+```
+
+Direct field destructuring is not required in the initial implementation.
+
+Not supported initially:
+
+```
+Circle { Radius } => ...
+```
+
+Use:
+
+```
+Circle(circle) => circle.Radius
+```
+
+Binding types:
+
+The compiler infers branch binding types from the matched variant.
+
+Example:
+
+```
+match result {
+    Ok(value) => ...
+}
+```
+
+For:
+
+```
+Result[int, IOError]
+```
+
+value has type int.
+
+For:
+
+```
+match result {
+    Err(error) => ...
+}
+```
+
+error has type IOError.
+
+Binding scope:
+
+Pattern bindings exist only inside their branch.
+
+Example:
+
+```
+match result {
+    Ok(value) => {
+        Process(value)
+    }
+
+    Err(error) => {
+        Handle(error)
+    }
+}
+```
+
+value is not visible in the Err branch or after the match.
+
+error is not visible in the Ok branch or after the match.
+
+No shadowing:
+
+Normal Sec no-shadowing rules apply.
+
+Invalid:
+
+```
+let value: int := 10
+
+match result {
+    Ok(value) => Process(value)
+    Err(error) => Handle(error)
+}
+```
+
+Diagnostic:
+
+```
+variable "value" already declared
+```
+
+Discarded payload:
+
+A payload may be explicitly discarded.
+
+Example:
+
+```
+match result {
+    Ok(_) => Success()
+    Err(error) => Handle(error)
+}
+```
+
+The discard pattern does not declare a variable.
+
+Pattern alternatives:
+
+Pattern alternatives are not part of the initial implementation.
+
+Not supported initially:
+
+```
+Direction.north | Direction.south => Vertical()
+```
+
+Write separate branches:
+
+```
+Direction.north => Vertical()
+Direction.south => Vertical()
+```
+
+Pattern alternatives may be considered later.
+
+Guards:
+
+A match branch may include a guard using where.
+
+Syntax:
+
+```
+Pattern where condition => branch
+```
+
+Example:
+
+```
+match option {
+    Some(value) where value > 100 => Large(value)
+    Some(value) => Normal(value)
+    None => Missing()
+}
+```
+
+The pattern is tested first.
+
+The guard is evaluated only when the pattern matches.
+
+The branch executes only when both the pattern and guard match.
+
+Guard type:
+
+A guard condition must have type bool.
+
+Invalid:
+
+```
+match option {
+    Some(value) where value => Process(value)
+    None => Missing()
+}
+```
+
+when value has type int.
+
+Diagnostic:
+
+```
+match guard must be bool, got int
+```
+
+Guard evaluation:
+
+Guards are evaluated from top to bottom.
+
+A guard is evaluated only after its pattern matches.
+
+Later branches remain available when a guard evaluates to false.
+
+Guard exhaustiveness:
+
+A guarded branch does not by itself exhaust the underlying pattern.
+
+Invalid:
+
+```
+match option {
+    Some(value) where value > 0 => Positive(value)
+    None => Missing()
+}
+```
+
+This does not handle Some values where value <= 0.
+
+Diagnostic:
+
+```
+non-exhaustive match for Option[int]: Some is not fully covered
+```
+
+Valid:
+
+```
+match option {
+    Some(value) where value > 0 => Positive(value)
+    Some(value) => Other(value)
+    None => Missing()
+}
+```
+
+Guard bindings:
+
+Pattern bindings are visible inside the guard.
+
+Example:
+
+```
+match result {
+    Ok(value) where value > 0 => Positive(value)
+    Ok(value) => Other(value)
+    Err(error) => Handle(error)
+}
+```
+
+No guard on catch-all followed by no fallback:
+
+A guarded catch-all is not exhaustive.
+
+Example:
+
+```
+match value {
+    _ where condition => Handle()
+}
+```
+
+A fallback branch is still required.
+
+Match as a statement:
+
+match may be used only for control flow.
+
+Example:
+
+```
+match result {
+    Ok(value) => {
+        Process(value)
+    }
+
+    Err(error) => {
+        Handle(error)
+    }
+}
+```
+
+Branch result values are ignored when match is used as a statement.
+
+Match as an expression:
+
+match may produce a value.
+
+Example:
+
+```
+message := match status {
+    Status.ready => "ready"
+    Status.waiting => "waiting"
+    Status.failed => "failed"
+}
+```
+
+Every continuing branch must produce a value.
+
+Expression branch type:
+
+All value-producing branches must have compatible types.
+
+Invalid:
+
+```
+value := match option {
+    Some(number) => number
+    None => "missing"
+}
+```
+
+when number has type int.
+
+Diagnostic:
+
+```
+match branches have incompatible types int and string
+```
+
+Semantic types:
+
+Semantic type compatibility rules remain active.
+
+Invalid:
+
+```
+value := match condition {
+    true => speed
+    false => distance
+}
+```
+
+when Speed and Distance are different semantic types.
+
+Terminating branches:
+
+A branch that returns, propagates or terminates does not need to produce the
+match expression value.
+
+Example:
+
+```
+value := match result {
+    Ok(value) => value
+    Err(error) => return Handle(error)
+}
+```
+
+The Ok branch produces the expression value.
+
+The Err branch terminates the surrounding function.
+
+Block branch values:
+
+A block used in an expression match must explicitly produce a final value
+according to the normal Sec block-expression rules.
+
+If Sec does not yet support block expressions, expression match branches should
+initially use single expressions only.
+
+Initial supported form:
+
+```
+value := match option {
+    Some(value) => value
+    None => 0
+}
+```
+
+Statement blocks remain supported for statement match.
+
+Return flow:
+
+match participates in function return analysis.
+
+Example:
+
+```
+fn Convert(result: Result[int, IOError]) int {
+    match result {
+        Ok(value) => {
+            return value
+        }
+
+        Err(error) => {
+            return 0
+        }
+    }
+}
+```
+
+Valid because the match is exhaustive and every branch returns.
+
+Incomplete return flow:
+
+Invalid:
+
+```
+fn Convert(result: Result[int, IOError]) int {
+    match result {
+        Ok(value) => {
+            return value
+        }
+
+        Err(error) => {
+            Log(error)
+        }
+    }
+}
+```
+
+The Err branch may continue to the end of the function.
+
+Definite assignment:
+
+An exhaustive match can establish definite assignment when every continuing
+branch assigns the variable.
+
+Example:
+
+```
+fn Convert(option: Option[int]) int {
+    let mut result: int
+
+    match option {
+        Some(value) => {
+            result = value
+        }
+
+        None => {
+            result = 0
+        }
+    }
+
+    return result
+}
+```
+
+Valid.
+
+Terminating branches and assignment:
+
+Only continuing branches need to assign the value.
+
+Example:
+
+```
+fn Convert(result: Result[int, IOError]) int {
+    let mut value: int
+
+    match result {
+        Ok(resultValue) => {
+            value = resultValue
+        }
+
+        Err(error) => {
+            return 0
+        }
+    }
+
+    return value
+}
+```
+
+Valid.
+
+Duplicate patterns:
+
+Duplicate unguarded patterns are invalid.
+
+Invalid:
+
+```
+match option {
+    None => A()
+    None => B()
+    Some(value) => C(value)
+}
+```
+
+Diagnostic:
+
+```
+duplicate match pattern None
+```
+
+Unreachable patterns:
+
+A branch fully covered by an earlier unguarded branch is unreachable.
+
+Invalid:
+
+```
+match option {
+    Some(value) => A(value)
+    Some(value) where value > 10 => B(value)
+    None => C()
+}
+```
+
+The guarded Some branch can never be reached.
+
+Diagnostic:
+
+```
+unreachable match branch; Some is already fully covered
+```
+
+Guarded ordering:
+
+A guarded branch may precede the unguarded fallback for the same pattern.
+
+Valid:
+
+```
+match option {
+    Some(value) where value > 10 => Large(value)
+    Some(value) => Other(value)
+    None => Missing()
+}
+```
+
+Catch-all reachability:
+
+Any branch after an unguarded catch-all is unreachable.
+
+Invalid:
+
+```
+match value {
+    _ => Other()
+    Specific => Handle()
+}
+```
+
+Literal patterns:
+
+The initial match implementation should focus on variants and enums.
+
+Literal value matching belongs primarily to switch.
+
+Not recommended:
+
+```
+match value {
+    1 => One()
+    2 => Two()
+    _ => Other()
+}
+```
+
+Use:
+
+```
+switch value {
+case 1:
+    One()
+
+case 2:
+    Two()
+
+default:
+    Other()
+}
+```
+
+Literal patterns may be supported later if they provide clear value without
+duplicating switch.
+
+Range patterns:
+
+Range matching belongs to switch.
+
+Not supported initially:
+
+```
+match value {
+    0..<10 => Small()
+    _ => Other()
+}
+```
+
+Use:
+
+```
+switch value {
+case 0..<10:
+    Small()
+
+default:
+    Other()
+}
+```
+
+Bool matching:
+
+Matching bool variants is legal if bool is represented as a finite value type,
+but if / else is normally clearer.
+
+Example:
+
+```
+match ready {
+    true => Start()
+    false => Wait()
+}
+```
+
+This may be accepted, but it is not the primary purpose of match.
+
+Type patterns:
+
+Runtime type inspection is not part of the initial implementation.
+
+Not supported:
+
+```
+match value {
+    int(number) => ...
+    string(text) => ...
+}
+```
+
+Union variants provide static type alternatives and should be used instead.
+
+Struct destructuring:
+
+Struct destructuring is postponed.
+
+Not supported initially:
+
+```
+User { Name, Age } => ...
+```
+
+Use a bound value:
+
+```
+Some(user) => Process(user.Name, user.Age)
+```
+
+Nested patterns:
+
+Nested pattern destructuring is postponed.
+
+Not supported initially:
+
+```
+Some(Ok(value)) => ...
+```
+
+Use nested match expressions:
+
+```
+match option {
+    Some(result) => {
+        match result {
+            Ok(value) => Process(value)
+            Err(error) => Handle(error)
+        }
+    }
+
+    None => Missing()
+}
+```
+
+References and ownership:
+
+Pattern bindings follow normal ownership and borrowing rules.
+
+Matching must not silently copy, move or borrow payloads outside the established
+type rules.
+
+The initial implementation may bind copyable payloads by value.
+
+Non-copyable payload behavior must be explicitly defined before being supported.
+
+The match operation itself must not invalidate the subject unexpectedly.
+
+Subject consumption:
+
+Whether matching consumes, borrows or copies the subject depends on the subject
+type and ownership model.
+
+Until ownership semantics are finalized:
+
+* copyable enum and primitive values may be copied
+* copyable union payloads may be bound by value
+* non-copyable payloads should be rejected or explicitly borrowed
+* match must not introduce hidden cloning
+
+Error handling:
+
+match is the general explicit mechanism for inspecting Result.
+
+Example:
+
+```
+match ReadFile(path) {
+    Ok(data) => Process(data)
+    Err(error) => Handle(error)
+}
+```
+
+Unlike try:
+
+* match handles both success and error branches explicitly
+* match does not automatically propagate missing errors
+* match requires exhaustiveness
+
+Difference from try:
+
+try handles successful values implicitly.
+
+Example:
+
+```
+data := try ReadFile(path)
+```
+
+match handles every variant explicitly.
+
+Example:
+
+```
+match ReadFile(path) {
+    Ok(data) => Process(data)
+    Err(error) => Handle(error)
+}
+```
+
+Difference from switch:
+
+switch compares a subject against values, ranges or relational conditions.
+
+Example:
+
+```
+switch statusCode {
+case 200:
+    Success()
+
+case 400..<500:
+    ClientError()
+
+default:
+    Other()
+}
+```
+
+match inspects variants and binds payloads.
+
+Example:
+
+```
+match result {
+    Ok(value) => Success(value)
+    Err(error) => Failure(error)
+}
+```
+
+Difference from if:
+
+if tests one bool expression.
+
+match selects one structural or variant branch from a finite set.
+
+No fallthrough:
+
+match branches never fall through.
+
+There is no fallthrough statement in match.
+
+Invalid:
+
+```
+match value {
+    Pattern => {
+        fallthrough
+    }
+}
+```
+
+No break:
+
+break does not end a match branch.
+
+A match branch ends naturally when its expression or block completes.
+
+break remains loop-only.
+
+continue inside match:
+
+continue may appear inside a match branch when the match is inside a loop.
+
+Example:
+
+```
+for result in results {
+    match result {
+        Ok(value) => Process(value)
+        Err(error) => continue
+    }
+}
+```
+
+continue affects the nearest enclosing loop.
+
+Return inside match:
+
+return exits the surrounding function.
+
+Example:
+
+```
+match result {
+    Ok(value) => return value
+    Err(error) => return 0
+}
+```
+
+Empty match:
+
+A match with no branches is invalid unless the subject type has no possible
+values.
+
+The initial implementation may reject all empty matches.
+
+Diagnostic:
+
+```
+match requires at least one branch
+```
+
+Parser:
+
+The parser must support:
+
+* match followed by a subject expression
+* a required branch body
+* variant patterns
+* enum patterns
+* payload bindings
+* discard payloads
+* catch-all pattern
+* optional where guards
+* => branch separators
+* expression branches
+* block branches
+
+The parser must reject:
+
+* missing subject expressions
+* missing =>
+* malformed patterns
+* duplicate catch-all syntax
+* switch-style case and default keywords
+
+Suggested AST:
+
+```
+type MatchExpression struct {
+    Subject: Expression
+    Branches: []MatchBranch
+}
+
+type MatchBranch struct {
+    Pattern: Pattern
+    Guard: Expression?
+    Body: MatchBody
+}
+
+type MatchBody =
+    ExpressionBody(Expression)
+    BlockBody(Block)
+```
+
+Suggested patterns:
+
+```
+type Pattern =
+    VariantPattern
+    EnumPattern
+    BindingPattern
+    DiscardPattern
+    CatchAllPattern
+
+type VariantPattern struct {
+    Variant: QualifiedName
+    Binding: PatternBinding?
+}
+
+type PatternBinding struct {
+    Name: string
+    Discard: bool
+}
+```
+
+Sema:
+
+* Resolve the subject expression exactly once.
+* Determine the complete set of possible subject variants.
+* Resolve every pattern against the subject type.
+* Validate variant names.
+* Validate enum names.
+* Infer payload binding types.
+* Create a lexical scope for every branch.
+* Declare pattern bindings inside that branch scope.
+* Reject shadowing.
+* Validate guards as bool.
+* Track guarded and unguarded coverage separately.
+* Detect duplicate patterns.
+* Detect unreachable patterns.
+* Detect branches after catch-all.
+* Verify exhaustiveness.
+* Do not allow catch-all to silently hide Result errors.
+* Infer a common result type when match is used as an expression.
+* Permit terminating branches without expression values.
+* Analyze return, propagation and termination.
+* Merge definite-assignment state from continuing branches.
+* Apply normal ownership and borrow rules to the subject and bindings.
+
+Diagnostics:
+
+Suggested diagnostics:
+
+```
+match requires a union, enum or supported finite type, got int
+
+unknown variant Success for Result[int, IOError]
+
+variant None does not carry a payload
+
+variant Some requires a payload pattern
+
+duplicate match pattern None
+
+unreachable match branch; Some is already fully covered
+
+unreachable match branch after catch-all pattern
+
+match guard must be bool, got int
+
+non-exhaustive match for Option[int]: missing None
+
+non-exhaustive match for Result[int, IOError]: missing Err
+
+non-exhaustive match for Shape: missing Rectangle
+
+guarded pattern Some does not cover all Some values
+
+match branches have incompatible types int and string
+
+catch-all pattern may not hide Err
+
+variable "value" already declared
+```
+
+Code generation:
+
+The subject expression is evaluated exactly once.
+
+For tagged unions:
+
+* read the union tag
+* compare the tag against each branch variant
+* branch to the matching body
+* extract the payload when required
+* bind the payload in the branch block
+* evaluate the guard when present
+* continue to later branches when the guard is false
+
+For enums:
+
+* compare the enum value against branch values
+* branch to the matching body
+
+For expression match:
+
+* every continuing branch produces a result value
+* branch results join through a phi node or equivalent local storage
+* terminating branches do not contribute to the result merge
+
+For statement match:
+
+* continuing branches join at the common match continuation block
+
+Suggested blocks:
+
+```
+match.test.0
+match.guard.0
+match.body.0
+match.test.1
+match.guard.1
+match.body.1
+match.end
+```
+
+Exhaustiveness guarantees that a valid subject reaches some branch.
+
+The backend may still emit an unreachable fallback block for defensive IR
+correctness.
+
+Design rules:
+
+* match handles variants, structure and payload binding.
+* switch handles values, ranges and relational comparisons.
+* match evaluates its subject exactly once.
+* The first matching branch with a true guard executes.
+* match must be exhaustive.
+* Result errors must not be hidden by catch-all.
+* Pattern bindings are immutable and branch-local.
+* Normal no-shadowing rules apply.
+* Guards use where and must produce bool.
+* Guarded patterns do not fully cover a variant.
+* No implicit fallthrough exists.
+* match may be a statement or an expression.
+* Expression branches must produce compatible types.
+* Terminating branches do not need to produce a value.
+* Variant payload destructuring is initially shallow.
+* Struct and nested destructuring are postponed.
+* Literal and range matching belong to switch.
+* Runtime type inspection is postponed.
+* Matching must respect ownership and borrowing.
+* No hidden copying, cloning or allocation.

@@ -1,0 +1,165 @@
+module platform.linux.amd64
+
+
+/*
+    syscall number    rax
+    argument 1        rdi
+    argument 2        rsi
+    argument 3        rdx
+    argument 4        r10
+    argument 5        r8
+    argument 6        r9
+    result            rax
+*/ 
+
+
+unsafe fn _rawSyscall0(number: uint) int {
+    asm {
+        "syscall"
+        inputs:
+            rax(number)
+        
+        outputs:
+            rax(result)
+        
+        clobbers:
+            rcx
+            r11
+            memory
+    }
+    return result
+}
+
+unsafe fn _rawSyscall1(number: uint, arg1: uint) int {
+        asm {
+        "syscall"
+
+        inputs:
+            rax(number)
+            rdi(arg1)
+
+        outputs:
+            rax(result)
+
+        clobbers:
+            rcx
+            r11
+            memory
+    }
+
+    return result
+}
+unsafe fn _rawSyscall2(number: uint, arg1: uint, arg2: uint) int {
+        asm {
+        "syscall"
+
+        inputs:
+            rax(number)
+            rdi(arg1)
+            rsi(arg2)
+
+        outputs:
+            rax(result)
+
+        clobbers:
+            rcx
+            r11
+            memory
+    }
+
+    return result
+}
+
+// Call with 3 arguments
+unsafe fn _rawSyscall3(number: uint, arg1: uint, arg2: uint, arg3: uint) int {
+    asm {
+        "syscall"
+
+        inputs:
+            rax(number)
+            rdi(arg1)
+            rsi(arg2)
+            rdx(arg3)
+
+        outputs:
+            rax(result)
+
+        clobbers:
+            rcx
+            r11
+            memory
+    }
+
+    return result
+}
+
+unsafe fn _rawSyscall4(number: uint, arg1: uint, arg2: uint, arg3: uint, arg4: uint) int { 
+    asm {
+        "syscall"
+
+        inputs:
+            rax(number)
+            rdi(arg1)
+            rsi(arg2)
+            rdx(arg3)
+            r10(arg4)
+
+        outputs:
+            rax(result)
+
+        clobbers:
+            rcx
+            r11
+            memory
+    }
+
+    return result
+}
+unsafe fn _rawSyscall5(number: uint, arg1: uint, arg2: uint, arg3: uint, arg4: uint, arg5: uint) int { 
+    asm {
+        "syscall"
+
+        inputs:
+            rax(number)
+            rdi(arg1)
+            rsi(arg2)
+            rdx(arg3)
+            r10(arg4)
+            r8(arg5)
+
+        outputs:
+            rax(result)
+
+        clobbers:
+            rcx
+            r11
+            memory
+    }
+    return result
+}
+
+unsafe fn _rawSyscall6(number: uint, arg1: uint, arg2: uint, arg3: uint, arg4: uint, arg5: uint, arg6: uint) int {
+    asm {
+        "syscall"
+
+        inputs:
+            rax(number)
+            rdi(arg1)
+            rsi(arg2)
+            rdx(arg3)
+            r10(arg4)
+            r8(arg5)
+            r9(arg6)
+
+        outputs:
+            rax(result)
+
+        clobbers:
+            rcx
+            r11
+            memory
+    }
+    return result
+}
+
+

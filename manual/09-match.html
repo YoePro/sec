@@ -1,0 +1,922 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Match Expressions and Statements - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+</head>
+<body>
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+
+        <div class="sidebar-section">Match</div>
+        <a href="#match">Overview</a>
+        <a href="#when-to-use-match">When to Use match</a>
+        <a href="#basic-syntax">Basic Syntax</a>
+        <a href="#subject-evaluation">Subject Evaluation</a>
+        <a href="#branch-order">Branch Order</a>
+
+        <div class="sidebar-section">Patterns</div>
+        <a href="#variant-patterns">Variant Patterns</a>
+        <a href="#payload-binding">Payload Binding</a>
+        <a href="#discarded-payloads">Discarded Payloads</a>
+        <a href="#catch-all">Catch-all Pattern</a>
+        <a href="#guards">Guards</a>
+        <a href="#binding-scope">Binding Scope</a>
+
+        <div class="sidebar-section">Supported Types</div>
+        <a href="#matching-result">Matching Result</a>
+        <a href="#matching-option">Matching Option</a>
+        <a href="#matching-enums">Matching Enums</a>
+        <a href="#matching-unions">Matching Union Variants</a>
+
+        <div class="sidebar-section">Control Flow</div>
+        <a href="#exhaustiveness">Exhaustiveness</a>
+        <a href="#statement-match">match as a Statement</a>
+        <a href="#expression-match">match as an Expression</a>
+        <a href="#branch-types">Branch Result Types</a>
+        <a href="#terminating-branches">Terminating Branches</a>
+        <a href="#return-analysis">Return Analysis</a>
+        <a href="#definite-assignment">Definite Assignment</a>
+
+        <div class="sidebar-section">Rules and Limits</div>
+        <a href="#duplicates-and-reachability">Duplicates and Reachability</a>
+        <a href="#no-fallthrough">No Fallthrough</a>
+        <a href="#ownership">Ownership and Borrowing</a>
+        <a href="#match-switch-if">match, switch and if</a>
+        <a href="#not-supported">Not Supported Initially</a>
+        <a href="#common-errors">Common Errors</a>
+        <a href="#summary-rules">Summary of Rules</a>
+
+        <div class="sidebar-section">Pages</div>
+        <a href="index.html">Index</a>
+        <a href="01-introduction.html">Introduction</a>
+        <a href="02-basic-syntax.html">Basic Syntax</a>
+        <a href="03-variables-and-basic-types.html">Variables and Basic Types</a>
+        <a href="04-named-types-contracts-and-units.html">Named Types, Contracts and Units</a>
+        <a href="05-structs-properties-and-impl.html">Structs, Properties and Impl</a>
+        <a href="06-functions.html">Functions</a>
+        <a href="07-if.html">If Statements</a>
+        <a href="08-switch.html">Switch Statements</a>
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Match Expressions and Statements</div>
+
+        <h1 id="match">Match Expressions and Statements</h1>
+
+        <p>
+            <code>match</code> selects one branch by inspecting the variant, shape or finite value represented by
+            its subject. It is primarily used with union types, <code>Result[T, E]</code>, <code>Option[T]</code>
+            and enums.
+        </p>
+
+        <p>
+            Unlike <code>switch</code>, <code>match</code> does not merely compare a subject with values. A match
+            branch may identify a variant, bind the value carried by that variant and make the binding available
+            inside the selected branch.
+        </p>
+
+        <p>
+            A match must be exhaustive. Every possible value represented by the subject type must be handled by
+            an explicit branch or by an allowed catch-all pattern.
+        </p>
+
+        <div class="rule">
+            <strong>Rule:</strong> Use <code>match</code> for variants, payload binding and exhaustive branching.
+            Use <code>switch</code> for values, ranges and relational comparisons. Use <code>if</code> for one
+            boolean condition.
+        </div>
+
+        <div class="section" id="when-to-use-match">
+            <h2>When to Use match</h2>
+
+            <p><code>match</code> is the normal choice when code must inspect:</p>
+
+            <ul>
+                <li>a <code>Result[T, E]</code> success or error variant,</li>
+                <li>an <code>Option[T]</code> value or absence,</li>
+                <li>a tagged union variant,</li>
+                <li>an enum value that must be handled exhaustively,</li>
+                <li>or a variant payload that must be bound to a local name.</li>
+            </ul>
+
+            <pre><code>match ReadFile(path) {
+    Ok(data) =&gt; Process(data)
+    Err(error) =&gt; Handle(error)
+}</code></pre>
+
+            <p>
+                In this example, <code>match</code> identifies whether the result contains <code>Ok</code> or
+                <code>Err</code> and binds the associated payload.
+            </p>
+        </div>
+
+        <div class="section" id="basic-syntax">
+            <h2>Basic Syntax</h2>
+
+            <p>A match contains a subject expression followed by one or more branches:</p>
+
+            <pre><code>match expression {
+    Pattern =&gt; branch
+    Pattern =&gt; branch
+}</code></pre>
+
+            <p>A branch may contain a single expression:</p>
+
+            <pre><code>let message := match status {
+    Status.ready =&gt; "ready"
+    Status.waiting =&gt; "waiting"
+    Status.failed =&gt; "failed"
+}</code></pre>
+
+            <p>Or a statement block:</p>
+
+            <pre><code>match result {
+    Ok(value) =&gt; {
+        LogSuccess(value)
+        Process(value)
+    }
+
+    Err(error) =&gt; {
+        LogError(error)
+        Handle(error)
+    }
+}</code></pre>
+
+            <p>
+                The arrow <code>=&gt;</code> separates the pattern from the branch body. Switch-style
+                <code>case</code> and <code>default</code> clauses are not used in a match.
+            </p>
+        </div>
+
+        <div class="section" id="subject-evaluation">
+            <h2>Subject Evaluation</h2>
+
+            <p>The match subject is evaluated exactly once.</p>
+
+            <pre><code>match ReadResult() {
+    Ok(value) =&gt; Process(value)
+    Err(error) =&gt; Handle(error)
+}</code></pre>
+
+            <p>
+                <code>ReadResult()</code> is called once. The returned value is then inspected by the match.
+                This remains true even when the subject expression performs work or has visible side effects.
+            </p>
+        </div>
+
+        <div class="section" id="branch-order">
+            <h2>Branch Order</h2>
+
+            <p>
+                Patterns are considered from top to bottom. The first pattern whose variant and optional guard
+                match is selected. Exactly one branch executes.
+            </p>
+
+            <p>
+                After a branch has been selected, no later pattern or guard is evaluated. Branch order therefore
+                matters when several guarded branches refer to the same variant.
+            </p>
+
+            <pre><code>match option {
+    Some(value) where value &gt; 100 =&gt; Large(value)
+    Some(value) =&gt; Normal(value)
+    None =&gt; Missing()
+}</code></pre>
+        </div>
+
+        <div class="section" id="variant-patterns">
+            <h2>Variant Patterns</h2>
+
+            <p>
+                A variant without a payload is matched by its variant name. A variant that carries data uses
+                parentheses to bind or discard that payload.
+            </p>
+
+            <pre><code>match direction {
+    Direction.north =&gt; MoveNorth()
+    Direction.east =&gt; MoveEast()
+    Direction.south =&gt; MoveSouth()
+    Direction.west =&gt; MoveWest()
+}</code></pre>
+
+            <pre><code>match result {
+    Ok(value) =&gt; Process(value)
+    Err(error) =&gt; Handle(error)
+}</code></pre>
+
+            <p>
+                The pattern must refer to a valid variant of the subject type. Unknown variants are compile-time
+                errors.
+            </p>
+        </div>
+
+        <div class="section" id="payload-binding">
+            <h2>Payload Binding</h2>
+
+            <p>
+                A variant carrying data may bind that data to a new immutable local symbol.
+            </p>
+
+            <pre><code>match result {
+    Ok(value) =&gt; Use(value)
+    Err(error) =&gt; Report(error)
+}</code></pre>
+
+            <p>
+                For <code>Result[int, IOError]</code>, <code>value</code> has type <code>int</code> and
+                <code>error</code> has type <code>IOError</code>. Their types are inferred from the matched variant.
+            </p>
+
+            <p>
+                Tagged union payloads are initially bound as one value rather than destructured field by field.
+            </p>
+
+            <pre><code>type Shape union {
+    Circle {
+        Radius: decimal,
+    }
+
+    Rectangle {
+        Width: decimal,
+        Height: decimal,
+    }
+}</code></pre>
+
+            <pre><code>let area := match shape {
+    Circle(circle) =&gt; circle.Radius * circle.Radius
+    Rectangle(rectangle) =&gt; rectangle.Width * rectangle.Height
+}</code></pre>
+        </div>
+
+        <div class="section" id="discarded-payloads">
+            <h2>Discarded Payloads</h2>
+
+            <p>
+                Use <code>_</code> inside a variant pattern when the variant matters but its payload does not.
+            </p>
+
+            <pre><code>match result {
+    Ok(_) =&gt; Success()
+    Err(error) =&gt; Handle(error)
+}</code></pre>
+
+            <p>
+                A discarded payload does not declare a variable and cannot be referenced in the branch.
+            </p>
+        </div>
+
+        <div class="section" id="catch-all">
+            <h2>Catch-all Pattern</h2>
+
+            <p>
+                A standalone <code>_</code> pattern matches every value not handled by an earlier branch.
+            </p>
+
+            <pre><code>match direction {
+    Direction.north =&gt; MoveNorth()
+    _ =&gt; MoveOtherDirection()
+}</code></pre>
+
+            <p>The catch-all pattern must be the final branch.</p>
+
+            <pre><code>match direction {
+    _ =&gt; MoveOtherDirection()
+    Direction.north =&gt; MoveNorth()
+} // Error: unreachable match branch after catch-all pattern.</code></pre>
+
+            <p>
+                A catch-all may not silently hide the <code>Err</code> variant of a <code>Result</code>.
+            </p>
+
+            <pre><code>match result {
+    Ok(value) =&gt; Process(value)
+    _ =&gt; Ignore()
+} // Error: catch-all pattern may not hide Err.</code></pre>
+
+            <p>
+                Result errors must be handled explicitly. This prevents error paths from disappearing behind a
+                general fallback branch.
+            </p>
+        </div>
+
+        <div class="section" id="guards">
+            <h2>Guards</h2>
+
+            <p>
+                A branch may add a boolean condition using <code>where</code>.
+            </p>
+
+            <pre><code>match option {
+    Some(value) where value &gt; 100 =&gt; Large(value)
+    Some(value) =&gt; Normal(value)
+    None =&gt; Missing()
+}</code></pre>
+
+            <p>
+                The pattern is checked first. The guard is evaluated only when the pattern matches. The branch is
+                selected only when both the pattern and guard match.
+            </p>
+
+            <p>The guard expression must have type <code>bool</code>.</p>
+
+            <pre><code>match option {
+    Some(value) where value =&gt; Process(value)
+    None =&gt; Missing()
+} // Error when value has type int: match guard must be bool, got int.</code></pre>
+
+            <p>Pattern bindings are visible inside the guard:</p>
+
+            <pre><code>match result {
+    Ok(value) where value &gt; 0 =&gt; Positive(value)
+    Ok(value) =&gt; Other(value)
+    Err(error) =&gt; Handle(error)
+}</code></pre>
+
+            <div class="rule">
+                <strong>Rule:</strong> A guarded branch does not fully cover its variant because the guard may
+                evaluate to <code>false</code>. An unguarded fallback for that variant is still required.
+            </div>
+        </div>
+
+        <div class="section" id="binding-scope">
+            <h2>Binding Scope</h2>
+
+            <p>
+                Pattern bindings exist only inside the branch in which they are declared.
+            </p>
+
+            <pre><code>match result {
+    Ok(value) =&gt; {
+        Process(value)
+    }
+
+    Err(error) =&gt; {
+        Handle(error)
+    }
+}</code></pre>
+
+            <p>
+                <code>value</code> is not visible in the <code>Err</code> branch or after the match. Likewise,
+                <code>error</code> is not visible in the <code>Ok</code> branch or after the match.
+            </p>
+
+            <p>Normal Sec no-shadowing rules apply:</p>
+
+            <pre><code>let value: int := 10
+
+match result {
+    Ok(value) =&gt; Process(value)
+    Err(error) =&gt; Handle(error)
+} // Error: variable "value" already declared.</code></pre>
+        </div>
+
+        <div class="section" id="matching-result">
+            <h2>Matching Result</h2>
+
+            <p>
+                <code>match</code> is the general explicit mechanism for inspecting <code>Result[T, E]</code>.
+                Both <code>Ok</code> and <code>Err</code> must be handled.
+            </p>
+
+            <pre><code>match ReadFile(path) {
+    Ok(data) =&gt; Process(data)
+    Err(error) =&gt; Handle(error)
+}</code></pre>
+
+            <p>An incomplete Result match is invalid:</p>
+
+            <pre><code>match ReadFile(path) {
+    Ok(data) =&gt; Process(data)
+} // Error: non-exhaustive match: missing Err.</code></pre>
+
+            <p>
+                Use <code>try</code> when success should continue normally and errors should propagate. Use
+                <code>match</code> when both success and error paths should be handled explicitly at the current
+                location.
+            </p>
+        </div>
+
+        <div class="section" id="matching-option">
+            <h2>Matching Option</h2>
+
+            <p>
+                <code>Option[T]</code> distinguishes between a present value and absence.
+            </p>
+
+            <pre><code>let name := match optionalName {
+    Some(value) =&gt; value
+    None =&gt; "unknown"
+}</code></pre>
+
+            <p>
+                Both <code>Some</code> and <code>None</code> must be handled unless a valid catch-all branch covers
+                the remaining variants.
+            </p>
+
+            <pre><code>match optionalName {
+    Some(value) =&gt; Print(value)
+} // Error: non-exhaustive match: missing None.</code></pre>
+        </div>
+
+        <div class="section" id="matching-enums">
+            <h2>Matching Enums</h2>
+
+            <p>
+                Enum matching is useful when every declared enum value must be handled explicitly.
+            </p>
+
+            <pre><code>match direction {
+    Direction.north =&gt; MoveNorth()
+    Direction.east =&gt; MoveEast()
+    Direction.south =&gt; MoveSouth()
+    Direction.west =&gt; MoveWest()
+}</code></pre>
+
+            <p>
+                Omitting an enum value without a catch-all branch makes the match non-exhaustive.
+            </p>
+
+            <p>
+                Use <code>switch</code> instead when the intent is ordinary value comparison and exhaustive enum
+                handling is not required.
+            </p>
+        </div>
+
+        <div class="section" id="matching-unions">
+            <h2>Matching Union Variants</h2>
+
+            <p>
+                A tagged union may represent several alternatives with different payloads. A match handles each
+                variant and binds the selected payload.
+            </p>
+
+            <pre><code>type Shape union {
+    Circle {
+        Radius: decimal,
+    }
+
+    Rectangle {
+        Width: decimal,
+        Height: decimal,
+    }
+}</code></pre>
+
+            <pre><code>let area := match shape {
+    Circle(circle) =&gt; circle.Radius * circle.Radius
+    Rectangle(rectangle) =&gt; rectangle.Width * rectangle.Height
+}</code></pre>
+
+            <p>
+                Every union variant must be handled unless an allowed catch-all branch covers the remaining
+                variants.
+            </p>
+        </div>
+
+        <div class="section" id="exhaustiveness">
+            <h2>Exhaustiveness</h2>
+
+            <p>
+                A match must cover every possible value of its subject type. Exhaustiveness is checked at compile
+                time.
+            </p>
+
+            <pre><code>match option {
+    Some(value) =&gt; Process(value)
+    None =&gt; Missing()
+}</code></pre>
+
+            <p>
+                Guarded branches are tracked separately from unguarded coverage. The following is not exhaustive:
+            </p>
+
+            <pre><code>match option {
+    Some(value) where value &gt; 0 =&gt; Positive(value)
+    None =&gt; Missing()
+} // Error: Some values where value &lt;= 0 are not handled.</code></pre>
+
+            <p>Add an unguarded fallback for the same variant:</p>
+
+            <pre><code>match option {
+    Some(value) where value &gt; 0 =&gt; Positive(value)
+    Some(value) =&gt; Other(value)
+    None =&gt; Missing()
+}</code></pre>
+
+            <p>
+                Exhaustiveness allows later compiler analysis to know that a valid subject always reaches one
+                branch.
+            </p>
+        </div>
+
+        <div class="section" id="statement-match">
+            <h2>match as a Statement</h2>
+
+            <p>
+                A match may be used only to control execution. In that form, branch expression values are ignored.
+            </p>
+
+            <pre><code>match result {
+    Ok(value) =&gt; {
+        Process(value)
+    }
+
+    Err(error) =&gt; {
+        Handle(error)
+    }
+}</code></pre>
+
+            <p>
+                Statement match is appropriate when each branch performs actions rather than producing one shared
+                value.
+            </p>
+        </div>
+
+        <div class="section" id="expression-match">
+            <h2>match as an Expression</h2>
+
+            <p>
+                A match may produce a value. The selected branch becomes the value of the entire match expression.
+            </p>
+
+            <pre><code>let message := match status {
+    Status.ready =&gt; "ready"
+    Status.waiting =&gt; "waiting"
+    Status.failed =&gt; "failed"
+}</code></pre>
+
+            <p>
+                Every branch that can continue must produce a compatible value. A branch that returns or otherwise
+                terminates the surrounding control flow does not need to produce the match result.
+            </p>
+        </div>
+
+        <div class="section" id="branch-types">
+            <h2>Branch Result Types</h2>
+
+            <p>
+                When match is used as an expression, the compiler determines one common result type from all
+                continuing branches.
+            </p>
+
+            <pre><code>let number := match option {
+    Some(value) =&gt; value
+    None =&gt; 0
+}</code></pre>
+
+            <p>Incompatible branch types are rejected:</p>
+
+            <pre><code>let value := match option {
+    Some(number) =&gt; number
+    None =&gt; "missing"
+} // Error: match branches have incompatible types int and string.</code></pre>
+
+            <p>
+                Named semantic types retain their identity. For example, <code>Speed</code> and <code>Distance</code>
+                do not become compatible merely because both use the same underlying numeric representation.
+            </p>
+        </div>
+
+        <div class="section" id="terminating-branches">
+            <h2>Terminating Branches</h2>
+
+            <p>
+                A branch that returns, propagates an error or otherwise terminates does not have to produce the
+                value of an expression match.
+            </p>
+
+            <pre><code>let value := match result {
+    Ok(value) =&gt; value
+    Err(error) =&gt; return Handle(error)
+}</code></pre>
+
+            <p>
+                Only the <code>Ok</code> branch contributes to the match result. The <code>Err</code> branch exits the
+                surrounding function.
+            </p>
+        </div>
+
+        <div class="section" id="return-analysis">
+            <h2>Return Analysis</h2>
+
+            <p>
+                An exhaustive statement match participates in function return analysis.
+            </p>
+
+            <pre><code>fn Convert(result: Result[int, IOError]) int {
+    match result {
+        Ok(value) =&gt; {
+            return value
+        }
+
+        Err(error) =&gt; {
+            return 0
+        }
+    }
+}</code></pre>
+
+            <p>
+                The function is valid because the match is exhaustive and every branch returns.
+            </p>
+
+            <pre><code>fn Convert(result: Result[int, IOError]) int {
+    match result {
+        Ok(value) =&gt; {
+            return value
+        }
+
+        Err(error) =&gt; {
+            Log(error)
+        }
+    }
+} // Error: the function may reach its end without returning int.</code></pre>
+        </div>
+
+        <div class="section" id="definite-assignment">
+            <h2>Definite Assignment</h2>
+
+            <p>
+                An exhaustive match may establish that a mutable variable has been assigned before later use.
+            </p>
+
+            <pre><code>fn Convert(option: Option[int]) int {
+    let mut result: int
+
+    match option {
+        Some(value) =&gt; {
+            result = value
+        }
+
+        None =&gt; {
+            result = 0
+        }
+    }
+
+    return result
+}</code></pre>
+
+            <p>
+                Every continuing branch assigns <code>result</code>, so it is definitely initialized after the
+                match.
+            </p>
+
+            <p>Branches that terminate do not need to assign it:</p>
+
+            <pre><code>fn Convert(result: Result[int, IOError]) int {
+    let mut value: int
+
+    match result {
+        Ok(resultValue) =&gt; {
+            value = resultValue
+        }
+
+        Err(error) =&gt; {
+            return 0
+        }
+    }
+
+    return value
+}</code></pre>
+        </div>
+
+        <div class="section" id="duplicates-and-reachability">
+            <h2>Duplicate and Unreachable Branches</h2>
+
+            <p>Duplicate unguarded patterns are invalid:</p>
+
+            <pre><code>match option {
+    None =&gt; A()
+    None =&gt; B()
+    Some(value) =&gt; C(value)
+} // Error: duplicate match pattern None.</code></pre>
+
+            <p>
+                A branch fully covered by an earlier unguarded branch is unreachable.
+            </p>
+
+            <pre><code>match option {
+    Some(value) =&gt; A(value)
+    Some(value) where value &gt; 10 =&gt; B(value)
+    None =&gt; C()
+} // Error: Some is already fully covered.</code></pre>
+
+            <p>The correct order places guarded special cases first:</p>
+
+            <pre><code>match option {
+    Some(value) where value &gt; 10 =&gt; B(value)
+    Some(value) =&gt; A(value)
+    None =&gt; C()
+}</code></pre>
+        </div>
+
+        <div class="section" id="no-fallthrough">
+            <h2>No Fallthrough</h2>
+
+            <p>
+                Match branches never fall through into later branches. There is no <code>fallthrough</code>
+                statement for match.
+            </p>
+
+            <pre><code>match result {
+    Ok(value) =&gt; {
+        Process(value)
+        fallthrough
+    }
+
+    Err(error) =&gt; Handle(error)
+} // Error: fallthrough is not valid in match.</code></pre>
+
+            <p>
+                A branch ends naturally when its expression or block completes. <code>break</code> does not end a
+                match branch; it remains loop control.
+            </p>
+
+            <p>
+                <code>continue</code> may appear inside a match branch when the match itself is inside a loop. It
+                affects the nearest enclosing loop.
+            </p>
+
+            <pre><code>for result in results {
+    match result {
+        Ok(value) =&gt; Process(value)
+        Err(error) =&gt; continue
+    }
+}</code></pre>
+        </div>
+
+        <div class="section" id="ownership">
+            <h2>Ownership and Borrowing</h2>
+
+            <p>
+                Pattern bindings follow the normal Sec ownership and borrowing rules. Matching must not silently
+                clone, allocate or copy values that are not normally copyable.
+            </p>
+
+            <p>
+                Copyable enum values and copyable union payloads may be bound by value. Non-copyable payloads must
+                eventually be rejected or bound through explicit borrowing rules once the ownership model for such
+                patterns is finalized.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> <code>match</code> never introduces hidden cloning or allocation.
+            </div>
+        </div>
+
+        <div class="section" id="match-switch-if">
+            <h2>match, switch and if</h2>
+
+            <h3>Use if for one boolean decision</h3>
+
+            <pre><code>if rawResult &lt; 0 {
+    return Err(_decodeError(-rawResult))
+}</code></pre>
+
+            <h3>Use switch for values, ranges and relations</h3>
+
+            <pre><code>switch statusCode {
+case 200:
+    Success()
+
+case 400..&lt;500:
+    ClientError()
+
+default:
+    Other()
+}</code></pre>
+
+            <h3>Use match for variants and payloads</h3>
+
+            <pre><code>match result {
+    Ok(value) =&gt; Success(value)
+    Err(error) =&gt; Failure(error)
+}</code></pre>
+
+            <p>
+                Literal and range matching belongs primarily to <code>switch</code>. Variant inspection and
+                exhaustive payload handling belongs to <code>match</code>.
+            </p>
+        </div>
+
+        <div class="section" id="not-supported">
+            <h2>Not Supported Initially</h2>
+
+            <p>The initial match design does not include:</p>
+
+            <ul>
+                <li>pattern alternatives such as <code>A | B</code>,</li>
+                <li>literal and range patterns as a replacement for <code>switch</code>,</li>
+                <li>runtime type patterns,</li>
+                <li>direct struct-field destructuring,</li>
+                <li>nested patterns such as <code>Some(Ok(value))</code>,</li>
+                <li>or hidden copying of non-copyable payloads.</li>
+            </ul>
+
+            <p>Write separate branches instead of pattern alternatives:</p>
+
+            <pre><code>match direction {
+    Direction.north =&gt; Vertical()
+    Direction.south =&gt; Vertical()
+    Direction.east =&gt; Horizontal()
+    Direction.west =&gt; Horizontal()
+}</code></pre>
+
+            <p>Use a nested match instead of a nested pattern:</p>
+
+            <pre><code>match option {
+    Some(result) =&gt; {
+        match result {
+            Ok(value) =&gt; Process(value)
+            Err(error) =&gt; Handle(error)
+        }
+    }
+
+    None =&gt; Missing()
+}</code></pre>
+        </div>
+
+        <div class="section" id="common-errors">
+            <h2>Common Errors</h2>
+
+            <h3>Missing a variant</h3>
+
+            <pre><code>match result {
+    Ok(value) =&gt; Process(value)
+}</code></pre>
+
+            <p>Result matches must explicitly handle <code>Err</code>.</p>
+
+            <h3>Using a non-boolean guard</h3>
+
+            <pre><code>match option {
+    Some(value) where value =&gt; Process(value)
+    None =&gt; Missing()
+}</code></pre>
+
+            <p>A guard must produce <code>bool</code>.</p>
+
+            <h3>Putting a branch after catch-all</h3>
+
+            <pre><code>match direction {
+    _ =&gt; Other()
+    Direction.north =&gt; North()
+}</code></pre>
+
+            <p>Every branch after an unguarded catch-all is unreachable.</p>
+
+            <h3>Mixing incompatible expression types</h3>
+
+            <pre><code>let value := match option {
+    Some(number) =&gt; number
+    None =&gt; "missing"
+}</code></pre>
+
+            <p>All continuing branches of an expression match must produce compatible types.</p>
+
+            <h3>Using switch syntax inside match</h3>
+
+            <pre><code>match result {
+case Ok(value):
+    Process(value)
+}</code></pre>
+
+            <p>Match branches use patterns followed by <code>=&gt;</code>, not <code>case</code> and a colon.</p>
+        </div>
+
+        <div class="section" id="summary-rules">
+            <h2>Summary of Rules</h2>
+
+            <ul>
+                <li><code>match</code> inspects variants, finite values and variant payloads.</li>
+                <li>The subject expression is evaluated exactly once.</li>
+                <li>Branches are considered from top to bottom.</li>
+                <li>The first matching pattern with a true guard executes.</li>
+                <li>Exactly one branch executes.</li>
+                <li>A match must be exhaustive.</li>
+                <li><code>Result</code> errors may not be hidden by a catch-all pattern.</li>
+                <li>Payload bindings are immutable and local to their branch.</li>
+                <li>Normal Sec no-shadowing rules apply.</li>
+                <li>Guards use <code>where</code> and must produce <code>bool</code>.</li>
+                <li>A guarded pattern does not fully cover its variant.</li>
+                <li>Duplicate and unreachable branches are compile-time errors.</li>
+                <li>There is no implicit or explicit fallthrough between match branches.</li>
+                <li><code>match</code> may be used as a statement or as an expression.</li>
+                <li>Expression branches must produce compatible result types.</li>
+                <li>Terminating branches do not need to produce an expression value.</li>
+                <li>Literal and range comparisons belong primarily to <code>switch</code>.</li>
+                <li>Matching follows normal ownership and borrowing rules.</li>
+                <li>Matching does not introduce hidden copying, cloning or allocation.</li>
+            </ul>
+        </div>
+
+        <div class="page-navigation">
+            <a href="08-switch.html">Previous: Switch Statements</a>
+            <a href="index.html">Manual Index</a>
+        </div>
+    </main>
+</div>
+</body>
+</html>

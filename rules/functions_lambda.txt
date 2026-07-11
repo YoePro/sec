@@ -1,0 +1,2017 @@
+Implement lambda functions.
+
+Purpose:
+
+A lambda is an anonymous function value.
+
+Lambdas use the same parameter, return, expression and call rules as named
+functions.
+
+A lambda may:
+
+* be assigned to a variable
+* be passed as a function argument
+* be returned from a function
+* be called through a function value
+* explicitly capture values from an enclosing scope
+
+Lambdas do not introduce a separate arrow-only function language.
+
+The fn keyword identifies both:
+
+* named function declarations
+* anonymous function expressions
+
+Basic syntax:
+
+```
+fn(parameter: Type) ReturnType {
+    statements
+}
+```
+
+Example:
+
+```
+let double := fn(value: int) int {
+    return value * 2
+}
+```
+
+Calling a lambda:
+
+```
+let double := fn(value: int) int {
+    return value * 2
+}
+
+let result := double(10)
+```
+
+Multiple parameters:
+
+```
+let add := fn(a: int, b: int) int {
+    return a + b
+}
+
+let result := add(10, 20)
+```
+
+No parameters:
+
+```
+let ready := fn() bool {
+    return true
+}
+
+if ready() {
+    Start()
+}
+```
+
+void lambda:
+
+```
+let notify := fn(message: string) void {
+    Print(message)
+}
+
+notify("done")
+```
+
+Syntax relationship to named functions:
+
+Named function:
+
+```
+fn Add(a: int, b: int) int {
+    return a + b
+}
+```
+
+Anonymous function:
+
+```
+fn(a: int, b: int) int {
+    return a + b
+}
+```
+
+The only syntactic difference is that the anonymous function has no name.
+
+Parameter syntax:
+
+Lambda parameters follow normal function parameter syntax.
+
+```
+name: Type
+```
+
+Parameters are comma-separated.
+
+A trailing comma is allowed.
+
+Example:
+
+```
+let compare := fn(
+    left: int,
+    right: int,
+) bool {
+    return left < right
+}
+```
+
+Parameter rules:
+
+* Parameter types are required in the initial implementation.
+* Parameters are immutable bindings.
+* Duplicate parameter names are invalid.
+* Normal no-shadowing rules apply.
+* Parameter types must resolve to known types.
+* Parameter names exist only inside the lambda body.
+
+Invalid duplicate parameter:
+
+```
+let invalid := fn(value: int, value: int) int {
+    return value
+}
+```
+
+Diagnostic:
+
+```
+duplicate parameter "value"
+```
+
+Return type:
+
+The return type is required in the initial implementation.
+
+Use void when the lambda produces no value.
+
+Valid:
+
+```
+let identity := fn(value: int) int {
+    return value
+}
+```
+
+Valid:
+
+```
+let consume := fn(value: int) void {
+    Process(value)
+    return
+}
+```
+
+Invalid:
+
+```
+let identity := fn(value: int) {
+    return value
+}
+```
+
+Diagnostic:
+
+```
+lambda return type is required
+```
+
+Return checking:
+
+Lambda return checking follows normal function return checking.
+
+A non-void lambda must return its declared type on every continuing path.
+
+Invalid:
+
+```
+let invalid := fn() int {
+}
+```
+
+Diagnostic:
+
+```
+lambda must return int
+```
+
+Invalid return type:
+
+```
+let invalid := fn() int {
+    return true
+}
+```
+
+Diagnostic:
+
+```
+lambda must return int, got bool
+```
+
+Void return:
+
+A void lambda may use:
+
+```
+return
+```
+
+without an expression.
+
+A void lambda may not return a value.
+
+Invalid:
+
+```
+let invalid := fn() void {
+    return 10
+}
+```
+
+Expression body shorthand:
+
+The initial implementation does not introduce a separate expression-body
+syntax.
+
+Not supported initially:
+
+```
+fn(value: int) int => value * 2
+```
+
+Not supported initially:
+
+```
+value => value * 2
+```
+
+Use a normal function body:
+
+```
+fn(value: int) int {
+    return value * 2
+}
+```
+
+This keeps named functions and anonymous functions structurally identical.
+
+Function types:
+
+A lambda has a statically known function type.
+
+Function type syntax:
+
+```
+fn(ParameterType, ParameterType) ReturnType
+```
+
+Examples:
+
+```
+fn(int) int
+
+fn(int, int) bool
+
+fn(string) void
+
+fn() bool
+```
+
+A function type contains:
+
+* parameter types in declaration order
+* return type
+
+Parameter names are not part of the function type.
+
+Example declaration:
+
+```
+let operation: fn(int, int) int := fn(a: int, b: int) int {
+    return a + b
+}
+```
+
+Function type identity:
+
+Two function types are identical when:
+
+* they have the same number of parameters
+* corresponding parameter types are identical
+* their return types are identical
+
+Parameter names do not affect compatibility.
+
+These have the same function type:
+
+```
+fn(left: int, right: int) bool
+
+fn(a: int, b: int) bool
+```
+
+Return type is part of the function type.
+
+These are different function types:
+
+```
+fn(int) int
+
+fn(int) bool
+```
+
+Function value assignment:
+
+A lambda may be assigned when its complete function type is assignable to the
+target function type.
+
+Valid:
+
+```
+let predicate: fn(int) bool := fn(value: int) bool {
+    return value > 0
+}
+```
+
+Invalid parameter type:
+
+```
+let predicate: fn(int) bool := fn(value: string) bool {
+    return value != ""
+}
+```
+
+Diagnostic:
+
+```
+cannot assign fn(string) bool to fn(int) bool
+```
+
+Invalid return type:
+
+```
+let predicate: fn(int) bool := fn(value: int) int {
+    return value
+}
+```
+
+Diagnostic:
+
+```
+cannot assign fn(int) int to fn(int) bool
+```
+
+Type inference:
+
+When no explicit variable type is provided, the lambda type is inferred from its
+declared parameters and return type.
+
+Example:
+
+```
+let predicate := fn(value: int) bool {
+    return value > 0
+}
+```
+
+predicate has type:
+
+```
+fn(int) bool
+```
+
+No contextual parameter inference:
+
+The initial implementation does not infer omitted lambda parameter types from
+the target function type.
+
+Not supported initially:
+
+```
+let predicate: fn(int) bool := fn(value) bool {
+    return value > 0
+}
+```
+
+Write:
+
+```
+let predicate: fn(int) bool := fn(value: int) bool {
+    return value > 0
+}
+```
+
+This keeps lambda declarations self-contained and avoids context-dependent
+parsing and diagnostics.
+
+Function values:
+
+Named functions may be used as function values when their overload can be
+resolved from context.
+
+Example:
+
+```
+fn IsPositive(value: int) bool {
+    return value > 0
+}
+
+let predicate: fn(int) bool := IsPositive
+```
+
+An overloaded function name requires sufficient target type context.
+
+Example:
+
+```
+fn Convert(value: int) string {
+    ...
+}
+
+fn Convert(value: string) int {
+    ...
+}
+
+let converter: fn(int) string := Convert
+```
+
+The target function type selects the overload by parameter signature.
+
+Normal overload rules still apply.
+
+Return type alone must not distinguish overload declarations.
+
+Ambiguous named function value:
+
+When no target type exists and a function name has multiple overloads, using the
+name as a value is ambiguous.
+
+Invalid:
+
+```
+let converter := Convert
+```
+
+when Convert is overloaded.
+
+Diagnostic:
+
+```
+ambiguous function value Convert; explicit function type required
+```
+
+Calling function values:
+
+Any expression with a function type may be called.
+
+Examples:
+
+```
+operation(1, 2)
+
+callbacks[index](value)
+
+GetHandler()(event)
+```
+
+Call validation:
+
+Calling a function value follows normal function-call rules.
+
+* Argument count must match.
+* Argument types must be assignable to parameter types.
+* The expression type is the function return type.
+* void calls cannot be used as values.
+
+Invalid argument count:
+
+```
+let operation := fn(a: int, b: int) int {
+    return a + b
+}
+
+operation(1)
+```
+
+Diagnostic:
+
+```
+function value expects 2 arguments, got 1
+```
+
+Invalid argument type:
+
+```
+let operation := fn(value: int) int {
+    return value
+}
+
+operation("one")
+```
+
+Diagnostic:
+
+```
+argument 1 must be int, got string
+```
+
+Functions accepting lambdas:
+
+Named functions may accept function values as parameters.
+
+Example:
+
+```
+fn Apply(value: int, operation: fn(int) int) int {
+    return operation(value)
+}
+
+fn main() int {
+    return Apply(
+        10,
+        fn(value: int) int {
+            return value * 2
+        },
+    )
+}
+```
+
+Functions returning lambdas:
+
+A function may return a function value.
+
+Example without capture:
+
+```
+fn SelectOperation(add: bool) fn(int, int) int {
+    if add {
+        return fn(a: int, b: int) int {
+            return a + b
+        }
+    }
+
+    return fn(a: int, b: int) int {
+        return a - b
+    }
+}
+```
+
+Returned lambda type:
+
+Every returned lambda must be assignable to the declared function return type.
+
+Invalid:
+
+```
+fn Invalid() fn(int) int {
+    return fn(value: string) int {
+        return 0
+    }
+}
+```
+
+Non-capturing lambdas:
+
+A lambda that references only:
+
+* its parameters
+* its local declarations
+* constants
+* module symbols
+* imported symbols
+* named functions
+
+is non-capturing.
+
+Example:
+
+```
+let double := fn(value: int) int {
+    return value * 2
+}
+```
+
+Implementation:
+
+A non-capturing lambda may be lowered to an internal anonymous function.
+
+Conceptually:
+
+```
+fn(value: int) int {
+    return value * 2
+}
+```
+
+may become:
+
+```
+fn __lambda_0(value: int) int {
+    return value * 2
+}
+```
+
+The generated internal name is not visible to Sec source code.
+
+Non-capturing representation:
+
+A non-capturing lambda should not require heap allocation.
+
+It may be represented as:
+
+* a direct function pointer
+* an internal callable symbol
+* another equivalent zero-allocation callable representation
+
+Outer local access:
+
+A lambda may not implicitly access local variables from an enclosing function.
+
+Invalid:
+
+```
+fn CreateMultiplier(factor: int) fn(int) int {
+    return fn(value: int) int {
+        return value * factor
+    }
+}
+```
+
+factor belongs to the enclosing function and was not explicitly captured.
+
+Diagnostic:
+
+```
+lambda cannot access outer variable factor without explicit capture
+```
+
+Module symbols:
+
+Module-level constants and functions do not require capture.
+
+Example:
+
+```
+const Factor: int := 10
+
+fn Multiply(value: int) int {
+    return value * Factor
+}
+
+let operation := fn(value: int) int {
+    return Multiply(value)
+}
+```
+
+Factor and Multiply are resolved as module symbols, not local captures.
+
+Explicit capture:
+
+A lambda captures enclosing local values using a capture clause.
+
+Syntax:
+
+```
+capture(value, otherValue) fn(parameters) ReturnType {
+    statements
+}
+```
+
+Example:
+
+```
+fn CreateMultiplier(factor: int) fn(int) int {
+    return capture(factor) fn(value: int) int {
+        return value * factor
+    }
+}
+```
+
+Capture placement:
+
+The capture clause appears immediately before fn.
+
+Valid:
+
+```
+capture(factor) fn(value: int) int {
+    return value * factor
+}
+```
+
+Invalid:
+
+```
+fn capture(factor)(value: int) int {
+    return value * factor
+}
+```
+
+Capture list:
+
+Capture entries are comma-separated.
+
+A trailing comma is allowed.
+
+Example:
+
+```
+capture(
+    minimum,
+    maximum,
+) fn(value: int) bool {
+    return value in minimum..maximum
+}
+```
+
+Empty capture:
+
+An empty capture clause is legal but redundant.
+
+```
+capture() fn(value: int) int {
+    return value
+}
+```
+
+The formatter may remove an empty capture clause.
+
+Capture by value:
+
+A plain capture entry captures the value at the time the lambda is created.
+
+Example:
+
+```
+let mut factor: int := 2
+
+let multiply := capture(factor) fn(value: int) int {
+    return value * factor
+}
+
+factor = 4
+
+let result := multiply(10)
+```
+
+result is 20 because the lambda captured the value 2.
+
+Captured bindings:
+
+Captured-by-value bindings are immutable inside the lambda.
+
+Invalid:
+
+```
+let mut factor: int := 2
+
+let operation := capture(factor) fn() void {
+    factor = 4
+}
+```
+
+Diagnostic:
+
+```
+captured value factor is immutable
+```
+
+Capture source:
+
+A captured name must resolve to a visible local binding in an enclosing scope.
+
+Invalid:
+
+```
+let operation := capture(missing) fn() void {
+}
+```
+
+Diagnostic:
+
+```
+undefined capture missing
+```
+
+Unused captures:
+
+A captured value that is not used follows the normal unused-symbol policy.
+
+The compiler may warn:
+
+```
+captured value factor is never used
+```
+
+Duplicate captures:
+
+A value may appear only once in a capture list.
+
+Invalid:
+
+```
+capture(factor, factor) fn(value: int) int {
+    return value * factor
+}
+```
+
+Diagnostic:
+
+```
+duplicate capture factor
+```
+
+Capture and parameters:
+
+A capture name may not conflict with a lambda parameter.
+
+Invalid:
+
+```
+capture(value) fn(value: int) int {
+    return value
+}
+```
+
+Diagnostic:
+
+```
+variable "value" already declared
+```
+
+Capture and local declarations:
+
+Normal no-shadowing rules apply.
+
+Invalid:
+
+```
+capture(factor) fn(value: int) int {
+    let factor: int := 10
+    return value * factor
+}
+```
+
+Capturing immutable values:
+
+Immutable values may be captured by value.
+
+Example:
+
+```
+let factor: int := 2
+
+let multiply := capture(factor) fn(value: int) int {
+    return value * factor
+}
+```
+
+Capturing mutable variables by value:
+
+A mutable outer variable may be captured by value.
+
+The captured binding is a separate immutable value.
+
+Later mutation of the outer variable does not alter the capture.
+
+Mutation inside the lambda is not allowed through that value capture.
+
+Reference capture:
+
+Reference capture is postponed until the reference and borrow rules required by
+closures are fully implemented.
+
+Not supported initially:
+
+```
+capture(ref value) fn() int {
+    return value
+}
+```
+
+Not supported initially:
+
+```
+capture(mut ref value) fn() void {
+    value += 1
+}
+```
+
+Mutable capture:
+
+Mutable captured state is not part of the initial lambda implementation.
+
+Not supported initially:
+
+```
+capture(mut count) fn() int {
+    count += 1
+    return count
+}
+```
+
+Initial captures are immutable value captures only.
+
+Reason:
+
+Mutable and reference captures require complete rules for:
+
+* exclusive access
+* aliasing
+* lifetime validation
+* escaping closures
+* concurrency
+* callable mutability
+* environment ownership
+
+They must not be added as implicit behavior.
+
+Capture lifetime:
+
+Captured values are owned by the lambda environment.
+
+The captured value must be safely movable or copyable into that environment.
+
+A captured value must remain valid for the complete lifetime of the lambda.
+
+Escaping lambda:
+
+A lambda escapes when it may outlive the scope where it was created.
+
+Examples:
+
+* returned from a function
+* stored in a longer-lived value
+* stored in a collection
+* passed to an operation that retains it
+
+Example:
+
+```
+fn CreateOffset(offset: int) fn(int) int {
+    return capture(offset) fn(value: int) int {
+        return value + offset
+    }
+}
+```
+
+This is valid because offset is captured by value and owned by the returned
+lambda.
+
+Non-copyable capture:
+
+A value that cannot be safely moved or copied into a lambda environment may not
+be captured.
+
+Example:
+
+```
+fn Invalid(resource: Resource) fn() void {
+    return capture(resource) fn() void {
+        Use(resource)
+    }
+}
+```
+
+This is valid only if Resource may be moved into the lambda environment and no
+later use violates ownership rules.
+
+The compiler must not silently clone resource.
+
+Use after move:
+
+If capture transfers ownership of a non-copyable value, the outer binding may no
+longer be used afterward.
+
+Example:
+
+```
+let resource := OpenResource()
+
+let closeLater := capture(resource) fn() void {
+    Close(resource)
+}
+
+Use(resource)
+```
+
+Invalid when capture moved resource.
+
+Diagnostic:
+
+```
+use of moved value resource
+```
+
+Copyable captures:
+
+Copyable values may be copied into the lambda environment.
+
+The original outer value remains valid.
+
+Closure terminology:
+
+A non-capturing lambda is an anonymous function value.
+
+A capturing lambda is a closure.
+
+Both use the same lambda syntax.
+
+The capture clause makes closure creation explicit.
+
+Closure allocation:
+
+Creating a capturing lambda must not silently require heap allocation unless the
+lambda escapes and its environment requires longer storage.
+
+The compiler should prefer:
+
+* stack allocation for non-escaping environments
+* static storage when fully constant
+* optimization that removes the environment
+* explicit owned allocation when escape requires it
+
+Initial implementation restriction:
+
+The first implementation may support only:
+
+* non-capturing lambdas
+* value captures of copyable types
+* non-escaping capturing lambdas
+
+Escaping captured lambdas may be added after closure environment ownership is
+implemented.
+
+If restricted, the compiler must report a clear error rather than silently
+allocating unsupported storage.
+
+Suggested diagnostic:
+
+```
+escaping captured lambda is not supported yet
+```
+
+Function-value representation:
+
+A function value must support both:
+
+* non-capturing functions
+* capturing lambdas
+
+Conceptually, a general callable value contains:
+
+* code address
+* optional environment address
+
+Conceptual representation:
+
+```
+{
+    function: code pointer
+    environment: optional pointer
+}
+```
+
+This representation is an implementation detail and is not exposed as Sec
+fields.
+
+Call lowering:
+
+A non-capturing callable may invoke its code directly.
+
+A capturing callable passes its environment to the generated lambda body as a
+hidden backend parameter.
+
+Sec source parameters remain unchanged.
+
+Example source:
+
+```
+capture(factor) fn(value: int) int {
+    return value * factor
+}
+```
+
+Conceptual backend function:
+
+```
+lambda(environment, value) -> int
+```
+
+No hidden source parameters:
+
+The closure environment is not visible in:
+
+* the function type
+* parameter count
+* call syntax
+* overload resolution
+
+From Sec source, the type remains:
+
+```
+fn(int) int
+```
+
+Function type and capture:
+
+Capturing and non-capturing lambdas with the same parameter and return types have
+the same source-level function type.
+
+Example:
+
+```
+let plain: fn(int) int := fn(value: int) int {
+    return value * 2
+}
+
+let factor: int := 2
+
+let captured: fn(int) int := capture(factor) fn(value: int) int {
+    return value * factor
+}
+```
+
+Equality:
+
+Function values do not support semantic equality.
+
+Invalid:
+
+```
+if first == second {
+}
+```
+
+Reason:
+
+Function identity and captured environments do not define useful general
+semantic equality.
+
+Ordering:
+
+Function values do not support:
+
+```
+<
+<=
+>
+>=
+```
+
+Function value absence:
+
+A function value is always valid.
+
+There is no null function value.
+
+Optional callable values use:
+
+```
+Option[fn(int) bool]
+```
+
+Overloading lambdas:
+
+Lambdas do not declare overload sets.
+
+Each lambda expression has exactly one function signature.
+
+A variable cannot hold multiple overloads.
+
+Generic lambdas:
+
+Generic lambda parameters are not part of the initial implementation.
+
+Not supported initially:
+
+```
+fn[T](value: T) T {
+    return value
+}
+```
+
+Use a named generic function when generic behavior is required.
+
+Variadic lambdas:
+
+Variadic lambda parameters may be supported only when normal variadic function
+parameters are fully defined and implemented.
+
+The lambda rule does not create separate variadic semantics.
+
+Attributes:
+
+Attributes on lambda expressions are not part of the initial implementation.
+
+Not supported initially:
+
+```
+@inline fn(value: int) int {
+    return value
+}
+```
+
+Attributes remain attached to named declarations unless explicitly extended
+later.
+
+Recursion:
+
+An unnamed lambda cannot directly refer to itself.
+
+Invalid:
+
+```
+let factorial := fn(value: int) int {
+    return value * factorial(value - 1)
+}
+```
+
+factorial is not visible inside its own initializer.
+
+Reason:
+
+The binding is not initialized until the lambda value has been created.
+
+Recursive behavior:
+
+Use a named function for direct recursion.
+
+```
+fn Factorial(value: int) int {
+    if value <= 1 {
+        return 1
+    }
+
+    return value * Factorial(value - 1)
+}
+```
+
+Recursive closure combinators may be investigated later.
+
+Scope:
+
+A lambda body creates a child scope.
+
+The scope contains:
+
+* parameters
+* explicit captures
+* local declarations
+
+It may access:
+
+* module symbols
+* imported symbols
+* visible type declarations
+* constants
+* named functions
+
+It may not implicitly access enclosing local bindings.
+
+return inside lambda:
+
+return exits the lambda, not the enclosing function.
+
+Example:
+
+```
+fn Test() int {
+    let operation := fn(value: int) int {
+        return value * 2
+    }
+
+    return operation(10)
+}
+```
+
+The inner return exits operation.
+
+break and continue:
+
+A lambda creates a function boundary.
+
+break and continue inside a lambda cannot target loops outside the lambda.
+
+Invalid:
+
+```
+for item in items {
+    let operation := fn() void {
+        break
+    }
+}
+```
+
+Diagnostic:
+
+```
+break is only valid inside a loop in the current function
+```
+
+Likewise:
+
+```
+for item in items {
+    let operation := fn() void {
+        continue
+    }
+}
+```
+
+is invalid.
+
+Error handling:
+
+A lambda follows normal Result and try rules.
+
+Example:
+
+```
+let load := fn(path: string) Result[Data, IOError] {
+    let data := try Read(path)
+    return Ok(data)
+}
+```
+
+try propagation:
+
+A try expression inside a lambda propagates through the lambda's declared return
+type, not through the enclosing function.
+
+Valid:
+
+```
+let load := fn(path: string) Result[Data, IOError] {
+    return Ok(try Read(path))
+}
+```
+
+Invalid:
+
+```
+let load := fn(path: string) Data {
+    return try Read(path)
+}
+```
+
+when Read returns Result[Data, IOError].
+
+Lambda overload arguments:
+
+A lambda argument provides its complete function type directly.
+
+Example:
+
+```
+fn Apply(value: int, operation: fn(int) int) int {
+    return operation(value)
+}
+
+let result := Apply(
+    10,
+    fn(value: int) int {
+        return value * 2
+    },
+)
+```
+
+Overload resolution:
+
+When overloaded functions accept different function parameter types, the lambda
+signature may participate in normal overload resolution.
+
+Example:
+
+```
+fn Apply(operation: fn(int) int) int {
+    return operation(10)
+}
+
+fn Apply(operation: fn(string) string) string {
+    return operation("value")
+}
+
+let result := Apply(
+    fn(value: int) int {
+        return value * 2
+    },
+)
+```
+
+The int overload is selected.
+
+No return-context overload selection:
+
+Normal Sec rules still apply:
+
+* parameter types select overloads
+* return type alone never selects an overload
+
+Evaluation:
+
+A lambda expression is evaluated when execution reaches it.
+
+For a non-capturing lambda, evaluation produces the callable value.
+
+For a capturing lambda:
+
+* capture expressions are evaluated from left to right
+* each capture is evaluated exactly once
+* the closure environment is created
+* the callable value is produced
+
+Capture expressions:
+
+The initial syntax captures names, not arbitrary expressions.
+
+Not supported initially:
+
+```
+capture(value + 1) fn() int {
+    ...
+}
+```
+
+Use a named value:
+
+```
+let offset: int := value + 1
+
+let operation := capture(offset) fn() int {
+    return offset
+}
+```
+
+Capture timing:
+
+Capture occurs when the lambda expression is evaluated.
+
+Example:
+
+```
+let mut value: int := 1
+
+let first := capture(value) fn() int {
+    return value
+}
+
+value = 2
+
+let second := capture(value) fn() int {
+    return value
+}
+```
+
+first() returns 1.
+
+second() returns 2.
+
+Lambda declarations in loops:
+
+A lambda created inside a loop is evaluated for every iteration that reaches the
+expression.
+
+Example:
+
+```
+for value in values {
+    let operation := capture(value) fn() int {
+        return value
+    }
+
+    Use(operation)
+}
+```
+
+Each lambda captures the value from its own iteration.
+
+No implicit loop-variable capture:
+
+This is invalid:
+
+```
+for value in values {
+    let operation := fn() int {
+        return value
+    }
+}
+```
+
+value must be explicitly captured.
+
+Mutability of lambda variables:
+
+The binding holding a function value follows normal variable mutability.
+
+Immutable binding:
+
+```
+let operation := fn(value: int) int {
+    return value
+}
+```
+
+operation cannot be reassigned.
+
+Mutable binding:
+
+```
+let mut operation: fn(int) int := fn(value: int) int {
+    return value
+}
+
+operation = fn(value: int) int {
+    return value * 2
+}
+```
+
+Reassignment requires compatible function type.
+
+Function values in structs:
+
+A struct field may use a function type.
+
+Example:
+
+```
+type Handler struct {
+    Callback: fn(Event) void
+}
+```
+
+Construction:
+
+```
+let handler := Handler {
+    Callback: fn(event: Event) void {
+        Process(event)
+    }
+}
+```
+
+Function values in collections:
+
+Function values may be stored in collections when the collection supports their
+type.
+
+Example:
+
+```
+let handlers: Vec[fn(Event) void] := ...
+```
+
+Ownership and copying:
+
+The copy or move behavior of a function value depends on its representation.
+
+Non-capturing function values may normally be copyable.
+
+Capturing closures may own environments and may therefore be movable or
+reference-counted only if explicitly defined.
+
+The compiler must not assume that every closure is trivially copyable.
+
+Initial simplification:
+
+The first implementation may declare all capturing lambda values non-copyable.
+
+They may be moved but not duplicated.
+
+Non-capturing lambda values and named function values may be copyable.
+
+Concurrency:
+
+Captured values must obey normal concurrency rules when lambdas are later passed
+to spawned tasks or threads.
+
+The lambda feature does not implicitly make captured state thread-safe.
+
+Mutable shared capture is not supported by the initial implementation.
+
+Parser:
+
+Add LambdaExpression parsing.
+
+Recognize:
+
+```
+fn(parameters) ReturnType {
+    statements
+}
+```
+
+as a lambda expression when fn is not followed by a function name.
+
+Named declaration:
+
+```
+fn Name(...) ReturnType {
+}
+```
+
+Lambda expression:
+
+```
+fn(...) ReturnType {
+}
+```
+
+Recognize optional capture syntax:
+
+```
+capture(name, name) fn(...) ReturnType {
+    statements
+}
+```
+
+The parser must support lambdas wherever expressions are allowed.
+
+Examples:
+
+```
+let operation := fn(...) ... {
+}
+
+Apply(fn(...) ... {
+})
+
+return fn(...) ... {
+}
+```
+
+The parser must reject:
+
+* missing parameter types
+* missing return type
+* missing body
+* duplicate capture syntax
+* malformed capture lists
+* capture without a following lambda
+* named declarations inside expression position
+
+Suggested AST:
+
+```
+type LambdaExpression struct {
+    Token: Token
+    Captures: []LambdaCapture
+    Parameters: []Parameter
+    ReturnType: *TypeReference
+    Body: *BlockStatement
+}
+
+
+type LambdaCapture struct {
+    Name: *Identifier
+}
+```
+
+Function type AST:
+
+```
+type FunctionTypeReference struct {
+    ParameterTypes: []*TypeReference
+    ReturnType: *TypeReference
+}
+```
+
+Sema:
+
+* Resolve every parameter type.
+* Resolve the return type.
+* Reject duplicate parameters.
+* Create a lambda function scope.
+* Resolve explicit captures from enclosing local scopes.
+* Reject duplicate captures.
+* Reject capture and parameter name conflicts.
+* Add captured bindings to the lambda scope as immutable bindings.
+* Reject implicit access to enclosing local bindings.
+* Permit access to module and imported symbols without capture.
+* Validate the body using normal function-body rules.
+* Validate return statements against the declared return type.
+* Require every continuing path of a non-void lambda to return.
+* Infer the complete function type.
+* Validate assignment to expected function types.
+* Validate function-value calls.
+* Apply normal overload resolution when a lambda is passed as an argument.
+* Track copy, move and ownership behavior for captures.
+* Reject unsupported reference or mutable captures.
+* Reject unsupported escaping closures during the initial implementation.
+* Treat the lambda as a function boundary for return, break, continue and try.
+
+Diagnostics:
+
+Suggested diagnostics:
+
+```
+lambda return type is required
+
+duplicate parameter "value"
+
+lambda must return int
+
+lambda must return int, got bool
+
+cannot assign fn(string) bool to fn(int) bool
+
+function value expects 2 arguments, got 1
+
+argument 1 must be int, got string
+
+lambda cannot access outer variable factor without explicit capture
+
+undefined capture factor
+
+duplicate capture factor
+
+variable "factor" already declared
+
+captured value factor is immutable
+
+reference captures are not supported yet
+
+mutable captures are not supported yet
+
+escaping captured lambda is not supported yet
+
+cannot capture non-movable value resource
+
+use of moved value resource
+
+ambiguous function value Convert; explicit function type required
+
+break is only valid inside a loop in the current function
+
+continue is only valid inside a loop in the current function
+```
+
+Code generation:
+
+Non-capturing lambda:
+
+* generate an internal function
+* use a unique internal symbol
+* emit normal parameters
+* emit the declared return type
+* generate the body using normal function code generation
+* produce a function value referencing the internal function
+
+Suggested generated names:
+
+```
+__sec_lambda_0
+__sec_lambda_1
+```
+
+Generated names must not conflict with source-visible names.
+
+Capturing lambda:
+
+* determine the captured fields
+* generate an internal environment structure
+* evaluate capture values once
+* initialize the environment
+* generate an internal function with a hidden environment parameter
+* load captures from the environment inside the lambda body
+* produce a callable value containing code and environment
+
+Conceptual LLVM representation:
+
+```
+%lambda.type = type {
+    ptr,
+    ptr
+}
+```
+
+where:
+
+* first ptr is the callable code
+* second ptr is the environment
+
+Conceptual environment:
+
+```
+%lambda.env.0 = type {
+    i32
+}
+```
+
+Conceptual internal function:
+
+```
+define i32 @__sec_lambda_0(ptr %environment, i32 %value) {
+    ...
+}
+```
+
+Direct optimization:
+
+When the compiler knows that a callable is non-capturing and its target is
+known, it may generate a direct call.
+
+When the target is a general function value, it generates an indirect call.
+
+Environment allocation:
+
+* non-escaping environments should use stack storage
+* escaping environments require owned storage
+* no hidden heap allocation should be introduced until its ownership model is
+  defined
+* unsupported escaping environments must produce a compile-time error
+
+Tests:
+
+Valid non-capturing lambda:
+
+```
+fn Test() int {
+    let double := fn(value: int) int {
+        return value * 2
+    }
+
+    return double(10)
+}
+```
+
+Valid typed lambda variable:
+
+```
+fn Test() bool {
+    let positive: fn(int) bool := fn(value: int) bool {
+        return value > 0
+    }
+
+    return positive(10)
+}
+```
+
+Valid callback:
+
+```
+fn Apply(value: int, callback: fn(int) int) int {
+    return callback(value)
+}
+
+fn Test() int {
+    return Apply(
+        10,
+        fn(value: int) int {
+            return value * 2
+        },
+    )
+}
+```
+
+Valid value capture:
+
+```
+fn Test(factor: int) int {
+    let multiply := capture(factor) fn(value: int) int {
+        return value * factor
+    }
+
+    return multiply(10)
+}
+```
+
+Invalid implicit capture:
+
+```
+fn Test(factor: int) int {
+    let multiply := fn(value: int) int {
+        return value * factor
+    }
+
+    return multiply(10)
+}
+```
+
+Expected:
+
+```
+lambda cannot access outer variable factor without explicit capture
+```
+
+Invalid return:
+
+```
+fn Test() void {
+    let operation := fn() int {
+        return true
+    }
+}
+```
+
+Expected:
+
+```
+lambda must return int, got bool
+```
+
+Invalid function assignment:
+
+```
+fn Test() void {
+    let operation: fn(int) bool := fn(value: string) bool {
+        return value != ""
+    }
+}
+```
+
+Expected:
+
+```
+cannot assign fn(string) bool to fn(int) bool
+```
+
+Invalid outer-loop break:
+
+```
+fn Test(values: []int) void {
+    for value in values {
+        let operation := fn() void {
+            break
+        }
+    }
+}
+```
+
+Expected:
+
+```
+break is only valid inside a loop in the current function
+```
+
+Initial implementation scope:
+
+Implement first:
+
+* function type syntax
+* non-capturing lambda parsing
+* lambda AST
+* lambda scopes
+* lambda return checking
+* function-value assignment
+* function-value calls
+* lambda arguments
+* named function values where unambiguous
+* code generation as internal anonymous functions
+
+Implement second:
+
+* explicit value capture
+* copyable captured values
+* non-escaping closure environments
+* closure calls
+
+Postpone:
+
+* omitted parameter types
+* expression-body shorthand
+* mutable captures
+* reference captures
+* implicit captures
+* generic lambdas
+* recursive lambdas
+* pattern parameters
+* escaping closure allocation
+* closure equality
+* async lambdas
+* lambda attributes
+
+Design rules:
+
+* A lambda is an anonymous fn.
+* Named and anonymous functions use the same parameter and return syntax.
+* Lambda parameter types are initially explicit.
+* Lambda return type is initially explicit.
+* Lambda parameters are immutable.
+* Function types use fn(ParameterTypes) ReturnType.
+* Lambdas are statically typed.
+* Lambdas may be passed, returned, stored and called as values.
+* Non-capturing lambdas require no environment.
+* Enclosing local variables are never captured implicitly.
+* capture(...) explicitly identifies captured local values.
+* Initial captures are immutable value captures.
+* Mutable and reference captures are postponed.
+* Capture expressions are evaluated exactly once.
+* Capturing and non-capturing lambdas share the same source-level function type.
+* return exits the lambda.
+* A lambda forms a boundary for break, continue and error propagation.
+* Normal no-shadowing rules apply.
+* Normal overload resolution rules apply.
+* Return types never select overload declarations by themselves.
+* No arrow-only lambda syntax is introduced initially.
+* No hidden cloning.
+* No hidden ownership transfer.
+* No hidden heap allocation.

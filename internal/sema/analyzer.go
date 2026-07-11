@@ -15,13 +15,17 @@ type Analyzer struct {
 	functions             map[string][]Function
 	implBlocks            map[string]lexer.Token
 	currentImplTarget     string
+	currentModule         string
 	symbols               map[string]Symbol
 	constInts             map[string]*big.Int
 	assigned              map[string]bool
 	currentFunctionName   string
 	currentFunctionReturn Type
 	inFunctionBody        bool
+	inLambda              bool
+	lambdaOuterSymbols    map[string]Symbol
 	inUnsafe              bool
+	loopDepth             int
 	errors                []Error
 }
 
@@ -39,10 +43,14 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.functions = map[string][]Function{}
 	a.implBlocks = map[string]lexer.Token{}
 	a.currentImplTarget = ""
+	a.currentModule = ""
 	a.currentFunctionName = ""
 	a.currentFunctionReturn = Type{}
 	a.inFunctionBody = false
+	a.inLambda = false
+	a.lambdaOuterSymbols = nil
 	a.inUnsafe = false
+	a.loopDepth = 0
 	a.validateModuleDeclaration(program)
 	a.registerTypeDeclarations(program)
 	a.registerImplTypeDeclarations(program)
@@ -52,22 +60,36 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.registerImplDeclarations(program)
 	a.registerFunctionDeclarations(program)
 
-	for _, stmt := range program.Statements {
+	a.withProgramModules(program, func(stmt ast.Statement) {
 		switch stmt.(type) {
 		case *ast.TypeDeclStatement, *ast.EnumDeclaration, *ast.ImplStatement, *ast.FunctionDeclaration:
-			continue
+			return
 		}
 		if !isAllowedModuleStatement(stmt) {
 			a.addTopLevelStatementError(stmt)
-			continue
+			return
 		}
 		a.analyzeStatement(stmt)
-	}
+	})
 
 	a.analyzeFunctionBodies(program)
 	a.analyzeImplBodies(program)
 
 	return a.errors
+}
+
+func (a *Analyzer) withProgramModules(program *ast.Program, visit func(ast.Statement)) {
+	previous := a.currentModule
+	module := ""
+	for _, stmt := range program.Statements {
+		if moduleStmt, ok := stmt.(*ast.ModuleStatement); ok {
+			module = moduleStmt.Path
+			continue
+		}
+		a.currentModule = module
+		visit(stmt)
+	}
+	a.currentModule = previous
 }
 
 func (a *Analyzer) validateModuleDeclaration(program *ast.Program) {
@@ -111,20 +133,20 @@ func (a *Analyzer) addTopLevelStatementError(stmt ast.Statement) {
 }
 
 func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
-	for _, stmt := range program.Statements {
+	a.withProgramModules(program, func(stmt ast.Statement) {
 		switch stmt := stmt.(type) {
 		case *ast.TypeDeclStatement:
 			if stmt.Name == nil {
-				continue
+				return
 			}
-			a.types[stmt.Name.Value] = Type{Name: stmt.Name.Value, Kind: InvalidType}
+			a.types[stmt.Name.Value] = Type{Name: stmt.Name.Value, Module: a.currentModule, Kind: InvalidType}
 		case *ast.EnumDeclaration:
 			if stmt.Name == nil {
-				continue
+				return
 			}
-			a.types[stmt.Name.Value] = Type{Name: stmt.Name.Value, Kind: InvalidType}
+			a.types[stmt.Name.Value] = Type{Name: stmt.Name.Value, Module: a.currentModule, Kind: InvalidType}
 		}
-	}
+	})
 }
 
 func (a *Analyzer) registerImplTypeDeclarations(program *ast.Program) {
@@ -186,24 +208,24 @@ func implNestedTypeName(member ast.ImplMember) (string, lexer.Token, bool) {
 }
 
 func (a *Analyzer) analyzeTypeDeclarations(program *ast.Program) {
-	for _, stmt := range program.Statements {
+	a.withProgramModules(program, func(stmt ast.Statement) {
 		typeDecl, ok := stmt.(*ast.TypeDeclStatement)
 		if !ok {
-			continue
+			return
 		}
 
 		a.analyzeTypeDeclaration(typeDecl)
-	}
+	})
 }
 
 func (a *Analyzer) analyzeEnumDeclarations(program *ast.Program) {
-	for _, stmt := range program.Statements {
+	a.withProgramModules(program, func(stmt ast.Statement) {
 		enum, ok := stmt.(*ast.EnumDeclaration)
 		if !ok {
-			continue
+			return
 		}
 		a.types[enum.Name.Value] = a.typeFromEnumDeclaration(enum.Name.Value, enum)
-	}
+	})
 }
 
 func (a *Analyzer) analyzeImplTypeDeclarations(program *ast.Program) {
@@ -257,7 +279,11 @@ func (a *Analyzer) analyzeStatement(stmt ast.Statement) {
 			a.analyzeLetStatement(let)
 		}
 	case *ast.AssignmentStatement:
-		a.analyzeAssignmentStatement(stmt)
+		a.analyzeAssignmentStatement(stmt, false)
+	case *ast.TryAssignmentStatement:
+		if stmt.Assignment != nil {
+			a.analyzeAssignmentStatement(stmt.Assignment, true)
+		}
 	case *ast.ExpressionStatement:
 		a.inferExpression(stmt.Expression)
 	case *ast.ReturnStatement:
@@ -266,12 +292,24 @@ func (a *Analyzer) analyzeStatement(stmt ast.Statement) {
 		}
 	case *ast.IfStatement:
 		a.analyzeIfStatement(stmt)
+	case *ast.ForStatement:
+		a.analyzeForStatement(stmt)
+	case *ast.WhileStatement:
+		a.analyzeWhileStatement(stmt)
 	case *ast.SwitchStatement:
 		a.analyzeSwitchStatement(stmt)
 	case *ast.MatchStatement:
 		a.analyzeMatchStatement(stmt)
 	case *ast.FallthroughStatement:
 		a.addErrorAtToken(stmt.Token, "fallthrough is only valid directly inside a switch case")
+	case *ast.BreakStatement:
+		if a.loopDepth == 0 {
+			a.addErrorAtToken(stmt.Token, "break is only valid inside a loop")
+		}
+	case *ast.ContinueStatement:
+		if a.loopDepth == 0 {
+			a.addErrorAtToken(stmt.Token, "continue is only valid inside a loop")
+		}
 	case *ast.UnsafeStatement:
 		a.analyzeUnsafeStatement(stmt)
 	case *ast.AsmStatement:
@@ -307,6 +345,144 @@ func (a *Analyzer) analyzeIfStatement(stmt *ast.IfStatement) {
 		assigned:  before,
 		continues: true,
 	})
+}
+
+func (a *Analyzer) analyzeForStatement(stmt *ast.ForStatement) {
+	previousSymbols := a.symbols
+	previousConstInts := a.constInts
+	previousAssigned := a.assigned
+	previousLoopDepth := a.loopDepth
+
+	a.symbols = copySymbols(previousSymbols)
+	a.constInts = copyConstInts(previousConstInts)
+	a.assigned = copyAssigned(previousAssigned)
+	a.loopDepth++
+
+	if len(stmt.Bindings) > 0 || stmt.Iterable != nil {
+		a.analyzeForIterable(stmt)
+	}
+
+	if stmt.Body != nil {
+		for _, bodyStmt := range stmt.Body.Statements {
+			a.analyzeStatement(bodyStmt)
+		}
+	}
+
+	a.symbols = previousSymbols
+	a.constInts = previousConstInts
+	a.assigned = previousAssigned
+	a.loopDepth = previousLoopDepth
+}
+
+func (a *Analyzer) analyzeWhileStatement(stmt *ast.WhileStatement) {
+	if stmt.Condition != nil {
+		conditionType, _ := a.inferExpression(stmt.Condition)
+		if conditionType.Kind != InvalidType && conditionType.Kind != BoolType {
+			a.addErrorAtToken(expressionToken(stmt.Condition), "while condition must be bool, got %s", typeDisplayName(conditionType))
+		}
+	}
+
+	previousSymbols := a.symbols
+	previousConstInts := a.constInts
+	previousAssigned := a.assigned
+	previousLoopDepth := a.loopDepth
+
+	a.symbols = copySymbols(previousSymbols)
+	a.constInts = copyConstInts(previousConstInts)
+	a.assigned = copyAssigned(previousAssigned)
+	a.loopDepth++
+
+	if stmt.Body != nil {
+		for _, bodyStmt := range stmt.Body.Statements {
+			a.analyzeStatement(bodyStmt)
+		}
+	}
+
+	a.symbols = previousSymbols
+	a.constInts = previousConstInts
+	a.assigned = previousAssigned
+	a.loopDepth = previousLoopDepth
+}
+
+func (a *Analyzer) analyzeForIterable(stmt *ast.ForStatement) {
+	if stmt.Iterable == nil {
+		a.addErrorAtToken(stmt.Token, "for loop requires an iterable expression")
+		return
+	}
+
+	bindingType, ok := a.inferForIterableBindingType(stmt)
+	if !ok {
+		return
+	}
+
+	if len(stmt.Bindings) != 1 {
+		a.addErrorAtToken(stmt.Bindings[0].Token, "sequential iteration requires one loop binding")
+		return
+	}
+
+	binding := stmt.Bindings[0]
+	if binding.Discard {
+		return
+	}
+
+	if a.defineSymbol(binding.Name, bindingType, false, binding.Token) {
+		a.assigned[binding.Name] = true
+	}
+}
+
+func (a *Analyzer) inferForIterableBindingType(stmt *ast.ForStatement) (Type, bool) {
+	switch iterable := stmt.Iterable.(type) {
+	case *ast.RangeExpression:
+		return a.inferForRangeBindingType(iterable)
+	default:
+		iterableType, _ := a.inferExpression(iterable)
+		if iterableType.Kind == InvalidType {
+			return Type{Kind: InvalidType}, false
+		}
+		if iterableType.Kind == StringType {
+			return Type{Name: "rune", Kind: RuneType}, true
+		}
+		a.addErrorAtToken(expressionToken(iterable), "type %s is not iterable", typeDisplayName(iterableType))
+		return Type{Kind: InvalidType}, false
+	}
+}
+
+func (a *Analyzer) inferForRangeBindingType(expr *ast.RangeExpression) (Type, bool) {
+	if expr.Start == nil || expr.End == nil {
+		a.addErrorAtToken(expr.Token, "range used in for loop must be finite")
+		return Type{Kind: InvalidType}, false
+	}
+
+	startType, _ := a.inferExpression(expr.Start)
+	endType, _ := a.inferExpression(expr.End)
+	if startType.Kind == InvalidType || endType.Kind == InvalidType {
+		return Type{Kind: InvalidType}, false
+	}
+
+	if !canCompareEquality(startType, endType) {
+		a.addErrorAtToken(expr.Token, "cannot iterate range with incompatible bounds %s and %s", typeDisplayName(startType), typeDisplayName(endType))
+		return Type{Kind: InvalidType}, false
+	}
+
+	if startType.Kind == DecimalType || endType.Kind == DecimalType {
+		a.addErrorAtToken(expr.Token, "for range iteration does not support decimal")
+		return Type{Kind: InvalidType}, false
+	}
+
+	if startType.Kind == FloatType || endType.Kind == FloatType {
+		a.addErrorAtToken(expr.Token, "for range iteration does not support float")
+		return Type{Kind: InvalidType}, false
+	}
+
+	if !isIntegerType(startType) || !isIntegerType(endType) {
+		a.addErrorAtToken(expr.Token, "type %s is not iterable", typeDisplayName(startType))
+		return Type{Kind: InvalidType}, false
+	}
+
+	if startType.Kind == UintType || endType.Kind == UintType {
+		return Type{Name: "uint", Kind: UintType}, true
+	}
+	return Type{Name: "int", Kind: IntType}, true
 }
 
 type branchAnalysis struct {
@@ -374,6 +550,7 @@ func (a *Analyzer) analyzeSwitchStatement(stmt *ast.SwitchStatement) {
 	}
 
 	tracker := newSwitchCoverageTracker()
+	tracker.subjectType = subjectType
 	clauses := append([]*ast.SwitchCase{}, stmt.Cases...)
 	if stmt.Default != nil {
 		clauses = append(clauses, stmt.Default)
@@ -392,7 +569,7 @@ func (a *Analyzer) analyzeSwitchStatement(stmt *ast.SwitchStatement) {
 		branches = append(branches, a.analyzeSwitchCaseBody(clause.Body))
 	}
 
-	if stmt.Default == nil {
+	if stmt.Default == nil && !tracker.isExhaustive() {
 		branches = append(branches, branchAnalysis{assigned: before, continues: true})
 	}
 	a.assigned = mergeContinuingAssigned(before, branches...)
@@ -438,24 +615,32 @@ func (a *Analyzer) analyzeSwitchCaseItems(clause *ast.SwitchCase, hasSubject boo
 			if valueType.Kind != InvalidType && !canCompareEquality(subjectType, valueType) {
 				a.addErrorAtToken(expressionToken(item.Value), "switch case must be compatible with subject type %s, got %s", typeDisplayName(subjectType), typeDisplayName(valueType))
 			}
+			a.checkSwitchRelationalCoverage(item, tracker)
 		}
 	}
 }
 
 type switchCoverageTracker struct {
-	values map[string]lexer.Token
-	ranges []switchConstRange
+	subjectType Type
+	values      map[string]lexer.Token
+	ranges      []switchConstRange
+	boolValues  map[bool]lexer.Token
 }
 
 type switchConstRange struct {
 	min          *big.Int
+	minExclusive bool
 	max          *big.Int
 	maxExclusive bool
 	token        lexer.Token
+	relational   bool
 }
 
 func newSwitchCoverageTracker() *switchCoverageTracker {
-	return &switchCoverageTracker{values: map[string]lexer.Token{}}
+	return &switchCoverageTracker{
+		values:     map[string]lexer.Token{},
+		boolValues: map[bool]lexer.Token{},
+	}
 }
 
 func (a *Analyzer) analyzeSwitchRangeCase(item *ast.SwitchRangeCase, subjectType Type) {
@@ -484,6 +669,14 @@ func (a *Analyzer) checkSwitchValueCoverage(expr ast.Expression, tracker *switch
 	if tracker == nil {
 		return
 	}
+	if literal, ok := expr.(*ast.BooleanLiteral); ok && tracker.subjectType.Kind == BoolType {
+		if _, exists := tracker.boolValues[literal.Value]; exists {
+			a.addErrorAtToken(expressionToken(expr), "duplicate switch case value %t", literal.Value)
+			return
+		}
+		tracker.boolValues[literal.Value] = expressionToken(expr)
+		return
+	}
 	value, ok := constantIntegerValue(expr)
 	if !ok {
 		return
@@ -502,6 +695,10 @@ func (a *Analyzer) checkSwitchValueCoverage(expr ast.Expression, tracker *switch
 	tracker.values[key] = expressionToken(expr)
 }
 
+func (t *switchCoverageTracker) isExhaustive() bool {
+	return t != nil && t.subjectType.Kind == BoolType && len(t.boolValues) == 2
+}
+
 func (a *Analyzer) checkSwitchRangeCoverage(expr *ast.RangeExpression, tracker *switchCoverageTracker) {
 	if tracker == nil || expr == nil {
 		return
@@ -512,7 +709,7 @@ func (a *Analyzer) checkSwitchRangeCoverage(expr *ast.RangeExpression, tracker *
 	}
 	for _, previous := range tracker.ranges {
 		if current.overlaps(previous) {
-			a.addErrorAtToken(expr.Token, "switch case range overlaps previous case")
+			a.addErrorAtToken(expr.Token, "%s", switchCoverageOverlapMessage(current, previous))
 			return
 		}
 	}
@@ -524,6 +721,37 @@ func (a *Analyzer) checkSwitchRangeCoverage(expr *ast.RangeExpression, tracker *
 		}
 	}
 	tracker.ranges = append(tracker.ranges, current)
+}
+
+func (a *Analyzer) checkSwitchRelationalCoverage(item *ast.SwitchRelationalCase, tracker *switchCoverageTracker) {
+	if tracker == nil || item == nil {
+		return
+	}
+	current, ok := switchConstRangeFromRelationalCase(item)
+	if !ok {
+		return
+	}
+	for _, previous := range tracker.ranges {
+		if current.overlaps(previous) {
+			a.addErrorAtToken(item.Token, "%s", switchCoverageOverlapMessage(current, previous))
+			return
+		}
+	}
+	for key := range tracker.values {
+		value, ok := new(big.Int).SetString(key, 10)
+		if ok && current.contains(value) {
+			a.addErrorAtToken(item.Token, "unreachable switch case; previous case already covers this condition")
+			return
+		}
+	}
+	tracker.ranges = append(tracker.ranges, current)
+}
+
+func switchCoverageOverlapMessage(current switchConstRange, previous switchConstRange) string {
+	if current.relational || previous.relational {
+		return "unreachable switch case; previous case already covers this condition"
+	}
+	return "switch case range overlaps previous case"
 }
 
 func switchConstRangeFromExpression(expr *ast.RangeExpression) (switchConstRange, bool) {
@@ -545,9 +773,35 @@ func switchConstRangeFromExpression(expr *ast.RangeExpression) (switchConstRange
 	return out, true
 }
 
+func switchConstRangeFromRelationalCase(item *ast.SwitchRelationalCase) (switchConstRange, bool) {
+	value, ok := constantIntegerValue(item.Value)
+	if !ok {
+		return switchConstRange{}, false
+	}
+	out := switchConstRange{token: item.Token, relational: true}
+	switch item.Operator {
+	case "<":
+		out.max = value
+		out.maxExclusive = true
+	case "<=":
+		out.max = value
+	case ">":
+		out.min = value
+		out.minExclusive = true
+	case ">=":
+		out.min = value
+	default:
+		return switchConstRange{}, false
+	}
+	return out, true
+}
+
 func (r switchConstRange) contains(value *big.Int) bool {
-	if r.min != nil && value.Cmp(r.min) < 0 {
-		return false
+	if r.min != nil {
+		cmp := value.Cmp(r.min)
+		if cmp < 0 || (cmp == 0 && r.minExclusive) {
+			return false
+		}
 	}
 	if r.max != nil {
 		cmp := value.Cmp(r.max)
@@ -561,13 +815,13 @@ func (r switchConstRange) contains(value *big.Int) bool {
 func (r switchConstRange) overlaps(other switchConstRange) bool {
 	if r.max != nil && other.min != nil {
 		cmp := r.max.Cmp(other.min)
-		if cmp < 0 || (cmp == 0 && r.maxExclusive) {
+		if cmp < 0 || (cmp == 0 && (r.maxExclusive || other.minExclusive)) {
 			return false
 		}
 	}
 	if other.max != nil && r.min != nil {
 		cmp := other.max.Cmp(r.min)
-		if cmp < 0 || (cmp == 0 && other.maxExclusive) {
+		if cmp < 0 || (cmp == 0 && (other.maxExclusive || r.minExclusive)) {
 			return false
 		}
 	}
@@ -705,20 +959,32 @@ func (a *Analyzer) analyzeAsmBlock(stmt *ast.AsmStatement) {
 	if len(stmt.Block.Outputs) == 0 {
 		a.addErrorAtToken(stmt.Token, "asm block requires at least one output")
 	}
-}
-
-func (a *Analyzer) registerFunctionDeclarations(program *ast.Program) {
-	for _, stmt := range program.Statements {
-		fn, ok := stmt.(*ast.FunctionDeclaration)
-		if !ok {
+	for _, output := range stmt.Block.Outputs {
+		if output.Name == "" {
 			continue
 		}
-		a.registerFunctionDeclaration(fn)
+		outputType := a.currentFunctionReturn
+		if outputType.Kind == InvalidType || outputType.Kind == VoidType {
+			outputType = Type{Name: "int64", Kind: IntType}
+		}
+		if a.defineSymbol(output.Name, outputType, false, stmt.Token) {
+			a.assigned[output.Name] = true
+		}
 	}
 }
 
+func (a *Analyzer) registerFunctionDeclarations(program *ast.Program) {
+	a.withProgramModules(program, func(stmt ast.Statement) {
+		fn, ok := stmt.(*ast.FunctionDeclaration)
+		if !ok {
+			return
+		}
+		a.registerFunctionDeclaration(fn)
+	})
+}
+
 func (a *Analyzer) registerFunctionDeclaration(fn *ast.FunctionDeclaration) {
-	function := Function{Name: fn.Name.Value, Token: fn.Name.Token}
+	function := Function{Name: fn.Name.Value, Module: a.currentModule, Token: fn.Name.Token}
 
 	seenParams := map[string]lexer.Token{}
 	for _, param := range fn.Parameters {
@@ -779,13 +1045,13 @@ func (a *Analyzer) lookupFunctionByToken(name string, token lexer.Token) (Functi
 }
 
 func (a *Analyzer) analyzeFunctionBodies(program *ast.Program) {
-	for _, stmt := range program.Statements {
+	a.withProgramModules(program, func(stmt ast.Statement) {
 		fn, ok := stmt.(*ast.FunctionDeclaration)
 		if !ok {
-			continue
+			return
 		}
 		a.analyzeFunctionBody(fn)
-	}
+	})
 }
 
 func (a *Analyzer) analyzeFunctionBody(fn *ast.FunctionDeclaration) {
@@ -800,12 +1066,16 @@ func (a *Analyzer) analyzeFunctionBody(fn *ast.FunctionDeclaration) {
 	previousFunctionName := a.currentFunctionName
 	previousFunctionReturn := a.currentFunctionReturn
 	previousInFunctionBody := a.inFunctionBody
+	previousUnsafe := a.inUnsafe
 	a.symbols = copySymbols(previousSymbols)
 	a.constInts = copyConstInts(previousConstInts)
 	a.assigned = copyAssigned(previousAssigned)
 	a.currentFunctionName = fn.Name.Value
 	a.currentFunctionReturn = function.ReturnType
 	a.inFunctionBody = true
+	if fn.Unsafe {
+		a.inUnsafe = true
+	}
 	defer func() {
 		a.symbols = previousSymbols
 		a.constInts = previousConstInts
@@ -813,6 +1083,7 @@ func (a *Analyzer) analyzeFunctionBody(fn *ast.FunctionDeclaration) {
 		a.currentFunctionName = previousFunctionName
 		a.currentFunctionReturn = previousFunctionReturn
 		a.inFunctionBody = previousInFunctionBody
+		a.inUnsafe = previousUnsafe
 	}()
 
 	for _, param := range function.Parameters {
@@ -854,6 +1125,10 @@ func statementDefinitelyReturns(stmt ast.Statement) bool {
 		return blockDefinitelyReturns(stmt.Consequence) && blockDefinitelyReturns(stmt.Alternative)
 	case *ast.SwitchStatement:
 		return switchDefinitelyReturns(stmt)
+	case *ast.ForStatement:
+		return len(stmt.Bindings) == 0 && stmt.Iterable == nil && !blockContainsBreak(stmt.Body)
+	case *ast.WhileStatement:
+		return isBoolLiteral(stmt.Condition, true) && !blockContainsBreak(stmt.Body)
 	case *ast.UnsafeStatement:
 		if unsafeAsmReturns(stmt) {
 			return true
@@ -866,8 +1141,49 @@ func statementDefinitelyReturns(stmt ast.Statement) bool {
 	}
 }
 
+func blockContainsBreak(block *ast.BlockStatement) bool {
+	if block == nil {
+		return false
+	}
+	for _, stmt := range block.Statements {
+		if statementContainsBreak(stmt) {
+			return true
+		}
+	}
+	return false
+}
+
+func statementContainsBreak(stmt ast.Statement) bool {
+	switch stmt := stmt.(type) {
+	case *ast.BreakStatement:
+		return true
+	case *ast.IfStatement:
+		return blockContainsBreak(stmt.Consequence) || blockContainsBreak(stmt.Alternative)
+	case *ast.ForStatement:
+		return blockContainsBreak(stmt.Body)
+	case *ast.WhileStatement:
+		return blockContainsBreak(stmt.Body)
+	case *ast.SwitchStatement:
+		for _, clause := range stmt.Cases {
+			if blockContainsBreak(clause.Body) {
+				return true
+			}
+		}
+		return stmt.Default != nil && blockContainsBreak(stmt.Default.Body)
+	case *ast.UnsafeStatement:
+		return blockContainsBreak(stmt.Body)
+	default:
+		return false
+	}
+}
+
+func isBoolLiteral(expr ast.Expression, value bool) bool {
+	lit, ok := expr.(*ast.BooleanLiteral)
+	return ok && lit.Value == value
+}
+
 func switchDefinitelyReturns(stmt *ast.SwitchStatement) bool {
-	if stmt.Default == nil {
+	if stmt.Default == nil && !switchCoversBoolLiterals(stmt) {
 		return false
 	}
 	for _, clause := range stmt.Cases {
@@ -875,12 +1191,36 @@ func switchDefinitelyReturns(stmt *ast.SwitchStatement) bool {
 			return false
 		}
 	}
-	return blockDefinitelyReturns(stmt.Default.Body)
+	return stmt.Default == nil || blockDefinitelyReturns(stmt.Default.Body)
+}
+
+func switchCoversBoolLiterals(stmt *ast.SwitchStatement) bool {
+	if stmt == nil || stmt.Subject == nil {
+		return false
+	}
+	seen := map[bool]bool{}
+	for _, clause := range stmt.Cases {
+		for _, item := range clause.Items {
+			valueCase, ok := item.(*ast.SwitchValueCase)
+			if !ok {
+				continue
+			}
+			literal, ok := valueCase.Value.(*ast.BooleanLiteral)
+			if ok {
+				seen[literal.Value] = true
+			}
+		}
+	}
+	return seen[true] && seen[false]
 }
 
 func (a *Analyzer) analyzeReturnStatement(functionName string, returnType Type, stmt *ast.ReturnStatement) {
 	if stmt.Value == nil {
 		if returnType.Kind != VoidType {
+			if functionName == "lambda" {
+				a.addErrorAtToken(stmt.Token, "lambda must return %s", typeDisplayName(returnType))
+				return
+			}
 			a.addErrorAtToken(stmt.Token, "function %s must return %s", functionName, typeDisplayName(returnType))
 		}
 		return
@@ -897,11 +1237,19 @@ func (a *Analyzer) analyzeReturnStatement(functionName string, returnType Type, 
 	}
 
 	if returnType.Kind == VoidType {
+		if functionName == "lambda" {
+			a.addErrorAtToken(expressionToken(stmt.Value), "lambda must return void, got %s", typeDisplayName(valueType))
+			return
+		}
 		a.addErrorAtToken(expressionToken(stmt.Value), "function %s must return void, got %s", functionName, typeDisplayName(valueType))
 		return
 	}
 
 	if !canInitialize(returnType, valueType, stmt.Value) {
+		if functionName == "lambda" {
+			a.addErrorAtToken(expressionToken(stmt.Value), "lambda must return %s, got %s", typeDisplayName(returnType), typeDisplayName(valueType))
+			return
+		}
 		a.addErrorAtToken(expressionToken(stmt.Value), "function %s must return %s, got %s", functionName, typeDisplayName(returnType), typeDisplayName(valueType))
 	}
 }
@@ -1026,6 +1374,7 @@ func (a *Analyzer) typeFromStructDeclaration(stmt *ast.TypeDeclStatement) Type {
 func (a *Analyzer) typeFromStructDeclarationWithName(name string, stmt *ast.TypeDeclStatement) Type {
 	typ := Type{
 		Name:       name,
+		Module:     a.currentModule,
 		Kind:       StructType,
 		Named:      true,
 		Declared:   true,
@@ -1087,6 +1436,7 @@ func (a *Analyzer) typeFromEnumDeclaration(name string, enum *ast.EnumDeclaratio
 
 	typ := Type{
 		Name:       name,
+		Module:     a.currentModule,
 		Kind:       EnumType,
 		Named:      true,
 		Declared:   true,
@@ -1524,7 +1874,15 @@ func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
 		return
 	}
 
-	exprType, _ := a.inferExpression(stmt.Value)
+	var exprType Type
+	if declaredType.Kind == FunctionType {
+		if fnType, resolved := a.resolveFunctionValueInitializer(declaredType, stmt.Value); resolved {
+			exprType = fnType
+		}
+	}
+	if exprType.Kind == "" {
+		exprType, _ = a.inferExpression(stmt.Value)
+	}
 	if exprType.Kind == InvalidType {
 		return
 	}
@@ -1538,9 +1896,9 @@ func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
 	}
 }
 
-func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement) {
+func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement, allowFallible bool) {
 	if member, ok := stmt.Target.(*ast.MemberExpression); ok {
-		a.analyzeMemberAssignmentStatement(stmt, member)
+		a.analyzeMemberAssignmentStatement(stmt, member, allowFallible)
 		return
 	}
 
@@ -1558,6 +1916,11 @@ func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement) {
 
 	if !symbol.Mutable {
 		a.addErrorAtToken(target.Token, "cannot assign to immutable variable %s", target.Value)
+		return
+	}
+
+	if hasContracts(symbol.Type) && !allowFallible {
+		a.addErrorAtToken(target.Token, "assigning variable %s requires try because %s has contracts", target.Value, typeDisplayName(symbol.Type))
 		return
 	}
 
@@ -1587,13 +1950,13 @@ func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement) {
 	}
 }
 
-func (a *Analyzer) analyzeMemberAssignmentStatement(stmt *ast.AssignmentStatement, member *ast.MemberExpression) {
+func (a *Analyzer) analyzeMemberAssignmentStatement(stmt *ast.AssignmentStatement, member *ast.MemberExpression, allowFallible bool) {
 	targetType, ok := a.inferMemberExpression(member)
 	if !ok {
 		return
 	}
 
-	if property, ok := a.lookupPropertyOnMember(member); ok && property.Fallible {
+	if property, ok := a.lookupPropertyOnMember(member); ok && property.Fallible && !allowFallible {
 		a.addErrorAtToken(member.Property.Token, "assigning fallible property %s requires try", member.Property.Value)
 		return
 	}
@@ -1611,6 +1974,10 @@ func (a *Analyzer) analyzeMemberAssignmentStatement(stmt *ast.AssignmentStatemen
 func (a *Analyzer) resolveType(ref *ast.TypeReference) (Type, bool) {
 	if ref == nil {
 		return Type{Kind: InvalidType}, false
+	}
+
+	if ref.Name == "fn" || ref.FunctionReturnType != nil {
+		return a.resolveFunctionType(ref)
 	}
 
 	if ref.ElementType != nil {
@@ -1633,6 +2000,10 @@ func (a *Analyzer) resolveType(ref *ast.TypeReference) (Type, bool) {
 		a.addErrorAtToken(ref.Token, "unknown type %s", ref.Name)
 		return Type{Kind: InvalidType}, false
 	}
+	if !a.canAccessDeclaredName(typ.Name, typ.Module) {
+		a.addErrorAtToken(ref.Token, "type %s is not accessible from module %s", ref.Name, a.currentModule)
+		return Type{Kind: InvalidType}, false
+	}
 
 	typ.TypeArgs = typeArgs
 	if typ.Kind == ResultType && len(ref.TypeArgs) != 2 {
@@ -1644,6 +2015,39 @@ func (a *Analyzer) resolveType(ref *ast.TypeReference) (Type, bool) {
 	}
 
 	return typ, true
+}
+
+func (a *Analyzer) resolveFunctionType(ref *ast.TypeReference) (Type, bool) {
+	params := make([]Type, 0, len(ref.FunctionParameterTypes))
+	ok := true
+	for _, paramRef := range ref.FunctionParameterTypes {
+		paramType, paramOK := a.resolveType(paramRef)
+		if !paramOK {
+			ok = false
+			continue
+		}
+		params = append(params, paramType)
+	}
+
+	if ref.FunctionReturnType == nil {
+		a.addErrorAtToken(ref.Token, "function type return type is required")
+		return Type{Kind: InvalidType}, false
+	}
+
+	returnType, returnOK := a.resolveType(ref.FunctionReturnType)
+	if !returnOK {
+		ok = false
+	}
+	if !ok {
+		return Type{Kind: InvalidType}, false
+	}
+
+	return Type{
+		Name:                   functionTypeName(params, returnType),
+		Kind:                   FunctionType,
+		FunctionParameterTypes: params,
+		FunctionReturnType:     &returnType,
+	}, true
 }
 
 type expressionValue struct {
@@ -1664,6 +2068,19 @@ func (a *Analyzer) inferExpression(expr ast.Expression) (Type, expressionValue) 
 	case *ast.Identifier:
 		symbol, ok := a.symbols[expr.Value]
 		if !ok {
+			if functions := a.accessibleFunctions(a.functions[expr.Value]); len(functions) > 0 {
+				if len(functions) == 1 {
+					return functionTypeFromFunction(functions[0]), expressionValue{Display: expr.String()}
+				}
+				a.addErrorAtToken(expr.Token, "ambiguous function value %s; explicit function type required", expr.Value)
+				return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+			}
+			if a.inLambda {
+				if _, outer := a.lambdaOuterSymbols[expr.Value]; outer {
+					a.addErrorAtToken(expr.Token, "lambda cannot access outer variable %s without explicit capture", expr.Value)
+					return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+				}
+			}
 			a.addErrorAtToken(expr.Token, "undefined variable %s", expr.Value)
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
@@ -1680,6 +2097,8 @@ func (a *Analyzer) inferExpression(expr ast.Expression) (Type, expressionValue) 
 		return a.inferConversionExpression(expr)
 	case *ast.CallExpression:
 		return a.inferCallExpression(expr)
+	case *ast.LambdaExpression:
+		return a.inferLambdaExpression(expr)
 	case *ast.RuntimeCallExpression:
 		return a.inferRuntimeCallExpression(expr)
 	case *ast.OkExpression:
@@ -1741,6 +2160,111 @@ func (a *Analyzer) inferStructLiteral(expr *ast.StructLiteral) (Type, expression
 	}
 
 	return typ, expressionValue{Display: expr.String()}
+}
+
+func (a *Analyzer) inferLambdaExpression(expr *ast.LambdaExpression) (Type, expressionValue) {
+	if len(expr.Captures) > 0 {
+		a.analyzeUnsupportedCaptures(expr)
+	}
+
+	returnType, ok := a.resolveType(expr.ReturnType)
+	if !ok {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+
+	params := make([]Type, 0, len(expr.Parameters))
+	seenParams := map[string]lexer.Token{}
+	for _, param := range expr.Parameters {
+		if _, exists := seenParams[param.Name.Value]; exists {
+			a.addErrorAtToken(param.Name.Token, "duplicate parameter %q", param.Name.Value)
+			continue
+		}
+		seenParams[param.Name.Value] = param.Name.Token
+
+		paramType, paramOK := a.resolveType(param.Type)
+		if !paramOK {
+			continue
+		}
+		params = append(params, paramType)
+	}
+
+	lambdaType := Type{
+		Name:                   functionTypeName(params, returnType),
+		Kind:                   FunctionType,
+		FunctionParameterTypes: params,
+		FunctionReturnType:     &returnType,
+	}
+	if len(params) != len(expr.Parameters) {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+
+	previousSymbols := a.symbols
+	previousConstInts := a.constInts
+	previousAssigned := a.assigned
+	previousFunctionName := a.currentFunctionName
+	previousFunctionReturn := a.currentFunctionReturn
+	previousInFunctionBody := a.inFunctionBody
+	previousInLambda := a.inLambda
+	previousLambdaOuterSymbols := a.lambdaOuterSymbols
+	previousLoopDepth := a.loopDepth
+
+	a.symbols = map[string]Symbol{}
+	a.constInts = map[string]*big.Int{}
+	a.assigned = map[string]bool{}
+	a.currentFunctionName = "lambda"
+	a.currentFunctionReturn = returnType
+	a.inFunctionBody = true
+	a.inLambda = true
+	a.lambdaOuterSymbols = previousSymbols
+	a.loopDepth = 0
+	defer func() {
+		a.symbols = previousSymbols
+		a.constInts = previousConstInts
+		a.assigned = previousAssigned
+		a.currentFunctionName = previousFunctionName
+		a.currentFunctionReturn = previousFunctionReturn
+		a.inFunctionBody = previousInFunctionBody
+		a.inLambda = previousInLambda
+		a.lambdaOuterSymbols = previousLambdaOuterSymbols
+		a.loopDepth = previousLoopDepth
+	}()
+
+	for i, param := range expr.Parameters {
+		if !a.defineSymbol(param.Name.Value, params[i], false, param.Name.Token) {
+			continue
+		}
+		a.assigned[param.Name.Value] = true
+	}
+
+	for _, stmt := range expr.Body.Statements {
+		a.analyzeStatement(stmt)
+	}
+
+	if !blockDefinitelyReturns(expr.Body) && returnType.Kind != VoidType {
+		a.addErrorAtToken(expr.Token, "lambda must return %s", typeDisplayName(returnType))
+	}
+
+	return lambdaType, expressionValue{Display: expr.String()}
+}
+
+func (a *Analyzer) analyzeUnsupportedCaptures(expr *ast.LambdaExpression) {
+	seen := map[string]lexer.Token{}
+	for _, capture := range expr.Captures {
+		if capture.Name == nil {
+			continue
+		}
+		name := capture.Name.Value
+		if _, exists := seen[name]; exists {
+			a.addErrorAtToken(capture.Name.Token, "duplicate capture %s", name)
+			continue
+		}
+		seen[name] = capture.Name.Token
+		if _, ok := a.symbols[name]; !ok {
+			a.addErrorAtToken(capture.Name.Token, "undefined capture %s", name)
+			continue
+		}
+		a.addErrorAtToken(capture.Name.Token, "capturing lambdas are not supported yet")
+	}
 }
 
 func (a *Analyzer) inferMemberExpression(expr *ast.MemberExpression) (Type, bool) {
@@ -1877,13 +2401,20 @@ func (a *Analyzer) inferConversionExpression(expr *ast.ConversionExpression) (Ty
 func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressionValue) {
 	name := callExpressionName(expr)
 	if name == "" {
-		a.addErrorAtToken(expr.Token, "unsupported call expression")
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		return a.inferFunctionValueCall(expr, Type{Kind: InvalidType})
 	}
 
 	functions, ok := a.functions[name]
 	if !ok || len(functions) == 0 {
+		if symbol, exists := a.symbols[name]; exists && symbol.Type.Kind == FunctionType {
+			return a.inferFunctionValueCall(expr, symbol.Type)
+		}
 		return a.inferCallAsConversion(expr)
+	}
+	functions = a.accessibleFunctions(functions)
+	if len(functions) == 0 {
+		a.addErrorAtToken(expr.Token, "function %s is not accessible from module %s", name, a.currentModule)
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 
 	argTypes := make([]Type, 0, len(expr.Arguments))
@@ -1944,6 +2475,119 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 	}
 
 	return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+}
+
+func (a *Analyzer) inferFunctionValueCall(expr *ast.CallExpression, calleeType Type) (Type, expressionValue) {
+	if calleeType.Kind == InvalidType {
+		calleeType, _ = a.inferExpression(expr.Callee)
+	}
+	if calleeType.Kind == InvalidType {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+	if calleeType.Kind != FunctionType || calleeType.FunctionReturnType == nil {
+		a.addErrorAtToken(expr.Token, "cannot call %s", typeDisplayName(calleeType))
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+
+	if len(calleeType.FunctionParameterTypes) != len(expr.Arguments) {
+		a.addErrorAtToken(expr.Token, "function value expects %d arguments, got %d", len(calleeType.FunctionParameterTypes), len(expr.Arguments))
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+
+	for i, arg := range expr.Arguments {
+		argType, _ := a.inferExpression(arg)
+		if argType.Kind == InvalidType {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
+		expected := calleeType.FunctionParameterTypes[i]
+		if !canInitialize(expected, argType, arg) {
+			a.addErrorAtToken(expressionToken(arg), "argument %d must be %s, got %s", i+1, typeDisplayName(expected), typeDisplayName(argType))
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
+	}
+
+	return *calleeType.FunctionReturnType, expressionValue{Display: expr.String()}
+}
+
+func (a *Analyzer) resolveFunctionValueInitializer(target Type, expr ast.Expression) (Type, bool) {
+	ident, ok := expr.(*ast.Identifier)
+	if !ok {
+		return Type{}, false
+	}
+
+	functions := a.accessibleFunctions(a.functions[ident.Value])
+	if len(functions) == 0 {
+		return Type{}, false
+	}
+
+	matches := []Type{}
+	for _, function := range functions {
+		fnType := functionTypeFromFunction(function)
+		if sameFunctionType(target, fnType) {
+			matches = append(matches, fnType)
+		}
+	}
+
+	if len(matches) == 1 {
+		return matches[0], true
+	}
+	if len(matches) > 1 {
+		a.addErrorAtToken(ident.Token, "ambiguous function value %s; explicit function type required", ident.Value)
+		return Type{Kind: InvalidType}, true
+	}
+
+	return functionTypeFromFunction(functions[0]), true
+}
+
+func functionTypeFromFunction(function Function) Type {
+	params := make([]Type, 0, len(function.Parameters))
+	for _, param := range function.Parameters {
+		params = append(params, param.Type)
+	}
+	return Type{
+		Name:                   functionTypeName(params, function.ReturnType),
+		Kind:                   FunctionType,
+		FunctionParameterTypes: params,
+		FunctionReturnType:     &function.ReturnType,
+	}
+}
+
+func (a *Analyzer) accessibleFunctions(functions []Function) []Function {
+	out := make([]Function, 0, len(functions))
+	for _, function := range functions {
+		if a.canAccessDeclaredName(function.Name, function.Module) {
+			out = append(out, function)
+		}
+	}
+	return out
+}
+
+func (a *Analyzer) canAccessDeclaredName(name string, declarationModule string) bool {
+	base := visibilityBaseName(name)
+	if !strings.HasPrefix(base, "_") {
+		return true
+	}
+	if declarationModule == "" || a.currentModule == "" {
+		return declarationModule == a.currentModule
+	}
+	if strings.HasPrefix(base, "__") {
+		return a.currentModule == declarationModule
+	}
+	return moduleRoot(a.currentModule) == moduleRoot(declarationModule)
+}
+
+func visibilityBaseName(name string) string {
+	if idx := strings.LastIndex(name, "."); idx >= 0 {
+		return name[idx+1:]
+	}
+	return name
+}
+
+func moduleRoot(module string) string {
+	if idx := strings.Index(module, "."); idx >= 0 {
+		return module[:idx]
+	}
+	return module
 }
 
 func callExpressionName(expr *ast.CallExpression) string {
@@ -2233,6 +2877,10 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 	if subjectType.Kind == InvalidType {
 		return Type{Kind: InvalidType}
 	}
+	if len(expr.Arms) == 0 {
+		a.addErrorAtToken(expr.Token, "match requires at least one branch")
+		return Type{Kind: InvalidType}
+	}
 
 	seenKinds := map[string]bool{}
 	seenVariants := map[string]bool{}
@@ -2249,18 +2897,25 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 			a.addErrorAtToken(arm.Token, "unreachable match arm")
 			continue
 		}
-		if info.Kind == "catchall" {
-			catchAll = true
+		guarded := arm.Guard != nil
+		if guarded && matchPatternAlreadyCovered(info, seenKinds, seenVariants) {
+			a.addErrorAtToken(arm.Token, "unreachable match arm")
+			continue
 		}
-		if info.Kind != "" {
-			seenKinds[info.Kind] = true
-		}
-		if info.Variant != "" {
-			if seenVariants[info.Variant] {
-				a.addErrorAtToken(arm.Token, "duplicate match arm for %s.%s", typeDisplayName(subjectType), info.Variant)
-				continue
+		if !guarded {
+			if info.Kind == "catchall" {
+				catchAll = true
 			}
-			seenVariants[info.Variant] = true
+			if info.Kind != "" {
+				seenKinds[info.Kind] = true
+			}
+			if info.Variant != "" {
+				if seenVariants[info.Variant] {
+					a.addErrorAtToken(arm.Token, "duplicate match arm for %s.%s", typeDisplayName(subjectType), info.Variant)
+					continue
+				}
+				seenVariants[info.Variant] = true
+			}
 		}
 
 		armType := a.analyzeMatchArmBody(arm, info)
@@ -2277,6 +2932,9 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 		}
 	}
 
+	if catchAll && subjectType.Kind == ResultType && !seenKinds["Err"] {
+		a.addErrorAtToken(expr.Token, "catch-all pattern may not hide Err")
+	}
 	a.checkMatchExhaustive(expr, subjectType, catchAll, seenKinds, seenVariants)
 
 	if valueContext {
@@ -2290,6 +2948,16 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 	return Type{Name: "void", Kind: VoidType}
 }
 
+func matchPatternAlreadyCovered(info matchPatternInfo, seenKinds map[string]bool, seenVariants map[string]bool) bool {
+	if info.Variant != "" {
+		return seenVariants[info.Variant]
+	}
+	if info.Kind != "" {
+		return seenKinds[info.Kind]
+	}
+	return false
+}
+
 func (a *Analyzer) analyzeMatchPattern(pattern ast.Expression, subjectType Type) (matchPatternInfo, bool) {
 	switch pattern := pattern.(type) {
 	case *ast.OkExpression:
@@ -2299,8 +2967,10 @@ func (a *Analyzer) analyzeMatchPattern(pattern ast.Expression, subjectType Type)
 		}
 		info := matchPatternInfo{Kind: "Ok"}
 		if ident, ok := pattern.Value.(*ast.Identifier); ok {
-			info.BindingName = ident.Value
-			info.BindingType = subjectType.TypeArgs[0]
+			if ident.Value != "_" {
+				info.BindingName = ident.Value
+				info.BindingType = subjectType.TypeArgs[0]
+			}
 		}
 		return info, true
 	case *ast.ErrExpression:
@@ -2310,8 +2980,10 @@ func (a *Analyzer) analyzeMatchPattern(pattern ast.Expression, subjectType Type)
 		}
 		info := matchPatternInfo{Kind: "Err"}
 		if ident, ok := pattern.Value.(*ast.Identifier); ok {
-			info.BindingName = ident.Value
-			info.BindingType = subjectType.TypeArgs[1]
+			if ident.Value != "_" {
+				info.BindingName = ident.Value
+				info.BindingType = subjectType.TypeArgs[1]
+			}
 		}
 		return info, true
 	case *ast.MemberExpression:
@@ -2352,6 +3024,13 @@ func (a *Analyzer) analyzeMatchArmBody(arm *ast.MatchArm, info matchPatternInfo)
 		a.symbols = previousSymbols
 		a.constInts = previousConstInts
 	}()
+
+	if arm.Guard != nil {
+		guardType, _ := a.inferExpression(arm.Guard)
+		if guardType.Kind != InvalidType && guardType.Kind != BoolType {
+			a.addErrorAtToken(expressionToken(arm.Guard), "match guard must be bool, got %s", typeDisplayName(guardType))
+		}
+	}
 
 	if arm.ReturnBody != nil {
 		a.analyzeReturnStatement(a.currentFunctionName, a.currentFunctionReturn, arm.ReturnBody)
@@ -2656,6 +3335,10 @@ func canInitialize(target Type, value Type, expr ast.Expression) bool {
 		return true
 	}
 
+	if target.Kind == FunctionType || value.Kind == FunctionType {
+		return sameFunctionType(target, value)
+	}
+
 	if target.Kind == EnumType || value.Kind == EnumType {
 		return target.Kind == EnumType && value.Kind == EnumType && target.Name == value.Name
 	}
@@ -2690,6 +3373,10 @@ func canExplicitConvert(target Type, value Type) bool {
 	}
 
 	if target.Kind == EnumType && isIntegerType(value) {
+		return true
+	}
+
+	if isIntegerType(target) && isIntegerType(value) {
 		return true
 	}
 
@@ -2729,10 +3416,31 @@ func isNumericType(typ Type) bool {
 }
 
 func sameConcreteType(left Type, right Type) bool {
+	if left.Kind == FunctionType || right.Kind == FunctionType {
+		return sameFunctionType(left, right)
+	}
 	if left.Name != "" || right.Name != "" {
 		return left.Name == right.Name
 	}
 	return left.Kind == right.Kind
+}
+
+func sameFunctionType(left Type, right Type) bool {
+	if left.Kind != FunctionType || right.Kind != FunctionType {
+		return false
+	}
+	if left.FunctionReturnType == nil || right.FunctionReturnType == nil {
+		return false
+	}
+	if len(left.FunctionParameterTypes) != len(right.FunctionParameterTypes) {
+		return false
+	}
+	for i := range left.FunctionParameterTypes {
+		if !sameConcreteType(left.FunctionParameterTypes[i], right.FunctionParameterTypes[i]) {
+			return false
+		}
+	}
+	return sameConcreteType(*left.FunctionReturnType, *right.FunctionReturnType)
 }
 
 func assignmentVerb(operator string) string {
@@ -2812,6 +3520,9 @@ func (a *Analyzer) isExplicitConversionExpression(expr ast.Expression) bool {
 }
 
 func typeDisplayName(typ Type) string {
+	if typ.Kind == FunctionType {
+		return functionTypeName(typ.FunctionParameterTypes, functionReturnType(typ))
+	}
 	if typ.Name != "" && len(typ.TypeArgs) > 0 {
 		out := typ.Name + "["
 		for i, arg := range typ.TypeArgs {
@@ -2827,6 +3538,25 @@ func typeDisplayName(typ Type) string {
 		return typ.Name
 	}
 	return string(typ.Kind)
+}
+
+func functionReturnType(typ Type) Type {
+	if typ.FunctionReturnType == nil {
+		return Type{Kind: InvalidType}
+	}
+	return *typ.FunctionReturnType
+}
+
+func functionTypeName(params []Type, returnType Type) string {
+	out := "fn("
+	for i, param := range params {
+		if i > 0 {
+			out += ", "
+		}
+		out += typeDisplayName(param)
+	}
+	out += ") " + typeDisplayName(returnType)
+	return out
 }
 
 func statementToken(stmt ast.Statement) lexer.Token {
@@ -2851,15 +3581,25 @@ func statementToken(stmt ast.Statement) lexer.Token {
 		return stmt.Token
 	case *ast.AssignmentStatement:
 		return stmt.Token
+	case *ast.TryAssignmentStatement:
+		return stmt.Token
 	case *ast.ExpressionStatement:
 		return stmt.Token
 	case *ast.ReturnStatement:
 		return stmt.Token
 	case *ast.IfStatement:
 		return stmt.Token
+	case *ast.ForStatement:
+		return stmt.Token
+	case *ast.WhileStatement:
+		return stmt.Token
 	case *ast.SwitchStatement:
 		return stmt.Token
 	case *ast.FallthroughStatement:
+		return stmt.Token
+	case *ast.BreakStatement:
+		return stmt.Token
+	case *ast.ContinueStatement:
 		return stmt.Token
 	case *ast.UnsafeStatement:
 		return stmt.Token
@@ -2909,6 +3649,8 @@ func expressionToken(expr ast.Expression) lexer.Token {
 	case *ast.MemberExpression:
 		return expr.Token
 	case *ast.StructLiteral:
+		return expr.Token
+	case *ast.LambdaExpression:
 		return expr.Token
 	default:
 		return lexer.Token{}

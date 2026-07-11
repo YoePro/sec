@@ -1,0 +1,42 @@
+
+module platform.linux
+
+type ErrorNumber enum {
+    PermissionDenied = 1
+    NoSuchFile = 2
+    Interrupted = 4
+    InvalidArgument = 22
+    BrokenPipe = 32
+}
+
+type RawErrorNumber int
+
+fn _decodeSyscallResult(result: int) Result[uint, RawErrorNumber] {
+    if result < 0 {
+        return Err(RawErrorNumber(-result))
+    }
+
+    return Ok(uint(result))
+}
+
+fn _knownError(number: RawErrorNumber) Option[ErrorNumber] {
+    switch int(number) {
+        case 1:
+            return Some(ErrorNumber.PermissionDenied)
+
+        case 2:
+            return Some(ErrorNumber.NoSuchFile)
+
+        case 4:
+            return Some(ErrorNumber.Interrupted)
+
+        case 22:
+            return Some(ErrorNumber.InvalidArgument)
+
+        case 32:
+            return Some(ErrorNumber.BrokenPipe)
+            
+        default:
+            return None
+    }
+}

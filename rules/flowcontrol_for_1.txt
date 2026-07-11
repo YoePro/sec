@@ -1,0 +1,79 @@
+Implement for statements.
+
+First implementation status:
+
+Implemented in this round:
+
+* `for { ... }` infinite loop syntax.
+* `for condition { ... }` condition loop syntax.
+* Mandatory braces for loop bodies.
+* `break` and `continue` statements.
+* `break` and `continue` are only valid inside loops.
+* Loop bodies create a nested lexical scope.
+* A loop condition must be bool.
+* Definite assignment after a loop does not assume the loop body ran.
+* `for { return ... }` can satisfy function return when the body definitely
+  returns and does not contain a reachable break.
+
+Not implemented yet:
+
+* Range iteration.
+* Iterator protocol.
+* C-style init/condition/post loops.
+* `while` as a separate syntax form.
+* Labels for break/continue.
+* LLVM code generation for loops.
+
+Syntax:
+
+```
+for {
+    statements
+}
+```
+
+```
+for condition {
+    statements
+}
+```
+
+Examples:
+
+```
+for value < 10 {
+    value += 1
+}
+```
+
+```
+for {
+    return 0
+}
+```
+
+Break and continue:
+
+```
+for {
+    if done {
+        break
+    }
+
+    if skip {
+        continue
+    }
+}
+```
+
+Sema:
+
+* A condition, when present, must have type bool.
+* `break` and `continue` outside a loop are sema errors.
+* A loop body has its own lexical scope.
+* Variables declared inside a loop are not visible after the loop.
+* Assignments inside a conditional loop are not definite after the loop,
+  because the loop may run zero times.
+* Assignments inside `for { ... }` are not definite after the loop unless all
+  continuing paths are impossible; this is refined later with full flow
+  analysis.

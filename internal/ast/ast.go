@@ -135,6 +135,11 @@ type TypeReference struct {
 
 	// TypeArgs is used for generic types such as Vec[T], Map[K,V], Result[T,E].
 	TypeArgs []*TypeReference
+
+	// FunctionParameterTypes and FunctionReturnType are used for function
+	// value types such as fn(int, string) bool.
+	FunctionParameterTypes []*TypeReference
+	FunctionReturnType     *TypeReference
 }
 
 func (tr *TypeReference) TokenLiteral() string {
@@ -300,6 +305,17 @@ func (as *AssignmentStatement) TokenLiteral() string {
 	return as.Token.Lexeme
 }
 
+type TryAssignmentStatement struct {
+	Token      lexer.Token
+	Assignment *AssignmentStatement
+}
+
+func (tas *TryAssignmentStatement) statementNode() {}
+
+func (tas *TryAssignmentStatement) TokenLiteral() string {
+	return tas.Token.Lexeme
+}
+
 type ExpressionStatement struct {
 	Token      lexer.Token
 	Expression Expression
@@ -317,6 +333,7 @@ type FunctionDeclaration struct {
 	Parameters []*Parameter
 	ReturnType *TypeReference
 	Body       *BlockStatement
+	Unsafe     bool
 }
 
 func (fd *FunctionDeclaration) statementNode() {}
@@ -336,6 +353,62 @@ type Parameter struct {
 
 func (p *Parameter) TokenLiteral() string {
 	return p.Token.Lexeme
+}
+
+type LambdaExpression struct {
+	Token      lexer.Token
+	Captures   []LambdaCapture
+	Parameters []*Parameter
+	ReturnType *TypeReference
+	Body       *BlockStatement
+}
+
+func (le *LambdaExpression) expressionNode() {}
+
+func (le *LambdaExpression) TokenLiteral() string {
+	return le.Token.Lexeme
+}
+
+func (le *LambdaExpression) String() string {
+	out := ""
+	if len(le.Captures) > 0 {
+		out += "capture("
+		for i, capture := range le.Captures {
+			if i > 0 {
+				out += ", "
+			}
+			if capture.Name != nil {
+				out += capture.Name.Value
+			}
+		}
+		out += ") "
+	}
+
+	out += "fn("
+	for i, param := range le.Parameters {
+		if i > 0 {
+			out += ", "
+		}
+		if param.Name != nil {
+			out += param.Name.Value
+		}
+		out += ": "
+		if param.Type != nil {
+			out += param.Type.Name
+		} else {
+			out += "<nil>"
+		}
+	}
+	out += ")"
+	if le.ReturnType != nil {
+		out += " " + le.ReturnType.Name
+	}
+	out += " { ... }"
+	return out
+}
+
+type LambdaCapture struct {
+	Name *Identifier
 }
 
 type ReturnStatement struct {
@@ -431,6 +504,57 @@ func (fs *FallthroughStatement) TokenLiteral() string {
 	return fs.Token.Lexeme
 }
 
+type ForStatement struct {
+	Token    lexer.Token
+	Bindings []ForBinding
+	Iterable Expression
+	Body     *BlockStatement
+}
+
+func (fs *ForStatement) statementNode() {}
+
+func (fs *ForStatement) TokenLiteral() string {
+	return fs.Token.Lexeme
+}
+
+type ForBinding struct {
+	Token   lexer.Token
+	Name    string
+	Discard bool
+}
+
+type WhileStatement struct {
+	Token     lexer.Token
+	Condition Expression
+	Body      *BlockStatement
+}
+
+func (ws *WhileStatement) statementNode() {}
+
+func (ws *WhileStatement) TokenLiteral() string {
+	return ws.Token.Lexeme
+}
+
+type BreakStatement struct {
+	Token lexer.Token
+}
+
+func (bs *BreakStatement) statementNode() {}
+
+func (bs *BreakStatement) TokenLiteral() string {
+	return bs.Token.Lexeme
+}
+
+type ContinueStatement struct {
+	Token lexer.Token
+}
+
+func (cs *ContinueStatement) statementNode() {}
+
+func (cs *ContinueStatement) TokenLiteral() string {
+	return cs.Token.Lexeme
+}
+
 type UnsafeStatement struct {
 	Token lexer.Token
 	Body  *BlockStatement
@@ -459,6 +583,7 @@ type AsmBlock struct {
 	Template *StringLiteral
 	Inputs   []AsmOperand
 	Outputs  []AsmOutput
+	Clobbers []string
 }
 
 type AsmOperand struct {
@@ -468,6 +593,7 @@ type AsmOperand struct {
 
 type AsmOutput struct {
 	Register string
+	Name     string
 }
 
 type StructStatement struct {
@@ -789,6 +915,7 @@ func (me *MatchExpression) String() string {
 type MatchArm struct {
 	Token      lexer.Token
 	Pattern    Expression
+	Guard      Expression
 	Body       Expression
 	ReturnBody *ReturnStatement
 	BlockBody  *BlockStatement

@@ -102,6 +102,12 @@ func (p *Parser) parseExpression(currentPrecedence precedence) ast.Expression {
 	case lexer.MATCH:
 		left = p.parseMatchExpression()
 
+	case lexer.FN:
+		left = p.parseLambdaExpression(nil)
+
+	case lexer.CAPTURE:
+		left = p.parseCaptureLambdaExpression()
+
 	case lexer.AT:
 		left = p.parseRuntimeCallExpression()
 
@@ -166,6 +172,65 @@ func (p *Parser) parseExpression(currentPrecedence precedence) ast.Expression {
 	return left
 }
 
+func (p *Parser) parseCaptureLambdaExpression() ast.Expression {
+	captures := []ast.LambdaCapture{}
+
+	if !p.expectPeek(lexer.LPAREN) {
+		return nil
+	}
+
+	for p.peekToken.Type != lexer.RPAREN && p.peekToken.Type != lexer.EOF {
+		if !p.expectPeek(lexer.IDENT) {
+			return nil
+		}
+		captures = append(captures, ast.LambdaCapture{
+			Name: &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme},
+		})
+
+		if p.peekToken.Type == lexer.COMMA {
+			p.nextToken()
+			continue
+		}
+	}
+
+	if !p.expectPeek(lexer.RPAREN) {
+		return nil
+	}
+	if !p.expectPeek(lexer.FN) {
+		p.addError("capture must be followed by lambda at %d:%d", p.peekToken.Line, p.peekToken.Column)
+		return nil
+	}
+
+	return p.parseLambdaExpression(captures)
+}
+
+func (p *Parser) parseLambdaExpression(captures []ast.LambdaCapture) ast.Expression {
+	expr := &ast.LambdaExpression{Token: p.curToken, Captures: captures}
+
+	if !p.expectPeek(lexer.LPAREN) {
+		return nil
+	}
+
+	expr.Parameters = p.parseParameters()
+	if expr.Parameters == nil {
+		return nil
+	}
+
+	if !isTypeStart(p.peekToken.Type) {
+		p.addError("lambda return type is required at %d:%d", p.peekToken.Line, p.peekToken.Column)
+		return nil
+	}
+	p.nextToken()
+	expr.ReturnType = p.parseTypeReference()
+
+	expr.Body = p.parseFunctionBlockStatement()
+	if expr.Body == nil {
+		return nil
+	}
+
+	return expr
+}
+
 func (p *Parser) parseMatchExpression() *ast.MatchExpression {
 	expr := &ast.MatchExpression{Token: p.curToken}
 	p.nextToken()
@@ -218,11 +283,25 @@ func (p *Parser) parseMatchArmBlock() []*ast.MatchArm {
 
 func (p *Parser) parseMatchArm() *ast.MatchArm {
 	arm := &ast.MatchArm{Token: p.curToken}
-	pattern := p.parseExpression(LOWEST)
-	if pattern == nil {
-		return nil
+	if p.curToken.Type == lexer.UNDERSCORE {
+		arm.Pattern = &ast.Identifier{Token: p.curToken, Value: "_"}
+	} else {
+		pattern := p.parseExpression(LOWEST)
+		if pattern == nil {
+			return nil
+		}
+		arm.Pattern = pattern
 	}
-	arm.Pattern = pattern
+
+	if p.peekToken.Type == lexer.WHERE {
+		p.nextToken()
+		p.nextToken()
+		guard := p.parseExpression(LOWEST)
+		if guard == nil {
+			return nil
+		}
+		arm.Guard = guard
+	}
 
 	if p.peekToken.Type != lexer.ARROW {
 		p.addError("expected '=>' after match pattern at %d:%d", p.peekToken.Line, p.peekToken.Column)
@@ -349,9 +428,14 @@ func (p *Parser) parseCallArguments() ([]ast.Expression, bool) {
 
 	for {
 		p.nextToken()
-		arg := p.parseExpression(LOWEST)
-		if arg == nil {
-			return nil, false
+		var arg ast.Expression
+		if p.curToken.Type == lexer.UNDERSCORE {
+			arg = &ast.Identifier{Token: p.curToken, Value: "_"}
+		} else {
+			arg = p.parseExpression(LOWEST)
+			if arg == nil {
+				return nil, false
+			}
 		}
 		args = append(args, arg)
 

@@ -1,0 +1,1584 @@
+Implement for loops.
+
+Implementation status:
+
+Implemented in the compiler so far:
+
+* Lexer recognizes `break` and `continue`.
+* AST has:
+  * `ForStatement`
+  * `ForBinding`
+  * `BreakStatement`
+  * `ContinueStatement`
+* Parser supports:
+  * `for { ... }`
+  * `for item in iterable { ... }`
+  * `for item in range { ... }`
+  * `for key, value in iterable { ... }` syntactically
+  * discard loop bindings with `_`
+  * `break`
+  * `continue`
+* Parser rejects condition-only `for` syntax.
+* Parser rejects C-style `for` syntax.
+* Parser requires braces for supported loop forms.
+* Sema supports:
+  * loop nesting depth
+  * `break` only inside loops
+  * `continue` only inside loops
+  * immutable loop bindings
+  * loop binding shadowing checks
+  * separate lexical scope for the loop body
+  * no definite-assignment leakage from loop body to after the loop
+  * finite integer range iteration checks
+  * open-ended range rejection in loops
+  * string iteration yielding `rune`
+  * infinite-loop return analysis when no reachable `break` exists
+* LLVM code generation supports:
+  * `for { ... }`
+  * finite integer ranges
+  * `break`
+  * `continue`
+  * integer arithmetic and compound integer assignments used in loop bodies
+
+Not implemented yet:
+
+* `for item in collection { ... }`
+* `for key, value in map { ... }`
+* map iterable type inference
+* iterable contracts
+* collection iterable type inference
+* LLVM code generation for collection and map iteration
+
+Important sync note:
+
+Condition-only `for` is rejected. `while` owns condition-controlled repetition.
+
+Purpose:
+
+for is used for iteration.
+
+while is used for condition-controlled repetition.
+
+Sec intentionally separates these concepts:
+
+* for iterates over a sequence, collection, map or range
+* while repeats while a bool condition remains true
+* for without an iterator creates an infinite loop
+
+Sec does not support C-style for loops.
+
+Basic syntax:
+
+```
+for item in collection {
+    statements
+}
+```
+
+Range iteration:
+
+```
+for index in 0..<10 {
+    statements
+}
+```
+
+Map iteration:
+
+```
+for key, value in map {
+    statements
+}
+```
+
+Infinite loop:
+
+```
+for {
+    statements
+}
+```
+
+Not supported:
+
+```
+for initialization; condition; increment {
+}
+```
+
+Use while when repetition is controlled by a bool condition.
+
+Sequential iteration:
+
+A single loop binding receives each element from the iterable value.
+
+Example:
+
+```
+for item in items {
+    Process(item)
+}
+```
+
+The iterable expression is evaluated exactly once.
+
+Example:
+
+```
+for item in LoadItems() {
+    Process(item)
+}
+```
+
+LoadItems() is called exactly once before iteration begins.
+
+Supported iterable categories:
+
+The initial implementation may support:
+
+* fixed arrays
+* slices
+* Vec[T]
+* Set[T]
+* Map[K, V]
+* strings
+* bytes
+* ranges
+* other types that explicitly implement the iterable contract
+
+Iteration support must be defined by the type.
+
+A type does not become iterable merely because it has:
+
+* indexing
+* a Length field
+* a Get method
+* a Contains method
+
+Ranges:
+
+Ranges are directly iterable.
+
+Examples:
+
+```
+for index in 0..<10 {
+    Process(index)
+}
+
+for value in 1..10 {
+    Process(value)
+}
+
+for value in minimum..<maximum {
+    Process(value)
+}
+```
+
+Supported finite range forms:
+
+```
+start..end
+start..<end
+```
+
+Open-ended ranges are not directly iterable:
+
+```
+start..
+..end
+..<end
+```
+
+Invalid:
+
+```
+for value in 0.. {
+}
+```
+
+An open-ended range has no complete iteration boundary.
+
+Use an infinite loop or while when iteration has no finite upper or lower bound.
+
+Inclusive ranges:
+
+The range:
+
+```
+1..10
+```
+
+iterates over:
+
+```
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+```
+
+Half-open ranges:
+
+The range:
+
+```
+1..<10
+```
+
+iterates over:
+
+```
+1
+2
+3
+4
+5
+6
+7
+8
+9
+```
+
+Half-open ranges are recommended for indexing.
+
+Empty ranges:
+
+A range with no valid values performs zero iterations.
+
+Examples:
+
+```
+for value in 10..<10 {
+}
+
+for value in 10..<5 {
+}
+```
+
+The exact behavior of descending ranges is defined separately.
+
+The initial implementation does not infer descending iteration merely because
+the start value is greater than the end value.
+
+Therefore:
+
+```
+for value in 10..<5 {
+}
+```
+
+performs zero iterations.
+
+Descending iteration requires an explicit range operation or standard-library
+helper to be defined later.
+
+Range operand types:
+
+Range bounds must have compatible ordered types.
+
+Valid:
+
+```
+let minimum: int := 0
+let maximum: int := 10
+
+for value in minimum..<maximum {
+}
+```
+
+Invalid:
+
+```
+let minimum: int := 0
+let maximum: string := "10"
+
+for value in minimum..<maximum {
+}
+```
+
+Semantic types:
+
+Semantic types retain their normal compatibility rules.
+
+Example:
+
+```
+let minimum: Score := ...
+let maximum: Score := ...
+
+for score in minimum..maximum {
+}
+```
+
+The loop variable has type Score.
+
+Plain integers are not automatically compatible with Score unless normal Sec
+conversion rules allow it.
+
+Range evaluation:
+
+The start and end expressions are evaluated exactly once before the loop begins.
+
+Example:
+
+```
+for value in Start()..<End() {
+    Process(value)
+}
+```
+
+Start() and End() are each called once.
+
+They are not reevaluated after every iteration.
+
+Range progression:
+
+The initial numeric range progression is one unit per iteration.
+
+Conceptually:
+
+```
+current = start
+current = current + 1
+```
+
+The exact progression operation must be valid for the range type.
+
+Initial range iteration should be limited to integer-like ordered types for
+which increment-by-one has defined semantics.
+
+The initial implementation should support:
+
+* int
+* uint
+* byte
+* char
+* rune
+* compatible semantic types based on these types
+
+Initial range iteration should not automatically support:
+
+* float
+* decimal
+* unit values
+* arbitrary structs
+
+Floating-point iteration introduces accumulation and boundary ambiguity and
+should require an explicit iterator or library function.
+
+Collection iteration:
+
+Example:
+
+```
+for item in items {
+    Process(item)
+}
+```
+
+The loop variable type is the collection element type.
+
+For:
+
+```
+let items: Vec[string] := ...
+
+for item in items {
+}
+```
+
+item has type string.
+
+Map iteration:
+
+Maps use two loop bindings:
+
+```
+for key, value in map {
+    Process(key, value)
+}
+```
+
+The first binding receives the key.
+
+The second binding receives the value.
+
+Example:
+
+```
+let users: Map[UserID, User] := ...
+
+for id, user in users {
+    Process(id, user)
+}
+```
+
+id has type UserID.
+
+user has type User.
+
+Map iteration order:
+
+Map iteration order is not guaranteed unless the map type explicitly guarantees
+an order.
+
+Programs must not rely on Map[K, V] iteration order.
+
+If ordered iteration is required, use an ordered map type or explicitly sort the
+keys.
+
+Single-binding map iteration:
+
+The initial implementation does not support ambiguous single-binding map
+iteration.
+
+Not supported:
+
+```
+for item in map {
+}
+```
+
+The programmer must explicitly request both key and value:
+
+```
+for key, value in map {
+}
+```
+
+This avoids uncertainty over whether item means:
+
+* key
+* value
+* key-value pair
+
+Sequential collections:
+
+Arrays, slices, Vec[T], Set[T], strings and bytes use one binding.
+
+Examples:
+
+```
+for item in array {
+}
+
+for item in slice {
+}
+
+for item in vector {
+}
+
+for item in set {
+}
+
+for character in text {
+}
+
+for value in data {
+}
+```
+
+Array iteration:
+
+For an array:
+
+```
+[N]T
+```
+
+each iteration produces a value of type T.
+
+Iteration proceeds from index 0 to index N - 1.
+
+Slice iteration:
+
+For a slice:
+
+```
+[]T
+```
+
+each iteration produces a value of type T.
+
+Iteration proceeds from index 0 to Length - 1.
+
+Vec iteration:
+
+For:
+
+```
+Vec[T]
+```
+
+each iteration produces a value of type T.
+
+Iteration proceeds in vector order.
+
+Set iteration:
+
+For:
+
+```
+Set[T]
+```
+
+each iteration produces a value of type T.
+
+Set iteration order is not guaranteed unless the concrete set type explicitly
+guarantees ordering.
+
+String iteration:
+
+String iteration operates on Unicode code points.
+
+Example:
+
+```
+for character in text {
+    Process(character)
+}
+```
+
+The loop variable has type rune.
+
+Iteration does not produce raw UTF-8 bytes.
+
+To iterate over encoded bytes, explicitly convert or access the string as bytes.
+
+Bytes iteration:
+
+For:
+
+```
+bytes
+```
+
+each iteration produces byte.
+
+Example:
+
+```
+for value in data {
+    Process(value)
+}
+```
+
+Index and value iteration:
+
+The initial implementation does not introduce implicit index-value iteration for
+sequential collections.
+
+Not supported initially:
+
+```
+for index, value in items {
+}
+```
+
+Two bindings are reserved for map iteration.
+
+When an index is required, use an explicit range:
+
+```
+for index in 0..<items.Length {
+    let value := items[index]
+    Process(index, value)
+}
+```
+
+A standard-library enumeration helper may be added later:
+
+```
+for entry in items.Enumerate() {
+}
+```
+
+but it is not part of the initial language syntax.
+
+Loop variable declarations:
+
+Loop variables are declared by the for statement.
+
+Example:
+
+```
+for item in items {
+    Process(item)
+}
+```
+
+item exists only inside the loop body.
+
+It is not visible after the loop.
+
+Invalid:
+
+```
+for item in items {
+}
+
+Process(item)
+```
+
+Loop variable mutability:
+
+Loop variables are immutable bindings by default.
+
+Example:
+
+```
+for item in items {
+    item = replacement
+}
+```
+
+Invalid because item is immutable.
+
+Mutation of a collection element requires an explicit mutable iteration model,
+which is not part of the initial for implementation.
+
+The initial implementation does not support:
+
+```
+for mut item in items {
+}
+```
+
+Mutable element iteration should be introduced only together with the reference
+and borrow rules.
+
+Loop variable assignment semantics:
+
+The loop binding follows the normal assignment behavior of the element type.
+
+For copyable element types, the loop variable receives a copy.
+
+For types whose iteration requires references or moves, behavior must be
+explicitly defined by the iterable type.
+
+The initial implementation should reject iteration forms whose ownership
+semantics cannot be represented safely.
+
+The compiler must not silently copy, move or borrow a value without following
+the normal type and ownership rules.
+
+No shadowing:
+
+Normal Sec no-shadowing rules apply.
+
+Invalid:
+
+```
+let item: int := 10
+
+for item in items {
+}
+```
+
+Diagnostic:
+
+```
+variable "item" already declared
+```
+
+Loop variables may not shadow:
+
+* local variables
+* parameters
+* other visible loop variables
+
+Nested loops:
+
+Nested loops are supported.
+
+Example:
+
+```
+for row in rows {
+    for cell in row {
+        Process(cell)
+    }
+}
+```
+
+Each loop creates its own scope.
+
+Loop variable names must still follow the no-shadowing rule.
+
+Invalid:
+
+```
+for item in items {
+    for item in otherItems {
+    }
+}
+```
+
+Discarded bindings:
+
+The discard identifier may be used when a map component is intentionally
+ignored.
+
+Examples:
+
+```
+for key, _ in map {
+    ProcessKey(key)
+}
+
+for _, value in map {
+    ProcessValue(value)
+}
+```
+
+The discard identifier does not declare a variable.
+
+Using two discard identifiers is legal but normally pointless:
+
+```
+for _, _ in map {
+    CountEntry()
+}
+```
+
+Loop body scope:
+
+Every loop body creates a lexical scope.
+
+Example:
+
+```
+for item in items {
+    let result := Process(item)
+}
+```
+
+result is not visible outside the loop body.
+
+Outer variables:
+
+Variables declared before the loop are visible inside the loop body.
+
+Example:
+
+```
+let mut total: int := 0
+
+for value in values {
+    total += value
+}
+```
+
+Normal mutability rules apply.
+
+Infinite loops:
+
+An infinite loop uses:
+
+```
+for {
+    statements
+}
+```
+
+Example:
+
+```
+for {
+    Poll()
+}
+```
+
+The loop continues until control leaves through:
+
+* break
+* return
+* error propagation
+* termination
+* another non-returning operation
+
+No condition-only for:
+
+Sec does not use Go's condition-only for form.
+
+Not supported:
+
+```
+for running {
+    Poll()
+}
+```
+
+Use while:
+
+```
+while running {
+    Poll()
+}
+```
+
+This preserves one syntax per concept:
+
+* while for bool-controlled repetition
+* for for iteration
+* for {} for explicit infinite repetition
+
+No C-style for:
+
+Not supported:
+
+```
+for i := 0; i < 10; i += 1 {
+}
+```
+
+Use a range:
+
+```
+for i in 0..<10 {
+}
+```
+
+or use while when the progression is more complex:
+
+```
+let mut i: int := 0
+
+while i < 10 {
+    Process(i)
+    i += 2
+}
+```
+
+break:
+
+break exits the nearest enclosing loop.
+
+Example:
+
+```
+for item in items {
+    if item == target {
+        break
+    }
+}
+```
+
+Execution continues after the loop.
+
+break does not require a value.
+
+break is only valid inside a loop.
+
+Invalid:
+
+```
+fn Test() void {
+    break
+}
+```
+
+continue:
+
+continue skips the remainder of the current iteration and begins the next
+iteration.
+
+Example:
+
+```
+for item in items {
+    if !item.IsValid() {
+        continue
+    }
+
+    Process(item)
+}
+```
+
+continue is only valid inside a loop.
+
+Invalid:
+
+```
+fn Test() void {
+    continue
+}
+```
+
+Nearest-loop rule:
+
+break and continue apply to the nearest enclosing loop.
+
+Example:
+
+```
+for row in rows {
+    for cell in row {
+        if cell.Invalid {
+            continue
+        }
+
+        if cell.Stop {
+            break
+        }
+    }
+}
+```
+
+Both statements affect the inner loop.
+
+Labeled loops:
+
+Labeled break and continue are not part of the initial implementation.
+
+Not supported initially:
+
+```
+outer:
+for row in rows {
+    for cell in row {
+        break outer
+    }
+}
+```
+
+They may be investigated later if deeply nested control flow proves difficult to
+express clearly.
+
+break in switch:
+
+break is not required to end switch cases.
+
+Inside a switch nested in a loop, break behavior must remain unambiguous.
+
+The initial implementation should define break as loop-only.
+
+Example:
+
+```
+for item in items {
+    switch item {
+    case 0:
+        break
+    }
+}
+```
+
+This would exit the surrounding loop.
+
+Because this may be visually surprising, using return, a bool flag or a later
+labeled-loop mechanism may sometimes be clearer.
+
+fallthrough remains switch-only.
+
+continue in switch:
+
+continue may appear inside a switch when the switch is nested inside a loop.
+
+It continues the nearest enclosing loop.
+
+Example:
+
+```
+for item in items {
+    switch item {
+    case 0:
+        continue
+
+    default:
+        Process(item)
+    }
+}
+```
+
+Return inside loops:
+
+return immediately exits the current function.
+
+Example:
+
+```
+fn Find(values: []int, target: int) bool {
+    for value in values {
+        if value == target {
+            return true
+        }
+    }
+
+    return false
+}
+```
+
+Error propagation inside loops:
+
+Normal try and propagation rules apply.
+
+Example:
+
+```
+for file in files {
+    let data := try Read(file)
+    Process(data)
+}
+```
+
+If Read fails and the error propagates, the function exits immediately.
+
+Loop condition evaluation:
+
+For collection and range loops:
+
+* the iterable expression is evaluated once
+* iteration state is initialized once
+* the next item is requested before each iteration
+* the loop ends when no next item exists
+
+For infinite loops:
+
+* no condition is evaluated
+* the loop continues until explicitly exited
+
+Collection modification during iteration:
+
+The structure of a collection must not be modified while it is being iterated
+unless the collection type explicitly guarantees that operation is safe.
+
+Potentially invalid operations include:
+
+* adding elements
+* removing elements
+* resizing storage
+* replacing the collection binding
+* invalidating references or iterators
+
+Example:
+
+```
+for item in items {
+    items.Add(item)
+}
+```
+
+The initial implementation should reject structural mutation of the iterated
+collection when it can detect it.
+
+Exact rules should later integrate with the borrow checker.
+
+Mutation of unrelated values remains legal.
+
+Range variables and mutation:
+
+Changing variables originally used to construct a range does not alter an
+already-running loop.
+
+Example:
+
+```
+let mut maximum: int := 10
+
+for value in 0..<maximum {
+    maximum = 2
+}
+```
+
+The loop still uses the original evaluated upper bound of 10.
+
+Empty collections:
+
+Iterating an empty collection executes the body zero times.
+
+Example:
+
+```
+for item in emptyItems {
+    Process(item)
+}
+```
+
+No special case or error occurs.
+
+Loop completion:
+
+A normal for loop may complete because:
+
+* the iterable is exhausted
+* break executes
+* the body returns
+* an error propagates
+* execution terminates
+
+After normal exhaustion or break, execution continues after the loop.
+
+Infinite-loop flow analysis:
+
+A for {} loop without a reachable break is non-continuing.
+
+Example:
+
+```
+fn RunForever() int {
+    for {
+        Poll()
+    }
+}
+```
+
+This satisfies the function return analysis because control cannot reach the end
+of the function.
+
+A reachable break creates a continuing path.
+
+Example:
+
+```
+fn MayStop(stop: bool) int {
+    for {
+        if stop {
+            break
+        }
+    }
+}
+```
+
+Invalid without a return after the loop because execution may continue after
+break.
+
+Finite-loop flow analysis:
+
+A finite for loop is assumed to execute zero or more times.
+
+Therefore, a return inside the loop does not by itself satisfy a function's
+return requirement.
+
+Invalid:
+
+```
+fn First(values: []int) int {
+    for value in values {
+        return value
+    }
+}
+```
+
+The collection may be empty.
+
+Valid:
+
+```
+fn FirstOrDefault(values: []int) int {
+    for value in values {
+        return value
+    }
+
+    return 0
+}
+```
+
+Definite assignment:
+
+Assignments inside a finite loop do not make a variable definitely assigned
+after the loop because the loop may execute zero times.
+
+Invalid:
+
+```
+fn Select(values: []int) int {
+    let mut result: int
+
+    for value in values {
+        result = value
+    }
+
+    return result
+}
+```
+
+Valid:
+
+```
+fn Select(values: []int) int {
+    let mut result: int := 0
+
+    for value in values {
+        result = value
+    }
+
+    return result
+}
+```
+
+Assignments before break:
+
+Assignments on every path leading to a break may be considered during later,
+more advanced flow analysis.
+
+The initial implementation may conservatively require initialization before the
+loop rather than attempting complex loop-path assignment proofs.
+
+Unreachable statements:
+
+Statements after unconditional continue, break or return in the same block are
+unreachable.
+
+Example:
+
+```
+for item in items {
+    continue
+    Process(item)
+}
+```
+
+Process(item) is unreachable.
+
+The general unreachable-code policy applies.
+
+Unused loop variables:
+
+Unused loop variables follow the normal unused-variable policy.
+
+Example:
+
+```
+for item in items {
+    Count()
+}
+```
+
+The compiler may report item as unused.
+
+Use the discard identifier where appropriate and supported.
+
+Iterator protocol:
+
+User-defined iteration should eventually use an explicit iterable contract.
+
+Conceptually, an iterable must provide a way to:
+
+* initialize iteration state
+* request the next element
+* indicate completion
+* expose the yielded element type
+
+The exact interface is not defined in the initial implementation.
+
+The compiler must not use naming conventions such as:
+
+* Next()
+* HasNext()
+* Length
+* Get()
+
+as implicit iteration support.
+
+User-defined iteration must be explicit and statically typed.
+
+No hidden allocation:
+
+Creating a for loop must not require hidden heap allocation.
+
+Iterator state should be:
+
+* stack allocated
+* optimized away
+* or explicitly owned by the iterable implementation
+
+Iteration over arrays, slices and ranges should have zero hidden allocation.
+
+No loop else:
+
+Sec does not support Python-style loop else clauses.
+
+Not supported:
+
+```
+for item in items {
+} else {
+}
+```
+
+Use explicit state when behavior depends on whether the loop completed or found
+a value.
+
+No comprehensions:
+
+Collection comprehensions are not part of the for statement.
+
+Not supported:
+
+```
+values := [value * 2 for value in items]
+```
+
+Such transformations belong to explicit loops or standard-library operations.
+
+No pattern destructuring:
+
+The initial for implementation does not perform structural destructuring.
+
+Not supported initially:
+
+```
+for Point{x, y} in points {
+}
+```
+
+Use a normal loop binding and field access:
+
+```
+for point in points {
+    Process(point.X, point.Y)
+}
+```
+
+Map key-value iteration is a dedicated iteration form, not general
+destructuring.
+
+Parser:
+
+The parser must support:
+
+* for followed directly by a block for infinite loops
+* for followed by one binding, in and an iterable expression
+* for followed by two bindings, in and a map expression
+* discard identifiers in loop bindings
+* a required loop body
+* break statements
+* continue statements
+
+The parser must reject:
+
+* C-style for syntax
+* condition-only for syntax
+* more than two loop bindings
+* missing in
+* missing iterable expressions
+* missing loop bodies
+
+Suggested AST:
+
+```
+type ForStatement struct {
+    Bindings: []ForBinding
+    Iterable: Expression?
+    Body: Block
+}
+
+type ForBinding struct {
+    Name: string
+    Discard: bool
+}
+```
+
+Interpretation:
+
+* zero bindings and no iterable means infinite loop
+* one binding means sequential iteration
+* two bindings mean map iteration
+
+Alternatively, infinite loops may use a separate InfiniteLoopStatement node.
+
+A single ForStatement node is recommended because:
+
+* syntax remains closely related
+* break and continue analysis is shared
+* code generation shares loop blocks
+* diagnostics remain consistent
+
+Sema:
+
+For infinite loops:
+
+* create a loop scope
+* analyze the body
+* track reachable break statements
+* track continue statements
+* determine whether the loop can terminate
+* reject break and continue outside valid loop contexts
+
+For iterable loops:
+
+* resolve the iterable expression once
+* determine whether its type is iterable
+* determine the yielded element type
+* validate the number of bindings
+* declare immutable loop bindings
+* reject shadowing
+* create a loop-body scope
+* validate ownership and borrowing behavior
+* analyze break, continue, return and propagation
+* conservatively assume zero iterations for definite-assignment analysis
+
+For ranges:
+
+* require a finite range
+* validate compatible bound types
+* require an iterable range type
+* validate supported progression
+* infer the loop variable type from the range bounds
+* reject unsupported floating-point or decimal iteration initially
+
+For maps:
+
+* require exactly two bindings
+* infer key and value types
+* permit discard bindings
+* document that iteration order is unspecified
+
+Diagnostics:
+
+Suggested diagnostics:
+
+```
+type User is not iterable
+
+for loop requires an iterable expression
+
+range used in for loop must be finite
+
+cannot iterate range with incompatible bounds int and string
+
+for range iteration does not support decimal
+
+sequential iteration requires one loop binding
+
+map iteration requires key and value bindings
+
+too many loop bindings
+
+variable "item" already declared
+
+loop variable item is immutable
+
+break is only valid inside a loop
+
+continue is only valid inside a loop
+
+cannot structurally modify items while iterating it
+
+iteration ownership for type Resource is not supported
+
+C-style for loops are not supported; use a range or while
+
+condition-only for loops are not supported; use while
+```
+
+Code generation:
+
+Range loop:
+
+* evaluate start once
+* evaluate end once
+* initialize the current value
+* branch to the condition block
+* compare current against the end
+* branch to the body or continuation block
+* execute the body
+* branch through the increment block
+* increment the current value
+* repeat
+
+For an inclusive ascending range:
+
+```
+current <= end
+```
+
+For a half-open ascending range:
+
+```
+current < end
+```
+
+Collection loop:
+
+* evaluate the collection once
+* initialize iterator state
+* branch to the next-element block
+* request the next element
+* branch to the body when an element exists
+* bind the element
+* execute the body
+* repeat
+* branch to the continuation block when exhausted
+
+Map loop:
+
+* initialize map iterator state
+* request the next key-value pair
+* bind key and value
+* execute the body
+* repeat until exhausted
+
+Infinite loop:
+
+* create a body block
+* branch directly to the body
+* branch back to the body after each continuing iteration
+* break branches to the loop continuation block
+* continue branches to the loop's next-iteration block
+
+Control-flow blocks:
+
+Suggested blocks:
+
+```
+for.init
+for.condition
+for.body
+for.next
+for.end
+```
+
+break branches to:
+
+```
+for.end
+```
+
+continue branches to:
+
+```
+for.next
+```
+
+Nested loops maintain a stack of active loop targets.
+
+Design rules:
+
+* for is used for iteration.
+* while is used for bool-controlled repetition.
+* for {} is used for explicit infinite repetition.
+* C-style for loops are not supported.
+* Condition-only for loops are not supported.
+* Iterable expressions are evaluated exactly once.
+* Range bounds are evaluated exactly once.
+* Finite ranges may be iterated directly.
+* Open-ended ranges are not directly iterable.
+* Half-open ranges are preferred for indexing.
+* Loop variables are immutable.
+* Loop variables exist only inside the loop body.
+* Normal no-shadowing rules apply.
+* A single binding is used for sequential collections.
+* Two bindings are used for maps.
+* Sequential index-value syntax is not initially supported.
+* break exits the nearest loop.
+* continue begins the next iteration of the nearest loop.
+* Labeled loops are postponed.
+* Finite loops may execute zero times.
+* Assignments inside finite loops do not guarantee assignment afterward.
+* Infinite loops without reachable break do not continue.
+* Collection iteration must respect ownership and borrowing.
+* Structural modification during iteration is forbidden unless explicitly safe.
+* User-defined iteration must use an explicit typed contract.
+* Iteration must not introduce hidden heap allocation.
+* No loop else syntax.
+* No comprehensions.
+* No implicit pattern destructuring.

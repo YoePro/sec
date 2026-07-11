@@ -305,6 +305,29 @@ func TestParseAssignmentStatement(t *testing.T) {
 	}
 }
 
+func TestParseTryAssignmentStatement(t *testing.T) {
+	l := lexer.New(`try p += 1`)
+	p := New(l)
+
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt, ok := program.Statements[0].(*ast.TryAssignmentStatement)
+	if !ok {
+		t.Fatalf("statement is not TryAssignmentStatement. got=%T", program.Statements[0])
+	}
+	if stmt.Assignment == nil {
+		t.Fatal("expected nested assignment")
+	}
+	target, ok := stmt.Assignment.Target.(*ast.Identifier)
+	if !ok || target.Value != "p" {
+		t.Fatalf("wrong target. got=%T %#v", stmt.Assignment.Target, stmt.Assignment.Target)
+	}
+	if stmt.Assignment.Operator != "+=" {
+		t.Fatalf("wrong operator. got=%q want += ", stmt.Assignment.Operator)
+	}
+}
+
 func TestParseLetGroups(t *testing.T) {
 	tests := []struct {
 		input    string
@@ -1745,5 +1768,368 @@ fn _sysWrite(fd: int64, ref ptr: byte, len: int64) int64 {
 	}
 	if len(asmStmt.Block.Outputs) != 1 || asmStmt.Block.Outputs[0].Register != "rax" {
 		t.Fatalf("wrong outputs. got=%#v", asmStmt.Block.Outputs)
+	}
+}
+
+func TestParseUnsafeFunctionWithAsmNamedOutputAndClobbers(t *testing.T) {
+	input := `
+unsafe fn _rawSyscall3(number: uint, arg1: uint, arg2: uint, arg3: uint) int {
+	asm {
+		"syscall"
+
+		inputs:
+			rax(number)
+			rdi(arg1)
+			rsi(arg2)
+			rdx(arg3)
+
+		outputs:
+			rax(result)
+
+		clobbers:
+			rcx
+			r11
+			memory
+	}
+
+	return result
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	if !fn.Unsafe {
+		t.Fatal("function should be unsafe")
+	}
+	asmStmt := fn.Body.Statements[0].(*ast.AsmStatement)
+	if len(asmStmt.Block.Inputs) != 4 {
+		t.Fatalf("wrong input count. got=%d want=4", len(asmStmt.Block.Inputs))
+	}
+	if len(asmStmt.Block.Outputs) != 1 || asmStmt.Block.Outputs[0].Register != "rax" || asmStmt.Block.Outputs[0].Name != "result" {
+		t.Fatalf("wrong outputs. got=%#v", asmStmt.Block.Outputs)
+	}
+	if len(asmStmt.Block.Clobbers) != 3 || asmStmt.Block.Clobbers[2] != "memory" {
+		t.Fatalf("wrong clobbers. got=%#v", asmStmt.Block.Clobbers)
+	}
+}
+
+func TestParseForRangeAndInfiniteLoops(t *testing.T) {
+	input := `
+fn Test() void {
+	for i in 0..<10 {
+		continue
+	}
+
+	for {
+		break
+	}
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	rangeFor, ok := fn.Body.Statements[0].(*ast.ForStatement)
+	if !ok {
+		t.Fatalf("first statement is not ForStatement. got=%T", fn.Body.Statements[0])
+	}
+	if len(rangeFor.Bindings) != 1 || rangeFor.Bindings[0].Name != "i" {
+		t.Fatalf("wrong for bindings. got=%#v", rangeFor.Bindings)
+	}
+	if _, ok := rangeFor.Iterable.(*ast.RangeExpression); !ok {
+		t.Fatalf("iterable is not RangeExpression. got=%T", rangeFor.Iterable)
+	}
+	if _, ok := rangeFor.Body.Statements[0].(*ast.ContinueStatement); !ok {
+		t.Fatalf("range body statement is not ContinueStatement. got=%T", rangeFor.Body.Statements[0])
+	}
+
+	infiniteFor, ok := fn.Body.Statements[1].(*ast.ForStatement)
+	if !ok {
+		t.Fatalf("second statement is not ForStatement. got=%T", fn.Body.Statements[1])
+	}
+	if len(infiniteFor.Bindings) != 0 || infiniteFor.Iterable != nil {
+		t.Fatalf("infinite for should not have bindings or iterable. got=%#v %T", infiniteFor.Bindings, infiniteFor.Iterable)
+	}
+	if _, ok := infiniteFor.Body.Statements[0].(*ast.BreakStatement); !ok {
+		t.Fatalf("infinite body statement is not BreakStatement. got=%T", infiniteFor.Body.Statements[0])
+	}
+}
+
+func TestParseWhileStatement(t *testing.T) {
+	input := `
+fn Test(running: bool) void {
+	while running {
+		continue
+	}
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	whileStmt, ok := fn.Body.Statements[0].(*ast.WhileStatement)
+	if !ok {
+		t.Fatalf("statement is not WhileStatement. got=%T", fn.Body.Statements[0])
+	}
+	if _, ok := whileStmt.Condition.(*ast.Identifier); !ok {
+		t.Fatalf("condition is not Identifier. got=%T", whileStmt.Condition)
+	}
+	if _, ok := whileStmt.Body.Statements[0].(*ast.ContinueStatement); !ok {
+		t.Fatalf("body statement is not ContinueStatement. got=%T", whileStmt.Body.Statements[0])
+	}
+}
+
+func TestParseWhileRequiresCondition(t *testing.T) {
+	input := `
+fn Test() void {
+	while {
+	}
+	return
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+
+	if len(p.Errors()) != 1 {
+		t.Fatalf("wrong parser error count. got=%d errors=%v", len(p.Errors()), p.Errors())
+	}
+	expected := "while statement missing condition at 3:8"
+	if p.Errors()[0] != expected {
+		t.Fatalf("wrong parser error. got=%q want=%q", p.Errors()[0], expected)
+	}
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	if len(fn.Body.Statements) != 2 {
+		t.Fatalf("parser should recover after invalid while. got=%d statements", len(fn.Body.Statements))
+	}
+}
+
+func TestParseMatchDiscardCatchAllPattern(t *testing.T) {
+	input := `
+fn Test(value: bool) int {
+	let result := match value {
+		_ => 1
+	}
+	return result
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	letStmt := fn.Body.Statements[0].(*ast.LetStatement)
+	matchExpr, ok := letStmt.Value.(*ast.MatchExpression)
+	if !ok {
+		t.Fatalf("let value is not MatchExpression. got=%T", letStmt.Value)
+	}
+	pattern, ok := matchExpr.Arms[0].Pattern.(*ast.Identifier)
+	if !ok || pattern.Value != "_" {
+		t.Fatalf("wrong match pattern. got=%T %#v", matchExpr.Arms[0].Pattern, matchExpr.Arms[0].Pattern)
+	}
+}
+
+func TestParseMatchWhereGuard(t *testing.T) {
+	input := `
+fn Test(value: bool) int {
+	let result := match value {
+		_ where value => 1
+		_ => 0
+	}
+	return result
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	letStmt := fn.Body.Statements[0].(*ast.LetStatement)
+	matchExpr := letStmt.Value.(*ast.MatchExpression)
+	if matchExpr.Arms[0].Guard == nil {
+		t.Fatal("expected first match arm to have guard")
+	}
+	guard, ok := matchExpr.Arms[0].Guard.(*ast.Identifier)
+	if !ok || guard.Value != "value" {
+		t.Fatalf("wrong guard. got=%T %#v", matchExpr.Arms[0].Guard, matchExpr.Arms[0].Guard)
+	}
+}
+
+func TestParseReturnMatchExpression(t *testing.T) {
+	input := `
+fn Test(value: bool) int {
+	return match value {
+		_ => 1
+	}
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	ret := fn.Body.Statements[0].(*ast.ReturnStatement)
+	if _, ok := ret.Value.(*ast.MatchExpression); !ok {
+		t.Fatalf("return value is not MatchExpression. got=%T", ret.Value)
+	}
+}
+
+func TestParseMatchDiscardPayloadPattern(t *testing.T) {
+	input := `
+fn Test(result: Result[int, IOError]) int {
+	return match result {
+		Ok(_) => 1
+		Err(_) => 0
+	}
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	ret := fn.Body.Statements[0].(*ast.ReturnStatement)
+	matchExpr := ret.Value.(*ast.MatchExpression)
+	okPattern := matchExpr.Arms[0].Pattern.(*ast.OkExpression)
+	okIdent := okPattern.Value.(*ast.Identifier)
+	if okIdent.Value != "_" {
+		t.Fatalf("wrong Ok discard pattern. got=%q", okIdent.Value)
+	}
+	errPattern := matchExpr.Arms[1].Pattern.(*ast.ErrExpression)
+	errIdent := errPattern.Value.(*ast.Identifier)
+	if errIdent.Value != "_" {
+		t.Fatalf("wrong Err discard pattern. got=%q", errIdent.Value)
+	}
+}
+
+func TestParseForRejectsConditionOnlySyntax(t *testing.T) {
+	input := `
+fn Test(running: bool) void {
+	for running {
+		break
+	}
+
+	return
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+
+	if len(p.Errors()) != 1 {
+		t.Fatalf("wrong parser error count. got=%d errors=%v", len(p.Errors()), p.Errors())
+	}
+	expected := "condition-only for loops are not supported; use while at 3:6"
+	if p.Errors()[0] != expected {
+		t.Fatalf("wrong parser error. got=%q want=%q", p.Errors()[0], expected)
+	}
+
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	if len(fn.Body.Statements) != 2 {
+		t.Fatalf("parser should recover after invalid for. got=%d statements", len(fn.Body.Statements))
+	}
+}
+
+func TestParseForRejectsCStyleSyntax(t *testing.T) {
+	input := `
+fn Test() void {
+	for i := 0; i < 10; i += 1 {
+	}
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	p.ParseProgram()
+
+	if len(p.Errors()) != 1 {
+		t.Fatalf("wrong parser error count. got=%d errors=%v", len(p.Errors()), p.Errors())
+	}
+	expected := "C-style for loops are not supported; use a range or while at 3:6"
+	if p.Errors()[0] != expected {
+		t.Fatalf("wrong parser error. got=%q want=%q", p.Errors()[0], expected)
+	}
+}
+
+func TestParseLambdaExpression(t *testing.T) {
+	input := `
+fn Test() int {
+	let double := fn(value: int) int {
+		return value * 2
+	}
+
+	return double(10)
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	letStmt := fn.Body.Statements[0].(*ast.LetStatement)
+	lambda, ok := letStmt.Value.(*ast.LambdaExpression)
+	if !ok {
+		t.Fatalf("let value is not LambdaExpression. got=%T", letStmt.Value)
+	}
+	if len(lambda.Parameters) != 1 {
+		t.Fatalf("wrong lambda parameter count. got=%d", len(lambda.Parameters))
+	}
+	if lambda.Parameters[0].Name.Value != "value" {
+		t.Fatalf("wrong parameter name. got=%q", lambda.Parameters[0].Name.Value)
+	}
+	if lambda.ReturnType.Name != "int" {
+		t.Fatalf("wrong return type. got=%q", lambda.ReturnType.Name)
+	}
+}
+
+func TestParseFunctionTypeReference(t *testing.T) {
+	input := `
+fn Test() void {
+	let positive: fn(int) bool := fn(value: int) bool {
+		return value > 0
+	}
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	letStmt := fn.Body.Statements[0].(*ast.LetStatement)
+	if letStmt.Type.Name != "fn" {
+		t.Fatalf("wrong type name. got=%q", letStmt.Type.Name)
+	}
+	if len(letStmt.Type.FunctionParameterTypes) != 1 {
+		t.Fatalf("wrong function parameter type count. got=%d", len(letStmt.Type.FunctionParameterTypes))
+	}
+	if letStmt.Type.FunctionParameterTypes[0].Name != "int" {
+		t.Fatalf("wrong function parameter type. got=%q", letStmt.Type.FunctionParameterTypes[0].Name)
+	}
+	if letStmt.Type.FunctionReturnType.Name != "bool" {
+		t.Fatalf("wrong function return type. got=%q", letStmt.Type.FunctionReturnType.Name)
 	}
 }

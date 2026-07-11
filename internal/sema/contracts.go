@@ -14,6 +14,7 @@ func (a *Analyzer) typeFromDeclaration(stmt *ast.TypeDeclStatement, baseType Typ
 func (a *Analyzer) typeFromDeclarationWithName(name string, stmt *ast.TypeDeclStatement, baseType Type) Type {
 	typ := baseType
 	typ.Name = name
+	typ.Module = a.currentModule
 	typ.Named = true
 	typ.Declared = true
 	typ.Underlying = baseType.Name

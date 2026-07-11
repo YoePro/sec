@@ -1,0 +1,1193 @@
+Implement while loops.
+
+Implementation status:
+
+Implemented:
+
+* lexer recognizes `while`
+* AST has `WhileStatement`
+* parser supports `while condition { ... }`
+* parser rejects missing condition before `{`
+* sema requires bool condition
+* sema treats while body as a separate lexical scope
+* sema tracks break and continue inside while
+* sema assumes normal while loops may execute zero times
+* sema treats `while true` without reachable break as non-continuing
+* AST and parse output include while
+* LLVM code generation supports while condition/body/end blocks
+* LLVM break targets while.end
+* LLVM continue targets while.condition
+
+Not implemented yet:
+
+* special diagnostics for declarations or pattern bindings in while conditions
+* while-specific try success-type diagnostic wording
+* advanced definite-assignment analysis through proven loop exits
+
+Purpose:
+
+while is used for condition-controlled repetition.
+
+for is used for iteration.
+
+Sec intentionally separates these concepts:
+
+* while repeats while a bool condition remains true
+* for iterates over a range, collection, map or iterator
+* for without an iterator creates an explicit infinite loop
+
+Sec does not use condition-only for syntax.
+
+Basic syntax:
+
+```
+while condition {
+    statements
+}
+```
+
+Example:
+
+```
+while running {
+    Poll()
+}
+```
+
+Condition type:
+
+The while condition must have type bool.
+
+Sec does not use implicit truthiness.
+
+Invalid:
+
+```
+while 1 {
+}
+```
+
+Invalid:
+
+```
+while "running" {
+}
+```
+
+Invalid:
+
+```
+while items {
+}
+```
+
+Valid:
+
+```
+while true {
+}
+```
+
+Valid:
+
+```
+while !finished {
+}
+```
+
+Valid:
+
+```
+while count < limit {
+}
+```
+
+Valid:
+
+```
+while IsReady() {
+}
+```
+
+Condition expressions:
+
+Any expression whose final type is bool may be used.
+
+This includes:
+
+* bool literals
+* bool variables
+* bool constants
+* bool fields
+* bool properties
+* function calls returning bool
+* method calls returning bool
+* equality expressions
+* ordered comparison expressions
+* range membership expressions
+* logical expressions
+* parenthesized bool expressions
+* match expressions returning bool
+* try expressions whose successful type is bool
+
+Examples:
+
+```
+while enabled {
+    Work()
+}
+
+while !cancelled {
+    Work()
+}
+
+while index < items.Length {
+    Process(items[index])
+    index += 1
+}
+
+while value in minimum..maximum {
+    Update()
+}
+
+while IsConnected() && !ShouldStop() {
+    Poll()
+}
+```
+
+Condition evaluation:
+
+The condition is evaluated before every iteration.
+
+If the condition is false before the first iteration, the loop body executes
+zero times.
+
+Example:
+
+```
+while false {
+    Work()
+}
+```
+
+Work() is never executed.
+
+Evaluation order:
+
+The condition is evaluated using normal expression evaluation rules.
+
+Logical operators use normal left-to-right short-circuit semantics.
+
+Example:
+
+```
+while ready && CanContinue() {
+    Work()
+}
+```
+
+CanContinue() is only evaluated when ready is true.
+
+Condition side effects:
+
+The condition may contain function or method calls with side effects unless
+prohibited by another language rule.
+
+Example:
+
+```
+while ReadNext() {
+    Process()
+}
+```
+
+The condition is evaluated once before each possible iteration.
+
+It is not evaluated again during the same iteration.
+
+Parentheses:
+
+Parentheses around the condition are optional.
+
+Valid input:
+
+```
+while (running) {
+}
+```
+
+Canonical formatted output:
+
+```
+while running {
+}
+```
+
+Parentheses required for grouping are preserved.
+
+Example:
+
+```
+while running && (ready || forced) {
+}
+```
+
+Braces:
+
+Braces are mandatory.
+
+Valid:
+
+```
+while running {
+    Poll()
+}
+```
+
+Invalid:
+
+```
+while running
+    Poll()
+```
+
+Invalid:
+
+```
+while running Poll()
+```
+
+Loop body scope:
+
+The loop body creates a lexical scope.
+
+Example:
+
+```
+while running {
+    let value: int := Read()
+    Process(value)
+}
+```
+
+value is not visible after the loop body.
+
+Invalid:
+
+```
+while running {
+    let value: int := Read()
+}
+
+Process(value)
+```
+
+Outer variables:
+
+Variables declared outside the loop are visible inside the loop body.
+
+Example:
+
+```
+let mut count: int := 0
+
+while count < 10 {
+    count += 1
+}
+```
+
+Normal mutability rules apply.
+
+No shadowing:
+
+Normal Sec no-shadowing rules apply.
+
+Invalid:
+
+```
+let count: int := 0
+
+while running {
+    let count: int := 1
+}
+```
+
+Diagnostic:
+
+```
+variable "count" already declared
+```
+
+Mutation:
+
+while commonly uses mutable state.
+
+Example:
+
+```
+let mut index: int := 0
+
+while index < items.Length {
+    Process(items[index])
+    index += 1
+}
+```
+
+An immutable variable cannot be modified inside the loop.
+
+Invalid:
+
+```
+let index: int := 0
+
+while index < 10 {
+    index += 1
+}
+```
+
+break:
+
+break exits the nearest enclosing loop.
+
+Example:
+
+```
+while running {
+    if ShouldStop() {
+        break
+    }
+
+    Poll()
+}
+```
+
+Execution continues after the loop.
+
+break is only valid inside a loop.
+
+Invalid:
+
+```
+fn Test() void {
+    break
+}
+```
+
+continue:
+
+continue skips the remainder of the current iteration and starts the next
+condition evaluation.
+
+Example:
+
+```
+while HasMore() {
+    let item := Read()
+
+    if !item.IsValid() {
+        continue
+    }
+
+    Process(item)
+}
+```
+
+continue branches back to the while condition.
+
+continue is only valid inside a loop.
+
+Invalid:
+
+```
+fn Test() void {
+    continue
+}
+```
+
+Nearest-loop rule:
+
+break and continue affect the nearest enclosing loop.
+
+Example:
+
+```
+while outerCondition {
+    while innerCondition {
+        if skip {
+            continue
+        }
+
+        if stop {
+            break
+        }
+    }
+}
+```
+
+Both statements affect the inner loop.
+
+Nested loops:
+
+while loops may be nested.
+
+Example:
+
+```
+while rowsRemain {
+    while columnsRemain {
+        ProcessCell()
+    }
+}
+```
+
+Each loop creates its own scope and control-flow targets.
+
+Labeled loops:
+
+Labeled break and continue are not part of the initial implementation.
+
+Not supported initially:
+
+```
+outer:
+while running {
+    while active {
+        break outer
+    }
+}
+```
+
+Labeled control flow may be considered later if needed.
+
+Infinite while loops:
+
+The following is legal:
+
+```
+while true {
+    Poll()
+}
+```
+
+However, the canonical explicit infinite-loop form is:
+
+```
+for {
+    Poll()
+}
+```
+
+Both forms are legal.
+
+for {} is preferred when the programmer intends unconditional repetition.
+
+while true remains useful when a condition later becomes configurable or is
+generated by compile-time logic.
+
+Constant conditions:
+
+Constant bool conditions are legal.
+
+Examples:
+
+```
+while true {
+}
+
+while false {
+}
+```
+
+The compiler may report unreachable-code warnings according to the general
+warning policy.
+
+The optimizer may remove unreachable bodies or simplify constant loops.
+
+Constant conditions are not sema errors.
+
+Return inside while:
+
+return immediately exits the current function.
+
+Example:
+
+```
+fn WaitForValue() int {
+    while true {
+        if Ready() {
+            return Read()
+        }
+    }
+}
+```
+
+Error propagation:
+
+Normal try and propagation rules apply inside while loops.
+
+Example:
+
+```
+while running {
+    let item := try Read()
+    Process(item)
+}
+```
+
+If Read fails and the error propagates, the current function exits.
+
+Fallible conditions:
+
+A Result value cannot be used directly as a condition.
+
+Invalid:
+
+```
+while ReadStatus() {
+}
+```
+
+when ReadStatus returns Result[bool, IOError].
+
+Use try when the successful type is bool:
+
+```
+while try ReadStatus() {
+    Poll()
+}
+```
+
+Valid only when ReadStatus returns:
+
+```
+Result[bool, IOError]
+```
+
+Invalid:
+
+```
+while try LoadConfiguration() {
+}
+```
+
+when LoadConfiguration returns:
+
+```
+Result[Configuration, IOError]
+```
+
+Option conditions:
+
+Option[T] is not implicitly bool.
+
+Invalid:
+
+```
+while current {
+}
+```
+
+when current has type Option[T].
+
+Use match or an explicit bool-returning operation.
+
+Collections:
+
+Collections are not implicitly bool.
+
+Invalid:
+
+```
+while items {
+}
+```
+
+Use an explicit test:
+
+```
+while !items.IsEmpty() {
+}
+```
+
+or:
+
+```
+while items.Length > 0 {
+}
+```
+
+Strings:
+
+Strings are not implicitly bool.
+
+Invalid:
+
+```
+while name {
+}
+```
+
+Use:
+
+```
+while name != "" {
+}
+```
+
+Assignment in conditions:
+
+Assignment is not an expression.
+
+Invalid:
+
+```
+while running = true {
+}
+```
+
+Use:
+
+```
+running = true
+
+while running {
+}
+```
+
+or:
+
+```
+while running == true {
+}
+```
+
+The second form is legal but normally redundant.
+
+Declaration in while headers:
+
+Sec does not support declarations inside while headers.
+
+Not supported:
+
+```
+while let value := Read(); value > 0 {
+}
+```
+
+Declarations must be written before or inside the loop body.
+
+Pattern conditions:
+
+Sec does not support pattern binding inside while conditions.
+
+Not supported:
+
+```
+while Some(value) := current {
+}
+```
+
+Use match inside the loop or restructure the control flow.
+
+Comparison chaining:
+
+Comparison operators do not implicitly chain.
+
+Invalid:
+
+```
+while 0 <= value < 100 {
+}
+```
+
+Use:
+
+```
+while value >= 0 && value < 100 {
+}
+```
+
+or:
+
+```
+while value in 0..<100 {
+}
+```
+
+Loop progression:
+
+while does not define any automatic progression.
+
+Example:
+
+```
+let mut index: int := 0
+
+while index < 10 {
+    Process(index)
+    index += 1
+}
+```
+
+The programmer is responsible for updating state needed for the condition to
+change.
+
+The compiler does not automatically detect all non-terminating loops.
+
+Potentially non-terminating loops:
+
+This is legal:
+
+```
+let mut index: int := 0
+
+while index < 10 {
+    Process(index)
+}
+```
+
+The compiler may warn that index is never modified when this is trivially
+provable, but this is not a sema error.
+
+Such diagnostics belong to warnings or linting.
+
+Condition mutation:
+
+The condition may depend on variables modified in the body.
+
+Example:
+
+```
+let mut remaining: int := 10
+
+while remaining > 0 {
+    Work()
+    remaining -= 1
+}
+```
+
+The modified value is observed during the next condition evaluation.
+
+continue and progression:
+
+continue skips statements after it.
+
+Example:
+
+```
+let mut index: int := 0
+
+while index < items.Length {
+    if items[index].Skip {
+        index += 1
+        continue
+    }
+
+    Process(items[index])
+    index += 1
+}
+```
+
+The language does not insert an automatic increment.
+
+The programmer must ensure that continue paths perform any required progression.
+
+Unreachable statements:
+
+Statements after unconditional break, continue or return in the same block are
+unreachable.
+
+Example:
+
+```
+while running {
+    break
+    Poll()
+}
+```
+
+Poll() is unreachable.
+
+The general unreachable-code policy applies.
+
+Loop completion:
+
+A while loop may complete because:
+
+* the condition becomes false
+* break executes
+* return executes
+* an error propagates
+* execution terminates
+
+After the condition becomes false or break executes, execution continues after
+the loop.
+
+Flow analysis:
+
+A while loop may execute zero times unless the compiler can prove otherwise.
+
+Therefore, statements inside a normal while loop do not by themselves guarantee
+that anything happened.
+
+Example:
+
+```
+fn Invalid(condition: bool) int {
+    while condition {
+        return 1
+    }
+}
+```
+
+Invalid because condition may initially be false.
+
+Definite assignment:
+
+Assignment inside a while loop does not make a variable definitely assigned
+after the loop because the body may execute zero times.
+
+Invalid:
+
+```
+fn ReadValue(condition: bool) int {
+    let mut value: int
+
+    while condition {
+        value = 10
+        break
+    }
+
+    return value
+}
+```
+
+Valid:
+
+```
+fn ReadValue(condition: bool) int {
+    let mut value: int := 0
+
+    while condition {
+        value = 10
+        break
+    }
+
+    return value
+}
+```
+
+Constant true flow analysis:
+
+A while true loop without a reachable break does not continue after the loop.
+
+Example:
+
+```
+fn RunForever() int {
+    while true {
+        Poll()
+    }
+}
+```
+
+This satisfies function return analysis because control cannot reach the end of
+the function.
+
+Reachable break:
+
+A reachable break creates a continuing path.
+
+Example:
+
+```
+fn MayStop(stop: bool) int {
+    while true {
+        if stop {
+            break
+        }
+    }
+}
+```
+
+Invalid without a return after the loop because execution may continue after
+break.
+
+Conditional break:
+
+The compiler must conservatively treat a reachable conditional break as a
+possible exit path.
+
+Example:
+
+```
+while true {
+    if ShouldStop() {
+        break
+    }
+}
+```
+
+Statements after the loop remain reachable.
+
+Nested flow analysis:
+
+A break inside a nested loop does not make the outer loop breakable.
+
+Example:
+
+```
+while true {
+    while condition {
+        break
+    }
+}
+```
+
+The break exits only the inner loop.
+
+The outer while true remains non-continuing unless another exit path exists.
+
+break inside switch:
+
+If switch is nested inside while, break follows the language-wide loop rule.
+
+Example:
+
+```
+while running {
+    switch status {
+    case Status.stop:
+        break
+    }
+}
+```
+
+This exits the surrounding while loop.
+
+switch does not require break to end a case.
+
+continue inside switch:
+
+continue may appear inside a switch nested in while.
+
+Example:
+
+```
+while running {
+    switch status {
+    case Status.skip:
+        continue
+
+    default:
+        Work()
+    }
+}
+```
+
+continue starts the next evaluation of the surrounding while condition.
+
+No while else:
+
+Sec does not support Python-style while else syntax.
+
+Not supported:
+
+```
+while condition {
+} else {
+}
+```
+
+Use explicit state when behavior depends on whether the loop ended naturally or
+through break.
+
+No do-while:
+
+Sec does not initially support do-while syntax.
+
+Not supported:
+
+```
+do {
+    Work()
+} while condition
+```
+
+Use:
+
+```
+Work()
+
+while condition {
+    Work()
+}
+```
+
+or restructure the loop using for {} and break.
+
+No loop expressions:
+
+while is a statement, not an expression.
+
+Not supported:
+
+```
+result := while condition {
+}
+```
+
+break does not carry a value.
+
+Parser:
+
+The parser must support:
+
+* while followed by a condition expression
+* a required body block
+* nested while loops
+* break statements
+* continue statements
+
+The parser must reject:
+
+* missing conditions
+* missing bodies
+* condition declarations
+* pattern-binding conditions
+* do-while syntax
+* while else syntax
+
+Suggested AST:
+
+```
+type WhileStatement struct {
+    Condition: Expression
+    Body: Block
+}
+```
+
+The AST should preserve source positions for:
+
+* while keyword
+* condition
+* body block
+
+Sema:
+
+* Resolve the condition expression.
+* Require the resulting type to be bool.
+* Do not apply implicit truthiness conversions.
+* Validate all nested expressions using normal expression rules.
+* Permit try in the condition only when the successful type is bool.
+* Reject Result, Option, strings, collections, numbers, enums, structs,
+  references and pointers as direct conditions.
+* Create a lexical scope for the body.
+* Track the active loop context.
+* Validate break and continue placement.
+* Resolve break and continue against the nearest loop.
+* Track reachable break paths.
+* Track return, propagation and termination paths.
+* Conservatively assume zero iterations for normal while loops.
+* Treat while true without reachable break as non-continuing.
+* Do not use assignments inside the loop as definite assignment after the loop
+  unless separately proven by future advanced flow analysis.
+* Reject shadowing according to normal Sec rules.
+
+Diagnostics:
+
+Suggested diagnostics:
+
+```
+while condition must be bool, got int
+
+while condition must be bool, got string
+
+while condition must be bool, got Option[User]
+
+operator ! requires bool operand
+
+operator && requires bool operands
+
+assignment is not allowed in while condition
+
+declaration is not allowed in while condition
+
+pattern matching is not allowed in while condition; use match
+
+try expression in while condition must produce bool, got Configuration
+
+break is only valid inside a loop
+
+continue is only valid inside a loop
+```
+
+Code generation:
+
+Suggested blocks:
+
+```
+while.condition
+while.body
+while.end
+```
+
+Generation:
+
+* branch from the current block to while.condition
+* evaluate the condition
+* branch true to while.body
+* branch false to while.end
+* generate the body
+* branch continuing body paths back to while.condition
+* continue branches to while.condition
+* break branches to while.end
+* return and terminating paths do not branch further
+
+Example structure:
+
+```
+entry:
+    br label %while.condition
+
+while.condition:
+    %condition = ...
+    br i1 %condition, label %while.body, label %while.end
+
+while.body:
+    ...
+    br label %while.condition
+
+while.end:
+    ...
+```
+
+Constant true optimization:
+
+The initial code generator may still emit a condition block for while true.
+
+LLVM may optimize it later.
+
+The source semantics must not depend on optimization.
+
+Design rules:
+
+* while is used for condition-controlled repetition.
+* for is used for iteration.
+* The condition must be bool.
+* Sec has no implicit truthiness.
+* The condition is evaluated before every iteration.
+* The body may execute zero times.
+* Braces are mandatory.
+* Parentheses are optional.
+* break exits the nearest loop.
+* continue begins the next condition evaluation.
+* No automatic progression exists.
+* No condition-only for syntax.
+* No do-while syntax initially.
+* No while else syntax.
+* No loop expression values.
+* Normal scope, mutability and no-shadowing rules apply.
+* Normal try and error propagation rules apply.
+* Assignment inside a finite while loop does not guarantee assignment afterward.
+* while true without reachable break does not continue.

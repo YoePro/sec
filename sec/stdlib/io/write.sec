@@ -1,12 +1,16 @@
 module io
 
-fn _sysWrite(fd: int64, ref ptr: byte, len: int64) int64 {
+fn _sysWrite(fd: int64, ptr: unsafe *byte, len: uint64) int64 {
+    // REPLACE with 
+    // fn _write(fd: FileDescriptor, data: []byte) Result[uint, IOError]
+    // When FileDescriptor is in place
     unsafe {
         // The compilator translates this block to LLVM inline-asm
         asm {
             "syscall"
             inputs: rax(1), rdi(fd), rsi(ptr), rdx(len)
             outputs: rax
+            clobbers: rcx, r11, memory
         }
     }    
 }

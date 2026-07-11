@@ -1,0 +1,960 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Functions - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+</head>
+<body>
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+
+        <div class="sidebar-section">Functions</div>
+        <a href="#functions">Overview</a>
+        <a href="#function-declarations">Function Declarations</a>
+        <a href="#function-names">Function Names</a>
+        <a href="#parameters">Parameters</a>
+        <a href="#parameter-lists">Parameter Lists</a>
+        <a href="#parameter-immutability">Parameter Immutability</a>
+        <a href="#function-scope">Function Scope</a>
+
+        <div class="sidebar-section">Return Values</div>
+        <a href="#return-types">Return Types</a>
+        <a href="#return-statements">Return Statements</a>
+        <a href="#void-functions">Void Functions</a>
+        <a href="#required-return">Required Return</a>
+        <a href="#return-type-checking">Return Type Checking</a>
+
+        <div class="sidebar-section">Calls</div>
+        <a href="#function-calls">Function Calls</a>
+        <a href="#argument-count">Argument Count</a>
+        <a href="#argument-types">Argument Types</a>
+        <a href="#call-expression-types">Call Expression Types</a>
+
+        <div class="sidebar-section">Overloading</div>
+        <a href="#function-overloading">Overview</a>
+        <a href="#overload-signatures">Overload Signatures</a>
+        <a href="#return-type-overloads">Return Types Do Not Overload</a>
+        <a href="#overload-resolution">Overload Resolution</a>
+        <a href="#named-types-overloads">Named Types and Overloads</a>
+        <a href="#ambiguous-calls">Ambiguous Calls</a>
+
+        <div class="sidebar-section">Boolean Expressions</div>
+        <a href="#comparison-operators">Comparison Operators</a>
+        <a href="#logical-operators">Logical Operators</a>
+
+        <div class="sidebar-section">Result Functions</div>
+        <a href="#result-returning-functions">Result-returning Functions</a>
+        <a href="#ok-expression">Ok</a>
+        <a href="#err-expression">Err</a>
+        <a href="#plain-result-returns">Plain Returns Are Invalid</a>
+        <a href="#try-expression">try Expressions</a>
+        <a href="#try-context">try Context</a>
+        <a href="#result-validation">Result Validation</a>
+
+        <div class="sidebar-section">Reference</div>
+        <a href="#common-errors">Common Errors</a>
+        <a href="#complete-examples">Complete Examples</a>
+        <a href="#summary-rules">Summary of Rules</a>
+
+        <div class="sidebar-section">Pages</div>
+        <a href="index.html">Index</a>
+        <a href="01-introduction.html">Introduction</a>
+        <a href="02-basic-syntax.html">Basic Syntax</a>
+        <a href="03-variables-and-basic-types.html">Variables and Basic Types</a>
+        <a href="04-named-types-contracts-and-units.html">Named Types, Contracts and Units</a>
+        <a href="05-structs-properties-and-impl.html">Structs, Properties and Impl</a>
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Functions</div>
+
+        <h1 id="functions">Functions</h1>
+
+        <p>
+            Functions are the primary building blocks of executable behavior in Sec. A function groups
+            statements into a reusable unit, defines which values it accepts, and declares which value it
+            returns.
+        </p>
+
+        <p>
+            Functions are not required to belong to a class. Module-level functions are ordinary language
+            declarations. Methods use the same basic function syntax but are declared inside an
+            <code>impl</code> block and are described separately in the chapter on structs and implementation.
+        </p>
+
+        <div class="section" id="function-declarations">
+            <h2>Function Declarations</h2>
+
+            <p>A function declaration uses the following general form:</p>
+
+            <pre><code>fn name(parameter: Type, parameter: Type) ReturnType {
+    statements
+}</code></pre>
+
+            <p>Example:</p>
+
+            <pre><code>fn Add(a: int, b: int) int {
+    return a + b
+}</code></pre>
+
+            <p>The declaration contains five principal parts:</p>
+
+            <ul>
+                <li><code>fn</code> introduces the function declaration.</li>
+                <li><code>Add</code> is the function name.</li>
+                <li><code>(a: int, b: int)</code> is the parameter list.</li>
+                <li><code>int</code> is the declared return type.</li>
+                <li>The block enclosed by braces is the function body.</li>
+            </ul>
+
+            <p>
+                The return type is currently required for every function declaration. A function that does
+                not return a value declares <code>void</code> explicitly.
+            </p>
+        </div>
+
+        <div class="section" id="function-names">
+            <h2>Function Names</h2>
+
+            <p>
+                A function name identifies the function within its module or type-local implementation
+                namespace. Function names follow the normal identifier rules of Sec.
+            </p>
+
+            <pre><code>fn CalculateSpeed(distance: Meter, duration: Second) Speed {
+    return distance / duration
+}</code></pre>
+
+            <p>
+                Function names may be overloaded. Several functions may therefore share the same name if
+                their parameter type signatures are different. Overloading is described later in this
+                chapter.
+            </p>
+        </div>
+
+        <div class="section" id="parameters">
+            <h2>Parameters</h2>
+
+            <p>
+                Parameters define the input values accepted by a function. Every parameter has a name and an
+                explicit type.
+            </p>
+
+            <pre><code>name: Type</code></pre>
+
+            <p>Example:</p>
+
+            <pre><code>fn SetSpeed(speed: Speed) void {
+    return
+}</code></pre>
+
+            <p>
+                Parameters use the same typed identifier syntax as struct fields and explicitly typed variable
+                declarations. The parameter name appears first, followed by a colon and its type.
+            </p>
+
+            <p>
+                Each parameter type must refer to a known type. Basic types, named types, struct types, generic
+                types and unit-bearing types may all be used as parameter types when valid in that context.
+            </p>
+
+            <pre><code>fn RegisterCustomer(id: CustomerID, name: string) void {
+    return
+}
+
+fn Move(distance: Meter, duration: Second) Speed {
+    return distance / duration
+}</code></pre>
+        </div>
+
+        <div class="section" id="parameter-lists">
+            <h2>Parameter Lists</h2>
+
+            <p>Parameters are separated by commas:</p>
+
+            <pre><code>fn Add(a: int, b: int) int {
+    return a + b
+}</code></pre>
+
+            <p>A trailing comma is allowed:</p>
+
+            <pre><code>fn CreateUser(
+    id: CustomerID,
+    name: string,
+    age: Age,
+) User {
+    return User{
+        id: id,
+        name: name,
+        age: age,
+    }
+}</code></pre>
+
+            <p>
+                Trailing commas are especially useful in multi-line declarations because adding or removing a
+                parameter does not require modifying the preceding line.
+            </p>
+
+            <p>Parameter names must be unique within one function declaration.</p>
+
+            <pre><code>fn Invalid(a: int, a: int) int {
+    return a
+} // Error: duplicate parameter "a".</code></pre>
+        </div>
+
+        <div class="section" id="parameter-immutability">
+            <h2>Parameter Immutability</h2>
+
+            <p>
+                Function parameters are immutable local symbols by default. A parameter cannot be assigned a
+                new value inside the function body.
+            </p>
+
+            <pre><code>fn Double(value: int) int {
+    value = value * 2 // Error: parameter value is immutable.
+    return value
+}</code></pre>
+
+            <p>
+                When a function needs a mutable working value, it should declare a separate mutable local
+                variable explicitly.
+            </p>
+
+            <pre><code>fn Double(value: int) int {
+    let mut result := value
+    result *= 2
+    return result
+}</code></pre>
+
+            <p>
+                This preserves the original input value and makes mutation visible through the required
+                <code>mut</code> keyword.
+            </p>
+        </div>
+
+        <div class="section" id="function-scope">
+            <h2>Function Scope</h2>
+
+            <p>
+                Every function body creates a new lexical scope. Parameters and local variables declared in
+                that scope are visible only within the function body and its nested blocks.
+            </p>
+
+            <pre><code>fn CalculateTotal(price: Money, quantity: int) Money {
+    let total := price * quantity
+    return total
+}</code></pre>
+
+            <p>
+                The parameter names <code>price</code> and <code>quantity</code>, and the local variable
+                <code>total</code>, cease to exist when the function returns.
+            </p>
+
+            <p>
+                Nested blocks create child scopes according to the normal block rules. A name declared inside
+                a nested block is not visible after that block ends.
+            </p>
+        </div>
+
+        <h1 id="return-types">Return Values</h1>
+
+        <div class="section">
+            <h2>Return Types</h2>
+
+            <p>
+                Every function declaration currently includes an explicit return type after the closing
+                parenthesis of the parameter list.
+            </p>
+
+            <pre><code>fn Add(a: int, b: int) int {
+    return a + b
+}</code></pre>
+
+            <p>
+                The declared return type is part of the function signature and determines the type of every
+                call expression that invokes the function.
+            </p>
+
+            <p>
+                Named types remain distinct in return positions. A function declared to return
+                <code>Speed</code> must return a value assignable to <code>Speed</code>, not merely a value with the
+                same underlying representation.
+            </p>
+        </div>
+
+        <div class="section" id="return-statements">
+            <h2>Return Statements</h2>
+
+            <p>A return statement ends the current function and optionally produces a value:</p>
+
+            <pre><code>return expression</code></pre>
+
+            <p>Example:</p>
+
+            <pre><code>fn Square(value: int) int {
+    return value * value
+}</code></pre>
+
+            <p>
+                After a return statement executes, no later statement in the same path is executed. The
+                returned expression must be compatible with the function's declared return type.
+            </p>
+        </div>
+
+        <div class="section" id="void-functions">
+            <h2>Void Functions</h2>
+
+            <p>
+                A function that does not return a value uses <code>void</code> as its return type.
+            </p>
+
+            <pre><code>fn Noop() void {
+    return
+}</code></pre>
+
+            <p>
+                A void function may use <code>return</code> without an expression to leave the function early.
+            </p>
+
+            <pre><code>fn PrintPositive(value: int) void {
+    if value &lt;= 0 {
+        return
+    }
+
+    Print(value)
+}</code></pre>
+
+            <p>
+                A void function may also reach the end of its body without an explicit return statement.
+                Returning a value from a void function is invalid.
+            </p>
+        </div>
+
+        <div class="section" id="required-return">
+            <h2>Required Return</h2>
+
+            <p>
+                A non-void function must return a value. The compiler rejects a function whose body does not
+                provide a valid return path.
+            </p>
+
+            <pre><code>fn Invalid() int {
+} // Error: function Invalid must return int.</code></pre>
+
+            <p>
+                As control-flow analysis becomes more complete, all reachable execution paths must satisfy the
+                return requirement. A return in only one conditional branch is not sufficient if another
+                branch can reach the end of the function.
+            </p>
+        </div>
+
+        <div class="section" id="return-type-checking">
+            <h2>Return Type Checking</h2>
+
+            <p>
+                The value returned by a function must be assignable to its declared return type.
+            </p>
+
+            <pre><code>fn Valid() int {
+    return 42
+}</code></pre>
+
+            <p>Invalid:</p>
+
+            <pre><code>fn Invalid() int {
+    return true
+} // Error: function Invalid must return int, got bool.</code></pre>
+
+            <p>The same rule applies to named types:</p>
+
+            <pre><code>type Speed int
+
+type Money int
+
+fn CurrentSpeed() Speed {
+    let value: Money := 50
+    return value
+} // Error: function CurrentSpeed must return Speed, got Money.</code></pre>
+        </div>
+
+        <h1 id="function-calls">Function Calls</h1>
+
+        <div class="section">
+            <h2>Calling a Function</h2>
+
+            <p>A function is called by writing its name followed by a parenthesized argument list:</p>
+
+            <pre><code>Name(argument, argument)</code></pre>
+
+            <p>Example:</p>
+
+            <pre><code>let result := Add(1, 2)</code></pre>
+
+            <p>
+                Arguments are evaluated and matched against the function's parameters in declaration order.
+            </p>
+        </div>
+
+        <div class="section" id="argument-count">
+            <h2>Argument Count</h2>
+
+            <p>
+                The number of arguments in a call must match the number of parameters in the selected function
+                declaration.
+            </p>
+
+            <pre><code>fn Add(a: int, b: int) int {
+    return a + b
+}
+
+let value := Add(1, 2) // Valid.</code></pre>
+
+            <p>Invalid:</p>
+
+            <pre><code>let value := Add(1)       // Error: missing argument.
+let value := Add(1, 2, 3) // Error: too many arguments.</code></pre>
+        </div>
+
+        <div class="section" id="argument-types">
+            <h2>Argument Types</h2>
+
+            <p>
+                Every argument must be assignable to the corresponding parameter type.
+            </p>
+
+            <pre><code>fn SetSpeed(value: Speed) void {
+    return
+}
+
+let speed: Speed := 80
+SetSpeed(speed)</code></pre>
+
+            <p>Named type identity is preserved:</p>
+
+            <pre><code>type Speed int
+
+type Money int
+
+let price: Money := 80
+SetSpeed(price) // Error: expected Speed, got Money.</code></pre>
+
+            <p>
+                Untyped literals may be interpreted using the parameter context when the language's literal
+                conversion rules permit it. Variables do not lose their established types during calls.
+            </p>
+        </div>
+
+        <div class="section" id="call-expression-types">
+            <h2>Call Expression Types</h2>
+
+            <p>
+                A function call expression has the declared return type of the selected function.
+            </p>
+
+            <pre><code>fn Add(a: int, b: int) int {
+    return a + b
+}
+
+let value := Add(1, 2)</code></pre>
+
+            <p>
+                The inferred type of <code>value</code> is <code>int</code> because <code>Add</code> returns
+                <code>int</code>.
+            </p>
+
+            <pre><code>fn CalculateSpeed(distance: Meter, duration: Second) Speed {
+    return distance / duration
+}
+
+let speed := CalculateSpeed(Meter(100), Second(10))</code></pre>
+
+            <p>The inferred type of <code>speed</code> is <code>Speed</code>.</p>
+        </div>
+
+        <h1 id="function-overloading">Function Overloading</h1>
+
+        <p>
+            Sec allows several functions in the same module scope to share a name. Such declarations are
+            overloads. The compiler selects one overload from the types of the call arguments.
+        </p>
+
+        <div class="section" id="overload-signatures">
+            <h2>Overload Signatures</h2>
+
+            <p>
+                Overloads must have different parameter type signatures.
+            </p>
+
+            <pre><code>fn Print(value: int) void {
+    return
+}
+
+fn Print(value: string) void {
+    return
+}</code></pre>
+
+            <p>
+                These declarations are valid because their parameter types differ.
+            </p>
+
+            <p>Duplicate parameter signatures are invalid:</p>
+
+            <pre><code>fn Convert(value: int) string {
+    return ""
+}
+
+fn Convert(value: int) bool {
+    return false
+} // Error: duplicate overload signature Convert(int).</code></pre>
+        </div>
+
+        <div class="section" id="return-type-overloads">
+            <h2>Return Types Do Not Distinguish Overloads</h2>
+
+            <p>
+                The return type is never used to select an overload. Call arguments must be sufficient to
+                identify the function.
+            </p>
+
+            <p>Therefore, these declarations conflict:</p>
+
+            <pre><code>fn Parse(value: string) int {
+    return 0
+}
+
+fn Parse(value: string) bool {
+    return false
+}</code></pre>
+
+            <p>
+                Both functions have the same parameter signature <code>Parse(string)</code>. The expected type of
+                the surrounding expression cannot be used to choose between them.
+            </p>
+        </div>
+
+        <div class="section" id="overload-resolution">
+            <h2>Overload Resolution</h2>
+
+            <p>
+                Overload resolution examines the argument expressions and selects an overload whose parameters
+                can accept those arguments.
+            </p>
+
+            <p>Exact type matches are preferred over conversions.</p>
+
+            <pre><code>fn Print(value: int) void {
+    return
+}
+
+fn Print(value: int64) void {
+    return
+}
+
+let value: int64 := 10
+Print(value) // Selects Print(int64).</code></pre>
+
+            <p>
+                If no overload can accept the arguments, the compiler reports an argument error. If several
+                overloads remain equally valid, the call is ambiguous.
+            </p>
+        </div>
+
+        <div class="section" id="named-types-overloads">
+            <h2>Named Types and Overloads</h2>
+
+            <p>
+                Named types remain distinct during overload resolution.
+            </p>
+
+            <pre><code>type Percent int range 0..100
+
+fn Set(value: int) void {
+    return
+}
+
+fn Set(value: Percent) void {
+    return
+}
+
+let percent: Percent := 50
+
+Set(percent) // Selects Set(Percent).
+Set(50)      // Selects Set(int).
+Set(Percent(50)) // Selects Set(Percent).</code></pre>
+
+            <p>
+                The compiler does not erase the semantic identity of <code>Percent</code> merely because its
+                underlying type is <code>int</code>.
+            </p>
+        </div>
+
+        <div class="section" id="ambiguous-calls">
+            <h2>Ambiguous Calls</h2>
+
+            <p>
+                A call is ambiguous when more than one overload matches with equal priority.
+            </p>
+
+            <pre><code>fn Print(value: int) void {
+    return
+}
+
+fn Print(value: int64) void {
+    return
+}
+
+Print(10)</code></pre>
+
+            <p>
+                Integer literals are first interpreted according to their natural or default type. If that does
+                not produce a unique best match, the compiler reports an ambiguous call rather than choosing an
+                overload arbitrarily.
+            </p>
+
+            <p>An explicit conversion may be used to make the intended overload clear:</p>
+
+            <pre><code>Print(int64(10))</code></pre>
+        </div>
+
+        <h1 id="comparison-operators">Boolean Expressions</h1>
+
+        <div class="section">
+            <h2>Comparison Operators</h2>
+
+            <p>Comparison operators produce values of type <code>bool</code>:</p>
+
+            <pre><code>==
+!=
+&lt;
+&lt;=
+&gt;
+&gt;=</code></pre>
+
+            <p>Example:</p>
+
+            <pre><code>fn IsPositive(value: int) bool {
+    return value &gt; 0
+}</code></pre>
+
+            <p>
+                The operands must support the selected comparison. The result of every valid comparison is
+                always <code>bool</code>.
+            </p>
+        </div>
+
+        <div class="section" id="logical-operators">
+            <h2>Logical Operators</h2>
+
+            <p>The binary logical operators <code>&amp;&amp;</code> and <code>||</code> require boolean operands and return bool.</p>
+
+            <pre><code>fn IsInside(value: int, minimum: int, maximum: int) bool {
+    return value &gt;= minimum &amp;&amp; value &lt;= maximum
+}</code></pre>
+
+            <p>The prefix operator <code>!</code> also requires a boolean operand:</p>
+
+            <pre><code>fn IsDisabled(enabled: bool) bool {
+    return !enabled
+}</code></pre>
+
+            <p>Invalid:</p>
+
+            <pre><code>return !10       // Error: ! requires bool.
+return 1 &amp;&amp; 2   // Error: &amp;&amp; requires bool operands.</code></pre>
+        </div>
+
+        <h1 id="result-returning-functions">Result-returning Functions</h1>
+
+        <p>
+            A function that may either produce a value or report a typed error returns
+            <code>Result[T, E]</code>. The first type argument is the success value type. The second is the error
+            type.
+        </p>
+
+        <pre><code>fn CalculateSpeed() Result[Speed, IOError] {
+    return Ok(Speed(50))
+}</code></pre>
+
+        <div class="section" id="ok-expression">
+            <h2>Returning Ok</h2>
+
+            <p>
+                <code>Ok(expression)</code> constructs the successful variant of a Result value.
+            </p>
+
+            <pre><code>fn ReadCount() Result[int, IOError] {
+    return Ok(123)
+}</code></pre>
+
+            <p>
+                The expression contained by <code>Ok</code> must be assignable to the Result value type.
+            </p>
+
+            <pre><code>fn Invalid() Result[int, IOError] {
+    return Ok(IOError.InvalidValue)
+} // Error: Ok value must be int, got IOError.</code></pre>
+        </div>
+
+        <div class="section" id="err-expression">
+            <h2>Returning Err</h2>
+
+            <p>
+                <code>Err(expression)</code> constructs the error variant of a Result value.
+            </p>
+
+            <pre><code>fn ReadCount() Result[int, IOError] {
+    return Err(IOError.InvalidValue)
+}</code></pre>
+
+            <p>
+                The expression contained by <code>Err</code> must be assignable to the Result error type.
+            </p>
+
+            <pre><code>fn Invalid() Result[int, IOError] {
+    return Err(123)
+} // Error: Err value must be IOError, got int.</code></pre>
+        </div>
+
+        <div class="section" id="plain-result-returns">
+            <h2>Plain Returns Are Invalid</h2>
+
+            <p>
+                A Result-returning function must return either <code>Ok(...)</code> or <code>Err(...)</code>. It may
+                not return an unwrapped value.
+            </p>
+
+            <pre><code>fn Invalid() Result[int, IOError] {
+    return 123
+} // Error: Result-returning function must return Ok(...) or Err(...).</code></pre>
+
+            <p>
+                This requirement keeps success and failure explicit at every Result-producing return point.
+            </p>
+        </div>
+
+        <div class="section" id="try-expression">
+            <h2>The try Expression</h2>
+
+            <p>
+                The <code>try</code> operator extracts the success value from a Result expression or propagates
+                its error according to the surrounding function's error rules.
+            </p>
+
+            <pre><code>let speed := try CalculateSpeed()</code></pre>
+
+            <p>
+                If <code>CalculateSpeed()</code> has type <code>Result[Speed, IOError]</code>, the type of the complete
+                try expression is <code>Speed</code>.
+            </p>
+
+            <p>
+                The expression following <code>try</code> must have a Result type.
+            </p>
+
+            <pre><code>let value := try 123
+// Error: try requires Result expression.</code></pre>
+        </div>
+
+        <div class="section" id="try-context">
+            <h2>try Context</h2>
+
+            <p>
+                A try expression is valid only where its error can be propagated or handled. In the normal
+                propagation form, the surrounding function must return a compatible Result error type.
+            </p>
+
+            <pre><code>fn UseSpeed() Result[Speed, IOError] {
+    let speed := try CalculateSpeed()
+    return Ok(speed)
+}</code></pre>
+
+            <p>Invalid:</p>
+
+            <pre><code>fn UseSpeed() Speed {
+    return try CalculateSpeed()
+} // Error: cannot propagate IOError from function returning Speed.</code></pre>
+
+            <p>
+                Local try handlers are described in the dedicated error-handling chapter. This chapter only
+                introduces the expression form used for direct propagation.
+            </p>
+        </div>
+
+        <div class="section" id="result-validation">
+            <h2>Result Validation</h2>
+
+            <p><code>Result</code> requires exactly two type arguments:</p>
+
+            <pre><code>Result[ValueType, ErrorType]</code></pre>
+
+            <p>Invalid:</p>
+
+            <pre><code>Result[int]
+Result[int, IOError, string]</code></pre>
+
+            <p>
+                Both type arguments must refer to known types. <code>Ok</code> and <code>Err</code> each require
+                exactly one expression.
+            </p>
+
+            <pre><code>Ok()       // Invalid.
+Ok(1, 2)   // Invalid.
+Err()      // Invalid.
+Err(a, b)  // Invalid.</code></pre>
+        </div>
+
+        <h1 id="common-errors">Common Errors</h1>
+
+        <div class="section">
+            <h2>Duplicate Parameters</h2>
+
+            <pre><code>fn Bad(a: int, a: int) int {
+    return a
+}</code></pre>
+
+            <p>Each parameter name must be unique within the function.</p>
+        </div>
+
+        <div class="section">
+            <h2>Missing Return</h2>
+
+            <pre><code>fn Bad() int {
+}</code></pre>
+
+            <p>A non-void function must return a value of its declared type.</p>
+        </div>
+
+        <div class="section">
+            <h2>Wrong Return Type</h2>
+
+            <pre><code>fn Bad() int {
+    return true
+}</code></pre>
+
+            <p>The returned expression must be assignable to the declared return type.</p>
+        </div>
+
+        <div class="section">
+            <h2>Incorrect Result Return</h2>
+
+            <pre><code>fn Bad() Result[int, IOError] {
+    return 123
+}</code></pre>
+
+            <p>Result-returning functions must return <code>Ok(...)</code> or <code>Err(...)</code>.</p>
+        </div>
+
+        <div class="section">
+            <h2>Wrong Argument Count</h2>
+
+            <pre><code>fn Add(a: int, b: int) int {
+    return a + b
+}
+
+let result := Add(1)</code></pre>
+
+            <p>The number of arguments must match the selected declaration.</p>
+        </div>
+
+        <div class="section">
+            <h2>Wrong Argument Type</h2>
+
+            <pre><code>fn SetSpeed(value: Speed) void {
+    return
+}
+
+let price: Money := 50
+SetSpeed(price)</code></pre>
+
+            <p>Arguments must preserve named type identity and match the corresponding parameter types.</p>
+        </div>
+
+        <h1 id="complete-examples">Complete Examples</h1>
+
+        <div class="section">
+            <h2>Basic Function</h2>
+
+            <pre><code>fn Add(a: int, b: int) int {
+    return a + b
+}
+
+let x := Add(1, 2)
+let y: int := Add(3, 4)</code></pre>
+        </div>
+
+        <div class="section">
+            <h2>Named Types and Units</h2>
+
+            <pre><code>type Meter decimal&lt;m&gt;
+type Second decimal&lt;s&gt;
+type Speed decimal&lt;m/s&gt;
+
+fn CalculateSpeed(distance: Meter, duration: Second) Speed {
+    return distance / duration
+}
+
+let distance: Meter := 100
+let duration: Second := 10
+let speed := CalculateSpeed(distance, duration)</code></pre>
+        </div>
+
+        <div class="section">
+            <h2>Result and try</h2>
+
+            <pre><code>fn ReadDistance() Result[Meter, IOError] {
+    return Ok(Meter(100))
+}
+
+fn ReadDuration() Result[Second, IOError] {
+    return Ok(Second(10))
+}
+
+fn ReadSpeed() Result[Speed, IOError] {
+    let distance := try ReadDistance()
+    let duration := try ReadDuration()
+    let speed := CalculateSpeed(distance, duration)
+
+    return Ok(speed)
+}</code></pre>
+        </div>
+
+        <div class="section" id="summary-rules">
+            <h2>Summary of Rules</h2>
+
+            <ul>
+                <li>Functions are declared with <code>fn</code>.</li>
+                <li>Parameters use <code>name: Type</code>.</li>
+                <li>Parameters are comma-separated.</li>
+                <li>A trailing parameter comma is allowed.</li>
+                <li>Every function currently declares an explicit return type.</li>
+                <li><code>void</code> is used when no value is returned.</li>
+                <li>Function bodies create lexical scopes.</li>
+                <li>Parameters are immutable local symbols by default.</li>
+                <li>Duplicate parameter names are invalid.</li>
+                <li>Non-void functions must return a compatible value.</li>
+                <li>Void functions may use <code>return</code> without an expression.</li>
+                <li>Function calls must match both argument count and parameter types.</li>
+                <li>The type of a function call is the selected function's return type.</li>
+                <li>Functions may be overloaded by parameter type signature.</li>
+                <li>Return types never distinguish overloads.</li>
+                <li>Exact overload matches are preferred over conversions.</li>
+                <li>Named types remain distinct during overload resolution.</li>
+                <li>Comparison operators return <code>bool</code>.</li>
+                <li><code>&amp;&amp;</code>, <code>||</code> and <code>!</code> require boolean operands.</li>
+                <li><code>Result[T, E]</code> contains a success type and an error type.</li>
+                <li>Result-returning functions return <code>Ok(...)</code> or <code>Err(...)</code>.</li>
+                <li><code>try</code> requires a Result expression and produces its success type.</li>
+            </ul>
+        </div>
+
+        <div class="page-nav">
+            <a href="05-structs-properties-and-impl.html">Previous: Structs, Properties and Impl</a>
+            <a href="index.html">Manual Index</a>
+        </div>
+    </main>
+</div>
+</body>
+</html>

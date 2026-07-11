@@ -1,0 +1,33 @@
+module log
+
+fn Info(args...) void {
+    // TODO: Implement - Skriver till stdout med [INFO] + tidsstämpel
+}
+
+fn Infof(format: string, args...) void {
+    // TODO: Implement
+}
+
+fn Warn(args...) void {
+    // TODO: Implement - Skriver till stderr med [WARN] + tidsstämpel
+}
+
+fn Warnf(format: string, args...) void {
+    // TODO: Implement
+}
+
+fn Error(args...) void {
+    // TODO: Implement - Skriver till stderr med [ERROR] + tidsstämpel
+}
+
+fn Errorf(format: string, args...) void {
+    // TODO: Implement
+}
+
+fn Debug(args...) void {
+    // TODO: Implement - Skrivs endast ut om DEBUG-miljövariabeln är aktiv
+}
+
+fn Debugf(format: string, args...) void {
+    // TODO: Implement
+}

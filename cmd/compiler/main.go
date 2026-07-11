@@ -270,18 +270,39 @@ func resolveStdlibImports(program *ast.Program) {
 		if !ok {
 			continue
 		}
-		if importStmt.Path != "fmt" {
+		module := stdlibModuleName(importStmt.Path)
+		if !canSourceIncludeStdlibModule(module) {
 			continue
 		}
 
-		imported := parseStdlibModule(importStmt.Path)
-		qualifyImportedModule(imported, importStmt.Path)
+		imported := parseStdlibModule(module)
+		qualifyImportedModule(imported, module)
 		program.Statements = append(program.Statements, imported.Statements...)
 	}
 }
 
+func canSourceIncludeStdlibModule(name string) bool {
+	switch name {
+	case "fmt":
+		return true
+	default:
+		return false
+	}
+}
+
+func stdlibModuleName(path string) string {
+	if len(path) > 4 && path[:4] == "std/" {
+		return path[4:]
+	}
+	return path
+}
+
+func stdlibModulePath(name string) string {
+	return filepath.Join("sec", "stdlib", name, name+".sec")
+}
+
 func parseStdlibModule(name string) *ast.Program {
-	path := filepath.Join("stdlib", name, name+".sec")
+	path := stdlibModulePath(name)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "stdlib import error: %v\n", err)
@@ -375,6 +396,12 @@ func printASTStatement(stmt ast.Statement, prefix string, last bool) {
 	case *ast.AssignmentStatement:
 		printASTAssignment(stmt, prefix, last)
 
+	case *ast.TryAssignmentStatement:
+		printASTBranch(prefix, last, "TryAssignment")
+		if stmt.Assignment != nil {
+			printASTAssignment(stmt.Assignment, childPrefix(prefix, last), true)
+		}
+
 	case *ast.ExpressionStatement:
 		printASTExpression(prefix, last, "Expression", stmt.Expression)
 
@@ -383,6 +410,12 @@ func printASTStatement(stmt ast.Statement, prefix string, last bool) {
 
 	case *ast.IfStatement:
 		printASTIf(stmt, prefix, last)
+
+	case *ast.ForStatement:
+		printASTFor(stmt, prefix, last)
+
+	case *ast.WhileStatement:
+		printASTWhile(stmt, prefix, last)
 
 	case *ast.SwitchStatement:
 		printASTSwitch(stmt, prefix, last)
@@ -403,6 +436,12 @@ func printASTStatement(stmt ast.Statement, prefix string, last bool) {
 
 	case *ast.FallthroughStatement:
 		printASTBranch(prefix, last, "Fallthrough")
+
+	case *ast.BreakStatement:
+		printASTBranch(prefix, last, "Break")
+
+	case *ast.ContinueStatement:
+		printASTBranch(prefix, last, "Continue")
 
 	case *ast.UnsafeStatement:
 		printASTUnsafe(stmt, prefix, last)
@@ -432,9 +471,12 @@ func printASTAsmBlock(prefix string, block *ast.AsmBlock) {
 		template = fmt.Sprintf("%q", block.Template.Value)
 	}
 	printASTLeaf(prefix, false, "Template: "+template)
-	printASTLeaf(prefix, len(block.Outputs) == 0, "Inputs: "+formatAsmInputs(block.Inputs))
+	printASTLeaf(prefix, len(block.Outputs) == 0 && len(block.Clobbers) == 0, "Inputs: "+formatAsmInputs(block.Inputs))
 	if len(block.Outputs) > 0 {
-		printASTLeaf(prefix, true, "Outputs: "+formatAsmOutputs(block.Outputs))
+		printASTLeaf(prefix, len(block.Clobbers) == 0, "Outputs: "+formatAsmOutputs(block.Outputs))
+	}
+	if len(block.Clobbers) > 0 {
+		printASTLeaf(prefix, true, "Clobbers: "+formatStringList(block.Clobbers))
 	}
 }
 
@@ -460,6 +502,20 @@ func formatAsmOutputs(outputs []ast.AsmOutput) string {
 			out += ", "
 		}
 		out += output.Register
+		if output.Name != "" {
+			out += "(" + output.Name + ")"
+		}
+	}
+	return out
+}
+
+func formatStringList(values []string) string {
+	out := ""
+	for i, value := range values {
+		if i > 0 {
+			out += ", "
+		}
+		out += value
 	}
 	return out
 }
@@ -481,6 +537,53 @@ func printASTIf(stmt *ast.IfStatement, prefix string, last bool) {
 		elsePrefix := childPrefix(childrenPrefix, true)
 		for i, bodyStmt := range stmt.Alternative.Statements {
 			printASTStatement(bodyStmt, elsePrefix, i == len(stmt.Alternative.Statements)-1)
+		}
+	}
+}
+
+func printASTFor(stmt *ast.ForStatement, prefix string, last bool) {
+	printASTBranch(prefix, last, "For")
+	childrenPrefix := childPrefix(prefix, last)
+
+	hasBindings := len(stmt.Bindings) > 0
+	hasIterable := stmt.Iterable != nil
+	hasBody := stmt.Body != nil && len(stmt.Body.Statements) > 0
+
+	if hasBindings {
+		printASTBranch(childrenPrefix, !(hasIterable || hasBody), "Bindings")
+		bindingsPrefix := childPrefix(childrenPrefix, !(hasIterable || hasBody))
+		for i, binding := range stmt.Bindings {
+			label := "Name: " + binding.Name
+			if binding.Discard {
+				label = "Discard: _"
+			}
+			printASTLeaf(bindingsPrefix, i == len(stmt.Bindings)-1, label)
+		}
+	}
+
+	if hasIterable {
+		printASTExpression(childrenPrefix, !hasBody, "Iterable", stmt.Iterable)
+	}
+
+	if stmt.Body != nil {
+		printASTBranch(childrenPrefix, true, "Body")
+		bodyPrefix := childPrefix(childrenPrefix, true)
+		for i, bodyStmt := range stmt.Body.Statements {
+			printASTStatement(bodyStmt, bodyPrefix, i == len(stmt.Body.Statements)-1)
+		}
+	}
+}
+
+func printASTWhile(stmt *ast.WhileStatement, prefix string, last bool) {
+	printASTBranch(prefix, last, "While")
+	childrenPrefix := childPrefix(prefix, last)
+	hasBody := stmt.Body != nil && len(stmt.Body.Statements) > 0
+	printASTExpression(childrenPrefix, !hasBody, "Condition", stmt.Condition)
+	if stmt.Body != nil {
+		printASTBranch(childrenPrefix, true, "Body")
+		bodyPrefix := childPrefix(childrenPrefix, true)
+		for i, bodyStmt := range stmt.Body.Statements {
+			printASTStatement(bodyStmt, bodyPrefix, i == len(stmt.Body.Statements)-1)
 		}
 	}
 }
@@ -687,6 +790,7 @@ func printASTEnum(stmt *ast.EnumDeclaration, prefix string, last bool) {
 func printASTFunction(stmt *ast.FunctionDeclaration, prefix string, last bool) {
 	printASTBranch(prefix, last, "Function")
 	childrenPrefix := childPrefix(prefix, last)
+	printASTLeaf(childrenPrefix, false, fmt.Sprintf("Unsafe: %t", stmt.Unsafe))
 	printASTLeaf(childrenPrefix, false, "Name: "+stmt.Name.Value)
 	printASTLeaf(childrenPrefix, false, "Parameters: "+formatParameters(stmt.Parameters))
 	printASTLeaf(childrenPrefix, false, "Return: "+formatTypeRef(stmt.ReturnType))
@@ -725,6 +829,9 @@ func printASTExpression(prefix string, last bool, role string, expr ast.Expressi
 	}
 
 	switch expr := expr.(type) {
+	case *ast.LambdaExpression:
+		printASTLambda(prefix, last, role, expr)
+
 	case *ast.PrefixExpression:
 		printASTBranch(prefix, last, role+": Prefix("+expr.Operator+")")
 		printASTExpression(childPrefix(prefix, last), true, "Right", expr.Right)
@@ -757,6 +864,22 @@ func printASTExpression(prefix string, last bool, role string, expr ast.Expressi
 	}
 }
 
+func printASTLambda(prefix string, last bool, role string, expr *ast.LambdaExpression) {
+	printASTBranch(prefix, last, role+": Lambda")
+	childrenPrefix := childPrefix(prefix, last)
+	hasCaptures := len(expr.Captures) > 0
+	printASTLeaf(childrenPrefix, false, "Parameters: "+formatParameters(expr.Parameters))
+	printASTLeaf(childrenPrefix, false, "Return: "+formatTypeRef(expr.ReturnType))
+	if hasCaptures {
+		printASTLeaf(childrenPrefix, false, "Captures: "+formatLambdaCaptures(expr.Captures))
+	}
+	printASTBranch(childrenPrefix, true, "Body")
+	bodyPrefix := childPrefix(childrenPrefix, true)
+	for i, bodyStmt := range expr.Body.Statements {
+		printASTStatement(bodyStmt, bodyPrefix, i == len(expr.Body.Statements)-1)
+	}
+}
+
 func printASTTryHandler(prefix string, handler *ast.TryHandler, last bool) {
 	printASTBranch(prefix, last, "Handler")
 	childrenPrefix := childPrefix(prefix, last)
@@ -777,7 +900,11 @@ func printASTTryHandler(prefix string, handler *ast.TryHandler, last bool) {
 func printASTMatchArm(prefix string, arm *ast.MatchArm, last bool) {
 	printASTBranch(prefix, last, "Arm")
 	childrenPrefix := childPrefix(prefix, last)
+	hasGuard := arm.Guard != nil
 	printASTExpression(childrenPrefix, false, "Pattern", arm.Pattern)
+	if hasGuard {
+		printASTExpression(childrenPrefix, false, "Guard", arm.Guard)
+	}
 
 	switch {
 	case arm.ReturnBody != nil:
@@ -866,6 +993,8 @@ func formatASTExpression(expr ast.Expression) string {
 		return "Range(" + expr.String() + ")"
 	case *ast.StructLiteral:
 		return "StructLiteral(" + formatTypeRef(expr.Type) + ")"
+	case *ast.LambdaExpression:
+		return "Lambda(" + formatParameters(expr.Parameters) + ") " + formatTypeRef(expr.ReturnType)
 	default:
 		return fmt.Sprintf("%T", expr)
 	}
@@ -920,6 +1049,14 @@ func printStatement(stmt ast.Statement) {
 	case *ast.AssignmentStatement:
 		printAssignment(stmt)
 
+	case *ast.TryAssignmentStatement:
+		if stmt.Assignment == nil {
+			fmt.Println("TryAssignment")
+			return
+		}
+		fmt.Print("Try ")
+		printAssignment(stmt.Assignment)
+
 	case *ast.ExpressionStatement:
 		fmt.Printf("Expression %s\n", stmt.Expression.String())
 
@@ -928,6 +1065,18 @@ func printStatement(stmt ast.Statement) {
 
 	case *ast.FallthroughStatement:
 		fmt.Println("Fallthrough")
+
+	case *ast.BreakStatement:
+		fmt.Println("Break")
+
+	case *ast.ContinueStatement:
+		fmt.Println("Continue")
+
+	case *ast.ForStatement:
+		printFor(stmt)
+
+	case *ast.WhileStatement:
+		printWhile(stmt)
 
 	case *ast.SwitchStatement:
 		fmt.Println("Switch")
@@ -1002,7 +1151,11 @@ func printEnum(stmt *ast.EnumDeclaration) {
 }
 
 func printFunction(stmt *ast.FunctionDeclaration) {
-	fmt.Printf("Function %s(%s) %s\n", stmt.Name.Value, formatParameters(stmt.Parameters), formatTypeRef(stmt.ReturnType))
+	prefix := "Function"
+	if stmt.Unsafe {
+		prefix = "Unsafe Function"
+	}
+	fmt.Printf("%s %s(%s) %s\n", prefix, stmt.Name.Value, formatParameters(stmt.Parameters), formatTypeRef(stmt.ReturnType))
 	for _, bodyStmt := range stmt.Body.Statements {
 		fmt.Print("  ")
 		printStatement(bodyStmt)
@@ -1031,6 +1184,33 @@ func printLet(stmt *ast.LetStatement) {
 
 func printAssignment(stmt *ast.AssignmentStatement) {
 	fmt.Printf("Assignment %s %s %s\n", stmt.Target.String(), stmt.Operator, stmt.Value.String())
+}
+
+func printFor(stmt *ast.ForStatement) {
+	if len(stmt.Bindings) == 0 && stmt.Iterable == nil {
+		fmt.Println("For")
+		return
+	}
+
+	fmt.Print("For ")
+	for i, binding := range stmt.Bindings {
+		if i > 0 {
+			fmt.Print(", ")
+		}
+		fmt.Print(binding.Name)
+	}
+	if stmt.Iterable != nil {
+		fmt.Printf(" in %s", stmt.Iterable.String())
+	}
+	fmt.Println()
+}
+
+func printWhile(stmt *ast.WhileStatement) {
+	condition := "<nil>"
+	if stmt.Condition != nil {
+		condition = stmt.Condition.String()
+	}
+	fmt.Printf("While %s\n", condition)
 }
 
 func printReturn(stmt *ast.ReturnStatement) {
@@ -1101,6 +1281,18 @@ func formatTypeRef(ref *ast.TypeReference) string {
 		return "<nil>"
 	}
 
+	if ref.Name == "fn" || ref.FunctionReturnType != nil {
+		out := "fn("
+		for i, param := range ref.FunctionParameterTypes {
+			if i > 0 {
+				out += ", "
+			}
+			out += formatTypeRef(param)
+		}
+		out += ") " + formatTypeRef(ref.FunctionReturnType)
+		return out
+	}
+
 	if ref.ElementType != nil {
 		return "[]" + formatTypeRef(ref.ElementType)
 	}
@@ -1122,6 +1314,19 @@ func formatTypeRef(ref *ast.TypeReference) string {
 		out += "]"
 	}
 
+	return out
+}
+
+func formatLambdaCaptures(captures []ast.LambdaCapture) string {
+	out := ""
+	for i, capture := range captures {
+		if i > 0 {
+			out += ", "
+		}
+		if capture.Name != nil {
+			out += capture.Name.Value
+		}
+	}
 	return out
 }
 

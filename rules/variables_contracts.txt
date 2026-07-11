@@ -1,0 +1,338 @@
+Variable contracts
+
+Purpose:
+
+Variable contracts restrict the set of values that may be stored in a variable.
+
+They are runtime-checkable invariants, similar to a hidden fallible property
+setter.
+
+Initial contract kinds:
+
+```
+range min..max
+odd
+even
+regex "pattern"
+minLen n
+maxLen n
+len n
+notEmpty
+and, or, not
+```
+
+Contract applicability:
+
+```
+range    integer, uint, float and decimal-like numeric types
+odd      integer, decimal and uint types
+even     integer, decimal and uint types
+regex    string
+minLen   string and later collections
+maxLen   string and later collections
+len      string and later collections
+notEmpty string and later collections
+and      logical combination of two or more contracts
+or       logical combination of two or more contracts
+not      logical inversion of a single contract
+```
+
+The compiler should reject contracts that do not match the base type.
+
+Examples:
+
+```
+type Age int range 0..130
+type Name string minLen 1 maxLen 100
+type Email string regex "^[^@]+@[^@]+$"
+type PlayerCount int even range 2..20
+type Score int range 1..100 and (odd or range 90..100)
+type NonZero int not range 0..0
+```
+
+Invalid:
+
+```
+type Bad int minLen 2
+type AlsoBad string range 0..10
+type StringOdd string odd
+type and ord not
+```
+
+Implemented now:
+
+* named types may carry integer range contracts
+* struct fields may carry integer range contracts
+* constant initializers are checked at compile time
+* constant assignments are checked at compile time
+* assignment to a mutable variable whose type has a contract requires `try`
+* `try x = value` marks a fallible contract assignment
+
+Not implemented yet:
+
+* parser syntax for regex, minLen, maxLen, len, notEmpty, odd, even, and, or, not
+* decimal/float range contract evaluation
+* runtime contract check generation
+* try handlers for contract assignment failure
+* contract error types
+* contract propagation through LLVM
+
+Core rule:
+
+If a mutable variable has a contract, every later assignment to that variable
+is fallible.
+
+Therefore the assignment must be written with `try`.
+
+Example:
+
+```
+type Percent int range 0..100
+
+let mut p: Percent := 50
+
+p = 60
+```
+
+Invalid:
+
+```
+assigning variable p requires try because Percent has contracts
+```
+
+Valid:
+
+```
+try p = 60
+```
+
+Compound assignments are also fallible:
+
+```
+try p += 10
+```
+
+Invalid:
+
+```
+p += 10
+```
+
+Reason:
+
+Even if a value happens to be valid at compile time, the language rule should
+not depend on whether the compiler can prove it. A contracted assignment is a
+fallible operation by type.
+
+Initializers:
+
+Declaration initializers do not require `try`.
+
+```
+let mut p: Percent := 50
+```
+
+The declaration creates the variable. If the initializer is compile-time
+constant, the compiler checks the contract immediately.
+
+Invalid:
+
+```
+let mut p: Percent := 101
+```
+
+Diagnostic:
+
+```
+value 101 violates range contract Percent 0..100
+```
+
+If the initializer is not compile-time checkable, later runtime contract checks
+will be required. The exact initialization syntax for fallible non-constant
+contract initialization is not finalized yet.
+
+Hidden property model:
+
+A contracted variable behaves as if the compiler generated a hidden property:
+
+```
+property value: Percent {
+    get { return storage }
+    try set value {
+        // check contracts
+        storage = value
+    }
+}
+```
+
+This means assignment follows the same rule as a fallible property setter:
+
+```
+try p = value
+```
+
+No implicit conversions:
+
+Contracts do not create implicit conversions.
+
+```
+let i: int := 50
+let mut p: Percent := 50
+
+try p = i
+```
+
+Invalid unless an explicit conversion is used:
+
+```
+try p = Percent(i)
+```
+
+Compile-time contract checks:
+
+For integer range, parity (odd/even), and logical combination contracts, the compiler should evaluate constant expressions:
+
+```
+10
+-5
+10 + 5
+10 * 5
+```
+
+If the result violates the contract, report a compile-time error.
+
+Runtime contract checks:
+
+When the value is not compile-time known, the compiler must generate a runtime
+check in the hidden setter path.
+
+Until runtime contract checks are implemented, `try` marks the operation as
+fallible but code generation may reject it.
+
+Contract identity:
+
+Contracts are part of a named type's identity.
+
+```
+type Percent int range 0..100
+type Score int range 0..100
+```
+
+`Percent` and `Score` are different types even if the underlying type and
+contract are identical.
+
+Therefore:
+
+```
+let p: Percent := 50
+let s: Score := p
+```
+
+Invalid:
+
+```
+cannot initialize Score with Percent
+```
+
+Explicit conversion may be used:
+
+```
+let s: Score := Score(p)
+```
+
+The conversion itself is contract-checked.
+
+Assignment target rule:
+
+The `try` requirement belongs to the storage being assigned, not only to the
+right-hand expression.
+
+```
+let value: int := 50
+let mut p: Percent := 10
+
+try p = Percent(value)
+```
+
+Without `try`, this is invalid even if the expression is an explicit
+conversion:
+
+```
+p = Percent(value)
+```
+
+Diagnostic:
+
+```
+assigning variable p requires try because Percent has contracts
+```
+
+Struct fields:
+
+Struct fields may carry contracts.
+
+```
+type User struct {
+    Age: int range 0..130,
+}
+```
+
+The field contract should be enforced on:
+
+* struct literal initialization
+* field assignment
+* generated setters if a property forwards to the field
+
+The same fallible-storage rule applies once field assignment is fully
+implemented:
+
+```
+try user.Age = 42
+```
+
+Contract composition:
+
+Multiple contracts listed sequentially on the same variable are combined with implicit logical and. 
+Explicit usage of and, or, and not enables advanced precedence grouping using parentheses.
+
+```
+type Username string minLen 3 maxLen 32 regex "^[a-zA-Z0-9_]+$"
+type LuckyNumber int range 1..100 and (odd or range 70..80)
+```
+
+All constraints must pass.
+
+Diagnostic policy:
+
+Report the first failing contract for a single assignment unless a later design explicitly asks for aggregate contract diagnostics.
+For logical combinations:
+* and: Reports the specific contract that caused the failure.
+* or: Reports that none of the allowed alternative conditions were met.
+* not: Reports that the value violated the inversion constraint.
+
+Preferred diagnostics:
+
+```
+value 101 violates range contract Percent 0..100
+value "" violates notEmpty contract Name
+value "ab" violates minLen contract Username 3
+value "toolong" violates maxLen contract Code 5
+value "x y" violates regex contract Identifier
+value 42 violates odd contract LuckyNumber
+value 15 violates even contract PlayerCount
+value 44 violates range contract or range contract for ComplexType
+value 50 violates not range contract for NonZero
+```
+
+Contract result model:
+
+Conceptually, a failed contract assignment returns an error. The concrete error
+type is not finalized.
+
+For now, semantic analysis only enforces that the caller writes `try` for a
+fallible contract assignment.
+
+Later, when contract errors become real values, `try p = value` must either:
+
+* propagate a compatible contract error, or
+* handle the error locally with a try handler block.

@@ -311,7 +311,7 @@
       "patterns": [
         {
           "name": "keyword.control.sec",
-          "match": "\\b(?:if|else|switch|case|fallthrough|for|while|in|match|where|return|defer|try|await|spawn|discard|assert|panic)\\b"
+          "match": "\\b(?:asm|if|else|switch|case|default|fallthrough|for|while|in|match|where|return|defer|try|await|spawn|discard|assert|panic|unsafe)\\b"
         },
         {
           "name": "storage.type.variable.sec",

@@ -1,5 +1,39 @@
 Implement switch statements.
 
+Implementation status:
+
+Implemented:
+
+* Parser support for subject and subjectless switch statements.
+* Parser support for case clauses, default clauses, comma-separated case items,
+  value cases, range cases, relational cases and fallthrough.
+* Sema checks for subject/value compatibility.
+* Sema checks for subjectless case expressions requiring bool.
+* Sema checks for default uniqueness and default-final ordering.
+* Sema checks for fallthrough placement and final-case restrictions.
+* Independent lexical scopes for switch case bodies.
+* Definite-assignment merge over only paths that continue after the switch.
+* Switch termination analysis for default-returning switches.
+* Bool-subject exhaustiveness when both true and false cases are present.
+* Duplicate compile-time integer and bool case value diagnostics.
+* Compile-time range overlap diagnostics for integer ranges.
+* Compile-time value-covered-by-previous-range diagnostics.
+* Basic unreachable diagnostics for relation cases covered by previous
+  constant relational/range cases.
+* LLVM code generation for value, range, relational, default and subjectless
+  switch cases in the currently supported expression subset.
+
+Not implemented yet:
+
+* Exhaustiveness or coverage warnings for enum switches.
+* Duplicate/coverage diagnostics for string constants.
+* Full unit-aware and semantic-type-aware compile-time range overlap beyond
+  the currently implemented type compatibility checks.
+* More advanced relational coverage reasoning for dynamic expressions.
+* LLVM optimization to native LLVM `switch` instruction or jump tables for
+  dense constant integer cases.
+* Full code generation for every expression/type supported by sema.
+
 Purpose:
 
 switch is used for value-based branching.

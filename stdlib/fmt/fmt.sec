@@ -1,5 +1,0 @@
-module fmt
-
-fn Println(value: string) void {
-    @runtime.PrintlnString(value)
-}

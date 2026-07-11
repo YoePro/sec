@@ -1,0 +1,35 @@
+module platform.linux.amd64
+
+enum _sysCall {
+    sysRead = 0,
+    sysWrite = 1,
+    sysOpen = 2,           // deprecated - use sysOpenat (257)
+    sysClose = 3,
+    sysStat = 4,           // deprecated - use sysNewFStatAt (262) or sysStatX (332)
+    sysFStat = 5,          // deprecated - use sysNewFStatAt (262) or sysStatX (332)
+    sysLStat = 6,          // deprecated - use sysNewFStatAt (262) or sysStatX (332)
+    sysPoll = 7,           // deprecated - use sysPPoll (271)
+    sysLSeek = 8,
+    sysMMap = 9,
+    sysMProtect = 10,
+    sysMUnmap = 11,
+    sysBrk = 12,
+    sysPipe = 22,          // deprecated - use sysPipe2 (293)
+    sysSelect = 23,        // deprecated - use sysPSelect6 (270)
+    sysConnect = 42,
+    sysAccept = 43,        // deprecated - use sysAccept4 (288)
+    sysClone = 56,         // deprecated - use sysClone3 (435)
+    sysFork = 57,          // deprecated - use sysClone3 (435)
+    sysVFork = 58,         // deprecated - use sysClone3 (435)
+    sysExecve = 59,
+    sysExit = 60,
+    sysExitGroup = 231,
+    sysOpenat = 257,
+    sysNewFStatAt = 262,
+    sysPSelect6 = 270,
+    sysPPoll = 271,
+    sysAccept4 = 288,
+    sysPipe2 = 293,
+    sysStatX = 332,
+    sysClone3 = 435,
+}

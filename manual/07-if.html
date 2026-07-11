@@ -1,0 +1,593 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>If Statements - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+</head>
+<body>
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+
+        <div class="sidebar-section">If Statements</div>
+        <a href="#if-statements">Overview</a>
+        <a href="#basic-syntax">Basic Syntax</a>
+        <a href="#conditions">Conditions</a>
+        <a href="#no-truthiness">No Implicit Truthiness</a>
+        <a href="#comparison-conditions">Comparison Conditions</a>
+        <a href="#logical-conditions">Logical Conditions</a>
+
+        <div class="sidebar-section">Branches</div>
+        <a href="#else-branch">else</a>
+        <a href="#else-if-chains">else if</a>
+        <a href="#nested-if">Nested if Statements</a>
+        <a href="#branch-scope">Branch Scope</a>
+
+        <div class="sidebar-section">Control Flow</div>
+        <a href="#returning-from-branches">Returning from Branches</a>
+        <a href="#required-return-analysis">Required Return Analysis</a>
+        <a href="#unreachable-code">Unreachable Code</a>
+        <a href="#if-is-a-statement">if Is a Statement</a>
+
+        <div class="sidebar-section">Examples</div>
+        <a href="#result-example">Result-returning Function</a>
+        <a href="#common-errors">Common Errors</a>
+        <a href="#summary-rules">Summary of Rules</a>
+
+        <div class="sidebar-section">Pages</div>
+        <a href="index.html">Index</a>
+        <a href="01-introduction.html">Introduction</a>
+        <a href="02-basic-syntax.html">Basic Syntax</a>
+        <a href="03-variables-and-basic-types.html">Variables and Basic Types</a>
+        <a href="04-named-types-contracts-and-units.html">Named Types, Contracts and Units</a>
+        <a href="05-structs-properties-and-impl.html">Structs, Properties and Impl</a>
+        <a href="06-functions.html">Functions</a>
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / If Statements</div>
+
+        <h1 id="if-statements">If Statements</h1>
+
+        <p>
+            An <code>if</code> statement conditionally executes a block of code. The condition is evaluated
+            once. If it evaluates to <code>true</code>, the first branch is executed. If it evaluates to
+            <code>false</code>, execution continues with an optional <code>else if</code> or <code>else</code>
+            branch.
+        </p>
+
+        <p>
+            Sec requires conditions to have type <code>bool</code>. Numbers, strings, references and other
+            values are never interpreted as true or false implicitly.
+        </p>
+
+        <div class="section" id="basic-syntax">
+            <h2>Basic Syntax</h2>
+
+            <p>The simplest form contains one condition and one block:</p>
+
+            <pre><code>if condition {
+    statements
+}</code></pre>
+
+            <p>Example:</p>
+
+            <pre><code>if rawResult &lt; 0 {
+    return Err(_decodeError(-rawResult))
+}</code></pre>
+
+            <p>
+                Parentheses are not required around the condition. Braces are required around the branch
+                body, including when the body contains only one statement.
+            </p>
+
+            <pre><code>if ready {
+    Start()
+}</code></pre>
+
+            <p>The following form is not valid Sec syntax:</p>
+
+            <pre><code>if (ready)
+    Start()</code></pre>
+
+            <div class="rule">
+                <strong>Rule:</strong> An <code>if</code> condition is written without mandatory parentheses,
+                and every branch body is enclosed by braces.
+            </div>
+        </div>
+
+        <div class="section" id="conditions">
+            <h2>Conditions</h2>
+
+            <p>
+                The expression following <code>if</code> must produce a <code>bool</code>. A boolean variable may
+                be used directly:
+            </p>
+
+            <pre><code>let connected := IsConnected()
+
+if connected {
+    SendData()
+}</code></pre>
+
+            <p>A function call returning <code>bool</code> may also be used directly:</p>
+
+            <pre><code>if IsConnected() {
+    SendData()
+}</code></pre>
+
+            <p>
+                More commonly, the condition is produced by a comparison or a logical expression.
+            </p>
+        </div>
+
+        <div class="section" id="no-truthiness">
+            <h2>No Implicit Truthiness</h2>
+
+            <p>
+                Sec has no truthy or falsy values. An integer is not false when it is zero, a string is not
+                false when it is empty, and a reference is not true merely because it exists.
+            </p>
+
+            <pre><code>let count := 3
+
+if count {
+    Process()
+} // Error: if condition must be bool, got int.</code></pre>
+
+            <p>The intended test must be written explicitly:</p>
+
+            <pre><code>if count &gt; 0 {
+    Process()
+}</code></pre>
+
+            <p>Similarly, strings must be compared or inspected explicitly:</p>
+
+            <pre><code>let name := "Anna"
+
+if name != "" {
+    PrintName(name)
+}</code></pre>
+
+            <p>
+                Explicit conditions make the programmer's intent visible and prevent values from acquiring
+                unrelated boolean meanings.
+            </p>
+        </div>
+
+        <div class="section" id="comparison-conditions">
+            <h2>Comparison Conditions</h2>
+
+            <p>Comparison operators produce <code>bool</code> values and may therefore be used as conditions:</p>
+
+            <pre><code>==
+!=
+&lt;
+&lt;=
+&gt;
+&gt;=</code></pre>
+
+            <p>Example:</p>
+
+            <pre><code>if rawResult &lt; 0 {
+    return Err(_decodeError(-rawResult))
+}</code></pre>
+
+            <p>
+                The operands must support the selected comparison. Named types retain their distinct type
+                identity, so unrelated named types cannot be compared merely because they share the same
+                underlying representation.
+            </p>
+
+            <pre><code>type Speed int
+type Money int
+
+let speed: Speed := 50
+let money: Money := 50
+
+if speed == money {
+} // Error: Speed and Money are different types.</code></pre>
+        </div>
+
+        <div class="section" id="logical-conditions">
+            <h2>Logical Conditions</h2>
+
+            <p>Boolean expressions may be combined with the logical operators:</p>
+
+            <pre><code>!condition
+left &amp;&amp; right
+left || right</code></pre>
+
+            <p>Both operands of <code>&amp;&amp;</code> and <code>||</code> must be <code>bool</code>.</p>
+
+            <pre><code>if connected &amp;&amp; authenticated {
+    SendPrivateData()
+}</code></pre>
+
+            <pre><code>if isAdmin || isOwner {
+    AllowEdit()
+}</code></pre>
+
+            <pre><code>if !finished {
+    ContinueWork()
+}</code></pre>
+
+            <p>
+                Logical expressions may be grouped with parentheses when grouping is needed for clarity or
+                precedence:
+            </p>
+
+            <pre><code>if connected &amp;&amp; (isAdmin || isOwner) {
+    AllowEdit()
+}</code></pre>
+        </div>
+
+        <div class="section" id="else-branch">
+            <h2><code>else</code></h2>
+
+            <p>
+                An <code>else</code> branch runs when the preceding <code>if</code> condition is false.
+            </p>
+
+            <pre><code>if temperature &lt; FreezingPoint {
+    StartHeater()
+} else {
+    StopHeater()
+}</code></pre>
+
+            <p>
+                Exactly one of the two branches is executed. After the selected branch finishes, execution
+                continues after the complete <code>if</code> statement unless the branch has already returned or
+                otherwise terminated control flow.
+            </p>
+        </div>
+
+        <div class="section" id="else-if-chains">
+            <h2><code>else if</code> Chains</h2>
+
+            <p>
+                Several conditions may be tested in order by using <code>else if</code>. Conditions are evaluated
+                from top to bottom. The first condition that evaluates to <code>true</code> selects its branch.
+            </p>
+
+            <pre><code>if score &gt;= 90 {
+    grade = Grade.A
+} else if score &gt;= 80 {
+    grade = Grade.B
+} else if score &gt;= 70 {
+    grade = Grade.C
+} else {
+    grade = Grade.F
+}</code></pre>
+
+            <p>
+                Once a branch has been selected, later conditions in the chain are not evaluated.
+            </p>
+
+            <p>
+                A final <code>else</code> is optional. Without it, execution simply continues after the chain
+                when no condition matches.
+            </p>
+        </div>
+
+        <div class="section" id="nested-if">
+            <h2>Nested <code>if</code> Statements</h2>
+
+            <p>An <code>if</code> statement may appear inside any branch:</p>
+
+            <pre><code>if connected {
+    if authenticated {
+        SendPrivateData()
+    } else {
+        RequestAuthentication()
+    }
+}</code></pre>
+
+            <p>
+                Nesting is useful when the second condition is meaningful only after the first condition has
+                succeeded. When several conditions belong to one decision, a combined boolean expression may
+                be clearer.
+            </p>
+
+            <pre><code>if connected &amp;&amp; authenticated {
+    SendPrivateData()
+}</code></pre>
+        </div>
+
+        <div class="section" id="branch-scope">
+            <h2>Branch Scope</h2>
+
+            <p>
+                Every branch body is a block and therefore creates a child scope. Variables declared inside a
+                branch are visible only inside that branch and its nested scopes.
+            </p>
+
+            <pre><code>if hasInput {
+    let value := ReadInput()
+    Process(value)
+}
+
+Process(value) // Error: unknown symbol value.</code></pre>
+
+            <p>
+                Separate branches may use the same local variable name because each branch has its own scope:
+            </p>
+
+            <pre><code>if usePrimary {
+    let connection := OpenPrimary()
+    Use(connection)
+} else {
+    let connection := OpenSecondary()
+    Use(connection)
+}</code></pre>
+
+            <p>
+                Variables declared before the <code>if</code> statement remain visible inside its branches.
+                Mutating such a variable requires that it was declared with <code>let mut</code>.
+            </p>
+
+            <pre><code>let mut result := 0
+
+if useAlternative {
+    result = 10
+}</code></pre>
+        </div>
+
+        <div class="section" id="returning-from-branches">
+            <h2>Returning from Branches</h2>
+
+            <p>
+                A branch may return from the enclosing function. Once <code>return</code> is executed, no later
+                statement in that function invocation is reached.
+            </p>
+
+            <pre><code>fn Normalize(value: int) int {
+    if value &lt; 0 {
+        return -value
+    }
+
+    return value
+}</code></pre>
+
+            <p>
+                This form is often clearer than wrapping the remainder of the function in an
+                <code>else</code> block. The early-return branch handles the exceptional or special case, while
+                the normal path continues without additional nesting.
+            </p>
+        </div>
+
+        <div class="section" id="required-return-analysis">
+            <h2>Required Return Analysis</h2>
+
+            <p>
+                A non-<code>void</code> function must return a value on every reachable path. An
+                <code>if</code> statement satisfies this requirement only when every possible branch returns.
+            </p>
+
+            <p>Valid:</p>
+
+            <pre><code>fn Pick(value: int) int {
+    if value &gt;= 10 {
+        return 5
+    } else {
+        return 6
+    }
+}</code></pre>
+
+            <p>
+                Both possible paths return an <code>int</code>, so no additional return statement is required.
+            </p>
+
+            <p>Also valid:</p>
+
+            <pre><code>fn Pick(value: int) int {
+    if value &gt;= 10 {
+        return 5
+    }
+
+    return 6
+}</code></pre>
+
+            <p>
+                When the condition is false, execution continues to the final return statement.
+            </p>
+
+            <p>Invalid:</p>
+
+            <pre><code>fn Pick(value: int) int {
+    if value &gt;= 10 {
+        return 5
+    }
+} // Error: function Pick must return int.</code></pre>
+
+            <p>
+                The condition may be false, leaving a reachable path that does not return a value.
+            </p>
+
+            <p>
+                In an <code>else if</code> chain, every branch must return and the chain must end with
+                <code>else</code> before the chain alone can satisfy the function's required return.
+            </p>
+        </div>
+
+        <div class="section" id="unreachable-code">
+            <h2>Unreachable Code</h2>
+
+            <p>
+                Statements following an unconditional <code>return</code> in the same control-flow path are
+                unreachable and are rejected.
+            </p>
+
+            <pre><code>fn Pick(value: int) int {
+    if value &gt;= 10 {
+        return 5
+        Log("unreachable") // Error: unreachable statement.
+    }
+
+    return 6
+}</code></pre>
+
+            <p>
+                When every branch of an <code>if</code> statement returns, statements following the complete
+                statement are also unreachable:
+            </p>
+
+            <pre><code>fn Pick(value: int) int {
+    if value &gt;= 10 {
+        return 5
+    } else {
+        return 6
+    }
+
+    return 7 // Error: unreachable statement.
+}</code></pre>
+
+            <p>
+                An <code>if</code> statement without an <code>else</code> does not by itself make following code
+                unreachable, because its condition may be false.
+            </p>
+        </div>
+
+        <div class="section" id="if-is-a-statement">
+            <h2><code>if</code> Is a Statement</h2>
+
+            <p>
+                In the current language model, <code>if</code> controls which statements execute. It does not
+                itself produce a value.
+            </p>
+
+            <p>Use assignment to a mutable variable when a branch must select a later value:</p>
+
+            <pre><code>let mut label := "normal"
+
+if value &lt; 0 {
+    label = "negative"
+} else if value &gt; 0 {
+    label = "positive"
+}</code></pre>
+
+            <p>
+                Use a function with explicit returns when the decision naturally computes a value:
+            </p>
+
+            <pre><code>fn Describe(value: int) string {
+    if value &lt; 0 {
+        return "negative"
+    } else if value &gt; 0 {
+        return "positive"
+    }
+
+    return "zero"
+}</code></pre>
+        </div>
+
+        <div class="section" id="result-example">
+            <h2>Result-returning Function</h2>
+
+            <p>
+                The following function combines unsafe system interaction, an <code>if</code> statement and a
+                typed <code>Result</code> return value:
+            </p>
+
+            <pre><code>fn Write(fd: int, data: []byte) Result[uint, LinuxError] {
+    let rawResult: int
+
+    unsafe {
+        rawResult = _rawSyscall3(
+            _sysWrite,
+            uint(fd),
+            uint(data.ptr),
+            data.len,
+        )
+    }
+
+    if rawResult &lt; 0 {
+        return Err(_decodeError(-rawResult))
+    }
+
+    return Ok(uint(rawResult))
+}</code></pre>
+
+            <p>The function has two reachable outcomes:</p>
+
+            <ul>
+                <li>A negative system-call result is converted into <code>LinuxError</code> and returned as <code>Err(...)</code>.</li>
+                <li>A non-negative result is converted to <code>uint</code> and returned as <code>Ok(...)</code>.</li>
+            </ul>
+
+            <p>
+                The error path returns early. The normal path therefore continues without an
+                <code>else</code> branch. This keeps the successful path visually direct and avoids unnecessary
+                nesting.
+            </p>
+        </div>
+
+        <div class="section" id="common-errors">
+            <h2>Common Errors</h2>
+
+            <h3>Using a non-boolean condition</h3>
+
+            <pre><code>let count := 10
+
+if count {
+} // Error: if condition must be bool, got int.</code></pre>
+
+            <h3>Omitting braces</h3>
+
+            <pre><code>if ready
+    Start()</code></pre>
+
+            <h3>Reading a branch-local variable outside its scope</h3>
+
+            <pre><code>if ready {
+    let value := Load()
+}
+
+Use(value) // Error: unknown symbol value.</code></pre>
+
+            <h3>Failing to return from every path</h3>
+
+            <pre><code>fn Value(valid: bool) int {
+    if valid {
+        return 1
+    }
+} // Error: function Value must return int.</code></pre>
+
+            <h3>Writing code after an unconditional return</h3>
+
+            <pre><code>if failed {
+    return Err(error)
+    Log(error) // Error: unreachable statement.
+}</code></pre>
+        </div>
+
+        <div class="section" id="summary-rules">
+            <h2>Summary of Rules</h2>
+
+            <ul>
+                <li>An <code>if</code> condition must have type <code>bool</code>.</li>
+                <li>Sec does not implicitly convert other values to <code>bool</code>.</li>
+                <li>Parentheses around the condition are optional and normally unnecessary.</li>
+                <li>Every branch body requires braces.</li>
+                <li><code>else if</code> conditions are evaluated from top to bottom.</li>
+                <li>Only the first matching branch is executed.</li>
+                <li>Every branch creates its own local scope.</li>
+                <li>Variables declared inside a branch are not visible outside that branch.</li>
+                <li>An <code>if</code> statement may return from the enclosing function.</li>
+                <li>A non-<code>void</code> function must return on every reachable path.</li>
+                <li>An <code>if</code> chain guarantees a return only when all possible branches return.</li>
+                <li>Code after an unconditional return path is unreachable.</li>
+                <li><code>if</code> is currently a control-flow statement and does not produce a value.</li>
+            </ul>
+        </div>
+
+        <div class="page-nav">
+            <a href="06-functions.html">Previous: Functions</a>
+            <a href="index.html">Manual Index</a>
+        </div>
+    </main>
+</div>
+</body>
+</html>

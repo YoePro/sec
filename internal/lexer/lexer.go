@@ -18,7 +18,10 @@ const (
 	ASM         TokenType = "ASM"
 	ASSERT      TokenType = "ASSERT"
 	AWAIT       TokenType = "AWAIT"
+	BREAK       TokenType = "BREAK"
 	CASE        TokenType = "CASE"
+	CAPTURE     TokenType = "CAPTURE"
+	CONTINUE    TokenType = "CONTINUE"
 	DEFAULT     TokenType = "DEFAULT"
 	DEFER       TokenType = "DEFER"
 	DISCARD     TokenType = "DISCARD"
@@ -604,8 +607,14 @@ func lookupIdent(s string) TokenType {
 		return ASSERT
 	case "await":
 		return AWAIT
+	case "break":
+		return BREAK
 	case "case":
 		return CASE
+	case "capture":
+		return CAPTURE
+	case "continue":
+		return CONTINUE
 	case "default":
 		return DEFAULT
 	case "defer":

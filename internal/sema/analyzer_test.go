@@ -44,6 +44,68 @@ let a := 1
 	assertSemaErrors(t, errors, expected)
 }
 
+func TestUnderscoreVisibilityAcrossModules(t *testing.T) {
+	input := `
+module x.y
+
+type _SharedInt int
+type __PrivateInt int
+
+fn _shared() int {
+	return 1
+}
+
+fn __private() int {
+	return 2
+}
+
+module x.z
+
+fn UseShared() int {
+	let value: _SharedInt := 1
+	return _shared() + value
+}
+
+fn UsePrivateFunction() int {
+	return __private()
+}
+
+fn UsePrivateType() int {
+	let value: __PrivateInt := 1
+	return 0
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+
+	expected := []string{
+		"function __private is not accessible from module x.z at 23:9",
+		"type __PrivateInt is not accessible from module x.z at 27:13",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestDoubleUnderscoreIsVisibleInExactModule(t *testing.T) {
+	input := `
+module x.y
+
+type __PrivateInt int
+
+fn __private() int {
+	return 2
+}
+
+fn UsePrivate() int {
+	let value: __PrivateInt := 1
+	return __private() + value
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
 func TestExecutableCodeIsNotAllowedAtModuleScope(t *testing.T) {
 	input := `
 module main
@@ -255,22 +317,45 @@ type Percent int range 0..100
 
 let mut p: Percent := 50
 fn Test() void {
-	p = 100
-	p = 101
-	p = 10 * 10
-	p = 50 + 51
-	p = 50
-	p += 20
-	p += 60
+	try p = 100
+	try p = 101
+	try p = 10 * 10
+	try p = 50 + 51
+	try p = 50
+	try p += 20
+	try p += 60
 }
 `
 
 	errors := analyzeSource(t, input)
 
 	expected := []string{
-		"value 101 violates range contract Percent 0..100 at 7:6",
-		"value 101 violates range contract Percent 0..100 at 9:9",
-		"value 130 violates range contract Percent 0..100 at 12:7",
+		"value 101 violates range contract Percent 0..100 at 7:10",
+		"value 101 violates range contract Percent 0..100 at 9:13",
+		"value 130 violates range contract Percent 0..100 at 12:11",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestContractedVariableAssignmentRequiresTry(t *testing.T) {
+	input := `
+type Percent int range 0..100
+
+let mut p: Percent := 50
+fn Test() void {
+	p = 60
+	p += 1
+	try p = 70
+	try p += 1
+}
+`
+
+	errors := analyzeSource(t, input)
+
+	expected := []string{
+		"assigning variable p requires try because Percent has contracts at 6:2",
+		"assigning variable p requires try because Percent has contracts at 7:2",
 	}
 
 	assertSemaErrors(t, errors, expected)
@@ -312,18 +397,18 @@ let _a: int := 90
 let _tooMuch: int := 101
 let mut precent: Percent := 0
 fn Test() void {
-	precent += 50
-	precent += _a
-	precent = Percent(_a)
-	precent = Percent(_tooMuch)
+	try precent += 50
+	try precent += _a
+	try precent = Percent(_a)
+	try precent = Percent(_tooMuch)
 }
 `
 
 	errors := analyzeSource(t, input)
 
 	expected := []string{
-		"cannot add int to Percent at 9:13",
-		"value 101 violates range contract Percent 0..100 at 11:12",
+		"cannot add int to Percent at 9:17",
+		"value 101 violates range contract Percent 0..100 at 11:16",
 	}
 
 	assertSemaErrors(t, errors, expected)
@@ -1866,8 +1951,177 @@ func TestErrorHandlingMatchInvalidFixture(t *testing.T) {
 		"non-exhaustive match for IOError at 25:17",
 		"match arms must produce compatible types, got int and string at 36:29",
 		"match pattern must match Result[Speed, IOError], got IOError at 45:16",
+		"catch-all pattern may not hide Err at 44:18",
 		"duplicate match arm for IOError.InvalidValue at 55:9",
 		"unreachable match arm at 65:9",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestMatchRequiresAtLeastOneBranch(t *testing.T) {
+	input := `
+module main
+
+enum IOError {
+	InvalidValue,
+}
+
+fn Test(error: IOError) void {
+	match error {
+	}
+	return
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+
+	expected := []string{
+		"match requires at least one branch at 9:2",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestMatchCatchAllMayNotHideResultErr(t *testing.T) {
+	input := `
+module main
+
+enum IOError {
+	InvalidValue,
+}
+
+fn Read() Result[int, IOError] {
+	return Ok(1)
+}
+
+fn Test() int {
+	let value := match Read() {
+		Ok(value) => value
+		_ => 0
+	}
+	return value
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+
+	expected := []string{
+		"catch-all pattern may not hide Err at 13:15",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestMatchGuardMustBeBool(t *testing.T) {
+	input := `
+module main
+
+enum IOError {
+	InvalidValue,
+}
+
+fn Read() Result[int, IOError] {
+	return Ok(1)
+}
+
+fn Test() int {
+	let value := match Read() {
+		Ok(value) where value => value
+		Ok(value) => value
+		Err(error) => 0
+	}
+	return value
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+
+	expected := []string{
+		"match guard must be bool, got int at 14:19",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestGuardedMatchArmDoesNotExhaustPattern(t *testing.T) {
+	input := `
+module main
+
+enum IOError {
+	InvalidValue,
+}
+
+fn Read() Result[int, IOError] {
+	return Ok(1)
+}
+
+fn Test(flag: bool) int {
+	let value := match Read() {
+		Ok(value) where flag => value
+		Err(error) => 0
+	}
+	return value
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+
+	expected := []string{
+		"non-exhaustive match for Result[int, IOError]: missing Ok at 13:15",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestMatchDiscardPayloadDoesNotDeclareVariable(t *testing.T) {
+	input := `
+module main
+
+enum IOError {
+	InvalidValue,
+}
+
+fn Read() Result[int, IOError] {
+	return Ok(1)
+}
+
+fn Test() int {
+	return match Read() {
+		Ok(_) => 1
+		Err(_) => 0
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestMatchDiscardPayloadCannotBeUsedAsVariable(t *testing.T) {
+	input := `
+module main
+
+enum IOError {
+	InvalidValue,
+}
+
+fn Read() Result[int, IOError] {
+	return Ok(1)
+}
+
+fn Test() int {
+	return match Read() {
+		Ok(_) => _
+		Err(_) => 0
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+
+	expected := []string{
+		"undefined variable _ at 14:12",
 	}
 
 	assertSemaErrors(t, errors, expected)
@@ -2267,6 +2521,113 @@ fn Invalid(value: int) void {
 	assertSemaErrors(t, errors, expected)
 }
 
+func TestSwitchRelationalCoverageErrors(t *testing.T) {
+	input := `
+module main
+
+fn Invalid(value: int) void {
+	switch value {
+	case >= 0:
+		return
+	case > 10:
+		return
+	}
+
+	switch value {
+	case < 10:
+		return
+	case <= 5:
+		return
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+
+	expected := []string{
+		"unreachable switch case; previous case already covers this condition at 8:7",
+		"unreachable switch case; previous case already covers this condition at 15:7",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestSwitchAdjacentExclusiveRangesAreAllowed(t *testing.T) {
+	input := `
+module main
+
+fn Valid(value: int) void {
+	switch value {
+	case 0..<10:
+		return
+	case 10..<20:
+		return
+	case < 0:
+		return
+	case >= 20:
+		return
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestBoolSwitchCanBeExhaustiveWithoutDefault(t *testing.T) {
+	input := `
+module main
+
+fn BoolReturn(value: bool) int {
+	switch value {
+	case true:
+		return 1
+	case false:
+		return 0
+	}
+}
+
+fn BoolAssignment(value: bool) int {
+	let mut result: int
+
+	switch value {
+	case true:
+		result = 1
+	case false:
+		result = 0
+	}
+
+	return result
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestBoolSwitchDuplicateCase(t *testing.T) {
+	input := `
+module main
+
+fn Invalid(value: bool) void {
+	switch value {
+	case true:
+		return
+	case true:
+		return
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+
+	expected := []string{
+		"duplicate switch case value true at 8:7",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
 func TestAsmRequiresUnsafe(t *testing.T) {
 	input := `
 module main
@@ -2305,6 +2666,47 @@ fn _sysWrite(fd: int64, ref ptr: byte, len: int64) int64 {
 			outputs: rax
 		}
 	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestUnsafeFunctionAllowsAsmAndNamedOutput(t *testing.T) {
+	input := `
+module platform_linux_amd64
+
+type ErrorNumber int
+
+fn _decodeSyscallResult(result: int) Result[uint, ErrorNumber] {
+	if result < 0 {
+		return Err(ErrorNumber(-result))
+	}
+
+	return Ok(uint(result))
+}
+
+unsafe fn _rawSyscall3(number: uint, arg1: uint, arg2: uint, arg3: uint) int {
+	asm {
+		"syscall"
+
+		inputs:
+			rax(number)
+			rdi(arg1)
+			rsi(arg2)
+			rdx(arg3)
+
+		outputs:
+			rax(result)
+
+		clobbers:
+			rcx
+			r11
+			memory
+	}
+
+	return result
 }
 `
 
@@ -2363,6 +2765,337 @@ fn TooManyResultArguments() Result[int, IOError, string] {
 	}
 
 	assertSemaErrors(t, errors, expected)
+}
+
+func TestForRangeLoopIsValid(t *testing.T) {
+	input := `
+module main
+
+fn Test() void {
+	for i in 0..<10 {
+		let x := i
+	}
+
+	return
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestWhileConditionMustBeBool(t *testing.T) {
+	input := `
+module main
+
+fn Test() void {
+	while 1 {
+	}
+	return
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+
+	expected := []string{
+		"while condition must be bool, got int at 5:8",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestWhileBodyAssignmentsDoNotLeak(t *testing.T) {
+	input := `
+module main
+
+fn Test(running: bool) int {
+	let mut result: int
+
+	while running {
+		result = 1
+	}
+
+	return result
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+
+	expected := []string{
+		"variable result is unassigned at 11:9",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestWhileTrueWithoutBreakSatisfiesReturn(t *testing.T) {
+	input := `
+module main
+
+fn Test() int {
+	while true {
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestWhileTrueWithBreakRequiresReturnAfterLoop(t *testing.T) {
+	input := `
+module main
+
+fn Test() int {
+	while true {
+		break
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+
+	expected := []string{
+		"function Test must return int at 4:4",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestForLoopVariableIsImmutableAndScoped(t *testing.T) {
+	input := `
+module main
+
+fn Test() void {
+	for i in 0..<10 {
+		i = 1
+	}
+
+	let x := i
+	return
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+
+	expected := []string{
+		"cannot assign to immutable variable i at 6:3",
+		"undefined variable i at 9:11",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestForOpenEndedRangeIsRejected(t *testing.T) {
+	input := `
+module main
+
+fn Test() void {
+	for i in 0.. {
+	}
+	return
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+
+	expected := []string{
+		"range used in for loop must be finite at 5:12",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestBreakAndContinueRequireLoop(t *testing.T) {
+	input := `
+module main
+
+fn Test() void {
+	break
+	continue
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+
+	expected := []string{
+		"break is only valid inside a loop at 5:2",
+		"continue is only valid inside a loop at 6:2",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestInfiniteForWithoutBreakSatisfiesReturn(t *testing.T) {
+	input := `
+module main
+
+fn Test() int {
+	for {
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestLambdaFunctionValueCall(t *testing.T) {
+	input := `
+module main
+
+fn Test() int {
+	let double := fn(value: int) int {
+		return value * 2
+	}
+
+	return double(10)
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestTypedLambdaVariableAndFunctionValueCall(t *testing.T) {
+	input := `
+module main
+
+fn Test() bool {
+	let positive: fn(int) bool := fn(value: int) bool {
+		return value > 0
+	}
+
+	return positive(10)
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestLambdaArgumentToFunctionValueParameter(t *testing.T) {
+	input := `
+module main
+
+fn Apply(value: int, callback: fn(int) int) int {
+	return callback(value)
+}
+
+fn Test() int {
+	return Apply(
+		10,
+		fn(value: int) int {
+			return value * 2
+		},
+	)
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestLambdaInvalidReturnType(t *testing.T) {
+	input := `
+module main
+
+fn Test() void {
+	let operation := fn() int {
+		return true
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+
+	expected := []string{
+		"lambda must return int, got bool at 6:10",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestLambdaFunctionAssignmentMismatch(t *testing.T) {
+	input := `
+module main
+
+fn Test() void {
+	let operation: fn(int) bool := fn(value: string) bool {
+		return value != ""
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+
+	expected := []string{
+		"cannot initialize fn(int) bool with fn(string) bool at 5:33",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestLambdaImplicitCaptureIsRejected(t *testing.T) {
+	input := `
+module main
+
+fn Test(factor: int) int {
+	let multiply := fn(value: int) int {
+		return value * factor
+	}
+
+	return multiply(10)
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+
+	expected := []string{
+		"lambda cannot access outer variable factor without explicit capture at 6:18",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestNamedFunctionValueIsAssignable(t *testing.T) {
+	input := `
+module main
+
+fn IsPositive(value: int) bool {
+	return value > 0
+}
+
+fn Test() bool {
+	let predicate := IsPositive
+	return predicate(10)
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestOverloadedNamedFunctionValueUsesExplicitTargetType(t *testing.T) {
+	input := `
+module main
+
+fn Convert(value: int) string {
+	return "int"
+}
+
+fn Convert(value: string) int {
+	return 1
+}
+
+fn Test() string {
+	let converter: fn(int) string := Convert
+	return converter(10)
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
 }
 
 func analyzeSource(t *testing.T, input string) []Error {

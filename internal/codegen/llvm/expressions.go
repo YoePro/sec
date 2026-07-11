@@ -107,6 +107,14 @@ func (g *Generator) emitInfixExpression(expr *ast.InfixExpression) (value, error
 	}
 
 	switch expr.Operator {
+	case "+":
+		return g.emitIntegerBinary("add", left, right)
+	case "-":
+		return g.emitIntegerBinary("sub", left, right)
+	case "*":
+		return g.emitIntegerBinary("mul", left, right)
+	case "/":
+		return g.emitIntegerBinary("sdiv", left, right)
 	case "==":
 		return g.emitCompare("eq", left, right), nil
 	case "!=":
@@ -122,6 +130,18 @@ func (g *Generator) emitInfixExpression(expr *ast.InfixExpression) (value, error
 	default:
 		return value{}, fmt.Errorf("emit-llvm does not support operator %q yet", expr.Operator)
 	}
+}
+
+func (g *Generator) emitIntegerBinary(op string, left value, right value) (value, error) {
+	if left.typ != right.typ {
+		return value{}, fmt.Errorf("emit-llvm binary operator requires matching operand types")
+	}
+	if left.typ != "i32" && left.typ != "i64" {
+		return value{}, fmt.Errorf("emit-llvm binary operator currently expects integers")
+	}
+	temp := g.nextTemp()
+	g.write("  %s = %s %s %s, %s\n", temp, op, left.typ, left.ref, right.ref)
+	return value{typ: left.typ, ref: temp}, nil
 }
 
 func (g *Generator) emitCompare(predicate string, left value, right value) value {

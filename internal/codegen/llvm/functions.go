@@ -5,10 +5,13 @@ import "sec/internal/ast"
 func (g *Generator) emitFunction(fn *ast.FunctionDeclaration) error {
 	returnType := llvmReturnType(fn.ReturnType)
 	previousReturnType := g.returnType
+	previousLoops := g.loops
 	g.locals = map[string]local{}
+	g.loops = nil
 	g.returnType = returnType
 	defer func() {
 		g.returnType = previousReturnType
+		g.loops = previousLoops
 	}()
 
 	g.write("define %s @%s(", returnType, fn.Name.Value)

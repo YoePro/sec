@@ -378,6 +378,28 @@ Name      public
 _name     package/module
 
 __name    private
+
+Underscore visibility:
+
+Names that do not start with `_` are public.
+
+Names that start with a single `_` are visible inside the same module root.
+
+Example:
+
+module x
+module x.y
+module x.z
+
+These all share the module root `x`.
+
+Therefore `_name` declared in `x.y` may be used from `x.z`.
+
+Names that start with `__` are visible only inside the exact module where they
+are declared.
+
+Therefore `__name` declared in `x.y` may be used from `x.y`, but not from `x`
+or `x.z`.
 Memory Model
 
 Ownership model inspired by Rust.

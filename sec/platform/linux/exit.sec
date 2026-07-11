@@ -1,0 +1,6 @@
+module platform.linux
+
+unsafe fn Exit(code: int) never {
+    _rawSyscall1(_sysCall.sysExit, uint(code))
+    unreachable
+}

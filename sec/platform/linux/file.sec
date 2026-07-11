@@ -1,0 +1,15 @@
+module platform.linux
+
+fn Write(fd: int, data: []byte) Result[uint, LinuxError] {
+    let rawResult: int
+
+    unsafe {
+        rawResult = _rawSyscall3(_sysWrite, uint(fd), uint(data.ptr), data.len)
+    }
+
+    if rawResult < 0 {
+        return Err(_decodeError(-rawResult))
+    }
+
+    return Ok(uint(rawResult))
+}

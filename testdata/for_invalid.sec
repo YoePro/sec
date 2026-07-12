@@ -1,0 +1,121 @@
+module main
+
+// Ok: type int is not iterable
+fn InvalidIterable(value: int) void {
+    for item in value {
+    }
+}
+
+// Ok: cannot create range with bounds int and string
+fn InvalidStringBounds(end: string) void {
+    for i in 0..<end {
+    }
+}
+
+// Ok: cannot create range with bounds int and uint
+fn InvalidMixedBounds(start: int, end: uint) void {
+    for i in start..<end {
+    }
+}
+
+// Ok: undefined variable i
+fn LoopVariableOutsideScope() void {
+    for i in 0..<10 {
+    }
+
+    let value: int := i
+}
+
+// Ok: cannot assign to immutable variable i
+fn AssignLoopVariable() void {
+    for i in 0..<10 {
+        i = 5
+    }
+}
+
+// Ok: variable "i" already declared at 36:9, previous declaration at 35:20
+fn ShadowParameter(i: int) void {
+    for i in 0..<10 {
+    }
+}
+
+// break is only valid inside a loop
+fn BreakOutsideLoop() void {
+    break
+}
+
+// continue is only valid inside a loop 
+fn ContinueOutsideLoop() void {
+    continue
+}
+
+// Ok too many loop bindings
+fn TooManyBindings(values: []int) void {
+    for a, b, c in values {
+    }
+}
+
+// Ok sequential iteration supports index-value bindings
+fn TwoBindingsOnSlice(values: []int) void {
+    for index, value in values {
+    }
+}
+
+// Ok: for range step must be greater than zero
+fn InvalidDecimalZeroStep() void {
+    for value in 0.0..<10.0 step 0.0 {
+    }
+}
+
+// Ok: for range step must be greater than zero
+fn InvalidDecimalNegativeStep() void {
+    let start: decimal := 0
+    let end: decimal := 10
+
+    for value in start..<end step -0.1 {
+    }
+}
+
+// Ok: for range step must be greater than zero
+fn ZeroStep() void {
+    for value in 0..10 step 0 {
+    }
+}
+
+// Ok: for range step must be greater than zero
+fn NegativeStep() void {
+    for value in 0..10 step -1 {
+    }
+}
+
+// Ok: for range step must be int, got string
+fn WrongStepType(end: int, increment: string) void {
+    for value in 0..<end step increment {
+    }
+}
+
+// Ok: sequential iteration supports one or two loop bindings, got 3
+fn ThreeBindings(values: []int) void {
+    for index, value, extra in values {
+    }
+}
+
+// OK: unreachable code
+fn UnreachableTest() int {
+    let mut value: int
+
+    for {
+        value = 10
+        continue
+    }
+
+    return value
+}
+
+// Ok: variable "i" already declared at 116:13, previous declaration
+fn Shadowing() void {
+    for i in 0..12 {
+        let i: int := 1
+    }
+    return
+}

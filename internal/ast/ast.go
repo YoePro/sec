@@ -1,7 +1,9 @@
 package ast
 
 import (
+	"math/big"
 	"sec/internal/lexer"
+	"strconv"
 	"strings"
 )
 
@@ -49,6 +51,18 @@ func (p *Program) TokenLiteral() string {
 // --------------------------------------------------------------------
 // Type declarations
 // --------------------------------------------------------------------
+
+type TargetDirective struct {
+	Token lexer.Token
+	OS    string
+	Arch  string
+}
+
+func (td *TargetDirective) statementNode() {}
+
+func (td *TargetDirective) TokenLiteral() string {
+	return td.Token.Lexeme
+}
 
 // TypeDeclStatement represents:
 //
@@ -127,8 +141,9 @@ type TypeReference struct {
 
 	Name string
 
-	// ElementType is used for slice types such as []byte.
+	// ElementType is used for slice and array types such as []byte and [3]int.
 	ElementType *TypeReference
+	ArrayLength int64
 
 	// Unit is used for unit types such as decimal<m> or decimal<SEK>.
 	Unit string
@@ -192,6 +207,11 @@ func (il *IntegerLiteral) String() string {
 	return il.Token.Lexeme
 }
 
+func (il *IntegerLiteral) Suffix() string {
+	_, suffix := SplitNumericLiteralSuffix(il.Token.Lexeme)
+	return suffix
+}
+
 type FloatLiteral struct {
 	Token lexer.Token
 	Value float64
@@ -205,6 +225,78 @@ func (fl *FloatLiteral) TokenLiteral() string {
 
 func (fl *FloatLiteral) String() string {
 	return fl.Token.Lexeme
+}
+
+func (fl *FloatLiteral) Suffix() string {
+	_, suffix := SplitNumericLiteralSuffix(fl.Token.Lexeme)
+	return suffix
+}
+
+func SplitNumericLiteralSuffix(lexeme string) (string, string) {
+	if lexeme == "" {
+		return lexeme, ""
+	}
+	if len(lexeme) > 2 && lexeme[0] == '0' && (lexeme[1] == 'x' || lexeme[1] == 'X') {
+		last := lexeme[len(lexeme)-1]
+		switch last {
+		case 'i', 'u':
+			return lexeme[:len(lexeme)-1], string(last)
+		default:
+			return lexeme, ""
+		}
+	}
+	last := lexeme[len(lexeme)-1]
+	switch last {
+	case 'i', 'u', 'f', 'd':
+		return lexeme[:len(lexeme)-1], string(last)
+	default:
+		return lexeme, ""
+	}
+}
+
+func ParseIntegerLiteralLexeme(lexeme string) (*big.Int, bool) {
+	digits, suffix := SplitNumericLiteralSuffix(lexeme)
+	if suffix == "f" || suffix == "d" || digits == "" {
+		return nil, false
+	}
+
+	base := 10
+	if len(digits) > 2 && digits[0] == '0' {
+		switch digits[1] {
+		case 'b', 'B':
+			base = 2
+			digits = digits[2:]
+		case 'o', 'O':
+			base = 8
+			digits = digits[2:]
+		case 'x', 'X':
+			base = 16
+			digits = digits[2:]
+		}
+	}
+	if digits == "" {
+		return nil, false
+	}
+
+	value, ok := new(big.Int).SetString(digits, base)
+	return value, ok
+}
+
+func ParseIntegerLiteralInt64(lexeme string) (int64, bool) {
+	value, ok := ParseIntegerLiteralLexeme(lexeme)
+	if !ok || !value.IsInt64() {
+		return 0, false
+	}
+	return value.Int64(), true
+}
+
+func ParseFloatLiteralFloat64(lexeme string) (float64, bool) {
+	digits, suffix := SplitNumericLiteralSuffix(lexeme)
+	if suffix == "i" || suffix == "u" || digits == "" {
+		return 0, false
+	}
+	value, err := strconv.ParseFloat(digits, 64)
+	return value, err == nil
 }
 
 type StringLiteral struct {
@@ -436,10 +528,12 @@ func (is *IfStatement) TokenLiteral() string {
 }
 
 type SwitchStatement struct {
-	Token   lexer.Token
-	Subject Expression
-	Cases   []*SwitchCase
-	Default *SwitchCase
+	Token                  lexer.Token
+	Subject                Expression
+	Cases                  []*SwitchCase
+	Default                *SwitchCase
+	DefaultNotFinalToken   lexer.Token
+	DuplicateDefaultTokens []lexer.Token
 }
 
 func (ss *SwitchStatement) statementNode() {}
@@ -508,6 +602,7 @@ type ForStatement struct {
 	Token    lexer.Token
 	Bindings []ForBinding
 	Iterable Expression
+	Step     Expression
 	Body     *BlockStatement
 }
 

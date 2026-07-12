@@ -11,8 +11,7 @@ import (
 func constantIntegerValue(expr ast.Expression) (*big.Int, bool) {
 	switch expr := expr.(type) {
 	case *ast.IntegerLiteral:
-		value, ok := new(big.Int).SetString(expr.Token.Lexeme, 10)
-		return value, ok
+		return ast.ParseIntegerLiteralLexeme(expr.Token.Lexeme)
 	case *ast.PrefixExpression:
 		if expr.Operator != "-" {
 			return nil, false
@@ -117,7 +116,7 @@ func decimalLiteralValue(expr ast.Expression) (DecimalValue, bool) {
 
 	switch expr := expr.(type) {
 	case *ast.IntegerLiteral, *ast.FloatLiteral:
-		lexeme = expr.TokenLiteral()
+		lexeme, _ = ast.SplitNumericLiteralSuffix(expr.TokenLiteral())
 	case *ast.PrefixExpression:
 		if expr.Operator != "-" {
 			return DecimalValue{}, false

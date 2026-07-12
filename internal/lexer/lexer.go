@@ -425,16 +425,57 @@ func (l *Lexer) readNumber() (string, TokenType) {
 	start := l.pos
 	typ := INT
 
+	if l.peek() == '0' {
+		switch l.peekNext() {
+		case 'b', 'B':
+			l.advance()
+			l.advance()
+			for l.peek() == '0' || l.peek() == '1' {
+				l.advance()
+			}
+			if isNumericSuffix(l.peek()) {
+				l.advance()
+			}
+			return string(l.input[start:l.pos]), INT
+		case 'o', 'O':
+			l.advance()
+			l.advance()
+			for l.peek() >= '0' && l.peek() <= '7' {
+				l.advance()
+			}
+			if isNumericSuffix(l.peek()) {
+				l.advance()
+			}
+			return string(l.input[start:l.pos]), INT
+		case 'x', 'X':
+			l.advance()
+			l.advance()
+			for isHexDigit(l.peek()) {
+				l.advance()
+			}
+			if isNumericSuffix(l.peek()) {
+				l.advance()
+			}
+			return string(l.input[start:l.pos]), INT
+		}
+	}
+
 	for isDigit(l.peek()) {
 		l.advance()
 	}
-
 	if l.peek() == '.' && isDigit(l.peekNext()) {
 		typ = FLOAT
 		l.advance()
 
 		for isDigit(l.peek()) {
 			l.advance()
+		}
+	}
+	if isNumericSuffix(l.peek()) {
+		suffix := l.peek()
+		l.advance()
+		if suffix == 'f' || suffix == 'd' {
+			typ = FLOAT
 		}
 	}
 
@@ -448,6 +489,9 @@ func (l *Lexer) readLeadingDotNumber() Token {
 
 	l.advance()
 	for isDigit(l.peek()) {
+		l.advance()
+	}
+	if l.peek() == 'f' || l.peek() == 'd' {
 		l.advance()
 	}
 
@@ -703,6 +747,21 @@ func isLetter(ch rune) bool {
 
 func isDigit(ch rune) bool {
 	return ch >= '0' && ch <= '9'
+}
+
+func isHexDigit(ch rune) bool {
+	return isDigit(ch) ||
+		(ch >= 'a' && ch <= 'f') ||
+		(ch >= 'A' && ch <= 'F')
+}
+
+func isNumericSuffix(ch rune) bool {
+	switch ch {
+	case 'i', 'u', 'f', 'd':
+		return true
+	default:
+		return false
+	}
 }
 
 func isWhitespace(ch rune) bool {

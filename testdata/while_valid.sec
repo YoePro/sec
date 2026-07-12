@@ -1,0 +1,210 @@
+module main
+
+fn IsPositive(value: int) bool {
+    return value > 0
+}
+
+fn BasicWhile() void {
+    let mut value: int := 0
+
+    while value < 10 {
+        value += 1
+    }
+}
+
+fn BoolCondition(running: bool) void {
+    while running {
+        break
+    }
+}
+
+fn NegatedCondition(finished: bool) void {
+    while !finished {
+        break
+    }
+}
+
+fn LogicalCondition(ready: bool, cancelled: bool) void {
+    while ready && !cancelled {
+        break
+    }
+}
+
+fn AlternativeCondition(primary: bool, fallback: bool) void {
+    while primary || fallback {
+        break
+    }
+}
+
+fn FunctionCondition(value: int) void {
+    let mut current: int := value
+
+    while IsPositive(current) {
+        current -= 1
+    }
+}
+
+fn ComparisonCondition() void {
+    let mut value: int := 0
+
+    while value <= 10 {
+        value += 1
+    }
+}
+
+fn RangeCondition() void {
+    let mut value: int := 0
+
+    while value in 0..<10 {
+        value += 1
+    }
+}
+
+fn NegatedRangeCondition() void {
+    let mut value: int := -10
+
+    while !(value in 0..100) {
+        value += 1
+    }
+}
+
+fn BreakLoop(limit: int) int {
+    let mut value: int := 0
+
+    while true {
+        if value >= limit {
+            break
+        }
+
+        value += 1
+    }
+
+    return value
+}
+
+fn ContinueLoop() int {
+    let mut value: int := 0
+    let mut total: int := 0
+
+    while value < 10 {
+        value += 1
+
+        if value == 5 {
+            continue
+        }
+
+        total += value
+    }
+
+    return total
+}
+
+fn NestedWhile() int {
+    let mut outer: int := 0
+    let mut total: int := 0
+
+    while outer < 3 {
+        let mut inner: int := 0
+
+        while inner < 3 {
+            total += 1
+            inner += 1
+        }
+
+        outer += 1
+    }
+
+    return total
+}
+
+fn InnerBreakOnly() int {
+    let mut outer: int := 0
+
+    while outer < 3 {
+        while true {
+            break
+        }
+
+        outer += 1
+    }
+
+    return outer
+}
+
+fn InnerContinueOnly() int {
+    let mut outer: int := 0
+
+    while outer < 3 {
+        let mut inner: int := 0
+
+        while inner < 3 {
+            inner += 1
+            continue
+        }
+
+        outer += 1
+    }
+
+    return outer
+}
+
+fn MutateOuter() int {
+    let mut result: int := 0
+
+    while result < 10 {
+        result += 2
+    }
+
+    return result
+}
+
+fn EmptyBody(flag: bool) void {
+    while flag {
+    }
+}
+
+fn ConstantFalse() void {
+    while false {
+    }
+}
+
+fn ConstantTrueWithReturn() int {
+    while true {
+        return 10
+    }
+}
+
+fn DefiniteAssignmentAfterBreak() int {
+    let mut result: int
+
+    while true {
+        result = 10
+        break
+    }
+
+    return result
+}
+
+fn ContinueMakesLoopNonReturning() int {
+    while true {
+        continue
+    }
+}
+
+fn ExpressionCondition() void {
+    let mut a: int := 1
+    let b: int := 2
+    let c: int := 20
+
+    while a + b < c {
+        a += 1
+    }
+}
+
+fn ParenthesizedCondition() void {
+    let mut value: int := 0
+
+    while (value < 10) {
+        value += 1
+    }
+}

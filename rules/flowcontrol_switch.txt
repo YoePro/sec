@@ -128,9 +128,39 @@ ReadStatus() is called exactly once.
 
 Case order:
 
-Cases are tested from top to bottom.
+Value and range cases are tested from top to bottom.
 
-The first matching case is selected.
+Relational cases are checked for reachability against earlier cases. A later
+relational case is allowed when it still has values that can reach it. This
+allows boundary style switches such as:
+
+```
+switch value {
+case <= -10:
+    VeryLow()
+case < 0:
+    Low()
+case >= 10:
+    High()
+}
+```
+
+For `value == -12`, `case <= -10` matches.
+For `value == -2`, `case < 0` matches.
+
+A later relational case that is fully covered by an earlier case is unreachable:
+
+```
+switch value {
+case >= 0:
+    NonNegative()
+case > 10:
+    Large()
+}
+```
+
+`case > 10` is unreachable because every value greater than 10 is already
+covered by `case >= 0`.
 
 After a matching case has executed, control continues after the switch unless
 the case terminates or explicitly uses fallthrough.
@@ -743,10 +773,21 @@ Diagnostic:
 switch case value 50 is already covered by previous case
 ```
 
-Relational overlap:
+Relational reachability:
 
-The compiler should detect clearly provable overlap or unreachable relational
-cases.
+Partially overlapping relational cases are allowed when the later case still
+has reachable values.
+
+Valid:
+
+```
+switch value {
+case <= -10:
+    VeryLow()
+case < 0:
+    Low()
+}
+```
 
 Invalid:
 
@@ -754,7 +795,6 @@ Invalid:
 switch value {
 case >= 0:
     NonNegative()
-
 case > 10:
     Large()
 }
@@ -1145,7 +1185,8 @@ Sema for switch with subject:
 * Detect duplicate compile-time values.
 * Detect overlapping compile-time ranges.
 * Detect compile-time values covered by earlier ranges.
-* Detect clearly unreachable relational cases.
+* Allow partially overlapping relational cases when the later case is still reachable.
+* Reject later relational cases fully covered by earlier cases.
 * Allow dynamic case expressions when their types are compatible.
 * Create an independent lexical scope for every case.
 * Analyze fallthrough chains.
@@ -1178,8 +1219,6 @@ duplicate switch case value 10
 switch case range overlaps previous case
 
 switch case value 50 is already covered by previous case
-
-unreachable switch case; previous case already covers this condition
 
 switch may contain only one default clause
 
@@ -1237,7 +1276,9 @@ Design rules:
 * fallthrough is explicit and enters only the next case body.
 * default is optional and must be last.
 * Each case body has its own lexical scope.
-* Compile-time duplicate and overlapping cases are errors.
+* Compile-time duplicate values and overlapping explicit ranges are errors.
+* Partially overlapping relational cases are allowed.
+* Fully covered relational cases are errors.
 * switch is not pattern matching.
 * match owns variants, destructuring and exhaustiveness.
 * switch is initially a statement, not an expression.

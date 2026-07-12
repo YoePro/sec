@@ -26,6 +26,7 @@ type Analyzer struct {
 	lambdaOuterSymbols    map[string]Symbol
 	inUnsafe              bool
 	loopDepth             int
+	loopBreakAssignments  [][]map[string]bool
 	errors                []Error
 }
 
@@ -51,6 +52,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.lambdaOuterSymbols = nil
 	a.inUnsafe = false
 	a.loopDepth = 0
+	a.loopBreakAssignments = nil
 	a.validateModuleDeclaration(program)
 	a.registerTypeDeclarations(program)
 	a.registerImplTypeDeclarations(program)
@@ -62,7 +64,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 
 	a.withProgramModules(program, func(stmt ast.Statement) {
 		switch stmt.(type) {
-		case *ast.TypeDeclStatement, *ast.EnumDeclaration, *ast.ImplStatement, *ast.FunctionDeclaration:
+		case *ast.TargetDirective, *ast.TypeDeclStatement, *ast.EnumDeclaration, *ast.ImplStatement, *ast.FunctionDeclaration:
 			return
 		}
 		if !isAllowedModuleStatement(stmt) {
@@ -104,7 +106,8 @@ func (a *Analyzer) validateModuleDeclaration(program *ast.Program) {
 
 func isAllowedModuleStatement(stmt ast.Statement) bool {
 	switch stmt.(type) {
-	case *ast.ModuleStatement,
+	case *ast.TargetDirective,
+		*ast.ModuleStatement,
 		*ast.ImportStatement,
 		*ast.TypeDeclStatement,
 		*ast.EnumDeclaration,
@@ -305,6 +308,8 @@ func (a *Analyzer) analyzeStatement(stmt ast.Statement) {
 	case *ast.BreakStatement:
 		if a.loopDepth == 0 {
 			a.addErrorAtToken(stmt.Token, "break is only valid inside a loop")
+		} else {
+			a.recordLoopBreak()
 		}
 	case *ast.ContinueStatement:
 		if a.loopDepth == 0 {
@@ -322,6 +327,24 @@ func (a *Analyzer) analyzeStatement(stmt ast.Statement) {
 		}
 	case *ast.InvalidStatement:
 		return
+	}
+}
+
+func (a *Analyzer) analyzeBlockStatements(block *ast.BlockStatement) {
+	if block == nil {
+		return
+	}
+
+	unreachable := false
+	for _, stmt := range block.Statements {
+		if unreachable {
+			a.addErrorAtToken(statementToken(stmt), "unreachable code")
+			break
+		}
+		a.analyzeStatement(stmt)
+		if a.statementTerminatesBlock(stmt) {
+			unreachable = true
+		}
 	}
 }
 
@@ -352,6 +375,7 @@ func (a *Analyzer) analyzeForStatement(stmt *ast.ForStatement) {
 	previousConstInts := a.constInts
 	previousAssigned := a.assigned
 	previousLoopDepth := a.loopDepth
+	frame := a.pushLoopBreakFrame()
 
 	a.symbols = copySymbols(previousSymbols)
 	a.constInts = copyConstInts(previousConstInts)
@@ -363,11 +387,10 @@ func (a *Analyzer) analyzeForStatement(stmt *ast.ForStatement) {
 	}
 
 	if stmt.Body != nil {
-		for _, bodyStmt := range stmt.Body.Statements {
-			a.analyzeStatement(bodyStmt)
-		}
+		a.analyzeBlockStatements(stmt.Body)
 	}
 
+	_ = a.popLoopBreakFrame(frame)
 	a.symbols = previousSymbols
 	a.constInts = previousConstInts
 	a.assigned = previousAssigned
@@ -386,6 +409,7 @@ func (a *Analyzer) analyzeWhileStatement(stmt *ast.WhileStatement) {
 	previousConstInts := a.constInts
 	previousAssigned := a.assigned
 	previousLoopDepth := a.loopDepth
+	frame := a.pushLoopBreakFrame()
 
 	a.symbols = copySymbols(previousSymbols)
 	a.constInts = copyConstInts(previousConstInts)
@@ -393,14 +417,17 @@ func (a *Analyzer) analyzeWhileStatement(stmt *ast.WhileStatement) {
 	a.loopDepth++
 
 	if stmt.Body != nil {
-		for _, bodyStmt := range stmt.Body.Statements {
-			a.analyzeStatement(bodyStmt)
-		}
+		a.analyzeBlockStatements(stmt.Body)
 	}
 
+	breakAssignments := a.popLoopBreakFrame(frame)
 	a.symbols = previousSymbols
 	a.constInts = previousConstInts
-	a.assigned = previousAssigned
+	if isBoolLiteral(stmt.Condition, true) && len(breakAssignments) > 0 {
+		a.assigned = mergeBreakAssigned(previousAssigned, breakAssignments)
+	} else {
+		a.assigned = previousAssigned
+	}
 	a.loopDepth = previousLoopDepth
 }
 
@@ -410,44 +437,80 @@ func (a *Analyzer) analyzeForIterable(stmt *ast.ForStatement) {
 		return
 	}
 
-	bindingType, ok := a.inferForIterableBindingType(stmt)
+	bindingTypes, ok := a.inferForIterableBindingTypes(stmt)
 	if !ok {
 		return
 	}
 
-	if len(stmt.Bindings) != 1 {
-		a.addErrorAtToken(stmt.Bindings[0].Token, "sequential iteration requires one loop binding")
+	if len(stmt.Bindings) != len(bindingTypes) {
+		if len(stmt.Bindings) > 0 {
+			a.addErrorAtToken(stmt.Bindings[0].Token, "iteration over %s requires %d loop binding(s), got %d", forIterableKind(stmt.Iterable), len(bindingTypes), len(stmt.Bindings))
+		}
 		return
 	}
 
-	binding := stmt.Bindings[0]
-	if binding.Discard {
-		return
-	}
-
-	if a.defineSymbol(binding.Name, bindingType, false, binding.Token) {
-		a.assigned[binding.Name] = true
+	for i, binding := range stmt.Bindings {
+		if binding.Discard {
+			continue
+		}
+		if a.defineSymbol(binding.Name, bindingTypes[i], false, binding.Token) {
+			a.assigned[binding.Name] = true
+		}
 	}
 }
 
-func (a *Analyzer) inferForIterableBindingType(stmt *ast.ForStatement) (Type, bool) {
+func (a *Analyzer) inferForIterableBindingTypes(stmt *ast.ForStatement) ([]Type, bool) {
 	switch iterable := stmt.Iterable.(type) {
 	case *ast.RangeExpression:
-		return a.inferForRangeBindingType(iterable)
+		bindingType, ok := a.inferForRangeBindingType(iterable, stmt.Step)
+		if !ok {
+			return nil, false
+		}
+		return []Type{bindingType}, true
 	default:
+		if stmt.Step != nil {
+			a.addErrorAtToken(expressionToken(stmt.Step), "for step is only valid for range iteration")
+			return nil, false
+		}
 		iterableType, _ := a.inferExpression(iterable)
 		if iterableType.Kind == InvalidType {
-			return Type{Kind: InvalidType}, false
+			return nil, false
 		}
+		indexType := Type{Name: "int", Kind: IntType}
 		if iterableType.Kind == StringType {
-			return Type{Name: "rune", Kind: RuneType}, true
+			valueType := Type{Name: "rune", Kind: RuneType}
+			if len(stmt.Bindings) > 2 {
+				a.addErrorAtToken(stmt.Bindings[0].Token, "sequential iteration supports one or two loop bindings, got %d", len(stmt.Bindings))
+				return nil, false
+			}
+			if len(stmt.Bindings) == 2 {
+				return []Type{indexType, valueType}, true
+			}
+			return []Type{valueType}, true
+		}
+		if (iterableType.Kind == ArrayType || iterableType.Kind == SliceType) && iterableType.Element != nil {
+			if len(stmt.Bindings) > 2 {
+				a.addErrorAtToken(stmt.Bindings[0].Token, "sequential iteration supports one or two loop bindings, got %d", len(stmt.Bindings))
+				return nil, false
+			}
+			if len(stmt.Bindings) == 2 {
+				return []Type{indexType, *iterableType.Element}, true
+			}
+			return []Type{*iterableType.Element}, true
 		}
 		a.addErrorAtToken(expressionToken(iterable), "type %s is not iterable", typeDisplayName(iterableType))
-		return Type{Kind: InvalidType}, false
+		return nil, false
 	}
 }
 
-func (a *Analyzer) inferForRangeBindingType(expr *ast.RangeExpression) (Type, bool) {
+func forIterableKind(expr ast.Expression) string {
+	if _, ok := expr.(*ast.RangeExpression); ok {
+		return "range"
+	}
+	return "iterable"
+}
+
+func (a *Analyzer) inferForRangeBindingType(expr *ast.RangeExpression, step ast.Expression) (Type, bool) {
 	if expr.Start == nil || expr.End == nil {
 		a.addErrorAtToken(expr.Token, "range used in for loop must be finite")
 		return Type{Kind: InvalidType}, false
@@ -459,30 +522,36 @@ func (a *Analyzer) inferForRangeBindingType(expr *ast.RangeExpression) (Type, bo
 		return Type{Kind: InvalidType}, false
 	}
 
-	if !canCompareEquality(startType, endType) {
-		a.addErrorAtToken(expr.Token, "cannot iterate range with incompatible bounds %s and %s", typeDisplayName(startType), typeDisplayName(endType))
+	if !sameConcreteType(startType, endType) {
+		a.addErrorAtToken(expr.Token, "cannot create range with bounds %s and %s", typeDisplayName(startType), typeDisplayName(endType))
 		return Type{Kind: InvalidType}, false
 	}
 
-	if startType.Kind == DecimalType || endType.Kind == DecimalType {
-		a.addErrorAtToken(expr.Token, "for range iteration does not support decimal")
-		return Type{Kind: InvalidType}, false
+	if step != nil {
+		stepType, _ := a.inferExpression(step)
+		if stepType.Kind == InvalidType {
+			return Type{Kind: InvalidType}, false
+		}
+		if !canInitialize(startType, stepType, step) {
+			a.addErrorAtToken(expressionToken(step), "for range step must be %s, got %s", typeDisplayName(startType), typeDisplayName(stepType))
+			return Type{Kind: InvalidType}, false
+		}
+		if value, ok := a.integerConstantValue(step); ok && value.Sign() <= 0 {
+			a.addErrorAtToken(expressionToken(step), "for range step must be greater than zero")
+			return Type{Kind: InvalidType}, false
+		}
+		if value, ok := decimalLiteralValue(step); ok && value.Int64 <= 0 {
+			a.addErrorAtToken(expressionToken(step), "for range step must be greater than zero")
+			return Type{Kind: InvalidType}, false
+		}
 	}
 
-	if startType.Kind == FloatType || endType.Kind == FloatType {
-		a.addErrorAtToken(expr.Token, "for range iteration does not support float")
-		return Type{Kind: InvalidType}, false
-	}
-
-	if !isIntegerType(startType) || !isIntegerType(endType) {
+	if !isNumericType(startType) || !isNumericType(endType) {
 		a.addErrorAtToken(expr.Token, "type %s is not iterable", typeDisplayName(startType))
 		return Type{Kind: InvalidType}, false
 	}
 
-	if startType.Kind == UintType || endType.Kind == UintType {
-		return Type{Name: "uint", Kind: UintType}, true
-	}
-	return Type{Name: "int", Kind: IntType}, true
+	return startType, true
 }
 
 type branchAnalysis struct {
@@ -507,9 +576,7 @@ func (a *Analyzer) analyzeBranchBlock(block *ast.BlockStatement) branchAnalysis 
 		a.assigned = previousAssigned
 	}()
 
-	for _, stmt := range block.Statements {
-		a.analyzeStatement(stmt)
-	}
+	a.analyzeBlockStatements(block)
 	return branchAnalysis{
 		assigned:  copyAssigned(a.assigned),
 		continues: !blockDefinitelyReturns(block),
@@ -540,6 +607,13 @@ func mergeContinuingAssigned(before map[string]bool, branches ...branchAnalysis)
 
 func (a *Analyzer) analyzeSwitchStatement(stmt *ast.SwitchStatement) {
 	before := copyAssigned(a.assigned)
+	if stmt.DefaultNotFinalToken.Type != "" {
+		a.addErrorAtToken(stmt.DefaultNotFinalToken, "default must be the final switch clause")
+	}
+	for _, token := range stmt.DuplicateDefaultTokens {
+		a.addErrorAtToken(token, "switch may contain only one default clause")
+	}
+
 	var subjectType Type
 	hasSubject := stmt.Subject != nil
 	if hasSubject {
@@ -560,9 +634,6 @@ func (a *Analyzer) analyzeSwitchStatement(stmt *ast.SwitchStatement) {
 	for i, clause := range clauses {
 		if clause == nil {
 			continue
-		}
-		if clause.Default && i != len(clauses)-1 {
-			a.addErrorAtToken(clause.Token, "default must be the final switch clause")
 		}
 		a.analyzeSwitchCaseItems(clause, hasSubject, subjectType, tracker)
 		a.analyzeSwitchFallthrough(clause, i == len(clauses)-1)
@@ -708,6 +779,9 @@ func (a *Analyzer) checkSwitchRangeCoverage(expr *ast.RangeExpression, tracker *
 		return
 	}
 	for _, previous := range tracker.ranges {
+		if previous.relational && !current.coveredBy(previous) {
+			continue
+		}
 		if current.overlaps(previous) {
 			a.addErrorAtToken(expr.Token, "%s", switchCoverageOverlapMessage(current, previous))
 			return
@@ -732,14 +806,14 @@ func (a *Analyzer) checkSwitchRelationalCoverage(item *ast.SwitchRelationalCase,
 		return
 	}
 	for _, previous := range tracker.ranges {
-		if current.overlaps(previous) {
-			a.addErrorAtToken(item.Token, "%s", switchCoverageOverlapMessage(current, previous))
-			return
+		if previous.relational {
+			if current.coveredBy(previous) {
+				a.addErrorAtToken(item.Token, "unreachable switch case; previous case already covers this condition")
+				return
+			}
+			continue
 		}
-	}
-	for key := range tracker.values {
-		value, ok := new(big.Int).SetString(key, 10)
-		if ok && current.contains(value) {
+		if current.overlaps(previous) {
 			a.addErrorAtToken(item.Token, "unreachable switch case; previous case already covers this condition")
 			return
 		}
@@ -828,6 +902,44 @@ func (r switchConstRange) overlaps(other switchConstRange) bool {
 	return true
 }
 
+func (r switchConstRange) coveredBy(other switchConstRange) bool {
+	return lowerBoundCovers(other, r) && upperBoundCovers(other, r)
+}
+
+func lowerBoundCovers(outer switchConstRange, inner switchConstRange) bool {
+	if outer.min == nil {
+		return true
+	}
+	if inner.min == nil {
+		return false
+	}
+	cmp := outer.min.Cmp(inner.min)
+	if cmp < 0 {
+		return true
+	}
+	if cmp > 0 {
+		return false
+	}
+	return !outer.minExclusive || inner.minExclusive
+}
+
+func upperBoundCovers(outer switchConstRange, inner switchConstRange) bool {
+	if outer.max == nil {
+		return true
+	}
+	if inner.max == nil {
+		return false
+	}
+	cmp := outer.max.Cmp(inner.max)
+	if cmp > 0 {
+		return true
+	}
+	if cmp < 0 {
+		return false
+	}
+	return !outer.maxExclusive || inner.maxExclusive
+}
+
 func (a *Analyzer) analyzeSwitchFallthrough(clause *ast.SwitchCase, isFinal bool) {
 	if clause == nil || clause.Body == nil {
 		return
@@ -903,9 +1015,7 @@ func (a *Analyzer) analyzeUnsafeStatement(stmt *ast.UnsafeStatement) {
 	a.assigned = copyAssigned(previousAssigned)
 	a.inUnsafe = true
 
-	for _, bodyStmt := range stmt.Body.Statements {
-		a.analyzeStatement(bodyStmt)
-	}
+	a.analyzeBlockStatements(stmt.Body)
 	if unsafeAsmReturns(stmt) && a.currentFunctionReturn.Kind != InvalidType && a.currentFunctionReturn.Kind != VoidType && a.currentFunctionReturn.Name != "int64" {
 		a.addErrorAtToken(stmt.Token, "asm output rax cannot return %s", typeDisplayName(a.currentFunctionReturn))
 	}
@@ -1092,9 +1202,7 @@ func (a *Analyzer) analyzeFunctionBody(fn *ast.FunctionDeclaration) {
 		a.assigned[param.Name] = true
 	}
 
-	for _, stmt := range fn.Body.Statements {
-		a.analyzeStatement(stmt)
-	}
+	a.analyzeBlockStatements(fn.Body)
 
 	if !blockDefinitelyReturns(fn.Body) && function.ReturnType.Kind != VoidType {
 		a.addErrorAtToken(fn.Name.Token, "function %s must return %s", fn.Name.Value, typeDisplayName(function.ReturnType))
@@ -1138,6 +1246,15 @@ func statementDefinitelyReturns(stmt ast.Statement) bool {
 		return false
 	default:
 		return false
+	}
+}
+
+func (a *Analyzer) statementTerminatesBlock(stmt ast.Statement) bool {
+	switch stmt.(type) {
+	case *ast.BreakStatement, *ast.ContinueStatement:
+		return a.loopDepth > 0
+	default:
+		return statementDefinitelyReturns(stmt)
 	}
 }
 
@@ -1186,12 +1303,42 @@ func switchDefinitelyReturns(stmt *ast.SwitchStatement) bool {
 	if stmt.Default == nil && !switchCoversBoolLiterals(stmt) {
 		return false
 	}
-	for _, clause := range stmt.Cases {
-		if clause == nil || !blockDefinitelyReturns(clause.Body) {
+
+	nextTerminates := false
+	if stmt.Default != nil {
+		nextTerminates = blockDefinitelyReturns(stmt.Default.Body)
+		if !nextTerminates {
 			return false
 		}
 	}
-	return stmt.Default == nil || blockDefinitelyReturns(stmt.Default.Body)
+
+	for i := len(stmt.Cases) - 1; i >= 0; i-- {
+		clause := stmt.Cases[i]
+		if clause == nil {
+			return false
+		}
+		terminates := blockDefinitelyReturns(clause.Body) ||
+			(blockEndsWithFallthrough(clause.Body) && nextTerminates)
+		if !terminates {
+			return false
+		}
+		nextTerminates = terminates
+	}
+	return true
+}
+
+func blockEndsWithFallthrough(block *ast.BlockStatement) bool {
+	if block == nil {
+		return false
+	}
+	for i := len(block.Statements) - 1; i >= 0; i-- {
+		if _, ok := block.Statements[i].(*ast.CommentStatement); ok {
+			continue
+		}
+		_, ok := block.Statements[i].(*ast.FallthroughStatement)
+		return ok
+	}
+	return false
 }
 
 func switchCoversBoolLiterals(stmt *ast.SwitchStatement) bool {
@@ -1305,6 +1452,47 @@ func copyAssigned(in map[string]bool) map[string]bool {
 		out[name] = assigned
 	}
 	return out
+}
+
+func (a *Analyzer) pushLoopBreakFrame() int {
+	a.loopBreakAssignments = append(a.loopBreakAssignments, nil)
+	return len(a.loopBreakAssignments) - 1
+}
+
+func (a *Analyzer) popLoopBreakFrame(frame int) []map[string]bool {
+	if frame < 0 || frame >= len(a.loopBreakAssignments) {
+		return nil
+	}
+	breaks := a.loopBreakAssignments[frame]
+	a.loopBreakAssignments = a.loopBreakAssignments[:frame]
+	return breaks
+}
+
+func (a *Analyzer) recordLoopBreak() {
+	if len(a.loopBreakAssignments) == 0 {
+		return
+	}
+	top := len(a.loopBreakAssignments) - 1
+	a.loopBreakAssignments[top] = append(a.loopBreakAssignments[top], copyAssigned(a.assigned))
+}
+
+func mergeBreakAssigned(before map[string]bool, breaks []map[string]bool) map[string]bool {
+	merged := copyAssigned(before)
+	if len(breaks) == 0 {
+		return merged
+	}
+
+	for name := range before {
+		assigned := true
+		for _, breakAssigned := range breaks {
+			if !breakAssigned[name] {
+				assigned = false
+				break
+			}
+		}
+		merged[name] = assigned
+	}
+	return merged
 }
 
 func (a *Analyzer) analyzeTypeDeclaration(stmt *ast.TypeDeclStatement) {
@@ -1981,8 +2169,23 @@ func (a *Analyzer) resolveType(ref *ast.TypeReference) (Type, bool) {
 	}
 
 	if ref.ElementType != nil {
-		_, ok := a.resolveType(ref.ElementType)
-		return Type{Name: "slice", Kind: InvalidType}, ok
+		element, ok := a.resolveType(ref.ElementType)
+		if !ok {
+			return Type{Kind: InvalidType}, false
+		}
+		if ref.ArrayLength > 0 {
+			return Type{
+				Name:        fmt.Sprintf("[%d]%s", ref.ArrayLength, typeDisplayName(element)),
+				Kind:        ArrayType,
+				Element:     &element,
+				ArrayLength: ref.ArrayLength,
+			}, true
+		}
+		return Type{
+			Name:    "[]" + typeDisplayName(element),
+			Kind:    SliceType,
+			Element: &element,
+		}, true
 	}
 
 	typeArgs := make([]Type, 0, len(ref.TypeArgs))
@@ -2058,8 +2261,22 @@ type expressionValue struct {
 func (a *Analyzer) inferExpression(expr ast.Expression) (Type, expressionValue) {
 	switch expr := expr.(type) {
 	case *ast.IntegerLiteral:
+		switch expr.Suffix() {
+		case "u":
+			return Type{Name: "uint", Kind: UintType}, expressionValue{Display: expr.String()}
+		case "f":
+			return Type{Name: "float", Kind: FloatType}, expressionValue{Display: expr.String()}
+		case "d":
+			return Type{Name: "decimal", Kind: DecimalType}, expressionValue{Display: expr.String()}
+		}
 		return Type{Name: "int", Kind: IntType}, expressionValue{Display: expr.String()}
 	case *ast.FloatLiteral:
+		switch expr.Suffix() {
+		case "f":
+			return Type{Name: "float", Kind: FloatType}, expressionValue{Display: expr.String()}
+		case "d":
+			return Type{Name: "decimal", Kind: DecimalType}, expressionValue{Display: expr.String()}
+		}
 		return Type{Name: "decimal", Kind: DecimalType}, expressionValue{Display: expr.String()}
 	case *ast.StringLiteral, *ast.InterpolatedStringLiteral:
 		return Type{Name: "string", Kind: StringType}, expressionValue{Display: expr.String()}
@@ -2236,9 +2453,7 @@ func (a *Analyzer) inferLambdaExpression(expr *ast.LambdaExpression) (Type, expr
 		a.assigned[param.Name.Value] = true
 	}
 
-	for _, stmt := range expr.Body.Statements {
-		a.analyzeStatement(stmt)
-	}
+	a.analyzeBlockStatements(expr.Body)
 
 	if !blockDefinitelyReturns(expr.Body) && returnType.Kind != VoidType {
 		a.addErrorAtToken(expr.Token, "lambda must return %s", typeDisplayName(returnType))
@@ -2569,6 +2784,9 @@ func (a *Analyzer) canAccessDeclaredName(name string, declarationModule string) 
 	}
 	if declarationModule == "" || a.currentModule == "" {
 		return declarationModule == a.currentModule
+	}
+	if moduleRoot(a.currentModule) == "io" && moduleRoot(declarationModule) == "platform" {
+		return true
 	}
 	if strings.HasPrefix(base, "__") {
 		return a.currentModule == declarationModule
@@ -3072,6 +3290,11 @@ func (a *Analyzer) checkMatchExhaustive(expr *ast.MatchExpression, subjectType T
 }
 
 func (a *Analyzer) inferInfixExpression(expr *ast.InfixExpression) (Type, expressionValue) {
+	if isComparisonOperator(expr.Operator) && containsComparisonExpression(expr.Left) {
+		a.addErrorAtToken(expr.Token, "comparison chaining is not supported")
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+
 	leftType, _ := a.inferExpression(expr.Left)
 	if leftType.Kind == InvalidType {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
@@ -3478,6 +3701,14 @@ func isComparisonOperator(operator string) bool {
 	}
 }
 
+func containsComparisonExpression(expr ast.Expression) bool {
+	infix, ok := expr.(*ast.InfixExpression)
+	if !ok {
+		return false
+	}
+	return isComparisonOperator(infix.Operator)
+}
+
 func isEqualityOperator(operator string) bool {
 	return operator == "==" || operator == "!="
 }
@@ -3520,6 +3751,12 @@ func (a *Analyzer) isExplicitConversionExpression(expr ast.Expression) bool {
 }
 
 func typeDisplayName(typ Type) string {
+	if typ.Kind == ArrayType && typ.Element != nil {
+		return fmt.Sprintf("[%d]%s", typ.ArrayLength, typeDisplayName(*typ.Element))
+	}
+	if typ.Kind == SliceType && typ.Element != nil {
+		return "[]" + typeDisplayName(*typ.Element)
+	}
 	if typ.Kind == FunctionType {
 		return functionTypeName(typ.FunctionParameterTypes, functionReturnType(typ))
 	}

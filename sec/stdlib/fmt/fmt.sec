@@ -1,11 +1,15 @@
 module fmt
 
+
 fn Print(args...) void {
     // TODO: Implement
 }
 
-fn Println(args...) void {
-    // TODO: Implement
+fn Println(value: string) void {
+    io._sysWrite(1, value.ptr, value.len)
+
+    let nl := "\n"
+    io._sysWrite(1, nl.ptr, 1)
 }
 
 fn Eprint(args...) void {

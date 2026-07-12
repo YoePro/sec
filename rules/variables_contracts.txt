@@ -7,138 +7,909 @@ Variable contracts restrict the set of values that may be stored in a variable.
 They are runtime-checkable invariants, similar to a hidden fallible property
 setter.
 
-Initial contract kinds:
+Contracts may be attached to:
 
-```
-range min..max
-odd
-even
-regex "pattern"
-minLen n
-maxLen n
-len n
-notEmpty
-and, or, not
-```
-
-Contract applicability:
-
-```
-range    integer, uint, float and decimal-like numeric types
-odd      integer, decimal and uint types
-even     integer, decimal and uint types
-regex    string
-minLen   string and later collections
-maxLen   string and later collections
-len      string and later collections
-notEmpty string and later collections
-and      logical combination of two or more contracts
-or       logical combination of two or more contracts
-not      logical inversion of a single contract
-```
-
-The compiler should reject contracts that do not match the base type.
+* named types
+* variables
+* struct fields
 
 Examples:
 
 ```
 type Age int range 0..130
+
+let mut role: string in ["admin", "user", "guest"] := "user"
+
+type User struct {
+    Age: int range 0..130
+}
+```
+
+Initial contract kinds:
+
+```
+range min..max
+in [value1, value2, ...]
+odd
+even
+multipleOf n
+regex "pattern"
+minLen n
+maxLen n
+len n
+notEmpty
+unique
+finite
+```
+
+Contract applicability:
+
+```
+range       integer, uint, float and decimal-like numeric types
+in [...]    scalar types with equality-compatible listed values
+odd         integer and uint types
+even        integer and uint types
+multipleOf  integer and uint types
+regex       string
+minLen      string and collections
+maxLen      string and collections
+len         string and collections
+notEmpty    string and collections
+unique      arrays, slices, Vec, Set and other collection types with
+            equality-comparable elements
+finite      float and decimal
+```
+
+The compiler must reject contracts that do not apply to the contracted base
+type.
+
+Examples:
+
+```
+type Age int range 0..130
+
 type Name string minLen 1 maxLen 100
+
 type Email string regex "^[^@]+@[^@]+$"
+
 type PlayerCount int even range 2..20
-type Score int range 1..100 and (odd or range 90..100)
-type NonZero int not range 0..0
+
+type PageSize int range 10..100 multipleOf 10
+
+type Role string in ["admin", "user", "guest"]
+
+type Coordinates []int len 2
+
+type Tags []string notEmpty unique
+
+type Measurement float finite
 ```
 
 Invalid:
 
 ```
 type Bad int minLen 2
+
 type AlsoBad string range 0..10
+
 type StringOdd string odd
-type and ord not
+
+type FloatMultiple float multipleOf 5
+
+type Number int finite
+
+type Names []string regex ".*"
 ```
+
+Contract composition:
+
+Multiple contracts written sequentially are combined implicitly.
+
+Every listed contract must pass.
+
+Example:
+
+```
+type Username string
+    minLen 3
+    maxLen 32
+    regex "^[a-zA-Z0-9_]+$"
+```
+
+This requires all three contracts to pass.
+
+Another example:
+
+```
+type PageSize int
+    range 10..100
+    multipleOf 10
+```
+
+This requires the value to:
+
+* be between 10 and 100
+* be evenly divisible by 10
+
+No logical contract keywords:
+
+Sec does not introduce:
+
+```
+and
+or
+not
+```
+
+for contract composition.
+
+Sequential contracts already express logical conjunction.
+
+Alternative allowed values should normally be expressed using:
+
+```
+in [value1, value2, ...]
+```
+
+Example:
+
+```
+type Role string in ["admin", "user", "guest"]
+```
+
+More complex arbitrary validation belongs to a later explicit validation
+mechanism rather than additional contract grammar.
+
+Range contract:
+
+Syntax:
+
+```
+range minimum..maximum
+
+range minimum..<maximum
+```
+
+A range contract requires the value to be inside the specified range.
+
+Examples:
+
+```
+type Percent int range 0..100
+
+type Port int range 1..65535
+
+type Probability float range 0.0..1.0
+```
+
+The bounds must be compatible with the contracted base type.
+
+Invalid:
+
+```
+type Speed int range "slow".."fast"
+```
+
+Range bounds should normally be compile-time values.
+
+Support for runtime-dependent contract bounds is not part of the initial
+implementation.
+
+Membership contract:
+
+Syntax:
+
+```
+in [value1, value2, value3]
+```
+
+The value must equal at least one value in the list.
+
+Examples:
+
+```
+type Role string in ["admin", "user", "guest"]
+
+type RetryCount int in [0, 1, 2, 3]
+
+let mut state: string in ["new", "active", "closed"] := "new"
+```
+
+The listed values must be equality-compatible with the contracted base type.
+
+Invalid:
+
+```
+type Role string in ["admin", 10, "guest"]
+```
+
+Invalid:
+
+```
+type Number int in ["one", "two"]
+```
+
+The list must contain at least one value.
+
+Invalid:
+
+```
+type EmptyChoice string in []
+```
+
+Membership values should be compile-time constants in the initial
+implementation.
+
+Duplicate values are invalid.
+
+Invalid:
+
+```
+type Role string in ["admin", "user", "admin"]
+```
+
+Diagnostic:
+
+```
+duplicate value "admin" in membership contract Role
+```
+
+Membership uses normal Sec semantic equality.
+
+It does not perform:
+
+* string conversion
+* numeric conversion
+* enum conversion
+* semantic-type conversion
+
+Named semantic types retain their identity.
+
+Example:
+
+```
+type StatusCode int
+
+type AllowedStatus StatusCode in [
+    StatusCode(200),
+    StatusCode(201),
+    StatusCode(204),
+]
+```
+
+Odd contract:
+
+Syntax:
+
+```
+odd
+```
+
+The value must be an odd integer.
+
+Conceptually:
+
+```
+value % 2 != 0
+```
+
+Examples:
+
+```
+type OddNumber int odd
+
+type OddByte byte odd
+```
+
+The contract applies only to integer-like types.
+
+It does not apply to:
+
+* float
+* decimal
+* string
+* collections
+
+Even contract:
+
+Syntax:
+
+```
+even
+```
+
+The value must be an even integer.
+
+Conceptually:
+
+```
+value % 2 == 0
+```
+
+Examples:
+
+```
+type EvenNumber int even
+
+type PlayerCount uint even range 2..20
+```
+
+The contract applies only to integer-like types.
+
+Conflicting parity contracts:
+
+A declaration may not contain both odd and even.
+
+Invalid:
+
+```
+type Impossible int odd even
+```
+
+Diagnostic:
+
+```
+contracts odd and even cannot be combined
+```
+
+multipleOf contract:
+
+Syntax:
+
+```
+multipleOf divisor
+```
+
+The value must be evenly divisible by divisor.
+
+Conceptually:
+
+```
+value % divisor == 0
+```
+
+Examples:
+
+```
+type PageSize int multipleOf 10
+
+type BlockSize uint multipleOf 512
+
+type QuarterHour int
+    range 0..1440
+    multipleOf 15
+```
+
+The divisor must be a non-zero compile-time integer constant.
+
+Invalid:
+
+```
+type Invalid int multipleOf 0
+```
+
+Diagnostic:
+
+```
+multipleOf divisor must not be zero
+```
+
+The divisor must be compatible with the contracted integer type.
+
+The sign of the divisor does not affect validity.
+
+These are equivalent:
+
+```
+multipleOf 5
+
+multipleOf -5
+```
+
+For uint types, the divisor must be representable as uint.
+
+Relationship to odd and even:
+
+```
+even
+```
+
+is equivalent in accepted values to:
+
+```
+multipleOf 2
+```
+
+However, odd has no direct multipleOf equivalent.
+
+Both syntaxes remain available because odd and even express intent clearly.
+
+regex contract:
+
+Syntax:
+
+```
+regex "pattern"
+```
+
+The value must match the specified regular expression.
+
+Example:
+
+```
+type Email string regex "^[^@]+@[^@]+$"
+
+type Identifier string regex "^[a-zA-Z_][a-zA-Z0-9_]*$"
+```
+
+The pattern must be a compile-time string literal.
+
+Invalid:
+
+```
+let pattern: string := "^[a-z]+$"
+
+type Identifier string regex pattern
+```
+
+An invalid regular expression must produce a compile-time error.
+
+Diagnostic:
+
+```
+invalid regex contract for Identifier: ...
+```
+
+The exact regular-expression syntax and engine must be specified before runtime
+implementation.
+
+Length contracts:
+
+Length contracts apply to strings and supported collection types.
+
+Available contracts:
+
+```
+minLen minimum
+maxLen maximum
+len exact
+```
+
+Examples:
+
+```
+type Name string minLen 1 maxLen 100
+
+type CountryCode string len 2
+
+type Coordinates []int len 2
+
+type Arguments []string maxLen 100
+```
+
+Length values must be non-negative compile-time integer constants.
+
+Invalid:
+
+```
+type Name string minLen -1
+```
+
+Invalid:
+
+```
+type Data []byte len -5
+```
+
+For strings, length must follow the normal Sec string-length definition.
+
+The implementation must explicitly decide whether string length means:
+
+* Unicode code points
+* bytes
+
+It must not vary between contracts and normal string length operations.
+
+Conflicting length contracts:
+
+The compiler should reject clearly impossible combinations.
+
+Invalid:
+
+```
+type Invalid string minLen 10 maxLen 5
+```
+
+Diagnostic:
+
+```
+minLen 10 exceeds maxLen 5
+```
+
+Invalid:
+
+```
+type Invalid string len 5 minLen 10
+```
+
+Diagnostic:
+
+```
+len 5 violates minLen 10
+```
+
+notEmpty contract:
+
+Syntax:
+
+```
+notEmpty
+```
+
+The value must have a length greater than zero.
+
+Examples:
+
+```
+type Name string notEmpty
+
+type Tags []string notEmpty
+```
+
+notEmpty is equivalent in accepted values to:
+
+```
+minLen 1
+```
+
+It remains a separate contract because it expresses intent directly.
+
+unique contract:
+
+Syntax:
+
+```
+unique
+```
+
+Every element in the collection must be semantically unequal to every other
+element.
+
+Examples:
+
+```
+type Tags []string unique
+
+type UserIDs Vec[UserID] unique
+
+type SelectedPorts []Port notEmpty unique
+```
+
+The element type must support equality.
+
+Invalid:
+
+```
+type Handlers []fn(Event) void unique
+```
+
+when function values do not support equality.
+
+For a collection:
+
+```
+[a, b, c]
+```
+
+unique requires:
+
+```
+a != b
+a != c
+b != c
+```
+
+The contract uses semantic equality, not memory identity.
+
+Set types:
+
+Set elements are already unique by definition.
+
+The unique contract may still be accepted on Set[T] for consistency, but it is
+redundant.
+
+Example:
+
+```
+type UserSet Set[User] unique
+```
+
+The compiler may warn:
+
+```
+unique contract is redundant for Set[User]
+```
+
+Nested collections:
+
+unique applies to the direct elements of the contracted collection.
+
+Example:
+
+```
+type Rows [][]int unique
+```
+
+This requires each row to be semantically different from every other row.
+
+It does not require the values inside each row to be unique.
+
+finite contract:
+
+Syntax:
+
+```
+finite
+```
+
+The value must be a finite numeric value.
+
+It must reject:
+
+* positive infinity
+* negative infinity
+* NaN
+
+Examples:
+
+```
+type Temperature float finite
+
+type Amount decimal finite
+
+let mut result: float finite := 0.0
+```
+
+The contract applies only to float and decimal.
+
+Invalid:
+
+```
+type Count int finite
+```
+
+Invalid:
+
+```
+type Name string finite
+```
+
+Reason:
+
+NaN and infinity can propagate silently through mathematical calculations and
+produce values that pass through large parts of a program before causing visible
+failures.
+
+The finite contract makes rejection explicit at the storage boundary.
+
+Relationship to range:
+
+A range contract does not implicitly replace finite.
+
+Whether NaN satisfies or fails an ordered range comparison must not be relied
+upon as contract validation.
+
+For values where NaN or infinity must never be stored, write finite explicitly:
+
+```
+type Probability float
+    finite
+    range 0.0..1.0
+```
+
+For decimal implementations that cannot represent NaN or infinity, finite is
+always satisfied.
+
+The compiler may still accept the contract so that the semantic requirement
+remains explicit and portable between decimal implementations.
+
+Contract order:
+
+Contracts are checked in source order.
+
+Example:
+
+```
+type Probability float
+    finite
+    range 0.0..1.0
+```
+
+The compiler checks:
+
+1. finite
+2. range 0.0..1.0
+
+The first failing contract is reported unless aggregate diagnostics are
+introduced later.
 
 Implemented now:
 
 * named types may carry integer range contracts
 * struct fields may carry integer range contracts
-* constant initializers are checked at compile time
-* constant assignments are checked at compile time
-* assignment to a mutable variable whose type has a contract requires `try`
-* `try x = value` marks a fallible contract assignment
+* constant initializers are checked against integer range contracts at compile
+  time
+* constant assignments are checked against integer range contracts at compile
+  time
+* assignment to a mutable variable whose type has a contract requires try
+* try assignment marks a fallible contract assignment
 
 Not implemented yet:
 
-* parser syntax for regex, minLen, maxLen, len, notEmpty, odd, even, and, or, not
-* decimal/float range contract evaluation
+* parser syntax for in [...]
+* parser syntax for regex
+* parser syntax for minLen
+* parser syntax for maxLen
+* parser syntax for len
+* parser syntax for notEmpty
+* parser syntax for odd
+* parser syntax for even
+* parser syntax for multipleOf
+* parser syntax for unique
+* parser syntax for finite
+* decimal and float range evaluation
+* string contract evaluation
+* collection contract evaluation
+* membership contract evaluation
 * runtime contract check generation
 * try handlers for contract assignment failure
 * contract error types
 * contract propagation through LLVM
 
-Core rule:
+Core assignment rule:
 
-If a mutable variable has a contract, every later assignment to that variable
-is fallible.
+If mutable storage has a contract, every later assignment to that storage is
+fallible.
 
-Therefore the assignment must be written with `try`.
+The assignment must therefore use try.
 
 Example:
 
 ```
 type Percent int range 0..100
 
-let mut p: Percent := 50
+let mut percentage: Percent := 50
 
-p = 60
+percentage = 60
 ```
 
 Invalid:
 
 ```
-assigning variable p requires try because Percent has contracts
+assigning variable percentage requires try because Percent has contracts
 ```
 
 Valid:
 
 ```
-try p = 60
+try percentage = 60
 ```
 
-Compound assignments are also fallible:
+Compound assignments are also fallible.
+
+Valid:
 
 ```
-try p += 10
+try percentage += 10
 ```
 
 Invalid:
 
 ```
-p += 10
+percentage += 10
 ```
 
 Reason:
 
-Even if a value happens to be valid at compile time, the language rule should
-not depend on whether the compiler can prove it. A contracted assignment is a
-fallible operation by type.
+The language rule must not depend on whether the compiler can prove that a
+specific assignment succeeds.
+
+Assignment to contracted storage is a fallible operation by type.
+
+Variable-level contracts:
+
+Contracts may be attached directly to variable declarations.
+
+Examples:
+
+```
+let mut percentage: int range 0..100 := 50
+
+let mut role: string in ["admin", "user", "guest"] := "user"
+
+let mut temperature: float finite := 20.0
+
+let mut tags: []string unique := []string{"sec", "compiler"}
+```
+
+The contract belongs to that storage location.
+
+Later assignment requires try.
+
+Example:
+
+```
+try role = "admin"
+
+try temperature = calculatedTemperature
+
+try tags = newTags
+```
+
+The underlying type remains unchanged.
+
+Example:
+
+```
+let mut percentage: int range 0..100 := 50
+```
+
+percentage has the underlying value type int but its storage accepts only values
+that satisfy the attached contract.
+
+Named-type contracts:
+
+Contracts may be part of a named type.
+
+Example:
+
+```
+type Percent int range 0..100
+
+type Role string in ["admin", "user", "guest"]
+
+type Tags []string unique
+```
+
+Every value of the named type must satisfy its contracts.
+
+Combining named-type and storage contracts:
+
+A variable may add stricter storage contracts to an already contracted named
+type.
+
+Example:
+
+```
+type Percentage int range 0..100
+
+let mut positivePercentage: Percentage range 1..100 := Percentage(50)
+```
+
+The value must satisfy:
+
+* the named type contracts
+* the storage contracts
+
+A storage contract may not weaken or remove a named type contract.
 
 Initializers:
 
-Declaration initializers do not require `try`.
+Declaration initializers do not automatically require try.
+
+Example:
 
 ```
-let mut p: Percent := 50
+let mut percentage: Percent := 50
 ```
 
-The declaration creates the variable. If the initializer is compile-time
-constant, the compiler checks the contract immediately.
+If the initializer is a compile-time constant, the compiler checks every
+implemented contract immediately.
 
 Invalid:
 
 ```
-let mut p: Percent := 101
+let mut percentage: Percent := 101
 ```
 
 Diagnostic:
@@ -147,50 +918,89 @@ Diagnostic:
 value 101 violates range contract Percent 0..100
 ```
 
-If the initializer is not compile-time checkable, later runtime contract checks
-will be required. The exact initialization syntax for fallible non-constant
-contract initialization is not finalized yet.
+Another example:
+
+```
+let mut role: string in ["admin", "user", "guest"] := "root"
+```
+
+Expected future diagnostic:
+
+```
+value "root" violates membership contract for role
+```
+
+Non-constant initializers:
+
+If an initializer cannot be checked at compile time, a runtime contract check is
+required.
+
+The initialization remains a potentially fallible operation.
+
+The exact syntax for fallible non-constant contracted initialization must be
+defined consistently with normal conversion and try rules.
+
+This syntax is not finalized by the current implementation.
 
 Hidden property model:
 
-A contracted variable behaves as if the compiler generated a hidden property:
+Contracted storage behaves conceptually as if the compiler generated a hidden
+fallible setter.
+
+Example:
 
 ```
 property value: Percent {
-    get { return storage }
+    get {
+        return storage
+    }
+
     try set value {
-        // check contracts
+        // Check every contract.
         storage = value
     }
 }
 ```
 
-This means assignment follows the same rule as a fallible property setter:
+Assignment therefore follows the same rule as a fallible property setter:
 
 ```
-try p = value
+try percentage = value
 ```
 
 No implicit conversions:
 
 Contracts do not create implicit conversions.
 
-```
-let i: int := 50
-let mut p: Percent := 50
-
-try p = i
-```
-
-Invalid unless an explicit conversion is used:
+Example:
 
 ```
-try p = Percent(i)
+type Percent int range 0..100
+
+let value: int := 50
+let mut percentage: Percent := 50
 ```
+
+The following is invalid without explicit conversion:
+
+```
+try percentage = value
+```
+
+Use:
+
+```
+try percentage = Percent(value)
+```
+
+The conversion is itself contract-checked.
 
 Compile-time contract checks:
 
-For integer range, parity (odd/even), and logical combination contracts, the compiler should evaluate constant expressions:
+The compiler should evaluate compile-time constant expressions whenever the
+implemented contract supports it.
+
+Examples:
 
 ```
 10
@@ -199,36 +1009,57 @@ For integer range, parity (odd/even), and logical combination contracts, the com
 10 * 5
 ```
 
-If the result violates the contract, report a compile-time error.
+Contracts suitable for compile-time checking include:
+
+* integer range
+* odd
+* even
+* multipleOf
+* membership lists containing constant values
+* length contracts on constant strings and collection literals
+* notEmpty
+* unique on constant collection literals
+* finite on constant float and decimal values
+* regex on constant strings
+
+If the value violates a contract, compilation fails.
 
 Runtime contract checks:
 
-When the value is not compile-time known, the compiler must generate a runtime
-check in the hidden setter path.
+When the assigned value is not compile-time known, the compiler must generate a
+runtime check through the contracted storage path.
 
-Until runtime contract checks are implemented, `try` marks the operation as
-fallible but code generation may reject it.
+Until runtime contract checks are implemented:
+
+* sema may require try
+* code generation may reject the operation
+* the compiler must not silently omit the contract check
 
 Contract identity:
 
 Contracts are part of a named type's identity.
 
+Example:
+
 ```
 type Percent int range 0..100
+
 type Score int range 0..100
 ```
 
-`Percent` and `Score` are different types even if the underlying type and
+Percent and Score are distinct types even though their underlying type and
 contract are identical.
 
 Therefore:
 
 ```
-let p: Percent := 50
-let s: Score := p
+let percentage: Percent := 50
+let score: Score := percentage
 ```
 
-Invalid:
+is invalid.
+
+Diagnostic:
 
 ```
 cannot initialize Score with Percent
@@ -237,102 +1068,222 @@ cannot initialize Score with Percent
 Explicit conversion may be used:
 
 ```
-let s: Score := Score(p)
+let score: Score := Score(percentage)
 ```
 
-The conversion itself is contract-checked.
+The conversion is contract-checked.
+
+Variable-level contract identity:
+
+A variable-level contract restricts storage but does not create a new named
+type.
+
+Example:
+
+```
+let percentage: int range 0..100 := 50
+let value: int := percentage
+```
+
+value has type int.
+
+The storage contract does not follow the value when copied into ordinary int
+storage.
 
 Assignment target rule:
 
-The `try` requirement belongs to the storage being assigned, not only to the
-right-hand expression.
+The try requirement belongs to the storage being assigned.
+
+Example:
 
 ```
+type Percent int range 0..100
+
 let value: int := 50
-let mut p: Percent := 10
+let mut percentage: Percent := 10
 
-try p = Percent(value)
+try percentage = Percent(value)
 ```
 
-Without `try`, this is invalid even if the expression is an explicit
-conversion:
+Without try, this remains invalid even though the right-hand expression contains
+an explicit conversion:
 
 ```
-p = Percent(value)
+percentage = Percent(value)
 ```
 
 Diagnostic:
 
 ```
-assigning variable p requires try because Percent has contracts
+assigning variable percentage requires try because Percent has contracts
 ```
 
 Struct fields:
 
 Struct fields may carry contracts.
 
+Example:
+
 ```
 type User struct {
-    Age: int range 0..130,
+    Age: int range 0..130
+    Role: string in ["admin", "user", "guest"]
+    Tags: []string unique
 }
 ```
 
-The field contract should be enforced on:
+Field contracts must be enforced on:
 
 * struct literal initialization
 * field assignment
-* generated setters if a property forwards to the field
+* copying into newly created struct values
+* generated setters when a property forwards to the field
 
-The same fallible-storage rule applies once field assignment is fully
-implemented:
-
-```
-try user.Age = 42
-```
-
-Contract composition:
-
-Multiple contracts listed sequentially on the same variable are combined with implicit logical and. 
-Explicit usage of and, or, and not enables advanced precedence grouping using parentheses.
+Once mutable field assignment is implemented:
 
 ```
-type Username string minLen 3 maxLen 32 regex "^[a-zA-Z0-9_]+$"
-type LuckyNumber int range 1..100 and (odd or range 70..80)
+let mut user := User {
+    Age: 52
+    Role: "user"
+    Tags: []string{"compiler", "sec"}
+}
+
+try user.Age = 53
+
+try user.Role = "admin"
+
+try user.Tags = newTags
 ```
 
-All constraints must pass.
+A struct type declaration itself has no mutability.
 
-Diagnostic policy:
+Contracts describe valid field values.
 
-Report the first failing contract for a single assignment unless a later design explicitly asks for aggregate contract diagnostics.
-For logical combinations:
-* and: Reports the specific contract that caused the failure.
-* or: Reports that none of the allowed alternative conditions were met.
-* not: Reports that the value violated the inversion constraint.
+Mutability belongs to the struct value's binding or access path.
+
+Copying structs:
+
+Copying a valid struct value does not require rechecking unchanged fields when
+the compiler can guarantee that the source value already satisfies the same
+field contracts.
+
+Construction from unrelated values must validate every contracted field.
+
+Collection mutation:
+
+A unique collection contract must remain valid after element mutation or
+structural modification.
+
+Conceptually fallible operations include:
+
+* inserting an element
+* replacing an element
+* appending an element
+* assigning an entirely new collection
+
+Example:
+
+```
+let mut tags: []string unique := []string{"sec", "llvm"}
+```
+
+Future mutation syntax must enforce:
+
+```
+try tags.Append("compiler")
+```
+
+and reject:
+
+```
+try tags.Append("sec")
+```
+
+with a uniqueness contract error.
+
+The exact integration with collection methods and mutable references is not yet
+implemented.
+
+Contract diagnostics:
+
+Report the first failing contract for one operation unless a later design
+explicitly introduces aggregate contract diagnostics.
 
 Preferred diagnostics:
 
 ```
 value 101 violates range contract Percent 0..100
-value "" violates notEmpty contract Name
-value "ab" violates minLen contract Username 3
-value "toolong" violates maxLen contract Code 5
-value "x y" violates regex contract Identifier
+
+value "root" violates membership contract Role
+
 value 42 violates odd contract LuckyNumber
+
 value 15 violates even contract PlayerCount
-value 44 violates range contract or range contract for ComplexType
-value 50 violates not range contract for NonZero
+
+value 25 violates multipleOf contract PageSize 10
+
+value "" violates notEmpty contract Name
+
+value "ab" violates minLen contract Username 3
+
+value "toolong" violates maxLen contract Code 5
+
+value "SEK" violates len contract CurrencyCode 3
+
+value "x y" violates regex contract Identifier
+
+collection value violates unique contract Tags
+
+value NaN violates finite contract Measurement
+
+value Infinity violates finite contract Measurement
 ```
+
+Diagnostics should identify:
+
+* the rejected value when representable
+* the failed contract
+* the contracted type, variable or field
+* relevant contract arguments
 
 Contract result model:
 
-Conceptually, a failed contract assignment returns an error. The concrete error
-type is not finalized.
+Conceptually, a failed contract assignment returns an error.
 
-For now, semantic analysis only enforces that the caller writes `try` for a
+The concrete contract error type is not finalized.
+
+For now, semantic analysis only enforces that the caller uses try for a
 fallible contract assignment.
 
-Later, when contract errors become real values, `try p = value` must either:
+Later:
 
-* propagate a compatible contract error, or
-* handle the error locally with a try handler block.
+```
+try percentage = value
+```
+
+must either:
+
+* propagate a compatible contract error
+* handle the error locally with a try handler block
+
+Design rules:
+
+* Contracts restrict storage values.
+* Named types, variables and struct fields may carry contracts.
+* Multiple sequential contracts must all pass.
+* No and, or or not contract keywords are introduced.
+* in [...] expresses membership in a finite allowed set.
+* multipleOf applies only to integer-like types.
+* unique applies to supported collections with comparable elements.
+* finite explicitly rejects NaN and infinity.
+* Contracted assignment is fallible by type.
+* Later assignment to contracted mutable storage requires try.
+* Compile-time known values should be checked during compilation.
+* Unknown values require runtime checks.
+* Runtime checks must never be silently omitted.
+* Contracts do not create implicit conversions.
+* Named-type contracts are part of type identity.
+* Variable-level contracts restrict storage without creating a new named type.
+* Struct declarations have no mutability.
+* Contract validation follows the target storage.
+* The first failed contract is reported.

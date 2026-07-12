@@ -1,0 +1,182 @@
+module main
+
+fn BasicRange() void {
+    for i in 0..<10 {
+        let value: int := i
+    }
+}
+
+fn InclusiveRange() void {
+    for i in 1..10 {
+        let value: int := i
+    }
+}
+
+fn VariableBounds(start: int, end: int) void {
+    for i in start..<end {
+        let value: int := i
+    }
+}
+
+fn EmptyRange() void {
+    for i in 10..<10 {
+        let value: int := i
+    }
+}
+fn NegativeRange() void {
+    for i in 10..0 {
+        let value: int := i
+    }
+}
+
+fn NestedRange() void {
+    for row in 0..<10 {
+        for column in 0..<10 {
+            let position: int := row * 10 + column
+        }
+    }
+}
+
+fn MutateOuter() int {
+    let mut total: int := 0
+
+    for value in 1..10 {
+        total += value
+    }
+
+    return total
+}
+
+fn BreakRange(stop: int) int {
+    let mut result: int := 0
+
+    for value in 0..<100 {
+        if value == stop {
+            break
+        }
+
+        result = value
+    }
+
+    return result
+}
+
+fn ContinueRange() int {
+    let mut total: int := 0
+
+    for value in 0..<10 {
+        if value == 5 {
+            continue
+        }
+
+        total += value
+    }
+
+    return total
+}
+
+fn InfiniteLoopWithReturn() int {
+    for {
+        return 10
+    }
+}
+
+fn ArrayLoop(values: [3]int) void {
+    for value in values {
+        let copy: int := value
+    }
+}
+
+fn SliceLoop(values: []int) void {
+    for value in values {
+        let copy: int := value
+    }
+}
+
+fn StringLoop(text: string) void {
+    for character in text {
+        let copy: rune := character
+    }
+}
+
+fn BytesLoop(data: []byte) void {
+    for value in data {
+        let copy: byte := value
+    }
+}
+
+fn IntBound(low: int, high: int) void {
+    for i in low..high {
+        let c: int := i
+    }
+}
+
+fn SliceIndexValue(values: []int) void {
+    for index, value in values {
+        let copyIndex: int := index
+        let copyValue: int := value
+    }
+}
+
+fn StringIndexValue(text: string) void {
+    for index, value in text {
+        let copyIndex: int := index
+        let copyValue: rune := value
+    }
+}
+
+fn AscendingDecimalStep() void {
+    let start: decimal := 0.001
+    let end: decimal := 0.002
+    let increment: decimal := 0.00001
+
+    for value in start..end step increment {
+        let copy: decimal := value
+    }
+}
+
+fn DescendingDecimalStep() void {
+    let start: decimal := 0.002
+    let end: decimal := 0.001
+    let increment: decimal := 0.00001
+
+    for value in start..end step increment {
+        let copy: decimal := value
+    }
+}
+
+fn FloatStep() void {
+    let start: float := 0.0
+    let end: float := 1.0
+    let increment: float := 0.1
+
+    for value in start..<end step increment {
+        let copy: float := value
+    }
+}
+
+fn IntegerExplicitStep() void {
+    for value in 0..100 step 10 {
+        let copy: int := value
+    }
+}
+
+fn RangeWithExpression() void {
+    let a := 1, b := 2, c := 3, d := 4
+
+    for v in (a + b)..(c*d) {
+    }
+}
+
+
+/* 
+// When we have vectors and maps 
+fn VectorLoop(values: Vec[int]) void {
+    for value in values {
+    }
+}
+fn MapLoop(values: Map[string, int]) void {
+    for key, value in values {
+    }
+}
+*/

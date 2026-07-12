@@ -249,7 +249,7 @@ func TestKeywords(t *testing.T) {
 }
 
 func TestNumbersAndRanges(t *testing.T) {
-	input := `123 45.67 .1 1..10 1..<10 1.. ..10`
+	input := `123 45.67 .1 1..10 1..<10 1.. ..10 10i 10u 10f 10d 1.5f 1.5d .5f .5d 0b1000 0o10 0x8 0x8u`
 
 	tests := []struct {
 		typ    TokenType
@@ -268,6 +268,18 @@ func TestNumbersAndRanges(t *testing.T) {
 		{RANGE, ".."},
 		{RANGE, ".."},
 		{INT, "10"},
+		{INT, "10i"},
+		{INT, "10u"},
+		{FLOAT, "10f"},
+		{FLOAT, "10d"},
+		{FLOAT, "1.5f"},
+		{FLOAT, "1.5d"},
+		{FLOAT, ".5f"},
+		{FLOAT, ".5d"},
+		{INT, "0b1000"},
+		{INT, "0o10"},
+		{INT, "0x8"},
+		{INT, "0x8u"},
 		{EOF, ""},
 	}
 

@@ -49,6 +49,161 @@ if.end.1:
 	}
 }
 
+func TestGenerateIntegerLiteralBasesAndSuffixes(t *testing.T) {
+	input := `
+module main
+
+fn main() int {
+	let a: int := 0x8
+	let b: uint := 0b1000u
+	return a
+}
+`
+
+	program := parseAndAnalyze(t, input)
+	got, err := Generate(program)
+	if err != nil {
+		t.Fatalf("Generate returned error: %v", err)
+	}
+
+	expectedParts := []string{
+		`store i32 8`,
+		`store i64 8`,
+	}
+	for _, part := range expectedParts {
+		if !strings.Contains(got, part) {
+			t.Fatalf("generated LLVM IR missing %q.\nIR:\n%s", part, got)
+		}
+	}
+}
+
+func TestGenerateDecimalLiterals(t *testing.T) {
+	input := `
+module main
+
+fn Pi() decimal {
+	return 3.14d
+}
+
+fn main() int {
+	let a: decimal := 3.14
+	let b: decimal := 1
+	let c := 2.5d
+	let d: decimal := decimal(5)
+	return 0
+}
+`
+
+	program := parseAndAnalyze(t, input)
+	got, err := Generate(program)
+	if err != nil {
+		t.Fatalf("Generate returned error: %v", err)
+	}
+
+	expectedParts := []string{
+		`%sec.decimal = type { i64, i8 }`,
+		`define %sec.decimal @Pi()`,
+		`insertvalue %sec.decimal undef, i64 314, 0`,
+		`insertvalue %sec.decimal %t0, i8 2, 1`,
+		`ret %sec.decimal`,
+		`alloca %sec.decimal`,
+		`insertvalue %sec.decimal undef, i64 1, 0`,
+		`insertvalue %sec.decimal undef, i64 25, 0`,
+		`sext i32 5 to i64`,
+		`insertvalue %sec.decimal undef, i64 %t`,
+		`store %sec.decimal`,
+	}
+	for _, part := range expectedParts {
+		if !strings.Contains(got, part) {
+			t.Fatalf("generated LLVM IR missing %q.\nIR:\n%s", part, got)
+		}
+	}
+}
+
+func TestGenerateIfElse(t *testing.T) {
+	input := `
+module main
+
+fn main() int {
+	let mut result: int := 0
+
+	if false {
+		result = 1
+	} else {
+		result = 2
+	}
+
+	return result
+}
+`
+
+	program := parseAndAnalyze(t, input)
+	got, err := Generate(program)
+	if err != nil {
+		t.Fatalf("Generate returned error: %v", err)
+	}
+
+	expectedParts := []string{
+		`br i1 false, label %if.then.`,
+		`label %if.else.`,
+		`if.else.`,
+		`store i32 2`,
+		`if.end.`,
+		`ret i32`,
+	}
+
+	for _, part := range expectedParts {
+		if !strings.Contains(got, part) {
+			t.Fatalf("generated LLVM IR missing %q.\nIR:\n%s", part, got)
+		}
+	}
+}
+
+func TestGenerateShortCircuitIfCondition(t *testing.T) {
+	input := `
+module main
+
+fn IsReady() bool {
+	return true
+}
+
+fn main() int {
+	if false && IsReady() {
+		return 1
+	}
+
+	if true || IsReady() {
+		return 2
+	}
+
+	return 0
+}
+`
+
+	program := parseAndAnalyze(t, input)
+	got, err := Generate(program)
+	if err != nil {
+		t.Fatalf("Generate returned error: %v", err)
+	}
+
+	expectedParts := []string{
+		`and.rhs.`,
+		`and.false.`,
+		`and.end.`,
+		`phi i1`,
+		`or.true.`,
+		`or.rhs.`,
+		`or.end.`,
+		`call i1 @IsReady()`,
+	}
+
+	for _, part := range expectedParts {
+		if !strings.Contains(got, part) {
+			t.Fatalf("generated LLVM IR missing %q.\nIR:\n%s", part, got)
+		}
+	}
+}
+
 func TestTargetTripleFromHostParts(t *testing.T) {
 	tests := []struct {
 		goos     string
@@ -301,7 +456,7 @@ fn main() int {
 	}
 
 	expectedParts := []string{
-		`define i32 @_rawSyscall3(i32 %number, i32 %arg1, i32 %arg2, i32 %arg3)`,
+		`define i32 @_rawSyscall3(i64 %number, i64 %arg1, i64 %arg2, i64 %arg3)`,
 		`call i64 asm sideeffect "syscall", "={rax},{rax},{rdi},{rsi},{rdx},~{rcx},~{r11},~{memory}"`,
 		`trunc i64`,
 		`ret i32`,
@@ -488,6 +643,77 @@ fn main() int {
 	}
 }
 
+func TestGenerateDescendingRangeForLoop(t *testing.T) {
+	input := `
+module main
+
+fn main() int {
+	let mut sum: int := 0
+
+	for i in 10..0 {
+		sum += i
+	}
+
+	return sum
+}
+`
+
+	program := parseAndAnalyze(t, input)
+	got, err := Generate(program)
+	if err != nil {
+		t.Fatalf("Generate returned error: %v", err)
+	}
+
+	expectedParts := []string{
+		`icmp sgt i32 10, 0`,
+		`icmp sge i32`,
+		`sub i32`,
+		`select i1`,
+		`ret i32`,
+	}
+
+	for _, part := range expectedParts {
+		if !strings.Contains(got, part) {
+			t.Fatalf("generated LLVM IR missing %q.\nIR:\n%s", part, got)
+		}
+	}
+}
+
+func TestGenerateRangeForLoopWithExplicitStep(t *testing.T) {
+	input := `
+module main
+
+fn main() int {
+	let mut sum: int := 0
+
+	for i in 0..<10 step 2 {
+		sum += i
+	}
+
+	return sum
+}
+`
+
+	program := parseAndAnalyze(t, input)
+	got, err := Generate(program)
+	if err != nil {
+		t.Fatalf("Generate returned error: %v", err)
+	}
+
+	expectedParts := []string{
+		`add i32`,
+		`, 2`,
+		`sub i32`,
+		`ret i32`,
+	}
+
+	for _, part := range expectedParts {
+		if !strings.Contains(got, part) {
+			t.Fatalf("generated LLVM IR missing %q.\nIR:\n%s", part, got)
+		}
+	}
+}
+
 func TestGenerateInfiniteForLoop(t *testing.T) {
 	input := `
 module main
@@ -516,6 +742,167 @@ fn main() int {
 		`br label %for.body`,
 		`br label %for.end`,
 		`ret i32`,
+	}
+
+	for _, part := range expectedParts {
+		if !strings.Contains(got, part) {
+			t.Fatalf("generated LLVM IR missing %q.\nIR:\n%s", part, got)
+		}
+	}
+}
+
+func TestGenerateNonCapturingLambdaCall(t *testing.T) {
+	input := `
+module main
+
+fn main() int {
+	let double := fn(value: int) int {
+		return value * 2
+	}
+
+	return double(10)
+}
+`
+
+	program := parseAndAnalyze(t, input)
+	got, err := Generate(program)
+	if err != nil {
+		t.Fatalf("Generate returned error: %v", err)
+	}
+
+	expectedParts := []string{
+		`define i32 @__sec_lambda_0(i32 %value)`,
+		`mul i32 %value, 2`,
+		`store ptr @__sec_lambda_0`,
+		`load ptr`,
+		`call i32 %`,
+		`ret i32`,
+	}
+
+	for _, part := range expectedParts {
+		if !strings.Contains(got, part) {
+			t.Fatalf("generated LLVM IR missing %q.\nIR:\n%s", part, got)
+		}
+	}
+}
+
+func TestGenerateNamedFunctionValueCall(t *testing.T) {
+	input := `
+module main
+
+fn IsPositive(value: int) bool {
+	return value > 0
+}
+
+fn main() int {
+	let predicate := IsPositive
+	if predicate(10) {
+		return 0
+	}
+	return 1
+}
+`
+
+	program := parseAndAnalyze(t, input)
+	got, err := Generate(program)
+	if err != nil {
+		t.Fatalf("Generate returned error: %v", err)
+	}
+
+	expectedParts := []string{
+		`define i1 @IsPositive(i32 %value)`,
+		`store ptr @IsPositive`,
+		`call i1 %`,
+		`ret i32 0`,
+		`ret i32 1`,
+	}
+
+	for _, part := range expectedParts {
+		if !strings.Contains(got, part) {
+			t.Fatalf("generated LLVM IR missing %q.\nIR:\n%s", part, got)
+		}
+	}
+}
+
+func TestGenerateEnumMatchExpression(t *testing.T) {
+	input := `
+module main
+
+enum Color {
+	red,
+	green,
+	blue,
+}
+
+fn main() int {
+	let color: Color := Color.green
+	let code := match color {
+		Color.red => 1
+		Color.green => 2
+		Color.blue => 3
+	}
+
+	return code
+}
+`
+
+	program := parseAndAnalyze(t, input)
+	got, err := Generate(program)
+	if err != nil {
+		t.Fatalf("Generate returned error: %v", err)
+	}
+
+	expectedParts := []string{
+		`store i32 1, ptr`,
+		`icmp eq i32`,
+		`match.arm.`,
+		`match.test.`,
+		`match.end.`,
+		`store i32 2`,
+		`load i32`,
+		`ret i32`,
+	}
+
+	for _, part := range expectedParts {
+		if !strings.Contains(got, part) {
+			t.Fatalf("generated LLVM IR missing %q.\nIR:\n%s", part, got)
+		}
+	}
+}
+
+func TestGenerateEnumMatchStatementWithBlocks(t *testing.T) {
+	input := `
+module main
+
+enum Color {
+	red,
+	green,
+}
+
+fn main() int {
+	let color: Color := Color.red
+
+	match color {
+		Color.red => return 1
+		_ => return 2
+	}
+
+	return 0
+}
+`
+
+	program := parseAndAnalyze(t, input)
+	got, err := Generate(program)
+	if err != nil {
+		t.Fatalf("Generate returned error: %v", err)
+	}
+
+	expectedParts := []string{
+		`match.arm.`,
+		`match.test.`,
+		`icmp eq i32`,
+		`ret i32 1`,
+		`ret i32 2`,
 	}
 
 	for _, part := range expectedParts {

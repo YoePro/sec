@@ -68,6 +68,46 @@ type Email string
 
 }
 
+func TestParseTargetDirective(t *testing.T) {
+	input := `#target(os: "linux", arch: "amd64")
+module main
+`
+
+	l := lexer.New(input)
+	p := New(l)
+
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Statements) != 2 {
+		t.Fatalf("wrong statement count. got=%d want=2", len(program.Statements))
+	}
+
+	target, ok := program.Statements[0].(*ast.TargetDirective)
+	if !ok {
+		t.Fatalf("statement 0 is not TargetDirective. got=%T", program.Statements[0])
+	}
+	if target.OS != "linux" || target.Arch != "amd64" {
+		t.Fatalf("wrong target. got=%s/%s", target.OS, target.Arch)
+	}
+}
+
+func TestTargetDirectiveMustBeFirst(t *testing.T) {
+	input := `module main
+#target(os: "linux", arch: "amd64")
+`
+
+	l := lexer.New(input)
+	p := New(l)
+
+	p.ParseProgram()
+
+	expected := `#target directive must appear before any code or declarations at 2:1`
+	if len(p.Errors()) != 1 || p.Errors()[0] != expected {
+		t.Fatalf("wrong errors. got=%v want=%q", p.Errors(), expected)
+	}
+}
+
 func TestParseModuleRequiresName(t *testing.T) {
 	l := lexer.New("module")
 	p := New(l)
@@ -557,6 +597,48 @@ type ByteSlice = []byte
 		t.Fatalf("statement 3 is not TypeDeclStatement. got=%T", program.Statements[3])
 	}
 	assertSliceType(t, typeDecl.AssignedType, "byte")
+}
+
+func TestParseFixedArrayTypeReference(t *testing.T) {
+	input := `
+fn ArrayLoop(values: [3]int) void {
+	for value in values {
+		let copy: int := value
+	}
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	paramType := fn.Parameters[0].Type
+	if paramType.ElementType == nil {
+		t.Fatalf("expected array element type, got %+v", paramType)
+	}
+	if paramType.ArrayLength != 3 {
+		t.Fatalf("wrong array length. got=%d want=3", paramType.ArrayLength)
+	}
+	if paramType.ElementType.Name != "int" {
+		t.Fatalf("wrong array element type. got=%q want=int", paramType.ElementType.Name)
+	}
+}
+
+func TestParseFixedArrayTypeReferenceWithHexLength(t *testing.T) {
+	input := `fn Test(values: [0x3]int) void {}`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	paramType := fn.Parameters[0].Type
+	if paramType.ArrayLength != 3 {
+		t.Fatalf("wrong array length. got=%d want=3", paramType.ArrayLength)
+	}
 }
 
 func TestRejectIncompleteDeclarations(t *testing.T) {
@@ -1120,6 +1202,70 @@ fn UseResult() Result[int, IOError] {
 	}
 	if tryExpr.Handlers[1].ReturnBody == nil {
 		t.Fatal("second handler should have return body")
+	}
+}
+
+func TestParseTryExpressionHandlersWithExplicitMatchWrapper(t *testing.T) {
+	input := `
+fn UseResult() Result[int, IOError] {
+	let value := try Calculate() {
+		match {
+			Err(IOError.InvalidValue) => 0
+			Err(error) => return Err(error)
+		}
+	}
+	return Ok(value)
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	letStmt := fn.Body.Statements[0].(*ast.LetStatement)
+	tryExpr, ok := letStmt.Value.(*ast.TryExpression)
+	if !ok {
+		t.Fatalf("let value is not TryExpression. got=%T", letStmt.Value)
+	}
+	if len(tryExpr.Handlers) != 2 {
+		t.Fatalf("wrong handler count. got=%d want=2", len(tryExpr.Handlers))
+	}
+	if tryExpr.Handlers[0].Body == nil {
+		t.Fatal("first handler should have expression body")
+	}
+	if tryExpr.Handlers[1].ReturnBody == nil {
+		t.Fatal("second handler should have return body")
+	}
+}
+
+func TestParseTryExpressionHandlerAllowsTrailingComment(t *testing.T) {
+	input := `
+fn UseResult() Result[int, IOError] {
+	let value := try Calculate() {
+		match {
+			Err(IOError.InvalidValue) => 0
+			Err(error) => return Err(error) // propagate
+		}
+	}
+	return Ok(value)
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	letStmt := fn.Body.Statements[0].(*ast.LetStatement)
+	tryExpr, ok := letStmt.Value.(*ast.TryExpression)
+	if !ok {
+		t.Fatalf("let value is not TryExpression. got=%T", letStmt.Value)
+	}
+	if len(tryExpr.Handlers) != 2 {
+		t.Fatalf("wrong handler count. got=%d want=2", len(tryExpr.Handlers))
 	}
 }
 
@@ -1915,6 +2061,43 @@ fn Test() void {
 	}
 }
 
+func TestParseWhileAssignmentConditionWarnsAndRecovers(t *testing.T) {
+	input := `
+fn Test() void {
+	let mut running: bool := false
+
+	while running = true {
+		break
+	}
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+
+	if len(p.Errors()) != 0 {
+		t.Fatalf("expected no parse errors. got=%v", p.Errors())
+	}
+	expectedWarning := "assignment in while condition at 5:16"
+	if len(p.Warnings()) != 1 || p.Warnings()[0] != expectedWarning {
+		t.Fatalf("wrong parser warnings. got=%v want=%q", p.Warnings(), expectedWarning)
+	}
+
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	whileStmt, ok := fn.Body.Statements[1].(*ast.WhileStatement)
+	if !ok {
+		t.Fatalf("statement is not WhileStatement. got=%T", fn.Body.Statements[1])
+	}
+	ident, ok := whileStmt.Condition.(*ast.Identifier)
+	if !ok || ident.Value != "running" {
+		t.Fatalf("wrong condition. got=%T %v", whileStmt.Condition, whileStmt.Condition)
+	}
+	if _, ok := whileStmt.Body.Statements[0].(*ast.BreakStatement); !ok {
+		t.Fatalf("body statement is not BreakStatement. got=%T", whileStmt.Body.Statements[0])
+	}
+}
+
 func TestParseMatchDiscardCatchAllPattern(t *testing.T) {
 	input := `
 fn Test(value: bool) int {
@@ -2068,6 +2251,56 @@ fn Test() void {
 	expected := "C-style for loops are not supported; use a range or while at 3:6"
 	if p.Errors()[0] != expected {
 		t.Fatalf("wrong parser error. got=%q want=%q", p.Errors()[0], expected)
+	}
+}
+
+func TestParseForAllowsManyBindingsForSema(t *testing.T) {
+	input := `
+fn TooManyBindings(values: []int) void {
+	for a, b, c in values {
+	}
+}
+
+fn Next() void {
+	return
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Statements) != 2 {
+		t.Fatalf("parser should continue after many-binding for. got=%d statements", len(program.Statements))
+	}
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	forStmt := fn.Body.Statements[0].(*ast.ForStatement)
+	if len(forStmt.Bindings) != 3 {
+		t.Fatalf("wrong binding count. got=%d want=3", len(forStmt.Bindings))
+	}
+}
+
+func TestParseForRangeStep(t *testing.T) {
+	input := `
+fn Test() void {
+	for i in 0..<10 step 2 {
+	}
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	forStmt := fn.Body.Statements[0].(*ast.ForStatement)
+	if forStmt.Step == nil {
+		t.Fatal("expected for step expression")
+	}
+	if forStmt.Step.String() != "2" {
+		t.Fatalf("wrong step. got=%q want=2", forStmt.Step.String())
 	}
 }
 

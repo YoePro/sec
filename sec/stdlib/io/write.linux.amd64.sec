@@ -1,0 +1,19 @@
+#target(os: "linux", arch: "amd64")
+module io
+
+import "platform/linux/amd64/raw_syscall"
+
+fn _sysWrite(fd: int, ref ptr: byte, len: int64) int {
+    return platform.linux.amd64._rawSyscall3(1, uint(fd), uint(ptr), uint(len))
+}
+
+fn WriteString(value: string) void {
+    _sysWrite(1, value.ptr, value.len)
+}
+
+fn Println(value: string) void {
+    _sysWrite(1, value.ptr, value.len)
+
+    let nl := "\n"
+    _sysWrite(1, nl.ptr, 1)
+}

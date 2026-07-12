@@ -142,7 +142,7 @@ The initial implementation may support:
 * Set[T]
 * Map[K, V]
 * strings
-* bytes
+* []byte
 * ranges
 * other types that explicitly implement the iterable contract
 
@@ -461,7 +461,7 @@ This avoids uncertainty over whether item means:
 
 Sequential collections:
 
-Arrays, slices, Vec[T], Set[T], strings and bytes use one binding.
+Arrays, slices, Vec[T], Set[T], strings and []byte use one binding.
 
 Examples:
 
@@ -557,7 +557,7 @@ Bytes iteration:
 For:
 
 ```
-bytes
+[]byte
 ```
 
 each iteration produces byte.
@@ -1443,11 +1443,13 @@ for loop requires an iterable expression
 
 range used in for loop must be finite
 
-cannot iterate range with incompatible bounds int and string
+cannot create range with bounds int and string
+
+cannot create range with bounds int and uint
 
 for range iteration does not support decimal
 
-sequential iteration requires one loop binding
+sequential iteration supports one or two loop bindings
 
 map iteration requires key and value bindings
 
@@ -1582,3 +1584,135 @@ Design rules:
 * No loop else syntax.
 * No comprehensions.
 * No implicit pattern destructuring.
+
+Additional for-loop forms
+
+Sequential index-value iteration:
+
+Sequential collections may use two bindings:
+
+```
+for index, value in values {
+    statements
+}
+```
+
+For arrays, slices, Vec, strings and bytes:
+
+* the first binding receives the zero-based index
+* the second binding receives the element value
+
+Examples:
+
+```
+for index, value in items {
+    Process(index, value)
+}
+
+for index, character in text {
+    Process(index, character)
+}
+```
+
+For maps, two bindings retain their normal meaning:
+
+```
+for key, value in map {
+    statements
+}
+```
+
+The iterable type determines whether the first binding is an index or a key.
+
+Single-binding iteration remains valid:
+
+```
+for value in values {
+    statements
+}
+```
+
+Explicit range step:
+
+Numeric range iteration may specify an explicit step:
+
+```
+for value in start..end step increment {
+    statements
+}
+
+for value in start..<end step increment {
+    statements
+}
+```
+
+The step expression:
+
+* is evaluated exactly once
+* must be greater than zero
+* must be type-compatible with the range bounds
+* determines the distance between generated values
+
+The range bounds determine direction.
+
+Ascending:
+
+```
+for value in 0.001..0.002 step 0.00001 {
+}
+```
+
+Descending:
+
+```
+for value in 0.002..0.001 step 0.00001 {
+}
+```
+
+The step is always written as a positive magnitude.
+
+Invalid:
+
+```
+for value in 0.001..0.002 step 0 {
+}
+```
+
+Invalid:
+
+```
+for value in 0.001..0.002 step -0.00001 {
+}
+```
+
+Integer ranges continue to use an implicit step of one when step is omitted.
+
+Explicit step is supported for:
+
+* int
+* uint
+* integer-based semantic types
+* float
+* decimal
+
+Current implementation status:
+
+* Parser supports explicit `step` on range iteration.
+* Semantic analysis supports finite range iteration for int, uint,
+  integer-based semantic types, float and decimal.
+* Semantic analysis checks that explicit constant steps are greater than zero.
+* Semantic analysis checks that step expressions are type-compatible with the
+  range bounds.
+* LLVM code generation currently supports integer range iteration only.
+* LLVM code generation currently supports explicit integer steps.
+* LLVM code generation does not yet emit float or decimal range iteration.
+* LLVM code generation does not yet fully emit float/decimal expressions, so
+  `emit-llvm` may fail before range lowering for programs that use decimal or
+  float literals.
+
+Float range iteration must avoid cumulative repeated-addition drift where
+possible. Code generation should derive each value from the start value and
+iteration index.
+
+Decimal iteration must preserve decimal progression according to the decimal
+type's arithmetic rules.

@@ -1,0 +1,180 @@
+module main
+
+// Ok: while condition must be bool, got int
+fn InvalidIntCondition(value: int) void {
+    while value {
+        break
+    }
+}
+
+// Ok: while condition must be bool, got string
+fn InvalidStringCondition(value: string) void {
+    while value {
+        break
+    }
+}
+
+// Ok: while condition must be bool, got int
+fn InvalidArithmeticCondition(value: int) void {
+    while value + 1 {
+        break
+    }
+}
+
+// Ok: operator ! requires bool operand
+fn InvalidNegation(value: int) void {
+    while !value {
+        break
+    }
+}
+
+// Ok: operator && requires bool operands
+fn InvalidAndLeft(value: int, enabled: bool) void {
+    while value && enabled {
+        break
+    }
+}
+
+// Ok: operator && requires bool operands
+fn InvalidAndRight(enabled: bool, value: int) void {
+    while enabled && value {
+        break
+    }
+}
+
+// Ok: operator || requires bool operands
+fn InvalidOrLeft(value: string, enabled: bool) void {
+    while value || enabled {
+        break
+    }
+}
+
+// Ok: operator || requires bool operands
+fn InvalidOrRight(enabled: bool, value: string) void {
+    while enabled || value {
+        break
+    }
+}
+
+// Ok: cannot test string in range of int
+fn InvalidRangeValue(value: string) void {
+    while value in 0..100 {
+        break
+    }
+}
+
+// Ok: cannot test int in range of string
+fn InvalidRangeBounds(value: int, minimum: string) void {
+    while value in minimum..100 {
+        break
+    }
+}
+
+// Ok: while condition must be bool, got int
+fn InvalidFunctionResult() void {
+    while Count() {
+        break
+    }
+}
+
+fn Count() int {
+    return 10
+}
+
+// Ok: cannot assign to immutable variable value
+fn MutateImmutable() void {
+    let value: int := 0
+
+    while value < 10 {
+        value += 1
+    }
+}
+
+// Ok: break is only valid inside a loop
+fn BreakOutsideLoop() void {
+    break
+}
+
+// Ok: continue is only valid inside a loop
+fn ContinueOutsideLoop() void {
+    continue
+}
+
+// Ok: undefined variable local
+fn LoopVariableOutsideScope(flag: bool) void {
+    while flag {
+        let local: int := 10
+        break
+    }
+
+    let copy: int := local
+}
+
+// Ok: variable "value" already declared at 113:13, previous declaration at 110:9
+fn ShadowOuterVariable(flag: bool) void {
+    let value: int := 10
+
+    while flag {
+        let value: int := 20
+        break
+    }
+}
+
+// Ok: unreachable code
+fn UnreachableAfterBreak() void {
+    while true {
+        break
+        let value: int := 10
+    }
+}
+
+// Ok: unreachable code
+fn UnreachableAfterContinue() void {
+    while true {
+        continue
+        let value: int := 10
+    }
+}
+
+// Ok: unreachable code
+fn UnreachableAfterReturn() int {
+    while true {
+        return 10
+        let value: int := 20
+    }
+}
+
+// Ok: function MissingReturn must return int
+fn MissingReturn(condition: bool) int {
+    while condition {
+        return 10
+    }
+}
+
+// Ok: variable result is unassigned
+fn PossiblyUnassigned(condition: bool) int {
+    let mut result: int
+
+    while condition {
+        result = 10
+        break
+    }
+
+    return result
+}
+
+// OK: Warning: assignment in while condition 
+fn InvalidAssignmentCondition() void {
+    let mut running: bool := false
+
+    while running = true {
+        break
+    }
+}
+
+// Ok:  comparison chaining is not supported
+fn InvalidComparisonChain(value: int) void {
+    while 0 <= value < 100 {
+        break
+    }
+}

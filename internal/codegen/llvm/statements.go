@@ -49,6 +49,11 @@ func (g *Generator) emitStatement(stmt ast.Statement) error {
 		return g.emitContinue()
 	case *ast.SwitchStatement:
 		return g.emitSwitch(stmt)
+	case *ast.MatchStatement:
+		if stmt.Match == nil {
+			return nil
+		}
+		return g.emitMatchStatement(stmt.Match)
 	case *ast.UnsafeStatement:
 		return g.emitUnsafe(stmt)
 	case *ast.AsmStatement:
@@ -162,6 +167,16 @@ func (g *Generator) emitRangeFor(stmt *ast.ForStatement, rangeExpr *ast.RangeExp
 	if start.typ != "i32" && start.typ != "i64" {
 		return fmt.Errorf("emit-llvm range for currently supports integer bounds")
 	}
+	step := value{typ: start.typ, ref: "1"}
+	if stmt.Step != nil {
+		step, err = g.emitExpression(stmt.Step)
+		if err != nil {
+			return err
+		}
+		if step.typ != start.typ {
+			return fmt.Errorf("emit-llvm range step must match range bounds")
+		}
+	}
 
 	conditionLabel := g.nextLabel("for.condition")
 	bodyLabel := g.nextLabel("for.body")
@@ -176,8 +191,10 @@ func (g *Generator) emitRangeFor(stmt *ast.ForStatement, rangeExpr *ast.RangeExp
 	}()
 
 	loopPtr := g.nextTemp()
+	descending := g.nextTemp()
 	g.write("  %s = alloca %s\n", loopPtr, start.typ)
 	g.write("  store %s %s, ptr %s\n", start.typ, start.ref, loopPtr)
+	g.write("  %s = icmp sgt %s %s, %s\n", descending, start.typ, start.ref, end.ref)
 	if !binding.Discard {
 		g.locals[binding.Name] = local{typ: start.typ, ptr: loopPtr}
 	}
@@ -189,12 +206,17 @@ func (g *Generator) emitRangeFor(stmt *ast.ForStatement, rangeExpr *ast.RangeExp
 	g.blockOpen = true
 	current := value{typ: start.typ, ref: g.nextTemp()}
 	g.write("  %s = load %s, ptr %s\n", current.ref, current.typ, loopPtr)
-	predicate := "sle"
+	ascendingPredicate := "sle"
+	descendingPredicate := "sge"
 	if rangeExpr.Exclusive {
-		predicate = "slt"
+		ascendingPredicate = "slt"
+		descendingPredicate = "sgt"
 	}
-	condition := g.emitCompare(predicate, current, end)
-	g.write("  br i1 %s, label %%%s, label %%%s\n\n", condition.ref, bodyLabel, endLabel)
+	ascendingCondition := g.emitCompare(ascendingPredicate, current, end)
+	descendingCondition := g.emitCompare(descendingPredicate, current, end)
+	conditionRef := g.nextTemp()
+	g.write("  %s = select i1 %s, i1 %s, i1 %s\n", conditionRef, descending, descendingCondition.ref, ascendingCondition.ref)
+	g.write("  br i1 %s, label %%%s, label %%%s\n\n", conditionRef, bodyLabel, endLabel)
 	g.blockOpen = false
 
 	g.write("%s:\n", bodyLabel)
@@ -213,9 +235,13 @@ func (g *Generator) emitRangeFor(stmt *ast.ForStatement, rangeExpr *ast.RangeExp
 	g.write("%s:\n", nextLabel)
 	g.blockOpen = true
 	loaded := g.nextTemp()
+	nextAscending := g.nextTemp()
+	nextDescending := g.nextTemp()
 	incremented := g.nextTemp()
 	g.write("  %s = load %s, ptr %s\n", loaded, start.typ, loopPtr)
-	g.write("  %s = add %s %s, 1\n", incremented, start.typ, loaded)
+	g.write("  %s = add %s %s, %s\n", nextAscending, start.typ, loaded, step.ref)
+	g.write("  %s = sub %s %s, %s\n", nextDescending, start.typ, loaded, step.ref)
+	g.write("  %s = select i1 %s, %s %s, %s %s\n", incremented, descending, start.typ, nextDescending, start.typ, nextAscending)
 	g.write("  store %s %s, ptr %s\n", start.typ, incremented, loopPtr)
 	g.write("  br label %%%s\n\n", conditionLabel)
 	g.blockOpen = false
@@ -368,6 +394,16 @@ func (g *Generator) coerceValue(arg value, targetType string) (value, error) {
 	if arg.typ == targetType {
 		return arg, nil
 	}
+	if targetType == llvmDecimalType {
+		switch arg.typ {
+		case "i32":
+			temp := g.nextTemp()
+			g.write("  %s = sext i32 %s to i64\n", temp, arg.ref)
+			return g.emitDecimalFromI64(temp), nil
+		case "i64":
+			return g.emitDecimalFromI64(arg.ref), nil
+		}
+	}
 	switch arg.typ {
 	case "i32":
 		if targetType != "i64" {
@@ -394,6 +430,15 @@ func (g *Generator) coerceValue(arg value, targetType string) (value, error) {
 	return value{}, fmt.Errorf("emit-llvm cannot convert %s to %s", arg.typ, targetType)
 }
 
+func (g *Generator) emitDecimalFromI64(numberRef string) value {
+	g.needsDecimal = true
+	tmp := g.nextTemp()
+	g.write("  %s = insertvalue %s undef, i64 %s, 0\n", tmp, llvmDecimalType, numberRef)
+	result := g.nextTemp()
+	g.write("  %s = insertvalue %s %s, i8 0, 1\n", result, llvmDecimalType, tmp)
+	return value{typ: llvmDecimalType, ref: result}
+}
+
 func (g *Generator) emitLet(stmt *ast.LetStatement) error {
 	if stmt.Name == nil {
 		return fmt.Errorf("emit-llvm let missing name")
@@ -401,16 +446,27 @@ func (g *Generator) emitLet(stmt *ast.LetStatement) error {
 
 	var typ string
 	var initial *value
+	if stmt.Type != nil {
+		typ = g.llvmType(stmt.Type)
+	}
 	if stmt.Value != nil {
-		val, err := g.emitExpression(stmt.Value)
+		var val value
+		var err error
+		if typ == llvmDecimalType {
+			val, err = g.emitDecimalLiteral(stmt.Value, true)
+			if err != nil {
+				val, err = g.emitExpression(stmt.Value)
+			}
+		} else {
+			val, err = g.emitExpression(stmt.Value)
+		}
 		if err != nil {
 			return err
 		}
 		initial = &val
-		typ = val.typ
-	}
-	if stmt.Type != nil {
-		typ = llvmReturnType(stmt.Type)
+		if typ == "" {
+			typ = val.typ
+		}
 	}
 	if typ == "" || typ == "void" {
 		return fmt.Errorf("emit-llvm cannot determine type for local %s", stmt.Name.Value)
@@ -425,7 +481,13 @@ func (g *Generator) emitLet(stmt *ast.LetStatement) error {
 
 	ptr := g.nextTemp()
 	g.write("  %s = alloca %s\n", ptr, typ)
-	g.locals[stmt.Name.Value] = local{typ: typ, ptr: ptr}
+	var fnType *ast.TypeReference
+	if stmt.Type != nil && (stmt.Type.Name == "fn" || stmt.Type.FunctionReturnType != nil) {
+		fnType = stmt.Type
+	} else if initial != nil && initial.fnType != nil {
+		fnType = initial.fnType
+	}
+	g.locals[stmt.Name.Value] = local{typ: typ, ptr: ptr, fnType: fnType}
 
 	if initial != nil {
 		if initial.typ != typ {
@@ -754,6 +816,207 @@ func (g *Generator) emitSwitchCaseBody(block *ast.BlockStatement, fallthroughLab
 	return nil
 }
 
+func (g *Generator) emitMatchStatement(expr *ast.MatchExpression) error {
+	subject, err := g.emitExpression(expr.Subject)
+	if err != nil {
+		return err
+	}
+
+	bodyLabels, testLabels, endLabel := g.matchLabels(expr)
+	g.write("  br label %%%s\n\n", testLabels[0])
+	g.blockOpen = false
+
+	for i, arm := range expr.Arms {
+		g.write("%s:\n", testLabels[i])
+		g.blockOpen = true
+		condition, err := g.emitMatchArmCondition(subject, arm)
+		if err != nil {
+			return err
+		}
+		g.write("  br i1 %s, label %%%s, label %%%s\n\n", condition.ref, bodyLabels[i], testLabels[i+1])
+		g.blockOpen = false
+	}
+
+	g.write("%s:\n", testLabels[len(expr.Arms)])
+	g.blockOpen = true
+	g.write("  unreachable\n\n")
+	g.blockOpen = false
+
+	for i, arm := range expr.Arms {
+		g.write("%s:\n", bodyLabels[i])
+		g.blockOpen = true
+		if err := g.emitMatchArmBody(arm, subject, "", endLabel); err != nil {
+			return err
+		}
+	}
+
+	g.write("%s:\n", endLabel)
+	g.blockOpen = true
+	return nil
+}
+
+func (g *Generator) emitMatchExpression(expr *ast.MatchExpression) (value, error) {
+	subject, err := g.emitExpression(expr.Subject)
+	if err != nil {
+		return value{}, err
+	}
+	if len(expr.Arms) == 0 {
+		return value{}, fmt.Errorf("emit-llvm match requires at least one arm")
+	}
+
+	resultType, err := g.matchExpressionResultType(expr)
+	if err != nil {
+		return value{}, err
+	}
+	resultPtr := g.nextTemp()
+	g.write("  %s = alloca %s\n", resultPtr, resultType)
+
+	bodyLabels, testLabels, endLabel := g.matchLabels(expr)
+	g.write("  br label %%%s\n\n", testLabels[0])
+	g.blockOpen = false
+
+	for i, arm := range expr.Arms {
+		g.write("%s:\n", testLabels[i])
+		g.blockOpen = true
+		condition, err := g.emitMatchArmCondition(subject, arm)
+		if err != nil {
+			return value{}, err
+		}
+		g.write("  br i1 %s, label %%%s, label %%%s\n\n", condition.ref, bodyLabels[i], testLabels[i+1])
+		g.blockOpen = false
+	}
+
+	g.write("%s:\n", testLabels[len(expr.Arms)])
+	g.blockOpen = true
+	g.write("  unreachable\n\n")
+	g.blockOpen = false
+
+	for i, arm := range expr.Arms {
+		g.write("%s:\n", bodyLabels[i])
+		g.blockOpen = true
+		if err := g.emitMatchArmBody(arm, subject, resultPtr, endLabel); err != nil {
+			return value{}, err
+		}
+	}
+
+	result := g.nextTemp()
+	g.write("%s:\n", endLabel)
+	g.blockOpen = true
+	g.write("  %s = load %s, ptr %s\n", result, resultType, resultPtr)
+	return value{typ: resultType, ref: result}, nil
+}
+
+func (g *Generator) matchLabels(expr *ast.MatchExpression) ([]string, []string, string) {
+	bodyLabels := make([]string, len(expr.Arms))
+	testLabels := make([]string, len(expr.Arms)+1)
+	for i := range expr.Arms {
+		bodyLabels[i] = g.nextLabel("match.arm")
+		testLabels[i] = g.nextLabel("match.test")
+	}
+	testLabels[len(expr.Arms)] = g.nextLabel("match.unreachable")
+	return bodyLabels, testLabels, g.nextLabel("match.end")
+}
+
+func (g *Generator) emitMatchArmCondition(subject value, arm *ast.MatchArm) (value, error) {
+	if arm.Guard != nil {
+		return value{}, fmt.Errorf("emit-llvm match guards are not supported yet")
+	}
+
+	switch pattern := arm.Pattern.(type) {
+	case *ast.Identifier:
+		return value{typ: "i1", ref: "true"}, nil
+	case *ast.MemberExpression, *ast.IntegerLiteral, *ast.BooleanLiteral:
+		candidate, err := g.emitExpression(pattern)
+		if err != nil {
+			return value{}, err
+		}
+		return g.emitCompare("eq", subject, candidate), nil
+	default:
+		return value{}, fmt.Errorf("emit-llvm does not support match pattern %T yet", arm.Pattern)
+	}
+}
+
+func (g *Generator) emitMatchArmBody(arm *ast.MatchArm, subject value, resultPtr string, endLabel string) error {
+	previousLocals := g.locals
+	g.locals = copyCodegenLocals(previousLocals)
+	defer func() {
+		g.locals = previousLocals
+	}()
+
+	if ident, ok := arm.Pattern.(*ast.Identifier); ok && ident.Value != "_" {
+		g.locals[ident.Value] = local{typ: subject.typ, ref: subject.ref, direct: true}
+	}
+
+	switch {
+	case arm.ReturnBody != nil:
+		return g.emitReturn(arm.ReturnBody)
+	case arm.BlockBody != nil:
+		if err := g.emitBlock(arm.BlockBody); err != nil {
+			return err
+		}
+	case arm.Body != nil:
+		result, err := g.emitExpression(arm.Body)
+		if err != nil {
+			return err
+		}
+		if resultPtr != "" {
+			g.write("  store %s %s, ptr %s\n", result.typ, result.ref, resultPtr)
+		}
+	default:
+		return fmt.Errorf("emit-llvm match arm missing body")
+	}
+	if g.blockOpen {
+		g.write("  br label %%%s\n\n", endLabel)
+		g.blockOpen = false
+	}
+	return nil
+}
+
+func (g *Generator) matchExpressionResultType(expr *ast.MatchExpression) (string, error) {
+	for _, arm := range expr.Arms {
+		if arm.Body == nil {
+			continue
+		}
+		body, err := g.emitExpressionTypeOnly(arm.Body)
+		if err != nil {
+			return "", err
+		}
+		return body, nil
+	}
+	return "", fmt.Errorf("emit-llvm match expression must produce a value")
+}
+
+func (g *Generator) emitExpressionTypeOnly(expr ast.Expression) (string, error) {
+	switch expr := expr.(type) {
+	case *ast.IntegerLiteral:
+		return "i32", nil
+	case *ast.BooleanLiteral:
+		return "i1", nil
+	case *ast.StringLiteral:
+		return "string", nil
+	case *ast.MemberExpression:
+		if typeName, ok := expressionPath(expr.Object); ok {
+			if enum, exists := g.enums[typeName]; exists {
+				return enum.typ, nil
+			}
+		}
+	case *ast.InfixExpression:
+		if isCodegenComparison(expr.Operator) || expr.Operator == "&&" || expr.Operator == "||" {
+			return "i1", nil
+		}
+	}
+	return "", fmt.Errorf("emit-llvm cannot infer match expression result type for %T yet", expr)
+}
+
+func isCodegenComparison(operator string) bool {
+	switch operator {
+	case "==", "!=", "<", "<=", ">", ">=":
+		return true
+	default:
+		return false
+	}
+}
+
 func (g *Generator) emitExpressionStatement(expr ast.Expression) (value, error) {
 	switch expr := expr.(type) {
 	case *ast.CallExpression:
@@ -766,7 +1029,15 @@ func (g *Generator) emitExpressionStatement(expr ast.Expression) (value, error) 
 }
 
 func (g *Generator) emitCallExpression(expr *ast.CallExpression) (value, error) {
-	switch callExpressionName(expr) {
+	name := callExpressionName(expr)
+	if _, ok := g.functions[name]; ok {
+		return g.emitFunctionCallExpression(expr)
+	}
+	if isCodegenBuiltinConversion(name) {
+		return g.emitBuiltinConversionCall(expr, name)
+	}
+
+	switch name {
 	case "fmt.Println":
 		if len(expr.Arguments) != 1 {
 			return value{}, fmt.Errorf("fmt.Println expects 1 argument")
@@ -789,10 +1060,33 @@ func (g *Generator) emitCallExpression(expr *ast.CallExpression) (value, error) 
 	}
 }
 
+func isCodegenBuiltinConversion(name string) bool {
+	switch name {
+	case "int", "int64", "uint", "uint64", "byte", "bool", "decimal":
+		return true
+	default:
+		return false
+	}
+}
+
+func (g *Generator) emitBuiltinConversionCall(expr *ast.CallExpression, name string) (value, error) {
+	if len(expr.Arguments) != 1 {
+		return value{}, fmt.Errorf("conversion to %s expects 1 argument, got %d", name, len(expr.Arguments))
+	}
+	arg, err := g.emitExpression(expr.Arguments[0])
+	if err != nil {
+		return value{}, err
+	}
+	return g.coerceValue(arg, g.llvmType(&ast.TypeReference{Name: name}))
+}
+
 func (g *Generator) emitFunctionCallExpression(expr *ast.CallExpression) (value, error) {
 	name := callExpressionName(expr)
 	fn, ok := g.functions[name]
 	if !ok {
+		if local, exists := g.locals[name]; exists && local.fnType != nil {
+			return g.emitFunctionValueCallExpression(expr, local)
+		}
 		return value{}, fmt.Errorf("emit-llvm does not support call %s yet", name)
 	}
 	if len(fn.Parameters) != len(expr.Arguments) {
@@ -813,7 +1107,7 @@ func (g *Generator) emitFunctionCallExpression(expr *ast.CallExpression) (value,
 			args = append(args, value{typ: "ptr", ref: arg.ref}, value{typ: "i64", ref: arg.lenRef})
 			continue
 		}
-		targetType := llvmParameterType(param)
+		targetType := g.llvmParameterType(param)
 		arg, err = g.coerceValue(arg, targetType)
 		if err != nil {
 			return value{}, err
@@ -821,7 +1115,7 @@ func (g *Generator) emitFunctionCallExpression(expr *ast.CallExpression) (value,
 		args = append(args, arg)
 	}
 
-	returnType := llvmReturnType(fn.ReturnType)
+	returnType := g.llvmType(fn.ReturnType)
 	var result string
 	if returnType != "void" {
 		result = g.nextTemp()
@@ -830,6 +1124,66 @@ func (g *Generator) emitFunctionCallExpression(expr *ast.CallExpression) (value,
 		g.write("  ")
 	}
 	g.write("call %s @%s(", returnType, name)
+	for i, arg := range args {
+		if i > 0 {
+			g.write(", ")
+		}
+		g.write("%s %s", arg.typ, arg.ref)
+	}
+	g.write(")\n")
+	if returnType == "void" {
+		return value{typ: "void"}, nil
+	}
+	return value{typ: returnType, ref: result}, nil
+}
+
+func (g *Generator) emitFunctionValueCallExpression(expr *ast.CallExpression, callee local) (value, error) {
+	if callee.fnType == nil || callee.fnType.FunctionReturnType == nil {
+		return value{}, fmt.Errorf("emit-llvm function value missing type")
+	}
+	if len(callee.fnType.FunctionParameterTypes) != len(expr.Arguments) {
+		return value{}, fmt.Errorf("function value expects %d arguments, got %d", len(callee.fnType.FunctionParameterTypes), len(expr.Arguments))
+	}
+
+	var fnRef string
+	if callee.direct {
+		fnRef = callee.ref
+	} else {
+		fnRef = g.nextTemp()
+		g.write("  %s = load ptr, ptr %s\n", fnRef, callee.ptr)
+	}
+
+	args := []value{}
+	for i, argExpr := range expr.Arguments {
+		arg, err := g.emitExpression(argExpr)
+		if err != nil {
+			return value{}, err
+		}
+		paramType := callee.fnType.FunctionParameterTypes[i]
+		if paramType != nil && paramType.Name == "string" {
+			if arg.typ != "string" {
+				return value{}, fmt.Errorf("argument %d must be string", i+1)
+			}
+			args = append(args, value{typ: "ptr", ref: arg.ref}, value{typ: "i64", ref: arg.lenRef})
+			continue
+		}
+		targetType := g.llvmType(paramType)
+		arg, err = g.coerceValue(arg, targetType)
+		if err != nil {
+			return value{}, err
+		}
+		args = append(args, arg)
+	}
+
+	returnType := g.llvmType(callee.fnType.FunctionReturnType)
+	var result string
+	if returnType != "void" {
+		result = g.nextTemp()
+		g.write("  %s = ", result)
+	} else {
+		g.write("  ")
+	}
+	g.write("call %s %s(", returnType, fnRef)
 	for i, arg := range args {
 		if i > 0 {
 			g.write(", ")
@@ -873,7 +1227,22 @@ func (g *Generator) emitReturn(stmt *ast.ReturnStatement) error {
 
 	value, err := g.emitExpression(stmt.Value)
 	if err != nil {
-		return err
+		if g.returnType == llvmDecimalType {
+			if decimal, ok := decimalLiteralValue(stmt.Value, true); ok {
+				value = g.emitDecimalValue(decimal)
+			} else {
+				return err
+			}
+		} else {
+			return err
+		}
+	}
+	if value.typ != g.returnType && g.returnType != "" {
+		coerced, err := g.coerceValue(value, g.returnType)
+		if err != nil {
+			return err
+		}
+		value = coerced
 	}
 	g.write("  ret %s %s\n", value.typ, value.ref)
 	g.blockOpen = false
@@ -896,7 +1265,14 @@ func (g *Generator) emitIf(stmt *ast.IfStatement) error {
 	thenLabel := g.nextLabel("if.then")
 	endLabel := g.nextLabel("if.end")
 
-	g.write("  br i1 %s, label %%%s, label %%%s\n\n", condition.ref, thenLabel, endLabel)
+	falseLabel := endLabel
+	elseLabel := ""
+	if stmt.Alternative != nil {
+		elseLabel = g.nextLabel("if.else")
+		falseLabel = elseLabel
+	}
+	g.write("  br i1 %s, label %%%s, label %%%s\n\n", condition.ref, thenLabel, falseLabel)
+	g.blockOpen = false
 
 	g.write("%s:\n", thenLabel)
 	g.blockOpen = true
@@ -904,7 +1280,20 @@ func (g *Generator) emitIf(stmt *ast.IfStatement) error {
 		return err
 	}
 	if g.blockOpen {
-		g.write("  br label %%%s\n", endLabel)
+		g.write("  br label %%%s\n\n", endLabel)
+		g.blockOpen = false
+	}
+
+	if stmt.Alternative != nil {
+		g.write("\n%s:\n", elseLabel)
+		g.blockOpen = true
+		if err := g.emitBlock(stmt.Alternative); err != nil {
+			return err
+		}
+		if g.blockOpen {
+			g.write("  br label %%%s\n\n", endLabel)
+			g.blockOpen = false
+		}
 	}
 
 	g.write("\n%s:\n", endLabel)

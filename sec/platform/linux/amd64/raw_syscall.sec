@@ -1,5 +1,5 @@
+#target(os: "linux", arch: "amd64")
 module platform.linux.amd64
-
 
 /*
     syscall number    rax
@@ -12,7 +12,10 @@ module platform.linux.amd64
     result            rax
 */ 
 
-
+/**
+ * Raw syscall with no Parameters. OS: Linux Arch: AMD64
+ * PARAM: "number" uint 
+ */
 unsafe fn _rawSyscall0(number: uint) int {
     asm {
         "syscall"
@@ -161,5 +164,4 @@ unsafe fn _rawSyscall6(number: uint, arg1: uint, arg2: uint, arg3: uint, arg4: u
     }
     return result
 }
-
 

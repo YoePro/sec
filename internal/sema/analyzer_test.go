@@ -226,6 +226,42 @@ let f: float64 := 3.14
 	}
 }
 
+func TestNumericLiteralSuffixesAndBases(t *testing.T) {
+	input := `
+let i := 10i
+let u := 10u
+let f := 10f
+let d := 10d
+let hf := 1.5f
+let hd := 1.5d
+let b := 0b1000
+let o := 0o10
+let x := 0x8u
+let h := 0x8d
+`
+
+	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
+	assertSemaErrors(t, errors, nil)
+
+	expected := map[string]string{
+		"i":  "int",
+		"u":  "uint",
+		"f":  "float",
+		"d":  "decimal",
+		"hf": "float",
+		"hd": "decimal",
+		"b":  "int",
+		"o":  "int",
+		"x":  "uint",
+		"h":  "int",
+	}
+	for name, want := range expected {
+		if got := analyzer.symbols[name].Type.Name; got != want {
+			t.Fatalf("%s inferred as %q, want %q", name, got, want)
+		}
+	}
+}
+
 func TestDecimalLiteralValueUsesLexeme(t *testing.T) {
 	tests := []struct {
 		input string
@@ -1887,6 +1923,35 @@ fn ConvertError() Result[Speed, IOError] {
 	assertSemaErrors(t, errors, nil)
 }
 
+func TestTryHandlersCanUseExplicitMatchWrapper(t *testing.T) {
+	input := `
+module main
+
+type Speed decimal<m/s>
+
+enum IOError {
+	InvalidValue,
+}
+
+fn ReadSpeed() Result[Speed, IOError] {
+	return Err(IOError.InvalidValue)
+}
+
+fn UseFallback() Speed {
+	let speed := try ReadSpeed() {
+		match {
+			Err(IOError.InvalidValue) => Speed(0)
+			Err(error) => Speed(1)
+		}
+	}
+	return speed
+}
+`
+
+	errors := analyzeSource(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
 func TestTryHandlerErrors(t *testing.T) {
 	input := `
 module main
@@ -2457,6 +2522,39 @@ fn Subjectless(value: int) int {
 	assertSemaErrors(t, errors, nil)
 }
 
+func TestSwitchFallthroughIntoReturningCaseSatisfiesReturn(t *testing.T) {
+	input := `
+module main
+
+fn FallthroughIntoReturningCase(value: int) int {
+	switch value {
+	case 1:
+		fallthrough
+	case 2:
+		return 20
+	default:
+		return 30
+	}
+}
+
+fn MultipleFallthrough(value: int) int {
+	switch value {
+	case 1:
+		fallthrough
+	case 2:
+		fallthrough
+	case 3:
+		return 10
+	default:
+		return 20
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
 func TestSwitchSemanticErrors(t *testing.T) {
 	input := `
 module main
@@ -2495,6 +2593,37 @@ fn Invalid(value: int, name: string) void {
 	assertSemaErrors(t, errors, expected)
 }
 
+func TestSwitchDefaultPlacementErrorsAreSemaErrors(t *testing.T) {
+	input := `
+module main
+
+fn MultipleDefault(value: int) void {
+	switch value {
+	case 1:
+	default:
+	default:
+	}
+}
+
+fn DefaultNotFinal(value: int) void {
+	switch value {
+	default:
+	case 1:
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+
+	expected := []string{
+		"default must be the final switch clause at 8:2",
+		"switch may contain only one default clause at 8:2",
+		"default must be the final switch clause at 15:2",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
 func TestSwitchConstantCoverageErrors(t *testing.T) {
 	input := `
 module main
@@ -2521,7 +2650,7 @@ fn Invalid(value: int) void {
 	assertSemaErrors(t, errors, expected)
 }
 
-func TestSwitchRelationalCoverageErrors(t *testing.T) {
+func TestSwitchRelationalCoveredCasesAreUnreachable(t *testing.T) {
 	input := `
 module main
 
@@ -2534,9 +2663,16 @@ fn Invalid(value: int) void {
 	}
 
 	switch value {
-	case < 10:
+	case <= 100:
 		return
 	case <= 5:
+		return
+	}
+
+	switch value {
+	case 0..100:
+		return
+	case > 50:
 		return
 	}
 }
@@ -2547,9 +2683,36 @@ fn Invalid(value: int) void {
 	expected := []string{
 		"unreachable switch case; previous case already covers this condition at 8:7",
 		"unreachable switch case; previous case already covers this condition at 15:7",
+		"unreachable switch case; previous case already covers this condition at 22:7",
 	}
 
 	assertSemaErrors(t, errors, expected)
+}
+
+func TestSwitchPartialRelationalOverlapIsAllowed(t *testing.T) {
+	input := `
+module main
+
+fn Valid(value: int) int {
+	switch value {
+	case <= -10:
+		return -2
+	case < 0:
+		return -1
+	case 0:
+		return 0
+	case < 10:
+		return 1
+	case >= 10:
+		return 2
+	default:
+		return 3
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
 }
 
 func TestSwitchAdjacentExclusiveRangesAreAllowed(t *testing.T) {
@@ -2778,10 +2941,84 @@ fn Test() void {
 
 	return
 }
+
+fn DecimalRange() void {
+	let start: decimal := 0.001
+	let end: decimal := 0.002
+	let increment: decimal := 0.00001
+
+	for value in start..<end step increment {
+		let copy: decimal := value
+	}
+}
+
+fn FloatRange() void {
+	let start: float := 0.0
+	let end: float := 1.0
+	let increment: float := 0.1
+
+	for value in start..<end step increment {
+		let copy: float := value
+	}
+}
 `
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, nil)
+}
+
+func TestForArrayAndSliceLoopBindings(t *testing.T) {
+	input := `
+module main
+
+fn ArrayLoop(values: [3]int) void {
+	for value in values {
+		let copy: int := value
+	}
+}
+
+fn SliceLoop(values: []int) void {
+	for value in values {
+		let copy: int := value
+	}
+}
+
+fn SliceIndexValueLoop(values: []int) void {
+	for index, value in values {
+		let i: int := index
+		let copy: int := value
+	}
+}
+
+fn StringIndexValueLoop(values: string) void {
+	for index, value in values {
+		let i: int := index
+		let r: rune := value
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestForTooManySequentialBindings(t *testing.T) {
+	input := `
+module main
+
+fn Test(values: []int) void {
+	for a, b, c in values {
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+
+	expected := []string{
+		"sequential iteration supports one or two loop bindings, got 3 at 5:6",
+	}
+
+	assertSemaErrors(t, errors, expected)
 }
 
 func TestWhileConditionMustBeBool(t *testing.T) {
@@ -2862,6 +3099,107 @@ fn Test() int {
 	assertSemaErrors(t, errors, expected)
 }
 
+func TestWhileTrueBreakCarriesDefiniteAssignment(t *testing.T) {
+	input := `
+module main
+
+fn Test() int {
+	let mut result: int
+
+	while true {
+		result = 10
+		break
+	}
+
+	return result
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestWhileTrueBreakWithoutAssignmentDoesNotSatisfyDefiniteAssignment(t *testing.T) {
+	input := `
+module main
+
+fn Test() int {
+	let mut result: int
+
+	while true {
+		break
+	}
+
+	return result
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+
+	expected := []string{
+		"variable result is unassigned at 11:9",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestUnreachableStatementsInsideWhileBody(t *testing.T) {
+	input := `
+module main
+
+fn UnreachableAfterBreak() void {
+	while true {
+		break
+		let value: int := 10
+	}
+}
+
+fn UnreachableAfterContinue() void {
+	while true {
+		continue
+		let value: int := 10
+	}
+}
+
+fn UnreachableAfterReturn() int {
+	while true {
+		return 10
+		let value: int := 20
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+
+	expected := []string{
+		"unreachable code at 7:3",
+		"unreachable code at 14:3",
+		"unreachable code at 21:3",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestComparisonChainingIsRejected(t *testing.T) {
+	input := `
+module main
+
+fn InvalidComparisonChain(value: int) void {
+	while 0 <= value < 100 {
+		break
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+
+	expected := []string{
+		"comparison chaining is not supported at 5:19",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
 func TestForLoopVariableIsImmutableAndScoped(t *testing.T) {
 	input := `
 module main
@@ -2906,6 +3244,80 @@ fn Test() void {
 	assertSemaErrors(t, errors, expected)
 }
 
+func TestForRangeBoundsMustHaveSameType(t *testing.T) {
+	input := `
+module main
+
+fn InvalidStringBounds(end: string) void {
+	for i in 0..<end {
+	}
+}
+
+fn InvalidMixedBounds(start: int, end: uint) void {
+	for i in start..<end {
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+
+	expected := []string{
+		"cannot create range with bounds int and string at 5:12",
+		"cannot create range with bounds int and uint at 10:16",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestForRangeStep(t *testing.T) {
+	input := `
+module main
+
+fn ValidStep() void {
+	for i in 0..<10 step 2 {
+		let copy: int := i
+	}
+}
+
+fn InvalidZeroStep() void {
+	for i in 0..<10 step 0 {
+	}
+}
+
+fn InvalidNegativeStep() void {
+	for i in 0..<10 step -1 {
+	}
+}
+
+fn InvalidStepOnSlice(values: []int) void {
+	for value in values step 2 {
+	}
+}
+
+fn InvalidDecimalZeroStep() void {
+	for value in 0.0..<1.0 step 0.0 {
+	}
+}
+
+fn InvalidDecimalNegativeStep() void {
+	for value in 0.0..<1.0 step -0.1 {
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+
+	expected := []string{
+		"for range step must be greater than zero at 11:23",
+		"for range step must be greater than zero at 16:23",
+		"for step is only valid for range iteration at 21:27",
+		"for range step must be greater than zero at 26:30",
+		"for range step must be greater than zero at 31:30",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
 func TestBreakAndContinueRequireLoop(t *testing.T) {
 	input := `
 module main
@@ -2938,6 +3350,31 @@ fn Test() int {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, nil)
+}
+
+func TestInfiniteForWithContinueMakesFollowingReturnUnreachable(t *testing.T) {
+	input := `
+module main
+
+fn Test() int {
+	let mut value: int
+
+	for {
+		value = 10
+		continue
+	}
+
+	return value
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+
+	expected := []string{
+		"unreachable code at 12:2",
+	}
+
+	assertSemaErrors(t, errors, expected)
 }
 
 func TestLambdaFunctionValueCall(t *testing.T) {

@@ -4,7 +4,10 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"text/tabwriter"
 
 	"sec/internal/ast"
@@ -149,6 +152,8 @@ func runParse(input string) {
 
 	program := p.ParseProgram()
 
+	printParserWarnings(p)
+
 	if len(p.Errors()) > 0 {
 		for _, err := range p.Errors() {
 			fmt.Fprintf(os.Stderr, "parse error: %s\n", err)
@@ -164,6 +169,8 @@ func runAST(input string) {
 	p := parser.New(l)
 
 	program := p.ParseProgram()
+
+	printParserWarnings(p)
 
 	if len(p.Errors()) > 0 {
 		for _, err := range p.Errors() {
@@ -207,13 +214,50 @@ func runEmitLLVMCommand(args []string) {
 }
 
 func runBuildCommand(args []string) {
-	if _, _, ok := parseOutputCommandArgs(args); !ok {
+	inputFile, outputFile, ok := parseBuildCommandArgs(args)
+	if !ok {
 		printUsage()
 		os.Exit(1)
 	}
 
-	fmt.Fprintln(os.Stderr, "build command is registered but not implemented yet; use emit-llvm and clang for now")
-	os.Exit(1)
+	input, err := os.ReadFile(inputFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "read error: %v\n", err)
+		os.Exit(1)
+	}
+
+	program := parseAndAnalyze(string(input))
+	ir, err := llvmcodegen.Generate(program)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "codegen error: %v\n", err)
+		os.Exit(4)
+	}
+
+	tmp, err := os.CreateTemp("", "sec-*.ll")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "temp file error: %v\n", err)
+		os.Exit(1)
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+
+	if _, err := tmp.WriteString(ir); err != nil {
+		_ = tmp.Close()
+		fmt.Fprintf(os.Stderr, "write error: %v\n", err)
+		os.Exit(1)
+	}
+	if err := tmp.Close(); err != nil {
+		fmt.Fprintf(os.Stderr, "write error: %v\n", err)
+		os.Exit(1)
+	}
+
+	cmd := exec.Command("clang", tmpPath, "-o", outputFile)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "build error: %v\n", err)
+		os.Exit(5)
+	}
 }
 
 func parseOutputCommandArgs(args []string) (inputFile string, outputFile string, ok bool) {
@@ -236,11 +280,52 @@ func parseOutputCommandArgs(args []string) (inputFile string, outputFile string,
 	return inputFile, outputFile, inputFile != "" && outputFile != ""
 }
 
+func parseBuildCommandArgs(args []string) (inputFile string, outputFile string, ok bool) {
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "-o":
+			if i+1 >= len(args) || outputFile != "" {
+				return "", "", false
+			}
+			outputFile = args[i+1]
+			i++
+		default:
+			if strings.HasPrefix(args[i], "-") || inputFile != "" {
+				return "", "", false
+			}
+			inputFile = args[i]
+		}
+	}
+
+	if inputFile == "" {
+		return "", "", false
+	}
+	if outputFile == "" {
+		outputFile = defaultBuildOutputPath(inputFile)
+	}
+
+	return inputFile, outputFile, true
+}
+
+func defaultBuildOutputPath(inputFile string) string {
+	ext := filepath.Ext(inputFile)
+	if ext == "" {
+		return inputFile
+	}
+	return strings.TrimSuffix(inputFile, ext)
+}
+
 func parseAndAnalyze(input string) *ast.Program {
+	return parseAndAnalyzeForTarget(input, hostCompilerTarget())
+}
+
+func parseAndAnalyzeForTarget(input string, target CompilerTarget) *ast.Program {
 	l := lexer.New(input)
 	p := parser.New(l)
 
 	program := p.ParseProgram()
+
+	printParserWarnings(p)
 
 	if len(p.Errors()) > 0 {
 		for _, err := range p.Errors() {
@@ -249,7 +334,12 @@ func parseAndAnalyze(input string) *ast.Program {
 		os.Exit(2)
 	}
 
-	resolveStdlibImports(program)
+	if err := validateProgramTarget(program, target); err != nil {
+		fmt.Fprintf(os.Stderr, "target error: %s\n", err)
+		os.Exit(1)
+	}
+
+	resolveStdlibImports(program, target)
 
 	analyzer := sema.NewAnalyzer()
 	errors := analyzer.Analyze(program)
@@ -263,31 +353,107 @@ func parseAndAnalyze(input string) *ast.Program {
 	return program
 }
 
-func resolveStdlibImports(program *ast.Program) {
+func printParserWarnings(p *parser.Parser) {
+	for _, warning := range p.Warnings() {
+		fmt.Fprintf(os.Stderr, "Warning: %s\n", warning)
+	}
+}
+
+type CompilerTarget struct {
+	OS   string
+	Arch string
+}
+
+func (t CompilerTarget) String() string {
+	if t.OS == "" || t.Arch == "" {
+		return ""
+	}
+	return t.OS + "-" + t.Arch
+}
+
+func hostCompilerTarget() CompilerTarget {
+	return CompilerTarget{
+		OS:   normalizeTargetOS(runtime.GOOS),
+		Arch: normalizeTargetArch(runtime.GOARCH),
+	}
+}
+
+func normalizeTargetOS(osName string) string {
+	switch osName {
+	case "darwin":
+		return "macos"
+	default:
+		return osName
+	}
+}
+
+func normalizeTargetArch(arch string) string {
+	switch arch {
+	case "arm":
+		return "arm32"
+	default:
+		return arch
+	}
+}
+
+func validateProgramTarget(program *ast.Program, current CompilerTarget) error {
+	for _, stmt := range program.Statements {
+		target, ok := stmt.(*ast.TargetDirective)
+		if !ok {
+			continue
+		}
+
+		fileTarget := CompilerTarget{
+			OS:   normalizeTargetOS(target.OS),
+			Arch: normalizeTargetArch(target.Arch),
+		}
+		if fileTarget.OS != current.OS || (fileTarget.Arch != "any" && fileTarget.Arch != current.Arch) {
+			return fmt.Errorf("file target %s does not match current target %s", fileTarget.String(), current.String())
+		}
+	}
+	return nil
+}
+
+func resolveStdlibImports(program *ast.Program, target CompilerTarget) {
 	// TODO: Replace this source-level stdlib inclusion with compiled library metadata/artifacts.
+	seen := map[string]bool{}
+	resolveStdlibImportsInto(program, target, seen)
+}
+
+func resolveStdlibImportsInto(program *ast.Program, target CompilerTarget, seen map[string]bool) {
 	for _, stmt := range append([]ast.Statement{}, program.Statements...) {
 		importStmt, ok := stmt.(*ast.ImportStatement)
 		if !ok {
 			continue
 		}
-		module := stdlibModuleName(importStmt.Path)
-		if !canSourceIncludeStdlibModule(module) {
+		sourcePath, ok := sourceIncludePath(importStmt.Path, target)
+		if !ok {
 			continue
 		}
+		if seen[sourcePath] {
+			continue
+		}
+		seen[sourcePath] = true
 
-		imported := parseStdlibModule(module)
+		imported := parseSourceInclude(sourcePath, target)
+		resolveStdlibImportsInto(imported, target, seen)
+		module := programModulePath(imported)
 		qualifyImportedModule(imported, module)
 		program.Statements = append(program.Statements, imported.Statements...)
 	}
 }
 
-func canSourceIncludeStdlibModule(name string) bool {
+func canSourceIncludeModule(name string) bool {
 	switch name {
-	case "fmt":
+	case "fmt", "io":
 		return true
 	default:
 		return false
 	}
+}
+
+func canSourceIncludePlatform(path string) bool {
+	return strings.HasPrefix(path, "platform/")
 }
 
 func stdlibModuleName(path string) string {
@@ -297,39 +463,166 @@ func stdlibModuleName(path string) string {
 	return path
 }
 
-func stdlibModulePath(name string) string {
+func stdlibModulePath(name string, target CompilerTarget) string {
+	if target.OS != "" && target.Arch != "" {
+		switch name {
+		case "io":
+			return filepath.Join("sec", "stdlib", name, "write."+target.OS+"."+target.Arch+".sec")
+		}
+	}
 	return filepath.Join("sec", "stdlib", name, name+".sec")
 }
 
-func parseStdlibModule(name string) *ast.Program {
-	path := stdlibModulePath(name)
+func sourceIncludePath(path string, target CompilerTarget) (string, bool) {
+	module := stdlibModuleName(path)
+	if canSourceIncludeModule(module) {
+		return stdlibModulePath(module, target), true
+	}
+	if canSourceIncludePlatform(path) {
+		trimmed := strings.Trim(path, "/")
+		if strings.HasSuffix(trimmed, ".sec") {
+			trimmed = strings.TrimSuffix(trimmed, ".sec")
+		}
+		return filepath.Join("sec", trimmed+".sec"), true
+	}
+	return "", false
+}
+
+func parseSourceInclude(path string, target CompilerTarget) *ast.Program {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "stdlib import error: %v\n", err)
+		fmt.Fprintf(os.Stderr, "source import error: %v\n", err)
 		os.Exit(1)
 	}
 
 	l := lexer.New(string(data))
 	p := parser.New(l)
 	program := p.ParseProgram()
+	printParserWarnings(p)
 	if len(p.Errors()) > 0 {
 		for _, err := range p.Errors() {
 			fmt.Fprintf(os.Stderr, "stdlib parse error: %s\n", err)
 		}
 		os.Exit(2)
 	}
+	if err := validateProgramTarget(program, target); err != nil {
+		fmt.Fprintf(os.Stderr, "stdlib target error: %s\n", err)
+		os.Exit(1)
+	}
 
 	return program
 }
 
+func programModulePath(program *ast.Program) string {
+	for _, stmt := range program.Statements {
+		module, ok := stmt.(*ast.ModuleStatement)
+		if ok {
+			return module.Path
+		}
+	}
+	return ""
+}
+
 func qualifyImportedModule(program *ast.Program, module string) {
+	localFunctions := map[string]bool{}
+	for _, stmt := range program.Statements {
+		fn, ok := stmt.(*ast.FunctionDeclaration)
+		if ok && fn.Name != nil && !strings.Contains(fn.Name.Value, ".") {
+			localFunctions[fn.Name.Value] = true
+		}
+	}
+
 	for _, stmt := range program.Statements {
 		fn, ok := stmt.(*ast.FunctionDeclaration)
 		if !ok || fn.Name == nil {
 			continue
 		}
+		if strings.Contains(fn.Name.Value, ".") {
+			continue
+		}
+		qualifyLocalCalls(fn.Body, module, localFunctions)
 		fn.Name.Value = module + "." + fn.Name.Value
 		fn.Name.Token.Lexeme = fn.Name.Value
+	}
+}
+
+func qualifyLocalCalls(block *ast.BlockStatement, module string, localFunctions map[string]bool) {
+	if block == nil {
+		return
+	}
+	for _, stmt := range block.Statements {
+		qualifyLocalCallsInStatement(stmt, module, localFunctions)
+	}
+}
+
+func qualifyLocalCallsInStatement(stmt ast.Statement, module string, localFunctions map[string]bool) {
+	switch stmt := stmt.(type) {
+	case *ast.LetStatement:
+		qualifyLocalCallsInExpression(stmt.Value, module, localFunctions)
+	case *ast.AssignmentStatement:
+		qualifyLocalCallsInExpression(stmt.Target, module, localFunctions)
+		qualifyLocalCallsInExpression(stmt.Value, module, localFunctions)
+	case *ast.TryAssignmentStatement:
+		if stmt.Assignment != nil {
+			qualifyLocalCallsInStatement(stmt.Assignment, module, localFunctions)
+		}
+	case *ast.ExpressionStatement:
+		qualifyLocalCallsInExpression(stmt.Expression, module, localFunctions)
+	case *ast.ReturnStatement:
+		qualifyLocalCallsInExpression(stmt.Value, module, localFunctions)
+	case *ast.IfStatement:
+		qualifyLocalCallsInExpression(stmt.Condition, module, localFunctions)
+		qualifyLocalCalls(stmt.Consequence, module, localFunctions)
+		qualifyLocalCalls(stmt.Alternative, module, localFunctions)
+	case *ast.ForStatement:
+		qualifyLocalCallsInExpression(stmt.Iterable, module, localFunctions)
+		qualifyLocalCallsInExpression(stmt.Step, module, localFunctions)
+		qualifyLocalCalls(stmt.Body, module, localFunctions)
+	case *ast.WhileStatement:
+		qualifyLocalCallsInExpression(stmt.Condition, module, localFunctions)
+		qualifyLocalCalls(stmt.Body, module, localFunctions)
+	case *ast.UnsafeStatement:
+		qualifyLocalCalls(stmt.Body, module, localFunctions)
+	}
+}
+
+func qualifyLocalCallsInExpression(expr ast.Expression, module string, localFunctions map[string]bool) {
+	switch expr := expr.(type) {
+	case *ast.CallExpression:
+		if expr.Function != nil && localFunctions[expr.Function.Value] {
+			expr.Function.Value = module + "." + expr.Function.Value
+			expr.Function.Token.Lexeme = expr.Function.Value
+		}
+		qualifyLocalCallsInExpression(expr.Callee, module, localFunctions)
+		for _, arg := range expr.Arguments {
+			qualifyLocalCallsInExpression(arg, module, localFunctions)
+		}
+	case *ast.PrefixExpression:
+		qualifyLocalCallsInExpression(expr.Right, module, localFunctions)
+	case *ast.InfixExpression:
+		qualifyLocalCallsInExpression(expr.Left, module, localFunctions)
+		qualifyLocalCallsInExpression(expr.Right, module, localFunctions)
+	case *ast.RangeExpression:
+		qualifyLocalCallsInExpression(expr.Start, module, localFunctions)
+		qualifyLocalCallsInExpression(expr.End, module, localFunctions)
+	case *ast.MemberExpression:
+		qualifyLocalCallsInExpression(expr.Object, module, localFunctions)
+	case *ast.ConversionExpression:
+		qualifyLocalCallsInExpression(expr.Value, module, localFunctions)
+	case *ast.TryExpression:
+		qualifyLocalCallsInExpression(expr.Expression, module, localFunctions)
+	case *ast.OkExpression:
+		qualifyLocalCallsInExpression(expr.Value, module, localFunctions)
+	case *ast.ErrExpression:
+		qualifyLocalCallsInExpression(expr.Value, module, localFunctions)
+	case *ast.MatchExpression:
+		qualifyLocalCallsInExpression(expr.Subject, module, localFunctions)
+		for _, arm := range expr.Arms {
+			qualifyLocalCallsInExpression(arm.Pattern, module, localFunctions)
+			qualifyLocalCallsInExpression(arm.Guard, module, localFunctions)
+			qualifyLocalCallsInExpression(arm.Body, module, localFunctions)
+			qualifyLocalCalls(arm.BlockBody, module, localFunctions)
+		}
 	}
 }
 
@@ -353,6 +646,14 @@ func printAST(program *ast.Program) {
 
 func printASTStatement(stmt ast.Statement, prefix string, last bool) {
 	switch stmt := stmt.(type) {
+	case *ast.TargetDirective:
+		printASTBranch(prefix, last, "Target")
+		children := []string{
+			"OS: " + stmt.OS,
+			"Arch: " + stmt.Arch,
+		}
+		printASTLeaves(childPrefix(prefix, last), children)
+
 	case *ast.ModuleStatement:
 		printASTBranch(prefix, last, "Module")
 		printASTLeaf(childPrefix(prefix, last), true, "Path: "+stmt.Path)
@@ -547,11 +848,12 @@ func printASTFor(stmt *ast.ForStatement, prefix string, last bool) {
 
 	hasBindings := len(stmt.Bindings) > 0
 	hasIterable := stmt.Iterable != nil
+	hasStep := stmt.Step != nil
 	hasBody := stmt.Body != nil && len(stmt.Body.Statements) > 0
 
 	if hasBindings {
-		printASTBranch(childrenPrefix, !(hasIterable || hasBody), "Bindings")
-		bindingsPrefix := childPrefix(childrenPrefix, !(hasIterable || hasBody))
+		printASTBranch(childrenPrefix, !(hasIterable || hasStep || hasBody), "Bindings")
+		bindingsPrefix := childPrefix(childrenPrefix, !(hasIterable || hasStep || hasBody))
 		for i, binding := range stmt.Bindings {
 			label := "Name: " + binding.Name
 			if binding.Discard {
@@ -562,7 +864,11 @@ func printASTFor(stmt *ast.ForStatement, prefix string, last bool) {
 	}
 
 	if hasIterable {
-		printASTExpression(childrenPrefix, !hasBody, "Iterable", stmt.Iterable)
+		printASTExpression(childrenPrefix, !(hasStep || hasBody), "Iterable", stmt.Iterable)
+	}
+
+	if hasStep {
+		printASTExpression(childrenPrefix, !hasBody, "Step", stmt.Step)
 	}
 
 	if stmt.Body != nil {
@@ -1015,6 +1321,9 @@ func formatVariants(variants []*ast.Identifier) string {
 
 func printStatement(stmt ast.Statement) {
 	switch stmt := stmt.(type) {
+	case *ast.TargetDirective:
+		fmt.Printf("#target(os: %q, arch: %q)\n", stmt.OS, stmt.Arch)
+
 	case *ast.ModuleStatement:
 		fmt.Printf("Module %s\n", stmt.Path)
 
@@ -1202,6 +1511,9 @@ func printFor(stmt *ast.ForStatement) {
 	if stmt.Iterable != nil {
 		fmt.Printf(" in %s", stmt.Iterable.String())
 	}
+	if stmt.Step != nil {
+		fmt.Printf(" step %s", stmt.Step.String())
+	}
 	fmt.Println()
 }
 
@@ -1294,6 +1606,9 @@ func formatTypeRef(ref *ast.TypeReference) string {
 	}
 
 	if ref.ElementType != nil {
+		if ref.ArrayLength > 0 {
+			return fmt.Sprintf("[%d]%s", ref.ArrayLength, formatTypeRef(ref.ElementType))
+		}
 		return "[]" + formatTypeRef(ref.ElementType)
 	}
 

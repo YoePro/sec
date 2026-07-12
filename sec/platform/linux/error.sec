@@ -1,5 +1,152 @@
 
+#target(os: "linux", arch: "any")
 module platform.linux
+
+enum LinuxError {
+    success = 0,                        // Success (Not an error)
+    permDenied = 1,                     // EPERM: Operation not permitted
+    noSuchFile = 2,                     // ENOENT: No such file or directory
+    noSuchProcess = 3,                  // ESRCH: No such process
+    interrupted = 4,                    // EINTR: Interrupted system call
+    ioError = 5,                        // EIO: I/O error
+    noSuchDevice = 6,                   // ENXIO: No such device or address
+    argListTooLong = 7,                 // E2BIG: Argument list too long
+    execFormatError = 8,                // ENOEXEC: Exec format error
+    badFd = 9,                          // EBADF: Bad file number
+    noChildProcesses = 10,              // ECHILD: No child processes
+    again = 11,                         // EAGAIN / EWOULDBLOCK: Try again / Operation would block
+    noMemory = 12,                      // ENOMEM: Out of memory
+    accessDenied = 13,                  // EACCES: Permission denied
+    badAddress = 14,                    // EFAULT: Bad address (Invalid pointer passed to kernel)
+    blockDeviceRequired = 15,           // ENOTBLK: Block device required
+    deviceBusy = 16,                    // EBUSY: Device or resource busy
+    fileExists = 17,                    // EEXIST: File exists
+    crossDeviceLink = 18,               // EXDEV: Cross-device link
+    noSuchSlot = 19,                    // ENODEV: No such device
+    notADirectory = 20,                 // ENOTDIR: Not a directory
+    isDirectory = 21,                   // EISDIR: Is a directory
+    invalidArg = 22,                    // EINVAL: Invalid argument
+    fileTableOverflow = 23,             // ENFILE: File table overflow
+    tooManyOpenFiles = 24,              // EMFILE: Too many open files
+    notATty = 25,                       // ENOTTY: Not a typewriter (Inappropriate ioctl for device)
+    textBusy = 26,                      // ETXTBSY: Text file busy
+    fileTooLarge = 27,                  // EFBIG: File too large
+    noSpace = 28,                       // ENOSPC: No space left on device
+    illegalSeek = 29,                   // ESPIPE: Illegal seek
+    readOnlyFileSystem = 30,            // EROFS: Read-only file system
+    tooManyLinks = 31,                  // EMLINK: Too many links
+    brokenPipe = 32,                    // EPIPE: Broken pipe
+    mathArgOutOfDomain = 33,            // EDOM: Math argument out of domain of func
+    mathResultNotRepresentable = 34,    // ERANGE: Math result not representable
+
+    // --- POSIX Extensions & Networking Errors ---
+    deadlockAvoided = 35,      // EDEADLK / EDEADLOCK: Resource deadlock would occur
+    nameTooLong = 36,          // ENAMETOOLONG: File name too long
+    noLockAvailable = 37,      // ENOLCK: No record locks available
+    invalidSyscall = 38,       // ENOSYS: Invalid system call number
+    directoryNotEmpty = 39,    // ENOTEMPTY: Directory not empty
+    tooManySymlinks = 40,      // ELOOP: Too many symbolic links encountered
+    noMessageOfType = 42,      // ENOMSG: No message of desired type
+    identifierRemoved = 43,    // EIDRM: Identifier removed
+    channelOutOfRange = 44,    // ECHRNG: Channel number out of range
+    level2NotSynchronized = 45,// EL2NSYNC: Level 2 not synchronized
+    level3Halted = 46,         // EL3HLT: Level 3 halted
+    level3Reset = 47,          // EL3RST: Level 3 reset
+    linkNumberOutOfRange = 48, // ELNRNG: Link number out of range
+    protocolDriverNotAttached = 49, // EUNATCH: Protocol driver not attached
+    noCsiStructure = 50,       // ENOCSI: No CSI structure available
+    level2Halted = 51,         // EL2HLT: Level 2 halted
+    invalidExchange = 52,      // EBADE: Invalid exchange
+    invalidRequestDescriptor = 53, // EBADR: Invalid request descriptor
+    exchangeFull = 54,         // EXFULL: Exchange full
+    noAnode = 55,              // ENOANO: No anode
+    invalidRequestCode = 56,   // EBADRQC: Invalid request code
+    invalidSlot = 57,          // EBADSLT: Invalid slot
+    badFontFileFormat = 59,    // EBFONT: Bad font file format
+    notAStream = 60,           // ENOSTR: Device not a stream
+    noDataAvailable = 61,      // ENODATA: No data available
+    timerExpired = 62,         // ETIME: Timer expired
+    outOfStreamsResources = 63,// ENOSR: Out of streams resources
+    machineNotOnNetwork = 64,  // ENONET: Machine is not on the network
+    packageNotInstalled = 65,  // ENOPKG: Package not installed
+    objectIsRemote = 66,       // EREMOTE: Object is remote
+    linkHasBeenSevered = 67,   // ENOLINK: Link has been severed
+    advertiseError = 68,       // EADV: Advertise error
+    srmountError = 69,         // ESRMNT: Srmount error
+    communicationError = 70,   // ECOMM: Communication error on send
+    protocolError = 71,        // EPROTO: Protocol error
+    multihopAttempted = 72,    // EMULTIHOP: Multihop attempted
+    rfsSpecificError = 73,     // EDOTDOT: RFS specific error
+    badMessage = 74,           // EBADMSG: Not a data message
+    valueTooLarge = 75,        // EOVERFLOW: Value too large for defined data type
+    nameNotUnique = 76,        // ENOTUNIQ: Name not unique on network
+    fdInBadState = 77,         // EBADFD: File descriptor in bad state
+    remoteAddressChanged = 78, // EREMCHG: Remote address changed
+    sharedLibAccessible = 79,  // ELIBACC: Can not access a needed shared library
+    sharedLibCorrupted = 80,   // ELIBBAD: Accessing a corrupted shared library
+    libSectionCorrupted = 81,  // ELIBSCN: .lib section in a.out corrupted
+    tooManySharedLibs = 82,    // ELIBMAX: Attempting to link in too many shared libraries
+    cannotExecSharedLib = 83,  // ELIBEXEC: Cannot exec a shared library directly
+    illegalByteSequence = 84,  // EILSEQ: Illegal byte sequence
+    restartInterrupted = 85,   // ERESTART: Interrupted system call should be restarted
+    streamsPipeError = 86,     // ESTRPIPE: Streams pipe error
+    tooManyUsers = 87,         // EUSERS: Too many users
+    notASocket = 88,           // ENOTSOCK: Socket operation on non-socket
+    destinationAddressReq = 89,// EDESTADDRREQ: Destination address required
+    messageTooLong = 90,       // EMSGSIZE: Message too long
+    protocolWrongType = 91,    // EPROTOTYPE: Protocol wrong type for socket
+    protocolNotAvailable = 92, // ENOPROTOOPT: Protocol not available
+    protocolNotSupported = 93, // EPROTONOSUPPORT: Protocol not supported
+    socketTypeNotSupported = 94, // ESOCKTNOSUPPORT: Socket type not supported
+    operationNotSupported = 95,// EOPNOTSUPP: Operation not supported on transport endpoint
+    protocolFamilyNotSupp = 96,// EPFNOSUPPORT: Protocol family not supported
+    addressFamilyNotSupp = 97, // EAFNOSUPPORT: Address family not supported by protocol
+    addressInUse = 98,         // EADDRINUSE: Address already in use
+    addressNotAvailable = 99,  // EADDRNOTAVAIL: Cannot assign requested address
+    networkDown = 100,         // ENETDOWN: Network is down
+    networkUnreachable = 101,  // ENETUNREACH: Network is unreachable
+    networkReset = 102,        // ENETRESET: Network dropped connection because of reset
+    connectionAborted = 103,   // ECONNABORTED: Software caused connection abort
+    connectionReset = 104,     // ECONNRESET: Connection reset by peer
+    noBufferSpace = 105,       // ENOBUFS: No buffer space available
+    alreadyConnected = 106,    // EISCONN: Transport endpoint is already connected
+    notConnected = 107,        // ENOTCONN: Transport endpoint is not connected
+    cannotSendAfterShutdown = 108, // ESHUTDOWN: Cannot send after transport endpoint shutdown
+    tooManyReferences = 109,   // ETOOMANYREFS: Too many references: cannot splice
+    connectionTimedOut = 110,  // ETIMEDOUT: Connection timed out
+    connectionRefused = 111,   // ECONNREFUSED: Connection refused
+    hostIsDown = 112,          // EHOSTDOWN: Host is down
+    noRouteToHost = 113,       // EHOSTUNREACH: No route to host
+    operationAlreadyInProg = 114, // EALREADY: Operation already in progress
+    operationInProgress = 115, // EINPROGRESS: Operation now in progress
+    staleFileHandle = 116,     // ESTALE: Stale file handle
+    structureNeedsCleaning = 117, // EUCLEAN: Structure needs cleaning
+    notXcoffFile = 118,        // ENOTNAM: Not a XCOFF named type file
+    noXavailSemaphores = 119,  // ENAVAIL: No XAVAIL semaphores available
+    isNamedFile = 120,         // EISNAM: Is a named file type
+    remoteIoError = 121,       // EREMOTEIO: Remote I/O error
+    quotaExceeded = 122,       // EDQUOT: Quota exceeded
+    noMediumFound = 123,       // ENOMEDIUM: No medium found
+    wrongMediumType = 124,     // EMEDIUMTYPE: Wrong medium type
+    operationCanceled = 125,   // ECANCELED: Operation Canceled
+    keyNotAvailable = 126,     // ENOKEY: Required key not available
+    keyExpired = 127,          // EKEYEXPIRED: Key has expired
+    keyRevoked = 128,          // EKEYREVOKED: Key has been revoked
+    keyRejected = 129,         // EKEYREJECTED: Key was rejected by service
+
+    // --- Robust Mutexes & Owner Errors ---
+    ownerDead = 130,           // EOWNERDEAD: Owner died
+    notRecoverable = 131,      // ENOTRECOVERABLE: State not recoverable
+    rfkillBlocked = 132,       // ERFKILL: Operation not possible due to RF-kill
+    hwPoison = 133             // EHWPOISON: Memory page has hardware poison
+}
+
+enum STDIO {
+    STDIN = 0,
+    STDOUT = 1,
+    STDERR = 2
+}
+
 
 type ErrorNumber enum {
     PermissionDenied = 1
@@ -40,3 +187,4 @@ fn _knownError(number: RawErrorNumber) Option[ErrorNumber] {
             return None
     }
 }
+

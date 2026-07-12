@@ -1,3 +1,4 @@
+#target(os: "linux", arch: "any")
 module platform.linux
 
 fn Write(fd: int, data: []byte) Result[uint, LinuxError] {

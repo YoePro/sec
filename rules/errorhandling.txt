@@ -170,11 +170,25 @@ Example:
 
 The `match` keyword is not required inside a try handler block.
 
+An explicit `match` wrapper is allowed for readability:
+
+    let value := try operation() {
+        match {
+            Err(pattern) => handler
+        }
+    }
+
+This is parsed as the same handler list as:
+
+    let value := try operation() {
+        Err(pattern) => handler
+    }
+
 Reason:
 
 - the try block is already a specialized error-matching context,
 - every handler matches the error branch,
-- an additional `match` keyword would add syntax without meaning.
+- an additional `match` keyword does not change semantics.
 
 
 Try handler semantics
@@ -289,6 +303,7 @@ Try grammar
 
     TryHandlerBlock
         := "{" TryHandler { TryHandler } "}"
+         | "{" "match" "{" TryHandler { TryHandler } "}" "}"
 
     TryHandler
         := ErrPattern "=>" HandlerBody

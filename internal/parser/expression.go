@@ -1,8 +1,6 @@
 package parser
 
 import (
-	"strconv"
-
 	"sec/internal/ast"
 	"sec/internal/lexer"
 )
@@ -490,6 +488,12 @@ func (p *Parser) parseTryHandlerBlock() []*ast.TryHandler {
 			p.addError("unterminated try handler block")
 			return nil
 		}
+		if p.curToken.Type == lexer.COMMENT {
+			continue
+		}
+		if p.curToken.Type == lexer.MATCH {
+			return p.parseExplicitTryMatchHandlerBlock()
+		}
 
 		handler := p.parseTryHandler()
 		if handler == nil {
@@ -506,6 +510,24 @@ func (p *Parser) parseTryHandlerBlock() []*ast.TryHandler {
 			return handlers
 		}
 	}
+}
+
+func (p *Parser) parseExplicitTryMatchHandlerBlock() []*ast.TryHandler {
+	if !p.expectPeek(lexer.LBRACE) {
+		return nil
+	}
+
+	handlers := p.parseTryHandlerBlock()
+	if handlers == nil {
+		return nil
+	}
+
+	if p.peekToken.Type != lexer.RBRACE {
+		p.addError("expected '}' after try match handler block at %d:%d", p.peekToken.Line, p.peekToken.Column)
+		return handlers
+	}
+	p.nextToken()
+	return handlers
 }
 
 func (p *Parser) isTryHandlerBlockRecoveryStart(t lexer.TokenType) bool {
@@ -649,8 +671,8 @@ func (p *Parser) parseIdentifierExpression() ast.Expression {
 }
 
 func (p *Parser) parseIntegerLiteral() ast.Expression {
-	value, err := strconv.ParseInt(p.curToken.Lexeme, 10, 64)
-	if err != nil {
+	value, ok := ast.ParseIntegerLiteralInt64(p.curToken.Lexeme)
+	if !ok {
 		p.addError("could not parse integer %q", p.curToken.Lexeme)
 		return nil
 	}
@@ -662,8 +684,8 @@ func (p *Parser) parseIntegerLiteral() ast.Expression {
 }
 
 func (p *Parser) parseFloatLiteral() ast.Expression {
-	value, err := strconv.ParseFloat(p.curToken.Lexeme, 64)
-	if err != nil {
+	value, ok := ast.ParseFloatLiteralFloat64(p.curToken.Lexeme)
+	if !ok {
 		p.addError("could not parse float %q", p.curToken.Lexeme)
 		return nil
 	}

@@ -1,0 +1,396 @@
+module main
+
+// OK: switch case must be compatible with subject type int, got string
+fn IncompatibleValueCase(value: int) void {
+    switch value {
+    case "one":
+    }
+}
+
+// Ok: switch case must be compatible with subject type string, got int
+fn IncompatibleStringCase(value: string) void {
+    switch value {
+    case 1:
+    }
+}
+
+// Ok: switch range must be compatible with subject type string, got int
+fn IncompatibleRange(value: string) void {
+    switch value {
+    case 0..100:
+    }
+}
+
+// Ok: switch range must be compatible with subject type string, got int
+fn IncompatibleRangeBounds(value: int, minimum: string) void {
+    switch value {
+    case minimum..100:
+    }
+}
+
+// Ok: switch case must be compatible with subject type int, got string
+fn IncompatibleRelationalCase(value: int, limit: string) void {
+    switch value {
+    case < limit:
+    }
+}
+
+// Ok: subjectless switch case must be bool, got int
+fn SubjectlessIntCase(value: int) void {
+    switch {
+    case value:
+    }
+}
+
+// ok: subjectless switch case must be bool, got string
+fn SubjectlessStringCase(value: string) void {
+    switch {
+    case value:
+    }
+}
+
+// Ok: subjectless switch case must be bool, got int
+fn SubjectlessArithmeticCase(value: int) void {
+    switch {
+    case value + 1:
+    }
+}
+
+// Ok: subjectless switch case must be bool, got int
+fn SubjectlessInvalidMultiple(ready: bool,value: int) void {
+    switch {
+    case ready, value:
+    }
+}
+
+// Ok: duplicate switch case value 1
+fn DuplicateIntegerCase(value: int) void {
+    switch value {
+    case 1:
+    case 1:
+    }
+}
+
+// Ok: duplicate switch case value true
+fn DuplicateBoolCase(value: bool) void {
+    switch value {
+    case true:
+    case true:
+    }
+}
+
+// Ok: duplicate switch case value 1
+fn DuplicateInSameCase(value: int) void {
+    switch value {
+    case 1, 2, 1:
+    }
+}
+
+// Ok: switch case range overlaps previous case
+fn OverlappingInclusiveRanges(value: int) void {
+    switch value {
+    case 0..50:
+    case 50..100:
+    }
+}
+
+// Ok: switch case range overlaps previous case
+fn OverlappingHalfOpenRanges(value: int) void {
+    switch value {
+    case 0..<50:
+    case 40..<100:
+    }
+}
+
+// Ok: switch case range overlaps previous case
+fn RangeCoveredByPreviousRange(value: int) void {
+    switch value {
+    case 0..100:
+    case 20..30:
+    }
+}
+
+// Ok: switch case value 50 is already covered by previous case
+fn ValueCoveredByPreviousRange(value: int) void {
+    switch value {
+    case 0..100:
+    case 50:
+    }
+}
+
+// Ok: switch case value 99 is already covered by previous case
+fn ValueCoveredByHalfOpenRange(value: int) void {
+    switch value {
+    case 0..<100:
+    case 99:
+    }
+}
+
+// Ok: duplicate switch case value 2
+fn DuplicateValueAfterList(value: int) void {
+    switch value {
+    case 1, 2, 3:
+    case 2:
+    }
+}
+
+// 
+fn UnreachableGreaterRelational(value: int) void {
+    switch value {
+    case >= 0:
+    case > 10:
+    }
+}
+
+//
+fn UnreachableLessRelational(value: int) void {
+    switch value {
+    case <= 100:
+    case < 50:
+    }
+}
+
+//
+fn RelationalCoveredByRange(value: int) void {
+    switch value {
+    case 0..100:
+    case > 50:
+    }
+}
+
+//
+fn DescendingSwitchRange(value: int) void {
+    switch value {
+    case 10..0:
+    }
+}
+
+// Ok: default must be the final switch clause / switch may contain only one default
+fn MultipleDefault(value: int) void {
+    switch value {
+    case 1:
+
+    default:
+
+    default:
+    }
+}
+
+// Ok: default must be the final switch clause
+fn DefaultNotFinal(value: int) void {
+    switch value {
+    default:
+    case 1:
+    }
+}
+
+// Ok: fallthrough is not allowed in the final switch case
+fn FallthroughInFinalCase(value: int) void {
+    switch value {
+    case 1:
+        fallthrough
+    }
+}
+
+// Ok: fallthrough is not allowed in the final switch case
+fn FallthroughInDefault(value: int) void {
+    switch value {
+    case 1:
+    default:
+        fallthrough
+    }
+}
+
+// Ok: fallthrough must be the final statement in a switch case
+fn StatementAfterFallthrough(value: int) void {
+    let mut result: int := 0
+
+    switch value {
+    case 1:
+        fallthrough
+        result = 10
+
+    case 2:
+        result = 20
+    }
+}
+
+// Ok: fallthrough is only valid directly inside a switch case
+fn NestedFallthrough(value: int, condition: bool) void {
+    switch value {
+    case 1:
+        if condition {
+            fallthrough
+        }
+    case 2:
+    }
+}
+
+// Ok: fallthrough is only valid directly inside a switch case
+fn FallthroughOutsideSwitch() void {
+    fallthrough
+}
+
+// Ok: undefined variable local at
+fn CaseVariableOutsideScope(value: int) int {
+    switch value {
+    case 1:
+        let local: int := 10 // Unused variable error!!
+
+    default:
+    }
+
+    return local
+}
+
+// Ok: variable "local" already declared at 252:13, previous declaration at
+fn ShadowOuterVariable(value: int) void {
+    let local: int := 10
+
+    switch value {
+    case 1:
+        let local: int := 20
+
+    default:
+    }
+}
+
+// Ok: cannot assign to immutable variable result
+fn MutateImmutable(value: int) int {
+    let result: int := 0
+
+    switch value {
+    case 1:
+        result = 10
+
+    default:
+    }
+
+    return result
+}
+
+// Ok: function MissingReturnWithoutDefault must return int
+fn MissingReturnWithoutDefault(value: int) int {
+    switch value {
+    case 1:
+        return 10
+    case 2:
+        return 20
+    }
+}
+
+// Ok: function MissingReturnInDefault must return int
+fn MissingReturnInDefault(value: int) int {
+    switch value {
+    case 1:
+    return 10
+    default:
+    }
+}
+
+// Ok: function MissingReturnInCase must return int
+fn MissingReturnInCase(value: int) int {
+    switch value {
+    case 1:
+
+    default:
+        return 20
+    }
+}
+
+// Ok: variable result is unassigned
+fn UnassignedWithoutDefault(value: int) int {
+    let mut result: int
+
+    switch value {
+    case 1:
+        result = 10
+    }
+
+    return result
+}
+
+// Ok: variable result is unassigned
+fn UnassignedInOneCase(value: int) int {
+    let mut result: int
+
+    switch value {
+    case 1:
+        result = 10
+
+    case 2:
+
+    default:
+        result = 30
+    }
+
+    return result
+}
+
+// Ok: variable result is unassigned
+fn UnassignedInDefault(value: int) int {
+    let mut result: int
+
+    switch value {
+    case 1:
+        result = 10
+
+    default:
+    }
+
+    return result
+}
+
+// Ok: function InvalidBoolExhaustiveness must return int
+fn InvalidBoolExhaustiveness(value: bool) int {
+    switch value {
+    case true:
+        return 1
+    }
+}
+
+// Ok: function InvalidSubjectlessMissingDefault must return int
+fn InvalidSubjectlessMissingDefault(value: int) int {
+    switch {
+    case value < 0:
+        return -1
+
+    case value == 0:
+        return 0
+    }
+}
+
+//
+fn UnreachableAfterReturn(value: int) int {
+    switch value {
+    case 1:
+        return 10
+        let local: int := 20
+    default:
+        return 30
+    }
+}
+
+// Ok: fallthrough must be the final statement in a switch case
+fn UnreachableAfterFallthrough(value: int) void {
+    switch value {
+    case 1:
+        fallthrough
+        let local: int := 10
+    case 2:
+    }
+}
+
+//
+fn MixedTypedIntegerCases(value: uint) void {
+    switch value {
+    case 1:
+    }
+}
+
+//
+fn InvalidRangeTypeMix(value: uint) void {
+    switch value {
+    case 0u..100:
+    }
+}

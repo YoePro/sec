@@ -22,6 +22,8 @@ const (
 	RuneType     TypeKind = "rune"
 	ResultType   TypeKind = "result"
 	StructType   TypeKind = "struct"
+	SliceType    TypeKind = "slice"
+	ArrayType    TypeKind = "array"
 	FunctionType TypeKind = "function"
 	VoidType     TypeKind = "void"
 )
@@ -43,6 +45,8 @@ type Type struct {
 	EnumValues             []string
 	EnumConsts             map[string]EnumValue
 	TypeArgs               []Type
+	Element                *Type
+	ArrayLength            int64
 	FunctionParameterTypes []Type
 	FunctionReturnType     *Type
 	Fields                 []StructField

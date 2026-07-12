@@ -12,7 +12,8 @@ import (
 type Parser struct {
 	l *lexer.Lexer
 
-	errors []string
+	errors   []string
+	warnings []string
 
 	curToken  lexer.Token
 	peekToken lexer.Token
@@ -22,8 +23,9 @@ type Parser struct {
 
 func New(l *lexer.Lexer) *Parser {
 	p := &Parser{
-		l:      l,
-		errors: []string{},
+		l:        l,
+		errors:   []string{},
+		warnings: []string{},
 	}
 
 	p.nextToken()
@@ -36,6 +38,10 @@ func (p *Parser) Errors() []string {
 	return p.errors
 }
 
+func (p *Parser) Warnings() []string {
+	return p.warnings
+}
+
 func (p *Parser) ParseProgram() *ast.Program {
 	program := &ast.Program{}
 	for p.curToken.Type != lexer.EOF {
@@ -43,6 +49,10 @@ func (p *Parser) ParseProgram() *ast.Program {
 
 		if p.curToken.Type == lexer.EOF {
 			break
+		}
+
+		if p.isTargetDirectiveStart() && len(program.Statements) > 0 {
+			p.addError("#target directive must appear before any code or declarations at %d:%d", p.curToken.Line, p.curToken.Column)
 		}
 
 		stmt := p.parseStatement()
@@ -58,8 +68,17 @@ func (p *Parser) ParseProgram() *ast.Program {
 	return program
 }
 
+func (p *Parser) isTargetDirectiveStart() bool {
+	return p.curToken.Type == lexer.HASH &&
+		p.peekToken.Type == lexer.IDENT &&
+		p.peekToken.Lexeme == "target"
+}
+
 func (p *Parser) parseStatement() ast.Statement {
 	switch p.curToken.Type {
+	case lexer.HASH:
+		return p.parseCompilerDirective()
+
 	case lexer.MODULE:
 		return p.parseModuleStatement()
 
@@ -150,6 +169,23 @@ func (p *Parser) parseStatement() ast.Statement {
 	}
 }
 
+func (p *Parser) parseCompilerDirective() ast.Statement {
+	if p.peekToken.Type != lexer.IDENT {
+		p.addError("expected compiler directive name after '#' at %d:%d", p.curToken.Line, p.curToken.Column)
+		return nil
+	}
+
+	hashToken := p.curToken
+	p.nextToken()
+	switch p.curToken.Lexeme {
+	case "target":
+		return p.parseTargetDirective(hashToken)
+	default:
+		p.addError("unknown compiler directive #%s at %d:%d", p.curToken.Lexeme, p.curToken.Line, p.curToken.Column)
+		return nil
+	}
+}
+
 func (p *Parser) parseMatchStatement() ast.Statement {
 	expr := p.parseMatchExpression()
 	if expr == nil {
@@ -236,22 +272,16 @@ func (p *Parser) parseForStatement() ast.Statement {
 	}
 	stmt.Bindings = append(stmt.Bindings, first)
 
-	if p.peekToken.Type == lexer.COMMA {
+	for p.peekToken.Type == lexer.COMMA {
 		p.nextToken()
 		p.nextToken()
-		second, ok := p.parseForBinding()
+		next, ok := p.parseForBinding()
 		if !ok {
 			p.addError("expected loop binding after ',' at %d:%d", p.curToken.Line, p.curToken.Column)
 			p.skipMalformedForHeader(stmt)
 			return stmt
 		}
-		stmt.Bindings = append(stmt.Bindings, second)
-
-		if p.peekToken.Type == lexer.COMMA {
-			p.addError("too many loop bindings at %d:%d", p.peekToken.Line, p.peekToken.Column)
-			p.skipMalformedForHeader(stmt)
-			return stmt
-		}
+		stmt.Bindings = append(stmt.Bindings, next)
 	}
 
 	if p.peekToken.Type == lexer.SEMICOLON || p.curToken.Type == lexer.SEMICOLON || p.peekToken.Type == lexer.DECLARE || p.peekToken.Type == lexer.ASSIGN {
@@ -281,6 +311,24 @@ func (p *Parser) parseForStatement() ast.Statement {
 	if stmt.Iterable == nil {
 		p.skipMalformedForHeader(stmt)
 		return stmt
+	}
+
+	if p.peekToken.Type == lexer.IDENT && p.peekToken.Lexeme == "step" {
+		p.nextToken()
+		if p.peekToken.Type == lexer.LBRACE || p.peekToken.Type == lexer.EOF {
+			p.addError("for range step requires an expression at %d:%d", p.peekToken.Line, p.peekToken.Column)
+			p.skipMalformedForHeader(stmt)
+			return stmt
+		}
+		p.nextToken()
+		previousStopBeforeBrace = p.stopBeforeBrace
+		p.stopBeforeBrace = true
+		stmt.Step = p.parseExpression(LOWEST)
+		p.stopBeforeBrace = previousStopBeforeBrace
+		if stmt.Step == nil {
+			p.skipMalformedForHeader(stmt)
+			return stmt
+		}
 	}
 
 	if p.peekToken.Type != lexer.LBRACE {
@@ -314,6 +362,15 @@ func (p *Parser) parseWhileStatement() ast.Statement {
 	}
 
 	if p.peekToken.Type != lexer.LBRACE {
+		if p.peekToken.Type == lexer.ASSIGN {
+			p.addWarning("assignment in while condition at %d:%d", p.peekToken.Line, p.peekToken.Column)
+			p.skipUntilBlockStart()
+			if p.curToken.Type != lexer.LBRACE {
+				return stmt
+			}
+			stmt.Body = p.parseStatementBlock("while body")
+			return stmt
+		}
 		p.addError("expected '{' after while condition at %d:%d", p.peekToken.Line, p.peekToken.Column)
 		return stmt
 	}
@@ -389,13 +446,13 @@ func (p *Parser) parseSwitchStatement() ast.Statement {
 			defaultClause := p.parseSwitchCaseClause(true, stmt.Subject == nil)
 			if defaultClause != nil {
 				if stmt.Default != nil {
-					p.addError("switch may contain only one default clause at %d:%d", p.curToken.Line, p.curToken.Column)
+					stmt.DuplicateDefaultTokens = append(stmt.DuplicateDefaultTokens, defaultClause.Token)
 				} else {
 					stmt.Default = defaultClause
 				}
 			}
 			if p.curToken.Type != lexer.RBRACE && p.curToken.Type != lexer.EOF {
-				p.addError("default must be the final switch clause at %d:%d", p.curToken.Line, p.curToken.Column)
+				stmt.DefaultNotFinalToken = p.curToken
 			}
 		default:
 			p.addError("expected switch case or default at %d:%d", p.curToken.Line, p.curToken.Column)
@@ -787,6 +844,79 @@ func (p *Parser) parseModuleStatement() ast.Statement {
 	return stmt
 }
 
+func (p *Parser) parseTargetDirective(hashToken lexer.Token) ast.Statement {
+	stmt := &ast.TargetDirective{Token: hashToken}
+
+	if !p.expectPeek(lexer.LPAREN) {
+		return nil
+	}
+
+	seen := map[string]bool{}
+	for p.peekToken.Type != lexer.RPAREN && p.peekToken.Type != lexer.EOF {
+		if !p.expectPeek(lexer.IDENT) {
+			p.skipCompilerDirective()
+			return nil
+		}
+		name := p.curToken.Lexeme
+		if name != "os" && name != "arch" {
+			p.addError("unknown #target argument %q at %d:%d", name, p.curToken.Line, p.curToken.Column)
+			p.skipCompilerDirective()
+			return nil
+		}
+		if seen[name] {
+			p.addError("duplicate #target argument %q at %d:%d", name, p.curToken.Line, p.curToken.Column)
+			p.skipCompilerDirective()
+			return nil
+		}
+		seen[name] = true
+
+		if !p.expectPeek(lexer.COLON) {
+			p.skipCompilerDirective()
+			return nil
+		}
+		if p.peekToken.Type != lexer.STRING {
+			p.addError("#target arguments must be compile-time string literals at %d:%d", p.peekToken.Line, p.peekToken.Column)
+			p.skipCompilerDirective()
+			return nil
+		}
+		p.nextToken()
+
+		value := trimStringQuotes(p.curToken.Lexeme)
+		switch name {
+		case "os":
+			stmt.OS = value
+		case "arch":
+			stmt.Arch = value
+		}
+
+		switch p.peekToken.Type {
+		case lexer.COMMA:
+			p.nextToken()
+		case lexer.RPAREN:
+		default:
+			p.addError("expected ',' or ')' in #target directive at %d:%d", p.peekToken.Line, p.peekToken.Column)
+			p.skipCompilerDirective()
+			return nil
+		}
+	}
+
+	if !p.expectPeek(lexer.RPAREN) {
+		return nil
+	}
+	if stmt.OS == "" || stmt.Arch == "" {
+		p.addError("#target requires os and arch arguments at %d:%d", hashToken.Line, hashToken.Column)
+		return nil
+	}
+
+	return stmt
+}
+
+func (p *Parser) skipCompilerDirective() {
+	for p.curToken.Type != lexer.EOF && p.curToken.Type != lexer.RPAREN {
+		p.nextToken()
+	}
+}
+
 func (p *Parser) parseImportStatement() ast.Statement {
 	stmt := &ast.ImportStatement{
 		Token: p.curToken,
@@ -1117,6 +1247,7 @@ func (p *Parser) parseReturnStatement() ast.Statement {
 func (p *Parser) isReturnTerminator(t lexer.TokenType) bool {
 	switch t {
 	case lexer.MODULE,
+		lexer.COMMENT,
 		lexer.IMPORT,
 		lexer.TYPE,
 		lexer.ENUM,
@@ -1643,10 +1774,19 @@ func (p *Parser) parseSliceTypeReference() *ast.TypeReference {
 		Token: p.curToken,
 	}
 
+	if p.peekToken.Type == lexer.INT {
+		p.nextToken()
+		length, ok := ast.ParseIntegerLiteralInt64(p.curToken.Lexeme)
+		if !ok {
+			p.addError("invalid array length %q at %d:%d", p.curToken.Lexeme, p.curToken.Line, p.curToken.Column)
+			return ref
+		}
+		ref.ArrayLength = length
+	}
+
 	if !p.expectPeek(lexer.RBRACKET) {
 		return ref
 	}
-
 	if !p.expectPeekTypeStart() {
 		return ref
 	}
@@ -1773,8 +1913,8 @@ func (p *Parser) isRangeBoundStart(t lexer.TokenType) bool {
 func (p *Parser) parseNumberLiteral() ast.Expression {
 	switch p.curToken.Type {
 	case lexer.INT:
-		value, err := strconv.ParseInt(p.curToken.Lexeme, 10, 64)
-		if err != nil {
+		value, ok := ast.ParseIntegerLiteralInt64(p.curToken.Lexeme)
+		if !ok {
 			p.addError("could not parse integer %q", p.curToken.Lexeme)
 			return nil
 		}
@@ -1785,8 +1925,8 @@ func (p *Parser) parseNumberLiteral() ast.Expression {
 		}
 
 	case lexer.FLOAT:
-		value, err := strconv.ParseFloat(p.curToken.Lexeme, 64)
-		if err != nil {
+		value, ok := ast.ParseFloatLiteralFloat64(p.curToken.Lexeme)
+		if !ok {
 			p.addError("could not parse float %q", p.curToken.Lexeme)
 			return nil
 		}
@@ -1880,6 +2020,10 @@ func (p *Parser) addError(format string, args ...any) {
 	p.errors = append(p.errors, fmt.Sprintf(format, args...))
 }
 
+func (p *Parser) addWarning(format string, args ...any) {
+	p.warnings = append(p.warnings, fmt.Sprintf(format, args...))
+}
+
 func trimStringQuotes(s string) string {
 	if unquoted, err := strconv.Unquote(s); err == nil {
 		return unquoted
@@ -1892,6 +2036,12 @@ func (p *Parser) skipStatement() {
 	p.nextToken()
 
 	for !p.isAtEnd() && !p.isStatementStart(p.curToken.Type) {
+		p.nextToken()
+	}
+}
+
+func (p *Parser) skipUntilBlockStart() {
+	for !p.isAtEnd() && p.curToken.Type != lexer.LBRACE {
 		p.nextToken()
 	}
 }

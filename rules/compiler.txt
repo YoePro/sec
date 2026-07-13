@@ -315,9 +315,9 @@ Inspection commands:
 
     sec lex <file.sec>
     sec token <file.sec>
-    sec parse <file.sec>
-    sec ast <file.sec>
-    sec sema <file.sec>
+    sec parse <file.sec|dir|glob>...
+    sec ast <file.sec|dir|glob>...
+    sec sema <file.sec|dir|glob>...
     sec emit-llvm <file.sec> -o <file.ll>
 
 Rules:
@@ -328,10 +328,19 @@ Rules:
 - `ast` prints a formatted tree representation of the AST.
 - `sema` runs semantic analysis and reports errors and warnings.
 - `emit-llvm` generates LLVM IR text and requires the `-o` output flag.
+- `parse`, `ast` and `sema` accept multiple source inputs.
+- A source input may be a `.sec` file, a directory or a shell/glob pattern.
+- Directories are scanned recursively for `.sec` files.
+- For target-aware commands such as `sema`, platform source paths are filtered
+  before parsing so only files matching the selected target participate.
+  Example: on `linux-amd64`, `sec/platform/linux/amd64/*.sec` is included and
+  `sec/platform/linux/arm64/*.sec` is skipped.
 
 Current implementation note:
 
 - `lex`, `token`, `parse`, `ast`, `sema`, `emit-llvm` and `build` exist.
+- `parse`, `ast` and `sema` support multiple input files, directories and
+  quoted globs.
 - `emit-llvm` supports `--target <os-arch>` and emits a target-specific LLVM
   triple.
 - `build` supports `-o`, `--target <os-arch>`, `--keep-llvm` and

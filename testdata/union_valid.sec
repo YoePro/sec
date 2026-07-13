@@ -1,0 +1,321 @@
+module main
+
+// union_valid.sec
+// All declarations and uses in this file must pass semantic analysis.
+
+type State union {
+    idle
+    running
+    stopped
+}
+
+type Connection union {
+    idle
+    connected
+    disconnected
+}
+
+type Number union {
+    Integer(int),
+    Unsigned(uint),
+    Decimal(decimal),
+    Text(string),
+}
+
+type Value union {
+    First(int)
+    Second(int)
+}
+
+type Shape union {
+    Circle {
+        radius: decimal
+    },
+
+    Rectangle {
+        width: decimal,
+        height: decimal,
+    },
+
+    Point {
+        x: decimal,
+        y: decimal,
+    }
+}
+
+type Message union {
+    Quit
+    Text(string)
+
+    Move {
+        x: int,
+        y: int,
+    }
+}
+
+type Maybe[T] union {
+    Some(T),
+    None
+}
+
+type Either[L, R] union {
+    Left(L),
+    Right(R)
+}
+
+type GenericResult[T, E] union {
+    Ok(T)
+    Err(E)
+}
+
+type Box[T] struct {
+    value: T
+}
+
+type Token struct {
+    text: string
+}
+
+impl Token {
+    type Kind union {
+        identifier
+        number
+        symbol
+    }
+
+    fn DefaultKind() Kind {
+        return Kind.identifier
+    }
+}
+
+fn PayloadlessConstruction() bool {
+    let first: State := State.idle
+    let second: State := State.running
+    return first != second
+}
+
+fn SameVariantEquality() bool {
+    let first: State := State.stopped
+    let second: State := State.stopped
+    return first == second
+}
+
+fn DifferentUnionsReuseVariantNames() bool {
+    let state: State := State.idle
+    let connection: Connection := Connection.idle
+
+    return state == State.idle &&
+        connection == Connection.idle
+}
+
+fn MutableUnionWithoutInitializer(enabled: bool) State {
+    let mut state: State
+
+    if enabled {
+        state = State.running
+    } else {
+        state = State.stopped
+    }
+
+    return state
+}
+
+fn IntegerNumber() Number {
+    return Number.Integer(42)
+}
+
+fn UnsignedNumber() Number {
+    return Number.Unsigned(uint(42))
+}
+
+fn DecimalNumber() Number {
+    return Number.Decimal(decimal(12.5))
+}
+
+fn TextNumber() Number {
+    return Number.Text("twelve")
+}
+
+fn DuplicatePayloadTypesAreValid() bool {
+    let first: Value := Value.First(10)
+    let second: Value := Value.Second(10)
+    return first != second
+}
+
+fn CircleShape() Shape {
+    return Shape.Circle {
+        radius: decimal(12)
+    }
+}
+
+fn RectangleShape() Shape {
+    return Shape.Rectangle {
+        width: decimal(10),
+        height: decimal(20),
+    }
+}
+
+fn MoveMessage() Message {
+    return Message.Move {
+        x: 10,
+        y: 20,
+    }
+}
+
+fn StateName(state: State) string {
+    return match state {
+        idle => "idle"
+        running => "running"
+        stopped => "stopped"
+    }
+}
+
+fn StateWithCatchAll(state: State) string {
+    return match state {
+        running => "running"
+        _ => "not running"
+    }
+}
+
+fn NumberToString(number: Number) string {
+    return match number {
+        Integer(value) => string(value)
+        Unsigned(value) => string(value)
+        Decimal(value) => string(value)
+        Text(value) => value
+    }
+}
+
+fn NumberIsPositive(number: Number) bool {
+    return match number {
+        Integer(value) where value > 0 => true
+        Integer(value) => value == 0 || value < 0
+        Unsigned(value) => value > uint(0)
+        Decimal(value) => value > decimal(0)
+        Text(value) => value.len > uint(0)
+    }
+}
+
+fn ShapeArea(shape: Shape) decimal {
+    return match shape {
+        Circle(circle) => decimal(3.14159) * circle.radius * circle.radius
+        Rectangle(rectangle) => rectangle.width * rectangle.height
+        Point(point) => point.x * decimal(0) + point.y * decimal(0)
+    }
+}
+
+fn MessageDescription(message: Message) string {
+    return match message {
+        Quit => "quit"
+        Text(text) => text
+        Move(move) => string(move.x) + "," + string(move.y)
+    }
+}
+
+fn MaybeIntegerSome() Maybe[int] {
+    return Maybe.Some(10)
+}
+
+fn MaybeIntegerNone() Maybe[int] {
+    return Maybe.None
+}
+
+fn ExplicitGenericMaybe() Maybe[string] {
+    return Maybe[string].Some("hello")
+}
+
+fn EitherLeft() Either[int, string] {
+    return Either.Left(10)
+}
+
+fn EitherRight() Either[int, string] {
+    return Either.Right("right")
+}
+
+fn ResultOk() GenericResult[int, string] {
+    return GenericResult.Ok(20)
+}
+
+fn ResultErr() GenericResult[int, string] {
+    return GenericResult.Err("failed")
+}
+
+fn MaybeValue(value: Maybe[int]) int {
+    return match value {
+        Some(number) => number
+        None => 0
+    }
+}
+
+fn EitherValue(value: Either[int, string]) string {
+    return match value {
+        Left(number) => string(number)
+        Right(text) => text
+    }
+}
+
+fn GenericResultValue(value: GenericResult[int, string]) string {
+    return match value {
+        Ok(number) => string(number)
+        Err(error) => error
+    }
+}
+
+fn NestedGenericUnion() Maybe[Box[int]] {
+    return Maybe.Some(Box[int] {
+        value: 50
+    })
+}
+
+fn MatchNestedGenericUnion(value: Maybe[Box[int]]) int {
+    return match value {
+        Some(box) => box.value
+        None => 0
+    }
+}
+
+type ForwardUnion union {
+    Item(ForwardPayload)
+    Empty
+}
+
+type ForwardPayload struct {
+    value: int
+}
+
+fn ForwardUnionValue() int {
+    let value: ForwardUnion := ForwardUnion.Item(ForwardPayload {
+        value: 30
+    })
+
+    return match value {
+        Item(payload) => payload.value
+        Empty => 0
+    }
+}
+
+type List[T] union {
+    Node {
+        value: T,
+        next: Box[List[T]]
+    }
+
+    End
+}
+
+fn NestedUnionOutsideImpl() bool {
+    let kind: Token.Kind := Token.Kind.number
+    return kind == Token.Kind.number
+}
+
+fn NestedUnionInsideImpl(token: Token) Token.Kind {
+    return token.DefaultKind()
+}
+
+fn IdentityState(value: State) State {
+    return value
+}
+
+fn IdentityMaybe[T](value: Maybe[T]) Maybe[T] {
+    return value
+}

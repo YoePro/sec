@@ -3,13 +3,13 @@ module platform.linux.amd64
 
 enum _sysCall {
     // --- File I/O & Descriptor Management ---
-    sysRead = 0,               // 3 args
-    sysWrite = 1,              // 3 args
-    sysOpen = 2,               // 3 args // deprecated - use sysOpenat (257)
-    sysClose = 3,              // 1 arg
-    sysStat = 4,               // 2 args // deprecated - use sysNewfstatat (262) or sysStatx (332)
-    sysFstat = 5,              // 2 args // deprecated - use sysNewfstatat (262) or sysStatx (332)
-    sysLstat = 6,              // 2 args // deprecated - use sysNewfstatat (262) or sysStatx (332)
+    Read = 0,               // 3 args
+    Write = 1,              // 3 args
+    Open = 2,               // 3 args // deprecated - use sysOpenat (257)
+    Close = 3,              // 1 arg
+    Stat = 4,               // 2 args // deprecated - use sysNewfstatat (262) or sysStatx (332)
+    Fstat = 5,              // 2 args // deprecated - use sysNewfstatat (262) or sysStatx (332)
+    Lstat = 6,              // 2 args // deprecated - use sysNewfstatat (262) or sysStatx (332)
     sysPoll = 7,               // 3 args
     sysLseek = 8,              // 3 args
     sysMmap = 9,               // 6 args
@@ -374,5 +374,5 @@ enum _sysCall {
     sysMemfdSecret = 447,      // 1 arg
     sysProcessMrelease = 448,  // 2 args
     sysFutexWaitv = 449,       // 5 args
-    sysSetMementry = 450       // 5 args
+    sysSetMementry = 450,      // 5 args
 }

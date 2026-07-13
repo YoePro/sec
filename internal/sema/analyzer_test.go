@@ -125,6 +125,22 @@ return i
 	assertSemaErrors(t, errors, expected)
 }
 
+func TestImmutableTypedLetWithoutInitializer(t *testing.T) {
+	input := `
+module main
+
+fn Test() void {
+	let a: int
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	expected := []string{
+		"immutable variable a requires initializer at 5:6",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
 func TestLetInitializerTypeMismatches(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -2157,9 +2173,6 @@ func TestDeferInvalidControlFlow(t *testing.T) {
 	input := `
 fn Test() void {
 	defer {
-		return
-	}
-	defer {
 		break
 	}
 	defer {
@@ -2177,13 +2190,39 @@ fn Test() void {
 
 	errors := analyzeSource(t, input)
 	expected := []string{
-		"return is not allowed inside defer at 4:3",
-		"break is not allowed inside defer at 7:3",
-		"continue is not allowed inside defer at 10:3",
-		"fallthrough is not allowed inside defer at 13:3",
-		"defer is not allowed inside defer at 16:3",
+		"break is not allowed inside defer at 4:3",
+		"continue is not allowed inside defer at 7:3",
+		"fallthrough is not allowed inside defer at 10:3",
+		"defer is not allowed inside defer at 13:3",
 	}
 	assertSemaErrors(t, errors, expected)
+}
+
+func TestDeferReturnWarnsAsSuperfluous(t *testing.T) {
+	input := `
+fn Test() void {
+	defer {
+		return
+	}
+	defer return
+}
+`
+
+	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
+	assertSemaErrors(t, errors, nil)
+	warnings := analyzer.Warnings()
+	expected := []string{
+		"superfluous defer return at 3:2",
+		"superfluous defer return at 6:2",
+	}
+	if len(warnings) != len(expected) {
+		t.Fatalf("wrong warning count. got=%d warnings=%v", len(warnings), warnings)
+	}
+	for i, want := range expected {
+		if warnings[i].Error() != want {
+			t.Fatalf("wrong warning %d. got=%q want=%q", i, warnings[i].Error(), want)
+		}
+	}
 }
 
 func TestDeferRejectsTryPropagation(t *testing.T) {
@@ -2207,6 +2246,34 @@ fn Test() Result[int, IOError] {
 	errors := analyzeSource(t, input)
 	expected := []string{
 		"try cannot propagate from inside defer at 12:3",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestDeferRejectsUnhandledResultExpression(t *testing.T) {
+	input := `
+enum CleanupError {
+	failed,
+}
+
+type Resource struct {
+	id: int,
+}
+
+fn CloseResource(resource: Resource) Result[void, CleanupError] {
+	return Ok()
+}
+
+fn Test(resource: Resource) void {
+	defer {
+		CloseResource(resource)
+	}
+}
+`
+
+	errors := analyzeSource(t, input)
+	expected := []string{
+		"unhandled Result inside defer; handle it or discard it explicitly at 16:3",
 	}
 	assertSemaErrors(t, errors, expected)
 }
@@ -2257,6 +2324,638 @@ func TestEnumValidFixture(t *testing.T) {
 
 	errors := analyzeSourceRaw(t, string(input))
 	assertSemaErrors(t, errors, nil)
+}
+
+func TestGenericStructAndFunctionHeaders(t *testing.T) {
+	input := `
+module main
+
+type Stack[T] struct {
+	value: T,
+}
+
+type Pair[A, B] struct {
+	first: A,
+	second: B,
+}
+
+fn Identity[T](value: T) T {
+	return value
+}
+
+fn Use(value: Stack[int], pair: Pair[string, int]) void {
+}
+
+fn Read(value: Stack[int]) int {
+	return value.value
+}
+`
+
+	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+
+	stack := analyzer.types["Stack"]
+	if len(stack.GenericParameters) != 1 || stack.GenericParameters[0] != "T" {
+		t.Fatalf("wrong Stack generic params: %+v", stack.GenericParameters)
+	}
+	if len(stack.Fields) != 1 || stack.Fields[0].Type.Kind != GenericType || stack.Fields[0].Type.Name != "T" {
+		t.Fatalf("wrong Stack field type: %+v", stack.Fields)
+	}
+
+	functions := analyzer.functions["Identity"]
+	if len(functions) != 1 {
+		t.Fatalf("wrong Identity function count: %d", len(functions))
+	}
+	if functions[0].Parameters[0].Type.Kind != GenericType || functions[0].ReturnType.Kind != GenericType {
+		t.Fatalf("Identity did not preserve generic types: %+v", functions[0])
+	}
+
+	read := analyzer.functions["Read"][0]
+	paramType := read.Parameters[0].Type
+	if typeDisplayName(paramType) != "Stack[int]" {
+		t.Fatalf("wrong instantiated Stack type: %+v display=%s", paramType, typeDisplayName(paramType))
+	}
+	if len(paramType.Fields) != 1 || paramType.Fields[0].Type.Name != "int" {
+		t.Fatalf("Stack[int] field was not substituted: %+v", paramType.Fields)
+	}
+}
+
+func TestGenericHeaderErrors(t *testing.T) {
+	input := `
+module main
+
+type Duplicate[T, T] struct {
+	value: T,
+}
+
+type Box[T] struct {
+	value: T,
+}
+
+fn BadArity(value: Box[int, string]) void {
+}
+
+fn NonGeneric(value: int[string]) void {
+}
+
+fn MissingArgs(value: Box) void {
+}
+`
+
+	_, errors := analyzeSourceWithAnalyzerRaw(t, input)
+	expected := []string{
+		`duplicate generic parameter "T" at 4:19`,
+		"Box requires 1 generic arguments, got 2 at 12:20",
+		"int is not generic at 15:22",
+		"Box requires 1 generic arguments, got 0 at 18:23",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestGenericStructInstantiationsAreDistinct(t *testing.T) {
+	input := `
+module main
+
+type Box[T] struct {
+	value: T,
+}
+
+fn Bad(value: Box[int]) Box[string] {
+	return value
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	expected := []string{
+		"function Bad must return Box[string], got Box[int] at 9:9",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestGenericFunctionCallInference(t *testing.T) {
+	input := `
+module main
+
+type Box[T] struct {
+	value: T,
+}
+
+fn Identity[T](value: T) T {
+	return value
+}
+
+fn Unbox[T](box: Box[T]) T {
+	return box.value
+}
+
+fn UseIdentity() int {
+	let value := Identity(10)
+	return value
+}
+
+fn UseNested(box: Box[string]) string {
+	return Unbox(box)
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestGenericFunctionInferenceErrors(t *testing.T) {
+	input := `
+module main
+
+fn Same[T](left: T, right: T) T {
+	return left
+}
+
+fn Test() int {
+	return Same(1, "hello")
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	expected := []string{
+		"cannot infer generic arguments for Same at 9:9",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestExplicitGenericFunctionCall(t *testing.T) {
+	input := `
+module main
+
+fn Identity[T](value: T) T {
+	return value
+}
+
+fn UseInt() int {
+	return Identity[int](10)
+}
+
+fn UseString() string {
+	return Identity[string]("hello")
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestExplicitGenericFunctionCallErrors(t *testing.T) {
+	input := `
+module main
+
+fn Identity[T](value: T) T {
+	return value
+}
+
+fn NonGeneric(value: int) int {
+	return value
+}
+
+fn WrongArgument() int {
+	return Identity[int]("hello")
+}
+
+fn WrongArity() int {
+	return Identity[int, string](10)
+}
+
+fn GenericArgumentsOnNonGenericFunction() int {
+	return NonGeneric[int](10)
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	expected := []string{
+		"argument 1 to Identity must be int, got string at 13:23",
+		"Identity requires 1 explicit generic arguments, got 2 at 17:9",
+		"function NonGeneric is not generic at 21:9",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestGenericInstanceCaching(t *testing.T) {
+	input := `
+module main
+
+type Box[T] struct {
+	value: T,
+}
+
+fn TakeBoxes(first: Box[int], second: Box[int], third: Box[string]) void {
+}
+
+fn Identity[T](value: T) T {
+	return value
+}
+
+fn Use() void {
+	let a := Identity(1)
+	let b := Identity(2)
+	let c := Identity("hello")
+	let d := Identity[int](3)
+}
+`
+
+	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+
+	if got := len(analyzer.genericTypeInstances); got != 2 {
+		t.Fatalf("wrong generic type instance count. got=%d instances=%+v", got, analyzer.genericTypeInstances)
+	}
+	if got := len(analyzer.genericFuncInstances); got != 2 {
+		t.Fatalf("wrong generic function instance count. got=%d instances=%+v", got, analyzer.genericFuncInstances)
+	}
+}
+
+func TestGenericDirectRecursiveStorageErrors(t *testing.T) {
+	input := `
+module main
+
+type Node[T] struct {
+	next: Node[T],
+}
+
+fn Use(value: Node[int]) void {
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	expected := []string{
+		"recursive generic type Node[T] has infinite size at 5:2",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestGenericArrayRecursiveStorageErrors(t *testing.T) {
+	input := `
+module main
+
+type Node[T] struct {
+	children: [2]Node[T],
+}
+
+fn Use(value: Node[int]) void {
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	expected := []string{
+		"recursive generic type Node[T] has infinite size at 5:2",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestGenericChangingRecursiveInstantiationErrors(t *testing.T) {
+	input := `
+module main
+
+type Infinite[T] struct {
+	next: Infinite[[]T],
+}
+
+fn Use(value: Infinite[int]) void {
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	expected := []string{
+		"recursive generic instantiation does not converge for Infinite at 5:2",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestGenericSliceRecursiveStorageAllowed(t *testing.T) {
+	input := `
+module main
+
+type Node[T] struct {
+	children: []Node[T],
+}
+
+fn Use(value: Node[int]) void {
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestGenericImplProperty(t *testing.T) {
+	input := `
+module main
+
+type Box[T] struct {
+	value: T,
+}
+
+impl Box[T] {
+	property Value: T {
+		get {
+			return value
+		}
+	}
+}
+
+fn Use(box: Box[int]) int {
+	return box.Value
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestGenericImplErrors(t *testing.T) {
+	input := `
+module main
+
+type Box[T] struct {
+	value: T,
+}
+
+impl Box[U] {
+}
+
+impl Box {
+}
+
+impl Box[T] {
+	fn Map[U](value: U) void {
+		return
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	expected := []string{
+		"unknown generic parameter U in impl target Box at 8:10",
+		"Box requires 1 generic arguments, got 0 at 11:6",
+		"generic methods with additional type parameters are not supported yet at 15:5",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestGenericExpectedResultInference(t *testing.T) {
+	input := `
+module main
+
+enum IOError {
+	failed,
+}
+
+fn Fail[T]() Result[T, IOError] {
+	return Err(IOError.failed)
+}
+
+fn UseLet() void {
+	let value: Result[int, IOError] := Fail()
+}
+
+fn UseAssignment() void {
+	let mut value: Result[string, IOError]
+	value = Fail()
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestGenericExpectedResultInferenceDoesNotOverrideArguments(t *testing.T) {
+	input := `
+module main
+
+enum IOError {
+	failed,
+}
+
+fn Wrap[T](value: T) Result[T, IOError] {
+	return Ok(value)
+}
+
+fn Bad() void {
+	let value: Result[string, IOError] := Wrap(1)
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	expected := []string{
+		"cannot initialize Result[string, IOError] with Result[int, IOError] at 13:40",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestGenericConstraintDeclarationErrors(t *testing.T) {
+	input := `
+module main
+
+type BadTypeConstraint[T: int] struct {
+	value: T,
+}
+
+type UnknownTypeConstraint[T: MissingConstraint] struct {
+	value: T,
+}
+
+fn BadFunctionConstraint[T: string](value: T) void {
+	discard value
+}
+
+fn UnknownFunctionConstraint[T: MissingConstraint](value: T) void {
+	discard value
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	expected := []string{
+		"generic constraint int is not an interface at 4:27",
+		"unknown generic constraint MissingConstraint for T at 8:31",
+		"generic constraint string is not an interface at 12:29",
+		"unknown generic constraint MissingConstraint for T at 16:33",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestGenericUnionTypeReferences(t *testing.T) {
+	input := `
+module main
+
+type Maybe[T] union {
+	Some(T)
+	None
+}
+
+fn Empty[T]() Maybe[T] {
+	return Maybe.None
+}
+
+fn Use() Maybe[int] {
+	return Empty[int]()
+}
+`
+
+	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+
+	maybe := analyzer.types["Maybe"]
+	if maybe.Kind != UnionType || len(maybe.GenericParameters) != 1 {
+		t.Fatalf("wrong Maybe type: %+v", maybe)
+	}
+	use := analyzer.functions["Use"][0]
+	if typeDisplayName(use.ReturnType) != "Maybe[int]" {
+		t.Fatalf("wrong Use return type: %+v display=%s", use.ReturnType, typeDisplayName(use.ReturnType))
+	}
+	if len(use.ReturnType.UnionVariants) != 2 || use.ReturnType.UnionVariants[0].Payload == nil || use.ReturnType.UnionVariants[0].Payload.Name != "int" {
+		t.Fatalf("wrong instantiated union variants: %+v", use.ReturnType.UnionVariants)
+	}
+}
+
+func TestGenericUnionPayloadVariantRequiresPayload(t *testing.T) {
+	input := `
+module main
+
+type Maybe[T] union {
+	Some(T)
+	None
+}
+
+fn Bad() Maybe[int] {
+	return Maybe.Some
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	expected := []string{
+		"union variant Maybe[int].Some requires payload at 10:15",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestGenericUnionPayloadConstructor(t *testing.T) {
+	input := `
+module main
+
+type Maybe[T] union {
+	Some(T)
+	None
+}
+
+fn SomeInt() Maybe[int] {
+	return Maybe.Some(10)
+}
+
+fn LetSome() void {
+	let value: Maybe[string] := Maybe.Some("hello")
+	let inferred := Maybe.Some(10)
+	discard value
+	discard inferred
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestGenericUnionPayloadConstructorErrors(t *testing.T) {
+	input := `
+module main
+
+type Maybe[T] union {
+	Some(T)
+	None
+}
+
+fn WrongPayload() Maybe[int] {
+	return Maybe.Some("hello")
+}
+
+fn MissingPayload() Maybe[int] {
+	return Maybe.Some()
+}
+
+fn ExtraPayload() Maybe[int] {
+	return Maybe.None(1)
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	expected := []string{
+		"union variant Maybe[int].Some payload must be int, got string at 10:20",
+		"union variant Maybe[int].Some expects 1 argument, got 0 at 14:14",
+		"union variant Maybe[int].None expects 0 arguments, got 1 at 18:14",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestUnionValidFixture(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/union_valid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	errors := analyzeSourceRaw(t, string(input))
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestUnionInvalidFixture(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/union_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	errors := analyzeSourceRaw(t, string(input))
+	if len(errors) == 0 {
+		t.Fatal("expected union_invalid.sec to produce semantic errors")
+	}
+}
+
+func TestGenericsValidFixture(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/generics_valid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	errors := analyzeSourceRaw(t, string(input))
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestGenericsInvalidFixture(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/generics_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	errors := analyzeSourceRaw(t, supportedGenericsInvalidFixture(string(input)))
+	expected := []string{
+		`duplicate generic parameter "T" at 11:19`,
+		"unknown generic parameter U in impl target Box at 105:10",
+		"Box requires 1 generic arguments, got 0 at 108:6",
+		"recursive generic type Node[T] has infinite size at 98:5",
+		"recursive generic instantiation does not converge for Infinite at 102:5",
+		"generic methods with additional type parameters are not supported yet at 112:8",
+		"Box requires 1 generic arguments, got 0 at 61:35",
+		"Box requires 1 generic arguments, got 2 at 64:35",
+		"int is not generic at 67:44",
+		"function DifferentInstantiations must return Box[string], got Box[int] at 71:12",
+		"cannot infer generic arguments for Same at 76:12",
+		"argument 1 to Identity must be int, got string at 82:26",
+		"Identity requires 1 explicit generic arguments, got 2 at 86:12",
+		"function NonGeneric is not generic at 94:12",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func supportedGenericsInvalidFixture(input string) string {
+	const marker = "// -----------------------------------------------------------------------------\n// Duplicate generic parameters\n// -----------------------------------------------------------------------------"
+	idx := strings.LastIndex(input, marker)
+	if idx < 0 {
+		return input
+	}
+	return input[:idx]
 }
 
 func TestErrorHandlingMatchInvalidFixture(t *testing.T) {

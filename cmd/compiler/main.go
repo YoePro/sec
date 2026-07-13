@@ -36,6 +36,23 @@ func main() {
 		return
 	}
 
+	if command == "parse" || command == "ast" || command == "sema" {
+		if flag.NArg() < 2 {
+			printUsage()
+			os.Exit(1)
+		}
+		inputs := flag.Args()[1:]
+		switch command {
+		case "parse":
+			runParseInputs(inputs)
+		case "ast":
+			runASTInputs(inputs)
+		case "sema":
+			runSemaInputs(inputs, hostCompilerTarget())
+		}
+		return
+	}
+
 	if flag.NArg() != 2 {
 		printUsage()
 		os.Exit(1)
@@ -73,7 +90,8 @@ func main() {
 }
 
 func printUsage() {
-	fmt.Fprintln(os.Stderr, "usage: sec <lex|token|parse|ast|sema> <file.sec>")
+	fmt.Fprintln(os.Stderr, "usage: sec <lex|token> <file.sec>")
+	fmt.Fprintln(os.Stderr, "       sec <parse|ast|sema> <file.sec|dir|glob>...")
 	fmt.Fprintln(os.Stderr, "       sec emit-llvm <file.sec> -o <file.ll> [--target <os-arch>]")
 	fmt.Fprintln(os.Stderr, "       sec build <file.sec> [-o <program>] [--target <os-arch>] [--keep-llvm] [--clang <path>]")
 }
@@ -163,6 +181,11 @@ func runParse(input string) {
 	printProgram(program)
 }
 
+func runParseInputs(inputs []string) {
+	program := parseSourceInputs(inputs, CompilerTarget{}, false)
+	printProgram(program)
+}
+
 func runAST(input string) {
 	l := lexer.New(input)
 	p := parser.New(l)
@@ -181,8 +204,19 @@ func runAST(input string) {
 	printAST(program)
 }
 
+func runASTInputs(inputs []string) {
+	program := parseSourceInputs(inputs, CompilerTarget{}, false)
+	printAST(program)
+}
+
 func runSema(input string) {
 	parseAndAnalyze(input)
+	fmt.Println("OK")
+}
+
+func runSemaInputs(inputs []string, target CompilerTarget) {
+	program := parseSourceInputs(inputs, target, true)
+	analyzeProgram(program, target)
 	fmt.Println("OK")
 }
 
@@ -434,6 +468,12 @@ func parseAndAnalyzeForTarget(input string, target CompilerTarget) *ast.Program 
 		os.Exit(2)
 	}
 
+	analyzeProgram(program, target)
+
+	return program
+}
+
+func analyzeProgram(program *ast.Program, target CompilerTarget) {
 	if err := validateProgramTarget(program, target); err != nil {
 		fmt.Fprintf(os.Stderr, "target error: %s\n", err)
 		os.Exit(1)
@@ -450,7 +490,145 @@ func parseAndAnalyzeForTarget(input string, target CompilerTarget) *ast.Program 
 		}
 		os.Exit(3)
 	}
+}
 
+func parseSourceInputs(inputs []string, target CompilerTarget, filterTarget bool) *ast.Program {
+	files, err := collectSourceFiles(inputs)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "source error: %v\n", err)
+		os.Exit(1)
+	}
+	if len(files) == 0 {
+		fmt.Fprintln(os.Stderr, "source error: no .sec files found")
+		os.Exit(1)
+	}
+
+	combined := &ast.Program{}
+	included := 0
+	for _, file := range files {
+		if filterTarget && !sourcePathMatchesTarget(file, target) {
+			continue
+		}
+		program := parseSourceFile(file)
+		if filterTarget {
+			if err := validateProgramTarget(program, target); err != nil {
+				continue
+			}
+		}
+		combined.Statements = append(combined.Statements, program.Statements...)
+		included++
+	}
+	if included == 0 {
+		fmt.Fprintf(os.Stderr, "source error: no .sec files match target %s\n", target.String())
+		os.Exit(1)
+	}
+	return combined
+}
+
+func sourcePathMatchesTarget(path string, target CompilerTarget) bool {
+	parts := strings.Split(filepath.ToSlash(filepath.Clean(path)), "/")
+	for i := 0; i+2 < len(parts); i++ {
+		if parts[i] != "platform" {
+			continue
+		}
+		osPart := parts[i+1]
+		if target.OS != "" && osPart != target.OS {
+			return false
+		}
+		if i+3 < len(parts) {
+			archPart := parts[i+2]
+			if isKnownTargetArch(archPart) && target.Arch != "" && archPart != target.Arch {
+				return false
+			}
+		}
+		return true
+	}
+	return true
+}
+
+func isKnownTargetArch(part string) bool {
+	switch part {
+	case "amd64", "arm64", "arm32", "armv7", "x86", "cortex-m4":
+		return true
+	default:
+		return false
+	}
+}
+
+func collectSourceFiles(inputs []string) ([]string, error) {
+	seen := map[string]bool{}
+	files := []string{}
+
+	add := func(path string) {
+		clean := filepath.Clean(path)
+		if seen[clean] {
+			return
+		}
+		seen[clean] = true
+		files = append(files, clean)
+	}
+
+	for _, input := range inputs {
+		matches := []string{input}
+		if strings.ContainsAny(input, "*?[") {
+			globMatches, err := filepath.Glob(input)
+			if err != nil {
+				return nil, err
+			}
+			matches = globMatches
+		}
+		if len(matches) == 0 {
+			return nil, fmt.Errorf("%s: no matches", input)
+		}
+		for _, match := range matches {
+			info, err := os.Stat(match)
+			if err != nil {
+				return nil, err
+			}
+			if info.IsDir() {
+				err := filepath.WalkDir(match, func(path string, d os.DirEntry, err error) error {
+					if err != nil {
+						return err
+					}
+					if d.IsDir() {
+						return nil
+					}
+					if filepath.Ext(path) == ".sec" {
+						add(path)
+					}
+					return nil
+				})
+				if err != nil {
+					return nil, err
+				}
+				continue
+			}
+			if filepath.Ext(match) == ".sec" {
+				add(match)
+			}
+		}
+	}
+
+	return files, nil
+}
+
+func parseSourceFile(path string) *ast.Program {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "read error: %v\n", err)
+		os.Exit(1)
+	}
+
+	l := lexer.New(string(data))
+	p := parser.New(l)
+	program := p.ParseProgram()
+	printParserWarnings(p)
+	if len(p.Errors()) > 0 {
+		for _, err := range p.Errors() {
+			fmt.Fprintf(os.Stderr, "%s: parse error: %s\n", path, err)
+		}
+		os.Exit(2)
+	}
 	return program
 }
 
@@ -1133,7 +1311,10 @@ func printASTAssignment(stmt *ast.AssignmentStatement, prefix string, last bool)
 func printASTTypeDecl(stmt *ast.TypeDeclStatement, prefix string, last bool) {
 	printASTBranch(prefix, last, "Type")
 
-	children := []string{"Name: " + stmt.Name.Value}
+	children := []string{
+		"Name: " + stmt.Name.Value,
+		"GenericParameters: " + formatGenericParameters(stmt.GenericParameters),
+	}
 
 	if stmt.BaseType != nil {
 		children = append(children, "Base: "+formatTypeRef(stmt.BaseType))
@@ -1195,6 +1376,7 @@ func printASTFunction(stmt *ast.FunctionDeclaration, prefix string, last bool) {
 	childrenPrefix := childPrefix(prefix, last)
 	printASTLeaf(childrenPrefix, false, fmt.Sprintf("Unsafe: %t", stmt.Unsafe))
 	printASTLeaf(childrenPrefix, false, "Name: "+stmt.Name.Value)
+	printASTLeaf(childrenPrefix, false, "GenericParameters: "+formatGenericParameters(stmt.GenericParameters))
 	printASTLeaf(childrenPrefix, false, "Parameters: "+formatParameters(stmt.Parameters))
 	printASTLeaf(childrenPrefix, false, "Return: "+formatTypeRef(stmt.ReturnType))
 	printASTBranch(childrenPrefix, true, "Body")
@@ -1534,7 +1716,7 @@ func printStatement(stmt ast.Statement) {
 }
 
 func printTypeDecl(stmt *ast.TypeDeclStatement) {
-	fmt.Printf("Type %s", stmt.Name.Value)
+	fmt.Printf("Type %s%s", stmt.Name.Value, formatGenericParameters(stmt.GenericParameters))
 
 	switch {
 	case stmt.BaseType != nil:
@@ -1577,7 +1759,7 @@ func printFunction(stmt *ast.FunctionDeclaration) {
 	if stmt.Unsafe {
 		prefix = "Unsafe Function"
 	}
-	fmt.Printf("%s %s(%s) %s\n", prefix, stmt.Name.Value, formatParameters(stmt.Parameters), formatTypeRef(stmt.ReturnType))
+	fmt.Printf("%s %s%s(%s) %s\n", prefix, stmt.Name.Value, formatGenericParameters(stmt.GenericParameters), formatParameters(stmt.Parameters), formatTypeRef(stmt.ReturnType))
 	for _, bodyStmt := range stmt.Body.Statements {
 		fmt.Print("  ")
 		printStatement(bodyStmt)
@@ -1692,6 +1874,26 @@ func formatParameters(parameters []*ast.Parameter) string {
 		}
 		out += param.Name.Value + ": " + formatTypeRef(param.Type)
 	}
+	return out
+}
+
+func formatGenericParameters(parameters []*ast.GenericParameter) string {
+	if len(parameters) == 0 {
+		return ""
+	}
+	out := "["
+	for i, param := range parameters {
+		if i > 0 {
+			out += ", "
+		}
+		if param.Name != nil {
+			out += param.Name.Value
+		}
+		if param.Constraint != nil {
+			out += ": " + formatTypeRef(param.Constraint)
+		}
+	}
+	out += "]"
 	return out
 }
 

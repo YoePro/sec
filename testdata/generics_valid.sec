@@ -1,0 +1,95 @@
+module main
+
+type CustomerID int
+type ProductID int
+
+type Box[T] struct {
+    value: T,
+}
+
+impl Box[T] {
+    property Value: T {
+        get {
+            return value
+        }
+    }
+}
+
+type Pair[A, B] struct {
+    first: A,
+    second: B,
+}
+
+type Maybe[T] union {
+    Some(T)
+    None
+}
+
+enum IOError {
+    failed,
+}
+
+fn ReadInt(box: Box[int]) int {
+    return box.value
+}
+
+fn ReadCustomerID(box: Box[CustomerID]) CustomerID {
+    return box.value
+}
+
+fn UseNested(pair: Pair[Box[int], Box[string]]) void {
+}
+
+fn Identity[T](value: T) T {
+    return value
+}
+
+fn UseIdentity() int {
+    let value := Identity(10)
+    return value
+}
+
+fn UseExplicitIdentity() string {
+    return Identity[string]("hello")
+}
+
+fn Unbox[T](box: Box[T]) T {
+    return box.value
+}
+
+fn UseUnbox(box: Box[string]) string {
+    return Unbox(box)
+}
+
+fn UseBoxProperty(box: Box[int]) int {
+    return box.Value
+}
+
+fn Fail[T]() Result[T, IOError] {
+    return Err(IOError.failed)
+}
+
+fn UseExpectedResultInference() void {
+    let intResult: Result[int, IOError] := Fail()
+    let mut stringResult: Result[string, IOError]
+    stringResult = Fail()
+}
+
+fn Empty[T]() Maybe[T] {
+    return Maybe.None
+}
+
+fn UseGenericUnion() Maybe[int] {
+    return Empty[int]()
+}
+
+fn SomeInt() Maybe[int] {
+    return Maybe.Some(10)
+}
+
+fn UseGenericUnionPayload() void {
+    let value: Maybe[string] := Maybe.Some("hello")
+    let inferred := Maybe.Some(10)
+    discard value
+    discard inferred
+}

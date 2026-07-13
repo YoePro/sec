@@ -1,6 +1,11 @@
 package main
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"reflect"
+	"testing"
+)
 
 import "sec/internal/ast"
 
@@ -44,6 +49,63 @@ func TestSourceIncludePath(t *testing.T) {
 	want := "sec/platform/linux/amd64/raw_syscall.sec"
 	if got != want {
 		t.Fatalf("sourceIncludePath platform = %q, want %q", got, want)
+	}
+}
+
+func TestCollectSourceFiles(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, "nested"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	files := []string{
+		filepath.Join(dir, "a.sec"),
+		filepath.Join(dir, "nested", "b.sec"),
+		filepath.Join(dir, "ignore.txt"),
+	}
+	for _, file := range files {
+		if err := os.WriteFile(file, []byte("module test\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got, err := collectSourceFiles([]string{dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		filepath.Join(dir, "a.sec"),
+		filepath.Join(dir, "nested", "b.sec"),
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("collectSourceFiles(dir) = %#v, want %#v", got, want)
+	}
+
+	got, err = collectSourceFiles([]string{filepath.Join(dir, "*.sec")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want = []string{filepath.Join(dir, "a.sec")}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("collectSourceFiles(glob) = %#v, want %#v", got, want)
+	}
+}
+
+func TestSourcePathMatchesTarget(t *testing.T) {
+	target := CompilerTarget{OS: "linux", Arch: "amd64"}
+	tests := []struct {
+		path string
+		want bool
+	}{
+		{path: "sec/platform/linux/file.sec", want: true},
+		{path: "sec/platform/linux/amd64/raw_syscall.sec", want: true},
+		{path: "sec/platform/linux/arm64/raw_syscall.sec", want: false},
+		{path: "sec/stdlib/fmt/fmt.sec", want: true},
+	}
+
+	for _, tt := range tests {
+		if got := sourcePathMatchesTarget(tt.path, target); got != tt.want {
+			t.Fatalf("sourcePathMatchesTarget(%q) = %v, want %v", tt.path, got, tt.want)
+		}
 	}
 }
 

@@ -119,11 +119,16 @@ Control flow:
 * fallthrough is not allowed inside a defer block.
 * A defer block must not replace or redirect the function exit that caused it
   to execute.
+* `defer return` and `defer { return }` are legal but superfluous.
+* The compiler warns for superfluous defer returns.
+* The formatter should comment out superfluous defer returns when that formatter
+  rule is implemented.
 * Nested defer statements are not allowed inside a defer block.
 * goto is not supported and therefore cannot be used inside defer.
 
 Errors:
 
+* Returning a value from inside defer is invalid.
 * A defer block must handle all errors locally.
 * try must not propagate an error out of a defer block.
 * A fallible operation inside defer must be handled explicitly.
@@ -142,6 +147,18 @@ Invalid:
 defer {
     try file.Close()
 }
+```
+
+```
+defer {
+    file.Close()
+}
+```
+
+Expected:
+
+```
+unhandled Result inside defer; handle it or discard it explicitly
 ```
 
 Valid:

@@ -1,0 +1,2762 @@
+Implement compile-time generics.
+
+# Purpose
+
+Generics allow types and functions to be written once and instantiated with
+concrete types during compilation.
+
+Generics are a compile-time language feature.
+
+Generic type parameters do not exist at runtime.
+
+Generic code is monomorphized.
+
+Each concrete combination of generic arguments produces a specialized
+instantiation that is type checked and later compiled as ordinary concrete
+code.
+
+The implementation must preserve:
+
+* static typing
+* explicit type identity
+* no runtime generic dispatch
+* no implicit boxing
+* no hidden allocation
+* no type erasure
+* no runtime reflection requirement
+* no runtime representation of generic parameters
+* predictable generated code
+* deterministic name resolution
+* understandable diagnostics
+
+# Syntax
+
+Generic type declaration:
+
+```
+type Stack[T] struct {
+    items: Vec[T],
+}
+```
+
+Generic type with multiple parameters:
+
+```
+type Pair[A, B] struct {
+    first: A,
+    second: B,
+}
+```
+
+Generic union:
+
+```
+type Option[T] union {
+    Some(T)
+    None
+}
+```
+
+Generic function:
+
+```
+fn Identity[T](value: T) T {
+    return value
+}
+```
+
+Generic function with multiple parameters:
+
+```
+fn Convert[From, To](value: From) To {
+    return To(value)
+}
+```
+
+Generic function with a constraint:
+
+```
+fn Save[T: Serializable](value: T) Result[void, IOError] {
+    return value.Serialize()
+}
+```
+
+Generic type use:
+
+```
+Stack[int]
+
+Pair[string, int]
+
+Option[User]
+```
+
+Generic function call with inferred arguments:
+
+```
+let value := Identity(10)
+```
+
+Generic function call with explicit arguments:
+
+```
+let value := Identity[int](10)
+```
+
+Generic impl:
+
+```
+impl Stack[T] {
+    fn Push(value: T) void {
+    }
+
+    fn Pop() Option[T] {
+    }
+}
+```
+
+# Core rules
+
+* Generic parameters use square brackets.
+* Generic arguments use square brackets.
+* Generic parameters are types.
+* Generic parameters are not runtime values.
+* Generic parameters are visible only inside the declaration that introduces
+  them and its associated impl block.
+* Generic parameter names must be unique inside the same parameter list.
+* Generic parameter order is significant.
+* Generic argument order is significant.
+* A generic declaration must be instantiated with exactly the required number
+  of generic arguments unless all missing arguments can be inferred.
+* Generic types must always have all generic arguments supplied.
+* Generic function arguments may be inferred from function arguments and
+  expected result type where supported.
+* Explicit generic function arguments override inference for the supplied
+  parameters.
+* Partial explicit generic argument lists are not supported initially.
+* Generic parameters do not have default types initially.
+* Variadic generic parameter lists are not supported.
+* Const generics are not supported.
+* Generic runtime values are not supported.
+* Generic specialization is not selected dynamically at runtime.
+* Generic instantiation must preserve the normal type system.
+* A generic parameter represents one concrete type within one instantiation.
+* The same generic parameter must resolve consistently everywhere in the
+  declaration.
+* Different generic parameters may resolve to the same concrete type.
+* Generic types with different argument lists are different concrete types.
+* Generic instantiations with identical declarations and identical concrete
+  arguments are the same concrete type.
+* Type aliases, named types, units, enums, structs, unions and interfaces retain
+  their normal type identity when used as generic arguments.
+
+# Examples of type identity
+
+These are the same concrete type:
+
+```
+Stack[int]
+Stack[int]
+```
+
+These are different concrete types:
+
+```
+Stack[int]
+Stack[uint]
+```
+
+These are different concrete types:
+
+```
+Pair[int, string]
+Pair[string, int]
+```
+
+Named types remain distinct:
+
+```
+type CustomerID int
+type ProductID int
+```
+
+These are different concrete types:
+
+```
+Stack[CustomerID]
+Stack[ProductID]
+```
+
+even though both named types have int as their underlying type.
+
+# Generic parameter declarations
+
+A generic parameter declaration introduces a type symbol.
+
+Example:
+
+```
+type Boxed[T] struct {
+    value: T,
+}
+```
+
+Inside Boxed:
+
+* T is a type.
+* T may be used anywhere a type reference is allowed.
+* T may be used as a field type.
+* T may be used as a function parameter type.
+* T may be used as a return type.
+* T may be used as another generic argument.
+* T may not be used as a runtime expression.
+* T may not be assigned to a variable as a value.
+* T may not be called as a normal function unless constructor-style conversion
+  semantics allow conversion to the resolved concrete type.
+* Operations on T are limited by its constraints.
+
+Invalid:
+
+```
+fn Invalid[T]() void {
+    let value := T
+}
+```
+
+Expected sema error:
+
+```
+generic type parameter T cannot be used as a value
+```
+
+# Generic parameter scope
+
+Generic parameter scope begins after the parameter is declared.
+
+The parameter is visible in:
+
+* the declaration body
+* field declarations
+* union variants
+* function parameters
+* function return types
+* nested type references
+* constraints declared later in the same generic parameter list where allowed
+* the matching generic impl block
+
+The parameter is not visible:
+
+* before the declaration
+* outside the declaration
+* in unrelated declarations
+* in another generic declaration that happens to use the same parameter name
+
+Example:
+
+```
+type Container[T] struct {
+    value: T,
+}
+
+type Other[T] struct {
+    value: T,
+}
+```
+
+The two T parameters are different symbols.
+
+# Duplicate generic parameters
+
+Invalid:
+
+```
+type Pair[T, T] struct {
+}
+```
+
+Expected sema error:
+
+```
+duplicate generic parameter T in Pair
+```
+
+Invalid:
+
+```
+fn Convert[T, T](value: T) T {
+    return value
+}
+```
+
+Expected sema error:
+
+```
+duplicate generic parameter T in Convert
+```
+
+# Generic type references
+
+A generic type reference consists of:
+
+* a generic declaration symbol
+* an ordered list of type arguments
+
+Example AST meaning:
+
+```
+Map[string, int]
+```
+
+represents:
+
+```
+GenericTypeReference:
+    Base: Map
+    Arguments:
+        string
+        int
+```
+
+Generic arguments must be parsed as type references.
+
+Runtime expressions are not allowed as generic type arguments.
+
+Invalid:
+
+```
+Stack[10]
+```
+
+Expected sema error:
+
+```
+generic argument 1 for Stack must be a type
+```
+
+Invalid:
+
+```
+Stack[value]
+```
+
+when value is a variable.
+
+Expected sema error:
+
+```
+generic argument 1 for Stack must be a type
+```
+
+# Generic arity
+
+A generic declaration has a fixed generic arity.
+
+Example:
+
+```
+type Pair[A, B] struct {
+}
+```
+
+Valid:
+
+```
+Pair[int, string]
+```
+
+Invalid:
+
+```
+Pair[int]
+```
+
+Expected sema error:
+
+```
+Pair requires 2 generic arguments, got 1
+```
+
+Invalid:
+
+```
+Pair[int, string, bool]
+```
+
+Expected sema error:
+
+```
+Pair requires 2 generic arguments, got 3
+```
+
+A non-generic type must reject generic arguments.
+
+Invalid:
+
+```
+int[string]
+```
+
+Expected sema error:
+
+```
+type int is not generic
+```
+
+Invalid:
+
+```
+User[int]
+```
+
+when User is not generic.
+
+Expected sema error:
+
+```
+type User is not generic
+```
+
+# Generic functions
+
+Generic functions declare their type parameters after the function name.
+
+Syntax:
+
+```
+fn Identity[T](value: T) T {
+    return value
+}
+```
+
+Function generic parameters are visible in:
+
+* parameter types
+* return types
+* function body
+* local type references
+* nested generic calls
+
+Function generic parameters are not visible outside the function declaration.
+
+A generic function declaration is registered once.
+
+Concrete function instances are created when the function is used with a valid
+set of concrete generic arguments.
+
+Example:
+
+```
+Identity[int]
+Identity[string]
+```
+
+produce separate concrete instances.
+
+# Generic function calls
+
+A generic function may be called with explicit generic arguments:
+
+```
+Identity[int](10)
+```
+
+or with inferred generic arguments:
+
+```
+Identity(10)
+```
+
+The parser must distinguish:
+
+```
+Identity[int](10)
+```
+
+from:
+
+```
+Identity[index]
+```
+
+The distinction is based on syntactic context.
+
+When a name followed by square brackets is immediately used as a callable
+expression, the parser may represent it as an explicit generic function
+reference.
+
+The parser must not permanently decide whether brackets represent generic
+arguments or indexing when name resolution is required.
+
+The AST should preserve sufficient information for sema to resolve the form
+correctly.
+
+# Type inference
+
+The compiler should infer generic function arguments whenever possible.
+
+Inference is performed from:
+
+* ordinary function arguments
+* expected parameter types
+* explicit generic arguments
+* expected result type where supported
+
+Initial implementation should prioritize inference from ordinary function
+arguments.
+
+Example:
+
+```
+fn Identity[T](value: T) T {
+    return value
+}
+
+let value := Identity(10)
+```
+
+Inference:
+
+```
+T = int
+```
+
+Example:
+
+```
+fn First[T](values: []T) T {
+}
+
+let value := First(numbers)
+```
+
+If numbers has type []int:
+
+```
+T = int
+```
+
+# Inference consistency
+
+All uses of the same generic parameter must infer the same concrete type.
+
+Example:
+
+```
+fn Equal[T](a: T, b: T) bool {
+    return a == b
+}
+```
+
+Valid:
+
+```
+Equal(10, 20)
+```
+
+Inference:
+
+```
+T = int
+```
+
+Invalid:
+
+```
+Equal(10, "hello")
+```
+
+Expected sema error:
+
+```
+cannot infer one type for T: argument 1 requires int, argument 2 requires string
+```
+
+The compiler must not silently choose a common underlying type.
+
+Normal implicit conversion rules may be considered only after generic inference
+has established a valid target type.
+
+Inference must not erase named type identity.
+
+# Inference from nested types
+
+Inference must recursively match generic type structure.
+
+Example:
+
+```
+fn Length[T](values: []T) uint {
+}
+```
+
+If the argument has type:
+
+```
+[]string
+```
+
+then:
+
+```
+T = string
+```
+
+Example:
+
+```
+fn GetOr[T](value: Option[T], fallback: T) T {
+}
+```
+
+Call:
+
+```
+GetOr(option, fallback)
+```
+
+Inference must match both:
+
+```
+Option[T]
+T
+```
+
+and require one consistent T.
+
+# Inference from multiple parameters
+
+Example:
+
+```
+fn MakePair[A, B](first: A, second: B) Pair[A, B] {
+}
+```
+
+Call:
+
+```
+MakePair(10, "value")
+```
+
+Inference:
+
+```
+A = int
+B = string
+```
+
+# Inference failure
+
+Inference fails when a generic parameter cannot be determined.
+
+Example:
+
+```
+fn Empty[T]() Option[T] {
+    return None
+}
+```
+
+Invalid without expected-result inference:
+
+```
+let value := Empty()
+```
+
+Expected sema error:
+
+```
+cannot infer generic parameter T for Empty
+```
+
+Valid with explicit argument:
+
+```
+let value := Empty[int]()
+```
+
+Expected-result inference may later allow:
+
+```
+let value: Option[int] := Empty()
+```
+
+If expected-result inference is not implemented initially, require explicit
+generic arguments and report a clear error.
+
+# Expected-result inference
+
+Expected-result inference may be implemented after argument inference is
+stable.
+
+Current implementation:
+
+* Expected-result inference is implemented for generic function call
+  expressions in typed let initializers, assignments, member assignments and
+  non-Result return statements.
+* Argument inference runs first.
+* Expected result type may fill generic parameters that arguments cannot infer.
+* Expected result type must not override contradictory argument inference.
+* Explicit generic function calls do not use expected-result inference.
+
+Example:
+
+```
+fn Empty[T]() Option[T] {
+    return None
+}
+
+let value: Option[int] := Empty()
+```
+
+Expected result:
+
+```
+Option[int]
+```
+
+Function result:
+
+```
+Option[T]
+```
+
+Inference:
+
+```
+T = int
+```
+
+Expected-result inference should not override contradictory argument inference.
+
+If arguments infer T as string and the expected result requires T as int, the
+call is invalid.
+
+# Explicit generic arguments
+
+Explicit generic arguments are resolved as types before normal argument
+checking.
+
+Example:
+
+```
+Identity[int](10)
+```
+
+The explicit argument fixes:
+
+```
+T = int
+```
+
+The function argument is then checked against int.
+
+Invalid:
+
+```
+Identity[int]("hello")
+```
+
+Expected sema error:
+
+```
+argument 1 to Identity[int] must be int, got string
+```
+
+Explicit generic arguments must satisfy constraints.
+
+Explicit generic arguments must match the declaration arity.
+
+Partial explicit arguments are not supported initially.
+
+Invalid:
+
+```
+Convert[int](value)
+```
+
+when Convert declares:
+
+```
+fn Convert[From, To](value: From) To
+```
+
+Expected sema error:
+
+```
+Convert requires 2 explicit generic arguments, got 1
+```
+
+The user should either provide all explicit arguments or allow complete
+inference.
+
+# Generic structs
+
+Generic struct declarations define a struct template.
+
+Example:
+
+```
+type Pair[A, B] struct {
+    first: A,
+    second: B,
+}
+```
+
+The generic declaration itself has no final concrete memory layout.
+
+A concrete memory layout is created for each concrete instantiation.
+
+Example:
+
+```
+Pair[int, string]
+```
+
+has fields:
+
+```
+first: int
+second: string
+```
+
+Example:
+
+```
+Pair[Meter, Second]
+```
+
+has fields:
+
+```
+first: Meter
+second: Second
+```
+
+Struct construction requires a concrete generic type.
+
+Valid:
+
+```
+let pair := Pair[int, string] {
+    first: 10,
+    second: "ten",
+}
+```
+
+Field checking uses substituted concrete field types.
+
+# Generic struct default values
+
+A concrete generic struct has a default value only if every substituted field
+type has a valid default value.
+
+Example:
+
+```
+type Holder[T] struct {
+    value: T,
+}
+```
+
+Holder[int] has a default because int has a default.
+
+Holder[Port] has no default if Port has no valid default.
+
+The generic declaration itself is not classified as defaultable independently
+of its arguments.
+
+Defaultability must be calculated per concrete instantiation.
+
+# Generic unions
+
+Generic unions follow the normal union rules after substitution.
+
+Current implementation:
+
+* Parser accepts generic union declarations with empty variants and single
+  payload variants, for example `Some(T)` and `None`.
+* Sema registers generic unions as named `UnionType` templates.
+* Generic union type references enforce arity and preserve nominal identity.
+* Concrete generic union instances substitute payload types.
+* Empty variants such as `Maybe.None` type as the union value.
+* Payload variants can be constructed as `Maybe.Some(value)`.
+* Payload construction uses the expected union type when available, or infers
+  generic arguments from the payload expression.
+* Union layout, exhaustiveness over generic unions and full
+  match/destructuring support are still pending with the general union
+  implementation.
+
+Example:
+
+```
+type Option[T] union {
+    Some(T)
+    None
+}
+```
+
+Concrete instantiation:
+
+```
+Option[int]
+```
+
+produces variants equivalent to:
+
+```
+Some(int)
+None
+```
+
+Example:
+
+```
+type Result[T, E] union {
+    Ok(T)
+    Err(E)
+}
+```
+
+Concrete instantiation:
+
+```
+Result[string, IOError]
+```
+
+produces variants equivalent to:
+
+```
+Ok(string)
+Err(IOError)
+```
+
+Variant constructors must use the concrete instantiated union type.
+
+Generic union exhaustiveness is checked after substitution.
+
+# Generic enums
+
+Generic enums are not supported initially.
+
+Enums represent finite named values and do not require generic payload types.
+
+Invalid:
+
+```
+enum Value[T] {
+    first,
+    second,
+}
+```
+
+Expected parser or sema error:
+
+```
+enum declarations cannot have generic parameters
+```
+
+# Generic named aliases and primitive-derived types
+
+Initial generic support should focus on:
+
+* structs
+* unions
+* functions
+* impl blocks
+* interfaces as constraints
+
+Generic aliases or generic primitive-derived named types may be postponed.
+
+Examples to postpone unless explicitly implemented:
+
+```
+type ID[T] int
+
+type Alias[T] T
+```
+
+If parser support accepts these forms, sema should reject them clearly until
+their type identity and conversion semantics are defined.
+
+# Generic impl blocks
+
+A generic type may have an impl block using the same generic parameters.
+
+Example:
+
+```
+type Stack[T] struct {
+    items: Vec[T],
+}
+
+impl Stack[T] {
+    fn Push(value: T) void {
+    }
+
+    fn Pop() Option[T] {
+    }
+}
+```
+
+Rules:
+
+* The impl target must be a generic named type.
+* The impl generic arguments must correspond to the target declaration.
+* The impl does not introduce unrelated implicit generic parameters.
+* T inside impl Stack[T] refers to the impl generic parameter.
+* The impl parameter must map to the target type parameter.
+* All methods in the impl may use T.
+* The impl is instantiated together with the concrete target type.
+* Methods are monomorphized only when used, unless eager instantiation is
+  selected for implementation simplicity.
+* A generic type follows the normal rule of at most one impl block.
+
+Current implementation:
+
+* `impl Stack[T]` is accepted when `Stack` declares exactly `T`.
+* The impl target generic arguments must match the target declaration names and
+  arity.
+* Generic impl scopes are available while resolving nested type declarations,
+  properties and property bodies.
+* Generic struct instantiation substitutes property types together with field
+  types.
+* Method declarations inside impl blocks are still not fully registered as
+  callable methods.
+* Method-level generic parameters are rejected clearly.
+
+Invalid:
+
+```
+type Stack[T] struct {
+}
+
+impl Stack[U] {
+}
+```
+
+If U is not declared by the impl syntax, report:
+
+```
+unknown generic parameter U in impl target Stack
+```
+
+A suitable AST representation should explicitly declare impl generic
+parameters rather than treating unresolved names as implicit declarations.
+
+Preferred future syntax if explicit declaration is needed:
+
+```
+impl[T] Stack[T] {
+}
+```
+
+However, the currently documented syntax is:
+
+```
+impl Stack[T] {
+}
+```
+
+For the initial implementation, the parser may derive impl generic parameters
+from bare type identifiers used in the target argument list.
+
+This derivation must be limited to generic impl targets and must not create
+implicit generic parameters in ordinary type references.
+
+# Generic methods
+
+Methods on a generic type may use the type parameters of the impl.
+
+Example:
+
+```
+impl Stack[T] {
+    fn Push(value: T) void {
+    }
+}
+```
+
+Methods may eventually declare additional generic parameters:
+
+```
+impl Stack[T] {
+    fn Map[U](mapper: fn(T) U) Stack[U] {
+    }
+}
+```
+
+Additional method-level generic parameters may be postponed until ordinary
+generic functions and generic impl blocks are stable.
+
+If not implemented initially, reject them clearly:
+
+```
+generic methods with additional type parameters are not supported yet
+```
+
+# Constraints
+
+Generic constraints are expressed using interfaces.
+
+Syntax:
+
+```
+fn Save[T: Serializable](value: T) Result[void, IOError] {
+}
+```
+
+The constraint means:
+
+```
+T must explicitly implement Serializable
+```
+
+Constraints are compile-time requirements.
+
+Constraints do not create runtime interface values.
+
+Constraints do not imply dynamic dispatch.
+
+Constraints determine which members and operations may be used on a generic
+parameter inside the generic declaration.
+
+# Constraint resolution
+
+The constraint name must resolve to an interface.
+
+Current implementation:
+
+* Parser stores one optional constraint per generic parameter.
+* Sema validates constraint names on generic type and function declarations.
+* Unknown constraints are rejected.
+* Constraints that resolve to non-interface types are rejected.
+* Interface declarations and concrete constraint satisfaction are not
+  implemented yet.
+
+Invalid:
+
+```
+fn Save[T: int](value: T) void {
+}
+```
+
+Expected sema error:
+
+```
+generic constraint int is not an interface
+```
+
+Invalid:
+
+```
+fn Save[T: Missing](value: T) void {
+}
+```
+
+Expected sema error:
+
+```
+unknown generic constraint Missing for T
+```
+
+# Constraint satisfaction
+
+A concrete type satisfies an interface constraint only through an explicit
+valid interface implementation.
+
+Example:
+
+```
+type Serializable interface {
+    fn Serialize() bytes
+}
+
+type User struct {
+}
+
+impl Serializable for User {
+    fn Serialize() bytes {
+    }
+}
+```
+
+Then:
+
+```
+Save[User](user)
+```
+
+is valid.
+
+A matching method name without an explicit interface implementation is not
+enough.
+
+This follows the language rule that interface implementation is explicit.
+
+# Member access through constraints
+
+Inside generic code, operations on T are restricted.
+
+Unconstrained T supports only operations guaranteed for all types.
+
+Initially, this should include:
+
+* assignment
+* passing as a value
+* returning
+* storing in compatible generic containers
+* explicit operations already validated by normal copy/move rules
+
+Unconstrained T must not automatically support:
+
+* arithmetic
+* ordering
+* equality
+* indexing
+* field access
+* method calls
+* conversion to arbitrary types
+
+A constrained parameter may use members declared by its interface.
+
+Example:
+
+```
+fn Encode[T: Serializable](value: T) bytes {
+    return value.Serialize()
+}
+```
+
+The method call is valid because Serializable declares Serialize.
+
+# Equality and generic parameters
+
+Equality must not be assumed for unconstrained generic parameters.
+
+Invalid:
+
+```
+fn Equal[T](a: T, b: T) bool {
+    return a == b
+}
+```
+
+unless the language later defines equality as universally available.
+
+If equality requires an interface, use a constraint:
+
+```
+fn Equal[T: Equatable](a: T, b: T) bool {
+    return a.Equals(b)
+}
+```
+
+Operator-based constraints are not part of the initial implementation.
+
+Do not add special syntax such as:
+
+```
+T: ==
+T: +
+T: Ordered + Copy
+```
+
+until separately designed.
+
+# Multiple constraints
+
+Multiple constraints are postponed.
+
+The initial implementation supports at most one interface constraint per
+generic parameter.
+
+Valid:
+
+```
+T: Serializable
+```
+
+Postponed syntax examples:
+
+```
+T: Serializable + Comparable
+
+T: Serializable, Comparable
+```
+
+The parser may preserve room in the AST for multiple constraints, but sema
+should reject more than one until syntax and semantics are finalized.
+
+Expected error:
+
+```
+multiple constraints are not supported yet
+```
+
+# Constraints on generic types
+
+Generic structs and unions may use constrained parameters if parser support is
+implemented.
+
+Example:
+
+```
+type Stored[T: Serializable] struct {
+    value: T,
+}
+```
+
+Every concrete instantiation must satisfy the constraint.
+
+Invalid:
+
+```
+Stored[Socket]
+```
+
+when Socket does not implement Serializable.
+
+Expected sema error:
+
+```
+type Socket does not satisfy Serializable required by Stored.T
+```
+
+# Constraint checking time
+
+Constraint declarations should be validated when the generic declaration is
+registered.
+
+Concrete constraint satisfaction should be checked when an instantiation is
+requested.
+
+This separates:
+
+Declaration error:
+
+```
+unknown constraint Serializable
+```
+
+from:
+
+Instantiation error:
+
+```
+type User does not implement Serializable
+```
+
+# Generic declaration analysis
+
+A generic declaration must be semantically analyzed as a template.
+
+The compiler must not assume a concrete representation for generic parameters
+during template analysis.
+
+Template analysis should validate:
+
+* generic parameter declarations
+* duplicate parameters
+* constraint names
+* symbol resolution independent of concrete arguments
+* operations permitted by constraints
+* syntactic type references
+* declaration-level name conflicts
+* body control flow
+* return structure where possible
+
+Template analysis must not require:
+
+* final field sizes
+* final alignment
+* final copy behavior
+* final defaultability
+* final method dispatch target
+* final LLVM type
+
+These concrete properties are determined during instantiation.
+
+# Instantiation analysis
+
+Instantiation substitutes concrete types for generic parameters.
+
+For:
+
+```
+Pair[int, string]
+```
+
+substitution is:
+
+```
+A -> int
+B -> string
+```
+
+The instantiation process must:
+
+1. Resolve the generic declaration.
+2. Resolve all concrete type arguments.
+3. Check generic arity.
+4. Check constraints.
+5. Build a substitution map.
+6. Create or retrieve the canonical instantiation.
+7. Substitute generic parameters in field, variant, parameter and return types.
+8. Resolve resulting concrete types.
+9. Calculate layout where needed.
+10. Calculate defaultability.
+11. Calculate copy/move properties.
+12. Validate concrete-only rules.
+13. Register the concrete type or function instance.
+14. Queue it for code generation when used.
+
+# Canonical instantiations
+
+The compiler must deduplicate identical instantiations.
+
+These must resolve to the same compiler type object:
+
+```
+Stack[int]
+Stack[int]
+```
+
+The canonical key should include:
+
+* generic declaration identity
+* ordered concrete generic argument identities
+
+Do not key only by rendered type names.
+
+Type identities must remain stable across modules.
+
+Possible internal key:
+
+```
+GenericInstanceKey:
+    DeclarationID
+    ArgumentTypeIDs []TypeID
+```
+
+# Recursive generic instantiation
+
+The compiler must detect infinite generic instantiation.
+
+Current implementation:
+
+* Direct recursive generic struct storage is rejected at declaration analysis.
+* Fixed arrays of the same recursive generic struct are rejected as direct
+  storage.
+* Slice fields are treated as an indirection boundary for now.
+* Recursive generic struct fields with changing type arguments are rejected as
+  non-converging recursive instantiation.
+* Full layout-aware distinction between ref, pointer, Box, union payloads and
+  other indirection mechanisms is still pending.
+
+Direct recursive storage may be invalid:
+
+```
+type Node[T] struct {
+    next: Node[T],
+}
+```
+
+This has infinite size.
+
+Expected sema error:
+
+```
+recursive generic type Node[T] has infinite size
+```
+
+Recursion through indirection may be valid later:
+
+```
+type Node[T] struct {
+    next: Option[Box[Node[T]]],
+}
+```
+
+The layout analyzer must distinguish:
+
+* direct recursive storage
+* recursive reference
+* recursive pointer
+* recursive Box or other defined indirection
+
+Generic instantiation may also recurse through changing arguments:
+
+```
+type Infinite[T] struct {
+    next: Infinite[Option[T]],
+}
+```
+
+This creates an unbounded instantiation chain and must be detected.
+
+Expected sema error:
+
+```
+recursive generic instantiation does not converge for Infinite
+```
+
+# Instantiation cycle tracking
+
+Maintain an instantiation state:
+
+* not_started
+* resolving
+* resolved
+* failed
+
+If an identical canonical instantiation is requested while it is resolving,
+allow only recursion through a valid indirection boundary.
+
+If a new, progressively different instantiation is repeatedly requested,
+detect excessive or non-converging recursion.
+
+Do not rely only on a fixed recursion depth.
+
+A depth limit may exist as a compiler safety guard but should not be the primary
+semantic rule.
+
+# Monomorphization
+
+Generic code is monomorphized.
+
+Example:
+
+```
+fn Identity[T](value: T) T {
+    return value
+}
+```
+
+Calls:
+
+```
+Identity[int](10)
+Identity[string]("hello")
+```
+
+produce concrete instances conceptually equivalent to:
+
+```
+fn Identity_int(value: int) int {
+    return value
+}
+
+fn Identity_string(value: string) string {
+    return value
+}
+```
+
+Generated source-level names are conceptual only.
+
+Internal generated symbol names must be deterministic and collision-safe.
+
+The compiler should include:
+
+* declaration identity
+* concrete type arguments
+* module identity
+* stable mangling
+
+Do not use only human-readable type names when generating LLVM symbols.
+
+# Lazy versus eager monomorphization
+
+Preferred behavior is lazy monomorphization.
+
+Create concrete function code only when the function instance is reachable or
+otherwise required.
+
+Concrete type metadata may be created when the type is referenced.
+
+Advantages:
+
+* less generated code
+* faster compilation
+* fewer unused instances
+* no code generation for unused generic methods
+
+The initial implementation may instantiate more eagerly if simpler, but it must
+still deduplicate instances and must not change language semantics.
+
+# Generic function instance lookup
+
+After inference or explicit argument resolution, a generic function call must
+resolve to one concrete function instance.
+
+The call expression should be rewritten or annotated with:
+
+* original generic declaration
+* resolved generic arguments
+* concrete parameter types
+* concrete return type
+* concrete instance symbol
+
+LLVM code generation should not perform generic inference.
+
+# AST requirements
+
+Suggested AST structures:
+
+```
+GenericParameter:
+    Name *Identifier
+    Constraint *TypeReference
+    Token Token
+
+GenericParameterList:
+    Parameters []*GenericParameter
+    OpenBracket Token
+    CloseBracket Token
+
+GenericArgumentList:
+    Arguments []*TypeReference
+    OpenBracket Token
+    CloseBracket Token
+
+GenericTypeReference:
+    Base *TypeReference
+    Arguments *GenericArgumentList
+
+GenericFunctionReference:
+    Function Expression
+    Arguments *GenericArgumentList
+```
+
+Existing declarations should gain optional generic parameter lists:
+
+```
+TypeDeclaration:
+    Name *Identifier
+    GenericParameters *GenericParameterList
+    Definition TypeDefinition
+
+FunctionDeclaration:
+    Name *Identifier
+    GenericParameters *GenericParameterList
+    Parameters []*FunctionParameter
+    ReturnType *TypeReference
+    Body *BlockStatement
+
+ImplStatement:
+    Target *TypeReference
+    GenericParameters *GenericParameterList
+    Members []ImplMember
+```
+
+If impl syntax derives parameters from the target, store the derived parameters
+explicitly in the AST or resolved semantic representation.
+
+Do not repeatedly infer impl parameter declarations during later sema passes.
+
+# Resolved semantic structures
+
+Suggested semantic structures:
+
+```
+GenericParameterSymbol:
+    ID SymbolID
+    Name string
+    Index int
+    Constraint InterfaceType
+    Owner DeclarationID
+
+GenericDeclaration:
+    ID DeclarationID
+    Parameters []*GenericParameterSymbol
+    AST DeclarationNode
+    Scope *Scope
+    Instances map[GenericInstanceKey]*GenericInstance
+
+GenericInstance:
+    Key GenericInstanceKey
+    Declaration *GenericDeclaration
+    Arguments []Type
+    Substitution map[SymbolID]Type
+    State GenericInstanceState
+    ConcreteType Type
+    ConcreteFunction *FunctionSymbol
+```
+
+Generic parameter references should resolve to GenericParameterSymbol, not
+remain unresolved string names.
+
+# Parser requirements
+
+The parser must support generic parameter lists after declaration names.
+
+Examples:
+
+```
+type Stack[T] struct {
+}
+
+fn Identity[T](value: T) T {
+}
+```
+
+The parser must support generic argument lists in type references.
+
+Examples:
+
+```
+Stack[int]
+Map[string, Vec[int]]
+Result[Option[User], IOError]
+```
+
+The parser must support nested closing brackets without requiring whitespace.
+
+Example:
+
+```
+Vec[Option[Result[int, IOError]]]
+```
+
+The parser must correctly handle:
+
+```
+]]]
+```
+
+as three generic closing brackets when appropriate.
+
+The parser must preserve source locations for:
+
+* opening bracket
+* closing bracket
+* each generic parameter
+* each generic argument
+* constraints
+* commas
+
+Generic parameter lists are comma-separated.
+
+Trailing comma should be allowed for multiline consistency:
+
+```
+type Pair[
+    A,
+    B,
+] struct {
+}
+```
+
+If multiline generic parameter syntax is not desired, trailing comma may still
+be allowed without changing semantics.
+
+Generic argument lists are comma-separated.
+
+Trailing comma should also be allowed:
+
+```
+Map[
+    string,
+    int,
+]
+```
+
+# Parser errors
+
+Missing parameter name:
+
+```
+type Bad[] struct {
+}
+```
+
+Expected parser error:
+
+```
+expected generic parameter name
+```
+
+Missing comma:
+
+```
+type Bad[A B] struct {
+}
+```
+
+Expected parser error:
+
+```
+expected ',' or ']' after generic parameter A
+```
+
+Missing closing bracket:
+
+```
+type Bad[T struct {
+}
+```
+
+Expected parser error:
+
+```
+expected ']' after generic parameter list
+```
+
+Missing constraint:
+
+```
+fn Save[T:](value: T) void {
+}
+```
+
+Expected parser error:
+
+```
+expected constraint type after ':' for generic parameter T
+```
+
+Missing generic argument:
+
+```
+Stack[]
+```
+
+Expected parser error:
+
+```
+expected generic type argument
+```
+
+Missing comma in arguments:
+
+```
+Pair[int string]
+```
+
+Expected parser error:
+
+```
+expected ',' or ']' after generic type argument
+```
+
+Parser recovery should stop at one of:
+
+* comma
+* closing bracket
+* opening brace
+* opening parenthesis
+* declaration boundary
+* statement boundary
+
+The parser should avoid cascading errors inside the following declaration body
+when the generic list is malformed.
+
+# Bracket ambiguity
+
+Square brackets are also used by:
+
+* array types
+* slice types
+* indexing expressions
+* generic parameters
+* generic arguments
+
+Parser decisions should use syntactic position.
+
+Examples:
+
+```
+[10]int
+```
+
+starts with a bracket and is an array type.
+
+```
+[]int
+```
+
+starts with a bracket and is a slice type.
+
+```
+Stack[int]
+```
+
+follows a type name in type position and is a generic type reference.
+
+```
+values[index]
+```
+
+follows an expression and is normally indexing.
+
+```
+Identity[int](value)
+```
+
+follows a callable name and is an explicit generic function call.
+
+When syntactic context is insufficient, preserve an ambiguous postfix bracket
+node and resolve it during sema.
+
+Do not duplicate large parsing paths for indexing and generic arguments if one
+postfix parser can preserve the distinction.
+
+# Name resolution
+
+Generic declaration lookup follows normal module and visibility rules.
+
+Example:
+
+```
+collections.Stack[int]
+```
+
+The base name collections.Stack must resolve before arguments are validated.
+
+Generic parameters shadow outer type names within their scope.
+
+Example:
+
+```
+type T struct {
+}
+
+fn Identity[T](value: T) T {
+    return value
+}
+```
+
+Inside Identity, T refers to the generic parameter.
+
+Outside Identity, T refers to the named type.
+
+A generic parameter must not shadow another parameter in the same parameter
+list.
+
+Whether generic parameters may shadow module types should follow normal local
+scope shadowing rules.
+
+# Forward references
+
+Generic declarations should participate in normal declaration registration.
+
+This should be valid:
+
+```
+type UserList List[User]
+
+type List[T] struct {
+    items: []T,
+}
+```
+
+if generic aliases are supported.
+
+For generic structs:
+
+```
+type First[T] struct {
+    second: Second[T],
+}
+
+type Second[T] struct {
+    value: T,
+}
+```
+
+Pass 1 must register:
+
+* First
+* First generic arity
+* Second
+* Second generic arity
+
+before resolving field types.
+
+Generic declaration registration must not require full body analysis.
+
+# Suggested semantic passes
+
+Pass 1: Register generic declaration headers
+
+* register declaration name
+* register generic arity
+* register generic parameter names
+* create generic parameter symbols
+* register constraints syntactically
+* reject duplicate declaration names
+* reject duplicate generic parameter names
+
+Pass 2: Resolve generic constraints
+
+* resolve each constraint name
+* require interface type
+* detect invalid or circular constraint references
+* attach resolved constraints to parameter symbols
+
+Pass 3: Analyze generic templates
+
+* create generic scope
+* resolve field and parameter type references
+* resolve generic parameter uses
+* validate allowed operations from constraints
+* validate generic function bodies
+* validate generic impl members
+* do not calculate final layout
+
+Pass 4: Resolve ordinary uses
+
+* parse and resolve generic type references
+* infer generic function arguments
+* validate explicit generic arguments
+* request concrete instantiations
+
+Pass 5: Instantiate concrete types and functions
+
+* check arity
+* check constraints
+* create substitution map
+* deduplicate instance
+* resolve substituted types
+* calculate concrete properties
+* analyze concrete-only semantics
+* queue code generation
+
+Pass 6: Monomorphized code generation
+
+* emit concrete LLVM types
+* emit concrete functions
+* emit concrete methods
+* emit only resolved concrete operations
+
+# Substitution
+
+Substitution replaces generic parameter symbols with concrete types.
+
+Do not substitute by text name.
+
+Example:
+
+```
+Pair[A, B]
+```
+
+with:
+
+```
+A -> int
+B -> string
+```
+
+must recursively transform:
+
+```
+Map[A, Vec[B]]
+```
+
+into:
+
+```
+Map[int, Vec[string]]
+```
+
+Substitution must handle:
+
+* direct generic parameter references
+* arrays of generic parameters
+* slices of generic parameters
+* references to generic parameters
+* generic nested types
+* function parameter types
+* function return types
+* union payloads
+* struct fields
+* interface references
+* method signatures
+* Result and Option types
+* nested generic instantiations
+
+Substitution must preserve:
+
+* source location
+* declaration identity
+* mutability
+* reference qualifiers
+* units
+* named type identity
+
+# Copy, move and ownership behavior
+
+Generic parameters do not automatically imply copyability.
+
+Example:
+
+```
+fn Duplicate[T](value: T) Pair[T, T] {
+    return Pair[T, T] {
+        first: value,
+        second: value,
+    }
+}
+```
+
+This is invalid for non-copyable T.
+
+Without a Copy-like constraint, the compiler cannot assume that T may be copied.
+
+The initial implementation may report the error during concrete instantiation.
+
+A stronger template analyzer may reject operations not guaranteed by a
+constraint.
+
+Generic code must obey:
+
+* move rules
+* copy rules
+* borrow rules
+* mutability rules
+* lifetime rules
+
+for the concrete substituted types.
+
+Do not implement generic operations by blindly copying runtime bytes.
+
+# Default values
+
+A generic parameter has no assumed default value.
+
+Example:
+
+```
+fn Make[T]() T {
+    let mut value: T
+    return value
+}
+```
+
+This is invalid unless a future constraint guarantees default construction.
+
+Expected error:
+
+```
+generic parameter T is not known to have a default value
+```
+
+Concrete defaultability must not make an invalid unconstrained generic template
+silently valid for only some instantiations unless Sec explicitly supports
+specialization by capability.
+
+Initial rule:
+
+Generic code may only use implicit default construction when the generic
+parameter constraint guarantees it.
+
+Since no Default interface is currently defined as a language rule, implicit
+default construction of unconstrained T is invalid.
+
+# Casts involving generic parameters
+
+Normal explicit cast rules apply after substitution.
+
+A generic parameter cannot be cast to an arbitrary type without a constraint or
+defined conversion rule.
+
+Invalid generic template:
+
+```
+fn ToInt[T](value: T) int {
+    return int(value)
+}
+```
+
+unless every permitted T has a valid explicit conversion to int.
+
+The compiler may reject this during template analysis or require a suitable
+interface-based conversion method.
+
+Constructor-style conversion:
+
+```
+T(value)
+```
+
+may only be allowed when T is a concrete type at instantiation and the normal
+conversion is valid.
+
+Avoid making T(value) universally valid.
+
+# Overload resolution
+
+If Sec supports overloaded functions later, generic inference must be integrated
+with overload resolution.
+
+Initial implementation should avoid relying on overloads.
+
+A generic call should first resolve a unique generic declaration by normal name
+resolution.
+
+If multiple candidates exist, report ambiguity rather than guessing.
+
+Expected error:
+
+```
+ambiguous generic function call Max
+```
+
+# Visibility
+
+A public generic declaration may only expose visible types and constraints in
+its public signature.
+
+Example:
+
+```
+fn Public[T: _PrivateInterface](value: T) void {
+}
+```
+
+should be invalid if the function is public and the constraint is not visible
+to callers.
+
+Concrete generic arguments must obey normal visibility rules.
+
+Private concrete types may be used with public generic types inside scopes where
+the private types are visible.
+
+# Modules
+
+Generic declarations belong to modules like ordinary declarations.
+
+Instantiation does not create a new source module.
+
+A generic type imported from another module retains its declaration identity.
+
+These must refer to the same generic declaration:
+
+```
+collections.Stack[int]
+```
+
+from all importing modules.
+
+The compiler may generate one concrete instance per final program or compilation
+unit, not one unrelated semantic type per source file.
+
+Cross-module instance caching must preserve module identity and visibility.
+
+# Diagnostics
+
+Diagnostics should mention:
+
+* generic declaration name
+* generic parameter name
+* parameter position
+* concrete argument type
+* required constraint
+* source location of the use
+* source location of the generic declaration when useful
+
+Good:
+
+```
+type Socket does not satisfy Serializable required by Save.T
+```
+
+Poor:
+
+```
+constraint failed
+```
+
+Good:
+
+```
+cannot infer generic parameter E for ResultValue
+```
+
+Poor:
+
+```
+inference failed
+```
+
+Good:
+
+```
+Pair requires 2 generic arguments, got 1
+```
+
+Poor:
+
+```
+invalid generic type
+```
+
+When an error originates inside generic code, include the instantiation context.
+
+Example:
+
+```
+error in Stack[Socket].Push:
+Socket is not copyable at stack.sec:42:17
+instantiated from main.sec:18:9
+```
+
+Avoid reporting the same template error once for every instantiation if the
+error is independent of concrete types.
+
+Template-independent errors should be reported once at declaration analysis.
+
+Concrete-dependent errors should be reported per relevant instantiation, with
+deduplication where possible.
+
+# Invalid examples
+
+Duplicate generic parameter:
+
+```
+type Pair[T, T] struct {
+}
+```
+
+Wrong generic arity:
+
+```
+let value: Pair[int]
+```
+
+Generic argument is not a type:
+
+```
+let value: Stack[10]
+```
+
+Generic arguments on non-generic type:
+
+```
+let value: User[int]
+```
+
+Unknown generic base:
+
+```
+let value: Missing[int]
+```
+
+Unknown constraint:
+
+```
+fn Save[T: Missing](value: T) void {
+}
+```
+
+Constraint is not an interface:
+
+```
+fn Save[T: int](value: T) void {
+}
+```
+
+Constraint not satisfied:
+
+```
+Save[Socket](socket)
+```
+
+Inconsistent inference:
+
+```
+Equal(10, "ten")
+```
+
+Cannot infer:
+
+```
+Empty()
+```
+
+Unconstrained method call:
+
+```
+fn Encode[T](value: T) bytes {
+    return value.Serialize()
+}
+```
+
+Unconstrained equality:
+
+```
+fn Equal[T](a: T, b: T) bool {
+    return a == b
+}
+```
+
+Unconstrained arithmetic:
+
+```
+fn Add[T](a: T, b: T) T {
+    return a + b
+}
+```
+
+Generic parameter used as value:
+
+```
+fn Invalid[T]() void {
+    let value := T
+}
+```
+
+Direct recursive generic storage:
+
+```
+type Node[T] struct {
+    next: Node[T],
+}
+```
+
+Non-converging generic recursion:
+
+```
+type Infinite[T] struct {
+    next: Infinite[Option[T]],
+}
+```
+
+# Valid examples
+
+Generic identity:
+
+```
+fn Identity[T](value: T) T {
+    return value
+}
+
+let integer := Identity(10)
+let text := Identity("hello")
+```
+
+Explicit generic call:
+
+```
+let integer := Identity[int](10)
+```
+
+Generic struct:
+
+```
+type Pair[A, B] struct {
+    first: A,
+    second: B,
+}
+
+let pair := Pair[int, string] {
+    first: 10,
+    second: "ten",
+}
+```
+
+Generic union:
+
+```
+type Option[T] union {
+    Some(T)
+    None
+}
+```
+
+Generic result:
+
+```
+type Result[T, E] union {
+    Ok(T)
+    Err(E)
+}
+```
+
+Generic constrained function:
+
+```
+type Serializable interface {
+    fn Serialize() bytes
+}
+
+fn Encode[T: Serializable](value: T) bytes {
+    return value.Serialize()
+}
+```
+
+Generic impl:
+
+```
+type Holder[T] struct {
+    value: T,
+}
+
+impl Holder[T] {
+    fn Get() T {
+        return value
+    }
+}
+```
+
+# Unsupported in the initial implementation
+
+The following are explicitly outside the initial generic implementation:
+
+* const generics
+* generic numeric values
+* generic lifetime parameters
+* explicit lifetime syntax
+* variadic generic parameter lists
+* default generic arguments
+* partial explicit generic argument lists
+* specialization
+* runtime generic dispatch
+* type erasure
+* implicit boxing
+* operator constraints
+* generic compile-time loops
+* compile-time reflection
+* arbitrary compile-time functions
+* generic enums
+* higher-kinded types
+* generic parameter packs
+* generic associated types
+* conditional generic members
+* negative constraints
+* union-of-types constraints
+* structural constraints inferred from method names
+* automatic interface implementation
+
+Do not implement these accidentally as side effects of parser flexibility.
+
+# Code generation
+
+Code generation receives only concrete generic instances.
+
+LLVM code generation must not receive unresolved generic parameters.
+
+Before code generation, every reachable generic function call must have:
+
+* resolved concrete generic arguments
+* resolved concrete parameter types
+* resolved concrete return type
+* resolved concrete called symbol
+
+Every reachable generic concrete type must have:
+
+* final concrete fields or variants
+* final size
+* final alignment
+* final copy/move classification
+* final defaultability
+* final LLVM type
+
+LLVM names must be mangled deterministically.
+
+Example conceptual names:
+
+```
+Stack[int]
+Stack[string]
+Identity[int]
+Identity[string]
+```
+
+Actual symbol names should include stable IDs or encoded full type identities to
+avoid collisions.
+
+# Sema requirements
+
+* Register generic declarations as templates.
+* Register generic arity before resolving declaration bodies.
+* Register each generic parameter as a type symbol.
+* Reject duplicate generic parameter names.
+* Resolve generic constraints.
+* Reject unknown constraints.
+* Reject constraints that are not interfaces.
+* Create a generic scope for each generic declaration.
+* Resolve generic parameter uses by symbol identity.
+* Reject use of generic type parameters as runtime values.
+* Reject operations not guaranteed by constraints.
+* Resolve generic type base before checking arguments.
+* Reject generic arguments on non-generic declarations.
+* Reject wrong generic arity.
+* Reject non-type generic arguments.
+* Infer generic function arguments from ordinary call arguments.
+* Require one consistent concrete type for each generic parameter.
+* Reject unresolved generic parameters after inference.
+* Apply explicit generic arguments before inference.
+* Reject partial explicit argument lists initially.
+* Check constraints after inference or explicit resolution.
+* Build a concrete substitution map.
+* Canonicalize identical generic instantiations.
+* Detect recursive instantiation.
+* Detect infinite-size recursive generic types.
+* Detect non-converging changing-argument recursion.
+* Substitute concrete types recursively.
+* Re-run concrete-dependent semantic checks after substitution.
+* Calculate concrete type layout.
+* Calculate concrete defaultability.
+* Calculate concrete copy and move behavior.
+* Preserve named type and unit identity.
+* Record concrete generic function instances on call expressions.
+* Record concrete generic type instances on type references.
+* Do not defer semantic generic resolution to LLVM code generation.
+* Report template-independent errors once.
+* Report concrete-dependent errors with instantiation context.
+
+# Parser requirements summary
+
+* Parse generic parameter lists after type and function names.
+* Parse optional interface constraint after ':'.
+* Parse comma-separated generic parameters.
+* Allow trailing comma.
+* Parse generic arguments in type references.
+* Parse nested generic arguments.
+* Preserve bracket source locations.
+* Recover cleanly from malformed generic lists.
+* Avoid cascading declaration-body errors.
+* Distinguish array, slice, index and generic bracket contexts.
+* Preserve ambiguous postfix brackets for sema when necessary.
+* Do not interpret arbitrary expressions as type arguments.
+
+# AST requirements summary
+
+* Add generic parameter nodes.
+* Add generic argument nodes.
+* Add optional generic parameter lists to relevant declarations.
+* Represent generic parameter references distinctly after name resolution.
+* Preserve unresolved generic type references before sema.
+* Preserve source positions.
+* Store impl generic parameters explicitly.
+* Allow semantic annotation with concrete instance identity.
+* Do not clone source AST unnecessarily for every instantiation if a
+  substitution-based typed representation is sufficient.
+
+# Implementation order
+
+Recommended implementation sequence:
+
+1. Add parser and AST support for generic type parameters. IMPLEMENTED.
+2. Add parser and AST support for generic type arguments. IMPLEMENTED.
+3. Register generic declaration headers and arity. IMPLEMENTED.
+4. Add generic parameter scopes and type symbol resolution. IMPLEMENTED.
+5. Implement generic struct type references. IMPLEMENTED.
+6. Implement concrete generic struct instantiation. IMPLEMENTED.
+7. Add canonical instance caching. IMPLEMENTED for sema type/function instances.
+8. Implement generic function declarations. IMPLEMENTED.
+9. Implement explicit generic function calls. IMPLEMENTED.
+10. Implement argument-based type inference. IMPLEMENTED.
+11. Add generic unions. PARTIAL: type templates, arity, payload substitution, empty variants and single-payload constructors implemented; layout/match pending.
+12. Add generic impl blocks. IMPLEMENTED for target validation, generic scopes, nested types and properties; method dispatch/codegen pending.
+13. Add interface constraints. PARTIAL: declaration constraint names are validated; interface declarations and satisfaction pending.
+14. Add expected-result inference if needed. IMPLEMENTED for generic call expressions in typed contexts.
+15. Add recursive-instantiation protection. IMPLEMENTED for direct generic struct storage and changing self-instantiation.
+16. Connect concrete instances to code generation.
+17. Add comprehensive valid and invalid tests.
+18. Optimize lazy instantiation and diagnostic deduplication.
+
+# Initial test files
+
+Create:
+
+```
+generics_valid.sec
+generics_invalid.sec
+```
+
+Current implementation note:
+
+* Generic type and function parameter parsing is implemented for type and
+  function declarations.
+* Generic type arguments in type references are implemented, including nested
+  generic type references.
+* Generic struct instantiation substitutes concrete field types and preserves
+  nominal type identity.
+* Concrete generic struct instances are cached by declaration identity and
+  concrete type arguments.
+* Generic function declarations are registered as templates.
+* Generic function calls support argument-based inference.
+* Explicit generic function calls such as Identity[int](10) are implemented.
+* Concrete generic function instances are cached after inference or explicit
+  generic argument resolution.
+* Generic unions are registered as templates and concrete instances substitute
+  payload types; empty and single-payload variant construction is implemented.
+* Generic impl target validation and generic impl scopes are implemented for
+  nested types, properties and property bodies.
+* Generic constraint declarations reject unknown constraints and non-interface
+  constraints.
+* Direct recursive generic struct storage and changing self-instantiation are
+  rejected.
+* Wrong generic arity, generic arguments on non-generic types/functions and
+  inconsistent inference are reported by semantic analysis.
+* Not yet implemented: full union layout/match support, interface
+  declarations, concrete constraint satisfaction, callable generic impl
+  methods, method-level generic parameters, full backend-facing monomorphized
+  symbols and LLVM code generation for monomorphized instances.
+
+The valid test should cover:
+
+* one generic type parameter
+* multiple generic type parameters
+* nested generic types
+* repeated identical instantiations
+* different concrete instantiations
+* named types as arguments
+* units as arguments
+* generic structs
+* generic unions
+* generic functions
+* inferred calls
+* explicit calls
+* multiple inferred parameters
+* nested inference
+* generic impl methods
+* interface constraints
+* Result and Option
+* forward references
+* recursive types through valid indirection when supported
+
+The invalid test should cover:
+
+* duplicate generic parameters
+* missing generic arguments
+* too many generic arguments
+* generic arguments on non-generic types
+* value used as type argument
+* unknown generic type
+* unknown constraint
+* non-interface constraint
+* unsatisfied constraint
+* inconsistent inference
+* impossible inference
+* partial explicit arguments
+* unconstrained method use
+* unconstrained equality
+* unconstrained arithmetic
+* generic parameter used as value
+* direct recursive storage
+* non-converging recursive instantiation
+* invalid generic impl target
+* generic enum declaration
+* unsupported multiple constraints
+* malformed generic syntax in separate parser tests
+
+# Design principle
+
+Generics must remain a compile-time mechanism for producing concrete,
+specialized and statically checked code.
+
+Generic syntax must not introduce hidden runtime behavior.
+
+A generic parameter represents a type requirement, not an unknown dynamic
+runtime object.
+
+Interfaces describe the behavior required by constrained generic parameters.
+
+Monomorphization produces ordinary concrete types and functions.
+
+Once semantic analysis is complete, code generation should not need to know
+that the original source was generic.

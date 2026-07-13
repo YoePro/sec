@@ -1,0 +1,487 @@
+module main
+
+// generics_invalid.sec
+// Every marked declaration or expression must produce a semantic error.
+// Parser-only malformed syntax belongs in separate parser tests.
+
+// -----------------------------------------------------------------------------
+// Base declarations used by invalid tests
+// -----------------------------------------------------------------------------
+
+type Duplicate[T, T] struct {
+    value: T,
+}
+
+type Box[T] struct {
+    value: T,
+}
+
+type Pair[A, B] struct {
+    first: A,
+    second: B,
+}
+
+type Holder[T] struct {
+    value: T,
+}
+
+type Plain struct {
+    value: int,
+}
+
+type Maybe[T] union {
+    Some(T)
+    None
+}
+
+fn Identity[T](value: T) T {
+    return value
+}
+
+fn Same[T](first: T, second: T) void {
+    discard first
+    discard second
+}
+
+fn MakePair[A, B](first: A, second: B) Pair[A, B] {
+    return Pair[A, B] {
+        first: first,
+        second: second,
+    }
+}
+
+fn Empty[T]() Maybe[T] {
+    return Maybe.None
+}
+
+// -----------------------------------------------------------------------------
+// Duplicate generic parameters
+// -----------------------------------------------------------------------------
+
+fn MissingGenericArguments(value: Box) void {
+}
+
+fn TooManyGenericArguments(value: Box[int, string]) void {
+}
+
+fn GenericArgumentsOnNonGenericType(value: int[string]) void {
+}
+
+fn DifferentInstantiations(value: Box[int]) Box[string] {
+    return value
+}
+
+
+fn InconsistentInference() int {
+    return Same(1, "hello")
+}
+
+
+
+fn ExplicitWrongArgument() int {
+    return Identity[int]("hello")
+}
+
+fn ExplicitWrongArity() int {
+    return Identity[int, string](10)
+}
+
+fn NonGeneric(value: int) int {
+    return value
+}
+
+fn GenericArgumentsOnNonGenericFunction() int {
+    return NonGeneric[int](10)
+}
+
+type Node[T] struct {
+    next: Node[T],
+}
+
+type Infinite[T] struct {
+    next: Infinite[[]T],
+}
+
+impl Box[U] {
+}
+
+impl Box {
+}
+
+impl Box[T] {
+    fn Map[U](value: U) void {
+        return
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Duplicate generic parameters
+// -----------------------------------------------------------------------------
+
+type DuplicateTypeParameter[T, T] struct {
+    value: T,
+}
+
+fn DuplicateFunctionParameter[T, T](value: T) T {
+    return value
+}
+
+// -----------------------------------------------------------------------------
+// Generic arity
+// -----------------------------------------------------------------------------
+
+fn MissingTypeArgument() void {
+    let value: Box
+    discard value
+}
+
+fn TooFewTypeArguments() void {
+    let value: Pair[int]
+    discard value
+}
+
+fn TooManyTypeArguments() void {
+    let value: Box[int, string]
+    discard value
+}
+
+fn GenericArgumentsOnNonGenericType() void {
+    let value: Plain[int]
+    discard value
+}
+
+fn GenericArgumentsOnPrimitiveType() void {
+    let value: int[string]
+    discard value
+}
+
+fn TooFewExplicitFunctionArguments() void {
+    let value := MakePair[int](1, "one")
+    discard value
+}
+
+fn TooManyExplicitFunctionArguments() void {
+    let value := Identity[int, string](10)
+    discard value
+}
+
+// -----------------------------------------------------------------------------
+// Invalid generic argument kinds
+// -----------------------------------------------------------------------------
+
+fn ValueAsGenericTypeArgument() void {
+    let value: Box[10]
+    discard value
+}
+
+fn VariableAsGenericTypeArgument() void {
+    let size: int := 10
+    let value: Box[size]
+    discard value
+}
+
+fn UnknownGenericType() void {
+    let value: Missing[int]
+    discard value
+}
+
+// -----------------------------------------------------------------------------
+// Generic parameter used as a runtime value
+// -----------------------------------------------------------------------------
+
+fn GenericParameterUsedAsValue[T]() void {
+    let value := T
+    discard value
+}
+
+// -----------------------------------------------------------------------------
+// Explicit argument mismatch
+// -----------------------------------------------------------------------------
+
+fn ExplicitGenericArgumentMismatch() void {
+    let value: int := Identity[int]("hello")
+    discard value
+}
+
+fn ExplicitGenericReturnMismatch() void {
+    let value: string := Identity[int](10)
+    discard value
+}
+
+fn GenericStructFieldMismatch() void {
+    let value: Box[int] := Box[int] {
+        value: "hello",
+    }
+
+    discard value
+}
+
+fn NestedGenericFieldMismatch() void {
+    let value: Box[Pair[int, string]] := Box[Pair[int, string]] {
+        value: Pair[int, string] {
+            first: "wrong",
+            second: "value",
+        },
+    }
+
+    discard value
+}
+
+// -----------------------------------------------------------------------------
+// Inference failures
+// -----------------------------------------------------------------------------
+
+fn CannotInferGenericParameter() void {
+    let value := Empty()
+    discard value
+}
+
+fn InconsistentInference() void {
+    Same(10, "ten")
+}
+
+fn InconsistentNestedInference() void {
+    let pair: Pair[int, string] := MakePair(10, 20)
+    discard pair
+}
+
+// -----------------------------------------------------------------------------
+// Named type identity
+// -----------------------------------------------------------------------------
+
+type CustomerID int
+type ProductID int
+
+fn NamedTypesMustNotCollapse() void {
+    let customer: CustomerID := CustomerID(1)
+    let product: ProductID := ProductID(2)
+
+    Same(customer, product)
+}
+
+// -----------------------------------------------------------------------------
+// Unknown and invalid constraints
+// -----------------------------------------------------------------------------
+
+fn UnknownConstraint[T: MissingConstraint](value: T) void {
+    discard value
+}
+
+fn NonInterfaceConstraint[T: int](value: T) void {
+    discard value
+}
+
+type Serializable interface {
+    fn Serialize() bytes
+}
+
+type User struct {
+    name: string,
+}
+
+type Socket struct {
+    handle: int,
+}
+
+impl User {
+    fn Serialize() bytes {
+        return bytes{}
+    }
+}
+
+fn Save[T: Serializable](value: T) bytes {
+    return value.Serialize()
+}
+
+fn UnsatisfiedConstraint() void {
+    let socket: Socket := Socket {
+        handle: 1,
+    }
+
+    let data := Save(socket)
+    discard data
+}
+
+fn MatchingMethodWithoutExplicitInterfaceImpl() void {
+    let user: User := User {
+        name: "user",
+    }
+
+    let data := Save(user)
+    discard data
+}
+
+// -----------------------------------------------------------------------------
+// Operations not guaranteed for unconstrained T
+// -----------------------------------------------------------------------------
+
+fn UnconstrainedEquality[T](first: T, second: T) bool {
+    return first == second
+}
+
+fn UnconstrainedOrdering[T](first: T, second: T) bool {
+    return first < second
+}
+
+fn UnconstrainedAddition[T](first: T, second: T) T {
+    return first + second
+}
+
+fn UnconstrainedSubtraction[T](first: T, second: T) T {
+    return first - second
+}
+
+fn UnconstrainedIndexing[T](value: T) int {
+    return value[0]
+}
+
+fn UnconstrainedMemberAccess[T](value: T) int {
+    return value.length
+}
+
+fn UnconstrainedMethodCall[T](value: T) string {
+    return value.Name()
+}
+
+fn UnconstrainedCast[T](value: T) int {
+    return int(value)
+}
+
+// -----------------------------------------------------------------------------
+// Generic default construction and definite assignment
+// -----------------------------------------------------------------------------
+
+fn UninitializedGenericValue[T]() T {
+    let mut value: T
+    return value
+}
+
+fn ImmutableGenericWithoutInitializer[T]() void {
+    let value: T
+    discard value
+}
+
+// -----------------------------------------------------------------------------
+// Generic union mismatches
+// -----------------------------------------------------------------------------
+
+fn WrongGenericUnionPayload() void {
+    let value: Maybe[int] := Maybe.Some("hello")
+    discard value
+}
+
+fn AssignDifferentGenericUnionInstantiation() void {
+    let source: Maybe[string] := Maybe.Some("hello")
+    let target: Maybe[int] := source
+    discard target
+}
+
+fn ReturnWrongGenericUnionInstantiation() Maybe[int] {
+    return Maybe.Some("hello")
+}
+
+// -----------------------------------------------------------------------------
+// Different concrete instantiations are different types
+// -----------------------------------------------------------------------------
+
+fn AssignDifferentGenericStructInstantiation() void {
+    let source: Box[string] := Box[string] {
+        value: "hello",
+    }
+
+    let target: Box[int] := source
+    discard target
+}
+
+fn PassDifferentGenericInstantiation() void {
+    let value: Box[string] := Box[string] {
+        value: "hello",
+    }
+
+    AcceptIntegerBox(value)
+}
+
+fn AcceptIntegerBox(value: Box[int]) void {
+    discard value
+}
+
+// -----------------------------------------------------------------------------
+// Invalid generic impl targets
+// -----------------------------------------------------------------------------
+
+impl Plain[T] {
+    fn Invalid() void {
+    }
+}
+
+impl Missing[T] {
+    fn Invalid() void {
+    }
+}
+
+impl Box[T, U] {
+    fn Invalid() void {
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Generic enums are unsupported
+// -----------------------------------------------------------------------------
+
+enum GenericEnum[T] {
+    first,
+    second,
+}
+
+// -----------------------------------------------------------------------------
+// Recursive generic storage
+// -----------------------------------------------------------------------------
+
+type DirectRecursive[T] struct {
+    next: DirectRecursive[T],
+}
+
+type ChangingRecursive[T] struct {
+    next: ChangingRecursive[Maybe[T]],
+}
+
+// -----------------------------------------------------------------------------
+// Constraint method mismatch
+// -----------------------------------------------------------------------------
+
+type Named interface {
+    fn Name() string
+}
+
+type WrongName struct {
+}
+
+impl Named for WrongName {
+    fn Name(value: int) string {
+        discard value
+        return "wrong"
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Generic function return and parameter substitution
+// -----------------------------------------------------------------------------
+
+fn ReturnWrongType[T](value: T) T {
+    discard value
+    return 1
+}
+
+fn UseWrongSubstitutedParameter() void {
+    let value := Identity[string](10)
+    discard value
+}
+
+fn WrongPairAssignment() void {
+    let pair: Pair[int, string] := Pair[string, int] {
+        first: "one",
+        second: 1,
+    }
+
+    discard pair
+}

@@ -39,6 +39,7 @@ var precedences = map[lexer.TokenType]precedence{
 	lexer.ASTERISK:    PRODUCT,
 	lexer.PERCENT:     PRODUCT,
 	lexer.LPAREN:      CALL,
+	lexer.LBRACKET:    CALL,
 	lexer.LBRACE:      CALL,
 	lexer.DOT:         MEMBER,
 }
@@ -140,6 +141,10 @@ func (p *Parser) parseExpression(currentPrecedence precedence) ast.Expression {
 		case lexer.LPAREN:
 			p.nextToken()
 			left = p.parseConversionExpression(left)
+
+		case lexer.LBRACKET:
+			p.nextToken()
+			left = p.parseExplicitGenericCallExpression(left)
 
 		case lexer.LBRACE:
 			p.nextToken()
@@ -423,6 +428,95 @@ func (p *Parser) parseConversionExpression(left ast.Expression) ast.Expression {
 	}
 }
 
+func (p *Parser) parseExplicitGenericCallExpression(left ast.Expression) ast.Expression {
+	typeArgs := p.parseTypeArgs()
+	if typeArgs == nil {
+		return nil
+	}
+
+	if p.peekToken.Type == lexer.LBRACE {
+		ref, ok := typeReferenceFromExpression(left)
+		if !ok {
+			p.addError(
+				"expected struct literal type before generic arguments at %d:%d",
+				p.curToken.Line,
+				p.curToken.Column,
+			)
+			return nil
+		}
+		ref.TypeArgs = typeArgs
+		p.nextToken()
+		return p.parseStructLiteralWithType(ref)
+	}
+
+	if p.peekToken.Type == lexer.DOT {
+		p.nextToken()
+		member := p.parseMemberExpression(left)
+		if member == nil {
+			return nil
+		}
+		if p.peekToken.Type != lexer.LPAREN {
+			p.addError(
+				"generic union variant arguments must be followed by call at %d:%d",
+				p.peekToken.Line,
+				p.peekToken.Column,
+			)
+			return nil
+		}
+		p.nextToken()
+		args, ok := p.parseCallArguments()
+		if !ok {
+			return nil
+		}
+		return &ast.CallExpression{
+			Token:            expressionToken(member),
+			Callee:           member,
+			GenericArguments: typeArgs,
+			Arguments:        args,
+		}
+	}
+
+	if p.peekToken.Type != lexer.LPAREN {
+		p.addError(
+			"generic arguments must be followed by call at %d:%d",
+			p.peekToken.Line,
+			p.peekToken.Column,
+		)
+		return nil
+	}
+	p.nextToken()
+
+	args, ok := p.parseCallArguments()
+	if !ok {
+		return nil
+	}
+
+	switch callee := left.(type) {
+	case *ast.Identifier:
+		return &ast.CallExpression{
+			Token:            callee.Token,
+			Callee:           callee,
+			Function:         callee,
+			GenericArguments: typeArgs,
+			Arguments:        args,
+		}
+	case *ast.MemberExpression:
+		return &ast.CallExpression{
+			Token:            callee.Token,
+			Callee:           callee,
+			GenericArguments: typeArgs,
+			Arguments:        args,
+		}
+	default:
+		p.addError(
+			"expected callable before generic arguments at %d:%d",
+			p.curToken.Line,
+			p.curToken.Column,
+		)
+		return nil
+	}
+}
+
 func (p *Parser) parseRuntimeCallExpression() ast.Expression {
 	expr := &ast.RuntimeCallExpression{Token: p.curToken}
 
@@ -631,15 +725,19 @@ func (p *Parser) skipTryHandler() {
 }
 
 func (p *Parser) parseStructLiteralExpression(left ast.Expression) ast.Expression {
-	ident, ok := left.(*ast.Identifier)
+	ref, ok := typeReferenceFromExpression(left)
 	if !ok {
 		p.addError("expected struct literal type before '{' at %d:%d", p.curToken.Line, p.curToken.Column)
 		return nil
 	}
 
+	return p.parseStructLiteralWithType(ref)
+}
+
+func (p *Parser) parseStructLiteralWithType(ref *ast.TypeReference) ast.Expression {
 	lit := &ast.StructLiteral{
-		Token: ident.Token,
-		Type:  &ast.TypeReference{Token: ident.Token, Name: ident.Value},
+		Token: ref.Token,
+		Type:  ref,
 	}
 
 	for p.peekToken.Type != lexer.RBRACE && p.peekToken.Type != lexer.EOF {
@@ -683,6 +781,21 @@ func (p *Parser) parseStructLiteralExpression(left ast.Expression) ast.Expressio
 	}
 
 	return lit
+}
+
+func typeReferenceFromExpression(expr ast.Expression) (*ast.TypeReference, bool) {
+	switch expr := expr.(type) {
+	case *ast.Identifier:
+		return &ast.TypeReference{Token: expr.Token, Name: expr.Value}, true
+	case *ast.MemberExpression:
+		left, ok := typeReferenceFromExpression(expr.Object)
+		if !ok {
+			return nil, false
+		}
+		return &ast.TypeReference{Token: left.Token, Name: left.Name + "." + expr.Property.Value}, true
+	default:
+		return nil, false
+	}
 }
 
 func (p *Parser) parseMemberExpression(left ast.Expression) ast.Expression {

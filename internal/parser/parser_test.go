@@ -68,6 +68,116 @@ type Email string
 
 }
 
+func TestParseGenericTypeDeclarations(t *testing.T) {
+	input := `
+type Stack[T] struct {
+	value: T,
+}
+
+type Pair[A, B] struct {
+	first: A,
+	second: B,
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stack := program.Statements[0].(*ast.TypeDeclStatement)
+	if stack.Name.Value != "Stack" || len(stack.GenericParameters) != 1 {
+		t.Fatalf("wrong Stack generics: %+v", stack.GenericParameters)
+	}
+	if stack.GenericParameters[0].Name.Value != "T" {
+		t.Fatalf("wrong Stack parameter: %+v", stack.GenericParameters[0])
+	}
+	if stack.StructType.Fields[0].Type.Name != "T" {
+		t.Fatalf("wrong Stack field type: %+v", stack.StructType.Fields[0].Type)
+	}
+
+	pair := program.Statements[1].(*ast.TypeDeclStatement)
+	if pair.Name.Value != "Pair" || len(pair.GenericParameters) != 2 {
+		t.Fatalf("wrong Pair generics: %+v", pair.GenericParameters)
+	}
+	if pair.GenericParameters[0].Name.Value != "A" || pair.GenericParameters[1].Name.Value != "B" {
+		t.Fatalf("wrong Pair parameters: %+v", pair.GenericParameters)
+	}
+}
+
+func TestParseGenericFunctionDeclaration(t *testing.T) {
+	input := `
+fn Identity[T](value: T) T {
+	return value
+}
+
+fn Save[T: Serializable](value: T) Result[void, IOError] {
+	return Ok()
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	identity := program.Statements[0].(*ast.FunctionDeclaration)
+	if identity.Name.Value != "Identity" || len(identity.GenericParameters) != 1 {
+		t.Fatalf("wrong Identity generics: %+v", identity.GenericParameters)
+	}
+	if identity.GenericParameters[0].Name.Value != "T" {
+		t.Fatalf("wrong Identity parameter: %+v", identity.GenericParameters[0])
+	}
+	if identity.Parameters[0].Type.Name != "T" || identity.ReturnType.Name != "T" {
+		t.Fatalf("generic type parameter not used in signature: params=%+v return=%+v", identity.Parameters, identity.ReturnType)
+	}
+
+	save := program.Statements[1].(*ast.FunctionDeclaration)
+	if len(save.GenericParameters) != 1 {
+		t.Fatalf("wrong Save generics: %+v", save.GenericParameters)
+	}
+	constraint := save.GenericParameters[0].Constraint
+	if constraint == nil || constraint.Name != "Serializable" {
+		t.Fatalf("wrong Save constraint: %+v", constraint)
+	}
+}
+
+func TestParseExplicitGenericCallExpression(t *testing.T) {
+	input := `
+fn Test() void {
+	let value := Identity[int](10)
+	let other := pkg.Make[Box[string]]("hello")
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	first := fn.Body.Statements[0].(*ast.LetStatement)
+	call, ok := first.Value.(*ast.CallExpression)
+	if !ok {
+		t.Fatalf("first value is not CallExpression. got=%T", first.Value)
+	}
+	if call.Function.Value != "Identity" || len(call.GenericArguments) != 1 || call.GenericArguments[0].Name != "int" {
+		t.Fatalf("wrong explicit generic call: %+v", call)
+	}
+
+	second := fn.Body.Statements[1].(*ast.LetStatement)
+	memberCall, ok := second.Value.(*ast.CallExpression)
+	if !ok {
+		t.Fatalf("second value is not CallExpression. got=%T", second.Value)
+	}
+	if memberCall.String() != `pkg.Make[Box]("hello")` {
+		t.Fatalf("wrong member generic call string: %s", memberCall.String())
+	}
+	if len(memberCall.GenericArguments) != 1 || memberCall.GenericArguments[0].Name != "Box" || len(memberCall.GenericArguments[0].TypeArgs) != 1 {
+		t.Fatalf("wrong member generic arguments: %+v", memberCall.GenericArguments)
+	}
+}
+
 func TestParseTargetDirective(t *testing.T) {
 	input := `#target(os: "linux", arch: "amd64")
 module main
@@ -452,7 +562,6 @@ func TestRejectImmutableTypedDeclarationWithoutInitializer(t *testing.T) {
 		want  string
 	}{
 		{input: `int: a, b, c`, want: `immutable typed declaration requires initializer for "a" at 1:6`},
-		{input: `let a: int`, want: `let declaration requires initializer for "a" at 1:5`},
 		{input: `let mut a`, want: `let declaration requires initializer for "a" at 1:9`},
 	}
 
@@ -2399,6 +2508,31 @@ fn Test() void {
 	}
 	if deferStmt.Body == nil || len(deferStmt.Body.Statements) != 1 {
 		t.Fatalf("wrong defer body. got=%#v", deferStmt.Body)
+	}
+}
+
+func TestParseDeferReturnStatement(t *testing.T) {
+	input := `
+fn Test() void {
+	defer return
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	deferStmt, ok := fn.Body.Statements[0].(*ast.DeferStatement)
+	if !ok {
+		t.Fatalf("statement is not DeferStatement. got=%T", fn.Body.Statements[0])
+	}
+	if deferStmt.Body == nil || len(deferStmt.Body.Statements) != 1 {
+		t.Fatalf("wrong defer return body. got=%#v", deferStmt.Body)
+	}
+	if _, ok := deferStmt.Body.Statements[0].(*ast.ReturnStatement); !ok {
+		t.Fatalf("defer body is not return. got=%T", deferStmt.Body.Statements[0])
 	}
 }
 

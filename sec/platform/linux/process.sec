@@ -1,0 +1,11 @@
+#target(os: "linux", arch: "any")
+module platform.linux
+
+unsafe fn Exit(code: int) never {
+    _rawSyscall1(_sysCall.sysExit, uint(code))
+    unreachable
+}
+
+// unsafe fn Exit(code: int) never
+// fn ProcessID() int
+// fn ParentProcessID() int

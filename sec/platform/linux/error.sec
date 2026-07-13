@@ -138,22 +138,21 @@ enum LinuxError {
     ownerDead = 130,           // EOWNERDEAD: Owner died
     notRecoverable = 131,      // ENOTRECOVERABLE: State not recoverable
     rfkillBlocked = 132,       // ERFKILL: Operation not possible due to RF-kill
-    hwPoison = 133             // EHWPOISON: Memory page has hardware poison
+    hwPoison = 133,            // EHWPOISON: Memory page has hardware poison
 }
 
-enum STDIO {
-    STDIN = 0,
-    STDOUT = 1,
-    STDERR = 2
+enum StandardStream {
+    Input = 0,
+    Output = 1,
+    Error = 2,
 }
 
-
-type ErrorNumber enum {
-    PermissionDenied = 1
-    NoSuchFile = 2
-    Interrupted = 4
-    InvalidArgument = 22
-    BrokenPipe = 32
+enum ErrorNumber {
+    PermissionDenied = 1,
+    NoSuchFile = 2,
+    Interrupted = 4,
+    InvalidArgument = 22,
+    BrokenPipe = 32,
 }
 
 type RawErrorNumber int
@@ -187,4 +186,3 @@ fn _knownError(number: RawErrorNumber) Option[ErrorNumber] {
             return None
     }
 }
-

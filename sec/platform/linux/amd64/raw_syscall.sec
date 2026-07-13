@@ -16,11 +16,11 @@ module platform.linux.amd64
  * Raw syscall with no Parameters. OS: Linux Arch: AMD64
  * PARAM: "number" uint 
  */
-unsafe fn _rawSyscall0(number: uint) int {
+unsafe fn _rawSyscall(number: _sysCall) int {
     asm {
         "syscall"
         inputs:
-            rax(number)
+            rax(uint(number))
         
         outputs:
             rax(result)
@@ -33,12 +33,13 @@ unsafe fn _rawSyscall0(number: uint) int {
     return result
 }
 
-unsafe fn _rawSyscall1(number: uint, arg1: uint) int {
+// Call with 1 argument
+unsafe fn _rawSyscall(number: _sysCall, arg1: uint) int {
         asm {
         "syscall"
 
         inputs:
-            rax(number)
+            rax(uint(number))
             rdi(arg1)
 
         outputs:
@@ -52,12 +53,14 @@ unsafe fn _rawSyscall1(number: uint, arg1: uint) int {
 
     return result
 }
-unsafe fn _rawSyscall2(number: uint, arg1: uint, arg2: uint) int {
+
+// Call with 2 arguments
+unsafe fn _rawSyscall(number: _sysCall, arg1: uint, arg2: uint) int {
         asm {
         "syscall"
 
         inputs:
-            rax(number)
+            rax(uint(number))
             rdi(arg1)
             rsi(arg2)
 
@@ -74,12 +77,12 @@ unsafe fn _rawSyscall2(number: uint, arg1: uint, arg2: uint) int {
 }
 
 // Call with 3 arguments
-unsafe fn _rawSyscall3(number: uint, arg1: uint, arg2: uint, arg3: uint) int {
+unsafe fn _rawSyscall(number: _sysCall, arg1: uint, arg2: uint, arg3: uint) int {
     asm {
         "syscall"
 
         inputs:
-            rax(number)
+            rax(uint(number))
             rdi(arg1)
             rsi(arg2)
             rdx(arg3)
@@ -96,12 +99,13 @@ unsafe fn _rawSyscall3(number: uint, arg1: uint, arg2: uint, arg3: uint) int {
     return result
 }
 
-unsafe fn _rawSyscall4(number: uint, arg1: uint, arg2: uint, arg3: uint, arg4: uint) int { 
+// Call with 4 arguments
+unsafe fn _rawSyscall(number: _sysCall, arg1: uint, arg2: uint, arg3: uint, arg4: uint) int { 
     asm {
         "syscall"
 
         inputs:
-            rax(number)
+            rax(uint(number))
             rdi(arg1)
             rsi(arg2)
             rdx(arg3)
@@ -118,12 +122,14 @@ unsafe fn _rawSyscall4(number: uint, arg1: uint, arg2: uint, arg3: uint, arg4: u
 
     return result
 }
-unsafe fn _rawSyscall5(number: uint, arg1: uint, arg2: uint, arg3: uint, arg4: uint, arg5: uint) int { 
+
+// Call with 5 arguments
+unsafe fn _rawSyscall(number: _sysCall, arg1: uint, arg2: uint, arg3: uint, arg4: uint, arg5: uint) int { 
     asm {
         "syscall"
 
         inputs:
-            rax(number)
+            rax(uint(number))
             rdi(arg1)
             rsi(arg2)
             rdx(arg3)
@@ -141,12 +147,13 @@ unsafe fn _rawSyscall5(number: uint, arg1: uint, arg2: uint, arg3: uint, arg4: u
     return result
 }
 
-unsafe fn _rawSyscall6(number: uint, arg1: uint, arg2: uint, arg3: uint, arg4: uint, arg5: uint, arg6: uint) int {
+// Call with 6 arguments
+unsafe fn _rawSyscall6(number: _sysCall, arg1: uint, arg2: uint, arg3: uint, arg4: uint, arg5: uint, arg6: uint) int {
     asm {
         "syscall"
 
         inputs:
-            rax(number)
+            rax(uint(number))
             rdi(arg1)
             rsi(arg2)
             rdx(arg3)
@@ -164,4 +171,3 @@ unsafe fn _rawSyscall6(number: uint, arg1: uint, arg2: uint, arg3: uint, arg4: u
     }
     return result
 }
-

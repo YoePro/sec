@@ -1,0 +1,980 @@
+Implement union declarations.
+
+Purpose
+=======
+
+Union types represent one value selected from a finite set of variants.
+
+A union variant may:
+
+- carry no payload
+- carry one unnamed payload value
+- carry a struct-like payload with named fields
+
+Union types are distinct named types.
+
+Union variants are constructors and belong to the union namespace.
+
+Union values must be inspected with match before variant-specific payload data
+may be used.
+
+Current implementation status
+=============================
+
+Implemented:
+
+- union declarations
+- payload-less variants
+- single unnamed payload variants
+- struct-like named payload variants
+- generic union declarations and concrete payload substitution
+- nested union declarations in impl blocks through the existing nested type
+  registration path
+- payload-less construction as `Union.variant`
+- single payload construction as `Union.Variant(value)`
+- struct-like payload construction as `Union.Variant { field: value }`
+- duplicate variant checks
+- empty union rejection
+- duplicate struct-like payload field checks
+- missing, unknown and duplicate construction-field checks
+- payload value type checking
+- no implicit payload-to-union conversion
+- no implicit conversion between different union types
+- match patterns for payload-less variants
+- match payload binding for single-payload and struct-like variants
+- union match exhaustiveness checks
+
+Partially implemented:
+
+- generic constructor shorthand such as `Option.Some(10)` works when the
+  concrete type can be inferred from expected type or payload.
+- direct recursive storage detection exists for immediate union payloads and
+  struct-like payload fields, but full layout-aware recursion through every
+  indirection form is still pending.
+
+Not implemented yet:
+
+- comma-free struct-like payload fields in parser; current parser still follows
+  the existing struct-field rule and requires commas between fields.
+- explicit `Option[int].Some(10)` constructor syntax.
+- field-level match destructuring.
+- copyability/comparability calculation.
+- backend layout metadata.
+- LLVM construction and match lowering.
+
+Syntax
+======
+
+Union with payload-less variants:
+
+    type State union {
+        idle
+        running
+        stopped
+    }
+
+Union with unnamed payloads:
+
+    type Number union {
+        Integer(int)
+        Decimal(decimal)
+    }
+
+Union with struct-like payloads:
+
+    type Shape union {
+        Circle {
+            radius: decimal
+        }
+
+        Rectangle {
+            width: decimal
+            height: decimal
+        }
+    }
+
+Mixed union:
+
+    type Message union {
+        Quit
+
+        Text(string)
+
+        Move {
+            x: int
+            y: int
+        }
+    }
+
+Generic union:
+
+    type Option[T] union {
+        Some(T)
+        None
+    }
+
+    type Result[T, E] union {
+        Ok(T)
+        Err(E)
+    }
+
+Construction
+============
+
+Payload-less variant:
+
+    let state: State := State.idle
+
+Unnamed payload variant:
+
+    let number: Number := Number.Integer(42)
+
+Struct-like payload variant:
+
+    let shape: Shape := Shape.Circle {
+        radius: 12
+    }
+
+Generic payload variant:
+
+    let value: Option[int] := Option.Some(10)
+
+Payload-less generic variant:
+
+    let value: Option[int] := Option.None
+
+Core rules
+==========
+
+- A union is declared with type Name union.
+- A union must have a name.
+- Union variants are declared inside the union body.
+- Union variants are separated by newlines.
+- A comma after a union variant is optional.
+- A trailing comma is allowed.
+- Variant names must be unique inside the union.
+- Different unions may reuse variant names.
+- A union may contain payload-less variants.
+- A union may contain variants with one unnamed payload type.
+- A union may contain variants with a struct-like named payload.
+- A union variant may not use both unnamed and named payload syntax.
+- A union value has the union type.
+- A union variant constructor is not a standalone runtime type.
+- Union variants belong to the union namespace.
+- Module union variants are accessed as UnionName.variant.
+- Nested union variants are accessed through the owner type and union name.
+- No implicit conversion exists between a union and one of its payload types.
+- No implicit conversion exists between different union types.
+- Union values must be matched before variant-specific payload access.
+- The active variant is tracked explicitly.
+- The compiler must reject payload access for the wrong variant.
+- Unions are closed types.
+- Variants cannot be added outside the original declaration.
+- Union declarations may be generic.
+- Union declarations may be nested in impl blocks.
+- Union declarations may not be anonymous.
+- Empty unions are not allowed.
+- Direct recursive storage is not allowed.
+- Recursive unions are allowed only through a defined indirection such as Box,
+  ref or unsafe pointer.
+- A union does not have an implicit default value unless a default variant rule
+  is added later.
+- No default variant is selected automatically.
+- A mutable union variable may be declared without an initializer.
+- An immutable union variable must be initialized.
+- Definite-assignment rules apply before any union value is read.
+
+Variant kinds
+=============
+
+Payload-less variant:
+
+    idle
+
+This variant carries no payload.
+
+Construction:
+
+    State.idle
+
+Matching:
+
+    idle => ...
+
+Unnamed payload variant:
+
+    Integer(int)
+
+This variant carries exactly one value.
+
+Construction:
+
+    Number.Integer(42)
+
+Matching:
+
+    Integer(value) => ...
+
+Struct-like payload variant:
+
+    Rectangle {
+        width: decimal
+        height: decimal
+    }
+
+This variant carries named fields.
+
+Construction:
+
+    Shape.Rectangle {
+        width: 10
+        height: 20
+    }
+
+Matching:
+
+    Rectangle(rectangle) => rectangle.width * rectangle.height
+
+Initial destructuring rules focus on binding the complete payload value.
+
+Field-level pattern destructuring may be added later.
+
+Variant namespaces
+==================
+
+Module union:
+
+    type State union {
+        idle
+        running
+    }
+
+Access:
+
+    State.idle
+    State.running
+
+The unqualified names idle and running are not available as ordinary module
+symbols.
+
+Nested union:
+
+    type Vehicle struct {
+    }
+
+    impl Vehicle {
+        type Fuel union {
+            petrol
+            diesel
+            electric
+        }
+    }
+
+Outside impl Vehicle:
+
+    Vehicle.Fuel.petrol
+
+Inside impl Vehicle:
+
+    Fuel.petrol
+
+The full nested union type name is:
+
+    Vehicle.Fuel
+
+The full nested variant name is:
+
+    Vehicle.Fuel.petrol
+
+Variant name uniqueness
+=======================
+
+Variant names must be unique within one union.
+
+Invalid:
+
+    type State union {
+        idle
+        idle
+    }
+
+Expected sema error:
+
+    duplicate union variant idle in State
+
+Different unions may reuse the same name.
+
+Valid:
+
+    type State union {
+        idle
+        running
+    }
+
+    type Connection union {
+        idle
+        connected
+    }
+
+Duplicate payload types are allowed.
+
+Valid:
+
+    type Value union {
+        First(int)
+        Second(int)
+    }
+
+The variants remain distinct because their tags and names are distinct.
+
+Payload type rules
+==================
+
+Every payload type must resolve to a valid type.
+
+Invalid:
+
+    type Value union {
+        Missing(UnknownType)
+    }
+
+Expected sema error:
+
+    unknown payload type UnknownType for Value.Missing
+
+A struct-like payload field must have:
+
+- a unique field name
+- a valid field type
+
+Invalid:
+
+    type Shape union {
+        Rectangle {
+            width: decimal
+            width: decimal
+        }
+    }
+
+Expected sema error:
+
+    duplicate payload field width in Shape.Rectangle
+
+Unnamed payload variants carry exactly one payload type.
+
+Multiple unnamed payload values are not supported initially.
+
+Use a struct-like payload instead:
+
+    Pair {
+        first: int
+        second: string
+    }
+
+Construction rules
+==================
+
+Payload-less variants must not receive arguments.
+
+Invalid:
+
+    State.idle(1)
+
+Expected sema error:
+
+    union variant State.idle does not accept a payload
+
+Unnamed payload variants require exactly one argument.
+
+Invalid:
+
+    Number.Integer()
+
+Expected sema error:
+
+    union variant Number.Integer requires 1 payload argument, got 0
+
+Invalid:
+
+    Number.Integer(1, 2)
+
+Expected sema error:
+
+    union variant Number.Integer requires 1 payload argument, got 2
+
+The payload argument must be assignable to the declared payload type.
+
+Invalid:
+
+    Number.Integer("hello")
+
+Expected sema error:
+
+    payload for Number.Integer must be int, got string
+
+Struct-like variants require named-field construction.
+
+Valid:
+
+    Shape.Rectangle {
+        width: 10
+        height: 20
+    }
+
+Invalid positional construction:
+
+    Shape.Rectangle(10, 20)
+
+Expected sema error:
+
+    union variant Shape.Rectangle requires named payload fields
+
+Initial rule:
+
+All struct-like union payload fields must be explicitly provided.
+
+Invalid:
+
+    Shape.Rectangle {
+        width: 10
+    }
+
+Expected sema error:
+
+    missing payload field height for Shape.Rectangle
+
+Unknown fields are invalid.
+
+Duplicate fields are invalid.
+
+Field values must match their declared types.
+
+Construction result type
+========================
+
+Every variant constructor produces the containing union type.
+
+Examples:
+
+    State.idle
+
+has type State.
+
+    Number.Integer(42)
+
+has type Number.
+
+    Shape.Circle {
+        radius: 12
+    }
+
+has type Shape.
+
+The constructor does not produce a separate variant type.
+
+Assignment
+==========
+
+A union value may be assigned only to the same union type.
+
+Valid:
+
+    let value: Number := Number.Integer(42)
+
+Invalid:
+
+    let value: Number := 42
+
+Invalid:
+
+    let value: int := Number.Integer(42)
+
+Invalid:
+
+    let state: State := Connection.idle
+
+Different concrete generic instantiations are different types.
+
+Invalid:
+
+    let source: Option[string] := Option.Some("hello")
+    let target: Option[int] := source
+
+No implicit conversion is performed.
+
+Explicit casts between unions and payload types are not supported.
+
+Explicit casts between different union types are not supported.
+
+Equality
+========
+
+Equality is allowed between values of the same union type only when every
+variant payload is comparable.
+
+Payload-less unions are comparable.
+
+A union with payloads is comparable only if all possible payload types are
+comparable.
+
+Different union types are never directly comparable.
+
+Different generic instantiations are never directly comparable.
+
+Identity of variants is part of equality.
+
+Example:
+
+    type Value union {
+        First(int)
+        Second(int)
+    }
+
+    Value.First(1) != Value.Second(1)
+
+Copy and move behavior
+======================
+
+A union is copyable only if all possible variant payloads are copyable.
+
+A payload-less union is copyable.
+
+A union containing a non-copyable payload is not copyable.
+
+Assignment follows normal copy or move rules.
+
+Match
+=====
+
+match is the primary operation for inspecting union values.
+
+Payload-less union:
+
+    match state {
+        idle => HandleIdle()
+        running => HandleRunning()
+        stopped => HandleStopped()
+    }
+
+Unnamed payload union:
+
+    match number {
+        Integer(value) => UseInt(value)
+        Decimal(value) => UseDecimal(value)
+    }
+
+Struct-like payload union:
+
+    match shape {
+        Circle(circle) => circle.radius
+        Rectangle(rectangle) => rectangle.width * rectangle.height
+    }
+
+Rules:
+
+- Every reachable union variant must be handled unless a catch-all branch exists.
+- Duplicate variant branches are invalid.
+- Unknown variant names are invalid.
+- A payload-less variant pattern must not bind a payload.
+- A payload variant pattern must bind its payload when payload access is needed.
+- Pattern binding type is derived from the selected variant.
+- Pattern bindings are scoped to the branch.
+- Pattern bindings are immutable unless explicit mutable pattern bindings are
+  later introduced.
+- All branches of a match expression must produce compatible result types.
+- A match statement does not require branch result values.
+- A guarded branch does not make the variant exhaustive by itself unless an
+  unguarded branch or catch-all also covers the remaining values.
+- A catch-all branch may cover remaining variants.
+- Unreachable branches after complete coverage follow the existing match rules.
+
+Exhaustiveness
+==============
+
+The compiler must know the complete variant set of every union.
+
+Invalid:
+
+    match state {
+        idle => HandleIdle()
+    }
+
+Expected sema error:
+
+    non-exhaustive match for State: missing running, stopped
+
+Valid with catch-all:
+
+    match state {
+        idle => HandleIdle()
+        _ => HandleOther()
+    }
+
+For generic unions, exhaustiveness is checked on the resolved concrete union
+instantiation.
+
+Generic unions
+==============
+
+Generic unions use normal generic parameter syntax.
+
+Example:
+
+    type Option[T] union {
+        Some(T)
+        None
+    }
+
+Generic parameters may be used in:
+
+- unnamed payload types
+- struct-like payload fields
+- nested generic type references
+- reference types
+- array and slice types
+- Result and Option combinations
+
+Each concrete instantiation is a distinct union type.
+
+Preferred explicit construction:
+
+    Option[int].Some(10)
+
+The shorter form:
+
+    Option.Some(10)
+
+may be accepted when the concrete type can be inferred unambiguously from the
+expected type or payload.
+
+If generic constructor inference is not implemented, require the explicit form
+and report a clear error.
+
+Nested unions
+=============
+
+A union may be declared inside an impl block.
+
+Example:
+
+    type Token struct {
+    }
+
+    impl Token {
+        type Kind union {
+            identifier
+            number
+            symbol
+        }
+    }
+
+Outside impl Token:
+
+    Token.Kind.identifier
+
+Inside impl Token:
+
+    Kind.identifier
+
+Nested union registration must follow the same two-pass type registration rules
+as nested structs and enums.
+
+Recursive unions
+================
+
+Direct recursive payload storage is invalid because it has infinite size.
+
+Invalid:
+
+    type List[T] union {
+        Node {
+            value: T
+            next: List[T]
+        }
+
+        End
+    }
+
+Expected sema error:
+
+    recursive union List[T] has infinite size
+
+Recursion through indirection is valid when the indirection type has finite
+size.
+
+Valid:
+
+    type List[T] union {
+        Node {
+            value: T
+            next: Box[List[T]]
+        }
+
+        End
+    }
+
+Default values
+==============
+
+A union has no implicit default variant.
+
+Invalid:
+
+    let value: State
+
+Valid declaration form:
+
+    let mut value: State
+
+The value must be assigned before read.
+
+No first-variant default is implied.
+
+Memory layout
+=============
+
+A concrete union value requires:
+
+- an active-variant tag
+- storage large enough for the largest payload
+- alignment sufficient for every payload
+
+Conceptual layout:
+
+    struct UnionValue {
+        tag
+        payload_storage
+    }
+
+Each variant receives a stable zero-based internal index in declaration order.
+
+These indices are implementation metadata.
+
+They are not source-level integer values.
+
+Users cannot cast union variants to integers.
+
+Visibility
+==========
+
+Union type visibility follows the union type name.
+
+Variant visibility follows the variant name and owner union visibility.
+
+A public union must not expose private payload types in public variants.
+
+Parser requirements
+===================
+
+Add parser support for:
+
+- type Name union
+- optional generic parameter list after Name
+- union body
+- payload-less variants
+- unnamed payload variant syntax
+- struct-like payload variant syntax
+- optional commas
+- nested union declarations in impl blocks
+
+Suggested AST:
+
+    UnionDeclaration:
+        Name Identifier
+        GenericParameters GenericParameterList?
+        Variants []UnionVariant
+        Token Token
+
+    UnionVariant:
+        Name Identifier
+        Kind UnionVariantKind
+        PayloadType TypeReference?
+        PayloadFields []FieldDeclaration
+        Token Token
+
+    UnionVariantKind:
+        None
+        Single
+        Struct
+
+The AST must preserve variant order and source locations.
+
+Parser recovery points:
+
+- comma
+- newline
+- closing parenthesis
+- closing brace
+- next declaration keyword
+- next likely variant identifier
+
+Name resolution
+===============
+
+Pass 1:
+
+- register union type name
+- register generic arity
+- register nested owner relationship
+- reject duplicate type declaration names
+
+Pass 2:
+
+- register variant names in the union namespace
+- assign stable variant indices
+- reject duplicate variant names
+
+Pass 3:
+
+- resolve payload types
+- resolve payload field types
+- reject unknown types
+- reject duplicate payload field names
+- validate visibility
+- detect direct recursive storage
+
+Pass 4:
+
+- calculate copyability
+- calculate comparability
+- calculate layout requirements
+- register variant constructors
+
+Sema requirements
+=================
+
+- Register union declarations as named types.
+- Register generic union declarations as generic type templates.
+- Reject anonymous unions.
+- Reject empty unions.
+- Register variants in the union namespace.
+- Assign stable declaration-order variant indices.
+- Reject duplicate variant names.
+- Allow duplicate payload types.
+- Resolve every payload type.
+- Reject unknown payload types.
+- Reject multiple unnamed payload values initially.
+- Reject duplicate named payload fields.
+- Reject unnamed and named payload syntax on the same variant.
+- Reject direct recursive payload storage.
+- Allow recursion through valid indirection.
+- Reject public variants exposing invisible payload types.
+- Create a callable constructor symbol for every variant.
+- Type payload-less constructors as the union type.
+- Type payload constructors as functions producing the union type.
+- Reject payloads for payload-less variants.
+- Require one payload for single-payload variants.
+- Require named fields for struct-like variants.
+- Reject missing payload fields.
+- Reject unknown payload fields.
+- Reject duplicate payload fields.
+- Validate payload value types.
+- Reject implicit conversion between payload and union.
+- Reject implicit conversion between different unions.
+- Reject casts between union and payload types.
+- Reject casts between different union types.
+- Calculate union copyability from all variants.
+- Calculate union comparability from all variants.
+- Set union defaultability to false.
+- Apply definite-assignment rules to uninitialized mutable union variables.
+- Integrate variants with match pattern resolution.
+- Check union match exhaustiveness.
+- Reject duplicate variant match branches.
+- Reject unknown variant match branches.
+- Bind payload variables with correct types.
+- Preserve generic substitutions for generic unions.
+- Canonicalize concrete generic union instantiations.
+- Provide backend layout metadata.
+- Do not expose internal variant tags as source-level integers.
+
+Code generation requirements
+============================
+
+For each concrete union, code generation must receive:
+
+- concrete variant list
+- stable variant indices
+- concrete payload types
+- tag type
+- payload storage size
+- payload alignment
+- total size and alignment
+
+Variant construction must:
+
+1. prepare union storage
+2. write the variant tag
+3. initialize the active payload
+4. return the union value
+
+Match code generation must:
+
+1. read the active tag
+2. branch to the matching case
+3. expose or load the payload
+4. preserve ownership and destruction rules
+5. merge branch results for match expressions
+
+Unsupported initially
+=====================
+
+The following are not part of the initial union implementation:
+
+- anonymous unions
+- open or extensible unions
+- adding variants in impl blocks
+- multiple unnamed payload values
+- field-level match destructuring
+- variant-specific methods
+- implicit payload-to-union conversion
+- implicit union-to-payload conversion
+- casts from unions to integers
+- casts from integers to unions
+- explicit numeric variant tags
+- user-controlled union layout
+- untagged unions
+- C-compatible unions
+- niche optimization
+- default variants
+- inheritance between unions
+- runtime reflection over variants
+- automatic serialization from internal tags
+
+Implementation order
+====================
+
+1. Add union declaration AST nodes.
+2. Parse payload-less variants.
+3. Register union types.
+4. Register variant namespaces.
+5. Implement payload-less variant construction.
+6. Integrate payload-less variants with match.
+7. Add single unnamed payload variants.
+8. Add payload binding in match.
+9. Add struct-like payload variants.
+10. Add payload field construction checks.
+11. Add match exhaustiveness for all variant kinds.
+12. Add generic unions.
+13. Add nested unions.
+14. Add recursive-layout detection.
+15. Add copyability and comparability calculation.
+16. Add backend layout metadata.
+17. Add LLVM construction and match lowering.
+18. Add comprehensive valid and invalid tests.
+
+Design principle
+================
+
+Enums represent one named value from a finite set.
+
+Unions represent one active variant from a finite set, optionally carrying
+variant-specific data.
+
+Union variants are explicit.
+
+Payload construction is explicit.
+
+Payload inspection is explicit.
+
+The compiler must know the complete variant set and use it for type safety,
+exhaustiveness checking and concrete memory layout.

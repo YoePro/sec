@@ -10,22 +10,25 @@ import (
 type TypeKind string
 
 const (
-	InvalidType  TypeKind = "invalid"
-	BoolType     TypeKind = "bool"
-	IntType      TypeKind = "int"
-	UintType     TypeKind = "uint"
-	FloatType    TypeKind = "float"
-	DecimalType  TypeKind = "decimal"
-	EnumType     TypeKind = "enum"
-	StringType   TypeKind = "string"
-	CharType     TypeKind = "char"
-	RuneType     TypeKind = "rune"
-	ResultType   TypeKind = "result"
-	StructType   TypeKind = "struct"
-	SliceType    TypeKind = "slice"
-	ArrayType    TypeKind = "array"
-	FunctionType TypeKind = "function"
-	VoidType     TypeKind = "void"
+	InvalidType   TypeKind = "invalid"
+	BoolType      TypeKind = "bool"
+	IntType       TypeKind = "int"
+	UintType      TypeKind = "uint"
+	FloatType     TypeKind = "float"
+	DecimalType   TypeKind = "decimal"
+	EnumType      TypeKind = "enum"
+	UnionType     TypeKind = "union"
+	StringType    TypeKind = "string"
+	CharType      TypeKind = "char"
+	RuneType      TypeKind = "rune"
+	ResultType    TypeKind = "result"
+	StructType    TypeKind = "struct"
+	SliceType     TypeKind = "slice"
+	ArrayType     TypeKind = "array"
+	FunctionType  TypeKind = "function"
+	GenericType   TypeKind = "generic"
+	InterfaceType TypeKind = "interface"
+	VoidType      TypeKind = "void"
 )
 
 type Type struct {
@@ -44,11 +47,13 @@ type Type struct {
 	Contracts              []Contract
 	EnumValues             []string
 	EnumConsts             map[string]EnumValue
+	UnionVariants          []UnionVariant
 	TypeArgs               []Type
 	Element                *Type
 	ArrayLength            int64
 	FunctionParameterTypes []Type
 	FunctionReturnType     *Type
+	GenericParameters      []string
 	Fields                 []StructField
 	Properties             []Property
 }
@@ -57,6 +62,13 @@ type EnumValue struct {
 	Name  string
 	Value *big.Int
 	Token lexer.Token
+}
+
+type UnionVariant struct {
+	Name          string
+	Payload       *Type
+	PayloadFields []StructField
+	Token         lexer.Token
 }
 
 type StructField struct {
@@ -80,11 +92,12 @@ type Property struct {
 }
 
 type Function struct {
-	Name       string
-	Module     string
-	Parameters []FunctionParameter
-	ReturnType Type
-	Token      lexer.Token
+	Name              string
+	Module            string
+	GenericParameters []string
+	Parameters        []FunctionParameter
+	ReturnType        Type
+	Token             lexer.Token
 }
 
 type FunctionParameter struct {
@@ -186,7 +199,7 @@ func builtinTypes() map[string]Type {
 		"byte":    unsignedType("byte", 255),
 		"char":    {Name: "char", Kind: CharType},
 		"rune":    {Name: "rune", Kind: RuneType},
-		"Result":  {Name: "Result", Kind: ResultType},
+		"Result":  {Name: "Result", Kind: ResultType, GenericParameters: []string{"T", "E"}},
 		"decimal": {Name: "decimal", Kind: DecimalType},
 		"float":   {Name: "float", Kind: FloatType},
 		"float32": {Name: "float32", Kind: FloatType},

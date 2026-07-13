@@ -14,8 +14,12 @@ type Analyzer struct {
 	types                 map[string]Type
 	functions             map[string][]Function
 	implBlocks            map[string]lexer.Token
+	validImplStatements   map[*ast.ImplStatement]bool
 	currentImplTarget     string
 	currentModule         string
+	genericTypes          map[string]Type
+	genericTypeInstances  map[genericInstanceKey]Type
+	genericFuncInstances  map[genericInstanceKey]Function
 	symbols               map[string]Symbol
 	constInts             map[string]*big.Int
 	assigned              map[string]bool
@@ -33,6 +37,11 @@ type Analyzer struct {
 	warnings              []Error
 }
 
+type genericInstanceKey struct {
+	Declaration string
+	Arguments   string
+}
+
 func NewAnalyzer() *Analyzer {
 	return &Analyzer{
 		types: builtinTypes(),
@@ -47,8 +56,12 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.assigned = map[string]bool{}
 	a.functions = map[string][]Function{}
 	a.implBlocks = map[string]lexer.Token{}
+	a.validImplStatements = map[*ast.ImplStatement]bool{}
 	a.currentImplTarget = ""
 	a.currentModule = ""
+	a.genericTypes = nil
+	a.genericTypeInstances = map[genericInstanceKey]Type{}
+	a.genericFuncInstances = map[genericInstanceKey]Function{}
 	a.currentFunctionName = ""
 	a.currentFunctionReturn = Type{}
 	a.inFunctionBody = false
@@ -154,7 +167,8 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 			if stmt.Name == nil {
 				return
 			}
-			a.types[stmt.Name.Value] = Type{Name: stmt.Name.Value, Module: a.currentModule, Kind: InvalidType}
+			params := a.genericParameterNames(stmt.GenericParameters)
+			a.types[stmt.Name.Value] = Type{Name: stmt.Name.Value, Module: a.currentModule, Kind: InvalidType, GenericParameters: params}
 		case *ast.EnumDeclaration:
 			if stmt.Name == nil {
 				return
@@ -162,6 +176,80 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 			a.types[stmt.Name.Value] = Type{Name: stmt.Name.Value, Module: a.currentModule, Kind: InvalidType}
 		}
 	})
+}
+
+func (a *Analyzer) genericParameterNames(parameters []*ast.GenericParameter) []string {
+	if len(parameters) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(parameters))
+	seen := map[string]lexer.Token{}
+	for _, param := range parameters {
+		if param == nil || param.Name == nil {
+			continue
+		}
+		if previous, exists := seen[param.Name.Value]; exists {
+			_ = previous
+			a.addErrorAtToken(param.Name.Token, "duplicate generic parameter %q", param.Name.Value)
+			continue
+		}
+		seen[param.Name.Value] = param.Name.Token
+		names = append(names, param.Name.Value)
+	}
+	return names
+}
+
+func genericParameterNameValues(parameters []*ast.GenericParameter) []string {
+	if len(parameters) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(parameters))
+	for _, param := range parameters {
+		if param == nil || param.Name == nil {
+			continue
+		}
+		names = append(names, param.Name.Value)
+	}
+	return names
+}
+
+func (a *Analyzer) withGenericTypeParameters(parameters []*ast.GenericParameter, visit func()) {
+	previous := a.genericTypes
+	current := map[string]Type{}
+	for name, typ := range previous {
+		current[name] = typ
+	}
+	for _, param := range parameters {
+		if param == nil || param.Name == nil {
+			continue
+		}
+		current[param.Name.Value] = Type{
+			Name: param.Name.Value,
+			Kind: GenericType,
+		}
+	}
+	a.genericTypes = current
+	defer func() {
+		a.genericTypes = previous
+	}()
+	visit()
+}
+
+func (a *Analyzer) validateGenericParameterConstraints(parameters []*ast.GenericParameter) {
+	for _, param := range parameters {
+		if param == nil || param.Name == nil || param.Constraint == nil {
+			continue
+		}
+		name := a.resolveTypeName(param.Constraint.Name)
+		constraint, ok := a.types[name]
+		if !ok {
+			a.addErrorAtToken(param.Constraint.Token, "unknown generic constraint %s for %s", param.Constraint.Name, param.Name.Value)
+			continue
+		}
+		if constraint.Kind != InterfaceType {
+			a.addErrorAtToken(param.Constraint.Token, "generic constraint %s is not an interface", param.Constraint.Name)
+		}
+	}
 }
 
 func (a *Analyzer) registerImplTypeDeclarations(program *ast.Program) {
@@ -180,7 +268,11 @@ func (a *Analyzer) registerImplTypeDeclarations(program *ast.Program) {
 			a.addErrorAtToken(impl.Target.Token, "impl target %s is not a named type", impl.Target.Name)
 			continue
 		}
+		if !a.validateImplGenericTarget(impl, target) {
+			continue
+		}
 		a.implBlocks[impl.Target.Name] = impl.Target.Token
+		a.validImplStatements[impl] = true
 
 		nested := map[string]lexer.Token{}
 		for _, member := range impl.Members {
@@ -221,6 +313,81 @@ func implNestedTypeName(member ast.ImplMember) (string, lexer.Token, bool) {
 	}
 }
 
+func (a *Analyzer) validateImplGenericTarget(stmt *ast.ImplStatement, target Type) bool {
+	if len(target.GenericParameters) == 0 {
+		if len(stmt.Target.TypeArgs) > 0 {
+			a.addErrorAtToken(stmt.Target.Token, "%s is not generic", stmt.Target.Name)
+			return false
+		}
+		return true
+	}
+
+	if len(stmt.Target.TypeArgs) == 0 {
+		a.addErrorAtToken(stmt.Target.Token, "%s requires %d generic arguments, got 0", stmt.Target.Name, len(target.GenericParameters))
+		return false
+	}
+	if len(stmt.Target.TypeArgs) != len(target.GenericParameters) {
+		a.addErrorAtToken(stmt.Target.Token, "%s requires %d generic arguments, got %d", stmt.Target.Name, len(target.GenericParameters), len(stmt.Target.TypeArgs))
+		return false
+	}
+
+	ok := true
+	for i, arg := range stmt.Target.TypeArgs {
+		expected := target.GenericParameters[i]
+		if arg == nil || arg.Name != expected || len(arg.TypeArgs) > 0 || arg.ElementType != nil {
+			a.addErrorAtToken(typeReferenceToken(arg, stmt.Target.Token), "unknown generic parameter %s in impl target %s", typeReferenceDisplayName(arg), stmt.Target.Name)
+			ok = false
+		}
+	}
+	return ok
+}
+
+func implGenericParametersForTarget(stmt *ast.ImplStatement, target Type) []*ast.GenericParameter {
+	if len(target.GenericParameters) == 0 || len(stmt.Target.TypeArgs) != len(target.GenericParameters) {
+		return nil
+	}
+	params := make([]*ast.GenericParameter, 0, len(stmt.Target.TypeArgs))
+	for _, arg := range stmt.Target.TypeArgs {
+		if arg == nil || arg.Name == "" || len(arg.TypeArgs) > 0 || arg.ElementType != nil {
+			return nil
+		}
+		params = append(params, &ast.GenericParameter{
+			Token: arg.Token,
+			Name:  &ast.Identifier{Token: arg.Token, Value: arg.Name},
+		})
+	}
+	return params
+}
+
+func typeReferenceToken(ref *ast.TypeReference, fallback lexer.Token) lexer.Token {
+	if ref == nil {
+		return fallback
+	}
+	return ref.Token
+}
+
+func typeReferenceDisplayName(ref *ast.TypeReference) string {
+	if ref == nil {
+		return "<nil>"
+	}
+	if ref.ElementType != nil {
+		prefix := "[]"
+		if ref.ArrayLength > 0 {
+			prefix = fmt.Sprintf("[%d]", ref.ArrayLength)
+		}
+		return prefix + typeReferenceDisplayName(ref.ElementType)
+	}
+	out := ref.Name
+	if len(ref.TypeArgs) > 0 {
+		parts := make([]string, 0, len(ref.TypeArgs))
+		for _, arg := range ref.TypeArgs {
+			parts = append(parts, typeReferenceDisplayName(arg))
+		}
+		out += "[" + strings.Join(parts, ", ") + "]"
+	}
+	return out
+}
+
 func (a *Analyzer) analyzeTypeDeclarations(program *ast.Program) {
 	a.withProgramModules(program, func(stmt ast.Statement) {
 		typeDecl, ok := stmt.(*ast.TypeDeclStatement)
@@ -248,16 +415,23 @@ func (a *Analyzer) analyzeImplTypeDeclarations(program *ast.Program) {
 		if !ok {
 			continue
 		}
-		if _, ok := a.implBlocks[impl.Target.Name]; !ok {
+		if !a.validImplStatements[impl] {
 			continue
 		}
+		target, ok := a.types[impl.Target.Name]
+		if !ok {
+			continue
+		}
+		genericParams := implGenericParametersForTarget(impl, target)
 
 		for _, member := range impl.Members {
 			switch member := member.(type) {
 			case *ast.TypeDeclStatement:
 				qualified := impl.Target.Name + "." + member.Name.Value
 				a.withImplTarget(impl.Target.Name, func() {
-					a.analyzeNestedTypeDeclaration(qualified, member)
+					a.withGenericTypeParameters(genericParams, func() {
+						a.analyzeNestedTypeDeclaration(qualified, member)
+					})
 				})
 			case *ast.EnumDeclaration:
 				qualified := impl.Target.Name + "." + member.Name.Value
@@ -306,7 +480,7 @@ func (a *Analyzer) analyzeStatement(stmt ast.Statement) {
 	case *ast.DiscardStatement:
 		a.analyzeDiscardStatement(stmt)
 	case *ast.ExpressionStatement:
-		a.inferExpression(stmt.Expression)
+		a.analyzeExpressionStatement(stmt)
 	case *ast.ReturnStatement:
 		if a.inDeferBlock {
 			a.addErrorAtToken(stmt.Token, "return is not allowed inside defer")
@@ -384,6 +558,13 @@ func (a *Analyzer) analyzeBlockStatements(block *ast.BlockStatement) {
 	}
 }
 
+func (a *Analyzer) analyzeExpressionStatement(stmt *ast.ExpressionStatement) {
+	exprType, _ := a.inferExpression(stmt.Expression)
+	if a.inDeferBlock && exprType.Kind == ResultType {
+		a.addErrorAtToken(expressionToken(stmt.Expression), "unhandled Result inside defer; handle it or discard it explicitly")
+	}
+}
+
 func (a *Analyzer) analyzeDiscardStatement(stmt *ast.DiscardStatement) {
 	if stmt.Name == nil {
 		a.addErrorAtToken(stmt.Token, "discard requires identifier")
@@ -436,6 +617,10 @@ func (a *Analyzer) analyzeDeferStatement(stmt *ast.DeferStatement) {
 	if a.loopDepth > 0 {
 		a.addWarningAtToken(stmt.Token, "defer inside loop registers once per execution and runs at function exit")
 	}
+	if deferBodyIsBareReturn(stmt.Body) {
+		a.addWarningAtToken(stmt.Token, "superfluous defer return")
+		return
+	}
 
 	previousSymbols := a.symbols
 	previousConstInts := a.constInts
@@ -453,6 +638,14 @@ func (a *Analyzer) analyzeDeferStatement(stmt *ast.DeferStatement) {
 	}()
 
 	a.analyzeBlockStatements(stmt.Body)
+}
+
+func deferBodyIsBareReturn(block *ast.BlockStatement) bool {
+	if block == nil || len(block.Statements) != 1 {
+		return false
+	}
+	ret, ok := block.Statements[0].(*ast.ReturnStatement)
+	return ok && ret.Value == nil
 }
 
 func (a *Analyzer) analyzeForStatement(stmt *ast.ForStatement) {
@@ -1185,7 +1378,28 @@ func (a *Analyzer) registerFunctionDeclarations(program *ast.Program) {
 }
 
 func (a *Analyzer) registerFunctionDeclaration(fn *ast.FunctionDeclaration) {
-	function := Function{Name: fn.Name.Value, Module: a.currentModule, Token: fn.Name.Token}
+	a.registerFunctionDeclarationNamed(fn, fn.Name.Value)
+}
+
+func (a *Analyzer) registerFunctionDeclarationNamed(fn *ast.FunctionDeclaration, name string) {
+	if len(fn.GenericParameters) > 0 {
+		a.genericParameterNames(fn.GenericParameters)
+		a.validateGenericParameterConstraints(fn.GenericParameters)
+		a.withGenericTypeParameters(fn.GenericParameters, func() {
+			a.registerFunctionDeclarationBody(fn, name)
+		})
+		return
+	}
+	a.registerFunctionDeclarationBody(fn, name)
+}
+
+func (a *Analyzer) registerFunctionDeclarationBody(fn *ast.FunctionDeclaration, name string) {
+	function := Function{
+		Name:              name,
+		Module:            a.currentModule,
+		GenericParameters: genericParameterNameValues(fn.GenericParameters),
+		Token:             fn.Name.Token,
+	}
 
 	seenParams := map[string]lexer.Token{}
 	for _, param := range fn.Parameters {
@@ -1214,14 +1428,14 @@ func (a *Analyzer) registerFunctionDeclaration(fn *ast.FunctionDeclaration) {
 		function.ReturnType = Type{Kind: InvalidType}
 	}
 
-	for _, existing := range a.functions[fn.Name.Value] {
+	for _, existing := range a.functions[name] {
 		if sameFunctionSignature(existing, function) {
-			a.addErrorAtToken(fn.Name.Token, "duplicate function %q with same signature", fn.Name.Value)
+			a.addErrorAtToken(fn.Name.Token, "duplicate function %q with same signature", name)
 			return
 		}
 	}
 
-	a.functions[fn.Name.Value] = append(a.functions[fn.Name.Value], function)
+	a.functions[name] = append(a.functions[name], function)
 }
 
 func sameFunctionSignature(left Function, right Function) bool {
@@ -1256,6 +1470,16 @@ func (a *Analyzer) analyzeFunctionBodies(program *ast.Program) {
 }
 
 func (a *Analyzer) analyzeFunctionBody(fn *ast.FunctionDeclaration) {
+	if len(fn.GenericParameters) > 0 {
+		a.withGenericTypeParameters(fn.GenericParameters, func() {
+			a.analyzeFunctionBodyInScope(fn)
+		})
+		return
+	}
+	a.analyzeFunctionBodyInScope(fn)
+}
+
+func (a *Analyzer) analyzeFunctionBodyInScope(fn *ast.FunctionDeclaration) {
 	function, ok := a.lookupFunctionByToken(fn.Name.Value, fn.Name.Token)
 	if !ok || function.ReturnType.Kind == InvalidType {
 		return
@@ -1578,7 +1802,7 @@ func (a *Analyzer) analyzeReturnStatement(functionName string, returnType Type, 
 		return
 	}
 
-	valueType, _ := a.inferExpression(stmt.Value)
+	valueType, _ := a.inferExpressionWithExpected(stmt.Value, returnType)
 	if valueType.Kind == InvalidType {
 		return
 	}
@@ -1702,6 +1926,22 @@ func mergeBreakAssigned(before map[string]bool, breaks []map[string]bool) map[st
 }
 
 func (a *Analyzer) analyzeTypeDeclaration(stmt *ast.TypeDeclStatement) {
+	if len(stmt.GenericParameters) > 0 {
+		a.validateGenericParameterConstraints(stmt.GenericParameters)
+		a.withGenericTypeParameters(stmt.GenericParameters, func() {
+			a.analyzeTypeDeclarationBody(stmt)
+		})
+		return
+	}
+	a.analyzeTypeDeclarationBody(stmt)
+}
+
+func (a *Analyzer) analyzeTypeDeclarationBody(stmt *ast.TypeDeclStatement) {
+	if stmt.Union {
+		a.types[stmt.Name.Value] = a.typeFromUnionDeclaration(stmt.Name.Value, stmt)
+		return
+	}
+
 	if stmt.StructType != nil {
 		a.types[stmt.Name.Value] = a.typeFromStructDeclaration(stmt)
 		return
@@ -1736,6 +1976,10 @@ func (a *Analyzer) analyzeTypeDeclaration(stmt *ast.TypeDeclStatement) {
 }
 
 func (a *Analyzer) analyzeNestedTypeDeclaration(qualifiedName string, stmt *ast.TypeDeclStatement) {
+	if stmt.Union {
+		a.types[qualifiedName] = a.typeFromUnionDeclaration(qualifiedName, stmt)
+		return
+	}
 	if stmt.StructType != nil {
 		a.types[qualifiedName] = a.typeFromStructDeclarationWithName(qualifiedName, stmt)
 		return
@@ -1775,12 +2019,13 @@ func (a *Analyzer) typeFromStructDeclaration(stmt *ast.TypeDeclStatement) Type {
 
 func (a *Analyzer) typeFromStructDeclarationWithName(name string, stmt *ast.TypeDeclStatement) Type {
 	typ := Type{
-		Name:       name,
-		Module:     a.currentModule,
-		Kind:       StructType,
-		Named:      true,
-		Declared:   true,
-		Underlying: "struct",
+		Name:              name,
+		Module:            a.currentModule,
+		Kind:              StructType,
+		Named:             true,
+		Declared:          true,
+		Underlying:        "struct",
+		GenericParameters: genericParameterNameValues(stmt.GenericParameters),
 	}
 
 	seen := map[string]lexer.Token{}
@@ -1791,6 +2036,17 @@ func (a *Analyzer) typeFromStructDeclarationWithName(name string, stmt *ast.Type
 			continue
 		}
 		seen[field.Name.Value] = field.Name.Token
+
+		if len(stmt.GenericParameters) > 0 {
+			switch genericRecursiveStorageKind(name, genericParameterNameValues(stmt.GenericParameters), field.Type) {
+			case "direct":
+				a.addErrorAtToken(field.Token, "recursive generic type %s has infinite size", genericDeclarationDisplayName(name, stmt.GenericParameters))
+				continue
+			case "nonconverging":
+				a.addErrorAtToken(field.Token, "recursive generic instantiation does not converge for %s", name)
+				continue
+			}
+		}
 
 		fieldType, ok := a.resolveType(field.Type)
 		if !ok {
@@ -1815,6 +2071,124 @@ func (a *Analyzer) typeFromStructDeclarationWithName(name string, stmt *ast.Type
 	}
 
 	return typ
+}
+
+func (a *Analyzer) typeFromUnionDeclaration(name string, stmt *ast.TypeDeclStatement) Type {
+	typ := Type{
+		Name:              name,
+		Module:            a.currentModule,
+		Kind:              UnionType,
+		Named:             true,
+		Declared:          true,
+		Underlying:        "union",
+		GenericParameters: genericParameterNameValues(stmt.GenericParameters),
+	}
+
+	if len(stmt.UnionVariants) == 0 {
+		a.addErrorAtToken(stmt.Name.Token, "union %s must declare at least one variant", name)
+	}
+
+	seen := map[string]lexer.Token{}
+	for _, variant := range stmt.UnionVariants {
+		if variant == nil || variant.Name == nil {
+			continue
+		}
+		if previous, exists := seen[variant.Name.Value]; exists {
+			_ = previous
+			a.addErrorAtToken(variant.Name.Token, "duplicate union variant %q in %s", variant.Name.Value, name)
+			continue
+		}
+		seen[variant.Name.Value] = variant.Name.Token
+
+		unionVariant := UnionVariant{
+			Name:  variant.Name.Value,
+			Token: variant.Name.Token,
+		}
+		if variant.Payload != nil {
+			payload, ok := a.resolveType(variant.Payload)
+			if !ok {
+				continue
+			}
+			if sameConcreteType(typ, payload) {
+				a.addErrorAtToken(variant.Name.Token, "recursive union %s has infinite size", typeDisplayName(typ))
+				continue
+			}
+			unionVariant.Payload = &payload
+		}
+		if len(variant.PayloadFields) > 0 {
+			fieldSeen := map[string]lexer.Token{}
+			for _, field := range variant.PayloadFields {
+				if field == nil || field.Name == nil {
+					continue
+				}
+				if _, exists := fieldSeen[field.Name.Value]; exists {
+					a.addErrorAtToken(field.Name.Token, "duplicate payload field %s in %s.%s", field.Name.Value, name, variant.Name.Value)
+					continue
+				}
+				fieldSeen[field.Name.Value] = field.Name.Token
+
+				fieldType, ok := a.resolveType(field.Type)
+				if !ok {
+					continue
+				}
+				if sameConcreteType(typ, fieldType) {
+					a.addErrorAtToken(field.Name.Token, "recursive union %s has infinite size", typeDisplayName(typ))
+					continue
+				}
+				unionVariant.PayloadFields = append(unionVariant.PayloadFields, StructField{
+					Name:  field.Name.Value,
+					Type:  fieldType,
+					Token: field.Name.Token,
+					Tags:  semaStructTags(field.Tags),
+				})
+			}
+		}
+		typ.UnionVariants = append(typ.UnionVariants, unionVariant)
+	}
+
+	return typ
+}
+
+func genericRecursiveStorageKind(owner string, parameters []string, ref *ast.TypeReference) string {
+	if ref == nil {
+		return ""
+	}
+
+	if ref.ElementType != nil {
+		if ref.ArrayLength > 0 {
+			return genericRecursiveStorageKind(owner, parameters, ref.ElementType)
+		}
+		return ""
+	}
+
+	if ref.Name != owner {
+		return ""
+	}
+
+	if genericTypeArgsMatchParameters(ref.TypeArgs, parameters) {
+		return "direct"
+	}
+	return "nonconverging"
+}
+
+func genericTypeArgsMatchParameters(args []*ast.TypeReference, parameters []string) bool {
+	if len(args) != len(parameters) {
+		return false
+	}
+	for i, arg := range args {
+		if arg == nil || len(arg.TypeArgs) > 0 || arg.ElementType != nil || arg.Name != parameters[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func genericDeclarationDisplayName(name string, parameters []*ast.GenericParameter) string {
+	names := genericParameterNameValues(parameters)
+	if len(names) == 0 {
+		return name
+	}
+	return name + "[" + strings.Join(names, ", ") + "]"
 }
 
 func (a *Analyzer) typeFromVariantDeclaration(name string, variants []*ast.Identifier) Type {
@@ -1925,6 +2299,9 @@ func (a *Analyzer) registerImplDeclarations(program *ast.Program) {
 }
 
 func (a *Analyzer) registerImplStatement(stmt *ast.ImplStatement) {
+	if !a.validImplStatements[stmt] {
+		return
+	}
 	target, ok := a.types[stmt.Target.Name]
 	if !ok {
 		return
@@ -1933,6 +2310,10 @@ func (a *Analyzer) registerImplStatement(stmt *ast.ImplStatement) {
 	if !target.Named && target.Kind != InvalidType {
 		return
 	}
+	if !a.validateImplGenericTarget(stmt, target) {
+		return
+	}
+	genericParams := implGenericParametersForTarget(stmt, target)
 
 	properties := map[string]lexer.Token{}
 	for _, property := range target.Properties {
@@ -1941,6 +2322,19 @@ func (a *Analyzer) registerImplStatement(stmt *ast.ImplStatement) {
 
 	targetChanged := false
 	for _, member := range stmt.Members {
+		if fn, ok := member.(*ast.FunctionDeclaration); ok {
+			if len(fn.GenericParameters) > 0 {
+				a.addErrorAtToken(fn.Name.Token, "generic methods with additional type parameters are not supported yet")
+				continue
+			}
+			a.withImplTarget(stmt.Target.Name, func() {
+				a.withGenericTypeParameters(genericParams, func() {
+					a.registerFunctionDeclarationNamed(fn, stmt.Target.Name+"."+fn.Name.Value)
+				})
+			})
+			continue
+		}
+
 		property, ok := member.(*ast.PropertyDeclaration)
 		if !ok {
 			continue
@@ -1956,7 +2350,9 @@ func (a *Analyzer) registerImplStatement(stmt *ast.ImplStatement) {
 		var propertyType Type
 		var typeOK bool
 		a.withImplTarget(stmt.Target.Name, func() {
-			propertyType, typeOK = a.resolveType(property.Type)
+			a.withGenericTypeParameters(genericParams, func() {
+				propertyType, typeOK = a.resolveType(property.Type)
+			})
 		})
 		if !typeOK {
 			continue
@@ -1995,10 +2391,14 @@ func (a *Analyzer) analyzeImplBodies(program *ast.Program) {
 }
 
 func (a *Analyzer) analyzeImplBody(stmt *ast.ImplStatement) {
+	if !a.validImplStatements[stmt] {
+		return
+	}
 	target, ok := a.types[stmt.Target.Name]
 	if !ok || !target.Named {
 		return
 	}
+	genericParams := implGenericParametersForTarget(stmt, target)
 
 	for _, member := range stmt.Members {
 		property, ok := member.(*ast.PropertyDeclaration)
@@ -2012,7 +2412,9 @@ func (a *Analyzer) analyzeImplBody(stmt *ast.ImplStatement) {
 		}
 
 		a.withImplTarget(stmt.Target.Name, func() {
-			a.analyzePropertyBody(target, property, registeredProperty.Type)
+			a.withGenericTypeParameters(genericParams, func() {
+				a.analyzePropertyBody(target, property, registeredProperty.Type)
+			})
 		})
 	}
 }
@@ -2329,6 +2731,11 @@ func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
 		}
 	}
 
+	if ok && stmt.Value == nil && !stmt.Mutable {
+		a.addErrorAtToken(stmt.Name.Token, "immutable variable %s requires initializer", stmt.Name.Value)
+		return
+	}
+
 	if !ok || stmt.Value == nil || stmt.Type == nil {
 		if defined && stmt.Value != nil {
 			a.setConstInt(stmt.Name.Value, stmt.Value)
@@ -2348,7 +2755,7 @@ func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
 		}
 	}
 	if exprType.Kind == "" {
-		exprType, _ = a.inferExpression(stmt.Value)
+		exprType, _ = a.inferExpressionWithExpected(stmt.Value, declaredType)
 	}
 	if exprType.Kind == InvalidType {
 		return
@@ -2413,7 +2820,7 @@ func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement, all
 		return
 	}
 
-	exprType, _ := a.inferExpression(stmt.Value)
+	exprType, _ := a.inferExpressionWithExpected(stmt.Value, symbol.Type)
 	if exprType.Kind == InvalidType {
 		return
 	}
@@ -2450,7 +2857,7 @@ func (a *Analyzer) analyzeMemberAssignmentStatement(stmt *ast.AssignmentStatemen
 		return
 	}
 
-	valueType, _ := a.inferExpression(stmt.Value)
+	valueType, _ := a.inferExpressionWithExpected(stmt.Value, targetType)
 	if valueType.Kind == InvalidType {
 		return
 	}
@@ -2523,6 +2930,14 @@ func (a *Analyzer) resolveType(ref *ast.TypeReference) (Type, bool) {
 		}, true
 	}
 
+	if genericType, ok := a.genericTypes[ref.Name]; ok {
+		if len(ref.TypeArgs) > 0 {
+			a.addErrorAtToken(ref.Token, "generic parameter %s does not take type arguments", ref.Name)
+			return Type{Kind: InvalidType}, false
+		}
+		return genericType, true
+	}
+
 	typeArgs := make([]Type, 0, len(ref.TypeArgs))
 	for _, arg := range ref.TypeArgs {
 		argType, ok := a.resolveType(arg)
@@ -2543,16 +2958,136 @@ func (a *Analyzer) resolveType(ref *ast.TypeReference) (Type, bool) {
 		return Type{Kind: InvalidType}, false
 	}
 
-	typ.TypeArgs = typeArgs
 	if typ.Kind == ResultType && len(ref.TypeArgs) != 2 {
 		a.addErrorAtToken(ref.Token, "Result requires exactly 2 type arguments, got %d", len(ref.TypeArgs))
+		return Type{Kind: InvalidType}, false
+	}
+	if typ.Kind != ResultType && len(typ.GenericParameters) == 0 && len(ref.TypeArgs) > 0 {
+		a.addErrorAtToken(ref.Token, "%s is not generic", ref.Name)
+		return Type{Kind: InvalidType}, false
+	}
+	if typ.Kind != ResultType && len(typ.GenericParameters) > 0 && len(ref.TypeArgs) == 0 {
+		a.addErrorAtToken(ref.Token, "%s requires %d generic arguments, got 0", ref.Name, len(typ.GenericParameters))
+		return Type{Kind: InvalidType}, false
+	}
+	if len(typ.GenericParameters) > 0 && len(ref.TypeArgs) != len(typ.GenericParameters) {
+		a.addErrorAtToken(ref.Token, "%s requires %d generic arguments, got %d", ref.Name, len(typ.GenericParameters), len(ref.TypeArgs))
 		return Type{Kind: InvalidType}, false
 	}
 	if len(typeArgs) != len(ref.TypeArgs) {
 		return Type{Kind: InvalidType}, false
 	}
 
+	typ.TypeArgs = typeArgs
+	if (typ.Kind == StructType || typ.Kind == UnionType) && len(typ.GenericParameters) > 0 {
+		typ = a.instantiateGenericType(typ)
+	}
 	return typ, true
+}
+
+func (a *Analyzer) instantiateGenericType(typ Type) Type {
+	key := genericTypeInstanceKey(typ)
+	if existing, ok := a.genericTypeInstances[key]; ok {
+		return existing
+	}
+
+	substitution := map[string]Type{}
+	for i, name := range typ.GenericParameters {
+		if i < len(typ.TypeArgs) {
+			substitution[name] = typ.TypeArgs[i]
+		}
+	}
+
+	out := typ
+	out.Fields = make([]StructField, 0, len(typ.Fields))
+	out.Properties = make([]Property, 0, len(typ.Properties))
+	out.UnionVariants = make([]UnionVariant, 0, len(typ.UnionVariants))
+	out.GenericParameters = nil
+	recursive := false
+	for _, field := range typ.Fields {
+		field.Type = substituteGenericType(field.Type, substitution)
+		if genericStructFieldHasDirectRecursiveStorage(out, field.Type) {
+			if !recursive {
+				a.addErrorAtToken(field.Token, "recursive generic type %s has infinite size", typeDisplayName(out))
+			}
+			recursive = true
+			continue
+		}
+		out.Fields = append(out.Fields, field)
+	}
+	for _, property := range typ.Properties {
+		property.Type = substituteGenericType(property.Type, substitution)
+		if property.Error != nil {
+			errorType := substituteGenericType(*property.Error, substitution)
+			property.Error = &errorType
+		}
+		out.Properties = append(out.Properties, property)
+	}
+	for _, variant := range typ.UnionVariants {
+		if variant.Payload != nil {
+			payload := substituteGenericType(*variant.Payload, substitution)
+			variant.Payload = &payload
+		}
+		if len(variant.PayloadFields) > 0 {
+			fields := make([]StructField, 0, len(variant.PayloadFields))
+			for _, field := range variant.PayloadFields {
+				field.Type = substituteGenericType(field.Type, substitution)
+				fields = append(fields, field)
+			}
+			variant.PayloadFields = fields
+		}
+		out.UnionVariants = append(out.UnionVariants, variant)
+	}
+	a.genericTypeInstances[key] = out
+	return out
+}
+
+func genericStructFieldHasDirectRecursiveStorage(owner Type, field Type) bool {
+	if sameConcreteType(owner, field) {
+		return true
+	}
+	switch field.Kind {
+	case ArrayType:
+		return field.Element != nil && genericStructFieldHasDirectRecursiveStorage(owner, *field.Element)
+	default:
+		return false
+	}
+}
+
+func substituteGenericType(typ Type, substitution map[string]Type) Type {
+	if typ.Kind == GenericType {
+		if concrete, ok := substitution[typ.Name]; ok {
+			return concrete
+		}
+		return typ
+	}
+	if len(typ.TypeArgs) > 0 {
+		out := typ
+		out.TypeArgs = make([]Type, 0, len(typ.TypeArgs))
+		for _, arg := range typ.TypeArgs {
+			out.TypeArgs = append(out.TypeArgs, substituteGenericType(arg, substitution))
+		}
+		return out
+	}
+	if typ.Element != nil {
+		out := typ
+		element := substituteGenericType(*typ.Element, substitution)
+		out.Element = &element
+		return out
+	}
+	if typ.Kind == FunctionType {
+		out := typ
+		out.FunctionParameterTypes = make([]Type, 0, len(typ.FunctionParameterTypes))
+		for _, param := range typ.FunctionParameterTypes {
+			out.FunctionParameterTypes = append(out.FunctionParameterTypes, substituteGenericType(param, substitution))
+		}
+		if typ.FunctionReturnType != nil {
+			returnType := substituteGenericType(*typ.FunctionReturnType, substitution)
+			out.FunctionReturnType = &returnType
+		}
+		return out
+	}
+	return typ
 }
 
 func (a *Analyzer) resolveFunctionType(ref *ast.TypeReference) (Type, bool) {
@@ -2686,7 +3221,31 @@ func (a *Analyzer) inferExpression(expr ast.Expression) (Type, expressionValue) 
 	}
 }
 
+func (a *Analyzer) inferExpressionWithExpected(expr ast.Expression, expected Type) (Type, expressionValue) {
+	call, ok := expr.(*ast.CallExpression)
+	if !ok || expected.Kind == InvalidType || expected.Kind == "" {
+		return a.inferExpression(expr)
+	}
+	if typ, value, ok := a.inferCallAsUnionVariantConstructor(call, &expected); ok {
+		return typ, value
+	}
+	if len(call.GenericArguments) > 0 {
+		return a.inferExpression(expr)
+	}
+	if callExpressionName(call) == "" {
+		return a.inferExpression(expr)
+	}
+	if typ, value, ok := a.inferCallExpressionWithExpected(call, expected); ok {
+		return typ, value
+	}
+	return a.inferExpression(expr)
+}
+
 func (a *Analyzer) inferStructLiteral(expr *ast.StructLiteral) (Type, expressionValue) {
+	if unionType, value, unionOK := a.inferStructLiteralAsUnionVariant(expr); unionOK {
+		return unionType, value
+	}
+
 	typ, ok := a.resolveType(expr.Type)
 	if !ok {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
@@ -2722,6 +3281,72 @@ func (a *Analyzer) inferStructLiteral(expr *ast.StructLiteral) (Type, expression
 	}
 
 	return typ, expressionValue{Display: expr.String()}
+}
+
+func (a *Analyzer) inferStructLiteralAsUnionVariant(expr *ast.StructLiteral) (Type, expressionValue, bool) {
+	if expr.Type == nil || !strings.Contains(expr.Type.Name, ".") {
+		return Type{}, expressionValue{}, false
+	}
+
+	unionName, variantName, ok := splitUnionVariantTypeName(expr.Type.Name)
+	if !ok {
+		return Type{}, expressionValue{}, false
+	}
+	unionName = a.resolveTypeName(unionName)
+	unionType, ok := a.types[unionName]
+	if !ok || unionType.Kind != UnionType {
+		return Type{}, expressionValue{}, false
+	}
+
+	variant, ok := lookupUnionVariant(unionType, variantName)
+	if !ok {
+		a.addErrorAtToken(expr.Token, "unknown union variant %s.%s", unionType.Name, variantName)
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+	}
+	if len(variant.PayloadFields) == 0 {
+		a.addErrorAtToken(expr.Token, "union variant %s.%s requires unnamed payload construction", typeDisplayName(unionType), variant.Name)
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+	}
+
+	a.checkUnionPayloadFields(unionType, variant, expr.Fields, expr.Token)
+	return unionType, expressionValue{Display: expr.String()}, true
+}
+
+func (a *Analyzer) checkUnionPayloadFields(unionType Type, variant UnionVariant, fields []*ast.StructLiteralField, token lexer.Token) {
+	expected := map[string]StructField{}
+	for _, field := range variant.PayloadFields {
+		expected[field.Name] = field
+	}
+
+	seen := map[string]lexer.Token{}
+	for _, field := range fields {
+		if field == nil || field.Name == nil {
+			continue
+		}
+		name := field.Name.Value
+		if _, exists := seen[name]; exists {
+			a.addErrorAtToken(field.Name.Token, "duplicate payload field %s for %s.%s", name, typeDisplayName(unionType), variant.Name)
+			continue
+		}
+		seen[name] = field.Name.Token
+
+		expectedField, ok := expected[name]
+		if !ok {
+			a.addErrorAtToken(field.Name.Token, "unknown payload field %s for %s.%s", name, typeDisplayName(unionType), variant.Name)
+			continue
+		}
+
+		valueType, _ := a.inferExpressionWithExpected(field.Value, expectedField.Type)
+		if valueType.Kind != InvalidType && !canInitialize(expectedField.Type, valueType, field.Value) {
+			a.addErrorAtToken(expressionToken(field.Value), "payload field %s for %s.%s must be %s, got %s", name, typeDisplayName(unionType), variant.Name, typeDisplayName(expectedField.Type), typeDisplayName(valueType))
+		}
+	}
+
+	for _, field := range variant.PayloadFields {
+		if _, ok := seen[field.Name]; !ok {
+			a.addErrorAtToken(token, "missing payload field %s for %s.%s", field.Name, typeDisplayName(unionType), variant.Name)
+		}
+	}
 }
 
 func (a *Analyzer) inferLambdaExpression(expr *ast.LambdaExpression) (Type, expressionValue) {
@@ -2831,6 +3456,9 @@ func (a *Analyzer) inferMemberExpression(expr *ast.MemberExpression) (Type, bool
 	if enumType, ok := a.inferEnumValueExpression(expr); ok {
 		return enumType, true
 	}
+	if unionType, ok := a.inferUnionVariantExpression(expr); ok {
+		return unionType, true
+	}
 
 	objectType, _ := a.inferExpression(expr.Object)
 	if objectType.Kind == InvalidType {
@@ -2856,6 +3484,34 @@ func (a *Analyzer) inferMemberExpression(expr *ast.MemberExpression) (Type, bool
 
 	a.addErrorAtToken(expr.Property.Token, "unknown member %s on %s", expr.Property.Value, typeDisplayName(objectType))
 	return Type{Kind: InvalidType}, false
+}
+
+func (a *Analyzer) inferUnionVariantExpression(expr *ast.MemberExpression) (Type, bool) {
+	typeName, ok := typePathFromExpression(expr.Object)
+	if !ok {
+		return Type{}, false
+	}
+	typeName = a.resolveTypeName(typeName)
+
+	typ, ok := a.types[typeName]
+	if !ok || typ.Kind != UnionType {
+		return Type{}, false
+	}
+	if len(typ.GenericParameters) > 0 && a.currentFunctionReturn.Kind == UnionType && a.currentFunctionReturn.Name == typ.Name {
+		typ = a.currentFunctionReturn
+	}
+	for _, variant := range typ.UnionVariants {
+		if variant.Name != expr.Property.Value {
+			continue
+		}
+		if variant.Payload != nil {
+			a.addErrorAtToken(expr.Property.Token, "union variant %s.%s requires payload", typeDisplayName(typ), variant.Name)
+			return Type{Kind: InvalidType}, true
+		}
+		return typ, true
+	}
+	a.addErrorAtToken(expr.Property.Token, "unknown union variant %s.%s", typ.Name, expr.Property.Value)
+	return Type{Kind: InvalidType}, true
 }
 
 func (a *Analyzer) inferEnumValueExpression(expr *ast.MemberExpression) (Type, bool) {
@@ -2966,8 +3622,20 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 
 	functions, ok := a.functions[name]
 	if !ok || len(functions) == 0 {
+		if methodName, methodOK := a.methodCallName(expr); methodOK {
+			if methodFunctions := a.functions[methodName]; len(methodFunctions) > 0 {
+				name = methodName
+				functions = methodFunctions
+				ok = true
+			}
+		}
+	}
+	if !ok || len(functions) == 0 {
 		if symbol, exists := a.symbols[name]; exists && symbol.Type.Kind == FunctionType {
 			return a.inferFunctionValueCall(expr, symbol.Type)
+		}
+		if typ, value, ok := a.inferCallAsUnionVariantConstructor(expr, nil); ok {
+			return typ, value
 		}
 		return a.inferCallAsConversion(expr)
 	}
@@ -2999,7 +3667,35 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 	}
 
 	matches := []overloadMatch{}
+	hadGenericArityMatch := false
+	hadGenericInference := false
+	hadExplicitGenericCall := len(expr.GenericArguments) > 0
+	hadGenericFunctionForExplicitCall := false
+	hadExplicitGenericArityMatch := false
 	for _, function := range arityMatches {
+		if hadExplicitGenericCall {
+			if len(function.GenericParameters) == 0 {
+				continue
+			}
+			hadGenericFunctionForExplicitCall = true
+			instantiated, ok := a.explicitGenericFunctionInstance(function, expr.GenericArguments)
+			if !ok {
+				if len(function.GenericParameters) == len(expr.GenericArguments) {
+					hadExplicitGenericArityMatch = true
+				}
+				continue
+			}
+			hadExplicitGenericArityMatch = true
+			function = instantiated
+		} else if len(function.GenericParameters) > 0 {
+			hadGenericArityMatch = true
+			instantiated, ok := a.inferGenericFunctionInstance(function, argTypes)
+			if !ok {
+				continue
+			}
+			hadGenericInference = true
+			function = instantiated
+		}
 		matchesArguments := true
 		rank := 0
 		for i, arg := range expr.Arguments {
@@ -3024,17 +3720,470 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 
+	if hadExplicitGenericCall && !hadGenericFunctionForExplicitCall {
+		a.addErrorAtToken(expr.Token, "function %s is not generic", name)
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+
+	if hadExplicitGenericCall && !hadExplicitGenericArityMatch {
+		for _, function := range arityMatches {
+			if len(function.GenericParameters) > 0 {
+				a.addErrorAtToken(expr.Token, "%s requires %d explicit generic arguments, got %d", name, len(function.GenericParameters), len(expr.GenericArguments))
+				return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+			}
+		}
+	}
+
+	if hadGenericArityMatch && !hadGenericInference {
+		a.addErrorAtToken(expr.Token, "cannot infer generic arguments for %s", name)
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+
 	for _, function := range arityMatches {
+		displayName := name
+		if hadExplicitGenericCall {
+			if len(function.GenericParameters) == 0 {
+				continue
+			}
+			instantiated, ok := a.explicitGenericFunctionInstance(function, expr.GenericArguments)
+			if !ok {
+				continue
+			}
+			function = instantiated
+			displayName = genericFunctionDisplayName(name, function)
+		} else if len(function.GenericParameters) > 0 {
+			instantiated, ok := a.inferGenericFunctionInstance(function, argTypes)
+			if !ok {
+				continue
+			}
+			function = instantiated
+			displayName = genericFunctionDisplayName(name, function)
+		}
 		for i, arg := range expr.Arguments {
 			param := function.Parameters[i]
 			if !canInitialize(param.Type, argTypes[i], arg) {
-				a.addErrorAtToken(expressionToken(arg), "argument %d to %s must be %s, got %s", i+1, name, typeDisplayName(param.Type), typeDisplayName(argTypes[i]))
+				a.addErrorAtToken(expressionToken(arg), "argument %d to %s must be %s, got %s", i+1, displayName, typeDisplayName(param.Type), typeDisplayName(argTypes[i]))
 			}
 		}
 		break
 	}
 
 	return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+}
+
+func (a *Analyzer) methodCallName(expr *ast.CallExpression) (string, bool) {
+	member, ok := expr.Callee.(*ast.MemberExpression)
+	if !ok {
+		return "", false
+	}
+	if typeName, ok := typePathFromExpression(member.Object); ok {
+		if _, exists := a.types[a.resolveTypeName(typeName)]; exists {
+			return "", false
+		}
+	}
+	objectType, _ := a.inferExpression(member.Object)
+	if objectType.Kind == InvalidType || objectType.Name == "" {
+		return "", false
+	}
+	return objectType.Name + "." + member.Property.Value, true
+}
+
+func (a *Analyzer) inferCallAsUnionVariantConstructor(expr *ast.CallExpression, expected *Type) (Type, expressionValue, bool) {
+	member, ok := expr.Callee.(*ast.MemberExpression)
+	if !ok {
+		return Type{}, expressionValue{}, false
+	}
+
+	typeName, ok := typePathFromExpression(member.Object)
+	if !ok {
+		return Type{}, expressionValue{}, false
+	}
+	typeName = a.resolveTypeName(typeName)
+
+	template, ok := a.types[typeName]
+	if !ok || template.Kind != UnionType {
+		return Type{}, expressionValue{}, false
+	}
+
+	variant, ok := lookupUnionVariant(template, member.Property.Value)
+	if !ok {
+		a.addErrorAtToken(member.Property.Token, "unknown union variant %s.%s", template.Name, member.Property.Value)
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+	}
+
+	unionType := template
+	if len(expr.GenericArguments) > 0 {
+		explicit, ok := a.resolveType(&ast.TypeReference{
+			Token:    expr.Token,
+			Name:     typeName,
+			TypeArgs: expr.GenericArguments,
+		})
+		if !ok {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		unionType = explicit
+	} else if expected != nil && expected.Kind == UnionType && expected.Name == template.Name {
+		unionType = *expected
+	} else if len(template.GenericParameters) > 0 {
+		concrete, ok := a.inferGenericUnionVariantInstance(template, variant, expr)
+		if !ok {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		unionType = concrete
+	}
+
+	concreteVariant, ok := lookupUnionVariant(unionType, member.Property.Value)
+	if !ok {
+		a.addErrorAtToken(member.Property.Token, "unknown union variant %s.%s", unionType.Name, member.Property.Value)
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+	}
+
+	if len(concreteVariant.PayloadFields) > 0 {
+		a.addErrorAtToken(expr.Token, "union variant %s.%s requires named payload fields", typeDisplayName(unionType), concreteVariant.Name)
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+	}
+
+	if concreteVariant.Payload == nil {
+		if len(expr.Arguments) != 0 {
+			a.addErrorAtToken(expr.Token, "union variant %s.%s expects 0 arguments, got %d", typeDisplayName(unionType), concreteVariant.Name, len(expr.Arguments))
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		return unionType, expressionValue{Display: expr.String()}, true
+	}
+
+	if len(expr.Arguments) != 1 {
+		a.addErrorAtToken(expr.Token, "union variant %s.%s expects 1 argument, got %d", typeDisplayName(unionType), concreteVariant.Name, len(expr.Arguments))
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+	}
+
+	payloadType := *concreteVariant.Payload
+	valueType, _ := a.inferExpressionWithExpected(expr.Arguments[0], payloadType)
+	if valueType.Kind != InvalidType && !canInitialize(payloadType, valueType, expr.Arguments[0]) {
+		a.addErrorAtToken(expressionToken(expr.Arguments[0]), "union variant %s.%s payload must be %s, got %s", typeDisplayName(unionType), concreteVariant.Name, typeDisplayName(payloadType), typeDisplayName(valueType))
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+	}
+
+	return unionType, expressionValue{Display: expr.String()}, true
+}
+
+func (a *Analyzer) inferGenericUnionVariantInstance(template Type, variant UnionVariant, expr *ast.CallExpression) (Type, bool) {
+	if variant.Payload == nil {
+		a.addErrorAtToken(expr.Token, "cannot infer generic arguments for %s.%s", template.Name, variant.Name)
+		return Type{}, false
+	}
+	if len(expr.Arguments) != 1 {
+		a.addErrorAtToken(expr.Token, "union variant %s.%s expects 1 argument, got %d", typeDisplayName(template), variant.Name, len(expr.Arguments))
+		return Type{}, false
+	}
+
+	argType, _ := a.inferExpression(expr.Arguments[0])
+	if argType.Kind == InvalidType {
+		return Type{}, false
+	}
+
+	substitution := map[string]Type{}
+	if !inferGenericTypeSubstitution(*variant.Payload, argType, substitution) {
+		a.addErrorAtToken(expressionToken(expr.Arguments[0]), "cannot infer generic arguments for %s.%s", template.Name, variant.Name)
+		return Type{}, false
+	}
+
+	typeArgs := make([]Type, 0, len(template.GenericParameters))
+	for _, name := range template.GenericParameters {
+		arg, ok := substitution[name]
+		if !ok {
+			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "cannot infer generic arguments for %s.%s", template.Name, variant.Name)
+			return Type{}, false
+		}
+		typeArgs = append(typeArgs, arg)
+	}
+
+	concrete := template
+	concrete.TypeArgs = typeArgs
+	return a.instantiateGenericType(concrete), true
+}
+
+func lookupUnionVariant(typ Type, name string) (UnionVariant, bool) {
+	for _, variant := range typ.UnionVariants {
+		if variant.Name == name {
+			return variant, true
+		}
+	}
+	return UnionVariant{}, false
+}
+
+func splitUnionVariantTypeName(name string) (string, string, bool) {
+	idx := strings.LastIndex(name, ".")
+	if idx <= 0 || idx == len(name)-1 {
+		return "", "", false
+	}
+	return name[:idx], name[idx+1:], true
+}
+
+func (a *Analyzer) inferCallExpressionWithExpected(expr *ast.CallExpression, expected Type) (Type, expressionValue, bool) {
+	name := callExpressionName(expr)
+	functions, ok := a.functions[name]
+	if !ok || len(functions) == 0 {
+		return Type{}, expressionValue{}, false
+	}
+	functions = a.accessibleFunctions(functions)
+	if len(functions) == 0 {
+		return Type{}, expressionValue{}, false
+	}
+
+	argTypes := make([]Type, 0, len(expr.Arguments))
+	for _, arg := range expr.Arguments {
+		argType, _ := a.inferExpression(arg)
+		if argType.Kind == InvalidType {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		argTypes = append(argTypes, argType)
+	}
+
+	matches := []overloadMatch{}
+	for _, function := range functions {
+		if len(function.Parameters) != len(expr.Arguments) || len(function.GenericParameters) == 0 {
+			continue
+		}
+		instantiated, ok := a.inferGenericFunctionInstanceWithExpected(function, argTypes, expected)
+		if !ok {
+			continue
+		}
+
+		matchesArguments := true
+		rank := 0
+		for i, arg := range expr.Arguments {
+			if !canInitialize(instantiated.Parameters[i].Type, argTypes[i], arg) {
+				matchesArguments = false
+				break
+			}
+			rank += overloadArgumentRank(instantiated.Parameters[i].Type, argTypes[i])
+		}
+		if matchesArguments {
+			matches = append(matches, overloadMatch{Function: instantiated, Rank: rank})
+		}
+	}
+
+	best := bestOverloadMatches(matches)
+	if len(best) == 1 {
+		return best[0].Function.ReturnType, expressionValue{Display: expr.String()}, true
+	}
+	if len(best) > 1 {
+		a.addErrorAtToken(expr.Token, "ambiguous call to %s", name)
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+	}
+	return Type{}, expressionValue{}, false
+}
+
+func (a *Analyzer) explicitGenericFunctionInstance(function Function, refs []*ast.TypeReference) (Function, bool) {
+	if len(function.GenericParameters) != len(refs) {
+		return Function{}, false
+	}
+
+	substitution := map[string]Type{}
+	for i, ref := range refs {
+		typ, ok := a.resolveType(ref)
+		if !ok {
+			return Function{}, false
+		}
+		substitution[function.GenericParameters[i]] = typ
+	}
+
+	return a.instantiateGenericFunction(function, substitution), true
+}
+
+func (a *Analyzer) inferGenericFunctionInstance(function Function, argTypes []Type) (Function, bool) {
+	if len(function.Parameters) != len(argTypes) {
+		return Function{}, false
+	}
+
+	substitution := map[string]Type{}
+	for i, param := range function.Parameters {
+		if !inferGenericTypeSubstitution(param.Type, argTypes[i], substitution) {
+			return Function{}, false
+		}
+	}
+	for _, name := range function.GenericParameters {
+		if _, ok := substitution[name]; !ok {
+			return Function{}, false
+		}
+	}
+
+	return a.instantiateGenericFunction(function, substitution), true
+}
+
+func (a *Analyzer) inferGenericFunctionInstanceWithExpected(function Function, argTypes []Type, expected Type) (Function, bool) {
+	if len(function.Parameters) != len(argTypes) {
+		return Function{}, false
+	}
+
+	substitution := map[string]Type{}
+	for i, param := range function.Parameters {
+		if !inferGenericTypeSubstitution(param.Type, argTypes[i], substitution) {
+			return Function{}, false
+		}
+	}
+
+	if expected.Kind != InvalidType && expected.Kind != "" {
+		before := len(substitution)
+		if !inferGenericTypeSubstitution(function.ReturnType, expected, substitution) {
+			if before < len(function.GenericParameters) {
+				return Function{}, false
+			}
+		}
+	}
+
+	for _, name := range function.GenericParameters {
+		if _, ok := substitution[name]; !ok {
+			return Function{}, false
+		}
+	}
+
+	return a.instantiateGenericFunction(function, substitution), true
+}
+
+func (a *Analyzer) instantiateGenericFunction(function Function, substitution map[string]Type) Function {
+	key := genericFunctionInstanceKey(function, substitution)
+	if existing, ok := a.genericFuncInstances[key]; ok {
+		return existing
+	}
+
+	out := function
+	out.GenericParameters = nil
+	out.Parameters = make([]FunctionParameter, 0, len(function.Parameters))
+	for _, param := range function.Parameters {
+		param.Type = substituteGenericType(param.Type, substitution)
+		out.Parameters = append(out.Parameters, param)
+	}
+	out.ReturnType = substituteGenericType(function.ReturnType, substitution)
+	a.genericFuncInstances[key] = out
+	return out
+}
+
+func genericTypeInstanceKey(typ Type) genericInstanceKey {
+	return genericInstanceKey{
+		Declaration: typeDeclarationIdentity(typ),
+		Arguments:   canonicalTypeArgumentsKey(typ.TypeArgs),
+	}
+}
+
+func genericFunctionInstanceKey(function Function, substitution map[string]Type) genericInstanceKey {
+	args := make([]Type, 0, len(function.GenericParameters))
+	for _, name := range function.GenericParameters {
+		args = append(args, substitution[name])
+	}
+	return genericInstanceKey{
+		Declaration: functionDeclarationIdentity(function),
+		Arguments:   canonicalTypeArgumentsKey(args),
+	}
+}
+
+func typeDeclarationIdentity(typ Type) string {
+	return typ.Module + ":" + string(typ.Kind) + ":" + typ.Name
+}
+
+func functionDeclarationIdentity(function Function) string {
+	return fmt.Sprintf("%s:fn:%s:%d:%d", function.Module, function.Name, function.Token.Line, function.Token.Column)
+}
+
+func canonicalTypeArgumentsKey(args []Type) string {
+	if len(args) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(args))
+	for _, arg := range args {
+		parts = append(parts, canonicalTypeIdentity(arg))
+	}
+	return strings.Join(parts, ";")
+}
+
+func canonicalTypeIdentity(typ Type) string {
+	switch typ.Kind {
+	case ArrayType:
+		if typ.Element == nil {
+			return fmt.Sprintf("array:%d:<nil>", typ.ArrayLength)
+		}
+		return fmt.Sprintf("array:%d:%s", typ.ArrayLength, canonicalTypeIdentity(*typ.Element))
+	case SliceType:
+		if typ.Element == nil {
+			return "slice:<nil>"
+		}
+		return "slice:" + canonicalTypeIdentity(*typ.Element)
+	case FunctionType:
+		params := make([]string, 0, len(typ.FunctionParameterTypes))
+		for _, param := range typ.FunctionParameterTypes {
+			params = append(params, canonicalTypeIdentity(param))
+		}
+		returnType := "<nil>"
+		if typ.FunctionReturnType != nil {
+			returnType = canonicalTypeIdentity(*typ.FunctionReturnType)
+		}
+		return "fn:(" + strings.Join(params, ",") + ")->" + returnType
+	default:
+		identity := typeDeclarationIdentity(typ)
+		if identity == "::" || typ.Name == "" {
+			identity = string(typ.Kind)
+		}
+		if len(typ.TypeArgs) > 0 {
+			identity += "[" + canonicalTypeArgumentsKey(typ.TypeArgs) + "]"
+		}
+		return identity
+	}
+}
+
+func inferGenericTypeSubstitution(pattern Type, concrete Type, substitution map[string]Type) bool {
+	if pattern.Kind == GenericType {
+		if existing, ok := substitution[pattern.Name]; ok {
+			return sameConcreteType(existing, concrete)
+		}
+		substitution[pattern.Name] = concrete
+		return true
+	}
+
+	if pattern.Kind == FunctionType || concrete.Kind == FunctionType {
+		if pattern.Kind != FunctionType || concrete.Kind != FunctionType {
+			return false
+		}
+		if len(pattern.FunctionParameterTypes) != len(concrete.FunctionParameterTypes) {
+			return false
+		}
+		for i := range pattern.FunctionParameterTypes {
+			if !inferGenericTypeSubstitution(pattern.FunctionParameterTypes[i], concrete.FunctionParameterTypes[i], substitution) {
+				return false
+			}
+		}
+		if pattern.FunctionReturnType == nil || concrete.FunctionReturnType == nil {
+			return pattern.FunctionReturnType == nil && concrete.FunctionReturnType == nil
+		}
+		return inferGenericTypeSubstitution(*pattern.FunctionReturnType, *concrete.FunctionReturnType, substitution)
+	}
+
+	if pattern.Element != nil || concrete.Element != nil {
+		if pattern.Element == nil || concrete.Element == nil || pattern.Kind != concrete.Kind || pattern.ArrayLength != concrete.ArrayLength {
+			return false
+		}
+		return inferGenericTypeSubstitution(*pattern.Element, *concrete.Element, substitution)
+	}
+
+	if len(pattern.TypeArgs) > 0 || len(concrete.TypeArgs) > 0 {
+		if pattern.Name != concrete.Name || len(pattern.TypeArgs) != len(concrete.TypeArgs) {
+			return false
+		}
+		for i := range pattern.TypeArgs {
+			if !inferGenericTypeSubstitution(pattern.TypeArgs[i], concrete.TypeArgs[i], substitution) {
+				return false
+			}
+		}
+		return true
+	}
+
+	return canInitialize(pattern, concrete, nil)
+}
+
+func genericFunctionDisplayName(name string, function Function) string {
+	if len(function.Parameters) == 0 {
+		return name
+	}
+	return name
 }
 
 func (a *Analyzer) inferFunctionValueCall(expr *ast.CallExpression, calleeType Type) (Type, expressionValue) {
@@ -3241,14 +4390,23 @@ func formatFunctionArities(functions []Function) string {
 func (a *Analyzer) inferCallAsConversion(expr *ast.CallExpression) (Type, expressionValue) {
 	name := callExpressionName(expr)
 	typeName := a.resolveTypeName(name)
-	targetType, ok := a.types[typeName]
-	if !ok {
+	if _, exists := a.types[typeName]; !exists {
 		a.addErrorAtToken(expr.Token, "unknown function or type %s", name)
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 
+	targetRef := &ast.TypeReference{
+		Token:    expr.Token,
+		Name:     name,
+		TypeArgs: expr.GenericArguments,
+	}
+	targetType, ok := a.resolveType(targetRef)
+	if !ok {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+
 	if len(expr.Arguments) != 1 {
-		a.addErrorAtToken(expr.Function.Token, "conversion to %s expects 1 argument, got %d", expr.Function.Value, len(expr.Arguments))
+		a.addErrorAtToken(expr.Token, "conversion to %s expects 1 argument, got %d", name, len(expr.Arguments))
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 
@@ -3258,7 +4416,7 @@ func (a *Analyzer) inferCallAsConversion(expr *ast.CallExpression) (Type, expres
 	}
 
 	if !canExplicitConvert(targetType, valueType) {
-		a.addErrorAtToken(expr.Function.Token, "cannot convert %s to %s", typeDisplayName(valueType), typeDisplayName(targetType))
+		a.addErrorAtToken(expr.Token, "cannot convert %s to %s", typeDisplayName(valueType), typeDisplayName(targetType))
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 
@@ -3601,6 +4759,13 @@ func matchPatternAlreadyCovered(info matchPatternInfo, seenKinds map[string]bool
 func (a *Analyzer) analyzeMatchPattern(pattern ast.Expression, subjectType Type) (matchPatternInfo, bool) {
 	switch pattern := pattern.(type) {
 	case *ast.OkExpression:
+		if subjectType.Kind == UnionType {
+			args := []ast.Expression{}
+			if pattern.Value != nil {
+				args = append(args, pattern.Value)
+			}
+			return a.analyzeUnionPayloadPattern("Ok", args, pattern.Token, subjectType)
+		}
 		if subjectType.Kind != ResultType || len(subjectType.TypeArgs) != 2 {
 			a.addErrorAtToken(pattern.Token, "Ok pattern requires Result subject")
 			return matchPatternInfo{}, false
@@ -3614,6 +4779,13 @@ func (a *Analyzer) analyzeMatchPattern(pattern ast.Expression, subjectType Type)
 		}
 		return info, true
 	case *ast.ErrExpression:
+		if subjectType.Kind == UnionType {
+			args := []ast.Expression{}
+			if pattern.Value != nil {
+				args = append(args, pattern.Value)
+			}
+			return a.analyzeUnionPayloadPattern("Err", args, pattern.Token, subjectType)
+		}
 		if subjectType.Kind != ResultType || len(subjectType.TypeArgs) != 2 {
 			a.addErrorAtToken(pattern.Token, "Err pattern requires Result subject")
 			return matchPatternInfo{}, false
@@ -3638,7 +4810,29 @@ func (a *Analyzer) analyzeMatchPattern(pattern ast.Expression, subjectType Type)
 			return matchPatternInfo{}, false
 		}
 		return matchPatternInfo{Kind: "variant", Variant: pattern.Property.Value}, true
+	case *ast.CallExpression:
+		if subjectType.Kind == UnionType {
+			return a.analyzeUnionPayloadMatchPattern(pattern, subjectType)
+		}
+		patternType, _ := a.inferExpression(pattern)
+		if patternType.Kind == InvalidType {
+			return matchPatternInfo{}, false
+		}
+		if !canInitialize(subjectType, patternType, pattern) {
+			a.addErrorAtToken(expressionToken(pattern), "match pattern must match %s, got %s", typeDisplayName(subjectType), typeDisplayName(patternType))
+			return matchPatternInfo{}, false
+		}
+		return matchPatternInfo{Kind: "literal"}, true
 	case *ast.Identifier:
+		if subjectType.Kind == UnionType {
+			if variant, ok := lookupUnionVariant(subjectType, pattern.Value); ok {
+				if variant.Payload != nil || len(variant.PayloadFields) > 0 {
+					a.addErrorAtToken(pattern.Token, "union variant %s.%s requires payload binding", typeDisplayName(subjectType), variant.Name)
+					return matchPatternInfo{}, false
+				}
+				return matchPatternInfo{Kind: "variant", Variant: variant.Name}, true
+			}
+		}
 		return matchPatternInfo{BindingName: pattern.Value, BindingType: subjectType, Kind: "catchall"}, true
 	default:
 		patternType, _ := a.inferExpression(pattern)
@@ -3651,6 +4845,68 @@ func (a *Analyzer) analyzeMatchPattern(pattern ast.Expression, subjectType Type)
 		}
 		return matchPatternInfo{Kind: "literal"}, true
 	}
+}
+
+func (a *Analyzer) analyzeUnionPayloadMatchPattern(pattern *ast.CallExpression, subjectType Type) (matchPatternInfo, bool) {
+	variantName := ""
+	switch callee := pattern.Callee.(type) {
+	case *ast.Identifier:
+		variantName = callee.Value
+	case *ast.MemberExpression:
+		typeName, ok := typePathFromExpression(callee.Object)
+		if !ok {
+			a.addErrorAtToken(pattern.Token, "match pattern must match %s", typeDisplayName(subjectType))
+			return matchPatternInfo{}, false
+		}
+		typeName = a.resolveTypeName(typeName)
+		if typeName != subjectType.Name {
+			a.addErrorAtToken(pattern.Token, "match pattern must match %s", typeDisplayName(subjectType))
+			return matchPatternInfo{}, false
+		}
+		variantName = callee.Property.Value
+	default:
+		a.addErrorAtToken(pattern.Token, "match pattern must match %s", typeDisplayName(subjectType))
+		return matchPatternInfo{}, false
+	}
+
+	return a.analyzeUnionPayloadPattern(variantName, pattern.Arguments, pattern.Token, subjectType)
+}
+
+func (a *Analyzer) analyzeUnionPayloadPattern(variantName string, arguments []ast.Expression, token lexer.Token, subjectType Type) (matchPatternInfo, bool) {
+	variant, ok := lookupUnionVariant(subjectType, variantName)
+	if !ok {
+		a.addErrorAtToken(token, "unknown union variant %s.%s", typeDisplayName(subjectType), variantName)
+		return matchPatternInfo{}, false
+	}
+	if variant.Payload == nil && len(variant.PayloadFields) == 0 {
+		a.addErrorAtToken(token, "payload-less union variant %s.%s must not bind a payload", typeDisplayName(subjectType), variant.Name)
+		return matchPatternInfo{}, false
+	}
+	if len(arguments) != 1 {
+		a.addErrorAtToken(token, "union variant %s.%s requires 1 payload binding, got %d", typeDisplayName(subjectType), variant.Name, len(arguments))
+		return matchPatternInfo{}, false
+	}
+	binding, ok := arguments[0].(*ast.Identifier)
+	if !ok {
+		a.addErrorAtToken(expressionToken(arguments[0]), "union payload pattern must bind an identifier")
+		return matchPatternInfo{}, false
+	}
+
+	info := matchPatternInfo{Kind: "variant", Variant: variant.Name}
+	if binding.Value == "_" {
+		return info, true
+	}
+	info.BindingName = binding.Value
+	if variant.Payload != nil {
+		info.BindingType = *variant.Payload
+	} else {
+		info.BindingType = Type{
+			Name:   typeDisplayName(subjectType) + "." + variant.Name,
+			Kind:   StructType,
+			Fields: variant.PayloadFields,
+		}
+	}
+	return info, true
 }
 
 func (a *Analyzer) analyzeMatchArmBody(arm *ast.MatchArm, info matchPatternInfo) (Type, branchAnalysis) {
@@ -3720,6 +4976,20 @@ func (a *Analyzer) checkMatchExhaustive(expr *ast.MatchExpression, subjectType T
 				a.addErrorAtToken(expr.Token, "non-exhaustive match for %s", typeDisplayName(subjectType))
 				return false
 			}
+		}
+		return true
+	}
+
+	if subjectType.Kind == UnionType {
+		missing := []string{}
+		for _, variant := range subjectType.UnionVariants {
+			if !seenVariants[variant.Name] {
+				missing = append(missing, variant.Name)
+			}
+		}
+		if len(missing) > 0 {
+			a.addErrorAtToken(expr.Token, "non-exhaustive match for %s: missing %s", typeDisplayName(subjectType), strings.Join(missing, ", "))
+			return false
 		}
 		return true
 	}
@@ -4046,6 +5316,18 @@ func canInitialize(target Type, value Type, expr ast.Expression) bool {
 		return target.Kind == EnumType && value.Kind == EnumType && target.Name == value.Name
 	}
 
+	if target.Kind == StructType || value.Kind == StructType {
+		return target.Kind == StructType && value.Kind == StructType && sameConcreteType(target, value)
+	}
+
+	if target.Kind == UnionType || value.Kind == UnionType {
+		return target.Kind == UnionType && value.Kind == UnionType && sameConcreteType(target, value)
+	}
+
+	if len(target.TypeArgs) > 0 || len(value.TypeArgs) > 0 {
+		return sameConcreteType(target, value)
+	}
+
 	if isNominal(target) && target.Name != value.Name {
 		return isUntypedNumericExpression(expr)
 	}
@@ -4091,6 +5373,14 @@ func canExplicitConvert(target Type, value Type) bool {
 		return true
 	}
 
+	if target.Kind == StringType && isNumericType(value) {
+		return true
+	}
+
+	if target.Kind == UnionType || value.Kind == UnionType {
+		return target.Kind == UnionType && value.Kind == UnionType && sameConcreteType(target, value)
+	}
+
 	if target.Kind == value.Kind {
 		return true
 	}
@@ -4107,7 +5397,7 @@ func hasContracts(typ Type) bool {
 }
 
 func isNominal(typ Type) bool {
-	return typ.Named && (typ.Kind == EnumType || hasContracts(typ) || !typ.Dimension.IsZero())
+	return typ.Named && (typ.Kind == EnumType || typ.Kind == UnionType || hasContracts(typ) || !typ.Dimension.IsZero())
 }
 
 func isIntegerType(typ Type) bool {
@@ -4123,9 +5413,21 @@ func sameConcreteType(left Type, right Type) bool {
 		return sameFunctionType(left, right)
 	}
 	if left.Name != "" || right.Name != "" {
-		return left.Name == right.Name
+		return left.Name == right.Name && sameTypeArguments(left.TypeArgs, right.TypeArgs)
 	}
 	return left.Kind == right.Kind
+}
+
+func sameTypeArguments(left []Type, right []Type) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for i := range left {
+		if !sameConcreteType(left[i], right[i]) {
+			return false
+		}
+	}
+	return true
 }
 
 func sameFunctionType(left Type, right Type) bool {

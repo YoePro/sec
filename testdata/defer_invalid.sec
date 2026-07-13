@@ -35,12 +35,16 @@ fn ReadResource(resource: Resource) Result[int, CleanupError] {
     return Ok(resource.id)
 }
 
+// Defer tests
+
+// Ok: Warning: superfluous defer return 
 fn DeferWithReturn() void {
     defer {
         return
     }
 }
 
+// Ok: sema error: return is not allowed inside defer
 fn DeferWithReturnValue() int {
     defer {
         return 10
@@ -49,6 +53,8 @@ fn DeferWithReturnValue() int {
     return 20
 }
 
+// Ok: Warning: defer inside loop registers once per execution and runs at function exit
+// sema error: break is not allowed inside defer 
 fn DeferWithBreak() void {
     for {
         defer {
@@ -59,6 +65,8 @@ fn DeferWithBreak() void {
     }
 }
 
+// Ok: Warning: defer inside loop registers once per execution and runs at function exit
+// sema error: continue is not allowed inside defer
 fn DeferWithContinue() void {
     for {
         defer {
@@ -69,6 +77,7 @@ fn DeferWithContinue() void {
     }
 }
 
+// Ok: sema error: fallthrough is not allowed inside defer
 fn DeferWithFallthrough(value: int) void {
     switch value {
     case 1:
@@ -79,6 +88,7 @@ fn DeferWithFallthrough(value: int) void {
     }
 }
 
+// Ok: sema error: defer is not allowed inside defer
 fn NestedDefer() void {
     defer {
         defer {
@@ -87,6 +97,7 @@ fn NestedDefer() void {
     }
 }
 
+// Ok: sema error: try cannot propagate from inside defer
 fn TryPropagationInsideDefer(resource: Resource) Result[void, CleanupError] {
     defer {
         let value := try ReadResource(resource)
@@ -96,6 +107,7 @@ fn TryPropagationInsideDefer(resource: Resource) Result[void, CleanupError] {
     return Ok()
 }
 
+// Ok: sema error: try cannot propagate from inside defer
 fn BareTryInsideDefer(resource: Resource) Result[void, CleanupError] {
     defer {
         try CloseResource(resource)
@@ -104,12 +116,14 @@ fn BareTryInsideDefer(resource: Resource) Result[void, CleanupError] {
     return Ok()
 }
 
+// Ok: sema error: unhandled Result inside defer; handle it or discard it explicitly
 fn UnhandledResultInsideDefer(resource: Resource) void {
     defer {
         CloseResource(resource)
     }
 }
 
+// Ok: sema error: non-exhaustive match for Result[void, CleanupError]: missing Err
 fn PartiallyHandledResultInsideDefer(resource: Resource) void {
     defer {
         match CloseResource(resource) {
@@ -119,6 +133,7 @@ fn PartiallyHandledResultInsideDefer(resource: Resource) void {
     }
 }
 
+// Ok: sema error: undefined variable value
 fn ReferenceDeclaredAfterDefer() void {
     defer {
         Record(value)
@@ -127,6 +142,7 @@ fn ReferenceDeclaredAfterDefer() void {
     let value := 10
 }
 
+// Ok: sema error: variable value is unassigned
 fn DeferredReadBeforeDefiniteAssignment() void {
     let mut value: int
 
@@ -135,6 +151,7 @@ fn DeferredReadBeforeDefiniteAssignment() void {
     }
 }
 
+// Ok: sema error: variable value is unassigned
 fn DeferredMaybeInitialized(condition: bool) void {
     let mut value: int
 
@@ -147,6 +164,7 @@ fn DeferredMaybeInitialized(condition: bool) void {
     }
 }
 
+// Ok: sema error: return is not allowed inside defer
 fn ErrorFromDeferredHandler(resource: Resource) Result[void, CleanupError] {
     defer {
         match CloseResource(resource) {

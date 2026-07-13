@@ -1,0 +1,8 @@
+#target(os: "linux", arch: "any")
+module platform.linux
+
+/*
+fn MapMemory(...)
+fn UnmapMemory(...)
+fn ProtectMemory(...)
+*/

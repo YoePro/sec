@@ -84,12 +84,15 @@ func (td *TargetDirective) TokenLiteral() string {
 type TypeDeclStatement struct {
 	Token lexer.Token // TYPE token
 
-	Name         *Identifier
-	BaseType     *TypeReference
-	AssignedType *TypeReference
-	Variants     []*Identifier
-	StructType   *StructType
-	Contract     Contract
+	Name              *Identifier
+	GenericParameters []*GenericParameter
+	BaseType          *TypeReference
+	AssignedType      *TypeReference
+	Variants          []*Identifier
+	StructType        *StructType
+	Union             bool
+	UnionVariants     []*UnionVariant
+	Contract          Contract
 }
 
 func (tds *TypeDeclStatement) statementNode() {}
@@ -98,6 +101,23 @@ func (tds *TypeDeclStatement) implMemberNode() {}
 
 func (tds *TypeDeclStatement) TokenLiteral() string {
 	return tds.Token.Lexeme
+}
+
+type GenericParameter struct {
+	Token      lexer.Token
+	Name       *Identifier
+	Constraint *TypeReference
+}
+
+type UnionVariant struct {
+	Token         lexer.Token
+	Name          *Identifier
+	Payload       *TypeReference
+	PayloadFields []*StructField
+}
+
+func (gp *GenericParameter) TokenLiteral() string {
+	return gp.Token.Lexeme
 }
 
 type EnumDeclaration struct {
@@ -443,12 +463,13 @@ func (es *ExpressionStatement) TokenLiteral() string {
 }
 
 type FunctionDeclaration struct {
-	Token      lexer.Token
-	Name       *Identifier
-	Parameters []*Parameter
-	ReturnType *TypeReference
-	Body       *BlockStatement
-	Unsafe     bool
+	Token             lexer.Token
+	Name              *Identifier
+	GenericParameters []*GenericParameter
+	Parameters        []*Parameter
+	ReturnType        *TypeReference
+	Body              *BlockStatement
+	Unsafe            bool
 }
 
 func (fd *FunctionDeclaration) statementNode() {}
@@ -880,10 +901,11 @@ func (ce *ConversionExpression) String() string {
 }
 
 type CallExpression struct {
-	Token     lexer.Token
-	Callee    Expression
-	Function  *Identifier
-	Arguments []Expression
+	Token            lexer.Token
+	Callee           Expression
+	Function         *Identifier
+	GenericArguments []*TypeReference
+	Arguments        []Expression
 }
 
 func (ce *CallExpression) expressionNode() {}
@@ -900,7 +922,18 @@ func (ce *CallExpression) String() string {
 		name = ce.Function.Value
 	}
 
-	out := name + "("
+	out := name
+	if len(ce.GenericArguments) > 0 {
+		out += "["
+		for i, arg := range ce.GenericArguments {
+			if i > 0 {
+				out += ", "
+			}
+			out += arg.Name
+		}
+		out += "]"
+	}
+	out += "("
 	for i, arg := range ce.Arguments {
 		if i > 0 {
 			out += ", "

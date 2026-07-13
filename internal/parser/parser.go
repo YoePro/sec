@@ -191,6 +191,16 @@ func (p *Parser) parseDiscardStatement() ast.Statement {
 
 func (p *Parser) parseDeferStatement() ast.Statement {
 	stmt := &ast.DeferStatement{Token: p.curToken}
+	if p.peekToken.Type == lexer.RETURN {
+		p.nextToken()
+		returnStmt := p.parseReturnStatement()
+		block := &ast.BlockStatement{Token: stmt.Token}
+		if returnStmt != nil {
+			block.Statements = append(block.Statements, returnStmt)
+		}
+		stmt.Body = block
+		return stmt
+	}
 	if p.peekToken.Type != lexer.LBRACE {
 		p.addError("defer requires a block at %d:%d", p.peekToken.Line, p.peekToken.Column)
 		return stmt
@@ -988,6 +998,14 @@ func (p *Parser) parseTypeDeclStatement() ast.Statement {
 		Value: p.curToken.Lexeme,
 	}
 
+	if p.isAttachedGenericListStart(stmt.Name) {
+		p.nextToken()
+		stmt.GenericParameters = p.parseGenericParameters()
+		if stmt.GenericParameters == nil {
+			return nil
+		}
+	}
+
 	if p.peekToken.Type == lexer.ASSIGN {
 		p.nextToken()
 
@@ -1029,6 +1047,16 @@ func (p *Parser) parseTypeDeclStatement() ast.Statement {
 	if p.peekToken.Type == lexer.STRUCT {
 		p.nextToken()
 		stmt.StructType = p.parseStructType()
+		return stmt
+	}
+
+	if p.peekToken.Type == lexer.UNION {
+		p.nextToken()
+		stmt.Union = true
+		if p.peekToken.Type == lexer.LBRACE {
+			p.nextToken()
+			stmt.UnionVariants = p.parseUnionType()
+		}
 		return stmt
 	}
 
@@ -1138,6 +1166,14 @@ func (p *Parser) parseFunctionDeclaration() *ast.FunctionDeclaration {
 	}
 	fn.Name = &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme}
 
+	if p.isAttachedGenericListStart(fn.Name) {
+		p.nextToken()
+		fn.GenericParameters = p.parseGenericParameters()
+		if fn.GenericParameters == nil {
+			return nil
+		}
+	}
+
 	if !p.expectPeek(lexer.LPAREN) {
 		return nil
 	}
@@ -1158,6 +1194,77 @@ func (p *Parser) parseFunctionDeclaration() *ast.FunctionDeclaration {
 	}
 
 	return fn
+}
+
+func (p *Parser) isAttachedGenericListStart(name *ast.Identifier) bool {
+	if name == nil || p.peekToken.Type != lexer.LBRACKET {
+		return false
+	}
+	return p.peekToken.Line == name.Token.Line &&
+		p.peekToken.Column == name.Token.Column+len([]rune(name.Value))
+}
+
+func (p *Parser) parseGenericParameters() []*ast.GenericParameter {
+	params := []*ast.GenericParameter{}
+
+	if p.peekToken.Type == lexer.RBRACKET {
+		p.addError("expected generic parameter name at %d:%d", p.peekToken.Line, p.peekToken.Column)
+		p.nextToken()
+		return nil
+	}
+
+	for {
+		if p.peekToken.Type != lexer.IDENT {
+			p.addError("expected generic parameter name at %d:%d", p.peekToken.Line, p.peekToken.Column)
+			p.skipGenericParameterList()
+			return nil
+		}
+		p.nextToken()
+		param := &ast.GenericParameter{
+			Token: p.curToken,
+			Name:  &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme},
+		}
+
+		if p.peekToken.Type == lexer.COLON {
+			p.nextToken()
+			if !p.expectPeekTypeStart() {
+				p.addError("expected constraint type after ':' for generic parameter %s at %d:%d", param.Name.Value, p.peekToken.Line, p.peekToken.Column)
+				p.skipGenericParameterList()
+				return nil
+			}
+			param.Constraint = p.parseTypeReference()
+		}
+
+		params = append(params, param)
+
+		switch p.peekToken.Type {
+		case lexer.COMMA:
+			p.nextToken()
+			if p.peekToken.Type == lexer.RBRACKET {
+				p.nextToken()
+				return params
+			}
+		case lexer.RBRACKET:
+			p.nextToken()
+			return params
+		default:
+			p.addError("expected ',' or ']' after generic parameter %s at %d:%d", param.Name.Value, p.peekToken.Line, p.peekToken.Column)
+			p.skipGenericParameterList()
+			return nil
+		}
+	}
+}
+
+func (p *Parser) skipGenericParameterList() {
+	for p.curToken.Type != lexer.EOF {
+		switch p.curToken.Type {
+		case lexer.RBRACKET:
+			return
+		case lexer.LBRACE, lexer.LPAREN:
+			return
+		}
+		p.nextToken()
+	}
 }
 
 func (p *Parser) parseUnsafeFunctionDeclaration() *ast.FunctionDeclaration {
@@ -1345,6 +1452,56 @@ func (p *Parser) parseStructType() *ast.StructType {
 	}
 
 	return structType
+}
+
+func (p *Parser) parseUnionType() []*ast.UnionVariant {
+	variants := []*ast.UnionVariant{}
+
+	for p.peekToken.Type != lexer.RBRACE && p.peekToken.Type != lexer.EOF {
+		p.nextToken()
+		if p.curToken.Type == lexer.COMMENT {
+			continue
+		}
+		if p.curToken.Type != lexer.IDENT {
+			p.addError("expected union variant name at %d:%d", p.curToken.Line, p.curToken.Column)
+			p.skipBraceBlock()
+			return variants
+		}
+
+		variant := &ast.UnionVariant{
+			Token: p.curToken,
+			Name:  &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme},
+		}
+
+		if p.peekToken.Type == lexer.LPAREN {
+			p.nextToken()
+			if !p.expectPeekTypeStart() {
+				p.skipBraceBlock()
+				return variants
+			}
+			variant.Payload = p.parseTypeReference()
+			if !p.expectPeek(lexer.RPAREN) {
+				p.skipBraceBlock()
+				return variants
+			}
+		} else if p.peekToken.Type == lexer.LBRACE {
+			p.nextToken()
+			variant.PayloadFields = p.parseStructFields()
+			if !p.expectPeek(lexer.RBRACE) {
+				return variants
+			}
+		}
+
+		variants = append(variants, variant)
+		if p.peekToken.Type == lexer.COMMA {
+			p.nextToken()
+		}
+	}
+
+	if !p.expectPeek(lexer.RBRACE) {
+		return variants
+	}
+	return variants
 }
 
 func (p *Parser) parseStructFields() []*ast.StructField {
@@ -1674,6 +1831,25 @@ func (p *Parser) skipCurrentBlock() {
 		p.nextToken()
 		switch p.curToken.Type {
 		case lexer.EOF:
+			return
+		case lexer.LBRACE:
+			depth++
+		case lexer.RBRACE:
+			depth--
+		}
+	}
+}
+
+func (p *Parser) skipBraceBlock() {
+	if p.curToken.Type != lexer.LBRACE {
+		return
+	}
+	depth := 1
+	for depth > 0 {
+		p.nextToken()
+		switch p.curToken.Type {
+		case lexer.EOF:
+			p.addError("unterminated block")
 			return
 		case lexer.LBRACE:
 			depth++
@@ -2337,7 +2513,7 @@ func (p *Parser) letDeclaratorMayOmitInitializer(stmt *ast.LetStatement) bool {
 		return true
 	}
 
-	return stmt.Mutable && stmt.Type != nil
+	return stmt.Type != nil
 }
 
 func (p *Parser) parseTypedVariableDeclaration() ast.Statement {

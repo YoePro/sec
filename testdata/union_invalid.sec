@@ -1,0 +1,334 @@
+module main
+
+// union_invalid.sec
+// Every marked declaration or expression must produce a semantic error.
+// Parser-only malformed syntax belongs in separate parser tests.
+
+type State union {
+    idle
+    running
+    stopped
+}
+
+type Connection union {
+    idle
+    connected
+}
+
+type Number union {
+    Integer(int)
+    Text(string)
+}
+
+type Shape union {
+    Circle {
+        radius: decimal,
+    }
+
+    Rectangle {
+        width: decimal,
+        height: decimal,
+    }
+}
+
+type Maybe[T] union {
+    Some(T)
+    None
+}
+
+type EmptyUnion union {
+}
+
+type DuplicateVariant union {
+    value
+    value
+}
+
+type UnknownPayload union {
+    Missing(DoesNotExist)
+}
+
+type DuplicatePayloadField union {
+    Record {
+        value: int,
+        value: string,
+    }
+}
+
+fn ImmutableWithoutInitializer() void {
+    let state: State
+    discard state
+}
+
+fn ReadBeforeAssignment() State {
+    let mut state: State
+    return state
+}
+
+fn PayloadlessVariantWithArgument() void {
+    let state: State := State.idle(1)
+    discard state
+}
+
+fn MissingSinglePayload() void {
+    let number: Number := Number.Integer()
+    discard number
+}
+
+fn TooManySinglePayloads() void {
+    let number: Number := Number.Integer(1, 2)
+    discard number
+}
+
+fn WrongSinglePayloadType() void {
+    let number: Number := Number.Integer("hello")
+    discard number
+}
+
+fn PositionalStructPayload() void {
+    let shape: Shape := Shape.Rectangle(decimal(10), decimal(20))
+    discard shape
+}
+
+fn MissingStructPayloadField() void {
+    let shape: Shape := Shape.Rectangle {
+        width: decimal(10),
+    }
+
+    discard shape
+}
+
+fn UnknownStructPayloadField() void {
+    let shape: Shape := Shape.Rectangle {
+        width: decimal(10),
+        height: decimal(20),
+        depth: decimal(30),
+    }
+
+    discard shape
+}
+
+fn DuplicateStructPayloadInitializer() void {
+    let shape: Shape := Shape.Rectangle {
+        width: decimal(10),
+        width: decimal(20),
+        height: decimal(30),
+    }
+
+    discard shape
+}
+
+fn WrongStructPayloadFieldType() void {
+    let shape: Shape := Shape.Rectangle {
+        width: "wide",
+        height: decimal(20),
+    }
+
+    discard shape
+}
+
+fn UnknownUnionType() void {
+    let value: MissingUnion := State.idle
+    discard value
+}
+
+fn UnknownVariant() void {
+    let state: State := State.missing
+    discard state
+}
+
+fn PayloadToUnionImplicitConversion() void {
+    let number: Number := 42
+    discard number
+}
+
+fn UnionToPayloadImplicitConversion() void {
+    let value: int := Number.Integer(42)
+    discard value
+}
+
+fn DifferentUnionAssignment() void {
+    let state: State := Connection.idle
+    discard state
+}
+
+fn DifferentGenericInstantiationAssignment() void {
+    let source: Maybe[string] := Maybe.Some("hello")
+    let target: Maybe[int] := source
+    discard target
+}
+
+fn UnionToIntegerCast() void {
+    let value: int := int(State.idle)
+    discard value
+}
+
+fn IntegerToUnionCast() void {
+    let state: State := State(1)
+    discard state
+}
+
+fn UnionToUnionCast() void {
+    let state: State := State(Connection.idle)
+    discard state
+}
+
+fn CompareDifferentUnions() bool {
+    return State.idle == Connection.idle
+}
+
+fn CompareUnionAndPayload() bool {
+    return Number.Integer(1) == 1
+}
+
+fn CompareDifferentGenericInstantiations() bool {
+    let integer: Maybe[int] := Maybe.Some(1)
+    let text: Maybe[string] := Maybe.Some("one")
+    return integer == text
+}
+
+fn NonExhaustivePayloadlessMatch(state: State) string {
+    return match state {
+        idle => "idle"
+    }
+}
+
+fn NonExhaustivePayloadMatch(number: Number) string {
+    return match number {
+        Integer(value) => string(value)
+    }
+}
+
+fn NonExhaustiveGenericMatch(value: Maybe[int]) int {
+    return match value {
+        Some(number) => number
+    }
+}
+
+fn DuplicateMatchBranch(state: State) string {
+    return match state {
+        idle => "first"
+        idle => "second"
+        running => "running"
+        stopped => "stopped"
+    }
+}
+
+fn UnknownMatchVariant(state: State) string {
+    return match state {
+        idle => "idle"
+        running => "running"
+        stopped => "stopped"
+        missing => "missing"
+    }
+}
+
+fn BindPayloadlessVariant(state: State) string {
+    return match state {
+        idle(value) => string(value)
+        running => "running"
+        stopped => "stopped"
+    }
+}
+
+fn MissingPayloadBinding(number: Number) string {
+    return match number {
+        Integer => "integer"
+        Text(value) => value
+    }
+}
+
+fn MatchExpressionTypeMismatch(number: Number) string {
+    return match number {
+        Integer(value) => value
+        Text(value) => value
+    }
+}
+
+fn PayloadBindingOutsideBranch(number: Number) int {
+    match number {
+        Integer(value) => {
+            discard value
+        }
+
+        Text(text) => {
+            discard text
+        }
+    }
+
+    return value
+}
+
+fn WrongGenericPayload() void {
+    let value: Maybe[int] := Maybe.Some("hello")
+    discard value
+}
+
+fn WrongGenericExpectedType() Maybe[int] {
+    return Maybe.Some("hello")
+}
+
+fn AssignDifferentGenericStructInstantiation() void {
+    let source: Maybe[string] := Maybe.Some("hello")
+    let target: Maybe[int] := source
+    discard target
+}
+
+type DirectRecursive union {
+    Node {
+        next: DirectRecursive
+    }
+
+    End
+}
+
+type DirectGenericRecursive[T] union {
+    Node {
+        value: T,
+        next: DirectGenericRecursive[T],
+    }
+
+    End
+}
+
+type _PrivateError struct {
+    code: int
+}
+
+type PublicResult union {
+    Ok(int)
+    Error(_PrivateError)
+}
+
+type Token struct {
+}
+
+impl Token {
+    type Kind union {
+        identifier
+        number
+    }
+}
+
+fn UnqualifiedNestedUnionOutsideOwner() void {
+    let kind: Kind := Kind.identifier
+    discard kind
+}
+
+fn MissingOwnerInNestedVariantAccess() void {
+    let kind: Token.Kind := Kind.identifier
+    discard kind
+}
+
+fn PayloadConstructorWithoutPayload() void {
+    let number: Number := Number.Integer
+    discard number
+}
+
+fn ReturnDifferentUnion() State {
+    return Connection.connected
+}
+
+fn ReturnPayloadInsteadOfUnion() Number {
+    return 10
+}

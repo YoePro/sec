@@ -17,3 +17,7 @@ fn Println(value: string) void {
     let nl := "\n"
     _sysWrite(1, nl.ptr, 1)
 }
+
+fn println(value: string) void {
+    Println(value)
+}

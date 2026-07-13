@@ -4,9 +4,12 @@ This repository contains a minimal Visual Studio Code extension for the SEC lang
 
 ## Features
 
-- Syntax highlighting for `.sec` files
+- Syntax highlighting for `.sec` and `.se` files
 - Comment support for `//` line comments and `/* ... */` block comments
 - Keyword highlighting for SEC language constructs
+- Current grammar coverage for modules, imports, target directives, functions,
+  structs, impl blocks, properties, enums, match/switch/if/for/while, units,
+  numeric literal suffixes and common operators
 - Type highlighting for built-in SEC types
 - String interpolation highlighting for `$"..."`
 

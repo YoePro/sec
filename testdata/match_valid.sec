@@ -1,0 +1,358 @@
+module main
+
+type Speed decimal
+type Money decimal
+
+enum IOError {
+    InvalidValue,
+    NotFound,
+    PermissionDenied,
+    Timeout,
+}
+
+enum Direction {
+    North,
+    East,
+    South,
+    West,
+}
+
+enum Status int {
+    Unknown = 0,
+    Ready = 10,
+    Running,
+    Stopped = 20,
+}
+
+fn ReadSpeed() Result[Speed, IOError] {
+    return Ok(Speed(42.5))
+}
+
+fn ReadSpeedError(error: IOError) Result[Speed, IOError] {
+    return Err(error)
+}
+
+fn BasicResultExpression() Speed {
+    let speed := match ReadSpeed() {
+        Ok(value) => value
+        Err(error) => Speed(0)
+    }
+
+    return speed
+}
+
+fn ResultExpressionWithDiscard() Speed {
+    let speed := match ReadSpeed() {
+        Ok(value) => value
+        Err(error) => Speed(0)
+    }
+
+    return speed
+}
+
+fn ResultStatement() void {
+    match ReadSpeed() {
+        Ok(value) => {
+            let speed: Speed := value
+        }
+        Err(error) => {
+            let captured: IOError := error
+        }
+    }
+}
+
+fn ResultStatementWithDiscard() void {
+    match ReadSpeed() {
+        Ok(_) => {
+            let success: bool := true
+        }
+        Err(error) => {
+            discard error
+            let failure: bool := true
+        }
+    }
+}
+
+fn ResultReturnArms() Speed {
+    match ReadSpeed() {
+        Ok(value) => return value
+        Err(error) => return Speed(0)
+    }
+}
+
+fn ReturnMatchExpression() Speed {
+    return match ReadSpeed() {
+        Ok(value) => value
+        Err(error) => Speed(0)
+    }
+}
+
+fn ResultGuard(value: int) int {
+    let result: Result[int, IOError] := Ok(value)
+
+    return match result {
+        Ok(number) where number > 100 => 3
+        Ok(number) where number > 0 => 2
+        Ok(number) => 1
+        Err(error) => 0
+    }
+}
+
+fn ResultGuardWithLogicalCondition(value: int, enabled: bool) int {
+    let result: Result[int, IOError] := Ok(value)
+
+    return match result {
+        Ok(number) where enabled && number > 0 => 1
+        Ok(number) => 2
+        Err(error) => 0
+    }
+}
+
+fn GuardedErrorWithFallback(error: IOError) int {
+    let result: Result[int, IOError] := Err(error)
+
+    return match result {
+        Ok(value) => value
+        Err(captured) where captured == IOError.Timeout => 1
+        Err(captured) => 2
+    }
+}
+
+fn ResultBranchLocalBindings() int {
+    let result: Result[int, IOError] := Ok(10)
+
+    let output := match result {
+        Ok(value) => value
+        Err(error) => 0
+    }
+
+    return output
+}
+
+fn EnumExpression(direction: Direction) int {
+    return match direction {
+        Direction.North => 1
+        Direction.East => 2
+        Direction.South => 3
+        Direction.West => 4
+    }
+}
+
+fn EnumStatement(direction: Direction) void {
+    match direction {
+        Direction.North => {
+            let value: int := 1
+        }
+
+        Direction.East => {
+            let value: int := 2
+        }
+
+        Direction.South => {
+            let value: int := 3
+        }
+
+        Direction.West => {
+            let value: int := 4
+        }
+    }
+}
+
+fn EnumCatchAll(direction: Direction) int {
+    return match direction {
+        Direction.North => 1
+        _ => 0
+    }
+}
+
+fn EnumNamedCatchAll(direction: Direction) int {
+    return match direction {
+        Direction.North => 1
+        other => 0
+    }
+}
+
+fn EnumGuard(direction: Direction, enabled: bool) int {
+    return match direction {
+        Direction.North where enabled => 1
+        Direction.North => 2
+        Direction.East => 3
+        Direction.South => 4
+        Direction.West => 5
+    }
+}
+
+fn MultipleEnumGuards(direction: Direction, first: bool, second: bool) int {
+    return match direction {
+        Direction.North where first => 1
+        Direction.North where second => 2
+        Direction.North => 3
+        Direction.East => 4
+        Direction.South => 5
+        Direction.West => 6
+    }
+}
+
+fn ExplicitEnumValues(status: Status) int {
+    return match status {
+        Status.Unknown => 0
+        Status.Ready => 1
+        Status.Running => 2
+        Status.Stopped => 3
+    }
+}
+
+fn MatchAssignedInAllBranches(direction: Direction) int {
+    let mut result: int
+
+    match direction {
+        Direction.North => {
+            result = 1
+        }
+
+        Direction.East => {
+            result = 2
+        }
+
+        Direction.South => {
+            result = 3
+        }
+
+        Direction.West => {
+            result = 4
+        }
+    }
+
+    return result
+}
+
+fn MatchAssignmentWithTerminatingBranch(result: Result[int, IOError]) int {
+    let mut value: int
+
+    match result {
+        Ok(number) => {
+            value = number
+        }
+
+        Err(error) => {
+            return 0
+        }
+    }
+
+    return value
+}
+
+fn MatchAllBranchesReturn(direction: Direction) int {
+    match direction {
+        Direction.North => {
+            return 1
+        }
+
+        Direction.East => {
+            return 2
+        }
+
+        Direction.South => {
+            return 3
+        }
+
+        Direction.West => {
+            return 4
+        }
+    }
+}
+
+fn MatchMixedExpressionAndReturn(result: Result[int, IOError]) int {
+    let value := match result {
+        Ok(number) => number
+        Err(error) => return 0
+    }
+    return value
+}
+
+fn NestedMatch(first: Result[int, IOError],second: Direction) int {
+    return match first {
+        Ok(value) => match second {
+            Direction.North => value + 1
+            Direction.East => value + 2
+            Direction.South => value + 3
+            Direction.West => value + 4
+        }
+        Err(error) => 0
+    }
+}
+
+fn MatchInsideIf(result: Result[int, IOError],enabled: bool) int {
+    if enabled {
+    return match result {
+        Ok(value) => value
+        Err(error) => 0
+        }
+    }
+
+    return -1
+}
+
+fn MatchInsideFor(results: []Result[int, IOError]) int {
+    let mut total: int := 0
+
+
+    for result in results {
+        match result {
+            Ok(value) => {
+                total += value
+            }
+
+            Err(error) => {
+                continue
+            }
+        }
+    }
+
+    return total
+}
+
+fn MatchInsideWhile(result: Result[int, IOError],running: bool) int {
+    let mut active: bool := running
+
+    while active {
+        match result {
+            Ok(value) => {
+                return value
+            }
+
+            Err(error) => {
+                active = false
+            }
+        }
+    }
+
+    return 0
+}
+
+fn CatchAllStatement(direction: Direction) void {
+    match direction {
+        Direction.North => {
+            return
+        }
+        _ => {
+            return
+        }
+    }
+}
+
+fn EmptyBranchBlocks(direction: Direction) void {
+    match direction {
+        Direction.North => {
+        }
+
+        Direction.East => {
+        }
+
+        Direction.South => {
+        }
+
+        Direction.West => {
+        }
+    }
+}

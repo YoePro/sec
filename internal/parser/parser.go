@@ -109,6 +109,12 @@ func (p *Parser) parseStatement() ast.Statement {
 	case lexer.TRY:
 		return p.parseTryAssignmentStatement()
 
+	case lexer.DEFER:
+		return p.parseDeferStatement()
+
+	case lexer.DISCARD:
+		return p.parseDiscardStatement()
+
 	case lexer.IF:
 		return p.parseIfStatement()
 
@@ -145,6 +151,9 @@ func (p *Parser) parseStatement() ast.Statement {
 	case lexer.MATCH:
 		return p.parseMatchStatement()
 
+	case lexer.SPAWN, lexer.AWAIT:
+		return p.parseExpressionOrAssignmentStatement()
+
 	case lexer.AT:
 		return p.parseExpressionOrAssignmentStatement()
 
@@ -167,6 +176,28 @@ func (p *Parser) parseStatement() ast.Statement {
 		p.addError("unexpected token %q at %d:%d", p.curToken.Lexeme, p.curToken.Line, p.curToken.Column)
 		return nil
 	}
+}
+
+func (p *Parser) parseDiscardStatement() ast.Statement {
+	stmt := &ast.DiscardStatement{Token: p.curToken}
+	if p.peekToken.Type != lexer.IDENT {
+		p.addError("discard requires identifier at %d:%d", p.peekToken.Line, p.peekToken.Column)
+		return stmt
+	}
+	p.nextToken()
+	stmt.Name = &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme}
+	return stmt
+}
+
+func (p *Parser) parseDeferStatement() ast.Statement {
+	stmt := &ast.DeferStatement{Token: p.curToken}
+	if p.peekToken.Type != lexer.LBRACE {
+		p.addError("defer requires a block at %d:%d", p.peekToken.Line, p.peekToken.Column)
+		return stmt
+	}
+	p.nextToken()
+	stmt.Body = p.parseStatementBlock("defer body")
+	return stmt
 }
 
 func (p *Parser) parseCompilerDirective() ast.Statement {
@@ -2114,6 +2145,18 @@ func (p *Parser) parseTryAssignmentStatement() ast.Statement {
 		return nil
 	}
 
+	if !p.isAssignmentOperator(p.peekToken.Type) {
+		tryExpr := &ast.TryExpression{Token: stmt.Token, Expression: target}
+		if p.peekToken.Type == lexer.LBRACE {
+			p.nextToken()
+			tryExpr.Handlers = p.parseTryHandlerBlock()
+			if tryExpr.Handlers == nil {
+				return nil
+			}
+		}
+		return &ast.ExpressionStatement{Token: stmt.Token, Expression: tryExpr}
+	}
+
 	if !p.expectPeekAssignmentOperator() {
 		return nil
 	}
@@ -2124,11 +2167,22 @@ func (p *Parser) parseTryAssignmentStatement() ast.Statement {
 		Operator: p.curToken.Lexeme,
 	}
 	p.nextToken()
+
+	previousStopBeforeBrace := p.stopBeforeBrace
+	p.stopBeforeBrace = true
 	assignment.Value = p.parseExpression(LOWEST)
+	p.stopBeforeBrace = previousStopBeforeBrace
 	if assignment.Value == nil {
 		return nil
 	}
 	stmt.Assignment = assignment
+	if p.peekToken.Type == lexer.LBRACE {
+		p.nextToken()
+		stmt.Handlers = p.parseTryHandlerBlock()
+		if stmt.Handlers == nil {
+			return nil
+		}
+	}
 	return stmt
 }
 

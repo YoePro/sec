@@ -368,6 +368,33 @@ func TestParseTryAssignmentStatement(t *testing.T) {
 	}
 }
 
+func TestParseTryAssignmentHandlers(t *testing.T) {
+	input := `
+try car.TopSpeed = current_speed {
+	Err(error) => fmt.println("failed")
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt, ok := program.Statements[0].(*ast.TryAssignmentStatement)
+	if !ok {
+		t.Fatalf("statement is not TryAssignmentStatement. got=%T", program.Statements[0])
+	}
+	if stmt.Assignment == nil {
+		t.Fatal("expected nested assignment")
+	}
+	if len(stmt.Handlers) != 1 {
+		t.Fatalf("wrong handler count. got=%d want=1", len(stmt.Handlers))
+	}
+	if stmt.Handlers[0].Body == nil {
+		t.Fatal("expected expression handler body")
+	}
+}
+
 func TestParseLetGroups(t *testing.T) {
 	tests := []struct {
 		input    string
@@ -1129,6 +1156,10 @@ fn Foo() Result[int, IOError] {
 	return Ok(1)
 }
 
+fn VoidOk() Result[void, IOError] {
+	return Ok()
+}
+
 fn Bar() Result[int, IOError] {
 	return Err(IOError.InvalidValue)
 }
@@ -1145,7 +1176,17 @@ fn Bar() Result[int, IOError] {
 		t.Fatalf("Foo return is not OkExpression. got=%T", fooReturn.Value)
 	}
 
-	bar := program.Statements[1].(*ast.FunctionDeclaration)
+	voidOk := program.Statements[1].(*ast.FunctionDeclaration)
+	voidOkReturn := voidOk.Body.Statements[0].(*ast.ReturnStatement)
+	okExpr, ok := voidOkReturn.Value.(*ast.OkExpression)
+	if !ok {
+		t.Fatalf("VoidOk return is not OkExpression. got=%T", voidOkReturn.Value)
+	}
+	if okExpr.Value != nil {
+		t.Fatalf("VoidOk Ok() should not have value. got=%T", okExpr.Value)
+	}
+
+	bar := program.Statements[2].(*ast.FunctionDeclaration)
 	barReturn := bar.Body.Statements[0].(*ast.ReturnStatement)
 	if _, ok := barReturn.Value.(*ast.ErrExpression); !ok {
 		t.Fatalf("Bar return is not ErrExpression. got=%T", barReturn.Value)
@@ -2334,6 +2375,69 @@ fn Test() int {
 	}
 	if lambda.ReturnType.Name != "int" {
 		t.Fatalf("wrong return type. got=%q", lambda.ReturnType.Name)
+	}
+}
+
+func TestParseDeferStatement(t *testing.T) {
+	input := `
+fn Test() void {
+	defer {
+		Cleanup()
+	}
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	deferStmt, ok := fn.Body.Statements[0].(*ast.DeferStatement)
+	if !ok {
+		t.Fatalf("statement is not DeferStatement. got=%T", fn.Body.Statements[0])
+	}
+	if deferStmt.Body == nil || len(deferStmt.Body.Statements) != 1 {
+		t.Fatalf("wrong defer body. got=%#v", deferStmt.Body)
+	}
+}
+
+func TestParseDiscardStatement(t *testing.T) {
+	input := `
+fn Test(error: IOError) void {
+	discard error
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	stmt, ok := fn.Body.Statements[0].(*ast.DiscardStatement)
+	if !ok {
+		t.Fatalf("statement is not DiscardStatement. got=%T", fn.Body.Statements[0])
+	}
+	if stmt.Name == nil || stmt.Name.Value != "error" {
+		t.Fatalf("wrong discard name. got=%#v", stmt.Name)
+	}
+}
+
+func TestParseDeferRequiresBlock(t *testing.T) {
+	input := `
+fn Test() void {
+	defer Cleanup()
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	_ = p.ParseProgram()
+
+	expected := `defer requires a block at 3:8`
+	if len(p.Errors()) != 1 || p.Errors()[0] != expected {
+		t.Fatalf("wrong parser errors. got=%v want=%q", p.Errors(), expected)
 	}
 }
 

@@ -1,0 +1,618 @@
+Formatter
+=========
+
+Sec has an official formatter with a gofmt-like philosophy.
+
+The formatted output is the canonical style of the language.
+
+Formatting is not configurable except where the compiler team explicitly
+decides that a rule needs a compatibility mode.
+
+
+Command Model
+=============
+
+Planned CLI:
+
+    sec fmt <file.sec>
+    sec fmt --check <file.sec>
+    sec fmt --stdin
+
+Rules:
+
+* `sec fmt <file.sec>` rewrites the file in place.
+* `sec fmt --check <file.sec>` exits non-zero if the file is not canonical.
+* `sec fmt --stdin` reads source from stdin and writes formatted source to
+  stdout.
+* Formatting must require syntactically valid source.
+* Formatting must not require semantic correctness.
+* Formatting must preserve comments.
+* Formatting must not rewrite identifiers, literal values or string contents.
+
+
+Indentation
+===========
+
+Indentation uses 4 spaces.
+
+Tabs are not emitted by the formatter.
+
+Indentation increases after:
+
+    {
+    (
+    [
+
+when the construct spans multiple lines.
+
+Indentation decreases before:
+
+    }
+    )
+    ]
+
+Nested blocks increase indentation by one level.
+
+Example:
+
+    fn main() int {
+        if true {
+            return 0
+        }
+
+        return 1
+    }
+
+
+Blank Lines
+===========
+
+No double empty lines are emitted.
+
+That means the formatter may reduce two or more consecutive blank lines to one.
+
+Blank lines are used to separate logical sections:
+
+* after `module`,
+* between import groups and declarations,
+* between top-level declarations,
+* between functions,
+* between groups of statements when a blank line exists in the original source
+  or improves readability around control-flow blocks.
+
+No blank line is emitted:
+
+* immediately after `{`,
+* immediately before `}`,
+* between a doc comment and the declaration it documents,
+* between `}` and `else`,
+* between `}` and `else if`,
+* between `}` and a following `catch`/handler-like continuation if such syntax
+  is added later.
+
+
+Braces
+======
+
+Opening braces stay on the same line as the construct they belong to.
+
+Valid canonical form:
+
+    if value {
+    }
+
+Not canonical:
+
+    if value
+    {
+    }
+
+This applies to:
+
+* functions,
+* structs,
+* enums,
+* impl blocks,
+* properties,
+* getters and setters,
+* unsafe blocks,
+* asm blocks,
+* if,
+* else,
+* for,
+* while,
+* switch,
+* match,
+* try handler blocks,
+* struct literals.
+
+`else` is placed on the same line as the previous closing brace:
+
+    if value {
+        return 1
+    } else {
+        return 0
+    }
+
+`else if` is formatted as:
+
+    if value < 0 {
+        return -1
+    } else if value == 0 {
+        return 0
+    } else {
+        return 1
+    }
+
+
+Spacing
+=======
+
+One space is emitted after language keywords when followed by an expression or
+name:
+
+    if value
+    for item in items
+    while running
+    switch value
+    match result
+    return value
+    type Percent int
+
+No space is emitted before:
+
+    ,
+    :
+    )
+    ]
+    }
+
+One space is emitted after:
+
+    ,
+    :
+
+except where the colon is part of a compact construct that later gets a
+specific exception.
+
+Binary operators have one space on both sides:
+
+    a + b
+    a == b
+    a && b
+    a in 0..100
+    value := 10
+    value = other
+    value += 1
+
+Unary operators have no space after the operator:
+
+    !enabled
+    -value
+
+Member access has no spaces:
+
+    Vehicle.FuelType.diesel
+    value.field
+
+Function calls have no space before `(`:
+
+    Add(1, 2)
+    Color(1)
+
+Function declarations have no space between the function name and parameter
+list:
+
+    fn Add(a: int, b: int) int {
+    }
+
+
+Line Width
+==========
+
+The formatter should prefer readable line breaks but does not enforce a strict
+maximum line width in the first implementation.
+
+Long lines may be broken at:
+
+* function parameters,
+* function call arguments,
+* binary operators,
+* chained boolean expressions,
+* match arms,
+* struct fields,
+* enum values,
+* array and slice literals when those are added.
+
+Open rule:
+
+* Decide whether Sec should eventually have a soft width target, for example
+  100 or 120 columns.
+
+
+Comments
+========
+
+Line comments use `//`.
+
+Block comments use `/* ... */`.
+
+Formatter must preserve comment text.
+
+Line comments inside the same block should have the same left indentation as
+the statements around them.
+
+Example:
+
+    fn main() void {
+        // Prepare output.
+        let message := "hello"
+
+        // Print output.
+        fmt.Println(message)
+    }
+
+End-of-line comments are preserved after code with at least two spaces before
+the comment:
+
+    let value := 10  // explanation
+
+Consecutive line comments form a comment group and keep their relative order:
+
+    // first
+    // second
+    let value := 10
+
+A standalone comment group belongs to the following declaration or statement
+when no blank line separates them.
+
+A blank line separates comment groups from unrelated code.
+
+
+Documentation Comments
+======================
+
+Sec supports JSDoc-like documentation comments.
+
+Canonical form:
+
+    /**
+     * Returns true when the value is positive.
+     *
+     * @param value value to inspect
+     * @return true when value is greater than zero
+     */
+    fn IsPositive(value: int) bool {
+        return value > 0
+    }
+
+Rules:
+
+* Documentation comments use `/** ... */`.
+* Each interior line starts with the current indentation, one space, `*`, and
+  then either one space plus text or nothing.
+* The closing `*/` aligns with the opening `/**`.
+* A documentation comment applies to the declaration immediately following it.
+* No blank line is emitted between a documentation comment and its declaration.
+* Documentation comments are allowed before:
+
+  * module declarations,
+  * imports,
+  * type declarations,
+  * enum declarations,
+  * enum values,
+  * struct fields,
+  * functions,
+  * function parameters if parameter-doc syntax is later added,
+  * impl blocks,
+  * properties,
+  * getters and setters.
+
+Open rule:
+
+* Decide the official tag names. Initial accepted tags should be:
+
+  * `@param`
+  * `@return`
+  * `@throws`
+  * `@error`
+  * `@deprecated`
+  * `@since`
+
+
+Top-Level Layout
+================
+
+Canonical top-level order is not enforced by the formatter.
+
+The formatter preserves declaration order.
+
+The formatter may normalize blank lines between top-level items:
+
+    #target(os: "linux", arch: "amd64")
+
+    module main
+
+    import "fmt"
+    import "io"
+
+    type Percent int range 0..100
+
+    fn main() int {
+        return 0
+    }
+
+Open rule:
+
+* Decide whether imports should be sorted.
+* Go sorts imports, but Sec should wait until import groups and aliases are
+  fully specified.
+
+
+Imports
+=======
+
+Imports are formatted one per line.
+
+Canonical:
+
+    import "fmt"
+    import "io"
+
+Open rule:
+
+* Decide whether grouped imports should exist.
+* Until grouped imports exist, the formatter preserves import order.
+
+
+Functions
+=========
+
+Canonical:
+
+    fn Add(a: int, b: int) int {
+        return a + b
+    }
+
+Unsafe functions:
+
+    unsafe fn _rawSyscall3(number: uint, arg1: uint, arg2: uint, arg3: uint) int {
+        asm {
+            "syscall"
+        }
+    }
+
+Function parameters use:
+
+    name: Type
+
+Multiple parameters are separated by comma and one space.
+
+Empty parameter lists use:
+
+    fn main() int {
+    }
+
+Open rule:
+
+* Decide whether long parameter lists are split one parameter per line or by a
+  width-based rule.
+
+
+Variables
+=========
+
+Canonical let declarations:
+
+    let value := 10
+    let mut value: int
+    let mut value: int := 10
+
+Multiple declarations:
+
+    let a := 1, b := "hello", c := true
+    let mut a := 1, b := "hello", c := false
+
+Type-first mutable declarations:
+
+    int mut: a, b, c
+    float: a := 5.4, pi := 3.14
+
+Open rule:
+
+* Decide whether multi-variable declarations should stay on one line or be
+  split when they exceed the future soft line width.
+
+
+Types, Structs and Enums
+========================
+
+Named types:
+
+    type Percent int range 0..100
+    type Money decimal<SEK>
+
+Structs:
+
+    type User struct {
+        active: bool,
+        name: string,
+        age: int range 0..130,
+    }
+
+Struct fields are one per line.
+
+Struct fields end with a comma.
+
+Enums:
+
+    enum Direction {
+        north,
+        east,
+        south,
+        west,
+    }
+
+Enum values are one per line.
+
+Enum values end with a comma.
+
+Enum values with initializers:
+
+    enum Permission uint {
+        none = 0,
+        read = 1 << iota,
+        write = 1 << iota,
+        execute = 1 << iota,
+    }
+
+
+Impl Blocks and Properties
+==========================
+
+Impl block:
+
+    impl Vehicle {
+        property TopSpeed: Speed {
+            get {
+                return _speed
+            }
+
+            set value {
+                _speed = value
+            }
+        }
+    }
+
+Nested enums and types inside impl blocks follow the same struct/enum rules as
+top-level declarations.
+
+
+Control Flow
+============
+
+If:
+
+    if value {
+        return 1
+    } else {
+        return 0
+    }
+
+For:
+
+    for i in 0..10 {
+        continue
+    }
+
+While:
+
+    while running {
+        break
+    }
+
+Switch:
+
+    switch value {
+    case 0:
+        return 0
+    case 1:
+        return 1
+    default:
+        return -1
+    }
+
+Match expression:
+
+    return match result {
+        Ok(value) => value
+        Err(error) => 0
+    }
+
+Match statement:
+
+    match result {
+        Ok(value) => {
+            value = value + 1
+        }
+        Err(error) => {
+            return
+        }
+    }
+
+Open rule:
+
+* Decide whether short match arms with expression bodies should stay on one
+  line even in long match blocks.
+
+
+Parentheses
+===========
+
+The formatter may remove redundant outer parentheses when doing so does not
+change meaning or readability.
+
+Examples:
+
+    if (value) {
+    }
+
+becomes:
+
+    if value {
+    }
+
+The formatter must not remove parentheses that affect precedence:
+
+    (1 + 2) * 3
+
+The formatter must preserve parentheses when removing them would make the code
+less clear around mixed boolean/comparison expressions.
+
+Open rule:
+
+* Define the exact readability threshold for preserving optional parentheses.
+
+
+Whitespace at End of File
+=========================
+
+Formatted files end with exactly one newline.
+
+Trailing whitespace is removed.
+
+
+Initial Implementation Scope
+============================
+
+First formatter implementation should handle:
+
+* indentation,
+* no double empty lines,
+* trailing whitespace removal,
+* final newline,
+* line comment indentation,
+* JSDoc-style documentation comment indentation,
+* top-level declarations,
+* function declarations,
+* let declarations,
+* assignment statements,
+* return statements,
+* if/else,
+* for,
+* while,
+* switch,
+* match,
+* struct declarations,
+* enum declarations,
+* impl blocks,
+* property blocks.
+
+Later formatter implementation should handle:
+
+* width-based line breaking,
+* import sorting if approved,
+* advanced comment attachment,
+* redundant parenthesis removal,
+* expression simplification,
+* stable formatting of incomplete code for editor integration.

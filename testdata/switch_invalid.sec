@@ -134,7 +134,7 @@ fn DuplicateValueAfterList(value: int) void {
     }
 }
 
-// 
+// Ok: unreachable switch case; previous case already covers this condition
 fn UnreachableGreaterRelational(value: int) void {
     switch value {
     case >= 0:
@@ -142,7 +142,7 @@ fn UnreachableGreaterRelational(value: int) void {
     }
 }
 
-//
+// Ok: unreachable switch case; previous case already covers this condition
 fn UnreachableLessRelational(value: int) void {
     switch value {
     case <= 100:
@@ -150,7 +150,7 @@ fn UnreachableLessRelational(value: int) void {
     }
 }
 
-//
+// Ok: unreachable switch case; previous case already covers this condition
 fn RelationalCoveredByRange(value: int) void {
     switch value {
     case 0..100:
@@ -158,7 +158,7 @@ fn RelationalCoveredByRange(value: int) void {
     }
 }
 
-//
+// 
 fn DescendingSwitchRange(value: int) void {
     switch value {
     case 10..0:

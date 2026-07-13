@@ -2,85 +2,357 @@ Implement enum declarations.
 
 Syntax:
 
-    enum Name {
-        A,
-        B,
-        C,
-    }
+```
+enum Name {
+    A,
+    B,
+    C,
+}
 
-    enum Name int {
-        A = 1,
-        B,
-        C,
-    }
+enum Name int {
+    A = 1,
+    B,
+    C,
+}
 
-    impl Vehicle {
-        enum FuelType {
-            petrol,
-            diesel,
-            electric,
-        }
+enum Name uint {
+    A = iota,
+    B,
+    C,
+}
+
+impl Vehicle {
+    enum FuelType {
+        petrol,
+        diesel,
+        electric,
     }
+}
+```
 
 Rules:
-- Enum values are comma-separated.
-- Trailing comma is allowed.
-- Default underlying type is int.
-- Optional underlying type may be given after enum name.
-- First value defaults to 0.
-- A value without explicit initializer gets previous numeric value + 1.
-- Explicit initializer must be an integer constant expression.
-- Enum value names must be unique inside the enum.
-- Different enums may reuse value names.
-- Nested enum full name is TypeName.EnumName.
-- Nested enum values are accessed as TypeName.EnumName.value.
-- Outside the impl block, nested enum types must be referenced with the owner
+
+* Enum values are comma-separated.
+
+* Trailing comma is allowed.
+
+* Default underlying type is int.
+
+* Optional underlying type may be given after the enum name.
+
+* The underlying type must be an integer type.
+
+* First value defaults to 0.
+
+* A value without an explicit initializer gets the previous numeric value + 1.
+
+* An explicit initializer must be an integer constant expression.
+
+* Enum value names must be unique inside the enum.
+
+* Different enums may reuse value names.
+
+* Multiple enum values may have the same numeric value.
+
+* Duplicate numeric values are valid aliases and must not be rejected.
+
+* Alias values remain distinct enum variant names even when their numeric
+  values are identical.
+
+* Nested enum full name is TypeName.EnumName.
+
+* Nested enum values are accessed as TypeName.EnumName.value.
+
+* Outside the impl block, nested enum types must be referenced with the owner
   type for readability:
 
-    Vehicle.FuelTypes
+  Vehicle.FuelType
 
   not:
 
-    FuelTypes
+  FuelType
 
-- Inside impl Vehicle, nested enum types and values are referenced without the
+* Inside impl Vehicle, nested enum types and values are referenced without the
   owner type:
 
-    FuelTypes
-    FuelTypes.Petrol
+  FuelType
+  FuelType.petrol
 
-- Module enum values are accessed as EnumName.value.
-- Enum values have the enum type, not int.
-- Assigning int to enum is invalid unless explicit conversion is used.
-- Assigning enum to int is invalid unless explicit conversion is used.
+* Module enum values are accessed as EnumName.value.
+
+* Enum values have the enum type, not the underlying integer type.
+
+* Assigning an integer to an enum is invalid unless an explicit conversion is
+  used.
+
+* Assigning an enum to an integer is invalid unless an explicit conversion is
+  used.
+
+* Explicit conversion from an enum to an integer uses normal cast syntax:
+
+  let value: int := int(Color.red)
+
+* Explicit conversion from an integer to an enum uses normal cast syntax:
+
+  let color: Color := Color(1)
+
+* Enum-to-integer conversion produces the numeric value stored by the enum.
+
+* Integer-to-enum conversion is explicit and may produce a numeric enum value
+  that has no declared variant name.
+
+* No implicit conversion exists between different enum types, even when they
+  use the same underlying integer type.
+
+* Conversion between different enum types requires an explicit conversion
+  through an integer type.
+
+* Arithmetic operations are not directly defined for enum values.
+
+* Arithmetic requires explicit conversion to an integer type.
+
+* Equality and inequality are allowed between values of the same enum type.
+
+* Equality and inequality between different enum types are invalid.
+
+* Equality and inequality between an enum and an integer are invalid unless one
+  side is explicitly converted.
+
+* An immutable variable must be initialized when declared.
+
+* An uninitialized enum variable therefore cannot use let:
+
+  let c: Color
+
+* A mutable enum variable may be declared without an initializer:
+
+  let mut c: Color
+
+* An uninitialized mutable enum variable must be assigned before it is read.
+
+* Definite-assignment rules apply in the same way as for other uninitialized
+  mutable variables.
+
+iota:
+
+* iota is a compile-time integer constant available only inside enum value
+  initializers.
+* iota starts at 0 for the first enum value.
+* iota increases by 1 for each following enum value.
+* iota is based on the enum value position, not on the previous numeric result.
+* Explicit enum values do not reset iota.
+* Aliases do not affect iota progression.
+* iota may be used as part of an integer constant expression.
+* iota has the enum underlying integer type during constant evaluation.
+* iota is not visible outside an enum declaration.
+* iota cannot be referenced from functions, variables, structs, unions or other
+  constant declarations.
+* Each enum declaration has its own independent iota sequence.
+
+Examples:
+
+```
+enum Direction {
+    north,
+    east,
+    south,
+    west,
+}
+```
+
+Equivalent numeric values:
+
+```
+Direction.north = 0
+Direction.east  = 1
+Direction.south = 2
+Direction.west  = 3
+```
+
+Explicit values and automatic continuation:
+
+```
+enum Status int {
+    unknown = 0,
+    active = 10,
+    paused,
+    disabled = 99,
+}
+```
+
+Equivalent numeric values:
+
+```
+Status.unknown  = 0
+Status.active   = 10
+Status.paused   = 11
+Status.disabled = 99
+```
+
+Using iota:
+
+```
+enum Permission uint {
+    none = 0,
+    read = 1 << iota,
+    write = 1 << iota,
+    execute = 1 << iota,
+}
+```
+
+Equivalent numeric values:
+
+```
+Permission.none    = 0
+Permission.read    = 2
+Permission.write   = 4
+Permission.execute = 8
+```
+
+The value of iota is determined by the variant position:
+
+```
+enum Example int {
+    first = iota,
+    second = 100,
+    third = iota,
+    fourth,
+}
+```
+
+Equivalent numeric values:
+
+```
+Example.first  = 0
+Example.second = 100
+Example.third  = 2
+Example.fourth = 3
+```
+
+A value without an initializer still uses the previous numeric value + 1.
+It does not implicitly repeat the previous initializer expression.
+
+Aliases:
+
+```
+enum ResultCode int {
+    success = 0,
+    ok = 0,
+    notFound = 404,
+    missing = 404,
+}
+```
+
+Both success and ok are valid enum values with numeric value 0.
+Both notFound and missing are valid enum values with numeric value 404.
 
 Valid:
 
-    enum Color {
-        red,
-        green,
-        blue,
-    }
+```
+enum Color {
+    red,
+    green,
+    blue,
+}
 
-    enum Status int {
-        unknown = 0,
-        active = 10,
-        paused,
-        disabled = 99,
-    }
+enum Status int {
+    unknown = 0,
+    active = 10,
+    paused,
+    disabled = 99,
+}
 
-    let c: Color := Color.red
-    let s: Status := Status.paused
+enum Flags uint {
+    first = 1 << iota,
+    second = 1 << iota,
+    third = 1 << iota,
+}
+
+enum Alias int {
+    first = 1,
+    alsoFirst = 1,
+}
+
+let c: Color := Color.red
+let s: Status := Status.paused
+
+let mut current: Color
+current = Color.green
+
+let numeric: int := int(Color.red)
+let converted: Color := Color(2)
+
+if c == Color.red {
+}
+```
 
 Invalid:
 
-    let c: Color := 1
-    let i: int := Color.red
+```
+let c: Color
+
+let c: Color := 1
+
+let i: int := Color.red
+
+let c: Color := Status.active
+
+let same: bool := Color.red == Status.active
+
+let same: bool := Color.red == 0
+
+let value: int := Color.red + 1
+
+let value: int := iota
+
+enum DuplicateNames {
+    value,
+    value,
+}
+
+enum InvalidInitializer {
+    value = "invalid",
+}
+
+enum InvalidUnderlying string {
+    value,
+}
+```
 
 Sema:
-- register enum as named type
-- register variants as typed constants under enum namespace
-- reject duplicate enum variants
-- reject unknown underlying type
-- reject non-integer underlying type for now
-- reject non-constant enum initializer
+
+* Register enum as a named type.
+* Resolve and validate the optional underlying type.
+* Use int as the underlying type when none is specified.
+* Reject unknown underlying type.
+* Reject non-integer underlying type for now.
+* Register variants as typed constants under the enum namespace.
+* Register nested enum types under the owner type namespace.
+* Register nested enum variants under the nested enum namespace.
+* Reject duplicate enum variant names.
+* Do not reject duplicate numeric values.
+* Evaluate enum initializers as integer constant expressions.
+* Reject non-constant enum initializer.
+* Reject enum initializer values that cannot be represented by the underlying
+  integer type.
+* Track the previous resolved numeric value.
+* For a variant without an explicit initializer:
+
+  * use 0 when it is the first variant,
+  * otherwise use previous numeric value + 1.
+* Detect overflow when calculating previous numeric value + 1.
+* Track a separate zero-based iota index for each variant position.
+* Make iota available only while evaluating an enum variant initializer.
+* Increment the iota index once for every enum variant.
+* Explicit values must not reset or otherwise modify the iota index.
+* Reject iota outside enum initializer evaluation.
+* Preserve the enum type for enum variant constants.
+* Do not implicitly decay enum values to the underlying integer type.
+* Allow explicit enum-to-integer conversion through normal cast syntax.
+* Allow explicit integer-to-enum conversion through normal cast syntax.
+* Reject implicit conversion between integers and enum values.
+* Reject implicit conversion between different enum types.
+* Apply normal constant-expression overflow checks to enum initializers.
+* Apply normal definite-assignment rules to uninitialized mutable enum
+  variables.
+* Reject immutable enum declarations without an initializer.

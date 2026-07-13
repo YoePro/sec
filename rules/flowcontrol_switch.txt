@@ -289,6 +289,23 @@ start..
 
 The switch subject and range bounds must have compatible ordered types.
 
+Switch ranges are normalized bounds.
+
+This means:
+
+```
+case 10..0:
+```
+
+is evaluated as:
+
+```
+subject <= 10 && subject >= 0
+```
+
+It matches values from 0 through 10. It is not iteration, so no ordered list is
+created and no repeated evaluation occurs.
+
 Example:
 
 ```

@@ -39,6 +39,7 @@ Rules:
 - The first type argument is the success type.
 - The second type argument is the error type.
 - A value of `Result[T, E]` is either `Ok(T)` or `Err(E)`.
+- When `T` is `void`, the success value may be written as `Ok()`.
 
 Invalid:
 
@@ -59,6 +60,7 @@ Ok and Err
 Examples:
 
     return Ok(speed)
+    return Ok()
     return Err(IOError.InvalidValue)
 
 AST:
@@ -73,10 +75,12 @@ AST:
 
 Rules:
 
-- `Ok` must contain exactly one expression.
+- `Ok` must contain exactly one expression when the success type is not `void`.
+- `Ok()` is valid only when the success type is `void`.
 - `Err` must contain exactly one expression.
 - In a function returning `Result[T, E]`:
   - `Ok(expr)` requires `expr` assignable to `T`.
+  - `Ok()` requires `T` to be `void`.
   - `Err(expr)` requires `expr` assignable to `E`.
 - A plain value may not be returned from a Result-returning function.
 
@@ -280,6 +284,9 @@ Rules:
 - the assignment target must have a fallible setter,
 - the setter error type becomes the handler error type,
 - assignment success produces no value,
+- assignment success is treated as an implicit `Ok(())`,
+- the success case does not need to be written in the handler block,
+- an explicit `Ok(...)` handler is also allowed,
 - handlers do not need to produce a fallback value,
 - a fallible setter assignment without `try` is invalid.
 
@@ -306,7 +313,11 @@ Try grammar
          | "{" "match" "{" TryHandler { TryHandler } "}" "}"
 
     TryHandler
-        := ErrPattern "=>" HandlerBody
+        := OkPattern "=>" HandlerBody
+         | ErrPattern "=>" HandlerBody
+
+    OkPattern
+        := "Ok" "(" SuccessPattern ")"
 
     ErrPattern
         := "Err" "(" ErrorPattern ")"
@@ -322,8 +333,60 @@ Try grammar
 
 Initial supported patterns:
 
+    Ok(value)
+    Ok(_)
     Err(IOError.InvalidValue)
     Err(error)
+
+Implicit Ok
+===========
+
+Try handler blocks have an implicit success path.
+
+This means the success case does not need to be written.
+
+Example:
+
+    try car.TopSpeed = current_speed {
+        Err(error) => fmt.println("Could not set top speed.")
+    }
+
+is equivalent to:
+
+    match set_result {
+        Ok(_) => {
+        }
+
+        Err(error) => fmt.println("Could not set top speed.")
+    }
+
+The implicit `Ok` exists for:
+
+- `try assignment { ... }`,
+- `try expression { ... }`.
+
+For `try expression`, the implicit success path is the unwrapped success value.
+For `try assignment`, the implicit success path is empty and produces no value.
+
+The handler block therefore only lists errors.
+
+The explicit success handler may still be written:
+
+    try car.TopSpeed = current_speed {
+        Ok(_) => {}
+        Err(error) => fmt.println("Could not set top speed.")
+    }
+
+When an explicit `Ok(...)` handler is omitted, the compiler inserts the normal
+success path implicitly.
+
+Writing the `match` keyword inside a try handler block is still allowed:
+
+    try car.TopSpeed = current_speed {
+        match {
+            Err(error) => fmt.println("Could not set top speed.")
+        }
+    }
 
 
 Handler ordering and coverage

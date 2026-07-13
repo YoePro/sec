@@ -8,10 +8,12 @@ Implemented:
 * parser supports match as expression and statement
 * parser supports expression arms, return arms and block arms
 * parser supports `_` as catch-all pattern
-* parser supports discard payload patterns such as `Ok(_)` and `Err(_)`
+* parser supports discard payload patterns such as `Ok(_)`
 * parser supports `return match ...`
 * sema supports Result Ok/Err matching with payload bindings
-* sema treats `_` payload patterns as discard, not bindings
+* sema treats `Ok(_)` as success payload discard, not a binding
+* error payloads must be named and may be explicitly ignored with
+  `discard name`
 * sema supports enum variant matching
 * sema checks Result and enum exhaustiveness
 * sema detects duplicate enum match arms
@@ -433,18 +435,32 @@ variable "value" already declared
 
 Discarded payload:
 
-A payload may be explicitly discarded.
+An Ok payload may be explicitly discarded with `_`.
+
+An Err payload must be named. If it is intentionally ignored, use a discard
+statement inside the arm body.
 
 Example:
 
 ```
 match result {
     Ok(_) => Success()
-    Err(error) => Handle(error)
+    Err(error) => {
+        discard error
+        Fallback()
+    }
 }
 ```
 
 The discard pattern does not declare a variable.
+
+Invalid:
+
+```
+match result {
+    Err(_) => Fallback()
+}
+```
 
 Pattern alternatives:
 
@@ -1160,7 +1176,8 @@ The parser must support:
 * variant patterns
 * enum patterns
 * payload bindings
-* discard payloads
+* non-error discard payloads such as `Ok(_)`
+* explicit error discard statements such as `discard error`
 * catch-all pattern
 * optional where guards
 * => branch separators

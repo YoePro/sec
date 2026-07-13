@@ -76,6 +76,7 @@ type Property struct {
 	Type     Type
 	Token    lexer.Token
 	Fallible bool
+	Error    *Type
 }
 
 type Function struct {

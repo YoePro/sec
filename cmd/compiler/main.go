@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"text/tabwriter"
 
@@ -75,8 +74,8 @@ func main() {
 
 func printUsage() {
 	fmt.Fprintln(os.Stderr, "usage: sec <lex|token|parse|ast|sema> <file.sec>")
-	fmt.Fprintln(os.Stderr, "       sec emit-llvm <file.sec> -o <file.ll>")
-	fmt.Fprintln(os.Stderr, "       sec build <file.sec> -o <program>")
+	fmt.Fprintln(os.Stderr, "       sec emit-llvm <file.sec> -o <file.ll> [--target <os-arch>]")
+	fmt.Fprintln(os.Stderr, "       sec build <file.sec> [-o <program>] [--target <os-arch>] [--keep-llvm] [--clang <path>]")
 }
 
 func runLex(input string) {
@@ -188,7 +187,7 @@ func runSema(input string) {
 }
 
 func runEmitLLVMCommand(args []string) {
-	inputFile, outputFile, ok := parseOutputCommandArgs(args)
+	inputFile, outputFile, target, ok := parseEmitLLVMCommandArgs(args, hostCompilerTarget())
 	if !ok {
 		printUsage()
 		os.Exit(1)
@@ -200,8 +199,14 @@ func runEmitLLVMCommand(args []string) {
 		os.Exit(1)
 	}
 
-	program := parseAndAnalyze(string(input))
-	ir, err := llvmcodegen.Generate(program)
+	targetDefinition, err := requireTargetCanEmitLLVM(target)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "target error: %s\n", err)
+		os.Exit(1)
+	}
+
+	program := parseAndAnalyzeForTarget(string(input), target)
+	ir, err := llvmcodegen.GenerateWithTriple(program, targetDefinition.LLVMTriple)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "codegen error: %v\n", err)
 		os.Exit(4)
@@ -214,44 +219,63 @@ func runEmitLLVMCommand(args []string) {
 }
 
 func runBuildCommand(args []string) {
-	inputFile, outputFile, ok := parseBuildCommandArgs(args)
+	options, ok := parseBuildCommandOptions(args, hostCompilerTarget())
 	if !ok {
 		printUsage()
 		os.Exit(1)
 	}
 
-	input, err := os.ReadFile(inputFile)
+	input, err := os.ReadFile(options.InputFile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "read error: %v\n", err)
 		os.Exit(1)
 	}
 
-	program := parseAndAnalyze(string(input))
-	ir, err := llvmcodegen.Generate(program)
+	targetDefinition, err := requireTargetCanLink(options.Target)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "target error: %s\n", err)
+		os.Exit(1)
+	}
+
+	program := parseAndAnalyzeForTarget(string(input), options.Target)
+	ir, err := llvmcodegen.GenerateWithTriple(program, targetDefinition.LLVMTriple)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "codegen error: %v\n", err)
 		os.Exit(4)
 	}
 
-	tmp, err := os.CreateTemp("", "sec-*.ll")
+	llvmPath := options.LLVMOutputFile
+	removeLLVM := false
+	if llvmPath == "" {
+		tmp, err := os.CreateTemp("", "sec-*.ll")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "temp file error: %v\n", err)
+			os.Exit(1)
+		}
+		llvmPath = tmp.Name()
+		removeLLVM = true
+		if err := tmp.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "temp file error: %v\n", err)
+			os.Exit(1)
+		}
+	}
+	if removeLLVM {
+		defer os.Remove(llvmPath)
+	}
+
+	if err := os.WriteFile(llvmPath, []byte(ir), 0644); err != nil {
+		fmt.Fprintf(os.Stderr, "write error: %v\n", err)
+		os.Exit(1)
+	}
+
+	clangPath, err := exec.LookPath(options.Clang)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "temp file error: %v\n", err)
-		os.Exit(1)
-	}
-	tmpPath := tmp.Name()
-	defer os.Remove(tmpPath)
-
-	if _, err := tmp.WriteString(ir); err != nil {
-		_ = tmp.Close()
-		fmt.Fprintf(os.Stderr, "write error: %v\n", err)
-		os.Exit(1)
-	}
-	if err := tmp.Close(); err != nil {
-		fmt.Fprintf(os.Stderr, "write error: %v\n", err)
+		fmt.Fprintf(os.Stderr, "build error: clang not found: %v\n", err)
 		os.Exit(1)
 	}
 
-	cmd := exec.Command("clang", tmpPath, "-o", outputFile)
+	clangArgs := []string{"-target", targetDefinition.LLVMTriple, llvmPath, "-o", options.OutputFile}
+	cmd := exec.Command(clangPath, clangArgs...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
@@ -280,31 +304,107 @@ func parseOutputCommandArgs(args []string) (inputFile string, outputFile string,
 	return inputFile, outputFile, inputFile != "" && outputFile != ""
 }
 
-func parseBuildCommandArgs(args []string) (inputFile string, outputFile string, ok bool) {
+func parseEmitLLVMCommandArgs(args []string, defaultTarget CompilerTarget) (inputFile string, outputFile string, target CompilerTarget, ok bool) {
+	target = defaultTarget
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "-o":
 			if i+1 >= len(args) || outputFile != "" {
-				return "", "", false
+				return "", "", CompilerTarget{}, false
 			}
 			outputFile = args[i+1]
 			i++
+		case "--target":
+			if i+1 >= len(args) {
+				return "", "", CompilerTarget{}, false
+			}
+			parsed, parseOK := parseCompilerTarget(args[i+1])
+			if !parseOK {
+				return "", "", CompilerTarget{}, false
+			}
+			target = parsed
+			i++
 		default:
 			if strings.HasPrefix(args[i], "-") || inputFile != "" {
-				return "", "", false
+				return "", "", CompilerTarget{}, false
 			}
 			inputFile = args[i]
 		}
 	}
 
-	if inputFile == "" {
-		return "", "", false
-	}
-	if outputFile == "" {
-		outputFile = defaultBuildOutputPath(inputFile)
+	return inputFile, outputFile, target, inputFile != "" && outputFile != ""
+}
+
+type buildCommandOptions struct {
+	InputFile      string
+	OutputFile     string
+	Target         CompilerTarget
+	Clang          string
+	LLVMOutputFile string
+}
+
+func parseBuildCommandArgs(args []string) (inputFile string, outputFile string, ok bool) {
+	options, ok := parseBuildCommandOptions(args, CompilerTarget{})
+	return options.InputFile, options.OutputFile, ok
+}
+
+func parseBuildCommandOptions(args []string, defaultTarget CompilerTarget) (buildCommandOptions, bool) {
+	options := buildCommandOptions{
+		Target: defaultTarget,
+		Clang:  "clang",
 	}
 
-	return inputFile, outputFile, true
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "-o":
+			if i+1 >= len(args) || options.OutputFile != "" {
+				return buildCommandOptions{}, false
+			}
+			options.OutputFile = args[i+1]
+			i++
+		case "--target":
+			if i+1 >= len(args) {
+				return buildCommandOptions{}, false
+			}
+			target, ok := parseCompilerTarget(args[i+1])
+			if !ok {
+				return buildCommandOptions{}, false
+			}
+			options.Target = target
+			i++
+		case "--clang":
+			if i+1 >= len(args) || options.Clang != "clang" {
+				return buildCommandOptions{}, false
+			}
+			options.Clang = args[i+1]
+			i++
+		case "--keep-llvm":
+			if options.LLVMOutputFile != "" {
+				return buildCommandOptions{}, false
+			}
+			options.LLVMOutputFile = "__sec_keep_llvm__"
+		default:
+			if strings.HasPrefix(args[i], "-") || options.InputFile != "" {
+				return buildCommandOptions{}, false
+			}
+			options.InputFile = args[i]
+		}
+	}
+
+	if options.InputFile == "" {
+		return buildCommandOptions{}, false
+	}
+	if options.OutputFile == "" {
+		options.OutputFile = defaultBuildOutputPath(options.InputFile)
+	}
+	if options.Clang == "" {
+		options.Clang = "clang"
+	}
+	if options.LLVMOutputFile == "__sec_keep_llvm__" {
+		options.LLVMOutputFile = options.OutputFile + ".ll"
+	}
+
+	return options, true
 }
 
 func defaultBuildOutputPath(inputFile string) string {
@@ -343,6 +443,7 @@ func parseAndAnalyzeForTarget(input string, target CompilerTarget) *ast.Program 
 
 	analyzer := sema.NewAnalyzer()
 	errors := analyzer.Analyze(program)
+	printSemaWarnings(analyzer)
 	if len(errors) > 0 {
 		for _, err := range errors {
 			fmt.Fprintf(os.Stderr, "sema error: %s\n", err)
@@ -359,40 +460,9 @@ func printParserWarnings(p *parser.Parser) {
 	}
 }
 
-type CompilerTarget struct {
-	OS   string
-	Arch string
-}
-
-func (t CompilerTarget) String() string {
-	if t.OS == "" || t.Arch == "" {
-		return ""
-	}
-	return t.OS + "-" + t.Arch
-}
-
-func hostCompilerTarget() CompilerTarget {
-	return CompilerTarget{
-		OS:   normalizeTargetOS(runtime.GOOS),
-		Arch: normalizeTargetArch(runtime.GOARCH),
-	}
-}
-
-func normalizeTargetOS(osName string) string {
-	switch osName {
-	case "darwin":
-		return "macos"
-	default:
-		return osName
-	}
-}
-
-func normalizeTargetArch(arch string) string {
-	switch arch {
-	case "arm":
-		return "arm32"
-	default:
-		return arch
+func printSemaWarnings(analyzer *sema.Analyzer) {
+	for _, warning := range analyzer.Warnings() {
+		fmt.Fprintf(os.Stderr, "Warning: %s\n", warning)
 	}
 }
 
@@ -612,7 +682,9 @@ func qualifyLocalCallsInExpression(expr ast.Expression, module string, localFunc
 	case *ast.TryExpression:
 		qualifyLocalCallsInExpression(expr.Expression, module, localFunctions)
 	case *ast.OkExpression:
-		qualifyLocalCallsInExpression(expr.Value, module, localFunctions)
+		if expr.Value != nil {
+			qualifyLocalCallsInExpression(expr.Value, module, localFunctions)
+		}
 	case *ast.ErrExpression:
 		qualifyLocalCallsInExpression(expr.Value, module, localFunctions)
 	case *ast.MatchExpression:
@@ -702,6 +774,20 @@ func printASTStatement(stmt ast.Statement, prefix string, last bool) {
 		if stmt.Assignment != nil {
 			printASTAssignment(stmt.Assignment, childPrefix(prefix, last), true)
 		}
+
+	case *ast.DeferStatement:
+		printASTBranch(prefix, last, "Defer")
+		if stmt.Body != nil {
+			printASTBlock(childPrefix(prefix, last), true, "Body", stmt.Body)
+		}
+
+	case *ast.DiscardStatement:
+		printASTBranch(prefix, last, "Discard")
+		name := "<nil>"
+		if stmt.Name != nil {
+			name = stmt.Name.Value
+		}
+		printASTLeaf(childPrefix(prefix, last), true, "Name: "+name)
 
 	case *ast.ExpressionStatement:
 		printASTExpression(prefix, last, "Expression", stmt.Expression)
@@ -945,6 +1031,17 @@ func printASTSwitchCaseItem(prefix string, item ast.SwitchCaseItem, last bool) {
 		printASTExpression(childPrefix(prefix, last), true, "Value", item.Value)
 	default:
 		printASTLeaf(prefix, last, fmt.Sprintf("%T", item))
+	}
+}
+
+func printASTBlock(prefix string, last bool, label string, block *ast.BlockStatement) {
+	printASTBranch(prefix, last, label)
+	if block == nil {
+		return
+	}
+	bodyPrefix := childPrefix(prefix, last)
+	for i, bodyStmt := range block.Statements {
+		printASTStatement(bodyStmt, bodyPrefix, i == len(block.Statements)-1)
 	}
 }
 
@@ -1365,6 +1462,22 @@ func printStatement(stmt ast.Statement) {
 		}
 		fmt.Print("Try ")
 		printAssignment(stmt.Assignment)
+
+	case *ast.DeferStatement:
+		fmt.Println("Defer")
+		if stmt.Body != nil {
+			for _, bodyStmt := range stmt.Body.Statements {
+				fmt.Print("  ")
+				printStatement(bodyStmt)
+			}
+		}
+
+	case *ast.DiscardStatement:
+		name := "<nil>"
+		if stmt.Name != nil {
+			name = stmt.Name.Value
+		}
+		fmt.Printf("Discard %s\n", name)
 
 	case *ast.ExpressionStatement:
 		fmt.Printf("Expression %s\n", stmt.Expression.String())

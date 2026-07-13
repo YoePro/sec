@@ -40,6 +40,16 @@ func constantIntegerValue(expr ast.Expression) (*big.Int, bool) {
 			return value.Sub(left, right), true
 		case "*":
 			return value.Mul(left, right), true
+		case "<<":
+			if !right.IsUint64() {
+				return nil, false
+			}
+			return value.Lsh(left, uint(right.Uint64())), true
+		case ">>":
+			if !right.IsUint64() {
+				return nil, false
+			}
+			return value.Rsh(left, uint(right.Uint64())), true
 		default:
 			return nil, false
 		}
@@ -91,6 +101,16 @@ func (a *Analyzer) integerConstantValue(expr ast.Expression) (*big.Int, bool) {
 			return value.Sub(left, right), true
 		case "*":
 			return value.Mul(left, right), true
+		case "<<":
+			if !right.IsUint64() {
+				return nil, false
+			}
+			return value.Lsh(left, uint(right.Uint64())), true
+		case ">>":
+			if !right.IsUint64() {
+				return nil, false
+			}
+			return value.Rsh(left, uint(right.Uint64())), true
 		default:
 			return nil, false
 		}

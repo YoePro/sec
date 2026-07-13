@@ -1,0 +1,231 @@
+module main
+// defer_valid.sec
+// All declarations and uses in this file must pass semantic analysis.
+
+enum CleanupError {
+    failed,
+}
+
+type Resource struct {
+    id: int
+}
+
+fn Record(value: int) void {
+}
+
+fn Use(value: int) void {
+}
+
+fn OpenResource(id: int) Resource {
+    return Resource{
+        id: id
+    }
+}
+
+fn CloseResource(resource: Resource) Result[void, CleanupError] {
+    if resource.id < 0 {
+        return Err(CleanupError.failed)
+    }
+
+    return Ok()
+}
+
+fn ReadResource(resource: Resource) Result[int, CleanupError] {
+    if resource.id < 0 {
+        return Err(CleanupError.failed)
+    }
+
+    return Ok(resource.id)
+}
+
+fn BasicDefer() void {
+    defer {
+        Record(1)
+    }
+
+    Record(2)
+}
+
+fn MultipleDefers() void {
+    defer {
+        Record(1)
+    }
+
+    defer {
+        Record(2)
+    }
+
+    defer {
+        Record(3)
+    }
+}
+
+fn DeferBeforeExplicitReturn() int {
+    defer {
+        Record(1)
+    }
+
+    return 10
+}
+
+fn DeferBeforeImplicitVoidReturn() void {
+    defer {
+        Record(1)
+    }
+}
+
+fn ConditionalDefer(enabled: bool) void {
+    if enabled {
+        defer {
+            Record(1)
+        }
+    }
+
+    Record(2)
+}
+
+fn DeferInsideNestedBlock() void {
+    let n: int := 1
+    if n < 2 {
+        defer {
+            Record(1)
+        }
+    }
+
+    Record(2)
+}
+
+fn DeferredReadUsesFinalValue() int {
+    let mut value := 1
+
+    defer {
+        Use(value)
+    }
+
+    value = 2
+    return value
+}
+
+fn DeferredMutableState() void {
+    let mut value := 10
+
+    defer {
+        value = 20
+        Use(value)
+    }
+
+    value = 15
+}
+
+fn DeferredBlockLocalVariable() void {
+    defer {
+        let value := 42
+        Use(value)
+    }
+}
+
+fn DeferredReferenceToEarlierValue() void {
+    let value := 42
+
+    defer {
+        Use(value)
+    }
+}
+
+fn DeferWithLocallyHandledResult(resource: Resource) void {
+    defer {
+        match CloseResource(resource) {
+            Ok(_) => {
+                Record(1)
+            }
+
+            Err(error) => {
+                discard error
+            }
+        }
+    }
+
+    Record(2)
+}
+
+fn DeferWithExplicitErrorHandling(resource: Resource) void {
+    defer {
+        match CloseResource(resource) {
+            Ok(_) => {
+            }
+
+            Err(error) => {
+                let code: int := int(error)
+                Use(code)
+            }
+        }
+    }
+}
+
+fn DeferDuringErrorPropagation(resource: Resource) Result[int, CleanupError] {
+    defer {
+        match CloseResource(resource) {
+            Ok(_) => {
+            }
+
+            Err(error) => {
+                discard error
+            }
+        }
+    }
+
+    let value := try ReadResource(resource)
+    return Ok(value)
+}
+
+fn ReturnExpressionEvaluatedBeforeDefer() int {
+    let mut value := 10
+
+    defer {
+        value = 20
+    }
+
+    return value
+}
+
+fn ReturnFromConditional(enabled: bool) int {
+    defer {
+        Record(1)
+    }
+
+    if enabled {
+        return 10
+    }
+
+    return 20
+}
+
+fn ReturnFromMatch(value: CleanupError) int {
+    defer {
+        Record(1)
+    }
+
+    match value {
+        CleanupError.failed => {
+            return 10
+        }
+    }
+}
+
+fn DeferAfterConditionalRegistration(first: bool, second: bool) void {
+    if first {
+        defer {
+            Record(1)
+        }
+    }
+
+    if second {
+        defer {
+            Record(2)
+        }
+    }
+
+    defer {
+        Record(3)
+    }
+}

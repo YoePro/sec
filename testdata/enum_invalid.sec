@@ -1,0 +1,167 @@
+// enum_invalid.sec
+// Every marked declaration or expression must produce a semantic error.
+
+enum Color {
+    red,
+    green,
+    blue,
+}
+
+enum Status int {
+    unknown = 0,
+    active = 10,
+    paused,
+}
+
+enum OtherColor {
+    red,
+    green,
+    blue,
+}
+
+enum DuplicateVariantName {
+    value,
+    value,
+}
+
+enum UnknownUnderlyingType MissingIntegerType {
+    value,
+}
+
+enum NonIntegerUnderlyingType string {
+    value,
+}
+
+enum StringInitializer int {
+    value = "invalid",
+}
+
+enum FloatInitializer int {
+    value = 1.5,
+}
+
+fn RuntimeValue() int {
+    return 10
+}
+
+enum NonConstantInitializer int {
+    value = RuntimeValue(),
+}
+
+fn ImmutableWithoutInitializer() void {
+    let color: Color
+}
+
+fn ImplicitIntegerToEnum() void {
+    let color: Color := 1
+}
+
+fn ImplicitEnumToInteger() void {
+    let value: int := Color.red
+}
+
+fn AssignDifferentEnumType() void {
+    let color: Color := OtherColor.red
+}
+
+fn PassIntegerAsEnum() void {
+    AcceptColor(1)
+}
+
+fn PassDifferentEnumType() void {
+    AcceptColor(OtherColor.green)
+}
+
+fn AcceptColor(value: Color) void {
+}
+
+fn ReturnIntegerAsEnum() Color {
+    return 1
+}
+
+fn ReturnDifferentEnumType() Color {
+    return OtherColor.blue
+}
+
+fn CompareEnumWithInteger() bool {
+    return Color.red == 0
+}
+
+fn CompareDifferentEnumTypes() bool {
+    return Color.red == OtherColor.red
+}
+
+fn AddEnumAndInteger() int {
+    return Color.red + 1
+}
+
+fn SubtractEnums() int {
+    return Color.blue - Color.red
+}
+
+fn MultiplyEnum() int {
+    return Color.green * 2
+}
+
+fn BitwiseEnum() int {
+    return Color.red | Color.green
+}
+
+fn OrderEnum() bool {
+    return Color.red < Color.green
+}
+
+fn IotaOutsideEnum() void {
+    let value: int := iota
+}
+
+fn DirectCastBetweenEnums() void {
+    let color: Color := Color.red
+    let other: OtherColor := OtherColor(color)
+}
+
+fn ReadUninitializedMutableEnum() Color {
+    let mut color: Color
+    return color
+}
+
+fn MaybeInitialized(condition: bool) Color {
+    let mut color: Color
+
+    if condition {
+        color = Color.green
+    }
+
+    return color
+}
+
+fn UnknownVariant() Color {
+    return Color.purple
+}
+
+fn VariantWithoutEnumNamespace() Color {
+    return red
+}
+
+type Vehicle struct {
+}
+
+impl Vehicle {
+    enum FuelType {
+        petrol,
+        diesel,
+        electric,
+    }
+}
+
+fn UnqualifiedNestedEnumType() void {
+    let fuel: FuelType := Vehicle.FuelType.petrol
+}
+
+fn UnqualifiedNestedEnumValue() Vehicle.FuelType {
+    return FuelType.diesel
+}
+
+fn WrongNestedOwner() Vehicle.FuelType {
+    return OtherColor.FuelType.petrol
+}

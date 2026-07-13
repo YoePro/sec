@@ -1,0 +1,196 @@
+// enum_valid.sec
+// All declarations and uses in this file must pass semantic analysis.
+
+module main
+
+enum Color {
+    red,
+    green,
+    blue,
+}
+
+enum Direction int {
+    north,
+    east,
+    south,
+    west,
+}
+
+enum Status int {
+    unknown = 0,
+    active = 10,
+    paused,
+    disabled = 99,
+}
+
+enum Permission uint {
+    none = 0,
+    read = 1 << iota,
+    write = 1 << iota,
+    execute = 1 << iota,
+}
+
+enum IotaSequence int {
+    first = iota,
+    second = 100,
+    third = iota,
+    fourth,
+}
+
+enum Alias int {
+    first = 1,
+    alsoFirst = 1,
+    second = 2,
+    alsoSecond = 2,
+}
+
+enum ConstantExpressions int {
+    zero = 0,
+    one = 1,
+    two = 1 << 1,
+    three = 1 + 2,
+    four = 2 * 2,
+    eight = 2 << 2,
+}
+
+enum OtherColor {
+    red,
+    green,
+    blue,
+}
+
+type Vehicle struct {
+}
+
+impl Vehicle {
+    enum FuelType {
+        petrol,
+        diesel,
+        electric,
+    }
+}
+
+fn AcceptColor(value: Color) void {
+}
+
+fn ReturnColor() Color {
+    return Color.green
+}
+
+fn DefaultValues() bool {
+    let first: Color := Color.red
+    let second: Direction := Direction.east
+    let third: Status := Status.paused
+
+    AcceptColor(first)
+    AcceptColor(ReturnColor())
+
+    return int(second) == 1 && int(third) == 11
+}
+
+fn MutableWithoutInitializer() void {
+    let mut color: Color
+    color = Color.blue
+    AcceptColor(color)
+}
+
+fn SameEnumAssignment() void {
+    let source: Color := Color.red
+    let target: Color := source
+    AcceptColor(target)
+}
+
+fn SameEnumComparison() bool {
+    let left: Color := Color.red
+    let right: Color := Color.green
+
+    if left == Color.red {
+        return left != right
+    }
+
+    return false
+}
+
+fn ExplicitEnumToIntegerCasts() bool {
+    let colorValue: int := int(Color.green)
+    let statusValue: int := int(Status.active)
+    let permissionValue: uint := uint(Permission.execute)
+
+    return colorValue == 1 && statusValue == 10 && permissionValue == 8
+}
+
+fn ExplicitIntegerToEnumCasts() bool {
+    let declaredColor: Color := Color(1)
+    let unnamedColor: Color := Color(99)
+    let status: Status := Status(404)
+    let permission: Permission := Permission(8)
+
+    AcceptColor(declaredColor)
+    AcceptColor(unnamedColor)
+
+    return int(status) == 404 && uint(permission) == 8
+}
+
+fn ExplicitConversionBetweenEnums() bool {
+    let color: Color := Color.red
+    let numeric: int := int(color)
+    let other: OtherColor := OtherColor(numeric)
+
+    return int(other) == numeric
+}
+
+fn AliasValues() bool {
+    let first: Alias := Alias.first
+    let alsoFirst: Alias := Alias.alsoFirst
+
+    return int(first) == int(alsoFirst)
+}
+
+fn AutomaticContinuation() bool {
+    let pausedValue: int := int(Status.paused)
+    let fourthValue: int := int(IotaSequence.fourth)
+
+    return pausedValue == 11 && fourthValue == 3
+}
+
+fn IotaValues() bool {
+    return int(Permission.none) == 0 &&
+        uint(Permission.read) == 2 &&
+        uint(Permission.write) == 4 &&
+        uint(Permission.execute) == 8 &&
+        int(IotaSequence.first) == 0 &&
+        int(IotaSequence.second) == 100 &&
+        int(IotaSequence.third) == 2
+}
+
+fn EnumInSwitch(value: Color) int {
+    switch value {
+    case Color.red:
+        return 1
+    case Color.green:
+        return 2
+    default:
+        return 3
+    }
+}
+
+fn EnumInMatch(value: Direction) int {
+    return match value {
+        Direction.north => 0
+        Direction.east => 1
+        Direction.south => 2
+        Direction.west => 3
+    }
+}
+
+fn NestedEnumOutsideImpl() Vehicle.FuelType {
+    let fuel: Vehicle.FuelType := Vehicle.FuelType.diesel
+    return fuel
+}
+
+impl Vehicle {
+    fn DefaultFuel() FuelType {
+        let fuel: FuelType := FuelType.petrol
+        return fuel
+    }
+}

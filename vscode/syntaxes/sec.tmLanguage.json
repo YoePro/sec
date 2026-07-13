@@ -71,7 +71,7 @@
       "patterns": [
         {
           "name": "entity.name.function.attribute.sec",
-          "match": "@[A-Za-z_][A-Za-z0-9_]*"
+          "match": "@[A-Za-z_][A-Za-z0-9_.]*"
         }
       ]
     },
@@ -88,7 +88,7 @@
       "patterns": [
         {
           "name": "meta.enum.declaration.sec",
-          "begin": "\\b(enum)\\s+([A-Z_][A-Za-z0-9_]*)\\s*(\\{)",
+          "begin": "\\b(enum)\\s+([A-Za-z_][A-Za-z0-9_.]*)(?:\\s+([A-Za-z_][A-Za-z0-9_]*))?\\s*(\\{)",
           "beginCaptures": {
             "1": {
               "name": "storage.type.enum.sec"
@@ -97,6 +97,9 @@
               "name": "entity.name.type.enum.sec"
             },
             "3": {
+              "name": "storage.type.primitive.sec"
+            },
+            "4": {
               "name": "punctuation.section.block.begin.sec"
             }
           },
@@ -112,7 +115,7 @@
             },
             {
               "name": "constant.other.enum-member.sec",
-              "match": "\\b[A-Z_][A-Za-z0-9_]*\\b(?=\\s*(?:,|=|\\}))"
+              "match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b(?=\\s*(?:,|=|\\}))"
             },
             {
               "name": "punctuation.separator.comma.sec",
@@ -128,7 +131,7 @@
         },
         {
           "name": "meta.enum.declaration.sec",
-          "begin": "\\b(type)\\s+([A-Z_][A-Za-z0-9_]*)\\s+(enum)\\s*(\\{)",
+          "begin": "\\b(type)\\s+([A-Za-z_][A-Za-z0-9_.]*)\\s+(enum)\\s*(\\{)",
           "beginCaptures": {
             "1": {
               "name": "storage.type.declaration.sec"
@@ -155,7 +158,7 @@
             },
             {
               "name": "constant.other.enum-member.sec",
-              "match": "\\b[A-Z_][A-Za-z0-9_]*\\b(?=\\s*(?:,|=|\\}))"
+              "match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b(?=\\s*(?:,|=|\\}))"
             },
             {
               "name": "punctuation.separator.comma.sec",
@@ -171,7 +174,7 @@
         },
         {
           "name": "meta.enum.member.access.sec",
-          "match": "\\b([A-Z_][A-Za-z0-9_]*)(\\.)([A-Z_][A-Za-z0-9_]*)\\b",
+          "match": "\\b([A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*)(\\.)([A-Za-z_][A-Za-z0-9_]*)\\b",
           "captures": {
             "1": {
               "name": "entity.name.type.enum.sec"
@@ -199,11 +202,11 @@
       "patterns": [
         {
           "name": "constant.numeric.float.sec",
-          "match": "\\b\\d+\\.\\d+\\b"
+          "match": "(?<![A-Za-z0-9_])(?:\\d+\\.\\d*|\\.\\d+)(?:[fFdD])?\\b"
         },
         {
           "name": "constant.numeric.integer.sec",
-          "match": "\\b\\d+\\b"
+          "match": "\\b(?:0[bB][01_]+|0[oO][0-7_]+|0[xX][0-9A-Fa-f_]+|\\d[\\d_]*)(?:[iIuUfFdD])?\\b"
         }
       ]
     },
@@ -239,44 +242,54 @@
           }
         },
         {
+          "name": "meta.target.directive.sec",
+          "match": "(#)(target)\\s*\\(([^)]*)\\)",
+          "captures": {
+            "1": { "name": "punctuation.definition.directive.sec" },
+            "2": { "name": "keyword.other.directive.sec" },
+            "3": { "name": "meta.directive.arguments.sec" }
+          }
+        },
+        {
           "name": "meta.type.definition.sec",
-          "match": "\\b(type)\\s+([A-Z_][A-Za-z0-9_]*)(?:\\s*(=))?",
+          "match": "\\b(type)\\s+([A-Za-z_][A-Za-z0-9_.]*)(?:\\s+(struct|interface|enum))?(?:\\s*(=))?",
           "captures": {
             "1": { "name": "storage.type.declaration.sec" },
             "2": { "name": "entity.name.type.sec" },
-            "3": { "name": "keyword.operator.assignment.sec" }
+            "3": { "name": "storage.type.sec" },
+            "4": { "name": "keyword.operator.assignment.sec" }
           }
         },        
         {
           "name": "meta.function.definition.sec",
-          "match": "\\b(fn)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "match": "\\b(?:(unsafe)\\s+)?(fn)\\s+([A-Za-z_][A-Za-z0-9_.]*)",
           "captures": {
-            "1": { "name": "storage.type.function.sec" },
-            "2": { "name": "entity.name.function.sec" }
+            "1": { "name": "keyword.control.unsafe.sec" },
+            "2": { "name": "storage.type.function.sec" },
+            "3": { "name": "entity.name.function.sec" }
           }
         },        
         {
           "name": "meta.property.definition.sec",
-          "match": "\\b(property)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s+([A-Za-z_][A-Za-z0-9_]*(?:\\[[^\\]]+\\])?(?:<[^>]+>)?)",
+          "match": "\\b(property)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(:)\\s*([A-Za-z_][A-Za-z0-9_.]*(?:\\[[^\\]]+\\])?(?:<[^>]+>)?)",
           "captures": {
             "1": { "name": "storage.type.property.sec" },
             "2": { "name": "entity.name.property.sec" },
-            "3": { "name": "storage.type.sec" }
+            "3": { "name": "punctuation.separator.type.sec" },
+            "4": { "name": "storage.type.sec" }
           }
         },        
         {
           "name": "meta.impl.sec",
-          "match": "\\b(impl)\\s+([A-Z_][A-Za-z0-9_]*)(?:\\s+(for)\\s+([A-Z_][A-Za-z0-9_]*))?",
+          "match": "\\b(impl)\\s+([A-Za-z_][A-Za-z0-9_.]*)",
           "captures": {
             "1": { "name": "storage.type.implementation.sec" },
-            "2": { "name": "entity.name.type.sec" },
-            "3": { "name": "keyword.other.for.sec" },
-            "4": { "name": "entity.name.type.sec" }
+            "2": { "name": "entity.name.type.sec" }
           }
         },        
         {
           "name": "meta.struct.field.sec",
-          "match": "\\b([A-Za-z_][A-Za-z0-9_]*)\\s*(:)\\s*([A-Za-z_][A-Za-z0-9_]*(?:\\[[^\\]]+\\])?)",
+          "match": "\\b([A-Za-z_][A-Za-z0-9_]*)\\s*(:)\\s*([A-Za-z_][A-Za-z0-9_.]*(?:\\[[^\\]]+\\])?(?:<[^>]+>)?)",
           "captures": {
             "1": { "name": "variable.other.member.sec" },
             "2": { "name": "punctuation.separator.type.sec" },
@@ -285,7 +298,7 @@
         },
         {
           "name": "meta.variable.declaration.sec",
-          "match": "\\b(let)\\s+(?:(mut)\\s+)?([A-Za-z_][A-Za-z0-9_]*)(?:\\s*(:)\\s*([A-Za-z_][A-Za-z0-9_]*(?:\\[[^\\]]+\\])?(?:<[^>]+>)?))?",
+          "match": "\\b(let)\\s+(?:(mut)\\s+)?([A-Za-z_][A-Za-z0-9_]*)(?:\\s*(:)\\s*([A-Za-z_][A-Za-z0-9_.]*(?:\\[[^\\]]+\\])?(?:<[^>]+>)?))?",
           "captures": {
             "1": {
               "name": "storage.type.variable.sec"
@@ -303,6 +316,15 @@
               "name": "entity.name.type.sec"
             }
           }
+        },
+        {
+          "name": "meta.typed.variable.declaration.sec",
+          "match": "\\b([A-Za-z_][A-Za-z0-9_.]*(?:\\[[^\\]]+\\])?(?:<[^>]+>)?)\\s+(mut)\\s*(:)",
+          "captures": {
+            "1": { "name": "entity.name.type.sec" },
+            "2": { "name": "storage.modifier.mutable.sec" },
+            "3": { "name": "punctuation.separator.type.sec" }
+          }
         }
       ]
     },
@@ -311,11 +333,11 @@
       "patterns": [
         {
           "name": "keyword.control.sec",
-          "match": "\\b(?:asm|if|else|switch|case|default|fallthrough|for|while|in|match|where|return|defer|try|await|spawn|discard|assert|panic|unsafe)\\b"
+          "match": "\\b(?:asm|if|else|switch|case|default|fallthrough|for|while|in|match|where|return|break|continue|defer|try|await|spawn|discard|assert|panic|unsafe)\\b"
         },
         {
           "name": "storage.type.variable.sec",
-          "match": "\\b(?:let|property)\\b"
+          "match": "\\b(?:let|property|type|enum|struct|interface|impl|fn)\\b"
         },
         {
           "name": "storage.modifier.mutable.sec",
@@ -323,7 +345,7 @@
         },        
         {
           "name": "keyword.other.sec",
-          "match": "\\b(?:module|import|require|sec|range|validate|regex|minLength|maxLength|precision|scale|get|set)\\b"
+          "match": "\\b(?:module|import|require|range|validate|regex|minLen|maxLen|minLength|maxLength|precision|scale|get|set|iota|Ok|Err)\\b"
         }
       ]
     },    
@@ -332,7 +354,7 @@
       "patterns": [
         {
           "name": "storage.type.primitive.sec",
-          "match": "\\b(?:bool|byte|char|rune|int|int8|int16|int32|int64|uint|uint8|uint16|uint32|uint64|float|float32|float64|decimal|string|void)\\b"
+          "match": "\\b(?:bool|byte|char|rune|int|int8|int16|int32|int64|uint|uint8|uint16|uint32|uint64|float|float32|float64|decimal|string|void|ptr)\\b"
         },
         {
           "name": "support.type.sec",
@@ -383,7 +405,7 @@
       "patterns": [
         {
           "name": "keyword.operator.sec",
-          "match": "==|!=|<=|>=|&&|\\|\\||<<|>>|\\+=|-=|\\*=|/=|%=|&=|\\|=|\\^=|<<=|>>=|:=|=>|\\.\\.<?|\\.\\.\\.|[+\\-*/%=&|^~!<>]"
+          "match": "\\.\\.\\.|\\.\\.<|\\.\\.|==|!=|<=|>=|&&|\\|\\||<<=|>>=|<<|>>|\\+=|-=|\\*=|/=|%=|&=|\\|=|\\^=|:=|=>|[+\\-*/%=&|^~!<>]"
         }
       ]
     }

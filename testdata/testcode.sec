@@ -56,7 +56,7 @@ fn main() void {
                 fmt.println("Kunde inte beräkna hastighet: ogiltig tid.")
                 return
             }
-            Err(error) => return Err(error) // Automatisk propagering
+            Err(error) => return
         }
     }
 
@@ -81,11 +81,10 @@ fn main() void {
             fmt.println($"Arbetar i bakgrunden... {i}")
         }
     }
-    
+*/    
     defer {
         fmt.println("Programmet avslutas, städar resurser...")
     }
 
-    await task
-*/
+    // await task
 }

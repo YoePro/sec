@@ -8,6 +8,9 @@ import (
 
 func (g *Generator) emitFunction(fn *ast.FunctionDeclaration) error {
 	returnType := g.llvmType(fn.ReturnType)
+	if fn.Name != nil && fn.Name.Value == "main" && returnType == "void" {
+		returnType = "i32"
+	}
 	previousReturnType := g.returnType
 	previousLoops := g.loops
 	g.locals = map[string]local{}

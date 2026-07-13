@@ -1,0 +1,407 @@
+Implement defer statements.
+
+Syntax:
+
+```
+defer {
+    statements
+}
+```
+
+Rules:
+
+* defer registers a block to be executed when the current function exits.
+* defer is function-scoped, not block-scoped.
+* A defer block does not execute when the current lexical block ends.
+* A defer block does not execute when a loop iteration ends.
+* A defer block executes when the current function exits normally.
+* A defer block executes when the current function exits through return.
+* A defer block executes when the current function exits through error
+  propagation.
+* defer blocks execute in reverse registration order.
+* defer therefore uses LIFO order.
+* A defer block is registered only when execution reaches the defer statement.
+* A defer inside a conditional is registered only if that branch executes.
+* A defer inside a loop is registered once for every execution of the defer
+  statement.
+* All defer blocks registered by a function execute before control returns to
+  the caller.
+* defer is allowed only inside functions and methods.
+* defer is not allowed at module scope.
+* defer is not allowed inside type declarations.
+* defer is not allowed inside struct declarations.
+* defer is not allowed inside enum declarations.
+* defer is not allowed inside union declarations.
+* defer is not allowed inside interface declarations.
+* defer is not allowed inside constant initializers.
+* Only block syntax is supported.
+* Function-call shorthand is not supported.
+
+Valid:
+
+```
+defer {
+    Close()
+}
+```
+
+Not supported:
+
+```
+defer Close()
+```
+
+Execution order:
+
+```
+defer {
+    First()
+}
+
+defer {
+    Second()
+}
+```
+
+The execution order is:
+
+```
+Second()
+First()
+```
+
+Registration order:
+
+```
+if enabled {
+    defer {
+        Cleanup()
+    }
+}
+```
+
+Cleanup is registered only when enabled is true and the branch executes.
+
+Variables:
+
+* Variables referenced inside a defer block are resolved using normal lexical
+  scope rules.
+* Values are read when the defer block executes.
+* defer does not implicitly copy or capture the current value when the defer
+  statement is registered.
+* Variables used by a defer block must remain valid until the function exits.
+* Normal ownership and borrowing rules apply.
+* A reference used by a defer block must not outlive its owner.
+* A value must not be moved while it is still required by a registered defer
+  block.
+* A mutable variable may be modified after defer registration.
+* The defer block observes the value that exists when the defer block executes.
+
+Example:
+
+```
+let mut value := 1
+
+defer {
+    Print(value)
+}
+
+value = 2
+```
+
+The defer block reads value as 2.
+
+Control flow:
+
+* return is not allowed inside a defer block.
+* break is not allowed inside a defer block.
+* continue is not allowed inside a defer block.
+* fallthrough is not allowed inside a defer block.
+* A defer block must not replace or redirect the function exit that caused it
+  to execute.
+* Nested defer statements are not allowed inside a defer block.
+* goto is not supported and therefore cannot be used inside defer.
+
+Errors:
+
+* A defer block must handle all errors locally.
+* try must not propagate an error out of a defer block.
+* A fallible operation inside defer must be handled explicitly.
+* An unhandled Result value inside defer is invalid.
+* A defer block cannot change the Result already being returned by the
+  function.
+* A defer block cannot replace an existing error with another propagated error.
+* Error handling inside defer may log, discard explicitly or perform another
+  local action.
+* If an operation in defer may fail, all possible errors must be handled before
+  the defer block finishes.
+
+Invalid:
+
+```
+defer {
+    try file.Close()
+}
+```
+
+Valid:
+
+```
+defer {
+    match file.Close() {
+        Ok(_) => {
+        }
+
+        Err(error) => {
+            discard error
+        }
+    }
+}
+```
+
+Valid explicit ignore:
+
+```
+defer {
+    match file.Close() {
+        Ok(_) => {
+        }
+
+        Err(error) => {
+            discard error
+        }
+    }
+}
+```
+
+Loops:
+
+* defer is allowed inside loops.
+* A defer inside a loop is registered for every execution of the defer
+  statement.
+* Registered defer blocks do not execute at the end of each iteration.
+* Registered defer blocks execute only when the surrounding function exits.
+* A compiler warning should be emitted when defer appears directly inside a
+  loop body.
+* The warning exists because repeated defer registration may keep resources
+  alive until the function exits.
+* The warning does not make the code invalid.
+
+Example:
+
+```
+for file in files {
+    defer {
+        CloseFile(file)
+    }
+}
+```
+
+Each executed iteration registers one defer block.
+All registered blocks execute when the function exits.
+They execute in reverse iteration order.
+
+Scopes:
+
+* A defer block may reference variables declared before the defer statement.
+* A defer block may not reference variables declared after the defer statement
+  if they are not otherwise visible at that source position.
+* Normal lexical name resolution applies.
+* Variables declared inside the defer block exist only while the defer block
+  executes.
+* A defer block does not create a separate function.
+* A defer block is semantically attached to the surrounding function.
+
+Return values:
+
+* Return expressions are evaluated before registered defer blocks execute.
+* The function return value is determined before defer execution begins.
+* defer blocks cannot modify immutable return values.
+* Sec does not support named return variables for defer mutation.
+* A defer block cannot replace the already evaluated return value.
+* Mutable external state may still be changed normally by defer.
+
+Example:
+
+```
+fn Value() int {
+    let mut value := 10
+
+    defer {
+        value = 20
+    }
+
+    return value
+}
+```
+
+Value returns 10.
+
+The return expression reads value before the defer block executes.
+
+Function exit:
+
+* defer executes for explicit return.
+* defer executes when execution reaches the end of a void function.
+* defer executes when try propagates an error from the function.
+* defer executes when a match branch returns from the function.
+* defer executes when a loop or conditional contains a return that exits the
+  function.
+* defer does not execute for compile-time errors.
+* defer is not guaranteed for forced process termination.
+* defer is not guaranteed for abort.
+* defer is not guaranteed for hardware failure.
+* defer is not guaranteed when the runtime cannot perform normal stack
+  unwinding.
+* Panic behavior is defined separately.
+* Until panic semantics are implemented, defer is guaranteed only for normal
+  language-controlled function exits.
+
+Valid:
+
+```
+fn ReadFile(path: string) Result[string, IOError] {
+    let file := try Open(path)
+
+    defer {
+        match file.Close() {
+            Ok(_) => {
+            }
+
+            Err(error) => {
+                Log(error)
+            }
+        }
+    }
+
+    return try file.ReadAll()
+}
+```
+
+When file.ReadAll() returns Err:
+
+* try prepares the error for propagation.
+* registered defer blocks execute.
+* the original error is returned after defer execution.
+
+Nested blocks:
+
+```
+fn Example(enabled: bool) void {
+    {
+        defer {
+            Cleanup()
+        }
+    }
+
+    Work()
+}
+```
+
+Cleanup executes when Example exits.
+Cleanup does not execute when the inner block ends.
+
+Multiple defer statements:
+
+```
+fn Example() void {
+    defer {
+        CleanupA()
+    }
+
+    if condition {
+        defer {
+            CleanupB()
+        }
+    }
+
+    defer {
+        CleanupC()
+    }
+}
+```
+
+If condition is true, execution order is:
+
+```
+CleanupC()
+CleanupB()
+CleanupA()
+```
+
+If condition is false, execution order is:
+
+```
+CleanupC()
+CleanupA()
+```
+
+Invalid:
+
+```
+defer {
+    return
+}
+
+defer {
+    break
+}
+
+defer {
+    continue
+}
+
+defer {
+    fallthrough
+}
+
+defer {
+    defer {
+        Cleanup()
+    }
+}
+
+defer {
+    try Close()
+}
+
+defer Cleanup()
+```
+
+Sema:
+
+* Parse defer only in statement position.
+* Require a block after defer.
+* Reject defer without a block.
+* Reject defer outside a function or method body.
+* Reject nested defer statements while analyzing a defer block.
+* Mark the defer block as function-exit cleanup code.
+* Register each defer statement in the current function defer stack.
+* Registration must happen at runtime when execution reaches the statement.
+* Preserve source order for registration.
+* Emit defer blocks in reverse registration order during function exit.
+* Insert defer execution before every normal function exit path.
+* Insert defer execution before explicit return.
+* Insert defer execution before implicit void return.
+* Insert defer execution before Result error propagation.
+* Ensure return expressions are evaluated before defer execution.
+* Preserve the original return value while defer blocks execute.
+* Preserve the original propagated error while defer blocks execute.
+* Reject return inside a defer block.
+* Reject break inside a defer block.
+* Reject continue inside a defer block.
+* Reject fallthrough inside a defer block.
+* Reject error propagation from inside a defer block.
+* Reject try inside defer when it may propagate.
+* Require all fallible operations inside defer to be handled locally.
+* Apply normal lexical name resolution inside defer.
+* Apply normal ownership rules to values referenced by defer.
+* Apply normal borrow rules to references used by defer.
+* Prevent values required by defer from being moved before defer execution.
+* Detect reads of values that are no longer valid when the function exits.
+* Emit a warning for defer directly inside a loop body.
+* Do not reject defer inside loops.
+* Do not execute defer when leaving an ordinary lexical block.
+* Do not execute defer when leaving a loop iteration.
+* Execute all registered defer blocks before returning control to the caller.
+* Do not guarantee defer execution for abort or forced process termination.

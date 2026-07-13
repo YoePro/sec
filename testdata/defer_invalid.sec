@@ -1,0 +1,163 @@
+module main
+// defer_invalid.sec
+// Every marked declaration or expression must produce a semantic error.
+
+// Parser-only invalid form intentionally belongs in a separate parser test:
+//
+//     defer Cleanup()
+//
+// Keeping it out of this file allows all semantic errors below to be found.
+
+enum CleanupError {
+    failed,
+}
+
+type Resource struct {
+    id: int
+}
+
+fn Record(value: int) void {
+}
+
+fn CloseResource(resource: Resource) Result[void, CleanupError] {
+    if resource.id < 0 {
+        return Err(CleanupError.failed)
+    }
+
+    return Ok()
+}
+
+fn ReadResource(resource: Resource) Result[int, CleanupError] {
+    if resource.id < 0 {
+        return Err(CleanupError.failed)
+    }
+
+    return Ok(resource.id)
+}
+
+fn DeferWithReturn() void {
+    defer {
+        return
+    }
+}
+
+fn DeferWithReturnValue() int {
+    defer {
+        return 10
+    }
+
+    return 20
+}
+
+fn DeferWithBreak() void {
+    for {
+        defer {
+            break
+        }
+
+        break
+    }
+}
+
+fn DeferWithContinue() void {
+    for {
+        defer {
+            continue
+        }
+
+        break
+    }
+}
+
+fn DeferWithFallthrough(value: int) void {
+    switch value {
+    case 1:
+        defer {
+            fallthrough
+        }
+    case 2:
+    }
+}
+
+fn NestedDefer() void {
+    defer {
+        defer {
+            Record(1)
+        }
+    }
+}
+
+fn TryPropagationInsideDefer(resource: Resource) Result[void, CleanupError] {
+    defer {
+        let value := try ReadResource(resource)
+        Record(value)
+    }
+
+    return Ok()
+}
+
+fn BareTryInsideDefer(resource: Resource) Result[void, CleanupError] {
+    defer {
+        try CloseResource(resource)
+    }
+
+    return Ok()
+}
+
+fn UnhandledResultInsideDefer(resource: Resource) void {
+    defer {
+        CloseResource(resource)
+    }
+}
+
+fn PartiallyHandledResultInsideDefer(resource: Resource) void {
+    defer {
+        match CloseResource(resource) {
+            Ok(_) => {
+            }
+        }
+    }
+}
+
+fn ReferenceDeclaredAfterDefer() void {
+    defer {
+        Record(value)
+    }
+
+    let value := 10
+}
+
+fn DeferredReadBeforeDefiniteAssignment() void {
+    let mut value: int
+
+    defer {
+        Record(value)
+    }
+}
+
+fn DeferredMaybeInitialized(condition: bool) void {
+    let mut value: int
+
+    defer {
+        Record(value)
+    }
+
+    if condition {
+        value = 10
+    }
+}
+
+fn ErrorFromDeferredHandler(resource: Resource) Result[void, CleanupError] {
+    defer {
+        match CloseResource(resource) {
+            Ok(_) => {
+            }
+
+            Err(error) => {
+                return Err(error)
+            }
+        }
+    }
+
+    return Ok()
+}

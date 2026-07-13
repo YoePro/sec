@@ -849,7 +849,7 @@ impl MissingType {
 	assertSemaErrors(t, errors, expected)
 }
 
-func TestDuplicateImplBlock(t *testing.T) {
+func TestMultipleImplBlocksAllowed(t *testing.T) {
 	input := `
 type Vehicle struct {
 }
@@ -862,11 +862,31 @@ impl Vehicle {
 `
 
 	errors := analyzeSource(t, input)
+	assertSemaErrors(t, errors, nil)
+}
 
-	expected := []string{
-		"duplicate impl block for Vehicle at 8:6",
+func TestDuplicateNestedTypeAcrossImplBlocks(t *testing.T) {
+	input := `
+type Vehicle struct {
+}
+
+impl Vehicle {
+	enum FuelType {
+		petrol,
 	}
+}
 
+impl Vehicle {
+	enum FuelType {
+		diesel,
+	}
+}
+`
+
+	errors := analyzeSource(t, input)
+	expected := []string{
+		"duplicate nested type \"FuelType\" in impl Vehicle at 12:7",
+	}
 	assertSemaErrors(t, errors, expected)
 }
 
@@ -1208,6 +1228,107 @@ fn Test() void {
 	if current.Type.Name != "Speed" {
 		t.Fatalf("wrong property type. got=%q want=Speed", current.Type.Name)
 	}
+}
+
+func TestTryAssignmentHandlersUseImplicitOk(t *testing.T) {
+	input := `
+type Speed decimal<m/s>
+
+enum IOError {
+	InvalidValue,
+}
+
+type Vehicle struct {
+	_speed: Speed,
+}
+
+impl Vehicle {
+	property TopSpeed: Speed {
+		get {
+			return _speed
+		}
+		try set value {
+			return Err(IOError.InvalidValue)
+		}
+	}
+}
+
+fn Log(error: IOError) void {
+	return
+}
+
+fn Test(car: Vehicle, current_speed: Speed) void {
+	try car.TopSpeed = current_speed {
+		Err(error) => Log(error)
+	}
+}
+`
+
+	errors := analyzeSource(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestTryAssignmentAllowsExplicitOkHandler(t *testing.T) {
+	input := `
+type Speed decimal<m/s>
+
+enum IOError {
+	InvalidValue,
+}
+
+type Vehicle struct {
+	_speed: Speed,
+}
+
+impl Vehicle {
+	property TopSpeed: Speed {
+		get {
+			return _speed
+		}
+		try set value {
+			return Err(IOError.InvalidValue)
+		}
+	}
+}
+
+fn Log(error: IOError) void {
+	return
+}
+
+fn Test(car: Vehicle, current_speed: Speed) void {
+	try car.TopSpeed = current_speed {
+		Ok(_) => {}
+		Err(error) => Log(error)
+	}
+}
+`
+
+	errors := analyzeSource(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestTryExpressionAllowsExplicitOkHandler(t *testing.T) {
+	input := `
+enum IOError {
+	InvalidValue,
+}
+
+fn Read() Result[int, IOError] {
+	return Ok(10)
+}
+
+fn Test() int {
+	let value := try Read() {
+		Ok(v) => v
+		Err(error) => 0
+	}
+
+	return value
+}
+`
+
+	errors := analyzeSource(t, input)
+	assertSemaErrors(t, errors, nil)
 }
 
 func TestPropertyAccessBeforeImplDeclaration(t *testing.T) {
@@ -1731,6 +1852,10 @@ fn OkResult() Result[int, IOError] {
 	return Ok(1)
 }
 
+fn VoidOkResult() Result[void, IOError] {
+	return Ok()
+}
+
 fn ErrResult() Result[int, IOError] {
 	return Err(IOError.InvalidValue)
 }
@@ -1750,6 +1875,10 @@ fn BadOk() Result[int, IOError] {
 	return Ok(IOError.InvalidValue)
 }
 
+fn MissingOkValue() Result[int, IOError] {
+	return Ok()
+}
+
 fn BadErr() Result[int, IOError] {
 	return Err(1)
 }
@@ -1763,8 +1892,9 @@ fn Plain() Result[int, IOError] {
 
 	expected := []string{
 		"function BadOk must return Ok(int), got Ok(IOError) at 7:19",
-		"function BadErr must return Err(IOError), got Err(int) at 11:13",
-		"function Plain returning Result[int, IOError] must return Ok(...) or Err(...) at 15:9",
+		"function MissingOkValue must return Ok(int), got Ok() at 11:9",
+		"function BadErr must return Err(IOError), got Err(int) at 15:13",
+		"function Plain returning Result[int, IOError] must return Ok(...) or Err(...) at 19:9",
 	}
 
 	assertSemaErrors(t, errors, expected)
@@ -2003,6 +2133,132 @@ func TestErrorHandlingValidFixture(t *testing.T) {
 	assertSemaErrors(t, errors, nil)
 }
 
+func TestDeferStatementValid(t *testing.T) {
+	input := `
+fn Cleanup() void {
+	return
+}
+
+fn Test() void {
+	let mut value := 1
+	defer {
+		value = 2
+		Cleanup()
+	}
+	value = 3
+}
+`
+
+	errors := analyzeSource(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestDeferInvalidControlFlow(t *testing.T) {
+	input := `
+fn Test() void {
+	defer {
+		return
+	}
+	defer {
+		break
+	}
+	defer {
+		continue
+	}
+	defer {
+		fallthrough
+	}
+	defer {
+		defer {
+		}
+	}
+}
+`
+
+	errors := analyzeSource(t, input)
+	expected := []string{
+		"return is not allowed inside defer at 4:3",
+		"break is not allowed inside defer at 7:3",
+		"continue is not allowed inside defer at 10:3",
+		"fallthrough is not allowed inside defer at 13:3",
+		"defer is not allowed inside defer at 16:3",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestDeferRejectsTryPropagation(t *testing.T) {
+	input := `
+enum IOError {
+	Failed,
+}
+
+fn Close() Result[int, IOError] {
+	return Ok(0)
+}
+
+fn Test() Result[int, IOError] {
+	defer {
+		try Close()
+	}
+	return Ok(1)
+}
+`
+
+	errors := analyzeSource(t, input)
+	expected := []string{
+		"try cannot propagate from inside defer at 12:3",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestDeferOutsideFunction(t *testing.T) {
+	input := `
+module main
+
+defer {
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	expected := []string{
+		"defer is only valid inside functions at 4:1",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestDeferInsideLoopWarning(t *testing.T) {
+	input := `
+fn Test() void {
+	for {
+		defer {
+		}
+		break
+	}
+}
+`
+
+	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
+	assertSemaErrors(t, errors, nil)
+	warnings := analyzer.Warnings()
+	if len(warnings) != 1 {
+		t.Fatalf("wrong warning count. got=%d warnings=%v", len(warnings), warnings)
+	}
+	want := "defer inside loop registers once per execution and runs at function exit at 4:3"
+	if warnings[0].Error() != want {
+		t.Fatalf("wrong warning. got=%q want=%q", warnings[0].Error(), want)
+	}
+}
+
+func TestEnumValidFixture(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/enum_valid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	errors := analyzeSourceRaw(t, string(input))
+	assertSemaErrors(t, errors, nil)
+}
+
 func TestErrorHandlingMatchInvalidFixture(t *testing.T) {
 	input, err := os.ReadFile("../../testdata/errorhandling_match_invalid.sec")
 	if err != nil {
@@ -2139,7 +2395,7 @@ fn Test(flag: bool) int {
 	assertSemaErrors(t, errors, expected)
 }
 
-func TestMatchDiscardPayloadDoesNotDeclareVariable(t *testing.T) {
+func TestMatchDuplicateResultArms(t *testing.T) {
 	input := `
 module main
 
@@ -2151,10 +2407,50 @@ fn Read() Result[int, IOError] {
 	return Ok(1)
 }
 
-fn Test() int {
+fn DuplicateOk() int {
 	return match Read() {
-		Ok(_) => 1
-		Err(_) => 0
+		Ok(value) => value
+		Ok(other) => other
+		Err(error) => 0
+	}
+}
+
+fn DuplicateErr() int {
+	return match Read() {
+		Ok(value) => value
+		Err(error) => 0
+		Err(other) => 1
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	expected := []string{
+		"duplicate match arm for Result[int, IOError].Ok at 15:3",
+		"duplicate match arm for Result[int, IOError].Err at 24:3",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestMatchDiscardSuccessPayloadAndExplicitErrorDiscard(t *testing.T) {
+	input := `
+module main
+
+enum IOError {
+	InvalidValue,
+}
+
+fn Read() Result[int, IOError] {
+	return Ok(1)
+}
+
+fn Test() void {
+	match Read() {
+		Ok(_) => {
+		}
+		Err(error) => {
+			discard error
+		}
 	}
 }
 `
@@ -2163,7 +2459,79 @@ fn Test() int {
 	assertSemaErrors(t, errors, nil)
 }
 
-func TestMatchDiscardPayloadCannotBeUsedAsVariable(t *testing.T) {
+func TestMatchStatementReturnArmsSatisfyFunctionReturn(t *testing.T) {
+	input := `
+module main
+
+enum IOError {
+	InvalidValue,
+}
+
+fn Read() Result[int, IOError] {
+	return Ok(1)
+}
+
+fn Test() int {
+	match Read() {
+		Ok(value) => return value
+		Err(error) => return 0
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestMatchStatementAssignmentsMergeAcrossExhaustiveArms(t *testing.T) {
+	input := `
+module main
+
+enum Direction {
+	North,
+	East,
+}
+
+enum IOError {
+	InvalidValue,
+}
+
+fn AllEnumArmsAssign(direction: Direction) int {
+	let mut result: int
+
+	match direction {
+		Direction.North => {
+			result = 1
+		}
+		Direction.East => {
+			result = 2
+		}
+	}
+
+	return result
+}
+
+fn ResultReturningArmAssigns(result: Result[int, IOError]) int {
+	let mut value: int
+
+	match result {
+		Ok(number) => {
+			value = number
+		}
+		Err(error) => {
+			return 0
+		}
+	}
+
+	return value
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestMatchErrDiscardPatternIsInvalid(t *testing.T) {
 	input := `
 module main
 
@@ -2177,8 +2545,8 @@ fn Read() Result[int, IOError] {
 
 fn Test() int {
 	return match Read() {
-		Ok(_) => _
 		Err(_) => 0
+		Ok(value) => value
 	}
 }
 `
@@ -2186,7 +2554,25 @@ fn Test() int {
 	errors := analyzeSourceRaw(t, input)
 
 	expected := []string{
-		"undefined variable _ at 14:12",
+		"Err payload must be named; use discard name inside the handler at 14:7",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestDiscardRequiresDefinedName(t *testing.T) {
+	input := `
+module main
+
+fn Test() void {
+	discard error
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+
+	expected := []string{
+		"undefined variable error at 5:10",
 	}
 
 	assertSemaErrors(t, errors, expected)
@@ -2357,7 +2743,8 @@ module main
 type Percent int range 0..100
 
 fn Test(percent: Percent) void {
-	if percent in 1..100 {
+	let lower := 1
+	if percent in lower..100 {
 	}
 	return
 }
@@ -2366,7 +2753,7 @@ fn Test(percent: Percent) void {
 	errors := analyzeSource(t, input)
 
 	expected := []string{
-		"cannot test Percent in range of int at 7:16",
+		"cannot test Percent in range of int at 8:16",
 	}
 
 	assertSemaErrors(t, errors, expected)
@@ -2593,6 +2980,30 @@ fn Invalid(value: int, name: string) void {
 	assertSemaErrors(t, errors, expected)
 }
 
+func TestSwitchCaseReportsUnreachableAfterReturn(t *testing.T) {
+	input := `
+module main
+
+fn UnreachableAfterReturn(value: int) int {
+	switch value {
+	case 1:
+		return 10
+		let local: int := 20
+	default:
+		return 30
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+
+	expected := []string{
+		"unreachable code at 8:3",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
 func TestSwitchDefaultPlacementErrorsAreSemaErrors(t *testing.T) {
 	input := `
 module main
@@ -2648,6 +3059,25 @@ fn Invalid(value: int) void {
 	}
 
 	assertSemaErrors(t, errors, expected)
+}
+
+func TestSwitchDescendingRangeIsNormalized(t *testing.T) {
+	input := `
+module main
+
+fn Valid(value: int) void {
+	switch value {
+	case 10..0:
+		return
+	}
+}
+`
+
+	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+	if len(analyzer.Warnings()) != 0 {
+		t.Fatalf("expected no warnings. got=%v", analyzer.Warnings())
+	}
 }
 
 func TestSwitchRelationalCoveredCasesAreUnreachable(t *testing.T) {

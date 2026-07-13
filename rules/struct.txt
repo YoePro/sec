@@ -437,6 +437,27 @@ Later requirements:
         Err(error) => ...
     }
 
+The success path is implicit.
+
+The user does not need to write an `Ok(...)` handler for a successful setter
+assignment.
+
+This is valid:
+
+    try car.TopSpeed = current_speed {
+        Err(error) => fmt.println("Could not set top speed.")
+    }
+
+The assignment succeeds silently when the setter returns Ok.
+
+The explicit success handler may still be written when code wants to run on
+successful assignment:
+
+    try car.TopSpeed = current_speed {
+        Ok(_) => {}
+        Err(error) => fmt.println("Could not set top speed.")
+    }
+
 Getter return rule
 ------------------
 

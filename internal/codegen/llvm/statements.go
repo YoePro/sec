@@ -35,6 +35,8 @@ func (g *Generator) emitStatement(stmt ast.Statement) error {
 		return nil
 	case *ast.AssignmentStatement:
 		return g.emitAssignment(stmt)
+	case *ast.TryAssignmentStatement:
+		return g.emitTryAssignment(stmt)
 	case *ast.ReturnStatement:
 		return g.emitReturn(stmt)
 	case *ast.IfStatement:
@@ -58,12 +60,28 @@ func (g *Generator) emitStatement(stmt ast.Statement) error {
 		return g.emitUnsafe(stmt)
 	case *ast.AsmStatement:
 		return g.emitAsmStatement(stmt)
+	case *ast.DeferStatement:
+		return g.emitDefer(stmt)
+	case *ast.DiscardStatement:
+		return nil
 	case *ast.ExpressionStatement:
 		_, err := g.emitExpressionStatement(stmt.Expression)
 		return err
 	default:
 		return fmt.Errorf("emit-llvm does not support %T yet", stmt)
 	}
+}
+
+func (g *Generator) emitTryAssignment(stmt *ast.TryAssignmentStatement) error {
+	// TODO: Lower fallible property assignment through the generated setter and
+	// branch on Result once the Result ABI is implemented.
+	return nil
+}
+
+func (g *Generator) emitDefer(stmt *ast.DeferStatement) error {
+	// TODO: Queue defer blocks and emit them on every function exit. For the
+	// first LLVM pass we only need the syntax to be recognized and compilable.
+	return g.emitBlock(stmt.Body)
 }
 
 func (g *Generator) emitFor(stmt *ast.ForStatement) error {
@@ -749,6 +767,21 @@ func (g *Generator) emitSwitchRangeCondition(subject value, rangeExpr *ast.Range
 		return value{}, fmt.Errorf("nil switch range")
 	}
 
+	if rangeExpr.Start != nil && rangeExpr.End != nil {
+		start, err := g.emitExpression(rangeExpr.Start)
+		if err != nil {
+			return value{}, err
+		}
+		end, err := g.emitExpression(rangeExpr.End)
+		if err != nil {
+			return value{}, err
+		}
+		if start.typ != end.typ || subject.typ != start.typ {
+			return value{}, fmt.Errorf("switch range bounds must match subject type")
+		}
+		return g.emitBoundedSwitchRangeCondition(subject, start, end, rangeExpr.Exclusive)
+	}
+
 	var combined value
 	hasCondition := false
 	if rangeExpr.Start != nil {
@@ -784,6 +817,36 @@ func (g *Generator) emitSwitchRangeCondition(subject value, rangeExpr *ast.Range
 		return value{typ: "i1", ref: "true"}, nil
 	}
 	return combined, nil
+}
+
+func (g *Generator) emitBoundedSwitchRangeCondition(subject value, start value, end value, exclusive bool) (value, error) {
+	descending := g.emitCompare("sgt", start, end)
+
+	ascendingLower := g.emitCompare("sge", subject, start)
+	ascendingUpperPredicate := "sle"
+	if exclusive {
+		ascendingUpperPredicate = "slt"
+	}
+	ascendingUpper := g.emitCompare(ascendingUpperPredicate, subject, end)
+	ascendingCondition, err := g.emitBoolAnd(ascendingLower, ascendingUpper)
+	if err != nil {
+		return value{}, err
+	}
+
+	descendingLowerPredicate := "sge"
+	if exclusive {
+		descendingLowerPredicate = "sgt"
+	}
+	descendingLower := g.emitCompare(descendingLowerPredicate, subject, end)
+	descendingUpper := g.emitCompare("sle", subject, start)
+	descendingCondition, err := g.emitBoolAnd(descendingLower, descendingUpper)
+	if err != nil {
+		return value{}, err
+	}
+
+	result := g.nextTemp()
+	g.write("  %s = select i1 %s, i1 %s, i1 %s\n", result, descending.ref, descendingCondition.ref, ascendingCondition.ref)
+	return value{typ: "i1", ref: result}, nil
 }
 
 func (g *Generator) emitSwitchCaseBody(block *ast.BlockStatement, fallthroughLabel string, endLabel string) error {
@@ -1033,7 +1096,7 @@ func (g *Generator) emitCallExpression(expr *ast.CallExpression) (value, error) 
 	if _, ok := g.functions[name]; ok {
 		return g.emitFunctionCallExpression(expr)
 	}
-	if isCodegenBuiltinConversion(name) {
+	if g.isCodegenConversion(name) {
 		return g.emitBuiltinConversionCall(expr, name)
 	}
 
@@ -1067,6 +1130,19 @@ func isCodegenBuiltinConversion(name string) bool {
 	default:
 		return false
 	}
+}
+
+func (g *Generator) isCodegenConversion(name string) bool {
+	if isCodegenBuiltinConversion(name) {
+		return true
+	}
+	if _, ok := g.typeAliases[name]; ok {
+		return true
+	}
+	if _, ok := g.enums[name]; ok {
+		return true
+	}
+	return false
 }
 
 func (g *Generator) emitBuiltinConversionCall(expr *ast.CallExpression, name string) (value, error) {
@@ -1220,7 +1296,11 @@ func (g *Generator) emitRuntimeCallExpression(expr *ast.RuntimeCallExpression) (
 
 func (g *Generator) emitReturn(stmt *ast.ReturnStatement) error {
 	if stmt.Value == nil {
-		g.write("  ret void\n")
+		if g.returnType == "" || g.returnType == "void" {
+			g.write("  ret void\n")
+		} else {
+			g.write("  ret %s %s\n", g.returnType, llvmZeroValue(g.returnType))
+		}
 		g.blockOpen = false
 		return nil
 	}

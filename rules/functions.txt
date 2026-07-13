@@ -415,10 +415,15 @@ Invalid:
 
 Both type arguments must resolve to known types.
 
-Ok and Err must contain exactly one expression.
+Ok and Err validation:
+
+* Ok must contain exactly one expression when the Result success type is not void.
+* Ok() is valid only for Result[void, E].
+* Err must contain exactly one expression.
 
 Invalid:
 
+    // invalid when success type is not void
     Ok()
     Ok(1, 2)
     Err()

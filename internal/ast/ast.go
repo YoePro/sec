@@ -28,6 +28,17 @@ func (is *InvalidStatement) TokenLiteral() string {
 	return is.Token.Lexeme
 }
 
+type DiscardStatement struct {
+	Token lexer.Token
+	Name  *Identifier
+}
+
+func (ds *DiscardStatement) statementNode() {}
+
+func (ds *DiscardStatement) TokenLiteral() string {
+	return ds.Token.Lexeme
+}
+
 // Expression represents a value-producing AST node.
 type Expression interface {
 	Node
@@ -400,12 +411,24 @@ func (as *AssignmentStatement) TokenLiteral() string {
 type TryAssignmentStatement struct {
 	Token      lexer.Token
 	Assignment *AssignmentStatement
+	Handlers   []*TryHandler
 }
 
 func (tas *TryAssignmentStatement) statementNode() {}
 
 func (tas *TryAssignmentStatement) TokenLiteral() string {
 	return tas.Token.Lexeme
+}
+
+type DeferStatement struct {
+	Token lexer.Token
+	Body  *BlockStatement
+}
+
+func (ds *DeferStatement) statementNode() {}
+
+func (ds *DeferStatement) TokenLiteral() string {
+	return ds.Token.Lexeme
 }
 
 type ExpressionStatement struct {
@@ -1100,4 +1123,37 @@ type StructLiteralField struct {
 	Token lexer.Token
 	Name  *Identifier
 	Value Expression
+}
+
+type SpawnExpression struct {
+	Token lexer.Token
+	Body  *BlockStatement
+}
+
+func (se *SpawnExpression) expressionNode() {}
+
+func (se *SpawnExpression) TokenLiteral() string {
+	return se.Token.Lexeme
+}
+
+func (se *SpawnExpression) String() string {
+	return "spawn {...}"
+}
+
+type AwaitExpression struct {
+	Token lexer.Token
+	Value Expression
+}
+
+func (ae *AwaitExpression) expressionNode() {}
+
+func (ae *AwaitExpression) TokenLiteral() string {
+	return ae.Token.Lexeme
+}
+
+func (ae *AwaitExpression) String() string {
+	if ae.Value == nil {
+		return "await <nil>"
+	}
+	return "await " + ae.Value.String()
 }

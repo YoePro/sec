@@ -52,12 +52,18 @@ func (g *Generator) llvmType(ref *ast.TypeReference) string {
 	if ref == nil {
 		return "void"
 	}
+	if ref.Name == "Result" && len(ref.TypeArgs) == 2 {
+		return g.llvmType(ref.TypeArgs[0])
+	}
 	if ref.Name == "decimal" {
 		g.needsDecimal = true
 		return llvmDecimalType
 	}
 	if enum, ok := g.enums[ref.Name]; ok {
 		return enum.typ
+	}
+	if alias, ok := g.typeAliases[ref.Name]; ok {
+		return g.llvmType(alias)
 	}
 	return llvmReturnType(ref)
 }
@@ -101,6 +107,39 @@ func (g *Generator) registerEnum(enumDecl *ast.EnumDeclaration, owner string) {
 		next = value + 1
 	}
 	g.enums[name] = info
+}
+
+func (g *Generator) registerTypeDeclaration(typeDecl *ast.TypeDeclStatement, owner string) {
+	if typeDecl == nil || typeDecl.Name == nil {
+		return
+	}
+	name := typeDecl.Name.Value
+	if owner != "" {
+		name = owner + "." + name
+	}
+
+	if len(typeDecl.Variants) > 0 {
+		info := enumInfo{typ: "i32", values: map[string]string{}}
+		for i, variant := range typeDecl.Variants {
+			if variant == nil {
+				continue
+			}
+			info.values[variant.Value] = fmt.Sprintf("%d", i)
+		}
+		g.enums[name] = info
+		return
+	}
+
+	switch {
+	case typeDecl.BaseType != nil:
+		g.typeAliases[name] = typeDecl.BaseType
+	case typeDecl.AssignedType != nil:
+		g.typeAliases[name] = typeDecl.AssignedType
+	case typeDecl.StructType != nil:
+		// TODO: Emit real LLVM struct layouts. The current first-pass codegen
+		// only needs struct values to be recognizable placeholders.
+		g.typeAliases[name] = &ast.TypeReference{Name: "byte"}
+	}
 }
 
 func llvmZeroValue(typ string) string {

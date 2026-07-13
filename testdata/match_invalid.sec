@@ -1,0 +1,440 @@
+module main
+
+type Speed decimal
+type Money decimal
+
+enum IOError {
+    InvalidValue,
+    NotFound,
+    PermissionDenied,
+    Timeout,
+}
+
+enum Direction {
+    North,
+    East,
+    South,
+    West,
+}
+
+enum Status {
+    Unknown,
+    Ready,
+    Running,
+}
+
+fn ReadSpeed() Result[Speed, IOError] {
+    return Ok(Speed(10))
+}
+
+// sema error: non-exhaustive match for Result[Speed, IOError]: missing Err
+fn MissingErr() Speed {
+    return match ReadSpeed() {
+        Ok(value) => value
+    }
+}
+
+// sema error: non-exhaustive match for Result[Speed, IOError]: missing Ok
+fn MissingOk() Speed {
+    return match ReadSpeed() {
+        Err(error) => Speed(0)
+    }
+}
+
+// sema error: catch-all pattern may not hide Err
+fn CatchAllHidesErr() Speed {
+    return match ReadSpeed() {
+        Ok(value) => value
+        _ => Speed(0)
+    }
+}
+
+// sema error: catch-all pattern may not hide Err
+fn NamedCatchAllHidesErr() Speed {
+    return match ReadSpeed() {
+        Ok(value) => value
+        other => Speed(0)
+    }
+}
+
+// sema error: match pattern must match Result[Speed, IOError], got IOError
+// sema error: catch-all pattern may not hide Err
+fn WrongResultPattern() Speed {
+    return match ReadSpeed() {
+        IOError.InvalidValue => Speed(0)
+        other => Speed(1)
+    }
+}
+
+// sema error: unknown function or type Success
+// sema error: non-exhaustive match for Result[Speed, IOError]: missing Ok
+fn UnknownResultVariant() Speed {
+    return match ReadSpeed() {
+        Success(value) => value
+        Err(error) => Speed(0)
+    }
+}
+
+// sema error: duplicate match arm for Result[Speed, IOError].Ok
+fn DuplicateOk() Speed {
+    return match ReadSpeed() {
+        Ok(value) => value
+        Ok(other) => other
+        Err(error) => Speed(0)
+    }
+}
+
+// sema error: duplicate match arm for Result[Speed, IOError].Err
+fn DuplicateErr() Speed {
+    return match ReadSpeed() {
+        Ok(value) => value
+        Err(error) => Speed(0)
+        Err(other) => Speed(1)
+    }
+}
+
+// sema error: unreachable match arm
+fn UnguardedOkBeforeGuard() Speed {
+    return match ReadSpeed() {
+        Ok(value) => value
+        Ok(value) where value > Speed(10) => value
+        Err(error) => Speed(0)
+    }
+}
+
+// sema error: unreachable match arm
+fn UnreachableAfterCatchAll(error: IOError) int {
+    return match error {
+        _ => 0
+        IOError.InvalidValue => 1
+    }
+}
+
+// sema error: unreachable match arm
+fn UnreachableAfterNamedCatchAll(error: IOError) int {
+    return match error {
+        other => 0
+        IOError.InvalidValue => 1
+    }
+}
+
+// sema error: non-exhaustive match for Direction
+fn NonExhaustiveEnum(direction: Direction) int {
+    return match direction {
+        Direction.North => 1
+        Direction.East => 2
+        Direction.South => 3
+    }
+}
+
+// sema error: non-exhaustive match for Direction
+fn OneEnumVariantOnly(direction: Direction) int {
+    return match direction {
+        Direction.North => 1
+    }
+}
+
+// sema error: duplicate match arm for Direction.North
+fn DuplicateEnumVariant(direction: Direction) int {
+    return match direction {
+        Direction.North => 1
+        Direction.East => 2
+        Direction.North => 3
+        Direction.South => 4
+        Direction.West => 5
+    }
+}
+
+// sema error: duplicate match arm for Direction.North
+fn DuplicateEnumBeforeCatchAll(direction: Direction) int {
+    return match direction {
+        Direction.North => 1
+        Direction.North => 2
+        _ => 0
+    }
+}
+
+// sema error: unknown enum value Direction.Unknown
+fn InvalidEnumVariant(direction: Direction) int {
+    return match direction {
+        Direction.North => 1
+        Direction.East => 2
+        Direction.South => 3
+        Direction.West => 4
+        Direction.Unknown => 5
+    }
+}
+
+// sema error: match pattern must match Direction, got Status
+fn WrongEnumType(direction: Direction) int {
+    return match direction {
+        Status.Unknown => 0
+        _ => 1
+    }
+}
+
+// sema error: match guard must be bool, got int
+fn GuardMustBeBool(result: Result[int, IOError]) int {
+    return match result {
+        Ok(value) where value => 1
+        Ok(value) => 2
+        Err(error) => 0
+    }
+}
+
+// sema error: match guard must be bool, got string
+fn StringGuard(result: Result[int, IOError],text: string) int {
+    return match result {
+        Ok(value) where text => value
+        Ok(value) => value
+        Err(error) => 0
+    }
+}
+
+// sema error: non-exhaustive match for Result[int, IOError]: missing Ok
+fn GuardedOkIsNotExhaustive(result: Result[int, IOError]) int {
+    return match result {
+        Ok(value) where value > 0 => value
+        Err(error) => 0
+    }
+}
+
+// sema error: non-exhaustive match for Result[int, IOError]: missing Err
+fn GuardedErrIsNotExhaustive(result: Result[int, IOError]) int {
+    return match result {
+        Ok(value) => value
+        Err(error) where error == IOError.Timeout => 0
+    }
+}
+
+// sema error: non-exhaustive match for Direction
+fn OnlyGuardedEnumVariant(direction: Direction,enabled: bool) int {
+    return match direction {
+        Direction.North where enabled => 1
+        Direction.East => 2
+        Direction.South => 3
+        Direction.West => 4
+    }
+}
+
+// TODO: expected sema error once named decimal aliases are enforced in match arm compatibility
+fn IncompatibleResultArmTypes() int {
+    let value := match ReadSpeed() {
+        Ok(speed) => speed
+        Err(error) => Money(0)
+    }
+    return 0
+}
+
+// sema error: match arms must produce compatible types, got int and string
+fn IncompatiblePrimitiveArmTypes(direction: Direction) int {
+    return match direction {
+        Direction.North => 1
+        Direction.East => "east"
+        Direction.South => 3
+        Direction.West => 4
+    }
+}
+
+// sema error: match arms must produce compatible types, got int and bool
+fn IncompatibleBoolArm(direction: Direction) int {
+    return match direction {
+        Direction.North => 1
+        Direction.East => 2
+        Direction.South => true
+        Direction.West => 4
+    }
+}
+
+// sema error: undefined variable value
+fn BindingOutsideResultArm() Speed {
+    match ReadSpeed() {
+        Ok(value) => {
+            let copy: Speed := value
+        }
+        Err(error) => {
+        }
+    }
+
+    return value
+}
+
+// sema error: undefined variable error
+fn ErrorBindingOutsideArm() IOError {
+    match ReadSpeed() {
+        Ok(value) => {
+        }
+        Err(error) => {
+            let copy: IOError := error
+        }
+    }
+
+    return error
+}
+
+// TODO: currently allowed; decide whether match bindings may shadow outer variables
+fn ShadowOuterResultBinding() Speed {
+    let value: Speed := Speed(1)
+
+    return match ReadSpeed() {
+        Ok(value) => value
+        Err(error) => Speed(0)
+    }
+}
+
+// TODO: currently allowed; decide whether match bindings may shadow outer variables
+fn ShadowOuterErrorBinding() Speed {
+    let error: IOError := IOError.Timeout
+
+    return match ReadSpeed() {
+        Ok(value) => value
+        Err(error) => Speed(0)
+    }
+}
+
+// TODO: currently allowed; duplicate binding names in separate arms are scoped per arm
+fn DuplicateBindingNamesInSeparateArmsAllowedButOuterShadowed() Speed {
+    let value: Speed := Speed(1)
+
+    match ReadSpeed() {
+        Ok(value) => {
+        }
+
+        Err(error) => {
+        }
+    }
+
+    return Speed(0)
+}
+
+// sema error: function MissingReturnInOneArm must return int
+fn MissingReturnInOneArm(direction: Direction) int {
+    match direction {
+        Direction.North => {
+            return 1
+        }
+        Direction.East => {
+            return 2
+        }
+
+        Direction.South => {
+            let value: int := 3
+        }
+
+        Direction.West => {
+            return 4
+        }
+    }
+}
+
+// sema error: variable result is unassigned
+fn UnassignedInOneEnumArm(direction: Direction) int {
+    let mut result: int
+
+    match direction {
+        Direction.North => {
+            result = 1
+        }
+
+        Direction.East => {
+            result = 2
+        }
+
+        Direction.South => {
+        }
+
+        Direction.West => {
+            result = 4
+        }
+    }
+
+    return result
+}
+
+// sema error: variable value is unassigned
+fn UnassignedInResultErrArm(result: Result[int, IOError]) int {
+    let mut value: int
+
+    match result {
+        Ok(number) => {
+            value = number
+        }
+        Err(error) => {
+        }
+    }
+
+    return value
+}
+
+// sema error: match requires at least one branch
+fn EmptyMatch(direction: Direction) void {
+    match direction {
+    }
+}
+
+// sema error: fallthrough is only valid directly inside a switch case
+fn FallthroughInMatch(direction: Direction) void {
+    match direction {
+        Direction.North => {
+            fallthrough
+        }
+        _ => {
+        }
+    }
+}
+
+// sema error: break is only valid inside a loop
+fn BreakInMatchOutsideLoop(direction: Direction) void {
+    match direction {
+        Direction.North => {
+            break
+        }
+        _ => {
+        }
+    }
+}
+
+// sema error: continue is only valid inside a loop
+fn ContinueInMatchOutsideLoop(direction: Direction) void {
+    match direction {
+        Direction.North => {
+            continue
+        }
+        _ => {
+        }
+    }
+}
+
+// sema error: unreachable code
+fn UnreachableAfterReturn(direction: Direction) int {
+    match direction {
+        Direction.North => {
+            return 1
+            let value: int := 10
+        }
+        Direction.East => {
+            return 2
+        }
+
+        Direction.South => {
+            return 3
+        }
+
+        Direction.West => {
+            return 4
+        }
+    }
+}
+
+// sema error: undefined variable _
+fn DiscardDoesNotCreateBinding() Speed {
+    match ReadSpeed() {
+        Ok(_) => {
+        }
+        Err(error) => {
+        }
+    }
+
+    return _
+
+}

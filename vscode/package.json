@@ -18,7 +18,7 @@
       {
         "id": "sec",
         "aliases": ["SEC", "SEC Language", "sec"],
-        "extensions": [".sec"],
+        "extensions": [".sec", ".se"],
         "configuration": "./language-configuration.json"
       }
     ],

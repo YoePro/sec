@@ -335,6 +335,41 @@ fn main() int {
 	}
 }
 
+func TestGenerateDescendingSwitchRange(t *testing.T) {
+	input := `
+module main
+
+fn main() int {
+	switch 7 {
+	case 10..0:
+		return 1
+	default:
+		return 0
+	}
+}
+`
+
+	program := parseAndAnalyze(t, input)
+	got, err := Generate(program)
+	if err != nil {
+		t.Fatalf("Generate returned error: %v", err)
+	}
+
+	expectedParts := []string{
+		`icmp sgt i32 10, 0`,
+		`icmp sge i32 7, 0`,
+		`icmp sle i32 7, 10`,
+		`select i1`,
+		`ret i32 1`,
+	}
+
+	for _, part := range expectedParts {
+		if !strings.Contains(got, part) {
+			t.Fatalf("generated LLVM IR missing %q.\nIR:\n%s", part, got)
+		}
+	}
+}
+
 func TestGenerateSwitchAssignmentsToLocal(t *testing.T) {
 	input := `
 module main
@@ -886,8 +921,6 @@ fn main() int {
 		Color.red => return 1
 		_ => return 2
 	}
-
-	return 0
 }
 `
 

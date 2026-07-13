@@ -1,49 +1,11 @@
 module fmt
 
-
-fn Print(args...) void {
-    // TODO: Implement
-}
+import "io"
 
 fn Println(value: string) void {
-    io._sysWrite(1, value.ptr, value.len)
-
-    let nl := "\n"
-    io._sysWrite(1, nl.ptr, 1)
+    io.Println(value)
 }
 
-fn Eprint(args...) void {
-    // TODO: Implement
-}
-
-fn Eprintln(args...) void {
-    // TODO: Implement
-}
-
-fn Printf(format: string, args...) void {
-    // TODO: Implement
-}
-
-fn Eprintf(format: string, args...) void {
-    // TODO: Implement
-}
-
-fn Sprint(args...) string {
-    // TODO: Implement
-}
-
-fn Sprintf(format: string, args...) string {
-    // TODO: Implement
-}
-
-fn Fprint(writer: Writer, args...) void {
-    // TODO: Implement
-}
-
-fn Fprintln(writer: Writer, args...) void {
-    // TODO: Implement
-}
-
-fn Fprintf(writer: Writer, format: string, args...) void {
-    // TODO: Implement
+fn println(value: string) void {
+    io.println(value)
 }

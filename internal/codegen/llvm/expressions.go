@@ -44,12 +44,34 @@ func (g *Generator) emitExpression(expr ast.Expression) (value, error) {
 		return value{typ: "i1", ref: "false"}, nil
 	case *ast.StringLiteral:
 		return g.emitStringLiteral(expr)
+	case *ast.InterpolatedStringLiteral:
+		return g.emitInterpolatedStringLiteral(expr)
 	case *ast.MemberExpression:
 		return g.emitMemberExpression(expr)
+	case *ast.StructLiteral:
+		return value{typ: "i8", ref: "0"}, nil
 	case *ast.MatchExpression:
 		return g.emitMatchExpression(expr)
 	case *ast.ConversionExpression:
 		return g.emitConversionExpression(expr)
+	case *ast.TryExpression:
+		return g.emitTryExpression(expr)
+	case *ast.SpawnExpression:
+		return value{typ: "i8", ref: "0"}, nil
+	case *ast.AwaitExpression:
+		if expr.Value != nil {
+			if _, err := g.emitExpression(expr.Value); err != nil {
+				return value{}, err
+			}
+		}
+		return value{typ: "void"}, nil
+	case *ast.OkExpression:
+		if expr.Value == nil {
+			return value{typ: g.returnType, ref: llvmZeroValue(g.returnType)}, nil
+		}
+		return g.emitExpression(expr.Value)
+	case *ast.ErrExpression:
+		return value{typ: g.returnType, ref: llvmZeroValue(g.returnType)}, nil
 	case *ast.PrefixExpression:
 		return g.emitPrefixExpression(expr)
 	case *ast.InfixExpression:
@@ -61,6 +83,10 @@ func (g *Generator) emitExpression(expr ast.Expression) (value, error) {
 	default:
 		return value{}, fmt.Errorf("emit-llvm does not support expression %T yet", expr)
 	}
+}
+
+func (g *Generator) emitTryExpression(expr *ast.TryExpression) (value, error) {
+	return g.emitExpression(expr.Expression)
 }
 
 func (g *Generator) emitConversionExpression(expr *ast.ConversionExpression) (value, error) {
@@ -252,9 +278,15 @@ func (g *Generator) emitInfixExpression(expr *ast.InfixExpression) (value, error
 	if err != nil {
 		return value{}, err
 	}
+	if expr.Operator == "in" {
+		return g.emitMembershipExpression(left, expr.Right)
+	}
 	right, err := g.emitExpression(expr.Right)
 	if err != nil {
 		return value{}, err
+	}
+	if left.typ == llvmDecimalType || right.typ == llvmDecimalType {
+		return g.emitDecimalInfixPlaceholder(expr.Operator, left, right)
 	}
 
 	switch expr.Operator {
@@ -280,6 +312,58 @@ func (g *Generator) emitInfixExpression(expr *ast.InfixExpression) (value, error
 		return g.emitCompare("sge", left, right), nil
 	default:
 		return value{}, fmt.Errorf("emit-llvm does not support operator %q yet", expr.Operator)
+	}
+}
+
+func (g *Generator) emitMembershipExpression(left value, right ast.Expression) (value, error) {
+	rangeExpr, ok := right.(*ast.RangeExpression)
+	if !ok {
+		return value{}, fmt.Errorf("emit-llvm membership requires range expression")
+	}
+	if rangeExpr.Start == nil || rangeExpr.End == nil {
+		return value{}, fmt.Errorf("emit-llvm membership currently requires finite range")
+	}
+	start, err := g.emitExpression(rangeExpr.Start)
+	if err != nil {
+		return value{}, err
+	}
+	end, err := g.emitExpression(rangeExpr.End)
+	if err != nil {
+		return value{}, err
+	}
+	start, err = g.coerceValue(start, left.typ)
+	if err != nil {
+		return value{}, err
+	}
+	end, err = g.coerceValue(end, left.typ)
+	if err != nil {
+		return value{}, err
+	}
+
+	lower := g.emitCompare("sge", left, start)
+	upperPredicate := "sle"
+	if rangeExpr.Exclusive {
+		upperPredicate = "slt"
+	}
+	upper := g.emitCompare(upperPredicate, left, end)
+	result := g.nextTemp()
+	g.write("  %s = and i1 %s, %s\n", result, lower.ref, upper.ref)
+	return value{typ: "i1", ref: result}, nil
+}
+
+func (g *Generator) emitDecimalInfixPlaceholder(operator string, left value, right value) (value, error) {
+	if left.typ != llvmDecimalType || right.typ != llvmDecimalType {
+		return value{}, fmt.Errorf("emit-llvm decimal operator requires decimal operands")
+	}
+	switch operator {
+	case "+", "-", "*", "/":
+		// TODO: Lower decimal arithmetic through the decimal runtime.
+		return left, nil
+	case "==", "!=", "<", "<=", ">", ">=":
+		// TODO: Lower decimal comparison through the decimal runtime.
+		return value{typ: "i1", ref: "false"}, nil
+	default:
+		return value{}, fmt.Errorf("emit-llvm does not support decimal operator %q yet", operator)
 	}
 }
 
@@ -407,6 +491,10 @@ func (g *Generator) emitStringLiteral(expr *ast.StringLiteral) (value, error) {
 	temp := g.nextTemp()
 	g.write("  %s = getelementptr inbounds [%d x i8], ptr %s, i64 0, i64 0\n", temp, len(bytes), name)
 	return value{typ: "string", ref: temp, lenRef: fmt.Sprintf("%d", len(expr.Value))}, nil
+}
+
+func (g *Generator) emitInterpolatedStringLiteral(expr *ast.InterpolatedStringLiteral) (value, error) {
+	return g.emitStringLiteral(&ast.StringLiteral{Token: expr.Token, Value: expr.Value})
 }
 
 func llvmCString(bytes []byte) string {

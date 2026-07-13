@@ -94,6 +94,73 @@ func TestParseBuildCommandArgs(t *testing.T) {
 	}
 }
 
+func TestParseBuildCommandOptions(t *testing.T) {
+	options, ok := parseBuildCommandOptions(
+		[]string{"main.sec", "--target", "linux-amd64", "--keep-llvm", "--clang", "custom-clang", "-o", "program"},
+		CompilerTarget{OS: "macos", Arch: "arm64"},
+	)
+	if !ok {
+		t.Fatal("parseBuildCommandOptions returned ok=false")
+	}
+	if options.InputFile != "main.sec" {
+		t.Fatalf("InputFile = %q, want main.sec", options.InputFile)
+	}
+	if options.OutputFile != "program" {
+		t.Fatalf("OutputFile = %q, want program", options.OutputFile)
+	}
+	if options.Target != (CompilerTarget{OS: "linux", Arch: "amd64"}) {
+		t.Fatalf("Target = %#v, want linux-amd64", options.Target)
+	}
+	if options.Clang != "custom-clang" {
+		t.Fatalf("Clang = %q, want custom-clang", options.Clang)
+	}
+	if options.LLVMOutputFile != "program.ll" {
+		t.Fatalf("LLVMOutputFile = %q, want program.ll", options.LLVMOutputFile)
+	}
+}
+
+func TestParseCompilerTarget(t *testing.T) {
+	target, ok := parseCompilerTarget("darwin-arm64")
+	if !ok {
+		t.Fatal("parseCompilerTarget returned ok=false")
+	}
+	if target != (CompilerTarget{OS: "macos", Arch: "arm64"}) {
+		t.Fatalf("target = %#v, want macos-arm64", target)
+	}
+
+	if _, ok := parseCompilerTarget("linux"); ok {
+		t.Fatal("parseCompilerTarget accepted target without arch")
+	}
+}
+
+func TestFindTargetDefinition(t *testing.T) {
+	target, ok := findTargetDefinition(CompilerTarget{OS: "linux", Arch: "amd64"})
+	if !ok {
+		t.Fatal("linux-amd64 target definition not found")
+	}
+	if target.LLVMTriple != "x86_64-pc-linux-gnu" {
+		t.Fatalf("LLVMTriple = %q, want x86_64-pc-linux-gnu", target.LLVMTriple)
+	}
+	if target.Status != TargetImplemented {
+		t.Fatalf("Status = %q, want %q", target.Status, TargetImplemented)
+	}
+	if !target.CanEmitLLVM || !target.CanLink || !target.CanRun {
+		t.Fatalf("linux-amd64 capabilities are too low: %#v", target)
+	}
+}
+
+func TestTargetCapabilities(t *testing.T) {
+	if _, err := requireTargetCanEmitLLVM(CompilerTarget{OS: "linux", Arch: "arm64"}); err != nil {
+		t.Fatalf("linux-arm64 should be able to emit LLVM: %v", err)
+	}
+	if _, err := requireTargetCanLink(CompilerTarget{OS: "linux", Arch: "arm64"}); err == nil {
+		t.Fatal("linux-arm64 should not link yet")
+	}
+	if _, err := requireTargetCanEmitLLVM(CompilerTarget{OS: "baremetal", Arch: "cortex-m4"}); err == nil {
+		t.Fatal("baremetal-cortex-m4 should not emit LLVM yet")
+	}
+}
+
 func TestDefaultBuildOutputPath(t *testing.T) {
 	tests := map[string]string{
 		"main.sec":                "main",

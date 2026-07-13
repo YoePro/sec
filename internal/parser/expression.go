@@ -13,6 +13,7 @@ const (
 	AND                // &&
 	EQUALS             // == !=
 	COMPARE            // < <= > >=
+	SHIFT              // << >>
 	SUM                // + -
 	PRODUCT            // * / %
 	PREFIX             // -x !x
@@ -21,23 +22,25 @@ const (
 )
 
 var precedences = map[lexer.TokenType]precedence{
-	lexer.OR:       OR,
-	lexer.AND:      AND,
-	lexer.EQ:       EQUALS,
-	lexer.NEQ:      EQUALS,
-	lexer.LT:       COMPARE,
-	lexer.LTE:      COMPARE,
-	lexer.GT:       COMPARE,
-	lexer.GTE:      COMPARE,
-	lexer.IN:       COMPARE,
-	lexer.PLUS:     SUM,
-	lexer.MINUS:    SUM,
-	lexer.SLASH:    PRODUCT,
-	lexer.ASTERISK: PRODUCT,
-	lexer.PERCENT:  PRODUCT,
-	lexer.LPAREN:   CALL,
-	lexer.LBRACE:   CALL,
-	lexer.DOT:      MEMBER,
+	lexer.OR:          OR,
+	lexer.AND:         AND,
+	lexer.EQ:          EQUALS,
+	lexer.NEQ:         EQUALS,
+	lexer.LT:          COMPARE,
+	lexer.LTE:         COMPARE,
+	lexer.GT:          COMPARE,
+	lexer.GTE:         COMPARE,
+	lexer.IN:          COMPARE,
+	lexer.SHIFT_LEFT:  SHIFT,
+	lexer.SHIFT_RIGHT: SHIFT,
+	lexer.PLUS:        SUM,
+	lexer.MINUS:       SUM,
+	lexer.SLASH:       PRODUCT,
+	lexer.ASTERISK:    PRODUCT,
+	lexer.PERCENT:     PRODUCT,
+	lexer.LPAREN:      CALL,
+	lexer.LBRACE:      CALL,
+	lexer.DOT:         MEMBER,
 }
 
 // parseExpression parses a value-producing expression using Pratt parsing.
@@ -97,6 +100,12 @@ func (p *Parser) parseExpression(currentPrecedence precedence) ast.Expression {
 	case lexer.TRY:
 		left = p.parseTryExpression()
 
+	case lexer.SPAWN:
+		left = p.parseSpawnExpression()
+
+	case lexer.AWAIT:
+		left = p.parseAwaitExpression()
+
 	case lexer.MATCH:
 		left = p.parseMatchExpression()
 
@@ -145,6 +154,8 @@ func (p *Parser) parseExpression(currentPrecedence precedence) ast.Expression {
 			lexer.SLASH,
 			lexer.ASTERISK,
 			lexer.PERCENT,
+			lexer.SHIFT_LEFT,
+			lexer.SHIFT_RIGHT,
 			lexer.EQ,
 			lexer.NEQ,
 			lexer.AND,
@@ -309,7 +320,8 @@ func (p *Parser) parseMatchArm() *ast.MatchArm {
 
 	switch p.peekToken.Type {
 	case lexer.LBRACE:
-		arm.BlockBody = p.parseBlockStatement()
+		p.nextToken()
+		arm.BlockBody = p.parseStatementBlock("match arm")
 	case lexer.RETURN:
 		p.nextToken()
 		returnStmt := p.parseReturnStatement()
@@ -337,6 +349,27 @@ func (p *Parser) skipMatchArm() {
 		}
 		p.nextToken()
 	}
+}
+
+func (p *Parser) parseSpawnExpression() ast.Expression {
+	expr := &ast.SpawnExpression{Token: p.curToken}
+	if p.peekToken.Type != lexer.LBRACE {
+		p.addError("spawn requires a block at %d:%d", p.peekToken.Line, p.peekToken.Column)
+		return expr
+	}
+	p.nextToken()
+	expr.Body = p.parseStatementBlock("spawn body")
+	return expr
+}
+
+func (p *Parser) parseAwaitExpression() ast.Expression {
+	expr := &ast.AwaitExpression{Token: p.curToken}
+	p.nextToken()
+	expr.Value = p.parseExpression(PREFIX)
+	if expr.Value == nil {
+		return nil
+	}
+	return expr
 }
 
 func (p *Parser) parseConversionExpression(left ast.Expression) ast.Expression {
@@ -369,6 +402,9 @@ func (p *Parser) parseConversionExpression(left ast.Expression) ast.Expression {
 	}
 
 	if ident.Value == "Ok" || ident.Value == "Err" {
+		if ident.Value == "Ok" && len(args) == 0 {
+			return &ast.OkExpression{Token: ident.Token}
+		}
 		if len(args) != 1 {
 			p.addError("%s expects 1 argument at %d:%d", ident.Value, ident.Token.Line, ident.Token.Column)
 			return nil

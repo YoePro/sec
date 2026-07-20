@@ -12,6 +12,7 @@ import (
 
 type Analyzer struct {
 	types                 map[string]Type
+	units                 map[string]UnitDefinition
 	functions             map[string][]Function
 	implBlocks            map[string]lexer.Token
 	validImplStatements   map[*ast.ImplStatement]bool
@@ -45,6 +46,7 @@ type genericInstanceKey struct {
 func NewAnalyzer() *Analyzer {
 	return &Analyzer{
 		types: builtinTypes(),
+		units: builtinUnits(),
 	}
 }
 
@@ -83,7 +85,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 
 	a.withProgramModules(program, func(stmt ast.Statement) {
 		switch stmt.(type) {
-		case *ast.TargetDirective, *ast.TypeDeclStatement, *ast.EnumDeclaration, *ast.ImplStatement, *ast.FunctionDeclaration:
+		case *ast.TargetDirective, *ast.TypeDeclStatement, *ast.UnitDeclStatement, *ast.EnumDeclaration, *ast.ImplStatement, *ast.FunctionDeclaration:
 			return
 		}
 		if !isAllowedModuleStatement(stmt) {
@@ -133,6 +135,7 @@ func isAllowedModuleStatement(stmt ast.Statement) bool {
 		*ast.ModuleStatement,
 		*ast.ImportStatement,
 		*ast.TypeDeclStatement,
+		*ast.UnitDeclStatement,
 		*ast.EnumDeclaration,
 		*ast.ImplStatement,
 		*ast.FunctionDeclaration,
@@ -169,6 +172,21 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 			}
 			params := a.genericParameterNames(stmt.GenericParameters)
 			a.types[stmt.Name.Value] = Type{Name: stmt.Name.Value, Module: a.currentModule, Kind: InvalidType, GenericParameters: params}
+		case *ast.UnitDeclStatement:
+			if stmt.Name == nil {
+				return
+			}
+			dimension := a.parseDimension(stmt.Name.Value)
+			if dimension.IsZero() {
+				dimension = dimensionFromBase(stmt.Name.Value, 1)
+			}
+			category := OtherUnit
+			if existing, ok := a.units[stmt.Name.Value]; ok {
+				category = existing.Category
+				dimension = existing.Dimension
+			}
+			a.units[stmt.Name.Value] = UnitDefinition{Name: stmt.Name.Value, Category: category, Dimension: dimension, Token: stmt.Name.Token}
+			a.types[stmt.Name.Value] = Type{Name: stmt.Name.Value, Module: a.currentModule, Kind: InvalidType}
 		case *ast.EnumDeclaration:
 			if stmt.Name == nil {
 				return
@@ -303,6 +321,11 @@ func implNestedTypeName(member ast.ImplMember) (string, lexer.Token, bool) {
 			return "", lexer.Token{}, false
 		}
 		return member.Name.Value, member.Name.Token, true
+	case *ast.UnitDeclStatement:
+		if member.Name == nil {
+			return "", lexer.Token{}, false
+		}
+		return member.Name.Value, member.Name.Token, true
 	case *ast.EnumDeclaration:
 		if member.Name == nil {
 			return "", lexer.Token{}, false
@@ -390,12 +413,12 @@ func typeReferenceDisplayName(ref *ast.TypeReference) string {
 
 func (a *Analyzer) analyzeTypeDeclarations(program *ast.Program) {
 	a.withProgramModules(program, func(stmt ast.Statement) {
-		typeDecl, ok := stmt.(*ast.TypeDeclStatement)
-		if !ok {
-			return
+		switch stmt := stmt.(type) {
+		case *ast.TypeDeclStatement:
+			a.analyzeTypeDeclaration(stmt)
+		case *ast.UnitDeclStatement:
+			a.analyzeUnitDeclaration(stmt)
 		}
-
-		a.analyzeTypeDeclaration(typeDecl)
 	})
 }
 
@@ -433,6 +456,13 @@ func (a *Analyzer) analyzeImplTypeDeclarations(program *ast.Program) {
 						a.analyzeNestedTypeDeclaration(qualified, member)
 					})
 				})
+			case *ast.UnitDeclStatement:
+				qualified := impl.Target.Name + "." + member.Name.Value
+				a.withImplTarget(impl.Target.Name, func() {
+					a.withGenericTypeParameters(genericParams, func() {
+						a.analyzeNestedUnitDeclaration(qualified, member)
+					})
+				})
 			case *ast.EnumDeclaration:
 				qualified := impl.Target.Name + "." + member.Name.Value
 				a.withImplTarget(impl.Target.Name, func() {
@@ -456,6 +486,8 @@ func (a *Analyzer) analyzeStatement(stmt ast.Statement) {
 	switch stmt := stmt.(type) {
 	case *ast.TypeDeclStatement:
 		a.analyzeTypeDeclaration(stmt)
+	case *ast.UnitDeclStatement:
+		a.analyzeUnitDeclaration(stmt)
 	case *ast.EnumDeclaration:
 		a.types[stmt.Name.Value] = a.typeFromEnumDeclaration(stmt.Name.Value, stmt)
 	case *ast.FunctionDeclaration:
@@ -1399,6 +1431,11 @@ func (a *Analyzer) registerFunctionDeclarationBody(fn *ast.FunctionDeclaration, 
 		Module:            a.currentModule,
 		GenericParameters: genericParameterNameValues(fn.GenericParameters),
 		Token:             fn.Name.Token,
+		Extern:            fn.Extern,
+		ABI:               fn.ABI,
+	}
+	if fn.Extern && !isSupportedExternABI(fn.ABI) {
+		a.addErrorAtToken(fn.Token, "unknown extern ABI %q", fn.ABI)
 	}
 
 	seenParams := map[string]lexer.Token{}
@@ -1450,6 +1487,37 @@ func sameFunctionSignature(left Function, right Function) bool {
 	return true
 }
 
+func isSupportedExternABI(abi string) bool {
+	switch abi {
+	case "Sec", "C", "system":
+		return true
+	default:
+		return false
+	}
+}
+
+func (a *Analyzer) validateExternFunction(function Function) {
+	for i, param := range function.Parameters {
+		if !isFFICompatibleType(param.Type) {
+			a.addErrorAtToken(param.Token, "extern %s parameter %d %s has non-ABI-compatible type %s", function.ABI, i+1, param.Name, typeDisplayName(param.Type))
+		}
+	}
+	if function.ReturnType.Kind != VoidType && !isFFICompatibleType(function.ReturnType) {
+		a.addErrorAtToken(function.Token, "extern %s function %s has non-ABI-compatible return type %s", function.ABI, function.Name, typeDisplayName(function.ReturnType))
+	}
+}
+
+func isFFICompatibleType(typ Type) bool {
+	switch typ.Kind {
+	case IntType, UintType, FloatType, RawPtrType, VoidType:
+		return true
+	case EnumType:
+		return typ.Underlying != "" && typ.Underlying != "enum"
+	default:
+		return false
+	}
+}
+
 func (a *Analyzer) lookupFunctionByToken(name string, token lexer.Token) (Function, bool) {
 	for _, function := range a.functions[name] {
 		if function.Token.Line == token.Line && function.Token.Column == token.Column {
@@ -1482,6 +1550,10 @@ func (a *Analyzer) analyzeFunctionBody(fn *ast.FunctionDeclaration) {
 func (a *Analyzer) analyzeFunctionBodyInScope(fn *ast.FunctionDeclaration) {
 	function, ok := a.lookupFunctionByToken(fn.Name.Value, fn.Name.Token)
 	if !ok || function.ReturnType.Kind == InvalidType {
+		return
+	}
+	if function.Extern {
+		a.validateExternFunction(function)
 		return
 	}
 
@@ -1936,6 +2008,44 @@ func (a *Analyzer) analyzeTypeDeclaration(stmt *ast.TypeDeclStatement) {
 	a.analyzeTypeDeclarationBody(stmt)
 }
 
+func (a *Analyzer) analyzeUnitDeclaration(stmt *ast.UnitDeclStatement) {
+	if stmt.Name == nil || stmt.BaseType == nil {
+		return
+	}
+
+	baseType, ok := a.resolveType(stmt.BaseType)
+	if !ok {
+		return
+	}
+	if !isNumericType(baseType) {
+		a.addErrorAtToken(stmt.BaseType.Token, "unit %s must use numeric storage, got %s", stmt.Name.Value, typeDisplayName(baseType))
+		return
+	}
+
+	unitName := stmt.Name.Value
+	unit := a.units[unitName]
+	if unit.Name == "" {
+		unit = UnitDefinition{Name: unitName, Category: OtherUnit, Dimension: dimensionFromBase(unitName, 1), Token: stmt.Name.Token}
+	}
+	if stmt.Category != "" {
+		unit.Category = UnitCategory(stmt.Category)
+	}
+	if stmt.BaseType.Unit != "" {
+		unit.Dimension = a.parseDimension(stmt.BaseType.Unit)
+	}
+	a.units[unitName] = unit
+
+	typ := baseType
+	typ.Name = unitName
+	typ.Module = a.currentModule
+	typ.Named = true
+	typ.Declared = true
+	typ.Underlying = baseType.Name
+	typ.Unit = unitName
+	typ.Dimension = unit.Dimension
+	a.types[unitName] = typ
+}
+
 func (a *Analyzer) analyzeTypeDeclarationBody(stmt *ast.TypeDeclStatement) {
 	if stmt.Union {
 		a.types[stmt.Name.Value] = a.typeFromUnionDeclaration(stmt.Name.Value, stmt)
@@ -1944,6 +2054,10 @@ func (a *Analyzer) analyzeTypeDeclarationBody(stmt *ast.TypeDeclStatement) {
 
 	if stmt.StructType != nil {
 		a.types[stmt.Name.Value] = a.typeFromStructDeclaration(stmt)
+		return
+	}
+	if stmt.RegisterType != nil {
+		a.types[stmt.Name.Value] = a.typeFromRegisterDeclaration(stmt.Name.Value, stmt)
 		return
 	}
 	if len(stmt.Variants) > 0 {
@@ -2013,6 +2127,18 @@ func (a *Analyzer) analyzeNestedTypeDeclaration(qualifiedName string, stmt *ast.
 	}
 }
 
+func (a *Analyzer) analyzeNestedUnitDeclaration(qualifiedName string, stmt *ast.UnitDeclStatement) {
+	if stmt.Name == nil || stmt.BaseType == nil {
+		return
+	}
+	originalName := stmt.Name.Value
+	stmt.Name.Value = qualifiedName
+	defer func() {
+		stmt.Name.Value = originalName
+	}()
+	a.analyzeUnitDeclaration(stmt)
+}
+
 func (a *Analyzer) typeFromStructDeclaration(stmt *ast.TypeDeclStatement) Type {
 	return a.typeFromStructDeclarationWithName(stmt.Name.Value, stmt)
 }
@@ -2070,6 +2196,92 @@ func (a *Analyzer) typeFromStructDeclarationWithName(name string, stmt *ast.Type
 		})
 	}
 
+	return typ
+}
+
+func (a *Analyzer) typeFromRegisterDeclaration(name string, stmt *ast.TypeDeclStatement) Type {
+	typ := Type{
+		Name:              name,
+		Module:            a.currentModule,
+		Kind:              RegisterType,
+		Named:             true,
+		Declared:          true,
+		Underlying:        "register",
+		RegisterWidth:     stmt.RegisterType.Width,
+		GenericParameters: genericParameterNameValues(stmt.GenericParameters),
+	}
+
+	if stmt.RegisterType.Width <= 0 {
+		a.addErrorAtToken(stmt.RegisterType.Token, "register %s width must be positive", name)
+	}
+
+	used := int64(0)
+	seen := map[string]lexer.Token{}
+	for _, field := range stmt.RegisterType.Fields {
+		if field == nil || field.Name == nil {
+			continue
+		}
+		if field.Width <= 0 {
+			a.addErrorAtToken(field.Token, "register field %s.%s width must be positive", name, field.Name.Value)
+			continue
+		}
+		used += field.Width
+
+		if field.Name.Value != "_" {
+			if previous, exists := seen[field.Name.Value]; exists {
+				_ = previous
+				a.addErrorAtToken(field.Name.Token, "duplicate register field %q in %s", field.Name.Value, name)
+				continue
+			}
+			seen[field.Name.Value] = field.Name.Token
+		}
+
+		fieldType := a.registerFieldType(field)
+		if field.Unit != "" {
+			if _, ok := a.units[field.Unit]; !ok {
+				a.addErrorAtToken(field.Token, "unknown unit %s on register field %s.%s", field.Unit, name, field.Name.Value)
+			}
+		}
+
+		typ.RegisterFields = append(typ.RegisterFields, RegisterField{
+			Name:  field.Name.Value,
+			Width: field.Width,
+			Unit:  field.Unit,
+			Type:  fieldType,
+			Token: field.Name.Token,
+		})
+	}
+
+	if stmt.RegisterType.Width > 0 && used != stmt.RegisterType.Width {
+		a.addErrorAtToken(stmt.RegisterType.Token, "register %s declares %d bits but its fields occupy %d bits", name, stmt.RegisterType.Width, used)
+	}
+
+	return typ
+}
+
+func (a *Analyzer) registerFieldType(field *ast.RegisterField) Type {
+	if field.Width == 1 && field.Unit == "" {
+		return Type{Name: "bool", Kind: BoolType}
+	}
+	max := uint64(0)
+	if field.Width >= 64 {
+		max = ^uint64(0)
+	} else if field.Width > 0 {
+		max = 1<<uint(field.Width) - 1
+	}
+	typ := unsignedType("uint", max)
+	if field.Unit != "" {
+		if unitType, ok := a.types[field.Unit]; ok && unitType.Kind != InvalidType {
+			typ = unitType
+			min := uint64(0)
+			typ.MinUint = &min
+			typ.MaxUint = &max
+		} else {
+			typ.Named = true
+			typ.Unit = field.Unit
+			typ.Dimension = a.parseDimension(field.Unit)
+		}
+	}
 	return typ
 }
 
@@ -2578,6 +2790,9 @@ func tokensSource(tokens []lexer.Token) string {
 func (a *Analyzer) inferPropertyBodyExpression(target Type, setter *ast.PropertySetter, setterType Type, expr ast.Expression) (Type, bool) {
 	switch expr := expr.(type) {
 	case *ast.Identifier:
+		if expr.Value == "self" {
+			return target, true
+		}
 		if setter != nil && setter.Parameter != nil && expr.Value == setter.Parameter.Value {
 			return setterType, true
 		}
@@ -2698,6 +2913,10 @@ func (a *Analyzer) resolveBodyValueType(target Type, setter *ast.PropertySetter,
 		return setterType, true
 	}
 
+	if token.Type == lexer.SELF && token.Lexeme == "self" {
+		return target, true
+	}
+
 	if token.Type == lexer.IDENT {
 		for _, field := range target.Fields {
 			if field.Name == token.Lexeme {
@@ -2728,10 +2947,13 @@ func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
 		defined = a.defineSymbol(stmt.Name.Value, declaredType, stmt.Mutable, stmt.Name.Token)
 		if defined {
 			a.assigned[stmt.Name.Value] = stmt.Value != nil
+			if stmt.Address != nil {
+				a.analyzeAddressedLetStatement(stmt, declaredType)
+			}
 		}
 	}
 
-	if ok && stmt.Value == nil && !stmt.Mutable {
+	if ok && stmt.Value == nil && !stmt.Mutable && stmt.Address == nil {
 		a.addErrorAtToken(stmt.Name.Token, "immutable variable %s requires initializer", stmt.Name.Value)
 		return
 	}
@@ -2768,6 +2990,31 @@ func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
 	if a.checkInitializerType(declaredType, exprType, stmt.Value) && defined {
 		a.setConstInt(stmt.Name.Value, stmt.Value)
 	}
+}
+
+func (a *Analyzer) analyzeAddressedLetStatement(stmt *ast.LetStatement, declaredType Type) {
+	if stmt.Type == nil {
+		a.addErrorAtToken(stmt.AddressToken, "@address requires an explicit register type")
+		return
+	}
+	if declaredType.Kind != RegisterType {
+		a.addErrorAtToken(stmt.Type.Token, "@address requires register type, got %s", typeDisplayName(declaredType))
+		return
+	}
+	if stmt.Value != nil {
+		a.addErrorAtToken(expressionToken(stmt.Value), "addressed register %s cannot have initializer", stmt.Name.Value)
+	}
+
+	if _, ok := stmt.Address.(*ast.IntegerLiteral); !ok {
+		a.addErrorAtToken(expressionToken(stmt.Address), "@address requires compile-time integer address")
+	}
+
+	symbol := a.symbols[stmt.Name.Value]
+	symbol.Addressed = true
+	symbol.Volatile = true
+	symbol.Address = stmt.Address.String()
+	a.symbols[stmt.Name.Value] = symbol
+	a.assigned[stmt.Name.Value] = true
 }
 
 func (a *Analyzer) resolveResultValueInitializer(resultType Type, expr ast.Expression) (Type, bool) {
@@ -2852,6 +3099,13 @@ func (a *Analyzer) analyzeMemberAssignmentStatement(stmt *ast.AssignmentStatemen
 		return
 	}
 
+	if symbol, ok := a.symbolForMemberObject(member.Object); ok && symbol.Type.Kind == RegisterType {
+		if !symbol.Mutable {
+			a.addErrorAtToken(member.Property.Token, "cannot assign to field %s on read-only addressed register %s", member.Property.Value, symbol.Name)
+			return
+		}
+	}
+
 	if property, ok := a.lookupPropertyOnMember(member); ok && property.Fallible && !allowFallible {
 		a.addErrorAtToken(member.Property.Token, "assigning fallible property %s requires try", member.Property.Value)
 		return
@@ -2859,6 +3113,10 @@ func (a *Analyzer) analyzeMemberAssignmentStatement(stmt *ast.AssignmentStatemen
 
 	valueType, _ := a.inferExpressionWithExpected(stmt.Value, targetType)
 	if valueType.Kind == InvalidType {
+		return
+	}
+
+	if a.checkIntegerExpressionRange(targetType, stmt.Value) {
 		return
 	}
 
@@ -2904,6 +3162,26 @@ func (a *Analyzer) tryAssignmentErrorType(stmt *ast.AssignmentStatement) (Type, 
 func (a *Analyzer) resolveType(ref *ast.TypeReference) (Type, bool) {
 	if ref == nil {
 		return Type{Kind: InvalidType}, false
+	}
+
+	if ref.Ref {
+		innerRef := *ref
+		innerRef.Ref = false
+		innerRef.MutableRef = false
+		inner, ok := a.resolveType(&innerRef)
+		if !ok {
+			return Type{Kind: InvalidType}, false
+		}
+		name := "ref " + typeDisplayName(inner)
+		if ref.MutableRef {
+			name = "ref mut " + typeDisplayName(inner)
+		}
+		return Type{
+			Name:             name,
+			Kind:             ReferenceType,
+			Element:          &inner,
+			ReferenceMutable: ref.MutableRef,
+		}, true
 	}
 
 	if ref.Name == "fn" || ref.FunctionReturnType != nil {
@@ -3477,6 +3755,13 @@ func (a *Analyzer) inferMemberExpression(expr *ast.MemberExpression) (Type, bool
 	if fieldType, ok := lookupStructField(objectType, expr.Property.Value); ok {
 		return fieldType, true
 	}
+	if fieldType, ok := lookupRegisterField(objectType, expr.Property.Value); ok {
+		return fieldType, true
+	}
+	if objectType.Kind == RegisterType && expr.Property.Value == "_" {
+		a.addErrorAtToken(expr.Property.Token, "reserved register field _ cannot be accessed")
+		return Type{Kind: InvalidType}, false
+	}
 
 	if property, ok := lookupProperty(objectType, expr.Property.Value); ok {
 		return property.Type, true
@@ -3568,8 +3853,29 @@ func (a *Analyzer) lookupPropertyOnMember(expr *ast.MemberExpression) (Property,
 	return lookupProperty(objectType, expr.Property.Value)
 }
 
+func (a *Analyzer) symbolForMemberObject(expr ast.Expression) (Symbol, bool) {
+	ident, ok := expr.(*ast.Identifier)
+	if !ok {
+		return Symbol{}, false
+	}
+	symbol, ok := a.symbols[ident.Value]
+	return symbol, ok
+}
+
 func lookupStructField(typ Type, name string) (Type, bool) {
 	for _, field := range typ.Fields {
+		if field.Name == name {
+			return field.Type, true
+		}
+	}
+	return Type{}, false
+}
+
+func lookupRegisterField(typ Type, name string) (Type, bool) {
+	if typ.Kind != RegisterType || name == "_" {
+		return Type{}, false
+	}
+	for _, field := range typ.RegisterFields {
 		if field.Name == name {
 			return field.Type, true
 		}
@@ -3603,6 +3909,11 @@ func (a *Analyzer) inferConversionExpression(expr *ast.ConversionExpression) (Ty
 
 	valueType, _ := a.inferExpression(expr.Value)
 	if valueType.Kind == InvalidType {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+
+	if (targetType.Kind == RawPtrType || valueType.Kind == RawPtrType) && !a.inUnsafe {
+		a.addErrorAtToken(expr.Token, "conversion involving RawPtr requires unsafe")
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 
@@ -3712,6 +4023,10 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 
 	best := bestOverloadMatches(matches)
 	if len(best) == 1 {
+		if best[0].Function.Extern && !a.inUnsafe {
+			a.addErrorAtToken(expr.Token, "calling extern function %s requires unsafe", name)
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
 		return best[0].Function.ReturnType, expressionValue{Display: expr.String()}
 	}
 
@@ -4412,6 +4727,11 @@ func (a *Analyzer) inferCallAsConversion(expr *ast.CallExpression) (Type, expres
 
 	valueType, _ := a.inferExpression(expr.Arguments[0])
 	if valueType.Kind == InvalidType {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+
+	if (targetType.Kind == RawPtrType || valueType.Kind == RawPtrType) && !a.inUnsafe {
+		a.addErrorAtToken(expr.Token, "conversion involving RawPtr requires unsafe")
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 
@@ -5312,12 +5632,26 @@ func canInitialize(target Type, value Type, expr ast.Expression) bool {
 		return sameFunctionType(target, value)
 	}
 
+	if target.Kind == ReferenceType {
+		if target.Element == nil {
+			return false
+		}
+		if value.Kind == ReferenceType {
+			return sameConcreteType(target, value)
+		}
+		return canInitialize(*target.Element, value, expr)
+	}
+
 	if target.Kind == EnumType || value.Kind == EnumType {
 		return target.Kind == EnumType && value.Kind == EnumType && target.Name == value.Name
 	}
 
 	if target.Kind == StructType || value.Kind == StructType {
 		return target.Kind == StructType && value.Kind == StructType && sameConcreteType(target, value)
+	}
+
+	if target.Kind == RegisterType || value.Kind == RegisterType {
+		return target.Kind == RegisterType && value.Kind == RegisterType && sameConcreteType(target, value)
 	}
 
 	if target.Kind == UnionType || value.Kind == UnionType {
@@ -5370,6 +5704,13 @@ func canExplicitConvert(target Type, value Type) bool {
 	}
 
 	if target.Kind == BoolType && isNumericType(value) {
+		return true
+	}
+
+	if target.Kind == RawPtrType && (value.Kind == UintType || value.Kind == RawPtrType || value.Kind == ReferenceType) {
+		return true
+	}
+	if target.Kind == UintType && value.Kind == RawPtrType {
 		return true
 	}
 
@@ -5533,6 +5874,12 @@ func (a *Analyzer) isExplicitConversionExpression(expr ast.Expression) bool {
 }
 
 func typeDisplayName(typ Type) string {
+	if typ.Kind == ReferenceType && typ.Element != nil {
+		if typ.ReferenceMutable {
+			return "ref mut " + typeDisplayName(*typ.Element)
+		}
+		return "ref " + typeDisplayName(*typ.Element)
+	}
 	if typ.Kind == ArrayType && typ.Element != nil {
 		return fmt.Sprintf("[%d]%s", typ.ArrayLength, typeDisplayName(*typ.Element))
 	}

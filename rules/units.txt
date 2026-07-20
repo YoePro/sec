@@ -346,3 +346,398 @@ Checks should be implemented in this order:
 6. Check expression types.
 7. Check contracts.
 8. Check unit algebra.
+
+=====================================================================
+Appendix - Unit Algebra and Semantic Units
+=====================================================================
+
+The unit system is designed around semantic correctness rather than
+simple numeric conversions.
+
+Units are semantic numeric types. They remain nominal types even when
+their representation type is the same.
+
+Unit categories:
+
+    physical
+        Units that participate in physical dimensional analysis.
+
+    other
+        Domain-specific units outside the physical SI system.
+
+Physical and other units both participate in unit algebra. The
+difference is that physical units may have known canonical dimensions
+and fixed conversion scales, while other units preserve domain meaning
+and require explicit configured or runtime conversions when no fixed
+relationship exists.
+
+Unit conversions are explicit. Numeric casts and unit conversions are
+different operations:
+
+    numeric cast
+        Changes numeric representation.
+
+    unit conversion
+        Changes semantic unit while preserving correctness.
+
+Automatic conversion is only permitted when the relationship is known
+by the compiler to be fixed and exact. Runtime or configured
+relationships require explicit conversion functions.
+
+=====================================================================
+Appendix - Unit Definitions
+===========================
+
+A unit declaration defines a semantic numeric type.
+
+Example:
+
+```
+unit m decimal physical
+```
+
+The unit implementation defines how the unit participates in the unit
+system.
+
+Example:
+
+```
+impl m {
+    dimension: [length * 1]
+    scale: 1
+    system: SI
+}
+```
+
+The declaration:
+
+```
+unit m decimal physical
+```
+
+defines:
+
+```
+m
+    The name and symbol of the unit.
+
+decimal
+    The numeric base type used to represent values of the unit.
+
+physical
+    The unit category. Physical units participate in physical
+    dimensional algebra.
+```
+
+The implementation:
+
+```
+impl m {
+    dimension: [length * 1]
+    scale: 1
+    system: SI
+}
+```
+
+defines:
+
+```
+dimension
+    The unit's dimensional vector.
+
+scale
+    The scale relative to the canonical unit of the dimension.
+
+system
+    The unit system to which the declaration belongs.
+```
+
+The metre is the canonical SI unit for length. Its scale is therefore 1.
+
+A millimetre may be defined as:
+
+```
+unit mm decimal physical
+
+impl mm {
+    dimension: [length * 1]
+    scale: 0.001
+    system: SI
+}
+```
+
+An inch may be defined as:
+
+```
+unit inch decimal physical
+
+impl inch {
+    dimension: [length * 1]
+    scale: 0.0254
+    system: Imperial
+}
+```
+
+Both units have the same dimensional vector. The compiler can therefore
+verify that conversions between them are dimensionally valid.
+
+The scale values provide an exact conversion path through the canonical
+unit:
+
+```
+inch -> m -> mm
+```
+
+The compiler may simplify this path to the exact relationship:
+
+```
+1 inch = 25.4 mm
+```
+
+Derived physical units use multiple dimensions and integer exponents.
+
+Example:
+
+```
+unit mps decimal physical
+
+impl mps {
+    dimension: [length * 1, time * -1]
+    scale: 1
+    system: SI
+}
+```
+
+A derived unit may also be matched against an algebraic expression.
+
+Example:
+
+```
+distance / duration
+```
+
+If distance has the dimension:
+
+```
+[length * 1]
+```
+
+and duration has the dimension:
+
+```
+[time * 1]
+```
+
+the resulting dimension is:
+
+```
+[length * 1, time * -1]
+```
+
+The result may therefore be represented as mps when the numeric scale
+also matches.
+
+A frequency unit may be defined as:
+
+```
+unit Hz decimal physical
+
+impl Hz {
+    dimension: [time * -1]
+    scale: 1
+    system: SI
+}
+```
+
+A rotational frequency may be defined as:
+
+```
+unit RPM decimal physical
+
+impl RPM {
+    dimension: [time * -1]
+    scale: 1 / 60
+    system: Other
+}
+```
+
+Because Hz and RPM have the same dimensional vector and a fixed scale
+relationship, the compiler can verify and perform an explicit unit
+conversion between them.
+
+The unit system name does not determine dimensional compatibility.
+
+For example, SI, Imperial and older physical systems may contain units
+with compatible dimensions. Compatibility is determined by the
+dimensional vector, while conversion is determined by scale and, where
+applicable, offset.
+
+=====================================================================
+Other and Domain Units
+======================
+
+Units that do not describe physical dimensions may use the other
+category.
+
+Example:
+
+```
+unit Item uint other
+
+impl Item {
+    dimension: [item * 1]
+    system: Domain
+}
+```
+
+Another semantic count must use a separate dimension.
+
+Example:
+
+```
+unit Packet uint other
+
+impl Packet {
+    dimension: [packet * 1]
+    system: Domain
+}
+```
+
+Item and Packet may use the same numeric base type, but they are not
+compatible units.
+
+This is invalid:
+
+```
+let total := items + packets
+```
+
+Domain units may still participate in algebra.
+
+Example:
+
+```
+Packet / second
+```
+
+produces the dimension:
+
+```
+[packet * 1, time * -1]
+```
+
+Similarly:
+
+```
+Item / Batch
+```
+
+produces:
+
+```
+[item * 1, batch * -1]
+```
+
+A domain relationship is not necessarily known at compile time.
+
+For example:
+
+```
+1 batch = 24 items
+```
+
+may be configured by the program, while:
+
+```
+measured events / elapsed time
+```
+
+produces a runtime cadence.
+
+The compiler verifies the dimensional algebra but does not invent
+configured or measured values.
+
+Currencies are domain units without a physical SI relationship.
+
+Example:
+
+```
+unit SEK decimal other
+
+impl SEK {
+    dimension: [currency.SEK * 1]
+    system: Currency
+}
+
+unit EUR decimal other
+
+impl EUR {
+    dimension: [currency.EUR * 1]
+    system: Currency
+}
+```
+
+SEK and EUR are separate semantic dimensions.
+
+A conversion between them requires an explicit runtime or configured
+exchange rate. The compiler must not treat it as a fixed unit
+conversion.
+
+=====================================================================
+Current Implementation Status
+=====================================================================
+
+Implemented in the front-end and semantic analyzer:
+
+```
+unit Name int
+unit Name uint
+unit Name float
+unit Name decimal
+unit Name decimal<unit-expression>
+unit Name decimal physical
+unit Name uint other
+```
+
+The storage type must currently be numeric.
+
+Implemented built-in physical aliases:
+
+```
+m, metre, meter
+mm, millimetre, millimeter
+inch
+s, second
+kg, kilogram
+Hz, Hertz, hertz
+rpm
+```
+
+Known built-in physical aliases map to internal dimensional vectors.
+Unknown units keep their own semantic base dimension and default to the
+other category unless explicitly declared as physical.
+
+Implemented unit algebra is still compile-time semantic checking only.
+No new LLVM lowering has been added for this appendix. Future lowering
+will go through MLIR before LLVM IR.
+
+Not implemented yet:
+
+```
+impl Unit {
+    dimension: [...]
+    scale: ...
+    system: ...
+}
+```
+
+Also not implemented yet:
+
+```
+fixed conversion factors such as inch -> millimetre
+explicit unit conversion validation through impl constructors
+configured or runtime conversion relationships
+offset units
+exponent syntax in unit expressions
+MLIR representation of dimensional vectors
+```

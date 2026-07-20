@@ -1,0 +1,703 @@
+The Sec compiler is implemented as a sequence of explicit compilation stages.
+
+Each stage must have a clearly defined input, output and responsibility.
+
+A later stage must not compensate for missing validation in an earlier stage.
+
+The compiler pipeline is:
+
+1. source loading
+2. lexical analysis
+3. parsing
+4. syntax validation
+5. symbol collection
+6. name resolution
+7. type resolution
+8. semantic analysis
+9. ownership and borrow analysis
+10. control-flow analysis
+11. compile-time evaluation
+12. target and platform validation
+13. Sec semantic IR generation
+14. MLIR lowering and optimization
+15. LLVM IR lowering
+16. target code generation
+17. object generation
+18. linking
+
+Compilation must stop before lowering when semantic errors remain.
+
+## Project initialization
+
+Project initialization is not a compilation stage.
+
+It creates the project structure and default compiler configuration consumed by
+later pipeline stages.
+
+The command is:
+
+```text
+sec init [path] [--name <name>] [--target <os-arch>] [--profile <profile>]
+```
+
+Current behavior:
+
+* creates the project directory when needed
+* creates `cmd/main/`
+* creates `bin/`
+* creates `.sec/`
+* creates `internal/`
+* creates `cmd/main/main.sec` when it does not already exist
+* creates `.sec/sec.toml`
+* refuses to overwrite an existing `.sec/sec.toml`
+
+The generated `cmd/main/main.sec` is the smallest valid executable entry point:
+
+```sec
+module main
+
+fn main() int {
+    return 0
+}
+```
+
+When the project name is not provided:
+
+* interactive use may prompt for a project name
+* non-interactive use uses the directory base name
+
+When the target is not provided, `sec init` selects the current host target from
+the compiler target registry.
+
+The initial configuration file currently has this shape:
+
+```toml
+[project]
+name = "my project"
+uuid = "generated-project-uuid"
+imports = []
+
+[platform]
+os = "linux"
+arch = "amd64"
+
+[build]
+target = "x86_64-pc-linux-gnu"
+profile = "server"
+output = "bin/my-project"
+```
+
+`[project]` contains project identity.
+
+`[platform]` contains the selected Sec platform identity.
+
+`[build]` contains the selected build target, profile and default output path.
+
+The current implementation stores the selected target as an LLVM triple. This is
+an implementation detail of the current backend path. As the compiler moves to
+Sec semantic IR and MLIR lowering, the configuration may also store a stable Sec
+target id while preserving the LLVM triple as a derived backend detail.
+
+## Source loading
+
+Source loading is responsible for:
+
+* locating source files
+* resolving modules
+* validating module paths
+* validating file encoding
+* normalizing source locations
+* loading target configuration
+* loading build configuration
+
+Source loading must preserve:
+
+* file path
+* byte offset
+* line number
+* column number
+* module identity
+
+All later diagnostics must be able to refer to the original source location.
+
+## Lexical analysis
+
+The lexer converts source text into tokens.
+
+The lexer is responsible for:
+
+* identifiers
+* keywords
+* literals
+* operators
+* punctuation
+* comments
+* annotations
+* source positions
+
+The lexer must not perform semantic analysis.
+
+The lexer may validate lexical correctness, including:
+
+* malformed numeric literals
+* malformed string literals
+* invalid escape sequences
+* unterminated comments
+* unsupported characters
+
+The lexer must preserve sufficient literal information for later type resolution.
+
+## Parsing
+
+The parser converts tokens into an abstract syntax tree.
+
+The parser is responsible for:
+
+* declarations
+* statements
+* expressions
+* type syntax
+* annotations
+* generic syntax
+* control-flow syntax
+* unsafe syntax
+
+The parser must preserve source ranges for every node.
+
+The parser must not perform:
+
+* ownership analysis
+* borrow analysis
+* target layout validation
+* LLVM-specific decisions
+* implicit type conversion decisions
+
+The parser may perform limited syntax recovery to report multiple errors.
+
+Recovered nodes must be marked invalid and must not be lowered.
+
+## Syntax validation
+
+Syntax validation verifies structural language rules that are easier to express after parsing.
+
+Examples include:
+
+* invalid modifier combinations
+* duplicate modifiers
+* invalid declaration placement
+* missing required declaration components
+* illegal statement placement
+* invalid use of extern syntax
+* invalid use of unsafe syntax
+
+Syntax validation must not depend on target machine details.
+
+## Symbol collection
+
+Symbol collection registers declarations before full semantic analysis.
+
+The compiler must collect symbols for:
+
+* modules
+* imports
+* types
+* functions
+* methods
+* interfaces
+* constants
+* variables where applicable
+* enum members
+* struct fields
+* generic parameters
+
+Symbol collection must detect:
+
+* duplicate declarations
+* duplicate fields
+* duplicate parameters
+* invalid shadowing where forbidden
+* conflicting method declarations
+* conflicting imports
+
+Symbol collection should allow forward references where the language permits them.
+
+## Name resolution
+
+Name resolution binds identifiers to declarations.
+
+Name resolution is responsible for:
+
+* local scopes
+* module scopes
+* imported symbols
+* type names
+* function names
+* method names
+* field names
+* enum members
+* generic parameters
+
+Every resolved identifier must reference a unique symbol.
+
+Ambiguous names must be rejected.
+
+Unresolved names must not reach later stages.
+
+Name resolution must enforce visibility rules.
+
+## Type resolution
+
+Type resolution converts type syntax into canonical compiler types.
+
+Type resolution is responsible for:
+
+* built-in types
+* named types
+* distinct types
+* generic types
+* function types
+* reference types
+* RawPtr types
+* arrays
+* slices
+* structs
+* enums
+* unions
+* interfaces
+* Result and Option types
+* unit types
+* register types
+
+Equivalent types must share a canonical internal representation where appropriate.
+
+Named semantic types must remain distinguishable from their base types.
+
+Type resolution must not erase:
+
+* ownership semantics
+* mutability
+* unit information
+* enum representation
+* layout annotations
+* unsafe function status
+* extern calling convention
+
+## Semantic analysis
+
+Semantic analysis validates language meaning.
+
+Semantic analysis is responsible for:
+
+* expression typing
+* assignment validity
+* mutability
+* function call validation
+* return validation
+* operator resolution
+* method resolution
+* interface conformance
+* generic constraint validation
+* explicit and implicit conversion rules
+* annotation validation
+* unsafe-context validation
+* Result handling
+* exhaustiveness validation
+* compile-time contract validation where possible
+
+Semantic analysis must reject invalid programs before IR generation.
+
+Semantic analysis must not depend on LLVM behavior.
+
+## Ownership and borrow analysis
+
+Ownership and borrow analysis follows semantic type resolution.
+
+It is responsible for:
+
+* ownership establishment
+* copy and move classification
+* moved-value detection
+* destruction responsibility
+* borrow creation
+* borrow conflicts
+* reference lifetime validation
+* reference escape validation
+* mutable alias validation
+* ownership transfer across calls
+* ownership transfer across returns
+* defer capture validation
+
+Ownership analysis rules are defined in ownership.txt.
+
+Reference rules are defined in references.txt.
+
+Borrow rules are defined in borrowing.txt.
+
+Unsafe rules are defined in unsafe.txt.
+
+Unsafe code does not bypass ownership analysis for normal Sec values.
+
+## Control-flow analysis
+
+Control-flow analysis builds and validates the function control-flow graph.
+
+It is responsible for:
+
+* reachable blocks
+* unreachable code
+* definite assignment
+* all-path return validation
+* break validation
+* continue validation
+* loop exit analysis
+* switch exhaustiveness
+* match exhaustiveness
+* divergent expressions
+* defer execution paths
+* termination analysis where required
+
+The compiler should report unreachable code according to the language warning rules.
+
+Control-flow analysis must complete before lowering.
+
+## Compile-time evaluation
+
+Compile-time evaluation resolves expressions that are required to be known during compilation.
+
+Examples include:
+
+* constant expressions
+* enum values
+* array lengths
+* ranges
+* annotations
+* register widths
+* memory addresses
+* platform conditions
+* type contracts
+* layout parameters
+* build conditions
+
+Compile-time evaluation must use Sec language semantics.
+
+It must not rely on host-language integer overflow, floating-point behavior or pointer width.
+
+Target-dependent expressions must be evaluated using the selected target configuration.
+
+## Target and platform validation
+
+Target validation occurs after general semantic validation and before lowering.
+
+It is responsible for:
+
+* target architecture support
+* operating-system support
+* pointer width
+* integer width assumptions
+* ABI support
+* calling conventions
+* struct layout requirements
+* register layout
+* address validity
+* syscall availability
+* inline assembly availability
+* platform-specific imports
+* platform-specific source selection
+
+Target validation must not change general Sec semantics.
+
+A program valid for one target may be rejected for another target when it uses unavailable platform features.
+
+## Sec semantic IR
+
+The compiler must generate a Sec-specific semantic intermediate representation before MLIR lowering.
+
+The semantic IR must represent validated language semantics directly.
+
+It should contain:
+
+* canonical types
+* typed values
+* typed instructions
+* explicit control flow
+* ownership operations
+* copy operations
+* move operations
+* borrow operations where still required
+* destruction operations
+* defer operations
+* Result operations
+* checked conversions
+* unsafe operations
+* extern calls
+* source locations
+
+The semantic IR must not contain unresolved syntax.
+
+The semantic IR must not depend directly on LLVM types or instructions.
+
+Every semantic IR operation must represent a program that has already passed semantic validation.
+
+Semantic IR generation may simplify syntax but must preserve observable language behavior.
+
+Examples of syntax removed during semantic IR generation include:
+
+* syntactic sugar
+* implicit return forms
+* range-loop syntax
+* switch syntax
+* match syntax
+* method-call syntax
+* compound assignment syntax
+
+Lowering must preserve source mapping for diagnostics and debugging.
+
+## MLIR lowering
+
+MLIR is the primary lowering and optimization layer between Sec semantic IR and LLVM IR.
+
+MLIR lowering is responsible for converting validated Sec operations into lower-level representations.
+
+MLIR may be used for:
+
+* structured control-flow lowering
+* data-flow analysis
+* ownership lowering
+* destruction placement
+* bounds-check elimination
+* scalar optimization
+* loop optimization
+* unit erasure after validation
+* register-operation lowering
+* target-independent optimization
+* target-specific dialect lowering
+
+MLIR must not define Sec language semantics.
+
+An optimization is valid only when it preserves Sec observable behavior.
+
+MLIR passes must not introduce:
+
+* hidden heap allocation
+* hidden ownership transfer
+* changed destruction order
+* removed required checks
+* altered integer overflow behavior
+* altered error propagation
+* altered defer behavior
+
+Ownership information may be removed only after all ownership-dependent operations have been lowered safely.
+
+Unit information may be erased only after all unit validation and conversions are complete.
+
+## LLVM IR lowering
+
+LLVM IR lowering converts validated and optimized MLIR into LLVM IR.
+
+LLVM lowering is responsible for:
+
+* LLVM type selection
+* LLVM control flow
+* calling convention lowering
+* target data layout
+* stack allocation
+* explicit heap allocator calls
+* function attributes
+* platform intrinsics
+* inline assembly emission
+* debug metadata
+* object-level symbol names
+
+LLVM lowering must not perform language-level validation.
+
+LLVM lowering must not decide:
+
+* whether a conversion is legal
+* whether a borrow is valid
+* whether ownership may move
+* whether null is permitted
+* whether unsafe is required
+* whether a match is exhaustive
+* whether a type contract is satisfied
+
+These decisions must already exist in validated semantic IR or MLIR.
+
+## Target code generation
+
+Target code generation converts LLVM IR into target machine code.
+
+It is responsible for:
+
+* instruction selection
+* register allocation
+* machine-level optimization
+* target object format
+* relocation generation
+* debug information
+* target CPU features
+
+Target code generation must use the selected target rather than the compiler host.
+
+Cross-compilation must not depend on executing target binaries.
+
+## Object generation
+
+The compiler must support producing object files without linking.
+
+Object generation must preserve:
+
+* exported symbols
+* imported symbols
+* section information
+* relocation information
+* target ABI
+* debug metadata when requested
+
+The object format is determined by the selected target.
+
+## Linking
+
+Linking is a separate final stage.
+
+The linker stage is responsible for:
+
+* combining object files
+* resolving symbols
+* including required platform objects
+* including explicitly required libraries
+* applying the selected entry point
+* producing the final binary or library
+
+The compiler must not link unused libraries by default.
+
+The compiler should avoid including unused Sec functions and data where possible.
+
+Linker behavior must be controlled by the selected build target and profile.
+
+## Compiler modes
+
+Commands may stop the pipeline at different stages.
+
+Expected run commands include:
+
+sec init
+sec lex
+sec parse
+sec check
+sec sema
+sec emit-ir
+sec emit-mlir
+sec emit-llvm
+sec build
+sec run
+sec test
+
+sec init creates a new Sec project structure and `.sec/sec.toml`.
+
+sec lex stops after lexical analysis.
+
+sec parse stops after parsing and syntax validation.
+
+sec check performs all frontend validation without target code generation.
+
+sec sema performs semantic, ownership, borrow and control-flow analysis.
+
+sec emit-ir emits Sec semantic IR.
+
+sec emit-mlir emits MLIR.
+
+sec emit-llvm emits LLVM IR.
+
+sec build produces the requested binary, library or object.
+
+sec run builds and executes a supported hosted target.
+
+sec test builds and executes test declarations.
+
+Exact command availability may be implemented incrementally.
+
+## Diagnostics
+
+Each pipeline stage must emit diagnostics using the shared diagnostic system.
+
+Diagnostics must contain:
+
+* severity
+* message
+* source file
+* source range
+* diagnostic code where defined
+* related source locations where applicable
+* explanatory notes where applicable
+
+Later stages must not emit misleading diagnostics for errors caused by invalid earlier-stage input.
+
+Compiler errors must be distinguished from user program errors.
+
+An internal compiler error must report:
+
+* pipeline stage
+* current declaration or function
+* source location when available
+* compiler version
+* target
+* reproducible internal error information
+
+## Error recovery
+
+Frontend stages may recover from user errors to report additional independent diagnostics.
+
+Recovery must not allow invalid nodes to reach semantic IR generation.
+
+Lowering stages should assume validated input.
+
+A lowering failure caused by semantically invalid input is a compiler defect.
+
+## Pass invariants
+
+Every pipeline pass must document its required input invariants and produced output invariants.
+
+Passes must verify critical invariants in debug compiler builds.
+
+Examples include:
+
+* all identifiers resolved before semantic analysis completes
+* all expressions typed before ownership analysis
+* all ownership transfers explicit before semantic IR emission
+* no unresolved generic parameters before monomorphized lowering
+* no invalid control-flow edges before MLIR lowering
+* no Sec-only types before final LLVM lowering
+* no unsupported target operation before object generation
+
+## Compiler architecture
+
+Pipeline stages should be represented by separate packages or modules where practical.
+
+Frontend stages must not import backend implementation details.
+
+LLVM-specific code must not be used by:
+
+* lexer
+* parser
+* symbol collection
+* name resolution
+* general semantic analysis
+* ownership analysis
+* borrow analysis
+* control-flow analysis
+
+Target-independent semantic code must be reusable across all supported targets.
+
+Platform-specific behavior must be isolated behind explicit target and platform interfaces.
+
+## Design rule
+
+The frontend defines what a valid Sec program means.
+
+Semantic IR records that meaning.
+
+MLIR lowers and optimizes that meaning.
+
+LLVM generates machine code for that meaning.
+
+No backend stage may redefine the language.

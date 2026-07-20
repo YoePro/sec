@@ -26,6 +26,11 @@ func main() {
 
 	command := flag.Arg(0)
 
+	if command == "init" {
+		runInitCommand(flag.Args()[1:])
+		return
+	}
+
 	if command == "emit-llvm" {
 		runEmitLLVMCommand(flag.Args()[1:])
 		return
@@ -91,6 +96,7 @@ func main() {
 
 func printUsage() {
 	fmt.Fprintln(os.Stderr, "usage: sec <lex|token> <file.sec>")
+	fmt.Fprintln(os.Stderr, "       sec init [path] [--name <name>] [--target <os-arch>] [--profile <profile>]")
 	fmt.Fprintln(os.Stderr, "       sec <parse|ast|sema> <file.sec|dir|glob>...")
 	fmt.Fprintln(os.Stderr, "       sec emit-llvm <file.sec> -o <file.ll> [--target <os-arch>]")
 	fmt.Fprintln(os.Stderr, "       sec build <file.sec> [-o <program>] [--target <os-arch>] [--keep-llvm] [--clang <path>]")
@@ -920,6 +926,17 @@ func printASTStatement(stmt ast.Statement, prefix string, last bool) {
 	case *ast.TypeDeclStatement:
 		printASTTypeDecl(stmt, prefix, last)
 
+	case *ast.UnitDeclStatement:
+		printASTBranch(prefix, last, "Unit")
+		children := []string{
+			"Name: " + stmt.Name.Value,
+			"Base: " + formatTypeRef(stmt.BaseType),
+		}
+		if stmt.Category != "" {
+			children = append(children, "Category: "+stmt.Category)
+		}
+		printASTLeaves(childPrefix(prefix, last), children)
+
 	case *ast.EnumDeclaration:
 		printASTEnum(stmt, prefix, last)
 
@@ -1251,6 +1268,16 @@ func printASTImplMember(prefix string, member ast.ImplMember, last bool) {
 	switch member := member.(type) {
 	case *ast.TypeDeclStatement:
 		printASTTypeDecl(member, prefix, last)
+	case *ast.UnitDeclStatement:
+		printASTBranch(prefix, last, "Unit")
+		children := []string{
+			"Name: " + member.Name.Value,
+			"Base: " + formatTypeRef(member.BaseType),
+		}
+		if member.Category != "" {
+			children = append(children, "Category: "+member.Category)
+		}
+		printASTLeaves(childPrefix(prefix, last), children)
 	case *ast.EnumDeclaration:
 		printASTEnum(member, prefix, last)
 	case *ast.FunctionDeclaration:
@@ -1285,6 +1312,9 @@ func printASTLet(stmt *ast.LetStatement, prefix string, last bool) {
 
 	if stmt.Type != nil {
 		children = append(children, "Type: "+formatTypeRef(stmt.Type))
+	}
+	if stmt.Address != nil {
+		children = append(children, "Address: "+stmt.Address.String())
 	}
 
 	if stmt.Value == nil {
@@ -1334,7 +1364,7 @@ func printASTTypeDecl(stmt *ast.TypeDeclStatement, prefix string, last bool) {
 
 	childrenPrefix := childPrefix(prefix, last)
 
-	if stmt.StructType == nil {
+	if stmt.StructType == nil && stmt.RegisterType == nil {
 		printASTLeaves(childrenPrefix, children)
 		return
 	}
@@ -1343,10 +1373,19 @@ func printASTTypeDecl(stmt *ast.TypeDeclStatement, prefix string, last bool) {
 		printASTLeaf(childrenPrefix, false, child)
 	}
 
-	printASTBranch(childrenPrefix, true, "Struct")
-	structPrefix := childPrefix(childrenPrefix, true)
-	for i, field := range stmt.StructType.Fields {
-		printASTField(structPrefix, field, i == len(stmt.StructType.Fields)-1)
+	if stmt.StructType != nil {
+		printASTBranch(childrenPrefix, stmt.RegisterType == nil, "Struct")
+		structPrefix := childPrefix(childrenPrefix, stmt.RegisterType == nil)
+		for i, field := range stmt.StructType.Fields {
+			printASTField(structPrefix, field, i == len(stmt.StructType.Fields)-1)
+		}
+	}
+	if stmt.RegisterType != nil {
+		printASTBranch(childrenPrefix, true, fmt.Sprintf("Register[%d]", stmt.RegisterType.Width))
+		registerPrefix := childPrefix(childrenPrefix, true)
+		for i, field := range stmt.RegisterType.Fields {
+			printASTRegisterField(registerPrefix, field, i == len(stmt.RegisterType.Fields)-1)
+		}
 	}
 }
 
@@ -1375,10 +1414,17 @@ func printASTFunction(stmt *ast.FunctionDeclaration, prefix string, last bool) {
 	printASTBranch(prefix, last, "Function")
 	childrenPrefix := childPrefix(prefix, last)
 	printASTLeaf(childrenPrefix, false, fmt.Sprintf("Unsafe: %t", stmt.Unsafe))
+	printASTLeaf(childrenPrefix, false, fmt.Sprintf("Extern: %t", stmt.Extern))
+	if stmt.Extern {
+		printASTLeaf(childrenPrefix, false, "ABI: "+stmt.ABI)
+	}
 	printASTLeaf(childrenPrefix, false, "Name: "+stmt.Name.Value)
 	printASTLeaf(childrenPrefix, false, "GenericParameters: "+formatGenericParameters(stmt.GenericParameters))
 	printASTLeaf(childrenPrefix, false, "Parameters: "+formatParameters(stmt.Parameters))
-	printASTLeaf(childrenPrefix, false, "Return: "+formatTypeRef(stmt.ReturnType))
+	printASTLeaf(childrenPrefix, stmt.Body == nil, "Return: "+formatTypeRef(stmt.ReturnType))
+	if stmt.Body == nil {
+		return
+	}
 	printASTBranch(childrenPrefix, true, "Body")
 	bodyPrefix := childPrefix(childrenPrefix, true)
 	for i, bodyStmt := range stmt.Body.Statements {
@@ -1403,6 +1449,18 @@ func printASTField(prefix string, field *ast.StructField, last bool) {
 	}
 	if field.Contract != nil {
 		children = append(children, formatASTContract(field.Contract))
+	}
+	printASTLeaves(childPrefix(prefix, last), children)
+}
+
+func printASTRegisterField(prefix string, field *ast.RegisterField, last bool) {
+	printASTBranch(prefix, last, "Field")
+	children := []string{
+		"Name: " + field.Name.Value,
+		fmt.Sprintf("Type: bit[%d]", field.Width),
+	}
+	if field.Unit != "" {
+		children = append(children, "Unit: "+field.Unit)
 	}
 	printASTLeaves(childPrefix(prefix, last), children)
 }
@@ -1616,6 +1674,13 @@ func printStatement(stmt ast.Statement) {
 	case *ast.TypeDeclStatement:
 		printTypeDecl(stmt)
 
+	case *ast.UnitDeclStatement:
+		fmt.Printf("Unit %s %s", stmt.Name.Value, formatTypeRef(stmt.BaseType))
+		if stmt.Category != "" {
+			fmt.Printf(" %s", stmt.Category)
+		}
+		fmt.Println()
+
 	case *ast.EnumDeclaration:
 		printEnum(stmt)
 
@@ -1730,6 +1795,8 @@ func printTypeDecl(stmt *ast.TypeDeclStatement) {
 		}
 	case stmt.StructType != nil:
 		fmt.Print(" struct")
+	case stmt.RegisterType != nil:
+		fmt.Printf(" register[%d]", stmt.RegisterType.Width)
 	}
 
 	if stmt.Contract != nil {
@@ -1740,6 +1807,9 @@ func printTypeDecl(stmt *ast.TypeDeclStatement) {
 
 	if stmt.StructType != nil {
 		printStructFields(stmt.StructType.Fields)
+	}
+	if stmt.RegisterType != nil {
+		printRegisterFields(stmt.RegisterType.Fields)
 	}
 }
 
@@ -1756,10 +1826,16 @@ func printEnum(stmt *ast.EnumDeclaration) {
 
 func printFunction(stmt *ast.FunctionDeclaration) {
 	prefix := "Function"
+	if stmt.Extern {
+		prefix = "Extern " + stmt.ABI + " Function"
+	}
 	if stmt.Unsafe {
 		prefix = "Unsafe Function"
 	}
 	fmt.Printf("%s %s%s(%s) %s\n", prefix, stmt.Name.Value, formatGenericParameters(stmt.GenericParameters), formatParameters(stmt.Parameters), formatTypeRef(stmt.ReturnType))
+	if stmt.Body == nil {
+		return
+	}
 	for _, bodyStmt := range stmt.Body.Statements {
 		fmt.Print("  ")
 		printStatement(bodyStmt)
@@ -1767,6 +1843,9 @@ func printFunction(stmt *ast.FunctionDeclaration) {
 }
 
 func printLet(stmt *ast.LetStatement) {
+	if stmt.Address != nil {
+		fmt.Printf("@address(%s)\n", stmt.Address.String())
+	}
 	fmt.Print("Let ")
 
 	if stmt.Mutable {
@@ -1835,6 +1914,12 @@ func printImpl(stmt *ast.ImplStatement) {
 		case *ast.TypeDeclStatement:
 			fmt.Print("  ")
 			printTypeDecl(member)
+		case *ast.UnitDeclStatement:
+			fmt.Printf("  Unit %s %s", member.Name.Value, formatTypeRef(member.BaseType))
+			if member.Category != "" {
+				fmt.Printf(" %s", member.Category)
+			}
+			fmt.Println()
 		case *ast.EnumDeclaration:
 			fmt.Printf("  Enum %s", member.Name.Value)
 			if member.UnderlyingType != nil {
@@ -1870,7 +1955,11 @@ func formatParameters(parameters []*ast.Parameter) string {
 			out += ", "
 		}
 		if param.Ref {
-			out += "ref "
+			if param.MutableRef {
+				out += "ref mut "
+			} else {
+				out += "ref "
+			}
 		}
 		out += param.Name.Value + ": " + formatTypeRef(param.Type)
 	}
@@ -1903,9 +1992,31 @@ func printStructFields(fields []*ast.StructField) {
 	}
 }
 
+func printRegisterFields(fields []*ast.RegisterField) {
+	for _, field := range fields {
+		fmt.Printf("  Field %s bit", field.Name.Value)
+		if field.Width != 1 {
+			fmt.Printf("[%d]", field.Width)
+		}
+		if field.Unit != "" {
+			fmt.Printf("<%s>", field.Unit)
+		}
+		fmt.Println()
+	}
+}
+
 func formatTypeRef(ref *ast.TypeReference) string {
 	if ref == nil {
 		return "<nil>"
+	}
+
+	refPrefix := ""
+	if ref.Ref {
+		if ref.MutableRef {
+			refPrefix = "ref mut "
+		} else {
+			refPrefix = "ref "
+		}
 	}
 
 	if ref.Name == "fn" || ref.FunctionReturnType != nil {
@@ -1917,14 +2028,14 @@ func formatTypeRef(ref *ast.TypeReference) string {
 			out += formatTypeRef(param)
 		}
 		out += ") " + formatTypeRef(ref.FunctionReturnType)
-		return out
+		return refPrefix + out
 	}
 
 	if ref.ElementType != nil {
 		if ref.ArrayLength > 0 {
-			return fmt.Sprintf("[%d]%s", ref.ArrayLength, formatTypeRef(ref.ElementType))
+			return refPrefix + fmt.Sprintf("[%d]%s", ref.ArrayLength, formatTypeRef(ref.ElementType))
 		}
-		return "[]" + formatTypeRef(ref.ElementType)
+		return refPrefix + "[]" + formatTypeRef(ref.ElementType)
 	}
 
 	out := ref.Name
@@ -1944,7 +2055,7 @@ func formatTypeRef(ref *ast.TypeReference) string {
 		out += "]"
 	}
 
-	return out
+	return refPrefix + out
 }
 
 func formatLambdaCaptures(captures []ast.LambdaCapture) string {

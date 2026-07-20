@@ -1,0 +1,60 @@
+=============================================================================================================================================================================================
+References
+=============================================================================================================================================================================================
+
+References provide temporary access to an existing value without transferring ownership.
+
+References never own memory.
+
+Reference validity is determined entirely at compile time.
+
+The lifetime of a reference may never exceed the lifetime of its owner.
+
+Sec provides two reference kinds:
+
+- ref
+- ref mut
+
+ref provides immutable access.
+
+Multiple immutable references may coexist.
+
+ref mut provides exclusive mutable access.
+
+A mutable reference grants temporary write access without transferring ownership.
+
+The compiler is responsible for verifying reference validity.
+
+References may be created only from valid owned values or from other valid references where permitted.
+
+Returning a reference is permitted only when the compiler can prove that the referenced object remains valid after the function returns.
+
+Returning references to local variables is always invalid.
+
+Returning references that may originate from multiple unrelated owners is invalid.
+
+Reference creation shall never allocate memory.
+
+References shall never extend object lifetime.
+
+References shall never imply ownership transfer.
+
+Reference equality compares the referenced object rather than ownership.
+
+References participate in normal type checking.
+
+Implicit conversion between references and raw pointers is forbidden.
+
+Explicit conversion to RawPtr is permitted only within unsafe contexts.
+
+Explicit conversion from RawPtr to references requires compiler validation or an explicit unsafe operation.
+
+References may be passed through function parameters.
+
+Reference mutability forms part of the function signature.
+
+The compiler may temporarily create internal references during semantic analysis, but such implementation details are not visible in the language.
+
+References are implemented identically for hosted and embedded targets.
+
+The exact borrowing rules governing simultaneous references are defined in borrowing.txt.

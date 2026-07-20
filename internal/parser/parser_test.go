@@ -105,6 +105,114 @@ type Pair[A, B] struct {
 	}
 }
 
+func TestParseUnitDeclarations(t *testing.T) {
+	input := `
+unit Hertz decimal<Hz>
+unit Packet uint other
+unit Metre decimal physical
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Statements) != 3 {
+		t.Fatalf("wrong statement count. got=%d want=3", len(program.Statements))
+	}
+
+	hertz, ok := program.Statements[0].(*ast.UnitDeclStatement)
+	if !ok {
+		t.Fatalf("statement 0 is not UnitDeclStatement. got=%T", program.Statements[0])
+	}
+	if hertz.Name.Value != "Hertz" || hertz.BaseType.Name != "decimal" || hertz.BaseType.Unit != "Hz" {
+		t.Fatalf("wrong Hertz unit declaration: %+v", hertz)
+	}
+
+	packet, ok := program.Statements[1].(*ast.UnitDeclStatement)
+	if !ok {
+		t.Fatalf("statement 1 is not UnitDeclStatement. got=%T", program.Statements[1])
+	}
+	if packet.Name.Value != "Packet" || packet.BaseType.Name != "uint" || packet.BaseType.Unit != "" || packet.Category != "other" {
+		t.Fatalf("wrong Packet unit declaration: %+v", packet)
+	}
+
+	metre, ok := program.Statements[2].(*ast.UnitDeclStatement)
+	if !ok {
+		t.Fatalf("statement 2 is not UnitDeclStatement. got=%T", program.Statements[2])
+	}
+	if metre.Name.Value != "Metre" || metre.BaseType.Name != "decimal" || metre.Category != "physical" {
+		t.Fatalf("wrong Metre unit declaration: %+v", metre)
+	}
+}
+
+func TestParseRegisterTypeDeclaration(t *testing.T) {
+	input := `
+type MotorProtocol register[8] {
+	Speed: bit[4]<rpm>,
+	Enabled: bit,
+	_: bit[3],
+}
+
+@address(0x40021000)
+let mut motorProtocol: MotorProtocol
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Statements) != 2 {
+		t.Fatalf("wrong statement count. got=%d want=2", len(program.Statements))
+	}
+
+	typeDecl := program.Statements[0].(*ast.TypeDeclStatement)
+	if typeDecl.RegisterType == nil {
+		t.Fatal("expected register type")
+	}
+	if typeDecl.RegisterType.Width != 8 {
+		t.Fatalf("wrong register width. got=%d want=8", typeDecl.RegisterType.Width)
+	}
+	if len(typeDecl.RegisterType.Fields) != 3 {
+		t.Fatalf("wrong register field count. got=%d want=3", len(typeDecl.RegisterType.Fields))
+	}
+	speed := typeDecl.RegisterType.Fields[0]
+	if speed.Name.Value != "Speed" || speed.Width != 4 || speed.Unit != "rpm" {
+		t.Fatalf("wrong Speed field: %+v", speed)
+	}
+
+	letStmt := program.Statements[1].(*ast.LetStatement)
+	if letStmt.Address == nil || letStmt.Address.String() != "0x40021000" {
+		t.Fatalf("wrong address: %#v", letStmt.Address)
+	}
+	if !letStmt.Mutable {
+		t.Fatal("addressed let should be mutable")
+	}
+}
+
+func TestParseSelfKeywordInDiscardStatement(t *testing.T) {
+	input := `
+fn Test() void {
+	discard self
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	discard, ok := fn.Body.Statements[0].(*ast.DiscardStatement)
+	if !ok {
+		t.Fatalf("statement is not DiscardStatement. got=%T", fn.Body.Statements[0])
+	}
+	if discard.Name.Value != "self" {
+		t.Fatalf("wrong discard name. got=%q want=%q", discard.Name.Value, "self")
+	}
+}
+
 func TestParseGenericFunctionDeclaration(t *testing.T) {
 	input := `
 fn Identity[T](value: T) T {
@@ -1695,7 +1803,7 @@ impl Vehicle {
 	p := New(l)
 	p.ParseProgram()
 
-	expected := "impl block may only contain type, enum, property, and fn declarations at 3:2"
+	expected := "impl block may only contain type, unit, enum, property, and fn declarations at 3:2"
 	if len(p.Errors()) != 1 {
 		t.Fatalf("wrong parser error count. got=%d want=1 errors=%v", len(p.Errors()), p.Errors())
 	}
@@ -2110,6 +2218,40 @@ unsafe fn _rawSyscall3(number: uint, arg1: uint, arg2: uint, arg3: uint) int {
 	}
 	if len(asmStmt.Block.Clobbers) != 3 || asmStmt.Block.Clobbers[2] != "memory" {
 		t.Fatalf("wrong clobbers. got=%#v", asmStmt.Block.Clobbers)
+	}
+}
+
+func TestParseExternFunctionDeclaration(t *testing.T) {
+	input := `
+extern "C" fn write(fd: int32, buffer: RawPtr[byte], length: uint) int64
+
+fn Use(ref mut value: int) void {
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Statements) != 2 {
+		t.Fatalf("wrong statement count. got=%d want=2", len(program.Statements))
+	}
+
+	externFn := program.Statements[0].(*ast.FunctionDeclaration)
+	if !externFn.Extern || externFn.ABI != "C" {
+		t.Fatalf("wrong extern function metadata: extern=%t abi=%q", externFn.Extern, externFn.ABI)
+	}
+	if externFn.Body != nil {
+		t.Fatal("extern function should not have body")
+	}
+	if externFn.Parameters[1].Type.Name != "RawPtr" || len(externFn.Parameters[1].Type.TypeArgs) != 1 {
+		t.Fatalf("wrong RawPtr parameter type: %+v", externFn.Parameters[1].Type)
+	}
+
+	useFn := program.Statements[1].(*ast.FunctionDeclaration)
+	if !useFn.Parameters[0].Ref || !useFn.Parameters[0].MutableRef {
+		t.Fatalf("expected ref mut parameter: %+v", useFn.Parameters[0])
 	}
 }
 

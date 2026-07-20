@@ -77,7 +77,7 @@ func (p *Parser) parseExpression(currentPrecedence precedence) ast.Expression {
 	var left ast.Expression
 
 	switch p.curToken.Type {
-	case lexer.IDENT:
+	case lexer.IDENT, lexer.SELF:
 		left = p.parseIdentifierExpression()
 
 	case lexer.INT:

@@ -1,0 +1,364 @@
+=============================================================================================================================================================================================
+Foreign Function Interface
+==========================
+
+The Foreign Function Interface defines how Sec interacts with code and data outside the Sec language.
+
+FFI boundaries must be explicit.
+
+## Supported calling conventions
+
+Sec supports the following extern declarations:
+
+extern "Sec"
+extern "C"
+extern "system"
+
+extern "Sec" uses the Sec ABI.
+
+extern "C" uses the target C ABI.
+
+extern "system" uses the platform system ABI.
+
+The compiler must reject unknown calling-convention strings.
+
+## Declarations
+
+An extern declaration contains a function signature without a Sec function body.
+
+Example:
+
+extern "C" fn write(
+fd: int32,
+buffer: RawPtr[byte],
+length: uint
+) int64
+
+Extern declarations must use ABI-compatible parameter and return types.
+
+The compiler must validate the ABI compatibility of every extern signature.
+
+## Unsafe calls
+
+Calling an extern function is unsafe unless the declaration or generated wrapper proves that the operation is safe.
+
+Direct calls to extern functions must occur inside unsafe.
+
+Example:
+
+unsafe {
+let result := write(fd, buffer, length)
+}
+
+Normal Sec code should call a validated Sec wrapper rather than a raw extern declaration.
+
+## Extern wrappers
+
+An extern wrapper is a Sec function that:
+
+* calls an extern function
+* validates foreign results
+* converts foreign errors into typed Sec errors
+* converts nullable values into Option or Result
+* establishes ownership semantics
+* limits RawPtr exposure
+* exposes safe Sec types where possible
+
+Example:
+
+extern "C" fn c_open(
+path: RawPtr[byte],
+flags: int32
+) int32
+
+fn Open(path: string) Result[File, IOError] {
+let rawPath := try path.ToCString()
+
+```
+let result: int32
+
+unsafe {
+    result = c_open(rawPath.Ptr(), 0)
+}
+
+if result < 0 {
+    return Err(DecodeIOError(result))
+}
+
+return Ok(File.FromHandle(result))
+```
+
+}
+
+The wrapper body follows all ordinary Sec rules.
+
+## Null
+
+The null literal is permitted only:
+
+* in extern declarations where required by the foreign ABI
+* inside extern wrapper implementations
+* in compiler-generated FFI glue
+
+null must not escape the FFI boundary.
+
+Nullable foreign pointers must be converted immediately into:
+
+* Option[RawPtr[T]]
+* Result[RawPtr[T], E]
+* another explicit validated wrapper type
+
+Example:
+
+extern "C" fn find_device() RawPtr[Device]
+
+fn FindDevice() Option[DeviceRef] {
+let raw: RawPtr[Device]
+
+```
+unsafe {
+    raw = find_device()
+}
+
+if raw == null {
+    return None
+}
+
+return Some(DeviceRef.FromRaw(raw))
+```
+
+}
+
+The compiler must reject null in ordinary Sec functions that are not extern wrappers.
+
+## ABI-compatible types
+
+The compiler must define ABI compatibility for:
+
+* fixed-width integers
+* floating-point types
+* RawPtr[T]
+* explicitly laid-out structs
+* explicitly represented enums
+* explicitly represented unions
+* function pointers when supported
+
+The following types must not cross an FFI boundary directly unless an explicit ABI representation exists:
+
+* string
+* slices
+* Vec[T]
+* Map[K, V]
+* Set[T]
+* Box[T]
+* interface values
+* closures
+* implementation-defined enums
+* implementation-defined unions
+* types with hidden ownership state
+
+These types require wrappers or ABI-specific representations.
+
+## Integer types
+
+Extern declarations should prefer fixed-width integer types.
+
+The target-sized types int and uint may be used only when the foreign ABI explicitly uses pointer-sized integers.
+
+The compiler must validate target width during lowering.
+
+## Structs
+
+A struct used directly in FFI must have an explicit foreign-compatible layout.
+
+The compiler must validate:
+
+* field order
+* field alignment
+* field size
+* total size
+* padding
+* nested field compatibility
+
+Implicitly laid-out Sec structs must not cross an FFI boundary.
+
+## Enums
+
+An enum used directly in FFI must declare an explicit integer representation.
+
+Example:
+
+type OpenMode enum int32 {
+Read = 0
+Write = 1
+}
+
+The compiler must validate that every enum value is representable by the declared ABI type.
+
+## Unions
+
+A Sec tagged union must not cross an FFI boundary unless an explicit foreign layout is declared.
+
+C unions and platform unions require dedicated wrapper types and unsafe access.
+
+## Strings
+
+Sec string is not ABI-compatible with C strings.
+
+Conversion must be explicit.
+
+Wrappers must define:
+
+* encoding
+* termination
+* ownership
+* allocation
+* lifetime
+
+CString conversion must ensure a terminating zero byte and must define behavior for embedded zero bytes.
+
+## Callbacks
+
+Callbacks require an explicit extern-compatible function type.
+
+A closure may not be passed directly as a callback unless the compiler generates:
+
+* an extern-compatible trampoline
+* a stable context pointer
+* explicit context ownership rules
+* explicit lifetime validation
+
+Callback support may be postponed until closures and ownership are fully implemented.
+
+## Ownership across FFI
+
+Every foreign resource must define ownership behavior.
+
+An extern declaration or wrapper must establish whether a value is:
+
+* borrowed for the duration of the call
+* borrowed until another foreign operation
+* transferred to foreign code
+* returned as owned by Sec
+* returned as foreign-owned
+* manually released
+* permanently static
+
+The compiler must not infer ownership from RawPtr.
+
+Ownership information should be represented by wrapper types and function contracts.
+
+Memory returned by foreign code must not be freed by Sec unless the matching foreign deallocator is explicitly defined.
+
+## Errors
+
+Foreign error conventions must be converted into typed Sec errors by wrappers.
+
+Supported foreign conventions may include:
+
+* negative integer results
+* null pointer results
+* status codes
+* errno-style thread-local state
+* platform error APIs
+* out parameters
+
+Raw foreign errors must not be treated as Result automatically unless a wrapper defines the conversion.
+
+## Compiler-generated wrappers
+
+The compiler may generate FFI wrappers from explicit declarations or annotations.
+
+Generated wrappers must not invent ownership, nullability or error semantics.
+
+Required information must be explicitly declared.
+
+Generated wrappers must produce ordinary typed Sec functions and remain inspectable in compiler diagnostics or generated output.
+
+## Name resolution and linking
+
+Extern declarations may specify a foreign symbol name when it differs from the Sec declaration name.
+
+Example:
+
+@link_name("open")
+extern "C" fn c_open(
+path: RawPtr[byte],
+flags: int32
+) int32
+
+The compiler must record:
+
+* calling convention
+* foreign symbol name
+* library or object dependency when specified
+* target restrictions
+* ABI type information
+
+## Platform restrictions
+
+An extern declaration may be restricted to supported targets.
+
+The compiler must reject compilation when:
+
+* the calling convention is unavailable
+* the symbol is unavailable for the selected target
+* the signature is not representable by the target ABI
+* required platform metadata is missing
+
+FFI validation must occur before LLVM or target code generation.
+
+## Diagnostics
+
+FFI diagnostics must identify:
+
+* the incompatible parameter or return type
+* the selected calling convention
+* the target ABI
+* missing unsafe context
+* invalid null usage
+* missing ownership information where required
+* invalid foreign layout
+* unsupported target
+
+The compiler should recommend creating a Sec wrapper when raw foreign types are exposed outside the FFI boundary.
+
+=====================================================================
+Current Implementation Status
+=====================================================================
+
+Implemented:
+
+* extern function declarations:
+
+```
+extern "C" fn write(fd: int32, buffer: RawPtr[byte], length: uint) int64
+```
+
+* supported ABI strings:
+
+```
+extern "Sec"
+extern "C"
+extern "system"
+```
+
+* unknown ABI strings are rejected.
+* extern declarations have signatures only and no Sec body.
+* direct calls to extern functions require an unsafe context.
+* first-pass ABI compatibility rejects non-ABI-compatible types such as
+  `string` and slices in extern signatures.
+* `RawPtr[T]`, integer types, floating-point types and `void` are accepted in
+  extern signatures.
+
+Not implemented yet:
+
+* `@link_name`
+* library/object dependency metadata
+* null literal handling
+* extern wrapper annotations
+* ownership contracts across FFI
+* target-specific ABI width validation
+* explicit foreign-compatible struct layout validation
+* callback/trampoline support
+* lowering/linking metadata

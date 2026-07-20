@@ -23,11 +23,11 @@ func (a *Analyzer) typeFromDeclarationWithName(name string, stmt *ast.TypeDeclSt
 
 	if stmt.BaseType != nil && stmt.BaseType.Unit != "" {
 		typ.Unit = stmt.BaseType.Unit
-		typ.Dimension = parseDimension(stmt.BaseType.Unit)
+		typ.Dimension = a.parseDimension(stmt.BaseType.Unit)
 	}
 	if stmt.AssignedType != nil && stmt.AssignedType.Unit != "" {
 		typ.Unit = stmt.AssignedType.Unit
-		typ.Dimension = parseDimension(stmt.AssignedType.Unit)
+		typ.Dimension = a.parseDimension(stmt.AssignedType.Unit)
 	}
 
 	return applyRangeContract(typ, stmt.Contract)

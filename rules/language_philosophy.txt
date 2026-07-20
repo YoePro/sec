@@ -1,0 +1,45 @@
+=============================================================================================================================================================================================
+Language Philosophy
+=============================================================================================================================================================================================
+
+The primary goal of Sec is to provide a language that is simple to read, simple to write and predictable to reason about.
+
+Complexity belongs in the compiler, not in application code.
+
+Language features should be designed so that common programming tasks require little ceremony while still allowing the compiler to perform deep static analysis.
+
+The compiler should detect incorrect programs whenever possible and provide diagnostics that explain both the problem and the reasoning behind it.
+
+Safety is achieved primarily through deterministic ownership, lexical scopes and compile-time analysis rather than runtime checks or garbage collection.
+
+Sec intentionally favors clear ownership over complex lifetime annotations. The ownership model should remain understandable without requiring users to understand compiler internals.
+
+The memory model is inspired by the practical simplicity of Vale rather than highly academic borrow systems. Borrow checking should prevent incorrect programs without forcing unnecessary annotations or exposing complex implementation details to the programmer.
+
+Whenever several language designs are technically possible, the preferred solution is the one that:
+
+- reduces cognitive load
+- improves readability
+- improves maintainability
+- increases compile-time verification
+- avoids hidden runtime costs
+- keeps generated code predictable
+- preserves deterministic behavior
+
+The compiler is expected to perform extensive analysis, including but not limited to:
+
+- type checking
+- ownership analysis
+- escape analysis
+- stack analysis
+- recursion analysis
+- ISR analysis
+- control-flow analysis
+- compile-time evaluation
+- platform validation
+
+These analyses are implementation details of the compiler and should not unnecessarily influence the language syntax.
+
+Sec targets both hosted operating systems and embedded systems. Language features should therefore avoid requiring a runtime whenever practical.
+
+LLVM, MLIR and other backend technologies are implementation details. The language specification is independent of the backend used by the compiler.

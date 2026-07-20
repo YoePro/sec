@@ -531,6 +531,154 @@ type Speed decimal<m/s>
 	}
 }
 
+func TestUnitDeclarationRegistersSemanticUnit(t *testing.T) {
+	input := `
+module main
+
+unit Hertz decimal<Hz>
+unit Packet uint other
+type Frequency decimal<hertz>
+
+let hz: Hertz := 10
+let f: Frequency := 10
+let p: Packet := 3u
+`
+
+	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+
+	hertz := analyzer.types["Hertz"]
+	if !hertz.Named || hertz.Kind != DecimalType || hertz.Unit != "Hertz" {
+		t.Fatalf("wrong Hertz type: %+v", hertz)
+	}
+	if !hertz.Dimension.Equal(analyzer.types["Frequency"].Dimension) {
+		t.Fatalf("Hertz and hertz should share physical dimension. got=%+v want=%+v", hertz.Dimension, analyzer.types["Frequency"].Dimension)
+	}
+
+	if unit := analyzer.units["Hertz"]; unit.Category != PhysicalUnit {
+		t.Fatalf("Hertz should be a physical unit. got=%q", unit.Category)
+	}
+
+	packet := analyzer.types["Packet"]
+	if !packet.Named || packet.Kind != UintType || packet.Unit != "Packet" {
+		t.Fatalf("wrong Packet type: %+v", packet)
+	}
+	if unit := analyzer.units["Packet"]; unit.Category != OtherUnit {
+		t.Fatalf("Packet should be an other unit. got=%q", unit.Category)
+	}
+	if packet.Dimension.Base["Packet"] != 1 {
+		t.Fatalf("Packet should keep semantic base dimension. got=%+v", packet.Dimension)
+	}
+}
+
+func TestUnitDeclarationRejectsNonNumericStorage(t *testing.T) {
+	input := `
+module main
+
+unit Bad string
+`
+
+	errors := analyzeSourceRaw(t, input)
+
+	expected := []string{
+		"unit Bad must use numeric storage, got string at 4:10",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestRegisterDeclarationAndAddressedInstance(t *testing.T) {
+	input := `
+module main
+
+unit rpm uint physical
+
+type MotorProtocol register[8] {
+	Speed: bit[4]<rpm>,
+	Enabled: bit,
+	_: bit[3],
+}
+
+@address(0x40021000)
+let mut motorProtocol: MotorProtocol
+
+fn StartMotor(speed: rpm) void {
+	motorProtocol.Speed = speed
+	motorProtocol.Enabled = true
+}
+`
+
+	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+
+	register := analyzer.types["MotorProtocol"]
+	if register.Kind != RegisterType || register.RegisterWidth != 8 {
+		t.Fatalf("wrong register type: %+v", register)
+	}
+	if len(register.RegisterFields) != 3 || register.RegisterFields[0].Name != "Speed" || register.RegisterFields[0].Width != 4 {
+		t.Fatalf("wrong register fields: %+v", register.RegisterFields)
+	}
+	symbol := analyzer.symbols["motorProtocol"]
+	if !symbol.Addressed || !symbol.Volatile || symbol.Address != "0x40021000" {
+		t.Fatalf("wrong addressed symbol: %+v", symbol)
+	}
+}
+
+func TestRegisterValidationErrors(t *testing.T) {
+	input := `
+module main
+
+unit rpm uint physical
+
+type InvalidProtocol register[8] {
+	Speed: bit[4],
+	Enabled: bit,
+	Mode: bit[2],
+}
+
+type BadField register[8] {
+	Value: bit[0],
+	_: bit[8],
+}
+
+type MotorStatus register[8] {
+	Running: bit,
+	Fault: bit,
+	_: bit[6],
+}
+
+type MotorProtocol register[8] {
+	Speed: bit[4]<rpm>,
+	Enabled: bit,
+	_: bit[3],
+}
+
+@address(0x40021000)
+let motorStatus: MotorStatus
+
+@address(0x40021001)
+let mut motorProtocol: MotorProtocol
+
+fn Test() void {
+	let reserved := motorStatus._
+	motorStatus.Running = true
+	motorProtocol.Speed = 19
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+
+	expected := []string{
+		"register InvalidProtocol declares 8 bits but its fields occupy 7 bits at 6:22",
+		"register field BadField.Value width must be positive at 13:2",
+		"reserved register field _ cannot be accessed at 36:30",
+		"cannot assign to field Running on read-only addressed register motorStatus at 37:14",
+		"value 19 overflows rpm at 38:24",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
 func TestUnitAliasTypesAreNominal(t *testing.T) {
 	input := `
 type Money decimal<SEK>
@@ -1395,6 +1543,25 @@ impl Vehicle {
 	property TopSpeed: Speed {
 		get {
 			return _speed
+		}
+	}
+}
+`
+
+	errors := analyzeSource(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestPropertyGetterCanReturnSelf(t *testing.T) {
+	input := `
+type Counter struct {
+	value: int,
+}
+
+impl Counter {
+	property Whole: Counter {
+		get {
+			return self
 		}
 	}
 }
@@ -3941,6 +4108,76 @@ fn Invalid() void {
 
 	expected := []string{
 		"asm is only allowed inside unsafe at 12:2",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestExternFunctionRequiresUnsafeCall(t *testing.T) {
+	input := `
+module main
+
+extern "C" fn write(fd: int32, buffer: RawPtr[byte], length: uint) int64
+
+fn Bad(buffer: RawPtr[byte]) void {
+	let result := write(1, buffer, 4u)
+}
+
+fn Good(buffer: RawPtr[byte]) void {
+	unsafe {
+		let result := write(1, buffer, 4u)
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+
+	expected := []string{
+		"calling extern function write requires unsafe at 7:16",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestExternFunctionValidation(t *testing.T) {
+	input := `
+module main
+
+extern "Rust" fn badABI(value: int32) int32
+extern "C" fn badParam(value: string) int32
+extern "C" fn badReturn() string
+`
+
+	errors := analyzeSourceRaw(t, input)
+
+	expected := []string{
+		"unknown extern ABI \"Rust\" at 4:1",
+		"extern C parameter 1 value has non-ABI-compatible type string at 5:24",
+		"extern C function badReturn has non-ABI-compatible return type string at 6:15",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestRawPtrConversionRequiresUnsafe(t *testing.T) {
+	input := `
+module main
+
+fn Bad(address: uint) RawPtr[byte] {
+	return RawPtr[byte](address)
+}
+
+fn Good(address: uint) RawPtr[byte] {
+	unsafe {
+		return RawPtr[byte](address)
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+
+	expected := []string{
+		"conversion involving RawPtr requires unsafe at 5:9",
 	}
 
 	assertSemaErrors(t, errors, expected)

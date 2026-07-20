@@ -27,6 +27,7 @@ const (
 	DISCARD     TokenType = "DISCARD"
 	ELSE        TokenType = "ELSE"
 	ENUM        TokenType = "ENUM"
+	EXTERN      TokenType = "EXTERN"
 	FALLTHROUGH TokenType = "FALLTHROUGH"
 	FALSE       TokenType = "FALSE"
 	FN          TokenType = "FN"
@@ -47,6 +48,7 @@ const (
 	RETURN      TokenType = "RETURN"
 	REQUIRE     TokenType = "REQUIRE"
 	SEC         TokenType = "SEC"
+	SELF        TokenType = "SELF"
 	SET         TokenType = "SET"
 	SPAWN       TokenType = "SPAWN"
 	STRUCT      TokenType = "STRUCT"
@@ -54,6 +56,7 @@ const (
 	TRUE        TokenType = "TRUE"
 	TRY         TokenType = "TRY"
 	TYPE        TokenType = "TYPE"
+	UNIT        TokenType = "UNIT"
 	UNION       TokenType = "UNION"
 	UNSAFE      TokenType = "UNSAFE"
 	WHERE       TokenType = "WHERE"
@@ -673,6 +676,8 @@ func lookupIdent(s string) TokenType {
 		return FALSE
 	case "fallthrough":
 		return FALLTHROUGH
+	case "extern":
+		return EXTERN
 	case "fn":
 		return FN
 	case "for":
@@ -711,6 +716,8 @@ func lookupIdent(s string) TokenType {
 		return REQUIRE
 	case "sec":
 		return SEC
+	case "self":
+		return SELF
 	case "set":
 		return SET
 	case "spawn":
@@ -721,6 +728,8 @@ func lookupIdent(s string) TokenType {
 		return SWITCH
 	case "type":
 		return TYPE
+	case "unit":
+		return UNIT
 	case "true":
 		return TRUE
 	case "try":

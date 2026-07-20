@@ -1,0 +1,223 @@
+=============================================================================================================================================================================================
+Raw Pointers
+============
+
+RawPtr represents an unchecked memory address.
+
+RawPtr is intended for:
+
+* FFI
+* operating-system interfaces
+* hardware access
+* allocator implementation
+* low-level runtime-free platform code
+* explicitly unsafe memory operations
+
+RawPtr is not a reference.
+
+RawPtr does not participate in ownership.
+
+RawPtr does not extend the lifetime of a value.
+
+RawPtr validity is not guaranteed by the compiler.
+
+## Type syntax
+
+Raw pointers use the generic type:
+
+RawPtr[T]
+
+Examples:
+
+let address: RawPtr[byte]
+let handle: RawPtr[void]
+
+RawPtr[void] represents an untyped foreign address.
+
+RawPtr must not use special pointer syntax such as:
+
+*T
+unsafe *T
+
+## Unsafe context
+
+Creating, dereferencing, converting or performing arithmetic on RawPtr requires an unsafe context unless a specific operation is defined as safe.
+
+Example:
+
+unsafe {
+let value := address.Read()
+}
+
+Unsafe does not disable normal semantic analysis.
+
+Inside unsafe code, the compiler must still validate:
+
+* type correctness
+* scope
+* visibility
+* mutability
+* Result handling
+* control flow
+* ownership of normal values
+* borrowing of normal references
+
+## Null
+
+RawPtr may represent a null address only at an FFI boundary or inside an extern wrapper.
+
+The null literal is not valid in ordinary Sec code.
+
+Code outside the extern boundary must convert nullable foreign pointers into an explicit Sec representation such as:
+
+* Option[RawPtr[T]]
+* Result[RawPtr[T], E]
+* a validated wrapper type
+
+## Construction
+
+RawPtr may be created from:
+
+* an extern function result
+* an explicit unsafe reference conversion
+* an explicit unsafe integer conversion
+* a platform or hardware address primitive
+* another compatible RawPtr conversion
+
+RawPtr must never be created implicitly.
+
+## Reference conversion
+
+Conversion from ref T or ref mut T to RawPtr[T] requires unsafe.
+
+The resulting RawPtr does not preserve borrow guarantees after the original reference becomes invalid.
+
+Conversion from RawPtr[T] to ref T or ref mut T requires unsafe and must explicitly assert that:
+
+* the address is non-null
+* the address is correctly aligned
+* the memory contains a valid T
+* the memory remains valid for the resulting reference lifetime
+* mutable access is exclusive for ref mut
+
+The compiler cannot prove these assertions from the RawPtr alone.
+
+## Dereferencing
+
+Dereferencing RawPtr requires unsafe.
+
+A dereference is invalid at runtime when the address is:
+
+* null
+* dangling
+* incorrectly aligned
+* outside an accessible memory region
+* incompatible with the requested type
+
+The language does not guarantee recovery from invalid raw-pointer access.
+
+Raw-pointer dereference must not silently create ownership.
+
+## Pointer arithmetic
+
+Pointer arithmetic requires unsafe.
+
+Arithmetic is expressed through explicit operations rather than general numeric operators.
+
+Preferred operations:
+
+* Offset(elements: int) RawPtr[T]
+* AddBytes(bytes: int) RawPtr[byte]
+* Difference(other: RawPtr[T]) int
+
+Offset is measured in elements of T.
+
+Byte-based arithmetic should operate on RawPtr[byte].
+
+Arithmetic overflow or address wraparound is invalid.
+
+The initial implementation may reject pointer arithmetic until target layout information is available.
+
+## Comparison
+
+RawPtr values may be compared for equality.
+
+Equality compares addresses.
+
+Ordering comparisons are not guaranteed to be meaningful and should be rejected unless explicitly provided by a platform-specific API.
+
+## Conversion to integers
+
+RawPtr may be explicitly converted to uint only inside unsafe.
+
+uint may be explicitly converted to RawPtr[T] only inside unsafe.
+
+The conversion must preserve the target pointer width.
+
+The compiler must reject compile-time constants that cannot be represented by the target pointer size.
+
+## Storage and copying
+
+RawPtr is a copyable address value.
+
+Copying RawPtr does not copy or transfer the pointed-to memory.
+
+RawPtr may be stored in structs, arrays, unions and generic types.
+
+Types containing RawPtr are not automatically safe abstractions.
+
+## Ownership
+
+RawPtr never owns memory by default.
+
+Memory ownership must be represented separately by:
+
+* a wrapper type
+* an allocator result
+* an extern ownership contract
+* an explicit resource type
+
+The compiler must never free memory solely because a RawPtr leaves scope.
+
+RawPtr must never implicitly convert into Box[T], Vec[T], string, slice or another owning type.
+
+## Platform addresses
+
+Fixed hardware addresses may be represented through dedicated language constructs such as @address rather than ordinary integer-to-RawPtr conversion.
+
+Register access rules are defined in registers.txt.
+
+## Diagnostics
+
+Diagnostics involving RawPtr must state that the operation requires unsafe and identify the exact unsafe operation.
+
+The compiler should distinguish between:
+
+* missing unsafe context
+* invalid pointer type
+* unsupported pointer arithmetic
+* invalid conversion
+* target-width overflow
+
+=====================================================================
+Current Implementation Status
+=====================================================================
+
+Implemented:
+
+* `RawPtr[T]` is registered as a builtin generic type.
+* `RawPtr[T]` can be used in function parameters, return types, locals and
+  extern declarations.
+* Explicit conversions involving `RawPtr` require an unsafe context.
+* Basic explicit conversions are recognized between `uint`, `RawPtr[T]` and
+  compatible `RawPtr` values.
+* `RawPtr` is treated as an address value and is not an owner.
+
+Not implemented yet:
+
+* null literal rules
+* RawPtr dereference operations
+* RawPtr pointer arithmetic operations
+* target pointer-width overflow validation
+* RawPtr-to-reference validation beyond unsafe gating
+* platform-specific address primitives beyond `@address`

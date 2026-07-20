@@ -1,124 +1,233 @@
-# SEC COMPILER TODO
+SEC COMPILER ROADMAP
 
-## Current status
+1. Current Status
 
 The main control-flow constructs have been implemented and tested:
 
-* if
-* for
-* while
-* switch
-* match
+if
+
+for
+
+while
+
+switch
+
+match
 
 Enum declarations have also been implemented and tested, including:
 
-* implicit and explicit underlying integer types
-* automatic numeric values
-* explicit numeric values
-* aliases
-* iota
-* enum namespaces
-* nested enums
-* explicit enum/integer conversions
-* enum type checking
-* match and switch interaction
+implicit and explicit underlying integer types
 
-defer is currently being implemented and tested.
+automatic numeric values
 
-The defer tests have revealed several parser, AST and semantic-analysis issues.
-These should be fixed before moving on to another major language area.
+explicit numeric values
 
-The purpose of this file is to keep track of the recommended order for the
-remaining parser, AST, semantic-analysis and later code-generation work.
+aliases
 
-======================================================================
+iota
 
-1. Finish defer
-   ======================================================================
+enum namespaces
+
+nested enums
+
+explicit enum/integer conversions
+
+enum type checking
+
+match and switch interaction
+
+defer has been implemented and tested in parser, AST and semantic analysis.
+Both defer_valid.sec and defer_invalid.sec now behave as expected.
+
+Implemented defer checks include:
+
+block-only defer syntax
+
+function-scope validation
+
+invalid return, break, continue and fallthrough inside defer
+
+nested defer rejection
+
+try propagation rejection inside defer
+
+unhandled Result rejection inside defer
+
+local error handling through match
+
+definite-assignment checks for deferred reads
+
+loop defer warnings
+
+superfluous defer return warnings
+
+Defer code generation is still future work. In particular, the backend still
+needs actual LIFO cleanup emission on all function exits, explicit returns,
+implicit void returns and Result propagation paths.
+
+The purpose of this document is to keep track of the recommended order for the remaining parser, AST, semantic-analysis, later code-generation work, and advanced language features.
+
+2. Immediate Next Action
+
+Current immediate work:
+Keep parser and semantic-analysis tests green while updating the roadmap to
+match the implementation that already exists.
+
+Already completed after the older defer roadmap entry:
+
+rules/unions.txt
+
+union_valid.sec
+
+union_invalid.sec
+
+general union parsing and semantic analysis
+
+generic unions and payload construction
+
+register rule draft and first parser/semantic-analysis implementation
+
+project init command
+
+Recommended next planning step:
+Re-evaluate the remaining roadmap order. The old "finish defer, then unions"
+sequence is complete for parser and semantic analysis, but defer still needs
+backend/lowering work later.
+
+Note: Do not begin spawn and await yet. Their behavior depends on ownership, borrowing, closures, Result handling, defer, task lifetime and runtime design.
+
+3. Core Implementation Phases (1-15)
+
+3.1. Finish defer
 
 Complete the implementation of defer before starting another major area.
 
 Required behavior:
 
-* defer uses block syntax only
-* defer is function-scoped
-* defer executes on normal function exit
-* defer executes on explicit return
-* defer executes on implicit void return
-* defer executes before Result error propagation
-* multiple defer blocks execute in LIFO order
-* defer inside conditions is registered only when reached
-* defer inside loops is registered once for every execution
-* return expressions are evaluated before defer blocks execute
-* the original return value or propagated error must be preserved
-* variables are read when the defer block executes
-* normal ownership and borrowing rules apply
-* return, break, continue and fallthrough are invalid inside defer
-* nested defer is invalid
-* errors inside defer must be handled locally
-* defer inside loops should produce a warning
+defer uses block syntax only
+
+defer is function-scoped
+
+defer executes on normal function exit
+
+defer executes on explicit return
+
+defer executes on implicit void return
+
+defer executes before Result error propagation
+
+multiple defer blocks execute in LIFO order
+
+defer inside conditions is registered only when reached
+
+defer inside loops is registered once for every execution
+
+return expressions are evaluated before defer blocks execute
+
+the original return value or propagated error must be preserved
+
+variables are read when the defer block executes
+
+normal ownership and borrowing rules apply
+
+return, break, continue and fallthrough are invalid inside defer
+
+nested defer is invalid
+
+errors inside defer must be handled locally
+
+defer inside loops should produce a warning
 
 Implementation work may affect:
 
-* parser statement handling
-* AST defer node
-* semantic context for defer blocks
-* control-flow analysis
-* definite-assignment analysis
-* return-path analysis
-* Result propagation
-* code generation for multiple exit paths
-* future ownership and borrow tracking
+parser statement handling
 
-Do not move on until defer_valid.sec passes and defer_invalid.sec produces the
-expected errors and warnings without unrelated diagnostics.
+AST defer node
 
-======================================================================
-2. Union declarations
-=====================
+semantic context for defer blocks
 
-Implement general union types.
+control-flow analysis
 
-This should be the next major language area after defer.
+definite-assignment analysis
+
+return-path analysis
+
+Result propagation
+
+code generation for multiple exit paths
+
+future ownership and borrow tracking
+
+Do not move on until defer_valid.sec passes and defer_invalid.sec produces the expected errors and warnings without unrelated diagnostics.
+
+3.2. Union declarations
+
+Implement general union types. This should be the next major language area after defer.
 
 Union types are already conceptually used by:
 
-* Result[T, E]
-* Option[T]
-* match
-* Ok(...)
-* Err(...)
-* Some(...)
-* None
+Result[T, E]
+
+Option[T]
+
+match
+
+Ok(...)
+
+Err(...)
+
+Some(...)
+
+None
 
 Required syntax and behavior must be defined for:
 
-* simple type unions
-* named variants
-* variants without payloads
-* variants with payloads
-* variants with struct-like named fields
-* generic unions
-* nested unions
-* union construction
-* union namespaces
-* variant lookup
-* duplicate variant names
-* payload type checking
-* match destructuring
-* match exhaustiveness
-* unreachable match branches
-* union equality
-* copying and moving union values
-* default values
-* recursive unions
-* memory layout
-* maximum alignment
-* active variant tags
+simple type unions
+
+named variants
+
+variants without payloads
+
+variants with payloads
+
+variants with struct-like named fields
+
+generic unions
+
+nested unions
+
+union construction
+
+union namespaces
+
+variant lookup
+
+duplicate variant names
+
+payload type checking
+
+match destructuring
+
+match exhaustiveness
+
+unreachable match branches
+
+union equality
+
+copying and moving union values
+
+default values
+
+recursive unions
+
+memory layout
+
+maximum alignment
+
+active variant tags
 
 Examples to support eventually:
 
-```
 type Number union {
     int
     decimal
@@ -128,7 +237,6 @@ type Shape union {
     Circle {
         Radius: decimal
     }
-
     Rectangle {
         Width: decimal
         Height: decimal
@@ -136,286 +244,394 @@ type Shape union {
 }
 
 let number := Number(42)
-
 let shape := Shape.Circle {
     Radius: 10
 }
-```
+
 
 Questions to settle before implementation:
 
-* Are anonymous type members allowed together with named variants?
-* Can two variants contain the same payload type?
-* Does every named variant always have a unique tag?
-* Are empty unions allowed?
-* Does a union have an implicit default value?
-* Are recursive unions allowed only through Box, ref or another indirection?
-* How are generic union variants represented in the AST?
-* How are union values converted or constructed from member values?
-* Can union construction be inferred from assignment context?
-* Are union variants values, constructors or both?
+Are anonymous type members allowed together with named variants?
+
+Can two variants contain the same payload type?
+
+Does every named variant always have a unique tag?
+
+Are empty unions allowed?
+
+Does a union have an implicit default value?
+
+Are recursive unions allowed only through Box, ref or another indirection?
+
+How are generic union variants represented in the AST?
+
+How are union values converted or constructed from member values?
+
+Can union construction be inferred from assignment context?
+
+Are union variants values, constructors or both?
 
 Create:
 
-* rules/unions.txt
-* union_valid.sec
-* union_invalid.sec
+rules/unions.txt
 
-======================================================================
-3. Constant-expression evaluation
-=================================
+union_valid.sec
 
-Create one shared compile-time constant evaluator.
+union_invalid.sec
 
-Do not keep separate constant-expression logic only for enums, array lengths,
-ranges or other individual features.
+3.3. Constant-expression evaluation
+
+Create one shared compile-time constant evaluator. Do not keep separate constant-expression logic only for enums, array lengths, ranges or other individual features.
 
 The evaluator should eventually support:
 
-* integer literals
-* unsigned integer literals
-* unary plus
-* unary minus
-* bitwise complement
-* addition
-* subtraction
-* multiplication
-* division
-* remainder
-* shifts
-* bitwise and
-* bitwise or
-* bitwise xor
-* parentheses
-* explicit casts
-* named constants
-* enum constants
-* iota
-* constant references
-* constant dependency resolution
-* overflow detection
-* division by zero detection
-* invalid shift detection
-* target-type representability checks
+integer literals
+
+unsigned integer literals
+
+unary plus
+
+unary minus
+
+bitwise complement
+
+addition
+
+subtraction
+
+multiplication
+
+division
+
+remainder
+
+shifts
+
+bitwise and
+
+bitwise or
+
+bitwise xor
+
+parentheses
+
+explicit casts
+
+named constants
+
+enum constants
+
+iota
+
+constant references
+
+constant dependency resolution
+
+overflow detection
+
+division by zero detection
+
+invalid shift detection
+
+target-type representability checks
 
 The evaluator should reject:
 
-* runtime variables
-* non-constant function calls
-* mutable values
-* allocations
-* property access requiring runtime execution
-* non-constant conversions
-* circular constant dependencies
+runtime variables
+
+non-constant function calls
+
+mutable values
+
+allocations
+
+property access requiring runtime execution
+
+non-constant conversions
+
+circular constant dependencies
 
 This evaluator should later be reused by:
 
-* enum initializers
-* array lengths
-* range-constrained types
-* switch case values
-* match constant patterns
-* compiler directives
-* build conditions
-* bit flags
-* possible future static assertions
+enum initializers
+
+array lengths
+
+range-constrained types
+
+switch case values
+
+match constant patterns
+
+compiler directives
+
+build conditions
+
+bit flags
+
+possible future static assertions
 
 Implementation concerns:
 
-* preserve exact source positions
-* avoid duplicate diagnostics
-* report the original invalid operation
-* preserve untyped literal precision until a target type is known
-* distinguish evaluation failure from type mismatch
-* avoid silently wrapping on overflow
+preserve exact source positions
 
-======================================================================
-4. Complete impl, methods and properties
-========================================
+avoid duplicate diagnostics
+
+report the original invalid operation
+
+preserve untyped literal precision until a target type is known
+
+distinguish evaluation failure from type mismatch
+
+avoid silently wrapping on overflow
+
+3.4. Complete impl, methods and properties
 
 Finish the full semantic model for impl blocks.
 
 Required work includes:
 
-* register impl blocks
-* resolve the target type
-* reject impl for unknown types
-* reject invalid impl targets
-* detect duplicate impl blocks where forbidden
-* register all method signatures before checking method bodies
-* register properties before checking property bodies
-* register nested types before checking member bodies
-* allow forward references between members
-* resolve implicit receiver access
-* resolve explicit receiver access if supported
-* check receiver mutability
-* check method visibility
-* check method name collisions
-* check property name collisions
-* check nested type name collisions
-* check field/property/method conflicts
-* check static or type-level methods
-* check method calls on values
-* check method calls on references
-* check method calls on mutable references
-* decide whether automatic borrowing is allowed
+register impl blocks
+
+resolve the target type
+
+reject impl for unknown types
+
+reject invalid impl targets
+
+detect duplicate impl blocks where forbidden
+
+register all method signatures before checking method bodies
+
+register properties before checking property bodies
+
+register nested types before checking member bodies
+
+allow forward references between members
+
+resolve implicit receiver access
+
+resolve explicit receiver access if supported
+
+check receiver mutability
+
+check method visibility
+
+check method name collisions
+
+check property name collisions
+
+check nested type name collisions
+
+check field/property/method conflicts
+
+check static or type-level methods
+
+check method calls on values
+
+check method calls on references
+
+check method calls on mutable references
+
+decide whether automatic borrowing is allowed
 
 Properties require:
 
-* getter validation
-* setter validation
-* fallible setter validation
-* read-only property enforcement
-* getter return-path checking
-* setter parameter typing
-* property assignment typing
-* try-required assignment for fallible setters
-* visibility rules
-* conflicts with fields and methods
-* restrictions on side effects if any
-* code generation for property reads and writes
+getter validation
+
+setter validation
+
+fallible setter validation
+
+read-only property enforcement
+
+getter return-path checking
+
+setter parameter typing
+
+property assignment typing
+
+try-required assignment for fallible setters
+
+visibility rules
+
+conflicts with fields and methods
+
+restrictions on side effects if any
+
+code generation for property reads and writes
 
 Relevant syntax:
 
-```
 impl User {
     fn NameLength() int {
         return Name.len
     }
-
     property DisplayName string {
         get {
             return FirstName + " " + LastName
         }
     }
-
     property Name string {
         get {
             return _name
         }
-
         set value {
             _name = value
         }
     }
-
     property Port Port {
         get {
             return _port
         }
-
         try set value {
             _port = try Port(value)
         }
     }
 }
-```
+
 
 Create or update:
 
-* rules/impl.txt
-* rules/methods.txt
-* rules/properties.txt
-* impl_valid.sec
-* impl_invalid.sec
-* methods_valid.sec
-* methods_invalid.sec
-* properties_valid.sec
-* properties_invalid.sec
+rules/impl.txt
 
-======================================================================
-5. Arrays, slices and indexing
-==============================
+rules/methods.txt
 
-Complete collection syntax and semantic checking for core built-in collection
-types.
+rules/properties.txt
+
+impl_valid.sec
+
+impl_invalid.sec
+
+methods_valid.sec
+
+methods_invalid.sec
+
+properties_valid.sec
+
+properties_invalid.sec
+
+3.5. Arrays, slices and indexing
+
+Complete collection syntax and semantic checking for core built-in collection types.
 
 Core types:
 
-```
 [N]T
 []T
-```
+
 
 Later library types:
 
-```
 Vec[T]
 Map[K, V]
 Set[T]
-```
+
 
 Required parser and AST work:
 
-* array type syntax
-* slice type syntax
-* array literals
-* slice literals if supported
-* indexing expressions
-* slicing expressions
-* range expressions inside slicing
-* assignment through indexing
-* member access such as len and ptr
-* nested arrays
-* arrays of generic types
-* arrays with constant lengths
+array type syntax
+
+slice type syntax
+
+array literals
+
+slice literals if supported
+
+indexing expressions
+
+slicing expressions
+
+range expressions inside slicing
+
+assignment through indexing
+
+member access such as len and ptr
+
+nested arrays
+
+arrays of generic types
+
+arrays with constant lengths
 
 Required semantic work:
 
-* array length must be a valid non-negative compile-time integer
-* index must have an integer type
-* index result type must be known
-* assignment through index requires a mutable target
-* slice creation must preserve lifetime rules
-* array-to-slice conversion rules
-* bounds checks
-* compile-time bounds checks for constant indexes
-* runtime bounds checks for runtime indexes
-* zero-length arrays
-* equality rules
-* copy and move rules
-* ownership of slices
-* slice mutability
-* slice element borrowing
-* pointer access
-* unsafe interaction with ptr
+array length must be a valid non-negative compile-time integer
+
+index must have an integer type
+
+index result type must be known
+
+assignment through index requires a mutable target
+
+slice creation must preserve lifetime rules
+
+array-to-slice conversion rules
+
+bounds checks
+
+compile-time bounds checks for constant indexes
+
+runtime bounds checks for runtime indexes
+
+zero-length arrays
+
+equality rules
+
+copy and move rules
+
+ownership of slices
+
+slice mutability
+
+slice element borrowing
+
+pointer access
+
+unsafe interaction with ptr
 
 Questions to settle:
 
-* Are array literals always typed by context?
-* Is length inference supported?
-* Can arrays contain non-defaultable values?
-* Are slices nullable? The expected answer should remain no.
-* Is an empty slice a valid default value?
-* Does indexing return a value, reference or assignable place?
-* Is slicing syntax based on existing range syntax?
-* Are open-ended ranges allowed in slices?
-* Are negative indexes always invalid?
+Are array literals always typed by context?
+
+Is length inference supported?
+
+Can arrays contain non-defaultable values?
+
+Are slices nullable? The expected answer should remain no.
+
+Is an empty slice a valid default value?
+
+Does indexing return a value, reference or assignable place?
+
+Is slicing syntax based on existing range syntax?
+
+Are open-ended ranges allowed in slices?
+
+Are negative indexes always invalid?
 
 Create:
 
-* rules/arrays.txt
-* rules/slices.txt
-* rules/indexing.txt
-* arrays_valid.sec
-* arrays_invalid.sec
-* slices_valid.sec
-* slices_invalid.sec
+rules/arrays.txt
 
-======================================================================
-6. Unsafe blocks and raw pointers
-=================================
+rules/slices.txt
 
-Implement unsafe as a restricted semantic context.
+rules/indexing.txt
 
-Unsafe must not disable normal compiler checks.
+arrays_valid.sec
 
-Unsafe should only permit specifically unsafe operations that are otherwise
-forbidden.
+arrays_invalid.sec
+
+slices_valid.sec
+
+slices_invalid.sec
+
+3.6. Unsafe blocks and raw pointers
+
+Implement unsafe as a restricted semantic context. Unsafe must not disable normal compiler checks. Unsafe should only permit specifically unsafe operations that are otherwise forbidden.
 
 Required syntax:
 
-```
 unsafe {
     statements
 }
@@ -424,67 +640,98 @@ unsafe fn RawOperation(...) ... {
 }
 
 unsafe *T
-```
+
 
 Required semantic areas:
 
-* raw pointer types
-* raw pointer declarations
-* address acquisition
-* dereferencing
-* pointer casts
-* pointer arithmetic if supported
-* calls to unsafe functions
-* unsafe FFI calls
-* unsafe context nesting
-* unsafe operations outside unsafe blocks
-* type checking inside unsafe
-* visibility inside unsafe
-* Result handling inside unsafe
-* ownership interaction
-* borrow checker boundaries
-* null pointer representation
-* conversion between raw pointers and integers
-* conversion between references and raw pointers
+raw pointer types
+
+raw pointer declarations
+
+address acquisition
+
+dereferencing
+
+pointer casts
+
+pointer arithmetic if supported
+
+calls to unsafe functions
+
+unsafe FFI calls
+
+unsafe context nesting
+
+unsafe operations outside unsafe blocks
+
+type checking inside unsafe
+
+visibility inside unsafe
+
+Result handling inside unsafe
+
+ownership interaction
+
+borrow checker boundaries
+
+null pointer representation
+
+conversion between raw pointers and integers
+
+conversion between references and raw pointers
 
 Rules should preserve:
 
-* no hidden unsafe behavior
-* unsafe must be explicit
-* unsafe does not disable type checking
-* unsafe does not disable scope checking
-* unsafe does not disable visibility checking
-* unsafe does not disable error handling
-* unsafe does not make invalid code valid
-* safe references must still obey lifetime rules
-* raw pointers are not safe references
+no hidden unsafe behavior
+
+unsafe must be explicit
+
+unsafe does not disable type checking
+
+unsafe does not disable scope checking
+
+unsafe does not disable visibility checking
+
+unsafe does not disable error handling
+
+unsafe does not make invalid code valid
+
+safe references must still obey lifetime rules
+
+raw pointers are not safe references
 
 Questions to settle:
 
-* Is pointer arithmetic allowed?
-* Which integer type is used for pointer offsets?
-* Is dereferencing a null pointer always runtime undefined behavior?
-* Can raw pointers be compared?
-* Can raw pointers be ordered?
-* Can raw pointers be stored in normal structs?
-* Does converting raw pointers to references require additional validation?
-* Are FFI declarations always unsafe?
+Is pointer arithmetic allowed?
+
+Which integer type is used for pointer offsets?
+
+Is dereferencing a null pointer always runtime undefined behavior?
+
+Can raw pointers be compared?
+
+Can raw pointers be ordered?
+
+Can raw pointers be stored in normal structs?
+
+Does converting raw pointers to references require additional validation?
+
+Are FFI declarations always unsafe?
 
 Create:
 
-* rules/unsafe.txt
-* unsafe_valid.sec
-* unsafe_invalid.sec
+rules/unsafe.txt
 
-======================================================================
-7. Interfaces
-=============
+unsafe_valid.sec
+
+unsafe_invalid.sec
+
+3.7. Interfaces
 
 Implement explicit behavior contracts.
 
 Basic syntax:
 
-```
 type Reader interface {
     fn Read(buffer: []byte) Result[int, IOError]
 }
@@ -493,80 +740,116 @@ impl Reader for FileReader {
     fn Read(buffer: []byte) Result[int, IOError] {
     }
 }
-```
+
 
 Required parser and AST work:
 
-* interface declarations
-* interface method signatures
-* interface property signatures if supported
-* explicit interface implementation blocks
-* generic interfaces
-* interface constraints
-* interface references in type positions
+interface declarations
+
+interface method signatures
+
+interface property signatures if supported
+
+explicit interface implementation blocks
+
+generic interfaces
+
+interface constraints
+
+interface references in type positions
 
 Required semantic work:
 
-* resolve interface names
-* resolve implementation target type
-* verify every required member
-* compare exact parameter types
-* compare exact return types
-* compare mutability requirements
-* compare fallibility
-* compare visibility requirements
-* reject missing members
-* reject incompatible members
-* reject duplicate interface implementations
-* reject duplicate members
-* reject fields inside interfaces
-* reject method bodies inside interfaces unless defaults are later supported
+resolve interface names
+
+resolve implementation target type
+
+verify every required member
+
+compare exact parameter types
+
+compare exact return types
+
+compare mutability requirements
+
+compare fallibility
+
+compare visibility requirements
+
+reject missing members
+
+reject incompatible members
+
+reject duplicate interface implementations
+
+reject duplicate members
+
+reject fields inside interfaces
+
+reject method bodies inside interfaces unless defaults are later supported
 
 Questions to settle:
 
-* Are interface values runtime values or compile-time constraints only?
-* Is dynamic dispatch supported?
-* What is the runtime layout of an interface value?
-* Are interface values copyable?
-* Are interface values comparable?
-* Can interfaces contain properties?
-* Can interfaces contain generic methods?
-* Can one interface extend another?
-* Can external types implement local interfaces?
-* Can local types implement external interfaces?
-* Are orphan rules needed?
-* Are automatic implementations forbidden? The current design says yes.
-* Are default method implementations supported? Probably not initially.
+Are interface values runtime values or compile-time constraints only?
 
-Interfaces should be implemented before full generic constraints if generic
-constraints depend on interfaces.
+Is dynamic dispatch supported?
+
+What is the runtime layout of an interface value?
+
+Are interface values copyable?
+
+Are interface values comparable?
+
+Can interfaces contain properties?
+
+Can interfaces contain generic methods?
+
+Can one interface extend another?
+
+Can external types implement local interfaces?
+
+Can local types implement external interfaces?
+
+Are orphan rules needed?
+
+Are automatic implementations forbidden? The current design says yes.
+
+Are default method implementations supported? Probably not initially.
+
+Interfaces should be implemented before full generic constraints if generic constraints depend on interfaces.
 
 Create:
 
-* rules/interfaces.txt
-* interface_valid.sec
-* interface_invalid.sec
+rules/interfaces.txt
 
-======================================================================
-8. Generics
-===========
+interface_valid.sec
+
+interface_invalid.sec
+
+3.8. Generics
 
 Implement compile-time generics with monomorphization.
 
 Existing design direction:
 
-* square brackets are used for generic parameters
-* generic code is resolved at compile time
-* concrete type combinations generate specialized code
-* runtime does not know generic type parameters
-* interfaces are used as constraints
-* operator constraints are postponed
-* type inference should be used when possible
-* explicit generic arguments remain available
+square brackets are used for generic parameters
+
+generic code is resolved at compile time
+
+concrete type combinations generate specialized code
+
+runtime does not know generic type parameters
+
+interfaces are used as constraints
+
+operator constraints are postponed
+
+type inference should be used when possible
+
+explicit generic arguments remain available
 
 Required syntax:
 
-```
 type Stack[T] struct {
     Items: Vec[T]
 }
@@ -575,98 +858,135 @@ fn Max[T: Ordered](a: T, b: T) T {
 }
 
 let value := Max(10, 20)
-
 let explicit := Max[int](10, 20)
-```
+
 
 Required work:
 
-* parse generic parameter lists - implemented for type and function declarations
-* parse generic argument lists - implemented for type references and explicit function calls
-* distinguish generic syntax from indexing syntax - implemented for current parser contexts
-* represent type parameters in the AST - implemented
-* create generic scopes - implemented for type and function declarations
-* resolve generic parameters - implemented in sema type resolution
-* check generic arity - implemented for generic types and explicit generic function calls
-* substitute concrete types - implemented for generic structs and generic functions
-* infer generic arguments - implemented from call arguments
-* validate constraints - partial: unknown and non-interface constraint declarations are rejected
-* instantiate generic functions - implemented at sema call resolution
-* instantiate generic structs - implemented at sema type resolution
-* instantiate generic unions - partial: type templates, payload substitution and single-payload constructors implemented
-* instantiate generic interfaces
-* instantiate generic impl blocks - partially implemented for property/nested-type sema scopes
-* cache monomorphized instances - implemented in sema for generic structs/functions
-* avoid duplicate code generation
-* detect recursive instantiation - implemented for direct generic struct self-storage and changing self-instantiation
-* detect impossible or ambiguous inference
-* preserve source locations through instantiation
-* produce understandable errors from generic code
+parse generic parameter lists - implemented for type and function declarations
+
+parse generic argument lists - implemented for type references and explicit function calls
+
+distinguish generic syntax from indexing syntax - implemented for current parser contexts
+
+represent type parameters in the AST - implemented
+
+create generic scopes - implemented for type and function declarations
+
+resolve generic parameters - implemented in sema type resolution
+
+check generic arity - implemented for generic types and explicit generic function calls
+
+substitute concrete types - implemented for generic structs and generic functions
+
+infer generic arguments - implemented from call arguments
+
+validate constraints - partial: unknown and non-interface constraint declarations are rejected
+
+instantiate generic functions - implemented at sema call resolution
+
+instantiate generic structs - implemented at sema type resolution
+
+instantiate generic unions - partial: type templates, payload substitution and single-payload constructors implemented
+
+instantiate generic interfaces
+
+instantiate generic impl blocks - partially implemented for property/nested-type sema scopes
+
+cache monomorphized instances - implemented in sema for generic structs/functions
+
+avoid duplicate code generation
+
+detect recursive instantiation - implemented for direct generic struct self-storage and changing self-instantiation
+
+detect impossible or ambiguous inference
+
+preserve source locations through instantiation
+
+produce understandable errors from generic code
 
 Questions to settle:
 
-* Can methods introduce their own generic parameters?
-* Can impl blocks add constraints?
-* Can generic types use default type arguments?
-* Are const generics supported? Probably not initially.
-* Are variadic generic parameters supported? Probably not initially.
-* How are nested generic types referenced?
-* Can generic aliases exist?
-* How are recursive generic types limited?
-* What errors should be reported at declaration time versus instantiation time?
+Can methods introduce their own generic parameters?
 
-Create:
+Can impl blocks add constraints?
 
-* rules/generics.txt
-* generics_valid.sec
-* generics_invalid.sec
+Can generic types use default type arguments?
+
+Are const generics supported? Probably not initially.
+
+Are variadic generic parameters supported? Probably not initially.
+
+How are nested generic types referenced?
+
+Can generic aliases exist?
+
+How are recursive generic types limited?
+
+What errors should be reported at declaration time versus instantiation time?
 
 Current implemented subset:
 
-* generic type declarations with one or more type parameters
-* generic function declarations
-* nested generic type references
-* generic struct instantiation with field type substitution
-* nominal identity for different concrete generic struct instances
-* argument-based generic function inference
-* explicit generic function calls, for example Identity[int](10)
-* sema-level canonical instance caching for generic structs and generic
-  functions
-* recursive-instantiation protection for direct generic struct storage,
-  fixed-array self-storage and changing self-instantiation
-* generic impl target validation and generic impl scopes for nested types,
-  properties and property bodies
-* expected-result inference for generic function calls in typed contexts
-* generic constraint declaration validation for unknown and non-interface
-  constraints
-* generic union type templates, arity checks, payload substitution and
-  single-payload variant constructors such as Maybe.Some(value)
-* diagnostics for duplicate generic parameters, wrong generic arity,
-  generic arguments on non-generic types/functions, inconsistent inference and
-  explicit call argument mismatches
-* focused parser/sema tests and testdata/generics_valid.sec plus
-  testdata/generics_invalid.sec
+generic type declarations with one or more type parameters
+
+generic function declarations
+
+nested generic type references
+
+generic struct instantiation with field type substitution
+
+nominal identity for different concrete generic struct instances
+
+argument-based generic function inference
+
+explicit generic function calls, for example Identityint
+
+sema-level canonical instance caching for generic structs and generic functions
+
+recursive-instantiation protection for direct generic struct storage, fixed-array self-storage and changing self-instantiation
+
+generic impl target validation and generic impl scopes for nested types, properties and property bodies
+
+expected-result inference for generic function calls in typed contexts
+
+generic constraint declaration validation for unknown and non-interface constraints
+
+generic union type templates, arity checks, payload substitution and single-payload variant constructors such as Maybe.Some(value)
+
+diagnostics for duplicate generic parameters, wrong generic arity, generic arguments on non-generic types/functions, inconsistent inference and explicit call argument mismatches
+
+focused parser/sema tests and testdata/generics_valid.sec plus testdata/generics_invalid.sec
 
 Still open:
 
-* interface declarations and concrete generic constraint satisfaction
-* full union layout/match support
-* callable generic impl methods and method-level generic parameters
-* backend-facing monomorphized instance symbols and emitted code deduplication
-* full layout-aware recursive generic analysis through ref, pointer, Box,
-  unions and other indirection mechanisms
-* broader expected-result inference beyond generic call expressions, if needed
-* LLVM/codegen support for monomorphized instances
+interface declarations and concrete generic constraint satisfaction
 
-======================================================================
-9. References, ownership and borrow checking
-============================================
+full union layout/match support
+
+callable generic impl methods and method-level generic parameters
+
+backend-facing monomorphized instance symbols and emitted code deduplication
+
+full layout-aware recursive generic analysis through ref, pointer, Box, unions and other indirection mechanisms
+
+broader expected-result inference beyond generic call expressions, if needed
+
+LLVM/codegen support for monomorphized instances
+
+Create:
+
+rules/generics.txt
+
+generics_valid.sec
+
+generics_invalid.sec
+
+3.9. References, ownership and borrow checking
 
 Implement the memory-safety model.
 
 Core types:
 
-```
 T
 ref T
 mut ref T
@@ -675,104 +995,141 @@ mut ref T
 Vec[T]
 Box[T]
 unsafe *T
-```
+
 
 Core ownership rules:
 
-* T is an owned value
-* many immutable references may coexist
-* only one mutable reference may exist at a time
-* mutable and immutable references may not coexist
-* references may not outlive owners
-* safe code has no null references
-* safe code has no raw pointer arithmetic
-* explicit lifetime annotations are not used
-* ambiguous ownership should be rejected rather than requiring complex syntax
+T is an owned value
+
+many immutable references may coexist
+
+only one mutable reference may exist at a time
+
+mutable and immutable references may not coexist
+
+references may not outlive owners
+
+safe code has no null references
+
+safe code has no raw pointer arithmetic
+
+explicit lifetime annotations are not used
+
+ambiguous ownership should be rejected rather than requiring complex syntax
 
 Required semantic work:
 
-* classify expressions as values, places and references
-* track ownership
-* track moves
-* track copies
-* track borrows
-* distinguish shared and mutable borrows
-* determine lexical borrow end
-* validate branch merging
-* validate loop merging
-* validate match branch merging
-* validate function-call arguments
-* validate method receivers
-* validate returns
-* validate struct field borrows
-* validate array and slice element borrows
-* validate captures
-* validate defer captures
-* prevent use after move
-* prevent mutation during shared borrow
-* prevent multiple mutable borrows
-* prevent references escaping owner scope
-* prevent returning references to locals
+classify expressions as values, places and references
+
+track ownership
+
+track moves
+
+track copies
+
+track borrows
+
+distinguish shared and mutable borrows
+
+determine lexical borrow end
+
+validate branch merging
+
+validate loop merging
+
+validate match branch merging
+
+validate function-call arguments
+
+validate method receivers
+
+validate returns
+
+validate struct field borrows
+
+validate array and slice element borrows
+
+validate captures
+
+validate defer captures
+
+prevent use after move
+
+prevent mutation during shared borrow
+
+prevent multiple mutable borrows
+
+prevent references escaping owner scope
+
+prevent returning references to locals
 
 Current return rule direction:
 
-* a returned reference must clearly originate from the first reference
-  parameter
-* returning a reference to a local value is invalid
-* returning a reference that may originate from multiple parameters is invalid
-* the programmer should return an owned value, index or handle when ownership is
-  ambiguous
+a returned reference must clearly originate from the first reference parameter
+
+returning a reference to a local value is invalid
+
+returning a reference that may originate from multiple parameters is invalid
+
+the programmer should return an owned value, index or handle when ownership is ambiguous
 
 Questions to settle:
 
-* Are borrows strictly lexical or can they end after last use?
-* Does field-level borrowing allow borrowing separate fields independently?
-* Are automatic borrows inserted for method calls?
-* Are values copied automatically when copyable?
-* How is move eligibility declared or derived?
-* How does defer extend value usage?
-* How are references stored in structs?
-* Can structs containing references be returned?
-* How are optional references represented?
-* How does match destructuring borrow or move payloads?
-* How are temporary values handled?
+Are borrows strictly lexical or can they end after last use?
+
+Does field-level borrowing allow borrowing separate fields independently?
+
+Are automatic borrows inserted for method calls?
+
+Are values copied automatically when copyable?
+
+How is move eligibility declared or derived?
+
+How does defer extend value usage?
+
+How are references stored in structs?
+
+Can structs containing references be returned?
+
+How are optional references represented?
+
+How does match destructuring borrow or move payloads?
+
+How are temporary values handled?
 
 Create:
 
-* rules/references.txt
-* rules/ownership.txt
-* rules/borrowing.txt
-* references_valid.sec
-* references_invalid.sec
-* ownership_valid.sec
-* ownership_invalid.sec
+rules/references.txt
 
-======================================================================
-10. Spread and variadic parameters
-==================================
+rules/ownership.txt
+
+rules/borrowing.txt
+
+references_valid.sec
+
+references_invalid.sec
+
+ownership_valid.sec
+
+ownership_invalid.sec
+
+3.10. Spread and variadic parameters
 
 Implement the spread operator consistently.
-
-The operator:
-
-```
-...
-```
-
-must always mean expansion.
+The operator ... must always mean expansion.
 
 Planned uses:
 
-* variadic parameters
-* function argument spread
-* struct copy/update
+variadic parameters
+
+function argument spread
+
+struct copy/update
 
 Examples:
 
-```
 fn Sum(values: ...int) int {
 }
-
 let values := []int{1, 2, 3}
 let total := Sum(values...)
 
@@ -780,371 +1137,653 @@ let updated := User {
     ...original
     Name: "Anna"
 }
-```
+
 
 Required work for variadic parameters:
 
-* variadic parameter must be last
-* only one variadic parameter is allowed
-* variadic arguments must match the element type
-* zero variadic arguments are allowed
-* argument spread must accept compatible arrays or slices
-* normal arguments and spread arguments must be ordered correctly
-* multiple spread arguments need a defined rule
-* generic variadic functions need type inference
+variadic parameter must be last
+
+only one variadic parameter is allowed
+
+variadic arguments must match the element type
+
+zero variadic arguments are allowed
+
+argument spread must accept compatible arrays or slices
+
+normal arguments and spread arguments must be ordered correctly
+
+multiple spread arguments need a defined rule
+
+generic variadic functions need type inference
 
 Required work for struct spread:
 
-* source must have the compatible struct type
-* later fields override earlier spread fields
-* explicit duplicate fields need defined behavior
-* private fields may only be spread where visible
-* spread is shallow
-* move and copy behavior follows field types
-* required fields must still be initialized
-* multiple spreads need deterministic order
-* constrained fields must remain valid
+source must have the compatible struct type
+
+later fields override earlier spread fields
+
+explicit duplicate fields need defined behavior
+
+private fields may only be spread where visible
+
+spread is shallow
+
+move and copy behavior follows field types
+
+required fields must still be initialized
+
+multiple spreads need deterministic order
+
+constrained fields must remain valid
 
 Questions to settle:
 
-* Can spread be mixed with normal arguments after it?
-* Can multiple argument spreads be used?
-* Can a spread source be an iterator or only array/slice?
-* Can struct spread use related but different struct types?
-* Is overriding a moved field valid?
-* Are duplicate explicit fields always errors?
+Can spread be mixed with normal arguments after it?
+
+Can multiple argument spreads be used?
+
+Can a spread source be an iterator or only array/slice?
+
+Can struct spread use related but different struct types?
+
+Is overriding a moved field valid?
+
+Are duplicate explicit fields always errors?
 
 Create:
 
-* rules/spread.txt
-* rules/variadic.txt
-* spread_valid.sec
-* spread_invalid.sec
-* variadic_valid.sec
-* variadic_invalid.sec
+rules/spread.txt
 
-======================================================================
-11. Lambdas, local functions and closures
-=========================================
+rules/variadic.txt
+
+spread_valid.sec
+
+spread_invalid.sec
+
+variadic_valid.sec
+
+variadic_invalid.sec
+
+3.11. Lambdas, local functions and closures
 
 Functions are documented as supporting:
 
-* local functions
-* lambdas
-* recursion
-* multiple return values
+local functions
+
+lambdas
+
+recursion
+
+multiple return values
 
 The exact lambda and closure model still needs to be designed.
 
 Required decisions:
 
-* lambda syntax
-* parameter syntax
-* inferred parameter types
-* explicit parameter types
-* inferred return type
-* explicit return type
-* single-expression bodies
-* block bodies
-* function types
-* closure types
-* capture rules
-* capture by value
-* capture by immutable reference
-* capture by mutable reference
-* move closures
-* closure lifetime
-* closure allocation
-* closure equality
-* closure copying
-* recursion
-* local function forward references
-* interaction with generics
-* interaction with defer
-* interaction with spawn
+lambda syntax
+
+parameter syntax
+
+inferred parameter types
+
+explicit parameter types
+
+inferred return type
+
+explicit return type
+
+single-expression bodies
+
+block bodies
+
+function types
+
+closure types
+
+capture rules
+
+capture by value
+
+capture by immutable reference
+
+capture by mutable reference
+
+move closures
+
+closure lifetime
+
+closure allocation
+
+closure equality
+
+closure copying
+
+recursion
+
+local function forward references
+
+interaction with generics
+
+interaction with defer
+
+interaction with spawn
 
 Implementation areas:
 
-* lexer and parser
-* AST lambda nodes
-* local function declaration nodes
-* nested scopes
-* capture analysis
-* ownership analysis
-* borrow analysis
-* generated closure environment structs
-* generated call functions
-* escape analysis
-* heap allocation where required
+lexer and parser
+
+AST lambda nodes
+
+local function declaration nodes
+
+nested scopes
+
+capture analysis
+
+ownership analysis
+
+borrow analysis
+
+generated closure environment structs
+
+generated call functions
+
+escape analysis
+
+heap allocation where required
 
 Do not implement closures before ownership behavior is sufficiently stable.
 
 Create later:
 
-* rules/lambdas.txt
-* rules/local_functions.txt
-* rules/closures.txt
-* lambdas_valid.sec
-* lambdas_invalid.sec
+rules/lambdas.txt
 
-======================================================================
-12. spawn and await
-===================
+rules/local_functions.txt
 
-Do not implement spawn and await until the underlying ownership, function,
-Result and closure semantics are stable.
+rules/closures.txt
+
+lambdas_valid.sec
+
+lambdas_invalid.sec
+
+3.12. spawn and await
+
+Do not implement spawn and await until the underlying ownership, function, Result and closure semantics are stable.
 
 Current direction:
 
-```
 let task := spawn {
     Work()
 }
-
 await task
-
 let result := try await task
-```
+
 
 Important unresolved questions:
 
-* OS threads or lightweight tasks
-* scheduler or no scheduler
-* structured concurrency
-* task lifetime
-* whether tasks must be joined before scope exit
-* detached tasks
-* cancellation
-* panic behavior
-* error propagation
-* Result integration
-* Task[T]
-* task ownership
-* moving values into tasks
-* borrowing values into tasks
-* mutable shared state
-* thread safety
-* Send/Sync-like constraints
-* channels
-* select
-* runtime requirements
-* bare-metal support
-* FreeRTOS support
-* platform-specific implementation
-* deterministic cleanup
-* interaction with defer
-* interaction with process exit
+OS threads or lightweight tasks
+
+scheduler or no scheduler
+
+structured concurrency
+
+task lifetime
+
+whether tasks must be joined before scope exit
+
+detached tasks
+
+cancellation
+
+panic behavior
+
+error propagation
+
+Result integration
+
+Task[T]
+
+task ownership
+
+moving values into tasks
+
+borrowing values into tasks
+
+mutable shared state
+
+thread safety
+
+Send/Sync-like constraints
+
+channels
+
+select
+
+runtime requirements
+
+bare-metal support
+
+FreeRTOS support
+
+platform-specific implementation
+
+deterministic cleanup
+
+interaction with defer
+
+interaction with process exit
 
 Likely implementation phases:
 
-1. Define Task[T].
-2. Define spawn block capture rules.
-3. Define await result semantics.
-4. Define failure and Result behavior.
-5. Define scope-exit behavior.
-6. Define structured concurrency.
-7. Define platform abstraction.
-8. Implement a minimal backend.
-9. Add cancellation later.
-10. Add channels and select later if needed.
+Define Task[T].
+
+Define spawn block capture rules.
+
+Define await result semantics.
+
+Define failure and Result behavior.
+
+Define scope-exit behavior.
+
+Define structured concurrency.
+
+Define platform abstraction.
+
+Implement a minimal backend.
+
+Add cancellation later.
+
+Add channels and select later if needed.
 
 Create only after design work:
 
-* rules/tasks.txt
-* rules/spawn.txt
-* rules/await.txt
-* spawn_valid.sec
-* spawn_invalid.sec
-* await_valid.sec
-* await_invalid.sec
+rules/tasks.txt
 
-======================================================================
-13. Parser recovery and diagnostics
-===================================
+rules/spawn.txt
 
-Continue improving parser recovery while implementing every feature.
+rules/await.txt
 
-The compiler should avoid producing long cascades of unrelated errors after one
-syntax mistake.
+spawn_valid.sec
+
+spawn_invalid.sec
+
+await_valid.sec
+
+await_invalid.sec
+
+3.13. Parser recovery and diagnostics
+
+Continue improving parser recovery while implementing every feature. The compiler should avoid producing long cascades of unrelated errors after one syntax mistake.
 
 Recovery points should be defined for:
 
-* module declarations
-* imports
-* type declarations
-* struct fields
-* enum variants
-* union variants
-* function declarations
-* function parameters
-* generic parameter lists
-* generic argument lists
-* impl members
-* interface members
-* property members
-* match branches
-* switch cases
-* blocks
-* array literals
-* struct literals
-* call arguments
+module declarations
+
+imports
+
+type declarations
+
+struct fields
+
+enum variants
+
+union variants
+
+function declarations
+
+function parameters
+
+generic parameter lists
+
+generic argument lists
+
+impl members
+
+interface members
+
+property members
+
+match branches
+
+switch cases
+
+blocks
+
+array literals
+
+struct literals
+
+call arguments
 
 General diagnostic goals:
 
-* report the earliest meaningful error
-* report the exact source location
-* report expected syntax when useful
-* avoid internal compiler errors
-* continue after recoverable syntax errors
-* avoid reporting semantic errors for malformed AST fragments
-* avoid duplicate diagnostics for one root problem
-* preserve useful later diagnostics when possible
-* clearly distinguish error and warning
-* keep diagnostic wording stable for tests
+report the earliest meaningful error
+
+report the exact source location
+
+report expected syntax when useful
+
+avoid internal compiler errors
+
+continue after recoverable syntax errors
+
+avoid reporting semantic errors for malformed AST fragments
+
+avoid duplicate diagnostics for one root problem
+
+preserve useful later diagnostics when possible
+
+clearly distinguish error and warning
+
+keep diagnostic wording stable for tests
 
 Possible internal document:
 
-```
-rules/parser_recovery.txt
-```
+rules/parser_recovery.txt (Describes compiler implementation and diagnostic behavior, not user-facing language syntax)
 
-This document does not describe user-facing language syntax.
-It describes compiler implementation and diagnostic behavior.
+3.14. AST and semantic-analysis cleanup
 
-======================================================================
-14. AST and semantic-analysis cleanup
-=====================================
-
-As features are added, periodically review the AST and semantic analyzer instead
-of only adding special cases.
+As features are added, periodically review the AST and semantic analyzer instead of only adding special cases.
 
 AST review:
 
-* every language concept should have a clear node type
-* source ranges should be preserved
-* malformed nodes should be representable for parser recovery
-* declarations and expressions should remain clearly separated
-* type syntax and resolved types should remain separate
-* constant expressions should not require feature-specific AST hacks
-* nested declarations should preserve ownership and namespace information
-* generated nodes should be distinguishable from source nodes
+every language concept should have a clear node type
+
+source ranges should be preserved
+
+malformed nodes should be representable for parser recovery
+
+declarations and expressions should remain clearly separated
+
+type syntax and resolved types should remain separate
+
+constant expressions should not require feature-specific AST hacks
+
+nested declarations should preserve ownership and namespace information
+
+generated nodes should be distinguishable from source nodes
 
 Semantic-analysis review:
 
-* separate declaration registration from body analysis
-* use multi-pass analysis where forward references require it
-* centralize type compatibility
-* centralize implicit conversion rules
-* centralize explicit cast rules
-* centralize constant evaluation
-* centralize lvalue/place checking
-* centralize definite assignment
-* centralize return-path analysis
-* centralize namespace resolution
-* centralize visibility checks
-* centralize diagnostic construction
-* avoid feature-specific duplicate logic
+separate declaration registration from body analysis
+
+use multi-pass analysis where forward references require it
+
+centralize type compatibility
+
+centralize implicit conversion rules
+
+centralize explicit cast rules
+
+centralize constant evaluation
+
+centralize lvalue/place checking
+
+centralize definite assignment
+
+centralize return-path analysis
+
+centralize namespace resolution
+
+centralize visibility checks
+
+centralize diagnostic construction
+
+avoid feature-specific duplicate logic
 
 The semantic analyzer should ideally progress through clear stages:
 
-1. Parse source files.
-2. Build AST.
-3. Register modules.
-4. Register top-level declarations.
-5. Register nested declarations.
-6. Resolve declared types.
-7. Register function and method signatures.
-8. Validate declaration-level rules.
-9. Analyze bodies.
-10. Perform control-flow analysis.
-11. Perform definite-assignment analysis.
-12. Perform ownership and borrow analysis.
-13. Produce typed AST or intermediate representation.
-14. Pass validated input to code generation.
+Parse source files.
 
-======================================================================
-15. Code-generation preparation
-===============================
+Build AST.
 
-Although the current focus is parser, AST and sema, each feature should record
-the information code generation will need.
+Register modules.
+
+Register top-level declarations.
+
+Register nested declarations.
+
+Resolve declared types.
+
+Register function and method signatures.
+
+Validate declaration-level rules.
+
+Analyze bodies.
+
+Perform control-flow analysis.
+
+Perform definite-assignment analysis.
+
+Perform ownership and borrow analysis.
+
+Produce typed AST or intermediate representation.
+
+Pass validated input to code generation.
+
+3.15. Code-generation preparation
+
+Although the current focus is parser, AST and sema, each feature should record the information code generation will need. Avoid making LLVM code generation responsible for semantic decisions. LLVM code generation should receive already validated and resolved input.
 
 Typed AST or semantic IR should eventually contain:
 
-* resolved types
-* resolved symbols
-* resolved methods
-* resolved properties
-* resolved enum values
-* resolved union variants
-* constant values
-* cast operations
-* lvalue/place information
-* move/copy information
-* borrow information
-* control-flow targets
-* defer registration and execution points
-* return value storage
-* error propagation paths
-* generic substitutions
-* concrete monomorphized types
-* source locations for diagnostics
+resolved types
 
-Avoid making LLVM code generation responsible for semantic decisions.
+resolved symbols
 
-LLVM code generation should receive already validated and resolved input.
+resolved methods
 
-======================================================================
-Recommended implementation order
-================================
+resolved properties
 
-The current recommended order is:
+resolved enum values
 
-1. Finish defer.
-2. Implement union declarations.
-3. Build shared constant-expression evaluation.
-4. Complete impl, methods and properties.
-5. Complete arrays, slices and indexing.
-6. Implement unsafe blocks and raw pointers.
-7. Implement interfaces.
-8. Continue generics beyond the implemented parser/sema subset.
-9. Implement references, ownership and borrow checking.
-10. Implement spread and variadic parameters.
-11. Implement lambdas, local functions and closures.
-12. Design and implement spawn and await.
+resolved union variants
 
-Parser recovery, diagnostics, AST cleanup and semantic-analysis cleanup should
-continue throughout all steps.
+constant values
 
-This order is not absolute.
+cast operations
 
-It may be changed when implementation work reveals a dependency, but changes
-should be deliberate and recorded here so that unfinished areas are not
-forgotten.
+lvalue/place information
 
-======================================================================
-Immediate next action
-=====================
+move/copy information
 
-Current immediate work:
+borrow information
 
-```
-Finish defer implementation and make both defer test files behave as
-expected.
-```
+control-flow targets
 
-After defer:
+defer registration and execution points
 
-```
-Discuss and write rules/unions.txt.
-```
+return value storage
 
-Then:
+error propagation paths
 
-```
-Create union_valid.sec and union_invalid.sec.
-```
+generic substitutions
 
-Do not begin spawn and await yet.
-Their behavior depends on ownership, borrowing, closures, Result handling,
-defer, task lifetime and runtime design.
+concrete monomorphized types
+
+source locations for diagnostics
+
+4. Advanced Language Features (TODO)
+
+Language Philosophy
+
+[ ] Document the "compiler takes the complexity" philosophy.
+
+[ ] Define the responsibilities of the compiler versus the programmer.
+
+[ ] Review language features against the simplicity-first design goal.
+
+Compiler Architecture
+
+[ ] Design the Sec MLIR dialect.
+
+[ ] Define lowering from AST to Sec MLIR.
+
+[ ] Define lowering from Sec MLIR to LLVM MLIR/LLVM IR.
+
+[ ] Separate semantic analysis from target-specific lowering.
+
+[ ] Design target-independent optimization passes.
+
+Compiler Analysis
+
+[ ] Complete call graph generation.
+
+[ ] Branch-aware stack analysis.
+
+[ ] Whole-program stack estimation.
+
+[ ] Final target stack analysis after lowering.
+
+[ ] Heap allocation analysis.
+
+[ ] Ownership flow analysis.
+
+[ ] Escape analysis.
+
+[ ] Effect analysis framework.
+
+[ ] ISR analysis.
+
+[ ] Recursion detection.
+
+[ ] Configurable recursion policies.
+
+[ ] @init analysis.
+
+[ ] Platform profile validation.
+
+Memory Model
+
+[ ] Finalize lexical lifetime model.
+
+[ ] Define ownership transfer rules.
+
+[ ] Implement limited borrow analysis.
+
+[ ] Detect illegal aliasing.
+
+[ ] Freeze structural mutations during iteration.
+
+[ ] Design temporal memory safety.
+
+[ ] Design generational references.
+
+[ ] Hosted vs embedded memory profiles.
+
+Pointers & References
+
+[ ] Finalize ref representation.
+
+[ ] Finalize ref mut representation.
+
+[ ] Define RawPtr semantics.
+
+[ ] Target-dependent lowering of references.
+
+[ ] FFI pointer model.
+
+FFI
+
+[ ] Implement extern "Sec".
+
+[ ] Implement extern "C".
+
+[ ] Implement extern "system".
+
+[ ] Restrict null to extern contexts.
+
+[ ] Compiler-generated FFI wrappers.
+
+[ ] Result-based FFI conversions.
+
+Units
+
+[ ] Lexer support for unit.
+
+[ ] Parser support.
+
+[ ] AST representation.
+
+[ ] Semantic unit model.
+
+[ ] Physical vs other unit categories.
+
+[ ] Dimension vector implementation.
+
+[ ] Scale implementation.
+
+[ ] Unit system implementation.
+
+[ ] Compile-time dimensional algebra.
+
+[ ] Explicit unit conversions.
+
+[ ] Runtime/configured conversions.
+
+[ ] Domain units.
+
+[ ] Currency units.
+
+[ ] Unit diagnostics.
+
+[ ] Unit tests.
+
+Registers
+
+[ ] Lexer support for register.
+
+[ ] Parser support.
+
+[ ] AST representation.
+
+[ ] bit and bit[N].
+
+[ ] Register layout verification.
+
+[ ] Reserved field handling.
+
+[ ] Unit-aware register fields.
+
+[ ] @address implementation.
+
+[ ] Volatile semantics.
+
+[ ] Read-only addressed instances.
+
+[ ] Mutable addressed instances.
+
+[ ] Register lowering.
+
+[ ] Register diagnostics.
+
+[ ] Register tests.
+
+Diagnostics
+
+[ ] Compiler as a Mentor.
+
+[ ] Rich diagnostics.
+
+[ ] Explain analysis results.
+
+[ ] Suggest fixes.
+
+[ ] Optional deep explanations.
+
+Future Investigation
+
+[ ] Scaled register fields.
+
+[ ] Offset-based unit conversions.
+
+[ ] Dynamic hardware register descriptions.
+
+[ ] Generated register definitions.
+
+[ ] User-defined semantic dimensions.
+
+[ ] Extended effect system.
+
+[ ] Additional compile-time verification.

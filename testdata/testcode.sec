@@ -74,17 +74,17 @@ fn main() void {
         fmt.println("Mycket väl godkänt!")
     }
 
-/*
+
     // Concurrency: Blockbaserad spawn och await
     let task := spawn {
         for i in 1..5 {
             fmt.println($"Arbetar i bakgrunden... {i}")
         }
     }
-*/    
+    
     defer {
         fmt.println("Programmet avslutas, städar resurser...")
     }
 
-    // await task
+    await task
 }

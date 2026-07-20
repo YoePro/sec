@@ -1,0 +1,196 @@
+=============================================================================================================================================================================================
+Borrowing
+=========
+
+Borrowing provides temporary access to an owned value without transferring ownership.
+
+Borrowing is validated entirely at compile time.
+
+The compiler must track borrows for:
+
+* local variables
+* function parameters
+* return values
+* struct fields
+* array elements
+* slice elements
+* union payloads
+* captured values
+* values referenced by defer blocks
+
+## Borrow kinds
+
+Sec supports two borrow kinds:
+
+* shared borrow through ref
+* exclusive mutable borrow through ref mut
+
+A shared borrow permits read access.
+
+An exclusive mutable borrow permits read and write access.
+
+## Borrow compatibility
+
+Any number of shared borrows may coexist for the same value.
+
+A mutable borrow requires exclusive access.
+
+A mutable borrow may not coexist with:
+
+* another mutable borrow
+* any shared borrow of the same value
+* direct mutation through the owner
+* operations that may invalidate the borrowed location
+
+While a shared borrow exists, the borrowed value may not be mutated.
+
+While a mutable borrow exists, the owner may not be accessed directly except through that mutable borrow.
+
+## Borrow duration
+
+Borrow duration is determined by static analysis.
+
+The initial implementation may use lexical scopes.
+
+The compiler may later shorten a borrow to its final use when this can be proven safely.
+
+The programmer must not provide explicit lifetime annotations.
+
+A borrow ends when:
+
+* its reference leaves scope
+* ownership of the reference ends
+* the compiler proves that the reference is no longer used
+
+The compiler must account for control-flow paths when determining borrow duration.
+
+## Branches
+
+Borrow state must be tracked separately for each branch.
+
+At a branch merge, the compiler must conservatively merge borrow state.
+
+A borrow that may remain active on any incoming branch must be treated as active after the merge.
+
+The compiler must reject branch-dependent borrow states that cannot be merged safely.
+
+## Loops
+
+Borrow state must be valid across every loop iteration.
+
+A borrow created during one iteration must not conflict with access in a later iteration.
+
+A reference must not escape an iteration when the referenced value may be invalidated before the next use.
+
+Mutable collection iteration must prevent structural mutation of the iterated collection.
+
+Structural mutation includes operations that may:
+
+* change collection length
+* move collection storage
+* invalidate element addresses
+* reorder elements when references remain active
+
+Mutation of an element through the iterator-provided reference is permitted when the iterator provides ref mut access.
+
+## Fields and disjoint locations
+
+The compiler should distinguish independent fields when it can prove that they do not overlap.
+
+Borrowing separate fields of the same struct may be permitted.
+
+Example:
+
+type Pair struct {
+Left: int
+Right: int
+}
+
+let left := ref mut pair.Left
+let right := ref mut pair.Right
+
+This is valid if the compiler proves that Left and Right are disjoint.
+
+Borrowing an entire value conflicts with borrowing any field of that value.
+
+Index-based disjointness is not assumed unless proven.
+
+Two runtime indexes into the same collection must be treated as potentially overlapping.
+
+## Function calls
+
+Borrow rules apply to function arguments and method receivers.
+
+A parameter of type ref T creates or propagates a shared borrow.
+
+A parameter of type ref mut T creates or propagates an exclusive mutable borrow.
+
+The callee may not retain a reference beyond the lifetime permitted by the function signature and ownership rules.
+
+A function call must not receive overlapping mutable references.
+
+The compiler must reject calls where arguments may alias incompatibly.
+
+## Returning references
+
+A returned reference must originate from a valid external owner.
+
+A reference to a local value may not be returned.
+
+A returned reference must follow the reference-origin rules defined in references.txt.
+
+Borrows created inside a function end when the function returns unless the returned reference explicitly propagates an allowed input reference.
+
+## Moves and borrowing
+
+A borrowed value may not be moved while the borrow is active.
+
+A field may not be moved while the containing object or overlapping field is borrowed.
+
+A reference itself may be moved according to its type semantics without moving the referenced value.
+
+## Defer
+
+A defer block may extend the effective use of captured values until function exit.
+
+The compiler must treat every value read or referenced by defer as used at the point where the defer block executes.
+
+A value may not be moved, destroyed or invalidated before a registered defer block has finished using it.
+
+## Borrow diagnostics
+
+Borrow diagnostics must identify:
+
+* the conflicting access
+* the original borrow
+* the location where the borrow remains active
+* the reason the accesses conflict
+
+The compiler should suggest a narrower scope or reordered operation when applicable.
+
+Borrowing must not require runtime borrow counters, runtime locks or garbage collection.
+
+=====================================================================
+Current Implementation Status
+=====================================================================
+
+Implemented:
+
+* `ref` parameters are parsed and represented as reference types in semantic
+  analysis.
+* `ref mut` parameters are parsed and represented distinctly from `ref`.
+* Function signatures include reference mutability through the resolved
+  parameter type.
+* Calls to `ref` and `ref mut` parameters may currently borrow compatible
+  values implicitly.
+
+Not implemented yet:
+
+* full borrow-state tracking
+* shared vs mutable borrow conflict detection
+* branch and loop borrow-state merging
+* disjoint field borrow analysis
+* move prevention while borrowed
+* returned-reference origin analysis
+* borrow effects from defer captures
+* diagnostics that point to both the original borrow and conflicting access

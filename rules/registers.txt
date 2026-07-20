@@ -1,0 +1,779 @@
+=====================================================================
+Registers and Memory-Mapped Hardware
+====================================
+
+Sec provides first-class register types for describing hardware
+registers, memory-mapped protocols and fixed-width bit layouts.
+
+Register types are intended for hardware-facing code, including:
+
+```
+memory-mapped I/O
+microcontrollers
+embedded systems
+device controllers
+motor controllers
+sensors
+communication protocols
+bare-metal targets
+```
+
+The compiler verifies register width, field placement, mutability and
+hardware access semantics.
+
+=====================================================================
+Register Type Declaration
+=========================
+
+A register type declares a fixed-width storage layout.
+
+Example:
+
+```
+type Protocol register[8] {
+    Speed: bit[4]<rpm>
+    Enabled: bit
+    _: bit[3]
+}
+```
+
+The width inside register[...] is the total storage width in bits.
+
+In this example:
+
+```
+Speed      4 bits
+Enabled    1 bit
+reserved   3 bits
+----------------
+total      8 bits
+```
+
+The sum of all fields must exactly match the declared register width.
+
+The following declaration is invalid:
+
+```
+type InvalidProtocol register[8] {
+    Speed: bit[4]
+    Enabled: bit
+    Mode: bit[2]
+}
+```
+
+The fields occupy only seven bits.
+
+The compiler should report the declared width, the used width and the
+remaining or overflowing bits.
+
+Example diagnostic:
+
+```
+error: register InvalidProtocol declares 8 bits but its fields
+       occupy 7 bits
+
+  Speed:    4 bits
+  Enabled:  1 bit
+  Mode:     2 bits
+  total:    7 bits
+
+help: add one reserved bit or change the register width
+```
+
+=====================================================================
+Bit Fields
+==========
+
+The type:
+
+```
+bit
+```
+
+represents a one-bit register field.
+
+It is equivalent in width to:
+
+```
+bit[1]
+```
+
+A multi-bit field is declared using:
+
+```
+bit[N]
+```
+
+where N is a positive compile-time integer.
+
+Examples:
+
+```
+Ready: bit
+Mode: bit[3]
+Counter: bit[12]
+```
+
+A bit field is not an ordinary integer variable.
+
+Its value is extracted from or inserted into the containing register by
+the compiler.
+
+The compiler is responsible for generating the required masks, shifts
+and register access operations.
+
+A bit field width must fit inside the declared register layout.
+
+Zero-width and negative-width bit fields are invalid.
+
+Examples:
+
+```
+Value: bit[0]       // invalid
+Value: bit[-1]      // invalid
+```
+
+The width must be known at compile time.
+
+=====================================================================
+Reserved Bits
+=============
+
+The identifier _ declares reserved or unnamed bits.
+
+Example:
+
+```
+type Status register[8] {
+    Ready: bit
+    Error: bit
+    _: bit[6]
+}
+```
+
+Reserved bits participate in layout calculation but cannot be accessed
+as fields.
+
+This is invalid:
+
+```
+let value := status._
+```
+
+Multiple reserved fields may appear in the same register.
+
+Example:
+
+```
+type Control register[16] {
+    Enabled: bit
+    _: bit[3]
+    Mode: bit[4]
+    _: bit[8]
+}
+```
+
+Reserved fields allow the source declaration to match the exact layout
+described by hardware documentation.
+
+The compiler must preserve reserved bits when an operation updates only
+a named field, unless the target or register declaration explicitly
+defines different write semantics.
+
+=====================================================================
+Units on Register Fields
+========================
+
+A multi-bit register field may carry a unit.
+
+Example:
+
+```
+type MotorProtocol register[8] {
+    Speed: bit[4]<rpm>
+    Enabled: bit
+    _: bit[3]
+}
+```
+
+The unit describes the semantic meaning of the decoded field value.
+
+The compiler verifies that assignments and expressions involving the
+field use compatible units.
+
+Example:
+
+```
+let speed: rpm := motorProtocol.Speed
+```
+
+An incompatible unit assignment is invalid.
+
+Example:
+
+```
+let distance: m := motorProtocol.Speed
+```
+
+The bit width defines the stored representation.
+
+The unit defines the semantic meaning.
+
+Scaling, offsets, signed representations and device-specific encoding
+rules require separate declarations and are outside the basic register
+rule.
+
+=====================================================================
+Addressed Register Instances
+============================
+
+A register instance may be bound to a fixed hardware address using the
+@address annotation.
+
+Example:
+
+```
+@address(0x40021000)
+let motorStatus: MotorStatus
+```
+
+An addressed instance does not allocate ordinary local or heap storage.
+
+It represents storage at the specified external hardware address.
+
+The exact accepted address format may depend on the target platform.
+
+A target may use a linear memory address:
+
+```
+@address(0x40021000)
+```
+
+A target-specific address form may represent another hardware address
+model.
+
+The compiler and target profile must validate the address form.
+
+An addressed value has the following implicit properties:
+
+```
+fixed address
+external storage
+volatile access
+non-owning storage
+target-defined physical representation
+```
+
+These properties follow from @address and do not require separate
+keywords.
+
+=====================================================================
+Volatile Semantics
+==================
+
+Every instance declared with @address is volatile.
+
+Sec does not require or provide a volatile keyword for addressed
+instances.
+
+Example:
+
+```
+@address(0x40021000)
+let status: StatusRegister
+```
+
+The compiler must treat each read as an observable hardware access.
+
+It must not assume that two consecutive reads return the same value.
+
+Example:
+
+```
+let first := status.Ready
+let second := status.Ready
+```
+
+The compiler must not replace the second access with the result of the
+first access.
+
+External hardware may change the register between the two reads.
+
+Similarly, writes to addressed registers are observable operations and
+must not be removed merely because the written value appears unused by
+the Sec program.
+
+Volatility describes external access behavior.
+
+Volatility does not imply mutability.
+
+=====================================================================
+Read-Only Addressed Instances
+=============================
+
+An addressed instance declared without mut is read-only from Sec code.
+
+Example:
+
+```
+@address(0x40021000)
+let motorStatus: MotorStatus
+```
+
+The instance is still volatile because hardware may change its value.
+
+Sec code may read the instance and its fields:
+
+```
+let ready := motorStatus.Ready
+```
+
+Sec code may not write to the instance:
+
+```
+motorStatus.Ready = true       // invalid
+```
+
+The absence of mut means:
+
+```
+the program cannot write to the addressed instance
+```
+
+It does not mean:
+
+```
+the value cannot change
+```
+
+External hardware may change a read-only addressed instance at any
+time.
+
+The correct semantic description is therefore:
+
+```
+read-only from Sec
+externally mutable
+volatile
+```
+
+=====================================================================
+Read-Write Addressed Instances
+==============================
+
+An addressed instance declared with mut may be read and written.
+
+Example:
+
+```
+@address(0x40021000)
+let mut motorControl: MotorControl
+```
+
+Sec code may read fields:
+
+```
+let enabled := motorControl.Enabled
+```
+
+Sec code may write fields:
+
+```
+motorControl.Enabled = true
+```
+
+The instance remains volatile.
+
+The compiler must generate an observable hardware write for each
+required assignment.
+
+The mut keyword controls whether Sec code may modify the addressed
+storage.
+
+It does not control volatility.
+
+The rules are:
+
+```
+@address + let
+    read-only and volatile
+
+@address + let mut
+    read-write and volatile
+```
+
+=====================================================================
+Field Updates
+=============
+
+Writing a named field updates that field in the containing register.
+
+Example:
+
+```
+motorControl.Enabled = true
+```
+
+For a normal bit-addressable register, the compiler may implement this
+as a volatile read-modify-write operation:
+
+```
+read the register
+preserve unrelated bits
+update the selected field
+write the register
+```
+
+The source-level semantics require unrelated and reserved bits to remain
+unchanged.
+
+The compiler may use a more appropriate target instruction when the
+hardware supports one.
+
+The programmer should not need to write masks and shifts manually for a
+declared register field.
+
+The following low-level logic is therefore compiler work:
+
+```
+mask creation
+shift calculation
+field extraction
+field insertion
+width truncation checks
+volatile loads
+volatile stores
+```
+
+Some hardware registers have special write behavior, such as
+write-one-to-clear or write-only fields.
+
+Such behavior requires additional register metadata and is outside the
+basic register rule.
+
+The compiler must not assume ordinary read-modify-write behavior when a
+later declaration explicitly specifies special hardware semantics.
+
+=====================================================================
+Register Values and Ordinary Values
+===================================
+
+A register type describes a fixed-width hardware representation.
+
+An addressed register instance represents actual external hardware.
+
+A non-addressed value of a register type may be used where an ordinary
+in-memory register representation is required.
+
+Example:
+
+```
+let snapshot: MotorStatus := ReadStatus()
+```
+
+Such a value is not implicitly volatile unless it is bound using
+@address or obtained through another explicitly volatile hardware
+interface.
+
+Volatility belongs to the storage access, not merely to the register
+type.
+
+Therefore:
+
+```
+type MotorStatus register[8] { ... }
+```
+
+does not make every MotorStatus value volatile.
+
+The declaration:
+
+```
+@address(...)
+let motorStatus: MotorStatus
+```
+
+makes that particular storage binding volatile.
+
+=====================================================================
+Initialization
+==============
+
+An addressed instance is bound to existing external storage.
+
+It is not initialized by an ordinary Sec initializer.
+
+The following form is therefore invalid unless a future hardware rule
+explicitly permits it:
+
+```
+@address(0x40021000)
+let mut control: ControlRegister := initialValue
+```
+
+Writing an initial value to hardware must be expressed as an explicit
+operation after the binding:
+
+```
+@address(0x40021000)
+let mut control: ControlRegister
+
+control.Enabled = true
+```
+
+This keeps hardware writes visible in the source code.
+
+Declaring an addressed instance must not silently write to the hardware.
+
+=====================================================================
+Address Uniqueness and Aliasing
+===============================
+
+Multiple declarations may refer to the same physical address only when
+the compiler can determine that the aliasing is intentional and valid.
+
+Unintentional overlapping addressed storage can cause conflicting
+hardware views.
+
+The compiler should diagnose statically known overlapping declarations
+when their layouts or mutability rules conflict.
+
+Example:
+
+```
+@address(0x40021000)
+let mut first: RegisterA
+
+@address(0x40021000)
+let mut second: RegisterB
+```
+
+This may be rejected or require an explicit alias declaration in a
+future extension.
+
+The exact aliasing syntax is not defined by this rule.
+
+=====================================================================
+Safety and Unsafe Code
+======================
+
+A correctly declared register type and a statically validated @address
+binding should not require the programmer to manually perform pointer
+arithmetic.
+
+The compiler is responsible for lowering the declaration to the
+appropriate target-specific hardware access.
+
+A target may restrict which addresses are valid for safe addressed
+bindings.
+
+Dynamic addresses, unchecked addresses or address calculations that
+cannot be validated may require unsafe code.
+
+Example concept:
+
+```
+unsafe {
+    ...
+}
+```
+
+The exact rule for dynamic register addresses is defined separately.
+
+RawPtr is not required for normal statically addressed register access.
+
+Register declarations provide a safer typed alternative to exposing
+memory-mapped hardware as raw pointers.
+
+=====================================================================
+Compiler Validation
+===================
+
+The compiler must validate at least:
+
+```
+the register width is valid
+every field width is known at compile time
+every field width is positive
+all fields fit within the register
+the fields exactly occupy the declared width
+reserved fields cannot be accessed
+unit annotations refer to valid units
+assignments fit within the target field width
+writes require a mutable addressed instance
+addressed accesses preserve volatile semantics
+the address format is valid for the target
+statically known invalid or overlapping layouts are rejected
+```
+
+The compiler should produce diagnostics that explain the calculated
+layout.
+
+Example:
+
+```
+error: value 19 does not fit in the 4-bit field Speed
+
+  field range: 0..15
+  provided:    19
+
+help: use a wider field or reduce the assigned value
+```
+
+=====================================================================
+Example
+=======
+
+```
+unit rpm uint physical
+
+impl rpm {
+    dimension: [rotation * 1, time * -1]
+    scale: 1 / 60
+    system: Other
+}
+
+type MotorProtocol register[8] {
+    Speed: bit[4]<rpm>
+    Enabled: bit
+    _: bit[3]
+}
+
+@address(0x40021000)
+let mut motorProtocol: MotorProtocol
+
+fn StartMotor(speed: rpm) void {
+    motorProtocol.Speed = speed
+    motorProtocol.Enabled = true
+}
+```
+
+The compiler verifies:
+
+```
+MotorProtocol occupies exactly eight bits
+Speed occupies four bits
+Speed uses the rpm unit
+the assigned speed fits in four bits
+the instance is writable because it is mut
+every read and write is volatile
+reserved bits are preserved
+the address is valid for the selected target
+```
+
+A read-only status register may be declared as:
+
+```
+type MotorStatus register[8] {
+    Running: bit
+    Fault: bit
+    _: bit[6]
+}
+
+@address(0x40021001)
+let motorStatus: MotorStatus
+```
+
+The status register is read-only from Sec code but remains volatile.
+
+```
+let running := motorStatus.Running
+```
+
+The following assignment is invalid:
+
+```
+motorStatus.Running = true
+```
+
+because motorStatus was not declared with mut.
+
+=====================================================================
+Future Extensions
+=================
+
+The following concepts may be added by separate rules:
+
+```
+signed bit fields
+field offsets
+explicit bit ordering
+endianness
+read-only fields inside mutable registers
+write-only fields
+write-one-to-clear fields
+write-zero-to-clear fields
+set and clear aliases
+atomic register operations
+hardware reset values
+scaled and offset field encodings
+unions of register layouts
+register arrays
+dynamic base addresses
+target-defined bus addresses
+explicit register aliasing
+generated register declarations from hardware descriptions
+```
+
+These extensions must preserve the basic rules:
+
+```
+register layouts are statically verified
+@address always implies volatile external storage
+mut controls whether Sec code may write
+no volatile keyword is required
+the compiler handles masks, shifts and target lowering
+```
+
+=====================================================================
+Current Implementation Status
+=============================
+
+Implemented in parser, AST and semantic analysis:
+
+```
+type Name register[N] {
+    Field: bit
+    Field: bit[N]
+    Field: bit[N]<unit>
+    _: bit[N]
+}
+
+@address(0x40021000)
+let name: RegisterType
+
+@address(0x40021000)
+let mut name: RegisterType
+```
+
+Implemented checks:
+
+```
+register width must be positive
+bit field width must be positive
+field widths must exactly occupy the declared register width
+duplicate named fields are rejected
+reserved fields named _ participate in layout but cannot be accessed
+unit annotations are checked against known units
+@address requires an explicit register type
+@address bindings cannot have initializers
+@address requires a compile-time integer address
+@address bindings are marked volatile in semantic analysis
+writing a field on read-only addressed storage is rejected
+constant assignments to register fields are checked against field width
+```
+
+Not implemented yet:
+
+```
+MLIR lowering for volatile loads/stores
+mask/shift generation
+read-modify-write preservation of reserved bits
+target-specific address validation
+overlapping address diagnostics
+special register field behavior such as write-one-to-clear
+signed bit fields
+field offsets and bit ordering
+register arrays
+dynamic base addresses
+```

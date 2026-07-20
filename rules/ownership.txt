@@ -1,0 +1,77 @@
+=============================================================================================================================================================================================
+Ownership
+=============================================================================================================================================================================================
+
+Every value has exactly one owner.
+
+Ownership defines which scope is responsible for the lifetime of a value.
+
+Ownership is established when a value is:
+
+- declared
+- constructed
+- returned from a function
+- received through parameter passing
+- explicitly transferred
+
+A value remains valid until:
+
+- its owning scope ends
+- ownership is explicitly transferred
+- the value is explicitly destroyed if supported by the type
+
+Ownership transfer invalidates the previous owner.
+
+The compiler must reject every use of a value after ownership has been transferred.
+
+The compiler determines ownership entirely through semantic analysis. No runtime ownership tracking is permitted.
+
+Ownership transfer may occur through:
+
+- assignment
+- function arguments
+- return statements
+- container insertion
+- explicit language constructs
+
+Whether a type is copied or moved is determined by its type semantics.
+
+Copyable types duplicate their contents while preserving the original owner.
+
+Move-only types transfer ownership without duplication.
+
+The compiler must always know whether an operation performs a copy or a move.
+
+Ownership never depends on target architecture or backend implementation.
+
+Ownership analysis shall guarantee:
+
+- every value has exactly one owner
+- every value is destroyed at most once
+- every value remains valid while owned
+- no ownership cycles exist unless explicitly supported
+- ownership transfers are unambiguous
+
+Ownership analysis precedes borrow analysis.
+
+Ownership rules apply equally to:
+
+- local variables
+- function parameters
+- return values
+- struct fields
+- array elements
+- union payloads
+- generic types
+
+References never own memory.
+
+Raw pointers never own memory.
+
+Ownership may never be inferred from a raw pointer.
+
+Ownership may cross FFI boundaries only through explicitly defined ownership rules.
+
+Detailed reference behavior is specified in references.txt.
+
+Detailed borrowing rules are specified in borrowing.txt.

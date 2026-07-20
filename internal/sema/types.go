@@ -21,7 +21,10 @@ const (
 	StringType    TypeKind = "string"
 	CharType      TypeKind = "char"
 	RuneType      TypeKind = "rune"
+	RawPtrType    TypeKind = "rawptr"
+	ReferenceType TypeKind = "reference"
 	ResultType    TypeKind = "result"
+	RegisterType  TypeKind = "register"
 	StructType    TypeKind = "struct"
 	SliceType     TypeKind = "slice"
 	ArrayType     TypeKind = "array"
@@ -40,6 +43,7 @@ type Type struct {
 	Underlying             string
 	Unit                   string
 	Dimension              Dimension
+	ReferenceMutable       bool
 	MinInt                 *int64
 	MaxInt                 *int64
 	MinUint                *uint64
@@ -55,6 +59,8 @@ type Type struct {
 	FunctionReturnType     *Type
 	GenericParameters      []string
 	Fields                 []StructField
+	RegisterWidth          int64
+	RegisterFields         []RegisterField
 	Properties             []Property
 }
 
@@ -78,6 +84,14 @@ type StructField struct {
 	Tags  []StructTag
 }
 
+type RegisterField struct {
+	Name  string
+	Width int64
+	Unit  string
+	Type  Type
+	Token lexer.Token
+}
+
 type StructTag struct {
 	Key   string
 	Value string
@@ -91,6 +105,20 @@ type Property struct {
 	Error    *Type
 }
 
+type UnitCategory string
+
+const (
+	PhysicalUnit UnitCategory = "physical"
+	OtherUnit    UnitCategory = "other"
+)
+
+type UnitDefinition struct {
+	Name      string
+	Category  UnitCategory
+	Dimension Dimension
+	Token     lexer.Token
+}
+
 type Function struct {
 	Name              string
 	Module            string
@@ -98,6 +126,8 @@ type Function struct {
 	Parameters        []FunctionParameter
 	ReturnType        Type
 	Token             lexer.Token
+	Extern            bool
+	ABI               string
 }
 
 type FunctionParameter struct {
@@ -187,10 +217,13 @@ type DecimalValue struct {
 }
 
 type Symbol struct {
-	Name    string
-	Type    Type
-	Mutable bool
-	Token   lexer.Token
+	Name      string
+	Type      Type
+	Mutable   bool
+	Token     lexer.Token
+	Addressed bool
+	Address   string
+	Volatile  bool
 }
 
 func builtinTypes() map[string]Type {
@@ -199,6 +232,7 @@ func builtinTypes() map[string]Type {
 		"byte":    unsignedType("byte", 255),
 		"char":    {Name: "char", Kind: CharType},
 		"rune":    {Name: "rune", Kind: RuneType},
+		"RawPtr":  {Name: "RawPtr", Kind: RawPtrType, GenericParameters: []string{"T"}},
 		"Result":  {Name: "Result", Kind: ResultType, GenericParameters: []string{"T", "E"}},
 		"decimal": {Name: "decimal", Kind: DecimalType},
 		"float":   {Name: "float", Kind: FloatType},

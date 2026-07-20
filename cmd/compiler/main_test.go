@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -178,6 +179,114 @@ func TestParseBuildCommandOptions(t *testing.T) {
 	}
 	if options.LLVMOutputFile != "program.ll" {
 		t.Fatalf("LLVMOutputFile = %q, want program.ll", options.LLVMOutputFile)
+	}
+}
+
+func TestParseInitCommandOptions(t *testing.T) {
+	options, ok := parseInitCommandOptions(
+		[]string{"demo", "--name", "My Project", "--target", "linux-amd64", "--profile", "cli"},
+		CompilerTarget{OS: "macos", Arch: "arm64"},
+	)
+	if !ok {
+		t.Fatal("parseInitCommandOptions returned ok=false")
+	}
+	if options.ProjectDir != "demo" {
+		t.Fatalf("ProjectDir = %q, want demo", options.ProjectDir)
+	}
+	if options.ProjectName != "My Project" {
+		t.Fatalf("ProjectName = %q, want My Project", options.ProjectName)
+	}
+	if options.Target != (CompilerTarget{OS: "linux", Arch: "amd64"}) {
+		t.Fatalf("Target = %#v, want linux-amd64", options.Target)
+	}
+	if options.Profile != "cli" {
+		t.Fatalf("Profile = %q, want cli", options.Profile)
+	}
+}
+
+func TestInitProjectCreatesScaffold(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "myproj")
+	options := initCommandOptions{
+		ProjectDir:  dir,
+		ProjectName: "My Project",
+		Target:      CompilerTarget{OS: "linux", Arch: "amd64"},
+		Profile:     "server",
+	}
+
+	if err := initProject(options); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, path := range []string{
+		filepath.Join(dir, "cmd", "main"),
+		filepath.Join(dir, "bin"),
+		filepath.Join(dir, ".sec"),
+		filepath.Join(dir, "internal"),
+	} {
+		if info, err := os.Stat(path); err != nil || !info.IsDir() {
+			t.Fatalf("%s was not created as directory", path)
+		}
+	}
+
+	mainSource, err := os.ReadFile(filepath.Join(dir, "cmd", "main", "main.sec"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(mainSource), "fn main() int") {
+		t.Fatalf("main.sec missing main function:\n%s", mainSource)
+	}
+
+	config, err := os.ReadFile(filepath.Join(dir, ".sec", "sec.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	configText := string(config)
+	for _, want := range []string{
+		`[project]`,
+		`name = "My Project"`,
+		`uuid = "`,
+		`imports = []`,
+		`[platform]`,
+		`os = "linux"`,
+		`arch = "amd64"`,
+		`[build]`,
+		`target = "x86_64-pc-linux-gnu"`,
+		`profile = "server"`,
+		`output = "bin/my-project"`,
+	} {
+		if !strings.Contains(configText, want) {
+			t.Fatalf("sec.toml missing %q:\n%s", want, configText)
+		}
+	}
+}
+
+func TestInitProjectDoesNotOverwriteMainSource(t *testing.T) {
+	dir := t.TempDir()
+	mainPath := filepath.Join(dir, "cmd", "main", "main.sec")
+	if err := os.MkdirAll(filepath.Dir(mainPath), 0755); err != nil {
+		t.Fatal(err)
+	}
+	existing := []byte("module custom\n")
+	if err := os.WriteFile(mainPath, existing, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	options := initCommandOptions{
+		ProjectDir:  dir,
+		ProjectName: "custom",
+		Target:      CompilerTarget{OS: "linux", Arch: "amd64"},
+		Profile:     "server",
+	}
+	if err := initProject(options); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := os.ReadFile(mainPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(existing) {
+		t.Fatalf("main.sec was overwritten. got=%q want=%q", got, existing)
 	}
 }
 

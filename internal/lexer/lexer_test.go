@@ -190,7 +190,7 @@ func TestOperators(t *testing.T) {
 }
 
 func TestKeywords(t *testing.T) {
-	input := `module import require sec fn let mut type struct interface impl for while in if else switch case default fallthrough break continue match where return true false try defer discard ref unsafe asm property get set enum union spawn await nil None Some`
+	input := `module import require sec self extern fn let mut type unit struct interface impl for while in if else switch case default fallthrough break continue match where return true false try defer discard ref unsafe asm property get set enum union spawn await nil None Some`
 
 	tests := []struct {
 		typ    TokenType
@@ -200,10 +200,13 @@ func TestKeywords(t *testing.T) {
 		{IMPORT, "import"},
 		{REQUIRE, "require"},
 		{SEC, "sec"},
+		{SELF, "self"},
+		{EXTERN, "extern"},
 		{FN, "fn"},
 		{LET, "let"},
 		{MUT, "mut"},
 		{TYPE, "type"},
+		{UNIT, "unit"},
 		{STRUCT, "struct"},
 		{INTERFACE, "interface"},
 		{IMPL, "impl"},

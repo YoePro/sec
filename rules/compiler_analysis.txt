@@ -1,0 +1,437 @@
+=============================================================================================================================================================================================
+Compiler Analysis
+=================
+
+The Sec compiler performs extensive static program analysis.
+
+The purpose of compiler analysis is to detect incorrect programs, improve diagnostics and enable safe optimization before code generation.
+
+All analyses operate on validated semantic representations.
+
+Analyses must not change language semantics.
+
+Every analysis pass must have a clearly defined purpose, input and output.
+
+## Analysis context
+
+Compiler analysis operates on source plus build context.
+
+The build context is loaded before semantic analysis begins.
+
+For normal projects, the initial build context is created by:
+
+```text
+sec init
+```
+
+`sec init` creates `.sec/sec.toml`.
+
+The analysis layer must treat this file as configuration input, not as source
+code.
+
+The current configuration contains:
+
+* project name
+* project uuid
+* declared imports
+* selected operating system
+* selected architecture
+* selected build target
+* selected build profile
+* default output path
+
+If `.sec/sec.toml` is missing, single-file commands may still use the compiler's
+host target defaults.
+
+Project-aware commands should prefer the explicit project configuration.
+
+Target and platform values from configuration become part of the analysis
+context and are used by:
+
+* platform analysis
+* ABI analysis
+* register analysis
+* unsafe analysis
+* FFI analysis
+* compile-time evaluation of target-dependent constants
+
+Analysis must never silently switch target because a target-specific construct is
+invalid.
+
+Instead, the compiler must report the construct as unavailable for the selected
+target.
+
+## Analysis categories
+
+The compiler performs the following categories of analysis:
+
+* type analysis
+* ownership analysis
+* borrow analysis
+* lifetime analysis
+* escape analysis
+* mutability analysis
+* control-flow analysis
+* data-flow analysis
+* definite assignment analysis
+* reachability analysis
+* compile-time evaluation
+* constant propagation
+* contract analysis
+* generic constraint analysis
+* platform analysis
+* ABI analysis
+* register analysis
+* unit analysis
+* optimization analysis
+
+Additional analyses may be introduced provided they preserve language semantics.
+
+## Type analysis
+
+Type analysis verifies:
+
+* expression types
+* assignment compatibility
+* operator validity
+* overload resolution
+* method resolution
+* generic substitution
+* implicit conversion validity
+* explicit conversion validity
+* Result propagation
+* Option propagation
+
+Every expression must have exactly one resolved type before ownership analysis begins.
+
+## Ownership analysis
+
+Ownership analysis establishes ownership for every value.
+
+Ownership analysis determines:
+
+* owner creation
+* ownership transfer
+* copy operations
+* move operations
+* destruction responsibility
+* ownership conflicts
+
+Ownership analysis follows the rules defined in ownership.txt.
+
+## Borrow analysis
+
+Borrow analysis validates temporary access to owned values.
+
+Borrow analysis determines:
+
+* shared borrows
+* mutable borrows
+* borrow conflicts
+* overlapping borrows
+* mutable aliasing
+* borrow termination
+
+Borrow analysis follows borrowing.txt.
+
+## Lifetime analysis
+
+Lifetime analysis determines how long values remain valid.
+
+The compiler derives lifetimes automatically.
+
+The language does not expose lifetime annotations.
+
+Lifetime analysis validates:
+
+* reference validity
+* returned references
+* captured references
+* deferred references
+* temporary values
+* value destruction
+
+Lifetime analysis operates entirely at compile time.
+
+## Escape analysis
+
+Escape analysis determines whether a value or reference escapes its defining scope.
+
+Escape analysis validates:
+
+* returned references
+* captured closures
+* deferred values
+* global assignments
+* heap allocation requirements
+* ownership transfer
+
+The compiler must reject invalid escapes.
+
+The compiler must never silently promote a value from stack storage to heap storage.
+
+## Mutability analysis
+
+Mutability analysis validates every write operation.
+
+It verifies:
+
+* mutable variables
+* mutable references
+* mutable fields
+* immutable values
+* immutable references
+
+The compiler must reject every mutation that violates ownership or reference rules.
+
+## Control-flow analysis
+
+Control-flow analysis constructs the control-flow graph.
+
+The analysis validates:
+
+* all-path return
+* unreachable code
+* break targets
+* continue targets
+* switch completeness
+* match completeness
+* defer execution
+* termination where required
+
+Control-flow analysis follows compiler_pipeline.txt.
+
+## Data-flow analysis
+
+Data-flow analysis tracks values through program execution.
+
+It determines:
+
+* value availability
+* value origin
+* value propagation
+* dependency chains
+* optimization opportunities
+
+Data-flow analysis must preserve observable language behavior.
+
+## Definite assignment analysis
+
+Every value must be initialized before use.
+
+The compiler validates:
+
+* local variables
+* function parameters
+* struct fields where required
+* Result values
+* loop initialization
+* branch initialization
+
+Reading an uninitialized value is always an error.
+
+## Reachability analysis
+
+Reachability analysis determines which statements may execute.
+
+The compiler should identify:
+
+* unreachable statements
+* unreachable branches
+* dead returns
+* impossible match cases
+* impossible switch cases
+
+Reachability diagnostics follow the language warning policy.
+
+## Compile-time evaluation
+
+Compile-time evaluation computes expressions required during compilation.
+
+Compile-time evaluation includes:
+
+* constants
+* enum values
+* register definitions
+* type contracts
+* unit conversions
+* array lengths
+* compile-time functions when supported
+
+Compile-time evaluation must be deterministic.
+
+## Constant propagation
+
+The compiler may propagate compile-time constants.
+
+Constant propagation must never change observable behavior.
+
+The compiler may simplify:
+
+* arithmetic
+* comparisons
+* branches
+* match selection
+* switch selection
+
+## Contract analysis
+
+Contract analysis validates language contracts.
+
+Examples include:
+
+* ranges
+* units
+* register widths
+* uniqueness constraints
+* regex constraints
+* finite values
+* user-defined compile-time contracts
+
+Compile-time validation should be preferred whenever possible.
+
+## Generic analysis
+
+Generic analysis validates:
+
+* type substitution
+* constraint satisfaction
+* recursive generic definitions
+* generic specialization
+* monomorphization requirements
+
+Invalid generic instantiations must be rejected before lowering.
+
+## Platform analysis
+
+Platform analysis validates target-specific language constructs.
+
+Examples include:
+
+* operating-system availability
+* architecture support
+* syscall availability
+* target intrinsics
+* platform modules
+* build conditions
+* selected project target
+* selected project profile
+
+Platform analysis must not alter general language semantics.
+
+The selected platform comes from project configuration when available.
+
+If no project configuration exists, the compiler may use host defaults for
+single-file inspection commands such as `sec lex`, `sec parse` and `sec sema`.
+
+Build-producing commands must have a complete target definition before lowering.
+
+## ABI analysis
+
+ABI analysis validates interoperability.
+
+The compiler verifies:
+
+* calling conventions
+* parameter layout
+* return layout
+* structure layout
+* enum representation
+* alignment
+* padding
+
+ABI validation follows ffi.txt.
+
+## Register analysis
+
+Register analysis validates language register definitions.
+
+The compiler verifies:
+
+* register width
+* bit ranges
+* overlapping fields
+* reserved fields
+* address annotations
+* generated access operations
+
+Register analysis follows registers.txt.
+
+## Unit analysis
+
+Unit analysis validates physical and semantic units.
+
+The compiler verifies:
+
+* compatible units
+* legal conversions
+* dimensional consistency
+* compile-time unit evaluation
+
+Unit analysis follows units.txt.
+
+## Optimization analysis
+
+Optimization analysis identifies transformations that preserve observable behavior.
+
+Optimization opportunities may include:
+
+* dead-code elimination
+* constant folding
+* constant propagation
+* common subexpression elimination
+* loop simplification
+* copy elimination
+* move elimination
+* inline expansion where permitted
+
+Optimization analysis must not:
+
+* introduce hidden allocations
+* change destruction order
+* violate ownership
+* violate borrowing
+* remove required runtime checks
+* alter observable behavior
+
+## Analysis ordering
+
+Analyses may depend on previous analyses.
+
+The compiler should perform analyses in approximately this order:
+
+1. type analysis
+2. ownership analysis
+3. borrow analysis
+4. lifetime analysis
+5. escape analysis
+6. mutability analysis
+7. control-flow analysis
+8. data-flow analysis
+9. definite assignment analysis
+10. reachability analysis
+11. compile-time evaluation
+12. contract analysis
+13. platform analysis
+14. ABI analysis
+15. optimization analysis
+
+The compiler may internally combine analyses provided identical semantic results are produced.
+
+## Diagnostics
+
+Every analysis must produce diagnostics that identify:
+
+* the violated rule
+* the affected source location
+* related source locations where applicable
+* the reason for the violation
+* a suggested correction when practical
+
+Analyses should report the earliest meaningful error rather than secondary failures.
+
+## Design rule
+
+Compiler analyses exist to make programs safer, diagnostics clearer and generated code better.
+
+Analyses must improve the programmer experience without increasing language complexity.

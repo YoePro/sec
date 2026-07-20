@@ -90,6 +90,7 @@ type TypeDeclStatement struct {
 	AssignedType      *TypeReference
 	Variants          []*Identifier
 	StructType        *StructType
+	RegisterType      *RegisterType
 	Union             bool
 	UnionVariants     []*UnionVariant
 	Contract          Contract
@@ -101,6 +102,21 @@ func (tds *TypeDeclStatement) implMemberNode() {}
 
 func (tds *TypeDeclStatement) TokenLiteral() string {
 	return tds.Token.Lexeme
+}
+
+type UnitDeclStatement struct {
+	Token    lexer.Token
+	Name     *Identifier
+	BaseType *TypeReference
+	Category string
+}
+
+func (uds *UnitDeclStatement) statementNode() {}
+
+func (uds *UnitDeclStatement) implMemberNode() {}
+
+func (uds *UnitDeclStatement) TokenLiteral() string {
+	return uds.Token.Lexeme
 }
 
 type GenericParameter struct {
@@ -171,6 +187,9 @@ type TypeReference struct {
 	Token lexer.Token
 
 	Name string
+
+	Ref        bool
+	MutableRef bool
 
 	// ElementType is used for slice and array types such as []byte and [3]int.
 	ElementType *TypeReference
@@ -391,11 +410,13 @@ func (p *Program) String() string {
 }
 
 type LetStatement struct {
-	Token   lexer.Token
-	Mutable bool
-	Name    *Identifier
-	Type    *TypeReference
-	Value   Expression
+	Token        lexer.Token
+	Mutable      bool
+	Name         *Identifier
+	Type         *TypeReference
+	Value        Expression
+	Address      Expression
+	AddressToken lexer.Token
 }
 
 func (ls *LetStatement) statementNode() {}
@@ -470,6 +491,9 @@ type FunctionDeclaration struct {
 	ReturnType        *TypeReference
 	Body              *BlockStatement
 	Unsafe            bool
+	Extern            bool
+	ABI               string
+	LinkName          string
 }
 
 func (fd *FunctionDeclaration) statementNode() {}
@@ -481,10 +505,11 @@ func (fd *FunctionDeclaration) TokenLiteral() string {
 }
 
 type Parameter struct {
-	Token lexer.Token
-	Name  *Identifier
-	Type  *TypeReference
-	Ref   bool
+	Token      lexer.Token
+	Name       *Identifier
+	Type       *TypeReference
+	Ref        bool
+	MutableRef bool
 }
 
 func (p *Parameter) TokenLiteral() string {
@@ -771,6 +796,27 @@ type StructType struct {
 
 func (st *StructType) TokenLiteral() string {
 	return st.Token.Lexeme
+}
+
+type RegisterType struct {
+	Token  lexer.Token
+	Width  int64
+	Fields []*RegisterField
+}
+
+func (rt *RegisterType) TokenLiteral() string {
+	return rt.Token.Lexeme
+}
+
+type RegisterField struct {
+	Token lexer.Token
+	Name  *Identifier
+	Width int64
+	Unit  string
+}
+
+func (rf *RegisterField) TokenLiteral() string {
+	return rf.Token.Lexeme
 }
 
 type BooleanLiteral struct {

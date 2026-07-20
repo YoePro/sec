@@ -337,7 +337,7 @@
         },
         {
           "name": "storage.type.variable.sec",
-          "match": "\\b(?:let|property|type|enum|struct|interface|impl|fn)\\b"
+          "match": "\\b(?:let|property|type|enum|struct|register|interface|impl|fn)\\b"
         },
         {
           "name": "storage.modifier.mutable.sec",
@@ -345,7 +345,7 @@
         },        
         {
           "name": "keyword.other.sec",
-          "match": "\\b(?:module|import|require|range|validate|regex|minLen|maxLen|minLength|maxLength|precision|scale|get|set|iota|Ok|Err)\\b"
+          "match": "\\b(?:module|import|require|range|validate|regex|minLen|maxLen|minLength|maxLength|precision|scale|system|dimension|physical|other|get|set|iota|Ok|Err)\\b"
         }
       ]
     },    

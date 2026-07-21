@@ -1,24 +1,47 @@
 module register
 
-unit rpm uint physical
+// =============================================================================
+// Units used by register fields
+// =============================================================================
 
-// 1. Basic 8-bit register with exact matching bit width (4 + 1 + 3 = 8)
-type Protocol register[8] {
-    Speed: bit[4]<rpm>,
+unit rpm uint physical
+unit volt uint physical
+
+// =============================================================================
+// Basic register widths and exact layouts
+// =============================================================================
+
+// The smallest valid register uses one implicit one-bit field.
+type SingleBitRegister register[1] {
     Enabled: bit,
-    _: bit[3],
 }
 
-// 2. 16-bit register testing implicit bit[1] width and multiple reserved fields (1 + 3 + 4 + 8 = 16)
-type Control register[16] {
+// bit[1] has the same layout width as bit.
+type ExplicitSingleBitRegister register[1] {
+    Enabled: bit[1],
+}
+
+// A register may consist entirely of reserved bits.
+type ReservedRegister register[8] {
+    _: bit[8],
+}
+
+// A register may contain only named fields.
+type NamedFieldsRegister register[8] {
+    Low: bit[4],
+    High: bit[4],
+}
+
+// Multiple reserved fields are allowed and all fields exactly fill the layout.
+type ControlRegister register[16] {
     Enabled: bit,
     _: bit[3],
     Mode: bit[4],
     _: bit[8],
 }
 
-// 3. Large register layout to verify higher bit numbers (32-bit hardware layout)
-type SystemConfig register[32] {
+// Larger layouts must use the same exact-width validation.
+type SystemRegister register[32] {
     Status: bit[8],
     _: bit[8],
     InterruptMask: bit[12],
@@ -26,23 +49,154 @@ type SystemConfig register[32] {
     _: bit[3],
 }
 
-// 4. Memory-mapped register instance bound to a linear hardware address
-@address(0x40021000)
-let motorStatus: Protocol
-
-@address(0x40022000)
-let systemReg: SystemConfig
-
-// 5. Valid assignments inside functions with compatible types and units
-fn TestValidAssignments() void {
-    // Reading from a bit field with a matching unit type
-    let currentSpeed: rpm := motorStatus.Speed
-
-    // Reading a clean bit field into an un-typed variable (type inference)
-    let isEnabled := motorStatus.Enabled
+// A field may occupy the complete register width.
+type CounterRegister register[64] {
+    Value: bit[64],
 }
 
-// 4. Funktion som visar giltig tilldelning och enhetsmatchning
-fn TestValidUsage() void {
-    let speed: rpm := motorStatus.Speed
+// =============================================================================
+// Unit-aware fields
+// =============================================================================
+
+type MotorRegister register[8] {
+    Speed: bit[4]<rpm>,
+    Enabled: bit,
+    _: bit[3],
+}
+
+type PowerRegister register[16] {
+    Voltage: bit[12]<volt>,
+    Fault: bit,
+    _: bit[3],
+}
+
+// =============================================================================
+// Register impl blocks
+//
+// Methods and properties add behavior but do not change register layout.
+// =============================================================================
+
+type StatusRegister register[8] {
+    Ready: bit,
+    Error: bit,
+    _: bit[6],
+}
+
+impl StatusRegister {
+    fn IsReady(ref self) bool {
+        return self.Ready
+    }
+
+    fn HasError(ref self) bool {
+        return self.Error
+    }
+
+    fn ClearError(ref mut self) void {
+        self.Error = false
+    }
+
+    // This property must not add storage to the eight-bit register.
+    property Healthy: bool {
+        get {
+            return !Error
+        }
+    }
+
+    // Static behavior is also valid and does not affect layout.
+    fn Width() int {
+        return 8
+    }
+}
+
+// =============================================================================
+// Addressed register instances
+//
+// @address implies external, non-owning and volatile storage.
+// mut controls whether Sec code may write to the storage.
+// =============================================================================
+
+@address(0x40021000)
+let readOnlyStatus: StatusRegister
+
+@address(0x40021004)
+let mut writableStatus: StatusRegister
+
+@address(0x40022000)
+let readOnlyMotor: MotorRegister
+
+@address(0x40022004)
+let mut writableMotor: MotorRegister
+
+@address(0x40023000)
+let mut writableControl: ControlRegister
+
+@address(0x40024000)
+let readOnlyPower: PowerRegister
+
+// Decimal compile-time integer addresses are valid as well.
+@address(1073889296)
+let decimalAddressStatus: StatusRegister
+
+// =============================================================================
+// Valid addressed reads
+// =============================================================================
+
+fn ReadStatusFields() void {
+    let ready: bool := readOnlyStatus.Ready
+    let hasError: bool := readOnlyStatus.Error
+    let inferredReady := readOnlyStatus.Ready
+}
+
+fn ReadUnitFields() void {
+    let speed: rpm := readOnlyMotor.Speed
+    let voltage: volt := readOnlyPower.Voltage
+    let inferredSpeed := readOnlyMotor.Speed
+}
+
+// Every addressed read remains a separate volatile access.
+fn ReadSameFieldTwice() void {
+    let first := readOnlyStatus.Ready
+    let second := readOnlyStatus.Ready
+}
+
+// =============================================================================
+// Valid addressed writes
+// =============================================================================
+
+fn WriteBooleanFields() void {
+    writableStatus.Ready = true
+    writableStatus.Error = false
+    writableMotor.Enabled = true
+    writableControl.Enabled = false
+}
+
+// Constant values inside the unsigned field range are valid.
+fn WriteBoundedConstants() void {
+    writableControl.Mode = 0
+    writableControl.Mode = 7
+}
+
+// Unit-compatible values may be written to unit-aware fields.
+fn WriteUnitFields(speed: rpm) void {
+    writableMotor.Speed = speed
+}
+
+// =============================================================================
+// Valid impl use on addressed and ordinary register storage
+// =============================================================================
+
+fn UseRegisterMethods() void {
+    let ready := readOnlyStatus.IsReady()
+    let healthy := readOnlyStatus.Healthy
+
+    writableStatus.ClearError()
+}
+
+// A non-addressed register value uses ordinary value semantics.
+fn InspectSnapshot(snapshot: ref StatusRegister) bool {
+    return snapshot.IsReady()
+}
+
+fn UpdateSnapshot(snapshot: ref mut StatusRegister) void {
+    snapshot.ClearError()
 }

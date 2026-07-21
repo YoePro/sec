@@ -1,0 +1,412 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Impl Blocks - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+</head>
+<body>
+<header class="site-header">
+    <div class="header-inner">
+        <a href="index.html" class="site-logo">
+            <img src="logo.svg" alt="Sec" />
+            <span class="site-title">Sec Manual</span>
+        </a>
+        <nav class="header-nav">
+            <a href="01-introduction.html">Introduction</a>
+            <a href="https://github.com/YoePro/sec">GitHub</a>
+        </nav>
+    </div>
+</header>
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+        <div class="sidebar-section">Impl Blocks</div>
+        <a href="#16-impl">Overview</a>
+        <a href="#syntax">Syntax</a>
+        <a href="#targets">Allowed Targets</a>
+        <a href="#members">Members</a>
+        <a href="#self">Self</a>
+        <a href="#methods">Methods</a>
+        <a href="#properties">Properties</a>
+        <a href="#nested-types">Nested Types</a>
+        <a href="#generic-impl">Generic Impl</a>
+        <a href="#interfaces">Interface Implementation</a>
+        <a href="#lookup">Name Lookup</a>
+        <a href="#analysis">Analysis Order</a>
+        <a href="#restrictions">Restrictions</a>
+        <a href="#visibility">Visibility</a>
+        <a href="#runtime">Runtime Model</a>
+        <a href="#summary">Summary of Rules</a>
+        <div class="sidebar-section">Pages</div>
+        <a href="01-introduction.html">Introduction</a>
+        <a href="02-basic-syntax.html">Basic Syntax</a>
+        <a href="03-types.html">Types</a>
+        <a href="04-named-types-contracts-and-units.html">Named Types, Contracts &amp; Units</a>
+        <a href="05-structs-properties-and-impl.html">Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html">Functions</a>
+        <a href="07-if.html">If Statements</a>
+        <a href="08-switch.html">Switch Statements</a>
+        <a href="09-match.html">Match Expressions</a>
+        <a href="10-enums.html">Enums</a>
+        <a href="11-unions.html">Unions</a>
+        <a href="12-registers.html">Registers</a>
+        <a href="13-units.html">Units</a>
+        <a href="14-generics.html">Generics</a>
+        <a href="15-structs.html">Structs</a>
+        <a href="16-impl.html" class="active">Impl Blocks</a>
+        <a href="17-properties.html">Properties</a>
+        <a href="18-interfaces.html">Interfaces</a>
+        <a href="19-arrays.html">Arrays</a>
+        <a href="20-slices.html">Slices</a>
+        <a href="21-indexing.html">Indexing</a>
+        <a href="22-constants.html">Constants</a>
+        <a href="23-references.html">References</a>
+        <a href="24-ownership.html">Ownership</a>
+        <a href="25-borrowing.html">Borrowing</a>
+        <a href="26-unsafe.html">Unsafe</a>
+        <a href="27-spread.html">Spread</a>
+        <a href="30-modules.html">Modules and Imports</a>
+        <a href="31-projects.html">Projects and sec.module</a>
+        <a href="32-visibility.html">Visibility</a>
+        <a href="33-result-and-option.html">Result and Option</a>
+        <a href="34-try.html">Error Handling</a>
+        <a href="35-defer.html">Deferred Cleanup</a>
+        <a href="36-attributes.html">Attributes</a>
+        <a href="37-build-directives.html">Build Directives</a>
+        <a href="38-ffi.html">Foreign Function Interfaces</a>
+        <a href="39-tasks.html">Tasks</a>
+        <a href="40-spawn.html">Spawning Work</a>
+        <a href="41-await.html">Awaiting Tasks</a>
+        <a href="42-channels.html">Channels and Coordination</a>
+        <a href="43-testing.html">Tests and Benchmarks</a>
+        <a href="44-formatting.html">Formatting</a>
+        <a href="45-diagnostics.html">Understanding Compiler Diagnostics</a>
+    </nav>
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Impl Blocks</div>
+        <h1 id="16-impl">Impl Blocks</h1>
+        <p>An <code>impl</code> block defines behavior for an existing named type. The type declaration defines the type itself, while the impl block defines operations associated with that type.</p>
+        <pre><code>type Person struct {
+    name: string,
+    age: int,
+}
+
+impl Person {
+}</code></pre>
+        <div class="rule"><strong>Rule:</strong> A type defines data and identity. An impl block defines behavior.</div>
+
+        <section id="syntax">
+            <h2>Syntax</h2>
+            <pre><code>impl TypeName {
+    members
+}</code></pre>
+            <p>The target must already be a known named type. An empty impl block is valid.</p>
+        </section>
+
+        <section id="targets">
+            <h2>Allowed Targets</h2>
+            <p>An impl block may target structs, enums, unions, registers, named primitive-derived types, units and generic named types.</p>
+            <pre><code>impl Vehicle {
+}
+
+impl Color {
+}
+
+impl Result[T, E] {
+}
+
+impl Speed {
+}</code></pre>
+            <p>The target must exist and must be a named type.</p>
+            <pre><code>impl MissingType {
+}</code></pre>
+        </section>
+
+        <section id="members">
+            <h2>Impl Members</h2>
+            <p>An impl block may contain methods, properties, nested named types, nested enums, nested unions, nested units and constants when implemented.</p>
+            <pre><code>impl Vehicle {
+    type Engine struct {
+        power: Kilowatt,
+    }
+
+    enum FuelType {
+        petrol,
+        diesel,
+        electric,
+    }
+
+    property TopSpeed: Speed {
+        get {
+            return _topSpeed
+        }
+    }
+
+    fn Stop(ref mut self) void {
+        self._topSpeed = Speed(0)
+    }
+}</code></pre>
+            <p>An impl block cannot contain stored fields or ordinary variable declarations.</p>
+            <pre><code>impl Vehicle {
+    let currentSpeed: Speed
+}</code></pre>
+            <div class="rule"><strong>Invalid:</strong> Stored data belongs in the type declaration, not in the impl block.</div>
+        </section>
+
+        <section id="self">
+            <h2>Self</h2>
+            <p>Instance methods declare a receiver named <code>self</code>.</p>
+            <h3>Shared receiver</h3>
+            <pre><code>impl Person {
+    fn Print(ref self) void {
+        fmt.Println(self.name)
+    }
+}</code></pre>
+            <p>A shared receiver may read from the value but may not mutate it.</p>
+            <h3>Mutable receiver</h3>
+            <pre><code>impl Person {
+    fn SetAge(ref mut self, age: int) void {
+        self.age = age
+    }
+}</code></pre>
+            <p>A mutable receiver may modify the target value.</p>
+            <h3>Static methods</h3>
+            <pre><code>impl Person {
+    fn Create(name: string, age: int) Person {
+        return Person {
+            name: name,
+            age: age,
+        }
+    }
+}</code></pre>
+            <div class="rule"><strong>Rule:</strong> <code>self</code> is available only when explicitly declared as a method receiver.</div>
+        </section>
+
+        <section id="methods">
+            <h2>Methods</h2>
+            <p>Methods are functions associated with the impl target.</p>
+            <pre><code>impl Vehicle {
+    fn Drive(ref mut self, speed: Speed) void {
+        self._speed = speed
+    }
+
+    fn CurrentSpeed(ref self) Speed {
+        return self._speed
+    }
+}</code></pre>
+            <pre><code>vehicle.Drive(Speed(50))
+let speed := vehicle.CurrentSpeed()</code></pre>
+            <p>Conceptually, methods are registered under qualified names such as <code>Vehicle.Drive</code> and <code>Vehicle.CurrentSpeed</code>.</p>
+            <p>All method signatures are registered before method bodies are analyzed, so forward references are allowed.</p>
+            <pre><code>impl Vehicle {
+    fn Start(ref mut self) void {
+        self.Prepare()
+    }
+
+    fn Prepare(ref mut self) void {
+    }
+}</code></pre>
+            <p>Additional method-level generic parameters are not part of the initial implementation.</p>
+        </section>
+
+        <section id="properties">
+            <h2>Properties</h2>
+            <p>Properties are controlled or computed members declared inside an impl block.</p>
+            <pre><code>impl Vehicle {
+    property TopSpeed: Speed {
+        get {
+            return _topSpeed
+        }
+
+        try set value {
+            _topSpeed = value
+            return Ok()
+        }
+    }
+}</code></pre>
+            <p>A property may contain <code>get</code>, <code>set value</code> or <code>try set value</code>. It must contain at least one getter or setter.</p>
+            <p>A getter must return a value assignable to the property type.</p>
+            <pre><code>property Bad: Speed {
+    get {
+        return Money(5.90)
+    }
+}</code></pre>
+            <p>A fallible property assignment requires <code>try</code>:</p>
+            <pre><code>try car.TopSpeed = currentSpeed {
+    Err(error) => fmt.Println("could not set top speed")
+}</code></pre>
+        </section>
+
+        <section id="nested-types">
+            <h2>Nested Types</h2>
+            <p>Associated nested declarations are scoped under the impl target type.</p>
+            <pre><code>type Vehicle struct {
+    engine: Vehicle.Engine,
+    fuel: Vehicle.FuelType,
+}
+
+impl Vehicle {
+    type Engine struct {
+        power: Kilowatt,
+    }
+
+    enum FuelType {
+        petrol,
+        diesel,
+        electric,
+    }
+}</code></pre>
+            <p>Outside the impl block, nested types require qualified names such as <code>Vehicle.Engine</code>, <code>Vehicle.FuelType</code> and <code>Vehicle.FuelType.petrol</code>.</p>
+            <p>Inside <code>impl Vehicle</code>, short names such as <code>Engine</code>, <code>FuelType</code> and <code>FuelType.petrol</code> are available.</p>
+            <div class="rule"><strong>Rule:</strong> Nested declarations belong to the target type namespace.</div>
+            <p>Nested named types still use normal declaration syntax.</p>
+            <pre><code>impl Vehicle {
+    type Engine struct {
+        power: Kilowatt,
+    }
+}</code></pre>
+            <p>This form is invalid:</p>
+            <pre><code>impl Vehicle {
+    struct Engine {
+        power: Kilowatt,
+    }
+}</code></pre>
+        </section>
+
+        <section id="generic-impl">
+            <h2>Generic Impl Blocks</h2>
+            <pre><code>type Stack[T] struct {
+    items: Vec[T],
+}
+
+impl Stack[T] {
+    fn Push(ref mut self, value: T) void {
+        self.items.Add(value)
+    }
+
+    fn Pop(ref mut self) Option[T] {
+        return self.items.Pop()
+    }
+}</code></pre>
+            <p>The generic parameters must match the target declaration. Generic impl members are specialized together with the concrete target type.</p>
+        </section>
+
+        <section id="interfaces">
+            <h2>Interface Implementation</h2>
+            <p>Interfaces use a separate explicit form:</p>
+            <pre><code>impl Reader for FileReader {
+    fn Read(ref mut self, buffer: []byte) Result[int, IOError] {
+    }
+}</code></pre>
+            <p>This is not the ordinary impl block for <code>FileReader</code>. A type may have one ordinary impl block and separate explicit interface implementations.</p>
+        </section>
+
+        <section id="lookup">
+            <h2>Name Lookup</h2>
+            <p>Impl members belong to the target type namespace.</p>
+            <pre><code>Vehicle.Drive
+Vehicle.TopSpeed
+Vehicle.Engine
+Vehicle.FuelType</code></pre>
+            <p>All member names are registered before bodies are analyzed. This allows methods and properties to reference members declared later.</p>
+        </section>
+
+        <section id="analysis">
+            <h2>Impl Analysis Order</h2>
+            <h3>Pass 1: Register target and nested names</h3>
+            <ul>
+                <li>verify that the target exists</li>
+                <li>verify that the target is a named type</li>
+                <li>validate generic target arguments</li>
+                <li>register nested type names</li>
+                <li>reject duplicate nested type names</li>
+            </ul>
+            <h3>Pass 2: Resolve nested declarations</h3>
+            <ul>
+                <li>nested structs</li>
+                <li>nested enums</li>
+                <li>nested unions</li>
+                <li>nested units</li>
+                <li>nested aliases when supported</li>
+            </ul>
+            <h3>Pass 3: Register behavioral members</h3>
+            <ul>
+                <li>method signatures</li>
+                <li>property signatures</li>
+                <li>constants when implemented</li>
+            </ul>
+            <h3>Pass 4: Analyze member bodies</h3>
+            <ul>
+                <li>method bodies</li>
+                <li>property getters</li>
+                <li>property setters</li>
+                <li>fallible property setters</li>
+                <li>constant initializers when implemented</li>
+            </ul>
+            <div class="rule"><strong>Rule:</strong> Member bodies are never analyzed before the complete member surface is known.</div>
+        </section>
+
+        <section id="restrictions">
+            <h2>Restrictions</h2>
+            <p>An impl block must not add stored fields, contain member-level variables, contain free-standing executable statements, redefine an existing member, change the target type definition or silently implement another type.</p>
+            <pre><code>impl Vehicle {
+    let speed: Speed
+    speed = Speed(10)
+}</code></pre>
+            <p>A type may have only one ordinary impl block.</p>
+            <pre><code>impl Vehicle {
+}
+
+impl Vehicle {
+}</code></pre>
+            <div class="rule"><strong>Design rule:</strong> One ordinary impl block keeps a type's behavior in one predictable namespace.</div>
+        </section>
+
+        <section id="visibility">
+            <h2>Visibility</h2>
+            <p>Impl members follow normal visibility rules. Members and nested declarations may be public, module-visible or private.</p>
+            <p>A public member must not expose an inaccessible type in its public signature.</p>
+        </section>
+
+        <section id="runtime">
+            <h2>Runtime Model</h2>
+            <p><code>impl</code> is a compile-time construct. It does not create a runtime object, wrapper, namespace value or allocation.</p>
+            <div class="rule"><strong>Rule:</strong> <code>impl</code> has no runtime representation.</div>
+        </section>
+
+        <section id="summary">
+            <h2>Summary of Rules</h2>
+            <ul>
+                <li><code>impl Type { ... }</code> defines behavior for an existing named type.</li>
+                <li>A type may have only one ordinary impl block.</li>
+                <li>Interface implementations use <code>impl Interface for Type</code>.</li>
+                <li>Impl blocks may contain methods, properties and associated nested declarations.</li>
+                <li>Stored fields and free-standing statements are not allowed.</li>
+                <li>Instance methods explicitly declare <code>ref self</code> or <code>ref mut self</code>.</li>
+                <li>Static methods do not declare <code>self</code>.</li>
+                <li>Method and property signatures are registered before bodies are analyzed.</li>
+                <li>Forward references between members are allowed.</li>
+                <li>Nested declarations belong to the target type namespace.</li>
+                <li>Nested names must be qualified outside the matching impl block.</li>
+                <li>Generic impl parameters must match the target generic type.</li>
+                <li>Duplicate members and nested names are invalid.</li>
+                <li><code>impl</code> has no runtime representation.</li>
+            </ul>
+        </section>
+
+        <div class="page-navigation">
+            <a href="15-structs.html">Previous: Structs</a>
+            <a href="17-properties.html">Next: Properties</a>
+        </div>
+    </main>
+</div>
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <p>&copy; 2026 Sec Language</p>
+        <a href="https://github.com/YoePro/sec">GitHub</a>
+    </div>
+</footer>
+</body>
+</html>

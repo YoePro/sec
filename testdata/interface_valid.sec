@@ -1,0 +1,391 @@
+module interfaces
+
+// Every declaration in this file is expected to pass semantic analysis.
+// The file focuses on explicit implementation, exact member compatibility,
+// properties, multiple interfaces and inherited requirements.
+
+// =============================================================================
+// Shared types
+// =============================================================================
+
+type Identifier int
+type CounterValue int
+
+type ComparisonKey struct {
+    value: int,
+}
+
+// =============================================================================
+// Empty interface
+// =============================================================================
+
+interface Marker {
+}
+
+type MarkedValue struct implements Marker {
+    value: int,
+}
+
+impl MarkedValue {
+}
+
+// =============================================================================
+// One method requirement
+// =============================================================================
+
+interface Identified {
+    fn Identifier(ref self) Identifier
+}
+
+type Entity struct implements Identified {
+    _identifier: Identifier,
+}
+
+impl Entity {
+    fn Identifier(ref self) Identifier {
+        return _identifier
+    }
+}
+
+// =============================================================================
+// Shared and mutable receiver requirements
+// =============================================================================
+
+interface Switchable {
+    fn IsEnabled(ref self) bool
+    fn Enable(ref mut self) void
+    fn Disable(ref mut self) void
+}
+
+type Switch struct implements Switchable {
+    _enabled: bool,
+}
+
+impl Switch {
+    fn IsEnabled(ref self) bool {
+        return _enabled
+    }
+
+    fn Enable(ref mut self) void {
+        _enabled = true
+    }
+
+    fn Disable(ref mut self) void {
+        _enabled = false
+    }
+}
+
+// =============================================================================
+// Parameter compatibility
+// =============================================================================
+
+interface Processor {
+    fn Process(ref mut self, value: int, limit: uint) bool
+    fn Matches(ref self, key: ref ComparisonKey) bool
+}
+
+type NumberProcessor struct implements Processor {
+    _lastValue: int,
+}
+
+impl NumberProcessor {
+    // Parameter names do not form part of the interface signature.
+    fn Process(ref mut self, input: int, maximum: uint) bool {
+        _lastValue = input
+        return maximum > 0
+    }
+
+    fn Matches(ref self, candidate: ref ComparisonKey) bool {
+        return _lastValue == candidate.value
+    }
+}
+
+// =============================================================================
+// Getter-only property requirement
+// =============================================================================
+
+interface Named {
+    property Name: string {
+        get
+    }
+}
+
+type ReadOnlyName struct implements Named {
+    _name: string,
+}
+
+impl ReadOnlyName {
+    property Name: string {
+        get {
+            return _name
+        }
+    }
+}
+
+// A get requirement may be satisfied by a property that also has a setter.
+type MutableName struct implements Named {
+    _name: string,
+}
+
+impl MutableName {
+    property Name: string {
+        get {
+            return _name
+        }
+
+        set incoming {
+            _name = incoming
+        }
+    }
+}
+
+// =============================================================================
+// Read-write property requirement
+// =============================================================================
+
+interface Counted {
+    property Count: CounterValue {
+        get
+        set
+    }
+}
+
+type Counter struct implements Counted {
+    _count: CounterValue,
+}
+
+impl Counter {
+    property Count: CounterValue {
+        get {
+            return _count
+        }
+
+        set next {
+            _count = next
+        }
+    }
+}
+
+// =============================================================================
+// Multiple interfaces
+// =============================================================================
+
+interface Described {
+    fn Describe(ref self) string
+}
+
+interface Resettable {
+    fn Reset(ref mut self) void
+}
+
+type Service struct implements Identified, Named, Described, Resettable {
+    _identifier: Identifier,
+    _name: string,
+    _resetCount: int,
+}
+
+impl Service {
+    // Member declaration order does not need to match interface order.
+    fn Reset(ref mut self) void {
+        _resetCount = 0
+    }
+
+    property Name: string {
+        get {
+            return _name
+        }
+    }
+
+    fn Describe(ref self) string {
+        return _name
+    }
+
+    fn Identifier(ref self) Identifier {
+        return _identifier
+    }
+
+    // Extra helper members do not affect conformance.
+    fn ResetCount(ref self) int {
+        return _resetCount
+    }
+
+    property IsReset: bool {
+        get {
+            return _resetCount == 0
+        }
+    }
+}
+
+// =============================================================================
+// Interface inheritance
+// =============================================================================
+
+interface Readable {
+    fn Read(ref self) int
+}
+
+interface Writable {
+    fn Write(ref mut self, value: int) void
+}
+
+interface ReadWriter implements Readable, Writable {
+}
+
+type MemoryCell struct implements ReadWriter {
+    _value: int,
+}
+
+impl MemoryCell {
+    fn Read(ref self) int {
+        return _value
+    }
+
+    fn Write(ref mut self, value: int) void {
+        _value = value
+    }
+}
+
+// =============================================================================
+// Deep interface inheritance
+// =============================================================================
+
+interface Startable {
+    fn Start(ref mut self) void
+}
+
+interface Stoppable {
+    fn Stop(ref mut self) void
+}
+
+interface Managed implements Startable, Stoppable, Named {
+    fn IsRunning(ref self) bool
+}
+
+type Worker struct implements Managed {
+    _name: string,
+    _running: bool,
+}
+
+impl Worker {
+    fn Start(ref mut self) void {
+        _running = true
+    }
+
+    fn Stop(ref mut self) void {
+        _running = false
+    }
+
+    fn IsRunning(ref self) bool {
+        return _running
+    }
+
+    property Name: string {
+        get {
+            return _name
+        }
+    }
+}
+
+// =============================================================================
+// Compatible duplicate requirements through multiple inheritance
+// =============================================================================
+
+interface LeftState {
+    fn State(ref self) int
+}
+
+interface RightState {
+    fn State(ref self) int
+}
+
+interface CombinedState implements LeftState, RightState {
+}
+
+type StateMachine struct implements CombinedState {
+    _state: int,
+}
+
+impl StateMachine {
+    // One compatible member satisfies both inherited declarations.
+    fn State(ref self) int {
+        return _state
+    }
+}
+
+// =============================================================================
+// Diamond inheritance
+// =============================================================================
+
+interface RootValue {
+    fn Root(ref self) int
+}
+
+interface LeftBranch implements RootValue {
+}
+
+interface RightBranch implements RootValue {
+}
+
+interface Diamond implements LeftBranch, RightBranch {
+}
+
+type DiamondValue struct implements Diamond {
+    _root: int,
+}
+
+impl DiamondValue {
+    fn Root(ref self) int {
+        return _root
+    }
+}
+
+// =============================================================================
+// Compatible inherited property requirements
+// =============================================================================
+
+interface LeftLabel {
+    property Label: string {
+        get
+    }
+}
+
+interface RightLabel {
+    property Label: string {
+        get
+    }
+}
+
+interface CombinedLabel implements LeftLabel, RightLabel {
+}
+
+type LabelledValue struct implements CombinedLabel {
+    _label: string,
+}
+
+impl LabelledValue {
+    property Label: string {
+        get {
+            return _label
+        }
+
+        set value {
+            _label = value
+        }
+    }
+}
+
+// =============================================================================
+// Generic interface declaration
+//
+// Generic interface declarations and their member type parameters are parsed and
+// registered. Concrete generic conformance is intentionally tested later because
+// the rules mark full generic interface conformance as incomplete.
+// =============================================================================
+
+interface Container[T] {
+    property Value: T {
+        get
+    }
+
+    fn Contains(ref self, value: T) bool
+}

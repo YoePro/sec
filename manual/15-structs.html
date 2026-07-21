@@ -1,0 +1,593 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Structs - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+</head>
+<body>
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+
+        <div class="sidebar-section">Structs</div>
+        <ul>
+            <li><a href="#structs">Overview</a></li>
+            <li><a href="#declaration">Declaration</a></li>
+            <li><a href="#fields">Fields</a></li>
+            <li><a href="#construction">Construction</a></li>
+            <li><a href="#access">Field Access</a></li>
+            <li><a href="#assignment">Field Assignment</a></li>
+            <li><a href="#initialization">Initialization</a></li>
+            <li><a href="#nested-structs">Nested Structs</a></li>
+            <li><a href="#generic-structs">Generic Structs</a></li>
+            <li><a href="#field-tags">Field Tags</a></li>
+            <li><a href="#identity">Type Identity</a></li>
+            <li><a href="#data-and-behavior">Data and Behavior</a></li>
+            <li><a href="#common-errors">Common Errors</a></li>
+            <li><a href="#summary-rules">Summary of Rules</a></li>
+        </ul>
+
+        <div class="sidebar-section">Pages</div>
+        <ul>
+            <li><a href="index.html">Index</a></li>
+            <li><a href="01-introduction.html">Introduction</a></li>
+            <li><a href="02-basic-syntax.html">Basic Syntax</a></li>
+            <li><a href="03-variables-and-basic-types.html">Variables and Basic Types</a></li>
+            <li><a href="04-named-types-contracts-and-units.html">Named Types, Contracts and Units</a></li>
+            <li><a href="05-structs-properties-and-impl.html">Structs, Properties and Impl</a></li>
+            <li><a href="06-functions.html">Functions</a></li>
+            <li><a href="07-if.html">If Statements</a></li>
+            <li><a href="08-switch.html">Switch Statements</a></li>
+            <li><a href="09-match.html">Match Expressions and Statements</a></li>
+            <li><a href="10-enums.html">Enums</a></li>
+            <li><a href="11-unions.html">Unions</a></li>
+            <li><a href="12-registers.html">Registers</a></li>
+            <li><a href="13-units.html">Units</a></li>
+            <li><a href="14-generics.html">Generics</a></li>
+            <li><a class="active" href="15-structs.html">Structs</a></li>
+        </ul>
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Structs</div>
+
+        <h1 id="structs">Structs</h1>
+
+        <p>
+            A struct defines a named data layout composed of typed fields.
+            Structs contain data only. Behavior is added separately through an
+            <code>impl</code> block.
+        </p>
+
+        <pre><code>type Coordinate struct {
+    x: Meter,
+    y: Meter,
+    z: Meter,
+}</code></pre>
+
+        <div class="rule">
+            <strong>Rule:</strong> Sec does not use classes. Structs define data,
+            impl blocks define behavior, and interfaces define behavior contracts.
+        </div>
+
+        <section id="declaration">
+            <h2>Struct Declaration</h2>
+
+            <p>A named struct is declared with <code>type Name struct</code>:</p>
+
+            <pre><code>type User struct {
+    id: int,
+    name: string,
+}</code></pre>
+
+            <p>A struct declaration always introduces a named type.</p>
+
+            <p>Anonymous struct types are not part of the initial language model.</p>
+
+            <div class="rule">
+                <strong>Rule:</strong> Stored data layout is defined only by
+                <code>type Name struct { ... }</code>.
+            </div>
+        </section>
+
+        <section id="fields">
+            <h2>Struct Fields</h2>
+
+            <p>Fields use typed identifier syntax:</p>
+
+            <pre><code>name: Type</code></pre>
+
+            <p>Fields are comma-separated. A trailing comma is allowed.</p>
+
+            <pre><code>type Coordinate struct {
+    x: Meter,
+    y: Meter,
+    z: Meter,
+}</code></pre>
+
+            <p>Single-line declarations use the same syntax:</p>
+
+            <pre><code>type Coordinate struct { x: Meter, y: Meter, z: Meter }</code></pre>
+
+            <p>Line breaks do not replace commas.</p>
+
+            <pre><code>type Invalid struct {
+    x: Meter
+    y: Meter
+}</code></pre>
+
+            <div class="rule">
+                <strong>Invalid:</strong> Struct field lists always require commas
+                between fields.
+            </div>
+
+            <p>Field names must be unique within the struct:</p>
+
+            <pre><code>type Invalid struct {
+    value: int,
+    value: string,
+}</code></pre>
+
+            <p>Every field type must resolve to a known type.</p>
+
+            <pre><code>type Invalid struct {
+    value: MissingType,
+}</code></pre>
+        </section>
+
+        <section id="construction">
+            <h2>Struct Construction</h2>
+
+            <p>A struct value is created with a struct literal:</p>
+
+            <pre><code>let point := Coordinate {
+    x: Meter(10),
+    y: Meter(20),
+    z: Meter(30),
+}</code></pre>
+
+            <p>Field names make construction independent of declaration order:</p>
+
+            <pre><code>let point := Coordinate {
+    z: Meter(30),
+    x: Meter(10),
+    y: Meter(20),
+}</code></pre>
+
+            <p>Every supplied field must exist on the struct.</p>
+
+            <pre><code>let point := Coordinate {
+    x: Meter(10),
+    y: Meter(20),
+    unknown: Meter(30),
+}</code></pre>
+
+            <p>Duplicate fields are invalid:</p>
+
+            <pre><code>let point := Coordinate {
+    x: Meter(10),
+    x: Meter(20),
+    y: Meter(30),
+    z: Meter(40),
+}</code></pre>
+
+            <p>Field values must be assignable to their declared field types.</p>
+
+            <pre><code>let point := Coordinate {
+    x: Second(10),
+    y: Meter(20),
+    z: Meter(30),
+}</code></pre>
+
+            <div class="rule">
+                <strong>Rule:</strong> Struct construction preserves the exact
+                semantic types of fields. Compatible storage representation is
+                not enough.
+            </div>
+        </section>
+
+        <section id="access">
+            <h2>Field Access</h2>
+
+            <p>Fields are accessed with member syntax:</p>
+
+            <pre><code>let horizontal := point.x
+let vertical := point.y</code></pre>
+
+            <p>The result has the field's declared type.</p>
+
+            <pre><code>type Vehicle struct {
+    _speed: Speed,
+}
+
+let speed: Speed := vehicle._speed</code></pre>
+
+            <p>Accessing an unknown field is invalid:</p>
+
+            <pre><code>let value := point.distance</code></pre>
+
+            <p>Reserved register fields named <code>_</code> are a register feature,
+                not ordinary struct fields.</p>
+        </section>
+
+        <section id="assignment">
+            <h2>Field Assignment</h2>
+
+            <p>Assignment to a struct field follows normal mutability rules.</p>
+
+            <pre><code>let mut point := Coordinate {
+    x: Meter(10),
+    y: Meter(20),
+    z: Meter(30),
+}
+
+point.x = Meter(15)</code></pre>
+
+            <p>The containing value must be mutable.</p>
+
+            <pre><code>let point := Coordinate {
+    x: Meter(10),
+    y: Meter(20),
+    z: Meter(30),
+}
+
+point.x = Meter(15)</code></pre>
+
+            <div class="rule">
+                <strong>Invalid:</strong> Fields of an immutable struct value cannot
+                be reassigned.
+            </div>
+
+            <p>The assigned value must match the field type:</p>
+
+            <pre><code>point.x = Second(15)</code></pre>
+        </section>
+
+        <section id="initialization">
+            <h2>Initialization</h2>
+
+            <p>An immutable struct variable must be initialized when declared:</p>
+
+            <pre><code>let point: Coordinate</code></pre>
+
+            <p>This is invalid.</p>
+
+            <p>A mutable struct variable may be declared without an initializer:</p>
+
+            <pre><code>let mut point: Coordinate</code></pre>
+
+            <p>The variable must be definitely assigned before it is read:</p>
+
+            <pre><code>let mut point: Coordinate
+
+point = Coordinate {
+    x: Meter(10),
+    y: Meter(20),
+    z: Meter(30),
+}
+
+let x := point.x</code></pre>
+
+            <p>
+                Definite-assignment rules apply to struct values in the same way as
+                other uninitialized mutable variables.
+            </p>
+
+            <p>
+                Whether a struct has an implicit default value depends on the
+                defaultability rules of all its fields.
+            </p>
+        </section>
+
+        <section id="nested-structs">
+            <h2>Nested Struct Types</h2>
+
+            <p>A struct type may be declared inside the owning type's impl block:</p>
+
+            <pre><code>type Vehicle struct {
+    engine: Vehicle.Engine,
+}
+
+impl Vehicle {
+    type Engine struct {
+        power: Kilowatt,
+    }
+}</code></pre>
+
+            <p>Outside the impl block, the full qualified name is required:</p>
+
+            <pre><code>Vehicle.Engine</code></pre>
+
+            <p>Inside <code>impl Vehicle</code>, the short name may be used:</p>
+
+            <pre><code>Engine</code></pre>
+
+            <p>The fully qualified form remains valid inside the impl block:</p>
+
+            <pre><code>Vehicle.Engine</code></pre>
+
+            <p>
+                Nested types may be referenced before their declaration because Sec
+                registers type names before resolving field types.
+            </p>
+
+            <pre><code>type Vehicle struct {
+    engine: Vehicle.Engine,
+    fuel: Vehicle.FuelType,
+}
+
+impl Vehicle {
+    type Engine struct {
+        power: Kilowatt,
+    }
+
+    enum FuelType {
+        petrol,
+        diesel,
+        electric,
+    }
+}</code></pre>
+
+            <div class="rule">
+                <strong>Rule:</strong> Nested named types still use <code>type</code>.
+                Forms such as <code>struct Engine { ... }</code> are invalid.
+            </div>
+        </section>
+
+        <section id="generic-structs">
+            <h2>Generic Structs</h2>
+
+            <p>Struct declarations may introduce generic parameters:</p>
+
+            <pre><code>type Pair[A, B] struct {
+    first: A,
+    second: B,
+}</code></pre>
+
+            <p>A concrete generic struct is constructed with all type arguments:</p>
+
+            <pre><code>let pair := Pair[int, string] {
+    first: 10,
+    second: "ten",
+}</code></pre>
+
+            <p>Each concrete instantiation has its own field types and layout.</p>
+
+            <pre><code>Pair[int, string]
+Pair[Meter, Second]</code></pre>
+
+            <p>These are different concrete struct types.</p>
+
+            <p>Generic structs follow all ordinary struct rules after substitution.</p>
+        </section>
+
+        <section id="field-tags">
+            <h2>Struct Field Tags</h2>
+
+            <p>
+                A field may include metadata in a backtick-delimited tag after its
+                type.
+            </p>
+
+            <pre><code>type User struct {
+    ID: int `json:"id" xml:"id" db:"user_id"`,
+    Name: string `json:"name" xml:"name"`,
+    Password: string `json:"-"`,
+}</code></pre>
+
+            <p>Tags use a Go-inspired key and quoted-value syntax:</p>
+
+            <pre><code>key:"value" key:"value"</code></pre>
+
+            <p>Multiple tags may be attached to one field.</p>
+
+            <p>Tag keys are not restricted by the compiler:</p>
+
+            <pre><code>type Record struct {
+    ID: int `json:"id" db:"record_id" search:"keyword"`,
+}</code></pre>
+
+            <p>
+                This allows serializers, database tools and other systems to define
+                their own metadata without changing the language.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> Field tags are metadata. They do not change
+                field type, mutability, layout or assignment rules.
+            </div>
+
+            <p>Malformed tag syntax is invalid:</p>
+
+            <pre><code>type Invalid struct {
+    ID: int `json:id`,
+}</code></pre>
+        </section>
+
+        <section id="identity">
+            <h2>Struct Type Identity</h2>
+
+            <p>Every named struct is a distinct type.</p>
+
+            <pre><code>type Point struct {
+    x: int,
+    y: int,
+}
+
+type Size struct {
+    x: int,
+    y: int,
+}</code></pre>
+
+            <p>
+                <code>Point</code> and <code>Size</code> are different types even
+                though their field layouts are identical.
+            </p>
+
+            <pre><code>let point: Point := Size {
+    x: 10,
+    y: 20,
+}</code></pre>
+
+            <p>This assignment is invalid.</p>
+
+            <div class="rule">
+                <strong>Rule:</strong> Sec uses nominal struct identity, not
+                structural type equivalence.
+            </div>
+        </section>
+
+        <section id="data-and-behavior">
+            <h2>Separation of Data and Behavior</h2>
+
+            <p>A struct declares only stored data:</p>
+
+            <pre><code>type Vehicle struct {
+    _speed: Speed,
+}</code></pre>
+
+            <p>Behavior is declared separately:</p>
+
+            <pre><code>impl Vehicle {
+    fn Stop() void {
+        _speed = Speed(0)
+    }
+}</code></pre>
+
+            <p>Computed or controlled access is declared with properties:</p>
+
+            <pre><code>impl Vehicle {
+    property TopSpeed: Speed {
+        get {
+            return _speed
+        }
+    }
+}</code></pre>
+
+            <p>An impl block cannot declare stored fields or local variables:</p>
+
+            <pre><code>impl Vehicle {
+    let currentSpeed: Speed
+}</code></pre>
+
+            <p>This is invalid.</p>
+
+            <div class="rule">
+                <strong>Design rule:</strong> Structs describe what a value stores.
+                Impl blocks describe what the value can do.
+            </div>
+        </section>
+
+        <section id="common-errors">
+            <h2>Common Errors</h2>
+
+            <h3>Missing comma</h3>
+
+            <pre><code>type Coordinate struct {
+    x: Meter
+    y: Meter
+}</code></pre>
+
+            <h3>Duplicate field</h3>
+
+            <pre><code>type Coordinate struct {
+    x: Meter,
+    x: Meter,
+}</code></pre>
+
+            <h3>Unknown field type</h3>
+
+            <pre><code>type Coordinate struct {
+    x: MissingType,
+}</code></pre>
+
+            <h3>Unknown construction field</h3>
+
+            <pre><code>Coordinate {
+    x: Meter(10),
+    y: Meter(20),
+    w: Meter(30),
+}</code></pre>
+
+            <h3>Wrong field value type</h3>
+
+            <pre><code>Coordinate {
+    x: Second(10),
+    y: Meter(20),
+    z: Meter(30),
+}</code></pre>
+
+            <h3>Assignment through immutable value</h3>
+
+            <pre><code>let point := Coordinate {
+    x: Meter(10),
+    y: Meter(20),
+    z: Meter(30),
+}
+
+point.x = Meter(15)</code></pre>
+
+            <h3>Uninitialized immutable value</h3>
+
+            <pre><code>let point: Coordinate</code></pre>
+
+            <h3>Invalid nested declaration syntax</h3>
+
+            <pre><code>impl Vehicle {
+    struct Engine {
+        power: Kilowatt,
+    }
+}</code></pre>
+
+            <h3>Stored data inside impl</h3>
+
+            <pre><code>impl Vehicle {
+    let speed: Speed
+}</code></pre>
+        </section>
+
+        <section id="summary-rules">
+            <h2>Summary of Rules</h2>
+
+            <ul>
+                <li>A struct is declared with <code>type Name struct</code>.</li>
+                <li>Structs define stored data only.</li>
+                <li>Fields use <code>name: Type</code> syntax.</li>
+                <li>Fields are comma-separated.</li>
+                <li>A trailing comma is allowed.</li>
+                <li>Field names must be unique inside the struct.</li>
+                <li>Every field type must resolve to a known type.</li>
+                <li>Struct literals use named-field construction.</li>
+                <li>Unknown and duplicate construction fields are invalid.</li>
+                <li>Field values must match their declared semantic types.</li>
+                <li>Field access uses member syntax.</li>
+                <li>Field assignment requires a mutable containing value.</li>
+                <li>Immutable variables must be initialized.</li>
+                <li>Mutable uninitialized variables follow definite-assignment rules.</li>
+                <li>Struct type identity is nominal.</li>
+                <li>Generic structs are specialized with concrete type arguments.</li>
+                <li>Nested struct types belong to the owner type namespace.</li>
+                <li>Nested types use fully qualified names outside the impl block.</li>
+                <li>Field tags are optional metadata.</li>
+                <li>Tags do not affect type semantics.</li>
+                <li>Behavior belongs in an impl block.</li>
+                <li>Stored fields cannot be added in an impl block.</li>
+            </ul>
+        </section>
+
+        <div class="page-navigation">
+            <a href="14-generics.html">Previous: Generics</a>
+            <a href="16-impl.html">Nexts: Impl Blocks</a>
+        </div>
+    </main>
+</div>
+<footer class="site-footer">
+  <div class="site-footer-inner">
+      <p>&copy; 2026 Sec Language</p>
+      <a href="https://github.com/YoePro/sec">GitHub</a>
+  </div>
+</footer>  
+</body>
+</html>

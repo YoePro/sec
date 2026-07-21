@@ -2,6 +2,7 @@ package parser
 
 import (
 	"os"
+	"strings"
 	"testing"
 
 	"sec/internal/ast"
@@ -1251,6 +1252,47 @@ impl Vehicle {
 	}
 }
 
+func TestParseInterfaceDeclarationAndImplements(t *testing.T) {
+	input := `
+interface Vehicle {
+	fn Start(ref mut self) void
+	fn Stop(ref mut self) void
+
+	property IsRunning: bool {
+		get
+	}
+}
+
+type Car struct implements Vehicle {
+	running: bool,
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	iface, ok := program.Statements[0].(*ast.InterfaceDeclaration)
+	if !ok {
+		t.Fatalf("statement 0 is not InterfaceDeclaration. got=%T", program.Statements[0])
+	}
+	if iface.Name.Value != "Vehicle" || len(iface.Methods) != 2 || len(iface.Properties) != 1 {
+		t.Fatalf("wrong interface declaration: %+v", iface)
+	}
+	if !iface.Methods[0].Parameters[0].Ref || !iface.Methods[0].Parameters[0].MutableRef || iface.Methods[0].Parameters[0].Type.Name != "self" {
+		t.Fatalf("wrong self parameter: %+v", iface.Methods[0].Parameters[0])
+	}
+
+	typeDecl, ok := program.Statements[1].(*ast.TypeDeclStatement)
+	if !ok {
+		t.Fatalf("statement 1 is not TypeDeclStatement. got=%T", program.Statements[1])
+	}
+	if len(typeDecl.Implements) != 1 || typeDecl.Implements[0].Name != "Vehicle" {
+		t.Fatalf("wrong implements list: %+v", typeDecl.Implements)
+	}
+}
+
 func TestParseImplWithNestedTypeAndEnum(t *testing.T) {
 	input := `
 impl Vehicle {
@@ -1801,14 +1843,22 @@ impl Vehicle {
 
 	l := lexer.New(input)
 	p := New(l)
-	p.ParseProgram()
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
 
-	expected := "impl block may only contain type, unit, enum, property, and fn declarations at 3:2"
-	if len(p.Errors()) != 1 {
-		t.Fatalf("wrong parser error count. got=%d want=1 errors=%v", len(p.Errors()), p.Errors())
+	impl, ok := program.Statements[0].(*ast.ImplStatement)
+	if !ok {
+		t.Fatalf("statement 0 is not ImplStatement. got=%T", program.Statements[0])
 	}
-	if p.Errors()[0] != expected {
-		t.Fatalf("wrong parser error. got=%q want=%q", p.Errors()[0], expected)
+	if len(impl.Members) != 1 {
+		t.Fatalf("wrong impl member count. got=%d want=1", len(impl.Members))
+	}
+	invalid, ok := impl.Members[0].(*ast.InvalidStatement)
+	if !ok {
+		t.Fatalf("impl member is not InvalidStatement. got=%T", impl.Members[0])
+	}
+	if invalid.Message != "variable declarations are not allowed inside impl" {
+		t.Fatalf("wrong invalid message. got=%q", invalid.Message)
 	}
 }
 
@@ -1889,6 +1939,44 @@ impl Vehicle {
 				t.Fatalf("wrong parser error. got=%q want=%q", p.Errors()[0], tt.expected)
 			}
 		})
+	}
+}
+
+func TestParseUnitsInvalidFixtureRecovery(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/units_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	l := lexer.New(string(input))
+	p := New(l)
+	p.ParseProgram()
+
+	if len(p.Errors()) == 0 {
+		t.Fatal("expected units_invalid.sec to produce parser errors")
+	}
+	if p.Errors()[0] != "unit MissingStorage missing numeric storage type at 268:6" {
+		t.Fatalf("wrong first parser error. got=%q errors=%v", p.Errors()[0], p.Errors())
+	}
+}
+
+func TestParsePropertiesInvalidFixtureRecovery(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/properties_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	l := lexer.New(string(input))
+	p := New(l)
+	p.ParseProgram()
+
+	if len(p.Errors()) == 0 {
+		t.Fatal("expected properties_invalid.sec to produce parser errors")
+	}
+	for _, err := range p.Errors() {
+		if strings.Contains(err, `unexpected token "}"`) {
+			t.Fatalf("unexpected cascading parser error: %q errors=%v", err, p.Errors())
+		}
 	}
 }
 
@@ -2744,5 +2832,54 @@ fn Test() void {
 	}
 	if letStmt.Type.FunctionReturnType.Name != "bool" {
 		t.Fatalf("wrong function return type. got=%q", letStmt.Type.FunctionReturnType.Name)
+	}
+}
+
+func TestParseUnitConversionExpression(t *testing.T) {
+	input := `
+fn Test(Amp: decimal<A>, Second: decimal<s>) decimal<C> {
+	return decimal<C>(decimal(Amp) * decimal(Second))
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	returnStmt := fn.Body.Statements[0].(*ast.ReturnStatement)
+	conversion, ok := returnStmt.Value.(*ast.ConversionExpression)
+	if !ok {
+		t.Fatalf("return value is not ConversionExpression. got=%T", returnStmt.Value)
+	}
+	if conversion.Type.Name != "decimal" || conversion.Type.Unit != "C" {
+		t.Fatalf("wrong conversion target. got=%s<%s>", conversion.Type.Name, conversion.Type.Unit)
+	}
+	if _, ok := conversion.Value.(*ast.InfixExpression); !ok {
+		t.Fatalf("conversion value is not InfixExpression. got=%T", conversion.Value)
+	}
+}
+
+func TestUnitConversionLookaheadKeepsLessThanComparison(t *testing.T) {
+	input := `
+fn Less(left: int, right: int) bool {
+	return left < right
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	returnStmt := fn.Body.Statements[0].(*ast.ReturnStatement)
+	infix, ok := returnStmt.Value.(*ast.InfixExpression)
+	if !ok {
+		t.Fatalf("return value is not InfixExpression. got=%T", returnStmt.Value)
+	}
+	if infix.Operator != "<" {
+		t.Fatalf("wrong operator. got=%q want=<", infix.Operator)
 	}
 }

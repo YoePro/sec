@@ -28,6 +28,31 @@
         "scopeName": "source.sec",
         "path": "./syntaxes/sec.tmLanguage.json"
       }
-    ]
+    ],
+    "configurationDefaults": {
+      "editor.tokenColorCustomizations": {
+        "textMateRules": [
+          {
+            "scope": "support.type.unit.sec",
+            "settings": {
+              "foreground": "#4F7A5A"
+            }
+          },
+          {
+            "scope": "keyword.other.unit-metadata.sec",
+            "settings": {
+              "foreground": "#9A6A2F",
+              "fontStyle": "bold"
+            }
+          },
+          {
+            "scope": "keyword.other.implements.sec",
+            "settings": {
+              "fontStyle": "italic"
+            }
+          }
+        ]
+      }
+    }
   }
 }

@@ -41,12 +41,36 @@ Implemented now:
 
     Money * Money
 
+- unit declaration shorthand is accepted:
+
+    unit rpm physical
+    unit request other
+
+  The omitted storage type defaults to decimal.
+
+- when an algebraic expression is checked against an expected named unit type,
+  the expected type is used if the derived dimension matches. This avoids
+  arbitrary alias selection.
+
+- when no target type exists, matching named unit types are selected
+  deterministically and unit declarations are considered after non-unit named
+  types. Anonymous dimensions are preserved when no named type matches.
+
 Not implemented yet:
 
 - runtime contract checks for non-constant explicit conversions.
 - strict rejection of raw literals in assignment after declaration.
 - full unit algebra diagnostics and all invalid algebra cases beyond the currently implemented ones.
-- exponent syntax such as m^2 or m².
+- advanced unit metadata in impl blocks:
+
+    impl Unit {
+        dimension: [...]
+        scale: ...
+        system: ...
+    }
+
+- scale-sensitive algebra and fixed unit conversions.
+- exponent syntax in ordinary unit expressions such as decimal<m^2> or decimal<m²>.
 
 
 1. Named type identity
@@ -741,3 +765,323 @@ offset units
 exponent syntax in unit expressions
 MLIR representation of dimensional vectors
 ```
+
+=====================================================================
+Advanced Unit Metadata and Explicit Conversions
+=====================================================================
+
+This section refines the intended unit-definition model and supersedes older
+examples that wrote dimension entries as `length * 1`.
+
+Canonical dimension-vector syntax
+---------------------------------
+
+A unit implementation uses integer exponents:
+
+```
+impl m {
+    dimension: [length^1]
+    scale: 1
+    system: SI
+}
+
+impl mps {
+    dimension: [length^1, time^-1]
+    scale: 1
+    system: SI
+}
+```
+
+Unit impl blocks may also contain static functions. A static function has no
+`self` parameter and can be used as a named constructor or explicit conversion
+helper.
+
+Example:
+
+```sec
+/** Coulomb */
+unit C decimal physical
+
+impl C {
+    // A * s.
+    dimension: [electric_current^1, time^1]
+    scale: 1
+    system: SI
+
+    fn C(Amp: decimal<A>, Second: decimal<s>) decimal<C> {
+        return decimal<C>(decimal(Amp) * decimal(Second))
+    }
+}
+```
+
+Parameter syntax is always `Name: Type`. The form `Second decimal<s>` is not
+valid.
+
+Unit names and other Sec identifiers may use Unicode letters. This allows
+domain-standard symbols such as `Ω`, `μ`, `Σ` or `π` when they improve clarity.
+
+Guidance:
+
+- prefer ASCII for ordinary API names and long-lived public functions
+- use Unicode unit symbols when the symbol is the established scientific name
+- avoid visually confusable names in the same scope
+- formatter and tooling must preserve Unicode identifiers exactly
+
+The canonical formatter keeps explicit exponents, including `^1`, because this
+makes every dimension entry structurally uniform.
+
+Dimension rules:
+
+- every exponent is a non-zero compile-time integer
+- dimension order is not semantically significant
+- each dimension axis may occur only once in a declaration
+- the compiler normalizes dimensions before comparing them
+- multiplication adds exponents
+- division subtracts exponents
+- axes whose resulting exponent is zero are removed
+- an empty normalized vector is dimensionless
+
+The seven SI base dimensions use these canonical axis names:
+
+```
+length
+mass
+time
+electric_current
+thermodynamic_temperature
+amount_of_substance
+luminous_intensity
+```
+
+Additional physical axes may be standardized later. Domain units may use
+qualified semantic axes such as `currency.SEK`, `item`, `packet` and `batch`.
+
+Unit declaration shorthand
+--------------------------
+
+The complete declaration remains:
+
+```
+unit rpm decimal physical
+```
+
+The following shorthand is also part of the intended design:
+
+```
+unit rpm physical
+```
+
+When the numeric storage type is omitted and the next token is `physical` or
+`other`, the storage type defaults to `decimal`.
+
+Current implementation:
+
+- this shorthand is implemented in the parser and semantic analyzer.
+
+Integer-backed domain quantities should still declare their storage explicitly:
+
+```
+unit Item uint other
+```
+
+Required metadata
+-----------------
+
+A physical unit implementation declares:
+
+```
+dimension
+scale
+system
+```
+
+The scale is relative to the canonical unit for the normalized dimension.
+It must be a positive, non-zero compile-time numeric expression.
+
+Examples:
+
+```
+impl mm {
+    dimension: [length^1]
+    scale: 1 / 1000
+    system: SI
+}
+
+impl inch {
+    dimension: [length^1]
+    scale: 127 / 5000
+    system: Imperial
+}
+
+impl rpm {
+    dimension: [time^-1]
+    scale: 1 / 60
+    system: Other
+}
+```
+
+The unit system does not determine compatibility. Dimension determines physical
+compatibility; scale determines the fixed numeric relationship; the unit name
+preserves nominal meaning.
+
+Domain units must declare at least `dimension` and `system`. A scale of `1` may
+be explicit for canonical domain quantities. Currencies use separate dimensions
+unless a future currency model explicitly defines otherwise.
+
+Derived units
+-------------
+
+Derived units declare their complete normalized dimension and canonical scale.
+Examples:
+
+```
+impl N {
+    dimension: [mass^1, length^1, time^-2]
+    scale: 1
+    system: SI
+}
+
+impl Pa {
+    dimension: [mass^1, length^-1, time^-2]
+    scale: 1
+    system: SI
+}
+
+impl V {
+    dimension: [mass^1, length^2, time^-3, electric_current^-1]
+    scale: 1
+    system: SI
+}
+```
+
+The compiler validates algebra using both the normalized dimension and the
+resulting scale. For example:
+
+```
+km / h -> kph
+m / s  -> mps
+kN * m -> kJ
+```
+
+`km / h` must not silently become `mps`; the dimensions match but the scales and
+nominal units differ. An explicit conversion is required.
+
+Multiple units with the same dimension
+--------------------------------------
+
+Multiple units may share one dimension:
+
+```
+Hz   [time^-1]
+Bq   [time^-1]
+rpm  [time^-1]
+```
+
+They remain distinct nominal units.
+
+When an algebraic expression has a target type, the compiler may validate the
+expression against that target's dimension and scale.
+
+When no target type exists and several named units match the same normalized
+dimension and scale, the compiler must preserve an anonymous dimensional result
+rather than selecting an arbitrary named unit.
+
+Explicit unit conversion functions
+----------------------------------
+
+A unit may declare explicit conversion functions in its ordinary `impl` block.
+A conversion function whose name equals the target unit participates in
+constructor-style conversion resolution.
+
+Example:
+
+```
+unit rpm physical
+
+impl rpm {
+    dimension: [time^-1]
+    scale: 1 / 60
+    system: Other
+
+    fn rpm(hz: Hz) rpm {
+        return hz * 60
+    }
+}
+```
+
+Usage:
+
+```
+let frequency: Hz := 2
+let rotational: rpm := rpm(frequency)
+```
+
+Conversion-function rules:
+
+- the function is static and has no `self` receiver
+- the function name equals its containing target unit
+- the return type equals its containing target unit
+- the first and initially only parameter is a different unit type
+- source and target must have compatible normalized dimensions
+- conversion is invoked explicitly; assignment alone never calls it
+- conversion overloads are resolved by the exact source unit type
+- duplicate conversions from the same source unit are invalid
+- ordinary numeric construction remains available for numeric literals and
+  explicitly permitted numeric expressions
+
+The conversion-function body defines the numeric conversion formula. Inside
+such a function, the return expression may retain the source unit while the
+function boundary explicitly retags the dimension-compatible numeric result as
+the target unit. This special permission applies only to the return path of a
+validated unit conversion function.
+
+This permits fixed-scale conversions:
+
+```
+fn rpm(hz: Hz) rpm {
+    return hz * 60
+}
+```
+
+and also permits future affine conversions, such as temperature scales, without
+making ordinary arithmetic silently discard unit identity.
+
+Scale paths and direct conversion functions
+-------------------------------------------
+
+A fixed scale path and a direct conversion function may both exist.
+
+- scale metadata allows the compiler to verify dimensional relationships
+- a direct function is used only when the programmer explicitly calls it
+- the compiler does not silently replace assignment with a conversion call
+- an explicitly called conversion function is authoritative for that call
+
+The compiler may warn when an explicit conversion formula appears redundant,
+but it must not reject it merely because a scale path exists.
+
+Current implementation boundary
+-------------------------------
+
+The first advanced unit pass is implemented:
+
+- `unit Name physical` and `unit Name other` shorthand is accepted.
+- `impl Unit { dimension/scale/system }` metadata is accepted by the parser.
+- `dimension: [...]` is registered in sema and used by unit algebra.
+- `system: Name` is stored as unit metadata.
+- `scale: ...` is accepted as metadata syntax, but scale arithmetic is not yet
+  used when selecting algebra results.
+- integer-backed domain units such as `Item uint other` can participate in
+  dimensional algebra and produce decimal derived units.
+- conversion functions declared as `fn TargetUnit(source: SourceUnit) TargetUnit`
+  inside `impl TargetUnit` are visible as explicit constructor-style calls.
+- return expressions from those conversion functions may retag compatible
+  dimensional results through the declared return type.
+
+Still not implemented:
+
+- compile-time validation that every physical unit has complete metadata.
+- duplicate dimension-axis diagnostics beyond the current parser helper.
+- scale-sensitive algebra and fixed scale-path conversion.
+- validation that conversion functions have compatible source/target dimensions.
+- offset units.
+- MLIR representation of dimensional vectors.

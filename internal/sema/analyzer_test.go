@@ -587,6 +587,137 @@ unit Bad string
 	assertSemaErrors(t, errors, expected)
 }
 
+func TestUnitsValidFixture(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/units_valid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	errors := analyzeSourceRaw(t, string(input))
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestUnitsAdvancedValidFixture(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/units_advanced_valid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	errors := analyzeSourceRaw(t, string(input))
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestInterfaceValidFixture(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/interface_valid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	errors := analyzeSourceRaw(t, string(input))
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestInterfaceInvalidFixture(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/interface_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	errors := analyzeSourceRaw(t, string(input))
+	if len(errors) == 0 {
+		t.Fatal("expected interface_invalid.sec to produce semantic errors")
+	}
+}
+
+func TestFunctionsValidFixture(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/functions_valid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	errors := analyzeSourceRaw(t, string(input))
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestFunctionsInvalidSemanticPrefixFixture(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/functions_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	source := semanticPrefixBeforeMarker(t, string(input), "// Parser recovery cases")
+	errors := analyzeSourceRaw(t, source)
+	if len(errors) == 0 {
+		t.Fatal("expected functions_invalid.sec semantic prefix to produce errors")
+	}
+}
+
+func TestLambdaValidFixture(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/lambda_valid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	errors := analyzeSourceRaw(t, string(input))
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestLambdaInvalidSemanticPrefixFixture(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/lambda_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	source := semanticPrefixBeforeMarker(t, string(input), "// Parser and explicitly postponed syntax")
+	errors := analyzeSourceRaw(t, source)
+	if len(errors) == 0 {
+		t.Fatal("expected lambda_invalid.sec semantic prefix to produce errors")
+	}
+}
+
+func TestLambdaEscapingSpecFixture(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/lambda_escaping_spec.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	errors := analyzeSourceRaw(t, string(input))
+	expected := []string{
+		"escaping captured lambda is not supported yet at 11:28",
+		"escaping captured lambda is not supported yet at 17:38",
+		"escaping captured lambda is not supported yet at 24:38",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestUnitsInvalidSemanticFixture(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/units_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const marker = "// Invalid direct unit declaration syntax and parser recovery"
+	source := string(input)
+	idx := strings.Index(source, marker)
+	if idx < 0 {
+		t.Fatalf("missing parser recovery marker %q", marker)
+	}
+
+	errors := analyzeSourceRaw(t, source[:idx])
+	if len(errors) == 0 {
+		t.Fatal("expected semantic unit errors")
+	}
+}
+
+func semanticPrefixBeforeMarker(t *testing.T, source string, marker string) string {
+	t.Helper()
+	idx := strings.Index(source, marker)
+	if idx < 0 {
+		t.Fatalf("missing marker %q", marker)
+	}
+	return source[:idx]
+}
+
 func TestRegisterDeclarationAndAddressedInstance(t *testing.T) {
 	input := `
 module main
@@ -677,6 +808,28 @@ fn Test() void {
 	}
 
 	assertSemaErrors(t, errors, expected)
+}
+
+func TestRegisterValidFixture(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/register_valid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	errors := analyzeSourceRaw(t, string(input))
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestRegisterInvalidFixture(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/register_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	errors := analyzeSourceRaw(t, string(input))
+	if len(errors) == 0 {
+		t.Fatal("expected register_invalid.sec to produce semantic errors")
+	}
 }
 
 func TestUnitAliasTypesAreNominal(t *testing.T) {
@@ -1013,7 +1166,149 @@ impl MissingType {
 	assertSemaErrors(t, errors, expected)
 }
 
-func TestMultipleImplBlocksAllowed(t *testing.T) {
+func TestInterfaceImplementationConformance(t *testing.T) {
+	input := `
+module main
+
+interface Vehicle {
+	fn Start(ref mut self) void
+	fn Stop(ref mut self) void
+
+	property IsRunning: bool {
+		get
+	}
+}
+
+type Car struct implements Vehicle {
+	running: bool,
+}
+
+impl Car {
+	property IsRunning: bool {
+		get {
+			return running
+		}
+	}
+
+	fn Start(ref mut self) void {
+		return
+	}
+
+	fn Stop(ref mut self) void {
+		return
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestInterfaceImplementationErrors(t *testing.T) {
+	input := `
+module main
+
+interface Vehicle {
+	fn Start(ref mut self) void
+	fn Stop(ref mut self) void
+
+	property IsRunning: bool {
+		get
+		set
+	}
+}
+
+interface Marker {
+}
+
+type NotInterface struct {
+}
+
+type Duplicate struct implements Marker, Marker {
+}
+
+type BadTarget struct implements NotInterface {
+}
+
+type MissingMembers struct implements Vehicle {
+}
+
+type WrongSignature struct implements Vehicle {
+	running: bool,
+}
+
+impl WrongSignature {
+	property IsRunning: bool {
+		get {
+			return running
+		}
+	}
+
+	fn Start(ref self) void {
+		return
+	}
+
+	fn Stop(ref mut self) int {
+		return 0
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	expected := []string{
+		"duplicate implemented interface Marker on Duplicate at 20:42",
+		"implemented type NotInterface on BadTarget is not an interface at 23:34",
+		"type MissingMembers implements Vehicle but is missing method Start at 5:5",
+		"type MissingMembers implements Vehicle but is missing method Stop at 6:5",
+		"type MissingMembers implements Vehicle but is missing property IsRunning at 8:11",
+		"type WrongSignature method Start does not match interface Vehicle at 5:5",
+		"type WrongSignature method Stop does not match interface Vehicle at 6:5",
+		"type WrongSignature property IsRunning must provide set for interface Vehicle at 8:11",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestImplTargetsNamedKinds(t *testing.T) {
+	input := `
+type Vehicle struct {
+}
+
+enum FuelType {
+	Petrol,
+}
+
+type ResultLike union {
+	Ok,
+	Err(int),
+}
+
+type Status register[1] {
+	Ready: bit,
+}
+
+type Percent int range 0..100
+
+impl Vehicle {
+}
+
+impl FuelType {
+}
+
+impl ResultLike {
+}
+
+impl Status {
+}
+
+impl Percent {
+}
+`
+
+	errors := analyzeSource(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestDuplicateImplBlocksAreInvalid(t *testing.T) {
 	input := `
 type Vehicle struct {
 }
@@ -1026,7 +1321,10 @@ impl Vehicle {
 `
 
 	errors := analyzeSource(t, input)
-	assertSemaErrors(t, errors, nil)
+	expected := []string{
+		"duplicate impl block for Vehicle at 8:6",
+	}
+	assertSemaErrors(t, errors, expected)
 }
 
 func TestDuplicateNestedTypeAcrossImplBlocks(t *testing.T) {
@@ -1038,9 +1336,7 @@ impl Vehicle {
 	enum FuelType {
 		petrol,
 	}
-}
 
-impl Vehicle {
 	enum FuelType {
 		diesel,
 	}
@@ -1049,7 +1345,7 @@ impl Vehicle {
 
 	errors := analyzeSource(t, input)
 	expected := []string{
-		"duplicate nested type \"FuelType\" in impl Vehicle at 12:7",
+		"duplicate nested type \"FuelType\" in impl Vehicle at 10:7",
 	}
 	assertSemaErrors(t, errors, expected)
 }
@@ -1391,6 +1687,35 @@ fn Test() void {
 	current := analyzer.symbols["current"]
 	if current.Type.Name != "Speed" {
 		t.Fatalf("wrong property type. got=%q want=Speed", current.Type.Name)
+	}
+}
+
+func TestPropertiesValidFixture(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/properties_valid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	errors := analyzeSourceRaw(t, string(input))
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestPropertiesInvalidSemanticFixture(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/properties_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const marker = "// Parser recovery: malformed property declarations"
+	source := string(input)
+	idx := strings.Index(source, marker)
+	if idx < 0 {
+		t.Fatalf("missing parser recovery marker %q", marker)
+	}
+
+	errors := analyzeSourceRaw(t, source[:idx])
+	if len(errors) == 0 {
+		t.Fatal("expected semantic property errors")
 	}
 }
 
@@ -3114,6 +3439,28 @@ func TestGenericsInvalidFixture(t *testing.T) {
 		"function NonGeneric is not generic at 94:12",
 	}
 	assertSemaErrors(t, errors, expected)
+}
+
+func TestImplValidFixture(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/impl_valid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	errors := analyzeSourceRaw(t, string(input))
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestImplInvalidFixture(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/impl_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	errors := analyzeSourceRaw(t, string(input))
+	if len(errors) == 0 {
+		t.Fatal("expected impl_invalid.sec to produce semantic errors")
+	}
 }
 
 func supportedGenericsInvalidFixture(input string) string {
@@ -4963,6 +5310,53 @@ func parseExpressionSource(t *testing.T, input string) ast.Expression {
 	}
 
 	return stmt.Value
+}
+
+func TestBasicTypesWideIntegerRangesAndDecimal128(t *testing.T) {
+	input := `
+module main
+
+fn Test() void {
+	let int128Max: int128 := 170141183460469231731687303715884105727
+	let int128Overflow: int128 := 170141183460469231731687303715884105728
+	let uint256Max: uint256 := 115792089237316195423570985008687907853269984665640564039457584007913129639935
+	let uint256Overflow: uint256 := 115792089237316195423570985008687907853269984665640564039457584007913129639936
+	let d128: decimal128 := 12345678901234567890.12345678901234
+	let d: decimal := d128
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+
+	expected := []string{
+		"value 170141183460469231731687303715884105728 overflows int128 at 6:32",
+		"value 115792089237316195423570985008687907853269984665640564039457584007913129639936 overflows uint256 at 8:34",
+		"cannot initialize decimal with decimal128 at 10:20",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestBasicTypesBitwiseAndCharRules(t *testing.T) {
+	input := `
+module main
+
+fn Test(left: int128, right: int128, b: bool) int128 {
+	let ok: int128 := (left & right) | (left ^ right)
+	let bad := b & b
+	let invalidChar: char := 'AB'
+	return ~ok
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+
+	expected := []string{
+		"operator & requires integer operands at 6:15",
+		"character literal must contain exactly one character at 7:27",
+	}
+
+	assertSemaErrors(t, errors, expected)
 }
 
 func assertSemaErrors(t *testing.T, errors []Error, expected []string) {

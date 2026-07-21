@@ -1,0 +1,61 @@
+module units
+
+// =============================================================================
+// Seven SI base units
+// =============================================================================
+
+/** Metre or meter */
+unit m decimal physical
+impl m {
+    dimension: [length^1]
+    scale: 1
+    system: SI
+}
+
+/** Kilogram */
+unit kg decimal physical
+impl kg {
+    dimension: [mass^1]
+    scale: 1
+    system: SI
+}
+
+/** Second */
+unit s decimal physical
+impl s {
+    dimension: [time^1]
+    scale: 1
+    system: SI
+}
+
+/** Ampere */
+unit A decimal physical
+impl A {
+    dimension: [electric_current^1]
+    scale: 1
+    system: SI
+}
+
+/** Kelvin */
+unit K decimal physical
+impl K {
+    dimension: [thermodynamic_temperature^1]
+    scale: 1
+    system: SI
+}
+
+/** Mol */
+unit mol decimal physical
+impl mol {
+    dimension: [amount_of_substance^1]
+    scale: 1
+    system: SI
+}
+
+/** Candela */
+unit cd decimal physical
+impl cd {
+    dimension: [luminous_intensity^1]
+    scale: 1
+    system: SI
+}

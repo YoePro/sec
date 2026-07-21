@@ -1,0 +1,300 @@
+module functions
+
+// Every marked construct in this file is expected to produce a parser or
+// semantic diagnostic. Cases are grouped so each one targets a distinct rule.
+
+type Percent int range 0..100
+type Age int range 0..150
+
+type ParseError enum {
+    InvalidInput
+    Overflow
+}
+
+type StorageError enum {
+    Unavailable
+    Corrupt
+}
+
+// =============================================================================
+// Parameter and declaration errors
+// =============================================================================
+
+fn DuplicateParameter(value: int, value: int) int {
+    return value
+}
+
+fn UnknownParameterType(value: MissingParameterType) int {
+    return 0
+}
+
+fn UnknownReturnType() MissingReturnType {
+    return 0
+}
+
+// Return type alone cannot distinguish overloads.
+fn DuplicateSignatureDifferentReturn(value: int) int {
+    return value
+}
+
+fn DuplicateSignatureDifferentReturn(value: int) bool {
+    return true
+}
+
+// Parameter names do not distinguish overloads.
+fn DuplicateSignatureDifferentNames(left: string) string {
+    return left
+}
+
+fn DuplicateSignatureDifferentNames(right: string) string {
+    return right
+}
+
+// Exact duplicate declaration.
+fn ExactDuplicate(value: bool) bool {
+    return value
+}
+
+fn ExactDuplicate(value: bool) bool {
+    return !value
+}
+
+// =============================================================================
+// Return checking
+// =============================================================================
+
+fn MissingReturn() int {
+}
+
+fn MissingReturnOnPath(value: int) int {
+    if value > 0 {
+        return value
+    }
+}
+
+fn WrongReturnType() int {
+    return true
+}
+
+fn BareReturnFromValueFunction() string {
+    return
+}
+
+fn ValueReturnFromVoidFunction() void {
+    return 10
+}
+
+fn WrongNamedReturn(value: Age) Percent {
+    return value
+}
+
+fn ReturnRawValueAsNamed() Percent {
+    let value: int := 10
+    return value
+}
+
+// =============================================================================
+// Parameter immutability and scope
+// =============================================================================
+
+fn AssignParameter(value: int) int {
+    value = 10
+    return value
+}
+
+fn UseParameterOutsideScope() int {
+    return value
+}
+
+fn ParameterScopeOwner(value: int) int {
+    return value
+}
+
+// =============================================================================
+// Function call validation
+// =============================================================================
+
+fn Add(left: int, right: int) int {
+    return left + right
+}
+
+fn AcceptPercent(value: Percent) int {
+    return 1
+}
+
+fn DoesNothing() void {
+}
+
+fn CallWithTooFewArguments() int {
+    return Add(1)
+}
+
+fn CallWithTooManyArguments() int {
+    return Add(1, 2, 3)
+}
+
+fn CallWithWrongArgumentType() int {
+    return Add(1, "two")
+}
+
+fn CallUnknownFunction() int {
+    return MissingFunction(1)
+}
+
+fn UseVoidCallAsValue() int {
+    let value: int := DoesNothing()
+    return value
+}
+
+fn ImplicitNamedArgumentConversion() int {
+    let value: int := 50
+    return AcceptPercent(value)
+}
+
+// =============================================================================
+// No matching overload
+// =============================================================================
+
+fn Format(value: int) string {
+    return "int"
+}
+
+fn Format(value: string) string {
+    return value
+}
+
+fn NoMatchingOverload() string {
+    return Format(true)
+}
+
+// =============================================================================
+// Result declaration and return validation
+// =============================================================================
+
+fn ResultArityOne() Result[int] {
+    return Ok(1)
+}
+
+fn ResultArityThree() Result[int, ParseError, string] {
+    return Ok(1)
+}
+
+fn ResultUnknownValueType() Result[UnknownValue, ParseError] {
+    return Err(ParseError.InvalidInput)
+}
+
+fn ResultUnknownErrorType() Result[int, UnknownError] {
+    return Ok(1)
+}
+
+fn WrongOkValue() Result[int, ParseError] {
+    return Ok(ParseError.InvalidInput)
+}
+
+fn WrongErrValue() Result[int, ParseError] {
+    return Err(10)
+}
+
+fn PlainResultReturn() Result[int, ParseError] {
+    return 10
+}
+
+fn ReturnExistingResultWithoutConstructor(value: int) Result[int, ParseError] {
+    let result: Result[int, ParseError] := ParseValue(value)
+    return result
+}
+
+fn ReturnResultCallWithoutConstructor(value: int) Result[int, ParseError] {
+    return ParseValue(value)
+}
+
+fn EmptyOkForNonVoid() Result[int, ParseError] {
+    return Ok()
+}
+
+fn OkWithTooManyValues() Result[int, ParseError] {
+    return Ok(1, 2)
+}
+
+fn EmptyErr() Result[int, ParseError] {
+    return Err()
+}
+
+fn ErrWithTooManyValues() Result[int, ParseError] {
+    return Err(ParseError.InvalidInput, ParseError.Overflow)
+}
+
+fn OkValueForVoidResult() Result[void, ParseError] {
+    return Ok(1)
+}
+
+// =============================================================================
+// try validation and propagation boundaries
+// =============================================================================
+
+fn ParseValue(value: int) Result[int, ParseError] {
+    return Ok(value)
+}
+
+fn LoadValue() Result[int, StorageError] {
+    return Err(StorageError.Unavailable)
+}
+
+fn TryNonResult() int {
+    return try 10
+}
+
+fn TryFromNonResultExpression() Result[int, ParseError] {
+    let value: int := try Add(1, 2)
+    return Ok(value)
+}
+
+fn PropagateIntoPlainReturn(value: int) int {
+    return try ParseValue(value)
+}
+
+fn PropagateWrongErrorType() Result[int, ParseError] {
+    let value: int := try LoadValue()
+    return Ok(value)
+}
+
+// =============================================================================
+// Logical operator validation in functions
+// =============================================================================
+
+fn LogicalAndWithIntegers(left: int, right: int) bool {
+    return left && right
+}
+
+fn LogicalOrWithMixedTypes(left: bool, right: int) bool {
+    return left || right
+}
+
+fn NegateInteger(value: int) bool {
+    return !value
+}
+
+// =============================================================================
+// Parser recovery cases
+//
+// These are intentionally last because malformed declarations may require the
+// parser to recover at the next function boundary.
+// =============================================================================
+
+fn MissingParameterColon(value int) int {
+    return 0
+}
+
+fn MissingParameterType(value:) int {
+    return 0
+}
+
+fn MissingDeclaredReturnType() {
+    return
+}
+
+fn MissingComma(left: int right: int) int {
+    return left
+}
+
+fn MissingBody() int

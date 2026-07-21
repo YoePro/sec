@@ -11,6 +11,9 @@ const (
 	LOWEST  precedence = iota
 	OR                 // ||
 	AND                // &&
+	BIT_OR             // |
+	BIT_XOR            // ^
+	BIT_AND            // &
 	EQUALS             // == !=
 	COMPARE            // < <= > >=
 	SHIFT              // << >>
@@ -24,6 +27,9 @@ const (
 var precedences = map[lexer.TokenType]precedence{
 	lexer.OR:          OR,
 	lexer.AND:         AND,
+	lexer.BIT_OR:      BIT_OR,
+	lexer.BIT_XOR:     BIT_XOR,
+	lexer.BIT_AND:     BIT_AND,
 	lexer.EQ:          EQUALS,
 	lexer.NEQ:         EQUALS,
 	lexer.LT:          COMPARE,
@@ -89,13 +95,16 @@ func (p *Parser) parseExpression(currentPrecedence precedence) ast.Expression {
 	case lexer.STRING:
 		left = p.parseStringLiteral()
 
+	case lexer.CHAR:
+		left = p.parseCharLiteral()
+
 	case lexer.INTERPSTRING:
 		left = p.parseInterpolatedStringLiteral()
 
 	case lexer.TRUE, lexer.FALSE:
 		left = p.parseBooleanLiteral()
 
-	case lexer.MINUS, lexer.NOT:
+	case lexer.MINUS, lexer.NOT, lexer.BIT_NOT:
 		left = p.parsePrefixExpression()
 
 	case lexer.TRY:
@@ -159,6 +168,9 @@ func (p *Parser) parseExpression(currentPrecedence precedence) ast.Expression {
 			lexer.SLASH,
 			lexer.ASTERISK,
 			lexer.PERCENT,
+			lexer.BIT_AND,
+			lexer.BIT_OR,
+			lexer.BIT_XOR,
 			lexer.SHIFT_LEFT,
 			lexer.SHIFT_RIGHT,
 			lexer.EQ,
@@ -393,12 +405,15 @@ func (p *Parser) parseConversionExpression(left ast.Expression) ast.Expression {
 			}
 		}
 
-		p.addError(
-			"expected conversion target before '(' at %d:%d",
-			p.curToken.Line,
-			p.curToken.Column,
-		)
-		return nil
+		args, ok := p.parseCallArguments()
+		if !ok {
+			return nil
+		}
+		return &ast.CallExpression{
+			Token:     expressionToken(left),
+			Callee:    left,
+			Arguments: args,
+		}
 	}
 
 	args, ok := p.parseCallArguments()
@@ -408,16 +423,20 @@ func (p *Parser) parseConversionExpression(left ast.Expression) ast.Expression {
 
 	if ident.Value == "Ok" || ident.Value == "Err" {
 		if ident.Value == "Ok" && len(args) == 0 {
-			return &ast.OkExpression{Token: ident.Token}
-		}
-		if len(args) != 1 {
-			p.addError("%s expects 1 argument at %d:%d", ident.Value, ident.Token.Line, ident.Token.Column)
-			return nil
+			return &ast.OkExpression{Token: ident.Token, Arguments: args}
 		}
 		if ident.Value == "Ok" {
-			return &ast.OkExpression{Token: ident.Token, Value: args[0]}
+			var value ast.Expression
+			if len(args) > 0 {
+				value = args[0]
+			}
+			return &ast.OkExpression{Token: ident.Token, Value: value, Arguments: args}
 		}
-		return &ast.ErrExpression{Token: ident.Token, Value: args[0]}
+		var value ast.Expression
+		if len(args) > 0 {
+			value = args[0]
+		}
+		return &ast.ErrExpression{Token: ident.Token, Value: value, Arguments: args}
 	}
 
 	return &ast.CallExpression{
@@ -820,15 +839,21 @@ func (p *Parser) parseIdentifierExpression() ast.Expression {
 }
 
 func (p *Parser) parseIntegerLiteral() ast.Expression {
-	value, ok := ast.ParseIntegerLiteralInt64(p.curToken.Lexeme)
+	bigValue, ok := ast.ParseIntegerLiteralLexeme(p.curToken.Lexeme)
 	if !ok {
 		p.addError("could not parse integer %q", p.curToken.Lexeme)
 		return nil
 	}
 
+	var value int64
+	if bigValue.IsInt64() {
+		value = bigValue.Int64()
+	}
+
 	return &ast.IntegerLiteral{
-		Token: p.curToken,
-		Value: value,
+		Token:    p.curToken,
+		Value:    value,
+		BigValue: bigValue,
 	}
 }
 
@@ -849,6 +874,13 @@ func (p *Parser) parseStringLiteral() ast.Expression {
 	return &ast.StringLiteral{
 		Token: p.curToken,
 		Value: trimStringQuotes(p.curToken.Lexeme),
+	}
+}
+
+func (p *Parser) parseCharLiteral() ast.Expression {
+	return &ast.CharLiteral{
+		Token: p.curToken,
+		Value: trimCharQuotes(p.curToken.Lexeme),
 	}
 }
 
@@ -895,6 +927,12 @@ func (p *Parser) parseGroupedExpression() ast.Expression {
 }
 
 func (p *Parser) parseInfixExpression(left ast.Expression) ast.Expression {
+	if p.curToken.Type == lexer.LT {
+		if conversion := p.parseUnitConversionExpression(left); conversion != nil {
+			return conversion
+		}
+	}
+
 	expr := &ast.InfixExpression{
 		Token:    p.curToken,
 		Left:     left,
@@ -908,6 +946,49 @@ func (p *Parser) parseInfixExpression(left ast.Expression) ast.Expression {
 	expr.Right = p.parseExpression(prec)
 
 	return expr
+}
+
+func (p *Parser) parseUnitConversionExpression(left ast.Expression) ast.Expression {
+	ident, ok := left.(*ast.Identifier)
+	if !ok {
+		return nil
+	}
+
+	curToken := p.curToken
+	peekToken := p.peekToken
+	lexerState := p.l.Snapshot()
+	errorCount := len(p.errors)
+	warningCount := len(p.warnings)
+
+	unit := p.parseUnit()
+	if unit == "" || p.peekToken.Type != lexer.LPAREN {
+		p.curToken = curToken
+		p.peekToken = peekToken
+		p.l.Restore(lexerState)
+		p.errors = p.errors[:errorCount]
+		p.warnings = p.warnings[:warningCount]
+		return nil
+	}
+
+	p.nextToken()
+	args, ok := p.parseCallArguments()
+	if !ok {
+		return nil
+	}
+	if len(args) != 1 {
+		p.addError("conversion to %s<%s> expects 1 argument at %d:%d", ident.Value, unit, ident.Token.Line, ident.Token.Column)
+		return nil
+	}
+
+	return &ast.ConversionExpression{
+		Token: ident.Token,
+		Type: &ast.TypeReference{
+			Token: ident.Token,
+			Name:  ident.Value,
+			Unit:  unit,
+		},
+		Value: args[0],
+	}
 }
 
 func (p *Parser) parseInExpression(left ast.Expression) ast.Expression {

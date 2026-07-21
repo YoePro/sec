@@ -1,0 +1,220 @@
+module properties
+
+// Every declaration in this file is expected to pass semantic analysis.
+// The file focuses on property declaration, lookup, reading and assignment.
+
+type Speed int
+type Money decimal
+
+type PropertyError enum {
+    NegativeSpeed
+    AboveMaximum
+}
+
+// =============================================================================
+// Struct properties
+// =============================================================================
+
+type Vehicle struct {
+    _speed: Speed,
+    _maximumSpeed: Speed,
+    _name: string,
+    _enabled: bool,
+}
+
+impl Vehicle {
+    // A getter-only property is read-only.
+    property MaximumSpeed: Speed {
+        get {
+            return _maximumSpeed
+        }
+    }
+
+    // A setter-only property may be assigned but does not provide a read.
+    property RequestedSpeed: Speed {
+        set value {
+            _speed = value
+        }
+    }
+
+    // An ordinary read-write property combines get and set.
+    property CurrentSpeed: Speed {
+        get {
+            return _speed
+        }
+
+        set value {
+            _speed = value
+        }
+    }
+
+    property Name: string {
+        get {
+            return _name
+        }
+
+        set incoming {
+            _name = incoming
+        }
+    }
+
+    property Enabled: bool {
+        get {
+            return _enabled
+        }
+
+        set value {
+            _enabled = value
+        }
+    }
+
+    // A getter may return another property declared later in the impl block.
+    property EffectiveLimit: Speed {
+        get {
+            return ConfiguredLimit
+        }
+    }
+
+    property ConfiguredLimit: Speed {
+        get {
+            return _maximumSpeed
+        }
+    }
+
+    // Constructor-style conversion is resolved before getter type checking.
+    property DefaultSpeed: Speed {
+        get {
+            return Speed(10)
+        }
+    }
+
+    // A fallible setter may be combined with a getter.
+    property ValidatedSpeed: Speed {
+        get {
+            return _speed
+        }
+
+        try set value {
+            if value < 0 {
+                return Err(PropertyError.NegativeSpeed)
+            }
+
+            if value > _maximumSpeed {
+                return Err(PropertyError.AboveMaximum)
+            }
+
+            _speed = value
+            return Ok()
+        }
+    }
+}
+
+// =============================================================================
+// Generic properties
+// =============================================================================
+
+type Box[T] struct {
+    _value: T,
+}
+
+impl Box[T] {
+    property Value: T {
+        get {
+            return _value
+        }
+
+        set value {
+            _value = value
+        }
+    }
+
+    property ReadOnlyValue: T {
+        get {
+            return Value
+        }
+    }
+}
+
+// =============================================================================
+// Register properties
+// =============================================================================
+
+type StatusRegister register[8] {
+    Ready: bit,
+    Error: bit,
+    _: bit[6],
+}
+
+impl StatusRegister {
+    // The property adds behavior but no bits to the register layout.
+    property IsHealthy: bool {
+        get {
+            return Ready && !Error
+        }
+    }
+
+    property ReadyState: bool {
+        get {
+            return Ready
+        }
+    }
+}
+
+// =============================================================================
+// Property reads
+// =============================================================================
+
+fn ReadVehicleProperties(vehicle: ref Vehicle) void {
+    let current: Speed := vehicle.CurrentSpeed
+    let maximum: Speed := vehicle.MaximumSpeed
+    let effective: Speed := vehicle.EffectiveLimit
+    let configured: Speed := vehicle.ConfiguredLimit
+    let defaultValue: Speed := vehicle.DefaultSpeed
+    let name: string := vehicle.Name
+    let enabled: bool := vehicle.Enabled
+
+    // Property type inference uses the declared property type.
+    let inferredSpeed := vehicle.CurrentSpeed
+    let inferredName := vehicle.Name
+}
+
+fn ReadGenericProperties(box: ref Box[int]) int {
+    let current: int := box.Value
+    let readOnly: int := box.ReadOnlyValue
+    return current
+}
+
+fn ReadRegisterProperties(status: ref StatusRegister) bool {
+    let ready: bool := status.ReadyState
+    let healthy: bool := status.IsHealthy
+    return healthy
+}
+
+// =============================================================================
+// Property writes
+// =============================================================================
+
+fn WriteVehicleProperties(
+    vehicle: ref mut Vehicle,
+    speed: Speed,
+    name: string,
+    enabled: bool,
+) void {
+    vehicle.CurrentSpeed = speed
+    vehicle.RequestedSpeed = speed
+    vehicle.Name = name
+    vehicle.Enabled = enabled
+}
+
+fn WriteGenericProperty(box: ref mut Box[int], value: int) void {
+    box.Value = value
+}
+
+// A fallible property assignment may propagate its inferred setter error.
+fn WriteValidatedSpeed(
+    vehicle: ref mut Vehicle,
+    speed: Speed,
+) Result[void, PropertyError] {
+    try vehicle.ValidatedSpeed = speed
+    return Ok()
+}

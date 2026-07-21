@@ -1,6 +1,9 @@
 package sema
 
-import "strings"
+import (
+	"sort"
+	"strings"
+)
 
 func builtinUnits() map[string]UnitDefinition {
 	units := map[string]UnitDefinition{}
@@ -76,14 +79,31 @@ func dimensionForFactor(factor string, units map[string]UnitDefinition) Dimensio
 }
 
 func (a *Analyzer) typeForDimension(kind TypeKind, dimension Dimension) Type {
-	for _, typ := range a.types {
-		if typ.Kind == kind && typ.Named && typ.Dimension.Equal(dimension) {
-			return typ
-		}
-	}
-
 	if dimension.IsZero() && kind == DecimalType {
 		return a.types["decimal"]
+	}
+
+	names := make([]string, 0, len(a.types))
+	for name := range a.types {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	var unitMatch *Type
+	for _, name := range names {
+		typ := a.types[name]
+		if typ.Kind != kind || !typ.Named || !typ.Dimension.Equal(dimension) {
+			continue
+		}
+		if typ.Unit == typ.Name {
+			copy := typ
+			unitMatch = &copy
+			continue
+		}
+		return typ
+	}
+	if unitMatch != nil {
+		return *unitMatch
 	}
 
 	return Type{Name: string(kind), Kind: kind, Dimension: dimension}

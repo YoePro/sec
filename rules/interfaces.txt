@@ -1,0 +1,391 @@
+# Interfaces
+
+## Purpose
+
+An interface defines a named contract that types may implement.
+
+Interfaces describe required members and associated declarations.
+
+A type explicitly declares which interfaces it implements.
+
+---
+
+## Declaration
+
+```sec
+interface Vehicle {
+    fn Start(ref mut self) void
+    fn Stop(ref mut self) void
+}
+```
+
+An interface declaration creates a named type.
+
+## Implementation declaration
+
+A type declares implemented interfaces in its type declaration.
+
+```sec
+type Car struct implements Vehicle {
+    engine: Engine
+}
+```
+
+The implementation is explicit.
+
+Sec does not use structural or implicit interface implementation.
+
+The following separate syntax is not used:
+
+impl Vehicle for Car {
+}
+
+Required members are implemented in the type's ordinary impl block.
+
+```sec
+impl Car {
+    fn Start(ref mut self) void {
+    }
+
+    fn Stop(ref mut self) void {
+    }
+}
+```
+
+## Multiple interfaces
+
+A type may implement multiple interfaces.
+
+```sec
+type Car struct implements Vehicle, Serializable, Inspectable {
+    engine: Engine
+}
+```
+
+Duplicate interface names are invalid.
+
+## Allowed members
+
+An interface may contain:
+
+- constants
+- variables
+- methods
+- properties
+- enums
+- named types
+- nested interfaces
+- other supported named declarations
+
+Example:
+
+interface Vehicle {
+    const MaximumPassengers: int
+
+    mut CurrentSpeed: Speed
+
+    property IsRunning: bool {
+        get
+    }
+
+    fn Start(ref mut self) void
+    fn Stop(ref mut self) void
+
+    enum State {
+        Stopped
+        Running
+        Failed
+    }
+}
+## Member declarations
+
+Interface members define requirements unless the language explicitly permits an implementation body for that member.
+
+A required method has no body.
+
+interface Reader {
+    fn Read(ref mut self, buffer: ref mut [byte]) Result[int, IOError]
+}
+
+A required property declares its required accessors.
+
+interface Named {
+    property Name: string {
+        get
+    }
+}
+interface MutableNamed {
+    property Name: string {
+        get
+        set
+    }
+}
+
+A required variable declares the member name, type and mutability expected from the implementing type.
+
+interface Positioned {
+    mut Position: Point
+}
+
+A required constant declares its name and type.
+
+interface Limited {
+    const MaximumSize: int
+}
+## Associated declarations
+
+Enums and named types declared inside an interface belong to the interface namespace.
+
+interface Connection {
+    enum State {
+        Closed
+        Connecting
+        Open
+    }
+
+    type Identifier uint64
+}
+
+They are accessed through the interface name.
+
+let state: Connection.State
+let id: Connection.Identifier
+
+Associated declarations are defined by the interface itself and are not redeclared by each implementing type unless explicitly required by a future associated-type feature.
+
+## Method compatibility
+
+An implementing method must match the interface declaration.
+
+The compiler validates:
+
+- member name
+- parameter count
+- parameter order
+- parameter types
+- parameter ownership
+- parameter mutability
+- receiver type
+- receiver mutability
+- return type
+- generic parameters
+- unsafe requirements
+- error type compatibility
+
+A method with a different signature does not satisfy the interface.
+
+## Property compatibility
+
+An implementing property must provide every accessor required by the interface.
+
+A property requiring only get may be implemented by a property that provides both get and set.
+
+A property requiring set must provide a compatible setter.
+
+Property types must match.
+
+## Variable compatibility
+
+A required interface variable must exist on the implementing type.
+
+The compiler validates:
+
+name
+type
+mutability
+visibility
+instance or static classification
+
+A mutable interface variable cannot be satisfied by an immutable member.
+
+## Constant compatibility
+
+A required interface constant must be available through the implementing type.
+
+Its type must match the interface declaration.
+
+Its value may differ between implementing types unless the interface specifies a required value.
+
+## Visibility
+
+An interface must be visible wherever it is named in implements.
+
+Members used to satisfy a visible interface must have sufficient visibility for calls through that interface.
+
+Private helper members do not affect interface conformance.
+
+## Generic interfaces
+
+Interfaces may have generic parameters.
+
+interface Collection[T] {
+    property Length: uint {
+        get
+    }
+
+    fn Get(ref self, index: uint) ref T
+}
+
+A type specifies the complete interface type it implements.
+
+type Names struct implements Collection[string] {
+    values: []string
+}
+## Interface constraints
+
+Interfaces may be used as generic constraints.
+
+fn Print[T implements Printable](value: ref T) void {
+    value.Print()
+}
+
+A type satisfies the constraint only when it explicitly declares the interface.
+
+## Interface inheritance
+
+An interface may extend one or more interfaces.
+
+interface ReadWriter implements Reader, Writer {
+}
+
+An implementing type must satisfy all inherited members.
+
+Cycles in interface inheritance are invalid.
+
+Duplicate inherited members are allowed only when their declarations are compatible.
+
+## Interface values
+
+An interface may be used as a value type.
+
+fn StartVehicle(vehicle: ref Vehicle) void {
+    vehicle.Start()
+}
+
+The interface value preserves:
+
+the concrete target
+the implemented interface
+ownership or reference mode
+dynamic dispatch information
+
+Using an interface must not erase ownership, mutability or lifetime rules.
+
+## Ownership
+
+Declaring an interface does not define ownership.
+
+Ownership is determined by how the interface is used.
+
+fn Inspect(vehicle: ref Vehicle) void
+fn Update(vehicle: ref mut Vehicle) void
+fn Store(vehicle: Vehicle) void
+
+These represent shared borrowing, mutable borrowing and ownership respectively.
+
+## Validation
+
+The compiler validates that:
+
+- every named interface exists
+- every implemented target is an interface
+- implemented interfaces are not duplicated
+- all required members are present
+- all member signatures are compatible
+- required variables and constants exist
+- property accessors are compatible
+- inherited interface requirements are satisfied
+- generic arguments are valid
+- visibility is sufficient
+- no inheritance cycle exists
+
+Conformance is checked after the type and its ordinary impl members have been collected.
+
+Member declaration order must not affect validation.
+
+## Runtime behavior
+
+Interface declarations are compile-time constructs.
+
+Interface values may require runtime representation for dynamic dispatch.
+
+The representation is chosen by the compiler and must not change interface semantics.
+
+Interfaces do not require:
+
+- garbage collection
+- reflection
+- runtime conformance checks
+- dynamic member lookup by name
+
+## Restrictions
+
+An interface must not:
+
+- contain ordinary executable statements
+- contain unnamed declarations
+- implicitly apply to a type
+- add stored fields to an implementing type
+- override ownership rules
+- bypass visibility rules
+- bypass unsafe requirements
+
+A type implements only the interfaces explicitly listed in its declaration.
+
+## Implements keyword
+
+The `implements` keyword is used both for concrete type implementation lists and
+for interface inheritance:
+
+```sec
+type Car struct implements Vehicle, Serializable
+interface ReadWriter implements Reader, Writer
+```
+
+## Current implementation status
+
+Implemented:
+
+- `implements` is a lexer keyword.
+- Parser supports `interface Name { ... }`.
+- Parser supports generic interface declarations syntactically.
+- Parser supports interface inheritance syntax:
+  `interface ReadWriter implements Reader, Writer { ... }`.
+- Parser supports method requirements with no body:
+  `fn Start(ref mut self) void`.
+- Parser supports property requirements:
+  `property Name: Type { get }`,
+  `property Name: Type { get set }`.
+- Parser supports `ref self` and `ref mut self` without explicit `: Type`.
+- Parser supports `type Name struct implements Interface { ... }`.
+- Sema registers interface declarations as named `InterfaceType`.
+- Sema checks that implemented names exist.
+- Sema checks that implemented targets are interfaces.
+- Sema rejects duplicate implemented interfaces.
+- Sema checks required methods against ordinary `impl Type` methods.
+- Sema checks receiver mutability for `self`.
+- Sema checks required property type and required accessors.
+- Sema checks inherited interface requirements recursively.
+- `sec ast` prints interface declarations and implements lists.
+
+Partially implemented:
+
+- Interface generic parameters are parsed and registered, but full generic
+  interface conformance is not complete.
+- Method compatibility handles ordinary signatures and `self`, but not all future
+  unsafe/error/lifetime requirements.
+- Interface inheritance is checked recursively, but cycle detection is not
+  implemented yet.
+
+Not implemented yet:
+
+- constants in interfaces
+- variables in interfaces
+- associated enum/type/interface declarations in interfaces
+- interface values and dynamic dispatch
+- visibility checks
+- full generic interface instantiation
+- explicit interface metadata in Semantic IR
+- MLIR/LLVM lowering for interface calls
+- old syntax `type Name interface { ... }`; the current syntax is
+  `interface Name { ... }`

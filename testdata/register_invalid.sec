@@ -1,77 +1,240 @@
 module register
 
+// Every declaration below is intentionally invalid. Cases are kept
+// syntactically complete so semantic analysis can continue where possible.
+
 unit rpm uint physical
 unit m uint physical
 
-// =====================================================================
-// INVALID REGISTRY WIDTHS AND LAYOUTS
-// =====================================================================
+// =============================================================================
+// Invalid register widths
+// =============================================================================
 
-// ERROR: Underflow - Declares 8 bits but fields only occupy 7 bits (4 + 1 + 2 = 7)
-type InvalidProtocolShort register[8] {
-    Speed: bit[4],
-    Enabled: bit,
-    Mode: bit[2],
+// ERROR: A register width must be positive.
+type ZeroWidthRegister register[0] {
 }
 
-// ERROR: Overflow - Declares 8 bits but fields occupy 9 bits (4 + 1 + 4 = 9)
-type InvalidProtocolLong register[8] {
-    Speed: bit[4],
-    Enabled: bit,
-    Mode: bit[4],
+// ERROR: A register width must be positive.
+type NegativeWidthRegister register[-8] {
 }
 
-// ERROR: Zero-width bit field is strictly invalid
+// =============================================================================
+// Invalid bit-field widths
+// =============================================================================
+
+// ERROR: A bit-field width must be positive.
 type ZeroWidthField register[8] {
     Value: bit[0],
     _: bit[8],
 }
 
-// ERROR: Negative-width bit field is strictly invalid
+// ERROR: A bit-field width must be positive.
 type NegativeWidthField register[8] {
     Value: bit[-1],
     _: bit[9],
 }
 
-// =====================================================================
-// INVALID RESERVED FIELD ACCESS
-// =====================================================================
+// =============================================================================
+// Invalid exact-width layouts
+// =============================================================================
 
-type Status register[8] {
-    Ready: bit,
-    Error: bit,
-    _: bit[6],
+// ERROR: The fields occupy seven bits, but the register declares eight bits.
+type UnderfilledRegister register[8] {
+    Speed: bit[4],
+    Enabled: bit,
+    Mode: bit[2],
 }
 
-@address(0x40023000)
-let globalStatus: Status
-
-fn TestIllegalReservedAccess() void {
-    // ERROR: Reserved bits (_) participate in layout but cannot be accessed
-    let value := globalStatus._
+// ERROR: The fields occupy nine bits, but the register declares eight bits.
+type OverfilledRegister register[8] {
+    Speed: bit[4],
+    Enabled: bit,
+    Mode: bit[4],
 }
 
-// =====================================================================
-// INVALID UNIT ASSIGNMENTS
-// =====================================================================
+// ERROR: Reserved fields also participate in exact layout validation.
+type ReservedUnderfill register[16] {
+    Enabled: bit,
+    _: bit[3],
+    Mode: bit[4],
+    _: bit[7],
+}
 
-type MotorProtocol register[8] {
+// ERROR: A field cannot exceed the complete register width.
+type OversizedField register[8] {
+    Value: bit[9],
+}
+
+// =============================================================================
+// Duplicate named fields
+// =============================================================================
+
+// ERROR: Named register fields must be unique.
+type DuplicateNamedField register[8] {
+    Value: bit[4],
+    Value: bit[4],
+}
+
+// Multiple reserved fields named _ are valid, but duplicate ordinary names are
+// not hidden by reserved fields.
+type DuplicateAcrossReservedFields register[8] {
+    Mode: bit[2],
+    _: bit[2],
+    Mode: bit[2],
+    _: bit[2],
+}
+
+// =============================================================================
+// Invalid unit annotations and unit use
+// =============================================================================
+
+// ERROR: The unit annotation must name a declared unit.
+type UnknownUnitRegister register[8] {
+    Value: bit[4]<missingUnit>,
+    _: bit[4],
+}
+
+type MotorRegister register[8] {
     Speed: bit[4]<rpm>,
     Enabled: bit,
     _: bit[3],
 }
 
-@address(0x40024000)
-let motorDevice: MotorProtocol
+@address(0x40025000)
+let motorStatus: MotorRegister
 
-fn TestIncompatibleUnits() void {
-    // ERROR: Incompatible unit assignment (cannot assign 'rpm' to 'm')
-    let distance: m := motorDevice.Speed
+@address(0x40025004)
+let mut motorControl: MotorRegister
+
+fn ReadWithWrongUnit() void {
+    // ERROR: rpm is not assignable to m.
+    let distance: m := motorStatus.Speed
 }
 
-// =====================================================================
-// INVALID VARIABLE PLACEMENT
-// =====================================================================
+fn WriteWithWrongUnit(distance: m) void {
+    // ERROR: m is not assignable to rpm.
+    motorControl.Speed = distance
+}
 
-// ERROR: Variable assignments are only allowed inside functions (fn)
-let localSpeed: rpm := motorDevice.Speed
+// =============================================================================
+// Reserved-field access
+// =============================================================================
+
+type ReservedAccessRegister register[8] {
+    Ready: bit,
+    Error: bit,
+    _: bit[6],
+}
+
+@address(0x40026000)
+let reservedStatus: ReservedAccessRegister
+
+fn ReadReservedField() void {
+    // ERROR: Reserved fields participate in layout but are not members.
+    let value := reservedStatus._
+}
+
+// =============================================================================
+// Invalid @address bindings
+// =============================================================================
+
+type Scalar int
+
+type AddressRegister register[8] {
+    Ready: bit,
+    _: bit[7],
+}
+
+@address(0x40027000)
+let sourceAddressRegister: AddressRegister
+
+// ERROR: @address requires a register type.
+@address(0x40027004)
+let addressedScalar: Scalar
+
+// ERROR: An addressed binding cannot have an initializer.
+@address(0x40027008)
+let mut initializedAddressRegister: AddressRegister := sourceAddressRegister
+
+fn RuntimeAddress() int {
+    return 0x4002700C
+}
+
+// ERROR: @address requires a compile-time integer address.
+@address(RuntimeAddress())
+let runtimeAddressRegister: AddressRegister
+
+// ERROR: @address requires an integer address.
+@address(true)
+let booleanAddressRegister: AddressRegister
+
+// ERROR: @address requires an explicit register type. The initializer is also
+// invalid because addressed bindings cannot be initialized.
+@address(0x40027010)
+let inferredAddressRegister := sourceAddressRegister
+
+// =============================================================================
+// Writes to read-only addressed storage
+// =============================================================================
+
+@address(0x40028000)
+let readOnlyAddressRegister: AddressRegister
+
+fn WriteReadOnlyBit() void {
+    // ERROR: The addressed binding was not declared with mut.
+    readOnlyAddressRegister.Ready = true
+}
+
+// =============================================================================
+// Constant field values outside the field range
+// =============================================================================
+
+type BoundedRegister register[8] {
+    Mode: bit[3],
+    Count: bit[5],
+}
+
+@address(0x40029000)
+let mut boundedRegister: BoundedRegister
+
+fn WriteTooLargeConstants() void {
+    // ERROR: Eight does not fit in an unsigned three-bit field.
+    boundedRegister.Mode = 8
+
+    // ERROR: Thirty-two does not fit in an unsigned five-bit field.
+    boundedRegister.Count = 32
+}
+
+fn WriteNegativeConstant() void {
+    // ERROR: Negative one does not fit in an unsigned three-bit field.
+    boundedRegister.Mode = -1
+}
+
+// =============================================================================
+// Invalid register impl receiver use
+// =============================================================================
+
+type ImplRegister register[8] {
+    Ready: bit,
+    Error: bit,
+    _: bit[6],
+}
+
+impl ImplRegister {
+    fn InvalidSharedWrite(ref self) void {
+        // ERROR: ref self may read register fields but may not write them.
+        self.Error = false
+    }
+
+    fn ClearError(ref mut self) void {
+        self.Error = false
+    }
+}
+
+@address(0x4002A000)
+let readOnlyImplRegister: ImplRegister
+
+fn CallMutatingMethodOnReadOnlyRegister() void {
+    // ERROR: A mutating method requires writable receiver storage.
+    readOnlyImplRegister.ClearError()
+}

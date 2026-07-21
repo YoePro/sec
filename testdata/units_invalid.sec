@@ -1,0 +1,280 @@
+module units
+
+// Every marked case in this file is intentionally invalid.
+// Semantic cases appear before malformed parser-recovery cases.
+
+// =============================================================================
+// Valid declarations shared by the invalid cases
+// =============================================================================
+
+unit m decimal physical
+unit s decimal physical
+unit kg decimal physical
+unit SEK decimal other
+unit EUR decimal other
+unit item decimal other
+unit packet decimal other
+unit Count int other
+unit UnsignedCount uint other
+
+type Distance decimal<m>
+type AlternateDistance decimal<m>
+type Duration decimal<s>
+type Mass decimal<kg>
+type Speed decimal<m/s>
+type Area decimal<m*m>
+type Money decimal<SEK>
+type EuroMoney decimal<EUR>
+type ItemAmount decimal<item>
+type PacketAmount decimal<packet>
+type UnitPrice decimal<SEK/item>
+type PacketRate decimal<packet/s>
+
+// =============================================================================
+// Invalid unit declarations
+// =============================================================================
+
+// ERROR: A unit storage type must be numeric.
+unit TextUnit string other
+
+// ERROR: bool is not a numeric unit storage type.
+unit BooleanUnit bool other
+
+// ERROR: Unit names must be unique.
+unit DuplicateUnit decimal other
+unit DuplicateUnit decimal other
+
+// =============================================================================
+// Invalid literal initialization for the underlying numeric type
+// =============================================================================
+
+fn InvalidUnderlyingLiterals() void {
+    // ERROR: A negative value is not representable by uint.
+    let negative: UnsignedCount := -1
+
+    // ERROR: A decimal literal is not assignable to an int-backed unit.
+    let fractional: Count := 1.5
+}
+
+// =============================================================================
+// Unit values are nominal and do not implicitly convert
+// =============================================================================
+
+fn RawVariableToUnit() void {
+    let raw := 100.0
+
+    // ERROR: A typed decimal variable is not implicitly converted to Distance.
+    let distance: Distance := raw
+}
+
+fn UnitToRawDecimal(distance: Distance) void {
+    // ERROR: Unit information must not be discarded implicitly.
+    let raw: decimal := distance
+}
+
+fn UnitToDifferentUnit(distance: Distance) void {
+    // ERROR: Distance is not assignable to Duration.
+    let duration: Duration := distance
+}
+
+fn SameDimensionDifferentNamedType(distance: Distance) void {
+    // ERROR: Nominal type identity is preserved even for equal dimensions.
+    let alternate: AlternateDistance := distance
+}
+
+fn AssignmentToDifferentUnit(
+    distance: Distance,
+    duration: Duration,
+) void {
+    let mut target: Distance := distance
+
+    // ERROR: Duration is not assignable to Distance.
+    target = duration
+}
+
+// =============================================================================
+// Invalid addition and subtraction
+// =============================================================================
+
+fn AddDifferentPhysicalDimensions(
+    distance: Distance,
+    duration: Duration,
+) void {
+    // ERROR: Length and time cannot be added.
+    let invalid := distance + duration
+}
+
+fn SubtractDifferentPhysicalDimensions(
+    distance: Distance,
+    mass: Mass,
+) void {
+    // ERROR: Length and mass cannot be subtracted.
+    let invalid := distance - mass
+}
+
+fn AddDifferentNamedTypesWithSameDimension(
+    distance: Distance,
+    alternate: AlternateDistance,
+) void {
+    // ERROR: Addition requires compatible nominal unit types.
+    let invalid := distance + alternate
+}
+
+fn AddUnitAndScalar(distance: Distance) void {
+    // ERROR: A dimensionless scalar cannot be added to a distance.
+    let invalid := distance + 1
+}
+
+fn SubtractScalarFromUnit(distance: Distance) void {
+    // ERROR: A dimensionless scalar cannot be subtracted from a distance.
+    let invalid := distance - 1.0
+}
+
+fn AddDifferentCurrencies(first: Money, second: EuroMoney) void {
+    // ERROR: SEK and EUR are separate domain dimensions.
+    let invalid := first + second
+}
+
+fn AddDifferentDomainAmounts(
+    items: ItemAmount,
+    packets: PacketAmount,
+) void {
+    // ERROR: Item and Packet describe different domain quantities.
+    let invalid := items + packets
+}
+
+// =============================================================================
+// Invalid compound assignment
+// =============================================================================
+
+fn CompoundAssignmentWrongUnit(
+    distance: Distance,
+    duration: Duration,
+) void {
+    let mut result: Distance := distance
+
+    // ERROR: Duration cannot be added to Distance.
+    result += duration
+}
+
+fn CompoundAssignmentWrongNamedType(
+    distance: Distance,
+    alternate: AlternateDistance,
+) void {
+    let mut result: Distance := distance
+
+    // ERROR: Equal dimensions do not erase nominal identity for addition.
+    result += alternate
+}
+
+// =============================================================================
+// Invalid derived-result assignments
+// =============================================================================
+
+fn SpeedAssignedToDuration(
+    distance: Distance,
+    duration: Duration,
+) void {
+    // ERROR: Distance divided by Duration produces Speed.
+    let invalid: Duration := distance / duration
+}
+
+fn ProductAssignedToSpeed(
+    distance: Distance,
+    duration: Duration,
+) void {
+    // ERROR: m*s is not m/s.
+    let invalid: Speed := distance * duration
+}
+
+fn AreaAssignedToDistance(
+    first: Distance,
+    second: Distance,
+) void {
+    // ERROR: m*m is Area, not Distance.
+    let invalid: Distance := first * second
+}
+
+fn RatioAssignedToDistance(
+    first: Distance,
+    second: Distance,
+) void {
+    // ERROR: Equal dimensions cancel to plain decimal.
+    let invalid: Distance := first / second
+}
+
+fn InverseAssignedToDistance(distance: Distance) void {
+    // ERROR: A scalar divided by Distance has inverse-length dimension.
+    let invalid: Distance := 1 / distance
+}
+
+fn MomentumAssignedToSpeed(mass: Mass, speed: Speed) void {
+    // ERROR: kg*m/s is not m/s.
+    let invalid: Speed := mass * speed
+}
+
+fn PacketRateAssignedToMoney(
+    packets: PacketAmount,
+    duration: Duration,
+) void {
+    // ERROR: packet/s is not SEK.
+    let invalid: Money := packets / duration
+}
+
+fn UnitPriceAssignedToMoney(total: Money, items: ItemAmount) void {
+    // ERROR: SEK/item is not SEK.
+    let invalid: Money := total / items
+}
+
+// =============================================================================
+// Unsupported squared currency
+// =============================================================================
+
+fn SquareCurrency(first: Money, second: Money) void {
+    // ERROR: Squared currency is currently rejected.
+    let invalid := first * second
+}
+
+// =============================================================================
+// Function argument and return validation
+// =============================================================================
+
+fn RequireDistance(value: Distance) void {
+}
+
+fn PassWrongUnit(duration: Duration) void {
+    // ERROR: Duration is not assignable to the Distance parameter.
+    RequireDistance(duration)
+}
+
+fn ReturnWrongUnit(duration: Duration) Distance {
+    // ERROR: The function must return Distance.
+    return duration
+}
+
+fn ReturnWrongDerivedUnit(
+    distance: Distance,
+    duration: Duration,
+) Distance {
+    // ERROR: The expression produces Speed.
+    return distance / duration
+}
+
+// =============================================================================
+// Invalid direct unit declaration syntax and parser recovery
+// =============================================================================
+
+// ERROR: The unit declaration is missing its numeric storage type.
+unit MissingStorage
+
+// ERROR: The category must be physical or other.
+unit InvalidCategory decimal experimental
+
+// ERROR: A unit expression may not be empty.
+unit EmptyExpression decimal<>
+
+// ERROR: A unit expression may not end with an operator.
+unit TrailingDivision decimal<m/>
+
+// ERROR: Exponent syntax is not implemented in the current language version.
+unit UnsupportedExponent decimal<m^2>

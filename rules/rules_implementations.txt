@@ -1,0 +1,1221 @@
+=============================================================================================================================================================================================
+Rules Implementation
+=============================================================================================================================================================================================
+
+Purpose
+-------
+
+Implement a structured compiler rule system for Sec.
+
+The rule system must provide a consistent way to:
+
+- validate language semantics
+- report diagnostics
+- share validation logic between compiler phases
+- keep language rules separate from parser mechanics
+- keep frontend semantics separate from MLIR and LLVM lowering
+- make individual language rules independently testable
+- make implementation progress suitable for incremental Codex tasks
+
+The rules package is part of the compiler frontend.
+
+It must not become a runtime component.
+
+It must not generate runtime rule tables.
+
+It must not move language semantics into LLVM or MLIR.
+
+Core principle
+--------------
+
+The parser determines what the source says.
+
+The rule system determines whether the source is semantically valid.
+
+Semantic analysis determines the meaning of valid source.
+
+Semantic IR records that validated meaning.
+
+MLIR and LLVM lower the result.
+
+Rules must never be inferred from backend limitations.
+
+Goals
+-----
+
+The initial implementation must:
+
+- introduce a dedicated rules package
+- provide reusable rule helpers
+- provide stable diagnostic construction
+- support rule execution from semantic analysis
+- avoid one large monolithic semantic-analysis function
+- support source-positioned errors and warnings
+- support multiple diagnostics in one compiler invocation
+- support rule-specific tests
+- preserve all currently implemented language behavior
+- allow rules to be added incrementally
+- avoid unnecessary abstractions
+- avoid a generic runtime-style rule engine
+- avoid reflection
+- avoid dynamic rule registration
+- avoid hidden global state
+
+Non-goals
+---------
+
+The initial implementation must not:
+
+- redesign the parser
+- redesign the AST
+- redesign Semantic IR
+- implement a plugin rule system
+- expose compiler rules to Sec programs
+- permit user-defined compiler rules
+- load rules from configuration files
+- generate rules dynamically
+- implement lint configuration beyond current warning handling
+- move target-specific lowering into the rules package
+- replace ownership, borrow or lifetime analysis with simple local checks
+- introduce a runtime dependency
+
+Terminology
+-----------
+
+A rule is a compiler validation operation that determines whether one semantic condition is satisfied.
+
+A rule may produce:
+
+- no diagnostic
+- one error
+- one warning
+- multiple related diagnostics
+
+A rule must not directly print diagnostics.
+
+A rule must return or append structured diagnostics.
+
+A rule may inspect:
+
+- AST nodes
+- resolved symbols
+- resolved types
+- control-flow state
+- ownership state
+- initialization state
+- target information
+- compiler configuration
+
+A rule must not silently modify source semantics.
+
+Rule categories
+---------------
+
+Rules should be grouped by semantic responsibility.
+
+Initial categories:
+
+- declarations
+- names
+- types
+- assignments
+- conversions
+- expressions
+- functions
+- returns
+- control flow
+- variables
+- constants
+- enums
+- structs
+- unions
+- interfaces
+- generics
+- error handling
+- ownership
+- borrowing
+- lifetimes
+- destruction
+- unsafe
+- FFI
+- units
+- registers
+- platform
+- diagnostics
+
+Not every category must be implemented immediately.
+
+The initial package structure should permit these categories without requiring empty placeholder files for every future feature.
+
+Recommended package structure
+-----------------------------
+
+The exact repository path must follow the existing compiler layout.
+
+Recommended conceptual structure:
+
+compiler/
+    rules/
+        context.go
+        result.go
+        diagnostics.go
+        declarations.go
+        names.go
+        types.go
+        assignments.go
+        conversions.go
+        expressions.go
+        functions.go
+        returns.go
+        control_flow.go
+        variables.go
+        enums.go
+        structs.go
+        unions.go
+        error_handling.go
+        ownership.go
+        borrowing.go
+        unsafe.go
+        units.go
+        registers.go
+        platform.go
+
+Tests should follow the repository's existing Go package conventions.
+
+Do not create files for categories that have no implementation yet unless needed for package structure.
+
+Implementation language
+-----------------------
+
+All compiler implementation code must be written in English.
+
+All compiler implementation identifiers must be written in English.
+
+All comments must be written in English.
+
+All diagnostics emitted to Sec programmers must be written in English.
+
+Sec source identifiers may use Unicode letters. Standard library APIs should
+prefer readable ASCII names, except where domain symbols are the conventional
+name of the concept, such as SI/unit symbols.
+
+Package design
+--------------
+
+The rules package should expose ordinary Go functions.
+
+Do not implement an abstract rule-engine framework.
+
+Preferred style:
+
+func CheckAssignment(context *Context, assignment *ast.Assignment) []diagnostic.Diagnostic
+
+func CheckReturn(context *Context, statement *ast.ReturnStatement) []diagnostic.Diagnostic
+
+func CheckFunctionCall(context *Context, call *ast.CallExpression) []diagnostic.Diagnostic
+
+Exact types must match the current repository.
+
+Do not create parallel AST, type or diagnostic models.
+
+Reuse the compiler's existing representations.
+
+Rule context
+------------
+
+Rules need a shared context containing resolved compiler information.
+
+The Context type should provide access to information such as:
+
+- current module
+- current file
+- current function
+- current scope
+- symbol table
+- resolved types
+- target profile
+- compiler options
+- semantic state
+- ownership state where available
+- control-flow state where available
+- diagnostic sink or result collection
+
+The Context must not duplicate large compiler structures unnecessarily.
+
+Prefer references to existing compiler state.
+
+Possible conceptual structure:
+
+type Context struct {
+    Module         *sema.Module
+    Function       *sema.Function
+    Scope          *sema.Scope
+    Target         target.Profile
+    Diagnostics    *diagnostic.Collector
+}
+
+This is illustrative only.
+
+Use the actual existing compiler types.
+
+Context lifetime
+----------------
+
+A rule Context is compiler-owned.
+
+It must not:
+
+- escape semantic analysis
+- be stored globally
+- be shared unsafely between concurrent compiler operations
+- contain process-wide mutable state
+
+A new context or derived context may be created when entering:
+
+- a module
+- a function
+- a block
+- an unsafe region
+- a generic instantiation
+- a target-specific declaration
+
+Derived contexts should share immutable state where practical.
+
+Rule results
+------------
+
+Rules should normally append diagnostics to a collector or return diagnostics.
+
+Choose one consistent model.
+
+Preferred model:
+
+- validation rules append structured diagnostics to the context collector
+- query helpers return values and errors where appropriate
+- rules do not panic for invalid Sec source
+- internal impossible states may produce compiler-internal errors
+
+Do not mix direct printing, returned strings and collector diagnostics.
+
+Diagnostic structure
+--------------------
+
+Every diagnostic should contain, where applicable:
+
+- severity
+- message
+- primary source position
+- primary source range
+- related source positions
+- explanatory notes
+- optional suggestion
+- stable diagnostic code if the compiler already supports codes
+
+Severity must support at least:
+
+- error
+- warning
+
+Diagnostics must remain deterministic.
+
+Diagnostic ordering
+-------------------
+
+Diagnostics must be emitted in deterministic order.
+
+Preferred ordering:
+
+1. source file order
+2. source position
+3. rule execution order
+4. diagnostic kind
+
+Map iteration order must not affect diagnostics.
+
+Parallel compilation must not produce unstable diagnostic ordering.
+
+Diagnostic wording
+-------------------
+
+Diagnostics should describe the Sec language rule.
+
+Preferred:
+
+error: cannot assign to immutable binding `value`
+
+Avoid:
+
+error: assignment node failed MutabilityRule
+
+Preferred:
+
+error: cannot return `Money` from function returning `Speed`
+
+Avoid:
+
+error: type mismatch in return operation
+
+Diagnostics should identify concrete types, symbols and operations.
+
+Rule helpers
+------------
+
+Common helper functions may include:
+
+- RequireResolvedType
+- RequireAssignable
+- RequireConvertible
+- RequireBooleanCondition
+- RequireNumericOperand
+- RequireIntegerOperand
+- RequireMutablePlace
+- RequireInitialized
+- RequireAvailable
+- RequireCopyable
+- RequireMovable
+- RequireUnsafeContext
+- RequireExhaustiveMatch
+- RequireValidReturn
+- RequireValidRange
+- RequireCompatibleUnit
+- RequireValidRegisterAccess
+
+Names are illustrative.
+
+Helpers must remain narrowly focused.
+
+A helper should not silently emit unrelated diagnostics.
+
+Rule purity
+-----------
+
+Validation rules should be as close to pure as practical.
+
+A rule may:
+
+- inspect semantic state
+- append diagnostics
+- record validated facts where the compiler architecture requires it
+
+A rule should not:
+
+- mutate AST syntax
+- rewrite expressions
+- perform lowering
+- generate LLVM
+- allocate runtime objects
+- alter symbol meaning after resolution
+- repair invalid code silently
+
+Normalization or desugaring belongs in an explicitly defined compiler phase.
+
+Rule execution
+--------------
+
+Rules should be invoked from semantic analysis at the point where sufficient information exists.
+
+Examples:
+
+- declaration rules after symbol collection
+- name rules after resolution
+- type rules after type resolution
+- assignment rules after source and target types are known
+- return rules while analyzing a function body
+- ownership rules after value categories are known
+- lifetime rules after control-flow and borrow information exist
+- target rules after target selection is known
+
+Do not execute a rule before its required inputs are available.
+
+Rule prerequisites
+------------------
+
+Each rule should have clearly understood prerequisites.
+
+Example:
+
+CheckAssignment may require:
+
+- resolved destination place
+- resolved source expression type
+- destination mutability
+- initialization state
+- ownership classification
+- conversion classification
+
+If a prerequisite failed earlier, the rule should avoid cascading diagnostics where possible.
+
+Invalid or missing semantic information should be represented explicitly.
+
+Error recovery
+--------------
+
+The compiler should continue after ordinary source errors where safe.
+
+Rules should avoid cascading errors.
+
+Example:
+
+If an expression has unresolved type because its symbol is unknown, later assignment compatibility should not emit several additional type errors for the same root cause.
+
+Use an invalid or error type where the existing compiler architecture supports it.
+
+Rules should recognize error types and suppress secondary diagnostics that provide no useful information.
+
+Internal errors
+---------------
+
+Invalid Sec source must never cause a panic.
+
+A panic or internal compiler error is appropriate only for compiler states that should have been impossible after earlier verified phases.
+
+Examples:
+
+- resolved symbol missing required type
+- Semantic IR receives unresolved ownership
+- rule invoked without required current function
+- impossible AST node after parser validation
+- copy rule permits known move-only type
+
+Internal errors should include:
+
+- rule name
+- compiler phase
+- source position
+- relevant node type
+- relevant semantic type
+- current function where available
+
+Rule naming
+-----------
+
+Exported and internal rule functions should use consistent names.
+
+Preferred prefixes:
+
+- Check
+- Validate
+- Require
+- Can
+- Is
+- Resolve
+
+Use:
+
+CheckAssignment
+
+ValidateReturnType
+
+RequireMutablePlace
+
+CanImplicitlyConvert
+
+Avoid vague names such as:
+
+- Process
+- Handle
+- Apply
+- ExecuteRule
+- ValidateEverything
+
+Rules versus queries
+--------------------
+
+A rule validates and may emit diagnostics.
+
+A query answers a semantic question.
+
+Examples of queries:
+
+- IsCopyable(type)
+- IsMovable(type)
+- IsAssignable(source, destination)
+- CanImplicitlyConvert(source, destination)
+- IsBoolean(type)
+- IsNumeric(type)
+- IsTerminating(statement)
+- MayFallThrough(block)
+
+Queries should not normally emit diagnostics.
+
+Rules use queries and produce source-oriented diagnostics.
+
+Rules versus analysis
+---------------------
+
+Local validation rules must not replace whole-function or graph analyses.
+
+Examples requiring broader analysis:
+
+- definite assignment
+- reachability
+- exhaustive return
+- ownership paths
+- partial moves
+- borrow conflicts
+- lifetimes
+- escape
+- cleanup placement
+- loop fixed points
+
+The rules package may provide validation functions used by these analyses.
+
+It must not pretend path-sensitive analysis can be implemented as one AST-local rule.
+
+Initial implementation scope
+----------------------------
+
+The first implementation iteration should focus on extracting and structuring rules already enforced by semantic analysis.
+
+Do not initially add large new language features.
+
+The first iteration should cover:
+
+- assignment validation
+- return validation
+- condition validation
+- function-call argument validation
+- mutability validation
+- initialization validation where currently implemented
+- basic copy and move validation where currently implemented
+- unsafe-context validation where currently implemented
+- error-handling validation where currently implemented
+- enum validation where currently implemented
+- switch and match validation where currently implemented
+- loop-control validation where currently implemented
+
+The purpose is to improve structure without changing accepted language behavior.
+
+Phase 1 - Inventory
+-------------------
+
+Before changing code, inspect the existing compiler.
+
+Identify:
+
+- semantic-analysis entry points
+- existing validation functions
+- duplicated checks
+- direct diagnostic formatting
+- direct stderr printing
+- panic paths caused by invalid source
+- rules mixed with type resolution
+- rules mixed with AST traversal
+- rules mixed with LLVM lowering
+- current valid and invalid test files
+
+Create a concise implementation note in the Codex result describing:
+
+- files inspected
+- duplicated rules found
+- first rules extracted
+- behavior intentionally preserved
+
+Do not create a separate design document unless necessary.
+
+Phase 2 - Diagnostic foundation
+-------------------------------
+
+Ensure the compiler has one structured diagnostic path.
+
+Required behavior:
+
+- rules do not print directly
+- diagnostics contain source position
+- multiple errors can be collected
+- warnings remain distinguishable from errors
+- existing command output remains compatible unless an improvement is clearly required
+- output ordering is deterministic
+
+Reuse the existing diagnostic implementation if suitable.
+
+Do not replace a working diagnostic system merely to rename types.
+
+Phase 3 - Rules context
+-----------------------
+
+Introduce the minimum Context structure needed by extracted rules.
+
+The context should not initially attempt to represent every future analysis.
+
+Start with information needed by the first extracted rules.
+
+Avoid circular package dependencies.
+
+If placing rules in a separate Go package causes an import cycle, use one of these approaches:
+
+1. move neutral semantic types into an existing lower-level package
+2. place initial rules in a subpackage that depends only downward
+3. keep internal rule files in the semantic-analysis package temporarily
+4. introduce small interfaces only when they remove a real dependency
+
+Do not solve import cycles through global variables or reflection.
+
+Phase 4 - Assignment rules
+--------------------------
+
+Extract assignment validation.
+
+Assignment rules should validate, where currently supported:
+
+- destination is assignable
+- destination is mutable when mutation is required
+- source type is compatible
+- implicit conversion is permitted
+- destination is not an immutable binding
+- destination is not a function, type or module symbol
+- move-only values are not copied
+- moved values are not used
+- references obey mutability constraints
+- units are compatible
+- compound assignment operands are valid
+
+Assignment rules must distinguish:
+
+- initial declaration
+- first initialization
+- reinitialization after move
+- replacement of initialized value
+- field assignment
+- indexed assignment
+- assignment through mutable reference
+- compound assignment
+
+Do not implement unsupported forms solely because they appear in this list.
+
+Validate only forms present in the current AST and language implementation.
+
+Phase 5 - Return rules
+----------------------
+
+Extract return validation.
+
+Return rules should validate:
+
+- return is inside a function
+- void functions do not return a value
+- non-void functions return a value
+- returned type is compatible with function result
+- implicit conversion is permitted
+- move-only returned values transfer ownership
+- local references do not escape where lifetime analysis supports this check
+- Result propagation matches function result
+- all paths satisfy required return behavior
+- unreachable statements after unconditional return are handled according to current policy
+
+Whole-function fallthrough validation may remain in control-flow analysis.
+
+Phase 6 - Condition rules
+-------------------------
+
+Extract condition validation for:
+
+- if
+- while
+- logical operators
+- conditional expressions where implemented
+
+Conditions must resolve to bool.
+
+Do not introduce truthiness.
+
+Numeric, string, pointer and aggregate values must not be accepted as conditions unless the language specification explicitly allows them.
+
+Assignment in conditions should follow the current warning or error policy.
+
+The existing warning behavior must be preserved.
+
+Phase 7 - Function-call rules
+-----------------------------
+
+Extract function-call validation.
+
+Rules should validate:
+
+- callee is callable
+- argument count
+- named argument validity if implemented
+- argument ordering
+- parameter type compatibility
+- reference mutability
+- owned versus borrowed parameter behavior
+- generic argument compatibility
+- variadic behavior if implemented
+- unsafe call requirements
+- target availability
+- Result and Option behavior where relevant
+
+Do not implement implicit address-taking unless it is already a decided Sec rule.
+
+Phase 8 - Control-flow rules
+----------------------------
+
+Structure rules for:
+
+- break
+- continue
+- return
+- if
+- switch
+- match
+- for
+- while
+
+Validate:
+
+- break appears in an allowed construct
+- continue appears in a loop
+- case forms are valid
+- switch ranges are valid
+- descending ranges follow the decided warning policy
+- match is exhaustive where required
+- duplicate cases are rejected
+- unreachable patterns are diagnosed according to current policy
+- loop clauses use valid types
+- step values satisfy current rules
+
+Preserve the already implemented switch and match semantics.
+
+Phase 9 - Error-handling rules
+------------------------------
+
+Extract rules for:
+
+- try
+- Result
+- error propagation
+- try handlers
+- match over Result
+- error-type compatibility
+
+Preserve current diagnostics such as:
+
+- try requires Result expression
+- cannot use try in function returning incompatible type
+- cannot propagate incompatible error type
+- try handler must produce expected value
+- try handler must terminate, propagate or produce required value
+
+Move message construction into the structured diagnostic system.
+
+Do not change language semantics during extraction.
+
+Phase 10 - Ownership rule hooks
+-------------------------------
+
+Introduce rule hooks needed by future ownership analysis.
+
+Initial queries may include:
+
+- IsCopyable
+- IsMoveOnly
+- CanMove
+- CanCopy
+- ContainsOwnedFields
+- HasCustomFree
+- IsTriviallyDestructible
+
+Do not complete the full ownership analysis as part of a simple extraction task unless already present.
+
+The rule system should make ownership decisions available consistently.
+
+Copy and move behavior must follow copy_move.txt.
+
+Destruction behavior must follow destruction.txt.
+
+Phase 11 - Unsafe rules
+-----------------------
+
+Extract unsafe-context checks.
+
+Rules should validate operations such as:
+
+- RawPtr dereference
+- RawPtr arithmetic where supported
+- RawPtr-to-reference conversion
+- FFI calls marked unsafe
+- inline assembly
+- representation reinterpretation
+- direct system or platform operations requiring unsafe
+- user-defined free restrictions where implemented
+
+Unsafe must not disable unrelated type, ownership or lifetime checks.
+
+An unsafe block permits specific unsafe operations.
+
+It does not make invalid semantics valid.
+
+Phase 12 - Enum, switch and match rules
+---------------------------------------
+
+Preserve and structure current validation for:
+
+- enum base types
+- enum values
+- aliases
+- duplicate values where prohibited
+- iota behavior
+- switch cases
+- switch ranges
+- duplicate switch coverage
+- match exhaustiveness
+- duplicate match patterns
+- unreachable match patterns
+- enum payload handling where implemented
+
+Do not duplicate exhaustiveness logic between switch and match unless their semantics differ.
+
+Use shared query helpers where appropriate.
+
+Phase 13 - Units and registers integration
+------------------------------------------
+
+The rules package should provide integration points for units and registers.
+
+Units rules may validate:
+
+- compatible arithmetic
+- valid conversions
+- comparison compatibility
+- assignment compatibility
+- function argument compatibility
+- range compatibility
+- literal interpretation
+
+Register rules may validate:
+
+- addressed declaration
+- volatile access
+- read-only versus writable instance
+- read-only fields
+- write-only fields
+- reserved fields
+- field-width compatibility
+- compile-time address validity
+- target availability
+
+Do not fully reimplement units or registers unless those features are already ready.
+
+Use units.txt and registers.txt as semantic authority.
+
+Rule ownership
+--------------
+
+Every semantic rule should have one primary implementation location.
+
+Avoid implementing the same rule independently in:
+
+- parser
+- semantic analyzer
+- Semantic IR builder
+- MLIR lowering
+- LLVM emitter
+
+Earlier phases may reject structurally impossible forms.
+
+The semantic rule should still have one authoritative frontend implementation.
+
+Lower phases may verify the invariant but must not redefine it.
+
+Parser boundary
+---------------
+
+The parser should validate syntax and construct AST.
+
+The parser may diagnose:
+
+- missing tokens
+- malformed declarations
+- malformed expressions
+- invalid token placement
+- impossible grammar forms
+
+The parser should not decide:
+
+- type compatibility
+- ownership
+- mutability
+- return compatibility
+- exhaustiveness
+- lifetime validity
+- target availability
+
+These belong to semantic rules and analyses.
+
+Semantic IR boundary
+--------------------
+
+Semantic IR generation should receive validated semantic meaning.
+
+The Semantic IR builder may verify:
+
+- required resolved type is present
+- ownership operation is explicit
+- no invalid AST form reached lowering
+- required rule state exists
+
+It should not emit ordinary source errors for rules that should have been checked earlier.
+
+Failure at this boundary normally indicates an internal compiler defect.
+
+MLIR boundary
+-------------
+
+MLIR lowering must not implement language validation.
+
+It may reject internal unsupported lowering states as compiler defects.
+
+Examples:
+
+- unresolved type reaches MLIR
+- unresolved move reaches MLIR
+- invalid lifetime relation reaches MLIR
+- unsupported target-specific operation was not rejected earlier
+
+LLVM boundary
+-------------
+
+LLVM emission must never determine Sec language legality.
+
+LLVM type compatibility is not Sec type compatibility.
+
+LLVM integer width is not Sec semantic type identity.
+
+LLVM pointer validity is not Sec reference validity.
+
+LLVM optimization does not enforce ownership.
+
+Testing strategy
+----------------
+
+Every extracted rule should have tests.
+
+Use the repository's existing test style.
+
+Tests should include:
+
+- valid Sec source
+- invalid Sec source
+- expected diagnostics
+- source positions
+- no unexpected diagnostics
+- stable diagnostic ordering
+
+Do not rely only on Go unit tests.
+
+Compiler integration tests remain required.
+
+Rule unit tests
+---------------
+
+Use Go unit tests for isolated queries and helpers where useful.
+
+Good candidates:
+
+- type compatibility
+- copy classification
+- range overlap
+- enum duplicate detection
+- unit compatibility
+- argument-count validation
+- condition type validation
+
+Avoid creating elaborate mocked compiler states when a Sec integration test is clearer.
+
+Valid test files
+----------------
+
+All `*_valid.sec` files must compile or pass semantic analysis with Ok according to the existing test harness.
+
+A valid test file must not contain deliberately invalid code hidden behind unused functions.
+
+Valid files should cover multiple accepted forms without producing warnings unless the file specifically tests warnings.
+
+Invalid test files
+------------------
+
+Invalid files should contain clearly separated cases.
+
+Each invalid case should:
+
+- test one primary rule
+- use a named function where practical
+- avoid unrelated syntax errors
+- produce a deterministic diagnostic
+- remain understandable when viewed without the compiler implementation
+
+The test harness should verify expected diagnostics rather than merely requiring non-zero exit status.
+
+Regression preservation
+-----------------------
+
+Before refactoring:
+
+- run the complete existing test suite
+- record current failures if any
+- do not classify pre-existing failures as caused by the rules work without verification
+
+After each extraction phase:
+
+- run Go tests
+- run parser tests
+- run semantic valid tests
+- run semantic invalid tests
+- run relevant LLVM tests where available
+
+No existing valid program may become invalid unintentionally.
+
+No existing invalid program may become accepted unintentionally.
+
+Acceptance criteria
+-------------------
+
+The first rules implementation milestone is complete when:
+
+- a dedicated rules structure exists
+- assignment validation is extracted or clearly isolated
+- return validation is extracted or clearly isolated
+- condition validation is extracted or clearly isolated
+- call validation is extracted or clearly isolated
+- current control-flow rules use the structured system
+- current error-handling rules use the structured system
+- diagnostics are structured and deterministic
+- no rule prints directly to stdout or stderr
+- existing semantic behavior is preserved
+- all existing valid tests pass
+- all existing invalid tests produce expected errors
+- Go tests pass
+- no new import cycle exists
+- no runtime dependency is introduced
+- no MLIR or LLVM semantic workaround is added
+
+Codex working method
+--------------------
+
+Codex should implement this incrementally.
+
+Preferred sequence:
+
+1. inspect the existing semantic analyzer
+2. identify the smallest coherent group of rules
+3. introduce or reuse structured diagnostics
+4. extract that rule group
+5. run all relevant tests
+6. commit no unrelated refactoring
+7. continue with the next group
+
+Do not rewrite the complete semantic analyzer in one change.
+
+Do not rename unrelated packages.
+
+Do not change source syntax.
+
+Do not modify language decisions to simplify implementation.
+
+Do not delete existing tests.
+
+Do not weaken tests to make the refactor pass.
+
+Codex reporting
+---------------
+
+After implementation, report:
+
+- files created
+- files modified
+- rules extracted
+- diagnostic changes
+- tests added
+- tests updated
+- commands executed
+- test results
+- remaining duplicated validation
+- known limitations
+- recommended next rule group
+
+The report must distinguish:
+
+- completed implementation
+- partial implementation
+- proposed future work
+
+Immediate task
+--------------
+
+Start with the smallest useful implementation slice:
+
+1. inspect the current semantic analyzer and diagnostics
+2. introduce `rules` without creating an import cycle
+3. extract condition validation for `if` and `while`
+4. preserve the assignment-in-condition warning
+5. extract return validation
+6. add focused Go tests where practical
+7. add or update Sec valid and invalid tests
+8. run the complete existing test suite
+
+Do not proceed into ownership, borrowing or lifetime implementation in the first change unless required to preserve existing behavior.
+
+The first change should improve structure while remaining easy to review.
+
+Expected initial rule behavior
+------------------------------
+
+Condition rules must preserve:
+
+- bool is accepted
+- non-bool conditions are rejected
+- assignment in a condition follows the existing warning policy
+- invalid unresolved expressions do not create unnecessary cascading diagnostics
+
+Return rules must preserve:
+
+- return outside a function is rejected
+- void return behavior
+- missing return value diagnostics
+- unexpected return value diagnostics
+- result-type compatibility
+- current implicit conversion behavior
+- current ownership behavior
+- current source positions
+
+Example conceptual API
+----------------------
+
+The following is illustrative and must be adapted to existing compiler types:
+
+```go
+package rules
+
+type Context struct {
+    Diagnostics *diagnostic.Collector
+    Function    *sema.Function
+    Target      target.Profile
+}
+
+func CheckCondition(ctx *Context, expression ast.Expression) {
+    expressionType := expression.ResolvedType()
+
+    if expressionType.IsError() {
+        return
+    }
+
+    if !expressionType.IsBool() {
+        ctx.Diagnostics.Error(
+            expression.Position(),
+            "condition must have type bool, got %s",
+            expressionType,
+        )
+    }
+}
+
+func CheckReturn(ctx *Context, statement *ast.ReturnStatement) {
+    if ctx.Function == nil {
+        ctx.Diagnostics.Error(
+            statement.Position(),
+            "return cannot be used outside a function",
+        )
+        return
+    }
+
+    // Continue using the existing Sec return rules.
+}

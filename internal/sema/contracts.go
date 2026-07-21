@@ -104,19 +104,15 @@ func (a *Analyzer) checkIntegerValueRange(typ Type, value *big.Int, token lexer.
 	overflow := false
 	switch typ.Kind {
 	case IntType:
-		if typ.MinInt == nil || typ.MaxInt == nil {
+		if typ.MinInteger == nil || typ.MaxInteger == nil {
 			return false
 		}
-		min := big.NewInt(*typ.MinInt)
-		max := big.NewInt(*typ.MaxInt)
-		overflow = value.Cmp(min) < 0 || value.Cmp(max) > 0
+		overflow = value.Cmp(typ.MinInteger) < 0 || value.Cmp(typ.MaxInteger) > 0
 	case UintType:
-		if typ.MaxUint == nil || typ.MinUint == nil {
+		if typ.MinInteger == nil || typ.MaxInteger == nil {
 			return false
 		}
-		min := new(big.Int).SetUint64(*typ.MinUint)
-		max := new(big.Int).SetUint64(*typ.MaxUint)
-		overflow = value.Sign() < 0 || value.Cmp(min) < 0 || value.Cmp(max) > 0
+		overflow = value.Sign() < 0 || value.Cmp(typ.MinInteger) < 0 || value.Cmp(typ.MaxInteger) > 0
 	}
 
 	if overflow {

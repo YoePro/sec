@@ -1,5 +1,7 @@
 package lexer
 
+import "unicode"
+
 type TokenType string
 
 const (
@@ -10,6 +12,7 @@ const (
 	INT          TokenType = "INT"
 	FLOAT        TokenType = "FLOAT"
 	STRING       TokenType = "STRING"
+	CHAR         TokenType = "CHAR"
 	RAW_STRING   TokenType = "RAW_STRING"
 	VOID         TokenType = "VOID"
 	BYTES        TokenType = "BYTES"
@@ -36,6 +39,7 @@ const (
 	MODULE      TokenType = "MODULE"
 	IF          TokenType = "IF"
 	IMPL        TokenType = "IMPL"
+	IMPLEMENTS  TokenType = "IMPLEMENTS"
 	IMPORT      TokenType = "IMPORT"
 	IN          TokenType = "IN"
 	INTERFACE   TokenType = "INTERFACE"
@@ -139,8 +143,24 @@ type Lexer struct {
 	column int
 }
 
+type State struct {
+	Pos    int
+	Line   int
+	Column int
+}
+
 func New(input string) *Lexer {
 	return &Lexer{input: []rune(input), line: 1, column: 1}
+}
+
+func (l *Lexer) Snapshot() State {
+	return State{Pos: l.pos, Line: l.line, Column: l.column}
+}
+
+func (l *Lexer) Restore(state State) {
+	l.pos = state.Pos
+	l.line = state.Line
+	l.column = state.Column
 }
 
 func (l *Lexer) NextToken() Token {
@@ -170,6 +190,10 @@ func (l *Lexer) NextToken() Token {
 
 	if ch == '"' {
 		return l.readPlainString()
+	}
+
+	if ch == '\'' {
+		return l.readCharLiteral()
 	}
 
 	if ch == '`' {
@@ -513,6 +537,32 @@ func (l *Lexer) readPlainString() Token {
 	return Token{Type: STRING, Lexeme: lit, Line: line, Column: column}
 }
 
+func (l *Lexer) readCharLiteral() Token {
+	line := l.line
+	column := l.column
+	start := l.pos
+
+	l.advance()
+	for {
+		ch := l.peek()
+		if ch == 0 || ch == '\n' {
+			return Token{Type: ILLEGAL, Lexeme: string(l.input[start:l.pos]), Line: line, Column: column}
+		}
+		if ch == '\\' {
+			l.advance()
+			if l.peek() != 0 {
+				l.advance()
+			}
+			continue
+		}
+		if ch == '\'' {
+			l.advance()
+			return Token{Type: CHAR, Lexeme: string(l.input[start:l.pos]), Line: line, Column: column}
+		}
+		l.advance()
+	}
+}
+
 func (l *Lexer) readRawString() Token {
 	line := l.line
 	column := l.column
@@ -688,6 +738,8 @@ func lookupIdent(s string) TokenType {
 		return IF
 	case "impl":
 		return IMPL
+	case "implements":
+		return IMPLEMENTS
 	case "import":
 		return IMPORT
 	case "in":
@@ -751,7 +803,8 @@ func lookupIdent(s string) TokenType {
 func isLetter(ch rune) bool {
 	return ch == '_' ||
 		(ch >= 'a' && ch <= 'z') ||
-		(ch >= 'A' && ch <= 'Z')
+		(ch >= 'A' && ch <= 'Z') ||
+		unicode.IsLetter(ch)
 }
 
 func isDigit(ch rune) bool {

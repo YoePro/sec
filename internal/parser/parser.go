@@ -94,6 +94,9 @@ func (p *Parser) parseStatement() ast.Statement {
 	case lexer.ENUM:
 		return p.parseEnumDeclaration()
 
+	case lexer.INTERFACE:
+		return p.parseInterfaceDeclaration()
+
 	case lexer.EXTERN:
 		return p.parseExternFunctionDeclaration()
 
@@ -105,6 +108,12 @@ func (p *Parser) parseStatement() ast.Statement {
 
 	case lexer.IMPL:
 		return p.parseImplStatement()
+
+	case lexer.PROPERTY:
+		p.addError("property declarations are only valid inside impl blocks at %d:%d", p.curToken.Line, p.curToken.Column)
+		p.skipUntilBlockStart()
+		p.skipCurrentBlock()
+		return nil
 
 	case lexer.LET:
 		return p.parseLetStatement()
@@ -173,6 +182,9 @@ func (p *Parser) parseStatement() ast.Statement {
 				return stmt
 			}
 		}
+		return p.parseExpressionOrAssignmentStatement()
+
+	case lexer.SELF:
 		return p.parseExpressionOrAssignmentStatement()
 
 	case lexer.LBRACKET:
@@ -837,6 +849,8 @@ func expressionToken(expr ast.Expression) lexer.Token {
 		return expr.Token
 	case *ast.StringLiteral:
 		return expr.Token
+	case *ast.CharLiteral:
+		return expr.Token
 	case *ast.BooleanLiteral:
 		return expr.Token
 	case *ast.InterpolatedStringLiteral:
@@ -883,7 +897,7 @@ func (p *Parser) parseModuleStatement() ast.Statement {
 		Token: p.curToken,
 	}
 
-	if p.peekToken.Type != lexer.IDENT {
+	if !isPathSegmentToken(p.peekToken.Type) {
 		p.addError("module declaration missing name at %d:%d", p.curToken.Line, p.curToken.Column)
 		return nil
 	}
@@ -1053,8 +1067,27 @@ func (p *Parser) parseTypeDeclStatement() ast.Statement {
 		return stmt
 	}
 
+	if p.peekToken.Type == lexer.ENUM {
+		p.nextToken()
+		enum := &ast.EnumDeclaration{Token: stmt.Token, Name: stmt.Name}
+		if p.peekToken.Type != lexer.LBRACE {
+			if !p.expectPeekTypeStart() {
+				return nil
+			}
+			enum.UnderlyingType = p.parseTypeReference()
+		}
+		return p.parseEnumBody(enum)
+	}
+
 	if p.peekToken.Type == lexer.STRUCT {
 		p.nextToken()
+		if p.peekToken.Type == lexer.IMPLEMENTS {
+			p.nextToken()
+			stmt.Implements = p.parseImplementsList()
+			if stmt.Implements == nil {
+				return nil
+			}
+		}
 		stmt.StructType = p.parseStructType()
 		return stmt
 	}
@@ -1062,12 +1095,26 @@ func (p *Parser) parseTypeDeclStatement() ast.Statement {
 	if p.peekToken.Type == lexer.IDENT && p.peekToken.Lexeme == "register" {
 		p.nextToken()
 		stmt.RegisterType = p.parseRegisterType()
+		if p.peekToken.Type == lexer.IMPLEMENTS {
+			p.nextToken()
+			stmt.Implements = p.parseImplementsList()
+			if stmt.Implements == nil {
+				return nil
+			}
+		}
 		return stmt
 	}
 
 	if p.peekToken.Type == lexer.UNION {
 		p.nextToken()
 		stmt.Union = true
+		if p.peekToken.Type == lexer.IMPLEMENTS {
+			p.nextToken()
+			stmt.Implements = p.parseImplementsList()
+			if stmt.Implements == nil {
+				return nil
+			}
+		}
 		if p.peekToken.Type == lexer.LBRACE {
 			p.nextToken()
 			stmt.UnionVariants = p.parseUnionType()
@@ -1091,6 +1138,14 @@ func (p *Parser) parseTypeDeclStatement() ast.Statement {
 
 	stmt.BaseType = p.parseTypeReference()
 
+	if p.peekToken.Type == lexer.IMPLEMENTS {
+		p.nextToken()
+		stmt.Implements = p.parseImplementsList()
+		if stmt.Implements == nil {
+			return nil
+		}
+	}
+
 	if p.peekToken.Type == lexer.RANGE_KW {
 		p.nextToken()
 		stmt.Contract = p.parseRangeContract()
@@ -1110,17 +1165,161 @@ func (p *Parser) parseUnitDeclStatement() ast.Statement {
 	}
 	stmt.Name = &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme}
 
-	if !p.expectPeekTypeStart() {
-		return nil
-	}
-	stmt.BaseType = p.parseTypeReference()
-
 	if p.peekToken.Type == lexer.IDENT && (p.peekToken.Lexeme == "physical" || p.peekToken.Lexeme == "other") {
 		p.nextToken()
+		stmt.BaseType = &ast.TypeReference{Token: p.curToken, Name: "decimal"}
 		stmt.Category = p.curToken.Lexeme
+		return stmt
+	}
+
+	if !isTypeStart(p.peekToken.Type) {
+		p.addError("unit %s missing numeric storage type at %d:%d", stmt.Name.Value, stmt.Name.Token.Line, stmt.Name.Token.Column)
+		return nil
+	}
+	p.nextToken()
+	stmt.BaseType = p.parseTypeReference()
+
+	if p.peekToken.Type == lexer.IDENT {
+		p.nextToken()
+		if p.curToken.Lexeme == "physical" || p.curToken.Lexeme == "other" {
+			stmt.Category = p.curToken.Lexeme
+		} else {
+			p.addError("unit %s category must be physical or other, got %q at %d:%d", stmt.Name.Value, p.curToken.Lexeme, p.curToken.Line, p.curToken.Column)
+		}
 	}
 
 	return stmt
+}
+
+func (p *Parser) parseInterfaceDeclaration() ast.Statement {
+	stmt := &ast.InterfaceDeclaration{Token: p.curToken}
+
+	if !p.expectPeek(lexer.IDENT) {
+		return nil
+	}
+	stmt.Name = &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme}
+
+	if p.isAttachedGenericListStart(stmt.Name) {
+		p.nextToken()
+		stmt.GenericParameters = p.parseGenericParameters()
+		if stmt.GenericParameters == nil {
+			return nil
+		}
+	}
+
+	if p.peekToken.Type == lexer.IMPLEMENTS {
+		p.nextToken()
+		stmt.Implements = p.parseImplementsList()
+		if stmt.Implements == nil {
+			return nil
+		}
+	}
+
+	if !p.expectPeek(lexer.LBRACE) {
+		return nil
+	}
+
+	for p.peekToken.Type != lexer.RBRACE && p.peekToken.Type != lexer.EOF {
+		p.nextToken()
+		if p.curToken.Type == lexer.COMMENT {
+			continue
+		}
+		switch p.curToken.Type {
+		case lexer.FN:
+			fn := p.parseFunctionSignature()
+			if fn == nil {
+				return nil
+			}
+			stmt.Methods = append(stmt.Methods, fn)
+		case lexer.PROPERTY:
+			property := p.parseInterfaceProperty()
+			if property == nil {
+				return nil
+			}
+			stmt.Properties = append(stmt.Properties, property)
+		default:
+			p.addError("interface block may only contain fn and property requirements at %d:%d", p.curToken.Line, p.curToken.Column)
+			p.skipCurrentBlock()
+			return nil
+		}
+	}
+
+	if !p.expectPeek(lexer.RBRACE) {
+		return stmt
+	}
+
+	return stmt
+}
+
+func (p *Parser) parseImplementsList() []*ast.TypeReference {
+	interfaces := []*ast.TypeReference{}
+	if !p.expectPeekTypeStart() {
+		return nil
+	}
+
+	for {
+		interfaces = append(interfaces, p.parseTypeReference())
+		if p.peekToken.Type != lexer.COMMA {
+			return interfaces
+		}
+		p.nextToken()
+		if !p.expectPeekTypeStart() {
+			return nil
+		}
+	}
+}
+
+func (p *Parser) parseInterfaceProperty() *ast.InterfaceProperty {
+	property := &ast.InterfaceProperty{Token: p.curToken}
+	if !p.expectPeek(lexer.IDENT) {
+		return nil
+	}
+	property.Name = &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme}
+
+	if !p.expectPeek(lexer.COLON) {
+		return nil
+	}
+	if !p.expectPeekTypeStart() {
+		return nil
+	}
+	property.Type = p.parseTypeReference()
+
+	if !p.expectPeek(lexer.LBRACE) {
+		return nil
+	}
+
+	for p.peekToken.Type != lexer.RBRACE && p.peekToken.Type != lexer.EOF {
+		p.nextToken()
+		switch p.curToken.Type {
+		case lexer.GET:
+			if property.RequiresGet {
+				p.addError("duplicate get in interface property %q", property.Name.Value)
+				return nil
+			}
+			property.RequiresGet = true
+		case lexer.SET:
+			if property.RequiresSet {
+				p.addError("duplicate set in interface property %q", property.Name.Value)
+				return nil
+			}
+			property.RequiresSet = true
+		case lexer.COMMENT:
+			continue
+		default:
+			p.addError("unexpected token %q in interface property %s at %d:%d", p.curToken.Lexeme, property.Name.Value, p.curToken.Line, p.curToken.Column)
+			return nil
+		}
+	}
+
+	if !property.RequiresGet && !property.RequiresSet {
+		p.addError("interface property %q must require get or set", property.Name.Value)
+		return nil
+	}
+
+	if !p.expectPeek(lexer.RBRACE) {
+		return property
+	}
+	return property
 }
 
 func (p *Parser) parseEnumDeclaration() *ast.EnumDeclaration {
@@ -1138,6 +1337,10 @@ func (p *Parser) parseEnumDeclaration() *ast.EnumDeclaration {
 		enum.UnderlyingType = p.parseTypeReference()
 	}
 
+	return p.parseEnumBody(enum)
+}
+
+func (p *Parser) parseEnumBody(enum *ast.EnumDeclaration) *ast.EnumDeclaration {
 	if !p.expectPeek(lexer.LBRACE) {
 		return nil
 	}
@@ -1175,6 +1378,9 @@ func (p *Parser) parseEnumDeclaration() *ast.EnumDeclaration {
 		case lexer.RBRACE:
 			continue
 		default:
+			if p.peekToken.Type == lexer.IDENT && p.peekToken.Line > p.curToken.Line {
+				continue
+			}
 			p.addError("expected ',' or '}' after enum value at %d:%d", p.peekToken.Line, p.peekToken.Column)
 			for p.peekToken.Type != lexer.RBRACE && p.peekToken.Type != lexer.EOF {
 				p.nextToken()
@@ -1388,15 +1594,37 @@ func (p *Parser) parseParameters() []*ast.Parameter {
 			mutableRef = true
 		}
 
-		if !p.expectPeek(lexer.IDENT) {
+		if p.peekToken.Type != lexer.IDENT && p.peekToken.Type != lexer.SELF {
+			p.addError("expected next token to be %q, got %q at %d:%d", lexer.IDENT, p.peekToken.Type, p.peekToken.Line, p.peekToken.Column)
 			return nil
 		}
+		p.nextToken()
 
 		parameter := &ast.Parameter{
 			Token:      p.curToken,
 			Name:       &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme},
 			Ref:        ref,
 			MutableRef: mutableRef,
+		}
+
+		if ref && p.curToken.Type == lexer.SELF && p.peekToken.Type != lexer.COLON {
+			parameter.Type = &ast.TypeReference{Token: p.curToken, Name: "self", Ref: true, MutableRef: mutableRef}
+			parameters = append(parameters, parameter)
+			switch p.peekToken.Type {
+			case lexer.COMMA:
+				p.nextToken()
+				if p.peekToken.Type == lexer.RPAREN {
+					p.nextToken()
+					return parameters
+				}
+				continue
+			case lexer.RPAREN:
+				p.nextToken()
+				return parameters
+			default:
+				p.addError("expected ',' or ')' after parameter at %d:%d", p.peekToken.Line, p.peekToken.Column)
+				return nil
+			}
 		}
 
 		if !p.expectPeek(lexer.COLON) {
@@ -1469,7 +1697,10 @@ func (p *Parser) parseStatementBlock(name string) *ast.BlockStatement {
 func (p *Parser) parseReturnStatement() ast.Statement {
 	stmt := &ast.ReturnStatement{Token: p.curToken}
 
-	if p.peekToken.Type == lexer.RBRACE || p.peekToken.Type == lexer.EOF || p.isReturnTerminator(p.peekToken.Type) || isSwitchClauseStart(p.peekToken) {
+	if p.peekToken.Type == lexer.RBRACE || p.peekToken.Type == lexer.EOF || isSwitchClauseStart(p.peekToken) {
+		return stmt
+	}
+	if p.peekToken.Line > p.curToken.Line && p.isReturnTerminator(p.peekToken.Type) {
 		return stmt
 	}
 
@@ -1647,6 +1878,9 @@ func (p *Parser) parseRegisterFields() []*ast.RegisterField {
 		case lexer.RBRACE:
 			return fields
 		default:
+			if p.peekToken.Type == lexer.IDENT && p.peekToken.Line > p.curToken.Line {
+				continue
+			}
 			p.addError("expected ',' or '}' after register field at %d:%d", p.peekToken.Line, p.peekToken.Column)
 			for p.peekToken.Type != lexer.RBRACE && p.peekToken.Type != lexer.EOF {
 				p.nextToken()
@@ -1863,6 +2097,17 @@ func (p *Parser) parseImplStatement() ast.Statement {
 	}
 	stmt.Target = p.parseTypeReference()
 
+	if p.peekToken.Type == lexer.FOR {
+		p.nextToken()
+		invalid := &ast.InvalidStatement{
+			Token:   p.curToken,
+			Message: "separate impl Interface for Type syntax is not supported; list interfaces in the type declaration",
+		}
+		p.skipUntilBlockStart()
+		p.skipCurrentBlock()
+		return invalid
+	}
+
 	if !p.expectPeek(lexer.LBRACE) {
 		return nil
 	}
@@ -1907,14 +2152,33 @@ func (p *Parser) parseImplStatement() ast.Statement {
 			}
 			stmt.Members = append(stmt.Members, property)
 		case lexer.STRUCT:
-			p.addError("impl block may only contain type, unit, enum, property, and fn declarations at %d:%d", p.curToken.Line, p.curToken.Column)
-			return nil
+			stmt.Members = append(stmt.Members, &ast.InvalidStatement{
+				Token:   p.curToken,
+				Message: "struct declarations inside impl must use type Name struct",
+			})
+			p.skipInvalidImplMember()
 		case lexer.LET:
-			p.addError("impl block may only contain type, unit, enum, property, and fn declarations at %d:%d", p.curToken.Line, p.curToken.Column)
-			return nil
+			stmt.Members = append(stmt.Members, &ast.InvalidStatement{
+				Token:   p.curToken,
+				Message: "variable declarations are not allowed inside impl",
+			})
+			p.skipInvalidImplMember()
 		default:
-			p.addError("unexpected token %q in impl block at %d:%d", p.curToken.Lexeme, p.curToken.Line, p.curToken.Column)
-			return nil
+			message := "impl block may only contain type, unit, enum, property, and fn declarations"
+			if p.curToken.Type == lexer.IDENT && p.peekToken.Type == lexer.COLON {
+				if p.isUnitMetadataName(p.curToken.Lexeme) {
+					stmt.Members = append(stmt.Members, p.parseUnitMetadataDeclaration())
+					continue
+				}
+				message = "stored fields are not allowed inside impl"
+			} else if p.curToken.Type == lexer.IDENT && p.isAssignmentOperator(p.peekToken.Type) {
+				message = "executable statements are not allowed inside impl"
+			}
+			stmt.Members = append(stmt.Members, &ast.InvalidStatement{
+				Token:   p.curToken,
+				Message: message,
+			})
+			p.skipInvalidImplMember()
 		}
 	}
 
@@ -1923,6 +2187,69 @@ func (p *Parser) parseImplStatement() ast.Statement {
 	}
 
 	return stmt
+}
+
+func (p *Parser) isUnitMetadataName(name string) bool {
+	switch name {
+	case "dimension", "scale", "system":
+		return true
+	default:
+		return false
+	}
+}
+
+func (p *Parser) parseUnitMetadataDeclaration() *ast.UnitMetadataDeclaration {
+	metadata := &ast.UnitMetadataDeclaration{
+		Token: p.curToken,
+		Name:  p.curToken.Lexeme,
+	}
+	startLine := p.curToken.Line
+	p.nextToken()
+	for p.peekToken.Type != lexer.EOF {
+		if p.peekToken.Type == lexer.RBRACE {
+			return metadata
+		}
+		if p.peekToken.Line > startLine {
+			return metadata
+		}
+		p.nextToken()
+		metadata.Value = append(metadata.Value, p.curToken)
+	}
+	return metadata
+}
+
+func (p *Parser) skipInvalidImplMember() {
+	startLine := p.curToken.Line
+	depth := 0
+
+	for p.peekToken.Type != lexer.EOF {
+		if depth == 0 && p.peekToken.Type == lexer.RBRACE {
+			return
+		}
+		if depth == 0 && p.peekToken.Line > startLine && p.isImplMemberStart(p.peekToken.Type) {
+			return
+		}
+
+		p.nextToken()
+		switch p.curToken.Type {
+		case lexer.LBRACE:
+			depth++
+		case lexer.RBRACE:
+			if depth == 0 {
+				return
+			}
+			depth--
+		}
+	}
+}
+
+func (p *Parser) isImplMemberStart(t lexer.TokenType) bool {
+	switch t {
+	case lexer.TYPE, lexer.UNIT, lexer.ENUM, lexer.FN, lexer.PROPERTY, lexer.STRUCT, lexer.LET:
+		return true
+	default:
+		return false
+	}
 }
 
 func (p *Parser) parsePropertyDeclaration() *ast.PropertyDeclaration {
@@ -1948,6 +2275,9 @@ func (p *Parser) parsePropertyDeclaration() *ast.PropertyDeclaration {
 			p.curToken.Column,
 		)
 		if p.curToken.Type == lexer.LBRACE {
+			p.skipCurrentBlock()
+		} else if p.peekToken.Type == lexer.LBRACE {
+			p.nextToken()
 			p.skipCurrentBlock()
 		}
 		return nil
@@ -1980,6 +2310,11 @@ func (p *Parser) parsePropertyDeclaration() *ast.PropertyDeclaration {
 		case lexer.GET:
 			if property.Getter != nil {
 				p.addError("duplicate get in property %q", property.Name.Value)
+				if p.peekToken.Type == lexer.LBRACE {
+					p.nextToken()
+					p.skipCurrentBlock()
+				}
+				p.skipPropertyRemainder()
 				return nil
 			}
 			property.Getter = p.parseBlockStatement()
@@ -1990,6 +2325,14 @@ func (p *Parser) parsePropertyDeclaration() *ast.PropertyDeclaration {
 		case lexer.SET:
 			if property.Setter != nil {
 				p.addError("duplicate set in property %q", property.Name.Value)
+				if p.peekToken.Type == lexer.IDENT {
+					p.nextToken()
+				}
+				if p.peekToken.Type == lexer.LBRACE {
+					p.nextToken()
+					p.skipCurrentBlock()
+				}
+				p.skipPropertyRemainder()
 				return nil
 			}
 			property.Setter = p.parsePropertySetter(property.Name.Value, false)
@@ -2004,6 +2347,14 @@ func (p *Parser) parsePropertyDeclaration() *ast.PropertyDeclaration {
 			}
 			if property.Setter != nil {
 				p.addError("duplicate set in property %q", property.Name.Value)
+				if p.peekToken.Type == lexer.IDENT {
+					p.nextToken()
+				}
+				if p.peekToken.Type == lexer.LBRACE {
+					p.nextToken()
+					p.skipCurrentBlock()
+				}
+				p.skipPropertyRemainder()
 				return nil
 			}
 			property.Setter = p.parsePropertySetter(property.Name.Value, true)
@@ -2015,12 +2366,16 @@ func (p *Parser) parsePropertyDeclaration() *ast.PropertyDeclaration {
 			continue
 		default:
 			p.addError("unexpected token %q in property block at %d:%d", p.curToken.Lexeme, p.curToken.Line, p.curToken.Column)
+			p.skipPropertyRemainder()
 			return nil
 		}
 	}
 
 	if property.Getter == nil && property.Setter == nil {
 		p.addError("property %q must have get or set", property.Name.Value)
+		if p.peekToken.Type == lexer.RBRACE {
+			p.nextToken()
+		}
 		return nil
 	}
 
@@ -2413,14 +2768,39 @@ func (p *Parser) parseDottedPath() string {
 	for p.peekToken.Type == lexer.DOT {
 		p.nextToken()
 
-		if !p.expectPeek(lexer.IDENT) {
+		if !isPathSegmentToken(p.peekToken.Type) {
+			p.addError("expected next token to be %q, got %q at %d:%d", lexer.IDENT, p.peekToken.Type, p.peekToken.Line, p.peekToken.Column)
 			return path
 		}
+		p.nextToken()
 
 		path += "." + p.curToken.Lexeme
 	}
 
 	return path
+}
+
+func isPathSegmentToken(tokenType lexer.TokenType) bool {
+	switch tokenType {
+	case lexer.IDENT,
+		lexer.IMPL,
+		lexer.INTERFACE,
+		lexer.IMPLEMENTS,
+		lexer.TYPE,
+		lexer.UNIT,
+		lexer.STRUCT,
+		lexer.ENUM,
+		lexer.UNION,
+		lexer.FN,
+		lexer.LET,
+		lexer.FOR,
+		lexer.WHILE,
+		lexer.MATCH,
+		lexer.SWITCH:
+		return true
+	default:
+		return false
+	}
 }
 
 func (p *Parser) expectPeek(t lexer.TokenType) bool {
@@ -2490,6 +2870,14 @@ func (p *Parser) addWarning(format string, args ...any) {
 }
 
 func trimStringQuotes(s string) string {
+	if unquoted, err := strconv.Unquote(s); err == nil {
+		return unquoted
+	}
+
+	return s
+}
+
+func trimCharQuotes(s string) string {
 	if unquoted, err := strconv.Unquote(s); err == nil {
 		return unquoted
 	}

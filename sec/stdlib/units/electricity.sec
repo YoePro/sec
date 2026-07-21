@@ -1,0 +1,182 @@
+module units
+
+// =============================================================================
+// Electrical SI-derived units
+// =============================================================================
+
+/** Coulomb */
+unit C decimal physical
+impl C {
+    //  (A * s).
+    dimension: [electric_current^1, time^1]
+    scale: 1
+    system: SI
+    fn C(Amp: decimal<A>, Second: decimal<s>) decimal<C> {
+        return decimal<C>(decimal(Amp) * decimal(Second))
+    }
+    fn C(Amp: float<A>, Second: float<s>) float<C> {
+        return float<C>(float(Amp) * float(Second))
+    }
+
+    fn C(Amp: int<A>, Second: int<s>) int<C> {
+        return int<C>(int(Amp) * int(Second))
+    }
+
+    fn C(Amp: uint<A>, Second: uint<s>) uint<C> {
+        return uint<C>(uint(Amp) * uint(Second))
+    }    
+}
+
+/** Volt */
+unit V decimal physical
+impl V {
+
+    dimension: [mass^1, length^2, time^-3, electric_current^-1]
+    scale: 1
+    system: SI
+
+    fn V(Ohm: decimal<ohm>, Amp: decimal<A>) decimal<V> {
+        return decimal<V>(decimal(Ohm) * decimal(Amp))
+    }
+
+    fn V(Ohm: float<ohm>, Amp: float<A>) float<V> {
+        return float<V>(float(Ohm) * float(Amp))
+    }
+
+    fn V(Ohm: int<ohm>, Amp: int<A>) int<V> {
+        return int<V>(int(Ohm) * int(Amp))
+    }
+
+    fn V(Ohm: uint<ohm>, Amp: uint<A>) uint<V> {
+        return uint<V>(uint(Ohm) * uint(Amp))
+    }    
+}
+
+/** Ohm */
+unit ohm decimal physical
+impl ohm {
+    dimension: [mass^1, length^2, time^-3, electric_current^-2]
+    scale: 1
+    system: SI
+
+    fn ohm(Volt: decimal<V>, Amp: decimal<A>) decimal<ohm> {
+        return decimal<ohm>(decimal(Volt) / decimal(Amp))
+    }
+
+    fn ohm(Volt: float<V>, Amp: float<A>) float<ohm> {
+        return float<ohm>(float(Volt) / float(Amp))
+    }
+
+    fn ohm(Volt: int<V>, Amp: int<A>) int<ohm> {
+        return int<ohm>(int(Volt) / int(Amp))
+    }
+
+    fn ohm(Volt: uint<V>, Amp: uint<A>) uint<ohm> {
+        return uint<ohm>(uint(Volt) / uint(Amp))
+    }    
+}
+
+/** Siemens */
+unit S decimal physical
+impl S {
+    dimension: [mass^-1, length^-2, time^3, electric_current^2]
+    scale: 1
+    system: SI
+
+    fn S(Ohm: decimal<ohm>) decimal<S> {
+        return decimal<S>(decimal(1) / decimal(Ohm))
+    }
+
+    fn S(Ohm: float<ohm>) float<S> {
+        return float<S>(1.0f / float(Ohm))
+    }
+
+    fn S(Ohm: int<ohm>) int<S> {
+        return int<S>(int(1) / int(Ohm))
+    }
+
+    fn S(Ohm: uint<ohm>) uint<S> {
+        return uint<S>(uint(1) / uint(Ohm))
+    }
+}
+
+/** Farad */
+unit F decimal physical
+impl F {
+    dimension: [mass^-1, length^-2, time^4, electric_current^2]
+    scale: 1
+    system: SI
+
+    fn F(Coulomb: decimal<C>, Volt: decimal<V>) decimal<F> {
+        return decimal<F>(decimal(Coulomb) / decimal(Volt))
+    }
+
+    fn F(Coulomb: float<C>, Volt: float<V>) float<F> {
+        return float<F>(float(Coulomb) / float(Volt))
+    }
+
+    fn F(Coulomb: int<C>, Volt: int<V>) int<F> {
+        return int<F>(int(Coulomb) / int(Volt))
+    }
+
+    fn F(Coulomb: uint<C>, Volt: uint<V>) uint<F> {
+        return uint<F>(uint(Coulomb) / uint(Volt))
+    }
+}
+
+/** Weber */
+unit Wb decimal physical
+impl Wb {
+    dimension: [mass^1, length^2, time^-2, electric_current^-1]
+    scale: 1
+    system: SI
+
+    fn Wb(Volt: decimal<V>, Second: decimal<s>) decimal<Wb> {
+        return decimal<Wb>(decimal(Volt) * decimal(Second))
+    }
+
+    fn Wb(Volt: float<V>, Second: float<s>) float<Wb> {
+        return float<Wb>(float(Volt) * float(Second))
+    }
+
+    fn Wb(Volt: int<V>, Second: int<s>) int<Wb> {
+        return int<Wb>(int(Volt) * int(Second))
+    }
+
+    fn Wb(Volt: uint<V>, Second: uint<s>) uint<Wb> {
+        return uint<Wb>(uint(Volt) * uint(Second))
+    }
+}
+
+/** Tesla */
+unit T decimal physical
+impl T {
+    dimension: [mass^1, time^-2, electric_current^-1]
+    scale: 1
+    system: SI
+
+}
+
+/** Henry */
+unit H decimal physical
+impl H {
+    dimension: [mass^1, length^2, time^-2, electric_current^-2]
+    scale: 1
+    system: SI
+
+    fn H(Weber: decimal<Wb>, Amp: decimal<A>) decimal<H> {
+        return decimal<H>(decimal(Weber) / decimal(Amp))
+    }
+
+    fn H(Weber: float<Wb>, Amp: float<A>) float<H> {
+        return float<H>(float(Weber) / float(Amp))
+    }
+
+    fn H(Weber: int<Wb>, Amp: int<A>) int<H> {
+        return int<H>(int(Weber) / int(Amp))
+    }
+
+    fn H(Weber: uint<Wb>, Amp: uint<A>) uint<H> {
+        return uint<H>(uint(Weber) / uint(Amp))
+    }
+}

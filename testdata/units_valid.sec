@@ -1,0 +1,394 @@
+module units
+
+// Every declaration and expression in this file is expected to pass semantic
+// analysis. The tests cover unit declarations, nominal identity, dimensional
+// algebra, derived-type matching, cancellation and anonymous unit values.
+
+// =============================================================================
+// Supported unit declaration forms
+// =============================================================================
+
+// Physical base units.
+unit m decimal physical
+unit s decimal physical
+unit kg decimal physical
+unit Hz decimal physical
+unit rpm decimal physical
+
+// Domain units.
+unit SEK decimal other
+unit EUR decimal other
+unit item decimal other
+unit packet decimal other
+unit batch decimal other
+
+// Numeric storage variants currently accepted by the front-end.
+unit SignedCount int
+unit UnsignedCount uint other
+unit FloatingTemperature float physical
+unit PlainDecimal decimal
+
+// A unit declaration may use a compound unit expression directly.
+unit PacketsPerBatch decimal<packet/batch>
+
+// =============================================================================
+// Named semantic types built from unit expressions
+// =============================================================================
+
+type Distance decimal<m>
+type Duration decimal<s>
+type Mass decimal<kg>
+type Speed decimal<m/s>
+type Area decimal<m*m>
+type Acceleration decimal<m/s/s>
+type Momentum decimal<kg*m/s>
+type Force decimal<kg*m/s/s>
+type Frequency decimal<Hz>
+
+type Money decimal<SEK>
+type EuroMoney decimal<EUR>
+type ItemAmount decimal<item>
+type PacketAmount decimal<packet>
+type BatchAmount decimal<batch>
+type UnitPrice decimal<SEK/item>
+type PacketRate decimal<packet/s>
+type ItemsPerBatch decimal<item/batch>
+
+// Built-in spelling aliases map to the same physical dimension.
+type MetreDistance decimal<metre>
+type MeterDistance decimal<meter>
+
+// Unknown unit symbols remain valid domain dimensions.
+type RequestAmount decimal<request>
+type RequestRate decimal<request/s>
+
+// =============================================================================
+// Literal initialization and explicit construction
+// =============================================================================
+
+fn LiteralInitialization() void {
+    let distance: Distance := 100
+    let duration: Duration := 9.58
+    let mass: Mass := 75
+    let speed: Speed := 10.5
+    let area: Area := 25
+    let acceleration: Acceleration := 9.81
+    let momentum: Momentum := 120
+    let force: Force := 300
+    let frequency: Frequency := 50
+
+    let price: Money := 49.90
+    let euroPrice: EuroMoney := 39.90
+    let items: ItemAmount := 4
+    let packets: PacketAmount := 1000
+    let batches: BatchAmount := 8
+    let unitPrice: UnitPrice := 12.50
+    let packetRate: PacketRate := 500
+    let itemsPerBatch: ItemsPerBatch := 24
+
+    let signed: SignedCount := -12
+    let unsigned: UnsignedCount := 12
+    let temperature: FloatingTemperature := 21.5
+    let plain: PlainDecimal := 3.1415
+    let directComposite: PacketsPerBatch := 128
+}
+
+fn ExplicitConstruction() void {
+    let rawDistance := 125.5
+    let rawCount := 42
+    let rawUnsigned := 7
+
+    let distance: Distance := Distance(rawDistance)
+    let signed: SignedCount := SignedCount(rawCount)
+    let unsigned: UnsignedCount := UnsignedCount(rawUnsigned)
+
+    let mut updated: Distance := 1
+    updated = Distance(2)
+}
+
+// =============================================================================
+// Addition, subtraction and compound assignment
+// =============================================================================
+
+fn AddDistance(first: Distance, second: Distance) Distance {
+    return first + second
+}
+
+fn SubtractDistance(first: Distance, second: Distance) Distance {
+    return first - second
+}
+
+fn UpdateDistance(value: Distance, delta: Distance) Distance {
+    let mut result: Distance := value
+    result += delta
+    result -= Distance(1)
+    return result
+}
+
+fn AddMoney(first: Money, second: Money) Money {
+    return first + second
+}
+
+fn AddDomainAmount(first: PacketAmount, second: PacketAmount) PacketAmount {
+    return first + second
+}
+
+// =============================================================================
+// Scalar operations preserve the unit
+// =============================================================================
+
+fn ScaleDistance(distance: Distance) void {
+    let doubled: Distance := distance * 2
+    let tripled: Distance := 3 * distance
+    let halved: Distance := distance / 2
+    let decimalScale: Distance := distance * 1.5
+    let reverseDecimalScale: Distance := 1.5 * distance
+}
+
+fn ScaleMoney(price: Money, quantity: int) void {
+    let total: Money := price * quantity
+    let reverseTotal: Money := quantity * price
+    let average: Money := price / quantity
+}
+
+// =============================================================================
+// Basic dimensional derivation
+// =============================================================================
+
+fn CalculateSpeed(distance: Distance, duration: Duration) Speed {
+    return distance / duration
+}
+
+fn ReconstructDistance(speed: Speed, duration: Duration) Distance {
+    return speed * duration
+}
+
+fn ReconstructDistanceReverse(duration: Duration, speed: Speed) Distance {
+    // Dimension matching must not depend on operand order.
+    return duration * speed
+}
+
+fn ReconstructDuration(distance: Distance, speed: Speed) Duration {
+    return distance / speed
+}
+
+fn CalculateArea(length: Distance, width: Distance) Area {
+    return length * width
+}
+
+fn RecoverLength(area: Area, width: Distance) Distance {
+    return area / width
+}
+
+fn CalculateAcceleration(speed: Speed, duration: Duration) Acceleration {
+    return speed / duration
+}
+
+fn CalculateAccelerationFromDistance(
+    distance: Distance,
+    duration: Duration,
+) Acceleration {
+    // Repeated division produces m/s/s without exponent syntax.
+    return distance / duration / duration
+}
+
+fn CalculateAccelerationGrouped(
+    distance: Distance,
+    duration: Duration,
+) Acceleration {
+    // Grouping must normalize to the same dimension as repeated division.
+    return distance / (duration * duration)
+}
+
+// =============================================================================
+// Complex dimension normalization
+// =============================================================================
+
+fn CalculateMomentum(mass: Mass, speed: Speed) Momentum {
+    return mass * speed
+}
+
+fn CalculateMomentumReverse(mass: Mass, speed: Speed) Momentum {
+    // The dimension map must be order-independent.
+    return speed * mass
+}
+
+fn CalculateForceSequential(
+    mass: Mass,
+    distance: Distance,
+    duration: Duration,
+) Force {
+    return mass * distance / duration / duration
+}
+
+fn CalculateForceGrouped(
+    mass: Mass,
+    distance: Distance,
+    duration: Duration,
+) Force {
+    return (mass * distance) / (duration * duration)
+}
+
+fn ForceToMomentum(force: Force, duration: Duration) Momentum {
+    return force * duration
+}
+
+fn MomentumToSpeed(momentum: Momentum, mass: Mass) Speed {
+    return momentum / mass
+}
+
+// =============================================================================
+// Cancellation produces dimensionless decimal values
+// =============================================================================
+
+fn DistanceRatio(first: Distance, second: Distance) decimal {
+    return first / second
+}
+
+fn SpeedRatio(first: Speed, second: Speed) decimal {
+    return first / second
+}
+
+fn MoneyRatio(first: Money, second: Money) decimal {
+    return first / second
+}
+
+fn CompleteTripRatio(
+    distance: Distance,
+    speed: Speed,
+    duration: Duration,
+) decimal {
+    return distance / (speed * duration)
+}
+
+fn AliasDimensionRatio(
+    first: MetreDistance,
+    second: MeterDistance,
+) decimal {
+    // Different nominal types may still cancel through dimensional algebra.
+    return first / second
+}
+
+// =============================================================================
+// Inverse dimensions and frequency
+// =============================================================================
+
+fn FrequencyFromDuration(duration: Duration) Frequency {
+    return 1 / duration
+}
+
+fn FrequencyCycleRatio(frequency: Frequency, duration: Duration) decimal {
+    return frequency * duration
+}
+
+fn InverseDistanceRoundTrip(distance: Distance) decimal {
+    let inverseDistance := 1 / distance
+    return inverseDistance * distance
+}
+
+// =============================================================================
+// Anonymous unit values must retain their dimensions
+// =============================================================================
+
+fn AnonymousDistancePerMassRoundTrip(
+    distance: Distance,
+    mass: Mass,
+) Distance {
+    // No named decimal<m/kg> type is declared.
+    let distancePerMass := distance / mass
+    return distancePerMass * mass
+}
+
+fn AnonymousMassPerDurationRoundTrip(
+    mass: Mass,
+    duration: Duration,
+) Mass {
+    // No named decimal<kg/s> type is declared.
+    let massRate := mass / duration
+    return massRate * duration
+}
+
+fn AnonymousCompositeCancellation(
+    distance: Distance,
+    mass: Mass,
+    duration: Duration,
+) Speed {
+    // (m/kg) * (kg/s) normalizes to m/s.
+    let distancePerMass := distance / mass
+    let massPerDuration := mass / duration
+    return distancePerMass * massPerDuration
+}
+
+// =============================================================================
+// Domain-unit algebra
+// =============================================================================
+
+fn CalculateTotalPrice(price: UnitPrice, count: ItemAmount) Money {
+    return price * count
+}
+
+fn CalculateTotalPriceReverse(price: UnitPrice, count: ItemAmount) Money {
+    return count * price
+}
+
+fn CalculateUnitPrice(total: Money, count: ItemAmount) UnitPrice {
+    return total / count
+}
+
+fn CalculatePacketRate(
+    packets: PacketAmount,
+    duration: Duration,
+) PacketRate {
+    return packets / duration
+}
+
+fn RecoverPacketAmount(
+    rate: PacketRate,
+    duration: Duration,
+) PacketAmount {
+    return rate * duration
+}
+
+fn CalculateItemsPerBatch(
+    items: ItemAmount,
+    batches: BatchAmount,
+) ItemsPerBatch {
+    return items / batches
+}
+
+fn RecoverItemAmount(
+    ratio: ItemsPerBatch,
+    batches: BatchAmount,
+) ItemAmount {
+    return ratio * batches
+}
+
+fn CalculateRequestRate(
+    requests: RequestAmount,
+    duration: Duration,
+) RequestRate {
+    // The request dimension is not a built-in physical alias.
+    return requests / duration
+}
+
+// =============================================================================
+// Unit types in function signatures
+// =============================================================================
+
+fn AddSignedCounts(first: SignedCount, second: SignedCount) SignedCount {
+    return first + second
+}
+
+fn AddUnsignedCounts(
+    first: UnsignedCount,
+    second: UnsignedCount,
+) UnsignedCount {
+    return first + second
+}
+
+fn AverageTemperature(
+    first: FloatingTemperature,
+    second: FloatingTemperature,
+) FloatingTemperature {
+    return (first + second) / 2
+}

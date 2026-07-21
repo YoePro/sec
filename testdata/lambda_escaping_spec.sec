@@ -1,0 +1,40 @@
+module lambdas
+
+// Specification tests for escaping captured lambdas.
+//
+// These examples express the final language semantics described by the lambda
+// rules. They are intentionally not named *_valid.sec because the initial
+// implementation is allowed to reject escaping captured environments until
+// closure ownership and allocation are implemented.
+
+fn CreateAdder(offset: int) fn(int) int {
+    return capture(offset) fn(value: int) int {
+        return value + offset
+    }
+}
+
+fn CreateRangePredicate(minimum: int, maximum: int) fn(int) bool {
+    return capture(minimum, maximum) fn(value: int) bool {
+        return value >= minimum && value <= maximum
+    }
+}
+
+fn CreateNestedAdder(base: int) fn(int) int {
+    let first := capture(base) fn(offset: int) fn(int) int {
+        return capture(base, offset) fn(value: int) int {
+            return value + base + offset
+        }
+    }
+
+    return first(10)
+}
+
+fn TestEscapingAdder() int {
+    let add: fn(int) int := CreateAdder(5)
+    return add(10)
+}
+
+fn TestEscapingPredicate() bool {
+    let inside: fn(int) bool := CreateRangePredicate(10, 20)
+    return inside(15)
+}

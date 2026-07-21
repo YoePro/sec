@@ -1,0 +1,446 @@
+module interfaces
+
+// Every marked declaration in this file is expected to produce an interface or
+// impl conformance diagnostic. Cases are kept independent to reduce cascades.
+
+// =============================================================================
+// Unknown and non-interface implementation targets
+// =============================================================================
+
+type UnknownInterfaceTarget struct implements DoesNotExist {
+}
+
+type OrdinaryContract struct {
+}
+
+type NonInterfaceTarget struct implements OrdinaryContract {
+}
+
+// =============================================================================
+// Duplicate implemented interfaces
+// =============================================================================
+
+interface DuplicateMarker {
+}
+
+type DuplicateImplementation struct implements DuplicateMarker, DuplicateMarker {
+}
+
+impl DuplicateImplementation {
+}
+
+// =============================================================================
+// Missing methods
+// =============================================================================
+
+interface RequiresRun {
+    fn Run(ref self) void
+}
+
+type MissingMethod struct implements RequiresRun {
+}
+
+impl MissingMethod {
+}
+
+interface RequiresStop {
+    fn Stop(ref self) void
+}
+
+type WrongMethodName struct implements RequiresStop {
+}
+
+impl WrongMethodName {
+    // ERROR: Halt does not satisfy Stop.
+    fn Halt(ref self) void {
+    }
+}
+
+// =============================================================================
+// Receiver compatibility
+// =============================================================================
+
+interface RequiresSharedReceiver {
+    fn Inspect(ref self) void
+}
+
+type MutableInsteadOfShared struct implements RequiresSharedReceiver {
+}
+
+impl MutableInsteadOfShared {
+    // ERROR: ref mut self does not exactly match ref self.
+    fn Inspect(ref mut self) void {
+    }
+}
+
+interface RequiresMutableReceiver {
+    fn Reset(ref mut self) void
+}
+
+type SharedInsteadOfMutable struct implements RequiresMutableReceiver {
+}
+
+impl SharedInsteadOfMutable {
+    // ERROR: ref self does not satisfy ref mut self.
+    fn Reset(ref self) void {
+    }
+}
+
+interface RequiresInstanceReceiver {
+    fn Value(ref self) int
+}
+
+type StaticInsteadOfInstance struct implements RequiresInstanceReceiver {
+}
+
+impl StaticInsteadOfInstance {
+    // ERROR: A static method does not satisfy an instance method requirement.
+    fn Value() int {
+        return 0
+    }
+}
+
+// =============================================================================
+// Parameter count, order and type
+// =============================================================================
+
+interface RequiresOneParameter {
+    fn Set(ref mut self, value: int) void
+}
+
+type MissingParameter struct implements RequiresOneParameter {
+}
+
+impl MissingParameter {
+    // ERROR: Missing required int parameter.
+    fn Set(ref mut self) void {
+    }
+}
+
+type ExtraParameter struct implements RequiresOneParameter {
+}
+
+impl ExtraParameter {
+    // ERROR: The implementation has one extra parameter.
+    fn Set(ref mut self, value: int, extra: int) void {
+    }
+}
+
+interface RequiresOrderedParameters {
+    fn Configure(ref mut self, count: int, enabled: bool) void
+}
+
+type WrongParameterOrder struct implements RequiresOrderedParameters {
+}
+
+impl WrongParameterOrder {
+    // ERROR: Parameter order and types do not match.
+    fn Configure(ref mut self, enabled: bool, count: int) void {
+    }
+}
+
+interface RequiresIntegerParameter {
+    fn Accept(ref self, value: int) bool
+}
+
+type WrongParameterType struct implements RequiresIntegerParameter {
+}
+
+impl WrongParameterType {
+    // ERROR: string is incompatible with int.
+    fn Accept(ref self, value: string) bool {
+        return false
+    }
+}
+
+// =============================================================================
+// Parameter ownership and mutability
+// =============================================================================
+
+type Buffer struct {
+    value: int,
+}
+
+interface RequiresSharedParameter {
+    fn Use(ref self, buffer: ref Buffer) void
+}
+
+type OwnedParameterInsteadOfReference struct implements RequiresSharedParameter {
+}
+
+impl OwnedParameterInsteadOfReference {
+    // ERROR: Buffer does not match ref Buffer.
+    fn Use(ref self, buffer: Buffer) void {
+    }
+}
+
+interface RequiresMutableParameter {
+    fn Update(ref self, buffer: ref mut Buffer) void
+}
+
+type SharedParameterInsteadOfMutable struct implements RequiresMutableParameter {
+}
+
+impl SharedParameterInsteadOfMutable {
+    // ERROR: ref Buffer does not match ref mut Buffer.
+    fn Update(ref self, buffer: ref Buffer) void {
+    }
+}
+
+// =============================================================================
+// Return type compatibility
+// =============================================================================
+
+interface RequiresIntegerResult {
+    fn Measure(ref self) int
+}
+
+type WrongReturnType struct implements RequiresIntegerResult {
+}
+
+impl WrongReturnType {
+    // ERROR: bool does not match int.
+    fn Measure(ref self) bool {
+        return false
+    }
+}
+
+interface RequiresValueResult {
+    fn Read(ref self) int
+}
+
+type VoidReturnInsteadOfValue struct implements RequiresValueResult {
+}
+
+impl VoidReturnInsteadOfValue {
+    // ERROR: void does not match int.
+    fn Read(ref self) void {
+    }
+}
+
+// =============================================================================
+// Missing and incompatible properties
+// =============================================================================
+
+interface RequiresNameProperty {
+    property Name: string {
+        get
+    }
+}
+
+type MissingProperty struct implements RequiresNameProperty {
+    _name: string,
+}
+
+impl MissingProperty {
+}
+
+// A stored field does not satisfy a property requirement.
+type FieldInsteadOfProperty struct implements RequiresNameProperty {
+    Name: string,
+}
+
+impl FieldInsteadOfProperty {
+}
+
+interface RequiresIntegerProperty {
+    property Value: int {
+        get
+    }
+}
+
+type WrongPropertyType struct implements RequiresIntegerProperty {
+    _value: string,
+}
+
+impl WrongPropertyType {
+    // ERROR: Property type string does not match int.
+    property Value: string {
+        get {
+            return _value
+        }
+    }
+}
+
+interface RequiresReadableProperty {
+    property Value: int {
+        get
+    }
+}
+
+type SetterOnlyProperty struct implements RequiresReadableProperty {
+    _value: int,
+}
+
+impl SetterOnlyProperty {
+    // ERROR: The required getter is missing.
+    property Value: int {
+        set value {
+            _value = value
+        }
+    }
+}
+
+interface RequiresReadWriteProperty {
+    property Value: int {
+        get
+        set
+    }
+}
+
+type GetterOnlyProperty struct implements RequiresReadWriteProperty {
+    _value: int,
+}
+
+impl GetterOnlyProperty {
+    // ERROR: The required setter is missing.
+    property Value: int {
+        get {
+            return _value
+        }
+    }
+}
+
+// =============================================================================
+// Missing inherited requirements
+// =============================================================================
+
+interface BaseRead {
+    fn Read(ref self) int
+}
+
+interface DerivedRead implements BaseRead {
+    fn Revision(ref self) int
+}
+
+type MissingInheritedMethod struct implements DerivedRead {
+}
+
+impl MissingInheritedMethod {
+    // ERROR: Read inherited from BaseRead is missing.
+    fn Revision(ref self) int {
+        return 1
+    }
+}
+
+interface FirstLevel {
+    fn First(ref self) int
+}
+
+interface SecondLevel implements FirstLevel {
+    fn Second(ref self) int
+}
+
+interface ThirdLevel implements SecondLevel {
+    fn Third(ref self) int
+}
+
+type MissingDeepRequirement struct implements ThirdLevel {
+}
+
+impl MissingDeepRequirement {
+    fn Second(ref self) int {
+        return 2
+    }
+
+    fn Third(ref self) int {
+        return 3
+    }
+
+    // ERROR: First is still required through two inheritance levels.
+}
+
+// =============================================================================
+// Invalid inherited targets
+// =============================================================================
+
+interface UnknownBase implements MissingBase {
+}
+
+type NotAnInterface struct {
+}
+
+interface NonInterfaceBase implements NotAnInterface {
+}
+
+interface RepeatedBase {
+}
+
+interface DuplicateInheritedInterface implements RepeatedBase, RepeatedBase {
+}
+
+// =============================================================================
+// Incompatible duplicate inherited requirements
+// =============================================================================
+
+interface IntegerState {
+    fn State(ref self) int
+}
+
+interface BooleanState {
+    fn State(ref self) bool
+}
+
+// ERROR: The inherited State declarations are incompatible.
+interface ConflictingState implements IntegerState, BooleanState {
+}
+
+interface ReadOnlyCode {
+    property Code: int {
+        get
+    }
+}
+
+interface StringCode {
+    property Code: string {
+        get
+    }
+}
+
+// ERROR: The inherited Code property types are incompatible.
+interface ConflictingCode implements ReadOnlyCode, StringCode {
+}
+
+// =============================================================================
+// Duplicate and conflicting members inside one interface
+// =============================================================================
+
+interface DuplicateMethodRequirement {
+    fn Execute(ref self) void
+    // ERROR: Duplicate method requirement.
+    fn Execute(ref self) void
+}
+
+interface DuplicatePropertyRequirement {
+    property Name: string {
+        get
+    }
+
+    // ERROR: Duplicate property requirement.
+    property Name: string {
+        get
+    }
+}
+
+interface MethodPropertyConflict {
+    fn Value(ref self) int
+
+    // ERROR: A property and method cannot share the same member name.
+    property Value: int {
+        get
+    }
+}
+
+// =============================================================================
+// Ordinary impl blocks cannot target interfaces
+// =============================================================================
+
+interface ContractOnly {
+    fn Execute(ref self) void
+}
+
+// ERROR: An interface is not a valid ordinary impl target.
+impl ContractOnly {
+    fn Execute(ref self) void {
+    }
+}

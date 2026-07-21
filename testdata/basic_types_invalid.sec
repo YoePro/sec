@@ -1,0 +1,457 @@
+module basic_types_invalid
+
+// Every marked construct in this file is expected to produce a parser or
+// semantic diagnostic. Semantic cases appear before malformed parser cases.
+
+// =============================================================================
+// Unknown and invalid type positions
+// =============================================================================
+
+fn UnknownVariableType() void {
+    let value: MissingType := 1
+}
+
+fn UnknownParameterType(value: MissingParameterType) void {
+}
+
+fn UnknownReturnType() MissingReturnType {
+    return 1
+}
+
+fn VoidVariable() void {
+    let value: void := ReturnNothing()
+}
+
+fn VoidParameter(value: void) void {
+}
+
+fn ReturnNothing() void {
+}
+
+// =============================================================================
+// Initialization and mutability
+// =============================================================================
+
+fn ImmutableLetWithoutInitializer() void {
+    let value: int
+}
+
+fn ImmutableTypedDeclarationWithoutInitializer() void {
+    int: first, second
+}
+
+fn ReadUninitializedMutable() int {
+    let mut value: int
+    return value
+}
+
+fn AssignImmutable() void {
+    let value: int := 10
+    value = 20
+}
+
+fn CompoundAssignImmutable() void {
+    let value: int := 10
+    value += 1
+}
+
+fn AssignWrongType() void {
+    let mut value: int := 10
+    value = "ten"
+}
+
+fn RedeclareLocal() void {
+    let value := 10
+    let value := 20
+}
+
+// =============================================================================
+// bool rules
+// =============================================================================
+
+fn IntegerCondition() void {
+    if 1 {
+    }
+}
+
+fn StringCondition() void {
+    if "true" {
+    }
+}
+
+fn LogicalAndWithInteger(value: bool) bool {
+    return value && 1
+}
+
+fn LogicalOrWithString(value: bool) bool {
+    return value || "false"
+}
+
+fn LogicalNotWithInteger() bool {
+    return !1
+}
+
+fn CompareBooleanAndInteger(value: bool, number: int) bool {
+    return value == number
+}
+
+// =============================================================================
+// byte and fixed-width signed integer overflow
+// =============================================================================
+
+fn ByteBelowMinimum() void {
+    let value: byte := -1
+}
+
+fn ByteAboveMaximum() void {
+    let value: byte := 256
+}
+
+fn Int8BelowMinimum() void {
+    let value: int8 := -129
+}
+
+fn Int8AboveMaximum() void {
+    let value: int8 := 128
+}
+
+fn Int16BelowMinimum() void {
+    let value: int16 := -32769
+}
+
+fn Int16AboveMaximum() void {
+    let value: int16 := 32768
+}
+
+fn Int32BelowMinimum() void {
+    let value: int32 := -2147483649
+}
+
+fn Int32AboveMaximum() void {
+    let value: int32 := 2147483648
+}
+
+fn Int64BelowMinimum() void {
+    let value: int64 := -9223372036854775809
+}
+
+fn Int64AboveMaximum() void {
+    let value: int64 := 9223372036854775808
+}
+
+fn Int128BelowMinimum() void {
+    let value: int128 := -170141183460469231731687303715884105729
+}
+
+fn Int128AboveMaximum() void {
+    let value: int128 := 170141183460469231731687303715884105728
+}
+
+fn Int256BelowMinimum() void {
+    let value: int256 := -57896044618658097711785492504343953926634992332820282019728792003956564819969
+}
+
+fn Int256AboveMaximum() void {
+    let value: int256 := 57896044618658097711785492504343953926634992332820282019728792003956564819968
+}
+
+// =============================================================================
+// Fixed-width unsigned integer overflow
+// =============================================================================
+
+fn Uint8Negative() void {
+    let value: uint8 := -1
+}
+
+fn Uint8AboveMaximum() void {
+    let value: uint8 := 256
+}
+
+fn Uint16Negative() void {
+    let value: uint16 := -1
+}
+
+fn Uint16AboveMaximum() void {
+    let value: uint16 := 65536
+}
+
+fn Uint32Negative() void {
+    let value: uint32 := -1
+}
+
+fn Uint32AboveMaximum() void {
+    let value: uint32 := 4294967296
+}
+
+fn Uint64Negative() void {
+    let value: uint64 := -1
+}
+
+fn Uint64AboveMaximum() void {
+    let value: uint64 := 18446744073709551616
+}
+
+fn Uint128Negative() void {
+    let value: uint128 := -1
+}
+
+fn Uint128AboveMaximum() void {
+    let value: uint128 := 340282366920938463463374607431768211456
+}
+
+fn Uint256Negative() void {
+    let value: uint256 := -1
+}
+
+fn Uint256AboveMaximum() void {
+    let value: uint256 := 115792089237316195423570985008687907853269984665640564039457584007913129639936
+}
+
+// =============================================================================
+// No implicit conversion between numeric types
+// =============================================================================
+
+fn AssignInt8ToInt16(value: int8) void {
+    let wider: int16 := value
+}
+
+fn AssignInt64ToInt128(value: int64) void {
+    let wider: int128 := value
+}
+
+fn AssignInt128ToInt256(value: int128) void {
+    let wider: int256 := value
+}
+
+fn AssignUint64ToUint128(value: uint64) void {
+    let wider: uint128 := value
+}
+
+fn AssignSignedToUnsigned(value: int128) void {
+    let unsigned: uint128 := value
+}
+
+fn AssignUnsignedToSigned(value: uint128) void {
+    let signed: int128 := value
+}
+
+fn AddDifferentIntegerWidths(left: int128, right: int256) int256 {
+    return left + right
+}
+
+fn AddSignedAndUnsigned(left: int128, right: uint128) int128 {
+    return left + right
+}
+
+fn PassWrongFixedWidth(value: int64) int128 {
+    return IdentityInt128(value)
+}
+
+fn IdentityInt128(value: int128) int128 {
+    return value
+}
+
+// =============================================================================
+// Invalid integer operators and constant arithmetic
+// =============================================================================
+
+fn NegateUnsigned(value: uint128) uint128 {
+    return -value
+}
+
+fn BitwiseBoolean(left: bool, right: bool) bool {
+    return left & right
+}
+
+fn BitwiseFloat(left: float64, right: float64) float64 {
+    return left | right
+}
+
+fn BitwiseDecimal(left: decimal128, right: decimal128) decimal128 {
+    return left ^ right
+}
+
+fn ShiftFloat(value: float64) float64 {
+    return value << 2
+}
+
+fn DivideIntegerByZero(value: int256) int256 {
+    return value / 0
+}
+
+fn RemainderIntegerByZero(value: uint256) uint256 {
+    return value % 0
+}
+
+// =============================================================================
+// float, decimal and decimal128 identity
+// =============================================================================
+
+fn AssignFloat32ToFloat64(value: float32) void {
+    let wider: float64 := value
+}
+
+fn AddDifferentFloatWidths(left: float32, right: float64) float64 {
+    return left + right
+}
+
+fn AssignFloatToDecimal(value: float64) void {
+    let exact: decimal := value
+}
+
+fn AssignFloatToDecimal128(value: float64) void {
+    let exact: decimal128 := value
+}
+
+fn AssignDecimalToFloat(value: decimal) void {
+    let approximate: float64 := value
+}
+
+fn AssignDecimalToDecimal128(value: decimal) void {
+    let extended: decimal128 := value
+}
+
+fn AssignDecimal128ToDecimal(value: decimal128) void {
+    let normal: decimal := value
+}
+
+fn AddDecimalAndDecimal128(left: decimal, right: decimal128) decimal128 {
+    return left + right
+}
+
+fn CompareDecimalAndFloat(left: decimal128, right: float64) bool {
+    return left == right
+}
+
+fn RemainderDecimal(left: decimal, right: decimal) decimal {
+    return left % right
+}
+
+fn BitwiseComplementDecimal(value: decimal128) decimal128 {
+    return ~value
+}
+
+fn DecimalDivisionByZero(value: decimal128) decimal128 {
+    return value / 0.0
+}
+
+// =============================================================================
+// Invalid explicit conversions
+// =============================================================================
+
+fn ConvertStringToInt(value: string) int {
+    return int(value)
+}
+
+fn ConvertBoolToDecimal128(value: bool) decimal128 {
+    return decimal128(value)
+}
+
+fn ConvertStringToBool(value: string) bool {
+    return bool(value)
+}
+
+fn ConvertCharacterToUint256(value: char) uint256 {
+    return uint256(value)
+}
+
+// =============================================================================
+// char, rune and string are distinct types
+// =============================================================================
+
+fn AssignCharacterToString(value: char) void {
+    let text: string := value
+}
+
+fn AssignStringToCharacter(value: string) void {
+    let character: char := value
+}
+
+fn AssignCharacterToRune(value: char) void {
+    let codePoint: rune := value
+}
+
+fn AssignRuneToCharacter(value: rune) void {
+    let character: char := value
+}
+
+fn CompareCharacterAndString(character: char, text: string) bool {
+    return character == text
+}
+
+fn AddCharacters(left: char, right: char) char {
+    return left + right
+}
+
+fn SubtractStrings(left: string, right: string) string {
+    return left - right
+}
+
+fn MultipleCharacterLiteral() void {
+    let value: char := 'AB'
+}
+
+fn EmptyCharacterLiteral() void {
+    let value: char := ''
+}
+
+// =============================================================================
+// any has no implicit arithmetic semantics
+// =============================================================================
+
+fn AddAny(left: any, right: any) any {
+    return left + right
+}
+
+fn AnyAsInteger(value: any) int {
+    return value
+}
+
+// =============================================================================
+// Named basic type identity remains nominal
+// =============================================================================
+
+type FirstIdentifier int128
+type SecondIdentifier int128
+type NormalAmount decimal
+type ExtendedAmount decimal128
+
+fn AssignNamedIntegerToUnderlying(value: FirstIdentifier) void {
+    let raw: int128 := value
+}
+
+fn AssignUnderlyingToNamed(value: int128) void {
+    let id: FirstIdentifier := value
+}
+
+fn AssignDifferentNamedIntegers(value: FirstIdentifier) void {
+    let id: SecondIdentifier := value
+}
+
+fn AssignDecimalNamedToUnderlying(value: NormalAmount) void {
+    let raw: decimal := value
+}
+
+fn AssignDecimal128NamedToUnderlying(value: ExtendedAmount) void {
+    let raw: decimal128 := value
+}
+
+// =============================================================================
+// Malformed parser recovery cases
+// =============================================================================
+
+fn MissingTypeAfterColon() void {
+    let value: := 10
+}
+
+fn MissingInitializerExpression() void {
+    let value: int :=
+}
+
+fn MissingTypedDeclaratorName() void {
+    int: := 10
+}
+
+fn MissingLetDeclarator() void {
+    let := 10
+}

@@ -940,6 +940,9 @@ func printASTStatement(stmt ast.Statement, prefix string, last bool) {
 	case *ast.EnumDeclaration:
 		printASTEnum(stmt, prefix, last)
 
+	case *ast.InterfaceDeclaration:
+		printASTInterface(stmt, prefix, last)
+
 	case *ast.FunctionDeclaration:
 		printASTFunction(stmt, prefix, last)
 
@@ -1354,6 +1357,10 @@ func printASTTypeDecl(stmt *ast.TypeDeclStatement, prefix string, last bool) {
 		children = append(children, "Assigned: "+formatTypeRef(stmt.AssignedType))
 	}
 
+	if len(stmt.Implements) > 0 {
+		children = append(children, "Implements: "+formatTypeRefs(stmt.Implements))
+	}
+
 	if len(stmt.Variants) > 0 {
 		children = append(children, "Variants: "+formatVariants(stmt.Variants))
 	}
@@ -1408,6 +1415,46 @@ func printASTEnum(stmt *ast.EnumDeclaration, prefix string, last bool) {
 	}
 
 	printASTLeaves(childPrefix(prefix, last), children)
+}
+
+func printASTInterface(stmt *ast.InterfaceDeclaration, prefix string, last bool) {
+	printASTBranch(prefix, last, "Interface")
+
+	children := []string{
+		"Name: " + stmt.Name.Value,
+		"GenericParameters: " + formatGenericParameters(stmt.GenericParameters),
+	}
+	if len(stmt.Implements) > 0 {
+		children = append(children, "Implements: "+formatTypeRefs(stmt.Implements))
+	}
+
+	childrenPrefix := childPrefix(prefix, last)
+	if len(stmt.Methods) == 0 && len(stmt.Properties) == 0 {
+		printASTLeaves(childrenPrefix, children)
+		return
+	}
+
+	for _, child := range children {
+		printASTLeaf(childrenPrefix, false, child)
+	}
+	for _, method := range stmt.Methods {
+		printASTBranch(childrenPrefix, false, "Method")
+		methodPrefix := childPrefix(childrenPrefix, false)
+		printASTLeaf(methodPrefix, false, "Name: "+method.Name.Value)
+		printASTLeaf(methodPrefix, false, "Parameters: "+formatParameters(method.Parameters))
+		printASTLeaf(methodPrefix, true, "Return: "+formatTypeRef(method.ReturnType))
+	}
+	for i, property := range stmt.Properties {
+		printASTBranch(childrenPrefix, i == len(stmt.Properties)-1, "Property")
+		propertyPrefix := childPrefix(childrenPrefix, i == len(stmt.Properties)-1)
+		children := []string{
+			"Name: " + property.Name.Value,
+			"Type: " + formatTypeRef(property.Type),
+			fmt.Sprintf("Get: %t", property.RequiresGet),
+			fmt.Sprintf("Set: %t", property.RequiresSet),
+		}
+		printASTLeaves(propertyPrefix, children)
+	}
 }
 
 func printASTFunction(stmt *ast.FunctionDeclaration, prefix string, last bool) {
@@ -1605,11 +1652,13 @@ func formatASTExpression(expr ast.Expression) string {
 	case *ast.Identifier:
 		return "Identifier(" + expr.Value + ")"
 	case *ast.IntegerLiteral:
-		return fmt.Sprintf("Int(%d)", expr.Value)
+		return "Int(" + expr.Token.Lexeme + ")"
 	case *ast.FloatLiteral:
 		return fmt.Sprintf("Float(%g)", expr.Value)
 	case *ast.StringLiteral:
 		return fmt.Sprintf("String(%q)", expr.Value)
+	case *ast.CharLiteral:
+		return fmt.Sprintf("Char(%q)", expr.Value)
 	case *ast.BooleanLiteral:
 		return fmt.Sprintf("Bool(%t)", expr.Value)
 	case *ast.InterpolatedStringLiteral:
@@ -1961,7 +2010,11 @@ func formatParameters(parameters []*ast.Parameter) string {
 				out += "ref "
 			}
 		}
-		out += param.Name.Value + ": " + formatTypeRef(param.Type)
+		out += param.Name.Value
+		if param.Type != nil && param.Type.Name == "self" {
+			continue
+		}
+		out += ": " + formatTypeRef(param.Type)
 	}
 	return out
 }
@@ -1983,6 +2036,17 @@ func formatGenericParameters(parameters []*ast.GenericParameter) string {
 		}
 	}
 	out += "]"
+	return out
+}
+
+func formatTypeRefs(refs []*ast.TypeReference) string {
+	out := ""
+	for i, ref := range refs {
+		if i > 0 {
+			out += ", "
+		}
+		out += formatTypeRef(ref)
+	}
 	return out
 }
 

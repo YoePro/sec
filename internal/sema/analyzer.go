@@ -3,7 +3,10 @@ package sema
 import (
 	"fmt"
 	"math/big"
+	"sort"
+	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"sec/internal/ast"
 	"sec/internal/lexer"
@@ -77,15 +80,18 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.validateModuleDeclaration(program)
 	a.registerTypeDeclarations(program)
 	a.registerImplTypeDeclarations(program)
+	a.analyzeInterfaceDeclarations(program)
 	a.analyzeTypeDeclarations(program)
 	a.analyzeEnumDeclarations(program)
 	a.analyzeImplTypeDeclarations(program)
+	a.analyzeUnitMetadata(program)
 	a.registerImplDeclarations(program)
 	a.registerFunctionDeclarations(program)
+	a.validateInterfaceConformance()
 
 	a.withProgramModules(program, func(stmt ast.Statement) {
 		switch stmt.(type) {
-		case *ast.TargetDirective, *ast.TypeDeclStatement, *ast.UnitDeclStatement, *ast.EnumDeclaration, *ast.ImplStatement, *ast.FunctionDeclaration:
+		case *ast.TargetDirective, *ast.TypeDeclStatement, *ast.UnitDeclStatement, *ast.EnumDeclaration, *ast.InterfaceDeclaration, *ast.ImplStatement, *ast.FunctionDeclaration:
 			return
 		}
 		if !isAllowedModuleStatement(stmt) {
@@ -137,6 +143,7 @@ func isAllowedModuleStatement(stmt ast.Statement) bool {
 		*ast.TypeDeclStatement,
 		*ast.UnitDeclStatement,
 		*ast.EnumDeclaration,
+		*ast.InterfaceDeclaration,
 		*ast.ImplStatement,
 		*ast.FunctionDeclaration,
 		*ast.StructStatement,
@@ -164,6 +171,7 @@ func (a *Analyzer) addTopLevelStatementError(stmt ast.Statement) {
 }
 
 func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
+	seenUnits := map[string]lexer.Token{}
 	a.withProgramModules(program, func(stmt ast.Statement) {
 		switch stmt := stmt.(type) {
 		case *ast.TypeDeclStatement:
@@ -176,6 +184,12 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 			if stmt.Name == nil {
 				return
 			}
+			if previous, exists := seenUnits[stmt.Name.Value]; exists {
+				_ = previous
+				a.addErrorAtToken(stmt.Name.Token, "unit %s already declared", stmt.Name.Value)
+				return
+			}
+			seenUnits[stmt.Name.Value] = stmt.Name.Token
 			dimension := a.parseDimension(stmt.Name.Value)
 			if dimension.IsZero() {
 				dimension = dimensionFromBase(stmt.Name.Value, 1)
@@ -192,6 +206,12 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 				return
 			}
 			a.types[stmt.Name.Value] = Type{Name: stmt.Name.Value, Module: a.currentModule, Kind: InvalidType}
+		case *ast.InterfaceDeclaration:
+			if stmt.Name == nil {
+				return
+			}
+			params := a.genericParameterNames(stmt.GenericParameters)
+			a.types[stmt.Name.Value] = Type{Name: stmt.Name.Value, Module: a.currentModule, Kind: InterfaceType, Named: true, Declared: true, Underlying: "interface", GenericParameters: params}
 		}
 	})
 }
@@ -286,7 +306,16 @@ func (a *Analyzer) registerImplTypeDeclarations(program *ast.Program) {
 			a.addErrorAtToken(impl.Target.Token, "impl target %s is not a named type", impl.Target.Name)
 			continue
 		}
+		if target.Kind == InterfaceType {
+			a.addErrorAtToken(impl.Target.Token, "interface %s cannot have an ordinary impl block", impl.Target.Name)
+			continue
+		}
 		if !a.validateImplGenericTarget(impl, target) {
+			continue
+		}
+		if previous, exists := a.implBlocks[impl.Target.Name]; exists {
+			_ = previous
+			a.addErrorAtToken(impl.Target.Token, "duplicate impl block for %s", impl.Target.Name)
 			continue
 		}
 		a.implBlocks[impl.Target.Name] = impl.Target.Token
@@ -473,6 +502,118 @@ func (a *Analyzer) analyzeImplTypeDeclarations(program *ast.Program) {
 	}
 }
 
+func (a *Analyzer) analyzeUnitMetadata(program *ast.Program) {
+	for _, stmt := range program.Statements {
+		impl, ok := stmt.(*ast.ImplStatement)
+		if !ok || !a.validImplStatements[impl] || impl.Target == nil {
+			continue
+		}
+		unit, ok := a.units[impl.Target.Name]
+		if !ok {
+			continue
+		}
+		changed := false
+		for _, member := range impl.Members {
+			metadata, ok := member.(*ast.UnitMetadataDeclaration)
+			if !ok {
+				continue
+			}
+			switch metadata.Name {
+			case "dimension":
+				dimension, ok := parseUnitMetadataDimension(metadata.Value)
+				if !ok {
+					a.addErrorAtToken(metadata.Token, "invalid dimension metadata for unit %s", impl.Target.Name)
+					continue
+				}
+				unit.Dimension = dimension
+				changed = true
+			case "system":
+				if len(metadata.Value) != 1 || metadata.Value[0].Type != lexer.IDENT {
+					a.addErrorAtToken(metadata.Token, "invalid system metadata for unit %s", impl.Target.Name)
+					continue
+				}
+				unit.System = metadata.Value[0].Lexeme
+				changed = true
+			case "scale":
+				if len(metadata.Value) == 0 {
+					a.addErrorAtToken(metadata.Token, "invalid scale metadata for unit %s", impl.Target.Name)
+				}
+			}
+		}
+		if !changed {
+			continue
+		}
+		a.units[impl.Target.Name] = unit
+		typ := a.types[impl.Target.Name]
+		if typ.Kind != InvalidType {
+			typ.Dimension = unit.Dimension
+			a.types[impl.Target.Name] = typ
+		}
+	}
+}
+
+func parseUnitMetadataDimension(tokens []lexer.Token) (Dimension, bool) {
+	if len(tokens) < 2 || tokens[0].Type != lexer.LBRACKET || tokens[len(tokens)-1].Type != lexer.RBRACKET {
+		return Dimension{}, false
+	}
+	dimension := Dimension{Base: map[string]int{}}
+	i := 1
+	for i < len(tokens)-1 {
+		if tokens[i].Type != lexer.IDENT {
+			return Dimension{}, false
+		}
+		axis := tokens[i].Lexeme
+		i++
+		for i+1 < len(tokens)-1 && tokens[i].Type == lexer.DOT && tokens[i+1].Type == lexer.IDENT {
+			axis += "." + tokens[i+1].Lexeme
+			i += 2
+		}
+		if i >= len(tokens)-1 || tokens[i].Type != lexer.BIT_XOR {
+			return Dimension{}, false
+		}
+		i++
+		sign := 1
+		if i < len(tokens)-1 && tokens[i].Type == lexer.MINUS {
+			sign = -1
+			i++
+		}
+		if i >= len(tokens)-1 || tokens[i].Type != lexer.INT {
+			return Dimension{}, false
+		}
+		exponent, ok := parseSmallInt(tokens[i].Lexeme)
+		if !ok || exponent == 0 {
+			return Dimension{}, false
+		}
+		if _, exists := dimension.Base[axis]; exists {
+			return Dimension{}, false
+		}
+		dimension.Base[axis] = sign * exponent
+		i++
+		if i == len(tokens)-1 {
+			break
+		}
+		if tokens[i].Type != lexer.COMMA {
+			return Dimension{}, false
+		}
+		i++
+	}
+	return dimension, true
+}
+
+func parseSmallInt(value string) (int, bool) {
+	n := 0
+	if value == "" {
+		return 0, false
+	}
+	for _, r := range value {
+		if r < '0' || r > '9' {
+			return 0, false
+		}
+		n = n*10 + int(r-'0')
+	}
+	return n, true
+}
+
 func (a *Analyzer) withImplTarget(target string, fn func()) {
 	previous := a.currentImplTarget
 	a.currentImplTarget = target
@@ -490,6 +631,8 @@ func (a *Analyzer) analyzeStatement(stmt ast.Statement) {
 		a.analyzeUnitDeclaration(stmt)
 	case *ast.EnumDeclaration:
 		a.types[stmt.Name.Value] = a.typeFromEnumDeclaration(stmt.Name.Value, stmt)
+	case *ast.InterfaceDeclaration:
+		a.analyzeInterfaceDeclaration(stmt)
 	case *ast.FunctionDeclaration:
 		a.registerFunctionDeclaration(stmt)
 	case *ast.LetStatement:
@@ -568,6 +711,9 @@ func (a *Analyzer) analyzeStatement(stmt ast.Statement) {
 			a.resolveType(field.Type)
 		}
 	case *ast.InvalidStatement:
+		if stmt.Message != "" {
+			a.addErrorAtToken(stmt.Token, "%s", stmt.Message)
+		}
 		return
 	}
 }
@@ -1451,10 +1597,11 @@ func (a *Analyzer) registerFunctionDeclarationBody(fn *ast.FunctionDeclaration, 
 			continue
 		}
 		function.Parameters = append(function.Parameters, FunctionParameter{
-			Name:  param.Name.Value,
-			Type:  paramType,
-			Token: param.Name.Token,
-			Ref:   param.Ref,
+			Name:       param.Name.Value,
+			Type:       paramType,
+			Token:      param.Name.Token,
+			Ref:        param.Ref,
+			MutableRef: param.MutableRef,
 		})
 	}
 
@@ -1480,6 +1627,9 @@ func sameFunctionSignature(left Function, right Function) bool {
 		return false
 	}
 	for i := range left.Parameters {
+		if left.Parameters[i].Ref != right.Parameters[i].Ref || left.Parameters[i].MutableRef != right.Parameters[i].MutableRef {
+			return false
+		}
 		if !sameConcreteType(left.Parameters[i].Type, right.Parameters[i].Type) {
 			return false
 		}
@@ -1538,17 +1688,21 @@ func (a *Analyzer) analyzeFunctionBodies(program *ast.Program) {
 }
 
 func (a *Analyzer) analyzeFunctionBody(fn *ast.FunctionDeclaration) {
+	a.analyzeFunctionBodyNamed(fn, fn.Name.Value)
+}
+
+func (a *Analyzer) analyzeFunctionBodyNamed(fn *ast.FunctionDeclaration, name string) {
 	if len(fn.GenericParameters) > 0 {
 		a.withGenericTypeParameters(fn.GenericParameters, func() {
-			a.analyzeFunctionBodyInScope(fn)
+			a.analyzeFunctionBodyInScope(fn, name)
 		})
 		return
 	}
-	a.analyzeFunctionBodyInScope(fn)
+	a.analyzeFunctionBodyInScope(fn, name)
 }
 
-func (a *Analyzer) analyzeFunctionBodyInScope(fn *ast.FunctionDeclaration) {
-	function, ok := a.lookupFunctionByToken(fn.Name.Value, fn.Name.Token)
+func (a *Analyzer) analyzeFunctionBodyInScope(fn *ast.FunctionDeclaration, name string) {
+	function, ok := a.lookupFunctionByToken(name, fn.Name.Token)
 	if !ok || function.ReturnType.Kind == InvalidType {
 		return
 	}
@@ -1588,11 +1742,43 @@ func (a *Analyzer) analyzeFunctionBodyInScope(fn *ast.FunctionDeclaration) {
 		delete(a.constInts, param.Name)
 		a.assigned[param.Name] = true
 	}
+	a.defineImplFieldSymbols(function)
 
 	a.analyzeBlockStatements(fn.Body)
 
 	if !a.blockDefinitelyReturns(fn.Body) && function.ReturnType.Kind != VoidType {
 		a.addErrorAtToken(fn.Name.Token, "function %s must return %s", fn.Name.Value, typeDisplayName(function.ReturnType))
+	}
+}
+
+func (a *Analyzer) defineImplFieldSymbols(function Function) {
+	if a.currentImplTarget == "" {
+		return
+	}
+	target, ok := a.types[a.currentImplTarget]
+	if !ok || len(target.Fields) == 0 {
+		return
+	}
+	hasSelf := false
+	mutableSelf := false
+	for _, param := range function.Parameters {
+		if !isSelfParameter(param) {
+			continue
+		}
+		hasSelf = true
+		mutableSelf = param.MutableRef
+		break
+	}
+	if !hasSelf {
+		return
+	}
+	for _, field := range target.Fields {
+		if _, exists := a.symbols[field.Name]; exists {
+			continue
+		}
+		a.symbols[field.Name] = Symbol{Name: field.Name, Type: field.Type, Mutable: mutableSelf, Token: field.Token}
+		a.assigned[field.Name] = true
+		delete(a.constInts, field.Name)
 	}
 }
 
@@ -1874,6 +2060,11 @@ func (a *Analyzer) analyzeReturnStatement(functionName string, returnType Type, 
 		return
 	}
 
+	if returnType.Kind == FunctionType && containsCapturedLambdaExpression(stmt.Value) {
+		a.addErrorAtToken(expressionToken(stmt.Value), "escaping captured lambda is not supported yet")
+		return
+	}
+
 	valueType, _ := a.inferExpressionWithExpected(stmt.Value, returnType)
 	if valueType.Kind == InvalidType {
 		return
@@ -1897,6 +2088,29 @@ func (a *Analyzer) analyzeReturnStatement(functionName string, returnType Type, 
 	}
 }
 
+func containsCapturedLambdaExpression(expr ast.Expression) bool {
+	switch expr := expr.(type) {
+	case *ast.LambdaExpression:
+		return len(expr.Captures) > 0
+	case *ast.PrefixExpression:
+		return containsCapturedLambdaExpression(expr.Right)
+	case *ast.InfixExpression:
+		return containsCapturedLambdaExpression(expr.Left) || containsCapturedLambdaExpression(expr.Right)
+	case *ast.CallExpression:
+		if containsCapturedLambdaExpression(expr.Callee) {
+			return true
+		}
+		for _, arg := range expr.Arguments {
+			if containsCapturedLambdaExpression(arg) {
+				return true
+			}
+		}
+	case *ast.ConversionExpression:
+		return containsCapturedLambdaExpression(expr.Value)
+	}
+	return false
+}
+
 func (a *Analyzer) analyzeResultReturnStatement(functionName string, returnType Type, stmt *ast.ReturnStatement) {
 	if len(returnType.TypeArgs) != 2 {
 		return
@@ -1905,6 +2119,10 @@ func (a *Analyzer) analyzeResultReturnStatement(functionName string, returnType 
 	switch expr := stmt.Value.(type) {
 	case *ast.OkExpression:
 		expected := returnType.TypeArgs[0]
+		if len(expr.Arguments) > 1 {
+			a.addErrorAtToken(expr.Token, "Ok expects 1 argument, got %d", len(expr.Arguments))
+			return
+		}
 		if expr.Value == nil {
 			if expected.Kind != VoidType {
 				a.addErrorAtToken(expr.Token, "function %s must return Ok(%s), got Ok()", functionName, typeDisplayName(expected))
@@ -1919,6 +2137,10 @@ func (a *Analyzer) analyzeResultReturnStatement(functionName string, returnType 
 			a.addErrorAtToken(expressionToken(expr.Value), "function %s must return Ok(%s), got Ok(%s)", functionName, typeDisplayName(expected), typeDisplayName(valueType))
 		}
 	case *ast.ErrExpression:
+		if len(expr.Arguments) != 1 {
+			a.addErrorAtToken(expr.Token, "Err expects 1 argument, got %d", len(expr.Arguments))
+			return
+		}
 		valueType, _ := a.inferExpression(expr.Value)
 		if valueType.Kind == InvalidType {
 			return
@@ -2008,6 +2230,177 @@ func (a *Analyzer) analyzeTypeDeclaration(stmt *ast.TypeDeclStatement) {
 	a.analyzeTypeDeclarationBody(stmt)
 }
 
+func (a *Analyzer) analyzeInterfaceDeclarations(program *ast.Program) {
+	a.withProgramModules(program, func(stmt ast.Statement) {
+		if iface, ok := stmt.(*ast.InterfaceDeclaration); ok {
+			a.analyzeInterfaceDeclaration(iface)
+		}
+	})
+}
+
+func (a *Analyzer) analyzeInterfaceDeclaration(stmt *ast.InterfaceDeclaration) {
+	if stmt == nil || stmt.Name == nil {
+		return
+	}
+
+	if len(stmt.GenericParameters) > 0 {
+		a.validateGenericParameterConstraints(stmt.GenericParameters)
+		a.withGenericTypeParameters(stmt.GenericParameters, func() {
+			a.analyzeInterfaceDeclarationBody(stmt)
+		})
+		return
+	}
+	a.analyzeInterfaceDeclarationBody(stmt)
+}
+
+func (a *Analyzer) analyzeInterfaceDeclarationBody(stmt *ast.InterfaceDeclaration) {
+	iface := Type{
+		Name:              stmt.Name.Value,
+		Module:            a.currentModule,
+		Kind:              InterfaceType,
+		Named:             true,
+		Declared:          true,
+		Underlying:        "interface",
+		GenericParameters: genericParameterNameValues(stmt.GenericParameters),
+	}
+
+	iface.Implements = a.resolveImplementedInterfaces(stmt.Implements, stmt.Name.Value)
+
+	seenMethods := map[string]lexer.Token{}
+	for _, method := range stmt.Methods {
+		if method == nil || method.Name == nil {
+			continue
+		}
+		if previous, exists := seenMethods[method.Name.Value]; exists {
+			_ = previous
+			a.addErrorAtToken(method.Name.Token, "duplicate interface method %q in %s", method.Name.Value, stmt.Name.Value)
+			continue
+		}
+		seenMethods[method.Name.Value] = method.Name.Token
+		iface.InterfaceMethods = append(iface.InterfaceMethods, a.interfaceMethodRequirement(stmt.Name.Value, method))
+	}
+
+	seenProperties := map[string]lexer.Token{}
+	for _, property := range stmt.Properties {
+		if property == nil || property.Name == nil {
+			continue
+		}
+		if previous, exists := seenProperties[property.Name.Value]; exists {
+			_ = previous
+			a.addErrorAtToken(property.Name.Token, "duplicate interface property %q in %s", property.Name.Value, stmt.Name.Value)
+			continue
+		}
+		seenProperties[property.Name.Value] = property.Name.Token
+		propertyType, ok := a.resolveType(property.Type)
+		if !ok {
+			continue
+		}
+		iface.InterfaceProperties = append(iface.InterfaceProperties, InterfaceProperty{
+			Name:        property.Name.Value,
+			Type:        propertyType,
+			Token:       property.Name.Token,
+			RequiresGet: property.RequiresGet,
+			RequiresSet: property.RequiresSet,
+		})
+	}
+
+	a.mergeInheritedInterfaceRequirements(&iface)
+	a.types[stmt.Name.Value] = iface
+}
+
+func (a *Analyzer) mergeInheritedInterfaceRequirements(iface *Type) {
+	if iface == nil {
+		return
+	}
+
+	methods := map[string]Function{}
+	for _, method := range iface.InterfaceMethods {
+		methods[method.Name] = method
+	}
+	properties := map[string]InterfaceProperty{}
+	for _, property := range iface.InterfaceProperties {
+		properties[property.Name] = property
+	}
+
+	for _, parent := range iface.Implements {
+		parentType, ok := a.types[parent.Name]
+		if !ok || parentType.Kind != InterfaceType {
+			continue
+		}
+		for _, method := range parentType.InterfaceMethods {
+			if existing, exists := methods[method.Name]; exists {
+				if !sameInterfaceRequirementSignature(existing, method) || !sameConcreteType(existing.ReturnType, method.ReturnType) {
+					a.addErrorAtToken(method.Token, "inherited interface method %s conflicts in %s", method.Name, iface.Name)
+				}
+				continue
+			}
+			methods[method.Name] = method
+			iface.InterfaceMethods = append(iface.InterfaceMethods, method)
+		}
+		for _, property := range parentType.InterfaceProperties {
+			if existing, exists := properties[property.Name]; exists {
+				if !sameConcreteType(existing.Type, property.Type) || (property.RequiresGet && !existing.RequiresGet) || (property.RequiresSet && !existing.RequiresSet) {
+					a.addErrorAtToken(property.Token, "inherited interface property %s conflicts in %s", property.Name, iface.Name)
+				}
+				continue
+			}
+			properties[property.Name] = property
+			iface.InterfaceProperties = append(iface.InterfaceProperties, property)
+		}
+	}
+}
+
+func (a *Analyzer) interfaceMethodRequirement(interfaceName string, fn *ast.FunctionDeclaration) Function {
+	function := Function{
+		Name:   fn.Name.Value,
+		Module: a.currentModule,
+		Token:  fn.Name.Token,
+	}
+	a.withImplTarget(interfaceName, func() {
+		for _, param := range fn.Parameters {
+			paramType, ok := a.resolveType(param.Type)
+			if !ok {
+				continue
+			}
+			function.Parameters = append(function.Parameters, FunctionParameter{
+				Name:       param.Name.Value,
+				Type:       paramType,
+				Token:      param.Name.Token,
+				Ref:        param.Ref,
+				MutableRef: param.MutableRef,
+			})
+		}
+		returnType, ok := a.resolveType(fn.ReturnType)
+		if ok {
+			function.ReturnType = returnType
+		} else {
+			function.ReturnType = Type{Kind: InvalidType}
+		}
+	})
+	return function
+}
+
+func sameInterfaceRequirementSignature(left Function, right Function) bool {
+	if len(left.Parameters) != len(right.Parameters) {
+		return false
+	}
+	for i := range left.Parameters {
+		if left.Parameters[i].Ref != right.Parameters[i].Ref || left.Parameters[i].MutableRef != right.Parameters[i].MutableRef {
+			return false
+		}
+		if isSelfParameter(left.Parameters[i]) && isSelfParameter(right.Parameters[i]) {
+			if left.Parameters[i].Type.Kind != ReferenceType || right.Parameters[i].Type.Kind != ReferenceType {
+				return false
+			}
+			continue
+		}
+		if !sameConcreteType(left.Parameters[i].Type, right.Parameters[i].Type) {
+			return false
+		}
+	}
+	return true
+}
+
 func (a *Analyzer) analyzeUnitDeclaration(stmt *ast.UnitDeclStatement) {
 	if stmt.Name == nil || stmt.BaseType == nil {
 		return
@@ -2048,16 +2441,22 @@ func (a *Analyzer) analyzeUnitDeclaration(stmt *ast.UnitDeclStatement) {
 
 func (a *Analyzer) analyzeTypeDeclarationBody(stmt *ast.TypeDeclStatement) {
 	if stmt.Union {
-		a.types[stmt.Name.Value] = a.typeFromUnionDeclaration(stmt.Name.Value, stmt)
+		typ := a.typeFromUnionDeclaration(stmt.Name.Value, stmt)
+		typ.Implements = a.resolveImplementedInterfaces(stmt.Implements, stmt.Name.Value)
+		a.types[stmt.Name.Value] = typ
 		return
 	}
 
 	if stmt.StructType != nil {
-		a.types[stmt.Name.Value] = a.typeFromStructDeclaration(stmt)
+		typ := a.typeFromStructDeclaration(stmt)
+		typ.Implements = a.resolveImplementedInterfaces(stmt.Implements, stmt.Name.Value)
+		a.types[stmt.Name.Value] = typ
 		return
 	}
 	if stmt.RegisterType != nil {
-		a.types[stmt.Name.Value] = a.typeFromRegisterDeclaration(stmt.Name.Value, stmt)
+		typ := a.typeFromRegisterDeclaration(stmt.Name.Value, stmt)
+		typ.Implements = a.resolveImplementedInterfaces(stmt.Implements, stmt.Name.Value)
+		a.types[stmt.Name.Value] = typ
 		return
 	}
 	if len(stmt.Variants) > 0 {
@@ -2085,8 +2484,37 @@ func (a *Analyzer) analyzeTypeDeclarationBody(stmt *ast.TypeDeclStatement) {
 	}
 
 	if baseTypeOK {
-		a.types[stmt.Name.Value] = a.typeFromDeclaration(stmt, baseType)
+		typ := a.typeFromDeclaration(stmt, baseType)
+		typ.Implements = a.resolveImplementedInterfaces(stmt.Implements, stmt.Name.Value)
+		a.types[stmt.Name.Value] = typ
 	}
+}
+
+func (a *Analyzer) resolveImplementedInterfaces(refs []*ast.TypeReference, targetName string) []Type {
+	if len(refs) == 0 {
+		return nil
+	}
+
+	implemented := []Type{}
+	seen := map[string]lexer.Token{}
+	for _, ref := range refs {
+		typ, ok := a.resolveType(ref)
+		if !ok {
+			continue
+		}
+		if typ.Kind != InterfaceType {
+			a.addErrorAtToken(ref.Token, "implemented type %s on %s is not an interface", typeDisplayName(typ), targetName)
+			continue
+		}
+		if previous, exists := seen[typ.Name]; exists {
+			_ = previous
+			a.addErrorAtToken(ref.Token, "duplicate implemented interface %s on %s", typeDisplayName(typ), targetName)
+			continue
+		}
+		seen[typ.Name] = ref.Token
+		implemented = append(implemented, typ)
+	}
+	return implemented
 }
 
 func (a *Analyzer) analyzeNestedTypeDeclaration(qualifiedName string, stmt *ast.TypeDeclStatement) {
@@ -2278,6 +2706,8 @@ func (a *Analyzer) registerFieldType(field *ast.RegisterField) Type {
 			min := uint64(0)
 			typ.MinUint = &min
 			typ.MaxUint = &max
+			typ.MinInteger = new(big.Int).SetUint64(min)
+			typ.MaxInteger = new(big.Int).SetUint64(max)
 		} else {
 			typ.Named = true
 			typ.Unit = field.Unit
@@ -2529,6 +2959,18 @@ func (a *Analyzer) registerImplStatement(stmt *ast.ImplStatement) {
 	}
 	genericParams := implGenericParametersForTarget(stmt, target)
 
+	fields := map[string]lexer.Token{}
+	for _, field := range target.Fields {
+		fields[field.Name] = field.Token
+	}
+	nestedTypes := map[string]lexer.Token{}
+	for _, member := range stmt.Members {
+		name, token, ok := implNestedTypeName(member)
+		if ok {
+			nestedTypes[name] = token
+		}
+	}
+	methods := map[string]lexer.Token{}
 	properties := map[string]lexer.Token{}
 	for _, property := range target.Properties {
 		properties[property.Name] = property.Token
@@ -2536,7 +2978,31 @@ func (a *Analyzer) registerImplStatement(stmt *ast.ImplStatement) {
 
 	targetChanged := false
 	for _, member := range stmt.Members {
+		if invalid, ok := member.(*ast.InvalidStatement); ok {
+			if invalid.Message != "" {
+				a.addErrorAtToken(invalid.Token, "%s", invalid.Message)
+			}
+			continue
+		}
+		if _, ok := member.(*ast.UnitMetadataDeclaration); ok {
+			continue
+		}
+
 		if fn, ok := member.(*ast.FunctionDeclaration); ok {
+			name := fn.Name.Value
+			if _, exists := fields[name]; exists {
+				a.addErrorAtToken(fn.Name.Token, "method %s conflicts with field %s in %s", name, name, stmt.Target.Name)
+				continue
+			}
+			if _, exists := properties[name]; exists {
+				a.addErrorAtToken(fn.Name.Token, "method %s conflicts with property %s in %s", name, name, stmt.Target.Name)
+				continue
+			}
+			if _, exists := nestedTypes[name]; exists {
+				a.addErrorAtToken(fn.Name.Token, "method %s conflicts with nested type %s in %s", name, name, stmt.Target.Name)
+				continue
+			}
+			methods[name] = fn.Name.Token
 			if len(fn.GenericParameters) > 0 {
 				a.addErrorAtToken(fn.Name.Token, "generic methods with additional type parameters are not supported yet")
 				continue
@@ -2544,6 +3010,9 @@ func (a *Analyzer) registerImplStatement(stmt *ast.ImplStatement) {
 			a.withImplTarget(stmt.Target.Name, func() {
 				a.withGenericTypeParameters(genericParams, func() {
 					a.registerFunctionDeclarationNamed(fn, stmt.Target.Name+"."+fn.Name.Value)
+					if a.isUnitConversionFunctionTarget(stmt.Target.Name, fn) {
+						a.registerFunctionDeclarationNamed(fn, fn.Name.Value)
+					}
 				})
 			})
 			continue
@@ -2554,9 +3023,21 @@ func (a *Analyzer) registerImplStatement(stmt *ast.ImplStatement) {
 			continue
 		}
 
+		if _, exists := fields[property.Name.Value]; exists {
+			a.addErrorAtToken(property.Name.Token, "property %s conflicts with field %s in %s", property.Name.Value, property.Name.Value, stmt.Target.Name)
+			continue
+		}
 		if previous, exists := properties[property.Name.Value]; exists {
 			_ = previous
 			a.addErrorAtToken(property.Name.Token, "duplicate property %q in impl %s", property.Name.Value, stmt.Target.Name)
+			continue
+		}
+		if _, exists := methods[property.Name.Value]; exists {
+			a.addErrorAtToken(property.Name.Token, "property %s conflicts with method %s in %s", property.Name.Value, property.Name.Value, stmt.Target.Name)
+			continue
+		}
+		if _, exists := nestedTypes[property.Name.Value]; exists {
+			a.addErrorAtToken(property.Name.Token, "property %s conflicts with nested type %s in %s", property.Name.Value, property.Name.Value, stmt.Target.Name)
 			continue
 		}
 		properties[property.Name.Value] = property.Name.Token
@@ -2580,11 +3061,13 @@ func (a *Analyzer) registerImplStatement(stmt *ast.ImplStatement) {
 		}
 
 		target.Properties = append(target.Properties, Property{
-			Name:     property.Name.Value,
-			Type:     propertyType,
-			Token:    property.Name.Token,
-			Fallible: property.Setter != nil && property.Setter.Fallible,
-			Error:    errorType,
+			Name:      property.Name.Value,
+			Type:      propertyType,
+			Token:     property.Name.Token,
+			Fallible:  property.Setter != nil && property.Setter.Fallible,
+			Error:     errorType,
+			HasGetter: property.Getter != nil,
+			HasSetter: property.Setter != nil,
 		})
 		targetChanged = true
 	}
@@ -2592,6 +3075,110 @@ func (a *Analyzer) registerImplStatement(stmt *ast.ImplStatement) {
 	if targetChanged {
 		a.types[target.Name] = target
 	}
+}
+
+func (a *Analyzer) isUnitConversionFunctionTarget(targetName string, fn *ast.FunctionDeclaration) bool {
+	if fn == nil || fn.Name == nil || fn.Name.Value != targetName {
+		return false
+	}
+	target, ok := a.types[targetName]
+	if !ok || target.Unit != targetName || target.Kind != DecimalType {
+		return false
+	}
+	return true
+}
+
+func (a *Analyzer) validateInterfaceConformance() {
+	names := make([]string, 0, len(a.types))
+	for name := range a.types {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	for _, name := range names {
+		typ := a.types[name]
+		if typ.Kind == InvalidType || len(typ.Implements) == 0 {
+			continue
+		}
+		if typ.Kind == InterfaceType {
+			continue
+		}
+		for _, iface := range typ.Implements {
+			a.validateTypeImplementsInterface(typ, iface)
+		}
+	}
+}
+
+func (a *Analyzer) validateTypeImplementsInterface(typ Type, iface Type) {
+	for _, required := range iface.InterfaceMethods {
+		methods := a.functions[typ.Name+"."+required.Name]
+		if len(methods) == 0 {
+			a.addErrorAtToken(required.Token, "type %s implements %s but is missing method %s", typ.Name, iface.Name, required.Name)
+			continue
+		}
+		if !hasCompatibleInterfaceMethod(typ, iface, methods, required) {
+			a.addErrorAtToken(required.Token, "type %s method %s does not match interface %s", typ.Name, required.Name, iface.Name)
+		}
+	}
+
+	for _, required := range iface.InterfaceProperties {
+		property, ok := lookupProperty(typ, required.Name)
+		if !ok {
+			a.addErrorAtToken(required.Token, "type %s implements %s but is missing property %s", typ.Name, iface.Name, required.Name)
+			continue
+		}
+		if !sameConcreteType(property.Type, required.Type) {
+			a.addErrorAtToken(required.Token, "type %s property %s must be %s for interface %s, got %s", typ.Name, required.Name, typeDisplayName(required.Type), iface.Name, typeDisplayName(property.Type))
+			continue
+		}
+		if required.RequiresGet && !property.HasGetter {
+			a.addErrorAtToken(required.Token, "type %s property %s must provide get for interface %s", typ.Name, required.Name, iface.Name)
+		}
+		if required.RequiresSet && !property.HasSetter {
+			a.addErrorAtToken(required.Token, "type %s property %s must provide set for interface %s", typ.Name, required.Name, iface.Name)
+		}
+	}
+}
+
+func hasCompatibleInterfaceMethod(typ Type, iface Type, methods []Function, required Function) bool {
+	for _, method := range methods {
+		if compatibleInterfaceMethodSignature(typ, iface, method, required) && sameConcreteType(method.ReturnType, required.ReturnType) {
+			return true
+		}
+	}
+	return false
+}
+
+func compatibleInterfaceMethodSignature(typ Type, iface Type, method Function, required Function) bool {
+	if len(method.Parameters) != len(required.Parameters) {
+		return false
+	}
+	for i := range method.Parameters {
+		if isSelfParameter(method.Parameters[i]) && isSelfParameter(required.Parameters[i]) {
+			if method.Parameters[i].Ref != required.Parameters[i].Ref || method.Parameters[i].MutableRef != required.Parameters[i].MutableRef {
+				return false
+			}
+			if !referenceElementNamed(method.Parameters[i].Type, typ.Name) || required.Parameters[i].Type.Kind != ReferenceType {
+				return false
+			}
+			continue
+		}
+		if method.Parameters[i].Ref != required.Parameters[i].Ref || method.Parameters[i].MutableRef != required.Parameters[i].MutableRef {
+			return false
+		}
+		if !sameConcreteType(method.Parameters[i].Type, required.Parameters[i].Type) {
+			return false
+		}
+	}
+	return true
+}
+
+func isSelfParameter(param FunctionParameter) bool {
+	return param.Name == "self"
+}
+
+func referenceElementNamed(typ Type, name string) bool {
+	return typ.Kind == ReferenceType && typ.Element != nil && typ.Element.Name == name
 }
 
 func (a *Analyzer) analyzeImplBodies(program *ast.Program) {
@@ -2615,21 +3202,25 @@ func (a *Analyzer) analyzeImplBody(stmt *ast.ImplStatement) {
 	genericParams := implGenericParametersForTarget(stmt, target)
 
 	for _, member := range stmt.Members {
-		property, ok := member.(*ast.PropertyDeclaration)
-		if !ok {
-			continue
-		}
-
-		registeredProperty, ok := lookupPropertyByToken(target, property.Name.Value, property.Name.Token)
-		if !ok {
-			continue
-		}
-
-		a.withImplTarget(stmt.Target.Name, func() {
-			a.withGenericTypeParameters(genericParams, func() {
-				a.analyzePropertyBody(target, property, registeredProperty.Type)
+		switch member := member.(type) {
+		case *ast.FunctionDeclaration:
+			a.withImplTarget(stmt.Target.Name, func() {
+				a.withGenericTypeParameters(genericParams, func() {
+					a.analyzeFunctionBodyNamed(member, stmt.Target.Name+"."+member.Name.Value)
+				})
 			})
-		})
+		case *ast.PropertyDeclaration:
+			registeredProperty, ok := lookupPropertyByToken(target, member.Name.Value, member.Name.Token)
+			if !ok {
+				continue
+			}
+
+			a.withImplTarget(stmt.Target.Name, func() {
+				a.withGenericTypeParameters(genericParams, func() {
+					a.analyzePropertyBody(target, member, registeredProperty.Type)
+				})
+			})
+		}
 	}
 }
 
@@ -3101,9 +3692,14 @@ func (a *Analyzer) analyzeMemberAssignmentStatement(stmt *ast.AssignmentStatemen
 		return
 	}
 
-	if symbol, ok := a.symbolForMemberObject(member.Object); ok && symbol.Type.Kind == RegisterType {
-		if !symbol.Mutable {
-			a.addErrorAtToken(member.Property.Token, "cannot assign to field %s on read-only addressed register %s", member.Property.Value, symbol.Name)
+	if symbol, ok := a.symbolForMemberObject(member.Object); ok {
+		symbolType := dereferenceType(symbol.Type)
+		if symbolType.Kind == RegisterType && !a.canWriteThroughSymbol(symbol) {
+			if symbol.Addressed {
+				a.addErrorAtToken(member.Property.Token, "cannot assign to field %s on read-only addressed register %s", member.Property.Value, symbol.Name)
+			} else {
+				a.addErrorAtToken(member.Property.Token, "cannot assign to field %s through read-only receiver %s", member.Property.Value, symbol.Name)
+			}
 			return
 		}
 	}
@@ -3188,6 +3784,15 @@ func (a *Analyzer) resolveType(ref *ast.TypeReference) (Type, bool) {
 
 	if ref.Name == "fn" || ref.FunctionReturnType != nil {
 		return a.resolveFunctionType(ref)
+	}
+
+	if ref.Name == "self" && a.currentImplTarget != "" {
+		target, ok := a.types[a.currentImplTarget]
+		if !ok {
+			a.addErrorAtToken(ref.Token, "unknown type self")
+			return Type{Kind: InvalidType}, false
+		}
+		return target, true
 	}
 
 	if ref.ElementType != nil {
@@ -3430,6 +4035,12 @@ func (a *Analyzer) inferExpression(expr ast.Expression) (Type, expressionValue) 
 		return Type{Name: "decimal", Kind: DecimalType}, expressionValue{Display: expr.String()}
 	case *ast.StringLiteral, *ast.InterpolatedStringLiteral:
 		return Type{Name: "string", Kind: StringType}, expressionValue{Display: expr.String()}
+	case *ast.CharLiteral:
+		if !validCharLiteral(expr.Token.Lexeme) {
+			a.addErrorAtToken(expr.Token, "character literal must contain exactly one character")
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
+		return Type{Name: "char", Kind: CharType}, expressionValue{Display: expr.String()}
 	case *ast.BooleanLiteral:
 		return Type{Name: "bool", Kind: BoolType}, expressionValue{Display: expr.String()}
 	case *ast.Identifier:
@@ -3504,7 +4115,8 @@ func (a *Analyzer) inferExpression(expr ast.Expression) (Type, expressionValue) 
 func (a *Analyzer) inferExpressionWithExpected(expr ast.Expression, expected Type) (Type, expressionValue) {
 	call, ok := expr.(*ast.CallExpression)
 	if !ok || expected.Kind == InvalidType || expected.Kind == "" {
-		return a.inferExpression(expr)
+		typ, value := a.inferExpression(expr)
+		return typeWithExpectedDimension(expr, typ, value, expected)
 	}
 	if typ, value, ok := a.inferCallAsUnionVariantConstructor(call, &expected); ok {
 		return typ, value
@@ -3518,7 +4130,18 @@ func (a *Analyzer) inferExpressionWithExpected(expr ast.Expression, expected Typ
 	if typ, value, ok := a.inferCallExpressionWithExpected(call, expected); ok {
 		return typ, value
 	}
-	return a.inferExpression(expr)
+	typ, value := a.inferExpression(expr)
+	return typeWithExpectedDimension(expr, typ, value, expected)
+}
+
+func typeWithExpectedDimension(expr ast.Expression, typ Type, value expressionValue, expected Type) (Type, expressionValue) {
+	if _, ok := expr.(*ast.InfixExpression); !ok {
+		return typ, value
+	}
+	if typ.Kind == DecimalType && expected.Kind == DecimalType && expected.Named && typ.Dimension.Equal(expected.Dimension) {
+		return expected, value
+	}
+	return typ, value
 }
 
 func (a *Analyzer) inferStructLiteral(expr *ast.StructLiteral) (Type, expressionValue) {
@@ -3630,10 +4253,6 @@ func (a *Analyzer) checkUnionPayloadFields(unionType Type, variant UnionVariant,
 }
 
 func (a *Analyzer) inferLambdaExpression(expr *ast.LambdaExpression) (Type, expressionValue) {
-	if len(expr.Captures) > 0 {
-		a.analyzeUnsupportedCaptures(expr)
-	}
-
 	returnType, ok := a.resolveType(expr.ReturnType)
 	if !ok {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
@@ -3696,6 +4315,8 @@ func (a *Analyzer) inferLambdaExpression(expr *ast.LambdaExpression) (Type, expr
 		a.loopDepth = previousLoopDepth
 	}()
 
+	a.defineLambdaCaptures(expr, previousSymbols, previousAssigned)
+
 	for i, param := range expr.Parameters {
 		if !a.defineSymbol(param.Name.Value, params[i], false, param.Name.Token) {
 			continue
@@ -3712,7 +4333,7 @@ func (a *Analyzer) inferLambdaExpression(expr *ast.LambdaExpression) (Type, expr
 	return lambdaType, expressionValue{Display: expr.String()}
 }
 
-func (a *Analyzer) analyzeUnsupportedCaptures(expr *ast.LambdaExpression) {
+func (a *Analyzer) defineLambdaCaptures(expr *ast.LambdaExpression, outerSymbols map[string]Symbol, outerAssigned map[string]bool) {
 	seen := map[string]lexer.Token{}
 	for _, capture := range expr.Captures {
 		if capture.Name == nil {
@@ -3724,11 +4345,19 @@ func (a *Analyzer) analyzeUnsupportedCaptures(expr *ast.LambdaExpression) {
 			continue
 		}
 		seen[name] = capture.Name.Token
-		if _, ok := a.symbols[name]; !ok {
+		symbol, ok := outerSymbols[name]
+		if !ok {
 			a.addErrorAtToken(capture.Name.Token, "undefined capture %s", name)
 			continue
 		}
-		a.addErrorAtToken(capture.Name.Token, "capturing lambdas are not supported yet")
+		if assigned, exists := outerAssigned[name]; exists && !assigned {
+			a.addErrorAtToken(capture.Name.Token, "cannot capture unassigned variable %s", name)
+			continue
+		}
+		symbol.Mutable = false
+		a.symbols[name] = symbol
+		a.assigned[name] = true
+		delete(a.constInts, name)
 	}
 }
 
@@ -3744,6 +4373,7 @@ func (a *Analyzer) inferMemberExpression(expr *ast.MemberExpression) (Type, bool
 	if objectType.Kind == InvalidType {
 		return Type{Kind: InvalidType}, false
 	}
+	objectType = dereferenceType(objectType)
 
 	if objectType.Kind == StringType {
 		switch expr.Property.Value {
@@ -3820,6 +4450,9 @@ func (a *Analyzer) inferEnumValueExpression(expr *ast.MemberExpression) (Type, b
 }
 
 func (a *Analyzer) resolveTypeName(name string) string {
+	if name == "self" && a.currentImplTarget != "" {
+		return a.currentImplTarget
+	}
 	if a.currentImplTarget == "" || strings.Contains(name, ".") {
 		return name
 	}
@@ -3865,6 +4498,7 @@ func (a *Analyzer) symbolForMemberObject(expr ast.Expression) (Symbol, bool) {
 }
 
 func lookupStructField(typ Type, name string) (Type, bool) {
+	typ = dereferenceType(typ)
 	for _, field := range typ.Fields {
 		if field.Name == name {
 			return field.Type, true
@@ -3874,6 +4508,7 @@ func lookupStructField(typ Type, name string) (Type, bool) {
 }
 
 func lookupRegisterField(typ Type, name string) (Type, bool) {
+	typ = dereferenceType(typ)
 	if typ.Kind != RegisterType || name == "_" {
 		return Type{}, false
 	}
@@ -3885,7 +4520,15 @@ func lookupRegisterField(typ Type, name string) (Type, bool) {
 	return Type{}, false
 }
 
+func dereferenceType(typ Type) Type {
+	if typ.Kind == ReferenceType && typ.Element != nil {
+		return *typ.Element
+	}
+	return typ
+}
+
 func lookupProperty(typ Type, name string) (Property, bool) {
+	typ = dereferenceType(typ)
 	for _, property := range typ.Properties {
 		if property.Name == name {
 			return property, true
@@ -3933,7 +4576,17 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 		return a.inferFunctionValueCall(expr, Type{Kind: InvalidType})
 	}
 
+	methodReceiver, isMethodCall := a.methodCallReceiver(expr)
 	functions, ok := a.functions[name]
+	if !ok || len(functions) == 0 {
+		if implName, implOK := a.implScopedFunctionName(name); implOK {
+			if implFunctions := a.functions[implName]; len(implFunctions) > 0 {
+				name = implName
+				functions = implFunctions
+				ok = true
+			}
+		}
+	}
 	if !ok || len(functions) == 0 {
 		if methodName, methodOK := a.methodCallName(expr); methodOK {
 			if methodFunctions := a.functions[methodName]; len(methodFunctions) > 0 {
@@ -3958,18 +4611,19 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 
-	argTypes := make([]Type, 0, len(expr.Arguments))
+	sourceArgTypes := make([]Type, 0, len(expr.Arguments))
 	for _, arg := range expr.Arguments {
 		argType, _ := a.inferExpression(arg)
 		if argType.Kind == InvalidType {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
-		argTypes = append(argTypes, argType)
+		sourceArgTypes = append(sourceArgTypes, argType)
 	}
 
 	arityMatches := []Function{}
 	for _, function := range functions {
-		if len(function.Parameters) == len(expr.Arguments) {
+		argTypes := a.callArgumentTypesForFunction(function, sourceArgTypes, methodReceiver, isMethodCall)
+		if len(function.Parameters) == len(argTypes) {
 			arityMatches = append(arityMatches, function)
 		}
 	}
@@ -3980,6 +4634,7 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 	}
 
 	matches := []overloadMatch{}
+	var receiverError string
 	hadGenericArityMatch := false
 	hadGenericInference := false
 	hadExplicitGenericCall := len(expr.GenericArguments) > 0
@@ -4002,6 +4657,7 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 			function = instantiated
 		} else if len(function.GenericParameters) > 0 {
 			hadGenericArityMatch = true
+			argTypes := a.callArgumentTypesForFunction(function, sourceArgTypes, methodReceiver, isMethodCall)
 			instantiated, ok := a.inferGenericFunctionInstance(function, argTypes)
 			if !ok {
 				continue
@@ -4011,7 +4667,22 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 		}
 		matchesArguments := true
 		rank := 0
-		for i, arg := range expr.Arguments {
+		argTypes := a.callArgumentTypesForFunction(function, sourceArgTypes, methodReceiver, isMethodCall)
+		for i := range argTypes {
+			var arg ast.Expression
+			if isMethodCall && methodFunctionUsesReceiver(function) {
+				if i == 0 {
+					if !a.canPassMethodReceiver(function.Parameters[i], methodReceiver) {
+						receiverError = a.methodReceiverError(function.Name, function.Parameters[i], methodReceiver)
+						matchesArguments = false
+						break
+					}
+				} else {
+					arg = expr.Arguments[i-1]
+				}
+			} else {
+				arg = expr.Arguments[i]
+			}
 			if !canInitialize(function.Parameters[i].Type, argTypes[i], arg) {
 				matchesArguments = false
 				break
@@ -4055,6 +4726,10 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 		a.addErrorAtToken(expr.Token, "cannot infer generic arguments for %s", name)
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
+	if receiverError != "" {
+		a.addErrorAtToken(expr.Token, "%s", receiverError)
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
 
 	for _, function := range arityMatches {
 		displayName := name
@@ -4069,6 +4744,7 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 			function = instantiated
 			displayName = genericFunctionDisplayName(name, function)
 		} else if len(function.GenericParameters) > 0 {
+			argTypes := a.callArgumentTypesForFunction(function, sourceArgTypes, methodReceiver, isMethodCall)
 			instantiated, ok := a.inferGenericFunctionInstance(function, argTypes)
 			if !ok {
 				continue
@@ -4076,10 +4752,19 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 			function = instantiated
 			displayName = genericFunctionDisplayName(name, function)
 		}
-		for i, arg := range expr.Arguments {
+		argTypes := a.callArgumentTypesForFunction(function, sourceArgTypes, methodReceiver, isMethodCall)
+		for i := range argTypes {
+			if isMethodCall && methodFunctionUsesReceiver(function) && i == 0 {
+				continue
+			}
+			argIndex := i
+			if isMethodCall && methodFunctionUsesReceiver(function) {
+				argIndex = i - 1
+			}
+			arg := expr.Arguments[argIndex]
 			param := function.Parameters[i]
 			if !canInitialize(param.Type, argTypes[i], arg) {
-				a.addErrorAtToken(expressionToken(arg), "argument %d to %s must be %s, got %s", i+1, displayName, typeDisplayName(param.Type), typeDisplayName(argTypes[i]))
+				a.addErrorAtToken(expressionToken(arg), "argument %d to %s must be %s, got %s", argIndex+1, displayName, typeDisplayName(param.Type), typeDisplayName(argTypes[i]))
 			}
 		}
 		break
@@ -4102,7 +4787,82 @@ func (a *Analyzer) methodCallName(expr *ast.CallExpression) (string, bool) {
 	if objectType.Kind == InvalidType || objectType.Name == "" {
 		return "", false
 	}
+	objectType = dereferenceType(objectType)
 	return objectType.Name + "." + member.Property.Value, true
+}
+
+type methodReceiverInfo struct {
+	Type   Type
+	Symbol *Symbol
+}
+
+func (a *Analyzer) callArgumentTypesForFunction(function Function, sourceArgTypes []Type, receiver methodReceiverInfo, isMethodCall bool) []Type {
+	if !isMethodCall || !methodFunctionUsesReceiver(function) {
+		return sourceArgTypes
+	}
+	out := make([]Type, 0, len(sourceArgTypes)+1)
+	out = append(out, receiver.Type)
+	out = append(out, sourceArgTypes...)
+	return out
+}
+
+func methodFunctionUsesReceiver(function Function) bool {
+	return len(function.Parameters) > 0 && isSelfParameter(function.Parameters[0])
+}
+
+func (a *Analyzer) methodCallReceiver(expr *ast.CallExpression) (methodReceiverInfo, bool) {
+	member, ok := expr.Callee.(*ast.MemberExpression)
+	if !ok {
+		return methodReceiverInfo{}, false
+	}
+	if typeName, ok := typePathFromExpression(member.Object); ok {
+		if _, exists := a.types[a.resolveTypeName(typeName)]; exists {
+			return methodReceiverInfo{}, false
+		}
+	}
+	receiverType, _ := a.inferExpression(member.Object)
+	info := methodReceiverInfo{Type: receiverType}
+	if symbol, ok := a.symbolForMemberObject(member.Object); ok {
+		info.Symbol = &symbol
+	}
+	return info, receiverType.Kind != InvalidType
+}
+
+func (a *Analyzer) canPassMethodReceiver(param FunctionParameter, receiver methodReceiverInfo) bool {
+	if !isSelfParameter(param) {
+		return canInitialize(param.Type, receiver.Type, nil)
+	}
+	if !canInitialize(param.Type, receiver.Type, nil) {
+		return false
+	}
+	if param.MutableRef {
+		if receiver.Type.Kind == ReferenceType {
+			return receiver.Type.ReferenceMutable
+		}
+		if receiver.Symbol != nil {
+			return a.canWriteThroughSymbol(*receiver.Symbol)
+		}
+		return false
+	}
+	return true
+}
+
+func (a *Analyzer) methodReceiverError(methodName string, param FunctionParameter, receiver methodReceiverInfo) string {
+	displayName := visibilityBaseName(methodName)
+	if isSelfParameter(param) && param.MutableRef && receiver.Symbol != nil {
+		if receiver.Symbol.Addressed {
+			return fmt.Sprintf("method %s requires writable receiver storage", displayName)
+		}
+		return fmt.Sprintf("method %s requires mutable receiver", displayName)
+	}
+	return ""
+}
+
+func (a *Analyzer) canWriteThroughSymbol(symbol Symbol) bool {
+	if symbol.Type.Kind == ReferenceType {
+		return symbol.Type.ReferenceMutable
+	}
+	return symbol.Mutable
 }
 
 func (a *Analyzer) inferCallAsUnionVariantConstructor(expr *ast.CallExpression, expected *Type) (Type, expressionValue, bool) {
@@ -4239,6 +4999,15 @@ func splitUnionVariantTypeName(name string) (string, string, bool) {
 func (a *Analyzer) inferCallExpressionWithExpected(expr *ast.CallExpression, expected Type) (Type, expressionValue, bool) {
 	name := callExpressionName(expr)
 	functions, ok := a.functions[name]
+	if !ok || len(functions) == 0 {
+		if implName, implOK := a.implScopedFunctionName(name); implOK {
+			if implFunctions := a.functions[implName]; len(implFunctions) > 0 {
+				name = implName
+				functions = implFunctions
+				ok = true
+			}
+		}
+	}
 	if !ok || len(functions) == 0 {
 		return Type{}, expressionValue{}, false
 	}
@@ -4629,6 +5398,13 @@ func callExpressionName(expr *ast.CallExpression) string {
 		return expr.Function.Value
 	}
 	return ""
+}
+
+func (a *Analyzer) implScopedFunctionName(name string) (string, bool) {
+	if a.currentImplTarget == "" || name == "" || strings.Contains(name, ".") {
+		return "", false
+	}
+	return a.currentImplTarget + "." + name, true
 }
 
 func (a *Analyzer) inferRuntimeCallExpression(expr *ast.RuntimeCallExpression) (Type, expressionValue) {
@@ -5372,20 +6148,130 @@ func (a *Analyzer) inferInfixExpression(expr *ast.InfixExpression) (Type, expres
 		return Type{Name: "bool", Kind: BoolType}, expressionValue{Display: expr.String()}
 	}
 
+	if isBitwiseOperator(expr.Operator) {
+		if !isIntegerType(leftType) || !isIntegerType(rightType) {
+			a.addErrorAtToken(expr.Token, "operator %s requires integer operands", expr.Operator)
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
+		if expr.Operator == "<<" || expr.Operator == ">>" {
+			return leftType, expressionValue{Display: expr.String()}
+		}
+		if !sameConcreteType(leftType, rightType) {
+			a.addErrorAtToken(expr.Token, "cannot apply operator %s to %s and %s", expr.Operator, typeDisplayName(leftType), typeDisplayName(rightType))
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
+		return leftType, expressionValue{Display: expr.String()}
+	}
+
 	if leftType.Kind == DecimalType || rightType.Kind == DecimalType {
 		return a.inferDecimalInfixExpression(expr, leftType, rightType)
 	}
 
-	if leftType.Kind == rightType.Kind {
+	if isNumericType(leftType) && isNumericType(rightType) && (!leftType.Dimension.IsZero() || !rightType.Dimension.IsZero()) {
+		return a.inferNumericUnitInfixExpression(expr, leftType, rightType)
+	}
+
+	if isArithmeticOperator(expr.Operator) {
+		return a.inferPlainArithmeticExpression(expr, leftType, rightType)
+	}
+
+	return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+}
+
+func (a *Analyzer) inferPlainArithmeticExpression(expr *ast.InfixExpression, leftType Type, rightType Type) (Type, expressionValue) {
+	if expr.Operator == "+" && leftType.Kind == StringType && rightType.Kind == StringType {
 		return leftType, expressionValue{Display: expr.String()}
 	}
 
-	if leftType.Kind == UintType && rightType.Kind == IntType {
+	if !isNumericType(leftType) || !isNumericType(rightType) {
+		a.addErrorAtToken(expr.Token, "operator %s requires numeric operands", expr.Operator)
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+
+	if sameConcreteType(leftType, rightType) {
 		return leftType, expressionValue{Display: expr.String()}
 	}
 
-	if leftType.Kind == IntType && rightType.Kind == UintType {
+	if compatiblePlainNumericAlias(leftType, rightType) {
+		if leftType.Named {
+			return rightType, expressionValue{Display: expr.String()}
+		}
+		return leftType, expressionValue{Display: expr.String()}
+	}
+
+	if isNumericLiteral(expr.Right) && canInitialize(leftType, rightType, expr.Right) {
+		return leftType, expressionValue{Display: expr.String()}
+	}
+
+	if isNumericLiteral(expr.Left) && canInitialize(rightType, leftType, expr.Left) {
 		return rightType, expressionValue{Display: expr.String()}
+	}
+
+	a.addErrorAtToken(expr.Token, "cannot apply operator %s to %s and %s", expr.Operator, typeDisplayName(leftType), typeDisplayName(rightType))
+	return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+}
+
+func compatiblePlainNumericAlias(left Type, right Type) bool {
+	if !isNumericType(left) || !isNumericType(right) || left.Kind != right.Kind {
+		return false
+	}
+	if isNominal(left) || isNominal(right) {
+		return false
+	}
+	if !left.Named && !right.Named {
+		return false
+	}
+	leftBase := left.Underlying
+	if leftBase == "" {
+		leftBase = left.Name
+	}
+	rightBase := right.Underlying
+	if rightBase == "" {
+		rightBase = right.Name
+	}
+	return leftBase == rightBase
+}
+
+func (a *Analyzer) inferNumericUnitInfixExpression(expr *ast.InfixExpression, leftType Type, rightType Type) (Type, expressionValue) {
+	if isComparisonOperator(expr.Operator) {
+		if isEqualityOperator(expr.Operator) && !canCompareEquality(leftType, rightType) {
+			a.addErrorAtToken(expr.Token, "cannot compare %s and %s", typeDisplayName(leftType), typeDisplayName(rightType))
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
+		return Type{Name: "bool", Kind: BoolType}, expressionValue{Display: expr.String()}
+	}
+
+	switch expr.Operator {
+	case "+", "-":
+		if sameConcreteType(leftType, rightType) {
+			return leftType, expressionValue{Display: expr.String()}
+		}
+		if leftType.Dimension.Equal(rightType.Dimension) {
+			if isNominal(leftType) || isNominal(rightType) {
+				a.addErrorAtToken(expr.Token, "cannot %s %s to %s", infixVerb(expr.Operator), typeDisplayName(rightType), typeDisplayName(leftType))
+				return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+			}
+			return a.typeForDimension(DecimalType, leftType.Dimension), expressionValue{Display: expr.String()}
+		}
+		a.addErrorAtToken(expr.Token, "cannot %s %s to %s", infixVerb(expr.Operator), typeDisplayName(rightType), typeDisplayName(leftType))
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	case "*":
+		if leftType.Dimension.IsZero() {
+			return rightType, expressionValue{Display: expr.String()}
+		}
+		if rightType.Dimension.IsZero() {
+			return leftType, expressionValue{Display: expr.String()}
+		}
+		if leftType.Dimension.Equal(rightType.Dimension) && leftType.Dimension.HasCurrencyBase() {
+			a.addErrorAtToken(expr.Token, "cannot multiply %s by %s", typeDisplayName(leftType), typeDisplayName(rightType))
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
+		return a.typeForDimension(DecimalType, leftType.Dimension.Mul(rightType.Dimension)), expressionValue{Display: expr.String()}
+	case "/":
+		if rightType.Dimension.IsZero() {
+			return leftType, expressionValue{Display: expr.String()}
+		}
+		return a.typeForDimension(DecimalType, leftType.Dimension.Div(rightType.Dimension)), expressionValue{Display: expr.String()}
 	}
 
 	return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
@@ -5490,6 +6376,12 @@ func (a *Analyzer) inferDecimalInfixExpression(expr *ast.InfixExpression, leftTy
 	if leftType.Kind == DecimalType && (rightType.Kind == IntType || rightType.Kind == UintType) {
 		switch expr.Operator {
 		case "*", "/":
+			if !rightType.Dimension.IsZero() {
+				if expr.Operator == "*" {
+					return a.typeForDimension(DecimalType, leftType.Dimension.Mul(rightType.Dimension)), expressionValue{Display: expr.String()}
+				}
+				return a.typeForDimension(DecimalType, leftType.Dimension.Div(rightType.Dimension)), expressionValue{Display: expr.String()}
+			}
 			return leftType, expressionValue{Display: expr.String()}
 		}
 	}
@@ -5497,7 +6389,17 @@ func (a *Analyzer) inferDecimalInfixExpression(expr *ast.InfixExpression, leftTy
 	if (leftType.Kind == IntType || leftType.Kind == UintType) && rightType.Kind == DecimalType {
 		switch expr.Operator {
 		case "*":
+			if !leftType.Dimension.IsZero() {
+				return a.typeForDimension(DecimalType, leftType.Dimension.Mul(rightType.Dimension)), expressionValue{Display: expr.String()}
+			}
 			return rightType, expressionValue{Display: expr.String()}
+		case "/":
+			if !leftType.Dimension.IsZero() {
+				return a.typeForDimension(DecimalType, leftType.Dimension.Div(rightType.Dimension)), expressionValue{Display: expr.String()}
+			}
+			if !rightType.Dimension.IsZero() {
+				return a.typeForDimension(DecimalType, Dimension{}.Div(rightType.Dimension)), expressionValue{Display: expr.String()}
+			}
 		}
 	}
 
@@ -5513,6 +6415,16 @@ func (a *Analyzer) inferDecimalInfixExpression(expr *ast.InfixExpression, leftTy
 			return leftType, expressionValue{Display: expr.String()}
 		}
 		if leftType.Dimension.Equal(rightType.Dimension) {
+			if isNominal(leftType) || isNominal(rightType) {
+				a.addErrorAtToken(
+					expr.Token,
+					"cannot %s %s to %s",
+					infixVerb(expr.Operator),
+					typeDisplayName(rightType),
+					typeDisplayName(leftType),
+				)
+				return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+			}
 			return a.typeForDimension(DecimalType, leftType.Dimension), expressionValue{Display: expr.String()}
 		}
 		a.addErrorAtToken(
@@ -5544,6 +6456,9 @@ func (a *Analyzer) inferDecimalInfixExpression(expr *ast.InfixExpression, leftTy
 		}
 		return a.typeForDimension(DecimalType, leftType.Dimension.Mul(rightType.Dimension)), expressionValue{Display: expr.String()}
 	case "/":
+		if leftType.Dimension.IsZero() && rightType.Dimension.IsZero() {
+			return leftType, expressionValue{Display: expr.String()}
+		}
 		return a.typeForDimension(DecimalType, leftType.Dimension.Div(rightType.Dimension)), expressionValue{Display: expr.String()}
 	}
 
@@ -5570,6 +6485,12 @@ func (a *Analyzer) inferPrefixExpression(expr *ast.PrefixExpression) (Type, expr
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
 		return Type{Name: "bool", Kind: BoolType}, expressionValue{Display: expr.String()}
+	case "~":
+		if !isIntegerType(rightType) {
+			a.addErrorAtToken(expr.Token, "operator ~ requires integer operand")
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
+		return rightType, expressionValue{Display: expr.String()}
 	}
 
 	return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
@@ -5664,16 +6585,22 @@ func canInitialize(target Type, value Type, expr ast.Expression) bool {
 		return sameConcreteType(target, value)
 	}
 
-	if isNominal(target) && target.Name != value.Name {
-		return isUntypedNumericExpression(expr)
+	if (isNominal(target) || isNominal(value)) && target.Name != value.Name {
+		return canUntypedNumericInitializeNominal(target, value, expr)
 	}
 
 	if target.Kind == value.Kind {
+		if isNumericType(target) && isNumericType(value) {
+			if isNumericLiteral(expr) {
+				return true
+			}
+			return sameConcreteType(target, value)
+		}
 		return true
 	}
 
 	if target.Kind == UintType && value.Kind == IntType {
-		return true
+		return isNumericLiteral(expr)
 	}
 
 	if target.Kind == DecimalType && isNumericLiteral(expr) {
@@ -5686,6 +6613,24 @@ func canInitialize(target Type, value Type, expr ast.Expression) bool {
 	}
 
 	return false
+}
+
+func canUntypedNumericInitializeNominal(target Type, value Type, expr ast.Expression) bool {
+	if !isUntypedNumericExpression(expr) {
+		return false
+	}
+	switch target.Underlying {
+	case "int", "int8", "int16", "int32", "int64", "int128", "int256":
+		return value.Kind == IntType || value.Kind == UintType
+	case "uint", "uint8", "uint16", "uint32", "uint64", "uint128", "uint256":
+		return value.Kind == IntType || value.Kind == UintType
+	case "float", "float32", "float64":
+		return value.Kind == IntType || value.Kind == UintType || value.Kind == DecimalType || value.Kind == FloatType
+	case "decimal", "decimal128":
+		return value.Kind == IntType || value.Kind == UintType || value.Kind == DecimalType || value.Kind == FloatType
+	default:
+		return false
+	}
 }
 
 func canExplicitConvert(target Type, value Type) bool {
@@ -5702,6 +6647,10 @@ func canExplicitConvert(target Type, value Type) bool {
 	}
 
 	if isIntegerType(target) && value.Kind == EnumType {
+		return true
+	}
+
+	if target.Kind == RuneType && isIntegerType(value) {
 		return true
 	}
 
@@ -5851,6 +6800,32 @@ func isLogicalOperator(operator string) bool {
 	return operator == "&&" || operator == "||"
 }
 
+func isArithmeticOperator(operator string) bool {
+	switch operator {
+	case "+", "-", "*", "/", "%":
+		return true
+	default:
+		return false
+	}
+}
+
+func isBitwiseOperator(operator string) bool {
+	switch operator {
+	case "&", "|", "^", "<<", ">>":
+		return true
+	default:
+		return false
+	}
+}
+
+func validCharLiteral(lexeme string) bool {
+	value, err := strconv.Unquote(lexeme)
+	if err != nil {
+		return false
+	}
+	return utf8.RuneCountInString(value) == 1
+}
+
 func isUntypedNumericExpression(expr ast.Expression) bool {
 	if isNumericLiteral(expr) {
 		return true
@@ -5997,6 +6972,8 @@ func expressionToken(expr ast.Expression) lexer.Token {
 	case *ast.FloatLiteral:
 		return expr.Token
 	case *ast.StringLiteral:
+		return expr.Token
+	case *ast.CharLiteral:
 		return expr.Token
 	case *ast.BooleanLiteral:
 		return expr.Token

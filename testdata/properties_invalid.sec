@@ -1,0 +1,385 @@
+module properties
+
+// Every case in this file is intentionally invalid.
+// Semantic cases appear before malformed parser-recovery cases.
+
+type Speed int
+type Money decimal
+
+type PropertyError enum {
+    InvalidValue
+}
+
+// =============================================================================
+// Unknown property type
+// =============================================================================
+
+type UnknownTypeTarget struct {
+}
+
+impl UnknownTypeTarget {
+    // ERROR: The declared property type does not exist.
+    property Value: MissingPropertyType {
+        get {
+            return 0
+        }
+    }
+}
+
+// =============================================================================
+// Duplicate property names
+// =============================================================================
+
+type DuplicatePropertyTarget struct {
+}
+
+impl DuplicatePropertyTarget {
+    property Value: int {
+        get {
+            return 1
+        }
+    }
+
+    // ERROR: Property names must be unique on the impl target.
+    property Value: int {
+        get {
+            return 2
+        }
+    }
+}
+
+// =============================================================================
+// Member-name conflicts
+// =============================================================================
+
+type FieldPropertyConflict struct {
+    Value: int,
+}
+
+impl FieldPropertyConflict {
+    // ERROR: A property may not redefine an existing field name.
+    property Value: int {
+        get {
+            return 0
+        }
+    }
+}
+
+type MethodPropertyConflict struct {
+}
+
+impl MethodPropertyConflict {
+    fn Reset() void {
+    }
+
+    // ERROR: A property may not use the same member name as a method.
+    property Reset: int {
+        get {
+            return 0
+        }
+    }
+}
+
+// =============================================================================
+// Getter validation
+// =============================================================================
+
+type GetterTypeMismatch struct {
+    _money: Money,
+}
+
+impl GetterTypeMismatch {
+    // ERROR: Money is not assignable to Speed.
+    property CurrentSpeed: Speed {
+        get {
+            return _money
+        }
+    }
+}
+
+type GetterConstructorMismatch struct {
+}
+
+impl GetterConstructorMismatch {
+    // ERROR: Constructor resolution produces Money, not Speed.
+    property CurrentSpeed: Speed {
+        get {
+            return Money(5.90)
+        }
+    }
+}
+
+type MissingGetterReturn struct {
+}
+
+impl MissingGetterReturn {
+    // ERROR: A getter must return the declared property type.
+    property Value: int {
+        get {
+        }
+    }
+}
+
+// =============================================================================
+// Setter validation
+// =============================================================================
+
+type SetterTypeMismatch struct {
+    _speed: Speed,
+}
+
+impl SetterTypeMismatch {
+    // ERROR: The setter parameter has type Money and cannot be assigned to Speed.
+    property Price: Money {
+        set value {
+            _speed = value
+        }
+    }
+}
+
+type InfallibleSetterReturnsError struct {
+    _speed: Speed,
+}
+
+impl InfallibleSetterReturnsError {
+    // ERROR: A normal setter may not return Err(...).
+    property CurrentSpeed: Speed {
+        set value {
+            return Err(PropertyError.InvalidValue)
+        }
+    }
+}
+
+// =============================================================================
+// Invalid property reads and writes
+// =============================================================================
+
+type ReadOnlyTarget struct {
+    _value: int,
+}
+
+impl ReadOnlyTarget {
+    property Value: int {
+        get {
+            return _value
+        }
+    }
+}
+
+fn AssignReadOnlyProperty(target: ref mut ReadOnlyTarget) void {
+    // ERROR: The property has no setter.
+    target.Value = 10
+}
+
+type WriteOnlyTarget struct {
+    _value: int,
+}
+
+impl WriteOnlyTarget {
+    property Value: int {
+        set value {
+            _value = value
+        }
+    }
+}
+
+fn ReadWriteOnlyProperty(target: ref WriteOnlyTarget) int {
+    // ERROR: The property has no getter.
+    return target.Value
+}
+
+type InfallibleAssignmentMismatch struct {
+    _speed: Speed,
+}
+
+impl InfallibleAssignmentMismatch {
+    property Value: Speed {
+        get {
+            return _speed
+        }
+
+        set value {
+            _speed = value
+        }
+    }
+}
+
+fn AssignWrongType(
+    target: ref mut InfallibleAssignmentMismatch,
+    money: Money,
+) void {
+    // ERROR: Money is not assignable to Speed.
+    target.Value = money
+}
+
+type FallibleAssignmentTarget struct {
+    _speed: Speed,
+}
+
+impl FallibleAssignmentTarget {
+    property Value: Speed {
+        get {
+            return _speed
+        }
+
+        try set value {
+            if value < 0 {
+                return Err(PropertyError.InvalidValue)
+            }
+
+            _speed = value
+            return Ok()
+        }
+    }
+}
+
+fn AssignFalliblePropertyWithoutTry(
+    target: ref mut FallibleAssignmentTarget,
+    speed: Speed,
+) void {
+    // ERROR: Assignment to a fallible property requires try.
+    target.Value = speed
+}
+
+fn AssignWrongTypeWithTry(
+    target: ref mut FallibleAssignmentTarget,
+    money: Money,
+) Result[void, PropertyError] {
+    // ERROR: try does not make Money assignable to Speed.
+    try target.Value = money
+    return Ok()
+}
+
+// =============================================================================
+// Parser recovery: malformed property declarations
+// =============================================================================
+
+type MissingPropertyNameTarget struct {
+}
+
+impl MissingPropertyNameTarget {
+    // ERROR: Property declaration is missing its name.
+    property {
+    }
+}
+
+type MissingPropertyColonTarget struct {
+}
+
+impl MissingPropertyColonTarget {
+    // ERROR: Expected ':' after the property name.
+    property Value int {
+        get {
+            return 0
+        }
+    }
+}
+
+type MissingPropertyTypeTarget struct {
+}
+
+impl MissingPropertyTypeTarget {
+    // ERROR: Property type is missing after ':'.
+    property Value: {
+    }
+}
+
+type MissingSetterParameterTarget struct {
+}
+
+impl MissingSetterParameterTarget {
+    // ERROR: The setter must declare a value parameter.
+    property Value: int {
+        set {
+        }
+    }
+}
+
+type EmptyPropertyTarget struct {
+}
+
+impl EmptyPropertyTarget {
+    // ERROR: A property must declare get, set or try set.
+    property Value: int {
+    }
+}
+
+type DuplicateGetterTarget struct {
+}
+
+impl DuplicateGetterTarget {
+    property Value: int {
+        get {
+            return 1
+        }
+
+        // ERROR: A property may contain only one getter.
+        get {
+            return 2
+        }
+    }
+}
+
+type DuplicateSetterTarget struct {
+    _value: int,
+}
+
+impl DuplicateSetterTarget {
+    property Value: int {
+        set value {
+            _value = value
+        }
+
+        // ERROR: A property may contain only one setter.
+        set replacement {
+            _value = replacement
+        }
+    }
+}
+
+type MixedSetterModesTarget struct {
+    _value: int,
+}
+
+impl MixedSetterModesTarget {
+    property Value: int {
+        set value {
+            _value = value
+        }
+
+        // ERROR: set and try set are mutually exclusive.
+        try set replacement {
+            _value = replacement
+            return Ok()
+        }
+    }
+}
+
+type StoredMemberInsidePropertyTarget struct {
+}
+
+impl StoredMemberInsidePropertyTarget {
+    property Value: int {
+        // ERROR: A property body may not declare stored fields.
+        Stored: int
+    }
+}
+
+type DeclarationInsidePropertyTarget struct {
+}
+
+impl DeclarationInsidePropertyTarget {
+    property Value: int {
+        // ERROR: Arbitrary declarations are not property accessors.
+        fn Helper() int {
+            return 0
+        }
+    }
+}
+
+// ERROR: Properties are only valid inside ordinary impl blocks.
+property TopLevelProperty: int {
+    get {
+        return 0
+    }
+}

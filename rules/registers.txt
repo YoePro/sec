@@ -496,6 +496,112 @@ let motorStatus: MotorStatus
 makes that particular storage binding volatile.
 
 =====================================================================
+Impl Blocks on Register Types
+=============================
+
+Register types may have ordinary impl blocks.
+
+Example:
+
+```
+type Status register[32] {
+    Ready: bit
+    Error: bit
+    _: bit[30]
+}
+
+impl Status {
+    fn IsReady(ref self) bool {
+        return self.Ready
+    }
+
+    fn ClearError(ref mut self) void {
+        self.Error = false
+    }
+}
+```
+
+An impl block adds behavior to the type. It does not add memory to the
+register layout.
+
+The register layout remains exactly the declared bit width.
+
+The following must not be introduced by an impl block:
+
+```
+method table
+vtable
+metadata pointer
+hidden storage field
+heap object header
+```
+
+The compiler must keep these concepts separate:
+
+```
+register type
+    fixed bit layout
+
+addressed register instance
+    storage binding, possible @address, volatility and mutability
+
+impl members
+    functions and properties in the compiler namespace
+```
+
+For example, a 32-bit register with methods is still a 32-bit register.
+
+Methods are ordinary callable behavior in the compiler's symbol model.
+They are not stored inside the register value and do not affect
+`sizeof`, alignment, bit offsets or field placement.
+
+Methods may access register fields through `self`.
+
+Rules:
+
+```
+ref self
+    may read fields
+
+ref mut self
+    may write fields when the receiver storage is writable
+
+static method
+    has no self and may not access instance fields through self
+```
+
+When the receiver is an addressed register instance, method field access
+must preserve the addressed storage semantics:
+
+```
+reads are volatile
+writes are volatile
+read-only addressed storage cannot be written
+reserved bits are preserved during field updates
+```
+
+When the receiver is a non-addressed register value, method field access
+uses ordinary value semantics and is not implicitly volatile.
+
+This means the following two uses are semantically different:
+
+```
+@address(0x40021000)
+let mut hardwareStatus: Status
+
+let mut snapshot: Status
+```
+
+Calling a method on `hardwareStatus` may lower to volatile hardware
+accesses.
+
+Calling the same method on `snapshot` operates on an ordinary register
+value.
+
+The impl block belongs to the type in both cases, but volatility belongs
+to the addressed storage binding.
+
+=====================================================================
 Initialization
 ==============
 
@@ -761,6 +867,8 @@ unit annotations are checked against known units
 @address bindings are marked volatile in semantic analysis
 writing a field on read-only addressed storage is rejected
 constant assignments to register fields are checked against field width
+impl blocks are accepted for register types
+impl methods/properties do not affect register bit layout
 ```
 
 Not implemented yet:
@@ -768,6 +876,7 @@ Not implemented yet:
 ```
 MLIR lowering for volatile loads/stores
 mask/shift generation
+lowering impl method field access on addressed registers to volatile operations
 read-modify-write preservation of reserved bits
 target-specific address validation
 overlapping address diagnostics

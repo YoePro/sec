@@ -1,14 +1,401 @@
-Types and explicit conversions
-==============================
+Types, Variables and Decimal
+============================
 
-Boolean numeric conversion
-==========================
+This file is the canonical rules document for:
+
+- variable declarations
+- type identity
+- explicit conversions
+- decimal values
+
+It replaces the older split documents:
+
+- `variables.txt`
+- `type_decimal.txt`
+- the previous short `types.txt`
+
+
+Implementation status
+---------------------
+
+Implemented:
+
+- immutable-by-default variables
+- `let` declarations with inferred or explicit type
+- comma-separated `let` declarations
+- type-first variable declarations
+- mutable typed declarations without initializers
+- rejection of immutable typed declarations without initializers
+- redeclaration checks without overwriting the previous symbol
+- named range types
+- named unit types
+- explicit conversions through `Type(value)`
+- explicit numeric-to-bool conversion
+- decimal literals as exact decimal values in sema
+- `int128`, `int256`, `uint128` and `uint256` as active builtin types in lexer,
+  parser, AST and semantic analysis
+- `decimal128` as an active builtin type in lexer, parser, AST and semantic
+  analysis
+- decimal representation in LLVM as `{ i64, i8 }`
+- decimal literal emission in LLVM
+- explicit `decimal(int)` conversion in LLVM
+- decimal function return values in LLVM
+
+Partially implemented:
+
+- decimal arithmetic is type-checked in sema, including unit algebra.
+- decimal arithmetic in LLVM is recognized but not lowered yet.
+- runtime contract checks for non-constant conversions are not generated yet.
+- 128-bit and 256-bit integer families are not lowered to LLVM yet.
+- `decimal128` is not lowered to LLVM yet.
+
+Not implemented yet:
+
+- decimal runtime helpers:
+
+    _sec_decimal_add
+    _sec_decimal_sub
+    _sec_decimal_mul
+    _sec_decimal_div
+
+- decimal overflow checks in runtime helpers.
+- decimal division precision policy in runtime helpers.
+- decimal comparison lowering in LLVM.
+- runtime contract failure path for decimal overflow, division by zero or
+  precision exhaustion.
+- full formatter support for all declaration forms.
+
+
+1. Variable declarations
+------------------------
+
+Variables are immutable by default.
+
+Supported `let` forms:
+
+```sec
+let a := 9
+let mut a := 9
+let a: int := 9
+let mut a: int
+let mut a: Type
+```
+
+Comma-separated `let` declarations are supported:
+
+```sec
+let a := 9, b := "hello", c := true
+let mut a := 9, b := "hello", c := false
+```
+
+Each declarator is checked independently.
+
+For inferred declarations, each variable gets the type of its own initializer.
+
+Example:
+
+```sec
+let a := 9, b := "hello", c := true
+```
+
+This declares:
+
+```sec
+a: int
+b: string
+c: bool
+```
+
+
+2. Type-first variable declarations
+-----------------------------------
+
+Type-first mutable declarations may omit initializers:
+
+```sec
+int mut: a, b, c
+```
+
+This declares three mutable `int` variables.
+
+Type-first immutable declarations must have initializers:
+
+```sec
+float: a := 5.4, pi := 3.14
+```
+
+This is rejected:
+
+```sec
+int: a, b, c
+```
+
+Expected diagnostic shape:
+
+```text
+immutable typed declaration requires initializer for "a"
+```
+
+Reason:
+
+An immutable declaration without an initializer is a useless unassigned
+constant. Sec does not create implicit zero constants.
+
+
+3. Declaration grammar
+----------------------
+
+Grammar sketch:
+
+```text
+LetDeclaration
+    := "let" ["mut"] LetDeclarator { "," LetDeclarator }
+
+TypedDeclaration
+    := TypeReference ["mut"] ":" TypedDeclarator { "," TypedDeclarator }
+
+LetDeclarator
+    := Identifier [ ":" TypeReference ] [ ":=" Expression ]
+
+TypedDeclarator
+    := Identifier [ ":=" Expression ]
+```
+
+Rules:
+
+- each declarator creates one symbol.
+- redeclaration is checked per name.
+- redeclaration must not overwrite the previous symbol.
+- immutable declarations must have an initializer.
+- typed mutable declarations may omit an initializer.
+- `let mut a: Type` is valid.
+- `let a: Type` without initializer is invalid.
+- explicit type applies to all declarators in a type-first statement.
+- `let` declarations infer type per declarator when no explicit type exists.
+
+
+4. Named type identity
+----------------------
+
+A user-defined type is distinct from its underlying type.
+
+Example:
+
+```sec
+type Percent int range 0..100
+type Age int range 0..130
+```
+
+`Percent`, `Age` and `int` are different types.
+
+Invalid:
+
+```sec
+let age: Age := 20
+let percent: Percent := age
+```
+
+Reason:
+
+Variables already have a type. They are never implicitly converted into another
+named type.
+
+
+5. Builtin numeric types
+------------------------
+
+Sec has signed integers, unsigned integers, floating-point numbers and decimal.
+
+Implemented integer types:
+
+```text
+int
+int8
+int16
+int32
+int64
+int128
+int256
+
+uint
+uint8
+uint16
+uint32
+uint64
+uint128
+uint256
+byte
+```
+
+`int128`, `int256`, `uint128` and `uint256` are active in lexer, parser, AST and
+semantic analysis. Compile-time integer range metadata uses arbitrary precision
+so boundary literals and overflow checks work for these widths.
+
+LLVM lowering for 128-bit and 256-bit integer operations is not part of the
+current implementation step.
+
+Floating-point types:
+
+```text
+float
+float32
+float64
+```
+
+Exact decimal type:
+
+```text
+decimal
+decimal128
+```
+
+`decimal128` is active in lexer, parser, AST and semantic analysis as a distinct
+concrete decimal type. Numeric literals may initialize it directly, and explicit
+conversions such as `decimal128(value)` are accepted when the source is numeric.
+
+LLVM lowering for `decimal128` is not implemented yet.
+
+
+6. Untyped literals
+-------------------
+
+Numeric literals are untyped until context gives them a type.
+
+Literal suffixes may be used when the source should explicitly state the
+numeric family:
+
+```text
+8i    int literal
+8u    uint literal
+8f    float literal
+8d    decimal literal
+```
+
+The suffix selects the numeric family, not a fixed width. Width is still chosen
+by context or by explicit conversion/type annotation:
+
+```sec
+let a := 8i          // int
+let b := 8u          // uint
+let c := 8f          // float
+let d := 8d          // decimal
+
+let small: int8 := 8i
+let wide: int128 := 8i
+let exact: decimal128 := 8d
+```
+
+Base prefixes are supported for integer literals:
+
+```text
+0b1000    binary
+0o10      octal
+0x8       hexadecimal
+```
+
+Valid:
+
+```sec
+let i: int := 3
+let u: uint := 3
+let f: float64 := 3.14
+let d: decimal := 3.14
+let p: Percent := 90
+```
+
+Invalid:
+
+```sec
+let p: Percent := 101
+let p: Percent := -1
+```
+
+The literal is checked against the target type before assignment.
+
+This context shaping applies to declaration initialization. It does not mean
+that variables are implicitly converted later.
+
+
+7. Assignment
+-------------
+
+Assignment requires the assigned value to match the target variable type.
+
+Valid:
+
+```sec
+let mut p: Percent := 10
+p = Percent(20)
+```
+
+Invalid:
+
+```sec
+let mut p: Percent := 10
+p = 20
+```
+
+Rationale:
+
+Declaration context may shape an untyped literal, but later assignment should
+preserve strict type identity. Use an explicit conversion when assigning into a
+named type.
+
+
+8. Explicit conversions
+-----------------------
+
+Conversion syntax:
+
+```sec
+TargetType(value)
+```
+
+Examples:
+
+```sec
+let x := 90
+let p: Percent := Percent(x)
+let d: decimal := decimal(5)
+let b: bool := bool(x)
+```
+
+If a conversion into a constrained type is compile-time known, sema checks the
+contract at compile time.
+
+If a conversion into a constrained type is not compile-time known, it must later
+generate a runtime contract check.
+
+Implicit conversion is not allowed.
+
+Invalid:
+
+```sec
+let value: bool := true
+let number: int := 1
+
+if value == number {
+}
+```
+
+Valid:
+
+```sec
+if value == bool(number) {
+}
+```
+
+
+9. Boolean numeric conversion
+-----------------------------
 
 Explicit conversion from numeric values to bool is allowed.
 
 Syntax:
 
-    bool(value)
+```sec
+bool(value)
+```
 
 Rules:
 
@@ -16,30 +403,254 @@ Rules:
 - `bool(uint)` is valid.
 - `bool(float)` is valid.
 - `bool(decimal)` is valid.
-- All integer subtypes are valid.
-- All unsigned integer subtypes are valid.
-- All floating-point subtypes are valid.
-- Decimal is valid.
-- The conversion result is:
-  - `false` when the numeric value is zero,
-  - `true` otherwise.
+- integer subtypes are valid.
+- unsigned integer subtypes are valid.
+- floating-point subtypes are valid.
+- decimal is valid.
+
+When implemented, this includes:
+
+```text
+int128
+int256
+uint128
+uint256
+```
+
+The conversion result is:
+
+- `false` when the numeric value is zero.
+- `true` otherwise.
 
 Examples:
 
-    bool(0)      // false
-    bool(1)      // true
-    bool(-1)     // true
-    bool(0.0)    // false
-    bool(0.1)    // true
+```sec
+bool(0)      // false
+bool(1)      // true
+bool(-1)     // true
+bool(0.0)    // false
+bool(0.1)    // true
+```
 
-This is an explicit conversion only. Numeric values are still not implicitly
-accepted as boolean conditions.
+This is explicit conversion only. Numeric values are still not accepted as
+boolean conditions.
 
 Invalid:
 
-    if 1 {
-    }
+```sec
+if 1 {
+}
+```
 
 Expected:
 
-    if condition must be bool, got int
+```text
+if condition must be bool, got int
+```
+
+
+10. Decimal model
+----------------
+
+`decimal` is Sec's exact base-10 numeric type.
+
+It is represented conceptually as:
+
+```go
+type DecimalValue struct {
+    Int64 int64
+    Scale uint8
+}
+```
+
+Examples:
+
+```text
+123.45  => Int64: 12345, Scale: 2
+100     => Int64: 100,   Scale: 0
+.1      => Int64: 1,     Scale: 1
+```
+
+Decimal literals must be interpreted from their source lexeme, not by first
+converting through binary floating point.
+
+This avoids errors such as:
+
+```text
+0.1 + 0.2 = 0.30000000000000004
+```
+
+
+11. Decimal inference
+---------------------
+
+Untyped decimal literals infer as `decimal` by default:
+
+```sec
+let x := 3.14
+```
+
+`x` has type `decimal`.
+
+Float must be requested explicitly:
+
+```sec
+let f: float64 := 3.14
+```
+
+Numeric literals are still context-shaped:
+
+```sec
+let f: float64 := 3.14
+let d: decimal := 3.14
+let i: int := 3
+```
+
+But runtime values are not implicitly converted:
+
+```sec
+let f: float64 := 3.14
+let d: decimal := f       // error
+let e: decimal := decimal(f)
+```
+
+Current rule:
+
+- decimal literals may initialize decimal targets.
+- integer literals may initialize decimal targets.
+- float variables do not implicitly initialize decimal targets.
+- explicit conversion is required for runtime float-to-decimal conversion.
+
+
+12. Decimal arithmetic
+----------------------
+
+Semantic analysis type-checks decimal arithmetic.
+
+Addition and subtraction require compatible numeric types and, when units are
+present, compatible dimensions.
+
+Multiplication and division participate in unit algebra.
+
+Examples:
+
+```sec
+type Meter decimal<m>
+type Second decimal<s>
+type Speed decimal<m/s>
+
+fn Calculate(distance: Meter, time: Second) Speed {
+    return distance / time
+}
+```
+
+When an expected named unit type exists and the derived dimension matches, sema
+may use the expected named type.
+
+For the full unit rules, see:
+
+```text
+rules/units.txt
+```
+
+
+13. Decimal LLVM representation
+-------------------------------
+
+Current compiler decision:
+
+```llvm
+%sec.decimal = type { i64, i8 }
+```
+
+Field layout:
+
+- field 0: signed integer value
+- field 1: base-10 scale
+
+Examples:
+
+```sec
+let d: decimal := 3.14
+```
+
+is emitted as an aggregate equivalent to:
+
+```llvm
+{ i64 314, i8 2 }
+```
+
+Implemented in LLVM code generation:
+
+- decimal type declaration
+- decimal literal emission
+- integer literal to decimal when target type is decimal
+- `decimal(5)` as explicit integer-to-decimal conversion
+- decimal return values
+
+Not implemented in LLVM code generation:
+
+- decimal arithmetic
+- decimal comparison
+- decimal runtime helper calls
+- overflow checks
+- precision/runtime contract failure paths
+
+
+14. Decimal runtime helper strategy
+-----------------------------------
+
+Decimal arithmetic should be lowered to runtime helper calls rather than
+duplicating branch-heavy LLVM IR at every operator site.
+
+Planned helpers:
+
+```text
+_sec_decimal_add
+_sec_decimal_sub
+_sec_decimal_mul
+_sec_decimal_div
+```
+
+Addition and subtraction:
+
+- align operands to the same scale.
+- perform checked signed integer arithmetic.
+- result scale is the aligned scale.
+
+Multiplication:
+
+- multiply integer values with overflow checking.
+- result scale is `left.Scale + right.Scale`.
+
+Division:
+
+- reject division by zero.
+- apply an explicit or default precision policy.
+- scale numerator before integer division.
+- normalize trailing zeroes when appropriate.
+
+Overflow handling:
+
+- runtime helpers must use checked arithmetic.
+- LLVM implementations should use overflow intrinsics such as:
+
+```llvm
+@llvm.sadd.with.overflow.i64
+@llvm.smul.with.overflow.i64
+```
+
+On overflow, division by zero or precision exhaustion, the runtime helper must
+enter the Sec runtime contract failure path.
+
+
+15. Related documents
+---------------------
+
+Use these files for adjacent rules:
+
+- `rules/units.txt` for unit algebra and unit metadata.
+- `rules/variables_contracts.txt` for variable contracts such as range, regex,
+  minLen and maxLen.
+- `rules/ownership.txt`, `rules/references.txt` and `rules/borrowing.txt` for
+  ownership and reference behavior.

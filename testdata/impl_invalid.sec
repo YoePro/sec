@@ -1,0 +1,277 @@
+module impl
+
+// Every section below is independently invalid. The declarations are kept
+// syntactically complete where possible so semantic analysis can continue and
+// report the remaining impl errors.
+
+// -----------------------------------------------------------------------------
+// Unknown impl target
+// -----------------------------------------------------------------------------
+
+impl MissingTarget {
+}
+
+// -----------------------------------------------------------------------------
+// An interface is not an ordinary impl target
+// -----------------------------------------------------------------------------
+
+interface InterfaceTarget {
+    fn Execute(ref self) void
+}
+
+impl InterfaceTarget {
+}
+
+// -----------------------------------------------------------------------------
+// Only one ordinary impl block is allowed for a type
+// -----------------------------------------------------------------------------
+
+type DuplicateImplTarget struct {
+}
+
+impl DuplicateImplTarget {
+}
+
+impl DuplicateImplTarget {
+}
+
+// -----------------------------------------------------------------------------
+// Generic impl target must match the declared generic type
+// -----------------------------------------------------------------------------
+
+type Pair[T, U] struct {
+    first: T,
+    second: U,
+}
+
+// Wrong generic arity.
+impl Pair[T] {
+}
+
+type Specialized[T] struct {
+    value: T,
+}
+
+// A concrete specialization is not the ordinary generic impl declaration.
+impl Specialized[int] {
+}
+
+type NonGeneric struct {
+}
+
+// Generic parameters cannot be added to a non-generic target.
+impl NonGeneric[T] {
+}
+
+// -----------------------------------------------------------------------------
+// Stored fields are not allowed inside impl
+// -----------------------------------------------------------------------------
+
+type AddedFieldTarget struct {
+}
+
+impl AddedFieldTarget {
+    addedField: int
+}
+
+// -----------------------------------------------------------------------------
+// Variable declarations are not allowed directly inside impl
+// -----------------------------------------------------------------------------
+
+type VariableTarget struct {
+}
+
+impl VariableTarget {
+    let localValue := 1
+}
+
+// -----------------------------------------------------------------------------
+// Free-standing executable statements are not allowed inside impl
+// -----------------------------------------------------------------------------
+
+type StatementTarget struct {
+}
+
+impl StatementTarget {
+    localValue = 1
+}
+
+// -----------------------------------------------------------------------------
+// Nested struct declarations must use "type Name struct"
+// -----------------------------------------------------------------------------
+
+type RawStructTarget struct {
+}
+
+impl RawStructTarget {
+    struct Inner {
+        value: int,
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Duplicate nested declaration names
+// -----------------------------------------------------------------------------
+
+type DuplicateNestedTarget struct {
+}
+
+impl DuplicateNestedTarget {
+    type Item int
+    type Item string
+}
+
+// The nested namespace is shared by different nested type forms.
+type DuplicateNestedKindTarget struct {
+}
+
+impl DuplicateNestedKindTarget {
+    type State int
+
+    enum State {
+        Ready
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Nested declarations do not leak into the module namespace
+// -----------------------------------------------------------------------------
+
+type NamespaceOwner struct {
+}
+
+impl NamespaceOwner {
+    type Hidden int
+}
+
+// Hidden must be written as NamespaceOwner.Hidden outside the owning impl.
+fn UseUnqualifiedNested(value: Hidden) Hidden {
+    return value
+}
+
+// A short nested name is not available inside a different impl target.
+type DifferentOwner struct {
+}
+
+impl DifferentOwner {
+    fn UseForeignNested(value: Hidden) Hidden {
+        return value
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Duplicate behavioral members
+// -----------------------------------------------------------------------------
+
+type DuplicateMethodTarget struct {
+}
+
+impl DuplicateMethodTarget {
+    fn Run() void {
+    }
+
+    fn Run() void {
+    }
+}
+
+type DuplicatePropertyTarget struct {
+}
+
+impl DuplicatePropertyTarget {
+    property Value: int {
+        get {
+            return 1
+        }
+    }
+
+    property Value: int {
+        get {
+            return 2
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Conflicts with fields and other impl members
+// -----------------------------------------------------------------------------
+
+type FieldPropertyConflict struct {
+    Value: int,
+}
+
+impl FieldPropertyConflict {
+    property Value: int {
+        get {
+            return 0
+        }
+    }
+}
+
+type FieldMethodConflict struct {
+    Execute: int,
+}
+
+impl FieldMethodConflict {
+    fn Execute() void {
+    }
+}
+
+type MethodPropertyConflict struct {
+}
+
+impl MethodPropertyConflict {
+    fn Count() int {
+        return 1
+    }
+
+    property Count: int {
+        get {
+            return 1
+        }
+    }
+}
+
+type NestedMethodConflict struct {
+}
+
+impl NestedMethodConflict {
+    type Build int
+
+    fn Build() int {
+        return 0
+    }
+}
+
+// -----------------------------------------------------------------------------
+// self is unavailable in a static method
+// -----------------------------------------------------------------------------
+
+type StaticSelfTarget struct {
+    Value: int,
+}
+
+impl StaticSelfTarget {
+    fn InvalidStaticAccess() int {
+        return self.Value
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Separate "impl Interface for Type" syntax is not used by current interface
+// rules. Interfaces are listed in the type declaration and satisfied by the
+// type's ordinary impl block.
+//
+// Keep this parser-level rejection last so it cannot prevent later diagnostics.
+// -----------------------------------------------------------------------------
+
+interface Runnable {
+    fn Run(ref self) void
+}
+
+type Runner struct {
+}
+
+impl Runnable for Runner {
+    fn Run(ref self) void {
+    }
+}

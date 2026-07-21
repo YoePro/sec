@@ -48,6 +48,8 @@ type Type struct {
 	MaxInt                 *int64
 	MinUint                *uint64
 	MaxUint                *uint64
+	MinInteger             *big.Int
+	MaxInteger             *big.Int
 	Contracts              []Contract
 	EnumValues             []string
 	EnumConsts             map[string]EnumValue
@@ -62,6 +64,9 @@ type Type struct {
 	RegisterWidth          int64
 	RegisterFields         []RegisterField
 	Properties             []Property
+	Implements             []Type
+	InterfaceMethods       []Function
+	InterfaceProperties    []InterfaceProperty
 }
 
 type EnumValue struct {
@@ -98,11 +103,21 @@ type StructTag struct {
 }
 
 type Property struct {
-	Name     string
-	Type     Type
-	Token    lexer.Token
-	Fallible bool
-	Error    *Type
+	Name      string
+	Type      Type
+	Token     lexer.Token
+	Fallible  bool
+	Error     *Type
+	HasGetter bool
+	HasSetter bool
+}
+
+type InterfaceProperty struct {
+	Name        string
+	Type        Type
+	Token       lexer.Token
+	RequiresGet bool
+	RequiresSet bool
 }
 
 type UnitCategory string
@@ -116,6 +131,7 @@ type UnitDefinition struct {
 	Name      string
 	Category  UnitCategory
 	Dimension Dimension
+	System    string
 	Token     lexer.Token
 }
 
@@ -131,10 +147,11 @@ type Function struct {
 }
 
 type FunctionParameter struct {
-	Name  string
-	Type  Type
-	Token lexer.Token
-	Ref   bool
+	Name       string
+	Type       Type
+	Token      lexer.Token
+	Ref        bool
+	MutableRef bool
 }
 
 type Dimension struct {
@@ -235,6 +252,10 @@ func builtinTypes() map[string]Type {
 		"RawPtr":  {Name: "RawPtr", Kind: RawPtrType, GenericParameters: []string{"T"}},
 		"Result":  {Name: "Result", Kind: ResultType, GenericParameters: []string{"T", "E"}},
 		"decimal": {Name: "decimal", Kind: DecimalType},
+		"decimal128": {
+			Name: "decimal128",
+			Kind: DecimalType,
+		},
 		"float":   {Name: "float", Kind: FloatType},
 		"float32": {Name: "float32", Kind: FloatType},
 		"float64": {Name: "float64", Kind: FloatType},
@@ -243,12 +264,16 @@ func builtinTypes() map[string]Type {
 		"int16":   signedType("int16", -1<<15, 1<<15-1),
 		"int32":   signedType("int32", -1<<31, 1<<31-1),
 		"int64":   signedType("int64", -1<<63, 1<<63-1),
+		"int128":  signedBigType("int128", "-170141183460469231731687303715884105728", "170141183460469231731687303715884105727"),
+		"int256":  signedBigType("int256", "-57896044618658097711785492504343953926634992332820282019728792003956564819968", "57896044618658097711785492504343953926634992332820282019728792003956564819967"),
 		"string":  {Name: "string", Kind: StringType},
 		"uint":    unsignedType("uint", ^uint64(0)),
 		"uint8":   unsignedType("uint8", 1<<8-1),
 		"uint16":  unsignedType("uint16", 1<<16-1),
 		"uint32":  unsignedType("uint32", 1<<32-1),
 		"uint64":  unsignedType("uint64", ^uint64(0)),
+		"uint128": unsignedBigType("uint128", "340282366920938463463374607431768211455"),
+		"uint256": unsignedBigType("uint256", "115792089237316195423570985008687907853269984665640564039457584007913129639935"),
 		"void":    {Name: "void", Kind: VoidType},
 	}
 
@@ -256,10 +281,50 @@ func builtinTypes() map[string]Type {
 }
 
 func signedType(name string, min, max int64) Type {
-	return Type{Name: name, Kind: IntType, MinInt: &min, MaxInt: &max}
+	return Type{
+		Name:       name,
+		Kind:       IntType,
+		MinInt:     &min,
+		MaxInt:     &max,
+		MinInteger: big.NewInt(min),
+		MaxInteger: big.NewInt(max),
+	}
 }
 
 func unsignedType(name string, max uint64) Type {
 	var min uint64
-	return Type{Name: name, Kind: UintType, MinUint: &min, MaxUint: &max}
+	return Type{
+		Name:       name,
+		Kind:       UintType,
+		MinUint:    &min,
+		MaxUint:    &max,
+		MinInteger: new(big.Int).SetUint64(min),
+		MaxInteger: new(big.Int).SetUint64(max),
+	}
+}
+
+func signedBigType(name string, min string, max string) Type {
+	return Type{
+		Name:       name,
+		Kind:       IntType,
+		MinInteger: mustBigInt(min),
+		MaxInteger: mustBigInt(max),
+	}
+}
+
+func unsignedBigType(name string, max string) Type {
+	return Type{
+		Name:       name,
+		Kind:       UintType,
+		MinInteger: big.NewInt(0),
+		MaxInteger: mustBigInt(max),
+	}
+}
+
+func mustBigInt(value string) *big.Int {
+	out, ok := new(big.Int).SetString(value, 10)
+	if !ok {
+		panic("invalid builtin integer bound: " + value)
+	}
+	return out
 }

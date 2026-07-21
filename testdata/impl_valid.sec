@@ -1,0 +1,224 @@
+module impl
+
+// -----------------------------------------------------------------------------
+// Shared named types
+// -----------------------------------------------------------------------------
+
+type Speed int
+type Counter int
+
+// -----------------------------------------------------------------------------
+// Empty ordinary impl block
+// -----------------------------------------------------------------------------
+
+type EmptyTarget struct {
+}
+
+impl EmptyTarget {
+}
+
+// -----------------------------------------------------------------------------
+// Struct target
+//
+// This also verifies that nested declarations are registered before the outer
+// type is fully resolved. Vehicle refers to nested types declared later in its
+// impl block.
+// -----------------------------------------------------------------------------
+
+type Vehicle struct {
+    speed: Speed,
+    engine: Vehicle.Engine,
+    state: Vehicle.State,
+}
+
+impl Vehicle {
+    // Nested named type.
+    type Identifier uint64
+
+    // Nested struct type. Nested data shapes use a type declaration.
+    type Engine struct {
+        power: int,
+    }
+
+    // Nested union type.
+    type Payload union {
+        int
+        string
+    }
+
+    // Nested enum declaration.
+    enum State {
+        Stopped
+        Running
+        Failed
+    }
+
+    // Nested unit declaration.
+    unit Tick decimal
+
+    // Read/write property.
+    property CurrentSpeed: Speed {
+        get {
+            return speed
+        }
+
+        set value {
+            speed = value
+        }
+    }
+
+    // Property lookup must support forward references.
+    property InitialCode: int {
+        get {
+            return DefaultCode
+        }
+    }
+
+    property DefaultCode: int {
+        get {
+            return 0
+        }
+    }
+
+    // Static method.
+    fn CreateIdentifier(value: uint64) Identifier {
+        return Identifier(value)
+    }
+
+    // Shared receiver.
+    fn Inspect(ref self) void {
+    }
+
+    // Mutable receiver.
+    fn Reset(ref mut self) void {
+    }
+
+    // A method may use short nested type names inside the matching impl.
+    fn KeepEngine(engine: Engine) Engine {
+        return engine
+    }
+
+    // The fully qualified nested type name is also valid inside the impl.
+    fn KeepQualifiedEngine(engine: Vehicle.Engine) Vehicle.Engine {
+        return engine
+    }
+
+    fn KeepPayload(payload: Payload) Payload {
+        return payload
+    }
+
+    // Method signatures are registered before bodies are analyzed.
+    fn ForwardValue() int {
+        return LaterValue()
+    }
+
+    fn LaterValue() int {
+        return 42
+    }
+}
+
+// Nested declarations must be qualified outside the owning impl block.
+fn KeepVehicleIdentifier(value: Vehicle.Identifier) Vehicle.Identifier {
+    return value
+}
+
+fn KeepVehicleEngine(value: Vehicle.Engine) Vehicle.Engine {
+    return value
+}
+
+fn KeepVehiclePayload(value: Vehicle.Payload) Vehicle.Payload {
+    return value
+}
+
+fn KeepVehicleState(value: Vehicle.State) Vehicle.State {
+    return value
+}
+
+// -----------------------------------------------------------------------------
+// Enum target
+// -----------------------------------------------------------------------------
+
+type Operation enum {
+    Add
+    Subtract
+}
+
+impl Operation {
+    fn VariantCount() int {
+        return 2
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Union target
+// -----------------------------------------------------------------------------
+
+type Scalar union {
+    int
+    decimal
+}
+
+impl Scalar {
+    fn VariantCount() int {
+        return 2
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Register target
+// -----------------------------------------------------------------------------
+
+type StatusRegister register[8] {
+    Ready: bit
+    Error: bit
+    _: bit[6]
+}
+
+impl StatusRegister {
+    fn Width() int {
+        return 8
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Named scalar target
+// -----------------------------------------------------------------------------
+
+impl Counter {
+    fn Zero() Counter {
+        return Counter(0)
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Generic target
+//
+// The impl target uses the same generic parameter list as the declaration.
+// Generic parameters are available to fields, properties, methods and nested
+// declarations inside the impl block.
+// -----------------------------------------------------------------------------
+
+type Box[T] struct {
+    value: T,
+}
+
+impl Box[T] {
+    type Pair struct {
+        first: T,
+        second: T,
+    }
+
+    property Value: T {
+        get {
+            return value
+        }
+    }
+
+    fn Identity(value: T) T {
+        return value
+    }
+
+    fn KeepPair(pair: Pair) Pair {
+        return pair
+    }
+}

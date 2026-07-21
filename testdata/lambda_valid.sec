@@ -1,0 +1,437 @@
+module lambdas
+
+// Every declaration and use in this file is expected to pass semantic analysis.
+// The file covers function types, non-capturing lambdas, function values,
+// higher-order functions and explicit non-escaping value captures.
+
+type LambdaError enum {
+    InvalidValue
+    MissingValue
+}
+
+// =============================================================================
+// Named functions used as values and callbacks
+// =============================================================================
+
+fn Increment(value: int) int {
+    return value + 1
+}
+
+fn Double(value: int) int {
+    return value * 2
+}
+
+fn IsPositive(value: int) bool {
+    return value > 0
+}
+
+fn IdentityString(value: string) string {
+    return value
+}
+
+fn Convert(value: int) string {
+    return "int"
+}
+
+fn Convert(value: string) int {
+    return 1
+}
+
+fn Apply(value: int, operation: fn(int) int) int {
+    return operation(value)
+}
+
+fn ApplyTwice(value: int, operation: fn(int) int) int {
+    return operation(operation(value))
+}
+
+fn Combine(
+    left: int,
+    right: int,
+    operation: fn(int, int) int,
+) int {
+    return operation(left, right)
+}
+
+fn TestPredicate(value: int, predicate: fn(int) bool) bool {
+    return predicate(value)
+}
+
+fn Invoke(operation: fn(int) int) int {
+    return operation(10)
+}
+
+fn Invoke(operation: fn(string) string) string {
+    return operation("value")
+}
+
+// =============================================================================
+// Basic non-capturing lambdas
+// =============================================================================
+
+fn TestBasicLambda() int {
+    let double := fn(value: int) int {
+        return value * 2
+    }
+
+    return double(10)
+}
+
+fn TestTypedLambdaVariable() bool {
+    let predicate: fn(int) bool := fn(value: int) bool {
+        return value > 0
+    }
+
+    return predicate(10)
+}
+
+fn TestZeroParameterLambda() bool {
+    let ready := fn() bool {
+        return true
+    }
+
+    return ready()
+}
+
+fn TestMultipleParameterLambda() int {
+    let add := fn(a: int, b: int) int {
+        return a + b
+    }
+
+    return add(10, 20)
+}
+
+fn TestTrailingCommaLambda() bool {
+    let compare := fn(
+        left: int,
+        right: int,
+    ) bool {
+        return left < right
+    }
+
+    return compare(1, 2)
+}
+
+fn TestVoidLambda(message: string) void {
+    let notify := fn(value: string) void {
+        IdentityString(value)
+        return
+    }
+
+    notify(message)
+    return
+}
+
+fn TestLambdaLocalScope(value: int) int {
+    let operation := fn(input: int) int {
+        let doubled: int := input * 2
+        let adjusted: int := doubled + 1
+        return adjusted
+    }
+
+    return operation(value)
+}
+
+// =============================================================================
+// Function type assignment and reassignment
+// =============================================================================
+
+fn TestFunctionTypeIdentity() int {
+    let operation: fn(int, int) int := fn(left: int, right: int) int {
+        return left + right
+    }
+
+    return operation(3, 4)
+}
+
+fn TestMutableFunctionBinding() int {
+    let mut operation: fn(int) int := fn(value: int) int {
+        return value
+    }
+
+    operation = fn(value: int) int {
+        return value * 3
+    }
+
+    return operation(5)
+}
+
+fn TestCopyableNonCapturingValue() int {
+    let first: fn(int) int := Increment
+    let second: fn(int) int := first
+    return second(5)
+}
+
+// =============================================================================
+// Named functions as values
+// =============================================================================
+
+fn TestNamedFunctionValue() bool {
+    let predicate: fn(int) bool := IsPositive
+    return predicate(10)
+}
+
+fn TestOverloadedNamedFunctionValue() string {
+    let converter: fn(int) string := Convert
+    return converter(10)
+}
+
+fn TestOtherOverloadedNamedFunctionValue() int {
+    let converter: fn(string) int := Convert
+    return converter("10")
+}
+
+// =============================================================================
+// Lambda arguments and overload selection
+// =============================================================================
+
+fn TestInlineLambdaArgument() int {
+    return Apply(
+        10,
+        fn(value: int) int {
+            return value * 2
+        },
+    )
+}
+
+fn TestNestedHigherOrderCall() int {
+    return ApplyTwice(
+        2,
+        fn(value: int) int {
+            return value + 3
+        },
+    )
+}
+
+fn TestBinaryCallback() int {
+    return Combine(
+        10,
+        20,
+        fn(left: int, right: int) int {
+            return left + right
+        },
+    )
+}
+
+fn TestLambdaSelectsIntOverload() int {
+    return Invoke(
+        fn(value: int) int {
+            return value * 2
+        },
+    )
+}
+
+fn TestLambdaSelectsStringOverload() string {
+    return Invoke(
+        fn(value: string) string {
+            return value
+        },
+    )
+}
+
+// =============================================================================
+// Functions returning non-capturing lambdas
+// =============================================================================
+
+fn SelectOperation(add: bool) fn(int, int) int {
+    if add {
+        return fn(left: int, right: int) int {
+            return left + right
+        }
+    }
+
+    return fn(left: int, right: int) int {
+        return left - right
+    }
+}
+
+fn GetIncrementer() fn(int) int {
+    return fn(value: int) int {
+        return value + 1
+    }
+}
+
+fn TestReturnedLambda() int {
+    let operation: fn(int, int) int := SelectOperation(true)
+    return operation(8, 3)
+}
+
+fn TestImmediateReturnedLambdaCall() int {
+    return GetIncrementer()(10)
+}
+
+// =============================================================================
+// Explicit immutable value captures
+// =============================================================================
+
+fn TestSingleCapture(factor: int) int {
+    let multiply := capture(factor) fn(value: int) int {
+        return value * factor
+    }
+
+    return multiply(10)
+}
+
+fn TestMultipleCaptures(minimum: int, maximum: int, value: int) bool {
+    let inside := capture(
+        minimum,
+        maximum,
+    ) fn(candidate: int) bool {
+        return candidate >= minimum && candidate <= maximum
+    }
+
+    return inside(value)
+}
+
+fn TestEmptyCapture(value: int) int {
+    let identity := capture() fn(input: int) int {
+        return input
+    }
+
+    return identity(value)
+}
+
+fn TestCaptureMutableOuterByValue() int {
+    let mut factor: int := 2
+
+    let multiply := capture(factor) fn(value: int) int {
+        return value * factor
+    }
+
+    factor = 4
+    return multiply(10)
+}
+
+fn TestCaptureTiming() int {
+    let mut value: int := 1
+
+    let first := capture(value) fn() int {
+        return value
+    }
+
+    value = 2
+
+    let second := capture(value) fn() int {
+        return value
+    }
+
+    return first() + second()
+}
+
+fn TestCaptureInsideLoop() int {
+    let mut result: int := 0
+
+    for value in 1..3 {
+        let current := capture(value) fn() int {
+            return value
+        }
+
+        result += current()
+    }
+
+    return result
+}
+
+fn TestNestedNonEscapingCapture(base: int) int {
+    let outer := capture(base) fn(value: int) int {
+        let offset: int := 1
+
+        let inner := capture(value, offset) fn(next: int) int {
+            return next + value + offset
+        }
+
+        return inner(base)
+    }
+
+    return outer(2)
+}
+
+// =============================================================================
+// Lambda function boundary behavior
+// =============================================================================
+
+fn TestInnerReturn() int {
+    let operation := fn(value: int) int {
+        if value > 0 {
+            return value
+        }
+
+        return 0
+    }
+
+    return operation(10)
+}
+
+fn TestLoopInsideLambda(limit: int) int {
+    let operation := fn(maximum: int) int {
+        let mut total: int := 0
+
+        for value in 1..maximum {
+            if value == 2 {
+                continue
+            }
+
+            total += value
+
+            if total > 10 {
+                break
+            }
+        }
+
+        return total
+    }
+
+    return operation(limit)
+}
+
+// =============================================================================
+// Result and try inside lambdas
+// =============================================================================
+
+fn ParseLambdaValue(value: int) Result[int, LambdaError] {
+    if value < 0 {
+        return Err(LambdaError.InvalidValue)
+    }
+
+    return Ok(value)
+}
+
+fn TestResultLambda(value: int) Result[int, LambdaError] {
+    let operation := fn(input: int) Result[int, LambdaError] {
+        let parsed: int := try ParseLambdaValue(input)
+        return Ok(parsed + 1)
+    }
+
+    let result: int := try operation(value)
+    return Ok(result)
+}
+
+fn TestTryInsideOk(value: int) Result[int, LambdaError] {
+    let operation := fn(input: int) Result[int, LambdaError] {
+        return Ok(try ParseLambdaValue(input))
+    }
+
+    let result: int := try operation(value)
+    return Ok(result)
+}
+
+// =============================================================================
+// Broad integration entry point
+// =============================================================================
+
+fn RunLambdaTests(value: int) Result[int, LambdaError] {
+    TestVoidLambda("done")
+
+    let basic: int := TestBasicLambda()
+    let inlineValue: int := TestInlineLambdaArgument()
+    let returned: int := TestImmediateReturnedLambdaCall()
+    let captured: int := TestSingleCapture(3)
+    let nested: int := TestNestedNonEscapingCapture(4)
+    let parsed: int := try TestResultLambda(value)
+
+    if TestTypedLambdaVariable() && TestMultipleCaptures(0, 100, parsed) {
+        return Ok(basic + inlineValue + returned + captured + nested + parsed)
+    }
+
+    return Err(LambdaError.InvalidValue)
+}

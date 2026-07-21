@@ -1,0 +1,411 @@
+module lambdas
+
+// Every marked construct in this file is expected to produce a parser or
+// semantic diagnostic. Malformed syntax is kept at the end for recovery.
+
+type LambdaError enum {
+    InvalidValue
+    MissingValue
+}
+
+fn Increment(value: int) int {
+    return value + 1
+}
+
+fn Convert(value: int) string {
+    return "int"
+}
+
+fn Convert(value: string) int {
+    return 1
+}
+
+fn AcceptOperation(operation: fn(int) int) int {
+    return operation(10)
+}
+
+fn ProduceResult(value: int) Result[int, LambdaError] {
+    return Ok(value)
+}
+
+// =============================================================================
+// Lambda parameter and return validation
+// =============================================================================
+
+fn DuplicateLambdaParameter() void {
+    let operation := fn(value: int, value: int) int {
+        return value
+    }
+}
+
+fn UnknownLambdaParameterType() void {
+    let operation := fn(value: MissingParameterType) int {
+        return 0
+    }
+}
+
+fn UnknownLambdaReturnType() void {
+    let operation := fn() MissingReturnType {
+        return 0
+    }
+}
+
+fn LambdaMissingReturn() void {
+    let operation := fn() int {
+    }
+}
+
+fn LambdaMissingReturnOnPath() void {
+    let operation := fn(value: int) int {
+        if value > 0 {
+            return value
+        }
+    }
+}
+
+fn LambdaWrongReturnType() void {
+    let operation := fn() int {
+        return true
+    }
+}
+
+fn LambdaBareReturnFromValue() void {
+    let operation := fn() string {
+        return
+    }
+}
+
+fn LambdaValueReturnFromVoid() void {
+    let operation := fn() void {
+        return 10
+    }
+}
+
+fn AssignLambdaParameter() void {
+    let operation := fn(value: int) int {
+        value = 10
+        return value
+    }
+}
+
+// =============================================================================
+// Function type compatibility
+// =============================================================================
+
+fn WrongLambdaParameterTypeAssignment() void {
+    let predicate: fn(int) bool := fn(value: string) bool {
+        return value != ""
+    }
+}
+
+fn WrongLambdaReturnTypeAssignment() void {
+    let predicate: fn(int) bool := fn(value: int) int {
+        return value
+    }
+}
+
+fn WrongLambdaArityAssignment() void {
+    let operation: fn(int) int := fn(left: int, right: int) int {
+        return left + right
+    }
+}
+
+fn WrongNamedFunctionValueType() void {
+    let operation: fn(string) string := Increment
+}
+
+fn AmbiguousNamedFunctionValue() void {
+    let converter := Convert
+}
+
+fn IncompatibleReturnedLambda() fn(int) int {
+    return fn(value: string) int {
+        return 0
+    }
+}
+
+fn WrongLambdaArgumentType() int {
+    return AcceptOperation(
+        fn(value: string) int {
+            return 0
+        },
+    )
+}
+
+// =============================================================================
+// Function-value call validation
+// =============================================================================
+
+fn FunctionValueTooFewArguments() int {
+    let operation := fn(left: int, right: int) int {
+        return left + right
+    }
+
+    return operation(1)
+}
+
+fn FunctionValueTooManyArguments() int {
+    let operation := fn(value: int) int {
+        return value
+    }
+
+    return operation(1, 2)
+}
+
+fn FunctionValueWrongArgumentType() int {
+    let operation := fn(value: int) int {
+        return value
+    }
+
+    return operation("one")
+}
+
+fn VoidFunctionValueUsedAsValue() int {
+    let operation := fn() void {
+        return
+    }
+
+    let value: int := operation()
+    return value
+}
+
+fn ReassignImmutableFunctionBinding() int {
+    let operation: fn(int) int := Increment
+
+    operation = fn(value: int) int {
+        return value * 2
+    }
+
+    return operation(10)
+}
+
+fn ReassignMutableFunctionBindingWrongType() void {
+    let mut operation: fn(int) int := Increment
+
+    operation = fn(value: string) int {
+        return 0
+    }
+}
+
+// =============================================================================
+// Explicit capture validation
+// =============================================================================
+
+fn ImplicitCapture(factor: int) int {
+    let operation := fn(value: int) int {
+        return value * factor
+    }
+
+    return operation(10)
+}
+
+fn UndefinedCapture() void {
+    let operation := capture(missing) fn() void {
+        return
+    }
+}
+
+fn DuplicateCapture(factor: int) int {
+    let operation := capture(factor, factor) fn(value: int) int {
+        return value * factor
+    }
+
+    return operation(10)
+}
+
+fn CaptureParameterConflict(value: int) int {
+    let operation := capture(value) fn(value: int) int {
+        return value
+    }
+
+    return operation(10)
+}
+
+fn CaptureLocalConflict(factor: int) int {
+    let operation := capture(factor) fn(value: int) int {
+        let factor: int := 10
+        return value * factor
+    }
+
+    return operation(10)
+}
+
+fn MutateCapturedValue() void {
+    let mut factor: int := 2
+
+    let operation := capture(factor) fn() void {
+        factor = 4
+    }
+
+    operation()
+}
+
+fn ImplicitLoopVariableCapture() int {
+    let mut result: int := 0
+
+    for value in 1..3 {
+        let operation := fn() int {
+            return value
+        }
+
+        result += operation()
+    }
+
+    return result
+}
+
+// =============================================================================
+// Function values have no semantic comparison
+// =============================================================================
+
+fn CompareFunctionValuesForEquality() bool {
+    let first: fn(int) int := Increment
+    let second: fn(int) int := Increment
+    return first == second
+}
+
+fn OrderFunctionValues() bool {
+    let first: fn(int) int := Increment
+    let second: fn(int) int := Increment
+    return first < second
+}
+
+// =============================================================================
+// Lambda recursion and function boundaries
+// =============================================================================
+
+fn RecursiveLambda() int {
+    let factorial := fn(value: int) int {
+        if value <= 1 {
+            return 1
+        }
+
+        return value * factorial(value - 1)
+    }
+
+    return factorial(5)
+}
+
+fn BreakAcrossLambdaBoundary() void {
+    for value in 1..3 {
+        let operation := fn() void {
+            break
+        }
+
+        operation()
+    }
+}
+
+fn ContinueAcrossLambdaBoundary() void {
+    for value in 1..3 {
+        let operation := fn() void {
+            continue
+        }
+
+        operation()
+    }
+}
+
+fn TryCannotPropagateThroughEnclosingFunction(value: int) void {
+    let operation := fn(input: int) int {
+        return try ProduceResult(input)
+    }
+
+    operation(value)
+}
+
+// =============================================================================
+// Parser and explicitly postponed syntax
+//
+// These cases are intentionally last because malformed lambda syntax may
+// require recovery at the next function declaration.
+// =============================================================================
+
+fn MissingLambdaParameterType() void {
+    let operation: fn(int) int := fn(value) int {
+        return value
+    }
+}
+
+fn MissingLambdaReturnType() void {
+    let operation := fn(value: int) {
+        return value
+    }
+}
+
+fn ArrowExpressionBody() void {
+    let operation := fn(value: int) int => value * 2
+}
+
+fn ArrowOnlyLambda() void {
+    let operation := value => value * 2
+}
+
+fn GenericLambda() void {
+    let operation := fn[T](value: T) T {
+        return value
+    }
+}
+
+fn ReferenceCapture(value: int) int {
+    let operation := capture(ref value) fn() int {
+        return value
+    }
+
+    return operation()
+}
+
+fn MutableReferenceCapture(value: int) void {
+    let operation := capture(mut ref value) fn() void {
+        value += 1
+    }
+
+    operation()
+}
+
+fn MutableCapture(value: int) int {
+    let operation := capture(mut value) fn() int {
+        value += 1
+        return value
+    }
+
+    return operation()
+}
+
+fn CaptureExpression(value: int) int {
+    let operation := capture(value + 1) fn() int {
+        return value
+    }
+
+    return operation()
+}
+
+fn CaptureWithoutLambda(value: int) void {
+    let operation := capture(value)
+}
+
+fn CaptureAfterFn(value: int) int {
+    let operation := fn capture(value)(input: int) int {
+        return input + value
+    }
+
+    return operation(1)
+}
+
+fn DuplicateCaptureClause(first: int, second: int) int {
+    let operation := capture(first) capture(second) fn() int {
+        return first + second
+    }
+
+    return operation()
+}
+
+fn NamedFunctionInExpressionPosition() void {
+    let operation := fn Named(value: int) int {
+        return value
+    }
+}
+
+fn MissingLambdaBody() void {
+    let operation := fn(value: int) int
+}

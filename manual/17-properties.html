@@ -1,0 +1,668 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Properties - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+</head>
+<body>
+<header class="site-header">
+    <div class="header-inner">
+        <a href="index.html" class="site-logo">
+            <img src="logo.svg" alt="Sec" />
+            <span class="site-title">Sec Manual</span>
+        </a>
+        <nav class="header-nav">
+            <a href="01-introduction.html">Introduction</a>
+            <a href="https://github.com/YoePro/sec">GitHub</a>
+        </nav>
+    </div>
+</header>
+
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+
+        <div class="sidebar-section">Properties</div>
+        <a href="#17-properties">Overview</a>
+        <a href="#syntax">Syntax</a>
+        <a href="#placement">Placement</a>
+        <a href="#identity">Property Identity</a>
+        <a href="#getters">Getters</a>
+        <a href="#setters">Setters</a>
+        <a href="#fallible-setters">Fallible Setters</a>
+        <a href="#assignment">Assignment</a>
+        <a href="#compound-assignment">Compound Assignment</a>
+        <a href="#body-access">Access in Property Bodies</a>
+        <a href="#contracts">Relationship to Contracts</a>
+        <a href="#error-handling">Error Handling</a>
+        <a href="#lowering">Runtime and Lowering</a>
+        <a href="#common-errors">Common Errors</a>
+        <a href="#summary">Summary of Rules</a>
+
+        <div class="sidebar-section">Pages</div>
+        <a href="01-introduction.html">Introduction</a>
+        <a href="02-basic-syntax.html">Basic Syntax</a>
+        <a href="03-types.html">Types</a>
+        <a href="04-named-types-contracts-and-units.html">Named Types, Contracts &amp; Units</a>
+        <a href="05-structs-properties-and-impl.html">Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html">Functions</a>
+        <a href="07-if.html">If Statements</a>
+        <a href="08-switch.html">Switch Statements</a>
+        <a href="09-match.html">Match Expressions</a>
+        <a href="10-enums.html">Enums</a>
+        <a href="11-unions.html">Unions</a>
+        <a href="12-registers.html">Registers</a>
+        <a href="13-units.html">Units</a>
+        <a href="14-generics.html">Generics</a>
+        <a href="15-structs.html">Structs</a>
+        <a href="16-impl.html">Impl Blocks</a>
+        <a href="17-properties.html" class="active">Properties</a>
+        <a href="18-interfaces.html">Interfaces</a>
+        <a href="19-arrays.html">Arrays</a>
+        <a href="20-slices.html">Slices</a>
+        <a href="21-indexing.html">Indexing</a>
+        <a href="22-constants.html">Constants</a>
+        <a href="23-references.html">References</a>
+        <a href="24-ownership.html">Ownership</a>
+        <a href="25-borrowing.html">Borrowing</a>
+        <a href="26-unsafe.html">Unsafe</a>
+        <a href="27-spread.html">Spread</a>
+        <a href="30-modules.html">Modules and Imports</a>
+        <a href="31-projects.html">Projects and sec.module</a>
+        <a href="32-visibility.html">Visibility</a>
+        <a href="33-result-and-option.html">Result and Option</a>
+        <a href="34-try.html">Error Handling</a>
+        <a href="35-defer.html">Deferred Cleanup</a>
+        <a href="36-attributes.html">Attributes</a>
+        <a href="37-build-directives.html">Build Directives</a>
+        <a href="38-ffi.html">Foreign Function Interfaces</a>
+        <a href="39-tasks.html">Tasks</a>
+        <a href="40-spawn.html">Spawning Work</a>
+        <a href="41-await.html">Awaiting Tasks</a>
+        <a href="42-channels.html">Channels and Coordination</a>
+        <a href="43-testing.html">Tests and Benchmarks</a>
+        <a href="44-formatting.html">Formatting</a>
+        <a href="45-diagnostics.html">Understanding Compiler Diagnostics</a>
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Properties</div>
+
+        <h1 id="17-properties">Properties</h1>
+
+        <p>
+            A property defines controlled behavior for reading or assigning a
+            member-like value on a type.
+        </p>
+
+        <p>
+            Fields store data. Properties define behavior. Properties therefore
+            belong inside an <code>impl</code> block.
+        </p>
+
+        <pre><code>type Vehicle struct {
+    _speed: Speed,
+}
+
+impl Vehicle {
+    property TopSpeed: Speed {
+        get {
+            return _speed
+        }
+
+        try set value {
+            _speed = value
+            return Ok()
+        }
+    }
+}</code></pre>
+
+        <div class="rule">
+            <strong>Rule:</strong> A field stores a value. A property controls how a value is read or assigned.
+        </div>
+
+        <section id="syntax">
+            <h2>Syntax</h2>
+
+            <p>A property declares a name, a type and one or more accessors:</p>
+
+            <pre><code>property Name: Type {
+    get {
+        return value
+    }
+
+    set value {
+        target = value
+    }
+}</code></pre>
+
+            <p>A fallible setter uses <code>try set</code>:</p>
+
+            <pre><code>property Name: Type {
+    try set value {
+        if invalid {
+            return Err(Error.InvalidValue)
+        }
+
+        target = value
+        return Ok()
+    }
+}</code></pre>
+
+            <p>A property may contain:</p>
+
+            <ul>
+                <li>one getter</li>
+                <li>one infallible setter</li>
+                <li>one fallible setter</li>
+            </ul>
+
+            <p>A property must contain at least one accessor.</p>
+
+            <p><code>set</code> and <code>try set</code> are mutually exclusive.</p>
+        </section>
+
+        <section id="placement">
+            <h2>Placement</h2>
+
+            <p>Properties are valid only inside ordinary impl blocks:</p>
+
+            <pre><code>impl Vehicle {
+    property TopSpeed: Speed {
+        get {
+            return _speed
+        }
+    }
+}</code></pre>
+
+            <p>The property becomes a member of the impl target type:</p>
+
+            <pre><code>let current := vehicle.TopSpeed</code></pre>
+
+            <p>
+                Parsing keeps this as ordinary member access. Semantic analysis
+                determines whether the member is a field, property, register field,
+                enum value or another supported member form.
+            </p>
+
+            <div class="rule">
+                <strong>Invalid:</strong> Properties cannot be declared at module level or inside structs.
+            </div>
+        </section>
+
+        <section id="identity">
+            <h2>Property Identity</h2>
+
+            <p>A property has:</p>
+
+            <ul>
+                <li>a name</li>
+                <li>a declared type</li>
+                <li>an optional getter</li>
+                <li>an optional setter</li>
+                <li>a fallible-setter flag</li>
+                <li>an error type when the setter is fallible</li>
+                <li>a source location</li>
+            </ul>
+
+            <p>Property names must be unique for the target type.</p>
+
+            <pre><code>impl Vehicle {
+    property TopSpeed: Speed {
+        get {
+            return _speed
+        }
+    }
+
+    property TopSpeed: Speed {
+        get {
+            return _speed
+        }
+    }
+}</code></pre>
+
+            <p>This is invalid.</p>
+
+            <pre><code>duplicate property "TopSpeed" in impl Vehicle</code></pre>
+        </section>
+
+        <section id="getters">
+            <h2>Getters</h2>
+
+            <p>A getter produces the value returned by reading the property.</p>
+
+            <pre><code>property CurrentSpeed: Speed {
+    get {
+        return _speed
+    }
+}</code></pre>
+
+            <p>The returned value must be assignable to the property type.</p>
+
+            <pre><code>property BadGet: Speed {
+    get {
+        return Money(5.90)
+    }
+}</code></pre>
+
+            <p>This is invalid:</p>
+
+            <pre><code>getter BadGet must return Speed, got Money</code></pre>
+
+            <p>Constructor-style conversion is resolved before checking the return type:</p>
+
+            <pre><code>Money(5.90)</code></pre>
+
+            <p>has type <code>Money</code>, not plain <code>decimal</code>.</p>
+
+            <p>A getter must return on every continuing path.</p>
+
+            <pre><code>property MissingGet: Speed {
+    get {
+    }
+}</code></pre>
+
+            <p>This is invalid:</p>
+
+            <pre><code>getter MissingGet must return Speed</code></pre>
+        </section>
+
+        <section id="setters">
+            <h2>Setters</h2>
+
+            <p>A setter defines the behavior of assigning to the property.</p>
+
+            <pre><code>property CurrentSpeed: Speed {
+    set value {
+        _speed = value
+    }
+}</code></pre>
+
+            <p>The setter must declare a value parameter.</p>
+
+            <pre><code>property CurrentSpeed: Speed {
+    set {
+        _speed = value
+    }
+}</code></pre>
+
+            <p>This is invalid:</p>
+
+            <pre><code>setter for CurrentSpeed must declare value parameter</code></pre>
+
+            <p>The setter value parameter has the declared property type.</p>
+
+            <pre><code>property CurrentSpeed: Speed {
+    set value {
+        _speed = value
+    }
+}</code></pre>
+
+            <p>Here, <code>value</code> has type <code>Speed</code>.</p>
+
+            <p>An infallible setter must not return an error:</p>
+
+            <pre><code>property CurrentSpeed: Speed {
+    set value {
+        return Err(InvalidSpeed)
+    }
+}</code></pre>
+
+            <p>This is invalid:</p>
+
+            <pre><code>non-fallible setter CurrentSpeed cannot return Err</code></pre>
+        </section>
+
+        <section id="fallible-setters">
+            <h2>Fallible Setters</h2>
+
+            <p>A fallible setter uses <code>try set</code>.</p>
+
+            <pre><code>property TopSpeed: Speed {
+    try set value {
+        if value &lt; Speed(0) {
+            return Err(InvalidSpeed)
+        }
+
+        _speed = value
+        return Ok()
+    }
+}</code></pre>
+
+            <p>
+                A fallible setter behaves like a hidden fallible operation behind
+                assignment syntax.
+            </p>
+
+            <p>Assignment therefore requires <code>try</code>:</p>
+
+            <pre><code>try car.TopSpeed = currentSpeed {
+    Err(error) =&gt; fmt.Println("could not set top speed")
+}</code></pre>
+
+            <p>Ordinary assignment is invalid:</p>
+
+            <pre><code>car.TopSpeed = currentSpeed</code></pre>
+
+            <pre><code>assigning fallible property TopSpeed requires try</code></pre>
+
+            <p>The success path is implicit. An <code>Ok</code> handler is not required.</p>
+        </section>
+
+        <section id="assignment">
+            <h2>Assignment</h2>
+
+            <p>An infallible property uses ordinary assignment:</p>
+
+            <pre><code>car.CurrentSpeed = speed</code></pre>
+
+            <p>The assigned value must be assignable to the property type.</p>
+
+            <pre><code>car.CurrentSpeed = Money(10)</code></pre>
+
+            <p>This is invalid when <code>CurrentSpeed</code> has type <code>Speed</code>.</p>
+
+            <p>A fallible property uses try assignment:</p>
+
+            <pre><code>try car.TopSpeed = speed {
+    Err(error) =&gt; Handle(error)
+}</code></pre>
+
+            <p>The right-hand expression is evaluated before the setter runs.</p>
+
+            <p>
+                The backend must preserve evaluation order, setter side effects and
+                error behavior.
+            </p>
+        </section>
+
+        <section id="compound-assignment">
+            <h2>Compound Assignment</h2>
+
+            <p>Compound assignment applies the corresponding operation and then invokes the setter.</p>
+
+            <pre><code>car.CurrentSpeed += delta</code></pre>
+
+            <p>Conceptually:</p>
+
+            <pre><code>car.CurrentSpeed = car.CurrentSpeed + delta</code></pre>
+
+            <p>A fallible property still requires <code>try</code>:</p>
+
+            <pre><code>try car.TopSpeed += delta {
+    Err(error) =&gt; Handle(error)
+}</code></pre>
+
+            <p>The getter and setter must be evaluated in the correct order.</p>
+
+            <div class="rule">
+                <strong>Rule:</strong> Compound property assignment must not duplicate getter or setter evaluation.
+            </div>
+        </section>
+
+        <section id="body-access">
+            <h2>Access Inside Property Bodies</h2>
+
+            <p>Property bodies may access:</p>
+
+            <ul>
+                <li><code>self</code>, when available</li>
+                <li>fields on the impl target</li>
+                <li>other properties on the impl target</li>
+                <li>the setter value parameter</li>
+                <li>visible module symbols</li>
+                <li>enum values</li>
+                <li>constructors and conversions</li>
+            </ul>
+
+            <pre><code>impl Vehicle {
+    property Current: Speed {
+        get {
+            return TopSpeed
+        }
+    }
+
+    property TopSpeed: Speed {
+        get {
+            return _speed
+        }
+    }
+}</code></pre>
+
+            <p>
+                This is valid because all property signatures are registered before
+                property bodies are analyzed.
+            </p>
+
+            <p>Forward references between properties are allowed.</p>
+        </section>
+
+        <section id="contracts">
+            <h2>Relationship to Contracts</h2>
+
+            <p>
+                A constrained assignment may use the same semantic model as a hidden
+                fallible setter.
+            </p>
+
+            <pre><code>type Percent int range 0..100</code></pre>
+
+            <p>
+                Assigning a runtime value to a constrained destination may require
+                validation before the assignment succeeds.
+            </p>
+
+            <p>The shared design principle is:</p>
+
+            <ul>
+                <li>assignment that cannot fail uses ordinary assignment</li>
+                <li>assignment that can fail requires explicit <code>try</code></li>
+            </ul>
+
+            <div class="rule">
+                <strong>Rule:</strong> Potential assignment failure must remain visible in source code.
+            </div>
+        </section>
+
+        <section id="error-handling">
+            <h2>Error Handling</h2>
+
+            <p>Fallible property assignment participates in normal Sec error handling.</p>
+
+            <pre><code>try car.TopSpeed = requestedSpeed {
+    Err(error) =&gt; Log(error)
+}</code></pre>
+
+            <p>The setter error type determines the type bound by the error pattern.</p>
+
+            <p>The success path is implicit:</p>
+
+            <pre><code>Ok(_) =&gt; continue</code></pre>
+
+            <p>If the surrounding function propagates the error, normal try propagation rules apply.</p>
+
+            <p>
+                Fallible property assignment is not a separate error system. It uses
+                the same <code>Result</code>, <code>Err</code> and <code>try</code>
+                model as other fallible operations.
+            </p>
+        </section>
+
+        <section id="lowering">
+            <h2>Runtime and Lowering</h2>
+
+            <p>A property is not stored as a field at runtime.</p>
+
+            <p>Property access lowers to explicit operations:</p>
+
+            <ul>
+                <li>a getter operation for reads</li>
+                <li>a setter operation for infallible writes</li>
+                <li>a fallible setter operation for try writes</li>
+            </ul>
+
+            <p>The compiler must preserve:</p>
+
+            <ul>
+                <li>evaluation order</li>
+                <li>getter side effects</li>
+                <li>setter side effects</li>
+                <li>fallible setter errors</li>
+                <li>ownership and borrow behavior</li>
+                <li>cleanup and defer behavior</li>
+            </ul>
+
+            <p>
+                Semantic analysis resolves property behavior before backend lowering.
+                The backend does not infer property semantics.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> Properties have behavior but no independent runtime storage.
+            </div>
+        </section>
+
+        <section id="common-errors">
+            <h2>Common Errors</h2>
+
+            <h3>Property outside impl</h3>
+
+            <pre><code>property Speed: Speed {
+    get {
+        return value
+    }
+}</code></pre>
+
+            <h3>Missing property name</h3>
+
+            <pre><code>property {
+}</code></pre>
+
+            <pre><code>property declaration missing name</code></pre>
+
+            <h3>Missing colon</h3>
+
+            <pre><code>property TopSpeed {
+    get {
+        return _speed
+    }
+}</code></pre>
+
+            <pre><code>expected ':' after property name TopSpeed</code></pre>
+
+            <h3>Missing type</h3>
+
+            <pre><code>property TopSpeed: {
+}</code></pre>
+
+            <pre><code>property TopSpeed missing type after ':'</code></pre>
+
+            <h3>No accessor</h3>
+
+            <pre><code>property TopSpeed: Speed {
+}</code></pre>
+
+            <h3>Duplicate getter</h3>
+
+            <pre><code>property TopSpeed: Speed {
+    get {
+        return _speed
+    }
+
+    get {
+        return _speed
+    }
+}</code></pre>
+
+            <h3>Both set and try set</h3>
+
+            <pre><code>property TopSpeed: Speed {
+    set value {
+        _speed = value
+    }
+
+    try set value {
+        _speed = value
+        return Ok()
+    }
+}</code></pre>
+
+            <h3>Missing setter parameter</h3>
+
+            <pre><code>property TopSpeed: Speed {
+    set {
+    }
+}</code></pre>
+
+            <h3>Wrong getter type</h3>
+
+            <pre><code>property TopSpeed: Speed {
+    get {
+        return Money(10)
+    }
+}</code></pre>
+
+            <h3>Missing getter return</h3>
+
+            <pre><code>property TopSpeed: Speed {
+    get {
+    }
+}</code></pre>
+
+            <h3>Error from infallible setter</h3>
+
+            <pre><code>property TopSpeed: Speed {
+    set value {
+        return Err(InvalidSpeed)
+    }
+}</code></pre>
+
+            <h3>Fallible assignment without try</h3>
+
+            <pre><code>car.TopSpeed = speed</code></pre>
+        </section>
+
+        <section id="summary">
+            <h2>Summary of Rules</h2>
+
+            <ul>
+                <li>Properties belong inside ordinary impl blocks.</li>
+                <li>A property declares a name and a type.</li>
+                <li>A property must contain at least one accessor.</li>
+                <li>A property may contain one getter.</li>
+                <li>A property may contain either one setter or one fallible setter.</li>
+                <li><code>set</code> and <code>try set</code> are mutually exclusive.</li>
+                <li>Property names must be unique on the target type.</li>
+                <li>A getter must return the property type on every continuing path.</li>
+                <li>A setter must declare a value parameter.</li>
+                <li>The setter parameter has the property type.</li>
+                <li>An infallible setter cannot return <code>Err</code>.</li>
+                <li>A fallible setter is declared with <code>try set</code>.</li>
+                <li>Assignment to a fallible property requires <code>try</code>.</li>
+                <li>The success path of try assignment is implicit.</li>
+                <li>Compound assignment follows the same fallibility rules.</li>
+                <li>Property bodies may refer to fields and other registered properties.</li>
+                <li>Forward references between properties are allowed.</li>
+                <li>Properties participate in normal Error Handling.</li>
+                <li>Properties do not create stored fields.</li>
+                <li>Property behavior is resolved before backend lowering.</li>
+            </ul>
+        </section>
+
+        <div class="page-navigation">
+            <a href="16-impl.html">Previous: Impl Blocks</a>
+            <a href="18-interfaces.html">Next: Interfaces</a>
+        </div>
+    </main>
+</div>
+
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <p>&copy; 2026 Sec Language</p>
+        <a href="https://github.com/YoePro/sec">GitHub</a>
+    </div>
+</footer>
+</body>
+</html>

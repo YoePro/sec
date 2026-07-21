@@ -68,6 +68,11 @@ impl Vehicle {
         diesel,
         electric,
     }
+
+    fn DefaultFuel() FuelType {
+        let fuel: FuelType := FuelType.petrol
+        return fuel
+    }
 }
 
 fn AcceptColor(value: Color) void {
@@ -186,11 +191,4 @@ fn EnumInMatch(value: Direction) int {
 fn NestedEnumOutsideImpl() Vehicle.FuelType {
     let fuel: Vehicle.FuelType := Vehicle.FuelType.diesel
     return fuel
-}
-
-impl Vehicle {
-    fn DefaultFuel() FuelType {
-        let fuel: FuelType := FuelType.petrol
-        return fuel
-    }
 }

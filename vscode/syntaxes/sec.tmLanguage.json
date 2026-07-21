@@ -192,8 +192,29 @@
     "units": {
       "patterns": [
         {
-          "name": "storage.modifier.unit.sec",
-          "match": "<[A-Za-z][A-Za-z0-9_/*^.-]*>"
+          "name": "meta.unit.annotation.sec",
+          "begin": "<",
+          "beginCaptures": {
+            "0": { "name": "punctuation.definition.unit.begin.sec" }
+          },
+          "end": ">",
+          "endCaptures": {
+            "0": { "name": "punctuation.definition.unit.end.sec" }
+          },
+          "patterns": [
+            {
+              "name": "support.type.unit.sec",
+              "match": "[A-Za-z_][A-Za-z0-9_.]*"
+            },
+            {
+              "name": "keyword.operator.unit.sec",
+              "match": "[*/^\\-]"
+            },
+            {
+              "name": "constant.numeric.unit-exponent.sec",
+              "match": "\\d+"
+            }
+          ]
         }
       ]
     },
@@ -251,34 +272,63 @@
           }
         },
         {
+          "name": "meta.unit.definition.sec",
+          "match": "\\b(unit)\\s+([A-Za-z_][A-Za-z0-9_.]*)(?:\\s+([A-Za-z_][A-Za-z0-9_.]*(?:\\[[^\\]]+\\])?))?(?:\\s+(physical|other))?",
+          "captures": {
+            "1": { "name": "storage.type.unit.declaration.sec" },
+            "2": { "name": "entity.name.type.unit.sec" },
+            "3": { "name": "storage.type.sec" },
+            "4": { "name": "keyword.other.unit-category.sec" }
+          }
+        },
+        {
           "name": "meta.type.definition.sec",
-          "match": "\\b(type)\\s+([A-Za-z_][A-Za-z0-9_.]*)(?:\\s+(struct|interface|enum))?(?:\\s*(=))?",
+          "match": "\\b(type)\\s+([A-Za-z_][A-Za-z0-9_.]*)(?:\\s+(struct|interface|enum|union|register))?(?:\\s+(implements))?(?:\\s*(=))?",
           "captures": {
             "1": { "name": "storage.type.declaration.sec" },
             "2": { "name": "entity.name.type.sec" },
             "3": { "name": "storage.type.sec" },
-            "4": { "name": "keyword.operator.assignment.sec" }
+            "4": { "name": "keyword.other.implements.sec" },
+            "5": { "name": "keyword.operator.assignment.sec" }
           }
-        },        
+        },
+        {
+          "name": "meta.interface.definition.sec",
+          "match": "\\b(interface)\\s+([A-Za-z_][A-Za-z0-9_.]*)(?:\\s+(implements))?",
+          "captures": {
+            "1": { "name": "storage.type.interface.sec" },
+            "2": { "name": "entity.name.type.interface.sec" },
+            "3": { "name": "keyword.other.implements.sec" }
+          }
+        },
         {
           "name": "meta.function.definition.sec",
-          "match": "\\b(?:(unsafe)\\s+)?(fn)\\s+([A-Za-z_][A-Za-z0-9_.]*)",
+          "match": "\\b(?:(unsafe)\\s+)?(?:(extern)\\s+)?(fn)\\s+([A-Za-z_][A-Za-z0-9_.]*)",
           "captures": {
             "1": { "name": "keyword.control.unsafe.sec" },
-            "2": { "name": "storage.type.function.sec" },
-            "3": { "name": "entity.name.function.sec" }
+            "2": { "name": "storage.modifier.extern.sec" },
+            "3": { "name": "storage.type.function.sec" },
+            "4": { "name": "entity.name.function.sec" }
           }
-        },        
+        },
         {
           "name": "meta.property.definition.sec",
-          "match": "\\b(property)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(:)\\s*([A-Za-z_][A-Za-z0-9_.]*(?:\\[[^\\]]+\\])?(?:<[^>]+>)?)",
+          "match": "\\b(property)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(:)\\s*([A-Za-z_][A-Za-z0-9_.]*(?:\\[[^\\]]+\\])?)",
           "captures": {
             "1": { "name": "storage.type.property.sec" },
             "2": { "name": "entity.name.property.sec" },
             "3": { "name": "punctuation.separator.type.sec" },
             "4": { "name": "storage.type.sec" }
           }
-        },        
+        },
+        {
+          "name": "meta.unit.metadata.sec",
+          "match": "\\b(dimension|scale|system)\\s*(:)",
+          "captures": {
+            "1": { "name": "keyword.other.unit-metadata.sec" },
+            "2": { "name": "punctuation.separator.key-value.sec" }
+          }
+        },
         {
           "name": "meta.impl.sec",
           "match": "\\b(impl)\\s+([A-Za-z_][A-Za-z0-9_.]*)",
@@ -286,10 +336,10 @@
             "1": { "name": "storage.type.implementation.sec" },
             "2": { "name": "entity.name.type.sec" }
           }
-        },        
+        },
         {
           "name": "meta.struct.field.sec",
-          "match": "\\b([A-Za-z_][A-Za-z0-9_]*)\\s*(:)\\s*([A-Za-z_][A-Za-z0-9_.]*(?:\\[[^\\]]+\\])?(?:<[^>]+>)?)",
+          "match": "\\b([A-Za-z_][A-Za-z0-9_]*)\\s*(:)\\s*([A-Za-z_][A-Za-z0-9_.]*(?:\\[[^\\]]+\\])?)",
           "captures": {
             "1": { "name": "variable.other.member.sec" },
             "2": { "name": "punctuation.separator.type.sec" },
@@ -298,7 +348,7 @@
         },
         {
           "name": "meta.variable.declaration.sec",
-          "match": "\\b(let)\\s+(?:(mut)\\s+)?([A-Za-z_][A-Za-z0-9_]*)(?:\\s*(:)\\s*([A-Za-z_][A-Za-z0-9_.]*(?:\\[[^\\]]+\\])?(?:<[^>]+>)?))?",
+          "match": "\\b(let)\\s+(?:(mut)\\s+)?([A-Za-z_][A-Za-z0-9_]*)(?:\\s*(:)\\s*([A-Za-z_][A-Za-z0-9_.]*(?:\\[[^\\]]+\\])?))?",
           "captures": {
             "1": {
               "name": "storage.type.variable.sec"
@@ -319,7 +369,7 @@
         },
         {
           "name": "meta.typed.variable.declaration.sec",
-          "match": "\\b([A-Za-z_][A-Za-z0-9_.]*(?:\\[[^\\]]+\\])?(?:<[^>]+>)?)\\s+(mut)\\s*(:)",
+          "match": "\\b([A-Za-z_][A-Za-z0-9_.]*(?:\\[[^\\]]+\\])?)\\s+(mut)\\s*(:)",
           "captures": {
             "1": { "name": "entity.name.type.sec" },
             "2": { "name": "storage.modifier.mutable.sec" },
@@ -336,16 +386,44 @@
           "match": "\\b(?:asm|if|else|switch|case|default|fallthrough|for|while|in|match|where|return|break|continue|defer|try|await|spawn|discard|assert|panic|unsafe)\\b"
         },
         {
-          "name": "storage.type.variable.sec",
-          "match": "\\b(?:let|property|type|enum|struct|register|interface|impl|fn)\\b"
+          "name": "storage.type.declaration.sec",
+          "match": "\\b(?:type|enum|struct|register|interface|impl|fn|unit|property)\\b"
         },
         {
           "name": "storage.modifier.mutable.sec",
           "match": "\\bmut\\b"
-        },        
+        },
+        {
+          "name": "storage.modifier.reference.sec",
+          "match": "\\bref\\b"
+        },
+        {
+          "name": "storage.modifier.extern.sec",
+          "match": "\\bextern\\b"
+        },
+        {
+          "name": "variable.language.self.sec",
+          "match": "\\bself\\b"
+        },
+        {
+          "name": "keyword.other.implements.sec",
+          "match": "\\bimplements\\b"
+        },
+        {
+          "name": "keyword.other.unit-metadata.sec",
+          "match": "\\b(?:dimension|scale|system)\\b"
+        },
+        {
+          "name": "keyword.other.unit-category.sec",
+          "match": "\\b(?:physical|other)\\b"
+        },
+        {
+          "name": "keyword.other.property-accessor.sec",
+          "match": "\\b(?:get|set)\\b"
+        },
         {
           "name": "keyword.other.sec",
-          "match": "\\b(?:module|import|require|range|validate|regex|minLen|maxLen|minLength|maxLength|precision|scale|system|dimension|physical|other|get|set|iota|Ok|Err)\\b"
+          "match": "\\b(?:module|import|require|range|validate|regex|minLen|maxLen|minLength|maxLength|precision|iota|capture|sec)\\b"
         }
       ]
     },    
@@ -358,7 +436,7 @@
         },
         {
           "name": "support.type.sec",
-          "match": "\\b(?:Result|Option|Vec|Map|Set|Vector|Matrix|Box|Any)\\b"
+          "match": "\\b(?:Result|Option|Vec|Map|Set|Vector|Matrix|Box|Any|RawPtr)\\b"
         }
       ]
     },

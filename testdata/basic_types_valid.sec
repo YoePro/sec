@@ -1,0 +1,574 @@
+module basic_types
+
+// Every declaration and expression in this file is expected to pass semantic
+// analysis. The test treats int128, uint128, int256, uint256 and decimal128 as
+// active builtin types.
+
+// =============================================================================
+// Named types backed by basic types
+// =============================================================================
+
+type SignedIdentifier int128
+type UnsignedIdentifier uint128
+type LargeSignedIdentifier int256
+type LargeUnsignedIdentifier uint256
+type ExactAmount decimal
+type ExtendedExactAmount decimal128
+type CharacterCode rune
+
+// =============================================================================
+// Basic declaration forms and inference
+// =============================================================================
+
+fn TestLetDeclarations() void {
+    let inferredInteger := 42
+    let inferredDecimal := 3.14
+    let inferredBoolean := true
+    let inferredString := "Sec"
+    let inferredCharacter := 'S'
+
+    let explicitInteger: int := inferredInteger
+    let explicitDecimal: decimal := inferredDecimal
+    let explicitBoolean: bool := inferredBoolean
+    let explicitString: string := inferredString
+    let explicitCharacter: char := inferredCharacter
+
+    let first := 1, second := "two", third := false
+    let mut mutableFirst := 10, mutableSecond := 20, mutableThird := 30
+
+    mutableFirst += 1
+    mutableSecond -= 2
+    mutableThird *= 3
+
+    let _integerCopy: int := explicitInteger
+    let _decimalCopy: decimal := explicitDecimal
+    let _booleanCopy: bool := explicitBoolean
+    let _stringCopy: string := explicitString
+    let _characterCopy: char := explicitCharacter
+    let _firstCopy: int := first
+    let _secondCopy: string := second
+    let _thirdCopy: bool := third
+}
+
+fn TestTypedDeclarations() void {
+    int mut: first, second, third
+    first = 1
+    second = 2
+    third = 3
+
+    float: ratio := 0.5, weight := 1.25
+    decimal128: precise := 1234567890.123456789
+
+    let _sum: int := first + second + third
+    let _ratio: float := ratio
+    let _weight: float := weight
+    let _precise: decimal128 := precise
+}
+
+fn TestMutableDeclarationsWithoutInitializers() void {
+    let mut signedValue: int128
+    let mut unsignedValue: uint256
+    let mut exactValue: decimal128
+    let mut textValue: string
+    let mut flagValue: bool
+
+    signedValue = 10
+    unsignedValue = 20
+    exactValue = 30.5
+    textValue = "initialized"
+    flagValue = true
+
+    let _signedCopy: int128 := signedValue
+    let _unsignedCopy: uint256 := unsignedValue
+    let _exactCopy: decimal128 := exactValue
+    let _textCopy: string := textValue
+    let _flagCopy: bool := flagValue
+}
+
+// =============================================================================
+// bool
+// =============================================================================
+
+fn BooleanAnd(left: bool, right: bool) bool {
+    return left && right
+}
+
+fn BooleanOr(left: bool, right: bool) bool {
+    return left || right
+}
+
+fn BooleanNot(value: bool) bool {
+    return !value
+}
+
+fn BooleanEqual(left: bool, right: bool) bool {
+    return left == right
+}
+
+fn BooleanNotEqual(left: bool, right: bool) bool {
+    return left != right
+}
+
+fn TestBooleanConditions(value: bool) int {
+    if value {
+        return 1
+    }
+
+    return 0
+}
+
+// =============================================================================
+// Signed integer boundaries
+// =============================================================================
+
+fn TestSignedIntegerBoundaries() void {
+    let int8Minimum: int8 := -128
+    let int8Maximum: int8 := 127
+
+    let int16Minimum: int16 := -32768
+    let int16Maximum: int16 := 32767
+
+    let int32Minimum: int32 := -2147483648
+    let int32Maximum: int32 := 2147483647
+
+    let int64Minimum: int64 := -9223372036854775808
+    let int64Maximum: int64 := 9223372036854775807
+
+    let int128Minimum: int128 := -170141183460469231731687303715884105728
+    let int128Maximum: int128 := 170141183460469231731687303715884105727
+
+    let int256Minimum: int256 := -57896044618658097711785492504343953926634992332820282019728792003956564819968
+    let int256Maximum: int256 := 57896044618658097711785492504343953926634992332820282019728792003956564819967
+
+    let _int8Minimum: int8 := int8Minimum
+    let _int8Maximum: int8 := int8Maximum
+    let _int16Minimum: int16 := int16Minimum
+    let _int16Maximum: int16 := int16Maximum
+    let _int32Minimum: int32 := int32Minimum
+    let _int32Maximum: int32 := int32Maximum
+    let _int64Minimum: int64 := int64Minimum
+    let _int64Maximum: int64 := int64Maximum
+    let _int128Minimum: int128 := int128Minimum
+    let _int128Maximum: int128 := int128Maximum
+    let _int256Minimum: int256 := int256Minimum
+    let _int256Maximum: int256 := int256Maximum
+}
+
+// =============================================================================
+// Unsigned integer and byte boundaries
+// =============================================================================
+
+fn TestUnsignedIntegerBoundaries() void {
+    let byteMinimum: byte := 0
+    let byteMaximum: byte := 255
+
+    let uint8Minimum: uint8 := 0
+    let uint8Maximum: uint8 := 255
+
+    let uint16Minimum: uint16 := 0
+    let uint16Maximum: uint16 := 65535
+
+    let uint32Minimum: uint32 := 0
+    let uint32Maximum: uint32 := 4294967295
+
+    let uint64Minimum: uint64 := 0
+    let uint64Maximum: uint64 := 18446744073709551615
+
+    let uint128Minimum: uint128 := 0
+    let uint128Maximum: uint128 := 340282366920938463463374607431768211455
+
+    let uint256Minimum: uint256 := 0
+    let uint256Maximum: uint256 := 115792089237316195423570985008687907853269984665640564039457584007913129639935
+
+    let _byteMinimum: byte := byteMinimum
+    let _byteMaximum: byte := byteMaximum
+    let _uint8Minimum: uint8 := uint8Minimum
+    let _uint8Maximum: uint8 := uint8Maximum
+    let _uint16Minimum: uint16 := uint16Minimum
+    let _uint16Maximum: uint16 := uint16Maximum
+    let _uint32Minimum: uint32 := uint32Minimum
+    let _uint32Maximum: uint32 := uint32Maximum
+    let _uint64Minimum: uint64 := uint64Minimum
+    let _uint64Maximum: uint64 := uint64Maximum
+    let _uint128Minimum: uint128 := uint128Minimum
+    let _uint128Maximum: uint128 := uint128Maximum
+    let _uint256Minimum: uint256 := uint256Minimum
+    let _uint256Maximum: uint256 := uint256Maximum
+}
+
+fn TestByteHexLiterals() void {
+    let zero: byte := 0x00
+    let highBit: byte := 0x80
+    let maximum: byte := 0xFF
+
+    let _zero: byte := zero
+    let _highBit: byte := highBit
+    let _maximum: byte := maximum
+}
+
+// =============================================================================
+// Signed integer arithmetic and bitwise operators
+// =============================================================================
+
+fn AddInt8(left: int8, right: int8) int8 {
+    return left + right
+}
+
+fn ArithmeticInt16(left: int16, right: int16) int16 {
+    return (left + right) * 2 - right
+}
+
+fn DivideInt32(left: int32, right: int32) int32 {
+    return left / right
+}
+
+fn RemainderInt64(left: int64, right: int64) int64 {
+    return left % right
+}
+
+fn BitwiseInt128(left: int128, right: int128) int128 {
+    return (left & right) | (left ^ right)
+}
+
+fn ComplementInt256(value: int256) int256 {
+    return ~value
+}
+
+fn ShiftLeftInt128(value: int128) int128 {
+    return value << 5
+}
+
+fn ShiftRightInt256(value: int256) int256 {
+    return value >> 7
+}
+
+fn CompareInt128(left: int128, right: int128) bool {
+    return left < right || left == right
+}
+
+fn CompareInt256(left: int256, right: int256) bool {
+    return left >= right
+}
+
+fn TestSignedCompoundAssignment() int256 {
+    let mut value: int256 := 100
+    value += 25
+    value -= 5
+    value *= 2
+    value /= 4
+    value %= 17
+    value &= 15
+    value |= 32
+    value ^= 7
+    value <<= 2
+    value >>= 1
+    return value
+}
+
+// =============================================================================
+// Unsigned integer arithmetic and bitwise operators
+// =============================================================================
+
+fn AddUint8(left: uint8, right: uint8) uint8 {
+    return left + right
+}
+
+fn ArithmeticUint16(left: uint16, right: uint16) uint16 {
+    return (left + right) * 2 - right
+}
+
+fn DivideUint32(left: uint32, right: uint32) uint32 {
+    return left / right
+}
+
+fn RemainderUint64(left: uint64, right: uint64) uint64 {
+    return left % right
+}
+
+fn BitwiseUint128(left: uint128, right: uint128) uint128 {
+    return (left & right) | (left ^ right)
+}
+
+fn ComplementUint256(value: uint256) uint256 {
+    return ~value
+}
+
+fn ShiftLeftUint128(value: uint128) uint128 {
+    return value << 5
+}
+
+fn ShiftRightUint256(value: uint256) uint256 {
+    return value >> 7
+}
+
+fn CompareUint128(left: uint128, right: uint128) bool {
+    return left <= right
+}
+
+fn CompareUint256(left: uint256, right: uint256) bool {
+    return left > right || left == right
+}
+
+fn TestUnsignedCompoundAssignment() uint256 {
+    let mut value: uint256 := 100
+    value += 25
+    value -= 5
+    value *= 2
+    value /= 4
+    value %= 17
+    value &= 15
+    value |= 32
+    value ^= 7
+    value <<= 2
+    value >>= 1
+    return value
+}
+
+// =============================================================================
+// Explicit integer conversions
+// =============================================================================
+
+fn WidenSigned(value: int64) int256 {
+    let intermediate: int128 := int128(value)
+    return int256(intermediate)
+}
+
+fn NarrowSigned(value: int256) int8 {
+    return int8(value)
+}
+
+fn WidenUnsigned(value: uint64) uint256 {
+    let intermediate: uint128 := uint128(value)
+    return uint256(intermediate)
+}
+
+fn NarrowUnsigned(value: uint256) uint8 {
+    return uint8(value)
+}
+
+fn SignedToUnsigned(value: int128) uint128 {
+    return uint128(value)
+}
+
+fn UnsignedToSigned(value: uint128) int128 {
+    return int128(value)
+}
+
+fn TestNamedIntegerConversions(value: int128) SignedIdentifier {
+    return SignedIdentifier(value)
+}
+
+// =============================================================================
+// Floating-point types
+// =============================================================================
+
+fn ArithmeticFloat(left: float, right: float) float {
+    return (left + right) * left / right - left
+}
+
+fn ArithmeticFloat32(left: float32, right: float32) float32 {
+    return (left + right) * left / right - left
+}
+
+fn ArithmeticFloat64(left: float64, right: float64) float64 {
+    return (left + right) * left / right - left
+}
+
+fn CompareFloat(left: float, right: float) bool {
+    return left < right
+}
+
+fn CompareFloat32(left: float32, right: float32) bool {
+    return left != right
+}
+
+fn CompareFloat64(left: float64, right: float64) bool {
+    return left >= right
+}
+
+fn TestFloatLiteralContext() void {
+    let general: float := 1.25
+    let compact: float32 := -4.75
+    let precise: float64 := 59.3293
+
+    let _general: float := general
+    let _compact: float32 := compact
+    let _precise: float64 := precise
+}
+
+fn ConvertFloatWidths(value: float32) float64 {
+    return float64(value)
+}
+
+// =============================================================================
+// decimal and decimal128
+// =============================================================================
+
+fn ArithmeticDecimal(left: decimal, right: decimal) decimal {
+    return (left + right) * left / right - left
+}
+
+fn ArithmeticDecimal128(left: decimal128, right: decimal128) decimal128 {
+    return (left + right) * left / right - left
+}
+
+fn CompareDecimal(left: decimal, right: decimal) bool {
+    return left <= right
+}
+
+fn CompareDecimal128(left: decimal128, right: decimal128) bool {
+    return left > right || left == right
+}
+
+fn TestDecimalLiteralContext() void {
+    let normal: decimal := 0.1
+    let extended: decimal128 := 0.1
+    let wholeNormal: decimal := 100
+    let wholeExtended: decimal128 := 100
+    let manyDigits: decimal128 := 12345678901234567890.12345678901234
+
+    let _normal: decimal := normal
+    let _extended: decimal128 := extended
+    let _wholeNormal: decimal := wholeNormal
+    let _wholeExtended: decimal128 := wholeExtended
+    let _manyDigits: decimal128 := manyDigits
+}
+
+fn ConvertDecimalToDecimal128(value: decimal) decimal128 {
+    return decimal128(value)
+}
+
+fn ConvertDecimal128ToDecimal(value: decimal128) decimal {
+    return decimal(value)
+}
+
+fn ConvertInt256ToDecimal128(value: int256) decimal128 {
+    return decimal128(value)
+}
+
+fn ConvertFloat64ToDecimal128(value: float64) decimal128 {
+    return decimal128(value)
+}
+
+fn TestDecimalCompoundAssignment() decimal128 {
+    let mut value: decimal128 := 10.5
+    value += 2.5
+    value -= 1.0
+    value *= 3.0
+    value /= 2.0
+    return value
+}
+
+fn TestNamedDecimalConversions(value: decimal128) ExtendedExactAmount {
+    return ExtendedExactAmount(value)
+}
+
+// =============================================================================
+// Explicit numeric conversion to bool
+// =============================================================================
+
+fn BoolFromSigned(value: int256) bool {
+    return bool(value)
+}
+
+fn BoolFromUnsigned(value: uint256) bool {
+    return bool(value)
+}
+
+fn BoolFromFloat(value: float64) bool {
+    return bool(value)
+}
+
+fn BoolFromDecimal(value: decimal) bool {
+    return bool(value)
+}
+
+fn BoolFromDecimal128(value: decimal128) bool {
+    return bool(value)
+}
+
+// =============================================================================
+// char, rune and string
+// =============================================================================
+
+fn ReturnCharacter() char {
+    return 'A'
+}
+
+fn CompareCharacters(left: char, right: char) bool {
+    return left == right
+}
+
+fn ReturnRune() rune {
+    return rune(65)
+}
+
+fn CompareRunes(left: rune, right: rune) bool {
+    return left != right
+}
+
+fn ConvertRuneToCharacterCode(value: rune) CharacterCode {
+    return CharacterCode(value)
+}
+
+fn JoinStrings(left: string, right: string) string {
+    return left + right
+}
+
+fn CompareStrings(left: string, right: string) bool {
+    return left == right
+}
+
+fn TestStrings() void {
+    let empty: string := ""
+    let word: string := "Sec"
+    let sentence: string := word + " language"
+    let escaped: string := "line one\nline two"
+
+    let _empty: string := empty
+    let _word: string := word
+    let _sentence: string := sentence
+    let _escaped: string := escaped
+}
+
+// =============================================================================
+// void
+// =============================================================================
+
+fn ReturnVoidImplicitly() void {
+}
+
+fn ReturnVoidExplicitly() void {
+    return
+}
+
+fn UseVoidFunctions() void {
+    ReturnVoidImplicitly()
+    ReturnVoidExplicitly()
+}
+
+// =============================================================================
+// Cross-feature calls that preserve exact basic types
+// =============================================================================
+
+fn IdentityInt128(value: int128) int128 {
+    return value
+}
+
+fn IdentityUint256(value: uint256) uint256 {
+    return value
+}
+
+fn IdentityDecimal128(value: decimal128) decimal128 {
+    return value
+}
+
+fn TestExactCallTypes() void {
+    let signed: int128 := IdentityInt128(123)
+    let unsigned: uint256 := IdentityUint256(456)
+    let exact: decimal128 := IdentityDecimal128(789.125)
+
+    let _signed: int128 := signed
+    let _unsigned: uint256 := unsigned
+    let _exact: decimal128 := exact
+}

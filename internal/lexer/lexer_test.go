@@ -189,8 +189,63 @@ func TestOperators(t *testing.T) {
 	assertTokens(t, input, tests)
 }
 
+func TestCharLiteral(t *testing.T) {
+	input := `'S' '\n' 'AB'`
+
+	tests := []struct {
+		typ    TokenType
+		lexeme string
+	}{
+		{CHAR, "'S'"},
+		{CHAR, "'\\n'"},
+		{CHAR, "'AB'"},
+		{EOF, ""},
+	}
+
+	l := New(input)
+	for i, tt := range tests {
+		tok := l.NextToken()
+		if tok.Type != tt.typ {
+			t.Fatalf("test %d: wrong token type. got=%q want=%q", i, tok.Type, tt.typ)
+		}
+		if tok.Lexeme != tt.lexeme {
+			t.Fatalf("test %d: wrong lexeme. got=%q want=%q", i, tok.Lexeme, tt.lexeme)
+		}
+	}
+}
+
+func TestUnicodeIdentifiers(t *testing.T) {
+	input := `unit Ω decimal physical
+let Σ := Ω(1)
+let μs := 1`
+
+	tests := []struct {
+		typ    TokenType
+		lexeme string
+	}{
+		{UNIT, "unit"},
+		{IDENT, "Ω"},
+		{IDENT, "decimal"},
+		{IDENT, "physical"},
+		{LET, "let"},
+		{IDENT, "Σ"},
+		{DECLARE, ":="},
+		{IDENT, "Ω"},
+		{LPAREN, "("},
+		{INT, "1"},
+		{RPAREN, ")"},
+		{LET, "let"},
+		{IDENT, "μs"},
+		{DECLARE, ":="},
+		{INT, "1"},
+		{EOF, ""},
+	}
+
+	assertTokens(t, input, tests)
+}
+
 func TestKeywords(t *testing.T) {
-	input := `module import require sec self extern fn let mut type unit struct interface impl for while in if else switch case default fallthrough break continue match where return true false try defer discard ref unsafe asm property get set enum union spawn await nil None Some`
+	input := `module import require sec self extern fn let mut type unit struct interface impl implements for while in if else switch case default fallthrough break continue match where return true false try defer discard ref unsafe asm property get set enum union spawn await nil None Some`
 
 	tests := []struct {
 		typ    TokenType
@@ -210,6 +265,7 @@ func TestKeywords(t *testing.T) {
 		{STRUCT, "struct"},
 		{INTERFACE, "interface"},
 		{IMPL, "impl"},
+		{IMPLEMENTS, "implements"},
 		{FOR, "for"},
 		{WHILE, "while"},
 		{IN, "in"},

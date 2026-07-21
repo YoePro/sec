@@ -19,10 +19,13 @@ type Statement interface {
 }
 
 type InvalidStatement struct {
-	Token lexer.Token
+	Token   lexer.Token
+	Message string
 }
 
 func (is *InvalidStatement) statementNode() {}
+
+func (is *InvalidStatement) implMemberNode() {}
 
 func (is *InvalidStatement) TokenLiteral() string {
 	return is.Token.Lexeme
@@ -93,6 +96,7 @@ type TypeDeclStatement struct {
 	RegisterType      *RegisterType
 	Union             bool
 	UnionVariants     []*UnionVariant
+	Implements        []*TypeReference
 	Contract          Contract
 }
 
@@ -159,6 +163,33 @@ type EnumValue struct {
 
 func (ev *EnumValue) TokenLiteral() string {
 	return ev.Token.Lexeme
+}
+
+type InterfaceDeclaration struct {
+	Token             lexer.Token
+	Name              *Identifier
+	GenericParameters []*GenericParameter
+	Implements        []*TypeReference
+	Methods           []*FunctionDeclaration
+	Properties        []*InterfaceProperty
+}
+
+func (id *InterfaceDeclaration) statementNode() {}
+
+func (id *InterfaceDeclaration) TokenLiteral() string {
+	return id.Token.Lexeme
+}
+
+type InterfaceProperty struct {
+	Token       lexer.Token
+	Name        *Identifier
+	Type        *TypeReference
+	RequiresGet bool
+	RequiresSet bool
+}
+
+func (ip *InterfaceProperty) TokenLiteral() string {
+	return ip.Token.Lexeme
 }
 
 // Identifier represents a named symbol.
@@ -243,8 +274,9 @@ func (rc *RangeContract) TokenLiteral() string {
 // --------------------------------------------------------------------
 
 type IntegerLiteral struct {
-	Token lexer.Token
-	Value int64
+	Token    lexer.Token
+	Value    int64
+	BigValue *big.Int
 }
 
 func (il *IntegerLiteral) expressionNode() {}
@@ -362,6 +394,21 @@ func (sl *StringLiteral) TokenLiteral() string {
 
 func (sl *StringLiteral) String() string {
 	return sl.Token.Lexeme
+}
+
+type CharLiteral struct {
+	Token lexer.Token
+	Value string
+}
+
+func (cl *CharLiteral) expressionNode() {}
+
+func (cl *CharLiteral) TokenLiteral() string {
+	return cl.Token.Lexeme
+}
+
+func (cl *CharLiteral) String() string {
+	return cl.Token.Lexeme
 }
 
 type ModuleStatement struct {
@@ -943,7 +990,11 @@ func (ce *ConversionExpression) String() string {
 		value = ce.Value.String()
 	}
 
-	return ce.Type.Name + "(" + value + ")"
+	target := ce.Type.Name
+	if ce.Type.Unit != "" {
+		target += "<" + ce.Type.Unit + ">"
+	}
+	return target + "(" + value + ")"
 }
 
 type CallExpression struct {
@@ -1015,8 +1066,9 @@ func (rce *RuntimeCallExpression) String() string {
 }
 
 type OkExpression struct {
-	Token lexer.Token
-	Value Expression
+	Token     lexer.Token
+	Value     Expression
+	Arguments []Expression
 }
 
 func (oe *OkExpression) expressionNode() {}
@@ -1034,8 +1086,9 @@ func (oe *OkExpression) String() string {
 }
 
 type ErrExpression struct {
-	Token lexer.Token
-	Value Expression
+	Token     lexer.Token
+	Value     Expression
+	Arguments []Expression
 }
 
 func (ee *ErrExpression) expressionNode() {}
@@ -1133,6 +1186,18 @@ func (is *ImplStatement) TokenLiteral() string {
 type ImplMember interface {
 	Node
 	implMemberNode()
+}
+
+type UnitMetadataDeclaration struct {
+	Token lexer.Token
+	Name  string
+	Value []lexer.Token
+}
+
+func (umd *UnitMetadataDeclaration) implMemberNode() {}
+
+func (umd *UnitMetadataDeclaration) TokenLiteral() string {
+	return umd.Token.Lexeme
 }
 
 type PropertyDeclaration struct {

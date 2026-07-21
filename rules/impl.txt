@@ -1,0 +1,557 @@
+# Impl
+
+## Purpose
+
+`impl` defines the behavior of a type.
+
+A type defines data.
+
+An `impl` block defines operations on that type.
+
+---
+
+## Syntax
+
+```sec
+type Person struct {
+    name: string
+    age: int
+}
+
+impl Person {
+
+}
+```
+
+---
+
+## Allowed targets
+
+An `impl` block may target:
+
+- struct
+- enum
+- union
+- register
+- named type
+- generic type
+
+Example:
+
+```sec
+impl Stack[T] {
+
+}
+```
+
+---
+
+## Members
+
+An `impl` block may contain:
+
+- methods
+- properties
+- nested types
+- nested enums
+- nested units
+- constants when implemented
+
+Current compiler support allows nested type declarations inside `impl`.
+
+Design note:
+
+If `impl` is treated strictly as "the behavior of a type", then data-shape
+declarations should be defined outside the impl block.
+
+That means these declarations should normally be top-level or module-level:
+
+- struct
+- enum
+- union
+- register
+- unit
+- type aliases
+
+Under that stricter model, an `impl` block should contain only behavioral
+members:
+
+- methods
+- properties
+- constants
+- custom free behavior when implemented
+
+The stricter model is simpler for the compiler pipeline because type collection
+can complete before impl behavior collection starts.
+
+The current code still accepts nested type declarations because earlier rules
+used associated nested types such as `Vehicle.FuelType`.
+
+Before adding more behavior on top of nested impl declarations, the language
+should choose one of these models:
+
+- behavior-only impl: define struct/enum/union/register outside impl
+- associated-type impl: keep nested type declarations inside impl and treat them
+  as associated type members
+
+It must not contain:
+
+- stored fields
+- variable declarations
+- executable statements outside members
+
+---
+
+## Self
+
+Inside an `impl` block the compiler automatically knows the target type.
+
+Methods may declare:
+
+```sec
+fn Print(ref self)
+```
+
+or
+
+```sec
+fn Reset(ref mut self)
+```
+
+Static methods do not use `self`.
+
+Static impl functions may be used as named constructors or explicit conversion
+helpers for the impl target type.
+
+Example:
+
+```sec
+/** Coulomb */
+unit C decimal physical
+
+impl C {
+    dimension: [electric_current^1, time^1]
+    scale: 1
+    system: SI
+
+    fn C(Amp: decimal<A>, Second: decimal<s>) decimal<C> {
+        return decimal<C>(decimal(Amp) * decimal(Second))
+    }
+}
+```
+
+Function parameters always use the normal parameter grammar:
+
+```text
+Name: Type
+```
+
+So `Second: decimal<s>` is valid, while `Second decimal<s>` is not.
+
+---
+
+## Visibility
+
+Visibility follows the normal language rules.
+
+Members may be:
+
+- public
+- module internal
+- private
+
+---
+
+## Multiple impl blocks
+
+A type may have only one ordinary `impl` block.
+
+This keeps the language predictable and avoids scattering a type's behavior across multiple files.
+
+Interface requirements are satisfied by the same ordinary `impl` block.
+
+---
+
+## Interface implementation
+
+Interfaces are listed explicitly on the type declaration.
+
+Example:
+
+```sec
+interface Reader {
+    fn Read(ref mut self) Result[string, IOError]
+}
+
+type FileReader struct implements Reader {
+}
+
+impl FileReader {
+    fn Read(ref mut self) Result[string, IOError] {
+        // ...
+    }
+}
+```
+
+The old separate form is not used:
+
+```sec
+impl Reader for FileReader {
+}
+```
+
+This is rejected. Interfaces are satisfied by the target type's ordinary `impl`
+block.
+
+---
+
+## Generic impl
+
+Generic types are implemented using the same generic parameters.
+
+Example:
+
+```sec
+impl Result[T, E] {
+
+}
+```
+
+Generic parameters must match the declared type.
+
+---
+
+## Register impl
+
+Register types may have ordinary `impl` blocks.
+
+Example:
+
+```sec
+type Status register[32] {
+    Ready: bit
+    Error: bit
+    _: bit[30]
+}
+
+impl Status {
+    fn IsReady(ref self) bool {
+        return self.Ready
+    }
+
+    fn ClearError(ref mut self) void {
+        self.Error = false
+    }
+}
+```
+
+The impl block adds behavior only.
+
+It must not change the register's memory representation.
+
+For register types:
+
+- methods and properties are compiler namespace members
+- methods and properties are not stored inside the register value
+- no method table, vtable, hidden field or metadata pointer is added
+- `sizeof`, alignment, bit offsets and field placement are unchanged by `impl`
+- `@address` belongs to an addressed storage binding, not to the impl block
+
+When a method operates on an addressed register receiver, field reads and writes
+follow the register rules for volatile access, mutability and reserved-bit
+preservation.
+
+When a method operates on a non-addressed register value, field access uses
+ordinary value semantics.
+
+The detailed storage rules are defined in `registers.txt`.
+
+---
+
+## Name lookup
+
+Methods inside an `impl` belong to the target type.
+
+The compiler registers all member names before analyzing member bodies.
+
+Forward references between methods are therefore allowed.
+
+Nested declarations inside an `impl` are scoped under the target type.
+
+Example:
+
+```sec
+type Vehicle struct {
+    fuel: Vehicle.FuelType
+}
+
+impl Vehicle {
+    enum FuelType {
+        Petrol,
+        Electric,
+    }
+}
+```
+
+Outside the `impl Vehicle` block, the nested type must be referenced with its
+qualified name:
+
+```sec
+let fuel: Vehicle.FuelType := Vehicle.FuelType.Petrol
+```
+
+Inside `impl Vehicle`, the short name `FuelType` is available.
+
+This rule exists for readability and to avoid leaking nested names into the
+module namespace.
+
+---
+
+## Two-pass impl analysis
+
+`impl` analysis is multi-pass.
+
+The compiler must not analyze member bodies before the complete member surface is
+known.
+
+Pass 1 registers the impl target and nested type names:
+
+- verify that the impl target exists
+- verify that the target is a named type
+- reject interface targets as ordinary impl targets
+- reject duplicate ordinary impl blocks for the same target
+- validate generic target arguments
+- register nested type names such as `Vehicle.Engine`
+- reject duplicate nested type names
+
+Pass 2 resolves nested declarations:
+
+- nested struct types
+- nested enum types
+- nested union types
+- nested unit types
+- nested aliases where supported
+
+Pass 3 registers behavioral members:
+
+- properties
+- methods
+- constants when implemented
+
+Pass 4 analyzes member bodies:
+
+- property getters
+- property setters
+- method bodies
+- constant initializers when implemented
+
+This ordering allows:
+
+- forward references between members
+- property access before the property body is checked
+- methods calling other methods declared later
+- nested type references from properties and methods
+
+---
+
+## Current compiler status
+
+Implemented:
+
+- `impl` targets may be named struct, enum, union, register, scalar alias and generic types
+- one ordinary `impl` block per target type
+- register impl members do not affect register memory layout
+- interface conformance through `type Name struct implements Interface`
+- nested type, enum, union and unit declarations inside `impl`
+- short nested-name lookup inside the owning `impl`
+- qualified nested-name lookup outside the owning `impl`
+- method registration, method body analysis and forward method calls
+- property registration and getter/setter body checks
+- stored fields, variable declarations and executable statements directly inside `impl` are semantic errors
+- member name conflicts between fields, properties, methods and nested types are semantic errors
+
+Not implemented yet:
+
+- constants inside `impl`
+- separate `impl Interface for Type` syntax
+
+---
+
+## Properties
+
+Properties are behavioral members declared inside an `impl` block.
+
+Syntax:
+
+```sec
+impl Vehicle {
+    property TopSpeed: Speed {
+        get {
+            return _topSpeed
+        }
+
+        try set value {
+            _topSpeed = value
+            return Ok()
+        }
+    }
+}
+```
+
+A property has:
+
+- name
+- declared type
+- optional getter
+- optional setter
+- fallible or infallible setter mode
+
+A property must have at least one of:
+
+- get
+- set
+- try set
+
+Duplicate properties in the same ordinary `impl` block are invalid.
+
+Getter rule:
+
+- a getter must return a value assignable to the property type
+- a getter with no return statement is invalid
+
+Example diagnostic:
+
+```text
+getter TopSpeed must return Speed, got Money
+```
+
+Setter rule:
+
+- a setter value parameter is mandatory
+- the value parameter has the property type
+- assigning an incompatible value inside the setter is invalid
+- a non-fallible setter must not return `Err(...)`
+
+Example diagnostic:
+
+```text
+setter for TopSpeed must declare value parameter
+```
+
+Fallible property assignment rule:
+
+- assignment to a fallible property requires `try`
+- ordinary assignment to a fallible property is invalid
+
+Example:
+
+```sec
+try car.TopSpeed = currentSpeed {
+    Err(error) => fmt.Println("could not set top speed")
+}
+```
+
+---
+
+## Methods
+
+Methods are functions associated with the impl target.
+
+Conceptually, a method named `Drive` inside `impl Vehicle` is registered under
+the qualified member name:
+
+```text
+Vehicle.Drive
+```
+
+Method calls resolve semantically, not by parser decision.
+
+The parser keeps call/member syntax as syntax.
+
+Semantic analysis resolves whether a call targets:
+
+- a free function
+- a method
+- a constructor
+- a conversion
+- another callable entity
+
+Generic methods with additional type parameters are not part of the first method
+implementation.
+
+They require separate rules for method-level generic parameters.
+
+---
+
+## Restrictions
+
+An `impl` block must not:
+
+- add fields
+- redefine existing members
+- change the type definition
+- implement another type
+- contain free-standing statements
+
+---
+
+## Semantic rules
+
+During semantic analysis the compiler validates:
+
+- target type exists
+- only one ordinary `impl` exists
+- generic parameters match
+- duplicate member names
+- duplicate properties
+- interface implementation compatibility
+- visibility rules
+- valid use of `self`
+
+---
+
+## Current implementation status
+
+Implemented:
+
+- parsing ordinary `impl Target { ... }`
+- parsing nested `type`, `unit`, `enum`, `property` and `fn` declarations
+- rejecting free-standing statements inside ordinary impl blocks
+- registering nested type names as qualified names
+- allowing short nested type names inside the matching impl block
+- requiring qualified nested type names outside the impl block
+- duplicate nested type diagnostics
+- duplicate property diagnostics
+- property getter return-type checking
+- missing getter return diagnostics
+- setter value-parameter diagnostics
+- non-fallible setter cannot return `Err(...)`
+- fallible property assignment requires `try`
+- generic impl target validation for the current generic model
+- registering methods as qualified functions such as `Vehicle.Drive`
+
+Partially implemented:
+
+- method calls and overload resolution exist, but full method body semantics and
+  self rules are still incomplete
+- generic impl support exists for target parameters, but method-level generic
+  parameters are not implemented
+- property body analysis exists, but it still uses a limited body-expression
+  model rather than full function-body sema
+
+Not implemented yet:
+
+- interface implementation form `impl Interface for Type`
+- visibility modifiers
+- constants inside impl
+- custom `free` behavior inside impl
+- full `self` validation
+- full code generation for methods and properties
+
+---
+
+## Code generation
+
+`impl` does not exist at runtime.
+
+It is purely a compile-time construct used to associate members with a type.

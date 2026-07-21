@@ -1,0 +1,718 @@
+module units_advanced
+
+// This file specifies the intended complete unit-definition model.
+// It is expected to become valid when unit metadata and explicit conversion
+// functions are implemented.
+
+// =============================================================================
+// Seven SI base units
+// =============================================================================
+
+unit m decimal physical
+impl m {
+    dimension: [length^1]
+    scale: 1
+    system: SI
+}
+
+unit kg decimal physical
+impl kg {
+    dimension: [mass^1]
+    scale: 1
+    system: SI
+}
+
+unit s decimal physical
+impl s {
+    dimension: [time^1]
+    scale: 1
+    system: SI
+}
+
+unit A decimal physical
+impl A {
+    dimension: [electric_current^1]
+    scale: 1
+    system: SI
+}
+
+unit K decimal physical
+impl K {
+    dimension: [thermodynamic_temperature^1]
+    scale: 1
+    system: SI
+}
+
+unit mol decimal physical
+impl mol {
+    dimension: [amount_of_substance^1]
+    scale: 1
+    system: SI
+}
+
+unit cd decimal physical
+impl cd {
+    dimension: [luminous_intensity^1]
+    scale: 1
+    system: SI
+}
+
+// =============================================================================
+// Scaled base units and non-SI systems
+// =============================================================================
+
+unit mm decimal physical
+impl mm {
+    dimension: [length^1]
+    scale: 1 / 1000
+    system: SI
+
+    fn mm(value: m) mm {
+        return value * 1000
+    }
+}
+
+unit cm decimal physical
+impl cm {
+    dimension: [length^1]
+    scale: 1 / 100
+    system: SI
+
+    fn cm(value: m) cm {
+        return value * 100
+    }
+}
+
+unit km decimal physical
+impl km {
+    dimension: [length^1]
+    scale: 1000
+    system: SI
+
+    fn km(value: m) km {
+        return value / 1000
+    }
+}
+
+unit inch decimal physical
+impl inch {
+    dimension: [length^1]
+    scale: 127 / 5000
+    system: Imperial
+
+    fn inch(value: m) inch {
+        return value / 0.0254
+    }
+}
+
+unit ft decimal physical
+impl ft {
+    dimension: [length^1]
+    scale: 381 / 1250
+    system: Imperial
+
+    fn ft(value: m) ft {
+        return value / 0.3048
+    }
+}
+
+unit g decimal physical
+impl g {
+    dimension: [mass^1]
+    scale: 1 / 1000
+    system: SI
+
+    fn g(value: kg) g {
+        return value * 1000
+    }
+}
+
+unit min decimal physical
+impl min {
+    dimension: [time^1]
+    scale: 60
+    system: Other
+
+    fn min(value: s) min {
+        return value / 60
+    }
+}
+
+unit h decimal physical
+impl h {
+    dimension: [time^1]
+    scale: 3600
+    system: Other
+
+    fn h(value: s) h {
+        return value / 3600
+    }
+}
+
+// =============================================================================
+// Kinematic and frequency units
+// =============================================================================
+
+unit mps decimal physical
+impl mps {
+    dimension: [length^1, time^-1]
+    scale: 1
+    system: SI
+
+    fn mps(value: kph) mps {
+        return value * 5 / 18
+    }
+}
+
+unit kph decimal physical
+impl kph {
+    dimension: [length^1, time^-1]
+    scale: 5 / 18
+    system: SI
+
+    fn kph(value: mps) kph {
+        return value * 18 / 5
+    }
+}
+
+unit mph decimal physical
+impl mph {
+    dimension: [length^1, time^-1]
+    scale: 1397 / 3125
+    system: Imperial
+
+    fn mph(value: mps) mph {
+        return value / 0.44704
+    }
+}
+
+unit mps2 decimal physical
+impl mps2 {
+    dimension: [length^1, time^-2]
+    scale: 1
+    system: SI
+}
+
+unit Hz decimal physical
+impl Hz {
+    dimension: [time^-1]
+    scale: 1
+    system: SI
+
+    fn Hz(value: rpm) Hz {
+        return value / 60
+    }
+}
+
+// The omitted storage type defaults to decimal.
+unit rpm physical
+impl rpm {
+    dimension: [time^-1]
+    scale: 1 / 60
+    system: Other
+
+    fn rpm(value: Hz) rpm {
+        return value * 60
+    }
+}
+
+// Becquerel deliberately shares the Hz dimension and scale but not its meaning.
+unit Bq decimal physical
+impl Bq {
+    dimension: [time^-1]
+    scale: 1
+    system: SI
+}
+
+// =============================================================================
+// Mechanical SI-derived units
+// =============================================================================
+
+unit N decimal physical
+impl N {
+    dimension: [mass^1, length^1, time^-2]
+    scale: 1
+    system: SI
+}
+
+unit kN decimal physical
+impl kN {
+    dimension: [mass^1, length^1, time^-2]
+    scale: 1000
+    system: SI
+}
+
+unit Pa decimal physical
+impl Pa {
+    dimension: [mass^1, length^-1, time^-2]
+    scale: 1
+    system: SI
+}
+
+unit J decimal physical
+impl J {
+    dimension: [mass^1, length^2, time^-2]
+    scale: 1
+    system: SI
+}
+
+unit kJ decimal physical
+impl kJ {
+    dimension: [mass^1, length^2, time^-2]
+    scale: 1000
+    system: SI
+}
+
+unit W decimal physical
+impl W {
+    dimension: [mass^1, length^2, time^-3]
+    scale: 1
+    system: SI
+}
+
+unit kW decimal physical
+impl kW {
+    dimension: [mass^1, length^2, time^-3]
+    scale: 1000
+    system: SI
+}
+
+unit Momentum decimal physical
+impl Momentum {
+    dimension: [mass^1, length^1, time^-1]
+    scale: 1
+    system: SI
+}
+
+unit DynamicViscosity decimal physical
+impl DynamicViscosity {
+    dimension: [mass^1, length^-1, time^-1]
+    scale: 1
+    system: SI
+}
+
+unit SpecificHeatCapacity decimal physical
+impl SpecificHeatCapacity {
+    dimension: [length^2, time^-2, thermodynamic_temperature^-1]
+    scale: 1
+    system: SI
+}
+
+unit ThermalConductivity decimal physical
+impl ThermalConductivity {
+    dimension: [mass^1, length^1, time^-3, thermodynamic_temperature^-1]
+    scale: 1
+    system: SI
+}
+
+// =============================================================================
+// Electrical SI-derived units
+// =============================================================================
+
+unit C decimal physical
+impl C {
+    dimension: [electric_current^1, time^1]
+    scale: 1
+    system: SI
+}
+
+unit V decimal physical
+impl V {
+    dimension: [mass^1, length^2, time^-3, electric_current^-1]
+    scale: 1
+    system: SI
+}
+
+unit ohm decimal physical
+impl ohm {
+    dimension: [mass^1, length^2, time^-3, electric_current^-2]
+    scale: 1
+    system: SI
+}
+
+unit S decimal physical
+impl S {
+    dimension: [mass^-1, length^-2, time^3, electric_current^2]
+    scale: 1
+    system: SI
+}
+
+unit F decimal physical
+impl F {
+    dimension: [mass^-1, length^-2, time^4, electric_current^2]
+    scale: 1
+    system: SI
+}
+
+unit Wb decimal physical
+impl Wb {
+    dimension: [mass^1, length^2, time^-2, electric_current^-1]
+    scale: 1
+    system: SI
+}
+
+unit T decimal physical
+impl T {
+    dimension: [mass^1, time^-2, electric_current^-1]
+    scale: 1
+    system: SI
+}
+
+unit H decimal physical
+impl H {
+    dimension: [mass^1, length^2, time^-2, electric_current^-2]
+    scale: 1
+    system: SI
+}
+
+// =============================================================================
+// Photometric, radiological and catalytic units
+// =============================================================================
+
+unit lm decimal physical
+impl lm {
+    dimension: [luminous_intensity^1]
+    scale: 1
+    system: SI
+}
+
+unit lx decimal physical
+impl lx {
+    dimension: [luminous_intensity^1, length^-2]
+    scale: 1
+    system: SI
+}
+
+unit Gy decimal physical
+impl Gy {
+    dimension: [length^2, time^-2]
+    scale: 1
+    system: SI
+}
+
+unit Sv decimal physical
+impl Sv {
+    dimension: [length^2, time^-2]
+    scale: 1
+    system: SI
+}
+
+unit kat decimal physical
+impl kat {
+    dimension: [amount_of_substance^1, time^-1]
+    scale: 1
+    system: SI
+}
+
+// =============================================================================
+// Domain units
+// =============================================================================
+
+unit Item uint other
+impl Item {
+    dimension: [item^1]
+    scale: 1
+    system: Domain
+}
+
+unit Batch uint other
+impl Batch {
+    dimension: [batch^1]
+    scale: 1
+    system: Domain
+}
+
+unit Packet uint other
+impl Packet {
+    dimension: [packet^1]
+    scale: 1
+    system: Domain
+}
+
+unit SEK decimal other
+impl SEK {
+    dimension: [currency.SEK^1]
+    scale: 1
+    system: Currency
+}
+
+unit EUR decimal other
+impl EUR {
+    dimension: [currency.EUR^1]
+    scale: 1
+    system: Currency
+}
+
+unit ItemsPerBatch decimal other
+impl ItemsPerBatch {
+    dimension: [item^1, batch^-1]
+    scale: 1
+    system: Domain
+}
+
+unit PacketsPerSecond decimal other
+impl PacketsPerSecond {
+    dimension: [packet^1, time^-1]
+    scale: 1
+    system: Domain
+}
+
+unit SEKPerItem decimal other
+impl SEKPerItem {
+    dimension: [currency.SEK^1, item^-1]
+    scale: 1
+    system: Domain
+}
+
+// =============================================================================
+// Base and scaled conversion calls
+// =============================================================================
+
+fn ExplicitLengthConversions(value: m) void {
+    let millimetres: mm := mm(value)
+    let centimetres: cm := cm(value)
+    let kilometres: km := km(value)
+    let inches: inch := inch(value)
+    let feet: ft := ft(value)
+}
+
+fn ExplicitMassAndTimeConversions(mass: kg, duration: s) void {
+    let grams: g := g(mass)
+    let minutes: min := min(duration)
+    let hours: h := h(duration)
+}
+
+fn ExplicitSpeedConversions(speed: mps) void {
+    let metric: kph := kph(speed)
+    let imperial: mph := mph(speed)
+    let restored: mps := mps(metric)
+}
+
+fn ExplicitFrequencyConversions(frequency: Hz, rotation: rpm) void {
+    let rotational: rpm := rpm(frequency)
+    let cycles: Hz := Hz(rotation)
+}
+
+// =============================================================================
+// Scale-aware algebra
+// =============================================================================
+
+fn MetresPerSecond(distance: m, duration: s) mps {
+    return distance / duration
+}
+
+fn KilometresPerHour(distance: km, duration: h) kph {
+    return distance / duration
+}
+
+fn Acceleration(speed: mps, duration: s) mps2 {
+    return speed / duration
+}
+
+fn Force(mass: kg, acceleration: mps2) N {
+    return mass * acceleration
+}
+
+fn ScaledEnergy(force: kN, distance: m) kJ {
+    return force * distance
+}
+
+fn ScaledPower(energy: kJ, duration: s) kW {
+    return energy / duration
+}
+
+// =============================================================================
+// Mechanical dimension chains
+// =============================================================================
+
+fn Pressure(force: N, width: m, height: m) Pa {
+    return force / width / height
+}
+
+fn RecoverForce(pressure: Pa, width: m, height: m) N {
+    return pressure * width * height
+}
+
+fn Work(force: N, distance: m) J {
+    return force * distance
+}
+
+fn PowerFromEnergy(energy: J, duration: s) W {
+    return energy / duration
+}
+
+fn PowerFromForce(force: N, speed: mps) W {
+    return force * speed
+}
+
+fn MomentumFromForce(force: N, duration: s) Momentum {
+    return force * duration
+}
+
+fn MomentumFromMass(mass: kg, speed: mps) Momentum {
+    return mass * speed
+}
+
+fn EnergyFromPressureVolume(
+    pressure: Pa,
+    length: m,
+    width: m,
+    height: m,
+) J {
+    return pressure * length * width * height
+}
+
+fn DynamicViscosityFromPressureTime(
+    pressure: Pa,
+    duration: s,
+) DynamicViscosity {
+    return pressure * duration
+}
+
+fn HeatCapacity(
+    energy: J,
+    mass: kg,
+    temperature: K,
+) SpecificHeatCapacity {
+    return energy / mass / temperature
+}
+
+fn Conductivity(
+    power: W,
+    length: m,
+    temperature: K,
+) ThermalConductivity {
+    return power / length / temperature
+}
+
+// =============================================================================
+// Electrical dimension chains
+// =============================================================================
+
+fn Charge(current: A, duration: s) C {
+    return current * duration
+}
+
+fn Current(charge: C, duration: s) A {
+    return charge / duration
+}
+
+fn VoltageFromPower(power: W, current: A) V {
+    return power / current
+}
+
+fn VoltageFromEnergy(energy: J, charge: C) V {
+    return energy / charge
+}
+
+fn Resistance(voltage: V, current: A) ohm {
+    return voltage / current
+}
+
+fn Conductance(current: A, voltage: V) S {
+    return current / voltage
+}
+
+fn Capacitance(charge: C, voltage: V) F {
+    return charge / voltage
+}
+
+fn Flux(voltage: V, duration: s) Wb {
+    return voltage * duration
+}
+
+fn FluxDensity(flux: Wb, width: m, height: m) T {
+    return flux / width / height
+}
+
+fn Inductance(flux: Wb, current: A) H {
+    return flux / current
+}
+
+fn ElectricalPower(voltage: V, current: A) W {
+    return voltage * current
+}
+
+fn VoltageFromResistance(resistance: ohm, current: A) V {
+    return resistance * current
+}
+
+fn ChargeFromCapacitance(capacitance: F, voltage: V) C {
+    return capacitance * voltage
+}
+
+fn FluxFromInductance(inductance: H, current: A) Wb {
+    return inductance * current
+}
+
+// =============================================================================
+// Photometric, radiological and catalytic algebra
+// =============================================================================
+
+fn Illuminance(intensity: cd, width: m, height: m) lx {
+    return intensity / width / height
+}
+
+fn AbsorbedDose(energy: J, mass: kg) Gy {
+    return energy / mass
+}
+
+fn CatalyticActivity(amount: mol, duration: s) kat {
+    return amount / duration
+}
+
+// =============================================================================
+// Domain algebra
+// =============================================================================
+
+fn BatchDensity(items: Item, batches: Batch) ItemsPerBatch {
+    return items / batches
+}
+
+fn PacketRate(packets: Packet, duration: s) PacketsPerSecond {
+    return packets / duration
+}
+
+fn UnitPrice(total: SEK, items: Item) SEKPerItem {
+    return total / items
+}
+
+fn InvoiceTotal(price: SEKPerItem, items: Item) SEK {
+    return price * items
+}
+
+// =============================================================================
+// Cancellation and normalization
+// =============================================================================
+
+fn DimensionlessMechanicalIdentity(
+    force: N,
+    distance: m,
+    energy: J,
+) decimal {
+    return force * distance / energy
+}
+
+fn DimensionlessElectricalIdentity(
+    voltage: V,
+    current: A,
+    power: W,
+) decimal {
+    return voltage * current / power
+}
+
+fn NormalizeReorderedForce(
+    distance: m,
+    mass: kg,
+    firstDuration: s,
+    secondDuration: s,
+) N {
+    return distance * mass / secondDuration / firstDuration
+}
+
+fn AnonymousInverseTime(duration: s) void {
+    // Hz, Bq and rpm share this dimension. Without a target, the result remains
+    // anonymous instead of selecting one named unit arbitrarily.
+    let inverseTime := 1 / duration
+    let identity: decimal := inverseTime * duration
+}

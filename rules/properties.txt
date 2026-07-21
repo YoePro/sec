@@ -1,0 +1,538 @@
+# Properties
+
+## Purpose
+
+A property defines controlled behavior for reading or assigning a member-like
+value on a type.
+
+Properties belong to a type's behavior.
+
+Therefore properties are declared inside `impl` blocks.
+
+Data fields belong to the type declaration.
+
+Properties belong to the impl declaration.
+
+Example:
+
+```sec
+type Vehicle struct {
+    _speed: Speed,
+}
+
+impl Vehicle {
+    property TopSpeed: Speed {
+        get {
+            return _speed
+        }
+
+        try set value {
+            _speed = value
+            return Ok()
+        }
+    }
+}
+```
+
+## Syntax
+
+Property syntax:
+
+```sec
+property Name: Type {
+    get {
+        return value
+    }
+
+    set value {
+        target = value
+    }
+}
+```
+
+Fallible setter syntax:
+
+```sec
+property Name: Type {
+    try set value {
+        if invalid {
+            return Err(Error.InvalidValue)
+        }
+
+        target = value
+        return Ok()
+    }
+}
+```
+
+A property may contain:
+
+- one getter
+- one setter
+- one fallible setter
+
+A property must contain at least one of:
+
+- `get`
+- `set`
+- `try set`
+
+A property may not contain:
+
+- stored fields
+- arbitrary declarations
+- more than one getter
+- more than one setter
+
+`set` and `try set` are mutually exclusive because both define assignment
+behavior.
+
+## Placement
+
+Properties are valid only inside ordinary `impl` blocks.
+
+Example:
+
+```sec
+impl Vehicle {
+    property TopSpeed: Speed {
+        get {
+            return _speed
+        }
+    }
+}
+```
+
+A property is registered on the impl target type.
+
+The property is then accessed through ordinary member syntax:
+
+```sec
+let current := vehicle.TopSpeed
+```
+
+The parser keeps this as member access syntax.
+
+Semantic analysis resolves whether the member is:
+
+- a struct field
+- a property
+- a register field
+- an enum value
+- another supported member form
+
+## Property identity
+
+A property has:
+
+- name
+- declared type
+- getter when present
+- setter when present
+- fallible setter flag
+- inferred setter error type when available
+- source location
+
+Property names must be unique for the target type.
+
+Duplicate property names are invalid, including duplicates across separate impl
+blocks for the same target type.
+
+Example diagnostic:
+
+```text
+duplicate property "TopSpeed" in impl Vehicle
+```
+
+## Getter rules
+
+A getter returns the property value.
+
+Getter rule:
+
+- a getter must return a value assignable to the property type
+- a getter with no return statement is invalid
+- constructor-style conversions such as `Money(5.90)` resolve to the constructed
+  type before the getter result is checked
+
+Example:
+
+```sec
+property Current: Speed {
+    get {
+        return _speed
+    }
+}
+```
+
+Invalid example:
+
+```sec
+property BadGet: Speed {
+    get {
+        return Money(5.90)
+    }
+}
+```
+
+Expected diagnostic:
+
+```text
+getter BadGet must return Speed, got Money
+```
+
+Missing return example:
+
+```sec
+property MissingGet: Speed {
+    get {
+    }
+}
+```
+
+Expected diagnostic:
+
+```text
+getter MissingGet must return Speed
+```
+
+## Setter rules
+
+A setter defines assignment behavior for the property.
+
+Setter syntax requires a value parameter:
+
+```sec
+set value {
+    _speed = value
+}
+```
+
+The value parameter has the property type.
+
+If the value parameter is missing, the parser should report one clear property
+error.
+
+Expected diagnostic:
+
+```text
+setter for TopSpeed must declare value parameter
+```
+
+An infallible setter must not return `Err(...)`.
+
+Invalid example:
+
+```sec
+property TopSpeed: Speed {
+    set value {
+        return Err(InvalidValue)
+    }
+}
+```
+
+Expected diagnostic:
+
+```text
+non-fallible setter TopSpeed cannot return Err
+```
+
+## Fallible setters
+
+A fallible setter is declared with `try set`.
+
+Example:
+
+```sec
+property TopSpeed: Speed {
+    try set value {
+        if value < 0 {
+            return Err(InvalidSpeed)
+        }
+
+        _speed = value
+        return Ok()
+    }
+}
+```
+
+A fallible setter behaves like a hidden fallible operation behind assignment.
+
+Assignment to a fallible property requires `try`.
+
+Valid:
+
+```sec
+try car.TopSpeed = currentSpeed {
+    Err(error) => fmt.Println("could not set top speed")
+}
+```
+
+Invalid:
+
+```sec
+car.TopSpeed = currentSpeed
+```
+
+Expected diagnostic:
+
+```text
+assigning fallible property TopSpeed requires try
+```
+
+The success case is implicit.
+
+The user does not need to write an `Ok(...)` arm for a successful setter
+assignment.
+
+The handler block handles the error path.
+
+## Assignment semantics
+
+For an infallible property:
+
+```sec
+car.TopSpeed = speed
+```
+
+is valid when `speed` is assignable to the property type.
+
+For a fallible property:
+
+```sec
+try car.TopSpeed = speed {
+    Err(error) => handle(error)
+}
+```
+
+is required.
+
+Compound assignment follows the same rule:
+
+```sec
+try car.TopSpeed += delta {
+    Err(error) => handle(error)
+}
+```
+
+The property setter receives the computed property value.
+
+If compound assignment cannot be represented without evaluating the getter and
+setter in the correct order, lowering must keep the order explicit.
+
+## Access inside property bodies
+
+Inside a property body, the compiler may resolve:
+
+- `self`
+- struct fields on the impl target
+- other properties on the impl target
+- the setter value parameter
+- visible symbols from the surrounding module
+- enum values and constructor calls
+
+Example:
+
+```sec
+impl Vehicle {
+    property Current: Speed {
+        get {
+            return TopSpeed
+        }
+    }
+
+    property TopSpeed: Speed {
+        get {
+            return _speed
+        }
+    }
+}
+```
+
+Property bodies may refer to properties declared later because impl members are
+registered before property bodies are analyzed.
+
+## Parser recovery
+
+Malformed property declarations should produce one clear parser error per broken
+property when practical.
+
+Missing property name:
+
+```sec
+property {
+}
+```
+
+Expected diagnostic:
+
+```text
+property declaration missing name
+```
+
+Missing colon after property name:
+
+```sec
+property NoType {
+    get {
+        return _speed
+    }
+}
+```
+
+Expected diagnostic:
+
+```text
+expected ':' after property name NoType
+```
+
+Missing type:
+
+```sec
+property Name: {
+}
+```
+
+Expected diagnostic:
+
+```text
+property Name missing type after ':'
+```
+
+Missing setter parameter:
+
+```sec
+property Gustaf: Speed {
+    set {
+    }
+}
+```
+
+Expected diagnostic:
+
+```text
+setter for Gustaf must declare value parameter
+```
+
+When the next token is `{`, parser recovery should skip the malformed property
+block to avoid cascading diagnostics from nested `get`, `set` or `return`
+tokens.
+
+## Relationship to variable contracts
+
+Variable contracts may be modeled as hidden fallible property setters.
+
+Example:
+
+```sec
+let mut p: Percent range 0..100
+```
+
+Conceptually behaves like a hidden setter that validates the range before
+accepting the value.
+
+Therefore assigning to a contract-checked variable follows the same principle as
+assigning to a fallible property:
+
+- explicit `try` is required when assignment can fail
+- unchecked assignment is invalid
+
+The exact variable-contract syntax and lowering are defined in
+`variables_contracts.txt`.
+
+## Relationship to error handling
+
+Fallible property assignment is part of error handling.
+
+The setter error type is the error type handled by the `try` assignment handler.
+
+If the surrounding function propagates errors, normal `try` propagation rules
+apply.
+
+The success path is implicit `Ok`.
+
+The error path is explicit through `Err(...)` arms or later equivalent handler
+syntax.
+
+## Code generation
+
+Properties do not exist as stored fields at runtime.
+
+A property lowers to operations:
+
+- getter operation for reads
+- setter operation for writes
+- fallible setter operation for `try` writes
+
+The backend must preserve:
+
+- evaluation order
+- getter side effects when getters are effectful
+- setter side effects
+- fallible setter error behavior
+- ownership and borrow behavior
+- cleanup and defer behavior
+
+The current direct LLVM backend does not fully implement property lowering.
+
+The intended lowering path is:
+
+1. semantic analysis validates property behavior
+2. Semantic IR records explicit property read/write operations
+3. MLIR lowers those operations into calls, field access, checks or other
+   concrete implementation
+4. LLVM IR receives only explicit low-level behavior
+
+## Current implementation status
+
+Implemented:
+
+- parser support for `property Name: Type { ... }`
+- parser support for `get`
+- parser support for `set value`
+- parser support for `try set value`
+- parser recovery for missing property name
+- parser recovery for missing `:`
+- parser recovery for missing property type
+- parser recovery for missing setter parameter
+- sema property registration on impl target type
+- duplicate property diagnostics
+- property type resolution
+- member access type inference for properties
+- getter return-type checking
+- missing getter return diagnostics
+- constructor-style conversion resolution in getter returns
+- non-fallible setter cannot return `Err(...)`
+- simple setter assignment type checking
+- fallible property assignment requires `try`
+- fallible setter error type inference for simple `Err(...)` returns
+- generic impl property type substitution in the current generic model
+
+Partially implemented:
+
+- property body analysis uses a limited expression parser over block tokens
+- setter body checking handles simple assignments but not full statement sema
+- property access exists for type checking, but full lowering is incomplete
+- compound assignment to fallible properties depends on the current assignment
+  support
+
+Not implemented yet:
+
+- full getter body semantic analysis as normal function body
+- full setter body semantic analysis as normal function body
+- full `self` borrow and mutability rules
+- explicit property effect model
+- visibility rules for properties
+- property overriding or interface property requirements
+- complete property code generation through Semantic IR and MLIR
+
+## Design rule
+
+A field stores data.
+
+A property defines behavior.
+
+Assignments that can fail must be explicit through `try`.
+
+Property semantics are validated before lowering and must not be inferred by the
+backend.

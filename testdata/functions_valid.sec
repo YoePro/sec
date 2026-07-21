@@ -1,0 +1,375 @@
+module functions
+
+// Every declaration and use in this file is expected to pass semantic analysis.
+// The file tests named functions, scopes, calls, overloads, recursion,
+// Result construction and try propagation.
+
+// =============================================================================
+// Shared semantic types
+// =============================================================================
+
+type Percent int range 0..100
+type Age int range 0..150
+
+type ParseError enum {
+    InvalidInput
+    Overflow
+}
+
+type StorageError enum {
+    Unavailable
+    Corrupt
+}
+
+// =============================================================================
+// Basic declarations and returns
+// =============================================================================
+
+fn NoOperation() void {
+}
+
+fn ExplicitNoOperation() void {
+    return
+}
+
+fn ReturnInteger() int {
+    return 42
+}
+
+fn ReturnBoolean() bool {
+    return true
+}
+
+fn ReturnString() string {
+    return "Sec"
+}
+
+fn Identity(value: int) int {
+    return value
+}
+
+fn Add(left: int, right: int) int {
+    return left + right
+}
+
+fn AddWithTrailingComma(
+    left: int,
+    right: int,
+) int {
+    return left + right
+}
+
+fn UseLocalScope(value: int) int {
+    let doubled: int := value * 2
+    let adjusted: int := doubled + 1
+    return adjusted
+}
+
+fn UseVoidCalls() void {
+    NoOperation()
+    ExplicitNoOperation()
+    return
+}
+
+// =============================================================================
+// Comparison, logical and prefix expressions
+// =============================================================================
+
+fn Equal(left: int, right: int) bool {
+    return left == right
+}
+
+fn NotEqual(left: int, right: int) bool {
+    return left != right
+}
+
+fn Less(left: int, right: int) bool {
+    return left < right
+}
+
+fn LessOrEqual(left: int, right: int) bool {
+    return left <= right
+}
+
+fn Greater(left: int, right: int) bool {
+    return left > right
+}
+
+fn GreaterOrEqual(left: int, right: int) bool {
+    return left >= right
+}
+
+fn Both(left: bool, right: bool) bool {
+    return left && right
+}
+
+fn Either(left: bool, right: bool) bool {
+    return left || right
+}
+
+fn Negate(value: bool) bool {
+    return !value
+}
+
+fn InClosedInterval(value: int, minimum: int, maximum: int) bool {
+    return value >= minimum && value <= maximum
+}
+
+fn ComplexBoolean(
+    value: int,
+    minimum: int,
+    maximum: int,
+    enabled: bool,
+) bool {
+    return enabled && value >= minimum && value <= maximum
+}
+
+// =============================================================================
+// Complete return paths
+// =============================================================================
+
+fn Absolute(value: int) int {
+    if value < 0 {
+        return -value
+    }
+
+    return value
+}
+
+fn Select(condition: bool, whenTrue: int, whenFalse: int) int {
+    if condition {
+        return whenTrue
+    } else {
+        return whenFalse
+    }
+}
+
+fn ClassifySign(value: int) int {
+    if value < 0 {
+        return -1
+    }
+
+    if value > 0 {
+        return 1
+    }
+
+    return 0
+}
+
+// =============================================================================
+// Registration before body analysis and recursion
+// =============================================================================
+
+fn CallLater(value: int) int {
+    return DeclaredLater(value)
+}
+
+fn DeclaredLater(value: int) int {
+    return value + 10
+}
+
+fn Factorial(value: int) int {
+    if value <= 1 {
+        return 1
+    }
+
+    return value * Factorial(value - 1)
+}
+
+fn IsEven(value: int) bool {
+    if value == 0 {
+        return true
+    }
+
+    return IsOdd(value - 1)
+}
+
+fn IsOdd(value: int) bool {
+    if value == 0 {
+        return false
+    }
+
+    return IsEven(value - 1)
+}
+
+// =============================================================================
+// Overloads selected by parameter signature
+// =============================================================================
+
+fn Describe(value: int) string {
+    return "int"
+}
+
+fn Describe(value: string) string {
+    return value
+}
+
+fn Describe(value: bool) string {
+    if value {
+        return "true"
+    }
+
+    return "false"
+}
+
+fn Count(value: int) int {
+    return value
+}
+
+fn Count(left: int, right: int) int {
+    return left + right
+}
+
+fn Width(value: int) int {
+    return value
+}
+
+fn Width(value: int64) int64 {
+    return value
+}
+
+fn Kind(value: int) int {
+    return 0
+}
+
+fn Kind(value: Percent) int {
+    return 1
+}
+
+fn Kind(value: Age) int {
+    return 2
+}
+
+fn Convert(value: int) string {
+    return "number"
+}
+
+fn Convert(value: string) int {
+    return 1
+}
+
+fn TestOverloadCalls() void {
+    let intDescription: string := Describe(10)
+    let stringDescription: string := Describe("value")
+    let boolDescription: string := Describe(true)
+
+    let oneCount: int := Count(5)
+    let twoCount: int := Count(5, 7)
+
+    let narrow: int := 12
+    let wide: int64 := 12
+    let narrowWidth: int := Width(narrow)
+    let wideWidth: int64 := Width(wide)
+
+    let percent: Percent := 50
+    let age: Age := 40
+    let plainKind: int := Kind(50)
+    let percentKind: int := Kind(percent)
+    let ageKind: int := Kind(age)
+
+    let convertedString: string := Convert(10)
+    let convertedInteger: int := Convert("10")
+
+    return
+}
+
+// =============================================================================
+// Nested calls and call-expression result types
+// =============================================================================
+
+fn Double(value: int) int {
+    return value * 2
+}
+
+fn Increment(value: int) int {
+    return value + 1
+}
+
+fn ComposeCalls(value: int) int {
+    return Increment(Double(Increment(value)))
+}
+
+fn CompareCallResults(left: int, right: int) bool {
+    return Double(left) == Double(right)
+}
+
+// =============================================================================
+// Result, Ok, Err and try
+// =============================================================================
+
+fn ParsePositive(value: int) Result[int, ParseError] {
+    if value < 0 {
+        return Err(ParseError.InvalidInput)
+    }
+
+    return Ok(value)
+}
+
+fn AlwaysFails() Result[int, ParseError] {
+    return Err(ParseError.Overflow)
+}
+
+fn CompleteWithoutValue() Result[void, ParseError] {
+    return Ok()
+}
+
+fn PropagateParsed(value: int) Result[int, ParseError] {
+    let parsed: int := try ParsePositive(value)
+    return Ok(parsed + 1)
+}
+
+fn PropagateInsideOk(value: int) Result[int, ParseError] {
+    return Ok(try ParsePositive(value))
+}
+
+fn ForwardFailure() Result[int, ParseError] {
+    let value: int := try AlwaysFails()
+    return Ok(value)
+}
+
+// =============================================================================
+// Named semantic types in parameters and return values
+// =============================================================================
+
+fn KeepPercent(value: Percent) Percent {
+    return value
+}
+
+fn MakePercent(value: int) Percent {
+    return Percent(value)
+}
+
+fn KeepAge(value: Age) Age {
+    return value
+}
+
+fn TestNamedTypes() void {
+    let percent: Percent := 25
+    let age: Age := 30
+    let keptPercent: Percent := KeepPercent(percent)
+    let madePercent: Percent := MakePercent(10)
+    let keptAge: Age := KeepAge(age)
+    return
+}
+
+// =============================================================================
+// Broad integration entry point
+// =============================================================================
+
+fn RunFunctionTests() Result[int, ParseError] {
+    UseVoidCalls()
+    TestOverloadCalls()
+    TestNamedTypes()
+
+    let arithmetic: int := AddWithTrailingComma(2, 3)
+    let recursive: int := Factorial(5)
+    let forward: int := CallLater(7)
+    let composed: int := ComposeCalls(4)
+    let parsed: int := try PropagateParsed(10)
+
+    if ComplexBoolean(parsed, 0, 100, true) && IsEven(4) {
+        return Ok(arithmetic + recursive + forward + composed + parsed)
+    }
+
+    return Err(ParseError.InvalidInput)
+}

@@ -1560,12 +1560,8 @@ func (p *Parser) parseRegisterType() *ast.RegisterType {
 	if !p.expectPeek(lexer.LBRACKET) {
 		return registerType
 	}
-	if !p.expectPeek(lexer.INT) {
-		return registerType
-	}
-	width, ok := ast.ParseIntegerLiteralInt64(p.curToken.Lexeme)
+	width, ok := p.parseRegisterWidth("register width")
 	if !ok {
-		p.addError("invalid register width %q at %d:%d", p.curToken.Lexeme, p.curToken.Line, p.curToken.Column)
 		return registerType
 	}
 	registerType.Width = width
@@ -1627,12 +1623,8 @@ func (p *Parser) parseRegisterFields() []*ast.RegisterField {
 		field.Width = 1
 		if p.peekToken.Type == lexer.LBRACKET {
 			p.nextToken()
-			if !p.expectPeek(lexer.INT) {
-				return fields
-			}
-			width, ok := ast.ParseIntegerLiteralInt64(p.curToken.Lexeme)
+			width, ok := p.parseRegisterWidth("bit field width")
 			if !ok {
-				p.addError("invalid bit field width %q at %d:%d", p.curToken.Lexeme, p.curToken.Line, p.curToken.Column)
 				return fields
 			}
 			field.Width = width
@@ -1664,6 +1656,32 @@ func (p *Parser) parseRegisterFields() []*ast.RegisterField {
 	}
 
 	return fields
+}
+
+func (p *Parser) parseRegisterWidth(kind string) (int64, bool) {
+	if p.peekToken.Type == lexer.MINUS {
+		p.nextToken()
+		minus := p.curToken
+		if !p.expectPeek(lexer.INT) {
+			return 0, false
+		}
+		width, ok := ast.ParseIntegerLiteralInt64("-" + p.curToken.Lexeme)
+		if !ok {
+			p.addError("invalid %s %q at %d:%d", kind, "-"+p.curToken.Lexeme, minus.Line, minus.Column)
+			return 0, false
+		}
+		return width, true
+	}
+
+	if !p.expectPeek(lexer.INT) {
+		return 0, false
+	}
+	width, ok := ast.ParseIntegerLiteralInt64(p.curToken.Lexeme)
+	if !ok {
+		p.addError("invalid %s %q at %d:%d", kind, p.curToken.Lexeme, p.curToken.Line, p.curToken.Column)
+		return 0, false
+	}
+	return width, true
 }
 
 func (p *Parser) parseUnionType() []*ast.UnionVariant {

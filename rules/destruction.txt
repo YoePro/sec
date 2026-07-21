@@ -1,0 +1,1331 @@
+=============================================================================================================================================================================================
+Destruction
+===========
+
+Destruction is the deterministic end of an owned value's lifetime.
+
+The Sec compiler is responsible for determining:
+
+* whether destruction is required
+* when destruction occurs
+* which resources must be released
+* which fields must be destroyed
+* the destruction order
+* which control-flow paths require cleanup
+* whether a value has already transferred ownership
+* whether a value is only partially initialized
+* whether a value has been partially moved
+
+Programmers should not manually destroy ordinary values.
+
+Most Sec types require no user-written destruction code.
+
+## Design goals
+
+Sec destruction must be:
+
+* deterministic
+* compiler-controlled
+* ownership-aware
+* path-sensitive
+* compatible with partial moves
+* compatible with defer
+* independent of garbage collection
+* usable without a runtime
+* explicit in Semantic IR
+* fully lowered before LLVM IR translation
+
+Destruction must not require:
+
+* garbage collection
+* reference counting
+* runtime ownership tables
+* runtime borrow tracking
+* programmer-written lifetime annotations
+* manually written cleanup for ordinary values
+
+## Terminology
+
+The following terms are distinct:
+
+* destruction
+* resource release
+* memory deallocation
+* free operation
+* cleanup
+* defer
+
+Destruction is the compiler-controlled semantic end of a value.
+
+Resource release is an operation performed by a type that owns an external or logical resource.
+
+Memory deallocation releases explicitly allocated memory.
+
+A free operation is an optional type-defined resource-release operation.
+
+Cleanup is the compiler-generated sequence executed when leaving a scope or control-flow region.
+
+defer registers an explicit operation to execute during cleanup.
+
+These concepts must not be treated as interchangeable.
+
+## Automatic destruction
+
+An owned value is automatically destroyed when its lifetime ends unless:
+
+* ownership has been moved elsewhere
+* ownership has been returned
+* ownership has been transferred to another object
+* ownership has been transferred through a consuming call
+* ownership has been explicitly transferred across an FFI boundary
+* the program terminates through a language operation defined to skip cleanup
+* the value is trivially destructible
+
+The programmer must not be required to write an explicit destruction statement for normal local variables.
+
+Example:
+
+```sec
+fn Process() void {
+    let buffer := Buffer.Create(4096)
+    Use(buffer)
+}
+```
+
+If Buffer owns a resource, the compiler inserts the required cleanup when `Process` exits.
+
+The source code does not require:
+
+```sec
+buffer.free()
+```
+
+The compiler owns destruction placement.
+
+## Trivially destructible types
+
+A type is trivially destructible when ending its lifetime requires no observable operation.
+
+Examples normally include:
+
+* bool
+* byte
+* char
+* rune
+* fixed-width integers
+* target-sized integers
+* ordinary floating-point values
+* simple decimal values
+* references
+* mutable references
+* RawPtr values
+* enums without owned payloads
+* aggregates containing only trivially destructible fields
+
+A RawPtr is trivially destructible because it does not own the pointed-to memory.
+
+A reference is trivially destructible because it does not own the referenced value.
+
+Trivial destruction produces no machine operation.
+
+The compiler may still track the value's lifetime and validity.
+
+## Non-trivially destructible types
+
+A type is non-trivially destructible when ending its lifetime requires one or more operations.
+
+Examples may include:
+
+* heap-owning containers
+* files
+* sockets
+* locks
+* mapped memory
+* operating-system handles
+* device resources
+* foreign resources
+* aggregates containing non-trivially destructible fields
+* types defining a free operation
+
+The compiler must know the destruction requirements from the resolved type.
+
+## Compiler-derived destruction
+
+The compiler must derive destruction automatically whenever possible.
+
+For a struct without a custom free operation, destruction consists of destroying each initialized owning field.
+
+Example:
+
+```sec
+type Session struct {
+    connection: Connection
+    buffer: Buffer
+    status: SessionStatus
+}
+```
+
+If Connection and Buffer require destruction but SessionStatus does not, Session destruction is derived automatically.
+
+The programmer must not be required to define:
+
+```sec
+impl Session {
+    free {
+        self.buffer.free()
+        self.connection.free()
+    }
+}
+```
+
+Such repetition would duplicate information already known by the compiler.
+
+## Field destruction order
+
+The language must define one deterministic field-destruction order.
+
+The recommended rule is:
+
+Fields are destroyed in reverse declaration order.
+
+Example:
+
+```sec
+type Example struct {
+    first: First
+    second: Second
+    third: Third
+}
+```
+
+The compiler destroys:
+
+1. third
+2. second
+3. first
+
+Reverse order mirrors stack-like construction and makes nested resource dependencies predictable.
+
+The selected order is observable when field destruction has side effects.
+
+Optimization must not change observable destruction order.
+
+## Local destruction order
+
+Owned local values in the same lexical scope are destroyed in reverse successful initialization order.
+
+Example:
+
+```sec
+fn Example() void {
+    let first := First.Create()
+    let second := Second.Create()
+    let third := Third.Create()
+}
+```
+
+Normal scope exit destroys:
+
+1. third
+2. second
+3. first
+
+A declaration that never completed initialization is not destroyed.
+
+## Construction failure
+
+When construction of a later value fails, already initialized values must still be destroyed.
+
+Example:
+
+```sec
+fn OpenResources() Result[Resources, OpenError] {
+    let first := try OpenFirst()
+    let second := try OpenSecond()
+    let third := try OpenThird()
+
+    return Ok(Resources {
+        first: first
+        second: second
+        third: third
+    })
+}
+```
+
+If `OpenSecond` returns Err:
+
+* first is destroyed
+* second was never successfully initialized
+* third was never evaluated
+
+If `OpenThird` returns Err:
+
+* second is destroyed
+* first is destroyed
+
+Cleanup follows reverse successful initialization order.
+
+## Free operation
+
+Sec may provide the keyword `free` for types that require custom resource release.
+
+The keyword should be introduced only when compiler-derived field destruction is insufficient.
+
+Proposed form:
+
+```sec
+impl File {
+    free {
+        CloseHandle(self.handle)
+    }
+}
+```
+
+The exact syntax may be finalized separately.
+
+A free operation is associated with the type.
+
+It is not an ordinary method.
+
+It must not normally be called directly by user code.
+
+The compiler invokes it as part of destruction.
+
+## Free is not mandatory
+
+Most types must not define a free operation.
+
+A type needs a custom free operation only when it owns a resource that cannot be released through automatic field destruction.
+
+Examples include:
+
+* a raw operating-system handle
+* memory returned by a foreign allocator
+* a memory mapping
+* a device registration
+* an opaque C resource
+* a lock state requiring explicit release
+* a resource identified by a numeric descriptor
+
+A type whose resources are entirely represented by owned Sec fields normally requires no custom free operation.
+
+## Free naming
+
+The keyword is `free` if an explicit language-level declaration is required.
+
+Sec should not introduce the keywords:
+
+* destructor
+* delete
+* drop
+* dispose
+* finalize
+
+The internal compiler operation may still be named `destroy` because destruction is broader than the user-defined free operation.
+
+Source syntax and compiler terminology need not be identical.
+
+## Free receiver
+
+A free operation consumes the value being destroyed.
+
+The receiver must be treated as compiler-controlled mutable destruction access.
+
+The user should not need to declare an ordinary receiver parameter.
+
+Conceptually, the compiler provides access to the value being destroyed.
+
+Inside free:
+
+* fields may be read
+* mutable cleanup operations may be performed
+* resources may be released
+* owned fields remain compiler-managed unless explicitly consumed according to defined rules
+* the value may not escape
+* the value may not be returned
+* ownership of the complete value may not be transferred elsewhere
+
+The compiler must prevent resurrection of a value during destruction.
+
+## Automatic fields after free
+
+The recommended model is:
+
+1. the custom free body executes
+2. remaining initialized owned fields are automatically destroyed in reverse declaration order
+
+A custom free body must not suppress automatic field destruction.
+
+This avoids requiring the programmer to manually free every field.
+
+Example:
+
+```sec
+type File struct {
+    handle: PlatformHandle
+    path: String
+}
+
+impl File {
+    free {
+        PlatformClose(self.handle)
+    }
+}
+```
+
+After the custom free body:
+
+* path is automatically destroyed if required
+* handle is destroyed according to its field type
+* PlatformClose is not automatically repeated unless PlatformHandle itself owns the same resource
+
+The type design must avoid duplicate resource ownership.
+
+## Custom free and owned fields
+
+A custom free operation should normally release only resources not already represented by owned fields.
+
+The compiler should warn when custom free code appears to manually release an owned field that will also be automatically destroyed.
+
+The compiler should reject a statically provable double release.
+
+When a resource is wrapped in an owning field type, the parent type should rely on field destruction.
+
+## Explicit free calls
+
+Ordinary code should not need explicit free calls.
+
+The compiler should initially prohibit direct calls such as:
+
+```sec
+file.free()
+```
+
+This prevents:
+
+* use after free
+* double destruction
+* inconsistent control-flow cleanup
+* accidental freeing of borrowed values
+* bypassing ownership analysis
+
+A future explicitly consuming release operation may be considered separately if a valid use case exists.
+
+Such an operation must integrate with ownership and mark the value moved or destroyed.
+
+It must not be implemented as an ordinary method call.
+
+## Deallocation
+
+Memory deallocation is not equivalent to destruction.
+
+For a heap-owning type, destruction normally consists of:
+
+1. destroying initialized contained values
+2. releasing type-specific resources
+3. deallocating owned memory
+
+The order depends on the type's representation.
+
+Deallocation requires knowledge of:
+
+* allocation origin
+* allocator
+* allocation size where required
+* alignment
+* matching deallocation operation
+* contained initialization state
+
+The compiler must never infer that a RawPtr should be deallocated.
+
+## Allocation pairing
+
+Every explicit allocation must have a defined ownership and deallocation strategy.
+
+An owning allocation operation must record enough semantic information to select the matching deallocation operation.
+
+Memory allocated by one allocator must not be freed through an incompatible allocator.
+
+Examples include:
+
+* Sec allocator
+* platform allocator
+* C allocator
+* caller-provided allocator
+* arena allocator
+* fixed pool allocator
+
+The ownership type must preserve allocator identity when it is required for correct deallocation.
+
+## Stack values
+
+Stack values are not deallocated through a free operation.
+
+Their storage disappears when the stack frame or storage scope ends.
+
+Non-trivial values stored on the stack must still execute semantic destruction before their storage becomes invalid.
+
+The compiler must distinguish:
+
+* destruction of the value
+* release of stack storage
+
+## Static and global values
+
+Static and global destruction requires explicit language policy.
+
+The initial implementation should avoid relying on implicit process-exit destruction.
+
+Recommended initial rules:
+
+* compile-time constants require no runtime destruction
+* immutable static data requiring no destruction is permitted
+* global owned values requiring destruction should be rejected unless explicitly supported
+* no implicit global constructors or finalizers
+* no hidden runtime destruction registry
+
+Hosted global destruction may be added later through an explicit design.
+
+Freestanding and embedded targets must not require process-exit cleanup.
+
+## Temporary values
+
+Temporary owned values must be destroyed deterministically.
+
+A temporary is destroyed:
+
+* at the end of its defined temporary lifetime
+* after its final use
+* during cleanup if control flow exits early
+* not after ownership has been moved
+
+The compiler should keep temporary lifetimes as narrow as semantics permit.
+
+Temporary lifetime shortening must not change:
+
+* reference validity
+* destruction order
+* side effects
+* defer behavior
+* expression evaluation order
+
+## Expression temporaries
+
+The compiler must define destruction order for temporaries created within an expression.
+
+The recommended rule is:
+
+* operands are evaluated in Sec-defined evaluation order
+* successfully created temporaries remain valid until the enclosing full expression completes unless moved earlier
+* temporaries are destroyed in reverse successful creation order
+
+Example:
+
+```sec
+Use(CreateFirst(), CreateSecond())
+```
+
+If arguments evaluate left to right:
+
+1. CreateFirst executes
+2. CreateSecond executes
+3. Use executes
+4. the second remaining temporary is destroyed
+5. the first remaining temporary is destroyed
+
+If ownership is transferred into `Use`, the moved arguments are not destroyed by the caller.
+
+## Branches
+
+Destruction is path-sensitive.
+
+A value is destroyed only on paths where it was successfully initialized and remains owned.
+
+Example:
+
+```sec
+fn Example(condition: bool) void {
+    let resource: Resource
+
+    if condition {
+        resource = Resource.Create()
+        Use(resource)
+    }
+}
+```
+
+The compiler must not destroy `resource` on a path where it was never initialized.
+
+If definite-assignment rules reject this exact source form, the same path-sensitive requirement still applies to compiler-generated and permitted conditional initialization.
+
+## Merge points
+
+At a control-flow merge, the compiler must know:
+
+* whether a value is initialized
+* whether it remains owned
+* whether it has been moved
+* whether it requires conditional destruction
+* which fields remain initialized
+
+Ambiguous destruction state must be rejected or normalized into explicit conditional state.
+
+The backend must not guess.
+
+## Loops
+
+Loop destruction must distinguish:
+
+* values created before the loop
+* values created for each iteration
+* loop-carried owned values
+* values moved during an iteration
+* values initialized conditionally
+* values retained after loop exit
+
+Values local to one loop iteration are destroyed at the end of that iteration unless ownership is transferred elsewhere.
+
+continue executes required iteration cleanup before starting the next iteration.
+
+break executes required cleanup before leaving the loop.
+
+A value moved in one iteration is unavailable in later iterations unless reinitialized through valid control flow.
+
+## Break
+
+Before a break transfers control out of a region, the compiler executes cleanup for every exited lexical scope.
+
+Cleanup must not include scopes that remain active at the break destination.
+
+Break values, if later supported, must be evaluated and ownership-transferred before destruction of their source owners where required.
+
+## Continue
+
+Before continue transfers control to the loop continuation point, the compiler executes cleanup for scopes exited by the continue edge.
+
+Loop-carried values must remain valid.
+
+Per-iteration values not carried forward must be destroyed.
+
+## Return
+
+Before return exits a function:
+
+1. the return expression is evaluated
+2. return ownership is established
+3. the returned value is moved or borrowed according to the signature
+4. deferred operations execute according to defer rules
+5. remaining owned locals are destroyed
+6. control returns to the caller
+
+The returned owned value must not be destroyed by the callee.
+
+A returned reference must remain valid according to lifetime analysis.
+
+## Error propagation
+
+Error propagation is a control-flow exit and must execute cleanup.
+
+For `try` or equivalent propagation:
+
+1. the Result expression is evaluated
+2. the Ok or Err variant is determined
+3. on Ok, the payload continues according to ownership rules
+4. on Err, the error value is prepared for return
+5. required defer operations execute
+6. remaining owned values are destroyed
+7. the Err value returns to the caller
+
+The propagated error value must not be destroyed by the callee after ownership transfer.
+
+## Match and switch
+
+Each match or switch branch has its own destruction state.
+
+Branch-local values are destroyed when leaving the branch.
+
+Values moved into one branch remain available on other mutually exclusive branches according to path-sensitive ownership analysis.
+
+At a merge point, all reachable paths must produce compatible ownership and initialization states.
+
+## Defer interaction
+
+defer is part of cleanup but remains distinct from automatic destruction.
+
+The language must define the ordering between defer and ordinary local destruction.
+
+The recommended rule is:
+
+Cleanup entries execute in reverse registration and initialization order within a scope.
+
+A defer statement registers a cleanup entry at the point where defer is evaluated.
+
+A local owning value registers its destruction after successful initialization.
+
+Example:
+
+```sec
+fn Example() void {
+    let first := First.Create()
+
+    defer Log("leaving")
+
+    let second := Second.Create()
+}
+```
+
+Conceptual cleanup registration order:
+
+1. destruction of first
+2. deferred Log
+3. destruction of second
+
+Reverse cleanup execution:
+
+1. destruction of second
+2. deferred Log
+3. destruction of first
+
+This creates a single predictable cleanup stack.
+
+Alternatively, the language may define all defers before all local destruction, but only one rule must be selected and applied consistently.
+
+The recommended unified cleanup-stack model is easier to reason about and lower.
+
+## Free operation and defer
+
+A free body should not permit defer unless its exact semantics are defined.
+
+The initial implementation should reject defer inside free.
+
+This avoids creating nested destruction-time cleanup behavior before necessary.
+
+Local temporary values created inside free must still be destroyed normally before the free body completes.
+
+## Free operation failure
+
+A free operation must not return Result.
+
+Destruction cannot require the caller to handle a cleanup failure after ownership has already ended.
+
+A free operation should return void implicitly.
+
+It must not use ordinary return values.
+
+If resource release can fail, the type design must choose an explicit policy, such as:
+
+* ignore a non-actionable release error
+* log through an explicitly permitted mechanism
+* provide a separate explicit Close operation returning Result before automatic destruction
+* retain automatic free as a best-effort fallback
+* make the resource release operation infallible at the language contract level
+
+The compiler must not silently convert a failing free operation into panic behavior.
+
+## Explicit Close pattern
+
+Resources with meaningful close errors should support an explicit ordinary method.
+
+Example:
+
+```sec
+impl File {
+    fn Close(mut self) Result[void, IOError] {
+        return CloseHandleChecked(self.handle)
+    }
+
+    free {
+        CloseHandleBestEffort(self.handle)
+    }
+}
+```
+
+The exact consuming receiver syntax may differ.
+
+A successful explicit Close must consume or transition ownership so automatic destruction does not release the same resource twice.
+
+The type must represent closed state safely if the value remains usable.
+
+The compiler should prefer a consuming Close operation when practical.
+
+## Free must not panic by default
+
+A free operation should not panic or terminate during ordinary cleanup.
+
+The initial compiler should reject operations known to produce recoverable Result values when their errors are ignored in free.
+
+If panic is later supported, panic during destruction requires a separate detailed design.
+
+Nested cleanup failure must not be left undefined accidentally.
+
+## Unsafe inside free
+
+A free operation is not automatically unsafe.
+
+Unsafe operations inside free require an explicit unsafe block unless the free declaration itself is declared unsafe under a defined syntax.
+
+The preferred model is to keep unsafe regions narrow:
+
+```sec
+impl ForeignBuffer {
+    free {
+        unsafe {
+            ForeignFree(self.pointer)
+        }
+    }
+}
+```
+
+The fact that destruction is compiler-invoked does not bypass unsafe validation.
+
+## Ownership during free
+
+At entry to free:
+
+* the value remains initialized
+* the value is exclusively controlled by the compiler
+* no safe external references may outlive destruction
+* the complete value cannot be moved out
+* fields may be inspected according to their state
+* fields already moved are unavailable
+* only initialized fields may be accessed
+
+The compiler must reject access to moved or uninitialized fields.
+
+## Moving fields in free
+
+The initial implementation should prohibit moving owned fields out of self during free.
+
+Allowing moves during free complicates:
+
+* remaining field destruction
+* ownership escape
+* double release detection
+* partial destruction
+* free reentrancy
+
+A future rule may permit tightly constrained consuming operations on fields.
+
+Initially, custom free should release non-field-represented resources and leave owned field destruction to the compiler.
+
+## Partial initialization
+
+A value under construction may be partially initialized.
+
+If construction exits early, only successfully initialized fields are destroyed.
+
+Field cleanup follows reverse successful initialization order.
+
+The compiler must track initialization at field granularity when partial initialization is permitted.
+
+Example conceptual construction:
+
+```sec
+let resource := Resource {
+    first: try CreateFirst()
+    second: try CreateSecond()
+    third: try CreateThird()
+}
+```
+
+If second fails:
+
+* first is destroyed
+* second is not destroyed
+* third was not evaluated
+* Resource.free is not called for a value that never completed construction unless explicitly designed for partial construction
+
+The recommended rule is that custom free runs only for fully constructed values.
+
+Partial-construction cleanup consists only of initialized field cleanup and explicitly registered temporaries.
+
+## Partial moves
+
+A partially moved aggregate remains responsible only for initialized, unmoved fields.
+
+Example:
+
+```sec
+let pair := Pair.Create()
+let first := move pair.first
+```
+
+When pair later leaves scope:
+
+* pair.first is not destroyed through pair
+* pair.second is destroyed if still initialized
+* pair's custom free requires special handling
+
+The initial implementation should prohibit partial moves from a type with a custom free operation unless the compiler can prove that free does not access moved fields and remains semantically valid.
+
+A simpler initial rule is:
+
+Types with custom free operations cannot be partially moved.
+
+Whole-value moves remain permitted.
+
+## Nested values
+
+Destroying an aggregate recursively destroys its owned fields.
+
+The compiler must avoid recursive compiler stack overflow for deeply nested or recursively defined runtime structures.
+
+Recursive owning structures are typically represented through indirection.
+
+Destruction lowering may use iterative strategies where required.
+
+The language semantics remain recursive even if implementation lowering is iterative.
+
+## Arrays
+
+Destroying an array destroys every initialized non-trivial element in reverse index order.
+
+For an array of length N, the order is:
+
+* element N - 1
+* element N - 2
+* ...
+* element 0
+
+Partially initialized arrays destroy only initialized elements.
+
+Large-array destruction may lower to a loop.
+
+## Slices
+
+A non-owning slice does not destroy its elements or backing storage.
+
+An owning container that exposes a slice still owns and destroys its elements through the owning container.
+
+The compiler must not infer ownership from slice element type alone.
+
+## Strings
+
+String destruction depends on the string representation.
+
+Possible cases include:
+
+* static immutable literal: trivial destruction
+* borrowed string view: trivial destruction
+* owned string: deallocate owned storage
+* small inline string: possibly trivial or field-derived destruction
+* foreign string wrapper: custom release according to ownership contract
+
+The string type definition must make ownership behavior explicit to the compiler.
+
+## Result and Option
+
+Destroying Result destroys only the active variant payload.
+
+Destroying Option destroys the payload only when the value is Some.
+
+The discriminant determines active destruction.
+
+After a payload is moved out, it must not be destroyed through the container.
+
+Variant destruction must remain correct after representation optimization.
+
+## Enums and unions
+
+A fieldless enum is normally trivially destructible.
+
+A tagged union destroys only its active payload.
+
+An untagged foreign union requires explicitly defined ownership rules and should normally contain only trivially destructible representations unless wrapped safely.
+
+The compiler must not guess which untagged-union field owns a resource.
+
+## Interfaces
+
+An interface value that owns a concrete value must destroy that concrete value using resolved type metadata or an equivalent generated operation.
+
+A borrowed interface view does not destroy the concrete value.
+
+Interface representation lowering must preserve ownership classification.
+
+Sec must not require a global garbage-collected object model for interface destruction.
+
+## Generics
+
+Destruction requirements for a generic type depend on instantiated type arguments.
+
+Example:
+
+```sec
+type Box[T] struct {
+    value: T
+}
+```
+
+Box[int] may have trivial element destruction apart from allocation deallocation.
+
+Box[File] must destroy File before deallocating storage.
+
+Generic instantiation must resolve:
+
+* whether T is trivially destructible
+* whether T has custom free
+* field destruction sequence
+* concrete destruction implementation
+
+Monomorphization may generate specialized destruction functions.
+
+## Recursion and destruction
+
+Recursive owning types require a finite ownership path.
+
+Direct infinitely sized recursive values must be rejected by layout analysis.
+
+Indirect recursive structures may require recursive destruction.
+
+Targets or profiles may restrict destruction recursion.
+
+The compiler may transform recursive destruction into iteration where semantics permit.
+
+## FFI ownership
+
+Foreign resources must have explicit ownership contracts.
+
+The compiler must distinguish:
+
+* borrowed foreign pointer
+* caller-owned foreign resource
+* Sec-owned foreign resource
+* ownership transferred to foreign code
+* ownership returned from foreign code
+* resource requiring a foreign free function
+
+A foreign pointer alone never implies destruction.
+
+An owning wrapper may define free:
+
+```sec
+type ForeignBuffer struct {
+    pointer: RawPtr[byte]
+    length: uint
+}
+
+impl ForeignBuffer {
+    free {
+        unsafe {
+            ForeignRelease(self.pointer)
+        }
+    }
+}
+```
+
+The wrapper owns the resource.
+
+The RawPtr field does not.
+
+## Ownership transfer to FFI
+
+When ownership is transferred to foreign code:
+
+* the Sec value is consumed
+* Sec must not destroy the transferred resource
+* the ownership contract must identify the transfer
+* failure behavior must define whether ownership was accepted
+
+Ambiguous ownership transfer must be rejected or wrapped in an explicit unsafe API.
+
+## Program termination
+
+The language must define which termination paths execute cleanup.
+
+Normal function return executes cleanup.
+
+Result propagation executes cleanup.
+
+break and continue execute applicable cleanup.
+
+The initial rules for process termination should be:
+
+* returning from main executes normal cleanup
+* an explicit graceful exit operation may execute defined cleanup if implemented
+* a raw platform process-exit syscall does not execute caller cleanup beyond operations already emitted before the syscall
+* unreachable does not imply cleanup
+* abnormal hardware or operating-system termination cannot guarantee cleanup
+
+The compiler must not claim that cleanup occurs after a non-returning raw syscall.
+
+## Panic and assertions
+
+Panic semantics are defined separately.
+
+Until panic unwinding is explicitly supported, the compiler must not assume that panic executes all cleanup.
+
+An aborting panic may skip cleanup outside already completed operations.
+
+If unwinding is added later, destruction during unwinding requires a dedicated specification.
+
+No hidden exception-unwinding runtime should be introduced by default.
+
+## Reentrancy
+
+A free operation must not recursively destroy the same value.
+
+The compiler should prevent direct statically visible recursive free invocation.
+
+Indirect resource APIs may still be reentrant at runtime and remain the programmer's responsibility where the compiler cannot prove otherwise.
+
+A value undergoing destruction must not be exposed as a normal reusable value.
+
+## Thread and concurrency interaction
+
+Destruction does not itself imply synchronization.
+
+A resource shared between threads requires separate ownership and concurrency rules.
+
+The compiler must not destroy a value while valid ownership remains in another thread.
+
+Thread transfer must be represented as ownership transfer.
+
+Reference-counted shared destruction, if ever supported, requires a separate explicit type and must not become the default memory model.
+
+## Volatile and register values
+
+Destroying a register view or volatile reference must not emit a volatile access unless the type defines an explicit resource-release requirement.
+
+Ordinary lifetime end is not a hardware write.
+
+A register wrapper with cleanup side effects must define those side effects explicitly and should be used cautiously.
+
+The compiler must not infer device reset or register clearing from scope exit.
+
+## Static analysis
+
+Destruction analysis must determine for every owning value:
+
+* initialization point
+* initialization state on each path
+* move state on each path
+* active borrows
+* partial-move state
+* required cleanup
+* cleanup order
+* destruction target
+* whether destruction is conditional
+* whether custom free applies
+
+Analysis must complete before Semantic IR generation or be finalized during explicit cleanup insertion before Semantic IR verification, according to compiler architecture.
+
+No unresolved destruction responsibility may reach MLIR.
+
+## Semantic IR representation
+
+Semantic IR must contain explicit destruction semantics.
+
+Expected operations include:
+
+* destroy value
+* destroy storage
+* destroy field
+* destroy active variant
+* conditional destroy
+* invoke free operation
+* deallocate owned storage
+* enter cleanup region
+* register cleanup
+* execute cleanup
+* mark value moved
+* mark field moved
+
+The representation may use cleanup regions before final control-flow expansion.
+
+Every owned non-trivial value must have exactly one valid terminal ownership action:
+
+* destruction
+* return
+* transfer
+* consumption
+* program termination that explicitly bypasses cleanup
+
+## MLIR lowering
+
+MLIR lowering must convert destruction semantics into concrete operations.
+
+The lowering must preserve:
+
+* exact-once destruction
+* field order
+* local order
+* defer order
+* branch-specific initialization
+* moved-field state
+* Result propagation cleanup
+* loop cleanup
+* return cleanup
+* allocator pairing
+
+Ownership and destruction metadata must not be erased before cleanup behavior is fixed.
+
+## LLVM lowering
+
+LLVM IR must not decide destruction placement.
+
+By LLVM translation:
+
+* all cleanup control flow must be explicit
+* all free operations must be ordinary calls or lowered operations
+* all deallocation must be explicit
+* moved values must not be destroyed
+* branch cleanup must already be selected
+* no Sec destruction semantics may remain unresolved
+
+LLVM optimization may remove a destruction call only when it proves the call has no observable behavior and removal is valid under Sec semantics and emitted attributes.
+
+## Runtime-free destruction
+
+Destruction must not require a runtime for ordinary cases.
+
+The compiler may generate:
+
+* direct function calls
+* inline cleanup
+* field-by-field cleanup
+* cleanup blocks
+* loops for aggregate destruction
+* platform release calls
+* allocator deallocation calls
+
+No global destruction registry is required.
+
+No runtime type-information system is required for statically known types.
+
+Dynamic interface destruction may use generated type-specific dispatch data without requiring a general runtime.
+
+## Optimization
+
+Permitted destruction optimizations include:
+
+* removing trivial destruction
+* inlining free operations
+* merging identical cleanup blocks
+* eliminating destruction of values proven never initialized
+* eliminating cleanup after ownership transfer
+* removing allocation and deallocation pairs when all observable effects are preserved
+* loop optimization for aggregate destruction
+* devirtualizing interface destruction when concrete type is known
+
+Optimization must not:
+
+* change observable destruction order
+* skip resource release
+* double free
+* destroy moved values
+* access moved fields
+* reorder volatile operations
+* suppress required foreign release calls
+* change explicit Close error behavior
+* introduce hidden heap allocation
+
+## Diagnostics
+
+Diagnostics should identify:
+
+* use after destruction
+* double destruction
+* manual free attempt
+* access during invalid destruction state
+* move from a value being destroyed
+* partial move from a type with custom free
+* duplicate release of an owned resource
+* missing ownership contract for foreign resource
+* incompatible allocator and deallocator
+* escaping self from free
+* return from free with a value
+* Result-returning free
+* unsafe operation outside unsafe context
+* unsupported global destruction
+* target profile without required deallocator
+
+Diagnostics should refer to:
+
+* destruction location
+* original ownership location
+* move or transfer location
+* custom free declaration
+* related field declaration
+* allocation origin where applicable
+
+## Compiler verification
+
+The destruction verifier must check:
+
+* every non-trivial owned value has one terminal ownership action
+* no value is destroyed more than once
+* no moved value is destroyed
+* no uninitialized field is destroyed
+* all initialized unmoved fields are destroyed
+* field destruction order is valid
+* cleanup exists on every exiting path
+* returned values are excluded from caller-side cleanup
+* propagated errors are excluded from callee cleanup
+* custom free is invoked exactly once for fully constructed values
+* partial construction does not invoke invalid complete-value free
+* matching deallocation is selected
+* no unresolved destruction operation remains before LLVM lowering
+
+Verifier failure is an internal compiler error.
+
+## Initial implementation restrictions
+
+To keep the first implementation safe and understandable:
+
+* direct user calls to free are prohibited
+* free returns no value
+* free cannot return Result
+* defer inside free is prohibited
+* self cannot escape from free
+* whole self cannot be moved from free
+* owned fields cannot be moved out during free
+* types with custom free cannot be partially moved
+* global owned values requiring destruction are prohibited
+* panic unwinding is not assumed
+* no hidden runtime destruction registry is introduced
+
+These restrictions may be relaxed only through explicit later rules.
+
+## Current implementation status
+
+Destruction is currently a language and compiler-design target.
+
+The current compiler implementation has:
+
+* lexical and parser support for ownership-adjacent constructs such as `defer`,
+  `unsafe`, `ref`, `RawPtr` and FFI-facing declarations
+* semantic checks for mutability, definite assignment, reachability and several
+  control-flow cleanup-adjacent rules
+* no complete ownership analysis pass
+* no complete borrow analysis pass
+* no complete destruction insertion pass
+* no Semantic IR cleanup-region representation yet
+* no MLIR destruction lowering yet
+
+Until ownership and destruction analysis are implemented, the compiler must not
+pretend to support non-trivial automatic destruction.
+
+The first implementation step should be conservative:
+
+* classify trivially destructible types
+* reject user-defined `free` syntax until parsing and sema rules are explicit
+* reject non-trivial global owned values
+* represent cleanup requirements in Semantic IR before lowering
+* verify that every non-trivial local value has one terminal ownership action
+* lower defer and destruction through cleanup regions before LLVM IR
+
+Existing direct LLVM emission is temporary and must not define destruction
+semantics.
+
+## Design rule
+
+The programmer expresses ownership.
+
+The compiler determines lifetime.
+
+The compiler inserts destruction.
+
+The type defines custom free behavior only when automatic field destruction cannot release the owned resource.
+
+Ordinary Sec code must not manually manage destruction.

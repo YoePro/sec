@@ -54,6 +54,22 @@
         <a href="#try-context">try Context</a>
         <a href="#result-validation">Result Validation</a>
 
+        <div class="sidebar-section">Function Values and Lambdas</div>
+        <a href="#function-types">Function Types</a>
+        <a href="#function-values">Function Values</a>
+        <a href="#lambda-functions">Lambda Functions</a>
+        <a href="#lambda-parameters">Lambda Parameters</a>
+        <a href="#lambda-return-rules">Lambda Return Rules</a>
+        <a href="#calling-function-values">Calling Function Values</a>
+        <a href="#passing-lambdas">Passing Lambdas</a>
+        <a href="#returning-lambdas">Returning Lambdas</a>
+        <a href="#non-capturing-lambdas">Non-capturing Lambdas</a>
+        <a href="#explicit-capture">Explicit Capture</a>
+        <a href="#capture-by-value">Capture by Value</a>
+        <a href="#capture-scope">Capture Scope and Timing</a>
+        <a href="#lambda-boundaries">Lambda Boundaries</a>
+        <a href="#lambda-limitations">Current Limitations</a>
+
         <div class="sidebar-section">Reference</div>
         <a href="#common-errors">Common Errors</a>
         <a href="#complete-examples">Complete Examples</a>
@@ -66,6 +82,9 @@
         <a href="03-variables-and-basic-types.html">Variables and Basic Types</a>
         <a href="04-named-types-contracts-and-units.html">Named Types, Contracts and Units</a>
         <a href="05-structs-properties-and-impl.html">Structs, Properties and Impl</a>
+        <a href="07-if.html">if</a>
+        <a href="08-switch.html">switch</a>
+        <a href="09-match.html">match</a>
     </nav>
 
     <main class="content">
@@ -806,6 +825,507 @@ Err()      // Invalid.
 Err(a, b)  // Invalid.</code></pre>
         </div>
 
+        <h1 id="function-types">Function Values and Lambdas</h1>
+
+        <p>
+            Functions are not limited to named declarations. Sec also supports function values: statically
+            typed values that can be assigned to variables, passed to other functions, returned from functions,
+            stored in data structures, and called through ordinary call syntax.
+        </p>
+
+        <p>
+            A lambda is an anonymous function expression. Sec deliberately uses the same <code>fn</code> syntax
+            for named functions and lambdas. This avoids introducing a second, abbreviated function language
+            with different parameter, return, scope, or error-handling rules.
+        </p>
+
+        <div class="section">
+            <h2>Function Types</h2>
+
+            <p>A function type is written with parameter types followed by the return type:</p>
+
+            <pre><code>fn(ParameterType, ParameterType) ReturnType</code></pre>
+
+            <p>Examples:</p>
+
+            <pre><code>fn(int) int
+fn(int, int) bool
+fn(string) void
+fn() bool</code></pre>
+
+            <p>
+                Parameter names are not part of a function type. Only the number and order of parameter types,
+                together with the return type, determine function type identity.
+            </p>
+
+            <pre><code>fn(left: int, right: int) bool
+fn(a: int, b: int) bool</code></pre>
+
+            <p>Both declarations have the function type:</p>
+
+            <pre><code>fn(int, int) bool</code></pre>
+
+            <p>The return type is part of the function type:</p>
+
+            <pre><code>fn(int) int
+fn(int) bool</code></pre>
+
+            <p>These are different and incompatible function types.</p>
+        </div>
+
+        <div class="section" id="function-values">
+            <h2>Function Values</h2>
+
+            <p>A variable may hold a value with a function type:</p>
+
+            <pre><code>let operation: fn(int, int) int := fn(a: int, b: int) int {
+    return a + b
+}</code></pre>
+
+            <p>
+                As with every variable declaration, <code>let</code> is required. The variable is immutable unless
+                <code>mut</code> is written explicitly.
+            </p>
+
+            <pre><code>let mut operation: fn(int) int := fn(value: int) int {
+    return value
+}
+
+operation = fn(value: int) int {
+    return value * 2
+}</code></pre>
+
+            <p>The replacement value must have the same complete function type.</p>
+
+            <p>Named functions may also be assigned as function values when a unique function is known:</p>
+
+            <pre><code>fn IsPositive(value: int) bool {
+    return value &gt; 0
+}
+
+let predicate: fn(int) bool := IsPositive</code></pre>
+
+            <p>
+                When a named function is overloaded, an explicit target function type may be required to select
+                the intended overload.
+            </p>
+
+            <pre><code>fn Convert(value: int) string {
+    return ""
+}
+
+fn Convert(value: string) int {
+    return 0
+}
+
+let converter: fn(int) string := Convert</code></pre>
+
+            <p>Without a target type, the overloaded name is ambiguous:</p>
+
+            <pre><code>let converter := Convert
+// Error: ambiguous function value Convert; explicit function type required.</code></pre>
+
+            <p>
+                Function values do not support semantic equality or ordering. Use of <code>==</code>,
+                <code>!=</code>, <code>&lt;</code>, <code>&lt;=</code>, <code>&gt;</code>, or <code>&gt;=</code> with function values is invalid.
+            </p>
+
+            <p>
+                A function value is never null. Optional callable values use an explicit option type such as
+                <code>Option[fn(int) bool]</code>.
+            </p>
+        </div>
+
+        <div class="section" id="lambda-functions">
+            <h2>Lambda Functions</h2>
+
+            <p>A lambda is an anonymous function value:</p>
+
+            <pre><code>fn(parameter: Type) ReturnType {
+    statements
+}</code></pre>
+
+            <p>Example:</p>
+
+            <pre><code>let double := fn(value: int) int {
+    return value * 2
+}
+
+let result := double(10)</code></pre>
+
+            <p>The relationship between named and anonymous functions is direct:</p>
+
+            <pre><code>// Named function.
+fn Add(a: int, b: int) int {
+    return a + b
+}
+
+// Anonymous function.
+fn(a: int, b: int) int {
+    return a + b
+}</code></pre>
+
+            <p>The only syntactic difference is the missing function name.</p>
+
+            <p>No arrow-only shorthand is currently provided:</p>
+
+            <pre><code>fn(value: int) int =&gt; value * 2 // Invalid.
+value =&gt; value * 2              // Invalid.</code></pre>
+
+            <p>Use an ordinary function body with an explicit return statement.</p>
+        </div>
+
+        <div class="section" id="lambda-parameters">
+            <h2>Lambda Parameters</h2>
+
+            <p>
+                Lambda parameters follow exactly the same rules as parameters of named functions. Each
+                parameter uses <code>name: Type</code>, parameters are comma-separated, and a trailing comma is
+                allowed.
+            </p>
+
+            <pre><code>let compare := fn(
+    left: int,
+    right: int,
+) bool {
+    return left &lt; right
+}</code></pre>
+
+            <ul>
+                <li>Parameter types are explicit.</li>
+                <li>Parameters are immutable.</li>
+                <li>Duplicate parameter names are invalid.</li>
+                <li>Parameter names exist only inside the lambda body.</li>
+                <li>Normal no-shadowing rules apply.</li>
+            </ul>
+
+            <p>Omitted parameter types are not inferred from the target function type:</p>
+
+            <pre><code>let predicate: fn(int) bool := fn(value) bool {
+    return value &gt; 0
+} // Invalid: parameter type is required.</code></pre>
+
+            <p>Write:</p>
+
+            <pre><code>let predicate: fn(int) bool := fn(value: int) bool {
+    return value &gt; 0
+}</code></pre>
+        </div>
+
+        <div class="section" id="lambda-return-rules">
+            <h2>Lambda Return Rules</h2>
+
+            <p>
+                The return type is currently required and is checked using the same rules as a named function.
+                Use <code>void</code> when the lambda does not return a value.
+            </p>
+
+            <pre><code>let identity := fn(value: int) int {
+    return value
+}
+
+let notify := fn(message: string) void {
+    Print(message)
+    return
+}</code></pre>
+
+            <p>A non-void lambda must return its declared type on every continuing path:</p>
+
+            <pre><code>let invalid := fn() int {
+} // Error: lambda must return int.</code></pre>
+
+            <pre><code>let invalid := fn() int {
+    return true
+} // Error: lambda must return int, got bool.</code></pre>
+
+            <p>A void lambda may use <code>return</code> without an expression, but may not return a value.</p>
+
+            <p>
+                Result and <code>try</code> rules also apply normally. Error propagation occurs through the
+                lambda's declared return type, not through the function that created the lambda.
+            </p>
+
+            <pre><code>let load := fn(path: string) Result[Data, IOError] {
+    let data := try Read(path)
+    return Ok(data)
+}</code></pre>
+        </div>
+
+        <div class="section" id="calling-function-values">
+            <h2>Calling Function Values</h2>
+
+            <p>Any expression with a function type may be called:</p>
+
+            <pre><code>operation(1, 2)
+callbacks[index](value)
+GetHandler()(event)</code></pre>
+
+            <p>Calls through function values use the normal call rules:</p>
+
+            <ul>
+                <li>The argument count must match.</li>
+                <li>Each argument must be assignable to the corresponding parameter type.</li>
+                <li>The call expression has the function type's declared return type.</li>
+                <li>A void call cannot be used as a value.</li>
+            </ul>
+
+            <pre><code>let operation := fn(a: int, b: int) int {
+    return a + b
+}
+
+operation(1) // Error: function value expects 2 arguments, got 1.</code></pre>
+        </div>
+
+        <div class="section" id="passing-lambdas">
+            <h2>Passing Lambdas to Functions</h2>
+
+            <p>Functions may accept function values as parameters:</p>
+
+            <pre><code>fn Apply(value: int, operation: fn(int) int) int {
+    return operation(value)
+}
+
+fn main() int {
+    return Apply(
+        10,
+        fn(value: int) int {
+            return value * 2
+        },
+    )
+}</code></pre>
+
+            <p>
+                The lambda's complete function type participates in normal argument checking and overload
+                resolution.
+            </p>
+        </div>
+
+        <div class="section" id="returning-lambdas">
+            <h2>Returning Lambdas</h2>
+
+            <p>A function may return a function value:</p>
+
+            <pre><code>fn SelectOperation(add: bool) fn(int, int) int {
+    if add {
+        return fn(a: int, b: int) int {
+            return a + b
+        }
+    }
+
+    return fn(a: int, b: int) int {
+        return a - b
+    }
+}</code></pre>
+
+            <p>
+                Every returned function value must be assignable to the declared function return type. A lambda
+                with different parameter or return types is invalid.
+            </p>
+        </div>
+
+        <div class="section" id="non-capturing-lambdas">
+            <h2>Non-capturing Lambdas</h2>
+
+            <p>
+                A non-capturing lambda uses only its parameters, local declarations, constants, module symbols,
+                imported symbols, and named functions.
+            </p>
+
+            <pre><code>let double := fn(value: int) int {
+    return value * 2
+}</code></pre>
+
+            <p>
+                Non-capturing lambdas do not require an environment and should not require heap allocation. They
+                can normally be represented as direct callable code.
+            </p>
+
+            <p>
+                Local values from an enclosing function are not captured implicitly. Accessing one without an
+                explicit capture clause is an error.
+            </p>
+
+            <pre><code>fn CreateMultiplier(factor: int) fn(int) int {
+    return fn(value: int) int {
+        return value * factor
+    }
+} // Error: lambda cannot access outer variable factor without explicit capture.</code></pre>
+        </div>
+
+        <div class="section" id="explicit-capture">
+            <h2>Explicit Capture</h2>
+
+            <p>
+                A lambda explicitly captures enclosing local values with a <code>capture(...)</code> clause placed
+                immediately before <code>fn</code>.
+            </p>
+
+            <pre><code>capture(value, otherValue) fn(parameters) ReturnType {
+    statements
+}</code></pre>
+
+            <p>Example:</p>
+
+            <pre><code>fn CreateMultiplier(factor: int) fn(int) int {
+    return capture(factor) fn(value: int) int {
+        return value * factor
+    }
+}</code></pre>
+
+            <p>
+                A non-capturing anonymous function is usually called a lambda. A capturing lambda is also known
+                as a closure. Both have the same source-level function type.
+            </p>
+
+            <p>Capture entries are comma-separated, and a trailing comma is allowed:</p>
+
+            <pre><code>capture(
+    minimum,
+    maximum,
+) fn(value: int) bool {
+    return value in minimum..maximum
+}</code></pre>
+
+            <ul>
+                <li>Each captured name must refer to a visible enclosing local binding.</li>
+                <li>A name may appear only once in the capture list.</li>
+                <li>A capture name may not conflict with a parameter or local declaration.</li>
+                <li>Module symbols and named functions do not require capture.</li>
+                <li>Arbitrary expressions cannot appear directly in a capture list.</li>
+            </ul>
+        </div>
+
+        <div class="section" id="capture-by-value">
+            <h2>Capture by Value</h2>
+
+            <p>
+                A plain capture entry captures the value when the lambda expression is evaluated. The captured
+                binding is immutable inside the lambda.
+            </p>
+
+            <pre><code>let mut factor: int := 2
+
+let multiply := capture(factor) fn(value: int) int {
+    return value * factor
+}
+
+factor = 4
+
+let result := multiply(10) // result is 20.</code></pre>
+
+            <p>
+                Changing the outer variable later does not change the already captured value. A mutable outer
+                variable may therefore be captured, but the captured copy remains immutable.
+            </p>
+
+            <pre><code>let mut factor: int := 2
+
+let operation := capture(factor) fn() void {
+    factor = 4
+} // Error: captured value factor is immutable.</code></pre>
+
+            <p>
+                Copyable values may be copied into the closure environment. Capturing a non-copyable value may
+                move ownership into the closure. The compiler must never clone such a value implicitly, and use
+                of a moved outer value is invalid.
+            </p>
+        </div>
+
+        <div class="section" id="capture-scope">
+            <h2>Capture Scope and Timing</h2>
+
+            <p>
+                Captures are evaluated from left to right, exactly once, when execution reaches the lambda
+                expression.
+            </p>
+
+            <pre><code>let mut value: int := 1
+
+let first := capture(value) fn() int {
+    return value
+}
+
+value = 2
+
+let second := capture(value) fn() int {
+    return value
+}</code></pre>
+
+            <p><code>first()</code> returns <code>1</code>, while <code>second()</code> returns <code>2</code>.</p>
+
+            <p>
+                A lambda expression inside a loop is evaluated separately on every iteration that reaches it.
+                Explicit capture therefore records the current iteration's value.
+            </p>
+
+            <pre><code>for value in values {
+    let operation := capture(value) fn() int {
+        return value
+    }
+
+    Use(operation)
+}</code></pre>
+
+            <p>
+                Pattern bindings, parameters, and local declarations inside the lambda remain subject to normal
+                lexical scope and no-shadowing rules.
+            </p>
+        </div>
+
+        <div class="section" id="lambda-boundaries">
+            <h2>Lambda Function Boundaries</h2>
+
+            <p>
+                A lambda creates a new function boundary. Its body has its own scope and control-flow context.
+            </p>
+
+            <ul>
+                <li><code>return</code> exits the lambda, not the enclosing function.</li>
+                <li><code>try</code> propagates through the lambda's declared return type.</li>
+                <li><code>break</code> and <code>continue</code> cannot target loops outside the lambda.</li>
+                <li>Parameters, captures, and local variables belong to the lambda scope.</li>
+            </ul>
+
+            <pre><code>for item in items {
+    let operation := fn() void {
+        break
+    }
+} // Error: break is only valid inside a loop in the current function.</code></pre>
+
+            <p>
+                An unnamed lambda cannot directly refer to the variable being initialized by that lambda. Use a
+                named function for direct recursion.
+            </p>
+
+            <pre><code>let factorial := fn(value: int) int {
+    return value * factorial(value - 1)
+} // Invalid: factorial is not visible inside its own initializer.</code></pre>
+        </div>
+
+        <div class="section" id="lambda-limitations">
+            <h2>Current Lambda Limitations</h2>
+
+            <p>The initial lambda model intentionally leaves several advanced forms for later language work:</p>
+
+            <ul>
+                <li>No omitted parameter types.</li>
+                <li>No expression-body or arrow shorthand.</li>
+                <li>No implicit captures.</li>
+                <li>No mutable captures.</li>
+                <li>No reference captures.</li>
+                <li>No generic lambdas.</li>
+                <li>No directly recursive unnamed lambdas.</li>
+                <li>No function-value equality or ordering.</li>
+                <li>No hidden cloning or hidden heap allocation.</li>
+            </ul>
+
+            <p>
+                Capturing closures that escape their creation scope require a fully defined ownership model for
+                their environment. An implementation that does not yet support such environments must reject
+                them clearly rather than silently introducing unmanaged storage.
+            </p>
+        </div>
+
         <h1 id="common-errors">Common Errors</h1>
 
         <div class="section">
@@ -947,12 +1467,22 @@ fn ReadSpeed() Result[Speed, IOError] {
                 <li><code>Result[T, E]</code> contains a success type and an error type.</li>
                 <li>Result-returning functions return <code>Ok(...)</code> or <code>Err(...)</code>.</li>
                 <li><code>try</code> requires a Result expression and produces its success type.</li>
+                <li>Function types use <code>fn(ParameterTypes) ReturnType</code>.</li>
+                <li>A lambda is an anonymous <code>fn</code> expression.</li>
+                <li>Lambda parameter and return types are currently explicit.</li>
+                <li>Lambdas and named functions follow the same call and return rules.</li>
+                <li>Enclosing local variables are never captured implicitly.</li>
+                <li><code>capture(...)</code> creates explicit immutable value captures.</li>
+                <li>Capture occurs when the lambda expression is evaluated.</li>
+                <li>A lambda creates its own scope and function boundary.</li>
+                <li>Function values do not support equality, ordering, or null.</li>
             </ul>
         </div>
 
         <div class="page-nav">
             <a href="05-structs-properties-and-impl.html">Previous: Structs, Properties and Impl</a>
             <a href="index.html">Manual Index</a>
+            <a href="07-if.html">Next: if</a>
         </div>
     </main>
 </div>

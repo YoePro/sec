@@ -1,0 +1,1642 @@
+=============================================================================================================================================================================================
+MLIR
+====
+
+MLIR is the primary lowering and optimization framework between Sec Semantic IR and LLVM IR.
+
+MLIR receives only verified Semantic IR.
+
+MLIR must preserve the meaning established by the Sec frontend and Semantic IR.
+
+MLIR does not define Sec language semantics.
+
+## Primary goals
+
+The MLIR layer must:
+
+* preserve validated Sec behavior
+* provide structured progressive lowering
+* retain high-level information long enough for useful analysis
+* isolate target-independent lowering from target-specific lowering
+* support ownership-aware transformations
+* support deterministic cleanup lowering
+* support explicit runtime-check lowering
+* support register and platform operations
+* support target ABI lowering
+* produce valid LLVM-compatible representation
+* preserve source and debug information
+
+MLIR should reduce complexity before LLVM IR generation.
+
+LLVM IR should not receive constructs that require Sec-level reasoning.
+
+## Input requirements
+
+Before entering MLIR lowering:
+
+* Semantic IR verification must succeed
+* all names must be resolved
+* all expressions must be typed
+* all ownership transfers must be explicit
+* all required copies and moves must be explicit
+* all borrow validation must be complete
+* all reference escapes must be validated
+* all unsafe operations must be validated
+* all control-flow paths must be valid
+* all source-level exhaustiveness checks must be complete
+* all generic layouts required by the target must be concrete
+* all selected-target restrictions must be validated
+* all required runtime checks must be explicit or attached to defined operations
+
+MLIR lowering must not accept invalid Semantic IR as recoverable user input.
+
+## Layered lowering
+
+MLIR lowering must occur through explicit levels.
+
+The recommended lowering structure is:
+
+1. Sec Semantic IR import
+2. high-level Sec MLIR dialect
+3. ownership and cleanup lowering
+4. structured control-flow lowering
+5. aggregate and data representation lowering
+6. runtime-check lowering
+7. platform and register lowering
+8. ABI lowering
+9. standard MLIR dialect lowering
+10. LLVM dialect lowering
+11. LLVM IR translation
+
+The exact number of passes may differ.
+
+The semantic responsibilities of each level must remain explicit.
+
+A direct conversion from AST to LLVM IR is forbidden for normal compilation.
+
+A direct conversion from unverified Semantic IR to LLVM IR is forbidden.
+
+## Sec MLIR dialect
+
+The compiler should define a Sec-specific MLIR dialect.
+
+The Sec dialect represents validated operations that do not yet map cleanly to standard MLIR dialects.
+
+The dialect may contain types and operations for:
+
+* owned values
+* moves
+* copies
+* destruction
+* cleanup regions
+* defer
+* references
+* mutable references
+* RawPtr
+* Result
+* Option
+* enums
+* tagged unions
+* named types
+* distinct types
+* unit values
+* register access
+* checked conversions
+* unsafe operations
+* platform operations
+* Sec function metadata
+
+The Sec dialect must not reproduce source syntax unnecessarily.
+
+It should represent semantic concepts required for correct lowering.
+
+## Dialect ownership
+
+Each Sec dialect operation must define:
+
+* operands
+* results
+* operand ownership behavior
+* result ownership behavior
+* side effects
+* memory effects
+* region behavior
+* verification rules
+* lowering requirements
+* source-location behavior
+
+Operations must use MLIR interfaces and traits where practical.
+
+Custom operations must not hide uncontrolled side effects.
+
+## Type conversion
+
+Type conversion must be progressive.
+
+High-level Sec types should remain available until all passes that depend on their semantics have completed.
+
+Examples:
+
+* unit types remain until unit validation and conversion lowering are complete
+* named types remain until semantic identity is no longer required
+* distinct types remain until illegal conversions are no longer possible
+* Result and Option remain until variant representation is selected
+* register types remain until register operations are lowered
+* ownership markers remain until cleanup and destruction are fixed
+* references remain distinct from RawPtr until reference guarantees are no longer needed
+* interface types remain until dispatch representation is selected
+
+Type erasure must occur only through explicit conversion passes.
+
+## Type converter requirements
+
+Every lowering boundary that changes types must define an MLIR type converter or equivalent explicit conversion mechanism.
+
+The converter must define:
+
+* legal source types
+* legal target types
+* conversion rules
+* materialization rules
+* unsupported conversions
+* ownership effects
+* ABI effects
+
+Implicit fallback to LLVM-compatible bit patterns is forbidden.
+
+A type with no defined lowering must produce a compiler error before LLVM translation.
+
+## Named type lowering
+
+Named types retain semantic identity in the Sec dialect.
+
+Named types may lower to their base representation only after:
+
+* all overload resolution is complete
+* all conversion validation is complete
+* all contract checks are inserted or proven unnecessary
+* all debug type information is recorded
+
+The lowering must preserve debug identity where practical.
+
+## Distinct type lowering
+
+Distinct types may share machine representation with their base types.
+
+The lowering must not imply that source-level conversion was permitted.
+
+Distinct type identity may be erased only after all semantic operations are resolved.
+
+Debug information should retain the distinct type name.
+
+## Unit lowering
+
+Units are compile-time semantic information unless a unit definition requires runtime scale conversion.
+
+Unit lowering must:
+
+* preserve numeric value semantics
+* insert required scale conversion operations
+* preserve rounding rules
+* preserve overflow rules
+* remove unit metadata only after dimensional correctness is established
+* retain debug type identity where useful
+
+Unit conversion must not be delegated to LLVM pattern matching.
+
+Constant unit conversions should be folded when permitted by Sec arithmetic semantics.
+
+## Ownership lowering
+
+Ownership lowering converts explicit ownership semantics into concrete cleanup and storage behavior.
+
+It is responsible for:
+
+* fixing destruction points
+* resolving ownership transfers
+* placing cleanup operations
+* lowering moves
+* lowering copies
+* handling partial initialization
+* handling partial moves
+* handling conditional destruction
+* preserving destruction order
+* preparing owned aggregates for lower-level representation
+
+Ownership lowering must occur before ownership metadata is erased.
+
+## Move lowering
+
+A semantic move may lower to:
+
+* SSA value transfer
+* load followed by source invalidation
+* aggregate field transfer
+* storage-address transfer
+* no machine instruction when ownership changes only semantically
+
+The selected lowering must preserve source invalidation and destruction responsibility.
+
+A move must not cause the source value to be destroyed afterward.
+
+The compiler must distinguish a semantic no-op move from a copy.
+
+## Copy lowering
+
+A copy may lower to:
+
+* direct SSA duplication for trivial values
+* scalar copies
+* aggregate copies
+* a type-defined copy operation
+* explicit memory copying where valid
+
+Copy lowering must preserve type-defined observable copy behavior.
+
+Raw memory copying must not be used for types that require semantic copy operations.
+
+## Destruction lowering
+
+Destruction lowering must resolve every non-trivial destruction operation.
+
+Destruction may lower to:
+
+* direct destructor call
+* field-by-field destruction
+* resource-release call
+* no operation for trivial types
+
+Destruction order must remain deterministic.
+
+Destruction lowering must handle:
+
+* normal exits
+* early return
+* error propagation
+* break
+* continue
+* branch-specific initialization
+* partially moved aggregates
+* deferred operations
+
+After destruction lowering, every owning path must have exactly one valid cleanup outcome.
+
+## Cleanup lowering
+
+Cleanup regions must be transformed into explicit control flow or structured cleanup constructs.
+
+The lowering must preserve:
+
+* scope nesting
+* reverse defer order
+* destruction order
+* branch-specific cleanup
+* return values
+* error values
+* loop exits
+
+Cleanup lowering may create dedicated cleanup blocks.
+
+Equivalent cleanup paths may be merged only when:
+
+* executed operations are identical
+* value ownership states are compatible
+* execution order remains identical
+* source-observable behavior is preserved
+
+## Defer lowering
+
+Defer must be lowered before LLVM IR translation.
+
+A defer may lower into:
+
+* cleanup-region operations
+* explicit cleanup blocks
+* duplicated exit-path operations
+* shared cleanup dispatch blocks
+
+The compiler should avoid unnecessary code duplication where safe.
+
+Defer execution order must not be changed by optimization.
+
+Captured defer values must retain their validated ownership and reference semantics.
+
+## Borrow information
+
+Borrow checking is complete before MLIR.
+
+Borrow information may nevertheless be retained for:
+
+* alias analysis
+* optimization safety
+* reference lowering
+* diagnostic verification
+* lifetime-informed storage placement
+
+Borrow metadata may be erased only after no later pass relies on it.
+
+MLIR must not introduce a borrow conflict that did not exist in Semantic IR.
+
+Transformations that duplicate, reorder or merge reference operations must preserve borrow guarantees.
+
+## Reference lowering
+
+References must remain distinct from RawPtr during high-level lowering.
+
+Reference lowering must preserve:
+
+* non-null guarantees
+* alignment guarantees
+* referenced type
+* mutability
+* aliasing restrictions
+* validated lifetime
+* read-only or exclusive access semantics
+
+A reference may eventually lower to an address-like value.
+
+The lowering must attach appropriate alias and access metadata only when justified by Sec semantics.
+
+The backend must not attach stronger LLVM alias guarantees than the frontend proved.
+
+## Mutable reference lowering
+
+A mutable reference represents exclusive mutable access.
+
+Lowering may use this information for:
+
+* alias analysis
+* load and store optimization
+* memory-effect modeling
+* noalias-like ABI metadata where valid
+
+Noalias or equivalent attributes must be applied only when valid for the entire required scope.
+
+A local mutable borrow must not automatically become a function-wide noalias guarantee.
+
+## RawPtr lowering
+
+RawPtr lowers to a target address representation.
+
+RawPtr lowering must preserve:
+
+* target address space
+* pointee type metadata where still useful
+* pointer-width behavior
+* explicit arithmetic semantics
+* unsafe provenance where retained
+* absence of ownership
+
+RawPtr must not receive reference alias guarantees.
+
+Integer-pointer conversions must use the target pointer width.
+
+Address-space conversions must be explicit.
+
+## Storage lowering
+
+High-level storage operations must lower into an appropriate combination of:
+
+* SSA values
+* stack allocation
+* global storage
+* explicit heap allocation
+* external address access
+* register operations
+
+Heap allocation must never be introduced silently.
+
+A value may use stack storage when:
+
+* its lifetime is bounded
+* its address requirements are supported
+* its size and alignment are known or supported dynamically
+* no language rule requires another storage class
+
+Escape analysis may influence storage strategy but must not silently promote stack values to the heap.
+
+When stack representation is impossible and no explicit allocation exists, compilation must fail unless the language defines another legal representation.
+
+## Stack allocation
+
+Stack allocation must be explicit in lowered MLIR.
+
+Stack lifetime should be bounded as narrowly as practical.
+
+Dynamic stack allocation must follow explicit language and target rules.
+
+The compiler must validate:
+
+* size
+* alignment
+* target support
+* recursion implications where applicable
+* embedded profile restrictions
+
+Stack coloring and slot reuse are permitted when lifetimes do not overlap and observable behavior is unchanged.
+
+## Heap allocation
+
+Heap allocation may be emitted only from an explicit Sec allocation construct, owning library primitive or compiler-defined operation whose semantics require allocation.
+
+Heap lowering must identify:
+
+* allocator
+* allocation size
+* alignment
+* ownership result
+* failure behavior
+* matching deallocator
+
+Target profiles without a heap must reject heap-requiring operations before final lowering.
+
+## Aggregate lowering
+
+Structs, arrays, tuples where supported and tagged unions require explicit representation lowering.
+
+Aggregate lowering determines:
+
+* field order
+* field offsets
+* padding
+* alignment
+* payload layout
+* discriminant layout
+* copy strategy
+* destruction strategy
+* ABI representation
+
+Target-independent transformations should occur before physical layout is fixed where practical.
+
+Target data layout must be used when physical layout is selected.
+
+## Struct lowering
+
+Struct lowering must follow the resolved Sec layout policy.
+
+Default Sec layout may remain implementation-defined unless otherwise specified.
+
+FFI structs require explicit ABI-compatible layout.
+
+Field access must lower using validated field identity rather than repeated source-name lookup.
+
+Packed layout must not be introduced unless explicitly requested and supported.
+
+## Enum lowering
+
+Enum lowering must honor explicit representation.
+
+The lowering must validate that values fit the declared representation before MLIR.
+
+Enum values may lower to integer representations.
+
+Debug information should preserve enum names and member names.
+
+Invalid integer-to-enum conversion checks must remain explicit where required.
+
+## Tagged union lowering
+
+Tagged unions must lower into a representation containing:
+
+* discriminant
+* payload storage
+* alignment
+* active-variant semantics
+
+The representation may be optimized when proven safe.
+
+Possible optimizations include niche representation or payload reuse.
+
+Such optimization is permitted only when:
+
+* all valid values remain representable
+* invalid states do not become observable
+* FFI layout is not affected
+* debug behavior remains acceptable
+* destruction remains correct
+
+The initial implementation should prefer a direct discriminant-plus-payload representation.
+
+## Result lowering
+
+Result must lower according to its concrete Ok and Err types.
+
+Possible representations include:
+
+* tagged aggregate
+* optimized niche representation
+* ABI-specific return convention
+* direct branch form within a function
+
+Error propagation may be lowered into explicit control flow before physical Result representation is selected.
+
+The initial implementation should prefer a clear tagged representation unless a simpler direct control-flow lowering applies.
+
+Optimization must not change which cleanup operations execute on Err propagation.
+
+## Option lowering
+
+Option must lower according to its payload type.
+
+The initial implementation should prefer an explicit tagged representation.
+
+A null or niche representation may be selected only when the compiler proves:
+
+* the niche cannot represent a valid payload
+* null semantics do not escape into ordinary Sec code
+* ownership and destruction remain correct
+* ABI requirements permit the optimization
+
+Option[RawPtr[T]] must not automatically imply that null is a normal Sec value at source level.
+
+## Control-flow lowering
+
+Structured Sec control flow must be lowered progressively.
+
+The compiler may use MLIR dialects such as:
+
+* scf
+* cf
+* arith
+* func
+* memref
+* llvm
+
+Dialect choice is an implementation detail.
+
+The lowering must preserve:
+
+* expression evaluation order
+* short-circuit behavior
+* cleanup behavior
+* loop behavior
+* break and continue targets
+* match and switch selection
+* return behavior
+* error propagation
+
+## Short-circuit operations
+
+Logical `&&` and `||` must preserve short-circuit semantics.
+
+They must not lower directly to unconditional evaluation of both operands.
+
+The lowering should use structured or explicit conditional control flow.
+
+Optimizations may simplify short-circuit control flow only when skipped operand effects are proven irrelevant.
+
+## If lowering
+
+If expressions may lower through structured conditional operations or control-flow blocks.
+
+Result values must be merged using block arguments, region yields or equivalent SSA mechanisms.
+
+Ownership states from branches must be compatible at merge points.
+
+Cleanup paths must remain branch-specific where necessary.
+
+## Switch lowering
+
+Switch lowering may select:
+
+* comparison chains
+* jump tables
+* binary decision trees
+* range tests
+* target-specific switch operations
+
+The choice is an optimization decision.
+
+The selected lowering must preserve:
+
+* Sec case matching
+* range semantics
+* source evaluation order
+* default behavior
+* branch cleanup
+
+Descending source ranges must retain the language-defined interpretation established before MLIR.
+
+## Match lowering
+
+Match lowering must use already validated exhaustiveness.
+
+It may lower through:
+
+* discriminant switch
+* comparison tree
+* direct branch
+* compile-time selected branch
+* optimized union representation tests
+
+Pattern guards must preserve evaluation order and side effects.
+
+Payload access must occur only after the appropriate variant test.
+
+The backend must not invent a default branch for a semantically exhaustive match except as an internal unreachable safeguard.
+
+## Loop lowering
+
+Loops may lower through structured loops or explicit control-flow graphs.
+
+The representation must preserve:
+
+* initialization
+* condition evaluation
+* body execution
+* update step
+* continue behavior
+* break behavior
+* loop-carried values
+* ownership state
+* cleanup
+
+Inclusive and exclusive ranges must already be represented explicitly.
+
+Step behavior and overflow behavior must follow Sec semantics.
+
+## Bounds-check lowering
+
+Checked indexing requires a bounds check unless a previous analysis proves it safe.
+
+The MLIR representation should keep bounds checks explicit long enough for elimination passes.
+
+A bounds-check elimination pass must prove:
+
+* index lower bound
+* index upper bound
+* relevant length stability
+* absence of invalidating mutation
+
+Failure behavior must be preserved.
+
+Unsafe context alone does not remove checks.
+
+Only an explicit unchecked indexing operation omits the check.
+
+## Contract-check lowering
+
+Contracts not fully proven at compile time may require runtime checks.
+
+Contract lowering must preserve:
+
+* validated condition
+* value being checked
+* failure behavior
+* source location
+* contract identity
+
+Contract checks may be merged or removed only through proof.
+
+The compiler must not silently ignore an unlowerable runtime contract.
+
+## Arithmetic lowering
+
+Arithmetic lowering must map Sec operations to lower-level operations with defined semantics.
+
+It must preserve:
+
+* signedness
+* width
+* overflow behavior
+* division behavior
+* remainder behavior
+* shift behavior
+* decimal rules
+* floating-point rules
+* unit conversion
+* target-sized integer behavior
+
+LLVM undefined behavior must not be introduced for Sec operations whose behavior is defined.
+
+Where LLVM operations have stronger preconditions than Sec, MLIR lowering must insert checks or use safe lowering sequences.
+
+## Integer overflow
+
+The lowering must distinguish:
+
+* checked overflow
+* wrapping overflow
+* saturating overflow
+* compile-time rejected overflow
+* language-defined ordinary overflow behavior
+
+The selected behavior must be explicit before LLVM translation.
+
+LLVM `nsw` and `nuw` flags must be applied only when their conditions are proven.
+
+## Division and remainder
+
+Integer division lowering must account for:
+
+* division by zero
+* signed minimum divided by negative one
+* signedness
+* rounding rules
+* remainder sign rules
+
+The compiler must not rely on target traps unless Sec semantics explicitly select that behavior.
+
+Required checks must remain visible until proven unnecessary.
+
+## Shifts
+
+Shift lowering must validate or preserve the defined behavior for:
+
+* negative shift counts
+* shift counts equal to or exceeding bit width
+* signed operands
+* unsigned operands
+
+LLVM poison-producing shifts must not be emitted unless their preconditions are proven.
+
+## Decimal lowering
+
+Decimal types must not be silently lowered to binary floating point unless the Sec type definition explicitly permits it.
+
+Decimal lowering must define:
+
+* storage representation
+* precision
+* scale
+* rounding
+* overflow
+* conversion
+* ABI behavior
+* supported target operations
+
+The initial implementation may use compiler runtime-free helper functions or integer-based lowering where appropriate.
+
+Any helper dependency must be explicit.
+
+## Floating-point lowering
+
+Floating-point lowering must preserve Sec floating-point semantics.
+
+Fast-math flags must not be enabled by default.
+
+Individual relaxed floating-point transformations require explicit language or build-profile permission.
+
+NaN, infinity, signed zero and rounding behavior must follow the selected Sec rules.
+
+## Register lowering
+
+Register operations must remain explicit until target and address-space information is available.
+
+Register lowering must generate:
+
+* volatile loads
+* volatile stores
+* masks
+* shifts
+* read-modify-write sequences where permitted
+* access-width-correct operations
+* target address-space operations
+
+Reserved bits must be preserved where required.
+
+Read-only fields must not generate writes.
+
+Write-only fields must not require invalid reads.
+
+Register operation ordering must not be changed across observable volatile boundaries.
+
+## Volatile operations
+
+Volatile semantics apply only to operations explicitly classified as volatile, including register and selected external memory access.
+
+Volatile operations must not be:
+
+* removed
+* merged when this changes access count
+* reordered across required boundaries
+* replaced with cached ordinary values
+
+Volatile does not automatically imply atomicity or synchronization.
+
+## Platform lowering
+
+Platform operations must lower through explicit target-specific passes.
+
+Examples include:
+
+* syscalls
+* interrupt control
+* special registers
+* inline assembly
+* thread-local error access
+* platform entry points
+
+Target-independent MLIR passes must not contain hard-coded operating-system syscall numbers.
+
+Platform metadata must be supplied by the selected target and platform implementation.
+
+## Syscall lowering
+
+Raw syscalls may lower to:
+
+* inline assembly
+* target intrinsic
+* platform helper function
+* operating-system ABI call
+
+The lowering must define:
+
+* syscall number
+* argument registers
+* return registers
+* clobbers
+* error convention
+* target restrictions
+
+Syscall availability and fallback strategy must be resolved by platform logic.
+
+Older syscall fallback behavior must remain explicit and must not be hidden inside unrelated generic lowering passes.
+
+## Inline assembly lowering
+
+Inline assembly must retain validated:
+
+* inputs
+* outputs
+* clobbers
+* memory effects
+* register constraints
+* control-flow effects
+* target restrictions
+
+The MLIR operation must model side effects accurately.
+
+LLVM inline assembly should be emitted only after target validation.
+
+Incorrect or incomplete clobber metadata is a compiler defect.
+
+## Unsafe lowering
+
+Unsafe marking may remain as operation metadata during MLIR lowering.
+
+Unsafe does not change generated instructions by itself.
+
+Unsafe provenance should remain available until:
+
+* low-level operation verification is complete
+* diagnostics no longer require it
+* audit output has been generated where requested
+
+Unsafe lowering must not weaken required checks on ordinary safe operations.
+
+## FFI and ABI lowering
+
+FFI lowering must use the selected target ABI.
+
+It is responsible for:
+
+* parameter classification
+* return classification
+* struct passing
+* enum representation
+* pointer representation
+* stack alignment
+* register assignment metadata
+* symbol naming
+* calling convention
+* variadic behavior when supported
+* foreign layout conversion
+
+Safe wrappers are lowered as ordinary Sec functions.
+
+Only the extern call uses foreign ABI lowering.
+
+## Sec ABI
+
+The Sec ABI may evolve before stabilization.
+
+Internal Sec calls may use a compiler-defined ABI.
+
+The compiler should record ABI version metadata for separately compiled artifacts when required.
+
+Public stable Sec ABI must not be claimed until explicitly specified.
+
+Cross-module compilation must use compatible compiler and ABI metadata.
+
+## C ABI
+
+`extern "C"` lowering must follow the selected target C ABI.
+
+C ABI lowering must use explicit ABI-compatible types.
+
+Sec string, slices, interfaces and owning containers must not cross directly unless an explicit representation has already been defined.
+
+## System ABI
+
+`extern "system"` lowering must select the platform-defined system convention.
+
+On platforms where the system convention equals the C convention, the semantic distinction may remain only as metadata.
+
+The compiler must still preserve the declared convention.
+
+## Function lowering
+
+Sec functions should lower through MLIR function-like operations before LLVM functions.
+
+Function lowering must preserve:
+
+* parameter order
+* parameter ownership mode
+* return semantics
+* unsafe metadata where retained
+* calling convention
+* linkage
+* visibility
+* target attributes
+* source location
+* cleanup behavior
+
+Hidden parameters may be introduced only through defined lowering rules.
+
+Examples include:
+
+* indirect return storage
+* interface dispatch data
+* closure context
+* explicit allocator context when language semantics require it
+
+Hidden runtime state must not be introduced casually.
+
+## Entry-point lowering
+
+Program entry-point lowering must be platform-specific.
+
+The Sec entry function may differ from the operating-system entry symbol.
+
+The compiler must define transformations for:
+
+* hosted `main`
+* raw Linux entry point
+* Windows entry point
+* embedded reset handler
+* test entry point
+* library output with no entry point
+
+Entry lowering must not require a runtime unless the selected profile explicitly includes one.
+
+## Runtime helpers
+
+MLIR lowering may use helper functions only when necessary.
+
+Every helper must be classified as:
+
+* compiler intrinsic
+* generated local helper
+* platform helper
+* explicit standard-library dependency
+* optional runtime helper
+
+The compiler should prefer generated or platform-local helpers over a mandatory runtime.
+
+Helper insertion must be visible in emitted IR diagnostics or inspection output.
+
+A helper must not introduce hidden heap allocation or hidden global state.
+
+## Runtime-free requirement
+
+The MLIR pipeline must support runtime-free compilation for programs that do not use features requiring runtime support.
+
+Runtime-free output must remain possible for:
+
+* basic arithmetic
+* control flow
+* stack values
+* raw syscalls
+* fixed registers
+* explicit FFI
+* simple Result handling
+* deterministic cleanup
+* supported embedded operations
+
+No pass may unconditionally add a Sec runtime dependency.
+
+## Optimization phases
+
+Optimization should occur in phases.
+
+Recommended phases include:
+
+1. high-level semantic simplification
+2. ownership-aware optimization
+3. structured control-flow optimization
+4. check elimination
+5. aggregate optimization
+6. target-independent scalar optimization
+7. target-specific preparation
+8. LLVM dialect optimization
+9. LLVM optimization
+
+Each phase must operate only on representations whose invariants it understands.
+
+## Ownership-aware optimization
+
+Ownership-aware optimization may include:
+
+* trivial move elimination
+* redundant copy elimination
+* destruction elimination for unused trivial values
+* cleanup-block merging
+* storage-slot reuse
+* temporary elimination
+
+It must not:
+
+* remove observable destructor calls
+* alter defer order
+* use a moved value
+* duplicate ownership
+* change which branch owns a value
+* introduce hidden copying
+
+## Check elimination
+
+A runtime check may be removed only through proof.
+
+The proof must remain valid after surrounding transformations.
+
+Check-elimination analyses should account for:
+
+* integer overflow
+* loop ranges
+* branch conditions
+* contracts
+* slice length stability
+* mutation
+* aliasing
+* target width
+
+Unsafe context is not proof.
+
+## Dead-code elimination
+
+Dead-code elimination may remove operations only when they have no observable effects.
+
+Observable operations include:
+
+* volatile access
+* extern calls unless proven pure by explicit contract
+* syscalls
+* destructor calls with effects
+* defer execution
+* atomic operations when supported
+* inline assembly
+* runtime-check failure paths
+* writes to externally visible memory
+
+Unknown extern functions must be treated conservatively.
+
+## Inlining
+
+Inlining is permitted when it preserves semantics.
+
+Inlining must preserve:
+
+* evaluation order
+* ownership transfer
+* cleanup
+* defer scopes
+* unsafe provenance where retained
+* source locations
+* stack behavior constraints where required
+
+Embedded or real-time profiles may restrict inlining based on code-size policies.
+
+Recursion must not be introduced by inlining transformations.
+
+## Escape-informed optimization
+
+Escape analysis may allow:
+
+* stack allocation
+* scalar replacement
+* elimination of temporary storage
+* narrower lifetimes
+
+Escape analysis must not introduce heap allocation.
+
+If an explicit heap allocation does not escape and removal is semantically valid, it may potentially be optimized away.
+
+Such optimization must preserve allocation failure behavior when that behavior is observable.
+
+## Alias analysis
+
+Alias analysis must use only valid guarantees.
+
+Possible sources include:
+
+* immutable references
+* exclusive mutable references
+* disjoint struct fields
+* distinct local stack slots
+* explicit RawPtr alias metadata supplied by a trusted low-level API
+
+RawPtr values must be assumed to alias conservatively unless proven otherwise.
+
+Extern calls must be assumed to access memory according to declared effects or conservatively when effects are unknown.
+
+## Memory-effect modeling
+
+Every operation that reads or writes memory should implement or expose memory-effect information.
+
+Effects should distinguish:
+
+* no memory effect
+* read
+* write
+* allocate
+* free
+* volatile read
+* volatile write
+* unknown foreign effect
+* synchronization effect when supported
+
+Incorrect effect classification is a compiler defect because it can make optimization unsound.
+
+## Side-effect ordering
+
+Operations with observable side effects must retain required ordering.
+
+The compiler must preserve Sec expression evaluation order.
+
+Optimization may reorder independent pure operations.
+
+It may not reorder operations when this changes:
+
+* volatile access
+* foreign interaction
+* destruction
+* defer
+* error observation
+* synchronization
+* trap or check behavior when observable
+* register access
+
+## LLVM dialect boundary
+
+Before conversion to the LLVM dialect:
+
+* Sec-specific control flow must be lowered
+* ownership must be concretely resolved
+* destruction must be explicit
+* cleanup must be explicit
+* aggregate layouts must be selected
+* ABI transformations must be determined
+* runtime checks must be represented
+* target-sized types must be resolved
+* unsupported operations must be rejected
+
+Some debug-only Sec metadata may remain as attributes if it does not affect translation.
+
+## LLVM dialect legality
+
+The final LLVM dialect module must contain only operations legal for LLVM translation and explicitly supported auxiliary metadata.
+
+The compiler must define conversion legality rules.
+
+Partial conversion must fail if illegal Sec operations remain.
+
+The lowering pass must report the illegal operation and its origin as an internal compiler error.
+
+## LLVM IR translation
+
+LLVM IR translation is mechanical.
+
+It must not:
+
+* perform Sec type checking
+* resolve ownership
+* decide destruction
+* validate borrowing
+* infer contracts
+* choose null semantics
+* decide unsafe legality
+* determine match exhaustiveness
+* invent heap allocation
+* redefine overflow behavior
+
+All such decisions must already be encoded in the lowered MLIR.
+
+## LLVM attributes
+
+LLVM attributes may be emitted only when justified.
+
+Examples include:
+
+* noalias
+* readonly
+* writeonly
+* nocapture
+* nounwind
+* nonnull
+* align
+* dereferenceable
+* willreturn
+* noreturn
+
+The compiler must not infer these attributes merely from optimistic assumptions.
+
+Incorrect attributes can produce incorrect machine code and are compiler defects.
+
+## Undefined behavior prevention
+
+MLIR lowering must avoid unintentionally introducing LLVM undefined behavior, poison or invalid assumptions.
+
+Particular care is required for:
+
+* signed overflow
+* unsigned overflow flags
+* shifts
+* division
+* pointer arithmetic
+* invalid enum values
+* uninitialized memory
+* out-of-bounds access
+* misaligned loads
+* null dereference
+* reference alias metadata
+* unreachable instructions
+
+A Sec runtime error or rejected operation must not silently become LLVM undefined behavior unless Sec explicitly defines the operation as unsafe with undefined runtime behavior.
+
+## Uninitialized memory
+
+Safe Sec code must not read uninitialized memory.
+
+MLIR lowering must preserve definite-assignment guarantees.
+
+Storage may be physically uninitialized before initialization, but no load may occur before a valid store or construction.
+
+Compiler-generated padding bytes must not be treated as initialized semantic values.
+
+Unsafe raw memory APIs may expose uninitialized memory only through explicitly defined unsafe operations.
+
+## Poison and undef
+
+LLVM poison and undef must not be used as ordinary representations of unspecified Sec values.
+
+Where a value is semantically unavailable, the control flow should prevent its use.
+
+Where padding or dead fields require arbitrary bits, the lowering must ensure those bits cannot become observable as valid Sec values.
+
+`freeze` or equivalent techniques may be required when lowering operations that could otherwise propagate poison unexpectedly.
+
+## Source locations
+
+Every MLIR operation originating from user code should retain an MLIR location.
+
+Locations should refer to:
+
+* original file
+* line
+* column
+* source range where available
+* inlining chain where applicable
+* synthesized origin where applicable
+
+Passes that replace operations must propagate or fuse locations meaningfully.
+
+LLVM debug metadata must derive from preserved source locations.
+
+## Debug information
+
+MLIR lowering should preserve enough information to emit:
+
+* source-level function names
+* local variable names where practical
+* source line mappings
+* type names
+* named-type identity
+* distinct-type identity
+* enum members
+* struct fields
+* inlining information
+
+Optimized builds may reduce variable visibility but must not corrupt debug mappings.
+
+Debug information must not alter program behavior.
+
+## Diagnostics
+
+MLIR passes primarily report compiler diagnostics rather than user semantic errors.
+
+A lowering diagnostic must identify:
+
+* pass name
+* operation
+* source location
+* source and target types
+* selected target
+* failed legality or invariant
+* relevant symbol
+
+Unsupported user-requested target features should produce ordinary user-facing diagnostics before or during early MLIR target validation.
+
+Malformed verified input must produce an internal compiler error.
+
+## Pass manager
+
+MLIR lowering must use an explicit pass pipeline.
+
+Each pass must define:
+
+* required dialects
+* required input invariants
+* produced output invariants
+* preserved analyses
+* invalidated analyses
+* target dependence
+* whether it may change control flow
+* whether it may change ownership representation
+* whether it may change physical layout
+
+Pass ordering must be intentional and documented.
+
+## Pass verification
+
+Verification should run:
+
+* after Sec dialect import
+* after ownership lowering
+* after cleanup lowering
+* after major control-flow conversion
+* after ABI lowering
+* after LLVM dialect conversion
+
+Debug compiler builds should enable verification after every pass where practical.
+
+A verifier failure must stop compilation immediately.
+
+## Determinism
+
+MLIR lowering must be deterministic for identical:
+
+* source input
+* compiler version
+* target
+* build profile
+* feature selection
+* dependency state
+
+Passes must not depend on:
+
+* unordered host-language map iteration
+* thread scheduling
+* random identifiers
+* host architecture
+* host pointer width
+* current time
+
+Generated symbol ordering should be stable where practical.
+
+## Parallel compilation
+
+Independent functions or modules may be lowered in parallel.
+
+Parallel lowering must not change:
+
+* emitted semantics
+* symbol identity
+* diagnostic order policy
+* deterministic output
+* generic instantiation identity
+
+Shared compiler state must be synchronized or avoided.
+
+## Cross-compilation
+
+MLIR lowering must use selected-target information rather than compiler-host information.
+
+Target information includes:
+
+* pointer width
+* endianness
+* ABI
+* object format
+* alignment
+* available instructions
+* address spaces
+* calling conventions
+* operating-system interfaces
+
+The compiler must not execute target code during cross-compilation.
+
+## Target profiles
+
+MLIR passes may use explicit target profiles.
+
+Profiles may include:
+
+* hosted
+* freestanding
+* embedded
+* bare-metal
+* RTOS
+* test
+* debug
+* release
+* size-optimized
+* speed-optimized
+
+Profiles may restrict available lowering strategies.
+
+Profiles must not change core Sec language semantics unless the language specification explicitly defines profile-dependent availability.
+
+## Embedded restrictions
+
+Embedded and bare-metal lowering must support restrictions such as:
+
+* no heap
+* no operating-system calls
+* limited stack
+* no recursion
+* interrupt-safe operations
+* fixed memory regions
+* restricted floating point
+* restricted dynamic allocation
+* deterministic code size requirements
+
+These restrictions must be validated explicitly.
+
+The compiler must not silently include hosted helpers for embedded targets.
+
+## Real-time considerations
+
+Where a real-time profile is defined, MLIR lowering should preserve analyzable behavior.
+
+Potential requirements include:
+
+* no hidden allocation
+* bounded loops where required
+* bounded cleanup
+* no hidden locking
+* no lazy initialization
+* predictable register access
+* explicit system calls
+* explicit recursion policy
+
+Real-time guarantees must not be claimed before their exact rules are specified.
+
+## Testing
+
+MLIR lowering must have tests for:
+
+* each Sec dialect operation
+* type conversions
+* ownership lowering
+* move and copy behavior
+* destruction order
+* partial moves
+* cleanup paths
+* defer
+* Result propagation
+* Option representation
+* control-flow lowering
+* bounds checks
+* check elimination
+* registers
+* units
+* RawPtr
+* FFI
+* ABI layout
+* cross-target behavior
+* invalid lowering invariants
+
+Tests should include:
+
+* textual MLIR checks
+* verifier tests
+* LLVM IR checks
+* execution tests
+* cross-target compile-only tests
+* optimization-preservation tests
+
+Generated LLVM IR alone is not sufficient to validate Sec semantics.
+
+## Round-trip and inspection
+
+The compiler should support emitting MLIR at selected pipeline stages.
+
+Expected modes may include:
+
+sec emit-mlir
+sec emit-mlir --stage=high
+sec emit-mlir --stage=ownership
+sec emit-mlir --stage=lowered
+sec emit-mlir --stage=llvm
+
+Exact command syntax may differ.
+
+Emitted MLIR is primarily for compiler development and diagnostics.
+
+Parsing emitted MLIR back into the compiler may be supported for testing but must not bypass required verification.
+
+## Compiler implementation
+
+MLIR integration should be isolated from frontend packages.
+
+The MLIR implementation should provide:
+
+* Sec dialect definitions
+* Sec type definitions
+* operation verifiers
+* type converters
+* conversion patterns
+* pass definitions
+* pass-pipeline construction
+* target interfaces
+* source-location conversion
+* LLVM dialect conversion
+* LLVM IR translation
+
+Frontend AST types must not be required by MLIR passes.
+
+Semantic IR should be imported through a defined translation boundary.
+
+## Failure policy
+
+MLIR lowering must fail rather than guess.
+
+Compilation must fail when:
+
+* a type has no defined representation
+* an operation has no legal lowering
+* ownership state is inconsistent
+* cleanup cannot be represented correctly
+* target ABI support is missing
+* target layout is unavailable
+* required runtime support is forbidden
+* unsupported target instructions are required
+* illegal dialect operations remain
+
+A guessed lowering that may change semantics is never acceptable.
+
+## Current implementation status
+
+MLIR lowering is the intended compiler direction but is not implemented yet.
+
+The current compiler may still emit LLVM IR directly for narrow bootstrapping
+tests.
+
+That direct path is allowed only as a temporary development aid.
+
+It must not define Sec semantics.
+
+When MLIR implementation begins, it should be isolated from frontend packages.
+
+Expected package structure may be:
+
+```text
+internal/codegen/mlir/
+```
+
+or another dedicated backend package with the same boundary.
+
+The first MLIR milestone should lower only verified Semantic IR for a very small
+program subset:
+
+* module
+* functions
+* parameters
+* local values
+* integer constants
+* boolean constants
+* string constants
+* calls
+* return
+* if
+
+The first MLIR milestone should not try to lower the entire language.
+
+Features such as ownership cleanup, defer, Result, units, registers, FFI and
+RawPtr should be added as explicit passes after the small subset is stable.
+
+Expected inspection command:
+
+```text
+sec emit-mlir <file.sec>
+```
+
+`sec emit-mlir` must require successful Semantic IR verification first.
+
+It should be possible to inspect intermediate MLIR stages later, but the initial
+implementation may emit one high-level Sec MLIR form.
+
+## Design rule
+
+Semantic IR defines the validated meaning of the program.
+
+The Sec MLIR dialect preserves that meaning while making lowering decisions explicit.
+
+Standard MLIR dialects progressively remove Sec-specific abstraction.
+
+The LLVM dialect expresses the final target-compatible representation.
+
+LLVM IR translation is the final mechanical step.
+
+No MLIR pass may redefine Sec.

@@ -1,0 +1,2993 @@
+=============================================================================================================================================================================================
+Lifetime Analysis
+=================
+
+Lifetime analysis proves that every non-owning access remains valid for its complete use.
+
+The compiler determines:
+
+* when a value becomes initialized
+* when its semantic lifetime begins
+* when its semantic lifetime ends
+* how long each reference may remain valid
+* whether a reference escapes its valid region
+* whether destruction invalidates an active reference
+* whether storage remains valid after ownership transfer
+* whether control-flow paths produce compatible lifetime states
+* whether a returned reference is backed by sufficiently long-lived storage
+* whether an FFI or unsafe operation requires stronger lifetime obligations
+
+Sec should infer lifetimes whenever possible.
+
+Ordinary Sec code should not require programmer-written lifetime parameters or lifetime annotations.
+
+## Design goals
+
+Lifetime analysis must be:
+
+* compile-time
+* flow-sensitive
+* path-sensitive
+* ownership-aware
+* borrow-aware
+* destruction-aware
+* storage-aware
+* compatible with deterministic cleanup
+* compatible with separate compilation
+* independent of garbage collection
+* independent of runtime borrow tracking
+* independent of hidden heap promotion
+* explicit enough for compiler verification
+* mostly invisible in source code
+
+The compiler carries the complexity.
+
+The programmer expresses:
+
+* ownership
+* references
+* mutability
+* control flow
+* explicit storage and allocation choices
+
+The compiler derives valid lifetimes from those semantics.
+
+## Core rule
+
+A reference must never be usable beyond the valid lifetime of the referenced value and storage.
+
+Conceptually:
+
+```text
+reference lifetime <= referent lifetime
+```
+
+This relation is semantic.
+
+It does not require a source-level lifetime name.
+
+## Terminology
+
+The following concepts are distinct:
+
+* value lifetime
+* storage lifetime
+* reference lifetime
+* borrow lifetime
+* lexical scope
+* ownership duration
+* temporary lifetime
+* resource lifetime
+* allocation lifetime
+* physical stack-frame lifetime
+* LLVM storage-lifetime metadata
+
+These terms must not be treated as interchangeable.
+
+## Value lifetime
+
+A value lifetime begins when a value becomes fully or validly initialized.
+
+A value lifetime ends when the value is:
+
+* destroyed
+* moved without remaining ownership at the source
+* replaced
+* transferred out of its storage
+* invalidated through a defined operation
+* no longer represented by an active variant
+* no longer initialized on a particular control-flow path
+
+For partially initialized aggregates, fields may have separate value lifetimes.
+
+For partially moved aggregates, remaining fields continue to have valid lifetimes.
+
+## Storage lifetime
+
+Storage lifetime is the period during which a storage location may physically hold values.
+
+Examples include:
+
+* stack-slot lifetime
+* global storage lifetime
+* static data lifetime
+* heap allocation lifetime
+* caller-provided return storage lifetime
+* aggregate field storage lifetime
+* array-element storage lifetime
+* fixed-address external storage lifetime
+* register-mapped storage lifetime
+
+Storage may outlive a particular value stored within it.
+
+Example:
+
+```sec
+mut value := CreateFirst()
+value = CreateSecond()
+```
+
+The binding's storage may remain the same.
+
+The first value lifetime ends before the second value lifetime begins.
+
+## Reference lifetime
+
+A reference lifetime is the region in which a reference may be validly used.
+
+A reference lifetime:
+
+* cannot begin before the referent is initialized
+* cannot extend beyond referent validity
+* cannot extend beyond required storage validity
+* cannot survive an incompatible move
+* cannot survive destruction
+* cannot survive replacement of the referenced value
+* cannot survive deallocation of referenced storage
+* must respect mutable and shared borrow conflicts
+
+The physical bits of a reference may remain in a register or memory after its semantic lifetime ends.
+
+Safe Sec code must not use it after that point.
+
+## Borrow lifetime
+
+A borrow lifetime is the period during which borrow restrictions apply to the referent.
+
+A borrow lifetime is usually determined by actual use rather than lexical scope alone.
+
+The compiler should use the narrowest provably correct borrow lifetime.
+
+Example:
+
+```sec
+let value := CreateValue()
+let view := ref value
+
+Inspect(view)
+Consume(value)
+```
+
+The shared borrow may end after `Inspect(view)` if `view` is not used again.
+
+The borrow need not remain active until the end of the lexical scope.
+
+## Resource lifetime
+
+A resource lifetime may differ from the lifetime of a wrapper's storage.
+
+Example:
+
+```sec
+mut file := OpenFile()
+file.Close()
+```
+
+If `Close` consumes or transitions the resource:
+
+* the operating-system handle lifetime may end
+* the wrapper storage may remain
+* the wrapper may become unavailable or enter a closed state
+* later destruction must not release the handle again
+
+Lifetime analysis must use the type's semantic state, not assume storage validity implies resource validity.
+
+## Allocation lifetime
+
+An allocation lifetime begins when allocation succeeds.
+
+It ends when the allocation is deallocated.
+
+Owned values within the allocation may have narrower lifetimes.
+
+Deallocation is invalid while safe references into the allocation remain active.
+
+A RawPtr does not extend allocation lifetime.
+
+## Lexical scope
+
+Lexical scope is a source-code region.
+
+Lexical scope provides an upper bound for many local bindings, but it does not fully define semantic lifetime.
+
+A value may end before scope exit because it is:
+
+* moved
+* destroyed
+* replaced
+* no longer initialized
+* proven dead and safely destroyed early
+
+A borrow may end before scope exit after its final use.
+
+The compiler should not confuse lexical scope with exact lifetime.
+
+## Non-lexical lifetime analysis
+
+Sec should use non-lexical lifetime analysis.
+
+Borrow validity is determined from:
+
+* definition
+* uses
+* control-flow paths
+* ownership operations
+* destruction
+* mutations
+* escapes
+* merge states
+
+A borrow ends after its final relevant use when no path requires it later.
+
+This permits ordinary code without artificial nested scopes.
+
+Example:
+
+```sec
+mut buffer := Buffer.Create(1024)
+
+let length := ref buffer.length
+Print(length)
+
+buffer.Clear()
+```
+
+The shared borrow of `buffer.length` may end after `Print(length)`.
+
+The later mutable operation is valid when no reference use remains.
+
+## No ordinary lifetime syntax
+
+The initial Sec language should not require syntax resembling:
+
+```text
+'a
+'b
+lifetime T
+where reference outlives X
+```
+
+The compiler should infer ordinary local, parameter and return-reference relationships.
+
+Lifetime syntax should be introduced only if concrete APIs cannot be expressed safely and clearly without it.
+
+The absence of source-level lifetime names does not weaken compiler analysis.
+
+## Lifetime sources
+
+The compiler derives lifetime facts from:
+
+* binding declarations
+* initialization
+* ownership
+* moves
+* copies
+* references
+* borrows
+* function signatures
+* control-flow structure
+* destruction points
+* cleanup regions
+* storage classes
+* aggregate structure
+* FFI contracts
+* unsafe operations
+* target and platform constraints
+
+No lower compiler stage may invent lifetime semantics independently.
+
+## Lifetime regions
+
+The compiler may represent inferred lifetimes as regions.
+
+A region is a set of program points where a value, storage location or reference is valid.
+
+Regions need not be contiguous in source text.
+
+A region may be represented by:
+
+* control-flow graph nodes
+* program points
+* dominance relationships
+* post-dominance relationships
+* data-flow facts
+* region variables
+* constraints
+* use ranges
+* ownership tokens
+
+Region representation is an implementation choice.
+
+Source semantics remain independent of the chosen algorithm.
+
+## Program points
+
+Lifetime analysis should reason at defined program points.
+
+Useful program points include:
+
+* before expression evaluation
+* after expression evaluation
+* after successful initialization
+* before a move
+* after a move
+* before destruction
+* after destruction
+* before a branch
+* on each control-flow edge
+* at block entry
+* at block exit
+* before a call
+* after a call
+* during cleanup
+* at return transfer
+
+This avoids ambiguity about whether a reference remains valid across an operation.
+
+## Lifetime beginning
+
+A value's lifetime begins only after successful initialization.
+
+Example:
+
+```sec
+let file := try OpenFile()
+```
+
+On the Ok path:
+
+* file becomes initialized
+* file lifetime begins
+* file destruction responsibility begins
+
+On the Err path:
+
+* file never becomes initialized
+* file has no value lifetime
+* file is not destroyed
+
+The binding's potential storage may exist before successful initialization, but no valid File value exists.
+
+## Field lifetime beginning
+
+Aggregate fields may begin their lifetimes separately during construction.
+
+Example:
+
+```sec
+let session := Session {
+    file: try OpenFile()
+    buffer: try Buffer.Create(4096)
+}
+```
+
+If file succeeds:
+
+* session.file begins a field lifetime
+
+If buffer fails:
+
+* session.file is destroyed
+* session as a complete value never begins its lifetime
+* session.free is not invoked if custom free requires complete construction
+
+Field-level lifetime tracking must agree with partial initialization rules.
+
+## Lifetime ending through destruction
+
+Destruction ends the value lifetime.
+
+All safe references to the complete value or destroyed portion must have ended before destruction begins.
+
+Example:
+
+```sec
+let resource := OpenResource()
+let view := ref resource
+
+DestroyingOperation(resource)
+Use(view)
+```
+
+This is invalid if `DestroyingOperation` consumes resource.
+
+The reference cannot remain valid after ownership ends.
+
+## Lifetime ending through move
+
+A move ends the source value lifetime.
+
+The destination begins or continues the transferred value's ownership lifetime.
+
+The underlying storage may or may not change.
+
+Example:
+
+```sec
+let first := Buffer.Create(4096)
+let second := first
+```
+
+After the move:
+
+* first no longer has a valid Buffer value
+* second owns the Buffer
+* first cannot be referenced
+* references created from first before the move must not remain active across an incompatible move
+
+The semantic value continues through ownership transfer, but the source binding's valid value lifetime ends.
+
+## Lifetime ending through replacement
+
+Replacing a value ends the previous value lifetime.
+
+Example:
+
+```sec
+mut current := CreateFirst()
+current = CreateSecond()
+```
+
+The old value lifetime ends before the new value becomes observably installed.
+
+Any reference to the old value must end before replacement.
+
+The storage may remain valid and then contain the new value.
+
+A reference to the old value must not silently become a reference to the replacement.
+
+## Lifetime ending through variant change
+
+Changing the active variant ends the lifetime of the old payload.
+
+Example conceptual operation:
+
+```sec
+mut state := Some(resource)
+state = None
+```
+
+The resource payload lifetime ends and it is destroyed or moved according to the operation.
+
+A reference to the Some payload cannot survive transition to None.
+
+## Lifetime ending through field replacement
+
+Replacing one field ends that field's previous value lifetime.
+
+References to:
+
+* that field
+* any subfield within it
+* the complete aggregate when replacement violates shared access
+
+must satisfy borrowing rules.
+
+References to disjoint fields may remain valid where the compiler proves disjointness and mutation is permitted.
+
+## Last use
+
+The last syntactic use is not always the semantic end of a reference.
+
+The compiler must also consider:
+
+* defer captures
+* closure captures
+* branch uses
+* loop backedges
+* cleanup operations
+* calls that retain references according to contract
+* storage of the reference
+* returned references
+* interface conversion
+* FFI escape
+
+A reference may end after its last ordinary expression use only when no hidden or deferred use remains.
+
+## Reference creation
+
+Creating a safe reference requires proving:
+
+* the referent is initialized
+* the referent is available
+* the storage is valid
+* requested mutability is permitted
+* no conflicting active borrow exists
+* the reference cannot immediately outlive its referent
+* alignment and representation requirements hold
+* the operation is not prohibited for the storage class
+
+The resulting reference carries an inferred lifetime constraint.
+
+## Shared reference lifetime
+
+A shared reference permits non-mutating access according to the referenced type's rules.
+
+While a shared borrow is active, conflicting operations are prohibited.
+
+These normally include:
+
+* mutable borrow of overlapping storage
+* replacement of overlapping value
+* destruction of overlapping value
+* move of overlapping value
+* mutation requiring exclusive access
+* deallocation of backing storage
+
+Multiple compatible shared references may coexist.
+
+Their lifetimes may differ.
+
+## Mutable reference lifetime
+
+A mutable reference requires exclusive access to the referenced region for its active lifetime.
+
+While a mutable borrow is active, the compiler normally prohibits:
+
+* another mutable reference to overlapping storage
+* a shared reference to overlapping storage
+* direct access through the original owner
+* move of the referenced value
+* destruction of the referenced value
+* replacement through another alias
+* deallocation of backing storage
+
+The mutable reference's own binding may be move-only.
+
+Reborrowing may temporarily narrow access further.
+
+## Reference lifetime and mutability
+
+Mutability does not extend lifetime.
+
+A mutable reference is not valid merely because it has exclusive access.
+
+It must still remain within:
+
+* referent value lifetime
+* storage lifetime
+* ownership validity
+* allocation lifetime
+* platform validity
+
+Likewise, a shared reference does not keep an owner alive automatically.
+
+## References do not own
+
+A reference does not extend the lifetime of its referent through ownership.
+
+Example:
+
+```sec
+fn Invalid() ref Value {
+    let value := CreateValue()
+    return ref value
+}
+```
+
+This is invalid.
+
+Returning the reference does not move or extend ownership of `value`.
+
+The compiler must not silently allocate value on the heap.
+
+## RawPtr does not extend lifetime
+
+A RawPtr is non-owning and does not participate in safe lifetime extension.
+
+Converting a reference to RawPtr may erase compiler-enforced reference guarantees at the unsafe boundary.
+
+It does not:
+
+* extend allocation lifetime
+* preserve borrow validity
+* keep the owner alive
+* prevent destruction
+* prevent relocation
+* create automatic cleanup
+
+Using a RawPtr after the underlying lifetime ends is unsafe program behavior.
+
+## Reference-to-RawPtr conversion
+
+When a safe reference is converted to RawPtr:
+
+* the resulting RawPtr has no safe lifetime guarantee beyond the operation's validated region
+* the compiler may still conservatively treat the pointer as an escape
+* active borrow rules may remain until the last safe or unsafe use where required
+* unsafe code assumes responsibility for validity
+
+The compiler must not promise that arbitrary RawPtr uses can be statically tracked.
+
+## RawPtr-to-reference conversion
+
+Creating a safe reference from RawPtr requires unsafe validation.
+
+The programmer or wrapper must uphold:
+
+* non-null requirements
+* alignment
+* initialized valid representation
+* accessible storage
+* sufficient lifetime
+* correct mutability
+* aliasing legality
+* provenance where applicable
+
+The resulting safe reference re-enters lifetime and borrow analysis.
+
+Unsafe creation does not exempt later safe uses from reference rules.
+
+## Storage classes
+
+Lifetime analysis must classify storage.
+
+Relevant storage classes include:
+
+* local stack storage
+* function parameter storage
+* caller-owned argument storage
+* caller-provided return storage
+* heap-owned storage
+* global storage
+* static immutable storage
+* thread-local storage
+* external addressed storage
+* volatile storage
+* hardware register storage
+* foreign-owned storage
+* arena storage
+* embedded fixed storage
+
+Each class defines different upper lifetime bounds.
+
+## Local storage
+
+A local binding cannot normally outlive the invocation that owns its storage.
+
+A reference to a local cannot:
+
+* be returned
+* be stored in longer-lived global storage
+* escape through FFI
+* be captured by a longer-lived closure
+* be transferred to an asynchronously executing context
+
+unless the storage is explicitly moved into a valid longer-lived owner.
+
+The compiler must not infer such storage promotion.
+
+## Parameter storage
+
+Parameter lifetime depends on parameter mode.
+
+An owned parameter is owned by the callee.
+
+A reference parameter borrows caller-backed storage.
+
+A RawPtr parameter has only its declared unsafe contract.
+
+A copied parameter has an independent value.
+
+The compiler must distinguish parameter binding lifetime from backing referent lifetime.
+
+## Owned parameters
+
+An owned parameter's value lifetime begins when ownership transfers to the callee.
+
+The callee may:
+
+* borrow it
+* move it
+* return it
+* store it in another owner
+* destroy it
+
+References to the parameter cannot outlive the resulting owner.
+
+Returning a reference to an owned parameter is invalid unless ownership is also returned in a representation that guarantees the reference remains usable, which requires a dedicated self-referential design.
+
+## Reference parameters
+
+A function receiving `ref T` or `ref mut T` must not assume the reference is valid beyond the call unless its signature explicitly returns or stores a related reference under a safe inferred rule.
+
+The caller guarantees validity for the call's required region.
+
+The callee must not retain the reference beyond that contract.
+
+## Parameter lifetime relationships
+
+Some functions return a reference derived from a reference parameter.
+
+Example:
+
+```sec
+fn First(value: ref Pair) ref Item {
+    return ref value.first
+}
+```
+
+The compiler may infer that the returned reference cannot outlive `value`.
+
+No explicit lifetime name is required when the relationship is unambiguous.
+
+The exported function interface must record the relationship in compiler metadata.
+
+## Multiple reference parameters
+
+A function returning a reference derived from one of multiple reference parameters may be ambiguous.
+
+Example:
+
+```sec
+fn Select(
+    condition: bool
+    first: ref Value
+    second: ref Value
+) ref Value {
+    if condition {
+        return first
+    }
+
+    return second
+}
+```
+
+The returned reference must be valid no longer than both possible input lifetimes.
+
+Conceptually, its lifetime is bounded by the intersection of the relevant valid regions.
+
+The compiler may infer this conservative relationship.
+
+If the relationship cannot be represented safely in exported metadata, the compiler should reject the declaration or require a future explicit mechanism.
+
+## Unambiguous return-source inference
+
+The compiler may infer return-reference relationships when:
+
+* every return reference derives from the same parameter
+* every return reference derives from the same static storage
+* every return path returns a reference with a compatible upper lifetime bound
+* field projection preserves the base reference lifetime
+* reborrowing does not extend lifetime
+* no local storage participates
+
+This should cover common accessor functions.
+
+## Ambiguous return references
+
+The compiler should reject a returned reference when its valid source cannot be proven.
+
+Examples include references derived from:
+
+* a local value
+* a destroyed temporary
+* one of several unrelated sources without a representable relationship
+* an FFI pointer without sufficient contract
+* a conditionally deallocated allocation
+* an owner consumed before return
+
+The diagnostic should explain the candidate sources and why no safe return lifetime exists.
+
+## Static storage references
+
+References to immutable static storage may have program-long validity where supported.
+
+Examples include:
+
+* string literals
+* compile-time constant tables
+* immutable static data
+* target-provided immutable tables
+
+A static reference still obeys:
+
+* type validity
+* mutability restrictions
+* target availability
+* module visibility
+* concurrency rules
+
+Static lifetime must not be inferred for ordinary globals requiring runtime initialization.
+
+## Mutable global storage
+
+Mutable global references introduce concurrency and initialization complexity.
+
+The initial language should restrict them according to the global-storage rules.
+
+A reference to mutable global storage may have long storage lifetime but still require:
+
+* synchronization
+* initialization proof
+* exclusive mutable access
+* target support
+
+Long storage lifetime does not imply unrestricted safe borrowing.
+
+## Heap storage
+
+A heap allocation may outlive the scope where it was created when ownership transfers to a longer-lived owner.
+
+References into heap storage remain valid only while:
+
+* the allocation remains allocated
+* the referenced value remains initialized
+* the owner does not perform invalidating mutation or relocation
+* borrow rules remain satisfied
+
+The existence of heap storage does not by itself make references returnable.
+
+The compiler must know who owns the allocation after return.
+
+## Owning containers
+
+References into an owning container are bounded by:
+
+* container ownership lifetime
+* element lifetime
+* allocation lifetime
+* operations that may relocate elements
+* operations that may replace or remove elements
+* mutable borrow conflicts
+
+Example:
+
+```sec
+let item := ref vector[0]
+vector.Append(newItem)
+Use(item)
+```
+
+This may be invalid if Append may reallocate and relocate elements.
+
+The type's operation contract must declare invalidation behavior.
+
+## Container invalidation
+
+Operations on containers must specify whether they may invalidate references.
+
+Possible effects include:
+
+* no invalidation
+* invalidates references to modified element
+* invalidates references at or after an index
+* invalidates all element references
+* invalidates only mutable references
+* invalidates references when reallocation occurs
+* preserves references through stable indirection
+
+The compiler cannot infer all container-specific invalidation solely from layout.
+
+The type or compiler-known operation must expose the effect.
+
+## Stable-storage containers
+
+A container may promise stable element addresses.
+
+Such a promise becomes part of its semantic contract.
+
+The compiler may then permit references across operations that preserve:
+
+* element existence
+* ownership
+* borrow legality
+* storage stability
+
+Stable address does not permit references after element removal or container destruction.
+
+## Array references
+
+References to fixed-array elements are bounded by the array's lifetime.
+
+A fixed array does not relocate its elements during ordinary lifetime.
+
+References to disjoint elements may coexist under field- or index-sensitive borrow rules when disjointness is statically proven.
+
+Runtime indices may require conservative overlap assumptions.
+
+## Slice lifetime
+
+A slice is a non-owning view.
+
+Its lifetime is bounded by the backing storage.
+
+Copying a slice does not extend the backing storage lifetime.
+
+Returning a slice requires proving that the backing storage outlives the returned slice.
+
+A slice into a local array cannot be returned.
+
+## String-view lifetime
+
+A borrowed string view is bounded by its backing string storage.
+
+A string literal view may have static validity.
+
+A view into an owned dynamic string may be invalidated by:
+
+* destruction
+* move that relocates storage where references cannot follow
+* mutation
+* reallocation
+* replacement
+* explicit clearing if storage is invalidated
+
+The String API must define reference invalidation effects.
+
+## Temporary lifetime
+
+Temporary values have compiler-defined lifetimes.
+
+The compiler should keep temporary lifetimes as narrow as possible while preserving:
+
+* reference validity
+* expression evaluation
+* destruction order
+* defer behavior
+* call semantics
+* observable side effects
+
+A reference to a temporary cannot outlive the temporary.
+
+## Full-expression lifetime
+
+The initial rule may define that expression temporaries remain valid until completion of the enclosing full expression unless ownership moves earlier.
+
+Example:
+
+```sec
+Inspect(ref CreateValue())
+```
+
+The temporary remains valid for the call.
+
+It is destroyed after the call returns.
+
+The reference cannot escape the call.
+
+## Temporary lifetime extension
+
+Sec should avoid broad implicit temporary lifetime extension.
+
+Example:
+
+```sec
+let reference := ref CreateValue()
+```
+
+The compiler should initially reject this unless the language explicitly defines ownership storage for the temporary.
+
+Silently extending the temporary to the binding scope complicates destruction and source reasoning.
+
+A programmer needing a longer lifetime should bind the owned value:
+
+```sec
+let value := CreateValue()
+let reference := ref value
+```
+
+## Temporaries returned by reference
+
+Returning a reference to a temporary is invalid.
+
+Example:
+
+```sec
+fn Invalid() ref Value {
+    return ref CreateValue()
+}
+```
+
+The temporary is destroyed before or during function exit.
+
+The reference would be invalid.
+
+No hidden allocation may repair the code.
+
+## Expression chains
+
+References produced in expression chains must remain valid for every downstream use.
+
+Example:
+
+```sec
+let result := CreateContainer().First()
+```
+
+The meaning depends on `First`:
+
+* if it returns a copied value, the temporary container may be destroyed after the call
+* if it returns an owned moved value, ownership transfers
+* if it returns a reference, the reference cannot survive destruction of the temporary container
+
+The compiler should reject a resulting escaping reference.
+
+## Method receiver lifetimes
+
+A method borrowing `self` may return a reference into self.
+
+The returned reference is bounded by the receiver's referent lifetime.
+
+Example:
+
+```sec
+impl Buffer {
+    fn Data(ref self) ref byte {
+        return ref self.data[0]
+    }
+}
+```
+
+The compiler records that the result derives from self.
+
+The reference cannot outlive the Buffer.
+
+## Mutable receiver return
+
+A method receiving `ref mut self` may return a mutable or shared reference into self.
+
+The resulting borrow may continue after the method call.
+
+During that returned-reference lifetime:
+
+* the original owner remains restricted
+* conflicting accesses remain prohibited
+* another mutable borrow cannot overlap
+* destruction and move remain prohibited
+
+The borrow does not automatically end at call return.
+
+## Consuming receiver
+
+A method consuming self cannot safely return a reference into self unless ownership of backing storage is also transferred into a representation that outlives the reference.
+
+The initial implementation should reject such methods.
+
+Example:
+
+```sec
+fn Invalid(self) ref Item {
+    return ref self.item
+}
+```
+
+Self is destroyed or transferred when the method exits.
+
+The returned reference has no owner.
+
+## Reborrowing
+
+Reborrowing creates a new reference derived from an existing reference.
+
+The new reference cannot outlive the original reference.
+
+Conceptually:
+
+```text
+reborrow lifetime <= original reference lifetime
+```
+
+A mutable reference may be reborrowed:
+
+* as a shorter mutable reference
+* as a shorter shared reference
+
+During a mutable reborrow, use of the original mutable reference may be temporarily suspended.
+
+## Mutable reborrow
+
+Example:
+
+```sec
+fn Use(value: ref mut Value) void {
+    Mutate(value)
+    Inspect(ref value)
+    MutateAgain(value)
+}
+```
+
+The shared reborrow used by `Inspect` may temporarily suspend mutation through `value`.
+
+After the shared reborrow ends, mutable access may resume.
+
+The compiler should infer the narrow shared lifetime.
+
+## Reference copies
+
+Copying a shared reference produces another reference with a lifetime no longer than the original.
+
+The compiler may infer a narrower lifetime for the copy.
+
+Copying a mutable reference is prohibited under the initial copy/move rules.
+
+Moving a mutable reference transfers that reference binding's access capability without extending referent lifetime.
+
+## Reference assignment
+
+Assigning a new reference into a mutable reference variable ends the previous reference value lifetime.
+
+Example:
+
+```sec
+mut current := ref first
+current = ref second
+```
+
+Any borrow restrictions associated solely with the previous reference may end after its last use, subject to other references.
+
+The variable storage remains, but it contains a different reference value.
+
+## Reference fields
+
+A struct containing references requires lifetime relationships between the struct value and referenced storage.
+
+Example:
+
+```sec
+type View struct {
+    value: ref Value
+}
+```
+
+The View cannot outlive the referenced Value.
+
+Without explicit lifetime syntax, the compiler must determine whether such types are permitted and how relationships are represented.
+
+## Initial reference-field policy
+
+The initial implementation should support reference-containing aggregates only when their lifetime relationships remain local and inferable.
+
+Recommended restrictions:
+
+* a local reference-containing aggregate may be constructed and used within the proven referent lifetime
+* it may be passed by value when the callee does not retain it beyond the relationship
+* it may be returned only when the compiler can encode its lifetime dependency on input references
+* it may not be stored in unrestricted global storage
+* it may not be hidden behind erased ownership without lifetime metadata
+* it may not outlive any referenced field source
+
+This avoids requiring immediate source-level lifetime parameters.
+
+## Nested reference fields
+
+A type containing another reference-bearing type inherits its lifetime constraints.
+
+The compiler must recursively collect lifetime dependencies.
+
+Layout identity alone is insufficient.
+
+Two values of the same reference-bearing type may have different inferred concrete valid regions.
+
+## Owned and borrowed aggregate fields
+
+An aggregate may contain both owned and borrowed fields.
+
+Example:
+
+```sec
+type Parser struct {
+    input: ref string
+    state: ParserState
+}
+```
+
+Parser owns state but borrows input.
+
+Its destruction does not destroy input.
+
+Parser's usable lifetime is bounded by input.
+
+Moving Parser transfers its borrowed relationship but does not extend input lifetime.
+
+## Self-referential aggregates
+
+Safe self-referential aggregates require stable storage and special construction rules.
+
+The initial implementation should reject ordinary safe construction where a field references another field in the same movable aggregate.
+
+Example conceptual invalid pattern:
+
+```sec
+type SelfView struct {
+    data: Buffer
+    view: ref byte
+}
+```
+
+if view points into data.
+
+Moving the aggregate may invalidate the internal reference.
+
+Such designs should use:
+
+* stable indirection
+* explicit ownership-separated view types
+* unsafe RawPtr with programmer-maintained invariants
+* a future pinned-storage feature
+
+## Closure lifetimes
+
+A closure may capture:
+
+* copied values
+* moved owned values
+* shared references
+* mutable references
+
+A closure capturing a reference cannot outlive the referent or borrow.
+
+A closure capturing an owned value by move owns that value and may outlive the original scope according to closure storage.
+
+The compiler must determine capture mode before validating closure escape.
+
+## Non-escaping closures
+
+A closure known to execute only within the current call may safely borrow local values.
+
+Example conceptual use:
+
+```sec
+WithLock(ref lock, fn() {
+    Use(ref local)
+})
+```
+
+The compiler may permit this when the closure contract guarantees it does not escape.
+
+The function parameter must encode non-escaping behavior in compiler metadata.
+
+## Escaping closures
+
+A closure stored or returned beyond the current scope cannot capture references to shorter-lived locals.
+
+It may instead capture owned values by move.
+
+Example:
+
+```sec
+fn CreateTask() Task {
+    let data := CreateData()
+
+    return task fn() {
+        Use(data)
+    }
+}
+```
+
+If the closure owns data by move, this may be valid.
+
+The original local binding becomes moved.
+
+The closure's destruction later destroys captured data.
+
+## Asynchronous execution
+
+Any callback or task that may execute after the current scope is an escaping context.
+
+References to locals must not escape into it.
+
+The compiler must not assume immediate execution unless the API contract explicitly guarantees it.
+
+This applies to:
+
+* threads
+* task queues
+* event loops
+* interrupt registrations
+* operating-system callbacks
+* stored closures
+* foreign callbacks
+
+## Defer lifetimes
+
+A defer captures values or references for later cleanup use.
+
+Its captured lifetime extends until the defer executes.
+
+Example:
+
+```sec
+let value := CreateValue()
+defer Log(ref value)
+
+Consume(value)
+```
+
+This is invalid if defer needs a reference to value after value is consumed.
+
+The compiler must treat defer as a future use at its cleanup position.
+
+## Defer capture modes
+
+A defer may conceptually capture by:
+
+* borrow
+* copy
+* move
+* deferred expression evaluation
+
+The language must define the capture semantics precisely.
+
+Lifetime analysis must reflect the selected model.
+
+A borrow capture extends the borrow until defer execution.
+
+A copy capture creates an independent value.
+
+A move capture transfers ownership into the deferred operation.
+
+## Cleanup lifetimes
+
+Values used during cleanup must remain valid until their cleanup entry executes.
+
+Cleanup ordering affects lifetime validity.
+
+With a unified reverse registration cleanup stack, a deferred operation may safely reference an earlier-owned value only when that value is destroyed after the defer.
+
+Example:
+
+```sec
+let resource := CreateResource()
+defer Inspect(ref resource)
+```
+
+If defer executes before resource destruction, the reference remains valid.
+
+The compiler must verify cleanup ordering rather than merely lexical ordering.
+
+## Free-operation lifetimes
+
+During a custom free operation:
+
+* self remains valid in a restricted destruction state
+* initialized unmoved fields remain valid
+* external references must not remain active
+* self must not escape
+* new references to self must not escape
+* references created for internal cleanup end before free completes
+
+After free completes, self's lifetime ends.
+
+The compiler must not permit a free operation to store a reference to self globally or return it.
+
+## Destruction-time references
+
+A free implementation may temporarily borrow its fields for cleanup.
+
+These references must remain internal to the free operation.
+
+A field may not be destroyed while an internal reference to it remains active.
+
+The compiler-generated field-destruction sequence occurs after the custom free body under the selected destruction model.
+
+## Branch analysis
+
+Lifetime state is path-sensitive.
+
+Each branch may:
+
+* create references
+* end references
+* move owners
+* destroy values
+* reinitialize storage
+* return references
+
+At a merge point, the compiler must compute a valid combined state.
+
+A reference usable after the merge must be valid on every incoming reachable path.
+
+## Conditional reference creation
+
+Example:
+
+```sec
+let reference :=
+    if condition {
+        ref first
+    } else {
+        ref second
+    }
+```
+
+The resulting reference is valid only within a region where both possible referents remain valid.
+
+Its inferred upper lifetime bound is the conservative intersection of the two source lifetimes.
+
+If one source ends earlier, the merged reference cannot be used afterward.
+
+## Conditional owner destruction
+
+A reference cannot merge into a region where its referent is destroyed on one path.
+
+Example:
+
+```sec
+let reference := ref value
+
+if condition {
+    Consume(value)
+}
+
+Use(reference)
+```
+
+This is invalid.
+
+The referent exists on only one incoming ownership path.
+
+## Exhaustive branches
+
+Mutually exclusive branch borrows may be valid even when they overlap conceptually because only one branch executes.
+
+Each branch is analyzed independently.
+
+At merge, only borrows still live on outgoing paths participate.
+
+The compiler should not retain branch-local borrows after their last branch use.
+
+## Early return
+
+An early return ends lifetimes in exited scopes after:
+
+* return expression evaluation
+* return ownership or reference validation
+* defer execution
+* destruction cleanup
+
+A returned reference must remain valid after callee cleanup.
+
+A reference into a local destroyed during return cleanup is invalid.
+
+## Returning reference before cleanup
+
+The compiler must not validate a return reference solely at the return expression.
+
+It must account for all cleanup executed before control reaches the caller.
+
+Example:
+
+```sec
+fn Invalid() ref Value {
+    let value := CreateValue()
+    return ref value
+}
+```
+
+Even though value is valid while evaluating the return expression, it is destroyed before the caller can use the reference.
+
+## Error propagation
+
+Error propagation exits scopes and executes cleanup.
+
+References into cleaned-up values cannot be propagated or retained.
+
+The compiler must validate both:
+
+* Ok continuation lifetime
+* Err exit cleanup
+
+A reference created before a `try` expression may remain valid after successful continuation only when the try call does not invalidate its referent.
+
+## Loops
+
+Lifetime analysis for loops must reach a fixed point over loop-carried states.
+
+The compiler must account for:
+
+* zero iterations
+* one iteration
+* repeated iterations
+* backedges
+* break edges
+* continue edges
+* condition evaluation
+* iteration-local destruction
+* loop-carried references
+* reinitialization
+* moves
+
+A reference used on a later iteration must remain valid across the backedge.
+
+## Iteration-local borrows
+
+A borrow created within one iteration normally ends before the next iteration unless carried explicitly.
+
+Example:
+
+```sec
+for item in items {
+    let view := ref item
+    Inspect(view)
+}
+```
+
+The borrow may end after Inspect during each iteration.
+
+It does not automatically accumulate across iterations.
+
+## Loop-carried references
+
+A reference stored in a variable across iterations requires proving:
+
+* the referent remains valid
+* the referent is not moved or destroyed
+* no conflicting mutation occurs
+* container operations do not invalidate it
+* every path initializes the reference before use
+
+Loop-carried mutable references require especially strict exclusivity.
+
+## Break
+
+A reference returned or carried out through break must remain valid at the break destination.
+
+Branch-local and iteration-local referents destroyed during break cleanup cannot back an escaping break reference.
+
+If break values are supported, their lifetime relationships must be validated before cleanup.
+
+## Continue
+
+References needed after continue on the next iteration must survive iteration cleanup.
+
+References to iteration-local values normally cannot cross continue.
+
+The compiler must end iteration-local borrows before executing cleanup and taking the backedge.
+
+## While conditions
+
+References created during a while condition normally remain valid only for condition evaluation unless transferred into loop state explicitly.
+
+The condition may be evaluated multiple times.
+
+No condition temporary may be assumed to persist across iterations without explicit ownership.
+
+## Match payload lifetimes
+
+Matching a value may:
+
+* borrow payloads
+* copy payloads
+* move payloads
+
+A borrowed payload reference cannot outlive:
+
+* the matched value
+* the active variant
+* the match borrow
+* any mutation changing the variant
+
+Moving the payload ends its lifetime in the original container.
+
+## Match on temporary
+
+Matching a temporary by reference permits use only while the temporary remains alive.
+
+A reference bound from a temporary match cannot escape the match expression unless the temporary's ownership is transferred into a longer-lived owner.
+
+## Switch lifetimes
+
+Switch discriminant temporaries remain valid for the required comparison operations.
+
+Branch-local values and references end according to branch control flow.
+
+A switch over a borrowed value must not allow payload-like ownership extraction unless the type and operation permit it.
+
+## Function-call lifetimes
+
+Before a call, the compiler determines:
+
+* argument evaluation lifetimes
+* parameter borrow regions
+* ownership transfers
+* alias relationships
+* possible invalidation effects
+* returned reference relationships
+* escape behavior
+
+After the call, it updates lifetime state according to the function contract.
+
+## Call-duration borrows
+
+A reference argument may be borrowed only for the call duration when the callee does not retain or return it.
+
+Example:
+
+```sec
+Inspect(ref value)
+Consume(value)
+```
+
+This is valid when Inspect's contract is non-escaping.
+
+The borrow ends at call return.
+
+## Retained references
+
+A function that stores a reference beyond return must declare a relationship through its result, output owner or explicit API contract.
+
+Ordinary reference parameters should be non-retained by default.
+
+The compiler should assume safe Sec functions do not retain references unless their types make the retention visible.
+
+This default simplifies local inference.
+
+## Returned-reference contracts
+
+Exported function metadata must describe which input lifetime bounds a returned reference depends on.
+
+Possible relationships include:
+
+* result derives from parameter N
+* result derives from receiver
+* result derives from static storage
+* result lifetime is bounded by multiple input references
+* result is unsafe or externally contracted
+
+This metadata is required for separate compilation.
+
+## Multiple return values
+
+Each returned reference may have separate lifetime dependencies.
+
+Example conceptual return:
+
+```sec
+fn Split(value: ref Pair) (ref First, ref Second)
+```
+
+Both results derive from value.
+
+Their borrow overlap and mutability must be valid.
+
+Two mutable references to disjoint fields may be returned only when disjointness is proven.
+
+## Function pointers
+
+A function pointer signature must preserve lifetime-relevant parameter and result relationships.
+
+Erasing these relationships would make indirect safe calls unsound.
+
+The compiler may restrict function-pointer compatibility when lifetime relationships differ.
+
+A raw foreign function pointer lacks safe lifetime metadata and requires an unsafe wrapper.
+
+## Interfaces
+
+Interface method declarations must preserve lifetime relationships.
+
+Dynamic dispatch must not erase whether a returned reference derives from:
+
+* receiver
+* a parameter
+* static storage
+
+All implementations must satisfy the interface's declared relationship.
+
+An implementation may return a shorter-lived reference only when it still satisfies the interface contract.
+
+## Interface object lifetime
+
+A borrowed interface view is bounded by the concrete value it references.
+
+An owning interface value owns the concrete value.
+
+A reference returned from an interface method into the concrete object is bounded by the interface object's underlying ownership lifetime.
+
+Moving or destroying the owning interface invalidates such references.
+
+## Generic lifetimes
+
+Generic code must be valid for every permitted instantiation.
+
+Generic type abstraction must not hide reference fields or lifetime requirements needed for safety.
+
+Constraints may need to distinguish:
+
+* owned values
+* borrowed values
+* static-backed values
+* types containing references
+* types permitted to escape
+
+The initial implementation should infer generic lifetime requirements from operations in the generic body.
+
+## Monomorphized lifetime analysis
+
+Monomorphization may refine lifetime facts based on concrete types.
+
+However, generic source validation should reject operations that are unsound for allowed instantiations.
+
+Concrete instantiation may determine:
+
+* whether a type contains references
+* whether storage is address-stable
+* whether an operation invalidates element references
+* whether a value is move-only
+* whether a type may safely escape
+
+## Higher-order functions
+
+Functions accepting callbacks must define callback lifetime and escape behavior.
+
+Relevant distinctions include:
+
+* callback invoked immediately and not retained
+* callback may be called multiple times during the call
+* callback stored after return
+* callback transferred to another thread
+* callback invoked during cleanup
+* callback may outlive captured references
+
+The compiler cannot safely assume non-escape for an opaque callback-taking function without metadata.
+
+## FFI lifetimes
+
+Foreign interfaces require explicit lifetime contracts.
+
+The compiler must distinguish:
+
+* pointer borrowed for call duration
+* pointer retained by foreign code
+* pointer returned and owned by caller
+* pointer returned and borrowed from an input
+* pointer valid until next foreign call
+* pointer valid until explicit foreign release
+* callback retained by foreign code
+* thread-local foreign pointer
+* static foreign storage
+
+C types alone do not encode these relationships.
+
+## Safe FFI wrappers
+
+A safe Sec wrapper must convert foreign lifetime contracts into Sec ownership and reference semantics.
+
+Example:
+
+* a borrowed foreign pointer may become a call-local ref
+* a foreign-owned object may be wrapped in a move-only owning type
+* a pointer valid until next call may be copied into owned Sec storage
+* a retained callback may require moved owned captures rather than borrowed locals
+
+Unsafe complexity should remain inside the wrapper.
+
+## Foreign-retained pointers
+
+Passing a reference to foreign code that retains it is invalid unless the backing storage is guaranteed to outlive the foreign use.
+
+Local stack references normally cannot be retained.
+
+Valid strategies may include:
+
+* explicit heap allocation with transferred ownership
+* static storage
+* caller-managed long-lived storage
+* pinned storage if later supported
+* opaque owning callback context
+
+The contract must define release and completion.
+
+## Foreign callbacks
+
+A callback registered with foreign code may outlive the registration call.
+
+The callback closure cannot borrow short-lived locals.
+
+The wrapper must know:
+
+* whether callback invocation is synchronous
+* whether it is retained
+* which thread invokes it
+* when registration ends
+* how captured ownership is released
+
+Ambiguous callback lifetime requires unsafe code.
+
+## Syscalls
+
+Raw syscalls involving pointers borrow or access memory according to syscall semantics.
+
+The wrapper must define whether the kernel:
+
+* accesses memory only during the call
+* retains the pointer
+* writes asynchronously
+* maps shared memory
+* transfers ownership
+* pins pages
+
+The raw syscall ABI does not provide a Sec lifetime guarantee.
+
+Safe platform APIs must encode the correct model.
+
+## Asynchronous operating-system I/O
+
+An asynchronous operation that retains a buffer cannot accept an ordinary short-lived reference unless completion is guaranteed before the borrow ends.
+
+Possible safe designs include:
+
+* consuming an owned buffer
+* borrowing through a scoped completion API
+* returning an operation object that owns the buffer
+* requiring static or externally managed storage
+* using pinned storage where required
+
+The compiler must not treat asynchronous use as call-duration borrowing.
+
+## Interrupt handlers
+
+References captured by interrupt handlers may outlive the registration call and execute unpredictably.
+
+Safe registration requires storage with sufficient lifetime and concurrency semantics.
+
+Local references must not escape into interrupt handlers.
+
+Bare-metal target rules may provide explicit static storage patterns.
+
+## Volatile storage
+
+Volatile or addressed storage has an external storage lifetime.
+
+A variable bound with `@address(...)` is treated as volatile external storage.
+
+Its storage is not owned or destroyed like an ordinary local value.
+
+A reference or accessor to addressed storage is bounded by:
+
+* target validity
+* address mapping validity
+* peripheral lifetime
+* mutability declaration
+* register rules
+* execution context
+
+The compiler must not infer that lexical scope controls the hardware storage lifetime.
+
+## Addressed instances
+
+For an addressed instance:
+
+```sec
+let device := @address(...)
+```
+
+the binding provides access to external storage.
+
+Without `mut`, access is read-only but remains volatile.
+
+With `mut`, reads and writes are permitted according to register and field rules.
+
+Lifetime analysis must treat the external storage as available according to the platform declaration, not as stack-owned storage.
+
+References derived from it must not be used where the target mapping is invalid.
+
+## Register fields
+
+A reference to a register field may be prohibited entirely if a normal reference would imply non-volatile memory semantics.
+
+Register access should normally use register-aware operations rather than general references.
+
+If register references are supported, their lifetime and access effects must remain tied to the addressed register object.
+
+The compiler must not cache or extend volatile accesses through lifetime optimization.
+
+## Thread-local storage
+
+A reference to thread-local storage is bounded by the current thread's storage lifetime.
+
+It must not be transferred to another thread unless the type and platform explicitly support such behavior.
+
+Thread exit invalidates thread-local storage references.
+
+## Concurrency
+
+Lifetime validity across threads requires both:
+
+* storage lifetime
+* legal ownership or sharing
+
+A reference cannot be sent to another thread merely because the storage physically remains alive.
+
+The type must satisfy concurrency and synchronization constraints.
+
+Thread transfer may extend execution beyond the current scope, making local borrows invalid.
+
+## Scoped threads
+
+A future scoped-thread API may permit borrowed references when all spawned threads are guaranteed to complete before the scope exits.
+
+The API must make this join relationship compiler-visible.
+
+Without such a contract, spawned execution is treated as escaping.
+
+## Locks and guards
+
+A lock guard may control the lifetime of a protected reference.
+
+A reference into protected data must not outlive the guard unless another ownership rule provides safety.
+
+Moving or destroying the guard may end access permission even if the underlying data remains allocated.
+
+Lifetime analysis may need to track capability lifetime, not only storage lifetime.
+
+## Capability lifetimes
+
+Some values grant temporary authority rather than physical storage.
+
+Examples include:
+
+* lock guards
+* transaction handles
+* interrupt-disable guards
+* mapped-access tokens
+* borrow tokens
+* device-session guards
+
+References or operations depending on a capability must not outlive it.
+
+The type system may represent this through borrowed relationships or compiler-known capability effects.
+
+## Unsafe blocks
+
+Unsafe code may perform operations the compiler cannot fully prove.
+
+Unsafe does not disable lifetime analysis for surrounding safe references.
+
+Inside unsafe, the programmer may assume responsibility for:
+
+* RawPtr validity
+* external storage lifetime
+* aliasing
+* foreign retention
+* manual allocation
+* self-referential structures
+
+When values return to safe code, all safe reference invariants must again hold.
+
+## Unsafe lifetime promises
+
+The compiler may eventually support an internal unsafe mechanism for asserting a lifetime relationship.
+
+Such a mechanism must:
+
+* be narrow
+* be explicit
+* remain inside unsafe code
+* not fabricate ownership
+* not extend actual storage lifetime
+* make the programmer responsible for proof
+* preserve diagnostics and IR metadata where possible
+
+The initial implementation should avoid general-purpose lifetime casting.
+
+## Lifetime extension casts
+
+Safe lifetime extension is prohibited.
+
+An unsafe cast that claims a longer lifetime does not make storage remain alive.
+
+It is valid only when the programmer separately guarantees the backing storage.
+
+The compiler should treat such casts as highly unsafe and unnecessary for ordinary Sec code.
+
+## Allocation and deallocation
+
+Deallocation ends the allocation storage lifetime.
+
+Before deallocation:
+
+* all contained initialized values must be destroyed or transferred
+* all safe references into the allocation must have ended
+* no retained foreign access may remain
+* allocator requirements must be satisfied
+
+The compiler must not move deallocation before the final valid reference use.
+
+## Arena lifetimes
+
+An arena may own many allocations with a shared upper lifetime bound.
+
+References into an arena cannot outlive the arena.
+
+Individual objects may become logically invalid earlier.
+
+Destroying or resetting the arena invalidates all contained references.
+
+A future arena type must expose these invalidation effects.
+
+## Region allocation
+
+If Sec later supports region allocation, region lifetime remains an explicit ownership concept.
+
+The compiler must not introduce hidden regions to repair invalid references.
+
+Region-backed values should be represented through owning region objects or compiler-visible scopes.
+
+## Static analysis inputs
+
+Lifetime analysis consumes facts from:
+
+* resolved symbols
+* canonical types
+* ownership analysis
+* copy and move classification
+* borrow analysis
+* control-flow graph
+* definite initialization analysis
+* destruction analysis
+* escape analysis
+* function-effect metadata
+* storage classification
+* target validation
+* FFI contracts
+
+The exact scheduling may require iterative coordination.
+
+## Analysis ordering
+
+Recommended analysis order:
+
+1. symbol and type resolution
+2. storage and value classification
+3. control-flow graph construction
+4. initialization analysis
+5. ownership and move-state analysis
+6. preliminary borrow creation analysis
+7. lifetime region inference
+8. borrow conflict validation
+9. escape analysis
+10. destruction and cleanup placement
+11. final lifetime validation
+12. Semantic IR verification
+
+Some phases may iterate to a fixed point.
+
+Lifetime analysis and escape analysis are closely related but distinct.
+
+## Lifetime and escape analysis
+
+Lifetime analysis asks:
+
+* where is a value or reference valid?
+
+Escape analysis asks:
+
+* does a value, reference or address leave a permitted region?
+
+An escaping reference is invalid when its destination lifetime exceeds the inferred reference lifetime.
+
+Escape analysis must not repair invalidity through hidden heap allocation.
+
+## Lifetime and destruction analysis
+
+Lifetime analysis constrains destruction placement.
+
+Destruction must not occur before:
+
+* final valid value use
+* final valid reference use
+* final required cleanup use
+* completion of foreign borrowing
+* completion of asynchronous scoped use
+
+Destruction analysis provides the definitive end point for owned values.
+
+The analyses must agree.
+
+## Lifetime and move analysis
+
+A move:
+
+* ends source-binding validity
+* transfers ownership
+* may preserve physical storage
+* may invalidate references
+* may be prohibited by active borrows
+
+Lifetime analysis must use semantic move state, not machine relocation.
+
+A non-relocating move may still be prohibited under conservative initial rules.
+
+## Lifetime and mutability analysis
+
+Mutability analysis determines which accesses may modify storage.
+
+Lifetime analysis determines when such access is valid.
+
+A mutable binding is not valid outside its value lifetime.
+
+A mutable reference cannot remain active after referent replacement or destruction.
+
+Both analyses are required.
+
+## Lifetime and definite initialization
+
+A reference may be created only to initialized values or fields.
+
+Conditional initialization creates path-specific lifetime beginnings.
+
+At merges, a reference cannot be assumed valid when its referent is uninitialized on any reachable incoming path.
+
+## Lifetime constraints
+
+The compiler may formulate constraints such as:
+
+```text
+reference R begins after initialization of V
+R ends before destruction of V
+R ends before move of V
+R ends before replacement of V
+R is contained within storage lifetime S
+returned reference R is bounded by parameter P
+reborrow R2 is bounded by R1
+closure capture C is bounded by captured reference R
+```
+
+The solver must either prove all constraints or issue diagnostics.
+
+## Constraint solving
+
+Lifetime constraints may be solved through:
+
+* data-flow analysis
+* region inference
+* graph reachability
+* dominance and post-dominance
+* strongly connected components
+* fixed-point iteration
+* use-def analysis
+* borrow-state propagation
+
+The algorithm should prioritize:
+
+* predictable diagnostics
+* compiler performance
+* correctness
+* incremental recomputation
+* debuggability
+
+The source language must not depend on one specific solver implementation.
+
+## Minimal inferred lifetime
+
+The compiler should infer the smallest lifetime satisfying all valid uses.
+
+Benefits include:
+
+* fewer artificial borrow conflicts
+* earlier permitted mutation
+* earlier permitted move
+* earlier destruction where semantically valid
+* better stack-slot reuse
+* clearer diagnostics
+* improved optimization
+
+The inferred lifetime must never be shortened below a hidden or deferred use.
+
+## Conservative inference
+
+When the compiler cannot prove a narrower lifetime safely, it may use a conservative longer borrow within the referent's valid region.
+
+Conservatism may reject otherwise safe code.
+
+It must never accept unsafe code.
+
+Compiler improvements may later accept more programs without changing language semantics.
+
+## Lifetime equivalence
+
+Two references may have equivalent inferred lifetimes without sharing identity.
+
+Lifetime equivalence does not imply:
+
+* pointer equality
+* same referent
+* aliasing
+* same mutability
+* interchangeable ownership
+
+The compiler tracks lifetime and alias facts separately.
+
+## Subtyping-like lifetime relationships
+
+A reference valid for a longer region may be used where a shorter region is required.
+
+The reverse is not valid.
+
+The compiler may shorten a borrow through reborrowing or argument passing.
+
+It must not extend a shorter reference to satisfy a longer requirement.
+
+This relation can remain internal without source-level lifetime notation.
+
+## Mutability conversion
+
+A mutable reference may be reborrowed as a shared reference for a shorter region.
+
+A shared reference cannot become mutable.
+
+The shared reborrow must not outlive the mutable reference.
+
+During the shared reborrow, mutation through the original mutable reference is suspended.
+
+## Variance
+
+The initial implementation should avoid exposing general variance rules in source syntax.
+
+Internally, reference-containing generic types may require variance-like reasoning.
+
+The compiler should use conservative invariance where necessary until a complete rule exists.
+
+Safety is more important than accepting every theoretically valid conversion.
+
+## Lifetime erasure boundary
+
+Lifetime metadata may be progressively erased only after all dependent semantic decisions are fixed.
+
+Before erasure, the compiler must have resolved:
+
+* borrow legality
+* ownership transfer
+* escape validity
+* destruction placement
+* storage allocation
+* reference invalidation
+* ABI lifetime contracts
+* FFI requirements
+
+LLVM IR does not need to encode Sec lifetime regions directly.
+
+## Semantic IR representation
+
+Semantic IR should preserve lifetime-relevant operations explicitly.
+
+Expected concepts include:
+
+* begin value lifetime
+* initialize storage
+* create shared borrow
+* create mutable borrow
+* reborrow
+* end borrow
+* move value
+* replace value
+* destroy value
+* deallocate storage
+* project field reference
+* project element reference
+* return reference
+* escape reference
+* call with borrow effect
+* call with retained-reference effect
+
+Not every concept must become a runtime instruction.
+
+They may be verifier-visible semantic operations.
+
+## Reference provenance in Semantic IR
+
+Each safe reference should retain provenance to:
+
+* source value or storage
+* projection path
+* mutability
+* inferred lifetime region
+* ownership root
+* source location
+* FFI or unsafe origin where applicable
+
+Projection paths may include:
+
+* struct fields
+* array indices
+* slice ranges
+* union payloads
+* dereference layers
+
+Provenance supports diagnostics and overlap analysis.
+
+## Lifetime IDs
+
+The compiler may assign internal lifetime or region IDs.
+
+These IDs:
+
+* are not source-visible
+* need not be stable across builds
+* support analysis and diagnostics
+* may be emitted in debug IR dumps
+* must not affect symbol ABI unless representing exported relationships
+
+Exported relationships should use stable structural metadata rather than arbitrary local IDs.
+
+## Cleanup regions
+
+Semantic IR cleanup regions must preserve reference validity.
+
+A reference used by a cleanup entry remains live until that entry executes.
+
+A value cannot be destroyed before cleanup entries that borrow it.
+
+Cleanup ordering must be reflected in lifetime dependencies.
+
+## Block arguments
+
+References crossing block edges should be explicit block arguments or otherwise explicit data-flow values.
+
+Their lifetime region must include:
+
+* source edge
+* destination block
+* all downstream uses
+
+A block must not receive a reference on an edge where its referent is invalid.
+
+## Phi-like reference merges
+
+A merged reference must carry compatible:
+
+* type
+* mutability
+* lifetime upper bound
+* provenance class where required
+* alias restrictions
+
+The resulting lifetime is no longer than any possible incoming referent validity.
+
+Mutable-reference merges require exclusive access on every incoming path.
+
+## Semantic IR verifier
+
+The Semantic IR lifetime verifier must check:
+
+* every reference derives from valid storage
+* every reference use lies within its inferred region
+* no reference use occurs after referent move
+* no reference use occurs after destruction
+* no reference use occurs after replacement
+* no reference use occurs after deallocation
+* no returned reference derives from invalid local storage
+* reborrows do not outlive source references
+* mutable and shared overlaps are legal
+* cleanup uses occur before referent destruction
+* block arguments have valid incoming references
+* function-result relationships match signatures
+* FFI lifetime effects are explicit
+* unsafe-created safe references carry required validation boundaries
+
+Verifier failure after semantic analysis is an internal compiler error.
+
+## MLIR lowering
+
+MLIR lowering may erase high-level lifetime regions gradually.
+
+It must preserve:
+
+* storage validity
+* destruction order
+* borrow-dependent alias assumptions
+* noalias conditions
+* volatile semantics
+* deallocation ordering
+* returned-reference validity
+* address stability
+
+Lifetime facts may inform optimization but must not be translated into overly strong LLVM assumptions.
+
+## MLIR lifetime operations
+
+A Sec MLIR dialect may include operations such as:
+
+```text
+sec.lifetime.begin
+sec.lifetime.end
+sec.borrow.shared
+sec.borrow.mutable
+sec.borrow.end
+sec.reference.project
+sec.reference.reborrow
+```
+
+These operations may be compile-time-only.
+
+They provide verification boundaries before lowering to ordinary memory and control-flow operations.
+
+## Alias analysis
+
+Lifetime facts support alias analysis but do not completely determine aliasing.
+
+A mutable reference may justify exclusive-access assumptions during its valid region.
+
+A shared reference may justify read-only access according to type rules.
+
+RawPtr must not inherit safe-reference noalias guarantees.
+
+The compiler must avoid unsound alias metadata when unsafe code may violate assumptions.
+
+## LLVM lifetime intrinsics
+
+LLVM lifetime intrinsics may describe stack storage availability.
+
+They are optimization hints.
+
+They do not implement Sec lifetime semantics.
+
+An LLVM lifetime end may be emitted only after:
+
+* value destruction
+* final reference use
+* final cleanup use
+* any required secure clearing
+* any required volatile operation
+
+The compiler must not emit a lifetime end merely because a lexical scope ended.
+
+## LLVM noalias
+
+LLVM `noalias`-like attributes or metadata may be emitted only when proven by Sec's ownership and borrow model for the complete relevant region.
+
+Potentially valid sources include:
+
+* exclusive mutable reference parameters
+* unique owned allocations
+* non-overlapping field projections
+* compiler-generated return storage
+
+Unsafe RawPtr conversion or foreign calls may weaken assumptions.
+
+Incorrect noalias is a miscompilation bug.
+
+## LLVM dereferenceability
+
+Dereferenceability metadata requires proof that:
+
+* storage is valid
+* the byte range is accessible
+* alignment holds
+* lifetime covers the operation
+* no deallocation may intervene
+
+The compiler should be conservative, especially for external, volatile and foreign storage.
+
+## LLVM invariant metadata
+
+Immutable data may permit invariant-load-like optimization only when:
+
+* the underlying storage cannot change during the relevant lifetime
+* no foreign or unsafe alias may mutate it
+* volatility is absent
+* target rules permit it
+
+A shared reference alone does not always prove global immutability of externally aliased storage.
+
+## Stack-slot reuse
+
+Lifetime analysis may permit reuse of stack storage after:
+
+* value lifetime ends
+* destruction completes
+* references end
+* debug constraints allow reuse
+* no escaping address remains
+
+Stack-slot reuse must not make stale safe references valid.
+
+RawPtr use after reuse remains unsafe.
+
+## Early destruction
+
+The compiler may destroy a value before lexical scope exit when:
+
+* no later value use exists
+* no active reference exists
+* no defer or cleanup entry requires it
+* destruction ordering relative to other observable operations is preserved
+* source semantics permit lifetime shortening
+* debugging policy permits it
+
+Early destruction is an optimization unless the language defines last-use destruction semantically.
+
+The initial compiler should preserve deterministic source-derived destruction order unless a proof confirms no observable change.
+
+## Observable destruction
+
+If free or field destruction has observable effects, lifetime shortening may change behavior.
+
+The compiler must not move destruction earlier across:
+
+* function calls
+* volatile operations
+* foreign calls
+* logging
+* synchronization
+* other destruction
+* defer execution
+
+unless effect analysis proves equivalence.
+
+## Lifetime extension for optimization
+
+The compiler may keep storage physically alive longer than the semantic value lifetime.
+
+It must not permit semantic access after lifetime end.
+
+Physical lifetime extension may occur through:
+
+* delayed stack reuse
+* unremoved stack slots
+* register live ranges
+* debug information
+* backend limitations
+
+This does not extend safe reference validity.
+
+## Debug information
+
+Debug builds should expose useful lifetime information where practical.
+
+A debugger may show:
+
+* initialized
+* borrowed
+* mutably borrowed
+* moved
+* destroyed
+* out of scope
+* storage reused
+
+The debugger must not imply that physically present stale bytes form a valid Sec value.
+
+## Diagnostics
+
+Lifetime diagnostics should explain:
+
+* which reference is invalid
+* where the reference was created
+* which value or storage it refers to
+* where the referent lifetime ends
+* which operation causes invalidation
+* where the invalid use occurs
+* whether a borrow, move, replacement, destruction or escape caused the conflict
+
+Diagnostics should use source terminology rather than solver terminology.
+
+## Diagnostic examples
+
+Preferred style:
+
+```text
+error: reference to local value escapes the function
+  reference created here
+  local value is destroyed when the function returns
+  returned here
+```
+
+Preferred style:
+
+```text
+error: cannot move `buffer` while it is borrowed
+  shared borrow starts here
+  borrow is later used here
+  move attempted here
+```
+
+Preferred style:
+
+```text
+error: returned reference may refer to either `first` or `second`
+  the compiler cannot establish a valid result lifetime for this signature
+```
+
+Avoid exposing internal region-variable names unless requested through compiler debug output.
+
+## Diagnostic suggestions
+
+The compiler may suggest:
+
+* bind the temporary to an owned local
+* pass a reference instead of returning it
+* return an owned value
+* shorten the borrow by moving its final use
+* clone or duplicate explicitly
+* transfer ownership into the closure
+* use a non-escaping callback
+* wrap foreign storage in an owning type
+* restructure control flow
+* avoid retaining a pointer in foreign code
+
+Suggestions must not propose hidden heap allocation.
+
+## Lifetime debug mode
+
+The compiler may provide a diagnostic mode such as:
+
+```text
+sec check --explain-lifetimes
+```
+
+or an IR mode that displays:
+
+* inferred reference regions
+* final uses
+* borrow beginnings and ends
+* ownership transfers
+* destruction points
+* escape paths
+* invalidation effects
+
+This is a compiler tooling feature, not source syntax.
+
+## Compiler testing
+
+Lifetime analysis requires:
+
+* valid source tests
+* compile-fail tests
+* Semantic IR tests
+* MLIR tests
+* cross-module tests
+* FFI contract tests
+* optimization-equivalence tests
+* target-specific storage tests
+
+Tests should verify both acceptance and diagnostics.
+
+## Valid local tests
+
+Valid tests should include:
+
+* shared borrow ending after final use
+* mutable borrow after shared borrow ends
+* shared borrow after mutable borrow ends
+* returned reference derived from one parameter
+* returned field reference derived from receiver
+* local reference-containing aggregate
+* reborrow with shorter lifetime
+* branch-local borrows
+* loop iteration-local borrow
+* borrow used by defer before destruction
+* heap-backed reference within owner lifetime
+* static string reference
+* reference reinitialization after previous reference ends
+
+## Invalid local tests
+
+Invalid tests should include:
+
+* return reference to local
+* return reference to temporary
+* store local reference in global
+* move while borrowed
+* destroy while borrowed
+* replace while borrowed
+* mutable and shared borrow overlap
+* two mutable borrows
+* reborrow outliving source reference
+* closure escaping with local reference
+* asynchronous callback retaining local reference
+* reference across container reallocation
+* payload reference after variant change
+* reference to moved field
+* reference after owner move under conservative rules
+* use after allocation deallocation
+
+## Control-flow tests
+
+Control-flow tests should cover:
+
+* borrow on one branch only
+* referent moved on one branch
+* merged reference from two owners
+* exhaustive branch borrow ending
+* early return with active borrow
+* break with escaping iteration reference
+* continue with iteration-local reference
+* loop-carried mutable borrow
+* zero-iteration paths
+* reinitialization on all branches
+* cleanup uses during error propagation
+
+## Function tests
+
+Function tests should cover:
+
+* call-duration borrow
+* returned receiver reference
+* returned parameter reference
+* return bounded by two parameters
+* ambiguous return source
+* indirect function call metadata
+* interface method return relationship
+* generic reference propagation
+* consuming receiver returning invalid reference
+* mutable receiver returning mutable subreference
+* separate compilation metadata
+
+## FFI tests
+
+FFI tests should cover:
+
+* call-duration pointer borrow
+* foreign-retained pointer rejection
+* owned foreign resource wrapper
+* callback retention
+* pointer returned from input
+* static foreign storage
+* pointer valid until next call
+* asynchronous buffer use
+* unsafe RawPtr-to-reference conversion
+* deallocation while foreign borrow remains
+
+## IR tests
+
+Semantic IR tests should verify:
+
+* borrow begin
+* borrow end
+* reference projection
+* reborrow
+* lifetime dependency
+* move invalidation
+* destruction invalidation
+* return-reference relationship
+* cleanup borrow
+* block-argument reference
+* loop-carried reference
+* unsafe-origin metadata
+
+MLIR tests should verify:
+
+* lifetime operation lowering
+* correct stack lifetime markers
+* no premature lifetime end
+* no invalid noalias
+* deallocation after final use
+* stack-slot reuse only after valid end
+* volatile storage unaffected
+* return storage relationships
+
+## Performance
+
+Lifetime analysis must scale to large functions and modules.
+
+The compiler should avoid:
+
+* exponential path enumeration
+* unrestricted symbolic execution
+* repeated whole-module analysis
+* excessive per-use graph rebuilding
+
+Potential implementation strategies include:
+
+* bitset data-flow states
+* sparse use-def propagation
+* incremental region constraints
+* strongly connected component handling for loops
+* cached function summaries
+* field masks for aggregate state
+* stable symbol and value IDs
+
+Correctness takes priority over optimization of the compiler itself.
+
+## Incremental compilation
+
+Lifetime analysis should support incremental recomputation.
+
+Changes should invalidate:
+
+* affected function bodies
+* dependent generic instantiations
+* callers when exported lifetime summaries change
+* interface implementations when method relationships change
+* FFI wrappers when contracts change
+
+Internal changes that do not alter exported lifetime summaries should not require unrelated module reanalysis.
+
+## Function lifetime summaries
+
+Each compiled function should produce a summary containing relevant facts such as:
+
+* parameter ownership modes
+* parameter borrow modes
+* whether references escape
+* returned-reference dependencies
+* callback escape behavior
+* receiver relationship
+* storage invalidation effects
+* container reference invalidation
+* foreign retention behavior
+* concurrency transfer behavior
+
+Summaries support separate compilation and incremental analysis.
+
+## Stable exported metadata
+
+Exported lifetime metadata must be:
+
+* deterministic
+* versioned
+* target-aware where necessary
+* independent of local solver IDs
+* compatible with module hashing
+* validated when imported
+* rejected when compiler versions cannot interpret it safely
+
+Imported metadata is part of semantic validation, not merely optimization hints.
+
+## Compiler implementation responsibilities
+
+The lifetime-analysis implementation should have clear boundaries.
+
+The type system determines:
+
+* whether a type contains references
+* projection types
+* mutability
+* storage-related type properties
+* reference-bearing generic conditions
+
+Ownership analysis determines:
+
+* current owners
+* moves
+* destruction responsibility
+* partial moves
+* reinitialization
+
+Borrow analysis determines:
+
+* borrow creation
+* overlap
+* exclusivity
+* reborrowing
+* access conflicts
+
+Lifetime analysis determines:
+
+* valid regions
+* final uses
+* result dependencies
+* escape compatibility
+* referent end constraints
+
+Escape analysis determines:
+
+* where references and addresses travel
+* whether destination outlives source
+* whether callbacks or foreign code retain access
+
+Destruction analysis determines:
+
+* final cleanup positions
+* invalidation through destruction
+* cleanup ordering
+
+These analyses may cooperate but should not be collapsed into an unmaintainable single pass.
+
+## Failure policy
+
+When lifetime safety cannot be proven:
+
+* safe code is rejected
+* the compiler does not guess
+* the compiler does not silently allocate
+* the compiler does not silently copy
+* the compiler does not silently leak
+* the compiler does not extend storage lifetime invisibly
+* the compiler does not weaken mutability rules
+
+Unsafe code may express externally guaranteed behavior only through explicit unsafe operations.
+
+## Initial implementation restrictions
+
+The initial Sec implementation should use conservative rules:
+
+* no ordinary source-level lifetime parameters
+* non-lexical local borrow inference
+* references do not own or extend referent lifetime
+* RawPtr does not extend lifetime
+* no hidden stack-to-heap promotion
+* no returned references to locals or temporaries
+* returned references may derive from parameters, receiver or static storage when unambiguous
+* ambiguous returned-reference relationships are rejected
+* reference-containing aggregates are supported only when dependencies remain inferable
+* safe self-referential aggregates are rejected
+* moving a value with an active reference is rejected
+* moving out through references is rejected
+* escaping closures cannot borrow local storage
+* callbacks are assumed escaping unless marked non-escaping
+* foreign code is assumed not to retain references only when the contract says so
+* container mutations use declared invalidation effects
+* lifetime extension casts are not provided in safe code
+* no runtime borrow checking
+* no garbage collection
+* no automatic reference counting
+
+These restrictions may be relaxed through stronger analysis or explicit later language features.
+
+## Final invariants before Semantic IR
+
+Before Semantic IR generation completes:
+
+* every reference has a known origin
+* every reference has a valid inferred region
+* every reference use lies within that region
+* every referent is initialized during reference use
+* no reference crosses an invalidating move
+* no reference crosses destruction
+* no reference crosses incompatible replacement
+* no reference outlives backing storage
+* every returned reference has a representable valid source relationship
+* every closure capture is lifetime-valid
+* every callback escape is classified
+* every FFI lifetime effect is known or unsafe
+* every branch and loop has a consistent lifetime state
+* every borrow conflict is resolved
+* every cleanup dependency is valid
+
+## Final invariants before MLIR lowering
+
+Before lifetime-aware MLIR lowering completes:
+
+* ownership and destruction positions are fixed
+* storage classes are selected
+* address-stability requirements are known
+* all safe references have valid backing storage
+* all reference escapes are represented
+* deallocation occurs after final valid use
+* cleanup ordering preserves borrowed values
+* function summaries are emitted
+* lifetime-sensitive alias facts are available
+* no unsupported lifetime relationship remains
+
+## Final invariants before LLVM translation
+
+Before LLVM translation:
+
+* no unresolved Sec lifetime constraint remains
+* no reference use follows semantic invalidation
+* all cleanup control flow is explicit
+* all deallocation is explicitly ordered
+* all stack lifetime markers are valid
+* all alias metadata is justified
+* all volatile and external storage retains correct effects
+* no backend operation is expected to repair lifetime semantics
+* no hidden runtime lifetime mechanism is required
+
+## Design rule
+
+Ownership determines who is responsible for a value.
+
+Lifetime analysis determines when that value and its references remain valid.
+
+Borrow analysis determines which accesses may coexist.
+
+Escape analysis determines whether access leaves its valid region.
+
+Destruction ends ownership and invalidates dependent references.
+
+The programmer should not describe ordinary lifetimes manually.
+
+The compiler must infer them, prove them and preserve them through every lowering stage.

@@ -2216,6 +2216,7 @@ func (a *Analyzer) typeFromRegisterDeclaration(name string, stmt *ast.TypeDeclSt
 	}
 
 	used := int64(0)
+	invalidFieldWidth := false
 	seen := map[string]lexer.Token{}
 	for _, field := range stmt.RegisterType.Fields {
 		if field == nil || field.Name == nil {
@@ -2223,6 +2224,7 @@ func (a *Analyzer) typeFromRegisterDeclaration(name string, stmt *ast.TypeDeclSt
 		}
 		if field.Width <= 0 {
 			a.addErrorAtToken(field.Token, "register field %s.%s width must be positive", name, field.Name.Value)
+			invalidFieldWidth = true
 			continue
 		}
 		used += field.Width
@@ -2252,7 +2254,7 @@ func (a *Analyzer) typeFromRegisterDeclaration(name string, stmt *ast.TypeDeclSt
 		})
 	}
 
-	if stmt.RegisterType.Width > 0 && used != stmt.RegisterType.Width {
+	if stmt.RegisterType.Width > 0 && !invalidFieldWidth && used != stmt.RegisterType.Width {
 		a.addErrorAtToken(stmt.RegisterType.Token, "register %s declares %d bits but its fields occupy %d bits", name, stmt.RegisterType.Width, used)
 	}
 

@@ -1,0 +1,4503 @@
+=============================================================================================================================================================================================
+Copy and Move
+=============
+
+Copy and move are distinct semantic operations in Sec.
+
+Copy duplicates a value while leaving the source valid.
+
+Move transfers ownership and makes the source unavailable.
+
+The compiler determines whether an operation copies, moves, borrows or merely reuses an SSA value according to the resolved type and context.
+
+Programmers should not need to annotate ordinary ownership transfers with explicit move syntax in most cases.
+
+The compiler must make every copy and move explicit in Semantic IR.
+
+## Design goals
+
+Sec copy and move semantics must be:
+
+* deterministic
+* statically validated
+* simple at source level
+* explicit in the compiler
+* compatible with deterministic destruction
+* compatible with references
+* compatible with generics
+* independent of garbage collection
+* independent of runtime ownership tracking
+* optimizable without changing semantics
+
+Complexity should remain in compiler analysis rather than source syntax.
+
+## Semantic operations
+
+The compiler distinguishes at least:
+
+* construct
+* copy
+* move
+* borrow
+* mutate
+* destroy
+
+These operations may produce identical machine instructions in simple cases, but they have different language semantics.
+
+A backend load or store must not be used to infer which semantic operation occurred.
+
+## Construction
+
+Construction creates a new initialized value and establishes ownership where the value is owning.
+
+Construction may occur through:
+
+* literals
+* struct literals
+* enum construction
+* union construction
+* Result construction
+* Option construction
+* function return
+* explicit type construction
+* compiler-generated aggregate construction
+* allocation
+
+A newly constructed owned value has exactly one owner.
+
+Construction is not copy.
+
+Construction is not move unless ownership is transferred from input values into the new value.
+
+## Copy
+
+Copy creates an independent value of the same semantic type while preserving the source.
+
+After copy:
+
+* the source remains valid
+* the destination is valid
+* both values may be used independently
+* each owning copied result has its own destruction responsibility if the type permits semantic copying
+* mutation of one copy does not semantically mutate the other unless the type explicitly represents shared external state
+
+A type may be copied only when its copy semantics are defined.
+
+## Move
+
+Move transfers a value or its ownership to a new destination.
+
+After move:
+
+* the destination becomes valid
+* the source becomes unavailable
+* the source must not be read
+* the source must not be borrowed
+* the source must not be copied
+* the source must not be moved again
+* the source must not be destroyed
+* destruction responsibility transfers to the destination
+
+A move may require no machine instruction.
+
+It remains semantically significant.
+
+## Borrow
+
+Borrow does not copy or transfer ownership.
+
+Borrow creates temporary non-owning access.
+
+After borrowing:
+
+* the source retains ownership
+* availability depends on active borrow rules
+* no new destruction responsibility is created
+* the reference itself is normally trivially destructible
+
+Borrowing is defined in references.txt and borrowing.txt.
+
+## Copy classification
+
+Every type must have a resolved copy classification.
+
+A type is one of:
+
+* trivially copyable
+* semantically copyable
+* move-only
+* conditionally copyable through generic parameters
+* explicitly non-copyable
+
+The compiler must resolve the classification before validating copy operations.
+
+## Trivially copyable types
+
+A trivially copyable value can be duplicated by copying its representation without invoking type-defined behavior.
+
+Types normally expected to be trivially copyable include:
+
+* bool
+* byte
+* char
+* rune
+* integers
+* unsigned integers
+* ordinary floating-point values
+* simple decimal values
+* fieldless enums
+* references
+* mutable references subject to borrowing rules
+* RawPtr
+* arrays of trivially copyable elements
+* structs whose fields are all trivially copyable and whose semantics permit copying
+
+Trivial copy classification is semantic, not merely based on equal size.
+
+## References and copying
+
+A shared reference may normally be copied because copying it creates another shared reference to the same value.
+
+The resulting references remain non-owning.
+
+A mutable reference must not be freely copied.
+
+Copying a mutable reference would create multiple exclusive references.
+
+The initial rule should be:
+
+* `ref T` is copyable
+* `ref mut T` is move-only
+
+Reborrowing may create a new constrained reference according to borrowing rules.
+
+A RawPtr is trivially copyable because it carries no ownership or alias guarantee.
+
+## Semantically copyable types
+
+A semantically copyable type may require a type-specific copy operation.
+
+Examples may include:
+
+* an owning string
+* a dynamic array
+* a heap-owning collection
+* a value containing explicitly copyable owned resources
+* a foreign value with a clone-like operation
+
+A semantic copy may allocate or perform other operations only if the language explicitly permits such copy behavior.
+
+Sec should avoid hidden expensive copying by default.
+
+The initial design should strongly prefer move-only classification for heap-owning and resource-owning types unless explicit copying is requested.
+
+## Move-only types
+
+A move-only type cannot be implicitly or ordinarily copied.
+
+Types expected to be move-only include:
+
+* files
+* sockets
+* locks
+* unique heap ownership
+* device handles
+* memory mappings
+* operating-system handles
+* resource-owning wrappers
+* mutable references
+* types containing move-only fields
+* types with a custom free operation unless explicitly made semantically copyable
+
+Assignment, argument passing and return of a move-only value transfer ownership when the context consumes the value.
+
+## Copyable resource types
+
+A resource-owning type must not become copyable merely because its fields are bitwise copyable.
+
+Example:
+
+```sec
+type File struct {
+    handle: int
+}
+```
+
+Even though int is trivially copyable, File is not safely copyable if two File values would release the same handle.
+
+A custom free operation should make the containing type move-only by default.
+
+Explicit copy support for such a type requires a defined operation that creates an independent valid resource.
+
+For a file, such an operation might duplicate the operating-system handle.
+
+This must not happen implicitly.
+
+## Default derivation
+
+The compiler should derive copy classification automatically.
+
+Recommended rules:
+
+A type is trivially copyable when:
+
+* all fields are trivially copyable
+* the type has no custom free operation
+* the type has no ownership invariant forbidding representation duplication
+* the type is not explicitly declared non-copyable
+* the type does not contain mutable references
+
+A type is move-only when:
+
+* any field is move-only
+* the type has a custom free operation
+* the type owns external resources
+* the type explicitly forbids copy
+* safe independent duplication cannot be derived
+
+A generic type is copyable only when every required generic argument satisfies the necessary copy classification.
+
+## Explicit copy support
+
+Sec may later provide an explicit interface or language declaration for semantic copying.
+
+The exact syntax should be defined separately.
+
+Possible conceptual form:
+
+```sec
+impl Copy for Buffer {
+    fn Copy(ref self) Result[Buffer, AllocationError] {
+        return Buffer.From(self)
+    }
+}
+```
+
+However, copy operations that can fail should not behave like implicit ordinary assignment.
+
+The language must distinguish:
+
+* infallible implicit copy
+* explicit fallible duplication
+* explicit clone-like operation
+
+A fallible operation should remain an ordinary explicitly called function returning Result.
+
+Sec should not hide allocation failure in assignment.
+
+## Implicit copy policy
+
+Implicit copy should be limited to values whose copy is:
+
+* infallible
+* semantically unsurprising
+* bounded
+* free from hidden resource acquisition
+* free from hidden heap allocation
+* free from externally observable side effects
+
+This normally restricts implicit copy to trivially copyable types and possibly small compiler-approved semantic types.
+
+An owning string or dynamic collection should initially be move-only for assignment and argument passing.
+
+Explicit duplication may be provided through a named operation.
+
+## Explicit copy syntax
+
+The initial language should avoid requiring a `copy` keyword for ordinary trivially copyable values.
+
+Example:
+
+```sec
+let first: int = 10
+let second := first
+Print(first)
+Print(second)
+```
+
+The compiler resolves assignment as copy because int is trivially copyable.
+
+For move-only values:
+
+```sec
+let first := Buffer.Create(4096)
+let second := first
+```
+
+The compiler resolves assignment as move.
+
+Afterward, first is unavailable.
+
+A future explicit `copy` expression may be added only if necessary to disambiguate or request semantic duplication.
+
+## Explicit move syntax
+
+The initial language should not require a `move` keyword for ordinary ownership transfer.
+
+The consuming context and type classification determine move.
+
+Example:
+
+```sec
+let first := Buffer.Create(4096)
+let second := first
+```
+
+This moves Buffer when Buffer is move-only.
+
+An explicit move expression may later be useful for:
+
+* forcing move from a copyable value
+* documenting intentional ownership transfer
+* moving a field
+* resolving overload ambiguity
+
+It should not be required for routine code unless language experience proves otherwise.
+
+## Context-sensitive transfer
+
+A value-use context must be classified as one of:
+
+* non-consuming read
+* copying use
+* consuming use
+* shared borrow
+* mutable borrow
+* in-place mutation
+
+Examples of consuming contexts include:
+
+* initialization of a move-only destination
+* passing to an owning parameter
+* returning an owned value
+* constructing an owning field
+* assigning into an owning storage location
+* transferring ownership to FFI
+* consuming method receiver
+
+Examples of non-consuming contexts include:
+
+* comparison of copyable scalar values
+* reading through ref
+* inspecting a field
+* passing to a borrowed parameter
+
+The compiler must know the context before deciding copy or move.
+
+## Initialization
+
+Initialization from an existing value follows copy classification and destination requirements.
+
+Example:
+
+```sec
+let second := first
+```
+
+Possible results:
+
+* copy if first's type is implicitly copyable
+* move if first's type is move-only
+* compile error if the context requires a copy that is unavailable
+* borrow only when syntax or parameter context requests a reference
+
+Initialization must never silently borrow an owning value.
+
+## Assignment
+
+Assignment replaces the current value in mutable storage.
+
+Conceptually:
+
+1. evaluate the right-hand expression
+2. determine copy or move behavior
+3. preserve alias and ownership validity
+4. destroy the previous destination value if required
+5. store the new value
+6. transfer destruction responsibility
+
+The compiler may optimize the physical order only when behavior remains equivalent.
+
+Example:
+
+```sec
+mut current := Buffer.Create(1024)
+current = Buffer.Create(2048)
+```
+
+The original current value must be destroyed exactly once.
+
+The new value becomes owned by current.
+
+## Self-assignment
+
+Self-assignment must be handled safely.
+
+For trivially copyable types, self-assignment may be a no-op.
+
+For move-only types, source and destination identity must be detected when possible.
+
+The compiler should reject or safely eliminate an assignment that would conceptually destroy the destination before moving from the same storage.
+
+Example:
+
+```sec
+current = current
+```
+
+The initial rule should be:
+
+* permit and eliminate for trivially copyable values
+* reject for move-only values as meaningless or invalid
+
+More advanced alias-aware handling may be added later.
+
+## Assignment through aliases
+
+The compiler must account for references and possible aliasing.
+
+An assignment must not destroy a value while the right-hand side still depends on it.
+
+Example conceptual hazard:
+
+```sec
+value = Transform(ref value)
+```
+
+The right-hand expression must complete before old destination destruction.
+
+Active references must not survive replacement of the referenced value unless language rules explicitly permit reinitialization under exclusive access.
+
+Borrow analysis determines legality.
+
+## Function arguments
+
+Each parameter must define how it receives a value.
+
+Conceptual parameter modes include:
+
+* copied value
+* owned value
+* shared reference
+* mutable reference
+* RawPtr
+* compile-time value
+
+A by-value parameter receives:
+
+* a copy for implicitly copyable types
+* ownership through move for move-only types
+
+Example:
+
+```sec
+fn Consume(buffer: Buffer) void {
+}
+```
+
+Calling:
+
+```sec
+Consume(buffer)
+```
+
+moves buffer when Buffer is move-only.
+
+After the call, the caller cannot use buffer.
+
+## Borrowed parameters
+
+A reference parameter does not copy or move the owned value.
+
+Example:
+
+```sec
+fn Inspect(buffer: ref Buffer) void {
+}
+```
+
+Calling:
+
+```sec
+Inspect(ref buffer)
+```
+
+creates a shared borrow.
+
+The exact reference-taking syntax follows references.txt.
+
+The caller retains ownership after the borrow ends.
+
+## Mutable reference parameters
+
+A mutable reference parameter receives exclusive temporary access.
+
+The mutable reference itself is moved or reborrowed according to borrowing rules.
+
+The owned source value remains owned by the caller.
+
+No ownership is transferred to the callee.
+
+## Return values
+
+Returning an owned value moves it to the caller.
+
+Example:
+
+```sec
+fn CreateBuffer() Buffer {
+    let buffer := Buffer.Create(4096)
+    return buffer
+}
+```
+
+The local buffer is moved into the return result.
+
+The callee must not destroy buffer afterward.
+
+The caller becomes the owner.
+
+The compiler may apply return-value optimization, but the semantic operation remains ownership transfer.
+
+## Returning copyable values
+
+Returning a trivially copyable local may be represented as copy or move semantically.
+
+The recommended rule is:
+
+Return is a consuming context for the local result value.
+
+For trivially copyable machine values, the distinction has no practical destruction effect.
+
+The compiler should use one consistent Semantic IR ownership model.
+
+A returned local should normally be marked transferred rather than retaining an unnecessary local copy.
+
+## Result and Option payloads
+
+Constructing Result or Option transfers or copies payload values according to type and context.
+
+Example:
+
+```sec
+return Ok(buffer)
+```
+
+If Buffer is move-only:
+
+* buffer is moved into Ok
+* the local buffer becomes unavailable
+* the Result owns Buffer
+* the function transfers the Result to the caller
+
+Extracting a payload may:
+
+* borrow the payload
+* copy the payload
+* move the payload
+
+The operation must be explicit in semantics.
+
+## Struct construction
+
+Struct construction processes each field independently.
+
+Example:
+
+```sec
+let session := Session {
+    file: file
+    buffer: buffer
+}
+```
+
+If file and buffer are move-only:
+
+* ownership moves into session.file
+* ownership moves into session.buffer
+* the original variables become unavailable
+* session owns both fields
+
+The compiler must track partial construction if later field initialization fails.
+
+## Struct update
+
+Updating an owned field replaces the previous field value.
+
+Conceptually:
+
+1. evaluate new field value
+2. resolve copy or move
+3. destroy old field value
+4. install new field value
+5. update aggregate ownership state
+
+The whole struct remains owned unless the update moves the whole struct.
+
+Active borrows may make field update illegal.
+
+## Field access
+
+Reading a field does not automatically move it.
+
+The context determines behavior.
+
+For a trivially copyable field:
+
+```sec
+let size := buffer.size
+```
+
+normally copies size.
+
+For a move-only field:
+
+```sec
+let file := session.file
+```
+
+may perform a partial move if partial moves are permitted.
+
+Otherwise, the compiler must require borrowing or moving the whole aggregate.
+
+## Partial moves
+
+A partial move transfers ownership of one or more fields while leaving other fields in place.
+
+After a partial move:
+
+* moved fields are unavailable
+* unmoved fields remain available according to rules
+* the aggregate cannot be used as a complete value
+* destruction applies only to remaining initialized fields
+* methods requiring complete self cannot be called
+* whole-value move is normally unavailable until reinitialization
+
+Partial moves substantially increase analysis complexity.
+
+## Initial partial-move policy
+
+The initial implementation should support partial moves only when all of the following hold:
+
+* the aggregate has no custom free operation
+* the moved field is directly addressable
+* no active borrow conflicts
+* the remaining fields can be tracked independently
+* the aggregate layout does not require hidden ownership invariants
+* the source is a local owned variable or other explicitly supported storage
+
+Partial moves should initially be prohibited from:
+
+* values with custom free
+* interface values
+* union payloads without established active variant
+* borrowed aggregates
+* foreign-layout aggregates with opaque ownership
+* register types
+* volatile storage
+* values behind RawPtr
+* indexed collection elements unless explicitly supported
+
+## Field reinitialization
+
+A partially moved mutable aggregate may become complete again if every moved field is validly reinitialized.
+
+Example:
+
+```sec
+mut pair := Pair.Create()
+let first := pair.first
+pair.first = CreateFirst()
+Use(pair)
+```
+
+The compiler may permit complete use after reinitialization.
+
+Reinitialization must:
+
+* establish new ownership
+* not destroy the already moved old field
+* update field initialization state
+* satisfy borrow rules
+* restore complete aggregate validity
+
+The initial implementation may defer field reinitialization support if necessary.
+
+## Arrays
+
+Copying an array requires copying each element.
+
+An array is implicitly copyable only when:
+
+* its element type is implicitly copyable
+* the total copy is considered acceptable under language policy
+* no hidden allocation or failure occurs
+
+Moving an array transfers ownership of every element.
+
+Partial moves from arrays should initially be restricted because dynamic index identity complicates initialization tracking.
+
+Moving a compile-time-known array element may be considered later.
+
+## Slices
+
+A slice is normally a non-owning view.
+
+Copying a slice copies the view:
+
+* data reference
+* length
+* mutability classification
+* lifetime constraints
+
+It does not copy elements.
+
+A mutable slice must follow mutable-reference aliasing restrictions.
+
+An owning dynamic array or vector is a different type and is normally move-only.
+
+## Strings
+
+String copy behavior depends on the string ownership model.
+
+Recommended distinctions:
+
+* string literal or immutable static string view: copyable view
+* borrowed string view: copyable under reference rules
+* owned dynamic String type: move-only by default
+* explicit duplication: named fallible or infallible operation according to allocation model
+
+The compiler must not silently allocate when assigning an owning string.
+
+## Enums
+
+A fieldless enum is normally trivially copyable.
+
+An enum or tagged union with payloads is copyable only when the active payload type is copyable and the containing type permits copy.
+
+Moving transfers the discriminant and active payload ownership.
+
+The source becomes unavailable as a complete value.
+
+## Interfaces
+
+Interface value copy behavior depends on ownership form.
+
+The compiler must distinguish:
+
+* borrowed interface reference
+* owning interface value
+* trivially copyable interface descriptor where underlying ownership is external
+* move-only owning dynamic value
+
+Copying an owning interface must not duplicate ownership accidentally.
+
+The initial rule should make owning interface values move-only unless explicit duplication semantics exist.
+
+## Closures
+
+Closure copy behavior depends on captures.
+
+A closure is copyable only when:
+
+* all captured values are copyable
+* capture ownership permits duplication
+* no mutable reference capture would be duplicated illegally
+* the closure representation itself permits copy
+
+A closure capturing a move-only value becomes move-only.
+
+A closure capturing a mutable reference becomes move-only.
+
+## Generics
+
+Generic code must express copy requirements through constraints or inferred operation requirements.
+
+Example conceptual behavior:
+
+```sec
+fn Duplicate[T](value: T) T {
+    return value
+}
+```
+
+This function does not necessarily copy value.
+
+Returning value may move it.
+
+A function that needs both the original and a duplicate requires T to be copyable.
+
+The compiler must infer or validate this requirement.
+
+A generic aggregate is copyable only for instantiations whose relevant fields are copyable.
+
+## Named types
+
+A named type inherits or defines copy classification according to its semantic rules.
+
+Example:
+
+```sec
+type Speed decimal
+```
+
+Speed may be trivially copyable if decimal is trivially copyable.
+
+Copy does not erase the named type.
+
+The destination remains Speed.
+
+## Distinct types
+
+A distinct type may be copyable independently of conversion rules.
+
+Copying a distinct value preserves its exact distinct type.
+
+Copying does not permit conversion to or from the base type.
+
+Type identity and copy classification are separate concerns.
+
+## Unit types
+
+A unit-bearing numeric value may be trivially copyable.
+
+Copy preserves:
+
+* unit identity
+* dimension
+* scale representation
+* named type identity
+
+Copy must not introduce unit conversion.
+
+Conversions remain explicit semantic operations.
+
+## Register types
+
+Register types require careful classification.
+
+A register value may represent:
+
+* a copied snapshot
+* a volatile hardware location
+* a typed register accessor
+
+Copying a volatile location accessor must not accidentally perform a hardware read unless the operation is explicitly a read.
+
+Copying a register snapshot may be trivial.
+
+A register reference or accessor may be non-copyable depending on exclusive access rules.
+
+registers.txt determines the exact behavior.
+
+## RawPtr
+
+RawPtr is trivially copyable.
+
+Copying RawPtr:
+
+* duplicates the address representation
+* does not copy pointed-to memory
+* does not create ownership
+* does not validate the address
+* does not create a reference
+* does not change lifetime
+
+Multiple RawPtr values may alias.
+
+The compiler must not attach reference ownership or noalias guarantees.
+
+## FFI
+
+FFI parameter ownership must be explicit.
+
+An extern call may:
+
+* borrow data
+* copy ABI values
+* consume ownership through a wrapper contract
+* return borrowed resources
+* return owned resources
+* accept RawPtr without ownership
+
+The foreign ABI's physical copying of bits does not determine Sec ownership.
+
+Ownership transitions must be specified by the Sec extern wrapper or declaration metadata.
+
+## Foreign handles
+
+A foreign handle represented as an integer is not automatically copyable as an owning resource.
+
+The wrapper type determines ownership.
+
+Example:
+
+```sec
+type FileHandle distinct int
+```
+
+The representation may be copyable as bits, but an owning File type containing FileHandle should remain move-only.
+
+Semantic ownership takes precedence over raw field representation.
+
+## Mutation and move
+
+A value cannot be moved while it has an active incompatible borrow.
+
+A borrowed value cannot be replaced or destroyed while the borrow remains active.
+
+Moving through a mutable reference is not automatically permitted.
+
+The initial implementation should prohibit moving the referred-to value through `ref mut` unless:
+
+* the location is immediately reinitialized
+* the operation is explicitly defined
+* destruction state remains valid
+* no reference observes an uninitialized value
+
+A dedicated replacement operation may be introduced later.
+
+## Move from shared reference
+
+Moving an owned value through `ref T` is prohibited.
+
+A shared reference grants observation, not ownership transfer.
+
+Copying the referred-to value is permitted only when the value type is copyable and the operation explicitly produces a copy.
+
+## Move from mutable reference
+
+A mutable reference grants exclusive access but does not itself own the referred-to value.
+
+The initial rule should prohibit extracting ownership through `ref mut`.
+
+Operations may mutate or replace according to separate rules, but ownership belongs to the original owner.
+
+This avoids leaving the owner with uninitialized storage.
+
+## Use after move
+
+Any use of a moved value is an error.
+
+Uses include:
+
+* read
+* copy
+* move
+* borrow
+* mutation
+* field access requiring the moved portion
+* method call
+* comparison
+* return
+* destruction
+
+The diagnostic must point to:
+
+* the invalid use
+* the original move
+* the ownership origin where useful
+
+## Conditional moves
+
+Move state is path-sensitive.
+
+Example:
+
+```sec
+if condition {
+    Consume(value)
+}
+```
+
+After the if:
+
+* value is moved on one path
+* value remains available on another path
+
+Using value after the merge is invalid unless all reachable paths restore a compatible valid state.
+
+The compiler may permit later control flow that separately handles both states, but ordinary merged use requires uniform availability.
+
+## Moves in exhaustive branches
+
+A value may be moved in every mutually exclusive exhaustive branch.
+
+Example:
+
+```sec
+match state {
+case First:
+    ConsumeA(value)
+case Second:
+    ConsumeB(value)
+}
+```
+
+After the exhaustive match, value is uniformly moved.
+
+No destruction remains for value.
+
+If one branch does not move value, merged state is incompatible for complete use unless explicitly represented.
+
+## Loops and moves
+
+Moving a value inside a loop requires proving that it is available on every path reaching the move.
+
+Example:
+
+```sec
+for item in items {
+    Consume(value)
+}
+```
+
+This is invalid when the loop may execute more than once.
+
+The value would be moved in the first iteration.
+
+Permitted cases may include:
+
+* loop proven to execute at most once
+* move followed by valid reinitialization before the next iteration
+* move occurs on a path that immediately exits the loop
+* value is created within each iteration
+
+The compiler must be conservative when iteration count is unknown.
+
+## Move followed by break
+
+Moving a value and then immediately breaking may be valid.
+
+Example:
+
+```sec
+while condition {
+    Consume(value)
+    break
+}
+```
+
+The compiler must still account for paths where the loop executes zero times.
+
+After the loop, value has conditional move state unless all paths establish uniform state.
+
+## Continue
+
+A value moved before continue must be reinitialized if the next iteration expects it to be valid.
+
+Iteration-local moved values require no reinitialization when their scope ends before the next iteration.
+
+## Defer captures
+
+A value required by a defer cannot be moved before the defer executes unless the defer captured an independent copy.
+
+Example:
+
+```sec
+let file := OpenFile()
+defer LogFile(file)
+Consume(file)
+```
+
+This is invalid if defer borrows or owns the same file and Consume moves it.
+
+Capture semantics determine whether defer:
+
+* borrows
+* copies
+* moves
+* stores an independent value
+
+The compiler must make capture behavior explicit.
+
+## Copy elision
+
+The compiler may eliminate physical copies while preserving copy semantics.
+
+Permitted techniques include:
+
+* return-value optimization
+* direct construction into destination storage
+* scalar replacement
+* SSA reuse
+* aggregate forwarding
+* inlining
+* dead-copy elimination
+
+Copy elision must not change:
+
+* source validity
+* destruction behavior
+* observable copy behavior
+* allocation failure
+* side effects
+* reference identity when identity is observable
+
+An observable semantic copy operation cannot be removed merely because representations match.
+
+## Move elision
+
+Moves commonly require no physical operation.
+
+The compiler may construct directly into final ownership storage.
+
+Example:
+
+```sec
+return Buffer.Create(4096)
+```
+
+The compiler may construct directly in caller-provided return storage.
+
+Semantically:
+
+* the returned value is constructed
+* ownership transfers to the caller
+* no temporary destruction occurs
+
+The optimization must preserve failure and cleanup paths.
+
+## Return-value optimization
+
+Return-value optimization should be supported without changing source semantics.
+
+The compiler may:
+
+* allocate return storage in the caller
+* pass hidden return storage
+* construct directly into destination
+* eliminate intermediate move operations
+
+The ABI lowering determines the physical mechanism.
+
+Semantic IR must still represent correct ownership transfer.
+
+## Copy cost
+
+The compiler may warn about expensive implicit copies if such copies are permitted.
+
+Warnings may consider:
+
+* aggregate size
+* array length
+* nested fields
+* type-defined copy cost
+* optimization profile
+
+The compiler must not change copy into move merely to improve performance when source semantics require the source to remain valid.
+
+## Hidden allocation
+
+Implicit copy must not introduce hidden heap allocation under the initial language rules.
+
+An operation requiring allocation should be explicit and normally return Result if allocation can fail.
+
+This keeps performance and failure behavior visible.
+
+The compiler may optimize explicit allocation away, but it must not invent it silently.
+
+## Hidden resource duplication
+
+Implicit copy must not duplicate operating-system or foreign resources.
+
+Operations such as:
+
+* duplicate handle
+* duplicate file descriptor
+* clone socket
+* retain foreign object
+* increment reference count
+
+must be explicit unless a later type contract explicitly defines safe, infallible and expected copy behavior.
+
+## Reference counting
+
+Reference counting is not the default copy model.
+
+A type may later implement shared ownership explicitly.
+
+Copying such a type might increment a reference count, but this behavior belongs to that explicit type.
+
+The compiler must not automatically insert reference counting for ordinary owned values.
+
+## Copy-on-write
+
+Copy-on-write is not an implicit language-wide behavior.
+
+A specific standard or user type may implement copy-on-write explicitly.
+
+Its copy, mutation and allocation behavior must be part of that type's defined semantics.
+
+The compiler may optimize it but must not infer copy-on-write from ordinary assignments.
+
+## Identity
+
+Some values have observable identity.
+
+Examples may include:
+
+* allocated objects
+* external resources
+* synchronization objects
+* device handles
+* mapped regions
+
+A semantic copy must define whether identity is:
+
+* duplicated
+* shared
+* newly created
+* unavailable
+
+Trivial bitwise duplication is invalid when it would create conflicting owners of one identity.
+
+## Free interaction
+
+A type with custom free is move-only by default.
+
+Moving transfers responsibility to invoke free.
+
+Copying such a type requires an explicitly defined independent resource-duplication operation.
+
+The compiler must prevent:
+
+* duplicate free
+* free of moved source
+* copying ownership bits
+* two owners for one resource
+
+After move, only the destination participates in destruction.
+
+## Destruction interaction
+
+Copy creates an additional value and potentially an additional destruction responsibility.
+
+Move transfers existing destruction responsibility.
+
+The compiler must maintain:
+
+* one destruction responsibility for a move-only resource
+* one responsibility per valid independently copied value
+* no responsibility for references and RawPtr
+* no destruction for moved sources
+
+Copy and move analysis must complete before destruction placement is finalized.
+
+## Semantic IR
+
+Semantic IR must explicitly represent:
+
+* construct
+* copy
+* move
+* borrow
+* reborrow
+* load without ownership transfer
+* store
+* replace
+* field move
+* field copy
+* return transfer
+* argument transfer
+* FFI ownership transfer
+* destruction responsibility
+
+Every operation must record:
+
+* source type
+* destination type
+* ownership effect
+* initialization effect
+* source location
+* affected storage or value identity
+
+Move must not be represented as an ordinary copyable load.
+
+## MLIR lowering
+
+MLIR may lower copy and move differently according to representation.
+
+Move may become:
+
+* SSA forwarding
+* load plus source invalidation
+* direct destination construction
+* ownership metadata transfer
+* aggregate field transfer
+
+Copy may become:
+
+* SSA duplication
+* scalar load and store
+* aggregate copy
+* explicit copy function
+* loop
+* memory copy for types where valid
+
+MLIR must preserve semantic distinctions until all ownership and destruction decisions are complete.
+
+## Memory copy operations
+
+Raw memory copy is permitted only when the type is proven representation-copyable.
+
+The compiler must account for:
+
+* padding
+* pointer fields
+* custom copy behavior
+* ownership
+* volatile fields
+* atomic fields
+* invalid representations
+* alignment
+* overlapping ranges
+
+A bytewise copy must not duplicate move-only ownership.
+
+`memcpy`-like lowering is an implementation choice, not proof of semantic copyability.
+
+## LLVM lowering
+
+By LLVM IR translation:
+
+* ownership transfer is resolved
+* source invalidation is reflected in control flow and cleanup
+* copies are concrete operations or optimized away
+* no moved source is later loaded
+* destruction belongs only to current owners
+* partial-move cleanup is explicit
+
+LLVM must not decide whether a source operation was copy or move.
+
+## Optimization
+
+Permitted optimizations include:
+
+* eliminating machine-level no-op moves
+* copy propagation
+* redundant-copy elimination
+* direct destination construction
+* storage forwarding
+* scalar replacement
+* return-value optimization
+* dead-store elimination
+* field-wise copy simplification
+
+Optimization must not:
+
+* preserve usability of a semantically moved source
+* remove observable semantic copy behavior
+* duplicate a move-only value
+* alter destruction count
+* introduce hidden copy
+* change ownership transfer
+* violate active borrows
+* convert explicit duplication into shared aliasing
+* convert shared aliasing into independent duplication
+
+## Diagnostics
+
+Diagnostics should distinguish:
+
+* use after move
+* copy of move-only type
+* implicit expensive copy
+* move while borrowed
+* move from shared reference
+* move from mutable reference
+* double move
+* conditional move state
+* move inside repeated loop
+* partial move from unsupported type
+* use of partially moved aggregate
+* whole-value use before field reinitialization
+* implicit resource duplication
+* incompatible generic copy requirement
+* direct duplication of a type with custom free
+* assignment replacing a borrowed destination
+* self-move assignment
+
+Diagnostics should identify:
+
+* invalid use
+* original move
+* active borrow
+* type copy classification
+* field causing move-only classification
+* custom free declaration where relevant
+* generic constraint location
+
+## Compiler analysis
+
+Copy and move analysis must determine:
+
+* value ownership
+* storage ownership
+* type copy classification
+* consuming context
+* source availability
+* destination initialization
+* active borrows
+* path-sensitive move state
+* field-sensitive move state
+* loop-carried state
+* destruction responsibility
+* generic requirements
+* FFI transfer behavior
+
+Analysis should be flow-sensitive and field-sensitive where supported.
+
+The compiler must reject ambiguous ownership rather than insert a hidden copy.
+
+## Verification
+
+The copy/move verifier must check:
+
+* every copy uses a copyable type
+* every move has an available source
+* no source is used after move
+* no source is moved twice
+* no moved source is destroyed
+* destination ownership is established
+* argument transfer matches parameter mode
+* return transfer matches function signature
+* field moves update aggregate state
+* partial moves obey type restrictions
+* branches merge compatible ownership states
+* loops do not repeat invalid moves
+* custom-free types are not implicitly copied
+* mutable references are not copied
+* RawPtr copies do not gain ownership
+* FFI ownership transfer is explicit
+
+Verifier failure after semantic validation is an internal compiler error.
+
+## Initial implementation policy
+
+The initial implementation should use the following conservative rules:
+
+* ordinary scalar values are implicitly copyable
+* shared references are copyable
+* mutable references are move-only
+* RawPtr is copyable and non-owning
+* aggregates derive copyability from their fields
+* types with custom free are move-only
+* resource-owning types are move-only
+* heap-owning types are move-only
+* implicit copy must not allocate
+* implicit copy must not fail
+* implicit copy must not have external side effects
+* ownership transfer is inferred from consuming context
+* explicit move syntax is not required
+* direct explicit copy syntax is not initially required
+* fallible duplication is an ordinary named operation returning Result
+* partial moves are restricted to compiler-supported local aggregates
+* partial moves from custom-free types are prohibited
+* moving through references is prohibited
+* no implicit reference counting is introduced
+* no implicit copy-on-write is introduced
+
+## Design rule
+
+Copy means two valid independent values remain.
+
+Move means one valid owner changes location.
+
+Borrow means ownership remains with the source.
+
+The compiler determines and verifies the operation.
+
+The programmer should not be forced to manually annotate routine ownership flow.
+
+## Semantic move versus physical movement
+
+A semantic move does not necessarily move bytes in memory.
+
+A semantic move changes:
+
+* source availability
+* destination ownership
+* destruction responsibility
+* cleanup responsibility
+* valid future operations
+
+The physical representation may remain in the same register, stack slot or memory address.
+
+Example:
+
+```sec
+let first := Buffer.Create(4096)
+let second := first
+Use(second)
+```
+
+Semantically:
+
+* ownership moves from first to second
+* first becomes unavailable
+* second becomes responsible for destruction
+
+Physically, the compiler may keep the same address and merely rename the value in SSA.
+
+The compiler must not require physical copying merely because source syntax introduces a new variable name.
+
+## Physical move strategies
+
+A move may be implemented through:
+
+* SSA value renaming
+* register reuse
+* stack-slot reuse
+* direct construction into destination storage
+* pointer transfer
+* field-wise transfer
+* load and store
+* aggregate memory movement
+* hidden return storage forwarding
+
+The strategy is selected by lowering and optimization.
+
+The selected strategy must preserve:
+
+* source invalidation
+* destination validity
+* alignment
+* representation
+* destruction responsibility
+* reference validity
+* observable identity
+
+## Stable addresses
+
+Some values may require stable addresses.
+
+Examples include values:
+
+* currently borrowed
+* referenced by internal self-references where explicitly supported
+* passed to foreign code that retains an address
+* bound to fixed storage
+* used through volatile access
+* used as hardware register mappings
+* explicitly pinned if pinning is later introduced
+
+A semantic move of a stable-address value may transfer ownership without changing its physical address.
+
+The compiler must distinguish:
+
+* ownership movement
+* storage relocation
+* address identity
+
+Ownership transfer does not automatically permit storage relocation.
+
+## Address-observable values
+
+A value's physical address is not normally part of ordinary Sec semantics.
+
+An address becomes observable when the program explicitly:
+
+* creates RawPtr from the value
+* passes the address through FFI
+* stores the address externally
+* performs identity comparison defined through an address
+* uses fixed-address or volatile storage
+* uses a future explicit address-stability feature
+
+Once address identity becomes observable, relocation must respect the applicable pointer and lifetime rules.
+
+The compiler must not relocate a value while a valid observable pointer requires its original address.
+
+## Moves with active references
+
+A value cannot be relocated while active references require stable access to its storage.
+
+A semantic ownership transfer may still be possible when storage remains unchanged and all lifetime rules remain valid.
+
+The initial implementation should use the conservative rule:
+
+An owned value with an active reference cannot be moved.
+
+This rule may later be relaxed to permit non-relocating ownership transfer when the compiler can prove:
+
+* the storage address remains stable
+* the reference lifetime remains valid
+* ownership destruction remains unambiguous
+* the destination outlives the reference
+* no mutable aliasing is introduced
+
+Such relaxation must be explicit and proven.
+
+## Moves from stack storage
+
+Moving a stack-stored value may lower to:
+
+* SSA forwarding
+* destination slot reuse
+* field-wise transfer
+* a load into registers
+* a memory copy followed by source invalidation
+* direct use of the original stack slot as destination storage
+
+The compiler should prefer avoiding unnecessary stack-to-stack copies.
+
+Source stack storage may be reused only after:
+
+* the source is semantically unavailable
+* all references to the source storage have ended
+* required destruction has transferred
+* debug-location behavior remains acceptable
+
+## Moves to heap storage
+
+A move to heap storage is not automatically permitted merely because a value escapes.
+
+Heap storage must originate from:
+
+* an explicit allocation construct
+* an explicitly heap-owning type
+* a standard-library operation whose allocation semantics are visible
+* a compiler-defined operation whose language semantics explicitly require allocation
+
+The compiler must not transform:
+
+```sec
+let value := LargeValue.Create()
+return ref value
+```
+
+into hidden heap allocation.
+
+The reference escape remains invalid unless the source semantics explicitly provide valid longer-lived storage.
+
+## Moves from heap storage
+
+Moving an owning heap container normally transfers the ownership descriptor rather than copying the allocation contents.
+
+Example conceptual representation:
+
+```text
+pointer
+length
+capacity
+allocator
+```
+
+A move may transfer these fields to the destination and invalidate the source descriptor.
+
+The heap allocation itself remains in place.
+
+The destination becomes responsible for:
+
+* contained value destruction
+* allocator-specific deallocation
+* ownership invariants
+
+The source must not retain a second valid descriptor.
+
+## Moves between storage classes
+
+A move may cross storage classes only when the destination storage is explicit or compiler-defined by valid lowering.
+
+Examples include:
+
+* local SSA value to stack spill
+* stack value to ABI return storage
+* argument register to local stack storage
+* local aggregate to caller-provided result storage
+* owning descriptor between registers
+
+Changing storage class must not change language-visible allocation semantics.
+
+Compiler spills and register allocation are not language-level heap allocation.
+
+## Register movement
+
+Machine register movement is independent of Sec move semantics.
+
+A semantically copied value may remain in one register and be referenced by multiple SSA uses.
+
+A semantically moved value may require several machine-level copies during register allocation.
+
+Machine-level copies do not create additional Sec owners.
+
+The backend must not derive ownership from register-copy instructions.
+
+## Register allocation
+
+Register allocation may:
+
+* duplicate temporary machine values
+* spill values to stack
+* reload values
+* coalesce move instructions
+* reuse physical registers
+* split live ranges
+
+These transformations operate below Sec ownership semantics.
+
+They must not:
+
+* create a second semantic owner
+* change destruction responsibility
+* make a moved source valid
+* extend a semantic borrow
+* alter volatile access
+* alter FFI-visible addresses
+
+Ownership correctness must already be encoded in control flow and cleanup before register allocation.
+
+## SSA representation
+
+Semantic IR and MLIR should use SSA where practical.
+
+SSA provides immutable value definitions and explicit use chains.
+
+A source-level mutable variable may become:
+
+* multiple SSA values
+* block arguments
+* phi-like merge values
+* explicit storage when addressability is required
+
+A semantic move in SSA may be represented by creating a new ownership-bearing SSA result and ending valid use of the source result.
+
+The verifier must enforce semantic invalidation even though the original SSA value still exists structurally.
+
+## SSA use after move
+
+Ordinary SSA permits a value to have multiple uses.
+
+Sec ownership does not permit arbitrary multiple consuming uses.
+
+Therefore, ownership verification must classify every use as:
+
+* non-consuming
+* borrowing
+* copying
+* consuming
+* destruction
+
+For a move-only value:
+
+* at most one terminal consuming ownership path is permitted
+* mutually exclusive branches may contain different consuming uses
+* no reachable path may consume the same ownership twice
+* non-consuming uses must occur before ownership consumption on that path
+
+SSA dominance alone is insufficient to prove ownership correctness.
+
+Path-sensitive ownership analysis remains required.
+
+## Ownership tokens
+
+The compiler may internally associate an ownership token with each owned value or storage location.
+
+An ownership token conceptually records:
+
+* current owner
+* initialization state
+* moved state
+* destruction responsibility
+* partial-field state
+* allocator identity where relevant
+
+Ownership tokens may be represented through:
+
+* compiler analysis state
+* Semantic IR metadata
+* explicit ownership operations
+* linear SSA values
+* MLIR resources or custom interfaces
+
+Ownership tokens do not need to exist at runtime.
+
+They must be erased before final LLVM lowering after all dependent decisions are complete.
+
+## Linear ownership representation
+
+The compiler may model move-only values as linear resources.
+
+A linear value must have exactly one valid ownership continuation.
+
+Valid continuations include:
+
+* move into another value
+* move into a function argument
+* move into a return value
+* move into aggregate storage
+* explicit destruction
+* explicit FFI ownership transfer
+
+Copyable values need not be linear in the same manner.
+
+A linear representation may simplify verifier implementation but must not leak unnecessary syntax into Sec source.
+
+## Block arguments and ownership
+
+When owned values cross control-flow edges, block arguments should represent ownership explicitly.
+
+Example conceptual IR:
+
+```text
+branch destination(%owned_value)
+```
+
+The destination block parameter becomes the owner along that edge.
+
+The source ownership does not continue independently.
+
+At a merge block, incoming owned values must represent compatible ownership.
+
+The compiler must reject a merge that would produce:
+
+* two simultaneous owners
+* ownership on only some paths without explicit optional state
+* incompatible partial-move states
+* incompatible allocator state
+* incompatible active variant state
+
+## Phi-like ownership merges
+
+A merge may select one of several mutually exclusive owned values.
+
+Example:
+
+```sec
+let resource :=
+    if condition {
+        OpenFirst()
+    } else {
+        OpenSecond()
+    }
+```
+
+Only one branch executes.
+
+The merge result becomes the single owner of whichever value was produced.
+
+The branch-local ownership transfers into the merge result.
+
+Neither branch-local value remains independently responsible for destruction.
+
+## Conditional availability
+
+An ownership state that differs between paths cannot be silently flattened.
+
+Example:
+
+```sec
+let resource := OpenResource()
+
+if condition {
+    Consume(resource)
+}
+
+Use(resource)
+```
+
+At the merge:
+
+* one path has moved resource
+* one path still owns resource
+
+`Use(resource)` is invalid.
+
+The compiler may represent conditional ownership internally for diagnostics and cleanup, but complete-value use requires uniform valid ownership.
+
+## Optional ownership state
+
+When the source language explicitly uses Option or another variant type, conditional ownership can be represented safely.
+
+Example:
+
+```sec
+mut resource := Some(OpenResource())
+
+if condition {
+    let owned := resource.Take()
+    Consume(owned)
+}
+```
+
+The type and operation semantics must establish:
+
+* whether resource is Some or None
+* whether the payload moved
+* what remains destructible
+* what later accesses are valid
+
+The compiler must not invent an implicit Option merely to repair incompatible ownership paths.
+
+## Copy identity
+
+A copy must define whether the resulting values are semantically independent.
+
+For trivially copyable pure values, independence is straightforward.
+
+For types containing indirect or shared state, a copy operation must define whether it performs:
+
+* deep duplication
+* shared immutable reference
+* shared mutable state
+* reference-count increment
+* operating-system resource duplication
+* logical snapshot creation
+
+These are different semantics.
+
+Ordinary implicit copy must not guess among them.
+
+## Shallow copy
+
+A shallow bitwise copy is valid only when all duplicated fields permit representation copying.
+
+A pointer-containing type is not automatically invalid for shallow copy.
+
+Examples:
+
+* RawPtr may be shallow-copied because it is non-owning
+* shared reference may be shallow-copied under borrow rules
+* unique owning pointer may not be shallow-copied
+* foreign owning handle may not be shallow-copied
+
+Copy classification depends on ownership semantics, not merely pointer presence.
+
+## Deep copy
+
+Deep copy duplicates owned transitive state.
+
+A deep copy may require:
+
+* allocation
+* element-wise copy
+* recursive copy
+* allocator selection
+* failure handling
+* rollback on partial failure
+
+Deep copy must not be implicit under the initial Sec rules.
+
+A deep-copy operation should be explicit and normally return Result when allocation or resource duplication can fail.
+
+## Clone-like operations
+
+Sec may provide ordinary named operations for explicit duplication.
+
+Examples might include:
+
+```sec
+fn Clone(ref self) Result[Buffer, AllocationError]
+```
+
+or:
+
+```sec
+fn Duplicate(ref self) Result[File, IOError]
+```
+
+These are ordinary operations, not language-level implicit copy unless explicitly classified otherwise.
+
+Their names should describe their semantics.
+
+The language should not require one universal clone operation for all types.
+
+## Infallible semantic copy
+
+A non-trivial type may theoretically support an infallible semantic copy without allocation or external side effects.
+
+Such support requires an explicit language rule or interface.
+
+The initial implementation may omit this category and permit implicit copying only for trivially copyable types.
+
+This conservative restriction can be relaxed later without changing existing move-only semantics.
+
+## Copy size policy
+
+A type may be semantically trivially copyable but expensive to copy.
+
+Examples include:
+
+* large fixed arrays
+* large structs
+* wide vectors
+* large register snapshots
+
+The language should not make copy legality depend solely on size.
+
+The compiler may:
+
+* issue performance warnings
+* optimize copies away
+* pass values indirectly according to ABI
+* use hidden temporary storage
+
+It must preserve source-level copy semantics.
+
+## Copy thresholds
+
+Implementation thresholds may influence:
+
+* register passing
+* stack passing
+* use of memory-copy operations
+* inlining
+* warning generation
+
+Thresholds must not change whether the type is semantically copyable.
+
+A build profile may influence warnings or physical strategy, not ownership meaning.
+
+## Copy operations with padding
+
+A struct representation may contain padding.
+
+Bytewise copying the complete representation may copy padding bytes.
+
+This is permitted only when:
+
+* padding is not semantically observable
+* the copied representation remains valid
+* no uninitialized padding becomes observable through safe code
+* no target or ABI rule prohibits the operation
+* no volatile or atomic fields require special handling
+
+The compiler should prefer field-wise copy when bytewise representation copying is not proven safe.
+
+## Invalid representations
+
+Some types may have bit patterns that are not valid values.
+
+Examples may include:
+
+* bool with restricted representations
+* enums with restricted discriminants
+* references that must be non-null and aligned
+* niche-optimized Option values
+* register field abstractions
+* types with representation contracts
+
+Copying an already valid value preserves validity when the entire representation is copied correctly.
+
+Constructing a copy from arbitrary bytes does not constitute semantic copy.
+
+LLVM `undef`, poison or uninitialized storage must not be treated as valid source values.
+
+## Overlapping memory
+
+A physical memory transfer may involve overlapping source and destination regions.
+
+The compiler must select operations equivalent to:
+
+* non-overlapping copy
+* overlapping move
+* field-wise replacement
+* direction-aware loop
+
+Semantic move and C-style `memmove` are unrelated concepts despite the similar name.
+
+A memory `memmove` operation copies bytes safely across overlapping memory.
+
+It does not establish Sec ownership semantics by itself.
+
+## LLVM memcpy
+
+LLVM `memcpy` may be used only when:
+
+* the type is representation-copyable
+* source and destination do not overlap
+* alignment is correct
+* size is correct
+* volatile requirements are represented
+* ownership rules permit duplication
+* copying padding is safe
+* no custom semantic copy behavior is required
+
+For a semantic move-only value, `memcpy` may still be used as part of physical relocation provided:
+
+* source ownership is invalidated
+* source destruction is disabled
+* destination ownership is established
+* overlapping behavior is valid
+* address stability permits relocation
+
+The use of `memcpy` does not mean the type is semantically copyable.
+
+## LLVM memmove
+
+LLVM `memmove` may be used for overlapping physical relocation.
+
+It must satisfy the same representation and ownership requirements as other raw memory movement.
+
+A semantic Sec move may lower to LLVM `memmove`, but the two concepts remain distinct.
+
+The compiler must still update:
+
+* initialization state
+* source validity
+* destruction responsibility
+* pointer provenance assumptions
+* cleanup behavior
+
+## LLVM lifetime intrinsics
+
+LLVM lifetime intrinsics may be emitted to describe stack storage lifetime.
+
+Possible intrinsics include conceptual equivalents of:
+
+* lifetime start
+* lifetime end
+
+These intrinsics are optimization hints.
+
+They do not:
+
+* construct values
+* move ownership
+* destroy values
+* invoke free
+* release external resources
+* validate references
+* enforce Sec lifetimes at runtime
+
+A lifetime-end intrinsic must be emitted only after:
+
+* the semantic value is no longer valid
+* all required destruction has completed
+* no valid reference requires the storage
+* no observable operation may access the storage
+
+Incorrect lifetime markers can cause miscompilation and are compiler defects.
+
+## Storage invalidation
+
+After a move from addressable storage, the compiler may mark the storage uninitialized in its internal state.
+
+It does not need to overwrite the physical bytes.
+
+The old bits may remain physically present.
+
+Safe Sec code must have no operation capable of observing those bits as the moved value.
+
+Debug builds may optionally poison or clear moved storage for diagnostics, but this must be an explicit build behavior and must not define ordinary semantics.
+
+## Debug moved-value poisoning
+
+A debug profile may optionally overwrite moved storage when safe.
+
+Potential purposes include:
+
+* detecting invalid unsafe use
+* making debugger state clearer
+* revealing stale pointer access
+* finding compiler defects
+
+Such poisoning must not occur when:
+
+* storage is volatile
+* storage is externally visible
+* address retention makes the write observable
+* the target profile forbids the overhead
+* the representation cannot be safely overwritten
+
+Debug poisoning is not a correctness mechanism.
+
+Compile-time ownership validation remains authoritative.
+
+## Zeroing after move
+
+Sec must not automatically promise that moved-from storage is zeroed.
+
+Automatic zeroing would:
+
+* add hidden cost
+* alter volatile behavior
+* create false security assumptions
+* interfere with optimizations
+* potentially change observable memory access
+
+Secure clearing requires an explicit operation or type policy.
+
+A compiler must preserve explicit secure-clear operations against optimization where specified.
+
+## Secret values
+
+Types containing secrets may require special move and destruction behavior.
+
+Possible future features include:
+
+* non-copyable secret types
+* guaranteed explicit clearing
+* restricted debug display
+* no spill policies where target support permits
+* controlled register cleanup
+
+These guarantees require a separate specification.
+
+Ordinary move semantics alone do not guarantee erasure of previous physical representations.
+
+## ABI passing
+
+ABI passing is a physical representation decision.
+
+A by-value Sec parameter may be physically passed:
+
+* in registers
+* on the stack
+* indirectly through caller-provided storage
+* as split scalar fields
+* through an ABI-defined aggregate convention
+
+Physical by-value passing does not determine copy semantics.
+
+For a move-only Sec argument:
+
+* ownership transfers to the callee
+* ABI machinery may physically copy bits
+* the caller must not destroy or use the source afterward
+* the callee becomes responsible according to the parameter contract
+
+Machine-level duplication during the call sequence does not create duplicate Sec owners.
+
+## Owning parameters
+
+An owning by-value parameter consumes its argument when the argument type is move-only.
+
+The function body becomes responsible for:
+
+* returning the value
+* transferring it elsewhere
+* storing it into another owner
+* destroying it on every remaining path
+
+The caller must remove the value from its cleanup responsibility after successful argument transfer.
+
+## Call failure before entry
+
+The compiler must define ownership behavior when argument evaluation fails before the callee is entered.
+
+For ordinary Sec calls:
+
+* arguments are evaluated in defined order
+* each successfully created temporary remains owned by the caller until call transfer is committed
+* if a later argument fails, earlier temporaries are cleaned up
+* ownership transfers only for arguments reaching the call according to the defined calling sequence
+
+The compiler should model argument transfer as occurring at a clear semantic point.
+
+## Foreign call ownership transfer
+
+FFI ownership transfer requires additional care because foreign code may:
+
+* reject an argument
+* retain an argument
+* partially consume a resource
+* fail through a foreign error convention
+* not follow Sec cleanup semantics
+
+The wrapper contract must define when ownership transfers.
+
+Possible contracts include:
+
+* ownership transfers unconditionally on call
+* ownership transfers only on success
+* foreign code borrows for call duration
+* foreign code retains shared ownership
+* caller always retains ownership
+
+Ambiguous foreign behavior must remain inside unsafe wrapper code.
+
+## ABI return values
+
+An owned return value transfers ownership to the caller regardless of physical return strategy.
+
+Physical strategies may include:
+
+* return registers
+* split registers
+* hidden return pointer
+* caller-allocated return storage
+* target-specific aggregate return
+
+The callee must not destroy the returned value.
+
+The caller must establish cleanup responsibility after successful return.
+
+## Hidden return storage
+
+When ABI lowering uses hidden return storage:
+
+* the caller allocates or provides destination storage
+* the callee constructs the result into that storage
+* no additional semantic copy is implied
+* partial construction must be cleaned up on failure
+* ownership transfers on successful return
+
+The hidden storage pointer is a lowering detail.
+
+It must not become an ordinary source-level RawPtr.
+
+## RVO
+
+Return Value Optimization permits direct construction in the caller's destination.
+
+RVO is valid when a function returns a newly constructed value.
+
+Example:
+
+```sec
+fn CreateBuffer() Buffer {
+    return Buffer.Create(4096)
+}
+```
+
+The compiler may construct Buffer directly in caller-provided storage.
+
+RVO must preserve:
+
+* evaluation order
+* construction failure
+* cleanup of partial construction
+* ownership transfer
+* observable constructor-like operations
+* source locations for debugging
+
+RVO is an implementation strategy, not a source requirement.
+
+## NRVO
+
+Named Return Value Optimization may apply when returning a local owned value.
+
+Example:
+
+```sec
+fn CreateBuffer() Buffer {
+    let buffer := Buffer.Create(4096)
+    return buffer
+}
+```
+
+The compiler may use the final return storage as buffer's storage from the beginning.
+
+Semantically:
+
+* buffer is locally owned during function execution
+* return transfers ownership
+* the callee does not destroy buffer after return
+
+NRVO must not change the lifetime of references in an invalid way.
+
+A reference to the local must not become valid merely because the storage was physically allocated by the caller.
+
+Source-level lifetime semantics remain authoritative.
+
+## Copy elision guarantees
+
+The language may permit copy elision without making it observable whether a trivial physical copy occurred.
+
+For operations with observable copy behavior, the language must decide whether elision may remove that behavior.
+
+The initial Sec policy should avoid implicit observable copy operations entirely.
+
+Since implicit copy is initially restricted to trivial copy, copy elision normally has no source-observable side effect.
+
+Explicit duplication functions remain ordinary calls and must not be removed unless optimization proves removal preserves their full behavior.
+
+## ABI of move-only types
+
+Move-only types may use the same physical ABI as copyable types.
+
+Move-only classification is primarily a frontend semantic rule.
+
+However, separately compiled interfaces must agree on:
+
+* ownership transfer
+* parameter consumption
+* return ownership
+* destruction responsibility
+* allocator requirements
+* foreign resource contracts
+
+Sec ABI metadata should record ownership mode where required for compiler compatibility.
+
+C ABI alone does not encode Sec ownership.
+
+Safe cross-language wrappers must provide that meaning.
+
+## Name mangling and ownership modes
+
+Internal Sec symbol identity may include ownership-relevant signature information.
+
+This may include:
+
+* parameter types
+* reference mutability
+* calling convention
+* generic instantiations
+* receiver mode
+* ownership mode where overload rules distinguish it
+
+The linker-visible naming policy is defined separately.
+
+Ownership metadata must not be lost across separately compiled Sec modules.
+
+## Separate compilation
+
+For separately compiled Sec code, exported function metadata must include enough information to validate:
+
+* argument ownership
+* return ownership
+* copy requirements
+* destruction requirements
+* generic constraints
+* ABI compatibility
+* unsafe status
+* target restrictions
+
+A plain machine symbol is insufficient for frontend validation.
+
+The compiler should emit module interface metadata or equivalent artifacts.
+
+## Generic copy constraints
+
+A generic declaration must not assume T is copyable unless required constraints establish it.
+
+Example:
+
+```sec
+fn KeepBoth[T](value: T) (T, T) {
+    return (value, value)
+}
+```
+
+This requires copying or otherwise producing two valid T values.
+
+The compiler must reject unconstrained T.
+
+A valid declaration requires a copyability constraint once the constraint syntax is defined.
+
+A generic function that consumes T once does not require T to be copyable.
+
+## Generic move semantics
+
+Every concrete type can normally be moved unless a specific storage or language restriction prevents it.
+
+Move does not require a `Move` interface.
+
+A generic function may consume and return T without requiring copy support.
+
+Example:
+
+```sec
+fn Identity[T](value: T) T {
+    return value
+}
+```
+
+This transfers ownership from caller to function and back to caller.
+
+It does not duplicate T.
+
+## Conditional generic copyability
+
+A generic aggregate may derive copyability conditionally.
+
+Example:
+
+```sec
+type Pair[T, U] struct {
+    first: T
+    second: U
+}
+```
+
+Pair[T, U] is trivially copyable only when:
+
+* T is trivially copyable
+* U is trivially copyable
+* Pair has no custom free
+* no additional invariant forbids copy
+
+The compiler should represent this as a derived type property rather than generating ad hoc checks at each use.
+
+## Monomorphization
+
+Monomorphization resolves concrete copy and move behavior.
+
+For each instantiation, the compiler determines:
+
+* concrete copy classification
+* concrete destruction behavior
+* concrete layout
+* copy operation lowering
+* move operation lowering
+* partial-move eligibility
+* ABI strategy
+
+A generic operation requiring copy must fail during instantiation if the concrete type is not copyable.
+
+Such failure should point to:
+
+* generic operation requiring copy
+* concrete instantiation
+* field or property causing move-only classification
+
+## Shared generic lowering
+
+If shared generic code is later supported, ownership behavior must remain representable without runtime guessing.
+
+Possible strategies include:
+
+* compile-time dictionaries
+* type operation tables
+* erased ownership callbacks
+* restricted shared representation for trivially copyable types
+
+The initial implementation should prefer monomorphization.
+
+No general runtime type system should be introduced solely to support generic copying.
+
+## Move-only constants
+
+Compile-time constants normally represent pure immutable values and are copyable as values.
+
+A resource-owning runtime value cannot be a compile-time constant merely because it has a constant declaration.
+
+The compiler must distinguish:
+
+* compile-time value
+* immutable runtime owner
+* static storage
+* constant address data
+
+Immutability does not imply copyability.
+
+## Immutable move-only values
+
+A `let` binding may own a move-only value.
+
+Immutability means the binding cannot be reassigned.
+
+It does not prevent ownership transfer.
+
+Example:
+
+```sec
+let file := OpenFile()
+Consume(file)
+```
+
+The move is valid.
+
+Afterward, file is unavailable.
+
+`let` does not mean permanently immovable.
+
+## Mutable values
+
+A `mut` binding may be reassigned.
+
+Reassignment does not make the value copyable.
+
+Before replacing a move-only value, the compiler must ensure the old value is:
+
+* destroyed
+* moved elsewhere
+* otherwise consumed exactly once
+
+Mutation and copy classification are separate properties.
+
+## Swap
+
+A swap operation exchanges two initialized values without requiring semantic copy.
+
+A future built-in swap may be useful for move-only values.
+
+Conceptually:
+
+```sec
+swap(left, right)
+```
+
+Swap must require:
+
+* compatible types
+* mutable access to both locations
+* non-overlapping or safely handled locations
+* no conflicting borrows
+* valid initialization on both sides
+
+Swap transfers ownership in both directions.
+
+It should not require a temporary semantic copy.
+
+The compiler may lower it using temporary storage or register exchange.
+
+## Replace
+
+A replace operation stores a new value and returns the previous owned value.
+
+Conceptual form:
+
+```sec
+let previous := replace(ref mut current, next)
+```
+
+Replace may support move-only values without destroying the previous value.
+
+Its semantics are:
+
+1. move next into current
+2. move old current into the result
+3. leave current initialized
+4. transfer old destruction responsibility to the result
+
+A replace operation may be introduced as a compiler intrinsic or standard language operation.
+
+It must not be implemented through an invalid move from a mutable reference without immediate reinitialization.
+
+## Take
+
+A take operation extracts an owned value while leaving a defined replacement state.
+
+For Option, a take operation may replace Some(value) with None.
+
+Example:
+
+```sec
+let value := option.Take()
+```
+
+A general take from arbitrary storage requires a replacement value or a type-defined empty state.
+
+Sec must not assume every type has a valid zero or default value.
+
+Therefore, unrestricted take should not be automatically available.
+
+## Default values
+
+Move analysis must not rely on implicit default initialization.
+
+Sec does not need a universal zero or default state for every type.
+
+After move, the source is unavailable rather than automatically reset.
+
+A type may define an explicit empty or default constructor, but the compiler must not invoke it silently after move.
+
+## Moved-from state
+
+Sec does not expose a generally usable moved-from state.
+
+After move, the source is invalid for ordinary access.
+
+This differs from models where moved-from objects remain valid but unspecified.
+
+The compiler should not require types to define a post-move value.
+
+Physical storage may retain bits, but no semantic value remains.
+
+## Reinitialization after whole move
+
+A mutable binding may be reinitialized after its previous value was moved.
+
+Example:
+
+```sec
+mut buffer := Buffer.Create(1024)
+Consume(buffer)
+buffer = Buffer.Create(2048)
+Use(buffer)
+```
+
+This may be valid when assignment to an uninitialized moved binding is treated as reinitialization.
+
+The compiler must distinguish:
+
+* replacement of initialized storage
+* initialization of moved storage
+
+For reinitialization:
+
+* no old value is destroyed
+* new ownership is established
+* the binding becomes valid again
+
+This should be supported for local mutable bindings.
+
+## Reinitialization path analysis
+
+A moved binding may be used after control flow only when every reachable path reinitializes it.
+
+Example:
+
+```sec
+mut value := CreateValue()
+Consume(value)
+
+if condition {
+    value = CreateFirst()
+} else {
+    value = CreateSecond()
+}
+
+Use(value)
+```
+
+This is valid when both branches reinitialize value.
+
+If only one branch reinitializes it, merged use is invalid.
+
+## Shadowing after move
+
+A new declaration may shadow a moved binding according to normal shadowing rules.
+
+Example:
+
+```sec
+let value := CreateFirst()
+Consume(value)
+
+let value := CreateSecond()
+Use(value)
+```
+
+The second value is a distinct symbol and owner.
+
+Diagnostics must distinguish the bindings clearly.
+
+Shadowing must not be mistaken for reinitialization.
+
+## Copying from storage
+
+A non-consuming load from storage may produce a copied value only when the stored type is copyable.
+
+For move-only storage, an ordinary by-value extraction is a move.
+
+A non-consuming inspection requires:
+
+* reference access
+* field read of copyable subvalue
+* explicitly defined non-owning operation
+
+The compiler must not silently duplicate move-only storage.
+
+## Moving from temporary values
+
+A temporary owned value may move directly into its consuming destination.
+
+Example:
+
+```sec
+Consume(Buffer.Create(4096))
+```
+
+The temporary ownership transfers to Consume.
+
+The caller must not generate an additional destruction for the temporary after transfer.
+
+If argument evaluation or the call fails before transfer, cleanup must follow the defined call semantics.
+
+## Chained calls
+
+Method and function chaining must preserve ownership.
+
+Example:
+
+```sec
+let result := Buffer.Create(4096).Prepare().Compress()
+```
+
+Each operation must declare whether it:
+
+* borrows the receiver
+* mutably borrows the receiver
+* consumes the receiver
+* returns a new owned value
+* returns the same ownership
+* returns a reference
+
+The compiler resolves the ownership chain before lowering.
+
+Temporary cleanup must occur at the correct point when an operation returns a different owner.
+
+## Consuming receiver
+
+A method may consume its receiver.
+
+Conceptually:
+
+```sec
+impl Buffer {
+    fn Compress(self) CompressedBuffer {
+    }
+}
+```
+
+Calling the method moves the receiver into the method.
+
+After the call, the original binding is unavailable unless reinitialized.
+
+The method must:
+
+* return ownership
+* transfer ownership
+* destroy remaining owned state
+
+The exact receiver syntax is defined separately.
+
+## Shared receiver
+
+A shared receiver borrows the value.
+
+Conceptually:
+
+```sec
+fn Length(ref self) uint
+```
+
+The method does not consume ownership.
+
+The source remains valid after the borrow ends.
+
+The method cannot move owned fields from self.
+
+## Mutable receiver
+
+A mutable receiver obtains exclusive access without ownership transfer.
+
+Conceptually:
+
+```sec
+fn Clear(ref mut self) void
+```
+
+The method may mutate fields according to borrowing rules.
+
+It cannot consume the complete receiver unless a separate consuming signature is used.
+
+## Interface methods
+
+Interface method signatures must include receiver ownership mode.
+
+Implementations must match the required mode.
+
+Dynamic dispatch must preserve whether the call:
+
+* borrows
+* mutably borrows
+* consumes the owning interface value
+
+A consuming dynamic call must transfer destruction responsibility to the selected implementation.
+
+## Overload resolution
+
+Copy and move behavior must not be selected through surprising overload resolution.
+
+When overloads differ by:
+
+* owned value
+* shared reference
+* mutable reference
+
+the compiler must apply clear resolution rules.
+
+It should not silently choose a copying overload merely to preserve source usability.
+
+Ambiguity must be diagnosed.
+
+## Conversion and ownership
+
+A conversion may:
+
+* copy a representation
+* consume the source
+* borrow the source
+* create a new allocated value
+* reinterpret an address
+* transfer a resource wrapper
+
+The conversion definition must state its ownership behavior.
+
+An explicit type conversion does not automatically mean copy.
+
+For move-only named types, conversion may consume the source.
+
+## Named-type conversion
+
+Converting between a named semantic type and its base type must follow the type-conversion rules.
+
+When conversion is permitted:
+
+* a copyable source may be copied or consumed according to context
+* a move-only source should normally be consumed
+* destruction responsibility must follow the resulting value
+* no duplicate owner may be created
+
+Distinct types retain stricter conversion restrictions.
+
+## Unit conversion
+
+Numeric unit conversion normally creates a new numeric value.
+
+For trivially copyable numeric types, the source remains valid unless the context explicitly consumes it.
+
+Unit conversion does not transfer ownership of external resources.
+
+For aggregates containing unit-bearing fields, ordinary aggregate copy/move rules still apply.
+
+## Representation reinterpretation
+
+Unsafe representation reinterpretation must not be treated as semantic copy by default.
+
+A bit reinterpretation may duplicate raw representation while violating ownership if applied to owning types.
+
+The initial compiler should prohibit reinterpretation of non-trivially copyable or ownership-bearing types unless a specific unsafe rule defines the operation.
+
+Unsafe does not automatically make double ownership valid.
+
+## Bit casting
+
+A bit cast should require:
+
+* compatible representation size
+* compatible alignment requirements
+* permitted source and destination validity rules
+* no duplicated ownership
+* no forbidden reference construction
+* explicit unsafe context where required
+
+Bit casting a move-only owning type into another value must consume the source unless the operation explicitly extracts a non-owning representation.
+
+## Serialization
+
+Serialization is not copy.
+
+Serialization produces a separate data representation.
+
+It may borrow the source and write encoded data.
+
+Deserialization constructs a new value.
+
+Ownership and resource identity do not automatically survive serialization.
+
+Resource-owning types require explicit serialization semantics if supported.
+
+## Concurrency transfer
+
+Transferring an owned value to another thread is a move.
+
+After transfer:
+
+* the sending thread no longer owns the value
+* the receiving thread becomes responsible for destruction
+* references remaining in the sending thread must not violate lifetime rules
+* the type must satisfy any thread-transfer constraints
+
+Thread transfer must not copy move-only ownership.
+
+Concurrency constraints are defined separately.
+
+## Atomic values
+
+Atomic load, store and exchange have distinct semantics.
+
+A machine atomic copy of bits does not imply that an ownership-bearing type may be atomically copied.
+
+Atomic types should normally be restricted to representations with explicitly defined atomic semantics.
+
+Moving ownership through lock-free atomics requires a separate concurrency ownership design.
+
+The compiler must not infer it from ordinary copy/move rules.
+
+## Volatile values
+
+Volatile reads create snapshots according to the register or volatile type rules.
+
+A volatile read may produce a copyable value even when the volatile location itself is not copyable.
+
+Moving a volatile location is normally meaningless and should be prohibited.
+
+Writing a value to a volatile location may copy its representation without transferring ownership unless the volatile abstraction explicitly owns resources, which should generally be avoided.
+
+## Registers
+
+Hardware register field operations must distinguish:
+
+* reading a snapshot
+* writing a representation
+* updating a field
+* copying an accessor
+* moving an accessor
+
+Register accessors that encode unique hardware access may be move-only.
+
+Register snapshots consisting of ordinary numeric values may be copyable.
+
+The compiler must never turn an ownership move into an unintended hardware read or write.
+
+## Inline assembly operands
+
+Inline assembly operand constraints determine physical data movement.
+
+The Sec declaration must additionally determine ownership behavior.
+
+An input operand may:
+
+* copy a scalar representation
+* borrow storage
+* consume an explicitly owned low-level value
+* pass RawPtr
+
+The initial implementation should prohibit consuming ownership through inline assembly unless an explicit low-level operation defines the transfer.
+
+Assembly outputs construct new values according to declared types and validity contracts.
+
+## Syscall arguments
+
+Raw syscall arguments usually pass scalar values and RawPtr.
+
+Passing a file descriptor integer does not transfer ownership unless wrapped by an explicit consuming API.
+
+A safe File wrapper calling a raw syscall retains or transfers ownership according to the wrapper function, not according to register passing.
+
+Physical register copies around a syscall do not create semantic owners.
+
+## Error paths during copy
+
+Implicit trivial copy cannot fail.
+
+Explicit semantic duplication may fail.
+
+A fallible duplication operation must clean up partial results.
+
+Example:
+
+```sec
+fn Clone(ref self) Result[Container, AllocationError]
+```
+
+If copying element N fails:
+
+* already copied destination elements are destroyed
+* destination storage is deallocated
+* source remains valid
+* no partially constructed Container escapes
+* original error is returned
+
+This behavior belongs to the explicit duplication operation and destruction rules.
+
+## Error paths during move
+
+A pure semantic move should not fail.
+
+Operations combining move with another action may fail.
+
+Example:
+
+```sec
+fn Send(value: Message) Result[Receipt, SendError]
+```
+
+The function consumes Message regardless of whether sending succeeds unless the signature or Result payload explicitly returns ownership on failure.
+
+The API must define failure ownership.
+
+Possible designs include:
+
+```sec
+Result[Receipt, SendError]
+```
+
+where Message is always consumed, or:
+
+```sec
+Result[Receipt, SendFailure[Message]]
+```
+
+where failure returns Message ownership.
+
+The compiler must follow the declared type, not infer recovery semantics.
+
+## Ownership-returning errors
+
+An error type may contain returned ownership.
+
+Example:
+
+```sec
+type SendFailure[T] struct {
+    error: SendError
+    value: T
+}
+```
+
+On failure, ownership moves into the error payload.
+
+The caller may recover it through Result matching.
+
+Cleanup must destroy the returned value if the error is discarded.
+
+## Transactional replacement
+
+Operations replacing owned state may need transactional behavior.
+
+Example:
+
+```sec
+current = try CreateReplacement()
+```
+
+The old current value must remain valid if CreateReplacement returns Err.
+
+Recommended evaluation order:
+
+1. evaluate and fully construct the replacement
+2. on failure, preserve current unchanged
+3. on success, destroy or move old current
+4. install replacement
+
+The compiler must not destroy current before replacement construction succeeds.
+
+## Compound assignment
+
+Compound assignment such as:
+
+```sec
+value += amount
+```
+
+must preserve ownership and evaluation rules.
+
+For scalar numeric values, this normally mutates or replaces a copyable value.
+
+For user-defined operations, the compiler must resolve whether the operation:
+
+* mutates through exclusive access
+* consumes and returns a replacement
+* creates a new value
+
+Compound syntax must lower to explicit Semantic IR without hidden copy of move-only values.
+
+## Swap-based assignment optimization
+
+The compiler may implement safe replacement using temporary ownership and swap-like lowering.
+
+Conceptually:
+
+1. construct new value
+2. swap new value with destination
+3. destroy old value now held by temporary
+
+This is valid only when it preserves:
+
+* evaluation order
+* destructor order
+* borrow rules
+* observable addresses
+* failure behavior
+
+It is an implementation technique, not source semantics.
+
+## Destructive move
+
+The compiler should avoid the term destructive move for ordinary ownership transfer.
+
+A move does not destroy the transferred value.
+
+It invalidates the source and transfers destruction responsibility.
+
+Only the old source binding's ownership state ends.
+
+The value continues at the destination.
+
+## Trivial relocation
+
+A type is trivially relocatable when its physical representation may move to a new address without type-defined fixup.
+
+Trivial relocation is separate from trivial copyability.
+
+Examples:
+
+* unique owning pointer descriptor may be trivially relocatable but not copyable
+* scalar integer is both trivially relocatable and trivially copyable
+* self-referential value may be neither trivially relocatable nor freely copyable
+
+Sec may benefit from tracking relocation classification separately.
+
+## Relocation classification
+
+The compiler should classify types as:
+
+* trivially relocatable
+* semantically relocatable
+* address-stable
+* conditionally relocatable
+* unsupported for relocation
+
+Move-only does not mean non-relocatable.
+
+A File wrapper containing an integer descriptor may be move-only but trivially relocatable.
+
+An address-stable type may transfer ownership only without changing physical location.
+
+## Self-referential values
+
+Safe self-referential values require special design.
+
+A value containing references into itself cannot generally be physically relocated.
+
+The initial implementation should reject safe construction of self-referential owning values unless:
+
+* storage is explicitly stable
+* internal references are created through a defined mechanism
+* lifetime and move restrictions are enforced
+* the type becomes address-stable
+
+RawPtr-based self-reference remains unsafe and the programmer must uphold invariants.
+
+## Pinning
+
+Sec should not introduce pinning until a concrete use case requires it.
+
+If introduced later, pinning would restrict physical relocation while allowing ownership operations that preserve storage.
+
+Pinning must not be confused with immutability.
+
+A pinned value may be mutable but not relocatable.
+
+Copy and move analysis must then distinguish semantic ownership transfer from physical movement.
+
+## Relocation fixups
+
+A semantically relocatable type might require code when its storage address changes.
+
+This resembles a relocation operation rather than copy.
+
+The initial implementation should avoid user-defined relocation hooks.
+
+Such hooks complicate:
+
+* optimization
+* exception or error cleanup
+* partial relocation
+* address provenance
+* ABI passing
+* container growth
+
+Types requiring self-relative fixups should initially use stable indirection or explicit APIs.
+
+## Container growth
+
+An owning container may relocate its elements when growing.
+
+This is valid only when element relocation rules permit it.
+
+For trivially relocatable elements, the container may move representation and invalidate old storage.
+
+For address-stable elements, growth must:
+
+* preserve addresses through indirection
+* reject the operation
+* use another storage strategy
+
+Element move-only status alone does not prevent container relocation.
+
+## Array-to-container movement
+
+Moving elements from a fixed array into another owner requires field- or element-sensitive state.
+
+A bulk move may consume the whole array.
+
+Partial element moves require tracking initialized elements.
+
+The initial implementation may support:
+
+* moving the entire array
+* copying trivially copyable arrays
+* borrowing elements
+
+Partial runtime-index moves may be deferred.
+
+## Iterator ownership
+
+Iteration semantics must define whether each iteration yields:
+
+* copied element
+* shared reference
+* mutable reference
+* moved element
+
+A non-consuming iterator over an owning collection should normally yield references.
+
+A consuming iterator may take ownership of the collection and yield elements by move.
+
+The source collection becomes unavailable or incrementally partially moved according to its defined iterator semantics.
+
+The compiler must not infer iterator ownership solely from loop syntax.
+
+## Consuming iteration
+
+Conceptual consuming iteration:
+
+```sec
+for item in move items {
+    Consume(item)
+}
+```
+
+Exact syntax remains undecided.
+
+A consuming iterator must ensure:
+
+* each element is yielded exactly once
+* yielded elements are no longer destroyed through the collection
+* unconsumed remaining elements are destroyed if iteration exits early
+* container storage is eventually deallocated
+* break and error paths preserve cleanup
+
+Until syntax and semantics are defined, ordinary iteration should not silently consume collections.
+
+## Pattern binding
+
+Pattern binding may borrow, copy or move matched payloads.
+
+The default must be predictable.
+
+For a match on an owned move-only value, binding a payload by value may move that payload.
+
+Binding by reference must be explicit or clearly derived from match context.
+
+Example conceptual forms:
+
+```sec
+case Some(value):
+```
+
+and:
+
+```sec
+case Some(ref value):
+```
+
+Exact syntax is defined with pattern rules.
+
+The compiler must make each binding operation explicit in Semantic IR.
+
+## Match on borrowed values
+
+Matching through a shared reference must not move payloads out.
+
+Payload bindings may:
+
+* borrow subvalues
+* copy trivially copyable values
+
+Move-only payload extraction is prohibited through shared reference.
+
+Matching through mutable reference similarly does not automatically grant ownership extraction.
+
+## Destructuring assignment
+
+Destructuring may create multiple copy or move operations.
+
+Example:
+
+```sec
+let Pair {
+    first
+    second
+} := pair
+```
+
+For an owned move-only pair, this may partially or wholly move fields.
+
+The compiler must:
+
+* establish evaluation order
+* track each field
+* clean up unbound remaining fields
+* enforce custom-free restrictions
+* reject duplicate field bindings
+
+Destructuring syntax must not hide multiple ownership transfers.
+
+## Wildcard patterns
+
+Ignoring a value in a consuming pattern does not mean leaking it.
+
+An ignored owned payload must be:
+
+* destroyed
+* retained in the original owner when matching by reference
+* otherwise handled according to pattern ownership
+
+The compiler must generate cleanup for ignored moved payloads where required.
+
+## Function overloading by value mode
+
+Sec should be cautious about overloads differing only by owned versus borrowed parameters.
+
+Example conceptual overloads:
+
+```sec
+fn Process(value: Buffer) void
+fn Process(value: ref Buffer) void
+```
+
+Call resolution must not unexpectedly consume a value.
+
+The language may require explicit reference syntax to select borrowed overloads.
+
+A consuming overload should not be chosen merely because it is otherwise a better conversion match.
+
+## Method chaining after consumption
+
+After a consuming method, the returned value is the only valid continuation.
+
+Example:
+
+```sec
+let compressed := buffer.Compress()
+```
+
+If Compress consumes buffer:
+
+* buffer is unavailable
+* compressed owns the returned value
+
+If Compress returns self's same semantic type, the result is still a new ownership continuation.
+
+The compiler may optimize it in place.
+
+## In-place consuming transformations
+
+A consuming transformation may be implemented in place.
+
+Example:
+
+```sec
+fn Normalize(self) Self
+```
+
+The compiler may reuse self's storage for the returned value.
+
+Semantically:
+
+* self is consumed
+* a result value is produced
+* ownership transfers to the caller
+* destruction applies only to the resulting state
+
+If transformation fails through Result, ownership-on-error must be explicitly defined.
+
+## Copy and contracts
+
+Copying preserves the semantic type and its established contracts.
+
+The compiler does not need to revalidate immutable value contracts after trivial copy.
+
+A semantic copy operation constructing a new representation must guarantee the destination satisfies all type contracts.
+
+Unsafe byte copying must not be used to bypass validation of a type with restricted valid states.
+
+## Move and contracts
+
+Move preserves the validity of the transferred value.
+
+No contract revalidation is required merely because ownership changes.
+
+Physical relocation must preserve representation invariants.
+
+A moved source no longer represents an accessible value, so its remaining physical bytes need not satisfy a source-visible post-move contract.
+
+## Copy and units
+
+Copying a unit-bearing value preserves the exact unit type.
+
+It does not normalize, scale or convert the value.
+
+A unit conversion produces a different typed value through an explicit conversion operation.
+
+The original remains valid when its numeric type is copyable.
+
+## Copy and annotations
+
+Type and field annotations may affect copy legality.
+
+Examples include annotations indicating:
+
+* volatile
+* atomic
+* foreign ownership
+* fixed address
+* no-copy
+* explicit representation
+* allocator binding
+* sensitive data
+
+Annotations influencing copy or move must be resolved before Semantic IR.
+
+Backend stages must not reinterpret them independently.
+
+## Explicit no-copy types
+
+Sec may provide a way to mark a type as non-copyable even when all fields are trivially copyable.
+
+This is useful for:
+
+* logical identity
+* resource tokens
+* synchronization guards
+* unique capabilities
+* ownership markers
+* transactional handles
+
+The exact syntax is defined separately.
+
+The compiler's type metadata must support explicit non-copy classification.
+
+## Capability types
+
+A capability may be represented by a scalar but semantically grant unique authority.
+
+Such a type must be move-only despite trivial physical representation.
+
+Copy classification must therefore support semantic policy independent of field representation.
+
+This reinforces that copyability is a language property, not an LLVM property.
+
+## Zero-sized types
+
+A zero-sized type may still carry ownership or logical identity.
+
+Physical size zero does not automatically make it copyable.
+
+Examples include:
+
+* capability markers
+* state-machine tokens
+* compile-time witnesses with runtime ownership meaning
+* unique permission objects
+
+The compiler must honor semantic copy classification even when no bytes move.
+
+## Phantom fields
+
+Generic phantom fields may influence type identity or constraints without physical storage.
+
+They may also influence:
+
+* copy classification
+* thread-transfer constraints
+* variance if later defined
+* destruction policy
+* capability semantics
+
+Layout erasure of a phantom field must not erase its semantic effect prematurely.
+
+## Copying function values
+
+A plain function reference is normally trivially copyable.
+
+It identifies code and does not own captured state.
+
+A closure value may own captured state and follows closure copy classification.
+
+Function pointers returned through FFI are RawPtr-like executable addresses and require explicit safety and calling-convention validation.
+
+## Move of function values
+
+Moving a plain function reference is semantically permitted but normally indistinguishable from copy.
+
+For consistency, copyable values remain valid after ordinary assignment.
+
+The compiler should not infer a move solely because the destination is consuming when preserving the source is required by source semantics.
+
+For closures, consuming context may move owned captures.
+
+## Copy choice for copyable values
+
+When a copyable value is used in a consuming by-value context, the language must define whether the source remains valid.
+
+Recommended rule:
+
+Implicitly copyable values are copied when used by value unless an explicit future move operation requests consumption.
+
+This keeps scalar and ordinary value behavior unsurprising.
+
+Move-only values are moved in consuming contexts.
+
+Therefore:
+
+```sec
+let first: int = 10
+ConsumeInt(first)
+Use(first)
+```
+
+remains valid when int is copyable.
+
+For a move-only Buffer, the same pattern invalidates the source.
+
+## Forced move of copyable values
+
+A future explicit move operation may permit consuming a copyable value without creating an additional semantic copy.
+
+Potential uses include:
+
+* avoiding expensive aggregate copy
+* transferring a copyable but identity-sensitive wrapper
+* documenting source invalidation
+* satisfying a generic consuming API
+
+The exact syntax remains undecided.
+
+Until introduced, copyable values passed by value are copied.
+
+The compiler must not silently invalidate them for optimization.
+
+## Copy suppression through context
+
+A destination requiring unique ownership does not automatically justify moving a copyable source.
+
+The language must preserve the rule that copyable source values remain available after ordinary by-value use.
+
+An explicit operation is required to force source invalidation if that feature is supported later.
+
+Optimization may eliminate physical copying while preserving semantic source availability.
+
+## Semantic source availability after copy elision
+
+Even when no physical duplicate exists, the source must remain semantically usable after a copy.
+
+The compiler may represent later source uses using:
+
+* the same SSA value
+* reconstructed scalar fields
+* shared immutable machine representation
+* rematerialization
+
+This is valid because copy semantics require equivalent independent value behavior, not necessarily separate storage.
+
+If address identity is observable, elision must preserve the required identity semantics.
+
+## Copyable values with owned identity
+
+A type with observable unique ownership should not normally be implicitly copyable.
+
+If a type is declared copyable, its semantics must define how two valid values coexist.
+
+It cannot claim both:
+
+* unique ownership of one resource
+* ordinary implicit duplication
+
+The compiler should reject contradictory type declarations.
+
+## Move-only parameters and overload usability
+
+APIs should use references for non-consuming operations.
+
+Passing large move-only types by ownership merely to inspect them causes unnecessary source invalidation.
+
+Compiler diagnostics may suggest:
+
+* changing parameter to `ref T`
+* passing a reference
+* returning ownership if consumption is intentional
+
+Diagnostics should not rewrite language semantics automatically.
+
+## Lints
+
+Optional copy/move lints may include:
+
+* unnecessary ownership transfer
+* expensive implicit copy
+* copied value immediately discarded
+* move followed by immediate reinitialization
+* function consumes value but only reads it
+* avoidable clone or duplicate operation
+* returned ownership immediately destroyed
+* value copied into a defer unnecessarily
+* large copy in loop
+* copyable type with suspicious external handle field
+
+Lints must not reject valid programs unless elevated by build policy.
+
+## Optimization proof obligations
+
+Every copy/move optimization must establish explicit proof obligations.
+
+For copy elimination, the compiler must prove as applicable:
+
+* the source remains semantically available
+* later source uses observe the same value
+* destination mutation does not affect source semantics
+* identity behavior is preserved
+* no copy side effects are removed
+* destruction count remains correct
+
+For move elimination, the compiler must prove:
+
+* ownership continuation is unchanged
+* no source use becomes valid or invalid incorrectly
+* destruction responsibility remains unique
+* storage reuse respects references
+* address stability is preserved
+
+## Transformation verification
+
+After a Semantic IR or MLIR transformation, verification must ensure:
+
+* no consuming use was duplicated
+* no ownership path was lost
+* no copy of move-only type was introduced
+* no source use was moved after consumption
+* no destination lost initialization
+* cleanup remains exact
+* partial-move masks remain correct
+* block ownership arguments remain compatible
+
+Debug compiler builds should verify these invariants after every ownership-sensitive pass.
+
+## Differential testing
+
+Copy and move behavior should be tested across optimization levels.
+
+The same program should produce equivalent observable behavior under:
+
+* no optimization
+* debug optimization
+* release optimization
+* size optimization
+* cross-target compilation
+
+Tests should compare:
+
+* returned values
+* destructor or free side effects
+* defer order
+* resource release count
+* FFI calls
+* volatile operations
+* error paths
+
+Optimization must not alter ownership-visible behavior.
+
+## Compile-fail tests
+
+Compile-fail tests should cover:
+
+* use after move
+* double move
+* copy of move-only type
+* move while shared borrowed
+* move while mutably borrowed
+* move from shared reference
+* move from mutable reference
+* branch-dependent move
+* repeated loop move
+* unsupported partial move
+* copy of custom-free type
+* mutable-reference copy
+* FFI transfer without ownership metadata
+* use of partially moved aggregate
+* replacement while borrowed
+* self-move
+* missing generic copy constraint
+
+Each test should verify diagnostic location and relevant notes.
+
+## Valid execution tests
+
+Execution tests should cover:
+
+* scalar copy
+* aggregate copy
+* move-only assignment
+* consuming argument
+* borrowed argument
+* owned return
+* RVO
+* NRVO
+* reinitialization after move
+* branch-uniform reinitialization
+* whole aggregate move
+* supported partial move
+* Result payload move
+* Option take
+* interface ownership transfer
+* closure capture move
+* explicit duplication failure cleanup
+* allocator-preserving move
+* exact destruction count
+
+## IR tests
+
+Semantic IR tests should verify explicit operations for:
+
+* copy
+* move
+* borrow
+* argument transfer
+* return transfer
+* field move
+* aggregate construction
+* replacement
+* reinitialization
+* destruction responsibility
+* branch ownership merge
+
+MLIR tests should verify:
+
+* ownership lowering
+* direct construction
+* cleanup transfer
+* physical relocation
+* copy lowering
+* move elision
+* RVO
+* stack-slot reuse
+* LLVM lifetime markers
+* correct memcpy or memmove selection
+
+## Target tests
+
+Cross-target tests should verify that semantic copy and move behavior remains identical across:
+
+* Linux AMD64
+* Linux ARM64
+* Linux ARM32
+* Windows targets when supported
+* FreeBSD targets when supported
+* bare-metal targets
+* RTOS targets
+
+Physical ABI differences are expected.
+
+Ownership behavior must remain the same.
+
+## Current implementation status
+
+Copy and move semantics are currently a language and compiler-design target.
+
+The current compiler implementation has:
+
+* type classification for basic semantic checks
+* assignment and mutability checks
+* definite assignment and reachability checks
+* parser and sema groundwork for `ref`, `ref mut`, `RawPtr`, unsafe and FFI
+* no complete copy-classification pass
+* no complete ownership analysis pass
+* no complete move-state analysis pass
+* no field-sensitive partial-move implementation
+* no Semantic IR copy or move operations yet
+* no MLIR ownership lowering yet
+
+Until those passes exist, the compiler should remain conservative around
+move-only values, custom-free types, FFI ownership transfer and partial moves.
+
+The first implementation step should be:
+
+* derive copy classification for primitive, reference, RawPtr, array and struct
+  types
+* reject implicit copy of move-only values
+* track whole-value moves for local variables
+* reject use after move
+* keep `ref mut` non-copyable
+* represent copy and move explicitly in Semantic IR
+
+## Compiler package responsibilities
+
+Copy and move implementation should be divided clearly.
+
+Type analysis determines:
+
+* copy classification
+* relocation classification
+* field-derived properties
+* generic conditions
+
+Semantic analysis determines:
+
+* use context
+* legal copy
+* legal move
+* parameter behavior
+* conversion behavior
+
+Ownership analysis determines:
+
+* current owner
+* path-sensitive availability
+* field-sensitive move state
+* transfer responsibility
+
+Semantic IR records:
+
+* explicit copy
+* explicit move
+* explicit borrow
+* initialization changes
+* ownership continuation
+
+MLIR determines:
+
+* storage strategy
+* physical copy
+* physical relocation
+* direct construction
+* ABI lowering
+
+LLVM performs:
+
+* machine-oriented optimization
+* register allocation
+* instruction selection
+
+No lower stage may revise the language-level copy classification.
+
+## Internal compiler errors
+
+The compiler must report an internal compiler error when verified frontend input later produces:
+
+* a copy of a move-only type
+* two owners for one ownership token
+* destruction of a moved source
+* missing destruction for a destination
+* invalid field-move mask
+* incompatible ownership merge
+* unsupported type conversion silently treated as copy
+* ownership-losing ABI lowering
+* relocation of an address-stable value
+* LLVM lifetime end before semantic destruction
+* physical copy that duplicates resource ownership
+
+The diagnostic should include:
+
+* pipeline pass
+* function
+* source location
+* type
+* ownership state
+* involved Semantic IR values
+* selected target
+
+## Future extensions
+
+Possible future extensions include:
+
+* explicit move expressions
+* explicit infallible copy declarations
+* explicit non-copy annotations
+* relocation traits
+* stable-address or pinned values
+* consuming iterators
+* replacement intrinsics
+* ownership-returning errors
+* shared ownership types
+* copy-on-write library types
+* secure clearing types
+
+These features must not weaken existing guarantees.
+
+They should be added only when concrete use cases justify the additional language surface.
+
+## Final invariants
+
+Before Semantic IR generation completes:
+
+* every value use is classified
+* every type has resolved copy classification
+* every consuming context is known
+* every move source is available
+* every copied source is copyable
+* every ownership transfer has one destination
+* every branch has a valid ownership state
+* every partial move has valid field state
+* every generic copy requirement is satisfied
+
+Before MLIR ownership lowering completes:
+
+* every destruction responsibility is fixed
+* every cleanup path is explicit
+* every semantic copy has a valid implementation
+* every semantic move has a valid ownership continuation
+* every storage relocation respects address stability
+* every ABI transfer preserves ownership
+
+Before LLVM IR translation:
+
+* no unresolved copy operation remains
+* no unresolved move operation remains
+* no ownership token requiring analysis remains
+* no moved storage is read
+* all destruction is explicit
+* all physical memory transfers are representation-valid
+* all lifetime markers are correctly placed
+* all ABI ownership decisions are complete
+
+## Design rule
+
+Copyability is determined by Sec semantics, not by physical representation.
+
+Move transfers ownership, not necessarily bytes.
+
+Relocation changes storage, not necessarily ownership.
+
+Machine copies do not create Sec owners.
+
+The compiler must preserve these distinctions until every ownership-dependent decision is complete.
+
+## Implementation appendix
+
+The following sections refine implementation behavior for SSA, lowering,
+optimization, diagnostics and future extensions.
+
+They are normative where they do not conflict with the earlier copy/move model.
+
+If a duplicated section appears to conflict with an earlier rule, the earlier
+language-level rule takes precedence and the duplicated implementation text
+should be reconciled.
+
+## SSA representation
+
+The compiler may internally use SSA representation.
+
+SSA is an implementation detail.
+
+SSA values do not replace ownership semantics.
+
+A Semantic IR move remains a move even if both source and destination ultimately become the same SSA value.
+
+Likewise:
+
+- SSA reuse is not semantic reuse
+- SSA renaming is not copying
+- SSA forwarding is not ownership transfer
+
+Ownership is represented explicitly.
+
+SSA merely represents data flow.
+
+## Phi nodes
+
+When SSA merge nodes are introduced, ownership must remain well defined.
+
+Every incoming edge must agree on:
+
+- ownership state
+- initialization state
+- move state
+- destruction responsibility
+
+A Phi node must never merge:
+
+- an owned value
+- a moved value
+
+into a single valid owner.
+
+Conditional ownership must be resolved before lowering.
+
+## Lifetime markers
+
+The compiler may generate internal lifetime markers.
+
+Examples include:
+
+- begin lifetime
+- end lifetime
+- storage alive
+- storage dead
+
+Lifetime markers are optimization metadata.
+
+They must not alter Sec semantics.
+
+Removing or moving lifetime markers must not:
+
+- extend observable lifetime
+- shorten observable lifetime
+- change destruction order
+- invalidate references
+
+## Storage forwarding
+
+The compiler may forward storage directly into its final destination.
+
+Example:
+
+Instead of
+
+Construct A
+
+Move A → B
+
+Destroy A
+
+the compiler may construct directly into B.
+
+The semantic operations remain:
+
+- construct
+- move
+
+even if no temporary storage exists physically.
+
+## Aggregate forwarding
+
+Aggregates may be forwarded directly into:
+
+- return values
+- struct fields
+- Result payloads
+- Option payloads
+- function parameters
+
+Forwarding is valid only when ownership remains identical.
+
+Forwarding must not duplicate ownership.
+
+## Copy propagation
+
+Copy propagation may eliminate redundant physical copies.
+
+Example:
+
+A → B
+
+B → C
+
+may become
+
+A → C
+
+provided:
+
+- copy semantics remain identical
+- destruction count remains identical
+- observable behavior is preserved
+
+Propagation must not convert copy into move.
+
+## Move propagation
+
+Move propagation may eliminate intermediate ownership transfers.
+
+Example:
+
+Move A → B
+
+Move B → C
+
+may become
+
+Move A → C
+
+provided:
+
+- B never becomes observable
+- destruction remains correct
+- cleanup remains correct
+
+The compiler must preserve ownership identity.
+
+## Temporary elimination
+
+Compiler-generated temporaries may be removed.
+
+Example:
+
+Construct temporary
+
+Move temporary → destination
+
+Destroy temporary
+
+may become
+
+Construct destination
+
+Semantic ownership is unchanged.
+
+## Memory representation
+
+Copy and move are semantic concepts.
+
+Physical implementation may use:
+
+- registers
+- stack memory
+- heap memory
+- SSA values
+
+The chosen storage class does not affect ownership.
+
+Example:
+
+A register-to-register move may still represent:
+
+- semantic move
+- semantic copy
+
+depending on ownership.
+
+## ABI interaction
+
+Calling conventions may require physical copies.
+
+ABI copies do not necessarily imply semantic copy.
+
+Example:
+
+Passing a move-only value by register may require register duplication internally.
+
+Ownership still transfers only once.
+
+The ABI implementation must not create additional owners.
+
+## Hidden temporaries
+
+The compiler may introduce hidden temporaries.
+
+Hidden temporaries must never become observable.
+
+The compiler must ensure:
+
+- ownership remains correct
+- destruction remains correct
+- references remain valid
+
+The programmer must not be required to reason about compiler temporaries.
+
+## Generic specialization
+
+Generic instantiation determines copy and move behavior.
+
+Example:
+
+Box[int]
+
+may be trivially copyable.
+
+Box[File]
+
+is move-only.
+
+The generic declaration itself has no intrinsic copy classification.
+
+The instantiated type determines behavior.
+
+## Generic constraints
+
+Generic functions requiring copyability must express that requirement explicitly.
+
+Conceptually:
+
+T must satisfy Copy
+
+or equivalent language rules.
+
+The compiler must reject generic instantiations that violate required ownership operations.
+
+## Monomorphization
+
+Monomorphization creates concrete ownership behavior.
+
+Ownership must never remain unresolved after specialization.
+
+Specialized code must contain:
+
+- explicit copies
+- explicit moves
+- explicit destruction
+
+## Interface dispatch
+
+Interface values must preserve ownership.
+
+Passing an interface value:
+
+- may move ownership
+- may borrow
+- may copy
+
+depending on the resolved ownership mode.
+
+Dynamic dispatch must not obscure ownership.
+
+## Closure captures
+
+Captured values preserve ownership classification.
+
+Possible captures include:
+
+- copy
+- move
+- shared borrow
+- mutable borrow
+
+The compiler determines capture mode.
+
+Hidden ownership transfer is forbidden.
+
+## Optimization boundaries
+
+No optimization may change:
+
+- ownership
+- destruction responsibility
+- move state
+- copy classification
+
+Optimization may only alter implementation.
+
+Semantic operations remain unchanged.
+
+## Compiler diagnostics
+
+The compiler should distinguish:
+
+- semantic move
+- semantic copy
+- physical optimization
+
+Diagnostic messages should explain ownership rather than implementation.
+
+Example:
+
+"Value moved here"
+
+is preferable to
+
+"Register reused here"
+
+## Debug information
+
+Debug builds should preserve ownership information where practical.
+
+Useful ownership diagnostics include:
+
+- current owner
+- move origin
+- destruction point
+- borrow origin
+- borrow end
+- copy origin
+
+These are compiler concepts.
+
+They need not appear in release builds.
+
+## Verification
+
+The copy and move verifier must ensure:
+
+- every move has exactly one destination
+- every owner is unique
+- every copy is legal
+- every destruction matches one owner
+- no moved value remains live
+- no duplicate owners exist
+- no ownership cycles exist where forbidden
+- generic ownership constraints are satisfied
+- interface ownership is preserved
+- FFI ownership contracts are respected
+
+Verification failures indicate an internal compiler defect.
+
+## Relationship to Semantic IR
+
+Semantic IR records:
+
+- construct
+- copy
+- move
+- borrow
+- destroy
+
+explicitly.
+
+No ownership decision remains unresolved.
+
+## Relationship to MLIR
+
+MLIR progressively lowers:
+
+- semantic copy
+- semantic move
+
+into lower-level operations.
+
+MLIR may eliminate physical copies and moves.
+
+It must never eliminate semantic ownership.
+
+## Relationship to LLVM
+
+LLVM does not understand Sec ownership.
+
+LLVM receives:
+
+- explicit cleanup
+- explicit destruction
+- explicit storage
+- explicit control flow
+
+LLVM optimization must not redefine ownership.
+
+## Runtime-free implementation
+
+Copy and move require no runtime.
+
+The compiler generates:
+
+- direct assignments
+- register transfers
+- stack operations
+- constructor calls
+- free calls where required
+
+No runtime ownership table exists.
+
+No garbage collector exists.
+
+No hidden reference counting exists.
+
+## Future extensions
+
+Future language versions may introduce:
+
+- explicit move expression
+- explicit copy expression
+- shared ownership types
+- atomic ownership types
+- arena ownership
+- region ownership
+- pinning
+- placement construction
+
+These features must extend the ownership model rather than replace it.
+
+Existing move semantics must remain valid.
+
+## Design rule
+
+Ownership belongs to exactly one owner.
+
+Copy creates an additional independent value.
+
+Move transfers ownership.
+
+Borrow temporarily observes ownership.
+
+Destroy ends ownership.
+
+The compiler determines every ownership transition.
+
+The programmer expresses intent.
+
+The compiler guarantees correctness.

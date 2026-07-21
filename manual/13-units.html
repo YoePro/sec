@@ -1,0 +1,527 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Units - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+</head>
+<body>
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+
+        <div class="sidebar-section">Units</div>
+        <ul>
+            <li><a href="#units">Overview</a></li>
+            <li><a href="#declaration">Unit Declaration</a></li>
+            <li><a href="#physical-units">Physical Units</a></li>
+            <li><a href="#domain-units">Domain Units</a></li>
+            <li><a href="#identity">Unit Identity</a></li>
+        </ul>
+
+        <div class="sidebar-section">Operations</div>
+        <ul>
+            <li><a href="#assignment">Assignment</a></li>
+            <li><a href="#conversion">Explicit Conversion</a></li>
+            <li><a href="#addition">Addition and Subtraction</a></li>
+            <li><a href="#algebra">Multiplication and Division</a></li>
+            <li><a href="#derived-units">Derived Units</a></li>
+        </ul>
+
+        <div class="sidebar-section">Definitions</div>
+        <ul>
+            <li><a href="#dimension">Dimensions</a></li>
+            <li><a href="#scale">Scale</a></li>
+            <li><a href="#systems">Unit Systems</a></li>
+            <li><a href="#currency">Currencies</a></li>
+            <li><a href="#register-fields">Register Fields</a></li>
+        </ul>
+
+        <div class="sidebar-section">Reference</div>
+        <ul>
+            <li><a href="#inference">Type Inference</a></li>
+            <li><a href="#common-errors">Common Errors</a></li>
+            <li><a href="#summary-rules">Summary of Rules</a></li>
+        </ul>
+
+        <div class="sidebar-section">Pages</div>
+        <ul>
+            <li><a href="index.html">Index</a></li>
+            <li><a href="01-introduction.html">Introduction</a></li>
+            <li><a href="02-basic-syntax.html">Basic Syntax</a></li>
+            <li><a href="03-variables-and-basic-types.html">Variables and Basic Types</a></li>
+            <li><a href="04-named-types-contracts-and-units.html">Named Types, Contracts and Units</a></li>
+            <li><a href="05-structs-properties-and-impl.html">Structs, Properties and Impl</a></li>
+            <li><a href="06-functions.html">Functions</a></li>
+            <li><a href="07-if.html">If Statements</a></li>
+            <li><a href="08-switch.html">Switch Statements</a></li>
+            <li><a href="09-match.html">Match Expressions and Statements</a></li>
+            <li><a href="10-enums.html">Enums</a></li>
+            <li><a href="11-unions.html">Unions</a></li>
+            <li><a href="12-registers.html">Registers</a></li>
+            <li><a class="active" href="13-units.html">Units</a></li>
+        </ul>
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Units</div>
+
+        <h1 id="units">Units</h1>
+
+        <p>
+            Units are semantic numeric types. They allow the compiler to distinguish values that use the same
+            numeric representation but describe different quantities.
+        </p>
+
+        <pre><code>unit m decimal physical
+unit s decimal physical
+unit SEK decimal other</code></pre>
+
+        <p>
+            A value measured in metres is not interchangeable with a value measured in seconds or Swedish kronor.
+            Unit information remains part of the type and participates in assignment, arithmetic and conversion.
+        </p>
+
+        <div class="rule">
+            <strong>Rule:</strong> A unit describes meaning, while its numeric base type describes representation.
+        </div>
+
+        <section id="declaration">
+            <h2>Unit Declaration</h2>
+
+            <p>A unit is declared with a name, numeric base type and category:</p>
+
+            <pre><code>unit m decimal physical
+unit Item uint other</code></pre>
+
+            <p>The general form is:</p>
+
+            <pre><code>unit Name NumericType Category</code></pre>
+
+            <p>The numeric base type must be numeric. Current forms include:</p>
+
+            <pre><code>unit Count int other
+unit Packet uint other
+unit Temperature float physical
+unit Distance decimal physical</code></pre>
+
+            <p>The category is either <code>physical</code> or <code>other</code>.</p>
+        </section>
+
+        <section id="physical-units">
+            <h2>Physical Units</h2>
+
+            <p>
+                Physical units participate in dimensional analysis. Their dimensions may represent length, time,
+                mass, frequency or combinations of these quantities.
+            </p>
+
+            <pre><code>unit m decimal physical
+unit s decimal physical
+unit kg decimal physical
+unit Hz decimal physical</code></pre>
+
+            <p>A physical unit may define its dimension, scale and system:</p>
+
+            <pre><code>impl m {
+    dimension: [length * 1]
+    scale: 1
+    system: SI
+}</code></pre>
+
+            <p>A derived physical unit may use several dimensions:</p>
+
+            <pre><code>unit mps decimal physical
+
+impl mps {
+    dimension: [length * 1, time * -1]
+    scale: 1
+    system: SI
+}</code></pre>
+        </section>
+
+        <section id="domain-units">
+            <h2>Domain Units</h2>
+
+            <p>
+                Units in the <code>other</code> category describe domain-specific quantities that are not part of a
+                physical SI dimension.
+            </p>
+
+            <pre><code>unit Item uint other
+unit Packet uint other
+unit Batch uint other</code></pre>
+
+            <p>Each semantic quantity should use its own dimension:</p>
+
+            <pre><code>impl Item {
+    dimension: [item * 1]
+    system: Domain
+}
+
+impl Packet {
+    dimension: [packet * 1]
+    system: Domain
+}</code></pre>
+
+            <p><code>Item</code> and <code>Packet</code> may have the same storage type, but they remain incompatible units.</p>
+
+            <pre><code>let items: Item := 10
+let packets: Packet := 10
+let total := items + packets</code></pre>
+
+            <div class="rule">
+                <strong>Invalid:</strong> Values with different semantic dimensions cannot be added.
+            </div>
+        </section>
+
+        <section id="identity">
+            <h2>Unit Identity</h2>
+
+            <p>Every declared unit is a distinct semantic type.</p>
+
+            <pre><code>unit m decimal physical
+unit inch decimal physical</code></pre>
+
+            <p>
+                Both may describe length and use <code>decimal</code> storage, but they are not the same type. A value is
+                not implicitly converted merely because the dimensions are compatible.
+            </p>
+
+            <pre><code>let metric: m := 1
+let imperial: inch := metric</code></pre>
+
+            <div class="rule">
+                <strong>Invalid:</strong> Unit conversions must be explicit.
+            </div>
+        </section>
+
+        <section id="assignment">
+            <h2>Assignment</h2>
+
+            <p>An untyped literal may initialize a unit when the literal fits its numeric base type.</p>
+
+            <pre><code>let distance: m := 100
+let duration: s := 10
+let price: SEK := 5.90</code></pre>
+
+            <p>Variables are not implicitly converted into another unit type.</p>
+
+            <pre><code>let raw := 100
+let distance: m := raw</code></pre>
+
+            <div class="rule">
+                <strong>Invalid:</strong> Values that already have a type require explicit conversion.
+            </div>
+
+            <p>Normal assignment preserves exact unit identity:</p>
+
+            <pre><code>let mut distance: m := 10
+distance = m(20)</code></pre>
+        </section>
+
+        <section id="conversion">
+            <h2>Explicit Conversion</h2>
+
+            <p>Conversion into a unit uses normal explicit conversion syntax:</p>
+
+            <pre><code>let raw := 100
+let distance: m := m(raw)</code></pre>
+
+            <p>
+                Numeric casts and unit conversions are separate concepts. A numeric cast changes representation.
+                A unit conversion changes semantic meaning while preserving dimensional correctness.
+            </p>
+
+            <p>Compatible physical units may be converted when an exact scale relationship is known:</p>
+
+            <pre><code>unit mm decimal physical
+
+impl mm {
+    dimension: [length * 1]
+    scale: 0.001
+    system: SI
+}</code></pre>
+
+            <p>Runtime or configured relationships require explicit conversion logic.</p>
+        </section>
+
+        <section id="addition">
+            <h2>Addition and Subtraction</h2>
+
+            <p>Addition and subtraction require compatible unit types.</p>
+
+            <pre><code>let first: m := 10
+let second: m := 20
+let total := first + second</code></pre>
+
+            <p>Different units cannot be added directly:</p>
+
+            <pre><code>let distance: m := 10
+let duration: s := 2
+let invalid := distance + duration</code></pre>
+
+            <p>Different named units normally remain distinct even when their dimensional vectors match.</p>
+
+            <div class="rule">
+                <strong>Rule:</strong> Addition and subtraction preserve the original unit.
+            </div>
+        </section>
+
+        <section id="algebra">
+            <h2>Multiplication and Division</h2>
+
+            <p>Multiplication adds dimensional exponents. Division subtracts them.</p>
+
+            <pre><code>m / s       // length * time^-1
+m * m       // length^2
+m / m       // dimensionless decimal</code></pre>
+
+            <p>Equal dimensions cancel:</p>
+
+            <pre><code>let first: m := 20
+let second: m := 5
+let ratio := first / second</code></pre>
+
+            <p><code>ratio</code> is dimensionless.</p>
+
+            <p>Multiplication or division by a plain scalar preserves the unit:</p>
+
+            <pre><code>let price: SEK := 100
+let doubled := price * 2
+let half := price / 2</code></pre>
+
+            <p>Some algebraic results may be rejected when they have no supported semantic meaning.</p>
+
+            <pre><code>let invalid := price * price</code></pre>
+
+            <div class="rule">
+                <strong>Current rule:</strong> Squared currency values are rejected unless a valid use is defined explicitly.
+            </div>
+        </section>
+
+        <section id="derived-units">
+            <h2>Derived Units</h2>
+
+            <p>
+                When an expression produces a known dimension, the compiler may resolve the result to a declared
+                unit with the same dimension and scale.
+            </p>
+
+            <pre><code>unit m decimal physical
+unit s decimal physical
+unit mps decimal physical
+
+impl mps {
+    dimension: [length * 1, time * -1]
+    scale: 1
+    system: SI
+}
+
+let distance: m := 100
+let duration: s := 10
+let speed := distance / duration</code></pre>
+
+            <p><code>speed</code> may infer as <code>mps</code>.</p>
+
+            <p>
+                When no declared unit matches, the result may remain an anonymous dimensioned numeric type such as
+                <code>decimal&lt;m/s&gt;</code>.
+            </p>
+        </section>
+
+        <section id="dimension">
+            <h2>Dimensions</h2>
+
+            <p>A dimension is a vector of named bases and integer exponents.</p>
+
+            <pre><code>[length * 1]
+[time * 1]
+[length * 1, time * -1]
+[packet * 1, time * -1]</code></pre>
+
+            <p>Dimensions determine algebraic compatibility.</p>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                    <tr><th>Expression</th><th>Resulting dimension</th></tr>
+                    </thead>
+                    <tbody>
+                    <tr><td><code>m / s</code></td><td><code>[length * 1, time * -1]</code></td></tr>
+                    <tr><td><code>Hz</code></td><td><code>[time * -1]</code></td></tr>
+                    <tr><td><code>Packet / s</code></td><td><code>[packet * 1, time * -1]</code></td></tr>
+                    <tr><td><code>m / m</code></td><td>dimensionless</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section id="scale">
+            <h2>Scale</h2>
+
+            <p>Scale defines a unit relative to the canonical unit of its dimension.</p>
+
+            <pre><code>unit mm decimal physical
+
+impl mm {
+    dimension: [length * 1]
+    scale: 0.001
+    system: SI
+}</code></pre>
+
+            <pre><code>unit inch decimal physical
+
+impl inch {
+    dimension: [length * 1]
+    scale: 0.0254
+    system: Imperial
+}</code></pre>
+
+            <p>
+                Because both units use the length dimension and have fixed scales, the compiler can validate an
+                explicit conversion between them.
+            </p>
+        </section>
+
+        <section id="systems">
+            <h2>Unit Systems</h2>
+
+            <p>The system name groups units but does not determine compatibility.</p>
+
+            <pre><code>system: SI
+system: Imperial
+system: Currency
+system: Domain
+system: Other</code></pre>
+
+            <p>
+                Compatibility is determined by dimensions. Conversion is determined by scale and, for future offset
+                units, by offset rules.
+            </p>
+        </section>
+
+        <section id="currency">
+            <h2>Currencies</h2>
+
+            <p>Currencies are semantic domain units with separate dimensions.</p>
+
+            <pre><code>unit SEK decimal other
+unit EUR decimal other
+
+impl SEK {
+    dimension: [currency.SEK * 1]
+    system: Currency
+}
+
+impl EUR {
+    dimension: [currency.EUR * 1]
+    system: Currency
+}</code></pre>
+
+            <p>
+                <code>SEK</code> and <code>EUR</code> are not fixed-scale units. Their relationship depends on a runtime or
+                configured exchange rate.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> The compiler never invents a currency conversion rate.
+            </div>
+        </section>
+
+        <section id="register-fields">
+            <h2>Units on Register Fields</h2>
+
+            <p>A multi-bit register field may use a unit annotation:</p>
+
+            <pre><code>type MotorProtocol register[8] {
+    Speed: bit[4]&lt;rpm&gt;
+    Enabled: bit
+    _: bit[3]
+}</code></pre>
+
+            <p>
+                The field width defines the stored representation. The unit defines the semantic meaning of the
+                decoded value.
+            </p>
+
+            <pre><code>let speed: rpm := motorProtocol.Speed</code></pre>
+
+            <p>An incompatible unit is rejected:</p>
+
+            <pre><code>let distance: m := motorProtocol.Speed</code></pre>
+        </section>
+
+        <section id="inference">
+            <h2>Type Inference</h2>
+
+            <p>Untyped integer literals infer as <code>int</code> by default:</p>
+
+            <pre><code>let count := 10</code></pre>
+
+            <p>Untyped decimal literals infer as <code>decimal</code> by default:</p>
+
+            <pre><code>let value := 3.14</code></pre>
+
+            <p>Floating-point storage must be selected explicitly:</p>
+
+            <pre><code>let value: float64 := 3.14</code></pre>
+
+            <p>A declared unit type provides context for an untyped literal:</p>
+
+            <pre><code>let distance: m := 3.14</code></pre>
+        </section>
+
+        <section id="common-errors">
+            <h2>Common Errors</h2>
+
+            <h3>Implicit conversion from a variable</h3>
+            <pre><code>let raw := 10
+let distance: m := raw</code></pre>
+
+            <h3>Adding incompatible units</h3>
+            <pre><code>let distance: m := 10
+let duration: s := 2
+let value := distance + duration</code></pre>
+
+            <h3>Assigning a unit to another semantic unit</h3>
+            <pre><code>let items: Item := 10
+let packets: Packet := items</code></pre>
+
+            <h3>Assuming currencies convert automatically</h3>
+            <pre><code>let sek: SEK := 100
+let eur: EUR := sek</code></pre>
+        </section>
+
+        <section id="summary-rules">
+            <h2>Summary of Rules</h2>
+
+            <ul>
+                <li>A unit is a distinct semantic numeric type.</li>
+                <li>The numeric base type defines representation.</li>
+                <li>The unit category is <code>physical</code> or <code>other</code>.</li>
+                <li>Physical units may define dimensions, scale and system.</li>
+                <li>Domain units use independent semantic dimensions.</li>
+                <li>Untyped literals may initialize unit values in declaration context.</li>
+                <li>Variables require explicit conversion into another unit type.</li>
+                <li>Addition and subtraction require compatible units.</li>
+                <li>Multiplication and division perform dimensional algebra.</li>
+                <li>Equal dimensions cancel to a dimensionless numeric value.</li>
+                <li>Derived dimensions may resolve to declared unit types.</li>
+                <li>Unit systems do not determine dimensional compatibility.</li>
+                <li>Fixed exact scales may support explicit compile-time-verified conversion.</li>
+                <li>Runtime relationships such as currency rates remain explicit.</li>
+                <li>Units may be attached to multi-bit register fields.</li>
+                <li>No hidden unit conversion is performed.</li>
+            </ul>
+        </section>
+
+        <div class="page-navigation">
+            <a href="12-registers.html">← Registers</a>
+            <a href="index.html">Manual Index →</a>
+        </div>
+    </main>
+</div>
+</body>
+</html>

@@ -1,0 +1,1318 @@
+=============================================================================================================================================================================================
+Semantic IR
+===========
+
+Sec Semantic IR is the canonical typed representation of a semantically valid Sec program.
+
+Semantic IR exists between frontend analysis and MLIR lowering.
+
+It records the meaning of the program after:
+
+* parsing
+* name resolution
+* type resolution
+* semantic validation
+* ownership analysis
+* borrow analysis
+* lifetime analysis
+* escape analysis
+* control-flow analysis
+* compile-time evaluation
+* target-independent contract validation
+
+Semantic IR must not redefine language semantics.
+
+Semantic IR generation must fail when unresolved semantic errors remain.
+
+## Primary goals
+
+Semantic IR must:
+
+* represent Sec semantics independently of source syntax
+* make ownership operations explicit
+* make destruction points explicit
+* make control flow explicit
+* preserve type and contract information
+* preserve source locations
+* provide stable input to MLIR lowering
+* support deterministic verification
+* support diagnostic inspection
+* remain independent of LLVM
+
+Semantic IR is not an untyped instruction stream.
+
+Semantic IR is not a direct representation of LLVM IR.
+
+Semantic IR is not an optimization-specific representation.
+
+## Required invariants
+
+Every Semantic IR module must satisfy the following invariants:
+
+* every symbol is resolved
+* every expression has a canonical type
+* every function call has a resolved target
+* every method call has been resolved
+* every generic use has a resolved instantiation strategy
+* every ownership transfer is explicit
+* every copy is explicit
+* every move is explicit
+* every destruction point is explicit or represented by a cleanup region
+* every reference has a known origin
+* every borrow has passed borrow validation
+* every branch target exists
+* every block terminates explicitly
+* every return matches the resolved function return type
+* every unsafe operation has already passed unsafe-context validation
+* every extern call has a resolved calling convention
+* every target-independent contract has been validated
+* no unresolved source-level syntax remains
+
+Violation of a Semantic IR invariant is an internal compiler error.
+
+## Module representation
+
+A Semantic IR module should contain:
+
+* module identity
+* source files
+* imports
+* exported symbols
+* imported symbols
+* type declarations
+* global declarations
+* function declarations
+* function definitions
+* extern declarations
+* generic templates where retained
+* instantiated generic declarations
+* target restrictions
+* build conditions
+* source-location tables
+
+A module must not depend on LLVM modules or LLVM type objects.
+
+Each module symbol must have a stable internal identity independent of its displayed name.
+
+## Symbol identity
+
+Every declaration must receive a unique symbol identifier.
+
+Symbol identifiers must distinguish declarations with identical source names in different scopes or modules.
+
+Semantic IR references must use symbol identifiers rather than performing repeated name lookup.
+
+Symbol identity must be stable for the duration of one compilation.
+
+Stable cross-compilation identifiers may additionally be generated for:
+
+* exported functions
+* exported types
+* instantiated generics
+* linker-visible symbols
+* incremental compilation artifacts
+
+Displayed source names must be retained for diagnostics and debug information.
+
+## Canonical types
+
+Semantic IR must use canonical Sec type representations.
+
+Canonical types include:
+
+* bool
+* byte
+* char
+* rune
+* string
+* decimal
+* decimal128 when implemented
+* float
+* float32
+* float64
+* int
+* int8
+* int16
+* int32
+* int64
+* int128
+* int256
+* uint
+* uint8
+* uint16
+* uint32
+* uint64
+* arrays
+* slices
+* references
+* mutable references
+* RawPtr
+* functions
+* structs
+* enums
+* unions
+* interfaces
+* Result
+* Option
+* named types
+* distinct types
+* generic instances
+* unit types
+* register types
+* void
+* never when represented internally
+
+Semantic types must retain all information required for later validation and lowering.
+
+This includes:
+
+* type identity
+* base type
+* signedness
+* numeric width
+* target-sized status
+* mutability
+* ownership behavior
+* copy or move behavior
+* field definitions
+* enum representation
+* union representation
+* unit dimension
+* unit scale
+* register width
+* ABI layout requirements
+* explicit layout attributes
+* calling convention
+* unsafe function status
+
+Semantic IR must not prematurely replace Sec types with LLVM types.
+
+## Named types
+
+Named types must retain their semantic identity.
+
+A named type must not be silently reduced to its base type in Semantic IR.
+
+Example:
+
+type Speed decimal
+
+Speed and decimal remain distinct semantic types even when they later share the same machine representation.
+
+Explicit conversions must be represented as conversion operations.
+
+## Distinct types
+
+A distinct type must retain complete separation from its base type.
+
+Semantic IR must not introduce implicit conversions between a distinct type and its base type.
+
+Any permitted construction, conversion or extraction must already have been validated and must appear as an explicit Semantic IR operation.
+
+## Unit types
+
+Unit information must remain attached to values and types until all dimensional validation and conversion operations are complete.
+
+Semantic IR should represent:
+
+* unit identity
+* physical dimension
+* scale
+* category
+* normalized representation
+* explicit conversion operations
+
+Unit erasure must not occur during Semantic IR generation.
+
+## Register types
+
+Register types must retain:
+
+* total register width
+* field names
+* field bit ranges
+* reserved bit ranges
+* signedness where applicable
+* field units
+* access permissions
+* volatile semantics
+* address information when bound
+* generated mask and shift information
+
+Source-level register field access should be converted into explicit Semantic IR register operations.
+
+## Values
+
+Semantic IR values must have:
+
+* a unique value identifier
+* a canonical type
+* an ownership classification
+* a source location when applicable
+* a defining operation or parameter origin
+
+A value may represent:
+
+* a function parameter
+* a block parameter
+* a local value
+* a constant
+* a reference
+* an owned aggregate
+* a moved value result
+* a copied value result
+* an extern result
+* a control-flow merge result
+
+Semantic IR should use SSA-style values where practical.
+
+Mutable source variables do not require mutable Semantic IR values.
+
+Mutation may instead be represented through:
+
+* explicit storage locations
+* updated SSA values
+* block parameters
+* structured ownership-aware operations
+
+The selected representation must preserve Sec mutation and destruction semantics.
+
+## Constants
+
+Semantic IR constants must use Sec semantics.
+
+Constants may include:
+
+* integer constants
+* decimal constants
+* floating-point constants
+* boolean constants
+* character constants
+* rune constants
+* string constants
+* enum constants
+* aggregate constants
+* unit constants
+* address constants
+* null only where valid inside an FFI representation
+
+Integer constants must not be truncated to host-language widths.
+
+Target-sized constants must be interpreted using the selected target.
+
+Constant values must retain enough information to diagnose overflow and invalid conversion.
+
+## Storage locations
+
+Semantic IR must distinguish values from storage locations.
+
+A storage location may represent:
+
+* a local variable slot
+* a mutable parameter location
+* a field location
+* an array element location
+* a slice element location
+* a global location
+* a register location
+* externally owned memory
+
+Storage operations must be explicit.
+
+Expected conceptual operations include:
+
+* allocate local storage
+* initialize storage
+* load value
+* store value
+* move from storage
+* borrow storage
+* destroy storage
+
+Local storage allocation does not imply heap allocation.
+
+Storage class must remain explicit or derivable.
+
+## Ownership representation
+
+Ownership semantics must be explicit in Semantic IR.
+
+Every value must be classified as one of:
+
+* owned
+* shared reference
+* mutable reference
+* raw pointer
+* non-owning immediate value
+* compiler-owned temporary where applicable
+
+Semantic IR must represent:
+
+* ownership creation
+* ownership transfer
+* ownership consumption
+* copying
+* moving
+* destruction
+* conditional destruction
+* partial destruction
+* ownership return
+* ownership transfer to foreign code
+
+Ownership must not be inferred later from low-level loads and stores.
+
+## Copy operations
+
+A copy operation duplicates a copyable value.
+
+Copy must be represented explicitly.
+
+The copy operation must identify:
+
+* source value
+* destination result
+* copied type
+* source location
+
+The source remains valid after a copy.
+
+The compiler must not emit copy operations for move-only types.
+
+Copy elimination is permitted later only when observable behavior is unchanged.
+
+## Move operations
+
+A move operation transfers ownership.
+
+Move must be represented explicitly.
+
+The move operation must identify:
+
+* source value or storage location
+* destination result
+* moved type
+* source location
+
+The source becomes invalid after the move.
+
+Semantic IR verification must reject any later use of a moved source.
+
+A move must not be represented as an ordinary load when ownership changes.
+
+## Partial moves
+
+Moving a field from an aggregate may leave the aggregate partially initialized.
+
+Semantic IR must either:
+
+* represent partial initialization state explicitly
+* lower the operation into a compiler-supported partial-move representation
+* reject partial moves for types not supporting them
+
+Destruction must not access fields that have already been moved.
+
+The verifier must track which fields remain initialized.
+
+## Destruction
+
+Deterministic destruction must be represented explicitly.
+
+A destruction operation must identify:
+
+* the value or storage location being destroyed
+* its type
+* the destruction implementation
+* source or synthesized location
+* whether destruction is conditional
+
+Every owned value requiring destruction must be destroyed exactly once unless ownership is transferred.
+
+Trivial values may omit explicit destruction after being classified as trivially destructible.
+
+Destruction order must follow Sec language rules.
+
+Backend passes must not reorder observable destruction.
+
+## Cleanup regions
+
+Semantic IR may represent cleanup behavior using explicit cleanup regions.
+
+A cleanup region may contain:
+
+* local destruction
+* defer execution
+* resource release
+* temporary cleanup
+* error-path cleanup
+* return-path cleanup
+* break-path cleanup
+* continue-path cleanup
+
+Cleanup regions must make exit behavior explicit for every control-flow edge leaving a scope.
+
+Cleanup insertion must account for:
+
+* normal scope exit
+* return
+* error propagation
+* break
+* continue
+* match branch exit
+* switch branch exit
+* panic-like termination if later supported
+
+Cleanup regions must not depend on LLVM exception handling unless the language semantics explicitly require it.
+
+## Defer
+
+Every defer statement must be represented explicitly.
+
+Semantic IR must preserve:
+
+* defer registration order
+* captured values
+* capture mode
+* execution scope
+* execution order
+* ownership effects
+* borrow effects
+
+Deferred operations execute in reverse registration order within the same scope unless another rule explicitly defines otherwise.
+
+A defer must execute on every control-flow path that exits its scope normally.
+
+The compiler must determine whether termination operations bypass defer according to the language rules.
+
+Defer lowering must not be postponed until LLVM IR.
+
+## References
+
+A Semantic IR reference must retain:
+
+* referenced type
+* mutability
+* origin
+* valid scope or region identity
+* whether it came from owned storage, another reference or RawPtr
+* source location
+
+Validated references are normal typed Semantic IR values.
+
+Semantic IR must not require source-level lifetime annotations.
+
+Reference-origin information may be reduced after all lifetime-dependent transformations are complete.
+
+## Borrow operations
+
+Borrow creation should be represented explicitly while ownership-sensitive lowering remains active.
+
+Expected conceptual operations include:
+
+* create shared borrow
+* create mutable borrow
+* reborrow shared
+* reborrow mutable
+* end borrow where explicitly required internally
+
+Borrow operations must not be generated before borrow analysis has validated them.
+
+Semantic IR need not repeat full borrow checking.
+
+The verifier should nevertheless reject structurally impossible borrow operations.
+
+Borrow markers may be removed only after all passes that depend on alias and lifetime information have completed.
+
+## Raw pointers
+
+RawPtr operations must remain distinguishable from reference operations.
+
+Semantic IR must provide explicit operations for:
+
+* raw-pointer construction
+* reference-to-pointer conversion
+* pointer-to-reference conversion
+* pointer offset
+* byte offset
+* pointer comparison
+* raw load
+* raw store
+* pointer-to-integer conversion
+* integer-to-pointer conversion
+
+Unsafe validation must already be complete.
+
+Raw-pointer operations must retain unsafe provenance for diagnostics and auditing.
+
+Raw-pointer operations must not imply ownership.
+
+## Expressions
+
+Source expressions must be lowered into typed Semantic IR operations.
+
+Expected operation groups include:
+
+* arithmetic
+* comparison
+* logical operations
+* bitwise operations
+* shifts
+* conversion
+* construction
+* extraction
+* field access
+* indexing
+* slicing
+* function call
+* method call resolution result
+* interface dispatch
+* enum construction
+* union construction
+* Result construction
+* Option construction
+* match selection
+* checked operation
+* unsafe operation
+
+Each operation must define:
+
+* operand types
+* result types
+* ownership behavior
+* possible control-flow effects
+* possible runtime checks
+* source location
+
+## Arithmetic semantics
+
+Arithmetic operations must retain the resolved Sec arithmetic semantics.
+
+Semantic IR must distinguish operations where behavior differs, including:
+
+* signed integer arithmetic
+* unsigned integer arithmetic
+* decimal arithmetic
+* floating-point arithmetic
+* unit-aware arithmetic
+* checked arithmetic where required
+* wrapping arithmetic where explicitly requested
+* saturating arithmetic where explicitly requested
+
+The backend must not infer arithmetic mode from LLVM defaults.
+
+Overflow behavior must already be determined before LLVM lowering.
+
+## Conversions
+
+Every non-identity conversion must be explicit.
+
+Semantic IR must distinguish:
+
+* widening numeric conversion
+* narrowing numeric conversion
+* signedness conversion
+* integer-to-float conversion
+* float-to-integer conversion
+* named-type conversion
+* unit conversion
+* enum conversion
+* pointer conversion
+* ABI conversion
+* representation reinterpretation
+
+Conversions must carry:
+
+* source type
+* target type
+* validation mode
+* runtime-check requirement
+* unsafe status when applicable
+
+No backend stage may invent implicit conversions.
+
+## Runtime checks
+
+Required runtime checks must be explicit in Semantic IR or introduced by a defined lowering operation.
+
+Checks may include:
+
+* bounds checks
+* contract checks
+* narrowing-conversion checks
+* division-by-zero checks
+* invalid-shift checks
+* enum validity checks
+* null checks at FFI boundaries
+* alignment checks in checked low-level APIs
+
+Each check must define:
+
+* condition
+* failure behavior
+* diagnostic or error identity where applicable
+* source location
+
+Optimization may remove a check only when it proves that the check cannot fail.
+
+## Function representation
+
+A Semantic IR function must contain:
+
+* symbol identity
+* source name
+* linker name where applicable
+* parameter list
+* parameter ownership modes
+* return type
+* return ownership mode
+* unsafe status
+* calling convention
+* generic instantiation information
+* function attributes
+* entry block
+* blocks
+* cleanup information
+* source location
+
+Function parameters must be explicit values.
+
+Receiver parameters must be lowered into ordinary explicit parameters with retained receiver metadata when useful.
+
+Default arguments, named arguments and method-call syntax must already be resolved.
+
+## Function calls
+
+A function call must identify a resolved target.
+
+A call operation must contain:
+
+* target symbol
+* calling convention
+* argument values
+* argument ownership actions
+* return type
+* return ownership action
+* unsafe or extern status
+* possible error propagation behavior
+* source location
+
+Argument evaluation order must be explicit and preserve Sec semantics.
+
+Ownership transfer through arguments must use move operations or explicit consuming operands.
+
+Borrowed arguments must use validated reference values.
+
+## Indirect calls
+
+Indirect calls must carry a resolved function type.
+
+Semantic IR must distinguish:
+
+* direct calls
+* function-pointer calls
+* interface dispatch
+* closure calls when supported
+* extern callback calls
+
+Indirect-call validation must be complete before lowering.
+
+## Extern calls
+
+Extern calls must retain:
+
+* foreign symbol name
+* calling convention
+* ABI parameter types
+* ABI return type
+* ownership contract metadata
+* nullability metadata
+* target restrictions
+* unsafe provenance
+
+Extern wrapper semantics remain ordinary Semantic IR around the extern call.
+
+The extern operation itself must not automatically create Result, Option or ownership.
+
+## Control flow
+
+Semantic IR control flow must be explicit.
+
+Every function consists of basic blocks or equivalent structured regions.
+
+Each block must contain:
+
+* block identity
+* block parameters where applicable
+* ordered operations
+* exactly one terminator
+
+Expected terminators include:
+
+* branch
+* conditional branch
+* switch branch
+* return
+* unreachable
+* error propagation branch
+* termination operation
+
+Fallthrough must not remain implicit.
+
+## Branch arguments
+
+Values crossing block boundaries should be represented through block arguments or an equivalent explicit mechanism.
+
+Branch arguments must match destination block parameter types.
+
+Ownership state must also match.
+
+A branch must not transfer the same owned value to multiple successor paths unless the paths are mutually exclusive and represented safely.
+
+Merge points must not ambiguously merge different owners.
+
+## If lowering
+
+Source-level if expressions and statements must become explicit branches and merge blocks.
+
+When an if expression produces a value, all value-producing branches must provide compatible result values.
+
+Ownership and cleanup behavior must be explicit on every branch.
+
+## Switch lowering
+
+Source-level switch syntax must become explicit comparison and branch operations or a semantic switch operation.
+
+The representation must retain enough information for later efficient lowering.
+
+Validated switch ranges and cases must not be reinterpreted by the backend.
+
+Case evaluation order and overlap rules must already be resolved.
+
+## Match lowering
+
+Source-level match must become explicit variant tests, payload extraction and branch control flow.
+
+Semantic IR must retain:
+
+* matched type
+* selected variant tests
+* payload bindings
+* guard expressions
+* branch results
+* exhaustiveness guarantee
+
+The backend must not perform match exhaustiveness analysis.
+
+Payload extraction must occur only after the appropriate variant has been established.
+
+## Loops
+
+Loops must be represented with explicit:
+
+* entry block
+* condition block
+* body block
+* continue target
+* break target
+* exit block
+* loop-carried values
+* cleanup paths
+
+Range loops and iterator loops must already be resolved into explicit iteration operations or canonical loop form.
+
+Loop-carried ownership must be unambiguous.
+
+A value moved during one iteration must not appear valid in the next iteration unless reinitialized.
+
+## Return
+
+Return operations must explicitly provide the resolved return value where applicable.
+
+Before return, the function must execute all required cleanup operations.
+
+Returning an owned value transfers ownership to the caller.
+
+Returning a reference preserves its validated non-owning semantics.
+
+Implicit source returns must not remain implicit in Semantic IR.
+
+## Result
+
+Result must retain its semantic variant structure until error behavior has been lowered safely.
+
+Expected Result operations include:
+
+* construct Ok
+* construct Err
+* test Ok
+* test Err
+* extract Ok payload
+* extract Err payload
+* propagate Err
+* map or transform where resolved
+
+Error propagation must become explicit control flow.
+
+The propagation path must execute required cleanup before returning the error.
+
+Result must not be lowered to an arbitrary integer convention before ABI or target lowering requires it.
+
+## Option
+
+Option must retain its semantic variant structure until representation lowering.
+
+Expected Option operations include:
+
+* construct Some
+* construct None
+* test Some
+* test None
+* extract payload
+
+The representation of Option must not be assumed to be nullable pointer unless a later verified representation pass selects that optimization.
+
+## Enums
+
+Semantic IR enum values must retain:
+
+* enum type identity
+* selected member
+* declared representation
+* numeric value
+* tags and annotations where still required
+
+Enum-to-integer conversion must be explicit.
+
+Integer-to-enum conversion must be explicit and checked unless the operation is explicitly unsafe.
+
+## Structs
+
+Struct operations must be explicit.
+
+Expected operations include:
+
+* construct struct
+* extract field
+* borrow field
+* update field
+* move field
+* copy field
+* destroy struct
+* destroy remaining fields after partial move
+
+Struct construction must establish initialization state for every required field.
+
+Field source order and evaluation order must preserve Sec semantics.
+
+Physical layout is not required to be finalized in target-independent Semantic IR.
+
+## Unions
+
+Tagged unions must retain explicit discriminant and payload semantics.
+
+Expected operations include:
+
+* construct variant
+* test variant
+* extract payload
+* borrow payload
+* destroy active payload
+
+The active variant must always be known or tested before safe payload extraction.
+
+Foreign untagged union access must remain an explicit unsafe operation.
+
+## Arrays and slices
+
+Semantic IR must distinguish arrays from slices.
+
+Array types retain compile-time length.
+
+Slice values retain:
+
+* element type
+* data origin
+* length
+* mutability
+* ownership classification
+* lifetime information where required
+
+Indexing must distinguish:
+
+* checked indexing
+* proven-safe indexing
+* explicitly unchecked indexing
+
+Slice creation must preserve reference validity.
+
+A slice must not imply ownership of its elements or backing storage unless a separate owning type defines that behavior.
+
+## Strings
+
+Sec string semantics must remain distinct from raw byte sequences and foreign C strings.
+
+Semantic IR string values must retain:
+
+* string type identity
+* encoding semantics
+* ownership behavior
+* length semantics
+* mutability rules
+
+String literals may reference immutable static data.
+
+Owned runtime strings must use explicit ownership operations.
+
+Conversions to foreign strings must remain explicit FFI operations.
+
+## Interfaces
+
+Interface operations must retain:
+
+* interface type
+* concrete implementing type where statically known
+* method identity
+* receiver ownership mode
+* dispatch strategy
+
+Interface conformance must already be validated.
+
+Dynamic dispatch may remain abstract in Semantic IR.
+
+Vtable or equivalent representation is selected during later lowering.
+
+Semantic IR must not mandate a runtime-wide object model.
+
+## Generics
+
+Semantic IR must record how each generic declaration is handled.
+
+Permitted strategies may include:
+
+* monomorphization
+* shared representation where semantically safe
+* delayed specialization
+* target-specific specialization
+
+The initial implementation should prefer monomorphization unless another strategy is explicitly defined.
+
+Before final MLIR lowering, every generic operation requiring concrete layout must have resolved concrete types.
+
+Unresolved generic constraints must not reach lowering.
+
+## Compile-time values
+
+Compile-time-only values and operations must not appear as runtime operations after Semantic IR generation unless they intentionally produce runtime data.
+
+The IR may retain compile-time metadata required for:
+
+* diagnostics
+* unit lowering
+* register lowering
+* specialization
+* target selection
+* debug information
+
+Compile-time-only declarations may be omitted from runtime lowering.
+
+## Platform operations
+
+Platform-specific operations must be explicit.
+
+Examples include:
+
+* raw syscalls
+* fixed-address access
+* target intrinsics
+* interrupt operations
+* architecture-specific instructions
+* platform error access
+
+Each platform operation must define supported targets.
+
+Unsupported operations must be rejected before MLIR lowering for the selected target.
+
+## Unsafe operations
+
+Unsafe operations must remain marked in Semantic IR.
+
+This metadata supports:
+
+* verification
+* diagnostics
+* auditing
+* compiler debugging
+* generated-code inspection
+
+Unsafe marking does not alter the type or ownership rules of normal values.
+
+No unsafe operation may exist unless its source operation was inside a validated unsafe context.
+
+## Source locations
+
+Every user-originating Semantic IR operation should retain a source location.
+
+Synthesized operations should retain:
+
+* the source construct that caused them
+* a synthesized marker
+* optional explanatory origin metadata
+
+Source mapping must survive:
+
+* Semantic IR transformations
+* MLIR lowering
+* LLVM lowering
+* debug metadata generation
+
+Diagnostics should prefer the original user source location over synthesized locations.
+
+## Debug representation
+
+The compiler should support a readable textual Semantic IR format.
+
+The format should expose:
+
+* module structure
+* canonical types
+* symbol identities
+* function signatures
+* blocks
+* values
+* ownership operations
+* control flow
+* cleanup
+* source locations when requested
+
+The textual representation is a compiler debugging format, not Sec source syntax.
+
+It must not be parsed as user source code.
+
+A stable machine-readable serialization may be introduced separately.
+
+## Verification
+
+Semantic IR must have a dedicated verifier.
+
+The verifier must check at least:
+
+* resolved types
+* valid operands
+* valid result types
+* valid block targets
+* terminator presence
+* branch argument compatibility
+* ownership consumption
+* move-after-use
+* duplicate destruction
+* missing required destruction
+* initialization state
+* valid reference origin
+* valid function returns
+* call signature compatibility
+* extern signature compatibility
+* target restriction consistency
+* source-location integrity where required
+
+Verification should run:
+
+* immediately after Semantic IR generation
+* after every Semantic IR transformation in debug compiler builds
+* before MLIR lowering
+
+Verifier failures are internal compiler errors.
+
+## Semantic IR transformations
+
+Semantic IR transformations must remain semantic and target-independent unless explicitly classified otherwise.
+
+Permitted transformations may include:
+
+* syntax normalization
+* control-flow canonicalization
+* explicit cleanup insertion
+* Result propagation expansion
+* match expansion
+* switch normalization
+* ownership operation normalization
+* constant folding using Sec semantics
+* unreachable-block removal after diagnostics
+* trivial copy elimination
+* generic monomorphization
+
+Transformations must not:
+
+* alter destruction order
+* alter evaluation order
+* introduce hidden allocation
+* remove required checks without proof
+* change error behavior
+* change unsafe boundaries
+* erase ownership information prematurely
+* use target-specific LLVM assumptions
+
+## Optimization boundary
+
+Semantic IR may perform semantic simplification.
+
+General machine-oriented optimization belongs in MLIR or LLVM.
+
+Semantic IR optimization should focus on transformations that require knowledge of Sec semantics.
+
+Examples include:
+
+* eliminating a proven redundant move
+* simplifying Result propagation
+* removing an unreachable match branch
+* folding unit conversion constants
+* simplifying register masks
+* removing a check proven impossible by a type contract
+
+Every transformation must preserve observable Sec behavior.
+
+## Observable behavior
+
+Observable behavior includes:
+
+* returned values
+* externally visible writes
+* volatile operations
+* register access
+* FFI calls
+* syscall behavior
+* error propagation
+* destruction order when destruction has effects
+* defer execution order
+* required runtime checks and their failure behavior
+* synchronization operations when supported
+* inline assembly effects
+
+Optimizations must preserve observable behavior.
+
+## Incremental compilation
+
+Semantic IR should be structured so that future incremental compilation remains possible.
+
+Potential cache boundaries include:
+
+* resolved module interfaces
+* canonical type declarations
+* generic instantiations
+* validated function bodies
+* serialized Semantic IR functions
+
+Incremental support must not weaken verification.
+
+Cached Semantic IR must include enough version and target metadata to prevent incompatible reuse.
+
+## Versioning
+
+The Semantic IR format must have an internal version.
+
+The version should change when:
+
+* operation meaning changes
+* type representation changes
+* ownership representation changes
+* serialization changes incompatibly
+* required verifier invariants change
+
+The compiler must reject incompatible serialized Semantic IR.
+
+No long-term external compatibility guarantee is required before the format is declared stable.
+
+## Compiler implementation
+
+Semantic IR should be implemented in a dedicated compiler package or module.
+
+The implementation should provide:
+
+* type definitions
+* operation definitions
+* module definitions
+* builder APIs
+* verifier APIs
+* textual printer
+* source-location support
+* transformation pass interfaces
+* traversal utilities
+* ownership-aware utilities
+
+Frontend AST nodes must not be reused as Semantic IR nodes.
+
+LLVM types and instructions must not appear in the Semantic IR package.
+
+Semantic IR builders must require resolved types and validated operands.
+
+Builders should reject malformed operations as early as practical.
+
+## Current implementation status
+
+Semantic IR is a design target.
+
+The current compiler implementation has:
+
+* lexer
+* parser
+* AST
+* AST printer
+* semantic analysis
+* target registry
+* project initialization
+* minimal direct LLVM emission for early experiments
+
+The current direct LLVM emission path is temporary.
+
+It may exist while the language frontend is being developed, but it must not
+become the canonical compiler architecture.
+
+New language semantics should be validated in the frontend and represented in
+Semantic IR before they are treated as backend behavior.
+
+When Semantic IR implementation begins, it should live in a dedicated package,
+for example:
+
+```text
+internal/ir/semantic/
+```
+
+The first implementation milestone should be intentionally small:
+
+* module identity
+* type table
+* function declarations
+* function bodies
+* basic blocks
+* parameters
+* integer, boolean, string and decimal constants
+* local storage
+* assignment
+* calls
+* returns
+* if control flow
+* source locations
+* verifier
+* textual dump command
+
+The initial dump command should be separate from AST dumping.
+
+Expected command:
+
+```text
+sec emit-ir <file.sec>
+```
+
+`sec emit-ir` should stop after Semantic IR generation and verification.
+
+It must not require MLIR or LLVM to be available.
+
+## Design rule
+
+The AST represents how the program was written.
+
+Semantic IR represents what the validated program means.
+
+MLIR represents how that meaning is progressively lowered.
+
+LLVM IR represents how the lowered program is implemented for a target.
+
+Semantic IR is the final authority for validated Sec semantics before lowering begins.

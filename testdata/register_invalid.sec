@@ -1,0 +1,77 @@
+module register
+
+unit rpm uint physical
+unit m uint physical
+
+// =====================================================================
+// INVALID REGISTRY WIDTHS AND LAYOUTS
+// =====================================================================
+
+// ERROR: Underflow - Declares 8 bits but fields only occupy 7 bits (4 + 1 + 2 = 7)
+type InvalidProtocolShort register[8] {
+    Speed: bit[4],
+    Enabled: bit,
+    Mode: bit[2],
+}
+
+// ERROR: Overflow - Declares 8 bits but fields occupy 9 bits (4 + 1 + 4 = 9)
+type InvalidProtocolLong register[8] {
+    Speed: bit[4],
+    Enabled: bit,
+    Mode: bit[4],
+}
+
+// ERROR: Zero-width bit field is strictly invalid
+type ZeroWidthField register[8] {
+    Value: bit[0],
+    _: bit[8],
+}
+
+// ERROR: Negative-width bit field is strictly invalid
+type NegativeWidthField register[8] {
+    Value: bit[-1],
+    _: bit[9],
+}
+
+// =====================================================================
+// INVALID RESERVED FIELD ACCESS
+// =====================================================================
+
+type Status register[8] {
+    Ready: bit,
+    Error: bit,
+    _: bit[6],
+}
+
+@address(0x40023000)
+let globalStatus: Status
+
+fn TestIllegalReservedAccess() void {
+    // ERROR: Reserved bits (_) participate in layout but cannot be accessed
+    let value := globalStatus._
+}
+
+// =====================================================================
+// INVALID UNIT ASSIGNMENTS
+// =====================================================================
+
+type MotorProtocol register[8] {
+    Speed: bit[4]<rpm>,
+    Enabled: bit,
+    _: bit[3],
+}
+
+@address(0x40024000)
+let motorDevice: MotorProtocol
+
+fn TestIncompatibleUnits() void {
+    // ERROR: Incompatible unit assignment (cannot assign 'rpm' to 'm')
+    let distance: m := motorDevice.Speed
+}
+
+// =====================================================================
+// INVALID VARIABLE PLACEMENT
+// =====================================================================
+
+// ERROR: Variable assignments are only allowed inside functions (fn)
+let localSpeed: rpm := motorDevice.Speed

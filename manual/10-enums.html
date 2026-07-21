@@ -1,0 +1,708 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Enums - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+</head>
+<body>
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+
+        <div class="sidebar-section">Enums</div>
+        <a href="#enums">Overview</a>
+        <a href="#basic-syntax">Basic Syntax</a>
+        <a href="#variants-and-values">Variants and Values</a>
+        <a href="#underlying-types">Underlying Types</a>
+        <a href="#automatic-values">Automatic Values</a>
+        <a href="#explicit-values">Explicit Values</a>
+        <a href="#iota">iota</a>
+        <a href="#aliases">Aliases</a>
+
+        <div class="sidebar-section">Names and Scope</div>
+        <a href="#enum-namespaces">Enum Namespaces</a>
+        <a href="#nested-enums">Nested Enums</a>
+        <a href="#variant-uniqueness">Variant Name Uniqueness</a>
+
+        <div class="sidebar-section">Type Rules</div>
+        <a href="#enum-types">Enums Are Distinct Types</a>
+        <a href="#conversions">Explicit Conversions</a>
+        <a href="#comparisons">Comparisons</a>
+        <a href="#arithmetic">Arithmetic</a>
+        <a href="#variables">Variables and Assignment</a>
+        <a href="#definite-assignment">Definite Assignment</a>
+
+        <div class="sidebar-section">Use</div>
+        <a href="#switch-and-match">switch and match</a>
+        <a href="#common-errors">Common Errors</a>
+        <a href="#summary-rules">Summary of Rules</a>
+
+        <div class="sidebar-section">Pages</div>
+        <a href="index.html">Index</a>
+        <a href="01-introduction.html">Introduction</a>
+        <a href="02-basic-syntax.html">Basic Syntax</a>
+        <a href="03-variables-and-basic-types.html">Variables and Basic Types</a>
+        <a href="04-named-types-contracts-and-units.html">Named Types, Contracts and Units</a>
+        <a href="05-structs-properties-and-impl.html">Structs, Properties and Impl</a>
+        <a href="06-functions.html">Functions</a>
+        <a href="07-if.html">If Statements</a>
+        <a href="08-switch.html">Switch Statements</a>
+        <a href="09-match.html">Match Expressions and Statements</a>
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Enums</div>
+
+        <h1 id="enums">Enums</h1>
+
+        <p>
+            An enum defines a finite set of named values. Each enum is a distinct type, even when two enums use
+            the same underlying integer representation.
+        </p>
+
+        <pre><code>enum Direction {
+    north,
+    east,
+    south,
+    west,
+}</code></pre>
+
+        <p>
+            The variants <code>Direction.north</code>, <code>Direction.east</code>,
+            <code>Direction.south</code> and <code>Direction.west</code> are values of type
+            <code>Direction</code>. They are not plain integers.
+        </p>
+
+        <div class="rule">
+            <strong>Rule:</strong> Enum values retain their enum type. Conversion to or from an integer is always
+            explicit.
+        </div>
+
+        <div class="section" id="basic-syntax">
+            <h2>Basic Syntax</h2>
+
+            <p>An enum declaration contains a name and a comma-separated list of variants:</p>
+
+            <pre><code>enum Color {
+    red,
+    green,
+    blue,
+}</code></pre>
+
+            <p>A trailing comma is allowed and is the normal formatted style.</p>
+
+            <p>An enum may specify an underlying integer type after its name:</p>
+
+            <pre><code>enum Status int {
+    unknown = 0,
+    active = 10,
+    paused,
+    disabled = 99,
+}</code></pre>
+
+            <p>If no underlying type is written, <code>int</code> is used.</p>
+        </div>
+
+        <div class="section" id="variants-and-values">
+            <h2>Variants and Values</h2>
+
+            <p>The enum name identifies the type:</p>
+
+            <pre><code>Direction</code></pre>
+
+            <p>A qualified variant name identifies a value of that type:</p>
+
+            <pre><code>Direction.north</code></pre>
+
+            <pre><code>let direction: Direction := Direction.north</code></pre>
+
+            <p>
+                The numeric representation belongs to the variant, but it does not replace the enum type. For
+                example, <code>Direction.north</code> may store the numeric value <code>0</code>, while still having
+                type <code>Direction</code>.
+            </p>
+        </div>
+
+        <div class="section" id="underlying-types">
+            <h2>Underlying Types</h2>
+
+            <p>The optional underlying type must be an integer type.</p>
+
+            <pre><code>enum SmallCode uint8 {
+    none,
+    ready,
+    failed,
+}</code></pre>
+
+            <p>Examples of valid underlying types include:</p>
+
+            <pre><code>int
+int8
+int16
+int32
+int64
+int128
+int256
+uint
+uint8
+uint16
+uint32
+uint64</code></pre>
+
+            <p>The exact set depends on the integer types supported by the target compiler version.</p>
+
+            <p>A non-integer underlying type is invalid:</p>
+
+            <pre><code>enum Invalid string {
+    value,
+}</code></pre>
+
+            <div class="error">
+                The underlying type of an enum must be an integer type.
+            </div>
+
+            <p>
+                Every resolved variant value must be representable by the underlying type. Overflow is a
+                compile-time error.
+            </p>
+        </div>
+
+        <div class="section" id="automatic-values">
+            <h2>Automatic Values</h2>
+
+            <p>The first variant receives numeric value <code>0</code> unless it has an explicit initializer.</p>
+
+            <p>Each later variant without an initializer receives the previous numeric value plus one.</p>
+
+            <pre><code>enum Direction {
+    north,
+    east,
+    south,
+    west,
+}</code></pre>
+
+            <table>
+                <thead>
+                <tr>
+                    <th>Variant</th>
+                    <th>Numeric value</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr><td><code>Direction.north</code></td><td><code>0</code></td></tr>
+                <tr><td><code>Direction.east</code></td><td><code>1</code></td></tr>
+                <tr><td><code>Direction.south</code></td><td><code>2</code></td></tr>
+                <tr><td><code>Direction.west</code></td><td><code>3</code></td></tr>
+                </tbody>
+            </table>
+
+            <p>Automatic continuation follows the previous resolved numeric value:</p>
+
+            <pre><code>enum Status int {
+    unknown = 0,
+    active = 10,
+    paused,
+    disabled = 99,
+}</code></pre>
+
+            <table>
+                <thead>
+                <tr>
+                    <th>Variant</th>
+                    <th>Numeric value</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr><td><code>Status.unknown</code></td><td><code>0</code></td></tr>
+                <tr><td><code>Status.active</code></td><td><code>10</code></td></tr>
+                <tr><td><code>Status.paused</code></td><td><code>11</code></td></tr>
+                <tr><td><code>Status.disabled</code></td><td><code>99</code></td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="section" id="explicit-values">
+            <h2>Explicit Values</h2>
+
+            <p>A variant initializer must be an integer constant expression.</p>
+
+            <pre><code>enum HttpStatus int {
+    ok = 200,
+    notFound = 404,
+    internalError = 500,
+}</code></pre>
+
+            <p>Integer constant operators may be used:</p>
+
+            <pre><code>enum Flags uint {
+    read = 1 &lt;&lt; 0,
+    write = 1 &lt;&lt; 1,
+    execute = 1 &lt;&lt; 2,
+}</code></pre>
+
+            <p>A runtime value, function call or non-integer expression cannot initialize an enum variant.</p>
+
+            <pre><code>enum InvalidInitializer {
+    value = "invalid",
+}</code></pre>
+        </div>
+
+        <div class="section" id="iota">
+            <h2>iota</h2>
+
+            <p>
+                <code>iota</code> is a compile-time integer constant available only while an enum variant
+                initializer is being evaluated.
+            </p>
+
+            <p>
+                It starts at <code>0</code> for the first variant and increases by one for each following variant.
+                Its value is based on the variant position, not on the previous numeric result.
+            </p>
+
+            <pre><code>enum Permission uint {
+    none = 0,
+    read = 1 &lt;&lt; iota,
+    write = 1 &lt;&lt; iota,
+    execute = 1 &lt;&lt; iota,
+}</code></pre>
+
+            <table>
+                <thead>
+                <tr>
+                    <th>Variant</th>
+                    <th>iota</th>
+                    <th>Numeric value</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr><td><code>Permission.none</code></td><td><code>0</code></td><td><code>0</code></td></tr>
+                <tr><td><code>Permission.read</code></td><td><code>1</code></td><td><code>2</code></td></tr>
+                <tr><td><code>Permission.write</code></td><td><code>2</code></td><td><code>4</code></td></tr>
+                <tr><td><code>Permission.execute</code></td><td><code>3</code></td><td><code>8</code></td></tr>
+                </tbody>
+            </table>
+
+            <p>Explicit values do not reset <code>iota</code>:</p>
+
+            <pre><code>enum Example int {
+    first = iota,
+    second = 100,
+    third = iota,
+    fourth,
+}</code></pre>
+
+            <table>
+                <thead>
+                <tr>
+                    <th>Variant</th>
+                    <th>iota</th>
+                    <th>Numeric value</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr><td><code>Example.first</code></td><td><code>0</code></td><td><code>0</code></td></tr>
+                <tr><td><code>Example.second</code></td><td><code>1</code></td><td><code>100</code></td></tr>
+                <tr><td><code>Example.third</code></td><td><code>2</code></td><td><code>2</code></td></tr>
+                <tr><td><code>Example.fourth</code></td><td><code>3</code></td><td><code>3</code></td></tr>
+                </tbody>
+            </table>
+
+            <p>
+                <code>Example.fourth</code> uses the previous numeric value plus one. It does not repeat the
+                initializer expression from <code>Example.third</code>.
+            </p>
+
+            <p>Each enum has its own independent <code>iota</code> sequence.</p>
+
+            <pre><code>let value: int := iota</code></pre>
+
+            <div class="error"><code>iota</code> is not visible outside enum variant initializers.</div>
+        </div>
+
+        <div class="section" id="aliases">
+            <h2>Aliases</h2>
+
+            <p>Several variant names may have the same numeric value.</p>
+
+            <pre><code>enum ResultCode int {
+    success = 0,
+    ok = 0,
+    notFound = 404,
+    missing = 404,
+}</code></pre>
+
+            <p>
+                <code>ResultCode.success</code> and <code>ResultCode.ok</code> are both valid variant names. They
+                have the same numeric representation. The same applies to <code>notFound</code> and
+                <code>missing</code>.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> Duplicate numeric values are valid aliases. Duplicate variant names are
+                invalid.
+            </div>
+
+            <p>
+                Alias names remain separate declared variants even though equality compares their shared enum
+                value.
+            </p>
+        </div>
+
+        <div class="section" id="enum-namespaces">
+            <h2>Enum Namespaces</h2>
+
+            <p>Module-level enum variants are accessed through the enum name:</p>
+
+            <pre><code>let color := Color.red
+let state := Status.active</code></pre>
+
+            <p>
+                Variant names do not enter the surrounding module namespace directly. This allows different enums
+                to reuse clear names such as <code>none</code>, <code>ready</code> or <code>failed</code>.
+            </p>
+
+            <pre><code>enum ConnectionState {
+    ready,
+    failed,
+}
+
+enum JobState {
+    ready,
+    failed,
+}</code></pre>
+
+            <pre><code>let connection := ConnectionState.ready
+let job := JobState.ready</code></pre>
+        </div>
+
+        <div class="section" id="nested-enums">
+            <h2>Nested Enums</h2>
+
+            <p>An enum may be declared inside an <code>impl</code> block:</p>
+
+            <pre><code>type Vehicle struct {
+    Name: string
+}
+
+impl Vehicle {
+    enum FuelType {
+        petrol,
+        diesel,
+        electric,
+    }
+
+    fn IsElectric(fuel: FuelType) bool {
+        return fuel == FuelType.electric
+    }
+}</code></pre>
+
+            <p>Outside the owner implementation, the enum type is qualified with the owner type:</p>
+
+            <pre><code>let fuel: Vehicle.FuelType := Vehicle.FuelType.electric</code></pre>
+
+            <p>Inside <code>impl Vehicle</code>, the owner prefix is omitted:</p>
+
+            <pre><code>FuelType
+FuelType.petrol</code></pre>
+
+            <p>
+                The full nested enum name is <code>Vehicle.FuelType</code>. Its variants belong to the nested enum
+                namespace.
+            </p>
+        </div>
+
+        <div class="section" id="variant-uniqueness">
+            <h2>Variant Name Uniqueness</h2>
+
+            <p>Variant names must be unique inside one enum.</p>
+
+            <pre><code>enum Invalid {
+    value,
+    value,
+}</code></pre>
+
+            <div class="error">Duplicate enum variant name <code>value</code>.</div>
+
+            <p>Different enums may use the same variant names because each enum provides its own namespace.</p>
+        </div>
+
+        <div class="section" id="enum-types">
+            <h2>Enums Are Distinct Types</h2>
+
+            <p>An enum does not implicitly become its underlying integer type.</p>
+
+            <pre><code>enum Color int {
+    red,
+    green,
+    blue,
+}
+
+let color: Color := Color.red</code></pre>
+
+            <p>The following assignments are invalid:</p>
+
+            <pre><code>let color: Color := 1
+let number: int := Color.red</code></pre>
+
+            <p>Different enum types are also incompatible:</p>
+
+            <pre><code>enum Color {
+    red,
+}
+
+enum Status {
+    active,
+}
+
+let color: Color := Status.active</code></pre>
+
+            <div class="rule">
+                <strong>Rule:</strong> Sharing an underlying type does not make two enum types compatible.
+            </div>
+        </div>
+
+        <div class="section" id="conversions">
+            <h2>Explicit Conversions</h2>
+
+            <h3>Enum to Integer</h3>
+
+            <p>Use normal cast syntax to obtain the numeric representation:</p>
+
+            <pre><code>let numeric: int := int(Color.red)</code></pre>
+
+            <h3>Integer to Enum</h3>
+
+            <p>Use the enum type as an explicit conversion:</p>
+
+            <pre><code>let color: Color := Color(2)</code></pre>
+
+            <p>
+                Integer-to-enum conversion may produce a valid value of the enum type even when no declared
+                variant has that numeric representation.
+            </p>
+
+            <pre><code>let unknownColor: Color := Color(200)</code></pre>
+
+            <p>
+                This value has type <code>Color</code>, but it does not correspond to a declared variant name. Code
+                that accepts externally supplied enum numbers should account for this possibility.
+            </p>
+
+            <h3>Between Enum Types</h3>
+
+            <p>Conversion between different enum types must go through an integer type:</p>
+
+            <pre><code>let status: Status := Status(int(color))</code></pre>
+
+            <p>There is no implicit conversion between enums.</p>
+        </div>
+
+        <div class="section" id="comparisons">
+            <h2>Comparisons</h2>
+
+            <p>Equality and inequality are supported between values of the same enum type:</p>
+
+            <pre><code>if color == Color.red {
+    PaintRed()
+}
+
+if color != Color.blue {
+    Continue()
+}</code></pre>
+
+            <p>Comparing different enum types is invalid:</p>
+
+            <pre><code>let same := Color.red == Status.active</code></pre>
+
+            <p>Comparing an enum directly with an integer is also invalid:</p>
+
+            <pre><code>let same := Color.red == 0</code></pre>
+
+            <p>Use an explicit conversion when comparing numeric representations:</p>
+
+            <pre><code>let same := int(Color.red) == 0</code></pre>
+        </div>
+
+        <div class="section" id="arithmetic">
+            <h2>Arithmetic</h2>
+
+            <p>Arithmetic is not directly defined for enum values.</p>
+
+            <pre><code>let next := Color.red + 1</code></pre>
+
+            <div class="error">Arithmetic operands cannot use an enum value directly.</div>
+
+            <p>Convert explicitly when numeric arithmetic is intended:</p>
+
+            <pre><code>let nextNumeric: int := int(Color.red) + 1
+let nextColor: Color := Color(nextNumeric)</code></pre>
+
+            <p>
+                The explicit conversions make it clear that the program is operating on the numeric
+                representation rather than on enum variants as semantic values.
+            </p>
+        </div>
+
+        <div class="section" id="variables">
+            <h2>Variables and Assignment</h2>
+
+            <p>An immutable enum variable must be initialized when declared:</p>
+
+            <pre><code>let color: Color := Color.red</code></pre>
+
+            <p>An immutable declaration without an initializer is invalid:</p>
+
+            <pre><code>let color: Color</code></pre>
+
+            <p>A mutable variable may be declared before it is assigned:</p>
+
+            <pre><code>let mut color: Color
+color = Color.green</code></pre>
+
+            <p>Every assignment must still use a compatible value of the same enum type.</p>
+        </div>
+
+        <div class="section" id="definite-assignment">
+            <h2>Definite Assignment</h2>
+
+            <p>An uninitialized mutable enum variable may not be read before every continuing path assigns it.</p>
+
+            <pre><code>fn SelectColor(useRed: bool) Color {
+    let mut color: Color
+
+    if useRed {
+        color = Color.red
+    } else {
+        color = Color.blue
+    }
+
+    return color
+}</code></pre>
+
+            <p>This is valid because both branches assign <code>color</code>.</p>
+
+            <pre><code>fn Invalid(useRed: bool) Color {
+    let mut color: Color
+
+    if useRed {
+        color = Color.red
+    }
+
+    return color
+}</code></pre>
+
+            <p>This is invalid because the condition may be false and leave <code>color</code> unassigned.</p>
+        </div>
+
+        <div class="section" id="switch-and-match">
+            <h2>switch and match</h2>
+
+            <p>Enums may be used with both <code>switch</code> and <code>match</code>.</p>
+
+            <h3>switch</h3>
+
+            <p>Use <code>switch</code> for ordinary value-based branching:</p>
+
+            <pre><code>switch direction {
+case Direction.north:
+    MoveNorth()
+
+case Direction.south:
+    MoveSouth()
+
+default:
+    Stop()
+}</code></pre>
+
+            <p>An enum switch is not required to be exhaustive.</p>
+
+            <h3>match</h3>
+
+            <p>Use <code>match</code> when every declared enum variant must be handled:</p>
+
+            <pre><code>match direction {
+    Direction.north =&gt; MoveNorth()
+    Direction.east =&gt; MoveEast()
+    Direction.south =&gt; MoveSouth()
+    Direction.west =&gt; MoveWest()
+}</code></pre>
+
+            <p>An enum match is exhaustive unless an allowed catch-all branch handles the remaining variants.</p>
+        </div>
+
+        <div class="section" id="common-errors">
+            <h2>Common Errors</h2>
+
+            <h3>Duplicate Variant Name</h3>
+
+            <pre><code>enum Invalid {
+    value,
+    value,
+}</code></pre>
+
+            <h3>Invalid Underlying Type</h3>
+
+            <pre><code>enum Invalid string {
+    value,
+}</code></pre>
+
+            <h3>Invalid Initializer</h3>
+
+            <pre><code>enum Invalid {
+    value = "invalid",
+}</code></pre>
+
+            <h3>Implicit Integer Conversion</h3>
+
+            <pre><code>let color: Color := 1
+let number: int := Color.red</code></pre>
+
+            <h3>Mixed Enum Types</h3>
+
+            <pre><code>let color: Color := Status.active
+let same := Color.red == Status.active</code></pre>
+
+            <h3>Arithmetic Without Conversion</h3>
+
+            <pre><code>let value := Color.red + 1</code></pre>
+
+            <h3>iota Outside an Enum</h3>
+
+            <pre><code>let value: int := iota</code></pre>
+        </div>
+
+        <div class="section" id="summary-rules">
+            <h2>Summary of Rules</h2>
+
+            <ul>
+                <li>An enum defines a distinct named type and a finite set of named variants.</li>
+                <li>Variants are comma-separated and may use a trailing comma.</li>
+                <li>The default underlying type is <code>int</code>.</li>
+                <li>An explicit underlying type must be an integer type.</li>
+                <li>The first automatic value is <code>0</code>.</li>
+                <li>Later automatic values use the previous numeric value plus one.</li>
+                <li>Explicit initializers must be representable integer constant expressions.</li>
+                <li><code>iota</code> is local to enum initializers and follows variant position.</li>
+                <li>Variant names must be unique inside an enum.</li>
+                <li>Duplicate numeric values are allowed as aliases.</li>
+                <li>Enum variants have the enum type, not the underlying integer type.</li>
+                <li>Integer and enum conversions are explicit in both directions.</li>
+                <li>Different enum types are never implicitly compatible.</li>
+                <li>Equality and inequality require the same enum type.</li>
+                <li>Arithmetic requires explicit conversion to an integer type.</li>
+                <li>Nested enums use the owner-qualified name outside their <code>impl</code>.</li>
+                <li>Normal initialization and definite-assignment rules apply to enum variables.</li>
+            </ul>
+        </div>
+
+        <div class="page-nav">
+            <a href="09-match.html">Previous: Match Expressions and Statements</a>
+            <a href="index.html">Manual Index</a>
+        </div>
+    </main>
+</div>
+</body>
+</html>

@@ -155,7 +155,7 @@ func (p *Parser) parseStatement() ast.Statement {
 		return &ast.ContinueStatement{Token: p.curToken}
 
 	case lexer.UNSAFE:
-		if p.peekToken.Type == lexer.FN {
+		if p.peekToken.Type == lexer.FN || p.peekToken.Type == lexer.EXTERN {
 			return p.parseUnsafeFunctionDeclaration()
 		}
 		return p.parseUnsafeStatement()
@@ -181,6 +181,13 @@ func (p *Parser) parseStatement() ast.Statement {
 			if stmt := p.parseTypedVariableDeclaration(); stmt != nil || len(p.errors) > errorsBefore {
 				return stmt
 			}
+		}
+		return p.parseExpressionOrAssignmentStatement()
+
+	case lexer.REF:
+		errorsBefore := len(p.errors)
+		if stmt := p.parseTypedVariableDeclaration(); stmt != nil || len(p.errors) > errorsBefore {
+			return stmt
 		}
 		return p.parseExpressionOrAssignmentStatement()
 
@@ -1165,30 +1172,43 @@ func (p *Parser) parseUnitDeclStatement() ast.Statement {
 	}
 	stmt.Name = &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme}
 
-	if p.peekToken.Type == lexer.IDENT && (p.peekToken.Lexeme == "physical" || p.peekToken.Lexeme == "other") {
+	stmt.BaseType = &ast.TypeReference{Token: stmt.Name.Token, Name: "decimal"}
+
+	if p.peekToken.Type == lexer.EOF || p.peekToken.Line > stmt.Name.Token.Line {
+		return stmt
+	}
+
+	if p.peekToken.Type == lexer.IDENT && isUnitCategoryName(p.peekToken.Lexeme) {
 		p.nextToken()
-		stmt.BaseType = &ast.TypeReference{Token: p.curToken, Name: "decimal"}
 		stmt.Category = p.curToken.Lexeme
 		return stmt
 	}
 
 	if !isTypeStart(p.peekToken.Type) {
-		p.addError("unit %s missing numeric storage type at %d:%d", stmt.Name.Value, stmt.Name.Token.Line, stmt.Name.Token.Column)
-		return nil
+		return stmt
 	}
 	p.nextToken()
 	stmt.BaseType = p.parseTypeReference()
 
-	if p.peekToken.Type == lexer.IDENT {
+	if p.peekToken.Type == lexer.IDENT && p.peekToken.Line == stmt.Name.Token.Line {
 		p.nextToken()
-		if p.curToken.Lexeme == "physical" || p.curToken.Lexeme == "other" {
+		if isUnitCategoryName(p.curToken.Lexeme) {
 			stmt.Category = p.curToken.Lexeme
 		} else {
-			p.addError("unit %s category must be physical or other, got %q at %d:%d", stmt.Name.Value, p.curToken.Lexeme, p.curToken.Line, p.curToken.Column)
+			p.addError("unit %s category must be physical, currency, or other, got %q at %d:%d", stmt.Name.Value, p.curToken.Lexeme, p.curToken.Line, p.curToken.Column)
 		}
 	}
 
 	return stmt
+}
+
+func isUnitCategoryName(name string) bool {
+	switch name {
+	case "physical", "currency", "other":
+		return true
+	default:
+		return false
+	}
 }
 
 func (p *Parser) parseInterfaceDeclaration() ast.Statement {
@@ -1456,6 +1476,12 @@ func (p *Parser) parseExternFunctionDeclaration() *ast.FunctionDeclaration {
 	fn.Token = externToken
 	fn.Extern = true
 	fn.ABI = abi
+	if p.peekToken.Type == lexer.LBRACE {
+		fn.Body = p.parseFunctionBlockStatement()
+		if fn.Body == nil {
+			return nil
+		}
+	}
 	return fn
 }
 
@@ -1566,7 +1592,17 @@ func (p *Parser) skipGenericParameterList() {
 func (p *Parser) parseUnsafeFunctionDeclaration() *ast.FunctionDeclaration {
 	unsafeToken := p.curToken
 	p.nextToken()
-	fn := p.parseFunctionDeclaration()
+
+	var fn *ast.FunctionDeclaration
+	switch p.curToken.Type {
+	case lexer.FN:
+		fn = p.parseFunctionDeclaration()
+	case lexer.EXTERN:
+		fn = p.parseExternFunctionDeclaration()
+	default:
+		p.addError("unsafe function declaration must be followed by fn or extern at %d:%d", p.curToken.Line, p.curToken.Column)
+		return nil
+	}
 	if fn == nil {
 		return nil
 	}
@@ -2190,12 +2226,16 @@ func (p *Parser) parseImplStatement() ast.Statement {
 }
 
 func (p *Parser) isUnitMetadataName(name string) bool {
-	switch name {
-	case "dimension", "scale", "system":
+	switch normalizeUnitMetadataName(name) {
+	case "dimension", "scale", "system", "longname", "symbol", "baseunit", "status":
 		return true
 	default:
 		return false
 	}
+}
+
+func normalizeUnitMetadataName(name string) string {
+	return strings.ReplaceAll(strings.ToLower(name), "_", "")
 }
 
 func (p *Parser) parseUnitMetadataDeclaration() *ast.UnitMetadataDeclaration {
@@ -2498,12 +2538,23 @@ func (p *Parser) parseTypeReference() *ast.TypeReference {
 		return p.parseReferenceTypeReference()
 	}
 
+	if p.curToken.Type == lexer.LT {
+		token := p.curToken
+		unit := p.parseUnit()
+		return &ast.TypeReference{
+			Token:    token,
+			Name:     "",
+			Unit:     unit,
+			UnitOnly: true,
+		}
+	}
+
 	if p.curToken.Type == lexer.FN {
 		return p.parseFunctionTypeReference()
 	}
 
 	if p.curToken.Type == lexer.LBRACKET {
-		return p.parseSliceTypeReference()
+		return p.parsePrefixSequenceTypeReference()
 	}
 
 	ref := &ast.TypeReference{
@@ -2530,12 +2581,7 @@ func (p *Parser) parseTypeReference() *ast.TypeReference {
 		ref.Unit = unit
 	}
 
-	if p.peekToken.Type == lexer.LBRACKET {
-		p.nextToken()
-		ref.TypeArgs = p.parseTypeArgs()
-	}
-
-	return ref
+	return p.parsePostfixTypeReference(ref)
 }
 
 func (p *Parser) parseReferenceTypeReference() *ast.TypeReference {
@@ -2589,7 +2635,53 @@ func (p *Parser) parseFunctionTypeReference() *ast.TypeReference {
 	return ref
 }
 
-func (p *Parser) parseSliceTypeReference() *ast.TypeReference {
+type typeSequenceSuffix struct {
+	slice  bool
+	length int64
+	token  lexer.Token
+}
+
+func (p *Parser) parsePostfixTypeReference(ref *ast.TypeReference) *ast.TypeReference {
+	suffixes := []typeSequenceSuffix{}
+
+	for p.peekToken.Type == lexer.LBRACKET {
+		p.nextToken()
+		token := p.curToken
+
+		switch p.peekToken.Type {
+		case lexer.RBRACKET:
+			p.nextToken()
+			suffixes = append(suffixes, typeSequenceSuffix{slice: true, token: token})
+		case lexer.INT:
+			p.nextToken()
+			length, ok := ast.ParseIntegerLiteralInt64(p.curToken.Lexeme)
+			if !ok {
+				p.addError("invalid array length %q at %d:%d", p.curToken.Lexeme, p.curToken.Line, p.curToken.Column)
+				return ref
+			}
+			if !p.expectPeek(lexer.RBRACKET) {
+				return ref
+			}
+			suffixes = append(suffixes, typeSequenceSuffix{length: length, token: token})
+		default:
+			ref.TypeArgs = p.parseTypeArgs()
+		}
+	}
+
+	for i := len(suffixes) - 1; i >= 0; i-- {
+		suffix := suffixes[i]
+		ref = &ast.TypeReference{
+			Token:       suffix.token,
+			ElementType: ref,
+			Slice:       suffix.slice,
+			ArrayLength: suffix.length,
+		}
+	}
+
+	return ref
+}
+
+func (p *Parser) parsePrefixSequenceTypeReference() *ast.TypeReference {
 	ref := &ast.TypeReference{
 		Token: p.curToken,
 	}
@@ -2602,6 +2694,8 @@ func (p *Parser) parseSliceTypeReference() *ast.TypeReference {
 			return ref
 		}
 		ref.ArrayLength = length
+	} else {
+		ref.Slice = true
 	}
 
 	if !p.expectPeek(lexer.RBRACKET) {
@@ -2853,7 +2947,7 @@ func (p *Parser) expectPeekTypeStart() bool {
 }
 
 func isTypeStart(tokenType lexer.TokenType) bool {
-	return tokenType == lexer.IDENT || tokenType == lexer.LBRACKET || tokenType == lexer.VOID || tokenType == lexer.FN || tokenType == lexer.REF
+	return tokenType == lexer.IDENT || tokenType == lexer.LT || tokenType == lexer.LBRACKET || tokenType == lexer.VOID || tokenType == lexer.FN || tokenType == lexer.REF
 }
 
 func (p *Parser) nextToken() {

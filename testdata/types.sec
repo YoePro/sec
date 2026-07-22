@@ -53,7 +53,7 @@ type Range3 int range ..100
 type Range4 float range -273.1..
 type Meter decimal<m>
 type Name string
-type Payload []byte
+type Payload ref byte[]
 
 let mut precent: Percent := 0
 precent +=50

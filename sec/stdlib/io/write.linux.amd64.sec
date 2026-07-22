@@ -3,8 +3,8 @@ module io
 
 import "platform/linux/amd64/raw_syscall"
 
-fn _sysWrite(fd: int, ref ptr: byte, len: int64) int {
-    return platform.linux.amd64._rawSyscall3(1, uint(fd), uint(ptr), uint(len))
+unsafe fn _sysWrite(fd: int, ref ptr: byte, len: int64) int {
+    return platform.linux.amd64._rawSyscall(1, uint(fd), uint(ptr), uint(len))
 }
 
 fn WriteString(value: string) void {

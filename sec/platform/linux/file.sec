@@ -1,7 +1,7 @@
 #target(os: "linux", arch: "any")
 module platform.linux
 
-fn Write(fd: int, data: []byte) Result[uint, LinuxError] {
+fn Write(fd: int, data: ref byte[]) Result[uint, LinuxError] {
     let rawResult: int
 
     unsafe {
@@ -16,7 +16,7 @@ fn Write(fd: int, data: []byte) Result[uint, LinuxError] {
 }
 
 /*
-fn Read(fd: int, data: mut []byte) Result[uint, LinuxError] {}
+fn Read(fd: int, data: ref mut byte[]) Result[uint, LinuxError] {}
 
 fn Close(fd: int) Result[void, LinuxError] {}
 fn Open(...) 

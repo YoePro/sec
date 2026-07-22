@@ -1,0 +1,76 @@
+module units
+
+/** Joule */
+unit J decimal physical
+impl J {
+    dimension: [mass^1, length^2, time^-2]
+    scale: 1
+    system: SI
+
+    fn J(Newton: decimal<N>, Meter: decimal<m>) decimal<J> {
+        return decimal<J>(decimal(Newton) * decimal(Meter))
+    }
+
+    fn J(Newton: float<N>, Meter: float<m>) float<J> {
+        return float<J>(float(Newton) * float(Meter))
+    }
+
+    fn J(Watt: decimal<W>, Second: decimal<s>) decimal<J> {
+        return decimal<J>(decimal(Watt) * decimal(Second))
+    }
+
+    fn J(Watt: float<W>, Second: float<s>) float<J> {
+        return float<J>(float(Watt) * float(Second))
+    }
+}
+
+/** Watt */
+unit W decimal physical
+impl W {
+    dimension: [mass^1, length^2, time^-3]
+    scale: 1
+    system: SI
+
+    fn W(Joule: decimal<J>, Second: decimal<s>) decimal<W> {
+        return decimal<W>(decimal(Joule) / decimal(Second))
+    }
+
+    fn W(Joule: float<J>, Second: float<s>) float<W> {
+        return float<W>(float(Joule) / float(Second))
+    }
+
+    fn W(Volt: decimal<V>, Amp: decimal<A>) decimal<W> {
+        return decimal<W>(decimal(Volt) * decimal(Amp))
+    }
+
+    fn W(Volt: float<V>, Amp: float<A>) float<W> {
+        return float<W>(float(Volt) * float(Amp))
+    }
+}
+
+/** Watt-hour (Energy) */
+unit Wh decimal physical
+impl Wh {
+    dimension: [mass^1, length^2, time^-2]
+    scale: 3600 // 1 hour = 3600 seconds
+    system: SI
+
+    /** Convert Joule to Watt-hours (1 Wh = 3600 J) */
+    fn Wh(Joule: decimal<J>) decimal<Wh> {
+        return decimal<Wh>(decimal(Joule) / 3600d)
+    }
+
+    fn Wh(Joule: float<J>) float<Wh> {
+        return float<Wh>(float(Joule) / 3600f)
+    }
+
+    /** Calculate Wh directly from Ampere-hours and Voltage (Wh = Ah * V) */
+    fn Wh(AmpHour: decimal<Ah>, Volt: decimal<V>) decimal<Wh> {
+        return decimal<Wh>(decimal(AmpHour) * decimal(Volt))
+    }
+
+    fn Wh(AmpHour: float<Ah>, Volt: float<V>) float<Wh> {
+        return float<Wh>(float(AmpHour) * float(Volt))
+    }
+}
+

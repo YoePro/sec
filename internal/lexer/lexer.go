@@ -18,6 +18,7 @@ const (
 	BYTES        TokenType = "BYTES"
 	INTERPSTRING TokenType = "INTERPSTRING"
 
+	ARENA       TokenType = "ARENA"
 	ASM         TokenType = "ASM"
 	ASSERT      TokenType = "ASSERT"
 	AWAIT       TokenType = "AWAIT"
@@ -132,12 +133,14 @@ const (
 type Token struct {
 	Type   TokenType
 	Lexeme string
+	File   string
 	Line   int
 	Column int
 }
 
 type Lexer struct {
 	input  []rune
+	file   string
 	pos    int
 	line   int
 	column int
@@ -150,7 +153,11 @@ type State struct {
 }
 
 func New(input string) *Lexer {
-	return &Lexer{input: []rune(input), line: 1, column: 1}
+	return NewWithFile(input, "")
+}
+
+func NewWithFile(input string, file string) *Lexer {
+	return &Lexer{input: []rune(input), file: file, line: 1, column: 1}
 }
 
 func (l *Lexer) Snapshot() State {
@@ -171,17 +178,17 @@ func (l *Lexer) NextToken() Token {
 	ch := l.peek()
 
 	if ch == 0 {
-		return Token{Type: EOF, Line: line, Column: column}
+		return l.token(EOF, "", line, column)
 	}
 
 	if isLetter(ch) {
 		lit := l.readIdentifier()
-		return Token{Type: lookupIdent(lit), Lexeme: lit, Line: line, Column: column}
+		return l.token(lookupIdent(lit), lit, line, column)
 	}
 
 	if isDigit(ch) {
 		lit, typ := l.readNumber()
-		return Token{Type: typ, Lexeme: lit, Line: line, Column: column}
+		return l.token(typ, lit, line, column)
 	}
 
 	if ch == '$' && l.peekNext() == '"' {
@@ -402,7 +409,7 @@ func (l *Lexer) readLineComment() Token {
 		l.advance()
 	}
 
-	return Token{Type: COMMENT, Lexeme: string(l.input[start:l.pos]), Line: line, Column: column}
+	return l.token(COMMENT, string(l.input[start:l.pos]), line, column)
 }
 
 func (l *Lexer) readBlockComment() Token {
@@ -413,7 +420,7 @@ func (l *Lexer) readBlockComment() Token {
 
 	for {
 		if l.peek() == 0 {
-			return Token{Type: ILLEGAL, Lexeme: string(l.input[start:l.pos]), Line: line, Column: column}
+			return l.token(ILLEGAL, string(l.input[start:l.pos]), line, column)
 		}
 
 		if l.peek() == '/' && l.peekNext() == '*' {
@@ -429,7 +436,7 @@ func (l *Lexer) readBlockComment() Token {
 			depth--
 
 			if depth == 0 {
-				return Token{Type: COMMENT, Lexeme: string(l.input[start:l.pos]), Line: line, Column: column}
+				return l.token(COMMENT, string(l.input[start:l.pos]), line, column)
 			}
 			continue
 		}
@@ -522,7 +529,7 @@ func (l *Lexer) readLeadingDotNumber() Token {
 		l.advance()
 	}
 
-	return Token{Type: FLOAT, Lexeme: string(l.input[start:l.pos]), Line: line, Column: column}
+	return l.token(FLOAT, string(l.input[start:l.pos]), line, column)
 }
 
 func (l *Lexer) readPlainString() Token {
@@ -531,10 +538,10 @@ func (l *Lexer) readPlainString() Token {
 	lit, ok := l.readStringBody(false)
 
 	if !ok {
-		return Token{Type: ILLEGAL, Lexeme: lit, Line: line, Column: column}
+		return l.token(ILLEGAL, lit, line, column)
 	}
 
-	return Token{Type: STRING, Lexeme: lit, Line: line, Column: column}
+	return l.token(STRING, lit, line, column)
 }
 
 func (l *Lexer) readCharLiteral() Token {
@@ -546,7 +553,7 @@ func (l *Lexer) readCharLiteral() Token {
 	for {
 		ch := l.peek()
 		if ch == 0 || ch == '\n' {
-			return Token{Type: ILLEGAL, Lexeme: string(l.input[start:l.pos]), Line: line, Column: column}
+			return l.token(ILLEGAL, string(l.input[start:l.pos]), line, column)
 		}
 		if ch == '\\' {
 			l.advance()
@@ -557,7 +564,7 @@ func (l *Lexer) readCharLiteral() Token {
 		}
 		if ch == '\'' {
 			l.advance()
-			return Token{Type: CHAR, Lexeme: string(l.input[start:l.pos]), Line: line, Column: column}
+			return l.token(CHAR, string(l.input[start:l.pos]), line, column)
 		}
 		l.advance()
 	}
@@ -574,11 +581,11 @@ func (l *Lexer) readRawString() Token {
 	}
 
 	if l.peek() != '`' {
-		return Token{Type: ILLEGAL, Lexeme: string(l.input[start:l.pos]), Line: line, Column: column}
+		return l.token(ILLEGAL, string(l.input[start:l.pos]), line, column)
 	}
 
 	l.advance()
-	return Token{Type: RAW_STRING, Lexeme: string(l.input[start:l.pos]), Line: line, Column: column}
+	return l.token(RAW_STRING, string(l.input[start:l.pos]), line, column)
 }
 
 func (l *Lexer) readPrefixedString(typ TokenType) Token {
@@ -590,10 +597,10 @@ func (l *Lexer) readPrefixedString(typ TokenType) Token {
 
 	lit, ok := l.readStringBody(true)
 	if !ok {
-		return Token{Type: ILLEGAL, Lexeme: string(l.input[start:l.pos]), Line: line, Column: column}
+		return l.token(ILLEGAL, string(l.input[start:l.pos]), line, column)
 	}
 
-	return Token{Type: typ, Lexeme: "$" + lit, Line: line, Column: column}
+	return l.token(typ, "$"+lit, line, column)
 }
 
 func (l *Lexer) readStringBody(prefixed bool) (string, bool) {
@@ -635,7 +642,7 @@ func (l *Lexer) readOne(typ TokenType) Token {
 	ch := l.peek()
 	l.advance()
 
-	return Token{Type: typ, Lexeme: string(ch), Line: line, Column: column}
+	return l.token(typ, string(ch), line, column)
 }
 
 func (l *Lexer) readTwo(typ TokenType) Token {
@@ -646,7 +653,7 @@ func (l *Lexer) readTwo(typ TokenType) Token {
 	second := l.peek()
 	l.advance()
 
-	return Token{Type: typ, Lexeme: string([]rune{first, second}), Line: line, Column: column}
+	return l.token(typ, string([]rune{first, second}), line, column)
 }
 
 func (l *Lexer) readThree(typ TokenType) Token {
@@ -659,7 +666,11 @@ func (l *Lexer) readThree(typ TokenType) Token {
 	third := l.peek()
 	l.advance()
 
-	return Token{Type: typ, Lexeme: string([]rune{first, second, third}), Line: line, Column: column}
+	return l.token(typ, string([]rune{first, second, third}), line, column)
+}
+
+func (l *Lexer) token(typ TokenType, lexeme string, line int, column int) Token {
+	return Token{Type: typ, Lexeme: lexeme, File: l.file, Line: line, Column: column}
 }
 
 func (l *Lexer) peek() rune {
@@ -698,6 +709,8 @@ func (l *Lexer) advance() rune {
 
 func lookupIdent(s string) TokenType {
 	switch s {
+	case "arena":
+		return ARENA
 	case "asm":
 		return ASM
 	case "assert":

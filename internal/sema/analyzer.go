@@ -126,13 +126,23 @@ func (a *Analyzer) withProgramModules(program *ast.Program, visit func(ast.State
 }
 
 func (a *Analyzer) validateModuleDeclaration(program *ast.Program) {
+	firstByFileAndPath := map[string]*ast.ModuleStatement{}
+	found := false
 	for _, stmt := range program.Statements {
 		if moduleStmt, ok := stmt.(*ast.ModuleStatement); ok && moduleStmt.Path != "" {
-			return
+			found = true
+			key := moduleStmt.Token.File + "\x00" + moduleStmt.Path
+			if previous := firstByFileAndPath[key]; previous != nil {
+				a.addErrorAtTokenWithPrevious(moduleStmt.Token, previous.Token, "duplicate module declaration %s", moduleStmt.Path)
+				continue
+			}
+			firstByFileAndPath[key] = moduleStmt
 		}
 	}
 
-	a.errors = append(a.errors, Error{Message: "missing module declaration"})
+	if !found {
+		a.errors = append(a.errors, Error{Message: "missing module declaration"})
+	}
 }
 
 func isAllowedModuleStatement(stmt ast.Statement) bool {
@@ -185,8 +195,7 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 				return
 			}
 			if previous, exists := seenUnits[stmt.Name.Value]; exists {
-				_ = previous
-				a.addErrorAtToken(stmt.Name.Token, "unit %s already declared", stmt.Name.Value)
+				a.addErrorAtTokenWithPrevious(stmt.Name.Token, previous, "unit %s already declared", stmt.Name.Value)
 				return
 			}
 			seenUnits[stmt.Name.Value] = stmt.Name.Token
@@ -195,11 +204,19 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 				dimension = dimensionFromBase(stmt.Name.Value, 1)
 			}
 			category := OtherUnit
+			defaultNumeric := "decimal"
+			status := StatusActive
 			if existing, ok := a.units[stmt.Name.Value]; ok {
 				category = existing.Category
 				dimension = existing.Dimension
+				if existing.DefaultNumeric != "" {
+					defaultNumeric = existing.DefaultNumeric
+				}
+				if existing.Status != "" {
+					status = existing.Status
+				}
 			}
-			a.units[stmt.Name.Value] = UnitDefinition{Name: stmt.Name.Value, Category: category, Dimension: dimension, Token: stmt.Name.Token}
+			a.units[stmt.Name.Value] = UnitDefinition{Name: stmt.Name.Value, Category: category, Dimension: dimension, DefaultNumeric: defaultNumeric, Status: status, Token: stmt.Name.Token}
 			a.types[stmt.Name.Value] = Type{Name: stmt.Name.Value, Module: a.currentModule, Kind: InvalidType}
 		case *ast.EnumDeclaration:
 			if stmt.Name == nil {
@@ -314,8 +331,7 @@ func (a *Analyzer) registerImplTypeDeclarations(program *ast.Program) {
 			continue
 		}
 		if previous, exists := a.implBlocks[impl.Target.Name]; exists {
-			_ = previous
-			a.addErrorAtToken(impl.Target.Token, "duplicate impl block for %s", impl.Target.Name)
+			a.addErrorAtTokenWithPrevious(impl.Target.Token, previous, "duplicate impl block for %s", impl.Target.Name)
 			continue
 		}
 		a.implBlocks[impl.Target.Name] = impl.Target.Token
@@ -423,11 +439,11 @@ func typeReferenceDisplayName(ref *ast.TypeReference) string {
 		return "<nil>"
 	}
 	if ref.ElementType != nil {
-		prefix := "[]"
-		if ref.ArrayLength > 0 {
-			prefix = fmt.Sprintf("[%d]", ref.ArrayLength)
+		element := typeReferenceDisplayName(ref.ElementType)
+		if ref.Slice {
+			return element + "[]"
 		}
-		return prefix + typeReferenceDisplayName(ref.ElementType)
+		return fmt.Sprintf("%s[%d]", element, ref.ArrayLength)
 	}
 	out := ref.Name
 	if len(ref.TypeArgs) > 0 {
@@ -518,9 +534,10 @@ func (a *Analyzer) analyzeUnitMetadata(program *ast.Program) {
 			if !ok {
 				continue
 			}
-			switch metadata.Name {
+			value := unitMetadataValueTokens(metadata.Value)
+			switch normalizeUnitMetadataName(metadata.Name) {
 			case "dimension":
-				dimension, ok := parseUnitMetadataDimension(metadata.Value)
+				dimension, ok := parseUnitMetadataDimension(value)
 				if !ok {
 					a.addErrorAtToken(metadata.Token, "invalid dimension metadata for unit %s", impl.Target.Name)
 					continue
@@ -528,16 +545,51 @@ func (a *Analyzer) analyzeUnitMetadata(program *ast.Program) {
 				unit.Dimension = dimension
 				changed = true
 			case "system":
-				if len(metadata.Value) != 1 || metadata.Value[0].Type != lexer.IDENT {
+				if len(value) != 1 || value[0].Type != lexer.IDENT {
 					a.addErrorAtToken(metadata.Token, "invalid system metadata for unit %s", impl.Target.Name)
 					continue
 				}
-				unit.System = metadata.Value[0].Lexeme
+				unit.System = value[0].Lexeme
 				changed = true
 			case "scale":
-				if len(metadata.Value) == 0 {
+				if len(value) == 0 {
 					a.addErrorAtToken(metadata.Token, "invalid scale metadata for unit %s", impl.Target.Name)
+					continue
 				}
+				unit.Scale = tokensDisplay(value)
+				changed = true
+			case "longname":
+				text, ok := parseUnitMetadataString(value)
+				if !ok {
+					a.addErrorAtToken(metadata.Token, "invalid long_name metadata for unit %s", impl.Target.Name)
+					continue
+				}
+				unit.LongName = text
+				changed = true
+			case "symbol":
+				text, ok := parseUnitMetadataString(value)
+				if !ok {
+					a.addErrorAtToken(metadata.Token, "invalid symbol metadata for unit %s", impl.Target.Name)
+					continue
+				}
+				unit.Symbol = text
+				changed = true
+			case "baseunit":
+				baseUnit, ok := parseUnitMetadataBool(value)
+				if !ok {
+					a.addErrorAtToken(metadata.Token, "invalid base_unit metadata for unit %s", impl.Target.Name)
+					continue
+				}
+				unit.IsBaseUnit = baseUnit
+				changed = true
+			case "status":
+				status, ok := parseUnitMetadataStatus(value)
+				if !ok {
+					a.addErrorAtToken(metadata.Token, "invalid status metadata for unit %s", impl.Target.Name)
+					continue
+				}
+				unit.Status = status
+				changed = true
 			}
 		}
 		if !changed {
@@ -550,6 +602,74 @@ func (a *Analyzer) analyzeUnitMetadata(program *ast.Program) {
 			a.types[impl.Target.Name] = typ
 		}
 	}
+}
+
+func unitMetadataValueTokens(tokens []lexer.Token) []lexer.Token {
+	out := make([]lexer.Token, 0, len(tokens))
+	for _, token := range tokens {
+		if token.Type == lexer.COMMENT {
+			continue
+		}
+		out = append(out, token)
+	}
+	return out
+}
+
+func normalizeUnitMetadataName(name string) string {
+	return strings.ReplaceAll(strings.ToLower(name), "_", "")
+}
+
+func parseUnitMetadataString(tokens []lexer.Token) (string, bool) {
+	if len(tokens) != 1 {
+		return "", false
+	}
+	switch tokens[0].Type {
+	case lexer.STRING:
+		value, err := strconv.Unquote(tokens[0].Lexeme)
+		if err != nil {
+			return "", false
+		}
+		return value, true
+	case lexer.IDENT:
+		return tokens[0].Lexeme, true
+	default:
+		return "", false
+	}
+}
+
+func parseUnitMetadataBool(tokens []lexer.Token) (bool, bool) {
+	if len(tokens) != 1 {
+		return false, false
+	}
+	switch tokens[0].Type {
+	case lexer.TRUE:
+		return true, true
+	case lexer.FALSE:
+		return false, true
+	default:
+		return false, false
+	}
+}
+
+func parseUnitMetadataStatus(tokens []lexer.Token) (UnitStatus, bool) {
+	if len(tokens) != 1 || tokens[0].Type != lexer.IDENT {
+		return "", false
+	}
+	status := UnitStatus(tokens[0].Lexeme)
+	switch status {
+	case StatusActive, StatusDeprecated, StatusObsolete:
+		return status, true
+	default:
+		return "", false
+	}
+}
+
+func tokensDisplay(tokens []lexer.Token) string {
+	parts := make([]string, 0, len(tokens))
+	for _, token := range tokens {
+		parts = append(parts, token.Lexeme)
+	}
+	return strings.Join(parts, " ")
 }
 
 func parseUnitMetadataDimension(tokens []lexer.Token) (Dimension, bool) {
@@ -931,6 +1051,10 @@ func (a *Analyzer) inferForIterableBindingTypes(stmt *ast.ForStatement) ([]Type,
 		iterableType, _ := a.inferExpression(iterable)
 		if iterableType.Kind == InvalidType {
 			return nil, false
+		}
+		if iterableType.Kind == ReferenceType && iterableType.Element != nil &&
+			(iterableType.Element.Kind == ArrayType || iterableType.Element.Kind == SliceType) {
+			iterableType = *iterableType.Element
 		}
 		indexType := Type{Name: "int", Kind: IntType}
 		if iterableType.Kind == StringType {
@@ -1596,6 +1720,10 @@ func (a *Analyzer) registerFunctionDeclarationBody(fn *ast.FunctionDeclaration, 
 		if !ok {
 			continue
 		}
+		if isBareSliceType(paramType) {
+			a.addErrorAtToken(param.Type.Token, "bare slice type %s must be used behind ref", typeDisplayName(paramType))
+			continue
+		}
 		function.Parameters = append(function.Parameters, FunctionParameter{
 			Name:       param.Name.Value,
 			Type:       paramType,
@@ -1607,6 +1735,10 @@ func (a *Analyzer) registerFunctionDeclarationBody(fn *ast.FunctionDeclaration, 
 
 	returnType, ok := a.resolveType(fn.ReturnType)
 	if ok {
+		if isBareSliceType(returnType) {
+			a.addErrorAtToken(fn.ReturnType.Token, "bare slice type %s must be used behind ref", typeDisplayName(returnType))
+			returnType = Type{Kind: InvalidType}
+		}
 		function.ReturnType = returnType
 	} else {
 		function.ReturnType = Type{Kind: InvalidType}
@@ -1614,7 +1746,7 @@ func (a *Analyzer) registerFunctionDeclarationBody(fn *ast.FunctionDeclaration, 
 
 	for _, existing := range a.functions[name] {
 		if sameFunctionSignature(existing, function) {
-			a.addErrorAtToken(fn.Name.Token, "duplicate function %q with same signature", name)
+			a.addErrorAtTokenWithPrevious(fn.Name.Token, existing.Token, "duplicate function %q with same signature", name)
 			return
 		}
 	}
@@ -1708,7 +1840,9 @@ func (a *Analyzer) analyzeFunctionBodyInScope(fn *ast.FunctionDeclaration, name 
 	}
 	if function.Extern {
 		a.validateExternFunction(function)
-		return
+		if fn.Body == nil {
+			return
+		}
 	}
 
 	previousSymbols := a.symbols
@@ -2418,10 +2552,14 @@ func (a *Analyzer) analyzeUnitDeclaration(stmt *ast.UnitDeclStatement) {
 	unitName := stmt.Name.Value
 	unit := a.units[unitName]
 	if unit.Name == "" {
-		unit = UnitDefinition{Name: unitName, Category: OtherUnit, Dimension: dimensionFromBase(unitName, 1), Token: stmt.Name.Token}
+		unit = UnitDefinition{Name: unitName, Category: OtherUnit, Dimension: dimensionFromBase(unitName, 1), DefaultNumeric: "decimal", Status: StatusActive, Token: stmt.Name.Token}
 	}
 	if stmt.Category != "" {
 		unit.Category = UnitCategory(stmt.Category)
+	}
+	unit.DefaultNumeric = baseType.Name
+	if unit.Status == "" {
+		unit.Status = StatusActive
 	}
 	if stmt.BaseType.Unit != "" {
 		unit.Dimension = a.parseDimension(stmt.BaseType.Unit)
@@ -2604,6 +2742,10 @@ func (a *Analyzer) typeFromStructDeclarationWithName(name string, stmt *ast.Type
 
 		fieldType, ok := a.resolveType(field.Type)
 		if !ok {
+			continue
+		}
+		if isBareSliceType(fieldType) {
+			a.addErrorAtToken(field.Type.Token, "bare slice type %s must be used behind ref", typeDisplayName(fieldType))
 			continue
 		}
 		if contract, ok := field.Contract.(*ast.RangeContract); ok {
@@ -2881,8 +3023,8 @@ func (a *Analyzer) typeFromEnumDeclaration(name string, enum *ast.EnumDeclaratio
 	seen := map[string]lexer.Token{}
 	previous := big.NewInt(-1)
 	for i, value := range enum.Values {
-		if _, exists := seen[value.Name.Value]; exists {
-			a.addErrorAtToken(value.Token, "duplicate enum value %q in enum %s", value.Name.Value, name)
+		if previousToken, exists := seen[value.Name.Value]; exists {
+			a.addErrorAtTokenWithPrevious(value.Token, previousToken, "duplicate enum value %q in enum %s", value.Name.Value, name)
 			continue
 		}
 		seen[value.Name.Value] = value.Token
@@ -3528,7 +3670,11 @@ func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
 	var declaredType Type
 	var ok bool
 
-	if stmt.Type != nil {
+	if stmt.Type != nil && stmt.Type.UnitOnly && stmt.Value != nil {
+		valueType, _ := a.inferExpression(stmt.Value)
+		preferred := preferredUnitOnlyNumeric(stmt.Value, valueType)
+		declaredType, ok = a.resolveUnitOnlyType(stmt.Type, preferred)
+	} else if stmt.Type != nil {
 		declaredType, ok = a.resolveType(stmt.Type)
 	} else if stmt.Value != nil {
 		declaredType, _ = a.inferExpression(stmt.Value)
@@ -3536,6 +3682,12 @@ func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
 	}
 
 	defined := false
+	if ok {
+		if isBareSliceType(declaredType) {
+			a.addErrorAtToken(stmt.Type.Token, "bare slice type %s must be used behind ref", typeDisplayName(declaredType))
+			ok = false
+		}
+	}
 	if ok {
 		defined = a.defineSymbol(stmt.Name.Value, declaredType, stmt.Mutable, stmt.Name.Token)
 		if defined {
@@ -3762,6 +3914,10 @@ func (a *Analyzer) resolveType(ref *ast.TypeReference) (Type, bool) {
 		return Type{Kind: InvalidType}, false
 	}
 
+	if ref.UnitOnly {
+		return a.resolveUnitOnlyType(ref, "")
+	}
+
 	if ref.Ref {
 		innerRef := *ref
 		innerRef.Ref = false
@@ -3800,16 +3956,16 @@ func (a *Analyzer) resolveType(ref *ast.TypeReference) (Type, bool) {
 		if !ok {
 			return Type{Kind: InvalidType}, false
 		}
-		if ref.ArrayLength > 0 {
+		if !ref.Slice {
 			return Type{
-				Name:        fmt.Sprintf("[%d]%s", ref.ArrayLength, typeDisplayName(element)),
+				Name:        fmt.Sprintf("%s[%d]", typeDisplayName(element), ref.ArrayLength),
 				Kind:        ArrayType,
 				Element:     &element,
 				ArrayLength: ref.ArrayLength,
 			}, true
 		}
 		return Type{
-			Name:    "[]" + typeDisplayName(element),
+			Name:    typeDisplayName(element) + "[]",
 			Kind:    SliceType,
 			Element: &element,
 		}, true
@@ -3864,9 +4020,39 @@ func (a *Analyzer) resolveType(ref *ast.TypeReference) (Type, bool) {
 	}
 
 	typ.TypeArgs = typeArgs
+	if ref.Unit != "" {
+		a.warnUnitStatus(ref.Token, ref.Unit)
+		typ.Unit = ref.Unit
+		typ.Dimension = a.parseDimension(ref.Unit)
+	}
 	if (typ.Kind == StructType || typ.Kind == UnionType) && len(typ.GenericParameters) > 0 {
 		typ = a.instantiateGenericType(typ)
 	}
+	return typ, true
+}
+
+func (a *Analyzer) resolveUnitOnlyType(ref *ast.TypeReference, preferredNumeric string) (Type, bool) {
+	unit, ok := a.units[ref.Unit]
+	if !ok {
+		a.addErrorAtToken(ref.Token, "unknown unit %s", ref.Unit)
+		return Type{Kind: InvalidType}, false
+	}
+	numeric := preferredNumeric
+	if numeric == "" {
+		numeric = unit.DefaultNumeric
+	}
+	if numeric == "" {
+		numeric = "decimal"
+	}
+	baseType, ok := a.types[numeric]
+	if !ok || !isNumericType(baseType) {
+		a.addErrorAtToken(ref.Token, "unit %s has invalid default numeric type %s", ref.Unit, numeric)
+		return Type{Kind: InvalidType}, false
+	}
+	a.warnUnitStatus(ref.Token, ref.Unit)
+	typ := baseType
+	typ.Unit = ref.Unit
+	typ.Dimension = unit.Dimension
 	return typ, true
 }
 
@@ -4443,7 +4629,7 @@ func (a *Analyzer) inferEnumValueExpression(expr *ast.MemberExpression) (Type, b
 		return Type{}, false
 	}
 	if _, ok := typ.EnumConsts[expr.Property.Value]; !ok {
-		a.addErrorAtToken(expr.Property.Token, "unknown enum value %s.%s", typeName, expr.Property.Value)
+		a.addErrorAtToken(expr.Property.Token, "unknown enum value: %s.%s has never been declared", typeName, expr.Property.Value)
 		return Type{Kind: InvalidType}, true
 	}
 	return typ, true
@@ -4576,8 +4762,9 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 		return a.inferFunctionValueCall(expr, Type{Kind: InvalidType})
 	}
 
-	methodReceiver, isMethodCall := a.methodCallReceiver(expr)
 	functions, ok := a.functions[name]
+	methodReceiver := methodReceiverInfo{}
+	isMethodCall := false
 	if !ok || len(functions) == 0 {
 		if implName, implOK := a.implScopedFunctionName(name); implOK {
 			if implFunctions := a.functions[implName]; len(implFunctions) > 0 {
@@ -4590,6 +4777,10 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 	if !ok || len(functions) == 0 {
 		if methodName, methodOK := a.methodCallName(expr); methodOK {
 			if methodFunctions := a.functions[methodName]; len(methodFunctions) > 0 {
+				methodReceiver, isMethodCall = a.methodCallReceiver(expr)
+				if !isMethodCall {
+					return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+				}
 				name = methodName
 				functions = methodFunctions
 				ok = true
@@ -6503,25 +6694,54 @@ func (a *Analyzer) addError(format string, args ...any) {
 func (a *Analyzer) addErrorAtToken(token lexer.Token, format string, args ...any) {
 	a.errors = append(a.errors, Error{
 		Message: fmt.Sprintf(format, args...),
+		File:    token.File,
 		Line:    token.Line,
 		Column:  token.Column,
+	})
+}
+
+func (a *Analyzer) addErrorAtTokenWithPrevious(token lexer.Token, previous lexer.Token, format string, args ...any) {
+	a.errors = append(a.errors, Error{
+		Message:        fmt.Sprintf(format, args...),
+		File:           token.File,
+		Line:           token.Line,
+		Column:         token.Column,
+		PreviousFile:   previous.File,
+		PreviousLine:   previous.Line,
+		PreviousColumn: previous.Column,
 	})
 }
 
 func (a *Analyzer) addWarningAtToken(token lexer.Token, format string, args ...any) {
 	a.warnings = append(a.warnings, Error{
 		Message: fmt.Sprintf(format, args...),
+		File:    token.File,
 		Line:    token.Line,
 		Column:  token.Column,
 	})
+}
+
+func (a *Analyzer) warnUnitStatus(token lexer.Token, unitName string) {
+	unit, ok := a.units[unitName]
+	if !ok {
+		return
+	}
+	switch unit.Status {
+	case StatusDeprecated:
+		a.addWarningAtToken(token, "unit %s is deprecated", unitName)
+	case StatusObsolete:
+		a.addWarningAtToken(token, "unit %s is obsolete", unitName)
+	}
 }
 
 func (a *Analyzer) defineSymbol(name string, typ Type, mutable bool, token lexer.Token) bool {
 	if previous, exists := a.symbols[name]; exists {
 		a.errors = append(a.errors, Error{
 			Message:        fmt.Sprintf("variable %q already declared", name),
+			File:           token.File,
 			Line:           token.Line,
 			Column:         token.Column,
+			PreviousFile:   previous.Token.File,
 			PreviousLine:   previous.Token.Line,
 			PreviousColumn: previous.Token.Column,
 		})
@@ -6615,6 +6835,37 @@ func canInitialize(target Type, value Type, expr ast.Expression) bool {
 	return false
 }
 
+func preferredUnitOnlyNumeric(expr ast.Expression, valueType Type) string {
+	switch expr := expr.(type) {
+	case *ast.IntegerLiteral:
+		switch expr.Suffix() {
+		case "i":
+			return "int"
+		case "u":
+			return "uint"
+		case "f":
+			return "float"
+		case "d":
+			return "decimal"
+		default:
+			return ""
+		}
+	case *ast.FloatLiteral:
+		switch expr.Suffix() {
+		case "f":
+			return "float"
+		case "d":
+			return "decimal"
+		default:
+			return ""
+		}
+	}
+	if isNumericType(valueType) {
+		return valueType.Name
+	}
+	return ""
+}
+
 func canUntypedNumericInitializeNominal(target Type, value Type, expr ast.Expression) bool {
 	if !isUntypedNumericExpression(expr) {
 		return false
@@ -6661,7 +6912,7 @@ func canExplicitConvert(target Type, value Type) bool {
 	if target.Kind == RawPtrType && (value.Kind == UintType || value.Kind == RawPtrType || value.Kind == ReferenceType) {
 		return true
 	}
-	if target.Kind == UintType && value.Kind == RawPtrType {
+	if target.Kind == UintType && (value.Kind == RawPtrType || value.Kind == ReferenceType) {
 		return true
 	}
 
@@ -6677,7 +6928,11 @@ func canExplicitConvert(target Type, value Type) bool {
 		return true
 	}
 
-	if target.Kind == DecimalType && (value.Kind == IntType || value.Kind == FloatType) {
+	if target.Kind == FloatType && isNumericType(value) {
+		return true
+	}
+
+	if target.Kind == DecimalType && isNumericType(value) {
 		return true
 	}
 
@@ -6703,6 +6958,18 @@ func isNumericType(typ Type) bool {
 func sameConcreteType(left Type, right Type) bool {
 	if left.Kind == FunctionType || right.Kind == FunctionType {
 		return sameFunctionType(left, right)
+	}
+	if left.Unit != "" || right.Unit != "" {
+		return left.Kind == right.Kind &&
+			left.Name == right.Name &&
+			left.Unit == right.Unit &&
+			sameTypeArguments(left.TypeArgs, right.TypeArgs)
+	}
+	if !left.Dimension.IsZero() || !right.Dimension.IsZero() {
+		return left.Kind == right.Kind &&
+			left.Name == right.Name &&
+			left.Dimension.Equal(right.Dimension) &&
+			sameTypeArguments(left.TypeArgs, right.TypeArgs)
 	}
 	if left.Name != "" || right.Name != "" {
 		return left.Name == right.Name && sameTypeArguments(left.TypeArgs, right.TypeArgs)
@@ -6858,10 +7125,10 @@ func typeDisplayName(typ Type) string {
 		return "ref " + typeDisplayName(*typ.Element)
 	}
 	if typ.Kind == ArrayType && typ.Element != nil {
-		return fmt.Sprintf("[%d]%s", typ.ArrayLength, typeDisplayName(*typ.Element))
+		return fmt.Sprintf("%s[%d]", typeDisplayName(*typ.Element), typ.ArrayLength)
 	}
 	if typ.Kind == SliceType && typ.Element != nil {
-		return "[]" + typeDisplayName(*typ.Element)
+		return typeDisplayName(*typ.Element) + "[]"
 	}
 	if typ.Kind == FunctionType {
 		return functionTypeName(typ.FunctionParameterTypes, functionReturnType(typ))
@@ -6877,10 +7144,17 @@ func typeDisplayName(typ Type) string {
 		out += "]"
 		return out
 	}
+	if typ.Name != "" && typ.Unit != "" && !typ.Named && typ.Name != typ.Unit {
+		return typ.Name + "<" + typ.Unit + ">"
+	}
 	if typ.Name != "" {
 		return typ.Name
 	}
 	return string(typ.Kind)
+}
+
+func isBareSliceType(typ Type) bool {
+	return typ.Kind == SliceType
 }
 
 func functionReturnType(typ Type) Type {

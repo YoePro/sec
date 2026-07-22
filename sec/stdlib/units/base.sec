@@ -1,61 +1,457 @@
 module units
 
 // =============================================================================
-// Seven SI base units
+// The Seven SI Base Units
 // =============================================================================
 
 /** Metre or meter */
-unit m decimal physical
+unit m physical
 impl m {
-    dimension: [length^1]
-    scale: 1
-    system: SI
+    LongName: "Meter"
+    Symbol: "m"
+    BaseUnit: true
+    Status: active
+    Dimension: [length^1]
+    Scale: 1
+    System: SI
 }
 
 /** Kilogram */
-unit kg decimal physical
+unit kg physical
 impl kg {
-    dimension: [mass^1]
-    scale: 1
-    system: SI
+    LongName: "Kilogram"
+    Symbol: "kg"
+    BaseUnit: true
+    Status: active
+    Dimension: [mass^1]
+    Scale: 1
+    System: SI
 }
 
 /** Second */
-unit s decimal physical
+unit s physical
 impl s {
-    dimension: [time^1]
-    scale: 1
-    system: SI
+    LongName: "Second"
+    Symbol: "s"
+    BaseUnit: true
+    Status: active
+    Dimension: [time^1]
+    Scale: 1
+    System: SI
 }
 
 /** Ampere */
-unit A decimal physical
+unit A physical
 impl A {
-    dimension: [electric_current^1]
-    scale: 1
-    system: SI
+    LongName: "Ampere"
+    Symbol: "A"
+    BaseUnit: true
+    Status: active
+    Dimension: [electric_current^1]
+    Scale: 1
+    System: SI
 }
 
 /** Kelvin */
-unit K decimal physical
+unit K physical
 impl K {
-    dimension: [thermodynamic_temperature^1]
-    scale: 1
-    system: SI
+    LongName: "Kelvin"
+    Symbol: "K"
+    BaseUnit: true
+    Status: active
+    Dimension: [thermodynamic_temperature^1]
+    Scale: 1
+    System: SI
 }
 
 /** Mol */
-unit mol decimal physical
+unit mol physical
 impl mol {
-    dimension: [amount_of_substance^1]
-    scale: 1
-    system: SI
+    LongName: "Mole"
+    Symbol: "mol"
+    BaseUnit: true
+    Status: active
+    Dimension: [amount_of_substance^1]
+    Scale: 1
+    System: SI
 }
 
 /** Candela */
-unit cd decimal physical
+unit cd physical
 impl cd {
-    dimension: [luminous_intensity^1]
-    scale: 1
-    system: SI
+    LongName: "Candela"
+    Symbol: "cd"
+    BaseUnit: true
+    Status: active
+    Dimension: [luminous_intensity^1]
+    Scale: 1
+    System: SI
+}
+
+// Scales
+
+/** Nanometer */
+unit nm physical
+impl nm {
+    LongName: "Nanometer"
+    Symbol: "nm"
+    BaseUnit: false
+    Status: active
+    Dimension: [length^1]
+    Scale: 1 / 1000000000
+    System: SI
+}
+
+/** Micrometer */
+unit um physical
+impl um {
+    LongName: "Micrometer"
+    Symbol: "um"
+    BaseUnit: false
+    Status: active
+    Dimension: [length^1]
+    Scale: 1 / 1000000
+    System: SI
+}
+
+/** Millimeter */
+unit mm physical
+impl mm {
+    LongName: "Millimeter"
+    Symbol: "mm"
+    BaseUnit: false
+    Status: active
+    Dimension: [length^1]
+    Scale: 1 / 1000
+    System: SI
+}
+
+/** Centimeter */
+unit cm physical
+impl cm {
+    LongName: "Centimeter"
+    Symbol: "cm"
+    BaseUnit: false
+    Status: active
+    Dimension: [length^1]
+    Scale: 1 / 100
+    System: SI
+}
+
+/** Decimeter */
+unit dm physical
+impl dm {
+    LongName: "Decimeter"
+    Symbol: "dm"
+    BaseUnit: false
+    Status: active
+    Dimension: [length^1]
+    Scale: 1 / 10
+    System: SI
+}
+
+/** Kilometer */
+unit km physical
+impl km {
+    LongName: "Kilometer"
+    Symbol: "km"
+    BaseUnit: false
+    Status: active
+    Dimension: [length^1]
+    Scale: 1000
+    System: SI
+}
+
+// =============================================================================
+// Scaled Mass Units (kg)
+// =============================================================================
+
+/** Hektogram */
+unit hg physical
+impl hg {
+    LongName: "Hektogram"
+    Symbol: "hg"
+    BaseUnit: false
+    Status: active
+    Dimension: [mass^1]
+    Scale: 1/10
+    System: SI
+}
+
+/** Gram */
+unit g physical
+impl g {
+    LongName: "Gram"
+    Symbol: "g"
+    BaseUnit: false
+    Status: active
+    Dimension: [mass^1]
+    Scale: 1 / 1000
+    System: SI
+
+}
+
+/** Milligram */
+unit mg physical
+impl mg {
+    LongName: "Milligram"
+    Symbol: "mg"
+    BaseUnit: false
+    Status: active
+    Dimension: [mass^1]
+    Scale: 1 / 1000000
+    System: SI
+
+}
+
+// =============================================================================
+// Large-Scale Mass Units (kg)
+// =============================================================================
+
+/** Tonne or Metric Ton */
+unit t physical
+impl t {
+    LongName: "Tonne"
+    Symbol: "t"
+    BaseUnit: false
+    Status: active
+    Dimension: [mass^1]
+    Scale: 1000
+    System: SI
+}
+
+/** Kilotonne */
+unit kt physical
+impl kt {
+    LongName: "Kilotonne"
+    Symbol: "kt"
+    BaseUnit: false
+    Status: active
+    Dimension: [mass^1]
+    Scale: 1000000
+    System: SI
+}
+
+/** Megatonne */
+unit Mt physical
+impl Mt {
+    LongName: "Megatonne"
+    Symbol: "Mt"
+    BaseUnit: false
+    Status: active
+    Dimension: [mass^1]
+    Scale: 1000000000
+    System: SI
+}
+
+// =============================================================================
+// Scaled Time Units (s)
+// =============================================================================
+
+/** Millisecond */
+unit ms physical
+impl ms {
+    LongName: "Millisecond"
+    Symbol: "ms"
+    BaseUnit: false
+    Status: active
+    Dimension: [time^1]
+    Scale: 1 / 1000
+    System: SI
+}
+
+/** Microsecond */
+unit us physical
+impl us {
+    LongName: "Microsecond"
+    Symbol: "us"
+    BaseUnit: false
+    Status: active
+    Dimension: [time^1]
+    Scale: 1 / 1000000
+    System: SI
+}
+
+/** Nanosecond */
+unit ns physical
+impl ns {
+    LongName: "Nanosecond"
+    Symbol: "ns"
+    BaseUnit: false
+    Status: active
+    Dimension: [time^1]
+    Scale: 1 / 1000000000
+    System: SI
+}
+
+/** Picosecond */
+unit ps physical
+impl ps {
+    LongName: "Picosecond"
+    Symbol: "ps"
+    BaseUnit: false
+    Status: active
+    Dimension: [time^1]
+    Scale: 1 / 1000000000000
+    System: SI
+}
+
+/** Femtosecond */
+unit fs physical
+impl fs {
+    LongName: "Femtosecond"
+    Symbol: "fs"
+    BaseUnit: false
+    Status: active
+    Dimension: [time^1]
+    Scale: 1 / 1000000000000000
+    System: SI
+}
+
+// =============================================================================
+// Scaled Current Units (A)
+// =============================================================================
+
+/** Megaampere - Used in plasma physics and lightning research */
+unit MA physical
+impl MA {
+    LongName: "Megaampere"
+    Symbol: "MA"
+    BaseUnit: false
+    Status: active
+    Dimension: [electric_current^1]
+    Scale: 1000000
+    System: SI
+}
+
+/** Kiloampere - Used in power grids and heavy industry */
+unit kA physical
+impl kA {
+    LongName: "Kiloampere"
+    Symbol: "kA"
+    BaseUnit: false
+    Status: active
+    Dimension: [electric_current^1]
+    Scale: 1000
+    System: SI
+}
+
+/** Milliampere */
+unit mA physical
+impl mA {
+    LongName: "Milliampere"
+    Symbol: "mA"
+    BaseUnit: false
+    Status: active
+    Dimension: [electric_current^1]
+    Scale: 1 / 1000
+    System: SI
+}
+
+/** Microampere */
+unit uA physical
+impl uA {
+    LongName: "Microampere"
+    Symbol: "uA"
+    BaseUnit: false
+    Status: active
+    Dimension: [electric_current^1]
+    Scale: 1 / 1000000
+    System: SI
+}
+
+/** Nanoampere */
+unit nA physical
+impl nA {
+    LongName: "Nanoampere"
+    Symbol: "nA"
+    BaseUnit: false
+    Status: active
+    Dimension: [electric_current^1]
+    Scale: 1 / 1000000000
+    System: SI
+}
+
+/** Picoampere */
+unit pA physical
+impl pA {
+    LongName: "Picoampere"
+    Symbol: "pA"
+    BaseUnit: false
+    Status: active
+    Dimension: [electric_current^1]
+    Scale: 1 / 1000000000000
+    System: SI
+}
+
+// =============================================================================
+// Scaled Thermodynamic Temperature Units (K)
+// =============================================================================
+
+/** Millikelvin */
+unit mK physical
+impl mK {
+    LongName: "Millikelvin"
+    Symbol: "mK"
+    BaseUnit: false
+    Status: active
+    Dimension: [thermodynamic_temperature^1]
+    Scale: 1 / 1000
+    System: SI
+}
+
+/** Microkelvin */
+unit uK physical
+impl uK {
+    LongName: "Microkelvin"
+    Symbol: "uK"
+    BaseUnit: false
+    Status: active
+    Dimension: [thermodynamic_temperature^1]
+    Scale: 1 / 1000000
+    System: SI
+}
+
+// =============================================================================
+// Scaled Amount of Substance Units (mol)
+// =============================================================================
+
+/** Millimole */
+unit mmol physical
+impl mmol {
+    LongName: "Millimole"
+    Symbol: "mmol"
+    BaseUnit: false
+    Status: active
+    Dimension: [amount_of_substance^1]
+    Scale: 1 / 1000
+    System: SI
+}
+
+/** Micromole */
+unit umol physical
+impl umol {
+    LongName: "Micromole"
+    Symbol: "umol"
+    BaseUnit: false
+    Status: active
+    Dimension: [amount_of_substance^1]
+    Scale: 1 / 1000000
+    System: SI
+}
+
+// =============================================================================
+// Scaled Luminous Intensity Units (cd)
+// =============================================================================
+
+/** Millicandela */
+unit mcd physical
+impl mcd {
+    LongName: "Millicandela"
+    Symbol: "mcd"
+    BaseUnit: false
+    Status: active
+    Dimension: [luminous_intensity^1]
+    Scale: 1 / 1000
+    System: SI
 }

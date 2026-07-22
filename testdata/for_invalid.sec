@@ -50,13 +50,13 @@ fn ContinueOutsideLoop() void {
 }
 
 // Ok too many loop bindings
-fn TooManyBindings(values: []int) void {
+fn TooManyBindings(values: ref int[]) void {
     for a, b, c in values {
     }
 }
 
 // Ok sequential iteration supports index-value bindings
-fn TwoBindingsOnSlice(values: []int) void {
+fn TwoBindingsOnSlice(values: ref int[]) void {
     for index, value in values {
     }
 }
@@ -95,7 +95,7 @@ fn WrongStepType(end: int, increment: string) void {
 }
 
 // Ok: sequential iteration supports one or two loop bindings, got 3
-fn ThreeBindings(values: []int) void {
+fn ThreeBindings(values: ref int[]) void {
     for index, value, extra in values {
     }
 }

@@ -7,13 +7,16 @@ module units
 /** Coulomb */
 unit C decimal physical
 impl C {
-    //  (A * s).
     dimension: [electric_current^1, time^1]
     scale: 1
     system: SI
+
+    // --- Base formula: Q = I * t (Ampere * Second) ---
+
     fn C(Amp: decimal<A>, Second: decimal<s>) decimal<C> {
         return decimal<C>(decimal(Amp) * decimal(Second))
     }
+
     fn C(Amp: float<A>, Second: float<s>) float<C> {
         return float<C>(float(Amp) * float(Second))
     }
@@ -25,6 +28,60 @@ impl C {
     fn C(Amp: uint<A>, Second: uint<s>) uint<C> {
         return uint<C>(uint(Amp) * uint(Second))
     }    
+
+    // --- Via Capacitance and Voltage: Q = C * V (Farad * Volt) ---
+
+    fn C(Farad: decimal<F>, Volt: decimal<V>) decimal<C> {
+        return decimal<C>(decimal(Farad) * decimal(Volt))
+    }
+
+    fn C(Farad: float<F>, Volt: float<V>) float<C> {
+        return float<C>(float(Farad) * float(Volt))
+    }
+
+    fn C(Farad: int<F>, Volt: int<V>) int<C> {
+        return int<C>(int(Farad) * int(Volt))
+    }
+
+    fn C(Farad: uint<F>, Volt: uint<V>) uint<C> {
+        return uint<C>(uint(Farad) * uint(Volt))
+    }
+
+    // --- Via Energy and Voltage: Q = J / V (Joule / Volt) ---
+
+    fn C(Joule: decimal<J>, Volt: decimal<V>) decimal<C> {
+        return decimal<C>(decimal(Joule) / decimal(Volt))
+    }
+
+    fn C(Joule: float<J>, Volt: float<V>) float<C> {
+        return float<C>(float(Joule) / float(Volt))
+    }
+
+    fn C(Joule: int<J>, Volt: int<V>) int<C> {
+        return int<C>(int(Joule) / int(Volt))
+    }
+
+    fn C(Joule: uint<J>, Volt: uint<V>) uint<C> {
+        return uint<C>(uint(Joule) / uint(Volt))
+    }
+
+    // --- Via Power, Time and Voltage: Q = (W * s) / V (Watt * Second / Volt) ---
+
+    fn C(Watt: decimal<W>, Second: decimal<s>, Volt: decimal<V>) decimal<C> {
+        return decimal<C>((decimal(Watt) * decimal(Second)) / decimal(Volt))
+    }
+
+    fn C(Watt: float<W>, Second: float<s>, Volt: float<V>) float<C> {
+        return float<C>((float(Watt) * float(Second)) / float(Volt))
+    }
+
+    fn C(Watt: int<W>, Second: int<s>, Volt: int<V>) int<C> {
+        return int<C>((int(Watt) * int(Second)) / int(Volt))
+    }
+
+    fn C(Watt: uint<W>, Second: uint<s>, Volt: uint<V>) uint<C> {
+        return uint<C>((uint(Watt) * uint(Second)) / uint(Volt))
+    }
 }
 
 /** Volt */
@@ -49,7 +106,16 @@ impl V {
 
     fn V(Ohm: uint<ohm>, Amp: uint<A>) uint<V> {
         return uint<V>(uint(Ohm) * uint(Amp))
-    }    
+    }
+
+    /** Calculate Volt via Watt and Ampere (U = P / I) */
+    fn V(Watt: decimal<W>, Amp: decimal<A>) decimal<V> {
+        return decimal<V>(decimal(Watt) / decimal(Amp))
+    }
+
+    fn V(Watt: float<W>, Amp: float<A>) float<V> {
+        return float<V>(float(Watt) / float(Amp))
+    } 
 }
 
 /** Ohm */
@@ -67,13 +133,41 @@ impl ohm {
         return float<ohm>(float(Volt) / float(Amp))
     }
 
-    fn ohm(Volt: int<V>, Amp: int<A>) int<ohm> {
-        return int<ohm>(int(Volt) / int(Amp))
+    /** Calculate Ohm via Watt and Ampere (R = P / I^2) */
+    fn ohm(Watt: decimal<W>, Amp: decimal<A>) decimal<ohm> {
+        return decimal<ohm>(decimal(Watt) / (decimal(Amp) * decimal(Amp)))
     }
 
-    fn ohm(Volt: uint<V>, Amp: uint<A>) uint<ohm> {
-        return uint<ohm>(uint(Volt) / uint(Amp))
-    }    
+    fn ohm(Watt: float<W>, Amp: float<A>) float<ohm> {
+        return float<ohm>(float(Watt) / (float(Amp) * float(Amp)))
+    }
+
+    /** Calculate Ohm via Volt and Watt (R = U^2 / P) */
+    fn ohm(Volt: decimal<V>, Watt: decimal<W>) decimal<ohm> {
+        return decimal<ohm>((decimal(Volt) * decimal(Volt)) / decimal(Watt))
+    }
+
+    fn ohm(Volt: float<V>, Watt: float<W>) float<ohm> {
+        return float<ohm>((float(Volt) * float(Volt)) / float(Watt))
+    }
+
+    /** Calculate Ohm via Time and Capacitance (R = t / C) */
+    fn ohm(Second: decimal<s>, Farad: decimal<F>) decimal<ohm> {
+        return decimal<ohm>(decimal(Second) / decimal(Farad))
+    }
+
+    fn ohm(Second: float<s>, Farad: float<F>) float<ohm> {
+        return float<ohm>(float(Second) / float(Farad))
+    }
+
+    /** Calculate Ohm via Inductance and Time (R = L / t) */
+    fn ohm(Henry: decimal<H>, Second: decimal<s>) decimal<ohm> {
+        return decimal<ohm>(decimal(Henry) / decimal(Second))
+    }
+
+    fn ohm(Henry: float<H>, Second: float<s>) float<ohm> {
+        return float<ohm>(float(Henry) / float(Second))
+    }
 }
 
 /** Siemens */
@@ -178,5 +272,94 @@ impl H {
 
     fn H(Weber: uint<Wb>, Amp: uint<A>) uint<H> {
         return uint<H>(uint(Weber) / uint(Amp))
+    }
+}
+
+/** Radians per second (Angular frequency) */
+unit rad_s decimal physical
+impl rad_s {
+    dimension: [time^-1]
+    scale: 1
+    system: SI
+
+    /** Calculate angular frequency from Hertz (omega = 2 * pi * f) */
+    fn rad_s(Hertz: decimal<Hz>) decimal<rad_s> {
+        return decimal<rad_s>(3.141592653589793d * 2d * decimal(Hertz))
+    }
+
+    fn rad_s(Hertz: float<Hz>) float<rad_s> {
+        return float<rad_s>(3.14159265f * 2f * float(Hertz))
+    }
+}
+
+/** Decibel (Ratio/Gain) */
+unit dB decimal physical
+impl dB {
+    dimension: [] // Dimensionless ratio
+    scale: 1
+    system: SI
+
+    // TODO: implement log10 / sin / cos etc and then implement the functions below
+    /** Calculate dB gain from linear voltage ratio (20 * log10(Vout / Vin)) */
+    // Note: Assuming your language provides log10 in a math library eventually, 
+    // but here is a direct constructor helper from raw numeric log values.
+    /*
+    fn dB(LogRatio: decimal) decimal<dB> {
+        return decimal<dB>(20d * LogRatio)
+    }
+
+    fn dB(LogRatio: float) float<dB> {
+        return float<dB>(20f * LogRatio)
+    }
+    */
+}
+
+/** Volt-Ampere (Apparent Power) */
+unit VA decimal physical
+impl VA {
+    dimension: [mass^1, length^2, time^-3]
+    scale: 1
+    system: SI
+
+    fn VA(Volt: decimal<V>, Amp: decimal<A>) decimal<VA> {
+        return decimal<VA>(decimal(Volt) * decimal(Amp))
+    }
+
+    fn VA(Volt: float<V>, Amp: float<A>) float<VA> {
+        return float<VA>(float(Volt) * float(Amp))
+    }
+}
+
+/** Volt-Ampere Reactive (Reactive Power) */
+unit var decimal physical
+impl var {
+    dimension: [mass^1, length^2, time^-3]
+    scale: 1
+    system: SI
+
+    // Created from Volt and Ampere under reactive conditions
+    fn var(Volt: decimal<V>, Amp: decimal<A>) decimal<var> {
+        return decimal<var>(decimal(Volt) * decimal(Amp))
+    }
+
+    fn var(Volt: float<V>, Amp: float<A>) float<var> {
+        return float<var>(float(Volt) * float(Amp))
+    }
+}
+
+/** Ampere-hour (Battery Charge Capacity) */
+unit Ah decimal physical
+impl Ah {
+    dimension: [electric_current^1, time^1]
+    scale: 3600 // 1 hour = 3600 seconds
+    system: SI
+
+    /** Convert Coulomb to Ampere-hours (1 Ah = 3600 C) */
+    fn Ah(Coulomb: decimal<C>) decimal<Ah> {
+        return decimal<Ah>(decimal(Coulomb) / 3600d)
+    }
+
+    fn Ah(Coulomb: float<C>) float<Ah> {
+        return float<Ah>(float(Coulomb) / 3600f)
     }
 }

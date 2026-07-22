@@ -124,15 +124,30 @@ type UnitCategory string
 
 const (
 	PhysicalUnit UnitCategory = "physical"
+	CurrencyUnit UnitCategory = "currency"
 	OtherUnit    UnitCategory = "other"
 )
 
+type UnitStatus string
+
+const (
+	StatusActive     UnitStatus = "active"
+	StatusDeprecated UnitStatus = "deprecated"
+	StatusObsolete   UnitStatus = "obsolete"
+)
+
 type UnitDefinition struct {
-	Name      string
-	Category  UnitCategory
-	Dimension Dimension
-	System    string
-	Token     lexer.Token
+	Name           string
+	LongName       string
+	Symbol         string
+	Category       UnitCategory
+	Dimension      Dimension
+	Scale          string
+	DefaultNumeric string
+	IsBaseUnit     bool
+	Status         UnitStatus
+	System         string
+	Token          lexer.Token
 }
 
 type Function struct {

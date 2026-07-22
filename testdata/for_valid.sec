@@ -81,13 +81,13 @@ fn InfiniteLoopWithReturn() int {
     }
 }
 
-fn ArrayLoop(values: [3]int) void {
+fn ArrayLoop(values: int[3]) void {
     for value in values {
         let copy: int := value
     }
 }
 
-fn SliceLoop(values: []int) void {
+fn SliceLoop(values: ref int[]) void {
     for value in values {
         let copy: int := value
     }
@@ -99,7 +99,7 @@ fn StringLoop(text: string) void {
     }
 }
 
-fn BytesLoop(data: []byte) void {
+fn BytesLoop(data: ref byte[]) void {
     for value in data {
         let copy: byte := value
     }
@@ -111,7 +111,7 @@ fn IntBound(low: int, high: int) void {
     }
 }
 
-fn SliceIndexValue(values: []int) void {
+fn SliceIndexValue(values: ref int[]) void {
     for index, value in values {
         let copyIndex: int := index
         let copyValue: int := value

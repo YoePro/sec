@@ -1,0 +1,1033 @@
+# Arrays, Slices and Indexing
+
+## Purpose
+
+This document defines fixed-size arrays, borrowed slices, indexing and slicing.
+
+Arrays own a fixed number of inline elements.
+
+Slices borrow a contiguous sequence of elements owned elsewhere.
+
+This document does not define dynamic owning collections such as `Vec[T]`,
+`Map[K, V]`, `List[T]` or `Set[T]`.
+
+## Type syntax
+
+Sec uses postfix array syntax.
+
+```sec
+T[N]
+```
+
+Examples:
+
+```sec
+byte[256]
+int[4]
+Packet[32]
+```
+
+`N` is the number of elements.
+
+A slice sequence type uses an empty postfix pair:
+
+```sec
+T[]
+```
+
+`T[]` is unsized and cannot exist as a standalone value.
+
+A slice is a reference to an unsized sequence:
+
+```sec
+ref T[]
+ref mut T[]
+```
+
+Examples:
+
+```sec
+ref byte[]
+ref mut int[]
+```
+
+The `ref` keyword distinguishes a slice from an owning array.
+
+## Type identity
+
+Array length is part of the type.
+
+These are different types:
+
+```sec
+int[4]
+int[5]
+```
+
+These are also different types:
+
+```sec
+int[4]
+uint[4]
+```
+
+Slice mutability and reference mode are part of the type:
+
+```sec
+ref int[]
+ref mut int[]
+```
+
+`ref mut int[]` is not implicitly convertible to an owning array.
+
+## Array length
+
+An array length must be a non-negative compile-time integer.
+
+Valid:
+
+```sec
+int[0]
+int[4]
+byte[HeaderSize]
+```
+
+Invalid:
+
+```sec
+int[-1]
+int[length]
+```
+
+when `length` is a runtime value.
+
+The shared compile-time constant evaluator must evaluate array lengths.
+
+The compiler must reject:
+
+- negative lengths
+- non-integer lengths
+- runtime-dependent lengths
+- arithmetic overflow
+- lengths that cannot be represented by `uint`
+- total array layouts that exceed target layout limits
+
+Zero-length arrays are valid.
+
+## Array layout
+
+An array owns `N` contiguous elements of type `T`.
+
+The array contains no hidden pointer, length field, capacity field or allocator
+reference.
+
+Its length is known from its type.
+
+Element alignment is the alignment of `T`.
+
+Array size is conceptually:
+
+```text
+N * sizeof(T)
+```
+
+with checked layout arithmetic.
+
+`T` must be a sized type.
+
+A bare unsized type such as `U[]` cannot be an array element, but a reference to
+one can:
+
+```sec
+(ref byte[])[4]
+```
+
+This means an array of four shared byte slices.
+
+## Nested arrays
+
+Postfix dimensions are written from outermost to innermost.
+
+```sec
+int[3][4]
+```
+
+means:
+
+```text
+3 arrays, each containing 4 int values
+```
+
+A matrix-like value may therefore be indexed as:
+
+```sec
+matrix[row][column]
+```
+
+Every dimension participates in type identity and layout checking.
+
+## Array declarations
+
+Examples:
+
+```sec
+let values: int[4] := [10, 20, 30, 40]
+let mut buffer: byte[256]
+```
+
+Normal variable initialization and definite-assignment rules apply.
+
+An immutable array requires an initializer.
+
+A mutable array may be declared without an initializer under the normal mutable
+variable rules, but it must not be read, indexed for reading, borrowed or sliced
+before it is definitely initialized.
+
+The initial implementation may track initialization at whole-array granularity.
+Partial element initialization must not make the complete array readable unless
+the compiler proves every element initialized.
+
+Arrays may contain non-defaultable values when an initializer supplies every
+element.
+
+## Array literals
+
+Array literal syntax:
+
+```sec
+[expression, expression, expression]
+```
+
+A trailing comma is allowed:
+
+```sec
+[1, 2, 3,]
+```
+
+A target array type provides element type and required length:
+
+```sec
+let values: byte[3] := [1, 2, 3]
+let percentages: Percent[2] := [10, 20]
+```
+
+Untyped literals are checked in the target element context.
+
+When no target type exists, the compiler may infer the array type when:
+
+- the literal contains at least one element
+- every element resolves to one identical type
+- the length is the literal element count
+
+Example:
+
+```sec
+let values := [10, 20, 30]
+```
+
+inferences:
+
+```sec
+int[3]
+```
+
+The compiler must not infer a common type through implicit conversion.
+
+Invalid:
+
+```sec
+let mixed := [1, "two"]
+```
+
+An empty array literal requires target context:
+
+```sec
+let empty: int[0] := []
+```
+
+This is invalid because the element type cannot be inferred:
+
+```sec
+let empty := []
+```
+
+The literal length must exactly match the target length.
+
+No spread, repetition or dynamic-length array literal syntax is included in the
+initial implementation.
+
+## Slice values
+
+A slice is a non-owning reference to contiguous initialized elements.
+
+Source-level slice types are:
+
+```sec
+ref T[]
+ref mut T[]
+```
+
+A slice contains conceptual runtime information equivalent to:
+
+```text
+data address
+length
+```
+
+The representation is compiler-defined and is not an FFI-stable struct layout.
+
+A slice contains no capacity and no allocator identity.
+
+A slice inherits storage origin and lifetime from its source.
+
+A slice never owns or deallocates its elements.
+
+## Bare sequence type
+
+`T[]` is valid only as the target of an appropriate reference type or in internal
+type analysis.
+
+Invalid declarations:
+
+```sec
+let values: byte[]
+let values := ref byte[]
+```
+
+The first attempts to store an unsized value.
+
+The second attempts to reference a type rather than storage.
+
+Valid:
+
+```sec
+let values: ref byte[] := ref buffer[..]
+```
+
+## Slice creation
+
+A slice is created explicitly with `ref` or `ref mut`.
+
+Complete array:
+
+```sec
+let view := ref values[..]
+```
+
+Mutable complete array:
+
+```sec
+let writable := ref mut values[..]
+```
+
+Subrange:
+
+```sec
+let middle := ref values[1..<4]
+let inclusive := ref values[1..3]
+```
+
+Slice creation does not copy elements and does not allocate backing storage.
+
+Only the small reference descriptor is produced.
+
+There is no implicit array-to-slice conversion in the initial implementation.
+
+Use explicit source syntax:
+
+```sec
+Process(ref values[..])
+```
+
+rather than:
+
+```sec
+Process(values)
+```
+
+when the parameter type is `ref T[]`.
+
+## Slice ranges
+
+Slice ranges use the existing range operators.
+
+Exclusive upper bound:
+
+```sec
+source[start..<end]
+```
+
+contains indexes:
+
+```text
+start through end - 1
+```
+
+Inclusive upper bound:
+
+```sec
+source[start..end]
+```
+
+contains indexes:
+
+```text
+start through end
+```
+
+Open bounds are allowed:
+
+```sec
+source[..]       // complete sequence
+source[start..]  // start through final element
+source[..end]    // first element through end, inclusive
+source[..<end]   // first element through end - 1
+```
+
+Descending slice ranges are invalid.
+
+A slice range does not reverse a sequence.
+
+Empty slices are valid through an exclusive range:
+
+```sec
+ref source[0..<0]
+ref source[source.len..<source.len]
+```
+
+Range endpoints must use valid integer index types.
+
+Negative endpoints are invalid.
+
+## Slicing a slice
+
+A slice may be sliced again.
+
+Shared reborrow:
+
+```sec
+let part := ref view[2..<5]
+```
+
+Mutable reborrow:
+
+```sec
+let part := ref mut writable[2..<5]
+```
+
+A mutable reborrow requires a `ref mut T[]` source.
+
+A shared reborrow may be created from either shared or mutable source access,
+subject to borrow rules.
+
+The resulting slice lifetime cannot exceed the source slice lifetime or the
+ultimate storage owner lifetime.
+
+## Indexing
+
+Indexing syntax:
+
+```sec
+target[index]
+```
+
+Indexing is part of array and slice semantics.
+
+The target may initially be:
+
+- an array
+- a shared slice
+- a mutable slice
+- a nested indexing expression
+
+The index must have an integer type.
+
+Built-in signed and unsigned integer types are valid.
+
+A named integer type may be used when its underlying representation is integer
+and it has no incompatible unit dimension.
+
+Floating-point, decimal, boolean, string and unit-bearing indexes are invalid.
+
+Negative signed indexes are invalid.
+
+## Indexing result
+
+Indexing produces a place expression.
+
+It does not inherently copy, move or borrow an element.
+
+The use context determines the operation.
+
+Read or copy:
+
+```sec
+let value := values[index]
+```
+
+Assignment:
+
+```sec
+values[index] = value
+```
+
+Shared element borrow:
+
+```sec
+let element := ref values[index]
+```
+
+Mutable element borrow:
+
+```sec
+let element := ref mut values[index]
+```
+
+The place type is the array or slice element type.
+
+The place mutability is derived from the target:
+
+```text
+immutable array binding
+    read-only element place
+
+mutable array binding
+    mutable element place
+
+ref T[]
+    read-only element place
+
+ref mut T[]
+    mutable element place
+```
+
+## Assignment through indexing
+
+Assignment requires:
+
+- a mutable element place
+- a right-hand value assignable to the element type
+- no conflicting active borrow
+- a valid runtime index
+- a completely evaluated right-hand expression before replacement
+
+When replacing an owned non-trivial array element, the old element is destroyed
+exactly once after the replacement value has been successfully evaluated and
+ownership transfer has been validated.
+
+A slice does not own the element, but assignment through `ref mut T[]` mutates
+the owner's element in place.
+
+## Reading and moving elements
+
+Reading an implicitly copyable element copies it.
+
+```sec
+let value := numbers[index]
+```
+
+For the initial implementation, moving a move-only element out through array or
+slice indexing is invalid.
+
+This avoids partial-move and dynamic-index initialization ambiguity.
+
+Invalid for move-only `Resource`:
+
+```sec
+let resource := resources[index]
+```
+
+The programmer must borrow the element:
+
+```sec
+let resource := ref resources[index]
+```
+
+or use a future explicit extraction operation on an owning container.
+
+A slice can never transfer ownership of an element merely through indexing
+because the slice does not own the element.
+
+## Bounds checking
+
+Safe array and slice indexing is bounds checked.
+
+For an array `T[N]`, a valid index satisfies:
+
+```text
+0 <= index < N
+```
+
+For a slice, a valid index satisfies:
+
+```text
+0 <= index < slice.len
+```
+
+A constant invalid index is a compile-time error.
+
+Example:
+
+```sec
+let values: int[4] := [1, 2, 3, 4]
+let invalid := values[4]
+```
+
+A runtime index requires a runtime bounds check.
+
+Slice creation validates:
+
+- lower bound is non-negative
+- upper bound is valid
+- lower bound does not exceed the represented end
+- inclusive upper bound is less than source length
+- exclusive upper bound is less than or equal to source length
+- calculated length does not overflow
+
+Safe bounds checks remain required inside an `unsafe` block.
+
+Unchecked access belongs to explicit `RawPtr[T]` operations and is not ordinary
+array or slice indexing.
+
+## Length
+
+Arrays and slices expose:
+
+```sec
+value.len
+```
+
+The type of `len` is `uint`.
+
+For arrays, `len` is a compile-time constant equal to `N`.
+
+For slices, `len` is the runtime sequence length.
+
+`len` is read-only.
+
+Examples:
+
+```sec
+let arrayLength := values.len
+let sliceLength := view.len
+```
+
+No `capacity` member exists for arrays or slices.
+
+## Pointer access
+
+Direct `.ptr` access is not part of the initial safe array and slice
+implementation.
+
+Conversion of an array or slice address into `RawPtr[T]` follows the raw-pointer
+rules and requires an explicit unsafe operation.
+
+Slices are not ABI-compatible with C or other foreign ABIs unless an explicit
+wrapper representation is declared.
+
+## Null and empty slices
+
+A safe slice is never null.
+
+There is no null slice value.
+
+An empty slice is valid, but it must still originate from valid storage or a
+compiler-defined empty-storage sentinel that obeys reference rules.
+
+A slice has no implicit default value because a reference must have a valid
+origin.
+
+Valid empty slice examples:
+
+```sec
+let storage: byte[0] := []
+let first := ref storage[..]
+
+let values: byte[4] := [1, 2, 3, 4]
+let second := ref values[2..<2]
+```
+
+## Copy and move
+
+Array classification depends on its element type.
+
+An array is trivially copyable when its element type is trivially copyable.
+
+Copying an array copies every element and preserves the source.
+
+Moving an array transfers ownership of every element and invalidates the source
+when the array type is move-only.
+
+The compiler may warn about unusually large implicit array copies, but the
+warning must not change semantics.
+
+Slice classification:
+
+```text
+ref T[]
+    copyable shared reference descriptor
+
+ref mut T[]
+    move-only exclusive reference descriptor
+```
+
+Copying `ref T[]` copies only the reference descriptor.
+
+It never copies elements.
+
+`ref mut T[]` must not be freely copied because that would duplicate exclusive
+access. It may be moved or safely reborrowed.
+
+## Destruction
+
+Array destruction destroys every still-initialized owned element in reverse
+index order:
+
+```text
+N - 1
+N - 2
+...
+0
+```
+
+A zero-length array has no element destruction.
+
+Moved array values are not destroyed by the previous owner.
+
+A slice is trivially destructible.
+
+Destroying a slice:
+
+- does not destroy elements
+- does not release backing storage
+- does not reset an arena
+- does not affect the owner except by ending the borrow
+
+## Equality
+
+Arrays support `==` and `!=` when the element type supports equality.
+
+Comparison is element-by-element in increasing index order.
+
+Both operands must have the same array type, including the same length.
+
+Slices do not support `==` or `!=` in the initial implementation.
+
+Slice equality is ambiguous between reference identity and content equality.
+Content comparison may later be provided by an explicit function or method.
+
+Arrays and slices do not support ordering comparisons unless a separate rule
+defines them.
+
+## Function parameters
+
+Examples:
+
+```sec
+fn Sum(values: ref int[]) int
+fn Clear(values: ref mut byte[]) void
+fn Consume(values: int[4]) void
+```
+
+A by-value array parameter follows normal copy or move rules.
+
+A slice parameter borrows the source.
+
+Explicit slice creation is required initially:
+
+```sec
+Sum(ref values[..])
+Clear(ref mut buffer[..])
+```
+
+The callee must not retain a slice beyond the lifetime permitted by the function
+signature and borrow rules.
+
+## Returning slices
+
+A returned slice must originate from storage that remains valid after the
+function returns.
+
+Returning a slice into local array storage is invalid.
+
+A returned slice may originate from an allowed reference parameter when the
+reference-origin rules identify one unambiguous source.
+
+Example shape:
+
+```sec
+fn Prefix(
+    source: ref byte[],
+    count: uint,
+) ref byte[] {
+    return ref source[..<count]
+}
+```
+
+Full origin, alias and escape validation is completed by the borrow-tracking
+rules.
+
+## Borrowing
+
+Basic array and slice implementation must record:
+
+- storage owner or origin
+- shared or mutable reference mode
+- element type
+- slice length
+- source range when statically known
+
+The compiler must immediately reject obvious lifetime errors such as returning a
+slice into a local array.
+
+Full conflict tracking, branch merging, loop behavior, disjoint ranges,
+last-use shortening and arena reset dependencies are defined in the separate
+borrow-tracking rules.
+
+## Iteration
+
+Arrays and slices may participate in existing `for` iteration.
+
+Iteration must use the same indexing, copy and borrow rules defined here.
+
+The initial implementation must not silently move move-only elements out of an
+array or slice during iteration.
+
+Mutable reference iteration and disjoint per-element borrow behavior are defined
+by the borrow-tracking rules.
+
+## FFI
+
+Arrays may cross an FFI boundary only when the complete array layout is
+ABI-compatible with the declared foreign ABI.
+
+Slices must not cross an FFI boundary directly.
+
+A wrapper must pass explicit foreign-compatible components such as:
+
+```sec
+RawPtr[T]
+uint
+```
+
+Ownership, nullability and lifetime remain explicit at the FFI boundary.
+
+## Diagnostics
+
+Diagnostics should identify:
+
+- target array or slice type
+- invalid index or range
+- known length
+- whether failure is compile-time or runtime-checked
+- immutable target when assignment was attempted
+- move-only element when an indexed move was attempted
+- borrow origin when a slice would escape
+- source and conflicting borrow when available
+
+Examples:
+
+```text
+array index 4 is out of bounds for int[4]
+slice upper bound 8 exceeds length 6
+cannot assign through ref int[]
+cannot move Resource out through indexed access; borrow the element instead
+cannot return slice referencing local array data
+```
+
+## Parser and AST requirements
+
+Add or complete AST representation for:
+
+```text
+ArrayType
+    ElementType
+    LengthExpression
+
+SliceSequenceType
+    ElementType
+
+ReferenceType
+    Mutable
+    TargetType
+
+ArrayLiteralExpression
+    Elements
+
+IndexExpression
+    Target
+    Index
+
+SliceExpression
+    Target
+    LowerBound
+    UpperBound
+    UpperExclusive
+    OpenLower
+    OpenUpper
+```
+
+`T[N]` and generic type syntax must remain distinguishable through parser
+context.
+
+An empty bracket pair in type position means an unsized sequence type.
+
+An expression inside brackets in expression position means indexing or slicing.
+
+## Semantic analysis requirements
+
+Semantic analysis must:
+
+- evaluate and validate array lengths
+- calculate array layout
+- infer or validate array literal types
+- validate literal length
+- resolve nested arrays
+- classify `T[]` as unsized
+- reject standalone `T[]` values
+- resolve `ref T[]` and `ref mut T[]`
+- type indexing as an element place
+- propagate target mutability
+- validate index type
+- perform compile-time bounds checks
+- emit runtime bounds-check operations
+- validate slice range bounds
+- calculate slice length
+- record storage origin and borrow mode
+- apply copy, move and destruction classification
+- reject indexed moves of move-only elements
+- reject slice equality
+- expose `len`
+- preserve all operations explicitly in Semantic IR
+
+Current implementation status:
+
+- Parser accepts canonical postfix array and sequence types:
+  - `T[N]`
+  - `T[]`
+  - `ref T[]`
+  - `ref mut T[]`
+- Parser keeps legacy prefix `[]T` and `[N]T` as transitional input, but
+  diagnostics and AST output should prefer postfix form.
+- Parser resolves nested postfix dimensions from outermost to innermost:
+  `int[3][4]` means `int[4]` elements inside an outer length-3 array.
+- AST distinguishes zero-length arrays from unsized sequence types.
+- Semantic analysis resolves fixed arrays, including `T[0]`.
+- Semantic analysis classifies `T[]` as an unsized sequence.
+- Semantic analysis rejects bare `T[]` in ordinary value positions such as
+  variables, function parameters, function returns and struct fields.
+- Semantic analysis accepts `ref T[]` and `ref mut T[]` as slice reference
+  types.
+
+Not implemented yet:
+
+- array literal inference and length validation
+- indexing and slicing expressions
+- static and runtime bounds checks
+- slice construction from arrays
+- storage-origin and borrow tracking for slices
+- `len`
+- array/slice Semantic IR
+- MLIR/LLVM lowering for arrays and slices
+
+## Semantic IR requirements
+
+Semantic IR should distinguish at least:
+
+```text
+ArrayConstruct
+ArrayCopy
+ArrayMove
+ArrayDestroy
+ArrayElementPlace
+BoundsCheck
+SliceConstruct
+SliceReborrow
+SliceElementPlace
+SliceLength
+```
+
+Semantic IR must preserve:
+
+- element type
+- static array length
+- runtime slice length
+- source storage origin
+- shared or mutable borrow mode
+- range bounds
+- inclusive or exclusive upper bound
+- checked or compile-time-proven bounds
+- copy, move or borrow operation selected by context
+
+MLIR and LLVM lowering must not infer these semantics from loads, stores or
+pointer arithmetic.
+
+## Tests
+
+Create:
+
+```text
+arrays_slices_valid.sec
+arrays_slices_invalid.sec
+```
+
+Valid tests should cover:
+
+- postfix array types
+- zero-length arrays
+- inferred array literals
+- context-typed literals
+- named element types
+- nested arrays
+- array indexing
+- indexed assignment
+- shared element borrowing
+- mutable element borrowing
+- complete slices
+- inclusive slices
+- exclusive slices
+- open-ended slices
+- empty slices
+- slicing a slice
+- `len`
+- array equality
+- copyable array copy
+- move-only array move
+- slice descriptor copy
+- mutable slice move or reborrow
+- valid slice parameters
+- valid returned sub-slice from one reference parameter
+
+Invalid tests should cover:
+
+- negative array length
+- runtime array length
+- overflowing layout
+- literal length mismatch
+- mixed inferred literal types
+- untyped empty literal
+- bare `T[]` variable
+- `ref T[]` without storage expression
+- negative index
+- constant out-of-bounds index
+- invalid index type
+- descending slice range
+- inclusive upper bound equal to length
+- exclusive upper bound greater than length
+- assignment through immutable array
+- assignment through shared slice
+- mutable slice from immutable storage
+- indexed move of move-only element
+- slice equality
+- returned slice into local array
+- slice passed where an owning array is required
+- array passed where an explicit slice is required
+
+## Initial implementation status
+
+Not implemented by this document yet.
+
+This document is the implementation contract for parser, AST, semantic analysis,
+Semantic IR, MLIR lowering and tests.
+
+Full borrow conflict tracking follows in the separate borrow-tracking rules.

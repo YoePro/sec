@@ -44,6 +44,20 @@ let a := 1
 	assertSemaErrors(t, errors, expected)
 }
 
+func TestDuplicateModuleDeclaration(t *testing.T) {
+	errors := analyzeSourceRaw(t, `
+module main
+
+module main
+`)
+
+	expected := []string{
+		"duplicate module declaration main at 4:1, previous declaration at 2:1",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
 func TestUnderscoreVisibilityAcrossModules(t *testing.T) {
 	input := `
 module x.y
@@ -544,7 +558,7 @@ let f: Frequency := 10
 let p: Packet := 3u
 `
 
-	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, input)
+	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
 	assertSemaErrors(t, errors, nil)
 
 	hertz := analyzer.types["Hertz"]
@@ -568,6 +582,84 @@ let p: Packet := 3u
 	}
 	if packet.Dimension.Base["Packet"] != 1 {
 		t.Fatalf("Packet should keep semantic base dimension. got=%+v", packet.Dimension)
+	}
+}
+
+func TestUnitMetadataAllowsDimensionlessInlineComment(t *testing.T) {
+	input := `
+unit dB decimal physical
+
+impl dB {
+	dimension: [] // Dimensionless ratio
+	scale: 1 // Identity scale
+	system: SI // Standard unit system
+}
+`
+
+	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
+	assertSemaErrors(t, errors, nil)
+
+	decibel := analyzer.types["dB"]
+	if !decibel.Dimension.IsZero() {
+		t.Fatalf("dB should be dimensionless. got=%+v", decibel.Dimension)
+	}
+}
+
+func TestUnitDefaultNumericMetadataAndUnitOnlyType(t *testing.T) {
+	input := `
+unit s physical
+unit hp float physical
+
+impl hp {
+	LongName: "Horsepower"
+	Symbol: "hp"
+	BaseUnit: false
+	Status: deprecated
+	Dimension: [mass^1, length^2, time^-3]
+	Scale: 735.49875f
+	System: Imperial
+}
+
+let seconds: <s> := 5
+let fast: <s> := 5f
+let power: <hp> := 10f
+`
+
+	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
+	assertSemaErrors(t, errors, nil)
+
+	secondType := analyzer.symbols["seconds"].Type
+	if secondType.Name != "decimal" || secondType.Unit != "s" {
+		t.Fatalf("wrong seconds type: %+v", secondType)
+	}
+
+	fastType := analyzer.symbols["fast"].Type
+	if fastType.Name != "float" || fastType.Unit != "s" {
+		t.Fatalf("wrong fast type: %+v", fastType)
+	}
+
+	powerType := analyzer.symbols["power"].Type
+	if powerType.Name != "float" || powerType.Unit != "hp" {
+		t.Fatalf("wrong power type: %+v", powerType)
+	}
+
+	horsepower := analyzer.units["hp"]
+	if horsepower.DefaultNumeric != "float" || horsepower.Category != PhysicalUnit {
+		t.Fatalf("wrong hp declaration metadata: %+v", horsepower)
+	}
+	if horsepower.LongName != "Horsepower" || horsepower.Symbol != "hp" || horsepower.IsBaseUnit {
+		t.Fatalf("wrong hp descriptive metadata: %+v", horsepower)
+	}
+	if horsepower.Status != StatusDeprecated || horsepower.System != "Imperial" || horsepower.Scale != "735.49875f" {
+		t.Fatalf("wrong hp semantic metadata: %+v", horsepower)
+	}
+
+	warnings := analyzer.Warnings()
+	if len(warnings) != 1 {
+		t.Fatalf("wrong warning count. got=%d warnings=%v", len(warnings), warnings)
+	}
+	if warnings[0].Error() != "unit hp is deprecated at 17:12" {
+		t.Fatalf("wrong warning. got=%q", warnings[0].Error())
 	}
 }
 
@@ -739,7 +831,7 @@ fn StartMotor(speed: rpm) void {
 }
 `
 
-	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, input)
+	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
 	assertSemaErrors(t, errors, nil)
 
 	register := analyzer.types["MotorProtocol"]
@@ -1322,7 +1414,7 @@ impl Vehicle {
 
 	errors := analyzeSource(t, input)
 	expected := []string{
-		"duplicate impl block for Vehicle at 8:6",
+		"duplicate impl block for Vehicle at 8:6, previous declaration at 5:6",
 	}
 	assertSemaErrors(t, errors, expected)
 }
@@ -1444,7 +1536,7 @@ impl Vehicle {
 	errors := analyzeSource(t, input)
 
 	expected := []string{
-		`duplicate enum value "petrol" in enum Vehicle.FuelType at 8:3`,
+		`duplicate enum value "petrol" in enum Vehicle.FuelType at 8:3, previous declaration at 7:3`,
 	}
 
 	assertSemaErrors(t, errors, expected)
@@ -2008,6 +2100,77 @@ let s := Pick("hello")
 	}
 }
 
+func TestFunctionOverloadsIncludeUnits(t *testing.T) {
+	input := `
+unit V decimal physical
+unit W decimal physical
+
+impl V {
+	dimension: [mass^1, length^2, time^-3, electric_current^-1]
+	scale: 1
+	system: SI
+}
+
+impl W {
+	dimension: [mass^1, length^2, time^-3]
+	scale: 1
+	system: SI
+}
+
+fn Convert(value: decimal<V>) decimal<V> {
+	return value
+}
+
+fn Convert(value: decimal<W>) decimal<W> {
+	return value
+}
+`
+
+	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
+	assertSemaErrors(t, errors, nil)
+
+	if len(analyzer.functions["Convert"]) != 2 {
+		t.Fatalf("wrong overload count. got=%d want=2", len(analyzer.functions["Convert"]))
+	}
+	if analyzer.functions["Convert"][0].Parameters[0].Type.Unit == analyzer.functions["Convert"][1].Parameters[0].Type.Unit {
+		t.Fatalf("unit overloads collapsed: %+v", analyzer.functions["Convert"])
+	}
+}
+
+func TestFunctionOverloadsIncludeNumericKindAndUnits(t *testing.T) {
+	input := `
+unit s decimal physical
+unit Hz decimal physical
+
+impl s {
+	dimension: [time^1]
+	scale: 1
+	system: SI
+}
+
+impl Hz {
+	dimension: [time^-1]
+	scale: 1
+	system: SI
+}
+
+fn Convert(value: decimal<s>) decimal<Hz> {
+	return decimal<Hz>(decimal(1.0) / decimal(value))
+}
+
+fn Convert(value: float<s>) float<Hz> {
+	return float<Hz>(float(1.0) / float(value))
+}
+`
+
+	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
+	assertSemaErrors(t, errors, nil)
+
+	if len(analyzer.functions["Convert"]) != 2 {
+		t.Fatalf("wrong overload count. got=%d want=2", len(analyzer.functions["Convert"]))
+	}
+}
+
 func TestDuplicateFunctionSignature(t *testing.T) {
 	input := `
 fn Pick(a: int) int {
@@ -2022,7 +2185,7 @@ fn Pick(value: int) int {
 	errors := analyzeSource(t, input)
 
 	expected := []string{
-		`duplicate function "Pick" with same signature at 6:4`,
+		`duplicate function "Pick" with same signature at 6:4, previous declaration at 2:4`,
 	}
 
 	assertSemaErrors(t, errors, expected)
@@ -2042,7 +2205,7 @@ fn Pick(value: int) string {
 	errors := analyzeSource(t, input)
 
 	expected := []string{
-		`duplicate function "Pick" with same signature at 6:4`,
+		`duplicate function "Pick" with same signature at 6:4, previous declaration at 2:4`,
 	}
 
 	assertSemaErrors(t, errors, expected)
@@ -3125,7 +3288,7 @@ func TestGenericSliceRecursiveStorageAllowed(t *testing.T) {
 module main
 
 type Node[T] struct {
-	children: []Node[T],
+	children: ref Node[T][],
 }
 
 fn Use(value: Node[int]) void {
@@ -4684,19 +4847,19 @@ func TestForArrayAndSliceLoopBindings(t *testing.T) {
 	input := `
 module main
 
-fn ArrayLoop(values: [3]int) void {
+fn ArrayLoop(values: int[3]) void {
 	for value in values {
 		let copy: int := value
 	}
 }
 
-fn SliceLoop(values: []int) void {
+fn SliceLoop(values: ref int[]) void {
 	for value in values {
 		let copy: int := value
 	}
 }
 
-fn SliceIndexValueLoop(values: []int) void {
+fn SliceIndexValueLoop(values: ref int[]) void {
 	for index, value in values {
 		let i: int := index
 		let copy: int := value
@@ -4715,11 +4878,43 @@ fn StringIndexValueLoop(values: string) void {
 	assertSemaErrors(t, errors, nil)
 }
 
+func TestBareSliceTypesRequireReference(t *testing.T) {
+	input := `
+module main
+
+type Packet struct {
+	payload: byte[],
+}
+
+fn BadParam(values: int[]) void {
+}
+
+fn BadReturn() byte[] {
+	return
+}
+
+fn BadLet() void {
+	let values: byte[]
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+
+	expected := []string{
+		"bare slice type byte[] must be used behind ref at 5:15",
+		"bare slice type int[] must be used behind ref at 8:24",
+		"bare slice type byte[] must be used behind ref at 11:20",
+		"bare slice type byte[] must be used behind ref at 16:18",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
 func TestForTooManySequentialBindings(t *testing.T) {
 	input := `
 module main
 
-fn Test(values: []int) void {
+fn Test(values: ref int[]) void {
 	for a, b, c in values {
 	}
 }
@@ -5002,7 +5197,7 @@ fn InvalidNegativeStep() void {
 	}
 }
 
-fn InvalidStepOnSlice(values: []int) void {
+fn InvalidStepOnSlice(values: ref int[]) void {
 	for value in values step 2 {
 	}
 }

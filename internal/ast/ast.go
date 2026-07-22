@@ -213,7 +213,8 @@ func (i *Identifier) String() string {
 //	int
 //	decimal<m>
 //	Vec[T]
-//	[]byte
+//	byte[]
+//	ref byte[]
 type TypeReference struct {
 	Token lexer.Token
 
@@ -222,12 +223,16 @@ type TypeReference struct {
 	Ref        bool
 	MutableRef bool
 
-	// ElementType is used for slice and array types such as []byte and [3]int.
+	// ElementType is used for slice and array types such as byte[] and int[3].
 	ElementType *TypeReference
+	Slice       bool
 	ArrayLength int64
 
 	// Unit is used for unit types such as decimal<m> or decimal<SEK>.
 	Unit string
+	// UnitOnly is used for shorthand unit types such as <m>. Semantic analysis
+	// expands it to the unit's default numeric representation.
+	UnitOnly bool
 
 	// TypeArgs is used for generic types such as Vec[T], Map[K,V], Result[T,E].
 	TypeArgs []*TypeReference

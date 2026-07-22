@@ -10,7 +10,7 @@ func builtinUnits() map[string]UnitDefinition {
 
 	addPhysical := func(names []string, dimension Dimension) {
 		for _, name := range names {
-			units[name] = UnitDefinition{Name: name, Category: PhysicalUnit, Dimension: dimension}
+			units[name] = UnitDefinition{Name: name, Category: PhysicalUnit, Dimension: dimension, DefaultNumeric: "decimal", Status: StatusActive}
 		}
 	}
 

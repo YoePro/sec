@@ -9,11 +9,10 @@ type Meter decimal<m>
 type Second decimal<s>
 type Speed decimal<m/s>
 
-
 type IOError =
-    FileNotFound
-    AccessDenied
-    InvalidValue
+FileNotFound
+AccessDenied
+InvalidValue
 
 // 2. Objektmodell med egenskaper och fallible setters
 type Vehicle struct {
@@ -25,7 +24,7 @@ impl Vehicle {
         get {
             return _speed
         }
-        
+
         try set value {
             if value < 0.0 {
                 return Err(IOError.InvalidValue)
@@ -74,14 +73,13 @@ fn main() void {
         fmt.println("Mycket väl godkänt!")
     }
 
-
     // Concurrency: Blockbaserad spawn och await
     let task := spawn {
         for i in 1..5 {
             fmt.println($"Arbetar i bakgrunden... {i}")
         }
     }
-    
+
     defer {
         fmt.println("Programmet avslutas, städar resurser...")
     }

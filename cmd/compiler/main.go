@@ -625,7 +625,7 @@ func parseSourceFile(path string) *ast.Program {
 		os.Exit(1)
 	}
 
-	l := lexer.New(string(data))
+	l := lexer.NewWithFile(string(data), path)
 	p := parser.New(l)
 	program := p.ParseProgram()
 	printParserWarnings(p)
@@ -749,7 +749,7 @@ func parseSourceInclude(path string, target CompilerTarget) *ast.Program {
 		os.Exit(1)
 	}
 
-	l := lexer.New(string(data))
+	l := lexer.NewWithFile(string(data), path)
 	p := parser.New(l)
 	program := p.ParseProgram()
 	printParserWarnings(p)
@@ -2096,10 +2096,11 @@ func formatTypeRef(ref *ast.TypeReference) string {
 	}
 
 	if ref.ElementType != nil {
-		if ref.ArrayLength > 0 {
-			return refPrefix + fmt.Sprintf("[%d]%s", ref.ArrayLength, formatTypeRef(ref.ElementType))
+		element := formatTypeRef(ref.ElementType)
+		if ref.Slice {
+			return refPrefix + element + "[]"
 		}
-		return refPrefix + "[]" + formatTypeRef(ref.ElementType)
+		return refPrefix + fmt.Sprintf("%s[%d]", element, ref.ArrayLength)
 	}
 
 	out := ref.Name

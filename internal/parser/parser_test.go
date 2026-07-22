@@ -111,6 +111,9 @@ func TestParseUnitDeclarations(t *testing.T) {
 unit Hertz decimal<Hz>
 unit Packet uint other
 unit Metre decimal physical
+unit Count
+unit Euro currency
+unit Horsepower float physical
 `
 
 	l := lexer.New(input)
@@ -118,8 +121,8 @@ unit Metre decimal physical
 	program := p.ParseProgram()
 	checkParserErrors(t, p)
 
-	if len(program.Statements) != 3 {
-		t.Fatalf("wrong statement count. got=%d want=3", len(program.Statements))
+	if len(program.Statements) != 6 {
+		t.Fatalf("wrong statement count. got=%d want=6", len(program.Statements))
 	}
 
 	hertz, ok := program.Statements[0].(*ast.UnitDeclStatement)
@@ -144,6 +147,30 @@ unit Metre decimal physical
 	}
 	if metre.Name.Value != "Metre" || metre.BaseType.Name != "decimal" || metre.Category != "physical" {
 		t.Fatalf("wrong Metre unit declaration: %+v", metre)
+	}
+
+	count, ok := program.Statements[3].(*ast.UnitDeclStatement)
+	if !ok {
+		t.Fatalf("statement 3 is not UnitDeclStatement. got=%T", program.Statements[3])
+	}
+	if count.Name.Value != "Count" || count.BaseType.Name != "decimal" || count.Category != "" {
+		t.Fatalf("wrong Count unit declaration: %+v", count)
+	}
+
+	euro, ok := program.Statements[4].(*ast.UnitDeclStatement)
+	if !ok {
+		t.Fatalf("statement 4 is not UnitDeclStatement. got=%T", program.Statements[4])
+	}
+	if euro.Name.Value != "Euro" || euro.BaseType.Name != "decimal" || euro.Category != "currency" {
+		t.Fatalf("wrong Euro unit declaration: %+v", euro)
+	}
+
+	horsepower, ok := program.Statements[5].(*ast.UnitDeclStatement)
+	if !ok {
+		t.Fatalf("statement 5 is not UnitDeclStatement. got=%T", program.Statements[5])
+	}
+	if horsepower.Name.Value != "Horsepower" || horsepower.BaseType.Name != "float" || horsepower.Category != "physical" {
+		t.Fatalf("wrong Horsepower unit declaration: %+v", horsepower)
 	}
 }
 
@@ -794,10 +821,10 @@ func TestInvalidRangeOperatorReportsOneError(t *testing.T) {
 
 func TestParseSliceTypeReferences(t *testing.T) {
 	input := `
-[]byte mut: data
-Vec[[]byte] mut: chunks
-struct Packet { payload: []byte }
-type ByteSlice = []byte
+ref byte[] mut: data
+Vec[byte[]] mut: chunks
+struct Packet { payload: ref byte[] }
+type ByteSlice = ref byte[]
 `
 
 	l := lexer.New(input)
@@ -815,6 +842,9 @@ type ByteSlice = []byte
 		t.Fatalf("statement 0 is not LetStatement. got=%T", program.Statements[0])
 	}
 	assertSliceType(t, letStmt.Type, "byte")
+	if !letStmt.Type.Ref {
+		t.Fatalf("expected slice variable type to be ref")
+	}
 
 	letStmt, ok = program.Statements[1].(*ast.LetStatement)
 	if !ok {
@@ -846,7 +876,7 @@ type ByteSlice = []byte
 
 func TestParseFixedArrayTypeReference(t *testing.T) {
 	input := `
-fn ArrayLoop(values: [3]int) void {
+fn ArrayLoop(values: int[3]) void {
 	for value in values {
 		let copy: int := value
 	}
@@ -872,7 +902,7 @@ fn ArrayLoop(values: [3]int) void {
 }
 
 func TestParseFixedArrayTypeReferenceWithHexLength(t *testing.T) {
-	input := `fn Test(values: [0x3]int) void {}`
+	input := `fn Test(values: int[0x3]) void {}`
 
 	l := lexer.New(input)
 	p := New(l)
@@ -883,6 +913,27 @@ func TestParseFixedArrayTypeReferenceWithHexLength(t *testing.T) {
 	paramType := fn.Parameters[0].Type
 	if paramType.ArrayLength != 3 {
 		t.Fatalf("wrong array length. got=%d want=3", paramType.ArrayLength)
+	}
+}
+
+func TestParseNestedPostfixArrayTypeReference(t *testing.T) {
+	input := `fn Matrix(values: int[3][4]) void {}`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	paramType := fn.Parameters[0].Type
+	if paramType.ArrayLength != 3 {
+		t.Fatalf("wrong outer array length. got=%d want=3", paramType.ArrayLength)
+	}
+	if paramType.ElementType == nil || paramType.ElementType.ArrayLength != 4 {
+		t.Fatalf("wrong inner array type. got=%+v", paramType.ElementType)
+	}
+	if paramType.ElementType.ElementType == nil || paramType.ElementType.ElementType.Name != "int" {
+		t.Fatalf("wrong nested array element. got=%+v", paramType.ElementType)
 	}
 }
 
@@ -942,6 +993,9 @@ func assertSliceType(t *testing.T, ref *ast.TypeReference, elementName string) {
 
 	if ref.ElementType == nil {
 		t.Fatalf("expected slice element type, got %+v", ref)
+	}
+	if !ref.Slice {
+		t.Fatalf("expected slice marker, got %+v", ref)
 	}
 
 	if ref.ElementType.Name != elementName {
@@ -1955,7 +2009,7 @@ func TestParseUnitsInvalidFixtureRecovery(t *testing.T) {
 	if len(p.Errors()) == 0 {
 		t.Fatal("expected units_invalid.sec to produce parser errors")
 	}
-	if p.Errors()[0] != "unit MissingStorage missing numeric storage type at 268:6" {
+	if p.Errors()[0] != `unit InvalidCategory category must be physical, currency, or other, got "experimental" at 271:30` {
 		t.Fatalf("wrong first parser error. got=%q errors=%v", p.Errors()[0], p.Errors())
 	}
 }
@@ -2343,6 +2397,31 @@ fn Use(ref mut value: int) void {
 	}
 }
 
+func TestParseUnsafeExternSystemFunctionDeclaration(t *testing.T) {
+	input := `
+unsafe extern "system" fn _rawSyscall(number: int64) int {
+	return 0
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Statements) != 1 {
+		t.Fatalf("wrong statement count. got=%d want=1", len(program.Statements))
+	}
+
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	if !fn.Unsafe || !fn.Extern || fn.ABI != "system" {
+		t.Fatalf("wrong unsafe extern metadata: unsafe=%t extern=%t abi=%q", fn.Unsafe, fn.Extern, fn.ABI)
+	}
+	if fn.Body == nil || len(fn.Body.Statements) != 1 {
+		t.Fatalf("extern system function should have body. got=%+v", fn.Body)
+	}
+}
+
 func TestParseForRangeAndInfiniteLoops(t *testing.T) {
 	input := `
 fn Test() void {
@@ -2636,7 +2715,7 @@ fn Test() void {
 
 func TestParseForAllowsManyBindingsForSema(t *testing.T) {
 	input := `
-fn TooManyBindings(values: []int) void {
+fn TooManyBindings(values: ref int[]) void {
 	for a, b, c in values {
 	}
 }

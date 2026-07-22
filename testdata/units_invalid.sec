@@ -264,10 +264,10 @@ fn ReturnWrongDerivedUnit(
 // Invalid direct unit declaration syntax and parser recovery
 // =============================================================================
 
-// ERROR: The unit declaration is missing its numeric storage type.
+// OK: Missing numeric storage type defaults to decimal.
 unit MissingStorage
 
-// ERROR: The category must be physical or other.
+// ERROR: The category must be physical, currency, or other.
 unit InvalidCategory decimal experimental
 
 // ERROR: A unit expression may not be empty.

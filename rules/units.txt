@@ -721,9 +721,25 @@ unit Name decimal
 unit Name decimal<unit-expression>
 unit Name decimal physical
 unit Name uint other
+unit Name physical
+unit Name currency
+unit Name other
 ```
 
-The storage type must currently be numeric.
+The optional storage/default numeric type must be numeric. If it is omitted,
+the unit defaults to `decimal`.
+
+`unit Name physical` therefore means:
+
+```
+unit Name decimal physical
+```
+
+Units are unit symbols, not inherently decimal types. Numeric unit types are
+written explicitly as `decimal<m>`, `float<m>`, `int<m>` and so on. The shorthand
+`<m>` is allowed in type position and expands to the unit's default numeric
+representation, unless a clearly typed numeric initializer such as `5f` selects
+another numeric representation.
 
 Implemented built-in physical aliases:
 
@@ -745,17 +761,7 @@ Implemented unit algebra is still compile-time semantic checking only.
 No new LLVM lowering has been added for this appendix. Future lowering
 will go through MLIR before LLVM IR.
 
-Not implemented yet:
-
-```
-impl Unit {
-    dimension: [...]
-    scale: ...
-    system: ...
-}
-```
-
-Also not implemented yet:
+Still not implemented:
 
 ```
 fixed conversion factors such as inch -> millimetre
@@ -780,15 +786,15 @@ A unit implementation uses integer exponents:
 
 ```
 impl m {
-    dimension: [length^1]
-    scale: 1
-    system: SI
+    Dimension: [length^1]
+    Scale: 1
+    System: SI
 }
 
 impl mps {
-    dimension: [length^1, time^-1]
-    scale: 1
-    system: SI
+    Dimension: [length^1, time^-1]
+    Scale: 1
+    System: SI
 }
 ```
 
@@ -891,32 +897,54 @@ A physical unit implementation declares:
 
 ```
 dimension
-scale
-system
+Dimension
+Scale
+System
+LongName
+Symbol
+BaseUnit
+Status
 ```
 
 The scale is relative to the canonical unit for the normalized dimension.
 It must be a positive, non-zero compile-time numeric expression.
+`Scale: 1` is valid and preferred for canonical units. Suffixes such as `1d`
+are allowed but not required for exact integer scale values.
+
+Metadata names are case-tolerant and underscore-tolerant in source. The
+recommended stdlib spelling is PascalCase (`BaseUnit`, `LongName`, `Scale`),
+while older forms such as `base_unit`, `baseunit`, `long_name` and `scale`
+remain accepted.
+
+`Status` accepts:
+
+```
+active
+deprecated
+obsolete
+```
+
+The default status is `active`.
 
 Examples:
 
 ```
 impl mm {
-    dimension: [length^1]
-    scale: 1 / 1000
-    system: SI
+    Dimension: [length^1]
+    Scale: 1 / 1000
+    System: SI
 }
 
 impl inch {
-    dimension: [length^1]
-    scale: 127 / 5000
-    system: Imperial
+    Dimension: [length^1]
+    Scale: 127 / 5000
+    System: Imperial
 }
 
 impl rpm {
-    dimension: [time^-1]
-    scale: 1 / 60
-    system: Other
+    Dimension: [time^-1]
+    Scale: 1 / 60
+    System: Other
 }
 ```
 
@@ -1065,11 +1093,17 @@ Current implementation boundary
 The first advanced unit pass is implemented:
 
 - `unit Name physical` and `unit Name other` shorthand is accepted.
+- `unit Name currency` shorthand is accepted.
+- `unit Name` defaults to `decimal`.
+- `<unit>` shorthand is accepted in type position.
 - `impl Unit { dimension/scale/system }` metadata is accepted by the parser.
 - `dimension: [...]` is registered in sema and used by unit algebra.
 - `system: Name` is stored as unit metadata.
 - `scale: ...` is accepted as metadata syntax, but scale arithmetic is not yet
   used when selecting algebra results.
+- `LongName`, `Symbol`, `BaseUnit`, and `Status` metadata is stored in sema.
+- `Status: deprecated` and `Status: obsolete` produce warnings when the unit is
+  used.
 - integer-backed domain units such as `Item uint other` can participate in
   dimensional algebra and produce decimal derived units.
 - conversion functions declared as `fn TargetUnit(source: SourceUnit) TargetUnit`

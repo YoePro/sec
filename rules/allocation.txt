@@ -1,0 +1,368 @@
+# Allocation
+
+## Purpose
+
+This document defines the allocation model used by Sec.
+
+The normal programmer should not need to choose an allocator or manually manage
+individual allocations. The compiler normally selects and propagates an arena.
+
+Manual allocation remains available for systems code, embedded code, allocators,
+FFI wrappers and performance-sensitive code.
+
+This document defines allocation semantics. It does not define `Vec[T]`, `Map[K,
+V]`, `List[T]`, `String`, `Box[T]` or other dynamic containers.
+
+## Core rule
+
+Dynamic allocation is explicit through the operation being performed.
+
+Selection of the arena is normally implicit.
+
+The compiler may choose or propagate an allocation context for an operation that
+is defined as allocating. It must not introduce dynamic allocation for an
+operation that is not defined as allocating.
+
+Valid examples of allocation-capable operations may later include:
+
+```sec
+let values := try Vec[int].WithCapacity(100)
+let text := try String.From(source)
+```
+
+The source does not name an arena, but the called operation is known to allocate.
+
+The following operations must not silently allocate:
+
+```sec
+let second := first
+target = source
+Inspect(value)
+return value
+ref value
+```
+
+Copy, move, borrow, parameter passing, return and escape analysis must not by
+themselves introduce dynamic allocation.
+
+## Default allocation model
+
+Arena allocation is the default dynamic allocation model.
+
+The compiler maintains an active allocation context when dynamic allocation is
+available for the selected target and build profile.
+
+An active allocation context may be:
+
+- a compiler-managed local arena
+- an arena propagated from the caller
+- an explicitly selected arena
+- a target-provided arena
+- unavailable in a profile that forbids dynamic allocation
+
+The active arena is not a source-level global variable.
+
+The compiler must not require the programmer to pass an arena through ordinary
+application code unless explicit allocation control is requested.
+
+## No hidden escape promotion
+
+The compiler must never allocate merely because a value escapes its original
+scope.
+
+The following is invalid when the returned value would refer to local storage:
+
+```sec
+fn Invalid() ref byte[] {
+    let data: byte[16] := [...]
+    return ref data[..]
+}
+```
+
+The compiler must not repair the program by moving `data` into an arena or heap.
+
+An owning operation that intentionally creates escaping storage must allocate
+directly in a suitable allocation context.
+
+Allocation origin must be decided before lowering. The backend must not infer or
+change ownership or allocation semantics.
+
+## Explicit arena selection
+
+Allocation-capable APIs may accept an explicit mutable arena reference.
+
+Example form:
+
+```sec
+let values := try Type.Create(ref mut arena, arguments)
+```
+
+The equivalent normal form may omit the arena:
+
+```sec
+let values := try Type.Create(arguments)
+```
+
+The compiler-selected and explicitly selected forms must have the same ownership,
+error and destruction semantics.
+
+No new allocation keyword or scoped arena syntax is required by this version.
+
+An explicit arena is an ordinary owned value. Mutation of its allocation state
+requires `ref mut Arena`.
+
+## Manual arena allocation
+
+Manual allocation is performed through an `Arena` value.
+
+Initial safe form:
+
+```sec
+let storage := try arena.Alloc[byte](4096)
+```
+
+Conceptual signature:
+
+```sec
+fn Alloc[T](
+    ref mut self,
+    count: uint,
+) Result[ref mut T[], AllocationError]
+```
+
+Initial restrictions:
+
+- `T` must be sized
+- `T` must be trivially destructible
+- `T` must have a valid compiler-defined default value
+- every returned element is initialized before the slice becomes readable
+- `count` is the number of `T` elements, not a byte count
+- multiplication of `count * sizeof(T)` is checked for overflow
+- required alignment is derived from `T`
+- the returned slice lifetime is bounded by the arena lifetime
+- the returned slice does not own or individually deallocate the arena storage
+
+General uninitialized allocation is not part of the safe initial form.
+
+A future uninitialized allocation API must use an explicit uninitialized-memory
+type or unsafe operation. It must not expose uninitialized memory as ordinary
+`ref mut T[]`.
+
+## Current implementation status
+
+Implemented now:
+
+- `arena` is reserved as a language keyword.
+- Function and generic type syntax can represent APIs such as
+  `Alloc[T](count) Result[ref mut T[], AllocationError]`.
+- The array/slice type layer can represent `ref T[]` and `ref mut T[]`, which
+  are required for allocation APIs returning slices.
+
+Not implemented yet:
+
+- `Arena` as a standard library type.
+- `arena.Alloc[T](count)` semantics.
+- allocation context propagation.
+- sized/trivially-destructible/default-value checks for allocation.
+- allocation failure plumbing beyond ordinary `Result` syntax.
+- storage-origin tracking for arena-backed slices.
+- arena reset validation.
+- Semantic IR, MLIR or LLVM lowering for arena allocation.
+
+## Allocation failure
+
+A dynamic allocation that may fail returns `Result`.
+
+The standard error type is:
+
+```sec
+AllocationError
+```
+
+Allocation must not silently:
+
+- return null
+- return an invalid reference
+- terminate the process
+- panic
+- continue with a shorter allocation
+
+The caller handles or propagates the error through normal `Result` and `try`
+rules.
+
+An allocation may be treated as infallible only when the compiler can prove the
+required storage is available under the selected target and allocation profile.
+
+## Arena ownership
+
+An arena owns its raw storage.
+
+A value stored in arena memory still follows normal Sec ownership and destruction
+rules.
+
+Memory ownership and value ownership are distinct:
+
+```text
+arena
+    owns raw storage
+
+value
+    owns its fields, elements and external resources
+
+reference or slice
+    borrows initialized values
+```
+
+Destroying a value does not necessarily reclaim its arena bytes immediately.
+
+Resetting or destroying the arena reclaims the raw storage only after all values
+and references that depend on that storage have ended.
+
+## Destruction
+
+Arena allocation must not delay ordinary value destruction.
+
+Owned values are destroyed at their normal ownership boundary even when their
+storage came from an arena.
+
+The arena must not become an implicit destructor registry for arbitrary values.
+
+The compiler must keep these operations distinct:
+
+- destroy a value
+- release an external resource
+- invalidate a reference
+- reclaim arena storage
+
+## Arena reset
+
+Reset invalidates every allocation produced by the arena.
+
+Reset is valid only when:
+
+- no live owned value uses storage from the arena
+- no live shared reference points into the arena
+- no live mutable reference points into the arena
+- no deferred operation will access arena-backed storage
+- no returned or captured value depends on the arena
+
+Invalid example:
+
+```sec
+let storage := try arena.Alloc[byte](4096)
+arena.Reset()
+Use(storage)
+```
+
+The compiler must reject a statically invalid reset.
+
+Full dependency and borrow tracking is defined by the borrow-tracking rules.
+
+## Repeated allocation
+
+Allocating again from an arena must not by itself invalidate earlier allocations.
+
+This must be valid when capacity remains available:
+
+```sec
+let first := try arena.Alloc[byte](100)
+let second := try arena.Alloc[byte](200)
+```
+
+The returned references are tied to the arena region, but they do not keep the
+arena object exclusively borrowed after the allocation call completes.
+
+The temporary mutable borrow used to update arena metadata ends when `Alloc`
+returns.
+
+The region dependency of the returned storage remains active.
+
+## Storage origin
+
+Semantic analysis must record the origin of storage independently from the value
+type.
+
+Minimum storage origins:
+
+```text
+Inline
+Static
+Arena
+External
+Foreign
+FixedAddress
+```
+
+A reference or slice propagates the storage origin and lifetime of its source.
+
+Storage origin is not part of nominal type identity.
+
+Two values may both have type `ref byte[]` while referring to different storage
+origins and lifetimes.
+
+## Semantic IR
+
+Every allocation-capable operation must be explicit in Semantic IR.
+
+Semantic IR must record at least:
+
+- allocating operation
+- selected allocation context
+- requested element type
+- requested element count or byte size
+- required alignment
+- fallibility
+- resulting storage origin
+- resulting ownership or borrow mode
+- destruction responsibility
+
+LLVM or MLIR lowering must not invent allocation, ownership or destruction
+semantics.
+
+## Target profiles
+
+A target or build profile may restrict dynamic allocation.
+
+Examples:
+
+```text
+hosted
+    compiler-managed arena available
+
+embedded-arena
+    fixed arena supplied by the platform or program
+
+noalloc
+    dynamic allocation unavailable
+```
+
+The ownership and borrowing rules remain identical across profiles.
+
+When no allocation context is available, an allocation-capable operation is a
+compile-time error.
+
+## Initial implementation scope
+
+Implement now:
+
+- allocation-effect classification in semantic analysis
+- active allocation-context representation
+- prohibition of hidden escape promotion
+- prohibition of hidden allocation during copy or move
+- storage-origin metadata in Semantic IR
+- `Arena.Alloc[T]` semantic rules when the `Arena` builtin is enabled
+- `Result`-based allocation failure
+- basic arena lifetime dependency recording
+
+Do not implement as part of this rule:
+
+- `Vec[T]`
+- `Map[K, V]`
+- `List[T]`
+- `Set[T]`
+- dynamic strings
+- general uninitialized allocation
+- garbage collection
+- reference counting
+- automatic heap promotion
+- allocator selection at LLVM level

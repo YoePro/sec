@@ -16,7 +16,7 @@ module platform.linux.amd64
  * Raw syscall with no Parameters. OS: Linux Arch: AMD64
  * PARAM: "number" uint 
  */
-unsafe fn _rawSyscall(number: _sysCall) int {
+unsafe extern "system" fn _rawSyscall(number: uint) int {
     asm {
         "syscall"
         inputs:
@@ -34,7 +34,7 @@ unsafe fn _rawSyscall(number: _sysCall) int {
 }
 
 // Call with 1 argument
-unsafe fn _rawSyscall(number: _sysCall, arg1: uint) int {
+unsafe extern "system" fn _rawSyscall(number: uint, arg1: uint) int {
         asm {
         "syscall"
 
@@ -55,7 +55,7 @@ unsafe fn _rawSyscall(number: _sysCall, arg1: uint) int {
 }
 
 // Call with 2 arguments
-unsafe fn _rawSyscall(number: _sysCall, arg1: uint, arg2: uint) int {
+unsafe extern "system" fn _rawSyscall(number: uint, arg1: uint, arg2: uint) int {
         asm {
         "syscall"
 
@@ -77,7 +77,7 @@ unsafe fn _rawSyscall(number: _sysCall, arg1: uint, arg2: uint) int {
 }
 
 // Call with 3 arguments
-unsafe fn _rawSyscall(number: _sysCall, arg1: uint, arg2: uint, arg3: uint) int {
+unsafe extern "system" fn _rawSyscall(number: uint, arg1: uint, arg2: uint, arg3: uint) int {
     asm {
         "syscall"
 
@@ -100,7 +100,7 @@ unsafe fn _rawSyscall(number: _sysCall, arg1: uint, arg2: uint, arg3: uint) int 
 }
 
 // Call with 4 arguments
-unsafe fn _rawSyscall(number: _sysCall, arg1: uint, arg2: uint, arg3: uint, arg4: uint) int { 
+unsafe extern "system" fn _rawSyscall(number: uint, arg1: uint, arg2: uint, arg3: uint, arg4: uint) int { 
     asm {
         "syscall"
 
@@ -124,7 +124,7 @@ unsafe fn _rawSyscall(number: _sysCall, arg1: uint, arg2: uint, arg3: uint, arg4
 }
 
 // Call with 5 arguments
-unsafe fn _rawSyscall(number: _sysCall, arg1: uint, arg2: uint, arg3: uint, arg4: uint, arg5: uint) int { 
+unsafe extern "system" fn _rawSyscall(number: uint, arg1: uint, arg2: uint, arg3: uint, arg4: uint, arg5: uint) int { 
     asm {
         "syscall"
 
@@ -148,7 +148,7 @@ unsafe fn _rawSyscall(number: _sysCall, arg1: uint, arg2: uint, arg3: uint, arg4
 }
 
 // Call with 6 arguments
-unsafe fn _rawSyscall6(number: _sysCall, arg1: uint, arg2: uint, arg3: uint, arg4: uint, arg5: uint, arg6: uint) int {
+unsafe extern "system" fn _rawSyscall6(number: uint, arg1: uint, arg2: uint, arg3: uint, arg4: uint, arg5: uint, arg6: uint) int {
     asm {
         "syscall"
 

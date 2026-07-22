@@ -1,0 +1,61 @@
+module units
+
+/** Hertz */
+unit Hz physical
+impl Hz {
+    LongName: "Hertz"
+    Symbol: "Hz"
+    BaseUnit: false
+    Status: active
+    Dimension: [time^-1]
+    Scale: 1
+    System: SI
+
+    fn Hz(Second: decimal<s>) decimal<Hz> {
+        return decimal<Hz>(1d / decimal(Second))
+    }
+
+    fn Hz(Second: float<s>) float<Hz> {
+        return float<Hz>(1.0f / float(Second))
+    }
+
+    fn Hz(Second: int<s>) int<Hz> {
+        return int<Hz>(1i / int(Second))
+    }
+
+    fn Hz(Second: uint<s>) uint<Hz> {
+        return uint<Hz>(1u / uint(Second))
+    }
+}
+
+/** Newton */
+unit N decimal physical
+impl N {
+    dimension: [mass^1, length^1, time^-2]
+    scale: 1
+    system: SI
+
+    fn N(Kilogram: decimal<kg>, Meter: decimal<m>, Second: decimal<s>) decimal<N> {
+        return decimal<N>((decimal(Kilogram) * decimal(Meter)) / (decimal(Second) * decimal(Second)))
+    }
+
+    fn N(Kilogram: float<kg>, Meter: float<m>, Second: float<s>) float<N> {
+        return float<N>((float(Kilogram) * float(Meter)) / (float(Second) * float(Second)))
+    }
+}
+
+/** Pascal */
+unit Pa decimal physical
+impl Pa {
+    dimension: [mass^1, length^-1, time^-2]
+    scale: 1
+    system: SI
+
+    fn Pa(Newton: decimal<N>, Area: decimal<[length^2]>) decimal<Pa> {
+        return decimal<Pa>(decimal(Newton) / decimal(Area))
+    }
+
+    fn Pa(Newton: float<N>, Area: float<[length^2]>) float<Pa> {
+        return float<Pa>(float(Newton) / float(Area))
+    }
+}

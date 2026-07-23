@@ -19,6 +19,7 @@ type Parser struct {
 	peekToken lexer.Token
 
 	stopBeforeBrace bool
+	inRefExpression bool
 }
 
 func New(l *lexer.Lexer) *Parser {
@@ -176,7 +177,7 @@ func (p *Parser) parseStatement() ast.Statement {
 		return p.parseExpressionOrAssignmentStatement()
 
 	case lexer.IDENT:
-		if p.peekToken.Type == lexer.MUT || p.peekToken.Type == lexer.COLON || p.peekToken.Type == lexer.LT || p.peekToken.Type == lexer.LBRACKET {
+		if p.peekToken.Type == lexer.MUT || p.peekToken.Type == lexer.COLON || p.looksLikeTypedVariableDeclaration() {
 			errorsBefore := len(p.errors)
 			if stmt := p.parseTypedVariableDeclaration(); stmt != nil || len(p.errors) > errorsBefore {
 				return stmt
@@ -204,6 +205,29 @@ func (p *Parser) parseStatement() ast.Statement {
 		p.addError("unexpected token %q at %d:%d", p.curToken.Lexeme, p.curToken.Line, p.curToken.Column)
 		return nil
 	}
+}
+
+func (p *Parser) looksLikeTypedVariableDeclaration() bool {
+	if p.curToken.Type != lexer.IDENT || (p.peekToken.Type != lexer.LT && p.peekToken.Type != lexer.LBRACKET) {
+		return false
+	}
+
+	curToken := p.curToken
+	peekToken := p.peekToken
+	lexerState := p.l.Snapshot()
+	errorCount := len(p.errors)
+	warningCount := len(p.warnings)
+
+	_ = p.parseTypeReference()
+	ok := p.peekToken.Type == lexer.MUT || p.peekToken.Type == lexer.COLON
+
+	p.curToken = curToken
+	p.peekToken = peekToken
+	p.l.Restore(lexerState)
+	p.errors = p.errors[:errorCount]
+	p.warnings = p.warnings[:warningCount]
+
+	return ok
 }
 
 func (p *Parser) parseDiscardStatement() ast.Statement {
@@ -876,9 +900,19 @@ func expressionToken(expr ast.Expression) lexer.Token {
 		return expr.Token
 	case *ast.MatchExpression:
 		return expr.Token
+	case *ast.SpreadExpression:
+		return expr.Token
 	case *ast.RangeExpression:
 		return expr.Token
 	case *ast.MemberExpression:
+		return expr.Token
+	case *ast.ArrayLiteral:
+		return expr.Token
+	case *ast.IndexExpression:
+		return expr.Token
+	case *ast.SliceExpression:
+		return expr.Token
+	case *ast.RefExpression:
 		return expr.Token
 	case *ast.StructLiteral:
 		return expr.Token
@@ -2557,6 +2591,10 @@ func (p *Parser) parseTypeReference() *ast.TypeReference {
 		return p.parsePrefixSequenceTypeReference()
 	}
 
+	if p.curToken.Type == lexer.LPAREN {
+		return p.parseParenthesizedTypeReference()
+	}
+
 	ref := &ast.TypeReference{
 		Token: p.curToken,
 		Name:  p.curToken.Lexeme,
@@ -2581,6 +2619,18 @@ func (p *Parser) parseTypeReference() *ast.TypeReference {
 		ref.Unit = unit
 	}
 
+	return p.parsePostfixTypeReference(ref)
+}
+
+func (p *Parser) parseParenthesizedTypeReference() *ast.TypeReference {
+	token := p.curToken
+	if !p.expectPeekTypeStart() {
+		return &ast.TypeReference{Token: token}
+	}
+	ref := p.parseTypeReference()
+	if !p.expectPeek(lexer.RPAREN) {
+		return ref
+	}
 	return p.parsePostfixTypeReference(ref)
 }
 
@@ -2636,9 +2686,10 @@ func (p *Parser) parseFunctionTypeReference() *ast.TypeReference {
 }
 
 type typeSequenceSuffix struct {
-	slice  bool
-	length int64
-	token  lexer.Token
+	slice            bool
+	length           int64
+	lengthExpression ast.Expression
+	token            lexer.Token
 }
 
 func (p *Parser) parsePostfixTypeReference(ref *ast.TypeReference) *ast.TypeReference {
@@ -2656,13 +2707,28 @@ func (p *Parser) parsePostfixTypeReference(ref *ast.TypeReference) *ast.TypeRefe
 			p.nextToken()
 			length, ok := ast.ParseIntegerLiteralInt64(p.curToken.Lexeme)
 			if !ok {
-				p.addError("invalid array length %q at %d:%d", p.curToken.Lexeme, p.curToken.Line, p.curToken.Column)
-				return ref
+				bigValue, _ := ast.ParseIntegerLiteralLexeme(p.curToken.Lexeme)
+				lengthExpr := &ast.IntegerLiteral{Token: p.curToken, BigValue: bigValue}
+				if !p.expectPeek(lexer.RBRACKET) {
+					return ref
+				}
+				suffixes = append(suffixes, typeSequenceSuffix{lengthExpression: lengthExpr, token: token})
+				continue
 			}
 			if !p.expectPeek(lexer.RBRACKET) {
 				return ref
 			}
 			suffixes = append(suffixes, typeSequenceSuffix{length: length, token: token})
+		case lexer.MINUS, lexer.FLOAT, lexer.TRUE, lexer.FALSE:
+			p.nextToken()
+			lengthExpr := p.parseExpression(LOWEST)
+			if lengthExpr == nil {
+				return ref
+			}
+			if !p.expectPeek(lexer.RBRACKET) {
+				return ref
+			}
+			suffixes = append(suffixes, typeSequenceSuffix{lengthExpression: lengthExpr, token: token})
 		default:
 			ref.TypeArgs = p.parseTypeArgs()
 		}
@@ -2671,10 +2737,11 @@ func (p *Parser) parsePostfixTypeReference(ref *ast.TypeReference) *ast.TypeRefe
 	for i := len(suffixes) - 1; i >= 0; i-- {
 		suffix := suffixes[i]
 		ref = &ast.TypeReference{
-			Token:       suffix.token,
-			ElementType: ref,
-			Slice:       suffix.slice,
-			ArrayLength: suffix.length,
+			Token:                 suffix.token,
+			ElementType:           ref,
+			Slice:                 suffix.slice,
+			ArrayLength:           suffix.length,
+			ArrayLengthExpression: suffix.lengthExpression,
 		}
 	}
 
@@ -2947,7 +3014,7 @@ func (p *Parser) expectPeekTypeStart() bool {
 }
 
 func isTypeStart(tokenType lexer.TokenType) bool {
-	return tokenType == lexer.IDENT || tokenType == lexer.LT || tokenType == lexer.LBRACKET || tokenType == lexer.VOID || tokenType == lexer.FN || tokenType == lexer.REF
+	return tokenType == lexer.IDENT || tokenType == lexer.LT || tokenType == lexer.LBRACKET || tokenType == lexer.LPAREN || tokenType == lexer.VOID || tokenType == lexer.FN || tokenType == lexer.REF
 }
 
 func (p *Parser) nextToken() {

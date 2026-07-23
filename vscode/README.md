@@ -51,7 +51,7 @@ extension root:
 
 ```text
 ~/.vscode-server/extensions/sec-lang.sec-syntax/bin/lsp-sec
-C:\Users\Jonas\.vscode\extensions\sec-lang.sec-syntax\bin\lsp-sec.exe
+C:\Users\Accountname\.vscode\extensions\sec-lang.sec-syntax\bin\lsp-sec.exe
 ```
 
 The extension first checks the `sec.languageServer.path` setting. If that is

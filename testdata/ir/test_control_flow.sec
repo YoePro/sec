@@ -1,0 +1,22 @@
+// test_control_flow.sec
+module main
+
+fn main() int {
+    let mut score := 85
+    let mut bonus := 10
+
+    if score > 90 {
+        if bonus > 5 {
+            return 1 // Toppbetyg med stor bonus
+        }
+        return 2 // Toppbetyg, liten bonus
+    } else if score > 80 {
+        score = score + bonus
+        if score > 90 {
+            return 3 // Klarade gränsen tack vare bonus
+        }
+        return 4 // Räckte inte hela vägen
+    } else {
+        return 5 // Underkänd
+    }
+}

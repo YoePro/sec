@@ -11,7 +11,9 @@ import (
 
 	"sec/internal/ast"
 	llvmcodegen "sec/internal/codegen/llvm"
+	mlircodegen "sec/internal/codegen/mlir"
 	"sec/internal/lexer"
+	mlirtoolchain "sec/internal/mlir"
 	"sec/internal/parser"
 	"sec/internal/sema"
 )
@@ -33,6 +35,11 @@ func main() {
 
 	if command == "emit-llvm" {
 		runEmitLLVMCommand(flag.Args()[1:])
+		return
+	}
+
+	if command == "emit-mlir" {
+		runEmitMLIRCommand(flag.Args()[1:])
 		return
 	}
 
@@ -98,8 +105,9 @@ func printUsage() {
 	fmt.Fprintln(os.Stderr, "usage: sec <lex|token> <file.sec>")
 	fmt.Fprintln(os.Stderr, "       sec init [path] [--name <name>] [--target <os-arch>] [--profile <profile>]")
 	fmt.Fprintln(os.Stderr, "       sec <parse|ast|sema> <file.sec|dir|glob>...")
-	fmt.Fprintln(os.Stderr, "       sec emit-llvm <file.sec> -o <file.ll> [--target <os-arch>]")
-	fmt.Fprintln(os.Stderr, "       sec build <file.sec> [-o <program>] [--target <os-arch>] [--keep-llvm] [--clang <path>]")
+	fmt.Fprintln(os.Stderr, "       sec emit-llvm <file.sec> -o <file.ll|-> [--target <os-arch>]")
+	fmt.Fprintln(os.Stderr, "       sec emit-mlir <file.sec> -o <file.mlir|-> [--target <os-arch>] [--mlir-bin <path>] [--verify]")
+	fmt.Fprintln(os.Stderr, "       sec build <file.sec> [-o <program>] [--target <os-arch>] [--pipeline <llvm|mlir>] [--keep-mlir] [--keep-llvm] [--mlir-bin <path>] [--clang <path>]")
 }
 
 func runLex(input string) {
@@ -252,10 +260,83 @@ func runEmitLLVMCommand(args []string) {
 		os.Exit(4)
 	}
 
-	if err := os.WriteFile(outputFile, []byte(ir), 0644); err != nil {
+	if err := writeCompilerOutput(outputFile, []byte(ir)); err != nil {
 		fmt.Fprintf(os.Stderr, "write error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func runEmitMLIRCommand(args []string) {
+	options, ok := parseEmitMLIRCommandArgs(args, hostCompilerTarget())
+	if !ok {
+		printUsage()
+		os.Exit(1)
+	}
+
+	input, err := os.ReadFile(options.InputFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "read error: %v\n", err)
+		os.Exit(1)
+	}
+
+	targetDefinition, err := requireTargetCanEmitLLVM(options.Target)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "target error: %s\n", err)
+		os.Exit(1)
+	}
+
+	program := parseAndAnalyzeForTarget(string(input), options.Target)
+	mlirText, err := mlircodegen.GenerateWithTriple(program, targetDefinition.LLVMTriple)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "codegen error: %v\n", err)
+		os.Exit(4)
+	}
+
+	if options.OutputFile != "-" {
+		if err := writeCompilerOutput(options.OutputFile, []byte(mlirText)); err != nil {
+			fmt.Fprintf(os.Stderr, "write error: %v\n", err)
+			os.Exit(1)
+		}
+	}
+
+	if options.Verify {
+		toolchain := mlirtoolchain.NewToolchain(options.MLIRBin)
+		verifyPath := options.OutputFile
+		if options.OutputFile == "-" {
+			tmpPath, removeTmp, err := createTempOutputPath(".mlir")
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "temp file error: %v\n", err)
+				os.Exit(1)
+			}
+			verifyPath = tmpPath
+			if removeTmp {
+				defer os.Remove(tmpPath)
+			}
+			if err := os.WriteFile(verifyPath, []byte(mlirText), 0644); err != nil {
+				fmt.Fprintf(os.Stderr, "write error: %v\n", err)
+				os.Exit(1)
+			}
+		}
+		if err := toolchain.Verify(verifyPath); err != nil {
+			fmt.Fprintf(os.Stderr, "mlir error: %v\n", err)
+			os.Exit(4)
+		}
+	}
+
+	if options.OutputFile == "-" {
+		if err := writeCompilerOutput(options.OutputFile, []byte(mlirText)); err != nil {
+			fmt.Fprintf(os.Stderr, "write error: %v\n", err)
+			os.Exit(1)
+		}
+	}
+}
+
+func writeCompilerOutput(outputFile string, data []byte) error {
+	if outputFile == "-" {
+		_, err := os.Stdout.Write(data)
+		return err
+	}
+	return os.WriteFile(outputFile, data, 0644)
 }
 
 func runBuildCommand(args []string) {
@@ -278,33 +359,36 @@ func runBuildCommand(args []string) {
 	}
 
 	program := parseAndAnalyzeForTarget(string(input), options.Target)
-	ir, err := llvmcodegen.GenerateWithTriple(program, targetDefinition.LLVMTriple)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "codegen error: %v\n", err)
-		os.Exit(4)
-	}
-
-	llvmPath := options.LLVMOutputFile
-	removeLLVM := false
-	if llvmPath == "" {
-		tmp, err := os.CreateTemp("", "sec-*.ll")
+	llvmPath := ""
+	switch options.Pipeline {
+	case "llvm":
+		ir, err := llvmcodegen.GenerateWithTriple(program, targetDefinition.LLVMTriple)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "temp file error: %v\n", err)
+			fmt.Fprintf(os.Stderr, "codegen error: %v\n", err)
+			os.Exit(4)
+		}
+		llvmPath = options.LLVMOutputFile
+		removeLLVM := false
+		if llvmPath == "" {
+			llvmPath, removeLLVM, err = createTempOutputPath(".ll")
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "temp file error: %v\n", err)
+				os.Exit(1)
+			}
+		}
+		if removeLLVM {
+			defer os.Remove(llvmPath)
+		}
+		if err := os.WriteFile(llvmPath, []byte(ir), 0644); err != nil {
+			fmt.Fprintf(os.Stderr, "write error: %v\n", err)
 			os.Exit(1)
 		}
-		llvmPath = tmp.Name()
-		removeLLVM = true
-		if err := tmp.Close(); err != nil {
-			fmt.Fprintf(os.Stderr, "temp file error: %v\n", err)
-			os.Exit(1)
-		}
-	}
-	if removeLLVM {
-		defer os.Remove(llvmPath)
-	}
-
-	if err := os.WriteFile(llvmPath, []byte(ir), 0644); err != nil {
-		fmt.Fprintf(os.Stderr, "write error: %v\n", err)
+	case "mlir":
+		var cleanup func()
+		llvmPath, cleanup = runMLIRBuildPipeline(program, targetDefinition.LLVMTriple, options)
+		defer cleanup()
+	default:
+		fmt.Fprintf(os.Stderr, "build error: unknown pipeline %q\n", options.Pipeline)
 		os.Exit(1)
 	}
 
@@ -324,6 +408,74 @@ func runBuildCommand(args []string) {
 	}
 }
 
+func runMLIRBuildPipeline(program *ast.Program, triple string, options buildCommandOptions) (string, func()) {
+	cleanupPaths := []string{}
+	cleanup := func() {
+		for _, path := range cleanupPaths {
+			_ = os.Remove(path)
+		}
+	}
+
+	mlirText, err := mlircodegen.GenerateWithTriple(program, triple)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "codegen error: %v\n", err)
+		os.Exit(4)
+	}
+
+	mlirPath := options.MLIROutputFile
+	removeMLIR := false
+	if mlirPath == "" {
+		mlirPath, removeMLIR, err = createTempOutputPath(".mlir")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "temp file error: %v\n", err)
+			os.Exit(1)
+		}
+	}
+	if removeMLIR {
+		cleanupPaths = append(cleanupPaths, mlirPath)
+	}
+	if err := os.WriteFile(mlirPath, []byte(mlirText), 0644); err != nil {
+		fmt.Fprintf(os.Stderr, "write error: %v\n", err)
+		os.Exit(1)
+	}
+
+	llvmPath := options.LLVMOutputFile
+	removeLLVM := false
+	if llvmPath == "" {
+		llvmPath, removeLLVM, err = createTempOutputPath(".ll")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "temp file error: %v\n", err)
+			os.Exit(1)
+		}
+	}
+	if removeLLVM {
+		cleanupPaths = append(cleanupPaths, llvmPath)
+	}
+
+	toolchain := mlirtoolchain.NewToolchain(options.MLIRBin)
+	if err := toolchain.Verify(mlirPath); err != nil {
+		fmt.Fprintf(os.Stderr, "mlir error: %v\n", err)
+		os.Exit(4)
+	}
+	if err := toolchain.TranslateToLLVMIR(mlirPath, llvmPath); err != nil {
+		fmt.Fprintf(os.Stderr, "mlir error: %v\n", err)
+		os.Exit(4)
+	}
+	return llvmPath, cleanup
+}
+
+func createTempOutputPath(ext string) (string, bool, error) {
+	tmp, err := os.CreateTemp("", "sec-*"+ext)
+	if err != nil {
+		return "", false, err
+	}
+	path := tmp.Name()
+	if err := tmp.Close(); err != nil {
+		return "", false, err
+	}
+	return path, true, nil
+}
+
 func parseOutputCommandArgs(args []string) (inputFile string, outputFile string, ok bool) {
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -332,6 +484,9 @@ func parseOutputCommandArgs(args []string) (inputFile string, outputFile string,
 				return "", "", false
 			}
 			outputFile = args[i+1]
+			if !isValidEmitOutputFile(outputFile) {
+				return "", "", false
+			}
 			i++
 		default:
 			if inputFile != "" {
@@ -353,6 +508,9 @@ func parseEmitLLVMCommandArgs(args []string, defaultTarget CompilerTarget) (inpu
 				return "", "", CompilerTarget{}, false
 			}
 			outputFile = args[i+1]
+			if !isValidEmitOutputFile(outputFile) {
+				return "", "", CompilerTarget{}, false
+			}
 			i++
 		case "--target":
 			if i+1 >= len(args) {
@@ -375,12 +533,69 @@ func parseEmitLLVMCommandArgs(args []string, defaultTarget CompilerTarget) (inpu
 	return inputFile, outputFile, target, inputFile != "" && outputFile != ""
 }
 
+type emitMLIRCommandOptions struct {
+	InputFile  string
+	OutputFile string
+	Target     CompilerTarget
+	MLIRBin    string
+	Verify     bool
+}
+
+func parseEmitMLIRCommandArgs(args []string, defaultTarget CompilerTarget) (emitMLIRCommandOptions, bool) {
+	options := emitMLIRCommandOptions{Target: defaultTarget}
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "-o":
+			if i+1 >= len(args) || options.OutputFile != "" {
+				return emitMLIRCommandOptions{}, false
+			}
+			options.OutputFile = args[i+1]
+			if !isValidEmitOutputFile(options.OutputFile) {
+				return emitMLIRCommandOptions{}, false
+			}
+			i++
+		case "--target":
+			if i+1 >= len(args) {
+				return emitMLIRCommandOptions{}, false
+			}
+			target, ok := parseCompilerTarget(args[i+1])
+			if !ok {
+				return emitMLIRCommandOptions{}, false
+			}
+			options.Target = target
+			i++
+		case "--mlir-bin":
+			if i+1 >= len(args) || options.MLIRBin != "" {
+				return emitMLIRCommandOptions{}, false
+			}
+			options.MLIRBin = args[i+1]
+			i++
+		case "--verify":
+			options.Verify = true
+		default:
+			if strings.HasPrefix(args[i], "-") || options.InputFile != "" {
+				return emitMLIRCommandOptions{}, false
+			}
+			options.InputFile = args[i]
+		}
+	}
+
+	return options, options.InputFile != "" && options.OutputFile != ""
+}
+
+func isValidEmitOutputFile(path string) bool {
+	return path == "-" || !strings.HasPrefix(filepath.Base(path), "-")
+}
+
 type buildCommandOptions struct {
 	InputFile      string
 	OutputFile     string
 	Target         CompilerTarget
 	Clang          string
 	LLVMOutputFile string
+	MLIROutputFile string
+	MLIRBin        string
+	Pipeline       string
 }
 
 func parseBuildCommandArgs(args []string) (inputFile string, outputFile string, ok bool) {
@@ -390,8 +605,9 @@ func parseBuildCommandArgs(args []string) (inputFile string, outputFile string, 
 
 func parseBuildCommandOptions(args []string, defaultTarget CompilerTarget) (buildCommandOptions, bool) {
 	options := buildCommandOptions{
-		Target: defaultTarget,
-		Clang:  "clang",
+		Target:   defaultTarget,
+		Clang:    "clang",
+		Pipeline: "llvm",
 	}
 
 	for i := 0; i < len(args); i++ {
@@ -401,6 +617,9 @@ func parseBuildCommandOptions(args []string, defaultTarget CompilerTarget) (buil
 				return buildCommandOptions{}, false
 			}
 			options.OutputFile = args[i+1]
+			if !isValidBuildOutputFile(options.OutputFile) {
+				return buildCommandOptions{}, false
+			}
 			i++
 		case "--target":
 			if i+1 >= len(args) {
@@ -418,11 +637,33 @@ func parseBuildCommandOptions(args []string, defaultTarget CompilerTarget) (buil
 			}
 			options.Clang = args[i+1]
 			i++
+		case "--pipeline":
+			if i+1 >= len(args) {
+				return buildCommandOptions{}, false
+			}
+			switch args[i+1] {
+			case "llvm", "mlir":
+				options.Pipeline = args[i+1]
+			default:
+				return buildCommandOptions{}, false
+			}
+			i++
+		case "--mlir-bin":
+			if i+1 >= len(args) || options.MLIRBin != "" {
+				return buildCommandOptions{}, false
+			}
+			options.MLIRBin = args[i+1]
+			i++
 		case "--keep-llvm":
 			if options.LLVMOutputFile != "" {
 				return buildCommandOptions{}, false
 			}
 			options.LLVMOutputFile = "__sec_keep_llvm__"
+		case "--keep-mlir":
+			if options.MLIROutputFile != "" {
+				return buildCommandOptions{}, false
+			}
+			options.MLIROutputFile = "__sec_keep_mlir__"
 		default:
 			if strings.HasPrefix(args[i], "-") || options.InputFile != "" {
 				return buildCommandOptions{}, false
@@ -443,16 +684,24 @@ func parseBuildCommandOptions(args []string, defaultTarget CompilerTarget) (buil
 	if options.LLVMOutputFile == "__sec_keep_llvm__" {
 		options.LLVMOutputFile = options.OutputFile + ".ll"
 	}
+	if options.MLIROutputFile == "__sec_keep_mlir__" {
+		options.MLIROutputFile = options.OutputFile + ".mlir"
+	}
 
 	return options, true
 }
 
+func isValidBuildOutputFile(path string) bool {
+	return path != "" && path != "-" && !strings.HasPrefix(filepath.Base(path), "-")
+}
+
 func defaultBuildOutputPath(inputFile string) string {
-	ext := filepath.Ext(inputFile)
+	base := filepath.Base(filepath.Clean(inputFile))
+	ext := filepath.Ext(base)
 	if ext == "" {
-		return inputFile
+		return base
 	}
-	return strings.TrimSuffix(inputFile, ext)
+	return strings.TrimSuffix(base, ext)
 }
 
 func parseAndAnalyze(input string) *ast.Program {

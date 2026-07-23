@@ -1,0 +1,305 @@
+module arrays
+// arrays_invalid.sec
+//
+// Comprehensive invalid tests for fixed-size arrays and array indexing.
+// Each marked declaration is expected to produce an array-specific diagnostic.
+// The compiler should continue and report the remaining independent errors.
+
+// -----------------------------------------------------------------------------
+// Invalid array lengths
+// -----------------------------------------------------------------------------
+
+fn NegativeArrayLength() void {
+    // error: array length must be non-negative
+    let mut values: int[-1]
+    return
+}
+
+fn DecimalArrayLength() void {
+    // error: array length must be a compile-time integer
+    let mut values: int[1.5]
+    return
+}
+
+fn BooleanArrayLength() void {
+    // error: array length must be a compile-time integer
+    let mut values: int[true]
+    return
+}
+
+fn RuntimeArrayLength(length: uint) void {
+    // error: array length must be a compile-time integer
+    let mut values: int[length]
+    return
+}
+
+fn OverflowingArrayLength() void {
+    // error: array length cannot be represented by uint or layout overflows
+    let mut values: byte[340282366920938463463374607431768211456]
+    return
+}
+
+// -----------------------------------------------------------------------------
+// Invalid array element types and layouts
+// -----------------------------------------------------------------------------
+
+fn UnsizedArrayElement() void {
+    // error: unsized type byte[] cannot be an array element
+    let mut values: byte[][4]
+    return
+}
+
+// -----------------------------------------------------------------------------
+// Invalid array literals
+// -----------------------------------------------------------------------------
+
+fn LiteralTooShort() void {
+    // error: array literal has 2 elements, expected 3
+    let values: int[3] := [1, 2]
+    return
+}
+
+fn LiteralTooLong() void {
+    // error: array literal has 4 elements, expected 3
+    let values: int[3] := [1, 2, 3, 4]
+    return
+}
+
+fn NonEmptyLiteralForZeroArray() void {
+    // error: array literal has 1 element, expected 0
+    let values: int[0] := [1]
+    return
+}
+
+fn EmptyLiteralWithoutContext() void {
+    // error: cannot infer element type of empty array literal
+    let values := []
+    return
+}
+
+fn MixedInferredLiteralTypes() void {
+    // error: array literal elements must have one identical type
+    let values := [1, "two", 3]
+    return
+}
+
+fn ContextElementTypeMismatch() void {
+    // error: array element 2 must be int, got bool
+    let values: int[3] := [1, true, 3]
+    return
+}
+
+fn NestedLiteralOuterLengthMismatch() void {
+    // error: outer array literal has 1 element, expected 2
+    let values: int[2][2] := [
+    [1, 2],
+]
+    return
+}
+
+fn NestedLiteralInnerLengthMismatch() void {
+    // error: nested array literal has 3 elements, expected 2
+    let values: int[2][2] := [
+    [1, 2],
+    [3, 4, 5],
+]
+    return
+}
+
+// -----------------------------------------------------------------------------
+// Array type identity
+// -----------------------------------------------------------------------------
+
+fn DifferentArrayLengthsAreDifferentTypes() void {
+    let source: int[3] := [1, 2, 3]
+
+    // error: cannot assign int[3] to int[4]
+    let target: int[4] := source
+
+    return
+}
+
+fn DifferentArrayElementTypesAreDifferentTypes() void {
+    let source: int[3] := [1, 2, 3]
+
+    // error: cannot assign int[3] to uint[3]
+    let target: uint[3] := source
+
+    return
+}
+
+fn DifferentNestedArrayShapes() void {
+    let source: int[2][3] := [
+    [1, 2, 3],
+    [4, 5, 6],
+]
+
+    // error: cannot assign int[2][3] to int[3][2]
+    let target: int[3][2] := source
+
+    return
+}
+
+// -----------------------------------------------------------------------------
+// Invalid indexes
+// -----------------------------------------------------------------------------
+
+fn NegativeConstantIndex() int {
+    let values: int[4] := [10, 20, 30, 40]
+
+    // error: array index -1 is out of bounds for int[4]
+    return values[-1]
+}
+
+fn IndexEqualToLength() int {
+    let values: int[4] := [10, 20, 30, 40]
+
+    // error: array index 4 is out of bounds for int[4]
+    return values[4]
+}
+
+fn IndexGreaterThanLength() int {
+    let values: int[4] := [10, 20, 30, 40]
+
+    // error: array index 10 is out of bounds for int[4]
+    return values[10]
+}
+
+fn BooleanIndex() int {
+    let values: int[4] := [10, 20, 30, 40]
+
+    // error: array index must be integer, got bool
+    return values[true]
+}
+
+fn DecimalIndex() int {
+    let values: int[4] := [10, 20, 30, 40]
+
+    // error: array index must be integer, got decimal
+    return values[1.5]
+}
+
+fn StringIndex() int {
+    let values: int[4] := [10, 20, 30, 40]
+
+    // error: array index must be integer, got string
+    return values["one"]
+}
+
+fn NestedOuterIndexOutOfBounds() int {
+    let values: int[2][3] := [
+    [1, 2, 3],
+    [4, 5, 6],
+]
+
+    // error: array index 2 is out of bounds for int[2][3]
+    return values[2][0]
+}
+
+fn NestedInnerIndexOutOfBounds() int {
+    let values: int[2][3] := [
+    [1, 2, 3],
+    [4, 5, 6],
+]
+
+    // error: array index 3 is out of bounds for int[3]
+    return values[1][3]
+}
+
+// -----------------------------------------------------------------------------
+// Invalid indexed assignment
+// -----------------------------------------------------------------------------
+
+fn AssignThroughImmutableArray() void {
+    let values: int[3] := [1, 2, 3]
+
+    // error: cannot assign through immutable array values
+    values[0] = 10
+
+    return
+}
+
+fn IndexedAssignmentTypeMismatch() void {
+    let mut values: int[3] := [1, 2, 3]
+
+    // error: cannot assign string to int array element
+    values[1] = "two"
+
+    return
+}
+
+fn IndexedAssignmentOutOfBounds() void {
+    let mut values: int[3] := [1, 2, 3]
+
+    // error: array index 3 is out of bounds for int[3]
+    values[3] = 10
+
+    return
+}
+
+// -----------------------------------------------------------------------------
+// Definite initialization
+// -----------------------------------------------------------------------------
+
+fn ReadUninitializedArrayElement() int {
+    let mut values: int[3]
+
+    // error: array values is not definitely initialized
+    return values[0]
+}
+
+fn BorrowUninitializedArrayElement() void {
+    let mut values: int[3]
+
+    // error: cannot borrow element of uninitialized array values
+    let element := ref values[0]
+
+    return
+}
+
+fn PartialInitializationDoesNotInitializeArray() int {
+    let mut values: int[3]
+
+    values[0] = 10
+
+    // error: array values is not definitely initialized
+    return values[0]
+}
+
+// -----------------------------------------------------------------------------
+// Equality requires identical array types
+// -----------------------------------------------------------------------------
+
+fn CompareDifferentLengths() bool {
+    let left: int[3] := [1, 2, 3]
+    let right: int[4] := [1, 2, 3, 4]
+
+    // error: cannot compare int[3] with int[4]
+    return left == right
+}
+
+fn CompareDifferentElementTypes() bool {
+    let left: int[3] := [1, 2, 3]
+    let right: uint[3] := [1, 2, 3]
+
+    // error: cannot compare int[3] with uint[3]
+    return left == right
+}
+
+// -----------------------------------------------------------------------------
+// Unsupported array members
+// -----------------------------------------------------------------------------
+
+fn ArrayHasNoCapacity() uint {
+    let values: int[4] := [1, 2, 3, 4]
+
+    // error: int[4] has no member capacity
+    return values.capacity
+}
+
+fn SafeArrayHasNoPtrMember() RawPtr[int] {
+    let values: int[4] := [1, 2, 3, 4]
+
+    // error: int[4] has no member ptr
+    return values.ptr
+}

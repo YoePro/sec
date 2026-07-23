@@ -22,9 +22,17 @@ Implemented:
   constant relational/range cases.
 * LLVM code generation for value, range, relational, default and subjectless
   switch cases in the currently supported expression subset.
+* MLIR code generation for integer and bool subject switches with value cases,
+  comma-separated alternatives and optional default.
+* MLIR switch lowering evaluates the subject once and emits ordered test, case,
+  default and continuation blocks.
 
 Not implemented yet:
 
+* MLIR lowering for subjectless switch.
+* MLIR lowering for range and relational cases.
+* MLIR lowering for explicit fallthrough.
+* MLIR lowering for string and other non-integer/non-bool subjects.
 * Exhaustiveness or coverage warnings for enum switches.
 * Duplicate/coverage diagnostics for string constants.
 * Full unit-aware and semantic-type-aware compile-time range overlap beyond

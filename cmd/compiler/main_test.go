@@ -159,7 +159,7 @@ func TestParseBuildCommandArgs(t *testing.T) {
 
 func TestParseBuildCommandOptions(t *testing.T) {
 	options, ok := parseBuildCommandOptions(
-		[]string{"main.sec", "--target", "linux-amd64", "--keep-llvm", "--clang", "custom-clang", "-o", "program"},
+		[]string{"main.sec", "--target", "linux-amd64", "--pipeline", "mlir", "--keep-mlir", "--keep-llvm", "--mlir-bin", "/opt/mlir/bin", "--clang", "custom-clang", "-o", "program"},
 		CompilerTarget{OS: "macos", Arch: "arm64"},
 	)
 	if !ok {
@@ -179,6 +179,79 @@ func TestParseBuildCommandOptions(t *testing.T) {
 	}
 	if options.LLVMOutputFile != "program.ll" {
 		t.Fatalf("LLVMOutputFile = %q, want program.ll", options.LLVMOutputFile)
+	}
+	if options.MLIROutputFile != "program.mlir" {
+		t.Fatalf("MLIROutputFile = %q, want program.mlir", options.MLIROutputFile)
+	}
+	if options.MLIRBin != "/opt/mlir/bin" {
+		t.Fatalf("MLIRBin = %q, want /opt/mlir/bin", options.MLIRBin)
+	}
+	if options.Pipeline != "mlir" {
+		t.Fatalf("Pipeline = %q, want mlir", options.Pipeline)
+	}
+}
+
+func TestParseEmitMLIRCommandArgs(t *testing.T) {
+	options, ok := parseEmitMLIRCommandArgs(
+		[]string{"main.sec", "-o", "main.mlir", "--target", "linux-amd64", "--mlir-bin", "/opt/mlir/bin", "--verify"},
+		CompilerTarget{OS: "macos", Arch: "arm64"},
+	)
+	if !ok {
+		t.Fatal("parseEmitMLIRCommandArgs returned ok=false")
+	}
+	if options.InputFile != "main.sec" {
+		t.Fatalf("InputFile = %q, want main.sec", options.InputFile)
+	}
+	if options.OutputFile != "main.mlir" {
+		t.Fatalf("OutputFile = %q, want main.mlir", options.OutputFile)
+	}
+	if options.Target != (CompilerTarget{OS: "linux", Arch: "amd64"}) {
+		t.Fatalf("Target = %#v, want linux-amd64", options.Target)
+	}
+	if options.MLIRBin != "/opt/mlir/bin" {
+		t.Fatalf("MLIRBin = %q, want /opt/mlir/bin", options.MLIRBin)
+	}
+	if !options.Verify {
+		t.Fatal("Verify = false, want true")
+	}
+}
+
+func TestEmitOutputDashMeansStdout(t *testing.T) {
+	_, outputFile, _, ok := parseEmitLLVMCommandArgs(
+		[]string{"main.sec", "-o", "-"},
+		CompilerTarget{OS: "linux", Arch: "amd64"},
+	)
+	if !ok {
+		t.Fatal("parseEmitLLVMCommandArgs returned ok=false")
+	}
+	if outputFile != "-" {
+		t.Fatalf("outputFile = %q, want -", outputFile)
+	}
+
+	options, ok := parseEmitMLIRCommandArgs(
+		[]string{"main.sec", "-o", "-"},
+		CompilerTarget{OS: "linux", Arch: "amd64"},
+	)
+	if !ok {
+		t.Fatal("parseEmitMLIRCommandArgs returned ok=false")
+	}
+	if options.OutputFile != "-" {
+		t.Fatalf("OutputFile = %q, want -", options.OutputFile)
+	}
+}
+
+func TestRejectDashPrefixedOutputFiles(t *testing.T) {
+	if _, _, _, ok := parseEmitLLVMCommandArgs([]string{"main.sec", "-o", "-bad.ll"}, CompilerTarget{}); ok {
+		t.Fatal("parseEmitLLVMCommandArgs accepted dash-prefixed output file")
+	}
+	if _, ok := parseEmitMLIRCommandArgs([]string{"main.sec", "-o", "-bad.mlir"}, CompilerTarget{}); ok {
+		t.Fatal("parseEmitMLIRCommandArgs accepted dash-prefixed output file")
+	}
+	if _, ok := parseBuildCommandOptions([]string{"main.sec", "-o", "-"}, CompilerTarget{}); ok {
+		t.Fatal("parseBuildCommandOptions accepted stdout output")
+	}
+	if _, ok := parseBuildCommandOptions([]string{"main.sec", "-o", "-bad"}, CompilerTarget{}); ok {
+		t.Fatal("parseBuildCommandOptions accepted dash-prefixed output file")
 	}
 }
 
@@ -335,15 +408,34 @@ func TestTargetCapabilities(t *testing.T) {
 func TestDefaultBuildOutputPath(t *testing.T) {
 	tests := map[string]string{
 		"main.sec":                "main",
-		"testdata/build_test.sec": "testdata/build_test",
+		"testdata/build_test.sec": "build_test",
 		"program":                 "program",
-		"archive.v1/program.sec":  "archive.v1/program",
+		"archive.v1/program.sec":  "program",
 	}
 
 	for input, want := range tests {
 		if got := defaultBuildOutputPath(input); got != want {
 			t.Fatalf("defaultBuildOutputPath(%q) = %q, want %q", input, got, want)
 		}
+	}
+}
+
+func TestParseMLIRBuildDefaultsToCurrentDirectoryArtifacts(t *testing.T) {
+	options, ok := parseBuildCommandOptions(
+		[]string{"testdata/ir/test_complex1.sec", "--pipeline", "mlir", "--keep-mlir", "--keep-llvm"},
+		CompilerTarget{OS: "linux", Arch: "amd64"},
+	)
+	if !ok {
+		t.Fatal("parseBuildCommandOptions returned ok=false")
+	}
+	if options.OutputFile != "test_complex1" {
+		t.Fatalf("OutputFile = %q, want test_complex1", options.OutputFile)
+	}
+	if options.MLIROutputFile != "test_complex1.mlir" {
+		t.Fatalf("MLIROutputFile = %q, want test_complex1.mlir", options.MLIROutputFile)
+	}
+	if options.LLVMOutputFile != "test_complex1.ll" {
+		t.Fatalf("LLVMOutputFile = %q, want test_complex1.ll", options.LLVMOutputFile)
 	}
 }
 

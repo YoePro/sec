@@ -1,0 +1,14 @@
+// test_logical.sec
+module main
+
+fn main() int {
+    let mut x := 5
+    let mut y := 10
+
+    // Testa short-circuit eller vanlig boolesk evaluering
+    if x > 2 && y < 15 {
+        return 100
+    }
+
+    return 200
+}

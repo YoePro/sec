@@ -1,0 +1,258 @@
+module slices
+// slices_valid.sec
+//
+// Comprehensive valid tests for borrowed slices, slicing and slice indexing.
+// Every declaration in this file is expected to pass parser and semantic
+// analysis without diagnostics.
+
+// -----------------------------------------------------------------------------
+// Basic slice parameters
+// -----------------------------------------------------------------------------
+
+fn First(values: ref int[]) int {
+    return values[0]
+}
+
+fn Last(values: ref int[]) int {
+    return values[values.len - 1]
+}
+
+fn SetFirst(values: ref mut int[], value: int) void {
+    values[0] = value
+    return
+}
+
+fn SetAt(values: ref mut int[], index: uint, value: int) void {
+    values[index] = value
+    return
+}
+
+fn SliceLength(values: ref int[]) uint {
+    return values.len
+}
+
+// -----------------------------------------------------------------------------
+// Complete shared and mutable slices
+// -----------------------------------------------------------------------------
+
+fn CompleteSharedSlice() int {
+    let values: int[4] := [10, 20, 30, 40]
+    let view: ref int[] := ref values[..]
+
+    return view[0] + view[3]
+}
+
+fn CompleteMutableSlice() int {
+    let mut values: int[4] := [10, 20, 30, 40]
+    let writable: ref mut int[] := ref mut values[..]
+
+    writable[1] = 99
+
+    return writable[1]
+}
+
+fn PassExplicitSharedSlice() int {
+    let values: int[4] := [10, 20, 30, 40]
+    return First(ref values[..])
+}
+
+fn PassExplicitMutableSlice() int {
+    let mut values: int[4] := [10, 20, 30, 40]
+
+    SetFirst(ref mut values[..], 99)
+
+    return values[0]
+}
+
+// -----------------------------------------------------------------------------
+// Exclusive and inclusive slice ranges
+// -----------------------------------------------------------------------------
+
+fn ExclusiveRange() int {
+    let values: int[6] := [10, 20, 30, 40, 50, 60]
+    let view := ref values[1..<4]
+
+    return view[0] + view[2]
+}
+
+fn InclusiveRange() int {
+    let values: int[6] := [10, 20, 30, 40, 50, 60]
+    let view := ref values[1..3]
+
+    return view[0] + view[2]
+}
+
+fn OpenLowerInclusiveRange() int {
+    let values: int[5] := [10, 20, 30, 40, 50]
+    let view := ref values[..2]
+
+    return view[2]
+}
+
+fn OpenLowerExclusiveRange() int {
+    let values: int[5] := [10, 20, 30, 40, 50]
+    let view := ref values[..<3]
+
+    return view[2]
+}
+
+fn OpenUpperRange() int {
+    let values: int[5] := [10, 20, 30, 40, 50]
+    let view := ref values[2..]
+
+    return view[0] + view[2]
+}
+
+// -----------------------------------------------------------------------------
+// Empty slices
+// -----------------------------------------------------------------------------
+
+fn EmptySliceFromZeroLengthArray() uint {
+    let storage: byte[0] := []
+    let empty := ref storage[..]
+
+    return empty.len
+}
+
+fn EmptySliceFromExclusiveRange() uint {
+    let values: int[4] := [10, 20, 30, 40]
+    let empty := ref values[2..<2]
+
+    return empty.len
+}
+
+fn EmptySliceAtEnd() uint {
+    let values: int[4] := [10, 20, 30, 40]
+    let empty := ref values[values.len..<values.len]
+
+    return empty.len
+}
+
+// -----------------------------------------------------------------------------
+// Slicing an existing slice
+// -----------------------------------------------------------------------------
+
+fn SharedSubslice(values: ref int[]) ref int[] {
+    return ref values[1..<values.len]
+}
+
+fn Prefix(values: ref byte[], count: uint) ref byte[] {
+    return ref values[..<count]
+}
+
+fn NestedSharedSlice() int {
+    let values: int[6] := [10, 20, 30, 40, 50, 60]
+    let first := ref values[1..<6]
+    let second := ref first[1..<4]
+
+    return second[0] + second[2]
+}
+
+fn MutableSubslice(values: ref mut int[]) void {
+    let middle := ref mut values[1..<3]
+
+    middle[0] = 100
+    middle[1] = 200
+
+    return
+}
+
+fn UseMutableSubslice() int {
+    let mut values: int[4] := [10, 20, 30, 40]
+
+    MutableSubslice(ref mut values[..])
+
+    return values[1] + values[2]
+}
+
+// -----------------------------------------------------------------------------
+// Shared reborrow from mutable slice
+// -----------------------------------------------------------------------------
+
+fn ReadOnlyViewOfMutableSlice(values: ref mut int[]) int {
+    let shared := ref values[..]
+    return shared[0]
+}
+
+// -----------------------------------------------------------------------------
+// Runtime indexing and runtime slice bounds
+// -----------------------------------------------------------------------------
+
+fn ReadAt(values: ref int[], index: uint) int {
+    return values[index]
+}
+
+fn WriteAt(values: ref mut int[], index: uint, value: int) void {
+    values[index] = value
+    return
+}
+
+fn RuntimeSubslice(
+values: ref int[],
+start: uint,
+end: uint,
+) ref int[] {
+    return ref values[start..<end]
+}
+
+// -----------------------------------------------------------------------------
+// Slice copy and mutable slice move
+// -----------------------------------------------------------------------------
+
+fn SharedSliceDescriptorCopy() int {
+    let values: int[4] := [10, 20, 30, 40]
+    let first := ref values[..]
+    let second := first
+
+    return first[0] + second[3]
+}
+
+fn MoveMutableSlice(values: ref mut int[]) int {
+    let moved := values
+
+    moved[0] = 99
+
+    return moved[0]
+}
+
+// -----------------------------------------------------------------------------
+// Element references from slices
+// -----------------------------------------------------------------------------
+
+fn SharedSliceElementBorrow(values: ref int[]) void {
+    let element: ref int := ref values[1]
+    return
+}
+
+fn MutableSliceElementBorrow(values: ref mut int[]) void {
+    let element: ref mut int := ref mut values[1]
+    return
+}
+
+// -----------------------------------------------------------------------------
+// Arrays containing slices
+// -----------------------------------------------------------------------------
+
+fn ArrayOfSlices() int {
+    let firstStorage: byte[3] := [1, 2, 3]
+    let secondStorage: byte[2] := [4, 5]
+
+    let first := ref firstStorage[..]
+    let second := ref secondStorage[..]
+
+    let slices: (ref byte[])[2] := [first, second]
+
+    return int(slices[0][2]) + int(slices[1][1])
+}
+
+// -----------------------------------------------------------------------------
+// Slice return from one unambiguous reference parameter
+// -----------------------------------------------------------------------------
+
+fn DropFirst(values: ref int[]) ref int[] {
+    return ref values[1..]
+}
+
+fn ReturnCompleteInput(values: ref int[]) ref int[] {
+    return ref values[..]
+}

@@ -1,0 +1,35 @@
+module main
+
+fn test_wide(val: int128) int {
+    let mut out := 0
+    switch val {
+        case 1, 2, 3:
+            out = 10
+
+        case 1234567890123456789012345678:  // Stort i128-tal
+            out = 20
+
+        default:
+            out = 30
+
+    }
+    return out
+}
+
+fn test_bool(flag: bool) int {
+    let mut out := 0
+    switch flag {
+        case true:
+            out = 100
+
+        case false:
+            out = 200
+    }
+    return out
+}
+
+fn main() int {
+    let w := test_wide(int128(1234567890123456789012345678))
+    let b := test_bool(false)
+    return w + b // Bör returnera 220
+}

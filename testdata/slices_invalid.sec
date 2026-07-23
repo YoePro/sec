@@ -1,0 +1,338 @@
+module slices
+// slices_invalid.sec
+//
+// Comprehensive invalid tests for borrowed slices, slicing and slice indexing.
+// Each marked declaration is expected to produce a slice-specific diagnostic.
+// Full conflicting-borrow analysis is intentionally left for borrow tracking.
+
+// -----------------------------------------------------------------------------
+// Bare unsized sequence values are invalid
+// -----------------------------------------------------------------------------
+
+fn BareUnsizedSequence() void {
+    // error: byte[] is unsized and cannot be stored as a standalone value
+    let mut values: byte[]
+    return
+}
+
+fn ArrayLiteralIsNotASlice() void {
+    // error: cannot assign int[3] to ref int[]
+    let values: ref int[] := [1, 2, 3]
+    return
+}
+
+// -----------------------------------------------------------------------------
+// Slice creation must explicitly borrow storage
+// -----------------------------------------------------------------------------
+
+fn ArrayDoesNotImplicitlyConvertToSlice() void {
+    let values: int[4] := [1, 2, 3, 4]
+
+    // error: cannot assign int[4] to ref int[]; use ref values[..]
+    let view: ref int[] := values
+
+    return
+}
+
+fn UseSlice(values: ref int[]) void {
+    return
+}
+
+fn SliceArgumentMustBeExplicit() void {
+    let values: int[4] := [1, 2, 3, 4]
+
+    // error: argument must be ref int[], got int[4]
+    UseSlice(values)
+
+    return
+}
+
+fn RangeWithoutRefDoesNotCreateSlice() void {
+    let values: int[4] := [1, 2, 3, 4]
+
+    // error: slicing requires explicit ref or ref mut
+    let view := values[1..<3]
+
+    return
+}
+
+// -----------------------------------------------------------------------------
+// Mutable slices require mutable storage
+// -----------------------------------------------------------------------------
+
+fn MutableSliceFromImmutableArray() void {
+    let values: int[4] := [1, 2, 3, 4]
+
+    // error: cannot create mutable slice from immutable array values
+    let view := ref mut values[..]
+
+    return
+}
+
+fn MutableSubsliceFromSharedSlice(values: ref int[]) void {
+    // error: cannot create ref mut int[] from ref int[]
+    let view := ref mut values[1..<3]
+    return
+}
+
+// -----------------------------------------------------------------------------
+// Assignment through slices
+// -----------------------------------------------------------------------------
+
+fn AssignThroughSharedSlice(values: ref int[]) void {
+    // error: cannot assign through ref int[]
+    values[0] = 10
+    return
+}
+
+fn SharedSliceAssignmentTypeMismatch(values: ref mut int[]) void {
+    // error: cannot assign string to int slice element
+    values[0] = "ten"
+    return
+}
+
+// -----------------------------------------------------------------------------
+// Invalid constant slice bounds
+// -----------------------------------------------------------------------------
+
+fn NegativeSliceLowerBound() void {
+    let values: int[4] := [1, 2, 3, 4]
+
+    // error: slice lower bound must be non-negative
+    let view := ref values[-1..<2]
+
+    return
+}
+
+fn NegativeSliceUpperBound() void {
+    let values: int[4] := [1, 2, 3, 4]
+
+    // error: slice upper bound must be non-negative
+    let view := ref values[0..<-1]
+
+    return
+}
+
+fn DescendingExclusiveSliceRange() void {
+    let values: int[4] := [1, 2, 3, 4]
+
+    // error: descending slice range 3..<1 is invalid
+    let view := ref values[3..<1]
+
+    return
+}
+
+fn DescendingInclusiveSliceRange() void {
+    let values: int[4] := [1, 2, 3, 4]
+
+    // error: descending slice range 3..1 is invalid
+    let view := ref values[3..1]
+
+    return
+}
+
+fn InclusiveUpperBoundEqualToLength() void {
+    let values: int[4] := [1, 2, 3, 4]
+
+    // error: inclusive slice upper bound 4 exceeds final index 3
+    let view := ref values[0..4]
+
+    return
+}
+
+fn ExclusiveUpperBoundGreaterThanLength() void {
+    let values: int[4] := [1, 2, 3, 4]
+
+    // error: exclusive slice upper bound 5 exceeds length 4
+    let view := ref values[0..<5]
+
+    return
+}
+
+fn OpenLowerInclusiveUpperBoundEqualToLength() void {
+    let values: int[4] := [1, 2, 3, 4]
+
+    // error: inclusive slice upper bound 4 exceeds final index 3
+    let view := ref values[..4]
+
+    return
+}
+
+fn LowerBoundGreaterThanLength() void {
+    let values: int[4] := [1, 2, 3, 4]
+
+    // error: slice lower bound 5 exceeds length 4
+    let view := ref values[5..]
+
+    return
+}
+
+// -----------------------------------------------------------------------------
+// Invalid slice bound types
+// -----------------------------------------------------------------------------
+
+fn BooleanSliceBound() void {
+    let values: int[4] := [1, 2, 3, 4]
+
+    // error: slice bound must be integer, got bool
+    let view := ref values[true..<3]
+
+    return
+}
+
+fn DecimalSliceBound() void {
+    let values: int[4] := [1, 2, 3, 4]
+
+    // error: slice bound must be integer, got decimal
+    let view := ref values[1.5..<3]
+
+    return
+}
+
+fn StringSliceBound() void {
+    let values: int[4] := [1, 2, 3, 4]
+
+    // error: slice bound must be integer, got string
+    let view := ref values[0..<"three"]
+
+    return
+}
+
+// -----------------------------------------------------------------------------
+// Slice indexing
+// -----------------------------------------------------------------------------
+
+fn SharedSliceConstantIndexOutOfBounds() int {
+    let values: int[4] := [1, 2, 3, 4]
+    let view := ref values[1..<3]
+
+    // error: slice index 2 is out of bounds for slice length 2
+    return view[2]
+}
+
+fn SharedSliceNegativeIndex() int {
+    let values: int[4] := [1, 2, 3, 4]
+    let view := ref values[..]
+
+    // error: slice index -1 is out of bounds
+    return view[-1]
+}
+
+fn SharedSliceInvalidIndexType() int {
+    let values: int[4] := [1, 2, 3, 4]
+    let view := ref values[..]
+
+    // error: slice index must be integer, got bool
+    return view[false]
+}
+
+// -----------------------------------------------------------------------------
+// Slice type identity and ownership
+// -----------------------------------------------------------------------------
+
+fn SliceIsNotOwningArray() void {
+    let values: int[4] := [1, 2, 3, 4]
+    let view := ref values[..]
+
+    // error: cannot assign ref int[] to int[4]
+    let copy: int[4] := view
+
+    return
+}
+
+fn MutableSliceIsNotOwningArray() void {
+    let mut values: int[4] := [1, 2, 3, 4]
+    let view := ref mut values[..]
+
+    // error: cannot assign ref mut int[] to int[4]
+    let copy: int[4] := view
+
+    return
+}
+
+fn SharedAndMutableSliceTypesDiffer(values: ref int[]) void {
+    // error: cannot assign ref int[] to ref mut int[]
+    let writable: ref mut int[] := values
+    return
+}
+
+// -----------------------------------------------------------------------------
+// Mutable slices are move-only
+// -----------------------------------------------------------------------------
+
+fn CopyMutableSlice(values: ref mut int[]) void {
+    let first := values
+
+    // error: use of moved value values
+    let second := values
+
+    return
+}
+
+// -----------------------------------------------------------------------------
+// Slice comparison is not defined
+// -----------------------------------------------------------------------------
+
+fn CompareSlices(left: ref int[], right: ref int[]) bool {
+    // error: equality is not supported for slices
+    return left == right
+}
+
+fn CompareSliceWithArray(values: ref int[]) bool {
+    let array: int[4] := [1, 2, 3, 4]
+
+    // error: cannot compare ref int[] with int[4]
+    return values == array
+}
+
+// -----------------------------------------------------------------------------
+// Invalid slice origins and escapes
+// -----------------------------------------------------------------------------
+
+fn ReturnSliceIntoLocalArray() ref byte[] {
+    let local: byte[4] := [1, 2, 3, 4]
+
+    // error: cannot return slice referencing local array local
+    return ref local[..]
+}
+
+fn ReturnMutableSliceIntoLocalArray() ref mut byte[] {
+    let mut local: byte[4] := [1, 2, 3, 4]
+
+    // error: cannot return mutable slice referencing local array local
+    return ref mut local[..]
+}
+
+fn SliceScalarValue() void {
+    let value: int := 10
+
+    // error: type int cannot be sliced
+    let view := ref value[..]
+
+    return
+}
+
+// -----------------------------------------------------------------------------
+// Unsupported slice members
+// -----------------------------------------------------------------------------
+
+fn SliceHasNoCapacity(values: ref int[]) uint {
+    // error: ref int[] has no member capacity
+    return values.capacity
+}
+
+fn SafeSliceHasNoPtrMember(values: ref int[]) RawPtr[int] {
+    // error: ref int[] has no member ptr
+    return values.ptr
+}
+
+// -----------------------------------------------------------------------------
+// A type is not storage and cannot be borrowed as a value.
+// Keep this parser-level recovery case last.
+// -----------------------------------------------------------------------------
+
+fn ReferenceRequiresStorage() void {
+    // error: expected expression after ref; byte[] is a type, not storage
+    let values := ref byte[]
+    return
+}

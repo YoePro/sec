@@ -1,0 +1,29 @@
+module main
+
+fn main() int {
+    let mut value := -10
+    let mut count := 0
+
+    // Test 1: Din variant med negation (!) och intervall (in)
+    // Loopen ska köra så länge value ligger UTANFÖR 0..100 (inkluderande)
+    while !(value in 0..100) {
+        value = value + 1
+    }
+
+    // Test 2: Standard while med komplex kortslutningslogik
+    // Loopen kör så länge count är mindre än 5 OCH value inte är 100
+    while count < 5 && value != 100 {
+        count = count + 1
+    }
+
+    // Test 3: Enkel "while true"-motsvarighet med break
+    let mut sentinel := 0
+    while true {
+        sentinel = sentinel + 1
+        if sentinel == 3 {
+            break
+        }
+    }
+
+    return value + count + sentinel
+}

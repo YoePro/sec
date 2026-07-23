@@ -1,0 +1,12 @@
+// test_loop_falling.sec
+module main
+
+fn main() int {
+    let mut countdown := 0
+
+    for i in 3..-1 step -1 {
+        countdown += i
+    }
+
+    return countdown
+}

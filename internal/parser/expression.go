@@ -47,6 +47,7 @@ var precedences = map[lexer.TokenType]precedence{
 	lexer.LPAREN:      CALL,
 	lexer.LBRACKET:    CALL,
 	lexer.LBRACE:      CALL,
+	lexer.SPREAD:      CALL,
 	lexer.DOT:         MEMBER,
 }
 
@@ -128,6 +129,12 @@ func (p *Parser) parseExpression(currentPrecedence precedence) ast.Expression {
 	case lexer.AT:
 		left = p.parseRuntimeCallExpression()
 
+	case lexer.LBRACKET:
+		left = p.parseArrayLiteral()
+
+	case lexer.REF:
+		left = p.parseRefExpression()
+
 	case lexer.LPAREN:
 		left = p.parseGroupedExpression()
 
@@ -145,6 +152,10 @@ func (p *Parser) parseExpression(currentPrecedence precedence) ast.Expression {
 		if p.stopBeforeBrace && p.peekToken.Type == lexer.LBRACE {
 			return left
 		}
+		if p.peekToken.Type == lexer.SPREAD {
+			p.nextToken()
+			return &ast.SpreadExpression{Token: p.curToken, Value: left}
+		}
 
 		switch p.peekToken.Type {
 		case lexer.LPAREN:
@@ -153,7 +164,7 @@ func (p *Parser) parseExpression(currentPrecedence precedence) ast.Expression {
 
 		case lexer.LBRACKET:
 			p.nextToken()
-			left = p.parseExplicitGenericCallExpression(left)
+			left = p.parseBracketExpression(left)
 
 		case lexer.LBRACE:
 			p.nextToken()
@@ -536,6 +547,120 @@ func (p *Parser) parseExplicitGenericCallExpression(left ast.Expression) ast.Exp
 	}
 }
 
+func (p *Parser) parseBracketExpression(left ast.Expression) ast.Expression {
+	curToken := p.curToken
+	peekToken := p.peekToken
+	lexerState := p.l.Snapshot()
+	errorCount := len(p.errors)
+	warningCount := len(p.warnings)
+
+	generic := p.parseExplicitGenericCallExpression(left)
+	if generic != nil {
+		return generic
+	}
+	if p.curToken.Type != lexer.RBRACKET || p.peekToken.Type != lexer.LPAREN {
+		p.curToken = curToken
+		p.peekToken = peekToken
+		p.l.Restore(lexerState)
+		p.errors = p.errors[:errorCount]
+		p.warnings = p.warnings[:warningCount]
+		return p.parseIndexOrSliceExpression(left)
+	}
+	return generic
+}
+
+func (p *Parser) parseArrayLiteral() ast.Expression {
+	lit := &ast.ArrayLiteral{Token: p.curToken}
+
+	if p.peekToken.Type == lexer.RBRACKET {
+		p.nextToken()
+		return lit
+	}
+
+	for {
+		p.nextToken()
+		element := p.parseExpression(LOWEST)
+		if element == nil {
+			return nil
+		}
+		if _, alreadySpread := element.(*ast.SpreadExpression); !alreadySpread && p.peekToken.Type == lexer.SPREAD {
+			p.nextToken()
+			element = &ast.SpreadExpression{Token: p.curToken, Value: element}
+		}
+		lit.Elements = append(lit.Elements, element)
+
+		switch p.peekToken.Type {
+		case lexer.COMMA:
+			p.nextToken()
+			if p.peekToken.Type == lexer.RBRACKET {
+				p.nextToken()
+				return lit
+			}
+		case lexer.RBRACKET:
+			p.nextToken()
+			return lit
+		default:
+			p.addError("expected ',' or ']' after array literal element at %d:%d", p.peekToken.Line, p.peekToken.Column)
+			return nil
+		}
+	}
+}
+
+func (p *Parser) parseIndexOrSliceExpression(left ast.Expression) ast.Expression {
+	token := p.curToken
+
+	if p.peekToken.Type == lexer.RANGE || p.peekToken.Type == lexer.RANGE_EXCLUSIVE {
+		p.nextToken()
+		return p.parseSliceExpressionAfterRange(left, token, nil)
+	}
+
+	if p.peekToken.Type == lexer.RBRACKET {
+		if p.inRefExpression {
+			p.addError("expected expression after ref; %s[] is a type, not storage at %d:%d", left.String(), token.Line, token.Column)
+		} else {
+			p.addError("empty index expression at %d:%d", p.peekToken.Line, p.peekToken.Column)
+		}
+		p.nextToken()
+		return nil
+	}
+
+	p.nextToken()
+	start := p.parseExpression(LOWEST)
+	if start == nil {
+		return nil
+	}
+
+	if p.peekToken.Type == lexer.RANGE || p.peekToken.Type == lexer.RANGE_EXCLUSIVE {
+		p.nextToken()
+		return p.parseSliceExpressionAfterRange(left, token, start)
+	}
+
+	if !p.expectPeek(lexer.RBRACKET) {
+		return nil
+	}
+	return &ast.IndexExpression{Token: token, Left: left, Index: start}
+}
+
+func (p *Parser) parseSliceExpressionAfterRange(left ast.Expression, token lexer.Token, start ast.Expression) ast.Expression {
+	expr := &ast.SliceExpression{
+		Token:     token,
+		Left:      left,
+		Start:     start,
+		Exclusive: p.curToken.Type == lexer.RANGE_EXCLUSIVE,
+	}
+	if p.isExpressionStart(p.peekToken.Type) {
+		p.nextToken()
+		expr.End = p.parseExpression(LOWEST)
+		if expr.End == nil {
+			return nil
+		}
+	}
+	if !p.expectPeek(lexer.RBRACKET) {
+		return nil
+	}
+	return expr
+}
+
 func (p *Parser) parseRuntimeCallExpression() ast.Expression {
 	expr := &ast.RuntimeCallExpression{Token: p.curToken}
 
@@ -583,6 +708,10 @@ func (p *Parser) parseCallArguments() ([]ast.Expression, bool) {
 			if arg == nil {
 				return nil, false
 			}
+		}
+		if _, alreadySpread := arg.(*ast.SpreadExpression); !alreadySpread && p.peekToken.Type == lexer.SPREAD {
+			p.nextToken()
+			arg = &ast.SpreadExpression{Token: p.curToken, Value: arg}
 		}
 		args = append(args, arg)
 
@@ -760,23 +889,37 @@ func (p *Parser) parseStructLiteralWithType(ref *ast.TypeReference) ast.Expressi
 	}
 
 	for p.peekToken.Type != lexer.RBRACE && p.peekToken.Type != lexer.EOF {
-		if !p.expectPeek(lexer.IDENT) {
-			return nil
-		}
-
-		field := &ast.StructLiteralField{
-			Token: p.curToken,
-			Name:  &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme},
-		}
-
-		if !p.expectPeek(lexer.COLON) {
-			return nil
-		}
-
 		p.nextToken()
-		field.Value = p.parseExpression(LOWEST)
-		if field.Value == nil {
+		value := p.parseExpression(LOWEST)
+		if value == nil {
 			return nil
+		}
+
+		field := &ast.StructLiteralField{Token: expressionToken(value)}
+		if spread, ok := value.(*ast.SpreadExpression); ok {
+			field.Token = spread.Token
+			field.Value = spread.Value
+			field.Spread = true
+		} else if p.peekToken.Type == lexer.SPREAD {
+			p.nextToken()
+			field.Token = p.curToken
+			field.Value = value
+			field.Spread = true
+		} else {
+			name, ok := value.(*ast.Identifier)
+			if !ok {
+				p.addError("expected struct literal field name or spread expression at %d:%d", expressionToken(value).Line, expressionToken(value).Column)
+				return nil
+			}
+			field.Name = name
+			if !p.expectPeek(lexer.COLON) {
+				return nil
+			}
+			p.nextToken()
+			field.Value = p.parseExpression(LOWEST)
+			if field.Value == nil {
+				return nil
+			}
 		}
 
 		lit.Fields = append(lit.Fields, field)
@@ -828,6 +971,27 @@ func (p *Parser) parseMemberExpression(left ast.Expression) ast.Expression {
 	}
 
 	expr.Property = &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme}
+	return expr
+}
+
+func (p *Parser) parseRefExpression() ast.Expression {
+	expr := &ast.RefExpression{Token: p.curToken}
+	if p.peekToken.Type == lexer.MUT {
+		p.nextToken()
+		expr.Mutable = true
+	}
+	if !p.isExpressionStart(p.peekToken.Type) {
+		p.addError("expected expression after ref at %d:%d", p.peekToken.Line, p.peekToken.Column)
+		return nil
+	}
+	p.nextToken()
+	previousInRefExpression := p.inRefExpression
+	p.inRefExpression = true
+	expr.Value = p.parseExpression(PREFIX)
+	p.inRefExpression = previousInRefExpression
+	if expr.Value == nil {
+		return nil
+	}
 	return expr
 }
 
@@ -1056,6 +1220,8 @@ func (p *Parser) isExpressionStart(t lexer.TokenType) bool {
 		lexer.TRY,
 		lexer.MATCH,
 		lexer.AT,
+		lexer.LBRACKET,
+		lexer.REF,
 		lexer.LPAREN:
 		return true
 	default:

@@ -61,6 +61,12 @@ Implemented
 
 - Sema resolves struct fields and properties through member access.
 - Sema rejects assignment to fallible properties unless later syntax marks it as try.
+- The MLIR backend lowers concrete non-generic struct types to LLVM-dialect
+  literal struct types in declaration field order.
+- The MLIR backend supports struct literals, local struct storage, struct
+  parameters, struct returns, nested structs and direct field reads.
+- MLIR struct construction and field reads use `llvm.insertvalue` and
+  `llvm.extractvalue` inline and do not require runtime support.
 - Sema performs first shallow getter/setter body checks:
   - getter `return field` type must match property type when statically visible.
   - getter return expressions must be assignable to the property type.
@@ -77,6 +83,8 @@ Not implemented yet
 - Method parsing inside impl blocks.
 - Complete getter/setter body type checking.
 - `try` property assignment syntax.
+- MLIR lowering for generic structs, struct spread, field assignment, string
+  fields, reference/slice/array fields, methods and properties.
 
 
 Language model

@@ -22,7 +22,8 @@
       "patterns": [
         {
           "name": "comment.line.double-slash.sec",
-          "match": "//.*$"
+          "begin": "//",
+          "end": "$"
         },
         {
           "name": "comment.block.sec",

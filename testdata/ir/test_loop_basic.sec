@@ -1,0 +1,13 @@
+// test_loop_basic.sec
+module main
+
+fn main() int {
+    let mut sum := 0
+
+    for i in 0..<10 {
+        let internal_val := 5
+        sum = sum + i + internal_val
+    }
+
+    return sum
+}

@@ -224,9 +224,10 @@ type TypeReference struct {
 	MutableRef bool
 
 	// ElementType is used for slice and array types such as byte[] and int[3].
-	ElementType *TypeReference
-	Slice       bool
-	ArrayLength int64
+	ElementType           *TypeReference
+	Slice                 bool
+	ArrayLength           int64
+	ArrayLengthExpression Expression
 
 	// Unit is used for unit types such as decimal<m> or decimal<SEK>.
 	Unit string
@@ -1252,6 +1253,112 @@ func (me *MemberExpression) String() string {
 	return me.Object.String() + "." + me.Property.Value
 }
 
+type ArrayLiteral struct {
+	Token    lexer.Token
+	Elements []Expression
+}
+
+func (al *ArrayLiteral) expressionNode() {}
+
+func (al *ArrayLiteral) TokenLiteral() string {
+	return al.Token.Lexeme
+}
+
+func (al *ArrayLiteral) String() string {
+	out := "["
+	for i, element := range al.Elements {
+		if i > 0 {
+			out += ", "
+		}
+		out += element.String()
+	}
+	out += "]"
+	return out
+}
+
+type SpreadExpression struct {
+	Token lexer.Token
+	Value Expression
+}
+
+func (se *SpreadExpression) expressionNode() {}
+
+func (se *SpreadExpression) TokenLiteral() string {
+	return se.Token.Lexeme
+}
+
+func (se *SpreadExpression) String() string {
+	if se.Value == nil {
+		return "<nil>..."
+	}
+	return se.Value.String() + "..."
+}
+
+type IndexExpression struct {
+	Token lexer.Token
+	Left  Expression
+	Index Expression
+}
+
+func (ie *IndexExpression) expressionNode() {}
+
+func (ie *IndexExpression) TokenLiteral() string {
+	return ie.Token.Lexeme
+}
+
+func (ie *IndexExpression) String() string {
+	return ie.Left.String() + "[" + ie.Index.String() + "]"
+}
+
+type SliceExpression struct {
+	Token     lexer.Token
+	Left      Expression
+	Start     Expression
+	End       Expression
+	Exclusive bool
+}
+
+func (se *SliceExpression) expressionNode() {}
+
+func (se *SliceExpression) TokenLiteral() string {
+	return se.Token.Lexeme
+}
+
+func (se *SliceExpression) String() string {
+	start := ""
+	if se.Start != nil {
+		start = se.Start.String()
+	}
+	end := ""
+	if se.End != nil {
+		end = se.End.String()
+	}
+	operator := ".."
+	if se.Exclusive {
+		operator = "..<"
+	}
+	return se.Left.String() + "[" + start + operator + end + "]"
+}
+
+type RefExpression struct {
+	Token   lexer.Token
+	Mutable bool
+	Value   Expression
+}
+
+func (re *RefExpression) expressionNode() {}
+
+func (re *RefExpression) TokenLiteral() string {
+	return re.Token.Lexeme
+}
+
+func (re *RefExpression) String() string {
+	if re.Mutable {
+		return "ref mut " + re.Value.String()
+	}
+	return "ref " + re.Value.String()
+}
+
 type StructLiteral struct {
 	Token  lexer.Token
 	Type   *TypeReference
@@ -1269,9 +1376,10 @@ func (sl *StructLiteral) String() string {
 }
 
 type StructLiteralField struct {
-	Token lexer.Token
-	Name  *Identifier
-	Value Expression
+	Token  lexer.Token
+	Name   *Identifier
+	Value  Expression
+	Spread bool
 }
 
 type SpawnExpression struct {

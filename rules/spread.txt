@@ -1,0 +1,639 @@
+# Spread Operator
+
+## Purpose
+
+The spread operator expands one value into the surrounding list of values or
+fields.
+
+The operator is:
+
+```sec
+...
+```
+
+Spread does not create a standalone value.
+
+Spread does not mean:
+
+- copy
+- clone
+- allocation
+- iteration
+- concatenation
+- conversion
+- implicit borrowing
+
+Copy, move and borrow behavior is determined separately from the expanded
+values and their destination context.
+
+## Syntax
+
+Spread is postfix:
+
+```sec
+expression...
+```
+
+Examples:
+
+```sec
+Call(arguments...)
+
+let combined := [prefix..., 10, 20]
+
+let updated := User {
+    original...
+    Name: "Anna"
+}
+```
+
+Postfix syntax is used consistently in every supported spread context.
+
+The old prefix form is not used:
+
+```sec
+...value // invalid
+```
+
+## Supported contexts
+
+The initial implementation supports spread only inside:
+
+- function argument lists
+- array literals
+- struct literals
+
+Spread is invalid as an ordinary expression.
+
+Invalid:
+
+```sec
+let expanded := values...
+return values...
+values... = other
+```
+
+## General behavior
+
+A spread source is evaluated exactly once.
+
+Its members are then expanded in their natural declaration or index order.
+
+Evaluation order is left to right across the complete surrounding list.
+
+Example:
+
+```sec
+Call(
+    First(),
+    values...,
+    Last(),
+)
+```
+
+Evaluation order:
+
+```text
+First()
+values
+each expanded value in index order
+Last()
+Call
+```
+
+The compiler must preserve this order in Semantic IR and lowering.
+
+## Function argument spread
+
+An array may be expanded into individual function arguments.
+
+Example:
+
+```sec
+fn Add(a: int, b: int, c: int) int {
+    return a + b + c
+}
+
+let values: int[3] := [10, 20, 30]
+let result := Add(values...)
+```
+
+This is semantically equivalent to:
+
+```sec
+let result := Add(values[0], values[1], values[2])
+```
+
+The source expression is still evaluated only once.
+
+### Arity
+
+For an ordinary fixed-arity function, the expanded argument count must be known
+at compile time.
+
+Therefore the initial implementation allows fixed-size arrays as call spread
+sources.
+
+Example:
+
+```sec
+let values: int[3] := [1, 2, 3]
+Use(values...)
+```
+
+A slice has runtime length and cannot initially be expanded into a fixed-arity
+call:
+
+```sec
+let values: ref int[] := ref storage[..]
+Use(values...) // invalid
+```
+
+Slice argument spread may be added with variadic parameters. Variadic parameter
+declarations are defined separately and are not part of this rule.
+
+### Parameter matching
+
+After expansion, normal overload resolution and argument checking apply.
+
+The compiler behaves as if every expanded element occupied its own argument
+position.
+
+It must validate:
+
+- total argument count
+- argument order
+- parameter type compatibility
+- ownership mode
+- mutability
+- unsafe requirements
+- generic inference
+
+Return type must not participate in overload selection.
+
+### Ownership
+
+The initial function-call spread requires the expanded element type to be
+implicitly copyable.
+
+This avoids hidden partial moves from arrays.
+
+Invalid for move-only elements:
+
+```sec
+let resources: Resource[2] := [...]
+Consume(resources...)
+```
+
+The programmer must pass explicit values, references or use a future consuming
+spread rule.
+
+Spread itself must never clone elements or allocate storage.
+
+## Array literal spread
+
+A fixed-size array may be expanded into an array literal.
+
+Example:
+
+```sec
+let first: int[2] := [1, 2]
+let combined := [first..., 3, 4]
+```
+
+The inferred result type is:
+
+```sec
+int[4]
+```
+
+Multiple array spreads are allowed:
+
+```sec
+let all := [first..., second..., 10]
+```
+
+### Length
+
+The resulting array length is calculated at compile time.
+
+It is the sum of:
+
+- ordinary literal elements
+- lengths of every spread array
+
+Checked arithmetic is required.
+
+A spread source with runtime length is invalid in an array literal.
+
+Therefore slices are not valid array-literal spread sources initially:
+
+```sec
+let values: ref int[] := ref storage[..]
+let combined := [values..., 10] // invalid
+```
+
+This rule prevents spread from introducing runtime-sized arrays or hidden
+dynamic allocation.
+
+### Element type
+
+Every ordinary and expanded element must resolve to the same target element
+type.
+
+Target context may shape untyped literals:
+
+```sec
+let values: byte[4] := [prefix..., 3, 4]
+```
+
+The compiler must not infer a common type through implicit conversion.
+
+### Ownership
+
+The initial array-literal spread requires the source element type to be
+implicitly copyable.
+
+Spread copies each expanded element according to ordinary implicit-copy rules.
+
+It must not:
+
+- clone a move-only value
+- partially move an array
+- allocate backing storage
+- invalidate the source array
+
+Move-aware array spread may be added after partial-move tracking is defined.
+
+## Struct literal spread
+
+A struct value may provide fields to another literal of the same exact struct
+type.
+
+Example:
+
+```sec
+type User struct {
+    Name: string
+    Age: int
+    Active: bool
+}
+
+let updated := User {
+    original...
+    Name: "Anna"
+}
+```
+
+Spread is shallow.
+
+It expands direct fields only.
+
+It does not recursively merge nested structs, collections or referenced values.
+
+### Source type
+
+The spread source must have exactly the target struct type.
+
+No structural conversion is performed.
+
+Invalid:
+
+```sec
+let user := User {
+    otherType...
+}
+```
+
+Named type identity is preserved.
+
+### Field order and overriding
+
+Struct entries are processed from left to right.
+
+A later entry overrides a field supplied by an earlier spread.
+
+Example:
+
+```sec
+let updated := User {
+    original...
+    Name: "Anna"
+}
+```
+
+`Name` comes from the explicit field.
+
+All other fields come from `original`.
+
+Multiple spreads are allowed:
+
+```sec
+let merged := User {
+    defaults...
+    stored...
+    Name: "Anna"
+}
+```
+
+Resolution order:
+
+```text
+defaults
+stored overrides defaults
+Name overrides both
+```
+
+Two explicit declarations of the same field remain invalid:
+
+```sec
+let invalid := User {
+    Name: "Anna"
+    Name: "Maria"
+}
+```
+
+Spread does not make duplicate explicit fields valid.
+
+### Required fields
+
+After all spreads and explicit fields are resolved, every required field must
+have exactly one final value.
+
+A spread may satisfy required fields.
+
+Unknown fields and missing required fields remain errors.
+
+### Visibility
+
+Spread follows ordinary struct construction visibility rules.
+
+A spread must not bypass inaccessible fields or type invariants.
+
+If the target struct cannot be constructed at the current source location
+because required fields are inaccessible, struct spread is invalid there.
+
+### Ownership
+
+The initial struct spread requires the source struct to be implicitly copyable.
+
+Every expanded field is copied according to normal implicit-copy rules.
+
+A move-only source is invalid because correct update semantics would require
+partial-move tracking for fields overridden later.
+
+Spread must not invoke hidden clone operations or allocate memory.
+
+## Copy, move and borrowing
+
+Spread only determines how values are positioned in the surrounding construct.
+
+After expansion, normal semantic rules determine whether each value is:
+
+- copied
+- borrowed
+- moved
+- rejected
+
+Initial restrictions deliberately avoid partial moves:
+
+```text
+function argument spread
+    copyable array elements only
+
+array literal spread
+    copyable array elements only
+
+struct literal spread
+    copyable source struct only
+```
+
+These restrictions may be relaxed after borrow tracking and partial-move
+analysis are implemented.
+
+## Allocation
+
+Spread performs no allocation by itself.
+
+The compiler must not allocate temporary dynamic storage merely to implement
+spread.
+
+Fixed-size call and array expansion should be lowered directly.
+
+Struct spread should be lowered to explicit field operations.
+
+If a future spread context targets a dynamic owning container, allocation must
+come from that container's explicitly allocating operation and follow the
+allocation rules.
+
+## Invalid sources
+
+The initial implementation rejects spread of:
+
+- scalar values
+- strings
+- slices
+- maps
+- sets
+- interfaces
+- unions
+- RawPtr values
+- registers
+- move-only arrays
+- move-only structs
+- values whose expansion count is unknown in the destination context
+
+Examples:
+
+```sec
+Call(10...)
+let values := [slice..., 10]
+let user := User { rawPointer... }
+```
+
+## Parser requirements
+
+Add a postfix spread expression:
+
+```text
+SpreadExpression
+    Token
+    Value
+```
+
+The parser should recognize `...` after an expression only in a supported
+spread-aware list context.
+
+Supported parser contexts:
+
+```text
+CallArgumentList
+ArrayLiteralElementList
+StructLiteralEntryList
+```
+
+The parser must reject:
+
+- prefix spread
+- standalone spread expressions
+- repeated spread markers
+- spread without a source expression
+- spread outside a supported context
+
+Examples:
+
+```sec
+...values
+values......
+let value := values...
+```
+
+The parser should recover at the next comma, closing bracket, closing brace or
+closing parenthesis.
+
+## Semantic analysis requirements
+
+Semantic analysis must:
+
+- determine the surrounding spread context
+- resolve the source type
+- determine compile-time expansion count when required
+- preserve source evaluation exactly once
+- expand array elements in increasing index order
+- expand struct fields in declaration order
+- validate total call arity after expansion
+- run overload resolution after argument expansion
+- calculate array literal length with checked arithmetic
+- validate one common array element type
+- resolve struct field overrides from left to right
+- validate required and visible fields
+- enforce initial copyability restrictions
+- reject hidden allocation
+- preserve ownership operations explicitly in Semantic IR
+
+## Semantic IR requirements
+
+Semantic IR should represent spread explicitly before final expansion.
+
+Suggested operations:
+
+```text
+SpreadCallArguments
+SpreadArrayElements
+SpreadStructFields
+```
+
+Each operation should record:
+
+- source expression
+- source type
+- destination context
+- compile-time expansion count when known
+- element or field order
+- selected copy operations
+- source evaluation point
+- field override information
+
+A later normalization pass may lower spread into ordinary arguments, array
+elements or struct fields.
+
+MLIR and LLVM lowering must not infer spread from source syntax or reconstruct
+ownership behavior.
+
+## Diagnostics
+
+Diagnostics should identify:
+
+- unsupported spread context
+- invalid source type
+- unknown runtime expansion count
+- resulting call arity
+- incompatible expanded element
+- move-only source restriction
+- inaccessible struct field
+- duplicate explicit struct field
+- array length overflow
+
+Examples:
+
+```text
+cannot spread ref int[] into fixed-arity call; expansion count is not known at compile time
+
+cannot spread Resource[2] into function arguments; Resource is not implicitly copyable
+
+cannot spread UserUpdate into User; spread source must have type User
+
+spread operator is not valid as a standalone expression
+```
+
+## Tests
+
+Create:
+
+```text
+spread_valid.sec
+spread_invalid.sec
+```
+
+Valid tests should cover:
+
+- one array spread in a function call
+- spread mixed with ordinary arguments
+- multiple array spreads in one call
+- overload resolution after expansion
+- inferred array literal with spread
+- target-typed array literal with spread
+- multiple spreads in one array literal
+- one struct spread
+- explicit field overriding spread field
+- multiple struct spreads
+- source expression evaluated once
+- trailing commas after spread entries
+
+Invalid tests should cover:
+
+- prefix spread
+- standalone spread
+- spread without source
+- repeated spread
+- scalar spread
+- slice spread into fixed-arity call
+- call arity mismatch after expansion
+- incompatible expanded argument type
+- move-only element call spread
+- slice spread in array literal
+- array element type mismatch
+- array length overflow
+- wrong struct source type
+- inaccessible struct fields
+- missing required fields after spread resolution
+- duplicate explicit struct fields
+- move-only struct spread
+
+## Initial implementation scope
+
+Implemented now:
+
+- postfix `expression...`
+- fixed-size array spread in function calls
+- fixed-size array spread in array literals
+- same-type copyable struct spread
+- compile-time expansion
+- parser support for spread-aware call, array literal and struct literal lists
+- semantic rejection of standalone spread
+- semantic rejection of runtime-length slice spread in fixed-arity calls and
+  array literals
+
+Not implemented yet:
+
+- variadic parameter declarations
+- runtime-length slice spread
+- iterator spread
+- dynamic container spread
+- copyability validation
+- consuming spread of move-only elements
+- partial-move struct spread
+- recursive or deep merge
+- hidden allocation
+- explicit Semantic IR representation
+- permanent spread_valid.sec / spread_invalid.sec test files

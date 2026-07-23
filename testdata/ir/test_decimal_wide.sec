@@ -1,0 +1,30 @@
+module main
+
+fn EchoDecimal(value: decimal) decimal {
+    return value
+}
+
+fn EchoDecimal128(value: decimal128) decimal128 {
+    return value
+}
+
+fn WideUnsigned(left: uint256, right: uint256) uint256 {
+    return ((left >> right) + right) / right
+}
+
+fn WideSigned(left: int128, right: int128) int128 {
+    return ~(left & right) | (left ^ right)
+}
+
+fn main() int {
+    let ordinary: decimal := 123.45
+    let exact: decimal128 := 123456789012345678901234.5678
+    let wide: uint256 := 115792089237316195423570985008687907853269984665640564039457584007913129639935
+
+    let copied := EchoDecimal(ordinary)
+    let copied128 := EchoDecimal128(exact)
+    let shifted := WideUnsigned(wide, uint256(1))
+    let masked := WideSigned(int128(1), int128(2))
+
+    return int(copied) + int(copied128) + int(shifted) + int(masked)
+}

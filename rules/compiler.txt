@@ -318,7 +318,8 @@ Inspection commands:
     sec parse <file.sec|dir|glob>...
     sec ast <file.sec|dir|glob>...
     sec sema <file.sec|dir|glob>...
-    sec emit-llvm <file.sec> -o <file.ll>
+    sec emit-mlir <file.sec> -o <file.mlir|->
+    sec emit-llvm <file.sec> -o <file.ll|->
 
 Rules:
 
@@ -327,7 +328,11 @@ Rules:
 - `parse` validates grammar and prints the parsed source representation.
 - `ast` prints a formatted tree representation of the AST.
 - `sema` runs semantic analysis and reports errors and warnings.
+- `emit-mlir` generates MLIR text and requires the `-o` output flag.
 - `emit-llvm` generates LLVM IR text and requires the `-o` output flag.
+- For emit commands, `-o -` writes the generated text to stdout.
+- Output filenames beginning with `-` are rejected to avoid ambiguity with
+  flags. Use a normal path such as `./name.ll` or `out/name.mlir`.
 - `parse`, `ast` and `sema` accept multiple source inputs.
 - A source input may be a `.sec` file, a directory or a shell/glob pattern.
 - Directories are scanned recursively for `.sec` files.
@@ -338,14 +343,22 @@ Rules:
 
 Current implementation note:
 
-- `lex`, `token`, `parse`, `ast`, `sema`, `emit-llvm` and `build` exist.
+- `lex`, `token`, `parse`, `ast`, `sema`, `emit-mlir`, `emit-llvm` and
+  `build` exist.
 - `parse`, `ast` and `sema` support multiple input files, directories and
   quoted globs.
 - `emit-llvm` supports `--target <os-arch>` and emits a target-specific LLVM
   triple.
-- `build` supports `-o`, `--target <os-arch>`, `--keep-llvm` and
-  `--clang <path>`.
-- `build` currently emits LLVM IR and invokes `clang` directly.
+- `emit-mlir` supports `--target <os-arch>`, `--mlir-bin <path>` and
+  `--verify`.
+- `build` supports `-o`, `--target <os-arch>`, `--pipeline <llvm|mlir>`,
+  `--keep-mlir`, `--keep-llvm`, `--mlir-bin <path>` and `--clang <path>`.
+- `build` defaults to direct LLVM IR emission and invokes `clang`.
+- `build --pipeline mlir` emits MLIR out-of-process, verifies it with
+  `mlir-opt`, translates it to LLVM IR with `mlir-translate`, and then invokes
+  `clang`.
+- MLIR tools are resolved from `--mlir-bin`, then `SEC_MLIR_BIN`, then the
+  default developer path `~/mlir/llvm-project/build/bin`, then `PATH`.
 - `run`, `-D` and optimization flags are specified but not implemented yet.
 
 
@@ -364,14 +377,15 @@ Compilation performs:
         ->
     Compile package
         ->
-    Generate LLVM IR
+    Generate MLIR or LLVM IR
         ->
     Generate object files
         ->
     Link executable
 
 If no output name is specified, the executable is named after the input source
-file.
+file and written to the current working directory. Source directory components
+are not copied into the default output path.
 
 Example:
 
@@ -387,10 +401,22 @@ Custom output name:
 
 Current implementation note:
 
-- `build` currently emits LLVM and invokes `clang`.
+- `build` currently emits direct LLVM by default and invokes `clang`.
+- `build --pipeline mlir` emits LLVM-dialect MLIR as the first minimal MLIR
+  path. A Sec-specific MLIR dialect is planned later and is not part of the
+  first implementation.
+- The current MLIR path supports local `let` declarations, basic
+  bool/integer/unsigned integer/float values, decimal storage and conversions,
+  and integer/bool subject switches with value cases and optional default.
 - Without `--keep-llvm`, the LLVM file is temporary and removed after linking.
 - With `--keep-llvm`, the LLVM file is written next to the output as
   `<output>.ll`.
+- With `--keep-mlir`, the MLIR file is written next to the output as
+  `<output>.mlir`.
+- For example,
+  `sec build testdata/ir/test_complex1.sec --pipeline mlir --keep-mlir --keep-llvm`
+  writes `test_complex1`, `test_complex1.mlir` and `test_complex1.ll` in the
+  current working directory.
 - `--target <os-arch>` is used for source target validation, stdlib/platform
   selection, LLVM target triple generation and the clang `-target` argument.
 - It validates that the program has `module main`.

@@ -1,0 +1,283 @@
+module arrays
+// arrays_valid.sec
+//
+// Comprehensive valid tests for fixed-size arrays and array indexing.
+// Every declaration in this file is expected to pass parser and semantic
+// analysis without diagnostics.
+
+// -----------------------------------------------------------------------------
+// Named element types
+// -----------------------------------------------------------------------------
+
+type Port uint range 0..65535
+
+type Counter int
+
+// -----------------------------------------------------------------------------
+// Basic array declarations and literals
+// -----------------------------------------------------------------------------
+
+fn BasicArrayDeclarations() void {
+    let values: int[4] := [10, 20, 30, 40]
+    let bytes: byte[4] := [0, 1, 2, 255]
+    let flags: bool[3] := [true, false, true]
+    let ports: Port[3] := [80, 443, 8080]
+
+    let first := values[0]
+    let last := values[3]
+    let firstByte := bytes[0]
+    let enabled := flags[2]
+    let securePort := ports[1]
+
+    return
+}
+
+// -----------------------------------------------------------------------------
+// Array literal inference
+// -----------------------------------------------------------------------------
+
+fn InferredArrayLiterals() void {
+    let integers := [1, 2, 3, 4]
+    let unsigned: uint[3] := [1, 2, 3]
+    let decimals := [1.25, 2.50, 3.75]
+    let strings := ["north", "south", "east", "west"]
+    let booleans := [true, false]
+
+    let firstInteger := integers[0]
+    let lastUnsigned := unsigned[2]
+    let middleDecimal := decimals[1]
+    let direction := strings[3]
+    let condition := booleans[0]
+
+    return
+}
+
+// -----------------------------------------------------------------------------
+// Trailing commas and zero-length arrays
+// -----------------------------------------------------------------------------
+
+fn TrailingCommaAndEmptyArray() void {
+    let values: int[3] := [
+    10,
+    20,
+    30,
+]
+
+    let empty: int[0] := []
+
+    let valueLength := values.len
+    let emptyLength := empty.len
+
+    return
+}
+
+// -----------------------------------------------------------------------------
+// Mutable arrays and indexed assignment
+// -----------------------------------------------------------------------------
+
+fn IndexedAssignment() int {
+    let mut values: int[4] := [1, 2, 3, 4]
+
+    values[0] = 10
+    values[1] = values[0] + 5
+    values[2] = 30
+    values[3] = values[1] + values[2]
+
+    return values[3]
+}
+
+fn RuntimeIndexedAssignment(index: uint, value: int) int {
+    let mut values: int[4] := [10, 20, 30, 40]
+
+    values[index] = value
+
+    return values[index]
+}
+
+// -----------------------------------------------------------------------------
+// Index types
+// -----------------------------------------------------------------------------
+
+fn SignedRuntimeIndex(index: int) int {
+    let values: int[5] := [5, 10, 15, 20, 25]
+    return values[index]
+}
+
+fn UnsignedRuntimeIndex(index: uint) int {
+    let values: int[5] := [5, 10, 15, 20, 25]
+    return values[index]
+}
+
+fn ByteRuntimeIndex(index: byte) int {
+    let values: int[5] := [5, 10, 15, 20, 25]
+    return values[index]
+}
+
+// -----------------------------------------------------------------------------
+// Array length as compile-time type information
+// -----------------------------------------------------------------------------
+
+fn ArrayLength() uint {
+    let values: int[7] := [1, 2, 3, 4, 5, 6, 7]
+    return values.len
+}
+
+fn ZeroArrayLength() uint {
+    let values: byte[0] := []
+    return values.len
+}
+
+// -----------------------------------------------------------------------------
+// Nested arrays
+// int[2][3] means two arrays containing three int values each.
+// -----------------------------------------------------------------------------
+
+fn NestedArrays() int {
+    let mut matrix: int[2][3] := [
+    [1, 2, 3],
+    [4, 5, 6],
+]
+
+    matrix[0][0] = 10
+    matrix[1][2] = 60
+
+    let firstRow: int[3] := matrix[0]
+    let secondRow: int[3] := matrix[1]
+
+    return firstRow[0] + secondRow[2]
+}
+
+fn ThreeDimensionalArray() int {
+    let cube: int[2][2][2] := [
+    [
+    [1, 2],
+    [3, 4],
+],
+    [
+    [5, 6],
+    [7, 8],
+],
+]
+
+    return cube[1][0][1]
+}
+
+// -----------------------------------------------------------------------------
+// Arrays as function parameters and return values
+// -----------------------------------------------------------------------------
+
+fn SumFour(values: int[4]) int {
+    return values[0] + values[1] + values[2] + values[3]
+}
+
+fn BuildPair(left: int, right: int) int[2] {
+    return [left, right]
+}
+
+fn PassArrayByValue() int {
+    let values: int[4] := [10, 20, 30, 40]
+    return SumFour(values)
+}
+
+fn ReturnArrayByValue() int {
+    let pair := BuildPair(20, 22)
+    return pair[0] + pair[1]
+}
+
+// -----------------------------------------------------------------------------
+// Array copy semantics
+// -----------------------------------------------------------------------------
+
+fn CopyableArrayCopy() int {
+    let original: int[4] := [1, 2, 3, 4]
+    let copied := original
+
+    return original[0] + copied[3]
+}
+
+fn MutableCopyIsIndependent() bool {
+    let original: int[3] := [10, 20, 30]
+    let mut copied := original
+
+    copied[0] = 99
+
+    return original[0] == 10 && copied[0] == 99
+}
+
+// -----------------------------------------------------------------------------
+// Array equality
+// -----------------------------------------------------------------------------
+
+fn EqualArrays() bool {
+    let left: int[4] := [1, 2, 3, 4]
+    let right: int[4] := [1, 2, 3, 4]
+
+    return left == right
+}
+
+fn UnequalArrays() bool {
+    let left: int[4] := [1, 2, 3, 4]
+    let right: int[4] := [1, 2, 3, 5]
+
+    return left != right
+}
+
+fn NestedArrayEquality() bool {
+    let left: int[2][2] := [
+    [1, 2],
+    [3, 4],
+]
+
+    let right: int[2][2] := [
+    [1, 2],
+    [3, 4],
+]
+
+    return left == right
+}
+
+// -----------------------------------------------------------------------------
+// Element references
+// -----------------------------------------------------------------------------
+
+fn SharedElementBorrow() void {
+    let values: int[4] := [10, 20, 30, 40]
+    let element: ref int := ref values[2]
+
+    return
+}
+
+fn MutableElementBorrow() void {
+    let mut values: int[4] := [10, 20, 30, 40]
+    let element: ref mut int := ref mut values[1]
+
+    return
+}
+
+// -----------------------------------------------------------------------------
+// Arrays containing reference values
+// -----------------------------------------------------------------------------
+
+fn ArrayOfSharedReferences() uint {
+    let first: int := 10
+    let second: int := 20
+
+    let references: (ref int)[2] := [
+    ref first,
+    ref second,
+]
+
+    return references.len
+}
+
+// -----------------------------------------------------------------------------
+// Whole-array initialization after an uninitialized mutable declaration
+// -----------------------------------------------------------------------------
+
+fn DelayedWholeArrayInitialization() int {
+    let mut values: int[3]
+
+    values = [10, 20, 30]
+
+    return values[2]
+}

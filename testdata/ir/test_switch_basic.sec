@@ -1,0 +1,29 @@
+module main
+
+fn Classify(value: int) int {
+    let mut result := 0
+
+    switch value {
+    case 1, 3:
+        result = 10
+    case 2:
+        result = 20
+    default:
+        result = 30
+    }
+
+    return result
+}
+
+fn BoolValue(value: bool) int {
+    switch value {
+    case true:
+        return 1
+    case false:
+        return 0
+    }
+}
+
+fn main() int {
+    return Classify(3) + BoolValue(false)
+}

@@ -1649,11 +1649,17 @@ for value in start..<end step increment {
 The step expression:
 
 * is evaluated exactly once
-* must be greater than zero
+* must be non-zero
 * must be type-compatible with the range bounds
-* determines the distance between generated values
+* determines the signed delta between generated values
 
-The range bounds determine direction.
+When the range bounds and step are compile-time constants:
+
+* ascending ranges require a positive step
+* descending ranges require a negative step
+
+When the step is omitted, the compiler derives `+1` for ascending ranges and
+`-1` for descending ranges.
 
 Ascending:
 
@@ -1665,11 +1671,11 @@ for value in 0.001..0.002 step 0.00001 {
 Descending:
 
 ```
-for value in 0.002..0.001 step 0.00001 {
+for value in 0.002..0.001 step -0.00001 {
 }
 ```
 
-The step is always written as a positive magnitude.
+The step is written as the actual delta.
 
 Invalid:
 
@@ -1700,7 +1706,9 @@ Current implementation status:
 * Parser supports explicit `step` on range iteration.
 * Semantic analysis supports finite range iteration for int, uint,
   integer-based semantic types, float and decimal.
-* Semantic analysis checks that explicit constant steps are greater than zero.
+* Semantic analysis checks that explicit constant steps are non-zero.
+* Semantic analysis checks the sign of explicit constant steps against
+  constant range bounds.
 * Semantic analysis checks that step expressions are type-compatible with the
   range bounds.
 * LLVM code generation currently supports integer range iteration only.

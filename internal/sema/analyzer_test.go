@@ -5216,11 +5216,11 @@ fn InvalidDecimalNegativeStep() void {
 	errors := analyzeSourceRaw(t, input)
 
 	expected := []string{
-		"for range step must be greater than zero at 11:23",
-		"for range step must be greater than zero at 16:23",
+		"for range step must not be zero at 11:23",
+		"for ascending range step must be positive at 16:23",
 		"for step is only valid for range iteration at 21:27",
-		"for range step must be greater than zero at 26:30",
-		"for range step must be greater than zero at 31:30",
+		"for range step must not be zero at 26:30",
+		"for ascending range step must be positive at 31:30",
 	}
 
 	assertSemaErrors(t, errors, expected)
@@ -5530,6 +5530,21 @@ fn Test() void {
 	}
 
 	assertSemaErrors(t, errors, expected)
+}
+
+func TestExplicitDecimalToIntegerConversions(t *testing.T) {
+	input := `
+module main
+
+fn Test(value: decimal, exact: decimal128) int128 {
+	let small: int := int(value)
+	let wide: int128 := int128(exact)
+	return int128(small) + wide
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
 }
 
 func TestBasicTypesBitwiseAndCharRules(t *testing.T) {

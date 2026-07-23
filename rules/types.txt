@@ -40,26 +40,25 @@ Implemented:
 - decimal literal emission in LLVM
 - explicit `decimal(int)` conversion in LLVM
 - decimal function return values in LLVM
+- MLIR decimal representation as `!llvm.struct<(i64, i32)>`
+- MLIR decimal128 representation as `!llvm.struct<(i128, i32)>`
+- decimal and decimal128 literals, storage, parameters and returns in MLIR
+- inline integer-to-decimal and decimal-to-integer conversions in MLIR
+- `int128`, `int256`, `uint128` and `uint256` lowering in MLIR
 
 Partially implemented:
 
 - decimal arithmetic is type-checked in sema, including unit algebra.
 - decimal arithmetic in LLVM is recognized but not lowered yet.
 - runtime contract checks for non-constant conversions are not generated yet.
-- 128-bit and 256-bit integer families are not lowered to LLVM yet.
-- `decimal128` is not lowered to LLVM yet.
+- the direct LLVM backend does not yet lower the 128-bit and 256-bit integer
+  families or `decimal128`; the MLIR pipeline does.
 
 Not implemented yet:
 
-- decimal runtime helpers:
-
-    _sec_decimal_add
-    _sec_decimal_sub
-    _sec_decimal_mul
-    _sec_decimal_div
-
-- decimal overflow checks in runtime helpers.
-- decimal division precision policy in runtime helpers.
+- inline decimal arithmetic lowering.
+- decimal overflow checks in generated lowering.
+- decimal division precision policy.
 - decimal comparison lowering in LLVM.
 - runtime contract failure path for decimal overflow, division by zero or
   precision exhaustion.
@@ -231,8 +230,10 @@ byte
 semantic analysis. Compile-time integer range metadata uses arbitrary precision
 so boundary literals and overflow checks work for these widths.
 
-LLVM lowering for 128-bit and 256-bit integer operations is not part of the
-current implementation step.
+The MLIR pipeline lowers these types to `i128` and `i256`, including literals,
+storage, parameters, returns, casts, arithmetic, bitwise operations, shifts and
+signed/unsigned operations. The legacy direct LLVM backend does not yet provide
+the same coverage.
 
 Floating-point types:
 
@@ -253,7 +254,8 @@ decimal128
 concrete decimal type. Numeric literals may initialize it directly, and explicit
 conversions such as `decimal128(value)` are accepted when the source is numeric.
 
-LLVM lowering for `decimal128` is not implemented yet.
+The MLIR pipeline lowers `decimal128` to `!llvm.struct<(i128, i32)>`. The legacy
+direct LLVM backend does not yet lower it.
 
 
 6. Untyped literals
@@ -520,6 +522,9 @@ Current rule:
 - integer literals may initialize decimal targets.
 - float variables do not implicitly initialize decimal targets.
 - explicit conversion is required for runtime float-to-decimal conversion.
+- explicit decimal-to-integer conversion discards fractional decimal digits by
+  dividing the coefficient by ten once per scale step. Signed division therefore
+  truncates toward zero.
 
 
 12. Decimal arithmetic
@@ -554,13 +559,14 @@ rules/units.txt
 ```
 
 
-13. Decimal LLVM representation
--------------------------------
+13. Decimal lowering representation
+-----------------------------------
 
-Current compiler decision:
+The MLIR pipeline uses:
 
-```llvm
-%sec.decimal = type { i64, i8 }
+```mlir
+decimal    => !llvm.struct<(i64, i32)>
+decimal128 => !llvm.struct<(i128, i32)>
 ```
 
 Field layout:
@@ -568,49 +574,56 @@ Field layout:
 - field 0: signed integer value
 - field 1: base-10 scale
 
+The scale is `i32` on every target. This maps naturally to 32-bit registers on
+amd64, ARM64, ARMv7, STM32 and ESP32-class targets and avoids byte-masking
+operations associated with an `i8` scale.
+
 Examples:
 
 ```sec
 let d: decimal := 3.14
 ```
 
-is emitted as an aggregate equivalent to:
+is emitted in the MLIR pipeline as an aggregate equivalent to:
 
 ```llvm
-{ i64 314, i8 2 }
+{ i64 314, i32 2 }
 ```
 
-Implemented in LLVM code generation:
+Implemented in MLIR code generation:
 
-- decimal type declaration
-- decimal literal emission
-- integer literal to decimal when target type is decimal
-- `decimal(5)` as explicit integer-to-decimal conversion
-- decimal return values
+- decimal and decimal128 literal emission from the source lexeme
+- local storage
+- function parameters and return values
+- integer literal to decimal when the target type is decimal or decimal128
+- explicit integer-to-decimal conversion
+- explicit decimal-to-integer conversion
+- explicit conversion between decimal and decimal128
+- fully inline aggregate construction with `llvm.insertvalue`
+- fully inline component access with `llvm.extractvalue`
+- inline scale removal loops for decimal-to-integer conversions
 
-Not implemented in LLVM code generation:
+No runtime library call is used for these operations.
+
+The legacy direct LLVM backend currently uses `%sec.decimal = type { i64, i8 }`.
+That representation is retained only for the existing direct-backend subset and
+must not define the canonical MLIR lowering.
+
+Not implemented in decimal code generation:
 
 - decimal arithmetic
 - decimal comparison
-- decimal runtime helper calls
 - overflow checks
 - precision/runtime contract failure paths
 
 
-14. Decimal runtime helper strategy
------------------------------------
+14. Inline decimal lowering strategy
+------------------------------------
 
-Decimal arithmetic should be lowered to runtime helper calls rather than
-duplicating branch-heavy LLVM IR at every operator site.
-
-Planned helpers:
-
-```text
-_sec_decimal_add
-_sec_decimal_sub
-_sec_decimal_mul
-_sec_decimal_div
-```
+Decimal operations should be lowered inline so compiled programs do not require
+a mandatory Sec runtime library. Generated lowering may use standalone MLIR
+blocks, `llvm.extractvalue`, `llvm.insertvalue`, loops and LLVM overflow
+intrinsics.
 
 Addition and subtraction:
 
@@ -632,16 +645,16 @@ Division:
 
 Overflow handling:
 
-- runtime helpers must use checked arithmetic.
-- LLVM implementations should use overflow intrinsics such as:
+- generated lowering must use checked arithmetic.
+- LLVM-dialect MLIR may use overflow intrinsics such as:
 
 ```llvm
 @llvm.sadd.with.overflow.i64
 @llvm.smul.with.overflow.i64
 ```
 
-On overflow, division by zero or precision exhaustion, the runtime helper must
-enter the Sec runtime contract failure path.
+On overflow, division by zero or precision exhaustion, generated code must enter
+the Sec contract failure path without requiring a general runtime library.
 
 
 15. Related documents

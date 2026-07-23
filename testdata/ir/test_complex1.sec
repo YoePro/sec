@@ -1,0 +1,27 @@
+module main
+
+fn main() int {
+    // Suffix-tester: i för signed int, u för unsigned int
+    let mut x := 10i
+    let mut y := 20u
+
+    // Bas-tester: hex, oktal och binär representation
+    let hex_val := 0x1A      // 26 i decimalt
+    let oct_val := 0o32      // 26 i decimalt
+    let bin_val := 0b11010   // 26 i decimalt
+
+    // Test 1: Kombination av &&, || och !=
+    if (x != 5 && y > 15) || x == 0 {
+        x = 100
+    } else {
+        x = 200
+    }
+
+    // Test 2: Float-for loop med explicit float-literal (0.0f)
+    let mut float_sum := 0.0f
+    for f in 0.0f..5.0f step 0.5f {
+        float_sum = float_sum + f
+    }
+
+    return x
+}

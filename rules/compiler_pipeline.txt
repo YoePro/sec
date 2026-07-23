@@ -616,6 +616,85 @@ sec test builds and executes test declarations.
 
 Exact command availability may be implemented incrementally.
 
+Current MLIR implementation note:
+
+* `sec emit-mlir <file.sec> -o <file.mlir|->` emits LLVM-dialect MLIR.
+* `sec emit-mlir` supports `--target <os-arch>`, `--mlir-bin <path>` and
+  `--verify`.
+* For emit commands, `-o -` writes generated text to stdout. Other output
+  filenames beginning with `-` are rejected.
+* `sec build --pipeline mlir` orchestrates MLIR out-of-process:
+  Sec source -> AST/sema -> MLIR text -> `mlir-opt` verification ->
+  `mlir-translate --mlir-to-llvmir` -> LLVM IR -> `clang`.
+* Without `-o`, build output uses the input file's base name in the current
+  working directory. For example, building `testdata/ir/test_complex1.sec`
+  produces `test_complex1`. With both keep flags, the retained intermediates
+  are `test_complex1.mlir` and `test_complex1.ll` beside the executable.
+* MLIR tools are resolved from `--mlir-bin`, then `SEC_MLIR_BIN`, then
+  `~/mlir/llvm-project/build/bin`, then `PATH`.
+* The first MLIR backend intentionally uses LLVM-dialect MLIR directly.
+  A Sec-specific MLIR dialect is a later step.
+* The current MLIR backend supports a small executable subset:
+  `module main`, function declarations, `return`, `if`/`else`, `else if`,
+  integer and float range `for` loops, infinite `for` loops, `while` loops, `break`,
+  `continue`, local `let` declarations, local identifier assignments, identifier loads,
+  direct function calls, bool/integer/unsigned integer/float literals and basic
+  arithmetic/comparison/logical operators, and integer/bool subject switches
+  with value cases and optional default. Concrete non-generic structs are
+  supported for literals, local storage, parameters, returns and field reads.
+* A concrete struct lowers to an LLVM-dialect literal struct type whose elements
+  follow declaration order. Struct literals use `llvm.mlir.undef` followed by
+  `llvm.insertvalue`; field reads use `llvm.extractvalue`. Nested structs are
+  represented inline and require no runtime support.
+* The first struct lowering step does not yet support generic structs, struct
+  spread, field assignment, string fields, reference/slice/array fields,
+  methods or properties.
+* The first MLIR switch step evaluates its subject once and emits ordered test,
+  case, default and continuation blocks. Comma-separated case values are joined
+  with boolean OR. Subjectless switch, ranges, relational cases, fallthrough and
+  non-integer/non-bool subjects remain later steps.
+* `while` lowering emits condition, body and end blocks. `continue` branches to
+  the condition block. `break` branches to the end block.
+* Integer range `for` lowering supports explicit signed steps, including
+  descending loops such as `for i in 3..-1 step -1`.
+* Float range `for` lowering supports explicit float steps such as
+  `for f in 0.0f..5.0f step 0.5f`.
+* `in` with finite integer or float ranges lowers to lower-bound and
+  upper-bound comparisons. Inclusive ranges use `<=` for the upper bound;
+  exclusive ranges use `<`.
+* Numeric literals are emitted using the surrounding expression context where
+  possible, for example `uint_value > 15` emits `15` with the unsigned value's
+  MLIR integer width.
+* Unsigned integer values keep signedness metadata during MLIR lowering. The
+  backend emits unsigned integer predicates and operations where LLVM requires
+  signedness-specific opcodes, for example `ugt`, `udiv`, `urem` and `lshr`.
+* Logical `&&` and `||` lower to short-circuit control flow, not eager
+  `llvm.and`/`llvm.or` operations.
+  The temporary result slot is initialized with the left operand before
+  branching, and only overwritten when the right operand is evaluated.
+* Untyped integer literals in MLIR are emitted using the smallest currently
+  supported integer width that can represent the value: signed literals prefer
+  `i32`, then `i64`, then `i128`, then `i256`; unsigned literals prefer `i64`,
+  then `i128`, then `i256`.
+* The O0 MLIR backend hoists stack allocation (`llvm.alloca`) to the function
+  prologue. Loop bodies must not allocate fresh stack slots per iteration.
+* `decimal` lowers to `!llvm.struct<(i64, i32)>`; `decimal128` lowers to
+  `!llvm.struct<(i128, i32)>`. Field zero is the signed base-10 coefficient and
+  field one is the `i32` scale.
+* Decimal literals, local storage, parameters, returns and explicit integer
+  conversions lower fully inline. Aggregate construction and access use
+  `llvm.insertvalue` and `llvm.extractvalue`. Decimal-to-integer conversion
+  removes scale with an inline signed-division loop and truncates toward zero.
+  These paths do not require a runtime library.
+* `int128`, `int256`, `uint128` and `uint256` lower to `i128` and `i256`.
+  Their MLIR path supports literals, storage, parameters, returns, casts,
+  arithmetic, bitwise operations, shifts and signed/unsigned lowering.
+* Decimal arithmetic and comparison lowering remain future work.
+* String literals lower to immutable byte arrays plus a separate runtime
+  length. The MLIR backend does not append an implicit C nul terminator.
+  C-compatible nul-terminated strings must be produced by an explicit later
+  conversion or FFI lowering rule.
+
 ## Diagnostics
 
 Each pipeline stage must emit diagnostics using the shared diagnostic system.

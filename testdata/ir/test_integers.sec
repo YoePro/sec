@@ -1,0 +1,13 @@
+// test_integers.sec
+module main
+
+fn main() int {
+    let mut min_val := 0
+    let mut max_val := 2147483647 // Max for i32
+    let mut i64_val := 2147483648 // should be i64
+
+    if min_val == max_val {
+        return -1
+    }
+    return min_val
+}

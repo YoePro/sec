@@ -97,6 +97,11 @@ type server struct {
 	shutdown         bool
 }
 
+type formatterSwitchContext struct {
+	contentDepth int
+	caseActive   bool
+}
+
 func main() {
 	s := &server{
 		in:               bufio.NewReader(os.Stdin),
@@ -264,6 +269,7 @@ func formatSource(text string) string {
 	out := make([]string, 0, len(lines))
 	indent := 0
 	blankPending := false
+	switches := []formatterSwitchContext{}
 
 	for _, line := range lines {
 		line = strings.ReplaceAll(line, "\t", "    ")
@@ -282,15 +288,46 @@ func formatSource(text string) string {
 			lineIndent--
 		}
 
+		for len(switches) > 0 && lineIndent < switches[len(switches)-1].contentDepth {
+			switches = switches[:len(switches)-1]
+		}
+
+		caseContext := -1
+		if isSwitchCaseClause(trimmed) {
+			for i := len(switches) - 1; i >= 0; i-- {
+				if switches[i].contentDepth == lineIndent {
+					caseContext = i
+					break
+				}
+			}
+		}
+
+		extraIndent := 0
+		for i, switchContext := range switches {
+			if switchContext.caseActive && lineIndent >= switchContext.contentDepth {
+				if i == caseContext {
+					continue
+				}
+				extraIndent++
+			}
+		}
+
 		if blankPending && len(out) > 0 {
 			out = append(out, "")
 			blankPending = false
 		}
 
-		out = append(out, strings.Repeat(" ", lineIndent*4)+trimmed)
-		indent += braceIndentDelta(trimmed)
+		out = append(out, strings.Repeat(" ", (lineIndent+extraIndent)*4)+trimmed)
+		indentDelta := braceIndentDelta(trimmed)
+		indent += indentDelta
 		if indent < 0 {
 			indent = 0
+		}
+		if isSwitchBlockStart(trimmed) && indentDelta > 0 {
+			switches = append(switches, formatterSwitchContext{contentDepth: indent})
+		}
+		if caseContext >= 0 {
+			switches[caseContext].caseActive = true
 		}
 	}
 
@@ -302,6 +339,18 @@ func formatSource(text string) string {
 		formatted = strings.ReplaceAll(formatted, "\n", lineEnding)
 	}
 	return formatted
+}
+
+func isSwitchBlockStart(line string) bool {
+	return strings.HasPrefix(line, "switch ") || strings.HasPrefix(line, "switch{")
+}
+
+func isSwitchCaseClause(line string) bool {
+	return line == "case" ||
+		strings.HasPrefix(line, "case ") ||
+		strings.HasPrefix(line, "case\t") ||
+		line == "default:" ||
+		strings.HasPrefix(line, "default ")
 }
 
 func startsWithClosingBlock(line string) bool {

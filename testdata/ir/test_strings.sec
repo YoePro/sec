@@ -1,0 +1,14 @@
+// test_strings.sec
+module main
+
+fn main() int {
+    let s1 := "hello"
+    let s2 := "this is a longer string"
+    let s3 := "" // Tom sträng - viktigt kantfall!
+
+    let mut dummy := 42
+    if dummy == 42 {
+        return 0
+    }
+    return 1
+}

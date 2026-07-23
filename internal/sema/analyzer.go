@@ -443,6 +443,9 @@ func typeReferenceDisplayName(ref *ast.TypeReference) string {
 		if ref.Slice {
 			return element + "[]"
 		}
+		if ref.ArrayLengthExpression != nil {
+			return fmt.Sprintf("%s[%s]", element, ref.ArrayLengthExpression.String())
+		}
 		return fmt.Sprintf("%s[%d]", element, ref.ArrayLength)
 	}
 	out := ref.Name
@@ -1116,13 +1119,41 @@ func (a *Analyzer) inferForRangeBindingType(expr *ast.RangeExpression, step ast.
 			a.addErrorAtToken(expressionToken(step), "for range step must be %s, got %s", typeDisplayName(startType), typeDisplayName(stepType))
 			return Type{Kind: InvalidType}, false
 		}
-		if value, ok := a.integerConstantValue(step); ok && value.Sign() <= 0 {
-			a.addErrorAtToken(expressionToken(step), "for range step must be greater than zero")
+		if value, ok := a.integerConstantValue(step); ok && value.Sign() == 0 {
+			a.addErrorAtToken(expressionToken(step), "for range step must not be zero")
 			return Type{Kind: InvalidType}, false
 		}
-		if value, ok := decimalLiteralValue(step); ok && value.Int64 <= 0 {
-			a.addErrorAtToken(expressionToken(step), "for range step must be greater than zero")
+		if startValue, startOK := a.integerConstantValue(expr.Start); startOK {
+			if endValue, endOK := a.integerConstantValue(expr.End); endOK {
+				if stepValue, stepOK := a.integerConstantValue(step); stepOK {
+					if startValue.Cmp(endValue) < 0 && stepValue.Sign() < 0 {
+						a.addErrorAtToken(expressionToken(step), "for ascending range step must be positive")
+						return Type{Kind: InvalidType}, false
+					}
+					if startValue.Cmp(endValue) > 0 && stepValue.Sign() > 0 {
+						a.addErrorAtToken(expressionToken(step), "for descending range step must be negative")
+						return Type{Kind: InvalidType}, false
+					}
+				}
+			}
+		}
+		if value, ok := decimalLiteralValue(step); ok && value.Int64 == 0 {
+			a.addErrorAtToken(expressionToken(step), "for range step must not be zero")
 			return Type{Kind: InvalidType}, false
+		}
+		if startValue, startOK := decimalLiteralValue(expr.Start); startOK {
+			if endValue, endOK := decimalLiteralValue(expr.End); endOK {
+				if stepValue, stepOK := decimalLiteralValue(step); stepOK {
+					if startValue.Int64 < endValue.Int64 && stepValue.Int64 < 0 {
+						a.addErrorAtToken(expressionToken(step), "for ascending range step must be positive")
+						return Type{Kind: InvalidType}, false
+					}
+					if startValue.Int64 > endValue.Int64 && stepValue.Int64 > 0 {
+						a.addErrorAtToken(expressionToken(step), "for descending range step must be negative")
+						return Type{Kind: InvalidType}, false
+					}
+				}
+			}
 		}
 	}
 
@@ -3684,7 +3715,13 @@ func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
 	defined := false
 	if ok {
 		if isBareSliceType(declaredType) {
-			a.addErrorAtToken(stmt.Type.Token, "bare slice type %s must be used behind ref", typeDisplayName(declaredType))
+			token := stmt.Name.Token
+			if stmt.Type != nil {
+				token = stmt.Type.Token
+			} else if stmt.Value != nil {
+				token = expressionToken(stmt.Value)
+			}
+			a.addErrorAtToken(token, "bare slice type %s must be used behind ref", typeDisplayName(declaredType))
 			ok = false
 		}
 	}
@@ -3789,6 +3826,10 @@ func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement, all
 		a.analyzeMemberAssignmentStatement(stmt, member, allowFallible)
 		return
 	}
+	if index, ok := stmt.Target.(*ast.IndexExpression); ok {
+		a.analyzeIndexAssignmentStatement(stmt, index)
+		return
+	}
 
 	target, ok := stmt.Target.(*ast.Identifier)
 	if !ok {
@@ -3835,6 +3876,40 @@ func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement, all
 	if a.checkInitializerType(symbol.Type, exprType, stmt.Value) {
 		a.updateAssignedConstInt(symbol.Name, stmt)
 		a.assigned[symbol.Name] = true
+	}
+}
+
+func (a *Analyzer) analyzeIndexAssignmentStatement(stmt *ast.AssignmentStatement, index *ast.IndexExpression) {
+	targetType, _ := a.inferIndexExpression(index)
+	if targetType.Kind == InvalidType {
+		return
+	}
+	if !a.indexAssignmentTargetIsMutable(index.Left) {
+		a.addErrorAtToken(expressionToken(index.Left), "cannot assign through immutable index target")
+		return
+	}
+	exprType, _ := a.inferExpressionWithExpected(stmt.Value, targetType)
+	if exprType.Kind == InvalidType {
+		return
+	}
+	a.checkInitializerType(targetType, exprType, stmt.Value)
+}
+
+func (a *Analyzer) indexAssignmentTargetIsMutable(expr ast.Expression) bool {
+	switch expr := expr.(type) {
+	case *ast.Identifier:
+		symbol, ok := a.symbols[expr.Value]
+		if !ok {
+			return false
+		}
+		return symbol.Mutable || (symbol.Type.Kind == ReferenceType && symbol.Type.ReferenceMutable)
+	case *ast.MemberExpression:
+		return true
+	case *ast.IndexExpression:
+		return a.indexAssignmentTargetIsMutable(expr.Left)
+	default:
+		typ, _ := a.inferExpression(expr)
+		return typ.Kind == ReferenceType && typ.ReferenceMutable
 	}
 }
 
@@ -3957,11 +4032,15 @@ func (a *Analyzer) resolveType(ref *ast.TypeReference) (Type, bool) {
 			return Type{Kind: InvalidType}, false
 		}
 		if !ref.Slice {
+			length, ok := a.resolveArrayLength(ref)
+			if !ok {
+				return Type{Kind: InvalidType}, false
+			}
 			return Type{
-				Name:        fmt.Sprintf("%s[%d]", typeDisplayName(element), ref.ArrayLength),
+				Name:        fmt.Sprintf("%s[%d]", typeDisplayName(element), length),
 				Kind:        ArrayType,
 				Element:     &element,
-				ArrayLength: ref.ArrayLength,
+				ArrayLength: length,
 			}, true
 		}
 		return Type{
@@ -4029,6 +4108,31 @@ func (a *Analyzer) resolveType(ref *ast.TypeReference) (Type, bool) {
 		typ = a.instantiateGenericType(typ)
 	}
 	return typ, true
+}
+
+func (a *Analyzer) resolveArrayLength(ref *ast.TypeReference) (int64, bool) {
+	if ref.ArrayLengthExpression == nil {
+		if ref.ArrayLength < 0 {
+			a.addErrorAtToken(ref.Token, "array length must be non-negative")
+			return 0, false
+		}
+		return ref.ArrayLength, true
+	}
+
+	value, ok := a.integerConstantValue(ref.ArrayLengthExpression)
+	if !ok {
+		a.addErrorAtToken(expressionToken(ref.ArrayLengthExpression), "array length must be a compile-time integer")
+		return 0, false
+	}
+	if value.Sign() < 0 {
+		a.addErrorAtToken(expressionToken(ref.ArrayLengthExpression), "array length must be non-negative")
+		return 0, false
+	}
+	if !value.IsInt64() {
+		a.addErrorAtToken(expressionToken(ref.ArrayLengthExpression), "array length cannot be represented by int64")
+		return 0, false
+	}
+	return value.Int64(), true
 }
 
 func (a *Analyzer) resolveUnitOnlyType(ref *ast.TypeReference, preferredNumeric string) (Type, bool) {
@@ -4285,12 +4389,23 @@ func (a *Analyzer) inferExpression(expr ast.Expression) (Type, expressionValue) 
 		return Type{Name: "void", Kind: VoidType}, expressionValue{Display: expr.String()}
 	case *ast.MatchExpression:
 		return a.inferMatchExpression(expr)
+	case *ast.SpreadExpression:
+		a.addErrorAtToken(expr.Token, "spread operator is not valid as a standalone expression")
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	case *ast.MemberExpression:
 		typ, ok := a.inferMemberExpression(expr)
 		if !ok {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
 		return typ, expressionValue{Display: expr.String()}
+	case *ast.ArrayLiteral:
+		return a.inferArrayLiteral(expr)
+	case *ast.IndexExpression:
+		return a.inferIndexExpression(expr)
+	case *ast.SliceExpression:
+		return a.inferSliceExpression(expr)
+	case *ast.RefExpression:
+		return a.inferRefExpression(expr)
 	case *ast.StructLiteral:
 		return a.inferStructLiteral(expr)
 	default:
@@ -4299,6 +4414,9 @@ func (a *Analyzer) inferExpression(expr ast.Expression) (Type, expressionValue) 
 }
 
 func (a *Analyzer) inferExpressionWithExpected(expr ast.Expression, expected Type) (Type, expressionValue) {
+	if lit, ok := expr.(*ast.ArrayLiteral); ok {
+		return a.inferArrayLiteralWithExpected(lit, expected)
+	}
 	call, ok := expr.(*ast.CallExpression)
 	if !ok || expected.Kind == InvalidType || expected.Kind == "" {
 		typ, value := a.inferExpression(expr)
@@ -4347,6 +4465,16 @@ func (a *Analyzer) inferStructLiteral(expr *ast.StructLiteral) (Type, expression
 
 	seen := map[string]lexer.Token{}
 	for _, field := range expr.Fields {
+		if field.Spread {
+			spreadType, _ := a.inferExpression(field.Value)
+			if spreadType.Kind == InvalidType {
+				continue
+			}
+			if !sameConcreteType(typ, spreadType) {
+				a.addErrorAtToken(field.Token, "cannot spread %s into %s; spread source must have type %s", typeDisplayName(spreadType), typeDisplayName(typ), typeDisplayName(typ))
+			}
+			continue
+		}
 		if _, exists := seen[field.Name.Value]; exists {
 			a.addErrorAtToken(field.Name.Token, "duplicate field %q in struct literal %s", field.Name.Value, typ.Name)
 			continue
@@ -4409,6 +4537,10 @@ func (a *Analyzer) checkUnionPayloadFields(unionType Type, variant UnionVariant,
 
 	seen := map[string]lexer.Token{}
 	for _, field := range fields {
+		if field != nil && field.Spread {
+			a.addErrorAtToken(field.Token, "spread is not supported in union payload literals")
+			continue
+		}
 		if field == nil || field.Name == nil {
 			continue
 		}
@@ -4561,6 +4693,13 @@ func (a *Analyzer) inferMemberExpression(expr *ast.MemberExpression) (Type, bool
 	}
 	objectType = dereferenceType(objectType)
 
+	if objectType.Kind == ArrayType || objectType.Kind == SliceType {
+		switch expr.Property.Value {
+		case "len":
+			return a.types["uint"], true
+		}
+	}
+
 	if objectType.Kind == StringType {
 		switch expr.Property.Value {
 		case "ptr":
@@ -4587,6 +4726,245 @@ func (a *Analyzer) inferMemberExpression(expr *ast.MemberExpression) (Type, bool
 
 	a.addErrorAtToken(expr.Property.Token, "unknown member %s on %s", expr.Property.Value, typeDisplayName(objectType))
 	return Type{Kind: InvalidType}, false
+}
+
+func (a *Analyzer) inferArrayLiteral(expr *ast.ArrayLiteral) (Type, expressionValue) {
+	elementTypes, ok := a.arrayLiteralElementTypes(expr, Type{Kind: InvalidType})
+	if !ok {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+	if len(elementTypes) == 0 {
+		a.addErrorAtToken(expr.Token, "cannot infer element type of empty array literal")
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+
+	firstType := elementTypes[0]
+	if firstType.Kind == InvalidType {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+	for i, elementType := range elementTypes[1:] {
+		if elementType.Kind == InvalidType {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
+		if !sameConcreteType(firstType, elementType) {
+			a.addErrorAtToken(expressionToken(expr.Elements[min(i+1, len(expr.Elements)-1)]), "array literal elements must have one identical type")
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
+	}
+
+	return Type{
+		Name:        fmt.Sprintf("%s[%d]", typeDisplayName(firstType), len(elementTypes)),
+		Kind:        ArrayType,
+		Element:     &firstType,
+		ArrayLength: int64(len(elementTypes)),
+	}, expressionValue{Display: expr.String()}
+}
+
+func (a *Analyzer) inferArrayLiteralWithExpected(expr *ast.ArrayLiteral, expected Type) (Type, expressionValue) {
+	if expected.Kind != ArrayType || expected.Element == nil {
+		return a.inferArrayLiteral(expr)
+	}
+	elementTypes, ok := a.arrayLiteralElementTypes(expr, *expected.Element)
+	if !ok {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+	if int64(len(elementTypes)) != expected.ArrayLength {
+		a.addErrorAtToken(expr.Token, "array literal has %d elements, expected %d", len(elementTypes), expected.ArrayLength)
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+	for i, elementType := range elementTypes {
+		if elementType.Kind == InvalidType {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
+		if !canInitialize(*expected.Element, elementType, expr.Elements[min(i, len(expr.Elements)-1)]) {
+			a.addErrorAtToken(expressionToken(expr.Elements[min(i, len(expr.Elements)-1)]), "array element %d must be %s, got %s", i+1, typeDisplayName(*expected.Element), typeDisplayName(elementType))
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
+	}
+	return expected, expressionValue{Display: expr.String()}
+}
+
+func (a *Analyzer) arrayLiteralElementTypes(expr *ast.ArrayLiteral, expected Type) ([]Type, bool) {
+	out := []Type{}
+	for _, element := range expr.Elements {
+		if spread, ok := element.(*ast.SpreadExpression); ok {
+			sourceType, _ := a.inferExpression(spread.Value)
+			if sourceType.Kind == InvalidType {
+				return nil, false
+			}
+			sourceType = dereferenceType(sourceType)
+			if sourceType.Kind != ArrayType || sourceType.Element == nil {
+				a.addErrorAtToken(spread.Token, "cannot spread %s into array literal; expansion count is not known at compile time", typeDisplayName(sourceType))
+				return nil, false
+			}
+			for i := int64(0); i < sourceType.ArrayLength; i++ {
+				out = append(out, *sourceType.Element)
+			}
+			continue
+		}
+		var elementType Type
+		if expected.Kind != InvalidType && expected.Kind != "" {
+			elementType, _ = a.inferExpressionWithExpected(element, expected)
+		} else {
+			elementType, _ = a.inferExpression(element)
+		}
+		if elementType.Kind == InvalidType {
+			return nil, false
+		}
+		out = append(out, elementType)
+	}
+	return out, true
+}
+
+func (a *Analyzer) inferIndexExpression(expr *ast.IndexExpression) (Type, expressionValue) {
+	leftType, _ := a.inferExpression(expr.Left)
+	if leftType.Kind == InvalidType {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+	leftType = dereferenceType(leftType)
+	indexType, _ := a.inferExpression(expr.Index)
+	if indexType.Kind == InvalidType {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+	if !isIntegerType(indexType) {
+		a.addErrorAtToken(expressionToken(expr.Index), "%s index must be integer, got %s", indexableKindName(leftType), typeDisplayName(indexType))
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+	switch leftType.Kind {
+	case ArrayType, SliceType:
+		if leftType.Element == nil {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
+		a.checkConstantIndexBounds(expr, leftType)
+		return *leftType.Element, expressionValue{Display: expr.String()}
+	case StringType:
+		return Type{Name: "rune", Kind: RuneType}, expressionValue{Display: expr.String()}
+	default:
+		a.addErrorAtToken(expr.Token, "type %s is not indexable", typeDisplayName(leftType))
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+}
+
+func (a *Analyzer) inferSliceExpression(expr *ast.SliceExpression) (Type, expressionValue) {
+	leftType, _ := a.inferExpression(expr.Left)
+	if leftType.Kind == InvalidType {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+	leftType = dereferenceType(leftType)
+	if leftType.Kind != ArrayType && leftType.Kind != SliceType {
+		a.addErrorAtToken(expr.Token, "type %s cannot be sliced", typeDisplayName(leftType))
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+	if leftType.Element == nil {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+	a.checkSliceBounds(expr, leftType)
+	return Type{
+		Name:    typeDisplayName(*leftType.Element) + "[]",
+		Kind:    SliceType,
+		Element: leftType.Element,
+	}, expressionValue{Display: expr.String()}
+}
+
+func (a *Analyzer) inferRefExpression(expr *ast.RefExpression) (Type, expressionValue) {
+	valueType, _ := a.inferExpression(expr.Value)
+	if valueType.Kind == InvalidType {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+	return Type{
+		Name:             referenceTypeName(valueType, expr.Mutable),
+		Kind:             ReferenceType,
+		Element:          &valueType,
+		ReferenceMutable: expr.Mutable,
+	}, expressionValue{Display: expr.String()}
+}
+
+func referenceTypeName(typ Type, mutable bool) string {
+	if mutable {
+		return "ref mut " + typeDisplayName(typ)
+	}
+	return "ref " + typeDisplayName(typ)
+}
+
+func indexableKindName(typ Type) string {
+	switch typ.Kind {
+	case SliceType:
+		return "slice"
+	case ArrayType:
+		return "array"
+	default:
+		return typeDisplayName(typ)
+	}
+}
+
+func (a *Analyzer) checkConstantIndexBounds(expr *ast.IndexExpression, typ Type) {
+	index, ok := a.integerExpressionInt64(expr.Index)
+	if !ok || typ.Kind != ArrayType {
+		return
+	}
+	if index < 0 || index >= typ.ArrayLength {
+		a.addErrorAtToken(expressionToken(expr.Index), "array index %d is out of bounds for %s", index, typeDisplayName(typ))
+	}
+}
+
+func (a *Analyzer) checkSliceBounds(expr *ast.SliceExpression, typ Type) {
+	if expr.Start != nil {
+		start, ok := a.integerExpressionInt64(expr.Start)
+		if ok && start < 0 {
+			a.addErrorAtToken(expressionToken(expr.Start), "slice lower bound must be non-negative")
+		}
+	}
+	if expr.End != nil {
+		end, ok := a.integerExpressionInt64(expr.End)
+		if ok && end < 0 {
+			a.addErrorAtToken(expressionToken(expr.End), "slice upper bound must be non-negative")
+		}
+	}
+	if typ.Kind != ArrayType {
+		return
+	}
+	start, startOK := a.integerExpressionInt64(expr.Start)
+	end, endOK := a.integerExpressionInt64(expr.End)
+	if expr.Start == nil {
+		start, startOK = 0, true
+	}
+	if expr.End == nil {
+		end, endOK = typ.ArrayLength, true
+	}
+	if startOK && start > typ.ArrayLength {
+		a.addErrorAtToken(expr.Token, "slice lower bound %d exceeds length %d", start, typ.ArrayLength)
+	}
+	if endOK {
+		limit := typ.ArrayLength
+		if !expr.Exclusive && expr.End != nil {
+			limit = typ.ArrayLength - 1
+		}
+		if end > limit {
+			if expr.Exclusive || expr.End == nil {
+				a.addErrorAtToken(expr.Token, "exclusive slice upper bound %d exceeds length %d", end, typ.ArrayLength)
+			} else {
+				a.addErrorAtToken(expr.Token, "inclusive slice upper bound %d exceeds final index %d", end, typ.ArrayLength-1)
+			}
+		}
+	}
+	if startOK && endOK && expr.End != nil && start > end {
+		op := ".."
+		if expr.Exclusive {
+			op = "..<"
+		}
+		a.addErrorAtToken(expr.Token, "descending slice range %d%s%d is invalid", start, op, end)
+	}
+}
+
+func (a *Analyzer) integerExpressionInt64(expr ast.Expression) (int64, bool) {
+	if expr == nil {
+		return 0, false
+	}
+	value, ok := a.integerConstantValue(expr)
+	if !ok || !value.IsInt64() {
+		return 0, false
+	}
+	return value.Int64(), true
 }
 
 func (a *Analyzer) inferUnionVariantExpression(expr *ast.MemberExpression) (Type, bool) {
@@ -4802,13 +5180,9 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 
-	sourceArgTypes := make([]Type, 0, len(expr.Arguments))
-	for _, arg := range expr.Arguments {
-		argType, _ := a.inferExpression(arg)
-		if argType.Kind == InvalidType {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
-		}
-		sourceArgTypes = append(sourceArgTypes, argType)
+	sourceArgTypes, sourceArgs, ok := a.callArgumentTypes(expr.Arguments)
+	if !ok {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 
 	arityMatches := []Function{}
@@ -4820,7 +5194,7 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 	}
 
 	if len(arityMatches) == 0 {
-		a.addErrorAtToken(expr.Token, "function %s expects %s arguments, got %d", name, formatFunctionArities(functions), len(expr.Arguments))
+		a.addErrorAtToken(expr.Token, "function %s expects %s arguments, got %d", name, formatFunctionArities(functions), len(sourceArgTypes))
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 
@@ -4869,10 +5243,10 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 						break
 					}
 				} else {
-					arg = expr.Arguments[i-1]
+					arg = sourceArgs[i-1]
 				}
 			} else {
-				arg = expr.Arguments[i]
+				arg = sourceArgs[i]
 			}
 			if !canInitialize(function.Parameters[i].Type, argTypes[i], arg) {
 				matchesArguments = false
@@ -4952,7 +5326,7 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 			if isMethodCall && methodFunctionUsesReceiver(function) {
 				argIndex = i - 1
 			}
-			arg := expr.Arguments[argIndex]
+			arg := sourceArgs[argIndex]
 			param := function.Parameters[i]
 			if !canInitialize(param.Type, argTypes[i], arg) {
 				a.addErrorAtToken(expressionToken(arg), "argument %d to %s must be %s, got %s", argIndex+1, displayName, typeDisplayName(param.Type), typeDisplayName(argTypes[i]))
@@ -4962,6 +5336,36 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 	}
 
 	return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+}
+
+func (a *Analyzer) callArgumentTypes(args []ast.Expression) ([]Type, []ast.Expression, bool) {
+	types := []Type{}
+	expressions := []ast.Expression{}
+	for _, arg := range args {
+		if spread, ok := arg.(*ast.SpreadExpression); ok {
+			argType, _ := a.inferExpression(spread.Value)
+			if argType.Kind == InvalidType {
+				return nil, nil, false
+			}
+			argType = dereferenceType(argType)
+			if argType.Kind != ArrayType || argType.Element == nil {
+				a.addErrorAtToken(spread.Token, "cannot spread %s into fixed-arity call; expansion count is not known at compile time", typeDisplayName(argType))
+				return nil, nil, false
+			}
+			for i := int64(0); i < argType.ArrayLength; i++ {
+				types = append(types, *argType.Element)
+				expressions = append(expressions, spread.Value)
+			}
+			continue
+		}
+		argType, _ := a.inferExpression(arg)
+		if argType.Kind == InvalidType {
+			return nil, nil, false
+		}
+		types = append(types, argType)
+		expressions = append(expressions, arg)
+	}
+	return types, expressions, true
 }
 
 func (a *Analyzer) methodCallName(expr *ast.CallExpression) (string, bool) {
@@ -5207,18 +5611,14 @@ func (a *Analyzer) inferCallExpressionWithExpected(expr *ast.CallExpression, exp
 		return Type{}, expressionValue{}, false
 	}
 
-	argTypes := make([]Type, 0, len(expr.Arguments))
-	for _, arg := range expr.Arguments {
-		argType, _ := a.inferExpression(arg)
-		if argType.Kind == InvalidType {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		argTypes = append(argTypes, argType)
+	argTypes, args, argsOK := a.callArgumentTypes(expr.Arguments)
+	if !argsOK {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 	}
 
 	matches := []overloadMatch{}
 	for _, function := range functions {
-		if len(function.Parameters) != len(expr.Arguments) || len(function.GenericParameters) == 0 {
+		if len(function.Parameters) != len(argTypes) || len(function.GenericParameters) == 0 {
 			continue
 		}
 		instantiated, ok := a.inferGenericFunctionInstanceWithExpected(function, argTypes, expected)
@@ -5228,7 +5628,7 @@ func (a *Analyzer) inferCallExpressionWithExpected(expr *ast.CallExpression, exp
 
 		matchesArguments := true
 		rank := 0
-		for i, arg := range expr.Arguments {
+		for i, arg := range args {
 			if !canInitialize(instantiated.Parameters[i].Type, argTypes[i], arg) {
 				matchesArguments = false
 				break
@@ -6785,6 +7185,10 @@ func canInitialize(target Type, value Type, expr ast.Expression) bool {
 		return canInitialize(*target.Element, value, expr)
 	}
 
+	if target.Kind == ArrayType || value.Kind == ArrayType || target.Kind == SliceType || value.Kind == SliceType {
+		return sameConcreteType(target, value)
+	}
+
 	if target.Kind == EnumType || value.Kind == EnumType {
 		return target.Kind == EnumType && value.Kind == EnumType && target.Name == value.Name
 	}
@@ -6893,7 +7297,7 @@ func canExplicitConvert(target Type, value Type) bool {
 		return true
 	}
 
-	if isIntegerType(target) && isIntegerType(value) {
+	if isIntegerType(target) && (isIntegerType(value) || value.Kind == DecimalType) {
 		return true
 	}
 
@@ -7267,9 +7671,19 @@ func expressionToken(expr ast.Expression) lexer.Token {
 		return expr.Token
 	case *ast.MatchExpression:
 		return expr.Token
+	case *ast.SpreadExpression:
+		return expr.Token
 	case *ast.RangeExpression:
 		return expr.Token
 	case *ast.MemberExpression:
+		return expr.Token
+	case *ast.ArrayLiteral:
+		return expr.Token
+	case *ast.IndexExpression:
+		return expr.Token
+	case *ast.SliceExpression:
+		return expr.Token
+	case *ast.RefExpression:
 		return expr.Token
 	case *ast.StructLiteral:
 		return expr.Token

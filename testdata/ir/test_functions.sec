@@ -1,0 +1,16 @@
+// test_functions.sec
+module main
+
+fn main() int {
+    let x := 10
+    let y := 20
+    let z := 30
+
+    let result := calculate(x, y, z)
+    return result
+}
+
+fn calculate(a: int, b: int, c: int) int {
+    let x := a + b // Denna lokala 'x' får inte krocka med main's 'x'
+    return x - c
+}

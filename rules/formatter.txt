@@ -514,13 +514,18 @@ While:
 Switch:
 
     switch value {
-    case 0:
-        return 0
-    case 1:
-        return 1
-    default:
-        return -1
+        case 0:
+            return 0
+        case 1:
+            return 1
+        default:
+            return -1
     }
+
+`case` and `default` are indented one level from `switch`.
+
+The statements in a case body are indented one additional level from their
+`case` or `default` clause.
 
 Match expression:
 

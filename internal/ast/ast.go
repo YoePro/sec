@@ -141,10 +141,12 @@ func (gp *GenericParameter) TokenLiteral() string {
 }
 
 type EnumDeclaration struct {
-	Token          lexer.Token
-	Name           *Identifier
-	UnderlyingType *TypeReference
-	Values         []*EnumValue
+	Token              lexer.Token
+	Name               *Identifier
+	UnderlyingType     *TypeReference
+	BitUnderlying      bool
+	UnderlyingBitWidth int64
+	Values             []*EnumValue
 }
 
 func (ed *EnumDeclaration) statementNode() {}
@@ -864,6 +866,7 @@ func (rt *RegisterType) TokenLiteral() string {
 type RegisterField struct {
 	Token lexer.Token
 	Name  *Identifier
+	Type  *TypeReference
 	Width int64
 	Unit  string
 }

@@ -2,6 +2,7 @@ package llvm
 
 import (
 	"fmt"
+	"math/big"
 
 	"sec/internal/ast"
 )
@@ -84,7 +85,9 @@ func (g *Generator) registerEnum(enumDecl *ast.EnumDeclaration, owner string) {
 		name = owner + "." + name
 	}
 	typ := "i32"
-	if enumDecl.UnderlyingType != nil {
+	if enumDecl.BitUnderlying && enumDecl.UnderlyingBitWidth > 0 {
+		typ = fmt.Sprintf("i%d", enumDecl.UnderlyingBitWidth)
+	} else if enumDecl.UnderlyingType != nil {
 		typ = llvmReturnType(enumDecl.UnderlyingType)
 		if typ == "void" {
 			typ = "i32"
@@ -92,19 +95,19 @@ func (g *Generator) registerEnum(enumDecl *ast.EnumDeclaration, owner string) {
 	}
 
 	info := enumInfo{typ: typ, values: map[string]string{}}
-	next := int64(0)
-	for _, enumValue := range enumDecl.Values {
+	previous := big.NewInt(-1)
+	for index, enumValue := range enumDecl.Values {
 		if enumValue == nil || enumValue.Name == nil {
 			continue
 		}
-		value := next
+		value := new(big.Int).Add(previous, big.NewInt(1))
 		if enumValue.Initializer != nil {
-			if parsed, ok := enumInitializerValue(enumValue.Initializer); ok {
+			if parsed, ok := enumInitializerValue(enumValue.Initializer, big.NewInt(int64(index))); ok {
 				value = parsed
 			}
 		}
-		info.values[enumValue.Name.Value] = fmt.Sprintf("%d", value)
-		next = value + 1
+		info.values[enumValue.Name.Value] = value.String()
+		previous = new(big.Int).Set(value)
 	}
 	g.enums[name] = info
 }
@@ -149,17 +152,62 @@ func llvmZeroValue(typ string) string {
 	return "0"
 }
 
-func enumInitializerValue(expr ast.Expression) (int64, bool) {
+func enumInitializerValue(expr ast.Expression, iotaValue *big.Int) (*big.Int, bool) {
 	switch expr := expr.(type) {
 	case *ast.IntegerLiteral:
-		return ast.ParseIntegerLiteralInt64(expr.Token.Lexeme)
+		return ast.ParseIntegerLiteralLexeme(expr.Token.Lexeme)
+	case *ast.Identifier:
+		if expr.Value == "iota" {
+			return new(big.Int).Set(iotaValue), true
+		}
+		return nil, false
+	case *ast.ConversionExpression:
+		return enumInitializerValue(expr.Value, iotaValue)
+	case *ast.CallExpression:
+		if len(expr.Arguments) != 1 {
+			return nil, false
+		}
+		return enumInitializerValue(expr.Arguments[0], iotaValue)
 	case *ast.PrefixExpression:
 		if expr.Operator != "-" {
-			return 0, false
+			return nil, false
 		}
-		value, ok := enumInitializerValue(expr.Right)
-		return -value, ok
+		value, ok := enumInitializerValue(expr.Right, iotaValue)
+		if !ok {
+			return nil, false
+		}
+		return new(big.Int).Neg(value), true
+	case *ast.InfixExpression:
+		left, ok := enumInitializerValue(expr.Left, iotaValue)
+		if !ok {
+			return nil, false
+		}
+		right, ok := enumInitializerValue(expr.Right, iotaValue)
+		if !ok {
+			return nil, false
+		}
+		result := new(big.Int)
+		switch expr.Operator {
+		case "+":
+			return result.Add(left, right), true
+		case "-":
+			return result.Sub(left, right), true
+		case "*":
+			return result.Mul(left, right), true
+		case "<<":
+			if !right.IsUint64() {
+				return nil, false
+			}
+			return result.Lsh(left, uint(right.Uint64())), true
+		case ">>":
+			if !right.IsUint64() {
+				return nil, false
+			}
+			return result.Rsh(left, uint(right.Uint64())), true
+		default:
+			return nil, false
+		}
 	default:
-		return 0, false
+		return nil, false
 	}
 }

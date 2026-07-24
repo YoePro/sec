@@ -113,9 +113,18 @@ func (a *Analyzer) checkIntegerValueRange(typ Type, value *big.Int, token lexer.
 			return false
 		}
 		overflow = value.Sign() < 0 || value.Cmp(typ.MinInteger) < 0 || value.Cmp(typ.MaxInteger) > 0
+	case EnumType:
+		if typ.BitWidth <= 0 || typ.MinInteger == nil || typ.MaxInteger == nil {
+			return false
+		}
+		overflow = value.Sign() < 0 || value.Cmp(typ.MinInteger) < 0 || value.Cmp(typ.MaxInteger) > 0
 	}
 
 	if overflow {
+		if typ.Kind == EnumType && typ.BitWidth > 0 {
+			a.addErrorAtToken(token, "value %s does not fit in %d-bit enum %s", value.String(), typ.BitWidth, typ.Name)
+			return true
+		}
 		a.addErrorAtToken(token, "value %s overflows %s", value.String(), typ.Name)
 		return true
 	}

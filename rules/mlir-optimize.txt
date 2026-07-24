@@ -1,0 +1,207 @@
+MLIR optimization backlog
+=========================
+
+Purpose
+=======
+
+This file records known-correct MLIR lowering paths that may produce
+unnecessarily expensive machine code.
+
+Correctness comes before these optimizations.
+An optimization must preserve Sec semantics, evaluation order, target
+portability and the zero-runtime requirement.
+
+
+Switch lowering
+===============
+
+Current implementation
+----------------------
+
+The first MLIR switch implementation evaluates the subject once and lowers
+value cases to an ordered sequence of:
+
+    llvm.icmp
+    llvm.cond_br
+
+This produces correct and robust control flow for all currently supported
+integer widths, including i128 and i256.
+
+The generated code is a linear comparison chain. Without later optimization,
+a switch with N case values may require O(N) comparisons.
+
+
+Future optimization
+-------------------
+
+Constant value switches over ordinary integer widths should use:
+
+    llvm.switch
+
+This gives LLVM an explicit multi-way branch and allows its target backend to
+choose an appropriate implementation, such as:
+
+* a jump table
+* a comparison chain
+* a binary decision tree
+* bit tests
+
+`llvm.switch` does not guarantee a jump table. The selected form depends on
+case density, target architecture, optimization level and profile data.
+
+Use hybrid lowering:
+
+* Keep bool switches as simple conditional branches.
+* Use `llvm.switch` for constant value cases over i8, i16, i32 and i64.
+* Keep `llvm.icmp`/`llvm.cond_br` lowering for i128 and i256 unless the complete
+  MLIR and target pipeline has been verified for every case value.
+* Keep comparison blocks for range cases and relational cases.
+* Preserve the rule that the switch subject is evaluated exactly once.
+* Multiple case values may branch to the same case body.
+* Duplicate numeric case values must be rejected before lowering.
+
+LLVM IR accepts integer switch subjects wider than i64, but MLIR tooling and
+individual target paths may impose practical restrictions. In particular,
+wide case constants outside the signed 64-bit range must be tested explicitly
+before enabling wide `llvm.switch` lowering.
+
+
+Required switch tests
+---------------------
+
+Add tests for:
+
+* empty switch
+* default-only switch
+* dense i32 values
+* sparse i32 values
+* negative signed values
+* maximum unsigned i64 values
+* several values targeting one case body
+* subject evaluation exactly once
+* i128 and i256 fallback lowering
+* MLIR verification and LLVM translation
+* generated executable behavior
+
+
+Struct field access and assignment
+==================================
+
+Current implementation
+----------------------
+
+Structs currently use LLVM aggregate values.
+
+Field reads use:
+
+    llvm.extractvalue
+
+Struct construction and nested field assignment use:
+
+    llvm.insertvalue
+
+For a nested assignment such as:
+
+    updated.pos.x = updated.pos.x + dx
+
+the current lowering:
+
+1. loads the root struct value,
+2. extracts nested aggregate values,
+3. computes the new leaf value,
+4. rebuilds each aggregate from the leaf to the root,
+5. stores the complete root struct value.
+
+This is correct pure-register/value manipulation and preserves Sec value
+semantics. It is reasonable for small structs and for struct values that exist
+only in SSA form.
+
+Without scalar replacement or other optimization passes, repeatedly loading
+and storing large aggregate values may be expensive.
+
+
+Future optimization
+-------------------
+
+Introduce a general MLIR lvalue lowering abstraction.
+
+When the root value has addressable storage, lower a nested field path to
+`llvm.getelementptr`.
+
+For example, if `updated` points to:
+
+    !llvm.struct<(i32, !llvm.struct<(i32, i32)>, i1)>
+
+then `updated.pos.x` uses the conceptual index path:
+
+    0, 1, 0
+
+The optimized lowering should:
+
+1. compute the leaf pointer with `llvm.getelementptr`,
+2. load only the leaf for reads or compound assignment,
+3. compute the new leaf value,
+4. store only the leaf value.
+
+Use GEP lowering only when the root is genuinely addressable:
+
+* stored local variables
+* mutable references after reference lowering exists
+* other explicitly addressable storage
+
+Continue using `llvm.extractvalue` and `llvm.insertvalue` when:
+
+* a struct exists only as an SSA value,
+* constructing a struct literal,
+* receiving or returning a by-value aggregate,
+* no stable address exists for the root value.
+
+GEP lowering must use the declared field order and the exact LLVM struct type.
+It must not manually calculate byte offsets.
+LLVM target data layout remains responsible for padding and alignment.
+
+This optimization must not introduce:
+
+* a runtime dependency
+* hidden heap allocation
+* pointer escape
+* mutation through a non-mutable receiver
+* changed assignment evaluation order
+* aliasing beyond what Sec permits
+
+
+Required struct tests
+---------------------
+
+Add tests for:
+
+* direct field reads from stored locals
+* direct field assignment
+* nested field assignment
+* compound field assignment
+* enum and decimal fields
+* large structs
+* structs containing nested structs with padding
+* SSA-only struct values retaining extract/insert lowering
+* parameter and return-value aggregates
+* MLIR verification on supported targets
+* generated executable behavior
+
+
+Optimization pipeline
+=====================
+
+The build pipeline currently prioritizes verification and correct translation.
+It must eventually define explicit optimization levels.
+
+Relevant future LLVM/MLIR optimization work includes:
+
+* scalar replacement of aggregates
+* promotion of stack slots to SSA values
+* dead load and store elimination
+* canonicalization of extract/insert chains
+* switch formation and switch lowering
+
+Correct code must not depend on an optimization pass being present.
+Direct GEP and `llvm.switch` lowering should be introduced because they express
+the operation more accurately, not as a substitute for semantic validation.

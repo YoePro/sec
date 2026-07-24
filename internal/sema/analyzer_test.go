@@ -1584,6 +1584,170 @@ let explicitInt: int := int(Color.green)
 	}
 }
 
+func TestBitBackedEnumRegisterField(t *testing.T) {
+	input := `
+enum ClockSource: bit[2] {
+	Internal = 0b00,
+	External = 0b01,
+	Bypass = 0b10,
+}
+
+type ClockConfig register[32] {
+	Source: ClockSource,
+	Enabled: bit,
+	_: bit[29],
+}
+
+@address(0x40000000)
+let mut config: ClockConfig
+
+fn Configure() void {
+	config.Source = ClockSource.External
+}
+`
+
+	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
+	assertSemaErrors(t, errors, nil)
+
+	clockSource := analyzer.types["ClockSource"]
+	if clockSource.Kind != EnumType || clockSource.BitWidth != 2 || clockSource.Underlying != "bit[2]" {
+		t.Fatalf("wrong bit-backed enum type: %+v", clockSource)
+	}
+	if clockSource.EnumConsts["Bypass"].Value.String() != "2" {
+		t.Fatalf("wrong bit-backed enum values: %+v", clockSource.EnumConsts)
+	}
+
+	config := analyzer.types["ClockConfig"]
+	if config.Kind != RegisterType || len(config.RegisterFields) != 3 {
+		t.Fatalf("wrong register type: %+v", config)
+	}
+	source := config.RegisterFields[0]
+	if source.Width != 2 || source.Type.Name != "ClockSource" || source.Type.Kind != EnumType {
+		t.Fatalf("wrong enum-backed register field: %+v", source)
+	}
+}
+
+func TestImplMethodsPreserveDeclaringModule(t *testing.T) {
+	input := `
+module fmt
+
+type Buffer struct {
+    data: byte[4],
+}
+
+impl Buffer {
+    fn Flush(ref mut self: Buffer) void {
+    }
+}
+`
+
+	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
+	assertSemaErrors(t, errors, nil)
+	methods := analyzer.functions["Buffer.Flush"]
+	if len(methods) != 1 || methods[0].Module != "fmt" {
+		t.Fatalf("impl method lost declaring module: %+v", methods)
+	}
+}
+
+func TestBitBackedEnumRangeErrors(t *testing.T) {
+	input := `
+enum InvalidWidth: bit[0] {
+	zero,
+}
+
+enum InvalidValue: bit[2] {
+	tooLarge = 4,
+}
+
+enum ClockSource: bit[2] {
+	Internal = 0,
+	External = 1,
+}
+
+type ClockConfig register[2] {
+	Source: ClockSource,
+}
+
+@address(0x40000000)
+let mut config: ClockConfig
+
+fn InvalidAssignments() void {
+	config.Source = 5
+	let converted := ClockSource(5)
+}
+`
+
+	errors := analyzeSource(t, input)
+	expected := []string{
+		"enum InvalidWidth bit width must be between 1 and 256, got 0 at 2:6",
+		"value 4 overflows bit[2] at 7:2",
+		"value 5 does not fit in 2-bit enum ClockSource at 23:18",
+		"value 5 does not fit in 2-bit enum ClockSource at 24:31",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestRegisterRejectsNonBitEnumField(t *testing.T) {
+	input := `
+enum PlainMode {
+	Off,
+	On,
+}
+
+enum ReservedMode: bit[1] {
+	Off,
+	On,
+}
+
+type InvalidFields register[2] {
+	Mode: PlainMode,
+	_: ReservedMode,
+}
+`
+
+	errors := analyzeSource(t, input)
+	expected := []string{
+		"register field InvalidFields.Mode type must be bit or a bit-backed enum, got PlainMode at 13:8",
+		"reserved register field _ must use bit or bit[N] at 14:5",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestBitEnumRejectsUnprovenDynamicConversion(t *testing.T) {
+	input := `
+enum ClockSource: bit[2] {
+	Internal,
+	External,
+}
+
+fn Convert(value: int) ClockSource {
+	return ClockSource(value)
+}
+`
+
+	errors := analyzeSource(t, input)
+	expected := []string{
+		"conversion to 2-bit enum ClockSource requires a value proven to be in range 0..3 at 8:21",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestBitEnumFixtures(t *testing.T) {
+	valid, err := os.ReadFile("../../testdata/bit_enum_valid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertSemaErrors(t, analyzeSourceRaw(t, string(valid)), nil)
+
+	invalid, err := os.ReadFile("../../testdata/bit_enum_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if errors := analyzeSourceRaw(t, string(invalid)); len(errors) == 0 {
+		t.Fatal("expected bit_enum_invalid.sec to produce semantic errors")
+	}
+}
+
 func TestEnumImplicitIntegerAssignmentsAreInvalid(t *testing.T) {
 	input := `
 enum Color {
@@ -3512,6 +3676,37 @@ fn LetSome() void {
 `
 
 	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestBuiltinOptionShorthandConstructors(t *testing.T) {
+	input := `
+module main
+
+enum IOError {
+	failed,
+}
+
+fn SomeError() Option[IOError] {
+	return Some(IOError.failed)
+}
+
+fn NoError() Option[IOError] {
+	return None
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestLinuxPlatformErrorFile(t *testing.T) {
+	input, err := os.ReadFile("../../sec/platform/linux/error.sec")
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+
+	errors := analyzeSourceRaw(t, string(input))
 	assertSemaErrors(t, errors, nil)
 }
 

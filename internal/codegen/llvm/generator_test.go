@@ -905,6 +905,37 @@ fn main() int {
 	}
 }
 
+func TestGenerateBitBackedEnum(t *testing.T) {
+	input := `
+module main
+
+enum ClockSource: bit[2] {
+	Internal = 0,
+	External = 1,
+	Bypass = 2,
+}
+
+fn main() int {
+	return int(ClockSource.Bypass)
+}
+`
+
+	program := parseAndAnalyze(t, input)
+	got, err := Generate(program)
+	if err != nil {
+		t.Fatalf("Generate returned error: %v", err)
+	}
+
+	for _, part := range []string{
+		`zext i2 2 to i32`,
+		`ret i32`,
+	} {
+		if !strings.Contains(got, part) {
+			t.Fatalf("generated LLVM IR missing %q.\nIR:\n%s", part, got)
+		}
+	}
+}
+
 func TestGenerateEnumMatchStatementWithBlocks(t *testing.T) {
 	input := `
 module main

@@ -21,6 +21,12 @@ enum Name uint {
     C,
 }
 
+enum HardwareMode: bit[2] {
+    Internal = 0b00,
+    External = 0b01,
+    Bypass = 0b10,
+}
+
 impl Vehicle {
     enum FuelType {
         petrol,
@@ -41,6 +47,19 @@ Rules:
 * Optional underlying type may be given after the enum name.
 
 * The underlying type must be an integer type.
+
+* A hardware-mapped enum may use the canonical syntax:
+
+  enum Name: bit[N] { ... }
+
+* `bit` is shorthand for `bit[1]` in an enum underlying declaration.
+
+* A bit-backed enum is unsigned and every declared value must fit in N bits.
+
+* Bit-backed enum widths from 1 through 256 are currently supported.
+
+* `bit[N]` is not a general-purpose array or integer type. Outside enum
+  underlyings and register layout declarations it remains invalid.
 
 * First value defaults to 0.
 
@@ -100,6 +119,14 @@ Rules:
 
 * Integer-to-enum conversion is explicit and may produce a numeric enum value
   that has no declared variant name.
+
+* An integer-to-bit-enum conversion must fit the enum width even when the
+  numeric value has no declared variant name.
+
+* Until checked runtime conversions are defined, a dynamic integer-to-bit-enum
+  conversion is accepted only when the source type's complete static range
+  fits the bit enum. Otherwise the conversion is rejected instead of silently
+  truncating high bits.
 
 * No implicit conversion exists between different enum types, even when they
   use the same underlying integer type.
@@ -356,3 +383,29 @@ Sema:
 * Apply normal definite-assignment rules to uninitialized mutable enum
   variables.
 * Reject immutable enum declarations without an initializer.
+* Preserve the bit width of a bit-backed enum in semantic type metadata.
+* Reject bit-backed enum values, automatic continuation and explicit
+  conversions that fall outside `0..(2^N - 1)`.
+* Reject dynamic integer-to-bit-enum conversions whose range cannot be proven
+  safe at compile time.
+* Allow a named register field to use a bit-backed enum type. The field
+  occupies exactly the enum bit width.
+* Reject ordinary enums as register field types.
+* Reserved register fields named `_` must continue to use `bit` or `bit[N]`.
+
+MLIR lowering:
+
+* A fieldless enum lowers to its declared underlying MLIR integer type.
+* The default underlying `int` type lowers to `i32`.
+* A `bit[N]` enum lowers to the exact signless MLIR/LLVM integer type `iN` and
+  carries unsigned conversion behavior.
+* Enum identity is retained as compiler metadata during lowering even when two
+  enum types share the same machine representation.
+* Default values, explicit integer constant expressions, `iota`, automatic
+  continuation and numeric aliases are resolved before emitting enum constants.
+* Module and nested enum values lower to inline `llvm.mlir.constant`
+  operations. No runtime lookup table or enum runtime support is required.
+* Local storage, assignment, parameters, returns, equality, inequality,
+  integer/enum casts and enum subjects with value cases in `switch` are
+  supported by the MLIR backend.
+* MLIR `match` lowering for enums remains a later step.

@@ -1,9 +1,10 @@
 #target(os: "linux", arch: "any")
 module platform.linux
 
+import "platform/linux/amd64"
+
 unsafe fn Exit(code: int) never {
-    _rawSyscall1(_sysCall.sysExit, uint(code))
-    unreachable
+    amd64._rawSyscall(uint(amd64.sysCall.sysExit), uint(code))
 }
 
 // unsafe fn Exit(code: int) never

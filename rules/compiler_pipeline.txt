@@ -641,14 +641,31 @@ Current MLIR implementation note:
   direct function calls, bool/integer/unsigned integer/float literals and basic
   arithmetic/comparison/logical operators, and integer/bool subject switches
   with value cases and optional default. Concrete non-generic structs are
-  supported for literals, local storage, parameters, returns and field reads.
+  supported for literals, local storage, parameters, returns, field reads and
+  field assignment through stored local structs.
+  Fieldless enums are supported for constants, local storage, assignment,
+  parameters, returns, equality, inequality, explicit integer conversions and
+  integer/bool-style value switches.
 * A concrete struct lowers to an LLVM-dialect literal struct type whose elements
   follow declaration order. Struct literals use `llvm.mlir.undef` followed by
   `llvm.insertvalue`; field reads use `llvm.extractvalue`. Nested structs are
   represented inline and require no runtime support.
-* The first struct lowering step does not yet support generic structs, struct
-  spread, field assignment, string fields, reference/slice/array fields,
-  methods or properties.
+* Struct field assignment uses value semantics: nested aggregates are rebuilt
+  inline with `llvm.insertvalue` from the changed leaf back to the stored root.
+  The first struct lowering step does not yet support generic structs, struct
+  spread, assignment through parameters or references, string fields,
+  reference/slice/array fields, methods or properties.
+* Enums lower directly to their underlying integer type while retaining enum
+  identity as lowering metadata. Explicit values, automatic continuation,
+  integer constant expressions, `iota`, aliases and nested enum namespaces are
+  resolved at compile time and require no runtime support. Enum `match`
+  lowering remains a later step.
+* Hardware-mapped `enum Name: bit[N]` declarations lower to the exact `iN`
+  integer representation with unsigned casts and no runtime support. Parser,
+  AST and sema preserve the bit width, validate all values and conversions, and
+  allow the enum to define the width and semantic type of a register field.
+  Register load/store and mask/shift lowering remain part of the existing
+  register-backend work.
 * The first MLIR switch step evaluates its subject once and emits ordered test,
   case, default and continuation blocks. Comma-separated case values are joined
   with boolean OR. Subjectless switch, ranges, relational cases, fallthrough and
@@ -694,6 +711,26 @@ Current MLIR implementation note:
   length. The MLIR backend does not append an implicit C nul terminator.
   C-compatible nul-terminated strings must be produced by an explicit later
   conversion or FFI lowering rule.
+* On `linux-amd64`, `fmt.Println(string)` resolves through `io.Println` and the
+  target-specific `platform.linux.amd64._rawSyscall` overload. The MLIR backend
+  lowers `string.ptr` to `!llvm.ptr`, `string.len` to `i64`, reference
+  parameters to `!llvm.ptr`, and explicit pointer-to-`uint` conversion with
+  `llvm.ptrtoint`.
+* The Linux AMD64 platform dependency is imported as the directory package
+  `platform/linux/amd64`. All `.sec` files directly in that package, including
+  `raw_syscall.sec` and `syscall_numbers.sec`, participate in analysis and
+  lowering. Source code uses the default short qualifier `amd64` or an explicit
+  import alias; resolution rewrites it to the full module identity before
+  semantic analysis and code generation.
+* Raw syscall overloads are selected by source-level arity and receive distinct
+  MLIR symbols. The inline assembly lowers to `llvm.inline_asm
+  has_side_effects` with the Linux AMD64 register constraints. For `write`, the
+  syscall number is supplied once in `rax`, followed by `rdi`, `rsi` and `rdx`;
+  the result is returned from `rax`, while `rcx`, `r11` and `memory` are
+  clobbered.
+* The syscall and `Println` path is fully inline and does not call libc or a Sec
+  runtime library. Target-specific syscall implementations for architectures
+  other than Linux AMD64 require their own platform source and lowering tests.
 
 ## Diagnostics
 

@@ -189,10 +189,32 @@ Bootstrap implementation note:
 
 - Current source-level imports support selected `sec/stdlib/...` files and
   explicit `sec/platform/...` paths.
+- A platform directory import loads all target-compatible `.sec` files directly
+  inside that directory. For example, `import "platform/linux/amd64"` loads
+  both `raw_syscall.sec` and `syscall_numbers.sec` from the AMD64 package.
+  Directory imports are non-recursive.
+- The default package qualifier is the final import path component:
+  `platform/linux/amd64` is referenced as `amd64`. An explicit alias may be
+  written before the path:
+
+      import sys "platform/linux/amd64"
+
+- Imports may be grouped:
+
+      import (
+          "fmt"
+          sys "platform/linux/amd64"
+      )
+
+- The LSP bootstrap resolver loads every `.sec` source belonging to the `fmt`
+  package, follows its `io` and platform imports transitively, and resolves the
+  source root from the open document, working directory or LSP executable.
+  Imported `impl` methods retain their declaring module during registration and
+  body analysis.
 - This is a temporary bootstrap mechanism until package-based platform
   resolution is implemented.
-- Existing explicit imports such as `platform/linux/amd64/raw_syscall` should
-  be migrated toward the virtual `platform` module model.
+- Architecture-specific low-level code should use the package import
+  `platform/linux/amd64` instead of naming an individual source file.
 
 
 #target
@@ -407,7 +429,9 @@ Current implementation note:
   first implementation.
 - The current MLIR path supports local `let` declarations, basic
   bool/integer/unsigned integer/float values, decimal storage and conversions,
-  and integer/bool subject switches with value cases and optional default.
+  integer/bool subject switches with value cases and optional default, and the
+  Linux AMD64 `fmt.Println(string)` path through target-specific inline syscall
+  assembly. The syscall path does not require libc or a Sec runtime library.
 - Without `--keep-llvm`, the LLVM file is temporary and removed after linking.
 - With `--keep-llvm`, the LLVM file is written next to the output as
   `<output>.ll`.

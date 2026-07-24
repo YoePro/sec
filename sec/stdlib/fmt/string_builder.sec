@@ -1,0 +1,85 @@
+// stdlib/fmt/string_builder.sec
+module fmt
+
+import "io"
+
+type StringBuilder struct {
+    buf: byte[512], // Fixed 512-byte stack buffer for text formatting
+    len: int,       // Current position/length in the buffer
+}
+
+impl StringBuilder {
+    // Constructor
+    fn New() StringBuilder {
+        return StringBuilder{ len: 0 }
+    }
+
+    // Append a raw string literal or variable
+    fn AppendStr(ref mut self: StringBuilder, val: string) void {
+        let mut i := 0
+        while i < val.len {
+            // Check if buffer is full, flush if necessary
+            if self.len == 512 {
+                self.Flush()
+            }
+
+            // Write directly to the internal byte buffer
+            self.buf[self.len] = val.ptr[i]
+            self.len = self.len + 1
+            i = i + 1
+        }
+    }
+
+    // Append and convert an integer to ASCII directly into the buffer
+    fn AppendInt(ref mut self: StringBuilder, val: int) void {
+        if val == 0 {
+            if self.len == 512 { self.Flush() }
+            self.buf[self.len] = byte(48) // ASCII '0'
+            self.len = self.len + 1
+            return
+        }
+
+        let mut n := val
+        if n < 0 {
+            if self.len == 512 { self.Flush() }
+            self.buf[self.len] = byte(45) // ASCII '-'
+            self.len = self.len + 1
+            n = -n
+        }
+
+        // Temporary stack buffer for integer digits (max 11 characters for i32 range)
+        let mut temp_buf: byte[11] := [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        let mut i := 11
+
+        while n > 0 {
+            i = i - 1
+            let digit := n % 10
+            temp_buf[i] = byte(48 + digit) // 48 is ASCII '0'
+            n = n / 10
+        }
+
+        // Copy digits from temp_buf to the main builder buffer
+        while i < 11 {
+            if self.len == 512 { self.Flush() }
+            self.buf[self.len] = temp_buf[i]
+            self.len = self.len + 1
+            i = i + 1
+        }
+    }
+
+    // Append newline character
+    fn Newline(ref mut self: StringBuilder) void {
+        if self.len == 512 { self.Flush() }
+        self.buf[self.len] = byte(10) // ASCII '\n'
+        self.len = self.len + 1
+    }
+
+    // Flush the remaining bytes in the buffer directly to stdout via syscall
+    fn Flush(ref mut self: StringBuilder) void {
+        if self.len > 0 {
+            // Pass the first byte by reference; io.Write forwards its address to the syscall.
+            io.Write(1, self.buf[0], int64(self.len))
+            self.len = 0 // Reset buffer length
+        }
+    }
+}

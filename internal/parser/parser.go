@@ -56,6 +56,12 @@ func (p *Parser) ParseProgram() *ast.Program {
 			p.addError("#target directive must appear before any code or declarations at %d:%d", p.curToken.Line, p.curToken.Column)
 		}
 
+		if p.curToken.Type == lexer.IMPORT && p.peekToken.Type == lexer.LPAREN {
+			program.Statements = append(program.Statements, p.parseImportGroup()...)
+			p.nextToken()
+			continue
+		}
+
 		stmt := p.parseStatement()
 
 		if stmt != nil {
@@ -1041,6 +1047,39 @@ func (p *Parser) parseImportStatement() ast.Statement {
 	return stmt
 }
 
+func (p *Parser) parseImportGroup() []ast.Statement {
+	importToken := p.curToken
+	p.nextToken()
+	imports := []ast.Statement{}
+
+	for {
+		p.nextToken()
+		for p.curToken.Type == lexer.COMMENT {
+			p.nextToken()
+		}
+		if p.curToken.Type == lexer.RPAREN {
+			return imports
+		}
+		if p.curToken.Type == lexer.EOF {
+			p.addError("unterminated import group at %d:%d", importToken.Line, importToken.Column)
+			return imports
+		}
+
+		stmt := &ast.ImportStatement{Token: importToken}
+		if p.curToken.Type == lexer.IDENT {
+			stmt.Alias = p.curToken.Lexeme
+			if !p.expectPeek(lexer.STRING) {
+				return imports
+			}
+		} else if p.curToken.Type != lexer.STRING {
+			p.addError("expected import path or alias, got %q at %d:%d", p.curToken.Lexeme, p.curToken.Line, p.curToken.Column)
+			return imports
+		}
+		stmt.Path = trimStringQuotes(p.curToken.Lexeme)
+		imports = append(imports, stmt)
+	}
+}
+
 func (p *Parser) parseCommentStatement() ast.Statement {
 	return &ast.CommentStatement{
 		Token: p.curToken,
@@ -1111,11 +1150,8 @@ func (p *Parser) parseTypeDeclStatement() ast.Statement {
 	if p.peekToken.Type == lexer.ENUM {
 		p.nextToken()
 		enum := &ast.EnumDeclaration{Token: stmt.Token, Name: stmt.Name}
-		if p.peekToken.Type != lexer.LBRACE {
-			if !p.expectPeekTypeStart() {
-				return nil
-			}
-			enum.UnderlyingType = p.parseTypeReference()
+		if !p.parseEnumUnderlying(enum) {
+			return nil
 		}
 		return p.parseEnumBody(enum)
 	}
@@ -1384,14 +1420,46 @@ func (p *Parser) parseEnumDeclaration() *ast.EnumDeclaration {
 	}
 	enum.Name = &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme}
 
-	if p.peekToken.Type != lexer.LBRACE {
-		if !p.expectPeekTypeStart() {
-			return nil
-		}
-		enum.UnderlyingType = p.parseTypeReference()
+	if !p.parseEnumUnderlying(enum) {
+		return nil
 	}
 
 	return p.parseEnumBody(enum)
+}
+
+func (p *Parser) parseEnumUnderlying(enum *ast.EnumDeclaration) bool {
+	hadColon := false
+	if p.peekToken.Type == lexer.COLON {
+		p.nextToken()
+		hadColon = true
+	}
+	if p.peekToken.Type == lexer.LBRACE {
+		if hadColon {
+			p.addError("expected enum underlying type after ':' at %d:%d", p.curToken.Line, p.curToken.Column)
+			return false
+		}
+		return true
+	}
+	if !p.expectPeekTypeStart() {
+		return false
+	}
+	if p.curToken.Lexeme != "bit" {
+		enum.UnderlyingType = p.parseTypeReference()
+		return true
+	}
+
+	enum.BitUnderlying = true
+	enum.UnderlyingBitWidth = 1
+	if p.peekToken.Type != lexer.LBRACKET {
+		return true
+	}
+	p.nextToken()
+	width, ok := p.parseRegisterWidth("enum bit width")
+	if !ok {
+		return false
+	}
+	enum.UnderlyingBitWidth = width
+	return p.expectPeek(lexer.RBRACKET)
 }
 
 func (p *Parser) parseEnumBody(enum *ast.EnumDeclaration) *ast.EnumDeclaration {
@@ -1913,29 +1981,25 @@ func (p *Parser) parseRegisterFields() []*ast.RegisterField {
 		if !p.expectPeek(lexer.IDENT) {
 			return fields
 		}
-		if p.curToken.Lexeme != "bit" {
-			p.addError("register field %q must use bit or bit[N], got %q at %d:%d", field.Name.Value, p.curToken.Lexeme, p.curToken.Line, p.curToken.Column)
-			if p.skipMalformedStructField() {
-				continue
+		if p.curToken.Lexeme == "bit" {
+			field.Width = 1
+			if p.peekToken.Type == lexer.LBRACKET {
+				p.nextToken()
+				width, ok := p.parseRegisterWidth("bit field width")
+				if !ok {
+					return fields
+				}
+				field.Width = width
+				if !p.expectPeek(lexer.RBRACKET) {
+					return fields
+				}
 			}
-			return fields
-		}
-
-		field.Width = 1
-		if p.peekToken.Type == lexer.LBRACKET {
-			p.nextToken()
-			width, ok := p.parseRegisterWidth("bit field width")
-			if !ok {
-				return fields
+			if p.peekToken.Type == lexer.LT {
+				p.nextToken()
+				field.Unit = p.parseUnit()
 			}
-			field.Width = width
-			if !p.expectPeek(lexer.RBRACKET) {
-				return fields
-			}
-		}
-		if p.peekToken.Type == lexer.LT {
-			p.nextToken()
-			field.Unit = p.parseUnit()
+		} else {
+			field.Type = p.parseTypeReference()
 		}
 
 		fields = append(fields, field)

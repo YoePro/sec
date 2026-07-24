@@ -89,7 +89,7 @@
       "patterns": [
         {
           "name": "meta.enum.declaration.sec",
-          "begin": "\\b(enum)\\s+([A-Za-z_][A-Za-z0-9_.]*)(?:\\s+([A-Za-z_][A-Za-z0-9_]*))?\\s*(\\{)",
+          "begin": "\\b(enum)\\s+([A-Za-z_][A-Za-z0-9_.]*)(?:\\s*(?::\\s*|\\s+)(bit(?:\\[[0-9]+\\])?|[A-Za-z_][A-Za-z0-9_]*))?\\s*(\\{)",
           "beginCaptures": {
             "1": {
               "name": "storage.type.enum.sec"
@@ -132,7 +132,7 @@
         },
         {
           "name": "meta.enum.declaration.sec",
-          "begin": "\\b(type)\\s+([A-Za-z_][A-Za-z0-9_.]*)\\s+(enum)\\s*(\\{)",
+          "begin": "\\b(type)\\s+([A-Za-z_][A-Za-z0-9_.]*)\\s+(enum)(?:\\s*(?::\\s*|\\s+)(bit(?:\\[[0-9]+\\])?|[A-Za-z_][A-Za-z0-9_]*))?\\s*(\\{)",
           "beginCaptures": {
             "1": {
               "name": "storage.type.declaration.sec"
@@ -144,6 +144,9 @@
               "name": "storage.type.enum.sec"
             },
             "4": {
+              "name": "storage.type.primitive.sec"
+            },
+            "5": {
               "name": "punctuation.section.block.begin.sec"
             }
           },
@@ -194,28 +197,13 @@
       "patterns": [
         {
           "name": "meta.unit.annotation.sec",
-          "begin": "<",
-          "beginCaptures": {
-            "0": { "name": "punctuation.definition.unit.begin.sec" }
-          },
-          "end": ">",
-          "endCaptures": {
-            "0": { "name": "punctuation.definition.unit.end.sec" }
-          },
-          "patterns": [
-            {
-              "name": "support.type.unit.sec",
-              "match": "[A-Za-z_][A-Za-z0-9_.]*"
-            },
-            {
-              "name": "keyword.operator.unit.sec",
-              "match": "[*/^\\-]"
-            },
-            {
-              "name": "constant.numeric.unit-exponent.sec",
-              "match": "\\d+"
-            }
-          ]
+          "match": "((?:\\b[A-Za-z_][A-Za-z0-9_.]*|:)\\s*)(<)([^>\\n]+)(>)",
+          "captures": {
+            "1": { "name": "storage.type.sec" },
+            "2": { "name": "punctuation.definition.unit.begin.sec" },
+            "3": { "name": "support.type.unit.sec" },
+            "4": { "name": "punctuation.definition.unit.end.sec" }
+          }
         }
       ]
     },
@@ -437,7 +425,7 @@
       "patterns": [
         {
           "name": "storage.type.primitive.sec",
-          "match": "\\b(?:bool|byte|char|rune|int|int8|int16|int32|int64|int128|int256|uint|uint8|uint16|uint32|uint64|uint128|uint256|float|float32|float64|decimal|decimal128|string|void|ptr)\\b"
+          "match": "\\b(?:bit|bool|byte|char|rune|int|int8|int16|int32|int64|int128|int256|uint|uint8|uint16|uint32|uint64|uint128|uint256|float|float32|float64|decimal|decimal128|string|void|ptr)\\b"
         },
         {
           "name": "support.type.sec",

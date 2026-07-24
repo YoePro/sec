@@ -1,0 +1,86 @@
+module main
+
+enum Status int {
+    unknown = 0,
+    active = 10,
+    paused,
+    disabled = 99,
+}
+
+enum Permission uint {
+    none = 0,
+    read = 1 << iota,
+    write = 1 << iota,
+    execute = 1 << iota,
+}
+
+enum Wide uint128 {
+    huge = 18446744073709551616,
+}
+
+enum Alias int {
+    first = 1,
+    alsoFirst = 1,
+}
+
+type Snapshot struct {
+    status: Status,
+}
+
+type Vehicle struct {
+    id: int,
+}
+
+impl Vehicle {
+    enum FuelType {
+        petrol,
+        diesel,
+        electric,
+    }
+}
+
+fn passStatus(value: Status) Status {
+    return value
+}
+
+fn statusCode(value: Status) int {
+    switch value {
+    case Status.paused:
+        return 200
+    default:
+        return 0
+    }
+}
+
+fn fuelCode(value: Vehicle.FuelType) int {
+    switch value {
+    case Vehicle.FuelType.diesel:
+        return 20
+    default:
+        return 0
+    }
+}
+
+fn wideValue(value: Wide) uint128 {
+    return uint128(value)
+}
+
+fn main() int {
+    let status := passStatus(Status.paused)
+    let snapshot := Snapshot{ status: status }
+    let numeric: int := int(snapshot.status)
+    let restored: Status := Status(numeric)
+    let permission: uint := uint(Permission.execute)
+
+    if permission != 8u {
+        return 1
+    }
+    if int(Alias.alsoFirst) != 1 {
+        return 2
+    }
+    if wideValue(Wide.huge) != 18446744073709551616 {
+        return 3
+    }
+
+    return statusCode(restored) + fuelCode(Vehicle.FuelType.diesel)
+}

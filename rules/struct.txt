@@ -64,9 +64,12 @@ Implemented
 - The MLIR backend lowers concrete non-generic struct types to LLVM-dialect
   literal struct types in declaration field order.
 - The MLIR backend supports struct literals, local struct storage, struct
-  parameters, struct returns, nested structs and direct field reads.
+  parameters, struct returns, nested structs, direct field reads and field
+  assignment through stored local structs.
 - MLIR struct construction and field reads use `llvm.insertvalue` and
   `llvm.extractvalue` inline and do not require runtime support.
+- Nested MLIR field assignment rebuilds changed aggregate values from the leaf
+  field back to the stored root and writes the updated root once.
 - Sema performs first shallow getter/setter body checks:
   - getter `return field` type must match property type when statically visible.
   - getter return expressions must be assignable to the property type.
@@ -83,8 +86,9 @@ Not implemented yet
 - Method parsing inside impl blocks.
 - Complete getter/setter body type checking.
 - `try` property assignment syntax.
-- MLIR lowering for generic structs, struct spread, field assignment, string
-  fields, reference/slice/array fields, methods and properties.
+- MLIR lowering for generic structs, struct spread, assignment through
+  parameters or references, string fields, reference/slice/array fields,
+  methods and properties.
 
 
 Language model

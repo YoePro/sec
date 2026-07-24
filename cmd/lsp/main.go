@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -49,6 +50,18 @@ type versionedTextDocumentIdentifier struct {
 
 type textDocumentContentChangeEvent struct {
 	Text string `json:"text"`
+}
+
+type InitializeResult struct {
+	Capabilities ServerCapabilities `json:"capabilities"`
+}
+
+type ServerCapabilities struct {
+	CompletionProvider CompletionOptions `json:"completionProvider"`
+}
+
+type CompletionOptions struct {
+	TriggerCharacters []string `json:"triggerCharacters"`
 }
 
 type didChangeParams struct {
@@ -270,6 +283,7 @@ func formatSource(text string) string {
 	indent := 0
 	blankPending := false
 	switches := []formatterSwitchContext{}
+	inImportGroup := false
 
 	for _, line := range lines {
 		line = strings.ReplaceAll(line, "\t", "    ")
@@ -303,6 +317,9 @@ func formatSource(text string) string {
 		}
 
 		extraIndent := 0
+		if inImportGroup && trimmed != ")" {
+			extraIndent++
+		}
 		for i, switchContext := range switches {
 			if switchContext.caseActive && lineIndent >= switchContext.contentDepth {
 				if i == caseContext {
@@ -325,6 +342,11 @@ func formatSource(text string) string {
 		}
 		if isSwitchBlockStart(trimmed) && indentDelta > 0 {
 			switches = append(switches, formatterSwitchContext{contentDepth: indent})
+		}
+		if trimmed == "import (" {
+			inImportGroup = true
+		} else if inImportGroup && trimmed == ")" {
+			inImportGroup = false
 		}
 		if caseContext >= 0 {
 			switches[caseContext].caseActive = true
@@ -421,7 +443,7 @@ func analyze(uri string, text string) []diagnostic {
 	if len(p.Errors()) > 0 {
 		return diagnostics
 	}
-	resolveSourceImports(program, map[string]bool{})
+	resolveSourceImports(program, map[string]bool{}, path)
 
 	analyzer := sema.NewAnalyzer()
 	for _, err := range analyzer.Analyze(program) {
@@ -433,27 +455,107 @@ func analyze(uri string, text string) []diagnostic {
 	return diagnostics
 }
 
-func resolveSourceImports(program *ast.Program, seen map[string]bool) {
+func resolveSourceImports(program *ast.Program, seen map[string]bool, sourceFile string) {
 	for _, stmt := range append([]ast.Statement{}, program.Statements...) {
 		importStmt, ok := stmt.(*ast.ImportStatement)
 		if !ok {
 			continue
 		}
-		sourcePath, ok := sourceIncludePath(importStmt.Path)
-		if !ok || seen[sourcePath] {
-			continue
-		}
-		seen[sourcePath] = true
+		sourcePaths := sourceIncludePaths(importStmt.Path, sourceFile)
+		importedStatements := []ast.Statement{}
+		module := ""
+		for _, sourcePath := range sourcePaths {
+			if seen[sourcePath] {
+				if imported, parsed := parseSourceInclude(sourcePath); parsed {
+					rewriteImportQualifier(program, importQualifier(importStmt), programModulePath(imported))
+				}
+				continue
+			}
+			seen[sourcePath] = true
 
-		imported, ok := parseSourceInclude(sourcePath)
-		if !ok {
+			imported, ok := parseSourceInclude(sourcePath)
+			if !ok {
+				continue
+			}
+			resolveSourceImports(imported, seen, sourcePath)
+			if module == "" {
+				module = programModulePath(imported)
+			}
+			importedStatements = append(importedStatements, imported.Statements...)
+		}
+		if module == "" || len(importedStatements) == 0 {
 			continue
 		}
-		resolveSourceImports(imported, seen)
-		module := programModulePath(imported)
+		rewriteImportQualifier(program, importQualifier(importStmt), module)
+		imported := &ast.Program{Statements: importedStatements}
 		qualifyImportedModule(imported, module)
 		program.Statements = append(program.Statements, imported.Statements...)
 	}
+}
+
+func sourceIncludePaths(path string, sourceFile string) []string {
+	root := findSecSourceRoot(sourceFile)
+	if strings.HasPrefix(path, "platform/") {
+		trimmed := strings.Trim(strings.TrimSuffix(path, ".sec"), "/")
+		base := filepath.Join(root, "sec", filepath.FromSlash(trimmed))
+		if info, err := os.Stat(base); err == nil && info.IsDir() {
+			matches, globErr := filepath.Glob(filepath.Join(base, "*.sec"))
+			if globErr != nil {
+				return nil
+			}
+			sort.Strings(matches)
+			return matches
+		}
+	}
+	relative, ok := sourceIncludePath(path)
+	if !ok {
+		return nil
+	}
+	primary := filepath.Clean(filepath.Join(root, relative))
+
+	module := strings.TrimPrefix(path, "std/")
+	if module != "fmt" {
+		return []string{primary}
+	}
+
+	matches, err := filepath.Glob(filepath.Join(filepath.Dir(primary), "*.sec"))
+	if err != nil || len(matches) == 0 {
+		return []string{primary}
+	}
+	sort.Strings(matches)
+	out := []string{primary}
+	for _, match := range matches {
+		match = filepath.Clean(match)
+		if match != primary {
+			out = append(out, match)
+		}
+	}
+	return out
+}
+
+func findSecSourceRoot(sourceFile string) string {
+	starts := []string{}
+	if sourceFile != "" {
+		starts = append(starts, filepath.Dir(sourceFile))
+	}
+	if cwd, err := os.Getwd(); err == nil {
+		starts = append(starts, cwd)
+	}
+	if executable, err := os.Executable(); err == nil {
+		starts = append(starts, filepath.Dir(executable))
+	}
+	for _, start := range starts {
+		for current := filepath.Clean(start); ; current = filepath.Dir(current) {
+			if info, err := os.Stat(filepath.Join(current, "sec", "stdlib")); err == nil && info.IsDir() {
+				return current
+			}
+			parent := filepath.Dir(current)
+			if parent == current {
+				break
+			}
+		}
+	}
+	return "."
 }
 
 func sourceIncludePath(path string) (string, bool) {
@@ -470,6 +572,20 @@ func sourceIncludePath(path string) (string, bool) {
 		return filepath.Join("sec", trimmed+".sec"), true
 	}
 	return "", false
+}
+
+func importQualifier(stmt *ast.ImportStatement) string {
+	if stmt == nil {
+		return ""
+	}
+	if stmt.Alias != "" {
+		return stmt.Alias
+	}
+	trimmed := strings.Trim(strings.TrimSuffix(stmt.Path, ".sec"), "/")
+	if index := strings.LastIndex(trimmed, "/"); index >= 0 {
+		return trimmed[index+1:]
+	}
+	return trimmed
 }
 
 func parseSourceInclude(path string) (*ast.Program, bool) {
@@ -498,24 +614,395 @@ func programModulePath(program *ast.Program) string {
 
 func qualifyImportedModule(program *ast.Program, module string) {
 	localFunctions := map[string]bool{}
+	localTypes := map[string]bool{}
 	for _, stmt := range program.Statements {
-		fn, ok := stmt.(*ast.FunctionDeclaration)
-		if ok && fn.Name != nil && !strings.Contains(fn.Name.Value, ".") {
-			localFunctions[fn.Name.Value] = true
+		switch stmt := stmt.(type) {
+		case *ast.FunctionDeclaration:
+			if stmt.Name != nil && !strings.Contains(stmt.Name.Value, ".") {
+				localFunctions[stmt.Name.Value] = true
+			}
+		case *ast.TypeDeclStatement:
+			if stmt.Name != nil && !strings.Contains(stmt.Name.Value, ".") {
+				localTypes[stmt.Name.Value] = true
+			}
+		case *ast.UnitDeclStatement:
+			if stmt.Name != nil && !strings.Contains(stmt.Name.Value, ".") {
+				localTypes[stmt.Name.Value] = true
+			}
+		case *ast.EnumDeclaration:
+			if stmt.Name != nil && !strings.Contains(stmt.Name.Value, ".") {
+				localTypes[stmt.Name.Value] = true
+			}
+		case *ast.InterfaceDeclaration:
+			if stmt.Name != nil && !strings.Contains(stmt.Name.Value, ".") {
+				localTypes[stmt.Name.Value] = true
+			}
+		case *ast.StructStatement:
+			if stmt.Name != nil && !strings.Contains(stmt.Name.Value, ".") {
+				localTypes[stmt.Name.Value] = true
+			}
 		}
 	}
 
 	for _, stmt := range program.Statements {
-		fn, ok := stmt.(*ast.FunctionDeclaration)
-		if !ok || fn.Name == nil {
-			continue
+		qualifyLocalTypeReferencesInStatement(stmt, module, localTypes)
+		switch stmt := stmt.(type) {
+		case *ast.FunctionDeclaration:
+			if stmt.Name == nil || strings.Contains(stmt.Name.Value, ".") {
+				continue
+			}
+			qualifyLocalCalls(stmt.Body, module, localFunctions)
+			stmt.Name.Value = module + "." + stmt.Name.Value
+			stmt.Name.Token.Lexeme = stmt.Name.Value
+		case *ast.TypeDeclStatement:
+			qualifyIdentifierDeclaration(stmt.Name, module)
+		case *ast.UnitDeclStatement:
+			qualifyIdentifierDeclaration(stmt.Name, module)
+		case *ast.EnumDeclaration:
+			qualifyIdentifierDeclaration(stmt.Name, module)
+		case *ast.InterfaceDeclaration:
+			qualifyIdentifierDeclaration(stmt.Name, module)
+		case *ast.StructStatement:
+			qualifyIdentifierDeclaration(stmt.Name, module)
 		}
-		if strings.Contains(fn.Name.Value, ".") {
-			continue
+	}
+}
+
+func qualifyIdentifierDeclaration(ident *ast.Identifier, module string) {
+	if ident == nil || strings.Contains(ident.Value, ".") {
+		return
+	}
+	ident.Value = module + "." + ident.Value
+	ident.Token.Lexeme = ident.Value
+}
+
+func rewriteImportQualifier(program *ast.Program, from string, to string) {
+	if program == nil || from == "" || to == "" || from == to {
+		return
+	}
+	for _, stmt := range program.Statements {
+		switch stmt := stmt.(type) {
+		case *ast.FunctionDeclaration:
+			rewriteQualifierInBlock(stmt.Body, from, to)
+		case *ast.ImplStatement:
+			for _, member := range stmt.Members {
+				if fn, ok := member.(*ast.FunctionDeclaration); ok {
+					rewriteQualifierInBlock(fn.Body, from, to)
+				}
+			}
+		default:
+			rewriteQualifierInStatement(stmt, from, to)
 		}
-		qualifyLocalCalls(fn.Body, module, localFunctions)
-		fn.Name.Value = module + "." + fn.Name.Value
-		fn.Name.Token.Lexeme = fn.Name.Value
+	}
+}
+
+func rewriteQualifierInBlock(block *ast.BlockStatement, from string, to string) {
+	if block == nil {
+		return
+	}
+	for _, stmt := range block.Statements {
+		rewriteQualifierInStatement(stmt, from, to)
+	}
+}
+
+func rewriteQualifierInStatement(stmt ast.Statement, from string, to string) {
+	switch stmt := stmt.(type) {
+	case *ast.LetStatement:
+		rewriteQualifierInExpression(stmt.Value, from, to)
+	case *ast.LetGroupStatement:
+		for _, let := range stmt.Lets {
+			rewriteQualifierInStatement(let, from, to)
+		}
+	case *ast.AssignmentStatement:
+		rewriteQualifierInExpression(stmt.Target, from, to)
+		rewriteQualifierInExpression(stmt.Value, from, to)
+	case *ast.ExpressionStatement:
+		rewriteQualifierInExpression(stmt.Expression, from, to)
+	case *ast.ReturnStatement:
+		rewriteQualifierInExpression(stmt.Value, from, to)
+	case *ast.IfStatement:
+		rewriteQualifierInExpression(stmt.Condition, from, to)
+		rewriteQualifierInBlock(stmt.Consequence, from, to)
+		rewriteQualifierInBlock(stmt.Alternative, from, to)
+	case *ast.ForStatement:
+		rewriteQualifierInExpression(stmt.Iterable, from, to)
+		rewriteQualifierInExpression(stmt.Step, from, to)
+		rewriteQualifierInBlock(stmt.Body, from, to)
+	case *ast.WhileStatement:
+		rewriteQualifierInExpression(stmt.Condition, from, to)
+		rewriteQualifierInBlock(stmt.Body, from, to)
+	case *ast.UnsafeStatement:
+		rewriteQualifierInBlock(stmt.Body, from, to)
+	}
+}
+
+func rewriteQualifierInExpression(expr ast.Expression, from string, to string) {
+	switch expr := expr.(type) {
+	case *ast.Identifier:
+		if expr.Value == from {
+			expr.Value = to
+			expr.Token.Lexeme = to
+		}
+	case *ast.CallExpression:
+		if expr.Function != nil {
+			expr.Function.Value = rewriteQualifiedName(expr.Function.Value, from, to)
+			expr.Function.Token.Lexeme = expr.Function.Value
+		}
+		rewriteQualifierInExpression(expr.Callee, from, to)
+		for _, arg := range expr.Arguments {
+			rewriteQualifierInExpression(arg, from, to)
+		}
+	case *ast.MemberExpression:
+		rewriteQualifierInExpression(expr.Object, from, to)
+	case *ast.IndexExpression:
+		rewriteQualifierInExpression(expr.Left, from, to)
+		rewriteQualifierInExpression(expr.Index, from, to)
+	case *ast.PrefixExpression:
+		rewriteQualifierInExpression(expr.Right, from, to)
+	case *ast.InfixExpression:
+		rewriteQualifierInExpression(expr.Left, from, to)
+		rewriteQualifierInExpression(expr.Right, from, to)
+	case *ast.ConversionExpression:
+		if expr.Type != nil {
+			expr.Type.Name = rewriteQualifiedName(expr.Type.Name, from, to)
+		}
+		rewriteQualifierInExpression(expr.Value, from, to)
+	case *ast.RangeExpression:
+		rewriteQualifierInExpression(expr.Start, from, to)
+		rewriteQualifierInExpression(expr.End, from, to)
+	case *ast.RefExpression:
+		rewriteQualifierInExpression(expr.Value, from, to)
+	}
+}
+
+func rewriteQualifiedName(name string, from string, to string) string {
+	if name == from {
+		return to
+	}
+	if strings.HasPrefix(name, from+".") {
+		return to + strings.TrimPrefix(name, from)
+	}
+	return name
+}
+
+func qualifyLocalTypeReferencesInStatement(stmt ast.Statement, module string, localTypes map[string]bool) {
+	switch stmt := stmt.(type) {
+	case *ast.TypeDeclStatement:
+		qualifyLocalTypeReference(stmt.BaseType, module, localTypes)
+		qualifyLocalTypeReference(stmt.AssignedType, module, localTypes)
+		for _, ref := range stmt.Implements {
+			qualifyLocalTypeReference(ref, module, localTypes)
+		}
+		if stmt.StructType != nil {
+			for _, field := range stmt.StructType.Fields {
+				qualifyLocalTypeReference(field.Type, module, localTypes)
+			}
+		}
+		if stmt.RegisterType != nil {
+			for _, field := range stmt.RegisterType.Fields {
+				qualifyLocalTypeReference(field.Type, module, localTypes)
+			}
+		}
+		for _, variant := range stmt.UnionVariants {
+			qualifyLocalTypeReference(variant.Payload, module, localTypes)
+			for _, field := range variant.PayloadFields {
+				qualifyLocalTypeReference(field.Type, module, localTypes)
+			}
+		}
+	case *ast.UnitDeclStatement:
+		qualifyLocalTypeReference(stmt.BaseType, module, localTypes)
+	case *ast.InterfaceDeclaration:
+		for _, ref := range stmt.Implements {
+			qualifyLocalTypeReference(ref, module, localTypes)
+		}
+		for _, method := range stmt.Methods {
+			qualifyLocalTypeReferencesInFunction(method, module, localTypes)
+		}
+		for _, property := range stmt.Properties {
+			qualifyLocalTypeReference(property.Type, module, localTypes)
+		}
+	case *ast.StructStatement:
+		for _, field := range stmt.Fields {
+			qualifyLocalTypeReference(field.Type, module, localTypes)
+		}
+	case *ast.FunctionDeclaration:
+		qualifyLocalTypeReferencesInFunction(stmt, module, localTypes)
+	case *ast.ImplStatement:
+		qualifyLocalTypeReference(stmt.Target, module, localTypes)
+		for _, member := range stmt.Members {
+			qualifyLocalTypeReferencesInImplMember(member, module, localTypes)
+		}
+	case *ast.LetStatement:
+		qualifyLocalTypeReference(stmt.Type, module, localTypes)
+		qualifyLocalTypesInExpression(stmt.Value, module, localTypes)
+	case *ast.LetGroupStatement:
+		for _, let := range stmt.Lets {
+			qualifyLocalTypeReferencesInStatement(let, module, localTypes)
+		}
+	case *ast.AssignmentStatement:
+		qualifyLocalTypesInExpression(stmt.Target, module, localTypes)
+		qualifyLocalTypesInExpression(stmt.Value, module, localTypes)
+	case *ast.ExpressionStatement:
+		qualifyLocalTypesInExpression(stmt.Expression, module, localTypes)
+	case *ast.ReturnStatement:
+		qualifyLocalTypesInExpression(stmt.Value, module, localTypes)
+	case *ast.IfStatement:
+		qualifyLocalTypesInExpression(stmt.Condition, module, localTypes)
+		qualifyLocalTypeReferencesInBlock(stmt.Consequence, module, localTypes)
+		qualifyLocalTypeReferencesInBlock(stmt.Alternative, module, localTypes)
+	case *ast.ForStatement:
+		qualifyLocalTypesInExpression(stmt.Iterable, module, localTypes)
+		qualifyLocalTypesInExpression(stmt.Step, module, localTypes)
+		qualifyLocalTypeReferencesInBlock(stmt.Body, module, localTypes)
+	case *ast.WhileStatement:
+		qualifyLocalTypesInExpression(stmt.Condition, module, localTypes)
+		qualifyLocalTypeReferencesInBlock(stmt.Body, module, localTypes)
+	case *ast.SwitchStatement:
+		qualifyLocalTypesInExpression(stmt.Subject, module, localTypes)
+		for _, clause := range stmt.Cases {
+			qualifyLocalTypesInSwitchCase(clause, module, localTypes)
+		}
+		qualifyLocalTypesInSwitchCase(stmt.Default, module, localTypes)
+	case *ast.UnsafeStatement:
+		qualifyLocalTypeReferencesInBlock(stmt.Body, module, localTypes)
+	}
+}
+
+func qualifyLocalTypesInSwitchCase(clause *ast.SwitchCase, module string, localTypes map[string]bool) {
+	if clause == nil {
+		return
+	}
+	for _, item := range clause.Items {
+		switch item := item.(type) {
+		case *ast.SwitchValueCase:
+			qualifyLocalTypesInExpression(item.Value, module, localTypes)
+		case *ast.SwitchRangeCase:
+			qualifyLocalTypesInExpression(item.Range, module, localTypes)
+		case *ast.SwitchRelationalCase:
+			qualifyLocalTypesInExpression(item.Value, module, localTypes)
+		}
+	}
+	qualifyLocalTypeReferencesInBlock(clause.Body, module, localTypes)
+}
+
+func qualifyLocalTypeReferencesInImplMember(member ast.ImplMember, module string, localTypes map[string]bool) {
+	switch member := member.(type) {
+	case *ast.TypeDeclStatement:
+		qualifyLocalTypeReferencesInStatement(member, module, localTypes)
+	case *ast.UnitDeclStatement:
+		qualifyLocalTypeReferencesInStatement(member, module, localTypes)
+	case *ast.EnumDeclaration:
+		qualifyLocalTypeReferencesInStatement(member, module, localTypes)
+	case *ast.FunctionDeclaration:
+		qualifyLocalTypeReferencesInFunction(member, module, localTypes)
+	case *ast.PropertyDeclaration:
+		qualifyLocalTypeReference(member.Type, module, localTypes)
+		qualifyLocalTypeReferencesInBlock(member.Getter, module, localTypes)
+		if member.Setter != nil {
+			qualifyLocalTypeReferencesInBlock(member.Setter.Body, module, localTypes)
+		}
+	}
+}
+
+func qualifyLocalTypeReferencesInFunction(fn *ast.FunctionDeclaration, module string, localTypes map[string]bool) {
+	if fn == nil {
+		return
+	}
+	for _, parameter := range fn.Parameters {
+		qualifyLocalTypeReference(parameter.Type, module, localTypes)
+	}
+	qualifyLocalTypeReference(fn.ReturnType, module, localTypes)
+	qualifyLocalTypeReferencesInBlock(fn.Body, module, localTypes)
+}
+
+func qualifyLocalTypeReferencesInBlock(block *ast.BlockStatement, module string, localTypes map[string]bool) {
+	if block == nil {
+		return
+	}
+	for _, stmt := range block.Statements {
+		qualifyLocalTypeReferencesInStatement(stmt, module, localTypes)
+	}
+}
+
+func qualifyLocalTypeReference(ref *ast.TypeReference, module string, localTypes map[string]bool) {
+	if ref == nil {
+		return
+	}
+	if localTypes[ref.Name] {
+		ref.Name = module + "." + ref.Name
+		ref.Token.Lexeme = ref.Name
+	}
+	qualifyLocalTypeReference(ref.ElementType, module, localTypes)
+	for _, arg := range ref.TypeArgs {
+		qualifyLocalTypeReference(arg, module, localTypes)
+	}
+	for _, param := range ref.FunctionParameterTypes {
+		qualifyLocalTypeReference(param, module, localTypes)
+	}
+	qualifyLocalTypeReference(ref.FunctionReturnType, module, localTypes)
+	qualifyLocalTypesInExpression(ref.ArrayLengthExpression, module, localTypes)
+}
+
+func qualifyLocalTypesInExpression(expr ast.Expression, module string, localTypes map[string]bool) {
+	switch expr := expr.(type) {
+	case *ast.CallExpression:
+		if expr.Function != nil && localTypes[expr.Function.Value] {
+			expr.Function.Value = module + "." + expr.Function.Value
+			expr.Function.Token.Lexeme = expr.Function.Value
+		}
+		for _, arg := range expr.GenericArguments {
+			qualifyLocalTypeReference(arg, module, localTypes)
+		}
+		qualifyLocalTypesInExpression(expr.Callee, module, localTypes)
+		for _, arg := range expr.Arguments {
+			qualifyLocalTypesInExpression(arg, module, localTypes)
+		}
+	case *ast.MemberExpression:
+		if ident, ok := expr.Object.(*ast.Identifier); ok && localTypes[ident.Value] {
+			ident.Value = module + "." + ident.Value
+			ident.Token.Lexeme = ident.Value
+		} else {
+			qualifyLocalTypesInExpression(expr.Object, module, localTypes)
+		}
+	case *ast.ConversionExpression:
+		qualifyLocalTypeReference(expr.Type, module, localTypes)
+		qualifyLocalTypesInExpression(expr.Value, module, localTypes)
+	case *ast.PrefixExpression:
+		qualifyLocalTypesInExpression(expr.Right, module, localTypes)
+	case *ast.InfixExpression:
+		qualifyLocalTypesInExpression(expr.Left, module, localTypes)
+		qualifyLocalTypesInExpression(expr.Right, module, localTypes)
+	case *ast.RangeExpression:
+		qualifyLocalTypesInExpression(expr.Start, module, localTypes)
+		qualifyLocalTypesInExpression(expr.End, module, localTypes)
+	case *ast.IndexExpression:
+		qualifyLocalTypesInExpression(expr.Left, module, localTypes)
+		qualifyLocalTypesInExpression(expr.Index, module, localTypes)
+	case *ast.RefExpression:
+		qualifyLocalTypesInExpression(expr.Value, module, localTypes)
+	case *ast.StructLiteral:
+		qualifyLocalTypeReference(expr.Type, module, localTypes)
+		for _, field := range expr.Fields {
+			qualifyLocalTypesInExpression(field.Value, module, localTypes)
+		}
+	case *ast.ArrayLiteral:
+		for _, element := range expr.Elements {
+			qualifyLocalTypesInExpression(element, module, localTypes)
+		}
+	case *ast.OkExpression:
+		qualifyLocalTypesInExpression(expr.Value, module, localTypes)
+	case *ast.ErrExpression:
+		qualifyLocalTypesInExpression(expr.Value, module, localTypes)
+	case *ast.TryExpression:
+		qualifyLocalTypesInExpression(expr.Expression, module, localTypes)
+	case *ast.MatchExpression:
+		qualifyLocalTypesInExpression(expr.Subject, module, localTypes)
+		for _, arm := range expr.Arms {
+			qualifyLocalTypesInExpression(arm.Pattern, module, localTypes)
+			qualifyLocalTypesInExpression(arm.Guard, module, localTypes)
+			qualifyLocalTypesInExpression(arm.Body, module, localTypes)
+			qualifyLocalTypeReferencesInBlock(arm.BlockBody, module, localTypes)
+		}
 	}
 }
 

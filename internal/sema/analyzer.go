@@ -81,6 +81,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.registerTypeDeclarations(program)
 	a.registerImplTypeDeclarations(program)
 	a.analyzeInterfaceDeclarations(program)
+	a.analyzeEarlyEnumDeclarations(program)
 	a.analyzeTypeDeclarations(program)
 	a.analyzeEnumDeclarations(program)
 	a.analyzeImplTypeDeclarations(program)
@@ -473,11 +474,49 @@ func (a *Analyzer) analyzeTypeDeclarations(program *ast.Program) {
 func (a *Analyzer) analyzeEnumDeclarations(program *ast.Program) {
 	a.withProgramModules(program, func(stmt ast.Statement) {
 		enum, ok := stmt.(*ast.EnumDeclaration)
-		if !ok {
+		if !ok || enum.Name == nil {
+			return
+		}
+		if enum.BitUnderlying {
+			return
+		}
+		if existing := a.types[enum.Name.Value]; existing.Kind == EnumType {
 			return
 		}
 		a.types[enum.Name.Value] = a.typeFromEnumDeclaration(enum.Name.Value, enum)
 	})
+}
+
+func (a *Analyzer) analyzeEarlyEnumDeclarations(program *ast.Program) {
+	a.withProgramModules(program, func(stmt ast.Statement) {
+		enum, ok := stmt.(*ast.EnumDeclaration)
+		if !ok || enum.Name == nil || !a.enumCanAnalyzeEarly(enum) {
+			return
+		}
+		a.types[enum.Name.Value] = a.typeFromEnumDeclaration(enum.Name.Value, enum)
+	})
+	for _, stmt := range program.Statements {
+		impl, ok := stmt.(*ast.ImplStatement)
+		if !ok || !a.validImplStatements[impl] || impl.Target == nil {
+			continue
+		}
+		for _, member := range impl.Members {
+			enum, ok := member.(*ast.EnumDeclaration)
+			if !ok || enum.Name == nil || !a.enumCanAnalyzeEarly(enum) {
+				continue
+			}
+			qualified := impl.Target.Name + "." + enum.Name.Value
+			a.types[qualified] = a.typeFromEnumDeclaration(qualified, enum)
+		}
+	}
+}
+
+func (a *Analyzer) enumCanAnalyzeEarly(enum *ast.EnumDeclaration) bool {
+	if enum.BitUnderlying || enum.UnderlyingType == nil {
+		return true
+	}
+	underlying, ok := a.types[enum.UnderlyingType.Name]
+	return ok && (underlying.Kind == IntType || underlying.Kind == UintType)
 }
 
 func (a *Analyzer) analyzeImplTypeDeclarations(program *ast.Program) {
@@ -513,6 +552,12 @@ func (a *Analyzer) analyzeImplTypeDeclarations(program *ast.Program) {
 				})
 			case *ast.EnumDeclaration:
 				qualified := impl.Target.Name + "." + member.Name.Value
+				if member.BitUnderlying {
+					continue
+				}
+				if existing := a.types[qualified]; existing.Kind == EnumType {
+					continue
+				}
 				a.withImplTarget(impl.Target.Name, func() {
 					a.types[qualified] = a.typeFromEnumDeclaration(qualified, member)
 				})
@@ -999,9 +1044,16 @@ func (a *Analyzer) analyzeWhileStatement(stmt *ast.WhileStatement) {
 		a.analyzeBlockStatements(stmt.Body)
 	}
 
+	loopConstInts := a.constInts
 	breakAssignments := a.popLoopBreakFrame(frame)
 	a.symbols = previousSymbols
 	a.constInts = previousConstInts
+	for name, previousValue := range previousConstInts {
+		currentValue, exists := loopConstInts[name]
+		if !exists || currentValue.Cmp(previousValue) != 0 {
+			delete(a.constInts, name)
+		}
+	}
 	if isBoolLiteral(stmt.Condition, true) && len(breakAssignments) > 0 {
 		a.assigned = mergeBreakAssigned(previousAssigned, breakAssignments)
 	} else {
@@ -1911,7 +1963,7 @@ func (a *Analyzer) analyzeFunctionBodyInScope(fn *ast.FunctionDeclaration, name 
 
 	a.analyzeBlockStatements(fn.Body)
 
-	if !a.blockDefinitelyReturns(fn.Body) && function.ReturnType.Kind != VoidType {
+	if !a.blockDefinitelyReturns(fn.Body) && function.ReturnType.Kind != VoidType && function.ReturnType.Kind != NeverType {
 		a.addErrorAtToken(fn.Name.Token, "function %s must return %s", fn.Name.Value, typeDisplayName(function.ReturnType))
 	}
 }
@@ -2823,12 +2875,33 @@ func (a *Analyzer) typeFromRegisterDeclaration(name string, stmt *ast.TypeDeclSt
 		if field == nil || field.Name == nil {
 			continue
 		}
-		if field.Width <= 0 {
+		fieldWidth := field.Width
+		fieldType := Type{}
+		if field.Type != nil {
+			if field.Name.Value == "_" {
+				a.addErrorAtToken(field.Type.Token, "reserved register field _ must use bit or bit[N]")
+				invalidFieldWidth = true
+				continue
+			}
+			resolved, ok := a.resolveType(field.Type)
+			if !ok {
+				invalidFieldWidth = true
+				continue
+			}
+			if resolved.Kind != EnumType || resolved.BitWidth <= 0 {
+				a.addErrorAtToken(field.Type.Token, "register field %s.%s type must be bit or a bit-backed enum, got %s", name, field.Name.Value, typeDisplayName(resolved))
+				invalidFieldWidth = true
+				continue
+			}
+			fieldWidth = resolved.BitWidth
+			fieldType = resolved
+		}
+		if fieldWidth <= 0 {
 			a.addErrorAtToken(field.Token, "register field %s.%s width must be positive", name, field.Name.Value)
 			invalidFieldWidth = true
 			continue
 		}
-		used += field.Width
+		used += fieldWidth
 
 		if field.Name.Value != "_" {
 			if previous, exists := seen[field.Name.Value]; exists {
@@ -2839,7 +2912,9 @@ func (a *Analyzer) typeFromRegisterDeclaration(name string, stmt *ast.TypeDeclSt
 			seen[field.Name.Value] = field.Name.Token
 		}
 
-		fieldType := a.registerFieldType(field)
+		if field.Type == nil {
+			fieldType = a.registerFieldType(field)
+		}
 		if field.Unit != "" {
 			if _, ok := a.units[field.Unit]; !ok {
 				a.addErrorAtToken(field.Token, "unknown unit %s on register field %s.%s", field.Unit, name, field.Name.Value)
@@ -2848,7 +2923,7 @@ func (a *Analyzer) typeFromRegisterDeclaration(name string, stmt *ast.TypeDeclSt
 
 		typ.RegisterFields = append(typ.RegisterFields, RegisterField{
 			Name:  field.Name.Value,
-			Width: field.Width,
+			Width: fieldWidth,
 			Unit:  field.Unit,
 			Type:  fieldType,
 			Token: field.Name.Token,
@@ -3024,7 +3099,21 @@ func (a *Analyzer) typeFromVariantDeclaration(name string, variants []*ast.Ident
 
 func (a *Analyzer) typeFromEnumDeclaration(name string, enum *ast.EnumDeclaration) Type {
 	underlying := a.types["int"]
-	if enum.UnderlyingType != nil {
+	if enum.BitUnderlying {
+		width := enum.UnderlyingBitWidth
+		if width <= 0 || width > 256 {
+			a.addErrorAtToken(enum.Name.Token, "enum %s bit width must be between 1 and 256, got %d", name, width)
+			return Type{Name: name, Kind: InvalidType, Named: true, Declared: true}
+		}
+		max := new(big.Int).Lsh(big.NewInt(1), uint(width))
+		max.Sub(max, big.NewInt(1))
+		underlying = Type{
+			Name:       fmt.Sprintf("bit[%d]", width),
+			Kind:       UintType,
+			MinInteger: big.NewInt(0),
+			MaxInteger: max,
+		}
+	} else if enum.UnderlyingType != nil {
 		resolved, ok := a.resolveType(enum.UnderlyingType)
 		if !ok {
 			return Type{Name: name, Kind: InvalidType}
@@ -3048,7 +3137,12 @@ func (a *Analyzer) typeFromEnumDeclaration(name string, enum *ast.EnumDeclaratio
 		Named:      true,
 		Declared:   true,
 		Underlying: underlying.Name,
+		MinInteger: new(big.Int).Set(underlying.MinInteger),
+		MaxInteger: new(big.Int).Set(underlying.MaxInteger),
 		EnumConsts: map[string]EnumValue{},
+	}
+	if enum.BitUnderlying {
+		typ.BitWidth = enum.UnderlyingBitWidth
 	}
 
 	seen := map[string]lexer.Token{}
@@ -3106,13 +3200,13 @@ func semaStructTags(tags []ast.StructTag) []StructTag {
 }
 
 func (a *Analyzer) registerImplDeclarations(program *ast.Program) {
-	for _, stmt := range program.Statements {
+	a.withProgramModules(program, func(stmt ast.Statement) {
 		impl, ok := stmt.(*ast.ImplStatement)
 		if !ok {
-			continue
+			return
 		}
 		a.registerImplStatement(impl)
-	}
+	})
 }
 
 func (a *Analyzer) registerImplStatement(stmt *ast.ImplStatement) {
@@ -3355,13 +3449,13 @@ func referenceElementNamed(typ Type, name string) bool {
 }
 
 func (a *Analyzer) analyzeImplBodies(program *ast.Program) {
-	for _, stmt := range program.Statements {
+	a.withProgramModules(program, func(stmt ast.Statement) {
 		impl, ok := stmt.(*ast.ImplStatement)
 		if !ok {
-			continue
+			return
 		}
 		a.analyzeImplBody(impl)
-	}
+	})
 }
 
 func (a *Analyzer) analyzeImplBody(stmt *ast.ImplStatement) {
@@ -4417,6 +4511,9 @@ func (a *Analyzer) inferExpressionWithExpected(expr ast.Expression, expected Typ
 	if lit, ok := expr.(*ast.ArrayLiteral); ok {
 		return a.inferArrayLiteralWithExpected(lit, expected)
 	}
+	if typ, value, ok := a.inferExpectedUnionVariantExpression(expr, expected); ok {
+		return typ, value
+	}
 	call, ok := expr.(*ast.CallExpression)
 	if !ok || expected.Kind == InvalidType || expected.Kind == "" {
 		typ, value := a.inferExpression(expr)
@@ -4436,6 +4533,57 @@ func (a *Analyzer) inferExpressionWithExpected(expr ast.Expression, expected Typ
 	}
 	typ, value := a.inferExpression(expr)
 	return typeWithExpectedDimension(expr, typ, value, expected)
+}
+
+func (a *Analyzer) inferExpectedUnionVariantExpression(expr ast.Expression, expected Type) (Type, expressionValue, bool) {
+	if expected.Kind != UnionType {
+		return Type{}, expressionValue{}, false
+	}
+	switch expr := expr.(type) {
+	case *ast.Identifier:
+		variant, ok := lookupUnionVariant(expected, expr.Value)
+		if !ok {
+			return Type{}, expressionValue{}, false
+		}
+		if variant.Payload != nil || len(variant.PayloadFields) > 0 {
+			a.addErrorAtToken(expr.Token, "union variant %s.%s requires payload", typeDisplayName(expected), variant.Name)
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		return expected, expressionValue{Display: expr.String()}, true
+	case *ast.CallExpression:
+		name := callExpressionName(expr)
+		if name == "" {
+			return Type{}, expressionValue{}, false
+		}
+		variant, ok := lookupUnionVariant(expected, name)
+		if !ok {
+			return Type{}, expressionValue{}, false
+		}
+		if len(variant.PayloadFields) > 0 {
+			a.addErrorAtToken(expr.Token, "union variant %s.%s requires named payload fields", typeDisplayName(expected), variant.Name)
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		if variant.Payload == nil {
+			if len(expr.Arguments) != 0 {
+				a.addErrorAtToken(expr.Token, "union variant %s.%s expects 0 arguments, got %d", typeDisplayName(expected), variant.Name, len(expr.Arguments))
+				return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+			}
+			return expected, expressionValue{Display: expr.String()}, true
+		}
+		if len(expr.Arguments) != 1 {
+			a.addErrorAtToken(expr.Token, "union variant %s.%s expects 1 argument, got %d", typeDisplayName(expected), variant.Name, len(expr.Arguments))
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		payloadType := *variant.Payload
+		valueType, _ := a.inferExpressionWithExpected(expr.Arguments[0], payloadType)
+		if valueType.Kind != InvalidType && !canInitialize(payloadType, valueType, expr.Arguments[0]) {
+			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "union variant %s.%s payload must be %s, got %s", typeDisplayName(expected), variant.Name, typeDisplayName(payloadType), typeDisplayName(valueType))
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		return expected, expressionValue{Display: expr.String()}, true
+	default:
+		return Type{}, expressionValue{}, false
+	}
 }
 
 func typeWithExpectedDimension(expr ast.Expression, typ Type, value expressionValue, expected Type) (Type, expressionValue) {
@@ -4817,6 +4965,9 @@ func (a *Analyzer) arrayLiteralElementTypes(expr *ast.ArrayLiteral, expected Typ
 }
 
 func (a *Analyzer) inferIndexExpression(expr *ast.IndexExpression) (Type, expressionValue) {
+	if elementType, ok := a.inferStringPointerIndex(expr); ok {
+		return elementType, expressionValue{Display: expr.String()}
+	}
 	leftType, _ := a.inferExpression(expr.Left)
 	if leftType.Kind == InvalidType {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
@@ -4843,6 +4994,26 @@ func (a *Analyzer) inferIndexExpression(expr *ast.IndexExpression) (Type, expres
 		a.addErrorAtToken(expr.Token, "type %s is not indexable", typeDisplayName(leftType))
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
+}
+
+func (a *Analyzer) inferStringPointerIndex(expr *ast.IndexExpression) (Type, bool) {
+	member, ok := expr.Left.(*ast.MemberExpression)
+	if !ok || member.Property == nil || member.Property.Value != "ptr" {
+		return Type{}, false
+	}
+	objectType, _ := a.inferExpression(member.Object)
+	if dereferenceType(objectType).Kind != StringType {
+		return Type{}, false
+	}
+	indexType, _ := a.inferExpression(expr.Index)
+	if indexType.Kind == InvalidType {
+		return Type{Kind: InvalidType}, true
+	}
+	if !isIntegerType(indexType) {
+		a.addErrorAtToken(expressionToken(expr.Index), "string byte index must be integer, got %s", typeDisplayName(indexType))
+		return Type{Kind: InvalidType}, true
+	}
+	return a.types["byte"], true
 }
 
 func (a *Analyzer) inferSliceExpression(expr *ast.SliceExpression) (Type, expressionValue) {
@@ -5130,6 +5301,9 @@ func (a *Analyzer) inferConversionExpression(expr *ast.ConversionExpression) (Ty
 		a.addErrorAtToken(expr.Token, "cannot convert %s to %s", typeDisplayName(valueType), typeDisplayName(targetType))
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
+	if targetType.Kind == EnumType && targetType.BitWidth > 0 && !a.validateBitEnumConversion(targetType, valueType, expr.Value) {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
 
 	return targetType, expressionValue{Display: expr.String()}
 }
@@ -5373,10 +5547,8 @@ func (a *Analyzer) methodCallName(expr *ast.CallExpression) (string, bool) {
 	if !ok {
 		return "", false
 	}
-	if typeName, ok := typePathFromExpression(member.Object); ok {
-		if _, exists := a.types[a.resolveTypeName(typeName)]; exists {
-			return "", false
-		}
+	if a.expressionNamesType(member.Object) {
+		return "", false
 	}
 	objectType, _ := a.inferExpression(member.Object)
 	if objectType.Kind == InvalidType || objectType.Name == "" {
@@ -5410,10 +5582,8 @@ func (a *Analyzer) methodCallReceiver(expr *ast.CallExpression) (methodReceiverI
 	if !ok {
 		return methodReceiverInfo{}, false
 	}
-	if typeName, ok := typePathFromExpression(member.Object); ok {
-		if _, exists := a.types[a.resolveTypeName(typeName)]; exists {
-			return methodReceiverInfo{}, false
-		}
+	if a.expressionNamesType(member.Object) {
+		return methodReceiverInfo{}, false
 	}
 	receiverType, _ := a.inferExpression(member.Object)
 	info := methodReceiverInfo{Type: receiverType}
@@ -5421,6 +5591,20 @@ func (a *Analyzer) methodCallReceiver(expr *ast.CallExpression) (methodReceiverI
 		info.Symbol = &symbol
 	}
 	return info, receiverType.Kind != InvalidType
+}
+
+func (a *Analyzer) expressionNamesType(expr ast.Expression) bool {
+	if ident, ok := expr.(*ast.Identifier); ok {
+		if _, exists := a.symbols[ident.Value]; exists {
+			return false
+		}
+	}
+	typeName, ok := typePathFromExpression(expr)
+	if !ok {
+		return false
+	}
+	_, exists := a.types[a.resolveTypeName(typeName)]
+	return exists
 }
 
 func (a *Analyzer) canPassMethodReceiver(param FunctionParameter, receiver methodReceiverInfo) bool {
@@ -6108,8 +6292,31 @@ func (a *Analyzer) inferCallAsConversion(expr *ast.CallExpression) (Type, expres
 		a.addErrorAtToken(expr.Token, "cannot convert %s to %s", typeDisplayName(valueType), typeDisplayName(targetType))
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
+	if targetType.Kind == EnumType && targetType.BitWidth > 0 && !a.validateBitEnumConversion(targetType, valueType, expr.Arguments[0]) {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
 
 	return targetType, expressionValue{Display: expr.String()}
+}
+
+func (a *Analyzer) validateBitEnumConversion(target Type, sourceType Type, source ast.Expression) bool {
+	if value, ok := a.integerConstantValue(source); ok {
+		return !a.checkIntegerValueRange(target, value, expressionToken(source))
+	}
+	if sourceType.MinInteger != nil && sourceType.MaxInteger != nil &&
+		target.MinInteger != nil && target.MaxInteger != nil &&
+		sourceType.MinInteger.Cmp(target.MinInteger) >= 0 &&
+		sourceType.MaxInteger.Cmp(target.MaxInteger) <= 0 {
+		return true
+	}
+	a.addErrorAtToken(
+		expressionToken(source),
+		"conversion to %d-bit enum %s requires a value proven to be in range 0..%s",
+		target.BitWidth,
+		target.Name,
+		target.MaxInteger.String(),
+	)
+	return false
 }
 
 func (a *Analyzer) inferTryExpression(expr *ast.TryExpression) (Type, expressionValue) {

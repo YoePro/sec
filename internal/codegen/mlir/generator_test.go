@@ -98,6 +98,95 @@ fn main() int {
 	}
 }
 
+func TestGenerateLinuxAMD64SyscallInlineAsm(t *testing.T) {
+	input := `
+module main
+
+unsafe extern "system" fn rawWrite(number: uint, fd: uint, ptr: uint, len: uint) int {
+    asm {
+        "syscall"
+        inputs:
+            rax(uint(number))
+            rdi(fd)
+            rsi(ptr)
+            rdx(len)
+        outputs:
+            rax(result)
+        clobbers:
+            rcx
+            r11
+            memory
+    }
+    return result
+}
+
+unsafe fn write(fd: int, ref ptr: byte, len: int64) int {
+    return rawWrite(1, uint(fd), uint(ptr), uint(len))
+}
+
+fn main() int {
+    let text := "Hello"
+    write(1, text.ptr, text.len)
+    return 0
+}
+`
+	program := parseTestProgram(t, input)
+
+	got, err := GenerateWithTriple(program, "x86_64-pc-linux-gnu")
+	if err != nil {
+		t.Fatalf("GenerateWithTriple returned error: %v", err)
+	}
+
+	for _, want := range []string{
+		`llvm.func @write(%fd: i32, %ptr: !llvm.ptr, %len: i64) -> i32`,
+		`llvm.ptrtoint`,
+		`llvm.inline_asm has_side_effects "syscall"`,
+		`"={rax},{rax},{rdi},{rsi},{rdx},~{rcx},~{r11},~{memory}"`,
+		` %number, %fd, %ptr, %len :`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("generated MLIR missing %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, `%number, %number`) {
+		t.Fatalf("generated MLIR must not duplicate the syscall number operand:\n%s", got)
+	}
+}
+
+func TestGenerateFunctionOverloadsByArity(t *testing.T) {
+	input := `
+module main
+
+fn pick(value: int) int {
+    return value
+}
+
+fn pick(left: int, right: int) int {
+    return left + right
+}
+
+fn main() int {
+    return pick(2, 3)
+}
+`
+	program := parseTestProgram(t, input)
+
+	got, err := GenerateWithTriple(program, "x86_64-pc-linux-gnu")
+	if err != nil {
+		t.Fatalf("GenerateWithTriple returned error: %v", err)
+	}
+
+	for _, want := range []string{
+		`llvm.func @pick__sec_arity_1`,
+		`llvm.func @pick__sec_arity_2`,
+		`llvm.call @pick__sec_arity_2`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("generated MLIR missing %q:\n%s", want, got)
+		}
+	}
+}
+
 func TestGenerateStructValues(t *testing.T) {
 	input := `
 module main
@@ -144,6 +233,201 @@ fn main() int {
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("generated struct MLIR missing %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestGenerateNestedStructFieldAssignment(t *testing.T) {
+	input := `
+module main
+
+type Vector struct {
+    x: int,
+    y: int,
+}
+
+type Player struct {
+    pos: Vector,
+}
+
+fn move(player: Player, dx: int) Player {
+    let mut updated := player
+    updated.pos.x = updated.pos.x + dx
+    updated.pos.y += 2
+    return updated
+}
+
+fn main() int {
+    let player := Player{ pos: Vector{ x: 10, y: 20 } }
+    let moved := move(player, 5)
+    return moved.pos.x + moved.pos.y
+}
+`
+	program := parseTestProgram(t, input)
+
+	got, err := GenerateWithTriple(program, "x86_64-pc-linux-gnu")
+	if err != nil {
+		t.Fatalf("GenerateWithTriple returned error: %v", err)
+	}
+
+	for _, want := range []string{
+		"llvm.extractvalue",
+		"llvm.insertvalue",
+		"llvm.store",
+		"llvm.add",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("generated struct assignment MLIR missing %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestGenerateEnumValuesConversionsAndSwitch(t *testing.T) {
+	input := `
+module main
+
+enum Status int {
+    unknown = 0,
+    active = 10,
+    paused,
+    disabled = 99,
+}
+
+enum Permission uint {
+    none = 0,
+    read = 1 << iota,
+    write = 1 << iota,
+    execute = 1 << iota,
+}
+
+enum Wide uint128 {
+    huge = 18446744073709551616,
+}
+
+type Snapshot struct {
+    status: Status,
+}
+
+type Vehicle struct {
+    id: int,
+}
+
+impl Vehicle {
+    enum FuelType {
+        petrol,
+        diesel,
+        electric,
+    }
+}
+
+fn statusCode(value: Status) int {
+    switch value {
+    case Status.paused:
+        return 200
+    default:
+        return 0
+    }
+}
+
+fn fuelCode(value: Vehicle.FuelType) int {
+    switch value {
+    case Vehicle.FuelType.diesel:
+        return 20
+    default:
+        return 0
+    }
+}
+
+fn wideValue(value: Wide) uint128 {
+    return uint128(value)
+}
+
+fn main() int {
+    let status: Status := Status(11)
+    let snapshot := Snapshot{ status: status }
+    let numeric: int := int(snapshot.status)
+    let restored: Status := Status(numeric)
+    let permission: uint := uint(Permission.execute)
+
+    if permission != 8u {
+        return 1
+    }
+    if wideValue(Wide.huge) != 18446744073709551616 {
+        return 2
+    }
+
+    return statusCode(restored) + fuelCode(Vehicle.FuelType.diesel)
+}
+`
+	program := parseTestProgram(t, input)
+
+	got, err := GenerateWithTriple(program, "x86_64-pc-linux-gnu")
+	if err != nil {
+		t.Fatalf("GenerateWithTriple returned error: %v", err)
+	}
+
+	for _, want := range []string{
+		"llvm.func @statusCode(%value: i32) -> i32",
+		"llvm.func @fuelCode(%value: i32) -> i32",
+		"llvm.func @wideValue(%value: i128) -> i128",
+		"llvm.mlir.constant(11 : i32) : i32",
+		"llvm.mlir.constant(8 : i64) : i64",
+		"llvm.mlir.constant(18446744073709551616 : i128) : i128",
+		"llvm.mlir.constant(1 : i32) : i32",
+		"llvm.extractvalue",
+		"llvm.icmp \"eq\"",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("generated enum MLIR missing %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestGenerateBitBackedEnums(t *testing.T) {
+	input := `
+module main
+
+enum ClockSource: bit[2] {
+    Internal = 0b00,
+    External = 0b01,
+    Bypass = 0b10,
+}
+
+enum BinaryState: bit {
+    Off = 0,
+    On = 1,
+}
+
+fn clockCode(value: ClockSource) int {
+    switch value {
+    case ClockSource.Bypass:
+        return int(value)
+    default:
+        return 0
+    }
+}
+
+fn main() int {
+    return clockCode(ClockSource.Bypass) + int(BinaryState.On)
+}
+`
+	program := parseTestProgram(t, input)
+
+	got, err := GenerateWithTriple(program, "x86_64-pc-linux-gnu")
+	if err != nil {
+		t.Fatalf("GenerateWithTriple returned error: %v", err)
+	}
+
+	for _, want := range []string{
+		"llvm.func @clockCode(%value: i2) -> i32",
+		"llvm.mlir.constant(2 : i2) : i2",
+		"llvm.mlir.constant(1 : i1) : i1",
+		"llvm.zext",
+		"i2 to i32",
+		"i1 to i32",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("generated bit enum MLIR missing %q:\n%s", want, got)
 		}
 	}
 }

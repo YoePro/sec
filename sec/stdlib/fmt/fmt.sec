@@ -5,7 +5,3 @@ import "io"
 fn Println(value: string) void {
     io.Println(value)
 }
-
-fn println(value: string) void {
-    io.println(value)
-}

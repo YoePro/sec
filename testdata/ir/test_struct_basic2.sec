@@ -1,0 +1,28 @@
+module main
+
+type Vector struct {
+    x: int,
+    y: int,
+}
+
+type Player struct {
+    id: int,
+    pos: Vector,
+    active: bool,
+}
+
+fn MovePlayer(p: Player, dx: int, dy: int) Player {
+    let mut updated := p
+    updated.pos.x = updated.pos.x + dx
+    updated.pos.y = updated.pos.y + dy
+    return updated
+}
+
+fn main() int {
+    let start_pos := Vector{ x: 10, y: 20 }
+    let mut hero := Player{ id: 1, pos: start_pos, active: true }
+
+    let moved_hero := MovePlayer(hero, 5, -5)
+
+    return moved_hero.pos.x + moved_hero.pos.y
+}

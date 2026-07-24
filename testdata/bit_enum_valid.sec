@@ -1,0 +1,30 @@
+module main
+
+enum ClockSource: bit[2] {
+    Internal = 0b00,
+    External = 0b01,
+    Bypass = 0b10,
+}
+
+enum EnabledState: bit {
+    Disabled = 0,
+    Enabled = 1,
+}
+
+type ClockConfig register[32] {
+    Source: ClockSource,
+    Enabled: EnabledState,
+    _: bit[29],
+}
+
+@address(0x40021000)
+let mut clockConfig: ClockConfig
+
+fn SelectExternalClock() void {
+    clockConfig.Source = ClockSource.External
+    clockConfig.Enabled = EnabledState.Enabled
+}
+
+fn main() int {
+    return int(ClockSource.Bypass)
+}

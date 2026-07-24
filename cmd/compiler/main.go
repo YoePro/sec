@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"text/tabwriter"
 
@@ -929,21 +930,88 @@ func resolveStdlibImportsInto(program *ast.Program, target CompilerTarget, seen 
 		if !ok {
 			continue
 		}
-		sourcePath, ok := sourceIncludePath(importStmt.Path, target)
+		sourcePaths, ok := sourceIncludePaths(importStmt.Path, target)
 		if !ok {
 			continue
 		}
-		if seen[sourcePath] {
+		imported := &ast.Program{}
+		module := ""
+		for _, sourcePath := range sourcePaths {
+			if seen[sourcePath] {
+				if module == "" {
+					module = programModulePath(parseSourceInclude(sourcePath, target))
+				}
+				continue
+			}
+			seen[sourcePath] = true
+			sourceProgram := parseSourceInclude(sourcePath, target)
+			if module == "" {
+				module = programModulePath(sourceProgram)
+			}
+			imported.Statements = append(imported.Statements, sourceProgram.Statements...)
+		}
+		if len(imported.Statements) == 0 {
+			rewriteImportQualifier(program, importQualifier(importStmt), module)
 			continue
 		}
-		seen[sourcePath] = true
 
-		imported := parseSourceInclude(sourcePath, target)
 		resolveStdlibImportsInto(imported, target, seen)
-		module := programModulePath(imported)
+		if module == "" {
+			module = programModulePath(imported)
+		}
+		rewriteImportQualifier(program, importQualifier(importStmt), module)
 		qualifyImportedModule(imported, module)
 		program.Statements = append(program.Statements, imported.Statements...)
 	}
+}
+
+func sourceIncludePaths(path string, target CompilerTarget) ([]string, bool) {
+	if canSourceIncludePlatform(path) {
+		trimmed := strings.Trim(strings.TrimSuffix(path, ".sec"), "/")
+		base := filepath.Join("sec", filepath.FromSlash(trimmed))
+		if _, err := os.Stat(base); err != nil {
+			base = filepath.Join(findCompilerSourceRoot(), base)
+		}
+		if info, err := os.Stat(base); err == nil && info.IsDir() {
+			matches, globErr := filepath.Glob(filepath.Join(base, "*.sec"))
+			if globErr != nil {
+				return nil, false
+			}
+			sort.Strings(matches)
+			return matches, len(matches) > 0
+		}
+		if filepath.Ext(base) != ".sec" {
+			base += ".sec"
+		}
+		return []string{base}, true
+	}
+	sourcePath, ok := sourceIncludePath(path, target)
+	if !ok {
+		return nil, false
+	}
+	return []string{sourcePath}, true
+}
+
+func findCompilerSourceRoot() string {
+	starts := []string{}
+	if cwd, err := os.Getwd(); err == nil {
+		starts = append(starts, cwd)
+	}
+	if executable, err := os.Executable(); err == nil {
+		starts = append(starts, filepath.Dir(executable))
+	}
+	for _, start := range starts {
+		for current := filepath.Clean(start); ; current = filepath.Dir(current) {
+			if info, err := os.Stat(filepath.Join(current, "sec", "platform")); err == nil && info.IsDir() {
+				return current
+			}
+			parent := filepath.Dir(current)
+			if parent == current {
+				break
+			}
+		}
+	}
+	return "."
 }
 
 func canSourceIncludeModule(name string) bool {
@@ -989,6 +1057,20 @@ func sourceIncludePath(path string, target CompilerTarget) (string, bool) {
 		return filepath.Join("sec", trimmed+".sec"), true
 	}
 	return "", false
+}
+
+func importQualifier(stmt *ast.ImportStatement) string {
+	if stmt == nil {
+		return ""
+	}
+	if stmt.Alias != "" {
+		return stmt.Alias
+	}
+	trimmed := strings.Trim(strings.TrimSuffix(stmt.Path, ".sec"), "/")
+	if index := strings.LastIndex(trimmed, "/"); index >= 0 {
+		return trimmed[index+1:]
+	}
+	return trimmed
 }
 
 func parseSourceInclude(path string, target CompilerTarget) *ast.Program {
@@ -1047,6 +1129,124 @@ func qualifyImportedModule(program *ast.Program, module string) {
 		fn.Name.Value = module + "." + fn.Name.Value
 		fn.Name.Token.Lexeme = fn.Name.Value
 	}
+
+	for _, stmt := range program.Statements {
+		enum, ok := stmt.(*ast.EnumDeclaration)
+		if !ok || enum.Name == nil || strings.Contains(enum.Name.Value, ".") {
+			continue
+		}
+		enum.Name.Value = module + "." + enum.Name.Value
+		enum.Name.Token.Lexeme = enum.Name.Value
+	}
+}
+
+func rewriteImportQualifier(program *ast.Program, from string, to string) {
+	if program == nil || from == "" || to == "" || from == to {
+		return
+	}
+	for _, stmt := range program.Statements {
+		switch stmt := stmt.(type) {
+		case *ast.FunctionDeclaration:
+			rewriteQualifierInBlock(stmt.Body, from, to)
+		case *ast.ImplStatement:
+			for _, member := range stmt.Members {
+				if fn, ok := member.(*ast.FunctionDeclaration); ok {
+					rewriteQualifierInBlock(fn.Body, from, to)
+				}
+			}
+		default:
+			rewriteQualifierInStatement(stmt, from, to)
+		}
+	}
+}
+
+func rewriteQualifierInBlock(block *ast.BlockStatement, from string, to string) {
+	if block == nil {
+		return
+	}
+	for _, stmt := range block.Statements {
+		rewriteQualifierInStatement(stmt, from, to)
+	}
+}
+
+func rewriteQualifierInStatement(stmt ast.Statement, from string, to string) {
+	switch stmt := stmt.(type) {
+	case *ast.LetStatement:
+		rewriteQualifierInExpression(stmt.Value, from, to)
+	case *ast.LetGroupStatement:
+		for _, let := range stmt.Lets {
+			rewriteQualifierInStatement(let, from, to)
+		}
+	case *ast.AssignmentStatement:
+		rewriteQualifierInExpression(stmt.Target, from, to)
+		rewriteQualifierInExpression(stmt.Value, from, to)
+	case *ast.ExpressionStatement:
+		rewriteQualifierInExpression(stmt.Expression, from, to)
+	case *ast.ReturnStatement:
+		rewriteQualifierInExpression(stmt.Value, from, to)
+	case *ast.IfStatement:
+		rewriteQualifierInExpression(stmt.Condition, from, to)
+		rewriteQualifierInBlock(stmt.Consequence, from, to)
+		rewriteQualifierInBlock(stmt.Alternative, from, to)
+	case *ast.ForStatement:
+		rewriteQualifierInExpression(stmt.Iterable, from, to)
+		rewriteQualifierInExpression(stmt.Step, from, to)
+		rewriteQualifierInBlock(stmt.Body, from, to)
+	case *ast.WhileStatement:
+		rewriteQualifierInExpression(stmt.Condition, from, to)
+		rewriteQualifierInBlock(stmt.Body, from, to)
+	case *ast.UnsafeStatement:
+		rewriteQualifierInBlock(stmt.Body, from, to)
+	}
+}
+
+func rewriteQualifierInExpression(expr ast.Expression, from string, to string) {
+	switch expr := expr.(type) {
+	case *ast.Identifier:
+		if expr.Value == from {
+			expr.Value = to
+			expr.Token.Lexeme = to
+		}
+	case *ast.CallExpression:
+		if expr.Function != nil {
+			expr.Function.Value = rewriteQualifiedName(expr.Function.Value, from, to)
+			expr.Function.Token.Lexeme = expr.Function.Value
+		}
+		rewriteQualifierInExpression(expr.Callee, from, to)
+		for _, arg := range expr.Arguments {
+			rewriteQualifierInExpression(arg, from, to)
+		}
+	case *ast.MemberExpression:
+		rewriteQualifierInExpression(expr.Object, from, to)
+	case *ast.IndexExpression:
+		rewriteQualifierInExpression(expr.Left, from, to)
+		rewriteQualifierInExpression(expr.Index, from, to)
+	case *ast.PrefixExpression:
+		rewriteQualifierInExpression(expr.Right, from, to)
+	case *ast.InfixExpression:
+		rewriteQualifierInExpression(expr.Left, from, to)
+		rewriteQualifierInExpression(expr.Right, from, to)
+	case *ast.ConversionExpression:
+		if expr.Type != nil {
+			expr.Type.Name = rewriteQualifiedName(expr.Type.Name, from, to)
+		}
+		rewriteQualifierInExpression(expr.Value, from, to)
+	case *ast.RangeExpression:
+		rewriteQualifierInExpression(expr.Start, from, to)
+		rewriteQualifierInExpression(expr.End, from, to)
+	case *ast.RefExpression:
+		rewriteQualifierInExpression(expr.Value, from, to)
+	}
+}
+
+func rewriteQualifiedName(name string, from string, to string) string {
+	if name == from {
+		return to
+	}
+	if strings.HasPrefix(name, from+".") {
+		return to + strings.TrimPrefix(name, from)
+	}
+	return name
 }
 
 func qualifyLocalCalls(block *ast.BlockStatement, module string, localFunctions map[string]bool) {
@@ -1649,7 +1849,9 @@ func printASTEnum(stmt *ast.EnumDeclaration, prefix string, last bool) {
 	printASTBranch(prefix, last, "Enum")
 
 	children := []string{"Name: " + stmt.Name.Value}
-	if stmt.UnderlyingType != nil {
+	if stmt.BitUnderlying {
+		children = append(children, fmt.Sprintf("Underlying: bit[%d]", stmt.UnderlyingBitWidth))
+	} else if stmt.UnderlyingType != nil {
 		children = append(children, "Underlying: "+formatTypeRef(stmt.UnderlyingType))
 	}
 	if len(stmt.Values) > 0 {
@@ -1751,9 +1953,13 @@ func printASTField(prefix string, field *ast.StructField, last bool) {
 
 func printASTRegisterField(prefix string, field *ast.RegisterField, last bool) {
 	printASTBranch(prefix, last, "Field")
+	fieldType := fmt.Sprintf("bit[%d]", field.Width)
+	if field.Type != nil {
+		fieldType = formatTypeRef(field.Type)
+	}
 	children := []string{
 		"Name: " + field.Name.Value,
-		fmt.Sprintf("Type: bit[%d]", field.Width),
+		"Type: " + fieldType,
 	}
 	if field.Unit != "" {
 		children = append(children, "Unit: "+field.Unit)
@@ -2113,7 +2319,9 @@ func printTypeDecl(stmt *ast.TypeDeclStatement) {
 
 func printEnum(stmt *ast.EnumDeclaration) {
 	fmt.Printf("Enum %s", stmt.Name.Value)
-	if stmt.UnderlyingType != nil {
+	if stmt.BitUnderlying {
+		fmt.Printf(": bit[%d]", stmt.UnderlyingBitWidth)
+	} else if stmt.UnderlyingType != nil {
 		fmt.Printf(" %s", formatTypeRef(stmt.UnderlyingType))
 	}
 	fmt.Println()
@@ -2220,7 +2428,9 @@ func printImpl(stmt *ast.ImplStatement) {
 			fmt.Println()
 		case *ast.EnumDeclaration:
 			fmt.Printf("  Enum %s", member.Name.Value)
-			if member.UnderlyingType != nil {
+			if member.BitUnderlying {
+				fmt.Printf(": bit[%d]", member.UnderlyingBitWidth)
+			} else if member.UnderlyingType != nil {
 				fmt.Printf(" %s", formatTypeRef(member.UnderlyingType))
 			}
 			fmt.Println()
@@ -2307,6 +2517,10 @@ func printStructFields(fields []*ast.StructField) {
 
 func printRegisterFields(fields []*ast.RegisterField) {
 	for _, field := range fields {
+		if field.Type != nil {
+			fmt.Printf("  Field %s %s\n", field.Name.Value, formatTypeRef(field.Type))
+			continue
+		}
 		fmt.Printf("  Field %s bit", field.Name.Value)
 		if field.Width != 1 {
 			fmt.Printf("[%d]", field.Width)

@@ -21,8 +21,10 @@ type Generator struct {
 	targetTriple   string
 	blockOpen      bool
 	locals         map[string]local
-	functions      map[string]*ast.FunctionDeclaration
+	functions      map[string][]*ast.FunctionDeclaration
+	functionNames  map[*ast.FunctionDeclaration]string
 	structs        map[string]*mlirStruct
+	enums          map[string]*mlirEnum
 	loops          []loopContext
 	stringID       int
 }
@@ -32,6 +34,7 @@ type value struct {
 	ref        string
 	len        string
 	structName string
+	enumName   string
 	unsigned   bool
 }
 
@@ -42,8 +45,16 @@ type local struct {
 	ref        string
 	len        string
 	structName string
+	enumName   string
 	unsigned   bool
 	direct     bool
+}
+
+type mlirEnum struct {
+	name     string
+	typ      string
+	unsigned bool
+	values   map[string]string
 }
 
 type mlirStruct struct {
@@ -58,6 +69,7 @@ type mlirStructField struct {
 	name       string
 	typ        string
 	structName string
+	enumName   string
 	unsigned   bool
 }
 
@@ -80,13 +92,15 @@ func (g *Generator) Generate(program *ast.Program) (string, error) {
 	if err := validateEntrypoint(program); err != nil {
 		return "", err
 	}
-	g.functions = map[string]*ast.FunctionDeclaration{}
+	g.functions = map[string][]*ast.FunctionDeclaration{}
+	g.functionNames = map[*ast.FunctionDeclaration]string{}
 	g.structs = map[string]*mlirStruct{}
+	g.enums = map[string]*mlirEnum{}
 	for _, stmt := range program.Statements {
 		switch stmt := stmt.(type) {
 		case *ast.FunctionDeclaration:
 			if stmt.Name != nil {
-				g.functions[stmt.Name.Value] = stmt
+				g.functions[stmt.Name.Value] = append(g.functions[stmt.Name.Value], stmt)
 			}
 		case *ast.TypeDeclStatement:
 			if stmt.Name != nil && stmt.StructType != nil {
@@ -98,6 +112,38 @@ func (g *Generator) Generate(program *ast.Program) (string, error) {
 					declaration: stmt.StructType,
 				}
 			}
+		case *ast.EnumDeclaration:
+			if err := g.registerEnum(stmt, ""); err != nil {
+				return "", err
+			}
+		case *ast.ImplStatement:
+			owner := ""
+			if stmt.Target != nil {
+				owner = stmt.Target.Name
+			}
+			for _, member := range stmt.Members {
+				enumDecl, ok := member.(*ast.EnumDeclaration)
+				if !ok {
+					continue
+				}
+				if err := g.registerEnum(enumDecl, owner); err != nil {
+					return "", err
+				}
+			}
+		}
+	}
+	for name, overloads := range g.functions {
+		arities := map[int]bool{}
+		for _, fn := range overloads {
+			symbol := name
+			if len(overloads) > 1 {
+				if arities[len(fn.Parameters)] {
+					return "", fmt.Errorf("emit-mlir does not yet support overloads of %s with the same arity", name)
+				}
+				arities[len(fn.Parameters)] = true
+				symbol = fmt.Sprintf("%s__sec_arity_%d", name, len(fn.Parameters))
+			}
+			g.functionNames[fn] = symbol
 		}
 	}
 	for name := range g.structs {
@@ -140,7 +186,7 @@ func (g *Generator) emitFunction(fn *ast.FunctionDeclaration) error {
 	previousReturnType := g.returnType
 	previousReturnUnsigned := g.returnUnsigned
 	g.returnType = returnType
-	g.returnUnsigned = isUnsignedTypeReference(fn.ReturnType)
+	g.returnUnsigned = g.typeUnsigned(fn.ReturnType)
 	defer func() {
 		g.returnType = previousReturnType
 		g.returnUnsigned = previousReturnUnsigned
@@ -148,14 +194,14 @@ func (g *Generator) emitFunction(fn *ast.FunctionDeclaration) error {
 	previousLocals := g.locals
 	g.locals = map[string]local{}
 
-	fmt.Fprintf(&signature, "  llvm.func @%s(", fn.Name.Value)
+	fmt.Fprintf(&signature, "  llvm.func @%s(", g.functionName(fn))
 	writtenParams := 0
 	for _, param := range fn.Parameters {
 		if writtenParams > 0 {
 			fmt.Fprintf(&signature, ", ")
 		}
-		paramType := g.mlirType(param.Type)
-		paramUnsigned := isUnsignedTypeReference(param.Type)
+		paramType := g.mlirParameterType(param)
+		paramUnsigned := g.typeUnsigned(param.Type)
 		if paramType == "string" {
 			fmt.Fprintf(&signature, "%%%s.ptr: !llvm.ptr, %%%s.len: i64", param.Name.Value, param.Name.Value)
 			if param.Name != nil {
@@ -170,6 +216,7 @@ func (g *Generator) emitFunction(fn *ast.FunctionDeclaration) error {
 				typ:        paramType,
 				ref:        "%" + param.Name.Value,
 				structName: g.structName(param.Type),
+				enumName:   g.enumName(param.Type),
 				unsigned:   paramUnsigned,
 				direct:     true,
 			}
@@ -236,6 +283,10 @@ func (g *Generator) emitStatement(stmt ast.Statement) error {
 		return g.emitWhile(stmt)
 	case *ast.SwitchStatement:
 		return g.emitSwitch(stmt)
+	case *ast.UnsafeStatement:
+		return g.emitUnsafe(stmt)
+	case *ast.AsmStatement:
+		return g.emitAsmStatement(stmt)
 	case *ast.BreakStatement:
 		return g.emitBreak()
 	case *ast.ContinueStatement:
@@ -251,6 +302,98 @@ func (g *Generator) emitStatement(stmt ast.Statement) error {
 	}
 }
 
+func (g *Generator) emitUnsafe(stmt *ast.UnsafeStatement) error {
+	if stmt == nil || stmt.Body == nil {
+		return nil
+	}
+	for _, child := range stmt.Body.Statements {
+		if !g.blockOpen {
+			return nil
+		}
+		if err := g.emitStatement(child); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (g *Generator) emitAsmStatement(stmt *ast.AsmStatement) error {
+	if stmt == nil {
+		return fmt.Errorf("emit-mlir asm statement is missing")
+	}
+	if stmt.Block == nil {
+		if stmt.Template == nil {
+			return fmt.Errorf("asm statement requires string template")
+		}
+		g.write("    llvm.inline_asm has_side_effects %q, %q : () -> ()\n", stmt.Template.Value, "")
+		return nil
+	}
+	if stmt.Block.Template == nil {
+		return fmt.Errorf("asm block requires string template")
+	}
+	if len(stmt.Block.Outputs) != 1 {
+		return fmt.Errorf("emit-mlir currently supports exactly one asm output")
+	}
+
+	constraints := "={" + stmt.Block.Outputs[0].Register + "}"
+	args := make([]value, 0, len(stmt.Block.Inputs))
+	for _, input := range stmt.Block.Inputs {
+		constraints += ",{" + input.Register + "}"
+		arg, err := g.emitExpression(input.Value)
+		if err != nil {
+			return err
+		}
+		arg, err = g.coerceValue(arg, "i64", arg.unsigned)
+		if err != nil {
+			return fmt.Errorf("emit-mlir asm input %s cannot be passed in a machine register", input.Register)
+		}
+		args = append(args, arg)
+	}
+	clobbers := stmt.Block.Clobbers
+	if len(clobbers) == 0 {
+		clobbers = []string{"rcx", "r11"}
+	}
+	for _, clobber := range clobbers {
+		constraints += ",~{" + clobber + "}"
+	}
+
+	result := g.nextTemp()
+	g.write("    %s = llvm.inline_asm has_side_effects %q, %q", result, stmt.Block.Template.Value, constraints)
+	for i, arg := range args {
+		if i == 0 {
+			g.write(" %s", arg.ref)
+		} else {
+			g.write(", %s", arg.ref)
+		}
+	}
+	g.write(" : (")
+	for i, arg := range args {
+		if i > 0 {
+			g.write(", ")
+		}
+		g.write("%s", arg.typ)
+	}
+	g.write(") -> i64\n")
+
+	output := value{typ: "i64", ref: result}
+	var err error
+	if g.returnType != "" && g.returnType != "void" {
+		output, err = g.coerceValue(output, g.returnType, g.returnUnsigned)
+		if err != nil {
+			return err
+		}
+	}
+	if name := stmt.Block.Outputs[0].Name; name != "" {
+		g.locals[name] = local{
+			typ:      output.typ,
+			ref:      output.ref,
+			unsigned: output.unsigned,
+			direct:   true,
+		}
+	}
+	return nil
+}
+
 func (g *Generator) emitLet(stmt *ast.LetStatement) error {
 	if stmt.Name == nil {
 		return fmt.Errorf("emit-mlir let missing name")
@@ -261,11 +404,13 @@ func (g *Generator) emitLet(stmt *ast.LetStatement) error {
 
 	targetType := ""
 	targetStructName := ""
+	targetEnumName := ""
 	targetUnsigned := false
 	if stmt.Type != nil {
 		targetType = g.mlirType(stmt.Type)
 		targetStructName = g.structName(stmt.Type)
-		targetUnsigned = isUnsignedTypeReference(stmt.Type)
+		targetEnumName = g.enumName(stmt.Type)
+		targetUnsigned = g.typeUnsigned(stmt.Type)
 	}
 	var initial *value
 	if stmt.Value != nil {
@@ -276,6 +421,7 @@ func (g *Generator) emitLet(stmt *ast.LetStatement) error {
 		if targetType == "" {
 			targetType = val.typ
 			targetStructName = val.structName
+			targetEnumName = val.enumName
 			targetUnsigned = val.unsigned
 		}
 		coerced, err := g.coerceValue(val, targetType, targetUnsigned)
@@ -303,6 +449,7 @@ func (g *Generator) emitLet(stmt *ast.LetStatement) error {
 		typ:        targetType,
 		ptr:        ptr,
 		structName: targetStructName,
+		enumName:   targetEnumName,
 		unsigned:   targetUnsigned,
 	}
 	if initial != nil {
@@ -569,6 +716,9 @@ func (g *Generator) popLoop() {
 }
 
 func (g *Generator) emitAssignment(stmt *ast.AssignmentStatement) error {
+	if member, ok := stmt.Target.(*ast.MemberExpression); ok {
+		return g.emitMemberAssignment(stmt, member)
+	}
 	ident, ok := stmt.Target.(*ast.Identifier)
 	if !ok {
 		return fmt.Errorf("emit-mlir only supports identifier assignment targets for now")
@@ -611,9 +761,131 @@ func (g *Generator) emitAssignment(stmt *ast.AssignmentStatement) error {
 	return nil
 }
 
+type mlirMemberAssignmentStep struct {
+	info  *mlirStruct
+	index int
+	field mlirStructField
+}
+
+func (g *Generator) emitMemberAssignment(stmt *ast.AssignmentStatement, member *ast.MemberExpression) error {
+	rootName, fields, ok := mlirMemberPath(member)
+	if !ok || len(fields) == 0 {
+		return fmt.Errorf("emit-mlir requires a local struct field assignment target")
+	}
+	slot, ok := g.locals[rootName]
+	if !ok {
+		return fmt.Errorf("emit-mlir unknown local %s", rootName)
+	}
+	if slot.direct {
+		return fmt.Errorf("emit-mlir cannot assign to field through parameter %s", rootName)
+	}
+	if slot.ptr == "" || slot.structName == "" {
+		return fmt.Errorf("emit-mlir field assignment root %s is not a stored struct", rootName)
+	}
+
+	structName := slot.structName
+	steps := make([]mlirMemberAssignmentStep, 0, len(fields))
+	for fieldIndex, fieldName := range fields {
+		info, exists := g.structs[structName]
+		if !exists {
+			return fmt.Errorf("emit-mlir unknown struct type %s", structName)
+		}
+		index, field, exists := info.field(fieldName)
+		if !exists {
+			return fmt.Errorf("emit-mlir unknown field %s.%s", structName, fieldName)
+		}
+		steps = append(steps, mlirMemberAssignmentStep{info: info, index: index, field: field})
+		if fieldIndex+1 < len(fields) {
+			if field.structName == "" {
+				return fmt.Errorf("emit-mlir cannot select field %s through non-struct field %s.%s", fields[fieldIndex+1], structName, fieldName)
+			}
+			structName = field.structName
+		}
+	}
+
+	root, err := g.loadLocal(slot)
+	if err != nil {
+		return err
+	}
+	parents := []value{root}
+	current := root
+	for _, step := range steps[:len(steps)-1] {
+		childRef := g.nextTemp()
+		g.write("    %s = llvm.extractvalue %s[%d] : %s\n", childRef, current.ref, step.index, step.info.typ)
+		current = value{
+			typ:        step.field.typ,
+			ref:        childRef,
+			structName: step.field.structName,
+			enumName:   step.field.enumName,
+			unsigned:   step.field.unsigned,
+		}
+		parents = append(parents, current)
+	}
+
+	leaf := steps[len(steps)-1]
+	assigned, err := g.emitExpressionForTargetUnsigned(stmt.Value, leaf.field.typ, leaf.field.unsigned)
+	if err != nil {
+		return err
+	}
+	assigned, err = g.coerceValue(assigned, leaf.field.typ, leaf.field.unsigned)
+	if err != nil {
+		return fmt.Errorf("emit-mlir cannot assign %s to field %s.%s", assigned.typ, leaf.info.name, leaf.field.name)
+	}
+	if stmt.Operator != "=" {
+		currentRef := g.nextTemp()
+		g.write("    %s = llvm.extractvalue %s[%d] : %s\n", currentRef, current.ref, leaf.index, leaf.info.typ)
+		currentValue := value{
+			typ:        leaf.field.typ,
+			ref:        currentRef,
+			structName: leaf.field.structName,
+			enumName:   leaf.field.enumName,
+			unsigned:   leaf.field.unsigned,
+		}
+		assigned, err = g.emitAssignmentOperation(stmt.Operator, currentValue, assigned)
+		if err != nil {
+			return err
+		}
+	}
+
+	updatedRef := g.nextTemp()
+	g.write("    %s = llvm.insertvalue %s, %s[%d] : %s\n", updatedRef, assigned.ref, current.ref, leaf.index, leaf.info.typ)
+	updated := value{typ: leaf.info.typ, ref: updatedRef, structName: leaf.info.name}
+	for index := len(steps) - 2; index >= 0; index-- {
+		step := steps[index]
+		parent := parents[index]
+		nextRef := g.nextTemp()
+		g.write("    %s = llvm.insertvalue %s, %s[%d] : %s\n", nextRef, updated.ref, parent.ref, step.index, step.info.typ)
+		updated = value{typ: step.info.typ, ref: nextRef, structName: step.info.name}
+	}
+	g.write("    llvm.store %s, %s : %s, !llvm.ptr\n", updated.ref, slot.ptr, slot.typ)
+	return nil
+}
+
+func mlirMemberPath(member *ast.MemberExpression) (string, []string, bool) {
+	if member == nil || member.Property == nil {
+		return "", nil, false
+	}
+	fields := []string{member.Property.Value}
+	object := member.Object
+	for {
+		switch expr := object.(type) {
+		case *ast.Identifier:
+			return expr.Value, fields, true
+		case *ast.MemberExpression:
+			if expr.Property == nil {
+				return "", nil, false
+			}
+			fields = append([]string{expr.Property.Value}, fields...)
+			object = expr.Object
+		default:
+			return "", nil, false
+		}
+	}
+}
+
 func (g *Generator) loadLocal(slot local) (value, error) {
 	if slot.direct {
-		return value{typ: slot.typ, ref: slot.ref, len: slot.len, structName: slot.structName, unsigned: slot.unsigned}, nil
+		return value{typ: slot.typ, ref: slot.ref, len: slot.len, structName: slot.structName, enumName: slot.enumName, unsigned: slot.unsigned}, nil
 	}
 	if slot.typ == "string" {
 		if slot.ptr == "" || slot.lenPtr == "" {
@@ -630,7 +902,7 @@ func (g *Generator) loadLocal(slot local) (value, error) {
 	}
 	tmp := g.nextTemp()
 	g.write("    %s = llvm.load %s : !llvm.ptr -> %s\n", tmp, slot.ptr, slot.typ)
-	return value{typ: slot.typ, ref: tmp, structName: slot.structName, unsigned: slot.unsigned}, nil
+	return value{typ: slot.typ, ref: tmp, structName: slot.structName, enumName: slot.enumName, unsigned: slot.unsigned}, nil
 }
 
 func (g *Generator) emitAssignmentOperation(operator string, left value, right value) (value, error) {
@@ -967,6 +1239,8 @@ func (g *Generator) emitExpression(expr ast.Expression) (value, error) {
 		return g.emitInfixExpression(expr)
 	case *ast.CallExpression:
 		return g.emitCallExpression(expr)
+	case *ast.ConversionExpression:
+		return g.emitConversionExpression(expr)
 	case *ast.StructLiteral:
 		return g.emitStructLiteral(expr)
 	case *ast.MemberExpression:
@@ -1019,7 +1293,7 @@ func (g *Generator) emitIdentifier(expr *ast.Identifier) (value, error) {
 		return value{}, fmt.Errorf("emit-mlir unknown identifier %s", expr.Value)
 	}
 	if slot.direct {
-		return value{typ: slot.typ, ref: slot.ref, len: slot.len, structName: slot.structName, unsigned: slot.unsigned}, nil
+		return value{typ: slot.typ, ref: slot.ref, len: slot.len, structName: slot.structName, enumName: slot.enumName, unsigned: slot.unsigned}, nil
 	}
 	return g.loadLocal(slot)
 }
@@ -1071,9 +1345,30 @@ func (g *Generator) emitMemberExpression(expr *ast.MemberExpression) (value, err
 	if expr.Object == nil || expr.Property == nil {
 		return value{}, fmt.Errorf("emit-mlir member expression is incomplete")
 	}
+	if typeName, ok := mlirExpressionPath(expr.Object); ok {
+		if info, exists := g.enums[typeName]; exists {
+			literal, found := info.values[expr.Property.Value]
+			if !found {
+				return value{}, fmt.Errorf("emit-mlir unknown enum value %s.%s", typeName, expr.Property.Value)
+			}
+			result := g.emitIntegerConstantUnsigned(literal, info.typ, info.unsigned)
+			result.enumName = info.name
+			return result, nil
+		}
+	}
 	object, err := g.emitExpression(expr.Object)
 	if err != nil {
 		return value{}, err
+	}
+	if object.typ == "string" {
+		switch expr.Property.Value {
+		case "ptr":
+			return value{typ: "!llvm.ptr", ref: object.ref}, nil
+		case "len":
+			return value{typ: "i64", ref: object.len, unsigned: true}, nil
+		default:
+			return value{}, fmt.Errorf("emit-mlir unknown string property %s", expr.Property.Value)
+		}
 	}
 	if object.structName == "" {
 		return value{}, fmt.Errorf("emit-mlir member access currently requires a struct value")
@@ -1092,6 +1387,7 @@ func (g *Generator) emitMemberExpression(expr *ast.MemberExpression) (value, err
 		typ:        field.typ,
 		ref:        result,
 		structName: field.structName,
+		enumName:   field.enumName,
 		unsigned:   field.unsigned,
 	}, nil
 }
@@ -1312,22 +1608,25 @@ func (g *Generator) emitCallExpression(expr *ast.CallExpression) (value, error) 
 	if name == "" {
 		return value{}, fmt.Errorf("emit-mlir requires named function calls")
 	}
+	if info, ok := g.enums[name]; ok {
+		return g.emitEnumConversion(expr.Arguments, info)
+	}
 	if isMLIRBuiltinNumericTypeName(name) {
 		return g.emitBuiltinNumericConversion(expr, name)
 	}
-	fn, ok := g.functions[name]
-	if !ok {
-		return value{}, fmt.Errorf("emit-mlir unknown function %s", name)
+	fn, err := g.resolveFunction(name, len(expr.Arguments))
+	if err != nil {
+		return value{}, err
 	}
-	if len(fn.Parameters) != len(expr.Arguments) {
-		return value{}, fmt.Errorf("call %s expects %d arguments, got %d", name, len(fn.Parameters), len(expr.Arguments))
+	if fn == nil {
+		return value{}, fmt.Errorf("emit-mlir unknown function %s", name)
 	}
 
 	args := []value{}
 	for i, argExpr := range expr.Arguments {
 		param := fn.Parameters[i]
-		targetType := g.mlirType(param.Type)
-		targetUnsigned := isUnsignedTypeReference(param.Type)
+		targetType := g.mlirParameterType(param)
+		targetUnsigned := g.typeUnsigned(param.Type)
 		arg, err := g.emitExpressionForTargetUnsigned(argExpr, targetType, targetUnsigned)
 		if err != nil {
 			return value{}, err
@@ -1344,7 +1643,7 @@ func (g *Generator) emitCallExpression(expr *ast.CallExpression) (value, error) 
 	}
 
 	returnType := g.mlirType(fn.ReturnType)
-	returnUnsigned := isUnsignedTypeReference(fn.ReturnType)
+	returnUnsigned := g.typeUnsigned(fn.ReturnType)
 	if returnType == "string" {
 		return value{}, fmt.Errorf("emit-mlir does not support string return values yet")
 	}
@@ -1355,7 +1654,7 @@ func (g *Generator) emitCallExpression(expr *ast.CallExpression) (value, error) 
 	} else {
 		g.write("    ")
 	}
-	g.write("llvm.call @%s(", name)
+	g.write("llvm.call @%s(", g.functionName(fn))
 	for i, arg := range args {
 		if i > 0 {
 			g.write(", ")
@@ -1378,8 +1677,52 @@ func (g *Generator) emitCallExpression(expr *ast.CallExpression) (value, error) 
 		typ:        returnType,
 		ref:        result,
 		structName: g.structName(fn.ReturnType),
+		enumName:   g.enumName(fn.ReturnType),
 		unsigned:   returnUnsigned,
 	}, nil
+}
+
+func (g *Generator) emitConversionExpression(expr *ast.ConversionExpression) (value, error) {
+	if expr == nil || expr.Type == nil || expr.Value == nil {
+		return value{}, fmt.Errorf("emit-mlir conversion expression is incomplete")
+	}
+	if info, ok := g.enums[expr.Type.Name]; ok {
+		return g.emitEnumConversion([]ast.Expression{expr.Value}, info)
+	}
+	targetType := mlirBuiltinNumericType(expr.Type.Name)
+	if targetType == "" {
+		return value{}, fmt.Errorf("emit-mlir does not support conversion to %s yet", expr.Type.Name)
+	}
+	source, err := g.emitExpression(expr.Value)
+	if err != nil {
+		return value{}, err
+	}
+	result, err := g.coerceValue(source, targetType, isUnsignedBuiltinName(expr.Type.Name))
+	if err != nil {
+		return value{}, err
+	}
+	result.enumName = ""
+	return result, nil
+}
+
+func (g *Generator) emitEnumConversion(arguments []ast.Expression, info *mlirEnum) (value, error) {
+	if len(arguments) != 1 {
+		return value{}, fmt.Errorf("conversion to %s expects 1 argument", info.name)
+	}
+	source, err := g.emitExpression(arguments[0])
+	if err != nil {
+		return value{}, err
+	}
+	if !isMLIRIntegerValue(source) {
+		return value{}, fmt.Errorf("emit-mlir cannot convert %s to enum %s", source.typ, info.name)
+	}
+	result, err := g.coerceIntegerStorageValue(source, info.typ, info.unsigned)
+	if err != nil {
+		return value{}, err
+	}
+	result.enumName = info.name
+	result.unsigned = info.unsigned
+	return result, nil
 }
 
 func (g *Generator) emitIntegerBinary(op string, left value, right value) (value, error) {
@@ -1544,8 +1887,17 @@ func (g *Generator) emitBuiltinNumericConversion(expr *ast.CallExpression, name 
 		return g.convertToDecimal(source, targetType)
 	case isMLIRIntegerType(targetType) && isMLIRDecimalType(source.typ):
 		return g.convertDecimalToInteger(source, targetType, targetUnsigned)
+	case source.typ == "!llvm.ptr" && isMLIRIntegerType(targetType):
+		result := g.nextTemp()
+		g.write("    %s = llvm.ptrtoint %s : !llvm.ptr to %s\n", result, source.ref, targetType)
+		return value{typ: targetType, ref: result, unsigned: targetUnsigned}, nil
 	default:
-		return g.coerceValue(source, targetType, targetUnsigned)
+		result, err := g.coerceValue(source, targetType, targetUnsigned)
+		if err != nil {
+			return value{}, err
+		}
+		result.enumName = ""
+		return result, nil
 	}
 }
 
@@ -1678,7 +2030,7 @@ func (g *Generator) emitIntegerCompare(operator string, left value, right value)
 	if isMLIRFloatType(left.typ) {
 		return g.emitFloatCompare(operator, left, right)
 	}
-	if !isMLIRIntegerType(left.typ) || left.typ != right.typ {
+	if !isMLIRIntegerValue(left) || left.typ != right.typ {
 		return value{}, fmt.Errorf("emit-mlir comparison currently expects matching integer operands")
 	}
 	predicate := integerComparePredicate(operator, left.unsigned)
@@ -1700,7 +2052,7 @@ func (g *Generator) emitOrderedPredicate(operator string, left value, right valu
 }
 
 func (g *Generator) emitIntegerPredicate(predicate string, left value, right value) (value, error) {
-	if !isMLIRIntegerType(left.typ) || left.typ != right.typ {
+	if !isMLIRIntegerValue(left) || left.typ != right.typ {
 		return value{}, fmt.Errorf("emit-mlir comparison currently expects matching integer operands")
 	}
 	tmp := g.nextTemp()
@@ -1773,6 +2125,117 @@ func (g *Generator) emitNumericOne(typ string, negative bool) (value, error) {
 	return value{}, fmt.Errorf("emit-mlir cannot create numeric step for %s", typ)
 }
 
+func (g *Generator) registerEnum(declaration *ast.EnumDeclaration, owner string) error {
+	if declaration == nil || declaration.Name == nil {
+		return fmt.Errorf("emit-mlir enum declaration is incomplete")
+	}
+	name := declaration.Name.Value
+	if owner != "" {
+		name = owner + "." + name
+	}
+
+	typ := "i32"
+	unsigned := false
+	if declaration.BitUnderlying {
+		if declaration.UnderlyingBitWidth <= 0 || declaration.UnderlyingBitWidth > 256 {
+			return fmt.Errorf("emit-mlir enum %s has unsupported bit width %d", name, declaration.UnderlyingBitWidth)
+		}
+		typ = fmt.Sprintf("i%d", declaration.UnderlyingBitWidth)
+		unsigned = true
+	} else if declaration.UnderlyingType != nil {
+		typ = g.mlirType(declaration.UnderlyingType)
+		unsigned = isUnsignedTypeReference(declaration.UnderlyingType)
+	}
+	if !isMLIRIntegerStorageType(typ) {
+		return fmt.Errorf("emit-mlir enum %s requires a supported integer underlying type", name)
+	}
+
+	info := &mlirEnum{
+		name:     name,
+		typ:      typ,
+		unsigned: unsigned,
+		values:   map[string]string{},
+	}
+	previous := big.NewInt(-1)
+	for index, variant := range declaration.Values {
+		if variant == nil || variant.Name == nil {
+			return fmt.Errorf("emit-mlir enum %s contains an incomplete value", name)
+		}
+		next := new(big.Int).Add(previous, big.NewInt(1))
+		if variant.Initializer != nil {
+			var ok bool
+			next, ok = enumIntegerConstant(variant.Initializer, big.NewInt(int64(index)))
+			if !ok {
+				return fmt.Errorf("emit-mlir enum value %s.%s is not an integer constant", name, variant.Name.Value)
+			}
+		}
+		info.values[variant.Name.Value] = next.String()
+		previous = new(big.Int).Set(next)
+	}
+	g.enums[name] = info
+	return nil
+}
+
+func enumIntegerConstant(expr ast.Expression, iotaValue *big.Int) (*big.Int, bool) {
+	switch expr := expr.(type) {
+	case *ast.IntegerLiteral:
+		return ast.ParseIntegerLiteralLexeme(expr.Token.Lexeme)
+	case *ast.Identifier:
+		if expr.Value == "iota" {
+			return new(big.Int).Set(iotaValue), true
+		}
+		return nil, false
+	case *ast.ConversionExpression:
+		return enumIntegerConstant(expr.Value, iotaValue)
+	case *ast.CallExpression:
+		if len(expr.Arguments) != 1 {
+			return nil, false
+		}
+		return enumIntegerConstant(expr.Arguments[0], iotaValue)
+	case *ast.PrefixExpression:
+		if expr.Operator != "-" {
+			return nil, false
+		}
+		value, ok := enumIntegerConstant(expr.Right, iotaValue)
+		if !ok {
+			return nil, false
+		}
+		return new(big.Int).Neg(value), true
+	case *ast.InfixExpression:
+		left, ok := enumIntegerConstant(expr.Left, iotaValue)
+		if !ok {
+			return nil, false
+		}
+		right, ok := enumIntegerConstant(expr.Right, iotaValue)
+		if !ok {
+			return nil, false
+		}
+		result := new(big.Int)
+		switch expr.Operator {
+		case "+":
+			return result.Add(left, right), true
+		case "-":
+			return result.Sub(left, right), true
+		case "*":
+			return result.Mul(left, right), true
+		case "<<":
+			if !right.IsUint64() {
+				return nil, false
+			}
+			return result.Lsh(left, uint(right.Uint64())), true
+		case ">>":
+			if !right.IsUint64() {
+				return nil, false
+			}
+			return result.Rsh(left, uint(right.Uint64())), true
+		default:
+			return nil, false
+		}
+	default:
+		return nil, false
+	}
+}
+
 func (g *Generator) resolveStruct(name string) (*mlirStruct, error) {
 	info, ok := g.structs[name]
 	if !ok {
@@ -1823,7 +2286,8 @@ func (g *Generator) resolveStruct(name string) (*mlirStruct, error) {
 			name:       declarationField.Name.Value,
 			typ:        fieldType,
 			structName: fieldStructName,
-			unsigned:   isUnsignedTypeReference(ref),
+			enumName:   g.enumName(ref),
+			unsigned:   g.typeUnsigned(ref),
 		})
 	}
 	info.fields = fields
@@ -1848,6 +2312,26 @@ func (g *Generator) structName(ref *ast.TypeReference) string {
 		return ref.Name
 	}
 	return ""
+}
+
+func (g *Generator) enumName(ref *ast.TypeReference) string {
+	if ref == nil {
+		return ""
+	}
+	if _, ok := g.enums[ref.Name]; ok {
+		return ref.Name
+	}
+	return ""
+}
+
+func (g *Generator) typeUnsigned(ref *ast.TypeReference) bool {
+	if ref == nil {
+		return false
+	}
+	if info, ok := g.enums[ref.Name]; ok {
+		return info.unsigned
+	}
+	return isUnsignedTypeReference(ref)
 }
 
 func (g *Generator) mlirType(ref *ast.TypeReference) string {
@@ -1886,11 +2370,59 @@ func (g *Generator) mlirType(ref *ast.TypeReference) string {
 	case "decimal128":
 		return mlirDecimal128Type
 	default:
+		if info, ok := g.enums[ref.Name]; ok {
+			return info.typ
+		}
 		if info, ok := g.structs[ref.Name]; ok {
 			return info.typ
 		}
 		return "void"
 	}
+}
+
+func (g *Generator) mlirParameterType(param *ast.Parameter) string {
+	if param != nil && param.Ref {
+		return "!llvm.ptr"
+	}
+	if param == nil {
+		return "void"
+	}
+	return g.mlirType(param.Type)
+}
+
+func (g *Generator) functionName(fn *ast.FunctionDeclaration) string {
+	if symbol, ok := g.functionNames[fn]; ok {
+		return symbol
+	}
+	if fn != nil && fn.Name != nil {
+		return fn.Name.Value
+	}
+	return ""
+}
+
+func (g *Generator) resolveFunction(name string, arity int) (*ast.FunctionDeclaration, error) {
+	overloads := g.functions[name]
+	var match *ast.FunctionDeclaration
+	for _, fn := range overloads {
+		if len(fn.Parameters) != arity {
+			continue
+		}
+		if match != nil {
+			return nil, fmt.Errorf("emit-mlir call %s is ambiguous for %d arguments", name, arity)
+		}
+		match = fn
+	}
+	if match != nil {
+		return match, nil
+	}
+	if len(overloads) == 0 {
+		return nil, nil
+	}
+	expected := make([]string, 0, len(overloads))
+	for _, fn := range overloads {
+		expected = append(expected, strconv.Itoa(len(fn.Parameters)))
+	}
+	return nil, fmt.Errorf("call %s expects one of [%s] arguments, got %d", name, strings.Join(expected, ", "), arity)
 }
 
 func (g *Generator) emitStringLiteral(expr *ast.StringLiteral) (value, error) {
@@ -1917,23 +2449,13 @@ func (g *Generator) coerceValue(val value, targetType string, targetUnsigned boo
 		}
 		return value{}, fmt.Errorf("cannot convert %s to %s", val.typ, targetType)
 	}
-	if isMLIRIntegerType(val.typ) && isMLIRIntegerType(targetType) {
-		if integerBitWidth(targetType) == integerBitWidth(val.typ) {
-			val.typ = targetType
-			val.unsigned = targetUnsigned
-			return val, nil
-		}
-		tmp := g.nextTemp()
-		op := "sext"
-		if integerBitWidth(targetType) < integerBitWidth(val.typ) {
-			op = "trunc"
-		} else if val.unsigned {
-			op = "zext"
-		}
-		g.write("    %s = llvm.%s %s : %s to %s\n", tmp, op, val.ref, val.typ, targetType)
-		return value{typ: targetType, ref: tmp, unsigned: targetUnsigned}, nil
+	if isMLIRIntegerValue(val) && isMLIRIntegerType(targetType) {
+		return g.coerceIntegerStorageValue(val, targetType, targetUnsigned)
 	}
-	if isMLIRIntegerType(val.typ) && isMLIRFloatType(targetType) {
+	if isMLIRIntegerType(val.typ) && targetType == "i1" {
+		return g.coerceIntegerStorageValue(val, targetType, targetUnsigned)
+	}
+	if isMLIRIntegerValue(val) && isMLIRFloatType(targetType) {
 		tmp := g.nextTemp()
 		op := "sitofp"
 		if val.unsigned {
@@ -1943,6 +2465,30 @@ func (g *Generator) coerceValue(val value, targetType string, targetUnsigned boo
 		return value{typ: targetType, ref: tmp}, nil
 	}
 	return value{}, fmt.Errorf("cannot convert %s to %s", val.typ, targetType)
+}
+
+func (g *Generator) coerceIntegerStorageValue(val value, targetType string, targetUnsigned bool) (value, error) {
+	if !isMLIRIntegerStorageType(val.typ) || !isMLIRIntegerStorageType(targetType) {
+		return value{}, fmt.Errorf("cannot convert %s to %s", val.typ, targetType)
+	}
+	if val.typ == targetType {
+		val.unsigned = targetUnsigned
+		return val, nil
+	}
+	if integerBitWidth(targetType) == integerBitWidth(val.typ) {
+		val.typ = targetType
+		val.unsigned = targetUnsigned
+		return val, nil
+	}
+	tmp := g.nextTemp()
+	op := "sext"
+	if integerBitWidth(targetType) < integerBitWidth(val.typ) {
+		op = "trunc"
+	} else if val.unsigned {
+		op = "zext"
+	}
+	g.write("    %s = llvm.%s %s : %s to %s\n", tmp, op, val.ref, val.typ, targetType)
+	return value{typ: targetType, ref: tmp, unsigned: targetUnsigned}, nil
 }
 
 func (g *Generator) zeroValue(typ string) value {
@@ -1969,6 +2515,18 @@ func (g *Generator) zeroValue(typ string) value {
 
 func isMLIRIntegerType(typ string) bool {
 	return strings.HasPrefix(typ, "i") && typ != "i1"
+}
+
+func isMLIRIntegerStorageType(typ string) bool {
+	if !strings.HasPrefix(typ, "i") {
+		return false
+	}
+	width, err := strconv.Atoi(strings.TrimPrefix(typ, "i"))
+	return err == nil && width > 0
+}
+
+func isMLIRIntegerValue(val value) bool {
+	return isMLIRIntegerType(val.typ) || (val.typ == "i1" && val.enumName != "")
 }
 
 func isMLIRFloatType(typ string) bool {
@@ -2118,13 +2676,30 @@ func callExpressionName(expr *ast.CallExpression) string {
 	if expr == nil {
 		return ""
 	}
+	if expr.Callee != nil {
+		if name, ok := mlirExpressionPath(expr.Callee); ok {
+			return name
+		}
+	}
 	if expr.Function != nil {
 		return expr.Function.Value
 	}
-	if ident, ok := expr.Callee.(*ast.Identifier); ok {
-		return ident.Value
-	}
 	return ""
+}
+
+func mlirExpressionPath(expr ast.Expression) (string, bool) {
+	switch expr := expr.(type) {
+	case *ast.Identifier:
+		return expr.Value, true
+	case *ast.MemberExpression:
+		left, ok := mlirExpressionPath(expr.Object)
+		if !ok || expr.Property == nil {
+			return "", false
+		}
+		return left + "." + expr.Property.Value, true
+	default:
+		return "", false
+	}
 }
 
 func (g *Generator) write(format string, args ...any) {

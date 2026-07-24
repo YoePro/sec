@@ -136,6 +136,62 @@ Value: bit[-1]      // invalid
 The width must be known at compile time.
 
 =====================================================================
+Enum-Backed Bit Fields
+======================
+
+A named register field may use a bit-backed enum instead of raw `bit[N]`.
+
+Example:
+
+```
+enum ClockSource: bit[2] {
+    Internal = 0b00,
+    External = 0b01,
+    Bypass = 0b10,
+}
+
+type ClockConfig register[32] {
+    Source: ClockSource
+    Enabled: bit
+    _: bit[29]
+}
+```
+
+`Source` occupies exactly two bits because `ClockSource` is backed by
+`bit[2]`.
+
+Every enum variant is checked against the declared bit width. A value such as
+`0b101` is invalid for `bit[2]`.
+
+The register field retains the nominal enum type. Assignments should use enum
+values:
+
+```
+config.Source = ClockSource.External
+```
+
+A raw integer is not implicitly converted to the enum. An explicit conversion
+is permitted only when the integer fits the enum width:
+
+```
+config.Source = ClockSource(1) // valid
+config.Source = ClockSource(5) // compile-time error
+```
+
+A dynamic conversion whose range cannot be proven to fit is rejected until the
+language defines checked runtime conversion behavior. The compiler must never
+silently truncate high bits.
+
+Only bit-backed enums may be used as register field types. An ordinary enum
+whose underlying type is `int` or `uint` does not define a hardware field
+width and is rejected.
+
+Reserved fields named `_` must use `bit` or `bit[N]`, not an enum type.
+
+Bit-backed enum fields participate in the same exact-width layout calculation
+as ordinary bit fields.
+
+=====================================================================
 Reserved Bits
 =============
 
@@ -842,7 +898,12 @@ type Name register[N] {
     Field: bit
     Field: bit[N]
     Field: bit[N]<unit>
+    Field: BitBackedEnum
     _: bit[N]
+}
+
+enum BitBackedEnum: bit[N] {
+    Value = integer_constant
 }
 
 @address(0x40021000)
@@ -867,6 +928,9 @@ unit annotations are checked against known units
 @address bindings are marked volatile in semantic analysis
 writing a field on read-only addressed storage is rejected
 constant assignments to register fields are checked against field width
+bit-backed enum values and explicit conversions are checked against enum width
+bit-backed enum register fields occupy their enum's exact declared width
+ordinary enums are rejected as register field types
 impl blocks are accepted for register types
 impl methods/properties do not affect register bit layout
 ```
@@ -876,6 +940,7 @@ Not implemented yet:
 ```
 MLIR lowering for volatile loads/stores
 mask/shift generation
+register field extraction/insertion for bit-backed enums
 lowering impl method field access on addressed registers to volatile operations
 read-modify-write preservation of reserved bits
 target-specific address validation

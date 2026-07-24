@@ -344,25 +344,30 @@ The formatter may normalize blank lines between top-level items:
 
 Open rule:
 
-* Decide whether imports should be sorted.
-* Go sorts imports, but Sec should wait until import groups and aliases are
-  fully specified.
+* Decide whether imports should be sorted. The formatter currently preserves
+  source order inside and outside groups.
 
 
 Imports
 =======
 
-Imports are formatted one per line.
+Single imports are formatted one per line.
 
 Canonical:
 
     import "fmt"
     import "io"
 
-Open rule:
+Grouped imports use a parenthesized block. Each entry is indented four spaces:
 
-* Decide whether grouped imports should exist.
-* Until grouped imports exist, the formatter preserves import order.
+    import (
+        "fmt"
+        sys "platform/linux/amd64"
+    )
+
+Without an explicit alias, the short package name is the final path component.
+For example, `platform/linux/amd64` is referenced as `amd64`. An explicit alias
+appears before the path, as in `sys "platform/linux/amd64"`.
 
 
 Functions

@@ -1,0 +1,14 @@
+module main
+
+import "fmt"
+
+fn main() int {
+    let name := "Jonas"
+    let age := 42
+    let active := true
+
+    // Kompilatorn analyserar denna sträng i sin sema-fas
+    fmt.Println("Hej {name}, du är {age} år. Status: {active}")
+
+    return 0
+}

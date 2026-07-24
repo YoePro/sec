@@ -1,0 +1,11 @@
+module main
+
+import (
+    sys "platform/linux/amd64"
+    "fmt"
+)
+
+fn main() int {
+    fmt.Println("grouped imports")
+    return int(sys.sysCall.Write) - 1
+}

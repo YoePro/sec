@@ -53,6 +53,27 @@ func TestSourceIncludePath(t *testing.T) {
 	}
 }
 
+func TestSourceIncludePathsLoadsPlatformPackageDirectory(t *testing.T) {
+	paths, ok := sourceIncludePaths("platform/linux/amd64", CompilerTarget{OS: "linux", Arch: "amd64"})
+	if !ok {
+		t.Fatal("sourceIncludePaths did not accept platform package")
+	}
+	wants := map[string]bool{
+		"raw_syscall.sec":     false,
+		"syscall_numbers.sec": false,
+	}
+	for _, path := range paths {
+		if _, exists := wants[filepath.Base(path)]; exists {
+			wants[filepath.Base(path)] = true
+		}
+	}
+	for path, found := range wants {
+		if !found {
+			t.Fatalf("platform package missing %s: %#v", path, paths)
+		}
+	}
+}
+
 func TestCollectSourceFiles(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.Mkdir(filepath.Join(dir, "nested"), 0755); err != nil {

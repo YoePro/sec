@@ -69,6 +69,44 @@ type Email string
 
 }
 
+func TestParseGroupedImportsWithAliases(t *testing.T) {
+	input := `
+module main
+
+import (
+    "fmt"
+    "platform/linux/amd64"
+    sys "platform/linux"
+)
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Statements) != 4 {
+		t.Fatalf("wrong statement count. got=%d want=4", len(program.Statements))
+	}
+	wants := []struct {
+		path  string
+		alias string
+	}{
+		{path: "fmt"},
+		{path: "platform/linux/amd64"},
+		{path: "platform/linux", alias: "sys"},
+	}
+	for i, want := range wants {
+		importStmt, ok := program.Statements[i+1].(*ast.ImportStatement)
+		if !ok {
+			t.Fatalf("statement %d is not ImportStatement. got=%T", i+1, program.Statements[i+1])
+		}
+		if importStmt.Path != want.path || importStmt.Alias != want.alias {
+			t.Fatalf("wrong grouped import %d: %+v", i, importStmt)
+		}
+	}
+}
+
 func TestParseGenericTypeDeclarations(t *testing.T) {
 	input := `
 type Stack[T] struct {
@@ -216,6 +254,44 @@ let mut motorProtocol: MotorProtocol
 	}
 	if !letStmt.Mutable {
 		t.Fatal("addressed let should be mutable")
+	}
+}
+
+func TestParseBitBackedEnumAndRegisterField(t *testing.T) {
+	input := `
+enum ClockSource: bit[2] {
+	Internal = 0b00,
+	External = 0b01,
+	Bypass = 0b10,
+}
+
+type ClockConfig register[32] {
+	Source: ClockSource,
+	Enabled: bit,
+	_: bit[29],
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	enumDecl, ok := program.Statements[0].(*ast.EnumDeclaration)
+	if !ok {
+		t.Fatalf("statement 0 is not EnumDeclaration. got=%T", program.Statements[0])
+	}
+	if !enumDecl.BitUnderlying || enumDecl.UnderlyingBitWidth != 2 || enumDecl.UnderlyingType != nil {
+		t.Fatalf("wrong bit enum underlying type: %+v", enumDecl)
+	}
+
+	typeDecl := program.Statements[1].(*ast.TypeDeclStatement)
+	source := typeDecl.RegisterType.Fields[0]
+	if source.Type == nil || source.Type.Name != "ClockSource" || source.Width != 0 {
+		t.Fatalf("wrong enum-backed register field: %+v", source)
+	}
+	if typeDecl.RegisterType.Fields[1].Width != 1 || typeDecl.RegisterType.Fields[2].Width != 29 {
+		t.Fatalf("wrong ordinary bit fields: %+v", typeDecl.RegisterType.Fields)
 	}
 }
 
@@ -2395,6 +2471,30 @@ fn Use(ref mut value: int) void {
 	if !useFn.Parameters[0].Ref || !useFn.Parameters[0].MutableRef {
 		t.Fatalf("expected ref mut parameter: %+v", useFn.Parameters[0])
 	}
+}
+
+func TestParseMutableSelfElementReferenceArgument(t *testing.T) {
+	input := `
+module fmt
+
+type Buffer struct {
+    data: byte[4],
+}
+
+fn Write(ref value: byte) void {
+}
+
+impl Buffer {
+    fn Flush(ref mut self: Buffer) void {
+        Write(ref mut self.data[0])
+    }
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	p.ParseProgram()
+	checkParserErrors(t, p)
 }
 
 func TestParseUnsafeExternSystemFunctionDeclaration(t *testing.T) {

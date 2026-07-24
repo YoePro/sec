@@ -45,6 +45,8 @@ Implemented:
 - decimal and decimal128 literals, storage, parameters and returns in MLIR
 - inline integer-to-decimal and decimal-to-integer conversions in MLIR
 - `int128`, `int256`, `uint128` and `uint256` lowering in MLIR
+- bit-backed enum widths preserved through AST and semantic analysis and
+  lowered as exact `iN` values in MLIR and LLVM
 
 Partially implemented:
 
@@ -256,6 +258,34 @@ conversions such as `decimal128(value)` are accepted when the source is numeric.
 
 The MLIR pipeline lowers `decimal128` to `!llvm.struct<(i128, i32)>`. The legacy
 direct LLVM backend does not yet lower it.
+
+Hardware bit widths are available only as enum backing and register layout
+syntax:
+
+```sec
+enum ClockSource: bit[2] {
+    Internal = 0,
+    External = 1,
+    Bypass = 2,
+}
+```
+
+`bit` means `bit[1]`. A `bit[N]` enum is an unsigned nominal enum with the
+range `0..(2^N - 1)` and lowers to the exact LLVM integer representation `iN`.
+
+`bit` and `bit[N]` are not general-purpose variable types. Their scope is
+hardware enum representation and register field layout.
+
+Fixed in-memory byte buffers use the ordinary array type instead:
+
+```sec
+let mut buffer: byte[512]
+```
+
+The bootstrap string representation exposes `value.ptr[index]` as a `byte` for
+low-level standard-library formatting code. Such indexing must remain within
+`0..<value.len`; ordinary application code should prefer string iteration and
+higher-level formatting operations.
 
 
 6. Untyped literals

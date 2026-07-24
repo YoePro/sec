@@ -1,18 +1,11 @@
 #target(os: "linux", arch: "any")
 module platform.linux
 
+import "platform/linux/amd64"
+
 fn Write(fd: int, data: ref byte[]) Result[uint, LinuxError] {
-    let rawResult: int
-
-    unsafe {
-        rawResult = _rawSyscall3(_sysWrite, uint(fd), uint(data.ptr), data.len)
-    }
-
-    if rawResult < 0 {
-        return Err(_decodeError(-rawResult))
-    }
-
-    return Ok(uint(rawResult))
+    // TODO: lower ref byte[] to pointer/length for raw syscall writes.
+    return Err(LinuxError.invalidArg)
 }
 
 /*

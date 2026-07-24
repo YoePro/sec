@@ -1,10 +1,16 @@
 #target(os: "linux", arch: "amd64")
 module io
 
-import "platform/linux/amd64/raw_syscall"
-
+import (
+    "platform/linux"
+    "platform/linux/amd64"
+)
 unsafe fn _sysWrite(fd: int, ref ptr: byte, len: int64) int {
-    return platform.linux.amd64._rawSyscall(1, uint(fd), uint(ptr), uint(len))
+    return amd64._rawSyscall(uint(amd64.sysCall.Write), uint(fd), uint(ptr), uint(len))
+}
+
+unsafe fn Write(fd: int, ref ptr: byte, len: int64) int {
+    return _sysWrite(fd, ptr, len)
 }
 
 fn WriteString(value: string) void {

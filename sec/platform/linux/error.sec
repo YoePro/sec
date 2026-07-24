@@ -1,8 +1,7 @@
-
 #target(os: "linux", arch: "any")
 module platform.linux
 
-enum LinuxError {
+enum LinuxError int {
     success = 0,                        // Success (Not an error)
     permDenied = 1,                     // EPERM: Operation not permitted
     noSuchFile = 2,                     // ENOENT: No such file or directory
@@ -158,7 +157,7 @@ enum ErrorNumber {
 type RawErrorNumber int
 
 fn _decodeSyscallResult(result: int) Result[uint, RawErrorNumber] {
-    if result < 0 {
+    if result < 0  { // >
         return Err(RawErrorNumber(-result))
     }
 
@@ -181,7 +180,7 @@ fn _knownError(number: RawErrorNumber) Option[ErrorNumber] {
 
         case 32:
             return Some(ErrorNumber.BrokenPipe)
-            
+
         default:
             return None
     }

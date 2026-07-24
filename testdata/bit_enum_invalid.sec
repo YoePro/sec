@@ -1,0 +1,40 @@
+module main
+
+enum ZeroWidth: bit[0] {
+    Zero,
+}
+
+enum TooWideValue: bit[2] {
+    Invalid = 0b100,
+}
+
+enum PlainEnum {
+    First,
+    Second,
+}
+
+enum ClockSource: bit[2] {
+    Internal = 0,
+    External = 1,
+}
+
+type InvalidConfig register[4] {
+    Plain: PlainEnum,
+    _: ClockSource,
+}
+
+type ClockConfig register[2] {
+    Source: ClockSource,
+}
+
+@address(0x40021000)
+let mut clockConfig: ClockConfig
+
+fn InvalidWrites() void {
+    clockConfig.Source = 5
+    let invalid := ClockSource(5)
+}
+
+fn InvalidDynamicConversion(value: int) ClockSource {
+    return ClockSource(value)
+}

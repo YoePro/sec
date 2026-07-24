@@ -31,6 +31,7 @@ const (
 	FunctionType  TypeKind = "function"
 	GenericType   TypeKind = "generic"
 	InterfaceType TypeKind = "interface"
+	NeverType     TypeKind = "never"
 	VoidType      TypeKind = "void"
 )
 
@@ -53,6 +54,7 @@ type Type struct {
 	Contracts              []Contract
 	EnumValues             []string
 	EnumConsts             map[string]EnumValue
+	BitWidth               int64
 	UnionVariants          []UnionVariant
 	TypeArgs               []Type
 	Element                *Type
@@ -260,11 +262,21 @@ type Symbol struct {
 
 func builtinTypes() map[string]Type {
 	types := map[string]Type{
-		"bool":    {Name: "bool", Kind: BoolType},
-		"byte":    unsignedType("byte", 255),
-		"char":    {Name: "char", Kind: CharType},
-		"rune":    {Name: "rune", Kind: RuneType},
-		"RawPtr":  {Name: "RawPtr", Kind: RawPtrType, GenericParameters: []string{"T"}},
+		"bool":   {Name: "bool", Kind: BoolType},
+		"byte":   unsignedType("byte", 255),
+		"char":   {Name: "char", Kind: CharType},
+		"rune":   {Name: "rune", Kind: RuneType},
+		"RawPtr": {Name: "RawPtr", Kind: RawPtrType, GenericParameters: []string{"T"}},
+		"never":  {Name: "never", Kind: NeverType},
+		"Option": {
+			Name:              "Option",
+			Kind:              UnionType,
+			GenericParameters: []string{"T"},
+			UnionVariants: []UnionVariant{
+				{Name: "Some", Payload: &Type{Name: "T", Kind: GenericType}},
+				{Name: "None"},
+			},
+		},
 		"Result":  {Name: "Result", Kind: ResultType, GenericParameters: []string{"T", "E"}},
 		"decimal": {Name: "decimal", Kind: DecimalType},
 		"decimal128": {

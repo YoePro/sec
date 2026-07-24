@@ -2,6 +2,7 @@ package llvm
 
 import (
 	"fmt"
+	"strconv"
 
 	"sec/internal/ast"
 )
@@ -412,6 +413,23 @@ func (g *Generator) coerceValue(arg value, targetType string) (value, error) {
 	if arg.typ == targetType {
 		return arg, nil
 	}
+	if sourceWidth, sourceOK := llvmIntegerWidth(arg.typ); sourceOK {
+		if targetWidth, targetOK := llvmIntegerWidth(targetType); targetOK {
+			temp := g.nextTemp()
+			if sourceWidth > targetWidth {
+				g.write("  %s = trunc %s %s to %s\n", temp, arg.typ, arg.ref, targetType)
+				return value{typ: targetType, ref: temp}, nil
+			}
+			if sourceWidth < targetWidth {
+				op := "sext"
+				if sourceWidth < 32 {
+					op = "zext"
+				}
+				g.write("  %s = %s %s %s to %s\n", temp, op, arg.typ, arg.ref, targetType)
+				return value{typ: targetType, ref: temp}, nil
+			}
+		}
+	}
 	if targetType == llvmDecimalType {
 		switch arg.typ {
 		case "i32":
@@ -446,6 +464,14 @@ func (g *Generator) coerceValue(arg value, targetType string) (value, error) {
 		return value{typ: "i64", ref: temp}, nil
 	}
 	return value{}, fmt.Errorf("emit-llvm cannot convert %s to %s", arg.typ, targetType)
+}
+
+func llvmIntegerWidth(typ string) (int, bool) {
+	if len(typ) < 2 || typ[0] != 'i' {
+		return 0, false
+	}
+	width, err := strconv.Atoi(typ[1:])
+	return width, err == nil && width > 0
 }
 
 func (g *Generator) emitDecimalFromI64(numberRef string) value {

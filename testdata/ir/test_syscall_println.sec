@@ -1,0 +1,8 @@
+module main
+
+import "fmt"
+
+fn main() int {
+    fmt.Println("Hello from syscall")
+    return 0
+}

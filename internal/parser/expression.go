@@ -1209,6 +1209,7 @@ func (p *Parser) parseRangeOrExpression() ast.Expression {
 func (p *Parser) isExpressionStart(t lexer.TokenType) bool {
 	switch t {
 	case lexer.IDENT,
+		lexer.SELF,
 		lexer.INT,
 		lexer.FLOAT,
 		lexer.STRING,

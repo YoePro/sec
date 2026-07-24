@@ -1,0 +1,26 @@
+module main
+
+/** Test comment */
+enum ClockSource: bit[2] {
+    Internal = 0b00,
+    External = 0b01,
+    Bypass = 0b10,
+}
+
+enum BinaryState: bit {
+    Off = 0,
+    On = 1,
+}
+
+fn clockCode(value: ClockSource) int {
+    switch value {
+        case ClockSource.Bypass:
+            return int(value)
+        default:
+            return 0
+    }
+}
+
+fn main() int {
+    return clockCode(ClockSource.Bypass) + int(BinaryState.On)
+}

@@ -529,6 +529,9 @@ Implemented:
 - fallible property assignment requires `try`
 - generic impl target validation for the current generic model
 - registering methods as qualified functions such as `Vehicle.Drive`
+- preserving the declaring module while registering and analyzing methods
+- resolving calls through a `self` value as instance method calls rather than
+  static type paths
 
 Partially implemented:
 

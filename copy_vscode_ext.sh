@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEST="${1:-$HOME/.vscode-server/extensions/sec-lang.sec-syntax}"
 
-echo "Building SEC language server...linux"
+echo "Building SEC language server...linux (current system)"
 go build -o "$ROOT/bin/lsp-sec" "$ROOT/cmd/lsp"
 echo "Building SEC language server...windows"
 GOOS=windows GOARCH=amd64 go build -o "$ROOT/bin/lsp-sec.exe" "$ROOT/cmd/lsp"

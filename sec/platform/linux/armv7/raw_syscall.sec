@@ -1,0 +1,154 @@
+#target(os: "linux", arch: "arm64")
+module platform.linux.arm64
+
+/*
+syscall number    r7
+argument 1        r0
+argument 2        r1
+argument 3        r2
+argument 4        r3
+argument 5        r4
+argument 6        r5
+result            r0
+*/
+
+/**
+* Raw syscall with no Parameters. OS: Linux Arch: ARM64
+* PARAM: "number" uint
+*/
+unsafe extern "system" fn _rawSyscall(number: uint) int {
+    asm {
+        "svc #0"
+        inputs:
+        r7(uint(number))
+
+        outputs:
+        r0(result)
+
+        clobbers:
+        memory
+    }
+    return result
+}
+
+unsafe extern "system" fn _rawSyscall(number: uint, arg1: uint) int {
+    asm {
+        "svc #0"
+
+        inputs:
+        r7(uint(number))
+        r0(arg1)
+
+        outputs:
+        r0(result)
+
+        clobbers:
+        memory
+    }
+
+    return result
+}
+
+unsafe extern "system" fn _rawSyscall(number: uint, arg1: uint, arg2: uint) int {
+    asm {
+        "svc #0"
+
+        inputs:
+        r7(uint(number))
+        r0(arg1)
+        r1(arg2)
+
+        outputs:
+        r0(result)
+
+        clobbers:
+        memory
+    }
+
+    return result
+}
+
+// Call with 3 arguments
+unsafe extern "system" fn _rawSyscall(number: uint, arg1: uint, arg2: uint, arg3: uint) int {
+    asm {
+        "svc #0"
+
+        inputs:
+        r7(uint(number))
+        r0(arg1)
+        r1(arg2)
+        r2(arg3)
+
+        outputs:
+        r0(result)
+
+        clobbers:
+        memory
+    }
+
+    return result
+}
+
+unsafe extern "system" fn _rawSyscall(number: uint, arg1: uint, arg2: uint, arg3: uint, arg4: uint) int {
+    asm {
+        "svc #0"
+
+        inputs:
+        r7(uint(number))
+        r0(arg1)
+        r1(arg2)
+        r2(arg3)
+        r3(arg4)
+
+        outputs:
+        r0(result)
+
+        clobbers:
+        memory
+    }
+
+    return result
+}
+
+unsafe extern "system" fn _rawSyscall(number: uint, arg1: uint, arg2: uint, arg3: uint, arg4: uint, arg5: uint) int {
+    asm {
+        "svc #0"
+
+        inputs:
+        r7(uint(number))
+        r0(arg1)
+        r1(arg2)
+        r2(arg3)
+        r3(arg4)
+        r4(arg5)
+
+        outputs:
+        r0(result)
+
+        clobbers:
+        memory
+    }
+    return result
+}
+
+unsafe extern "system" fn _rawSyscall(number: uint, arg1: uint, arg2: uint, arg3: uint, arg4: uint, arg5: uint, arg6: uint) int {
+    asm {
+        "svc #0"
+
+        inputs:
+        r7(uint(number))
+        r0(arg1)
+        r1(arg2)
+        r2(arg3)
+        r3(arg4)
+        r4(arg5)
+        r5(arg6)
+
+        outputs:
+        r0(result)
+
+        clobbers:
+        memory
+    }
+    return result
+}

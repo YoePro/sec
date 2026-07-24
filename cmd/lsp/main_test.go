@@ -1,8 +1,12 @@
 package main
 
 import (
+	"fmt"
 	"strings"
 	"testing"
+
+	"sec/internal/lexer"
+	"sec/internal/parser"
 )
 
 func TestAnalyzeLoadsFmtPackageAndTransitiveImports(t *testing.T) {
@@ -74,6 +78,38 @@ fn main() int {
 		messages = append(messages, diagnostic.Message)
 	}
 	t.Fatalf("analyze returned diagnostics for grouped package imports:\n%s", strings.Join(messages, "\n"))
+}
+
+func TestFindSelectorLHS(t *testing.T) {
+	text := `module main
+
+fn main() void {
+    let value = foo.bar
+}
+`
+
+	l := lexer.New(text)
+	p := parser.New(l)
+	program := p.ParseProgram()
+	if program == nil {
+		t.Fatal("expected parsed program")
+	}
+
+	dotOffset := strings.Index(text, ".")
+	if dotOffset < 0 {
+		t.Fatal("expected dot in source")
+	}
+	fmt.Printf("selector=%q\n", selectorTextBeforeCursor(text, dotOffset))
+
+	expr := findSelectorLHS(program, text, dotOffset)
+	fmt.Printf("expr=%T %v\n", expr, expr)
+	if expr == nil {
+		t.Fatal("expected expression before dot")
+	}
+
+	if got := expr.String(); got != "foo" {
+		t.Fatalf("expected selector lhs foo, got %q", got)
+	}
 }
 
 func TestFormatSourceIndentsSwitchCaseBodies(t *testing.T) {

@@ -112,6 +112,17 @@ func (a *Analyzer) Warnings() []Error {
 	return a.warnings
 }
 
+func (a *Analyzer) TypeOf(expr ast.Expression) (Type, bool) {
+	if expr == nil {
+		return Type{}, false
+	}
+	inferred, _ := a.inferExpression(expr)
+	if inferred.Kind == InvalidType {
+		return Type{}, false
+	}
+	return inferred, true
+}
+
 func (a *Analyzer) withProgramModules(program *ast.Program, visit func(ast.Statement)) {
 	previous := a.currentModule
 	module := ""

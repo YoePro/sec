@@ -64,6 +64,18 @@ type CompletionOptions struct {
 	TriggerCharacters []string `json:"triggerCharacters"`
 }
 
+type completionParams struct {
+	TextDocument textDocumentIdentifier `json:"textDocument"`
+	Position     position               `json:"position"`
+}
+
+type completionItem struct {
+	Label         string `json:"label"`                   //
+	Kind          int    `json:"kind"`                    // 5 = Field, 2 = Method, 13 = Enum, 20 = EnumMember
+	Detail        string `json:"detail,omitempty"`        //
+	Documentation string `json:"documentation,omitempty"` //
+}
+
 type didChangeParams struct {
 	TextDocument   versionedTextDocumentIdentifier  `json:"textDocument"`
 	ContentChanges []textDocumentContentChangeEvent `json:"contentChanges"`
@@ -95,19 +107,20 @@ type lspRange struct {
 }
 
 type position struct {
-	Line      int `json:"line"`
-	Character int `json:"character"`
+	Line      int `json:"line"`      // 0-indexed line number
+	Character int `json:"character"` // 0-indexed character offset
 }
 
 type server struct {
-	in               *bufio.Reader
-	out              io.Writer
-	documents        map[string]string
-	diagnosticTimers map[string]*time.Timer
-	diagnosticDelay  time.Duration
-	writeMu          sync.Mutex
-	timerMu          sync.Mutex
-	shutdown         bool
+	in               *bufio.Reader          //
+	out              io.Writer              //
+	documents        map[string]string      //
+	docMu            sync.RWMutex           // Protects the documents map from concurrent read/write operations
+	diagnosticTimers map[string]*time.Timer //
+	diagnosticDelay  time.Duration          //
+	writeMu          sync.Mutex             //
+	timerMu          sync.Mutex             //
+	shutdown         bool                   //
 }
 
 type formatterSwitchContext struct {
@@ -198,6 +211,70 @@ func (s *server) handle(message rpcMessage) error {
 			return s.respondError(message.ID, -32603, err.Error())
 		}
 		return s.respond(message.ID, edits)
+	case "textDocument/completion":
+		var params completionParams
+		if err := json.Unmarshal(message.Params, &params); err != nil {
+			return err
+		}
+
+		// Thread-safe reading from the document storage
+		s.docMu.RLock()
+		text, ok := s.documents[params.TextDocument.URI]
+		s.docMu.RUnlock()
+		if !ok {
+			return s.respond(message.ID, []completionItem{})
+		}
+
+		// Calculate the exact absolute byte index where the dot was pressed
+		dotOffset := lineCharToOffset(text, params.Position.Line, params.Position.Character)
+
+		// Tokenize and parse using the actual Sec pipeline
+		l := lexer.New(text)
+		p := parser.New(l)
+		fileAST := p.ParseProgram()
+		if fileAST == nil {
+			return s.respond(message.ID, []completionItem{})
+		}
+
+		// Run semantic analysis using NewAnalyzer
+		analyzer := sema.NewAnalyzer()
+		analyzer.Analyze(fileAST)
+
+		// Extract the expression residing immediately before the dot.
+		targetExpr := findSelectorLHS(fileAST, text, dotOffset)
+		if targetExpr == nil {
+			return s.respond(message.ID, []completionItem{})
+		}
+
+		// Infer the expression type from the semantic analyzer.
+		exprType, ok := analyzer.TypeOf(targetExpr)
+		if !ok {
+			return s.respond(message.ID, []completionItem{})
+		}
+
+		var items []completionItem
+
+		// Populate response variants depending on struct-like or enum-like types.
+		switch exprType.Kind {
+		case sema.StructType:
+			for _, field := range exprType.Fields {
+				items = append(items, completionItem{
+					Label:  field.Name,
+					Kind:   5, // LSP Field identifier
+					Detail: field.Type.Name,
+				})
+			}
+		case sema.EnumType:
+			for _, variant := range exprType.EnumValues {
+				items = append(items, completionItem{
+					Label:  variant,
+					Kind:   20, // LSP EnumMember identifier
+					Detail: exprType.Name,
+				})
+			}
+		}
+
+		return s.respond(message.ID, items)
 	default:
 		if len(message.ID) == 0 {
 			return nil
@@ -430,6 +507,24 @@ func endPosition(text string) position {
 	return position{Line: len(lines) - 1, Character: len([]rune(lines[len(lines)-1]))}
 }
 
+func lineCharToOffset(text string, line, char int) int {
+	currentLine := 0
+	currentCol := 0
+
+	for i, r := range text {
+		if currentLine == line && currentCol == char {
+			return i
+		}
+		if r == '\n' {
+			currentLine++
+			currentCol = 0
+		} else {
+			currentCol++
+		}
+	}
+	return len(text)
+}
+
 func analyze(uri string, text string) []diagnostic {
 	path := pathFromURI(uri)
 	l := lexer.NewWithFile(text, path)
@@ -572,6 +667,135 @@ func sourceIncludePath(path string) (string, bool) {
 		return filepath.Join("sec", trimmed+".sec"), true
 	}
 	return "", false
+}
+
+// findSelectorLHS walks the AST and returns the expression that matches the selector
+// written immediately before the cursor, such as the "foo" in "foo.".
+func findSelectorLHS(node any, text string, dotOffset int) ast.Expression {
+	if node == nil {
+		return nil
+	}
+
+	selectorText := selectorTextBeforeCursor(text, dotOffset)
+	if selectorText == "" {
+		return nil
+	}
+	if selectorText == "" {
+		return nil
+	}
+
+	switch n := node.(type) {
+	case *ast.Program:
+		for _, stmt := range n.Statements {
+			if found := findSelectorLHS(stmt, text, dotOffset); found != nil {
+				return found
+			}
+		}
+	case *ast.FunctionDeclaration:
+		if n == nil {
+			return nil
+		}
+		return findSelectorLHS(n.Body, text, dotOffset)
+	case *ast.BlockStatement:
+		for _, stmt := range n.Statements {
+			if found := findSelectorLHS(stmt, text, dotOffset); found != nil {
+				return found
+			}
+		}
+	case *ast.LetStatement:
+		return findSelectorLHS(n.Value, text, dotOffset)
+	case *ast.ExpressionStatement:
+		return findSelectorLHS(n.Expression, text, dotOffset)
+	case *ast.AssignmentStatement:
+		return findSelectorLHS(n.Value, text, dotOffset)
+	case *ast.ReturnStatement:
+		return findSelectorLHS(n.Value, text, dotOffset)
+	case *ast.ImportStatement:
+		return nil
+	case *ast.IfStatement:
+		if found := findSelectorLHS(n.Condition, text, dotOffset); found != nil {
+			return found
+		}
+		if found := findSelectorLHS(n.Consequence, text, dotOffset); found != nil {
+			return found
+		}
+		return findSelectorLHS(n.Alternative, text, dotOffset)
+	case *ast.ForStatement:
+		if found := findSelectorLHS(n.Iterable, text, dotOffset); found != nil {
+			return found
+		}
+		if found := findSelectorLHS(n.Step, text, dotOffset); found != nil {
+			return found
+		}
+		return findSelectorLHS(n.Body, text, dotOffset)
+	case *ast.WhileStatement:
+		if found := findSelectorLHS(n.Condition, text, dotOffset); found != nil {
+			return found
+		}
+		return findSelectorLHS(n.Body, text, dotOffset)
+	case *ast.SwitchStatement:
+		if found := findSelectorLHS(n.Subject, text, dotOffset); found != nil {
+			return found
+		}
+		for _, clause := range n.Cases {
+			if clause != nil {
+				if found := findSelectorLHS(clause.Body, text, dotOffset); found != nil {
+					return found
+				}
+			}
+		}
+		if n.Default != nil {
+			return findSelectorLHS(n.Default.Body, text, dotOffset)
+		}
+	case *ast.UnsafeStatement:
+		return findSelectorLHS(n.Body, text, dotOffset)
+	}
+
+	if expr, ok := node.(ast.Expression); ok {
+		if expr == nil {
+			return nil
+		}
+		if ident, ok := expr.(*ast.Identifier); ok && ident != nil && ident.Value == selectorText {
+			return expr
+		}
+		if member, ok := expr.(*ast.MemberExpression); ok && member != nil {
+			if member.Object != nil && member.Object.String() == selectorText {
+				return member.Object
+			}
+			if member.String() == selectorText {
+				return expr
+			}
+		}
+		if expr.String() == selectorText {
+			return expr
+		}
+	}
+
+	return nil
+}
+
+func selectorTextBeforeCursor(text string, dotOffset int) string {
+	if dotOffset < 0 || dotOffset > len(text) {
+		return ""
+	}
+	prefix := text[:dotOffset]
+	start := len(prefix)
+	for start > 0 {
+		ch := prefix[start-1]
+		if (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '_' || ch == '.' {
+			start--
+			continue
+		}
+		break
+	}
+	selector := strings.TrimSpace(prefix[start:])
+	if selector == "" {
+		return ""
+	}
+	if lastDot := strings.LastIndex(selector, "."); lastDot >= 0 {
+		return selector[:lastDot]
+	}
+	return selector
 }
 
 func importQualifier(stmt *ast.ImportStatement) string {

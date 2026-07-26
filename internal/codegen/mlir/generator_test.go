@@ -1188,6 +1188,215 @@ fn main() int {
 	}
 }
 
+func TestGenerateEnumMatchExpressionAndStatement(t *testing.T) {
+	input := `
+module main
+
+enum Direction {
+    North,
+    South,
+}
+
+fn Record(value: int) void {
+}
+
+fn Score(direction: Direction) int {
+    match direction {
+        Direction.North => {
+            Record(1)
+        }
+        _ => {
+            Record(2)
+        }
+    }
+
+    let code: int := match direction {
+        Direction.North => 10
+        other => 20
+    }
+
+    return match direction {
+        Direction.North => code
+        Direction.South => 30
+    }
+}
+
+fn main() int {
+    return Score(Direction.North)
+}
+`
+	program := parseTestProgram(t, input)
+
+	got, err := GenerateWithTriple(program, "x86_64-pc-linux-gnu")
+	if err != nil {
+		t.Fatalf("GenerateWithTriple returned error: %v", err)
+	}
+
+	for _, want := range []string{
+		"^match_test",
+		"^match_arm",
+		"^match_end",
+		`llvm.icmp "eq"`,
+		"llvm.cond_br",
+		"llvm.call @Record",
+		"llvm.store",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("generated MLIR missing %q:\n%s", want, got)
+		}
+	}
+	if strings.Count(got, "llvm.call @Record") != 2 {
+		t.Fatalf("match statement should emit both arm bodies:\n%s", got)
+	}
+}
+
+func TestGenerateMatchRejectsResultPatternsUntilResultABIExists(t *testing.T) {
+	input := `
+module main
+
+fn Use(value: int) int {
+    return match value {
+        Ok(value) => value
+        Err(error) => 0
+    }
+}
+
+fn main() int {
+    return Use(1)
+}
+`
+	program := parseTestProgram(t, input)
+
+	if _, err := GenerateWithTriple(program, "x86_64-pc-linux-gnu"); err == nil || !strings.Contains(err.Error(), "Result match patterns") {
+		t.Fatalf("GenerateWithTriple error = %v, want Result match unsupported", err)
+	}
+}
+
+func TestGenerateDeferCleanupBeforeReturn(t *testing.T) {
+	input := `
+module main
+
+fn Record(value: int) void {
+}
+
+fn main() int {
+    let mut value := 1
+    defer {
+        Record(value)
+    }
+    value = 2
+    return value
+}
+`
+	program := parseTestProgram(t, input)
+
+	got, err := GenerateWithTriple(program, "x86_64-pc-linux-gnu")
+	if err != nil {
+		t.Fatalf("GenerateWithTriple returned error: %v", err)
+	}
+
+	for _, want := range []string{
+		"^defer_body",
+		"^defer_next",
+		"llvm.cond_br",
+		"llvm.call @Record",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("generated MLIR missing %q:\n%s", want, got)
+		}
+	}
+
+	callIndex := strings.Index(got, "llvm.call @Record")
+	returnIndex := strings.LastIndex(got, "llvm.return")
+	if callIndex < 0 || returnIndex < 0 || callIndex > returnIndex {
+		t.Fatalf("defer cleanup must be emitted before function return:\n%s", got)
+	}
+}
+
+func TestGenerateMultipleDefersUseLIFOOrder(t *testing.T) {
+	input := `
+module main
+
+fn Record(value: int) void {
+}
+
+fn main() int {
+    defer {
+        Record(1)
+    }
+    defer {
+        Record(2)
+    }
+    return 0
+}
+`
+	program := parseTestProgram(t, input)
+
+	got, err := GenerateWithTriple(program, "x86_64-pc-linux-gnu")
+	if err != nil {
+		t.Fatalf("GenerateWithTriple returned error: %v", err)
+	}
+
+	first := strings.Index(got, "llvm.mlir.constant(1 : i32)")
+	second := strings.Index(got, "llvm.mlir.constant(2 : i32)")
+	if first < 0 || second < 0 {
+		t.Fatalf("generated MLIR missing defer payload constants:\n%s", got)
+	}
+	if second > first {
+		t.Fatalf("defer cleanup should emit second defer before first defer:\n%s", got)
+	}
+}
+
+func TestGenerateReturnBeforeLaterDeferSkipsLaterCleanup(t *testing.T) {
+	input := `
+module main
+
+fn Record(value: int) void {
+}
+
+fn main() int {
+    return 0
+
+    defer {
+        Record(1)
+    }
+}
+`
+	program := parseTestProgram(t, input)
+
+	got, err := GenerateWithTriple(program, "x86_64-pc-linux-gnu")
+	if err != nil {
+		t.Fatalf("GenerateWithTriple returned error: %v", err)
+	}
+	if strings.Contains(got, "llvm.call @Record") {
+		t.Fatalf("unreached later defer must not be emitted before earlier return:\n%s", got)
+	}
+}
+
+func TestGenerateDeferInsideLoopRequiresGeneratedCleanupState(t *testing.T) {
+	input := `
+module main
+
+fn Record(value: int) void {
+}
+
+fn main() int {
+    for {
+        defer {
+            Record(1)
+        }
+        break
+    }
+    return 0
+}
+`
+	program := parseTestProgram(t, input)
+
+	if _, err := GenerateWithTriple(program, "x86_64-pc-linux-gnu"); err == nil || !strings.Contains(err.Error(), "defer inside loops") {
+		t.Fatalf("GenerateWithTriple error = %v, want defer inside loops unsupported", err)
+	}
+}
+
 func TestGenerateSwitchRejectsDeferredForms(t *testing.T) {
 	tests := map[string]string{
 		"subjectless": `

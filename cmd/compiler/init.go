@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -97,12 +98,24 @@ func parseInitCommandOptions(args []string, defaultTarget CompilerTarget) (initC
 
 func initProject(options initCommandOptions) error {
 	projectDir := filepath.Clean(options.ProjectDir)
+	configPath := filepath.Join(projectDir, ".sec", "sec.toml")
+	if existing, ok := findNearestProjectManifest(projectDir); ok {
+		if !samePath(existing, configPath) {
+			return fmt.Errorf("nested Sec project manifest is not allowed: parent manifest %s", existing)
+		}
+	}
+
+	targetName := sanitizeOutputName(options.ProjectName)
+	if targetName == "" {
+		return fmt.Errorf("project name %q cannot be used as target name", options.ProjectName)
+	}
+	mainPath := filepath.Join(projectDir, "cmd", targetName, "main.sec")
+
 	if err := os.MkdirAll(projectDir, 0755); err != nil {
 		return err
 	}
-
 	for _, dir := range []string{
-		filepath.Join(projectDir, "cmd", "main"),
+		filepath.Join(projectDir, "cmd", targetName),
 		filepath.Join(projectDir, "bin"),
 		filepath.Join(projectDir, ".sec"),
 		filepath.Join(projectDir, "internal"),
@@ -112,14 +125,13 @@ func initProject(options initCommandOptions) error {
 		}
 	}
 
-	mainPath := filepath.Join(projectDir, "cmd", "main", "main.sec")
 	if err := writeFileIfMissing(mainPath, []byte(defaultMainSource())); err != nil {
 		return err
 	}
 
-	configPath := filepath.Join(projectDir, ".sec", "sec.toml")
 	if fileExists(configPath) {
-		return fmt.Errorf("%s already exists", configPath)
+		fmt.Printf("Sec project %q already initialized in %s\n", options.ProjectName, projectDir)
+		return nil
 	}
 
 	uuid, err := newProjectUUID()
@@ -127,7 +139,7 @@ func initProject(options initCommandOptions) error {
 		return err
 	}
 
-	config, err := defaultSecConfig(options, uuid)
+	config, err := defaultSecConfig(options, uuid, targetName)
 	if err != nil {
 		return err
 	}
@@ -148,7 +160,7 @@ fn main() int {
 `
 }
 
-func defaultSecConfig(options initCommandOptions, uuid string) (string, error) {
+func defaultSecConfig(options initCommandOptions, uuid string, targetName string) (string, error) {
 	definition, ok := findTargetDefinition(options.Target)
 	if !ok || definition.LLVMTriple == "" {
 		return "", fmt.Errorf("target %s has no LLVM triple", options.Target.String())
@@ -165,15 +177,44 @@ func defaultSecConfig(options initCommandOptions, uuid string) (string, error) {
 	fmt.Fprintf(&b, "uuid = %q\n", uuid)
 	fmt.Fprintln(&b, "imports = []")
 	fmt.Fprintln(&b)
-	fmt.Fprintln(&b, "[platform]")
+	fmt.Fprintln(&b, "[build]")
+	fmt.Fprintln(&b, `backend = "mlir"`)
+	fmt.Fprintf(&b, "profile = %q\n", options.Profile)
+	fmt.Fprintln(&b, `diagnostics = "default"`)
+	fmt.Fprintln(&b)
+	fmt.Fprintf(&b, "[profile.%s]\n", tomlBareKey(options.Profile))
+	fmt.Fprintln(&b, `optimization = "none"`)
+	fmt.Fprintln(&b, `debug = "line"`)
+	fmt.Fprintln(&b, "strip = false")
+	fmt.Fprintln(&b)
+	variantName := options.Target.String()
+	fmt.Fprintf(&b, "[variant.%s]\n", tomlBareKey(variantName))
 	fmt.Fprintf(&b, "os = %q\n", options.Target.OS)
 	fmt.Fprintf(&b, "arch = %q\n", options.Target.Arch)
+	if definition.LLVMTriple != "" {
+		fmt.Fprintf(&b, "llvm_triple = %q\n", definition.LLVMTriple)
+	}
 	fmt.Fprintln(&b)
-	fmt.Fprintln(&b, "[build]")
-	fmt.Fprintf(&b, "target = %q\n", definition.LLVMTriple)
-	fmt.Fprintf(&b, "profile = %q\n", options.Profile)
-	fmt.Fprintf(&b, "output = %q\n", filepath.ToSlash(filepath.Join("bin", outputName)))
+	fmt.Fprintf(&b, "[target.%s]\n", tomlBareKey(targetName))
+	fmt.Fprintln(&b, `kind = "command"`)
+	fmt.Fprintf(&b, "source = %q\n", filepath.ToSlash(filepath.Join("cmd", targetName)))
+	fmt.Fprintf(&b, "artifact = %q\n", outputName)
+	fmt.Fprintf(&b, "variants = [%q]\n", variantName)
+	fmt.Fprintf(&b, "output = %q\n", filepath.ToSlash(filepath.Join("bin", targetName, variantName, options.Profile, outputName)))
 	return b.String(), nil
+}
+
+func tomlBareKey(key string) string {
+	if key == "" {
+		return `""`
+	}
+	for _, r := range key {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '-' {
+			continue
+		}
+		return strconv.Quote(key)
+	}
+	return key
 }
 
 func writeFileIfMissing(path string, data []byte) error {
@@ -186,6 +227,35 @@ func writeFileIfMissing(path string, data []byte) error {
 func fileExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+func findNearestProjectManifest(start string) (string, bool) {
+	absStart, err := filepath.Abs(start)
+	if err != nil {
+		absStart = start
+	}
+	for current := filepath.Clean(absStart); ; current = filepath.Dir(current) {
+		manifest := filepath.Join(current, ".sec", "sec.toml")
+		if fileExists(manifest) {
+			return manifest, true
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			return "", false
+		}
+	}
+}
+
+func samePath(left string, right string) bool {
+	leftAbs, leftErr := filepath.Abs(left)
+	rightAbs, rightErr := filepath.Abs(right)
+	if leftErr == nil {
+		left = leftAbs
+	}
+	if rightErr == nil {
+		right = rightAbs
+	}
+	return filepath.Clean(left) == filepath.Clean(right)
 }
 
 func inferProjectName(projectDir string) string {

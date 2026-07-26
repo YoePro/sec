@@ -110,6 +110,9 @@ func (p *Parser) parseStatement() ast.Statement {
 	case lexer.FN:
 		return p.parseFunctionDeclaration()
 
+	case lexer.FREE:
+		return p.parseUnsupportedFreeStatement()
+
 	case lexer.STRUCT:
 		return p.parseStructStatement()
 
@@ -211,6 +214,20 @@ func (p *Parser) parseStatement() ast.Statement {
 		p.addError("unexpected token %q at %d:%d", p.curToken.Lexeme, p.curToken.Line, p.curToken.Column)
 		return nil
 	}
+}
+
+func (p *Parser) parseUnsupportedFreeStatement() ast.Statement {
+	stmt := &ast.InvalidStatement{
+		Token:   p.curToken,
+		Message: "free operations are reserved for destruction but are not implemented yet",
+	}
+	if p.peekToken.Type == lexer.LBRACE {
+		p.nextToken()
+		p.skipCurrentBlock()
+		return stmt
+	}
+	p.skipInvalidImplMember()
+	return stmt
 }
 
 func (p *Parser) looksLikeTypedVariableDeclaration() bool {
@@ -1484,7 +1501,7 @@ func (p *Parser) parseEnumBody(enum *ast.EnumDeclaration) *ast.EnumDeclaration {
 			Token: p.curToken,
 			Name:  &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme},
 		}
-		if p.peekToken.Type == lexer.ASSIGN {
+		if p.peekToken.Type == lexer.ASSIGN || p.peekToken.Type == lexer.COLON {
 			p.nextToken()
 			p.nextToken()
 			value.Initializer = p.parseExpression(LOWEST)
@@ -1493,6 +1510,7 @@ func (p *Parser) parseEnumBody(enum *ast.EnumDeclaration) *ast.EnumDeclaration {
 			}
 		}
 		enum.Values = append(enum.Values, value)
+		p.skipPeekComments()
 
 		switch p.peekToken.Type {
 		case lexer.COMMA:
@@ -2003,6 +2021,7 @@ func (p *Parser) parseRegisterFields() []*ast.RegisterField {
 		}
 
 		fields = append(fields, field)
+		p.skipPeekComments()
 		switch p.peekToken.Type {
 		case lexer.COMMA:
 			p.nextToken()
@@ -2279,6 +2298,17 @@ func (p *Parser) parseImplStatement() ast.Statement {
 				continue
 			}
 			stmt.Members = append(stmt.Members, fn)
+		case lexer.FREE:
+			stmt.Members = append(stmt.Members, &ast.InvalidStatement{
+				Token:   p.curToken,
+				Message: "free operations are reserved for destruction but are not implemented yet",
+			})
+			if p.peekToken.Type == lexer.LBRACE {
+				p.nextToken()
+				p.skipCurrentBlock()
+			} else {
+				p.skipInvalidImplMember()
+			}
 		case lexer.PROPERTY:
 			property := p.parsePropertyDeclaration()
 			if property == nil {
@@ -2383,7 +2413,7 @@ func (p *Parser) skipInvalidImplMember() {
 
 func (p *Parser) isImplMemberStart(t lexer.TokenType) bool {
 	switch t {
-	case lexer.TYPE, lexer.UNIT, lexer.ENUM, lexer.FN, lexer.PROPERTY, lexer.STRUCT, lexer.LET:
+	case lexer.TYPE, lexer.UNIT, lexer.ENUM, lexer.FN, lexer.FREE, lexer.PROPERTY, lexer.STRUCT, lexer.LET:
 		return true
 	default:
 		return false
@@ -3139,6 +3169,7 @@ func (p *Parser) isStatementStart(t lexer.TokenType) bool {
 		lexer.IMPL,
 		lexer.PROPERTY,
 		lexer.FN,
+		lexer.FREE,
 		lexer.LET,
 		lexer.RETURN,
 		lexer.IF,
@@ -3567,6 +3598,12 @@ func (p *Parser) currentIs(t lexer.TokenType) bool {
 
 func (p *Parser) skipComments() {
 	for p.curToken.Type == lexer.COMMENT {
+		p.nextToken()
+	}
+}
+
+func (p *Parser) skipPeekComments() {
+	for p.peekToken.Type == lexer.COMMENT {
 		p.nextToken()
 	}
 }

@@ -312,7 +312,7 @@ func TestInitProjectCreatesScaffold(t *testing.T) {
 	}
 
 	for _, path := range []string{
-		filepath.Join(dir, "cmd", "main"),
+		filepath.Join(dir, "cmd", "my-project"),
 		filepath.Join(dir, "bin"),
 		filepath.Join(dir, ".sec"),
 		filepath.Join(dir, "internal"),
@@ -322,7 +322,7 @@ func TestInitProjectCreatesScaffold(t *testing.T) {
 		}
 	}
 
-	mainSource, err := os.ReadFile(filepath.Join(dir, "cmd", "main", "main.sec"))
+	mainSource, err := os.ReadFile(filepath.Join(dir, "cmd", "my-project", "main.sec"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -340,13 +340,21 @@ func TestInitProjectCreatesScaffold(t *testing.T) {
 		`name = "My Project"`,
 		`uuid = "`,
 		`imports = []`,
-		`[platform]`,
+		`[build]`,
+		`backend = "mlir"`,
+		`profile = "server"`,
+		`diagnostics = "default"`,
+		`[profile.server]`,
+		`[variant.linux-amd64]`,
 		`os = "linux"`,
 		`arch = "amd64"`,
-		`[build]`,
-		`target = "x86_64-pc-linux-gnu"`,
-		`profile = "server"`,
-		`output = "bin/my-project"`,
+		`llvm_triple = "x86_64-pc-linux-gnu"`,
+		`[target.my-project]`,
+		`kind = "command"`,
+		`source = "cmd/my-project"`,
+		`artifact = "my-project"`,
+		`variants = ["linux-amd64"]`,
+		`output = "bin/my-project/linux-amd64/server/my-project"`,
 	} {
 		if !strings.Contains(configText, want) {
 			t.Fatalf("sec.toml missing %q:\n%s", want, configText)
@@ -356,7 +364,7 @@ func TestInitProjectCreatesScaffold(t *testing.T) {
 
 func TestInitProjectDoesNotOverwriteMainSource(t *testing.T) {
 	dir := t.TempDir()
-	mainPath := filepath.Join(dir, "cmd", "main", "main.sec")
+	mainPath := filepath.Join(dir, "cmd", "custom", "main.sec")
 	if err := os.MkdirAll(filepath.Dir(mainPath), 0755); err != nil {
 		t.Fatal(err)
 	}
@@ -381,6 +389,57 @@ func TestInitProjectDoesNotOverwriteMainSource(t *testing.T) {
 	}
 	if string(got) != string(existing) {
 		t.Fatalf("main.sec was overwritten. got=%q want=%q", got, existing)
+	}
+}
+
+func TestInitProjectIsIdempotentWhenManifestExists(t *testing.T) {
+	dir := t.TempDir()
+	options := initCommandOptions{
+		ProjectDir:  dir,
+		ProjectName: "demo",
+		Target:      CompilerTarget{OS: "linux", Arch: "amd64"},
+		Profile:     "server",
+	}
+
+	if err := initProject(options); err != nil {
+		t.Fatal(err)
+	}
+	first, err := os.ReadFile(filepath.Join(dir, ".sec", "sec.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := initProject(options); err != nil {
+		t.Fatal(err)
+	}
+	second, err := os.ReadFile(filepath.Join(dir, ".sec", "sec.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(second) != string(first) {
+		t.Fatalf("sec.toml changed on idempotent init\nfirst:\n%s\nsecond:\n%s", first, second)
+	}
+}
+
+func TestInitProjectRejectsNestedManifest(t *testing.T) {
+	root := t.TempDir()
+	options := initCommandOptions{
+		ProjectDir:  root,
+		ProjectName: "root",
+		Target:      CompilerTarget{OS: "linux", Arch: "amd64"},
+		Profile:     "server",
+	}
+	if err := initProject(options); err != nil {
+		t.Fatal(err)
+	}
+
+	nested := options
+	nested.ProjectDir = filepath.Join(root, "nested")
+	nested.ProjectName = "nested"
+	if err := initProject(nested); err == nil || !strings.Contains(err.Error(), "nested Sec project manifest is not allowed") {
+		t.Fatalf("initProject nested error = %v, want nested manifest error", err)
+	}
+	if fileExists(filepath.Join(nested.ProjectDir, ".sec", "sec.toml")) {
+		t.Fatal("nested sec.toml was created")
 	}
 }
 

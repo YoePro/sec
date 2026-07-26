@@ -114,6 +114,33 @@ type Property struct {
 	HasSetter bool
 }
 
+type StorageOrigin string
+
+const (
+	StorageOriginInline       StorageOrigin = "Inline"
+	StorageOriginStatic       StorageOrigin = "Static"
+	StorageOriginArena        StorageOrigin = "Arena"
+	StorageOriginExternal     StorageOrigin = "External"
+	StorageOriginForeign      StorageOrigin = "Foreign"
+	StorageOriginFixedAddress StorageOrigin = "FixedAddress"
+	StorageOriginUnknown      StorageOrigin = "Unknown"
+)
+
+type AllocationEffect string
+
+const (
+	AllocationEffectNone    AllocationEffect = "none"
+	AllocationEffectArena   AllocationEffect = "arena"
+	AllocationEffectForeign AllocationEffect = "foreign"
+	AllocationEffectUnknown AllocationEffect = "unknown"
+)
+
+type AllocationContext struct {
+	Available bool
+	Origin    StorageOrigin
+	Profile   string
+}
+
 type InterfaceProperty struct {
 	Name        string
 	Type        Type
@@ -161,6 +188,7 @@ type Function struct {
 	Token             lexer.Token
 	Extern            bool
 	ABI               string
+	AllocationEffect  AllocationEffect
 }
 
 type FunctionParameter struct {
@@ -258,6 +286,7 @@ type Symbol struct {
 	Addressed bool
 	Address   string
 	Volatile  bool
+	Storage   StorageOrigin
 }
 
 func builtinTypes() map[string]Type {
@@ -354,4 +383,98 @@ func mustBigInt(value string) *big.Int {
 		panic("invalid builtin integer bound: " + value)
 	}
 	return out
+}
+
+func TriviallyDestructible(typ Type) bool {
+	return triviallyDestructible(typ, map[string]bool{})
+}
+
+func triviallyDestructible(typ Type, visiting map[string]bool) bool {
+	switch typ.Kind {
+	case InvalidType,
+		VoidType,
+		NeverType,
+		BoolType,
+		IntType,
+		UintType,
+		FloatType,
+		DecimalType,
+		CharType,
+		RuneType,
+		RawPtrType,
+		ReferenceType,
+		FunctionType,
+		InterfaceType,
+		RegisterType:
+		return true
+	case StringType:
+		// Current Sec strings are lowered as string views or static literals.
+		// Owned string storage will need an explicit non-trivial string type.
+		return true
+	case GenericType:
+		// Generic declarations are only templates. Concrete instantiations must
+		// substitute type arguments before destruction analysis relies on this.
+		return true
+	case ArrayType:
+		if typ.Element == nil {
+			return true
+		}
+		return triviallyDestructible(*typ.Element, visiting)
+	case SliceType:
+		// Slices are non-owning views in the current language model.
+		return true
+	case EnumType:
+		return true
+	case ResultType:
+		for _, arg := range typ.TypeArgs {
+			if !triviallyDestructible(arg, visiting) {
+				return false
+			}
+		}
+		return true
+	case StructType:
+		key := typeDestructionKey(typ)
+		if key != "" {
+			if visiting[key] {
+				return true
+			}
+			visiting[key] = true
+			defer delete(visiting, key)
+		}
+		for _, field := range typ.Fields {
+			if !triviallyDestructible(field.Type, visiting) {
+				return false
+			}
+		}
+		return true
+	case UnionType:
+		key := typeDestructionKey(typ)
+		if key != "" {
+			if visiting[key] {
+				return true
+			}
+			visiting[key] = true
+			defer delete(visiting, key)
+		}
+		for _, variant := range typ.UnionVariants {
+			if variant.Payload != nil && !triviallyDestructible(*variant.Payload, visiting) {
+				return false
+			}
+			for _, field := range variant.PayloadFields {
+				if !triviallyDestructible(field.Type, visiting) {
+					return false
+				}
+			}
+		}
+		return true
+	default:
+		return false
+	}
+}
+
+func typeDestructionKey(typ Type) string {
+	if typ.Module != "" || typ.Name != "" {
+		return typ.Module + "." + typ.Name
+	}
+	return ""
 }

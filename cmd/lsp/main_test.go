@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 
@@ -84,7 +83,7 @@ func TestFindSelectorLHS(t *testing.T) {
 	text := `module main
 
 fn main() void {
-    let value = foo.bar
+    let value := foo.bar
 }
 `
 
@@ -99,10 +98,7 @@ fn main() void {
 	if dotOffset < 0 {
 		t.Fatal("expected dot in source")
 	}
-	fmt.Printf("selector=%q\n", selectorTextBeforeCursor(text, dotOffset))
-
 	expr := findSelectorLHS(program, text, dotOffset)
-	fmt.Printf("expr=%T %v\n", expr, expr)
 	if expr == nil {
 		t.Fatal("expected expression before dot")
 	}

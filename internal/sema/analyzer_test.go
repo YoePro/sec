@@ -902,6 +902,57 @@ fn Test() void {
 	assertSemaErrors(t, errors, expected)
 }
 
+func TestRegisterBitBackedEnumImplSelfAndBitAssignments(t *testing.T) {
+	input := `
+module main
+
+unit ticks uint physical
+
+enum ClockSource bit[2] {
+	APB_CLK: 0b00
+	PLL_CLK: 0b10
+}
+
+type TimerConfig register[32] {
+	ClkSrc: ClockSource
+	En: bit
+	_: bit[29]
+}
+
+type TimerValue register[32] {
+	Ticks: bit[32]<ticks>
+}
+
+impl TimerConfig {
+	fn Start(source: ClockSource) void {
+		self.ClkSrc = source
+		self.En = 1
+	}
+
+	property IsRunning: bool {
+		get {
+			return self.En
+		}
+	}
+}
+
+@address(0x3FF5F000)
+let mut config: TimerConfig
+
+@address(0x3FF5F004)
+let value: TimerValue
+
+fn Test() void {
+	config.Start(ClockSource.PLL_CLK)
+	let active := config.IsRunning
+	let count: ticks := value.Ticks
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
 func TestRegisterValidFixture(t *testing.T) {
 	input, err := os.ReadFile("../../testdata/register_valid.sec")
 	if err != nil {

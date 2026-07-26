@@ -1294,22 +1294,29 @@ Destruction is currently a language and compiler-design target.
 The current compiler implementation has:
 
 * lexical and parser support for ownership-adjacent constructs such as `defer`,
-  `unsafe`, `ref`, `RawPtr` and FFI-facing declarations
+  `unsafe`, `ref`, `RawPtr`, reserved `free` syntax and FFI-facing declarations
 * semantic checks for mutability, definite assignment, reachability and several
   control-flow cleanup-adjacent rules
+* a conservative `TriviallyDestructible(type)` classification helper for
+  currently resolved Sec types
+* semantic rejection of user-defined `free` bodies until ownership, destruction
+  and cleanup-region rules are implemented
 * no complete ownership analysis pass
 * no complete borrow analysis pass
 * no complete destruction insertion pass
 * no Semantic IR cleanup-region representation yet
-* no MLIR destruction lowering yet
+* no general MLIR destruction lowering yet
 
 Until ownership and destruction analysis are implemented, the compiler must not
 pretend to support non-trivial automatic destruction.
 
-The first implementation step should be conservative:
+Completed conservative first steps:
 
 * classify trivially destructible types
 * reject user-defined `free` syntax until parsing and sema rules are explicit
+
+Remaining conservative first steps:
+
 * reject non-trivial global owned values
 * represent cleanup requirements in Semantic IR before lowering
 * verify that every non-trivial local value has one terminal ownership action

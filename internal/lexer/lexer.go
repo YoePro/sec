@@ -36,6 +36,7 @@ const (
 	FALSE       TokenType = "FALSE"
 	FN          TokenType = "FN"
 	FOR         TokenType = "FOR"
+	FREE        TokenType = "FREE"
 	GET         TokenType = "GET"
 	MODULE      TokenType = "MODULE"
 	IF          TokenType = "IF"
@@ -745,6 +746,8 @@ func lookupIdent(s string) TokenType {
 		return FN
 	case "for":
 		return FOR
+	case "free":
+		return FREE
 	case "get":
 		return GET
 	case "if":

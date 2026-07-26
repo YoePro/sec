@@ -394,7 +394,8 @@ Sema:
 * Reject nested defer statements while analyzing a defer block.
 * Mark the defer block as function-exit cleanup code.
 * Register each defer statement in the current function defer stack.
-* Registration must happen at runtime when execution reaches the statement.
+* Registration must happen in generated code when execution reaches the
+  statement.
 * Preserve source order for registration.
 * Emit defer blocks in reverse registration order during function exit.
 * Insert defer execution before every normal function exit path.

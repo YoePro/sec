@@ -1,0 +1,1723 @@
+=============================================================================================================================================================================================
+Diagnostics, Mentor Analysis and Localization
+=============================================================================================================================================================================================
+
+Purpose
+=======
+
+This document defines the canonical Sec diagnostic model.
+
+It covers:
+
+* parser and semantic errors
+* project and build errors
+* warnings
+* informational mentor diagnostics
+* proven dead code
+* unused declarations
+* stable diagnostic identifiers
+* diagnostic configuration
+* localization
+* extended explanations
+* source suppression
+* formatter fixes
+* semantic code actions
+* machine-readable diagnostic output
+
+The design goals are:
+
+* invalid programs must be rejected
+* statically proven dead code must be rejected
+* likely mistakes should be explained clearly
+* possible improvements should be available without becoming noise
+* safety rules must never be configurable away
+* every primary diagnostic must have a stable identity
+* diagnostic wording may improve without breaking tests or tools
+* diagnostics may be translated without changing compiler behavior
+* the compiler should explain both what is wrong and why
+* the compiler should act as a mentor without pretending that every suggestion is mandatory
+
+=============================================================================================================================================================================================
+Normative status and superseded guidance
+========================================
+
+This document sharpens earlier Sec guidance.
+
+Any earlier rule, roadmap entry, test comment or implementation note that classifies statically proven unreachable code, statically proven dead code or semantically unused local declarations as warnings is superseded by this document.
+
+The canonical rule is now:
+
+```
+proven invalidity or proven dead code
+    error
+
+high-confidence likely mistake that remains semantically valid
+    warning
+
+possible improvement requiring programmer judgement
+    information
+```
+
+In particular:
+
+* unreachable statements are errors
+* unreachable branches are errors
+* shadowed match, switch or try handlers are errors
+* unused local variables are errors
+* unused local constants are errors
+* unused imports are errors
+* unused lambda captures are errors
+* unused generic parameters are errors
+* other declarations proven to be dead are errors when their removal is semantically safe
+
+The compiler must not preserve an older warning classification merely because an earlier implementation emitted a warning.
+
+=============================================================================================================================================================================================
+Terminology
+===========
+
+Primary diagnostic
+------------------
+
+A primary diagnostic reports one independently actionable problem or advisory finding.
+
+Every primary diagnostic has:
+
+* a stable diagnostic ID
+* a stable symbolic name
+* a diagnostic family
+* a default severity
+* a configurable or mandatory classification
+* one primary source location when source is involved
+* structured arguments used by localized messages
+* optional related locations
+* optional notes
+* optional help
+* optional machine-applicable fixes
+
+Error
+-----
+
+An error means that the program, project or requested build has no valid meaning under the applicable Sec rules.
+
+An error prevents the affected compilation or build operation from succeeding.
+
+Mandatory language and safety errors cannot be disabled, demoted or suppressed.
+
+Warning
+-------
+
+A warning means that the code is valid, but the compiler has strong evidence that the programmer probably did not intend the result.
+
+Warnings are advisory diagnostics.
+
+A warning may be configured as:
+
+```
+off
+info
+warning
+error
+```
+
+Information
+-----------
+
+Information means that the code is valid and not strongly suspected to be a bug, but the compiler sees a possible improvement.
+
+Typical information concerns:
+
+* performance
+* unnecessary ownership transfer
+* possible reference use
+* portability
+* maintainability
+* API design
+* redundant constructs that are not incorrect
+
+Information diagnostics are advisory and use the same configurable severity values as warnings.
+
+Note
+----
+
+A note adds context to a primary diagnostic.
+
+A note is not an independent severity and normally has no separate diagnostic ID.
+
+Help
+----
+
+Help describes a possible correction or next action.
+
+Help is not an independent severity and normally has no separate diagnostic ID.
+
+Fix
+---
+
+A fix is a structured source change associated with a primary diagnostic.
+
+A fix may be:
+
+* automatically safe
+* semantically proven but explicitly requested
+* a non-automatic suggestion requiring programmer judgement
+
+The compiler and editor integration must distinguish these classes.
+
+=============================================================================================================================================================================================
+Diagnostic analysis layers
+==========================
+
+Diagnostics are not limited to parsing.
+
+The complete diagnostic system may use:
+
+* lexical analysis
+* parsing
+* name resolution
+* type checking
+* constant evaluation
+* control-flow analysis
+* reachability analysis
+* definite-assignment analysis
+* data-flow analysis
+* ownership analysis
+* copy and move analysis
+* borrow analysis
+* lifetime analysis
+* escape analysis
+* effect analysis
+* layout and size information
+* target and ABI information
+* project-wide call graphs
+* build-target and variant information
+* formatter normalization analysis
+
+The diagnostic ID must identify the language or tool rule, not the internal Go package or compiler pass that currently discovers it.
+
+Moving a check between compiler passes must not change its diagnostic ID when the programmer-visible rule remains the same.
+
+=============================================================================================================================================================================================
+Severity model
+==============
+
+Mandatory errors
+----------------
+
+The following classes are mandatory errors:
+
+* invalid lexical input
+* invalid syntax
+* unresolved required names
+* invalid types
+* invalid conversions
+* invalid overload resolution
+* invalid module or project structure
+* assignment in a condition
+* missing required return
+* invalid Result handling
+* invalid ownership transfer
+* use after move
+* conflicting borrows
+* invalid returned reference
+* invalid register layout
+* invalid unit operation
+* invalid FFI use
+* invalid unsafe use
+* definite-assignment failure
+* proven unreachable code
+* proven dead code
+* semantically unused local declarations
+
+A mandatory error has a fixed severity of `error`.
+
+The following must be rejected:
+
+```toml
+[diagnostics.rules]
+"S3001" = "off"
+```
+
+when `S3001` is a mandatory semantic error.
+
+Expected diagnostic shape:
+
+```
+error[B1104]: diagnostic "S3001" is a mandatory error and cannot be disabled
+```
+
+Warnings
+--------
+
+Warnings are reserved for semantically valid constructs with strong evidence of a likely mistake.
+
+Examples may include:
+
+* an empty error handler that intentionally discards every error
+* an API argument order that is suspicious but type-correct
+* a platform-specific assumption that remains valid for the selected variant
+* a fallible operation whose error is deliberately transformed into an apparently unrelated fallback
+* a loop whose behavior is valid but strongly resembles a common bug
+
+A construct must not remain a warning when the compiler proves that it is unreachable, unused or otherwise invalid under Sec rules.
+
+Information
+-----------
+
+Information is used when programmer intent cannot be inferred with sufficient confidence to justify a warning.
+
+Examples include:
+
+* a large value parameter that could use `ref`
+* a `ref mut` parameter that is only read
+* an allocation inside a loop
+* repeated evaluation of a pure expensive expression
+* a general CPU target where a more specific target could improve output
+* a module that may contain unrelated responsibilities
+* a redundant explicit conversion
+
+The programmer may intentionally keep any of these forms.
+
+=============================================================================================================================================================================================
+Proven unreachable and dead code
+================================
+
+General rule
+------------
+
+Code is dead when semantic analysis proves that it cannot affect any valid execution of any analyzed target and variant.
+
+Proven dead code is an error.
+
+The compiler must distinguish:
+
+```
+proven dead
+    error
+
+possibly unnecessary
+    warning or information
+
+unknown
+    no dead-code diagnostic
+```
+
+Unreachable statements
+----------------------
+
+A statement after an unconditional transfer in the same reachable block is invalid.
+
+Invalid:
+
+```sec
+fn Read() int {
+    return 10
+    Log("unreachable")
+}
+```
+
+Expected diagnostic:
+
+```
+error[S3001]: unreachable statement
+```
+
+This includes statements after an unconditional:
+
+* return
+* break when the following statement remains in the exited block
+* continue when the following statement remains in the skipped iteration block
+* terminating operation
+* exhaustive branch construct whose every branch exits
+
+Unreachable branches
+--------------------
+
+A branch proven impossible is invalid.
+
+Invalid:
+
+```sec
+if false {
+    Start()
+}
+```
+
+Invalid:
+
+```sec
+if true {
+    Start()
+} else {
+    Stop()
+}
+```
+
+The unreachable branch is an error.
+
+Compile-time target selection such as `#target` is not ordinary runtime branching and follows its own source-selection rules.
+
+Source excluded from one variant is not dead when it is selected by another configured variant.
+
+Shadowed handlers and arms
+--------------------------
+
+A match, switch or try handler completely covered by an earlier arm is invalid.
+
+Invalid:
+
+```sec
+match status {
+    other => Handle(other)
+    Status.Disabled => HandleDisabled()
+}
+```
+
+The second arm can never be selected.
+
+Expected diagnostic:
+
+```
+error[S3003]: match arm is unreachable because an earlier pattern is exhaustive
+```
+
+Duplicate constant cases are also errors.
+
+Dead stores
+-----------
+
+A stored value is dead when the compiler proves that:
+
+* the stored value is never read
+* it is overwritten or the storage lifetime ends first
+* evaluating and storing the value has no required observable behavior
+* replacing or removing the store does not alter destruction, ownership, borrowing or volatile behavior
+
+Only then may the compiler report a dead-store error.
+
+The following must not be classified as a removable dead store without effect analysis:
+
+```sec
+value.Property = Compute()
+```
+
+A property setter may have behavior.
+
+The following must not be classified as removable without destruction analysis:
+
+```sec
+resource = CreateFirst()
+resource = CreateSecond()
+```
+
+Replacing the first owned value may execute deterministic destruction.
+
+Volatile register writes are always observable and are never dead merely because Sec code does not read the value.
+
+Pure unused expressions
+-----------------------
+
+A pure expression statement whose result is ignored and which has no observable effect is invalid.
+
+Example:
+
+```sec
+left + right
+```
+
+A function call is not assumed pure unless its effect classification proves that it is pure.
+
+=============================================================================================================================================================================================
+Unused declarations
+===================
+
+General rule
+------------
+
+A declaration is semantically unused when the compiler proves that its binding, value and lifetime have no required effect.
+
+A semantically unused declaration is an error.
+
+The analysis must consider:
+
+* reads
+* writes followed by reads
+* moves
+* borrows
+* returned values
+* captures
+* interface and ABI requirements
+* deterministic destruction
+* deferred use
+* target-specific use
+* use by another configured target
+* compiler-generated references
+
+Unused local variables
+----------------------
+
+Invalid:
+
+```sec
+fn Calculate() int {
+    let result := 10
+    return 0
+}
+```
+
+Expected diagnostic:
+
+```
+error[S3101]: local variable "result" is never used
+```
+
+A local owning value with required deterministic destruction is not semantically unused merely because its name is never read.
+
+Example concept:
+
+```sec
+let guard := AcquireGuard()
+```
+
+If retaining `guard` until scope exit has observable ownership or destruction semantics, the declaration has a semantic lifetime purpose.
+
+The compiler must not suggest removing it as dead code.
+
+Unused local constants
+----------------------
+
+An unused local constant is an error.
+
+Expected diagnostic ID:
+
+```
+S3102
+```
+
+Unused parameters
+-----------------
+
+An unused parameter in an ordinary function or lambda should be an error when no language contract requires the parameter to exist.
+
+Interface methods, callbacks, extern declarations and other fixed-signature contexts may require a parameter that an implementation does not inspect.
+
+Such intentional non-use must eventually use a dedicated explicit language form.
+
+This document does not define that source syntax.
+
+An underscore-prefixed identifier must not silently suppress the error.
+
+Unused imports
+--------------
+
+An import that contributes no referenced symbol, side effect or required compiler behavior is an error.
+
+Sec does not use implicit import side effects unless a separate explicit language feature defines them.
+
+Expected diagnostic ID:
+
+```
+S3104
+```
+
+Unused captures
+---------------
+
+A lambda capture that is never used is an error.
+
+Expected diagnostic ID:
+
+```
+S3105
+```
+
+Unused generic parameters
+-------------------------
+
+A generic parameter that does not participate in the declaration's semantic type or implementation is an error.
+
+Expected diagnostic ID:
+
+```
+S3106
+```
+
+Private module declarations
+---------------------------
+
+A private or project-internal declaration proven unused by every configured target and variant is dead code and is an error.
+
+The analysis must account for:
+
+* all targets in the single project manifest
+* all selected or configured variants
+* target-specific source files
+* interface conformance
+* exported ABI entry points
+* compiler-recognized entry points
+* code generation references
+
+Public library API
+------------------
+
+A public declaration in an explicitly exported library API is not unused merely because no current project target calls it.
+
+A command or firmware target does not automatically create a public external API.
+
+The project and target model determines which declarations form an externally consumable library surface.
+
+=============================================================================================================================================================================================
+Assignment in conditions
+========================
+
+Assignment is not a value-producing expression in Sec.
+
+An assignment where a boolean condition is required is an error.
+
+Invalid:
+
+```sec
+if value = expected {
+}
+```
+
+Expected diagnostic:
+
+```
+error[S3201]: assignment is not allowed in an if condition
+```
+
+When the operands are comparable, help may suggest:
+
+```sec
+value == expected
+```
+
+The compiler must not suggest equality when the resolved operand types do not support equality.
+
+The rule applies to all boolean-condition contexts, including:
+
+* if conditions
+* while conditions
+* subjectless switch cases
+* match guards when implemented
+* conditional compiler expressions when they use ordinary expression grammar
+
+=============================================================================================================================================================================================
+Context-specific underscore meanings
+====================================
+
+The underscore character has several existing context-specific meanings in Sec.
+
+These meanings must remain distinct.
+
+Register reserved fields
+------------------------
+
+In a register declaration:
+
+```sec
+type Status register[8] {
+    Ready: bit
+    _: bit[7]
+}
+```
+
+`_` declares reserved unnamed bits.
+
+It:
+
+* contributes to register layout
+* does not create a normal field symbol
+* cannot be read or written by name
+* is not an unused-variable marker
+* is not a match discard pattern
+
+Match discard pattern
+---------------------
+
+Match has a separately defined pattern form for ignoring a matched value.
+
+That pattern:
+
+* exists only in pattern grammar
+* does not create a local binding
+* does not trigger an unused-variable error
+* does not affect register syntax
+* does not define identifier visibility
+
+The exact match pattern syntax is defined by the match rules.
+
+Visibility and scope prefixes
+-----------------------------
+
+Identifiers beginning with `_` or `__` participate in Sec visibility and scope rules.
+
+Examples:
+
+```sec
+fn _ModuleInternalHelper() void
+fn __PrivateHelper() void
+```
+
+These are real identifiers.
+
+Their prefix does not mean:
+
+* discard this value
+* ignore unused analysis
+* suppress a diagnostic
+* create an anonymous binding
+
+An underscore-prefixed declaration remains subject to dead-code and unused-declaration rules according to its actual visibility and semantic use.
+
+No general discard binding is defined here
+------------------------------------------
+
+This document does not introduce:
+
+```sec
+let _ := value
+```
+
+as a general-purpose discard declaration.
+
+A future general discard operation must use an explicitly decided language construct and must not be inferred from the existing visibility prefixes.
+
+Until such syntax is defined, the compiler must not silently reinterpret `_` in ordinary declaration grammar as an unused-value escape hatch.
+
+=============================================================================================================================================================================================
+Stable diagnostic identifiers
+=============================
+
+General rule
+------------
+
+Every primary error, warning and information diagnostic has a stable unique ID.
+
+Examples:
+
+```
+P1021
+S2012
+A2014
+B3007
+F1002
+```
+
+The ID identifies the diagnostic rule.
+
+The ID does not encode the current severity.
+
+A diagnostic may be rendered as information in one build and promoted to warning or error in another build while retaining the same ID.
+
+Prefix families
+---------------
+
+The initial prefix families are:
+
+```
+P
+    source syntax, lexing and parsing
+
+S
+    mandatory language semantics and correctness
+
+A
+    configurable advisory and mentor analysis
+
+B
+    project, manifest, init, target, variant and build rules
+
+F
+    formatter and canonical-source rules
+```
+
+The prefixes describe stable programmer-visible rule families.
+
+They do not name internal compiler packages.
+
+Optional future families may be added for backend or external toolchain diagnostics when a clear stable boundary is needed.
+
+Internal compiler failures are not ordinary source diagnostics and should use a distinct internal-error representation rather than consuming a normal language-rule ID.
+
+Numeric allocation
+------------------
+
+Each prefix owns its own four-digit numeric space.
+
+Recommended subranges are:
+
+```
+P1xxx
+    tokenization and lexical structure
+
+P2xxx
+    declarations, blocks and delimiters
+
+P3xxx
+    expressions and patterns
+
+P4xxx
+    parser recovery and malformed constructs
+
+S1xxx
+    names, modules, visibility and scope
+
+S2xxx
+    types, conversions, calls and overloads
+
+S3xxx
+    control flow, reachability, dead code and unused declarations
+
+S4xxx
+    ownership, copy, move and destruction
+
+S5xxx
+    references, borrowing and lifetimes
+
+S6xxx
+    impl, interfaces, generics and conformance
+
+S7xxx
+    contracts, units, registers, FFI and unsafe
+
+A1xxx
+    suspicious but valid behavior
+
+A2xxx
+    performance and allocation
+
+A3xxx
+    ownership and API improvement
+
+A4xxx
+    portability and target advice
+
+A5xxx
+    maintainability and project organization
+
+A6xxx
+    style and clarity not handled canonically by the formatter
+
+B1xxx
+    manifest syntax and project identity
+
+B2xxx
+    directories, modules and sec init
+
+B3xxx
+    targets, variants, profiles and parameters
+
+B4xxx
+    toolchains, linking and artifacts
+
+B5xxx
+    build state, counters and caching
+
+F1xxx
+    formatter input and formatting eligibility
+
+F2xxx
+    canonical transformations and formatter consistency
+```
+
+These ranges guide allocation but are not user-visible semantics beyond the stable prefix and number.
+
+Initial reserved semantic IDs
+-----------------------------
+
+The following IDs are reserved by this document:
+
+```
+S3001
+    control-flow.unreachable-statement
+
+S3002
+    control-flow.unreachable-branch
+
+S3003
+    control-flow.unreachable-arm
+
+S3004
+    data-flow.dead-store
+
+S3005
+    expressions.unused-pure-result
+
+S3101
+    declarations.unused-local-variable
+
+S3102
+    declarations.unused-local-constant
+
+S3103
+    declarations.unused-parameter
+
+S3104
+    modules.unused-import
+
+S3105
+    lambdas.unused-capture
+
+S3106
+    generics.unused-parameter
+
+S3107
+    declarations.unused-private-symbol
+
+S3201
+    control-flow.assignment-in-condition
+```
+
+Additional IDs must be allocated through the central diagnostic registry.
+
+Stability rules
+---------------
+
+Once published, a diagnostic ID must never be reused for another rule.
+
+If a rule is removed, its ID remains retired.
+
+The following may change without changing the ID:
+
+* English wording
+* translated wording
+* source highlighting quality
+* notes
+* help text
+* extended explanation
+* machine-applicable fixes
+
+The ID must change only when the programmer-visible problem becomes a materially different rule.
+
+Symbolic names
+--------------
+
+Every diagnostic ID also has a stable symbolic name.
+
+Example:
+
+```
+ID:
+    A2001
+
+Name:
+    performance.large-value-parameter
+```
+
+Both ID and symbolic name may be accepted in configuration and tooling.
+
+Normal terminal output should always include the ID.
+
+Verbose output may include both:
+
+```
+info[A2001 performance.large-value-parameter]: parameter "frame" could use a shared reference
+```
+
+=============================================================================================================================================================================================
+Structured diagnostic representation
+====================================
+
+The compiler must construct diagnostics as structured data rather than preformatted English strings.
+
+A diagnostic occurrence contains at least:
+
+```
+ID
+symbolic name
+severity
+message arguments
+primary source span
+related source spans
+notes
+help
+fixes
+```
+
+Example conceptual payload:
+
+```
+ID:
+    S3101
+
+Arguments:
+    name = "result"
+
+Primary span:
+    order.sec:18:9
+
+Related data:
+    declaration kind = local variable
+```
+
+The renderer selects localized message templates and inserts structured arguments.
+
+Source identifiers, type names, values and paths remain exact compiler data and must not be translated.
+
+=============================================================================================================================================================================================
+Localization
+============
+
+General rule
+------------
+
+Diagnostic IDs make translation independent of compiler analysis.
+
+The same diagnostic may be rendered in different languages without changing:
+
+* ID
+* severity
+* source location
+* structured arguments
+* compiler behavior
+* build result
+
+Example English rendering:
+
+```
+error[S3101]: local variable "result" is never used
+```
+
+Example Swedish rendering:
+
+```
+fel[S3101]: den lokala variabeln "result" används aldrig
+```
+
+English is the canonical fallback language.
+
+Message catalogs
+----------------
+
+Localized message catalogs are keyed by diagnostic ID or stable message keys owned by that diagnostic.
+
+Templates use named arguments.
+
+Example:
+
+```
+English:
+    local variable "{name}" is never used
+
+Swedish:
+    den lokala variabeln "{name}" används aldrig
+```
+
+Compiler tests must validate that:
+
+* every translated ID exists
+* required named arguments are present
+* unknown named arguments are rejected
+* templates are syntactically valid
+* English fallback always exists
+
+Language selection
+------------------
+
+Diagnostic language is primarily a user preference, not project semantics.
+
+Recommended precedence:
+
+```
+1. explicit command-line language
+2. user configuration
+3. process locale
+4. project recommendation when present
+5. English fallback
+```
+
+Possible commands:
+
+```
+sec check shop --language sv
+sec explain S3101 --language en
+```
+
+The project manifest may recommend a language, but it must not prevent individual developers from selecting another language.
+
+=============================================================================================================================================================================================
+Short messages and extended explanations
+========================================
+
+Normal diagnostic
+-----------------
+
+Normal terminal output should be concise:
+
+```
+error[S3001]: unreachable statement
+```
+
+Extended terminal detail
+------------------------
+
+An extended rendering may include source, reason and help:
+
+```
+error[S3001]: unreachable statement
+
+  --> src/order.sec:18:5
+   |
+17 |     return order
+18 |     Log("created")
+   |     ^^^^^^^^^^^^^^ this statement cannot execute
+
+note:
+    every preceding path returns from the function
+
+help:
+    remove the statement or move it before the return
+```
+
+Diagnostic explanation command
+------------------------------
+
+The compiler should provide:
+
+```
+sec explain S3001
+```
+
+The explanation may contain:
+
+* complete rule description
+* common causes
+* valid alternatives
+* examples
+* whether the rule is mandatory
+* whether it is configurable
+* links to related diagnostic IDs
+* implementation or language-version notes
+
+Extended explanations may be localized independently from short messages.
+
+=============================================================================================================================================================================================
+Diagnostic configuration
+========================
+
+Mandatory diagnostics
+---------------------
+
+Mandatory `P`, `S` and mandatory `B` errors cannot be:
+
+* disabled
+* demoted
+* suppressed in source
+* converted to information
+* converted to warning
+
+Advisory diagnostics
+--------------------
+
+Configurable diagnostics normally use the `A` family.
+
+Allowed configured severities are:
+
+```
+off
+info
+warning
+error
+```
+
+Example:
+
+```toml
+[diagnostics.rules]
+"performance.large-value-parameter" = "warning"
+"A2004" = "off"
+```
+
+Category configuration
+----------------------
+
+Advisory diagnostics are grouped into categories such as:
+
+```
+suspicious
+performance
+ownership
+portability
+maintainability
+style
+deprecated
+```
+
+Example:
+
+```toml
+[diagnostics.categories]
+performance = "info"
+style = "off"
+portability = "warning"
+```
+
+Rule-specific configuration overrides category configuration.
+
+Presets
+-------
+
+Recommended presets are:
+
+```
+minimal
+    mandatory errors only
+
+default
+    mandatory errors, default warnings and selected high-value information
+
+mentor
+    mandatory errors, warnings and all implemented information diagnostics
+
+strict
+    mandatory errors, warnings promoted to errors and selected information promoted to warnings
+```
+
+Example:
+
+```toml
+[diagnostics]
+preset = "mentor"
+```
+
+Configuration scope
+-------------------
+
+Diagnostic policy may be configured at:
+
+* project level
+* target level
+* target-variant level
+* command-line level
+
+A benchmark target may disable performance suggestions that describe the behavior being measured.
+
+Example:
+
+```toml
+[target.benchmark.diagnostics.categories]
+performance = "off"
+```
+
+An embedded variant may promote performance and allocation findings:
+
+```toml
+[target.controller.variant.embedded-arm32.diagnostics.categories]
+performance = "warning"
+```
+
+Recommended precedence is:
+
+```
+1. command-line rule override
+2. target-variant rule override
+3. target rule override
+4. project rule override
+5. command-line category override
+6. target-variant category override
+7. target category override
+8. project category override
+9. selected preset
+10. diagnostic default
+```
+
+User configuration may choose language, detail and a fallback preset when the project does not define one.
+
+Project policy must remain reproducible for CI.
+
+=============================================================================================================================================================================================
+Source-level suppression
+========================
+
+General rule
+------------
+
+Source-level suppression may be added for advisory diagnostics.
+
+The exact source syntax is defined separately.
+
+Any suppression mechanism must be:
+
+* diagnostic-specific
+* scope-limited
+* explicit
+* reviewable
+* optionally accompanied by a reason
+
+A blanket source directive that disables all warnings or all diagnostics must not be supported.
+
+Mandatory diagnostics cannot be suppressed.
+
+Underscore is not suppression
+-----------------------------
+
+The following do not suppress diagnostics:
+
+* `_name`
+* `__name`
+* register `_`
+* match discard patterns outside their pattern meaning
+
+A suppression must refer to the diagnostic ID or symbolic name through the dedicated suppression mechanism.
+
+Unused suppression
+------------------
+
+The compiler should be able to report a suppression that no longer suppresses any diagnostic.
+
+Possible advisory diagnostic:
+
+```
+warning[A6001]: suppression for "A2001" is no longer needed
+```
+
+The compiler should support inspection of suppressed findings:
+
+```
+sec check shop --show-suppressed
+```
+
+=============================================================================================================================================================================================
+Formatter and mentor boundaries
+===============================
+
+Formatter responsibility
+------------------------
+
+The formatter performs deterministic canonicalization.
+
+It may automatically apply a source transformation only when the transformation is proven to preserve Sec semantics, including:
+
+* evaluation order
+* side effects
+* ownership
+* borrowing
+* destruction
+* volatile behavior
+* property behavior
+* Result behavior
+
+Compound assignment normalization
+---------------------------------
+
+The source:
+
+```sec
+x = x + 1
+```
+
+may be normalized to:
+
+```sec
+x += 1
+```
+
+when semantic analysis proves that:
+
+* both references resolve to the same assignable place
+* evaluating the target once instead of twice is equivalent
+* no getter, setter, property or index side effect changes
+* no volatile access count changes
+* ownership and borrowing behavior remains identical
+* the compound operator is defined for the resolved types
+
+The formatter must not blindly rewrite:
+
+```sec
+values[NextIndex()] = values[NextIndex()] + 1
+```
+
+because the number and order of `NextIndex()` calls may change.
+
+API-changing advice
+-------------------
+
+The formatter must not automatically change:
+
+```sec
+fn Process(value: LargeObject) void
+```
+
+to:
+
+```sec
+fn Process(value: ref LargeObject) void
+```
+
+This changes the API and ownership contract.
+
+Such a change is a mentor diagnostic and may be offered as an explicit semantic code action only after complete analysis.
+
+Fix classes
+-----------
+
+Tools must distinguish:
+
+```
+canonical formatter fix
+    safe and automatic
+
+semantic safe fix
+    equivalence proven but explicitly requested
+
+mentor suggestion
+    requires programmer judgement and is not automatically applied
+```
+
+=============================================================================================================================================================================================
+Mentor and performance analysis
+===============================
+
+Evidence
+--------
+
+A mentor diagnostic should explain the evidence supporting it.
+
+Example:
+
+```
+info[A2001]: parameter "frame" could use a shared reference
+
+note:
+    Frame occupies 65,536 bytes
+    the function only reads the parameter
+    the parameter does not escape
+```
+
+The compiler should report concrete information when available:
+
+* resolved size
+* alignment
+* copy classification
+* call count known from static analysis
+* loop nesting
+* escape result
+* mutation result
+* allocation result
+* affected variants
+
+Uncertainty
+-----------
+
+The compiler must not claim certainty when analysis is incomplete.
+
+Example:
+
+```
+info[A2008]: this operation may allocate during each loop iteration
+
+note:
+    allocation depends on the concrete generic instantiation
+```
+
+Reverse parameter-mode analysis
+-------------------------------
+
+The compiler may infer the minimum required parameter capability:
+
+```
+T
+ref T
+ref mut T
+```
+
+A by-value parameter may receive an advisory diagnostic when analysis proves that the function:
+
+* does not consume it
+* does not move it
+* does not retain it
+* does not return ownership from it
+* does not require an independent copy
+* only reads it
+
+A `ref mut` parameter may receive an advisory diagnostic when it is never mutated.
+
+These findings are normally information because API intent belongs to the programmer.
+
+A project may promote them to warnings or errors.
+
+Benchmarks and deliberate costs
+-------------------------------
+
+Performance advice must be configurable because a target may intentionally measure:
+
+* copying
+* allocation
+* repeated computation
+* generic fallback paths
+* platform overhead
+
+A benchmark target may disable or demote the corresponding advisory category without weakening mandatory correctness rules.
+
+=============================================================================================================================================================================================
+Diagnostic registry
+===================
+
+Central registry
+----------------
+
+Every primary diagnostic must be declared exactly once in a central compiler registry.
+
+Each entry contains at least:
+
+```
+ID
+symbolic name
+family
+category
+default severity
+mandatory or configurable status
+message argument schema
+English short-message key
+English explanation key
+```
+
+The compiler build and test suite must verify:
+
+* no duplicate IDs
+* no duplicate symbolic names
+* every emitted diagnostic is registered
+* every registered mandatory diagnostic has error severity
+* configurable diagnostics use allowed severities
+* retired IDs are not reused
+* message argument schemas match translations
+* English fallback exists
+
+No compiler code may emit an unregistered primary diagnostic.
+
+Retired diagnostics
+-------------------
+
+When a diagnostic is removed, its registry entry or a separate retired-ID registry preserves the ID permanently.
+
+Documentation generation
+------------------------
+
+The diagnostic registry should generate or feed:
+
+* `sec explain`
+* online or packaged diagnostic documentation
+* LSP code metadata
+* compiler test fixtures
+* translation templates
+* release notes for new diagnostics
+
+=============================================================================================================================================================================================
+Testing
+=======
+
+Diagnostic tests should primarily assert:
+
+* diagnostic ID
+* severity
+* primary source location
+* related source locations when important
+* structured arguments when important
+* fix availability when important
+
+Tests should not depend on exact English sentence wording unless testing a message catalog renderer.
+
+Example expected test data:
+
+```
+ID: S3101
+severity: error
+line: 18
+column: 9
+name: result
+```
+
+Localization tests are separate from semantic diagnostic tests.
+
+Parser recovery tests must verify that one malformed construct does not create unrelated cascades of diagnostic IDs.
+
+=============================================================================================================================================================================================
+LSP and machine-readable output
+===============================
+
+LSP diagnostics must expose the stable ID as the diagnostic code.
+
+Conceptual payload:
+
+```json
+{
+  "source": "sec",
+  "code": "S3001",
+  "severity": "error"
+}
+```
+
+The CLI should support machine-readable diagnostic output:
+
+```
+sec check shop --diagnostic-format json
+```
+
+Conceptual output:
+
+```json
+{
+  "id": "A2001",
+  "name": "performance.large-value-parameter",
+  "severity": "info",
+  "configurable": true,
+  "messageArguments": {
+    "name": "frame",
+    "size": 65536
+  }
+}
+```
+
+Localized display text may be included, but tools must use the ID and structured fields as the stable interface.
+
+=============================================================================================================================================================================================
+Implementation phases
+=====================
+
+Phase 1 - Registry infrastructure
+---------------------------------
+
+Implement:
+
+* central diagnostic registry
+* unique ID validation
+* symbolic names
+* structured message arguments
+* fixed mandatory severity
+* configurable advisory severity
+
+Phase 2 - Existing diagnostic migration
+---------------------------------------
+
+Assign stable IDs to every current lexer, parser, sema, project, build and formatter diagnostic.
+
+Do not change a language rule merely to preserve an existing message implementation.
+
+Promote earlier warning implementations to errors where this document requires errors.
+
+Phase 3 - Dead-code and unused enforcement
+------------------------------------------
+
+Implement or complete:
+
+* reachability analysis
+* unreachable branch detection
+* unreachable arm detection
+* dead-store effect checks
+* unused local variables
+* unused local constants
+* unused imports
+* unused captures
+* unused generic parameters
+* project-wide private symbol reachability
+
+Phase 4 - Configuration and presets
+-----------------------------------
+
+Implement:
+
+* category configuration
+* per-rule configuration
+* project, target and variant overrides
+* CLI overrides
+* presets
+* mandatory-error protection
+
+Phase 5 - Localization
+----------------------
+
+Implement:
+
+* English canonical catalog
+* locale selection
+* catalog argument validation
+* English fallback
+* localized `sec explain`
+
+Phase 6 - Mentor analysis
+-------------------------
+
+Implement advisory analyses such as:
+
+* large by-value parameter
+* parameter could use shared reference
+* mutable reference only read
+* allocation in loop
+* repeated pure computation
+* portability and target advice
+
+Phase 7 - Code actions and suppression
+--------------------------------------
+
+Implement:
+
+* fix classification
+* safe formatter fixes
+* semantic code actions
+* explicit advisory suppression syntax
+* unused suppression reporting
+
+=============================================================================================================================================================================================
+Current implementation status
+=============================
+
+The compiler currently emits many parser and semantic diagnostics as English text without the complete stable-ID and localization model defined here.
+
+Some existing checks already reject invalid code.
+
+Some earlier implementations or rule texts may classify unreachable or unused constructs as warnings.
+
+Those classifications must be migrated to the mandatory error rules defined in this document.
+
+Not yet complete:
+
+* central diagnostic registry
+* IDs for every diagnostic
+* symbolic names for every diagnostic
+* structured localized messages
+* translation catalogs
+* `sec explain`
+* complete dead-code analysis
+* complete unused-declaration analysis
+* configurable advisory categories and presets
+* target- and variant-specific diagnostic policy
+* source-level advisory suppression
+* machine-readable structured CLI diagnostics
+* full mentor cost analysis
+
+=============================================================================================================================================================================================
+Normative summary
+=================
+
+1. Every primary error, warning and information diagnostic has a stable unique ID.
+2. Diagnostic IDs identify rules, not severity.
+3. Diagnostic IDs do not depend on the output language.
+4. Published IDs are never reused.
+5. Every diagnostic also has a stable symbolic name.
+6. Mandatory language and safety diagnostics are errors.
+7. Mandatory errors cannot be disabled, demoted or source-suppressed.
+8. Proven unreachable code is an error.
+9. Proven dead code is an error.
+10. Semantically unused local variables and constants are errors.
+11. Unused imports, captures and generic parameters are errors.
+12. Dead-code diagnostics require semantic proof and effect awareness.
+13. Deterministic destruction, ownership, volatility and side effects must be considered before removing code.
+14. Warnings represent valid code with strong evidence of likely unintended behavior.
+15. Information represents possible improvements requiring programmer judgement.
+16. Advisory diagnostics may be configured as off, info, warning or error.
+17. Notes, help and fixes belong to a primary diagnostic and normally have no separate ID.
+18. Diagnostic messages are structured data rendered through localized catalogs.
+19. English is the canonical fallback language.
+20. `sec explain <ID>` should provide an extended explanation.
+21. Diagnostic tests should assert IDs and locations rather than exact English wording.
+22. Register `_`, match discard patterns and underscore visibility prefixes are separate language constructs.
+23. Underscore-prefixed identifiers do not suppress unused analysis.
+24. No general discard binding is introduced by this document.
+25. Formatter transformations must preserve complete Sec semantics.
+26. API-changing reference suggestions are mentor diagnostics, not automatic formatting.
+27. Mentor diagnostics should provide evidence and express uncertainty honestly.
+28. Every emitted primary diagnostic must exist in the central diagnostic registry.
+29. LSP and machine-readable output use the diagnostic ID as the stable interface.
+30. Earlier warning classifications for proven dead or unused code are superseded by this document.

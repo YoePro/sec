@@ -26,6 +26,8 @@ type Generator struct {
 	structs        map[string]*mlirStruct
 	enums          map[string]*mlirEnum
 	loops          []loopContext
+	defers         []*deferEntry
+	deferByStmt    map[*ast.DeferStatement]*deferEntry
 	stringID       int
 }
 
@@ -76,6 +78,13 @@ type mlirStructField struct {
 type loopContext struct {
 	breakLabel    string
 	continueLabel string
+}
+
+type deferEntry struct {
+	stmt      *ast.DeferStatement
+	activePtr string
+	locals    map[string]local
+	seen      bool
 }
 
 const (
@@ -193,6 +202,17 @@ func (g *Generator) emitFunction(fn *ast.FunctionDeclaration) error {
 	}()
 	previousLocals := g.locals
 	g.locals = map[string]local{}
+	previousDefers := g.defers
+	previousDeferByStmt := g.deferByStmt
+	g.defers = collectFunctionDefers(fn.Body)
+	g.deferByStmt = map[*ast.DeferStatement]*deferEntry{}
+	for _, entry := range g.defers {
+		g.deferByStmt[entry.stmt] = entry
+	}
+	defer func() {
+		g.defers = previousDefers
+		g.deferByStmt = previousDeferByStmt
+	}()
 
 	fmt.Fprintf(&signature, "  llvm.func @%s(", g.functionName(fn))
 	writtenParams := 0
@@ -229,6 +249,7 @@ func (g *Generator) emitFunction(fn *ast.FunctionDeclaration) error {
 		fmt.Fprintf(&signature, ") -> %s {\n", returnType)
 	}
 	g.blockOpen = true
+	g.initializeDeferFlags()
 
 	if fn.Body != nil {
 		for _, stmt := range fn.Body.Statements {
@@ -240,6 +261,10 @@ func (g *Generator) emitFunction(fn *ast.FunctionDeclaration) error {
 	}
 
 	if g.blockOpen {
+		if err := g.emitActiveDefers(); err != nil {
+			g.locals = previousLocals
+			return err
+		}
 		if returnType == "void" {
 			g.write("    llvm.return\n")
 		} else {
@@ -283,10 +308,14 @@ func (g *Generator) emitStatement(stmt ast.Statement) error {
 		return g.emitWhile(stmt)
 	case *ast.SwitchStatement:
 		return g.emitSwitch(stmt)
+	case *ast.MatchStatement:
+		return g.emitMatchStatement(stmt)
 	case *ast.UnsafeStatement:
 		return g.emitUnsafe(stmt)
 	case *ast.AsmStatement:
 		return g.emitAsmStatement(stmt)
+	case *ast.DeferStatement:
+		return g.emitDefer(stmt)
 	case *ast.BreakStatement:
 		return g.emitBreak()
 	case *ast.ContinueStatement:
@@ -391,6 +420,27 @@ func (g *Generator) emitAsmStatement(stmt *ast.AsmStatement) error {
 			direct:   true,
 		}
 	}
+	return nil
+}
+
+func (g *Generator) emitDefer(stmt *ast.DeferStatement) error {
+	if len(g.loops) > 0 {
+		return fmt.Errorf("emit-mlir does not support defer inside loops yet")
+	}
+	entry, ok := g.deferByStmt[stmt]
+	if !ok {
+		return fmt.Errorf("emit-mlir internal error: unregistered defer statement")
+	}
+	if entry.activePtr == "" {
+		entry.activePtr = g.emitAlloca("i1")
+	}
+	if deferBodyIsBareReturnMLIR(stmt.Body) {
+		return nil
+	}
+	entry.seen = true
+	entry.locals = copyMLIRLocals(g.locals)
+	active := g.emitBoolConstant(true)
+	g.write("    llvm.store %s, %s : i1, !llvm.ptr\n", active.ref, entry.activePtr)
 	return nil
 }
 
@@ -937,6 +987,9 @@ func (g *Generator) emitAssignmentOperation(operator string, left value, right v
 
 func (g *Generator) emitReturn(stmt *ast.ReturnStatement) error {
 	if stmt.Value == nil {
+		if err := g.emitActiveDefers(); err != nil {
+			return err
+		}
 		if g.returnType == "void" {
 			g.write("    llvm.return\n")
 		} else {
@@ -956,6 +1009,9 @@ func (g *Generator) emitReturn(stmt *ast.ReturnStatement) error {
 			return fmt.Errorf("emit-mlir cannot return %s from %s function", val.typ, g.returnType)
 		}
 		val = coerced
+	}
+	if err := g.emitActiveDefers(); err != nil {
+		return err
 	}
 	g.write("    llvm.return %s : %s\n", val.ref, val.typ)
 	g.blockOpen = false
@@ -1207,6 +1263,286 @@ func (g *Generator) emitSwitchBody(block *ast.BlockStatement, endLabel string) e
 	return nil
 }
 
+func (g *Generator) emitMatchStatement(stmt *ast.MatchStatement) error {
+	if stmt == nil || stmt.Match == nil {
+		return nil
+	}
+	return g.emitMatch(stmt.Match, "", false, false)
+}
+
+func (g *Generator) emitMatchExpression(expr *ast.MatchExpression, targetType string, targetUnsigned bool) (value, error) {
+	if targetType == "" {
+		return value{}, fmt.Errorf("emit-mlir match expression requires an expected result type")
+	}
+	resultPtr := g.emitAlloca(targetType)
+	if err := g.emitMatch(expr, targetType, targetUnsigned, true, resultPtr); err != nil {
+		return value{}, err
+	}
+	return g.loadLocal(local{typ: targetType, ptr: resultPtr, unsigned: targetUnsigned})
+}
+
+func (g *Generator) emitMatch(expr *ast.MatchExpression, targetType string, targetUnsigned bool, valueContext bool, resultPtr ...string) error {
+	if expr.Subject == nil {
+		return fmt.Errorf("emit-mlir match requires a subject")
+	}
+	if len(expr.Arms) == 0 {
+		return fmt.Errorf("emit-mlir match requires at least one arm")
+	}
+	subject, err := g.emitExpression(expr.Subject)
+	if err != nil {
+		return err
+	}
+	if subject.typ != "i1" && !isMLIRIntegerType(subject.typ) {
+		return fmt.Errorf("emit-mlir match currently supports bool, integer and enum subjects, got %s", subject.typ)
+	}
+	for _, arm := range expr.Arms {
+		if arm == nil {
+			return fmt.Errorf("emit-mlir match contains nil arm")
+		}
+		if arm.Guard != nil {
+			return fmt.Errorf("emit-mlir does not support match guards yet")
+		}
+		if !valueContext && arm.Body != nil {
+			return fmt.Errorf("emit-mlir match statement arms must use block or return bodies")
+		}
+		if valueContext && arm.Body == nil {
+			return fmt.Errorf("emit-mlir match expression arms must produce values")
+		}
+	}
+
+	endLabel := g.nextLabel("match.end")
+	testLabels := make([]string, len(expr.Arms))
+	bodyLabels := make([]string, len(expr.Arms))
+	for i := range expr.Arms {
+		testLabels[i] = g.nextLabel("match.test")
+		bodyLabels[i] = g.nextLabel("match.arm")
+	}
+
+	g.write("    llvm.br ^%s\n", testLabels[0])
+	g.blockOpen = false
+	for i, arm := range expr.Arms {
+		falseLabel := endLabel
+		if i+1 < len(testLabels) {
+			falseLabel = testLabels[i+1]
+		}
+		g.write("  ^%s:\n", testLabels[i])
+		g.blockOpen = true
+		condition, err := g.emitMatchPatternCondition(subject, arm.Pattern)
+		if err != nil {
+			return err
+		}
+		g.write("    llvm.cond_br %s, ^%s, ^%s\n", condition.ref, bodyLabels[i], falseLabel)
+		g.blockOpen = false
+	}
+
+	outerLocals := g.locals
+	for i, arm := range expr.Arms {
+		g.write("  ^%s:\n", bodyLabels[i])
+		g.blockOpen = true
+		g.locals = copyMLIRLocals(outerLocals)
+		if err := g.bindMatchPattern(subject, arm.Pattern); err != nil {
+			g.locals = outerLocals
+			return err
+		}
+		if valueContext {
+			armValue, err := g.emitExpressionForTargetUnsigned(arm.Body, targetType, targetUnsigned)
+			if err != nil {
+				g.locals = outerLocals
+				return err
+			}
+			armValue, err = g.coerceValue(armValue, targetType, targetUnsigned)
+			if err != nil {
+				g.locals = outerLocals
+				return fmt.Errorf("emit-mlir match arm cannot produce %s as %s", armValue.typ, targetType)
+			}
+			g.write("    llvm.store %s, %s : %s, !llvm.ptr\n", armValue.ref, resultPtr[0], targetType)
+		} else if arm.ReturnBody != nil {
+			if err := g.emitReturn(arm.ReturnBody); err != nil {
+				g.locals = outerLocals
+				return err
+			}
+		} else if arm.BlockBody != nil {
+			for _, child := range arm.BlockBody.Statements {
+				if err := g.emitStatement(child); err != nil {
+					g.locals = outerLocals
+					return err
+				}
+			}
+		}
+		if g.blockOpen {
+			g.write("    llvm.br ^%s\n", endLabel)
+			g.blockOpen = false
+		}
+	}
+	g.locals = outerLocals
+
+	g.write("  ^%s:\n", endLabel)
+	g.blockOpen = true
+	return nil
+}
+
+func (g *Generator) emitMatchPatternCondition(subject value, pattern ast.Expression) (value, error) {
+	if pattern == nil {
+		return value{}, fmt.Errorf("emit-mlir match arm missing pattern")
+	}
+	if _, ok := pattern.(*ast.Identifier); ok {
+		return g.emitBoolConstant(true), nil
+	}
+	switch pattern.(type) {
+	case *ast.OkExpression, *ast.ErrExpression:
+		return value{}, fmt.Errorf("emit-mlir does not support Result match patterns yet")
+	case *ast.CallExpression:
+		return value{}, fmt.Errorf("emit-mlir does not support payload match patterns yet")
+	}
+	candidate, err := g.emitExpressionForTargetUnsigned(pattern, subject.typ, subject.unsigned)
+	if err != nil {
+		return value{}, err
+	}
+	candidate, err = g.coerceValue(candidate, subject.typ, subject.unsigned)
+	if err != nil {
+		return value{}, fmt.Errorf("emit-mlir match pattern does not match subject type %s", subject.typ)
+	}
+	return g.emitSwitchEquality(subject, candidate)
+}
+
+func (g *Generator) bindMatchPattern(subject value, pattern ast.Expression) error {
+	ident, ok := pattern.(*ast.Identifier)
+	if !ok || ident.Value == "_" {
+		return nil
+	}
+	g.locals[ident.Value] = local{
+		typ:      subject.typ,
+		ref:      subject.ref,
+		unsigned: subject.unsigned,
+		direct:   true,
+		enumName: subject.enumName,
+	}
+	return nil
+}
+
+func (g *Generator) initializeDeferFlags() {
+	for _, entry := range g.defers {
+		if deferBodyIsBareReturnMLIR(entry.stmt.Body) {
+			continue
+		}
+		entry.activePtr = g.emitAlloca("i1")
+		inactive := g.emitBoolConstant(false)
+		g.write("    llvm.store %s, %s : i1, !llvm.ptr\n", inactive.ref, entry.activePtr)
+	}
+}
+
+func (g *Generator) emitActiveDefers() error {
+	if len(g.defers) == 0 {
+		return nil
+	}
+	for i := len(g.defers) - 1; i >= 0; i-- {
+		entry := g.defers[i]
+		if entry == nil || !entry.seen || entry.activePtr == "" || deferBodyIsBareReturnMLIR(entry.stmt.Body) {
+			continue
+		}
+		if err := g.emitActiveDefer(entry); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (g *Generator) emitActiveDefer(entry *deferEntry) error {
+	active := g.nextTemp()
+	bodyLabel := g.nextLabel("defer.body")
+	nextLabel := g.nextLabel("defer.next")
+	g.write("    %s = llvm.load %s : !llvm.ptr -> i1\n", active, entry.activePtr)
+	g.write("    llvm.cond_br %s, ^%s, ^%s\n", active, bodyLabel, nextLabel)
+	g.blockOpen = false
+
+	g.write("  ^%s:\n", bodyLabel)
+	g.blockOpen = true
+	inactive := g.emitBoolConstant(false)
+	g.write("    llvm.store %s, %s : i1, !llvm.ptr\n", inactive.ref, entry.activePtr)
+	previousLocals := g.locals
+	if entry.locals != nil {
+		g.locals = copyMLIRLocals(entry.locals)
+	}
+	if entry.stmt.Body != nil {
+		for _, child := range entry.stmt.Body.Statements {
+			if err := g.emitStatement(child); err != nil {
+				g.locals = previousLocals
+				return err
+			}
+		}
+	}
+	g.locals = previousLocals
+	if g.blockOpen {
+		g.write("    llvm.br ^%s\n", nextLabel)
+		g.blockOpen = false
+	}
+
+	g.write("  ^%s:\n", nextLabel)
+	g.blockOpen = true
+	return nil
+}
+
+func collectFunctionDefers(block *ast.BlockStatement) []*deferEntry {
+	var entries []*deferEntry
+	collectBlockDefers(block, &entries)
+	return entries
+}
+
+func collectBlockDefers(block *ast.BlockStatement, entries *[]*deferEntry) {
+	if block == nil {
+		return
+	}
+	for _, stmt := range block.Statements {
+		collectStatementDefers(stmt, entries)
+	}
+}
+
+func collectStatementDefers(stmt ast.Statement, entries *[]*deferEntry) {
+	switch stmt := stmt.(type) {
+	case *ast.DeferStatement:
+		*entries = append(*entries, &deferEntry{stmt: stmt})
+	case *ast.IfStatement:
+		collectBlockDefers(stmt.Consequence, entries)
+		collectBlockDefers(stmt.Alternative, entries)
+	case *ast.ForStatement:
+		collectBlockDefers(stmt.Body, entries)
+	case *ast.WhileStatement:
+		collectBlockDefers(stmt.Body, entries)
+	case *ast.SwitchStatement:
+		for _, clause := range stmt.Cases {
+			if clause != nil {
+				collectBlockDefers(clause.Body, entries)
+			}
+		}
+		if stmt.Default != nil {
+			collectBlockDefers(stmt.Default.Body, entries)
+		}
+	case *ast.MatchStatement:
+		collectMatchDefers(stmt.Match, entries)
+	case *ast.UnsafeStatement:
+		collectBlockDefers(stmt.Body, entries)
+	}
+}
+
+func collectMatchDefers(expr *ast.MatchExpression, entries *[]*deferEntry) {
+	if expr == nil {
+		return
+	}
+	for _, arm := range expr.Arms {
+		if arm != nil && arm.BlockBody != nil {
+			collectBlockDefers(arm.BlockBody, entries)
+		}
+	}
+}
+
+func deferBodyIsBareReturnMLIR(block *ast.BlockStatement) bool {
+	if block == nil || len(block.Statements) != 1 {
+		return false
+	}
+	ret, ok := block.Statements[0].(*ast.ReturnStatement)
+	return ok && ret.Value == nil
+}
+
 func (g *Generator) emitExpression(expr ast.Expression) (value, error) {
 	switch expr := expr.(type) {
 	case *ast.Identifier:
@@ -1245,6 +1581,8 @@ func (g *Generator) emitExpression(expr ast.Expression) (value, error) {
 		return g.emitStructLiteral(expr)
 	case *ast.MemberExpression:
 		return g.emitMemberExpression(expr)
+	case *ast.MatchExpression:
+		return value{}, fmt.Errorf("emit-mlir match expression requires an expected result type")
 	default:
 		return value{}, fmt.Errorf("emit-mlir does not support expression %T yet", expr)
 	}
@@ -1257,6 +1595,9 @@ func (g *Generator) emitExpressionForTarget(expr ast.Expression, targetType stri
 func (g *Generator) emitExpressionForTargetUnsigned(expr ast.Expression, targetType string, targetUnsigned bool) (value, error) {
 	if targetType == "" {
 		return g.emitExpression(expr)
+	}
+	if matchExpr, ok := expr.(*ast.MatchExpression); ok {
+		return g.emitMatchExpression(matchExpr, targetType, targetUnsigned)
 	}
 	if isMLIRDecimalType(targetType) {
 		if _, _, ok := decimalLiteralParts(expr); ok {

@@ -157,15 +157,25 @@ Implemented now:
   `Alloc[T](count) Result[ref mut T[], AllocationError]`.
 - The array/slice type layer can represent `ref T[]` and `ref mut T[]`, which
   are required for allocation APIs returning slices.
+- Semantic analysis has initial metadata for allocation effects on functions.
+  Current user functions are classified as non-allocating until allocation APIs
+  are introduced.
+- Semantic analysis has initial storage-origin metadata for symbols.
+  Ordinary source locals are currently `Inline`; fixed-address register
+  bindings are `FixedAddress`.
+- Semantic analysis has an active allocation-context representation. It is
+  currently unavailable by default because `Arena` is not implemented yet.
 
 Not implemented yet:
 
 - `Arena` as a standard library type.
 - `arena.Alloc[T](count)` semantics.
 - allocation context propagation.
+- allocation-effect inference through function bodies.
 - sized/trivially-destructible/default-value checks for allocation.
 - allocation failure plumbing beyond ordinary `Result` syntax.
 - storage-origin tracking for arena-backed slices.
+- storage-origin propagation through references, slices and Semantic IR.
 - arena reset validation.
 - Semantic IR, MLIR or LLVM lowering for arena allocation.
 

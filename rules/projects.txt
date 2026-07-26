@@ -1,0 +1,1706 @@
+=============================================================================================================================================================================================
+Projects, Modules, Manifest, Init and Builds
+=============================================================================================================================================================================================
+
+Purpose
+=======
+
+This document defines the canonical Sec project model.
+
+It covers:
+
+* projects
+* source modules
+* directory structure
+* reserved directories
+* the single project manifest
+* build targets
+* build variants
+* compiler options
+* compile-time parameters
+* build output
+* automatic build counters
+* `sec init`
+
+The design goals are:
+
+* minimal boilerplate
+* one clear project boundary
+* predictable source discovery
+* explicit build products
+* reusable cross-platform build definitions
+* safe additive project initialization
+* no hidden file replacement
+* strong compiler diagnostics
+* no dependency on a specific application architecture
+
+=============================================================================================================================================================================================
+Core terminology
+================
+
+Project
+-------
+
+A Sec project is the complete source tree governed by one manifest:
+
+```
+.sec/sec.toml
+```
+
+A project defines:
+
+* project identity
+* build targets
+* build variants
+* compiler defaults
+* compile-time parameters
+* output rules
+* dependencies when implemented
+
+A project contains exactly one `.sec/sec.toml`.
+
+Nested Sec projects are not supported.
+
+A second `.sec/sec.toml` below the project root is an error.
+
+Target
+------
+
+A target is one logical buildable product.
+
+Examples:
+
+```
+shop
+worker
+inspector
+controller
+protocol
+```
+
+A target is not an operating-system or architecture combination.
+
+The same target may be compiled into several platform-specific outputs.
+
+Variant
+-------
+
+A variant is one concrete build configuration for a target.
+
+A variant may define:
+
+* operating system
+* architecture
+* ABI
+* CPU
+* CPU features
+* toolchain identity
+* profile overrides
+* compiler-option overrides
+* compile-time parameter overrides
+
+Examples:
+
+```
+linux-amd64
+macos-arm64
+windows-amd64
+```
+
+Artifact
+--------
+
+An artifact is a file produced by one target variant.
+
+Examples:
+
+* executable
+* static library
+* shared library
+* object file
+* MLIR file
+* LLVM IR file
+* debug-information file
+
+Module
+------
+
+A source directory containing Sec files is one source module.
+
+A module is:
+
+* a source namespace
+* a symbol boundary
+* an importable compilation unit
+
+A source module is not a project.
+
+A source module does not require its own manifest entry unless it is also the entry module of an explicitly buildable target.
+
+=============================================================================================================================================================================================
+Single-manifest rule
+====================
+
+A Sec project contains exactly one manifest:
+
+```
+project/
+    .sec/
+        sec.toml
+```
+
+The project manifest applies to the entire source tree below the project root.
+
+Subprojects, applications, tools, libraries and firmware images are represented as targets inside this manifest.
+
+They do not receive separate manifests.
+
+Invalid structure:
+
+```
+project/
+    .sec/sec.toml
+
+    server/
+        .sec/sec.toml
+
+    worker/
+        .sec/sec.toml
+```
+
+Expected diagnostic:
+
+```
+error: nested Sec project manifest is not allowed
+
+  project manifest:
+      project/.sec/sec.toml
+
+  nested manifest:
+      project/server/.sec/sec.toml
+
+help: declare server as a target in the root project manifest
+```
+
+The single-manifest model exists to minimize boilerplate and to provide one project-wide view for:
+
+* imports
+* dependency resolution
+* target selection
+* formatting
+* diagnostics
+* ownership analysis
+* call-graph analysis
+* stack analysis
+* heap analysis
+* build caching
+* platform selection
+
+=============================================================================================================================================================================================
+Module directories
+==================
+
+One directory forms one module.
+
+All `.sec` files in the same directory must declare the same module name.
+
+Example:
+
+```
+domain/orders/
+    order.sec
+    status.sec
+```
+
+Both files declare:
+
+```
+module orders
+```
+
+This is invalid:
+
+```
+// order.sec
+module orders
+
+// status.sec
+module status
+```
+
+Expected diagnostic:
+
+```
+error: source files in the same directory must declare the same module
+
+  order.sec declares module orders
+  status.sec declares module status
+
+help: move one module into a separate directory
+```
+
+The normal module name is the final source-directory component.
+
+Examples:
+
+```
+domain/orders/                 -> module orders
+services/database/             -> module database
+internal/storage/              -> module storage
+services/internal/transport/   -> module transport
+```
+
+A module declaration uses one identifier.
+
+Dotted module declarations are not valid source syntax.
+
+Invalid:
+
+```
+module domain.orders
+module internal.storage
+module platform.linux.amd64
+```
+
+Valid:
+
+```
+module orders
+module storage
+module amd64
+```
+
+The complete module identity is derived from the canonical import path and project identity.
+
+The compiler must not identify modules only by their short source-level name.
+
+=============================================================================================================================================================================================
+Import paths and module qualifiers
+==================================
+
+The import path identifies where a module is located.
+
+The source module name identifies the namespace qualifier used in code.
+
+Example:
+
+```
+import "internal/storage"
+```
+
+The imported module may declare:
+
+```
+module storage
+```
+
+Usage:
+
+```
+storage.Open()
+storage.Save()
+```
+
+Not:
+
+```
+internal.storage.Open()
+```
+
+If two imported modules have the same source module name, an explicit import alias is required.
+
+Example:
+
+```
+import (
+    publicStorage "storage"
+    privateStorage "internal/storage"
+)
+```
+
+Usage:
+
+```
+publicStorage.Open()
+privateStorage.Open()
+```
+
+=============================================================================================================================================================================================
+Project-root source files
+=========================
+
+Sec source files are allowed directly in the project root.
+
+This permits small projects and root libraries without an unnecessary extra directory.
+
+Example:
+
+```
+codec/
+    .sec/
+        sec.toml
+
+    codec.sec
+    encoder.sec
+
+    internal/
+        parser/
+            parser.sec
+```
+
+The `.sec` files in the project root form one root module.
+
+For a root library module, the expected module name is:
+
+1. `project.module` when explicitly declared in the manifest,
+2. otherwise `project.name` when that value is a valid Sec identifier.
+
+Example:
+
+```
+[project]
+name = "codec"
+```
+
+Root files declare:
+
+```
+module codec
+```
+
+When the project name is not a valid Sec identifier, the manifest must declare a module name explicitly.
+
+Example:
+
+```
+[project]
+name = "inventory-service"
+module = "inventory"
+```
+
+Root files then declare:
+
+```
+module inventory
+```
+
+A project root may instead be the entry module of a minimal command target.
+
+In that case the root module is:
+
+```
+module main
+```
+
+and the target source is:
+
+```
+source = "."
+```
+
+A single directory cannot simultaneously be both `module main` and a differently named root library module.
+
+=============================================================================================================================================================================================
+Reserved and recognized directories
+===================================
+
+Reserved directories
+--------------------
+
+The following project-root directory names are reserved by Sec:
+
+```
+cmd
+bin
+.sec
+```
+
+`cmd`
+-----
+
+`cmd` is the canonical source root for executable and firmware entry targets.
+
+Normal structure:
+
+```
+cmd/
+    shop/
+        main.sec
+
+    worker/
+        main.sec
+```
+
+Rules:
+
+* `.sec` files may not exist directly in `cmd/`.
+* each target is placed in a child directory,
+* a command or firmware entry module normally declares `module main`,
+* reusable code should not be stored in an entry module,
+* entry modules should primarily configure and connect other modules.
+
+Invalid:
+
+```
+cmd/shared.sec
+```
+
+Expected diagnostic:
+
+```
+error: Sec source files may not be placed directly in reserved directory "cmd"
+
+help: create a target directory such as cmd/server or move reusable code to a normal module
+```
+
+`bin`
+-----
+
+`bin` is reserved for generated build output.
+
+Rules:
+
+* `bin` is never a source module,
+* imports from `bin/...` are invalid,
+* `.sec` source files below `bin` are invalid project source,
+* `sec clean` may remove compiler-owned output below `bin`,
+* Sec must not remove unknown user files merely because they are below `bin` unless ownership is recorded.
+
+Expected diagnostic:
+
+```
+error: reserved output directory "bin" cannot contain source modules
+```
+
+`.sec`
+------
+
+`.sec` is compiler and project metadata storage.
+
+It contains the manifest and compiler-owned project state.
+
+Normal structure:
+
+```
+.sec/
+    sec.toml
+    state/
+    cache/
+```
+
+Source modules must not be declared below `.sec`.
+
+Recognized directory: `internal`
+--------------------------------
+
+`internal` is recommended but not required.
+
+Its structure is optional.
+
+Its semantics are mandatory whenever the path segment is used.
+
+`internal` is an access-control marker, not a source module name.
+
+A project may choose:
+
+```
+domain/
+application/
+storage/
+```
+
+or:
+
+```
+internal/
+    domain/
+    application/
+    storage/
+```
+
+Both structures are valid.
+
+The second structure makes the modules private according to the internal access rule.
+
+`.sec` files may not exist directly inside an `internal` marker directory.
+
+Invalid:
+
+```
+internal/helper.sec
+```
+
+Valid:
+
+```
+internal/
+    helper/
+        helper.sec
+```
+
+The file declares:
+
+```
+module helper
+```
+
+Internal access rule
+--------------------
+
+A module below an `internal` directory may only be imported by modules below the directory that immediately contains that `internal` directory.
+
+Example:
+
+```
+services/
+    internal/
+        transport/
+
+    orders/
+    invoicing/
+
+tools/
+    inspector/
+```
+
+These modules may import `services/internal/transport`:
+
+```
+services/orders
+services/invoicing
+```
+
+This module may not:
+
+```
+tools/inspector
+```
+
+A root-level `internal` directory is private to the complete Sec project.
+
+The path segment `internal` remains present in the import path but is not part of the module declaration or source qualifier.
+
+Ordinary organizational directories
+------------------------------------
+
+Directory names such as these have no special language semantics:
+
+```
+modules
+domain
+application
+app
+services
+features
+components
+adapters
+infrastructure
+```
+
+Users may use them freely.
+
+A directory named `modules` is not required, reserved or treated specially.
+
+=============================================================================================================================================================================================
+Standard library and platform modules
+=====================================
+
+The import roots below are compiler-reserved:
+
+```
+std
+platform
+```
+
+They identify compiler-provided source trees.
+
+They do not introduce dotted module declarations.
+
+Example platform path:
+
+```
+platform/linux/amd64
+```
+
+The source module declares:
+
+```
+module amd64
+```
+
+The compiler may internally display the complete identity as:
+
+```
+platform.linux.amd64
+```
+
+but that is not source-level module syntax.
+
+Target directives and canonical import paths provide platform identity.
+
+=============================================================================================================================================================================================
+Project manifest
+================
+
+The project manifest is:
+
+```
+.sec/sec.toml
+```
+
+The manifest describes:
+
+* project identity
+* default build behavior
+* profiles
+* reusable variants
+* logical targets
+* compiler options
+* compile-time parameters
+* build-counter configuration
+
+Ordinary source modules are discovered through imports and directory structure.
+
+They do not need manifest entries.
+
+The manifest should describe buildable products, not duplicate the source tree.
+
+=============================================================================================================================================================================================
+Targets
+=======
+
+A target is declared under:
+
+```
+[target.<name>]
+```
+
+Initial target kinds:
+
+```
+command
+library
+firmware
+test
+```
+
+Example:
+
+```
+[target.shop]
+kind = "command"
+source = "cmd/shop"
+artifact = "shop"
+variants = [
+    "linux-amd64",
+    "macos-arm64",
+    "windows-amd64",
+]
+```
+
+The source identifies the target entry module.
+
+The complete source graph is derived by following imports.
+
+The manifest must not require a manually maintained module list for every target.
+
+A target owns:
+
+* logical product identity
+* entry module
+* target kind
+* artifact base name
+* selected variants
+* target-specific compiler options
+* target-specific compile-time parameters
+* build-counter behavior
+
+The target source and target kind do not vary per platform variant.
+
+If two platform outputs require different entry modules or represent different products, they are separate targets.
+
+=============================================================================================================================================================================================
+Variants
+========
+
+Reusable variants are declared under:
+
+```
+[variant.<name>]
+```
+
+Example:
+
+```
+[variant.linux-amd64]
+os = "linux"
+arch = "amd64"
+abi = "gnu"
+
+[variant.macos-arm64]
+os = "macos"
+arch = "arm64"
+
+[variant.windows-amd64]
+os = "windows"
+arch = "amd64"
+abi = "msvc"
+```
+
+Canonical operating-system names include:
+
+```
+linux
+windows
+macos
+freebsd
+netbsd
+baremetal
+freertos
+```
+
+The source-level operating-system name is `macos`, not `darwin`.
+
+The compiler may lower macOS to an internal Darwin target triple.
+
+Canonical architecture names include:
+
+```
+amd64
+arm64
+arm32
+riscv32
+```
+
+A variant may also declare:
+
+```
+cpu
+features
+abi
+toolchain
+profile
+```
+
+Project manifests express toolchain intent.
+
+Machine-specific SDK and toolchain paths belong in user or CI configuration, not in the project manifest.
+
+=============================================================================================================================================================================================
+Build command behavior
+======================
+
+The command:
+
+```
+sec build shop
+```
+
+builds every variant configured for target `shop`.
+
+If `shop` declares:
+
+```
+variants = [
+    "linux-amd64",
+    "macos-arm64",
+    "windows-amd64",
+]
+```
+
+then one command builds all three variants.
+
+A user may filter the build:
+
+```
+sec build shop --variant linux-amd64
+sec build shop --os linux
+sec build shop --arch amd64
+sec build shop --profile debug
+```
+
+Filters select configured variants.
+
+They do not silently create undeclared variants.
+
+By default the compiler should attempt every selected variant and report an aggregate result.
+
+A `--fail-fast` option may stop after the first failed variant.
+
+The command exits unsuccessfully when any requested variant fails.
+
+=============================================================================================================================================================================================
+Compilation plans and target lowering
+=====================================
+
+Every target and variant combination produces one concrete compilation plan.
+
+Conceptual structure:
+
+```
+CompilationPlan {
+    Project
+    Target
+    Variant
+    SourceGraph
+    OS
+    Architecture
+    ABI
+    CPU
+    CPUFeatures
+    Profile
+    CompilerOptions
+    CompileTimeParameters
+    BuildNumber
+    OutputDirectory
+    LinkConfiguration
+}
+```
+
+The compiler should reuse target-independent parsing and semantic work when safe.
+
+Target-specific source selection, layout and lowering must occur before assumptions become architecture-specific.
+
+Target-specific concerns include:
+
+* pointer width
+* alignment
+* data layout
+* ABI
+* calling convention
+* symbol naming
+* object format
+* platform imports
+* syscalls
+* linker behavior
+* target CPU instructions
+
+The preferred pipeline is:
+
+```
+Source
+    -> AST
+    -> target-independent semantic representation where possible
+    -> variant-specific semantic completion and source selection
+    -> MLIR/LLVM lowering
+    -> target object format
+    -> final artifact
+```
+
+A compilation error should identify the target and variant.
+
+Example:
+
+```
+error[shop/windows-amd64]: platform operation OpenFile is unavailable
+```
+
+=============================================================================================================================================================================================
+Profiles and compiler options
+=============================
+
+Compiler options control compiler behavior.
+
+They are different from program compile-time parameters.
+
+Example project defaults:
+
+```
+[build]
+backend = "mlir"
+profile = "release"
+warnings = "default"
+bounds_checks = true
+overflow_checks = true
+```
+
+Profiles are declared separately:
+
+```
+[profile.release]
+optimization = "speed"
+debug = "line"
+strip = true
+
+[profile.debug]
+optimization = "none"
+debug = "full"
+strip = false
+```
+
+Compiler options may include:
+
+* backend
+* optimization level
+* debug information
+* stripping
+* LTO
+* bounds checks
+* overflow checks
+* warning level
+* warnings as errors
+* recursion policy
+* allocation policy
+* stack limit
+* minimum OS or kernel version
+* CPU features
+
+The exact supported option set is compiler-versioned and validated before compilation.
+
+Unknown compiler options are errors unless the manifest format explicitly provides an extension mechanism.
+
+=============================================================================================================================================================================================
+Compile-time parameters
+=======================
+
+Compile-time parameters are typed program values supplied by the build configuration.
+
+They are not compiler options.
+
+They are not C-style preprocessor macros.
+
+Example:
+
+```
+[parameters]
+telemetry = false
+maximum_connections = 1000
+product_name = "Shop"
+```
+
+Target-specific parameters:
+
+```
+[target.shop.parameters]
+maximum_connections = 2000
+```
+
+Variant-specific parameters:
+
+```
+[variant.windows-amd64.parameters]
+native_service = true
+```
+
+Target-and-variant-specific parameters:
+
+```
+[target.shop.variant.windows-amd64.parameters]
+service_name = "ShopService"
+```
+
+A parameter type is derived from its original declaration.
+
+Every override must preserve that type.
+
+Invalid:
+
+```
+[parameters]
+maximum_connections = 1000
+
+[target.shop.parameters]
+maximum_connections = "many"
+```
+
+Expected diagnostic:
+
+```
+error: compile-time parameter "maximum_connections" has inconsistent types
+
+  project value: int
+  target value:  string
+```
+
+Compile-time parameters must not contain secrets.
+
+They may become visible in:
+
+* generated machine code
+* IR
+* object files
+* debug information
+* build caches
+
+Passwords, tokens and private keys belong in runtime configuration.
+
+The exact Sec source syntax used to access compile-time parameters is defined separately.
+
+=============================================================================================================================================================================================
+Configuration precedence
+========================
+
+Settings are merged from least specific to most specific.
+
+The precedence order is:
+
+```
+1. compiler defaults
+2. project build settings
+3. selected profile
+4. reusable variant settings
+5. target settings
+6. target-specific variant settings
+7. command-line overrides
+```
+
+A more specific value overrides a less specific value only when the value type and option semantics are compatible.
+
+Command-line overrides affect only the current invocation.
+
+They do not modify the manifest.
+
+=============================================================================================================================================================================================
+Build output
+============
+
+The default output structure is:
+
+```
+bin/<target>/<variant>/<profile>/<artifact>
+```
+
+Example:
+
+```
+bin/
+    shop/
+        linux-amd64/
+            release/
+                shop
+
+        macos-arm64/
+            release/
+                shop
+
+        windows-amd64/
+            release/
+                shop.exe
+```
+
+The compiler applies platform-appropriate filename extensions.
+
+The target may define an artifact base name:
+
+```
+[target.shop]
+artifact = "shop-server"
+```
+
+Outputs remain separated by target, variant and profile.
+
+One variant must not overwrite another variant's output.
+
+=============================================================================================================================================================================================
+Automatic build counter
+=======================
+
+A target may enable an automatic build counter.
+
+Example:
+
+```
+[target.shop.build_counter]
+enabled = true
+scope = "target"
+```
+
+The default scope is `target`.
+
+Example values:
+
+```
+shop build 142
+worker build 37
+```
+
+A project-wide counter may be supported through:
+
+```
+scope = "project"
+```
+
+Per-target scope is recommended.
+
+One build invocation consumes at most one build number for a logical target.
+
+If one command builds several variants:
+
+```
+sec build shop
+```
+
+then all successful artifacts produced by that invocation receive the same build number.
+
+Example:
+
+```
+shop build 143
+    linux-amd64
+    macos-arm64
+    windows-amd64
+```
+
+The counter is incremented once for the complete logical build, not once per variant.
+
+A filtered build is also a real build:
+
+```
+sec build shop --variant linux-amd64
+```
+
+When successful, it consumes one build number.
+
+Build-number commit rule
+------------------------
+
+The next build number is reserved for the build invocation.
+
+The stored counter is updated only when every requested variant succeeds.
+
+If any requested variant fails:
+
+* the build number is not committed,
+* the stored counter remains unchanged,
+* the next build attempt may reuse the same candidate number.
+
+This avoids consuming numbers for ordinary failed builds.
+
+Counter storage
+---------------
+
+The manifest defines counter behavior.
+
+The mutable counter value is not written back into `sec.toml`.
+
+Local compiler-owned state is stored under:
+
+```
+.sec/state/build-counters.toml
+```
+
+Example:
+
+```
+[counter.shop]
+value = 142
+```
+
+The state directory should normally be excluded from version control when local counters are used.
+
+Parallel builds
+---------------
+
+Counter updates must be safe under parallel builds.
+
+The implementation must:
+
+1. lock the relevant counter,
+2. read the current committed value,
+3. reserve the next candidate value,
+4. build the selected variants,
+5. atomically commit the new value only after complete success,
+6. release the lock.
+
+State updates must use an atomic replacement strategy.
+
+A partially written counter file is not acceptable.
+
+Explicit build numbers
+----------------------
+
+CI or a release system may supply an explicit build number:
+
+```
+sec build shop --build-number 2841
+```
+
+An explicit build number:
+
+* is validated,
+* is used by every selected variant,
+* does not automatically advance the local counter,
+* participates in artifact and cache identity.
+
+Future providers may obtain build numbers from:
+
+* local state
+* environment variables
+* CI services
+* controlled shared state
+
+The first implementation only needs local state plus explicit CLI build numbers.
+
+Build metadata
+--------------
+
+The compiler should expose typed compile-time build metadata.
+
+Required conceptual values include:
+
+```
+build number
+project version
+target name
+variant name
+operating system
+architecture
+profile
+source revision when available
+dirty-source status when available
+```
+
+The exact Sec source namespace and syntax are defined separately.
+
+Build metadata is not textual macro substitution.
+
+Version and build number are distinct.
+
+Example:
+
+```
+project version: 1.4.0
+build number:    143
+combined label:  1.4.0+143
+```
+
+The automatic build counter does not modify semantic versioning.
+
+Timestamps
+----------
+
+Current time is not embedded by default.
+
+Automatic timestamps reduce reproducibility and depend on local clock state.
+
+Timestamp embedding may be an explicit future option.
+
+Reproducible builds
+-------------------
+
+An explicit build number may be used to reproduce a previous build configuration.
+
+The build number must be included in the compilation and cache identity whenever it is embedded in the artifact.
+
+A reproducible build must not silently allocate a new automatic build number.
+
+=============================================================================================================================================================================================
+Build cache identity
+====================
+
+A variant cache key must include every input that may affect generated output.
+
+This includes at least:
+
+* compiler version
+* project identity
+* target identity
+* variant identity
+* operating system
+* architecture
+* ABI
+* CPU and features
+* selected profile
+* compiler options
+* compile-time parameters
+* build number when embedded
+* source hashes
+* dependency hashes
+* selected platform-module hashes
+* target directives
+
+Artifacts from one variant must never be reused as artifacts for an incompatible variant.
+
+=============================================================================================================================================================================================
+`sec init`
+===========
+
+Purpose
+-------
+
+`sec init` creates or extends a Sec project safely.
+
+It must be:
+
+* additive
+* idempotent
+* conflict-aware
+* transactional
+* non-destructive
+
+It must never overwrite an existing user file.
+
+It must never replace an existing manifest.
+
+It must never create a nested manifest inside an existing Sec project.
+
+Project discovery
+-----------------
+
+Before making changes, `sec init` searches the current directory and parent directories for:
+
+```
+.sec/sec.toml
+```
+
+If no manifest exists, `sec init` may create a new project in the selected directory.
+
+If a manifest exists, the command extends or validates that project.
+
+It does not create another project.
+
+Base command
+------------
+
+When no project exists:
+
+```
+sec init
+```
+
+creates a new project.
+
+The default application profile creates at least:
+
+```
+.sec/sec.toml
+cmd/<project-name>/main.sec
+bin/
+internal/
+```
+
+`internal` is created as a recommendation, but using it is not mandatory.
+
+A minimal profile may create:
+
+```
+.sec/sec.toml
+main.sec
+```
+
+with a root command target.
+
+When a project already exists:
+
+```
+sec init
+```
+
+validates the project and creates only safe missing compiler-owned structure.
+
+It succeeds without changes when the project is already complete.
+
+It must not treat an already initialized project as an error.
+
+Add module
+----------
+
+A normal module may be added with:
+
+```
+sec init module domain/orders
+```
+
+This creates:
+
+```
+domain/orders/orders.sec
+```
+
+with:
+
+```
+module orders
+```
+
+A normal source module is not added to the manifest unless it is also declared as a build target.
+
+An internal module may be created with:
+
+```
+sec init module internal/storage
+```
+
+This creates:
+
+```
+internal/storage/storage.sec
+```
+
+with:
+
+```
+module storage
+```
+
+Add command target
+------------------
+
+A command target may be added with:
+
+```
+sec init command worker
+```
+
+This creates:
+
+```
+cmd/worker/main.sec
+```
+
+with:
+
+```
+module main
+
+fn main() int {
+    return 0
+}
+```
+
+The manifest is extended additively:
+
+```
+[target.worker]
+kind = "command"
+source = "cmd/worker"
+artifact = "worker"
+```
+
+The command may inherit the project's default variant set.
+
+Add other targets
+-----------------
+
+Initial forms may include:
+
+```
+sec init library protocol
+sec init firmware controller
+sec init test integration
+```
+
+Each form creates only the source structure and manifest entry appropriate for that target kind.
+
+Idempotence
+-----------
+
+Running the same init command repeatedly must not duplicate files or manifest sections.
+
+Example:
+
+```
+sec init command worker
+sec init command worker
+```
+
+The second invocation is a successful no-op when the existing target is compatible.
+
+Existing manifest
+-----------------
+
+When `.sec/sec.toml` already exists, `sec init` must:
+
+* parse and validate it,
+* preserve project identity,
+* preserve project UUID,
+* preserve project name,
+* preserve comments,
+* preserve unknown sections,
+* preserve user ordering and formatting when practical,
+* add only requested missing sections or keys,
+* reject incompatible existing declarations.
+
+It must not deserialize and rewrite the complete manifest in a way that destroys comments or formatting.
+
+Manifest updates should use syntax-aware edits or precise source patches.
+
+Existing files
+--------------
+
+Rules:
+
+* missing file: create it,
+* identical generated file: no-op,
+* compatible existing user file: preserve it,
+* conflicting existing file: report an error and change nothing.
+
+Example conflict:
+
+```
+error: cmd/worker/main.sec already exists but does not define a valid command entry module
+
+no files were changed
+```
+
+Transactional behavior
+----------------------
+
+Before writing anything, `sec init` must:
+
+1. discover the project,
+2. read the manifest,
+3. inspect existing files,
+4. calculate the complete change plan,
+5. detect every known conflict.
+
+If any planned operation conflicts, no operation is applied.
+
+The implementation must not create directories or files and then fail after discovering a later conflict.
+
+Dry run
+-------
+
+The command should support:
+
+```
+sec init --dry-run
+```
+
+and equivalent dry-run behavior for subcommands.
+
+Example output:
+
+```
+Planned changes:
+
+  create cmd/worker/
+  create cmd/worker/main.sec
+  add [target.worker] to .sec/sec.toml
+
+No existing files will be overwritten.
+```
+
+Project-root invocation
+-----------------------
+
+`sec init` may be run from any directory inside the project.
+
+The command always uses the single project manifest found by upward search.
+
+It never creates:
+
+```
+subdirectory/.sec/sec.toml
+```
+
+inside an existing project.
+
+=============================================================================================================================================================================================
+Architecture recommendations
+============================
+
+Sec does not require one application architecture.
+
+The compiler should not infer business meaning only from directory names.
+
+Recommended application structure:
+
+```
+cmd/
+    shop/
+        main.sec
+
+internal/
+    domain/
+    application/
+    adapters/
+```
+
+Recommended library structure:
+
+```
+publicmodule/
+internal/
+    implementation/
+```
+
+General recommendation:
+
+```
+Organize modules by responsibility and reason for change.
+```
+
+Domain rules, application orchestration and technical adapters should normally remain separate when that distinction is meaningful for the project.
+
+Directory names such as these may receive mentor advice when they accumulate unrelated responsibilities:
+
+```
+utils
+helpers
+common
+misc
+shared
+```
+
+Such advice is not a language error.
+
+=============================================================================================================================================================================================
+Compiler validation
+===================
+
+The compiler and project tools must validate at least:
+
+* only one project manifest exists,
+* no nested project manifest exists,
+* every source directory has one module name,
+* normal module names match the final source-directory component,
+* root-module declarations match the manifest-defined root module,
+* dotted module declarations are rejected,
+* `internal` is not used as a module name,
+* internal import visibility is enforced,
+* reserved directories are used correctly,
+* source files do not exist directly in `cmd`, `bin` or an `internal` marker directory,
+* target names are unique,
+* variant names are unique,
+* target source paths exist,
+* referenced variants exist,
+* target and variant settings are compatible,
+* compiler options are known and valid,
+* compile-time parameter override types match,
+* output paths do not collide,
+* build-counter configuration is valid,
+* counter state updates are atomic,
+* init operations are conflict-free before application.
+
+Diagnostics should explain:
+
+* the violated project rule,
+* the relevant path or manifest section,
+* the expected structure,
+* a safe corrective action.
+
+=============================================================================================================================================================================================
+Normative summary
+=================
+
+1. A Sec project contains exactly one `.sec/sec.toml`.
+2. Nested Sec projects are not supported.
+3. One source directory forms one module.
+4. A module declaration contains one identifier.
+5. Dotted source module declarations are invalid.
+6. The canonical import path identifies the complete module.
+7. Project-root `.sec` files are allowed and form one root module.
+8. `cmd`, `bin` and `.sec` are reserved project directories.
+9. `cmd` contains entry-target directories and no direct Sec source files.
+10. `bin` contains generated output and no source modules.
+11. `internal` is optional and recommended.
+12. Internal access restrictions are mandatory whenever `internal` appears in an import path.
+13. `internal` is not part of the source module name.
+14. `modules` and similar organizational directories have no special language meaning.
+15. `std` and `platform` are compiler-reserved import roots, not dotted-module exceptions.
+16. Ordinary source modules do not require manifest entries.
+17. Independently buildable products are declared as targets in the single manifest.
+18. A target is a logical product.
+19. A variant is one concrete platform and build configuration.
+20. `sec build <target>` builds every configured variant for that target.
+21. Compiler options and compile-time program parameters are different concepts.
+22. Compile-time parameters are typed values, not text macros.
+23. Build outputs are separated by target, variant and profile.
+24. A target may use an automatic build counter.
+25. All variants in one logical build receive the same build number.
+26. Failed builds do not commit the candidate build number.
+27. Mutable build-counter state is stored outside the manifest.
+28. `sec init` is additive, idempotent, transactional and non-destructive.
+29. `sec init` extends an existing project rather than replacing it.
+30. `sec init` never creates a second manifest inside an existing project.

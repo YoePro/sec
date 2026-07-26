@@ -1,0 +1,111 @@
+module esp32_hardware
+
+unit ticks
+
+// =====================================================================
+// ENUM DEFINITIONS (Bit-backed enumerations for peripheral configuration)
+// =====================================================================
+
+// Clock divider prescaler selection (2 bits)
+enum ClockSource bit[2] {
+    APB_CLK =   0b00,
+    XTAL_CLK =  0b01,
+    PLL_CLK =   0b10,
+    DISABLED =  0b11,
+}
+
+// Timer counter mode configuration (2 bits)
+enum TimerMode bit[2] {
+    COUNT_UP  = 0b00,
+    COUNT_DOWN = 0b01,
+    FREE_RUN  = 0b10,
+    PAUSED    = 0b11,
+}
+
+// Interrupt priority levels (3 bits)
+enum InterruptLevel bit[3] {
+    LOW_PRIO =  0b001,
+    MED_PRIO =  0b010,
+    HIGH_PRIO = 0b100,
+}
+
+// =====================================================================
+// REGISTER LAYOUTS (Simulating ESP32 Timer Control Registers)
+// =====================================================================
+
+// 32-bit Timer Configuration Register
+type TimerConfig register[32] {
+    ClkSrc: ClockSource,       // Uses 2 bits from ClockSource enum
+    Mode: TimerMode,           // Uses 2 bits from TimerMode enum
+    IntLevel: InterruptLevel,  // Uses 3 bits from InterruptLevel enum
+    AutoReload: bit,           // 1 bit: automatically reset counter on alarm
+    En: bit,                   // 1 bit: global timer enable switch
+    _: bit[23],                // 23 reserved bits to fill the 32-bit width (2+2+3+1+1+23 = 32)
+}
+
+// 32-bit Timer Value Register (Holds raw ticks value)
+type TimerValue register[32] {
+    Ticks: bit[32]<ticks>,     // 32-bit wide multi-bit field with custom unit <ticks>
+}
+
+// =====================================================================
+// REGISTER IMPLEMENTATIONS (Methods and properties for safety encapsulation)
+// =====================================================================
+
+impl TimerConfig {
+    // Method to safely initialize the timer peripheral settings
+    fn Configure(source: ClockSource, tMode: TimerMode) void {
+        self.ClkSrc = source
+        self.Mode = tMode
+        self.AutoReload = 1
+    }
+
+    // Method to start the hardware counter
+    fn Start() void {
+        self.En = 1
+    }
+
+    // Method to halt the hardware counter
+    fn Stop() void {
+        self.En = 0
+    }
+
+    // Read-only property to check if the timer is actively running
+    property IsRunning: bool {
+        get {
+            return self.En
+        }
+    }
+}
+
+// =====================================================================
+// HARDWARE INSTANCES (Memory-mapped IO addresses for ESP32 Timer Group 0)
+// =====================================================================
+
+// Base address for Timer 0 Configuration
+@address(0x3FF5F000)
+let mut TMR0_CONFIG: TimerConfig
+
+// Base address for Timer 0 Current Value
+@address(0x3FF5F004)
+let TMR0_VALUE: TimerValue
+
+// =====================================================================
+// EXECUTION CODE (Valid peripheral manipulation inside functions)
+// =====================================================================
+
+fn InitializeEsp32Timer() void {
+    // Configure peripheral using enum values passed as arguments
+    TMR0_CONFIG.Configure(ClockSource.PLL_CLK, TimerMode.COUNT_UP)
+
+    // Fire the start method to begin counting
+    TMR0_CONFIG.Start()
+}
+
+fn CheckTimerStatus() void {
+    // Read custom property from the memory-mapped register
+    let active := TMR0_CONFIG.IsRunning
+
+    // Read the current elapsed ticks with unit safety verification
+    let currentCount: ticks := TMR0_VALUE.Ticks
+}

@@ -1,73 +1,142 @@
-SEC COMPILER ROADMAP
+# Sec Compiler Roadmap
 
-1. Current Status
+## 1. Current Status
 
 The main control-flow constructs have been implemented and tested:
 
-if
-
-for
-
-while
-
-switch
-
-match
+- `if`
+- `for`
+- `while`
+- `switch`
+- `match`
 
 Enum declarations have also been implemented and tested, including:
 
-implicit and explicit underlying integer types
+- implicit and explicit underlying integer types
+- automatic numeric values
+- explicit numeric values
+- aliases
+- iota
+- enum namespaces
+- nested enums
+- explicit enum/integer conversions
+- enum type checking
+- match and switch interaction
 
-automatic numeric values
+### Defer
 
-explicit numeric values
+`defer` has been implemented and tested in parser, AST and semantic analysis.
+Both `defer_valid.sec` and `defer_invalid.sec` now behave as expected.
 
-aliases
+Implemented defer checks:
 
-iota
+- block-only defer syntax
+- function-scope validation
+- invalid `return`, `break`, `continue` and `fallthrough` inside defer
+- nested defer rejection
+- `try` propagation rejection inside defer
+- unhandled `Result` rejection inside defer
+- local error handling through match
+- definite-assignment checks for deferred reads
+- loop defer warnings
+- superfluous defer return warnings
 
-enum namespaces
+Defer MLIR lowering has a first limited implementation.
 
-nested enums
+Implemented MLIR defer lowering:
 
-explicit enum/integer conversions
+- per-function defer registration flags
+- execution-time registration when generated code reaches a defer statement
+- active defers emitted in reverse source-registration order before explicit
+  returns
+- active defers emitted before implicit function returns
+- return expressions are evaluated before deferred cleanup executes
 
-enum type checking
+Remaining defer lowering work:
 
-match and switch interaction
+- defer inside loops still needs compiler-generated cleanup state because a
+  single registration flag cannot represent one registration per loop iteration
+- `Result` error propagation paths still need explicit defer cleanup lowering
+  once Result ABI/lowering is complete
+- future ownership/destruction lowering must be integrated with defer cleanup
+  ordering
 
-defer has been implemented and tested in parser, AST and semantic analysis.
-Both defer_valid.sec and defer_invalid.sec now behave as expected.
+### Destruction
 
-Implemented defer checks include:
+Destruction has a first conservative implementation foothold.
 
-block-only defer syntax
+Implemented:
 
-function-scope validation
+- trivially destructible Sec types can be classified in semantic analysis
+- current primitive, view, enum, unit, aggregate, Result, Option and union forms
+  are covered by tests
+- `free` is reserved for future custom destruction
+- user-defined `free` bodies are rejected until ownership and cleanup-region
+  rules are implemented
 
-invalid return, break, continue and fallthrough inside defer
+Remaining destruction work:
 
-nested defer rejection
+- ownership analysis
+- borrow analysis
+- destruction insertion
+- Semantic IR cleanup regions
+- general MLIR destruction lowering
+- non-trivial global-owned-value rejection
 
-try propagation rejection inside defer
+### Allocation
 
-unhandled Result rejection inside defer
+Allocation has initial semantic metadata, but no allocating API is implemented
+yet.
 
-local error handling through match
+Implemented:
 
-definite-assignment checks for deferred reads
+- `arena` is reserved as a language keyword
+- `AllocationEffect` exists on semantic functions
+- current user functions are classified as `none`
+- `StorageOrigin` exists on semantic symbols
+- ordinary source locals and bindings are currently `Inline`
+- fixed-address register bindings are `FixedAddress`
+- the analyzer has an active allocation-context representation
+- the active allocation context is unavailable by default because `Arena` is not
+  implemented yet
 
-loop defer warnings
+Remaining allocation work:
 
-superfluous defer return warnings
+- `Arena` as a standard library/builtin type
+- `arena.Alloc[T](count)` semantics
+- allocation context propagation
+- allocation-effect inference through function bodies
+- sized/trivially-destructible/default-value checks for allocation
+- storage-origin propagation through references, slices and Semantic IR
+- arena reset validation
+- Semantic IR, MLIR and LLVM lowering for arena allocation
 
-Defer code generation is still future work. In particular, the backend still
-needs actual LIFO cleanup emission on all function exits, explicit returns,
-implicit void returns and Result propagation paths.
+### Match MLIR Lowering
 
-The purpose of this document is to keep track of the recommended order for the remaining parser, AST, semantic-analysis, later code-generation work, and advanced language features.
+`match` has a first limited MLIR lowering.
 
-2. Immediate Next Action
+Implemented:
+
+- statement `match` for bool, integer and enum-like integer subjects
+- expression `match` when the expected result type is known from context
+- literal and enum-member patterns through equality checks
+- `_` catch-all patterns
+- identifier binding patterns scoped to the selected arm
+- return bodies and block bodies for statement matches
+
+Remaining match lowering work:
+
+- Result and union payload pattern lowering
+- match guards
+- inferred result type for untyped match expressions in MLIR
+- exhaustiveness-driven removal of fallback control-flow once Semantic IR carries
+  that information
+
+The purpose of this document is to keep track of the recommended order for the
+remaining parser, AST, semantic-analysis, later code-generation work, and
+advanced language features.
+
+## 2. Immediate Next Action
 
 Current immediate work:
 Keep parser and semantic-analysis tests green while updating the roadmap to

@@ -37,6 +37,7 @@ type Analyzer struct {
 	inDeferBlock          bool
 	loopDepth             int
 	loopBreakAssignments  [][]map[string]bool
+	allocationContext     AllocationContext
 	errors                []Error
 	warnings              []Error
 }
@@ -77,6 +78,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.inDeferBlock = false
 	a.loopDepth = 0
 	a.loopBreakAssignments = nil
+	a.allocationContext = AllocationContext{Available: false, Origin: StorageOriginUnknown}
 	a.validateModuleDeclaration(program)
 	a.registerTypeDeclarations(program)
 	a.registerImplTypeDeclarations(program)
@@ -1797,12 +1799,22 @@ func (a *Analyzer) registerFunctionDeclarationBody(fn *ast.FunctionDeclaration, 
 		Token:             fn.Name.Token,
 		Extern:            fn.Extern,
 		ABI:               fn.ABI,
+		AllocationEffect:  AllocationEffectNone,
 	}
 	if fn.Extern && !isSupportedExternABI(fn.ABI) {
 		a.addErrorAtToken(fn.Token, "unknown extern ABI %q", fn.ABI)
 	}
 
 	seenParams := map[string]lexer.Token{}
+	if target, ok := a.implicitSelfParameter(fn); ok {
+		function.Parameters = append(function.Parameters, FunctionParameter{
+			Name:       "self",
+			Type:       target,
+			Token:      fn.Name.Token,
+			MutableRef: functionBodyWritesSelf(fn.Body),
+		})
+		seenParams["self"] = fn.Name.Token
+	}
 	for _, param := range fn.Parameters {
 		if _, exists := seenParams[param.Name.Value]; exists {
 			a.addErrorAtToken(param.Name.Token, "duplicate parameter %q", param.Name.Value)
@@ -1966,7 +1978,7 @@ func (a *Analyzer) analyzeFunctionBodyInScope(fn *ast.FunctionDeclaration, name 
 	}()
 
 	for _, param := range function.Parameters {
-		a.symbols[param.Name] = Symbol{Name: param.Name, Type: param.Type, Mutable: false, Token: param.Token}
+		a.symbols[param.Name] = Symbol{Name: param.Name, Type: param.Type, Mutable: param.MutableRef, Token: param.Token, Storage: StorageOriginInline}
 		delete(a.constInts, param.Name)
 		a.assigned[param.Name] = true
 	}
@@ -1977,6 +1989,198 @@ func (a *Analyzer) analyzeFunctionBodyInScope(fn *ast.FunctionDeclaration, name 
 	if !a.blockDefinitelyReturns(fn.Body) && function.ReturnType.Kind != VoidType && function.ReturnType.Kind != NeverType {
 		a.addErrorAtToken(fn.Name.Token, "function %s must return %s", fn.Name.Value, typeDisplayName(function.ReturnType))
 	}
+}
+
+func (a *Analyzer) implicitSelfParameter(fn *ast.FunctionDeclaration) (Type, bool) {
+	if a.currentImplTarget == "" || fn == nil || functionBodyUsesSelf(fn.Body) == false {
+		return Type{}, false
+	}
+	for _, param := range fn.Parameters {
+		if param.Name != nil && param.Name.Value == "self" {
+			return Type{}, false
+		}
+	}
+	target, ok := a.types[a.currentImplTarget]
+	if !ok || target.Kind == InvalidType {
+		return Type{}, false
+	}
+	return target, true
+}
+
+func functionBodyUsesSelf(block *ast.BlockStatement) bool {
+	if block == nil {
+		return false
+	}
+	for _, stmt := range block.Statements {
+		if statementUsesSelf(stmt) {
+			return true
+		}
+	}
+	return false
+}
+
+func functionBodyWritesSelf(block *ast.BlockStatement) bool {
+	if block == nil {
+		return false
+	}
+	for _, stmt := range block.Statements {
+		if statementWritesSelf(stmt) {
+			return true
+		}
+	}
+	return false
+}
+
+func statementUsesSelf(stmt ast.Statement) bool {
+	switch stmt := stmt.(type) {
+	case *ast.LetStatement:
+		return expressionUsesSelf(stmt.Value) || expressionUsesSelf(stmt.Address)
+	case *ast.LetGroupStatement:
+		for _, let := range stmt.Lets {
+			if statementUsesSelf(let) {
+				return true
+			}
+		}
+	case *ast.AssignmentStatement:
+		return expressionUsesSelf(stmt.Target) || expressionUsesSelf(stmt.Value)
+	case *ast.TryAssignmentStatement:
+		return stmt.Assignment != nil && statementUsesSelf(stmt.Assignment)
+	case *ast.ExpressionStatement:
+		return expressionUsesSelf(stmt.Expression)
+	case *ast.ReturnStatement:
+		return expressionUsesSelf(stmt.Value)
+	case *ast.IfStatement:
+		return expressionUsesSelf(stmt.Condition) || functionBodyUsesSelf(stmt.Consequence) || functionBodyUsesSelf(stmt.Alternative)
+	case *ast.ForStatement:
+		return expressionUsesSelf(stmt.Iterable) || expressionUsesSelf(stmt.Step) || functionBodyUsesSelf(stmt.Body)
+	case *ast.WhileStatement:
+		return expressionUsesSelf(stmt.Condition) || functionBodyUsesSelf(stmt.Body)
+	case *ast.DeferStatement:
+		return functionBodyUsesSelf(stmt.Body)
+	case *ast.UnsafeStatement:
+		return functionBodyUsesSelf(stmt.Body)
+	case *ast.MatchStatement:
+		return expressionUsesSelf(stmt.Match)
+	}
+	return false
+}
+
+func statementWritesSelf(stmt ast.Statement) bool {
+	switch stmt := stmt.(type) {
+	case *ast.AssignmentStatement:
+		return assignmentTargetUsesSelf(stmt.Target)
+	case *ast.TryAssignmentStatement:
+		return stmt.Assignment != nil && statementWritesSelf(stmt.Assignment)
+	case *ast.LetGroupStatement:
+		return false
+	case *ast.IfStatement:
+		return functionBodyWritesSelf(stmt.Consequence) || functionBodyWritesSelf(stmt.Alternative)
+	case *ast.ForStatement:
+		return functionBodyWritesSelf(stmt.Body)
+	case *ast.WhileStatement:
+		return functionBodyWritesSelf(stmt.Body)
+	case *ast.DeferStatement:
+		return functionBodyWritesSelf(stmt.Body)
+	case *ast.UnsafeStatement:
+		return functionBodyWritesSelf(stmt.Body)
+	case *ast.MatchStatement:
+		if stmt.Match == nil {
+			return false
+		}
+		for _, arm := range stmt.Match.Arms {
+			if arm != nil && functionBodyWritesSelf(arm.BlockBody) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func assignmentTargetUsesSelf(expr ast.Expression) bool {
+	switch expr := expr.(type) {
+	case *ast.MemberExpression:
+		return expressionUsesSelf(expr.Object)
+	case *ast.IndexExpression:
+		return assignmentTargetUsesSelf(expr.Left)
+	}
+	return false
+}
+
+func expressionUsesSelf(expr ast.Expression) bool {
+	switch expr := expr.(type) {
+	case nil:
+		return false
+	case *ast.Identifier:
+		return expr.Value == "self"
+	case *ast.PrefixExpression:
+		return expressionUsesSelf(expr.Right)
+	case *ast.InfixExpression:
+		return expressionUsesSelf(expr.Left) || expressionUsesSelf(expr.Right)
+	case *ast.RangeExpression:
+		return expressionUsesSelf(expr.Start) || expressionUsesSelf(expr.End)
+	case *ast.ConversionExpression:
+		return expressionUsesSelf(expr.Value)
+	case *ast.CallExpression:
+		if expressionUsesSelf(expr.Callee) {
+			return true
+		}
+		for _, arg := range expr.Arguments {
+			if expressionUsesSelf(arg) {
+				return true
+			}
+		}
+	case *ast.OkExpression:
+		return expressionUsesSelf(expr.Value)
+	case *ast.ErrExpression:
+		return expressionUsesSelf(expr.Value)
+	case *ast.TryExpression:
+		return expressionUsesSelf(expr.Expression)
+	case *ast.MatchExpression:
+		if expressionUsesSelf(expr.Subject) {
+			return true
+		}
+		for _, arm := range expr.Arms {
+			if arm == nil {
+				continue
+			}
+			if expressionUsesSelf(arm.Pattern) || expressionUsesSelf(arm.Guard) || expressionUsesSelf(arm.Body) {
+				return true
+			}
+			if arm.ReturnBody != nil && statementUsesSelf(arm.ReturnBody) {
+				return true
+			}
+			if functionBodyUsesSelf(arm.BlockBody) {
+				return true
+			}
+		}
+	case *ast.MemberExpression:
+		return expressionUsesSelf(expr.Object)
+	case *ast.ArrayLiteral:
+		for _, element := range expr.Elements {
+			if expressionUsesSelf(element) {
+				return true
+			}
+		}
+	case *ast.SpreadExpression:
+		return expressionUsesSelf(expr.Value)
+	case *ast.IndexExpression:
+		return expressionUsesSelf(expr.Left) || expressionUsesSelf(expr.Index)
+	case *ast.SliceExpression:
+		return expressionUsesSelf(expr.Left) || expressionUsesSelf(expr.Start) || expressionUsesSelf(expr.End)
+	case *ast.RefExpression:
+		return expressionUsesSelf(expr.Value)
+	case *ast.StructLiteral:
+		for _, field := range expr.Fields {
+			if field != nil && expressionUsesSelf(field.Value) {
+				return true
+			}
+		}
+	case *ast.SpawnExpression:
+		return functionBodyUsesSelf(expr.Body)
+	case *ast.AwaitExpression:
+		return expressionUsesSelf(expr.Value)
+	}
+	return false
 }
 
 func (a *Analyzer) defineImplFieldSymbols(function Function) {
@@ -2004,7 +2208,7 @@ func (a *Analyzer) defineImplFieldSymbols(function Function) {
 		if _, exists := a.symbols[field.Name]; exists {
 			continue
 		}
-		a.symbols[field.Name] = Symbol{Name: field.Name, Type: field.Type, Mutable: mutableSelf, Token: field.Token}
+		a.symbols[field.Name] = Symbol{Name: field.Name, Type: field.Type, Mutable: mutableSelf, Token: field.Token, Storage: StorageOriginInline}
 		a.assigned[field.Name] = true
 		delete(a.constInts, field.Name)
 	}
@@ -3729,6 +3933,9 @@ func (a *Analyzer) inferPropertyBodyExpression(target Type, setter *ast.Property
 		if fieldType, ok := lookupStructField(objectType, expr.Property.Value); ok {
 			return fieldType, true
 		}
+		if fieldType, ok := lookupRegisterField(objectType, expr.Property.Value); ok {
+			return fieldType, true
+		}
 		if property, ok := lookupProperty(objectType, expr.Property.Value); ok {
 			return property.Type, true
 		}
@@ -3900,6 +4107,7 @@ func (a *Analyzer) analyzeAddressedLetStatement(stmt *ast.LetStatement, declared
 	symbol.Addressed = true
 	symbol.Volatile = true
 	symbol.Address = stmt.Address.String()
+	symbol.Storage = StorageOriginFixedAddress
 	a.symbols[stmt.Name.Value] = symbol
 	a.assigned[stmt.Name.Value] = true
 }
@@ -4046,6 +4254,10 @@ func (a *Analyzer) analyzeMemberAssignmentStatement(stmt *ast.AssignmentStatemen
 		return
 	}
 
+	if stmt.Operator == "=" && a.isRegisterBitField(member) && a.isZeroOrOneIntegerConstant(stmt.Value) {
+		return
+	}
+
 	if a.checkIntegerExpressionRange(targetType, stmt.Value) {
 		return
 	}
@@ -4053,6 +4265,31 @@ func (a *Analyzer) analyzeMemberAssignmentStatement(stmt *ast.AssignmentStatemen
 	if !canInitialize(targetType, valueType, stmt.Value) {
 		a.addErrorAtToken(expressionToken(stmt.Value), "cannot assign %s to %s", typeDisplayName(valueType), typeDisplayName(targetType))
 	}
+}
+
+func (a *Analyzer) isRegisterBitField(member *ast.MemberExpression) bool {
+	if member == nil || member.Property == nil {
+		return false
+	}
+	objectType, _ := a.inferExpression(member.Object)
+	if objectType.Kind == InvalidType {
+		return false
+	}
+	objectType = dereferenceType(objectType)
+	if objectType.Kind != RegisterType {
+		return false
+	}
+	for _, field := range objectType.RegisterFields {
+		if field.Name == member.Property.Value {
+			return field.Width == 1
+		}
+	}
+	return false
+}
+
+func (a *Analyzer) isZeroOrOneIntegerConstant(expr ast.Expression) bool {
+	value, ok := a.integerConstantValue(expr)
+	return ok && (value.Sign() == 0 || value.Cmp(big.NewInt(1)) == 0)
 }
 
 func (a *Analyzer) analyzeTryAssignmentHandlers(stmt *ast.TryAssignmentStatement) {
@@ -6491,7 +6728,7 @@ func (a *Analyzer) analyzeTryHandlerBody(handler *ast.TryHandler, successType Ty
 	a.symbols = copySymbols(previousSymbols)
 	a.constInts = copyConstInts(previousConstInts)
 	if bindingName != "" {
-		a.symbols[bindingName] = Symbol{Name: bindingName, Type: errorType, Mutable: false, Token: handler.Token}
+		a.symbols[bindingName] = Symbol{Name: bindingName, Type: errorType, Mutable: false, Token: handler.Token, Storage: StorageOriginInline}
 		delete(a.constInts, bindingName)
 	}
 	defer func() {
@@ -6824,7 +7061,7 @@ func (a *Analyzer) analyzeMatchArmBody(arm *ast.MatchArm, info matchPatternInfo)
 	a.constInts = copyConstInts(previousConstInts)
 	a.assigned = copyAssigned(previousAssigned)
 	if info.BindingName != "" {
-		a.symbols[info.BindingName] = Symbol{Name: info.BindingName, Type: info.BindingType, Mutable: false, Token: arm.Token}
+		a.symbols[info.BindingName] = Symbol{Name: info.BindingName, Type: info.BindingType, Mutable: false, Token: arm.Token, Storage: StorageOriginInline}
 		a.assigned[info.BindingName] = true
 		delete(a.constInts, info.BindingName)
 	}
@@ -7366,7 +7603,7 @@ func (a *Analyzer) defineSymbol(name string, typ Type, mutable bool, token lexer
 		return false
 	}
 
-	a.symbols[name] = Symbol{Name: name, Type: typ, Mutable: mutable, Token: token}
+	a.symbols[name] = Symbol{Name: name, Type: typ, Mutable: mutable, Token: token, Storage: StorageOriginInline}
 	return true
 }
 

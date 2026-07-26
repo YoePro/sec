@@ -34,6 +34,10 @@ Project initialization is not a compilation stage.
 It creates the project structure and default compiler configuration consumed by
 later pipeline stages.
 
+The canonical project, manifest, target and variant model is defined in
+`rules/projects.txt`. This section records the current implementation status
+only.
+
 The command is:
 
 ```text
@@ -43,15 +47,17 @@ sec init [path] [--name <name>] [--target <os-arch>] [--profile <profile>]
 Current behavior:
 
 * creates the project directory when needed
-* creates `cmd/main/`
+* creates `cmd/<target-name>/`
 * creates `bin/`
 * creates `.sec/`
 * creates `internal/`
-* creates `cmd/main/main.sec` when it does not already exist
+* creates `cmd/<target-name>/main.sec` when it does not already exist
 * creates `.sec/sec.toml`
-* refuses to overwrite an existing `.sec/sec.toml`
+* does not overwrite an existing `.sec/sec.toml`
+* treats a compatible existing `.sec/sec.toml` as an idempotent no-op
+* rejects creation of a nested `.sec/sec.toml` below an existing Sec project
 
-The generated `cmd/main/main.sec` is the smallest valid executable entry point:
+The generated `cmd/<target-name>/main.sec` is the smallest valid executable entry point:
 
 ```sec
 module main
@@ -77,26 +83,40 @@ name = "my project"
 uuid = "generated-project-uuid"
 imports = []
 
-[platform]
+[build]
+backend = "mlir"
+profile = "server"
+diagnostics = "default"
+
+[profile.server]
+optimization = "none"
+debug = "line"
+strip = false
+
+[variant.linux-amd64]
 os = "linux"
 arch = "amd64"
+llvm_triple = "x86_64-pc-linux-gnu"
 
-[build]
-target = "x86_64-pc-linux-gnu"
-profile = "server"
-output = "bin/my-project"
+[target.my-project]
+kind = "command"
+source = "cmd/my-project"
+artifact = "my-project"
+variants = ["linux-amd64"]
+output = "bin/my-project/linux-amd64/server/my-project"
 ```
 
 `[project]` contains project identity.
 
-`[platform]` contains the selected Sec platform identity.
+`[build]` contains project-wide compiler defaults.
 
-`[build]` contains the selected build target, profile and default output path.
+`[profile.<name>]` contains reusable build-profile defaults.
 
-The current implementation stores the selected target as an LLVM triple. This is
-an implementation detail of the current backend path. As the compiler moves to
-Sec semantic IR and MLIR lowering, the configuration may also store a stable Sec
-target id while preserving the LLVM triple as a derived backend detail.
+`[variant.<name>]` contains the selected Sec platform identity. The current
+implementation also stores `llvm_triple` as a derived backend detail for the
+active LLVM/MLIR path.
+
+`[target.<name>]` contains the logical build product and its selected variants.
 
 ## Source loading
 
@@ -734,6 +754,9 @@ Current MLIR implementation note:
 
 ## Diagnostics
 
+The canonical diagnostic, severity, mentor-analysis and localization model is
+defined in `rules/diagnostics.txt`.
+
 Each pipeline stage must emit diagnostics using the shared diagnostic system.
 
 Diagnostics must contain:
@@ -747,6 +770,17 @@ Diagnostics must contain:
 * explanatory notes where applicable
 
 Later stages must not emit misleading diagnostics for errors caused by invalid earlier-stage input.
+
+Current implementation status:
+
+* parser, semantic, project and build diagnostics are still mostly emitted as
+  English text without stable diagnostic IDs
+* mandatory parser and semantic failures already stop lowering/build work
+* several reachability checks already emit errors, matching the canonical
+  diagnostics rule that proven unreachable/dead code is invalid
+* the central diagnostic registry, localization, `sec explain`, diagnostic
+  configuration and structured machine-readable diagnostic output remain future
+  work
 
 Compiler errors must be distinguished from user program errors.
 

@@ -150,6 +150,12 @@ enum ClockSource: bit[2] {
     Bypass = 0b10,
 }
 
+enum ClockSource bit[2] {
+    Internal: 0b00,
+    External: 0b01,
+    Bypass: 0b10,
+}
+
 type ClockConfig register[32] {
     Source: ClockSource
     Enabled: bit
@@ -190,6 +196,17 @@ Reserved fields named `_` must use `bit` or `bit[N]`, not an enum type.
 
 Bit-backed enum fields participate in the same exact-width layout calculation
 as ordinary bit fields.
+
+For a one-bit field declared as `bit`, boolean values are the semantic type.
+For hardware-style ergonomics, constant assignments of `0` and `1` are also
+accepted for that register field only:
+
+```
+control.Enabled = 1
+control.Enabled = 0
+```
+
+This exception does not make ordinary `bool := 1` valid.
 
 =====================================================================
 Reserved Bits
@@ -626,6 +643,14 @@ static method
     has no self and may not access instance fields through self
 ```
 
+Current implementation note:
+
+If an impl function body refers to `self`, semantic analysis creates an
+implicit receiver parameter for that method. If the body writes through
+`self`, the receiver is treated as mutable and calls require writable receiver
+storage. If the body only reads through `self`, read-only receiver storage is
+accepted.
+
 When the receiver is an addressed register instance, method field access
 must preserve the addressed storage semantics:
 
@@ -906,6 +931,10 @@ enum BitBackedEnum: bit[N] {
     Value = integer_constant
 }
 
+enum BitBackedEnum bit[N] {
+    Value: integer_constant
+}
+
 @address(0x40021000)
 let name: RegisterType
 
@@ -928,10 +957,12 @@ unit annotations are checked against known units
 @address bindings are marked volatile in semantic analysis
 writing a field on read-only addressed storage is rejected
 constant assignments to register fields are checked against field width
+constant 0/1 assignments to one-bit register fields are accepted
 bit-backed enum values and explicit conversions are checked against enum width
 bit-backed enum register fields occupy their enum's exact declared width
 ordinary enums are rejected as register field types
 impl blocks are accepted for register types
+impl methods that use self receive an implicit receiver in semantic analysis
 impl methods/properties do not affect register bit layout
 ```
 

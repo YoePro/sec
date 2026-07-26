@@ -259,16 +259,16 @@ let mut motorProtocol: MotorProtocol
 
 func TestParseBitBackedEnumAndRegisterField(t *testing.T) {
 	input := `
-enum ClockSource: bit[2] {
-	Internal = 0b00,
-	External = 0b01,
-	Bypass = 0b10,
+enum ClockSource bit[2] {
+	Internal: 0b00,
+	External: 0b01,
+	Bypass: 0b10
 }
 
 type ClockConfig register[32] {
-	Source: ClockSource,
-	Enabled: bit,
-	_: bit[29],
+	Source: ClockSource // enum-backed field
+	Enabled: bit        // one bit
+	_: bit[29]          // reserved bits
 }
 `
 
@@ -1989,6 +1989,42 @@ impl Vehicle {
 	}
 	if invalid.Message != "variable declarations are not allowed inside impl" {
 		t.Fatalf("wrong invalid message. got=%q", invalid.Message)
+	}
+}
+
+func TestParseImplReservesFreeOperation(t *testing.T) {
+	input := `
+impl File {
+	free {
+		Close()
+	}
+
+	fn Done() void {
+	}
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	impl, ok := program.Statements[0].(*ast.ImplStatement)
+	if !ok {
+		t.Fatalf("statement 0 is not ImplStatement. got=%T", program.Statements[0])
+	}
+	if len(impl.Members) != 2 {
+		t.Fatalf("wrong impl member count. got=%d want=2", len(impl.Members))
+	}
+	invalid, ok := impl.Members[0].(*ast.InvalidStatement)
+	if !ok {
+		t.Fatalf("impl member 0 is not InvalidStatement. got=%T", impl.Members[0])
+	}
+	if invalid.Message != "free operations are reserved for destruction but are not implemented yet" {
+		t.Fatalf("wrong invalid message. got=%q", invalid.Message)
+	}
+	if _, ok := impl.Members[1].(*ast.FunctionDeclaration); !ok {
+		t.Fatalf("impl member 1 should recover to function declaration. got=%T", impl.Members[1])
 	}
 }
 

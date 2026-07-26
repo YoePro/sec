@@ -1,0 +1,95 @@
+Kategori: Språkkonstruktioner & Syntax
+arrays-slices.txt - Written
+defer.txt - Written
+enums.txt - Written
+flowcontrol_for.txt - Written
+flowcontrol_for_1.txt - Written
+flowcontrol_if.txt - Written
+flowcontrol_match.txt - Written
+flowcontrol_switch.txt - Written
+flowcontrol_while.txt - Written
+functions.txt - Written
+functions_lambda.txt - Written
+lambdas.txt - To be done
+closures.txt - To be done
+spread.txt - Written
+struct.txt - Written
+types.txt - Written
+unions.txt - Written
+units.txt - Written
+variables_contracts.txt - Written
+
+Kategori: Minneshantering & Ägandeskap
+allocation.txt - Written
+borrowing.txt - Written
+copy_move.txt - Written
+destruction.txt - Written
+lifetime_analysis.txt - Written
+memory_model.txt - Written
+ownership.txt - Written
+raw_pointers.txt - Written
+references.txt - Written
+storage_allocation.txt - To be done
+layout.txt - To be done
+
+Kategori: Konkurrens & Asynkront
+tasks.txt - Written
+spawn.txt - Written
+await.txt - Written
+concurrency.txt - Written
+mutex.txt - Written
+atomics.txt - Written 
+static.txt - Written
+concurrency_memory_model.txt - Written
+processes.txt - To be done
+spawn_process.txt - To be done
+ipc.txt - To be done
+
+Kategori: Typ- & Metodsystem
+generics.txt - Written
+impl.txt - Written
+interfaces.txt - Written
+properties.txt - Written
+
+Kategori: Kompilatorarkitektur & IR
+compiler.txt - Written
+compiler_analysis.txt - Written
+compiler_pipeline.txt - Written
+mlir.txt - Written
+mlir-optimize.txt - Written < is being updated by Codex as implementation proceeds
+semantic_ir.txt - Written
+call_graph.txt - To be done
+stack_analysis.txt - To be done
+escape_analysis.txt - To be done
+effect_analysis.txt - To be done
+isr_analysis.txt - To be done
+parser_recovery.txt - To be done
+generics_lowering.txt - To be done
+monomorphization.txt - To be done
+linking.txt - To be done
+
+Kategori: Hårdvara, Plattform & ABI
+abi.txt - To be done
+target_profiles.txt - To be done
+platform_model.txt - To be done
+inline_assembly.txt - To be done
+volatile.txt - To be done
+interrupts.txt - To be done
+registers.txt - Written
+
+Kategori: Verktyg, Diagnostik & Testning
+diagnostics.txt - Written
+formatter.txt - Written
+runtime_checks.txt - To be done <-- We need to make sure we avoid getting a runtime but some checks must be done in runtime.
+compiler_diagnostics.txt - To be done
+compile_time_evaluation.txt - To be done
+debug_information.txt - To be done
+compiler_testing.txt - To be done
+incremental_compilation.txt - To be done
+
+Kategori: Övrigt & Projekt
+errorhandling.txt - Written
+ffi.txt - Written
+language_philosophy.txt - Written
+projects.txt - Written
+rules_implementations.txt - Written

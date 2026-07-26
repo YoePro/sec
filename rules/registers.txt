@@ -151,9 +151,9 @@ enum ClockSource: bit[2] {
 }
 
 enum ClockSource bit[2] {
-    Internal: 0b00,
-    External: 0b01,
-    Bypass: 0b10,
+    Internal = 0b00,
+    External = 0b01,
+    Bypass = 0b10,
 }
 
 type ClockConfig register[32] {
@@ -932,8 +932,11 @@ enum BitBackedEnum: bit[N] {
 }
 
 enum BitBackedEnum bit[N] {
-    Value: integer_constant
+    Value = integer_constant
 }
+
+The parser may tolerate `Value: integer_constant` as formatter-recovery input,
+but the formatter must rewrite it to `Value = integer_constant`.
 
 @address(0x40021000)
 let name: RegisterType

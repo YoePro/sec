@@ -381,12 +381,16 @@ func (p *Parser) skipMatchArm() {
 
 func (p *Parser) parseSpawnExpression() ast.Expression {
 	expr := &ast.SpawnExpression{Token: p.curToken}
-	if p.peekToken.Type != lexer.LBRACE {
-		p.addError("spawn requires a block at %d:%d", p.peekToken.Line, p.peekToken.Column)
+	if p.peekToken.Type == lexer.LBRACE {
+		p.nextToken()
+		expr.Body = p.parseStatementBlock("spawn body")
 		return expr
 	}
 	p.nextToken()
-	expr.Body = p.parseStatementBlock("spawn body")
+	expr.Value = p.parseExpression(PREFIX)
+	if expr.Value == nil {
+		return nil
+	}
 	return expr
 }
 

@@ -1,0 +1,164 @@
+module i2c_sensor_driver
+
+// =====================================================================
+// PHYSICAL UNITS DEFINITIONS
+// =====================================================================
+
+/** Kelvin for absolute thermodynamic temperature */
+unit K physical
+
+impl K {
+    LongName: "Kelvin"
+    Symbol: "K"
+    BaseUnit: true
+    Status: active
+    Dimension: [temperature^1]
+    Scale: 1
+    System: SI
+}
+
+/** Pascal for pressure (Derived SI: kg * m^-1 * s^-2) */
+unit Pa physical
+
+impl Pa {
+    LongName: "Pascal"
+    Symbol: "Pa"
+    BaseUnit: false
+    Status: active
+    Dimension: [mass^1, length^-1, time^-2]
+    Scale: 1
+    System: SI
+}
+
+// =====================================================================
+// ENUMS FOR I2C PROTOCOL STATE
+// =====================================================================
+
+// I2C Clock speed configuration (2 bits)
+enum I2cSpeed bit[2] {
+    STANDARD_100KHZ = 0b00,
+    FAST_400KHZ     = 0b01,
+    HIGH_3_4MHZ     = 0b10,
+    RESERVED        = 0b11,
+}
+
+// I2C Hardware Status (3 bits)
+enum I2cStatus bit[3] {
+    IDLE             = 0b000,
+    BUSY             = 0b001,
+    ACK_RECEIVED     = 0b010,
+    NACK_RECEIVED    = 0b011,
+    ARBITRATION_LOST = 0b100,
+}
+
+// =====================================================================
+// REGISTER LAYOUTS
+// =====================================================================
+
+// I2C Control Register 1 (32-bit width)
+type I2cControl register[32] {
+    Enable: bit[1]
+    StartGen: bit[1]
+    StopGen: bit[1]
+    AckEnable: bit[1]
+    SpeedMode: I2cSpeed
+    _: bit[26]
+}
+
+// I2C Status Register (32-bit width)
+type GpioStatus register[32] {
+    State: I2cStatus
+    IntFlag: bit[1]
+    TxEmpty: bit[1]
+    RxNotEmpty: bit[1]
+    _: bit[26]
+}
+
+// External Sensor Raw Data Register Buffer (32-bit width)
+type SensorDataBuffer register[32] {
+    RawTemperature: bit[16]<K>   // 16 bits dedicated to temperature with unit <K>
+    RawPressure: bit[16]<Pa>      // 16 bits dedicated to pressure with unit <Pa>
+}
+
+// =====================================================================
+// REGISTER IMPLEMENTATIONS
+// =====================================================================
+
+impl I2cControl {
+    // Method modifying the register internally. Requires a mutable reference context.
+    fn InitializeController(speed: I2cSpeed) void {
+        self.Enable = 1
+        self.SpeedMode = speed
+        self.AckEnable = 1
+    }
+
+    fn SendStartCondition() void {
+        self.StartGen = 1
+    }
+
+    fn SendStopCondition() void {
+        self.StopGen = 1
+    }
+}
+
+impl GpioStatus {
+    // Read-only property mapping the internal enum state to a high-level boolean
+    property IsBusBusy: bool {
+        get {
+            return bool(self.State == I2cStatus.BUSY)
+        }
+    }
+}
+
+impl SensorDataBuffer {
+    // Read-only property returning Temperature safely typed with its unit
+    property Temperature: K {
+        get {
+            return K(self.RawTemperature)
+        }
+    }
+
+    // Read-only property returning Pressure safely typed with its unit
+    property Pressure: Pa {
+        get {
+            return Pa(self.RawPressure)
+        }
+    }
+}
+
+// =====================================================================
+// MEMORY-MAPPED PERIPHERAL INSTANCES (With explicit mutability controls)
+// =====================================================================
+
+// Mutable hardware registers because our code must write commands into them
+@address(0x40005400)
+let mut I2C_CR1: I2cControl
+
+// Immutable instance by default: reading status flags should not modify hardware layout state
+@address(0x40005404)
+let I2C_SR: GpioStatus
+
+// Immutable instance by default: sensor buffers are read-only hardware registers
+@address(0x40005410)
+let BME280_BUFFER: SensorDataBuffer
+
+// =====================================================================
+// APPLICATION LOGIC FUNCTIONS
+// =====================================================================
+
+fn SetupI2cBus() void {
+    // Valid mutation: I2C_CR1 is declared as 'mut'
+    I2C_CR1.InitializeController(I2cSpeed.FAST_400KHZ)
+}
+
+fn ReadEnvironmentSensors() void {
+    // Check if the bus is busy using the read-only property
+    let busyCheck: bool := I2C_SR.IsBusBusy
+
+    // Trigger start condition via mutable control register
+    I2C_CR1.SendStartCondition()
+
+    // Read the values safely with unit validation guarantees
+    let currentTemp: K := BME280_BUFFER.Temperature
+    let currentPressure: Pa := BME280_BUFFER.Pressure
+}

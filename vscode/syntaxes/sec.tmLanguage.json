@@ -296,12 +296,13 @@
         },
         {
           "name": "meta.function.definition.sec",
-          "match": "\\b(?:(unsafe)\\s+)?(?:(extern)\\s+)?(fn)\\s+([A-Za-z_][A-Za-z0-9_.]*)",
+          "match": "\\b(?:(static)\\s+)?(?:(unsafe)\\s+)?(?:(extern)\\s+)?(fn)\\s+([A-Za-z_][A-Za-z0-9_.]*)",
           "captures": {
-            "1": { "name": "keyword.control.unsafe.sec" },
-            "2": { "name": "storage.modifier.extern.sec" },
-            "3": { "name": "storage.type.function.sec" },
-            "4": { "name": "entity.name.function.sec" }
+            "1": { "name": "storage.modifier.static.sec" },
+            "2": { "name": "keyword.control.unsafe.sec" },
+            "3": { "name": "storage.modifier.extern.sec" },
+            "4": { "name": "storage.type.function.sec" },
+            "5": { "name": "entity.name.function.sec" }
           }
         },
         {
@@ -341,21 +342,24 @@
         },
         {
           "name": "meta.variable.declaration.sec",
-          "match": "\\b(let)\\s+(?:(mut)\\s+)?([A-Za-z_][A-Za-z0-9_]*)(?:\\s*(:)\\s*(<[^>]+>|[A-Za-z_][A-Za-z0-9_.]*(?:<[^>]+>)?(?:\\[[^\\]]+\\])?))?",
+          "match": "\\b(?:(static)\\s+)?(let)\\s+(?:(mut)\\s+)?([A-Za-z_][A-Za-z0-9_]*)(?:\\s*(:)\\s*(<[^>]+>|[A-Za-z_][A-Za-z0-9_.]*(?:<[^>]+>)?(?:\\[[^\\]]+\\])?))?",
           "captures": {
             "1": {
-              "name": "storage.type.variable.sec"
+              "name": "storage.modifier.static.sec"
             },
             "2": {
-              "name": "storage.modifier.mutable.sec"
+              "name": "storage.type.variable.sec"
             },
             "3": {
-              "name": "variable.other.declaration.sec"
+              "name": "storage.modifier.mutable.sec"
             },
             "4": {
-              "name": "punctuation.separator.type.sec"
+              "name": "variable.other.declaration.sec"
             },
             "5": {
+              "name": "punctuation.separator.type.sec"
+            },
+            "6": {
               "name": "entity.name.type.sec"
             }
           }
@@ -376,7 +380,7 @@
       "patterns": [
         {
           "name": "keyword.control.sec",
-          "match": "\\b(?:asm|if|else|switch|case|default|fallthrough|for|while|in|match|where|return|break|continue|defer|try|await|spawn|discard|assert|panic|unsafe)\\b"
+          "match": "\\b(?:asm|if|else|switch|case|default|fallthrough|for|while|in|match|where|return|break|continue|defer|try|await|spawn|join|detach|cancel|discard|assert|panic|unsafe)\\b"
         },
         {
           "name": "storage.type.declaration.sec",
@@ -385,6 +389,10 @@
         {
           "name": "storage.modifier.mutable.sec",
           "match": "\\bmut\\b"
+        },
+        {
+          "name": "storage.modifier.static.sec",
+          "match": "\\bstatic\\b"
         },
         {
           "name": "storage.modifier.reference.sec",
@@ -396,7 +404,7 @@
         },
         {
           "name": "variable.language.self.sec",
-          "match": "\\bself\\b"
+          "match": "\\b(?:self|task)\\b"
         },
         {
           "name": "keyword.other.implements.sec",
@@ -417,6 +425,10 @@
         {
           "name": "keyword.other.sec",
           "match": "\\b(?:module|import|require|range|validate|regex|minLen|maxLen|minLength|maxLength|precision|iota|capture|arena|sec)\\b"
+        },
+        {
+          "name": "support.function.concurrency.sec",
+          "match": "(?<=\\.)(?:lock|tryLock|load|store|swap|compareExchange|fetchAdd|fetchSub|fetchAnd|fetchOr|fetchXor|cancel)\\b"
         }
       ]
     },    
@@ -430,6 +442,14 @@
         {
           "name": "support.type.sec",
           "match": "\\b(?:Result|Option|Vec|Map|Set|Vector|Matrix|Box|Any|RawPtr)\\b"
+        },
+        {
+          "name": "support.type.concurrency.sec",
+          "match": "\\b(?:Task|TaskOutcome|TaskError|Mutex|MutexGuard|Atomic|CompareExchangeResult|MemoryOrder)\\b"
+        },
+        {
+          "name": "constant.language.memory-order.sec",
+          "match": "\\bMemoryOrder\\.(?:Relaxed|Acquire|Release|AcqRel|SeqCst)\\b"
         }
       ]
     },

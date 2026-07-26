@@ -27,12 +27,6 @@ enum HardwareMode: bit[2] {
     Bypass = 0b10,
 }
 
-enum HardwareMode bit[2] {
-    Internal: 0b00,
-    External: 0b01,
-    Bypass: 0b10,
-}
-
 impl Vehicle {
     enum FuelType {
         petrol,
@@ -54,7 +48,7 @@ Rules:
 
 * The underlying type must be an integer type.
 
-* A hardware-mapped enum may use either of these equivalent forms:
+* A hardware-mapped enum may use either of these forms:
 
   enum Name: bit[N] { ... }
   enum Name bit[N] { ... }
@@ -74,14 +68,14 @@ Rules:
 
 * A value without an explicit initializer gets the previous numeric value + 1.
 
-* An explicit initializer must be an integer constant expression.
-
-* Enum initializers may use `=` or `:`:
+* An explicit initializer must be written with `=` and must be an integer
+  constant expression.
 
   Value = 1
-  Value: 1
 
-  `:` is useful for register-style bit maps.
+* `Value: 1` is not canonical Sec enum syntax. The parser may accept it as a
+  recovery form so `sec fmt` can rewrite it to `Value = 1`, but source code
+  should not rely on it as valid language syntax.
 
 * Enum value names must be unique inside the enum.
 

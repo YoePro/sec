@@ -466,6 +466,7 @@ func (p *Program) String() string {
 
 type LetStatement struct {
 	Token        lexer.Token
+	Static       bool
 	Mutable      bool
 	Name         *Identifier
 	Type         *TypeReference
@@ -475,6 +476,8 @@ type LetStatement struct {
 }
 
 func (ls *LetStatement) statementNode() {}
+
+func (ls *LetStatement) implMemberNode() {}
 
 func (ls *LetStatement) TokenLiteral() string {
 	return ls.Token.Lexeme
@@ -549,6 +552,7 @@ type FunctionDeclaration struct {
 	Extern            bool
 	ABI               string
 	LinkName          string
+	Static            bool
 }
 
 func (fd *FunctionDeclaration) statementNode() {}
@@ -1387,6 +1391,7 @@ type StructLiteralField struct {
 
 type SpawnExpression struct {
 	Token lexer.Token
+	Value Expression
 	Body  *BlockStatement
 }
 
@@ -1397,6 +1402,9 @@ func (se *SpawnExpression) TokenLiteral() string {
 }
 
 func (se *SpawnExpression) String() string {
+	if se.Value != nil {
+		return "spawn " + se.Value.String()
+	}
 	return "spawn {...}"
 }
 

@@ -1,0 +1,11 @@
+module string
+
+impl string {
+    fn Len() int {
+        asm {
+            %len_ptr = gep %1, 8       // Get address to length field
+            %res     = load %len_ptr   // read the value from memory
+            ret %res
+        }
+    }
+}

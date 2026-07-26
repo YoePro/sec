@@ -128,6 +128,9 @@ func (p *Parser) parseStatement() ast.Statement {
 	case lexer.LET:
 		return p.parseLetStatement()
 
+	case lexer.STATIC:
+		return p.parseStaticStatement()
+
 	case lexer.RETURN:
 		return p.parseReturnStatement()
 
@@ -967,6 +970,7 @@ func (p *Parser) parseModuleStatement() ast.Statement {
 	}
 	p.nextToken()
 
+	// TODO: Fix module name bug
 	stmt.Path = p.parseDottedPath()
 
 	return stmt
@@ -1502,6 +1506,9 @@ func (p *Parser) parseEnumBody(enum *ast.EnumDeclaration) *ast.EnumDeclaration {
 			Name:  &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme},
 		}
 		if p.peekToken.Type == lexer.ASSIGN || p.peekToken.Type == lexer.COLON {
+			if p.peekToken.Type == lexer.COLON {
+				p.addWarning("enum initializer ':' is non-canonical; sec fmt will rewrite it to '=' at %d:%d", p.peekToken.Line, p.peekToken.Column)
+			}
 			p.nextToken()
 			p.nextToken()
 			value.Initializer = p.parseExpression(LOWEST)
@@ -2298,6 +2305,29 @@ func (p *Parser) parseImplStatement() ast.Statement {
 				continue
 			}
 			stmt.Members = append(stmt.Members, fn)
+		case lexer.STATIC:
+			if p.peekToken.Type == lexer.FN {
+				p.nextToken()
+				fn := p.parseFunctionDeclaration()
+				if fn == nil {
+					continue
+				}
+				fn.Static = true
+				stmt.Members = append(stmt.Members, fn)
+				continue
+			}
+			if p.peekToken.Type == lexer.LET {
+				parsed := p.parseStaticStatement()
+				if let, ok := parsed.(*ast.LetStatement); ok {
+					stmt.Members = append(stmt.Members, let)
+				}
+				continue
+			}
+			stmt.Members = append(stmt.Members, &ast.InvalidStatement{
+				Token:   p.curToken,
+				Message: "static inside impl must modify fn or let",
+			})
+			p.skipInvalidImplMember()
 		case lexer.FREE:
 			stmt.Members = append(stmt.Members, &ast.InvalidStatement{
 				Token:   p.curToken,
@@ -2413,7 +2443,7 @@ func (p *Parser) skipInvalidImplMember() {
 
 func (p *Parser) isImplMemberStart(t lexer.TokenType) bool {
 	switch t {
-	case lexer.TYPE, lexer.UNIT, lexer.ENUM, lexer.FN, lexer.FREE, lexer.PROPERTY, lexer.STRUCT, lexer.LET:
+	case lexer.TYPE, lexer.UNIT, lexer.ENUM, lexer.FN, lexer.FREE, lexer.PROPERTY, lexer.STRUCT, lexer.LET, lexer.STATIC:
 		return true
 	default:
 		return false
@@ -3171,6 +3201,7 @@ func (p *Parser) isStatementStart(t lexer.TokenType) bool {
 		lexer.FN,
 		lexer.FREE,
 		lexer.LET,
+		lexer.STATIC,
 		lexer.RETURN,
 		lexer.IF,
 		lexer.FOR,
@@ -3570,6 +3601,40 @@ func (p *Parser) parseLetDeclarator(token lexer.Token, mutable bool, inheritedTy
 	}
 
 	return stmt
+}
+
+func (p *Parser) parseStaticStatement() ast.Statement {
+	token := p.curToken
+	if p.peekToken.Type == lexer.FN {
+		p.nextToken()
+		fn := p.parseFunctionDeclaration()
+		if fn != nil {
+			fn.Token = token
+			fn.Static = true
+		}
+		return fn
+	}
+	if p.peekToken.Type != lexer.LET {
+		p.addError("static must modify a declaration, got %q at %d:%d", p.peekToken.Lexeme, p.peekToken.Line, p.peekToken.Column)
+		return nil
+	}
+	p.nextToken()
+	stmt := p.parseLetStatement()
+	switch stmt := stmt.(type) {
+	case *ast.LetStatement:
+		stmt.Static = true
+		stmt.Token = token
+		return stmt
+	case *ast.LetGroupStatement:
+		stmt.Token = token
+		for _, let := range stmt.Lets {
+			let.Static = true
+			let.Token = token
+		}
+		return stmt
+	default:
+		return stmt
+	}
 }
 
 /*

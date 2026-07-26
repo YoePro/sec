@@ -57,6 +57,7 @@ const (
 	SELF        TokenType = "SELF"
 	SET         TokenType = "SET"
 	SPAWN       TokenType = "SPAWN"
+	STATIC      TokenType = "STATIC"
 	STRUCT      TokenType = "STRUCT"
 	SWITCH      TokenType = "SWITCH"
 	TRUE        TokenType = "TRUE"
@@ -790,6 +791,8 @@ func lookupIdent(s string) TokenType {
 		return SET
 	case "spawn":
 		return SPAWN
+	case "static":
+		return STATIC
 	case "struct":
 		return STRUCT
 	case "switch":

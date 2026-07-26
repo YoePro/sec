@@ -31,6 +31,15 @@ The compiler is responsible for verifying these properties during semantic analy
 
 References never own memory. They provide temporary access to values owned elsewhere. Reference validity is determined by the compiler and may never exceed the lifetime of the referenced object.
 
+For arena-backed or otherwise generation-based storage, reference validity also
+includes a semantic generation or epoch dependency. Resetting the owning region
+advances the generation and invalidates values and references tied to older
+generations.
+
+Generation tracking is part of compile-time semantic analysis and Semantic IR
+metadata. It is not a requirement for garbage collection, reference counting or
+a runtime-managed pointer representation.
+
 Heap allocation is explicit. The compiler must never silently promote stack allocations to the heap.
 
 Memory lifetime is determined solely by program structure. Scope exit, ownership transfer and deterministic destruction define when memory becomes invalid.

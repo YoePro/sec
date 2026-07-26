@@ -36,39 +36,44 @@ const (
 )
 
 type Type struct {
-	Name                   string
-	Module                 string
-	Kind                   TypeKind
-	Named                  bool
-	Declared               bool
-	Underlying             string
-	Unit                   string
-	Dimension              Dimension
-	ReferenceMutable       bool
-	MinInt                 *int64
-	MaxInt                 *int64
-	MinUint                *uint64
-	MaxUint                *uint64
-	MinInteger             *big.Int
-	MaxInteger             *big.Int
-	Contracts              []Contract
-	EnumValues             []string
-	EnumConsts             map[string]EnumValue
-	BitWidth               int64
-	UnionVariants          []UnionVariant
-	TypeArgs               []Type
-	Element                *Type
-	ArrayLength            int64
-	FunctionParameterTypes []Type
-	FunctionReturnType     *Type
-	GenericParameters      []string
-	Fields                 []StructField
-	RegisterWidth          int64
-	RegisterFields         []RegisterField
-	Properties             []Property
-	Implements             []Type
-	InterfaceMethods       []Function
-	InterfaceProperties    []InterfaceProperty
+	Name                      string
+	Module                    string
+	Kind                      TypeKind
+	Named                     bool
+	Declared                  bool
+	Underlying                string
+	Unit                      string
+	Dimension                 Dimension
+	ReferenceMutable          bool
+	ReferenceOriginName       string
+	ReferenceOriginToken      lexer.Token
+	ReferenceOriginLocal      bool
+	ReferenceOriginStorage    StorageOrigin
+	ReferenceOriginGeneration int
+	MinInt                    *int64
+	MaxInt                    *int64
+	MinUint                   *uint64
+	MaxUint                   *uint64
+	MinInteger                *big.Int
+	MaxInteger                *big.Int
+	Contracts                 []Contract
+	EnumValues                []string
+	EnumConsts                map[string]EnumValue
+	BitWidth                  int64
+	UnionVariants             []UnionVariant
+	TypeArgs                  []Type
+	Element                   *Type
+	ArrayLength               int64
+	FunctionParameterTypes    []Type
+	FunctionReturnType        *Type
+	GenericParameters         []string
+	Fields                    []StructField
+	RegisterWidth             int64
+	RegisterFields            []RegisterField
+	Properties                []Property
+	Implements                []Type
+	InterfaceMethods          []Function
+	InterfaceProperties       []InterfaceProperty
 }
 
 type EnumValue struct {
@@ -140,6 +145,16 @@ type AllocationContext struct {
 	Origin    StorageOrigin
 	Profile   string
 }
+
+type CopyClassification string
+
+const (
+	CopyTrivial     CopyClassification = "trivial"
+	CopySemantic    CopyClassification = "semantic"
+	CopyMoveOnly    CopyClassification = "move-only"
+	CopyConditional CopyClassification = "conditional"
+	CopyNonCopyable CopyClassification = "non-copyable"
+)
 
 type InterfaceProperty struct {
 	Name        string
@@ -279,14 +294,16 @@ type DecimalValue struct {
 }
 
 type Symbol struct {
-	Name      string
-	Type      Type
-	Mutable   bool
-	Token     lexer.Token
-	Addressed bool
-	Address   string
-	Volatile  bool
-	Storage   StorageOrigin
+	Name       string
+	Type       Type
+	Mutable    bool
+	Token      lexer.Token
+	Addressed  bool
+	Address    string
+	Volatile   bool
+	Storage    StorageOrigin
+	Local      bool
+	ScopeDepth int
 }
 
 func builtinTypes() map[string]Type {
@@ -297,6 +314,13 @@ func builtinTypes() map[string]Type {
 		"rune":   {Name: "rune", Kind: RuneType},
 		"RawPtr": {Name: "RawPtr", Kind: RawPtrType, GenericParameters: []string{"T"}},
 		"never":  {Name: "never", Kind: NeverType},
+		"Arena":  {Name: "Arena", Kind: StructType},
+		"AllocationError": {
+			Name:       "AllocationError",
+			Kind:       EnumType,
+			Underlying: "uint",
+			EnumValues: []string{"OutOfMemory", "InvalidSize"},
+		},
 		"Option": {
 			Name:              "Option",
 			Kind:              UnionType,
@@ -306,8 +330,13 @@ func builtinTypes() map[string]Type {
 				{Name: "None"},
 			},
 		},
-		"Result":  {Name: "Result", Kind: ResultType, GenericParameters: []string{"T", "E"}},
-		"decimal": {Name: "decimal", Kind: DecimalType},
+		"Task":                  {Name: "Task", Kind: StructType, GenericParameters: []string{"T"}},
+		"Mutex":                 {Name: "Mutex", Kind: StructType, GenericParameters: []string{"T"}},
+		"MutexGuard":            {Name: "MutexGuard", Kind: StructType, GenericParameters: []string{"T"}},
+		"Atomic":                {Name: "Atomic", Kind: StructType, GenericParameters: []string{"T"}},
+		"CompareExchangeResult": {Name: "CompareExchangeResult", Kind: StructType, GenericParameters: []string{"T"}},
+		"Result":                {Name: "Result", Kind: ResultType, GenericParameters: []string{"T", "E"}},
+		"decimal":               {Name: "decimal", Kind: DecimalType},
 		"decimal128": {
 			Name: "decimal128",
 			Kind: DecimalType,
@@ -477,4 +506,115 @@ func typeDestructionKey(typ Type) string {
 		return typ.Module + "." + typ.Name
 	}
 	return ""
+}
+
+func CopyClassificationOf(typ Type) CopyClassification {
+	return copyClassificationOf(typ, map[string]bool{})
+}
+
+func TriviallyCopyable(typ Type) bool {
+	return CopyClassificationOf(typ) == CopyTrivial
+}
+
+func MoveOnly(typ Type) bool {
+	return CopyClassificationOf(typ) == CopyMoveOnly
+}
+
+func copyClassificationOf(typ Type, visiting map[string]bool) CopyClassification {
+	switch typ.Kind {
+	case InvalidType, VoidType, NeverType:
+		return CopyNonCopyable
+	case BoolType,
+		IntType,
+		UintType,
+		FloatType,
+		DecimalType,
+		CharType,
+		RuneType,
+		RawPtrType,
+		FunctionType,
+		InterfaceType,
+		RegisterType,
+		EnumType,
+		StringType,
+		SliceType:
+		return CopyTrivial
+	case ReferenceType:
+		if typ.ReferenceMutable {
+			return CopyMoveOnly
+		}
+		return CopyTrivial
+	case StructType:
+		if typ.Name == "Task" || typ.Name == "MutexGuard" {
+			return CopyMoveOnly
+		}
+		if typ.Name == "Mutex" || typ.Name == "Atomic" {
+			return CopyNonCopyable
+		}
+		key := typeDestructionKey(typ)
+		if key != "" {
+			if visiting[key] {
+				return CopyConditional
+			}
+			visiting[key] = true
+			defer delete(visiting, key)
+		}
+		fields := make([]Type, 0, len(typ.Fields))
+		for _, field := range typ.Fields {
+			fields = append(fields, field.Type)
+		}
+		return aggregateCopyClassification(fields, visiting)
+	case GenericType:
+		return CopyConditional
+	case ArrayType:
+		if typ.Element == nil {
+			return CopyTrivial
+		}
+		return aggregateCopyClassification([]Type{*typ.Element}, visiting)
+	case ResultType:
+		return aggregateCopyClassification(typ.TypeArgs, visiting)
+	case UnionType:
+		key := typeDestructionKey(typ)
+		if key != "" {
+			if visiting[key] {
+				return CopyConditional
+			}
+			visiting[key] = true
+			defer delete(visiting, key)
+		}
+		parts := []Type{}
+		for _, variant := range typ.UnionVariants {
+			if variant.Payload != nil {
+				parts = append(parts, *variant.Payload)
+			}
+			for _, field := range variant.PayloadFields {
+				parts = append(parts, field.Type)
+			}
+		}
+		return aggregateCopyClassification(parts, visiting)
+	default:
+		return CopyNonCopyable
+	}
+}
+
+func aggregateCopyClassification(parts []Type, visiting map[string]bool) CopyClassification {
+	result := CopyTrivial
+	for _, part := range parts {
+		classification := copyClassificationOf(part, visiting)
+		switch classification {
+		case CopyMoveOnly:
+			return CopyMoveOnly
+		case CopyNonCopyable:
+			return CopyNonCopyable
+		case CopyConditional:
+			if result == CopyTrivial {
+				result = CopyConditional
+			}
+		case CopySemantic:
+			if result == CopyTrivial {
+				result = CopySemantic
+			}
+		}
+	}
+	return result
 }

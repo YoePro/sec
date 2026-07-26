@@ -164,20 +164,34 @@ Implemented now:
   Ordinary source locals are currently `Inline`; fixed-address register
   bindings are `FixedAddress`.
 - Semantic analysis has an active allocation-context representation. It is
-  currently unavailable by default because `Arena` is not implemented yet.
+  currently unavailable by default because arena allocation is not lowered yet.
+- Semantic analysis has initial copy classification. This is used to keep
+  `ref mut` move-only and to drive initial whole-value move-state for known
+  move-only local values before arena-backed containers are introduced.
+- `Arena` exists as a semantic builtin type.
+- `AllocationError` exists as a semantic builtin enum.
+- `Arena.Alloc[T](count)` is recognized by semantic analysis and has conceptual
+  result type `Result[ref mut T[], AllocationError]`.
+- `Arena.Reset()` is recognized by semantic analysis and advances the arena
+  generation.
+- Arena-backed references and slices carry arena name and generation metadata.
+- Using an arena-backed reference or slice after the arena generation has
+  advanced is rejected.
+- Arena generations are merged conservatively across continuing `if`, `switch`
+  and `match` branches.
+- Arena generations are merged conservatively across `for` and `while` loops,
+  including recorded `break` exits.
 
 Not implemented yet:
 
-- `Arena` as a standard library type.
-- `arena.Alloc[T](count)` semantics.
 - allocation context propagation.
 - allocation-effect inference through function bodies.
 - sized/trivially-destructible/default-value checks for allocation.
 - allocation failure plumbing beyond ordinary `Result` syntax.
-- storage-origin tracking for arena-backed slices.
+- complete ownership and move-state tracking.
 - storage-origin propagation through references, slices and Semantic IR.
-- arena reset validation.
 - Semantic IR, MLIR or LLVM lowering for arena allocation.
+- real allocator implementation and target-specific backing storage.
 
 ## Allocation failure
 
@@ -247,6 +261,31 @@ The compiler must keep these operations distinct:
 ## Arena reset
 
 Reset invalidates every allocation produced by the arena.
+
+Arena-backed references and slices are modeled by the compiler as carrying an
+arena generation dependency.
+
+The generation is semantic metadata used for analysis. It is not a required
+runtime header, garbage collector handle or reference-counted pointer.
+
+Conceptually:
+
+```text
+Arena
+    current generation
+
+ref/slice into Arena
+    storage origin = Arena
+    arena identity
+    generation at allocation
+```
+
+An arena reset advances the arena generation and invalidates all references,
+slices and owned values whose storage dependency points to an older generation.
+
+The compiler should reject stale-generation use statically whenever it can prove
+the dependency. A target or debug profile may optionally lower generation checks
+for diagnostics, but normal language semantics do not require a runtime.
 
 Reset is valid only when:
 

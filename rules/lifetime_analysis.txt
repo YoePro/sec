@@ -21,6 +21,50 @@ Sec should infer lifetimes whenever possible.
 
 Ordinary Sec code should not require programmer-written lifetime parameters or lifetime annotations.
 
+## Current implementation status
+
+Implemented:
+
+* reference origin metadata exists in semantic types
+* local function bindings are marked as local storage
+* function parameters are treated as caller-owned external origins
+* return analysis rejects references whose origin is local function storage
+* `Result[ref T, E]` `Ok(...)` returns use the same local-reference escape
+  rule
+* return analysis rejects aggregate literals that contain references into local
+  function storage
+* return analysis rejects lambdas that capture references into local function
+  storage
+* slice creation records the origin of the sliced source
+* member and index access propagate origin metadata for reference-valued fields
+  and elements
+* assignment into caller-owned fields or indexes rejects references to local
+  function storage
+* local aggregate variables that receive local references are tracked and cannot
+  be returned
+* returned function values are rejected when they carry captured references into
+  local function storage
+* `Arena.Alloc[T](count)` is recognized semantically and produces
+  `Result[ref mut T[], AllocationError]`
+* `Arena.Reset()` advances the arena generation in semantic analysis
+* using an arena-backed reference or slice after reset is rejected
+* arena generations are merged conservatively across continuing `if`, `switch`
+  and `match` branches
+* arena generations are merged conservatively across `for` and `while` loops,
+  including recorded `break` exits
+
+Not implemented yet:
+
+* full flow-sensitive lifetime graph
+* complete field-, element- and slice-sensitive origins beyond root-symbol
+  tracking
+* complete closure escape validation for all storage and callback forms
+* lifetime effects from defer captures
+
+The initial implementation is intentionally conservative and root-symbol based.
+Loop analysis uses the maximum observed arena generation from the loop body and
+from explicit `break` exits; it does not prove that a loop has zero iterations.
+
 ## Design goals
 
 Lifetime analysis must be:
@@ -5793,4 +5837,3 @@ Ownership determines responsibility.
 Lifetime analysis determines validity.
 
 The compiler infers both and rejects any program it cannot prove safe.
-

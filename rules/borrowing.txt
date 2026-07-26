@@ -183,14 +183,40 @@ Implemented:
   parameter type.
 * Calls to `ref` and `ref mut` parameters may currently borrow compatible
   values implicitly.
+* Semantic analysis tracks active borrows for root symbols.
+* Multiple `ref` shared borrows of the same root symbol may coexist.
+* `ref mut` requires exclusive access to the root symbol.
+* Creating `ref mut` while a shared or mutable borrow exists is rejected.
+* Creating `ref` while a mutable borrow exists is rejected.
+* Direct reads through the owner are rejected while an active `ref mut` borrow
+  of the same root exists.
+* Direct assignment to the owner is rejected while an active shared or mutable
+  borrow of the same root exists.
+* A mutable reference to an immutable owner is rejected.
+* Borrow holders are tracked for local reference variables.
+* Reassigning a reference variable ends the borrow previously held by that
+  variable.
+* Moving a move-only reference variable transfers the borrow holder to the new
+  variable.
+* Passing a move-only reference to a by-value function parameter consumes the
+  local holder; the original reference variable becomes moved and cannot be
+  reused.
+* Borrows held by variables declared inside a block are ended when that block
+  finishes.
 
 Not implemented yet:
 
-* full borrow-state tracking
-* shared vs mutable borrow conflict detection
 * branch and loop borrow-state merging
 * disjoint field borrow analysis
+* path-sensitive borrow analysis for fields, indexes and slices
 * move prevention while borrowed
 * returned-reference origin analysis
 * borrow effects from defer captures
 * diagnostics that point to both the original borrow and conflicting access
+
+Initial limitation:
+
+Borrow conflict detection is root-symbol based. For example, borrowing
+`value.left` and `value.right` is currently treated as borrowing `value`.
+This is deliberately conservative until field- and index-sensitive place
+analysis exists.

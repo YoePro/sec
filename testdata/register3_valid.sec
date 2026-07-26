@@ -1,0 +1,142 @@
+module raspberry_Matter
+
+/** Decibel-milliwatts for RF signal strength */
+unit dBm physical
+
+impl dBm {
+    LongName: "Decibel-milliwatt"
+    Symbol: "dBm"
+    BaseUnit: false
+    Status: active
+    // Expressed strictly through SI base dimensions: kg * m^2 * s^-3
+    Dimension: [mass^1, length^2, time^-3]
+    Scale: 1
+    System: logarithmic
+}
+
+type dbm int<dBm>
+
+// =====================================================================
+// 1. ENUMS FOR HARDWARE STATES
+// =====================================================================
+
+// GPIO Pin directions (1 bit)
+enum PinDirection bit[1] {
+    INPUT  = 0b0,
+    OUTPUT = 0b1,
+}
+
+// Matter Network Status indicators (2 bits)
+enum MatterState bit[2] {
+    DISCONNECTED = 0b00,
+    PAIRING      = 0b01,
+    CONNECTED    = 0b10,
+    ERROR_STATE  = 0b11,
+}
+
+// =====================================================================
+// 2. REGISTER LAYOUTS (Broadcom BCM2711 / BCM2835 Style Layouts)
+// =====================================================================
+
+// GPIO Function Select Register 0 (Controls Pins 0-9, 3 bits per pin)
+// Pin 0 to 3 use 3 bits each (4 * 3 = 12 bits)
+// Pin 4 and 5 use PinDirection which is 1 bit each (2 * 1 = 2 bits)
+// Total active bits: 12 + 2 = 14 bits.
+// Remaining bits to reach 32: 18 bits.
+type GpioFunctionSelect register[32] {
+    Pin0_Mode: bit[3]
+    Pin1_Mode: bit[3]
+    Pin2_Mode: bit[3]
+    Pin3_Mode: bit[3]
+    Pin4_Mode: PinDirection
+    Pin5_Mode: PinDirection
+    _: bit[18]
+}
+
+// GPIO Output Set Register (32-bit width)
+// Pin 4 and 5 take 1 bit each. Remaining: 30 bits.
+type GpioOutputSet register[32] {
+    SetPin4: bit[1]
+    SetPin5: bit[1]
+    _: bit[30]
+}
+
+// GPIO Output Clear Register (32-bit width)
+// Pin 4 and 5 take 1 bit each. Remaining: 30 bits.
+type GpioOutputClear register[32] {
+    ClearPin4: bit[1]
+    ClearPin5: bit[1]
+    _: bit[30]
+}
+
+// Matter Hat Custom Status Register (32-bit width)
+// NetworkState (2 bits) + SignalStrength (4 bits) + Commissioned (1 bit) = 7 bits.
+// Remaining bits to reach 32: 25 bits.
+type MatterStatus register[32] {
+    NetworkState: MatterState
+    SignalStrength: bit[4]<dBm>
+    Commissioned: bit[1]
+    _: bit[25]
+}
+
+// =====================================================================
+// 3. REGISTER IMPLEMENTATIONS
+// =====================================================================
+
+impl GpioFunctionSelect {
+    // Method to setup the pins required by the Matter Hat
+    fn InitMatterHardware() void {
+        self.Pin4_Mode = PinDirection.OUTPUT // Pin 4 controls Reset (Output)
+        self.Pin5_Mode = PinDirection.INPUT  // Pin 5 listens for Interrupts (Input)
+    }
+}
+
+impl MatterStatus {
+    // Read-only property checking if the Hat is actively provisioned
+    property IsReady: bool {
+        get {
+            return bool(self.Commissioned)
+        }
+    }
+
+    // Property returning the raw signal strength safely typed with its unit
+    property Rssi: dBm {
+        get {
+            return dBm(self.SignalStrength)
+        }
+    }
+}
+
+// =====================================================================
+// 4. MEMORY-MAPPED PERIPHERAL INSTANCES
+// =====================================================================
+
+@address(0xFE200000)
+let mut GPFSEL0: GpioFunctionSelect
+
+@address(0xFE20001C)
+let mut GPSET0: GpioOutputSet
+
+@address(0xFE200028)
+let mut GPCLR0: GpioOutputClear
+
+@address(0xFE200100)
+let MATTER_HAT: MatterStatus
+
+// =====================================================================
+// 5. APPLICATION LOGIC FUNCTIONS
+// =====================================================================
+
+fn HardwareSetup() void {
+    GPFSEL0.InitMatterHardware()
+}
+
+fn ResetMatterHat() void {
+    GPSET0.SetPin4 = 1
+    GPCLR0.ClearPin4 = 1
+}
+
+fn MonitorNetwork() void {
+    let isProvisioned: bool := MATTER_HAT.IsReady
+    let currentSignal: dBm := MATTER_HAT.Rssi
+}

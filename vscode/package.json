@@ -77,6 +77,33 @@
             "settings": {
               "fontStyle": "italic"
             }
+          },
+          {
+            "scope": "storage.modifier.static.sec",
+            "settings": {
+              "foreground": "#7A5AA6",
+              "fontStyle": "bold"
+            }
+          },
+          {
+            "scope": "support.type.concurrency.sec",
+            "settings": {
+              "foreground": "#3F6F9F",
+              "fontStyle": "bold"
+            }
+          },
+          {
+            "scope": "support.function.concurrency.sec",
+            "settings": {
+              "foreground": "#5B7F8C"
+            }
+          },
+          {
+            "scope": "constant.language.memory-order.sec",
+            "settings": {
+              "foreground": "#8A6A2A",
+              "fontStyle": "italic"
+            }
           }
         ]
       }

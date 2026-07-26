@@ -238,3 +238,37 @@ fn CallMutatingMethodOnReadOnlyRegister() void {
     // ERROR: A mutating method requires writable receiver storage.
     readOnlyImplRegister.ClearError()
 }
+
+// Re-using a basic layout for error triggering
+type BadGpio register[2] {
+    Pin0: bit
+    _: bit
+}
+
+@address(0xFE200000)
+let PI_GPIO: BadGpio
+
+impl BadGpio {
+    // ERROR 1: Getter returns the wrong property type.
+    property InvalidProperty: int {
+        get {
+            return self.Pin0
+        }
+    }
+
+    property CorrectProperty: bool {
+        get {
+            // ERROR 2: Forgot to cast 'bit' to 'bool'. Type mismatch in return.
+            return self.Pin0
+        }
+    }
+}
+
+fn FailApplication() void {
+    // ERROR 3: Direct assignment to a variable outside an allowed functional scope
+    // (This line must fail compilation if placed directly in the module scope instead)
+
+    // ERROR 4: Assigning an incompatible unit type
+    // Let's assume 'm' (meters) is assigned to something expecting 'dBm' or a standard bit
+    let wrongUnit: m := PI_GPIO.Pin0
+}

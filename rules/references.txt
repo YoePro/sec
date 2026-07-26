@@ -39,6 +39,22 @@ References shall never extend object lifetime.
 
 References shall never imply ownership transfer.
 
+References into generation-based storage, such as arena-backed storage, carry a
+semantic generation dependency.
+
+This dependency is used by the compiler to reject stale references after an
+operation such as arena reset. It does not require a runtime reference object.
+
+Conceptually, a reference may be associated with:
+
+- storage origin
+- owner or region identity
+- generation or epoch
+- mutability
+- lifetime boundary
+
+Using a reference whose generation is known to be stale is invalid.
+
 Reference equality compares the referenced object rather than ownership.
 
 References participate in normal type checking.
@@ -58,3 +74,53 @@ The compiler may temporarily create internal references during semantic analysis
 References are implemented identically for hosted and embedded targets.
 
 The exact borrowing rules governing simultaneous references are defined in borrowing.txt.
+
+=====================================================================
+Current Implementation Status
+=====================================================================
+
+Implemented:
+
+- semantic reference types carry origin metadata
+- origin metadata records the source symbol name
+- origin metadata records the source token for diagnostics
+- origin metadata records whether the source is local function storage
+- origin metadata records the source storage origin where known
+- `ref value` attaches origin metadata from `value`
+- reference origin propagates through local reference variables
+- explicitly typed reference variables preserve origin from their initializer
+- returning `ref` to a local function binding is rejected
+- returning a local reference variable whose origin is local is rejected
+- `Ok(ref local)` is rejected for `Result[ref T, E]`
+- returning a reference parameter is allowed because the origin is caller-owned
+- returning aggregate literals containing references to local function storage is
+  rejected
+- returning a lambda that captures a reference whose origin is local function
+  storage is rejected
+- field and index access propagate reference-origin metadata when the accessed
+  value is itself a reference
+- slices carry reference-origin metadata from the sliced source
+- storing a reference to local function storage into caller-owned field or index
+  storage is rejected
+- local aggregate variables that receive references to local function storage
+  are marked, and returning them is rejected
+- arena-backed references and slices carry an arena generation dependency
+- using an arena-backed reference or slice after `Arena.Reset()` is rejected
+- arena generations are merged conservatively across continuing `if`, `switch`
+  and `match` branches
+- arena generations are merged conservatively across `for` and `while` loops,
+  including recorded `break` exits
+
+Not implemented yet:
+
+- full escape analysis
+- returned-reference origin relationships between input parameters and return
+values
+- complete field-, index- and slice-sensitive origins beyond root-symbol
+tracking
+- complete closure/reference escape validation
+
+Initial limitation:
+
+Origin tracking is root-symbol based. A reference into `value.field`,
+`value[index]` or `value[..]` currently records `value` as the origin.

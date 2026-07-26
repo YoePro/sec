@@ -97,18 +97,65 @@ Implemented:
 - ordinary source locals and bindings are currently `Inline`
 - fixed-address register bindings are `FixedAddress`
 - the analyzer has an active allocation-context representation
-- the active allocation context is unavailable by default because `Arena` is not
-  implemented yet
+- the active allocation context is unavailable by default because arena
+  allocation is not lowered yet
+- initial copy classification exists in semantic analysis
+- `ref mut` is classified as move-only
+- simple use of a known move-only local in a consuming `let`, assignment or
+  return form is treated as a move
+- by-value function arguments move known move-only local values after overload
+  resolution
+- `ref` and `ref mut` parameters borrow without moving the local reference value
+- whole-value move-state has started for local identifiers
+- use-after-move is reported for moved local identifiers
+- limited root-symbol borrow-state exists in sema
+- shared/shared borrows are accepted
+- mutable borrows require exclusive access
+- owner reads are rejected while a mutable borrow is active
+- owner mutation is rejected while a shared or mutable borrow is active
+- move-only reference holder transfer is tracked for local `let` and by-value
+  function argument consumption
+- reference origin metadata exists for semantic reference types
+- local function bindings are marked as local storage
+- function parameters are treated as caller-owned origins
+- returning references to local function bindings is rejected
+- `Result[ref T, E]` `Ok(ref local)` is rejected
+- direct return of aggregate literals containing references to local function
+  storage is rejected
+- direct return of lambdas capturing references to local function storage is
+  rejected
+- field/index access propagates origin metadata for reference-valued fields and
+  elements
+- slices carry origin metadata from their source
+- assignment into caller-owned fields/indexes rejects local references
+- local aggregate variables that receive local references cannot be returned
+- returned function values carrying captured local references are rejected
+- semantic builtin `Arena` and `AllocationError` exist
+- `Arena.Alloc[T](count)` produces `Result[ref mut T[], AllocationError]` in
+  sema
+- `Arena.Reset()` advances semantic arena generation and invalidates old
+  arena-backed references/slices
+- arena generations merge conservatively across continuing `if`, `switch` and
+  `match` branches
+- arena generations merge conservatively across `for` and `while` loops,
+  including recorded `break` exits
+- module names with plain, snake_case, camelCase and mixed-case segments are
+  covered by parser regression tests
+- large by-value parameters now produce an advisory warning
 
 Remaining allocation work:
 
-- `Arena` as a standard library/builtin type
-- `arena.Alloc[T](count)` semantics
+- loop-sensitive move-state merging
+- complete field-, index- and slice-sensitive borrow places beyond root-symbol
+  tracking
+- broader returned-reference origin and escape analysis for callback/storage
+  effects
+- `Arena` as a standard library/runtime-backed type
+- full `Arena.Alloc[T](count)` semantics beyond initial sema recognition
 - allocation context propagation
 - allocation-effect inference through function bodies
 - sized/trivially-destructible/default-value checks for allocation
 - storage-origin propagation through references, slices and Semantic IR
-- arena reset validation
 - Semantic IR, MLIR and LLVM lowering for arena allocation
 
 ### Match MLIR Lowering
@@ -1378,16 +1425,29 @@ lambdas_invalid.sec
 
 3.12. spawn and await
 
-Do not implement spawn and await until the underlying ownership, function, Result and closure semantics are stable.
+Initial frontend implementation exists.
 
-Current direction:
+Implemented now:
 
-let task := spawn {
-    Work()
-}
-await task
-let result := try await task
+- `Task[T]` is a compiler-known generic type.
+- `spawn CallExpression` returns `Task[T]`.
+- `await task` requires `Task[T]`, consumes the task handle and returns `T`.
+- local owned tasks must be resolved before block scope exit.
+- standalone `spawn Work()` is rejected because the task handle would be lost.
+- `Mutex[T]`, `MutexGuard[T]`, `Atomic[T]` and `CompareExchangeResult[T]`
+  are compiler-known generic types.
+- first sema pass for `Mutex(value)`, `mutex.lock()`, `mutex.tryLock()`.
+- first sema pass for `Atomic(value)`, `load`, `store`, `swap`,
+  `compareExchange` and integer/boolean fetch operations.
+- `static let`, `static fn` and initial `impl Type { static let ... }`
+  parsing/sema are implemented.
 
+Current syntax:
+
+```sec
+let task := spawn Work()
+let value := await task
+```
 
 Important unresolved questions:
 
@@ -1443,15 +1503,9 @@ interaction with defer
 
 interaction with process exit
 
-Likely implementation phases:
+Remaining implementation phases:
 
-Define Task[T].
-
-Define spawn block capture rules.
-
-Define await result semantics.
-
-Define failure and Result behavior.
+Define task failure and Result/outcome behavior.
 
 Define scope-exit behavior.
 
@@ -1465,13 +1519,7 @@ Add cancellation later.
 
 Add channels and select later if needed.
 
-Create only after design work:
-
-rules/tasks.txt
-
-rules/spawn.txt
-
-rules/await.txt
+Create tests:
 
 spawn_valid.sec
 
@@ -1737,7 +1785,7 @@ Memory Model
 
 [ ] Design temporal memory safety.
 
-[ ] Design generational references.
+[x] Document generational references/arena generation dependencies.
 
 [ ] Hosted vs embedded memory profiles.
 

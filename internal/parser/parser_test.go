@@ -260,9 +260,9 @@ let mut motorProtocol: MotorProtocol
 func TestParseBitBackedEnumAndRegisterField(t *testing.T) {
 	input := `
 enum ClockSource bit[2] {
-	Internal: 0b00,
-	External: 0b01,
-	Bypass: 0b10
+	Internal = 0b00,
+	External = 0b01,
+	Bypass = 0b10
 }
 
 type ClockConfig register[32] {
@@ -292,6 +292,40 @@ type ClockConfig register[32] {
 	}
 	if typeDecl.RegisterType.Fields[1].Width != 1 || typeDecl.RegisterType.Fields[2].Width != 29 {
 		t.Fatalf("wrong ordinary bit fields: %+v", typeDecl.RegisterType.Fields)
+	}
+}
+
+func TestParseEnumColonInitializersWarnForFormatterRecovery(t *testing.T) {
+	input := `
+enum ClockSource bit[2] {
+	Internal: 0b00,
+	External: 0b01,
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	enumDecl, ok := program.Statements[0].(*ast.EnumDeclaration)
+	if !ok {
+		t.Fatalf("statement 0 is not EnumDeclaration. got=%T", program.Statements[0])
+	}
+	if len(enumDecl.Values) != 2 || enumDecl.Values[0].Initializer == nil || enumDecl.Values[1].Initializer == nil {
+		t.Fatalf("colon initializers should be parsed for formatter recovery: %+v", enumDecl.Values)
+	}
+	expected := []string{
+		"enum initializer ':' is non-canonical; sec fmt will rewrite it to '=' at 3:10",
+		"enum initializer ':' is non-canonical; sec fmt will rewrite it to '=' at 4:10",
+	}
+	if len(p.Warnings()) != len(expected) {
+		t.Fatalf("wrong parser warning count. got=%d want=%d warnings=%v", len(p.Warnings()), len(expected), p.Warnings())
+	}
+	for i, want := range expected {
+		if p.Warnings()[i] != want {
+			t.Fatalf("wrong parser warning %d. got=%q want=%q", i, p.Warnings()[i], want)
+		}
 	}
 }
 
@@ -443,6 +477,34 @@ func TestParseModuleRequiresName(t *testing.T) {
 	expected := "module declaration missing name at 1:1"
 	if p.Errors()[0] != expected {
 		t.Fatalf("wrong parser error. got=%q want=%q", p.Errors()[0], expected)
+	}
+}
+
+func TestParseModuleNameAllowsSnakeCamelAndPlainText(t *testing.T) {
+	input := `
+module plain
+module snake_case
+module camelCase
+module raspberry_Matter
+module i2c_sensor_driver
+`
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	expected := []string{"plain", "snake_case", "camelCase", "raspberry_Matter", "i2c_sensor_driver"}
+	if len(program.Statements) != len(expected) {
+		t.Fatalf("wrong statement count. got=%d want=%d", len(program.Statements), len(expected))
+	}
+	for i, want := range expected {
+		stmt, ok := program.Statements[i].(*ast.ModuleStatement)
+		if !ok {
+			t.Fatalf("statement %d is not ModuleStatement. got=%T", i, program.Statements[i])
+		}
+		if stmt.Path != want {
+			t.Fatalf("module %d path = %q, want %q", i, stmt.Path, want)
+		}
 	}
 }
 

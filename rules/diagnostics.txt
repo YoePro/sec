@@ -1438,6 +1438,24 @@ These findings are normally information because API intent belongs to the progra
 
 A project may promote them to warnings or errors.
 
+Current implementation:
+
+* `performance.large-value-parameter` is implemented as a warning.
+* The initial trigger is a conservative type-size estimate of 64 bytes or more.
+* By-value array parameters above the threshold produce:
+
+```
+warning[A2001 performance.large-value-parameter]:
+    parameter "values" passes large array int[16] by value; consider ref int[16] or ref int[]
+```
+
+* By-value aggregate parameters above the threshold produce a similar advisory
+  suggesting `ref T`.
+* `ref`, `ref mut`, slice and reference parameters do not trigger this warning.
+* The initial implementation does not yet prove whether the function consumes,
+  moves, retains or mutates the parameter. It is therefore intentionally an
+  advisory performance warning, not a semantic error.
+
 Benchmarks and deliberate costs
 -------------------------------
 

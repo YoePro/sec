@@ -1,0 +1,671 @@
+# Tasks
+
+## Purpose
+
+A task represents one independently scheduled operation.
+
+A task may execute concurrently with the code that created it.
+
+The language-level task model is independent of whether the implementation uses:
+
+- operating-system threads
+- lightweight threads
+- a thread pool
+- an event loop
+- an RTOS scheduler
+- a cooperative bare-metal scheduler
+
+A task is not a thread or process.
+
+---
+
+## Task type
+
+Tasks use the compiler-known generic type:
+
+```sec
+Task[T]
+
+T is the return type of the spawned operation.
+
+Examples:
+
+fn Calculate() int {
+    return 42
+}
+
+let calculation := spawn Calculate()
+
+The inferred type of calculation is:
+
+Task[int]
+
+A function returning void produces:
+
+Task[void]
+
+Example:
+
+fn StartGraphics() void {
+}
+
+let graphics := spawn StartGraphics()
+
+graphics has type:
+
+Task[void]
+
+A fallible function preserves its complete return type:
+
+fn Load() Result[Image, IOError] {
+}
+
+let loading := spawn Load()
+
+The task type is:
+
+Task[Result[Image, IOError]]
+
+A returned Err(...) is a normal completed task result.
+
+It is not automatically a task execution failure.
+
+Type classification
+
+Task[T] is a compiler-known generic type.
+
+It is handled similarly to other compiler-known generic types such as:
+
+Result[T, E]
+Option[T]
+Mutex[T]
+
+Task semantics are validated by the compiler and must not be inferred by the backend.
+
+Ownership
+
+A task handle has exactly one owner.
+
+Task[T] is move-only for every T.
+
+This remains true when T is trivially copyable.
+
+Example:
+
+let first := spawn Calculate()
+let second := first
+
+Ownership moves to second.
+
+The previous binding is no longer valid:
+
+await first // invalid
+
+Moving a task transfers responsibility for its lifecycle.
+
+It does not create another task.
+
+Task responsibility
+
+Owning a task gives the owner:
+
+the right to inspect its state
+the right to request cancellation
+the right to wait for completion
+the right to receive its result
+responsibility for resolving its lifetime
+
+A task must not be abandoned implicitly.
+
+Before the owning scope exits, the task must be:
+
+awaited
+joined and resolved
+returned
+moved to another owner
+detached explicitly
+
+Leaving an unresolved owned task at scope exit is a compiler error.
+
+Example:
+
+fn Invalid() void {
+    let work := spawn Work()
+}
+
+Expected diagnostic:
+
+owned task work is unresolved at scope exit
+Returning tasks
+
+A task may be returned from a function.
+
+fn StartWorker() Task[WorkerResult] {
+    let worker := spawn Worker()
+    return worker
+}
+
+Returning the task moves ownership to the caller.
+
+The task is not detached.
+
+let worker := StartWorker()
+let result := await worker
+Parent and child tasks
+
+A task may start another task.
+
+fn Parent() void {
+    let child := spawn Child()
+    await child
+}
+
+The task that receives the returned child handle owns that child task.
+
+The parent execution may not finish while it still owns an unresolved child.
+
+A child task may be:
+
+awaited by the parent
+returned to the parent's caller
+moved to another valid owner
+explicitly detached
+
+Parent-child relationships may also be recorded for:
+
+cancellation propagation
+diagnostics
+tracing
+task limits
+structured concurrency analysis
+
+Ownership remains the primary source-level lifetime rule.
+
+Task lifecycle
+
+A task has an internal lifecycle equivalent to:
+
+Created
+Scheduled
+Running
+Completed
+Cancelled
+Failed
+
+A backend may combine internal states when this does not change observable semantics.
+
+Completed
+
+The operation returned normally.
+
+Its return value is available according to join and await rules.
+
+A function returning Err(error) still completes normally when its declared return type is Result[T, E].
+
+Cancelled
+
+Cancellation was requested and the task exited through cancellation-aware control flow.
+
+Cancellation is distinct from normal return.
+
+Failed
+
+The execution mechanism failed independently of the function's declared return value.
+
+Task failure must not be used as a replacement for typed Result errors.
+
+The exact task-failure model is defined by the concurrency and await rules.
+
+Current task context
+
+task is a contextual compiler-provided value referring to the currently executing task.
+
+Example:
+
+fn Worker() void {
+    if task.cancelRequested {
+        cancel
+    }
+}
+
+task is not an ordinary user-declared variable.
+
+It must not conflict with method receiver self.
+
+When a function executes synchronously outside a spawned task, task has its default empty state.
+
+At minimum:
+
+task.cancelRequested == false
+
+A synchronous function call does not create a task merely because the function accesses task.
+
+When the same function is executed through spawn, task refers to the spawned task.
+
+Cancellation request
+
+Cancellation is cooperative.
+
+Requesting cancellation does not forcibly terminate the operation immediately.
+
+The task observes cancellation through:
+
+task.cancelRequested
+
+A task may leave normally:
+
+if task.cancelRequested {
+    return
+}
+
+---
+
+## Current implementation status
+
+Implemented in semantic analysis:
+
+- `Task[T]` is a compiler-known generic type.
+- `spawn CallExpression` has type `Task[T]` where `T` is the callable return
+  type.
+- `Task[T]` is move-only.
+- `await task` requires `Task[T]`, consumes the task handle and produces `T`.
+- A local owned `Task[T]` that reaches block scope exit without being consumed
+  is rejected.
+- A standalone `spawn Work()` expression statement is rejected because the task
+  handle would be lost.
+
+Not implemented yet:
+
+- `join`
+- `detach`
+- cancellation statements and `task.cancelRequested`
+- task status members
+- task failure/outcome typing
+- task borrow lifetime extension across running tasks
+- task escape analysis for borrowed arguments
+- target-profile task backend validation
+
+This produces normal completion.
+
+A task may instead terminate explicitly as cancelled:
+
+if task.cancelRequested {
+    cancel
+}
+
+The cancel statement:
+
+terminates the current task as cancelled
+executes required deferred cleanup
+executes deterministic destruction
+does not produce the normal return value
+
+The detailed cancellation and await outcome rules are defined separately.
+
+Task status
+
+A task handle may expose read-only status properties such as:
+
+worker.running
+worker.done
+worker.cancelled
+worker.failed
+worker.cancelRequested
+
+Status inspection does not consume the task.
+
+Status values are observations.
+
+They must not replace synchronization through join or await.
+
+Another task may change state immediately after a status property is read.
+
+The memory-order guarantees of task completion are defined in
+concurrency_memory_model.txt.
+
+Observers
+
+A task has one owning handle but may have multiple non-owning observers.
+
+An observer may inspect task state without receiving ownership of the task.
+
+The planned observer type is:
+
+TaskObserver[T]
+
+An observer may be:
+
+copied
+stored
+passed to another function
+returned from a function
+
+An observer must not:
+
+detach the task
+consume the task
+take ownership of the task result
+replace the owning task handle
+
+A plain ref Task[T] remains subject to ordinary reference lifetime rules and
+cannot outlive the task owner.
+
+The exact construction and retained-state behavior of TaskObserver[T] is
+defined later.
+
+Join and task value
+
+Joining waits for task completion while preserving the task handle.
+
+Conceptual syntax:
+
+join worker
+
+After a successful join, the result may be accessed through:
+
+worker.value
+
+value is not available before completion has been established through join or
+equivalent static knowledge.
+
+Access to value follows the copy and move rules of T.
+
+For a move-only T, taking worker.value moves the result out of the task.
+
+For a copyable T, the compiler may copy the result representation.
+
+Detailed join and value-consumption rules are defined in await.txt.
+
+Await
+
+Awaiting a task waits for completion and resolves its result.
+
+Conceptually:
+
+let value := await worker
+
+await consumes the owning task handle.
+
+The produced value remains valid after the task handle has been consumed.
+
+The complete await, cancellation and failure rules are defined in await.txt.
+
+Detach
+
+Detaching transfers task ownership to the program task manager.
+
+detach worker
+
+After detach:
+
+the local task handle is consumed
+the originating scope no longer owns the task
+the task may continue after that scope exits
+the old handle may not be used
+the program task manager becomes responsible for shutdown handling
+
+Basic detach requires:
+
+Task[void]
+
+Example:
+
+let logger := spawn BackgroundLogger()
+detach logger
+
+A task returning a non-void value must not discard that value implicitly.
+
+Explicit discard is permitted:
+
+let calculation := spawn Calculate()
+detach calculation discard
+
+This explicitly allows the task result to be destroyed without being returned
+to user code.
+
+For Task[Result[T, E]], discard explicitly discards any returned Err(E) as
+well.
+
+The compiler must never infer this discard silently.
+
+Detached task shutdown
+
+At normal program shutdown, the program task manager must:
+
+request cancellation of detached tasks
+allow them to execute cancellation-aware cleanup
+wait for their required destruction and cleanup
+finish program termination
+
+Detached tasks should provide a statically visible cancellation or finite
+completion path when the compiler can analyze it.
+
+The compiler may diagnose:
+
+detached infinite loops without cancellation checks
+non-cancellable blocking operations
+detached recursive task creation
+other statically evident missing exit strategies
+
+Forced termination does not guarantee task cleanup.
+
+Examples include:
+
+Unix SIGKILL
+power loss
+hardware reset
+kernel failure
+fatal process termination
+References
+
+A task may borrow data only while the compiler can prove that the data outlives
+the task use.
+
+Example:
+
+fn InspectValue() void {
+    let value := Data()
+
+    let worker := spawn Inspect(ref value)
+    await worker
+}
+
+The borrow remains active until the task completes.
+
+The owner must not be destroyed or incompatibly accessed while the task may use
+the reference.
+
+A task borrowing local data may not escape that data's scope.
+
+Invalid:
+
+fn Invalid() Task[void] {
+    let value := Data()
+    let worker := spawn Inspect(ref value)
+    return worker
+}
+
+A detached task may not retain references to scope-owned values.
+
+Invalid:
+
+fn Invalid() void {
+    let value := Data()
+    let worker := spawn Inspect(ref value)
+    detach worker
+}
+
+Detached tasks must normally own their required data:
+
+fn Valid() void {
+    let value := Data()
+    let worker := spawn Process(value)
+    detach worker
+}
+
+The value is moved into the task when its type is move-only.
+
+Static or program-owned references may be used only when their lifetime and
+concurrency safety are both valid.
+
+Static lifetime does not by itself make shared mutation safe.
+
+Task creation limits
+
+A task may create child tasks.
+
+The language does not impose one universal source-level task count limit.
+
+The compiler should detect statically evident unbounded task creation, including:
+
+direct recursive spawn
+indirect recursive spawn cycles
+detached spawn in unbounded loops
+exponential child-task creation
+
+Example:
+
+fn Bomb() void {
+    let first := spawn Bomb()
+    let second := spawn Bomb()
+
+    await first
+    await second
+}
+
+The compiler should diagnose the unbounded recursive task creation.
+
+Hosted, embedded and RTOS profiles may define different maximum task counts and
+allocation strategies.
+
+These restrictions must not change the core ownership semantics of Task[T].
+
+Runtime and target profiles
+
+Task semantics are identical across supported targets.
+
+A target profile may implement tasks using:
+
+native threads
+lightweight threads
+worker pools
+cooperative tasks
+RTOS tasks
+statically allocated task state machines
+
+The selected implementation may affect:
+
+available task count
+scheduling cost
+stack allocation
+parallel execution
+blocking behavior
+supported cancellation points
+
+It must not change:
+
+task ownership
+result typing
+move-only task handles
+reference lifetime requirements
+explicit detach
+deterministic cleanup requirements
+
+A target without a supported task execution mechanism must reject spawn.
+
+Processes
+
+Tasks execute within one program instance and may share memory under Sec's
+concurrency rules.
+
+A process has a separate lifecycle and normally a separate address space.
+
+Processes, process spawning and inter-process communication are defined in:
+
+processes.txt
+spawn_process.txt
+ipc.txt
+
+Task[T] and process handles are different types.
+
+Semantic validation
+
+The compiler must validate at least:
+
+Task has exactly one type argument
+Task[T] is move-only
+task ownership is resolved before scope exit
+moved task handles are not reused
+task result types match spawned operation return types
+borrowed values outlive task use
+detached tasks do not retain scope-owned references
+ordinary detach is limited to Task[void]
+non-void detach requires explicit discard
+task observers do not consume task ownership
+cancellation operations occur in valid task context
+statically evident recursive task creation is diagnosed
+target profile supports task execution
+Semantic IR
+
+Semantic IR must record task operations explicitly.
+
+At minimum:
+
+TaskCreate
+TaskSchedule
+TaskMove
+TaskObserve
+TaskCancelRequest
+TaskCancelCurrent
+TaskJoin
+TaskAwait
+TaskTakeValue
+TaskDetach
+TaskDetachDiscard
+TaskComplete
+TaskFail
+
+Semantic IR must also record:
+
+concrete result type
+task ownership
+captured and transferred values
+retained borrows
+parent task
+cancellation behavior
+target task profile
+cleanup responsibility
+
+MLIR or LLVM lowering must not invent task ownership, cancellation or result
+semantics.
+
+Restrictions
+
+A task must not:
+
+be copied
+be abandoned implicitly
+expose its result before completion
+transfer the same result to multiple owners
+retain an invalid reference
+silently discard a non-void result
+silently discard a typed Result error
+be treated as a thread or process
+bypass normal ownership and borrowing rules
+
+Unsafe code does not disable task ownership or concurrency validation.
+
+Related rules
+
+Detailed behavior is defined in:
+
+spawn.txt
+await.txt
+concurrency.txt
+mutex.txt
+atomics.txt
+static.txt
+concurrency_memory_model.txt
+processes.txt
+spawn_process.txt
+ipc.txt

@@ -34,13 +34,15 @@ layout.txt - To be done
 
 Kategori: Konkurrens & Asynkront
 tasks.txt - Written
-spawn.txt - Written
-await.txt - Written
-concurrency.txt - Written
-mutex.txt - Written
-atomics.txt - Written 
-static.txt - Written
-concurrency_memory_model.txt - Written
+spawn.md - Written
+await.md - Written
+concurrency.md - Written
+channels.md - Written
+mutex.md - Written
+atomics.md - Written
+static.md - Written
+concurrency_memory_model.md - Written
+select.md - Written
 processes.txt - To be done
 spawn_process.txt - To be done
 ipc.txt - To be done

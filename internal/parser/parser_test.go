@@ -2411,6 +2411,56 @@ fn Test(value: int) void {
 	}
 }
 
+func TestParseSelectStatement(t *testing.T) {
+	input := `
+fn Test(rx: Receiver[int], tx: Sender[int], task: Task[int]) void {
+	select {
+		value := rx.Receive() => {
+			discard value
+		}
+		tx.Send(1) => {
+		}
+		result := await task => {
+			discard result
+		}
+		after 10 => {
+		}
+		default => {
+		}
+	}
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	selectStmt, ok := fn.Body.Statements[0].(*ast.SelectStatement)
+	if !ok {
+		t.Fatalf("statement is not SelectStatement. got=%T", fn.Body.Statements[0])
+	}
+	if len(selectStmt.Branches) != 5 {
+		t.Fatalf("wrong select branch count. got=%d want=5", len(selectStmt.Branches))
+	}
+	if selectStmt.Branches[0].Kind != ast.SelectOperationBranch || selectStmt.Branches[0].Binding == nil || selectStmt.Branches[0].Binding.Value != "value" {
+		t.Fatalf("wrong receive branch: %+v", selectStmt.Branches[0])
+	}
+	if selectStmt.Branches[1].Kind != ast.SelectOperationBranch || selectStmt.Branches[1].Binding != nil {
+		t.Fatalf("wrong send branch: %+v", selectStmt.Branches[1])
+	}
+	if selectStmt.Branches[2].Kind != ast.SelectOperationBranch || selectStmt.Branches[2].Binding == nil || selectStmt.Branches[2].Binding.Value != "result" {
+		t.Fatalf("wrong await branch: %+v", selectStmt.Branches[2])
+	}
+	if selectStmt.Branches[3].Kind != ast.SelectTimeoutBranch {
+		t.Fatalf("wrong timeout branch: %+v", selectStmt.Branches[3])
+	}
+	if selectStmt.Branches[4].Kind != ast.SelectDefaultBranch {
+		t.Fatalf("wrong default branch: %+v", selectStmt.Branches[4])
+	}
+}
+
 func TestParseUnsafeAsmStatement(t *testing.T) {
 	input := `
 fn Test() void {

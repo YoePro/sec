@@ -1,0 +1,37 @@
+module core
+
+impl int {
+    fn ToString() string {
+        // TODO: Implement int.ToString()
+        return ""
+    }
+
+    fn Abs() Result[int, OverflowError] {
+        if self < 0 {
+            return Ok(-self)
+        }
+        return Ok(self)
+    }
+
+    fn Min(other: int) int {
+        if self < other {
+            return self
+        }
+        return other
+    }
+
+    fn Max(other: int) int {
+        if self > other {
+            return self
+        }
+        return other
+    }
+
+    fn IsEven() bool {
+        return self % 2 == 0
+    }
+
+    fn IsOdd() bool {
+        return self % 2 != 0
+    }
+}

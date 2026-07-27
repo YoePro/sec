@@ -6,9 +6,12 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-)
 
-import "sec/internal/ast"
+	"sec/internal/ast"
+	"sec/internal/lexer"
+	"sec/internal/parser"
+	"sec/internal/sema"
+)
 
 func TestStdlibModuleName(t *testing.T) {
 	tests := []struct {
@@ -71,6 +74,53 @@ func TestSourceIncludePathsLoadsPlatformPackageDirectory(t *testing.T) {
 		if !found {
 			t.Fatalf("platform package missing %s: %#v", path, paths)
 		}
+	}
+}
+
+func TestCompilerAllowsCoreStringImpl(t *testing.T) {
+	dir := t.TempDir()
+	sourcePath := filepath.Join(dir, "sec", "core", "string.sec")
+	if err := os.MkdirAll(filepath.Dir(sourcePath), 0755); err != nil {
+		t.Fatal(err)
+	}
+	source := `module string
+
+impl string {
+	fn Len() uint {
+		return self.len
+	}
+}
+`
+	if err := os.WriteFile(sourcePath, []byte(source), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	program := parseSourceFile(sourcePath)
+	analyzer := sema.NewAnalyzer()
+	if errors := analyzer.Analyze(program); len(errors) > 0 {
+		t.Fatalf("Analyze(core string) errors: %v", errors)
+	}
+}
+
+func TestCompilerLoadsCoreLibraryBeforeUserAnalysis(t *testing.T) {
+	source := `module main
+
+fn IsBlank(value: string) bool {
+	return value.IsEmpty()
+}
+`
+
+	l := lexer.New(source)
+	p := parser.New(l)
+	program := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("parser errors: %v", p.Errors())
+	}
+
+	resolveCoreLibrary(program)
+	analyzer := sema.NewAnalyzer()
+	if errors := analyzer.Analyze(program); len(errors) > 0 {
+		t.Fatalf("Analyze(user with core method) errors: %v", errors)
 	}
 }
 

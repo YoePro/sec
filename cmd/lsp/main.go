@@ -123,9 +123,10 @@ type server struct {
 	shutdown         bool                   //
 }
 
-type formatterSwitchContext struct {
+type formatterBranchContext struct {
 	contentDepth int
-	caseActive   bool
+	branchActive bool
+	bodyExtra    bool
 }
 
 func main() {
@@ -164,6 +165,9 @@ func (s *server) handle(message rpcMessage) error {
 			"capabilities": map[string]any{
 				"textDocumentSync":           1,
 				"documentFormattingProvider": true,
+				"completionProvider": map[string]any{
+					"triggerCharacters": []string{"."},
+				},
 			},
 			"serverInfo": map[string]any{
 				"name":    "sec-lsp",
@@ -225,55 +229,8 @@ func (s *server) handle(message rpcMessage) error {
 			return s.respond(message.ID, []completionItem{})
 		}
 
-		// Calculate the exact absolute byte index where the dot was pressed
-		dotOffset := lineCharToOffset(text, params.Position.Line, params.Position.Character)
-
-		// Tokenize and parse using the actual Sec pipeline
-		l := lexer.New(text)
-		p := parser.New(l)
-		fileAST := p.ParseProgram()
-		if fileAST == nil {
-			return s.respond(message.ID, []completionItem{})
-		}
-
-		// Run semantic analysis using NewAnalyzer
-		analyzer := sema.NewAnalyzer()
-		analyzer.Analyze(fileAST)
-
-		// Extract the expression residing immediately before the dot.
-		targetExpr := findSelectorLHS(fileAST, text, dotOffset)
-		if targetExpr == nil {
-			return s.respond(message.ID, []completionItem{})
-		}
-
-		// Infer the expression type from the semantic analyzer.
-		exprType, ok := analyzer.TypeOf(targetExpr)
-		if !ok {
-			return s.respond(message.ID, []completionItem{})
-		}
-
-		var items []completionItem
-
-		// Populate response variants depending on struct-like or enum-like types.
-		switch exprType.Kind {
-		case sema.StructType:
-			for _, field := range exprType.Fields {
-				items = append(items, completionItem{
-					Label:  field.Name,
-					Kind:   5, // LSP Field identifier
-					Detail: field.Type.Name,
-				})
-			}
-		case sema.EnumType:
-			for _, variant := range exprType.EnumValues {
-				items = append(items, completionItem{
-					Label:  variant,
-					Kind:   20, // LSP EnumMember identifier
-					Detail: exprType.Name,
-				})
-			}
-		}
-
+		offset := lineCharToOffset(text, params.Position.Line, params.Position.Character)
+		items := completeSource(params.TextDocument.URI, text, offset)
 		return s.respond(message.ID, items)
 	default:
 		if len(message.ID) == 0 {
@@ -281,6 +238,480 @@ func (s *server) handle(message rpcMessage) error {
 		}
 		return s.respondError(message.ID, -32601, "method not found")
 	}
+}
+
+func completeSource(uri string, text string, offset int) []completionItem {
+	context := completionContextAt(text, offset)
+	parseText := text
+	if context.Member && context.Prefix == "" {
+		parseText = text[:offset] + "__sec_completion" + text[offset:]
+	}
+
+	l := lexer.New(parseText)
+	if uri != "" {
+		l = lexer.NewWithFile(parseText, pathFromURI(uri))
+	}
+	p := parser.New(l)
+	fileAST := p.ParseProgram()
+
+	analyzer := sema.NewAnalyzer()
+	if fileAST != nil {
+		if uri != "" {
+			resolveCoreSources(fileAST, pathFromURI(uri))
+			resolveSourceImports(fileAST, map[string]bool{}, pathFromURI(uri))
+		}
+		analyzer.Analyze(fileAST)
+		if expected, ok := expectedReturnTypeAt(fileAST, analyzer, parseText, offset); ok {
+			context.ExpectedType = &expected
+		}
+	}
+
+	if context.Member {
+		if fileAST == nil {
+			return []completionItem{}
+		}
+		targetExpr := findSelectorLHS(fileAST, text, context.DotOffset)
+		if targetExpr == nil {
+			return []completionItem{}
+		}
+		exprType, ok := analyzer.TypeOf(targetExpr)
+		if !ok {
+			return []completionItem{}
+		}
+		return memberCompletionItems(exprType, analyzer.Functions(), analyzer.Symbols(), context.Prefix)
+	}
+
+	return globalCompletionItems(text, analyzer, context)
+}
+
+type completionContext struct {
+	Prefix              string
+	Member              bool
+	DotOffset           int
+	TypeForm            bool
+	ReturnValue         bool
+	ExpectedType        *sema.Type
+	CursorOffset        int
+	FunctionStartOffset int
+}
+
+func completionContextAt(text string, offset int) completionContext {
+	if offset < 0 {
+		offset = 0
+	}
+	if offset > len(text) {
+		offset = len(text)
+	}
+
+	prefixStart := offset
+	for prefixStart > 0 && isIdentifierByte(text[prefixStart-1]) {
+		prefixStart--
+	}
+
+	context := completionContext{
+		Prefix:              strings.TrimSpace(text[prefixStart:offset]),
+		CursorOffset:        offset,
+		FunctionStartOffset: functionStartOffsetBefore(text, offset),
+	}
+	if prefixStart > 0 && text[prefixStart-1] == '.' {
+		context.Member = true
+		context.DotOffset = prefixStart - 1
+	}
+	context.ReturnValue = isReturnValueContext(text[:prefixStart], offset)
+	context.TypeForm = isTypeDeclarationFormContext(text[:prefixStart])
+	return context
+}
+
+func isReturnValueContext(prefix string, offset int) bool {
+	cursorLine := lineAtOffset(prefix, offset)
+	l := lexer.New(prefix)
+	var previous lexer.Token
+	for {
+		token := l.NextToken()
+		if token.Type == lexer.EOF {
+			break
+		}
+		if token.Type == lexer.COMMENT {
+			continue
+		}
+		previous = token
+	}
+	return previous.Type == lexer.RETURN && previous.Line == cursorLine
+}
+
+func lineAtOffset(text string, offset int) int {
+	if offset > len(text) {
+		offset = len(text)
+	}
+	line := 1
+	for i := 0; i < offset; i++ {
+		if text[i] == '\n' {
+			line++
+		}
+	}
+	return line
+}
+
+func functionStartOffsetBefore(text string, offset int) int {
+	if offset > len(text) {
+		offset = len(text)
+	}
+	prefix := text[:offset]
+	start := strings.LastIndex(prefix, "\nfn ")
+	if start >= 0 {
+		return start + 1
+	}
+	if strings.HasPrefix(prefix, "fn ") {
+		return 0
+	}
+	return -1
+}
+
+func isIdentifierByte(ch byte) bool {
+	return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '_'
+}
+
+func isTypeDeclarationFormContext(prefix string) bool {
+	l := lexer.New(prefix)
+	tokens := []lexer.Token{}
+	for {
+		token := l.NextToken()
+		if token.Type == lexer.EOF {
+			break
+		}
+		if token.Type == lexer.COMMENT {
+			continue
+		}
+		tokens = append(tokens, token)
+	}
+	for i := len(tokens) - 1; i >= 1; i-- {
+		if tokens[i-1].Type == lexer.TYPE && tokens[i].Type == lexer.IDENT {
+			return true
+		}
+		if tokens[i].Type == lexer.ASSIGN || tokens[i].Type == lexer.LBRACE || tokens[i].Type == lexer.RBRACE {
+			return false
+		}
+	}
+	return false
+}
+
+func memberCompletionItems(exprType sema.Type, functions map[string][]sema.Function, symbols map[string]sema.Symbol, prefix string) []completionItem {
+	items := []completionItem{}
+	seen := map[string]bool{}
+	add := func(item completionItem) {
+		if item.Label == "" || seen[item.Label] || !completionLabelMatches(item.Label, prefix) {
+			return
+		}
+		seen[item.Label] = true
+		items = append(items, item)
+	}
+
+	switch exprType.Kind {
+	case sema.StructType:
+		for _, field := range exprType.Fields {
+			add(completionItem{Label: field.Name, Kind: 5, Detail: lspTypeName(field.Type)})
+		}
+	case sema.RegisterType:
+		for _, field := range exprType.RegisterFields {
+			add(completionItem{Label: field.Name, Kind: 5, Detail: lspTypeName(field.Type)})
+		}
+	case sema.EnumType:
+		for _, variant := range exprType.EnumValues {
+			add(completionItem{Label: variant, Kind: 20, Detail: lspTypeName(exprType)})
+		}
+	case sema.UnionType:
+		for _, variant := range exprType.UnionVariants {
+			add(completionItem{Label: variant.Name, Kind: 20, Detail: lspTypeName(exprType)})
+		}
+	}
+
+	for _, property := range exprType.Properties {
+		add(completionItem{Label: property.Name, Kind: 10, Detail: lspTypeName(property.Type)})
+	}
+
+	typeName := exprType.Name
+	if typeName != "" {
+		methodPrefix := typeName + "."
+		for name, overloads := range functions {
+			if !strings.HasPrefix(name, methodPrefix) {
+				continue
+			}
+			methodName := strings.TrimPrefix(name, methodPrefix)
+			add(completionItem{Label: methodName, Kind: 2, Detail: functionCompletionDetail(overloads)})
+		}
+		staticPrefix := typeName + "."
+		for name, symbol := range symbols {
+			if !strings.HasPrefix(name, staticPrefix) {
+				continue
+			}
+			memberName := strings.TrimPrefix(name, staticPrefix)
+			add(completionItem{Label: memberName, Kind: 6, Detail: lspTypeName(symbol.Type)})
+		}
+	}
+
+	sortCompletionItems(items)
+	return items
+}
+
+func globalCompletionItems(text string, analyzer *sema.Analyzer, context completionContext) []completionItem {
+	items := []completionItem{}
+	seen := map[string]bool{}
+	add := func(item completionItem) {
+		if item.Label == "" || seen[item.Label] || !completionLabelMatches(item.Label, context.Prefix) {
+			return
+		}
+		seen[item.Label] = true
+		items = append(items, item)
+	}
+
+	if context.ReturnValue && context.ExpectedType != nil {
+		addReturnValueCompletionItems(text, analyzer, context, add)
+		sortCompletionItems(items)
+		return items
+	}
+
+	keywords := secKeywords
+	if context.TypeForm {
+		keywords = []string{"struct", "union", "enum", "interface", "register"}
+	}
+	for _, keyword := range keywords {
+		add(completionItem{Label: keyword, Kind: 14})
+	}
+
+	if !context.TypeForm {
+		for name, overloads := range analyzer.Functions() {
+			add(completionItem{Label: name, Kind: 3, Detail: functionCompletionDetail(overloads)})
+		}
+		for name, symbol := range analyzer.Symbols() {
+			if strings.Contains(name, ".") {
+				continue
+			}
+			if symbol.Local && !symbolVisibleAtCompletion(textPositionOffset(text, symbol.Token.Line, symbol.Token.Column), context) {
+				continue
+			}
+			add(completionItem{Label: name, Kind: 6, Detail: lspTypeName(symbol.Type)})
+		}
+	}
+	for name, typ := range analyzer.Types() {
+		add(completionItem{Label: name, Kind: typeCompletionKind(typ), Detail: string(typ.Kind)})
+	}
+
+	sortCompletionItems(items)
+	return items
+}
+
+func addReturnValueCompletionItems(text string, analyzer *sema.Analyzer, context completionContext, add func(completionItem)) {
+	expected := *context.ExpectedType
+	if expected.Kind == sema.BoolType {
+		add(completionItem{Label: "false", Kind: 14, Detail: "bool"})
+		add(completionItem{Label: "true", Kind: 14, Detail: "bool"})
+	}
+
+	for name, overloads := range analyzer.Functions() {
+		for _, function := range overloads {
+			if !completionTypeMatches(expected, function.ReturnType) {
+				continue
+			}
+			add(completionItem{Label: name, Kind: 3, Detail: lspTypeName(function.ReturnType)})
+			break
+		}
+	}
+
+	for name, symbol := range analyzer.Symbols() {
+		if strings.Contains(name, ".") {
+			continue
+		}
+		if symbol.Local && !symbolVisibleAtCompletion(textPositionOffset(text, symbol.Token.Line, symbol.Token.Column), context) {
+			continue
+		}
+		if completionTypeMatches(expected, symbol.Type) {
+			add(completionItem{Label: name, Kind: 6, Detail: lspTypeName(symbol.Type)})
+		}
+	}
+}
+
+func completionTypeMatches(expected sema.Type, actual sema.Type) bool {
+	if expected.Kind == sema.InvalidType || actual.Kind == sema.InvalidType {
+		return false
+	}
+	if expected.Name != "" || actual.Name != "" {
+		return expected.Name != "" && expected.Name == actual.Name
+	}
+	return expected.Kind == actual.Kind
+}
+
+func expectedReturnTypeAt(program *ast.Program, analyzer *sema.Analyzer, text string, offset int) (sema.Type, bool) {
+	if program == nil {
+		return sema.Type{}, false
+	}
+	functions := analyzer.Functions()
+	var best sema.Type
+	bestStart := -1
+	var visitFunction func(fn *ast.FunctionDeclaration, qualifiedName string)
+	visitFunction = func(fn *ast.FunctionDeclaration, qualifiedName string) {
+		if fn == nil || fn.Body == nil {
+			return
+		}
+		start := textPositionOffset(text, fn.Body.Token.Line, fn.Body.Token.Column)
+		end := matchingBraceOffset(text, start)
+		if start < 0 || end < 0 || offset < start || offset > end || start < bestStart {
+			return
+		}
+		overloads := functions[qualifiedName]
+		if len(overloads) == 0 && fn.Name != nil {
+			overloads = functions[fn.Name.Value]
+		}
+		if len(overloads) == 0 {
+			return
+		}
+		best = overloads[0].ReturnType
+		bestStart = start
+	}
+
+	for _, stmt := range program.Statements {
+		switch stmt := stmt.(type) {
+		case *ast.FunctionDeclaration:
+			if stmt.Name != nil {
+				visitFunction(stmt, stmt.Name.Value)
+			}
+		case *ast.ImplStatement:
+			target := ""
+			if stmt.Target != nil {
+				target = stmt.Target.Name
+			}
+			for _, member := range stmt.Members {
+				fn, ok := member.(*ast.FunctionDeclaration)
+				if !ok || fn.Name == nil {
+					continue
+				}
+				name := fn.Name.Value
+				if target != "" {
+					name = target + "." + name
+				}
+				visitFunction(fn, name)
+			}
+		}
+	}
+	if bestStart < 0 {
+		return sema.Type{}, false
+	}
+	return best, true
+}
+
+func matchingBraceOffset(text string, openOffset int) int {
+	if openOffset < 0 || openOffset >= len(text) || text[openOffset] != '{' {
+		return -1
+	}
+	depth := 0
+	inString := false
+	escaped := false
+	inLineComment := false
+	for i := openOffset; i < len(text); i++ {
+		ch := text[i]
+		if inLineComment {
+			if ch == '\n' {
+				inLineComment = false
+			}
+			continue
+		}
+		if inString {
+			if escaped {
+				escaped = false
+				continue
+			}
+			if ch == '\\' {
+				escaped = true
+				continue
+			}
+			if ch == '"' {
+				inString = false
+			}
+			continue
+		}
+		if ch == '/' && i+1 < len(text) && text[i+1] == '/' {
+			inLineComment = true
+			i++
+			continue
+		}
+		if ch == '"' {
+			inString = true
+			continue
+		}
+		switch ch {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return len(text)
+}
+
+func symbolVisibleAtCompletion(symbolOffset int, context completionContext) bool {
+	if !contextHasFunction(context) {
+		return !context.Member
+	}
+	return symbolOffset >= context.FunctionStartOffset && symbolOffset <= context.CursorOffset
+}
+
+func contextHasFunction(context completionContext) bool {
+	return context.FunctionStartOffset >= 0
+}
+
+var secKeywords = []string{
+	"after", "asm", "assert", "await", "break", "case", "capture", "continue", "default",
+	"defer", "else", "enum", "extern", "fallthrough", "false", "fn", "for",
+	"free", "get", "if", "impl", "implements", "import", "in", "interface",
+	"let", "match", "module", "mut", "panic", "property", "ref", "return",
+	"select", "self", "set", "spawn", "static", "struct", "switch", "true", "try",
+	"type", "unit", "union", "unsafe", "where", "while",
+}
+
+func typeCompletionKind(typ sema.Type) int {
+	switch typ.Kind {
+	case sema.EnumType:
+		return 13
+	case sema.InterfaceType:
+		return 8
+	default:
+		return 7
+	}
+}
+
+func functionCompletionDetail(functions []sema.Function) string {
+	if len(functions) == 0 {
+		return ""
+	}
+	if len(functions) > 1 {
+		return fmt.Sprintf("%d overloads", len(functions))
+	}
+	return lspTypeName(functions[0].ReturnType)
+}
+
+func lspTypeName(typ sema.Type) string {
+	if typ.Name != "" {
+		return typ.Name
+	}
+	if typ.Kind != "" {
+		return string(typ.Kind)
+	}
+	return ""
+}
+
+func completionLabelMatches(label string, prefix string) bool {
+	return strings.HasPrefix(strings.ToLower(label), strings.ToLower(prefix))
+}
+
+func sortCompletionItems(items []completionItem) {
+	sort.SliceStable(items, func(i, j int) bool {
+		if items[i].Label == items[j].Label {
+			return items[i].Kind < items[j].Kind
+		}
+		return items[i].Label < items[j].Label
+	})
 }
 
 func (s *server) scheduleDiagnostics(uri string, text string) {
@@ -359,7 +790,7 @@ func formatSource(text string) string {
 	out := make([]string, 0, len(lines))
 	indent := 0
 	blankPending := false
-	switches := []formatterSwitchContext{}
+	branchBlocks := []formatterBranchContext{}
 	inImportGroup := false
 
 	for _, line := range lines {
@@ -379,15 +810,15 @@ func formatSource(text string) string {
 			lineIndent--
 		}
 
-		for len(switches) > 0 && lineIndent < switches[len(switches)-1].contentDepth {
-			switches = switches[:len(switches)-1]
+		for len(branchBlocks) > 0 && lineIndent < branchBlocks[len(branchBlocks)-1].contentDepth {
+			branchBlocks = branchBlocks[:len(branchBlocks)-1]
 		}
 
-		caseContext := -1
-		if isSwitchCaseClause(trimmed) {
-			for i := len(switches) - 1; i >= 0; i-- {
-				if switches[i].contentDepth == lineIndent {
-					caseContext = i
+		branchContext := -1
+		if isBranchClause(trimmed) {
+			for i := len(branchBlocks) - 1; i >= 0; i-- {
+				if branchBlocks[i].contentDepth == lineIndent {
+					branchContext = i
 					break
 				}
 			}
@@ -397,9 +828,9 @@ func formatSource(text string) string {
 		if inImportGroup && trimmed != ")" {
 			extraIndent++
 		}
-		for i, switchContext := range switches {
-			if switchContext.caseActive && lineIndent >= switchContext.contentDepth {
-				if i == caseContext {
+		for i, context := range branchBlocks {
+			if context.bodyExtra && context.branchActive && lineIndent >= context.contentDepth {
+				if i == branchContext {
 					continue
 				}
 				extraIndent++
@@ -417,16 +848,16 @@ func formatSource(text string) string {
 		if indent < 0 {
 			indent = 0
 		}
-		if isSwitchBlockStart(trimmed) && indentDelta > 0 {
-			switches = append(switches, formatterSwitchContext{contentDepth: indent})
+		if isBranchBlockStart(trimmed) && indentDelta > 0 {
+			branchBlocks = append(branchBlocks, formatterBranchContext{contentDepth: indent, bodyExtra: isSwitchBlockStart(trimmed)})
 		}
 		if trimmed == "import (" {
 			inImportGroup = true
 		} else if inImportGroup && trimmed == ")" {
 			inImportGroup = false
 		}
-		if caseContext >= 0 {
-			switches[caseContext].caseActive = true
+		if branchContext >= 0 {
+			branchBlocks[branchContext].branchActive = true
 		}
 	}
 
@@ -444,12 +875,26 @@ func isSwitchBlockStart(line string) bool {
 	return strings.HasPrefix(line, "switch ") || strings.HasPrefix(line, "switch{")
 }
 
+func isBranchBlockStart(line string) bool {
+	return isSwitchBlockStart(line) || line == "select {" || strings.HasPrefix(line, "select ")
+}
+
+func isBranchClause(line string) bool {
+	return isSwitchCaseClause(line) || isSelectBranchClause(line)
+}
+
 func isSwitchCaseClause(line string) bool {
 	return line == "case" ||
 		strings.HasPrefix(line, "case ") ||
 		strings.HasPrefix(line, "case\t") ||
 		line == "default:" ||
 		strings.HasPrefix(line, "default ")
+}
+
+func isSelectBranchClause(line string) bool {
+	return line == "default => {" ||
+		strings.HasPrefix(line, "after ") ||
+		strings.HasSuffix(line, "=> {")
 }
 
 func startsWithClosingBlock(line string) bool {
@@ -525,6 +970,13 @@ func lineCharToOffset(text string, line, char int) int {
 	return len(text)
 }
 
+func textPositionOffset(text string, line int, column int) int {
+	if line <= 0 || column <= 0 {
+		return -1
+	}
+	return lineCharToOffset(text, line-1, column-1)
+}
+
 func analyze(uri string, text string) []diagnostic {
 	path := pathFromURI(uri)
 	l := lexer.NewWithFile(text, path)
@@ -538,6 +990,7 @@ func analyze(uri string, text string) []diagnostic {
 	if len(p.Errors()) > 0 {
 		return diagnostics
 	}
+	resolveCoreSources(program, path)
 	resolveSourceImports(program, map[string]bool{}, path)
 
 	analyzer := sema.NewAnalyzer()
@@ -548,6 +1001,64 @@ func analyze(uri string, text string) []diagnostic {
 		diagnostics = append(diagnostics, semaDiagnostic(warning, 2))
 	}
 	return diagnostics
+}
+
+func resolveCoreSources(program *ast.Program, sourceFile string) {
+	if program == nil || lspProgramContainsCoreSource(program) {
+		return
+	}
+	root := findSecSourceRoot(sourceFile)
+	matches, err := filepath.Glob(filepath.Join(root, "sec", "core", "*.sec"))
+	if err != nil || len(matches) == 0 {
+		return
+	}
+	sort.Strings(matches)
+	coreStatements := []ast.Statement{}
+	for _, match := range matches {
+		imported, ok := parseSourceInclude(match)
+		if !ok {
+			continue
+		}
+		coreStatements = append(coreStatements, imported.Statements...)
+	}
+	if len(coreStatements) == 0 {
+		return
+	}
+	program.Statements = append(append([]ast.Statement{}, coreStatements...), program.Statements...)
+}
+
+func lspProgramContainsCoreSource(program *ast.Program) bool {
+	for _, stmt := range program.Statements {
+		token := lspStatementTokenForSource(stmt)
+		path := filepath.ToSlash(filepath.Clean(token.File))
+		if strings.Contains(path, "/sec/core/") || strings.HasPrefix(path, "sec/core/") {
+			return true
+		}
+	}
+	return false
+}
+
+func lspStatementTokenForSource(stmt ast.Statement) lexer.Token {
+	switch stmt := stmt.(type) {
+	case *ast.ModuleStatement:
+		return stmt.Token
+	case *ast.TypeDeclStatement:
+		return stmt.Token
+	case *ast.UnitDeclStatement:
+		return stmt.Token
+	case *ast.EnumDeclaration:
+		return stmt.Token
+	case *ast.InterfaceDeclaration:
+		return stmt.Token
+	case *ast.ImplStatement:
+		return stmt.Token
+	case *ast.FunctionDeclaration:
+		return stmt.Token
+	case *ast.LetStatement:
+		return stmt.Token
+	default:
+		return lexer.Token{}
+	}
 }
 
 func resolveSourceImports(program *ast.Program, seen map[string]bool, sourceFile string) {
@@ -746,6 +1257,18 @@ func findSelectorLHS(node any, text string, dotOffset int) ast.Expression {
 		}
 		if n.Default != nil {
 			return findSelectorLHS(n.Default.Body, text, dotOffset)
+		}
+	case *ast.SelectStatement:
+		for _, branch := range n.Branches {
+			if branch == nil {
+				continue
+			}
+			if found := findSelectorLHS(branch.Value, text, dotOffset); found != nil {
+				return found
+			}
+			if found := findSelectorLHS(branch.Body, text, dotOffset); found != nil {
+				return found
+			}
 		}
 	case *ast.UnsafeStatement:
 		return findSelectorLHS(n.Body, text, dotOffset)
@@ -1087,6 +1610,14 @@ func qualifyLocalTypeReferencesInStatement(stmt ast.Statement, module string, lo
 			qualifyLocalTypesInSwitchCase(clause, module, localTypes)
 		}
 		qualifyLocalTypesInSwitchCase(stmt.Default, module, localTypes)
+	case *ast.SelectStatement:
+		for _, branch := range stmt.Branches {
+			if branch == nil {
+				continue
+			}
+			qualifyLocalTypesInExpression(branch.Value, module, localTypes)
+			qualifyLocalTypeReferencesInBlock(branch.Body, module, localTypes)
+		}
 	case *ast.UnsafeStatement:
 		qualifyLocalTypeReferencesInBlock(stmt.Body, module, localTypes)
 	}
@@ -1265,6 +1796,34 @@ func qualifyLocalCallsInStatement(stmt ast.Statement, module string, localFuncti
 	case *ast.WhileStatement:
 		qualifyLocalCallsInExpression(stmt.Condition, module, localFunctions)
 		qualifyLocalCalls(stmt.Body, module, localFunctions)
+	case *ast.SwitchStatement:
+		qualifyLocalCallsInExpression(stmt.Subject, module, localFunctions)
+		for _, clause := range stmt.Cases {
+			if clause != nil {
+				for _, item := range clause.Items {
+					switch item := item.(type) {
+					case *ast.SwitchValueCase:
+						qualifyLocalCallsInExpression(item.Value, module, localFunctions)
+					case *ast.SwitchRangeCase:
+						qualifyLocalCallsInExpression(item.Range, module, localFunctions)
+					case *ast.SwitchRelationalCase:
+						qualifyLocalCallsInExpression(item.Value, module, localFunctions)
+					}
+				}
+				qualifyLocalCalls(clause.Body, module, localFunctions)
+			}
+		}
+		if stmt.Default != nil {
+			qualifyLocalCalls(stmt.Default.Body, module, localFunctions)
+		}
+	case *ast.SelectStatement:
+		for _, branch := range stmt.Branches {
+			if branch == nil {
+				continue
+			}
+			qualifyLocalCallsInExpression(branch.Value, module, localFunctions)
+			qualifyLocalCalls(branch.Body, module, localFunctions)
+		}
 	case *ast.UnsafeStatement:
 		qualifyLocalCalls(stmt.Body, module, localFunctions)
 	}

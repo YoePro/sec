@@ -2,6 +2,7 @@ package sema
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -1307,6 +1308,51 @@ impl MissingType {
 	}
 
 	assertSemaErrors(t, errors, expected)
+}
+
+func TestCoreStringCanImplementBuiltinString(t *testing.T) {
+	input := `module string
+
+impl string {
+	fn Len() uint {
+		return self.len
+	}
+}
+`
+
+	l := lexer.NewWithFile(input, filepath.Join("sec", "core", "string.sec"))
+	p := parser.New(l)
+	program := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("parser errors: %v", p.Errors())
+	}
+
+	analyzer := NewAnalyzer()
+	assertSemaErrors(t, analyzer.Analyze(program), nil)
+	if len(analyzer.functions["string.Len"]) == 0 {
+		t.Fatal("core string impl did not register string.Len")
+	}
+}
+
+func TestUserCodeCannotImplementBuiltinString(t *testing.T) {
+	input := `module app
+
+impl string {
+}
+`
+
+	l := lexer.NewWithFile(input, filepath.Join("app", "string.sec"))
+	p := parser.New(l)
+	program := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("parser errors: %v", p.Errors())
+	}
+
+	analyzer := NewAnalyzer()
+	expected := []string{
+		"impl target string is not a named type at app/string.sec:3:6",
+	}
+	assertSemaErrors(t, analyzer.Analyze(program), expected)
 }
 
 func TestInterfaceImplementationConformance(t *testing.T) {
@@ -4915,6 +4961,535 @@ extern "C" fn badReturn() string
 	assertSemaErrors(t, errors, expected)
 }
 
+func TestExternCAllowsRawPtrVoid(t *testing.T) {
+	input := `
+module main
+
+extern "C" fn c_malloc(size: uint) RawPtr[void]
+extern "C" fn c_free(ptr: RawPtr[void]) void
+
+fn Use(size: uint) void {
+	unsafe {
+		let ptr := c_malloc(size)
+		c_free(ptr)
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestCompilerIntrinsicTypesAreRegistered(t *testing.T) {
+	analyzer := NewAnalyzer()
+	intrinsic := analyzer.IntrinsicTypes()
+
+	for _, name := range []string{
+		"bool",
+		"string",
+		"void",
+		"RawPtr",
+		"Option",
+		"Result",
+		"Task",
+		"Mutex",
+		"MutexGuard",
+		"Atomic",
+		"CompareExchangeResult",
+		"Channel",
+		"Sender",
+		"Receiver",
+		"MessageTicket",
+		"ChannelSendResult",
+		"ChannelTryReceiveResult",
+		"ChannelRevokeResult",
+		"MessageDisposition",
+		"Arena",
+		"AllocationError",
+	} {
+		typ, ok := intrinsic[name]
+		if !ok {
+			t.Fatalf("expected %s to be registered as an intrinsic type", name)
+		}
+		if !typ.Intrinsic {
+			t.Fatalf("expected %s to be marked intrinsic: %+v", name, typ)
+		}
+	}
+
+	rawPtr := intrinsic["RawPtr"]
+	if rawPtr.Kind != RawPtrType || len(rawPtr.GenericParameters) != 1 || rawPtr.GenericParameters[0] != "T" {
+		t.Fatalf("wrong RawPtr intrinsic metadata: %+v", rawPtr)
+	}
+
+	allocationError := intrinsic["AllocationError"]
+	if allocationError.Kind != EnumType {
+		t.Fatalf("AllocationError should be an intrinsic enum: %+v", allocationError)
+	}
+	for _, value := range []string{"OutOfMemory", "Unsupported", "InvalidSize", "InvalidAlignment"} {
+		if _, ok := allocationError.EnumConsts[value]; !ok {
+			t.Fatalf("AllocationError missing enum const %s: %+v", value, allocationError.EnumConsts)
+		}
+	}
+}
+
+func TestChannelConstructionAndCapabilities(t *testing.T) {
+	input := `
+module main
+
+type Message struct {
+	value: int,
+}
+
+fn Use() void {
+	let channel := Channel[Message](32)
+	let tx := channel.tx
+	let rx := channel.rx
+	let received := rx.Receive()
+	let attempt := rx.TryReceive()
+	discard tx
+	discard rx
+	discard received
+	discard attempt
+}
+`
+
+	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+
+	tx := analyzer.completionSymbols["tx"].Type
+	if !isSenderType(tx) || typeDisplayName(tx.TypeArgs[0]) != "Message" {
+		t.Fatalf("wrong tx type: %+v", tx)
+	}
+	rx := analyzer.completionSymbols["rx"].Type
+	if !isReceiverType(rx) || typeDisplayName(rx.TypeArgs[0]) != "Message" {
+		t.Fatalf("wrong rx type: %+v", rx)
+	}
+	received := analyzer.completionSymbols["received"].Type
+	if typeDisplayName(received) != "Option[Message]" {
+		t.Fatalf("wrong Receive result type: %+v display=%s", received, typeDisplayName(received))
+	}
+	attempt := analyzer.completionSymbols["attempt"].Type
+	if typeDisplayName(attempt) != "ChannelTryReceiveResult[Message]" {
+		t.Fatalf("wrong TryReceive result type: %+v display=%s", attempt, typeDisplayName(attempt))
+	}
+}
+
+func TestChannelSendAndRevokeTypes(t *testing.T) {
+	input := `
+module main
+
+type Message struct {
+	value: int,
+}
+
+fn Use() void {
+	let channel := Channel[Message](1)
+	let tx := channel.tx
+	let sent := tx.Send(Message{ value: 1 })
+	let ticket := tx.SendRevocable(Message{ value: 2 })
+	let revoke := tx.Revoke(ticket)
+	discard sent
+	discard revoke
+}
+`
+
+	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+
+	sent := analyzer.completionSymbols["sent"].Type
+	if typeDisplayName(sent) != "ChannelSendResult[Message]" {
+		t.Fatalf("wrong Send result type: %+v display=%s", sent, typeDisplayName(sent))
+	}
+	ticket := analyzer.completionSymbols["ticket"].Type
+	if typeDisplayName(ticket) != "MessageTicket[Message]" {
+		t.Fatalf("wrong SendRevocable result type: %+v display=%s", ticket, typeDisplayName(ticket))
+	}
+	revoke := analyzer.completionSymbols["revoke"].Type
+	if typeDisplayName(revoke) != "ChannelRevokeResult[Message]" {
+		t.Fatalf("wrong Revoke result type: %+v display=%s", revoke, typeDisplayName(revoke))
+	}
+}
+
+func TestChannelOperationResultsCanBeMatched(t *testing.T) {
+	input := `
+module main
+
+type Message struct {
+	value: int,
+}
+
+fn Use() void {
+	let channel := Channel[Message](1)
+	let tx := channel.tx
+	let rx := channel.rx
+	let outbound := Message{ value: 1 }
+
+	match rx.Receive() {
+		Some(message) => {
+			discard message
+		}
+		None => {
+		}
+	}
+
+	match tx.Send(outbound) {
+		Sent => {
+		}
+		Closed(message) => {
+			discard message
+		}
+	}
+
+	match rx.TryReceive() {
+		Received(message) => {
+			discard message
+		}
+		Empty => {
+		}
+		Closed => {
+		}
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestChannelCapabilitiesAreMoveOnly(t *testing.T) {
+	input := `
+module main
+
+type Message struct {
+	value: int,
+}
+
+fn Use() void {
+	let channel := Channel[Message](1)
+	let tx := channel.tx
+	let moved := tx
+	let again := tx
+	discard moved
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	expected := []string{
+		"use of moved value tx at 12:15, previous declaration at 11:15",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestChannelSendConsumesMoveOnlyMessage(t *testing.T) {
+	input := `
+module main
+
+type Message struct {
+	view: ref mut int,
+}
+
+fn Use() void {
+	let channel := Channel[Message](1)
+	let tx := channel.tx
+	let mut value := 1
+	let message := Message{ view: ref mut value }
+	let sent := tx.Send(message)
+	let again := message
+	discard sent
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	expected := []string{
+		"use of moved value message at 14:15, previous declaration at 13:22",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestChannelSendRequiresMessageType(t *testing.T) {
+	input := `
+module main
+
+type Message struct {
+	value: int,
+}
+
+fn Use() void {
+	let channel := Channel[Message](1)
+	let tx := channel.tx
+	let sent := tx.Send(1)
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	expected := []string{
+		"Sender.Send message must be Message, got int at 11:22",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestSelectValidChannelBranches(t *testing.T) {
+	input := `
+module main
+
+type Message struct {
+	value: int,
+}
+
+fn Use(task: Task[int]) void {
+	let channel := Channel[Message](1)
+	let tx := channel.tx
+	let rx := channel.rx
+	let outbound := Message{ value: 1 }
+
+	select {
+		message := rx.Receive() => {
+			discard message
+		}
+		tx.Send(outbound) => {
+		}
+		result := await task => {
+			discard result
+		}
+		after 10 => {
+		}
+		default => {
+		}
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestSelectDefaultPlacementErrors(t *testing.T) {
+	input := `
+module main
+
+fn Use() void {
+	select {
+		default => {
+		}
+		after 1 => {
+		}
+		default => {
+		}
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	expected := []string{
+		"default branch must be last in select at 8:3",
+		"select may contain only one default branch at 10:3",
+		"timeout branch is unreachable because default executes immediately at 8:3",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestSelectRejectsOrdinaryCall(t *testing.T) {
+	input := `
+module main
+
+fn Work() int {
+	return 1
+}
+
+fn Use() void {
+	select {
+		value := Work() => {
+		}
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	expected := []string{
+		"operation is not selectable at 10:3",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestSelectRejectsDuplicateReceiverBranch(t *testing.T) {
+	input := `
+module main
+
+fn Use(rx: Receiver[int]) void {
+	select {
+		first := rx.Receive() => {
+			discard first
+		}
+		second := rx.TryReceive() => {
+			discard second
+		}
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	expected := []string{
+		"receiver rx is used by more than one branch in the same select at 9:3, previous declaration at 6:3",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestSelectRejectsDuplicateSenderBranch(t *testing.T) {
+	input := `
+module main
+
+fn Use(tx: Sender[int]) void {
+	select {
+		tx.Send(1) => {
+		}
+		tx.TrySend(2) => {
+		}
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	expected := []string{
+		"sender tx is used by more than one branch in the same select at 8:3, previous declaration at 6:3",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestSelectRejectsDuplicateTaskBranch(t *testing.T) {
+	input := `
+module main
+
+fn Use(task: Task[int]) void {
+	select {
+		first := await task => {
+			discard first
+		}
+		second := await task => {
+			discard second
+		}
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	expected := []string{
+		"task task is used by more than one branch in the same select at 9:3, previous declaration at 6:3",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestSelectMergesMovedMessageState(t *testing.T) {
+	input := `
+module main
+
+type Message struct {
+	view: ref mut int,
+}
+
+fn Use() void {
+	let channel := Channel[Message](1)
+	let tx := channel.tx
+	let mut value := 1
+	let message := Message{ view: ref mut value }
+	select {
+		tx.Send(message) => {
+		}
+		default => {
+		}
+	}
+	let again := message
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	expected := []string{
+		"use of moved value message at 19:15, previous declaration at 14:11",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestSelectRejectsMessageMovedByMultipleBranches(t *testing.T) {
+	input := `
+module main
+
+type Message struct {
+	view: ref mut int,
+}
+
+fn Use() void {
+	let channel := Channel[Message](1)
+	let tx := channel.tx
+	let second := tx.Share()
+	let mut value := 1
+	let message := Message{ view: ref mut value }
+	select {
+		tx.Send(message) => {
+		}
+		second.Send(message) => {
+		}
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	expected := []string{
+		"message value message is moved by multiple select branches at 17:3, previous declaration at 15:3",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestSelectRejectsLiveMutexGuard(t *testing.T) {
+	input := `
+module main
+
+type State struct {
+	value: int,
+}
+
+fn Use(mutex: Mutex[State], rx: Receiver[int]) void {
+	let guard := mutex.lock()
+	select {
+		value := rx.Receive() => {
+			discard value
+		}
+	}
+	discard guard
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	expected := []string{
+		"mutex guard guard remains active across select at 10:2, previous declaration at 9:6",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestSelectAllowsMovedMutexGuard(t *testing.T) {
+	input := `
+module main
+
+type State struct {
+	value: int,
+}
+
+fn Consume(guard: MutexGuard[State]) void {
+}
+
+fn Use(mutex: Mutex[State], rx: Receiver[int]) void {
+	let guard := mutex.lock()
+	Consume(guard)
+	select {
+		value := rx.Receive() => {
+			discard value
+		}
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
 func TestRawPtrConversionRequiresUnsafe(t *testing.T) {
 	input := `
 module main
@@ -4943,7 +5518,7 @@ func TestInlineAsmBlockCanReturnInt64(t *testing.T) {
 	input := `
 module main
 
-fn _sysWrite(fd: int64, ref ptr: byte, len: int64) int64 {
+fn _sysWrite(fd: int64, ptr: RawPtr[byte], len: uint) int64 {
 	unsafe {
 		asm {
 			"syscall"
@@ -5003,7 +5578,7 @@ func TestStringPtrAndLenMembers(t *testing.T) {
 	input := `
 module main
 
-fn _sysWrite(fd: int64, ref ptr: byte, len: int64) int64 {
+fn _sysWrite(fd: int64, ptr: RawPtr[byte], len: uint) int64 {
 	unsafe {
 		asm {
 			"syscall"
@@ -5014,10 +5589,314 @@ fn _sysWrite(fd: int64, ref ptr: byte, len: int64) int64 {
 }
 
 fn Println(s: string) void {
-	_sysWrite(1, s.ptr, s.len)
+	unsafe {
+		_sysWrite(1, s.ptr, s.len)
 
-	let nl := "\n"
-	_sysWrite(1, nl.ptr, 1)
+		let nl := "\n"
+		_sysWrite(1, nl.ptr, 1)
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestPtrMemberRequiresUnsafe(t *testing.T) {
+	input := `
+module main
+
+fn Invalid(value: int) RawPtr[int] {
+	return value.ptr
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	expected := []string{
+		"member ptr requires unsafe at 5:15",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestUniversalPtrMemberTypes(t *testing.T) {
+	input := `
+module main
+
+type Packet struct {
+	value: int,
+}
+
+fn IntPointer(value: int) RawPtr[int] {
+	unsafe {
+		return value.ptr
+	}
+}
+
+fn FieldPointer(packet: Packet) RawPtr[int] {
+	unsafe {
+		return packet.value.ptr
+	}
+}
+
+fn StringPointer(value: string) RawPtr[byte] {
+	unsafe {
+		return value.ptr
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestAggregateReferenceFieldHoldsBorrow(t *testing.T) {
+	input := `
+module main
+
+type Handle struct {
+	view: ref mut int,
+}
+
+fn Invalid() void {
+	let mut value := 1
+	let handle := Handle{ view: ref mut value }
+	let copy := value
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	expected := []string{
+		"cannot read value while it is mutably borrowed at 11:14, previous declaration at 10:30",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestMovingAggregateReferenceHolderEndsBorrow(t *testing.T) {
+	input := `
+module main
+
+type Handle struct {
+	view: ref mut int,
+}
+
+fn Consume(handle: Handle) void {
+}
+
+fn Valid() void {
+	let mut value := 1
+	let handle := Handle{ view: ref mut value }
+	Consume(handle)
+	let copy := value
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestCannotMoveBorrowedMoveOnlyValue(t *testing.T) {
+	input := `
+module main
+
+type Handle struct {
+	view: ref mut int,
+}
+
+fn Consume(handle: Handle) void {
+}
+
+fn Invalid() void {
+	let mut value := 1
+	let handle := Handle{ view: ref mut value }
+	let borrow := ref handle
+	Consume(handle)
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	expected := []string{
+		"cannot move handle while it is borrowed at 15:10, previous declaration at 14:16",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestIfBranchBorrowHolderMergesAfterBranch(t *testing.T) {
+	input := `
+module main
+
+fn Invalid(condition: bool) void {
+	let mut value := 1
+	let mut view: ref int
+	if condition {
+		view = ref value
+	}
+	value = 2
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	expected := []string{
+		"cannot assign to value while it is shared borrowed at 10:2, previous declaration at 8:10",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestIfBranchMutableBorrowHolderMergesAfterBranch(t *testing.T) {
+	input := `
+module main
+
+fn Invalid(condition: bool) void {
+	let mut value := 1
+	let mut view: ref mut int
+	if condition {
+		view = ref mut value
+	}
+	let copy := value
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	expected := []string{
+		"cannot read value while it is mutably borrowed at 10:14, previous declaration at 8:10",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestIfBranchLocalBorrowEndsBeforeMerge(t *testing.T) {
+	input := `
+module main
+
+fn Valid(condition: bool) void {
+	let mut value := 1
+	if condition {
+		let view := ref value
+		discard view
+	}
+	value = 2
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestIfBranchesCanEndEarlierBorrow(t *testing.T) {
+	input := `
+module main
+
+fn Valid(condition: bool) void {
+	let mut value := 1
+	let mut other := 2
+	let mut view := ref value
+	if condition {
+		view = ref other
+	} else {
+		view = ref other
+	}
+	value = 3
+	discard view
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestCallSpreadRejectsMoveOnlyArrayElements(t *testing.T) {
+	input := `
+module main
+
+type Resource struct {
+	view: ref mut int,
+}
+
+fn Consume(first: Resource, second: Resource) void {
+}
+
+fn Invalid() void {
+	let mut firstValue := 1
+	let mut secondValue := 2
+	let resources: Resource[2] := [
+		Resource{ view: ref mut firstValue },
+		Resource{ view: ref mut secondValue },
+	]
+	Consume(resources...)
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	expected := []string{
+		"cannot spread Resource[2] into function arguments; Resource is not implicitly copyable at 18:19",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestArrayLiteralSpreadRejectsMoveOnlyArrayElements(t *testing.T) {
+	input := `
+module main
+
+type Resource struct {
+	view: ref mut int,
+}
+
+fn Invalid() void {
+	let mut firstValue := 1
+	let mut secondValue := 2
+	let resources: Resource[2] := [
+		Resource{ view: ref mut firstValue },
+		Resource{ view: ref mut secondValue },
+	]
+	let copy := [resources...]
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	expected := []string{
+		"cannot spread Resource[2] into array literal; Resource is not implicitly copyable at 15:24",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestStructSpreadRejectsMoveOnlySource(t *testing.T) {
+	input := `
+module main
+
+type Resource struct {
+	view: ref mut int,
+}
+
+fn Invalid() void {
+	let mut value := 1
+	let resource := Resource{ view: ref mut value }
+	let copy := Resource {
+		resource...
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	expected := []string{
+		"cannot spread Resource into Resource; Resource is not implicitly copyable at 12:11",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestStructSpreadAllowsCopyableSource(t *testing.T) {
+	input := `
+module main
+
+type User struct {
+	name: string,
+	age: int,
+}
+
+fn Valid() void {
+	let original := User{ name: "Anna", age: 30 }
+	let updated := User {
+		original...,
+		name: "Maria",
+	}
+	discard updated
 }
 `
 

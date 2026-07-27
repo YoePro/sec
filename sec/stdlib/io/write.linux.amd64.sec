@@ -5,23 +5,27 @@ import (
     "platform/linux"
     "platform/linux/amd64"
 )
-unsafe fn _sysWrite(fd: int, ref ptr: byte, len: int64) int {
+unsafe fn _sysWrite(fd: int, ptr: RawPtr[byte], len: uint) int {
     return amd64._rawSyscall(uint(amd64.sysCall.Write), uint(fd), uint(ptr), uint(len))
 }
 
-unsafe fn Write(fd: int, ref ptr: byte, len: int64) int {
+unsafe fn Write(fd: int, ptr: RawPtr[byte], len: uint) int {
     return _sysWrite(fd, ptr, len)
 }
 
 fn WriteString(value: string) void {
-    _sysWrite(1, value.ptr, value.len)
+    unsafe {
+        _sysWrite(STDOUT, value.ptr, value.len)
+    }
 }
 
 fn Println(value: string) void {
-    _sysWrite(1, value.ptr, value.len)
+    unsafe {
+        _sysWrite(STDOUT, value.ptr, value.len)
 
-    let nl := "\n"
-    _sysWrite(1, nl.ptr, 1)
+        let nl := "\n"
+        _sysWrite(STDOUT, nl.ptr, 1)
+    }
 }
 
 fn println(value: string) void {

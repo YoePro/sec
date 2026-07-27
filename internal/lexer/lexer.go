@@ -19,6 +19,7 @@ const (
 	INTERPSTRING TokenType = "INTERPSTRING"
 
 	ARENA       TokenType = "ARENA"
+	AFTER       TokenType = "AFTER"
 	ASM         TokenType = "ASM"
 	ASSERT      TokenType = "ASSERT"
 	AWAIT       TokenType = "AWAIT"
@@ -55,6 +56,7 @@ const (
 	REQUIRE     TokenType = "REQUIRE"
 	SEC         TokenType = "SEC"
 	SELF        TokenType = "SELF"
+	SELECT      TokenType = "SELECT"
 	SET         TokenType = "SET"
 	SPAWN       TokenType = "SPAWN"
 	STATIC      TokenType = "STATIC"
@@ -711,6 +713,8 @@ func (l *Lexer) advance() rune {
 
 func lookupIdent(s string) TokenType {
 	switch s {
+	case "after":
+		return AFTER
 	case "arena":
 		return ARENA
 	case "asm":
@@ -787,6 +791,8 @@ func lookupIdent(s string) TokenType {
 		return SEC
 	case "self":
 		return SELF
+	case "select":
+		return SELECT
 	case "set":
 		return SET
 	case "spawn":

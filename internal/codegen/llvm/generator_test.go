@@ -417,7 +417,7 @@ func TestGenerateInlineAsmSysWriteFunction(t *testing.T) {
 	input := `
 module main
 
-fn _sysWrite(fd: int64, ref ptr: byte, len: int64) int64 {
+fn _sysWrite(fd: int64, ptr: RawPtr[byte], len: uint) int64 {
 	unsafe {
 		asm {
 			"syscall"
@@ -508,7 +508,7 @@ func TestGeneratePrintlnWithStringPtrAndLen(t *testing.T) {
 	input := `
 module main
 
-fn _sysWrite(fd: int64, ref ptr: byte, len: int64) int64 {
+fn _sysWrite(fd: int64, ptr: RawPtr[byte], len: uint) int64 {
 	unsafe {
 		asm {
 			"syscall"
@@ -519,10 +519,12 @@ fn _sysWrite(fd: int64, ref ptr: byte, len: int64) int64 {
 }
 
 fn Println(s: string) void {
-	_sysWrite(1, s.ptr, s.len)
+	unsafe {
+		_sysWrite(1, s.ptr, s.len)
 
-	let nl := "\n"
-	_sysWrite(1, nl.ptr, 1)
+		let nl := "\n"
+		_sysWrite(1, nl.ptr, 1)
+	}
 }
 
 fn main() int {

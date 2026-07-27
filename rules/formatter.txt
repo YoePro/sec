@@ -122,6 +122,7 @@ This applies to:
 * for,
 * while,
 * switch,
+* select,
 * match,
 * try handler blocks,
 * struct literals.

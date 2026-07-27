@@ -194,22 +194,35 @@ Implemented:
   borrow of the same root exists.
 * A mutable reference to an immutable owner is rejected.
 * Borrow holders are tracked for local reference variables.
+* Borrow holders are tracked for `ref` and `ref mut` values stored directly
+  inside local aggregate initializers.
 * Reassigning a reference variable ends the borrow previously held by that
   variable.
 * Moving a move-only reference variable transfers the borrow holder to the new
   variable.
+* Moving a move-only aggregate value transfers any borrows held by references
+  inside that aggregate.
 * Passing a move-only reference to a by-value function parameter consumes the
   local holder; the original reference variable becomes moved and cannot be
   reused.
+* Passing a move-only aggregate to a by-value function parameter consumes the
+  aggregate holder and ends borrows held by that aggregate.
+* Moving a move-only root symbol is rejected while that symbol is actively
+  borrowed.
 * Borrows held by variables declared inside a block are ended when that block
   finishes.
+* Active borrows are conservatively merged across continuing `if`, `switch`,
+  `select` and statement-`match` branches.
+* Borrow holders declared outside a branch keep their borrow active after the
+  branch if any continuing path assigns them a borrow.
+* Branch-local borrow holders still end at block exit before branch borrow
+  state is merged.
 
 Not implemented yet:
 
-* branch and loop borrow-state merging
+* loop borrow-state merging
 * disjoint field borrow analysis
 * path-sensitive borrow analysis for fields, indexes and slices
-* move prevention while borrowed
 * returned-reference origin analysis
 * borrow effects from defer captures
 * diagnostics that point to both the original borrow and conflicting access

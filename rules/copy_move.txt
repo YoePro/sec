@@ -3889,7 +3889,11 @@ The current compiler implementation has:
 * initial copy classification for primitive, reference, RawPtr, function, enum,
   register, string-view, slice-view, array, struct, union and Result types
 * initial whole-value move-state tracking for local identifiers
+* recursive move-source tracking through struct literals, array literals,
+  spread expressions, conversions and `Ok`/`Err` payloads
 * use-after-move diagnostics for moved local identifiers
+* rejection of moving a move-only root symbol while that symbol has an active
+  borrow
 * conservative branch merge where a value moved on any continuing branch is
   treated as moved after the merge
 * assignment and mutability checks
@@ -3910,11 +3914,15 @@ The first implementation step has started:
   types
 * keep `ref mut` non-copyable by classifying it as move-only
 * move known move-only local values in simple `let`, assignment and return forms
+* move known move-only local values inside aggregate initializers
+* move known move-only local values inside `Ok(...)` and `Err(...)` return
+  payloads
 * move known move-only local values when they are passed to a selected by-value
   function parameter
 * preserve known move-only locals when they are passed to a `ref` or `ref mut`
   function parameter
 * reject use after move for known moved local values
+* reject moves while the moved root symbol is borrowed
 
 Still remaining in the first implementation step:
 

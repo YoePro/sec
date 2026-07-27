@@ -1,0 +1,45 @@
+module core
+
+enum OverflowError {
+    Overflow,
+}
+
+enum DivisionByZeroError {
+    DivisionByZero,
+}
+
+enum RangeError {
+    InvalidRange,
+    StartAfterEnd,
+    OutOfBounds,
+}
+
+enum IndexError {
+    OutOfBounds,
+}
+
+enum PrecisionError {
+    PrecisionLoss,
+    ScaleOverflow,
+    PrecisionExhausted,
+}
+
+enum FormatError {
+    InvalidFormat,
+    UnsupportedFormat,
+    InvalidSpecifier,
+    InvalidPrecision,
+}
+
+enum EncodingError {
+    InvalidEncoding,
+    InvalidUtf8,
+    InvalidCodePoint,
+}
+
+enum MathError {
+    DomainError,
+    Overflow,
+    Underflow,
+    NotFinite,
+}

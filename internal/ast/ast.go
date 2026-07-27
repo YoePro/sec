@@ -677,6 +677,36 @@ type SwitchCase struct {
 	Body    *BlockStatement
 }
 
+type SelectStatement struct {
+	Token                   lexer.Token
+	Branches                []*SelectBranch
+	DefaultNotFinalToken    lexer.Token
+	DuplicateDefaultTokens  []lexer.Token
+	UnreachableTimeoutToken lexer.Token
+}
+
+func (ss *SelectStatement) statementNode() {}
+
+func (ss *SelectStatement) TokenLiteral() string {
+	return ss.Token.Lexeme
+}
+
+type SelectBranchKind string
+
+const (
+	SelectOperationBranch SelectBranchKind = "operation"
+	SelectTimeoutBranch   SelectBranchKind = "timeout"
+	SelectDefaultBranch   SelectBranchKind = "default"
+)
+
+type SelectBranch struct {
+	Token   lexer.Token
+	Kind    SelectBranchKind
+	Binding *Identifier
+	Value   Expression
+	Body    *BlockStatement
+}
+
 type SwitchCaseItem interface {
 	Node
 	switchCaseItemNode()

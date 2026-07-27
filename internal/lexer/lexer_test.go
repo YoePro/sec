@@ -245,7 +245,7 @@ let μs := 1`
 }
 
 func TestKeywords(t *testing.T) {
-	input := `module import require sec self extern fn free let mut type unit struct interface impl implements for while in if else switch case default fallthrough break continue match where return true false try defer discard ref unsafe asm arena property get set enum union spawn static await nil None Some`
+	input := `module import require sec self extern fn free let mut type unit struct interface impl implements for while in if else switch case default fallthrough break continue match where return true false try defer discard ref unsafe asm arena after property get select set enum union spawn static await nil None Some`
 
 	tests := []struct {
 		typ    TokenType
@@ -290,8 +290,10 @@ func TestKeywords(t *testing.T) {
 		{UNSAFE, "unsafe"},
 		{ASM, "asm"},
 		{ARENA, "arena"},
+		{AFTER, "after"},
 		{PROPERTY, "property"},
 		{GET, "get"},
+		{SELECT, "select"},
 		{SET, "set"},
 		{ENUM, "enum"},
 		{UNION, "union"},

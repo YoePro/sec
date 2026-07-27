@@ -155,6 +155,9 @@ func (p *Parser) parseStatement() ast.Statement {
 	case lexer.SWITCH:
 		return p.parseSwitchStatement()
 
+	case lexer.SELECT:
+		return p.parseSelectStatement()
+
 	case lexer.ELSE:
 		return p.parseUnexpectedElseStatement()
 
@@ -586,6 +589,110 @@ func (p *Parser) parseSwitchStatement() ast.Statement {
 	}
 
 	return stmt
+}
+
+func (p *Parser) parseSelectStatement() ast.Statement {
+	stmt := &ast.SelectStatement{Token: p.curToken}
+	if !p.expectPeek(lexer.LBRACE) {
+		return stmt
+	}
+	p.nextToken()
+
+	for p.curToken.Type != lexer.RBRACE && p.curToken.Type != lexer.EOF {
+		if p.curToken.Type == lexer.COMMENT {
+			p.nextToken()
+			continue
+		}
+
+		branch := p.parseSelectBranch()
+		if branch != nil {
+			if branch.Kind == ast.SelectDefaultBranch {
+				if hasSelectDefault(stmt) {
+					stmt.DuplicateDefaultTokens = append(stmt.DuplicateDefaultTokens, branch.Token)
+				}
+				if p.curToken.Type != lexer.RBRACE && p.curToken.Type != lexer.EOF {
+					stmt.DefaultNotFinalToken = p.curToken
+				}
+			}
+			if branch.Kind == ast.SelectTimeoutBranch && hasSelectDefault(stmt) {
+				stmt.UnreachableTimeoutToken = branch.Token
+			}
+			stmt.Branches = append(stmt.Branches, branch)
+			continue
+		}
+
+		p.skipSelectBranch()
+	}
+
+	if p.curToken.Type == lexer.EOF {
+		p.addError("unterminated select body")
+		return nil
+	}
+	return stmt
+}
+
+func hasSelectDefault(stmt *ast.SelectStatement) bool {
+	for _, branch := range stmt.Branches {
+		if branch != nil && branch.Kind == ast.SelectDefaultBranch {
+			return true
+		}
+	}
+	return false
+}
+
+func (p *Parser) parseSelectBranch() *ast.SelectBranch {
+	branch := &ast.SelectBranch{Token: p.curToken, Kind: ast.SelectOperationBranch}
+
+	switch p.curToken.Type {
+	case lexer.DEFAULT:
+		branch.Kind = ast.SelectDefaultBranch
+		if !p.expectPeek(lexer.ARROW) {
+			return branch
+		}
+	case lexer.AFTER:
+		branch.Kind = ast.SelectTimeoutBranch
+		p.nextToken()
+		branch.Value = p.parseExpression(LOWEST)
+		if branch.Value == nil {
+			return branch
+		}
+		if !p.expectPeek(lexer.ARROW) {
+			return branch
+		}
+	default:
+		if p.curToken.Type == lexer.IDENT && p.peekToken.Type == lexer.DECLARE {
+			branch.Binding = &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme}
+			p.nextToken()
+			p.nextToken()
+		}
+		branch.Value = p.parseExpression(LOWEST)
+		if branch.Value == nil {
+			return branch
+		}
+		if !p.expectPeek(lexer.ARROW) {
+			return branch
+		}
+	}
+
+	if !p.expectPeek(lexer.LBRACE) {
+		return branch
+	}
+	branch.Body = p.parseStatementBlock("select branch")
+	if branch.Body == nil {
+		return branch
+	}
+	p.nextToken()
+	return branch
+}
+
+func (p *Parser) skipSelectBranch() {
+	for p.curToken.Type != lexer.RBRACE && p.curToken.Type != lexer.EOF &&
+		p.curToken.Type != lexer.DEFAULT && p.curToken.Type != lexer.AFTER {
+		if p.curToken.Type == lexer.IDENT || p.curToken.Type == lexer.AWAIT {
+			return
+		}
+		p.nextToken()
+	}
 }
 
 func (p *Parser) parseSwitchCaseClause(isDefault bool, subjectless bool) *ast.SwitchCase {
@@ -3208,6 +3315,7 @@ func (p *Parser) isStatementStart(t lexer.TokenType) bool {
 		lexer.WHILE,
 		lexer.MATCH,
 		lexer.SWITCH,
+		lexer.SELECT,
 		lexer.BREAK,
 		lexer.CONTINUE,
 		lexer.UNSAFE,

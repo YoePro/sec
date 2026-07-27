@@ -1,0 +1,10 @@
+module core
+
+impl bool {
+    fn ToString() string {
+        if self {
+            return "true"
+        }
+        return "false"
+    }
+}

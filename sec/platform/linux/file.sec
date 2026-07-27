@@ -8,10 +8,14 @@ fn Write(fd: int, data: ref byte[]) Result[uint, LinuxError] {
     return Err(LinuxError.invalidArg)
 }
 
+let STDIN := 0i
+let STDOUT := 1i
+let STDERR := 2i
+
 /*
 fn Read(fd: int, data: ref mut byte[]) Result[uint, LinuxError] {}
 
 fn Close(fd: int) Result[void, LinuxError] {}
-fn Open(...) 
+fn Open(...)
 fn Seek(...)
 */

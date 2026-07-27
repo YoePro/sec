@@ -1,0 +1,30 @@
+module core
+
+impl uint {
+    fn ToString() string {
+        // TODO: Implement uint.ToString()
+        return ""
+    }
+
+    fn Min(other: uint) uint {
+        if self < other {
+            return self
+        }
+        return other
+    }
+
+    fn Max(other: uint) uint {
+        if self > other {
+            return self
+        }
+        return other
+    }
+
+    fn IsEven() bool {
+        return self % 2 == 0
+    }
+
+    fn IsOdd() bool {
+        return self % 2 != 0
+    }
+}

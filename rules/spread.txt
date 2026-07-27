@@ -619,6 +619,8 @@ Implemented now:
 - fixed-size array spread in array literals
 - same-type copyable struct spread
 - compile-time expansion
+- copyability validation for fixed-size array call spread, fixed-size array
+  literal spread and same-type struct spread
 - parser support for spread-aware call, array literal and struct literal lists
 - semantic rejection of standalone spread
 - semantic rejection of runtime-length slice spread in fixed-arity calls and
@@ -630,7 +632,6 @@ Not implemented yet:
 - runtime-length slice spread
 - iterator spread
 - dynamic container spread
-- copyability validation
 - consuming spread of move-only elements
 - partial-move struct spread
 - recursive or deep merge

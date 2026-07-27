@@ -41,6 +41,7 @@ type Type struct {
 	Kind                      TypeKind
 	Named                     bool
 	Declared                  bool
+	Intrinsic                 bool
 	Underlying                string
 	Unit                      string
 	Dimension                 Dimension
@@ -319,7 +320,8 @@ func builtinTypes() map[string]Type {
 			Name:       "AllocationError",
 			Kind:       EnumType,
 			Underlying: "uint",
-			EnumValues: []string{"OutOfMemory", "InvalidSize"},
+			EnumValues: []string{"OutOfMemory", "Unsupported", "InvalidSize", "InvalidAlignment"},
+			EnumConsts: builtinEnumConsts([]string{"OutOfMemory", "Unsupported", "InvalidSize", "InvalidAlignment"}),
 		},
 		"Option": {
 			Name:              "Option",
@@ -335,8 +337,49 @@ func builtinTypes() map[string]Type {
 		"MutexGuard":            {Name: "MutexGuard", Kind: StructType, GenericParameters: []string{"T"}},
 		"Atomic":                {Name: "Atomic", Kind: StructType, GenericParameters: []string{"T"}},
 		"CompareExchangeResult": {Name: "CompareExchangeResult", Kind: StructType, GenericParameters: []string{"T"}},
-		"Result":                {Name: "Result", Kind: ResultType, GenericParameters: []string{"T", "E"}},
-		"decimal":               {Name: "decimal", Kind: DecimalType},
+		"Channel":               {Name: "Channel", Kind: StructType, GenericParameters: []string{"T"}},
+		"Sender":                {Name: "Sender", Kind: StructType, GenericParameters: []string{"T"}},
+		"Receiver":              {Name: "Receiver", Kind: StructType, GenericParameters: []string{"T"}},
+		"MessageTicket":         {Name: "MessageTicket", Kind: StructType, GenericParameters: []string{"T"}},
+		"ChannelOptions":        {Name: "ChannelOptions", Kind: StructType},
+		"SenderID":              {Name: "SenderID", Kind: StructType},
+		"ChannelSendResult": {
+			Name:              "ChannelSendResult",
+			Kind:              UnionType,
+			GenericParameters: []string{"T"},
+			UnionVariants: []UnionVariant{
+				{Name: "Sent"},
+				{Name: "Closed", Payload: &Type{Name: "T", Kind: GenericType}},
+			},
+		},
+		"ChannelTryReceiveResult": {
+			Name:              "ChannelTryReceiveResult",
+			Kind:              UnionType,
+			GenericParameters: []string{"T"},
+			UnionVariants: []UnionVariant{
+				{Name: "Received", Payload: &Type{Name: "T", Kind: GenericType}},
+				{Name: "Empty"},
+				{Name: "Closed"},
+			},
+		},
+		"ChannelRevokeResult": {
+			Name:              "ChannelRevokeResult",
+			Kind:              UnionType,
+			GenericParameters: []string{"T"},
+			UnionVariants: []UnionVariant{
+				{Name: "Revoked", Payload: &Type{Name: "T", Kind: GenericType}},
+				{Name: "Unavailable", Payload: &Type{Name: "MessageDisposition", Kind: EnumType}},
+			},
+		},
+		"MessageDisposition": {
+			Name:       "MessageDisposition",
+			Kind:       EnumType,
+			Underlying: "uint",
+			EnumValues: []string{"Received", "Expired", "Discarded"},
+			EnumConsts: builtinEnumConsts([]string{"Received", "Expired", "Discarded"}),
+		},
+		"Result":  {Name: "Result", Kind: ResultType, GenericParameters: []string{"T", "E"}},
+		"decimal": {Name: "decimal", Kind: DecimalType},
 		"decimal128": {
 			Name: "decimal128",
 			Kind: DecimalType,
@@ -362,7 +405,20 @@ func builtinTypes() map[string]Type {
 		"void":    {Name: "void", Kind: VoidType},
 	}
 
+	for name, typ := range types {
+		typ.Intrinsic = true
+		types[name] = typ
+	}
+
 	return types
+}
+
+func builtinEnumConsts(values []string) map[string]EnumValue {
+	consts := make(map[string]EnumValue, len(values))
+	for i, name := range values {
+		consts[name] = EnumValue{Name: name, Value: big.NewInt(int64(i))}
+	}
+	return consts
 }
 
 func signedType(name string, min, max int64) Type {
@@ -545,10 +601,18 @@ func copyClassificationOf(typ Type, visiting map[string]bool) CopyClassification
 		}
 		return CopyTrivial
 	case StructType:
-		if typ.Name == "Task" || typ.Name == "MutexGuard" {
+		switch typ.Name {
+		case "Task",
+			"MutexGuard",
+			"Channel",
+			"Sender",
+			"Receiver",
+			"MessageTicket":
 			return CopyMoveOnly
-		}
-		if typ.Name == "Mutex" || typ.Name == "Atomic" {
+		case "Mutex",
+			"Atomic",
+			"ChannelOptions",
+			"SenderID":
 			return CopyNonCopyable
 		}
 		key := typeDestructionKey(typ)

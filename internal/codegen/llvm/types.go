@@ -17,6 +17,9 @@ func llvmReturnType(ref *ast.TypeReference) string {
 	if ref.Name == "fn" || ref.FunctionReturnType != nil {
 		return "ptr"
 	}
+	if ref.Name == "RawPtr" {
+		return "ptr"
+	}
 
 	switch ref.Name {
 	case "bool":

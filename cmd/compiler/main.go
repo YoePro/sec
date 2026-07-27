@@ -735,6 +735,7 @@ func analyzeProgram(program *ast.Program, target CompilerTarget) {
 		os.Exit(1)
 	}
 
+	resolveCoreLibrary(program)
 	resolveStdlibImports(program, target)
 
 	analyzer := sema.NewAnalyzer()
@@ -746,6 +747,69 @@ func analyzeProgram(program *ast.Program, target CompilerTarget) {
 		}
 		os.Exit(3)
 	}
+}
+
+func resolveCoreLibrary(program *ast.Program) {
+	if programContainsCoreSource(program) {
+		return
+	}
+	core := parseCoreLibrary()
+	if core == nil || len(core.Statements) == 0 {
+		return
+	}
+	program.Statements = append(append([]ast.Statement{}, core.Statements...), program.Statements...)
+}
+
+func programContainsCoreSource(program *ast.Program) bool {
+	if program == nil {
+		return false
+	}
+	for _, stmt := range program.Statements {
+		token := statementTokenForSource(stmt)
+		path := filepath.ToSlash(filepath.Clean(token.File))
+		if strings.Contains(path, "/sec/core/") || strings.HasPrefix(path, "sec/core/") {
+			return true
+		}
+	}
+	return false
+}
+
+func statementTokenForSource(stmt ast.Statement) lexer.Token {
+	switch stmt := stmt.(type) {
+	case *ast.ModuleStatement:
+		return stmt.Token
+	case *ast.TypeDeclStatement:
+		return stmt.Token
+	case *ast.UnitDeclStatement:
+		return stmt.Token
+	case *ast.EnumDeclaration:
+		return stmt.Token
+	case *ast.InterfaceDeclaration:
+		return stmt.Token
+	case *ast.ImplStatement:
+		return stmt.Token
+	case *ast.FunctionDeclaration:
+		return stmt.Token
+	case *ast.LetStatement:
+		return stmt.Token
+	default:
+		return lexer.Token{}
+	}
+}
+
+func parseCoreLibrary() *ast.Program {
+	root := findCompilerSourceRoot()
+	matches, err := filepath.Glob(filepath.Join(root, "sec", "core", "*.sec"))
+	if err != nil || len(matches) == 0 {
+		return nil
+	}
+	sort.Strings(matches)
+	core := &ast.Program{}
+	for _, path := range matches {
+		source := parseSourceInclude(path, CompilerTarget{})
+		core.Statements = append(core.Statements, source.Statements...)
+	}
+	return core
 }
 
 func parseSourceInputs(inputs []string, target CompilerTarget, filterTarget bool) *ast.Program {

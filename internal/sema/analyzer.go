@@ -3,6 +3,7 @@ package sema
 import (
 	"fmt"
 	"math/big"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -25,6 +26,8 @@ type Analyzer struct {
 	genericTypeInstances  map[genericInstanceKey]Type
 	genericFuncInstances  map[genericInstanceKey]Function
 	symbols               map[string]Symbol
+	completionSymbols     map[string]Symbol
+	expressionTypes       map[ast.Expression]Type
 	constInts             map[string]*big.Int
 	assigned              map[string]bool
 	moved                 map[string]lexer.Token
@@ -87,6 +90,8 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.errors = nil
 	a.warnings = nil
 	a.symbols = map[string]Symbol{}
+	a.completionSymbols = map[string]Symbol{}
+	a.expressionTypes = map[ast.Expression]Type{}
 	a.constInts = map[string]*big.Int{}
 	a.assigned = map[string]bool{}
 	a.moved = map[string]lexer.Token{}
@@ -152,11 +157,51 @@ func (a *Analyzer) TypeOf(expr ast.Expression) (Type, bool) {
 	if expr == nil {
 		return Type{}, false
 	}
+	if inferred, ok := a.expressionTypes[expr]; ok && inferred.Kind != InvalidType {
+		return inferred, true
+	}
 	inferred, _ := a.inferExpression(expr)
 	if inferred.Kind == InvalidType {
 		return Type{}, false
 	}
 	return inferred, true
+}
+
+func (a *Analyzer) Types() map[string]Type {
+	out := make(map[string]Type, len(a.types))
+	for name, typ := range a.types {
+		out[name] = typ
+	}
+	return out
+}
+
+func (a *Analyzer) IntrinsicTypes() map[string]Type {
+	out := map[string]Type{}
+	for name, typ := range a.types {
+		if typ.Intrinsic {
+			out[name] = typ
+		}
+	}
+	return out
+}
+
+func (a *Analyzer) Functions() map[string][]Function {
+	out := make(map[string][]Function, len(a.functions))
+	for name, functions := range a.functions {
+		out[name] = append([]Function(nil), functions...)
+	}
+	return out
+}
+
+func (a *Analyzer) Symbols() map[string]Symbol {
+	out := make(map[string]Symbol, len(a.symbols)+len(a.completionSymbols))
+	for name, symbol := range a.completionSymbols {
+		out[name] = symbol
+	}
+	for name, symbol := range a.symbols {
+		out[name] = symbol
+	}
+	return out
 }
 
 func (a *Analyzer) withProgramModules(program *ast.Program, visit func(ast.Statement)) {
@@ -367,7 +412,7 @@ func (a *Analyzer) registerImplTypeDeclarations(program *ast.Program) {
 			a.addErrorAtToken(impl.Target.Token, "unknown impl target %s", impl.Target.Name)
 			continue
 		}
-		if !target.Named && target.Kind != InvalidType {
+		if !target.Named && target.Kind != InvalidType && !isAllowedCoreBuiltinImpl(impl.Target.Name, impl.Target.Token) {
 			a.addErrorAtToken(impl.Target.Token, "impl target %s is not a named type", impl.Target.Name)
 			continue
 		}
@@ -426,6 +471,52 @@ func implNestedTypeName(member ast.ImplMember) (string, lexer.Token, bool) {
 		return member.Name.Value, member.Name.Token, true
 	default:
 		return "", lexer.Token{}, false
+	}
+}
+
+func isAllowedCoreBuiltinImpl(target string, token lexer.Token) bool {
+	if token.File == "" {
+		return false
+	}
+	path := filepath.ToSlash(filepath.Clean(token.File))
+	if !strings.Contains(path, "/sec/core/") && !strings.HasPrefix(path, "sec/core/") {
+		return false
+	}
+	return isCoreBuiltinImplTarget(target)
+}
+
+func isCoreBuiltinImplTarget(target string) bool {
+	switch target {
+	case "bool",
+		"byte",
+		"char",
+		"rune",
+		"string",
+		"int",
+		"int8",
+		"int16",
+		"int32",
+		"int64",
+		"int128",
+		"int256",
+		"uint",
+		"uint8",
+		"uint16",
+		"uint32",
+		"uint64",
+		"uint128",
+		"uint256",
+		"float",
+		"float32",
+		"float64",
+		"decimal",
+		"decimal128",
+		"RawPtr",
+		"Option",
+		"Result":
+		return true
+	default:
+		return false
 	}
 }
 
@@ -887,6 +978,8 @@ func (a *Analyzer) analyzeStatement(stmt ast.Statement) {
 		a.analyzeWhileStatement(stmt)
 	case *ast.SwitchStatement:
 		a.analyzeSwitchStatement(stmt)
+	case *ast.SelectStatement:
+		a.analyzeSelectStatement(stmt)
 	case *ast.MatchStatement:
 		a.analyzeMatchStatement(stmt)
 	case *ast.FallthroughStatement:
@@ -1012,6 +1105,7 @@ func (a *Analyzer) analyzeIfStatement(stmt *ast.IfStatement) {
 
 	before := copyAssigned(a.assigned)
 	beforeMoved := copyMoved(a.moved)
+	beforeBorrows := copyBorrows(a.borrows)
 	beforeLocalRefContainers := copyLocalRefContainers(a.localRefContainers)
 	beforeArenaGenerations := copyArenaGenerations(a.arenaGenerations)
 	thenBranch := a.analyzeBranchBlock(stmt.Consequence)
@@ -1019,6 +1113,7 @@ func (a *Analyzer) analyzeIfStatement(stmt *ast.IfStatement) {
 		elseBranch := a.analyzeBranchBlock(stmt.Alternative)
 		a.assigned = mergeContinuingAssigned(before, thenBranch, elseBranch)
 		a.moved = mergeContinuingMoved(beforeMoved, thenBranch, elseBranch)
+		a.borrows = mergeContinuingBorrows(beforeBorrows, thenBranch, elseBranch)
 		a.localRefContainers = mergeContinuingLocalRefContainers(beforeLocalRefContainers, thenBranch, elseBranch)
 		a.arenaGenerations = mergeContinuingArenaGenerations(beforeArenaGenerations, thenBranch, elseBranch)
 		return
@@ -1027,12 +1122,14 @@ func (a *Analyzer) analyzeIfStatement(stmt *ast.IfStatement) {
 	fallthroughBranch := branchAnalysis{
 		assigned:           before,
 		moved:              beforeMoved,
+		borrows:            beforeBorrows,
 		localRefContainers: beforeLocalRefContainers,
 		arenaGenerations:   beforeArenaGenerations,
 		continues:          true,
 	}
 	a.assigned = mergeContinuingAssigned(before, thenBranch, fallthroughBranch)
 	a.moved = mergeContinuingMoved(beforeMoved, thenBranch, fallthroughBranch)
+	a.borrows = mergeContinuingBorrows(beforeBorrows, thenBranch, fallthroughBranch)
 	a.localRefContainers = mergeContinuingLocalRefContainers(beforeLocalRefContainers, thenBranch, fallthroughBranch)
 	a.arenaGenerations = mergeContinuingArenaGenerations(beforeArenaGenerations, thenBranch, fallthroughBranch)
 }
@@ -1327,6 +1424,7 @@ func (a *Analyzer) inferForRangeBindingType(expr *ast.RangeExpression, step ast.
 type branchAnalysis struct {
 	assigned           map[string]bool
 	moved              map[string]lexer.Token
+	borrows            map[string][]borrowRecord
 	localRefContainers map[string]localReferenceOrigin
 	arenaGenerations   map[string]int
 	continues          bool
@@ -1334,7 +1432,7 @@ type branchAnalysis struct {
 
 func (a *Analyzer) analyzeBranchBlock(block *ast.BlockStatement) branchAnalysis {
 	if block == nil {
-		return branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), continues: true}
+		return branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), borrows: copyBorrows(a.borrows), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), continues: true}
 	}
 
 	previousSymbols := a.symbols
@@ -1365,6 +1463,7 @@ func (a *Analyzer) analyzeBranchBlock(block *ast.BlockStatement) branchAnalysis 
 	return branchAnalysis{
 		assigned:           copyAssigned(a.assigned),
 		moved:              copyMoved(a.moved),
+		borrows:            copyBorrows(a.borrows),
 		localRefContainers: copyLocalRefContainers(a.localRefContainers),
 		arenaGenerations:   copyArenaGenerations(a.arenaGenerations),
 		continues:          !blockDefinitelyReturns(block),
@@ -1406,6 +1505,43 @@ func mergeContinuingMoved(before map[string]lexer.Token, branches ...branchAnaly
 	return merged
 }
 
+func mergeContinuingBorrows(before map[string][]borrowRecord, branches ...branchAnalysis) map[string][]borrowRecord {
+	merged := map[string][]borrowRecord{}
+	foundContinuing := false
+	for _, branch := range branches {
+		if !branch.continues {
+			continue
+		}
+		foundContinuing = true
+		for root, records := range branch.borrows {
+			for _, record := range records {
+				if containsBorrowRecord(merged[root], record) {
+					continue
+				}
+				merged[root] = append(merged[root], record)
+			}
+		}
+	}
+	if !foundContinuing {
+		return copyBorrows(before)
+	}
+	return merged
+}
+
+func containsBorrowRecord(records []borrowRecord, target borrowRecord) bool {
+	for _, record := range records {
+		if record.Root == target.Root &&
+			record.Holder == target.Holder &&
+			record.Kind == target.Kind &&
+			record.Token.File == target.Token.File &&
+			record.Token.Line == target.Token.Line &&
+			record.Token.Column == target.Token.Column {
+			return true
+		}
+	}
+	return false
+}
+
 func mergeContinuingLocalRefContainers(before map[string]localReferenceOrigin, branches ...branchAnalysis) map[string]localReferenceOrigin {
 	merged := copyLocalRefContainers(before)
 	for _, branch := range branches {
@@ -1437,6 +1573,7 @@ func mergeContinuingArenaGenerations(before map[string]int, branches ...branchAn
 func (a *Analyzer) analyzeSwitchStatement(stmt *ast.SwitchStatement) {
 	before := copyAssigned(a.assigned)
 	beforeMoved := copyMoved(a.moved)
+	beforeBorrows := copyBorrows(a.borrows)
 	beforeLocalRefContainers := copyLocalRefContainers(a.localRefContainers)
 	beforeArenaGenerations := copyArenaGenerations(a.arenaGenerations)
 	if stmt.DefaultNotFinalToken.Type != "" {
@@ -1473,12 +1610,272 @@ func (a *Analyzer) analyzeSwitchStatement(stmt *ast.SwitchStatement) {
 	}
 
 	if stmt.Default == nil && !tracker.isExhaustive() {
-		branches = append(branches, branchAnalysis{assigned: before, moved: beforeMoved, localRefContainers: beforeLocalRefContainers, arenaGenerations: beforeArenaGenerations, continues: true})
+		branches = append(branches, branchAnalysis{assigned: before, moved: beforeMoved, borrows: beforeBorrows, localRefContainers: beforeLocalRefContainers, arenaGenerations: beforeArenaGenerations, continues: true})
 	}
 	a.assigned = mergeContinuingAssigned(before, branches...)
 	a.moved = mergeContinuingMoved(beforeMoved, branches...)
+	a.borrows = mergeContinuingBorrows(beforeBorrows, branches...)
 	a.localRefContainers = mergeContinuingLocalRefContainers(beforeLocalRefContainers, branches...)
 	a.arenaGenerations = mergeContinuingArenaGenerations(beforeArenaGenerations, branches...)
+}
+
+func (a *Analyzer) analyzeSelectStatement(stmt *ast.SelectStatement) {
+	beforeAssigned := copyAssigned(a.assigned)
+	beforeMoved := copyMoved(a.moved)
+	beforeBorrows := copyBorrows(a.borrows)
+	beforeLocalRefContainers := copyLocalRefContainers(a.localRefContainers)
+	beforeArenaGenerations := copyArenaGenerations(a.arenaGenerations)
+
+	if len(stmt.Branches) == 0 {
+		a.addErrorAtToken(stmt.Token, "select requires at least one branch")
+		return
+	}
+	if stmt.DefaultNotFinalToken.Type != "" {
+		a.addErrorAtToken(stmt.DefaultNotFinalToken, "default branch must be last in select")
+	}
+	for _, token := range stmt.DuplicateDefaultTokens {
+		a.addErrorAtToken(token, "select may contain only one default branch")
+	}
+	if stmt.UnreachableTimeoutToken.Type != "" {
+		a.addErrorAtToken(stmt.UnreachableTimeoutToken, "timeout branch is unreachable because default executes immediately")
+	}
+	a.checkMutexGuardsAcrossSelect(stmt.Token)
+
+	seenExclusive := map[string]selectResource{}
+	seenMovedMessages := map[string]selectResource{}
+	branches := make([]branchAnalysis, 0, len(stmt.Branches)+1)
+	for _, branch := range stmt.Branches {
+		if branch == nil {
+			continue
+		}
+		if resource, ok := a.selectExclusiveResource(branch); ok {
+			if previous, exists := seenExclusive[resource.Root]; exists {
+				kind := resource.Kind
+				if previous.Kind == kind {
+					a.addErrorAtTokenWithPrevious(branch.Token, previous.Token, "%s %s is used by more than one branch in the same select", kind, resource.Root)
+				} else {
+					a.addErrorAtTokenWithPrevious(branch.Token, previous.Token, "resource %s is used by more than one branch in the same select as %s and %s", resource.Root, previous.Kind, kind)
+				}
+			} else {
+				seenExclusive[resource.Root] = resource
+			}
+		}
+		if resource, ok := a.selectMovedMessageResource(branch); ok {
+			if previous, exists := seenMovedMessages[resource.Root]; exists {
+				a.addErrorAtTokenWithPrevious(branch.Token, previous.Token, "message value %s is moved by multiple select branches", resource.Root)
+			} else {
+				seenMovedMessages[resource.Root] = resource
+			}
+		}
+		branches = append(branches, a.analyzeSelectBranchBody(branch))
+	}
+	if !selectHasDefault(stmt) {
+		branches = append(branches, branchAnalysis{assigned: beforeAssigned, moved: beforeMoved, borrows: beforeBorrows, localRefContainers: beforeLocalRefContainers, arenaGenerations: beforeArenaGenerations, continues: true})
+	}
+	a.assigned = mergeContinuingAssigned(beforeAssigned, branches...)
+	a.moved = mergeContinuingMoved(beforeMoved, branches...)
+	a.borrows = mergeContinuingBorrows(beforeBorrows, branches...)
+	a.localRefContainers = mergeContinuingLocalRefContainers(beforeLocalRefContainers, branches...)
+	a.arenaGenerations = mergeContinuingArenaGenerations(beforeArenaGenerations, branches...)
+}
+
+func (a *Analyzer) checkMutexGuardsAcrossSelect(token lexer.Token) {
+	for name, symbol := range a.symbols {
+		if !isMutexGuardType(symbol.Type) {
+			continue
+		}
+		if _, moved := a.moved[name]; moved {
+			continue
+		}
+		a.addErrorAtTokenWithPrevious(token, symbol.Token, "mutex guard %s remains active across select", name)
+	}
+}
+
+func selectHasDefault(stmt *ast.SelectStatement) bool {
+	for _, branch := range stmt.Branches {
+		if branch != nil && branch.Kind == ast.SelectDefaultBranch {
+			return true
+		}
+	}
+	return false
+}
+
+func (a *Analyzer) selectBranchResultType(branch *ast.SelectBranch) (Type, bool) {
+	switch branch.Kind {
+	case ast.SelectDefaultBranch:
+		return Type{Name: "void", Kind: VoidType}, true
+	case ast.SelectTimeoutBranch:
+		if branch.Value == nil {
+			return Type{Kind: InvalidType}, false
+		}
+		durationType, _ := a.inferExpression(branch.Value)
+		if durationType.Kind != InvalidType && !isNumericType(durationType) {
+			a.addErrorAtToken(expressionToken(branch.Value), "after duration must be duration-compatible numeric value, got %s", typeDisplayName(durationType))
+			return Type{Kind: InvalidType}, false
+		}
+		return Type{Name: "void", Kind: VoidType}, true
+	case ast.SelectOperationBranch:
+		return a.selectableOperationType(branch.Value)
+	default:
+		return Type{Kind: InvalidType}, false
+	}
+}
+
+func (a *Analyzer) selectableOperationType(expr ast.Expression) (Type, bool) {
+	switch expr := expr.(type) {
+	case *ast.AwaitExpression:
+		typ, _ := a.inferAwaitExpression(expr)
+		return typ, true
+	case *ast.CallExpression:
+		member, ok := expr.Callee.(*ast.MemberExpression)
+		if !ok || member.Property == nil {
+			a.inferExpression(expr)
+			return Type{Kind: InvalidType}, false
+		}
+		receiverType, ok := a.compilerKnownReceiverType(member.Object)
+		if !ok {
+			a.inferExpression(expr)
+			return Type{Kind: InvalidType}, false
+		}
+		if isReceiverType(receiverType) {
+			switch member.Property.Value {
+			case "Receive", "TryReceive":
+				typ, _ := a.inferExpression(expr)
+				return typ, true
+			}
+		}
+		if isSenderType(receiverType) {
+			switch member.Property.Value {
+			case "Send", "TrySend", "SendRevocable":
+				typ, _ := a.inferExpression(expr)
+				return typ, true
+			}
+		}
+		a.inferExpression(expr)
+		return Type{Kind: InvalidType}, false
+	default:
+		a.inferExpression(expr)
+		return Type{Kind: InvalidType}, false
+	}
+}
+
+type selectResource struct {
+	Root  string
+	Kind  string
+	Token lexer.Token
+}
+
+func (a *Analyzer) selectExclusiveResource(branch *ast.SelectBranch) (selectResource, bool) {
+	if branch == nil || branch.Value == nil || branch.Kind != ast.SelectOperationBranch {
+		return selectResource{}, false
+	}
+	switch expr := branch.Value.(type) {
+	case *ast.AwaitExpression:
+		root, ok := borrowRootName(expr.Value)
+		if !ok {
+			return selectResource{}, false
+		}
+		return selectResource{Root: root, Kind: "task", Token: branch.Token}, true
+	case *ast.CallExpression:
+		member, ok := expr.Callee.(*ast.MemberExpression)
+		if !ok {
+			return selectResource{}, false
+		}
+		receiverType, ok := a.compilerKnownReceiverType(member.Object)
+		if !ok {
+			return selectResource{}, false
+		}
+		root, ok := borrowRootName(member.Object)
+		if !ok {
+			return selectResource{}, false
+		}
+		if isReceiverType(receiverType) {
+			return selectResource{Root: root, Kind: "receiver", Token: branch.Token}, true
+		}
+		if isSenderType(receiverType) {
+			return selectResource{Root: root, Kind: "sender", Token: branch.Token}, true
+		}
+	}
+	return selectResource{}, false
+}
+
+func (a *Analyzer) selectMovedMessageResource(branch *ast.SelectBranch) (selectResource, bool) {
+	if branch == nil || branch.Value == nil || branch.Kind != ast.SelectOperationBranch {
+		return selectResource{}, false
+	}
+	call, ok := branch.Value.(*ast.CallExpression)
+	if !ok || len(call.Arguments) == 0 {
+		return selectResource{}, false
+	}
+	member, ok := call.Callee.(*ast.MemberExpression)
+	if !ok || member.Property == nil {
+		return selectResource{}, false
+	}
+	receiverType, ok := a.compilerKnownReceiverType(member.Object)
+	if !ok || !isSenderType(receiverType) {
+		return selectResource{}, false
+	}
+	switch member.Property.Value {
+	case "Send", "TrySend", "SendRevocable":
+	default:
+		return selectResource{}, false
+	}
+	root, ok := borrowRootName(call.Arguments[0])
+	if !ok {
+		return selectResource{}, false
+	}
+	symbol, ok := a.symbols[root]
+	if !ok || !MoveOnly(symbol.Type) {
+		return selectResource{}, false
+	}
+	return selectResource{Root: root, Kind: "message", Token: branch.Token}, true
+}
+
+func (a *Analyzer) analyzeSelectBranchBody(branch *ast.SelectBranch) branchAnalysis {
+	previousSymbols := a.symbols
+	previousConstInts := a.constInts
+	previousAssigned := a.assigned
+	previousMoved := a.moved
+	previousBorrows := a.borrows
+	previousLocalRefContainers := a.localRefContainers
+	previousArenaGenerations := a.arenaGenerations
+	a.symbols = copySymbols(previousSymbols)
+	a.constInts = copyConstInts(previousConstInts)
+	a.assigned = copyAssigned(previousAssigned)
+	a.moved = copyMoved(previousMoved)
+	a.borrows = copyBorrows(previousBorrows)
+	a.localRefContainers = copyLocalRefContainers(previousLocalRefContainers)
+	a.arenaGenerations = copyArenaGenerations(previousArenaGenerations)
+	defer func() {
+		a.symbols = previousSymbols
+		a.constInts = previousConstInts
+		a.assigned = previousAssigned
+		a.moved = previousMoved
+		a.borrows = previousBorrows
+		a.localRefContainers = previousLocalRefContainers
+		a.arenaGenerations = previousArenaGenerations
+	}()
+
+	resultType, selectable := a.selectBranchResultType(branch)
+	if branch.Kind != ast.SelectDefaultBranch && !selectable {
+		a.addErrorAtToken(branch.Token, "operation is not selectable")
+	}
+	if branch.Binding != nil && resultType.Kind != InvalidType && resultType.Kind != VoidType {
+		if a.defineSymbol(branch.Binding.Value, resultType, false, branch.Binding.Token) {
+			a.assigned[branch.Binding.Value] = true
+		}
+	} else if branch.Binding != nil && resultType.Kind == VoidType {
+		a.addErrorAtToken(branch.Binding.Token, "select branch binding requires non-void operation result")
+	}
+	a.analyzeBlockStatements(branch.Body)
+	return branchAnalysis{
+		assigned:           copyAssigned(a.assigned),
+		moved:              copyMoved(a.moved),
+		borrows:            copyBorrows(a.borrows),
+		localRefContainers: copyLocalRefContainers(a.localRefContainers),
+		arenaGenerations:   copyArenaGenerations(a.arenaGenerations),
+		continues:          !blockDefinitelyReturns(branch.Body),
+	}
 }
 
 func (a *Analyzer) analyzeSwitchCaseItems(clause *ast.SwitchCase, hasSubject bool, subjectType Type, tracker *switchCoverageTracker) {
@@ -1811,13 +2208,14 @@ func (a *Analyzer) analyzeSwitchFallthrough(clause *ast.SwitchCase, isFinal bool
 
 func (a *Analyzer) analyzeSwitchCaseBody(block *ast.BlockStatement) branchAnalysis {
 	if block == nil {
-		return branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), continues: true}
+		return branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), borrows: copyBorrows(a.borrows), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), continues: true}
 	}
 
 	previousSymbols := a.symbols
 	previousConstInts := a.constInts
 	previousAssigned := a.assigned
 	previousMoved := a.moved
+	previousBorrows := a.borrows
 	previousLocalRefContainers := a.localRefContainers
 	previousArenaGenerations := a.arenaGenerations
 	previousInSwitchCaseBody := a.inSwitchCaseBody
@@ -1825,6 +2223,7 @@ func (a *Analyzer) analyzeSwitchCaseBody(block *ast.BlockStatement) branchAnalys
 	a.constInts = copyConstInts(previousConstInts)
 	a.assigned = copyAssigned(previousAssigned)
 	a.moved = copyMoved(previousMoved)
+	a.borrows = copyBorrows(previousBorrows)
 	a.localRefContainers = copyLocalRefContainers(previousLocalRefContainers)
 	a.arenaGenerations = copyArenaGenerations(previousArenaGenerations)
 	a.inSwitchCaseBody = true
@@ -1833,6 +2232,7 @@ func (a *Analyzer) analyzeSwitchCaseBody(block *ast.BlockStatement) branchAnalys
 		a.constInts = previousConstInts
 		a.assigned = previousAssigned
 		a.moved = previousMoved
+		a.borrows = previousBorrows
 		a.localRefContainers = previousLocalRefContainers
 		a.arenaGenerations = previousArenaGenerations
 		a.inSwitchCaseBody = previousInSwitchCaseBody
@@ -1843,6 +2243,7 @@ func (a *Analyzer) analyzeSwitchCaseBody(block *ast.BlockStatement) branchAnalys
 	return branchAnalysis{
 		assigned:           copyAssigned(a.assigned),
 		moved:              copyMoved(a.moved),
+		borrows:            copyBorrows(a.borrows),
 		localRefContainers: copyLocalRefContainers(a.localRefContainers),
 		arenaGenerations:   copyArenaGenerations(a.arenaGenerations),
 		continues:          !blockDefinitelyReturns(block) && !hasFallthrough,
@@ -2297,7 +2698,11 @@ func (a *Analyzer) analyzeFunctionBodyInScope(fn *ast.FunctionDeclaration, name 
 	}()
 
 	for _, param := range function.Parameters {
-		a.symbols[param.Name] = Symbol{Name: param.Name, Type: param.Type, Mutable: param.MutableRef, Token: param.Token, Storage: StorageOriginInline, Local: false, ScopeDepth: 0}
+		symbol := Symbol{Name: param.Name, Type: param.Type, Mutable: param.MutableRef, Token: param.Token, Storage: StorageOriginInline, Local: false, ScopeDepth: 0}
+		a.symbols[param.Name] = symbol
+		completionSymbol := symbol
+		completionSymbol.Local = true
+		a.completionSymbols[param.Name] = completionSymbol
 		delete(a.constInts, param.Name)
 		a.assigned[param.Name] = true
 	}
@@ -2570,6 +2975,8 @@ func statementDefinitelyReturns(stmt ast.Statement) bool {
 		return blockDefinitelyReturns(stmt.Consequence) && blockDefinitelyReturns(stmt.Alternative)
 	case *ast.SwitchStatement:
 		return switchDefinitelyReturns(stmt)
+	case *ast.SelectStatement:
+		return selectDefinitelyReturns(stmt)
 	case *ast.ForStatement:
 		return len(stmt.Bindings) == 0 && stmt.Iterable == nil && !blockContainsBreak(stmt.Body)
 	case *ast.WhileStatement:
@@ -2720,6 +3127,13 @@ func statementContainsBreak(stmt ast.Statement) bool {
 			}
 		}
 		return stmt.Default != nil && blockContainsBreak(stmt.Default.Body)
+	case *ast.SelectStatement:
+		for _, branch := range stmt.Branches {
+			if branch != nil && blockContainsBreak(branch.Body) {
+				return true
+			}
+		}
+		return false
 	case *ast.UnsafeStatement:
 		return blockContainsBreak(stmt.Body)
 	default:
@@ -2756,6 +3170,18 @@ func switchDefinitelyReturns(stmt *ast.SwitchStatement) bool {
 			return false
 		}
 		nextTerminates = terminates
+	}
+	return true
+}
+
+func selectDefinitelyReturns(stmt *ast.SelectStatement) bool {
+	if stmt == nil || len(stmt.Branches) == 0 || !selectHasDefault(stmt) {
+		return false
+	}
+	for _, branch := range stmt.Branches {
+		if branch == nil || !blockDefinitelyReturns(branch.Body) {
+			return false
+		}
 	}
 	return true
 }
@@ -3088,6 +3514,7 @@ func (a *Analyzer) analyzeResultReturnStatement(functionName string, returnType 
 		if a.checkExpressionEscapesLocalReference(functionName, expr.Value) {
 			return
 		}
+		a.markMoveSource(expr.Value)
 	case *ast.ErrExpression:
 		if len(expr.Arguments) != 1 {
 			a.addErrorAtToken(expr.Token, "Err expects 1 argument, got %d", len(expr.Arguments))
@@ -3100,7 +3527,9 @@ func (a *Analyzer) analyzeResultReturnStatement(functionName string, returnType 
 		expected := returnType.TypeArgs[1]
 		if !canInitialize(expected, valueType, expr.Value) {
 			a.addErrorAtToken(expressionToken(expr.Value), "function %s must return Err(%s), got Err(%s)", functionName, typeDisplayName(expected), typeDisplayName(valueType))
+			return
 		}
+		a.markMoveSource(expr.Value)
 	default:
 		a.addErrorAtToken(expressionToken(stmt.Value), "function %s returning %s must return Ok(...) or Err(...)", functionName, typeDisplayName(returnType))
 	}
@@ -4019,7 +4448,7 @@ func (a *Analyzer) registerImplStatement(stmt *ast.ImplStatement) {
 		return
 	}
 
-	if !target.Named && target.Kind != InvalidType {
+	if !target.Named && target.Kind != InvalidType && !isAllowedCoreBuiltinImpl(stmt.Target.Name, stmt.Target.Token) {
 		return
 	}
 	if !a.validateImplGenericTarget(stmt, target) {
@@ -4186,7 +4615,9 @@ func (a *Analyzer) analyzeImplStaticLet(targetName string, stmt *ast.LetStatemen
 		a.addErrorAtToken(stmt.Name.Token, "static member %s already declared at %d:%d, previous declaration at %d:%d", qualifiedName, stmt.Name.Token.Line, stmt.Name.Token.Column, previous.Token.Line, previous.Token.Column)
 		return
 	}
-	a.symbols[qualifiedName] = Symbol{Name: qualifiedName, Type: declaredType, Mutable: stmt.Mutable, Token: stmt.Name.Token, Storage: StorageOriginStatic, Local: false}
+	symbol := Symbol{Name: qualifiedName, Type: declaredType, Mutable: stmt.Mutable, Token: stmt.Name.Token, Storage: StorageOriginStatic, Local: false}
+	a.symbols[qualifiedName] = symbol
+	a.completionSymbols[qualifiedName] = symbol
 	a.assigned[qualifiedName] = stmt.Value != nil
 }
 
@@ -4309,7 +4740,7 @@ func (a *Analyzer) analyzeImplBody(stmt *ast.ImplStatement) {
 		return
 	}
 	target, ok := a.types[stmt.Target.Name]
-	if !ok || !target.Named {
+	if !ok || (!target.Named && !isAllowedCoreBuiltinImpl(stmt.Target.Name, stmt.Target.Token)) {
 		return
 	}
 	genericParams := implGenericParametersForTarget(stmt, target)
@@ -4728,11 +5159,8 @@ func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
 			if typeCarriesReferenceOrigin(declaredType) {
 				a.updateReferenceSymbolOrigin(stmt.Name.Value, declaredType)
 			}
-			a.transferBorrowHolderFromExpression(stmt.Value, stmt.Name.Value)
 			a.markMoveSource(stmt.Value)
-			if refExpr, ok := stmt.Value.(*ast.RefExpression); ok {
-				a.registerBorrow(stmt.Name.Value, refExpr)
-			}
+			a.bindBorrowHoldersFromExpression(stmt.Value, stmt.Name.Value)
 			a.markLocalRefContainerFromValue(stmt.Name.Value, stmt.Value)
 			a.setConstInt(stmt.Name.Value, stmt.Value)
 		}
@@ -4757,8 +5185,6 @@ func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
 		return
 	}
 
-	a.markMoveSource(stmt.Value)
-	a.transferBorrowHolderFromExpression(stmt.Value, stmt.Name.Value)
 	if defined && typeCarriesReferenceOrigin(declaredType) && typeCarriesReferenceOrigin(exprType) {
 		declaredType = referenceTypeWithOrigin(declaredType, exprType)
 		a.updateReferenceSymbolOrigin(stmt.Name.Value, declaredType)
@@ -4769,9 +5195,8 @@ func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
 	}
 
 	if a.checkInitializerType(declaredType, exprType, stmt.Value) && defined {
-		if refExpr, ok := stmt.Value.(*ast.RefExpression); ok {
-			a.registerBorrow(stmt.Name.Value, refExpr)
-		}
+		a.markMoveSource(stmt.Value)
+		a.bindBorrowHoldersFromExpression(stmt.Value, stmt.Name.Value)
 		a.markLocalRefContainerFromValue(stmt.Name.Value, stmt.Value)
 		a.setConstInt(stmt.Name.Value, stmt.Value)
 	}
@@ -4887,10 +5312,7 @@ func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement, all
 		a.assigned[symbol.Name] = true
 		delete(a.moved, symbol.Name)
 		a.endBorrowsHeldBy(symbol.Name)
-		a.transferBorrowHolderFromExpression(stmt.Value, symbol.Name)
-		if refExpr, ok := stmt.Value.(*ast.RefExpression); ok {
-			a.registerBorrow(symbol.Name, refExpr)
-		}
+		a.bindBorrowHoldersFromExpression(stmt.Value, symbol.Name)
 		if typeCarriesReferenceOrigin(symbol.Type) && typeCarriesReferenceOrigin(exprType) {
 			symbol.Type = referenceTypeWithOrigin(symbol.Type, exprType)
 			a.symbols[symbol.Name] = symbol
@@ -4920,16 +5342,93 @@ func (a *Analyzer) analyzeIndexAssignmentStatement(stmt *ast.AssignmentStatement
 }
 
 func (a *Analyzer) markMoveSource(expr ast.Expression) bool {
+	switch expr := expr.(type) {
+	case *ast.Identifier:
+		symbol, ok := a.symbols[expr.Value]
+		if !ok || !MoveOnly(symbol.Type) {
+			return false
+		}
+		if a.checkBorrowedMove(expr.Value, expr.Token) {
+			return false
+		}
+		a.moved[expr.Value] = expr.Token
+		return true
+	case *ast.StructLiteral:
+		moved := false
+		for _, field := range expr.Fields {
+			if field != nil && a.markMoveSource(field.Value) {
+				moved = true
+			}
+		}
+		return moved
+	case *ast.ArrayLiteral:
+		moved := false
+		for _, element := range expr.Elements {
+			if a.markMoveSource(element) {
+				moved = true
+			}
+		}
+		return moved
+	case *ast.OkExpression:
+		if expr.Value != nil {
+			return a.markMoveSource(expr.Value)
+		}
+	case *ast.ErrExpression:
+		if expr.Value != nil {
+			return a.markMoveSource(expr.Value)
+		}
+	case *ast.SpreadExpression:
+		return a.markMoveSource(expr.Value)
+	case *ast.ConversionExpression:
+		return a.markMoveSource(expr.Value)
+	}
+	return false
+}
+
+func (a *Analyzer) bindBorrowHoldersFromExpression(expr ast.Expression, holder string) {
+	if holder == "" || expr == nil {
+		return
+	}
+	switch expr := expr.(type) {
+	case *ast.RefExpression:
+		a.registerBorrow(holder, expr)
+	case *ast.Identifier:
+		a.transferBorrowHolderFromExpression(expr, holder)
+	case *ast.StructLiteral:
+		for _, field := range expr.Fields {
+			if field != nil {
+				a.bindBorrowHoldersFromExpression(field.Value, holder)
+			}
+		}
+	case *ast.ArrayLiteral:
+		for _, element := range expr.Elements {
+			a.bindBorrowHoldersFromExpression(element, holder)
+		}
+	case *ast.OkExpression:
+		if expr.Value != nil {
+			a.bindBorrowHoldersFromExpression(expr.Value, holder)
+		}
+	case *ast.ErrExpression:
+		if expr.Value != nil {
+			a.bindBorrowHoldersFromExpression(expr.Value, holder)
+		}
+	case *ast.SpreadExpression:
+		a.bindBorrowHoldersFromExpression(expr.Value, holder)
+	case *ast.ConversionExpression:
+		a.bindBorrowHoldersFromExpression(expr.Value, holder)
+	}
+}
+
+func (a *Analyzer) transferBorrowHolderFromExpression(expr ast.Expression, holder string) {
 	ident, ok := expr.(*ast.Identifier)
-	if !ok {
-		return false
+	if !ok || holder == "" || ident.Value == holder {
+		return
 	}
 	symbol, ok := a.symbols[ident.Value]
-	if !ok || !MoveOnly(symbol.Type) {
-		return false
+	if !ok || symbol.Type.Kind != ReferenceType || !MoveOnly(symbol.Type) {
+		return
 	}
-	a.moved[ident.Value] = ident.Token
-	return true
+	a.transferBorrowHolder(ident.Value, holder)
 }
 
 func (a *Analyzer) registerBorrow(holder string, expr *ast.RefExpression) {
@@ -4950,18 +5449,6 @@ func (a *Analyzer) registerBorrow(holder string, expr *ast.RefExpression) {
 		Kind:   kind,
 		Token:  expr.Token,
 	})
-}
-
-func (a *Analyzer) transferBorrowHolderFromExpression(expr ast.Expression, holder string) {
-	ident, ok := expr.(*ast.Identifier)
-	if !ok || holder == "" || ident.Value == holder {
-		return
-	}
-	symbol, ok := a.symbols[ident.Value]
-	if !ok || symbol.Type.Kind != ReferenceType || !MoveOnly(symbol.Type) {
-		return
-	}
-	a.transferBorrowHolder(ident.Value, holder)
 }
 
 func (a *Analyzer) transferBorrowHolder(from string, to string) {
@@ -5079,6 +5566,14 @@ func (a *Analyzer) checkBorrowedMutation(name string, token lexer.Token) bool {
 			return true
 		}
 		a.addErrorAtTokenWithPrevious(token, record.Token, "cannot assign to %s while it is shared borrowed", name)
+		return true
+	}
+	return false
+}
+
+func (a *Analyzer) checkBorrowedMove(name string, token lexer.Token) bool {
+	for _, record := range a.borrows[name] {
+		a.addErrorAtTokenWithPrevious(token, record.Token, "cannot move %s while it is borrowed", name)
 		return true
 	}
 	return false
@@ -5359,7 +5854,17 @@ func (a *Analyzer) validateCompilerKnownGenericType(token lexer.Token, typ Type)
 			a.addErrorAtToken(token, "type %s is not supported by Atomic", typeDisplayName(typ.TypeArgs[0]))
 			return false
 		}
-	case "Task", "Mutex", "MutexGuard", "CompareExchangeResult":
+	case "Task",
+		"Mutex",
+		"MutexGuard",
+		"CompareExchangeResult",
+		"Channel",
+		"Sender",
+		"Receiver",
+		"MessageTicket",
+		"ChannelSendResult",
+		"ChannelTryReceiveResult",
+		"ChannelRevokeResult":
 		return len(typ.TypeArgs) == 1
 	}
 	return true
@@ -5572,6 +6077,14 @@ type expressionValue struct {
 }
 
 func (a *Analyzer) inferExpression(expr ast.Expression) (Type, expressionValue) {
+	typ, value := a.inferExpressionUnrecorded(expr)
+	if expr != nil {
+		a.expressionTypes[expr] = typ
+	}
+	return typ, value
+}
+
+func (a *Analyzer) inferExpressionUnrecorded(expr ast.Expression) (Type, expressionValue) {
 	switch expr := expr.(type) {
 	case *ast.IntegerLiteral:
 		switch expr.Suffix() {
@@ -5840,6 +6353,10 @@ func (a *Analyzer) inferStructLiteral(expr *ast.StructLiteral) (Type, expression
 			}
 			if !sameConcreteType(typ, spreadType) {
 				a.addErrorAtToken(field.Token, "cannot spread %s into %s; spread source must have type %s", typeDisplayName(spreadType), typeDisplayName(typ), typeDisplayName(typ))
+				continue
+			}
+			if !implicitlyCopyable(spreadType) {
+				a.addErrorAtToken(field.Token, "cannot spread %s into %s; %s is not implicitly copyable", typeDisplayName(spreadType), typeDisplayName(typ), typeDisplayName(spreadType))
 			}
 			continue
 		}
@@ -6064,6 +6581,10 @@ func (a *Analyzer) inferMemberExpression(expr *ast.MemberExpression) (Type, bool
 	}
 	objectType = dereferenceType(objectType)
 
+	if expr.Property.Value == "ptr" {
+		return a.inferPointerMember(expr, objectType)
+	}
+
 	if objectType.Kind == ArrayType || objectType.Kind == SliceType {
 		switch expr.Property.Value {
 		case "len":
@@ -6073,11 +6594,13 @@ func (a *Analyzer) inferMemberExpression(expr *ast.MemberExpression) (Type, bool
 
 	if objectType.Kind == StringType {
 		switch expr.Property.Value {
-		case "ptr":
-			return a.types["byte"], true
 		case "len":
-			return a.types["int64"], true
+			return a.types["uint"], true
 		}
+	}
+
+	if memberType, ok := a.inferChannelMember(expr, objectType); ok {
+		return memberType, true
 	}
 
 	if fieldType, ok := lookupStructField(objectType, expr.Property.Value); ok {
@@ -6109,6 +6632,59 @@ func (a *Analyzer) inferMemberExpression(expr *ast.MemberExpression) (Type, bool
 
 	a.addErrorAtToken(expr.Property.Token, "unknown member %s on %s", expr.Property.Value, typeDisplayName(objectType))
 	return Type{Kind: InvalidType}, false
+}
+
+func (a *Analyzer) inferPointerMember(expr *ast.MemberExpression, objectType Type) (Type, bool) {
+	if !a.inUnsafe {
+		a.addErrorAtToken(expr.Property.Token, "member ptr requires unsafe")
+		return Type{Kind: InvalidType}, false
+	}
+	if !isAddressablePointerSource(expr.Object) {
+		a.addErrorAtToken(expr.Property.Token, "member ptr requires an addressable value")
+		return Type{Kind: InvalidType}, false
+	}
+	element := objectType
+	if objectType.Kind == StringType {
+		element = a.types["byte"]
+	}
+	return rawPointerType(element), true
+}
+
+func isAddressablePointerSource(expr ast.Expression) bool {
+	switch expr.(type) {
+	case *ast.Identifier,
+		*ast.MemberExpression,
+		*ast.IndexExpression,
+		*ast.StringLiteral,
+		*ast.InterpolatedStringLiteral:
+		return true
+	default:
+		return false
+	}
+}
+
+func rawPointerType(element Type) Type {
+	return Type{
+		Name:      "RawPtr",
+		Kind:      RawPtrType,
+		Intrinsic: true,
+		TypeArgs:  []Type{element},
+	}
+}
+
+func (a *Analyzer) inferChannelMember(expr *ast.MemberExpression, objectType Type) (Type, bool) {
+	if !isChannelType(objectType) {
+		return Type{}, false
+	}
+	messageType := objectType.TypeArgs[0]
+	switch expr.Property.Value {
+	case "tx":
+		return senderType(messageType), true
+	case "rx":
+		return receiverType(messageType), true
+	default:
+		return Type{}, false
+	}
 }
 
 func (a *Analyzer) inferStaticMemberExpression(expr *ast.MemberExpression) (Type, bool) {
@@ -6197,6 +6773,10 @@ func (a *Analyzer) arrayLiteralElementTypes(expr *ast.ArrayLiteral, expected Typ
 				a.addErrorAtToken(spread.Token, "cannot spread %s into array literal; expansion count is not known at compile time", typeDisplayName(sourceType))
 				return nil, false
 			}
+			if !implicitlyCopyable(*sourceType.Element) {
+				a.addErrorAtToken(spread.Token, "cannot spread %s into array literal; %s is not implicitly copyable", typeDisplayName(sourceType), typeDisplayName(*sourceType.Element))
+				return nil, false
+			}
 			for i := int64(0); i < sourceType.ArrayLength; i++ {
 				out = append(out, *sourceType.Element)
 			}
@@ -6260,6 +6840,14 @@ func (a *Analyzer) inferStringPointerIndex(expr *ast.IndexExpression) (Type, boo
 	objectType, _ := a.inferExpression(member.Object)
 	if dereferenceType(objectType).Kind != StringType {
 		return Type{}, false
+	}
+	if !a.inUnsafe {
+		a.addErrorAtToken(member.Property.Token, "member ptr requires unsafe")
+		return Type{Kind: InvalidType}, true
+	}
+	if !isAddressablePointerSource(member.Object) {
+		a.addErrorAtToken(member.Property.Token, "member ptr requires an addressable value")
+		return Type{Kind: InvalidType}, true
 	}
 	indexType, _ := a.inferExpression(expr.Index)
 	if indexType.Kind == InvalidType {
@@ -6583,6 +7171,9 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 	if typ, value, ok := a.inferCompilerKnownConstructor(expr); ok {
 		return typ, value
 	}
+	if typ, value, ok := a.inferChannelCall(expr); ok {
+		return typ, value
+	}
 	if typ, value, ok := a.inferMutexCall(expr); ok {
 		return typ, value
 	}
@@ -6877,6 +7468,26 @@ func (a *Analyzer) inferArenaCall(expr *ast.CallExpression) (Type, expressionVal
 
 func (a *Analyzer) inferCompilerKnownConstructor(expr *ast.CallExpression) (Type, expressionValue, bool) {
 	name := callExpressionName(expr)
+	if name == "Channel" {
+		if len(expr.GenericArguments) != 1 {
+			a.addErrorAtToken(expr.Token, "Channel requires exactly 1 message type, got %d", len(expr.GenericArguments))
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		if len(expr.Arguments) != 1 {
+			a.addErrorAtToken(expr.Token, "Channel expects 1 capacity argument, got %d", len(expr.Arguments))
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		messageType, ok := a.resolveType(expr.GenericArguments[0])
+		if !ok {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		capacityType, _ := a.inferExpression(expr.Arguments[0])
+		if capacityType.Kind != InvalidType && !isIntegerType(capacityType) {
+			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "Channel capacity must be integer, got %s", typeDisplayName(capacityType))
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		return channelType(messageType), expressionValue{Display: expr.String()}, true
+	}
 	if name != "Mutex" && name != "Atomic" {
 		return Type{}, expressionValue{}, false
 	}
@@ -6938,6 +7549,130 @@ func (a *Analyzer) inferMutexCall(expr *ast.CallExpression) (Type, expressionVal
 	}
 }
 
+func (a *Analyzer) inferChannelCall(expr *ast.CallExpression) (Type, expressionValue, bool) {
+	member, ok := expr.Callee.(*ast.MemberExpression)
+	if !ok || member.Property == nil {
+		return Type{}, expressionValue{}, false
+	}
+	receiverType, ok := a.compilerKnownReceiverType(member.Object)
+	if !ok {
+		return Type{}, expressionValue{}, false
+	}
+	if isSenderType(receiverType) {
+		return a.inferSenderCall(expr, member, receiverType)
+	}
+	if isReceiverType(receiverType) {
+		return a.inferReceiverCall(expr, member, receiverType)
+	}
+	return Type{}, expressionValue{}, false
+}
+
+func (a *Analyzer) inferSenderCall(expr *ast.CallExpression, member *ast.MemberExpression, receiverType Type) (Type, expressionValue, bool) {
+	messageType := receiverType.TypeArgs[0]
+	switch member.Property.Value {
+	case "Share":
+		if !a.checkCompilerKnownCallArity(expr, "Sender.Share", 0, 0) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		return senderType(messageType), expressionValue{Display: expr.String()}, true
+	case "Send":
+		if !a.checkCompilerKnownCallArity(expr, "Sender.Send", 1, 2) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		messageArgType, _ := a.inferExpressionWithExpected(expr.Arguments[0], messageType)
+		if messageArgType.Kind != InvalidType && !canInitialize(messageType, messageArgType, expr.Arguments[0]) {
+			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "Sender.Send message must be %s, got %s", typeDisplayName(messageType), typeDisplayName(messageArgType))
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		if len(expr.Arguments) == 2 {
+			lifetimeType, _ := a.inferExpression(expr.Arguments[1])
+			if lifetimeType.Kind != InvalidType && !isNumericType(lifetimeType) {
+				a.addErrorAtToken(expressionToken(expr.Arguments[1]), "Sender.Send message lifetime must be duration-compatible numeric value, got %s", typeDisplayName(lifetimeType))
+				return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+			}
+		}
+		a.markMoveSource(expr.Arguments[0])
+		return a.intrinsicGenericType("ChannelSendResult", messageType), expressionValue{Display: expr.String()}, true
+	case "SendRevocable":
+		if !a.checkCompilerKnownCallArity(expr, "Sender.SendRevocable", 1, 2) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		messageArgType, _ := a.inferExpressionWithExpected(expr.Arguments[0], messageType)
+		if messageArgType.Kind != InvalidType && !canInitialize(messageType, messageArgType, expr.Arguments[0]) {
+			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "Sender.SendRevocable message must be %s, got %s", typeDisplayName(messageType), typeDisplayName(messageArgType))
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		if len(expr.Arguments) == 2 {
+			lifetimeType, _ := a.inferExpression(expr.Arguments[1])
+			if lifetimeType.Kind != InvalidType && !isNumericType(lifetimeType) {
+				a.addErrorAtToken(expressionToken(expr.Arguments[1]), "Sender.SendRevocable message lifetime must be duration-compatible numeric value, got %s", typeDisplayName(lifetimeType))
+				return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+			}
+		}
+		a.markMoveSource(expr.Arguments[0])
+		return messageTicketType(messageType), expressionValue{Display: expr.String()}, true
+	case "TrySend":
+		if !a.checkCompilerKnownCallArity(expr, "Sender.TrySend", 1, 1) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		messageArgType, _ := a.inferExpressionWithExpected(expr.Arguments[0], messageType)
+		if messageArgType.Kind != InvalidType && !canInitialize(messageType, messageArgType, expr.Arguments[0]) {
+			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "Sender.TrySend message must be %s, got %s", typeDisplayName(messageType), typeDisplayName(messageArgType))
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		a.markMoveSource(expr.Arguments[0])
+		return a.intrinsicGenericType("ChannelSendResult", messageType), expressionValue{Display: expr.String()}, true
+	case "Revoke":
+		if !a.checkCompilerKnownCallArity(expr, "Sender.Revoke", 1, 1) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		ticketType, _ := a.inferExpressionWithExpected(expr.Arguments[0], messageTicketType(messageType))
+		if ticketType.Kind != InvalidType && !sameConcreteType(ticketType, messageTicketType(messageType)) {
+			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "Sender.Revoke ticket must be MessageTicket[%s], got %s", typeDisplayName(messageType), typeDisplayName(ticketType))
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		a.markMoveSource(expr.Arguments[0])
+		return a.intrinsicGenericType("ChannelRevokeResult", messageType), expressionValue{Display: expr.String()}, true
+	case "Close":
+		if !a.checkCompilerKnownCallArity(expr, "Sender.Close", 0, 0) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		a.markMoveSource(member.Object)
+		return Type{Name: "void", Kind: VoidType}, expressionValue{Display: expr.String()}, true
+	default:
+		return Type{}, expressionValue{}, false
+	}
+}
+
+func (a *Analyzer) inferReceiverCall(expr *ast.CallExpression, member *ast.MemberExpression, receiverType Type) (Type, expressionValue, bool) {
+	messageType := receiverType.TypeArgs[0]
+	switch member.Property.Value {
+	case "Receive":
+		if !a.checkCompilerKnownCallArity(expr, "Receiver.Receive", 0, 0) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		return a.intrinsicGenericType("Option", messageType), expressionValue{Display: expr.String()}, true
+	case "TryReceive":
+		if !a.checkCompilerKnownCallArity(expr, "Receiver.TryReceive", 0, 0) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		return a.intrinsicGenericType("ChannelTryReceiveResult", messageType), expressionValue{Display: expr.String()}, true
+	case "Discard":
+		if !a.checkCompilerKnownCallArity(expr, "Receiver.Discard", 0, 0) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		return Type{Name: "void", Kind: VoidType}, expressionValue{Display: expr.String()}, true
+	case "Close":
+		if !a.checkCompilerKnownCallArity(expr, "Receiver.Close", 0, 0) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		a.markMoveSource(member.Object)
+		return Type{Name: "void", Kind: VoidType}, expressionValue{Display: expr.String()}, true
+	default:
+		return Type{}, expressionValue{}, false
+	}
+}
+
 func (a *Analyzer) inferAtomicCall(expr *ast.CallExpression) (Type, expressionValue, bool) {
 	member, ok := expr.Callee.(*ast.MemberExpression)
 	if !ok || member.Property == nil {
@@ -6992,6 +7727,10 @@ func (a *Analyzer) inferAtomicCall(expr *ast.CallExpression) (Type, expressionVa
 }
 
 func (a *Analyzer) checkAtomicCallArity(expr *ast.CallExpression, name string, minArgs int, maxArgs int) bool {
+	return a.checkCompilerKnownCallArity(expr, name, minArgs, maxArgs)
+}
+
+func (a *Analyzer) checkCompilerKnownCallArity(expr *ast.CallExpression, name string, minArgs int, maxArgs int) bool {
 	if len(expr.GenericArguments) != 0 {
 		a.addErrorAtToken(expr.Token, "%s does not take type arguments", name)
 		return false
@@ -7041,6 +7780,10 @@ func (a *Analyzer) callArgumentTypes(args []ast.Expression) ([]Type, []ast.Expre
 			argType = dereferenceType(argType)
 			if argType.Kind != ArrayType || argType.Element == nil {
 				a.addErrorAtToken(spread.Token, "cannot spread %s into fixed-arity call; expansion count is not known at compile time", typeDisplayName(argType))
+				return nil, nil, false
+			}
+			if !implicitlyCopyable(*argType.Element) {
+				a.addErrorAtToken(spread.Token, "cannot spread %s into function arguments; %s is not implicitly copyable", typeDisplayName(argType), typeDisplayName(*argType.Element))
 				return nil, nil, false
 			}
 			for i := int64(0); i < argType.ArrayLength; i++ {
@@ -8102,6 +8845,7 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 	hasResultType := false
 	beforeAssigned := copyAssigned(a.assigned)
 	beforeMoved := copyMoved(a.moved)
+	beforeBorrows := copyBorrows(a.borrows)
 	beforeLocalRefContainers := copyLocalRefContainers(a.localRefContainers)
 	beforeArenaGenerations := copyArenaGenerations(a.arenaGenerations)
 	branches := []branchAnalysis{}
@@ -8168,10 +8912,11 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 	}
 	if !valueContext {
 		if !exhaustive {
-			branches = append(branches, branchAnalysis{assigned: beforeAssigned, moved: beforeMoved, localRefContainers: beforeLocalRefContainers, arenaGenerations: beforeArenaGenerations, continues: true})
+			branches = append(branches, branchAnalysis{assigned: beforeAssigned, moved: beforeMoved, borrows: beforeBorrows, localRefContainers: beforeLocalRefContainers, arenaGenerations: beforeArenaGenerations, continues: true})
 		}
 		a.assigned = mergeContinuingAssigned(beforeAssigned, branches...)
 		a.moved = mergeContinuingMoved(beforeMoved, branches...)
+		a.borrows = mergeContinuingBorrows(beforeBorrows, branches...)
 		a.localRefContainers = mergeContinuingLocalRefContainers(beforeLocalRefContainers, branches...)
 		a.arenaGenerations = mergeContinuingArenaGenerations(beforeArenaGenerations, branches...)
 	}
@@ -8355,12 +9100,14 @@ func (a *Analyzer) analyzeMatchArmBody(arm *ast.MatchArm, info matchPatternInfo)
 	previousConstInts := a.constInts
 	previousAssigned := a.assigned
 	previousMoved := a.moved
+	previousBorrows := a.borrows
 	previousLocalRefContainers := a.localRefContainers
 	previousArenaGenerations := a.arenaGenerations
 	a.symbols = copySymbols(previousSymbols)
 	a.constInts = copyConstInts(previousConstInts)
 	a.assigned = copyAssigned(previousAssigned)
 	a.moved = copyMoved(previousMoved)
+	a.borrows = copyBorrows(previousBorrows)
 	a.localRefContainers = copyLocalRefContainers(previousLocalRefContainers)
 	a.arenaGenerations = copyArenaGenerations(previousArenaGenerations)
 	if info.BindingName != "" {
@@ -8373,6 +9120,7 @@ func (a *Analyzer) analyzeMatchArmBody(arm *ast.MatchArm, info matchPatternInfo)
 		a.constInts = previousConstInts
 		a.assigned = previousAssigned
 		a.moved = previousMoved
+		a.borrows = previousBorrows
 		a.localRefContainers = previousLocalRefContainers
 		a.arenaGenerations = previousArenaGenerations
 	}()
@@ -8386,24 +9134,25 @@ func (a *Analyzer) analyzeMatchArmBody(arm *ast.MatchArm, info matchPatternInfo)
 
 	if arm.ReturnBody != nil {
 		a.analyzeReturnStatement(a.currentFunctionName, a.currentFunctionReturn, arm.ReturnBody)
-		return Type{Kind: InvalidType}, branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), continues: false}
+		return Type{Kind: InvalidType}, branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), borrows: copyBorrows(a.borrows), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), continues: false}
 	}
 	if arm.BlockBody != nil {
 		a.analyzeBlockStatements(arm.BlockBody)
 		return Type{Kind: InvalidType}, branchAnalysis{
 			assigned:           copyAssigned(a.assigned),
 			moved:              copyMoved(a.moved),
+			borrows:            copyBorrows(a.borrows),
 			localRefContainers: copyLocalRefContainers(a.localRefContainers),
 			arenaGenerations:   copyArenaGenerations(a.arenaGenerations),
 			continues:          !a.blockDefinitelyReturns(arm.BlockBody),
 		}
 	}
 	if arm.Body == nil {
-		return Type{Kind: InvalidType}, branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), continues: true}
+		return Type{Kind: InvalidType}, branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), borrows: copyBorrows(a.borrows), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), continues: true}
 	}
 	bodyType, _ := a.inferExpression(arm.Body)
 	a.markMoveSource(arm.Body)
-	return bodyType, branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), continues: true}
+	return bodyType, branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), borrows: copyBorrows(a.borrows), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), continues: true}
 }
 
 func (a *Analyzer) checkMatchExhaustive(expr *ast.MatchExpression, subjectType Type, catchAll bool, seenKinds map[string]bool, seenVariants map[string]bool) bool {
@@ -8913,7 +9662,9 @@ func (a *Analyzer) defineSymbol(name string, typ Type, mutable bool, token lexer
 		return false
 	}
 
-	a.symbols[name] = Symbol{Name: name, Type: typ, Mutable: mutable, Token: token, Storage: StorageOriginInline, Local: a.inFunctionBody, ScopeDepth: a.scopeDepth}
+	symbol := Symbol{Name: name, Type: typ, Mutable: mutable, Token: token, Storage: StorageOriginInline, Local: a.inFunctionBody, ScopeDepth: a.scopeDepth}
+	a.symbols[name] = symbol
+	a.completionSymbols[name] = symbol
 	delete(a.moved, name)
 	return true
 }
@@ -9133,8 +9884,49 @@ func mutexGuardType(inner Type) Type {
 	return Type{Name: "MutexGuard", Kind: StructType, TypeArgs: []Type{inner}}
 }
 
+func (a *Analyzer) intrinsicGenericType(name string, args ...Type) Type {
+	typ, ok := a.types[name]
+	if !ok {
+		return Type{Name: name, Kind: InvalidType, Intrinsic: true, TypeArgs: args}
+	}
+	typ.TypeArgs = append([]Type(nil), args...)
+	if typ.Kind == StructType || typ.Kind == UnionType {
+		typ = a.instantiateGenericType(typ)
+	}
+	typ.Intrinsic = true
+	return typ
+}
+
+func channelType(message Type) Type {
+	return Type{Name: "Channel", Kind: StructType, Intrinsic: true, TypeArgs: []Type{message}}
+}
+
+func senderType(message Type) Type {
+	return Type{Name: "Sender", Kind: StructType, Intrinsic: true, TypeArgs: []Type{message}}
+}
+
+func receiverType(message Type) Type {
+	return Type{Name: "Receiver", Kind: StructType, Intrinsic: true, TypeArgs: []Type{message}}
+}
+
+func messageTicketType(message Type) Type {
+	return Type{Name: "MessageTicket", Kind: StructType, Intrinsic: true, TypeArgs: []Type{message}}
+}
+
 func isTaskType(typ Type) bool {
 	return typ.Name == "Task" && len(typ.TypeArgs) == 1
+}
+
+func isChannelType(typ Type) bool {
+	return typ.Name == "Channel" && len(typ.TypeArgs) == 1
+}
+
+func isSenderType(typ Type) bool {
+	return typ.Name == "Sender" && len(typ.TypeArgs) == 1
+}
+
+func isReceiverType(typ Type) bool {
+	return typ.Name == "Receiver" && len(typ.TypeArgs) == 1
 }
 
 func isMutexType(typ Type) bool {
@@ -9192,6 +9984,15 @@ func sameTypeArguments(left []Type, right []Type) bool {
 		}
 	}
 	return true
+}
+
+func implicitlyCopyable(typ Type) bool {
+	switch CopyClassificationOf(typ) {
+	case CopyTrivial, CopySemantic:
+		return true
+	default:
+		return false
+	}
 }
 
 func sameFunctionType(left Type, right Type) bool {
@@ -9420,6 +10221,8 @@ func statementToken(stmt ast.Statement) lexer.Token {
 	case *ast.WhileStatement:
 		return stmt.Token
 	case *ast.SwitchStatement:
+		return stmt.Token
+	case *ast.SelectStatement:
 		return stmt.Token
 	case *ast.FallthroughStatement:
 		return stmt.Token

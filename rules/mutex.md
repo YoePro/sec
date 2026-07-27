@@ -629,6 +629,7 @@ Implemented:
 - `mutex.tryLock()` returns `Option[MutexGuard[T]]`.
 - member access through `MutexGuard[T]` is forwarded to fields/properties on
   the protected `T`.
+- Semantic analysis rejects live `MutexGuard[T]` values crossing `select`.
 
 Not implemented yet:
 

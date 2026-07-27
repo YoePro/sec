@@ -1,11 +1,94 @@
-module string
+module core
+
+type StringSplitIterator struct {
+}
 
 impl string {
-    fn Len() int {
-        asm {
-            %len_ptr = gep %1, 8       // Get address to length field
-            %res     = load %len_ptr   // read the value from memory
-            ret %res
-        }
+    fn Len() uint {
+        // asm {
+        //     %len_ptr = gep %1, 8       // Get address to length field
+        //     %res     = load %len_ptr   // read the value from memory
+        //     ret %res
+        // }
+        return self.len
     }
+
+    fn IsEmpty() bool {
+        return self.len == 0
+    }
+
+    fn Empty() string {
+        return ""
+    }
+
+    fn Compare(other: string) int {
+        // TODO: Implement string.Compare
+        return 0
+    }
+
+    fn FromByteArray(value: ref byte[]) string {
+        // TODO: implement string.FromByteArray
+        return ""
+    }
+
+    fn FromRuneArray(value: ref rune[]) string {
+        // TODO: Implement string.FromRuneArray
+        return ""
+    }
+
+    fn StartsWith(prefix: string) bool {
+        // TODO: implement string.StartsWith
+        return false
+    }
+
+    fn EndsWith(suffix: string) bool {
+        // TODO: implement string.EndsWith
+        return false
+    }
+
+    fn Contains(value: string) bool {
+        // TODO: implement string.Contains
+        return false
+    }
+
+    fn IndexOf(value: string) Option[uint] {
+        // TODO: Implement string.IndexOf
+        return None()
+    }
+
+    fn LastIndexOf(value: string) Option[uint] {
+        // TODO: Implement string.LastIndexOf
+        return None()
+    }
+
+    fn Trim() string {
+        // TODO: Implement string.Trim
+        return ""
+    }
+
+    fn TrimStart() string {
+        // TODO: Implement string.TrimStart
+        return ""
+    }
+
+    fn TrimEnd() string {
+        // TODO: Implement string.TrimEnd
+        return ""
+    }
+
+    fn Slice(start: uint, end: uint) Result[string, RangeError] {
+        // TODO: Implement string.Slice
+        return Ok("")
+    }
+
+    fn Split(separator: string) StringSplitIterator {
+        // TODO: Implement string.Split
+        return StringSplitIterator {}
+    }
+
+    /** Returns a copy of self */
+    fn ToString() string {
+        return self
+    }
+
 }

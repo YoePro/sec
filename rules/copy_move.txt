@@ -267,7 +267,7 @@ Possible conceptual form:
 
 ```sec
 impl Copy for Buffer {
-    fn Copy(ref self) Result[Buffer, AllocationError] {
+    fn Copy() Result[Buffer, AllocationError] {
         return Buffer.From(self)
     }
 }
@@ -1988,13 +1988,13 @@ Sec may provide ordinary named operations for explicit duplication.
 Examples might include:
 
 ```sec
-fn Clone(ref self) Result[Buffer, AllocationError]
+fn Clone() Result[Buffer, AllocationError]
 ```
 
 or:
 
 ```sec
-fn Duplicate(ref self) Result[File, IOError]
+fn Duplicate() Result[File, IOError]
 ```
 
 These are ordinary operations, not language-level implicit copy unless explicitly classified otherwise.
@@ -2853,7 +2853,7 @@ A shared receiver borrows the value.
 Conceptually:
 
 ```sec
-fn Length(ref self) uint
+fn Length() uint
 ```
 
 The method does not consume ownership.
@@ -2869,7 +2869,7 @@ A mutable receiver obtains exclusive access without ownership transfer.
 Conceptually:
 
 ```sec
-fn Clear(ref mut self) void
+fn Clear() void
 ```
 
 The method may mutate fields according to borrowing rules.
@@ -3074,7 +3074,7 @@ A fallible duplication operation must clean up partial results.
 Example:
 
 ```sec
-fn Clone(ref self) Result[Container, AllocationError]
+fn Clone() Result[Container, AllocationError]
 ```
 
 If copying element N fails:

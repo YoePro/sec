@@ -1077,7 +1077,7 @@ Example:
 
 ```sec
 impl Buffer {
-    fn Data(ref self) ref byte {
+    fn Data() ref byte {
         return ref self.data[0]
     }
 }
@@ -4348,7 +4348,7 @@ Example:
 
 ```sec id="pbksvz"
 interface Container[T] {
-    fn Get(ref self, index: uint) ref T
+    fn Get(index: uint) ref T
 }
 ```
 

@@ -2,10 +2,25 @@
 
 ## Purpose
 
-Channels provide typed, unidirectional communication between tasks.
+Channels provide typed, unidirectional communication between concurrent
+execution entities.
 
 A channel transfers values from one or more send capabilities to one receive
-capability. It is not a task, thread, process, implicit mailbox, or IPC transport.
+capability. It is not a task, thread, process, implicit mailbox, or ordinary IPC
+transport.
+
+Ordinary in-process `Channel[T]` supports communication between tasks and
+threads in any combination:
+
+```text
+task -> task
+task -> thread
+thread -> task
+thread -> thread
+```
+
+Separate processes do not communicate through ordinary in-process `Channel[T]`
+unless a future IPC adapter explicitly defines that mapping.
 
 ## Core model
 
@@ -77,6 +92,14 @@ let channel := Channel[Message](
 
 Every sender has a `SenderID` unique within the channel lifetime.
 
+`SenderID` identifies a logical send capability for one channel.
+
+It is not a `TaskID`, `ThreadID`, operating-system thread ID, executor worker ID
+or current execution-entity identity.
+
+A sender may move between tasks or threads while retaining the same sender
+identity.
+
 A sender identity conceptually contains:
 
 ```text
@@ -135,6 +158,30 @@ Ordinary send and receive operations must not hide dynamic allocation.
 
 `Channel[T]` is the external abstraction. The compiler may choose different
 internal channel types from explicit compile-time capabilities.
+
+The public channel type remains `Channel[T]`.
+
+The compiler must not expose a separate `ThreadChannel[T]` merely because a
+channel may cross a physical thread boundary.
+
+Possible internal implementations include:
+
+- task-local storage
+- executor-shared storage
+- thread-shared storage
+- hybrid storage
+- ISR-safe storage when requested and supported
+
+A capability that may cross a physical thread boundary must use a representation
+that is safe for cross-thread access.
+
+The compiler may determine this through escape analysis, call-graph analysis or
+whole-program analysis.
+
+Public APIs may require a conservative thread-safe representation because the
+capability can escape beyond the current task.
+
+A task-local channel capability must not later escape to a physical thread.
 
 Possible capabilities include:
 
@@ -212,6 +259,12 @@ match tx.Send(message) {
 
 A blocking send is a cancellation point.
 
+Inside a task, blocking send may suspend the task.
+
+Inside a physical thread, blocking send may block or park the physical thread.
+
+The ownership and commit semantics are the same in both cases.
+
 If cancellation occurs before commit:
 
 - the message is not delivered;
@@ -220,6 +273,16 @@ If cancellation occurs before commit:
 
 Cancellation remains task control flow rather than an ordinary send-result
 variant.
+
+When a task or thread ends, sender and receiver capabilities owned by that
+entity are destroyed normally.
+
+The last live sender closes the send side.
+
+Committed messages remain valid after the originating task or thread has ended.
+
+A detached execution entity must not retain a channel capability backed by
+storage that can be destroyed before that detached entity stops using it.
 
 ## Message lifetime
 

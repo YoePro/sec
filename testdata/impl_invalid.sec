@@ -16,7 +16,7 @@ impl MissingTarget {
 // -----------------------------------------------------------------------------
 
 interface InterfaceTarget {
-    fn Execute(ref self) void
+    fn Execute() void
 }
 
 impl InterfaceTarget {
@@ -265,13 +265,13 @@ impl StaticSelfTarget {
 // -----------------------------------------------------------------------------
 
 interface Runnable {
-    fn Run(ref self) void
+    fn Run() void
 }
 
 type Runner struct {
 }
 
 impl Runnable for Runner {
-    fn Run(ref self) void {
+    fn Run() void {
     }
 }

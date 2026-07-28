@@ -14,8 +14,8 @@ A type explicitly declares which interfaces it implements.
 
 ```sec
 interface Vehicle {
-    fn Start(ref mut self) void
-    fn Stop(ref mut self) void
+    fn Start() void
+    fn Stop() void
 }
 ```
 
@@ -44,10 +44,10 @@ Required members are implemented in the type's ordinary impl block.
 
 ```sec
 impl Car {
-    fn Start(ref mut self) void {
+    fn Start() void {
     }
 
-    fn Stop(ref mut self) void {
+    fn Stop() void {
     }
 }
 ```
@@ -88,8 +88,8 @@ interface Vehicle {
         get
     }
 
-    fn Start(ref mut self) void
-    fn Stop(ref mut self) void
+    fn Start() void
+    fn Stop() void
 
     enum State {
         Stopped
@@ -104,7 +104,7 @@ Interface members define requirements unless the language explicitly permits an 
 A required method has no body.
 
 interface Reader {
-    fn Read(ref mut self, buffer: ref mut [byte]) Result[int, IOError]
+    fn Read(buffer: ref mut [byte]) Result[int, IOError]
 }
 
 A required property declares its required accessors.
@@ -223,7 +223,7 @@ interface Collection[T] {
         get
     }
 
-    fn Get(ref self, index: uint) ref T
+    fn Get(index: uint) ref T
 }
 
 A type specifies the complete interface type it implements.
@@ -352,11 +352,10 @@ Implemented:
 - Parser supports interface inheritance syntax:
   `interface ReadWriter implements Reader, Writer { ... }`.
 - Parser supports method requirements with no body:
-  `fn Start(ref mut self) void`.
+  `fn Start() void`.
 - Parser supports property requirements:
   `property Name: Type { get }`,
   `property Name: Type { get set }`.
-- Parser supports `ref self` and `ref mut self` without explicit `: Type`.
 - Parser supports `type Name struct implements Interface { ... }`.
 - Sema registers interface declarations as named `InterfaceType`.
 - Sema checks that implemented names exist.

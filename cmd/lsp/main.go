@@ -255,7 +255,7 @@ func completeSource(uri string, text string, offset int) []completionItem {
 	fileAST := p.ParseProgram()
 
 	analyzer := sema.NewAnalyzer()
-	if fileAST != nil {
+	if fileAST != nil && len(p.Errors()) == 0 {
 		if uri != "" {
 			resolveCoreSources(fileAST, pathFromURI(uri))
 			resolveSourceImports(fileAST, map[string]bool{}, pathFromURI(uri))
@@ -289,6 +289,7 @@ type completionContext struct {
 	Member              bool
 	DotOffset           int
 	TypeForm            bool
+	ContractModifier    bool
 	ReturnValue         bool
 	ExpectedType        *sema.Type
 	CursorOffset        int
@@ -319,6 +320,7 @@ func completionContextAt(text string, offset int) completionContext {
 	}
 	context.ReturnValue = isReturnValueContext(text[:prefixStart], offset)
 	context.TypeForm = isTypeDeclarationFormContext(text[:prefixStart])
+	context.ContractModifier = isContractModifierContext(text[:prefixStart])
 	return context
 }
 
@@ -390,6 +392,41 @@ func isTypeDeclarationFormContext(prefix string) bool {
 		}
 		if tokens[i].Type == lexer.ASSIGN || tokens[i].Type == lexer.LBRACE || tokens[i].Type == lexer.RBRACE {
 			return false
+		}
+	}
+	return false
+}
+
+func isContractModifierContext(prefix string) bool {
+	lineStart := strings.LastIndex(prefix, "\n") + 1
+	currentLine := strings.TrimSpace(prefix[lineStart:])
+	if currentLine == "" {
+		return false
+	}
+
+	l := lexer.New(currentLine)
+	tokens := []lexer.Token{}
+	for {
+		token := l.NextToken()
+		if token.Type == lexer.EOF {
+			break
+		}
+		if token.Type == lexer.COMMENT {
+			continue
+		}
+		if token.Type == lexer.ASSIGN || token.Type == lexer.LBRACE || token.Type == lexer.RBRACE {
+			return false
+		}
+		tokens = append(tokens, token)
+	}
+	if len(tokens) >= 3 && tokens[0].Type == lexer.TYPE && tokens[1].Type == lexer.IDENT {
+		return true
+	}
+	if len(tokens) >= 4 && tokens[0].Type == lexer.LET {
+		for i, token := range tokens {
+			if token.Type == lexer.COLON && i+1 < len(tokens) {
+				return true
+			}
 		}
 	}
 	return false
@@ -471,7 +508,9 @@ func globalCompletionItems(text string, analyzer *sema.Analyzer, context complet
 	}
 
 	keywords := secKeywords
-	if context.TypeForm {
+	if context.ContractModifier {
+		keywords = []string{"range", "in", "multipleOf", "notEmpty", "unique", "finite", "odd", "even"}
+	} else if context.TypeForm {
 		keywords = []string{"struct", "union", "enum", "interface", "register"}
 	}
 	for _, keyword := range keywords {
@@ -663,11 +702,12 @@ func contextHasFunction(context completionContext) bool {
 
 var secKeywords = []string{
 	"after", "asm", "assert", "await", "break", "case", "capture", "continue", "default",
-	"defer", "else", "enum", "extern", "fallthrough", "false", "fn", "for",
+	"defer", "else", "enum", "even", "extern", "fallthrough", "false", "finite", "fn", "for",
 	"free", "get", "if", "impl", "implements", "import", "in", "interface",
-	"let", "match", "module", "mut", "panic", "property", "ref", "return",
-	"select", "self", "set", "spawn", "static", "struct", "switch", "true", "try",
-	"type", "unit", "union", "unsafe", "where", "while",
+	"let", "match", "module", "multipleOf", "mut", "notEmpty", "odd", "panic", "process",
+	"property", "ref", "return", "select", "self", "set", "spawn", "static", "struct",
+	"switch", "task", "thread", "true", "try", "type", "unique", "unit", "union",
+	"unsafe", "where", "while",
 }
 
 func typeCompletionKind(typ sema.Type) int {
@@ -1029,7 +1069,10 @@ func resolveCoreSources(program *ast.Program, sourceFile string) {
 
 func lspProgramContainsCoreSource(program *ast.Program) bool {
 	for _, stmt := range program.Statements {
-		token := lspStatementTokenForSource(stmt)
+		token, ok := lspStatementTokenForSource(stmt)
+		if !ok || token.File == "" {
+			continue
+		}
 		path := filepath.ToSlash(filepath.Clean(token.File))
 		if strings.Contains(path, "/sec/core/") || strings.HasPrefix(path, "sec/core/") {
 			return true
@@ -1038,33 +1081,67 @@ func lspProgramContainsCoreSource(program *ast.Program) bool {
 	return false
 }
 
-func lspStatementTokenForSource(stmt ast.Statement) lexer.Token {
+func lspStatementTokenForSource(stmt ast.Statement) (lexer.Token, bool) {
 	switch stmt := stmt.(type) {
 	case *ast.ModuleStatement:
-		return stmt.Token
+		if stmt == nil {
+			return lexer.Token{}, false
+		}
+		return stmt.Token, true
 	case *ast.TypeDeclStatement:
-		return stmt.Token
+		if stmt == nil {
+			return lexer.Token{}, false
+		}
+		return stmt.Token, true
 	case *ast.UnitDeclStatement:
-		return stmt.Token
+		if stmt == nil {
+			return lexer.Token{}, false
+		}
+		return stmt.Token, true
 	case *ast.EnumDeclaration:
-		return stmt.Token
+		if stmt == nil {
+			return lexer.Token{}, false
+		}
+		return stmt.Token, true
 	case *ast.InterfaceDeclaration:
-		return stmt.Token
+		if stmt == nil {
+			return lexer.Token{}, false
+		}
+		return stmt.Token, true
 	case *ast.ImplStatement:
-		return stmt.Token
+		if stmt == nil {
+			return lexer.Token{}, false
+		}
+		return stmt.Token, true
 	case *ast.FunctionDeclaration:
-		return stmt.Token
+		if stmt == nil {
+			return lexer.Token{}, false
+		}
+		return stmt.Token, true
 	case *ast.LetStatement:
-		return stmt.Token
+		if stmt == nil {
+			return lexer.Token{}, false
+		}
+		return stmt.Token, true
+	case *ast.StructStatement:
+		if stmt == nil {
+			return lexer.Token{}, false
+		}
+		return stmt.Token, true
+	case *ast.ImportStatement:
+		if stmt == nil {
+			return lexer.Token{}, false
+		}
+		return stmt.Token, true
 	default:
-		return lexer.Token{}
+		return lexer.Token{}, false
 	}
 }
 
 func resolveSourceImports(program *ast.Program, seen map[string]bool, sourceFile string) {
 	for _, stmt := range append([]ast.Statement{}, program.Statements...) {
 		importStmt, ok := stmt.(*ast.ImportStatement)
-		if !ok {
+		if !ok || importStmt == nil {
 			continue
 		}
 		sourcePaths := sourceIncludePaths(importStmt.Path, sourceFile)
@@ -1365,26 +1442,44 @@ func qualifyImportedModule(program *ast.Program, module string) {
 	for _, stmt := range program.Statements {
 		switch stmt := stmt.(type) {
 		case *ast.FunctionDeclaration:
+			if stmt == nil {
+				continue
+			}
 			if stmt.Name != nil && !strings.Contains(stmt.Name.Value, ".") {
 				localFunctions[stmt.Name.Value] = true
 			}
 		case *ast.TypeDeclStatement:
+			if stmt == nil {
+				continue
+			}
 			if stmt.Name != nil && !strings.Contains(stmt.Name.Value, ".") {
 				localTypes[stmt.Name.Value] = true
 			}
 		case *ast.UnitDeclStatement:
+			if stmt == nil {
+				continue
+			}
 			if stmt.Name != nil && !strings.Contains(stmt.Name.Value, ".") {
 				localTypes[stmt.Name.Value] = true
 			}
 		case *ast.EnumDeclaration:
+			if stmt == nil {
+				continue
+			}
 			if stmt.Name != nil && !strings.Contains(stmt.Name.Value, ".") {
 				localTypes[stmt.Name.Value] = true
 			}
 		case *ast.InterfaceDeclaration:
+			if stmt == nil {
+				continue
+			}
 			if stmt.Name != nil && !strings.Contains(stmt.Name.Value, ".") {
 				localTypes[stmt.Name.Value] = true
 			}
 		case *ast.StructStatement:
+			if stmt == nil {
+				continue
+			}
 			if stmt.Name != nil && !strings.Contains(stmt.Name.Value, ".") {
 				localTypes[stmt.Name.Value] = true
 			}
@@ -1392,9 +1487,15 @@ func qualifyImportedModule(program *ast.Program, module string) {
 	}
 
 	for _, stmt := range program.Statements {
+		if stmt == nil {
+			continue
+		}
 		qualifyLocalTypeReferencesInStatement(stmt, module, localTypes)
 		switch stmt := stmt.(type) {
 		case *ast.FunctionDeclaration:
+			if stmt == nil {
+				continue
+			}
 			if stmt.Name == nil || strings.Contains(stmt.Name.Value, ".") {
 				continue
 			}
@@ -1402,14 +1503,29 @@ func qualifyImportedModule(program *ast.Program, module string) {
 			stmt.Name.Value = module + "." + stmt.Name.Value
 			stmt.Name.Token.Lexeme = stmt.Name.Value
 		case *ast.TypeDeclStatement:
+			if stmt == nil {
+				continue
+			}
 			qualifyIdentifierDeclaration(stmt.Name, module)
 		case *ast.UnitDeclStatement:
+			if stmt == nil {
+				continue
+			}
 			qualifyIdentifierDeclaration(stmt.Name, module)
 		case *ast.EnumDeclaration:
+			if stmt == nil {
+				continue
+			}
 			qualifyIdentifierDeclaration(stmt.Name, module)
 		case *ast.InterfaceDeclaration:
+			if stmt == nil {
+				continue
+			}
 			qualifyIdentifierDeclaration(stmt.Name, module)
 		case *ast.StructStatement:
+			if stmt == nil {
+				continue
+			}
 			qualifyIdentifierDeclaration(stmt.Name, module)
 		}
 	}
@@ -1430,10 +1546,16 @@ func rewriteImportQualifier(program *ast.Program, from string, to string) {
 	for _, stmt := range program.Statements {
 		switch stmt := stmt.(type) {
 		case *ast.FunctionDeclaration:
+			if stmt == nil {
+				continue
+			}
 			rewriteQualifierInBlock(stmt.Body, from, to)
 		case *ast.ImplStatement:
+			if stmt == nil {
+				continue
+			}
 			for _, member := range stmt.Members {
-				if fn, ok := member.(*ast.FunctionDeclaration); ok {
+				if fn, ok := member.(*ast.FunctionDeclaration); ok && fn != nil {
 					rewriteQualifierInBlock(fn.Body, from, to)
 				}
 			}
@@ -1535,6 +1657,9 @@ func rewriteQualifiedName(name string, from string, to string) string {
 func qualifyLocalTypeReferencesInStatement(stmt ast.Statement, module string, localTypes map[string]bool) {
 	switch stmt := stmt.(type) {
 	case *ast.TypeDeclStatement:
+		if stmt == nil {
+			return
+		}
 		qualifyLocalTypeReference(stmt.BaseType, module, localTypes)
 		qualifyLocalTypeReference(stmt.AssignedType, module, localTypes)
 		for _, ref := range stmt.Implements {
@@ -1557,8 +1682,14 @@ func qualifyLocalTypeReferencesInStatement(stmt ast.Statement, module string, lo
 			}
 		}
 	case *ast.UnitDeclStatement:
+		if stmt == nil {
+			return
+		}
 		qualifyLocalTypeReference(stmt.BaseType, module, localTypes)
 	case *ast.InterfaceDeclaration:
+		if stmt == nil {
+			return
+		}
 		for _, ref := range stmt.Implements {
 			qualifyLocalTypeReference(ref, module, localTypes)
 		}
@@ -1566,20 +1697,41 @@ func qualifyLocalTypeReferencesInStatement(stmt ast.Statement, module string, lo
 			qualifyLocalTypeReferencesInFunction(method, module, localTypes)
 		}
 		for _, property := range stmt.Properties {
+			if property == nil {
+				continue
+			}
 			qualifyLocalTypeReference(property.Type, module, localTypes)
 		}
+		for _, event := range stmt.Events {
+			if event == nil {
+				continue
+			}
+			qualifyLocalTypeReference(event.Payload, module, localTypes)
+		}
 	case *ast.StructStatement:
+		if stmt == nil {
+			return
+		}
 		for _, field := range stmt.Fields {
 			qualifyLocalTypeReference(field.Type, module, localTypes)
 		}
 	case *ast.FunctionDeclaration:
+		if stmt == nil {
+			return
+		}
 		qualifyLocalTypeReferencesInFunction(stmt, module, localTypes)
 	case *ast.ImplStatement:
+		if stmt == nil {
+			return
+		}
 		qualifyLocalTypeReference(stmt.Target, module, localTypes)
 		for _, member := range stmt.Members {
 			qualifyLocalTypeReferencesInImplMember(member, module, localTypes)
 		}
 	case *ast.LetStatement:
+		if stmt == nil {
+			return
+		}
 		qualifyLocalTypeReference(stmt.Type, module, localTypes)
 		qualifyLocalTypesInExpression(stmt.Value, module, localTypes)
 	case *ast.LetGroupStatement:
@@ -1587,30 +1739,54 @@ func qualifyLocalTypeReferencesInStatement(stmt ast.Statement, module string, lo
 			qualifyLocalTypeReferencesInStatement(let, module, localTypes)
 		}
 	case *ast.AssignmentStatement:
+		if stmt == nil {
+			return
+		}
 		qualifyLocalTypesInExpression(stmt.Target, module, localTypes)
 		qualifyLocalTypesInExpression(stmt.Value, module, localTypes)
 	case *ast.ExpressionStatement:
+		if stmt == nil {
+			return
+		}
 		qualifyLocalTypesInExpression(stmt.Expression, module, localTypes)
 	case *ast.ReturnStatement:
+		if stmt == nil {
+			return
+		}
 		qualifyLocalTypesInExpression(stmt.Value, module, localTypes)
 	case *ast.IfStatement:
+		if stmt == nil {
+			return
+		}
 		qualifyLocalTypesInExpression(stmt.Condition, module, localTypes)
 		qualifyLocalTypeReferencesInBlock(stmt.Consequence, module, localTypes)
 		qualifyLocalTypeReferencesInBlock(stmt.Alternative, module, localTypes)
 	case *ast.ForStatement:
+		if stmt == nil {
+			return
+		}
 		qualifyLocalTypesInExpression(stmt.Iterable, module, localTypes)
 		qualifyLocalTypesInExpression(stmt.Step, module, localTypes)
 		qualifyLocalTypeReferencesInBlock(stmt.Body, module, localTypes)
 	case *ast.WhileStatement:
+		if stmt == nil {
+			return
+		}
 		qualifyLocalTypesInExpression(stmt.Condition, module, localTypes)
 		qualifyLocalTypeReferencesInBlock(stmt.Body, module, localTypes)
 	case *ast.SwitchStatement:
+		if stmt == nil {
+			return
+		}
 		qualifyLocalTypesInExpression(stmt.Subject, module, localTypes)
 		for _, clause := range stmt.Cases {
 			qualifyLocalTypesInSwitchCase(clause, module, localTypes)
 		}
 		qualifyLocalTypesInSwitchCase(stmt.Default, module, localTypes)
 	case *ast.SelectStatement:
+		if stmt == nil {
+			return
+		}
 		for _, branch := range stmt.Branches {
 			if branch == nil {
 				continue
@@ -1619,6 +1795,9 @@ func qualifyLocalTypeReferencesInStatement(stmt ast.Statement, module string, lo
 			qualifyLocalTypeReferencesInBlock(branch.Body, module, localTypes)
 		}
 	case *ast.UnsafeStatement:
+		if stmt == nil {
+			return
+		}
 		qualifyLocalTypeReferencesInBlock(stmt.Body, module, localTypes)
 	}
 }
@@ -1651,11 +1830,16 @@ func qualifyLocalTypeReferencesInImplMember(member ast.ImplMember, module string
 	case *ast.FunctionDeclaration:
 		qualifyLocalTypeReferencesInFunction(member, module, localTypes)
 	case *ast.PropertyDeclaration:
+		if member == nil {
+			return
+		}
 		qualifyLocalTypeReference(member.Type, module, localTypes)
 		qualifyLocalTypeReferencesInBlock(member.Getter, module, localTypes)
 		if member.Setter != nil {
 			qualifyLocalTypeReferencesInBlock(member.Setter.Body, module, localTypes)
 		}
+	case *ast.EventDeclaration:
+		return
 	}
 }
 

@@ -729,26 +729,18 @@ func TestParseAssignmentStatement(t *testing.T) {
 	}
 }
 
-func TestParseTryAssignmentStatement(t *testing.T) {
+func TestRejectTryAssignmentWithoutHandlerBlock(t *testing.T) {
 	l := lexer.New(`try p += 1`)
 	p := New(l)
 
-	program := p.ParseProgram()
-	checkParserErrors(t, p)
+	p.ParseProgram()
 
-	stmt, ok := program.Statements[0].(*ast.TryAssignmentStatement)
-	if !ok {
-		t.Fatalf("statement is not TryAssignmentStatement. got=%T", program.Statements[0])
+	expected := `try assignment requires a handler block at 1:1`
+	if len(p.Errors()) != 1 {
+		t.Fatalf("wrong parser error count. got=%d want=1 errors=%v", len(p.Errors()), p.Errors())
 	}
-	if stmt.Assignment == nil {
-		t.Fatal("expected nested assignment")
-	}
-	target, ok := stmt.Assignment.Target.(*ast.Identifier)
-	if !ok || target.Value != "p" {
-		t.Fatalf("wrong target. got=%T %#v", stmt.Assignment.Target, stmt.Assignment.Target)
-	}
-	if stmt.Assignment.Operator != "+=" {
-		t.Fatalf("wrong operator. got=%q want += ", stmt.Assignment.Operator)
+	if p.Errors()[0] != expected {
+		t.Fatalf("wrong parser error. got=%q want=%q", p.Errors()[0], expected)
 	}
 }
 
@@ -836,6 +828,7 @@ func TestRejectImmutableTypedDeclarationWithoutInitializer(t *testing.T) {
 		want  string
 	}{
 		{input: `int: a, b, c`, want: `immutable typed declaration requires initializer for "a" at 1:6`},
+		{input: `int mut a, b, c`, want: `typed mutable declaration requires ':' after mut; write int mut: a at 1:9`},
 		{input: `let mut a`, want: `let declaration requires initializer for "a" at 1:9`},
 	}
 
@@ -1072,6 +1065,91 @@ func TestParseNestedPostfixArrayTypeReference(t *testing.T) {
 	}
 	if paramType.ElementType.ElementType == nil || paramType.ElementType.ElementType.Name != "int" {
 		t.Fatalf("wrong nested array element. got=%+v", paramType.ElementType)
+	}
+}
+
+func TestParseContractSequence(t *testing.T) {
+	input := `
+type PageSize int range 10..100 multipleOf 10
+type OddNumber int odd
+type EvenNumber int even
+type Role string in ["admin", "user", "guest"]
+type Tags string[] notEmpty unique
+type Measurement float finite
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	pageSize := program.Statements[0].(*ast.TypeDeclStatement)
+	pageContracts, ok := pageSize.Contract.(*ast.ContractList)
+	if !ok || len(pageContracts.Contracts) != 2 {
+		t.Fatalf("wrong PageSize contracts: %#v", pageSize.Contract)
+	}
+	if _, ok := pageContracts.Contracts[0].(*ast.RangeContract); !ok {
+		t.Fatalf("first PageSize contract is not range: %#v", pageContracts.Contracts[0])
+	}
+	multiple, ok := pageContracts.Contracts[1].(*ast.MarkerContract)
+	if !ok || multiple.Name != "multipleOf" || multiple.Value.String() != "10" {
+		t.Fatalf("wrong multipleOf contract: %#v", pageContracts.Contracts[1])
+	}
+
+	odd := program.Statements[1].(*ast.TypeDeclStatement)
+	oddContract, ok := odd.Contract.(*ast.MarkerContract)
+	if !ok || oddContract.Name != "odd" {
+		t.Fatalf("wrong OddNumber contract: %#v", odd.Contract)
+	}
+
+	even := program.Statements[2].(*ast.TypeDeclStatement)
+	evenContract, ok := even.Contract.(*ast.MarkerContract)
+	if !ok || evenContract.Name != "even" {
+		t.Fatalf("wrong EvenNumber contract: %#v", even.Contract)
+	}
+
+	role := program.Statements[3].(*ast.TypeDeclStatement)
+	membership, ok := role.Contract.(*ast.MembershipContract)
+	if !ok || len(membership.Values) != 3 {
+		t.Fatalf("wrong Role contract: %#v", role.Contract)
+	}
+
+	tags := program.Statements[4].(*ast.TypeDeclStatement)
+	tagContracts, ok := tags.Contract.(*ast.ContractList)
+	if !ok || len(tagContracts.Contracts) != 2 {
+		t.Fatalf("wrong Tags contracts: %#v", tags.Contract)
+	}
+	for i, name := range []string{"notEmpty", "unique"} {
+		marker, ok := tagContracts.Contracts[i].(*ast.MarkerContract)
+		if !ok || marker.Name != name {
+			t.Fatalf("wrong Tags contract %d: %#v", i, tagContracts.Contracts[i])
+		}
+	}
+
+	measurement := program.Statements[5].(*ast.TypeDeclStatement)
+	finite, ok := measurement.Contract.(*ast.MarkerContract)
+	if !ok || finite.Name != "finite" {
+		t.Fatalf("wrong Measurement contract: %#v", measurement.Contract)
+	}
+}
+
+func TestParseLetVariableContract(t *testing.T) {
+	input := `let mut percentage: int range 0..100 := 50`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	letStmt, ok := program.Statements[0].(*ast.LetStatement)
+	if !ok {
+		t.Fatalf("statement is not LetStatement. got=%T", program.Statements[0])
+	}
+	if letStmt.Contract == nil {
+		t.Fatal("expected let contract")
+	}
+	if _, ok := letStmt.Contract.(*ast.RangeContract); !ok {
+		t.Fatalf("let contract is not RangeContract. got=%T", letStmt.Contract)
 	}
 }
 
@@ -1444,11 +1522,56 @@ impl Vehicle {
 	}
 }
 
+func TestParseImplAndInterfaceEvents(t *testing.T) {
+	input := `
+interface PressSource {
+	event ButtonPressed[ButtonPressData]
+}
+
+type Button struct {
+	ButtonPressed: Event[ButtonPressData, 8],
+	buttonPressedStorage: EventStorage[ButtonPressData, 8],
+}
+
+impl Button {
+	event Pressed using buttonPressedStorage
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	iface, ok := program.Statements[0].(*ast.InterfaceDeclaration)
+	if !ok {
+		t.Fatalf("statement 0 is not InterfaceDeclaration. got=%T", program.Statements[0])
+	}
+	if len(iface.Events) != 1 || iface.Events[0].Name.Value != "ButtonPressed" || iface.Events[0].Payload.Name != "ButtonPressData" {
+		t.Fatalf("wrong interface event: %+v", iface.Events)
+	}
+
+	typeDecl := program.Statements[1].(*ast.TypeDeclStatement)
+	eventField := typeDecl.StructType.Fields[0]
+	if eventField.Type.Name != "Event" || len(eventField.Type.TypeArgs) != 1 || eventField.Type.TypeArgs[0].Name != "ButtonPressData" || !eventField.Type.EventCapacitySet || eventField.Type.EventCapacity != 8 {
+		t.Fatalf("wrong event field type: %+v", eventField.Type)
+	}
+
+	implStmt := program.Statements[2].(*ast.ImplStatement)
+	event, ok := implStmt.Members[0].(*ast.EventDeclaration)
+	if !ok {
+		t.Fatalf("impl member is not EventDeclaration. got=%T", implStmt.Members[0])
+	}
+	if event.Name.Value != "Pressed" || event.Storage.Value != "buttonPressedStorage" {
+		t.Fatalf("wrong impl event declaration: %+v", event)
+	}
+}
+
 func TestParseInterfaceDeclarationAndImplements(t *testing.T) {
 	input := `
 interface Vehicle {
-	fn Start(ref mut self) void
-	fn Stop(ref mut self) void
+	fn Start() void
+	fn Stop() void
 
 	property IsRunning: bool {
 		get
@@ -1472,8 +1595,8 @@ type Car struct implements Vehicle {
 	if iface.Name.Value != "Vehicle" || len(iface.Methods) != 2 || len(iface.Properties) != 1 {
 		t.Fatalf("wrong interface declaration: %+v", iface)
 	}
-	if !iface.Methods[0].Parameters[0].Ref || !iface.Methods[0].Parameters[0].MutableRef || iface.Methods[0].Parameters[0].Type.Name != "self" {
-		t.Fatalf("wrong self parameter: %+v", iface.Methods[0].Parameters[0])
+	if len(iface.Methods[0].Parameters) != 0 {
+		t.Fatalf("expected no explicit self parameter: %+v", iface.Methods[0].Parameters)
 	}
 
 	typeDecl, ok := program.Statements[1].(*ast.TypeDeclStatement)
@@ -2633,7 +2756,7 @@ fn Write(ref value: byte) void {
 }
 
 impl Buffer {
-    fn Flush(ref mut self: Buffer) void {
+    fn Flush() void {
         Write(ref mut self.data[0])
     }
 }

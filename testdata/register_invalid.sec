@@ -221,12 +221,12 @@ type ImplRegister register[8] {
 }
 
 impl ImplRegister {
-    fn InvalidSharedWrite(ref self) void {
+    fn InvalidSharedWrite() void {
         // ERROR: ref self may read register fields but may not write them.
         self.Error = false
     }
 
-    fn ClearError(ref mut self) void {
+    fn ClearError() void {
         self.Error = false
     }
 }

@@ -2,13 +2,13 @@
 
 ## Purpose
 
-Concurrency defines how multiple tasks execute, communicate and access shared
-state safely.
+Concurrency defines how multiple execution entities execute, communicate and
+access shared state safely.
 
 This document defines the language-level concurrency model.
 
-Detailed rules for task creation, waiting, mutexes, atomics, static storage and
-memory ordering are defined in their respective documents.
+Detailed rules for task, thread and process creation, waiting, mutexes, atomics,
+static storage and memory ordering are defined in their respective documents.
 
 ---
 
@@ -16,11 +16,11 @@ memory ordering are defined in their respective documents.
 
 Sec concurrency is based on:
 
-- explicit task creation
+- explicit execution-entity creation
 - deterministic ownership
 - compile-time borrow analysis
 - explicit synchronization
-- cooperative cancellation
+- cooperative cancellation where supported
 - no implicit shared mutable state
 - no hidden data races
 - no mandatory garbage collector
@@ -31,17 +31,29 @@ rules.
 
 ---
 
-## Tasks and concurrency
+## Execution entities
 
-A task is one independently scheduled operation.
+An execution entity is one independently progressing operation.
 
-Tasks are created explicitly with:
+Sec currently distinguishes:
+
+```text
+Task[T]
+Thread[T]
+Process or the process handle type defined by processes.txt
+```
+
+Tasks, threads and processes are not interchangeable.
+
+Tasks and threads are created explicitly with:
 
 ```sec
 spawn
 ```
 
-Tasks may execute:
+Processes use the same spawn family when the process rulebook permits it.
+
+Execution entities may execute:
 
 - concurrently
 - in parallel
@@ -52,6 +64,13 @@ Tasks may execute:
 The selected backend decides the execution mechanism.
 
 Source-level semantics must remain unchanged.
+
+Sec does not require one universal runtime.
+
+Targets may lower concurrency to bare-metal executors, RTOS primitives,
+operating-system threads, compiler state machines, hosted schedulers or direct
+native synchronization primitives when the selected lowering preserves the
+source rules.
 
 ---
 
@@ -71,6 +90,10 @@ Examples include:
 
 The language must not assume that every task has its own thread.
 
+A physical thread wait may block or park that physical thread.
+
+A task wait may suspend a logical task without blocking the physical worker.
+
 ---
 
 ## Shared state
@@ -86,7 +109,7 @@ Examples of valid synchronization mechanisms include:
 - future `RwLock[T]`
 - ownership transfer
 - message passing
-- task-confined state
+- execution-entity-confined state
 
 The compiler must reject unsynchronized conflicting access when it can prove the
 conflict.
@@ -96,9 +119,9 @@ the conflict cannot be fully proven statically.
 
 ---
 
-## Task-confined state
+## Execution-entity-confined state
 
-A value owned exclusively by one task requires no synchronization.
+A value owned exclusively by one execution entity requires no synchronization.
 
 Example:
 
@@ -116,13 +139,14 @@ If `Data` is move-only, ownership moves into the task.
 No other task may access the value unless ownership is transferred again or a
 valid synchronized shared abstraction is used.
 
-Task confinement is the preferred model for mutable state.
+Task or thread confinement is the preferred model for mutable state.
 
 ---
 
 ## Shared immutable borrows
 
-Multiple tasks may read the same value through shared references only when:
+Multiple tasks or threads may read the same value through shared references only
+when:
 
 - the value outlives every task use
 - the type permits concurrent shared access
@@ -147,7 +171,8 @@ The compiler must track both borrows until the tasks complete.
 
 ## Shared mutable access
 
-A plain mutable reference must not be shared concurrently between tasks.
+A plain mutable reference must not be shared concurrently between execution
+entities.
 
 Invalid:
 
@@ -163,7 +188,7 @@ The two mutable borrows overlap.
 Expected diagnostic:
 
 ```text
-cannot create overlapping mutable task borrows of state
+cannot create overlapping mutable concurrent borrows of state
 ```
 
 Shared mutation requires a concurrency-safe abstraction such as:
@@ -178,7 +203,7 @@ or an appropriate atomic type.
 
 ## Ownership transfer
 
-Ownership may move between tasks.
+Ownership may move between execution entities.
 
 Example:
 
@@ -196,7 +221,7 @@ await consumer
 
 Ownership transfer must remain explicit in Semantic IR.
 
-The compiler must always know which task owns an owning value.
+The compiler must always know which execution entity owns an owning value.
 
 ---
 
@@ -225,18 +250,21 @@ Detailed static rules are defined in `static.txt`.
 
 ---
 
-## Task boundaries
+## Execution boundaries
 
-The following operations create or cross task boundaries:
+The following operations create or cross execution-entity boundaries:
 
 - `spawn`
 - returning a `Task[T]`
+- returning a `Thread[T]`
 - moving a task handle
+- moving a thread handle
 - detaching a task
-- message transfer between tasks
+- detaching a thread
+- message transfer between tasks or threads
 - process communication through IPC
 
-A task boundary may change:
+An execution boundary may change:
 
 - ownership
 - borrow duration

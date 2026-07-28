@@ -15,6 +15,8 @@ Rules:
 - Function body creates a new scope.
 - Parameters are immutable local symbols by default.
 - Duplicate parameter names are invalid.
+- Functions declared inside an `impl` body have implicit `self`; `self` is not
+  written in the parameter list.
 - Return expression must match declared return type.
 - A non-void function must return.
 - A void function may use `return` without expression.

@@ -1829,6 +1829,9 @@ func printASTLet(stmt *ast.LetStatement, prefix string, last bool) {
 	if stmt.Type != nil {
 		children = append(children, "Type: "+formatTypeRef(stmt.Type))
 	}
+	if stmt.Contract != nil {
+		children = append(children, formatASTContract(stmt.Contract))
+	}
 	if stmt.Address != nil {
 		children = append(children, "Address: "+stmt.Address.String())
 	}
@@ -2159,8 +2162,14 @@ func childPrefix(prefix string, last bool) string {
 
 func formatASTContract(contract ast.Contract) string {
 	switch contract := contract.(type) {
+	case *ast.ContractList:
+		return "Contracts: " + formatContract(contract)
 	case *ast.RangeContract:
 		return "Range: " + formatRangeContract(contract)
+	case *ast.MembershipContract:
+		return "In: " + formatMembershipContract(contract)
+	case *ast.MarkerContract:
+		return "Contract: " + formatMarkerContract(contract)
 	default:
 		return fmt.Sprintf("Contract: %T", contract)
 	}
@@ -2427,6 +2436,9 @@ func printLet(stmt *ast.LetStatement) {
 	if stmt.Type != nil {
 		fmt.Printf(": %s", formatTypeRef(stmt.Type))
 	}
+	if stmt.Contract != nil {
+		fmt.Printf(" %s", formatContract(stmt.Contract))
+	}
 
 	if stmt.Value != nil {
 		fmt.Printf(" := %s", stmt.Value.String())
@@ -2644,6 +2656,12 @@ func formatTypeRef(ref *ast.TypeReference) string {
 			}
 			out += formatTypeRef(arg)
 		}
+		if ref.EventCapacitySet {
+			if len(ref.TypeArgs) > 0 {
+				out += ", "
+			}
+			out += fmt.Sprintf("%d", ref.EventCapacity)
+		}
 		out += "]"
 	}
 
@@ -2665,11 +2683,36 @@ func formatLambdaCaptures(captures []ast.LambdaCapture) string {
 
 func formatContract(contract ast.Contract) string {
 	switch contract := contract.(type) {
+	case *ast.ContractList:
+		parts := make([]string, 0, len(contract.Contracts))
+		for _, item := range contract.Contracts {
+			parts = append(parts, formatContract(item))
+		}
+		return strings.Join(parts, " ")
 	case *ast.RangeContract:
 		return "range " + formatRangeContract(contract)
+	case *ast.MembershipContract:
+		return "in " + formatMembershipContract(contract)
+	case *ast.MarkerContract:
+		return formatMarkerContract(contract)
 	default:
 		return fmt.Sprintf("%T", contract)
 	}
+}
+
+func formatMembershipContract(contract *ast.MembershipContract) string {
+	values := make([]string, 0, len(contract.Values))
+	for _, value := range contract.Values {
+		values = append(values, value.String())
+	}
+	return "[" + strings.Join(values, ", ") + "]"
+}
+
+func formatMarkerContract(contract *ast.MarkerContract) string {
+	if contract.Value != nil {
+		return contract.Name + " " + contract.Value.String()
+	}
+	return contract.Name
 }
 
 func formatRangeContract(contract *ast.RangeContract) string {

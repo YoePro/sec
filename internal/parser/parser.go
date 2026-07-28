@@ -1246,9 +1246,8 @@ func (p *Parser) parseTypeDeclStatement() ast.Statement {
 
 		assignedType := p.parseTypeReference()
 
-		if p.peekToken.Type == lexer.RANGE_KW {
-			p.nextToken()
-			stmt.Contract = p.parseRangeContract()
+		if p.isContractStart(p.peekToken) {
+			stmt.Contract = p.parseContractSequence()
 			if stmt.Contract == nil {
 				return nil
 			}
@@ -1351,9 +1350,8 @@ func (p *Parser) parseTypeDeclStatement() ast.Statement {
 		}
 	}
 
-	if p.peekToken.Type == lexer.RANGE_KW {
-		p.nextToken()
-		stmt.Contract = p.parseRangeContract()
+	if p.isContractStart(p.peekToken) {
+		stmt.Contract = p.parseContractSequence()
 		if stmt.Contract == nil {
 			return nil
 		}
@@ -1455,8 +1453,19 @@ func (p *Parser) parseInterfaceDeclaration() ast.Statement {
 				return nil
 			}
 			stmt.Properties = append(stmt.Properties, property)
+		case lexer.IDENT:
+			if p.curToken.Lexeme != "event" {
+				p.addError("interface block may only contain fn, property, and event requirements at %d:%d", p.curToken.Line, p.curToken.Column)
+				p.skipCurrentBlock()
+				return nil
+			}
+			event := p.parseInterfaceEvent()
+			if event == nil {
+				return nil
+			}
+			stmt.Events = append(stmt.Events, event)
 		default:
-			p.addError("interface block may only contain fn and property requirements at %d:%d", p.curToken.Line, p.curToken.Column)
+			p.addError("interface block may only contain fn, property, and event requirements at %d:%d", p.curToken.Line, p.curToken.Column)
 			p.skipCurrentBlock()
 			return nil
 		}
@@ -1467,6 +1476,28 @@ func (p *Parser) parseInterfaceDeclaration() ast.Statement {
 	}
 
 	return stmt
+}
+
+func (p *Parser) parseInterfaceEvent() *ast.InterfaceEvent {
+	event := &ast.InterfaceEvent{Token: p.curToken}
+	if p.peekToken.Type != lexer.IDENT {
+		p.nextToken()
+		p.addError("event requirement missing name at %d:%d", p.curToken.Line, p.curToken.Column)
+		return nil
+	}
+	p.nextToken()
+	event.Name = &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme}
+	if !p.expectPeek(lexer.LBRACKET) {
+		return event
+	}
+	if !p.expectPeekTypeStart() {
+		return event
+	}
+	event.Payload = p.parseTypeReference()
+	if !p.expectPeek(lexer.RBRACKET) {
+		return event
+	}
+	return event
 }
 
 func (p *Parser) parseImplementsList() []*ast.TypeReference {
@@ -2283,9 +2314,8 @@ func (p *Parser) parseStructFields() []*ast.StructField {
 		}
 
 		field.Type = p.parseTypeReference()
-		if p.peekToken.Type == lexer.RANGE_KW {
-			p.nextToken()
-			field.Contract = p.parseRangeContract()
+		if p.isContractStart(p.peekToken) {
+			field.Contract = p.parseContractSequence()
 		}
 		if p.peekToken.Type == lexer.RAW_STRING {
 			p.nextToken()
@@ -2452,6 +2482,30 @@ func (p *Parser) parseImplStatement() ast.Statement {
 				continue
 			}
 			stmt.Members = append(stmt.Members, property)
+		case lexer.IDENT:
+			if p.curToken.Lexeme == "event" {
+				event := p.parseEventDeclaration()
+				if event == nil {
+					continue
+				}
+				stmt.Members = append(stmt.Members, event)
+				continue
+			}
+			message := "impl block may only contain type, unit, enum, property, event, and fn declarations"
+			if p.peekToken.Type == lexer.COLON {
+				if p.isUnitMetadataName(p.curToken.Lexeme) {
+					stmt.Members = append(stmt.Members, p.parseUnitMetadataDeclaration())
+					continue
+				}
+				message = "stored fields are not allowed inside impl"
+			} else if p.isAssignmentOperator(p.peekToken.Type) {
+				message = "executable statements are not allowed inside impl"
+			}
+			stmt.Members = append(stmt.Members, &ast.InvalidStatement{
+				Token:   p.curToken,
+				Message: message,
+			})
+			p.skipInvalidImplMember()
 		case lexer.STRUCT:
 			stmt.Members = append(stmt.Members, &ast.InvalidStatement{
 				Token:   p.curToken,
@@ -2465,7 +2519,7 @@ func (p *Parser) parseImplStatement() ast.Statement {
 			})
 			p.skipInvalidImplMember()
 		default:
-			message := "impl block may only contain type, unit, enum, property, and fn declarations"
+			message := "impl block may only contain type, unit, enum, property, event, and fn declarations"
 			if p.curToken.Type == lexer.IDENT && p.peekToken.Type == lexer.COLON {
 				if p.isUnitMetadataName(p.curToken.Lexeme) {
 					stmt.Members = append(stmt.Members, p.parseUnitMetadataDeclaration())
@@ -2557,6 +2611,38 @@ func (p *Parser) isImplMemberStart(t lexer.TokenType) bool {
 	}
 }
 
+func (p *Parser) parseEventDeclaration() *ast.EventDeclaration {
+	event := &ast.EventDeclaration{Token: p.curToken}
+	if p.peekToken.Type != lexer.IDENT {
+		p.nextToken()
+		p.addError("event declaration missing name at %d:%d", p.curToken.Line, p.curToken.Column)
+		p.skipInvalidImplMember()
+		return nil
+	}
+	p.nextToken()
+	event.Name = &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme}
+	if p.peekToken.Type != lexer.IDENT || p.peekToken.Lexeme != "using" {
+		p.nextToken()
+		p.addError("event %s must specify storage with using at %d:%d", event.Name.Value, p.curToken.Line, p.curToken.Column)
+		p.skipInvalidImplMember()
+		return event
+	}
+	p.nextToken()
+	if p.peekToken.Type != lexer.IDENT {
+		p.nextToken()
+		p.addError("event %s using missing storage field at %d:%d", event.Name.Value, p.curToken.Line, p.curToken.Column)
+		p.skipInvalidImplMember()
+		return event
+	}
+	p.nextToken()
+	event.Storage = &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme}
+	if p.peekToken.Type == lexer.LBRACE {
+		p.nextToken()
+		p.skipCurrentBlock()
+	}
+	return event
+}
+
 func (p *Parser) parsePropertyDeclaration() *ast.PropertyDeclaration {
 	property := &ast.PropertyDeclaration{Token: p.curToken}
 
@@ -2622,7 +2708,11 @@ func (p *Parser) parsePropertyDeclaration() *ast.PropertyDeclaration {
 				p.skipPropertyRemainder()
 				return nil
 			}
-			property.Getter = p.parseBlockStatement()
+			if !p.expectPeek(lexer.LBRACE) {
+				p.skipPropertyRemainder()
+				return nil
+			}
+			property.Getter = p.parseStatementBlock("property getter")
 			if property.Getter == nil {
 				p.skipPropertyRemainder()
 				return nil
@@ -2710,7 +2800,10 @@ func (p *Parser) parsePropertySetter(propertyName string, fallible bool) *ast.Pr
 	p.nextToken()
 	setter.Parameter = &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme}
 
-	setter.Body = p.parseBlockStatement()
+	if !p.expectPeek(lexer.LBRACE) {
+		return nil
+	}
+	setter.Body = p.parseStatementBlock("property setter")
 	if setter.Body == nil {
 		return nil
 	}
@@ -2929,6 +3022,13 @@ func (p *Parser) parsePostfixTypeReference(ref *ast.TypeReference) *ast.TypeRefe
 	for p.peekToken.Type == lexer.LBRACKET {
 		p.nextToken()
 		token := p.curToken
+		if ref.Name == "Event" || ref.Name == "EventStorage" {
+			ref = p.parseEventTypeReferenceArgs(ref, token)
+			if ref == nil {
+				return &ast.TypeReference{Token: token}
+			}
+			continue
+		}
 
 		switch p.peekToken.Type {
 		case lexer.RBRACKET:
@@ -2976,6 +3076,34 @@ func (p *Parser) parsePostfixTypeReference(ref *ast.TypeReference) *ast.TypeRefe
 		}
 	}
 
+	return ref
+}
+
+func (p *Parser) parseEventTypeReferenceArgs(ref *ast.TypeReference, token lexer.Token) *ast.TypeReference {
+	if !p.expectPeekTypeStart() {
+		return ref
+	}
+	ref.TypeArgs = []*ast.TypeReference{p.parseTypeReference()}
+	if p.peekToken.Type == lexer.COMMA {
+		p.nextToken()
+		if p.peekToken.Type != lexer.INT {
+			p.nextToken()
+			p.addError("%s capacity must be an integer literal at %d:%d", ref.Name, p.curToken.Line, p.curToken.Column)
+			return ref
+		}
+		p.nextToken()
+		capacity, ok := ast.ParseIntegerLiteralInt64(p.curToken.Lexeme)
+		if !ok {
+			p.addError("invalid %s capacity %q at %d:%d", ref.Name, p.curToken.Lexeme, p.curToken.Line, p.curToken.Column)
+			return ref
+		}
+		ref.EventCapacity = capacity
+		ref.EventCapacitySet = true
+	}
+	if !p.expectPeek(lexer.RBRACKET) {
+		return ref
+	}
+	_ = token
 	return ref
 }
 
@@ -3052,6 +3180,118 @@ func (p *Parser) parseTypeArgs() []*ast.TypeReference {
 	}
 
 	return typeArgs
+}
+
+func (p *Parser) parseContractSequence() ast.Contract {
+	contracts := []ast.Contract{}
+	var firstToken lexer.Token
+	for p.isContractStart(p.peekToken) {
+		p.nextToken()
+		if len(contracts) == 0 {
+			firstToken = p.curToken
+		}
+		contract := p.parseCurrentContract()
+		if contract == nil {
+			return nil
+		}
+		contracts = append(contracts, contract)
+	}
+	if len(contracts) == 0 {
+		return nil
+	}
+	if len(contracts) == 1 {
+		return contracts[0]
+	}
+	return &ast.ContractList{Token: firstToken, Contracts: contracts}
+}
+
+func (p *Parser) parseCurrentContract() ast.Contract {
+	switch {
+	case p.curToken.Type == lexer.RANGE_KW:
+		return p.parseRangeContract()
+	case p.curToken.Type == lexer.IN:
+		return p.parseMembershipContract()
+	case p.curToken.Type == lexer.IDENT:
+		switch p.curToken.Lexeme {
+		case "multipleOf":
+			return p.parseValueContract("multipleOf")
+		case "notEmpty", "unique", "finite", "odd", "even":
+			return &ast.MarkerContract{Token: p.curToken, Name: p.curToken.Lexeme}
+		}
+	}
+	p.addError("unknown contract %q at %d:%d", p.curToken.Lexeme, p.curToken.Line, p.curToken.Column)
+	return nil
+}
+
+func (p *Parser) isContractStart(token lexer.Token) bool {
+	if token.Type == lexer.RANGE_KW || token.Type == lexer.IN {
+		return true
+	}
+	return token.Type == lexer.IDENT && isNamedContract(token.Lexeme)
+}
+
+func isNamedContract(name string) bool {
+	switch name {
+	case "multipleOf", "notEmpty", "unique", "finite", "odd", "even":
+		return true
+	default:
+		return false
+	}
+}
+
+func (p *Parser) parseMembershipContract() ast.Contract {
+	contract := &ast.MembershipContract{Token: p.curToken}
+	if !p.expectPeek(lexer.LBRACKET) {
+		return nil
+	}
+	for p.peekToken.Type != lexer.RBRACKET && p.peekToken.Type != lexer.EOF {
+		if !p.expectPeekExpressionStart() {
+			return nil
+		}
+		value := p.parseExpression(LOWEST)
+		if value == nil {
+			return nil
+		}
+		contract.Values = append(contract.Values, value)
+		if p.peekToken.Type == lexer.COMMA {
+			p.nextToken()
+			continue
+		}
+	}
+	if len(contract.Values) == 0 {
+		p.addError("membership contract requires at least one value at %d:%d", contract.Token.Line, contract.Token.Column)
+		return nil
+	}
+	if !p.expectPeek(lexer.RBRACKET) {
+		return nil
+	}
+	return contract
+}
+
+func (p *Parser) parseValueContract(name string) ast.Contract {
+	contract := &ast.MarkerContract{Token: p.curToken, Name: name}
+	if !p.expectPeekExpressionStart() {
+		return nil
+	}
+	contract.Value = p.parseExpression(LOWEST)
+	if contract.Value == nil {
+		return nil
+	}
+	return contract
+}
+
+func (p *Parser) expectPeekExpressionStart() bool {
+	if p.isExpressionStart(p.peekToken.Type) {
+		p.nextToken()
+		return true
+	}
+	p.addError(
+		"expected next token to be expression, got %q at %d:%d",
+		p.peekToken.Type,
+		p.peekToken.Line,
+		p.peekToken.Column,
+	)
+	return false
 }
 
 // Check range contract
@@ -3280,7 +3520,7 @@ func trimCharQuotes(s string) string {
 func (p *Parser) skipStatement() {
 	p.nextToken()
 
-	for !p.isAtEnd() && !p.isStatementStart(p.curToken.Type) {
+	for !p.isAtEnd() && p.curToken.Type != lexer.RBRACE && !p.isStatementStart(p.curToken.Type) {
 		p.nextToken()
 	}
 }
@@ -3393,12 +3633,15 @@ func (p *Parser) parseTryAssignmentStatement() ast.Statement {
 		return nil
 	}
 	stmt.Assignment = assignment
-	if p.peekToken.Type == lexer.LBRACE {
-		p.nextToken()
-		stmt.Handlers = p.parseTryHandlerBlock()
-		if stmt.Handlers == nil {
-			return nil
-		}
+	if p.peekToken.Type != lexer.LBRACE {
+		p.addError("try assignment requires a handler block at %d:%d", stmt.Token.Line, stmt.Token.Column)
+		p.skipDeclarationRest()
+		return nil
+	}
+	p.nextToken()
+	stmt.Handlers = p.parseTryHandlerBlock()
+	if stmt.Handlers == nil {
+		return nil
 	}
 	return stmt
 }
@@ -3513,7 +3756,7 @@ func (p *Parser) parseLetStatement() ast.Statement {
 		mutable = true
 	}
 
-	first := p.parseLetDeclarator(token, mutable, nil)
+	first := p.parseLetDeclarator(token, mutable, nil, nil)
 	if first == nil {
 		return nil
 	}
@@ -3530,7 +3773,7 @@ func (p *Parser) parseLetStatement() ast.Statement {
 			break
 		}
 
-		next := p.parseLetDeclarator(token, mutable, nil)
+		next := p.parseLetDeclarator(token, mutable, nil, nil)
 		if next == nil {
 			return nil
 		}
@@ -3593,6 +3836,13 @@ func (p *Parser) letDeclaratorMayOmitInitializer(stmt *ast.LetStatement) bool {
 func (p *Parser) parseTypedVariableDeclaration() ast.Statement {
 	token := p.curToken
 	typ := p.parseTypeReference()
+	var contract ast.Contract
+	if p.isContractStart(p.peekToken) {
+		contract = p.parseContractSequence()
+		if contract == nil {
+			return nil
+		}
+	}
 
 	mutable := false
 	if p.peekToken.Type == lexer.MUT {
@@ -3601,11 +3851,16 @@ func (p *Parser) parseTypedVariableDeclaration() ast.Statement {
 	}
 
 	if p.peekToken.Type != lexer.COLON {
+		if mutable && p.peekToken.Type == lexer.IDENT {
+			p.addError("typed mutable declaration requires ':' after mut; write %s mut: %s at %d:%d", parserTypeReferenceName(typ), p.peekToken.Lexeme, p.peekToken.Line, p.peekToken.Column)
+			p.skipDeclarationRest()
+			return nil
+		}
 		return nil
 	}
 	p.nextToken()
 
-	first := p.parseLetDeclarator(token, mutable, typ)
+	first := p.parseLetDeclarator(token, mutable, typ, contract)
 	if first == nil {
 		return nil
 	}
@@ -3623,7 +3878,7 @@ func (p *Parser) parseTypedVariableDeclaration() ast.Statement {
 			break
 		}
 
-		next := p.parseLetDeclarator(token, mutable, typ)
+		next := p.parseLetDeclarator(token, mutable, typ, contract)
 		if next == nil {
 			return nil
 		}
@@ -3642,8 +3897,36 @@ func (p *Parser) parseTypedVariableDeclaration() ast.Statement {
 	return &ast.LetGroupStatement{Token: token, Lets: lets}
 }
 
+func parserTypeReferenceName(ref *ast.TypeReference) string {
+	if ref == nil {
+		return "type"
+	}
+	name := ref.Name
+	if name == "" && ref.UnitOnly {
+		name = "<" + ref.Unit + ">"
+	}
+	if name == "" {
+		name = ref.Token.Lexeme
+	}
+	if len(ref.TypeArgs) > 0 {
+		args := make([]string, 0, len(ref.TypeArgs))
+		for _, arg := range ref.TypeArgs {
+			args = append(args, parserTypeReferenceName(arg))
+		}
+		name += "[" + strings.Join(args, ", ") + "]"
+	}
+	if ref.Ref {
+		prefix := "ref "
+		if ref.MutableRef {
+			prefix = "ref mut "
+		}
+		name = prefix + name
+	}
+	return name
+}
+
 func (p *Parser) skipDeclarationRest() {
-	for p.peekToken.Type != lexer.EOF && !p.isStatementStart(p.peekToken.Type) {
+	for p.peekToken.Type != lexer.EOF && p.peekToken.Type != lexer.RBRACE && !p.isStatementStart(p.peekToken.Type) {
 		p.nextToken()
 	}
 	if p.peekToken.Type == lexer.EOF {
@@ -3651,7 +3934,7 @@ func (p *Parser) skipDeclarationRest() {
 	}
 }
 
-func (p *Parser) parseLetDeclarator(token lexer.Token, mutable bool, inheritedType *ast.TypeReference) *ast.LetStatement {
+func (p *Parser) parseLetDeclarator(token lexer.Token, mutable bool, inheritedType *ast.TypeReference, inheritedContract ast.Contract) *ast.LetStatement {
 	if !p.expectPeek(lexer.IDENT) {
 		return nil
 	}
@@ -3663,7 +3946,8 @@ func (p *Parser) parseLetDeclarator(token lexer.Token, mutable bool, inheritedTy
 			Token: p.curToken,
 			Value: p.curToken.Lexeme,
 		},
-		Type: inheritedType,
+		Type:     inheritedType,
+		Contract: inheritedContract,
 	}
 
 	if stmt.Type == nil && p.peekToken.Type == lexer.COLON {
@@ -3685,6 +3969,12 @@ func (p *Parser) parseLetDeclarator(token lexer.Token, mutable bool, inheritedTy
 		}
 
 		stmt.Type = p.parseTypeReference()
+		if p.isContractStart(p.peekToken) {
+			stmt.Contract = p.parseContractSequence()
+			if stmt.Contract == nil {
+				return nil
+			}
+		}
 	}
 
 	if p.peekToken.Type == lexer.DECLARE {

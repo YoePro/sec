@@ -33,6 +33,7 @@ alongside other compiler-known generic types such as:
 Result[T, E]
 Option[T]
 Task[T]
+Thread[T]
 ```
 
 The language server should provide:
@@ -215,8 +216,31 @@ A guard:
 - provides exclusive mutable access to `T`
 - releases the lock when destroyed
 - is move-only
-- is bound to the task that acquired it
-- may not cross task boundaries
+- is bound to the execution entity that acquired it
+- may not cross task or thread boundaries
+
+Mutex synchronization is valid between tasks, threads and mixed task/thread
+users.
+
+The implementation chosen for a `Mutex[T]` must match every execution entity
+that can access that mutex.
+
+Mutex ownership must not be represented only as an operating-system thread ID,
+because tasks may migrate between physical threads.
+
+Ownership is the semantic guard ownership tracked by the compiler.
+
+A guard may not cross `await`, blocking `join`, `select` or another suspension
+point.
+
+The compiler may conservatively reject guards live across common blocking
+constructs for both tasks and threads.
+
+A physical thread may block while holding a mutex only when the program satisfies
+lock-order and deadlock rules.
+
+A task must not suspend or migrate while retaining a guard unless a future rule
+explicitly defines a valid pinned-guard mechanism.
 
 The guard is not a copy of `T`.
 
@@ -369,20 +393,21 @@ Borrowing a guard does not create another lock acquisition.
 
 ---
 
-## Task-bound guard
+## Execution-entity-bound guard
 
-A guard is bound to the task that acquired it.
+A guard is bound to the execution entity that acquired it.
 
-It may move between functions within the same task.
+It may move between functions within the same task or thread.
 
 It may not be:
 
 - moved into another task
-- borrowed by another task
+- moved into another thread
+- borrowed by another task or thread
 - captured by a spawned closure
-- returned as part of an escaping task
+- returned as part of an escaping task or thread
 - detached
-- stored in task-shared storage
+- stored in shared concurrent storage
 
 Invalid:
 
@@ -401,7 +426,7 @@ let worker := spawn UseState(ref state)
 Expected diagnostic:
 
 ```text
-MutexGuard[ApplicationState] is bound to the current task and cannot cross spawn
+MutexGuard[ApplicationState] is bound to the current execution entity and cannot cross spawn
 ```
 
 ---
@@ -524,7 +549,7 @@ Full dynamic deadlock detection is not required.
 The basic overload is:
 
 ```sec
-fn lock(ref self) MutexGuard[T]
+fn lock() MutexGuard[T]
 ```
 
 It waits until:
@@ -544,7 +569,7 @@ The operation should not use `try` merely because it waits.
 The non-blocking operation is:
 
 ```sec
-fn tryLock(ref self) Option[MutexGuard[T]]
+fn tryLock() Option[MutexGuard[T]]
 ```
 
 Example:

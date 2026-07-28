@@ -504,22 +504,26 @@ Implemented:
 - constructor-style conversion resolution in getter returns
 - non-fallible setter cannot return `Err(...)`
 - simple setter assignment type checking
+- full getter body semantic analysis as a normal function body
+- full setter body semantic analysis as a normal function body
 - fallible property assignment requires `try`
+- fallible property assignment through an unqualified property name inside the
+  same impl body requires `try`
+- `try` assignment handlers for unqualified property assignment inside the same
+  impl body use the property's declared or inferred error type
 - fallible setter error type inference for simple `Err(...)` returns
+- fallible setter error type inference scans nested branch bodies for
+  `return Err(...)`
 - generic impl property type substitution in the current generic model
 
 Partially implemented:
 
-- property body analysis uses a limited expression parser over block tokens
-- setter body checking handles simple assignments but not full statement sema
 - property access exists for type checking, but full lowering is incomplete
 - compound assignment to fallible properties depends on the current assignment
   support
 
 Not implemented yet:
 
-- full getter body semantic analysis as normal function body
-- full setter body semantic analysis as normal function body
 - full `self` borrow and mutability rules
 - explicit property effect model
 - visibility rules for properties

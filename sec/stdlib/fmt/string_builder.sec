@@ -33,7 +33,7 @@ impl StringBuilder {
     }
 
     // Append and convert an integer to ASCII directly into the buffer
-    fn AppendInt(ref mut self: StringBuilder, val: int) void {
+    fn AppendInt(val: int) void {
         if val == 0 {
             if self.len == 512 { self.Flush() }
             self.buf[self.len] = byte(48) // ASCII '0'
@@ -70,14 +70,14 @@ impl StringBuilder {
     }
 
     // Append newline character
-    fn Newline(ref mut self: StringBuilder) void {
+    fn Newline() void {
         if self.len == 512 { self.Flush() }
         self.buf[self.len] = byte(10) // ASCII '\n'
         self.len = self.len + 1
     }
 
     // Flush the remaining bytes in the buffer directly to stdout via syscall
-    fn Flush(ref mut self: StringBuilder) void {
+    fn Flush() void {
         if self.len > 0 {
             // Pass the first byte by reference; io.Write forwards its address to the syscall.
             unsafe {

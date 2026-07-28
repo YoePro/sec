@@ -384,13 +384,13 @@ type Percent int range 0..100
 
 let mut p: Percent := 50
 fn Test() void {
-	try p = 100
-	try p = 101
-	try p = 10 * 10
-	try p = 50 + 51
-	try p = 50
-	try p += 20
-	try p += 60
+	try p = 100 { Err(error) => { discard error } }
+	try p = 101 { Err(error) => { discard error } }
+	try p = 10 * 10 { Err(error) => { discard error } }
+	try p = 50 + 51 { Err(error) => { discard error } }
+	try p = 50 { Err(error) => { discard error } }
+	try p += 20 { Err(error) => { discard error } }
+	try p += 60 { Err(error) => { discard error } }
 }
 `
 
@@ -413,8 +413,8 @@ let mut p: Percent := 50
 fn Test() void {
 	p = 60
 	p += 1
-	try p = 70
-	try p += 1
+	try p = 70 { Err(error) => { discard error } }
+	try p += 1 { Err(error) => { discard error } }
 }
 `
 
@@ -464,10 +464,10 @@ let _a: int := 90
 let _tooMuch: int := 101
 let mut precent: Percent := 0
 fn Test() void {
-	try precent += 50
-	try precent += _a
-	try precent = Percent(_a)
-	try precent = Percent(_tooMuch)
+	try precent += 50 { Err(error) => { discard error } }
+	try precent += _a { Err(error) => { discard error } }
+	try precent = Percent(_a) { Err(error) => { discard error } }
+	try precent = Percent(_tooMuch) { Err(error) => { discard error } }
 }
 `
 
@@ -518,6 +518,120 @@ type Percent int range 0..100
 	if contract.Min.String() != "0" || contract.Max.String() != "100" {
 		t.Fatalf("wrong range contract. got=%s..%s want=0..100", contract.Min, contract.Max)
 	}
+}
+
+func TestVariableContractFormsOnNamedTypes(t *testing.T) {
+	input := `
+type PageSize int range 10..100 multipleOf 10
+type OddNumber int odd
+type EvenNumber int even
+type Role string in ["admin", "user", "guest"]
+type Tags string[] notEmpty unique
+type Measurement float finite
+`
+
+	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
+	assertSemaErrors(t, errors, nil)
+
+	if len(analyzer.types["PageSize"].Contracts) != 2 {
+		t.Fatalf("PageSize should have two contracts, got %d", len(analyzer.types["PageSize"].Contracts))
+	}
+	if len(analyzer.types["OddNumber"].Contracts) != 1 {
+		t.Fatalf("OddNumber should have one contract, got %d", len(analyzer.types["OddNumber"].Contracts))
+	}
+	if len(analyzer.types["EvenNumber"].Contracts) != 1 {
+		t.Fatalf("EvenNumber should have one contract, got %d", len(analyzer.types["EvenNumber"].Contracts))
+	}
+	if len(analyzer.types["Role"].Contracts) != 1 {
+		t.Fatalf("Role should have one contract, got %d", len(analyzer.types["Role"].Contracts))
+	}
+	if len(analyzer.types["Tags"].Contracts) != 2 {
+		t.Fatalf("Tags should have two contracts, got %d", len(analyzer.types["Tags"].Contracts))
+	}
+	if len(analyzer.types["Measurement"].Contracts) != 1 {
+		t.Fatalf("Measurement should have one contract, got %d", len(analyzer.types["Measurement"].Contracts))
+	}
+}
+
+func TestVariableContractApplicabilityErrors(t *testing.T) {
+	input := `
+type BadUniqueString string unique
+type BadUniqueInt int unique
+type BadNotEmptyInt int notEmpty
+type BadFiniteInt int finite
+type BadMultipleString string multipleOf 2
+type BadRangeString string range 1..10
+type BadOddString string odd
+type BadEvenFloat float even
+`
+
+	errors := analyzeSource(t, input)
+	expected := []string{
+		"unique contract does not apply to string at 2:29",
+		"unique contract does not apply to int at 3:23",
+		"notEmpty contract does not apply to int at 4:25",
+		"finite contract does not apply to int at 5:23",
+		"multipleOf contract does not apply to string at 6:31",
+		"range contract does not apply to string at 7:28",
+		"odd contract does not apply to string at 8:26",
+		"even contract does not apply to float at 9:25",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestIntegerMarkerContractsCheckConstantInitializers(t *testing.T) {
+	input := `
+type PageSize int range 10..100 multipleOf 10
+type OddNumber int odd
+type EvenNumber int even
+
+let ok: PageSize := 20
+let bad: PageSize := 25
+let oddBad: OddNumber := 10
+let evenBad: EvenNumber := 11
+`
+
+	errors := analyzeSource(t, input)
+	expected := []string{
+		"value 25 violates multipleOf contract PageSize 10 at 7:22",
+		"value 10 violates odd contract OddNumber at 8:26",
+		"value 11 violates even contract EvenNumber at 9:28",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestVariableLevelContractRequiresTryOnLaterAssignment(t *testing.T) {
+	input := `
+let mut percentage: int range 0..100 := 50
+
+fn Test() void {
+	percentage = 60
+	try percentage = 70 {
+		Err(error) => {
+			discard error
+		}
+	}
+}
+`
+
+	errors := analyzeSource(t, input)
+	expected := []string{
+		"assigning variable percentage requires try because int has contracts at 5:2",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestVariableLevelUniqueRejectsScalarStorage(t *testing.T) {
+	input := `
+let mut bad: string unique := "tag"
+let mut values: int[3] unique := [1, 2, 3]
+`
+
+	errors := analyzeSource(t, input)
+	expected := []string{
+		"unique contract does not apply to string at 2:21",
+	}
+	assertSemaErrors(t, errors, expected)
 }
 
 func TestNamedUnitTypeRegistryStoresUnit(t *testing.T) {
@@ -1360,8 +1474,8 @@ func TestInterfaceImplementationConformance(t *testing.T) {
 module main
 
 interface Vehicle {
-	fn Start(ref mut self) void
-	fn Stop(ref mut self) void
+	fn Start() void
+	fn Stop() void
 
 	property IsRunning: bool {
 		get
@@ -1379,11 +1493,11 @@ impl Car {
 		}
 	}
 
-	fn Start(ref mut self) void {
+	fn Start() void {
 		return
 	}
 
-	fn Stop(ref mut self) void {
+	fn Stop() void {
 		return
 	}
 }
@@ -1398,8 +1512,8 @@ func TestInterfaceImplementationErrors(t *testing.T) {
 module main
 
 interface Vehicle {
-	fn Start(ref mut self) void
-	fn Stop(ref mut self) void
+	fn Start() void
+	fn Stop() void
 
 	property IsRunning: bool {
 		get
@@ -1433,11 +1547,11 @@ impl WrongSignature {
 		}
 	}
 
-	fn Start(ref self) void {
+	fn Start(extra: int) void {
 		return
 	}
 
-	fn Stop(ref mut self) int {
+	fn Stop() int {
 		return 0
 	}
 }
@@ -1733,7 +1847,7 @@ type Buffer struct {
 }
 
 impl Buffer {
-    fn Flush(ref mut self: Buffer) void {
+    fn Flush() void {
     }
 }
 `
@@ -2300,11 +2414,161 @@ impl Vehicle {
 	errors := analyzeSource(t, input)
 
 	expected := []string{
-		"getter BadGet must return Speed, got Money at 24:11",
+		"function BadGet.get must return Speed, got Money at 24:11",
+		"cannot assign to immutable variable _speed at 30:4",
 		"getter MissingGet must return Speed at 28:11",
+		"undefined variable missing at 36:11",
 		"non-fallible setter BadSet cannot return Err at 41:3",
+		"Err can only be returned from Result-returning function at 42:11",
 	}
 
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestPropertySetterBodyUsesFullSemanticAnalysis(t *testing.T) {
+	input := `
+module main
+
+type Counter struct {
+	value: int,
+}
+
+impl Counter {
+	property Value: int {
+		set next {
+			if next {
+				value = missing
+			}
+		}
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	expected := []string{
+		"if condition must be bool, got int at 11:7",
+		"undefined variable missing at 12:13",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestPropertyShortNameFallibleAssignmentRequiresTry(t *testing.T) {
+	input := `
+module main
+
+enum PropertyError {
+	Rejected,
+}
+
+type Counter struct {
+	value: int,
+}
+
+impl Counter {
+	property Checked: int {
+		get {
+			return value
+		}
+		try set next {
+			return Err(PropertyError.Rejected)
+		}
+	}
+
+	property Mirror: int {
+		set next {
+			Checked = next
+		}
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	expected := []string{
+		"assigning fallible property Checked requires try at 24:4",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestPropertyShortNameTryAssignmentUsesPropertyErrorType(t *testing.T) {
+	input := `
+module main
+
+enum PropertyError {
+	Rejected,
+}
+
+type Counter struct {
+	value: int,
+}
+
+impl Counter {
+	property Checked: int {
+		get {
+			return value
+		}
+		try set next {
+			return Err(PropertyError.Rejected)
+		}
+	}
+
+	property Mirror: int {
+		set next {
+			try Checked = next {
+				Err(error) => {
+					value = 0
+				}
+			}
+		}
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestImplMethodShortFieldWriteMakesSelfMutable(t *testing.T) {
+	input := `
+module main
+
+type Counter struct {
+	value: int,
+}
+
+impl Counter {
+	fn Increment() void {
+		value = value + 1
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestImplMethodShortFieldWriteRequiresMutableReceiver(t *testing.T) {
+	input := `
+module main
+
+type Counter struct {
+	value: int,
+}
+
+impl Counter {
+	fn Increment() void {
+		value = value + 1
+	}
+}
+
+fn Use(counter: Counter) void {
+	counter.Increment()
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	expected := []string{
+		"method Increment requires mutable receiver at 15:9",
+	}
 	assertSemaErrors(t, errors, expected)
 }
 
@@ -3918,6 +4182,28 @@ func TestImplInvalidFixture(t *testing.T) {
 	}
 }
 
+func TestEventValidFixture(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/event_valid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	errors := analyzeSourceRaw(t, string(input))
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestEventInvalidFixture(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/event_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	errors := analyzeSourceRaw(t, string(input))
+	if len(errors) == 0 {
+		t.Fatal("expected event_invalid.sec to produce semantic errors")
+	}
+}
+
 func supportedGenericsInvalidFixture(input string) string {
 	const marker = "// -----------------------------------------------------------------------------\n// Duplicate generic parameters\n// -----------------------------------------------------------------------------"
 	idx := strings.LastIndex(input, marker)
@@ -4996,6 +5282,10 @@ func TestCompilerIntrinsicTypesAreRegistered(t *testing.T) {
 		"MutexGuard",
 		"Atomic",
 		"CompareExchangeResult",
+		"Event",
+		"EventStorage",
+		"Subscription",
+		"EventSubscribeResult",
 		"Channel",
 		"Sender",
 		"Receiver",
@@ -5030,6 +5320,113 @@ func TestCompilerIntrinsicTypesAreRegistered(t *testing.T) {
 			t.Fatalf("AllocationError missing enum const %s: %+v", value, allocationError.EnumConsts)
 		}
 	}
+}
+
+func TestEventDeclarationPublishAndSubscribe(t *testing.T) {
+	input := `
+module main
+
+type ButtonPressData struct {
+	value: int,
+}
+
+type Button struct {
+	ButtonPressed: Event[ButtonPressData],
+	customStorage: EventStorage[ButtonPressData, 8],
+}
+
+impl Button {
+	event CustomPressed using customStorage
+
+	fn Press(data: ButtonPressData) void {
+		ButtonPressed.Publish(data)
+		CustomPressed.Publish(data)
+	}
+}
+
+fn OnButtonPressed(data: ButtonPressData) void {
+	discard data
+}
+
+fn Use(button: Button) void {
+	let subscription := button.ButtonPressed.Subscribe(OnButtonPressed)
+	discard subscription
+}
+`
+
+	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+
+	button := analyzer.types["Button"]
+	if len(button.Events) != 2 {
+		t.Fatalf("wrong event count: %+v", button.Events)
+	}
+	if button.Events[0].Name != "ButtonPressed" || button.Events[0].Capacity != 4 {
+		t.Fatalf("wrong short-form event: %+v", button.Events[0])
+	}
+	if button.Events[1].Name != "CustomPressed" || button.Events[1].Capacity != 8 || !button.Events[1].StorageBacked {
+		t.Fatalf("wrong storage-backed event: %+v", button.Events[1])
+	}
+	subscription := analyzer.completionSymbols["subscription"].Type
+	if typeDisplayName(subscription) != "EventSubscribeResult" {
+		t.Fatalf("wrong Subscribe result type: %+v display=%s", subscription, typeDisplayName(subscription))
+	}
+}
+
+func TestEventPublishRequiresOwningImpl(t *testing.T) {
+	input := `
+module main
+
+type ButtonPressData struct {
+	value: int,
+}
+
+type Button struct {
+	ButtonPressed: Event[ButtonPressData],
+}
+
+fn Bad(button: Button, data: ButtonPressData) void {
+	button.ButtonPressed.Publish(data)
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"event ButtonPressed may only be published by Button at 13:23",
+	})
+}
+
+func TestEventSemanticErrors(t *testing.T) {
+	input := `
+module main
+
+type ButtonPressData struct {
+	value: int,
+}
+
+type BadCapacity struct {
+	Bad: Event[ButtonPressData, 0],
+}
+
+type BadStorage struct {
+	storage: EventStorage[ButtonPressData],
+}
+
+type Button struct {
+	count: int,
+}
+
+impl Button {
+	event Pressed using count
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"event capacity must be greater than zero at 9:7",
+		"EventStorage requires explicit capacity at 13:11",
+		"event Pressed storage field count must be EventStorage, got int at 21:22",
+	})
 }
 
 func TestChannelConstructionAndCapabilities(t *testing.T) {

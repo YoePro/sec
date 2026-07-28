@@ -1,0 +1,198 @@
+module test.events_invalid
+
+// This fixture documents both currently implemented event diagnostics and
+// event rules that are intentionally still future work. Comments marked ERROR
+// should be diagnosed by the current compiler. Comments marked FUTURE ERROR
+// describe rulebook-invalid code that is not fully diagnosed yet.
+
+type ButtonPressData struct {
+    buttonID: int,
+    pressure: int,
+}
+
+type Button struct {
+    ButtonPressed: Event[ButtonPressData]
+}
+
+impl Button {
+    fn Press(buttonID: int, pressure: int) void {
+        ButtonPressed.Publish(ButtonPressData {
+            buttonID: buttonID,
+            pressure: pressure
+        })
+    }
+}
+
+fn HandleButtonPress(data: ButtonPressData) void {
+    let id := data.buttonID
+}
+
+type BrokenButton struct {
+    // ERROR: Event capacity must be greater than zero.
+    Pressed: Event[ButtonPressData, 0]
+}
+
+fn InvalidExternalPublish(button: ref Button) void {
+    // ERROR: Publication is owner-only; external code may subscribe but not
+    // publish Button.ButtonPressed.
+    button.ButtonPressed.Publish(ButtonPressData {
+        buttonID: 1,
+        pressure: 10
+    })
+}
+
+fn InvalidUseAfterSubscriptionMove(button: ref Button) void {
+    match button.ButtonPressed.Subscribe(HandleButtonPress) {
+        Subscribed(subscription) => {
+            // ERROR: Subscription is move-only. Moving it to moved consumes
+            // subscription.
+            let moved := subscription
+            subscription.Close()
+            moved.Close()
+        }
+
+        Full => {
+        }
+    }
+}
+
+fn InvalidCloseTwice(button: ref Button) void {
+    match button.ButtonPressed.Subscribe(HandleButtonPress) {
+        Subscribed(subscription) => {
+            // ERROR: Subscription.Close consumes the subscription handle.
+            subscription.Close()
+            subscription.Close()
+        }
+
+        Full => {
+        }
+    }
+}
+
+fn InvalidCopySubscription(button: ref Button) void {
+    match button.ButtonPressed.Subscribe(HandleButtonPress) {
+        Subscribed(subscription) => {
+            // ERROR: Subscription is move-only. This is a move to first, not a
+            // copy, so the second binding cannot use subscription.
+            let first := subscription
+            let second := subscription
+
+            first.Close()
+            second.Close()
+        }
+
+        Full => {
+        }
+    }
+}
+
+fn InvalidMoveOwnerWithActiveSubscription() void {
+    let button := Button {}
+
+    match button.ButtonPressed.Subscribe(HandleButtonPress) {
+        Subscribed(subscription) => {
+            // FUTURE ERROR: Moving an event owner while a subscription may be
+            // active must be rejected once active-subscription tracking is
+            // implemented.
+            let movedButton := button
+            movedButton.Press(1, 20)
+            subscription.Close()
+        }
+
+        Full => {
+        }
+    }
+}
+
+fn InvalidCopyOwnerWithEventStorage() void {
+    let first := Button {}
+    // FUTURE ERROR: Event-owning values must not be copied while that would
+    // duplicate event storage or active subscriptions. Current copy/move
+    // analysis is conservative but does not yet track active event storage.
+    let second := first
+    let third := first
+
+    second.Press(1, 10)
+    third.Press(2, 20)
+}
+
+fn InvalidWrongPayload(button: ref mut Button) void {
+    // ERROR: Publish payload must be ButtonPressData.
+    button.ButtonPressed.Publish(42)
+}
+
+fn InvalidHandlerReturnType(button: ref Button) void {
+    // ERROR: Event handlers must have type fn(ButtonPressData) void.
+    let result := button.ButtonPressed.Subscribe(fn(data: ButtonPressData) int {
+        return data.buttonID
+    })
+
+    match result {
+        Subscribed(subscription) => subscription.Close()
+        Full => {}
+    }
+}
+
+type DeviceWithHiddenEvent struct {
+}
+
+impl DeviceWithHiddenEvent {
+    // ERROR: An impl event declaration cannot add hidden per-instance storage.
+    // It must expose an existing EventStorage field with `using`.
+    event Changed using missingStorage
+}
+
+type DeviceWithWrongStorage struct implements PressSource {
+    changedStorage: EventStorage[int, 4]
+}
+
+impl DeviceWithWrongStorage {
+    // ERROR: PressSource requires ButtonPressed[ButtonPressData], but this
+    // event is backed by EventStorage[int, 4].
+    event ButtonPressed using changedStorage
+}
+
+@interrupt(Uart0)
+fn InvalidPublishFromISR(button: ref mut Button) void {
+    // CURRENT ERROR: @interrupt function attributes are not implemented here
+    // and are parsed as module-scope code.
+    // FUTURE ERROR: Ordinary event publication is not ISR-safe.
+    button.ButtonPressed.Publish(ButtonPressData {
+        buttonID: 1,
+        pressure: 1
+    })
+}
+
+fn InvalidConcurrentPublishWithoutThreadSafePolicy(button: ref mut Button) void {
+    // CURRENT ERROR: `spawn thread` parsing/lowering is not implemented in this
+    // compiler path yet.
+    // FUTURE ERROR: Default events are not thread-safe. Concurrent publication
+    // from spawned physical threads requires a thread-safe policy or explicit
+    // synchronization.
+    let first := spawn thread button.Press(1, 10)
+    let second := spawn thread button.Press(2, 20)
+
+    join first
+    join second
+}
+
+fn InvalidIgnoredSubscribeResult(button: ref Button) void {
+    // ERROR: Subscribe returns an EventSubscribeResult that must be handled or
+    // explicitly discarded.
+    button.ButtonPressed.Subscribe(HandleButtonPress)
+}
+
+fn InvalidPublishThroughInterface(source: ref PressSource) void {
+    // CURRENT ERROR: Interface event member access is not implemented on
+    // interface-typed values yet.
+    // FUTURE ERROR: Interface event requirements grant observation/subscription,
+    // not publication rights.
+    source.ButtonPressed.Publish(ButtonPressData {
+        buttonID: 7,
+        pressure: 70
+    })
+}
+
+interface PressSource {
+    event ButtonPressed[ButtonPressData]
+}

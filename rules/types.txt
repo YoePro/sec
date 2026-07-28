@@ -352,12 +352,18 @@ that variables are implicitly converted later.
 -------------
 
 Assignment requires the assigned value to match the target variable type.
+If the target storage has contracts, assignment is fallible by type and must use
+`try` with a handler block; see `rules/variables_contracts.txt`.
 
 Valid:
 
 ```sec
 let mut p: Percent := 10
-p = Percent(20)
+try p = Percent(20) {
+    Err(error) => {
+        discard error
+    }
+}
 ```
 
 Invalid:

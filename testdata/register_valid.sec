@@ -83,15 +83,15 @@ type StatusRegister register[8] {
 }
 
 impl StatusRegister {
-    fn IsReady(ref self) bool {
+    fn IsReady() bool {
         return self.Ready
     }
 
-    fn HasError(ref self) bool {
+    fn HasError() bool {
         return self.Error
     }
 
-    fn ClearError(ref mut self) void {
+    fn ClearError() void {
         self.Error = false
     }
 

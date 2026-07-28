@@ -34,7 +34,7 @@ impl DuplicateImplementation {
 // =============================================================================
 
 interface RequiresRun {
-    fn Run(ref self) void
+    fn Run() void
 }
 
 type MissingMethod struct implements RequiresRun {
@@ -44,7 +44,7 @@ impl MissingMethod {
 }
 
 interface RequiresStop {
-    fn Stop(ref self) void
+    fn Stop() void
 }
 
 type WrongMethodName struct implements RequiresStop {
@@ -52,7 +52,7 @@ type WrongMethodName struct implements RequiresStop {
 
 impl WrongMethodName {
     // ERROR: Halt does not satisfy Stop.
-    fn Halt(ref self) void {
+    fn Halt() void {
     }
 }
 
@@ -61,7 +61,7 @@ impl WrongMethodName {
 // =============================================================================
 
 interface RequiresSharedReceiver {
-    fn Inspect(ref self) void
+    fn Inspect() void
 }
 
 type MutableInsteadOfShared struct implements RequiresSharedReceiver {
@@ -69,12 +69,12 @@ type MutableInsteadOfShared struct implements RequiresSharedReceiver {
 
 impl MutableInsteadOfShared {
     // ERROR: ref mut self does not exactly match ref self.
-    fn Inspect(ref mut self) void {
+    fn Inspect() void {
     }
 }
 
 interface RequiresMutableReceiver {
-    fn Reset(ref mut self) void
+    fn Reset() void
 }
 
 type SharedInsteadOfMutable struct implements RequiresMutableReceiver {
@@ -82,12 +82,12 @@ type SharedInsteadOfMutable struct implements RequiresMutableReceiver {
 
 impl SharedInsteadOfMutable {
     // ERROR: ref self does not satisfy ref mut self.
-    fn Reset(ref self) void {
+    fn Reset() void {
     }
 }
 
 interface RequiresInstanceReceiver {
-    fn Value(ref self) int
+    fn Value() int
 }
 
 type StaticInsteadOfInstance struct implements RequiresInstanceReceiver {
@@ -105,7 +105,7 @@ impl StaticInsteadOfInstance {
 // =============================================================================
 
 interface RequiresOneParameter {
-    fn Set(ref mut self, value: int) void
+    fn Set(value: int) void
 }
 
 type MissingParameter struct implements RequiresOneParameter {
@@ -113,7 +113,7 @@ type MissingParameter struct implements RequiresOneParameter {
 
 impl MissingParameter {
     // ERROR: Missing required int parameter.
-    fn Set(ref mut self) void {
+    fn Set() void {
     }
 }
 
@@ -122,12 +122,12 @@ type ExtraParameter struct implements RequiresOneParameter {
 
 impl ExtraParameter {
     // ERROR: The implementation has one extra parameter.
-    fn Set(ref mut self, value: int, extra: int) void {
+    fn Set(value: int, extra: int) void {
     }
 }
 
 interface RequiresOrderedParameters {
-    fn Configure(ref mut self, count: int, enabled: bool) void
+    fn Configure(count: int, enabled: bool) void
 }
 
 type WrongParameterOrder struct implements RequiresOrderedParameters {
@@ -135,12 +135,12 @@ type WrongParameterOrder struct implements RequiresOrderedParameters {
 
 impl WrongParameterOrder {
     // ERROR: Parameter order and types do not match.
-    fn Configure(ref mut self, enabled: bool, count: int) void {
+    fn Configure(enabled: bool, count: int) void {
     }
 }
 
 interface RequiresIntegerParameter {
-    fn Accept(ref self, value: int) bool
+    fn Accept(value: int) bool
 }
 
 type WrongParameterType struct implements RequiresIntegerParameter {
@@ -148,7 +148,7 @@ type WrongParameterType struct implements RequiresIntegerParameter {
 
 impl WrongParameterType {
     // ERROR: string is incompatible with int.
-    fn Accept(ref self, value: string) bool {
+    fn Accept(value: string) bool {
         return false
     }
 }
@@ -162,7 +162,7 @@ type Buffer struct {
 }
 
 interface RequiresSharedParameter {
-    fn Use(ref self, buffer: ref Buffer) void
+    fn Use(buffer: ref Buffer) void
 }
 
 type OwnedParameterInsteadOfReference struct implements RequiresSharedParameter {
@@ -170,12 +170,12 @@ type OwnedParameterInsteadOfReference struct implements RequiresSharedParameter 
 
 impl OwnedParameterInsteadOfReference {
     // ERROR: Buffer does not match ref Buffer.
-    fn Use(ref self, buffer: Buffer) void {
+    fn Use(buffer: Buffer) void {
     }
 }
 
 interface RequiresMutableParameter {
-    fn Update(ref self, buffer: ref mut Buffer) void
+    fn Update(buffer: ref mut Buffer) void
 }
 
 type SharedParameterInsteadOfMutable struct implements RequiresMutableParameter {
@@ -183,7 +183,7 @@ type SharedParameterInsteadOfMutable struct implements RequiresMutableParameter 
 
 impl SharedParameterInsteadOfMutable {
     // ERROR: ref Buffer does not match ref mut Buffer.
-    fn Update(ref self, buffer: ref Buffer) void {
+    fn Update(buffer: ref Buffer) void {
     }
 }
 
@@ -192,7 +192,7 @@ impl SharedParameterInsteadOfMutable {
 // =============================================================================
 
 interface RequiresIntegerResult {
-    fn Measure(ref self) int
+    fn Measure() int
 }
 
 type WrongReturnType struct implements RequiresIntegerResult {
@@ -200,13 +200,13 @@ type WrongReturnType struct implements RequiresIntegerResult {
 
 impl WrongReturnType {
     // ERROR: bool does not match int.
-    fn Measure(ref self) bool {
+    fn Measure() bool {
         return false
     }
 }
 
 interface RequiresValueResult {
-    fn Read(ref self) int
+    fn Read() int
 }
 
 type VoidReturnInsteadOfValue struct implements RequiresValueResult {
@@ -214,7 +214,7 @@ type VoidReturnInsteadOfValue struct implements RequiresValueResult {
 
 impl VoidReturnInsteadOfValue {
     // ERROR: void does not match int.
-    fn Read(ref self) void {
+    fn Read() void {
     }
 }
 
@@ -306,11 +306,11 @@ impl GetterOnlyProperty {
 // =============================================================================
 
 interface BaseRead {
-    fn Read(ref self) int
+    fn Read() int
 }
 
 interface DerivedRead implements BaseRead {
-    fn Revision(ref self) int
+    fn Revision() int
 }
 
 type MissingInheritedMethod struct implements DerivedRead {
@@ -318,32 +318,32 @@ type MissingInheritedMethod struct implements DerivedRead {
 
 impl MissingInheritedMethod {
     // ERROR: Read inherited from BaseRead is missing.
-    fn Revision(ref self) int {
+    fn Revision() int {
         return 1
     }
 }
 
 interface FirstLevel {
-    fn First(ref self) int
+    fn First() int
 }
 
 interface SecondLevel implements FirstLevel {
-    fn Second(ref self) int
+    fn Second() int
 }
 
 interface ThirdLevel implements SecondLevel {
-    fn Third(ref self) int
+    fn Third() int
 }
 
 type MissingDeepRequirement struct implements ThirdLevel {
 }
 
 impl MissingDeepRequirement {
-    fn Second(ref self) int {
+    fn Second() int {
         return 2
     }
 
-    fn Third(ref self) int {
+    fn Third() int {
         return 3
     }
 
@@ -374,11 +374,11 @@ interface DuplicateInheritedInterface implements RepeatedBase, RepeatedBase {
 // =============================================================================
 
 interface IntegerState {
-    fn State(ref self) int
+    fn State() int
 }
 
 interface BooleanState {
-    fn State(ref self) bool
+    fn State() bool
 }
 
 // ERROR: The inherited State declarations are incompatible.
@@ -406,9 +406,9 @@ interface ConflictingCode implements ReadOnlyCode, StringCode {
 // =============================================================================
 
 interface DuplicateMethodRequirement {
-    fn Execute(ref self) void
+    fn Execute() void
     // ERROR: Duplicate method requirement.
-    fn Execute(ref self) void
+    fn Execute() void
 }
 
 interface DuplicatePropertyRequirement {
@@ -423,7 +423,7 @@ interface DuplicatePropertyRequirement {
 }
 
 interface MethodPropertyConflict {
-    fn Value(ref self) int
+    fn Value() int
 
     // ERROR: A property and method cannot share the same member name.
     property Value: int {
@@ -436,11 +436,11 @@ interface MethodPropertyConflict {
 // =============================================================================
 
 interface ContractOnly {
-    fn Execute(ref self) void
+    fn Execute() void
 }
 
 // ERROR: An interface is not a valid ordinary impl target.
 impl ContractOnly {
-    fn Execute(ref self) void {
+    fn Execute() void {
     }
 }

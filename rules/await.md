@@ -9,6 +9,11 @@ and the task result returns to ordinary synchronous control flow.
 
 `await` consumes the owning `Task[T]` handle.
 
+`await` is task-specific in v0.1.
+
+Raw `Thread[T]` and process handles are not awaitable unless a future adapter or
+awaitable rule explicitly adds that support.
+
 ---
 
 ## Basic syntax
@@ -126,6 +131,35 @@ Task[int32]
 the implementation may copy the representation.
 
 The source-level task handle is still consumed.
+
+Invalid:
+
+```sec
+let worker := spawn thread Work()
+await worker
+```
+
+Expected diagnostic:
+
+```text
+await requires Task[T]; got Thread[T]
+```
+
+Invalid:
+
+```sec
+let process := spawn process Program()
+await process
+```
+
+Expected diagnostic:
+
+```text
+await requires Task[T]; got Process
+```
+
+Thread and process completion use `join` unless a future rule defines an
+explicit awaitable adapter.
 
 ---
 

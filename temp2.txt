@@ -38,13 +38,22 @@ spawn.md - Written
 await.md - Written
 concurrency.md - Written
 channels.md - Written
+events.md - Written
+threads.md - Written
 mutex.md - Written
 atomics.md - Written
 static.md - Written
 concurrency_memory_model.md - Written
 select.md - Written
 processes.txt - To be done
-spawn_process.txt - To be done
+scheduling.md - To be done
+cancellation.md - To be done
+blocking.md - To be done
+structured_concurrency.md - To be done
+transferability.md - To be done
+data_races.md - To be done
+deadlock_analysis.md - To be done
+concurrency_runtime_model.md - To be done
 ipc.txt - To be done
 
 Kategori: Typ- & Metodsystem
@@ -95,3 +104,16 @@ ffi.txt - Written
 language_philosophy.txt - Written
 projects.txt - Written
 rules_implementations.txt - Written
+
+--- From Codex:
+Skapat:
+rules/threads.md
+rules/processes.txt
+rules/scheduling.md
+rules/cancellation.md
+rules/blocking.md
+rules/structured_concurrency.md
+rules/transferability.md
+rules/data_races.md
+rules/deadlock_analysis.md
+rules/concurrency_runtime_model.md

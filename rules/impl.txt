@@ -52,6 +52,7 @@ An `impl` block may contain:
 
 - methods
 - properties
+- event exposure members
 - nested types
 - nested enums
 - nested units
@@ -78,6 +79,7 @@ members:
 
 - methods
 - properties
+- event exposure members
 - constants
 - custom free behavior when implemented
 
@@ -97,8 +99,25 @@ should choose one of these models:
 It must not contain:
 
 - stored fields
+- per-instance event storage
 - variable declarations
 - executable statements outside members
+
+An `impl` event declaration may expose existing storage declared by the type:
+
+```sec
+type Button struct {
+    buttonPressedStorage: EventStorage[ButtonPressData, 8]
+}
+
+impl Button {
+    event ButtonPressed using buttonPressedStorage
+}
+```
+
+The `impl` block must not silently add storage.
+
+The storage field belongs to the type declaration.
 
 ---
 
@@ -106,17 +125,9 @@ It must not contain:
 
 Inside an `impl` block the compiler automatically knows the target type.
 
-Methods may declare:
-
-```sec
-fn Print(ref self)
-```
-
-or
-
-```sec
-fn Reset(ref mut self)
-```
+Methods have implicit `self` and must not list `self` in their parameter list.
+The semantic analyzer provides `self` inside every instantiated `impl` method
+body.
 
 Static methods do not use `self`.
 
@@ -180,14 +191,14 @@ Example:
 
 ```sec
 interface Reader {
-    fn Read(ref mut self) Result[string, IOError]
+    fn Read() Result[string, IOError]
 }
 
 type FileReader struct implements Reader {
 }
 
 impl FileReader {
-    fn Read(ref mut self) Result[string, IOError] {
+    fn Read() Result[string, IOError] {
         // ...
     }
 }
@@ -235,11 +246,11 @@ type Status register[32] {
 }
 
 impl Status {
-    fn IsReady(ref self) bool {
+    fn IsReady() bool {
         return self.Ready
     }
 
-    fn ClearError(ref mut self) void {
+    fn ClearError() void {
         self.Error = false
     }
 }
@@ -336,6 +347,7 @@ Pass 3 registers behavioral members:
 
 - properties
 - methods
+- event exposure members
 - constants when implemented
 
 Pass 4 analyzes member bodies:
@@ -343,6 +355,7 @@ Pass 4 analyzes member bodies:
 - property getters
 - property setters
 - method bodies
+- event publication and subscription calls
 - constant initializers when implemented
 
 This ordering allows:
@@ -515,7 +528,7 @@ During semantic analysis the compiler validates:
 Implemented:
 
 - parsing ordinary `impl Target { ... }`
-- parsing nested `type`, `unit`, `enum`, `property` and `fn` declarations
+- parsing nested `type`, `unit`, `enum`, `property`, `event` and `fn` declarations
 - rejecting free-standing statements inside ordinary impl blocks
 - registering nested type names as qualified names
 - allowing short nested type names inside the matching impl block
@@ -530,8 +543,24 @@ Implemented:
 - generic impl target validation for the current generic model
 - registering methods as qualified functions such as `Vehicle.Drive`
 - preserving the declaring module while registering and analyzing methods
+- providing implicit `self` inside every `impl` method body
+- inferring whether implicit `self` must be mutable from assignments to
+  `self.member`, short field names, register field names and settable property
+  names in the method body
+- checking method-call receivers against the inferred receiver mutability
+- exposing target fields, register fields and properties as short names in
+  impl method and property accessor bodies
+- exposing event members as short names in impl method and property accessor
+  bodies
+- rejecting explicit `self` parameters on `impl` methods
 - resolving calls through a `self` value as instance method calls rather than
   static type paths
+- analyzing property getter and setter bodies through normal statement sema
+- registering `event Name using storage` members backed by existing
+  `EventStorage`
+- rejecting event exposure backed by a missing or non-`EventStorage` field
+- rejecting event exposure conflicts with fields, methods, properties, nested
+  types or existing events
 
 Partially implemented:
 
@@ -539,8 +568,6 @@ Partially implemented:
   self rules are still incomplete
 - generic impl support exists for target parameters, but method-level generic
   parameters are not implemented
-- property body analysis exists, but it still uses a limited body-expression
-  model rather than full function-body sema
 
 Not implemented yet:
 

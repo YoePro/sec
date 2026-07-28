@@ -584,11 +584,11 @@ type Status register[32] {
 }
 
 impl Status {
-    fn IsReady(ref self) bool {
+    fn IsReady() bool {
         return self.Ready
     }
 
-    fn ClearError(ref mut self) void {
+    fn ClearError() void {
         self.Error = false
     }
 }
@@ -633,10 +633,10 @@ Methods may access register fields through `self`.
 Rules:
 
 ```
-ref self
+read-only self use
     may read fields
 
-ref mut self
+mutating self use
     may write fields when the receiver storage is writable
 
 static method

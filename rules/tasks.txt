@@ -17,6 +17,24 @@ The language-level task model is independent of whether the implementation uses:
 
 A task is not a thread or process.
 
+`spawn Work()` is equivalent to:
+
+```sec
+spawn task Work()
+```
+
+A Task is not semantically a Thread.
+
+The target may implement tasks using cooperative state machines, fibers, an
+executor, RTOS tasks, operating-system threads or another supported scheduler
+mechanism.
+
+That implementation strategy must not change task ownership, cancellation or
+result semantics.
+
+A task must not assume that it resumes on the same physical thread after a
+suspension point unless a future affinity rule explicitly guarantees it.
+
 ---
 
 ## Task type

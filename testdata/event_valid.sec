@@ -1,0 +1,187 @@
+module test.events_valid
+
+type ButtonPressData struct {
+    buttonID: int,
+    pressure: int,
+}
+
+type TemperatureChanged struct {
+    oldValue: int,
+    newValue: int,
+}
+
+type Button struct {
+    ButtonPressed: Event[ButtonPressData],
+}
+
+impl Button {
+    fn Press(buttonID: int, pressure: int) void {
+        ButtonPressed.Publish(ButtonPressData {
+            buttonID: buttonID,
+            pressure: pressure
+        })
+    }
+}
+
+type Sensor struct {
+    TemperatureChanged: Event[TemperatureChanged, 8],
+    temperature: int,
+}
+
+impl Sensor {
+    fn SetTemperature(value: int) void {
+        let previous := temperature
+        temperature = value
+
+        TemperatureChanged.Publish(TemperatureChanged {
+            oldValue: previous,
+            newValue: value
+        })
+    }
+}
+
+type ExplicitButton struct {
+    pressedStorage: EventStorage[ButtonPressData, 4],
+}
+
+impl ExplicitButton {
+    event Pressed using pressedStorage
+
+    fn Press(buttonID: int, pressure: int) void {
+        Pressed.Publish(ButtonPressData {
+            buttonID: buttonID,
+            pressure: pressure
+        })
+    }
+}
+
+interface PressSource {
+    event ButtonPressed[ButtonPressData]
+}
+
+fn HandleButtonPress(data: ButtonPressData) void {
+    let id := data.buttonID
+    let force := data.pressure
+}
+
+fn HandleTemperatureChange(data: TemperatureChanged) void {
+    let from := data.oldValue
+    let to := data.newValue
+}
+
+fn SubscribeAndClose(button: ref Button) void {
+    match button.ButtonPressed.Subscribe(HandleButtonPress) {
+        Subscribed(subscription) => {
+            subscription.Close()
+        }
+
+        Full => {
+        }
+    }
+}
+
+fn SubscribeWithLambda(button: ref Button) void {
+    let threshold := 20
+
+    match button.ButtonPressed.Subscribe(capture(threshold) fn(data: ButtonPressData) void {
+        if data.pressure > threshold {
+            let strongPress := data.buttonID
+        }
+    }) {
+        Subscribed(subscription) => {
+            subscription.Close()
+        }
+
+        Full => {
+        }
+    }
+}
+
+fn MultipleSubscriptions(button: ref Button) void {
+    let firstResult := button.ButtonPressed.Subscribe(HandleButtonPress)
+    let secondResult := button.ButtonPressed.Subscribe(HandleButtonPress)
+    let thirdResult := button.ButtonPressed.Subscribe(HandleButtonPress)
+    let fourthResult := button.ButtonPressed.Subscribe(HandleButtonPress)
+
+    match firstResult {
+        Subscribed(first) => first.Close()
+        Full => {}
+    }
+
+    match secondResult {
+        Subscribed(second) => second.Close()
+        Full => {}
+    }
+
+    match thirdResult {
+        Subscribed(third) => third.Close()
+        Full => {}
+    }
+
+    match fourthResult {
+        Subscribed(fourth) => fourth.Close()
+        Full => {}
+    }
+}
+
+fn ExplicitCapacity(sensor: ref Sensor) void {
+    let first := sensor.TemperatureChanged.Subscribe(HandleTemperatureChange)
+    let second := sensor.TemperatureChanged.Subscribe(HandleTemperatureChange)
+
+    match first {
+        Subscribed(subscription) => subscription.Close()
+        Full => {}
+    }
+
+    match second {
+        Subscribed(subscription) => subscription.Close()
+        Full => {}
+    }
+}
+
+fn PublishFromOwner(button: ref mut Button) void {
+    button.Press(7, 42)
+}
+
+fn PublishExplicitStorage(button: ref mut ExplicitButton) void {
+    button.Press(11, 75)
+}
+
+fn SubscriptionMove(button: ref Button) void {
+    match button.ButtonPressed.Subscribe(HandleButtonPress) {
+        Subscribed(subscription) => {
+            let moved := subscription
+            moved.Close()
+        }
+
+        Full => {
+        }
+    }
+}
+
+fn EventOwnerMoveBeforeSubscription() void {
+    let first := Button {}
+    let second := first
+
+    second.Press(1, 10)
+}
+
+fn SequentialSubscriptions(button: ref Button) void {
+    match button.ButtonPressed.Subscribe(HandleButtonPress) {
+        Subscribed(first) => {
+            first.Close()
+        }
+
+        Full => {
+        }
+    }
+
+    match button.ButtonPressed.Subscribe(HandleButtonPress) {
+        Subscribed(second) => {
+            second.Close()
+        }
+
+        Full => {
+        }
+    }
+}

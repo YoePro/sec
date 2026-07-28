@@ -736,6 +736,7 @@ introduced later.
 Implemented now:
 
 * named types may carry integer range contracts
+* variables may carry parsed and semantically registered contracts
 * struct fields may carry integer range contracts
 * constant initializers are checked against integer range contracts at compile
   time
@@ -743,27 +744,34 @@ Implemented now:
   time
 * assignment to a mutable variable whose type has a contract requires try
 * try assignment marks a fallible contract assignment
+* try assignment requires a handler block in the parser
+* semantic analysis accepts catch-all contract assignment handlers using
+  `Err(error)`
+* parser syntax for `in [...]`
+* parser syntax for `notEmpty`
+* parser syntax for `multipleOf`
+* parser syntax for `unique`
+* parser syntax for `finite`
+* parser syntax for `odd`
+* parser syntax for `even`
+* contract applicability diagnostics for `range`, `in`, `notEmpty`,
+  `multipleOf`, `unique`, `finite`, `odd` and `even`, including rejection of
+  `unique` on scalar storage such as string, numeric and bool values
+* constant integer `multipleOf` checks for named integer types
+* constant integer `odd` and `even` checks for named integer types
 
 Not implemented yet:
 
-* parser syntax for in [...]
 * parser syntax for regex
 * parser syntax for minLen
 * parser syntax for maxLen
 * parser syntax for len
-* parser syntax for notEmpty
-* parser syntax for odd
-* parser syntax for even
-* parser syntax for multipleOf
-* parser syntax for unique
-* parser syntax for finite
 * decimal and float range evaluation
 * string contract evaluation
 * collection contract evaluation
 * membership contract evaluation
 * runtime contract check generation
-* try handlers for contract assignment failure
-* contract error types
+* concrete contract error type design
 * contract propagation through LLVM
 
 Core assignment rule:
@@ -792,7 +800,11 @@ assigning variable percentage requires try because Percent has contracts
 Valid:
 
 ```
-try percentage = 60
+try percentage = 60 {
+    Err(error) => {
+        discard error
+    }
+}
 ```
 
 Compound assignments are also fallible.
@@ -800,7 +812,11 @@ Compound assignments are also fallible.
 Valid:
 
 ```
-try percentage += 10
+try percentage += 10 {
+    Err(error) => {
+        discard error
+    }
+}
 ```
 
 Invalid:
@@ -839,11 +855,23 @@ Later assignment requires try.
 Example:
 
 ```
-try role = "admin"
+try role = "admin" {
+    Err(error) => {
+        discard error
+    }
+}
 
-try temperature = calculatedTemperature
+try temperature = calculatedTemperature {
+    Err(error) => {
+        discard error
+    }
+}
 
-try tags = newTags
+try tags = newTags {
+    Err(error) => {
+        discard error
+    }
+}
 ```
 
 The underlying type remains unchanged.
@@ -965,7 +993,11 @@ property value: Percent {
 Assignment therefore follows the same rule as a fallible property setter:
 
 ```
-try percentage = value
+try percentage = value {
+    Err(error) => {
+        discard error
+    }
+}
 ```
 
 No implicit conversions:
@@ -984,13 +1016,21 @@ let mut percentage: Percent := 50
 The following is invalid without explicit conversion:
 
 ```
-try percentage = value
+try percentage = value {
+    Err(error) => {
+        discard error
+    }
+}
 ```
 
 Use:
 
 ```
-try percentage = Percent(value)
+try percentage = Percent(value) {
+    Err(error) => {
+        discard error
+    }
+}
 ```
 
 The conversion is itself contract-checked.
@@ -1102,7 +1142,11 @@ type Percent int range 0..100
 let value: int := 50
 let mut percentage: Percent := 10
 
-try percentage = Percent(value)
+try percentage = Percent(value) {
+    Err(error) => {
+        discard error
+    }
+}
 ```
 
 Without try, this remains invalid even though the right-hand expression contains
@@ -1250,21 +1294,22 @@ Contract result model:
 
 Conceptually, a failed contract assignment returns an error.
 
-The concrete contract error type is not finalized.
+The concrete runtime contract error payload is not finalized.
 
-For now, semantic analysis only enforces that the caller uses try for a
-fallible contract assignment.
-
-Later:
+For now, the parser requires a handler block and semantic analysis models the
+error as `ContractError` so catch-all handlers can be checked before runtime
+lowering exists:
 
 ```
-try percentage = value
+try percentage = value {
+    Err(error) => {
+        discard error
+    }
+}
 ```
 
-must either:
-
-* propagate a compatible contract error
-* handle the error locally with a try handler block
+Later propagation may be added once the concrete contract error model is
+finalized.
 
 Design rules:
 

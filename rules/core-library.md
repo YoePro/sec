@@ -162,7 +162,7 @@ Invalid boilerplate:
 
 ```sec
 impl string {
-    fn IsEmpty(ref self) bool {
+    fn IsEmpty(self: string) bool {
     }
 }
 ```
@@ -1493,7 +1493,9 @@ Implemented:
   fundamental builtins (`bool`, integer/float/decimal types, `string`, `void`,
   `never`) and compiler-known generic/runtime-facing types such as `RawPtr[T]`,
   `Option[T]`, `Result[T, E]`, `Task[T]`, `Mutex[T]`, `MutexGuard[T]`,
-  `Atomic[T]`, `CompareExchangeResult[T]`, `Arena` and `AllocationError`.
+  `Atomic[T]`, `CompareExchangeResult[T]`, `Event[T]`,
+  `EventStorage[T, Capacity]`, `Subscription`, `EventSubscribeResult`, `Arena`
+  and `AllocationError`.
 - `RawPtr[void]` is supported as an extern C/FFI pointer type.
 - Minimum core source currently includes `bool.ToString()`, selected `int`
   and `uint` methods, and a semantically valid subset of `string` methods

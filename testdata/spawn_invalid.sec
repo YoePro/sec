@@ -1,0 +1,246 @@
+module test.spawn_invalid
+
+fn Work() void {
+}
+
+fn Calculate() int {
+    return 42
+}
+
+/* Expected error: spawn requires a callable expression.
+ * Reason: The spawn expression has no function or callable operand.
+ */
+fn MissingCallable() void {
+    let worker := spawn
+}
+
+/* Expected error: expected callable expression after spawn task.
+ * Reason: The explicit task modifier is present, but no callable follows it.
+ */
+fn MissingCallableAfterTask() void {
+    let worker := spawn task
+}
+
+/* Expected error: expected callable expression after spawn thread.
+ * Reason: The thread modifier is present, but no callable follows it.
+ */
+fn MissingCallableAfterThread() void {
+    let worker := spawn thread
+}
+
+/* Expected error: expected callable expression after spawn process.
+ * Reason: The process modifier is present, but no callable follows it.
+ */
+fn MissingCallableAfterProcess() void {
+    let worker := spawn process
+}
+
+/* Expected error: invalid spawn modifier.
+ * Reason: worker is not a recognized contextual modifier after spawn.
+ */
+fn UnknownSpawnModifier() void {
+    let worker := spawn worker Work()
+}
+
+/* Expected error: duplicate spawn execution modifier.
+ * Reason: A spawn expression may select only one execution kind.
+ */
+fn DuplicateTaskModifier() void {
+    let worker := spawn task task Work()
+}
+
+/* Expected error: conflicting spawn execution modifiers.
+ * Reason: A spawn expression cannot request both task and thread execution.
+ */
+fn TaskAndThreadModifiers() void {
+    let worker := spawn task thread Work()
+}
+
+/* Expected error: conflicting spawn execution modifiers.
+ * Reason: A spawn expression cannot request both thread and process execution.
+ */
+fn ThreadAndProcessModifiers() void {
+    let worker := spawn thread process Work()
+}
+
+/* Expected error: conflicting spawn execution modifiers.
+ * Reason: A spawn expression cannot request both process and task execution.
+ */
+fn ProcessAndTaskModifiers() void {
+    let worker := spawn process task Work()
+}
+
+/* Expected error: spawn operand must be a call expression.
+ * Reason: Work names a function but does not invoke it.
+ */
+fn FunctionReferenceWithoutCall() void {
+    let worker := spawn Work
+}
+
+/* Expected error: spawn operand must be a call expression.
+ * Reason: Calculate names a function but does not invoke it.
+ */
+fn ExplicitTaskFunctionReferenceWithoutCall() void {
+    let worker := spawn task Calculate
+}
+
+/* Expected error: spawn operand must be a call expression.
+ * Reason: A thread must be started with an invoked callable, not a bare function value.
+ */
+fn ThreadFunctionReferenceWithoutCall() void {
+    let worker := spawn thread Work
+}
+
+/* Expected error: spawn operand must be callable.
+ * Reason: Integer literals cannot be invoked or executed.
+ */
+fn SpawnIntegerLiteral() void {
+    let worker := spawn 42
+}
+
+/* Expected error: spawn operand must be callable.
+ * Reason: String literals cannot be executed as tasks.
+ */
+fn SpawnStringLiteral() void {
+    let worker := spawn "work"
+}
+
+/* Expected error: spawn operand must be callable.
+ * Reason: A boolean expression is not a callable expression.
+ */
+fn SpawnBooleanExpression() void {
+    let worker := spawn true
+}
+
+/* Expected error: expected function call argument list.
+ * Reason: The opening parenthesis of the spawned call is not closed.
+ */
+fn MissingClosingParenthesis() void {
+    let worker := spawn Work(
+}
+
+/* Expected error: expected expression after comma.
+ * Reason: The spawned function call ends with an incomplete argument.
+ */
+fn MissingArgumentAfterComma() void {
+    let worker := spawn Add(1,)
+}
+
+fn Add(left: int, right: int) int {
+    return left + right
+}
+
+/* Expected error: expected comma between call arguments.
+ * Reason: The arguments in the spawned call are not separated.
+ */
+fn MissingArgumentComma() void {
+    let worker := spawn Add(1 2)
+}
+
+/* Expected error: unexpected comma before first argument.
+ * Reason: A function call cannot begin its argument list with a comma.
+ */
+fn LeadingArgumentComma() void {
+    let worker := spawn Add(, 2)
+}
+
+/* Expected error: expected callable member after dot.
+ * Reason: The member access used by spawn is incomplete.
+ */
+fn IncompleteMemberCall() void {
+    let worker := spawn Worker.()
+}
+
+/* Expected error: expected member name after dot.
+ * Reason: The spawned member expression ends before naming a method.
+ */
+fn MissingMemberName() void {
+    let worker := spawn Worker.
+}
+
+/* Expected error: expected closing generic bracket.
+ * Reason: The explicit generic argument list in the spawned call is incomplete.
+ */
+fn IncompleteGenericArguments() void {
+    let worker := spawn Identity[int(10)
+}
+
+fn Identity[T](value: T) T {
+    return value
+}
+
+/* Expected error: expected callable after qualified module name.
+ * Reason: The qualified spawn expression ends with a module separator.
+ */
+fn IncompleteQualifiedCall() void {
+    let worker := spawn jobs.()
+}
+
+module jobs {
+    fn Run() void {
+    }
+}
+
+/* Expected error: spawn is an expression and cannot appear as a declaration modifier.
+ * Reason: spawn must precede a callable expression inside executable code.
+ */
+spawn fn InvalidDeclaration() void {
+}
+
+/* Expected error: expected expression after assignment operator.
+ * Reason: The spawn keyword is followed only by a statement terminator.
+ */
+fn SpawnBeforeTerminator() void {
+    let worker := spawn;
+}
+
+/* Expected error: unexpected block after spawn.
+ * Reason: A raw block is not a callable invocation.
+ */
+fn SpawnBlock() void {
+    let worker := spawn {
+        Work()
+    }
+}
+
+/* Expected error: unexpected execution modifier after callable expression.
+ * Reason: The execution kind must appear immediately after spawn, before the call.
+ */
+fn ModifierAfterCallable() void {
+    let worker := spawn Work() thread
+}
+
+/* Expected error: duplicate spawn keyword.
+ * Reason: spawn cannot directly modify another spawn expression.
+ */
+fn NestedSpawnKeyword() void {
+    let worker := spawn spawn Work()
+}
+
+/* Expected error: expected callable expression after spawn thread.
+ * Reason: Parentheses without a callee do not form a valid function call.
+ */
+fn EmptyCallWithoutCallee() void {
+    let worker := spawn thread ()
+}
+
+/* Expected error: expected expression inside grouped spawn operand.
+ * Reason: The grouped expression is empty and therefore not callable.
+ */
+fn EmptyGroupedOperand() void {
+    let worker := spawn ()
+}
+
+/* Expected error: process spawn requires a callable or process target.
+ * Reason: A numeric expression cannot identify executable process work.
+ */
+fn ProcessSpawnWithInteger() void {
+    let processHandle := spawn process 100
+}
+
+/* Expected error: unexpected second callable expression.
+ * Reason: One spawn expression may contain exactly one outer callable invocation.
+ */
+fn TwoCallsAfterSpawn() void {
+    let worker := spawn Work() Calculate()
+}

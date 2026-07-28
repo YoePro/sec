@@ -47,6 +47,7 @@ type Analyzer struct {
 	scopeDepth            int
 	allocationContext     AllocationContext
 	errors                []Error
+	errorKeys             map[string]bool
 	warnings              []Error
 }
 
@@ -88,6 +89,7 @@ func NewAnalyzer() *Analyzer {
 
 func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.errors = nil
+	a.errorKeys = map[string]bool{}
 	a.warnings = nil
 	a.symbols = map[string]Symbol{}
 	a.completionSymbols = map[string]Symbol{}
@@ -592,6 +594,9 @@ func typeReferenceDisplayName(ref *ast.TypeReference) string {
 		parts := make([]string, 0, len(ref.TypeArgs))
 		for _, arg := range ref.TypeArgs {
 			parts = append(parts, typeReferenceDisplayName(arg))
+		}
+		if ref.EventCapacitySet {
+			parts = append(parts, fmt.Sprintf("%d", ref.EventCapacity))
 		}
 		out += "[" + strings.Join(parts, ", ") + "]"
 	}
@@ -2373,21 +2378,22 @@ func (a *Analyzer) registerFunctionDeclarationBody(fn *ast.FunctionDeclaration, 
 		ABI:               fn.ABI,
 		AllocationEffect:  AllocationEffectNone,
 	}
+	if a.currentImplTarget != "" {
+		function.ImplTarget = a.currentImplTarget
+		if target, ok := a.types[a.currentImplTarget]; ok {
+			function.ReceiverMutable = functionBodyWritesTargetMember(fn.Body, target)
+		}
+	}
 	if fn.Extern && !isSupportedExternABI(fn.ABI) {
 		a.addErrorAtToken(fn.Token, "unknown extern ABI %q", fn.ABI)
 	}
 
 	seenParams := map[string]lexer.Token{}
-	if target, ok := a.implicitSelfParameter(fn); ok {
-		function.Parameters = append(function.Parameters, FunctionParameter{
-			Name:       "self",
-			Type:       target,
-			Token:      fn.Name.Token,
-			MutableRef: functionBodyWritesSelf(fn.Body),
-		})
-		seenParams["self"] = fn.Name.Token
-	}
+	a.rejectExplicitImplSelfParameter(fn)
 	for _, param := range fn.Parameters {
+		if a.currentImplTarget != "" && param.Name != nil && param.Name.Value == "self" {
+			continue
+		}
 		if _, exists := seenParams[param.Name.Value]; exists {
 			a.addErrorAtToken(param.Name.Token, "duplicate parameter %q", param.Name.Value)
 			continue
@@ -2706,7 +2712,7 @@ func (a *Analyzer) analyzeFunctionBodyInScope(fn *ast.FunctionDeclaration, name 
 		delete(a.constInts, param.Name)
 		a.assigned[param.Name] = true
 	}
-	a.defineImplFieldSymbols(function)
+	a.defineImplicitImplInstanceSymbols(fn.Body)
 
 	a.analyzeBlockStatements(fn.Body)
 
@@ -2715,20 +2721,72 @@ func (a *Analyzer) analyzeFunctionBodyInScope(fn *ast.FunctionDeclaration, name 
 	}
 }
 
-func (a *Analyzer) implicitSelfParameter(fn *ast.FunctionDeclaration) (Type, bool) {
-	if a.currentImplTarget == "" || fn == nil || functionBodyUsesSelf(fn.Body) == false {
-		return Type{}, false
+func (a *Analyzer) rejectExplicitImplSelfParameter(fn *ast.FunctionDeclaration) {
+	if a.currentImplTarget == "" || fn == nil {
+		return
 	}
 	for _, param := range fn.Parameters {
 		if param.Name != nil && param.Name.Value == "self" {
-			return Type{}, false
+			a.addErrorAtToken(param.Name.Token, "impl methods have implicit self; remove self from the parameter list")
 		}
+	}
+}
+
+func (a *Analyzer) defineImplicitImplSelfSymbol(block *ast.BlockStatement) {
+	if a.currentImplTarget == "" {
+		return
 	}
 	target, ok := a.types[a.currentImplTarget]
 	if !ok || target.Kind == InvalidType {
-		return Type{}, false
+		return
 	}
-	return target, true
+	mutableSelf := functionBodyWritesTargetMember(block, target)
+	a.defineInstanceSymbols(target, mutableSelf, lexer.Token{})
+}
+
+func (a *Analyzer) defineImplicitImplInstanceSymbols(block *ast.BlockStatement) {
+	a.defineImplicitImplSelfSymbol(block)
+}
+
+func (a *Analyzer) defineInstanceSymbols(target Type, mutableSelf bool, selfToken lexer.Token) {
+	a.symbols["self"] = Symbol{Name: "self", Type: target, Mutable: mutableSelf, Token: selfToken, Storage: StorageOriginInline, Local: true, ScopeDepth: 0}
+	a.assigned["self"] = true
+	delete(a.constInts, "self")
+	for _, field := range target.Fields {
+		if _, exists := a.symbols[field.Name]; exists {
+			continue
+		}
+		a.symbols[field.Name] = Symbol{Name: field.Name, Type: field.Type, Mutable: mutableSelf, Token: field.Token, Storage: StorageOriginInline, Local: true, ScopeDepth: 0}
+		a.assigned[field.Name] = true
+		delete(a.constInts, field.Name)
+	}
+	for _, field := range target.RegisterFields {
+		if field.Name == "_" {
+			continue
+		}
+		if _, exists := a.symbols[field.Name]; exists {
+			continue
+		}
+		a.symbols[field.Name] = Symbol{Name: field.Name, Type: field.Type, Mutable: mutableSelf, Token: field.Token, Storage: StorageOriginInline, Local: true, ScopeDepth: 0}
+		a.assigned[field.Name] = true
+		delete(a.constInts, field.Name)
+	}
+	for _, property := range target.Properties {
+		if _, exists := a.symbols[property.Name]; exists {
+			continue
+		}
+		a.symbols[property.Name] = Symbol{Name: property.Name, Type: property.Type, Mutable: mutableSelf && property.HasSetter, Token: property.Token, Storage: StorageOriginInline, Local: true, ScopeDepth: 0}
+		a.assigned[property.Name] = true
+		delete(a.constInts, property.Name)
+	}
+	for _, event := range target.Events {
+		if _, exists := a.symbols[event.Name]; exists {
+			continue
+		}
+		a.symbols[event.Name] = Symbol{Name: event.Name, Type: event.Type, Mutable: false, Token: event.Token, Storage: StorageOriginInline, Local: true, ScopeDepth: 0}
+		a.assigned[event.Name] = true
+		delete(a.constInts, event.Name)
+	}
 }
 
 func functionBodyUsesSelf(block *ast.BlockStatement) bool {
@@ -2753,6 +2811,37 @@ func functionBodyWritesSelf(block *ast.BlockStatement) bool {
 		}
 	}
 	return false
+}
+
+func functionBodyWritesTargetMember(block *ast.BlockStatement, target Type) bool {
+	if block == nil {
+		return false
+	}
+	names := targetAssignableMemberNames(target)
+	for _, stmt := range block.Statements {
+		if statementWritesTargetMember(stmt, names) {
+			return true
+		}
+	}
+	return false
+}
+
+func targetAssignableMemberNames(target Type) map[string]bool {
+	names := map[string]bool{}
+	for _, field := range target.Fields {
+		names[field.Name] = true
+	}
+	for _, field := range target.RegisterFields {
+		if field.Name != "_" {
+			names[field.Name] = true
+		}
+	}
+	for _, property := range target.Properties {
+		if property.HasSetter {
+			names[property.Name] = true
+		}
+	}
+	return names
 }
 
 func statementUsesSelf(stmt ast.Statement) bool {
@@ -2820,12 +2909,71 @@ func statementWritesSelf(stmt ast.Statement) bool {
 	return false
 }
 
+func statementWritesTargetMember(stmt ast.Statement, names map[string]bool) bool {
+	switch stmt := stmt.(type) {
+	case *ast.AssignmentStatement:
+		return assignmentTargetUsesSelf(stmt.Target) || assignmentTargetUsesName(stmt.Target, names)
+	case *ast.TryAssignmentStatement:
+		return stmt.Assignment != nil && statementWritesTargetMember(stmt.Assignment, names)
+	case *ast.IfStatement:
+		return functionBodyWritesTargetMemberNames(stmt.Consequence, names) || functionBodyWritesTargetMemberNames(stmt.Alternative, names)
+	case *ast.ForStatement:
+		return functionBodyWritesTargetMemberNames(stmt.Body, names)
+	case *ast.WhileStatement:
+		return functionBodyWritesTargetMemberNames(stmt.Body, names)
+	case *ast.DeferStatement:
+		return functionBodyWritesTargetMemberNames(stmt.Body, names)
+	case *ast.UnsafeStatement:
+		return functionBodyWritesTargetMemberNames(stmt.Body, names)
+	case *ast.MatchStatement:
+		if stmt.Match == nil {
+			return false
+		}
+		for _, arm := range stmt.Match.Arms {
+			if arm != nil && functionBodyWritesTargetMemberNames(arm.BlockBody, names) {
+				return true
+			}
+		}
+	case *ast.SelectStatement:
+		for _, branch := range stmt.Branches {
+			if branch != nil && functionBodyWritesTargetMemberNames(branch.Body, names) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func functionBodyWritesTargetMemberNames(block *ast.BlockStatement, names map[string]bool) bool {
+	if block == nil {
+		return false
+	}
+	for _, stmt := range block.Statements {
+		if statementWritesTargetMember(stmt, names) {
+			return true
+		}
+	}
+	return false
+}
+
 func assignmentTargetUsesSelf(expr ast.Expression) bool {
 	switch expr := expr.(type) {
 	case *ast.MemberExpression:
 		return expressionUsesSelf(expr.Object)
 	case *ast.IndexExpression:
 		return assignmentTargetUsesSelf(expr.Left)
+	}
+	return false
+}
+
+func assignmentTargetUsesName(expr ast.Expression, names map[string]bool) bool {
+	switch expr := expr.(type) {
+	case *ast.Identifier:
+		return names[expr.Value]
+	case *ast.MemberExpression:
+		return expressionUsesSelf(expr.Object)
+	case *ast.IndexExpression:
+		return assignmentTargetUsesName(expr.Left, names)
 	}
 	return false
 }
@@ -2905,37 +3053,6 @@ func expressionUsesSelf(expr ast.Expression) bool {
 		return expressionUsesSelf(expr.Value)
 	}
 	return false
-}
-
-func (a *Analyzer) defineImplFieldSymbols(function Function) {
-	if a.currentImplTarget == "" {
-		return
-	}
-	target, ok := a.types[a.currentImplTarget]
-	if !ok || len(target.Fields) == 0 {
-		return
-	}
-	hasSelf := false
-	mutableSelf := false
-	for _, param := range function.Parameters {
-		if !isSelfParameter(param) {
-			continue
-		}
-		hasSelf = true
-		mutableSelf = param.MutableRef
-		break
-	}
-	if !hasSelf {
-		return
-	}
-	for _, field := range target.Fields {
-		if _, exists := a.symbols[field.Name]; exists {
-			continue
-		}
-		a.symbols[field.Name] = Symbol{Name: field.Name, Type: field.Type, Mutable: mutableSelf, Token: field.Token, Storage: StorageOriginInline}
-		a.assigned[field.Name] = true
-		delete(a.constInts, field.Name)
-	}
 }
 
 func (a *Analyzer) blockDefinitelyReturns(block *ast.BlockStatement) bool {
@@ -3750,6 +3867,27 @@ func (a *Analyzer) analyzeInterfaceDeclarationBody(stmt *ast.InterfaceDeclaratio
 			RequiresSet: property.RequiresSet,
 		})
 	}
+	seenEvents := map[string]lexer.Token{}
+	for _, event := range stmt.Events {
+		if event == nil || event.Name == nil {
+			continue
+		}
+		if previous, exists := seenEvents[event.Name.Value]; exists {
+			_ = previous
+			a.addErrorAtToken(event.Name.Token, "duplicate interface event %q in %s", event.Name.Value, stmt.Name.Value)
+			continue
+		}
+		seenEvents[event.Name.Value] = event.Name.Token
+		payload, ok := a.resolveType(event.Payload)
+		if !ok {
+			continue
+		}
+		iface.InterfaceEvents = append(iface.InterfaceEvents, InterfaceEvent{
+			Name:    event.Name.Value,
+			Payload: payload,
+			Token:   event.Name.Token,
+		})
+	}
 
 	a.mergeInheritedInterfaceRequirements(&iface)
 	a.types[stmt.Name.Value] = iface
@@ -3767,6 +3905,10 @@ func (a *Analyzer) mergeInheritedInterfaceRequirements(iface *Type) {
 	properties := map[string]InterfaceProperty{}
 	for _, property := range iface.InterfaceProperties {
 		properties[property.Name] = property
+	}
+	events := map[string]InterfaceEvent{}
+	for _, event := range iface.InterfaceEvents {
+		events[event.Name] = event
 	}
 
 	for _, parent := range iface.Implements {
@@ -3793,6 +3935,16 @@ func (a *Analyzer) mergeInheritedInterfaceRequirements(iface *Type) {
 			}
 			properties[property.Name] = property
 			iface.InterfaceProperties = append(iface.InterfaceProperties, property)
+		}
+		for _, event := range parentType.InterfaceEvents {
+			if existing, exists := events[event.Name]; exists {
+				if !sameConcreteType(existing.Payload, event.Payload) {
+					a.addErrorAtToken(event.Token, "inherited interface event %s conflicts in %s", event.Name, iface.Name)
+				}
+				continue
+			}
+			events[event.Name] = event
+			iface.InterfaceEvents = append(iface.InterfaceEvents, event)
 		}
 	}
 }
@@ -3925,13 +4077,8 @@ func (a *Analyzer) analyzeTypeDeclarationBody(stmt *ast.TypeDeclStatement) {
 		baseType, baseTypeOK = a.resolveType(stmt.AssignedType)
 	}
 
-	if contract, ok := stmt.Contract.(*ast.RangeContract); ok && baseTypeOK {
-		if contract.Min != nil {
-			a.checkIntegerLiteralRange(baseType, contract.Min)
-		}
-		if contract.Max != nil {
-			a.checkIntegerLiteralRange(baseType, contract.Max)
-		}
+	if baseTypeOK {
+		a.checkContractLiteralBounds(baseType, stmt.Contract)
 	}
 
 	if baseTypeOK {
@@ -3992,13 +4139,8 @@ func (a *Analyzer) analyzeNestedTypeDeclaration(qualifiedName string, stmt *ast.
 		baseType, baseTypeOK = a.resolveType(stmt.AssignedType)
 	}
 
-	if contract, ok := stmt.Contract.(*ast.RangeContract); ok && baseTypeOK {
-		if contract.Min != nil {
-			a.checkIntegerLiteralRange(baseType, contract.Min)
-		}
-		if contract.Max != nil {
-			a.checkIntegerLiteralRange(baseType, contract.Max)
-		}
+	if baseTypeOK {
+		a.checkContractLiteralBounds(baseType, stmt.Contract)
 	}
 
 	if baseTypeOK {
@@ -4057,18 +4199,17 @@ func (a *Analyzer) typeFromStructDeclarationWithName(name string, stmt *ast.Type
 		if !ok {
 			continue
 		}
+		if isEventType(fieldType) {
+			event := eventFromField(name, field.Name.Value, fieldType, field.Name.Token)
+			typ.Events = append(typ.Events, event)
+		}
 		if isBareSliceType(fieldType) {
 			a.addErrorAtToken(field.Type.Token, "bare slice type %s must be used behind ref", typeDisplayName(fieldType))
 			continue
 		}
-		if contract, ok := field.Contract.(*ast.RangeContract); ok {
-			if contract.Min != nil {
-				a.checkIntegerLiteralRange(fieldType, contract.Min)
-			}
-			if contract.Max != nil {
-				a.checkIntegerLiteralRange(fieldType, contract.Max)
-			}
-			fieldType = applyRangeContract(fieldType, field.Contract)
+		if field.Contract != nil {
+			a.checkContractLiteralBounds(fieldType, field.Contract)
+			fieldType = a.applyContracts(fieldType, field.Contract)
 		}
 
 		typ.Fields = append(typ.Fields, StructField{
@@ -4472,6 +4613,10 @@ func (a *Analyzer) registerImplStatement(stmt *ast.ImplStatement) {
 	for _, property := range target.Properties {
 		properties[property.Name] = property.Token
 	}
+	events := map[string]lexer.Token{}
+	for _, event := range target.Events {
+		events[event.Name] = event.Token
+	}
 
 	targetChanged := false
 	for _, member := range stmt.Members {
@@ -4503,6 +4648,10 @@ func (a *Analyzer) registerImplStatement(stmt *ast.ImplStatement) {
 				a.addErrorAtToken(fn.Name.Token, "method %s conflicts with property %s in %s", name, name, stmt.Target.Name)
 				continue
 			}
+			if _, exists := events[name]; exists {
+				a.addErrorAtToken(fn.Name.Token, "method %s conflicts with event %s in %s", name, name, stmt.Target.Name)
+				continue
+			}
 			if _, exists := nestedTypes[name]; exists {
 				a.addErrorAtToken(fn.Name.Token, "method %s conflicts with nested type %s in %s", name, name, stmt.Target.Name)
 				continue
@@ -4523,6 +4672,12 @@ func (a *Analyzer) registerImplStatement(stmt *ast.ImplStatement) {
 			continue
 		}
 
+		if event, ok := member.(*ast.EventDeclaration); ok {
+			a.registerImplEventDeclaration(stmt.Target.Name, &target, event, fields, methods, properties, events, nestedTypes)
+			targetChanged = true
+			continue
+		}
+
 		property, ok := member.(*ast.PropertyDeclaration)
 		if !ok {
 			continue
@@ -4535,6 +4690,10 @@ func (a *Analyzer) registerImplStatement(stmt *ast.ImplStatement) {
 		if previous, exists := properties[property.Name.Value]; exists {
 			_ = previous
 			a.addErrorAtToken(property.Name.Token, "duplicate property %q in impl %s", property.Name.Value, stmt.Target.Name)
+			continue
+		}
+		if _, exists := events[property.Name.Value]; exists {
+			a.addErrorAtToken(property.Name.Token, "property %s conflicts with event %s in %s", property.Name.Value, property.Name.Value, stmt.Target.Name)
 			continue
 		}
 		if _, exists := methods[property.Name.Value]; exists {
@@ -4621,6 +4780,59 @@ func (a *Analyzer) analyzeImplStaticLet(targetName string, stmt *ast.LetStatemen
 	a.assigned[qualifiedName] = stmt.Value != nil
 }
 
+func (a *Analyzer) registerImplEventDeclaration(targetName string, target *Type, event *ast.EventDeclaration, fields map[string]lexer.Token, methods map[string]lexer.Token, properties map[string]lexer.Token, events map[string]lexer.Token, nestedTypes map[string]lexer.Token) {
+	if event == nil || event.Name == nil {
+		return
+	}
+	name := event.Name.Value
+	if _, exists := fields[name]; exists {
+		a.addErrorAtToken(event.Name.Token, "event %s conflicts with field %s in %s", name, name, targetName)
+		return
+	}
+	if _, exists := methods[name]; exists {
+		a.addErrorAtToken(event.Name.Token, "event %s conflicts with method %s in %s", name, name, targetName)
+		return
+	}
+	if _, exists := properties[name]; exists {
+		a.addErrorAtToken(event.Name.Token, "event %s conflicts with property %s in %s", name, name, targetName)
+		return
+	}
+	if _, exists := nestedTypes[name]; exists {
+		a.addErrorAtToken(event.Name.Token, "event %s conflicts with nested type %s in %s", name, name, targetName)
+		return
+	}
+	if previous, exists := events[name]; exists {
+		_ = previous
+		a.addErrorAtToken(event.Name.Token, "duplicate event %q in impl %s", name, targetName)
+		return
+	}
+	if event.Storage == nil {
+		a.addErrorAtToken(event.Token, "event %s must specify storage with using", name)
+		return
+	}
+	storageType, ok := lookupStructField(*target, event.Storage.Value)
+	if !ok {
+		a.addErrorAtToken(event.Storage.Token, "event %s uses unknown storage field %s", name, event.Storage.Value)
+		return
+	}
+	if !isEventStorageType(storageType) {
+		a.addErrorAtToken(event.Storage.Token, "event %s storage field %s must be EventStorage, got %s", name, event.Storage.Value, typeDisplayName(storageType))
+		return
+	}
+	eventType := eventTypeFromStorage(storageType)
+	target.Events = append(target.Events, Event{
+		Name:          name,
+		Type:          eventType,
+		Payload:       storageType.TypeArgs[0],
+		Capacity:      eventCapacity(storageType),
+		Token:         event.Name.Token,
+		Owner:         targetName,
+		Storage:       event.Storage.Value,
+		StorageBacked: true,
+	})
+	events[name] = event.Name.Token
+}
+
 func (a *Analyzer) isUnitConversionFunctionTarget(targetName string, fn *ast.FunctionDeclaration) bool {
 	if fn == nil || fn.Name == nil || fn.Name.Value != targetName {
 		return false
@@ -4682,47 +4894,54 @@ func (a *Analyzer) validateTypeImplementsInterface(typ Type, iface Type) {
 			a.addErrorAtToken(required.Token, "type %s property %s must provide set for interface %s", typ.Name, required.Name, iface.Name)
 		}
 	}
+
+	for _, required := range iface.InterfaceEvents {
+		event, ok := lookupEvent(typ, required.Name)
+		if !ok {
+			a.addErrorAtToken(required.Token, "type %s implements %s but is missing event %s", typ.Name, iface.Name, required.Name)
+			continue
+		}
+		if !sameConcreteType(event.Payload, required.Payload) {
+			a.addErrorAtToken(required.Token, "type %s event %s payload must be %s for interface %s, got %s", typ.Name, required.Name, typeDisplayName(required.Payload), iface.Name, typeDisplayName(event.Payload))
+		}
+	}
 }
 
 func hasCompatibleInterfaceMethod(typ Type, iface Type, methods []Function, required Function) bool {
 	for _, method := range methods {
-		if compatibleInterfaceMethodSignature(typ, iface, method, required) && sameConcreteType(method.ReturnType, required.ReturnType) {
+		if compatibleInterfaceMethodSignature(method, required) && sameConcreteType(method.ReturnType, required.ReturnType) {
 			return true
 		}
 	}
 	return false
 }
 
-func compatibleInterfaceMethodSignature(typ Type, iface Type, method Function, required Function) bool {
-	if len(method.Parameters) != len(required.Parameters) {
+func compatibleInterfaceMethodSignature(method Function, required Function) bool {
+	methodParams := explicitInterfaceComparableParameters(method.Parameters)
+	requiredParams := explicitInterfaceComparableParameters(required.Parameters)
+	if len(methodParams) != len(requiredParams) {
 		return false
 	}
-	for i := range method.Parameters {
-		if isSelfParameter(method.Parameters[i]) && isSelfParameter(required.Parameters[i]) {
-			if method.Parameters[i].Ref != required.Parameters[i].Ref || method.Parameters[i].MutableRef != required.Parameters[i].MutableRef {
-				return false
-			}
-			if !referenceElementNamed(method.Parameters[i].Type, typ.Name) || required.Parameters[i].Type.Kind != ReferenceType {
-				return false
-			}
-			continue
-		}
-		if method.Parameters[i].Ref != required.Parameters[i].Ref || method.Parameters[i].MutableRef != required.Parameters[i].MutableRef {
+	for i := range methodParams {
+		if methodParams[i].Ref != requiredParams[i].Ref || methodParams[i].MutableRef != requiredParams[i].MutableRef {
 			return false
 		}
-		if !sameConcreteType(method.Parameters[i].Type, required.Parameters[i].Type) {
+		if !sameConcreteType(methodParams[i].Type, requiredParams[i].Type) {
 			return false
 		}
 	}
 	return true
 }
 
-func isSelfParameter(param FunctionParameter) bool {
-	return param.Name == "self"
+func explicitInterfaceComparableParameters(parameters []FunctionParameter) []FunctionParameter {
+	if len(parameters) > 0 && isSelfParameter(parameters[0]) {
+		return parameters[1:]
+	}
+	return parameters
 }
 
-func referenceElementNamed(typ Type, name string) bool {
-	return typ.Kind == ReferenceType && typ.Element != nil && typ.Element.Name == name
+func isSelfParameter(param FunctionParameter) bool {
+	return param.Name == "self"
 }
 
 func (a *Analyzer) analyzeImplBodies(program *ast.Program) {
@@ -4778,27 +4997,8 @@ func (a *Analyzer) analyzePropertyBody(target Type, property *ast.PropertyDeclar
 }
 
 func (a *Analyzer) analyzeGetterBody(target Type, property *ast.PropertyDeclaration, propertyType Type) {
-	foundReturn := false
-	for i, token := range property.Getter.Tokens {
-		if token.Type != lexer.RETURN || i+1 >= len(property.Getter.Tokens) {
-			continue
-		}
-		foundReturn = true
-
-		returnToken := property.Getter.Tokens[i+1]
-		returnExpr := parseBodyExpression(property.Getter.Tokens[i+1:])
-		if returnExpr == nil {
-			continue
-		}
-
-		returnType, ok := a.inferPropertyBodyExpression(target, nil, propertyType, returnExpr)
-		if ok && returnType.Kind != InvalidType && !canInitialize(propertyType, returnType, returnExpr) {
-			a.addErrorAtToken(returnToken, "getter %s must return %s, got %s", property.Name.Value, typeDisplayName(propertyType), typeDisplayName(returnType))
-		}
-		return
-	}
-
-	if !foundReturn {
+	a.analyzePropertyAccessorBody(target, property.Name.Value+".get", property.Getter, propertyType, false, nil, Type{})
+	if !a.blockDefinitelyReturns(property.Getter) {
 		a.addErrorAtToken(property.Name.Token, "getter %s must return %s", property.Name.Value, typeDisplayName(propertyType))
 	}
 }
@@ -4807,32 +5007,109 @@ func (a *Analyzer) analyzeSetterBody(target Type, property *ast.PropertyDeclarat
 	if !property.Setter.Fallible && blockReturnsErr(property.Setter.Body) {
 		a.addErrorAtToken(property.Setter.Token, "non-fallible setter %s cannot return Err", property.Name.Value)
 	}
-
-	for i, token := range property.Setter.Body.Tokens {
-		if token.Type != lexer.IDENT || i+2 >= len(property.Setter.Body.Tokens) {
-			continue
+	returnType := Type{Name: "void", Kind: VoidType}
+	if property.Setter.Fallible {
+		errorType := Type{Kind: InvalidType}
+		if registered, ok := lookupProperty(target, property.Name.Value); ok && registered.Error != nil {
+			errorType = *registered.Error
+		} else if inferred, ok := a.inferPropertySetterErrorType(target, property, propertyType); ok {
+			errorType = inferred
 		}
-		if property.Setter.Body.Tokens[i+1].Type != lexer.ASSIGN {
-			continue
-		}
-
-		targetType, ok := a.resolveBodyValueType(target, property.Setter, propertyType, token)
-		if !ok {
-			continue
-		}
-
-		valueType, ok := a.resolveBodyValueType(target, property.Setter, propertyType, property.Setter.Body.Tokens[i+2])
-		if ok && !sameConcreteType(targetType, valueType) {
-			a.addErrorAtToken(property.Setter.Body.Tokens[i+2], "cannot assign %s to %s in setter %s", typeDisplayName(valueType), typeDisplayName(targetType), property.Name.Value)
+		if errorType.Kind != InvalidType {
+			returnType = Type{Name: "Result", Kind: ResultType, TypeArgs: []Type{{Name: "void", Kind: VoidType}, errorType}}
 		}
 	}
+	a.analyzePropertyAccessorBody(target, property.Name.Value+".set", property.Setter.Body, returnType, true, property.Setter.Parameter, propertyType)
+}
+
+func (a *Analyzer) analyzePropertyAccessorBody(target Type, name string, body *ast.BlockStatement, returnType Type, mutableSelf bool, setterParameter *ast.Identifier, setterType Type) {
+	if body == nil || returnType.Kind == InvalidType {
+		return
+	}
+
+	previousSymbols := a.symbols
+	previousConstInts := a.constInts
+	previousAssigned := a.assigned
+	previousMoved := a.moved
+	previousBorrows := a.borrows
+	previousLocalRefContainers := a.localRefContainers
+	previousArenaGenerations := a.arenaGenerations
+	previousFunctionName := a.currentFunctionName
+	previousFunctionReturn := a.currentFunctionReturn
+	previousInFunctionBody := a.inFunctionBody
+	previousScopeDepth := a.scopeDepth
+	a.symbols = copySymbols(previousSymbols)
+	a.constInts = copyConstInts(previousConstInts)
+	a.assigned = copyAssigned(previousAssigned)
+	a.moved = map[string]lexer.Token{}
+	a.borrows = map[string][]borrowRecord{}
+	a.localRefContainers = map[string]localReferenceOrigin{}
+	a.arenaGenerations = map[string]int{}
+	a.currentFunctionName = name
+	a.currentFunctionReturn = returnType
+	a.inFunctionBody = true
+	a.scopeDepth = 0
+	defer func() {
+		a.symbols = previousSymbols
+		a.constInts = previousConstInts
+		a.assigned = previousAssigned
+		a.moved = previousMoved
+		a.borrows = previousBorrows
+		a.localRefContainers = previousLocalRefContainers
+		a.arenaGenerations = previousArenaGenerations
+		a.currentFunctionName = previousFunctionName
+		a.currentFunctionReturn = previousFunctionReturn
+		a.inFunctionBody = previousInFunctionBody
+		a.scopeDepth = previousScopeDepth
+	}()
+
+	a.defineInstanceSymbols(target, mutableSelf, body.Token)
+	if setterParameter != nil {
+		a.symbols[setterParameter.Value] = Symbol{Name: setterParameter.Value, Type: setterType, Mutable: false, Token: setterParameter.Token, Storage: StorageOriginInline, Local: true, ScopeDepth: 0}
+		a.assigned[setterParameter.Value] = true
+		delete(a.constInts, setterParameter.Value)
+	}
+
+	a.analyzeBlockStatements(body)
 }
 
 func blockReturnsErr(block *ast.BlockStatement) bool {
-	for i, token := range block.Tokens {
-		if token.Type == lexer.RETURN && i+1 < len(block.Tokens) && block.Tokens[i+1].Type == lexer.IDENT && block.Tokens[i+1].Lexeme == "Err" {
+	if block == nil {
+		return false
+	}
+	for _, stmt := range block.Statements {
+		if statementReturnsErr(stmt) {
 			return true
 		}
+	}
+	return false
+}
+
+func statementReturnsErr(stmt ast.Statement) bool {
+	switch stmt := stmt.(type) {
+	case *ast.ReturnStatement:
+		if stmt.Value == nil {
+			return false
+		}
+		_, ok := stmt.Value.(*ast.ErrExpression)
+		return ok
+	case *ast.IfStatement:
+		return blockReturnsErr(stmt.Consequence) || blockReturnsErr(stmt.Alternative)
+	case *ast.SwitchStatement:
+		for _, clause := range stmt.Cases {
+			if clause != nil && blockReturnsErr(clause.Body) {
+				return true
+			}
+		}
+		return stmt.Default != nil && blockReturnsErr(stmt.Default.Body)
+	case *ast.SelectStatement:
+		for _, branch := range stmt.Branches {
+			if branch != nil && blockReturnsErr(branch.Body) {
+				return true
+			}
+		}
+	case *ast.UnsafeStatement:
+		return blockReturnsErr(stmt.Body)
 	}
 	return false
 }
@@ -4841,24 +5118,69 @@ func (a *Analyzer) inferPropertySetterErrorType(target Type, property *ast.Prope
 	if property.Setter == nil || property.Setter.Body == nil {
 		return Type{}, false
 	}
-	for i, token := range property.Setter.Body.Tokens {
-		if token.Type != lexer.IDENT || token.Lexeme != "Err" || i+2 >= len(property.Setter.Body.Tokens) {
+	for _, stmt := range property.Setter.Body.Statements {
+		errExpr := firstErrReturnExpression(stmt)
+		if errExpr == nil || errExpr.Value == nil {
 			continue
 		}
-		if property.Setter.Body.Tokens[i+1].Type != lexer.LPAREN {
-			continue
-		}
-		expr := parseBodyExpression(property.Setter.Body.Tokens[i+2:])
-		if expr == nil {
-			continue
-		}
-		errExpr := &ast.ErrExpression{Token: token, Value: expr}
 		valueType, ok := a.inferPropertyBodyExpression(target, property.Setter, propertyType, errExpr.Value)
 		if ok && valueType.Kind != InvalidType {
 			return valueType, true
 		}
 	}
 	return Type{}, false
+}
+
+func firstErrReturnExpression(stmt ast.Statement) *ast.ErrExpression {
+	switch stmt := stmt.(type) {
+	case *ast.ReturnStatement:
+		if stmt.Value == nil {
+			return nil
+		}
+		errExpr, _ := stmt.Value.(*ast.ErrExpression)
+		return errExpr
+	case *ast.IfStatement:
+		if errExpr := firstErrReturnInBlock(stmt.Consequence); errExpr != nil {
+			return errExpr
+		}
+		return firstErrReturnInBlock(stmt.Alternative)
+	case *ast.SwitchStatement:
+		for _, clause := range stmt.Cases {
+			if clause == nil {
+				continue
+			}
+			if errExpr := firstErrReturnInBlock(clause.Body); errExpr != nil {
+				return errExpr
+			}
+		}
+		if stmt.Default != nil {
+			return firstErrReturnInBlock(stmt.Default.Body)
+		}
+	case *ast.SelectStatement:
+		for _, branch := range stmt.Branches {
+			if branch == nil {
+				continue
+			}
+			if errExpr := firstErrReturnInBlock(branch.Body); errExpr != nil {
+				return errExpr
+			}
+		}
+	case *ast.UnsafeStatement:
+		return firstErrReturnInBlock(stmt.Body)
+	}
+	return nil
+}
+
+func firstErrReturnInBlock(block *ast.BlockStatement) *ast.ErrExpression {
+	if block == nil {
+		return nil
+	}
+	for _, stmt := range block.Statements {
+		if errExpr := firstErrReturnExpression(stmt); errExpr != nil {
+			return errExpr
+		}
+	}
+	return nil
 }
 
 func parseBodyExpression(tokens []lexer.Token) ast.Expression {
@@ -5119,6 +5441,10 @@ func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
 		declaredType, _ = a.inferExpression(stmt.Value)
 		ok = declaredType.Kind != InvalidType
 	}
+	if ok && stmt.Contract != nil {
+		a.checkContractLiteralBounds(declaredType, stmt.Contract)
+		declaredType = a.applyContracts(declaredType, stmt.Contract)
+	}
 
 	defined := false
 	if ok {
@@ -5274,6 +5600,10 @@ func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement, all
 
 	if !symbol.Mutable {
 		a.addErrorAtToken(target.Token, "cannot assign to immutable variable %s", target.Value)
+		return
+	}
+	if property, ok := a.lookupCurrentImplProperty(target.Value); ok && property.Fallible && !allowFallible {
+		a.addErrorAtToken(target.Token, "assigning fallible property %s requires try", target.Value)
 		return
 	}
 	if a.checkBorrowedMutation(target.Value, target.Token) {
@@ -5704,15 +6034,29 @@ func (a *Analyzer) analyzeTryAssignmentHandlers(stmt *ast.TryAssignmentStatement
 }
 
 func (a *Analyzer) tryAssignmentErrorType(stmt *ast.AssignmentStatement) (Type, bool) {
-	member, ok := stmt.Target.(*ast.MemberExpression)
-	if !ok {
+	switch target := stmt.Target.(type) {
+	case *ast.MemberExpression:
+		property, ok := a.lookupPropertyOnMember(target)
+		if !ok || property.Error == nil {
+			return Type{}, false
+		}
+		return *property.Error, true
+	case *ast.Identifier:
+		property, ok := a.lookupCurrentImplProperty(target.Value)
+		if ok {
+			if property.Error == nil {
+				return Type{}, false
+			}
+			return *property.Error, true
+		}
+		symbol, ok := a.symbols[target.Value]
+		if ok && hasContracts(symbol.Type) {
+			return a.types["ContractError"], true
+		}
+		return Type{}, false
+	default:
 		return Type{}, false
 	}
-	property, ok := a.lookupPropertyOnMember(member)
-	if !ok || property.Error == nil {
-		return Type{}, false
-	}
-	return *property.Error, true
 }
 
 func (a *Analyzer) resolveType(ref *ast.TypeReference) (Type, bool) {
@@ -5830,6 +6174,10 @@ func (a *Analyzer) resolveType(ref *ast.TypeReference) (Type, bool) {
 	}
 
 	typ.TypeArgs = typeArgs
+	if ref.EventCapacitySet {
+		typ.EventCapacity = ref.EventCapacity
+		typ.EventCapacitySet = true
+	}
 	if !a.validateCompilerKnownGenericType(ref.Token, typ) {
 		return Type{Kind: InvalidType}, false
 	}
@@ -5858,6 +6206,8 @@ func (a *Analyzer) validateCompilerKnownGenericType(token lexer.Token, typ Type)
 		"Mutex",
 		"MutexGuard",
 		"CompareExchangeResult",
+		"Event",
+		"EventStorage",
 		"Channel",
 		"Sender",
 		"Receiver",
@@ -5865,7 +6215,18 @@ func (a *Analyzer) validateCompilerKnownGenericType(token lexer.Token, typ Type)
 		"ChannelSendResult",
 		"ChannelTryReceiveResult",
 		"ChannelRevokeResult":
-		return len(typ.TypeArgs) == 1
+		if len(typ.TypeArgs) != 1 {
+			return false
+		}
+		if (typ.Name == "Event" || typ.Name == "EventStorage") && typ.EventCapacitySet && typ.EventCapacity <= 0 {
+			a.addErrorAtToken(token, "event capacity must be greater than zero")
+			return false
+		}
+		if typ.Name == "EventStorage" && !typ.EventCapacitySet {
+			a.addErrorAtToken(token, "EventStorage requires explicit capacity")
+			return false
+		}
+		return true
 	}
 	return true
 }
@@ -6128,6 +6489,13 @@ func (a *Analyzer) inferExpressionUnrecorded(expr ast.Expression) (Type, express
 				if _, outer := a.lambdaOuterSymbols[expr.Value]; outer {
 					a.addErrorAtToken(expr.Token, "lambda cannot access outer variable %s without explicit capture", expr.Value)
 					return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+				}
+			}
+			if a.currentImplTarget != "" {
+				if target, ok := a.types[a.currentImplTarget]; ok {
+					if property, ok := lookupProperty(target, expr.Value); ok {
+						return property.Type, expressionValue{Display: expr.String()}
+					}
 				}
 			}
 			a.addErrorAtToken(expr.Token, "undefined variable %s", expr.Value)
@@ -6609,6 +6977,9 @@ func (a *Analyzer) inferMemberExpression(expr *ast.MemberExpression) (Type, bool
 		}
 		return fieldType, true
 	}
+	if event, ok := lookupEvent(objectType, expr.Property.Value); ok {
+		return event.Type, true
+	}
 	if isMutexGuardType(objectType) {
 		protected := objectType.TypeArgs[0]
 		if fieldType, ok := lookupStructField(protected, expr.Property.Value); ok {
@@ -7082,6 +7453,17 @@ func (a *Analyzer) lookupPropertyOnMember(expr *ast.MemberExpression) (Property,
 	return lookupProperty(objectType, expr.Property.Value)
 }
 
+func (a *Analyzer) lookupCurrentImplProperty(name string) (Property, bool) {
+	if a.currentImplTarget == "" {
+		return Property{}, false
+	}
+	target, ok := a.types[a.currentImplTarget]
+	if !ok {
+		return Property{}, false
+	}
+	return lookupProperty(target, name)
+}
+
 func (a *Analyzer) symbolForMemberObject(expr ast.Expression) (Symbol, bool) {
 	ident, ok := expr.(*ast.Identifier)
 	if !ok {
@@ -7131,6 +7513,16 @@ func lookupProperty(typ Type, name string) (Property, bool) {
 	return Property{}, false
 }
 
+func lookupEvent(typ Type, name string) (Event, bool) {
+	typ = dereferenceType(typ)
+	for _, event := range typ.Events {
+		if event.Name == name {
+			return event, true
+		}
+	}
+	return Event{}, false
+}
+
 func lookupPropertyByToken(typ Type, name string, token lexer.Token) (Property, bool) {
 	for _, property := range typ.Properties {
 		if property.Name == name && property.Token.Line == token.Line && property.Token.Column == token.Column {
@@ -7138,6 +7530,51 @@ func lookupPropertyByToken(typ Type, name string, token lexer.Token) (Property, 
 		}
 	}
 	return Property{}, false
+}
+
+func isEventType(typ Type) bool {
+	return typ.Name == "Event" && len(typ.TypeArgs) == 1
+}
+
+func isEventStorageType(typ Type) bool {
+	return typ.Name == "EventStorage" && len(typ.TypeArgs) == 1
+}
+
+func isEventFamilyName(name string) bool {
+	return name == "Event" || name == "EventStorage"
+}
+
+func isSubscriptionType(typ Type) bool {
+	return typ.Name == "Subscription" && len(typ.TypeArgs) == 0
+}
+
+func eventCapacity(typ Type) int64 {
+	if typ.EventCapacitySet {
+		return typ.EventCapacity
+	}
+	return 4
+}
+
+func eventFromField(owner string, name string, typ Type, token lexer.Token) Event {
+	return Event{
+		Name:     name,
+		Type:     typ,
+		Payload:  typ.TypeArgs[0],
+		Capacity: eventCapacity(typ),
+		Token:    token,
+		Owner:    owner,
+	}
+}
+
+func eventTypeFromStorage(storage Type) Type {
+	return Type{
+		Name:             "Event",
+		Kind:             StructType,
+		Intrinsic:        true,
+		TypeArgs:         []Type{storage.TypeArgs[0]},
+		EventCapacity:    eventCapacity(storage),
+		EventCapacitySet: storage.EventCapacitySet,
+	}
 }
 
 func (a *Analyzer) inferConversionExpression(expr *ast.ConversionExpression) (Type, expressionValue) {
@@ -7172,6 +7609,12 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 		return typ, value
 	}
 	if typ, value, ok := a.inferChannelCall(expr); ok {
+		return typ, value
+	}
+	if typ, value, ok := a.inferEventCall(expr); ok {
+		return typ, value
+	}
+	if typ, value, ok := a.inferSubscriptionCall(expr); ok {
 		return typ, value
 	}
 	if typ, value, ok := a.inferMutexCall(expr); ok {
@@ -7282,21 +7725,16 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 		matchesArguments := true
 		rank := 0
 		argTypes := a.callArgumentTypesForFunction(function, sourceArgTypes, methodReceiver, isMethodCall)
+		if isMethodCall && functionUsesReceiver(function) && !a.canPassImplicitMethodReceiver(function, methodReceiver) {
+			receiverError = a.implicitMethodReceiverError(function.Name, methodReceiver)
+			matchesArguments = false
+		}
 		for i := range argTypes {
-			var arg ast.Expression
-			if isMethodCall && methodFunctionUsesReceiver(function) {
-				if i == 0 {
-					if !a.canPassMethodReceiver(function.Parameters[i], methodReceiver) {
-						receiverError = a.methodReceiverError(function.Name, function.Parameters[i], methodReceiver)
-						matchesArguments = false
-						break
-					}
-				} else {
-					arg = sourceArgs[i-1]
-				}
-			} else {
-				arg = sourceArgs[i]
+			if !matchesArguments {
+				break
 			}
+			var arg ast.Expression
+			arg = sourceArgs[i]
 			if !canInitialize(function.Parameters[i].Type, argTypes[i], arg) {
 				matchesArguments = false
 				break
@@ -7369,17 +7807,10 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 		}
 		argTypes := a.callArgumentTypesForFunction(function, sourceArgTypes, methodReceiver, isMethodCall)
 		for i := range argTypes {
-			if isMethodCall && methodFunctionUsesReceiver(function) && i == 0 {
-				continue
-			}
-			argIndex := i
-			if isMethodCall && methodFunctionUsesReceiver(function) {
-				argIndex = i - 1
-			}
-			arg := sourceArgs[argIndex]
+			arg := sourceArgs[i]
 			param := function.Parameters[i]
 			if !canInitialize(param.Type, argTypes[i], arg) {
-				a.addErrorAtToken(expressionToken(arg), "argument %d to %s must be %s, got %s", argIndex+1, displayName, typeDisplayName(param.Type), typeDisplayName(argTypes[i]))
+				a.addErrorAtToken(expressionToken(arg), "argument %d to %s must be %s, got %s", i+1, displayName, typeDisplayName(param.Type), typeDisplayName(argTypes[i]))
 			}
 		}
 		break
@@ -7547,6 +7978,123 @@ func (a *Analyzer) inferMutexCall(expr *ast.CallExpression) (Type, expressionVal
 	default:
 		return Type{}, expressionValue{}, false
 	}
+}
+
+type eventReceiverInfo struct {
+	Type  Type
+	Name  string
+	Owner string
+}
+
+func (a *Analyzer) inferEventCall(expr *ast.CallExpression) (Type, expressionValue, bool) {
+	member, ok := expr.Callee.(*ast.MemberExpression)
+	if !ok || member.Property == nil {
+		return Type{}, expressionValue{}, false
+	}
+	if member.Property.Value != "Publish" && member.Property.Value != "Subscribe" {
+		return Type{}, expressionValue{}, false
+	}
+	receiver, ok := a.eventReceiverInfo(member.Object)
+	if !ok {
+		return Type{}, expressionValue{}, false
+	}
+	payload := receiver.Type.TypeArgs[0]
+	switch member.Property.Value {
+	case "Publish":
+		if !a.checkCompilerKnownCallArity(expr, "Event.Publish", 1, 1) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		if receiver.Owner == "" || receiver.Owner != a.currentImplTarget {
+			owner := receiver.Owner
+			if owner == "" {
+				owner = "the owning type"
+			}
+			a.addErrorAtToken(member.Property.Token, "event %s may only be published by %s", receiver.Name, owner)
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		argType, _ := a.inferExpressionWithExpected(expr.Arguments[0], payload)
+		if argType.Kind != InvalidType && !canInitialize(payload, argType, expr.Arguments[0]) {
+			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "Event.Publish payload must be %s, got %s", typeDisplayName(payload), typeDisplayName(argType))
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		return Type{Name: "void", Kind: VoidType}, expressionValue{Display: expr.String()}, true
+	case "Subscribe":
+		if !a.checkCompilerKnownCallArity(expr, "Event.Subscribe", 1, 1) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		handlerType, _ := a.inferExpression(expr.Arguments[0])
+		expected := eventHandlerType(payload)
+		if handlerType.Kind != InvalidType && !sameFunctionType(handlerType, expected) {
+			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "Event.Subscribe handler must be %s, got %s", typeDisplayName(expected), typeDisplayName(handlerType))
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		return a.types["EventSubscribeResult"], expressionValue{Display: expr.String()}, true
+	default:
+		return Type{}, expressionValue{}, false
+	}
+}
+
+func (a *Analyzer) eventReceiverInfo(expr ast.Expression) (eventReceiverInfo, bool) {
+	eventType, _ := a.inferExpression(expr)
+	if !isEventType(eventType) {
+		return eventReceiverInfo{}, false
+	}
+	info := eventReceiverInfo{Type: eventType, Name: "event"}
+	switch receiver := expr.(type) {
+	case *ast.Identifier:
+		info.Name = receiver.Value
+		if a.currentImplTarget != "" {
+			if target, ok := a.types[a.currentImplTarget]; ok {
+				if event, ok := lookupEvent(target, receiver.Value); ok {
+					info.Owner = event.Owner
+				}
+			}
+		}
+	case *ast.MemberExpression:
+		info.Name = receiver.Property.Value
+		objectType, _ := a.inferExpression(receiver.Object)
+		objectType = dereferenceType(objectType)
+		if event, ok := lookupEvent(objectType, receiver.Property.Value); ok {
+			info.Owner = event.Owner
+		}
+	}
+	return info, true
+}
+
+func eventHandlerType(payload Type) Type {
+	return Type{
+		Name:                   functionTypeName([]Type{payload}, Type{Name: "void", Kind: VoidType}),
+		Kind:                   FunctionType,
+		FunctionParameterTypes: []Type{payload},
+		FunctionReturnType:     &Type{Name: "void", Kind: VoidType},
+	}
+}
+
+func (a *Analyzer) inferSubscriptionCall(expr *ast.CallExpression) (Type, expressionValue, bool) {
+	member, ok := expr.Callee.(*ast.MemberExpression)
+	if !ok || member.Property == nil || member.Property.Value != "Close" {
+		return Type{}, expressionValue{}, false
+	}
+	if ident, ok := member.Object.(*ast.Identifier); ok {
+		symbol, exists := a.symbols[ident.Value]
+		if !exists || !isSubscriptionType(symbol.Type) {
+			return Type{}, expressionValue{}, false
+		}
+	} else {
+		receiverType, _ := a.inferExpression(member.Object)
+		if !isSubscriptionType(receiverType) {
+			return Type{}, expressionValue{}, false
+		}
+	}
+	receiverType, _ := a.inferExpression(member.Object)
+	if !isSubscriptionType(receiverType) {
+		return Type{}, expressionValue{}, false
+	}
+	if !a.checkCompilerKnownCallArity(expr, "Subscription.Close", 0, 0) {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+	}
+	a.markMoveSource(member.Object)
+	return Type{Name: "void", Kind: VoidType}, expressionValue{Display: expr.String()}, true
 }
 
 func (a *Analyzer) inferChannelCall(expr *ast.CallExpression) (Type, expressionValue, bool) {
@@ -7804,10 +8352,7 @@ func (a *Analyzer) callArgumentTypes(args []ast.Expression) ([]Type, []ast.Expre
 
 func (a *Analyzer) markMovedCallArguments(function Function, sourceArgs []ast.Expression, isMethodCall bool) {
 	sourceIndex := 0
-	for i, param := range function.Parameters {
-		if isMethodCall && methodFunctionUsesReceiver(function) && i == 0 {
-			continue
-		}
+	for _, param := range function.Parameters {
 		if sourceIndex >= len(sourceArgs) {
 			return
 		}
@@ -7845,18 +8390,12 @@ type methodReceiverInfo struct {
 	Symbol *Symbol
 }
 
-func (a *Analyzer) callArgumentTypesForFunction(function Function, sourceArgTypes []Type, receiver methodReceiverInfo, isMethodCall bool) []Type {
-	if !isMethodCall || !methodFunctionUsesReceiver(function) {
-		return sourceArgTypes
-	}
-	out := make([]Type, 0, len(sourceArgTypes)+1)
-	out = append(out, receiver.Type)
-	out = append(out, sourceArgTypes...)
-	return out
+func (a *Analyzer) callArgumentTypesForFunction(_ Function, sourceArgTypes []Type, _ methodReceiverInfo, _ bool) []Type {
+	return sourceArgTypes
 }
 
-func methodFunctionUsesReceiver(function Function) bool {
-	return len(function.Parameters) > 0 && isSelfParameter(function.Parameters[0])
+func functionUsesReceiver(function Function) bool {
+	return function.ImplTarget != ""
 }
 
 func (a *Analyzer) methodCallReceiver(expr *ast.CallExpression) (methodReceiverInfo, bool) {
@@ -7889,14 +8428,14 @@ func (a *Analyzer) expressionNamesType(expr ast.Expression) bool {
 	return exists
 }
 
-func (a *Analyzer) canPassMethodReceiver(param FunctionParameter, receiver methodReceiverInfo) bool {
-	if !isSelfParameter(param) {
-		return canInitialize(param.Type, receiver.Type, nil)
+func (a *Analyzer) canPassImplicitMethodReceiver(function Function, receiver methodReceiverInfo) bool {
+	if function.ImplTarget == "" {
+		return true
 	}
-	if !canInitialize(param.Type, receiver.Type, nil) {
+	if receiver.Type.Kind == InvalidType || typeDisplayName(dereferenceType(receiver.Type)) != function.ImplTarget {
 		return false
 	}
-	if param.MutableRef {
+	if function.ReceiverMutable {
 		if receiver.Type.Kind == ReferenceType {
 			return receiver.Type.ReferenceMutable
 		}
@@ -7908,9 +8447,9 @@ func (a *Analyzer) canPassMethodReceiver(param FunctionParameter, receiver metho
 	return true
 }
 
-func (a *Analyzer) methodReceiverError(methodName string, param FunctionParameter, receiver methodReceiverInfo) string {
+func (a *Analyzer) implicitMethodReceiverError(methodName string, receiver methodReceiverInfo) string {
 	displayName := visibilityBaseName(methodName)
-	if isSelfParameter(param) && param.MutableRef && receiver.Symbol != nil {
+	if receiver.Symbol != nil {
 		if receiver.Symbol.Addressed {
 			return fmt.Sprintf("method %s requires writable receiver storage", displayName)
 		}
@@ -9113,6 +9652,7 @@ func (a *Analyzer) analyzeMatchArmBody(arm *ast.MatchArm, info matchPatternInfo)
 	if info.BindingName != "" {
 		a.symbols[info.BindingName] = Symbol{Name: info.BindingName, Type: info.BindingType, Mutable: false, Token: arm.Token, Storage: StorageOriginInline}
 		a.assigned[info.BindingName] = true
+		delete(a.moved, info.BindingName)
 		delete(a.constInts, info.BindingName)
 	}
 	defer func() {
@@ -9134,25 +9674,36 @@ func (a *Analyzer) analyzeMatchArmBody(arm *ast.MatchArm, info matchPatternInfo)
 
 	if arm.ReturnBody != nil {
 		a.analyzeReturnStatement(a.currentFunctionName, a.currentFunctionReturn, arm.ReturnBody)
-		return Type{Kind: InvalidType}, branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), borrows: copyBorrows(a.borrows), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), continues: false}
+		return Type{Kind: InvalidType}, a.finalizeMatchBranch(info, branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), borrows: copyBorrows(a.borrows), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), continues: false})
 	}
 	if arm.BlockBody != nil {
 		a.analyzeBlockStatements(arm.BlockBody)
-		return Type{Kind: InvalidType}, branchAnalysis{
+		return Type{Kind: InvalidType}, a.finalizeMatchBranch(info, branchAnalysis{
 			assigned:           copyAssigned(a.assigned),
 			moved:              copyMoved(a.moved),
 			borrows:            copyBorrows(a.borrows),
 			localRefContainers: copyLocalRefContainers(a.localRefContainers),
 			arenaGenerations:   copyArenaGenerations(a.arenaGenerations),
 			continues:          !a.blockDefinitelyReturns(arm.BlockBody),
-		}
+		})
 	}
 	if arm.Body == nil {
-		return Type{Kind: InvalidType}, branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), borrows: copyBorrows(a.borrows), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), continues: true}
+		return Type{Kind: InvalidType}, a.finalizeMatchBranch(info, branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), borrows: copyBorrows(a.borrows), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), continues: true})
 	}
 	bodyType, _ := a.inferExpression(arm.Body)
 	a.markMoveSource(arm.Body)
-	return bodyType, branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), borrows: copyBorrows(a.borrows), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), continues: true}
+	return bodyType, a.finalizeMatchBranch(info, branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), borrows: copyBorrows(a.borrows), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), continues: true})
+}
+
+func (a *Analyzer) finalizeMatchBranch(info matchPatternInfo, branch branchAnalysis) branchAnalysis {
+	if info.BindingName == "" {
+		return branch
+	}
+	delete(branch.assigned, info.BindingName)
+	delete(branch.moved, info.BindingName)
+	delete(branch.borrows, info.BindingName)
+	delete(branch.localRefContainers, info.BindingName)
+	return branch
 }
 
 func (a *Analyzer) checkMatchExhaustive(expr *ast.MatchExpression, subjectType Type, catchAll bool, seenKinds map[string]bool, seenVariants map[string]bool) bool {
@@ -9602,20 +10153,22 @@ func (a *Analyzer) inferPrefixExpression(expr *ast.PrefixExpression) (Type, expr
 }
 
 func (a *Analyzer) addError(format string, args ...any) {
-	a.errors = append(a.errors, Error{Message: fmt.Sprintf(format, args...)})
+	err := Error{Message: fmt.Sprintf(format, args...)}
+	a.appendError(err)
 }
 
 func (a *Analyzer) addErrorAtToken(token lexer.Token, format string, args ...any) {
-	a.errors = append(a.errors, Error{
+	err := Error{
 		Message: fmt.Sprintf(format, args...),
 		File:    token.File,
 		Line:    token.Line,
 		Column:  token.Column,
-	})
+	}
+	a.appendError(err)
 }
 
 func (a *Analyzer) addErrorAtTokenWithPrevious(token lexer.Token, previous lexer.Token, format string, args ...any) {
-	a.errors = append(a.errors, Error{
+	err := Error{
 		Message:        fmt.Sprintf(format, args...),
 		File:           token.File,
 		Line:           token.Line,
@@ -9623,7 +10176,20 @@ func (a *Analyzer) addErrorAtTokenWithPrevious(token lexer.Token, previous lexer
 		PreviousFile:   previous.File,
 		PreviousLine:   previous.Line,
 		PreviousColumn: previous.Column,
-	})
+	}
+	a.appendError(err)
+}
+
+func (a *Analyzer) appendError(err Error) {
+	key := fmt.Sprintf("%s\x00%s\x00%d\x00%d\x00%s\x00%d\x00%d", err.Message, err.File, err.Line, err.Column, err.PreviousFile, err.PreviousLine, err.PreviousColumn)
+	if a.errorKeys == nil {
+		a.errorKeys = map[string]bool{}
+	}
+	if a.errorKeys[key] {
+		return
+	}
+	a.errorKeys[key] = true
+	a.errors = append(a.errors, err)
 }
 
 func (a *Analyzer) addWarningAtToken(token lexer.Token, format string, args ...any) {
@@ -9969,7 +10535,9 @@ func sameConcreteType(left Type, right Type) bool {
 			sameTypeArguments(left.TypeArgs, right.TypeArgs)
 	}
 	if left.Name != "" || right.Name != "" {
-		return left.Name == right.Name && sameTypeArguments(left.TypeArgs, right.TypeArgs)
+		return left.Name == right.Name &&
+			(!isEventFamilyName(left.Name) || eventCapacity(left) == eventCapacity(right)) &&
+			sameTypeArguments(left.TypeArgs, right.TypeArgs)
 	}
 	return left.Kind == right.Kind
 }
@@ -10146,6 +10714,9 @@ func typeDisplayName(typ Type) string {
 				out += ", "
 			}
 			out += typeDisplayName(arg)
+		}
+		if typ.EventCapacitySet {
+			out += fmt.Sprintf(", %d", typ.EventCapacity)
 		}
 		out += "]"
 		return out

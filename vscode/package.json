@@ -104,6 +104,20 @@
               "foreground": "#8A6A2A",
               "fontStyle": "italic"
             }
+          },
+          {
+            "scope": "storage.modifier.contract.sec",
+            "settings": {
+              "foreground": "#8A6A2A",
+              "fontStyle": "italic"
+            }
+          },
+          {
+            "scope": "storage.modifier.spawn.sec",
+            "settings": {
+              "foreground": "#3F6F9F",
+              "fontStyle": "italic"
+            }
           }
         ]
       }

@@ -419,3 +419,165 @@ MLIR lowering:
   integer/enum casts and enum subjects with value cases in `switch` are
   supported by the MLIR backend.
 * MLIR `match` lowering for enums remains a later step.
+
+## Current implementation status
+
+Implemented:
+
+* Parser accepts top-level enum declarations:
+
+  ```sec
+  enum Color {
+      red,
+      green,
+  }
+  ```
+
+* Parser accepts type-declaration enum form:
+
+  ```sec
+  type Operation enum {
+      Add
+      Subtract
+  }
+  ```
+
+* Parser accepts enum declarations inside `impl` blocks.
+
+* Parser accepts optional integer underlying types:
+
+  ```sec
+  enum Status int {
+      active = 10,
+      paused,
+  }
+  ```
+
+* Parser accepts bit-backed enum underlyings:
+
+  ```sec
+  enum ClockSource: bit[2] {
+      Internal = 0b00,
+      External = 0b01,
+  }
+
+  enum ClockSource bit[2] {
+      Internal = 0b00,
+      External = 0b01,
+  }
+
+  enum EnabledState: bit {
+      Disabled = 0,
+      Enabled = 1,
+  }
+  ```
+
+* Parser accepts `Value: 1` enum initializers as a formatter-recovery form and
+  emits a warning that `=` is canonical.
+
+* Semantic analysis registers enum declarations as named enum types.
+
+* Semantic analysis registers nested enum declarations as qualified names such
+  as `Vehicle.FuelType`.
+
+* Short nested enum names are available inside the owning `impl`.
+
+* Outside the owning `impl`, nested enum names must be qualified.
+
+* Enum variants are available through the enum namespace, for example
+  `Color.green` and `Vehicle.FuelType.diesel`.
+
+* Default enum underlying type is `int`.
+
+* Explicit underlying types are resolved and must be integer types.
+
+* Unknown and non-integer underlying types are rejected.
+
+* Duplicate variant names are rejected.
+
+* Duplicate numeric values are allowed as aliases.
+
+* Explicit integer constant initializers are evaluated.
+
+* `iota` is implemented inside enum value initializers.
+
+* Automatic continuation from the previous numeric value is implemented.
+
+* Non-constant enum initializers are rejected.
+
+* Enum initializer range checks are implemented for the selected underlying
+  integer type.
+
+* Bit-backed enum width metadata is preserved.
+
+* Bit-backed enum widths outside `1..256` are rejected.
+
+* Bit-backed enum values and explicit conversions are range-checked.
+
+* Dynamic integer-to-bit-enum conversions are rejected unless the source range
+  is proven to fit the bit width.
+
+* Same-enum assignment, parameters and returns are type-checked.
+
+* Mutable enum declarations may be uninitialized and follow ordinary
+  definite-assignment rules.
+
+* Immutable enum declarations without initializers are rejected by ordinary
+  immutable declaration rules.
+
+* Implicit integer-to-enum and enum-to-integer conversions are rejected.
+
+* Implicit conversion between different enum types is rejected.
+
+* Explicit enum-to-integer casts are implemented.
+
+* Explicit integer-to-enum casts are implemented.
+
+* Explicit conversion between enum types is supported through an integer cast.
+
+* Equality and inequality are allowed for values of the same enum type.
+
+* Equality and inequality between different enum types, or enum and integer
+  values, are rejected unless one side is explicitly converted.
+
+* Arithmetic and ordering directly on enum values are rejected.
+
+* Enum values work as `switch` subjects and case values.
+
+* Enum values work as `match` subjects and patterns in semantic analysis.
+
+* Exhaustiveness diagnostics for enum `match` are implemented.
+
+* Bit-backed enum types may be used as named register fields.
+
+* Ordinary non-bit enum types are rejected as register fields.
+
+* `go test` fixtures currently cover `testdata/enum_valid.sec`,
+  `testdata/enum_invalid.sec`, `testdata/bit_enum_valid.sec` and
+  `testdata/bit_enum_invalid.sec`.
+
+Partially implemented:
+
+* MLIR lowering supports ordinary enum storage, constants, casts, assignments,
+  parameters, returns, equality, inequality and enum subjects in `switch`.
+
+* Parser and semantic analysis preserve enough metadata for enum `match`, but
+  MLIR lowering for enum `match` remains separate work.
+
+Not implemented yet:
+
+* Generic enum declarations are not supported.
+
+* Enum methods with method-level generic parameters are not supported.
+
+* Checked runtime integer-to-enum conversion is not implemented.
+
+* A distinct public `flags` or bitset enum model is not implemented; current
+  bit-backed enums are fixed-width enum storage for hardware/register use.
+
+* Enum reflection, iteration over variants and variant-name lookup are not
+  implemented.
+
+* Exhaustive `switch` checking for enums is not implemented as an enum-specific
+  requirement; existing `switch` behavior relies on ordinary `default` and
+  control-flow checks.

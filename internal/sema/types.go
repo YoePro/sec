@@ -65,6 +65,8 @@ type Type struct {
 	TypeArgs                  []Type
 	Element                   *Type
 	ArrayLength               int64
+	EventCapacity             int64
+	EventCapacitySet          bool
 	FunctionParameterTypes    []Type
 	FunctionReturnType        *Type
 	GenericParameters         []string
@@ -72,9 +74,11 @@ type Type struct {
 	RegisterWidth             int64
 	RegisterFields            []RegisterField
 	Properties                []Property
+	Events                    []Event
 	Implements                []Type
 	InterfaceMethods          []Function
 	InterfaceProperties       []InterfaceProperty
+	InterfaceEvents           []InterfaceEvent
 }
 
 type EnumValue struct {
@@ -118,6 +122,23 @@ type Property struct {
 	Error     *Type
 	HasGetter bool
 	HasSetter bool
+}
+
+type Event struct {
+	Name          string
+	Type          Type
+	Payload       Type
+	Capacity      int64
+	Token         lexer.Token
+	Owner         string
+	Storage       string
+	StorageBacked bool
+}
+
+type InterfaceEvent struct {
+	Name    string
+	Payload Type
+	Token   lexer.Token
 }
 
 type StorageOrigin string
@@ -205,6 +226,8 @@ type Function struct {
 	Extern            bool
 	ABI               string
 	AllocationEffect  AllocationEffect
+	ImplTarget        string
+	ReceiverMutable   bool
 }
 
 type FunctionParameter struct {
@@ -289,6 +312,22 @@ type RangeContract struct {
 
 func (RangeContract) contractNode() {}
 
+type MembershipContract struct{}
+
+func (MembershipContract) contractNode() {}
+
+type MultipleOfContract struct {
+	Value *big.Int
+}
+
+func (MultipleOfContract) contractNode() {}
+
+type MarkerContract struct {
+	Name string
+}
+
+func (MarkerContract) contractNode() {}
+
 type DecimalValue struct {
 	Int64 int64
 	Scale uint8
@@ -323,6 +362,7 @@ func builtinTypes() map[string]Type {
 			EnumValues: []string{"OutOfMemory", "Unsupported", "InvalidSize", "InvalidAlignment"},
 			EnumConsts: builtinEnumConsts([]string{"OutOfMemory", "Unsupported", "InvalidSize", "InvalidAlignment"}),
 		},
+		"ContractError": {Name: "ContractError", Kind: StructType},
 		"Option": {
 			Name:              "Option",
 			Kind:              UnionType,
@@ -337,12 +377,24 @@ func builtinTypes() map[string]Type {
 		"MutexGuard":            {Name: "MutexGuard", Kind: StructType, GenericParameters: []string{"T"}},
 		"Atomic":                {Name: "Atomic", Kind: StructType, GenericParameters: []string{"T"}},
 		"CompareExchangeResult": {Name: "CompareExchangeResult", Kind: StructType, GenericParameters: []string{"T"}},
-		"Channel":               {Name: "Channel", Kind: StructType, GenericParameters: []string{"T"}},
-		"Sender":                {Name: "Sender", Kind: StructType, GenericParameters: []string{"T"}},
-		"Receiver":              {Name: "Receiver", Kind: StructType, GenericParameters: []string{"T"}},
-		"MessageTicket":         {Name: "MessageTicket", Kind: StructType, GenericParameters: []string{"T"}},
-		"ChannelOptions":        {Name: "ChannelOptions", Kind: StructType},
-		"SenderID":              {Name: "SenderID", Kind: StructType},
+		"Event":                 {Name: "Event", Kind: StructType, GenericParameters: []string{"T"}},
+		"EventStorage":          {Name: "EventStorage", Kind: StructType, GenericParameters: []string{"T"}},
+		"Subscription":          {Name: "Subscription", Kind: StructType},
+		"EventSubscribeResult": {
+			Name:       "EventSubscribeResult",
+			Kind:       UnionType,
+			EnumValues: []string{"Subscribed", "Full"},
+			UnionVariants: []UnionVariant{
+				{Name: "Subscribed", Payload: &Type{Name: "Subscription", Kind: StructType}},
+				{Name: "Full"},
+			},
+		},
+		"Channel":        {Name: "Channel", Kind: StructType, GenericParameters: []string{"T"}},
+		"Sender":         {Name: "Sender", Kind: StructType, GenericParameters: []string{"T"}},
+		"Receiver":       {Name: "Receiver", Kind: StructType, GenericParameters: []string{"T"}},
+		"MessageTicket":  {Name: "MessageTicket", Kind: StructType, GenericParameters: []string{"T"}},
+		"ChannelOptions": {Name: "ChannelOptions", Kind: StructType},
+		"SenderID":       {Name: "SenderID", Kind: StructType},
 		"ChannelSendResult": {
 			Name:              "ChannelSendResult",
 			Kind:              UnionType,
@@ -604,6 +656,7 @@ func copyClassificationOf(typ Type, visiting map[string]bool) CopyClassification
 		switch typ.Name {
 		case "Task",
 			"MutexGuard",
+			"Subscription",
 			"Channel",
 			"Sender",
 			"Receiver",
@@ -611,6 +664,8 @@ func copyClassificationOf(typ Type, visiting map[string]bool) CopyClassification
 			return CopyMoveOnly
 		case "Mutex",
 			"Atomic",
+			"Event",
+			"EventStorage",
 			"ChannelOptions",
 			"SenderID":
 			return CopyNonCopyable

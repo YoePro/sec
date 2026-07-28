@@ -34,7 +34,7 @@ impl MarkedValue {
 // =============================================================================
 
 interface Identified {
-    fn Identifier(ref self) Identifier
+    fn Identifier() Identifier
 }
 
 type Entity struct implements Identified {
@@ -42,7 +42,7 @@ type Entity struct implements Identified {
 }
 
 impl Entity {
-    fn Identifier(ref self) Identifier {
+    fn Identifier() Identifier {
         return _identifier
     }
 }
@@ -52,9 +52,9 @@ impl Entity {
 // =============================================================================
 
 interface Switchable {
-    fn IsEnabled(ref self) bool
-    fn Enable(ref mut self) void
-    fn Disable(ref mut self) void
+    fn IsEnabled() bool
+    fn Enable() void
+    fn Disable() void
 }
 
 type Switch struct implements Switchable {
@@ -62,15 +62,15 @@ type Switch struct implements Switchable {
 }
 
 impl Switch {
-    fn IsEnabled(ref self) bool {
+    fn IsEnabled() bool {
         return _enabled
     }
 
-    fn Enable(ref mut self) void {
+    fn Enable() void {
         _enabled = true
     }
 
-    fn Disable(ref mut self) void {
+    fn Disable() void {
         _enabled = false
     }
 }
@@ -80,8 +80,8 @@ impl Switch {
 // =============================================================================
 
 interface Processor {
-    fn Process(ref mut self, value: int, limit: uint) bool
-    fn Matches(ref self, key: ref ComparisonKey) bool
+    fn Process(value: int, limit: uint) bool
+    fn Matches(key: ref ComparisonKey) bool
 }
 
 type NumberProcessor struct implements Processor {
@@ -90,12 +90,12 @@ type NumberProcessor struct implements Processor {
 
 impl NumberProcessor {
     // Parameter names do not form part of the interface signature.
-    fn Process(ref mut self, input: int, maximum: uint) bool {
+    fn Process(input: int, maximum: uint) bool {
         _lastValue = input
         return maximum > 0
     }
 
-    fn Matches(ref self, candidate: ref ComparisonKey) bool {
+    fn Matches(candidate: ref ComparisonKey) bool {
         return _lastValue == candidate.value
     }
 }
@@ -171,11 +171,11 @@ impl Counter {
 // =============================================================================
 
 interface Described {
-    fn Describe(ref self) string
+    fn Describe() string
 }
 
 interface Resettable {
-    fn Reset(ref mut self) void
+    fn Reset() void
 }
 
 type Service struct implements Identified, Named, Described, Resettable {
@@ -186,7 +186,7 @@ type Service struct implements Identified, Named, Described, Resettable {
 
 impl Service {
     // Member declaration order does not need to match interface order.
-    fn Reset(ref mut self) void {
+    fn Reset() void {
         _resetCount = 0
     }
 
@@ -196,16 +196,16 @@ impl Service {
         }
     }
 
-    fn Describe(ref self) string {
+    fn Describe() string {
         return _name
     }
 
-    fn Identifier(ref self) Identifier {
+    fn Identifier() Identifier {
         return _identifier
     }
 
     // Extra helper members do not affect conformance.
-    fn ResetCount(ref self) int {
+    fn ResetCount() int {
         return _resetCount
     }
 
@@ -221,11 +221,11 @@ impl Service {
 // =============================================================================
 
 interface Readable {
-    fn Read(ref self) int
+    fn Read() int
 }
 
 interface Writable {
-    fn Write(ref mut self, value: int) void
+    fn Write(value: int) void
 }
 
 interface ReadWriter implements Readable, Writable {
@@ -236,11 +236,11 @@ type MemoryCell struct implements ReadWriter {
 }
 
 impl MemoryCell {
-    fn Read(ref self) int {
+    fn Read() int {
         return _value
     }
 
-    fn Write(ref mut self, value: int) void {
+    fn Write(value: int) void {
         _value = value
     }
 }
@@ -250,15 +250,15 @@ impl MemoryCell {
 // =============================================================================
 
 interface Startable {
-    fn Start(ref mut self) void
+    fn Start() void
 }
 
 interface Stoppable {
-    fn Stop(ref mut self) void
+    fn Stop() void
 }
 
 interface Managed implements Startable, Stoppable, Named {
-    fn IsRunning(ref self) bool
+    fn IsRunning() bool
 }
 
 type Worker struct implements Managed {
@@ -267,15 +267,15 @@ type Worker struct implements Managed {
 }
 
 impl Worker {
-    fn Start(ref mut self) void {
+    fn Start() void {
         _running = true
     }
 
-    fn Stop(ref mut self) void {
+    fn Stop() void {
         _running = false
     }
 
-    fn IsRunning(ref self) bool {
+    fn IsRunning() bool {
         return _running
     }
 
@@ -291,11 +291,11 @@ impl Worker {
 // =============================================================================
 
 interface LeftState {
-    fn State(ref self) int
+    fn State() int
 }
 
 interface RightState {
-    fn State(ref self) int
+    fn State() int
 }
 
 interface CombinedState implements LeftState, RightState {
@@ -307,7 +307,7 @@ type StateMachine struct implements CombinedState {
 
 impl StateMachine {
     // One compatible member satisfies both inherited declarations.
-    fn State(ref self) int {
+    fn State() int {
         return _state
     }
 }
@@ -317,7 +317,7 @@ impl StateMachine {
 // =============================================================================
 
 interface RootValue {
-    fn Root(ref self) int
+    fn Root() int
 }
 
 interface LeftBranch implements RootValue {
@@ -334,7 +334,7 @@ type DiamondValue struct implements Diamond {
 }
 
 impl DiamondValue {
-    fn Root(ref self) int {
+    fn Root() int {
         return _root
     }
 }
@@ -387,5 +387,5 @@ interface Container[T] {
         get
     }
 
-    fn Contains(ref self, value: T) bool
+    fn Contains(value: T) bool
 }

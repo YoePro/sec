@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"sec/internal/ast"
 	"sec/internal/lexer"
 	"sec/internal/parser"
 )
@@ -117,6 +118,31 @@ fn IsBlank(value: string) bool {
 		messages = append(messages, diagnostic.Message)
 	}
 	t.Fatalf("analyze returned diagnostics for core method without import:\n%s", strings.Join(messages, "\n"))
+}
+
+func TestCompletionSurvivesIncompleteFunctionWithURI(t *testing.T) {
+	source := `module main
+
+fn `
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("completeSource panicked for incomplete function: %v", r)
+		}
+	}()
+
+	items := completeSource("file:///tmp/sec-lsp-incomplete/main.sec", source, len(source))
+	assertCompletionLabels(t, items, []string{"fn", "return", "struct"})
+}
+
+func TestProgramContainsCoreSourceSkipsNilStatements(t *testing.T) {
+	program := &ast.Program{Statements: []ast.Statement{
+		(*ast.FunctionDeclaration)(nil),
+	}}
+
+	if lspProgramContainsCoreSource(program) {
+		t.Fatal("nil statement should not be treated as core source")
+	}
 }
 
 func TestFindSelectorLHS(t *testing.T) {
@@ -246,6 +272,52 @@ type Holder struct {
 	assertCompletionLabels(t, items, []string{"RawPtr"})
 }
 
+func TestCompletionIncludesContractModifiers(t *testing.T) {
+	cases := []struct {
+		source string
+		labels []string
+	}{
+		{"type PageSize int m", []string{"multipleOf"}},
+		{"type Tags string[] n", []string{"notEmpty"}},
+		{"type Tags string[] u", []string{"unique"}},
+		{"type Measurement float f", []string{"finite"}},
+		{"type OddNumber int o", []string{"odd"}},
+		{"type EvenNumber int e", []string{"even"}},
+	}
+
+	for _, tc := range cases {
+		source := "module main\n\n" + tc.source
+		items := completeSource("", source, len(source))
+		assertCompletionLabels(t, items, tc.labels)
+	}
+}
+
+func TestCompletionIncludesSpawnModifiers(t *testing.T) {
+	cases := []struct {
+		source string
+		labels []string
+	}{
+		{"spawn t", []string{"task", "thread"}},
+		{"spawn p", []string{"process"}},
+	}
+
+	for _, tc := range cases {
+		source := "module main\n\nfn main() void {\n\tlet worker := " + tc.source + "\n}\n"
+		items := completeSource("", source, strings.Index(source, tc.source)+len(tc.source))
+		assertCompletionLabels(t, items, tc.labels)
+	}
+}
+
+func TestAnalyzeReportsUniqueContractOnString(t *testing.T) {
+	source := `module main
+
+type Bad string unique
+`
+
+	diagnostics := analyze("file:///tmp/sec-lsp-contract-test/main.sec", source)
+	assertDiagnosticMessage(t, diagnostics, "unique contract does not apply to string")
+}
+
 func TestCompletionFiltersBoolReturnValues(t *testing.T) {
 	source := `module main
 
@@ -254,11 +326,13 @@ fn Check() bool {
 }
 
 fn main(ready: bool, name: string) bool {
-	return
+	return /*cursor*/
 }
 `
 
-	items := completeSource("", source, strings.Index(source, "return \n}")+len("return "))
+	offset := strings.Index(source, "/*cursor*/")
+	source = strings.Replace(source, "/*cursor*/", "", 1)
+	items := completeSource("", source, offset)
 	assertCompletionLabels(t, items, []string{"Check", "false", "ready", "true"})
 	assertNoCompletionLabel(t, items, "fallthrough")
 	assertNoCompletionLabel(t, items, "name")
@@ -388,6 +462,16 @@ func assertNoCompletionLabel(t *testing.T, items []completionItem, label string)
 			t.Fatalf("unexpected completion %q in %+v", label, items)
 		}
 	}
+}
+
+func assertDiagnosticMessage(t *testing.T, diagnostics []diagnostic, message string) {
+	t.Helper()
+	for _, diagnostic := range diagnostics {
+		if strings.Contains(diagnostic.Message, message) {
+			return
+		}
+	}
+	t.Fatalf("missing diagnostic containing %q in %+v", message, diagnostics)
 }
 
 func TestFormatSourceIndentsGroupedImports(t *testing.T) {

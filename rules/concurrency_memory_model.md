@@ -2,8 +2,8 @@
 
 ## Purpose
 
-The concurrency memory model defines when writes performed by one task become
-visible to another task.
+The concurrency memory model defines when writes performed by one execution
+entity become visible to another execution entity.
 
 It also defines:
 
@@ -12,7 +12,7 @@ It also defines:
 - happens-before relationships
 - atomic ordering
 - mutex ordering
-- task completion ordering
+- task and thread completion ordering
 - data-race validity
 - compiler reordering limits
 - backend lowering requirements
@@ -38,7 +38,8 @@ Valid synchronization does not make an invalid reference valid.
 
 ## Sequential execution
 
-Within one task, operations follow normal Sec evaluation and control-flow rules.
+Within one execution entity, operations follow normal Sec evaluation and
+control-flow rules.
 
 The compiler may optimize and reorder operations only when observable behavior is
 preserved.
@@ -48,8 +49,8 @@ Observable behavior includes:
 - ordinary single-task semantics
 - atomic operations
 - mutex synchronization
-- task creation
-- task completion
+- task or thread creation
+- task or thread completion
 - cancellation
 - FFI effects
 - volatile effects
@@ -59,8 +60,8 @@ Observable behavior includes:
 
 ## Concurrency visibility
 
-A write by one task is guaranteed visible to another task only when a defined
-synchronization relationship exists.
+A write by one task or thread is guaranteed visible to another task or thread
+only when a defined synchronization relationship exists.
 
 Examples include:
 
@@ -68,6 +69,7 @@ Examples include:
 - successful mutex unlock followed by lock
 - release atomic followed by matching acquire atomic
 - successful task completion followed by join or await
+- successful thread completion followed by join
 - process or IPC synchronization defined by its transport
 
 Without synchronization, concurrent visibility is not guaranteed.
@@ -83,7 +85,7 @@ defined by the relevant synchronization primitive.
 
 Happens-before is:
 
-- ordered within one task
+- ordered within one execution entity
 - created by synchronization operations
 - transitive
 
@@ -104,8 +106,8 @@ A happens-before C
 
 ## Program order
 
-Within one task, earlier operations happen-before later operations when ordinary
-control flow requires that order.
+Within one execution entity, earlier operations happen-before later operations
+when ordinary control flow requires that order.
 
 Example:
 
@@ -144,6 +146,14 @@ This applies to:
 
 The backend must not begin child access before argument publication is complete.
 
+The same publication rule applies to `spawn thread`.
+
+All writes sequenced before successful thread creation happen-before the new
+thread's first access to its received values.
+
+The same rule applies to process creation only through explicitly defined
+process and IPC publication rules.
+
 ---
 
 ## Spawned borrows
@@ -165,6 +175,9 @@ let worker := spawn Inspect(ref data)
 The child may observe the initialized `data`.
 
 Further concurrent mutation requires valid synchronization.
+
+The same lifetime and synchronization requirements apply to references passed to
+a spawned thread.
 
 ---
 
@@ -211,6 +224,43 @@ join and additionally consumes the task handle.
 All writes that happen-before task completion become visible to the awaiting task.
 
 The result value is transferred according to ordinary ownership rules.
+
+## Thread completion
+
+All ordinary writes performed by a thread before successful termination
+happen-before a successful `join threadHandle` that observes that termination.
+
+After a successful thread join, writes validly published by that thread are
+visible to the joining execution entity.
+
+`detach threadHandle` does not establish a synchronization edge.
+
+Detaching relinquishes join ownership; it does not publish ordinary writes to
+another execution entity.
+
+## Mixed synchronization
+
+The same synchronization edges apply across:
+
+- task to task
+- task to thread
+- thread to task
+- thread to thread
+
+Examples include:
+
+- channel send happens-before the matching receive commit
+- mutex unlock happens-before a later successful lock on the same mutex
+- task completion happens-before successful task await or join
+- thread completion happens-before successful thread join
+
+Using a physical thread does not weaken ownership, borrowing or synchronization
+requirements.
+
+Data races are invalid Sec programs.
+
+`unsafe` may permit operations the safe language cannot express, but it does not
+make a data race valid.
 
 ---
 

@@ -1,0 +1,126 @@
+module test.spawn_valid
+
+fn Work() void {
+}
+
+fn Calculate() int {
+    return 42
+}
+
+fn Add(left: int, right: int) int {
+    return left + right
+}
+
+fn ExplicitTaskSpawn() void {
+    let worker := spawn task Work()
+}
+
+fn ImplicitTaskSpawn() void {
+    let worker := spawn Work()
+}
+
+fn ThreadSpawn() void {
+    let worker := spawn thread Work()
+}
+
+fn ProcessSpawn() void {
+    let worker := spawn process Work()
+}
+
+fn SpawnReturningValue() void {
+    let implicitTask := spawn Calculate()
+    let explicitTask := spawn task Calculate()
+    let workerThread := spawn thread Calculate()
+}
+
+fn SpawnWithArguments() void {
+    let implicitTask := spawn Add(10, 20)
+    let explicitTask := spawn task Add(30, 40)
+    let workerThread := spawn thread Add(50, 60)
+}
+
+fn SpawnExpressionArgument() void {
+    let worker := spawn Add(1 + 2, 3 * 4)
+}
+
+fn SpawnNestedCallArgument() void {
+    let worker := spawn Add(Calculate(), Calculate())
+}
+
+fn SpawnMethodCall() void {
+    let worker := spawn Worker.Run()
+}
+
+fn SpawnExplicitTaskMethodCall() void {
+    let worker := spawn task Worker.Run()
+}
+
+fn SpawnThreadMethodCall() void {
+    let worker := spawn thread Worker.Run()
+}
+
+type Worker struct {
+    value: int,
+}
+
+impl Worker {
+    static fn Run() void {
+    }
+
+    fn Process() int {
+        return value
+    }
+}
+
+fn SpawnInstanceMethod(worker: ref Worker) void {
+    let taskHandle := spawn worker.Process()
+    let threadHandle := spawn thread worker.Process()
+}
+
+fn SpawnGenericFunction() void {
+    let taskHandle := spawn Identity[int](10)
+    let threadHandle := spawn thread Identity[int](20)
+}
+
+fn Identity[T](value: T) T {
+    return value
+}
+
+fn SpawnQualifiedFunction() void {
+    let taskHandle := spawn jobs.Run()
+    let threadHandle := spawn thread jobs.Run()
+}
+
+module jobs {
+    fn Run() void {
+    }
+}
+
+fn MultipleSpawnStatements() void {
+    let first := spawn Work()
+    let second := spawn task Work()
+    let third := spawn thread Work()
+    let fourth := spawn process Work()
+}
+
+fn SpawnInIf(condition: bool) void {
+    if condition {
+        let worker := spawn Work()
+    } else {
+        let worker := spawn thread Work()
+    }
+}
+
+fn SpawnInLoop() void {
+    for index in 0..<4 {
+        let worker := spawn Add(index, index)
+    }
+}
+
+fn SpawnFromReturnedCallable() void {
+    let worker := spawn GetWorker()()
+}
+
+fn GetWorker() fn() void {
+    return Work
+}

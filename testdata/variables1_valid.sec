@@ -1,0 +1,24 @@
+module main
+
+type Percent int range 0..100
+type Age int range 0..130
+type PageSize int range 10..100 multipleOf 10 odd
+type Role string in ["admin", "user", "guest"]
+type Tags string[] notEmpty unique
+type Measurement float finite
+
+fn main() void {
+    int mut: a, b, c
+
+    let age: Age := 25
+    let mut percent: Percent := 99
+
+    for i in 0..10 {
+        try percent += Percent(i) {
+            Err(error) => {
+                discard error
+            }
+        }
+    }
+
+}

@@ -7,6 +7,14 @@
 It is the concurrency equivalent of choosing among operations that may become
 ready at different times.
 
+`select` may execute inside a task or inside a physical thread.
+
+In a task, a blocking `select` may suspend the current task.
+
+In a physical thread, a blocking `select` may block or park that thread.
+
+The same source-level priority, readiness and commit rules apply in both cases.
+
 `select` is not a replacement for:
 
 - `if`
@@ -154,6 +162,8 @@ Other ready branches remain uncommitted.
 
 They may be selected by a later `select`.
 
+Non-selected handles remain unconsumed.
+
 ---
 
 ## Channel receive
@@ -196,6 +206,33 @@ None
 ```
 
 when the channel is permanently closed and drained.
+
+## Thread completion branch
+
+Thread completion may become a selectable operation:
+
+```sec
+select {
+    join worker => {
+        HandleThreadExit()
+    }
+
+    message := rx.Receive() => {
+        Process(message)
+    }
+}
+```
+
+This is a planned rule, not a v0.1 implemented feature unless the compiler and
+runtime explicitly support it.
+
+If a `join` branch is selected, it performs the same completion synchronization
+as an ordinary successful thread join.
+
+Non-selected join branches must not consume, detach or otherwise alter their
+thread handles.
+
+Process completion may be added by a later process rule.
 
 ---
 

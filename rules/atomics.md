@@ -50,6 +50,7 @@ Result[T, E]
 Option[T]
 Task[T]
 Mutex[T]
+Thread[T]
 ```
 
 but has distinct storage, operation and memory-order rules.
@@ -197,6 +198,14 @@ The ownership of the `Atomic[T]` object follows ordinary Sec ownership rules.
 
 Concurrent access may occur through valid shared references to the same atomic
 storage.
+
+Atomic operations may synchronize tasks, threads and mixed task/thread users
+when they access the same valid shared atomic storage with compatible memory
+orders.
+
+Atomic ownership and validity are not based on physical thread identity.
+
+Target validation still applies to every atomic operation and memory order.
 
 ---
 
@@ -627,8 +636,8 @@ an invalid data race.
 
 ## References
 
-A shared reference to an atomic value may be passed between tasks when its
-lifetime is valid.
+A shared reference to an atomic value may be passed between tasks or threads
+when its lifetime is valid.
 
 Example:
 
@@ -654,10 +663,10 @@ Atomic methods that modify the contained value should use a shared receiver.
 Conceptually:
 
 ```sec
-fn load(ref self) T
-fn store(ref self, value: T) void
-fn swap(ref self, value: T) T
-fn fetchAdd(ref self, value: T) T
+fn load() T
+fn store(value: T) void
+fn swap(value: T) T
+fn fetchAdd(value: T) T
 ```
 
 The atomic object itself is not mutably borrowed by each operation.

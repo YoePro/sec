@@ -1,6 +1,6 @@
 bevisade:
-arena,assert,asm,await,case,default,defer,discard,else,enum,fallthrough,false,fn,for,if,get,import,impl,in,interface,let,
-match,module,mut,panic,property,range,ref,return,require,set,spawn,struct,switch,true,try,type,union,unsafe,where,while
+arena,assert,asm,await,case,default,defer,discard,else,enum,even,fallthrough,false,finite,fn,for,if,get,import,impl,in,interface,let,
+match,module,multipleOf,mut,notEmpty,odd,panic,process,property,range,ref,return,require,set,spawn,struct,switch,task,thread,true,try,type,union,unique,unsafe,where,while
 
 INTE:
 const, sec

@@ -339,7 +339,7 @@ impl ReceiverConversion {
     system: SI
 
     // ERROR: Unit conversion functions are static and cannot declare self.
-    fn ReceiverConversion(ref self, value: m) ReceiverConversion {
+    fn ReceiverConversion(value: m) ReceiverConversion {
         return value
     }
 }

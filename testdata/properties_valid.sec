@@ -210,11 +210,13 @@ fn WriteGenericProperty(box: ref mut Box[int], value: int) void {
     box.Value = value
 }
 
-// A fallible property assignment may propagate its inferred setter error.
+// A fallible property assignment must handle or explicitly return its setter error.
 fn WriteValidatedSpeed(
     vehicle: ref mut Vehicle,
     speed: Speed,
 ) Result[void, PropertyError] {
-    try vehicle.ValidatedSpeed = speed
+    try vehicle.ValidatedSpeed = speed {
+        Err(error) => return Err(error)
+    }
     return Ok()
 }

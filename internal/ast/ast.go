@@ -174,6 +174,7 @@ type InterfaceDeclaration struct {
 	Implements        []*TypeReference
 	Methods           []*FunctionDeclaration
 	Properties        []*InterfaceProperty
+	Events            []*InterfaceEvent
 }
 
 func (id *InterfaceDeclaration) statementNode() {}
@@ -192,6 +193,16 @@ type InterfaceProperty struct {
 
 func (ip *InterfaceProperty) TokenLiteral() string {
 	return ip.Token.Lexeme
+}
+
+type InterfaceEvent struct {
+	Token   lexer.Token
+	Name    *Identifier
+	Payload *TypeReference
+}
+
+func (ie *InterfaceEvent) TokenLiteral() string {
+	return ie.Token.Lexeme
 }
 
 // Identifier represents a named symbol.
@@ -240,6 +251,11 @@ type TypeReference struct {
 	// TypeArgs is used for generic types such as Vec[T], Map[K,V], Result[T,E].
 	TypeArgs []*TypeReference
 
+	// EventCapacity is the optional fixed capacity in Event[T, N] and
+	// EventStorage[T, N].
+	EventCapacity    int64
+	EventCapacitySet bool
+
 	// FunctionParameterTypes and FunctionReturnType are used for function
 	// value types such as fn(int, string) bool.
 	FunctionParameterTypes []*TypeReference
@@ -259,6 +275,17 @@ type Contract interface {
 	contractNode()
 }
 
+type ContractList struct {
+	Token     lexer.Token
+	Contracts []Contract
+}
+
+func (cl *ContractList) contractNode() {}
+
+func (cl *ContractList) TokenLiteral() string {
+	return cl.Token.Lexeme
+}
+
 // RangeContract represents:
 //
 //	range 0..100
@@ -275,6 +302,29 @@ func (rc *RangeContract) contractNode() {}
 
 func (rc *RangeContract) TokenLiteral() string {
 	return rc.Token.Lexeme
+}
+
+type MembershipContract struct {
+	Token  lexer.Token
+	Values []Expression
+}
+
+func (mc *MembershipContract) contractNode() {}
+
+func (mc *MembershipContract) TokenLiteral() string {
+	return mc.Token.Lexeme
+}
+
+type MarkerContract struct {
+	Token lexer.Token
+	Name  string
+	Value Expression
+}
+
+func (mc *MarkerContract) contractNode() {}
+
+func (mc *MarkerContract) TokenLiteral() string {
+	return mc.Token.Lexeme
 }
 
 // --------------------------------------------------------------------
@@ -470,6 +520,7 @@ type LetStatement struct {
 	Mutable      bool
 	Name         *Identifier
 	Type         *TypeReference
+	Contract     Contract
 	Value        Expression
 	Address      Expression
 	AddressToken lexer.Token
@@ -1255,6 +1306,18 @@ func (pd *PropertyDeclaration) implMemberNode() {}
 
 func (pd *PropertyDeclaration) TokenLiteral() string {
 	return pd.Token.Lexeme
+}
+
+type EventDeclaration struct {
+	Token   lexer.Token
+	Name    *Identifier
+	Storage *Identifier
+}
+
+func (ed *EventDeclaration) implMemberNode() {}
+
+func (ed *EventDeclaration) TokenLiteral() string {
+	return ed.Token.Lexeme
 }
 
 type PropertySetter struct {

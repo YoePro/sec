@@ -1,0 +1,51 @@
+# Processes
+
+## Purpose
+
+A process is a separate operating-system process or target-equivalent process.
+
+Processes are distinct from tasks and threads.
+
+```sec
+let child := spawn process Program()
+```
+
+`spawn process` must not silently lower to an ordinary task or physical thread.
+
+A target without process creation support must reject the program.
+
+Expected diagnostic:
+
+```text
+target profile does not support process creation
+```
+
+## Handle
+
+The process handle type is compiler-known, move-only and owns the process
+lifecycle unless a future rule defines observer handles.
+
+The final handle name and generic result model are not finalized here.
+
+`await` is not valid for a raw process handle in v0.1.
+
+Process completion is observed through `join` unless a future adapter explicitly
+defines awaitability.
+
+## Open design
+
+Future process rules must distinguish:
+
+- normal exit
+- exit status
+- signal or abnormal termination
+- creation failure
+- handle ownership
+- output and IPC ownership
+- detached reaping
+- Unix zombie handling
+- Windows process and handle cleanup
+
+Ordinary in-process `Channel[T]` is not process IPC.
+
+Process communication requires an explicit IPC adapter or a future IPC rule.

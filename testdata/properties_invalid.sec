@@ -246,7 +246,9 @@ fn AssignWrongTypeWithTry(
     money: Money,
 ) Result[void, PropertyError] {
     // ERROR: try does not make Money assignable to Speed.
-    try target.Value = money
+    try target.Value = money {
+        Err(error) => return Err(error)
+    }
     return Ok()
 }
 

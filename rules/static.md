@@ -161,6 +161,20 @@ Lifetime validity does not imply concurrency safety.
 
 Mutable static storage still requires valid synchronization.
 
+Static mutable storage accessed by tasks, threads or mixed task/thread execution
+requires valid synchronization.
+
+Examples include:
+
+- `Mutex[T]`
+- `Atomic[T]`
+- channel ownership transfer
+- another compiler-approved synchronization primitive
+
+Using a physical thread does not bypass static mutability or borrowing rules.
+
+Sec v0.1 does not define thread-local storage syntax.
+
 ---
 
 ## Static declarations in impl
@@ -306,7 +320,7 @@ Example:
 
 ```sec
 impl Counter {
-    fn Increment(ref mut self) void {
+    fn Increment() void {
         self.value += 1
     }
 }

@@ -2,9 +2,10 @@
 
 ## Purpose
 
-`spawn` starts an operation as a new task.
+`spawn` starts an operation as a new execution entity.
 
-It is the explicit boundary between synchronous execution and task execution.
+It is the explicit boundary between synchronous execution and concurrent
+execution.
 
 A normal function call remains synchronous.
 
@@ -12,22 +13,35 @@ A normal function call remains synchronous.
 let value := Calculate()
 ```
 
-A spawned function call creates a task.
+A spawned function call creates a task by default.
 
 ```sec
 let task := spawn Calculate()
 ```
 
-## Syntax
+This is shorthand for:
 
 ```sec
-spawn CallExpression
+let task := spawn task Calculate()
+```
+
+## Syntax
+
+```text
+spawn-expression:
+    spawn expression
+    spawn task expression
+    spawn thread expression
+    spawn process expression
 ```
 
 Typical use:
 
 ```sec
 let worker := spawn Work()
+let taskWorker := spawn task Work()
+let threadWorker := spawn thread Work()
+let childProcess := spawn process Program()
 ```
 
 The initial implementation requires the operand of `spawn` to be a callable expression.
@@ -41,15 +55,37 @@ spawn service.Run()
 spawn callback(value)
 ```
 
-`spawn` is an expression and may be used wherever its resulting `Task[T]` is valid.
+`task`, `thread` and `process` are contextual spawn modifiers only when they
+occur directly after `spawn`.
+
+They do not need to be general-purpose reserved keywords.
+
+Example:
+
+```sec
+let thread := "worker"
+```
+
+may remain valid when `thread` is not reserved elsewhere.
+
+`spawn` is an expression and may be used wherever its resulting execution handle
+is valid.
 
 ## Result type
 
-If the spawned operation returns `T`, the `spawn` expression has type:
+If the spawned operation returns `T`, these forms have the following conceptual
+result types:
 
 ```sec
-Task[T]
+spawn Work()          // Task[T]
+spawn task Work()     // Task[T]
+spawn thread Work()   // Thread[T]
+spawn process Work()  // process handle type defined by processes.txt
 ```
+
+`spawn expression` is exactly equivalent to `spawn task expression`.
+
+`spawn.md` does not finalize the process result model.
 
 Example:
 
@@ -63,7 +99,8 @@ let calculation := spawn Calculate()
 
 `calculation` has type `Task[int]`.
 
-A function returning `void` produces `Task[void]`.
+A function returning `void` through `spawn` or `spawn task` produces
+`Task[void]`.
 
 A fallible function preserves its complete return type:
 
@@ -81,6 +118,70 @@ Task[Result[Image, IOError]]
 ```
 
 `spawn` does not unwrap or alter the function return type.
+
+`Task[T]`, `Thread[T]` and the process handle type are distinct handle types.
+
+They are not interchangeable and must not be silently lowered across kinds.
+
+Invalid lowering:
+
+```sec
+spawn thread Work()
+```
+
+must not become an ordinary task on a target without physical threads.
+
+Expected diagnostic:
+
+```text
+target profile does not support physical threads
+```
+
+Invalid lowering:
+
+```sec
+spawn process Program()
+```
+
+must not become a task or thread.
+
+Expected diagnostic:
+
+```text
+target profile does not support process creation
+```
+
+The spawn IR must record the requested execution kind:
+
+```text
+Task
+Thread
+Process
+```
+
+The backend must not infer execution kind from the called function.
+
+## Common ownership
+
+All returned execution handles are move-only lifecycle owners unless another
+rule explicitly defines a weaker observer type.
+
+A spawned execution entity must not be silently forgotten.
+
+Before the owning scope exits, the handle must be:
+
+- awaited where supported
+- joined
+- detached
+- moved to another valid owner
+- otherwise consumed by an explicitly valid lifecycle operation
+
+The operand type determines the concrete semantics of:
+
+```sec
+join handle
+detach handle
+```
 
 ## Eager scheduling
 
@@ -292,9 +393,9 @@ Receiver handling follows the method signature.
 
 A receiver taken by value is copied or moved.
 
-A `ref self` receiver creates a shared borrow.
+A read-only `self` receiver creates a shared borrow.
 
-A `ref mut self` receiver creates an exclusive mutable borrow.
+A mutating `self` receiver creates an exclusive mutable borrow.
 
 The receiver must remain valid for the complete task use.
 
@@ -481,11 +582,11 @@ unbounded recursive task creation detected: Bomb -> spawn Bomb
 
 - infer asynchronous behavior from a function name
 - change the function's declared return type
-- silently detach the task
-- silently discard the task handle
+- silently detach the execution entity
+- silently discard the execution handle
 - silently clone move-only arguments
 - permit invalid references to escape
-- transfer a mutex guard between tasks
+- transfer a mutex guard across execution-entity boundaries
 - bypass ownership or borrowing rules
 - silently fall back to synchronous execution
 
@@ -497,6 +598,8 @@ Detailed behavior is defined in:
 tasks.txt
 await.txt
 concurrency.txt
+threads.md
+processes.txt
 mutex.txt
 static.txt
 concurrency_memory_model.txt
@@ -515,9 +618,10 @@ Implemented:
 
 Not implemented yet:
 
+- parser and sema support for `spawn task`, `spawn thread` and `spawn process`
 - `detach`
 - spawn backend/profile validation
 - task borrow extension until completion
 - escaping-task borrow checks
 - recursive spawn-cycle diagnostics
-- Semantic IR/MLIR lowering for task creation
+- Semantic IR/MLIR lowering for recorded spawn execution kind

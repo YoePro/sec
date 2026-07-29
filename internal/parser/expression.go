@@ -380,7 +380,11 @@ func (p *Parser) skipMatchArm() {
 }
 
 func (p *Parser) parseSpawnExpression() ast.Expression {
-	expr := &ast.SpawnExpression{Token: p.curToken}
+	expr := &ast.SpawnExpression{Token: p.curToken, Kind: "task"}
+	if p.peekToken.Type == lexer.IDENT && isSpawnKindModifier(p.peekToken.Lexeme) {
+		p.nextToken()
+		expr.Kind = p.curToken.Lexeme
+	}
 	if p.peekToken.Type == lexer.LBRACE {
 		p.nextToken()
 		expr.Body = p.parseStatementBlock("spawn body")
@@ -392,6 +396,15 @@ func (p *Parser) parseSpawnExpression() ast.Expression {
 		return nil
 	}
 	return expr
+}
+
+func isSpawnKindModifier(value string) bool {
+	switch value {
+	case "task", "thread", "process":
+		return true
+	default:
+		return false
+	}
 }
 
 func (p *Parser) parseAwaitExpression() ast.Expression {

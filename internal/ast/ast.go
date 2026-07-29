@@ -43,6 +43,18 @@ func (ds *DiscardStatement) TokenLiteral() string {
 	return ds.Token.Lexeme
 }
 
+type DetachStatement struct {
+	Token         lexer.Token
+	Value         Expression
+	DiscardResult bool
+}
+
+func (ds *DetachStatement) statementNode() {}
+
+func (ds *DetachStatement) TokenLiteral() string {
+	return ds.Token.Lexeme
+}
+
 type CancelStatement struct {
 	Token lexer.Token
 }
@@ -1499,6 +1511,7 @@ type StructLiteralField struct {
 
 type SpawnExpression struct {
 	Token lexer.Token
+	Kind  string
 	Value Expression
 	Body  *BlockStatement
 }
@@ -1510,10 +1523,14 @@ func (se *SpawnExpression) TokenLiteral() string {
 }
 
 func (se *SpawnExpression) String() string {
-	if se.Value != nil {
-		return "spawn " + se.Value.String()
+	prefix := "spawn"
+	if se.Kind != "" && se.Kind != "task" {
+		prefix += " " + se.Kind
 	}
-	return "spawn {...}"
+	if se.Value != nil {
+		return prefix + " " + se.Value.String()
+	}
+	return prefix + " {...}"
 }
 
 type AwaitExpression struct {

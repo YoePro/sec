@@ -11,7 +11,10 @@ Implemented:
   `ThreadContextError` types;
 - `Thread[T]` is classified as move-only;
 - unresolved `Thread[T]` locals are diagnosed at scope exit;
-- `discard thread` is rejected for unresolved `Thread[T]` handles.
+- `discard thread` is rejected for unresolved `Thread[T]` handles;
+- `detach thread` consumes a `Thread[void]` handle;
+- `detach thread discard` consumes a non-void `Thread[T]` handle with explicit
+  result discard.
 
 Not implemented yet:
 
@@ -20,7 +23,8 @@ Not implemented yet:
 - `join thread`;
 - thread handle member access and methods;
 - thread lifecycle status tracking;
-- detach and detach-discard;
+- detached-thread reference escape analysis;
+- detached-thread shutdown/runtime integration;
 - cancellation request methods;
 - thread lowering/runtime integration.
 

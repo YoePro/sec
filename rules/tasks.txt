@@ -287,6 +287,9 @@ Implemented in semantic analysis:
   type.
 - `Task[T]` is move-only.
 - `await task` requires `Task[T]`, consumes the task handle and produces `T`.
+- `detach task` consumes a `Task[void]` handle.
+- `detach task discard` consumes a non-void `Task[T]` handle with explicit
+  result discard.
 - A local owned `Task[T]` that reaches block scope exit without being consumed
   is rejected.
 - A standalone `spawn Work()` expression statement is rejected because the task
@@ -295,8 +298,9 @@ Implemented in semantic analysis:
 Not implemented yet:
 
 - `join`
-- `detach`
 - cancellation statements and `task.cancelRequested`
+- detached-task reference escape analysis
+- detached-task shutdown/cancellation integration
 - task status members
 - task failure/outcome typing
 - task borrow lifetime extension across running tasks

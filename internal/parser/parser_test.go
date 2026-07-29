@@ -3273,6 +3273,78 @@ fn Test() void {
 	}
 }
 
+func TestParseSpawnKindModifiers(t *testing.T) {
+	input := `
+fn Test() void {
+	let taskHandle := spawn task Work()
+	let threadHandle := spawn thread Work()
+	let processHandle := spawn process Work()
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	tests := []struct {
+		index int
+		kind  string
+	}{
+		{0, "task"},
+		{1, "thread"},
+		{2, "process"},
+	}
+	for _, tt := range tests {
+		letStmt := fn.Body.Statements[tt.index].(*ast.LetStatement)
+		spawn, ok := letStmt.Value.(*ast.SpawnExpression)
+		if !ok {
+			t.Fatalf("statement %d value is not SpawnExpression. got=%T", tt.index, letStmt.Value)
+		}
+		if spawn.Kind != tt.kind {
+			t.Fatalf("statement %d wrong spawn kind. got=%q want=%q", tt.index, spawn.Kind, tt.kind)
+		}
+		call, ok := spawn.Value.(*ast.CallExpression)
+		if !ok {
+			t.Fatalf("statement %d spawn value is not CallExpression. got=%T", tt.index, spawn.Value)
+		}
+		if got := call.Callee.String(); got != "Work" {
+			t.Fatalf("statement %d wrong callee. got=%q", tt.index, got)
+		}
+	}
+}
+
+func TestParseDetachStatement(t *testing.T) {
+	input := `
+fn Test() void {
+	detach worker
+	detach calculation discard
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	first, ok := fn.Body.Statements[0].(*ast.DetachStatement)
+	if !ok {
+		t.Fatalf("first statement is not DetachStatement. got=%T", fn.Body.Statements[0])
+	}
+	if first.Value == nil || first.Value.String() != "worker" || first.DiscardResult {
+		t.Fatalf("wrong first detach statement: %+v", first)
+	}
+	second, ok := fn.Body.Statements[1].(*ast.DetachStatement)
+	if !ok {
+		t.Fatalf("second statement is not DetachStatement. got=%T", fn.Body.Statements[1])
+	}
+	if second.Value == nil || second.Value.String() != "calculation" || !second.DiscardResult {
+		t.Fatalf("wrong second detach statement: %+v", second)
+	}
+}
+
 func TestParseDeferRequiresBlock(t *testing.T) {
 	input := `
 fn Test() void {

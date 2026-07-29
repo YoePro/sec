@@ -13,14 +13,17 @@ fn Add(left: int, right: int) int {
 
 fn ExplicitTaskSpawn() void {
     let worker := spawn task Work()
+    await worker
 }
 
 fn ImplicitTaskSpawn() void {
     let worker := spawn Work()
+    await worker
 }
 
 fn ThreadSpawn() void {
     let worker := spawn thread Work()
+    detach worker
 }
 
 fn ProcessSpawn() void {

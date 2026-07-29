@@ -610,22 +610,27 @@ concurrency_memory_model.txt
 Implemented:
 
 - parser accepts `spawn CallExpression`
+- parser and AST preserve contextual execution modifiers for `spawn task`,
+  `spawn thread` and `spawn process`
 - parser accepts `spawn` with a lambda operand
 - sema requires the operand to be a callable call expression or lambda
   expression
 - sema returns `Task[T]` where `T` is the spawned call return type
+- sema returns `Thread[T]` for `spawn thread` in the current front-end model
 - sema returns `Task[T]` where `T` is the spawned lambda return type
 - spawned lambda bodies are analyzed in current task cancellation context
 - function argument copy/move checks reuse ordinary call analysis
+- parser and Sema support `detach handle` and `detach handle discard` for
+  local `Task[T]` and `Thread[T]` handles
 - standalone `spawn` expression statements are rejected
 - legacy `spawn { ... }` is now a semantic error
 
 Not implemented yet:
 
-- parser and sema support for `spawn task`, `spawn thread` and `spawn process`
+- finalized fallible `spawn thread` result model from `threads.md`
+- process handle/result type model for `spawn process`
 - general current-task context propagation through named functions called by a
   spawned operation
-- `detach`
 - spawn backend/profile validation
 - task borrow extension until completion
 - escaping-task borrow checks

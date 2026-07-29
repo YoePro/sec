@@ -972,6 +972,8 @@ func (a *Analyzer) analyzeStatement(stmt ast.Statement) {
 		a.analyzeDeferStatement(stmt)
 	case *ast.DiscardStatement:
 		a.analyzeDiscardStatement(stmt)
+	case *ast.DetachStatement:
+		a.analyzeDetachStatement(stmt)
 	case *ast.CancelStatement:
 		a.analyzeCancelStatement(stmt)
 	case *ast.ExpressionStatement:
@@ -1142,6 +1144,34 @@ func (a *Analyzer) analyzeDiscardStatement(stmt *ast.DiscardStatement) {
 	a.endBorrowsHeldBy(ident.Value)
 	if symbol.Type.Kind == ReferenceType {
 		delete(a.localRefContainers, ident.Value)
+	}
+}
+
+func (a *Analyzer) analyzeDetachStatement(stmt *ast.DetachStatement) {
+	if stmt.Value == nil {
+		a.addErrorAtToken(stmt.Token, "detach requires task or thread handle")
+		return
+	}
+	valueType, _ := a.inferExpression(stmt.Value)
+	if valueType.Kind == InvalidType {
+		return
+	}
+	if !isTaskType(valueType) && !isThreadType(valueType) {
+		a.addErrorAtToken(expressionToken(stmt.Value), "detach requires Task[T] or Thread[T], got %s", typeDisplayName(valueType))
+		return
+	}
+	if len(valueType.TypeArgs) != 1 {
+		return
+	}
+	resultType := valueType.TypeArgs[0]
+	if resultType.Kind != VoidType && !stmt.DiscardResult {
+		a.addErrorAtToken(expressionToken(stmt.Value), "detaching %s with non-void result requires explicit discard", typeDisplayName(valueType))
+		return
+	}
+	if a.markMoveSource(stmt.Value) {
+		if ident, ok := stmt.Value.(*ast.Identifier); ok {
+			a.moveReasons[ident.Value] = "detached"
+		}
 	}
 }
 
@@ -2949,6 +2979,8 @@ func statementUsesSelf(stmt ast.Statement) bool {
 		return stmt.Assignment != nil && statementUsesSelf(stmt.Assignment)
 	case *ast.ExpressionStatement:
 		return expressionUsesSelf(stmt.Expression)
+	case *ast.DetachStatement:
+		return expressionUsesSelf(stmt.Value)
 	case *ast.ReturnStatement:
 		return expressionUsesSelf(stmt.Value)
 	case *ast.IfStatement:
@@ -6694,6 +6726,10 @@ func (a *Analyzer) inferExpressionUnrecorded(expr ast.Expression) (Type, express
 				a.addErrorAtTokenWithPrevious(expr.Token, movedAt, "value %s was discarded here and is no longer available", expr.Value)
 				return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 			}
+			if a.moveReasons[expr.Value] == "detached" {
+				a.addErrorAtTokenWithPrevious(expr.Token, movedAt, "value %s was detached here and is no longer available", expr.Value)
+				return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+			}
 			a.addErrorAtTokenWithPrevious(expr.Token, movedAt, "use of moved value %s", expr.Value)
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
@@ -6810,7 +6846,18 @@ func (a *Analyzer) inferSpawnExpression(expr *ast.SpawnExpression) (Type, expres
 		}
 		returnType = *spawnedType.FunctionReturnType
 	}
-	return taskType(returnType), expressionValue{Display: expr.String()}
+	switch expr.Kind {
+	case "", "task":
+		return taskType(returnType), expressionValue{Display: expr.String()}
+	case "thread":
+		return threadType(returnType), expressionValue{Display: expr.String()}
+	case "process":
+		a.addErrorAtToken(expr.Token, "spawn process is not implemented yet")
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	default:
+		a.addErrorAtToken(expr.Token, "unknown spawn kind %s", expr.Kind)
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
 }
 
 func (a *Analyzer) inferExpressionInCancellableContext(expr ast.Expression) (Type, expressionValue) {
@@ -11030,6 +11077,8 @@ func statementToken(stmt ast.Statement) lexer.Token {
 	case *ast.DeferStatement:
 		return stmt.Token
 	case *ast.DiscardStatement:
+		return stmt.Token
+	case *ast.DetachStatement:
 		return stmt.Token
 	case *ast.CancelStatement:
 		return stmt.Token

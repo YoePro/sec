@@ -44,6 +44,122 @@ fn Run() void {
 	assertSemaErrors(t, errors, nil)
 }
 
+func TestSpawnKindModifiersResolveHandleTypes(t *testing.T) {
+	input := `
+module main
+
+fn Calculate() int {
+    return 42
+}
+
+fn Run() int {
+    let taskHandle := spawn task Calculate()
+    let threadHandle := spawn thread Calculate()
+    let value := await taskHandle
+    return value
+}
+`
+
+	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
+	assertSemaErrors(t, errors, []string{
+		"owned thread threadHandle is unresolved at scope exit at 10:9",
+	})
+
+	if got := typeDisplayName(analyzer.completionSymbols["taskHandle"].Type); got != "Task[int]" {
+		t.Fatalf("wrong task handle type. got=%q", got)
+	}
+	if got := typeDisplayName(analyzer.completionSymbols["threadHandle"].Type); got != "Thread[int]" {
+		t.Fatalf("wrong thread handle type. got=%q", got)
+	}
+}
+
+func TestDetachConsumesVoidTaskAndThreadHandles(t *testing.T) {
+	input := `
+module main
+
+fn Work() void {
+}
+
+fn Run() void {
+    let taskHandle := spawn Work()
+    let threadHandle := spawn thread Work()
+    detach taskHandle
+    detach threadHandle
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestDetachNonVoidHandleRequiresDiscard(t *testing.T) {
+	input := `
+module main
+
+fn Calculate() int {
+    return 1
+}
+
+fn Invalid() void {
+    let taskHandle := spawn Calculate()
+    let threadHandle := spawn thread Calculate()
+    detach taskHandle
+    detach threadHandle
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"detaching Task[int] with non-void result requires explicit discard at 11:12",
+		"detaching Thread[int] with non-void result requires explicit discard at 12:12",
+		"owned task taskHandle is unresolved at scope exit at 9:9",
+		"owned thread threadHandle is unresolved at scope exit at 10:9",
+	})
+}
+
+func TestDetachDiscardConsumesNonVoidHandle(t *testing.T) {
+	input := `
+module main
+
+fn Calculate() int {
+    return 1
+}
+
+fn Run() void {
+    let taskHandle := spawn Calculate()
+    let threadHandle := spawn thread Calculate()
+    detach taskHandle discard
+    detach threadHandle discard
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestDetachRejectsNonLifecycleValueAndUseAfterDetach(t *testing.T) {
+	input := `
+module main
+
+fn Work() void {
+}
+
+fn Invalid() void {
+    let value := 1
+    detach value
+    let taskHandle := spawn Work()
+    detach taskHandle
+    await taskHandle
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"detach requires Task[T] or Thread[T], got int at 9:12",
+		"value taskHandle was detached here and is no longer available at 12:11, previous declaration at 11:12",
+	})
+}
+
 func TestSpawnResultMustBeOwned(t *testing.T) {
 	input := `
 module main

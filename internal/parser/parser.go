@@ -195,6 +195,9 @@ func (p *Parser) parseStatement() ast.Statement {
 		return p.parseExpressionOrAssignmentStatement()
 
 	case lexer.IDENT:
+		if p.curToken.Lexeme == "detach" {
+			return p.parseDetachStatement()
+		}
 		if p.peekToken.Type == lexer.MUT || p.peekToken.Type == lexer.COLON || p.looksLikeTypedVariableDeclaration() {
 			errorsBefore := len(p.errors)
 			if stmt := p.parseTypedVariableDeclaration(); stmt != nil || len(p.errors) > errorsBefore {
@@ -272,6 +275,21 @@ func (p *Parser) parseDiscardStatement() ast.Statement {
 	stmt.Value = p.parseExpression(LOWEST)
 	if ident, ok := stmt.Value.(*ast.Identifier); ok {
 		stmt.Name = ident
+	}
+	return stmt
+}
+
+func (p *Parser) parseDetachStatement() ast.Statement {
+	stmt := &ast.DetachStatement{Token: p.curToken}
+	if p.peekToken.Type == lexer.RBRACE || p.peekToken.Type == lexer.EOF {
+		p.addError("detach requires task or thread handle at %d:%d", p.peekToken.Line, p.peekToken.Column)
+		return stmt
+	}
+	p.nextToken()
+	stmt.Value = p.parseExpression(LOWEST)
+	if p.peekToken.Type == lexer.DISCARD {
+		p.nextToken()
+		stmt.DiscardResult = true
 	}
 	return stmt
 }

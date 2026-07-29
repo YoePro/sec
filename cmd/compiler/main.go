@@ -1500,6 +1500,18 @@ func printASTStatement(stmt ast.Statement, prefix string, last bool) {
 		}
 		printASTLeaf(childPrefix(prefix, last), true, "Value: "+value)
 
+	case *ast.DetachStatement:
+		printASTBranch(prefix, last, "Detach")
+		value := "<nil>"
+		if stmt.Value != nil {
+			value = stmt.Value.String()
+		}
+		children := []string{"Value: " + value}
+		if stmt.DiscardResult {
+			children = append(children, "DiscardResult: true")
+		}
+		printASTLeaves(childPrefix(prefix, last), children)
+
 	case *ast.CancelStatement:
 		printASTBranch(prefix, last, "Cancel")
 
@@ -2305,6 +2317,17 @@ func printStatement(stmt ast.Statement) {
 			value = stmt.Value.String()
 		}
 		fmt.Printf("Discard %s\n", value)
+
+	case *ast.DetachStatement:
+		value := "<nil>"
+		if stmt.Value != nil {
+			value = stmt.Value.String()
+		}
+		if stmt.DiscardResult {
+			fmt.Printf("Detach %s discard\n", value)
+			return
+		}
+		fmt.Printf("Detach %s\n", value)
 
 	case *ast.CancelStatement:
 		fmt.Println("Cancel")

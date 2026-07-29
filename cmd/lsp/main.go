@@ -702,7 +702,7 @@ func contextHasFunction(context completionContext) bool {
 
 var secKeywords = []string{
 	"after", "asm", "assert", "await", "break", "case", "capture", "continue", "default",
-	"defer", "else", "enum", "even", "extern", "fallthrough", "false", "finite", "fn", "for",
+	"defer", "detach", "else", "enum", "even", "extern", "fallthrough", "false", "finite", "fn", "for",
 	"free", "get", "if", "impl", "implements", "import", "in", "interface",
 	"let", "match", "module", "multipleOf", "mut", "notEmpty", "odd", "panic", "process",
 	"property", "ref", "return", "select", "self", "set", "spawn", "static", "struct",

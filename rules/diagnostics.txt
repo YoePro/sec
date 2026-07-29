@@ -1685,15 +1685,37 @@ The compiler currently emits many parser and semantic diagnostics as English tex
 
 Some existing checks already reject invalid code.
 
+Current infrastructure implemented:
+
+* the compiler has a central diagnostic registry in
+  `internal/diagnostics`;
+* registry entries contain stable ID, symbolic name, family, default severity
+  and whether the diagnostic is mandatory;
+* the semantic diagnostic `Error` structure carries optional stable `ID` and
+  optional `Help` text;
+* the semantic diagnostic `Error` structure carries a severity value;
+* LSP semantic diagnostics expose `Error.ID` as the diagnostic `code`;
+* LSP parser diagnostics currently expose the generic syntax diagnostic
+  `P2001` as their diagnostic `code`;
+* LSP semantic diagnostics append `Error.Help` as a `help:` section in the
+  displayed diagnostic message;
+* `performance.large-value-parameter` emits the reserved `A2001` ID and a
+  short helping description;
+* the first semantic diagnostics migrated to registered IDs are:
+  * `S1001` / `modules.missing-module-declaration`
+  * `S1002` / `modules.duplicate-module-declaration`
+  * `S1003` / `names.module-declaration-conflict`
+  * `S1004` / `names.duplicate-local-variable`
+
 Some earlier implementations or rule texts may classify unreachable or unused constructs as warnings.
 
 Those classifications must be migrated to the mandatory error rules defined in this document.
 
 Not yet complete:
 
-* central diagnostic registry
-* IDs for every diagnostic
-* symbolic names for every diagnostic
+* full migration of every parser diagnostic from raw text to registered IDs
+* full migration of every semantic diagnostic to registered IDs
+* full migration of every compiler/build diagnostic to registered IDs
 * structured localized messages
 * translation catalogs
 * `sec explain`

@@ -392,7 +392,7 @@
         },
         {
           "name": "keyword.control.sec",
-          "match": "\\b(?:asm|if|else|switch|case|default|fallthrough|for|while|in|match|where|return|break|continue|defer|try|await|spawn|join|detach|cancel|discard|assert|panic|unsafe)\\b"
+          "match": "\\b(?:asm|if|else|switch|case|default|fallthrough|for|while|in|match|where|return|break|continue|defer|try|await|spawn|join|detach|cancel|discard|select|after|assert|panic|unsafe)\\b"
         },
         {
           "name": "storage.type.declaration.sec",

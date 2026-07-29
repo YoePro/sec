@@ -1123,6 +1123,8 @@ Implemented:
 
 - `select` and `after` are reserved lexer keywords and are exposed by LSP
   keyword completion.
+- The VS Code TextMate grammar highlights `select` and `after` as control
+  keywords.
 - `select { ... }` statement syntax is parsed into AST branches.
 - Parsed branch forms currently include:
   `binding := operation => { ... }`, `operation => { ... }`,

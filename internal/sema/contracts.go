@@ -47,6 +47,7 @@ func (a *Analyzer) applyContracts(typ Type, contractNode ast.Contract) Type {
 	for _, contract := range flattenASTContracts(contractNode) {
 		typ = a.applyContract(typ, contract)
 	}
+	a.checkContractSetConsistency(typ, contractNode)
 	return typ
 }
 
@@ -113,6 +114,102 @@ func applyRangeContract(typ Type, contract *ast.RangeContract) Type {
 	typ.Contracts = append(typ.Contracts, rangeContract)
 
 	return typ
+}
+
+func (a *Analyzer) checkContractSetConsistency(typ Type, contractNode ast.Contract) {
+	if contractNode == nil || !isIntegerType(typ) {
+		return
+	}
+
+	var token lexer.Token
+	var rangeContract *RangeContract
+	var multiple *big.Int
+	hasOdd := false
+	hasEven := false
+
+	for _, astContract := range flattenASTContracts(contractNode) {
+		switch contract := astContract.(type) {
+		case *ast.RangeContract:
+			token = contract.Token
+		case *ast.MarkerContract:
+			token = contract.Token
+		}
+	}
+
+	for _, contract := range typ.Contracts {
+		switch contract := contract.(type) {
+		case RangeContract:
+			c := contract
+			rangeContract = &c
+		case MultipleOfContract:
+			if contract.Value != nil && contract.Value.Sign() != 0 {
+				multiple = new(big.Int).Abs(contract.Value)
+			}
+		case MarkerContract:
+			switch contract.Name {
+			case "odd":
+				hasOdd = true
+			case "even":
+				hasEven = true
+			}
+		}
+	}
+
+	if hasOdd && hasEven {
+		a.addErrorAtToken(token, "contracts odd and even cannot be combined")
+		return
+	}
+	if hasOdd && multiple != nil && new(big.Int).Mod(multiple, big.NewInt(2)).Sign() == 0 {
+		a.addErrorAtToken(token, "contracts multipleOf %s and odd cannot be combined because every multiple is even", multiple.String())
+		return
+	}
+	if rangeContract == nil {
+		return
+	}
+	if !integerRangeHasSatisfyingValue(rangeContract, multiple, hasOdd, hasEven) {
+		a.addErrorAtToken(token, "contracts cannot be satisfied together for %s", typeDisplayName(typ))
+	}
+}
+
+func integerRangeHasSatisfyingValue(contract *RangeContract, multiple *big.Int, odd bool, even bool) bool {
+	if contract == nil || contract.Min == nil || contract.Max == nil {
+		return true
+	}
+	min := new(big.Int).Set(contract.Min)
+	max := new(big.Int).Set(contract.Max)
+	if contract.Exclusive {
+		max.Sub(max, big.NewInt(1))
+	}
+	if min.Cmp(max) > 0 {
+		return false
+	}
+
+	step := big.NewInt(1)
+	if multiple != nil && multiple.Sign() > 0 {
+		step = new(big.Int).Set(multiple)
+	}
+	first := firstMultipleAtOrAbove(min, step)
+	for value := first; value.Cmp(max) <= 0; value.Add(value, step) {
+		if odd && new(big.Int).Mod(value, big.NewInt(2)).Sign() == 0 {
+			continue
+		}
+		if even && new(big.Int).Mod(value, big.NewInt(2)).Sign() != 0 {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+func firstMultipleAtOrAbove(min *big.Int, step *big.Int) *big.Int {
+	if step.Sign() <= 0 {
+		return new(big.Int).Set(min)
+	}
+	remainder := new(big.Int).Mod(min, step)
+	if remainder.Sign() == 0 {
+		return new(big.Int).Set(min)
+	}
+	return new(big.Int).Add(min, new(big.Int).Sub(step, remainder))
 }
 
 func contractAppliesToType(name string, typ Type) bool {

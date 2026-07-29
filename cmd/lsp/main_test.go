@@ -5,8 +5,10 @@ import (
 	"testing"
 
 	"sec/internal/ast"
+	"sec/internal/diagnostics"
 	"sec/internal/lexer"
 	"sec/internal/parser"
+	"sec/internal/sema"
 )
 
 func TestAnalyzeLoadsFmtPackageAndTransitiveImports(t *testing.T) {
@@ -118,6 +120,41 @@ fn IsBlank(value: string) bool {
 		messages = append(messages, diagnostic.Message)
 	}
 	t.Fatalf("analyze returned diagnostics for core method without import:\n%s", strings.Join(messages, "\n"))
+}
+
+func TestSemaDiagnosticIncludesCodeAndHelp(t *testing.T) {
+	diagnostic := semaDiagnostic(sema.Error{
+		ID:       diagnostics.LargeValueParameter,
+		Severity: diagnostics.SeverityInformation,
+		Help:     "Pass the parameter by shared reference.",
+		Message:  "parameter \"frame\" passes large value Frame by value",
+		Line:     4,
+		Column:   12,
+	}, 2)
+
+	if diagnostic.Code != diagnostics.LargeValueParameter {
+		t.Fatalf("wrong diagnostic code. got=%q want=%s", diagnostic.Code, diagnostics.LargeValueParameter)
+	}
+	if diagnostic.Severity != 3 {
+		t.Fatalf("wrong diagnostic severity. got=%d want=3", diagnostic.Severity)
+	}
+	if !strings.Contains(diagnostic.Message, "parameter \"frame\" passes large value Frame by value") {
+		t.Fatalf("missing diagnostic message. got=%q", diagnostic.Message)
+	}
+	if !strings.Contains(diagnostic.Message, "help: Pass the parameter by shared reference.") {
+		t.Fatalf("missing diagnostic help. got=%q", diagnostic.Message)
+	}
+}
+
+func TestParserDiagnosticIncludesCode(t *testing.T) {
+	diagnostic := parserDiagnostic("no prefix parse function for \"}\" at 3:1")
+
+	if diagnostic.Code != diagnostics.ParserSyntaxError {
+		t.Fatalf("wrong diagnostic code. got=%q want=%s", diagnostic.Code, diagnostics.ParserSyntaxError)
+	}
+	if diagnostic.Severity != 1 {
+		t.Fatalf("wrong diagnostic severity. got=%d want=1", diagnostic.Severity)
+	}
 }
 
 func TestCompletionSurvivesIncompleteFunctionWithURI(t *testing.T) {
@@ -274,6 +311,18 @@ type Holder struct {
 
 	items = completeSource("", source, strings.Index(source, "list")+len("li"))
 	assertCompletionLabels(t, items, []string{"list"})
+}
+
+func TestCompletionIncludesRawPtrMembers(t *testing.T) {
+	source := `module main
+
+fn Use(ptr: RawPtr[byte]) void {
+	ptr.
+}
+`
+
+	items := completeSource("", source, strings.Index(source, "ptr.")+len("ptr."))
+	assertCompletionLabels(t, items, []string{"Offset", "AddBytes", "Difference"})
 }
 
 func TestCompletionIncludesContractModifiers(t *testing.T) {

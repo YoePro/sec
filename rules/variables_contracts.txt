@@ -424,6 +424,46 @@ However, odd has no direct multipleOf equivalent.
 
 Both syntaxes remain available because odd and even express intent clearly.
 
+Unsatisfiable combinations:
+
+The compiler must reject integer contract sets that cannot possibly accept any
+value.
+
+Examples:
+
+```
+type Impossible int odd even
+
+type OddTens int range 10..100 multipleOf 10 odd
+
+type EmptyEven int range 1..<2 even
+
+type NoMultiple int range 11..19 multipleOf 10
+```
+
+Expected diagnostics:
+
+```text
+contracts odd and even cannot be combined
+
+contracts multipleOf 10 and odd cannot be combined because every multiple is even
+
+contracts cannot be satisfied together for EmptyEven
+
+contracts cannot be satisfied together for NoMultiple
+```
+
+The analysis must use all known compile-time integer constraints:
+
+- range bounds;
+- exclusive upper bounds;
+- `multipleOf`;
+- `odd`;
+- `even`.
+
+It is not sufficient to check each contract independently when their
+intersection is empty.
+
 regex contract:
 
 Syntax:
@@ -759,6 +799,8 @@ Implemented now:
   `unique` on scalar storage such as string, numeric and bool values
 * constant integer `multipleOf` checks for named integer types
 * constant integer `odd` and `even` checks for named integer types
+* unsatisfiable integer contract-set diagnostics for combinations of `range`,
+  `multipleOf`, `odd` and `even`
 
 Not implemented yet:
 

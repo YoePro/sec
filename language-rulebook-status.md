@@ -67,7 +67,7 @@ These were written after the older temporary checklist was last synchronized.
 | `units.txt` | **Written — sync required** | Must be synchronized with shaped arithmetic and matrix multiplication. |
 | `grammar.md` | **Planned** | Canonical consolidated grammar for Sec 0.1. |
 | `operators.md` | **Planned** | Canonical operator inventory, precedence, associativity, contextual `x`, indexing, and conversion syntax. |
-| `names_scopes_visibility.md` | **Planned** | Names, shadowing, module scope, `_` and `__`, visibility, and contextual identifiers. |
+| `names_scopes_visibility.md` | **Written — sync required** | Top-level module declaration namespace conflicts are partially implemented; remaining scope, visibility, reserved-name and naming-rule audit still needed. |
 | `attributes.md` | **Planned** | Language attributes, target metadata, compiler-verified guarantees, and unsafe promises. |
 | `unsafe.md` | **Planned** | Canonical unsafe boundaries and operations. |
 
@@ -145,11 +145,11 @@ LSP token classification
 | `defer.txt` | **Written — sync required** | Must be synchronized with discard, panic, and cancellation cleanup. |
 | `spread.txt` | **Written — sync required** | Must be synchronized with collection and shaped literals. |
 | `flowcontrol_if.txt` | **Written** | |
-| `flowcontrol_for.txt` | **Written — sync required** | Must be synchronized with collection, map/set, tensor, and axis iteration. |
+| `flowcontrol_for.txt` | **Written — sync required** | Current Sema includes collection, map/set and rank-one `vector[T, N]` iteration; tensor and axis iteration still need synchronization. |
 | `flowcontrol_for_1.txt` | **Covered** | Merged into `flowcontrol_for.txt`; no separate rulebook remains in `rules/`. |
 | `flowcontrol_while.txt` | **Written** | |
 | `flowcontrol_switch.txt` | **Written** | |
-| `flowcontrol_match.txt` | **Written — sync required** | Must be synchronized with panic/outcome and collection patterns if introduced. |
+| `flowcontrol_match.txt` | **Written — sync required** | Current Sema covers Result, enum, union/Option matching and rejects pattern-binding shadowing; still needs panic/outcome and future collection-pattern synchronization. |
 
 ---
 
@@ -160,7 +160,7 @@ LSP token classification
 | `arrays-slices.txt` | **Written — sync required** | Existing array and slice rules; must be synchronized with common indexing, stride distinctions, and collections. |
 | `collections-shaped-types.md` | **Written — sync required** | `list`, `map`, contextual `set`, vector, matrix, tensor, views, shape, strides, stdlib responsibility, and MLIR. |
 | `spread.txt` | **Written — sync required** | Collection expansion and literal integration. |
-| `flowcontrol_for.txt` | **Written — sync required** | Iteration over collections and shaped values. |
+| `flowcontrol_for.txt` | **Written — sync required** | Iteration over collections and shaped values; rank-one `vector[T, N]` now participates in Sema iterable inference. |
 
 The first-class language types are expected to include:
 
@@ -363,10 +363,13 @@ Process spawning and IPC do not block the immediate language closure.
 | `impl.txt` | **Written — sync required** | |
 | `properties.txt` | **Written — sync required** | |
 | `core-library.md` | **Written — sync required** | Compiler-known core declarations and privileged impl access. |
-| `stdlib.md` | **Candidate** | A possible overview of stdlib responsibilities, modules, naming, and completion requirements. |
+| `stdlib.md` | **Written — sync required** | Standard-library responsibilities, module boundaries, naming, target capability contracts, and compiler-recognized declaration rules. |
 
-Built-in lowercase types may receive privileged implementations in core or
-stdlib.
+Built-in lowercase types may receive privileged implementations in core.
+
+The standard library may use those types and provide higher-level nominal
+types and algorithms, but it may not redefine or globally extend their
+first-class member surface.
 
 Examples:
 
@@ -481,7 +484,7 @@ multiple target outputs
 
 | Rulebook | Status | Notes |
 |---|---|---|
-| `diagnostics.txt` | **Written — sync required** | Stable phase/rule IDs, severity configuration, and new diagnostics. |
+| `diagnostics.txt` | **Written — sync required** | Central diagnostic registry exists; LSP exposes parser/sema codes; first parser/sema IDs are migrated. Full diagnostic migration, localization and machine-readable CLI output remain. |
 | `formatter.txt` | **Written — sync required** | Contextual `x`, contextual `set`, collections, shaped values, and new statements. |
 | `compiler_diagnostics.md` | **Covered** | Compiler diagnostic policy remains canonical in `diagnostics.txt`; avoid duplication. |
 | `debug_information.md` | **Planned** | Source mapping, variables, optimized code, generics, async/task frames, and targets. |

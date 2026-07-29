@@ -42,6 +42,7 @@ Implemented:
   * `ref` slice iteration yielding element type
   * `list[T]` and legacy `Vec[T]` iteration yielding `T`
   * `ref list[T]` and legacy `ref Vec[T]` iteration yielding `T`
+  * `vector[T, N]` and `ref vector[T, N]` iteration yielding `T`
   * `set[T]` and legacy `Set[T]` iteration yielding `T`
   * `map[K, V]` and legacy `Map[K, V]` iteration yielding key type `K`
     and value type `V`
@@ -65,7 +66,7 @@ Not implemented yet:
 * iterable contracts
 * user-defined iterator protocol
 * collection-family iterable type inference beyond arrays, `ref` slices,
-  strings, `list[T]`, `set[T]`, `map[K, V]` and the legacy
+  strings, `list[T]`, `set[T]`, `map[K, V]`, `vector[T, N]` and the legacy
   `Vec[T]`/`Set[T]`/`Map[K, V]` forms
 * LLVM code generation for collection and map iteration
 * LLVM code generation for string iteration
@@ -1607,7 +1608,8 @@ Design rules:
 * Normal no-shadowing rules apply.
 * A single binding is used for sequential collections.
 * Two bindings are used for maps.
-* Sequential index-value syntax is not initially supported.
+* Sequential index-value syntax is supported for implemented sequential
+  iterable types.
 * break exits the nearest loop.
 * continue begins the next iteration of the nearest loop.
 * Labeled loops are postponed.
@@ -1634,7 +1636,7 @@ for index, value in values {
 }
 ```
 
-For arrays, slices, Vec, strings and bytes:
+For arrays, slices, list, Vec, vector, strings and bytes:
 
 * the first binding receives the zero-based index
 * the second binding receives the element value

@@ -14,10 +14,14 @@ Implemented:
 * sema treats `Ok(_)` as success payload discard, not a binding
 * error payloads must be named and may be explicitly ignored with
   `discard name`
+* sema supports Option Some/None matching with payload bindings through the
+  compiler-known union model
+* sema supports union variant matching with positional payload bindings
 * sema supports enum variant matching
 * sema checks Result and enum exhaustiveness
 * sema detects duplicate enum match arms
 * sema detects unreachable arms after catch-all
+* sema rejects pattern bindings that shadow an existing variable
 * sema rejects empty matches
 * sema rejects catch-all hiding Result Err
 * parser supports `where` guards
@@ -27,8 +31,6 @@ Implemented:
 
 Not implemented yet:
 
-* union variants
-* Option-specific Some/None matching
 * structural/destructuring patterns
 * literal/range policy diagnostics beyond current expression matching behavior
 * LLVM code generation for match

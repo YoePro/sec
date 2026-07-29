@@ -1,8 +1,15 @@
 package sema
 
-import "fmt"
+import (
+	"fmt"
+
+	"sec/internal/diagnostics"
+)
 
 type Error struct {
+	ID             string
+	Severity       diagnostics.Severity
+	Help           string
 	Message        string
 	File           string
 	Line           int
@@ -10,6 +17,21 @@ type Error struct {
 	PreviousFile   string
 	PreviousLine   int
 	PreviousColumn int
+}
+
+func (e Error) WithID(id string) Error {
+	e.ID = id
+	return e
+}
+
+func (e Error) WithSeverity(severity diagnostics.Severity) Error {
+	e.Severity = severity
+	return e
+}
+
+func (e Error) WithHelp(help string) Error {
+	e.Help = help
+	return e
 }
 
 func (e Error) Error() string {

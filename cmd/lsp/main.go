@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"sec/internal/ast"
+	"sec/internal/diagnostics"
 	"sec/internal/lexer"
 	"sec/internal/parser"
 	"sec/internal/sema"
@@ -97,6 +98,7 @@ type textEdit struct {
 type diagnostic struct {
 	Range    lspRange `json:"range"`
 	Severity int      `json:"severity"`
+	Code     string   `json:"code,omitempty"`
 	Source   string   `json:"source"`
 	Message  string   `json:"message"`
 }
@@ -448,6 +450,10 @@ func memberCompletionItems(exprType sema.Type, functions map[string][]sema.Funct
 		for _, field := range exprType.Fields {
 			add(completionItem{Label: field.Name, Kind: 5, Detail: lspTypeName(field.Type)})
 		}
+	case sema.RawPtrType:
+		add(completionItem{Label: "Offset", Kind: 2, Detail: lspTypeName(exprType)})
+		add(completionItem{Label: "AddBytes", Kind: 2, Detail: "RawPtr[byte]"})
+		add(completionItem{Label: "Difference", Kind: 2, Detail: "int"})
 	case sema.RegisterType:
 		for _, field := range exprType.RegisterFields {
 			add(completionItem{Label: field.Name, Kind: 5, Detail: lspTypeName(field.Type)})
@@ -2058,14 +2064,32 @@ func qualifyLocalCallsInExpression(expr ast.Expression, module string, localFunc
 func semaDiagnostic(err sema.Error, severity int) diagnostic {
 	line := max(err.Line-1, 0)
 	column := max(err.Column-1, 0)
+	message := err.Error()
+	if err.Help != "" {
+		message += "\n\nhelp: " + err.Help
+	}
 	return diagnostic{
 		Range: lspRange{
 			Start: position{Line: line, Character: column},
 			End:   position{Line: line, Character: column + 1},
 		},
-		Severity: severity,
+		Severity: lspSeverity(err.Severity, severity),
+		Code:     err.ID,
 		Source:   "sec",
-		Message:  err.Error(),
+		Message:  message,
+	}
+}
+
+func lspSeverity(severity diagnostics.Severity, fallback int) int {
+	switch severity {
+	case diagnostics.SeverityError:
+		return 1
+	case diagnostics.SeverityWarning:
+		return 2
+	case diagnostics.SeverityInformation:
+		return 3
+	default:
+		return fallback
 	}
 }
 
@@ -2089,6 +2113,7 @@ func parserDiagnostic(message string) diagnostic {
 			End:   position{Line: line, Character: column + 1},
 		},
 		Severity: 1,
+		Code:     diagnostics.ParserSyntaxError,
 		Source:   "sec",
 		Message:  message,
 	}

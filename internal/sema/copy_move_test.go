@@ -1,6 +1,9 @@
 package sema
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestCopyClassificationPrimitiveReferenceAndAggregates(t *testing.T) {
 	intType := Type{Name: "int", Kind: IntType}
@@ -263,6 +266,12 @@ fn Process(values: int[16]) int {
 	if warnings[0].Error() != expected {
 		t.Fatalf("wrong warning. got=%q want=%q", warnings[0].Error(), expected)
 	}
+	if warnings[0].ID != "A2001" {
+		t.Fatalf("wrong warning ID. got=%q want=A2001", warnings[0].ID)
+	}
+	if !strings.Contains(warnings[0].Help, "Pass the parameter by shared reference") {
+		t.Fatalf("missing warning help. got=%q", warnings[0].Help)
+	}
 }
 
 func TestLargeByValueStructParameterWarns(t *testing.T) {
@@ -294,5 +303,11 @@ fn Process(frame: Frame) int {
 	}
 	if warnings[0].Error() != expected {
 		t.Fatalf("wrong warning. got=%q want=%q", warnings[0].Error(), expected)
+	}
+	if warnings[0].ID != "A2001" {
+		t.Fatalf("wrong warning ID. got=%q want=A2001", warnings[0].ID)
+	}
+	if !strings.Contains(warnings[0].Help, "Pass the parameter by shared reference") {
+		t.Fatalf("missing warning help. got=%q", warnings[0].Help)
 	}
 }

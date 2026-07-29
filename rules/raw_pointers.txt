@@ -212,13 +212,21 @@ Implemented:
 * Explicit conversions involving `RawPtr` require an unsafe context.
 * Basic explicit conversions are recognized between `uint`, `RawPtr[T]` and
   compatible `RawPtr` values.
+* Compiler-known RawPtr pointer arithmetic calls are recognized in Sema:
+  `Offset`, `AddBytes` and `Difference`.
+* RawPtr pointer arithmetic requires an unsafe context.
+* `Offset` requires an `int` element offset and rejects `RawPtr[void]`.
+* `AddBytes` requires `RawPtr[byte]` and an `int` byte offset.
+* `Difference` requires another RawPtr with the same element type and returns
+  `int`.
+* LSP member completion exposes the initial RawPtr pointer arithmetic calls.
 * `RawPtr` is treated as an address value and is not an owner.
 
 Not implemented yet:
 
 * null literal rules
 * RawPtr dereference operations
-* RawPtr pointer arithmetic operations
+* RawPtr pointer arithmetic lowering and target layout validation
 * target pointer-width overflow validation
 * RawPtr-to-reference validation beyond unsafe gating
 * platform-specific address primitives beyond `@address`

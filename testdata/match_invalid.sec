@@ -272,7 +272,7 @@ fn ErrorBindingOutsideArm() IOError {
     return error
 }
 
-// TODO: currently allowed; decide whether match bindings may shadow outer variables
+// sema error: variable "value" already declared
 fn ShadowOuterResultBinding() Speed {
     let value: Speed := Speed(1)
 
@@ -282,7 +282,7 @@ fn ShadowOuterResultBinding() Speed {
     }
 }
 
-// TODO: currently allowed; decide whether match bindings may shadow outer variables
+// sema error: variable "error" already declared
 fn ShadowOuterErrorBinding() Speed {
     let error: IOError := IOError.Timeout
 

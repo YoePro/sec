@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"sec/internal/ast"
+	"sec/internal/diagnostics"
 	"sec/internal/lexer"
 	"sec/internal/parser"
 )
@@ -43,6 +44,10 @@ let a := 1
 	}
 
 	assertSemaErrors(t, errors, expected)
+
+	if len(errors) != 1 || errors[0].ID != diagnostics.MissingModuleDeclaration {
+		t.Fatalf("wrong diagnostic ID. got=%q want=%q", errors[0].ID, diagnostics.MissingModuleDeclaration)
+	}
 }
 
 func TestDuplicateModuleDeclaration(t *testing.T) {
@@ -57,6 +62,65 @@ module main
 	}
 
 	assertSemaErrors(t, errors, expected)
+
+	if len(errors) != 1 || errors[0].ID != diagnostics.DuplicateModuleDeclaration {
+		t.Fatalf("wrong diagnostic ID. got=%q want=%q", errors[0].ID, diagnostics.DuplicateModuleDeclaration)
+	}
+}
+
+func TestModuleDeclarationNamespaceConflicts(t *testing.T) {
+	input := `
+module main
+
+type User struct {
+	id: int,
+}
+
+fn User() int {
+	return 1
+}
+
+fn Format(value: int) string {
+	return "int"
+}
+
+fn Format(value: string) string {
+	return value
+}
+
+fn Decode() int {
+	return 1
+}
+
+type Decode int
+
+type Packet int
+type Packet string
+
+type Storage int
+let Storage: int := 1
+
+fn Limit() int {
+	return 1
+}
+let Limit: int := 2
+`
+
+	errors := analyzeSourceRaw(t, input)
+	expected := []string{
+		"function User conflicts with type User declared here at 8:4, previous declaration at 4:6",
+		"type Decode conflicts with function Decode declared here at 24:6, previous declaration at 20:4",
+		"duplicate declaration Packet in module main at 27:6, previous declaration at 26:6",
+		"variable Storage conflicts with type Storage declared here at 30:5, previous declaration at 29:6",
+		"variable Limit conflicts with function Limit declared here at 35:5, previous declaration at 32:4",
+	}
+	assertSemaErrors(t, errors, expected)
+
+	for _, err := range errors {
+		if err.ID != diagnostics.ModuleDeclarationConflict {
+			t.Fatalf("wrong diagnostic ID for %q. got=%q want=%q", err.Message, err.ID, diagnostics.ModuleDeclarationConflict)
+		}
+	}
 }
 
 func TestUnderscoreVisibilityAcrossModules(t *testing.T) {
@@ -596,6 +660,26 @@ let evenBad: EvenNumber := 11
 		"value 25 violates multipleOf contract PageSize 10 at 7:22",
 		"value 10 violates odd contract OddNumber at 8:26",
 		"value 11 violates even contract EvenNumber at 9:28",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestIntegerContractSetConsistency(t *testing.T) {
+	input := `
+type OddEven int odd even
+type OddTens int range 10..100 multipleOf 10 odd
+type NoEven int range 1..<2 even
+type NoMultiple int range 11..19 multipleOf 10
+type ValidOddMultiple int range 9..21 multipleOf 3 odd
+type ValidEvenMultiple int range 10..20 multipleOf 10 even
+`
+
+	errors := analyzeSource(t, input)
+	expected := []string{
+		"contracts odd and even cannot be combined at 2:22",
+		"contracts multipleOf 10 and odd cannot be combined because every multiple is even at 3:46",
+		"contracts cannot be satisfied together for NoEven at 4:29",
+		"contracts cannot be satisfied together for NoMultiple at 5:34",
 	}
 	assertSemaErrors(t, errors, expected)
 }
@@ -4475,6 +4559,43 @@ fn Test() void {
 	assertSemaErrors(t, errors, nil)
 }
 
+func TestMatchPatternBindingCannotShadowOuterVariable(t *testing.T) {
+	input := `
+module main
+
+enum IOError {
+	InvalidValue,
+}
+
+fn Read() Result[int, IOError] {
+	return Ok(1)
+}
+
+fn ShadowOk() int {
+	let value: int := 10
+	return match Read() {
+		Ok(value) => value
+		Err(error) => 0
+	}
+}
+
+fn ShadowErr() int {
+	let error: IOError := IOError.InvalidValue
+	return match Read() {
+		Ok(value) => value
+		Err(error) => 0
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	expected := []string{
+		"variable \"value\" already declared at 15:3, previous declaration at 13:6",
+		"variable \"error\" already declared at 24:3, previous declaration at 21:6",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
 func TestMatchStatementReturnArmsSatisfyFunctionReturn(t *testing.T) {
 	input := `
 module main
@@ -6220,6 +6341,60 @@ fn StringPointer(value: string) RawPtr[byte] {
 	assertSemaErrors(t, errors, nil)
 }
 
+func TestRawPtrPointerArithmeticRequiresUnsafeAndTypes(t *testing.T) {
+	input := `
+module main
+
+fn Bad(ptr: RawPtr[int], bytes: RawPtr[byte], other: RawPtr[byte], offset: uint) void {
+    ptr.Offset(1)
+    bytes.AddBytes(offset)
+    ptr.AddBytes(1)
+    ptr.Difference(other)
+}
+
+fn Good(ptr: RawPtr[int], other: RawPtr[int], bytes: RawPtr[byte]) int {
+    unsafe {
+        let moved := ptr.Offset(2)
+        let byteMoved := bytes.AddBytes(4)
+        discard moved
+        discard byteMoved
+        return ptr.Difference(other)
+    }
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"RawPtr.Offset requires unsafe because it performs raw-pointer arithmetic at 5:9",
+		"RawPtr.AddBytes requires unsafe because it performs raw-pointer arithmetic at 6:11",
+		"RawPtr.AddBytes requires unsafe because it performs raw-pointer arithmetic at 7:9",
+		"RawPtr.Difference requires unsafe because it performs raw-pointer arithmetic at 8:9",
+	})
+}
+
+func TestRawPtrPointerArithmeticValidationInsideUnsafe(t *testing.T) {
+	input := `
+module main
+
+fn Invalid(ptr: RawPtr[int], voidPtr: RawPtr[void], bytes: RawPtr[byte], other: RawPtr[byte], offset: uint) void {
+    unsafe {
+        voidPtr.Offset(1)
+        bytes.AddBytes(offset)
+        ptr.AddBytes(1)
+        ptr.Difference(other)
+    }
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"RawPtr.Offset requires a typed element pointer, got RawPtr[void] at 6:17",
+		"RawPtr.AddBytes argument must be int, got uint at 7:24",
+		"RawPtr.AddBytes requires RawPtr[byte], got RawPtr[int] at 8:13",
+		"RawPtr.Difference argument must be RawPtr[int], got RawPtr[byte] at 9:24",
+	})
+}
+
 func TestAggregateReferenceFieldHoldsBorrow(t *testing.T) {
 	input := `
 module main
@@ -6597,6 +6772,19 @@ fn RefVecLoop(values: ref Vec[int]) void {
 	}
 }
 
+fn VectorLoop(values: vector[int, 3]) void {
+	for value in values {
+		let copy: int := value
+	}
+}
+
+fn RefVectorIndexValueLoop(values: ref vector[float64, 3]) void {
+	for index, value in values {
+		let i: int := index
+		let copy: float64 := value
+	}
+}
+
 fn SetLoop(values: Set[string]) void {
 	for value in values {
 		let copy: string := value
@@ -6633,6 +6821,11 @@ fn MapTooManyBindings(values: Map[string, int]) void {
 	for key, value, extra in values {
 	}
 }
+
+fn VectorTooManyBindings(values: vector[int, 3]) void {
+	for index, value, extra in values {
+	}
+}
 `
 
 	errors := analyzeSourceRaw(t, input)
@@ -6640,6 +6833,7 @@ fn MapTooManyBindings(values: Map[string, int]) void {
 		"set iteration supports one loop binding, got 2 at 5:6",
 		"map iteration requires key and value bindings, got 1 at 10:6",
 		"map iteration requires key and value bindings, got 3 at 15:6",
+		"sequential iteration supports one or two loop bindings, got 3 at 20:6",
 	}
 	assertSemaErrors(t, errors, expected)
 }

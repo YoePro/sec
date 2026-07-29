@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"sec/internal/ast"
+	"sec/internal/diagnostics"
 	"sec/internal/lexer"
 	"sec/internal/parser"
 )
@@ -125,6 +126,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.scopeDepth = 0
 	a.allocationContext = AllocationContext{Available: false, Origin: StorageOriginUnknown}
 	a.validateModuleDeclaration(program)
+	a.validateModuleDeclarationNamespace(program)
 	a.registerTypeDeclarations(program)
 	a.registerImplTypeDeclarations(program)
 	a.analyzeInterfaceDeclarations(program)
@@ -232,7 +234,7 @@ func (a *Analyzer) validateModuleDeclaration(program *ast.Program) {
 			found = true
 			key := moduleStmt.Token.File + "\x00" + moduleStmt.Path
 			if previous := firstByFileAndPath[key]; previous != nil {
-				a.addErrorAtTokenWithPrevious(moduleStmt.Token, previous.Token, "duplicate module declaration %s", moduleStmt.Path)
+				a.addErrorAtTokenWithPreviousID(moduleStmt.Token, previous.Token, diagnostics.DuplicateModuleDeclaration, "duplicate module declaration %s", moduleStmt.Path)
 				continue
 			}
 			firstByFileAndPath[key] = moduleStmt
@@ -240,7 +242,11 @@ func (a *Analyzer) validateModuleDeclaration(program *ast.Program) {
 	}
 
 	if !found {
-		a.errors = append(a.errors, Error{Message: "missing module declaration"})
+		a.appendError(Error{
+			ID:       diagnostics.MissingModuleDeclaration,
+			Severity: diagnostics.SeverityError,
+			Message:  "missing module declaration",
+		})
 	}
 }
 
@@ -277,6 +283,109 @@ func (a *Analyzer) addTopLevelStatementError(stmt ast.Statement) {
 	default:
 		a.addErrorAtToken(statementToken(stmt), "code is not allowed at module scope")
 	}
+}
+
+type moduleDeclarationKind string
+
+const (
+	moduleDeclarationFunction  moduleDeclarationKind = "function"
+	moduleDeclarationType      moduleDeclarationKind = "type"
+	moduleDeclarationUnit      moduleDeclarationKind = "unit"
+	moduleDeclarationEnum      moduleDeclarationKind = "enum"
+	moduleDeclarationInterface moduleDeclarationKind = "interface"
+	moduleDeclarationVariable  moduleDeclarationKind = "variable"
+)
+
+type moduleDeclaration struct {
+	Name  string
+	Kind  moduleDeclarationKind
+	Token lexer.Token
+}
+
+func (a *Analyzer) validateModuleDeclarationNamespace(program *ast.Program) {
+	declared := map[string]moduleDeclaration{}
+	a.withProgramModules(program, func(stmt ast.Statement) {
+		for _, decl := range moduleDeclarationsFromStatement(stmt) {
+			if decl.Name == "" {
+				continue
+			}
+			key := a.currentModule + "\x00" + decl.Name
+			previous, exists := declared[key]
+			if !exists {
+				declared[key] = decl
+				continue
+			}
+			if previous.Kind == moduleDeclarationFunction && decl.Kind == moduleDeclarationFunction {
+				continue
+			}
+			if previous.Kind == moduleDeclarationVariable && decl.Kind == moduleDeclarationVariable {
+				continue
+			}
+			if previous.Kind == decl.Kind {
+				a.addErrorAtTokenWithPreviousID(decl.Token, previous.Token, diagnostics.ModuleDeclarationConflict, "duplicate declaration %s in module %s", decl.Name, moduleDisplayName(a.currentModule))
+				continue
+			}
+			a.addErrorAtTokenWithPreviousID(decl.Token, previous.Token, diagnostics.ModuleDeclarationConflict, "%s %s conflicts with %s %s declared here", decl.Kind, decl.Name, previous.Kind, previous.Name)
+		}
+	})
+}
+
+func moduleDeclarationsFromStatement(stmt ast.Statement) []moduleDeclaration {
+	switch stmt := stmt.(type) {
+	case *ast.TypeDeclStatement:
+		if stmt.Name == nil {
+			return nil
+		}
+		return []moduleDeclaration{{Name: stmt.Name.Value, Kind: moduleDeclarationType, Token: stmt.Name.Token}}
+	case *ast.UnitDeclStatement:
+		if stmt.Name == nil {
+			return nil
+		}
+		return []moduleDeclaration{{Name: stmt.Name.Value, Kind: moduleDeclarationUnit, Token: stmt.Name.Token}}
+	case *ast.EnumDeclaration:
+		if stmt.Name == nil {
+			return nil
+		}
+		return []moduleDeclaration{{Name: stmt.Name.Value, Kind: moduleDeclarationEnum, Token: stmt.Name.Token}}
+	case *ast.InterfaceDeclaration:
+		if stmt.Name == nil {
+			return nil
+		}
+		return []moduleDeclaration{{Name: stmt.Name.Value, Kind: moduleDeclarationInterface, Token: stmt.Name.Token}}
+	case *ast.StructStatement:
+		if stmt.Name == nil {
+			return nil
+		}
+		return []moduleDeclaration{{Name: stmt.Name.Value, Kind: moduleDeclarationType, Token: stmt.Name.Token}}
+	case *ast.FunctionDeclaration:
+		if stmt.Name == nil {
+			return nil
+		}
+		return []moduleDeclaration{{Name: stmt.Name.Value, Kind: moduleDeclarationFunction, Token: stmt.Name.Token}}
+	case *ast.LetStatement:
+		if stmt.Name == nil {
+			return nil
+		}
+		return []moduleDeclaration{{Name: stmt.Name.Value, Kind: moduleDeclarationVariable, Token: stmt.Name.Token}}
+	case *ast.LetGroupStatement:
+		decls := []moduleDeclaration{}
+		for _, let := range stmt.Lets {
+			if let == nil || let.Name == nil {
+				continue
+			}
+			decls = append(decls, moduleDeclaration{Name: let.Name.Value, Kind: moduleDeclarationVariable, Token: let.Name.Token})
+		}
+		return decls
+	default:
+		return nil
+	}
+}
+
+func moduleDisplayName(module string) string {
+	if module == "" {
+		return "<unnamed>"
+	}
+	return module
 }
 
 func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
@@ -1408,35 +1517,16 @@ func (a *Analyzer) inferForIterableBindingTypes(stmt *ast.ForStatement) ([]Type,
 		}
 		indexType := Type{Name: "int", Kind: IntType}
 		if iterableType.Kind == StringType {
-			valueType := Type{Name: "rune", Kind: RuneType}
-			if len(stmt.Bindings) > 2 {
-				a.addErrorAtToken(stmt.Bindings[0].Token, "sequential iteration supports one or two loop bindings, got %d", len(stmt.Bindings))
-				return nil, false
-			}
-			if len(stmt.Bindings) == 2 {
-				return []Type{indexType, valueType}, true
-			}
-			return []Type{valueType}, true
+			return a.inferSequentialForBindingTypes(stmt, Type{Name: "rune", Kind: RuneType}, indexType)
 		}
 		if (iterableType.Kind == ArrayType || iterableType.Kind == SliceType) && iterableType.Element != nil {
-			if len(stmt.Bindings) > 2 {
-				a.addErrorAtToken(stmt.Bindings[0].Token, "sequential iteration supports one or two loop bindings, got %d", len(stmt.Bindings))
-				return nil, false
-			}
-			if len(stmt.Bindings) == 2 {
-				return []Type{indexType, *iterableType.Element}, true
-			}
-			return []Type{*iterableType.Element}, true
+			return a.inferSequentialForBindingTypes(stmt, *iterableType.Element, indexType)
 		}
 		if (iterableType.Name == "Vec" || iterableType.Name == "list") && len(iterableType.TypeArgs) == 1 {
-			if len(stmt.Bindings) > 2 {
-				a.addErrorAtToken(stmt.Bindings[0].Token, "sequential iteration supports one or two loop bindings, got %d", len(stmt.Bindings))
-				return nil, false
-			}
-			if len(stmt.Bindings) == 2 {
-				return []Type{indexType, iterableType.TypeArgs[0]}, true
-			}
-			return []Type{iterableType.TypeArgs[0]}, true
+			return a.inferSequentialForBindingTypes(stmt, iterableType.TypeArgs[0], indexType)
+		}
+		if iterableType.Name == "vector" && len(iterableType.TypeArgs) == 1 && len(iterableType.ConstArgs) == 1 {
+			return a.inferSequentialForBindingTypes(stmt, iterableType.TypeArgs[0], indexType)
 		}
 		if (iterableType.Name == "Set" || iterableType.Name == "set") && len(iterableType.TypeArgs) == 1 {
 			if len(stmt.Bindings) > 1 {
@@ -1457,9 +1547,20 @@ func (a *Analyzer) inferForIterableBindingTypes(stmt *ast.ForStatement) ([]Type,
 	}
 }
 
+func (a *Analyzer) inferSequentialForBindingTypes(stmt *ast.ForStatement, valueType Type, indexType Type) ([]Type, bool) {
+	if len(stmt.Bindings) > 2 {
+		a.addErrorAtToken(stmt.Bindings[0].Token, "sequential iteration supports one or two loop bindings, got %d", len(stmt.Bindings))
+		return nil, false
+	}
+	if len(stmt.Bindings) == 2 {
+		return []Type{indexType, valueType}, true
+	}
+	return []Type{valueType}, true
+}
+
 func isForCollectionFamily(typ Type) bool {
 	switch typ.Name {
-	case "Vec", "Set", "Map", "list", "set", "map":
+	case "Vec", "Set", "Map", "list", "set", "map", "vector":
 		return true
 	default:
 		return false
@@ -2593,10 +2694,10 @@ func (a *Analyzer) warnLargeByValueParameter(name string, typ Type, ref bool, mu
 		return
 	}
 	if typ.Kind == ArrayType {
-		a.addWarningAtToken(token, "parameter %q passes large array %s by value; consider ref %s or ref %s[]", name, typeDisplayName(typ), typeDisplayName(typ), arrayElementDisplayName(typ))
+		a.addWarningAtTokenWithMetadata(token, diagnostics.LargeValueParameter, "Pass the parameter by shared reference when the function does not need to own or copy the whole value.", "parameter %q passes large array %s by value; consider ref %s or ref %s[]", name, typeDisplayName(typ), typeDisplayName(typ), arrayElementDisplayName(typ))
 		return
 	}
-	a.addWarningAtToken(token, "parameter %q passes large value %s by value; consider ref %s", name, typeDisplayName(typ), typeDisplayName(typ))
+	a.addWarningAtTokenWithMetadata(token, diagnostics.LargeValueParameter, "Pass the parameter by shared reference when the function does not need to own or copy the whole value.", "parameter %q passes large value %s by value; consider ref %s", name, typeDisplayName(typ), typeDisplayName(typ))
 }
 
 func estimatedTypeSizeBytes(typ Type, visiting map[string]bool) (int64, bool) {
@@ -7887,6 +7988,9 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 	if typ, value, ok := a.inferArenaCall(expr); ok {
 		return typ, value
 	}
+	if typ, value, ok := a.inferRawPointerCall(expr); ok {
+		return typ, value
+	}
 
 	name := callExpressionName(expr)
 	if name == "" {
@@ -8078,6 +8182,118 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 	}
 
 	return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+}
+
+func (a *Analyzer) inferRawPointerCall(expr *ast.CallExpression) (Type, expressionValue, bool) {
+	member, ok := expr.Callee.(*ast.MemberExpression)
+	if !ok {
+		return Type{}, expressionValue{}, false
+	}
+	if !a.rawPointerCallMayHaveValueReceiver(member.Object) {
+		return Type{}, expressionValue{}, false
+	}
+	receiverType, _ := a.inferExpression(member.Object)
+	if receiverType.Kind == InvalidType {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+	}
+	receiverType = dereferenceType(receiverType)
+	if receiverType.Kind != RawPtrType {
+		return Type{}, expressionValue{}, false
+	}
+
+	switch member.Property.Value {
+	case "Offset":
+		if !a.rawPointerOperationRequiresUnsafe(member.Property.Token, "RawPtr.Offset") {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		if len(expr.Arguments) != 1 {
+			a.addErrorAtToken(expr.Token, "RawPtr.Offset expects 1 argument, got %d", len(expr.Arguments))
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		if len(receiverType.TypeArgs) == 1 && receiverType.TypeArgs[0].Kind == VoidType {
+			a.addErrorAtToken(member.Property.Token, "RawPtr.Offset requires a typed element pointer, got RawPtr[void]")
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		if !a.rawPointerArgumentIsInt(expr.Arguments[0], "RawPtr.Offset") {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		return receiverType, expressionValue{Display: expr.String()}, true
+	case "AddBytes":
+		if !a.rawPointerOperationRequiresUnsafe(member.Property.Token, "RawPtr.AddBytes") {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		if len(expr.Arguments) != 1 {
+			a.addErrorAtToken(expr.Token, "RawPtr.AddBytes expects 1 argument, got %d", len(expr.Arguments))
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		if !isRawBytePointer(receiverType) {
+			a.addErrorAtToken(member.Property.Token, "RawPtr.AddBytes requires RawPtr[byte], got %s", typeDisplayName(receiverType))
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		if !a.rawPointerArgumentIsInt(expr.Arguments[0], "RawPtr.AddBytes") {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		return receiverType, expressionValue{Display: expr.String()}, true
+	case "Difference":
+		if !a.rawPointerOperationRequiresUnsafe(member.Property.Token, "RawPtr.Difference") {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		if len(expr.Arguments) != 1 {
+			a.addErrorAtToken(expr.Token, "RawPtr.Difference expects 1 argument, got %d", len(expr.Arguments))
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		otherType, _ := a.inferExpression(expr.Arguments[0])
+		if otherType.Kind == InvalidType {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		if !sameConcreteType(receiverType, otherType) {
+			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "RawPtr.Difference argument must be %s, got %s", typeDisplayName(receiverType), typeDisplayName(otherType))
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		return a.types["int"], expressionValue{Display: expr.String()}, true
+	default:
+		return Type{}, expressionValue{}, false
+	}
+}
+
+func (a *Analyzer) rawPointerCallMayHaveValueReceiver(expr ast.Expression) bool {
+	switch expr := expr.(type) {
+	case *ast.Identifier:
+		_, exists := a.symbols[expr.Value]
+		return exists
+	case *ast.MemberExpression:
+		return a.rawPointerCallMayHaveValueReceiver(expr.Object)
+	case *ast.IndexExpression:
+		return true
+	case *ast.CallExpression, *ast.ConversionExpression, *ast.RefExpression, *ast.AwaitExpression, *ast.TryExpression:
+		return true
+	default:
+		return false
+	}
+}
+
+func (a *Analyzer) rawPointerOperationRequiresUnsafe(token lexer.Token, operation string) bool {
+	if a.inUnsafe {
+		return true
+	}
+	a.addErrorAtToken(token, "%s requires unsafe because it performs raw-pointer arithmetic", operation)
+	return false
+}
+
+func (a *Analyzer) rawPointerArgumentIsInt(expr ast.Expression, operation string) bool {
+	argType, _ := a.inferExpression(expr)
+	if argType.Kind == InvalidType {
+		return false
+	}
+	if argType.Kind != IntType || argType.Name != "int" {
+		a.addErrorAtToken(expressionToken(expr), "%s argument must be int, got %s", operation, typeDisplayName(argType))
+		return false
+	}
+	return true
+}
+
+func isRawBytePointer(typ Type) bool {
+	return typ.Kind == RawPtrType && len(typ.TypeArgs) == 1 && typ.TypeArgs[0].Name == "byte"
 }
 
 func (a *Analyzer) inferArenaCall(expr *ast.CallExpression) (Type, expressionValue, bool) {
@@ -9918,10 +10134,11 @@ func (a *Analyzer) analyzeMatchArmBody(arm *ast.MatchArm, info matchPatternInfo)
 	a.localRefContainers = copyLocalRefContainers(previousLocalRefContainers)
 	a.arenaGenerations = copyArenaGenerations(previousArenaGenerations)
 	if info.BindingName != "" {
-		a.symbols[info.BindingName] = Symbol{Name: info.BindingName, Type: info.BindingType, Mutable: false, Token: arm.Token, Storage: StorageOriginInline}
-		a.assigned[info.BindingName] = true
-		delete(a.moved, info.BindingName)
-		delete(a.constInts, info.BindingName)
+		if a.defineSymbol(info.BindingName, info.BindingType, false, arm.Token) {
+			a.assigned[info.BindingName] = true
+			delete(a.moved, info.BindingName)
+			delete(a.constInts, info.BindingName)
+		}
 	}
 	defer func() {
 		a.symbols = previousSymbols
@@ -10421,22 +10638,51 @@ func (a *Analyzer) inferPrefixExpression(expr *ast.PrefixExpression) (Type, expr
 }
 
 func (a *Analyzer) addError(format string, args ...any) {
-	err := Error{Message: fmt.Sprintf(format, args...)}
+	err := Error{Severity: diagnostics.SeverityError, Message: fmt.Sprintf(format, args...)}
 	a.appendError(err)
 }
 
 func (a *Analyzer) addErrorAtToken(token lexer.Token, format string, args ...any) {
 	err := Error{
-		Message: fmt.Sprintf(format, args...),
-		File:    token.File,
-		Line:    token.Line,
-		Column:  token.Column,
+		Severity: diagnostics.SeverityError,
+		Message:  fmt.Sprintf(format, args...),
+		File:     token.File,
+		Line:     token.Line,
+		Column:   token.Column,
+	}
+	a.appendError(err)
+}
+
+func (a *Analyzer) addErrorAtTokenWithID(token lexer.Token, id string, format string, args ...any) {
+	err := Error{
+		ID:       id,
+		Severity: diagnostics.SeverityError,
+		Message:  fmt.Sprintf(format, args...),
+		File:     token.File,
+		Line:     token.Line,
+		Column:   token.Column,
 	}
 	a.appendError(err)
 }
 
 func (a *Analyzer) addErrorAtTokenWithPrevious(token lexer.Token, previous lexer.Token, format string, args ...any) {
 	err := Error{
+		Severity:       diagnostics.SeverityError,
+		Message:        fmt.Sprintf(format, args...),
+		File:           token.File,
+		Line:           token.Line,
+		Column:         token.Column,
+		PreviousFile:   previous.File,
+		PreviousLine:   previous.Line,
+		PreviousColumn: previous.Column,
+	}
+	a.appendError(err)
+}
+
+func (a *Analyzer) addErrorAtTokenWithPreviousID(token lexer.Token, previous lexer.Token, id string, format string, args ...any) {
+	err := Error{
+		ID:             id,
+		Severity:       diagnostics.SeverityError,
 		Message:        fmt.Sprintf(format, args...),
 		File:           token.File,
 		Line:           token.Line,
@@ -10449,6 +10695,9 @@ func (a *Analyzer) addErrorAtTokenWithPrevious(token lexer.Token, previous lexer
 }
 
 func (a *Analyzer) appendError(err Error) {
+	if err.Severity == "" {
+		err.Severity = diagnostics.SeverityError
+	}
 	key := fmt.Sprintf("%s\x00%s\x00%d\x00%d\x00%s\x00%d\x00%d", err.Message, err.File, err.Line, err.Column, err.PreviousFile, err.PreviousLine, err.PreviousColumn)
 	if a.errorKeys == nil {
 		a.errorKeys = map[string]bool{}
@@ -10461,12 +10710,36 @@ func (a *Analyzer) appendError(err Error) {
 }
 
 func (a *Analyzer) addWarningAtToken(token lexer.Token, format string, args ...any) {
-	a.warnings = append(a.warnings, Error{
-		Message: fmt.Sprintf(format, args...),
-		File:    token.File,
-		Line:    token.Line,
-		Column:  token.Column,
+	a.appendWarning(Error{
+		Severity: diagnostics.SeverityWarning,
+		Message:  fmt.Sprintf(format, args...),
+		File:     token.File,
+		Line:     token.Line,
+		Column:   token.Column,
 	})
+}
+
+func (a *Analyzer) addWarningAtTokenWithMetadata(token lexer.Token, id string, help string, format string, args ...any) {
+	severity := diagnostics.DefaultSeverity(id)
+	if severity == "" {
+		severity = diagnostics.SeverityWarning
+	}
+	a.appendWarning(Error{
+		ID:       id,
+		Severity: severity,
+		Help:     help,
+		Message:  fmt.Sprintf(format, args...),
+		File:     token.File,
+		Line:     token.Line,
+		Column:   token.Column,
+	})
+}
+
+func (a *Analyzer) appendWarning(warning Error) {
+	if warning.Severity == "" {
+		warning.Severity = diagnostics.SeverityWarning
+	}
+	a.warnings = append(a.warnings, warning)
 }
 
 func (a *Analyzer) warnUnitStatus(token lexer.Token, unitName string) {
@@ -10484,7 +10757,9 @@ func (a *Analyzer) warnUnitStatus(token lexer.Token, unitName string) {
 
 func (a *Analyzer) defineSymbol(name string, typ Type, mutable bool, token lexer.Token) bool {
 	if previous, exists := a.symbols[name]; exists {
-		a.errors = append(a.errors, Error{
+		a.appendError(Error{
+			ID:             diagnostics.DuplicateLocalVariable,
+			Severity:       diagnostics.SeverityError,
 			Message:        fmt.Sprintf("variable %q already declared", name),
 			File:           token.File,
 			Line:           token.Line,

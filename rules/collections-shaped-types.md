@@ -2213,8 +2213,8 @@ According to the current relevant Sec rule documents:
 - Sema rejects negative shaped dimensions and ranks;
 - `set[T]` is accepted in type positions despite `set` also being a contextual
   property-setter keyword;
-- `list[T]`, `set[T]` and `map[K, V]` participate in the current `for`
-  iterable type inference;
+- `list[T]`, `set[T]`, `map[K, V]` and `vector[T, N]` participate in the
+  current `for` iterable type inference;
 - LSP type completion sees the new compiler-known types through the intrinsic
   type registry;
 - VS Code TextMate grammar highlights the new collection-shaped type names;
@@ -2237,6 +2237,8 @@ The following are not considered implemented by this rulebook yet:
   `set`;
 - shaped constructors, literals and member APIs for `vector`, `matrix`,
   `tensor`, `tensor_view`, `Shape`, `Strides` and `TensorLayout`;
+- `for` iterable type inference for shaped types beyond rank-one
+  `vector[T, N]`;
 - contextual `x` parsing;
 - matrix multiplication Sema;
 - shape and stride analysis;

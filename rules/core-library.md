@@ -15,8 +15,12 @@ It provides:
 - standard error types required by language operations,
 - the bridge between built-in types and normal AST/Sema member resolution.
 
-The standard library may add higher-level algorithms, formatting facilities,
-collections, text processing, operating-system integration and platform APIs.
+The standard library may add higher-level collection types and algorithms,
+formatting facilities, text processing, operating-system integration, and
+platform APIs.
+
+First-class language collections and shaped types are implemented by the
+compiler and core library.
 
 The core library must remain:
 

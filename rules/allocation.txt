@@ -10,8 +10,10 @@ individual allocations. The compiler normally selects and propagates an arena.
 Manual allocation remains available for systems code, embedded code, allocators,
 FFI wrappers and performance-sensitive code.
 
-This document defines allocation semantics. It does not define `Vec[T]`, `Map[K,
-V]`, `List[T]`, `String`, `Box[T]` or other dynamic containers.
+This document defines allocation semantics. It does not define `list[T]`,
+`map[K, V]`, `set[T]`, legacy `Vec[T]`/`Map[K, V]`/`Set[T]`, `String`,
+`Box[T]` or other dynamic containers. First-class collection and shaped types
+are governed by `collections-shaped-types.md`.
 
 ## Core rule
 
@@ -26,7 +28,7 @@ operation that is not defined as allocating.
 Valid examples of allocation-capable operations may later include:
 
 ```sec
-let values := try Vec[int].WithCapacity(100)
+let values := try list[int].WithCapacity(100)
 let text := try String.From(source)
 ```
 
@@ -405,10 +407,10 @@ Implement now:
 
 Do not implement as part of this rule:
 
-- `Vec[T]`
-- `Map[K, V]`
-- `List[T]`
-- `Set[T]`
+- `list[T]`
+- `map[K, V]`
+- `set[T]`
+- legacy `Vec[T]`, `Map[K, V]` and `Set[T]`
 - dynamic strings
 - general uninitialized allocation
 - garbage collection

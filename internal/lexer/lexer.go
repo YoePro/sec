@@ -24,6 +24,7 @@ const (
 	ASSERT      TokenType = "ASSERT"
 	AWAIT       TokenType = "AWAIT"
 	BREAK       TokenType = "BREAK"
+	CANCEL      TokenType = "CANCEL"
 	CASE        TokenType = "CASE"
 	CAPTURE     TokenType = "CAPTURE"
 	CONTINUE    TokenType = "CONTINUE"
@@ -725,6 +726,8 @@ func lookupIdent(s string) TokenType {
 		return AWAIT
 	case "break":
 		return BREAK
+	case "cancel":
+		return CANCEL
 	case "case":
 		return CASE
 	case "capture":

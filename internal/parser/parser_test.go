@@ -349,6 +349,9 @@ fn Test() void {
 	if discard.Name.Value != "self" {
 		t.Fatalf("wrong discard name. got=%q want=%q", discard.Name.Value, "self")
 	}
+	if discard.Value == nil || discard.Value.String() != "self" {
+		t.Fatalf("wrong discard value. got=%#v", discard.Value)
+	}
 }
 
 func TestParseGenericFunctionDeclaration(t *testing.T) {
@@ -3220,6 +3223,7 @@ func TestParseDiscardStatement(t *testing.T) {
 	input := `
 fn Test(error: IOError) void {
 	discard error
+	discard Calculate()
 }
 `
 
@@ -3235,6 +3239,37 @@ fn Test(error: IOError) void {
 	}
 	if stmt.Name == nil || stmt.Name.Value != "error" {
 		t.Fatalf("wrong discard name. got=%#v", stmt.Name)
+	}
+	if stmt.Value == nil || stmt.Value.String() != "error" {
+		t.Fatalf("wrong discard value. got=%#v", stmt.Value)
+	}
+	callStmt, ok := fn.Body.Statements[1].(*ast.DiscardStatement)
+	if !ok {
+		t.Fatalf("statement 1 is not DiscardStatement. got=%T", fn.Body.Statements[1])
+	}
+	if callStmt.Name != nil {
+		t.Fatalf("discard call should not have Name. got=%#v", callStmt.Name)
+	}
+	if callStmt.Value == nil || callStmt.Value.String() != "Calculate()" {
+		t.Fatalf("wrong discard call value. got=%#v", callStmt.Value)
+	}
+}
+
+func TestParseCancelStatement(t *testing.T) {
+	input := `
+fn Test() void {
+	cancel
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	if _, ok := fn.Body.Statements[0].(*ast.CancelStatement); !ok {
+		t.Fatalf("statement is not CancelStatement. got=%T", fn.Body.Statements[0])
 	}
 }
 
@@ -3282,6 +3317,69 @@ fn Test() void {
 	}
 	if letStmt.Type.FunctionReturnType.Name != "bool" {
 		t.Fatalf("wrong function return type. got=%q", letStmt.Type.FunctionReturnType.Name)
+	}
+}
+
+func TestParseCollectionShapedTypeReferences(t *testing.T) {
+	input := `
+fn Test() void {
+	let values: list[int, 8]
+	let lookup: map[string, int, 16]
+	let flags: set[string]
+	let position: vector[float64, 3]
+	let transform: matrix[float32, 4, 4]
+	let image: tensor[float32, 3, 224, 224]
+	let view: tensor_view[float32, 3]
+	let shape: Shape[3]
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	tests := []struct {
+		index      int
+		name       string
+		typeArgs   int
+		constArgs  []string
+		firstType  string
+		secondType string
+	}{
+		{0, "list", 1, []string{"8"}, "int", ""},
+		{1, "map", 2, []string{"16"}, "string", "int"},
+		{2, "set", 1, nil, "string", ""},
+		{3, "vector", 1, []string{"3"}, "float64", ""},
+		{4, "matrix", 1, []string{"4", "4"}, "float32", ""},
+		{5, "tensor", 1, []string{"3", "224", "224"}, "float32", ""},
+		{6, "tensor_view", 1, []string{"3"}, "float32", ""},
+		{7, "Shape", 0, []string{"3"}, "", ""},
+	}
+
+	for _, tt := range tests {
+		letStmt := fn.Body.Statements[tt.index].(*ast.LetStatement)
+		if letStmt.Type.Name != tt.name {
+			t.Fatalf("statement %d wrong type name. got=%q want=%q", tt.index, letStmt.Type.Name, tt.name)
+		}
+		if len(letStmt.Type.TypeArgs) != tt.typeArgs {
+			t.Fatalf("%s wrong type arg count. got=%d want=%d", tt.name, len(letStmt.Type.TypeArgs), tt.typeArgs)
+		}
+		if tt.firstType != "" && letStmt.Type.TypeArgs[0].Name != tt.firstType {
+			t.Fatalf("%s wrong first type arg. got=%q want=%q", tt.name, letStmt.Type.TypeArgs[0].Name, tt.firstType)
+		}
+		if tt.secondType != "" && letStmt.Type.TypeArgs[1].Name != tt.secondType {
+			t.Fatalf("%s wrong second type arg. got=%q want=%q", tt.name, letStmt.Type.TypeArgs[1].Name, tt.secondType)
+		}
+		if len(letStmt.Type.ConstArgs) != len(tt.constArgs) {
+			t.Fatalf("%s wrong const arg count. got=%d want=%d", tt.name, len(letStmt.Type.ConstArgs), len(tt.constArgs))
+		}
+		for i, arg := range tt.constArgs {
+			if letStmt.Type.ConstArgs[i].String() != arg {
+				t.Fatalf("%s wrong const arg %d. got=%q want=%q", tt.name, i, letStmt.Type.ConstArgs[i].String(), arg)
+			}
+		}
 	}
 }
 

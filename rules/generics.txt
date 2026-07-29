@@ -35,7 +35,7 @@ Generic type declaration:
 
 ```
 type Stack[T] struct {
-    items: Vec[T],
+    items: list[T],
 }
 ```
 
@@ -304,7 +304,7 @@ A generic type reference consists of:
 Example AST meaning:
 
 ```
-Map[string, int]
+map[string, int]
 ```
 
 represents:
@@ -987,7 +987,7 @@ Example:
 
 ```
 type Stack[T] struct {
-    items: Vec[T],
+    items: list[T],
 }
 
 impl Stack[T] {
@@ -1706,7 +1706,7 @@ Examples:
 
 ```
 Stack[int]
-Map[string, Vec[int]]
+map[string, list[int]]
 Result[Option[User], IOError]
 ```
 
@@ -1715,7 +1715,7 @@ The parser must support nested closing brackets without requiring whitespace.
 Example:
 
 ```
-Vec[Option[Result[int, IOError]]]
+list[Option[Result[int, IOError]]]
 ```
 
 The parser must correctly handle:
@@ -1755,7 +1755,7 @@ Generic argument lists are comma-separated.
 Trailing comma should also be allowed:
 
 ```
-Map[
+map[
     string,
     int,
 ]
@@ -2051,13 +2051,13 @@ B -> string
 must recursively transform:
 
 ```
-Map[A, Vec[B]]
+map[A, list[B]]
 ```
 
 into:
 
 ```
-Map[int, Vec[string]]
+map[int, list[string]]
 ```
 
 Substitution must handle:

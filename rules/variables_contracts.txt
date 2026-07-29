@@ -55,7 +55,7 @@ minLen      string and collections
 maxLen      string and collections
 len         string and collections
 notEmpty    string and collections
-unique      arrays, slices, Vec, Set and other collection types with
+unique      arrays, slices, list, set, map and other collection-shaped types with
             equality-comparable elements
 finite      float and decimal
 ```
@@ -580,7 +580,7 @@ Examples:
 ```
 type Tags []string unique
 
-type UserIDs Vec[UserID] unique
+type UserIDs list[UserID] unique
 
 type SelectedPorts []Port notEmpty unique
 ```
@@ -613,21 +613,21 @@ The contract uses semantic equality, not memory identity.
 
 Set types:
 
-Set elements are already unique by definition.
+set elements are already unique by definition.
 
-The unique contract may still be accepted on Set[T] for consistency, but it is
+The unique contract may still be accepted on set[T] for consistency, but it is
 redundant.
 
 Example:
 
 ```
-type UserSet Set[User] unique
+type UserSet set[User] unique
 ```
 
 The compiler may warn:
 
 ```
-unique contract is redundant for Set[User]
+unique contract is redundant for set[User]
 ```
 
 Nested collections:

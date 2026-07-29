@@ -143,6 +143,9 @@ func (p *Parser) parseStatement() ast.Statement {
 	case lexer.DISCARD:
 		return p.parseDiscardStatement()
 
+	case lexer.CANCEL:
+		return &ast.CancelStatement{Token: p.curToken}
+
 	case lexer.IF:
 		return p.parseIfStatement()
 
@@ -237,7 +240,7 @@ func (p *Parser) parseUnsupportedFreeStatement() ast.Statement {
 }
 
 func (p *Parser) looksLikeTypedVariableDeclaration() bool {
-	if p.curToken.Type != lexer.IDENT || (p.peekToken.Type != lexer.LT && p.peekToken.Type != lexer.LBRACKET) {
+	if !p.isTypeNameToken(p.curToken.Type) || (p.peekToken.Type != lexer.LT && p.peekToken.Type != lexer.LBRACKET) {
 		return false
 	}
 
@@ -261,12 +264,15 @@ func (p *Parser) looksLikeTypedVariableDeclaration() bool {
 
 func (p *Parser) parseDiscardStatement() ast.Statement {
 	stmt := &ast.DiscardStatement{Token: p.curToken}
-	if p.peekToken.Type != lexer.IDENT && p.peekToken.Type != lexer.SELF {
-		p.addError("discard requires identifier at %d:%d", p.peekToken.Line, p.peekToken.Column)
+	if p.peekToken.Type == lexer.RBRACE || p.peekToken.Type == lexer.EOF {
+		p.addError("discard requires expression at %d:%d", p.peekToken.Line, p.peekToken.Column)
 		return stmt
 	}
 	p.nextToken()
-	stmt.Name = &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme}
+	stmt.Value = p.parseExpression(LOWEST)
+	if ident, ok := stmt.Value.(*ast.Identifier); ok {
+		stmt.Name = ident
+	}
 	return stmt
 }
 
@@ -2033,10 +2039,12 @@ func (p *Parser) isReturnTerminator(t lexer.TokenType) bool {
 		lexer.WHILE,
 		lexer.SWITCH,
 		lexer.BREAK,
+		lexer.CANCEL,
 		lexer.CONTINUE,
 		lexer.UNSAFE,
 		lexer.ASM,
-		lexer.DEFER:
+		lexer.DEFER,
+		lexer.DISCARD:
 		return true
 	default:
 		return false
@@ -3022,6 +3030,13 @@ func (p *Parser) parsePostfixTypeReference(ref *ast.TypeReference) *ast.TypeRefe
 	for p.peekToken.Type == lexer.LBRACKET {
 		p.nextToken()
 		token := p.curToken
+		if isCollectionShapedTypeName(ref.Name) {
+			ref = p.parseCollectionShapedTypeReferenceArgs(ref, token)
+			if ref == nil {
+				return &ast.TypeReference{Token: token}
+			}
+			continue
+		}
 		if ref.Name == "Event" || ref.Name == "EventStorage" {
 			ref = p.parseEventTypeReferenceArgs(ref, token)
 			if ref == nil {
@@ -3077,6 +3092,65 @@ func (p *Parser) parsePostfixTypeReference(ref *ast.TypeReference) *ast.TypeRefe
 	}
 
 	return ref
+}
+
+func (p *Parser) parseCollectionShapedTypeReferenceArgs(ref *ast.TypeReference, token lexer.Token) *ast.TypeReference {
+	typeCount := collectionShapedTypeArgumentCount(ref.Name)
+	for i := 0; i < typeCount; i++ {
+		if !p.expectPeekTypeStart() {
+			return ref
+		}
+		ref.TypeArgs = append(ref.TypeArgs, p.parseTypeReference())
+		if i < typeCount-1 {
+			if !p.expectPeek(lexer.COMMA) {
+				return ref
+			}
+			continue
+		}
+		if p.peekToken.Type == lexer.COMMA {
+			p.nextToken()
+		}
+	}
+
+	for p.peekToken.Type != lexer.RBRACKET && p.peekToken.Type != lexer.EOF {
+		p.nextToken()
+		arg := p.parseExpression(LOWEST)
+		if arg == nil {
+			return ref
+		}
+		ref.ConstArgs = append(ref.ConstArgs, arg)
+		if p.peekToken.Type == lexer.COMMA {
+			p.nextToken()
+			continue
+		}
+		break
+	}
+
+	if !p.expectPeek(lexer.RBRACKET) {
+		return ref
+	}
+	_ = token
+	return ref
+}
+
+func isCollectionShapedTypeName(name string) bool {
+	switch name {
+	case "list", "map", "set", "vector", "matrix", "tensor", "tensor_view", "Shape", "Strides", "TensorLayout":
+		return true
+	default:
+		return false
+	}
+}
+
+func collectionShapedTypeArgumentCount(name string) int {
+	switch name {
+	case "Shape", "Strides", "TensorLayout":
+		return 0
+	case "map":
+		return 2
+	default:
+		return 1
+	}
 }
 
 func (p *Parser) parseEventTypeReferenceArgs(ref *ast.TypeReference, token lexer.Token) *ast.TypeReference {
@@ -3485,7 +3559,11 @@ func (p *Parser) expectPeekTypeStart() bool {
 }
 
 func isTypeStart(tokenType lexer.TokenType) bool {
-	return tokenType == lexer.IDENT || tokenType == lexer.LT || tokenType == lexer.LBRACKET || tokenType == lexer.LPAREN || tokenType == lexer.VOID || tokenType == lexer.FN || tokenType == lexer.REF
+	return tokenType == lexer.IDENT || tokenType == lexer.SET || tokenType == lexer.LT || tokenType == lexer.LBRACKET || tokenType == lexer.LPAREN || tokenType == lexer.VOID || tokenType == lexer.FN || tokenType == lexer.REF
+}
+
+func (p *Parser) isTypeNameToken(tokenType lexer.TokenType) bool {
+	return tokenType == lexer.IDENT || tokenType == lexer.SET
 }
 
 func (p *Parser) nextToken() {
@@ -3908,10 +3986,13 @@ func parserTypeReferenceName(ref *ast.TypeReference) string {
 	if name == "" {
 		name = ref.Token.Lexeme
 	}
-	if len(ref.TypeArgs) > 0 {
-		args := make([]string, 0, len(ref.TypeArgs))
+	if len(ref.TypeArgs) > 0 || len(ref.ConstArgs) > 0 {
+		args := make([]string, 0, len(ref.TypeArgs)+len(ref.ConstArgs))
 		for _, arg := range ref.TypeArgs {
 			args = append(args, parserTypeReferenceName(arg))
+		}
+		for _, arg := range ref.ConstArgs {
+			args = append(args, arg.String())
 		}
 		name += "[" + strings.Join(args, ", ") + "]"
 	}

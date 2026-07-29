@@ -1,8 +1,8 @@
 Implement for loops.
 
-Implementation status:
+Current implementation status:
 
-Implemented in the compiler so far:
+Implemented:
 
 * Lexer recognizes `break` and `continue`.
 * AST has:
@@ -14,8 +14,9 @@ Implemented in the compiler so far:
   * `for { ... }`
   * `for item in iterable { ... }`
   * `for item in range { ... }`
-  * `for key, value in iterable { ... }` syntactically
+  * `for index, value in sequentialIterable { ... }`
   * discard loop bindings with `_`
+  * range `step` syntax
   * `break`
   * `continue`
 * Parser rejects condition-only `for` syntax.
@@ -30,24 +31,48 @@ Implemented in the compiler so far:
   * separate lexical scope for the loop body
   * no definite-assignment leakage from loop body to after the loop
   * finite integer range iteration checks
+  * finite decimal and float range type checks when an explicit step is used
+  * range bound type compatibility checks
+  * range step type compatibility checks
+  * zero step rejection for integer and decimal literal steps
+  * constant-sign checks for explicit integer and decimal steps
   * open-ended range rejection in loops
   * string iteration yielding `rune`
+  * array iteration yielding element type
+  * `ref` slice iteration yielding element type
+  * `list[T]` and legacy `Vec[T]` iteration yielding `T`
+  * `ref list[T]` and legacy `ref Vec[T]` iteration yielding `T`
+  * `set[T]` and legacy `Set[T]` iteration yielding `T`
+  * `map[K, V]` and legacy `Map[K, V]` iteration yielding key type `K`
+    and value type `V`
+  * one-binding sequential iteration yielding value
+  * two-binding sequential iteration yielding `int` index and value
+  * rejection of set iteration with more than one loop binding
+  * rejection of map iteration without exactly two loop bindings
+  * rejection of too many sequential loop bindings
+  * rejection of non-iterable values
   * infinite-loop return analysis when no reachable `break` exists
 * LLVM code generation supports:
   * `for { ... }`
   * finite integer ranges
+  * explicit integer range steps
   * `break`
   * `continue`
   * integer arithmetic and compound integer assignments used in loop bodies
 
 Not implemented yet:
 
-* `for item in collection { ... }`
-* `for key, value in map { ... }`
-* map iterable type inference
 * iterable contracts
-* collection iterable type inference
+* user-defined iterator protocol
+* collection-family iterable type inference beyond arrays, `ref` slices,
+  strings, `list[T]`, `set[T]`, `map[K, V]` and the legacy
+  `Vec[T]`/`Set[T]`/`Map[K, V]` forms
 * LLVM code generation for collection and map iteration
+* LLVM code generation for string iteration
+* complete LLVM code generation for decimal and float range iteration
+* exact runtime semantics for decimal and float range stepping
+* compile-time conflict diagnostic for combining unsupported iterable forms
+  with range-only features beyond current `step` checks
 
 Important sync note:
 
@@ -138,9 +163,10 @@ The initial implementation may support:
 
 * fixed arrays
 * slices
-* Vec[T]
-* Set[T]
-* Map[K, V]
+* list[T]
+* set[T]
+* map[K, V]
+* legacy Vec[T], Set[T] and Map[K, V]
 * strings
 * []byte
 * ranges
@@ -388,7 +414,7 @@ The loop variable type is the collection element type.
 For:
 
 ```
-let items: Vec[string] := ...
+let items: list[string] := ...
 
 for item in items {
 }
@@ -413,7 +439,7 @@ The second binding receives the value.
 Example:
 
 ```
-let users: Map[UserID, User] := ...
+let users: map[UserID, User] := ...
 
 for id, user in users {
     Process(id, user)
@@ -429,7 +455,7 @@ Map iteration order:
 Map iteration order is not guaranteed unless the map type explicitly guarantees
 an order.
 
-Programs must not rely on Map[K, V] iteration order.
+Programs must not rely on map[K, V] iteration order.
 
 If ordered iteration is required, use an ordered map type or explicitly sort the
 keys.
@@ -461,7 +487,10 @@ This avoids uncertainty over whether item means:
 
 Sequential collections:
 
-Arrays, slices, Vec[T], Set[T], strings and []byte use one binding.
+Arrays, slices, list[T], legacy Vec[T], strings and []byte support one value
+binding or two index/value bindings.
+
+set[T] and legacy Set[T] support one value binding.
 
 Examples:
 
@@ -509,30 +538,34 @@ each iteration produces a value of type T.
 
 Iteration proceeds from index 0 to Length - 1.
 
-Vec iteration:
+List iteration:
 
 For:
 
 ```
-Vec[T]
+list[T]
 ```
 
 each iteration produces a value of type T.
 
 Iteration proceeds in vector order.
 
+Legacy `Vec[T]` currently follows the same implemented inference.
+
 Set iteration:
 
 For:
 
 ```
-Set[T]
+set[T]
 ```
 
 each iteration produces a value of type T.
 
 Set iteration order is not guaranteed unless the concrete set type explicitly
 guarantees ordering.
+
+Legacy `Set[T]` currently follows the same implemented inference.
 
 String iteration:
 
@@ -572,28 +605,32 @@ for value in data {
 
 Index and value iteration:
 
-The initial implementation does not introduce implicit index-value iteration for
-sequential collections.
+The current implementation supports two-binding iteration for sequential
+collections.
 
-Not supported initially:
+Supported:
 
 ```
 for index, value in items {
 }
 ```
 
-Two bindings are reserved for map iteration.
+The first binding receives an `int` index.
 
-When an index is required, use an explicit range:
+The second binding receives the element or rune value.
+
+Example:
 
 ```
-for index in 0..<items.Length {
-    let value := items[index]
+for index, value in items {
     Process(index, value)
 }
 ```
 
-A standard-library enumeration helper may be added later:
+Map iteration is separate and requires exactly two bindings.
+
+A standard-library enumeration helper may still be added later for richer
+iteration metadata:
 
 ```
 for entry in items.Enumerate() {
@@ -1703,6 +1740,8 @@ Explicit step is supported for:
 
 Current implementation status:
 
+Implemented:
+
 * Parser supports explicit `step` on range iteration.
 * Semantic analysis supports finite range iteration for int, uint,
   integer-based semantic types, float and decimal.
@@ -1711,12 +1750,16 @@ Current implementation status:
   constant range bounds.
 * Semantic analysis checks that step expressions are type-compatible with the
   range bounds.
-* LLVM code generation currently supports integer range iteration only.
-* LLVM code generation currently supports explicit integer steps.
-* LLVM code generation does not yet emit float or decimal range iteration.
-* LLVM code generation does not yet fully emit float/decimal expressions, so
-  `emit-llvm` may fail before range lowering for programs that use decimal or
-  float literals.
+* LLVM code generation supports integer range iteration.
+* LLVM code generation supports explicit integer steps.
+
+Not implemented yet:
+
+* Complete LLVM code generation for float and decimal range iteration.
+* Complete LLVM expression generation for decimal and float literals in all
+  contexts.
+* Drift-resistant float range progression.
+* Decimal progression according to finalized decimal arithmetic rules.
 
 Float range iteration must avoid cumulative repeated-addition drift where
 possible. Code generation should derive each value from the start value and

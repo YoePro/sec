@@ -169,14 +169,21 @@ fn RangeWithExpression() void {
 }
 
 
-/* 
-// When we have vectors and maps 
 fn VectorLoop(values: Vec[int]) void {
     for value in values {
+        let copy: int := value
     }
 }
+
+fn SetLoop(values: Set[string]) void {
+    for value in values {
+        let copy: string := value
+    }
+}
+
 fn MapLoop(values: Map[string, int]) void {
     for key, value in values {
+        let copyKey: string := key
+        let copyValue: int := value
     }
 }
-*/

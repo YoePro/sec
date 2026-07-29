@@ -634,6 +634,68 @@ let mut values: int[3] unique := [1, 2, 3]
 	assertSemaErrors(t, errors, expected)
 }
 
+func TestCollectionShapedTypesResolve(t *testing.T) {
+	input := `
+module main
+
+fn Use(
+    values: list[int, 8],
+    lookup: map[string, int, 16],
+    flags: set[string],
+    position: vector[float64, 3],
+    transform: matrix[float32, 4, 4],
+    image: tensor[float32, 3, 224, 224],
+    view: tensor_view[float32, 3],
+    shape: Shape[3],
+) void {
+    return
+}
+`
+
+	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
+	assertSemaErrors(t, errors, nil)
+
+	fn := analyzer.functions["Use"][0]
+	expected := []string{
+		"list[int, 8]",
+		"map[string, int, 16]",
+		"set[string]",
+		"vector[float64, 3]",
+		"matrix[float32, 4, 4]",
+		"tensor[float32, 3, 224, 224]",
+		"tensor_view[float32, 3]",
+		"Shape[3]",
+	}
+	for i, want := range expected {
+		if got := typeDisplayName(fn.Parameters[i].Type); got != want {
+			t.Fatalf("parameter %d type. got=%q want=%q", i, got, want)
+		}
+	}
+}
+
+func TestCollectionShapedTypeValidation(t *testing.T) {
+	input := `
+module main
+
+fn Invalid(
+    zeroList: list[int, 0],
+    badVector: vector[int],
+    negativeMatrix: matrix[int, -1, 4],
+    badShape: Shape[int],
+) void {
+    return
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"list capacity must be greater than zero at 5:15",
+		"vector requires 1 compile-time integer arguments, got 0 at 6:16",
+		"matrix arguments must be non-negative at 7:21",
+		"Shape argument must be a compile-time integer at 8:21",
+	})
+}
+
 func TestNamedUnitTypeRegistryStoresUnit(t *testing.T) {
 	input := `
 type Money decimal<SEK>
@@ -4532,6 +4594,91 @@ fn Test() void {
 	assertSemaErrors(t, errors, expected)
 }
 
+func TestDiscardExpressionAndUseAfterDiscard(t *testing.T) {
+	input := `
+module main
+
+fn Calculate() int {
+	return 10
+}
+
+fn Test() void {
+	let value := 42
+	discard Calculate()
+	discard value
+	let again := value
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+
+	expected := []string{
+		"value value was discarded here and is no longer available at 12:15, previous declaration at 11:10",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestDiscardRejectsUnresolvedTaskHandle(t *testing.T) {
+	input := `
+module main
+
+fn Test(task: Task[int]) void {
+	discard task
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+
+	expected := []string{
+		"cannot discard unresolved Task[int]; await, join or detach it explicitly at 5:10",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestDiscardRejectsSpawnResult(t *testing.T) {
+	input := `
+module main
+
+fn Work() int {
+	return 1
+}
+
+fn Test() void {
+	discard spawn Work()
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+
+	expected := []string{
+		"cannot discard spawn result because successful creation would abandon Task[int] at 9:2",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestDiscardedBindingCannotBeAssigned(t *testing.T) {
+	input := `
+module main
+
+fn Test() void {
+	let mut value := 42
+	discard value
+	value = 10
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+
+	expected := []string{
+		"cannot assign to discarded value value; declare a new value instead at 7:2, previous declaration at 6:10",
+	}
+
+	assertSemaErrors(t, errors, expected)
+}
+
 func TestIfConditionsAndBranchScopes(t *testing.T) {
 	input := `
 module main
@@ -5277,7 +5424,34 @@ func TestCompilerIntrinsicTypesAreRegistered(t *testing.T) {
 		"RawPtr",
 		"Option",
 		"Result",
+		"Vec",
+		"Set",
+		"Map",
+		"list",
+		"map",
+		"set",
+		"vector",
+		"matrix",
+		"tensor",
+		"tensor_view",
+		"Shape",
+		"Strides",
+		"TensorLayout",
+		"MemorySpace",
 		"Task",
+		"Thread",
+		"ThreadObserver",
+		"ThreadLocal",
+		"ThreadConfig",
+		"ThreadContext",
+		"ThreadID",
+		"ThreadPriority",
+		"ThreadStatus",
+		"ThreadSpawnError",
+		"ThreadStartError",
+		"ThreadSchedulingError",
+		"ThreadTerminationError",
+		"ThreadContextError",
 		"Mutex",
 		"MutexGuard",
 		"Atomic",
@@ -6398,6 +6572,76 @@ fn StringIndexValueLoop(values: string) void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, nil)
+}
+
+func TestForCompilerKnownCollectionLoopBindings(t *testing.T) {
+	input := `
+module main
+
+fn VecLoop(values: Vec[int]) void {
+	for value in values {
+		let copy: int := value
+	}
+}
+
+fn VecIndexValueLoop(values: Vec[int]) void {
+	for index, value in values {
+		let i: int := index
+		let copy: int := value
+	}
+}
+
+fn RefVecLoop(values: ref Vec[int]) void {
+	for value in values {
+		let copy: int := value
+	}
+}
+
+fn SetLoop(values: Set[string]) void {
+	for value in values {
+		let copy: string := value
+	}
+}
+
+fn MapLoop(values: Map[string, int]) void {
+	for key, value in values {
+		let copyKey: string := key
+		let copyValue: int := value
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestForCompilerKnownCollectionLoopBindingErrors(t *testing.T) {
+	input := `
+module main
+
+fn SetIndexValueLoop(values: Set[string]) void {
+	for index, value in values {
+	}
+}
+
+fn MapSingleBinding(values: Map[string, int]) void {
+	for entry in values {
+	}
+}
+
+fn MapTooManyBindings(values: Map[string, int]) void {
+	for key, value, extra in values {
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	expected := []string{
+		"set iteration supports one loop binding, got 2 at 5:6",
+		"map iteration requires key and value bindings, got 1 at 10:6",
+		"map iteration requires key and value bindings, got 3 at 15:6",
+	}
+	assertSemaErrors(t, errors, expected)
 }
 
 func TestBareSliceTypesRequireReference(t *testing.T) {

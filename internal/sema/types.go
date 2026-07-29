@@ -63,6 +63,7 @@ type Type struct {
 	BitWidth                  int64
 	UnionVariants             []UnionVariant
 	TypeArgs                  []Type
+	ConstArgs                 []int64
 	Element                   *Type
 	ArrayLength               int64
 	EventCapacity             int64
@@ -372,7 +373,40 @@ func builtinTypes() map[string]Type {
 				{Name: "None"},
 			},
 		},
+		"Vec":                   {Name: "Vec", Kind: StructType, GenericParameters: []string{"T"}},
+		"Set":                   {Name: "Set", Kind: StructType, GenericParameters: []string{"T"}},
+		"Map":                   {Name: "Map", Kind: StructType, GenericParameters: []string{"K", "V"}},
+		"list":                  {Name: "list", Kind: StructType, GenericParameters: []string{"T"}},
+		"map":                   {Name: "map", Kind: StructType, GenericParameters: []string{"K", "V"}},
+		"set":                   {Name: "set", Kind: StructType, GenericParameters: []string{"T"}},
+		"vector":                {Name: "vector", Kind: StructType, GenericParameters: []string{"T"}},
+		"matrix":                {Name: "matrix", Kind: StructType, GenericParameters: []string{"T"}},
+		"tensor":                {Name: "tensor", Kind: StructType, GenericParameters: []string{"T"}},
+		"tensor_view":           {Name: "tensor_view", Kind: StructType, GenericParameters: []string{"T"}},
+		"Shape":                 {Name: "Shape", Kind: StructType},
+		"Strides":               {Name: "Strides", Kind: StructType},
+		"TensorLayout":          {Name: "TensorLayout", Kind: StructType},
+		"MemorySpace":           {Name: "MemorySpace", Kind: StructType},
 		"Task":                  {Name: "Task", Kind: StructType, GenericParameters: []string{"T"}},
+		"Thread":                {Name: "Thread", Kind: StructType, GenericParameters: []string{"T"}},
+		"ThreadObserver":        {Name: "ThreadObserver", Kind: StructType, GenericParameters: []string{"T"}},
+		"ThreadLocal":           {Name: "ThreadLocal", Kind: StructType, GenericParameters: []string{"T"}},
+		"ThreadConfig":          {Name: "ThreadConfig", Kind: StructType},
+		"ThreadContext":         {Name: "ThreadContext", Kind: StructType},
+		"ThreadID":              {Name: "ThreadID", Kind: StructType},
+		"ThreadPriority":        {Name: "ThreadPriority", Kind: EnumType, Underlying: "uint", EnumValues: []string{"Low", "Normal", "High"}, EnumConsts: builtinEnumConsts([]string{"Low", "Normal", "High"})},
+		"ThreadStatus":          {Name: "ThreadStatus", Kind: EnumType, Underlying: "uint", EnumValues: []string{"Created", "Running", "Completed", "Cancelled", "Panicked", "Terminated"}, EnumConsts: builtinEnumConsts([]string{"Created", "Running", "Completed", "Cancelled", "Panicked", "Terminated"})},
+		"ThreadSpawnError":      {Name: "ThreadSpawnError", Kind: EnumType, Underlying: "uint", EnumValues: []string{"Unsupported", "ResourceUnavailable", "PermissionDenied", "InvalidConfiguration", "ThreadLocalInitializationFailed", "NativeFailure"}, EnumConsts: builtinEnumConsts([]string{"Unsupported", "ResourceUnavailable", "PermissionDenied", "InvalidConfiguration", "ThreadLocalInitializationFailed", "NativeFailure"})},
+		"ThreadStartError":      {Name: "ThreadStartError", Kind: EnumType, Underlying: "uint", EnumValues: []string{"InvalidState", "Unsupported", "NativeFailure"}, EnumConsts: builtinEnumConsts([]string{"InvalidState", "Unsupported", "NativeFailure"})},
+		"ThreadSchedulingError": {Name: "ThreadSchedulingError", Kind: EnumType, Underlying: "uint", EnumValues: []string{"Unsupported", "PermissionDenied", "InvalidState", "NativeFailure"}, EnumConsts: builtinEnumConsts([]string{"Unsupported", "PermissionDenied", "InvalidState", "NativeFailure"})},
+		"ThreadTerminationError": {
+			Name:       "ThreadTerminationError",
+			Kind:       EnumType,
+			Underlying: "uint",
+			EnumValues: []string{"Unsupported", "PermissionDenied", "InvalidState", "NativeFailure"},
+			EnumConsts: builtinEnumConsts([]string{"Unsupported", "PermissionDenied", "InvalidState", "NativeFailure"}),
+		},
+		"ThreadContextError":    {Name: "ThreadContextError", Kind: EnumType, Underlying: "uint", EnumValues: []string{"NotAttached", "AlreadyAttached", "ResourceUnavailable", "NativeFailure"}, EnumConsts: builtinEnumConsts([]string{"NotAttached", "AlreadyAttached", "ResourceUnavailable", "NativeFailure"})},
 		"Mutex":                 {Name: "Mutex", Kind: StructType, GenericParameters: []string{"T"}},
 		"MutexGuard":            {Name: "MutexGuard", Kind: StructType, GenericParameters: []string{"T"}},
 		"Atomic":                {Name: "Atomic", Kind: StructType, GenericParameters: []string{"T"}},
@@ -655,6 +689,7 @@ func copyClassificationOf(typ Type, visiting map[string]bool) CopyClassification
 	case StructType:
 		switch typ.Name {
 		case "Task",
+			"Thread",
 			"MutexGuard",
 			"Subscription",
 			"Channel",
@@ -664,6 +699,7 @@ func copyClassificationOf(typ Type, visiting map[string]bool) CopyClassification
 			return CopyMoveOnly
 		case "Mutex",
 			"Atomic",
+			"ThreadLocal",
 			"Event",
 			"EventStorage",
 			"ChannelOptions",

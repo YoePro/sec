@@ -3,7 +3,6 @@ arrays-slices.txt - Written
 defer.txt - Written
 enums.txt - Written
 flowcontrol_for.txt - Written
-flowcontrol_for_1.txt - Written
 flowcontrol_if.txt - Written
 flowcontrol_match.txt - Written
 flowcontrol_switch.txt - Written
@@ -13,6 +12,7 @@ functions_lambda.txt - Written
 lambdas.txt - To be done
 closures.txt - To be done
 spread.txt - Written
+discard.md - Written
 struct.txt - Written
 types.txt - Written
 unions.txt - Written
@@ -46,14 +46,15 @@ static.md - Written
 concurrency_memory_model.md - Written
 select.md - Written
 processes.txt - To be done
-scheduling.md - To be done
-cancellation.md - To be done
-blocking.md - To be done
+scheduling.md - Written
+cancellation.md - Written
+blocking.md - Written
 structured_concurrency.md - To be done
-transferability.md - To be done
+transferability.md - Written
 data_races.md - To be done
 deadlock_analysis.md - To be done
-concurrency_runtime_model.md - To be done
+concurrency_runtime_model.md - Written
+thread_local.md - Written
 ipc.txt - To be done
 
 Kategori: Typ- & Metodsystem
@@ -117,3 +118,5 @@ rules/transferability.md
 rules/data_races.md
 rules/deadlock_analysis.md
 rules/concurrency_runtime_model.md
+rules/thread_local.md
+rules/discard.md

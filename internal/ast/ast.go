@@ -33,6 +33,7 @@ func (is *InvalidStatement) TokenLiteral() string {
 
 type DiscardStatement struct {
 	Token lexer.Token
+	Value Expression
 	Name  *Identifier
 }
 
@@ -40,6 +41,16 @@ func (ds *DiscardStatement) statementNode() {}
 
 func (ds *DiscardStatement) TokenLiteral() string {
 	return ds.Token.Lexeme
+}
+
+type CancelStatement struct {
+	Token lexer.Token
+}
+
+func (cs *CancelStatement) statementNode() {}
+
+func (cs *CancelStatement) TokenLiteral() string {
+	return cs.Token.Lexeme
 }
 
 // Expression represents a value-producing AST node.
@@ -250,6 +261,10 @@ type TypeReference struct {
 
 	// TypeArgs is used for generic types such as Vec[T], Map[K,V], Result[T,E].
 	TypeArgs []*TypeReference
+
+	// ConstArgs is used for compiler-known mixed type/value constructors such
+	// as list[T, 32], vector[T, 3], Shape[2], and tensor[T, 3, 224, 224].
+	ConstArgs []Expression
 
 	// EventCapacity is the optional fixed capacity in Event[T, N] and
 	// EventStorage[T, N].

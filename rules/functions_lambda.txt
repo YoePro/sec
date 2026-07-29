@@ -1566,7 +1566,7 @@ type.
 Example:
 
 ```
-let handlers: Vec[fn(Event) void] := ...
+let handlers: list[fn(Event) void] := ...
 ```
 
 Ownership and copying:

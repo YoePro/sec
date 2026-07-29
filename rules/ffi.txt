@@ -147,9 +147,10 @@ The following types must not cross an FFI boundary directly unless an explicit A
 
 * string
 * slices
-* Vec[T]
-* Map[K, V]
-* Set[T]
+* list[T]
+* map[K, V]
+* set[T]
+* legacy Vec[T], Map[K, V] and Set[T]
 * Box[T]
 * interface values
 * closures

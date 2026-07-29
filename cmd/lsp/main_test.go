@@ -265,11 +265,15 @@ func TestCompletionIncludesIntrinsicTypesInTypePosition(t *testing.T) {
 
 type Holder struct {
 	ptr: RawPtr[byte],
+	values: list[int],
 }
 `
 
 	items := completeSource("", source, strings.Index(source, "RawPtr")+len("Ra"))
 	assertCompletionLabels(t, items, []string{"RawPtr"})
+
+	items = completeSource("", source, strings.Index(source, "list")+len("li"))
+	assertCompletionLabels(t, items, []string{"list"})
 }
 
 func TestCompletionIncludesContractModifiers(t *testing.T) {

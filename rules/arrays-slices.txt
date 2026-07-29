@@ -8,8 +8,9 @@ Arrays own a fixed number of inline elements.
 
 Slices borrow a contiguous sequence of elements owned elsewhere.
 
-This document does not define dynamic owning collections such as `Vec[T]`,
-`Map[K, V]`, `List[T]` or `Set[T]`.
+This document does not define dynamic owning collections such as `list[T]`,
+`map[K, V]`, `set[T]`, or legacy `Vec[T]`/`Map[K, V]`/`Set[T]`.
+Those are governed by `collections-shaped-types.md`.
 
 ## Type syntax
 

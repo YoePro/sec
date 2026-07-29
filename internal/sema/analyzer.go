@@ -31,6 +31,7 @@ type Analyzer struct {
 	constInts             map[string]*big.Int
 	assigned              map[string]bool
 	moved                 map[string]lexer.Token
+	moveReasons           map[string]string
 	borrows               map[string][]borrowRecord
 	localRefContainers    map[string]localReferenceOrigin
 	arenaGenerations      map[string]int
@@ -42,6 +43,7 @@ type Analyzer struct {
 	inUnsafe              bool
 	inSwitchCaseBody      bool
 	inDeferBlock          bool
+	cancellableDepth      int
 	loopDepth             int
 	loopBreakFrames       []loopBreakFrame
 	scopeDepth            int
@@ -97,6 +99,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.constInts = map[string]*big.Int{}
 	a.assigned = map[string]bool{}
 	a.moved = map[string]lexer.Token{}
+	a.moveReasons = map[string]string{}
 	a.borrows = map[string][]borrowRecord{}
 	a.localRefContainers = map[string]localReferenceOrigin{}
 	a.arenaGenerations = map[string]int{}
@@ -116,6 +119,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.inUnsafe = false
 	a.inSwitchCaseBody = false
 	a.inDeferBlock = false
+	a.cancellableDepth = 0
 	a.loopDepth = 0
 	a.loopBreakFrames = nil
 	a.scopeDepth = 0
@@ -590,10 +594,13 @@ func typeReferenceDisplayName(ref *ast.TypeReference) string {
 		return fmt.Sprintf("%s[%d]", element, ref.ArrayLength)
 	}
 	out := ref.Name
-	if len(ref.TypeArgs) > 0 {
-		parts := make([]string, 0, len(ref.TypeArgs))
+	if len(ref.TypeArgs) > 0 || len(ref.ConstArgs) > 0 {
+		parts := make([]string, 0, len(ref.TypeArgs)+len(ref.ConstArgs))
 		for _, arg := range ref.TypeArgs {
 			parts = append(parts, typeReferenceDisplayName(arg))
+		}
+		for _, arg := range ref.ConstArgs {
+			parts = append(parts, arg.String())
 		}
 		if ref.EventCapacitySet {
 			parts = append(parts, fmt.Sprintf("%d", ref.EventCapacity))
@@ -965,6 +972,8 @@ func (a *Analyzer) analyzeStatement(stmt ast.Statement) {
 		a.analyzeDeferStatement(stmt)
 	case *ast.DiscardStatement:
 		a.analyzeDiscardStatement(stmt)
+	case *ast.CancelStatement:
+		a.analyzeCancelStatement(stmt)
 	case *ast.ExpressionStatement:
 		a.analyzeExpressionStatement(stmt)
 	case *ast.ReturnStatement:
@@ -1077,27 +1086,74 @@ func (a *Analyzer) analyzeExpressionStatement(stmt *ast.ExpressionStatement) {
 
 func (a *Analyzer) checkUnresolvedTaskAtScopeExit(name string) {
 	symbol, ok := a.symbols[name]
-	if !ok || !isTaskType(symbol.Type) {
+	if !ok || (!isTaskType(symbol.Type) && !isThreadType(symbol.Type)) {
 		return
 	}
 	if _, moved := a.moved[name]; moved {
 		return
 	}
-	a.addErrorAtToken(symbol.Token, "owned task %s is unresolved at scope exit", name)
+	kind := "task"
+	if isThreadType(symbol.Type) {
+		kind = "thread"
+	}
+	a.addErrorAtToken(symbol.Token, "owned %s %s is unresolved at scope exit", kind, name)
 }
 
 func (a *Analyzer) analyzeDiscardStatement(stmt *ast.DiscardStatement) {
-	if stmt.Name == nil {
-		a.addErrorAtToken(stmt.Token, "discard requires identifier")
+	if stmt.Value == nil {
+		a.addErrorAtToken(stmt.Token, "discard requires expression")
 		return
 	}
-	if stmt.Name.Value == "_" {
-		a.addErrorAtToken(stmt.Name.Token, "discard requires named value")
+	if ident, ok := stmt.Value.(*ast.Identifier); ok && ident.Value == "_" {
+		a.addErrorAtToken(ident.Token, "discard requires named value")
 		return
 	}
-	if _, ok := a.symbols[stmt.Name.Value]; !ok {
-		a.addErrorAtToken(stmt.Name.Token, "undefined variable %s", stmt.Name.Value)
+	if _, ok := stmt.Value.(*ast.SpawnExpression); ok {
+		typ, _ := a.inferExpression(stmt.Value)
+		if typ.Kind != InvalidType {
+			a.addErrorAtToken(stmt.Token, "cannot discard spawn result because successful creation would abandon %s", typeDisplayName(typ))
+		}
+		return
 	}
+
+	valueType, _ := a.inferExpression(stmt.Value)
+	if valueType.Kind == InvalidType {
+		return
+	}
+	if isTaskType(valueType) || isThreadType(valueType) {
+		a.addErrorAtToken(expressionToken(stmt.Value), "cannot discard unresolved %s; await, join or detach it explicitly", typeDisplayName(valueType))
+		return
+	}
+
+	ident, ok := stmt.Value.(*ast.Identifier)
+	if !ok {
+		return
+	}
+	symbol, exists := a.symbols[ident.Value]
+	if !exists {
+		return
+	}
+	if a.checkBorrowedMove(ident.Value, ident.Token) {
+		return
+	}
+	a.moved[ident.Value] = ident.Token
+	a.moveReasons[ident.Value] = "discarded"
+	delete(a.constInts, ident.Value)
+	a.endBorrowsHeldBy(ident.Value)
+	if symbol.Type.Kind == ReferenceType {
+		delete(a.localRefContainers, ident.Value)
+	}
+}
+
+func (a *Analyzer) analyzeCancelStatement(stmt *ast.CancelStatement) {
+	if a.inDeferBlock {
+		a.addErrorAtToken(stmt.Token, "cancel is not allowed inside defer")
+		return
+	}
+	if a.cancellableDepth > 0 {
+		return
+	}
+	a.addErrorAtToken(stmt.Token, "cancel is not valid outside a task or explicit thread context")
 }
 
 func (a *Analyzer) analyzeIfStatement(stmt *ast.IfStatement) {
@@ -1317,7 +1373,7 @@ func (a *Analyzer) inferForIterableBindingTypes(stmt *ast.ForStatement) ([]Type,
 			return nil, false
 		}
 		if iterableType.Kind == ReferenceType && iterableType.Element != nil &&
-			(iterableType.Element.Kind == ArrayType || iterableType.Element.Kind == SliceType) {
+			(iterableType.Element.Kind == ArrayType || iterableType.Element.Kind == SliceType || isForCollectionFamily(*iterableType.Element)) {
 			iterableType = *iterableType.Element
 		}
 		indexType := Type{Name: "int", Kind: IntType}
@@ -1342,8 +1398,41 @@ func (a *Analyzer) inferForIterableBindingTypes(stmt *ast.ForStatement) ([]Type,
 			}
 			return []Type{*iterableType.Element}, true
 		}
+		if (iterableType.Name == "Vec" || iterableType.Name == "list") && len(iterableType.TypeArgs) == 1 {
+			if len(stmt.Bindings) > 2 {
+				a.addErrorAtToken(stmt.Bindings[0].Token, "sequential iteration supports one or two loop bindings, got %d", len(stmt.Bindings))
+				return nil, false
+			}
+			if len(stmt.Bindings) == 2 {
+				return []Type{indexType, iterableType.TypeArgs[0]}, true
+			}
+			return []Type{iterableType.TypeArgs[0]}, true
+		}
+		if (iterableType.Name == "Set" || iterableType.Name == "set") && len(iterableType.TypeArgs) == 1 {
+			if len(stmt.Bindings) > 1 {
+				a.addErrorAtToken(stmt.Bindings[0].Token, "set iteration supports one loop binding, got %d", len(stmt.Bindings))
+				return nil, false
+			}
+			return []Type{iterableType.TypeArgs[0]}, true
+		}
+		if (iterableType.Name == "Map" || iterableType.Name == "map") && len(iterableType.TypeArgs) == 2 {
+			if len(stmt.Bindings) != 2 {
+				a.addErrorAtToken(stmt.Bindings[0].Token, "map iteration requires key and value bindings, got %d", len(stmt.Bindings))
+				return nil, false
+			}
+			return []Type{iterableType.TypeArgs[0], iterableType.TypeArgs[1]}, true
+		}
 		a.addErrorAtToken(expressionToken(iterable), "type %s is not iterable", typeDisplayName(iterableType))
 		return nil, false
+	}
+}
+
+func isForCollectionFamily(typ Type) bool {
+	switch typ.Name {
+	case "Vec", "Set", "Map", "list", "set", "map":
+		return true
+	default:
+		return false
 	}
 }
 
@@ -3210,6 +3299,8 @@ func (a *Analyzer) statementTerminatesBlock(stmt ast.Statement) bool {
 	switch stmt.(type) {
 	case *ast.BreakStatement, *ast.ContinueStatement:
 		return a.loopDepth > 0
+	case *ast.CancelStatement:
+		return true
 	default:
 		return a.statementDefinitelyReturns(stmt)
 	}
@@ -5602,6 +5693,10 @@ func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement, all
 		a.addErrorAtToken(target.Token, "cannot assign to immutable variable %s", target.Value)
 		return
 	}
+	if a.moveReasons[target.Value] == "discarded" {
+		a.addErrorAtTokenWithPrevious(target.Token, a.moved[target.Value], "cannot assign to discarded value %s; declare a new value instead", target.Value)
+		return
+	}
 	if property, ok := a.lookupCurrentImplProperty(target.Value); ok && property.Fallible && !allowFallible {
 		a.addErrorAtToken(target.Token, "assigning fallible property %s requires try", target.Value)
 		return
@@ -5641,6 +5736,7 @@ func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement, all
 		a.updateAssignedConstInt(symbol.Name, stmt)
 		a.assigned[symbol.Name] = true
 		delete(a.moved, symbol.Name)
+		delete(a.moveReasons, symbol.Name)
 		a.endBorrowsHeldBy(symbol.Name)
 		a.bindBorrowHoldersFromExpression(stmt.Value, symbol.Name)
 		if typeCarriesReferenceOrigin(symbol.Type) && typeCarriesReferenceOrigin(exprType) {
@@ -5682,6 +5778,7 @@ func (a *Analyzer) markMoveSource(expr ast.Expression) bool {
 			return false
 		}
 		a.moved[expr.Value] = expr.Token
+		a.moveReasons[expr.Value] = "moved"
 		return true
 	case *ast.StructLiteral:
 		moved := false
@@ -6140,6 +6237,19 @@ func (a *Analyzer) resolveType(ref *ast.TypeReference) (Type, bool) {
 			typeArgs = append(typeArgs, argType)
 		}
 	}
+	constArgs := make([]int64, 0, len(ref.ConstArgs))
+	for _, arg := range ref.ConstArgs {
+		value, ok := a.integerConstantValue(arg)
+		if !ok {
+			a.addErrorAtToken(expressionToken(arg), "%s argument must be a compile-time integer", ref.Name)
+			continue
+		}
+		if !value.IsInt64() {
+			a.addErrorAtToken(expressionToken(arg), "%s argument cannot be represented by int64", ref.Name)
+			continue
+		}
+		constArgs = append(constArgs, value.Int64())
+	}
 
 	name := a.resolveTypeName(ref.Name)
 
@@ -6169,11 +6279,12 @@ func (a *Analyzer) resolveType(ref *ast.TypeReference) (Type, bool) {
 		a.addErrorAtToken(ref.Token, "%s requires %d generic arguments, got %d", ref.Name, len(typ.GenericParameters), len(ref.TypeArgs))
 		return Type{Kind: InvalidType}, false
 	}
-	if len(typeArgs) != len(ref.TypeArgs) {
+	if len(typeArgs) != len(ref.TypeArgs) || len(constArgs) != len(ref.ConstArgs) {
 		return Type{Kind: InvalidType}, false
 	}
 
 	typ.TypeArgs = typeArgs
+	typ.ConstArgs = constArgs
 	if ref.EventCapacitySet {
 		typ.EventCapacity = ref.EventCapacity
 		typ.EventCapacitySet = true
@@ -6194,6 +6305,46 @@ func (a *Analyzer) resolveType(ref *ast.TypeReference) (Type, bool) {
 
 func (a *Analyzer) validateCompilerKnownGenericType(token lexer.Token, typ Type) bool {
 	switch typ.Name {
+	case "list":
+		if typ.Declared {
+			return true
+		}
+		return a.validateCompilerKnownTypeArity(token, typ, 1, 0, 1)
+	case "map":
+		if typ.Declared {
+			return true
+		}
+		return a.validateCompilerKnownTypeArity(token, typ, 2, 0, 1)
+	case "set":
+		if typ.Declared {
+			return true
+		}
+		return a.validateCompilerKnownTypeArity(token, typ, 1, 0, 1)
+	case "vector":
+		if typ.Declared {
+			return true
+		}
+		return a.validateCompilerKnownTypeArity(token, typ, 1, 1, 1)
+	case "matrix":
+		if typ.Declared {
+			return true
+		}
+		return a.validateCompilerKnownTypeArity(token, typ, 1, 2, 2)
+	case "tensor":
+		if typ.Declared {
+			return true
+		}
+		return a.validateCompilerKnownTypeArity(token, typ, 1, 1, -1)
+	case "tensor_view":
+		if typ.Declared {
+			return true
+		}
+		return a.validateCompilerKnownTypeArity(token, typ, 1, 1, 1)
+	case "Shape", "Strides", "TensorLayout":
+		if typ.Declared {
+			return true
+		}
+		return a.validateCompilerKnownTypeArity(token, typ, 0, 1, 1)
 	case "Atomic":
 		if len(typ.TypeArgs) != 1 {
 			return false
@@ -6203,6 +6354,9 @@ func (a *Analyzer) validateCompilerKnownGenericType(token lexer.Token, typ Type)
 			return false
 		}
 	case "Task",
+		"Thread",
+		"ThreadObserver",
+		"ThreadLocal",
 		"Mutex",
 		"MutexGuard",
 		"CompareExchangeResult",
@@ -6227,6 +6381,36 @@ func (a *Analyzer) validateCompilerKnownGenericType(token lexer.Token, typ Type)
 			return false
 		}
 		return true
+	}
+	return true
+}
+
+func (a *Analyzer) validateCompilerKnownTypeArity(token lexer.Token, typ Type, typeArgCount int, minConstArgs int, maxConstArgs int) bool {
+	if len(typ.TypeArgs) != typeArgCount {
+		a.addErrorAtToken(token, "%s requires %d type arguments, got %d", typ.Name, typeArgCount, len(typ.TypeArgs))
+		return false
+	}
+	if len(typ.ConstArgs) < minConstArgs || (maxConstArgs >= 0 && len(typ.ConstArgs) > maxConstArgs) {
+		expected := fmt.Sprintf("%d", minConstArgs)
+		if maxConstArgs != minConstArgs {
+			if maxConstArgs < 0 {
+				expected = fmt.Sprintf("at least %d", minConstArgs)
+			} else {
+				expected = fmt.Sprintf("%d to %d", minConstArgs, maxConstArgs)
+			}
+		}
+		a.addErrorAtToken(token, "%s requires %s compile-time integer arguments, got %d", typ.Name, expected, len(typ.ConstArgs))
+		return false
+	}
+	for _, arg := range typ.ConstArgs {
+		if arg < 0 {
+			a.addErrorAtToken(token, "%s arguments must be non-negative", typ.Name)
+			return false
+		}
+	}
+	if (typ.Name == "list" || typ.Name == "map" || typ.Name == "set") && len(typ.ConstArgs) == 1 && typ.ConstArgs[0] <= 0 {
+		a.addErrorAtToken(token, "%s capacity must be greater than zero", typ.Name)
+		return false
 	}
 	return true
 }
@@ -6506,6 +6690,10 @@ func (a *Analyzer) inferExpressionUnrecorded(expr ast.Expression) (Type, express
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
 		if movedAt, ok := a.moved[expr.Value]; ok {
+			if a.moveReasons[expr.Value] == "discarded" {
+				a.addErrorAtTokenWithPrevious(expr.Token, movedAt, "value %s was discarded here and is no longer available", expr.Value)
+				return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+			}
 			a.addErrorAtTokenWithPrevious(expr.Token, movedAt, "use of moved value %s", expr.Value)
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
@@ -6597,23 +6785,49 @@ func (a *Analyzer) inferExpressionWithExpected(expr ast.Expression, expected Typ
 func (a *Analyzer) inferSpawnExpression(expr *ast.SpawnExpression) (Type, expressionValue) {
 	if expr.Body != nil {
 		a.addErrorAtToken(expr.Token, "spawn block syntax is deprecated; spawn requires a callable expression")
-		a.analyzeBlockStatements(expr.Body)
+		a.withCancellableContext(func() {
+			a.analyzeBlockStatements(expr.Body)
+		})
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 	if expr.Value == nil {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 	switch expr.Value.(type) {
-	case *ast.CallExpression:
+	case *ast.CallExpression, *ast.LambdaExpression:
 	default:
 		a.addErrorAtToken(expressionToken(expr.Value), "spawn requires a callable expression")
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
-	returnType, _ := a.inferExpression(expr.Value)
-	if returnType.Kind == InvalidType {
+	spawnedType, _ := a.inferExpressionInCancellableContext(expr.Value)
+	if spawnedType.Kind == InvalidType {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
+	returnType := spawnedType
+	if spawnedType.Kind == FunctionType {
+		if spawnedType.FunctionReturnType == nil {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
+		returnType = *spawnedType.FunctionReturnType
+	}
 	return taskType(returnType), expressionValue{Display: expr.String()}
+}
+
+func (a *Analyzer) inferExpressionInCancellableContext(expr ast.Expression) (Type, expressionValue) {
+	var typ Type
+	var value expressionValue
+	a.withCancellableContext(func() {
+		typ, value = a.inferExpression(expr)
+	})
+	return typ, value
+}
+
+func (a *Analyzer) withCancellableContext(fn func()) {
+	a.cancellableDepth++
+	defer func() {
+		a.cancellableDepth--
+	}()
+	fn()
 }
 
 func (a *Analyzer) inferAwaitExpression(expr *ast.AwaitExpression) (Type, expressionValue) {
@@ -8808,6 +9022,13 @@ func canonicalTypeIdentity(typ Type) string {
 		if len(typ.TypeArgs) > 0 {
 			identity += "[" + canonicalTypeArgumentsKey(typ.TypeArgs) + "]"
 		}
+		if len(typ.ConstArgs) > 0 {
+			parts := make([]string, 0, len(typ.ConstArgs))
+			for _, arg := range typ.ConstArgs {
+				parts = append(parts, fmt.Sprintf("%d", arg))
+			}
+			identity += "[" + strings.Join(parts, ";") + "]"
+		}
 		return identity
 	}
 }
@@ -10446,6 +10667,10 @@ func taskType(result Type) Type {
 	return Type{Name: "Task", Kind: StructType, TypeArgs: []Type{result}}
 }
 
+func threadType(result Type) Type {
+	return Type{Name: "Thread", Kind: StructType, TypeArgs: []Type{result}}
+}
+
 func mutexGuardType(inner Type) Type {
 	return Type{Name: "MutexGuard", Kind: StructType, TypeArgs: []Type{inner}}
 }
@@ -10481,6 +10706,10 @@ func messageTicketType(message Type) Type {
 
 func isTaskType(typ Type) bool {
 	return typ.Name == "Task" && len(typ.TypeArgs) == 1
+}
+
+func isThreadType(typ Type) bool {
+	return typ.Name == "Thread" && len(typ.TypeArgs) == 1
 }
 
 func isChannelType(typ Type) bool {
@@ -10526,18 +10755,21 @@ func sameConcreteType(left Type, right Type) bool {
 		return left.Kind == right.Kind &&
 			left.Name == right.Name &&
 			left.Unit == right.Unit &&
-			sameTypeArguments(left.TypeArgs, right.TypeArgs)
+			sameTypeArguments(left.TypeArgs, right.TypeArgs) &&
+			sameConstArguments(left.ConstArgs, right.ConstArgs)
 	}
 	if !left.Dimension.IsZero() || !right.Dimension.IsZero() {
 		return left.Kind == right.Kind &&
 			left.Name == right.Name &&
 			left.Dimension.Equal(right.Dimension) &&
-			sameTypeArguments(left.TypeArgs, right.TypeArgs)
+			sameTypeArguments(left.TypeArgs, right.TypeArgs) &&
+			sameConstArguments(left.ConstArgs, right.ConstArgs)
 	}
 	if left.Name != "" || right.Name != "" {
 		return left.Name == right.Name &&
 			(!isEventFamilyName(left.Name) || eventCapacity(left) == eventCapacity(right)) &&
-			sameTypeArguments(left.TypeArgs, right.TypeArgs)
+			sameTypeArguments(left.TypeArgs, right.TypeArgs) &&
+			sameConstArguments(left.ConstArgs, right.ConstArgs)
 	}
 	return left.Kind == right.Kind
 }
@@ -10548,6 +10780,18 @@ func sameTypeArguments(left []Type, right []Type) bool {
 	}
 	for i := range left {
 		if !sameConcreteType(left[i], right[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func sameConstArguments(left []int64, right []int64) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for i := range left {
+		if left[i] != right[i] {
 			return false
 		}
 	}
@@ -10707,13 +10951,19 @@ func typeDisplayName(typ Type) string {
 	if typ.Kind == FunctionType {
 		return functionTypeName(typ.FunctionParameterTypes, functionReturnType(typ))
 	}
-	if typ.Name != "" && len(typ.TypeArgs) > 0 {
+	if typ.Name != "" && (len(typ.TypeArgs) > 0 || len(typ.ConstArgs) > 0) {
 		out := typ.Name + "["
 		for i, arg := range typ.TypeArgs {
 			if i > 0 {
 				out += ", "
 			}
 			out += typeDisplayName(arg)
+		}
+		for i, arg := range typ.ConstArgs {
+			if len(typ.TypeArgs) > 0 || i > 0 {
+				out += ", "
+			}
+			out += fmt.Sprintf("%d", arg)
 		}
 		if typ.EventCapacitySet {
 			out += fmt.Sprintf(", %d", typ.EventCapacity)
@@ -10780,6 +11030,8 @@ func statementToken(stmt ast.Statement) lexer.Token {
 	case *ast.DeferStatement:
 		return stmt.Token
 	case *ast.DiscardStatement:
+		return stmt.Token
+	case *ast.CancelStatement:
 		return stmt.Token
 	case *ast.ExpressionStatement:
 		return stmt.Token

@@ -150,7 +150,7 @@ func isCollectionContractType(typ Type) bool {
 		return true
 	}
 	switch typ.Name {
-	case "Vec", "Set", "Map":
+	case "Vec", "Set", "Map", "list", "set", "map", "vector", "matrix", "tensor", "tensor_view":
 		return true
 	default:
 		return false

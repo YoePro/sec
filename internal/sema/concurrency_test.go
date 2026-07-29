@@ -98,6 +98,87 @@ fn Invalid() int {
 	})
 }
 
+func TestCancelOutsideCancellableContext(t *testing.T) {
+	input := `
+module main
+
+fn Invalid() void {
+    cancel
+    let value := 1
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"cancel is not valid outside a task or explicit thread context at 5:5",
+		"unreachable code at 6:5",
+	})
+}
+
+func TestCancelInsideOrdinaryLambdaIsRejected(t *testing.T) {
+	input := `
+module main
+
+fn Invalid() void {
+    let callback := fn() void {
+        cancel
+    }
+    callback()
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"cancel is not valid outside a task or explicit thread context at 6:9",
+	})
+}
+
+func TestCancelInsideSpawnedLambdaIsAllowed(t *testing.T) {
+	input := `
+module main
+
+fn Run() void {
+    let work := spawn fn() void {
+        cancel
+    }
+    await work
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestThreadHandleIsMoveOnlyAndNotDiscardable(t *testing.T) {
+	input := `
+module main
+
+fn Invalid(thread: Thread[int]) void {
+    discard thread
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"cannot discard unresolved Thread[int]; await, join or detach it explicitly at 5:13",
+	})
+}
+
+func TestThreadAndThreadLocalTypesResolve(t *testing.T) {
+	input := `
+module main
+
+fn Use(thread: Thread[int], local: ThreadLocal[string], context: ThreadContext) void {
+    let status: ThreadStatus := ThreadStatus.Running
+    discard local
+    discard context
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
 func TestStaticLetAndCompilerKnownConcurrencyTypes(t *testing.T) {
 	input := `
 module main

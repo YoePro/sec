@@ -1494,11 +1494,14 @@ func printASTStatement(stmt ast.Statement, prefix string, last bool) {
 
 	case *ast.DiscardStatement:
 		printASTBranch(prefix, last, "Discard")
-		name := "<nil>"
-		if stmt.Name != nil {
-			name = stmt.Name.Value
+		value := "<nil>"
+		if stmt.Value != nil {
+			value = stmt.Value.String()
 		}
-		printASTLeaf(childPrefix(prefix, last), true, "Name: "+name)
+		printASTLeaf(childPrefix(prefix, last), true, "Value: "+value)
+
+	case *ast.CancelStatement:
+		printASTBranch(prefix, last, "Cancel")
 
 	case *ast.ExpressionStatement:
 		printASTExpression(prefix, last, "Expression", stmt.Expression)
@@ -2297,11 +2300,14 @@ func printStatement(stmt ast.Statement) {
 		}
 
 	case *ast.DiscardStatement:
-		name := "<nil>"
-		if stmt.Name != nil {
-			name = stmt.Name.Value
+		value := "<nil>"
+		if stmt.Value != nil {
+			value = stmt.Value.String()
 		}
-		fmt.Printf("Discard %s\n", name)
+		fmt.Printf("Discard %s\n", value)
+
+	case *ast.CancelStatement:
+		fmt.Println("Cancel")
 
 	case *ast.ExpressionStatement:
 		fmt.Printf("Expression %s\n", stmt.Expression.String())

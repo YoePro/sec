@@ -457,7 +457,7 @@
         },
         {
           "name": "support.type.sec",
-          "match": "\\b(?:Result|Option|Vec|Map|Set|Vector|Matrix|Box|Any|RawPtr)\\b"
+          "match": "\\b(?:Result|Option|Vec|Map|Set|list|map|set|vector|matrix|tensor|tensor_view|Shape|Strides|TensorLayout|MemorySpace|Box|Any|RawPtr)\\b"
         },
         {
           "name": "support.type.concurrency.sec",

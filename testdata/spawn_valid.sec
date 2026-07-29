@@ -87,13 +87,11 @@ fn Identity[T](value: T) T {
 }
 
 fn SpawnQualifiedFunction() void {
-    let taskHandle := spawn jobs.Run()
-    let threadHandle := spawn thread jobs.Run()
+    let taskHandle := spawn Run()
+    let threadHandle := spawn thread Run()
 }
 
-module jobs {
-    fn Run() void {
-    }
+fn Run() void {
 }
 
 fn MultipleSpawnStatements() void {

@@ -100,6 +100,24 @@ fn ThreeBindings(values: ref int[]) void {
     }
 }
 
+// Ok: set iteration supports one loop binding, got 2
+fn SetIndexValue(values: Set[string]) void {
+    for index, value in values {
+    }
+}
+
+// Ok: map iteration requires key and value bindings, got 1
+fn MapSingleBinding(values: Map[string, int]) void {
+    for entry in values {
+    }
+}
+
+// Ok: map iteration requires key and value bindings, got 3
+fn MapTooManyBindings(values: Map[string, int]) void {
+    for key, value, extra in values {
+    }
+}
+
 // OK: unreachable code
 fn UnreachableTest() int {
     let mut value: int

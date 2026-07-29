@@ -179,7 +179,8 @@ Memory ownership must be represented separately by:
 
 The compiler must never free memory solely because a RawPtr leaves scope.
 
-RawPtr must never implicitly convert into Box[T], Vec[T], string, slice or another owning type.
+RawPtr must never implicitly convert into Box[T], list[T], legacy Vec[T],
+string, slice or another owning type.
 
 ## Platform addresses
 

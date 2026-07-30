@@ -3,19 +3,71 @@ module platform.linux
 
 import "platform/linux/amd64"
 
+fn OpenReadOnly(path: string) Result[int, LinuxError] {
+    // Bootstrap limitation: this currently forwards the string storage pointer
+    // directly. General runtime strings still need a reviewed CString bridge.
+    unsafe {
+        let result := amd64._rawSyscall(
+            uint(amd64.sysCall.Open),
+            uint(path.ptr),
+            0,
+            0,
+        )
+
+        if result < 0 {
+            return Err(LinuxError(-result))
+        }
+
+        return Ok(result)
+    }
+}
+
+fn Read(fd: int, data: ref mut byte[]) Result[uint, LinuxError] {
+    unsafe {
+        let result := amd64._rawSyscall(
+            uint(amd64.sysCall.Read),
+            uint(fd),
+            uint(data.ptr),
+            data.len,
+        )
+
+        if result < 0 {
+            return Err(LinuxError(-result))
+        }
+
+        return Ok(uint(result))
+    }
+}
+
 fn Write(fd: int, data: ref byte[]) Result[uint, LinuxError] {
-    // TODO: lower ref byte[] to pointer/length for raw syscall writes.
-    return Err(LinuxError.invalidArg)
+    unsafe {
+        let result := amd64._rawSyscall(
+            uint(amd64.sysCall.Write),
+            uint(fd),
+            uint(data.ptr),
+            data.len,
+        )
+
+        if result < 0 {
+            return Err(LinuxError(-result))
+        }
+
+        return Ok(uint(result))
+    }
+}
+
+fn Close(fd: int) Result[void, LinuxError] {
+    unsafe {
+        let result := amd64._rawSyscall(uint(amd64.sysCall.Close), uint(fd))
+
+        if result < 0 {
+            return Err(LinuxError(-result))
+        }
+
+        return Ok()
+    }
 }
 
 let STDIN := 0i
 let STDOUT := 1i
 let STDERR := 2i
-
-/*
-fn Read(fd: int, data: ref mut byte[]) Result[uint, LinuxError] {}
-
-fn Close(fd: int) Result[void, LinuxError] {}
-fn Open(...)
-fn Seek(...)
-*/

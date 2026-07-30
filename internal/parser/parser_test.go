@@ -652,6 +652,33 @@ func TestParseLetInitializer(t *testing.T) {
 	}
 }
 
+func TestParseCharAndRuneNumericSuffixes(t *testing.T) {
+	input := `let ch: char := 65c
+let ru: rune := 0x41r`
+
+	p := New(lexer.New(input))
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Statements) != 2 {
+		t.Fatalf("wrong statement count. got=%d want=2", len(program.Statements))
+	}
+
+	for index, suffix := range []string{"c", "r"} {
+		stmt, ok := program.Statements[index].(*ast.LetStatement)
+		if !ok {
+			t.Fatalf("statement %d is not LetStatement. got=%T", index, program.Statements[index])
+		}
+		literal, ok := stmt.Value.(*ast.IntegerLiteral)
+		if !ok {
+			t.Fatalf("statement %d has wrong initializer. got=%T", index, stmt.Value)
+		}
+		if literal.Suffix() != suffix {
+			t.Fatalf("statement %d: wrong suffix. got=%q want=%q", index, literal.Suffix(), suffix)
+		}
+	}
+}
+
 func TestParseLetExpressionString(t *testing.T) {
 	tests := []struct {
 		input string
@@ -783,6 +810,11 @@ func TestParseLetGroups(t *testing.T) {
 	}{
 		{input: `int mut: a, b, c`, count: 3, mutable: true, typeName: "int"},
 		{input: `float: a := 5.4, pi := 3.14`, count: 2, mutable: false, typeName: "float"},
+		{input: `TokenType (
+ILLEGAL := "ILLEGAL",
+EOF := "EOF",
+IDENT := "IDENT",
+)`, count: 3, mutable: false, typeName: "TokenType"},
 		{input: `let a := 9, b := "hello", c := true`, count: 3, mutable: false, typeName: ""},
 		{input: `let mut a := 9, b := "hello", c := false`, count: 3, mutable: true, typeName: ""},
 	}
@@ -831,6 +863,9 @@ func TestRejectImmutableTypedDeclarationWithoutInitializer(t *testing.T) {
 		want  string
 	}{
 		{input: `int: a, b, c`, want: `immutable typed declaration requires initializer for "a" at 1:6`},
+		{input: `TokenType (
+ILLEGAL
+)`, want: `immutable typed declaration requires initializer for "ILLEGAL" at 2:1`},
 		{input: `int mut a, b, c`, want: `typed mutable declaration requires ':' after mut; write int mut: a at 1:9`},
 		{input: `let mut a`, want: `let declaration requires initializer for "a" at 1:9`},
 	}
@@ -846,6 +881,20 @@ func TestRejectImmutableTypedDeclarationWithoutInitializer(t *testing.T) {
 		if p.Errors()[0] != tt.want {
 			t.Fatalf("wrong parser error for %q. got=%q want=%q", tt.input, p.Errors()[0], tt.want)
 		}
+	}
+}
+
+func TestCallExpressionIsNotParsedAsTypedDeclarationGroup(t *testing.T) {
+	l := lexer.New(`Foo(bar)`)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Statements) != 1 {
+		t.Fatalf("wrong statement count. got=%d want=1", len(program.Statements))
+	}
+	if _, ok := program.Statements[0].(*ast.ExpressionStatement); !ok {
+		t.Fatalf("statement is not ExpressionStatement. got=%T", program.Statements[0])
 	}
 }
 
@@ -2371,6 +2420,42 @@ vehicle.TopSpeed = speed
 	}
 }
 
+func TestParseTryThenMultilineStructLiteralWithoutCommas(t *testing.T) {
+	input := `
+fn NewWithFile(input: string, file: string) Result[Lexer, AllocationError] {
+    let runes := try input.ToRuneArray()
+
+    return Ok(Lexer {
+        input: runes
+        file: file
+        pos: 0
+        line: 1
+        column: 1
+    })
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	letStmt := fn.Body.Statements[0].(*ast.LetStatement)
+	if _, ok := letStmt.Value.(*ast.TryExpression); !ok {
+		t.Fatalf("let value is not TryExpression. got=%T", letStmt.Value)
+	}
+	returnStmt := fn.Body.Statements[1].(*ast.ReturnStatement)
+	okExpr := returnStmt.Value.(*ast.OkExpression)
+	literal, ok := okExpr.Value.(*ast.StructLiteral)
+	if !ok {
+		t.Fatalf("Ok value is not StructLiteral. got=%T", okExpr.Value)
+	}
+	if len(literal.Fields) != 5 {
+		t.Fatalf("struct literal field count = %d, want 5", len(literal.Fields))
+	}
+}
+
 func TestParseTypeDeclWithStructAndVariants(t *testing.T) {
 	input := `
 type FileReader struct { handle: void }
@@ -2504,6 +2589,28 @@ fn Test(value: int) void {
 	}
 	if switchStmt.Default == nil {
 		t.Fatal("expected default clause")
+	}
+}
+
+func TestSwitchCaseLogicalOrSuggestsComma(t *testing.T) {
+	input := `
+fn Test(value: int) void {
+	switch value {
+	case 1 || 2:
+		return
+	default:
+		return
+	}
+}
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	p.ParseProgram()
+
+	expected := "use ',' between switch case values; '||' creates a boolean expression at 4:9"
+	if len(p.Errors()) != 1 || p.Errors()[0] != expected {
+		t.Fatalf("parser errors = %#v, want %#v", p.Errors(), []string{expected})
 	}
 }
 

@@ -1,0 +1,32 @@
+module main
+
+type TokenType string
+
+TokenType (
+    IDENT := "IDENT",
+)
+
+type Token struct {
+    kind: TokenType,
+    lexeme: string,
+}
+
+fn Identity(value: string) string {
+    let mut result := "x"
+    result = value
+    return result
+}
+
+fn Make() Token {
+    let mut token := Token {
+        kind: IDENT,
+        lexeme: "x",
+    }
+    token.lexeme = Identity("name")
+    return token
+}
+
+fn main() int {
+    let token := Make()
+    return int(token.kind.len + token.lexeme.len)
+}

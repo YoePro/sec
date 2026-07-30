@@ -45,6 +45,9 @@ Indentation increases after:
 
 when the construct spans multiple lines.
 
+Delimiter characters inside string and character literals do not affect
+indentation.
+
 Indentation decreases before:
 
     }
@@ -371,6 +374,20 @@ For example, `platform/linux/amd64` is referenced as `amd64`. An explicit alias
 appears before the path, as in `sys "platform/linux/amd64"`.
 
 
+Typed Declaration Groups
+========================
+
+Parenthesized type-first declaration groups keep the type line and closing
+parenthesis at the current indentation level. Each variable or constant entry is
+indented four spaces:
+
+    TokenType (
+        ILLEGAL := "ILLEGAL",
+        EOF := "EOF",
+        IDENT := "IDENT",
+    )
+
+
 Functions
 =========
 
@@ -393,6 +410,16 @@ Function parameters use:
     name: Type
 
 Multiple parameters are separated by comma and one space.
+
+The formatter may correct `func` to `fn` only when the complete current line
+unambiguously has the shape of a body-bearing function declaration: `func`, a
+valid function name, a balanced parameter list, and a following `{`. It must
+leave ordinary identifiers or calls named `func` unchanged.
+
+Single-line function signatures never have a trailing parameter comma:
+
+    fn token(typ: TokenType, lexeme: string, line: int, column: int) Token {
+    }
 
 Empty parameter lists use:
 
@@ -418,6 +445,10 @@ Multiple declarations:
 
     let a := 1, b := "hello", c := true
     let mut a := 1, b := "hello", c := false
+
+Single-line declaration lists use one space after each top-level comma. The
+formatter preserves commas inside strings, character literals, and nested
+expressions.
 
 Type-first mutable declarations:
 
@@ -607,6 +638,7 @@ First formatter implementation should handle:
 * top-level declarations,
 * function declarations,
 * let declarations,
+* parenthesized type-first declaration groups,
 * assignment statements,
 * return statements,
 * if/else,

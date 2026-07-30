@@ -1706,6 +1706,9 @@ Current infrastructure implemented:
   * `S1002` / `modules.duplicate-module-declaration`
   * `S1003` / `names.module-declaration-conflict`
   * `S1004` / `names.duplicate-local-variable`
+* semantic analysis retains a poisoned local binding after an invalid
+  initializer, preventing later uses of that name from creating unrelated
+  `undefined variable` cascade diagnostics.
 
 Some earlier implementations or rule texts may classify unreachable or unused constructs as warnings.
 

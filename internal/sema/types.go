@@ -335,16 +335,20 @@ type DecimalValue struct {
 }
 
 type Symbol struct {
-	Name       string
-	Type       Type
-	Mutable    bool
-	Token      lexer.Token
-	Addressed  bool
-	Address    string
-	Volatile   bool
-	Storage    StorageOrigin
-	Local      bool
-	ScopeDepth int
+	Name    string
+	Type    Type
+	Mutable bool
+	// ImplicitMember marks the short-name alias injected for an impl member.
+	// A lexical declaration may shadow such an alias without redeclaring the
+	// underlying field, property or event.
+	ImplicitMember bool
+	Token          lexer.Token
+	Addressed      bool
+	Address        string
+	Volatile       bool
+	Storage        StorageOrigin
+	Local          bool
+	ScopeDepth     int
 }
 
 func builtinTypes() map[string]Type {

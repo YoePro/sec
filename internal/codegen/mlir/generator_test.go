@@ -98,6 +98,31 @@ fn main() int {
 	}
 }
 
+func TestGenerateTopLevelIntegerConstant(t *testing.T) {
+	input := `
+module main
+
+let STDOUT := 1i
+
+fn descriptor() int {
+    return STDOUT
+}
+
+fn main() int {
+    return descriptor()
+}
+`
+	program := parseTestProgram(t, input)
+
+	got, err := GenerateWithTriple(program, "x86_64-pc-linux-gnu")
+	if err != nil {
+		t.Fatalf("GenerateWithTriple returned error: %v", err)
+	}
+	if !strings.Contains(got, "llvm.mlir.constant(1 : i32)") {
+		t.Fatalf("generated MLIR is missing the top-level integer constant:\n%s", got)
+	}
+}
+
 func TestGenerateLinuxAMD64SyscallInlineAsm(t *testing.T) {
 	input := `
 module main
@@ -150,6 +175,34 @@ fn main() int {
 	}
 	if strings.Contains(got, `%number, %number`) {
 		t.Fatalf("generated MLIR must not duplicate the syscall number operand:\n%s", got)
+	}
+}
+
+func TestGenerateRawPointerParameterAndConversion(t *testing.T) {
+	input := `
+module main
+
+unsafe fn address(ptr: RawPtr[byte]) uint {
+    return uint(ptr)
+}
+
+fn main() int {
+    return 0
+}
+`
+	program := parseTestProgram(t, input)
+
+	got, err := GenerateWithTriple(program, "x86_64-pc-linux-gnu")
+	if err != nil {
+		t.Fatalf("GenerateWithTriple returned error: %v", err)
+	}
+	for _, want := range []string{
+		"llvm.func @address(%ptr: !llvm.ptr) -> i64",
+		"llvm.ptrtoint %ptr : !llvm.ptr to i64",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("generated raw pointer MLIR missing %q:\n%s", want, got)
+		}
 	}
 }
 
@@ -234,6 +287,31 @@ fn main() int {
 		if !strings.Contains(got, want) {
 			t.Fatalf("generated struct MLIR missing %q:\n%s", want, got)
 		}
+	}
+}
+
+func TestGenerateStructWithFixedArrayField(t *testing.T) {
+	input := `
+module main
+
+type Buffer struct {
+    bytes: byte[512],
+    len: int,
+}
+
+fn main() int {
+    let buffer := Buffer{ len: 0 }
+    return buffer.len
+}
+`
+	program := parseTestProgram(t, input)
+
+	got, err := GenerateWithTriple(program, "x86_64-pc-linux-gnu")
+	if err != nil {
+		t.Fatalf("GenerateWithTriple returned error: %v", err)
+	}
+	if !strings.Contains(got, "!llvm.struct<(!llvm.array<512 x i8>, i32)>") {
+		t.Fatalf("generated MLIR is missing the fixed array struct field:\n%s", got)
 	}
 }
 
@@ -1443,5 +1521,113 @@ fn main() int {
 				t.Fatal("GenerateWithTriple unexpectedly accepted deferred switch form")
 			}
 		})
+	}
+}
+
+func TestGenerateFixedArrays(t *testing.T) {
+	input := `
+module main
+
+fn BuildPair(left: int, right: int) int[2] {
+    return [left, right]
+}
+
+fn ReadAt(values: uint[3], index: uint) uint {
+    return values[index]
+}
+
+fn Sum(values: int[3]) int {
+    let mut total := 0
+    for index, value in values {
+        total += index + value
+    }
+    return total
+}
+
+fn main() int {
+    let mut matrix: int[2][2] := [
+        [1, 2],
+        [3, 4],
+    ]
+    matrix[1][0] = 30
+    let inferred := [5, 6]
+    let pair := BuildPair(matrix[0][1], inferred[0])
+    return pair[0] + pair[1] + int(matrix.len)
+}
+`
+	program := parseTestProgram(t, input)
+
+	got, err := GenerateWithTriple(program, "x86_64-pc-linux-gnu")
+	if err != nil {
+		t.Fatalf("GenerateWithTriple returned error: %v", err)
+	}
+	for _, want := range []string{
+		"!llvm.array<2 x !llvm.array<2 x i32>>",
+		"llvm.func @BuildPair(%left: i32, %right: i32) -> !llvm.array<2 x i32>",
+		"llvm.func @ReadAt(%values: !llvm.array<3 x i64>, %index: i64) -> i64",
+		"llvm.insertvalue",
+		"llvm.getelementptr",
+		`llvm.icmp "ult"`,
+		"llvm.intr.trap",
+		"for_array_condition",
+		"for_array_next",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("generated array MLIR missing %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestGenerateNamedStringTypesAndStructFields(t *testing.T) {
+	input := `
+module main
+
+type TokenType string
+
+TokenType (
+    IDENT := "IDENT",
+)
+
+type Token struct {
+    kind: TokenType,
+    lexeme: string,
+}
+
+fn Identity(value: string) string {
+    let mut result := "x"
+    result = value
+    return result
+}
+
+fn Make() Token {
+    let mut token := Token {
+        kind: IDENT,
+        lexeme: "x",
+    }
+    token.lexeme = Identity("name")
+    return token
+}
+
+fn main() int {
+    let token := Make()
+    return int(token.kind.len + token.lexeme.len)
+}
+`
+	program := parseTestProgram(t, input)
+
+	got, err := GenerateWithTriple(program, "x86_64-pc-linux-gnu")
+	if err != nil {
+		t.Fatalf("GenerateWithTriple returned error: %v", err)
+	}
+	for _, want := range []string{
+		"!llvm.struct<(!llvm.ptr, i64)>",
+		"!llvm.struct<(!llvm.struct<(!llvm.ptr, i64)>, !llvm.struct<(!llvm.ptr, i64)>)>",
+		"llvm.func @Identity(%value.ptr: !llvm.ptr, %value.len: i64) -> !llvm.struct<(!llvm.ptr, i64)>",
+		"llvm.insertvalue",
+		"llvm.extractvalue",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("generated named string MLIR missing %q:\n%s", want, got)
+		}
 	}
 }

@@ -947,6 +947,16 @@ func (p *Parser) parseStructLiteralWithType(ref *ast.TypeReference) ast.Expressi
 			if p.peekToken.Type == lexer.RBRACE {
 				break
 			}
+		case lexer.IDENT:
+			// Multiline struct literals may separate fields by line layout
+			// without commas. Newlines are trivia to the lexer, so the next
+			// field identifier and its source line are the separator visible
+			// to the parser.
+			if p.peekToken.Line > expressionToken(field.Value).Line {
+				continue
+			}
+			p.addError("expected ',' or '}' after struct literal field")
+			return nil
 		case lexer.RBRACE:
 			break
 		default:

@@ -23,6 +23,9 @@ type Generator struct {
 	locals         map[string]local
 	functions      map[string][]*ast.FunctionDeclaration
 	functionNames  map[*ast.FunctionDeclaration]string
+	reachable      map[*ast.FunctionDeclaration]bool
+	constants      map[string]mlirConstant
+	namedTypes     map[string]mlirNamedType
 	structs        map[string]*mlirStruct
 	enums          map[string]*mlirEnum
 	loops          []loopContext
@@ -59,6 +62,20 @@ type mlirEnum struct {
 	values   map[string]string
 }
 
+type mlirConstant struct {
+	literal  string
+	typ      string
+	unsigned bool
+	boolean  *bool
+	text     *string
+}
+
+type mlirNamedType struct {
+	name     string
+	typ      string
+	unsigned bool
+}
+
 type mlirStruct struct {
 	name        string
 	declaration *ast.StructType
@@ -70,9 +87,11 @@ type mlirStruct struct {
 type mlirStructField struct {
 	name       string
 	typ        string
+	storageTyp string
 	structName string
 	enumName   string
 	unsigned   bool
+	string     bool
 }
 
 type loopContext struct {
@@ -90,6 +109,7 @@ type deferEntry struct {
 const (
 	mlirDecimalType    = "!llvm.struct<(i64, i32)>"
 	mlirDecimal128Type = "!llvm.struct<(i128, i32)>"
+	mlirStringType     = "!llvm.struct<(!llvm.ptr, i64)>"
 )
 
 func GenerateWithTriple(program *ast.Program, triple string) (string, error) {
@@ -103,6 +123,9 @@ func (g *Generator) Generate(program *ast.Program) (string, error) {
 	}
 	g.functions = map[string][]*ast.FunctionDeclaration{}
 	g.functionNames = map[*ast.FunctionDeclaration]string{}
+	g.reachable = map[*ast.FunctionDeclaration]bool{}
+	g.constants = map[string]mlirConstant{}
+	g.namedTypes = map[string]mlirNamedType{}
 	g.structs = map[string]*mlirStruct{}
 	g.enums = map[string]*mlirEnum{}
 	for _, stmt := range program.Statements {
@@ -110,6 +133,12 @@ func (g *Generator) Generate(program *ast.Program) (string, error) {
 		case *ast.FunctionDeclaration:
 			if stmt.Name != nil {
 				g.functions[stmt.Name.Value] = append(g.functions[stmt.Name.Value], stmt)
+			}
+		case *ast.LetStatement:
+			if stmt.Name != nil && !stmt.Mutable {
+				if constant, ok := g.resolveTopLevelConstant(stmt); ok {
+					g.constants[stmt.Name.Value] = constant
+				}
 			}
 		case *ast.TypeDeclStatement:
 			if stmt.Name != nil && stmt.StructType != nil {
@@ -119,6 +148,15 @@ func (g *Generator) Generate(program *ast.Program) (string, error) {
 				g.structs[stmt.Name.Value] = &mlirStruct{
 					name:        stmt.Name.Value,
 					declaration: stmt.StructType,
+				}
+			} else if stmt.Name != nil && stmt.BaseType != nil {
+				baseType := g.mlirType(stmt.BaseType)
+				if baseType != "void" {
+					g.namedTypes[stmt.Name.Value] = mlirNamedType{
+						name:     stmt.Name.Value,
+						typ:      baseType,
+						unsigned: g.typeUnsigned(stmt.BaseType),
+					}
 				}
 			}
 		case *ast.EnumDeclaration:
@@ -162,13 +200,29 @@ func (g *Generator) Generate(program *ast.Program) (string, error) {
 	}
 
 	g.write("module attributes {llvm.target_triple = %q} {\n", g.targetTriple)
+	mainFn := findMainFunction(program)
 	for _, stmt := range program.Statements {
 		fn, ok := stmt.(*ast.FunctionDeclaration)
-		if !ok || fn.Name == nil {
-			continue
+		if ok && fn.Name != nil && (mainFn == nil || mainFn.Token.File == "" || fn.Token.File == mainFn.Token.File) {
+			g.reachable[fn] = true
 		}
-		if err := g.emitFunction(fn); err != nil {
-			return "", err
+	}
+	emitted := map[*ast.FunctionDeclaration]bool{}
+	for {
+		progress := false
+		for _, stmt := range program.Statements {
+			fn, ok := stmt.(*ast.FunctionDeclaration)
+			if !ok || fn.Name == nil || !g.reachable[fn] || emitted[fn] {
+				continue
+			}
+			if err := g.emitFunction(fn); err != nil {
+				return "", err
+			}
+			emitted[fn] = true
+			progress = true
+		}
+		if !progress {
+			break
 		}
 	}
 	if g.globals.Len() > 0 {
@@ -243,10 +297,14 @@ func (g *Generator) emitFunction(fn *ast.FunctionDeclaration) error {
 		}
 		writtenParams++
 	}
+	signatureReturnType := returnType
+	if returnType == "string" {
+		signatureReturnType = mlirStringType
+	}
 	if returnType == "void" {
 		signature.WriteString(") {\n")
 	} else {
-		fmt.Fprintf(&signature, ") -> %s {\n", returnType)
+		fmt.Fprintf(&signature, ") -> %s {\n", signatureReturnType)
 	}
 	g.blockOpen = true
 	g.initializeDeferFlags()
@@ -267,6 +325,10 @@ func (g *Generator) emitFunction(fn *ast.FunctionDeclaration) error {
 		}
 		if returnType == "void" {
 			g.write("    llvm.return\n")
+		} else if returnType == "string" {
+			undef := g.nextTemp()
+			g.write("    %s = llvm.mlir.undef : %s\n", undef, mlirStringType)
+			g.write("    llvm.return %s : %s\n", undef, mlirStringType)
 		} else {
 			zero := g.zeroValue(returnType)
 			g.write("    llvm.return %s : %s\n", zero.ref, zero.typ)
@@ -513,14 +575,139 @@ func (g *Generator) emitFor(stmt *ast.ForStatement) error {
 		return g.emitInfiniteFor(stmt)
 	}
 
-	rangeExpr, ok := stmt.Iterable.(*ast.RangeExpression)
+	if rangeExpr, ok := stmt.Iterable.(*ast.RangeExpression); ok {
+		if len(stmt.Bindings) != 1 {
+			return fmt.Errorf("emit-mlir range for currently supports one loop binding")
+		}
+		return g.emitRangeFor(stmt, rangeExpr)
+	}
+
+	iterable, err := g.emitExpression(stmt.Iterable)
+	if err != nil {
+		return err
+	}
+	if _, _, ok := parseMLIRArrayType(iterable.typ); ok {
+		return g.emitArrayFor(stmt, iterable)
+	}
+	return fmt.Errorf("emit-mlir cannot iterate over %s yet", iterable.typ)
+}
+
+func (g *Generator) emitArrayFor(stmt *ast.ForStatement, array value) error {
+	if stmt == nil || stmt.Body == nil {
+		return fmt.Errorf("emit-mlir requires complete array for statements")
+	}
+	if len(stmt.Bindings) < 1 || len(stmt.Bindings) > 2 {
+		return fmt.Errorf("emit-mlir array iteration requires one or two loop bindings")
+	}
+	length, elementType, ok := parseMLIRArrayType(array.typ)
 	if !ok {
-		return fmt.Errorf("emit-mlir currently supports only range for loops")
+		return fmt.Errorf("emit-mlir cannot iterate over non-array type %s", array.typ)
 	}
-	if len(stmt.Bindings) != 1 {
-		return fmt.Errorf("emit-mlir currently supports one loop binding")
+
+	arrayPtr := g.emitAlloca(array.typ)
+	g.write("    llvm.store %s, %s : %s, !llvm.ptr\n", array.ref, arrayPtr, array.typ)
+	indexPtr := g.emitAlloca("i64")
+	zero := g.emitIntegerConstantUnsigned("0", "i64", true)
+	g.write("    llvm.store %s, %s : i64, !llvm.ptr\n", zero.ref, indexPtr)
+
+	conditionLabel := g.nextLabel("for.array.condition")
+	bodyLabel := g.nextLabel("for.array.body")
+	nextLabel := g.nextLabel("for.array.next")
+	endLabel := g.nextLabel("for.array.end")
+
+	g.write("    llvm.br ^%s\n", conditionLabel)
+	g.blockOpen = false
+
+	g.write("  ^%s:\n", conditionLabel)
+	g.blockOpen = true
+	index, err := g.loadLocal(local{typ: "i64", ptr: indexPtr, unsigned: true})
+	if err != nil {
+		return err
 	}
-	return g.emitRangeFor(stmt, rangeExpr)
+	lengthValue := g.emitIntegerConstantUnsigned(strconv.FormatInt(length, 10), "i64", true)
+	condition := g.nextTemp()
+	g.write("    %s = llvm.icmp \"ult\" %s, %s : i64\n", condition, index.ref, lengthValue.ref)
+	g.write("    llvm.cond_br %s, ^%s, ^%s\n", condition, bodyLabel, endLabel)
+	g.blockOpen = false
+
+	g.write("  ^%s:\n", bodyLabel)
+	g.blockOpen = true
+	elementPtr := g.nextTemp()
+	g.write("    %s = llvm.getelementptr %s[0, %s] : (!llvm.ptr, i64) -> !llvm.ptr, %s\n", elementPtr, arrayPtr, index.ref, array.typ)
+	elementRef := g.nextTemp()
+	g.write("    %s = llvm.load %s : !llvm.ptr -> %s\n", elementRef, elementPtr, elementType)
+	element := value{
+		typ:        elementType,
+		ref:        elementRef,
+		structName: g.structNameForMLIRType(elementType),
+		unsigned:   array.unsigned,
+	}
+
+	previousLocals := g.locals
+	g.locals = copyMLIRLocals(previousLocals)
+	if len(stmt.Bindings) == 1 {
+		if binding := stmt.Bindings[0]; !binding.Discard {
+			g.locals[binding.Name] = local{
+				typ:        element.typ,
+				ref:        element.ref,
+				structName: element.structName,
+				unsigned:   element.unsigned,
+				direct:     true,
+			}
+		}
+	} else {
+		if binding := stmt.Bindings[0]; !binding.Discard {
+			indexValue, err := g.coerceIntegerStorageValue(index, "i32", false)
+			if err != nil {
+				g.locals = previousLocals
+				return err
+			}
+			g.locals[binding.Name] = local{typ: "i32", ref: indexValue.ref, direct: true}
+		}
+		if binding := stmt.Bindings[1]; !binding.Discard {
+			g.locals[binding.Name] = local{
+				typ:        element.typ,
+				ref:        element.ref,
+				structName: element.structName,
+				unsigned:   element.unsigned,
+				direct:     true,
+			}
+		}
+	}
+
+	g.pushLoop(endLabel, nextLabel)
+	for _, child := range stmt.Body.Statements {
+		if err := g.emitStatement(child); err != nil {
+			g.popLoop()
+			g.locals = previousLocals
+			return err
+		}
+	}
+	g.popLoop()
+	g.locals = previousLocals
+	if g.blockOpen {
+		g.write("    llvm.br ^%s\n", nextLabel)
+		g.blockOpen = false
+	}
+
+	g.write("  ^%s:\n", nextLabel)
+	g.blockOpen = true
+	current, err := g.loadLocal(local{typ: "i64", ptr: indexPtr, unsigned: true})
+	if err != nil {
+		return err
+	}
+	one := g.emitIntegerConstantUnsigned("1", "i64", true)
+	next, err := g.emitIntegerBinary("add", current, one)
+	if err != nil {
+		return err
+	}
+	g.write("    llvm.store %s, %s : i64, !llvm.ptr\n", next.ref, indexPtr)
+	g.write("    llvm.br ^%s\n", conditionLabel)
+	g.blockOpen = false
+
+	g.write("  ^%s:\n", endLabel)
+	g.blockOpen = true
+	return nil
 }
 
 func (g *Generator) emitWhile(stmt *ast.WhileStatement) error {
@@ -766,6 +953,9 @@ func (g *Generator) popLoop() {
 }
 
 func (g *Generator) emitAssignment(stmt *ast.AssignmentStatement) error {
+	if index, ok := stmt.Target.(*ast.IndexExpression); ok {
+		return g.emitIndexAssignment(stmt, index)
+	}
 	if member, ok := stmt.Target.(*ast.MemberExpression); ok {
 		return g.emitMemberAssignment(stmt, member)
 	}
@@ -781,7 +971,20 @@ func (g *Generator) emitAssignment(stmt *ast.AssignmentStatement) error {
 		return fmt.Errorf("emit-mlir cannot assign to parameter %s", ident.Value)
 	}
 	if slot.typ == "string" {
-		return fmt.Errorf("emit-mlir does not support string assignment yet")
+		if stmt.Operator != "=" {
+			return fmt.Errorf("emit-mlir does not support compound string assignment")
+		}
+		val, err := g.emitExpression(stmt.Value)
+		if err != nil {
+			return err
+		}
+		val, err = g.coerceValue(val, "string", false)
+		if err != nil {
+			return fmt.Errorf("emit-mlir cannot assign %s to string", val.typ)
+		}
+		g.write("    llvm.store %s, %s : !llvm.ptr, !llvm.ptr\n", val.ref, slot.ptr)
+		g.write("    llvm.store %s, %s : i64, !llvm.ptr\n", val.len, slot.lenPtr)
+		return nil
 	}
 	if slot.ptr == "" {
 		return fmt.Errorf("emit-mlir local %s is not assignable", ident.Value)
@@ -809,6 +1012,85 @@ func (g *Generator) emitAssignment(stmt *ast.AssignmentStatement) error {
 
 	g.write("    llvm.store %s, %s : %s, !llvm.ptr\n", val.ref, slot.ptr, slot.typ)
 	return nil
+}
+
+func (g *Generator) emitIndexAssignment(stmt *ast.AssignmentStatement, target *ast.IndexExpression) error {
+	root, indexes, ok := mlirIndexPath(target)
+	if !ok || len(indexes) == 0 {
+		return fmt.Errorf("emit-mlir indexed assignment requires a stored array local")
+	}
+	slot, ok := g.locals[root]
+	if !ok {
+		return fmt.Errorf("emit-mlir unknown local %s", root)
+	}
+	if slot.direct {
+		return fmt.Errorf("emit-mlir cannot assign through array parameter %s", root)
+	}
+	if slot.ptr == "" {
+		return fmt.Errorf("emit-mlir local %s is not assignable", root)
+	}
+
+	elementPtr := slot.ptr
+	elementType := slot.typ
+	for _, indexExpr := range indexes {
+		length, nextType, ok := parseMLIRArrayType(elementType)
+		if !ok {
+			return fmt.Errorf("emit-mlir cannot index non-array type %s", elementType)
+		}
+		index, err := g.emitArrayIndex(indexExpr, length)
+		if err != nil {
+			return err
+		}
+		nextPtr := g.nextTemp()
+		g.write("    %s = llvm.getelementptr %s[0, %s] : (!llvm.ptr, i64) -> !llvm.ptr, %s\n", nextPtr, elementPtr, index.ref, elementType)
+		elementPtr = nextPtr
+		elementType = nextType
+	}
+
+	assigned, err := g.emitExpressionForTargetUnsigned(stmt.Value, elementType, slot.unsigned)
+	if err != nil {
+		return err
+	}
+	assigned, err = g.coerceValue(assigned, elementType, slot.unsigned)
+	if err != nil {
+		return fmt.Errorf("emit-mlir cannot assign %s to array element %s", assigned.typ, elementType)
+	}
+	if stmt.Operator != "=" {
+		currentRef := g.nextTemp()
+		g.write("    %s = llvm.load %s : !llvm.ptr -> %s\n", currentRef, elementPtr, elementType)
+		assigned, err = g.emitAssignmentOperation(
+			stmt.Operator,
+			value{typ: elementType, ref: currentRef, unsigned: slot.unsigned},
+			assigned,
+		)
+		if err != nil {
+			return err
+		}
+	}
+	g.write("    llvm.store %s, %s : %s, !llvm.ptr\n", assigned.ref, elementPtr, elementType)
+	return nil
+}
+
+func mlirIndexPath(expr *ast.IndexExpression) (string, []ast.Expression, bool) {
+	if expr == nil || expr.Index == nil {
+		return "", nil, false
+	}
+	indexes := []ast.Expression{expr.Index}
+	left := expr.Left
+	for {
+		switch current := left.(type) {
+		case *ast.Identifier:
+			return current.Value, indexes, true
+		case *ast.IndexExpression:
+			if current.Index == nil {
+				return "", nil, false
+			}
+			indexes = append([]ast.Expression{current.Index}, indexes...)
+			left = current.Left
+		default:
+			return "", nil, false
+		}
+	}
 }
 
 type mlirMemberAssignmentStep struct {
@@ -873,6 +1155,9 @@ func (g *Generator) emitMemberAssignment(stmt *ast.AssignmentStatement, member *
 	}
 
 	leaf := steps[len(steps)-1]
+	if leaf.field.string && stmt.Operator != "=" {
+		return fmt.Errorf("emit-mlir does not support compound assignment to string field %s.%s", leaf.info.name, leaf.field.name)
+	}
 	assigned, err := g.emitExpressionForTargetUnsigned(stmt.Value, leaf.field.typ, leaf.field.unsigned)
 	if err != nil {
 		return err
@@ -897,8 +1182,15 @@ func (g *Generator) emitMemberAssignment(stmt *ast.AssignmentStatement, member *
 		}
 	}
 
+	storedAssigned := assigned
+	if leaf.field.string {
+		storedAssigned, err = g.packString(assigned)
+		if err != nil {
+			return err
+		}
+	}
 	updatedRef := g.nextTemp()
-	g.write("    %s = llvm.insertvalue %s, %s[%d] : %s\n", updatedRef, assigned.ref, current.ref, leaf.index, leaf.info.typ)
+	g.write("    %s = llvm.insertvalue %s, %s[%d] : %s\n", updatedRef, storedAssigned.ref, current.ref, leaf.index, leaf.info.typ)
 	updated := value{typ: leaf.info.typ, ref: updatedRef, structName: leaf.info.name}
 	for index := len(steps) - 2; index >= 0; index-- {
 		step := steps[index]
@@ -1012,6 +1304,15 @@ func (g *Generator) emitReturn(stmt *ast.ReturnStatement) error {
 	}
 	if err := g.emitActiveDefers(); err != nil {
 		return err
+	}
+	if g.returnType == "string" {
+		descriptor, err := g.packString(val)
+		if err != nil {
+			return err
+		}
+		g.write("    llvm.return %s : %s\n", descriptor.ref, mlirStringType)
+		g.blockOpen = false
+		return nil
 	}
 	g.write("    llvm.return %s : %s\n", val.ref, val.typ)
 	g.blockOpen = false
@@ -1569,6 +1870,10 @@ func (g *Generator) emitExpression(expr ast.Expression) (value, error) {
 		return g.emitBoolConstant(expr.Value), nil
 	case *ast.StringLiteral:
 		return g.emitStringLiteral(expr)
+	case *ast.ArrayLiteral:
+		return g.emitArrayLiteral(expr, "", false)
+	case *ast.IndexExpression:
+		return g.emitIndexExpression(expr)
 	case *ast.PrefixExpression:
 		return g.emitPrefixExpression(expr)
 	case *ast.InfixExpression:
@@ -1604,6 +1909,9 @@ func (g *Generator) emitExpressionForTargetUnsigned(expr ast.Expression, targetT
 			return g.emitDecimalLiteral(expr, targetType)
 		}
 	}
+	if array, ok := expr.(*ast.ArrayLiteral); ok {
+		return g.emitArrayLiteral(array, targetType, targetUnsigned)
+	}
 	switch expr := expr.(type) {
 	case *ast.IntegerLiteral:
 		if isMLIRIntegerType(targetType) {
@@ -1628,15 +1936,192 @@ func (g *Generator) emitExpressionForTargetUnsigned(expr ast.Expression, targetT
 	return g.emitExpression(expr)
 }
 
+func (g *Generator) emitArrayLiteral(expr *ast.ArrayLiteral, targetType string, targetUnsigned bool) (value, error) {
+	if expr == nil {
+		return value{}, fmt.Errorf("emit-mlir array literal is missing")
+	}
+
+	elementType := ""
+	expectedLength := int64(len(expr.Elements))
+	if targetType != "" {
+		length, targetElementType, ok := parseMLIRArrayType(targetType)
+		if !ok {
+			return value{}, fmt.Errorf("emit-mlir cannot use array literal as %s", targetType)
+		}
+		if int64(len(expr.Elements)) != length {
+			return value{}, fmt.Errorf("emit-mlir array literal has %d elements, expected %d", len(expr.Elements), length)
+		}
+		expectedLength = length
+		elementType = targetElementType
+	}
+	if len(expr.Elements) == 0 && elementType == "" {
+		return value{}, fmt.Errorf("emit-mlir cannot infer empty array literal type")
+	}
+
+	elements := make([]value, 0, len(expr.Elements))
+	for _, elementExpr := range expr.Elements {
+		element, err := g.emitExpressionForTargetUnsigned(elementExpr, elementType, targetUnsigned)
+		if err != nil {
+			return value{}, err
+		}
+		if elementType == "" {
+			elementType = element.typ
+			targetUnsigned = element.unsigned
+		}
+		element, err = g.coerceValue(element, elementType, targetUnsigned)
+		if err != nil {
+			return value{}, fmt.Errorf("emit-mlir array literal element has type %s, expected %s", element.typ, elementType)
+		}
+		if elementType == "string" || elementType == "void" {
+			return value{}, fmt.Errorf("emit-mlir does not support array element type %s yet", elementType)
+		}
+		elements = append(elements, element)
+	}
+
+	arrayType := targetType
+	if arrayType == "" {
+		arrayType = fmt.Sprintf("!llvm.array<%d x %s>", expectedLength, elementType)
+	}
+	aggregate := g.nextTemp()
+	g.write("    %s = llvm.mlir.undef : %s\n", aggregate, arrayType)
+	for index, element := range elements {
+		next := g.nextTemp()
+		g.write("    %s = llvm.insertvalue %s, %s[%d] : %s\n", next, element.ref, aggregate, index, arrayType)
+		aggregate = next
+	}
+	return value{typ: arrayType, ref: aggregate, unsigned: targetUnsigned}, nil
+}
+
+func (g *Generator) emitIndexExpression(expr *ast.IndexExpression) (value, error) {
+	if expr == nil || expr.Left == nil || expr.Index == nil {
+		return value{}, fmt.Errorf("emit-mlir index expression is incomplete")
+	}
+	array, err := g.emitExpression(expr.Left)
+	if err != nil {
+		return value{}, err
+	}
+	length, elementType, ok := parseMLIRArrayType(array.typ)
+	if !ok {
+		return value{}, fmt.Errorf("emit-mlir cannot index non-array type %s", array.typ)
+	}
+	index, err := g.emitArrayIndex(expr.Index, length)
+	if err != nil {
+		return value{}, err
+	}
+
+	arrayPtr := g.emitAlloca(array.typ)
+	g.write("    llvm.store %s, %s : %s, !llvm.ptr\n", array.ref, arrayPtr, array.typ)
+	elementPtr := g.nextTemp()
+	g.write("    %s = llvm.getelementptr %s[0, %s] : (!llvm.ptr, i64) -> !llvm.ptr, %s\n", elementPtr, arrayPtr, index.ref, array.typ)
+	result := g.nextTemp()
+	g.write("    %s = llvm.load %s : !llvm.ptr -> %s\n", result, elementPtr, elementType)
+	return value{
+		typ:        elementType,
+		ref:        result,
+		structName: g.structNameForMLIRType(elementType),
+		unsigned:   array.unsigned,
+	}, nil
+}
+
+func (g *Generator) emitArrayIndex(expr ast.Expression, length int64) (value, error) {
+	index, err := g.emitExpression(expr)
+	if err != nil {
+		return value{}, err
+	}
+	if !isMLIRIntegerValue(index) {
+		return value{}, fmt.Errorf("emit-mlir array index must be integer, got %s", index.typ)
+	}
+	index, err = g.coerceIntegerStorageValue(index, "i64", index.unsigned)
+	if err != nil {
+		return value{}, err
+	}
+
+	lengthValue := g.emitIntegerConstantUnsigned(strconv.FormatInt(length, 10), "i64", true)
+	upper := g.nextTemp()
+	g.write("    %s = llvm.icmp \"ult\" %s, %s : i64\n", upper, index.ref, lengthValue.ref)
+	validRef := upper
+	if !index.unsigned {
+		zero := g.emitIntegerConstant("0", "i64")
+		nonNegative := g.nextTemp()
+		g.write("    %s = llvm.icmp \"sge\" %s, %s : i64\n", nonNegative, index.ref, zero.ref)
+		valid := g.nextTemp()
+		g.write("    %s = llvm.and %s, %s : i1\n", valid, nonNegative, upper)
+		validRef = valid
+	}
+
+	validLabel := g.nextLabel("array.index.valid")
+	trapLabel := g.nextLabel("array.index.trap")
+	g.write("    llvm.cond_br %s, ^%s, ^%s\n", validRef, validLabel, trapLabel)
+	g.blockOpen = false
+	g.write("  ^%s:\n", trapLabel)
+	g.write("    llvm.intr.trap\n")
+	g.write("    llvm.unreachable\n")
+	g.write("  ^%s:\n", validLabel)
+	g.blockOpen = true
+	return index, nil
+}
+
 func (g *Generator) emitIdentifier(expr *ast.Identifier) (value, error) {
 	slot, ok := g.locals[expr.Value]
+	if ok {
+		if slot.direct {
+			return value{typ: slot.typ, ref: slot.ref, len: slot.len, structName: slot.structName, enumName: slot.enumName, unsigned: slot.unsigned}, nil
+		}
+		return g.loadLocal(slot)
+	}
+	if constant, exists := g.constants[expr.Value]; exists {
+		if constant.boolean != nil {
+			return g.emitBoolConstant(*constant.boolean), nil
+		}
+		if constant.text != nil {
+			return g.emitStringValue(*constant.text), nil
+		}
+		return g.emitIntegerConstantUnsigned(constant.literal, constant.typ, constant.unsigned), nil
+	}
+	return value{}, fmt.Errorf("emit-mlir unknown identifier %s", expr.Value)
+}
+
+func (g *Generator) resolveTopLevelConstant(stmt *ast.LetStatement) (mlirConstant, bool) {
+	if stmt == nil || stmt.Value == nil {
+		return mlirConstant{}, false
+	}
+	if boolean, ok := stmt.Value.(*ast.BooleanLiteral); ok {
+		value := boolean.Value
+		return mlirConstant{typ: "i1", boolean: &value}, true
+	}
+	if stringLiteral, ok := stmt.Value.(*ast.StringLiteral); ok {
+		targetType := ""
+		if stmt.Type != nil {
+			targetType = g.mlirType(stmt.Type)
+		}
+		if targetType == "" || targetType == "string" {
+			text := stringLiteral.Value
+			return mlirConstant{typ: "string", text: &text}, true
+		}
+		return mlirConstant{}, false
+	}
+	integer, ok := enumIntegerConstant(stmt.Value, big.NewInt(0))
 	if !ok {
-		return value{}, fmt.Errorf("emit-mlir unknown identifier %s", expr.Value)
+		return mlirConstant{}, false
 	}
-	if slot.direct {
-		return value{typ: slot.typ, ref: slot.ref, len: slot.len, structName: slot.structName, enumName: slot.enumName, unsigned: slot.unsigned}, nil
+	typ := ""
+	unsigned := false
+	if stmt.Type != nil {
+		typ = g.mlirType(stmt.Type)
+		unsigned = g.typeUnsigned(stmt.Type)
 	}
-	return g.loadLocal(slot)
+	if typ == "" || !isMLIRIntegerType(typ) {
+		suffix := ""
+		if literal, ok := stmt.Value.(*ast.IntegerLiteral); ok {
+			suffix = literal.Suffix()
+		}
+		typ = inferredIntegerLiteralType(integer, suffix)
+		unsigned = suffix == "u"
+		if unsigned {
+			typ = inferredUnsignedIntegerLiteralType(integer)
+		}
+	}
+	return mlirConstant{literal: integer.String(), typ: typ, unsigned: unsigned}, true
 }
 
 func (g *Generator) emitStructLiteral(expr *ast.StructLiteral) (value, error) {
@@ -1675,6 +2160,12 @@ func (g *Generator) emitStructLiteral(expr *ast.StructLiteral) (value, error) {
 		if err != nil {
 			return value{}, fmt.Errorf("emit-mlir cannot initialize field %s.%s with %s", info.name, field.name, fieldValue.typ)
 		}
+		if field.string {
+			fieldValue, err = g.packString(fieldValue)
+			if err != nil {
+				return value{}, err
+			}
+		}
 		next := g.nextTemp()
 		g.write("    %s = llvm.insertvalue %s, %s[%d] : %s\n", next, fieldValue.ref, aggregate, index, info.typ)
 		aggregate = next
@@ -1711,6 +2202,12 @@ func (g *Generator) emitMemberExpression(expr *ast.MemberExpression) (value, err
 			return value{}, fmt.Errorf("emit-mlir unknown string property %s", expr.Property.Value)
 		}
 	}
+	if length, _, ok := parseMLIRArrayType(object.typ); ok {
+		if expr.Property.Value != "len" {
+			return value{}, fmt.Errorf("emit-mlir unknown array property %s", expr.Property.Value)
+		}
+		return g.emitIntegerConstantUnsigned(strconv.FormatInt(length, 10), "i64", true), nil
+	}
 	if object.structName == "" {
 		return value{}, fmt.Errorf("emit-mlir member access currently requires a struct value")
 	}
@@ -1724,6 +2221,9 @@ func (g *Generator) emitMemberExpression(expr *ast.MemberExpression) (value, err
 	}
 	result := g.nextTemp()
 	g.write("    %s = llvm.extractvalue %s[%d] : %s\n", result, object.ref, index, info.typ)
+	if field.string {
+		return g.unpackString(value{typ: mlirStringType, ref: result})
+	}
 	return value{
 		typ:        field.typ,
 		ref:        result,
@@ -1952,6 +2452,16 @@ func (g *Generator) emitCallExpression(expr *ast.CallExpression) (value, error) 
 	if info, ok := g.enums[name]; ok {
 		return g.emitEnumConversion(expr.Arguments, info)
 	}
+	if info, ok := g.namedTypes[name]; ok {
+		if len(expr.Arguments) != 1 {
+			return value{}, fmt.Errorf("emit-mlir conversion to %s expects one argument", name)
+		}
+		source, err := g.emitExpressionForTargetUnsigned(expr.Arguments[0], info.typ, info.unsigned)
+		if err != nil {
+			return value{}, err
+		}
+		return g.coerceValue(source, info.typ, info.unsigned)
+	}
 	if isMLIRBuiltinNumericTypeName(name) {
 		return g.emitBuiltinNumericConversion(expr, name)
 	}
@@ -1962,6 +2472,7 @@ func (g *Generator) emitCallExpression(expr *ast.CallExpression) (value, error) 
 	if fn == nil {
 		return value{}, fmt.Errorf("emit-mlir unknown function %s", name)
 	}
+	g.reachable[fn] = true
 
 	args := []value{}
 	for i, argExpr := range expr.Arguments {
@@ -1985,8 +2496,9 @@ func (g *Generator) emitCallExpression(expr *ast.CallExpression) (value, error) 
 
 	returnType := g.mlirType(fn.ReturnType)
 	returnUnsigned := g.typeUnsigned(fn.ReturnType)
+	callReturnType := returnType
 	if returnType == "string" {
-		return value{}, fmt.Errorf("emit-mlir does not support string return values yet")
+		callReturnType = mlirStringType
 	}
 	result := ""
 	if returnType != "void" {
@@ -2013,7 +2525,10 @@ func (g *Generator) emitCallExpression(expr *ast.CallExpression) (value, error) 
 		g.write(") -> ()\n")
 		return value{typ: "void"}, nil
 	}
-	g.write(") -> %s\n", returnType)
+	g.write(") -> %s\n", callReturnType)
+	if returnType == "string" {
+		return g.unpackString(value{typ: mlirStringType, ref: result})
+	}
 	return value{
 		typ:        returnType,
 		ref:        result,
@@ -2029,6 +2544,13 @@ func (g *Generator) emitConversionExpression(expr *ast.ConversionExpression) (va
 	}
 	if info, ok := g.enums[expr.Type.Name]; ok {
 		return g.emitEnumConversion([]ast.Expression{expr.Value}, info)
+	}
+	if info, ok := g.namedTypes[expr.Type.Name]; ok {
+		source, err := g.emitExpressionForTargetUnsigned(expr.Value, info.typ, info.unsigned)
+		if err != nil {
+			return value{}, err
+		}
+		return g.coerceValue(source, info.typ, info.unsigned)
 	}
 	targetType := mlirBuiltinNumericType(expr.Type.Name)
 	if targetType == "" {
@@ -2600,10 +3122,10 @@ func (g *Generator) resolveStruct(name string) (*mlirStruct, error) {
 			return nil, fmt.Errorf("emit-mlir struct %s contains an incomplete field", name)
 		}
 		ref := declarationField.Type
-		if ref.Ref || ref.MutableRef || ref.Slice || ref.ElementType != nil || ref.ArrayLengthExpression != nil || ref.ArrayLength != 0 {
+		if ref.Ref || ref.MutableRef || ref.Slice {
 			return nil, fmt.Errorf("emit-mlir struct field %s.%s uses an unsupported compound type", name, declarationField.Name.Value)
 		}
-		if len(ref.TypeArgs) > 0 {
+		if len(ref.TypeArgs) > 0 && ref.Name != "RawPtr" {
 			return nil, fmt.Errorf("emit-mlir struct field %s.%s uses an unsupported generic type", name, declarationField.Name.Value)
 		}
 
@@ -2616,19 +3138,23 @@ func (g *Generator) resolveStruct(name string) (*mlirStruct, error) {
 			fieldStructName = nestedInfo.name
 		}
 		fieldType := g.mlirType(ref)
-		if fieldType == "string" {
-			return nil, fmt.Errorf("emit-mlir does not support string fields in struct %s yet", name)
-		}
 		if fieldType == "void" {
 			return nil, fmt.Errorf("emit-mlir does not support field type %s in struct %s", ref.Name, name)
 		}
-		fieldTypes = append(fieldTypes, fieldType)
+		storageType := fieldType
+		stringField := fieldType == "string"
+		if stringField {
+			storageType = mlirStringType
+		}
+		fieldTypes = append(fieldTypes, storageType)
 		fields = append(fields, mlirStructField{
 			name:       declarationField.Name.Value,
 			typ:        fieldType,
+			storageTyp: storageType,
 			structName: fieldStructName,
 			enumName:   g.enumName(ref),
 			unsigned:   g.typeUnsigned(ref),
+			string:     stringField,
 		})
 	}
 	info.fields = fields
@@ -2669,15 +3195,68 @@ func (g *Generator) typeUnsigned(ref *ast.TypeReference) bool {
 	if ref == nil {
 		return false
 	}
+	if ref.ElementType != nil && !ref.Slice {
+		return g.typeUnsigned(ref.ElementType)
+	}
 	if info, ok := g.enums[ref.Name]; ok {
+		return info.unsigned
+	}
+	if info, ok := g.namedTypes[ref.Name]; ok {
 		return info.unsigned
 	}
 	return isUnsignedTypeReference(ref)
 }
 
+func parseMLIRArrayType(typ string) (int64, string, bool) {
+	const prefix = "!llvm.array<"
+	if !strings.HasPrefix(typ, prefix) || !strings.HasSuffix(typ, ">") {
+		return 0, "", false
+	}
+	body := strings.TrimSuffix(strings.TrimPrefix(typ, prefix), ">")
+	separator := strings.Index(body, " x ")
+	if separator <= 0 {
+		return 0, "", false
+	}
+	length, err := strconv.ParseInt(body[:separator], 10, 64)
+	if err != nil || length < 0 {
+		return 0, "", false
+	}
+	elementType := body[separator+3:]
+	if elementType == "" {
+		return 0, "", false
+	}
+	return length, elementType, true
+}
+
+func (g *Generator) structNameForMLIRType(typ string) string {
+	for name, info := range g.structs {
+		if info.typ == typ {
+			return name
+		}
+	}
+	return ""
+}
+
 func (g *Generator) mlirType(ref *ast.TypeReference) string {
 	if ref == nil {
 		return "void"
+	}
+	if ref.Name == "RawPtr" && len(ref.TypeArgs) == 1 {
+		return "!llvm.ptr"
+	}
+	if ref.ElementType != nil {
+		if ref.Slice {
+			return "void"
+		}
+		length, ok := mlirArrayLength(ref)
+		if !ok {
+			return "void"
+		}
+		elementType := g.mlirType(ref.ElementType)
+		if elementType == "void" || elementType == "string" {
+			return "void"
+		}
+		return fmt.Sprintf("!llvm.array<%d x %s>", length, elementType)
 	}
 	switch ref.Name {
 	case "bool":
@@ -2711,6 +3290,9 @@ func (g *Generator) mlirType(ref *ast.TypeReference) string {
 	case "decimal128":
 		return mlirDecimal128Type
 	default:
+		if info, ok := g.namedTypes[ref.Name]; ok {
+			return info.typ
+		}
 		if info, ok := g.enums[ref.Name]; ok {
 			return info.typ
 		}
@@ -2719,6 +3301,20 @@ func (g *Generator) mlirType(ref *ast.TypeReference) string {
 		}
 		return "void"
 	}
+}
+
+func mlirArrayLength(ref *ast.TypeReference) (int64, bool) {
+	if ref == nil || ref.ElementType == nil || ref.Slice {
+		return 0, false
+	}
+	if ref.ArrayLengthExpression == nil {
+		return ref.ArrayLength, ref.ArrayLength >= 0
+	}
+	value, ok := enumIntegerConstant(ref.ArrayLengthExpression, big.NewInt(0))
+	if !ok || !value.IsInt64() || value.Sign() < 0 {
+		return 0, false
+	}
+	return value.Int64(), true
 }
 
 func (g *Generator) mlirParameterType(param *ast.Parameter) string {
@@ -2767,13 +3363,41 @@ func (g *Generator) resolveFunction(name string, arity int) (*ast.FunctionDeclar
 }
 
 func (g *Generator) emitStringLiteral(expr *ast.StringLiteral) (value, error) {
+	return g.emitStringValue(expr.Value), nil
+}
+
+func (g *Generator) emitStringValue(text string) value {
 	name := fmt.Sprintf("__sec_str_%d", g.stringID)
 	g.stringID++
-	g.globals.WriteString(fmt.Sprintf("  llvm.mlir.global internal constant @%s(\"%s\") : !llvm.array<%d x i8>\n", name, mlirCString(expr.Value), len([]byte(expr.Value))))
+	g.globals.WriteString(fmt.Sprintf("  llvm.mlir.global internal constant @%s(\"%s\") : !llvm.array<%d x i8>\n", name, mlirCString(text), len([]byte(text))))
 	ptr := g.nextTemp()
 	g.write("    %s = llvm.mlir.addressof @%s : !llvm.ptr\n", ptr, name)
-	lenValue := g.emitIndexConstant(strconv.Itoa(len(expr.Value)))
-	return value{typ: "string", ref: ptr, len: lenValue.ref}, nil
+	lenValue := g.emitIndexConstant(strconv.Itoa(len(text)))
+	return value{typ: "string", ref: ptr, len: lenValue.ref}
+}
+
+func (g *Generator) packString(input value) (value, error) {
+	if input.typ != "string" || input.ref == "" || input.len == "" {
+		return value{}, fmt.Errorf("emit-mlir expected string value")
+	}
+	undef := g.nextTemp()
+	g.write("    %s = llvm.mlir.undef : %s\n", undef, mlirStringType)
+	withPtr := g.nextTemp()
+	g.write("    %s = llvm.insertvalue %s, %s[0] : %s\n", withPtr, input.ref, undef, mlirStringType)
+	result := g.nextTemp()
+	g.write("    %s = llvm.insertvalue %s, %s[1] : %s\n", result, input.len, withPtr, mlirStringType)
+	return value{typ: mlirStringType, ref: result}, nil
+}
+
+func (g *Generator) unpackString(descriptor value) (value, error) {
+	if descriptor.typ != mlirStringType || descriptor.ref == "" {
+		return value{}, fmt.Errorf("emit-mlir expected stored string descriptor")
+	}
+	ptr := g.nextTemp()
+	g.write("    %s = llvm.extractvalue %s[0] : %s\n", ptr, descriptor.ref, mlirStringType)
+	length := g.nextTemp()
+	g.write("    %s = llvm.extractvalue %s[1] : %s\n", length, descriptor.ref, mlirStringType)
+	return value{typ: "string", ref: ptr, len: length}, nil
 }
 
 func (g *Generator) coerceValue(val value, targetType string, targetUnsigned bool) (value, error) {
@@ -2833,6 +3457,11 @@ func (g *Generator) coerceIntegerStorageValue(val value, targetType string, targ
 }
 
 func (g *Generator) zeroValue(typ string) value {
+	if _, _, ok := parseMLIRArrayType(typ); ok {
+		result := g.nextTemp()
+		g.write("    %s = llvm.mlir.undef : %s\n", result, typ)
+		return value{typ: typ, ref: result}
+	}
 	if isMLIRDecimalType(typ) {
 		coefficientType, _ := decimalCoefficientType(typ)
 		coefficient := g.emitIntegerConstant("0", coefficientType)

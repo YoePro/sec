@@ -24,6 +24,8 @@ Implemented:
 - `let` declarations with inferred or explicit type
 - comma-separated `let` declarations
 - type-first variable declarations
+- parenthesized type-first declaration groups
+- formatter indentation for parenthesized type-first declaration group entries
 - mutable typed declarations without initializers
 - rejection of immutable typed declarations without initializers
 - redeclaration checks without overwriting the previous symbol
@@ -32,6 +34,9 @@ Implemented:
 - explicit conversions through `Type(value)`
 - explicit numeric-to-bool conversion
 - decimal literals as exact decimal values in sema
+- `c` and `r` integer suffixes for explicit `char` and `rune` literals,
+  including Unicode-scalar validation, contextual `char`-literal shaping for
+  `rune` function parameters, and exact type comparisons
 - `int128`, `int256`, `uint128` and `uint256` as active builtin types in lexer,
   parser, AST and semantic analysis
 - `decimal128` as an active builtin type in lexer, parser, AST and semantic
@@ -47,6 +52,8 @@ Implemented:
 - `int128`, `int256`, `uint128` and `uint256` lowering in MLIR
 - bit-backed enum widths preserved through AST and semantic analysis and
   lowered as exact `iN` values in MLIR and LLVM
+- bare `T[]` is accepted by semantic analysis as an owning dynamic
+  array/sequence type; `ref T[]` and `ref mut T[]` remain slice references
 
 Partially implemented:
 
@@ -125,6 +132,25 @@ Type-first immutable declarations must have initializers:
 float: a := 5.4, pi := 3.14
 ```
 
+Parenthesized type-first declaration groups are supported for many immutable
+values of the same type:
+
+```sec
+TokenType (
+    ILLEGAL := "ILLEGAL",
+    EOF := "EOF",
+    IDENT := "IDENT",
+)
+```
+
+This is equivalent to ordinary immutable typed declarations where every
+declarator inherits `TokenType`.
+
+The form is intended for compact constant-like tables without introducing a
+separate `const` declaration kind.
+
+Each entry must have an initializer.
+
 This is rejected:
 
 ```sec
@@ -155,6 +181,9 @@ LetDeclaration
 TypedDeclaration
     := TypeReference ["mut"] ":" TypedDeclarator { "," TypedDeclarator }
 
+TypedDeclarationGroup
+    := TypeReference "(" TypedDeclarator { "," TypedDeclarator } [ "," ] ")"
+
 LetDeclarator
     := Identifier [ ":" TypeReference ] [ ":=" Expression ]
 
@@ -168,6 +197,8 @@ Rules:
 - redeclaration is checked per name.
 - redeclaration must not overwrite the previous symbol.
 - immutable declarations must have an initializer.
+- parenthesized type-first declaration groups are immutable and every
+  declarator must have an initializer.
 - typed mutable declarations may omit an initializer.
 - `let mut a: Type` is valid.
 - `let a: Type` without initializer is invalid.
@@ -294,13 +325,15 @@ higher-level formatting operations.
 Numeric literals are untyped until context gives them a type.
 
 Literal suffixes may be used when the source should explicitly state the
-numeric family:
+literal family or scalar type:
 
 ```text
 8i    int literal
 8u    uint literal
 8f    float literal
 8d    decimal literal
+65c   char literal
+65r   rune literal
 ```
 
 The suffix selects the numeric family, not a fixed width. Width is still chosen
@@ -311,11 +344,50 @@ let a := 8i          // int
 let b := 8u          // uint
 let c := 8f          // float
 let d := 8d          // decimal
+let letter := 65c    // char
+let nul := 0r        // rune
 
 let small: int8 := 8i
 let wide: int128 := 8i
 let exact: decimal128 := 8d
 ```
+
+`c` and `r` apply only to integer literals. They select the exact scalar type,
+not a numeric width, and neither type implicitly converts to or from integer
+types. Use the matching suffix when comparing against a `char` or `rune`:
+
+```sec
+if ch == 0r {
+    // ...
+}
+
+if letter == 65c {
+    // ...
+}
+```
+
+Single-quoted character literals are context-shaped. A character literal such
+as `'$'` is a `char` by default, but it becomes a `rune` where a `rune` is
+expected, when it is compared directly to a `rune` value, or as a `rune`
+`switch` case. No explicit `rune('$')` conversion is required:
+
+```sec
+let marker: rune := '$'
+
+if ch == '$' {
+    // ch is a rune
+}
+```
+
+This does not make existing `char` and `rune` variables interchangeable.
+
+The literal value must be a valid Unicode scalar value: it must be within
+`0..U+10FFFF` and must not be in the surrogate range `U+D800..U+DFFF`.
+
+For hexadecimal literals, `c` remains a hexadecimal digit. Consequently
+`0x41c` is an unsuffixed hexadecimal integer; write the character value using
+a decimal, binary, or octal `c` literal instead. `r` is unambiguous, so
+`0x41r` is valid.
 
 Base prefixes are supported for integer literals:
 

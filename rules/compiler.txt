@@ -350,6 +350,9 @@ Rules:
 - `parse` validates grammar and prints the parsed source representation.
 - `ast` prints a formatted tree representation of the AST.
 - `sema` runs semantic analysis and reports errors and warnings.
+- Inspection commands print a final diagnostic summary to stderr in the form
+  `summary: N errors, M warnings`; `sema` combines parser and semantic warnings
+  in that total.
 - `emit-mlir` generates MLIR text and requires the `-o` output flag.
 - `emit-llvm` generates LLVM IR text and requires the `-o` output flag.
 - For emit commands, `-o -` writes the generated text to stdout.

@@ -70,6 +70,9 @@ value.ptr
 text.len
 array.len
 slice.len
+len(text)
+len(array)
+len(slice)
 ```
 
 The public syntax behaves like ordinary member access.
@@ -114,6 +117,38 @@ let empty := text.IsEmpty()
 ```
 
 The implementation must exist only once.
+
+## 1.4 Compiler-known `len`
+
+`len` is a compiler-known core function. It uses ordinary call syntax and is
+available without an import:
+
+```sec
+fn len(value: string) int
+fn len[T](value: T[]) int
+fn len[T](value: ref T[]) int
+fn len[T](value: ref mut T[]) int
+```
+
+The compiler infers `T` from the argument. `len` returns `int` in Sec 0.1 so
+that it composes directly with indexes, offsets and positions without an
+integer conversion:
+
+```sec
+let index := self.pos + offset
+if index < 0 || index >= len(self.input) {
+    return 0r
+}
+```
+
+`len` accepts only `string`, an owning array/sequence, or a shared or mutable
+slice reference. It evaluates its argument once, does not allocate and does
+not consume the argument. Its name is compiler-owned and cannot be redeclared
+or overloaded by user code.
+
+The existing intrinsic member properties `string.len`, `array.len` and
+`slice.len` remain `uint` in Sec 0.1. Compiler and standard-library code that
+performs signed index arithmetic should use the `len(...)` function.
 
 ---
 
@@ -311,6 +346,9 @@ unsafe property ptr: RawPtr[byte] {
 
 `len` is the byte length unless a later language rule explicitly changes it.
 
+The compiler-known `len(text)` function returns that same byte length as an
+`int` for index arithmetic.
+
 ## 5.2 Required associated functions
 
 ```sec
@@ -319,6 +357,19 @@ impl string {
     fn FromRuneArray(value: rune[]) string
 }
 ```
+
+`rune` arrays and rune slice views additionally provide a compiler-known
+materializing method:
+
+```sec
+let runes: rune[2] := ['A', 'B']
+let text := runes.ToString()
+```
+
+`ToString()` is available only when the element type is exactly `rune`. It
+accepts no arguments, returns `string`, does not mutate or consume the source,
+and has the same allocation and encoding behavior as `string.FromRuneArray`.
+It is not a general `array.ToString()` formatting operation.
 
 These are the minimum required constructors.
 
@@ -1478,8 +1529,17 @@ Implemented:
 - Ordinary user files still may not add `impl` blocks to compiler-owned
   built-in types such as `string`.
 - Core impl bodies on built-in targets are semantically analyzed.
+- Compiler-known core function `len(...)` is semantically available without
+  imports for strings, owning arrays/sequences and `ref`/`ref mut` slices. It
+  returns `int`, is shown by LSP global completion and rejects user
+  redeclaration.
 - `string.len`, array `.len` and slice `.len` are intrinsic members returning
   `uint`.
+- `rune` arrays and rune slice views provide compiler-known `ToString()` text
+  materialization, including fixed arrays such as `rune[2]`.
+- Impl-method receiver mutability is inferred through evaluated expressions,
+  including method calls used as `let` and grouped-`let` initializers, control
+  conditions, assignment values, and nested expression operands.
 - Universal `.ptr` member resolution exists for addressable values and returns
   `RawPtr[T]`.
 - `string.ptr` returns `RawPtr[byte]`.
@@ -1502,17 +1562,27 @@ Implemented:
   and `AllocationError`.
 - `RawPtr[void]` is supported as an extern C/FFI pointer type.
 - Minimum core source currently includes `bool.ToString()`, selected `int`
-  and `uint` methods, and a semantically valid subset of `string` methods
-  including `ToString()` and `IsEmpty()`.
+  and `uint` methods, a semantically valid subset of `string` methods
+  including `ToString()`, `IsEmpty()` and `ToRuneArray()`, plus the minimum
+  `rune` method declarations used by bootstrap lexing: `ToString()`, ASCII
+  classification methods, `IsAscii()` and `Utf8Length()`.
 
 Partially implemented:
 
 - Intrinsic members are implemented directly in semantic analysis rather than
   through a complete unified `BuiltinMember` declaration table.
+- `len(...)` is recognized directly by semantic analysis. Its distinct
+  Semantic IR and backend lowering are pending.
 - `.ptr` lowering still relies on existing backend member emission and is not
   yet represented as a distinct Semantic IR intrinsic operation.
-- Core method bodies that require allocation, string scanning, Unicode,
-  formatting, iterators or owned slices are deterministic stubs.
+- `string.ToRuneArray()`, `rune.ToString()` and `rune.Utf8Length()` are
+  semantically available deterministic stubs. They do not yet materialize
+  source data or provide runtime conversion behavior.
+- `rune.IsDigit()`, `IsLetter()`, `IsLetterOrDigit()`, `IsWhitespace()` and
+  `IsControl()` currently classify ASCII only. Full Unicode classification is
+  still pending.
+- Other core method bodies that require allocation, string scanning, Unicode,
+  formatting, iterators or owned slices remain deterministic stubs.
 - `StringSplitIterator` exists as a minimal core type so `string.Split` can
   have a real return type, but iterator behavior is not implemented.
 
@@ -1525,17 +1595,17 @@ Pending:
 - Related named-type member inheritance and substitution.
 - Compile-time format string validation.
 - Complete backend/IR representation for core intrinsics.
-- Owned slice/materializing conversion semantics required for
+- Allocation-aware materialization and runtime lowering for
   `string.ToByteArray()` and `string.ToRuneArray()`.
 
 Current intentional deviation from the desired final surface:
 
 - The rulebook specifies `FromByteArray(value: byte[])`,
   `FromRuneArray(value: rune[])`, `ToByteArray() byte[]` and
-  `ToRuneArray() rune[]`. The current language implementation still rejects
-  bare slice types outside `ref` positions and has no finalized owned-slice
-  allocation model, so core source currently keeps only the ref-based
-  constructors and leaves materializing array conversions pending.
+  `ToRuneArray() rune[]`. The current core source retains ref-based
+  constructors while `ToRuneArray() rune[]` is available as a semantic stub.
+  Final ownership, allocation and runtime materialization semantics remain
+  pending.
 
 ## Phase 2
 

@@ -53,6 +53,15 @@ Implemented
 
     Vehicle{ _speed: speed }
 
+- Multiline struct literals may separate fields by line layout without commas:
+
+    Lexer {
+        input: runes
+        file: file
+    }
+
+  Commas remain accepted, including a trailing comma.
+
 - Sema checks struct literal fields, duplicate fields and field value types.
 - Parser supports field/member access:
 
@@ -66,6 +75,10 @@ Implemented
 - The MLIR backend supports struct literals, local struct storage, struct
   parameters, struct returns, nested structs, direct field reads and field
   assignment through stored local structs.
+- String fields use the inline LLVM descriptor
+  `!llvm.struct<(!llvm.ptr, i64)>`. Construction, reads and assignment pack or
+  unpack the pointer and byte length with `llvm.insertvalue` and
+  `llvm.extractvalue`; no runtime support is required.
 - MLIR struct construction and field reads use `llvm.insertvalue` and
   `llvm.extractvalue` inline and do not require runtime support.
 - Nested MLIR field assignment rebuilds changed aggregate values from the leaf
@@ -87,8 +100,7 @@ Not implemented yet
 - Complete getter/setter body type checking.
 - `try` property assignment syntax.
 - MLIR lowering for generic structs, struct spread, assignment through
-  parameters or references, string fields, reference/slice/array fields,
-  methods and properties.
+  parameters or references, reference/slice fields, methods and properties.
 
 
 Language model

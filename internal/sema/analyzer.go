@@ -33,6 +33,7 @@ type Analyzer struct {
 	assigned              map[string]bool
 	moved                 map[string]lexer.Token
 	moveReasons           map[string]string
+	closedResources       map[string]lexer.Token
 	borrows               map[string][]borrowRecord
 	localRefContainers    map[string]localReferenceOrigin
 	arenaGenerations      map[string]int
@@ -60,6 +61,8 @@ const (
 	sharedBorrow  borrowKind = "shared"
 	mutableBorrow borrowKind = "mutable"
 )
+
+const dynamicArrayLength int64 = -1
 
 type borrowRecord struct {
 	Root   string
@@ -101,10 +104,12 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.assigned = map[string]bool{}
 	a.moved = map[string]lexer.Token{}
 	a.moveReasons = map[string]string{}
+	a.closedResources = map[string]lexer.Token{}
 	a.borrows = map[string][]borrowRecord{}
 	a.localRefContainers = map[string]localReferenceOrigin{}
 	a.arenaGenerations = map[string]int{}
 	a.functions = map[string][]Function{}
+	a.registerCompilerKnownFunctions()
 	a.implBlocks = map[string]lexer.Token{}
 	a.validImplStatements = map[*ast.ImplStatement]bool{}
 	a.currentImplTarget = ""
@@ -216,6 +221,9 @@ func (a *Analyzer) withProgramModules(program *ast.Program, visit func(ast.State
 	previous := a.currentModule
 	module := ""
 	for _, stmt := range program.Statements {
+		if isNilStatement(stmt) {
+			continue
+		}
 		if moduleStmt, ok := stmt.(*ast.ModuleStatement); ok {
 			module = moduleStmt.Path
 			continue
@@ -230,7 +238,13 @@ func (a *Analyzer) validateModuleDeclaration(program *ast.Program) {
 	firstByFileAndPath := map[string]*ast.ModuleStatement{}
 	found := false
 	for _, stmt := range program.Statements {
-		if moduleStmt, ok := stmt.(*ast.ModuleStatement); ok && moduleStmt.Path != "" {
+		if isNilStatement(stmt) {
+			continue
+		}
+		if moduleStmt, ok := stmt.(*ast.ModuleStatement); ok {
+			if moduleStmt == nil || moduleStmt.Path == "" {
+				continue
+			}
 			found = true
 			key := moduleStmt.Token.File + "\x00" + moduleStmt.Path
 			if previous := firstByFileAndPath[key]; previous != nil {
@@ -267,6 +281,82 @@ func isAllowedModuleStatement(stmt ast.Statement) bool {
 		*ast.CommentStatement,
 		*ast.InvalidStatement:
 		return true
+	default:
+		return false
+	}
+}
+
+func isNilStatement(stmt ast.Statement) bool {
+	if stmt == nil {
+		return true
+	}
+	switch stmt := stmt.(type) {
+	case *ast.TargetDirective:
+		return stmt == nil
+	case *ast.ModuleStatement:
+		return stmt == nil
+	case *ast.ImportStatement:
+		return stmt == nil
+	case *ast.TypeDeclStatement:
+		return stmt == nil
+	case *ast.UnitDeclStatement:
+		return stmt == nil
+	case *ast.EnumDeclaration:
+		return stmt == nil
+	case *ast.InterfaceDeclaration:
+		return stmt == nil
+	case *ast.ImplStatement:
+		return stmt == nil
+	case *ast.FunctionDeclaration:
+		return stmt == nil
+	case *ast.StructStatement:
+		return stmt == nil
+	case *ast.LetStatement:
+		return stmt == nil
+	case *ast.LetGroupStatement:
+		return stmt == nil
+	case *ast.CommentStatement:
+		return stmt == nil
+	case *ast.InvalidStatement:
+		return stmt == nil
+	case *ast.AssignmentStatement:
+		return stmt == nil
+	case *ast.TryAssignmentStatement:
+		return stmt == nil
+	case *ast.DeferStatement:
+		return stmt == nil
+	case *ast.DiscardStatement:
+		return stmt == nil
+	case *ast.DetachStatement:
+		return stmt == nil
+	case *ast.CancelStatement:
+		return stmt == nil
+	case *ast.ExpressionStatement:
+		return stmt == nil
+	case *ast.ReturnStatement:
+		return stmt == nil
+	case *ast.IfStatement:
+		return stmt == nil
+	case *ast.ForStatement:
+		return stmt == nil
+	case *ast.WhileStatement:
+		return stmt == nil
+	case *ast.SwitchStatement:
+		return stmt == nil
+	case *ast.SelectStatement:
+		return stmt == nil
+	case *ast.FallthroughStatement:
+		return stmt == nil
+	case *ast.BreakStatement:
+		return stmt == nil
+	case *ast.ContinueStatement:
+		return stmt == nil
+	case *ast.UnsafeStatement:
+		return stmt == nil
+	case *ast.AsmStatement:
+		return stmt == nil
+	case *ast.MatchStatement:
+		return stmt == nil
 	default:
 		return false
 	}
@@ -333,41 +423,44 @@ func (a *Analyzer) validateModuleDeclarationNamespace(program *ast.Program) {
 func moduleDeclarationsFromStatement(stmt ast.Statement) []moduleDeclaration {
 	switch stmt := stmt.(type) {
 	case *ast.TypeDeclStatement:
-		if stmt.Name == nil {
+		if stmt == nil || stmt.Name == nil {
 			return nil
 		}
 		return []moduleDeclaration{{Name: stmt.Name.Value, Kind: moduleDeclarationType, Token: stmt.Name.Token}}
 	case *ast.UnitDeclStatement:
-		if stmt.Name == nil {
+		if stmt == nil || stmt.Name == nil {
 			return nil
 		}
 		return []moduleDeclaration{{Name: stmt.Name.Value, Kind: moduleDeclarationUnit, Token: stmt.Name.Token}}
 	case *ast.EnumDeclaration:
-		if stmt.Name == nil {
+		if stmt == nil || stmt.Name == nil {
 			return nil
 		}
 		return []moduleDeclaration{{Name: stmt.Name.Value, Kind: moduleDeclarationEnum, Token: stmt.Name.Token}}
 	case *ast.InterfaceDeclaration:
-		if stmt.Name == nil {
+		if stmt == nil || stmt.Name == nil {
 			return nil
 		}
 		return []moduleDeclaration{{Name: stmt.Name.Value, Kind: moduleDeclarationInterface, Token: stmt.Name.Token}}
 	case *ast.StructStatement:
-		if stmt.Name == nil {
+		if stmt == nil || stmt.Name == nil {
 			return nil
 		}
 		return []moduleDeclaration{{Name: stmt.Name.Value, Kind: moduleDeclarationType, Token: stmt.Name.Token}}
 	case *ast.FunctionDeclaration:
-		if stmt.Name == nil {
+		if stmt == nil || stmt.Name == nil {
 			return nil
 		}
 		return []moduleDeclaration{{Name: stmt.Name.Value, Kind: moduleDeclarationFunction, Token: stmt.Name.Token}}
 	case *ast.LetStatement:
-		if stmt.Name == nil {
+		if stmt == nil || stmt.Name == nil {
 			return nil
 		}
 		return []moduleDeclaration{{Name: stmt.Name.Value, Kind: moduleDeclarationVariable, Token: stmt.Name.Token}}
 	case *ast.LetGroupStatement:
+		if stmt == nil {
+			return nil
+		}
 		decls := []moduleDeclaration{}
 		for _, let := range stmt.Lets {
 			if let == nil || let.Name == nil {
@@ -517,6 +610,9 @@ func (a *Analyzer) validateGenericParameterConstraints(parameters []*ast.Generic
 
 func (a *Analyzer) registerImplTypeDeclarations(program *ast.Program) {
 	for _, stmt := range program.Statements {
+		if isNilStatement(stmt) {
+			continue
+		}
 		impl, ok := stmt.(*ast.ImplStatement)
 		if !ok {
 			continue
@@ -755,6 +851,9 @@ func (a *Analyzer) analyzeEarlyEnumDeclarations(program *ast.Program) {
 		a.types[enum.Name.Value] = a.typeFromEnumDeclaration(enum.Name.Value, enum)
 	})
 	for _, stmt := range program.Statements {
+		if isNilStatement(stmt) {
+			continue
+		}
 		impl, ok := stmt.(*ast.ImplStatement)
 		if !ok || !a.validImplStatements[impl] || impl.Target == nil {
 			continue
@@ -780,6 +879,9 @@ func (a *Analyzer) enumCanAnalyzeEarly(enum *ast.EnumDeclaration) bool {
 
 func (a *Analyzer) analyzeImplTypeDeclarations(program *ast.Program) {
 	for _, stmt := range program.Statements {
+		if isNilStatement(stmt) {
+			continue
+		}
 		impl, ok := stmt.(*ast.ImplStatement)
 		if !ok {
 			continue
@@ -827,6 +929,9 @@ func (a *Analyzer) analyzeImplTypeDeclarations(program *ast.Program) {
 
 func (a *Analyzer) analyzeUnitMetadata(program *ast.Program) {
 	for _, stmt := range program.Statements {
+		if isNilStatement(stmt) {
+			continue
+		}
 		impl, ok := stmt.(*ast.ImplStatement)
 		if !ok || !a.validImplStatements[impl] || impl.Target == nil {
 			continue
@@ -1162,12 +1267,18 @@ func (a *Analyzer) analyzeBlockStatements(block *ast.BlockStatement) {
 	}
 	a.scopeDepth++
 	defer func() {
+		newNames := make([]string, 0)
 		for name := range a.symbols {
 			if !symbolsBefore[name] {
-				a.checkUnresolvedTaskAtScopeExit(name)
-				a.endBorrowsHeldBy(name)
-				delete(a.localRefContainers, name)
+				newNames = append(newNames, name)
 			}
+		}
+		sort.Strings(newNames)
+		for _, name := range newNames {
+			a.checkUnresolvedTaskAtScopeExit(name)
+			a.checkUnclosedResourceAtScopeExit(name)
+			a.endBorrowsHeldBy(name)
+			delete(a.localRefContainers, name)
 		}
 		a.scopeDepth--
 	}()
@@ -1208,6 +1319,47 @@ func (a *Analyzer) checkUnresolvedTaskAtScopeExit(name string) {
 		kind = "thread"
 	}
 	a.addErrorAtToken(symbol.Token, "owned %s %s is unresolved at scope exit", kind, name)
+}
+
+func (a *Analyzer) checkUnclosedResourceAtScopeExit(name string) {
+	symbol, ok := a.symbols[name]
+	if !ok || !isCloseTrackedResourceType(symbol.Type) {
+		return
+	}
+	if _, moved := a.moved[name]; moved {
+		return
+	}
+	if _, closed := a.closedResources[name]; closed {
+		return
+	}
+	a.addErrorAtToken(symbol.Token, "owned file %s is still open at scope exit; call %s.Close() or return it to transfer ownership", name, name)
+}
+
+func isCloseTrackedResourceType(typ Type) bool {
+	typ = dereferenceType(typ)
+	if typ.Kind != StructType {
+		return false
+	}
+	baseName := visibilityBaseName(typ.Name)
+	return baseName == "File" && (typ.Module == "io" || typ.Name == "io.File")
+}
+
+func (a *Analyzer) markClosedResourceCall(function Function, receiver methodReceiverInfo, isMethodCall bool, token lexer.Token) {
+	if !isMethodCall || !strings.HasSuffix(function.Name, ".Close") {
+		return
+	}
+	if receiver.Symbol == nil || !isCloseTrackedResourceType(receiver.Symbol.Type) {
+		return
+	}
+	if !isCloseTrackedResourceType(receiver.Type) && !isCloseTrackedResourceName(function.ImplTarget) {
+		return
+	}
+	a.closedResources[receiver.Symbol.Name] = token
+}
+
+func isCloseTrackedResourceName(name string) bool {
+	baseName := visibilityBaseName(name)
+	return baseName == "File" && (name == "File" || name == "io.File")
 }
 
 func (a *Analyzer) analyzeDiscardStatement(stmt *ast.DiscardStatement) {
@@ -2111,7 +2263,7 @@ func (a *Analyzer) analyzeSwitchCaseItems(clause *ast.SwitchCase, hasSubject boo
 	for _, item := range clause.Items {
 		switch item := item.(type) {
 		case *ast.SwitchValueCase:
-			valueType, _ := a.inferExpression(item.Value)
+			valueType, _ := a.inferExpressionWithExpected(item.Value, subjectType)
 			if valueType.Kind == InvalidType {
 				continue
 			}
@@ -2139,7 +2291,7 @@ func (a *Analyzer) analyzeSwitchCaseItems(clause *ast.SwitchCase, hasSubject boo
 				a.addErrorAtToken(item.Token, "relational switch case requires ordered subject type")
 				continue
 			}
-			valueType, _ := a.inferExpression(item.Value)
+			valueType, _ := a.inferExpressionWithExpected(item.Value, subjectType)
 			if valueType.Kind != InvalidType && !canCompareEquality(subjectType, valueType) {
 				a.addErrorAtToken(expressionToken(item.Value), "switch case must be compatible with subject type %s, got %s", typeDisplayName(subjectType), typeDisplayName(valueType))
 			}
@@ -2577,6 +2729,10 @@ func (a *Analyzer) registerFunctionDeclaration(fn *ast.FunctionDeclaration) {
 }
 
 func (a *Analyzer) registerFunctionDeclarationNamed(fn *ast.FunctionDeclaration, name string) {
+	if isCompilerKnownFunctionName(name) {
+		a.addErrorAtToken(fn.Name.Token, "function %s is compiler-known and cannot be declared", name)
+		return
+	}
 	if len(fn.GenericParameters) > 0 {
 		a.genericParameterNames(fn.GenericParameters)
 		a.validateGenericParameterConstraints(fn.GenericParameters)
@@ -2586,6 +2742,18 @@ func (a *Analyzer) registerFunctionDeclarationNamed(fn *ast.FunctionDeclaration,
 		return
 	}
 	a.registerFunctionDeclarationBody(fn, name)
+}
+
+func (a *Analyzer) registerCompilerKnownFunctions() {
+	a.functions["len"] = []Function{{
+		Name:       "len",
+		Module:     "core",
+		ReturnType: a.types["int"],
+	}}
+}
+
+func isCompilerKnownFunctionName(name string) bool {
+	return name == "len"
 }
 
 func (a *Analyzer) registerFunctionDeclarationBody(fn *ast.FunctionDeclaration, name string) {
@@ -2601,7 +2769,7 @@ func (a *Analyzer) registerFunctionDeclarationBody(fn *ast.FunctionDeclaration, 
 	if a.currentImplTarget != "" {
 		function.ImplTarget = a.currentImplTarget
 		if target, ok := a.types[a.currentImplTarget]; ok {
-			function.ReceiverMutable = functionBodyWritesTargetMember(fn.Body, target)
+			function.ReceiverMutable = a.functionBodyWritesTargetMember(fn.Body, target, functionParameterNames(fn))
 		}
 	}
 	if fn.Extern && !isSupportedExternABI(fn.ABI) {
@@ -2886,6 +3054,7 @@ func (a *Analyzer) analyzeFunctionBodyInScope(fn *ast.FunctionDeclaration, name 
 	previousConstInts := a.constInts
 	previousAssigned := a.assigned
 	previousMoved := a.moved
+	previousClosedResources := a.closedResources
 	previousBorrows := a.borrows
 	previousLocalRefContainers := a.localRefContainers
 	previousArenaGenerations := a.arenaGenerations
@@ -2898,6 +3067,7 @@ func (a *Analyzer) analyzeFunctionBodyInScope(fn *ast.FunctionDeclaration, name 
 	a.constInts = copyConstInts(previousConstInts)
 	a.assigned = copyAssigned(previousAssigned)
 	a.moved = map[string]lexer.Token{}
+	a.closedResources = map[string]lexer.Token{}
 	a.borrows = map[string][]borrowRecord{}
 	a.localRefContainers = map[string]localReferenceOrigin{}
 	a.arenaGenerations = map[string]int{}
@@ -2914,6 +3084,7 @@ func (a *Analyzer) analyzeFunctionBodyInScope(fn *ast.FunctionDeclaration, name 
 		a.assigned = previousAssigned
 		a.moved = previousMoved
 		a.borrows = previousBorrows
+		a.closedResources = previousClosedResources
 		a.localRefContainers = previousLocalRefContainers
 		a.arenaGenerations = previousArenaGenerations
 		a.currentFunctionName = previousFunctionName
@@ -2932,7 +3103,7 @@ func (a *Analyzer) analyzeFunctionBodyInScope(fn *ast.FunctionDeclaration, name 
 		delete(a.constInts, param.Name)
 		a.assigned[param.Name] = true
 	}
-	a.defineImplicitImplInstanceSymbols(fn.Body)
+	a.defineImplicitImplInstanceSymbols(fn.Body, function.ReceiverMutable)
 
 	a.analyzeBlockStatements(fn.Body)
 
@@ -2952,7 +3123,7 @@ func (a *Analyzer) rejectExplicitImplSelfParameter(fn *ast.FunctionDeclaration) 
 	}
 }
 
-func (a *Analyzer) defineImplicitImplSelfSymbol(block *ast.BlockStatement) {
+func (a *Analyzer) defineImplicitImplSelfSymbol(block *ast.BlockStatement, mutableSelf bool) {
 	if a.currentImplTarget == "" {
 		return
 	}
@@ -2960,12 +3131,11 @@ func (a *Analyzer) defineImplicitImplSelfSymbol(block *ast.BlockStatement) {
 	if !ok || target.Kind == InvalidType {
 		return
 	}
-	mutableSelf := functionBodyWritesTargetMember(block, target)
 	a.defineInstanceSymbols(target, mutableSelf, lexer.Token{})
 }
 
-func (a *Analyzer) defineImplicitImplInstanceSymbols(block *ast.BlockStatement) {
-	a.defineImplicitImplSelfSymbol(block)
+func (a *Analyzer) defineImplicitImplInstanceSymbols(block *ast.BlockStatement, mutableSelf bool) {
+	a.defineImplicitImplSelfSymbol(block, mutableSelf)
 }
 
 func (a *Analyzer) defineInstanceSymbols(target Type, mutableSelf bool, selfToken lexer.Token) {
@@ -2976,7 +3146,7 @@ func (a *Analyzer) defineInstanceSymbols(target Type, mutableSelf bool, selfToke
 		if _, exists := a.symbols[field.Name]; exists {
 			continue
 		}
-		a.symbols[field.Name] = Symbol{Name: field.Name, Type: field.Type, Mutable: mutableSelf, Token: field.Token, Storage: StorageOriginInline, Local: true, ScopeDepth: 0}
+		a.symbols[field.Name] = Symbol{Name: field.Name, Type: field.Type, Mutable: mutableSelf, ImplicitMember: true, Token: field.Token, Storage: StorageOriginInline, Local: true, ScopeDepth: 0}
 		a.assigned[field.Name] = true
 		delete(a.constInts, field.Name)
 	}
@@ -2987,7 +3157,7 @@ func (a *Analyzer) defineInstanceSymbols(target Type, mutableSelf bool, selfToke
 		if _, exists := a.symbols[field.Name]; exists {
 			continue
 		}
-		a.symbols[field.Name] = Symbol{Name: field.Name, Type: field.Type, Mutable: mutableSelf, Token: field.Token, Storage: StorageOriginInline, Local: true, ScopeDepth: 0}
+		a.symbols[field.Name] = Symbol{Name: field.Name, Type: field.Type, Mutable: mutableSelf, ImplicitMember: true, Token: field.Token, Storage: StorageOriginInline, Local: true, ScopeDepth: 0}
 		a.assigned[field.Name] = true
 		delete(a.constInts, field.Name)
 	}
@@ -2995,7 +3165,7 @@ func (a *Analyzer) defineInstanceSymbols(target Type, mutableSelf bool, selfToke
 		if _, exists := a.symbols[property.Name]; exists {
 			continue
 		}
-		a.symbols[property.Name] = Symbol{Name: property.Name, Type: property.Type, Mutable: mutableSelf && property.HasSetter, Token: property.Token, Storage: StorageOriginInline, Local: true, ScopeDepth: 0}
+		a.symbols[property.Name] = Symbol{Name: property.Name, Type: property.Type, Mutable: mutableSelf && property.HasSetter, ImplicitMember: true, Token: property.Token, Storage: StorageOriginInline, Local: true, ScopeDepth: 0}
 		a.assigned[property.Name] = true
 		delete(a.constInts, property.Name)
 	}
@@ -3003,7 +3173,7 @@ func (a *Analyzer) defineInstanceSymbols(target Type, mutableSelf bool, selfToke
 		if _, exists := a.symbols[event.Name]; exists {
 			continue
 		}
-		a.symbols[event.Name] = Symbol{Name: event.Name, Type: event.Type, Mutable: false, Token: event.Token, Storage: StorageOriginInline, Local: true, ScopeDepth: 0}
+		a.symbols[event.Name] = Symbol{Name: event.Name, Type: event.Type, Mutable: false, ImplicitMember: true, Token: event.Token, Storage: StorageOriginInline, Local: true, ScopeDepth: 0}
 		a.assigned[event.Name] = true
 		delete(a.constInts, event.Name)
 	}
@@ -3033,17 +3203,24 @@ func functionBodyWritesSelf(block *ast.BlockStatement) bool {
 	return false
 }
 
-func functionBodyWritesTargetMember(block *ast.BlockStatement, target Type) bool {
+func functionParameterNames(fn *ast.FunctionDeclaration) map[string]bool {
+	names := map[string]bool{}
+	if fn == nil {
+		return names
+	}
+	for _, param := range fn.Parameters {
+		if param != nil && param.Name != nil {
+			names[param.Name.Value] = true
+		}
+	}
+	return names
+}
+
+func (a *Analyzer) functionBodyWritesTargetMember(block *ast.BlockStatement, target Type, shadowed map[string]bool) bool {
 	if block == nil {
 		return false
 	}
-	names := targetAssignableMemberNames(target)
-	for _, stmt := range block.Statements {
-		if statementWritesTargetMember(stmt, names) {
-			return true
-		}
-	}
-	return false
+	return a.blockWritesTargetMember(block, target, targetAssignableMemberNames(target), shadowed)
 }
 
 func targetAssignableMemberNames(target Type) map[string]bool {
@@ -3131,34 +3308,70 @@ func statementWritesSelf(stmt ast.Statement) bool {
 	return false
 }
 
-func statementWritesTargetMember(stmt ast.Statement, names map[string]bool) bool {
-	switch stmt := stmt.(type) {
-	case *ast.AssignmentStatement:
-		return assignmentTargetUsesSelf(stmt.Target) || assignmentTargetUsesName(stmt.Target, names)
-	case *ast.TryAssignmentStatement:
-		return stmt.Assignment != nil && statementWritesTargetMember(stmt.Assignment, names)
-	case *ast.IfStatement:
-		return functionBodyWritesTargetMemberNames(stmt.Consequence, names) || functionBodyWritesTargetMemberNames(stmt.Alternative, names)
-	case *ast.ForStatement:
-		return functionBodyWritesTargetMemberNames(stmt.Body, names)
-	case *ast.WhileStatement:
-		return functionBodyWritesTargetMemberNames(stmt.Body, names)
-	case *ast.DeferStatement:
-		return functionBodyWritesTargetMemberNames(stmt.Body, names)
-	case *ast.UnsafeStatement:
-		return functionBodyWritesTargetMemberNames(stmt.Body, names)
-	case *ast.MatchStatement:
-		if stmt.Match == nil {
-			return false
+func (a *Analyzer) blockWritesTargetMember(block *ast.BlockStatement, target Type, memberNames map[string]bool, inheritedShadowed map[string]bool) bool {
+	if block == nil {
+		return false
+	}
+	shadowed := copyBoolMap(inheritedShadowed)
+	for _, stmt := range block.Statements {
+		if a.statementWritesTargetMember(stmt, target, memberNames, shadowed) {
+			return true
 		}
-		for _, arm := range stmt.Match.Arms {
-			if arm != nil && functionBodyWritesTargetMemberNames(arm.BlockBody, names) {
+		addStatementDeclarationsToShadowed(stmt, shadowed)
+	}
+	return false
+}
+
+func (a *Analyzer) statementWritesTargetMember(stmt ast.Statement, target Type, memberNames map[string]bool, shadowed map[string]bool) bool {
+	switch stmt := stmt.(type) {
+	case *ast.LetStatement:
+		return a.expressionCallsMutableTargetMethod(stmt.Value, target)
+	case *ast.LetGroupStatement:
+		for _, let := range stmt.Lets {
+			if let != nil && a.expressionCallsMutableTargetMethod(let.Value, target) {
 				return true
 			}
 		}
+		return false
+	case *ast.AssignmentStatement:
+		return assignmentTargetUsesSelf(stmt.Target) || assignmentTargetUsesUnshadowedMember(stmt.Target, memberNames, shadowed) || a.expressionCallsMutableTargetMethod(stmt.Value, target)
+	case *ast.TryAssignmentStatement:
+		return stmt.Assignment != nil && a.statementWritesTargetMember(stmt.Assignment, target, memberNames, shadowed)
+	case *ast.ExpressionStatement:
+		return a.expressionCallsMutableTargetMethod(stmt.Expression, target)
+	case *ast.DiscardStatement:
+		return a.expressionCallsMutableTargetMethod(stmt.Value, target)
+	case *ast.ReturnStatement:
+		return a.expressionCallsMutableTargetMethod(stmt.Value, target)
+	case *ast.IfStatement:
+		return a.expressionCallsMutableTargetMethod(stmt.Condition, target) || a.blockWritesTargetMember(stmt.Consequence, target, memberNames, shadowed) || a.blockWritesTargetMember(stmt.Alternative, target, memberNames, shadowed)
+	case *ast.ForStatement:
+		loopShadowed := copyBoolMap(shadowed)
+		for _, binding := range stmt.Bindings {
+			if !binding.Discard {
+				loopShadowed[binding.Name] = true
+			}
+		}
+		return a.expressionCallsMutableTargetMethod(stmt.Iterable, target) || a.expressionCallsMutableTargetMethod(stmt.Step, target) || a.blockWritesTargetMember(stmt.Body, target, memberNames, loopShadowed)
+	case *ast.WhileStatement:
+		return a.expressionCallsMutableTargetMethod(stmt.Condition, target) || a.blockWritesTargetMember(stmt.Body, target, memberNames, shadowed)
+	case *ast.DeferStatement:
+		return a.blockWritesTargetMember(stmt.Body, target, memberNames, shadowed)
+	case *ast.UnsafeStatement:
+		return a.blockWritesTargetMember(stmt.Body, target, memberNames, shadowed)
 	case *ast.SelectStatement:
 		for _, branch := range stmt.Branches {
-			if branch != nil && functionBodyWritesTargetMemberNames(branch.Body, names) {
+			if branch == nil {
+				continue
+			}
+			if a.expressionCallsMutableTargetMethod(branch.Value, target) {
+				return true
+			}
+			branchShadowed := copyBoolMap(shadowed)
+			if branch.Binding != nil {
+				branchShadowed[branch.Binding.Value] = true
+			}
+			if a.blockWritesTargetMember(branch.Body, target, memberNames, branchShadowed) {
 				return true
 			}
 		}
@@ -3166,16 +3379,98 @@ func statementWritesTargetMember(stmt ast.Statement, names map[string]bool) bool
 	return false
 }
 
-func functionBodyWritesTargetMemberNames(block *ast.BlockStatement, names map[string]bool) bool {
-	if block == nil {
+// expressionCallsMutableTargetMethod reports calls that require this impl
+// method's implicit self receiver to be writable. Every evaluated expression
+// retains that requirement, including returned and discarded call results.
+func (a *Analyzer) expressionCallsMutableTargetMethod(expr ast.Expression, target Type) bool {
+	switch expr := expr.(type) {
+	case nil, *ast.Identifier, *ast.IntegerLiteral, *ast.FloatLiteral, *ast.BooleanLiteral, *ast.CharLiteral, *ast.StringLiteral:
+		return false
+	case *ast.PrefixExpression:
+		return a.expressionCallsMutableTargetMethod(expr.Right, target)
+	case *ast.InfixExpression:
+		return a.expressionCallsMutableTargetMethod(expr.Left, target) || a.expressionCallsMutableTargetMethod(expr.Right, target)
+	case *ast.RangeExpression:
+		return a.expressionCallsMutableTargetMethod(expr.Start, target) || a.expressionCallsMutableTargetMethod(expr.End, target)
+	case *ast.ConversionExpression:
+		return a.expressionCallsMutableTargetMethod(expr.Value, target)
+	case *ast.OkExpression:
+		return a.expressionCallsMutableTargetMethod(expr.Value, target)
+	case *ast.ErrExpression:
+		return a.expressionCallsMutableTargetMethod(expr.Value, target)
+	case *ast.TryExpression:
+		return a.expressionCallsMutableTargetMethod(expr.Expression, target)
+	case *ast.MemberExpression:
+		return a.expressionCallsMutableTargetMethod(expr.Object, target)
+	case *ast.IndexExpression:
+		return a.expressionCallsMutableTargetMethod(expr.Left, target) || a.expressionCallsMutableTargetMethod(expr.Index, target)
+	case *ast.SliceExpression:
+		return a.expressionCallsMutableTargetMethod(expr.Left, target) || a.expressionCallsMutableTargetMethod(expr.Start, target) || a.expressionCallsMutableTargetMethod(expr.End, target)
+	case *ast.RefExpression:
+		return a.expressionCallsMutableTargetMethod(expr.Value, target)
+	case *ast.ArrayLiteral:
+		for _, element := range expr.Elements {
+			if a.expressionCallsMutableTargetMethod(element, target) {
+				return true
+			}
+		}
+	case *ast.SpreadExpression:
+		return a.expressionCallsMutableTargetMethod(expr.Value, target)
+	case *ast.StructLiteral:
+		for _, field := range expr.Fields {
+			if field != nil && a.expressionCallsMutableTargetMethod(field.Value, target) {
+				return true
+			}
+		}
+	case *ast.CallExpression:
+		if a.callRequiresMutableTargetReceiver(expr, target) {
+			return true
+		}
+		if a.expressionCallsMutableTargetMethod(expr.Callee, target) {
+			return true
+		}
+		for _, argument := range expr.Arguments {
+			if a.expressionCallsMutableTargetMethod(argument, target) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (a *Analyzer) callRequiresMutableTargetReceiver(call *ast.CallExpression, target Type) bool {
+	member, ok := call.Callee.(*ast.MemberExpression)
+	if !ok || member.Property == nil {
 		return false
 	}
-	for _, stmt := range block.Statements {
-		if statementWritesTargetMember(stmt, names) {
+	receiver, ok := member.Object.(*ast.Identifier)
+	if !ok || receiver.Value != "self" {
+		return false
+	}
+	for _, function := range a.functions[target.Name+"."+member.Property.Value] {
+		if function.ImplTarget == target.Name && function.ReceiverMutable {
 			return true
 		}
 	}
 	return false
+}
+
+func addStatementDeclarationsToShadowed(stmt ast.Statement, shadowed map[string]bool) {
+	switch stmt := stmt.(type) {
+	case *ast.LetStatement:
+		if stmt != nil && stmt.Name != nil {
+			shadowed[stmt.Name.Value] = true
+		}
+	case *ast.LetGroupStatement:
+		if stmt == nil {
+			return
+		}
+		for _, let := range stmt.Lets {
+			if let != nil && let.Name != nil {
+				shadowed[let.Name.Value] = true
+			}
+		}
+	}
 }
 
 func assignmentTargetUsesSelf(expr ast.Expression) bool {
@@ -3188,16 +3483,24 @@ func assignmentTargetUsesSelf(expr ast.Expression) bool {
 	return false
 }
 
-func assignmentTargetUsesName(expr ast.Expression, names map[string]bool) bool {
+func assignmentTargetUsesUnshadowedMember(expr ast.Expression, memberNames map[string]bool, shadowed map[string]bool) bool {
 	switch expr := expr.(type) {
 	case *ast.Identifier:
-		return names[expr.Value]
+		return memberNames[expr.Value] && !shadowed[expr.Value]
 	case *ast.MemberExpression:
 		return expressionUsesSelf(expr.Object)
 	case *ast.IndexExpression:
-		return assignmentTargetUsesName(expr.Left, names)
+		return assignmentTargetUsesUnshadowedMember(expr.Left, memberNames, shadowed)
 	}
 	return false
+}
+
+func copyBoolMap(in map[string]bool) map[string]bool {
+	out := map[string]bool{}
+	for name, value := range in {
+		out[name] = value
+	}
+	return out
 }
 
 func expressionUsesSelf(expr ast.Expression) bool {
@@ -3617,6 +3920,7 @@ func (a *Analyzer) analyzeReturnStatement(functionName string, returnType Type, 
 	if a.checkExpressionEscapesLocalReference(functionName, stmt.Value) {
 		return
 	}
+	a.markResourceTransfer(stmt.Value)
 	a.markMoveSource(stmt.Value)
 }
 
@@ -3855,6 +4159,7 @@ func (a *Analyzer) analyzeResultReturnStatement(functionName string, returnType 
 		if a.checkExpressionEscapesLocalReference(functionName, expr.Value) {
 			return
 		}
+		a.markResourceTransfer(expr.Value)
 		a.markMoveSource(expr.Value)
 	case *ast.ErrExpression:
 		if len(expr.Arguments) != 1 {
@@ -4802,6 +5107,81 @@ func (a *Analyzer) registerImplDeclarations(program *ast.Program) {
 		}
 		a.registerImplStatement(impl)
 	})
+	a.resolveImplMethodReceiverMutability(program)
+}
+
+type implMethodDeclaration struct {
+	Target Type
+	Name   string
+	Source *ast.FunctionDeclaration
+}
+
+// resolveImplMethodReceiverMutability computes receiver mutability after every
+// impl method has been registered. Method declarations may be in any source
+// order, and a mutating receiver requirement can propagate through calls.
+func (a *Analyzer) resolveImplMethodReceiverMutability(program *ast.Program) {
+	if program == nil {
+		return
+	}
+
+	methods := []implMethodDeclaration{}
+	for _, stmt := range program.Statements {
+		impl, ok := stmt.(*ast.ImplStatement)
+		if !ok || impl == nil || !a.validImplStatements[impl] || impl.Target == nil {
+			continue
+		}
+		target, ok := a.types[impl.Target.Name]
+		if !ok {
+			continue
+		}
+		for _, member := range impl.Members {
+			fn, ok := member.(*ast.FunctionDeclaration)
+			if !ok || fn == nil || fn.Name == nil {
+				continue
+			}
+			name := target.Name + "." + fn.Name.Value
+			if len(a.functions[name]) == 0 {
+				continue
+			}
+			methods = append(methods, implMethodDeclaration{Target: target, Name: name, Source: fn})
+		}
+	}
+
+	for _, method := range methods {
+		a.setImplMethodReceiverMutable(method.Name, method.Target.Name, false)
+	}
+	for changed := true; changed; {
+		changed = false
+		for _, method := range methods {
+			if !a.functionBodyWritesTargetMember(method.Source.Body, method.Target, functionParameterNames(method.Source)) {
+				continue
+			}
+			if a.implMethodReceiverMutable(method.Name, method.Target.Name) {
+				continue
+			}
+			a.setImplMethodReceiverMutable(method.Name, method.Target.Name, true)
+			changed = true
+		}
+	}
+}
+
+func (a *Analyzer) implMethodReceiverMutable(name string, targetName string) bool {
+	for _, function := range a.functions[name] {
+		if function.ImplTarget == targetName && function.ReceiverMutable {
+			return true
+		}
+	}
+	return false
+}
+
+func (a *Analyzer) setImplMethodReceiverMutable(name string, targetName string, mutable bool) {
+	functions := a.functions[name]
+	for index := range functions {
+		if functions[index].ImplTarget == targetName {
+			functions[index].ReceiverMutable = mutable
+		}
+	}
+	a.functions[name] = functions
 }
 
 func (a *Analyzer) registerImplStatement(stmt *ast.ImplStatement) {
@@ -5683,6 +6063,15 @@ func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
 			ok = false
 		}
 	}
+	if !ok && stmt.Name != nil {
+		// Keep a poisoned binding after an invalid initializer. Later references
+		// then retain the root diagnostic instead of becoming unrelated
+		// "undefined variable" errors.
+		defined = a.defineSymbol(stmt.Name.Value, Type{Kind: InvalidType}, stmt.Mutable, stmt.Name.Token)
+		if defined {
+			a.assigned[stmt.Name.Value] = true
+		}
+	}
 	if ok {
 		defined = a.defineSymbol(stmt.Name.Value, declaredType, stmt.Mutable, stmt.Name.Token)
 		if defined {
@@ -5870,6 +6259,9 @@ func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement, all
 		a.assigned[symbol.Name] = true
 		delete(a.moved, symbol.Name)
 		delete(a.moveReasons, symbol.Name)
+		if isCloseTrackedResourceType(symbol.Type) {
+			delete(a.closedResources, symbol.Name)
+		}
 		a.endBorrowsHeldBy(symbol.Name)
 		a.bindBorrowHoldersFromExpression(stmt.Value, symbol.Name)
 		if typeCarriesReferenceOrigin(symbol.Type) && typeCarriesReferenceOrigin(exprType) {
@@ -5941,6 +6333,30 @@ func (a *Analyzer) markMoveSource(expr ast.Expression) bool {
 		return a.markMoveSource(expr.Value)
 	case *ast.ConversionExpression:
 		return a.markMoveSource(expr.Value)
+	}
+	return false
+}
+
+func (a *Analyzer) markResourceTransfer(expr ast.Expression) bool {
+	switch expr := expr.(type) {
+	case *ast.Identifier:
+		symbol, ok := a.symbols[expr.Value]
+		if !ok || !isCloseTrackedResourceType(symbol.Type) {
+			return false
+		}
+		if a.checkBorrowedMove(expr.Value, expr.Token) {
+			return false
+		}
+		a.moved[expr.Value] = expr.Token
+		a.moveReasons[expr.Value] = "returned"
+		a.endBorrowsHeldBy(expr.Value)
+		return true
+	case *ast.OkExpression:
+		if expr.Value != nil {
+			return a.markResourceTransfer(expr.Value)
+		}
+	case *ast.ConversionExpression:
+		return a.markResourceTransfer(expr.Value)
 	}
 	return false
 }
@@ -6299,6 +6715,27 @@ func (a *Analyzer) resolveType(ref *ast.TypeReference) (Type, bool) {
 	}
 
 	if ref.Ref {
+		if ref.Slice && ref.ElementType != nil {
+			element, ok := a.resolveType(ref.ElementType)
+			if !ok {
+				return Type{Kind: InvalidType}, false
+			}
+			slice := Type{
+				Name:    typeDisplayName(element) + "[]",
+				Kind:    SliceType,
+				Element: &element,
+			}
+			name := "ref " + typeDisplayName(slice)
+			if ref.MutableRef {
+				name = "ref mut " + typeDisplayName(slice)
+			}
+			return Type{
+				Name:             name,
+				Kind:             ReferenceType,
+				Element:          &slice,
+				ReferenceMutable: ref.MutableRef,
+			}, true
+		}
 		innerRef := *ref
 		innerRef.Ref = false
 		innerRef.MutableRef = false
@@ -6349,9 +6786,10 @@ func (a *Analyzer) resolveType(ref *ast.TypeReference) (Type, bool) {
 			}, true
 		}
 		return Type{
-			Name:    typeDisplayName(element) + "[]",
-			Kind:    SliceType,
-			Element: &element,
+			Name:        typeDisplayName(element) + "[]",
+			Kind:        ArrayType,
+			Element:     &element,
+			ArrayLength: dynamicArrayLength,
 		}, true
 	}
 
@@ -6763,6 +7201,12 @@ func (a *Analyzer) inferExpression(expr ast.Expression) (Type, expressionValue) 
 }
 
 func (a *Analyzer) inferExpressionUnrecorded(expr ast.Expression) (Type, expressionValue) {
+	if expr == nil {
+		// Editor parsing may leave an incomplete expression while the user is
+		// typing. Treat it as invalid so semantic features can still respond.
+		return Type{Kind: InvalidType}, expressionValue{}
+	}
+
 	switch expr := expr.(type) {
 	case *ast.IntegerLiteral:
 		switch expr.Suffix() {
@@ -6772,6 +7216,16 @@ func (a *Analyzer) inferExpressionUnrecorded(expr ast.Expression) (Type, express
 			return Type{Name: "float", Kind: FloatType}, expressionValue{Display: expr.String()}
 		case "d":
 			return Type{Name: "decimal", Kind: DecimalType}, expressionValue{Display: expr.String()}
+		case "c":
+			if !a.validUnicodeScalarLiteral(expr) {
+				return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+			}
+			return Type{Name: "char", Kind: CharType}, expressionValue{Display: expr.String()}
+		case "r":
+			if !a.validUnicodeScalarLiteral(expr) {
+				return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+			}
+			return Type{Name: "rune", Kind: RuneType}, expressionValue{Display: expr.String()}
 		}
 		return Type{Name: "int", Kind: IntType}, expressionValue{Display: expr.String()}
 	case *ast.FloatLiteral:
@@ -6887,11 +7341,23 @@ func (a *Analyzer) inferExpressionUnrecorded(expr ast.Expression) (Type, express
 	case *ast.StructLiteral:
 		return a.inferStructLiteral(expr)
 	default:
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		return Type{Kind: InvalidType}, expressionValue{}
 	}
 }
 
+func (a *Analyzer) validUnicodeScalarLiteral(expr *ast.IntegerLiteral) bool {
+	value, ok := ast.ParseIntegerLiteralLexeme(expr.Token.Lexeme)
+	if !ok || value.Sign() < 0 || value.Cmp(big.NewInt(0x10FFFF)) > 0 || (value.Cmp(big.NewInt(0xD800)) >= 0 && value.Cmp(big.NewInt(0xDFFF)) <= 0) {
+		a.addErrorAtToken(expr.Token, "value %s is not a valid Unicode scalar value", expr.Token.Lexeme)
+		return false
+	}
+	return true
+}
+
 func (a *Analyzer) inferExpressionWithExpected(expr ast.Expression, expected Type) (Type, expressionValue) {
+	if _, ok := expr.(*ast.CharLiteral); ok && expected.Kind == RuneType {
+		return Type{Name: "rune", Kind: RuneType}, expressionValue{Display: expr.String()}
+	}
 	if lit, ok := expr.(*ast.ArrayLiteral); ok {
 		return a.inferArrayLiteralWithExpected(lit, expected)
 	}
@@ -7478,8 +7944,10 @@ func (a *Analyzer) inferArrayLiteralWithExpected(expr *ast.ArrayLiteral, expecte
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 	if int64(len(elementTypes)) != expected.ArrayLength {
-		a.addErrorAtToken(expr.Token, "array literal has %d elements, expected %d", len(elementTypes), expected.ArrayLength)
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		if expected.ArrayLength != dynamicArrayLength {
+			a.addErrorAtToken(expr.Token, "array literal has %d elements, expected %d", len(elementTypes), expected.ArrayLength)
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
 	}
 	for i, elementType := range elementTypes {
 		if elementType.Kind == InvalidType {
@@ -7662,7 +8130,7 @@ func indexableKindName(typ Type) string {
 
 func (a *Analyzer) checkConstantIndexBounds(expr *ast.IndexExpression, typ Type) {
 	index, ok := a.integerExpressionInt64(expr.Index)
-	if !ok || typ.Kind != ArrayType {
+	if !ok || typ.Kind != ArrayType || typ.ArrayLength == dynamicArrayLength {
 		return
 	}
 	if index < 0 || index >= typ.ArrayLength {
@@ -7684,6 +8152,9 @@ func (a *Analyzer) checkSliceBounds(expr *ast.SliceExpression, typ Type) {
 		}
 	}
 	if typ.Kind != ArrayType {
+		return
+	}
+	if typ.ArrayLength == dynamicArrayLength {
 		return
 	}
 	start, startOK := a.integerExpressionInt64(expr.Start)
@@ -7967,6 +8438,9 @@ func (a *Analyzer) inferConversionExpression(expr *ast.ConversionExpression) (Ty
 }
 
 func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressionValue) {
+	if typ, value, ok := a.inferCompilerKnownFunction(expr); ok {
+		return typ, value
+	}
 	if typ, value, ok := a.inferCompilerKnownConstructor(expr); ok {
 		return typ, value
 	}
@@ -7989,6 +8463,9 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 		return typ, value
 	}
 	if typ, value, ok := a.inferRawPointerCall(expr); ok {
+		return typ, value
+	}
+	if typ, value, ok := a.inferRuneArrayToStringCall(expr); ok {
 		return typ, value
 	}
 
@@ -8100,11 +8577,12 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 			}
 			var arg ast.Expression
 			arg = sourceArgs[i]
-			if !canInitialize(function.Parameters[i].Type, argTypes[i], arg) {
+			argType := a.contextualCallArgumentType(arg, argTypes[i], function.Parameters[i].Type)
+			if !canInitialize(function.Parameters[i].Type, argType, arg) {
 				matchesArguments = false
 				break
 			}
-			rank += overloadArgumentRank(function.Parameters[i].Type, argTypes[i])
+			rank += overloadArgumentRank(function.Parameters[i].Type, argType)
 		}
 		if matchesArguments {
 			matches = append(matches, overloadMatch{Function: function, Rank: rank})
@@ -8118,6 +8596,7 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
 		a.markMovedCallArguments(best[0].Function, sourceArgs, isMethodCall)
+		a.markClosedResourceCall(best[0].Function, methodReceiver, isMethodCall, expr.Token)
 		return best[0].Function.ReturnType, expressionValue{Display: expr.String()}
 	}
 
@@ -8174,14 +8653,78 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 		for i := range argTypes {
 			arg := sourceArgs[i]
 			param := function.Parameters[i]
-			if !canInitialize(param.Type, argTypes[i], arg) {
-				a.addErrorAtToken(expressionToken(arg), "argument %d to %s must be %s, got %s", i+1, displayName, typeDisplayName(param.Type), typeDisplayName(argTypes[i]))
+			argType := a.contextualCallArgumentType(arg, argTypes[i], param.Type)
+			if !canInitialize(param.Type, argType, arg) {
+				a.addErrorAtToken(expressionToken(arg), "argument %d to %s must be %s, got %s", i+1, displayName, typeDisplayName(param.Type), typeDisplayName(argType))
 			}
 		}
 		break
 	}
 
 	return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+}
+
+func (a *Analyzer) contextualCallArgumentType(arg ast.Expression, actual Type, expected Type) Type {
+	if _, ok := arg.(*ast.CharLiteral); ok && expected.Kind == RuneType {
+		runeType := Type{Name: "rune", Kind: RuneType}
+		a.expressionTypes[arg] = runeType
+		return runeType
+	}
+	return actual
+}
+
+func (a *Analyzer) inferCompilerKnownFunction(expr *ast.CallExpression) (Type, expressionValue, bool) {
+	if callExpressionName(expr) != "len" {
+		return Type{}, expressionValue{}, false
+	}
+	if len(expr.GenericArguments) > 0 {
+		a.addErrorAtToken(expr.Token, "len infers its element type from its argument")
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+	}
+	if len(expr.Arguments) != 1 {
+		a.addErrorAtToken(expr.Token, "len expects 1 argument, got %d", len(expr.Arguments))
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+	}
+
+	argumentType, _ := a.inferExpression(expr.Arguments[0])
+	if argumentType.Kind == InvalidType {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+	}
+	if argumentType.Kind == StringType || argumentType.Kind == ArrayType {
+		return a.types["int"], expressionValue{Display: expr.String()}, true
+	}
+	if argumentType.Kind == ReferenceType && argumentType.Element != nil {
+		referencedType := *argumentType.Element
+		if referencedType.Kind == ArrayType || referencedType.Kind == SliceType {
+			return a.types["int"], expressionValue{Display: expr.String()}, true
+		}
+	}
+
+	a.addErrorAtToken(expressionToken(expr.Arguments[0]), "len requires string, an array, or a slice reference, got %s", typeDisplayName(argumentType))
+	return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+}
+
+// inferRuneArrayToStringCall recognizes the allocation-backed text
+// materialization available on rune arrays and rune slice views.
+func (a *Analyzer) inferRuneArrayToStringCall(expr *ast.CallExpression) (Type, expressionValue, bool) {
+	member, ok := expr.Callee.(*ast.MemberExpression)
+	if !ok || member == nil || member.Property == nil || member.Property.Value != "ToString" || a.expressionNamesType(member.Object) {
+		return Type{}, expressionValue{}, false
+	}
+
+	receiverType, _ := a.inferExpression(member.Object)
+	if receiverType.Kind == InvalidType {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+	}
+	receiverType = dereferenceType(receiverType)
+	if (receiverType.Kind != ArrayType && receiverType.Kind != SliceType) || receiverType.Element == nil || receiverType.Element.Kind != RuneType {
+		return Type{}, expressionValue{}, false
+	}
+	if len(expr.Arguments) != 0 {
+		a.addErrorAtToken(expr.Token, "rune array ToString expects 0 arguments, got %d", len(expr.Arguments))
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+	}
+	return a.types["string"], expressionValue{Display: expr.String()}, true
 }
 
 func (a *Analyzer) inferRawPointerCall(expr *ast.CallExpression) (Type, expressionValue, bool) {
@@ -8804,6 +9347,10 @@ func (a *Analyzer) callArgumentTypes(args []ast.Expression) ([]Type, []ast.Expre
 			}
 			argType = dereferenceType(argType)
 			if argType.Kind != ArrayType || argType.Element == nil {
+				a.addErrorAtToken(spread.Token, "cannot spread %s into fixed-arity call; expansion count is not known at compile time", typeDisplayName(argType))
+				return nil, nil, false
+			}
+			if argType.ArrayLength == dynamicArrayLength {
 				a.addErrorAtToken(spread.Token, "cannot spread %s into fixed-arity call; expansion count is not known at compile time", typeDisplayName(argType))
 				return nil, nil, false
 			}
@@ -10269,6 +10816,17 @@ func (a *Analyzer) inferInfixExpression(expr *ast.InfixExpression) (Type, expres
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 
+	if isComparisonOperator(expr.Operator) {
+		if _, ok := expr.Right.(*ast.CharLiteral); ok && leftType.Kind == RuneType {
+			rightType = Type{Name: "rune", Kind: RuneType}
+			a.expressionTypes[expr.Right] = rightType
+		}
+		if _, ok := expr.Left.(*ast.CharLiteral); ok && rightType.Kind == RuneType {
+			leftType = Type{Name: "rune", Kind: RuneType}
+			a.expressionTypes[expr.Left] = leftType
+		}
+	}
+
 	if isLogicalOperator(expr.Operator) {
 		if leftType.Kind != BoolType || rightType.Kind != BoolType {
 			a.addErrorAtToken(expr.Token, "operator %s requires bool operands", expr.Operator)
@@ -10757,18 +11315,20 @@ func (a *Analyzer) warnUnitStatus(token lexer.Token, unitName string) {
 
 func (a *Analyzer) defineSymbol(name string, typ Type, mutable bool, token lexer.Token) bool {
 	if previous, exists := a.symbols[name]; exists {
-		a.appendError(Error{
-			ID:             diagnostics.DuplicateLocalVariable,
-			Severity:       diagnostics.SeverityError,
-			Message:        fmt.Sprintf("variable %q already declared", name),
-			File:           token.File,
-			Line:           token.Line,
-			Column:         token.Column,
-			PreviousFile:   previous.Token.File,
-			PreviousLine:   previous.Token.Line,
-			PreviousColumn: previous.Token.Column,
-		})
-		return false
+		if !previous.ImplicitMember {
+			a.appendError(Error{
+				ID:             diagnostics.DuplicateLocalVariable,
+				Severity:       diagnostics.SeverityError,
+				Message:        fmt.Sprintf("variable %q already declared", name),
+				File:           token.File,
+				Line:           token.Line,
+				Column:         token.Column,
+				PreviousFile:   previous.Token.File,
+				PreviousLine:   previous.Token.Line,
+				PreviousColumn: previous.Token.Column,
+			})
+			return false
+		}
 	}
 
 	symbol := Symbol{Name: name, Type: typ, Mutable: mutable, Token: token, Storage: StorageOriginInline, Local: a.inFunctionBody, ScopeDepth: a.scopeDepth}
@@ -10812,6 +11372,10 @@ func canInitialize(target Type, value Type, expr ast.Expression) bool {
 	}
 
 	if target.Kind == ArrayType || value.Kind == ArrayType || target.Kind == SliceType || value.Kind == SliceType {
+		if target.Kind == ArrayType && value.Kind == ArrayType && target.Element != nil && value.Element != nil &&
+			(target.ArrayLength == dynamicArrayLength || value.ArrayLength == dynamicArrayLength) {
+			return canInitialize(*target.Element, *value.Element, expr)
+		}
 		return sameConcreteType(target, value)
 	}
 
@@ -11226,11 +11790,44 @@ func isBitwiseOperator(operator string) bool {
 }
 
 func validCharLiteral(lexeme string) bool {
-	value, err := strconv.Unquote(lexeme)
-	if err != nil {
+	if len(lexeme) < 3 || lexeme[0] != '\'' || lexeme[len(lexeme)-1] != '\'' {
 		return false
 	}
-	return utf8.RuneCountInString(value) == 1
+
+	body := lexeme[1 : len(lexeme)-1]
+	if body[0] != '\\' {
+		return utf8.ValidString(body) && utf8.RuneCountInString(body) == 1
+	}
+	if len(body) < 2 {
+		return false
+	}
+
+	switch body[1] {
+	case '\\', '\'', '"', 'n', 'r', 't', '0':
+		return len(body) == 2
+	case 'x':
+		if len(body) != 4 {
+			return false
+		}
+		_, err := strconv.ParseUint(body[2:], 16, 8)
+		return err == nil
+	case 'u':
+		if len(body) < 5 || body[2] != '{' || body[len(body)-1] != '}' {
+			return false
+		}
+		digits := body[3 : len(body)-1]
+		if len(digits) == 0 || len(digits) > 6 {
+			return false
+		}
+		value, err := strconv.ParseUint(digits, 16, 32)
+		if err != nil {
+			return false
+		}
+		r := rune(value)
+		return utf8.ValidRune(r) && (r < 0xD800 || r > 0xDFFF)
+	default:
+		return false
+	}
 }
 
 func isUntypedNumericExpression(expr ast.Expression) bool {
@@ -11265,6 +11862,9 @@ func typeDisplayName(typ Type) string {
 		return "ref " + typeDisplayName(*typ.Element)
 	}
 	if typ.Kind == ArrayType && typ.Element != nil {
+		if typ.ArrayLength == dynamicArrayLength {
+			return typeDisplayName(*typ.Element) + "[]"
+		}
 		return fmt.Sprintf("%s[%d]", typeDisplayName(*typ.Element), typ.ArrayLength)
 	}
 	if typ.Kind == SliceType && typ.Element != nil {
@@ -11328,64 +11928,154 @@ func functionTypeName(params []Type, returnType Type) string {
 func statementToken(stmt ast.Statement) lexer.Token {
 	switch stmt := stmt.(type) {
 	case *ast.ModuleStatement:
+		if stmt == nil {
+			return lexer.Token{}
+		}
 		return stmt.Token
 	case *ast.ImportStatement:
+		if stmt == nil {
+			return lexer.Token{}
+		}
 		return stmt.Token
 	case *ast.TypeDeclStatement:
+		if stmt == nil {
+			return lexer.Token{}
+		}
 		return stmt.Token
 	case *ast.EnumDeclaration:
+		if stmt == nil {
+			return lexer.Token{}
+		}
 		return stmt.Token
 	case *ast.ImplStatement:
+		if stmt == nil {
+			return lexer.Token{}
+		}
 		return stmt.Token
 	case *ast.FunctionDeclaration:
+		if stmt == nil {
+			return lexer.Token{}
+		}
 		return stmt.Token
 	case *ast.StructStatement:
+		if stmt == nil {
+			return lexer.Token{}
+		}
 		return stmt.Token
 	case *ast.LetStatement:
+		if stmt == nil {
+			return lexer.Token{}
+		}
 		return stmt.Token
 	case *ast.LetGroupStatement:
+		if stmt == nil {
+			return lexer.Token{}
+		}
 		return stmt.Token
 	case *ast.AssignmentStatement:
+		if stmt == nil {
+			return lexer.Token{}
+		}
 		return stmt.Token
 	case *ast.TryAssignmentStatement:
+		if stmt == nil {
+			return lexer.Token{}
+		}
 		return stmt.Token
 	case *ast.DeferStatement:
+		if stmt == nil {
+			return lexer.Token{}
+		}
 		return stmt.Token
 	case *ast.DiscardStatement:
+		if stmt == nil {
+			return lexer.Token{}
+		}
 		return stmt.Token
 	case *ast.DetachStatement:
+		if stmt == nil {
+			return lexer.Token{}
+		}
 		return stmt.Token
 	case *ast.CancelStatement:
+		if stmt == nil {
+			return lexer.Token{}
+		}
 		return stmt.Token
 	case *ast.ExpressionStatement:
+		if stmt == nil {
+			return lexer.Token{}
+		}
 		return stmt.Token
 	case *ast.ReturnStatement:
+		if stmt == nil {
+			return lexer.Token{}
+		}
 		return stmt.Token
 	case *ast.IfStatement:
+		if stmt == nil {
+			return lexer.Token{}
+		}
 		return stmt.Token
 	case *ast.ForStatement:
+		if stmt == nil {
+			return lexer.Token{}
+		}
 		return stmt.Token
 	case *ast.WhileStatement:
+		if stmt == nil {
+			return lexer.Token{}
+		}
 		return stmt.Token
 	case *ast.SwitchStatement:
+		if stmt == nil {
+			return lexer.Token{}
+		}
 		return stmt.Token
 	case *ast.SelectStatement:
+		if stmt == nil {
+			return lexer.Token{}
+		}
 		return stmt.Token
 	case *ast.FallthroughStatement:
+		if stmt == nil {
+			return lexer.Token{}
+		}
 		return stmt.Token
 	case *ast.BreakStatement:
+		if stmt == nil {
+			return lexer.Token{}
+		}
 		return stmt.Token
 	case *ast.ContinueStatement:
+		if stmt == nil {
+			return lexer.Token{}
+		}
 		return stmt.Token
 	case *ast.UnsafeStatement:
+		if stmt == nil {
+			return lexer.Token{}
+		}
 		return stmt.Token
 	case *ast.AsmStatement:
+		if stmt == nil {
+			return lexer.Token{}
+		}
 		return stmt.Token
 	case *ast.MatchStatement:
+		if stmt == nil {
+			return lexer.Token{}
+		}
 		return stmt.Token
 	case *ast.CommentStatement:
+		if stmt == nil {
+			return lexer.Token{}
+		}
 		return stmt.Token
 	case *ast.InvalidStatement:
+		if stmt == nil {
+			return lexer.Token{}
+		}
 		return stmt.Token
 	default:
 		return lexer.Token{}

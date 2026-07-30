@@ -1,0 +1,22 @@
+module test.unicode_valid
+
+import "unicode"
+
+fn IsLetterExamples() bool {
+    return unicode.IsLetter('A') &&
+        unicode.IsLetter('z') &&
+        unicode.IsLetter('å') &&
+        unicode.IsLetter('Ä') &&
+        unicode.IsLetter('Ω') &&
+        unicode.IsLetter('λ') &&
+        unicode.IsLetter('Ж') &&
+        unicode.IsLetter('я') &&
+        unicode.IsLetter('中')
+}
+
+fn IsNotLetterExamples() bool {
+    return !unicode.IsLetter('0') &&
+        !unicode.IsLetter('$') &&
+        !unicode.IsLetter('\u{0378}') &&
+        !unicode.IsLetter('\u{FFFD}')
+}

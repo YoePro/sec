@@ -30,13 +30,13 @@ Packet[32]
 
 `N` is the number of elements.
 
-A slice sequence type uses an empty postfix pair:
+A dynamically sized owning array/sequence type uses an empty postfix pair:
 
 ```sec
 T[]
 ```
 
-`T[]` is unsized and cannot exist as a standalone value.
+`T[]` is a valid owning value type.
 
 A slice is a reference to an unsized sequence:
 
@@ -52,7 +52,7 @@ ref byte[]
 ref mut int[]
 ```
 
-The `ref` keyword distinguishes a slice from an owning array.
+The `ref` keyword distinguishes a slice view from an owning `T[]` array value.
 
 ## Type identity
 
@@ -283,21 +283,29 @@ A slice inherits storage origin and lifetime from its source.
 
 A slice never owns or deallocates its elements.
 
-## Bare sequence type
+## Owning dynamic array type
 
-`T[]` is valid only as the target of an appropriate reference type or in internal
-type analysis.
+`T[]` is a valid owning value type and may appear in storage positions such as
+struct fields, variables, parameters and return types.
 
-Invalid declarations:
+Valid declarations:
 
 ```sec
 let values: byte[]
+type Lexer struct {
+    input: rune[],
+}
+```
+
+The length is runtime-known rather than part of the nominal type identity.
+
+Invalid:
+
+```sec
 let values := ref byte[]
 ```
 
-The first attempts to store an unsized value.
-
-The second attempts to reference a type rather than storage.
+This attempts to reference a type rather than storage.
 
 Valid:
 
@@ -613,6 +621,21 @@ let arrayLength := values.len
 let sliceLength := view.len
 ```
 
+The compiler-known core function `len` is the canonical length operation for
+index arithmetic:
+
+```sec
+let arrayLength := len(values)
+let sliceLength := len(view)
+```
+
+It accepts an owning `T[]`, `ref T[]`, or `ref mut T[]`, and returns `int`.
+This avoids conversions when comparing a length to `int` indexes or offsets.
+`len` does not allocate, consume or mutate its argument.
+
+The member property `.len` remains `uint`; use `len(...)` when an `int` result
+is required.
+
 No `capacity` member exists for arrays or slices.
 
 ## Pointer access
@@ -884,8 +907,7 @@ Semantic analysis must:
 - infer or validate array literal types
 - validate literal length
 - resolve nested arrays
-- classify `T[]` as unsized
-- reject standalone `T[]` values
+- classify bare `T[]` as an owning dynamic array/sequence type
 - resolve `ref T[]` and `ref mut T[]`
 - type indexing as an element place
 - propagate target mutability
@@ -912,24 +934,41 @@ Current implementation status:
   diagnostics and AST output should prefer postfix form.
 - Parser resolves nested postfix dimensions from outermost to innermost:
   `int[3][4]` means `int[4]` elements inside an outer length-3 array.
-- AST distinguishes zero-length arrays from unsized sequence types.
+- AST distinguishes zero-length arrays from empty-bracket sequence types.
 - Semantic analysis resolves fixed arrays, including `T[0]`.
-- Semantic analysis classifies `T[]` as an unsized sequence.
-- Semantic analysis rejects bare `T[]` in ordinary value positions such as
-  variables, function parameters, function returns and struct fields.
+- Semantic analysis classifies bare `T[]` as an owning dynamic array/sequence
+  value with runtime-known length.
 - Semantic analysis accepts `ref T[]` and `ref mut T[]` as slice reference
   types.
+- Semantic analysis infers non-empty array literals, validates target-typed
+  literals and requires an explicit target type for empty literals.
+- Semantic analysis validates fixed-array indexes, indexed assignment,
+  mutability, compile-time bounds and runtime integer index types.
+- Semantic analysis resolves nested array indexing and exposes fixed-array
+  `.len` as `uint`.
+- Semantic analysis exposes compiler-known `len(...) -> int` for owning
+  arrays/sequences and slice references, including `ref mut T[]`.
+- Semantic analysis validates explicit shared and mutable slice construction,
+  slicing bounds, slice indexing, slice mutability and storage origins.
+- MLIR lowers fixed arrays whose elements have a direct LLVM representation to
+  nested `!llvm.array<N x T>` values.
+- MLIR supports fixed-array literals, local storage, parameters, returns,
+  `.len`, indexed reads and indexed writes.
+- Runtime fixed-array indexes lower to explicit signed/unsigned bounds checks.
+  Failure traps inline; successful access uses `llvm.getelementptr`.
+- MLIR fixed-array iteration evaluates the array once and supports both
+  `for value in array` and `for index, value in array`. The index is `int`,
+  iteration order is zero through `N - 1`, and `break`/`continue` target the
+  generated array loop blocks.
 
 Not implemented yet:
 
-- array literal inference and length validation
-- indexing and slicing expressions
-- static and runtime bounds checks
-- slice construction from arrays
-- storage-origin and borrow tracking for slices
-- `len`
-- array/slice Semantic IR
-- MLIR/LLVM lowering for arrays and slices
+- canonical array/slice Semantic IR operations
+- MLIR lowering for owning runtime-sized `T[]`
+- MLIR lowering for `ref T[]` and `ref mut T[]` descriptors
+- MLIR slice construction, reborrowing, slicing and element borrowing
+- MLIR arrays containing strings or slice descriptors
+- MLIR array equality
 
 ## Semantic IR requirements
 
@@ -1007,7 +1046,6 @@ Invalid tests should cover:
 - literal length mismatch
 - mixed inferred literal types
 - untyped empty literal
-- bare `T[]` variable
 - `ref T[]` without storage expression
 - negative index
 - constant out-of-bounds index

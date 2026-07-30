@@ -36,6 +36,12 @@ impl string {
         return ""
     }
 
+    /** Materializes the string as an owning rune sequence. */
+    fn ToRuneArray() rune[] {
+        // TODO: Implement string.ToRuneArray.
+        return []
+    }
+
     fn StartsWith(prefix: string) bool {
         // TODO: implement string.StartsWith
         return false

@@ -1,0 +1,189 @@
+#target(os: "linux", arch: "amd64")
+module io
+
+import linux "platform/linux"
+
+enum IOError {
+    PermissionDenied,
+    NotFound,
+    Interrupted,
+    InvalidArgument,
+    BadFileDescriptor,
+    IsDirectory,
+    TooManyOpenFiles,
+    TooLarge,
+    Unsupported,
+    Unknown,
+}
+
+enum OpenMode {
+    ReadOnly = 0,
+    WriteOnly = 1,
+    ReadWrite = 2,
+    Append = 3,
+}
+
+type File struct {
+    fd: int,
+    is_closed: bool,
+    open_mode: OpenMode,
+}
+
+fn _ioError(error: platform.linux.LinuxError) IOError {
+    switch error {
+        case platform.linux.LinuxError.permDenied, platform.linux.LinuxError.accessDenied:
+            return IOError.PermissionDenied
+        case platform.linux.LinuxError.noSuchFile:
+            return IOError.NotFound
+        case platform.linux.LinuxError.interrupted:
+            return IOError.Interrupted
+        case platform.linux.LinuxError.invalidArg:
+            return IOError.InvalidArgument
+        case platform.linux.LinuxError.badFd:
+            return IOError.BadFileDescriptor
+        case platform.linux.LinuxError.isDirectory:
+            return IOError.IsDirectory
+        case platform.linux.LinuxError.tooManyOpenFiles, platform.linux.LinuxError.fileTableOverflow:
+            return IOError.TooManyOpenFiles
+        case platform.linux.LinuxError.fileTooLarge, platform.linux.LinuxError.valueTooLarge:
+            return IOError.TooLarge
+        default:
+            return IOError.Unknown
+    }
+}
+
+fn Open(path: string) Result[File, IOError] {
+    match linux.OpenReadOnly(path) {
+        Ok(fd) => return Ok(File {
+            fd: fd,
+            is_closed: false,
+            open_mode: OpenMode.ReadOnly,
+        })
+        Err(error) => return Err(_ioError(error))
+    }
+}
+
+fn _readFd(fd: int, buffer: ref mut byte[]) Result[uint, IOError] {
+    match linux.Read(fd, ref mut buffer[..]) {
+        Ok(count) => return Ok(count)
+        Err(error) => return Err(_ioError(error))
+    }
+}
+
+fn _writeFd(fd: int, data: ref byte[]) Result[uint, IOError] {
+    match linux.Write(fd, ref data[..]) {
+        Ok(count) => return Ok(count)
+        Err(error) => return Err(_ioError(error))
+    }
+}
+
+fn Read(fd: int, buffer: ref mut byte[]) Result[uint, IOError] {
+    match _readFd(fd, ref mut buffer[..]) {
+        Ok(count) => return Ok(count)
+        Err(error) => return Err(error)
+    }
+}
+
+fn Write(fd: int, data: ref byte[]) Result[uint, IOError] {
+    match _writeFd(fd, ref data[..]) {
+        Ok(count) => return Ok(count)
+        Err(error) => return Err(error)
+    }
+}
+
+fn _closeFd(fd: int) Result[void, IOError] {
+    match linux.Close(fd) {
+        Ok(_) => return Ok()
+        Err(error) => return Err(_ioError(error))
+    }
+}
+
+fn Close(fd: int) Result[void, IOError] {
+    match _closeFd(fd) {
+        Ok(_) => return Ok()
+        Err(error) => return Err(error)
+    }
+}
+
+fn ReadFileInto(path: string, buffer: ref mut byte[]) Result[uint, IOError] {
+    let mut file := try Open(path)
+    let count := try file.Read(ref mut buffer[..])
+    try file.Close()
+
+    return Ok(count)
+}
+
+fn ReadFile(path: string) Result[string, IOError] {
+    // Full-file reads require owned dynamic byte storage and a reviewed
+    // byte-array-to-string materialization path. The API is present now so
+    // bootstrap code can type-check against the intended shape.
+    return Err(IOError.Unsupported)
+}
+
+impl File {
+    fn Read(buffer: ref mut byte[]) Result[uint, IOError] {
+        if self.is_closed {
+            return Err(IOError.BadFileDescriptor)
+        }
+
+        match _readFd(self.fd, ref mut buffer[..]) {
+            Ok(count) => return Ok(count)
+            Err(error) => return Err(error)
+        }
+    }
+
+    fn Write(data: ref byte[]) Result[uint, IOError] {
+        if self.is_closed {
+            return Err(IOError.BadFileDescriptor)
+        }
+
+        match _writeFd(self.fd, ref data[..]) {
+            Ok(count) => return Ok(count)
+            Err(error) => return Err(error)
+        }
+    }
+
+    fn Seek(offset: int, whence: int) Result[uint, IOError] {
+        return Err(IOError.Unsupported)
+    }
+
+    fn Flush() Result[void, IOError] {
+        if self.is_closed {
+            return Err(IOError.BadFileDescriptor)
+        }
+
+        return Ok()
+    }
+
+    fn close() Result[void, IOError] {
+        if self.is_closed {
+            return Ok()
+        }
+
+        match _closeFd(self.fd) {
+            Ok(_) => {
+                self.is_closed = true
+                return Ok()
+            }
+            Err(error) => return Err(error)
+        }
+    }
+
+    fn Close() Result[void, IOError] {
+        if self.is_closed {
+            return Ok()
+        }
+
+        match _closeFd(self.fd) {
+            Ok(_) => {
+                self.is_closed = true
+                return Ok()
+            }
+            Err(error) => return Err(error)
+        }
+    }
+
+    fn ReadAll() Result[string, IOError] {
+        return Err(IOError.Unsupported)
+    }
+}

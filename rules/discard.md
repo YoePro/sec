@@ -9,6 +9,8 @@ Implemented:
 - compatibility name field for identifier discards;
 - semantic analysis of discarded expressions;
 - explicit discard of temporary expression results such as function calls;
+- normal receiver mutability requirements for methods called by a discarded
+  expression, including implicit `self` mutability inference in `impl` methods;
 - identifier discard consumes the named binding and makes later reads invalid;
 - use-after-discard diagnostic for simple local identifiers;
 - ordinary assignment to a discarded local binding is rejected;
@@ -162,6 +164,10 @@ discard Calculate()
 ```
 
 The call executes normally.
+
+This includes its receiver effects. For example, `discard self.Advance()`
+requires a mutable implicit `self` when `Advance` mutates its receiver, just as
+using the same call in another expression context would.
 
 Its return value is then consumed and destroyed.
 

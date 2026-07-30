@@ -406,7 +406,9 @@ func SplitNumericLiteralSuffix(lexeme string) (string, string) {
 	if len(lexeme) > 2 && lexeme[0] == '0' && (lexeme[1] == 'x' || lexeme[1] == 'X') {
 		last := lexeme[len(lexeme)-1]
 		switch last {
-		case 'i', 'u':
+		// c is a hexadecimal digit, so 0x41c is a hexadecimal integer rather
+		// than 0x41 with a char suffix. Rune suffixes remain unambiguous.
+		case 'i', 'u', 'r':
 			return lexeme[:len(lexeme)-1], string(last)
 		default:
 			return lexeme, ""
@@ -414,7 +416,7 @@ func SplitNumericLiteralSuffix(lexeme string) (string, string) {
 	}
 	last := lexeme[len(lexeme)-1]
 	switch last {
-	case 'i', 'u', 'f', 'd':
+	case 'i', 'u', 'f', 'd', 'c', 'r':
 		return lexeme[:len(lexeme)-1], string(last)
 	default:
 		return lexeme, ""
@@ -459,7 +461,7 @@ func ParseIntegerLiteralInt64(lexeme string) (int64, bool) {
 
 func ParseFloatLiteralFloat64(lexeme string) (float64, bool) {
 	digits, suffix := SplitNumericLiteralSuffix(lexeme)
-	if suffix == "i" || suffix == "u" || digits == "" {
+	if suffix == "i" || suffix == "u" || suffix == "c" || suffix == "r" || digits == "" {
 		return 0, false
 	}
 	value, err := strconv.ParseFloat(digits, 64)

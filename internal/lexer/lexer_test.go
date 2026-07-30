@@ -214,6 +214,26 @@ func TestCharLiteral(t *testing.T) {
 	}
 }
 
+func TestCharAndRuneNumericSuffixes(t *testing.T) {
+	input := `65c 0r 0b1000001c 0o101r 0x41r 0x41c`
+
+	tests := []struct {
+		typ    TokenType
+		lexeme string
+	}{
+		{INT, "65c"},
+		{INT, "0r"},
+		{INT, "0b1000001c"},
+		{INT, "0o101r"},
+		{INT, "0x41r"},
+		// c is part of the hexadecimal digit sequence, not a suffix here.
+		{INT, "0x41c"},
+		{EOF, ""},
+	}
+
+	assertTokens(t, input, tests)
+}
+
 func TestUnicodeIdentifiers(t *testing.T) {
 	input := `unit Ω decimal physical
 let Σ := Ω(1)

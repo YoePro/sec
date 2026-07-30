@@ -131,3 +131,71 @@ fn Close(handle: int) void {
 		"free operations are reserved for destruction but are not implemented yet at 9:5",
 	})
 }
+
+func TestOpenFileMustBeClosedBeforeScopeExit(t *testing.T) {
+	input := `
+module io
+
+enum IOError {
+    BadFileDescriptor,
+}
+
+type File struct {
+    is_closed: bool,
+}
+
+fn MakeFile() File {
+    return File { is_closed: false }
+}
+
+fn LeakFile() void {
+    let file := MakeFile()
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"owned file file is still open at scope exit; call file.Close() or return it to transfer ownership at 17:9",
+	})
+}
+
+func TestClosedOrReturnedFileDoesNotLeakAtScopeExit(t *testing.T) {
+	input := `
+module io
+
+enum IOError {
+    BadFileDescriptor,
+}
+
+type File struct {
+    is_closed: bool,
+}
+
+fn MakeFile() File {
+    return File { is_closed: false }
+}
+
+impl File {
+    fn Close() Result[void, IOError] {
+        self.is_closed = true
+        return Ok()
+    }
+}
+
+fn CloseFile() Result[void, IOError] {
+    let mut file := MakeFile()
+    try file.Close()
+    return Ok()
+}
+
+fn ReturnFile() File {
+    let file := MakeFile()
+    return file
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	if len(errors) > 0 {
+		t.Fatalf("Analyze returned errors: %v", errors)
+	}
+}

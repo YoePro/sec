@@ -34,6 +34,59 @@ let e: uuid := 1
 	assertSemaErrors(t, errors, expected)
 }
 
+func TestRuneArrayToStringMaterializesText(t *testing.T) {
+	errors := analyzeSource(t, `
+module main
+
+fn pair() string {
+	let runes: rune[2] := ['A', 'B']
+	return runes.ToString()
+}
+
+fn sliceText() string {
+	let runes: rune[3] := ['a', 'b', 'c']
+	let view := ref runes[..]
+	return view.ToString()
+}
+
+fn directSliceText() string {
+	let runes: rune[3] := ['a', 'b', 'c']
+	return runes[1..<3].ToString()
+}
+`)
+
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestImplMethodMutabilityPropagatesThroughLetInitializer(t *testing.T) {
+	errors := analyzeSource(t, `
+module main
+
+type Reader struct {
+	position: int,
+}
+
+impl Reader {
+	fn advance() int {
+		self.position += 1
+		return self.position
+	}
+
+	fn readBody() int {
+		let position := self.advance()
+		return position
+	}
+}
+
+fn main() int {
+	let mut reader := Reader{ position: 0 }
+	return reader.readBody()
+}
+`)
+
+	assertSemaErrors(t, errors, nil)
+}
+
 func TestModuleDeclarationIsRequired(t *testing.T) {
 	errors := analyzeSourceRaw(t, `
 let a := 1
@@ -120,6 +173,42 @@ let Limit: int := 2
 		if err.ID != diagnostics.ModuleDeclarationConflict {
 			t.Fatalf("wrong diagnostic ID for %q. got=%q want=%q", err.Message, err.ID, diagnostics.ModuleDeclarationConflict)
 		}
+	}
+}
+
+func TestAnalyzeIgnoresTypedNilTopLevelStatements(t *testing.T) {
+	program := &ast.Program{
+		Statements: []ast.Statement{
+			&ast.ModuleStatement{
+				Token: lexer.Token{Type: lexer.MODULE, Lexeme: "module", Line: 1, Column: 1},
+				Path:  "main",
+			},
+			(*ast.ModuleStatement)(nil),
+			(*ast.TypeDeclStatement)(nil),
+			(*ast.UnitDeclStatement)(nil),
+			(*ast.EnumDeclaration)(nil),
+			(*ast.InterfaceDeclaration)(nil),
+			(*ast.FunctionDeclaration)(nil),
+			(*ast.StructStatement)(nil),
+			(*ast.LetStatement)(nil),
+			(*ast.LetGroupStatement)(nil),
+			(*ast.ImportStatement)(nil),
+			(*ast.AssignmentStatement)(nil),
+			(*ast.ExpressionStatement)(nil),
+			(*ast.ReturnStatement)(nil),
+			(*ast.IfStatement)(nil),
+			(*ast.ForStatement)(nil),
+			(*ast.WhileStatement)(nil),
+			(*ast.SwitchStatement)(nil),
+			(*ast.SelectStatement)(nil),
+			(*ast.UnsafeStatement)(nil),
+			(*ast.MatchStatement)(nil),
+		},
+	}
+
+	analyzer := NewAnalyzer()
+	if errors := analyzer.Analyze(program); len(errors) > 0 {
+		t.Fatalf("Analyze returned errors for typed nil statements: %v", errors)
 	}
 }
 
@@ -439,6 +528,35 @@ fn Test() void {
 	}
 	if analyzer.symbols["pi"].Type.Name != "float" {
 		t.Fatalf("wrong pi type. got=%q want=float", analyzer.symbols["pi"].Type.Name)
+	}
+}
+
+func TestAnalyzeTypedDeclarationGroup(t *testing.T) {
+	input := `
+type TokenType string
+
+TokenType (
+	ILLEGAL := "ILLEGAL",
+	EOF := "EOF",
+	IDENT := "IDENT",
+)
+
+fn Test() TokenType {
+	return IDENT
+}
+`
+
+	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
+	assertSemaErrors(t, errors, nil)
+
+	for _, name := range []string{"ILLEGAL", "EOF", "IDENT"} {
+		symbol := analyzer.symbols[name]
+		if symbol.Mutable {
+			t.Fatalf("%s should be immutable", name)
+		}
+		if symbol.Type.Name != "TokenType" {
+			t.Fatalf("%s type = %q, want TokenType", name, symbol.Type.Name)
+		}
 	}
 }
 
@@ -1420,6 +1538,135 @@ let f: int8 := -129
 		"value -129 overflows int8 at 7:16",
 	}
 
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestCharAndRuneNumericSuffixes(t *testing.T) {
+	input := `
+module main
+
+let marker: rune := '$'
+
+fn Matches(ch: rune, letter: char) bool {
+	switch ch {
+	case '$':
+		return letter == 65c
+	default:
+		return ch == '$' && ch == '\n' && ch == 0r && letter == 65c
+}
+}
+`
+
+	assertSemaErrors(t, analyzeSource(t, input), nil)
+}
+
+func TestCharacterLiteralShapesToRuneFunctionParameter(t *testing.T) {
+	input := `
+module main
+
+fn AcceptRune(value: rune) bool {
+	return value == 'A'
+}
+
+fn Test() bool {
+	return AcceptRune('A')
+}
+`
+
+	assertSemaErrors(t, analyzeSource(t, input), nil)
+}
+
+func TestInferIncompleteExpressionDoesNotPanic(t *testing.T) {
+	analyzer := NewAnalyzer()
+	analyzer.Analyze(&ast.Program{})
+	expr := &ast.InfixExpression{
+		Token:    lexer.Token{Lexeme: "==", Line: 1, Column: 3},
+		Left:     &ast.IntegerLiteral{Token: lexer.Token{Lexeme: "1", Line: 1, Column: 1}},
+		Operator: "==",
+		Right:    nil,
+	}
+
+	typ, _ := analyzer.inferExpression(expr)
+	if typ.Kind != InvalidType {
+		t.Fatalf("wrong inferred type. got=%s want=%s", typ.Kind, InvalidType)
+	}
+}
+
+func TestSecCharacterLiteralEscapes(t *testing.T) {
+	input := `
+module main
+
+fn Test(ch: rune) bool {
+	return ch == '\n' || ch == '\0' || ch == '\'' || ch == '\x41' || ch == '\u{03A9}'
+}
+`
+
+	assertSemaErrors(t, analyzeSource(t, input), nil)
+}
+
+func TestCharAndRuneNumericSuffixesRequireUnicodeScalarsAndExactTypes(t *testing.T) {
+	input := `
+module main
+
+let high: rune := 1114112r
+let surrogate: char := 55296c
+let wrong: char := 65r
+
+fn Values(items: int[65r]) void {
+}
+
+fn Different(letter: char, codepoint: rune) bool {
+	return letter == codepoint
+}
+`
+
+	errors := analyzeSource(t, input)
+	expected := []string{
+		"array length must be a compile-time integer at 8:22",
+		"value 1114112r is not a valid Unicode scalar value at 4:19",
+		"value 55296c is not a valid Unicode scalar value at 5:24",
+		"cannot initialize char with rune at 6:20",
+		"cannot compare char and rune at 12:16",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestCompilerKnownLenReturnsIntForStringsAndArrays(t *testing.T) {
+	input := `
+module main
+
+fn Count(text: string, slice: ref rune[]) int {
+	let owned := [0r, 1r]
+	return len(text) + len(slice) + len(owned)
+}
+`
+
+	assertSemaErrors(t, analyzeSource(t, input), nil)
+}
+
+func TestCompilerKnownLenRejectsUnsupportedArgumentsAndRedeclaration(t *testing.T) {
+	input := `
+module main
+
+fn len(value: bool) int {
+	return 0
+}
+
+fn Test() int {
+	let none := len()
+	let bad := len(true)
+	let explicit := len[rune]([0r])
+	return 0
+}
+`
+
+	errors := analyzeSource(t, input)
+	expected := []string{
+		"function len is compiler-known and cannot be declared at 4:4",
+		"len expects 1 argument, got 0 at 9:14",
+		"len requires string, an array, or a slice reference, got bool at 10:17",
+		"len infers its element type from its argument at 11:18",
+	}
 	assertSemaErrors(t, errors, expected)
 }
 
@@ -2714,6 +2961,96 @@ fn Use(counter: Counter) void {
 	errors := analyzeSourceRaw(t, input)
 	expected := []string{
 		"method Increment requires mutable receiver at 15:9",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestDiscardedMutableSelfMethodCallInfersMutableReceiver(t *testing.T) {
+	input := `
+module main
+
+type Counter struct {
+	value: int,
+}
+
+impl Counter {
+	fn Advance() int {
+		self.value += 1
+		return self.value
+	}
+
+	fn Skip() void {
+		discard self.Advance()
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestReturnedMutableSelfMethodCallInfersMutableReceiver(t *testing.T) {
+	input := `
+module main
+
+type Reader struct {
+	position: int,
+}
+
+impl Reader {
+	fn Equal() bool {
+		return self.readTwo(1)
+	}
+
+	fn readTwo(kind: int) bool {
+		self.position += 2
+		return kind == 0
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestImplMethodLocalShadowsShortFieldAlias(t *testing.T) {
+	input := `
+module main
+
+type Cursor struct {
+	line: int,
+}
+
+impl Cursor {
+	fn NextLine() int {
+		let mut line := self.line
+		line += 1
+		return line
+	}
+}
+
+fn Read(cursor: Cursor) int {
+	return cursor.NextLine()
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestInvalidInitializerDoesNotCauseUndefinedVariableCascade(t *testing.T) {
+	input := `
+module main
+
+fn UseInvalidValue() void {
+	let value := Missing()
+	value
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	expected := []string{
+		"unknown function or type Missing at 5:15",
 	}
 	assertSemaErrors(t, errors, expected)
 }
@@ -6838,7 +7175,7 @@ fn VectorTooManyBindings(values: vector[int, 3]) void {
 	assertSemaErrors(t, errors, expected)
 }
 
-func TestBareSliceTypesRequireReference(t *testing.T) {
+func TestBareSequenceTypesAreOwnedArrays(t *testing.T) {
 	input := `
 module main
 
@@ -6846,28 +7183,27 @@ type Packet struct {
 	payload: byte[],
 }
 
-fn BadParam(values: int[]) void {
+type Lexer struct {
+	input: rune[],
+	file: string,
 }
 
-fn BadReturn() byte[] {
-	return
-}
-
-fn BadLet() void {
-	let values: byte[]
+fn Use(values: int[]) int {
+	return values[0]
 }
 `
 
-	errors := analyzeSourceRaw(t, input)
+	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
+	assertSemaErrors(t, errors, nil)
 
-	expected := []string{
-		"bare slice type byte[] must be used behind ref at 5:15",
-		"bare slice type int[] must be used behind ref at 8:24",
-		"bare slice type byte[] must be used behind ref at 11:20",
-		"bare slice type byte[] must be used behind ref at 16:18",
+	packet := analyzer.types["Packet"]
+	if len(packet.Fields) != 1 || packet.Fields[0].Type.Kind != ArrayType || packet.Fields[0].Type.ArrayLength != dynamicArrayLength {
+		t.Fatalf("Packet.payload should be owned byte[] array, got %+v", packet.Fields)
 	}
-
-	assertSemaErrors(t, errors, expected)
+	lexer := analyzer.types["Lexer"]
+	if len(lexer.Fields) != 2 || lexer.Fields[0].Type.Kind != ArrayType || lexer.Fields[0].Type.ArrayLength != dynamicArrayLength {
+		t.Fatalf("Lexer.input should be owned rune[] array, got %+v", lexer.Fields)
+	}
 }
 
 func TestForTooManySequentialBindings(t *testing.T) {
@@ -7527,6 +7863,28 @@ fn Test(left: int128, right: int128, b: bool) int128 {
 	}
 
 	assertSemaErrors(t, errors, expected)
+}
+
+func TestImplSelfMethodCallRetainsReturnType(t *testing.T) {
+	input := `
+module main
+
+type Counter struct {
+	value: int,
+}
+
+impl Counter {
+	fn advance() int {
+		return self.value + 1
+	}
+
+	fn Next() int {
+		return self.advance()
+	}
+}
+`
+
+	assertSemaErrors(t, analyzeSource(t, input), nil)
 }
 
 func assertSemaErrors(t *testing.T, errors []Error, expected []string) {

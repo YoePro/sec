@@ -8,12 +8,14 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"sec/internal/ast"
 	"sec/internal/diagnostics"
@@ -34,6 +36,12 @@ type rpcMessage struct {
 type rpcError struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
+}
+
+type rpcResponseMessage struct {
+	JSONRPC string          `json:"jsonrpc"`
+	ID      json.RawMessage `json:"id"`
+	Result  any             `json:"result"`
 }
 
 type textDocumentItem struct {
@@ -68,6 +76,42 @@ type CompletionOptions struct {
 type completionParams struct {
 	TextDocument textDocumentIdentifier `json:"textDocument"`
 	Position     position               `json:"position"`
+}
+
+type hoverParams struct {
+	TextDocument textDocumentIdentifier `json:"textDocument"`
+	Position     position               `json:"position"`
+}
+
+type documentSymbolParams struct {
+	TextDocument textDocumentIdentifier `json:"textDocument"`
+}
+
+type semanticTokensParams struct {
+	TextDocument textDocumentIdentifier `json:"textDocument"`
+}
+
+type documentSymbol struct {
+	Name           string           `json:"name"`
+	Detail         string           `json:"detail,omitempty"`
+	Kind           int              `json:"kind"`
+	Range          lspRange         `json:"range"`
+	SelectionRange lspRange         `json:"selectionRange"`
+	Children       []documentSymbol `json:"children,omitempty"`
+}
+
+type semanticTokens struct {
+	Data []int `json:"data"`
+}
+
+type markupContent struct {
+	Kind  string `json:"kind"`
+	Value string `json:"value"`
+}
+
+type hoverResult struct {
+	Contents markupContent `json:"contents"`
+	Range    lspRange      `json:"range,omitempty"`
 }
 
 type completionItem struct {
@@ -167,8 +211,18 @@ func (s *server) handle(message rpcMessage) error {
 			"capabilities": map[string]any{
 				"textDocumentSync":           1,
 				"documentFormattingProvider": true,
+				"documentSymbolProvider":     true,
+				"hoverProvider":              true,
 				"completionProvider": map[string]any{
 					"triggerCharacters": []string{"."},
+				},
+				"semanticTokensProvider": map[string]any{
+					"legend": map[string]any{
+						"tokenTypes":     semanticTokenTypes,
+						"tokenModifiers": semanticTokenModifiers,
+					},
+					"full":  true,
+					"range": false,
 				},
 			},
 			"serverInfo": map[string]any{
@@ -234,6 +288,46 @@ func (s *server) handle(message rpcMessage) error {
 		offset := lineCharToOffset(text, params.Position.Line, params.Position.Character)
 		items := completeSource(params.TextDocument.URI, text, offset)
 		return s.respond(message.ID, items)
+	case "textDocument/documentSymbol":
+		var params documentSymbolParams
+		if err := json.Unmarshal(message.Params, &params); err != nil {
+			return err
+		}
+		s.docMu.RLock()
+		text, ok := s.documents[params.TextDocument.URI]
+		s.docMu.RUnlock()
+		if !ok {
+			return s.respond(message.ID, []documentSymbol{})
+		}
+		return s.respond(message.ID, documentSymbolsForSource(params.TextDocument.URI, text))
+	case "textDocument/semanticTokens/full":
+		var params semanticTokensParams
+		if err := json.Unmarshal(message.Params, &params); err != nil {
+			return err
+		}
+		s.docMu.RLock()
+		text, ok := s.documents[params.TextDocument.URI]
+		s.docMu.RUnlock()
+		if !ok {
+			return s.respond(message.ID, semanticTokens{})
+		}
+		return s.respond(message.ID, semanticTokensForSource(params.TextDocument.URI, text))
+	case "textDocument/hover":
+		var params hoverParams
+		if err := json.Unmarshal(message.Params, &params); err != nil {
+			return err
+		}
+		s.docMu.RLock()
+		text, ok := s.documents[params.TextDocument.URI]
+		s.docMu.RUnlock()
+		if !ok {
+			return s.respond(message.ID, nil)
+		}
+		result, ok := hoverForSource(params.TextDocument.URI, text, params.Position)
+		if !ok {
+			return s.respond(message.ID, nil)
+		}
+		return s.respond(message.ID, result)
 	default:
 		if len(message.ID) == 0 {
 			return nil
@@ -244,10 +338,7 @@ func (s *server) handle(message rpcMessage) error {
 
 func completeSource(uri string, text string, offset int) []completionItem {
 	context := completionContextAt(text, offset)
-	parseText := text
-	if context.Member && context.Prefix == "" {
-		parseText = text[:offset] + "__sec_completion" + text[offset:]
-	}
+	parseText := completionParseText(text, offset, context)
 
 	l := lexer.New(parseText)
 	if uri != "" {
@@ -257,19 +348,21 @@ func completeSource(uri string, text string, offset int) []completionItem {
 	fileAST := p.ParseProgram()
 
 	analyzer := sema.NewAnalyzer()
+	analyzed := false
 	if fileAST != nil && len(p.Errors()) == 0 {
 		if uri != "" {
 			resolveCoreSources(fileAST, pathFromURI(uri))
 			resolveSourceImports(fileAST, map[string]bool{}, pathFromURI(uri))
 		}
 		analyzer.Analyze(fileAST)
+		analyzed = true
 		if expected, ok := expectedReturnTypeAt(fileAST, analyzer, parseText, offset); ok {
 			context.ExpectedType = &expected
 		}
 	}
 
 	if context.Member {
-		if fileAST == nil {
+		if fileAST == nil || !analyzed {
 			return []completionItem{}
 		}
 		targetExpr := findSelectorLHS(fileAST, text, context.DotOffset)
@@ -284,6 +377,698 @@ func completeSource(uri string, text string, offset int) []completionItem {
 	}
 
 	return globalCompletionItems(text, analyzer, context)
+}
+
+// completionParseText supplies the smallest missing syntax needed to analyze a
+// member selector while the user is still typing an incomplete control statement.
+func completionParseText(text string, offset int, context completionContext) string {
+	if !context.Member {
+		return text
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	if offset > len(text) {
+		offset = len(text)
+	}
+
+	insertion := ""
+	if context.Prefix == "" {
+		insertion = "__sec_completion"
+	}
+	if incompleteIfConditionAt(text, offset, context.DotOffset) {
+		insertion += " {}"
+	}
+	if insertion == "" {
+		return text
+	}
+	return text[:offset] + insertion + text[offset:]
+}
+
+func incompleteIfConditionAt(text string, offset int, dotOffset int) bool {
+	if dotOffset < 0 || dotOffset > len(text) || offset < dotOffset || offset > len(text) {
+		return false
+	}
+	lineStart := strings.LastIndex(text[:dotOffset], "\n") + 1
+	beforeSelector := strings.TrimSpace(text[lineStart:dotOffset])
+	if !strings.HasPrefix(beforeSelector, "if ") {
+		return false
+	}
+	lineEnd := strings.IndexByte(text[offset:], '\n')
+	if lineEnd < 0 {
+		lineEnd = len(text)
+	} else {
+		lineEnd += offset
+	}
+	return !strings.Contains(text[offset:lineEnd], "{")
+}
+
+var semanticTokenTypes = []string{
+	"namespace",
+	"type",
+	"class",
+	"enum",
+	"interface",
+	"struct",
+	"typeParameter",
+	"parameter",
+	"variable",
+	"property",
+	"enumMember",
+	"event",
+	"function",
+	"method",
+	"keyword",
+	"modifier",
+	"comment",
+	"string",
+	"number",
+	"operator",
+}
+
+var semanticTokenModifiers = []string{
+	"declaration",
+	"static",
+}
+
+var semanticTokenTypeIndex = func() map[string]int {
+	indexes := map[string]int{}
+	for i, tokenType := range semanticTokenTypes {
+		indexes[tokenType] = i
+	}
+	return indexes
+}()
+
+func documentSymbolsForSource(uri string, text string) []documentSymbol {
+	program := parseProgramForLSP(uri, text)
+	if program == nil {
+		return []documentSymbol{}
+	}
+	symbols := []documentSymbol{}
+	for _, stmt := range program.Statements {
+		if symbol, ok := documentSymbolForStatement(stmt); ok {
+			symbols = append(symbols, symbol)
+		}
+	}
+	return symbols
+}
+
+func documentSymbolForStatement(stmt ast.Statement) (documentSymbol, bool) {
+	switch stmt := stmt.(type) {
+	case *ast.ModuleStatement:
+		if stmt == nil {
+			return documentSymbol{}, false
+		}
+		return namedDocumentSymbol(stmt.Path, "module", 2, stmt.Token, stmt.Token), true
+	case *ast.TypeDeclStatement:
+		if stmt == nil || stmt.Name == nil {
+			return documentSymbol{}, false
+		}
+		kind := 5
+		detail := "type"
+		if stmt.StructType != nil {
+			kind = 23
+			detail = "struct"
+		} else if stmt.Union {
+			kind = 23
+			detail = "union"
+		} else if len(stmt.Variants) > 0 {
+			kind = 10
+			detail = "enum"
+		}
+		return namedDocumentSymbol(stmt.Name.Value, detail, kind, stmt.Token, stmt.Name.Token), true
+	case *ast.UnitDeclStatement:
+		if stmt == nil || stmt.Name == nil {
+			return documentSymbol{}, false
+		}
+		return namedDocumentSymbol(stmt.Name.Value, "unit", 14, stmt.Token, stmt.Name.Token), true
+	case *ast.EnumDeclaration:
+		if stmt == nil || stmt.Name == nil {
+			return documentSymbol{}, false
+		}
+		symbol := namedDocumentSymbol(stmt.Name.Value, "enum", 10, stmt.Token, stmt.Name.Token)
+		for _, value := range stmt.Values {
+			if value != nil && value.Name != nil {
+				symbol.Children = append(symbol.Children, namedDocumentSymbol(value.Name.Value, "enum member", 22, value.Token, value.Name.Token))
+			}
+		}
+		return symbol, true
+	case *ast.InterfaceDeclaration:
+		if stmt == nil || stmt.Name == nil {
+			return documentSymbol{}, false
+		}
+		symbol := namedDocumentSymbol(stmt.Name.Value, "interface", 11, stmt.Token, stmt.Name.Token)
+		for _, method := range stmt.Methods {
+			if method != nil && method.Name != nil {
+				symbol.Children = append(symbol.Children, functionDocumentSymbol(method, 6))
+			}
+		}
+		for _, property := range stmt.Properties {
+			if property != nil && property.Name != nil {
+				symbol.Children = append(symbol.Children, namedDocumentSymbol(property.Name.Value, typeReferenceName(property.Type), 7, property.Token, property.Name.Token))
+			}
+		}
+		for _, event := range stmt.Events {
+			if event != nil && event.Name != nil {
+				symbol.Children = append(symbol.Children, namedDocumentSymbol(event.Name.Value, typeReferenceName(event.Payload), 24, event.Token, event.Name.Token))
+			}
+		}
+		return symbol, true
+	case *ast.FunctionDeclaration:
+		if stmt == nil || stmt.Name == nil {
+			return documentSymbol{}, false
+		}
+		return functionDocumentSymbol(stmt, 12), true
+	case *ast.StructStatement:
+		if stmt == nil || stmt.Name == nil {
+			return documentSymbol{}, false
+		}
+		symbol := namedDocumentSymbol(stmt.Name.Value, "struct", 23, stmt.Token, stmt.Name.Token)
+		for _, field := range stmt.Fields {
+			if field.Name != nil {
+				symbol.Children = append(symbol.Children, namedDocumentSymbol(field.Name.Value, typeReferenceName(field.Type), 8, field.Token, field.Name.Token))
+			}
+		}
+		return symbol, true
+	case *ast.LetStatement:
+		if stmt == nil || stmt.Name == nil {
+			return documentSymbol{}, false
+		}
+		return namedDocumentSymbol(stmt.Name.Value, typeReferenceName(stmt.Type), 13, stmt.Token, stmt.Name.Token), true
+	case *ast.LetGroupStatement:
+		if stmt == nil || len(stmt.Lets) == 0 {
+			return documentSymbol{}, false
+		}
+		group := namedDocumentSymbol("let", "variables", 13, stmt.Token, stmt.Token)
+		for _, let := range stmt.Lets {
+			if let != nil && let.Name != nil {
+				group.Children = append(group.Children, namedDocumentSymbol(let.Name.Value, typeReferenceName(let.Type), 13, let.Token, let.Name.Token))
+			}
+		}
+		return group, true
+	case *ast.ImplStatement:
+		if stmt == nil || stmt.Target == nil {
+			return documentSymbol{}, false
+		}
+		symbol := namedDocumentSymbol("impl "+stmt.Target.Name, "impl", 3, stmt.Token, stmt.Target.Token)
+		for _, member := range stmt.Members {
+			if child, ok := documentSymbolForImplMember(member); ok {
+				symbol.Children = append(symbol.Children, child)
+			}
+		}
+		return symbol, true
+	default:
+		return documentSymbol{}, false
+	}
+}
+
+func documentSymbolForImplMember(member ast.ImplMember) (documentSymbol, bool) {
+	switch member := member.(type) {
+	case *ast.FunctionDeclaration:
+		if member == nil || member.Name == nil {
+			return documentSymbol{}, false
+		}
+		return functionDocumentSymbol(member, 6), true
+	case *ast.PropertyDeclaration:
+		if member == nil || member.Name == nil {
+			return documentSymbol{}, false
+		}
+		return namedDocumentSymbol(member.Name.Value, typeReferenceName(member.Type), 7, member.Token, member.Name.Token), true
+	case *ast.EventDeclaration:
+		if member == nil || member.Name == nil {
+			return documentSymbol{}, false
+		}
+		return namedDocumentSymbol(member.Name.Value, "event", 24, member.Token, member.Name.Token), true
+	case *ast.TypeDeclStatement:
+		return documentSymbolForStatement(member)
+	case *ast.UnitDeclStatement:
+		return documentSymbolForStatement(member)
+	case *ast.EnumDeclaration:
+		return documentSymbolForStatement(member)
+	case *ast.LetStatement:
+		return documentSymbolForStatement(member)
+	default:
+		return documentSymbol{}, false
+	}
+}
+
+func functionDocumentSymbol(fn *ast.FunctionDeclaration, kind int) documentSymbol {
+	detail := "fn"
+	if fn.ReturnType != nil {
+		detail += " " + typeReferenceName(fn.ReturnType)
+	}
+	return namedDocumentSymbol(fn.Name.Value, detail, kind, fn.Token, fn.Name.Token)
+}
+
+func namedDocumentSymbol(name string, detail string, kind int, token lexer.Token, selectionToken lexer.Token) documentSymbol {
+	selectionRange := tokenRange(selectionToken)
+	return documentSymbol{
+		Name:           name,
+		Detail:         detail,
+		Kind:           kind,
+		Range:          rangeContaining(tokenRange(token), selectionRange),
+		SelectionRange: selectionRange,
+	}
+}
+
+func semanticTokensForSource(uri string, text string) semanticTokens {
+	tokenTypes := semanticTokenClassification(uri, text)
+	l := lexer.NewWithFile(text, pathFromURI(uri))
+	data := []int{}
+	previousLine := 0
+	previousStart := 0
+	for {
+		token := l.NextToken()
+		if token.Type == lexer.EOF {
+			break
+		}
+		tokenType := semanticTokenType(token, tokenTypes)
+		if tokenType == "" {
+			continue
+		}
+		typeIndex, ok := semanticTokenTypeIndex[tokenType]
+		if !ok {
+			continue
+		}
+		line := max(token.Line-1, 0)
+		start := max(token.Column-1, 0)
+		length := semanticTokenLength(token)
+		if length <= 0 {
+			continue
+		}
+		deltaLine := line - previousLine
+		deltaStart := start
+		if deltaLine == 0 {
+			deltaStart = start - previousStart
+		}
+		data = append(data, deltaLine, deltaStart, length, typeIndex, 0)
+		previousLine = line
+		previousStart = start
+	}
+	return semanticTokens{Data: data}
+}
+
+func semanticTokenClassification(uri string, text string) (classification map[string]string) {
+	classification = map[string]string{}
+	defer func() {
+		if recover() != nil {
+			// Semantic analysis is best-effort for an actively edited document.
+			// Keep the server alive and let lexical token classification continue.
+			classification = map[string]string{}
+		}
+	}()
+
+	program := parseProgramForLSP(uri, text)
+	if program == nil {
+		return classification
+	}
+	path := pathFromURI(uri)
+	resolveCoreSources(program, path)
+	resolveSourceImports(program, map[string]bool{}, path)
+	analyzer := sema.NewAnalyzer()
+	analyzer.Analyze(program)
+	for name := range analyzer.Types() {
+		classification[name] = "type"
+	}
+	for name := range analyzer.Functions() {
+		classification[name] = "function"
+		if dot := strings.LastIndex(name, "."); dot >= 0 && dot+1 < len(name) {
+			classification[name[dot+1:]] = "method"
+		}
+	}
+	for name, symbol := range analyzer.Symbols() {
+		if strings.Contains(name, ".") {
+			continue
+		}
+		if symbol.Local {
+			classification[name] = "variable"
+		} else {
+			classification[name] = "property"
+		}
+	}
+	return classification
+}
+
+func semanticTokenType(token lexer.Token, classification map[string]string) string {
+	switch token.Type {
+	case lexer.COMMENT:
+		return "comment"
+	case lexer.STRING, lexer.CHAR, lexer.RAW_STRING, lexer.INTERPSTRING:
+		return "string"
+	case lexer.INT, lexer.FLOAT:
+		return "number"
+	case lexer.IDENT, lexer.SELF:
+		if classified := classification[token.Lexeme]; classified != "" {
+			return classified
+		}
+		return "variable"
+	case lexer.ASSIGN, lexer.DECLARE, lexer.ARROW, lexer.PLUS, lexer.MINUS, lexer.ASTERISK, lexer.SLASH, lexer.PERCENT,
+		lexer.PLUS_ASSIGN, lexer.MINUS_ASSIGN, lexer.ASTERISK_ASSIGN, lexer.SLASH_ASSIGN, lexer.PERCENT_ASSIGN,
+		lexer.EQ, lexer.NEQ, lexer.LT, lexer.LTE, lexer.GT, lexer.GTE, lexer.AND, lexer.OR, lexer.NOT,
+		lexer.BIT_AND, lexer.BIT_OR, lexer.BIT_XOR, lexer.BIT_NOT, lexer.SHIFT_LEFT, lexer.SHIFT_RIGHT,
+		lexer.BIT_AND_ASSIGN, lexer.BIT_OR_ASSIGN, lexer.BIT_XOR_ASSIGN, lexer.SHIFT_LEFT_ASSIGN, lexer.SHIFT_RIGHT_ASSIGN,
+		lexer.DOT, lexer.RANGE, lexer.RANGE_EXCLUSIVE, lexer.SPREAD, lexer.COLON:
+		return "operator"
+	case lexer.COMMA, lexer.SEMICOLON, lexer.QUESTION, lexer.UNDERSCORE, lexer.AT, lexer.HASH,
+		lexer.LPAREN, lexer.RPAREN, lexer.LBRACE, lexer.RBRACE, lexer.LBRACKET, lexer.RBRACKET:
+		return ""
+	default:
+		return "keyword"
+	}
+}
+
+func semanticTokenLength(token lexer.Token) int {
+	if strings.Contains(token.Lexeme, "\n") {
+		return len([]rune(strings.Split(token.Lexeme, "\n")[0]))
+	}
+	return len([]rune(token.Lexeme))
+}
+
+func hoverForSource(uri string, text string, pos position) (hoverResult, bool) {
+	program := parseProgramForLSP(uri, text)
+	if program == nil {
+		return hoverResult{}, false
+	}
+	offset := lineCharToOffset(text, pos.Line, pos.Character)
+	if offset < 0 {
+		return hoverResult{}, false
+	}
+
+	path := pathFromURI(uri)
+	if uri != "" {
+		resolveCoreSources(program, path)
+		resolveSourceImports(program, map[string]bool{}, path)
+	}
+	analyzer := sema.NewAnalyzer()
+	analyzer.Analyze(program)
+
+	name, nameStart, nameEnd, ok := identifierAtOffset(text, offset)
+	if !ok {
+		return hoverResult{}, false
+	}
+	nameRange := offsetsRange(text, nameStart, nameEnd)
+
+	if target, ok := implTargetAtOffset(program, analyzer, text, path, offset); ok {
+		if name == "self" {
+			return typedHover(nameRange, "self", target), true
+		}
+		if isSelfMemberSelector(text, nameStart) {
+			if contents, ok := selfMemberHoverContents(target, name, analyzer.Functions(), text, path); ok {
+				return hoverResult{Contents: markupContent{Kind: "markdown", Value: contents}, Range: nameRange}, true
+			}
+		}
+	}
+
+	if functions := analyzer.Functions()[name]; len(functions) > 0 {
+		return hoverResult{Contents: markupContent{Kind: "markdown", Value: functionHoverContents(functions, text, path)}, Range: nameRange}, true
+	}
+	if symbol, ok := analyzer.Symbols()[name]; ok {
+		return typedHover(nameRange, symbol.Name, symbol.Type), true
+	}
+	if typ, ok := analyzer.Types()[name]; ok {
+		return typedHover(nameRange, "type "+name, typ), true
+	}
+
+	return hoverResult{}, false
+}
+
+func typedHover(rng lspRange, name string, typ sema.Type) hoverResult {
+	return hoverResult{
+		Contents: markupContent{Kind: "markdown", Value: fmt.Sprintf("```sec\n%s: %s\n```", name, lspTypeName(typ))},
+		Range:    rng,
+	}
+}
+
+func selfMemberHoverContents(target sema.Type, name string, functions map[string][]sema.Function, text string, sourcePath string) (string, bool) {
+	for _, field := range target.Fields {
+		if field.Name == name {
+			return fmt.Sprintf("```sec\nfield %s: %s\n```", name, lspTypeName(field.Type)), true
+		}
+	}
+	for _, field := range target.RegisterFields {
+		if field.Name == name {
+			return fmt.Sprintf("```sec\nregister field %s: %s\n```", name, lspTypeName(field.Type)), true
+		}
+	}
+	for _, property := range target.Properties {
+		if property.Name == name {
+			return fmt.Sprintf("```sec\nproperty %s: %s\n```", name, lspTypeName(property.Type)), true
+		}
+	}
+	for _, event := range target.Events {
+		if event.Name == name {
+			return fmt.Sprintf("```sec\nevent %s: %s\n```", name, lspTypeName(event.Type)), true
+		}
+	}
+	if overloads := functions[target.Name+"."+name]; len(overloads) > 0 {
+		return functionHoverContents(overloads, text, sourcePath), true
+	}
+	return "", false
+}
+
+func functionHoverContents(functions []sema.Function, text string, sourcePath string) string {
+	lines := make([]string, 0, len(functions)+2)
+	for _, function := range functions {
+		params := make([]string, 0, len(function.Parameters))
+		for _, parameter := range function.Parameters {
+			prefix := ""
+			if parameter.Ref {
+				prefix = "ref "
+				if parameter.MutableRef {
+					prefix = "ref mut "
+				}
+			}
+			params = append(params, fmt.Sprintf("%s%s: %s", prefix, parameter.Name, lspTypeName(parameter.Type)))
+		}
+		lines = append(lines, fmt.Sprintf("fn %s(%s) %s", function.Name, strings.Join(params, ", "), lspTypeName(function.ReturnType)))
+	}
+	contents := "```sec\n" + strings.Join(lines, "\n") + "\n```"
+	if len(functions) == 1 && functionSourceMatches(functions[0], sourcePath) {
+		if doc := functionDocCommentAbove(text, functions[0].Token.Line); doc != "" {
+			contents += "\n\n" + doc
+		}
+	}
+	return contents
+}
+
+func functionSourceMatches(function sema.Function, sourcePath string) bool {
+	if sourcePath == "" || function.Token.File == "" {
+		return true
+	}
+	return filepath.Clean(function.Token.File) == filepath.Clean(sourcePath)
+}
+
+func implTargetAtOffset(program *ast.Program, analyzer *sema.Analyzer, text string, sourcePath string, offset int) (sema.Type, bool) {
+	if program == nil {
+		return sema.Type{}, false
+	}
+	for _, stmt := range program.Statements {
+		impl, ok := stmt.(*ast.ImplStatement)
+		if !ok || impl == nil || impl.Target == nil || !statementSourceMatches(impl.Token, sourcePath) {
+			continue
+		}
+		start := textPositionOffset(text, impl.Token.Line, impl.Token.Column)
+		if start < 0 {
+			continue
+		}
+		brace := strings.Index(text[start:], "{")
+		if brace < 0 {
+			continue
+		}
+		bodyStart := start + brace
+		bodyEnd := matchingBraceOffset(text, bodyStart)
+		if bodyEnd < 0 || offset < bodyStart || offset > bodyEnd {
+			continue
+		}
+		target, ok := analyzer.Types()[impl.Target.Name]
+		return target, ok
+	}
+	return sema.Type{}, false
+}
+
+func statementSourceMatches(token lexer.Token, sourcePath string) bool {
+	if sourcePath == "" || token.File == "" {
+		return true
+	}
+	return filepath.Clean(token.File) == filepath.Clean(sourcePath)
+}
+
+func identifierAtOffset(text string, offset int) (string, int, int, bool) {
+	if offset < 0 || offset > len(text) {
+		return "", 0, 0, false
+	}
+	index := offset
+	if index == len(text) || !isIdentifierByte(text[index]) {
+		index--
+	}
+	if index < 0 || !isIdentifierByte(text[index]) {
+		return "", 0, 0, false
+	}
+	start := index
+	for start > 0 && isIdentifierByte(text[start-1]) {
+		start--
+	}
+	end := index + 1
+	for end < len(text) && isIdentifierByte(text[end]) {
+		end++
+	}
+	return text[start:end], start, end, true
+}
+
+func isSelfMemberSelector(text string, nameStart int) bool {
+	index := nameStart - 1
+	for index >= 0 && (text[index] == ' ' || text[index] == '\t' || text[index] == '\r' || text[index] == '\n') {
+		index--
+	}
+	if index < 0 || text[index] != '.' {
+		return false
+	}
+	index--
+	for index >= 0 && (text[index] == ' ' || text[index] == '\t' || text[index] == '\r' || text[index] == '\n') {
+		index--
+	}
+	end := index + 1
+	for index >= 0 && isIdentifierByte(text[index]) {
+		index--
+	}
+	return text[index+1:end] == "self"
+}
+
+func offsetsRange(text string, start int, end int) lspRange {
+	return lspRange{Start: offsetPosition(text, start), End: offsetPosition(text, end)}
+}
+
+func offsetPosition(text string, offset int) position {
+	line := 0
+	column := 0
+	for index, value := range text {
+		if index >= offset {
+			return position{Line: line, Character: column}
+		}
+		if value == '\n' {
+			line++
+			column = 0
+		} else {
+			column++
+		}
+	}
+	return position{Line: line, Character: column}
+}
+
+func functionDocCommentAbove(text string, functionLine int) string {
+	lines := strings.Split(strings.ReplaceAll(strings.ReplaceAll(text, "\r\n", "\n"), "\r", "\n"), "\n")
+	lineIndex := functionLine - 2
+	for lineIndex >= 0 && strings.TrimSpace(lines[lineIndex]) == "" {
+		lineIndex--
+	}
+	if lineIndex < 0 || !strings.HasSuffix(strings.TrimSpace(lines[lineIndex]), "*/") {
+		return ""
+	}
+	end := lineIndex
+	for lineIndex >= 0 && !strings.Contains(lines[lineIndex], "/**") {
+		lineIndex--
+	}
+	if lineIndex < 0 {
+		return ""
+	}
+	if strings.TrimSpace(lines[lineIndex]) == "/**" && end == lineIndex {
+		return ""
+	}
+	docLines := []string{}
+	for i := lineIndex; i <= end; i++ {
+		line := strings.TrimSpace(lines[i])
+		line = strings.TrimPrefix(line, "/**")
+		line = strings.TrimSuffix(line, "*/")
+		line = strings.TrimSpace(line)
+		line = strings.TrimPrefix(line, "*")
+		line = strings.TrimSpace(line)
+		if line != "" {
+			docLines = append(docLines, line)
+		}
+	}
+	return strings.Join(docLines, "\n")
+}
+
+func parseProgramForLSP(uri string, text string) *ast.Program {
+	l := lexer.New(text)
+	if uri != "" {
+		l = lexer.NewWithFile(text, pathFromURI(uri))
+	}
+	p := parser.New(l)
+	return p.ParseProgram()
+}
+
+func tokenRange(token lexer.Token) lspRange {
+	line := max(token.Line-1, 0)
+	start := max(token.Column-1, 0)
+	return lspRange{
+		Start: position{Line: line, Character: start},
+		End:   position{Line: line, Character: start + semanticTokenLength(token)},
+	}
+}
+
+func rangeContaining(rng lspRange, contained lspRange) lspRange {
+	if comparePosition(contained.Start, rng.Start) < 0 {
+		rng.Start = contained.Start
+	}
+	if comparePosition(contained.End, rng.End) > 0 {
+		rng.End = contained.End
+	}
+	return rng
+}
+
+func comparePosition(left position, right position) int {
+	if left.Line != right.Line {
+		return left.Line - right.Line
+	}
+	return left.Character - right.Character
+}
+
+func positionInRange(pos position, rng lspRange) bool {
+	if pos.Line < rng.Start.Line || pos.Line > rng.End.Line {
+		return false
+	}
+	if pos.Line == rng.Start.Line && pos.Character < rng.Start.Character {
+		return false
+	}
+	if pos.Line == rng.End.Line && pos.Character > rng.End.Character {
+		return false
+	}
+	return true
+}
+
+func typeReferenceName(ref *ast.TypeReference) string {
+	if ref == nil {
+		return ""
+	}
+	name := ref.Name
+	if name == "" && ref.Unit != "" {
+		name = ref.Unit
+	}
+	if name == "" && ref.ElementType != nil {
+		name = typeReferenceName(ref.ElementType)
+	}
+	if ref.Ref {
+		if ref.MutableRef {
+			name = "ref mut " + name
+		} else {
+			name = "ref " + name
+		}
+	}
+	if ref.Slice {
+		name += "[]"
+	}
+	if ref.ArrayLength > 0 {
+		name += fmt.Sprintf("[%d]", ref.ArrayLength)
+	}
+	if len(ref.TypeArgs) > 0 {
+		args := make([]string, 0, len(ref.TypeArgs))
+		for _, arg := range ref.TypeArgs {
+			args = append(args, typeReferenceName(arg))
+		}
+		name += "[" + strings.Join(args, ", ") + "]"
+	}
+	return name
 }
 
 type completionContext struct {
@@ -450,6 +1235,10 @@ func memberCompletionItems(exprType sema.Type, functions map[string][]sema.Funct
 		for _, field := range exprType.Fields {
 			add(completionItem{Label: field.Name, Kind: 5, Detail: lspTypeName(field.Type)})
 		}
+	case sema.ArrayType, sema.SliceType:
+		if exprType.Element != nil && exprType.Element.Kind == sema.RuneType {
+			add(completionItem{Label: "ToString", Kind: 2, Detail: "string"})
+		}
 	case sema.RawPtrType:
 		add(completionItem{Label: "Offset", Kind: 2, Detail: lspTypeName(exprType)})
 		add(completionItem{Label: "AddBytes", Kind: 2, Detail: "RawPtr[byte]"})
@@ -470,6 +1259,9 @@ func memberCompletionItems(exprType sema.Type, functions map[string][]sema.Funct
 
 	for _, property := range exprType.Properties {
 		add(completionItem{Label: property.Name, Kind: 10, Detail: lspTypeName(property.Type)})
+	}
+	for _, event := range exprType.Events {
+		add(completionItem{Label: event.Name, Kind: 24, Detail: lspTypeName(event.Type)})
 	}
 
 	typeName := exprType.Name
@@ -837,7 +1629,6 @@ func formatSource(text string) string {
 	indent := 0
 	blankPending := false
 	branchBlocks := []formatterBranchContext{}
-	inImportGroup := false
 
 	for _, line := range lines {
 		line = strings.ReplaceAll(line, "\t", "    ")
@@ -850,10 +1641,11 @@ func formatSource(text string) string {
 			}
 			continue
 		}
+		trimmed = formatSingleLineLetDeclaration(formatSingleLineFunctionSignature(normalizeFunctionKeyword(trimmed)))
 
-		lineIndent := indent
-		if startsWithClosingBlock(trimmed) && lineIndent > 0 {
-			lineIndent--
+		lineIndent := indent - leadingClosingDelimiterCount(trimmed)
+		if lineIndent < 0 {
+			lineIndent = 0
 		}
 
 		for len(branchBlocks) > 0 && lineIndent < branchBlocks[len(branchBlocks)-1].contentDepth {
@@ -871,9 +1663,6 @@ func formatSource(text string) string {
 		}
 
 		extraIndent := 0
-		if inImportGroup && trimmed != ")" {
-			extraIndent++
-		}
 		for i, context := range branchBlocks {
 			if context.bodyExtra && context.branchActive && lineIndent >= context.contentDepth {
 				if i == branchContext {
@@ -889,18 +1678,13 @@ func formatSource(text string) string {
 		}
 
 		out = append(out, strings.Repeat(" ", (lineIndent+extraIndent)*4)+trimmed)
-		indentDelta := braceIndentDelta(trimmed)
+		indentDelta := delimiterIndentDelta(trimmed)
 		indent += indentDelta
 		if indent < 0 {
 			indent = 0
 		}
 		if isBranchBlockStart(trimmed) && indentDelta > 0 {
 			branchBlocks = append(branchBlocks, formatterBranchContext{contentDepth: indent, bodyExtra: isSwitchBlockStart(trimmed)})
-		}
-		if trimmed == "import (" {
-			inImportGroup = true
-		} else if inImportGroup && trimmed == ")" {
-			inImportGroup = false
 		}
 		if branchContext >= 0 {
 			branchBlocks[branchContext].branchActive = true
@@ -915,6 +1699,214 @@ func formatSource(text string) string {
 		formatted = strings.ReplaceAll(formatted, "\n", lineEnding)
 	}
 	return formatted
+}
+
+func formatSingleLineFunctionSignature(line string) string {
+	if !strings.HasPrefix(line, "fn ") {
+		return line
+	}
+
+	open := strings.Index(line, "(")
+	if open < 0 {
+		return line
+	}
+	close := matchingSignatureParenthesis(line, open)
+	if close < 0 {
+		return line
+	}
+
+	parameters := splitTopLevelCommaList(line[open+1 : close])
+	if parameters == nil {
+		return line
+	}
+	return line[:open+1] + strings.Join(parameters, ", ") + line[close:]
+}
+
+// normalizeFunctionKeyword corrects only a complete, body-bearing function
+// declaration. Other uses of the identifier "func" are left untouched.
+func normalizeFunctionKeyword(line string) string {
+	if !strings.HasPrefix(line, "func ") {
+		return line
+	}
+
+	open := strings.Index(line, "(")
+	if open < 0 || !plausibleFunctionName(strings.TrimSpace(line[len("func "):open])) {
+		return line
+	}
+	close := matchingSignatureParenthesis(line, open)
+	if close < 0 || !strings.Contains(line[close+1:], "{") {
+		return line
+	}
+	return "fn " + strings.TrimPrefix(line, "func ")
+}
+
+func plausibleFunctionName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for index, r := range name {
+		if index == 0 {
+			if r != '_' && !unicode.IsLetter(r) {
+				return false
+			}
+			continue
+		}
+		if r != '_' && !unicode.IsLetter(r) && !unicode.IsDigit(r) {
+			return false
+		}
+	}
+	return true
+}
+
+func formatSingleLineLetDeclaration(line string) string {
+	if !strings.HasPrefix(line, "let ") || strings.Contains(line, "//") || strings.Contains(line, "/*") {
+		return line
+	}
+
+	declarations := splitTopLevelCommaList(strings.TrimPrefix(line, "let "))
+	if len(declarations) < 2 {
+		return line
+	}
+	for _, declaration := range declarations {
+		if !strings.Contains(declaration, ":=") {
+			return line
+		}
+	}
+	return "let " + strings.Join(declarations, ", ")
+}
+
+func matchingSignatureParenthesis(line string, open int) int {
+	depth := 0
+	angleDepth := 0
+	inString := false
+	inChar := false
+	escaped := false
+	for index, r := range line[open:] {
+		if inString {
+			if escaped {
+				escaped = false
+				continue
+			}
+			if r == '\\' {
+				escaped = true
+			} else if r == '"' {
+				inString = false
+			}
+			continue
+		}
+		if inChar {
+			if escaped {
+				escaped = false
+				continue
+			}
+			if r == '\\' {
+				escaped = true
+			} else if r == '\'' {
+				inChar = false
+			}
+			continue
+		}
+
+		switch r {
+		case '"':
+			inString = true
+		case '\'':
+			inChar = true
+		case '<':
+			angleDepth++
+		case '>':
+			if angleDepth > 0 {
+				angleDepth--
+			}
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 && angleDepth == 0 {
+				return open + index
+			}
+		}
+	}
+	return -1
+}
+
+func splitTopLevelCommaList(value string) []string {
+	parts := []string{}
+	start := 0
+	parenDepth := 0
+	bracketDepth := 0
+	angleDepth := 0
+	inString := false
+	inChar := false
+	escaped := false
+
+	for index, r := range value {
+		if inString {
+			if escaped {
+				escaped = false
+				continue
+			}
+			if r == '\\' {
+				escaped = true
+			} else if r == '"' {
+				inString = false
+			}
+			continue
+		}
+		if inChar {
+			if escaped {
+				escaped = false
+				continue
+			}
+			if r == '\\' {
+				escaped = true
+			} else if r == '\'' {
+				inChar = false
+			}
+			continue
+		}
+
+		switch r {
+		case '"':
+			inString = true
+		case '\'':
+			inChar = true
+		case '(':
+			parenDepth++
+		case ')':
+			if parenDepth > 0 {
+				parenDepth--
+			}
+		case '[':
+			bracketDepth++
+		case ']':
+			if bracketDepth > 0 {
+				bracketDepth--
+			}
+		case '<':
+			angleDepth++
+		case '>':
+			if angleDepth > 0 {
+				angleDepth--
+			}
+		case ',':
+			if parenDepth == 0 && bracketDepth == 0 && angleDepth == 0 {
+				part := strings.TrimSpace(value[start:index])
+				if part != "" {
+					parts = append(parts, part)
+				}
+				start = index + 1
+			}
+		}
+	}
+
+	if inString || inChar || parenDepth != 0 || bracketDepth != 0 || angleDepth != 0 {
+		return nil
+	}
+	if part := strings.TrimSpace(value[start:]); part != "" {
+		parts = append(parts, part)
+	}
+	return parts
 }
 
 func isSwitchBlockStart(line string) bool {
@@ -943,13 +1935,79 @@ func isSelectBranchClause(line string) bool {
 		strings.HasSuffix(line, "=> {")
 }
 
-func startsWithClosingBlock(line string) bool {
-	return strings.HasPrefix(line, "}") || strings.HasPrefix(line, "]")
+func isTypedDeclarationGroupStart(line string, lines []string, index int) bool {
+	if line == "import (" || !strings.HasSuffix(line, "(") {
+		return false
+	}
+	prefix := strings.TrimSpace(strings.TrimSuffix(line, "("))
+	if !isPlausibleTypeReferencePrefix(prefix) {
+		return false
+	}
+	for i := index + 1; i < len(lines); i++ {
+		next := strings.TrimSpace(strings.TrimRight(strings.ReplaceAll(lines[i], "\t", "    "), " \t"))
+		if next == "" || strings.HasPrefix(next, "//") || strings.HasPrefix(next, "/*") || strings.HasPrefix(next, "*") {
+			continue
+		}
+		if next == ")" {
+			return false
+		}
+		return strings.Contains(next, ":=")
+	}
+	return false
 }
 
-func braceIndentDelta(line string) int {
+func isPlausibleTypeReferencePrefix(prefix string) bool {
+	fields := strings.Fields(prefix)
+	if len(fields) == 0 {
+		return false
+	}
+	if isFormatterStatementKeyword(fields[0]) {
+		return false
+	}
+	for _, r := range strings.ReplaceAll(prefix, " ", "") {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
+			continue
+		}
+		switch r {
+		case '_', '[', ']', '<', '>', ',', '.', '?', '&', '*':
+			continue
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func isFormatterStatementKeyword(word string) bool {
+	switch word {
+	case "if", "else", "for", "while", "switch", "match", "select", "case", "default",
+		"fn", "return", "let", "try", "spawn", "await", "defer", "discard",
+		"impl", "type", "struct", "enum", "interface", "property", "extern", "unsafe",
+		"asm", "import", "module":
+		return true
+	default:
+		return false
+	}
+}
+
+func leadingClosingDelimiterCount(line string) int {
+	for _, r := range line {
+		switch r {
+		case ' ', '\t':
+			continue
+		case '}', ')', ']':
+			return 1
+		default:
+			return 0
+		}
+	}
+	return 0
+}
+
+func delimiterIndentDelta(line string) int {
 	delta := 0
 	inString := false
+	inChar := false
 	escaped := false
 	inLineComment := false
 	for i, r := range line {
@@ -970,6 +2028,20 @@ func braceIndentDelta(line string) int {
 			}
 			continue
 		}
+		if inChar {
+			if escaped {
+				escaped = false
+				continue
+			}
+			if r == '\\' {
+				escaped = true
+				continue
+			}
+			if r == '\'' {
+				inChar = false
+			}
+			continue
+		}
 		if r == '/' && i+1 < len(line) && line[i+1] == '/' {
 			inLineComment = true
 			continue
@@ -978,14 +2050,25 @@ func braceIndentDelta(line string) int {
 			inString = true
 			continue
 		}
+		if r == '\'' {
+			inChar = true
+			continue
+		}
 		switch r {
-		case '{':
+		case '{', '(', '[':
 			delta++
-		case '}':
+		case '}', ')', ']':
 			delta--
 		}
 	}
-	return delta
+	switch {
+	case delta < 0:
+		return -1
+	case delta > 0:
+		return 1
+	default:
+		return 0
+	}
 }
 
 func endPosition(text string) position {
@@ -1197,29 +2280,28 @@ func sourceIncludePaths(path string, sourceFile string) []string {
 		}
 	}
 	relative, ok := sourceIncludePath(path)
-	if !ok {
-		return nil
-	}
-	primary := filepath.Clean(filepath.Join(root, relative))
-
-	module := strings.TrimPrefix(path, "std/")
-	if module != "fmt" {
-		return []string{primary}
-	}
-
-	matches, err := filepath.Glob(filepath.Join(filepath.Dir(primary), "*.sec"))
-	if err != nil || len(matches) == 0 {
-		return []string{primary}
-	}
-	sort.Strings(matches)
-	out := []string{primary}
-	for _, match := range matches {
-		match = filepath.Clean(match)
-		if match != primary {
-			out = append(out, match)
+	if ok {
+		primary := filepath.Clean(filepath.Join(root, relative))
+		module := strings.TrimPrefix(path, "std/")
+		if module != "fmt" && module != "io" && module != "unicode" {
+			return []string{primary}
 		}
+
+		matches, err := filepath.Glob(filepath.Join(filepath.Dir(primary), "*.sec"))
+		if err != nil || len(matches) == 0 {
+			return []string{primary}
+		}
+		sort.Strings(matches)
+		out := []string{primary}
+		for _, match := range matches {
+			match = filepath.Clean(match)
+			if match != primary {
+				out = append(out, match)
+			}
+		}
+		return out
 	}
-	return out
+	return lspProjectIncludePaths(path, sourceFile)
 }
 
 func findSecSourceRoot(sourceFile string) string {
@@ -1254,6 +2336,8 @@ func sourceIncludePath(path string) (string, bool) {
 		return filepath.Join("sec", "stdlib", "fmt", "fmt.sec"), true
 	case "io":
 		return filepath.Join("sec", "stdlib", "io", "write.linux.amd64.sec"), true
+	case "unicode":
+		return filepath.Join("sec", "stdlib", "unicode", "unicode.sec"), true
 	}
 	if strings.HasPrefix(path, "platform/") {
 		trimmed := strings.Trim(path, "/")
@@ -1263,10 +2347,93 @@ func sourceIncludePath(path string) (string, bool) {
 	return "", false
 }
 
+func lspProjectIncludePaths(path string, sourceFile string) []string {
+	trimmed := strings.Trim(strings.TrimSuffix(path, ".sec"), "/")
+	if trimmed == "" || strings.HasPrefix(trimmed, "std/") || strings.HasPrefix(trimmed, "platform/") {
+		return nil
+	}
+	for _, root := range lspProjectSourceRoots(sourceFile) {
+		if paths, ok := lspProjectIncludePathsUnderRoot(root, trimmed); ok {
+			return paths
+		}
+	}
+	return nil
+}
+
+func lspProjectIncludePathsUnderRoot(root string, importPath string) ([]string, bool) {
+	// Project imports are resolved separately from stdlib imports. This keeps
+	// ordinary source modules from accidentally becoming permanent library API.
+	candidates := []string{
+		filepath.Join(root, filepath.FromSlash(importPath)+".sec"),
+		filepath.Join(root, filepath.FromSlash(importPath), filepath.Base(importPath)+".sec"),
+	}
+	for _, candidate := range candidates {
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+			return []string{filepath.Clean(candidate)}, true
+		}
+	}
+
+	dir := filepath.Join(root, filepath.FromSlash(importPath))
+	if info, err := os.Stat(dir); err == nil && info.IsDir() {
+		matches, globErr := filepath.Glob(filepath.Join(dir, "*.sec"))
+		if globErr != nil || len(matches) == 0 {
+			return nil, false
+		}
+		sort.Strings(matches)
+		return matches, true
+	}
+	return nil, false
+}
+
+func lspProjectSourceRoots(sourceFile string) []string {
+	seen := map[string]bool{}
+	roots := []string{}
+	add := func(root string) {
+		if root == "" {
+			return
+		}
+		root = filepath.Clean(root)
+		if seen[root] {
+			return
+		}
+		seen[root] = true
+		roots = append(roots, root)
+	}
+	if sourceFile != "" {
+		add(findProjectRoot(sourceFile))
+		add(filepath.Dir(sourceFile))
+	}
+	if cwd, err := os.Getwd(); err == nil {
+		add(findProjectRoot(cwd))
+	}
+	return roots
+}
+
+func findProjectRoot(path string) string {
+	current := filepath.Clean(path)
+	if info, err := os.Stat(current); err == nil && !info.IsDir() {
+		current = filepath.Dir(current)
+	}
+	for {
+		if info, err := os.Stat(filepath.Join(current, ".sec", "sec.toml")); err == nil && !info.IsDir() {
+			return current
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			break
+		}
+		current = parent
+	}
+	if info, err := os.Stat(path); err == nil && info.IsDir() {
+		return filepath.Clean(path)
+	}
+	return filepath.Dir(filepath.Clean(path))
+}
+
 // findSelectorLHS walks the AST and returns the expression that matches the selector
 // written immediately before the cursor, such as the "foo" in "foo.".
 func findSelectorLHS(node any, text string, dotOffset int) ast.Expression {
-	if node == nil {
+	if isNilASTValue(node) {
 		return nil
 	}
 
@@ -1290,6 +2457,25 @@ func findSelectorLHS(node any, text string, dotOffset int) ast.Expression {
 			return nil
 		}
 		return findSelectorLHS(n.Body, text, dotOffset)
+	case *ast.ImplStatement:
+		if n == nil {
+			return nil
+		}
+		for _, member := range n.Members {
+			if found := findSelectorLHS(member, text, dotOffset); found != nil {
+				return found
+			}
+		}
+	case *ast.PropertyDeclaration:
+		if n == nil {
+			return nil
+		}
+		if found := findSelectorLHS(n.Getter, text, dotOffset); found != nil {
+			return found
+		}
+		if n.Setter != nil {
+			return findSelectorLHS(n.Setter.Body, text, dotOffset)
+		}
 	case *ast.BlockStatement:
 		for _, stmt := range n.Statements {
 			if found := findSelectorLHS(stmt, text, dotOffset); found != nil {
@@ -1378,6 +2564,14 @@ func findSelectorLHS(node any, text string, dotOffset int) ast.Expression {
 	}
 
 	return nil
+}
+
+func isNilASTValue(node any) bool {
+	if node == nil {
+		return true
+	}
+	value := reflect.ValueOf(node)
+	return value.Kind() == reflect.Ptr && value.IsNil()
 }
 
 func selectorTextBeforeCursor(text string, dotOffset int) string {
@@ -1508,6 +2702,11 @@ func qualifyImportedModule(program *ast.Program, module string) {
 			qualifyLocalCalls(stmt.Body, module, localFunctions)
 			stmt.Name.Value = module + "." + stmt.Name.Value
 			stmt.Name.Token.Lexeme = stmt.Name.Value
+		case *ast.ImplStatement:
+			if stmt == nil {
+				continue
+			}
+			qualifyLocalCallsInImplMembers(stmt.Members, module, localFunctions)
 		case *ast.TypeDeclStatement:
 			if stmt == nil {
 				continue
@@ -1595,6 +2794,10 @@ func rewriteQualifierInStatement(stmt ast.Statement, from string, to string) {
 		rewriteQualifierInExpression(stmt.Expression, from, to)
 	case *ast.ReturnStatement:
 		rewriteQualifierInExpression(stmt.Value, from, to)
+	case *ast.MatchStatement:
+		if stmt.Match != nil {
+			rewriteQualifierInExpression(stmt.Match, from, to)
+		}
 	case *ast.IfStatement:
 		rewriteQualifierInExpression(stmt.Condition, from, to)
 		rewriteQualifierInBlock(stmt.Consequence, from, to)
@@ -1647,6 +2850,17 @@ func rewriteQualifierInExpression(expr ast.Expression, from string, to string) {
 		rewriteQualifierInExpression(expr.End, from, to)
 	case *ast.RefExpression:
 		rewriteQualifierInExpression(expr.Value, from, to)
+	case *ast.MatchExpression:
+		rewriteQualifierInExpression(expr.Subject, from, to)
+		for _, arm := range expr.Arms {
+			rewriteQualifierInExpression(arm.Pattern, from, to)
+			rewriteQualifierInExpression(arm.Guard, from, to)
+			rewriteQualifierInExpression(arm.Body, from, to)
+			if arm.ReturnBody != nil {
+				rewriteQualifierInStatement(arm.ReturnBody, from, to)
+			}
+			rewriteQualifierInBlock(arm.BlockBody, from, to)
+		}
 	}
 }
 
@@ -1760,6 +2974,11 @@ func qualifyLocalTypeReferencesInStatement(stmt ast.Statement, module string, lo
 			return
 		}
 		qualifyLocalTypesInExpression(stmt.Value, module, localTypes)
+	case *ast.MatchStatement:
+		if stmt == nil || stmt.Match == nil {
+			return
+		}
+		qualifyLocalTypesInExpression(stmt.Match, module, localTypes)
 	case *ast.IfStatement:
 		if stmt == nil {
 			return
@@ -1946,6 +3165,9 @@ func qualifyLocalTypesInExpression(expr ast.Expression, module string, localType
 			qualifyLocalTypesInExpression(arm.Pattern, module, localTypes)
 			qualifyLocalTypesInExpression(arm.Guard, module, localTypes)
 			qualifyLocalTypesInExpression(arm.Body, module, localTypes)
+			if arm.ReturnBody != nil {
+				qualifyLocalTypeReferencesInStatement(arm.ReturnBody, module, localTypes)
+			}
 			qualifyLocalTypeReferencesInBlock(arm.BlockBody, module, localTypes)
 		}
 	}
@@ -1957,6 +3179,23 @@ func qualifyLocalCalls(block *ast.BlockStatement, module string, localFunctions 
 	}
 	for _, stmt := range block.Statements {
 		qualifyLocalCallsInStatement(stmt, module, localFunctions)
+	}
+}
+
+func qualifyLocalCallsInImplMembers(members []ast.ImplMember, module string, localFunctions map[string]bool) {
+	for _, member := range members {
+		switch member := member.(type) {
+		case *ast.FunctionDeclaration:
+			qualifyLocalCalls(member.Body, module, localFunctions)
+		case *ast.PropertyDeclaration:
+			if member == nil {
+				continue
+			}
+			qualifyLocalCalls(member.Getter, module, localFunctions)
+			if member.Setter != nil {
+				qualifyLocalCalls(member.Setter.Body, module, localFunctions)
+			}
+		}
 	}
 }
 
@@ -1975,6 +3214,10 @@ func qualifyLocalCallsInStatement(stmt ast.Statement, module string, localFuncti
 		qualifyLocalCallsInExpression(stmt.Expression, module, localFunctions)
 	case *ast.ReturnStatement:
 		qualifyLocalCallsInExpression(stmt.Value, module, localFunctions)
+	case *ast.MatchStatement:
+		if stmt.Match != nil {
+			qualifyLocalCallsInExpression(stmt.Match, module, localFunctions)
+		}
 	case *ast.IfStatement:
 		qualifyLocalCallsInExpression(stmt.Condition, module, localFunctions)
 		qualifyLocalCalls(stmt.Consequence, module, localFunctions)
@@ -2056,6 +3299,9 @@ func qualifyLocalCallsInExpression(expr ast.Expression, module string, localFunc
 			qualifyLocalCallsInExpression(arm.Pattern, module, localFunctions)
 			qualifyLocalCallsInExpression(arm.Guard, module, localFunctions)
 			qualifyLocalCallsInExpression(arm.Body, module, localFunctions)
+			if arm.ReturnBody != nil {
+				qualifyLocalCallsInStatement(arm.ReturnBody, module, localFunctions)
+			}
 			qualifyLocalCalls(arm.BlockBody, module, localFunctions)
 		}
 	}
@@ -2159,7 +3405,7 @@ func readMessage(reader *bufio.Reader) (rpcMessage, error) {
 }
 
 func (s *server) respond(id json.RawMessage, result any) error {
-	return s.writeMessage(rpcMessage{
+	return s.writeResponseMessage(rpcResponseMessage{
 		JSONRPC: "2.0",
 		ID:      id,
 		Result:  result,
@@ -2187,6 +3433,14 @@ func (s *server) notify(method string, params any) error {
 }
 
 func (s *server) writeMessage(message rpcMessage) error {
+	return s.writeJSONMessage(message)
+}
+
+func (s *server) writeResponseMessage(message rpcResponseMessage) error {
+	return s.writeJSONMessage(message)
+}
+
+func (s *server) writeJSONMessage(message any) error {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 

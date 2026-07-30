@@ -1,0 +1,39 @@
+module main
+
+fn BuildPair(left: int, right: int) int[2] {
+    return [left, right]
+}
+
+fn SumFour(values: int[4]) int {
+    return values[0] + values[1] + values[2] + values[3]
+}
+
+fn ReadAt(values: uint[3], index: uint) uint {
+    return values[index]
+}
+
+fn Nested() int {
+    let mut matrix: int[2][2] := [
+        [1, 2],
+        [3, 4],
+    ]
+    matrix[1][0] = 30
+    return matrix[0][1] + matrix[1][0]
+}
+
+fn SumWithIndexes(values: int[4]) int {
+    let mut total := 0
+    for index, value in values {
+        total += index + value
+    }
+    return total
+}
+
+fn main() int {
+    let mut values: int[4] := [10, 20, 30, 40]
+    values[1] = 25
+    values[2] += 5
+
+    let pair := BuildPair(values[1], values[2])
+    return SumFour(values) + pair[0] + pair[1] + int(values.len)
+}

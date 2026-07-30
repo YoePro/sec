@@ -622,6 +622,10 @@ sec check performs all frontend validation without target code generation.
 
 sec sema performs semantic, ownership, borrow and control-flow analysis.
 
+The inspection commands report a final `summary: N errors, M warnings` on
+stderr, so frontend failures and warnings can be counted without manually
+counting diagnostic lines.
+
 sec emit-ir emits Sec semantic IR.
 
 sec emit-mlir emits MLIR.
@@ -672,9 +676,30 @@ Current MLIR implementation note:
   represented inline and require no runtime support.
 * Struct field assignment uses value semantics: nested aggregates are rebuilt
   inline with `llvm.insertvalue` from the changed leaf back to the stored root.
-  The first struct lowering step does not yet support generic structs, struct
-  spread, assignment through parameters or references, string fields,
-  reference/slice/array fields, methods or properties.
+* Named primitive types erase to their underlying LLVM representation after
+  semantic checking. This includes string-backed names such as
+  `type TokenType string`.
+* A stored or returned string lowers to
+  `!llvm.struct<(!llvm.ptr, i64)>`. String parameters retain the existing
+  split pointer/length ABI. Struct string fields and string return values are
+  packed and unpacked inline with `llvm.insertvalue`/`llvm.extractvalue`, with
+  no runtime dependency.
+* Fixed-size array fields in structs lower recursively to
+  `!llvm.array<N x element-type>`. This includes nested fixed-size arrays and
+  requires no runtime support.
+* Fixed-size arrays whose elements already have a direct LLVM representation
+  support literals, local storage, parameters, returns, compile-time `.len`,
+  indexed reads and indexed writes inline. Runtime indexes emit explicit
+  signed/unsigned bounds checks and trap on failure before
+  `llvm.getelementptr` addresses an element. Nested arrays use nested
+  `!llvm.array` types. Arrays of strings and slice views remain separate
+  lowering steps.
+* Fixed-size array iteration evaluates its iterable once and lowers to an
+  unsigned index loop over `0..<N`. One value binding and two index/value
+  bindings are supported, including discard bindings, `break` and `continue`.
+* The first struct lowering step does not yet support generic structs, struct
+  spread, assignment through parameters or references, reference/slice
+  fields, methods or properties.
 * Enums lower directly to their underlying integer type while retaining enum
   identity as lowering metadata. Explicit values, automatic continuation,
   integer constant expressions, `iota`, aliases and nested enum namespaces are
@@ -702,6 +727,12 @@ Current MLIR implementation note:
 * Numeric literals are emitted using the surrounding expression context where
   possible, for example `uint_value > 15` emits `15` with the unsigned value's
   MLIR integer width.
+* Immutable top-level integer and boolean bindings with compile-time constant
+  initializers are folded into their use sites. They require neither global
+  storage nor runtime initialization.
+* Executable MLIR emission starts from functions in the main source file and
+  follows resolved calls into imported modules. Unreferenced imported
+  functions are not lowered into the executable module.
 * Unsigned integer values keep signedness metadata during MLIR lowering. The
   backend emits unsigned integer predicates and operations where LLVM requires
   signedness-specific opcodes, for example `ugt`, `udiv`, `urem` and `lshr`.
@@ -731,6 +762,9 @@ Current MLIR implementation note:
   length. The MLIR backend does not append an implicit C nul terminator.
   C-compatible nul-terminated strings must be produced by an explicit later
   conversion or FFI lowering rule.
+* `RawPtr[T]` lowers to `!llvm.ptr`. The pointee type remains frontend-verified
+  metadata at this lowering level, and explicit pointer-to-integer conversion
+  uses `llvm.ptrtoint`.
 * On `linux-amd64`, `fmt.Println(string)` resolves through `io.Println` and the
   target-specific `platform.linux.amd64._rawSyscall` overload. The MLIR backend
   lowers `string.ptr` to `!llvm.ptr`, `string.len` to `i64`, reference

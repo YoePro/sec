@@ -546,15 +546,28 @@ Implemented:
 - providing implicit `self` inside every `impl` method body
 - inferring whether implicit `self` must be mutable from assignments to
   `self.member`, short field names, register field names and settable property
-  names in the method body
+  names in the method body, and calls to known mutable `self` methods (including
+  when the result is explicitly discarded or returned), using a fixed-point
+  analysis after impl-method registration so declaration order does not matter
 - checking method-call receivers against the inferred receiver mutability
 - exposing target fields, register fields and properties as short names in
   impl method and property accessor bodies
 - exposing event members as short names in impl method and property accessor
   bodies
+- allowing lexical locals, parameters and loop bindings to shadow those
+  implicit short-name member aliases
+- keeping receiver-mutability inference aware of lexical shadowing, so writes
+  to a local that happens to share a member name do not require a mutable
+  receiver
 - rejecting explicit `self` parameters on `impl` methods
 - resolving calls through a `self` value as instance method calls rather than
   static type paths
+- LSP `self.` completion inside impl method and property-accessor bodies,
+  including target fields, register fields, properties, events and instance
+  methods with their resolved return types
+- LSP hover for `self` and direct `self` members inside impl method and
+  property-accessor bodies, including field/property/event type details and
+  method signatures with local documentation comments
 - analyzing property getter and setter bodies through normal statement sema
 - registering `event Name using storage` members backed by existing
   `EventStorage`

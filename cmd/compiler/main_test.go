@@ -13,6 +13,24 @@ import (
 	"sec/internal/sema"
 )
 
+func TestDiagnosticCountLabel(t *testing.T) {
+	tests := []struct {
+		count    int
+		singular string
+		want     string
+	}{
+		{count: 0, singular: "error", want: "0 errors"},
+		{count: 1, singular: "error", want: "1 error"},
+		{count: 2, singular: "warning", want: "2 warnings"},
+	}
+
+	for _, tt := range tests {
+		if got := diagnosticCountLabel(tt.count, tt.singular); got != tt.want {
+			t.Fatalf("diagnosticCountLabel(%d, %q) = %q, want %q", tt.count, tt.singular, got, tt.want)
+		}
+	}
+}
+
 func TestStdlibModuleName(t *testing.T) {
 	tests := []struct {
 		path string
@@ -42,6 +60,12 @@ func TestStdlibModulePath(t *testing.T) {
 	want = "sec/stdlib/io/write.linux.amd64.sec"
 	if got != want {
 		t.Fatalf("stdlibModulePath(%q) = %q, want %q", "io", got, want)
+	}
+
+	got = stdlibModulePath("unicode", CompilerTarget{})
+	want = "sec/stdlib/unicode/unicode.sec"
+	if got != want {
+		t.Fatalf("stdlibModulePath(%q) = %q, want %q", "unicode", got, want)
 	}
 }
 
@@ -74,6 +98,113 @@ func TestSourceIncludePathsLoadsPlatformPackageDirectory(t *testing.T) {
 		if !found {
 			t.Fatalf("platform package missing %s: %#v", path, paths)
 		}
+	}
+}
+
+func TestSourceIncludePathsLoadsIOPackageFiles(t *testing.T) {
+	paths, ok := sourceIncludePaths("io", CompilerTarget{OS: "linux", Arch: "amd64"})
+	if !ok {
+		t.Fatal("sourceIncludePaths did not accept io package")
+	}
+	wants := map[string]bool{
+		"write.linux.amd64.sec": false,
+		"file.linux.amd64.sec":  false,
+	}
+	for _, path := range paths {
+		if _, exists := wants[filepath.Base(path)]; exists {
+			wants[filepath.Base(path)] = true
+		}
+	}
+	for path, found := range wants {
+		if !found {
+			t.Fatalf("io package missing %s: %#v", path, paths)
+		}
+	}
+}
+
+func TestCompilerLoadsIOReadFileIntoAPI(t *testing.T) {
+	source := `module main
+
+import "io"
+
+fn Load(path: string) Result[uint, io.IOError] {
+	let mut buffer: byte[16] := [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+	let count := try io.ReadFileInto(path, ref mut buffer[..])
+
+	return Ok(count)
+}
+`
+
+	l := lexer.New(source)
+	p := parser.New(l)
+	program := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("parser errors: %v", p.Errors())
+	}
+
+	target := CompilerTarget{OS: "linux", Arch: "amd64"}
+	resolveCoreLibrary(program)
+	resolveStdlibImports(program, target)
+	analyzer := sema.NewAnalyzer()
+	if errors := analyzer.Analyze(program); len(errors) > 0 {
+		t.Fatalf("Analyze(user with io file API) errors: %v", errors)
+	}
+}
+
+func TestCompilerLoadsUnicodeIsLetter(t *testing.T) {
+	source := `module main
+
+import "unicode"
+
+fn IsLetter(ch: rune) bool {
+	return unicode.IsLetter(ch)
+}
+`
+
+	l := lexer.New(source)
+	p := parser.New(l)
+	program := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("parser errors: %v", p.Errors())
+	}
+
+	resolveCoreLibrary(program)
+	resolveStdlibImports(program, CompilerTarget{})
+	analyzer := sema.NewAnalyzer()
+	if errors := analyzer.Analyze(program); len(errors) > 0 {
+		t.Fatalf("Analyze(user with unicode IsLetter) errors: %v", errors)
+	}
+}
+
+func TestSourceIncludePathsLoadsProjectImportsFromSecProjectRoot(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".sec"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".sec", "sec.toml"), []byte("[project]\nname = \"sample\"\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	sourceFile := filepath.Join(dir, "cmd", "sec", "main.sec")
+	if err := os.MkdirAll(filepath.Dir(sourceFile), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(sourceFile, []byte("module main\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	imported := filepath.Join(dir, "lexer", "token.sec")
+	if err := os.MkdirAll(filepath.Dir(imported), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(imported, []byte("module token\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	paths, ok := sourceIncludePathsWithSources("lexer/token", CompilerTarget{}, []string{sourceFile})
+	if !ok {
+		t.Fatal("sourceIncludePathsWithSources did not accept project import")
+	}
+	if len(paths) != 1 || paths[0] != imported {
+		t.Fatalf("project import paths = %#v, want %#v", paths, []string{imported})
 	}
 }
 
@@ -121,6 +252,36 @@ fn IsBlank(value: string) bool {
 	analyzer := sema.NewAnalyzer()
 	if errors := analyzer.Analyze(program); len(errors) > 0 {
 		t.Fatalf("Analyze(user with core method) errors: %v", errors)
+	}
+}
+
+func TestCompilerLoadsCoreRuneAndStringConversionAPI(t *testing.T) {
+	source := `module main
+
+fn Runes(value: string) rune[] {
+	return value.ToRuneArray()
+}
+
+fn Display(value: rune) string {
+	return value.ToString()
+}
+
+fn IsIdentifierStart(value: rune) bool {
+	return value.IsLetter()
+}
+`
+
+	l := lexer.New(source)
+	p := parser.New(l)
+	program := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("parser errors: %v", p.Errors())
+	}
+
+	resolveCoreLibrary(program)
+	analyzer := sema.NewAnalyzer()
+	if errors := analyzer.Analyze(program); len(errors) > 0 {
+		t.Fatalf("Analyze(user with core rune and string conversion API) errors: %v", errors)
 	}
 }
 

@@ -1,0 +1,46 @@
+module core
+
+impl rune {
+    /** Returns the textual representation of this rune. */
+    fn ToString() string {
+        // TODO: Implement rune.ToString.
+        return ""
+    }
+
+    /** Reports whether this rune is an ASCII decimal digit. */
+    fn IsDigit() bool {
+        return self >= 48r && self <= 57r
+    }
+
+    /** Reports whether this rune is an ASCII letter. */
+    fn IsLetter() bool {
+        return (self >= 65r && self <= 90r) ||
+            (self >= 97r && self <= 122r)
+    }
+
+    /** Reports whether this rune is an ASCII letter or decimal digit. */
+    fn IsLetterOrDigit() bool {
+        return self.IsLetter() || self.IsDigit()
+    }
+
+    /** Reports whether this rune is an ASCII whitespace character. */
+    fn IsWhitespace() bool {
+        return self == 9r || self == 10r || self == 13r || self == 32r
+    }
+
+    /** Reports whether this rune is an ASCII control character. */
+    fn IsControl() bool {
+        return self < 32r || self == 127r
+    }
+
+    /** Reports whether this rune belongs to the ASCII range. */
+    fn IsAscii() bool {
+        return self >= 0r && self <= 127r
+    }
+
+    /** Returns the number of UTF-8 bytes needed to encode this rune. */
+    fn Utf8Length() uint {
+        // TODO: Implement rune.Utf8Length.
+        return 0
+    }
+}

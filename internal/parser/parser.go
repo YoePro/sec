@@ -243,7 +243,7 @@ func (p *Parser) parseUnsupportedFreeStatement() ast.Statement {
 }
 
 func (p *Parser) looksLikeTypedVariableDeclaration() bool {
-	if !p.isTypeNameToken(p.curToken.Type) || (p.peekToken.Type != lexer.LT && p.peekToken.Type != lexer.LBRACKET) {
+	if !p.isTypeNameToken(p.curToken.Type) || (p.peekToken.Type != lexer.LT && p.peekToken.Type != lexer.LBRACKET && p.peekToken.Type != lexer.LPAREN) {
 		return false
 	}
 
@@ -254,7 +254,48 @@ func (p *Parser) looksLikeTypedVariableDeclaration() bool {
 	warningCount := len(p.warnings)
 
 	_ = p.parseTypeReference()
-	ok := p.peekToken.Type == lexer.MUT || p.peekToken.Type == lexer.COLON
+	ok := p.peekToken.Type == lexer.MUT || p.peekToken.Type == lexer.COLON || p.looksLikeTypedVariableGroupAfterParsedType()
+
+	p.curToken = curToken
+	p.peekToken = peekToken
+	p.l.Restore(lexerState)
+	p.errors = p.errors[:errorCount]
+	p.warnings = p.warnings[:warningCount]
+
+	return ok
+}
+
+func (p *Parser) looksLikeTypedVariableGroupAfterParsedType() bool {
+	if p.peekToken.Type != lexer.LPAREN {
+		return false
+	}
+	if p.peekToken.Line > p.curToken.Line {
+		return true
+	}
+
+	curToken := p.curToken
+	peekToken := p.peekToken
+	lexerState := p.l.Snapshot()
+	errorCount := len(p.errors)
+	warningCount := len(p.warnings)
+
+	p.nextToken()
+	if p.peekToken.Type == lexer.COMMENT {
+		p.nextToken()
+	}
+	ok := p.peekToken.Type == lexer.IDENT
+	if ok {
+		if p.peekToken.Line > p.curToken.Line {
+			p.curToken = curToken
+			p.peekToken = peekToken
+			p.l.Restore(lexerState)
+			p.errors = p.errors[:errorCount]
+			p.warnings = p.warnings[:warningCount]
+			return true
+		}
+		p.nextToken()
+		ok = p.peekToken.Type == lexer.DECLARE
+	}
 
 	p.curToken = curToken
 	p.peekToken = peekToken
@@ -754,6 +795,11 @@ func (p *Parser) parseSwitchCaseClause(isDefault bool, subjectless bool) *ast.Sw
 			clause.Body = p.parseSwitchCaseBody()
 			return clause
 		default:
+			if !subjectless && p.peekToken.Type == lexer.OR {
+				p.addError("use ',' between switch case values; '||' creates a boolean expression at %d:%d", p.peekToken.Line, p.peekToken.Column)
+				p.skipSwitchClause()
+				return clause
+			}
 			p.addError("expected ',' or ':' after switch case item at %d:%d", p.peekToken.Line, p.peekToken.Column)
 			p.skipSwitchClause()
 			return clause
@@ -3069,6 +3115,16 @@ func (p *Parser) parsePostfixTypeReference(ref *ast.TypeReference) *ast.TypeRefe
 			suffixes = append(suffixes, typeSequenceSuffix{slice: true, token: token})
 		case lexer.INT:
 			p.nextToken()
+			_, suffix := ast.SplitNumericLiteralSuffix(p.curToken.Lexeme)
+			if suffix == "c" || suffix == "r" {
+				bigValue, _ := ast.ParseIntegerLiteralLexeme(p.curToken.Lexeme)
+				lengthExpr := &ast.IntegerLiteral{Token: p.curToken, BigValue: bigValue}
+				if !p.expectPeek(lexer.RBRACKET) {
+					return ref
+				}
+				suffixes = append(suffixes, typeSequenceSuffix{lengthExpression: lengthExpr, token: token})
+				continue
+			}
 			length, ok := ast.ParseIntegerLiteralInt64(p.curToken.Lexeme)
 			if !ok {
 				bigValue, _ := ast.ParseIntegerLiteralLexeme(p.curToken.Lexeme)
@@ -3940,6 +3996,10 @@ func (p *Parser) parseTypedVariableDeclaration() ast.Statement {
 		}
 	}
 
+	if p.peekToken.Type == lexer.LPAREN {
+		return p.parseTypedVariableGroupDeclaration(token, typ, contract)
+	}
+
 	mutable := false
 	if p.peekToken.Type == lexer.MUT {
 		p.nextToken()
@@ -3990,6 +4050,64 @@ func (p *Parser) parseTypedVariableDeclaration() ast.Statement {
 		return first
 	}
 
+	return &ast.LetGroupStatement{Token: token, Lets: lets}
+}
+
+func (p *Parser) parseTypedVariableGroupDeclaration(token lexer.Token, typ *ast.TypeReference, contract ast.Contract) ast.Statement {
+	if !p.expectPeek(lexer.LPAREN) {
+		return nil
+	}
+
+	lets := []*ast.LetStatement{}
+	for p.peekToken.Type != lexer.RPAREN && p.peekToken.Type != lexer.EOF {
+		if p.peekToken.Type == lexer.COMMENT {
+			p.nextToken()
+			continue
+		}
+		let := p.parseLetDeclarator(token, false, typ, contract)
+		if let == nil {
+			return nil
+		}
+		if let.Value == nil {
+			p.addError("immutable typed declaration requires initializer for %q at %d:%d", let.Name.Value, let.Name.Token.Line, let.Name.Token.Column)
+			p.skipDeclarationRest()
+			return nil
+		}
+		lets = append(lets, let)
+
+		switch p.peekToken.Type {
+		case lexer.COMMA:
+			p.nextToken()
+			if p.peekToken.Type == lexer.RPAREN {
+				p.nextToken()
+				if len(lets) == 1 {
+					return lets[0]
+				}
+				return &ast.LetGroupStatement{Token: token, Lets: lets}
+			}
+		case lexer.RPAREN:
+			p.nextToken()
+			if len(lets) == 1 {
+				return lets[0]
+			}
+			return &ast.LetGroupStatement{Token: token, Lets: lets}
+		default:
+			p.addError("expected ',' or ')' after typed declaration at %d:%d", p.peekToken.Line, p.peekToken.Column)
+			p.skipDeclarationRest()
+			return nil
+		}
+	}
+
+	if p.peekToken.Type == lexer.RPAREN {
+		p.nextToken()
+	}
+	if len(lets) == 0 {
+		p.addError("typed declaration group requires at least one declaration at %d:%d", token.Line, token.Column)
+		return nil
+	}
+	if len(lets) == 1 {
+		return lets[0]
+	}
 	return &ast.LetGroupStatement{Token: token, Lets: lets}
 }
 

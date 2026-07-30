@@ -4,6 +4,7 @@ import "unicode"
 
 type TokenType string
 
+// Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
 const (
 	ILLEGAL TokenType = "ILLEGAL"
 	EOF     TokenType = "EOF"
@@ -135,6 +136,7 @@ const (
 	COMMENT TokenType = "COMMENT"
 )
 
+// Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
 type Token struct {
 	Type   TokenType
 	Lexeme string
@@ -143,6 +145,7 @@ type Token struct {
 	Column int
 }
 
+// Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
 type Lexer struct {
 	input  []rune
 	file   string
@@ -151,16 +154,19 @@ type Lexer struct {
 	column int
 }
 
+// Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
 type State struct {
 	Pos    int
 	Line   int
 	Column int
 }
 
+// Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
 func New(input string) *Lexer {
 	return NewWithFile(input, "")
 }
 
+// Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
 func NewWithFile(input string, file string) *Lexer {
 	return &Lexer{input: []rune(input), file: file, line: 1, column: 1}
 }
@@ -169,12 +175,14 @@ func (l *Lexer) Snapshot() State {
 	return State{Pos: l.pos, Line: l.line, Column: l.column}
 }
 
+// Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
 func (l *Lexer) Restore(state State) {
 	l.pos = state.Pos
 	l.line = state.Line
 	l.column = state.Column
 }
 
+// Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
 func (l *Lexer) NextToken() Token {
 	l.skipWhitespaceAndComments()
 
@@ -366,12 +374,14 @@ func (l *Lexer) NextToken() Token {
 	return l.readOne(ILLEGAL)
 }
 
+// Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
 func (l *Lexer) skipWhitespaceAndComments() {
 	for isWhitespace(l.peek()) {
 		l.advance()
 	}
 }
 
+// Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
 func (l *Lexer) skipBlockComment() {
 	depth := 0
 
@@ -402,6 +412,7 @@ func (l *Lexer) skipBlockComment() {
 	}
 }
 
+// Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
 func (l *Lexer) readLineComment() Token {
 	line := l.line
 	column := l.column
@@ -417,6 +428,7 @@ func (l *Lexer) readLineComment() Token {
 	return l.token(COMMENT, string(l.input[start:l.pos]), line, column)
 }
 
+// Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
 func (l *Lexer) readBlockComment() Token {
 	line := l.line
 	column := l.column
@@ -450,6 +462,7 @@ func (l *Lexer) readBlockComment() Token {
 	}
 }
 
+// Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
 func (l *Lexer) readIdentifier() string {
 	start := l.pos
 
@@ -460,6 +473,7 @@ func (l *Lexer) readIdentifier() string {
 	return string(l.input[start:l.pos])
 }
 
+// Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
 func (l *Lexer) readNumber() (string, TokenType) {
 	start := l.pos
 	typ := INT
@@ -521,6 +535,7 @@ func (l *Lexer) readNumber() (string, TokenType) {
 	return string(l.input[start:l.pos]), typ
 }
 
+// Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
 func (l *Lexer) readLeadingDotNumber() Token {
 	line := l.line
 	column := l.column
@@ -537,6 +552,7 @@ func (l *Lexer) readLeadingDotNumber() Token {
 	return l.token(FLOAT, string(l.input[start:l.pos]), line, column)
 }
 
+// Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
 func (l *Lexer) readPlainString() Token {
 	line := l.line
 	column := l.column
@@ -549,6 +565,7 @@ func (l *Lexer) readPlainString() Token {
 	return l.token(STRING, lit, line, column)
 }
 
+// Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
 func (l *Lexer) readCharLiteral() Token {
 	line := l.line
 	column := l.column
@@ -575,6 +592,7 @@ func (l *Lexer) readCharLiteral() Token {
 	}
 }
 
+// Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
 func (l *Lexer) readRawString() Token {
 	line := l.line
 	column := l.column
@@ -593,6 +611,7 @@ func (l *Lexer) readRawString() Token {
 	return l.token(RAW_STRING, string(l.input[start:l.pos]), line, column)
 }
 
+// Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
 func (l *Lexer) readPrefixedString(typ TokenType) Token {
 	line := l.line
 	column := l.column
@@ -608,6 +627,7 @@ func (l *Lexer) readPrefixedString(typ TokenType) Token {
 	return l.token(typ, "$"+lit, line, column)
 }
 
+// Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
 func (l *Lexer) readStringBody(prefixed bool) (string, bool) {
 	start := l.pos
 
@@ -641,6 +661,7 @@ func (l *Lexer) readStringBody(prefixed bool) (string, bool) {
 	}
 }
 
+// Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
 func (l *Lexer) readOne(typ TokenType) Token {
 	line := l.line
 	column := l.column
@@ -650,6 +671,7 @@ func (l *Lexer) readOne(typ TokenType) Token {
 	return l.token(typ, string(ch), line, column)
 }
 
+// Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
 func (l *Lexer) readTwo(typ TokenType) Token {
 	line := l.line
 	column := l.column
@@ -661,6 +683,7 @@ func (l *Lexer) readTwo(typ TokenType) Token {
 	return l.token(typ, string([]rune{first, second}), line, column)
 }
 
+// Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
 func (l *Lexer) readThree(typ TokenType) Token {
 	line := l.line
 	column := l.column
@@ -674,18 +697,22 @@ func (l *Lexer) readThree(typ TokenType) Token {
 	return l.token(typ, string([]rune{first, second, third}), line, column)
 }
 
+// Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
 func (l *Lexer) token(typ TokenType, lexeme string, line int, column int) Token {
 	return Token{Type: typ, Lexeme: lexeme, File: l.file, Line: line, Column: column}
 }
 
+// Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
 func (l *Lexer) peek() rune {
 	return l.peekOffset(0)
 }
 
+// Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
 func (l *Lexer) peekNext() rune {
 	return l.peekOffset(1)
 }
 
+// Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
 func (l *Lexer) peekOffset(offset int) rune {
 	index := l.pos + offset
 	if index >= len(l.input) {
@@ -694,6 +721,7 @@ func (l *Lexer) peekOffset(offset int) rune {
 	return l.input[index]
 }
 
+// Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
 func (l *Lexer) advance() rune {
 	ch := l.peek()
 	if ch == 0 {
@@ -712,6 +740,7 @@ func (l *Lexer) advance() rune {
 	return ch
 }
 
+// Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
 func lookupIdent(s string) TokenType {
 	switch s {
 	case "after":
@@ -828,6 +857,7 @@ func lookupIdent(s string) TokenType {
 	}
 }
 
+// Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
 func isLetter(ch rune) bool {
 	return ch == '_' ||
 		(ch >= 'a' && ch <= 'z') ||
@@ -835,25 +865,29 @@ func isLetter(ch rune) bool {
 		unicode.IsLetter(ch)
 }
 
+// Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
 func isDigit(ch rune) bool {
 	return ch >= '0' && ch <= '9'
 }
 
+// Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
 func isHexDigit(ch rune) bool {
 	return isDigit(ch) ||
 		(ch >= 'a' && ch <= 'f') ||
 		(ch >= 'A' && ch <= 'F')
 }
 
+// Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
 func isNumericSuffix(ch rune) bool {
 	switch ch {
-	case 'i', 'u', 'f', 'd':
+	case 'i', 'u', 'f', 'd', 'c', 'r':
 		return true
 	default:
 		return false
 	}
 }
 
+// Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
 func isWhitespace(ch rune) bool {
 	return ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r'
 }

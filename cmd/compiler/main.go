@@ -93,7 +93,8 @@ func main() {
 		runAST(string(data))
 
 	case "sema":
-		runSema(string(data))
+		parseAndAnalyzeFileForTarget(file, hostCompilerTarget())
+		fmt.Println("OK")
 
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command: %s\n", command)
@@ -117,7 +118,7 @@ func runLex(input string) {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "LEXEME\tLINE\tCOLUMN")
 
-	exitCode := 0
+	summary := diagnosticSummary{}
 
 	for {
 		tok := l.NextToken()
@@ -133,7 +134,7 @@ func runLex(input string) {
 		}
 
 		if tok.Type == lexer.ILLEGAL {
-			exitCode = 2
+			summary.Errors++
 		}
 
 		if tok.Type == lexer.EOF {
@@ -142,7 +143,10 @@ func runLex(input string) {
 	}
 
 	_ = w.Flush()
-	os.Exit(exitCode)
+	printDiagnosticSummary(summary)
+	if summary.Errors > 0 {
+		os.Exit(2)
+	}
 }
 
 func runTokens(input string) {
@@ -151,7 +155,7 @@ func runTokens(input string) {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "TYPE\tLEXEME\tLINE\tCOLUMN")
 
-	exitCode := 0
+	summary := diagnosticSummary{}
 
 	for {
 		tok := l.NextToken()
@@ -166,7 +170,7 @@ func runTokens(input string) {
 		)
 
 		if tok.Type == lexer.ILLEGAL {
-			exitCode = 2
+			summary.Errors++
 		}
 
 		if tok.Type == lexer.EOF {
@@ -175,7 +179,10 @@ func runTokens(input string) {
 	}
 
 	_ = w.Flush()
-	os.Exit(exitCode)
+	printDiagnosticSummary(summary)
+	if summary.Errors > 0 {
+		os.Exit(2)
+	}
 }
 
 func runParse(input string) {
@@ -185,20 +192,25 @@ func runParse(input string) {
 	program := p.ParseProgram()
 
 	printParserWarnings(p)
+	summary := diagnosticSummary{Warnings: len(p.Warnings())}
 
 	if len(p.Errors()) > 0 {
 		for _, err := range p.Errors() {
 			fmt.Fprintf(os.Stderr, "parse error: %s\n", err)
 		}
+		summary.Errors = len(p.Errors())
+		printDiagnosticSummary(summary)
 		os.Exit(2)
 	}
 
 	printProgram(program)
+	printDiagnosticSummary(summary)
 }
 
 func runParseInputs(inputs []string) {
-	program := parseSourceInputs(inputs, CompilerTarget{}, false)
+	program, summary := parseSourceInputs(inputs, CompilerTarget{}, false)
 	printProgram(program)
+	printDiagnosticSummary(summary)
 }
 
 func runAST(input string) {
@@ -208,20 +220,25 @@ func runAST(input string) {
 	program := p.ParseProgram()
 
 	printParserWarnings(p)
+	summary := diagnosticSummary{Warnings: len(p.Warnings())}
 
 	if len(p.Errors()) > 0 {
 		for _, err := range p.Errors() {
 			fmt.Fprintf(os.Stderr, "parse error: %s\n", err)
 		}
+		summary.Errors = len(p.Errors())
+		printDiagnosticSummary(summary)
 		os.Exit(2)
 	}
 
 	printAST(program)
+	printDiagnosticSummary(summary)
 }
 
 func runASTInputs(inputs []string) {
-	program := parseSourceInputs(inputs, CompilerTarget{}, false)
+	program, summary := parseSourceInputs(inputs, CompilerTarget{}, false)
 	printAST(program)
+	printDiagnosticSummary(summary)
 }
 
 func runSema(input string) {
@@ -230,8 +247,8 @@ func runSema(input string) {
 }
 
 func runSemaInputs(inputs []string, target CompilerTarget) {
-	program := parseSourceInputs(inputs, target, true)
-	analyzeProgram(program, target)
+	program, summary := parseSourceInputs(inputs, target, true)
+	analyzeProgramWithSources(program, target, collectSourceRootsFromInputs(inputs), summary)
 	fmt.Println("OK")
 }
 
@@ -242,19 +259,13 @@ func runEmitLLVMCommand(args []string) {
 		os.Exit(1)
 	}
 
-	input, err := os.ReadFile(inputFile)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "read error: %v\n", err)
-		os.Exit(1)
-	}
-
 	targetDefinition, err := requireTargetCanEmitLLVM(target)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "target error: %s\n", err)
 		os.Exit(1)
 	}
 
-	program := parseAndAnalyzeForTarget(string(input), target)
+	program := parseAndAnalyzeFileForTarget(inputFile, target)
 	ir, err := llvmcodegen.GenerateWithTriple(program, targetDefinition.LLVMTriple)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "codegen error: %v\n", err)
@@ -286,7 +297,7 @@ func runEmitMLIRCommand(args []string) {
 		os.Exit(1)
 	}
 
-	program := parseAndAnalyzeForTarget(string(input), options.Target)
+	program := parseAndAnalyzeSourceForTarget(string(input), options.InputFile, options.Target)
 	mlirText, err := mlircodegen.GenerateWithTriple(program, targetDefinition.LLVMTriple)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "codegen error: %v\n", err)
@@ -359,7 +370,7 @@ func runBuildCommand(args []string) {
 		os.Exit(1)
 	}
 
-	program := parseAndAnalyzeForTarget(string(input), options.Target)
+	program := parseAndAnalyzeSourceForTarget(string(input), options.InputFile, options.Target)
 	llvmPath := ""
 	switch options.Pipeline {
 	case "llvm":
@@ -710,50 +721,80 @@ func parseAndAnalyze(input string) *ast.Program {
 }
 
 func parseAndAnalyzeForTarget(input string, target CompilerTarget) *ast.Program {
-	l := lexer.New(input)
+	return parseAndAnalyzeSourceForTarget(input, "", target)
+}
+
+func parseAndAnalyzeFileForTarget(path string, target CompilerTarget) *ast.Program {
+	input, err := os.ReadFile(path)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "read error: %v\n", err)
+		os.Exit(1)
+	}
+	return parseAndAnalyzeSourceForTarget(string(input), path, target)
+}
+
+func parseAndAnalyzeSourceForTarget(input string, sourceFile string, target CompilerTarget) *ast.Program {
+	l := lexer.NewWithFile(input, sourceFile)
 	p := parser.New(l)
 
 	program := p.ParseProgram()
 
 	printParserWarnings(p)
+	summary := diagnosticSummary{Warnings: len(p.Warnings())}
 
 	if len(p.Errors()) > 0 {
 		for _, err := range p.Errors() {
 			fmt.Fprintf(os.Stderr, "parse error: %s\n", err)
 		}
+		summary.Errors = len(p.Errors())
+		printDiagnosticSummary(summary)
 		os.Exit(2)
 	}
 
-	analyzeProgram(program, target)
+	analyzeProgramWithSources(program, target, []string{sourceFile}, summary)
 
 	return program
 }
 
 func analyzeProgram(program *ast.Program, target CompilerTarget) {
+	analyzeProgramWithSources(program, target, nil, diagnosticSummary{})
+}
+
+func analyzeProgramWithSources(program *ast.Program, target CompilerTarget, sourceFiles []string, summary diagnosticSummary) {
 	if err := validateProgramTarget(program, target); err != nil {
 		fmt.Fprintf(os.Stderr, "target error: %s\n", err)
+		summary.Errors++
+		printDiagnosticSummary(summary)
 		os.Exit(1)
 	}
 
-	resolveCoreLibrary(program)
-	resolveStdlibImports(program, target)
+	resolveCoreLibraryWithSources(program, sourceFiles)
+	resolveStdlibImportsWithSources(program, target, sourceFiles)
 
 	analyzer := sema.NewAnalyzer()
 	errors := analyzer.Analyze(program)
 	printSemaWarnings(analyzer)
+	summary.Warnings += len(analyzer.Warnings())
 	if len(errors) > 0 {
 		for _, err := range errors {
 			fmt.Fprintf(os.Stderr, "sema error: %s\n", err)
 		}
+		summary.Errors += len(errors)
+		printDiagnosticSummary(summary)
 		os.Exit(3)
 	}
+	printDiagnosticSummary(summary)
 }
 
 func resolveCoreLibrary(program *ast.Program) {
+	resolveCoreLibraryWithSources(program, nil)
+}
+
+func resolveCoreLibraryWithSources(program *ast.Program, sourceFiles []string) {
 	if programContainsCoreSource(program) {
 		return
 	}
-	core := parseCoreLibrary()
+	core := parseCoreLibrary(sourceFiles)
 	if core == nil || len(core.Statements) == 0 {
 		return
 	}
@@ -797,8 +838,8 @@ func statementTokenForSource(stmt ast.Statement) lexer.Token {
 	}
 }
 
-func parseCoreLibrary() *ast.Program {
-	root := findCompilerSourceRoot()
+func parseCoreLibrary(sourceFiles []string) *ast.Program {
+	root := findCompilerSourceRoot(sourceFiles)
 	matches, err := filepath.Glob(filepath.Join(root, "sec", "core", "*.sec"))
 	if err != nil || len(matches) == 0 {
 		return nil
@@ -812,7 +853,7 @@ func parseCoreLibrary() *ast.Program {
 	return core
 }
 
-func parseSourceInputs(inputs []string, target CompilerTarget, filterTarget bool) *ast.Program {
+func parseSourceInputs(inputs []string, target CompilerTarget, filterTarget bool) (*ast.Program, diagnosticSummary) {
 	files, err := collectSourceFiles(inputs)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "source error: %v\n", err)
@@ -824,25 +865,51 @@ func parseSourceInputs(inputs []string, target CompilerTarget, filterTarget bool
 	}
 
 	combined := &ast.Program{}
+	summary := diagnosticSummary{}
 	included := 0
 	for _, file := range files {
 		if filterTarget && !sourcePathMatchesTarget(file, target) {
 			continue
 		}
-		program := parseSourceFile(file)
+		program, fileSummary := parseSourceFileWithDiagnostics(file)
+		summary.Errors += fileSummary.Errors
+		summary.Warnings += fileSummary.Warnings
+		printParserWarningsForFile(file, program.Warnings)
+		if fileSummary.Errors > 0 {
+			for _, err := range program.Errors {
+				fmt.Fprintf(os.Stderr, "%s: parse error: %s\n", file, err)
+			}
+			continue
+		}
 		if filterTarget {
-			if err := validateProgramTarget(program, target); err != nil {
+			if err := validateProgramTarget(program.Program, target); err != nil {
 				continue
 			}
 		}
-		combined.Statements = append(combined.Statements, program.Statements...)
+		combined.Statements = append(combined.Statements, program.Program.Statements...)
 		included++
 	}
 	if included == 0 {
+		if summary.Errors > 0 {
+			printDiagnosticSummary(summary)
+			os.Exit(2)
+		}
 		fmt.Fprintf(os.Stderr, "source error: no .sec files match target %s\n", target.String())
 		os.Exit(1)
 	}
-	return combined
+	if summary.Errors > 0 {
+		printDiagnosticSummary(summary)
+		os.Exit(2)
+	}
+	return combined, summary
+}
+
+func collectSourceRootsFromInputs(inputs []string) []string {
+	files, err := collectSourceFiles(inputs)
+	if err != nil {
+		return nil
+	}
+	return files
 }
 
 func sourcePathMatchesTarget(path string, target CompilerTarget) bool {
@@ -933,6 +1000,25 @@ func collectSourceFiles(inputs []string) ([]string, error) {
 }
 
 func parseSourceFile(path string) *ast.Program {
+	program, summary := parseSourceFileWithDiagnostics(path)
+	printParserWarningsForFile(path, program.Warnings)
+	if summary.Errors > 0 {
+		for _, err := range program.Errors {
+			fmt.Fprintf(os.Stderr, "%s: parse error: %s\n", path, err)
+		}
+		printDiagnosticSummary(summary)
+		os.Exit(2)
+	}
+	return program.Program
+}
+
+type parsedSourceFile struct {
+	Program  *ast.Program
+	Errors   []string
+	Warnings []string
+}
+
+func parseSourceFileWithDiagnostics(path string) (parsedSourceFile, diagnosticSummary) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "read error: %v\n", err)
@@ -942,14 +1028,7 @@ func parseSourceFile(path string) *ast.Program {
 	l := lexer.NewWithFile(string(data), path)
 	p := parser.New(l)
 	program := p.ParseProgram()
-	printParserWarnings(p)
-	if len(p.Errors()) > 0 {
-		for _, err := range p.Errors() {
-			fmt.Fprintf(os.Stderr, "%s: parse error: %s\n", path, err)
-		}
-		os.Exit(2)
-	}
-	return program
+	return parsedSourceFile{Program: program, Errors: p.Errors(), Warnings: p.Warnings()}, diagnosticSummary{Errors: len(p.Errors()), Warnings: len(p.Warnings())}
 }
 
 func printParserWarnings(p *parser.Parser) {
@@ -958,10 +1037,32 @@ func printParserWarnings(p *parser.Parser) {
 	}
 }
 
+func printParserWarningsForFile(path string, warnings []string) {
+	for _, warning := range warnings {
+		fmt.Fprintf(os.Stderr, "%s: Warning: %s\n", path, warning)
+	}
+}
+
 func printSemaWarnings(analyzer *sema.Analyzer) {
 	for _, warning := range analyzer.Warnings() {
 		fmt.Fprintf(os.Stderr, "Warning: %s\n", warning)
 	}
+}
+
+type diagnosticSummary struct {
+	Errors   int
+	Warnings int
+}
+
+func printDiagnosticSummary(summary diagnosticSummary) {
+	fmt.Fprintf(os.Stderr, "summary: %s, %s\n", diagnosticCountLabel(summary.Errors, "error"), diagnosticCountLabel(summary.Warnings, "warning"))
+}
+
+func diagnosticCountLabel(count int, singular string) string {
+	if count == 1 {
+		return "1 " + singular
+	}
+	return fmt.Sprintf("%d %ss", count, singular)
 }
 
 func validateProgramTarget(program *ast.Program, current CompilerTarget) error {
@@ -983,18 +1084,22 @@ func validateProgramTarget(program *ast.Program, current CompilerTarget) error {
 }
 
 func resolveStdlibImports(program *ast.Program, target CompilerTarget) {
-	// TODO: Replace this source-level stdlib inclusion with compiled library metadata/artifacts.
-	seen := map[string]bool{}
-	resolveStdlibImportsInto(program, target, seen)
+	resolveStdlibImportsWithSources(program, target, nil)
 }
 
-func resolveStdlibImportsInto(program *ast.Program, target CompilerTarget, seen map[string]bool) {
+func resolveStdlibImportsWithSources(program *ast.Program, target CompilerTarget, sourceFiles []string) {
+	// TODO: Replace this source-level stdlib inclusion with compiled library metadata/artifacts.
+	seen := map[string]bool{}
+	resolveStdlibImportsInto(program, target, seen, sourceFiles)
+}
+
+func resolveStdlibImportsInto(program *ast.Program, target CompilerTarget, seen map[string]bool, sourceFiles []string) {
 	for _, stmt := range append([]ast.Statement{}, program.Statements...) {
 		importStmt, ok := stmt.(*ast.ImportStatement)
 		if !ok {
 			continue
 		}
-		sourcePaths, ok := sourceIncludePaths(importStmt.Path, target)
+		sourcePaths, ok := sourceIncludePathsWithSources(importStmt.Path, target, sourceFiles)
 		if !ok {
 			continue
 		}
@@ -1019,7 +1124,7 @@ func resolveStdlibImportsInto(program *ast.Program, target CompilerTarget, seen 
 			continue
 		}
 
-		resolveStdlibImportsInto(imported, target, seen)
+		resolveStdlibImportsInto(imported, target, seen, sourcePaths)
 		if module == "" {
 			module = programModulePath(imported)
 		}
@@ -1030,11 +1135,15 @@ func resolveStdlibImportsInto(program *ast.Program, target CompilerTarget, seen 
 }
 
 func sourceIncludePaths(path string, target CompilerTarget) ([]string, bool) {
+	return sourceIncludePathsWithSources(path, target, nil)
+}
+
+func sourceIncludePathsWithSources(path string, target CompilerTarget, sourceFiles []string) ([]string, bool) {
 	if canSourceIncludePlatform(path) {
 		trimmed := strings.Trim(strings.TrimSuffix(path, ".sec"), "/")
 		base := filepath.Join("sec", filepath.FromSlash(trimmed))
 		if _, err := os.Stat(base); err != nil {
-			base = filepath.Join(findCompilerSourceRoot(), base)
+			base = filepath.Join(findCompilerSourceRoot(sourceFiles), base)
 		}
 		if info, err := os.Stat(base); err == nil && info.IsDir() {
 			matches, globErr := filepath.Glob(filepath.Join(base, "*.sec"))
@@ -1049,15 +1158,36 @@ func sourceIncludePaths(path string, target CompilerTarget) ([]string, bool) {
 		}
 		return []string{base}, true
 	}
-	sourcePath, ok := sourceIncludePath(path, target)
-	if !ok {
-		return nil, false
+	module := stdlibModuleName(path)
+	if canSourceIncludeModule(module) {
+		paths := stdlibModulePaths(module, target, sourceFiles)
+		return paths, len(paths) > 0
 	}
-	return []string{sourcePath}, true
+	sourcePath, ok := sourceIncludePath(path, target)
+	if ok {
+		sourcePath = resolveCompilerRelativeSourcePath(sourcePath, sourceFiles)
+		return []string{sourcePath}, true
+	}
+	return projectIncludePaths(path, sourceFiles)
 }
 
-func findCompilerSourceRoot() string {
+func resolveCompilerRelativeSourcePath(path string, sourceFiles []string) string {
+	if filepath.IsAbs(path) {
+		return path
+	}
+	if _, err := os.Stat(path); err == nil {
+		return filepath.Clean(path)
+	}
+	return filepath.Join(findCompilerSourceRoot(sourceFiles), path)
+}
+
+func findCompilerSourceRoot(sourceFiles []string) string {
 	starts := []string{}
+	for _, sourceFile := range sourceFiles {
+		if sourceFile != "" {
+			starts = append(starts, filepath.Dir(sourceFile))
+		}
+	}
 	if cwd, err := os.Getwd(); err == nil {
 		starts = append(starts, cwd)
 	}
@@ -1078,9 +1208,97 @@ func findCompilerSourceRoot() string {
 	return "."
 }
 
+func projectIncludePaths(path string, sourceFiles []string) ([]string, bool) {
+	trimmed := strings.Trim(strings.TrimSuffix(path, ".sec"), "/")
+	if trimmed == "" || strings.HasPrefix(trimmed, "std/") || strings.HasPrefix(trimmed, "platform/") {
+		return nil, false
+	}
+
+	for _, root := range projectSourceRoots(sourceFiles) {
+		if paths, ok := projectIncludePathsUnderRoot(root, trimmed); ok {
+			return paths, true
+		}
+	}
+	return nil, false
+}
+
+func projectIncludePathsUnderRoot(root string, importPath string) ([]string, bool) {
+	// Project imports are resolved separately from stdlib imports. This keeps
+	// ordinary source modules from accidentally becoming permanent library API.
+	candidates := []string{
+		filepath.Join(root, filepath.FromSlash(importPath)+".sec"),
+		filepath.Join(root, filepath.FromSlash(importPath), filepath.Base(importPath)+".sec"),
+	}
+	for _, candidate := range candidates {
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+			return []string{filepath.Clean(candidate)}, true
+		}
+	}
+
+	dir := filepath.Join(root, filepath.FromSlash(importPath))
+	if info, err := os.Stat(dir); err == nil && info.IsDir() {
+		matches, globErr := filepath.Glob(filepath.Join(dir, "*.sec"))
+		if globErr != nil || len(matches) == 0 {
+			return nil, false
+		}
+		sort.Strings(matches)
+		return matches, true
+	}
+	return nil, false
+}
+
+func projectSourceRoots(sourceFiles []string) []string {
+	seen := map[string]bool{}
+	roots := []string{}
+	add := func(root string) {
+		if root == "" {
+			return
+		}
+		root = filepath.Clean(root)
+		if seen[root] {
+			return
+		}
+		seen[root] = true
+		roots = append(roots, root)
+	}
+
+	for _, sourceFile := range sourceFiles {
+		if sourceFile == "" {
+			continue
+		}
+		add(findProjectRoot(sourceFile))
+		add(filepath.Dir(sourceFile))
+	}
+	if cwd, err := os.Getwd(); err == nil {
+		add(findProjectRoot(cwd))
+	}
+	return roots
+}
+
+func findProjectRoot(path string) string {
+	current := filepath.Clean(path)
+	if info, err := os.Stat(current); err == nil && !info.IsDir() {
+		current = filepath.Dir(current)
+	}
+	for {
+		if info, err := os.Stat(filepath.Join(current, ".sec", "sec.toml")); err == nil && !info.IsDir() {
+			return current
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			break
+		}
+		current = parent
+	}
+	if info, err := os.Stat(path); err == nil && info.IsDir() {
+		return filepath.Clean(path)
+	}
+	return filepath.Dir(filepath.Clean(path))
+}
+
 func canSourceIncludeModule(name string) bool {
 	switch name {
-	case "fmt", "io":
+	case "fmt", "io", "unicode":
 		return true
 	default:
 		return false
@@ -1106,6 +1324,33 @@ func stdlibModulePath(name string, target CompilerTarget) string {
 		}
 	}
 	return filepath.Join("sec", "stdlib", name, name+".sec")
+}
+
+func stdlibModulePaths(name string, target CompilerTarget, sourceFiles []string) []string {
+	primary := resolveCompilerRelativeSourcePath(stdlibModulePath(name, target), sourceFiles)
+	dir := filepath.Dir(primary)
+	matches, err := filepath.Glob(filepath.Join(dir, "*.sec"))
+	if err != nil || len(matches) == 0 {
+		return []string{primary}
+	}
+	sort.Strings(matches)
+
+	seen := map[string]bool{}
+	out := []string{}
+	add := func(path string) {
+		path = filepath.Clean(path)
+		if seen[path] || !sourcePathMatchesTarget(path, target) {
+			return
+		}
+		seen[path] = true
+		out = append(out, path)
+	}
+
+	add(primary)
+	for _, match := range matches {
+		add(match)
+	}
+	return out
 }
 
 func sourceIncludePath(path string, target CompilerTarget) (string, bool) {
@@ -1174,34 +1419,71 @@ func programModulePath(program *ast.Program) string {
 
 func qualifyImportedModule(program *ast.Program, module string) {
 	localFunctions := map[string]bool{}
+	localTypes := map[string]bool{}
 	for _, stmt := range program.Statements {
-		fn, ok := stmt.(*ast.FunctionDeclaration)
-		if ok && fn.Name != nil && !strings.Contains(fn.Name.Value, ".") {
-			localFunctions[fn.Name.Value] = true
+		switch stmt := stmt.(type) {
+		case *ast.FunctionDeclaration:
+			if stmt != nil && stmt.Name != nil && !strings.Contains(stmt.Name.Value, ".") {
+				localFunctions[stmt.Name.Value] = true
+			}
+		case *ast.TypeDeclStatement:
+			if stmt != nil && stmt.Name != nil && !strings.Contains(stmt.Name.Value, ".") {
+				localTypes[stmt.Name.Value] = true
+			}
+		case *ast.UnitDeclStatement:
+			if stmt != nil && stmt.Name != nil && !strings.Contains(stmt.Name.Value, ".") {
+				localTypes[stmt.Name.Value] = true
+			}
+		case *ast.EnumDeclaration:
+			if stmt != nil && stmt.Name != nil && !strings.Contains(stmt.Name.Value, ".") {
+				localTypes[stmt.Name.Value] = true
+			}
+		case *ast.InterfaceDeclaration:
+			if stmt != nil && stmt.Name != nil && !strings.Contains(stmt.Name.Value, ".") {
+				localTypes[stmt.Name.Value] = true
+			}
+		case *ast.StructStatement:
+			if stmt != nil && stmt.Name != nil && !strings.Contains(stmt.Name.Value, ".") {
+				localTypes[stmt.Name.Value] = true
+			}
 		}
 	}
 
 	for _, stmt := range program.Statements {
-		fn, ok := stmt.(*ast.FunctionDeclaration)
-		if !ok || fn.Name == nil {
+		if stmt == nil {
 			continue
 		}
-		if strings.Contains(fn.Name.Value, ".") {
-			continue
+		qualifyLocalTypeReferencesInStatement(stmt, module, localTypes)
+		switch stmt := stmt.(type) {
+		case *ast.FunctionDeclaration:
+			if stmt.Name == nil || strings.Contains(stmt.Name.Value, ".") {
+				continue
+			}
+			qualifyLocalCalls(stmt.Body, module, localFunctions)
+			stmt.Name.Value = module + "." + stmt.Name.Value
+			stmt.Name.Token.Lexeme = stmt.Name.Value
+		case *ast.ImplStatement:
+			qualifyLocalCallsInImplMembers(stmt.Members, module, localFunctions)
+		case *ast.TypeDeclStatement:
+			qualifyIdentifierDeclaration(stmt.Name, module)
+		case *ast.UnitDeclStatement:
+			qualifyIdentifierDeclaration(stmt.Name, module)
+		case *ast.EnumDeclaration:
+			qualifyIdentifierDeclaration(stmt.Name, module)
+		case *ast.InterfaceDeclaration:
+			qualifyIdentifierDeclaration(stmt.Name, module)
+		case *ast.StructStatement:
+			qualifyIdentifierDeclaration(stmt.Name, module)
 		}
-		qualifyLocalCalls(fn.Body, module, localFunctions)
-		fn.Name.Value = module + "." + fn.Name.Value
-		fn.Name.Token.Lexeme = fn.Name.Value
 	}
+}
 
-	for _, stmt := range program.Statements {
-		enum, ok := stmt.(*ast.EnumDeclaration)
-		if !ok || enum.Name == nil || strings.Contains(enum.Name.Value, ".") {
-			continue
-		}
-		enum.Name.Value = module + "." + enum.Name.Value
-		enum.Name.Token.Lexeme = enum.Name.Value
+func qualifyIdentifierDeclaration(ident *ast.Identifier, module string) {
+	if ident == nil || strings.Contains(ident.Value, ".") {
+		return
 	}
+	ident.Value = module + "." + ident.Value
+	ident.Token.Lexeme = ident.Value
 }
 
 func rewriteImportQualifier(program *ast.Program, from string, to string) {
@@ -1248,6 +1530,10 @@ func rewriteQualifierInStatement(stmt ast.Statement, from string, to string) {
 		rewriteQualifierInExpression(stmt.Expression, from, to)
 	case *ast.ReturnStatement:
 		rewriteQualifierInExpression(stmt.Value, from, to)
+	case *ast.MatchStatement:
+		if stmt.Match != nil {
+			rewriteQualifierInExpression(stmt.Match, from, to)
+		}
 	case *ast.IfStatement:
 		rewriteQualifierInExpression(stmt.Condition, from, to)
 		rewriteQualifierInBlock(stmt.Consequence, from, to)
@@ -1300,6 +1586,17 @@ func rewriteQualifierInExpression(expr ast.Expression, from string, to string) {
 		rewriteQualifierInExpression(expr.End, from, to)
 	case *ast.RefExpression:
 		rewriteQualifierInExpression(expr.Value, from, to)
+	case *ast.MatchExpression:
+		rewriteQualifierInExpression(expr.Subject, from, to)
+		for _, arm := range expr.Arms {
+			rewriteQualifierInExpression(arm.Pattern, from, to)
+			rewriteQualifierInExpression(arm.Guard, from, to)
+			rewriteQualifierInExpression(arm.Body, from, to)
+			if arm.ReturnBody != nil {
+				rewriteQualifierInStatement(arm.ReturnBody, from, to)
+			}
+			rewriteQualifierInBlock(arm.BlockBody, from, to)
+		}
 	}
 }
 
@@ -1313,12 +1610,319 @@ func rewriteQualifiedName(name string, from string, to string) string {
 	return name
 }
 
+func qualifyLocalTypeReferencesInStatement(stmt ast.Statement, module string, localTypes map[string]bool) {
+	switch stmt := stmt.(type) {
+	case *ast.TypeDeclStatement:
+		if stmt == nil {
+			return
+		}
+		qualifyLocalTypeReference(stmt.BaseType, module, localTypes)
+		qualifyLocalTypeReference(stmt.AssignedType, module, localTypes)
+		for _, ref := range stmt.Implements {
+			qualifyLocalTypeReference(ref, module, localTypes)
+		}
+		if stmt.StructType != nil {
+			for _, field := range stmt.StructType.Fields {
+				qualifyLocalTypeReference(field.Type, module, localTypes)
+			}
+		}
+		if stmt.RegisterType != nil {
+			for _, field := range stmt.RegisterType.Fields {
+				qualifyLocalTypeReference(field.Type, module, localTypes)
+			}
+		}
+		for _, variant := range stmt.UnionVariants {
+			qualifyLocalTypeReference(variant.Payload, module, localTypes)
+			for _, field := range variant.PayloadFields {
+				qualifyLocalTypeReference(field.Type, module, localTypes)
+			}
+		}
+	case *ast.UnitDeclStatement:
+		if stmt == nil {
+			return
+		}
+		qualifyLocalTypeReference(stmt.BaseType, module, localTypes)
+	case *ast.InterfaceDeclaration:
+		if stmt == nil {
+			return
+		}
+		for _, ref := range stmt.Implements {
+			qualifyLocalTypeReference(ref, module, localTypes)
+		}
+		for _, method := range stmt.Methods {
+			qualifyLocalTypeReferencesInFunction(method, module, localTypes)
+		}
+		for _, property := range stmt.Properties {
+			if property != nil {
+				qualifyLocalTypeReference(property.Type, module, localTypes)
+			}
+		}
+		for _, event := range stmt.Events {
+			if event != nil {
+				qualifyLocalTypeReference(event.Payload, module, localTypes)
+			}
+		}
+	case *ast.StructStatement:
+		if stmt == nil {
+			return
+		}
+		for _, field := range stmt.Fields {
+			qualifyLocalTypeReference(field.Type, module, localTypes)
+		}
+	case *ast.FunctionDeclaration:
+		qualifyLocalTypeReferencesInFunction(stmt, module, localTypes)
+	case *ast.ImplStatement:
+		if stmt == nil {
+			return
+		}
+		qualifyLocalTypeReference(stmt.Target, module, localTypes)
+		for _, member := range stmt.Members {
+			qualifyLocalTypeReferencesInImplMember(member, module, localTypes)
+		}
+	case *ast.LetStatement:
+		if stmt == nil {
+			return
+		}
+		qualifyLocalTypeReference(stmt.Type, module, localTypes)
+		qualifyLocalTypesInExpression(stmt.Value, module, localTypes)
+	case *ast.LetGroupStatement:
+		for _, let := range stmt.Lets {
+			qualifyLocalTypeReferencesInStatement(let, module, localTypes)
+		}
+	case *ast.AssignmentStatement:
+		if stmt == nil {
+			return
+		}
+		qualifyLocalTypesInExpression(stmt.Target, module, localTypes)
+		qualifyLocalTypesInExpression(stmt.Value, module, localTypes)
+	case *ast.ExpressionStatement:
+		if stmt == nil {
+			return
+		}
+		qualifyLocalTypesInExpression(stmt.Expression, module, localTypes)
+	case *ast.ReturnStatement:
+		if stmt == nil {
+			return
+		}
+		qualifyLocalTypesInExpression(stmt.Value, module, localTypes)
+	case *ast.MatchStatement:
+		if stmt != nil {
+			qualifyLocalTypesInExpression(stmt.Match, module, localTypes)
+		}
+	case *ast.IfStatement:
+		if stmt == nil {
+			return
+		}
+		qualifyLocalTypesInExpression(stmt.Condition, module, localTypes)
+		qualifyLocalTypeReferencesInBlock(stmt.Consequence, module, localTypes)
+		qualifyLocalTypeReferencesInBlock(stmt.Alternative, module, localTypes)
+	case *ast.ForStatement:
+		if stmt == nil {
+			return
+		}
+		qualifyLocalTypesInExpression(stmt.Iterable, module, localTypes)
+		qualifyLocalTypesInExpression(stmt.Step, module, localTypes)
+		qualifyLocalTypeReferencesInBlock(stmt.Body, module, localTypes)
+	case *ast.WhileStatement:
+		if stmt == nil {
+			return
+		}
+		qualifyLocalTypesInExpression(stmt.Condition, module, localTypes)
+		qualifyLocalTypeReferencesInBlock(stmt.Body, module, localTypes)
+	case *ast.SwitchStatement:
+		if stmt == nil {
+			return
+		}
+		qualifyLocalTypesInExpression(stmt.Subject, module, localTypes)
+		for _, clause := range stmt.Cases {
+			qualifyLocalTypesInSwitchCase(clause, module, localTypes)
+		}
+		qualifyLocalTypesInSwitchCase(stmt.Default, module, localTypes)
+	case *ast.SelectStatement:
+		if stmt == nil {
+			return
+		}
+		for _, branch := range stmt.Branches {
+			if branch == nil {
+				continue
+			}
+			qualifyLocalTypesInExpression(branch.Value, module, localTypes)
+			qualifyLocalTypeReferencesInBlock(branch.Body, module, localTypes)
+		}
+	case *ast.UnsafeStatement:
+		if stmt != nil {
+			qualifyLocalTypeReferencesInBlock(stmt.Body, module, localTypes)
+		}
+	}
+}
+
+func qualifyLocalTypesInSwitchCase(clause *ast.SwitchCase, module string, localTypes map[string]bool) {
+	if clause == nil {
+		return
+	}
+	for _, item := range clause.Items {
+		switch item := item.(type) {
+		case *ast.SwitchValueCase:
+			qualifyLocalTypesInExpression(item.Value, module, localTypes)
+		case *ast.SwitchRangeCase:
+			qualifyLocalTypesInExpression(item.Range, module, localTypes)
+		case *ast.SwitchRelationalCase:
+			qualifyLocalTypesInExpression(item.Value, module, localTypes)
+		}
+	}
+	qualifyLocalTypeReferencesInBlock(clause.Body, module, localTypes)
+}
+
+func qualifyLocalTypeReferencesInImplMember(member ast.ImplMember, module string, localTypes map[string]bool) {
+	switch member := member.(type) {
+	case *ast.TypeDeclStatement:
+		qualifyLocalTypeReferencesInStatement(member, module, localTypes)
+	case *ast.UnitDeclStatement:
+		qualifyLocalTypeReferencesInStatement(member, module, localTypes)
+	case *ast.EnumDeclaration:
+		qualifyLocalTypeReferencesInStatement(member, module, localTypes)
+	case *ast.FunctionDeclaration:
+		qualifyLocalTypeReferencesInFunction(member, module, localTypes)
+	case *ast.PropertyDeclaration:
+		if member == nil {
+			return
+		}
+		qualifyLocalTypeReference(member.Type, module, localTypes)
+		qualifyLocalTypeReferencesInBlock(member.Getter, module, localTypes)
+		if member.Setter != nil {
+			qualifyLocalTypeReferencesInBlock(member.Setter.Body, module, localTypes)
+		}
+	}
+}
+
+func qualifyLocalTypeReferencesInFunction(fn *ast.FunctionDeclaration, module string, localTypes map[string]bool) {
+	if fn == nil {
+		return
+	}
+	for _, parameter := range fn.Parameters {
+		qualifyLocalTypeReference(parameter.Type, module, localTypes)
+	}
+	qualifyLocalTypeReference(fn.ReturnType, module, localTypes)
+	qualifyLocalTypeReferencesInBlock(fn.Body, module, localTypes)
+}
+
+func qualifyLocalTypeReferencesInBlock(block *ast.BlockStatement, module string, localTypes map[string]bool) {
+	if block == nil {
+		return
+	}
+	for _, stmt := range block.Statements {
+		qualifyLocalTypeReferencesInStatement(stmt, module, localTypes)
+	}
+}
+
+func qualifyLocalTypeReference(ref *ast.TypeReference, module string, localTypes map[string]bool) {
+	if ref == nil {
+		return
+	}
+	if localTypes[ref.Name] {
+		ref.Name = module + "." + ref.Name
+		ref.Token.Lexeme = ref.Name
+	}
+	qualifyLocalTypeReference(ref.ElementType, module, localTypes)
+	for _, arg := range ref.TypeArgs {
+		qualifyLocalTypeReference(arg, module, localTypes)
+	}
+	for _, param := range ref.FunctionParameterTypes {
+		qualifyLocalTypeReference(param, module, localTypes)
+	}
+	qualifyLocalTypeReference(ref.FunctionReturnType, module, localTypes)
+	qualifyLocalTypesInExpression(ref.ArrayLengthExpression, module, localTypes)
+}
+
+func qualifyLocalTypesInExpression(expr ast.Expression, module string, localTypes map[string]bool) {
+	switch expr := expr.(type) {
+	case *ast.CallExpression:
+		if expr.Function != nil && localTypes[expr.Function.Value] {
+			expr.Function.Value = module + "." + expr.Function.Value
+			expr.Function.Token.Lexeme = expr.Function.Value
+		}
+		for _, arg := range expr.GenericArguments {
+			qualifyLocalTypeReference(arg, module, localTypes)
+		}
+		qualifyLocalTypesInExpression(expr.Callee, module, localTypes)
+		for _, arg := range expr.Arguments {
+			qualifyLocalTypesInExpression(arg, module, localTypes)
+		}
+	case *ast.MemberExpression:
+		if ident, ok := expr.Object.(*ast.Identifier); ok && localTypes[ident.Value] {
+			ident.Value = module + "." + ident.Value
+			ident.Token.Lexeme = ident.Value
+		} else {
+			qualifyLocalTypesInExpression(expr.Object, module, localTypes)
+		}
+	case *ast.ConversionExpression:
+		qualifyLocalTypeReference(expr.Type, module, localTypes)
+		qualifyLocalTypesInExpression(expr.Value, module, localTypes)
+	case *ast.PrefixExpression:
+		qualifyLocalTypesInExpression(expr.Right, module, localTypes)
+	case *ast.InfixExpression:
+		qualifyLocalTypesInExpression(expr.Left, module, localTypes)
+		qualifyLocalTypesInExpression(expr.Right, module, localTypes)
+	case *ast.RangeExpression:
+		qualifyLocalTypesInExpression(expr.Start, module, localTypes)
+		qualifyLocalTypesInExpression(expr.End, module, localTypes)
+	case *ast.IndexExpression:
+		qualifyLocalTypesInExpression(expr.Left, module, localTypes)
+		qualifyLocalTypesInExpression(expr.Index, module, localTypes)
+	case *ast.RefExpression:
+		qualifyLocalTypesInExpression(expr.Value, module, localTypes)
+	case *ast.StructLiteral:
+		qualifyLocalTypeReference(expr.Type, module, localTypes)
+		for _, field := range expr.Fields {
+			qualifyLocalTypesInExpression(field.Value, module, localTypes)
+		}
+	case *ast.ArrayLiteral:
+		for _, element := range expr.Elements {
+			qualifyLocalTypesInExpression(element, module, localTypes)
+		}
+	case *ast.OkExpression:
+		qualifyLocalTypesInExpression(expr.Value, module, localTypes)
+	case *ast.ErrExpression:
+		qualifyLocalTypesInExpression(expr.Value, module, localTypes)
+	case *ast.TryExpression:
+		qualifyLocalTypesInExpression(expr.Expression, module, localTypes)
+	case *ast.MatchExpression:
+		qualifyLocalTypesInExpression(expr.Subject, module, localTypes)
+		for _, arm := range expr.Arms {
+			qualifyLocalTypesInExpression(arm.Pattern, module, localTypes)
+			qualifyLocalTypesInExpression(arm.Guard, module, localTypes)
+			qualifyLocalTypesInExpression(arm.Body, module, localTypes)
+			if arm.ReturnBody != nil {
+				qualifyLocalTypeReferencesInStatement(arm.ReturnBody, module, localTypes)
+			}
+			qualifyLocalTypeReferencesInBlock(arm.BlockBody, module, localTypes)
+		}
+	}
+}
+
 func qualifyLocalCalls(block *ast.BlockStatement, module string, localFunctions map[string]bool) {
 	if block == nil {
 		return
 	}
 	for _, stmt := range block.Statements {
 		qualifyLocalCallsInStatement(stmt, module, localFunctions)
+	}
+}
+
+func qualifyLocalCallsInImplMembers(members []ast.ImplMember, module string, localFunctions map[string]bool) {
+	for _, member := range members {
+		switch member := member.(type) {
+		case *ast.FunctionDeclaration:
+			qualifyLocalCalls(member.Body, module, localFunctions)
+		case *ast.PropertyDeclaration:
+			if member == nil {
+				continue
+			}
+			qualifyLocalCalls(member.Getter, module, localFunctions)
+			if member.Setter != nil {
+				qualifyLocalCalls(member.Setter.Body, module, localFunctions)
+			}
+		}
 	}
 }
 
@@ -1337,6 +1941,10 @@ func qualifyLocalCallsInStatement(stmt ast.Statement, module string, localFuncti
 		qualifyLocalCallsInExpression(stmt.Expression, module, localFunctions)
 	case *ast.ReturnStatement:
 		qualifyLocalCallsInExpression(stmt.Value, module, localFunctions)
+	case *ast.MatchStatement:
+		if stmt.Match != nil {
+			qualifyLocalCallsInExpression(stmt.Match, module, localFunctions)
+		}
 	case *ast.IfStatement:
 		qualifyLocalCallsInExpression(stmt.Condition, module, localFunctions)
 		qualifyLocalCalls(stmt.Consequence, module, localFunctions)
@@ -1390,6 +1998,9 @@ func qualifyLocalCallsInExpression(expr ast.Expression, module string, localFunc
 			qualifyLocalCallsInExpression(arm.Pattern, module, localFunctions)
 			qualifyLocalCallsInExpression(arm.Guard, module, localFunctions)
 			qualifyLocalCallsInExpression(arm.Body, module, localFunctions)
+			if arm.ReturnBody != nil {
+				qualifyLocalCallsInStatement(arm.ReturnBody, module, localFunctions)
+			}
 			qualifyLocalCalls(arm.BlockBody, module, localFunctions)
 		}
 	}

@@ -1,6 +1,10 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -30,6 +34,39 @@ fn main() void {
 		messages = append(messages, diagnostic.Message)
 	}
 	t.Fatalf("analyze returned diagnostics for fmt package and transitive io import:\n%s", strings.Join(messages, "\n"))
+}
+
+func TestAnalyzeLoadsUnicodePackage(t *testing.T) {
+	source := `module main
+
+import "unicode"
+
+fn IsLetter(ch: rune) bool {
+	return unicode.IsLetter(ch)
+}
+`
+
+	diagnostics := analyze("file:///tmp/sec-lsp-unicode-test/main.sec", source)
+	if len(diagnostics) == 0 {
+		return
+	}
+	messages := make([]string, 0, len(diagnostics))
+	for _, diagnostic := range diagnostics {
+		messages = append(messages, diagnostic.Message)
+	}
+	t.Fatalf("analyze returned diagnostics for unicode import:\n%s", strings.Join(messages, "\n"))
+}
+
+func TestRespondIncludesNullResult(t *testing.T) {
+	var out bytes.Buffer
+	server := &server{out: &out}
+
+	if err := server.respond(json.RawMessage("1"), nil); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), `"result":null`) {
+		t.Fatalf("response should include explicit null result, got %q", out.String())
+	}
 }
 
 func TestAnalyzeRecognizesBitBackedEnumSyntax(t *testing.T) {
@@ -122,6 +159,50 @@ fn IsBlank(value: string) bool {
 	t.Fatalf("analyze returned diagnostics for core method without import:\n%s", strings.Join(messages, "\n"))
 }
 
+func TestLSPSourceIncludePathsLoadsProjectImportsFromSecProjectRoot(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".sec"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".sec", "sec.toml"), []byte("[project]\nname = \"sample\"\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	sourceFile := filepath.Join(dir, "cmd", "sec", "main.sec")
+	if err := os.MkdirAll(filepath.Dir(sourceFile), 0755); err != nil {
+		t.Fatal(err)
+	}
+	imported := filepath.Join(dir, "lexer", "token.sec")
+	if err := os.MkdirAll(filepath.Dir(imported), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(imported, []byte("module token\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	paths := sourceIncludePaths("lexer/token", sourceFile)
+	if len(paths) != 1 || paths[0] != imported {
+		t.Fatalf("project import paths = %#v, want %#v", paths, []string{imported})
+	}
+}
+
+func TestLSPSourceIncludePathsLoadsIOPackageFiles(t *testing.T) {
+	paths := sourceIncludePaths("io", "")
+	wants := map[string]bool{
+		"write.linux.amd64.sec": false,
+		"file.linux.amd64.sec":  false,
+	}
+	for _, path := range paths {
+		if _, exists := wants[filepath.Base(path)]; exists {
+			wants[filepath.Base(path)] = true
+		}
+	}
+	for path, found := range wants {
+		if !found {
+			t.Fatalf("io package missing %s: %#v", path, paths)
+		}
+	}
+}
+
 func TestSemaDiagnosticIncludesCodeAndHelp(t *testing.T) {
 	diagnostic := semaDiagnostic(sema.Error{
 		ID:       diagnostics.LargeValueParameter,
@@ -157,6 +238,199 @@ func TestParserDiagnosticIncludesCode(t *testing.T) {
 	}
 }
 
+func TestDocumentSymbolsIncludeOutlineDeclarations(t *testing.T) {
+	source := `module main
+
+type User struct {
+	id: int,
+}
+
+fn Ready() bool {
+	return true
+}
+
+impl User {
+	property Name: string {
+		get {
+			return ""
+		}
+	}
+
+	fn Clear() void {
+	}
+}
+`
+
+	symbols := documentSymbolsForSource("", source)
+	assertDocumentSymbolNames(t, symbols, []string{"main", "User", "Ready", "impl User"})
+
+	var implSymbol *documentSymbol
+	for i := range symbols {
+		if symbols[i].Name == "impl User" {
+			implSymbol = &symbols[i]
+			break
+		}
+	}
+	if implSymbol == nil {
+		t.Fatal("missing impl User outline symbol")
+	}
+	assertDocumentSymbolNames(t, implSymbol.Children, []string{"Name", "Clear"})
+	assertDocumentSymbolRangesContainSelections(t, symbols)
+}
+
+func TestDocumentSymbolsIgnoreTypedNilStatements(t *testing.T) {
+	statements := []ast.Statement{
+		(*ast.ModuleStatement)(nil),
+		(*ast.TypeDeclStatement)(nil),
+		(*ast.UnitDeclStatement)(nil),
+		(*ast.EnumDeclaration)(nil),
+		(*ast.InterfaceDeclaration)(nil),
+		(*ast.FunctionDeclaration)(nil),
+		(*ast.StructStatement)(nil),
+		(*ast.LetStatement)(nil),
+		(*ast.LetGroupStatement)(nil),
+		(*ast.ImplStatement)(nil),
+	}
+
+	for _, stmt := range statements {
+		if symbol, ok := documentSymbolForStatement(stmt); ok {
+			t.Fatalf("typed nil statement produced symbol: %+v", symbol)
+		}
+	}
+}
+
+func TestSemanticTokensClassifyLineObjects(t *testing.T) {
+	source := `module main
+
+fn Check(myVar: bool) bool {
+	if myVar != true {
+		return false
+	}
+	return true
+}
+`
+
+	tokens := decodeSemanticTokens(semanticTokensForSource("", source))
+	assertSemanticToken(t, tokens, 3, 1, 2, "keyword")  // if
+	assertSemanticToken(t, tokens, 3, 4, 5, "variable") // myVar
+	assertSemanticToken(t, tokens, 3, 10, 2, "operator")
+	assertSemanticToken(t, tokens, 3, 13, 4, "keyword") // true
+}
+
+func TestSemanticTokensTolerateIncompleteExpressions(t *testing.T) {
+	source := `module main
+
+fn Check(ch: rune) bool {
+	if ch == {
+		return false
+	}
+	return true
+}
+`
+
+	tokens := semanticTokensForSource("", source)
+	if len(tokens.Data) == 0 {
+		t.Fatal("expected lexical semantic tokens for incomplete source")
+	}
+}
+
+func TestCompletionIncludesCompilerKnownLen(t *testing.T) {
+	source := `module main
+
+fn Count(text: string) int {
+	return le
+}
+`
+
+	offset := strings.Index(source, "return le") + len("return le")
+	items := completeSource("", source, offset)
+	assertCompletionLabels(t, items, []string{"len"})
+}
+
+func TestHoverUsesDocCommentAboveFunction(t *testing.T) {
+	source := `module main
+
+/**
+ * Returns true when the system is ready.
+ */
+fn Ready() bool {
+	return true
+}
+`
+
+	pos := position{Line: 5, Character: strings.Index(sourceLine(source, 5), "Ready") + 1}
+	hover, ok := hoverForSource("", source, pos)
+	if !ok {
+		t.Fatal("expected hover for documented function")
+	}
+	if hover.Contents.Kind != "markdown" {
+		t.Fatalf("hover kind = %q, want markdown", hover.Contents.Kind)
+	}
+	if !strings.Contains(hover.Contents.Value, "Returns true when the system is ready.") {
+		t.Fatalf("wrong hover contents: %q", hover.Contents.Value)
+	}
+}
+
+func TestHoverResolvesSelfMembersAndMethods(t *testing.T) {
+	source := `module main
+
+type Reader struct {
+	position: int,
+	storage: EventStorage[int, 4],
+}
+
+impl Reader {
+	event Changed using storage
+
+	property Current: int {
+		get {
+			return self.position
+		}
+	}
+
+	/**
+	 * Reads two input values.
+	 */
+	fn readTwo(kind: int) bool {
+		self.position += 2
+		return kind == 0
+	}
+
+	fn Equal() bool {
+		let current := self.Current
+		let changed := self.Changed
+		discard current
+		discard changed
+		return self.readTwo(1)
+	}
+}
+`
+
+	assertHoverContains := func(needle string, expected string) {
+		t.Helper()
+		line := 0
+		for index, value := range strings.Split(source, "\n") {
+			if strings.Contains(value, needle) {
+				line = index
+				break
+			}
+		}
+		pos := position{Line: line, Character: strings.Index(sourceLine(source, line), needle) + len("self.") + 1}
+		hover, ok := hoverForSource("", source, pos)
+		if !ok {
+			t.Fatalf("expected hover for %q", needle)
+		}
+		if !strings.Contains(hover.Contents.Value, expected) {
+			t.Fatalf("hover for %q = %q, want %q", needle, hover.Contents.Value, expected)
+		}
+	}
+
+	assertHoverContains("self.position", "field position: int")
+	assertHoverContains("self.Current", "property Current: int")
+	assertHoverContains("self.Changed", "event Changed:")
+	assertHoverContains("self.readTwo", "fn Reader.readTwo(kind: int) bool")
+}
+
 func TestCompletionSurvivesIncompleteFunctionWithURI(t *testing.T) {
 	source := `module main
 
@@ -170,6 +444,19 @@ fn `
 
 	items := completeSource("file:///tmp/sec-lsp-incomplete/main.sec", source, len(source))
 	assertCompletionLabels(t, items, []string{"fn", "return", "struct"})
+}
+
+func TestFindSelectorLHSSurvivesTypedNilNodes(t *testing.T) {
+	text := "value."
+	dotOffset := strings.Index(text, ".")
+
+	if expr := findSelectorLHS((*ast.BlockStatement)(nil), text, dotOffset); expr != nil {
+		t.Fatalf("typed nil block returned %T, want nil", expr)
+	}
+	block := &ast.BlockStatement{Statements: []ast.Statement{(*ast.LetStatement)(nil)}}
+	if expr := findSelectorLHS(block, text, dotOffset); expr != nil {
+		t.Fatalf("typed nil statement returned %T, want nil", expr)
+	}
 }
 
 func TestProgramContainsCoreSourceSkipsNilStatements(t *testing.T) {
@@ -240,6 +527,47 @@ fn main() void {
 
 	items := completeSource("", source, strings.Index(source, "point.")+len("point."))
 	assertCompletionLabels(t, items, []string{"count", "scale", "size", "span", "start"})
+}
+
+func TestCompletionReturnsRuneArrayToString(t *testing.T) {
+	source := `module main
+
+fn main() string {
+	let runes: rune[2] := ['A', 'B']
+	runes.
+}
+`
+
+	items := completeSource("", source, strings.Index(source, "runes.")+len("runes."))
+	assertCompletionLabels(t, items, []string{"ToString"})
+}
+
+func TestCompletionReturnsInferredMethodResultMembersInIncompleteIf(t *testing.T) {
+	source := `module main
+
+type StringBody struct {
+	text: string,
+	terminated: bool,
+}
+
+type Reader struct {
+	position: int,
+}
+
+impl Reader {
+	fn readStringBody(escaped: bool) StringBody {
+		return StringBody{ text: "", terminated: escaped }
+	}
+
+	fn scan() void {
+		let rv := self.readStringBody(false)
+		if rv.
+	}
+}
+`
+
+	items := completeSource("", source, strings.Index(source, "rv.")+len("rv."))
+	assertCompletionLabels(t, items, []string{"terminated", "text"})
 }
 
 func TestCompletionFiltersStructMembersAfterDotPrefix(t *testing.T) {
@@ -508,6 +836,83 @@ func assertCompletionLabels(t *testing.T, items []completionItem, labels []strin
 	}
 }
 
+func assertDocumentSymbolNames(t *testing.T, symbols []documentSymbol, names []string) {
+	t.Helper()
+	seen := map[string]bool{}
+	for _, symbol := range symbols {
+		seen[symbol.Name] = true
+	}
+	for _, name := range names {
+		if !seen[name] {
+			t.Fatalf("missing document symbol %q in %+v", name, symbols)
+		}
+	}
+}
+
+func assertDocumentSymbolRangesContainSelections(t *testing.T, symbols []documentSymbol) {
+	t.Helper()
+	for _, symbol := range symbols {
+		if comparePosition(symbol.SelectionRange.Start, symbol.Range.Start) < 0 ||
+			comparePosition(symbol.SelectionRange.End, symbol.Range.End) > 0 {
+			t.Fatalf("document symbol %q selectionRange %+v is not contained in range %+v", symbol.Name, symbol.SelectionRange, symbol.Range)
+		}
+		assertDocumentSymbolRangesContainSelections(t, symbol.Children)
+	}
+}
+
+type decodedSemanticToken struct {
+	Line      int
+	Start     int
+	Length    int
+	TokenType string
+}
+
+func decodeSemanticTokens(tokens semanticTokens) []decodedSemanticToken {
+	decoded := []decodedSemanticToken{}
+	line := 0
+	start := 0
+	for i := 0; i+4 < len(tokens.Data); i += 5 {
+		line += tokens.Data[i]
+		if tokens.Data[i] == 0 {
+			start += tokens.Data[i+1]
+		} else {
+			start = tokens.Data[i+1]
+		}
+		tokenType := ""
+		if tokens.Data[i+3] >= 0 && tokens.Data[i+3] < len(semanticTokenTypes) {
+			tokenType = semanticTokenTypes[tokens.Data[i+3]]
+		}
+		decoded = append(decoded, decodedSemanticToken{
+			Line:      line,
+			Start:     start,
+			Length:    tokens.Data[i+2],
+			TokenType: tokenType,
+		})
+	}
+	return decoded
+}
+
+func assertSemanticToken(t *testing.T, tokens []decodedSemanticToken, line int, start int, length int, tokenType string) {
+	t.Helper()
+	for _, token := range tokens {
+		if token.Line == line && token.Start == start && token.Length == length {
+			if token.TokenType != tokenType {
+				t.Fatalf("semantic token at %d:%d type = %q, want %q; tokens=%+v", line, start, token.TokenType, tokenType, tokens)
+			}
+			return
+		}
+	}
+	t.Fatalf("missing semantic token at %d:%d length %d type %q; tokens=%+v", line, start, length, tokenType, tokens)
+}
+
+func sourceLine(source string, line int) string {
+	lines := strings.Split(source, "\n")
+	if line < 0 || line >= len(lines) {
+		return ""
+	}
+	return lines[line]
+}
+
 func assertNoCompletionLabel(t *testing.T, items []completionItem, label string) {
 	t.Helper()
 	for _, item := range items {
@@ -549,6 +954,142 @@ import (
 	}
 }
 
+func TestFormatSourceHandlesBootstrapLexerDelimiters(t *testing.T) {
+	input := `fn NewWithFile(input: string,file: string) Result[Lexer, AllocationError] {
+let runes := try input.ToRuneArray()
+
+return Ok(Lexer {
+input: runes
+file: file
+pos: 0
+line: 1
+column: 1
+})
+}
+
+fn Next() Token {
+return self.token(
+lookupIdent(literal),
+literal,
+line,
+column,
+)
+}
+
+fn ReadBrace() Token {
+switch ch {
+case '{':
+return self.readOne(LBRACE)
+case '}':
+return self.readOne(RBRACE)
+}
+return self.readOne(ILLEGAL)
+}
+`
+
+	want := `fn NewWithFile(input: string, file: string) Result[Lexer, AllocationError] {
+    let runes := try input.ToRuneArray()
+
+    return Ok(Lexer {
+        input: runes
+        file: file
+        pos: 0
+        line: 1
+        column: 1
+    })
+}
+
+fn Next() Token {
+    return self.token(
+        lookupIdent(literal),
+        literal,
+        line,
+        column,
+    )
+}
+
+fn ReadBrace() Token {
+    switch ch {
+        case '{':
+            return self.readOne(LBRACE)
+        case '}':
+            return self.readOne(RBRACE)
+    }
+    return self.readOne(ILLEGAL)
+}
+`
+
+	if got := formatSource(input); got != want {
+		t.Fatalf("formatSource() mismatch\n--- got ---\n%s--- want ---\n%s", got, want)
+	}
+}
+
+func TestFormatSourceNormalizesSingleLineFunctionParameters(t *testing.T) {
+	input := `fn token(        typ: TokenType,        lexeme: string,        line: int,        column: int,) Token {
+return Token{}
+}
+`
+
+	want := `fn token(typ: TokenType, lexeme: string, line: int, column: int) Token {
+    return Token{}
+}
+`
+
+	if got := formatSource(input); got != want {
+		t.Fatalf("formatSource() mismatch\n--- got ---\n%s--- want ---\n%s", got, want)
+	}
+}
+
+func TestFormatSourceNormalizesLetDeclarationListAndUnambiguousFuncTypo(t *testing.T) {
+	input := `func token(        typ: TokenType,        lexeme: string,        line: int,        column: int,) Token {
+let line := l.line,         column := l.column,         start := l.pos
+func(callback)
+}
+`
+
+	want := `fn token(typ: TokenType, lexeme: string, line: int, column: int) Token {
+    let line := l.line, column := l.column, start := l.pos
+    func(callback)
+}
+`
+
+	if got := formatSource(input); got != want {
+		t.Fatalf("formatSource() mismatch\n--- got ---\n%s--- want ---\n%s", got, want)
+	}
+}
+
+func TestFormatSourceIndentsTypedDeclarationGroup(t *testing.T) {
+	input := `module main
+
+TokenType (
+ILLEGAL := "ILLEGAL",
+EOF := "EOF",
+IDENT := "IDENT",
+)
+
+fn main() int {
+return 0
+}
+`
+
+	want := `module main
+
+TokenType (
+    ILLEGAL := "ILLEGAL",
+    EOF := "EOF",
+    IDENT := "IDENT",
+)
+
+fn main() int {
+    return 0
+}
+`
+
+	if got := formatSource(input); got != want {
+		t.Fatalf("formatSource() mismatch\n--- got ---\n%s--- want ---\n%s", got, want)
+	}
+}
+
 func TestFormatSourceIndentsNestedSwitchCaseBodies(t *testing.T) {
 	input := `fn Nested(outer: int, inner: bool) int {
 switch outer {
@@ -582,5 +1123,43 @@ return 0
 
 	if got := formatSource(input); got != want {
 		t.Fatalf("formatSource() mismatch\n--- got ---\n%s--- want ---\n%s", got, want)
+	}
+}
+
+func TestCompletionReturnsImplMembersForSelf(t *testing.T) {
+	source := `module main
+
+type Counter struct {
+	value: int,
+	storage: EventStorage[int, 4],
+}
+
+impl Counter {
+	event Changed using storage
+
+	property Current: int {
+		get {
+			return self.value
+		}
+	}
+
+	fn advance() int {
+		return self.value + 1
+	}
+
+	fn Complete() void {
+		self.
+	}
+}
+`
+
+	offset := strings.LastIndex(source, "self.") + len("self.")
+	items := completeSource("", source, offset)
+	assertCompletionLabels(t, items, []string{"Changed", "Current", "Complete", "advance", "storage", "value"})
+
+	for _, item := range items {
+		if item.Label == "advance" && item.Detail != "int" {
+			t.Fatalf("advance completion detail. got=%q want=int", item.Detail)
+		}
 	}
 }

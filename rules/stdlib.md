@@ -305,6 +305,7 @@ fmt
 io
 log
 units
+unicode
 ```
 
 The expected top-level standard-library areas include at least:
@@ -1132,6 +1133,31 @@ Their presence does not by itself claim complete API or target coverage.
 
 Compiler/core already has an established mechanism for compiler-known behavior
 and privileged built-in implementations through `core-library.md`.
+
+The `io` package currently includes Linux/amd64 file-input declarations:
+
+- `io.Open(path) Result[io.File, io.IOError]`;
+- `io.File.Read(buffer) Result[uint, io.IOError]` for caller-provided
+  `ref mut byte[]` storage;
+- `io.File.Write(data) Result[uint, io.IOError]`;
+- `io.File.Flush() Result[void, io.IOError]`;
+- `io.File.Seek(offset, whence) Result[uint, io.IOError]`, currently returning
+  `IOError.Unsupported`;
+- `io.ReadFileInto(path, buffer) Result[uint, io.IOError]`;
+- `io.File.Close() Result[void, io.IOError]`;
+- lowercase `File` method aliases `read`, `write`, `flush`, `seek` and `close`;
+- a semantic scope-exit diagnostic that requires local `io.File` values to be
+  closed explicitly or returned to transfer ownership;
+- a provisional `io.ReadFile(path) Result[string, io.IOError]` API that returns
+  `IOError.Unsupported` until owned dynamic storage and string materialization
+  are implemented.
+
+The `unicode` package currently provides `unicode.IsLetter(ch: rune) bool`.
+It is generated from Go's Unicode 15.0.0 `unicode.Letter` range table, uses
+static range data and binary search, performs no allocation, and has no runtime
+Unicode-data dependency. Ranges with a Go stride other than one are expanded by
+the generator because current Sec `rune` operations intentionally do not expose
+integer arithmetic.
 
 ## Not implemented
 

@@ -527,9 +527,12 @@ target, and generated sources through the canonical module system.
 
 ### Document snapshots
 
-Open-document text is stored, but the server does not yet implement the complete
-versioned snapshot model required for concurrent requests and stale-result
-suppression.
+Open-document text now has a versioned snapshot store. `didOpen` and full-text
+`didChange` updates record versions and reject stale updates. Feature handlers
+read immutable snapshots. `didClose` removes the overlay and clears published
+diagnostics; `didSave` refreshes diagnostics. `willSave` and
+`willSaveWaitUntil` are supported, with the latter currently returning no edits.
+Incremental edits and stale-result suppression remain pending.
 
 ### Protocol transport and types
 
@@ -557,10 +560,6 @@ The following major areas are not yet implemented:
 - progress reporting;
 - partial results;
 - work-done progress;
-- `didClose`;
-- `didSave`;
-- `willSave`;
-- `willSaveWaitUntil`;
 - pull diagnostics;
 - workspace diagnostics;
 - diagnostic related information;

@@ -255,10 +255,10 @@ The remaining details to close are:
 | `borrowing.txt` | **Written — sync required** | Must include views, thread-local references, and discard interactions. |
 | `references.txt` | **Written — sync required** | Must include shaped views and thread-bound references. |
 | `raw_pointers.txt` | **Written — sync required** | Must be synchronized with memory spaces, ABI, and unsafe rules. |
-| `copy_move.txt` | **Written — sync required** | Must be rewritten for explicit move syntax and aligned with `ownership.md`. |
+| `copy_move.md` | **Written — sync required** | Must be rewritten for explicit move syntax and aligned with `ownership.md`. |
 | `lifetime_analysis.txt` | **Written — sync required** | Must include detached work, thread-local values, views, and explicit storage. |
 | `destruction.txt` | **Written — sync required** | Must include discard, panic, cancellation, collection elements, and TLS destruction. |
-| `memory_model.txt` | **Written — sync required** | General memory model; must remain aligned with concurrency and volatile rules. |
+| `memory_model.md` | **Written — sync required** | General memory model; must remain aligned with concurrency and volatile rules. |
 | `static.md` | **Written — sync required** | Must include thread-local keys, collection backing storage, and initialization order. |
 | `discard.md` | **Written — sync required** | General explicit consumption and early deterministic destruction. |
 | `storage.md` | **Planned** | Storage classes, inline storage, stack, static, arena, allocator-backed storage, and explicit backing storage. |

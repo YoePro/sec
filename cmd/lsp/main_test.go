@@ -7,10 +7,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"sec/internal/ast"
 	"sec/internal/diagnostics"
 	"sec/internal/lexer"
+	lspserver "sec/internal/lsp/server"
 	"sec/internal/parser"
 	"sec/internal/sema"
 )
@@ -66,6 +68,30 @@ func TestRespondIncludesNullResult(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), `"result":null`) {
 		t.Fatalf("response should include explicit null result, got %q", out.String())
+	}
+}
+
+func TestDidCloseRemovesSnapshotAndClearsDiagnostics(t *testing.T) {
+	var out bytes.Buffer
+	s := &server{
+		out:               &out,
+		documentSnapshots: lspserver.NewDocuments(),
+		diagnosticTimers:  map[string]*time.Timer{},
+	}
+	uri := "file:///tmp/main.sec"
+	s.documentSnapshots.Open(uri, 1, "module main\n")
+	params, err := json.Marshal(didCloseParams{TextDocument: textDocumentIdentifier{URI: uri}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.handle(rpcMessage{JSONRPC: "2.0", Method: "textDocument/didClose", Params: params}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := s.documentSnapshots.Snapshot(uri); ok {
+		t.Fatal("didClose retained the document snapshot")
+	}
+	if !strings.Contains(out.String(), `"diagnostics":[]`) {
+		t.Fatalf("didClose did not clear diagnostics: %q", out.String())
 	}
 }
 

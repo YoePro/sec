@@ -21,7 +21,9 @@ import (
 	"sec/internal/diagnostics"
 	"sec/internal/formatter"
 	"sec/internal/lexer"
+	"sec/internal/lsp/features"
 	"sec/internal/lsp/protocol"
+	lspserver "sec/internal/lsp/server"
 	"sec/internal/parser"
 	"sec/internal/sema"
 )
@@ -31,8 +33,9 @@ type rpcError = protocol.Error
 type rpcResponseMessage = protocol.ResponseMessage
 
 type textDocumentItem struct {
-	URI  string `json:"uri"`
-	Text string `json:"text"`
+	URI     string `json:"uri"`
+	Version int    `json:"version"`
+	Text    string `json:"text"`
 }
 
 type didOpenParams struct {
@@ -40,7 +43,8 @@ type didOpenParams struct {
 }
 
 type versionedTextDocumentIdentifier struct {
-	URI string `json:"uri"`
+	URI     string `json:"uri"`
+	Version int    `json:"version"`
 }
 
 type textDocumentContentChangeEvent struct {
@@ -112,6 +116,20 @@ type didChangeParams struct {
 	ContentChanges []textDocumentContentChangeEvent `json:"contentChanges"`
 }
 
+type didCloseParams struct {
+	TextDocument textDocumentIdentifier `json:"textDocument"`
+}
+
+type didSaveParams struct {
+	TextDocument textDocumentIdentifier `json:"textDocument"`
+	Text         *string                `json:"text,omitempty"`
+}
+
+type willSaveParams struct {
+	TextDocument textDocumentIdentifier `json:"textDocument"`
+	Reason       int                    `json:"reason"`
+}
+
 type textDocumentIdentifier struct {
 	URI string `json:"uri"`
 }
@@ -165,15 +183,14 @@ type position struct {
 }
 
 type server struct {
-	in               *bufio.Reader          //
-	out              io.Writer              //
-	documents        map[string]string      //
-	docMu            sync.RWMutex           // Protects the documents map from concurrent read/write operations
-	diagnosticTimers map[string]*time.Timer //
-	diagnosticDelay  time.Duration          //
-	writeMu          sync.Mutex             //
-	timerMu          sync.Mutex             //
-	shutdown         bool                   //
+	in                *bufio.Reader //
+	out               io.Writer     //
+	documentSnapshots *lspserver.Documents
+	diagnosticTimers  map[string]*time.Timer //
+	diagnosticDelay   time.Duration          //
+	writeMu           sync.Mutex             //
+	timerMu           sync.Mutex             //
+	shutdown          bool                   //
 }
 
 type formatterBranchContext struct {
@@ -184,11 +201,11 @@ type formatterBranchContext struct {
 
 func main() {
 	s := &server{
-		in:               bufio.NewReader(os.Stdin),
-		out:              os.Stdout,
-		documents:        map[string]string{},
-		diagnosticTimers: map[string]*time.Timer{},
-		diagnosticDelay:  600 * time.Millisecond,
+		in:                bufio.NewReader(os.Stdin),
+		out:               os.Stdout,
+		documentSnapshots: lspserver.NewDocuments(),
+		diagnosticTimers:  map[string]*time.Timer{},
+		diagnosticDelay:   600 * time.Millisecond,
 	}
 	if err := s.run(); err != nil {
 		fmt.Fprintf(os.Stderr, "lsp error: %v\n", err)
@@ -216,7 +233,15 @@ func (s *server) handle(message rpcMessage) error {
 	case "initialize":
 		return s.respond(message.ID, map[string]any{
 			"capabilities": map[string]any{
-				"textDocumentSync":           1,
+				"textDocumentSync": map[string]any{
+					"openClose":         true,
+					"change":            1,
+					"willSave":          true,
+					"willSaveWaitUntil": true,
+					"save": map[string]any{
+						"includeText": false,
+					},
+				},
 				"documentFormattingProvider": true,
 				"documentSymbolProvider":     true,
 				"hoverProvider":              true,
@@ -255,7 +280,7 @@ func (s *server) handle(message rpcMessage) error {
 		if err := json.Unmarshal(message.Params, &params); err != nil {
 			return err
 		}
-		s.documents[params.TextDocument.URI] = params.TextDocument.Text
+		s.documentSnapshots.Open(params.TextDocument.URI, params.TextDocument.Version, params.TextDocument.Text)
 		return s.publishDiagnostics(params.TextDocument.URI, params.TextDocument.Text)
 	case "textDocument/didChange":
 		var params didChangeParams
@@ -266,9 +291,41 @@ func (s *server) handle(message rpcMessage) error {
 			return nil
 		}
 		text := params.ContentChanges[len(params.ContentChanges)-1].Text
-		s.documents[params.TextDocument.URI] = text
+		if _, changed := s.documentSnapshots.Change(params.TextDocument.URI, params.TextDocument.Version, text); !changed {
+			return nil
+		}
 		s.scheduleDiagnostics(params.TextDocument.URI, text)
 		return nil
+	case "textDocument/didClose":
+		var params didCloseParams
+		if err := json.Unmarshal(message.Params, &params); err != nil {
+			return err
+		}
+		s.stopDiagnosticTimer(params.TextDocument.URI)
+		s.documentSnapshots.Close(params.TextDocument.URI)
+		return s.notify("textDocument/publishDiagnostics", map[string]any{
+			"uri":         params.TextDocument.URI,
+			"diagnostics": []diagnostic{},
+		})
+	case "textDocument/didSave":
+		var params didSaveParams
+		if err := json.Unmarshal(message.Params, &params); err != nil {
+			return err
+		}
+		snapshot, ok := s.documentSnapshots.Snapshot(params.TextDocument.URI)
+		if !ok {
+			return nil
+		}
+		return s.publishDiagnostics(snapshot.URI, snapshot.Text)
+	case "textDocument/willSave":
+		var params willSaveParams
+		return json.Unmarshal(message.Params, &params)
+	case "textDocument/willSaveWaitUntil":
+		var params willSaveParams
+		if err := json.Unmarshal(message.Params, &params); err != nil {
+			return err
+		}
+		return s.respond(message.ID, []textEdit{})
 	case "textDocument/formatting":
 		var params formattingParams
 		if err := json.Unmarshal(message.Params, &params); err != nil {
@@ -284,66 +341,55 @@ func (s *server) handle(message rpcMessage) error {
 		if err := json.Unmarshal(message.Params, &params); err != nil {
 			return err
 		}
-		s.docMu.RLock()
-		text, ok := s.documents[params.TextDocument.URI]
-		s.docMu.RUnlock()
+		snapshot, ok := s.documentSnapshots.Snapshot(params.TextDocument.URI)
 		if !ok {
 			return s.respond(message.ID, []codeAction{})
 		}
-		return s.respond(message.ID, ownershipCodeActions(params.TextDocument.URI, text, params.Context.Diagnostics))
+		return s.respond(message.ID, ownershipCodeActions(params.TextDocument.URI, snapshot.Text, params.Context.Diagnostics))
 	case "textDocument/completion":
 		var params completionParams
 		if err := json.Unmarshal(message.Params, &params); err != nil {
 			return err
 		}
 
-		// Thread-safe reading from the document storage
-		s.docMu.RLock()
-		text, ok := s.documents[params.TextDocument.URI]
-		s.docMu.RUnlock()
+		snapshot, ok := s.documentSnapshots.Snapshot(params.TextDocument.URI)
 		if !ok {
 			return s.respond(message.ID, []completionItem{})
 		}
 
-		offset := lineCharToOffset(text, params.Position.Line, params.Position.Character)
-		items := completeSource(params.TextDocument.URI, text, offset)
+		offset := lineCharToOffset(snapshot.Text, params.Position.Line, params.Position.Character)
+		items := completeSource(params.TextDocument.URI, snapshot.Text, offset)
 		return s.respond(message.ID, items)
 	case "textDocument/documentSymbol":
 		var params documentSymbolParams
 		if err := json.Unmarshal(message.Params, &params); err != nil {
 			return err
 		}
-		s.docMu.RLock()
-		text, ok := s.documents[params.TextDocument.URI]
-		s.docMu.RUnlock()
+		snapshot, ok := s.documentSnapshots.Snapshot(params.TextDocument.URI)
 		if !ok {
 			return s.respond(message.ID, []documentSymbol{})
 		}
-		return s.respond(message.ID, documentSymbolsForSource(params.TextDocument.URI, text))
+		return s.respond(message.ID, documentSymbolsForSource(params.TextDocument.URI, snapshot.Text))
 	case "textDocument/semanticTokens/full":
 		var params semanticTokensParams
 		if err := json.Unmarshal(message.Params, &params); err != nil {
 			return err
 		}
-		s.docMu.RLock()
-		text, ok := s.documents[params.TextDocument.URI]
-		s.docMu.RUnlock()
+		snapshot, ok := s.documentSnapshots.Snapshot(params.TextDocument.URI)
 		if !ok {
 			return s.respond(message.ID, semanticTokens{})
 		}
-		return s.respond(message.ID, semanticTokensForSource(params.TextDocument.URI, text))
+		return s.respond(message.ID, semanticTokensForSource(params.TextDocument.URI, snapshot.Text))
 	case "textDocument/hover":
 		var params hoverParams
 		if err := json.Unmarshal(message.Params, &params); err != nil {
 			return err
 		}
-		s.docMu.RLock()
-		text, ok := s.documents[params.TextDocument.URI]
-		s.docMu.RUnlock()
+		snapshot, ok := s.documentSnapshots.Snapshot(params.TextDocument.URI)
 		if !ok {
 			return s.respond(message.ID, nil)
 		}
-		result, ok := hoverForSource(params.TextDocument.URI, text, params.Position)
+		result, ok := hoverForSource(params.TextDocument.URI, snapshot.Text, params.Position)
 		if !ok {
 			return s.respond(message.ID, nil)
 		}
@@ -443,33 +489,8 @@ func incompleteIfConditionAt(text string, offset int, dotOffset int) bool {
 	return !strings.Contains(text[offset:lineEnd], "{")
 }
 
-var semanticTokenTypes = []string{
-	"namespace",
-	"type",
-	"class",
-	"enum",
-	"interface",
-	"struct",
-	"typeParameter",
-	"parameter",
-	"variable",
-	"property",
-	"enumMember",
-	"event",
-	"function",
-	"method",
-	"keyword",
-	"modifier",
-	"comment",
-	"string",
-	"number",
-	"operator",
-}
-
-var semanticTokenModifiers = []string{
-	"declaration",
-	"static",
-}
+var semanticTokenTypes = features.SemanticTokenTypes
+var semanticTokenModifiers = features.SemanticTokenModifiers
 
 var semanticTokenTypeIndex = func() map[string]int {
 	indexes := map[string]int{}
@@ -653,39 +674,7 @@ func namedDocumentSymbol(name string, detail string, kind int, token lexer.Token
 
 func semanticTokensForSource(uri string, text string) semanticTokens {
 	tokenTypes := semanticTokenClassification(uri, text)
-	l := lexer.NewWithFile(text, pathFromURI(uri))
-	data := []int{}
-	previousLine := 0
-	previousStart := 0
-	for {
-		token := l.NextToken()
-		if token.Type == lexer.EOF {
-			break
-		}
-		tokenType := semanticTokenType(token, tokenTypes)
-		if tokenType == "" {
-			continue
-		}
-		typeIndex, ok := semanticTokenTypeIndex[tokenType]
-		if !ok {
-			continue
-		}
-		line := max(token.Line-1, 0)
-		start := max(token.Column-1, 0)
-		length := semanticTokenLength(token)
-		if length <= 0 {
-			continue
-		}
-		deltaLine := line - previousLine
-		deltaStart := start
-		if deltaLine == 0 {
-			deltaStart = start - previousStart
-		}
-		data = append(data, deltaLine, deltaStart, length, typeIndex, 0)
-		previousLine = line
-		previousStart = start
-	}
-	return semanticTokens{Data: data}
+	return semanticTokens{Data: features.SemanticTokens(text, pathFromURI(uri), tokenTypes)}
 }
 
 func semanticTokenClassification(uri string, text string) (classification map[string]string) {
@@ -1597,6 +1586,15 @@ func (s *server) stopDiagnosticTimers() {
 	}
 }
 
+func (s *server) stopDiagnosticTimer(uri string) {
+	s.timerMu.Lock()
+	defer s.timerMu.Unlock()
+	if timer := s.diagnosticTimers[uri]; timer != nil {
+		timer.Stop()
+		delete(s.diagnosticTimers, uri)
+	}
+}
+
 func (s *server) publishDiagnostics(uri string, text string) error {
 	diagnostics := analyze(uri, text)
 	return s.notify("textDocument/publishDiagnostics", map[string]any{
@@ -1606,7 +1604,8 @@ func (s *server) publishDiagnostics(uri string, text string) error {
 }
 
 func (s *server) formatDocument(uri string) ([]textEdit, error) {
-	text, ok := s.documents[uri]
+	snapshot, ok := s.documentSnapshots.Snapshot(uri)
+	text := snapshot.Text
 	if !ok {
 		data, err := os.ReadFile(pathFromURI(uri))
 		if err != nil {

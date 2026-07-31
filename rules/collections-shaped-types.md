@@ -2273,7 +2273,7 @@ arrays-slices.txt
 registers.txt
 enums.txt
 allocation.txt
-ownership.txt
+ownership.md
 borrowing.txt
 references.txt
 lifetime_analysis.txt

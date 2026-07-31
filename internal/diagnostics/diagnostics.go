@@ -27,6 +27,9 @@ const (
 	DuplicateModuleDeclaration = "S1002"
 	ModuleDeclarationConflict  = "S1003"
 	DuplicateLocalVariable     = "S1004"
+	UnhandledMustUseResult     = "S1005"
+	NonDiscardableValue        = "S1006"
+	ImplicitMoveDisallowed     = "S1007"
 	LargeValueParameter        = "A2001"
 )
 
@@ -63,6 +66,27 @@ var registry = map[string]Definition{
 		ID:              DuplicateLocalVariable,
 		Name:            "names.duplicate-local-variable",
 		Family:          "names",
+		DefaultSeverity: SeverityError,
+		Mandatory:       true,
+	},
+	UnhandledMustUseResult: {
+		ID:              UnhandledMustUseResult,
+		Name:            "ownership.unhandled-must-use-result",
+		Family:          "ownership",
+		DefaultSeverity: SeverityError,
+		Mandatory:       true,
+	},
+	NonDiscardableValue: {
+		ID:              NonDiscardableValue,
+		Name:            "ownership.non-discardable-value",
+		Family:          "ownership",
+		DefaultSeverity: SeverityError,
+		Mandatory:       true,
+	},
+	ImplicitMoveDisallowed: {
+		ID:              ImplicitMoveDisallowed,
+		Name:            "ownership.implicit-move-disallowed",
+		Family:          "ownership",
 		DefaultSeverity: SeverityError,
 		Mandatory:       true,
 	},

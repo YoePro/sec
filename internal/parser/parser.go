@@ -3724,7 +3724,7 @@ func (p *Parser) isAtTypeDeclEnd() bool {
 }
 
 func (p *Parser) parseAssignmentStatement() ast.Statement {
-	stmt := &ast.AssignmentStatement{Token: p.curToken}
+	stmt := &ast.AssignmentStatement{Token: p.curToken, Ownership: ast.OwnershipCopy}
 
 	stmt.Target = p.parseExpression(LOWEST)
 	if stmt.Target == nil {
@@ -3736,6 +3736,9 @@ func (p *Parser) parseAssignmentStatement() ast.Statement {
 	}
 
 	stmt.Operator = p.curToken.Lexeme
+	if p.curToken.Type == lexer.MOVE_ASSIGN {
+		stmt.Ownership = ast.OwnershipMove
+	}
 	p.nextToken()
 	stmt.Value = p.parseExpression(LOWEST)
 	if stmt.Value == nil {
@@ -3771,9 +3774,13 @@ func (p *Parser) parseTryAssignmentStatement() ast.Statement {
 	}
 
 	assignment := &ast.AssignmentStatement{
-		Token:    expressionToken(target),
-		Target:   target,
-		Operator: p.curToken.Lexeme,
+		Token:     expressionToken(target),
+		Target:    target,
+		Operator:  p.curToken.Lexeme,
+		Ownership: ast.OwnershipCopy,
+	}
+	if p.curToken.Type == lexer.MOVE_ASSIGN {
+		assignment.Ownership = ast.OwnershipMove
 	}
 	p.nextToken()
 
@@ -3809,9 +3816,12 @@ func (p *Parser) parseExpressionOrAssignmentStatement() ast.Statement {
 		return &ast.ExpressionStatement{Token: token, Expression: expr}
 	}
 
-	stmt := &ast.AssignmentStatement{Token: token, Target: expr}
+	stmt := &ast.AssignmentStatement{Token: token, Target: expr, Ownership: ast.OwnershipCopy}
 	p.nextToken()
 	stmt.Operator = p.curToken.Lexeme
+	if p.curToken.Type == lexer.MOVE_ASSIGN {
+		stmt.Ownership = ast.OwnershipMove
+	}
 	p.nextToken()
 	stmt.Value = p.parseExpression(LOWEST)
 	if stmt.Value == nil {
@@ -3849,6 +3859,7 @@ func (p *Parser) expectPeekAssignmentOperator() bool {
 func (p *Parser) isAssignmentOperator(t lexer.TokenType) bool {
 	switch t {
 	case lexer.ASSIGN,
+		lexer.MOVE_ASSIGN,
 		lexer.PLUS_ASSIGN,
 		lexer.MINUS_ASSIGN,
 		lexer.ASTERISK_ASSIGN,
@@ -3898,7 +3909,7 @@ func (p *Parser) isAssignmentOperator(t lexer.TokenType) bool {
 //	       ["mut"]
 //	       Identifier
 //	       [ ":" TypeReference ]
-//	       [ ":=" Expression ]
+//	       [ ":=" Expression | ":<-" Expression | "<-" Expression ]
 func (p *Parser) parseLetStatement() ast.Statement {
 	token := p.curToken
 	mutable := false
@@ -4157,8 +4168,9 @@ func (p *Parser) parseLetDeclarator(token lexer.Token, mutable bool, inheritedTy
 	}
 
 	stmt := &ast.LetStatement{
-		Token:   token,
-		Mutable: mutable,
+		Token:     token,
+		Mutable:   mutable,
+		Ownership: ast.OwnershipCopy,
 		Name: &ast.Identifier{
 			Token: p.curToken,
 			Value: p.curToken.Lexeme,
@@ -4194,16 +4206,32 @@ func (p *Parser) parseLetDeclarator(token lexer.Token, mutable bool, inheritedTy
 		}
 	}
 
-	if p.peekToken.Type == lexer.DECLARE {
-
+	switch p.peekToken.Type {
+	case lexer.DECLARE:
 		p.nextToken()
 		p.nextToken()
-
 		stmt.Value = p.parseExpression(LOWEST)
-
-		if stmt.Value == nil {
+	case lexer.MOVE_DECLARE:
+		if stmt.Type != nil {
+			p.addError("typed move initializer must use '<-', got ':<-' at %d:%d", p.peekToken.Line, p.peekToken.Column)
 			return nil
 		}
+		stmt.Ownership = ast.OwnershipMove
+		p.nextToken()
+		p.nextToken()
+		stmt.Value = p.parseExpression(LOWEST)
+	case lexer.MOVE_ASSIGN:
+		if stmt.Type == nil {
+			p.addError("inferred move initializer must use ':<-', got '<-' at %d:%d", p.peekToken.Line, p.peekToken.Column)
+			return nil
+		}
+		stmt.Ownership = ast.OwnershipMove
+		p.nextToken()
+		p.nextToken()
+		stmt.Value = p.parseExpression(LOWEST)
+	}
+	if stmt.Value == nil && (p.curToken.Type == lexer.DECLARE || p.curToken.Type == lexer.MOVE_DECLARE || p.curToken.Type == lexer.MOVE_ASSIGN) {
+		return nil
 	}
 
 	if p.peekToken.Type == lexer.ASSIGN {

@@ -1430,6 +1430,8 @@ The lexer recognizes the longest valid token at the current source position.
 ```text
 =       assignment
 :=      declaration assignment
+<-      move assignment
+:<-     move declaration assignment
 =>      arm or mapping arrow
 ```
 
@@ -1563,7 +1565,9 @@ Examples:
 <<= before <<
 >>= before >>
 += before +
+:<- before :
 := before :
+<- before <
 => before =
 ```
 

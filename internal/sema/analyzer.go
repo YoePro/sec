@@ -1300,10 +1300,150 @@ func (a *Analyzer) analyzeExpressionStatement(stmt *ast.ExpressionStatement) {
 	exprType, _ := a.inferExpression(stmt.Expression)
 	if _, ok := stmt.Expression.(*ast.SpawnExpression); ok && exprType.Kind != InvalidType {
 		a.addErrorAtToken(stmt.Token, "spawned task result must be owned, awaited, joined or detached")
+		return
+	}
+	if exprType.Kind == InvalidType || exprType.Kind == VoidType || !isCallLikeExpression(stmt.Expression) {
+		return
+	}
+	if !isMustUseType(exprType) {
+		// Ordinary call results are implicitly discarded at statement end. The
+		// configurable advisory for this acknowledged loss is tracked separately.
+		return
 	}
 	if a.inDeferBlock && exprType.Kind == ResultType {
-		a.addErrorAtToken(expressionToken(stmt.Expression), "unhandled Result inside defer; handle it or discard it explicitly")
+		a.addErrorAtTokenWithMetadata(
+			expressionToken(stmt.Expression),
+			diagnostics.UnhandledMustUseResult,
+			"use try, match, binding, return, or explicit discard",
+			"unhandled Result inside defer; handle it or discard it explicitly",
+		)
+		return
 	}
+	a.addErrorAtTokenWithMetadata(
+		expressionToken(stmt.Expression),
+		diagnostics.UnhandledMustUseResult,
+		"use try, match, binding, return, or explicit discard",
+		"result of %s has type %s and must be handled explicitly",
+		expressionStatementDisplayName(stmt.Expression),
+		typeDisplayName(exprType),
+	)
+}
+
+func isCallLikeExpression(expr ast.Expression) bool {
+	_, call := expr.(*ast.CallExpression)
+	return call
+}
+
+func isMustUseType(typ Type) bool {
+	return typeRequiresExplicitHandling(typ, map[string]bool{})
+}
+
+func typeRequiresExplicitHandling(typ Type, visiting map[string]bool) bool {
+	if typ.Kind == ReferenceType {
+		// A reference does not own the lifecycle value it views.
+		return false
+	}
+	typ = dereferenceType(typ)
+	if typ.Kind == ResultType || isTaskType(typ) || isThreadType(typ) {
+		return true
+	}
+	key := typeObligationKey(typ)
+	if key != "" {
+		if visiting[key] {
+			return false
+		}
+		visiting[key] = true
+		defer delete(visiting, key)
+	}
+	for _, argument := range typ.TypeArgs {
+		if typeRequiresExplicitHandling(argument, visiting) {
+			return true
+		}
+	}
+	if typ.Element != nil && typeRequiresExplicitHandling(*typ.Element, visiting) {
+		return true
+	}
+	for _, field := range typ.Fields {
+		if typeRequiresExplicitHandling(field.Type, visiting) {
+			return true
+		}
+	}
+	for _, variant := range typ.UnionVariants {
+		if variant.Payload != nil && typeRequiresExplicitHandling(*variant.Payload, visiting) {
+			return true
+		}
+		for _, field := range variant.PayloadFields {
+			if typeRequiresExplicitHandling(field.Type, visiting) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func isDiscardableType(typ Type) bool {
+	return typeIsDiscardable(typ, map[string]bool{})
+}
+
+func typeIsDiscardable(typ Type, visiting map[string]bool) bool {
+	if typ.Kind == ReferenceType {
+		return true
+	}
+	typ = dereferenceType(typ)
+	if isTaskType(typ) || isThreadType(typ) {
+		return false
+	}
+	key := typeObligationKey(typ)
+	if key != "" {
+		if visiting[key] {
+			return true
+		}
+		visiting[key] = true
+		defer delete(visiting, key)
+	}
+	for _, argument := range typ.TypeArgs {
+		if !typeIsDiscardable(argument, visiting) {
+			return false
+		}
+	}
+	if typ.Element != nil && !typeIsDiscardable(*typ.Element, visiting) {
+		return false
+	}
+	for _, field := range typ.Fields {
+		if !typeIsDiscardable(field.Type, visiting) {
+			return false
+		}
+	}
+	for _, variant := range typ.UnionVariants {
+		if variant.Payload != nil && !typeIsDiscardable(*variant.Payload, visiting) {
+			return false
+		}
+		for _, field := range variant.PayloadFields {
+			if !typeIsDiscardable(field.Type, visiting) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func typeObligationKey(typ Type) string {
+	if typ.Name != "" {
+		return typeDisplayName(typ)
+	}
+	if typ.Kind == StructType || typ.Kind == UnionType || typ.Kind == ArrayType || typ.Kind == SliceType {
+		return string(typ.Kind)
+	}
+	return ""
+}
+
+func expressionStatementDisplayName(expr ast.Expression) string {
+	if call, ok := expr.(*ast.CallExpression); ok {
+		if name := callExpressionName(call); name != "" {
+			return name
+		}
+	}
+	return expr.String()
 }
 
 func (a *Analyzer) checkUnresolvedTaskAtScopeExit(name string) {
@@ -1385,6 +1525,16 @@ func (a *Analyzer) analyzeDiscardStatement(stmt *ast.DiscardStatement) {
 	}
 	if isTaskType(valueType) || isThreadType(valueType) {
 		a.addErrorAtToken(expressionToken(stmt.Value), "cannot discard unresolved %s; await, join or detach it explicitly", typeDisplayName(valueType))
+		return
+	}
+	if !isDiscardableType(valueType) {
+		a.addErrorAtTokenWithMetadata(
+			expressionToken(stmt.Value),
+			diagnostics.NonDiscardableValue,
+			"handle the value and resolve every contained task or thread lifecycle",
+			"cannot discard %s because it may contain an unresolved lifecycle handle",
+			typeDisplayName(valueType),
+		)
 		return
 	}
 
@@ -6095,10 +6245,13 @@ func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
 
 	if !ok || stmt.Value == nil || stmt.Type == nil {
 		if defined && stmt.Value != nil {
+			if !a.validateLetOwnership(stmt) {
+				return
+			}
 			if typeCarriesReferenceOrigin(declaredType) {
 				a.updateReferenceSymbolOrigin(stmt.Name.Value, declaredType)
 			}
-			a.markMoveSource(stmt.Value)
+			a.applyLetOwnership(stmt)
 			a.bindBorrowHoldersFromExpression(stmt.Value, stmt.Name.Value)
 			a.markLocalRefContainerFromValue(stmt.Name.Value, stmt.Value)
 			a.setConstInt(stmt.Name.Value, stmt.Value)
@@ -6134,7 +6287,10 @@ func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
 	}
 
 	if a.checkInitializerType(declaredType, exprType, stmt.Value) && defined {
-		a.markMoveSource(stmt.Value)
+		if !a.validateLetOwnership(stmt) {
+			return
+		}
+		a.applyLetOwnership(stmt)
 		a.bindBorrowHoldersFromExpression(stmt.Value, stmt.Name.Value)
 		a.markLocalRefContainerFromValue(stmt.Name.Value, stmt.Value)
 		a.setConstInt(stmt.Name.Value, stmt.Value)
@@ -6215,10 +6371,6 @@ func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement, all
 		a.addErrorAtToken(target.Token, "cannot assign to immutable variable %s", target.Value)
 		return
 	}
-	if a.moveReasons[target.Value] == "discarded" {
-		a.addErrorAtTokenWithPrevious(target.Token, a.moved[target.Value], "cannot assign to discarded value %s; declare a new value instead", target.Value)
-		return
-	}
 	if property, ok := a.lookupCurrentImplProperty(target.Value); ok && property.Fallible && !allowFallible {
 		a.addErrorAtToken(target.Token, "assigning fallible property %s requires try", target.Value)
 		return
@@ -6231,13 +6383,14 @@ func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement, all
 		a.addErrorAtToken(target.Token, "assigning variable %s requires try because %s has contracts", target.Value, typeDisplayName(symbol.Type))
 		return
 	}
+	if !a.validateMoveAssignmentTarget(stmt) {
+		return
+	}
 
 	exprType, _ := a.inferExpressionWithExpected(stmt.Value, symbol.Type)
 	if exprType.Kind == InvalidType {
 		return
 	}
-
-	a.markMoveSource(stmt.Value)
 
 	if stmt.Operator != "=" && !canInitialize(symbol.Type, exprType, stmt.Value) {
 		a.addErrorAtToken(
@@ -6255,6 +6408,10 @@ func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement, all
 	}
 
 	if a.checkInitializerType(symbol.Type, exprType, stmt.Value) {
+		if !a.validateAssignmentOwnership(stmt) {
+			return
+		}
+		a.applyAssignmentOwnership(stmt)
 		a.updateAssignedConstInt(symbol.Name, stmt)
 		a.assigned[symbol.Name] = true
 		delete(a.moved, symbol.Name)
@@ -6273,6 +6430,134 @@ func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement, all
 	}
 }
 
+func (a *Analyzer) validateLetOwnership(stmt *ast.LetStatement) bool {
+	if stmt == nil {
+		return false
+	}
+	return a.validateNamedOwnershipSource(stmt.Ownership, stmt.Value, stmt.Name.Token, true, stmt.Type == nil)
+}
+
+func (a *Analyzer) applyLetOwnership(stmt *ast.LetStatement) {
+	if stmt == nil {
+		return
+	}
+	if stmt.Ownership == ast.OwnershipMove {
+		a.markExplicitMoveSource(stmt.Value)
+		return
+	}
+	a.markMoveSource(stmt.Value)
+}
+
+func (a *Analyzer) validateAssignmentOwnership(stmt *ast.AssignmentStatement) bool {
+	if stmt == nil {
+		return false
+	}
+	return a.validateNamedOwnershipSource(stmt.Ownership, stmt.Value, stmt.Token, false, false)
+}
+
+func (a *Analyzer) validateMoveAssignmentTarget(stmt *ast.AssignmentStatement) bool {
+	if stmt == nil || stmt.Ownership != ast.OwnershipMove {
+		return true
+	}
+	source, ok := stmt.Value.(*ast.Identifier)
+	if !ok {
+		return true
+	}
+	root, ok := assignmentTargetRootName(stmt.Target)
+	if !ok || root != source.Value {
+		return true
+	}
+	a.addErrorAtToken(source.Token, "cannot move value %s into itself", source.Value)
+	return false
+}
+
+func assignmentTargetRootName(expr ast.Expression) (string, bool) {
+	switch expr := expr.(type) {
+	case *ast.Identifier:
+		return expr.Value, true
+	case *ast.MemberExpression:
+		return assignmentTargetRootName(expr.Object)
+	case *ast.IndexExpression:
+		return assignmentTargetRootName(expr.Left)
+	default:
+		return "", false
+	}
+}
+
+func (a *Analyzer) applyAssignmentOwnership(stmt *ast.AssignmentStatement) {
+	if stmt == nil {
+		return
+	}
+	if stmt.Ownership == ast.OwnershipMove {
+		a.markExplicitMoveSource(stmt.Value)
+		return
+	}
+	a.markMoveSource(stmt.Value)
+}
+
+func (a *Analyzer) validateNamedOwnershipSource(mode ast.OwnershipMode, value ast.Expression, token lexer.Token, declaration bool, inferredDeclaration bool) bool {
+	ident, ok := value.(*ast.Identifier)
+	if !ok {
+		if mode == ast.OwnershipMove {
+			a.addErrorAtToken(token, "explicit move currently requires a named source binding")
+			return false
+		}
+		return true
+	}
+	symbol, ok := a.symbols[ident.Value]
+	if !ok {
+		return false
+	}
+	if _, moved := a.moved[ident.Value]; moved {
+		// inferExpression has already emitted the primary use-after-move error.
+		return true
+	}
+	if mode == ast.OwnershipMove {
+		return !a.checkBorrowedMove(ident.Value, ident.Token)
+	}
+	if !MoveOnly(symbol.Type) {
+		return true
+	}
+	moveSyntax := "<-"
+	if declaration && inferredDeclaration {
+		moveSyntax = ":<-"
+	}
+	help := "use `destination <- source` to transfer ownership"
+	if declaration {
+		help = "use `let destination :<- source` to transfer ownership"
+	}
+	a.addErrorAtTokenWithMetadata(
+		ident.Token,
+		diagnostics.ImplicitMoveDisallowed,
+		help,
+		"cannot copy move-only value %s; use explicit move syntax %s",
+		ident.Value,
+		moveSyntax,
+	)
+	return false
+}
+
+func (a *Analyzer) markExplicitMoveSource(expr ast.Expression) bool {
+	ident, ok := expr.(*ast.Identifier)
+	if !ok {
+		return false
+	}
+	symbol, ok := a.symbols[ident.Value]
+	if !ok {
+		return false
+	}
+	if a.checkBorrowedMove(ident.Value, ident.Token) {
+		return false
+	}
+	a.moved[ident.Value] = ident.Token
+	a.moveReasons[ident.Value] = "moved"
+	if symbol.Type.Kind == ReferenceType {
+		delete(a.localRefContainers, ident.Value)
+	}
+	a.endBorrowsHeldBy(ident.Value)
+	return true
+}
+
 func (a *Analyzer) analyzeIndexAssignmentStatement(stmt *ast.AssignmentStatement, index *ast.IndexExpression) {
 	targetType, _ := a.inferIndexExpression(index)
 	if targetType.Kind == InvalidType {
@@ -6289,7 +6574,15 @@ func (a *Analyzer) analyzeIndexAssignmentStatement(stmt *ast.AssignmentStatement
 	if a.checkAssignmentEscapesLocalReference(stmt.Target, stmt.Value) {
 		return
 	}
-	a.checkInitializerType(targetType, exprType, stmt.Value)
+	if !a.validateMoveAssignmentTarget(stmt) {
+		return
+	}
+	if a.checkInitializerType(targetType, exprType, stmt.Value) {
+		if !a.validateAssignmentOwnership(stmt) {
+			return
+		}
+		a.applyAssignmentOwnership(stmt)
+	}
 }
 
 func (a *Analyzer) markMoveSource(expr ast.Expression) bool {
@@ -6618,6 +6911,9 @@ func (a *Analyzer) analyzeMemberAssignmentStatement(stmt *ast.AssignmentStatemen
 	if a.checkAssignmentEscapesLocalReference(stmt.Target, stmt.Value) {
 		return
 	}
+	if !a.validateMoveAssignmentTarget(stmt) {
+		return
+	}
 
 	if stmt.Operator == "=" && a.isRegisterBitField(member) && a.isZeroOrOneIntegerConstant(stmt.Value) {
 		return
@@ -6629,7 +6925,12 @@ func (a *Analyzer) analyzeMemberAssignmentStatement(stmt *ast.AssignmentStatemen
 
 	if !canInitialize(targetType, valueType, stmt.Value) {
 		a.addErrorAtToken(expressionToken(stmt.Value), "cannot assign %s to %s", typeDisplayName(valueType), typeDisplayName(targetType))
+		return
 	}
+	if !a.validateAssignmentOwnership(stmt) {
+		return
+	}
+	a.applyAssignmentOwnership(stmt)
 }
 
 func (a *Analyzer) isRegisterBitField(member *ast.MemberExpression) bool {
@@ -11215,6 +11516,19 @@ func (a *Analyzer) addErrorAtTokenWithID(token lexer.Token, id string, format st
 	err := Error{
 		ID:       id,
 		Severity: diagnostics.SeverityError,
+		Message:  fmt.Sprintf(format, args...),
+		File:     token.File,
+		Line:     token.Line,
+		Column:   token.Column,
+	}
+	a.appendError(err)
+}
+
+func (a *Analyzer) addErrorAtTokenWithMetadata(token lexer.Token, id string, help string, format string, args ...any) {
+	err := Error{
+		ID:       id,
+		Severity: diagnostics.SeverityError,
+		Help:     help,
 		Message:  fmt.Sprintf(format, args...),
 		File:     token.File,
 		Line:     token.Line,

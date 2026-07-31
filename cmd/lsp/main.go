@@ -19,30 +19,16 @@ import (
 
 	"sec/internal/ast"
 	"sec/internal/diagnostics"
+	"sec/internal/formatter"
 	"sec/internal/lexer"
+	"sec/internal/lsp/protocol"
 	"sec/internal/parser"
 	"sec/internal/sema"
 )
 
-type rpcMessage struct {
-	JSONRPC string          `json:"jsonrpc"`
-	ID      json.RawMessage `json:"id,omitempty"`
-	Method  string          `json:"method,omitempty"`
-	Params  json.RawMessage `json:"params,omitempty"`
-	Result  any             `json:"result,omitempty"`
-	Error   *rpcError       `json:"error,omitempty"`
-}
-
-type rpcError struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
-}
-
-type rpcResponseMessage struct {
-	JSONRPC string          `json:"jsonrpc"`
-	ID      json.RawMessage `json:"id"`
-	Result  any             `json:"result"`
-}
+type rpcMessage = protocol.Message
+type rpcError = protocol.Error
+type rpcResponseMessage = protocol.ResponseMessage
 
 type textDocumentItem struct {
 	URI  string `json:"uri"`
@@ -134,9 +120,30 @@ type formattingParams struct {
 	TextDocument textDocumentIdentifier `json:"textDocument"`
 }
 
+type codeActionParams struct {
+	TextDocument textDocumentIdentifier `json:"textDocument"`
+	Range        lspRange               `json:"range"`
+	Context      codeActionContext      `json:"context"`
+}
+
+type codeActionContext struct {
+	Diagnostics []diagnostic `json:"diagnostics"`
+}
+
 type textEdit struct {
 	Range   lspRange `json:"range"`
 	NewText string   `json:"newText"`
+}
+
+type workspaceEdit struct {
+	Changes map[string][]textEdit `json:"changes"`
+}
+
+type codeAction struct {
+	Title       string        `json:"title"`
+	Kind        string        `json:"kind"`
+	Diagnostics []diagnostic  `json:"diagnostics,omitempty"`
+	Edit        workspaceEdit `json:"edit"`
 }
 
 type diagnostic struct {
@@ -191,7 +198,7 @@ func main() {
 
 func (s *server) run() error {
 	for {
-		message, err := readMessage(s.in)
+		message, err := protocol.ReadMessage(s.in)
 		if err == io.EOF {
 			return nil
 		}
@@ -213,6 +220,7 @@ func (s *server) handle(message rpcMessage) error {
 				"documentFormattingProvider": true,
 				"documentSymbolProvider":     true,
 				"hoverProvider":              true,
+				"codeActionProvider":         true,
 				"completionProvider": map[string]any{
 					"triggerCharacters": []string{"."},
 				},
@@ -271,6 +279,18 @@ func (s *server) handle(message rpcMessage) error {
 			return s.respondError(message.ID, -32603, err.Error())
 		}
 		return s.respond(message.ID, edits)
+	case "textDocument/codeAction":
+		var params codeActionParams
+		if err := json.Unmarshal(message.Params, &params); err != nil {
+			return err
+		}
+		s.docMu.RLock()
+		text, ok := s.documents[params.TextDocument.URI]
+		s.docMu.RUnlock()
+		if !ok {
+			return s.respond(message.ID, []codeAction{})
+		}
+		return s.respond(message.ID, ownershipCodeActions(params.TextDocument.URI, text, params.Context.Diagnostics))
 	case "textDocument/completion":
 		var params completionParams
 		if err := json.Unmarshal(message.Params, &params); err != nil {
@@ -722,7 +742,7 @@ func semanticTokenType(token lexer.Token, classification map[string]string) stri
 			return classified
 		}
 		return "variable"
-	case lexer.ASSIGN, lexer.DECLARE, lexer.ARROW, lexer.PLUS, lexer.MINUS, lexer.ASTERISK, lexer.SLASH, lexer.PERCENT,
+	case lexer.ASSIGN, lexer.DECLARE, lexer.MOVE_ASSIGN, lexer.MOVE_DECLARE, lexer.ARROW, lexer.PLUS, lexer.MINUS, lexer.ASTERISK, lexer.SLASH, lexer.PERCENT,
 		lexer.PLUS_ASSIGN, lexer.MINUS_ASSIGN, lexer.ASTERISK_ASSIGN, lexer.SLASH_ASSIGN, lexer.PERCENT_ASSIGN,
 		lexer.EQ, lexer.NEQ, lexer.LT, lexer.LTE, lexer.GT, lexer.GTE, lexer.AND, lexer.OR, lexer.NOT,
 		lexer.BIT_AND, lexer.BIT_OR, lexer.BIT_XOR, lexer.BIT_NOT, lexer.SHIFT_LEFT, lexer.SHIFT_RIGHT,
@@ -1611,7 +1631,74 @@ func (s *server) formatDocument(uri string) ([]textEdit, error) {
 	}, nil
 }
 
+func ownershipCodeActions(uri string, text string, reported []diagnostic) []codeAction {
+	actions := make([]codeAction, 0, len(reported))
+	for _, reportedDiagnostic := range reported {
+		if reportedDiagnostic.Code != diagnostics.ImplicitMoveDisallowed {
+			continue
+		}
+		edit, title, ok := ownershipMoveSyntaxEdit(text, reportedDiagnostic)
+		if !ok {
+			continue
+		}
+		actions = append(actions, codeAction{
+			Title:       title,
+			Kind:        "quickfix",
+			Diagnostics: []diagnostic{reportedDiagnostic},
+			Edit: workspaceEdit{Changes: map[string][]textEdit{
+				uri: {edit},
+			}},
+		})
+	}
+	return actions
+}
+
+// ownershipMoveSyntaxEdit turns only the operator belonging to a verified
+// implicit-move diagnostic into its explicit-move equivalent. The diagnostic
+// is attached to the named source, so the immediately preceding token must be
+// the ordinary declaration or assignment operator.
+func ownershipMoveSyntaxEdit(text string, reported diagnostic) (textEdit, string, bool) {
+	targetLine := reported.Range.Start.Line + 1
+	targetColumn := reported.Range.Start.Character + 1
+	l := lexer.New(text)
+	previous := lexer.Token{}
+	for {
+		token := l.NextToken()
+		if token.Type == lexer.EOF {
+			return textEdit{}, "", false
+		}
+		if token.Line == targetLine && token.Column == targetColumn {
+			var replacement, title string
+			switch previous.Type {
+			case lexer.DECLARE:
+				replacement = ":<-"
+				title = "Change := to :<- to move the value (source becomes unavailable)"
+			case lexer.ASSIGN:
+				replacement = "<-"
+				title = "Change = to <- to move the value (source becomes unavailable)"
+			default:
+				return textEdit{}, "", false
+			}
+			return textEdit{
+				Range: lspRange{
+					Start: position{Line: previous.Line - 1, Character: previous.Column - 1},
+					End:   position{Line: previous.Line - 1, Character: previous.Column - 1 + len([]rune(previous.Lexeme))},
+				},
+				NewText: replacement,
+			}, title, true
+		}
+		previous = token
+	}
+}
+
 func formatSource(text string) string {
+	return formatter.Format(formatter.Source{Text: text}, formatter.Options{}).Text
+}
+
+// formatSourceLegacy is retained temporarily while the existing formatter
+// helpers are removed in a follow-up mechanical cleanup. LSP uses the shared
+// formatter package above.
+func formatSourceLegacy(text string) string {
 	lineEnding := "\n"
 	if strings.Contains(text, "\r\n") {
 		lineEnding = "\r\n"
@@ -3365,45 +3452,6 @@ func parserDiagnostic(message string) diagnostic {
 	}
 }
 
-func readMessage(reader *bufio.Reader) (rpcMessage, error) {
-	contentLength := -1
-	for {
-		line, err := reader.ReadString('\n')
-		if err != nil {
-			return rpcMessage{}, err
-		}
-		line = strings.TrimRight(line, "\r\n")
-		if line == "" {
-			break
-		}
-		key, value, ok := strings.Cut(line, ":")
-		if !ok {
-			continue
-		}
-		if strings.EqualFold(strings.TrimSpace(key), "Content-Length") {
-			length, err := strconv.Atoi(strings.TrimSpace(value))
-			if err != nil {
-				return rpcMessage{}, err
-			}
-			contentLength = length
-		}
-	}
-	if contentLength < 0 {
-		return rpcMessage{}, fmt.Errorf("missing Content-Length header")
-	}
-
-	body := make([]byte, contentLength)
-	if _, err := io.ReadFull(reader, body); err != nil {
-		return rpcMessage{}, err
-	}
-
-	var message rpcMessage
-	if err := json.Unmarshal(body, &message); err != nil {
-		return rpcMessage{}, err
-	}
-	return message, nil
-}
-
 func (s *server) respond(id json.RawMessage, result any) error {
 	return s.writeResponseMessage(rpcResponseMessage{
 		JSONRPC: "2.0",
@@ -3443,16 +3491,7 @@ func (s *server) writeResponseMessage(message rpcResponseMessage) error {
 func (s *server) writeJSONMessage(message any) error {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-
-	body, err := json.Marshal(message)
-	if err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintf(s.out, "Content-Length: %d\r\n\r\n", len(body)); err != nil {
-		return err
-	}
-	_, err = s.out.Write(body)
-	return err
+	return protocol.WriteMessage(s.out, message)
 }
 
 func pathFromURI(uri string) string {

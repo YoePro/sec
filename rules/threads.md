@@ -1031,7 +1031,7 @@ mutex.md
 channels.md
 select.md
 copy_move.txt
-ownership.txt
+ownership.md
 borrowing.txt
 lifetime_analysis.txt
 destruction.txt

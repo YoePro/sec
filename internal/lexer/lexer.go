@@ -83,11 +83,11 @@ const (
 	SLASH    TokenType = "SLASH"
 	PERCENT  TokenType = "PERCENT"
 
-	PLUS_ASSIGN     TokenType = "PLUS_ASSIGN"
-	MINUS_ASSIGN    TokenType = "MINUS_ASSIGN"
-	ASTERISK_ASSIGN TokenType = "ASTERISK_ASSIGN"
-	SLASH_ASSIGN    TokenType = "SLASH_ASSIGN"
-	PERCENT_ASSIGN  TokenType = "PERCENT_ASSIGN"
+	PLUS_ASSIGN     TokenType = "PLUS_ASSIGN"     // +=
+	MINUS_ASSIGN    TokenType = "MINUS_ASSIGN"    // -=
+	ASTERISK_ASSIGN TokenType = "ASTERISK_ASSIGN" // *=
+	SLASH_ASSIGN    TokenType = "SLASH_ASSIGN"    // /=
+	PERCENT_ASSIGN  TokenType = "PERCENT_ASSIGN"  // %=
 
 	// Logical
 	EQ  TokenType = "EQ"  // ==
@@ -101,17 +101,17 @@ const (
 	NOT TokenType = "NOT" // !
 
 	// Bitwise
-	BIT_AND            TokenType = "BIT_AND"     // &
-	BIT_OR             TokenType = "BIT_OR"      // |
-	BIT_XOR            TokenType = "BIT_XOR"     // ^
-	BIT_NOT            TokenType = "BIT_NOT"     // !
-	SHIFT_LEFT         TokenType = "SHIFT_LEFT"  // <<
-	SHIFT_RIGHT        TokenType = "SHIFT_RIGHT" // >>
-	BIT_AND_ASSIGN     TokenType = "BIT_AND_ASSIGN"
-	BIT_OR_ASSIGN      TokenType = "BIT_OR_ASSIGN"
-	BIT_XOR_ASSIGN     TokenType = "BIT_XOR_ASSIGN"
-	SHIFT_LEFT_ASSIGN  TokenType = "SHIFT_LEFT_ASSIGN"
-	SHIFT_RIGHT_ASSIGN TokenType = "SHIFT_RIGHT_ASSIGN"
+	BIT_AND            TokenType = "BIT_AND"            // &
+	BIT_OR             TokenType = "BIT_OR"             // |
+	BIT_XOR            TokenType = "BIT_XOR"            // ^
+	BIT_NOT            TokenType = "BIT_NOT"            // !
+	SHIFT_LEFT         TokenType = "SHIFT_LEFT"         // <<
+	SHIFT_RIGHT        TokenType = "SHIFT_RIGHT"        // >>
+	BIT_AND_ASSIGN     TokenType = "BIT_AND_ASSIGN"     //
+	BIT_OR_ASSIGN      TokenType = "BIT_OR_ASSIGN"      //
+	BIT_XOR_ASSIGN     TokenType = "BIT_XOR_ASSIGN"     //
+	SHIFT_LEFT_ASSIGN  TokenType = "SHIFT_LEFT_ASSIGN"  //
+	SHIFT_RIGHT_ASSIGN TokenType = "SHIFT_RIGHT_ASSIGN" //
 
 	DOT             TokenType = "DOT"
 	RANGE           TokenType = "RANGE"           // ..
@@ -134,6 +134,9 @@ const (
 	RBRACKET   TokenType = "RBRACKET"   // ]
 
 	COMMENT TokenType = "COMMENT"
+
+	MOVE_ASSIGN  TokenType = "MOVE_ASSIGN"  // <-
+	MOVE_DECLARE TokenType = "MOVE_DECLARE" // :<-
 )
 
 // Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
@@ -231,6 +234,9 @@ func (l *Lexer) NextToken() Token {
 		return l.readOne(ASSIGN)
 
 	case ':':
+		if l.peekNext() == '<' && l.peekOffset(2) == '-' {
+			return l.readThree(MOVE_DECLARE)
+		}
 		if l.peekNext() == '=' {
 			return l.readTwo(DECLARE)
 		}
@@ -294,6 +300,9 @@ func (l *Lexer) NextToken() Token {
 		return l.readOne(NOT)
 
 	case '<':
+		if l.peekNext() == '-' {
+			return l.readTwo(MOVE_ASSIGN)
+		}
 		if l.peekNext() == '<' && l.peekOffset(2) == '=' {
 			return l.readThree(SHIFT_LEFT_ASSIGN)
 		}

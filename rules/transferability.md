@@ -517,7 +517,7 @@ thread_local.md
 static.md
 atomics.md
 events.md
-ownership.txt
+ownership.md
 borrowing.txt
 references.txt
 raw_pointers.txt

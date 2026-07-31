@@ -614,7 +614,7 @@ properties.txt
 interfaces.txt
 functions.txt
 closures.txt
-ownership.txt
+ownership.md
 borrowing.txt
 lifetime_analysis.txt
 allocation.txt

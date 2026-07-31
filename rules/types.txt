@@ -773,5 +773,5 @@ Use these files for adjacent rules:
 - `rules/units.txt` for unit algebra and unit metadata.
 - `rules/variables_contracts.txt` for variable contracts such as range, regex,
   minLen and maxLen.
-- `rules/ownership.txt`, `rules/references.txt` and `rules/borrowing.txt` for
+- `rules/ownership.md`, `rules/references.txt` and `rules/borrowing.txt` for
   ownership and reference behavior.

@@ -2451,6 +2451,9 @@ func printASTLet(stmt *ast.LetStatement, prefix string, last bool) {
 		fmt.Sprintf("Mutable: %t", stmt.Mutable),
 		"Name: " + stmt.Name.Value,
 	}
+	if stmt.Ownership == ast.OwnershipMove {
+		children = append(children, "Ownership: move")
+	}
 
 	if stmt.Type != nil {
 		children = append(children, "Type: "+formatTypeRef(stmt.Type))
@@ -2480,6 +2483,9 @@ func printASTAssignment(stmt *ast.AssignmentStatement, prefix string, last bool)
 	childrenPrefix := childPrefix(prefix, last)
 	printASTExpression(childrenPrefix, false, "Target", stmt.Target)
 	printASTLeaf(childrenPrefix, false, "Operator: "+stmt.Operator)
+	if stmt.Ownership == ast.OwnershipMove {
+		printASTLeaf(childrenPrefix, false, "Ownership: move")
+	}
 	printASTExpression(childrenPrefix, true, "Value", stmt.Value)
 }
 
@@ -3081,7 +3087,14 @@ func printLet(stmt *ast.LetStatement) {
 	}
 
 	if stmt.Value != nil {
-		fmt.Printf(" := %s", stmt.Value.String())
+		operator := ":="
+		if stmt.Ownership == ast.OwnershipMove {
+			operator = ":<-"
+			if stmt.Type != nil {
+				operator = "<-"
+			}
+		}
+		fmt.Printf(" %s %s", operator, stmt.Value.String())
 	}
 
 	fmt.Println()

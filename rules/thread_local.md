@@ -506,7 +506,7 @@ static.md
 properties.txt
 types.txt
 functions.txt
-ownership.txt
+ownership.md
 borrowing.txt
 references.txt
 lifetime_analysis.txt

@@ -3,6 +3,8 @@ package sema
 import (
 	"strings"
 	"testing"
+
+	"sec/internal/diagnostics"
 )
 
 func TestCopyClassificationPrimitiveReferenceAndAggregates(t *testing.T) {
@@ -56,14 +58,14 @@ module main
 fn Test() void {
     let mut value := 1
     let first := ref mut value
-    let second := first
-    let third := first
+    let second :<- first
+    let third :<- first
 }
 `
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"use of moved value first at 8:18, previous declaration at 7:19",
+		"use of moved value first at 8:19, previous declaration at 7:20",
 	})
 }
 
@@ -82,6 +84,84 @@ fn Test() void {
 	assertSemaErrors(t, errors, nil)
 }
 
+func TestOrdinaryCopyOfMoveOnlyLocalRequiresExplicitMove(t *testing.T) {
+	input := `
+module main
+
+fn Test() void {
+    let mut value := 1
+    let first := ref mut value
+    let second := first
+    Borrow(first)
+}
+
+fn Borrow(ref mut value: int) void {
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"cannot copy move-only value first; use explicit move syntax :<- at 7:19",
+	})
+	if errors[0].ID != diagnostics.ImplicitMoveDisallowed {
+		t.Fatalf("wrong diagnostic ID. got=%q want=%q", errors[0].ID, diagnostics.ImplicitMoveDisallowed)
+	}
+	if errors[0].Help != "use `let destination :<- source` to transfer ownership" {
+		t.Fatalf("wrong diagnostic help. got=%q", errors[0].Help)
+	}
+}
+
+func TestExplicitMoveOfCopyableLocalMarksSourceUnavailable(t *testing.T) {
+	input := `
+module main
+
+fn Test() void {
+    let first := 1
+    let second :<- first
+    let third := first
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"use of moved value first at 7:18, previous declaration at 6:20",
+	})
+}
+
+func TestMoveAssignmentMarksSourceUnavailable(t *testing.T) {
+	input := `
+module main
+
+fn Test() void {
+    let mut left := 1
+    let mut right := 2
+    right <- left
+    let again := left
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"use of moved value left at 8:18, previous declaration at 7:14",
+	})
+}
+
+func TestMoveAssignmentRejectsSelfTransfer(t *testing.T) {
+	input := `
+module main
+
+fn Test() void {
+    let mut value := 1
+    value <- value
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"cannot move value value into itself at 6:14",
+	})
+}
+
 func TestMovedMutableLocalCanBeReinitialized(t *testing.T) {
 	input := `
 module main
@@ -91,7 +171,7 @@ fn Test() void {
     let mut first := ref mut value
     Take(first)
     first = ref mut value
-    let third := first
+    let third :<- first
 }
 
 fn Take(value: ref mut int) void {
@@ -111,16 +191,16 @@ fn Test(condition: bool) void {
     let first := ref mut value
 
     if condition {
-        let second := first
+        let second :<- first
     }
 
-    let third := first
+    let third :<- first
 }
 `
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"use of moved value first at 12:18, previous declaration at 9:23",
+		"use of moved value first at 12:19, previous declaration at 9:24",
 	})
 }
 
@@ -156,7 +236,7 @@ fn Test() void {
     let mut value := 1
     let first := ref mut value
     Borrow(first)
-    let second := first
+    let second :<- first
 }
 `
 

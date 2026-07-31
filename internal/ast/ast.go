@@ -543,10 +543,18 @@ func (p *Program) String() string {
 	return out.String()
 }
 
+type OwnershipMode string
+
+const (
+	OwnershipCopy OwnershipMode = "copy"
+	OwnershipMove OwnershipMode = "move"
+)
+
 type LetStatement struct {
 	Token        lexer.Token
 	Static       bool
 	Mutable      bool
+	Ownership    OwnershipMode
 	Name         *Identifier
 	Type         *TypeReference
 	Contract     Contract
@@ -575,10 +583,11 @@ func (lgs *LetGroupStatement) TokenLiteral() string {
 }
 
 type AssignmentStatement struct {
-	Token    lexer.Token
-	Target   Expression
-	Operator string
-	Value    Expression
+	Token     lexer.Token
+	Target    Expression
+	Operator  string
+	Ownership OwnershipMode
+	Value     Expression
 }
 
 func (as *AssignmentStatement) statementNode() {}

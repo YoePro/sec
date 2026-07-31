@@ -347,7 +347,7 @@ It is responsible for:
 * ownership transfer across returns
 * defer capture validation
 
-Ownership analysis rules are defined in ownership.txt.
+Ownership analysis rules are defined in ownership.md.
 
 Reference rules are defined in references.txt.
 

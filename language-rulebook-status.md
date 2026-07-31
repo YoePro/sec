@@ -251,11 +251,11 @@ The remaining details to close are:
 | Rulebook | Status | Notes |
 |---|---|---|
 | `allocation.txt` | **Written — sync required** | Must be synchronized with collections, threads, explicit backing storage, and shaped buffers. |
-| `ownership.txt` | **Written — sync required** | Must include discard and all execution/collection handles. |
+| `ownership.md` | **Living** | Defines explicit move syntax; remaining collection and lifecycle integration is tracked in the rulebook. |
 | `borrowing.txt` | **Written — sync required** | Must include views, thread-local references, and discard interactions. |
 | `references.txt` | **Written — sync required** | Must include shaped views and thread-bound references. |
 | `raw_pointers.txt` | **Written — sync required** | Must be synchronized with memory spaces, ABI, and unsafe rules. |
-| `copy_move.txt` | **Written — sync required** | Must distinguish copy, implicit move, and explicit discard. |
+| `copy_move.txt` | **Written — sync required** | Must be rewritten for explicit move syntax and aligned with `ownership.md`. |
 | `lifetime_analysis.txt` | **Written — sync required** | Must include detached work, thread-local values, views, and explicit storage. |
 | `destruction.txt` | **Written — sync required** | Must include discard, panic, cancellation, collection elements, and TLS destruction. |
 | `memory_model.txt` | **Written — sync required** | General memory model; must remain aligned with concurrency and volatile rules. |
@@ -542,7 +542,7 @@ memory_model.txt
 mlir-optimize.txt
 mlir.txt
 mutex.md
-ownership.txt
+ownership.md
 processes.txt
 projects.txt
 properties.txt

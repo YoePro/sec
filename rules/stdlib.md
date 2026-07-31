@@ -1204,7 +1204,7 @@ impl.txt
 properties.txt
 errorhandling.txt
 allocation.txt
-ownership.txt
+ownership.md
 borrowing.txt
 copy_move.txt
 destruction.txt

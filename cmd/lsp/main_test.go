@@ -238,6 +238,77 @@ func TestParserDiagnosticIncludesCode(t *testing.T) {
 	}
 }
 
+func TestOwnershipCodeActionsOfferExplicitMoveFixes(t *testing.T) {
+	tests := []struct {
+		name          string
+		source        string
+		line          int
+		column        int
+		expectedOld   string
+		expectedNew   string
+		expectedTitle string
+	}{
+		{
+			name:          "declaration",
+			source:        "let second := first\n",
+			line:          0,
+			column:        14,
+			expectedOld:   ":=",
+			expectedNew:   ":<-",
+			expectedTitle: "Change := to :<- to move the value (source becomes unavailable)",
+		},
+		{
+			name:          "assignment",
+			source:        "destination = source\n",
+			line:          0,
+			column:        14,
+			expectedOld:   "=",
+			expectedNew:   "<-",
+			expectedTitle: "Change = to <- to move the value (source becomes unavailable)",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reported := diagnostic{
+				Range: lspRange{Start: position{Line: tt.line, Character: tt.column}},
+				Code:  diagnostics.ImplicitMoveDisallowed,
+			}
+			actions := ownershipCodeActions("file:///tmp/main.sec", tt.source, []diagnostic{reported})
+			if len(actions) != 1 {
+				t.Fatalf("got %d actions, want 1: %#v", len(actions), actions)
+			}
+			action := actions[0]
+			if action.Title != tt.expectedTitle || action.Kind != "quickfix" {
+				t.Fatalf("unexpected action: %#v", action)
+			}
+			edits := action.Edit.Changes["file:///tmp/main.sec"]
+			if len(edits) != 1 {
+				t.Fatalf("got edits %#v, want one", edits)
+			}
+			edit := edits[0]
+			start := lineCharToOffset(tt.source, edit.Range.Start.Line, edit.Range.Start.Character)
+			end := lineCharToOffset(tt.source, edit.Range.End.Line, edit.Range.End.Character)
+			if got := tt.source[start:end]; got != tt.expectedOld {
+				t.Fatalf("edit replaces %q, want %q", got, tt.expectedOld)
+			}
+			if edit.NewText != tt.expectedNew {
+				t.Fatalf("edit text = %q, want %q", edit.NewText, tt.expectedNew)
+			}
+		})
+	}
+}
+
+func TestOwnershipCodeActionsIgnoreUnrelatedDiagnostics(t *testing.T) {
+	actions := ownershipCodeActions("file:///tmp/main.sec", "let second := first\n", []diagnostic{{
+		Range: lspRange{Start: position{Line: 0, Character: 14}},
+		Code:  diagnostics.UnhandledMustUseResult,
+	}})
+	if len(actions) != 0 {
+		t.Fatalf("got unexpected actions: %#v", actions)
+	}
+}
+
 func TestDocumentSymbolsIncludeOutlineDeclarations(t *testing.T) {
 	source := `module main
 
@@ -1050,6 +1121,24 @@ func(callback)
 	want := `fn token(typ: TokenType, lexeme: string, line: int, column: int) Token {
     let line := l.line, column := l.column, start := l.pos
     func(callback)
+}
+`
+
+	if got := formatSource(input); got != want {
+		t.Fatalf("formatSource() mismatch\n--- got ---\n%s--- want ---\n%s", got, want)
+	}
+}
+
+func TestFormatSourcePreservesExplicitMoveOperators(t *testing.T) {
+	input := `fn Move() void {
+let moved :<- source
+target <- replacement
+}
+`
+
+	want := `fn Move() void {
+    let moved :<- source
+    target <- replacement
 }
 `
 

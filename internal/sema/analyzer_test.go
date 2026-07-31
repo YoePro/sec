@@ -5077,6 +5077,91 @@ fn Test() void {
 	assertSemaErrors(t, errors, expected)
 }
 
+func TestStandaloneOrdinaryCallResultIsImplicitlyDiscarded(t *testing.T) {
+	errors := analyzeSourceRaw(t, `
+module main
+
+fn Calculate() int {
+	return 10
+}
+
+fn Test() void {
+	Calculate()
+}
+`)
+
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestStandaloneResultCallRequiresHandling(t *testing.T) {
+	errors := analyzeSourceRaw(t, `
+module main
+
+enum Failure {
+	failed,
+}
+
+fn TryCalculate() Result[int, Failure] {
+	return Ok(10)
+}
+
+fn Test() void {
+	TryCalculate()
+}
+`)
+
+	expected := []string{
+		"result of TryCalculate has type Result[int, Failure] and must be handled explicitly at 13:2",
+	}
+	assertSemaErrors(t, errors, expected)
+	if len(errors) != 1 || errors[0].ID != diagnostics.UnhandledMustUseResult {
+		t.Fatalf("wrong must-use diagnostic. got=%#v", errors)
+	}
+	if errors[0].Help != "use try, match, binding, return, or explicit discard" {
+		t.Fatalf("wrong must-use help. got=%q", errors[0].Help)
+	}
+}
+
+func TestMustUseAndDiscardabilityPropagateThroughWrappers(t *testing.T) {
+	implicitErrors := analyzeSourceRaw(t, `
+module main
+
+fn Pass(value: Option[Task[int]]) Option[Task[int]] {
+	return value
+}
+
+fn Test(value: Option[Task[int]]) void {
+	Pass(value)
+}
+`)
+	implicitExpected := []string{
+		"result of Pass has type Option[Task[int]] and must be handled explicitly at 9:2",
+	}
+	assertSemaErrors(t, implicitErrors, implicitExpected)
+	if implicitErrors[0].ID != diagnostics.UnhandledMustUseResult {
+		t.Fatalf("wrong wrapper must-use diagnostic ID. got=%q", implicitErrors[0].ID)
+	}
+
+	discardErrors := analyzeSourceRaw(t, `
+module main
+
+fn Pass(value: Option[Task[int]]) Option[Task[int]] {
+	return value
+}
+
+fn Test(value: Option[Task[int]]) void {
+	discard Pass(value)
+}
+`)
+	discardExpected := []string{
+		"cannot discard Option[Task[int]] because it may contain an unresolved lifecycle handle at 9:10",
+	}
+	assertSemaErrors(t, discardErrors, discardExpected)
+	if discardErrors[0].ID != diagnostics.NonDiscardableValue {
+		t.Fatalf("wrong non-discardable diagnostic ID. got=%q", discardErrors[0].ID)
+	}
+}
+
 func TestDiscardRejectsUnresolvedTaskHandle(t *testing.T) {
 	input := `
 module main
@@ -5117,7 +5202,7 @@ fn Test() void {
 	assertSemaErrors(t, errors, expected)
 }
 
-func TestDiscardedBindingCannotBeAssigned(t *testing.T) {
+func TestDiscardedMutableBindingCanBeReinitialized(t *testing.T) {
 	input := `
 module main
 
@@ -5130,11 +5215,7 @@ fn Test() void {
 
 	errors := analyzeSourceRaw(t, input)
 
-	expected := []string{
-		"cannot assign to discarded value value; declare a new value instead at 7:2, previous declaration at 6:10",
-	}
-
-	assertSemaErrors(t, errors, expected)
+	assertSemaErrors(t, errors, nil)
 }
 
 func TestIfConditionsAndBranchScopes(t *testing.T) {
@@ -6196,7 +6277,7 @@ type Message struct {
 fn Use() void {
 	let channel := Channel[Message](1)
 	let tx := channel.tx
-	let moved := tx
+	let moved :<- tx
 	let again := tx
 	discard moved
 }
@@ -6204,7 +6285,7 @@ fn Use() void {
 
 	errors := analyzeSourceRaw(t, input)
 	expected := []string{
-		"use of moved value tx at 12:15, previous declaration at 11:15",
+		"use of moved value tx at 12:15, previous declaration at 11:16",
 	}
 	assertSemaErrors(t, errors, expected)
 }

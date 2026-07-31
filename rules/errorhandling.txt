@@ -83,6 +83,9 @@ Rules:
   - `Ok()` requires `T` to be `void`.
   - `Err(expr)` requires `expr` assignable to `E`.
 - A plain value may not be returned from a Result-returning function.
+- A standalone call producing `Result[T, E]` is invalid because `Result` is
+  must-use. Use `try`, `match`, a binding, `return`, or explicit `discard`
+  when the complete result is discardable.
 
 
 Simple try propagation

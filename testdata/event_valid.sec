@@ -150,7 +150,7 @@ fn PublishExplicitStorage(button: ref mut ExplicitButton) void {
 fn SubscriptionMove(button: ref Button) void {
     match button.ButtonPressed.Subscribe(HandleButtonPress) {
         Subscribed(subscription) => {
-            let moved := subscription
+			let moved :<- subscription
             moved.Close()
         }
 

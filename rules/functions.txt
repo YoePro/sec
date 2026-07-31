@@ -36,6 +36,11 @@ Rules:
 - Function call argument count must match the declaration.
 - Function call arguments must be assignable to the corresponding parameter type.
 - Function call expression type is the declared return type.
+- A standalone call returning an ordinary discardable non-`void` value is
+  valid and implicitly discards its temporary result. Compiler-known must-use
+  return types, including `Result[T, E]`, `Task[T]`, and `Thread[T]`, must be
+  handled through an appropriate consuming context or explicit `discard` when
+  the complete value is discardable.
 - The parser creates a CallExpression for all `Name(...)`-shaped expressions.
   Semantic analysis resolves the callee as a function overload, type conversion,
   constructor or another callable entity.

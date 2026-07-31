@@ -117,7 +117,7 @@ Ownership analysis determines:
 * destruction responsibility
 * ownership conflicts
 
-Ownership analysis follows the rules defined in ownership.txt.
+Ownership analysis follows the rules defined in ownership.md.
 
 ## Borrow analysis
 

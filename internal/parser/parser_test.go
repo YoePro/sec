@@ -652,6 +652,44 @@ func TestParseLetInitializer(t *testing.T) {
 	}
 }
 
+func TestParseExplicitMoveOwnership(t *testing.T) {
+	input := `let inferred :<- source
+let typed: int <- other
+target <- replacement`
+
+	p := New(lexer.New(input))
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Statements) != 3 {
+		t.Fatalf("wrong statement count. got=%d want=3", len(program.Statements))
+	}
+
+	inferred, ok := program.Statements[0].(*ast.LetStatement)
+	if !ok {
+		t.Fatalf("first statement is not LetStatement. got=%T", program.Statements[0])
+	}
+	if inferred.Ownership != ast.OwnershipMove || inferred.Type != nil || inferred.Value.String() != "source" {
+		t.Fatalf("wrong inferred move declaration: ownership=%q type=%T value=%v", inferred.Ownership, inferred.Type, inferred.Value)
+	}
+
+	typed, ok := program.Statements[1].(*ast.LetStatement)
+	if !ok {
+		t.Fatalf("second statement is not LetStatement. got=%T", program.Statements[1])
+	}
+	if typed.Ownership != ast.OwnershipMove || typed.Type == nil || typed.Value.String() != "other" {
+		t.Fatalf("wrong typed move declaration: ownership=%q type=%T value=%v", typed.Ownership, typed.Type, typed.Value)
+	}
+
+	assignment, ok := program.Statements[2].(*ast.AssignmentStatement)
+	if !ok {
+		t.Fatalf("third statement is not AssignmentStatement. got=%T", program.Statements[2])
+	}
+	if assignment.Ownership != ast.OwnershipMove || assignment.Operator != "<-" || assignment.Value.String() != "replacement" {
+		t.Fatalf("wrong move assignment: ownership=%q operator=%q value=%v", assignment.Ownership, assignment.Operator, assignment.Value)
+	}
+}
+
 func TestParseCharAndRuneNumericSuffixes(t *testing.T) {
 	input := `let ch: char := 65c
 let ru: rune := 0x41r`

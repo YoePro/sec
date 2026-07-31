@@ -128,7 +128,7 @@ impl Reader for FileReader {
 }
 
 func TestOperators(t *testing.T) {
-	input := `= := => + - * / % += -= *= /= %= == != < <= > >= && || ! & | ^ ~ << >> &= |= ^= <<= >>= . .. ..< ... , : ; ? @ # () {} []`
+	input := `= := :<- <- => + - * / % += -= *= /= %= == != < <= > >= && || ! & | ^ ~ << >> &= |= ^= <<= >>= . .. ..< ... , : ; ? @ # () {} []`
 
 	tests := []struct {
 		typ    TokenType
@@ -136,6 +136,8 @@ func TestOperators(t *testing.T) {
 	}{
 		{ASSIGN, "="},
 		{DECLARE, ":="},
+		{MOVE_DECLARE, ":<-"},
+		{MOVE_ASSIGN, "<-"},
 		{ARROW, "=>"},
 		{PLUS, "+"},
 		{MINUS, "-"},

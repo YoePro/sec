@@ -137,6 +137,59 @@ type Port int range 1..65535 default 0
 	}
 }
 
+func TestExplicitDefaultMustBelongToMembership(t *testing.T) {
+	errors := analyzeSourceRaw(t, `module main
+
+type User string in ["Admin", "User"] default "Guest"
+`)
+	if len(errors) != 1 || errors[0].ID != diagnostics.InvalidExplicitDefault {
+		t.Fatalf("errors = %v, want one invalid explicit default", errors)
+	}
+}
+
+func TestEveryMembershipValueMustSatisfyOtherContracts(t *testing.T) {
+	errors := analyzeSourceRaw(t, `module main
+
+type InvalidEven int in [1, 2, 3] even
+`)
+	if len(errors) != 2 {
+		t.Fatalf("errors = %v, want two invalid membership values", errors)
+	}
+	for _, diagnostic := range errors {
+		if diagnostic.ID != diagnostics.InvalidMembershipValue {
+			t.Fatalf("wrong diagnostic ID: %q", diagnostic.ID)
+		}
+	}
+
+	analyzer, validErrors := analyzeSourceWithAnalyzer(t, `module main
+
+type SmallEven int in [2, 4, 6] even
+type NonEmptyName string in ["Admin", "User"] notEmpty
+`)
+	if len(validErrors) != 0 {
+		t.Fatalf("valid membership contracts produced errors: %v", validErrors)
+	}
+	if value, _, ok := DefaultValueDisplay(analyzer.Types()["SmallEven"]); !ok || value != "2" {
+		t.Fatalf("SmallEven default = %q, %v", value, ok)
+	}
+	if value, _, ok := DefaultValueDisplay(analyzer.Types()["NonEmptyName"]); !ok || value != `"Admin"` {
+		t.Fatalf("NonEmptyName default = %q, %v", value, ok)
+	}
+}
+
+func TestExplicitDefaultAcceptsIntegerConstantExpression(t *testing.T) {
+	analyzer, errors := analyzeSourceWithAnalyzer(t, `module main
+
+type Port int range 1..65535 default 8000 + 80
+`)
+	if len(errors) != 0 {
+		t.Fatalf("constant default produced errors: %v", errors)
+	}
+	if value, kind, ok := DefaultValueDisplay(analyzer.Types()["Port"]); !ok || kind != ExplicitTypeDefault || value != "8080" {
+		t.Fatalf("Port default = %q, %q, %v", value, kind, ok)
+	}
+}
+
 func TestInvalidExplicitDecimalDefaultIsRejected(t *testing.T) {
 	errors := analyzeSourceRaw(t, `module main
 

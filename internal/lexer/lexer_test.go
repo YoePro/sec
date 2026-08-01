@@ -2,6 +2,23 @@ package lexer
 
 import "testing"
 
+func TestBareUnderscoreIsDistinctFromIdentifiers(t *testing.T) {
+	l := New("_ _name __name")
+	want := []Token{
+		{Type: UNDERSCORE, Lexeme: "_"},
+		{Type: IDENT, Lexeme: "_name"},
+		{Type: IDENT, Lexeme: "__name"},
+		{Type: EOF},
+	}
+
+	for i, expected := range want {
+		got := l.NextToken()
+		if got.Type != expected.Type || got.Lexeme != expected.Lexeme {
+			t.Fatalf("token %d = (%s, %q), want (%s, %q)", i, got.Type, got.Lexeme, expected.Type, expected.Lexeme)
+		}
+	}
+}
+
 func TestLanguageSample(t *testing.T) {
 	input := `
 module internal.storage

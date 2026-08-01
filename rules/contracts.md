@@ -11,8 +11,8 @@ or immutable bindings, ordinary struct fields, or individual storage locations.
 Implementation is partial. Named integer contracts, compile-time literal checks,
 ordered membership values, duplicate detection and explicit type defaults are
 implemented. The parser and Sema still require an audit to reject every obsolete
-variable- and field-contract form, and every `in [...]` member is not yet checked
-against all following contracts. Runtime validation paths for fallible
+variable- and field-contract form. Every `in [...]` member is checked against
+the complete named-type contract set. Runtime validation paths for fallible
 conversions are not complete.
 
 ## Core rule

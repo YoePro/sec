@@ -299,6 +299,22 @@ func nearestIntegerDefault(typ Type, positive bool) (*big.Int, bool) {
 }
 
 func defaultConstantSatisfies(typ Type, value DefaultConstant) bool {
+	for _, contract := range typ.Contracts {
+		membership, ok := contract.(MembershipContract)
+		if !ok {
+			continue
+		}
+		member := false
+		for _, allowed := range membership.Values {
+			if defaultConstantsEqual(value, allowed) {
+				member = true
+				break
+			}
+		}
+		if !member {
+			return false
+		}
+	}
 	if (typ.Kind == DecimalType || typ.Kind == FloatType) && value.Integer != nil {
 		value.Exact = new(big.Rat).SetInt(value.Integer)
 		value.Integer = nil
@@ -332,7 +348,13 @@ func defaultConstantSatisfies(typ Type, value DefaultConstant) bool {
 	for _, contract := range typ.Contracts {
 		switch c := contract.(type) {
 		case MarkerContract:
-			if c.Name != "finite" {
+			switch c.Name {
+			case "finite":
+			case "notEmpty":
+				if value.Kind != StringType || value.String == "" {
+					return false
+				}
+			default:
 				return false
 			}
 		case RangeContract, MultipleOfContract:
@@ -340,6 +362,31 @@ func defaultConstantSatisfies(typ Type, value DefaultConstant) bool {
 		}
 	}
 	return true
+}
+
+func defaultConstantsEqual(left, right DefaultConstant) bool {
+	leftExact := left.Exact
+	if leftExact == nil && left.Integer != nil {
+		leftExact = new(big.Rat).SetInt(left.Integer)
+	}
+	rightExact := right.Exact
+	if rightExact == nil && right.Integer != nil {
+		rightExact = new(big.Rat).SetInt(right.Integer)
+	}
+	if leftExact != nil || rightExact != nil {
+		return leftExact != nil && rightExact != nil && leftExact.Cmp(rightExact) == 0
+	}
+	if left.Kind != right.Kind {
+		return left.Kind == CharType && right.Kind == RuneType || left.Kind == RuneType && right.Kind == CharType
+	}
+	switch left.Kind {
+	case StringType, CharType, RuneType:
+		return left.String == right.String
+	case BoolType:
+		return left.Bool == right.Bool
+	default:
+		return left.Lexeme == right.Lexeme
+	}
 }
 
 func integerSatisfiesContracts(typ Type, value *big.Int) bool {
@@ -395,6 +442,12 @@ func defaultConstantFromExpression(expr ast.Expression) (DefaultConstant, bool) 
 			return DefaultConstant{}, false
 		}
 		return DefaultConstant{Kind: IntType, Lexeme: integer.String(), Integer: integer}, true
+	case *ast.InfixExpression:
+		integer, ok := constantIntegerValue(value)
+		if !ok {
+			return DefaultConstant{}, false
+		}
+		return DefaultConstant{Kind: IntType, Lexeme: integer.String(), Integer: integer}, true
 	case *ast.StringLiteral:
 		return DefaultConstant{Kind: StringType, Lexeme: value.Token.Lexeme, String: value.Value}, true
 	case *ast.FloatLiteral:
@@ -425,6 +478,9 @@ func exactNumericConstant(expr ast.Expression) (*big.Rat, string, bool) {
 		exact, ok := new(big.Rat).SetString(lexeme)
 		return exact, value.TokenLiteral(), ok
 	case *ast.PrefixExpression:
+		if value.Operator == "+" {
+			return exactNumericConstant(value.Right)
+		}
 		if value.Operator != "-" {
 			return nil, "", false
 		}

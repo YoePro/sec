@@ -62,7 +62,33 @@ func (a *Analyzer) applyContracts(typ Type, contractNode ast.Contract) Type {
 		typ = a.applyContract(typ, contract)
 	}
 	a.checkContractSetConsistency(typ, contractNode)
+	a.checkMembershipContractValues(typ, contractNode)
 	return typ
+}
+
+func (a *Analyzer) checkMembershipContractValues(typ Type, contractNode ast.Contract) {
+	for _, contract := range flattenASTContracts(contractNode) {
+		membership, ok := contract.(*ast.MembershipContract)
+		if !ok {
+			continue
+		}
+		for _, expression := range membership.Values {
+			constant, ok := defaultConstantFromExpression(expression)
+			if !ok || !defaultConstantCompatible(typ, constant) {
+				continue
+			}
+			if !defaultConstantSatisfies(typ, constant) {
+				a.addErrorAtTokenWithMetadata(
+					expressionToken(expression),
+					diagnostics.InvalidMembershipValue,
+					"remove the value or change the other type contracts",
+					"membership value %s violates another contract on %s",
+					expression.String(),
+					typeDisplayName(typ),
+				)
+			}
+		}
+	}
 }
 
 func (a *Analyzer) applyContract(typ Type, contractNode ast.Contract) Type {
@@ -79,7 +105,6 @@ func (a *Analyzer) applyContract(typ Type, contractNode ast.Contract) Type {
 			return typ
 		}
 		membership := MembershipContract{}
-		seen := map[string]bool{}
 		for _, value := range contract.Values {
 			constant, ok := defaultConstantFromExpression(value)
 			if !ok {
@@ -90,12 +115,17 @@ func (a *Analyzer) applyContract(typ Type, contractNode ast.Contract) Type {
 				a.addErrorAtToken(expressionToken(value), "membership value %s is incompatible with %s", value.String(), typeDisplayName(typ))
 				continue
 			}
-			key := string(constant.Kind) + ":" + constant.Lexeme
-			if seen[key] {
+			duplicate := false
+			for _, previous := range membership.Values {
+				if defaultConstantsEqual(constant, previous) {
+					duplicate = true
+					break
+				}
+			}
+			if duplicate {
 				a.addErrorAtToken(expressionToken(value), "duplicate membership value %s", value.String())
 				continue
 			}
-			seen[key] = true
 			membership.Values = append(membership.Values, constant)
 		}
 		typ.Contracts = append(typ.Contracts, membership)

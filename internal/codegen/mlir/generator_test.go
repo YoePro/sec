@@ -284,6 +284,26 @@ fn main() int {
 	}
 }
 
+func TestGenerateUnaryPlus(t *testing.T) {
+	program := parseTestProgram(t, `module main
+
+fn main() int {
+    return +9
+}
+`)
+	analyzer := sema.NewAnalyzer()
+	if errors := analyzer.Analyze(program); len(errors) != 0 {
+		t.Fatalf("semantic errors: %v", errors)
+	}
+	got, err := GenerateWithTriple(program, "x86_64-pc-linux-gnu")
+	if err != nil {
+		t.Fatalf("GenerateWithTriple returned error: %v", err)
+	}
+	if !strings.Contains(got, "llvm.mlir.constant(9 : i32)") {
+		t.Fatalf("generated unary-plus MLIR is missing its operand:\n%s", got)
+	}
+}
+
 func TestGenerateFunctionOverloadsByArity(t *testing.T) {
 	input := `
 module main

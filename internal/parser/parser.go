@@ -6,14 +6,24 @@ import (
 	"strings"
 
 	"sec/internal/ast"
+	compilerdiagnostics "sec/internal/diagnostics"
 	"sec/internal/lexer"
 )
+
+type Diagnostic struct {
+	ID         string
+	Message    string
+	Primary    lexer.Token
+	Expected   []lexer.TokenType
+	Unexpected *lexer.Token
+}
 
 type Parser struct {
 	l *lexer.Lexer
 
-	errors   []string
-	warnings []string
+	errors      []string
+	warnings    []string
+	diagnostics []Diagnostic
 
 	curToken  lexer.Token
 	peekToken lexer.Token
@@ -41,6 +51,19 @@ func (p *Parser) Errors() []string {
 
 func (p *Parser) Warnings() []string {
 	return p.warnings
+}
+
+func (p *Parser) Diagnostics() []Diagnostic {
+	result := make([]Diagnostic, len(p.diagnostics))
+	for i, diagnostic := range p.diagnostics {
+		result[i] = diagnostic
+		result[i].Expected = append([]lexer.TokenType(nil), diagnostic.Expected...)
+		if diagnostic.Unexpected != nil {
+			unexpected := *diagnostic.Unexpected
+			result[i].Unexpected = &unexpected
+		}
+	}
+	return result
 }
 
 func (p *Parser) ParseProgram() *ast.Program {
@@ -223,7 +246,17 @@ func (p *Parser) parseStatement() ast.Statement {
 		return p.parseCommentStatement()
 
 	default:
-		p.addError("unexpected token %q at %d:%d", p.curToken.Lexeme, p.curToken.Line, p.curToken.Column)
+		unexpected := p.curToken
+		p.addDiagnostic(
+			compilerdiagnostics.ParserUnexpectedToken,
+			unexpected,
+			nil,
+			&unexpected,
+			"unexpected token %q at %d:%d",
+			unexpected.Lexeme,
+			unexpected.Line,
+			unexpected.Column,
+		)
 		return nil
 	}
 }
@@ -259,7 +292,7 @@ func (p *Parser) looksLikeTypedVariableDeclaration() bool {
 	p.curToken = curToken
 	p.peekToken = peekToken
 	p.l.Restore(lexerState)
-	p.errors = p.errors[:errorCount]
+	p.rollbackErrors(errorCount)
 	p.warnings = p.warnings[:warningCount]
 
 	return ok
@@ -289,7 +322,7 @@ func (p *Parser) looksLikeTypedVariableGroupAfterParsedType() bool {
 			p.curToken = curToken
 			p.peekToken = peekToken
 			p.l.Restore(lexerState)
-			p.errors = p.errors[:errorCount]
+			p.rollbackErrors(errorCount)
 			p.warnings = p.warnings[:warningCount]
 			return true
 		}
@@ -300,7 +333,7 @@ func (p *Parser) looksLikeTypedVariableGroupAfterParsedType() bool {
 	p.curToken = curToken
 	p.peekToken = peekToken
 	p.l.Restore(lexerState)
-	p.errors = p.errors[:errorCount]
+	p.rollbackErrors(errorCount)
 	p.warnings = p.warnings[:warningCount]
 
 	return ok
@@ -550,7 +583,16 @@ func (p *Parser) parseWhileStatement() ast.Statement {
 
 	if p.peekToken.Type != lexer.LBRACE {
 		if p.peekToken.Type == lexer.ASSIGN {
-			p.addWarning("assignment in while condition at %d:%d", p.peekToken.Line, p.peekToken.Column)
+			unexpected := p.peekToken
+			p.addDiagnostic(
+				compilerdiagnostics.ParserInvalidAssignmentExpr,
+				unexpected,
+				[]lexer.TokenType{lexer.LBRACE},
+				&unexpected,
+				"assignment in while condition at %d:%d",
+				unexpected.Line,
+				unexpected.Column,
+			)
 			p.skipUntilBlockStart()
 			if p.curToken.Type != lexer.LBRACE {
 				return stmt
@@ -1126,7 +1168,16 @@ func expressionToken(expr ast.Expression) lexer.Token {
 
 func (p *Parser) parseUnexpectedElseStatement() ast.Statement {
 	stmt := &ast.InvalidStatement{Token: p.curToken}
-	p.addError("else without matching if at %d:%d", p.curToken.Line, p.curToken.Column)
+	unexpected := p.curToken
+	p.addDiagnostic(
+		compilerdiagnostics.ParserMisplacedKeyword,
+		unexpected,
+		nil,
+		&unexpected,
+		"else without matching if at %d:%d",
+		unexpected.Line,
+		unexpected.Column,
+	)
 
 	if p.peekToken.Type == lexer.LBRACE {
 		p.nextToken()
@@ -2211,7 +2262,7 @@ func (p *Parser) parseRegisterFields() []*ast.RegisterField {
 		if p.curToken.Type == lexer.COMMENT {
 			continue
 		}
-		if p.curToken.Type != lexer.IDENT {
+		if p.curToken.Type != lexer.IDENT && p.curToken.Type != lexer.UNDERSCORE {
 			p.addError("expected register field name, got %q", p.curToken.Lexeme)
 			return fields
 		}
@@ -2264,7 +2315,7 @@ func (p *Parser) parseRegisterFields() []*ast.RegisterField {
 		case lexer.RBRACE:
 			return fields
 		default:
-			if p.peekToken.Type == lexer.IDENT && p.peekToken.Line > p.curToken.Line {
+			if (p.peekToken.Type == lexer.IDENT || p.peekToken.Type == lexer.UNDERSCORE) && p.peekToken.Line > p.curToken.Line {
 				continue
 			}
 			p.addError("expected ',' or '}' after register field at %d:%d", p.peekToken.Line, p.peekToken.Column)
@@ -3449,11 +3500,16 @@ func (p *Parser) expectPeekExpressionStart() bool {
 		p.nextToken()
 		return true
 	}
-	p.addError(
+	unexpected := p.peekToken
+	p.addDiagnostic(
+		compilerdiagnostics.ParserInvalidExpression,
+		unexpected,
+		nil,
+		&unexpected,
 		"expected next token to be expression, got %q at %d:%d",
-		p.peekToken.Type,
-		p.peekToken.Line,
-		p.peekToken.Column,
+		unexpected.Type,
+		unexpected.Line,
+		unexpected.Column,
 	)
 	return false
 }
@@ -3503,17 +3559,17 @@ func (p *Parser) parseOptionalRangeBound() ast.Expression {
 		p.nextToken()
 		return p.parseNumberLiteral()
 
-	case lexer.MINUS:
+	case lexer.PLUS, lexer.MINUS:
 		p.nextToken()
-		minusToken := p.curToken
+		operatorToken := p.curToken
 
 		if !p.expectPeekNumber() {
 			return nil
 		}
 
 		return &ast.PrefixExpression{
-			Token:    minusToken,
-			Operator: minusToken.Lexeme,
+			Token:    operatorToken,
+			Operator: operatorToken.Lexeme,
 			Right:    p.parseNumberLiteral(),
 		}
 
@@ -3523,7 +3579,7 @@ func (p *Parser) parseOptionalRangeBound() ast.Expression {
 }
 
 func (p *Parser) isRangeBoundStart(t lexer.TokenType) bool {
-	return t == lexer.INT || t == lexer.FLOAT || t == lexer.MINUS
+	return t == lexer.INT || t == lexer.FLOAT || t == lexer.PLUS || t == lexer.MINUS
 }
 
 func (p *Parser) parseNumberLiteral() ast.Expression {
@@ -3605,12 +3661,17 @@ func (p *Parser) expectPeek(t lexer.TokenType) bool {
 		return true
 	}
 
-	p.addError(
+	unexpected := p.peekToken
+	p.addDiagnostic(
+		compilerdiagnostics.ParserMissingToken,
+		unexpected,
+		[]lexer.TokenType{t},
+		&unexpected,
 		"expected next token to be %q, got %q at %d:%d",
 		t,
-		p.peekToken.Type,
-		p.peekToken.Line,
-		p.peekToken.Column,
+		unexpected.Type,
+		unexpected.Line,
+		unexpected.Column,
 	)
 
 	return false
@@ -3622,11 +3683,16 @@ func (p *Parser) expectPeekNumber() bool {
 		return true
 	}
 
-	p.addError(
+	unexpected := p.peekToken
+	p.addDiagnostic(
+		compilerdiagnostics.ParserMissingToken,
+		unexpected,
+		[]lexer.TokenType{lexer.INT, lexer.FLOAT},
+		&unexpected,
 		"expected next token to be number, got %q at %d:%d",
-		p.peekToken.Type,
-		p.peekToken.Line,
-		p.peekToken.Column,
+		unexpected.Type,
+		unexpected.Line,
+		unexpected.Column,
 	)
 
 	return false
@@ -3638,11 +3704,16 @@ func (p *Parser) expectPeekTypeStart() bool {
 		return true
 	}
 
-	p.addError(
+	unexpected := p.peekToken
+	p.addDiagnostic(
+		compilerdiagnostics.ParserInvalidTypeReference,
+		unexpected,
+		nil,
+		&unexpected,
 		"expected next token to be type, got %q at %d:%d",
-		p.peekToken.Type,
-		p.peekToken.Line,
-		p.peekToken.Column,
+		unexpected.Type,
+		unexpected.Line,
+		unexpected.Column,
 	)
 
 	return false
@@ -3662,7 +3733,24 @@ func (p *Parser) nextToken() {
 }
 
 func (p *Parser) addError(format string, args ...any) {
-	p.errors = append(p.errors, fmt.Sprintf(format, args...))
+	p.addDiagnostic(compilerdiagnostics.ParserSyntaxError, p.curToken, nil, nil, format, args...)
+}
+
+func (p *Parser) addDiagnostic(id string, primary lexer.Token, expected []lexer.TokenType, unexpected *lexer.Token, format string, args ...any) {
+	message := fmt.Sprintf(format, args...)
+	p.errors = append(p.errors, message)
+	p.diagnostics = append(p.diagnostics, Diagnostic{
+		ID:         id,
+		Message:    message,
+		Primary:    primary,
+		Expected:   append([]lexer.TokenType(nil), expected...),
+		Unexpected: unexpected,
+	})
+}
+
+func (p *Parser) rollbackErrors(count int) {
+	p.errors = p.errors[:count]
+	p.diagnostics = p.diagnostics[:count]
 }
 
 func (p *Parser) addWarning(format string, args ...any) {
@@ -3706,13 +3794,16 @@ func (p *Parser) isAtEnd() bool {
 func (p *Parser) isStatementStart(t lexer.TokenType) bool {
 	switch t {
 	case lexer.MODULE,
+		lexer.HASH,
 		lexer.IMPORT,
 		lexer.TYPE,
+		lexer.UNIT,
 		lexer.ENUM,
 		lexer.STRUCT,
 		lexer.INTERFACE,
 		lexer.IMPL,
 		lexer.PROPERTY,
+		lexer.EXTERN,
 		lexer.FN,
 		lexer.FREE,
 		lexer.LET,
@@ -3724,11 +3815,21 @@ func (p *Parser) isStatementStart(t lexer.TokenType) bool {
 		lexer.MATCH,
 		lexer.SWITCH,
 		lexer.SELECT,
+		lexer.TRY,
+		lexer.SPAWN,
+		lexer.AWAIT,
 		lexer.BREAK,
+		lexer.CANCEL,
 		lexer.CONTINUE,
+		lexer.FALLTHROUGH,
 		lexer.UNSAFE,
 		lexer.ASM,
-		lexer.DEFER:
+		lexer.DEFER,
+		lexer.DISCARD,
+		lexer.ELSE,
+		lexer.AT,
+		lexer.SELF,
+		lexer.COMMENT:
 		return true
 	default:
 		return false
@@ -3862,11 +3963,29 @@ func (p *Parser) expectPeekAssignmentOperator() bool {
 		return true
 	}
 
-	p.addError(
+	unexpected := p.peekToken
+	p.addDiagnostic(
+		compilerdiagnostics.ParserMissingToken,
+		unexpected,
+		[]lexer.TokenType{
+			lexer.ASSIGN,
+			lexer.MOVE_ASSIGN,
+			lexer.PLUS_ASSIGN,
+			lexer.MINUS_ASSIGN,
+			lexer.ASTERISK_ASSIGN,
+			lexer.SLASH_ASSIGN,
+			lexer.PERCENT_ASSIGN,
+			lexer.BIT_AND_ASSIGN,
+			lexer.BIT_OR_ASSIGN,
+			lexer.BIT_XOR_ASSIGN,
+			lexer.SHIFT_LEFT_ASSIGN,
+			lexer.SHIFT_RIGHT_ASSIGN,
+		},
+		&unexpected,
 		"expected next token to be assignment operator, got %q at %d:%d",
-		p.peekToken.Type,
-		p.peekToken.Line,
-		p.peekToken.Column,
+		unexpected.Type,
+		unexpected.Line,
+		unexpected.Column,
 	)
 
 	return false

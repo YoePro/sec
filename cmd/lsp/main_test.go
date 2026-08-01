@@ -304,6 +304,45 @@ func TestParserDiagnosticIncludesCode(t *testing.T) {
 	}
 }
 
+func TestStructuredParserDiagnosticUsesFocusedCodeAndTokenRange(t *testing.T) {
+	token := lexer.Token{Type: lexer.ASSIGN, Lexeme: "=", Line: 5, Column: 16}
+	diagnostic := structuredParserDiagnostic(parser.Diagnostic{
+		ID:         diagnostics.ParserInvalidAssignmentExpr,
+		Message:    "assignment in while condition at 5:16",
+		Primary:    token,
+		Unexpected: &token,
+	})
+
+	if diagnostic.Code != diagnostics.ParserInvalidAssignmentExpr {
+		t.Fatalf("wrong diagnostic code. got=%q want=%s", diagnostic.Code, diagnostics.ParserInvalidAssignmentExpr)
+	}
+	if diagnostic.Range.Start.Line != 4 || diagnostic.Range.Start.Character != 15 {
+		t.Fatalf("wrong diagnostic start: %+v", diagnostic.Range.Start)
+	}
+}
+
+func TestAnalyzePublishesFocusedWhileAssignmentDiagnostic(t *testing.T) {
+	source := `module main
+
+fn main() void {
+    let mut running: bool := false
+    while running = true {
+        break
+    }
+}
+`
+	diagnosticsResult := analyze("file:///tmp/main.sec", source)
+	if len(diagnosticsResult) != 1 {
+		t.Fatalf("diagnostics = %+v, want one parser diagnostic", diagnosticsResult)
+	}
+	if diagnosticsResult[0].Code != diagnostics.ParserInvalidAssignmentExpr {
+		t.Fatalf("diagnostic code = %q, want %s", diagnosticsResult[0].Code, diagnostics.ParserInvalidAssignmentExpr)
+	}
+	if diagnosticsResult[0].Range.Start.Line != 4 || diagnosticsResult[0].Range.Start.Character != 18 {
+		t.Fatalf("diagnostic range = %+v", diagnosticsResult[0].Range)
+	}
+}
+
 func TestOwnershipCodeActionsOfferExplicitMoveFixes(t *testing.T) {
 	tests := []struct {
 		name          string

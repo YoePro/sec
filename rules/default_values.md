@@ -57,8 +57,6 @@ Implemented in the compiler frontend:
 Still partial or deferred to synchronized rulebooks:
 
 - floating range-derived defaults and exclusive decimal upper-bound successors;
-- declaration-time rejection of every `in [...]` value that violates another
-  contract (selection is implemented, full cross-validation is pending);
 - enum and union default-selection policy;
 - lowering for canonical empty `list` defaults and literals;
 - explicit Semantic IR default operations and cleanup regions;

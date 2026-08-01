@@ -1801,6 +1801,7 @@ The current lexer already provides substantial support for:
 - identifier starts using underscore, ASCII letters, and Unicode letters;
 - ASCII digits after identifier start;
 - keyword lookup for a large current subset;
+- dedicated bare `_` tokens while `_name` and `__name` remain identifiers;
 - decimal integer literals;
 - fractional literals including leading-period forms such as `.5`;
 - binary, octal, and hexadecimal integer prefixes;
@@ -1846,7 +1847,6 @@ validation:
 
 - keyword inventory;
 - contextual `set`;
-- bare `_` tokenization;
 - character-literal content validation;
 - escape validation;
 - interpolation parsing;
@@ -1887,7 +1887,7 @@ The following rules are not yet fully implemented:
   occurs during semantic analysis;
 - balanced interpolation expression lexing;
 - doubled literal braces in interpolated strings;
-- contextual `x` operator parsing;
+- parser-aware formatter and semantic-token classification for contextual `x`;
 - built-in `list`, `map`, `set`, `vector`, `matrix`, `tensor`, and
   `tensor_view` lexical/parser integration;
 - complete reserved contract-word inventory;
@@ -1899,8 +1899,8 @@ The following rules are not yet fully implemented:
 
 The existing unused `BYTES` token does not represent a Sec 0.1 source feature.
 
-The current bare-underscore path must be reviewed so `_` is not accidentally
-classified as an ordinary identifier.
+Bare underscore is classified as `UNDERSCORE`; identifier spellings beginning
+with underscore remain ordinary identifiers.
 
 ---
 

@@ -197,6 +197,12 @@ func (l *Lexer) NextToken() Token {
 		return l.token(EOF, "", line, column)
 	}
 
+	// 2026-08-01: Keep the grammar's bare discard/reserved-field symbol
+	// distinct from ordinary identifiers such as _name and __name.
+	if ch == '_' && !isLetter(l.peekNext()) && !isDigit(l.peekNext()) {
+		return l.readOne(UNDERSCORE)
+	}
+
 	if isLetter(ch) {
 		lit := l.readIdentifier()
 		return l.token(lookupIdent(lit), lit, line, column)

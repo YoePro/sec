@@ -105,7 +105,7 @@ func (p *Parser) parseExpression(currentPrecedence precedence) ast.Expression {
 	case lexer.TRUE, lexer.FALSE:
 		left = p.parseBooleanLiteral()
 
-	case lexer.MINUS, lexer.NOT, lexer.BIT_NOT:
+	case lexer.PLUS, lexer.MINUS, lexer.NOT, lexer.BIT_NOT:
 		left = p.parsePrefixExpression()
 
 	case lexer.TRY:
@@ -161,6 +161,13 @@ func (p *Parser) parseExpression(currentPrecedence precedence) ast.Expression {
 		case lexer.LPAREN:
 			p.nextToken()
 			left = p.parseConversionExpression(left)
+
+		case lexer.IDENT:
+			if p.peekToken.Lexeme != "x" {
+				return left
+			}
+			p.nextToken()
+			left = p.parseInfixExpression(left)
 
 		case lexer.LBRACKET:
 			p.nextToken()
@@ -579,7 +586,7 @@ func (p *Parser) parseBracketExpression(left ast.Expression) ast.Expression {
 		p.curToken = curToken
 		p.peekToken = peekToken
 		p.l.Restore(lexerState)
-		p.errors = p.errors[:errorCount]
+		p.rollbackErrors(errorCount)
 		p.warnings = p.warnings[:warningCount]
 		return p.parseIndexOrSliceExpression(left)
 	}
@@ -993,9 +1000,17 @@ func (p *Parser) parseMemberExpression(left ast.Expression) ast.Expression {
 		Object: left,
 	}
 
-	if !p.expectPeek(lexer.IDENT) {
+	if p.peekToken.Type != lexer.IDENT && p.peekToken.Type != lexer.UNDERSCORE {
+		p.addError(
+			"expected next token to be %q, got %q at %d:%d",
+			lexer.IDENT,
+			p.peekToken.Type,
+			p.peekToken.Line,
+			p.peekToken.Column,
+		)
 		return nil
 	}
+	p.nextToken()
 
 	expr.Property = &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme}
 	return expr
@@ -1156,7 +1171,7 @@ func (p *Parser) parseUnitConversionExpression(left ast.Expression) ast.Expressi
 		p.curToken = curToken
 		p.peekToken = peekToken
 		p.l.Restore(lexerState)
-		p.errors = p.errors[:errorCount]
+		p.rollbackErrors(errorCount)
 		p.warnings = p.warnings[:warningCount]
 		return nil
 	}
@@ -1240,13 +1255,20 @@ func (p *Parser) isExpressionStart(t lexer.TokenType) bool {
 		lexer.INT,
 		lexer.FLOAT,
 		lexer.STRING,
+		lexer.CHAR,
 		lexer.INTERPSTRING,
 		lexer.TRUE,
 		lexer.FALSE,
+		lexer.PLUS,
 		lexer.MINUS,
 		lexer.NOT,
+		lexer.BIT_NOT,
 		lexer.TRY,
 		lexer.MATCH,
+		lexer.SPAWN,
+		lexer.AWAIT,
+		lexer.FN,
+		lexer.CAPTURE,
 		lexer.AT,
 		lexer.LBRACKET,
 		lexer.REF,
@@ -1258,6 +1280,9 @@ func (p *Parser) isExpressionStart(t lexer.TokenType) bool {
 }
 
 func (p *Parser) peekPrecedence() precedence {
+	if p.contextualMatrixMultiplyAhead() {
+		return PRODUCT
+	}
 	if p, ok := precedences[p.peekToken.Type]; ok {
 		return p
 	}
@@ -1265,7 +1290,20 @@ func (p *Parser) peekPrecedence() precedence {
 	return LOWEST
 }
 
+func (p *Parser) contextualMatrixMultiplyAhead() bool {
+	if p.peekToken.Type != lexer.IDENT || p.peekToken.Lexeme != "x" {
+		return false
+	}
+	state := p.l.Snapshot()
+	next := p.l.NextToken()
+	p.l.Restore(state)
+	return p.isExpressionStart(next.Type)
+}
+
 func (p *Parser) curPrecedence() precedence {
+	if p.curToken.Type == lexer.IDENT && p.curToken.Lexeme == "x" {
+		return PRODUCT
+	}
 	if p, ok := precedences[p.curToken.Type]; ok {
 		return p
 	}

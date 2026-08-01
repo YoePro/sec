@@ -28,3 +28,35 @@ func TestKnownDiagnosticSeverities(t *testing.T) {
 		}
 	}
 }
+
+func TestParserRecoveryDiagnosticsAreRegistered(t *testing.T) {
+	ids := []string{
+		ParserSyntaxError,
+		ParserMissingToken,
+		ParserUnexpectedToken,
+		ParserUnterminatedDelimiter,
+		ParserInvalidDeclaration,
+		ParserInvalidStatement,
+		ParserInvalidExpression,
+		ParserInvalidTypeReference,
+		ParserInvalidPattern,
+		ParserMissingSeparator,
+		ParserMisplacedKeyword,
+		ParserReservedSyntax,
+		ParserInvalidAssignmentExpr,
+		ParserChainedComparison,
+		ParserRecoveryLimit,
+		ParserUnexpectedEndOfFile,
+		ParserInvalidBlockMember,
+		ParserCompatibilitySyntax,
+	}
+	for _, id := range ids {
+		definition, ok := Lookup(id)
+		if !ok {
+			t.Fatalf("parser diagnostic %s is not registered", id)
+		}
+		if id != ParserCompatibilitySyntax && definition.DefaultSeverity != SeverityError {
+			t.Fatalf("parser diagnostic %s severity = %q, want error", id, definition.DefaultSeverity)
+		}
+	}
+}

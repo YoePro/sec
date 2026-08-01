@@ -58,6 +58,7 @@ memory_model.md
 operators.md
 default_values.md
 contracts.md
+grammar.md
 ```
 
 These were written after the older temporary checklist was last synchronized.
@@ -74,7 +75,7 @@ These were written after the older temporary checklist was last synchronized.
 | `contracts.md` | **Written** | Canonical named-type contracts; replaces the obsolete variable-contract model. |
 | `default_values.md` | **Written** | Canonical primitive, constrained, aggregate, list and explicit-default semantics. |
 | `units.txt` | **Written — sync required** | Must be synchronized with shaped arithmetic and matrix multiplication. |
-| `grammar.md` | **Planned** | Canonical consolidated grammar for Sec 0.1. |
+| `grammar.md` | **Written** | Canonical consolidated grammar for Sec 0.1; implementation differences are tracked in the document. |
 | `operators.md` | **Written** | Canonical operator inventory, precedence, associativity, contextual `x`, indexing, conversion syntax and constant defaults. |
 | `names_scopes_visibility.md` | **Written — sync required** | Top-level module declaration namespace conflicts are partially implemented; remaining scope, visibility, reserved-name and naming-rule audit still needed. |
 | `attributes.md` | **Planned** | Language attributes, target metadata, compiler-verified guarantees, and unsafe promises. |
@@ -425,7 +426,7 @@ OrderedMap[K, V]
 | `escape_analysis.md` | **Planned** | No silent stack-to-heap promotion; closure and reference escape rules. |
 | `effect_analysis.md` | **Planned** | `noAlloc`, `noBlock`, suspension, panic, unsafe, and target effects. |
 | `isr_analysis.md` | **Planned** | ISR call graph, stack, allocation, blocking, lock, and shared-state restrictions. |
-| `parser_recovery.md` | **Planned** | Parser recovery guarantees and diagnostic stability. |
+| `parser_recovery.md` | **Written** | Canonical deterministic recovery model; structured implementation remains partial. |
 | `generics_lowering.md` | **Planned** | Semantic and MLIR lowering of generic code. |
 | `monomorphization.md` | **Planned** | Specialization, symbol identity, code size, and cross-module behavior. |
 | `linking.md` | **Planned** | Symbol identity, libraries, executables, dead stripping, and target linkage. |
@@ -577,6 +578,8 @@ unions.txt
 units.txt
 contracts.md
 lsp.md
+grammar.md
+parser_recovery.md
 ```
 
 The following newer rulebooks are also written and present in the canonical
@@ -596,7 +599,6 @@ The following rulebooks are currently expected before Sec 0.1 can be considered
 fully design-closed, unless a later decision explicitly merges one into another.
 
 ```text
-grammar.md
 attributes.md
 unsafe.md
 
@@ -611,7 +613,6 @@ stack_analysis.md
 escape_analysis.md
 effect_analysis.md
 isr_analysis.md
-parser_recovery.md
 generics_lowering.md
 monomorphization.md
 compile_time_evaluation.md

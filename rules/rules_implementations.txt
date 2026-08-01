@@ -14,6 +14,8 @@ Implemented:
 - exact inclusive decimal range defaults without binary-float conversion
 - ambiguity rejection for equally near integer defaults
 - ordered `in [...]` defaults for primitive constants
+- declaration-time validation of every `in [...]` member against the complete
+  named-type contract set
 - explicit `default <constant-expression>` parsing and validation
 - recursive struct and fixed-array default resolution with cycle protection
 - omitted stored struct-field materialization during Sema
@@ -31,7 +33,6 @@ Implemented:
 Partial or pending:
 
 - exact float range-derived defaults and exclusive decimal upper-bound successors
-- rejection of every `in [...]` member that violates a later contract
 - enum default selection synchronized with `enums.txt`
 - union default variants synchronized with `unions.txt`
 - parser/AST/Sema/lowering support for canonical empty `list[T] {}` and
@@ -41,6 +42,22 @@ Partial or pending:
 - complete LLVM struct lowering and backend default verification
 - LSP code actions for expanding or declaring defaults
 - full fixture matrix listed by `default_values.md`
+
+Grammar synchronization status
+------------------------------
+
+- `grammar.md` is written and has been audited against the current lexer,
+  parser, Sema and lowering paths
+- bare `_` is lexically distinct from `_name` and `__name`; register reserved
+  fields, match wildcards, call placeholders and loop discards consume it in
+  their grammar contexts
+- unary `+` and the shared current expression-start inventory are implemented
+- contextual infix `x` parsing and fixed matrix/matrix and matrix/vector shape
+  validation are implemented; its lowering and tooling context remain
+- statement-only `++`/`--`, empty list literals and multiple-result
+  destructuring remain unimplemented as recorded by `grammar.md`
+- generic type-instance cache identity includes constant arguments, preventing
+  shaped types with different dimensions from aliasing each other
 
 Canonical documentation synchronization:
 
@@ -1197,7 +1214,8 @@ Start with the smallest useful implementation slice:
 1. inspect the current semantic analyzer and diagnostics
 2. introduce `rules` without creating an import cycle
 3. extract condition validation for `if` and `while`
-4. preserve the assignment-in-condition warning
+4. reject assignment in a `while` condition with structured parser error
+   `P2013`
 5. extract return validation
 6. add focused Go tests where practical
 7. add or update Sec valid and invalid tests
@@ -1212,9 +1230,11 @@ Current diagnostic implementation note
 
 The repository now has a central diagnostic registry in `internal/diagnostics`.
 
-The first registered IDs wired into the compiler/LSP are:
+Registered IDs wired into the compiler/LSP include:
 
-- `P2001` / `parser.syntax-error`
+- parser recovery IDs `P2001` through `P2018`; existing unmigrated parser
+  errors use `P2001`, and initial focused paths use `P2002`, `P2003`, `P2007`,
+  `P2008`, `P2011` and `P2013`
 - `S1001` / `modules.missing-module-declaration`
 - `S1002` / `modules.duplicate-module-declaration`
 - `S1003` / `names.module-declaration-conflict`
@@ -1228,6 +1248,21 @@ Most existing diagnostics are still raw English messages without registered
 IDs. New or migrated rule implementations should use registered IDs and avoid
 adding more unregistered primary diagnostics.
 
+Parser recovery implementation status
+-------------------------------------
+
+- `parser_recovery.md` is written and canonical
+- `Parser.Diagnostics()` provides ID, message, primary token, expected tokens
+  and unexpected token while `Errors()` remains as compatibility output
+- speculative parse rollback removes both compatibility strings and structured
+  diagnostics transactionally
+- LSP diagnostics consume focused structured parser ranges and codes directly
+- the general recovery start set now includes previously omitted declaration
+  and statement keywords such as `#`, `unit`, `extern`, `try`, `discard`,
+  `cancel`, `fallthrough`, `spawn`, `await`, `else`, `@` and comments
+- missing-token nodes, invalid expression/type/declaration/pattern nodes,
+  recovery events, delimiter tracking and diagnostic limits remain pending
+
 Expected initial rule behavior
 ------------------------------
 
@@ -1235,7 +1270,8 @@ Condition rules must preserve:
 
 - bool is accepted
 - non-bool conditions are rejected
-- assignment in a condition follows the existing warning policy
+- assignment in a `while` condition is rejected with `P2013` while the body is
+  retained for tooling
 - invalid unresolved expressions do not create unnecessary cascading diagnostics
 
 Return rules must preserve:

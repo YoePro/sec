@@ -22,18 +22,36 @@ type Definition struct {
 }
 
 const (
-	ParserSyntaxError          = "P2001"
-	MissingModuleDeclaration   = "S1001"
-	DuplicateModuleDeclaration = "S1002"
-	ModuleDeclarationConflict  = "S1003"
-	DuplicateLocalVariable     = "S1004"
-	UnhandledMustUseResult     = "S1005"
-	NonDiscardableValue        = "S1006"
-	ImplicitMoveDisallowed     = "S1007"
-	InvalidExplicitDefault     = "S1008"
-	NoDefaultValue             = "S1009"
-	MissingNonDefaultableField = "S1010"
-	LargeValueParameter        = "A2001"
+	ParserSyntaxError           = "P2001"
+	ParserMissingToken          = "P2002"
+	ParserUnexpectedToken       = "P2003"
+	ParserUnterminatedDelimiter = "P2004"
+	ParserInvalidDeclaration    = "P2005"
+	ParserInvalidStatement      = "P2006"
+	ParserInvalidExpression     = "P2007"
+	ParserInvalidTypeReference  = "P2008"
+	ParserInvalidPattern        = "P2009"
+	ParserMissingSeparator      = "P2010"
+	ParserMisplacedKeyword      = "P2011"
+	ParserReservedSyntax        = "P2012"
+	ParserInvalidAssignmentExpr = "P2013"
+	ParserChainedComparison     = "P2014"
+	ParserRecoveryLimit         = "P2015"
+	ParserUnexpectedEndOfFile   = "P2016"
+	ParserInvalidBlockMember    = "P2017"
+	ParserCompatibilitySyntax   = "P2018"
+	MissingModuleDeclaration    = "S1001"
+	DuplicateModuleDeclaration  = "S1002"
+	ModuleDeclarationConflict   = "S1003"
+	DuplicateLocalVariable      = "S1004"
+	UnhandledMustUseResult      = "S1005"
+	NonDiscardableValue         = "S1006"
+	ImplicitMoveDisallowed      = "S1007"
+	InvalidExplicitDefault      = "S1008"
+	NoDefaultValue              = "S1009"
+	MissingNonDefaultableField  = "S1010"
+	InvalidMembershipValue      = "S1011"
+	LargeValueParameter         = "A2001"
 )
 
 var registry = map[string]Definition{
@@ -43,6 +61,32 @@ var registry = map[string]Definition{
 		Family:          "parser",
 		DefaultSeverity: SeverityError,
 		Mandatory:       true,
+	},
+	ParserMissingToken:          parserDefinition(ParserMissingToken, "parser.missing-token"),
+	ParserUnexpectedToken:       parserDefinition(ParserUnexpectedToken, "parser.unexpected-token"),
+	ParserUnterminatedDelimiter: parserDefinition(ParserUnterminatedDelimiter, "parser.unterminated-delimiter"),
+	ParserInvalidDeclaration:    parserDefinition(ParserInvalidDeclaration, "parser.invalid-declaration"),
+	ParserInvalidStatement:      parserDefinition(ParserInvalidStatement, "parser.invalid-statement"),
+	ParserInvalidExpression:     parserDefinition(ParserInvalidExpression, "parser.invalid-expression"),
+	ParserInvalidTypeReference:  parserDefinition(ParserInvalidTypeReference, "parser.invalid-type-reference"),
+	ParserInvalidPattern:        parserDefinition(ParserInvalidPattern, "parser.invalid-pattern"),
+	ParserMissingSeparator:      parserDefinition(ParserMissingSeparator, "parser.missing-separator"),
+	ParserMisplacedKeyword:      parserDefinition(ParserMisplacedKeyword, "parser.misplaced-keyword"),
+	ParserReservedSyntax:        parserDefinition(ParserReservedSyntax, "parser.reserved-syntax"),
+	ParserInvalidAssignmentExpr: parserDefinition(
+		ParserInvalidAssignmentExpr,
+		"parser.invalid-assignment-expression",
+	),
+	ParserChainedComparison:   parserDefinition(ParserChainedComparison, "parser.chained-comparison"),
+	ParserRecoveryLimit:       parserDefinition(ParserRecoveryLimit, "parser.recovery-limit"),
+	ParserUnexpectedEndOfFile: parserDefinition(ParserUnexpectedEndOfFile, "parser.unexpected-end-of-file"),
+	ParserInvalidBlockMember:  parserDefinition(ParserInvalidBlockMember, "parser.invalid-block-member"),
+	ParserCompatibilitySyntax: {
+		ID:              ParserCompatibilitySyntax,
+		Name:            "parser.compatibility-syntax",
+		Family:          "parser",
+		DefaultSeverity: SeverityWarning,
+		Mandatory:       false,
 	},
 	MissingModuleDeclaration: {
 		ID:              MissingModuleDeclaration,
@@ -102,6 +146,9 @@ var registry = map[string]Definition{
 	MissingNonDefaultableField: {
 		ID: MissingNonDefaultableField, Name: "struct.missing-nondefaultable-field", Family: "struct", DefaultSeverity: SeverityError, Mandatory: true,
 	},
+	InvalidMembershipValue: {
+		ID: InvalidMembershipValue, Name: "types.in-list-value-violates-contract", Family: "types", DefaultSeverity: SeverityError, Mandatory: true,
+	},
 	LargeValueParameter: {
 		ID:              LargeValueParameter,
 		Name:            "performance.large-value-parameter",
@@ -109,6 +156,10 @@ var registry = map[string]Definition{
 		DefaultSeverity: SeverityInformation,
 		Mandatory:       false,
 	},
+}
+
+func parserDefinition(id string, name string) Definition {
+	return Definition{ID: id, Name: name, Family: "parser", DefaultSeverity: SeverityError, Mandatory: true}
 }
 
 func Lookup(id string) (Definition, bool) {

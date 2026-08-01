@@ -2259,6 +2259,8 @@ func (g *Generator) emitPrefixExpression(expr *ast.PrefixExpression) (value, err
 		return value{}, err
 	}
 	switch expr.Operator {
+	case "+":
+		return right, nil
 	case "-":
 		if !isMLIRIntegerType(right.typ) {
 			return value{}, fmt.Errorf("emit-mlir unary - expects a signed integer")

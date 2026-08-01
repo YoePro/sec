@@ -7964,6 +7964,43 @@ impl Counter {
 	assertSemaErrors(t, analyzeSource(t, input), nil)
 }
 
+func TestContextualMatrixMultiplyTypesAndShapes(t *testing.T) {
+	valid := `
+module main
+
+fn MatrixProduct(left: matrix[float32, 4, 3], right: matrix[float32, 3, 2]) matrix[float32, 4, 2] {
+	return left x right
+}
+
+fn MatrixVectorProduct(left: matrix[int, 4, 3], right: vector[int, 3]) vector[int, 4] {
+	return left x right
+}
+`
+	assertSemaErrors(t, analyzeSourceRaw(t, valid), nil)
+
+	invalid := `
+module main
+
+fn BadInner(left: matrix[int, 4, 3], right: matrix[int, 2, 5]) matrix[int, 4, 5] {
+	return left x right
+}
+
+fn BadElement(left: matrix[int, 4, 3], right: vector[float32, 3]) vector[int, 4] {
+	return left x right
+}
+
+fn BadLeft(left: int, right: matrix[int, 2, 2]) matrix[int, 2, 2] {
+	return left x right
+}
+`
+	errors := analyzeSourceRaw(t, invalid)
+	assertSemaErrors(t, errors, []string{
+		"matrix multiplication inner dimensions differ: 3 and 2 at 5:14",
+		"matrix multiplication element types differ: int and float32 at 9:14",
+		"left operand of x must be matrix, got int at 13:14",
+	})
+}
+
 func assertSemaErrors(t *testing.T, errors []Error, expected []string) {
 	t.Helper()
 

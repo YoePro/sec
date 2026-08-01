@@ -17,6 +17,9 @@ func constantIntegerValue(expr ast.Expression) (*big.Int, bool) {
 		}
 		return ast.ParseIntegerLiteralLexeme(expr.Token.Lexeme)
 	case *ast.PrefixExpression:
+		if expr.Operator == "+" {
+			return constantIntegerValue(expr.Right)
+		}
 		if expr.Operator != "-" {
 			return nil, false
 		}
@@ -78,6 +81,9 @@ func (a *Analyzer) integerConstantValue(expr ast.Expression) (*big.Int, bool) {
 		}
 		return nil, false
 	case *ast.PrefixExpression:
+		if expr.Operator == "+" {
+			return a.integerConstantValue(expr.Right)
+		}
 		if expr.Operator != "-" {
 			return nil, false
 		}
@@ -128,7 +134,7 @@ func isNumericLiteral(expr ast.Expression) bool {
 	case *ast.IntegerLiteral, *ast.FloatLiteral:
 		return true
 	case *ast.PrefixExpression:
-		return expr.Operator == "-" && isNumericLiteral(expr.Right)
+		return (expr.Operator == "+" || expr.Operator == "-") && isNumericLiteral(expr.Right)
 	default:
 		return false
 	}
@@ -146,6 +152,9 @@ func decimalLiteralValue(expr ast.Expression) (DecimalValue, bool) {
 			return DecimalValue{}, false
 		}
 	case *ast.PrefixExpression:
+		if expr.Operator == "+" {
+			return decimalLiteralValue(expr.Right)
+		}
 		if expr.Operator != "-" {
 			return DecimalValue{}, false
 		}

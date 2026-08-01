@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"sec/internal/ast"
+	"sec/internal/diagnostics"
 	"sec/internal/lexer"
 )
 
@@ -242,6 +243,9 @@ let mut motorProtocol: MotorProtocol
 	}
 	if len(typeDecl.RegisterType.Fields) != 3 {
 		t.Fatalf("wrong register field count. got=%d want=3", len(typeDecl.RegisterType.Fields))
+	}
+	if reserved := typeDecl.RegisterType.Fields[2]; reserved.Name.Value != "_" || reserved.Width != 3 {
+		t.Fatalf("wrong reserved field: %+v", reserved)
 	}
 	speed := typeDecl.RegisterType.Fields[0]
 	if speed.Name.Value != "Speed" || speed.Width != 4 || speed.Unit != "rpm" {
@@ -609,6 +613,9 @@ func checkParserErrors(t *testing.T, p *Parser) {
 	t.Helper()
 
 	errors := p.Errors()
+	if len(p.Diagnostics()) != len(errors) {
+		t.Fatalf("structured diagnostics = %d, compatibility errors = %d", len(p.Diagnostics()), len(errors))
+	}
 	if len(errors) == 0 {
 		return
 	}
@@ -1287,6 +1294,54 @@ func assertPrefixExpression(t *testing.T, expr ast.Expression, operator string, 
 
 	if got := prefix.Right.String(); got != right {
 		t.Fatalf("wrong prefix right expression. got=%q want=%q", got, right)
+	}
+}
+
+func TestParseContextualMatrixMultiplyPrecedence(t *testing.T) {
+	input := `
+fn Test(a: int, b: int, c: int, d: int) int {
+	let x := 10
+	return a + b x c x d
+}
+`
+
+	p := New(lexer.New(input))
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	let := fn.Body.Statements[0].(*ast.LetStatement)
+	if let.Name.Value != "x" {
+		t.Fatalf("ordinary x binding was not preserved: %+v", let.Name)
+	}
+	ret := fn.Body.Statements[1].(*ast.ReturnStatement)
+	if got, want := ret.Value.String(), "(a + ((b x c) x d))"; got != want {
+		t.Fatalf("matrix multiplication precedence = %q, want %q", got, want)
+	}
+}
+
+func TestContextualXDoesNotConsumeFollowingAssignment(t *testing.T) {
+	input := `
+fn Test(a: int, b: int) void {
+	discard a
+	x = b
+}
+`
+
+	p := New(lexer.New(input))
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	if len(fn.Body.Statements) != 2 {
+		t.Fatalf("statement count = %d, want 2", len(fn.Body.Statements))
+	}
+	assignment, ok := fn.Body.Statements[1].(*ast.AssignmentStatement)
+	if !ok {
+		t.Fatalf("second statement = %T, want AssignmentStatement", fn.Body.Statements[1])
+	}
+	if target, ok := assignment.Target.(*ast.Identifier); !ok || target.Value != "x" {
+		t.Fatalf("assignment target = %#v, want identifier x", assignment.Target)
 	}
 }
 
@@ -2470,6 +2525,37 @@ func TestParseExplicitTypeDefault(t *testing.T) {
 	}
 }
 
+func TestParseUnaryPlusAndCanonicalExpressionStarts(t *testing.T) {
+	input := `module main
+
+type Port int range +1..65535 default +8080
+
+fn Value() int {
+    return +1
+}
+`
+	p := New(lexer.New(input))
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	decl := program.Statements[1].(*ast.TypeDeclStatement)
+	assertPrefixExpression(t, decl.Default, "+", "8080")
+	fn := program.Statements[2].(*ast.FunctionDeclaration)
+	ret := fn.Body.Statements[0].(*ast.ReturnStatement)
+	assertPrefixExpression(t, ret.Value, "+", "1")
+
+	for _, tokenType := range []lexer.TokenType{
+		lexer.IDENT, lexer.SELF, lexer.INT, lexer.FLOAT, lexer.STRING, lexer.CHAR,
+		lexer.INTERPSTRING, lexer.TRUE, lexer.FALSE, lexer.PLUS, lexer.MINUS,
+		lexer.NOT, lexer.BIT_NOT, lexer.TRY, lexer.SPAWN, lexer.AWAIT, lexer.MATCH,
+		lexer.FN, lexer.CAPTURE, lexer.AT, lexer.LBRACKET, lexer.REF, lexer.LPAREN,
+	} {
+		if !p.isExpressionStart(tokenType) {
+			t.Errorf("prefix token %q is missing from expression-start classification", tokenType)
+		}
+	}
+}
+
 func TestParseTryThenMultilineStructLiteralWithoutCommas(t *testing.T) {
 	input := `
 fn NewWithFile(input: string, file: string) Result[Lexer, AllocationError] {
@@ -3051,7 +3137,7 @@ fn Test() void {
 	}
 }
 
-func TestParseWhileAssignmentConditionWarnsAndRecovers(t *testing.T) {
+func TestParseWhileAssignmentConditionErrorsAndRecovers(t *testing.T) {
 	input := `
 fn Test() void {
 	let mut running: bool := false
@@ -3066,12 +3152,15 @@ fn Test() void {
 	p := New(l)
 	program := p.ParseProgram()
 
-	if len(p.Errors()) != 0 {
-		t.Fatalf("expected no parse errors. got=%v", p.Errors())
+	expectedError := "assignment in while condition at 5:16"
+	if len(p.Errors()) != 1 || p.Errors()[0] != expectedError {
+		t.Fatalf("wrong parser errors. got=%v want=%q", p.Errors(), expectedError)
 	}
-	expectedWarning := "assignment in while condition at 5:16"
-	if len(p.Warnings()) != 1 || p.Warnings()[0] != expectedWarning {
-		t.Fatalf("wrong parser warnings. got=%v want=%q", p.Warnings(), expectedWarning)
+	if len(p.Diagnostics()) != 1 || p.Diagnostics()[0].ID != diagnostics.ParserInvalidAssignmentExpr {
+		t.Fatalf("wrong structured parser diagnostics: %+v", p.Diagnostics())
+	}
+	if len(p.Warnings()) != 0 {
+		t.Fatalf("assignment condition must not remain a warning: %v", p.Warnings())
 	}
 
 	fn := program.Statements[0].(*ast.FunctionDeclaration)
@@ -3085,6 +3174,68 @@ fn Test() void {
 	}
 	if _, ok := whileStmt.Body.Statements[0].(*ast.BreakStatement); !ok {
 		t.Fatalf("body statement is not BreakStatement. got=%T", whileStmt.Body.Statements[0])
+	}
+}
+
+func TestRecoveryPreservesNewlyCentralizedStatementStarts(t *testing.T) {
+	input := `
+? damaged
+unit Metre decimal physical
+
+fn Test() void {
+	? damaged
+	discard Work()
+}
+`
+
+	p := New(lexer.New(input))
+	program := p.ParseProgram()
+	if len(p.Errors()) != 2 {
+		t.Fatalf("parser errors = %v, want two primary errors", p.Errors())
+	}
+	if len(program.Statements) != 2 {
+		t.Fatalf("top-level statement count = %d, want 2", len(program.Statements))
+	}
+	if _, ok := program.Statements[0].(*ast.UnitDeclStatement); !ok {
+		t.Fatalf("first preserved statement = %T, want UnitDeclStatement", program.Statements[0])
+	}
+	fn := program.Statements[1].(*ast.FunctionDeclaration)
+	if len(fn.Body.Statements) != 1 {
+		t.Fatalf("function statement count = %d, want 1", len(fn.Body.Statements))
+	}
+	if _, ok := fn.Body.Statements[0].(*ast.DiscardStatement); !ok {
+		t.Fatalf("preserved body statement = %T, want DiscardStatement", fn.Body.Statements[0])
+	}
+}
+
+func TestFocusedRecoveryDiagnosticMetadata(t *testing.T) {
+	tests := []struct {
+		input      string
+		id         string
+		expected   lexer.TokenType
+		unexpected lexer.TokenType
+	}{
+		{input: "? damaged", id: diagnostics.ParserUnexpectedToken, unexpected: lexer.QUESTION},
+		{input: "else {}", id: diagnostics.ParserMisplacedKeyword, unexpected: lexer.ELSE},
+		{input: "type Broken struct (", id: diagnostics.ParserMissingToken, expected: lexer.LBRACE, unexpected: lexer.LPAREN},
+	}
+
+	for _, test := range tests {
+		p := New(lexer.New(test.input))
+		p.ParseProgram()
+		if len(p.Diagnostics()) == 0 {
+			t.Fatalf("%q produced no structured diagnostic", test.input)
+		}
+		got := p.Diagnostics()[0]
+		if got.ID != test.id {
+			t.Fatalf("%q diagnostic ID = %s, want %s", test.input, got.ID, test.id)
+		}
+		if got.Unexpected == nil || got.Unexpected.Type != test.unexpected {
+			t.Fatalf("%q unexpected token = %+v, want %s", test.input, got.Unexpected, test.unexpected)
+		}
+		if test.expected != "" && (len(got.Expected) != 1 || got.Expected[0] != test.expected) {
+			t.Fatalf("%q expected tokens = %v, want %s", test.input, got.Expected, test.expected)
+		}
 	}
 }
 

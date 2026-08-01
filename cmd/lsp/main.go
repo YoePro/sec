@@ -2213,8 +2213,8 @@ func analyze(uri string, text string) []diagnostic {
 	program := p.ParseProgram()
 
 	diagnostics := []diagnostic{}
-	for _, err := range p.Errors() {
-		diagnostics = append(diagnostics, parserDiagnostic(err))
+	for _, parserError := range p.Diagnostics() {
+		diagnostics = append(diagnostics, structuredParserDiagnostic(parserError))
 	}
 	if len(p.Errors()) > 0 {
 		return diagnostics
@@ -3463,6 +3463,29 @@ func parserDiagnostic(message string) diagnostic {
 		Source:   "sec",
 		Message:  message,
 	}
+}
+
+func structuredParserDiagnostic(value parser.Diagnostic) diagnostic {
+	result := parserDiagnostic(value.Message)
+	result.Code = value.ID
+	if value.ID == diagnostics.ParserSyntaxError {
+		return result
+	}
+	primary := value.Primary
+	if value.Unexpected != nil {
+		primary = *value.Unexpected
+	}
+	if primary.Line > 0 && primary.Column > 0 {
+		width := len([]rune(primary.Lexeme))
+		if width == 0 {
+			width = 1
+		}
+		result.Range = lspRange{
+			Start: position{Line: primary.Line - 1, Character: primary.Column - 1},
+			End:   position{Line: primary.Line - 1, Character: primary.Column - 1 + width},
+		}
+	}
+	return result
 }
 
 func (s *server) respond(id json.RawMessage, result any) error {

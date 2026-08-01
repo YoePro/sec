@@ -82,8 +82,9 @@ type loopBreakFrame struct {
 }
 
 type genericInstanceKey struct {
-	Declaration string
-	Arguments   string
+	Declaration    string
+	Arguments      string
+	ConstArguments string
 }
 
 func NewAnalyzer() *Analyzer {
@@ -6053,6 +6054,10 @@ func (a *Analyzer) inferPropertyBodyExpression(target Type, setter *ast.Property
 			return Type{Kind: InvalidType}, false
 		}
 		switch expr.Operator {
+		case "+":
+			if isNumericType(rightType) {
+				return rightType, true
+			}
 		case "-":
 			if rightType.Kind == IntType || rightType.Kind == FloatType || rightType.Kind == DecimalType {
 				return rightType, true
@@ -6124,6 +6129,10 @@ func (a *Analyzer) inferPropertyBodyInfixExpression(target Type, setter *ast.Pro
 	rightType, rightOK := a.inferPropertyBodyExpression(target, setter, setterType, expr.Right)
 	if !leftOK || !rightOK || leftType.Kind == InvalidType || rightType.Kind == InvalidType {
 		return Type{Kind: InvalidType}, false
+	}
+	if expr.Operator == "x" {
+		typ, _ := a.inferMatrixMultiplyExpression(expr, leftType, rightType)
+		return typ, typ.Kind != InvalidType
 	}
 
 	if isLogicalOperator(expr.Operator) {
@@ -10095,9 +10104,18 @@ func (a *Analyzer) instantiateGenericFunction(function Function, substitution ma
 
 func genericTypeInstanceKey(typ Type) genericInstanceKey {
 	return genericInstanceKey{
-		Declaration: typeDeclarationIdentity(typ),
-		Arguments:   canonicalTypeArgumentsKey(typ.TypeArgs),
+		Declaration:    typeDeclarationIdentity(typ),
+		Arguments:      canonicalTypeArgumentsKey(typ.TypeArgs),
+		ConstArguments: canonicalConstArgumentsKey(typ.ConstArgs),
 	}
+}
+
+func canonicalConstArgumentsKey(args []int64) string {
+	parts := make([]string, 0, len(args))
+	for _, arg := range args {
+		parts = append(parts, strconv.FormatInt(arg, 10))
+	}
+	return strings.Join(parts, ",")
 }
 
 func genericFunctionInstanceKey(function Function, substitution map[string]Type) genericInstanceKey {
@@ -11143,6 +11161,9 @@ func (a *Analyzer) inferInfixExpression(expr *ast.InfixExpression) (Type, expres
 	if rightType.Kind == InvalidType {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
+	if expr.Operator == "x" {
+		return a.inferMatrixMultiplyExpression(expr, leftType, rightType)
+	}
 
 	if isComparisonOperator(expr.Operator) {
 		if _, ok := expr.Right.(*ast.CharLiteral); ok && leftType.Kind == RuneType {
@@ -11236,6 +11257,49 @@ func (a *Analyzer) inferPlainArithmeticExpression(expr *ast.InfixExpression, lef
 
 	a.addErrorAtToken(expr.Token, "cannot apply operator %s to %s and %s", expr.Operator, typeDisplayName(leftType), typeDisplayName(rightType))
 	return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+}
+
+func (a *Analyzer) inferMatrixMultiplyExpression(expr *ast.InfixExpression, leftType Type, rightType Type) (Type, expressionValue) {
+	invalid := func(format string, args ...any) (Type, expressionValue) {
+		a.addErrorAtToken(expr.Token, format, args...)
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+
+	if leftType.Name != "matrix" || len(leftType.TypeArgs) != 1 || len(leftType.ConstArgs) != 2 {
+		return invalid("left operand of x must be matrix, got %s", typeDisplayName(leftType))
+	}
+	if (rightType.Name != "matrix" && rightType.Name != "vector") || len(rightType.TypeArgs) != 1 {
+		return invalid("right operand of x must be matrix or vector, got %s", typeDisplayName(rightType))
+	}
+	if !sameConcreteType(leftType.TypeArgs[0], rightType.TypeArgs[0]) {
+		return invalid("matrix multiplication element types differ: %s and %s", typeDisplayName(leftType.TypeArgs[0]), typeDisplayName(rightType.TypeArgs[0]))
+	}
+
+	inner := leftType.ConstArgs[1]
+	switch rightType.Name {
+	case "matrix":
+		if len(rightType.ConstArgs) != 2 {
+			return invalid("right operand of x must have two matrix dimensions, got %s", typeDisplayName(rightType))
+		}
+		if inner != rightType.ConstArgs[0] {
+			return invalid("matrix multiplication inner dimensions differ: %d and %d", inner, rightType.ConstArgs[0])
+		}
+		result := leftType
+		result.ConstArgs = []int64{leftType.ConstArgs[0], rightType.ConstArgs[1]}
+		return result, expressionValue{Display: expr.String()}
+	case "vector":
+		if len(rightType.ConstArgs) != 1 {
+			return invalid("right operand of x must have one vector dimension, got %s", typeDisplayName(rightType))
+		}
+		if inner != rightType.ConstArgs[0] {
+			return invalid("matrix-vector multiplication inner dimensions differ: %d and %d", inner, rightType.ConstArgs[0])
+		}
+		result := rightType
+		result.ConstArgs = []int64{leftType.ConstArgs[0]}
+		return result, expressionValue{Display: expr.String()}
+	default:
+		return invalid("right operand of x must be matrix or vector, got %s", typeDisplayName(rightType))
+	}
 }
 
 func compatiblePlainNumericAlias(left Type, right Type) bool {
@@ -11499,6 +11563,10 @@ func (a *Analyzer) inferPrefixExpression(expr *ast.PrefixExpression) (Type, expr
 	}
 
 	switch expr.Operator {
+	case "+":
+		if isNumericType(rightType) {
+			return rightType, expressionValue{Display: rightValue.Display}
+		}
 	case "-":
 		if rightType.Kind == IntType || rightType.Kind == FloatType || rightType.Kind == DecimalType {
 			return rightType, expressionValue{

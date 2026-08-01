@@ -187,8 +187,9 @@ compound assignments
 
 The following are only partially implemented:
 
-- the parser does not yet treat contextual `x` as the canonical matrix
-  multiplication operator;
+- contextual `x` parsing and fixed matrix/matrix and matrix/vector shape
+  validation are implemented, while Semantic IR, lowering and tooling context
+  remain;
 - overflow checking is incomplete;
 - runtime division-by-zero checking is incomplete;
 - invalid shift-count checking is incomplete;
@@ -210,7 +211,7 @@ The following are only partially implemented:
 The following are not yet implemented completely:
 
 - one generated or shared canonical precedence definition;
-- parser support for contextual matrix operator `x`;
+- lowering and tooling context for matrix operator `x`;
 - complete checked integer arithmetic;
 - complete deterministic arithmetic-failure lowering;
 - float `%`;
@@ -3854,8 +3855,9 @@ The parser may retain efficient constants generated from the canonical table.
 
 ## A.3 Add contextual `x`
 
-Extend parser expression handling so identifier token `x` becomes an infix
-operator only when:
+Parser and fixed-shape Sema support are implemented.
+
+Identifier token `x` becomes an infix operator only when:
 
 - parser is in infix position;
 - the surrounding token structure is valid;
@@ -3863,7 +3865,7 @@ operator only when:
 
 Preserve ordinary identifiers named `x`.
 
-Add formatter and semantic-token context.
+Formatter and semantic-token context, Semantic IR and backend lowering remain.
 
 ---
 
@@ -4196,7 +4198,7 @@ It may not silently produce different semantics.
 
 ```text
 1. Add canonical operator metadata and tests.
-2. Add contextual `x` parser support.
+2. Add contextual `x` Semantic IR, lowering and tooling context.
 3. Enforce strict evaluation order and exact-once targets.
 4. Complete checked integer arithmetic.
 5. Complete division, remainder, and shifts.

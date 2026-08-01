@@ -1695,8 +1695,11 @@ Current infrastructure implemented:
   optional `Help` text;
 * the semantic diagnostic `Error` structure carries a severity value;
 * LSP semantic diagnostics expose `Error.ID` as the diagnostic `code`;
-* LSP parser diagnostics currently expose the generic syntax diagnostic
-  `P2001` as their diagnostic `code`;
+* parser diagnostics expose a structured compatibility path carrying ID,
+  primary token, expected tokens and unexpected token; unmigrated errors use
+  `P2001`;
+* LSP parser diagnostics use focused structured codes when available and retain
+  `P2001` for unmigrated syntax errors;
 * LSP semantic diagnostics append `Error.Help` as a `help:` section in the
   displayed diagnostic message;
 * `performance.large-value-parameter` emits the reserved `A2001` ID and a
@@ -1712,6 +1715,9 @@ Current infrastructure implemented:
   * `S1008` / `types.invalid-explicit-default`
   * `S1009` / `variables.nondefaultable-requires-initializer`
   * `S1010` / `struct.missing-nondefaultable-field`
+  * `S1011` / `types.in-list-value-violates-contract`
+* parser recovery IDs `P2001` through `P2018` are registered; initial focused
+  paths use `P2002`, `P2003`, `P2007`, `P2008`, `P2011` and `P2013`;
 * semantic analysis retains a poisoned local binding after an invalid
   initializer, preventing later uses of that name from creating unrelated
   `undefined variable` cascade diagnostics.
@@ -1736,9 +1742,8 @@ Not yet complete:
 * machine-readable structured CLI diagnostics
 * full mentor cost analysis
 * stable registered IDs for default-contract violations, unrepresentable or
-  ambiguous defaults, empty/duplicate membership lists, membership values that
-  violate another contract, immutable omitted initializers and unsupported
-  empty-list lowering
+  ambiguous defaults, empty/duplicate membership lists, immutable omitted
+  initializers and unsupported empty-list lowering
 
 =============================================================================================================================================================================================
 Normative summary

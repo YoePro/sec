@@ -247,6 +247,8 @@ func (g *Generator) emitPrefixExpression(expr *ast.PrefixExpression) (value, err
 		return value{}, err
 	}
 	switch expr.Operator {
+	case "+":
+		return right, nil
 	case "-":
 		if right.typ != "i32" {
 			return value{}, fmt.Errorf("emit-llvm unary - currently expects int")

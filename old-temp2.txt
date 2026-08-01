@@ -17,16 +17,16 @@ struct.txt - Written
 types.txt - Written
 unions.txt - Written
 units.txt - Written
-variables_contracts.txt - Written
+contracts.md - Written
 
 Kategori: Minneshantering & Ägandeskap
 allocation.txt - Written
 borrowing.txt - Written
-copy_move.txt - Written
+copy_move.md - Written
 destruction.txt - Written
 lifetime_analysis.txt - Written
-memory_model.txt - Written
-ownership.txt - Written
+memory_model.md - Written
+ownership.md - Written
 raw_pointers.txt - Written
 references.txt - Written
 storage_allocation.txt - To be done
@@ -43,7 +43,7 @@ threads.md - Written
 mutex.md - Written
 atomics.md - Written
 static.md - Written
-concurrency_memory_model.md - Written
+concurrency_memory_model.txt - Written
 select.md - Written
 processes.txt - To be done
 scheduling.md - Written
@@ -91,7 +91,7 @@ registers.txt - Written
 
 Kategori: Verktyg, Diagnostik & Testning
 diagnostics.txt - Written
-formatter.txt - Written
+formatter.md - Written
 runtime_checks.txt - To be done <-- We need to make sure we avoid getting a runtime but some checks must be done in runtime.
 compiler_diagnostics.txt - To be done
 compile_time_evaluation.txt - To be done

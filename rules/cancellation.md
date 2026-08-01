@@ -533,7 +533,7 @@ mutex.md
 processes.txt
 concurrency.md
 concurrency_runtime_model.md
-concurrency_memory_model.md
+concurrency_memory_model.txt
 thread_local.md
 ffi.txt
 defer.txt

@@ -30,6 +30,9 @@ const (
 	UnhandledMustUseResult     = "S1005"
 	NonDiscardableValue        = "S1006"
 	ImplicitMoveDisallowed     = "S1007"
+	InvalidExplicitDefault     = "S1008"
+	NoDefaultValue             = "S1009"
+	MissingNonDefaultableField = "S1010"
 	LargeValueParameter        = "A2001"
 )
 
@@ -89,6 +92,15 @@ var registry = map[string]Definition{
 		Family:          "ownership",
 		DefaultSeverity: SeverityError,
 		Mandatory:       true,
+	},
+	InvalidExplicitDefault: {
+		ID: InvalidExplicitDefault, Name: "types.invalid-explicit-default", Family: "types", DefaultSeverity: SeverityError, Mandatory: true,
+	},
+	NoDefaultValue: {
+		ID: NoDefaultValue, Name: "variables.nondefaultable-requires-initializer", Family: "variables", DefaultSeverity: SeverityError, Mandatory: true,
+	},
+	MissingNonDefaultableField: {
+		ID: MissingNonDefaultableField, Name: "struct.missing-nondefaultable-field", Family: "struct", DefaultSeverity: SeverityError, Mandatory: true,
 	},
 	LargeValueParameter: {
 		ID:              LargeValueParameter,

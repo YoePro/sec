@@ -71,7 +71,7 @@ fn Fail[T]() Result[T, IOError] {
 
 fn UseExpectedResultInference() void {
     let intResult: Result[int, IOError] := Fail()
-    let mut stringResult: Result[string, IOError]
+    let mut stringResult: Result[string, IOError] := Err(IOError.failed)
     stringResult = Fail()
 }
 

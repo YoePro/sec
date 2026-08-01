@@ -2,22 +2,20 @@
 
 ## Status
 
-This document is the canonical ownership rulebook for Sec.
-
-It replaces:
-
-```text
-ownership.txt
-```
-
-The old file must be removed or renamed when this document is added to the
-repository.
+This document is the canonical ownership rulebook for Sec. The former legacy
+text rulebook has been replaced and is no longer canonical.
 
 This rulebook defines the source-language ownership model.
 
 Detailed copy classification, borrowing, lifetimes, destruction, discard,
 transferability, and lowering remain synchronized with their specialized
 rulebooks.
+
+Default initialization establishes an available owned value when the type is
+owning. Defaultability is independent of copyability and move-only status.
+Default construction creates the type's ordinary destruction responsibility,
+but it must not silently allocate or acquire a unique external resource. See
+`default_values.md`.
 
 ---
 
@@ -2967,7 +2965,7 @@ This rulebook must remain synchronized with:
 
 ```text
 copy_move.md
-variables_contracts.txt
+contracts.md
 types.txt
 functions.txt
 struct.txt
@@ -2987,7 +2985,7 @@ ffi.txt
 registers.txt
 static.md
 allocation.txt
-memory_model.txt
+memory_model.md
 semantic_ir.txt
 compiler_pipeline.txt
 diagnostics.txt
@@ -3000,8 +2998,8 @@ rules_implementations.txt
 language-rulebook-status.md
 ```
 
-Until filenames are migrated, existing `.txt` files remain the source files to
-update.
+The canonical ownership, copy/move and formatter documents use their `.md`
+filenames; legacy text filenames are not canonical.
 
 ---
 
@@ -3073,25 +3071,9 @@ Codex must preserve these decisions exactly:
 
 ## A.2 File migration
 
-Perform these rulebook filename changes:
-
-```text
-rules/ownership.txt
-    -> rules/ownership.md
-
-rules/copy_move.txt
-    -> rules/copy_move.md
-
-rules/formatter.txt
-    -> rules/formatter.md
-```
-
-Do not keep duplicate canonical files after migration.
-
-Update every repository reference to the new names.
-
-If filename migration is performed incrementally, add a temporary repository
-note identifying the canonical file and remove it when migration completes.
+The ownership, copy/move and formatter filename migrations are complete.
+Repository references use the canonical `.md` names and no duplicate canonical
+files remain.
 
 ---
 
@@ -3458,7 +3440,7 @@ types.txt
 core-library.md
 sec/core/string.sec
 copy_move.md
-memory_model.txt
+memory_model.md
 Semantic IR
 MLIR lowering
 tests
@@ -3547,7 +3529,7 @@ MLIR must not choose copy versus move.
 Rename:
 
 ```text
-formatter.txt
+formatter.md
     -> formatter.md
 ```
 
@@ -3620,7 +3602,7 @@ Highest-priority files:
 
 ```text
 copy_move.md
-variables_contracts.txt
+contracts.md
 types.txt
 functions.txt
 struct.txt
@@ -3631,7 +3613,7 @@ references.txt
 lifetime_analysis.txt
 destruction.txt
 discard.md
-memory_model.txt
+memory_model.md
 transferability.md
 semantic_ir.txt
 compiler_pipeline.txt
@@ -3650,30 +3632,23 @@ sources.
 
 ## A.21 Status document
 
-Update `language-rulebook-status.md`:
+The synchronized status is:
 
 ```text
-ownership.txt
-    replaced by ownership.md
-
 ownership.md
+    Living
+
+copy_move.md
     Written
 
-copy_move.txt
-    Written — rewrite required
-    later replaced by copy_move.md
-
-formatter.txt
-    Written — rewrite required
-    later replaced by formatter.md
+formatter.md
+    Written — implementation partial
 
 lsp.md
-    Planned
+    Living
 ```
 
-Add `ownership.md` to the canonical written set.
-
-Remove `ownership.txt` from that set after migration.
+All four documents belong to the canonical written set.
 
 ---
 

@@ -26,6 +26,14 @@ This rulebook defines lexical structure only.
 Parsing, name resolution, type checking, operator precedence, and runtime
 semantics are defined by their respective rulebooks.
 
+The lexer always tokenizes `default` as a keyword. The parser resolves its
+context, including switch/select default branches, the named-type default clause
+and any other separately defined default context. This contextual parsing does
+not change lexical meaning.
+
+The canonical explicit zero literals are `0c` for `char` and `0r` for `rune`;
+they must not be documented as empty character source literals.
+
 ---
 
 # 1. Source files
@@ -1965,7 +1973,7 @@ This rulebook must be synchronized with:
 ```text
 names_scopes_visibility.md
 types.txt
-variables_contracts.txt
+contracts.md
 properties.txt
 collections-shaped-types.md
 registers.txt
@@ -1976,7 +1984,7 @@ functions_lambda.txt
 attributes.md
 operators.md
 grammar.md
-formatter.txt
+formatter.md
 diagnostics.txt
 parser_recovery.md
 core-library.md

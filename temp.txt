@@ -6,7 +6,7 @@ borrowing.txt
 compiler.txt
 compiler_analysis.txt
 compiler_pipeline.txt
-copy_move.txt
+copy_move.md
 defer.txt
 destruction.txt
 diagnostics.txt
@@ -19,7 +19,7 @@ flowcontrol_if.txt
 flowcontrol_match.txt
 flowcontrol_switch.txt
 flowcontrol_while.txt
-formatter.txt
+formatter.md
 functions.txt
 functions_lambda.txt
 generics.txt
@@ -27,10 +27,10 @@ impl.txt
 interfaces.txt
 language_philosophy.txt
 lifetime_analysis.txt
-memory_model.txt
+memory_model.md
 mlir-optimize.txt
 mlir.txt
-ownership.txt
+ownership.md
 projects.txt
 properties.txt
 raw_pointers.txt
@@ -43,7 +43,7 @@ struct.txt
 types.txt
 unions.txt
 units.txt
-variables_contracts.txt
+contracts.md
 
 Suggested (inkl. written)
 ------------------------------------------
@@ -64,7 +64,7 @@ rules/diagnostics.txt
 och
 rules/
 destruction.txt
-copy_move.txt
+copy_move.md
 lifetime_analysis.txt
 escape_analysis.txt
 storage_allocation.txt

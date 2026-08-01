@@ -109,7 +109,7 @@ fn DifferentUnionsReuseVariantNames() bool {
 }
 
 fn MutableUnionWithoutInitializer(enabled: bool) State {
-    let mut state: State
+    let mut state: State := State.idle
 
     if enabled {
         state = State.running

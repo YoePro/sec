@@ -94,7 +94,7 @@ fn DefaultValues() bool {
 }
 
 fn MutableWithoutInitializer() void {
-    let mut color: Color
+    let mut color: Color := Color.red
     color = Color.blue
     AcceptColor(color)
 }

@@ -418,27 +418,27 @@ When the next token is `{`, parser recovery should skip the malformed property
 block to avoid cascading diagnostics from nested `get`, `set` or `return`
 tokens.
 
-## Relationship to variable contracts
+## Relationship to constrained named types
 
-Variable contracts may be modeled as hidden fallible property setters.
+Contracts belong to named types, not variables. Mutation of a constrained named
+value is fallible in the same way as a fallible property setter.
 
 Example:
 
 ```sec
-let mut p: Percent range 0..100
+type Percent int range 0..100
+let mut p: Percent := 10
 ```
 
-Conceptually behaves like a hidden setter that validates the range before
-accepting the value.
+Conversion to `Percent` validates the named type before accepting the value.
 
-Therefore assigning to a contract-checked variable follows the same principle as
+Therefore assigning to a constrained named value follows the same principle as
 assigning to a fallible property:
 
 - explicit `try` is required when assignment can fail
 - unchecked assignment is invalid
 
-The exact variable-contract syntax and lowering are defined in
-`variables_contracts.txt`.
+The exact named-type contract syntax and lowering are defined in `contracts.md`.
 
 ## Relationship to error handling
 

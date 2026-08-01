@@ -1709,6 +1709,9 @@ Current infrastructure implemented:
   * `S1005` / `ownership.unhandled-must-use-result`
   * `S1006` / `ownership.non-discardable-value`
   * `S1007` / `ownership.implicit-move-disallowed`
+  * `S1008` / `types.invalid-explicit-default`
+  * `S1009` / `variables.nondefaultable-requires-initializer`
+  * `S1010` / `struct.missing-nondefaultable-field`
 * semantic analysis retains a poisoned local binding after an invalid
   initializer, preventing later uses of that name from creating unrelated
   `undefined variable` cascade diagnostics.
@@ -1732,6 +1735,10 @@ Not yet complete:
 * source-level advisory suppression
 * machine-readable structured CLI diagnostics
 * full mentor cost analysis
+* stable registered IDs for default-contract violations, unrepresentable or
+  ambiguous defaults, empty/duplicate membership lists, membership values that
+  violate another contract, immutable omitted initializers and unsupported
+  empty-list lowering
 
 =============================================================================================================================================================================================
 Normative summary

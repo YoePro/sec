@@ -501,7 +501,7 @@ transferability.md
 cancellation.md
 concurrency_runtime_model.md
 concurrency.md
-concurrency_memory_model.md
+concurrency_memory_model.txt
 static.md
 properties.txt
 types.txt

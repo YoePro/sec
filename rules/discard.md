@@ -1534,7 +1534,7 @@ This replacement requires updates to:
 lexical_structure.md
 types.txt
 functions.txt
-copy_move.txt
+copy_move.md
 ownership.md
 borrowing.txt
 references.txt
@@ -1545,7 +1545,7 @@ errorhandling.txt
 diagnostics.txt
 semantic_ir.txt
 compiler_pipeline.txt
-formatter.txt
+formatter.md
 tasks.txt
 threads.md
 processes.txt
@@ -1565,7 +1565,7 @@ Required key changes include:
 - `types.txt`: define must-use, discardability, and unavailable state;
 - `functions.txt`: permit implicit discard of ordinary standalone call results
   and require handling of must-use results;
-- `copy_move.txt`: distinguish copy, move, explicit discard, and implicit
+- `copy_move.md`: distinguish copy, move, explicit discard, and implicit
   temporary discard;
 - `destruction.txt`: define destruction of explicit and implicit discarded
   values;

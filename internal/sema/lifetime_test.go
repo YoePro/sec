@@ -210,7 +210,7 @@ func TestArenaResetInvalidatesAllocatedSlice(t *testing.T) {
 module main
 
 fn Invalid() Result[void, AllocationError] {
-    let mut mem: Arena
+    let mut mem: Arena := Arena {}
     let storage := try mem.Alloc[byte](16)
     mem.Reset()
     let length := storage.len
@@ -229,7 +229,7 @@ func TestArenaResetInContinuingBranchInvalidatesAllocatedSlice(t *testing.T) {
 module main
 
 fn Invalid(condition: bool) Result[void, AllocationError] {
-    let mut mem: Arena
+    let mut mem: Arena := Arena {}
     let storage := try mem.Alloc[byte](16)
     if condition {
         mem.Reset()
@@ -250,7 +250,7 @@ func TestArenaResetInReturningBranchDoesNotInvalidateContinuingPath(t *testing.T
 module main
 
 fn Valid(condition: bool) Result[void, AllocationError] {
-    let mut mem: Arena
+    let mut mem: Arena := Arena {}
     let storage := try mem.Alloc[byte](16)
     if condition {
         mem.Reset()
@@ -270,7 +270,7 @@ func TestArenaResetInForLoopInvalidatesAllocatedSlice(t *testing.T) {
 module main
 
 fn Invalid() Result[void, AllocationError] {
-    let mut mem: Arena
+    let mut mem: Arena := Arena {}
     let storage := try mem.Alloc[byte](16)
     for i in 0..1 {
         mem.Reset()
@@ -291,7 +291,7 @@ func TestArenaResetInWhileLoopInvalidatesAllocatedSlice(t *testing.T) {
 module main
 
 fn Invalid(condition: bool) Result[void, AllocationError] {
-    let mut mem: Arena
+    let mut mem: Arena := Arena {}
     let storage := try mem.Alloc[byte](16)
     while condition {
         mem.Reset()
@@ -313,7 +313,7 @@ func TestArenaResetBeforeLoopBreakInvalidatesAllocatedSlice(t *testing.T) {
 module main
 
 fn Invalid() Result[void, AllocationError] {
-    let mut mem: Arena
+    let mut mem: Arena := Arena {}
     let storage := try mem.Alloc[byte](16)
     while true {
         mem.Reset()

@@ -2,19 +2,8 @@
 
 ## Status
 
-This document is the canonical abstract memory-model rulebook for Sec.
-
-It replaces:
-
-```text
-memory_model.txt
-```
-
-The replacement file should be named:
-
-```text
-memory_model.md
-```
+This document is the canonical abstract memory-model rulebook for Sec. The
+former legacy text rulebook has been replaced and is no longer canonical.
 
 This rulebook defines the common memory concepts used by:
 
@@ -27,13 +16,22 @@ raw_pointers.txt
 lifetime_analysis.txt
 destruction.txt
 allocation.txt
-concurrency_memory_model.md
+concurrency_memory_model.txt
 ffi.txt
 registers.txt
 ```
 
 It does not duplicate the complete analysis algorithms or source syntax from
 those specialized rulebooks.
+
+Default initialization, defined by `default_values.md`, begins the lifetime of
+a valid initialized value. A semantic default is neither uninitialized storage
+nor necessarily all-bits-zero. Omitted struct fields and mutable declarations
+without source initializers must be initialized before becoming readable.
+
+An empty `list[T]` default owns no allocated element storage and constructs no
+elements. A safe slice remains non-defaultable because every slice requires a
+valid storage origin and lifetime.
 
 ---
 
@@ -255,7 +253,7 @@ destruction.txt
 allocation.txt
     allocation contexts, arenas, and allocation failure
 
-concurrency_memory_model.md
+concurrency_memory_model.txt
     happens-before, atomic ordering, visibility, and data races
 
 ffi.txt
@@ -2495,7 +2493,7 @@ object.
 An initialized atomic storage object may be non-copyable and non-relocatable
 after publication.
 
-Exact rules belong to `concurrency_memory_model.md` and atomics rulebooks.
+Exact rules belong to `concurrency_memory_model.txt` and atomics rulebooks.
 
 ---
 
@@ -2527,7 +2525,7 @@ references
 provenance
 ```
 
-`concurrency_memory_model.md` defines:
+`concurrency_memory_model.txt` defines:
 
 ```text
 execution entities
@@ -3630,7 +3628,7 @@ raw_pointers.txt
 lifetime_analysis.txt
 destruction.txt
 allocation.txt
-concurrency_memory_model.md
+concurrency_memory_model.txt
 data_races.md
 deadlock_analysis.md
 ffi.txt
@@ -3638,7 +3636,7 @@ registers.txt
 arrays-slices.txt
 collections-shaped-types.md
 types.txt
-variables_contracts.txt
+contracts.md
 functions.txt
 struct.txt
 unions.txt
@@ -3667,16 +3665,8 @@ and marked Planned in the status document.
 
 ## A.1 Rename the rulebook
 
-Rename:
-
-```text
-rules/memory_model.txt
-    -> rules/memory_model.md
-```
-
-Update every repository reference.
-
-Do not keep two canonical memory-model files.
+The filename migration is complete. `rules/memory_model.md` is canonical,
+repository references are updated, and no duplicate canonical file remains.
 
 ---
 
@@ -4113,7 +4103,7 @@ Cross-space transfers must be explicit operations.
 ## A.24 Concurrency integration
 
 Share storage identity and place relationships with
-`concurrency_memory_model.md`.
+`concurrency_memory_model.txt`.
 
 Atomics, mutexes, publication, and race analysis must use the same location
 model.
@@ -4238,7 +4228,7 @@ Mark:
 memory_model.md
     Written
 
-memory_model.txt
+memory_model.md
     replaced
 
 layout.md

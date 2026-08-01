@@ -1322,6 +1322,14 @@ func (p *Parser) parseTypeDeclStatement() ast.Statement {
 				return nil
 			}
 		}
+		if p.peekToken.Type == lexer.DEFAULT {
+			p.nextToken()
+			stmt.DefaultToken = p.curToken
+			if !p.expectPeekExpressionStart() {
+				return nil
+			}
+			stmt.Default = p.parseExpression(LOWEST)
+		}
 
 		if p.peekToken.Type == lexer.IDENT && !p.isStatementStart(p.peekToken.Type) {
 			stmt.Variants = []*ast.Identifier{
@@ -1425,6 +1433,14 @@ func (p *Parser) parseTypeDeclStatement() ast.Statement {
 		if stmt.Contract == nil {
 			return nil
 		}
+	}
+	if p.peekToken.Type == lexer.DEFAULT {
+		p.nextToken()
+		stmt.DefaultToken = p.curToken
+		if !p.expectPeekExpressionStart() {
+			return nil
+		}
+		stmt.Default = p.parseExpression(LOWEST)
 	}
 
 	return stmt

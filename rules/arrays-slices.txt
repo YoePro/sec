@@ -176,20 +176,27 @@ let values: int[4] := [10, 20, 30, 40]
 let mut buffer: byte[256]
 ```
 
-Normal variable initialization and definite-assignment rules apply.
+Normal semantic default-initialization rules apply.
 
-An immutable array requires an initializer.
+An immutable array requires an initializer. A mutable fixed array may omit its
+initializer only when its element type is defaultable. Every element is then
+constructed from the element-type default before the binding becomes readable:
 
-A mutable array may be declared without an initializer under the normal mutable
-variable rules, but it must not be read, indexed for reading, borrowed or sliced
-before it is definitely initialized.
+```sec
+let mut values: int[4]
+```
 
-The initial implementation may track initialization at whole-array granularity.
-Partial element initialization must not make the complete array readable unless
-the compiler proves every element initialized.
+is semantically equivalent to `[0, 0, 0, 0]`. A struct array recursively
+default-constructs each complete struct element. A zero-length array is
+defaultable without constructing an element.
+
+Partial undefined element storage must never become a readable safe array.
+Construction of nontrivial elements tracks cleanup if a later element fails.
 
 Arrays may contain non-defaultable values when an initializer supplies every
 element.
+
+See `default_values.md` for the shared compiler-owned default resolver.
 
 ## Array literals
 
@@ -661,6 +668,10 @@ compiler-defined empty-storage sentinel that obeys reference rules.
 A slice has no implicit default value because a reference must have a valid
 origin.
 
+Consequently a mutable safe-slice declaration cannot omit its initializer.
+The compiler must not fabricate a null, dangling, or originless slice as a
+default.
+
 Valid empty slice examples:
 
 ```sec
@@ -936,6 +947,8 @@ Current implementation status:
   `int[3][4]` means `int[4]` elements inside an outer length-3 array.
 - AST distinguishes zero-length arrays from empty-bracket sequence types.
 - Semantic analysis resolves fixed arrays, including `T[0]`.
+- Semantic analysis materializes elementwise defaults for mutable fixed arrays
+  whose element type is defaultable and rejects non-defaultable omissions.
 - Semantic analysis classifies bare `T[]` as an owning dynamic array/sequence
   value with runtime-known length.
 - Semantic analysis accepts `ref T[]` and `ref mut T[]` as slice reference
@@ -964,6 +977,7 @@ Current implementation status:
 Not implemented yet:
 
 - canonical array/slice Semantic IR operations
+- explicit Semantic IR origins and cleanup for array element defaults
 - MLIR lowering for owning runtime-sized `T[]`
 - MLIR lowering for `ref T[]` and `ref mut T[]` descriptors
 - MLIR slice construction, reborrowing, slicing and element borrowing
@@ -1015,6 +1029,8 @@ Valid tests should cover:
 
 - postfix array types
 - zero-length arrays
+- default numeric and struct arrays
+- rejection of default arrays with non-defaultable elements
 - inferred array literals
 - context-typed literals
 - named element types
@@ -1028,6 +1044,7 @@ Valid tests should cover:
 - exclusive slices
 - open-ended slices
 - empty slices
+- rejection of implicit safe-slice defaults and preservation of valid origins
 - slicing a slice
 - `len`
 - array equality

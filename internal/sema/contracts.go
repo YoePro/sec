@@ -4,6 +4,7 @@ import (
 	"math/big"
 
 	"sec/internal/ast"
+	"sec/internal/diagnostics"
 	"sec/internal/lexer"
 )
 
@@ -30,7 +31,20 @@ func (a *Analyzer) typeFromDeclarationWithName(name string, stmt *ast.TypeDeclSt
 		typ.Dimension = a.parseDimension(stmt.AssignedType.Unit)
 	}
 
-	return a.applyContracts(typ, stmt.Contract)
+	typ = a.applyContracts(typ, stmt.Contract)
+	if stmt.Default != nil {
+		constant, ok := defaultConstantFromExpression(stmt.Default)
+		if !ok {
+			typ.InvalidExplicitDefault = true
+			a.addErrorAtTokenWithMetadata(stmt.DefaultToken, diagnostics.InvalidExplicitDefault, "use an allocation-free compile-time constant", "default for %s must be a compile-time primitive constant", name)
+		} else if !defaultConstantSatisfies(typ, constant) || !defaultConstantCompatible(typ, constant) {
+			typ.InvalidExplicitDefault = true
+			a.addErrorAtTokenWithMetadata(expressionToken(stmt.Default), diagnostics.InvalidExplicitDefault, "choose a value satisfying every type contract", "default value %s is invalid for %s", stmt.Default.String(), name)
+		} else {
+			typ.ExplicitDefault = &constant
+		}
+	}
+	return typ
 }
 
 func flattenASTContracts(contract ast.Contract) []ast.Contract {
@@ -64,7 +78,27 @@ func (a *Analyzer) applyContract(typ Type, contractNode ast.Contract) Type {
 			a.addErrorAtToken(contract.Token, "in contract does not apply to %s", contractApplicabilityTypeName(typ))
 			return typ
 		}
-		typ.Contracts = append(typ.Contracts, MembershipContract{})
+		membership := MembershipContract{}
+		seen := map[string]bool{}
+		for _, value := range contract.Values {
+			constant, ok := defaultConstantFromExpression(value)
+			if !ok {
+				a.addErrorAtToken(expressionToken(value), "membership values must be compile-time primitive constants")
+				continue
+			}
+			if !defaultConstantCompatible(typ, constant) {
+				a.addErrorAtToken(expressionToken(value), "membership value %s is incompatible with %s", value.String(), typeDisplayName(typ))
+				continue
+			}
+			key := string(constant.Kind) + ":" + constant.Lexeme
+			if seen[key] {
+				a.addErrorAtToken(expressionToken(value), "duplicate membership value %s", value.String())
+				continue
+			}
+			seen[key] = true
+			membership.Values = append(membership.Values, constant)
+		}
+		typ.Contracts = append(typ.Contracts, membership)
 		return typ
 	case *ast.MarkerContract:
 		if !contractAppliesToType(contract.Name, typ) {
@@ -108,6 +142,16 @@ func applyRangeContract(typ Type, contract *ast.RangeContract) Type {
 	if contract.Max != nil {
 		if max, ok := constantIntegerValue(contract.Max); ok {
 			rangeContract.Max = new(big.Int).Set(max)
+		}
+	}
+	if typ.Kind == DecimalType || typ.Kind == FloatType {
+		if exact, lexeme, ok := exactNumericConstant(contract.Min); ok {
+			rangeContract.ExactMin = exact
+			rangeContract.MinLexeme = lexeme
+		}
+		if exact, lexeme, ok := exactNumericConstant(contract.Max); ok {
+			rangeContract.ExactMax = exact
+			rangeContract.MaxLexeme = lexeme
 		}
 	}
 

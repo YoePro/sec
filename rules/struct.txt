@@ -63,6 +63,9 @@ Implemented
   Commas remain accepted, including a trailing comma.
 
 - Sema checks struct literal fields, duplicate fields and field value types.
+- Sema materializes semantic defaults for every omitted stored field whose type
+  is defaultable and rejects omitted non-defaultable fields.
+- Empty and partial struct literals recursively construct complete values.
 - Parser supports field/member access:
 
     vehicle._speed
@@ -81,6 +84,8 @@ Implemented
   `llvm.extractvalue`; no runtime support is required.
 - MLIR struct construction and field reads use `llvm.insertvalue` and
   `llvm.extractvalue` inline and do not require runtime support.
+- MLIR receives complete default-materialized literals for concrete supported
+  structs; the direct LLVM backend still lacks complete struct lowering.
 - Nested MLIR field assignment rebuilds changed aggregate values from the leaf
   field back to the stored root and writes the updated root once.
 - Sema performs first shallow getter/setter body checks:
@@ -101,6 +106,8 @@ Not implemented yet
 - `try` property assignment syntax.
 - MLIR lowering for generic structs, struct spread, assignment through
   parameters or references, reference/slice fields, methods and properties.
+- Explicit Semantic IR origins and cleanup regions for defaulted nontrivial
+  fields.
 
 
 Language model
@@ -148,6 +155,52 @@ Invalid:
 Reason:
 Field lists should not depend on line breaks.
 All list-like constructs should use commas consistently.
+
+
+Struct default initialization
+=============================
+
+Every omitted stored field is initialized from its declared field type. An
+empty literal constructs the complete struct default when every stored field is
+defaultable:
+
+```sec
+type Position struct {
+    line: int,
+    column: int,
+    valid: bool,
+    name: string,
+}
+
+let empty := Position {}
+let partial := Position { line: 10 }
+```
+
+`empty` contains `0`, `0`, `false`, and `""`. `partial` contains `10` followed
+by the defaults of the remaining fields. Default construction is recursive for
+nested structs and named constrained field types.
+
+Resolution order is:
+
+```text
+explicit fields
+spread-provided fields
+duplicate and conflict validation
+defaults for every remaining stored field
+```
+
+Explicit and spread-provided fields override defaults. If an omitted field type
+is non-defaultable, the literal is invalid and the struct itself has no complete
+default. By-value default-construction cycles are invalid.
+
+Construction must track cleanup for each successfully constructed nontrivial
+field if a later field fails. No readable source value may retain undefined,
+poisoned, or uninitialized fields. Starting backend aggregate assembly from an
+internal `undef` value is only valid when every field is subsequently proven
+initialized before the value becomes readable.
+
+Ordinary formatting preserves omitted fields. Expanding them is a separate LSP
+or refactoring action, not formatting. See `default_values.md`.
 
 
 Struct grammar
@@ -216,7 +269,8 @@ Required behavior:
 2. Resolve each field type.
 3. Report unknown field types.
 4. Reject duplicate field names inside the same struct.
-5. Allow use of struct type in mutable let declarations without initializer:
+5. Allow use of a defaultable struct type in a mutable let declaration without
+   an initializer:
 
     let mut c: Coordinate
 
@@ -267,6 +321,10 @@ Sema pass test
     let mut c: Coordinate
 
 This should pass.
+
+Default tests must also cover an empty literal, a partial explicit literal,
+nested defaults, constrained named field defaults, a non-defaultable omitted
+field, and spread plus defaults.
 
 Duplicate field test
 --------------------

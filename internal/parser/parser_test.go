@@ -2458,6 +2458,18 @@ vehicle.TopSpeed = speed
 	}
 }
 
+func TestParseExplicitTypeDefault(t *testing.T) {
+	p := New(lexer.New(`type Port int range 1..65535 default 8080`))
+	program := p.ParseProgram()
+	if len(p.Errors()) != 0 {
+		t.Fatalf("parse errors: %v", p.Errors())
+	}
+	declaration, ok := program.Statements[0].(*ast.TypeDeclStatement)
+	if !ok || declaration.Default == nil || declaration.Default.String() != "8080" {
+		t.Fatalf("explicit default was not retained: %#v", program.Statements[0])
+	}
+}
+
 func TestParseTryThenMultilineStructLiteralWithoutCommas(t *testing.T) {
 	input := `
 fn NewWithFile(input: string, file: string) Result[Lexer, AllocationError] {

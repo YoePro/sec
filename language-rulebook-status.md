@@ -50,6 +50,14 @@ The following newer rulebooks have been added to the canonical inventory:
 collections-shaped-types.md
 thread_local.md
 discard.md
+ownership.md
+lsp.md
+formatter.md
+copy_move.md
+memory_model.md
+operators.md
+default_values.md
+contracts.md
 ```
 
 These were written after the older temporary checklist was last synchronized.
@@ -61,12 +69,13 @@ These were written after the older temporary checklist was last synchronized.
 | Rulebook | Status | Notes |
 |---|---|---|
 | `language_philosophy.txt` | **Written** | Core language direction and design principles. |
-| `lexical_structure.md` | **Written — sync required** | Must include all contextual words and operators. |
-| `types.txt` | **Written — sync required** | Must be synchronized with collections, discard, nominal naming, panic/runtime checks, and layout. |
-| `variables_contracts.txt` | **Written — sync required** | Must be synchronized with discard and constrained assignment rules. |
+| `lexical_structure.md` | **Written** | Includes `default` keyword contexts and canonical `0c`/`0r` literals. |
+| `types.txt` | **Written — sync required** | Defaultability and mutable initialization are synchronized; collections, panic/runtime checks, and layout still require work. |
+| `contracts.md` | **Written** | Canonical named-type contracts; replaces the obsolete variable-contract model. |
+| `default_values.md` | **Written** | Canonical primitive, constrained, aggregate, list and explicit-default semantics. |
 | `units.txt` | **Written — sync required** | Must be synchronized with shaped arithmetic and matrix multiplication. |
 | `grammar.md` | **Planned** | Canonical consolidated grammar for Sec 0.1. |
-| `operators.md` | **Planned** | Canonical operator inventory, precedence, associativity, contextual `x`, indexing, and conversion syntax. |
+| `operators.md` | **Written** | Canonical operator inventory, precedence, associativity, contextual `x`, indexing, conversion syntax and constant defaults. |
 | `names_scopes_visibility.md` | **Written — sync required** | Top-level module declaration namespace conflicts are partially implemented; remaining scope, visibility, reserved-name and naming-rule audit still needed. |
 | `attributes.md` | **Planned** | Language attributes, target metadata, compiler-verified guarantees, and unsafe promises. |
 | `unsafe.md` | **Planned** | Canonical unsafe boundaries and operations. |
@@ -119,7 +128,7 @@ grammar.md
 types.txt
 properties.txt
 collections-shaped-types.md
-formatter.txt
+formatter.md
 VS Code grammar
 LSP token classification
 ```
@@ -130,7 +139,7 @@ LSP token classification
 
 | Rulebook | Status | Notes |
 |---|---|---|
-| `struct.txt` | **Written** | Struct declaration and literals. |
+| `struct.txt` | **Written** | Includes recursive semantic initialization of omitted fields. |
 | `enums.txt` | **Written — sync required** | Must remain aligned with `bit[N]`, aliases, and `iota`. |
 | `unions.txt` | **Written** | Tagged union rules. |
 | `registers.txt` | **Written** | Register declarations, fields, widths, and reserved `_` bits. |
@@ -157,8 +166,8 @@ LSP token classification
 
 | Rulebook | Status | Notes |
 |---|---|---|
-| `arrays-slices.txt` | **Written — sync required** | Existing array and slice rules; must be synchronized with common indexing, stride distinctions, and collections. |
-| `collections-shaped-types.md` | **Written — sync required** | `list`, `map`, contextual `set`, vector, matrix, tensor, views, shape, strides, stdlib responsibility, and MLIR. |
+| `arrays-slices.txt` | **Written — sync required** | Fixed-array defaults and slice non-defaultability are synchronized; common indexing and collection integration remain. |
+| `collections-shaped-types.md` | **Written — sync required** | Empty list defaults/literals are canonical; constructors, APIs, shaped values and lowering remain incomplete. |
 | `spread.txt` | **Written — sync required** | Collection expansion and literal integration. |
 | `flowcontrol_for.txt` | **Written — sync required** | Iteration over collections and shaped values; rank-one `vector[T, N]` now participates in Sema iterable inference. |
 
@@ -236,7 +245,7 @@ The main type families are decided.
 
 The remaining details to close are:
 
-- collection literal syntax;
+- map and set literal syntax;
 - final equality and hashing interface names;
 - exact capacity and allocation error taxonomy;
 - dynamic owned tensor extents;
@@ -255,10 +264,10 @@ The remaining details to close are:
 | `borrowing.txt` | **Written — sync required** | Must include views, thread-local references, and discard interactions. |
 | `references.txt` | **Written — sync required** | Must include shaped views and thread-bound references. |
 | `raw_pointers.txt` | **Written — sync required** | Must be synchronized with memory spaces, ABI, and unsafe rules. |
-| `copy_move.md` | **Written — sync required** | Must be rewritten for explicit move syntax and aligned with `ownership.md`. |
+| `copy_move.md` | **Written** | Explicit move syntax; defaultability is independent of copyability. |
 | `lifetime_analysis.txt` | **Written — sync required** | Must include detached work, thread-local values, views, and explicit storage. |
 | `destruction.txt` | **Written — sync required** | Must include discard, panic, cancellation, collection elements, and TLS destruction. |
-| `memory_model.md` | **Written — sync required** | General memory model; must remain aligned with concurrency and volatile rules. |
+| `memory_model.md` | **Written — sync required** | Default lifetime/origin rules are synchronized; concurrency and volatile integration remain. |
 | `static.md` | **Written — sync required** | Must include thread-local keys, collection backing storage, and initialization order. |
 | `discard.md` | **Written — sync required** | General explicit consumption and early deterministic destruction. |
 | `storage.md` | **Planned** | Storage classes, inline storage, stack, static, arena, allocator-backed storage, and explicit backing storage. |
@@ -314,7 +323,7 @@ The exact behavior must be locked by `panic.md` and `runtime_checks.md`.
 | Rulebook | Status | Notes |
 |---|---|---|
 | `concurrency.md` | **Written — sync required** | Overview must be synchronized with the complete concurrency set. |
-| `concurrency_memory_model.md` | **Written — sync required** | Must remain aligned with tasks, threads, channels, atomics, and events. |
+| `concurrency_memory_model.txt` | **Written — sync required** | Must remain aligned with tasks, threads, channels, atomics, and events. |
 | `concurrency_runtime_model.md` | **Written — sync required** | Must include core errors and no-required-runtime profiles. |
 | `tasks.txt` | **Written — sync required** | Must be synchronized with fallible spawn and discard. |
 | `spawn.md` | **Written — sync required** | All spawn forms are fallible; process spawn is deferred. |
@@ -485,12 +494,12 @@ multiple target outputs
 | Rulebook | Status | Notes |
 |---|---|---|
 | `diagnostics.txt` | **Written — sync required** | Central diagnostic registry exists; LSP exposes parser/sema codes; first parser/sema IDs are migrated. Full diagnostic migration, localization and machine-readable CLI output remain. |
-| `formatter.txt` | **Written — sync required** | Contextual `x`, contextual `set`, collections, shaped values, and new statements. |
+| `formatter.md` | **Written — sync required** | Default clauses, membership order and omission are synchronized; broader collection/shaped formatting remains. |
 | `compiler_diagnostics.md` | **Covered** | Compiler diagnostic policy remains canonical in `diagnostics.txt`; avoid duplication. |
 | `debug_information.md` | **Planned** | Source mapping, variables, optimized code, generics, async/task frames, and targets. |
 | `compiler_testing.md` | **Planned** | Compiler unit, integration, invalid, regression, lowering, and backend tests. |
 | `incremental_compilation.md` | **Planned** | Dependency invalidation, generic specialization caches, and target-aware rebuilds. |
-| `lsp.md` | **Candidate** | Language server expectations may be documented separately or as implementation documentation. |
+| `lsp.md` | **Living** | Canonical language-server architecture and feature rulebook. |
 
 ---
 
@@ -511,13 +520,14 @@ compiler.txt
 compiler_analysis.txt
 compiler_pipeline.txt
 concurrency.md
-concurrency_memory_model.md
+concurrency_memory_model.txt
 concurrency_runtime_model.md
-copy_move.txt
+copy_move.md
 core-library.md
 data_races.md
 deadlock_analysis.md
 defer.txt
+default_values.md
 destruction.txt
 diagnostics.txt
 enums.txt
@@ -529,7 +539,7 @@ flowcontrol_if.txt
 flowcontrol_match.txt
 flowcontrol_switch.txt
 flowcontrol_while.txt
-formatter.txt
+formatter.md
 functions.txt
 functions_lambda.txt
 generics.txt
@@ -538,10 +548,11 @@ interfaces.txt
 language_philosophy.txt
 lexical_structure.md
 lifetime_analysis.txt
-memory_model.txt
+memory_model.md
 mlir-optimize.txt
 mlir.txt
 mutex.md
+operators.md
 ownership.md
 processes.txt
 projects.txt
@@ -564,7 +575,8 @@ transferability.md
 types.txt
 unions.txt
 units.txt
-variables_contracts.txt
+contracts.md
+lsp.md
 ```
 
 The following newer rulebooks are also written and present in the canonical
@@ -585,8 +597,6 @@ fully design-closed, unless a later decision explicitly merges one into another.
 
 ```text
 grammar.md
-operators.md
-names_scopes_visibility.md
 attributes.md
 unsafe.md
 
@@ -622,12 +632,11 @@ compiler_testing.md
 incremental_compilation.md
 ```
 
-The following remain candidates until their value as separate rulebooks is
+The following remains a candidate until its value as a separate rulebook is
 confirmed:
 
 ```text
 stdlib.md
-lsp.md
 ```
 
 ---

@@ -25,6 +25,12 @@ It defines:
 This document must remain synchronized with the actual lexer, parser, AST,
 Sema, formatter, Semantic IR, MLIR, and backend implementations.
 
+`default` is a named-type declaration clause, not an operator. Expressions in
+an explicit default use the constant-expression subset of the operator rules in
+this document. An invalid constant operation invalidates the default, and the
+expression may not allocate or depend on runtime state. See
+`default_values.md`.
+
 ---
 
 # Current implementation status
@@ -267,7 +273,7 @@ formatter.md
 types.txt
     primitive and named types
 
-variables_contracts.txt
+contracts.md
     constrained assignment
 
 arrays-slices.txt
@@ -288,7 +294,7 @@ references.txt
 raw_pointers.txt
     unsafe pointer operations
 
-concurrency_memory_model.md
+concurrency_memory_model.txt
     atomics and ordering
 
 memory_model.md
@@ -3788,7 +3794,7 @@ ownership.md
 copy_move.md
 memory_model.md
 types.txt
-variables_contracts.txt
+contracts.md
 functions.txt
 arrays-slices.txt
 collections-shaped-types.md
@@ -3801,7 +3807,7 @@ references.txt
 raw_pointers.txt
 allocation.txt
 destruction.txt
-concurrency_memory_model.md
+concurrency_memory_model.txt
 semantic_ir.txt
 compiler_pipeline.txt
 diagnostics.txt

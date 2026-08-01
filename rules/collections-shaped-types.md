@@ -291,6 +291,35 @@ Permitted strategies may include:
 
 Growth is fallible.
 
+## Empty defaults and literals
+
+`list[T]` is defaultable independently of whether `T` is defaultable. Its
+default is an initialized empty list with:
+
+```text
+length 0
+capacity 0
+element storage none
+initialized elements none
+dynamic allocation none
+```
+
+`list[T, Capacity]` is also defaultable. Its empty default has length zero,
+maximum capacity `Capacity`, no initialized elements and no hidden growth
+allocation. Reserved backing capacity does not construct elements.
+
+Canonical explicit forms are:
+
+```sec
+list[string] {}
+list[Packet, 32] {}
+```
+
+These are collection literals, not named-struct literals. Parser, AST, Sema,
+formatter and lowering must retain that distinction. Empty construction never
+allocates; later dynamic growth remains fallible and requires an approved
+allocation context. This rule does not decide map or set literal syntax.
+
 ---
 
 ## Bounded list
@@ -2233,8 +2262,9 @@ These existing implementations are dependencies and must not be regressed.
 
 The following are not considered implemented by this rulebook yet:
 
-- collection constructors, literals and mutation APIs for `list`, `map` and
-  `set`;
+- parsing, AST distinction, Sema construction and lowering for the canonical
+  empty `list[T] {}` and `list[T, Capacity] {}` literals;
+- other collection constructors, map/set literals and mutation APIs;
 - shaped constructors, literals and member APIs for `vector`, `matrix`,
   `tensor`, `tensor_view`, `Shape`, `Strides` and `TensorLayout`;
 - `for` iterable type inference for shaped types beyond rank-one
@@ -2277,7 +2307,7 @@ ownership.md
 borrowing.txt
 references.txt
 lifetime_analysis.txt
-copy_move.txt
+copy_move.md
 destruction.txt
 functions.txt
 impl.txt
@@ -2292,7 +2322,8 @@ mlir-optimize.txt
 compiler_pipeline.txt
 rules_implementations.txt
 core-library.md
-formatter.txt
+formatter.md
+default_values.md
 language_philosophy.txt
 core/errors.sec
 stdlib collection modules

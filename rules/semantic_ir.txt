@@ -66,6 +66,7 @@ Every Semantic IR module must satisfy the following invariants:
 * every unsafe operation has already passed unsafe-context validation
 * every extern call has a resolved calling convention
 * every target-independent contract has been validated
+* every readable defaulted aggregate field or array element is initialized
 * no unresolved source-level syntax remains
 
 Violation of a Semantic IR invariant is an internal compiler error.
@@ -301,6 +302,30 @@ Integer constants must not be truncated to host-language widths.
 Target-sized constants must be interpreted using the selected target.
 
 Constant values must retain enough information to diagnose overflow and invalid conversion.
+
+## Default initialization origins
+
+Semantic IR must preserve why an initialization exists, not merely its lowered
+bits. Required origins are:
+
+* explicit source initialization
+* implicit mutable default
+* omitted-field default
+* aggregate default
+* array-element default
+* empty-list default
+* explicit type default
+* range-derived default
+* in-list default
+
+The exact operation names may differ, but the distinction must remain available
+to verification, diagnostics, cleanup construction and lowering. Every default
+comes from the shared compiler-owned resolver defined by `default_values.md`.
+
+Default lowering may not use undefined or poisoned data as a readable semantic
+value. Empty lists must have a fully initialized non-allocating descriptor; safe
+slices must not be synthesized without a valid origin. Construction of
+nontrivial aggregates and arrays records partial cleanup responsibility.
 
 ## Storage locations
 

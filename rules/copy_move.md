@@ -2,19 +2,8 @@
 
 ## Status
 
-This document is the canonical copy-and-move rulebook for Sec.
-
-It replaces:
-
-```text
-copy_move.txt
-```
-
-The replacement file should be named:
-
-```text
-copy_move.md
-```
+This document is the canonical copy-and-move rulebook for Sec. The former
+legacy text rulebook has been replaced and is no longer canonical.
 
 This document is synchronized with:
 
@@ -27,6 +16,12 @@ lsp.md
 
 The normative decisions in this file supersede older rules that allowed
 ordinary `:=` and `=` syntax to silently move a move-only named source.
+
+Defaultability and copyability are independent. Reinitialization may construct a
+fresh semantic default where the syntax and type permit it. Omitted struct
+fields are constructed directly, not copied from a hidden global value; an
+empty list default is likewise construction, not copy. These rules do not alter
+the explicit move operators.
 
 ---
 
@@ -3200,7 +3195,7 @@ discard.md
 formatter.md
 lsp.md
 types.txt
-variables_contracts.txt
+contracts.md
 functions.txt
 struct.txt
 arrays-slices.txt
@@ -3210,7 +3205,7 @@ references.txt
 lifetime_analysis.txt
 destruction.txt
 allocation.txt
-memory_model.txt
+memory_model.md
 transferability.md
 channels.md
 tasks.txt
@@ -3235,16 +3230,8 @@ language-rulebook-status.md
 
 ## A.1 Rename rulebook
 
-Rename:
-
-```text
-rules/copy_move.txt
-    -> rules/copy_move.md
-```
-
-Update all references.
-
-Do not retain duplicate canonical files.
+The filename migration is complete. `rules/copy_move.md` is canonical,
+repository references are updated, and no duplicate canonical file remains.
 
 ## A.2 Preserve existing classification
 

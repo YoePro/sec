@@ -2516,6 +2516,9 @@ func printASTTypeDecl(stmt *ast.TypeDeclStatement, prefix string, last bool) {
 	if stmt.Contract != nil {
 		children = append(children, formatASTContract(stmt.Contract))
 	}
+	if stmt.Default != nil {
+		children = append(children, "Default: "+stmt.Default.String())
+	}
 
 	childrenPrefix := childPrefix(prefix, last)
 
@@ -3024,6 +3027,9 @@ func printTypeDecl(stmt *ast.TypeDeclStatement) {
 
 	if stmt.Contract != nil {
 		fmt.Printf(" %s", formatContract(stmt.Contract))
+	}
+	if stmt.Default != nil {
+		fmt.Printf(" default %s", stmt.Default.String())
 	}
 
 	fmt.Println()

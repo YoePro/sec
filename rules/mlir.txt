@@ -1280,6 +1280,12 @@ Unsafe raw memory APIs may expose uninitialized memory only through explicitly d
 
 LLVM poison and undef must not be used as ordinary representations of unspecified Sec values.
 
+They may be transient aggregate-building intermediates only when verification
+proves that every semantically readable field or element is overwritten before
+the value can be observed. They never implement an omitted source field or a
+type default. Named constrained defaults, recursive struct/array defaults and
+empty list descriptors lower from explicit Semantic IR initialization origins.
+
 Where a value is semantically unavailable, the control flow should prevent its use.
 
 Where padding or dead fields require arbitrary bits, the lowering must ensure those bits cannot become observable as valid Sec values.

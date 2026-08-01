@@ -58,6 +58,8 @@ type Type struct {
 	MinInteger                *big.Int
 	MaxInteger                *big.Int
 	Contracts                 []Contract
+	ExplicitDefault           *DefaultConstant
+	InvalidExplicitDefault    bool
 	EnumValues                []string
 	EnumConsts                map[string]EnumValue
 	BitWidth                  int64
@@ -308,14 +310,54 @@ type Contract interface {
 type RangeContract struct {
 	Min       *big.Int
 	Max       *big.Int
+	ExactMin  *big.Rat
+	ExactMax  *big.Rat
+	MinLexeme string
+	MaxLexeme string
 	Exclusive bool
 }
 
 func (RangeContract) contractNode() {}
 
-type MembershipContract struct{}
+type MembershipContract struct {
+	Values []DefaultConstant
+}
 
 func (MembershipContract) contractNode() {}
+
+type DefaultConstant struct {
+	Kind    TypeKind
+	Lexeme  string
+	Integer *big.Int
+	Exact   *big.Rat
+	String  string
+	Bool    bool
+}
+
+type DefaultKind string
+
+const (
+	NoDefault           DefaultKind = "none"
+	PrimitiveDefault    DefaultKind = "primitive"
+	NamedDefault        DefaultKind = "named"
+	RangeDefault        DefaultKind = "range"
+	MembershipDefault   DefaultKind = "membership"
+	ExplicitTypeDefault DefaultKind = "explicit"
+	StructDefault       DefaultKind = "struct"
+	ArrayDefault        DefaultKind = "array"
+)
+
+type DefaultResolution struct {
+	Kind     DefaultKind
+	Value    DefaultConstant
+	Fields   []DefaultField
+	Elements []DefaultResolution
+}
+
+type DefaultField struct {
+	Name  string
+	Value DefaultResolution
+}
 
 type MultipleOfContract struct {
 	Value *big.Int

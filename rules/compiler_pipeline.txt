@@ -671,9 +671,11 @@ Current MLIR implementation note:
   parameters, returns, equality, inequality, explicit integer conversions and
   integer/bool-style value switches.
 * A concrete struct lowers to an LLVM-dialect literal struct type whose elements
-  follow declaration order. Struct literals use `llvm.mlir.undef` followed by
-  `llvm.insertvalue`; field reads use `llvm.extractvalue`. Nested structs are
-  represented inline and require no runtime support.
+  follow declaration order. Sema materializes every omitted field before
+  lowering. The current MLIR builder uses a transient `llvm.mlir.undef`
+  aggregate followed by `llvm.insertvalue` for every field; that intermediate is
+  never exposed or read as a Sec value. Field reads use `llvm.extractvalue`.
+  Nested structs are represented inline and require no runtime support.
 * Struct field assignment uses value semantics: nested aggregates are rebuilt
   inline with `llvm.insertvalue` from the changed leaf back to the stored root.
 * Named primitive types erase to their underlying LLVM representation after

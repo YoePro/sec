@@ -4379,7 +4379,7 @@ fn UseLet() void {
 }
 
 fn UseAssignment() void {
-	let mut value: Result[string, IOError]
+	let mut value: Result[string, IOError] := Err(IOError.failed)
 	value = Fail()
 }
 `
@@ -5474,9 +5474,7 @@ fn MissingAssignment(value: bool) int {
 
 	errors := analyzeSource(t, input)
 
-	expected := []string{
-		"variable result is unassigned at 23:9",
-	}
+	expected := []string{}
 
 	assertSemaErrors(t, errors, expected)
 }
@@ -6890,7 +6888,8 @@ module main
 
 fn Invalid(condition: bool) void {
 	let mut value := 1
-	let mut view: ref int
+	let other := 0
+	let mut view: ref int := ref other
 	if condition {
 		view = ref value
 	}
@@ -6900,7 +6899,7 @@ fn Invalid(condition: bool) void {
 
 	errors := analyzeSourceRaw(t, input)
 	expected := []string{
-		"cannot assign to value while it is shared borrowed at 10:2, previous declaration at 8:10",
+		"cannot assign to value while it is shared borrowed at 11:2, previous declaration at 9:10",
 	}
 	assertSemaErrors(t, errors, expected)
 }
@@ -6911,7 +6910,8 @@ module main
 
 fn Invalid(condition: bool) void {
 	let mut value := 1
-	let mut view: ref mut int
+	let mut other := 0
+	let mut view: ref mut int := ref mut other
 	if condition {
 		view = ref mut value
 	}
@@ -6921,7 +6921,7 @@ fn Invalid(condition: bool) void {
 
 	errors := analyzeSourceRaw(t, input)
 	expected := []string{
-		"cannot read value while it is mutably borrowed at 10:14, previous declaration at 8:10",
+		"cannot read value while it is mutably borrowed at 11:14, previous declaration at 9:10",
 	}
 	assertSemaErrors(t, errors, expected)
 }
@@ -7343,9 +7343,7 @@ fn Test(running: bool) int {
 
 	errors := analyzeSourceRaw(t, input)
 
-	expected := []string{
-		"variable result is unassigned at 11:9",
-	}
+	expected := []string{}
 
 	assertSemaErrors(t, errors, expected)
 }
@@ -7421,9 +7419,7 @@ fn Test() int {
 
 	errors := analyzeSourceRaw(t, input)
 
-	expected := []string{
-		"variable result is unassigned at 11:9",
-	}
+	expected := []string{}
 
 	assertSemaErrors(t, errors, expected)
 }

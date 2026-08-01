@@ -1534,6 +1534,19 @@ Unknown facts must be omitted or explicitly marked unavailable.
 
 The LSP must never invent metadata that the compiler has not resolved.
 
+## Default information
+
+Hover and type completion expose the shared compiler-resolved default value and
+its origin, including explicit type defaults, range-derived defaults and the
+first value of `in [...]`. Non-defaultable types are reported as having no
+default.
+
+For omitted defaultable struct fields, inlay information may show the resolved
+value without modifying source. Explicit code actions may expand defaulted
+fields, insert an explicit default value, or declare a named-type default. These
+are refactorings and must not run as ordinary formatting. The LSP must call the
+same `DefaultValueOf` semantics as Sema rather than reimplement selection.
+
 ---
 
 # Signature help
@@ -2848,7 +2861,7 @@ ownership.md
 copy_move.md
 borrowing.txt
 lifetime_analysis.txt
-variables_contracts.txt
+contracts.md
 units.txt
 target_profiles.md
 platform_model.md
@@ -3022,12 +3035,7 @@ refactoring output
 
 Preserve all current formatter tests.
 
-Rename and update:
-
-```text
-rules/formatter.txt
-    -> rules/formatter.md
-```
+The formatter-rulebook filename migration to `rules/formatter.md` is complete.
 
 ---
 

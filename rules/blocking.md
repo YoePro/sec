@@ -470,7 +470,7 @@ deadlock_analysis.md
 data_races.md
 concurrency.md
 concurrency_runtime_model.md
-concurrency_memory_model.md
+concurrency_memory_model.txt
 ffi.txt
 compiler_analysis.txt
 semantic_ir.txt

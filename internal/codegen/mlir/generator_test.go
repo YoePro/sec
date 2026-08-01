@@ -7,6 +7,7 @@ import (
 	"sec/internal/ast"
 	"sec/internal/lexer"
 	"sec/internal/parser"
+	"sec/internal/sema"
 )
 
 func parseTestProgram(t *testing.T, input string) *ast.Program {
@@ -203,6 +204,83 @@ fn main() int {
 		if !strings.Contains(got, want) {
 			t.Fatalf("generated raw pointer MLIR missing %q:\n%s", want, got)
 		}
+	}
+}
+
+func TestGenerateMaterializedStructAndMutableDefaults(t *testing.T) {
+	input := `
+module main
+
+type State struct {
+    count: int,
+    ready: bool,
+    name: string,
+}
+
+fn main() int {
+    let mut state: State
+    return state.count
+}
+`
+	program := parseTestProgram(t, input)
+	analyzer := sema.NewAnalyzer()
+	if errors := analyzer.Analyze(program); len(errors) != 0 {
+		t.Fatalf("semantic errors: %v", errors)
+	}
+	got, err := GenerateWithTriple(program, "x86_64-pc-linux-gnu")
+	if err != nil {
+		t.Fatalf("GenerateWithTriple returned error: %v", err)
+	}
+	if count := strings.Count(got, "llvm.insertvalue"); count < 3 {
+		t.Fatalf("defaulted struct fields were not fully initialized; insertvalue count=%d:\n%s", count, got)
+	}
+	if !strings.Contains(got, "llvm.mlir.constant(false) : i1") {
+		t.Fatalf("generated MLIR is missing bool default:\n%s", got)
+	}
+	if strings.Contains(got, "llvm.call") || strings.Contains(got, "func.call") {
+		t.Fatalf("default construction must not call a runtime function:\n%s", got)
+	}
+}
+
+func TestGenerateConstrainedScalarDefaultsWithoutRuntime(t *testing.T) {
+	input := `
+module main
+
+type Port int range 1..65535
+type RetryCount int in [3, 5]
+type ExitCode int default 9
+type PositiveAmount decimal range 0.01..100.00
+
+fn main() int {
+    let mut port: Port
+    let mut retry: RetryCount
+    let mut code: ExitCode
+    let mut amount: PositiveAmount
+    return 0
+}
+`
+	program := parseTestProgram(t, input)
+	analyzer := sema.NewAnalyzer()
+	if errors := analyzer.Analyze(program); len(errors) != 0 {
+		t.Fatalf("semantic errors: %v", errors)
+	}
+	got, err := GenerateWithTriple(program, "x86_64-pc-linux-gnu")
+	if err != nil {
+		t.Fatalf("GenerateWithTriple returned error: %v", err)
+	}
+	for _, want := range []string{
+		"llvm.mlir.constant(1 : i32)",
+		"llvm.mlir.constant(3 : i32)",
+		"llvm.mlir.constant(9 : i32)",
+		"llvm.mlir.constant(1 : i64)",
+		"llvm.mlir.constant(2 : i32)",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("generated constrained default MLIR missing %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "llvm.call") || strings.Contains(got, "func.call") {
+		t.Fatalf("constrained defaults must not call a runtime function:\n%s", got)
 	}
 }
 

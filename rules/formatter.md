@@ -2,19 +2,8 @@
 
 ## Status
 
-This document is the canonical formatter rulebook for Sec.
-
-It replaces:
-
-```text
-formatter.txt
-```
-
-The replacement file should be named:
-
-```text
-formatter.md
-```
+This document is the canonical formatter rulebook for Sec. The former legacy
+text rulebook has been replaced and is no longer canonical.
 
 The formatter follows a gofmt-like philosophy:
 
@@ -31,6 +20,19 @@ fully valid syntax.
 
 The formatter should format valid source and preserve useful formatting around
 recoverable syntax errors.
+
+For defaults and empty collections, ordinary formatting must:
+
+- preserve explicit named-type `default` clauses;
+- preserve the semantic source order of every `in [...]` list;
+- preserve omitted struct fields rather than expanding them;
+- format `list[T] {}` and `list[T, Capacity] {}` as empty collection literals,
+  distinct from named-struct literals;
+- never insert explicit default values.
+
+Expansion of omitted fields or insertion/declaration of defaults belongs to an
+explicit LSP/refactoring action. No special configurable default style is
+introduced.
 
 ---
 
@@ -1154,7 +1156,7 @@ Basic canonical form:
 type User struct {
     active: bool,
     name: string,
-    age: int range 0..130,
+    age: Age,
 }
 ```
 
@@ -2288,16 +2290,8 @@ rules_implementations.txt
 
 ## A.1 Rename the rulebook
 
-Rename:
-
-```text
-rules/formatter.txt
-    -> rules/formatter.md
-```
-
-Update all repository references.
-
-Do not retain two canonical formatter rulebooks.
+The filename migration is complete. `rules/formatter.md` is canonical,
+repository references are updated, and no duplicate canonical file remains.
 
 ## A.2 Preserve current tests
 

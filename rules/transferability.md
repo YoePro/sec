@@ -521,12 +521,12 @@ ownership.md
 borrowing.txt
 references.txt
 raw_pointers.txt
-copy_move.txt
+copy_move.md
 lifetime_analysis.txt
 destruction.txt
 ffi.txt
 concurrency.md
-concurrency_memory_model.md
+concurrency_memory_model.txt
 data_races.md
 structured_concurrency.md
 semantic_ir.txt

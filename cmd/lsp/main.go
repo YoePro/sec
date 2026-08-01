@@ -802,8 +802,14 @@ func hoverForSource(uri string, text string, pos position) (hoverResult, bool) {
 }
 
 func typedHover(rng lspRange, name string, typ sema.Type) hoverResult {
+	contents := fmt.Sprintf("```sec\n%s: %s\n```", name, lspTypeName(typ))
+	if value, source, ok := sema.DefaultValueDisplay(typ); ok {
+		contents += fmt.Sprintf("\n\nDefault: `%s`\n\nSource: `%s`", value, source)
+	} else {
+		contents += "\n\nDefault: _none_"
+	}
 	return hoverResult{
-		Contents: markupContent{Kind: "markdown", Value: fmt.Sprintf("```sec\n%s: %s\n```", name, lspTypeName(typ))},
+		Contents: markupContent{Kind: "markdown", Value: contents},
 		Range:    rng,
 	}
 }
@@ -1339,7 +1345,7 @@ func globalCompletionItems(text string, analyzer *sema.Analyzer, context complet
 		}
 	}
 	for name, typ := range analyzer.Types() {
-		add(completionItem{Label: name, Kind: typeCompletionKind(typ), Detail: string(typ.Kind)})
+		add(completionItem{Label: name, Kind: typeCompletionKind(typ), Detail: typeCompletionDetail(typ)})
 	}
 
 	sortCompletionItems(items)
@@ -1526,6 +1532,14 @@ func typeCompletionKind(typ sema.Type) int {
 	default:
 		return 7
 	}
+}
+
+func typeCompletionDetail(typ sema.Type) string {
+	detail := string(typ.Kind)
+	if value, _, ok := sema.DefaultValueDisplay(typ); ok {
+		detail += " = " + value
+	}
+	return detail
 }
 
 func functionCompletionDetail(functions []sema.Function) string {

@@ -120,6 +120,46 @@ enum Mode: bit[2] {
 	t.Fatalf("analyze returned diagnostics for valid bit-backed enums:\n%s", strings.Join(messages, "\n"))
 }
 
+func TestHoverShowsResolvedTypeDefault(t *testing.T) {
+	source := `module main
+
+type Port int range 1..65535 default 8080
+
+fn Use(value: Port) void {
+}
+`
+	offset := strings.LastIndex(source, "Port")
+	result, ok := hoverForSource("", source, offsetPosition(source, offset))
+	if !ok {
+		t.Fatal("missing hover for Port")
+	}
+	if !strings.Contains(result.Contents.Value, "Default: `8080`") || !strings.Contains(result.Contents.Value, "Source: `explicit`") {
+		t.Fatalf("hover does not expose explicit default: %s", result.Contents.Value)
+	}
+}
+
+func TestCompletionShowsResolvedTypeDefault(t *testing.T) {
+	source := `module main
+
+type User string in ["Admin", "User"]
+
+fn Use() void {
+    let mut value: Us
+}
+`
+	offset := strings.LastIndex(source, "Us") + len("Us")
+	items := completeSource("", source, offset)
+	for _, item := range items {
+		if item.Label == "User" {
+			if item.Detail != `string = "Admin"` {
+				t.Fatalf("User completion detail = %q", item.Detail)
+			}
+			return
+		}
+	}
+	t.Fatal("missing User completion")
+}
+
 func TestAnalyzeGroupedPackageImportsAndShortNames(t *testing.T) {
 	source := `module main
 

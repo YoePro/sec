@@ -26,16 +26,44 @@ This rulebook records the language decisions for:
 
 This rulebook defines semantics.
 
-The exact source spelling and placement of an explicit default clause must remain
-synchronized with the canonical type grammar. Examples in this document use the
-illustrative spelling:
+The explicit default clause has the canonical spelling:
 
 ```sec
-default <constant-expression>
+type Port int range 1..65535 default 8080
 ```
 
-If another spelling is already canonical elsewhere, the grammar spelling must be
-updated consistently without changing the semantics defined here.
+Its grammar is `"default" ConstantExpression`, after every type contract in a
+named-type declaration.
+
+## Current implementation status
+
+Implemented in the compiler frontend:
+
+- default-resolution and defaultability queries;
+- primitive defaults without runtime calls or allocation;
+- named primitive inheritance;
+- exact integer range defaults with odd, even and `multipleOf` contracts;
+- exact inclusive decimal range defaults without binary-float conversion;
+- ambiguity detection for equally near integer defaults;
+- ordered primitive `in [...]` defaults;
+- explicit `default <constant-expression>` syntax and validation;
+- recursive struct and fixed-array defaults;
+- omitted stored struct fields;
+- mutable typed declarations without source initializers;
+- hard diagnostics with stable IDs for invalid and missing defaults;
+- LSP hover and type-completion information;
+- explicit MLIR field construction for defaulted structs.
+
+Still partial or deferred to synchronized rulebooks:
+
+- floating range-derived defaults and exclusive decimal upper-bound successors;
+- declaration-time rejection of every `in [...]` value that violates another
+  contract (selection is implemented, full cross-validation is pending);
+- enum and union default-selection policy;
+- lowering for canonical empty `list` defaults and literals;
+- explicit Semantic IR default operations and cleanup regions;
+- complete LLVM struct lowering;
+- LSP expansion and declaration code actions.
 
 ---
 
@@ -98,6 +126,18 @@ An explicit default must satisfy every rule and contract of the type.
 ---
 
 # Primitive defaults
+
+| Type family | Default |
+|---|---|
+| signed integer | numeric zero |
+| unsigned integer | numeric zero |
+| binary float | numeric zero |
+| decimal | numeric zero |
+| `byte` | numeric zero |
+| `bool` | `false` |
+| `string` | `""` |
+| `char` | zero character, written `0c` |
+| `rune` | Unicode scalar zero, written `0r` |
 
 ## Numeric types
 
@@ -291,16 +331,21 @@ The result is a value of the named type, not the underlying primitive type.
 
 # Explicit type defaults
 
-A type may declare an explicit default value.
-
-Illustrative syntax:
+A named type may declare an explicit default value using the canonical syntax:
 
 ```sec
 type Port int range 1..65535 default 8080
 ```
 
-The exact grammar placement must be synchronized with `types` and `grammar`
-rules.
+The clause appears after every type contract:
+
+```text
+NamedTypeDeclaration
+    := "type" Identifier TypeDefinition { Contract } [ DefaultClause ]
+
+DefaultClause
+    := "default" ConstantExpression
+```
 
 The declared default:
 
@@ -607,8 +652,8 @@ required.
 
 # `in [...]` constrained types
 
-A type constrained by an ordered `in [...]` list uses the first listed valid
-value as its implicit default.
+A type constrained by an ordered `in [...]` list uses the first listed value as
+its implicit default.
 
 Example:
 
@@ -701,25 +746,19 @@ Such a type has no valid values and cannot have a valid default.
 
 ## Duplicate values
 
-Duplicate entries in `in [...]` should be rejected or diagnosed according to the
-contract rulebook.
-
-Duplicates must not change default semantics.
-
-The first distinct valid value remains the conceptual implicit default until the
-declaration is corrected.
+Duplicate entries in `in [...]` are invalid and must be rejected.
 
 ---
 
 # Multiple constraints including `in [...]`
 
-When a type has `in [...]` plus additional contracts, the first listed value
-satisfying all contracts is the implicit default.
+Every value in `in [...]` must satisfy every other contract on the type. The
+first listed value is the implicit default.
 
 Example:
 
 ```sec
-type SmallEven int in [1, 2, 3, 4] even
+type SmallEven int in [2, 4, 6, 8] even
 ```
 
 Default:
@@ -728,12 +767,13 @@ Default:
 SmallEven(2)
 ```
 
-If the list itself is already required to contain only valid members, invalid
-entries are declaration errors and the first listed entry is the default.
+This is invalid because some listed values violate `even`:
 
-The contract rulebook must choose one canonical validation model.
+```sec
+type InvalidEven int in [1, 2, 3, 4] even
+```
 
-In either model, the selected default must satisfy all type contracts.
+Invalid entries are declaration errors; they are never silently filtered.
 
 ---
 
@@ -1098,10 +1138,7 @@ unless `TokenType` declares another explicit or constrained default.
 
 # Arrays
 
-The default value of fixed arrays must be synchronized with
-`arrays-slices.txt`.
-
-The recommended canonical rule is:
+The canonical fixed-array rule is:
 
 ```text
 an array is defaultable when its element type is defaultable;
@@ -1114,16 +1151,13 @@ Example:
 let mut values: int[4]
 ```
 
-would become:
+is semantically equivalent to:
 
 ```sec
 [0, 0, 0, 0]
 ```
 
-This document does not independently override any existing array decision.
-
-If the array rulebook has not yet locked this behavior, it must be synchronized
-before implementation is considered complete.
+A zero-length fixed array is defaultable without constructing an element.
 
 ---
 
@@ -1143,40 +1177,31 @@ empty-view representation
 
 An explicit empty slice literal may be defined separately.
 
-Until the slice rulebook defines a default, a slice type should be treated as
-non-defaultable.
+A safe slice has no implicit default and is non-defaultable.
 
 ---
 
-# Dynamic collections
+# List defaults
 
-A collection's empty value and its default value are related but not
-automatically identical.
+`list[T]` is defaultable independently of whether `T` is defaultable. Its
+default is an initialized empty list with length and capacity zero, no element
+storage, no initialized elements and no allocation.
 
-The collection rulebook must define:
+`list[T, Capacity]` is likewise defaultable. Its default has length zero,
+maximum capacity `Capacity`, no initialized elements and no hidden growth
+allocation.
 
-```text
-whether the type is defaultable
-whether the default is empty
-whether empty construction allocates
-which allocation context is required
-capacity
-ownership
-destruction
-```
-
-An explicit empty literal such as:
+The canonical explicit forms are:
 
 ```sec
 list[string] {}
+list[Packet, 32] {}
 ```
 
-is a collection-construction rule.
-
-It must not be implemented merely by leaving descriptor fields undefined.
-
-The recommended model is an initialized empty collection requiring no allocation
-until growth, but the collection rulebook remains authoritative.
+These are collection literals, not struct literals. Empty construction does not
+allocate or default-construct elements. Later dynamic growth remains fallible
+and requires an approved allocation context. Map and set literal syntax remains
+governed by their own collection rules.
 
 ---
 
@@ -1876,9 +1901,9 @@ nested defaults lower completely
 This rulebook must remain synchronized with:
 
 ```text
-types.txt or types.md
-variables_contracts.txt
-struct.txt or struct.md
+types.txt
+contracts.md
+struct.txt
 arrays-slices.txt
 collections-shaped-types.md
 enums.txt
@@ -2106,14 +2131,9 @@ omitted field
 
 ## A.14 Synchronize existing docs
 
-Update statements that currently imply:
-
-```text
-all fields required
-omitted fields remain undefined
-range default always zero
-underlying zero always valid
-```
+Remove legacy statements that require every field, leave omissions without a
+semantic value, force every range default to zero, or assume underlying zero is
+always valid.
 
 Do not leave conflicting canonical rules.
 
@@ -2156,7 +2176,8 @@ A constrained numeric type defaults to zero when zero is valid.
 
 Otherwise it defaults to the unique valid representable value nearest zero.
 
-A type constrained by `in [...]` defaults to the first listed valid value.
+A type constrained by `in [...]` defaults to the first listed value; every
+listed value must already satisfy all other contracts.
 
 A type may declare an explicit default.
 

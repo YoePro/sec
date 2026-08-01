@@ -6199,6 +6199,14 @@ func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
 		a.checkContractLiteralBounds(declaredType, stmt.Contract)
 		declaredType = a.applyContracts(declaredType, stmt.Contract)
 	}
+	if ok && stmt.Value == nil && stmt.Mutable && stmt.Address == nil {
+		resolution := DefaultValueOf(declaredType)
+		stmt.Value = defaultExpression(resolution, declaredType, stmt.Name.Token)
+		if stmt.Value == nil {
+			a.addErrorAtTokenWithMetadata(stmt.Name.Token, diagnostics.NoDefaultValue, "provide an explicit initializer", "mutable variable %s of type %s requires an initializer because the type has no default value", stmt.Name.Value, typeDisplayName(declaredType))
+			ok = false
+		}
+	}
 
 	defined := false
 	if ok {
@@ -7842,8 +7850,10 @@ func (a *Analyzer) inferStructLiteral(expr *ast.StructLiteral) (Type, expression
 	}
 
 	seen := map[string]lexer.Token{}
+	hasSpread := false
 	for _, field := range expr.Fields {
 		if field.Spread {
+			hasSpread = true
 			spreadType, _ := a.inferExpression(field.Value)
 			if spreadType.Kind == InvalidType {
 				continue
@@ -7876,6 +7886,23 @@ func (a *Analyzer) inferStructLiteral(expr *ast.StructLiteral) (Type, expression
 		}
 		if valueType.Kind != InvalidType {
 			a.checkIntegerExpressionRange(fieldType, field.Value)
+		}
+	}
+	if !hasSpread {
+		for _, field := range typ.Fields {
+			if isEventType(field.Type) {
+				continue
+			}
+			if _, supplied := seen[field.Name]; supplied {
+				continue
+			}
+			resolution := DefaultValueOf(field.Type)
+			value := defaultExpression(resolution, field.Type, expr.Token)
+			if value == nil {
+				a.addErrorAtTokenWithMetadata(expr.Token, diagnostics.MissingNonDefaultableField, "initialize the field explicitly", "field %q in struct %s has no default value and must be initialized", field.Name, typ.Name)
+				continue
+			}
+			expr.Fields = append(expr.Fields, &ast.StructLiteralField{Token: expr.Token, Name: &ast.Identifier{Token: field.Token, Value: field.Name}, Value: value})
 		}
 	}
 

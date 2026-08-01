@@ -581,7 +581,7 @@ blocking.md
 cancellation.md
 concurrency.md
 concurrency_runtime_model.md
-concurrency_memory_model.md
+concurrency_memory_model.txt
 mutex.md
 select.md
 thread_local.md

@@ -121,6 +121,8 @@ type TypeDeclStatement struct {
 	UnionVariants     []*UnionVariant
 	Implements        []*TypeReference
 	Contract          Contract
+	DefaultToken      lexer.Token
+	Default           Expression
 }
 
 func (tds *TypeDeclStatement) statementNode() {}

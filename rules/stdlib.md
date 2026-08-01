@@ -1206,7 +1206,7 @@ errorhandling.txt
 allocation.txt
 ownership.md
 borrowing.txt
-copy_move.txt
+copy_move.md
 destruction.txt
 collections-shaped-types.md
 units.txt
@@ -1231,7 +1231,7 @@ mlir.txt
 mlir-optimize.txt
 compiler_pipeline.txt
 diagnostics.txt
-formatter.txt
+formatter.md
 compiler_testing.md
 sec/core
 sec/stdlib

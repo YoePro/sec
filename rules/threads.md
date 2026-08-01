@@ -1016,7 +1016,7 @@ tasks.txt
 await.md
 processes.txt
 concurrency.md
-concurrency_memory_model.md
+concurrency_memory_model.txt
 scheduling.md
 blocking.md
 transferability.md
@@ -1030,7 +1030,7 @@ static.md
 mutex.md
 channels.md
 select.md
-copy_move.txt
+copy_move.md
 ownership.md
 borrowing.txt
 lifetime_analysis.txt

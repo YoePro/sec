@@ -1171,7 +1171,7 @@ lexical_structure.md
 grammar.md
 operators.md
 types.txt
-variables_contracts.txt
+contracts.md
 functions.txt
 functions_lambda.txt
 generics.txt
@@ -1190,7 +1190,7 @@ projects.txt
 modules.md
 linking.md
 diagnostics.txt
-formatter.txt
+formatter.md
 semantic_ir.txt
 core-library.md
 stdlib.md

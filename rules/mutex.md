@@ -647,7 +647,8 @@ A richer form may use:
 Implemented:
 
 - `Mutex[T]` and `MutexGuard[T]` are compiler-known generic types.
-- `Mutex[T]` is non-copyable in copy classification.
+- Mutex is non-copyable and supports explicit ownership transfer under the
+  currently implemented move rules.
 - `MutexGuard[T]` is move-only.
 - `Mutex(value)` constructs `Mutex[T]` from one initializer value.
 - `mutex.lock()` returns `MutexGuard[T]`.
@@ -826,6 +827,10 @@ backend profile.
 ## Mutex movement
 
 Before a mutex is published or locked, moving its owner may be permitted.
+
+This source-level ownership transfer does not prove that every initialized
+mutex can be physically relocated. The compiler or runtime may preserve its
+address while transferring ownership.
 
 After concurrent access becomes possible, the physical mutex identity must remain
 stable unless the backend provides a safe movable representation.

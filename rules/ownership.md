@@ -11,6 +11,9 @@ Detailed copy classification, borrowing, lifetimes, destruction, discard,
 transferability, and lowering remain synchronized with their specialized
 rulebooks.
 
+`copy_move.md` is the canonical rulebook for copy classification, derived
+copyability, named duplication, and explicit move syntax.
+
 Default initialization establishes an available owned value when the type is
 owning. Defaultability is independent of copyability and move-only status.
 Default construction creates the type's ordinary destruction responsibility,
@@ -66,6 +69,8 @@ these areas:
 - current move tracking is primarily identifier-based rather than place-based;
 - field-sensitive partial move is not implemented;
 - copy classification is incomplete for several core and collection types;
+- compiler-known explicitly non-copyable types are classified and enforced,
+  but no general user declaration syntax has been selected;
 - `string` is not yet fully enforced as the source-level copyable value defined
   by this rulebook;
 - branch merging records moved values but does not yet expose the complete
@@ -90,7 +95,8 @@ The following are not yet implemented:
 - dynamic-list indexed consuming extraction;
 - full collection-specific consuming extraction;
 - complete type-level copy classification;
-- general user syntax for explicitly non-copyable nominal types;
+- general user syntax for explicitly non-copyable nominal types; the spelling
+  remains delegated to the planned `attributes.md` rulebook and `types.txt`;
 - user-defined must-use and ownership attributes;
 - complete FFI ownership contracts;
 - explicit Semantic IR operations for construction, copy, move, replacement,
@@ -655,6 +661,28 @@ types.txt
 
 Until general syntax exists, compiler-known core types may carry this
 classification directly.
+
+Explicit non-copyability is a nominal policy. It forbids implicit copy but does
+not by itself forbid source-level ownership transfer.
+
+---
+
+## Separate ownership and storage properties
+
+Copyability, movability, relocatability, address stability, and pinning are
+separate compiler properties.
+
+- non-copyable does not imply non-movable;
+- movable does not imply freely relocatable;
+- source-level move does not require physical relocation;
+- explicitly non-copyable may arise from nominal policy;
+- move-only may instead be derived from resource ownership or lifecycle;
+- pinning and address stability constrain storage even when ownership can be
+  transferred.
+
+A valid explicit move may reuse storage, transfer ownership metadata, be
+elided, or construct directly in destination storage. It does not establish a
+general permission to relocate bytes.
 
 ---
 

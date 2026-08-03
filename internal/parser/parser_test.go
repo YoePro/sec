@@ -659,6 +659,19 @@ func TestParseLetInitializer(t *testing.T) {
 	}
 }
 
+func TestMalformedScientificExponentHasFocusedDiagnostic(t *testing.T) {
+	p := New(lexer.New(`let value := 1e+`))
+	p.ParseProgram()
+
+	expected := `malformed scientific exponent "1e+": expected at least one decimal digit at 1:14`
+	if len(p.Errors()) != 1 {
+		t.Fatalf("wrong parser error count. got=%d want=1 errors=%v", len(p.Errors()), p.Errors())
+	}
+	if p.Errors()[0] != expected {
+		t.Fatalf("wrong parser error. got=%q want=%q", p.Errors()[0], expected)
+	}
+}
+
 func TestParseExplicitMoveOwnership(t *testing.T) {
 	input := `let inferred :<- source
 let typed: int <- other
@@ -694,6 +707,38 @@ target <- replacement`
 	}
 	if assignment.Ownership != ast.OwnershipMove || assignment.Operator != "<-" || assignment.Value.String() != "replacement" {
 		t.Fatalf("wrong move assignment: ownership=%q operator=%q value=%v", assignment.Ownership, assignment.Operator, assignment.Value)
+	}
+}
+
+func TestMoveDeclarationsRequireCanonicalOperator(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "inferred declaration",
+			input:    `let inferred <- source`,
+			expected: "inferred move initializer must use ':<-'",
+		},
+		{
+			name:     "typed declaration",
+			input:    `let typed: int :<- source`,
+			expected: "typed move initializer must use '<-'",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := New(lexer.New(tt.input))
+			p.ParseProgram()
+			if len(p.Errors()) != 1 {
+				t.Fatalf("wrong parser error count. got=%d want=1 errors=%v", len(p.Errors()), p.Errors())
+			}
+			if !strings.Contains(p.Errors()[0], tt.expected) {
+				t.Fatalf("wrong parser error. got=%q want substring=%q", p.Errors()[0], tt.expected)
+			}
+		})
 	}
 }
 
@@ -2987,6 +3032,25 @@ fn Use(ref mut value: int) void {
 	useFn := program.Statements[1].(*ast.FunctionDeclaration)
 	if !useFn.Parameters[0].Ref || !useFn.Parameters[0].MutableRef {
 		t.Fatalf("expected ref mut parameter: %+v", useFn.Parameters[0])
+	}
+}
+
+func TestParseExternLinkName(t *testing.T) {
+	input := `
+@link_name("c-write")
+extern "C" fn write(fd: int32) int32
+`
+
+	p := New(lexer.New(input))
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Statements) != 1 {
+		t.Fatalf("wrong statement count. got=%d want=1", len(program.Statements))
+	}
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	if !fn.Extern || fn.ABI != "C" || fn.LinkName != "c-write" {
+		t.Fatalf("wrong linked extern metadata: %+v", fn)
 	}
 }
 

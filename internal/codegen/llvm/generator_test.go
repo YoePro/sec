@@ -49,6 +49,35 @@ if.end.1:
 	}
 }
 
+func TestGenerateLinkedExternDeclarationAndCall(t *testing.T) {
+	input := `
+module main
+
+@link_name("c-add")
+extern "C" fn add(left: int32, right: int32) int
+
+fn main() int {
+	unsafe {
+		return add(1, 2)
+	}
+}
+`
+
+	program := parseAndAnalyze(t, input)
+	got, err := Generate(program)
+	if err != nil {
+		t.Fatalf("Generate returned error: %v", err)
+	}
+	for _, want := range []string{
+		`declare i32 @"c-add"(i32, i32)`,
+		`call i32 @"c-add"(i32 1, i32 2)`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("generated LLVM IR missing %q:\n%s", want, got)
+		}
+	}
+}
+
 func TestGenerateIntegerLiteralBasesAndSuffixes(t *testing.T) {
 	input := `
 module main

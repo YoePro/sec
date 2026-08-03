@@ -175,20 +175,38 @@ func decimalLiteralValue(expr ast.Expression) (DecimalValue, bool) {
 		lexeme = strings.TrimPrefix(lexeme, "-")
 	}
 
+	exponent := int64(0)
+	if exponentIndex := strings.IndexAny(lexeme, "eE"); exponentIndex >= 0 {
+		parsedExponent, err := strconv.ParseInt(lexeme[exponentIndex+1:], 10, 32)
+		if err != nil {
+			return DecimalValue{}, false
+		}
+		exponent = parsedExponent
+		lexeme = lexeme[:exponentIndex]
+	}
+
 	parts := strings.Split(lexeme, ".")
 	if len(parts) > 2 {
 		return DecimalValue{}, false
 	}
 
 	digits := parts[0]
-	scale := 0
+	scale := int64(0)
 	if len(parts) == 2 {
 		digits += parts[1]
-		scale = len(parts[1])
+		scale = int64(len(parts[1]))
 	}
+	scale -= exponent
 
 	if scale > 255 {
 		return DecimalValue{}, false
+	}
+	if scale < 0 {
+		if -scale > 255 {
+			return DecimalValue{}, false
+		}
+		digits += strings.Repeat("0", int(-scale))
+		scale = 0
 	}
 
 	if digits == "" {

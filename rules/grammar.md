@@ -744,6 +744,9 @@ The parser accepts:
 
 ```sec
 extern "C" fn name(...) ReturnType
+
+@link_name("foreign_symbol")
+extern "C" fn local_name(...) ReturnType
 ```
 
 It also accepts an optional body after an extern signature.
@@ -924,6 +927,7 @@ The parser has special cases for:
 
 ```sec
 @address(...)
+@link_name(...)
 @runtime.call(...)
 ```
 
@@ -2257,7 +2261,10 @@ Use a named type when several related fields must be returned.
 
 ```text
 ExternFunctionDeclaration
-    ::= "extern" StringLiteral FunctionSignature [ FunctionBody ]
+    ::= [ LinkNameAnnotation ] "extern" StringLiteral FunctionSignature [ FunctionBody ]
+
+LinkNameAnnotation
+    ::= "@" "link_name" "(" StringLiteral ")"
 ```
 
 Example:
@@ -4406,7 +4413,7 @@ The formatter must not infer language semantics.
 | contextual `x` | Identifier | Implemented as contextual infix | Fixed matrix/matrix and matrix/vector validation | Partly implemented; lowering and tooling pending |
 | unary `+` | Implemented | Implemented | Implemented for numeric operands and constants | Implemented; backend paths covered |
 | `++`/`--` | Not implemented | Not implemented | Not implemented | Not implemented |
-| general attributes | `@` available | Special cases only | Special cases only | Not implemented |
+| general attributes | `@` available | `@address` and `@link_name` special cases | Special cases only | General system not implemented |
 | `?` | Reserved | No canonical form | None | Reserved |
 | `free` | Reserved | Explicit invalid node | Explicit error | Not implemented |
 | panic/assert/require | Reserved | No complete forms | No complete forms | Not implemented |

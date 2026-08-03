@@ -1804,6 +1804,10 @@ The current lexer already provides substantial support for:
 - dedicated bare `_` tokens while `_name` and `__name` remain identifiers;
 - decimal integer literals;
 - fractional literals including leading-period forms such as `.5`;
+- scientific exponent literals, including signed exponents and leading-period
+  mantissas;
+- focused parser diagnostics when an exponent marker or sign lacks decimal
+  digits;
 - binary, octal, and hexadecimal integer prefixes;
 - numeric family suffixes `i`, `u`, `f`, `d`, `c`, and `r`;
 - ordinary strings;
@@ -1879,7 +1883,6 @@ The following rules are not yet fully implemented:
 - NFC validation of identifiers;
 - diagnostics for unsupported Unicode whitespace;
 - confusable-identifier warnings;
-- scientific exponent literals;
 - numeric digit separators;
 - maximal malformed numeric-token recovery;
 - strict suffix validation by base and literal family;

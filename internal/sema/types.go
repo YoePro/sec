@@ -42,6 +42,7 @@ type Type struct {
 	Named                     bool
 	Declared                  bool
 	Intrinsic                 bool
+	ExplicitlyNonCopyable     bool
 	Underlying                string
 	Unit                      string
 	Dimension                 Dimension
@@ -228,6 +229,7 @@ type Function struct {
 	Token             lexer.Token
 	Extern            bool
 	ABI               string
+	LinkName          string
 	AllocationEffect  AllocationEffect
 	ImplTarget        string
 	ReceiverMutable   bool
@@ -708,7 +710,19 @@ func MoveOnly(typ Type) bool {
 	return CopyClassificationOf(typ) == CopyMoveOnly
 }
 
+func requiresOwnershipTransfer(typ Type) bool {
+	switch CopyClassificationOf(typ) {
+	case CopyMoveOnly, CopyNonCopyable, CopyConditional:
+		return true
+	default:
+		return false
+	}
+}
+
 func copyClassificationOf(typ Type, visiting map[string]bool) CopyClassification {
+	if typ.ExplicitlyNonCopyable {
+		return CopyNonCopyable
+	}
 	switch typ.Kind {
 	case InvalidType, VoidType, NeverType:
 		return CopyNonCopyable

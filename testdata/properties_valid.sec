@@ -124,7 +124,7 @@ impl Box[T] {
         }
 
         set value {
-            _value = value
+            _value <- value
         }
     }
 

@@ -1,0 +1,10 @@
+module main
+
+@link_name("c-add")
+extern "C" fn add(left: int32, right: int32) int
+
+fn main() int {
+    unsafe {
+        return add(1, 2)
+    }
+}

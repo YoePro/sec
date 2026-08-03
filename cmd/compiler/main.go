@@ -2617,6 +2617,7 @@ func printASTFunction(stmt *ast.FunctionDeclaration, prefix string, last bool) {
 	printASTLeaf(childrenPrefix, false, fmt.Sprintf("Extern: %t", stmt.Extern))
 	if stmt.Extern {
 		printASTLeaf(childrenPrefix, false, "ABI: "+stmt.ABI)
+		printASTLeaf(childrenPrefix, false, "LinkName: "+stmt.LinkName)
 	}
 	printASTLeaf(childrenPrefix, false, "Name: "+stmt.Name.Value)
 	printASTLeaf(childrenPrefix, false, "GenericParameters: "+formatGenericParameters(stmt.GenericParameters))
@@ -3062,6 +3063,9 @@ func printFunction(stmt *ast.FunctionDeclaration) {
 	}
 	if stmt.Unsafe {
 		prefix = "Unsafe Function"
+	}
+	if stmt.LinkName != "" {
+		fmt.Printf("@link_name(%q)\n", stmt.LinkName)
 	}
 	fmt.Printf("%s %s%s(%s) %s\n", prefix, stmt.Name.Value, formatGenericParameters(stmt.GenericParameters), formatParameters(stmt.Parameters), formatTypeRef(stmt.ReturnType))
 	if stmt.Body == nil {

@@ -1242,7 +1242,8 @@ Input:
 let destination := source
 ```
 
-when `source` is move-only and cannot be copied.
+when the resolved copy classification does not permit copying `source` and an
+explicit ownership transfer is legal.
 
 Quick fix:
 
@@ -3147,9 +3148,11 @@ move primary type to file
 Classify every action by safety class.
 
 Current implementation includes the user-invoked `S1007` quick fix for a
-proven invalid copy of a move-only named value. It replaces only the diagnosed
-source statement's `:=` or `=` operator with `:<-` or `<-`, respectively, and
-states that the source becomes unavailable. It is not applied automatically.
+proven invalid copy of a named value, including move-only, compiler-known
+non-copyable, and generic values without proven copyability. It replaces only
+the diagnosed source statement's `:=` or `=` operator with `:<-` or `<-`,
+respectively, and states that the source becomes unavailable. It is not applied
+automatically.
 
 ---
 

@@ -954,7 +954,8 @@ Input:
 let destination := source
 ```
 
-where copying `source` is illegal because the type is move-only.
+where the resolved copy classification does not permit copying `source` and an
+explicit ownership transfer is legal.
 
 Safe fix:
 

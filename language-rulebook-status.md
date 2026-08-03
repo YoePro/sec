@@ -78,7 +78,7 @@ These were written after the older temporary checklist was last synchronized.
 | `grammar.md` | **Written** | Canonical consolidated grammar for Sec 0.1; implementation differences are tracked in the document. |
 | `operators.md` | **Written** | Canonical operator inventory, precedence, associativity, contextual `x`, indexing, conversion syntax and constant defaults. |
 | `names_scopes_visibility.md` | **Written — sync required** | Top-level module declaration namespace conflicts are partially implemented; remaining scope, visibility, reserved-name and naming-rule audit still needed. |
-| `attributes.md` | **Planned** | Language attributes, target metadata, compiler-verified guarantees, and unsafe promises. |
+| `attributes.md` | **Planned** | Owns future syntax and placement for explicitly forbidding derived copy, requiring compiler-derived copyability, target validation and conflicting-policy diagnostics; no spelling is decided. |
 | `unsafe.md` | **Planned** | Canonical unsafe boundaries and operations. |
 
 ## Contextual words and operators
@@ -265,7 +265,7 @@ The remaining details to close are:
 | `borrowing.txt` | **Written — sync required** | Must include views, thread-local references, and discard interactions. |
 | `references.txt` | **Written — sync required** | Must include shaped views and thread-bound references. |
 | `raw_pointers.txt` | **Written — sync required** | Must be synchronized with memory spaces, ABI, and unsafe rules. |
-| `copy_move.md` | **Written** | Explicit move syntax; defaultability is independent of copyability. |
+| `copy_move.md` | **Living** | Explicit move frontend is implemented; place-sensitive analysis and ownership IR remain incomplete. |
 | `lifetime_analysis.txt` | **Written — sync required** | Must include detached work, thread-local values, views, and explicit storage. |
 | `destruction.txt` | **Written — sync required** | Must include discard, panic, cancellation, collection elements, and TLS destruction. |
 | `memory_model.md` | **Written — sync required** | Default lifetime/origin rules are synchronized; concurrency and volatile integration remain. |

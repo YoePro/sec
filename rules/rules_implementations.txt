@@ -43,6 +43,47 @@ Partial or pending:
 - LSP code actions for expanding or declaring defaults
 - full fixture matrix listed by `default_values.md`
 
+Defer lifetime implementation status
+------------------------------------
+
+Implemented:
+
+- Sema records outer root bindings read or written by defer blocks as delayed
+  uses until function exit
+- later move and discard operations are rejected while a delayed use remains
+- diagnostics identify both the conflicting move and the use inside defer
+- delayed uses participate in the existing conservative branch-state merge
+- ordinary mutation remains legal and defer observes the value at execution
+- defer-local bindings are not retained as outer captures
+- the analysis is entirely compile-time and adds no runtime mechanism
+
+Partial or pending:
+
+- place-sensitive field, index and slice captures
+- explicit owned-copy and move capture modes in Semantic IR
+- complete cleanup-stack ordering validation and lowering
+
+FFI link-name implementation status
+-----------------------------------
+
+Implemented:
+
+- `@link_name("symbol")` parsing for extern declarations
+- AST and Sema propagation of the foreign symbol name
+- duplicate explicit foreign-symbol rejection
+- LLVM and MLIR external declarations for bodyless extern functions
+- linked-symbol use at direct calls and LLVM function references
+- quoted LLVM and MLIR names for non-bare foreign symbols
+- fixed-width integer and floating-point LLVM ABI type mapping
+- no runtime wrapper or lookup mechanism
+
+Partial or pending:
+
+- target-specific calling-convention attributes
+- library and object dependency metadata
+- explicit foreign struct layouts and target-width checks
+- null handling, ownership contracts and callback trampolines
+
 Grammar synchronization status
 ------------------------------
 
@@ -68,6 +109,25 @@ Canonical documentation synchronization:
   `collections-shaped-types.md`, `memory_model.md`, `ownership.md`,
   `copy_move.md`, `formatter.md`, `operators.md` and `lexical_structure.md`
   cross-reference the canonical default model
+- explicit move syntax is implemented in the lexer, parser, AST and Sema for
+  direct named sources; formatter preservation, semantic-token classification
+  and initial LSP operator quick fixes are also present
+- place-sensitive partial moves, complete safe-fix proof, explicit ownership
+  Semantic IR and backend ownership verification remain incomplete
+- compiler-known `CopyNonCopyable` types are enforced in ordinary named copies
+  and consuming contexts; generic values without proven copyability are
+  conservatively rejected by ordinary named-source copy, while explicit moves
+  use the current ownership rules
+- the internal type model can represent explicit nominal non-copyability, and
+  copy diagnostics distinguish nominal policy, compiler-known type, aggregate
+  field, and unproven generic causes where that information is available
+- source syntax requiring compiler-derived copyability, source syntax
+  explicitly forbidding derived copy, generic copyability constraints, Sema
+  proof from those constraints, and attribute conflict diagnostics remain
+  unimplemented
+- arbitrary user-defined hidden implicit-copy bodies, method-name recognition
+  of `Copy`, `Clone`, `Duplicate`, `Snapshot`, or `ToOwned`, and implicit use of
+  fallible duplication are intentionally unsupported in Sec 0.1
 
 Purpose
 -------

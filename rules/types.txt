@@ -58,6 +58,10 @@ Implemented:
   lowered as exact `iN` values in MLIR and LLVM
 - bare `T[]` is accepted by semantic analysis as an owning dynamic
   array/sequence type; `ref T[]` and `ref mut T[]` remain slice references
+- compiler-known types may carry non-copyable classification, which Sema
+  enforces for ordinary named copies and consuming transfer contexts
+- internal semantic types can represent explicit nominal non-copyability and
+  preserve that reason for diagnostics; no source spelling is assigned
 
 Partially implemented:
 
@@ -76,6 +80,9 @@ Not implemented yet:
 - runtime contract failure path for decimal overflow, division by zero or
   precision exhaustion.
 - full formatter support for all declaration forms.
+- source syntax requiring that a nominal type remain compiler-derivably
+  copyable, and source syntax explicitly forbidding derived implicit copy; this
+  awaits the planned `attributes.md` rulebook.
 
 
 1. Variable declarations
@@ -234,6 +241,41 @@ type Age int range 0..130
 ```
 
 `Percent`, `Age` and `int` are different types.
+
+
+4.1 User-declared copy policy
+-----------------------------
+
+The compiler distinguishes trivial, semantic, conditional, move-only and
+explicitly non-copyable classifications as defined by `copy_move.md` and
+`ownership.md`.
+
+A user-defined method named `Copy`, `Clone`, `Duplicate`, `Snapshot` or
+`ToOwned` is an ordinary named operation. It does not implicitly opt the type
+into assignment copy semantics.
+
+The canonical declaration syntax for either of these policies is not yet
+defined:
+
+- a verified requirement that a nominal type remain compiler-derivably
+  copyable;
+- explicitly non-copyable nominal type despite otherwise copyable
+  representation.
+
+That syntax belongs to the planned `attributes.md` rulebook. Until it is
+written, the parser must not invent or reserve an annotation spelling for these
+policies. Compiler-known core and standard-library types may carry the internal
+classification directly.
+
+An aggregate's representation only permits copy derivation; it does not decide
+the result by itself. All stored fields must permit copy, and ownership,
+destruction, mutable-alias, resource, compiler-known, and nominal restrictions
+may still forbid it. Wrapping a non-copyable field in another named aggregate
+does not bypass the field restriction.
+
+Sec 0.1 does not permit a user-defined hidden copy body. A positive future
+declaration is a compiler-verified requirement on derived copyability, not an
+implementation hook.
 
 
 5. Type defaults and defaultability

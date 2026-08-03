@@ -215,6 +215,9 @@ func (p *Parser) parseStatement() ast.Statement {
 		if p.peekToken.Type == lexer.IDENT && p.peekToken.Lexeme == "address" {
 			return p.parseAddressedLetStatement()
 		}
+		if p.peekToken.Type == lexer.IDENT && p.peekToken.Lexeme == "link_name" {
+			return p.parseLinkNameExternDeclaration()
+		}
 		return p.parseExpressionOrAssignmentStatement()
 
 	case lexer.IDENT:
@@ -4123,6 +4126,40 @@ func (p *Parser) parseAddressedLetStatement() ast.Statement {
 	return letStmt
 }
 
+func (p *Parser) parseLinkNameExternDeclaration() ast.Statement {
+	annotationToken := p.curToken
+	p.nextToken()
+	if !p.expectPeek(lexer.LPAREN) {
+		return nil
+	}
+	if p.peekToken.Type != lexer.STRING {
+		p.addError("@link_name requires a string literal at %d:%d", p.peekToken.Line, p.peekToken.Column)
+		return nil
+	}
+	p.nextToken()
+	linkName := trimStringQuotes(p.curToken.Lexeme)
+	if linkName == "" {
+		p.addError("@link_name requires a non-empty symbol name at %d:%d", p.curToken.Line, p.curToken.Column)
+		return nil
+	}
+	if !p.expectPeek(lexer.RPAREN) {
+		return nil
+	}
+	if p.peekToken.Type != lexer.EXTERN {
+		p.addError("@link_name must annotate an extern declaration at %d:%d", p.peekToken.Line, p.peekToken.Column)
+		return nil
+	}
+	p.nextToken()
+
+	fn := p.parseExternFunctionDeclaration()
+	if fn == nil {
+		return nil
+	}
+	fn.LinkName = linkName
+	fn.Token = annotationToken
+	return fn
+}
+
 func (p *Parser) letDeclaratorMayOmitInitializer(stmt *ast.LetStatement) bool {
 	if stmt.Value != nil {
 		return true
@@ -4341,6 +4378,7 @@ func (p *Parser) parseLetDeclarator(token lexer.Token, mutable bool, inheritedTy
 		}
 	}
 
+	initializerErrorCount := len(p.errors)
 	switch p.peekToken.Type {
 	case lexer.DECLARE:
 		p.nextToken()
@@ -4364,6 +4402,9 @@ func (p *Parser) parseLetDeclarator(token lexer.Token, mutable bool, inheritedTy
 		p.nextToken()
 		p.nextToken()
 		stmt.Value = p.parseExpression(LOWEST)
+	}
+	if stmt.Value == nil && len(p.errors) > initializerErrorCount {
+		return nil
 	}
 	if stmt.Value == nil && (p.curToken.Type == lexer.DECLARE || p.curToken.Type == lexer.MOVE_DECLARE || p.curToken.Type == lexer.MOVE_ASSIGN) {
 		return nil

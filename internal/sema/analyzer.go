@@ -19,6 +19,7 @@ type Analyzer struct {
 	types                 map[string]Type
 	units                 map[string]UnitDefinition
 	functions             map[string][]Function
+	externSymbols         map[string]Function
 	implBlocks            map[string]lexer.Token
 	validImplStatements   map[*ast.ImplStatement]bool
 	currentImplTarget     string
@@ -45,6 +46,8 @@ type Analyzer struct {
 	inUnsafe              bool
 	inSwitchCaseBody      bool
 	inDeferBlock          bool
+	deferOuterSymbols     map[string]Symbol
+	deferCaptures         map[string]lexer.Token
 	cancellableDepth      int
 	loopDepth             int
 	loopBreakFrames       []loopBreakFrame
@@ -60,6 +63,7 @@ type borrowKind string
 const (
 	sharedBorrow  borrowKind = "shared"
 	mutableBorrow borrowKind = "mutable"
+	deferredUse   borrowKind = "deferred-use"
 )
 
 const dynamicArrayLength int64 = -1
@@ -110,6 +114,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.localRefContainers = map[string]localReferenceOrigin{}
 	a.arenaGenerations = map[string]int{}
 	a.functions = map[string][]Function{}
+	a.externSymbols = map[string]Function{}
 	a.registerCompilerKnownFunctions()
 	a.implBlocks = map[string]lexer.Token{}
 	a.validImplStatements = map[*ast.ImplStatement]bool{}
@@ -1547,7 +1552,7 @@ func (a *Analyzer) analyzeDiscardStatement(stmt *ast.DiscardStatement) {
 	if !exists {
 		return
 	}
-	if a.checkBorrowedMove(ident.Value, ident.Token) {
+	if a.checkDeferredUse(ident.Value, ident.Token, "discard") || a.checkBorrowedMove(ident.Value, ident.Token) {
 		return
 	}
 	a.moved[ident.Value] = ident.Token
@@ -1665,6 +1670,8 @@ func (a *Analyzer) analyzeDeferStatement(stmt *ast.DeferStatement) {
 	previousBorrows := a.borrows
 	previousLocalRefContainers := a.localRefContainers
 	previousInDeferBlock := a.inDeferBlock
+	previousDeferOuterSymbols := a.deferOuterSymbols
+	previousDeferCaptures := a.deferCaptures
 	a.symbols = copySymbols(previousSymbols)
 	a.constInts = copyConstInts(previousConstInts)
 	a.assigned = copyAssigned(previousAssigned)
@@ -1672,7 +1679,17 @@ func (a *Analyzer) analyzeDeferStatement(stmt *ast.DeferStatement) {
 	a.borrows = copyBorrows(previousBorrows)
 	a.localRefContainers = copyLocalRefContainers(previousLocalRefContainers)
 	a.inDeferBlock = true
+	a.deferOuterSymbols = previousSymbols
+	a.deferCaptures = map[string]lexer.Token{}
 	defer func() {
+		for name, token := range a.deferCaptures {
+			previousBorrows[name] = append(previousBorrows[name], borrowRecord{
+				Root:   name,
+				Holder: "$defer",
+				Kind:   deferredUse,
+				Token:  token,
+			})
+		}
 		a.symbols = previousSymbols
 		a.constInts = previousConstInts
 		a.assigned = previousAssigned
@@ -1680,6 +1697,8 @@ func (a *Analyzer) analyzeDeferStatement(stmt *ast.DeferStatement) {
 		a.borrows = previousBorrows
 		a.localRefContainers = previousLocalRefContainers
 		a.inDeferBlock = previousInDeferBlock
+		a.deferOuterSymbols = previousDeferOuterSymbols
+		a.deferCaptures = previousDeferCaptures
 	}()
 
 	a.analyzeBlockStatements(stmt.Body)
@@ -2353,7 +2372,7 @@ func (a *Analyzer) selectMovedMessageResource(branch *ast.SelectBranch) (selectR
 		return selectResource{}, false
 	}
 	symbol, ok := a.symbols[root]
-	if !ok || !MoveOnly(symbol.Type) {
+	if !ok || !requiresOwnershipTransfer(symbol.Type) {
 		return selectResource{}, false
 	}
 	return selectResource{Root: root, Kind: "message", Token: branch.Token}, true
@@ -2915,6 +2934,7 @@ func (a *Analyzer) registerFunctionDeclarationBody(fn *ast.FunctionDeclaration, 
 		Token:             fn.Name.Token,
 		Extern:            fn.Extern,
 		ABI:               fn.ABI,
+		LinkName:          fn.LinkName,
 		AllocationEffect:  AllocationEffectNone,
 	}
 	if a.currentImplTarget != "" {
@@ -2973,6 +2993,14 @@ func (a *Analyzer) registerFunctionDeclarationBody(fn *ast.FunctionDeclaration, 
 			a.addErrorAtTokenWithPrevious(fn.Name.Token, existing.Token, "duplicate function %q with same signature", name)
 			return
 		}
+	}
+	if function.Extern && function.LinkName != "" {
+		foreignName := function.LinkName
+		if previous, exists := a.externSymbols[foreignName]; exists {
+			a.addErrorAtTokenWithPrevious(fn.Name.Token, previous.Token, "duplicate extern symbol %q", foreignName)
+			return
+		}
+		a.externSymbols[foreignName] = function
 	}
 
 	a.functions[name] = append(a.functions[name], function)
@@ -6383,6 +6411,7 @@ func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement, all
 		a.addErrorAtToken(target.Token, "undefined variable %s", target.Value)
 		return
 	}
+	a.recordDeferCapture(target.Value, symbol, target.Token)
 
 	if !symbol.Mutable {
 		a.addErrorAtToken(target.Token, "cannot assign to immutable variable %s", target.Value)
@@ -6532,7 +6561,8 @@ func (a *Analyzer) validateNamedOwnershipSource(mode ast.OwnershipMode, value as
 	if mode == ast.OwnershipMove {
 		return !a.checkBorrowedMove(ident.Value, ident.Token)
 	}
-	if !MoveOnly(symbol.Type) {
+	classification := CopyClassificationOf(symbol.Type)
+	if classification == CopyTrivial || classification == CopySemantic {
 		return true
 	}
 	moveSyntax := "<-"
@@ -6543,6 +6573,30 @@ func (a *Analyzer) validateNamedOwnershipSource(mode ast.OwnershipMode, value as
 	if declaration {
 		help = "use `let destination :<- source` to transfer ownership"
 	}
+	switch classification {
+	case CopyNonCopyable:
+		a.addErrorAtTokenWithMetadata(
+			ident.Token,
+			diagnostics.ImplicitMoveDisallowed,
+			help,
+			"%s value %s cannot be copied because %s; use explicit move syntax %s",
+			typeDisplayName(symbol.Type),
+			ident.Value,
+			nonCopyableCause(symbol.Type),
+			moveSyntax,
+		)
+		return false
+	case CopyConditional:
+		a.addErrorAtTokenWithMetadata(
+			ident.Token,
+			diagnostics.ImplicitMoveDisallowed,
+			help,
+			"cannot copy value %s because generic copyability has not been proven; use explicit move syntax %s",
+			ident.Value,
+			moveSyntax,
+		)
+		return false
+	}
 	a.addErrorAtTokenWithMetadata(
 		ident.Token,
 		diagnostics.ImplicitMoveDisallowed,
@@ -6552,6 +6606,40 @@ func (a *Analyzer) validateNamedOwnershipSource(mode ast.OwnershipMode, value as
 		moveSyntax,
 	)
 	return false
+}
+
+func directNonCopyableField(typ Type) (string, Type, bool) {
+	for _, field := range typ.Fields {
+		if CopyClassificationOf(field.Type) == CopyNonCopyable {
+			return field.Name, field.Type, true
+		}
+	}
+	return "", Type{}, false
+}
+
+func nonCopyableCause(typ Type) string {
+	if typ.ExplicitlyNonCopyable {
+		return fmt.Sprintf("%s explicitly forbids implicit copy", typeDisplayName(typ))
+	}
+	if fieldName, fieldType, ok := directNonCopyableField(typ); ok {
+		return fmt.Sprintf("field %s has non-copyable type %s", fieldName, typeDisplayName(fieldType))
+	}
+	if compilerKnownNonCopyable(typ) {
+		return fmt.Sprintf("%s is compiler-known non-copyable", typeDisplayName(typ))
+	}
+	return "its type is non-copyable"
+}
+
+func compilerKnownNonCopyable(typ Type) bool {
+	if typ.Kind != StructType {
+		return false
+	}
+	switch typ.Name {
+	case "Mutex", "Atomic", "ThreadLocal", "Event", "EventStorage", "ChannelOptions", "SenderID":
+		return true
+	default:
+		return false
+	}
 }
 
 func (a *Analyzer) markExplicitMoveSource(expr ast.Expression) bool {
@@ -6606,7 +6694,7 @@ func (a *Analyzer) markMoveSource(expr ast.Expression) bool {
 	switch expr := expr.(type) {
 	case *ast.Identifier:
 		symbol, ok := a.symbols[expr.Value]
-		if !ok || !MoveOnly(symbol.Type) {
+		if !ok || !requiresOwnershipTransfer(symbol.Type) {
 			return false
 		}
 		if a.checkBorrowedMove(expr.Value, expr.Token) {
@@ -6822,6 +6910,9 @@ func (a *Analyzer) checkBorrowCreation(expr ast.Expression, mutable bool, token 
 		}
 	}
 	for _, record := range a.borrows[root] {
+		if record.Kind == deferredUse {
+			continue
+		}
 		if !mutable && record.Kind == sharedBorrow {
 			continue
 		}
@@ -6847,6 +6938,9 @@ func (a *Analyzer) checkBorrowedRead(name string, token lexer.Token) bool {
 
 func (a *Analyzer) checkBorrowedMutation(name string, token lexer.Token) bool {
 	for _, record := range a.borrows[name] {
+		if record.Kind == deferredUse {
+			continue
+		}
 		if record.Kind == mutableBorrow {
 			a.addErrorAtTokenWithPrevious(token, record.Token, "cannot assign to %s while it is mutably borrowed", name)
 			return true
@@ -6858,11 +6952,41 @@ func (a *Analyzer) checkBorrowedMutation(name string, token lexer.Token) bool {
 }
 
 func (a *Analyzer) checkBorrowedMove(name string, token lexer.Token) bool {
+	if a.checkDeferredUse(name, token, "move") {
+		return true
+	}
 	for _, record := range a.borrows[name] {
+		if record.Kind == deferredUse {
+			continue
+		}
 		a.addErrorAtTokenWithPrevious(token, record.Token, "cannot move %s while it is borrowed", name)
 		return true
 	}
 	return false
+}
+
+func (a *Analyzer) checkDeferredUse(name string, token lexer.Token, action string) bool {
+	for _, record := range a.borrows[name] {
+		if record.Kind != deferredUse {
+			continue
+		}
+		a.addErrorAtTokenWithPrevious(token, record.Token, "cannot %s %s while it is required by defer", action, name)
+		return true
+	}
+	return false
+}
+
+func (a *Analyzer) recordDeferCapture(name string, symbol Symbol, token lexer.Token) {
+	if !a.inDeferBlock || a.deferCaptures == nil {
+		return
+	}
+	outer, ok := a.deferOuterSymbols[name]
+	if !ok || outer.Token != symbol.Token {
+		return
+	}
+	if _, exists := a.deferCaptures[name]; !exists {
+		a.deferCaptures[name] = token
+	}
 }
 
 func borrowRootName(expr ast.Expression) (string, bool) {
@@ -7612,6 +7736,7 @@ func (a *Analyzer) inferExpressionUnrecorded(expr ast.Expression) (Type, express
 		if a.checkBorrowedRead(expr.Value, expr.Token) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
+		a.recordDeferCapture(expr.Value, symbol, expr.Token)
 		return symbol.Type, expressionValue{Display: expr.String()}
 	case *ast.PrefixExpression:
 		return a.inferPrefixExpression(expr)

@@ -52,6 +52,35 @@ fn main() int {
 	}
 }
 
+func TestGenerateLinkedExternDeclarationAndCall(t *testing.T) {
+	input := `
+module main
+
+@link_name("c-add")
+extern "C" fn add(left: int32, right: int32) int
+
+fn main() int {
+	unsafe {
+		return add(1, 2)
+	}
+}
+`
+
+	program := parseTestProgram(t, input)
+	got, err := GenerateWithTriple(program, "x86_64-pc-linux-gnu")
+	if err != nil {
+		t.Fatalf("GenerateWithTriple returned error: %v", err)
+	}
+	for _, want := range []string{
+		`llvm.func @"c-add"(i32, i32) -> i32`,
+		`llvm.call @"c-add"(`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("generated MLIR missing %q:\n%s", want, got)
+		}
+	}
+}
+
 func TestGenerateLetBindings(t *testing.T) {
 	input := `
 module main

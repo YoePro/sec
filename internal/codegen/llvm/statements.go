@@ -1225,7 +1225,7 @@ func (g *Generator) emitFunctionCallExpression(expr *ast.CallExpression) (value,
 	} else {
 		g.write("  ")
 	}
-	g.write("call %s @%s(", returnType, name)
+	g.write("call %s @%s(", returnType, llvmFunctionSymbol(fn))
 	for i, arg := range args {
 		if i > 0 {
 			g.write(", ")

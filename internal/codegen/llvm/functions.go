@@ -2,6 +2,7 @@ package llvm
 
 import (
 	"fmt"
+	"strings"
 
 	"sec/internal/ast"
 )
@@ -21,19 +22,36 @@ func (g *Generator) emitFunction(fn *ast.FunctionDeclaration) error {
 		g.loops = previousLoops
 	}()
 
-	g.write("define %s @%s(", returnType, fn.Name.Value)
+	declaration := fn.Extern && fn.Body == nil
+	if declaration {
+		g.write("declare %s @%s(", returnType, llvmFunctionSymbol(fn))
+	} else {
+		g.write("define %s @%s(", returnType, llvmFunctionSymbol(fn))
+	}
 	for i, param := range fn.Parameters {
 		if i > 0 {
 			g.write(", ")
 		}
 		if param.Type != nil && param.Type.Name == "string" {
+			if declaration {
+				g.write("ptr, i64")
+				continue
+			}
 			g.write("ptr %%%s.ptr, i64 %%%s.len", param.Name.Value, param.Name.Value)
 			g.locals[param.Name.Value] = local{typ: "string", ref: "%" + param.Name.Value + ".ptr", lenRef: "%" + param.Name.Value + ".len", direct: true}
 			continue
 		}
 		paramType := g.llvmParameterType(param)
+		if declaration {
+			g.write("%s", paramType)
+			continue
+		}
 		g.write("%s %%%s", paramType, param.Name.Value)
 		g.locals[param.Name.Value] = local{typ: paramType, ref: "%" + param.Name.Value, direct: true}
+	}
+	if declaration {
+		g.write(")\n\n")
+		return nil
 	}
 	g.write(") {\n")
 	g.write("entry:\n")
@@ -55,6 +73,35 @@ func (g *Generator) emitFunction(fn *ast.FunctionDeclaration) error {
 
 	g.write("}\n\n")
 	return nil
+}
+
+func llvmFunctionSymbol(fn *ast.FunctionDeclaration) string {
+	if fn == nil || fn.Name == nil {
+		return ""
+	}
+	if fn.Extern && fn.LinkName != "" {
+		return llvmIdentifier(fn.LinkName)
+	}
+	return llvmIdentifier(fn.Name.Value)
+}
+
+func llvmIdentifier(name string) string {
+	if name != "" {
+		valid := true
+		for i, r := range name {
+			if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || r == '$' || r == '.' || r == '_' || (i > 0 && r >= '0' && r <= '9') {
+				continue
+			}
+			valid = false
+			break
+		}
+		if valid {
+			return name
+		}
+	}
+	escaped := strings.ReplaceAll(name, `\`, `\5C`)
+	escaped = strings.ReplaceAll(escaped, `"`, `\22`)
+	return `"` + escaped + `"`
 }
 
 func (g *Generator) emitLambdaExpression(expr *ast.LambdaExpression) (value, error) {

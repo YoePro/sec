@@ -52,6 +52,12 @@ Implemented:
   and `match` branches
 * arena generations are merged conservatively across `for` and `while` loops,
   including recorded `break` exits
+* outer bindings read or written by a registered defer block are tracked as
+  delayed uses until function exit
+* moving or discarding a root binding required by defer is rejected with the
+  defer use reported as the related source location
+* delayed defer uses are merged conservatively across continuing control-flow
+  branches
 
 Not implemented yet:
 
@@ -59,7 +65,8 @@ Not implemented yet:
 * complete field-, element- and slice-sensitive origins beyond root-symbol
   tracking
 * complete closure escape validation for all storage and callback forms
-* lifetime effects from defer captures
+* complete defer capture modes, place-sensitive captures and cleanup-order
+  validation beyond root-symbol delayed-use tracking
 
 The initial implementation is intentionally conservative and root-symbol based.
 Loop analysis uses the maximum observed arena generation from the loop body and

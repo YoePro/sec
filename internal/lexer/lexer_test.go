@@ -390,6 +390,40 @@ func TestNumbersAndRanges(t *testing.T) {
 	assertTokens(t, input, tests)
 }
 
+func TestScientificExponentLiterals(t *testing.T) {
+	input := `1e3 1E3 1.5e-2 .5E+4 1e3f 1e3d`
+
+	tests := []struct {
+		typ    TokenType
+		lexeme string
+	}{
+		{FLOAT, "1e3"},
+		{FLOAT, "1E3"},
+		{FLOAT, "1.5e-2"},
+		{FLOAT, ".5E+4"},
+		{FLOAT, "1e3f"},
+		{FLOAT, "1e3d"},
+		{EOF, ""},
+	}
+
+	assertTokens(t, input, tests)
+}
+
+func TestMalformedScientificExponentIsOneIllegalToken(t *testing.T) {
+	for _, input := range []string{"1e", "1e+", "1.5E-", ".5e+"} {
+		t.Run(input, func(t *testing.T) {
+			l := New(input)
+			tok := l.NextToken()
+			if tok.Type != ILLEGAL || tok.Lexeme != input {
+				t.Fatalf("wrong malformed exponent token. got=%q %q want=%q %q", tok.Type, tok.Lexeme, ILLEGAL, input)
+			}
+			if next := l.NextToken(); next.Type != EOF {
+				t.Fatalf("malformed exponent did not recover at EOF: %+v", next)
+			}
+		})
+	}
+}
+
 func TestStrings(t *testing.T) {
 	input := "`json:\"id\"` \"hello\\nworld\" $\"Hello {name}\""
 

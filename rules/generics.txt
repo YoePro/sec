@@ -2100,14 +2100,17 @@ fn Duplicate[T](value: T) Pair[T, T] {
 }
 ```
 
-This is invalid for non-copyable T.
+This is invalid unless the generic constraints or resolved specialization prove
+that `T` is copyable.
 
-Without a Copy-like constraint, the compiler cannot assume that T may be copied.
+Generic code may implicitly copy a value only when the generic constraints or
+resolved specialization prove that the value's type is copyable. Without that
+proof, generic code must borrow, use a reference, consume through explicit
+move, call an explicit named duplication API, or reject the operation.
 
-The initial implementation may report the error during concrete instantiation.
-
-A stronger template analyzer may reject operations not guaranteed by a
-constraint.
+The source syntax for a copyability requirement has not been decided. Examples
+must not invent or canonize such syntax. A future compiler-known requirement
+proves derived copyability; it does not select a user-defined copy body.
 
 Generic code must obey:
 
@@ -2696,6 +2699,11 @@ Current implementation note:
   declarations, concrete constraint satisfaction, callable generic impl
   methods, method-level generic parameters, full backend-facing monomorphized
   symbols and LLVM code generation for monomorphized instances.
+* Conservative treatment of generic values without proven copyability is
+  implemented: ordinary named-source copy is rejected and explicit move is
+  accepted under the current move rules.
+* Source syntax for generic copyability requirements is not implemented.
+* Sema proof of copyability from a generic constraint is not implemented.
 
 The valid test should cover:
 

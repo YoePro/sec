@@ -351,10 +351,21 @@ extern "system"
   `string` and slices in extern signatures.
 * `RawPtr[T]`, integer types, floating-point types and `void` are accepted in
   extern signatures.
+* `@link_name("symbol")` is parsed on extern declarations and retained through
+  AST and semantic function metadata.
+* duplicate explicit foreign link symbols are rejected during semantic
+  analysis.
+* bodyless extern declarations lower as declarations rather than synthesized
+  Sec function definitions in both LLVM IR and MLIR.
+* calls and function references use the foreign link symbol while Sec name
+  resolution continues to use the declared Sec function name.
+* foreign symbol names that are not bare IR identifiers are quoted by the LLVM
+  and MLIR backends.
+* LLVM lowering maps the supported fixed-width integer and floating-point FFI
+  types to their corresponding physical IR types.
 
 Not implemented yet:
 
-* `@link_name`
 * library/object dependency metadata
 * null literal handling
 * extern wrapper annotations
@@ -362,4 +373,5 @@ Not implemented yet:
 * target-specific ABI width validation
 * explicit foreign-compatible struct layout validation
 * callback/trampoline support
-* lowering/linking metadata
+* calling-convention attributes and library/object dependency metadata in
+  lowering

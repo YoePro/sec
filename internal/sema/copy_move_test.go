@@ -51,6 +51,74 @@ func TestCopyClassificationPrimitiveReferenceAndAggregates(t *testing.T) {
 	}
 }
 
+func TestCompilerKnownNonCopyableClassification(t *testing.T) {
+	mutex := Type{Name: "Mutex", Kind: StructType}
+	if got := CopyClassificationOf(mutex); got != CopyNonCopyable {
+		t.Fatalf("Mutex copy classification = %q, want %q", got, CopyNonCopyable)
+	}
+	if !requiresOwnershipTransfer(mutex) {
+		t.Fatal("non-copyable Mutex must transfer ownership in consuming contexts")
+	}
+}
+
+func TestCopyRestrictionCauseDistinguishesNominalPolicyAndCompilerKnownType(t *testing.T) {
+	policyType := Type{
+		Name:                  "SessionID",
+		Kind:                  StructType,
+		ExplicitlyNonCopyable: true,
+		Fields: []StructField{
+			{Name: "value", Type: Type{Name: "uint64", Kind: UintType}},
+		},
+	}
+	if got := CopyClassificationOf(policyType); got != CopyNonCopyable {
+		t.Fatalf("explicit nominal policy classification = %q, want %q", got, CopyNonCopyable)
+	}
+	if got := nonCopyableCause(policyType); got != "SessionID explicitly forbids implicit copy" {
+		t.Fatalf("explicit nominal policy cause = %q", got)
+	}
+
+	mutex := Type{Name: "Mutex", Kind: StructType, TypeArgs: []Type{{Name: "int", Kind: IntType}}}
+	if got := nonCopyableCause(mutex); got != "Mutex[int] is compiler-known non-copyable" {
+		t.Fatalf("compiler-known cause = %q", got)
+	}
+}
+
+func TestCompilerKnownNonCopyableLocalRequiresExplicitMove(t *testing.T) {
+	input := `
+module main
+
+fn Test() void {
+    let first := Mutex(1)
+    let second := first
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"Mutex[int] value first cannot be copied because Mutex[int] is compiler-known non-copyable; use explicit move syntax :<- at 6:19",
+	})
+	if errors[0].ID != diagnostics.ImplicitMoveDisallowed {
+		t.Fatalf("wrong diagnostic ID. got=%q want=%q", errors[0].ID, diagnostics.ImplicitMoveDisallowed)
+	}
+}
+
+func TestExplicitMoveOfCompilerKnownNonCopyableLocalMarksSourceUnavailable(t *testing.T) {
+	input := `
+module main
+
+fn Test() void {
+    let first := Mutex(1)
+    let second :<- first
+    let third := first
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"use of moved value first at 7:18, previous declaration at 6:20",
+	})
+}
+
 func TestMoveOnlyLocalMoveMarksSourceUnavailable(t *testing.T) {
 	input := `
 module main
@@ -125,6 +193,133 @@ fn Test() void {
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
 		"use of moved value first at 7:18, previous declaration at 6:20",
+	})
+}
+
+func TestGenericValueWithoutCopyProofRejectsImplicitCopy(t *testing.T) {
+	input := `
+module main
+
+fn Duplicate[T](value: T) void {
+    let copy := value
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"cannot copy value value because generic copyability has not been proven; use explicit move syntax :<- at 5:17",
+	})
+}
+
+func TestGenericValueWithoutCopyProofAcceptsExplicitMove(t *testing.T) {
+	input := `
+module main
+
+fn Transfer[T](value: T) T {
+    let result :<- value
+    return result
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestDerivedCopyableStructCopiesSuccessfully(t *testing.T) {
+	input := `
+module main
+
+type Point struct {
+    x: int,
+    y: int,
+}
+
+fn Test() void {
+    let first := Point { x: 1, y: 2 }
+    let second := first
+    let third := first
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestStructContainingNonCopyableFieldRejectsCopy(t *testing.T) {
+	input := `
+module main
+
+type Locked struct {
+    lock: Mutex[int],
+}
+
+fn Test() void {
+    let first := Locked { lock: Mutex(1) }
+    let second := first
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"Locked value first cannot be copied because field lock has non-copyable type Mutex[int]; use explicit move syntax :<- at 10:19",
+	})
+}
+
+func TestNamedWrapperDoesNotBypassNonCopyableField(t *testing.T) {
+	input := `
+module main
+
+type Locked struct {
+    lock: Mutex[int],
+}
+
+type Wrapper struct {
+    value: Locked,
+}
+
+fn Test() void {
+    let first := Wrapper { value: Locked { lock: Mutex(1) } }
+    let second := first
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"Wrapper value first cannot be copied because field value has non-copyable type Locked; use explicit move syntax :<- at 14:19",
+	})
+}
+
+func TestNamedDuplicationMethodsDoNotEnableImplicitCopy(t *testing.T) {
+	input := `
+module main
+
+type Resource struct {
+    lock: Mutex[int],
+}
+
+impl Resource {
+    fn Copy() int {
+        return 1
+    }
+
+    fn Clone() Resource {
+        return Resource { lock: Mutex(1) }
+    }
+
+    fn Duplicate() Result[Resource, string] {
+        return Ok(Resource { lock: Mutex(1) })
+    }
+}
+
+fn Test() void {
+    let first := Resource { lock: Mutex(1) }
+    let second := first
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"Resource value first cannot be copied because field lock has non-copyable type Mutex[int]; use explicit move syntax :<- at 24:19",
 	})
 }
 

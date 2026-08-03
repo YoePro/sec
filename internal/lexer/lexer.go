@@ -539,6 +539,12 @@ func (l *Lexer) readNumber() (string, TokenType) {
 			l.advance()
 		}
 	}
+	if l.peek() == 'e' || l.peek() == 'E' {
+		typ = FLOAT
+		if !l.readDecimalExponent() {
+			return string(l.input[start:l.pos]), ILLEGAL
+		}
+	}
 	if isNumericSuffix(l.peek()) {
 		suffix := l.peek()
 		l.advance()
@@ -560,11 +566,31 @@ func (l *Lexer) readLeadingDotNumber() Token {
 	for isDigit(l.peek()) {
 		l.advance()
 	}
+	if l.peek() == 'e' || l.peek() == 'E' {
+		if !l.readDecimalExponent() {
+			return l.token(ILLEGAL, string(l.input[start:l.pos]), line, column)
+		}
+	}
 	if l.peek() == 'f' || l.peek() == 'd' {
 		l.advance()
 	}
 
 	return l.token(FLOAT, string(l.input[start:l.pos]), line, column)
+}
+
+// readDecimalExponent consumes an exponent marker, an optional sign, and its
+// required decimal digits. The caller retains the complete malformed token.
+func (l *Lexer) readDecimalExponent() bool {
+	l.advance()
+	if l.peek() == '+' || l.peek() == '-' {
+		l.advance()
+	}
+
+	digitStart := l.pos
+	for isDigit(l.peek()) {
+		l.advance()
+	}
+	return l.pos > digitStart
 }
 
 // Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.

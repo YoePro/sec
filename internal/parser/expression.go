@@ -139,6 +139,15 @@ func (p *Parser) parseExpression(currentPrecedence precedence) ast.Expression {
 		left = p.parseGroupedExpression()
 
 	default:
+		if p.curToken.Type == lexer.ILLEGAL && isMalformedScientificExponent(p.curToken.Lexeme) {
+			p.addError(
+				"malformed scientific exponent %q: expected at least one decimal digit at %d:%d",
+				p.curToken.Lexeme,
+				p.curToken.Line,
+				p.curToken.Column,
+			)
+			return nil
+		}
 		p.addError(
 			"no prefix parse function for %q at %d:%d",
 			p.curToken.Type,
@@ -214,6 +223,20 @@ func (p *Parser) parseExpression(currentPrecedence precedence) ast.Expression {
 	}
 
 	return left
+}
+
+func isMalformedScientificExponent(lexeme string) bool {
+	if lexeme == "" || !((lexeme[0] >= '0' && lexeme[0] <= '9') || lexeme[0] == '.') {
+		return false
+	}
+	for index := len(lexeme) - 1; index >= 0; index-- {
+		if lexeme[index] != 'e' && lexeme[index] != 'E' {
+			continue
+		}
+		tail := lexeme[index+1:]
+		return tail == "" || tail == "+" || tail == "-"
+	}
+	return false
 }
 
 func (p *Parser) parseCaptureLambdaExpression() ast.Expression {

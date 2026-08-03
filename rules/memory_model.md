@@ -79,6 +79,8 @@ The current compiler implements:
 - non-owning slice semantics in the current type model;
 - initial move-state tracking for local symbols;
 - hard use-after-move and use-after-discard diagnostics;
+- delayed root-symbol uses retained by registered defer blocks, preventing an
+  earlier move or discard without imposing runtime tracking;
 - initial reference-escape analysis;
 - rejection of returned references into local function storage;
 - propagation of reference origins through selected fields, indexes, slices, and

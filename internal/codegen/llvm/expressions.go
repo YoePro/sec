@@ -198,7 +198,7 @@ func (g *Generator) emitIdentifier(expr *ast.Identifier) (value, error) {
 	slot, ok := g.locals[expr.Value]
 	if !ok {
 		if fn, exists := g.functions[expr.Value]; exists {
-			return value{typ: "ptr", ref: "@" + expr.Value, fnType: functionDeclarationType(fn)}, nil
+			return value{typ: "ptr", ref: "@" + llvmFunctionSymbol(fn), fnType: functionDeclarationType(fn)}, nil
 		}
 		return value{}, fmt.Errorf("emit-llvm unknown identifier %s", expr.Value)
 	}

@@ -30,8 +30,9 @@ the explicit move operators.
 The compiler already contains a substantial first implementation of copy
 classification and move tracking.
 
-The current implementation follows several older source-level rules and must be
-migrated carefully.
+The direct named-source frontend path follows the canonical explicit-move
+rules. Place-sensitive state, explicit ownership IR, and backend verification
+remain to be migrated.
 
 ## Implemented
 
@@ -64,6 +65,9 @@ The current compiler implements:
 - hard diagnostics for later use of discarded values;
 - related source locations for previous move or discard;
 - rejection of move while the root value is borrowed;
+- rejection of move or discard while a registered defer block retains a
+  delayed root-symbol use, including conservative branch merging and a related
+  defer source location;
 - move propagation through:
   - struct literals;
   - array literals;
@@ -85,26 +89,39 @@ The current compiler implements:
 - indexed assignment validation;
 - rejection of move-only extraction through ordinary array and slice indexing;
 - explicit AST assignment operator text;
-- tests for several move, borrow, return, resource, branch, and lifecycle cases.
+- dedicated lexer tokens for `:<-` and `<-`, with longest-match handling before
+  `:` and `<`;
+- parser support for inferred move initialization, typed move initialization,
+  and move assignment;
+- parser rejection when inferred declarations use `<-` or typed declarations
+  use `:<-`;
+- explicit AST ownership modes on declarations and assignments;
+- Sema rejection of ordinary copy syntax for named move-only sources through
+  diagnostic `S1007`;
+- explicit move of named copyable and move-only values;
+- enforcement of compiler-known `CopyNonCopyable` types in ordinary named
+  copies and consuming transfer contexts;
+- internal type metadata for explicit nominal non-copyability and distinct
+  nominal-policy, compiler-known, and aggregate-field diagnostic causes;
+- conservative rejection of ordinary named-source copies whose generic
+  copyability has not been proven;
+- self-move rejection for direct and overlapping root destinations;
+- mutable reinitialization after move or explicit discard;
+- formatter preservation and LSP semantic-token classification of both move
+  operators;
+- LSP quick fixes from `:=` to `:<-` and from `=` to `<-` for `S1007`;
+- tests for derived aggregate copy, compiler-known and aggregate non-copyable
+  rejection, generic no-proof copy and explicit move, method-name neutrality,
+  and several move, borrow, return, resource, branch, and lifecycle cases.
 
 ## Partially implemented
 
 The implementation is partial in these areas:
 
-- ordinary `let destination := source` currently moves `source` when its type is
-  move-only;
-- ordinary `destination = source` currently moves `source` when its type is
-  move-only;
-- inferred declarations and typed declarations do not carry an explicit
-  initialization mode;
-- assignment syntax does not yet distinguish ordinary assignment from move
-  assignment;
 - move state is primarily root-identifier based;
 - member and field move state is not tracked independently;
 - branch state merges moved identifiers conservatively but do not yet implement
   the complete ownership-state lattice;
-- mutable bindings can be reinitialized after move, but assignment after
-  explicit discard is currently rejected;
 - type classification exists, but implicit copy implementation is incomplete
   for semantic-copy types;
 - destruction responsibility is inferred indirectly rather than represented as
@@ -115,42 +132,57 @@ The implementation is partial in these areas:
   classification, but does not yet expose structured consumption metadata;
 - current strings are treated as views or static literals at lowering level;
 - loops do not yet implement the complete fixed-point ownership model;
-- current diagnostics are not all registered with stable ownership IDs.
+- current diagnostics are not all registered with stable ownership IDs;
+- LSP move quick fixes are operator-aware, but do not yet prove every borrow,
+  alias, and place-overlap condition required for universally safe automatic
+  application.
 
 ## Not implemented
 
 The following are not yet implemented:
 
-- lexer tokens for:
-  - `:<-`;
-  - `<-`;
-- parser support for move initialization;
-- parser support for move assignment;
-- AST initialization mode;
-- AST move-assignment classification;
-- Sema rejection of ordinary copy syntax for move-only named sources;
-- machine-applicable fixes from:
-  - `:=` to `:<-`;
-  - `=` to `<-`;
-- explicit move of a copyable value;
 - place-based move tracking;
 - field-sensitive partial moves;
 - field reinitialization after partial move;
 - complete aggregate availability masks;
 - fixed-array partial move;
 - dynamic-list consuming extraction;
-- explicit copy declarations for user-defined types;
-- explicit non-copyable type declarations;
 - a general relocation classification;
 - pinned or stable-address values;
 - explicit copy/move operations in Semantic IR;
 - MLIR ownership lowering;
 - backend verification of destruction responsibility;
 - complete ABI ownership verification;
-- LSP ownership hints and move fixes;
-- formatter support for move tokens;
+- LSP ownership hints, move-site navigation, and partial-state display;
 - complete copy/move diagnostic registry;
 - complete copy/move test files.
+
+## Awaiting canonical declaration syntax
+
+Three source declaration mechanisms cannot be implemented without language
+decisions that do not yet exist:
+
+- source syntax requiring that a nominal type remain compiler-derivably
+  copyable;
+- source syntax explicitly forbidding derived implicit copy on a nominal type;
+- generic constraints requiring proven copyability.
+
+Named duplication methods such as `Copy`, `Clone`, or fallible `Duplicate` are
+already ordinary methods. They do not change the type's implicit-copy
+classification.
+
+Compiler-known types may already carry `CopyNonCopyable`, and Sema enforces that
+classification. General source syntax remains delegated to the planned
+`attributes.md` rulebook and to `types.txt`. No annotation spelling is
+canonical yet.
+
+## Intentionally unsupported in Sec 0.1
+
+Sec 0.1 does not support arbitrary user-defined function bodies as hidden
+implementations of implicit copy. Method-name-based recognition of `Copy`,
+`Clone`, `Duplicate`, `Snapshot`, or `ToOwned` is likewise unsupported, as is
+implicit duplication through a fallible method. These are language guarantees,
+not pending implementation work.
 
 ---
 
@@ -601,13 +633,21 @@ A struct is trivially copyable when:
 A struct is move-only when:
 
 - any required field is move-only;
-- the type has custom destruction without explicit copy semantics;
+- the type has custom destruction without a compiler-proven semantic-copy
+  classification;
 - the type owns an external resource;
-- the type explicitly forbids copy;
 - independent duplication cannot be derived safely.
+
+A struct is explicitly non-copyable when nominal policy forbids derived copy.
+It is also non-copyable when any required field is non-copyable. This
+classification does not by itself determine whether ownership may move.
 
 A generic type is conditionally copyable when its classification depends on
 generic arguments.
+
+Representation alone does not establish copyability. Field ownership,
+destruction behavior, mutable-reference rules, compiler-known restrictions,
+and nominal policy all participate in the compiler's proof.
 
 ---
 
@@ -643,7 +683,33 @@ Exact API names belong to the type.
 
 ---
 
-# Explicit duplication
+# User-defined copy semantics
+
+Copyability is compiler-determined from the type category, stored fields,
+ownership and reference behavior, destruction rules, resource ownership,
+compiler-known semantic properties, nominal restrictions, and proven generic
+requirements.
+
+A user-defined aggregate receives derived copyability when the compiler proves
+that all relevant parts permit copy. No method declaration is required.
+
+Sec 0.1 does not allow an arbitrary user-defined body to implement ordinary
+implicit copy. Consequently, `let second := first` cannot hide allocation,
+failure, blocking, I/O, resource acquisition, observable side effects,
+unbounded work, or mutable alias creation.
+
+Core and compiler-known types may have privileged semantic-copy behavior only
+when it is bounded, infallible, non-blocking, allocation-free, free from I/O
+and hidden resource acquisition, and safe under the ownership and aliasing
+rules. This privilege does not extend to arbitrary user code.
+
+A nominal type may explicitly forbid otherwise derivable implicit copy. A
+future positive declaration may require the compiler to prove that a nominal
+type remains derivably copyable; such a declaration is a verified requirement,
+not a custom copy implementation. The source syntax for both policies remains
+owned by the planned `attributes.md` rulebook.
+
+# Explicit named duplication
 
 A type may expose a named duplication operation.
 
@@ -657,8 +723,10 @@ Snapshot
 ToOwned
 ```
 
-The language does not assign one universal name until a separate API rule does
-so.
+These names are ordinary method names. They have no compiler-recognized effect
+on assignment or initialization semantics, even when the method is infallible
+and returns the receiver type. A permanent core API rule may define a
+particular API, but the spelling alone never changes copy classification.
 
 A fallible duplication returns `Result`.
 
@@ -671,6 +739,11 @@ let duplicate := try file.Duplicate()
 This is an ordinary function call.
 
 It is not implicit assignment copy.
+
+Named duplication may allocate, fail, perform domain-specific work, duplicate
+an external resource, or return another type. Those visible operations remain
+available to move-only and non-copyable types without making them implicitly
+copyable.
 
 ---
 
@@ -2378,7 +2451,8 @@ performance.large-value-copy
 
 # Address stability and relocation
 
-Copy/move semantics are distinct from physical relocation.
+Copyability, movability, relocatability, address stability, and pinning are
+separate properties. None may be inferred solely from another.
 
 A type may be:
 
@@ -2388,6 +2462,11 @@ address-stable
 pinned
 fixed-address
 ```
+
+A valid source-level move transfers ownership and makes the source unavailable.
+It does not prove that physical bytes may be moved to a new address. The
+compiler may reuse storage, transfer metadata, elide the move, construct into
+destination storage, or preserve a stable address.
 
 A semantic move of a relocatable value may physically move bytes.
 
@@ -2417,8 +2496,12 @@ The atomics rulebook defines exact behavior.
 
 # Mutexes and locks
 
-A mutex object may be non-copyable and non-movable after initialization because
-its address or runtime identity matters.
+Mutex is non-copyable and supports explicit ownership transfer under the
+currently implemented move rules.
+
+This statement does not imply that every initialized mutex may always be
+physically relocated. Address stability, pinning, waiter state, foreign
+integration, and target implementation may impose independent restrictions.
 
 A `MutexGuard[T]` is move-only.
 
@@ -3577,17 +3660,19 @@ language-rulebook-status.md
 rules_implementations.txt
 ```
 
-Mark:
+Current status:
 
 ```text
 copy_move.md
-    Written
+    Living
 
 explicit move syntax
-    Planned / implementation in progress
+    Implemented through lexer, parser, AST, Sema, formatter preservation,
+    semantic-token classification, and initial LSP quick fixes
 
 current implicit named move behavior
-    incompatible with canonical rule and scheduled for replacement
+    replaced for direct named declaration and assignment sources;
+    general place-sensitive analysis remains incomplete
 ```
 
 ## A.26 Implementation order

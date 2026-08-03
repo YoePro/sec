@@ -183,7 +183,9 @@ func (g *Generator) Generate(program *ast.Program) (string, error) {
 		arities := map[int]bool{}
 		for _, fn := range overloads {
 			symbol := name
-			if len(overloads) > 1 {
+			if fn.Extern && fn.LinkName != "" {
+				symbol = fn.LinkName
+			} else if len(overloads) > 1 {
 				if arities[len(fn.Parameters)] {
 					return "", fmt.Errorf("emit-mlir does not yet support overloads of %s with the same arity", name)
 				}
@@ -268,7 +270,8 @@ func (g *Generator) emitFunction(fn *ast.FunctionDeclaration) error {
 		g.deferByStmt = previousDeferByStmt
 	}()
 
-	fmt.Fprintf(&signature, "  llvm.func @%s(", g.functionName(fn))
+	declaration := fn.Extern && fn.Body == nil
+	fmt.Fprintf(&signature, "  llvm.func @%s(", mlirSymbolName(g.functionName(fn)))
 	writtenParams := 0
 	for _, param := range fn.Parameters {
 		if writtenParams > 0 {
@@ -277,14 +280,22 @@ func (g *Generator) emitFunction(fn *ast.FunctionDeclaration) error {
 		paramType := g.mlirParameterType(param)
 		paramUnsigned := g.typeUnsigned(param.Type)
 		if paramType == "string" {
-			fmt.Fprintf(&signature, "%%%s.ptr: !llvm.ptr, %%%s.len: i64", param.Name.Value, param.Name.Value)
+			if declaration {
+				signature.WriteString("!llvm.ptr, i64")
+			} else {
+				fmt.Fprintf(&signature, "%%%s.ptr: !llvm.ptr, %%%s.len: i64", param.Name.Value, param.Name.Value)
+			}
 			if param.Name != nil {
 				g.locals[param.Name.Value] = local{typ: "string", ref: "%" + param.Name.Value + ".ptr", len: "%" + param.Name.Value + ".len", direct: true}
 			}
 			writtenParams += 2
 			continue
 		}
-		fmt.Fprintf(&signature, "%%%s: %s", param.Name.Value, paramType)
+		if declaration {
+			fmt.Fprintf(&signature, "%s", paramType)
+		} else {
+			fmt.Fprintf(&signature, "%%%s: %s", param.Name.Value, paramType)
+		}
 		if param.Name != nil {
 			g.locals[param.Name.Value] = local{
 				typ:        paramType,
@@ -302,10 +313,18 @@ func (g *Generator) emitFunction(fn *ast.FunctionDeclaration) error {
 		signatureReturnType = mlirStringType
 	}
 	if returnType == "void" {
-		signature.WriteString(") {\n")
+		signature.WriteString(")")
 	} else {
-		fmt.Fprintf(&signature, ") -> %s {\n", signatureReturnType)
+		fmt.Fprintf(&signature, ") -> %s", signatureReturnType)
 	}
+	if declaration {
+		signature.WriteString("\n")
+		g.activeOut = previousActiveOut
+		g.out.WriteString(signature.String())
+		g.locals = previousLocals
+		return nil
+	}
+	signature.WriteString(" {\n")
 	g.blockOpen = true
 	g.initializeDeferFlags()
 
@@ -2509,7 +2528,7 @@ func (g *Generator) emitCallExpression(expr *ast.CallExpression) (value, error) 
 	} else {
 		g.write("    ")
 	}
-	g.write("llvm.call @%s(", g.functionName(fn))
+	g.write("llvm.call @%s(", mlirSymbolName(g.functionName(fn)))
 	for i, arg := range args {
 		if i > 0 {
 			g.write(", ")
@@ -3337,6 +3356,25 @@ func (g *Generator) functionName(fn *ast.FunctionDeclaration) string {
 		return fn.Name.Value
 	}
 	return ""
+}
+
+func mlirSymbolName(name string) string {
+	if name != "" {
+		valid := true
+		for i, r := range name {
+			if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || r == '$' || r == '.' || r == '_' || (i > 0 && r >= '0' && r <= '9') {
+				continue
+			}
+			valid = false
+			break
+		}
+		if valid {
+			return name
+		}
+	}
+	escaped := strings.ReplaceAll(name, `\`, `\\`)
+	escaped = strings.ReplaceAll(escaped, `"`, `\"`)
+	return `"` + escaped + `"`
 }
 
 func (g *Generator) resolveFunction(name string, arity int) (*ast.FunctionDeclaration, error) {

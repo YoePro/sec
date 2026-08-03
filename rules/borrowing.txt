@@ -217,6 +217,10 @@ Implemented:
   branch if any continuing path assigns them a borrow.
 * Branch-local borrow holders still end at block exit before branch borrow
   state is merged.
+* Values used by defer blocks are tracked as delayed root-symbol uses, so a
+  later move or discard is rejected while ordinary mutation remains permitted.
+* A reference binding used by defer cannot be moved before the defer executes;
+  this keeps the borrow held by an immutable reference binding active.
 
 Not implemented yet:
 
@@ -224,7 +228,8 @@ Not implemented yet:
 * disjoint field borrow analysis
 * path-sensitive borrow analysis for fields, indexes and slices
 * returned-reference origin analysis
-* borrow effects from defer captures
+* complete place-sensitive borrow effects and explicit owned/moved capture
+  modes for defer
 * diagnostics that point to both the original borrow and conflicting access
 
 Initial limitation:

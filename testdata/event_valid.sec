@@ -161,7 +161,7 @@ fn SubscriptionMove(button: ref Button) void {
 
 fn EventOwnerMoveBeforeSubscription() void {
     let first := Button {}
-    let second := first
+    let second :<- first
 
     second.Press(1, 10)
 }

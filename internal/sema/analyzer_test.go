@@ -410,6 +410,30 @@ let f: float64 := 3.14
 	}
 }
 
+func TestScientificExponentLiteralInference(t *testing.T) {
+	input := `
+let exact := 1.25e-3
+let exactUpper := .5E+4
+let floating := 1e3f
+let decimal := 1e3d
+`
+
+	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
+	assertSemaErrors(t, errors, nil)
+
+	expected := map[string]string{
+		"exact":      "decimal",
+		"exactUpper": "decimal",
+		"floating":   "float",
+		"decimal":    "decimal",
+	}
+	for name, want := range expected {
+		if got := analyzer.symbols[name].Type.Name; got != want {
+			t.Fatalf("%s inferred as %q, want %q", name, got, want)
+		}
+	}
+}
+
 func TestNumericLiteralSuffixesAndBases(t *testing.T) {
 	input := `
 let i := 10i
@@ -455,6 +479,9 @@ func TestDecimalLiteralValueUsesLexeme(t *testing.T) {
 		{input: ".1", want: DecimalValue{Int64: 1, Scale: 1}},
 		{input: "-0.5", want: DecimalValue{Int64: -5, Scale: 1}},
 		{input: "100", want: DecimalValue{Int64: 100, Scale: 0}},
+		{input: "1.25e-3", want: DecimalValue{Int64: 125, Scale: 5}},
+		{input: "1.5e2", want: DecimalValue{Int64: 150, Scale: 0}},
+		{input: ".5E+4", want: DecimalValue{Int64: 5000, Scale: 0}},
 	}
 
 	for _, tt := range tests {
@@ -3832,6 +3859,112 @@ fn Test() void {
 	assertSemaErrors(t, errors, nil)
 }
 
+func TestDeferDelayedUseRejectsLaterMove(t *testing.T) {
+	input := `
+module main
+
+type Handle struct {
+	view: ref mut int,
+}
+
+fn Consume(handle: Handle) void {
+}
+
+fn Invalid() void {
+	let mut value := 1
+	let handle := Handle{ view: ref mut value }
+	defer {
+		Consume(handle)
+	}
+	let moved :<- handle
+	discard moved
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	expected := []string{
+		"cannot move handle while it is required by defer at 17:16, previous declaration at 15:11",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestDeferDelayedUseRejectsLaterDiscard(t *testing.T) {
+	input := `
+fn Invalid() void {
+	let value := 1
+	defer {
+		let observed := value
+	}
+	discard value
+}
+`
+
+	errors := analyzeSource(t, input)
+	expected := []string{
+		"cannot discard value while it is required by defer at 7:10, previous declaration at 5:19",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestConditionalDeferDelayedUseRejectsLaterMove(t *testing.T) {
+	input := `
+module main
+
+type Handle struct {
+	view: ref mut int,
+}
+
+fn Consume(handle: Handle) void {
+}
+
+fn Invalid(condition: bool) void {
+	let mut value := 1
+	let handle := Handle{ view: ref mut value }
+	if condition {
+		defer {
+			Consume(handle)
+		}
+	}
+	let moved :<- handle
+	discard moved
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	expected := []string{
+		"cannot move handle while it is required by defer at 19:16, previous declaration at 16:12",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestDeferLocalBindingDoesNotCaptureOuterBinding(t *testing.T) {
+	input := `
+module main
+
+type Handle struct {
+	view: ref mut int,
+}
+
+fn Consume(handle: Handle) void {
+}
+
+fn Valid() void {
+	let mut outerValue := 1
+	let handle := Handle{ view: ref mut outerValue }
+	defer {
+		let mut innerValue := 2
+		let inner := Handle{ view: ref mut innerValue }
+		Consume(inner)
+	}
+	let moved :<- handle
+	discard moved
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
 func TestDeferInvalidControlFlow(t *testing.T) {
 	input := `
 fn Test() void {
@@ -5948,6 +6081,24 @@ fn Use(size: uint) void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, nil)
+}
+
+func TestExternLinkNamesMustBeUnique(t *testing.T) {
+	input := `
+module main
+
+@link_name("foreign_add")
+extern "C" fn add(left: int32, right: int32) int32
+
+@link_name("foreign_add")
+extern "C" fn addAlias(left: int32, right: int32) int32
+`
+
+	errors := analyzeSourceRaw(t, input)
+	expected := []string{
+		`duplicate extern symbol "foreign_add" at 8:15, previous declaration at 5:15`,
+	}
+	assertSemaErrors(t, errors, expected)
 }
 
 func TestCompilerIntrinsicTypesAreRegistered(t *testing.T) {

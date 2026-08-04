@@ -67,6 +67,7 @@ The current LSP formatter already implements:
 - single-line function-parameter comma spacing;
 - single-line `let` declaration comma spacing;
 - unambiguous `func` to `fn` normalization;
+- canonical placement of an inline `@noCopy` attribute on its own line;
 - preservation of ordinary identifiers and calls named `func`;
 - format-on-save integration in the VS Code extension;
 - tests for switch, select, grouped imports, declaration groups, function

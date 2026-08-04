@@ -101,6 +101,26 @@ func (td *TargetDirective) TokenLiteral() string {
 	return td.Token.Lexeme
 }
 
+type Attribute struct {
+	Token     lexer.Token
+	Name      *Identifier
+	Arguments []*AttributeArgument
+}
+
+func (a *Attribute) TokenLiteral() string {
+	return a.Token.Lexeme
+}
+
+type AttributeArgument struct {
+	Token lexer.Token
+	Name  *Identifier
+	Value Expression
+}
+
+func (a *AttributeArgument) TokenLiteral() string {
+	return a.Token.Lexeme
+}
+
 // TypeDeclStatement represents:
 //
 //	type Percent int range 0..100
@@ -110,6 +130,7 @@ func (td *TargetDirective) TokenLiteral() string {
 type TypeDeclStatement struct {
 	Token lexer.Token // TYPE token
 
+	Attributes        []*Attribute
 	Name              *Identifier
 	GenericParameters []*GenericParameter
 	BaseType          *TypeReference
@@ -167,6 +188,7 @@ func (gp *GenericParameter) TokenLiteral() string {
 
 type EnumDeclaration struct {
 	Token              lexer.Token
+	Attributes         []*Attribute
 	Name               *Identifier
 	UnderlyingType     *TypeReference
 	BitUnderlying      bool

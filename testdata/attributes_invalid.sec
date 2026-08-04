@@ -1,0 +1,24 @@
+module testdata.attributes_invalid
+
+@noCopy
+type SessionID struct {
+    value: uint64,
+}
+
+type Session struct {
+    id: SessionID,
+}
+
+fn CopyNoCopyType() void {
+    let first := SessionID { value: 42 }
+
+    // Invalid: @noCopy forbids ordinary implicit copy.
+    let second := first
+}
+
+fn CopyContainingType() void {
+    let first := Session { id: SessionID { value: 42 } }
+
+    // Invalid: Session derives non-copyability from its SessionID field.
+    let second := first
+}

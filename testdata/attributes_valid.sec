@@ -1,0 +1,25 @@
+module testdata.attributes_valid
+
+@noCopy
+type SessionID struct {
+    value: uint64,
+}
+
+@noCopy
+type Box[T] struct {
+    value: T,
+}
+
+type Session struct {
+    id: SessionID,
+}
+
+fn TransferSessionID() void {
+    let first := SessionID { value: 42 }
+    let second :<- first
+}
+
+fn TransferGenericBox() void {
+    let first := Box[int] { value: 42 }
+    let second :<- first
+}

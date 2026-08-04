@@ -455,6 +455,91 @@ module main
 	}
 }
 
+func TestParseNoCopyNominalTypeAttributes(t *testing.T) {
+	input := `@noCopy
+// The comment remains attached to the declaration in source.
+type SessionID struct {
+    value: uint64,
+}
+
+@noCopy
+enum State {
+    Ready,
+}
+
+@noCopy
+type Code int
+
+@noCopy
+type Flags register[8] {
+    Enabled: bit,
+    _: bit[7],
+}
+
+@noCopy
+type Choice union {
+    None,
+    Some(int),
+}
+`
+
+	p := New(lexer.New(input))
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Statements) != 5 {
+		t.Fatalf("wrong statement count. got=%d want=5", len(program.Statements))
+	}
+	for i, stmt := range program.Statements {
+		var attributes []*ast.Attribute
+		switch stmt := stmt.(type) {
+		case *ast.TypeDeclStatement:
+			attributes = stmt.Attributes
+		case *ast.EnumDeclaration:
+			attributes = stmt.Attributes
+		default:
+			t.Fatalf("statement %d cannot carry @noCopy. got=%T", i, stmt)
+		}
+		if len(attributes) != 1 || attributes[0].Name == nil || attributes[0].Name.Value != "noCopy" {
+			t.Fatalf("statement %d has wrong attributes: %+v", i, attributes)
+		}
+	}
+}
+
+func TestParseNoCopyAttributeErrors(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "arguments",
+			input: "@noCopy()\ntype ID int\n",
+			want:  "@noCopy does not take arguments at 1:8",
+		},
+		{
+			name:  "duplicate",
+			input: "@noCopy\n@noCopy\ntype ID int\n",
+			want:  "duplicate attribute @noCopy at 2:1; first declared at 1:1",
+		},
+		{
+			name:  "wrong target",
+			input: "@noCopy\nfn Work() void {}\n",
+			want:  "@noCopy may only annotate a nominal type declaration at 2:1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := New(lexer.New(tt.input))
+			p.ParseProgram()
+			if len(p.Errors()) != 1 || p.Errors()[0] != tt.want {
+				t.Fatalf("parser errors = %v, want %q", p.Errors(), tt.want)
+			}
+		})
+	}
+}
+
 func TestTargetDirectiveMustBeFirst(t *testing.T) {
 	input := `module main
 #target(os: "linux", arch: "amd64")

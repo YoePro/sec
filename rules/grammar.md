@@ -916,7 +916,7 @@ The parser must not rely on unrelated heuristic line tests.
 
 ## General attributes
 
-There is no general canonical parser for:
+There is no complete general parser for:
 
 ```sec
 @attribute
@@ -928,12 +928,15 @@ The parser has special cases for:
 ```sec
 @address(...)
 @link_name(...)
+@noCopy
 @runtime.call(...)
 ```
 
-These are not a complete attribute system.
+`@noCopy` is represented as an AST attribute on nominal type declarations and
+is Sema-enforced. These implemented paths are not yet a complete attribute
+system.
 
-`attributes.md` remains planned.
+`attributes.md` is canonical and Written.
 
 ## Increment and decrement aliases
 
@@ -4413,7 +4416,7 @@ The formatter must not infer language semantics.
 | contextual `x` | Identifier | Implemented as contextual infix | Fixed matrix/matrix and matrix/vector validation | Partly implemented; lowering and tooling pending |
 | unary `+` | Implemented | Implemented | Implemented for numeric operands and constants | Implemented; backend paths covered |
 | `++`/`--` | Not implemented | Not implemented | Not implemented | Not implemented |
-| general attributes | `@` available | `@address` and `@link_name` special cases | Special cases only | General system not implemented |
+| general attributes | `@` available | `@noCopy` AST path plus `@address` and `@link_name` special cases | `@noCopy` enforced; other paths remain specialized | Partly implemented |
 | `?` | Reserved | No canonical form | None | Reserved |
 | `free` | Reserved | Explicit invalid node | Explicit error | Not implemented |
 | panic/assert/require | Reserved | No complete forms | No complete forms | Not implemented |

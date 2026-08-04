@@ -327,6 +327,7 @@ Implemented:
 - single-line function signature normalization;
 - declaration-list normalization;
 - unambiguous `func` to `fn` normalization;
+- canonical `@noCopy` line placement through the shared formatter;
 - protection against rewriting a normal identifier or call named `func`;
 - whole-document replacement edits;
 - format-on-save enabled by default in the VS Code extension.
@@ -396,6 +397,8 @@ Implemented:
   parameter, variable, property, event, function, method, keyword, comment,
   string, number, and operator;
 - declaration and static modifiers;
+- compiler-known attribute-name classification as `modifier`, including the
+  implemented `@noCopy` path;
 - resilience against selected panics during active editing.
 
 ### Project and source integration

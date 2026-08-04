@@ -487,6 +487,15 @@ func moduleDisplayName(module string) string {
 	return module
 }
 
+func hasAttribute(attributes []*ast.Attribute, name string) bool {
+	for _, attribute := range attributes {
+		if attribute != nil && attribute.Name != nil && attribute.Name.Value == name {
+			return true
+		}
+	}
+	return false
+}
+
 func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 	seenUnits := map[string]lexer.Token{}
 	a.withProgramModules(program, func(stmt ast.Statement) {
@@ -496,7 +505,12 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 				return
 			}
 			params := a.genericParameterNames(stmt.GenericParameters)
-			a.types[stmt.Name.Value] = Type{Name: stmt.Name.Value, Module: a.currentModule, Kind: InvalidType, GenericParameters: params}
+			noCopy := hasAttribute(stmt.Attributes, "noCopy")
+			origin := ""
+			if noCopy {
+				origin = stmt.Name.Value
+			}
+			a.types[stmt.Name.Value] = Type{Name: stmt.Name.Value, Module: a.currentModule, Kind: InvalidType, GenericParameters: params, ExplicitlyNonCopyable: noCopy, NoCopyPolicyOrigin: origin}
 		case *ast.UnitDeclStatement:
 			if stmt.Name == nil {
 				return
@@ -529,7 +543,12 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 			if stmt.Name == nil {
 				return
 			}
-			a.types[stmt.Name.Value] = Type{Name: stmt.Name.Value, Module: a.currentModule, Kind: InvalidType}
+			noCopy := hasAttribute(stmt.Attributes, "noCopy")
+			origin := ""
+			if noCopy {
+				origin = stmt.Name.Value
+			}
+			a.types[stmt.Name.Value] = Type{Name: stmt.Name.Value, Module: a.currentModule, Kind: InvalidType, ExplicitlyNonCopyable: noCopy, NoCopyPolicyOrigin: origin}
 		case *ast.InterfaceDeclaration:
 			if stmt.Name == nil {
 				return
@@ -4771,7 +4790,7 @@ func (a *Analyzer) analyzeTypeDeclarationBody(stmt *ast.TypeDeclStatement) {
 		return
 	}
 	if len(stmt.Variants) > 0 {
-		a.types[stmt.Name.Value] = a.typeFromVariantDeclaration(stmt.Name.Value, stmt.Variants)
+		a.types[stmt.Name.Value] = a.typeFromVariantDeclaration(stmt.Name.Value, stmt.Variants, stmt.Attributes)
 		return
 	}
 
@@ -4833,7 +4852,7 @@ func (a *Analyzer) analyzeNestedTypeDeclaration(qualifiedName string, stmt *ast.
 		return
 	}
 	if len(stmt.Variants) > 0 {
-		a.types[qualifiedName] = a.typeFromVariantDeclaration(qualifiedName, stmt.Variants)
+		a.types[qualifiedName] = a.typeFromVariantDeclaration(qualifiedName, stmt.Variants, stmt.Attributes)
 		return
 	}
 
@@ -4873,14 +4892,19 @@ func (a *Analyzer) typeFromStructDeclaration(stmt *ast.TypeDeclStatement) Type {
 }
 
 func (a *Analyzer) typeFromStructDeclarationWithName(name string, stmt *ast.TypeDeclStatement) Type {
+	noCopy := hasAttribute(stmt.Attributes, "noCopy")
 	typ := Type{
-		Name:              name,
-		Module:            a.currentModule,
-		Kind:              StructType,
-		Named:             true,
-		Declared:          true,
-		Underlying:        "struct",
-		GenericParameters: genericParameterNameValues(stmt.GenericParameters),
+		Name:                  name,
+		Module:                a.currentModule,
+		Kind:                  StructType,
+		Named:                 true,
+		Declared:              true,
+		ExplicitlyNonCopyable: noCopy,
+		Underlying:            "struct",
+		GenericParameters:     genericParameterNameValues(stmt.GenericParameters),
+	}
+	if noCopy {
+		typ.NoCopyPolicyOrigin = name
 	}
 
 	seen := map[string]lexer.Token{}
@@ -4932,15 +4956,20 @@ func (a *Analyzer) typeFromStructDeclarationWithName(name string, stmt *ast.Type
 }
 
 func (a *Analyzer) typeFromRegisterDeclaration(name string, stmt *ast.TypeDeclStatement) Type {
+	noCopy := hasAttribute(stmt.Attributes, "noCopy")
 	typ := Type{
-		Name:              name,
-		Module:            a.currentModule,
-		Kind:              RegisterType,
-		Named:             true,
-		Declared:          true,
-		Underlying:        "register",
-		RegisterWidth:     stmt.RegisterType.Width,
-		GenericParameters: genericParameterNameValues(stmt.GenericParameters),
+		Name:                  name,
+		Module:                a.currentModule,
+		Kind:                  RegisterType,
+		Named:                 true,
+		Declared:              true,
+		ExplicitlyNonCopyable: noCopy,
+		Underlying:            "register",
+		RegisterWidth:         stmt.RegisterType.Width,
+		GenericParameters:     genericParameterNameValues(stmt.GenericParameters),
+	}
+	if noCopy {
+		typ.NoCopyPolicyOrigin = name
 	}
 
 	if stmt.RegisterType.Width <= 0 {
@@ -5045,14 +5074,19 @@ func (a *Analyzer) registerFieldType(field *ast.RegisterField) Type {
 }
 
 func (a *Analyzer) typeFromUnionDeclaration(name string, stmt *ast.TypeDeclStatement) Type {
+	noCopy := hasAttribute(stmt.Attributes, "noCopy")
 	typ := Type{
-		Name:              name,
-		Module:            a.currentModule,
-		Kind:              UnionType,
-		Named:             true,
-		Declared:          true,
-		Underlying:        "union",
-		GenericParameters: genericParameterNameValues(stmt.GenericParameters),
+		Name:                  name,
+		Module:                a.currentModule,
+		Kind:                  UnionType,
+		Named:                 true,
+		Declared:              true,
+		ExplicitlyNonCopyable: noCopy,
+		Underlying:            "union",
+		GenericParameters:     genericParameterNameValues(stmt.GenericParameters),
+	}
+	if noCopy {
+		typ.NoCopyPolicyOrigin = name
 	}
 
 	if len(stmt.UnionVariants) == 0 {
@@ -5162,10 +5196,11 @@ func genericDeclarationDisplayName(name string, parameters []*ast.GenericParamet
 	return name + "[" + strings.Join(names, ", ") + "]"
 }
 
-func (a *Analyzer) typeFromVariantDeclaration(name string, variants []*ast.Identifier) Type {
+func (a *Analyzer) typeFromVariantDeclaration(name string, variants []*ast.Identifier, attributes []*ast.Attribute) Type {
 	enum := &ast.EnumDeclaration{
-		Token: lexer.Token{Type: lexer.ENUM, Lexeme: "enum"},
-		Name:  &ast.Identifier{Token: variants[0].Token, Value: name},
+		Token:      lexer.Token{Type: lexer.ENUM, Lexeme: "enum"},
+		Attributes: attributes,
+		Name:       &ast.Identifier{Token: variants[0].Token, Value: name},
 	}
 	for _, variant := range variants {
 		enum.Values = append(enum.Values, &ast.EnumValue{
@@ -5209,16 +5244,21 @@ func (a *Analyzer) typeFromEnumDeclaration(name string, enum *ast.EnumDeclaratio
 		return Type{Name: name, Kind: InvalidType}
 	}
 
+	noCopy := hasAttribute(enum.Attributes, "noCopy")
 	typ := Type{
-		Name:       name,
-		Module:     a.currentModule,
-		Kind:       EnumType,
-		Named:      true,
-		Declared:   true,
-		Underlying: underlying.Name,
-		MinInteger: new(big.Int).Set(underlying.MinInteger),
-		MaxInteger: new(big.Int).Set(underlying.MaxInteger),
-		EnumConsts: map[string]EnumValue{},
+		Name:                  name,
+		Module:                a.currentModule,
+		Kind:                  EnumType,
+		Named:                 true,
+		Declared:              true,
+		ExplicitlyNonCopyable: noCopy,
+		Underlying:            underlying.Name,
+		MinInteger:            new(big.Int).Set(underlying.MinInteger),
+		MaxInteger:            new(big.Int).Set(underlying.MaxInteger),
+		EnumConsts:            map[string]EnumValue{},
+	}
+	if noCopy {
+		typ.NoCopyPolicyOrigin = name
 	}
 	if enum.BitUnderlying {
 		typ.BitWidth = enum.UnderlyingBitWidth
@@ -6619,9 +6659,15 @@ func directNonCopyableField(typ Type) (string, Type, bool) {
 
 func nonCopyableCause(typ Type) string {
 	if typ.ExplicitlyNonCopyable {
-		return fmt.Sprintf("%s explicitly forbids implicit copy", typeDisplayName(typ))
+		if typ.NoCopyPolicyOrigin != "" && typ.NoCopyPolicyOrigin != typ.Name {
+			return fmt.Sprintf("underlying nominal type %s explicitly forbids implicit copy through @noCopy", typ.NoCopyPolicyOrigin)
+		}
+		return fmt.Sprintf("%s explicitly forbids implicit copy through @noCopy", typeDisplayName(typ))
 	}
 	if fieldName, fieldType, ok := directNonCopyableField(typ); ok {
+		if fieldType.ExplicitlyNonCopyable {
+			return fmt.Sprintf("field %s has type %s, which explicitly forbids implicit copy through @noCopy", fieldName, typeDisplayName(fieldType))
+		}
 		return fmt.Sprintf("field %s has non-copyable type %s", fieldName, typeDisplayName(fieldType))
 	}
 	if compilerKnownNonCopyable(typ) {

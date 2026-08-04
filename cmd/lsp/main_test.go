@@ -493,6 +493,17 @@ fn Check(myVar: bool) bool {
 	assertSemanticToken(t, tokens, 3, 13, 4, "keyword") // true
 }
 
+func TestSemanticTokensClassifyNoCopyAttribute(t *testing.T) {
+	source := `module main
+
+@noCopy
+type SessionID int
+`
+
+	tokens := decodeSemanticTokens(semanticTokensForSource("", source))
+	assertSemanticToken(t, tokens, 2, 1, 6, "modifier")
+}
+
 func TestSemanticTokensTolerateIncompleteExpressions(t *testing.T) {
 	source := `module main
 

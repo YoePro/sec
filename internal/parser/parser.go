@@ -218,6 +218,9 @@ func (p *Parser) parseStatement() ast.Statement {
 		if p.peekToken.Type == lexer.IDENT && p.peekToken.Lexeme == "link_name" {
 			return p.parseLinkNameExternDeclaration()
 		}
+		if p.peekToken.Type == lexer.IDENT && p.peekToken.Lexeme == "noCopy" {
+			return p.parseNoCopyDeclaration()
+		}
 		return p.parseExpressionOrAssignmentStatement()
 
 	case lexer.IDENT:
@@ -4124,6 +4127,91 @@ func (p *Parser) parseAddressedLetStatement() ast.Statement {
 	letStmt.Address = address
 	letStmt.AddressToken = addressToken
 	return letStmt
+}
+
+func (p *Parser) parseNoCopyDeclaration() ast.Statement {
+	attributes := []*ast.Attribute{}
+	var first lexer.Token
+
+	for {
+		attributeToken := p.curToken
+		if !p.expectPeek(lexer.IDENT) {
+			return nil
+		}
+		nameToken := p.curToken
+		if nameToken.Lexeme != "noCopy" {
+			p.addError("unknown attribute @%s at %d:%d", nameToken.Lexeme, attributeToken.Line, attributeToken.Column)
+			return nil
+		}
+		if len(attributes) > 0 {
+			p.addError(
+				"duplicate attribute @noCopy at %d:%d; first declared at %d:%d",
+				attributeToken.Line,
+				attributeToken.Column,
+				first.Line,
+				first.Column,
+			)
+		} else {
+			first = attributeToken
+		}
+		attributes = append(attributes, &ast.Attribute{
+			Token: attributeToken,
+			Name:  &ast.Identifier{Token: nameToken, Value: nameToken.Lexeme},
+		})
+
+		if p.peekToken.Type == lexer.LPAREN {
+			argumentToken := p.peekToken
+			p.consumeAttributeArguments()
+			p.addError("@noCopy does not take arguments at %d:%d", argumentToken.Line, argumentToken.Column)
+		}
+
+		p.skipPeekComments()
+		if p.peekToken.Type != lexer.AT {
+			break
+		}
+		p.nextToken()
+		if p.peekToken.Type != lexer.IDENT || p.peekToken.Lexeme != "noCopy" {
+			p.addError("@noCopy cannot be combined with an unsupported attribute at %d:%d", p.curToken.Line, p.curToken.Column)
+			return nil
+		}
+	}
+
+	p.skipPeekComments()
+	if p.peekToken.Type != lexer.TYPE && p.peekToken.Type != lexer.ENUM {
+		p.addError(
+			"@noCopy may only annotate a nominal type declaration at %d:%d",
+			p.peekToken.Line,
+			p.peekToken.Column,
+		)
+		return nil
+	}
+
+	p.nextToken()
+	stmt := p.parseStatement()
+	switch stmt := stmt.(type) {
+	case *ast.TypeDeclStatement:
+		stmt.Attributes = attributes
+	case *ast.EnumDeclaration:
+		stmt.Attributes = attributes
+	default:
+		p.addError("@noCopy may only annotate a nominal type declaration at %d:%d", p.curToken.Line, p.curToken.Column)
+		return nil
+	}
+	return stmt
+}
+
+func (p *Parser) consumeAttributeArguments() {
+	p.nextToken()
+	depth := 1
+	for depth > 0 && p.peekToken.Type != lexer.EOF {
+		p.nextToken()
+		switch p.curToken.Type {
+		case lexer.LPAREN:
+			depth++
+		case lexer.RPAREN:
+			depth--
+		}
+	}
 }
 
 func (p *Parser) parseLinkNameExternDeclaration() ast.Statement {

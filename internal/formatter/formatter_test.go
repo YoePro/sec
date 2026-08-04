@@ -21,3 +21,12 @@ func TestFormatPreservesDefaultClauseAndPartialStructLiteral(t *testing.T) {
 		t.Fatalf("formatter expanded partial struct literal:\n%s", got)
 	}
 }
+
+func TestFormatPlacesNoCopyAttributeOnOwnLine(t *testing.T) {
+	input := "@noCopy type SessionID struct {\nvalue: uint64,\n}\n"
+	want := "@noCopy\ntype SessionID struct {\n    value: uint64,\n}\n"
+	got := Format(Source{Text: input}, Options{}).Text
+	if got != want {
+		t.Fatalf("wrong @noCopy formatting:\n%s\nwant:\n%s", got, want)
+	}
+}

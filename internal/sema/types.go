@@ -43,6 +43,7 @@ type Type struct {
 	Declared                  bool
 	Intrinsic                 bool
 	ExplicitlyNonCopyable     bool
+	NoCopyPolicyOrigin        string
 	Underlying                string
 	Unit                      string
 	Dimension                 Dimension

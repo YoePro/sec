@@ -121,10 +121,12 @@ Canonical documentation synchronization:
 - the internal type model can represent explicit nominal non-copyability, and
   copy diagnostics distinguish nominal policy, compiler-known type, aggregate
   field, and unproven generic causes where that information is available
-- source syntax requiring compiler-derived copyability, source syntax
-  explicitly forbidding derived copy, generic copyability constraints, Sema
-  proof from those constraints, and attribute conflict diagnostics remain
-  unimplemented
+- `@noCopy` parsing, AST storage, nominal-type validation, generic-instance
+  preservation, Sema enforcement, formatter line layout, semantic-token
+  classification, and cause-aware diagnostics are implemented
+- source syntax requiring compiler-derived copyability, generic copyability
+  constraints, Sema proof from those constraints, the general attribute
+  parser, and general attribute conflict diagnostics remain unimplemented
 - arbitrary user-defined hidden implicit-copy bodies, method-name recognition
   of `Copy`, `Clone`, `Duplicate`, `Snapshot`, or `ToOwned`, and implicit use of
   fallible duplication are intentionally unsupported in Sec 0.1

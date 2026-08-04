@@ -73,7 +73,7 @@ func TestCopyRestrictionCauseDistinguishesNominalPolicyAndCompilerKnownType(t *t
 	if got := CopyClassificationOf(policyType); got != CopyNonCopyable {
 		t.Fatalf("explicit nominal policy classification = %q, want %q", got, CopyNonCopyable)
 	}
-	if got := nonCopyableCause(policyType); got != "SessionID explicitly forbids implicit copy" {
+	if got := nonCopyableCause(policyType); got != "SessionID explicitly forbids implicit copy through @noCopy" {
 		t.Fatalf("explicit nominal policy cause = %q", got)
 	}
 
@@ -81,6 +81,143 @@ func TestCopyRestrictionCauseDistinguishesNominalPolicyAndCompilerKnownType(t *t
 	if got := nonCopyableCause(mutex); got != "Mutex[int] is compiler-known non-copyable" {
 		t.Fatalf("compiler-known cause = %q", got)
 	}
+}
+
+func TestNoCopyAttributeClassifiesNominalTypeForms(t *testing.T) {
+	input := `
+module main
+
+@noCopy
+type SessionID struct {
+    value: uint64,
+}
+
+@noCopy
+enum State {
+    Ready,
+}
+
+@noCopy
+type Code int
+
+type WrappedCode Code
+
+@noCopy
+type Flags register[8] {
+    Enabled: bit,
+    _: bit[7],
+}
+
+@noCopy
+type Choice union {
+    None,
+    Some(int),
+}
+`
+
+	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+	for _, name := range []string{"SessionID", "State", "Code", "WrappedCode", "Flags", "Choice"} {
+		typ, ok := analyzer.Types()[name]
+		if !ok {
+			t.Fatalf("missing type %s", name)
+		}
+		if !typ.ExplicitlyNonCopyable || CopyClassificationOf(typ) != CopyNonCopyable {
+			t.Fatalf("type %s did not retain @noCopy: %+v", name, typ)
+		}
+	}
+	if got := analyzer.Types()["WrappedCode"].NoCopyPolicyOrigin; got != "Code" {
+		t.Fatalf("WrappedCode @noCopy origin = %q, want Code", got)
+	}
+}
+
+func TestNoCopyAttributeRejectsImplicitCopy(t *testing.T) {
+	input := `
+module main
+
+@noCopy
+type SessionID struct {
+    value: uint64,
+}
+
+fn Test() void {
+    let first := SessionID { value: 1 }
+    let second := first
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"SessionID value first cannot be copied because SessionID explicitly forbids implicit copy through @noCopy; use explicit move syntax :<- at 11:19",
+	})
+}
+
+func TestNoCopyAttributeAllowsExplicitMoveAndInvalidatesSource(t *testing.T) {
+	input := `
+module main
+
+@noCopy
+type SessionID struct {
+    value: uint64,
+}
+
+fn Test() void {
+    let first := SessionID { value: 1 }
+    let second :<- first
+    let third := first
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"use of moved value first at 12:18, previous declaration at 11:20",
+	})
+}
+
+func TestNoCopyAttributeSurvivesGenericInstantiation(t *testing.T) {
+	input := `
+module main
+
+@noCopy
+type Box[T] struct {
+    value: T,
+}
+
+fn Test() void {
+    let first := Box[int] { value: 1 }
+    let second := first
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"Box[int] value first cannot be copied because Box[int] explicitly forbids implicit copy through @noCopy; use explicit move syntax :<- at 11:19",
+	})
+}
+
+func TestNoCopyFieldDiagnosticPreservesNominalPolicyCause(t *testing.T) {
+	input := `
+module main
+
+@noCopy
+type SessionID struct {
+    value: uint64,
+}
+
+type Container struct {
+    session: SessionID,
+}
+
+fn Test() void {
+    let first := Container { session: SessionID { value: 1 } }
+    let second := first
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"Container value first cannot be copied because field session has type SessionID, which explicitly forbids implicit copy through @noCopy; use explicit move syntax :<- at 15:19",
+	})
 }
 
 func TestCompilerKnownNonCopyableLocalRequiresExplicitMove(t *testing.T) {

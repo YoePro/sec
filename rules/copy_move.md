@@ -101,6 +101,9 @@ The current compiler implements:
 - explicit move of named copyable and move-only values;
 - enforcement of compiler-known `CopyNonCopyable` types in ordinary named
   copies and consuming transfer contexts;
+- `@noCopy` AST and parser support for nominal type declarations, Sema
+  classification, generic-instance preservation, formatter layout, LSP
+  modifier classification, and cause-aware diagnostics;
 - internal type metadata for explicit nominal non-copyability and distinct
   nominal-policy, compiler-known, and aggregate-field diagnostic causes;
 - conservative rejection of ordinary named-source copies whose generic
@@ -157,24 +160,35 @@ The following are not yet implemented:
 - complete copy/move diagnostic registry;
 - complete copy/move test files.
 
-## Awaiting canonical declaration syntax
+## Source policy syntax status
 
-Three source declaration mechanisms cannot be implemented without language
-decisions that do not yet exist:
+The canonical nominal opt-out syntax is implemented in the frontend:
+
+```sec
+@noCopy
+type SessionID struct {
+    value: uint64,
+}
+```
+
+The parser records `@noCopy` on nominal type declarations, Sema preserves the
+policy through generic instantiation and derived aggregate classification, and
+ordinary copy diagnostics retain the nominal-policy cause.
+
+Two source declaration mechanisms still require language decisions that do not
+yet exist:
 
 - source syntax requiring that a nominal type remain compiler-derivably
   copyable;
-- source syntax explicitly forbidding derived implicit copy on a nominal type;
 - generic constraints requiring proven copyability.
 
 Named duplication methods such as `Copy`, `Clone`, or fallible `Duplicate` are
 already ordinary methods. They do not change the type's implicit-copy
 classification.
 
-Compiler-known types may already carry `CopyNonCopyable`, and Sema enforces that
-classification. General source syntax remains delegated to the planned
-`attributes.md` rulebook and to `types.txt`. No annotation spelling is
-canonical yet.
+Compiler-known types may also carry `CopyNonCopyable`, and Sema enforces that
+classification. `attributes.md` owns the canonical `@noCopy` spelling and
+placement. Sec 0.1 intentionally defines no positive copy attribute.
 
 ## Intentionally unsupported in Sec 0.1
 
@@ -703,11 +717,11 @@ when it is bounded, infallible, non-blocking, allocation-free, free from I/O
 and hidden resource acquisition, and safe under the ownership and aliasing
 rules. This privilege does not extend to arbitrary user code.
 
-A nominal type may explicitly forbid otherwise derivable implicit copy. A
-future positive declaration may require the compiler to prove that a nominal
-type remains derivably copyable; such a declaration is a verified requirement,
-not a custom copy implementation. The source syntax for both policies remains
-owned by the planned `attributes.md` rulebook.
+A nominal type may explicitly forbid otherwise derivable implicit copy through
+the canonical `@noCopy` attribute. A future positive declaration may require
+the compiler to prove that a nominal type remains derivably copyable; such a
+declaration is a verified requirement, not a custom copy implementation. Sec
+0.1 does not define that positive declaration.
 
 # Explicit named duplication
 

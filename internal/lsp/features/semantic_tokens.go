@@ -10,6 +10,19 @@ import (
 var SemanticTokenTypes = []string{"namespace", "type", "class", "enum", "interface", "struct", "typeParameter", "parameter", "variable", "property", "enumMember", "event", "function", "method", "keyword", "modifier", "comment", "string", "number", "operator"}
 var SemanticTokenModifiers = []string{"declaration", "static"}
 
+var compilerKnownAttributes = map[string]bool{
+	"address":       true,
+	"interrupt":     true,
+	"interruptSafe": true,
+	"isr":           true,
+	"noAlloc":       true,
+	"noBlock":       true,
+	"noCopy":        true,
+	"noPanic":       true,
+	"target":        true,
+	"when":          true,
+}
+
 var tokenTypeIndex = func() map[string]int {
 	result := map[string]int{}
 	for i, name := range SemanticTokenTypes {
@@ -23,12 +36,17 @@ func SemanticTokens(text, file string, classification map[string]string) []int {
 	l := lexer.NewWithFile(text, file)
 	data := []int{}
 	previousLine, previousStart := 0, 0
+	previousToken := lexer.Token{}
 	for {
 		token := l.NextToken()
 		if token.Type == lexer.EOF {
 			break
 		}
 		kind := tokenKind(token, classification)
+		if token.Type == lexer.IDENT && previousToken.Type == lexer.AT && compilerKnownAttributes[token.Lexeme] {
+			kind = "modifier"
+		}
+		previousToken = token
 		index, ok := tokenTypeIndex[kind]
 		if !ok {
 			continue

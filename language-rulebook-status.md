@@ -59,6 +59,11 @@ operators.md
 default_values.md
 contracts.md
 grammar.md
+attributes.md
+panic.md
+runtime_checks.md
+effect_analysis.md
+unsafe.md
 ```
 
 These were written after the older temporary checklist was last synchronized.
@@ -78,8 +83,8 @@ These were written after the older temporary checklist was last synchronized.
 | `grammar.md` | **Written** | Canonical consolidated grammar for Sec 0.1; implementation differences are tracked in the document. |
 | `operators.md` | **Written** | Canonical operator inventory, precedence, associativity, contextual `x`, indexing, conversion syntax and constant defaults. |
 | `names_scopes_visibility.md` | **Written — sync required** | Top-level module declaration namespace conflicts are partially implemented; remaining scope, visibility, reserved-name and naming-rule audit still needed. |
-| `attributes.md` | **Planned** | Owns future syntax and placement for explicitly forbidding derived copy, requiring compiler-derived copyability, target validation and conflicting-policy diagnostics; no spelling is decided. |
-| `unsafe.md` | **Planned** | Canonical unsafe boundaries and operations. |
+| `attributes.md` | **Written** | Canonical closed Sec 0.1 attribute set, syntax, attachment, selection, target binding, `@noCopy`, verified guarantees, conflicts, formatter/LSP behavior, and explicit implementation status. |
+| `unsafe.md` | **Written** | Canonical unsafe contexts, operations, functions and extern declarations, caller obligations, raw pointers, trust boundaries and provenance; compiler support remains partial. |
 
 ## Contextual words and operators
 
@@ -300,8 +305,8 @@ storage.md
 | Rulebook | Status | Notes |
 |---|---|---|
 | `errorhandling.txt` | **Written — sync required** | Explicit `Result`, `Ok`, `Err`, `try`, and matching. |
-| `panic.md` | **Planned** | Panic payload, propagation, unwind/abort policy, cleanup, threads/tasks, destructors, and FFI boundaries. |
-| `runtime_checks.md` | **Planned** | Bounds, overflow, division by zero, contracts, shape, layout, and target-selectable check policy. |
+| `panic.md` | **Written** | Canonical panic domains, containment, cleanup, assertions, checked unreachable, task/thread outcomes, panic information, no-panic verification, and runtime-free support model; exact explicit-panic and build-manifest syntax remain open. |
+| `runtime_checks.md` | **Written** | Canonical checked-operation model, proof elimination, fallible `try` paths, panic-capable ordinary paths, typed propagation, no-panic integration, and runtime-free lowering requirements. |
 | `core-library.md` | **Written — sync required** | Must include the compiler/core access model and all language-level core errors. |
 | `core/errors.sec` | **Implementation artifact** | Every language-level runtime error type must be declared here. |
 
@@ -315,7 +320,8 @@ A check may lower to:
 - a profile-selected handler;
 - a statically eliminated operation.
 
-The exact behavior must be locked by `panic.md` and `runtime_checks.md`.
+The canonical behavior is defined by `panic.md` and `runtime_checks.md`; their
+implementation remains tracked separately.
 
 ---
 
@@ -424,7 +430,7 @@ OrderedMap[K, V]
 | `call_graph.md` | **Planned** | Complete direct and indirect call graph semantics and analysis. |
 | `stack_analysis.md` | **Planned** | Per-function, per-path, whole-program, and target frame analysis. |
 | `escape_analysis.md` | **Planned** | No silent stack-to-heap promotion; closure and reference escape rules. |
-| `effect_analysis.md` | **Planned** | `noAlloc`, `noBlock`, suspension, panic, unsafe, and target effects. |
+| `effect_analysis.md` | **Written** | Canonical compile-time effect domains, inference, call-graph propagation, verified guarantees, blocking/suspension distinction, arena events, trust provenance, diagnostics, and runtime-free model. |
 | `isr_analysis.md` | **Planned** | ISR call graph, stack, allocation, blocking, lock, and shared-state restrictions. |
 | `parser_recovery.md` | **Written** | Canonical deterministic recovery model; structured implementation remains partial. |
 | `generics_lowering.md` | **Planned** | Semantic and MLIR lowering of generic code. |
@@ -511,6 +517,7 @@ The following rulebooks are currently considered written.
 ```text
 allocation.txt
 arrays-slices.txt
+attributes.md
 atomics.md
 await.md
 blocking.md
@@ -533,6 +540,7 @@ destruction.txt
 diagnostics.txt
 enums.txt
 errorhandling.txt
+effect_analysis.md
 events.md
 ffi.txt
 flowcontrol_for.txt
@@ -555,6 +563,7 @@ mlir.txt
 mutex.md
 operators.md
 ownership.md
+panic.md
 processes.txt
 projects.txt
 properties.txt
@@ -562,6 +571,7 @@ raw_pointers.txt
 references.txt
 registers.txt
 rules_implementations.txt
+runtime_checks.md
 scheduling.md
 select.md
 semantic_ir.txt
@@ -574,6 +584,7 @@ tasks.txt
 threads.md
 transferability.md
 types.txt
+unsafe.md
 unions.txt
 units.txt
 contracts.md
@@ -599,19 +610,12 @@ The following rulebooks are currently expected before Sec 0.1 can be considered
 fully design-closed, unless a later decision explicitly merges one into another.
 
 ```text
-attributes.md
-unsafe.md
-
 storage.md
 layout.md
-
-panic.md
-runtime_checks.md
 
 call_graph.md
 stack_analysis.md
 escape_analysis.md
-effect_analysis.md
 isr_analysis.md
 generics_lowering.md
 monomorphization.md
@@ -666,16 +670,17 @@ This section tracks unresolved language surface rather than missing documents.
 
 ## Panic and runtime failure
 
-Still to decide:
+`panic.md` and `runtime_checks.md` now define panic domains, containment,
+cleanup, no-panic defer and destruction, foreign-boundary restrictions,
+task/thread outcomes, assertions, checked unreachable, checked-operation
+outcomes, typed fallible paths, and the no-mandatory-runtime model.
 
-- panic syntax and payload;
-- unwind versus abort by profile;
-- cleanup and `defer`;
-- destructor panic;
-- panic across FFI;
-- task/thread panic outcomes;
-- assertions;
-- bounds, overflow, contract, shape, and layout failures.
+Still to decide or lock in their owning rulebooks:
+
+- exact explicit `panic` source syntax and payload shape;
+- exact build-manifest syntax for root panic strategy and required no-panic
+  entrypoints;
+- exact supervisor source syntax in the concurrency rulebooks.
 
 ## Storage, layout, and ABI
 
@@ -693,22 +698,26 @@ Still to decide:
 
 ## Attributes and effects
 
-Still to decide:
+`attributes.md` now defines the closed Sec 0.1 attribute inventory and excludes
+custom user annotations. `effect_analysis.md` defines inferred effects,
+verified guarantees, interface compatibility, conservative indirect effects,
+and per-compilation-plan propagation.
 
-- complete attribute inventory;
-- custom user annotations;
-- verified effect versus unsafe promise;
-- effects in function types;
-- generic and interface effect propagation;
-- extern effect declarations.
+Still deliberately deferred:
+
+- effect-constrained function-type syntax;
+- generic effect-constraint syntax;
+- unsafe foreign effect-declaration syntax;
+- inline-assembly effect-declaration syntax;
+- future `noSuspend`, purity, determinism, arena-split, and visible-region
+  source forms.
 
 ## Platform and hardware
 
-Still to decide:
+`attributes.md` now defines target-selection and interrupt-binding attribute
+syntax. Still to decide in the remaining platform rulebooks:
 
-- target-condition syntax;
 - volatile and MMIO semantics;
-- interrupt declarations and binding;
 - inline assembly;
 - native platform views;
 - target capability queries.

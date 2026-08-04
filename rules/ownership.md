@@ -52,7 +52,11 @@ The current compiler already implements substantial ownership foundations:
 - AST ownership mode for declarations and assignments;
 - rejection of ordinary copy syntax for named move-only sources;
 - explicit moves from named sources, including copyable values;
-- semantic-token and TextMate grammar classification for move operators.
+- `@noCopy` parsing and AST storage on nominal type declarations;
+- propagation of explicit nominal non-copyability through generic instances
+  and containing aggregates;
+- semantic-token and TextMate grammar classification for move operators and
+  `@noCopy`;
 - a user-invoked LSP quick fix for the proven `S1007` implicit-move diagnostic,
   which changes `:=` to `:<-` or `=` to `<-` and explains that the source
   becomes unavailable.
@@ -69,8 +73,8 @@ these areas:
 - current move tracking is primarily identifier-based rather than place-based;
 - field-sensitive partial move is not implemented;
 - copy classification is incomplete for several core and collection types;
-- compiler-known explicitly non-copyable types are classified and enforced,
-  but no general user declaration syntax has been selected;
+- compiler-known and source-declared `@noCopy` types are classified and
+  enforced for direct named-source copy;
 - `string` is not yet fully enforced as the source-level copyable value defined
   by this rulebook;
 - branch merging records moved values but does not yet expose the complete
@@ -95,8 +99,8 @@ The following are not yet implemented:
 - dynamic-list indexed consuming extraction;
 - full collection-specific consuming extraction;
 - complete type-level copy classification;
-- general user syntax for explicitly non-copyable nominal types; the spelling
-  remains delegated to the planned `attributes.md` rulebook and `types.txt`;
+- the complete general attribute parser beyond the implemented `@noCopy`
+  nominal-type path;
 - user-defined must-use and ownership attributes;
 - complete FFI ownership contracts;
 - explicit Semantic IR operations for construction, copy, move, replacement,
@@ -652,15 +656,9 @@ Move-only classification belongs to the type, not to an individual variable.
 A nominal type may need to forbid copy even when its representation would
 otherwise be copyable.
 
-The exact source declaration mechanism belongs to:
-
-```text
-attributes.md
-types.txt
-```
-
-Until general syntax exists, compiler-known core types may carry this
-classification directly.
+The canonical source declaration is `@noCopy` on a nominal type as defined by
+`attributes.md`. The frontend parses and enforces this path. Compiler-known
+core types may carry the same internal classification directly.
 
 Explicit non-copyability is a nominal policy. It forbids implicit copy but does
 not by itself forbid source-level ownership transfer.

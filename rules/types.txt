@@ -81,8 +81,7 @@ Not implemented yet:
   precision exhaustion.
 - full formatter support for all declaration forms.
 - source syntax requiring that a nominal type remain compiler-derivably
-  copyable, and source syntax explicitly forbidding derived implicit copy; this
-  awaits the planned `attributes.md` rulebook.
+  copyable; Sec 0.1 intentionally defines no positive copy attribute.
 
 
 1. Variable declarations
@@ -254,18 +253,26 @@ A user-defined method named `Copy`, `Clone`, `Duplicate`, `Snapshot` or
 `ToOwned` is an ordinary named operation. It does not implicitly opt the type
 into assignment copy semantics.
 
-The canonical declaration syntax for either of these policies is not yet
-defined:
+The canonical explicit non-copyability declaration is:
+
+```sec
+@noCopy
+type SessionID struct {
+    value: uint64,
+}
+```
+
+It is parser- and Sema-implemented for nominal structs, enums, unions,
+registers, named underlying types, and generic nominal types.
+
+The declaration syntax for this separate future policy is not defined:
 
 - a verified requirement that a nominal type remain compiler-derivably
   copyable;
-- explicitly non-copyable nominal type despite otherwise copyable
-  representation.
 
-That syntax belongs to the planned `attributes.md` rulebook. Until it is
-written, the parser must not invent or reserve an annotation spelling for these
-policies. Compiler-known core and standard-library types may carry the internal
-classification directly.
+`attributes.md` intentionally excludes a positive copy attribute from the Sec
+0.1 subset. Compiler-known core and standard-library types may carry the
+internal non-copyable classification directly.
 
 An aggregate's representation only permits copy derivation; it does not decide
 the result by itself. All stored fields must permit copy, and ownership,

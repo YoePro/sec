@@ -42,6 +42,14 @@ func format(text string) string {
 			}
 			continue
 		}
+		if strings.HasPrefix(line, "@noCopy ") {
+			if blank && len(out) > 0 {
+				out = append(out, "")
+				blank = false
+			}
+			out = append(out, strings.Repeat(" ", indent*4)+"@noCopy")
+			line = strings.TrimSpace(strings.TrimPrefix(line, "@noCopy"))
+		}
 		line = formatLet(formatSignature(normalizeFunc(line)))
 		level := indent - closing(line)
 		if level < 0 {

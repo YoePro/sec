@@ -18,6 +18,12 @@ func (a *Analyzer) typeFromDeclarationWithName(name string, stmt *ast.TypeDeclSt
 	typ.Module = a.currentModule
 	typ.Named = true
 	typ.Declared = true
+	if hasAttribute(stmt.Attributes, "noCopy") {
+		typ.ExplicitlyNonCopyable = true
+		typ.NoCopyPolicyOrigin = name
+	} else if typ.ExplicitlyNonCopyable && typ.NoCopyPolicyOrigin == "" {
+		typ.NoCopyPolicyOrigin = baseType.Name
+	}
 	typ.Underlying = baseType.Name
 	typ.Contracts = append([]Contract(nil), baseType.Contracts...)
 	typ.GenericParameters = genericParameterNameValues(stmt.GenericParameters)

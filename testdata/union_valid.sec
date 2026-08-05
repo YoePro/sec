@@ -208,7 +208,7 @@ fn MessageDescription(message: Message) string {
     return match message {
         Quit => "quit"
         Text(text) => text
-        Move(move) => string(move.x) + "," + string(move.y)
+        Move(move) => string(move.x)
     }
 }
 

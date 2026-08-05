@@ -365,6 +365,9 @@ Implemented:
 - Sema checks receiver mutability for `self`.
 - Sema checks required property type and required accessors.
 - Sema checks inherited interface requirements recursively.
+- Sema detects direct, indirect, and self-referential interface inheritance
+  cycles with stable diagnostic `S1012`, reports the complete cycle path, and
+  suppresses dependent conformance cascades.
 - `sec ast` prints interface declarations and implements lists.
 
 Partially implemented:
@@ -373,8 +376,6 @@ Partially implemented:
   interface conformance is not complete.
 - Method compatibility handles ordinary signatures and `self`, but not all future
   unsafe/error/lifetime requirements.
-- Interface inheritance is checked recursively, but cycle detection is not
-  implemented yet.
 
 Not implemented yet:
 

@@ -73,6 +73,11 @@ type hoverParams struct {
 	Position     position               `json:"position"`
 }
 
+type definitionParams struct {
+	TextDocument textDocumentIdentifier `json:"textDocument"`
+	Position     position               `json:"position"`
+}
+
 type documentSymbolParams struct {
 	TextDocument textDocumentIdentifier `json:"textDocument"`
 }
@@ -102,6 +107,11 @@ type markupContent struct {
 type hoverResult struct {
 	Contents markupContent `json:"contents"`
 	Range    lspRange      `json:"range,omitempty"`
+}
+
+type location struct {
+	URI   string   `json:"uri"`
+	Range lspRange `json:"range"`
 }
 
 type completionItem struct {
@@ -245,6 +255,7 @@ func (s *server) handle(message rpcMessage) error {
 				"documentFormattingProvider": true,
 				"documentSymbolProvider":     true,
 				"hoverProvider":              true,
+				"definitionProvider":         true,
 				"codeActionProvider":         true,
 				"completionProvider": map[string]any{
 					"triggerCharacters": []string{"."},
@@ -394,12 +405,94 @@ func (s *server) handle(message rpcMessage) error {
 			return s.respond(message.ID, nil)
 		}
 		return s.respond(message.ID, result)
+	case "textDocument/definition":
+		var params definitionParams
+		if err := json.Unmarshal(message.Params, &params); err != nil {
+			return err
+		}
+		snapshot, ok := s.documentSnapshots.Snapshot(params.TextDocument.URI)
+		if !ok {
+			return s.respond(message.ID, nil)
+		}
+		locations := definitionsForSource(params.TextDocument.URI, snapshot.Text, params.Position)
+		if len(locations) == 0 {
+			return s.respond(message.ID, nil)
+		}
+		return s.respond(message.ID, locations)
 	default:
 		if len(message.ID) == 0 {
 			return nil
 		}
 		return s.respondError(message.ID, -32601, "method not found")
 	}
+}
+
+func definitionsForSource(uri string, text string, pos position) (locations []location) {
+	defer func() {
+		if recover() != nil {
+			locations = nil
+		}
+	}()
+
+	program := parseProgramForLSP(uri, text)
+	if program == nil {
+		return nil
+	}
+	path := pathFromURI(uri)
+	if uri != "" {
+		resolveCoreSources(program, path)
+		resolveSourceImports(program, map[string]bool{}, path)
+	}
+	analyzer := sema.NewAnalyzer()
+	analyzer.Analyze(program)
+
+	use, ok := sourceTokenAtPosition(uri, text, pos)
+	if !ok {
+		return nil
+	}
+	definitions := analyzer.DefinitionsAt(use.File, use.Line, use.Column)
+	seen := map[string]bool{}
+	for _, definition := range definitions {
+		definitionURI := uri
+		if definition.File != "" {
+			definitionURI = uriFromPath(definition.File)
+		}
+		rng := definitionTokenRange(definition)
+		key := fmt.Sprintf("%s:%d:%d", definitionURI, rng.Start.Line, rng.Start.Character)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		locations = append(locations, location{URI: definitionURI, Range: rng})
+	}
+	return locations
+}
+
+func sourceTokenAtPosition(uri string, text string, pos position) (lexer.Token, bool) {
+	l := lexer.New(text)
+	if uri != "" {
+		l = lexer.NewWithFile(text, pathFromURI(uri))
+	}
+	for {
+		token := l.NextToken()
+		if token.Type == lexer.EOF {
+			return lexer.Token{}, false
+		}
+		rng := tokenRange(token)
+		if comparePosition(pos, rng.Start) >= 0 && comparePosition(pos, rng.End) < 0 {
+			return token, true
+		}
+	}
+}
+
+func definitionTokenRange(token lexer.Token) lspRange {
+	rng := tokenRange(token)
+	// Imported declarations are semantically qualified in the combined AST.
+	// Their source token still starts at the unqualified declaration name.
+	if index := strings.LastIndex(token.Lexeme, "."); index >= 0 && index+1 < len(token.Lexeme) {
+		rng.End.Character = rng.Start.Character + len([]rune(token.Lexeme[index+1:]))
+	}
+	return rng
 }
 
 func completeSource(uri string, text string, offset int) []completionItem {
@@ -435,11 +528,16 @@ func completeSource(uri string, text string, offset int) []completionItem {
 		if targetExpr == nil {
 			return []completionItem{}
 		}
+		if identifier, ok := targetExpr.(*ast.Identifier); ok {
+			if staticType, exists := analyzer.Types()[identifier.Value]; exists {
+				return memberCompletionItems(staticType, analyzer.Functions(), analyzer.Symbols(), context.Prefix, true)
+			}
+		}
 		exprType, ok := analyzer.TypeOf(targetExpr)
 		if !ok {
 			return []completionItem{}
 		}
-		return memberCompletionItems(exprType, analyzer.Functions(), analyzer.Symbols(), context.Prefix)
+		return memberCompletionItems(exprType, analyzer.Functions(), analyzer.Symbols(), context.Prefix, false)
 	}
 
 	return globalCompletionItems(text, analyzer, context)
@@ -1234,7 +1332,7 @@ func isContractModifierContext(prefix string) bool {
 	return false
 }
 
-func memberCompletionItems(exprType sema.Type, functions map[string][]sema.Function, symbols map[string]sema.Symbol, prefix string) []completionItem {
+func memberCompletionItems(exprType sema.Type, functions map[string][]sema.Function, symbols map[string]sema.Symbol, prefix string, static bool) []completionItem {
 	items := []completionItem{}
 	seen := map[string]bool{}
 	add := func(item completionItem) {
@@ -1244,31 +1342,47 @@ func memberCompletionItems(exprType sema.Type, functions map[string][]sema.Funct
 		seen[item.Label] = true
 		items = append(items, item)
 	}
+	for _, member := range sema.CompilerKnownMembersForType(exprType, static) {
+		kind := 2
+		if member.Kind == sema.CompilerKnownProperty {
+			kind = 10
+		}
+		detail := lspTypeName(member.Result)
+		if member.Result.Kind == sema.InvalidType || member.Result.Kind == "" {
+			detail = string(member.Kind)
+		}
+		if member.Unsafe {
+			detail = "unsafe " + detail
+		}
+		add(completionItem{Label: member.Name, Kind: kind, Detail: detail})
+	}
 
-	switch exprType.Kind {
-	case sema.StructType:
-		for _, field := range exprType.Fields {
-			add(completionItem{Label: field.Name, Kind: 5, Detail: lspTypeName(field.Type)})
-		}
-	case sema.ArrayType, sema.SliceType:
-		if exprType.Element != nil && exprType.Element.Kind == sema.RuneType {
-			add(completionItem{Label: "ToString", Kind: 2, Detail: "string"})
-		}
-	case sema.RawPtrType:
-		add(completionItem{Label: "Offset", Kind: 2, Detail: lspTypeName(exprType)})
-		add(completionItem{Label: "AddBytes", Kind: 2, Detail: "RawPtr[byte]"})
-		add(completionItem{Label: "Difference", Kind: 2, Detail: "int"})
-	case sema.RegisterType:
-		for _, field := range exprType.RegisterFields {
-			add(completionItem{Label: field.Name, Kind: 5, Detail: lspTypeName(field.Type)})
-		}
-	case sema.EnumType:
-		for _, variant := range exprType.EnumValues {
-			add(completionItem{Label: variant, Kind: 20, Detail: lspTypeName(exprType)})
-		}
-	case sema.UnionType:
-		for _, variant := range exprType.UnionVariants {
-			add(completionItem{Label: variant.Name, Kind: 20, Detail: lspTypeName(exprType)})
+	if !static {
+		switch exprType.Kind {
+		case sema.StructType:
+			for _, field := range exprType.Fields {
+				add(completionItem{Label: field.Name, Kind: 5, Detail: lspTypeName(field.Type)})
+			}
+		case sema.ArrayType, sema.SliceType:
+			if exprType.Element != nil && exprType.Element.Kind == sema.RuneType {
+				add(completionItem{Label: "ToString", Kind: 2, Detail: "string"})
+			}
+		case sema.RawPtrType:
+			add(completionItem{Label: "Offset", Kind: 2, Detail: lspTypeName(exprType)})
+			add(completionItem{Label: "AddBytes", Kind: 2, Detail: "RawPtr[byte]"})
+			add(completionItem{Label: "Difference", Kind: 2, Detail: "int"})
+		case sema.RegisterType:
+			for _, field := range exprType.RegisterFields {
+				add(completionItem{Label: field.Name, Kind: 5, Detail: lspTypeName(field.Type)})
+			}
+		case sema.EnumType:
+			for _, variant := range exprType.EnumValues {
+				add(completionItem{Label: variant, Kind: 20, Detail: lspTypeName(exprType)})
+			}
+		case sema.UnionType:
+			for _, variant := range exprType.UnionVariants {
+				add(completionItem{Label: variant.Name, Kind: 20, Detail: lspTypeName(exprType)})
+			}
 		}
 	}
 
@@ -3543,4 +3657,17 @@ func pathFromURI(uri string) string {
 		path = path[1:]
 	}
 	return filepath.Clean(path)
+}
+
+func uriFromPath(path string) string {
+	if path == "" {
+		return ""
+	}
+	if parsed, err := url.Parse(path); err == nil && parsed.Scheme != "" {
+		return path
+	}
+	if absolute, err := filepath.Abs(path); err == nil {
+		path = absolute
+	}
+	return (&url.URL{Scheme: "file", Path: filepath.ToSlash(path)}).String()
 }

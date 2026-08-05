@@ -1110,12 +1110,15 @@ The first advanced unit pass is implemented:
   inside `impl TargetUnit` are visible as explicit constructor-style calls.
 - return expressions from those conversion functions may retag compatible
   dimensional results through the declared return type.
+- direct conversion functions for every numeric unit storage type whose source
+  is another unit are validated
+  against the source and target normalized dimensions. Incompatible functions
+  produce `S1013` and are not registered as constructor-style conversions.
 
 Still not implemented:
 
 - compile-time validation that every physical unit has complete metadata.
 - duplicate dimension-axis diagnostics beyond the current parser helper.
 - scale-sensitive algebra and fixed scale-path conversion.
-- validation that conversion functions have compatible source/target dimensions.
 - offset units.
 - MLIR representation of dimensional vectors.

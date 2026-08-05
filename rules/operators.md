@@ -146,13 +146,26 @@ The AST currently preserves:
 - assignment operator spelling;
 - ownership mode for declarations and assignments.
 
-Sema currently implements or partially implements:
+Sema currently implements:
 
 - boolean operands for `&&` and `||`;
 - arithmetic numeric checks;
 - integer requirements for bitwise operators;
 - integer requirements for shifts;
-- equality compatibility;
+- compile-time rejection of negative and out-of-width shift counts, including
+  the representation width of user-defined integer types;
+- compile-time rejection of signed left shifts whose known result is outside
+  the left operand representation;
+- recursive equality comparability for fixed arrays, ordinary structs and
+  unions, plus strict nominal compatibility and literal shaping;
+- safe-reference equality using compatible reference types, as specialized by
+  `reference_model.md`;
+- rejection of ordinary equality for slice views, interfaces, functions and
+  compiler-known opaque struct types;
+- rejection of runtime string `+`; only recursively compile-time-foldable
+  string-literal concatenation is accepted;
+- ordered-comparison validation for compatible numeric operands and matching
+  `char`, `rune`, and `string` operands;
 - rejection of chained comparisons;
 - contextual shaping of character literals;
 - range membership;
@@ -192,12 +205,12 @@ The following are only partially implemented:
   remain;
 - overflow checking is incomplete;
 - runtime division-by-zero checking is incomplete;
-- invalid shift-count checking is incomplete;
-- signed-left-shift overflow checking is incomplete;
-- ordered comparison type validation is incomplete;
+- compile-time shift-count checking is implemented, while deterministic checks
+  for dynamically known counts still require runtime-check lowering;
+- compile-time signed-left-shift overflow checking is implemented, while
+  dynamically known signed overflow still requires runtime-check lowering;
 - float comparison predicates do not yet fully match the required NaN rules;
 - `%` is accepted broadly by Sema, but float and decimal lowering is incomplete;
-- string `+` is accepted more broadly than allowed by this rulebook;
 - `in` currently supports ranges but not fixed arrays and slices;
 - compound assignment does not yet implement every required check and
   evaluation-order guarantee;
@@ -205,6 +218,16 @@ The following are only partially implemented:
   every canonical normalization and move token;
 - parser recovery for malformed operator expressions is incomplete;
 - operator diagnostics are not all registered with stable IDs.
+
+The implemented ordered-comparison and compile-time shift checks emit:
+
+```text
+S1016  operator.non-orderable-operands
+S1017  operator.invalid-shift-count
+S1018  operator.signed-left-shift-overflow
+S1019  operator.non-comparable-operands
+S1020  operator.string-runtime-concat
+```
 
 ## Not implemented
 
@@ -218,10 +241,12 @@ The following are not yet implemented completely:
 - decimal `%`;
 - fixed-array membership;
 - slice membership;
-- compile-time-only enforcement for string concatenation;
-- complete derived struct equality;
+- materialization of accepted compile-time string concatenation as one folded
+  constant before Semantic IR/lowering;
+- complete aggregate equality lowering;
+- complete detection of user-defined opaque-resource semantics for derived
+  struct equality;
 - explicit identity or non-comparable type metadata;
-- complete interface equality restrictions;
 - complete operator metadata in Semantic IR;
 - complete operator effect metadata;
 - complete LSP operator explanations;
@@ -2015,7 +2040,13 @@ same owner
 same resource
 ```
 
-A future identity API may expose exact reference identity deliberately.
+`reference_model.md` is the specialized reference rule for Sec 0.1. It defines
+ordinary equality for compatible safe references as comparison of live storage
+identity and referenced location. This does not add equality for `ref T[]` or
+`ref mut T[]`, which are slice views under the array/slice rules.
+
+Other identity queries remain explicit APIs rather than additional ordinary
+operators.
 
 ---
 
@@ -3157,6 +3188,16 @@ sema.operator-remainder-by-zero
 sema.operator-invalid-compound-target
 sema.operator-move-self-assignment
 sema.operator-overlapping-move
+```
+
+The current registry assigns these IDs to the implemented subset:
+
+```text
+S1016  operator.non-orderable-operands
+S1017  operator.invalid-shift-count
+S1018  operator.signed-left-shift-overflow
+S1019  operator.non-comparable-operands
+S1020  operator.string-runtime-concat
 ```
 
 Safety errors are mandatory.

@@ -447,6 +447,10 @@ func SplitNumericLiteralSuffix(lexeme string) (string, string) {
 	}
 }
 
+func NormalizeNumericLiteralLexeme(lexeme string) string {
+	return strings.ReplaceAll(lexeme, "_", "")
+}
+
 func ParseIntegerLiteralLexeme(lexeme string) (*big.Int, bool) {
 	digits, suffix := SplitNumericLiteralSuffix(lexeme)
 	if suffix == "f" || suffix == "d" || digits == "" {
@@ -470,6 +474,7 @@ func ParseIntegerLiteralLexeme(lexeme string) (*big.Int, bool) {
 	if digits == "" {
 		return nil, false
 	}
+	digits = NormalizeNumericLiteralLexeme(digits)
 
 	value, ok := new(big.Int).SetString(digits, base)
 	return value, ok
@@ -488,6 +493,7 @@ func ParseFloatLiteralFloat64(lexeme string) (float64, bool) {
 	if suffix == "i" || suffix == "u" || suffix == "c" || suffix == "r" || digits == "" {
 		return 0, false
 	}
+	digits = NormalizeNumericLiteralLexeme(digits)
 	value, err := strconv.ParseFloat(digits, 64)
 	return value, err == nil
 }

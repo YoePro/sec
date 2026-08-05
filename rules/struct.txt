@@ -41,6 +41,8 @@ Implemented
 - Parser validates basic Go-style struct tag syntax.
 - AST preserves struct field tags.
 - Sema preserves struct field tags as metadata.
+- Sema derives frontend equality comparability for ordinary structs when every
+  stored field is equality-comparable, and rejects equality otherwise.
 - Parser supports shallow impl blocks:
 
     impl Vehicle { }
@@ -108,6 +110,8 @@ Not implemented yet
   parameters or references, reference/slice fields, methods and properties.
 - Explicit Semantic IR origins and cleanup regions for defaulted nontrivial
   fields.
+- Explicit identity/non-comparable metadata, complete detection of
+  user-defined opaque-resource semantics, and derived struct equality lowering.
 
 
 Language model

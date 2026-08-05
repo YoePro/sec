@@ -43,6 +43,10 @@ Implemented:
 - match patterns for payload-less variants
 - match payload binding for single-payload and struct-like variants
 - union match exhaustiveness checks
+- recursive copyability classification across unnamed and struct-like payloads
+- recursive frontend comparability calculation across unnamed and struct-like
+  payloads; ordinary equality is rejected when any possible payload is not
+  equality-comparable
 
 Partially implemented:
 
@@ -51,6 +55,7 @@ Partially implemented:
 - direct recursive storage detection exists for immediate union payloads and
   struct-like payload fields, but full layout-aware recursion through every
   indirection form is still pending.
+- equality lowering for comparable unions remains pending.
 
 Not implemented yet:
 
@@ -58,7 +63,6 @@ Not implemented yet:
   the existing struct-field rule and requires commas between fields.
 - explicit `Option[int].Some(10)` constructor syntax.
 - field-level match destructuring.
-- copyability/comparability calculation.
 - backend layout metadata.
 - LLVM construction and match lowering.
 

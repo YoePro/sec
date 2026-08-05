@@ -703,6 +703,72 @@ func CopyClassificationOf(typ Type) CopyClassification {
 	return copyClassificationOf(typ, map[string]bool{})
 }
 
+func EqualityComparable(typ Type) bool {
+	return equalityComparable(typ, map[string]bool{})
+}
+
+func equalityComparable(typ Type, visiting map[string]bool) bool {
+	switch typ.Kind {
+	case BoolType,
+		IntType,
+		UintType,
+		FloatType,
+		DecimalType,
+		CharType,
+		RuneType,
+		StringType,
+		EnumType,
+		RawPtrType:
+		return true
+	case ReferenceType:
+		return typ.Element != nil && typ.Element.Kind != SliceType
+	case ArrayType:
+		return typ.Element != nil && equalityComparable(*typ.Element, visiting)
+	case StructType:
+		// Compiler-known struct types without ordinary stored-field semantics
+		// represent resources, collections, or opaque runtime descriptors.
+		if typ.Intrinsic {
+			return false
+		}
+		key := typeDestructionKey(typ)
+		if key != "" {
+			if visiting[key] {
+				return false
+			}
+			visiting[key] = true
+			defer delete(visiting, key)
+		}
+		for _, field := range typ.Fields {
+			if !equalityComparable(field.Type, visiting) {
+				return false
+			}
+		}
+		return true
+	case UnionType:
+		key := typeDestructionKey(typ)
+		if key != "" {
+			if visiting[key] {
+				return false
+			}
+			visiting[key] = true
+			defer delete(visiting, key)
+		}
+		for _, variant := range typ.UnionVariants {
+			if variant.Payload != nil && !equalityComparable(*variant.Payload, visiting) {
+				return false
+			}
+			for _, field := range variant.PayloadFields {
+				if !equalityComparable(field.Type, visiting) {
+					return false
+				}
+			}
+		}
+		return true
+	default:
+		return false
+	}
+}
+
 func TriviallyCopyable(typ Type) bool {
 	return CopyClassificationOf(typ) == CopyTrivial
 }

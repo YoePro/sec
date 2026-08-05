@@ -854,6 +854,41 @@ let ru: rune := 0x41r`
 	}
 }
 
+func TestParseNumericDigitSeparatorsPreservesLexemesAndValues(t *testing.T) {
+	input := `let decimal := 1_000_000
+let binary := 0b1111_0000
+let hex := 0xFFFF_FFFF
+let fraction := 1_234.5_678`
+
+	p := New(lexer.New(input))
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+	if len(program.Statements) != 4 {
+		t.Fatalf("wrong statement count. got=%d want=4", len(program.Statements))
+	}
+
+	wantIntegers := []struct {
+		lexeme string
+		value  int64
+	}{
+		{"1_000_000", 1_000_000},
+		{"0b1111_0000", 240},
+		{"0xFFFF_FFFF", 4_294_967_295},
+	}
+	for index, want := range wantIntegers {
+		stmt := program.Statements[index].(*ast.LetStatement)
+		literal := stmt.Value.(*ast.IntegerLiteral)
+		if literal.Token.Lexeme != want.lexeme || literal.BigValue.Int64() != want.value {
+			t.Fatalf("statement %d = %q/%s, want %q/%d", index, literal.Token.Lexeme, literal.BigValue, want.lexeme, want.value)
+		}
+	}
+	stmt := program.Statements[3].(*ast.LetStatement)
+	fraction := stmt.Value.(*ast.FloatLiteral)
+	if fraction.Token.Lexeme != "1_234.5_678" || fraction.Value != 1234.5678 {
+		t.Fatalf("fraction = %q/%v, want preserved lexeme and value 1234.5678", fraction.Token.Lexeme, fraction.Value)
+	}
+}
+
 func TestParseLetExpressionString(t *testing.T) {
 	tests := []struct {
 		input string

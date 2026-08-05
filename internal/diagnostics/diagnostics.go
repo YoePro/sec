@@ -51,6 +51,15 @@ const (
 	NoDefaultValue              = "S1009"
 	MissingNonDefaultableField  = "S1010"
 	InvalidMembershipValue      = "S1011"
+	InterfaceInheritanceCycle   = "S1012"
+	IncompatibleUnitConversion  = "S1013"
+	IncompleteEnumSwitch        = "S1014"
+	DuplicateSwitchCase         = "S1015"
+	OperatorNonOrderable        = "S1016"
+	OperatorInvalidShiftCount   = "S1017"
+	OperatorShiftOverflow       = "S1018"
+	OperatorNonComparable       = "S1019"
+	OperatorStringRuntimeConcat = "S1020"
 	LargeValueParameter         = "A2001"
 )
 
@@ -148,6 +157,33 @@ var registry = map[string]Definition{
 	},
 	InvalidMembershipValue: {
 		ID: InvalidMembershipValue, Name: "types.in-list-value-violates-contract", Family: "types", DefaultSeverity: SeverityError, Mandatory: true,
+	},
+	InterfaceInheritanceCycle: {
+		ID: InterfaceInheritanceCycle, Name: "interfaces.inheritance-cycle", Family: "interfaces", DefaultSeverity: SeverityError, Mandatory: true,
+	},
+	IncompatibleUnitConversion: {
+		ID: IncompatibleUnitConversion, Name: "units.incompatible-conversion-dimensions", Family: "units", DefaultSeverity: SeverityError, Mandatory: true,
+	},
+	IncompleteEnumSwitch: {
+		ID: IncompleteEnumSwitch, Name: "switch.incomplete-enum-coverage", Family: "flow-control", DefaultSeverity: SeverityWarning, Mandatory: false,
+	},
+	DuplicateSwitchCase: {
+		ID: DuplicateSwitchCase, Name: "switch.duplicate-constant-case", Family: "flow-control", DefaultSeverity: SeverityError, Mandatory: true,
+	},
+	OperatorNonOrderable: {
+		ID: OperatorNonOrderable, Name: "operator.non-orderable-operands", Family: "operators", DefaultSeverity: SeverityError, Mandatory: true,
+	},
+	OperatorInvalidShiftCount: {
+		ID: OperatorInvalidShiftCount, Name: "operator.invalid-shift-count", Family: "operators", DefaultSeverity: SeverityError, Mandatory: true,
+	},
+	OperatorShiftOverflow: {
+		ID: OperatorShiftOverflow, Name: "operator.signed-left-shift-overflow", Family: "operators", DefaultSeverity: SeverityError, Mandatory: true,
+	},
+	OperatorNonComparable: {
+		ID: OperatorNonComparable, Name: "operator.non-comparable-operands", Family: "operators", DefaultSeverity: SeverityError, Mandatory: true,
+	},
+	OperatorStringRuntimeConcat: {
+		ID: OperatorStringRuntimeConcat, Name: "operator.string-runtime-concat", Family: "operators", DefaultSeverity: SeverityError, Mandatory: true,
 	},
 	LargeValueParameter: {
 		ID:              LargeValueParameter,

@@ -329,7 +329,7 @@ func TestKeywords(t *testing.T) {
 		{REF, "ref"},
 		{UNSAFE, "unsafe"},
 		{ASM, "asm"},
-		{ARENA, "arena"},
+		{IDENT, "arena"},
 		{AFTER, "after"},
 		{PROPERTY, "property"},
 		{GET, "get"},
@@ -388,6 +388,50 @@ func TestNumbersAndRanges(t *testing.T) {
 	}
 
 	assertTokens(t, input, tests)
+}
+
+func TestNumericDigitSeparators(t *testing.T) {
+	input := `1_000_000 0b1111_0000 0o755_000 0xFFFF_FFFF 1_234.567_890 1.25e1_000 42_000u`
+
+	tests := []struct {
+		typ    TokenType
+		lexeme string
+	}{
+		{INT, "1_000_000"},
+		{INT, "0b1111_0000"},
+		{INT, "0o755_000"},
+		{INT, "0xFFFF_FFFF"},
+		{FLOAT, "1_234.567_890"},
+		{FLOAT, "1.25e1_000"},
+		{INT, "42_000u"},
+		{EOF, ""},
+	}
+
+	assertTokens(t, input, tests)
+}
+
+func TestInvalidNumericDigitSeparatorsAreIllegalTokens(t *testing.T) {
+	for _, input := range []string{
+		"100_",
+		"1__000",
+		"0x_FF",
+		"0xFF_",
+		"1_.5",
+		"1._5",
+		"1e_3",
+		"1e3_",
+	} {
+		t.Run(input, func(t *testing.T) {
+			l := New(input)
+			tok := l.NextToken()
+			if tok.Type != ILLEGAL || tok.Lexeme != input {
+				t.Fatalf("wrong malformed numeric token. got=%q %q want=%q %q", tok.Type, tok.Lexeme, ILLEGAL, input)
+			}
+			if next := l.NextToken(); next.Type != EOF {
+				t.Fatalf("malformed numeric token did not recover at EOF: %+v", next)
+			}
+		})
+	}
 }
 
 func TestScientificExponentLiterals(t *testing.T) {

@@ -1810,6 +1810,12 @@ The current lexer already provides substantial support for:
   digits;
 - binary, octal, and hexadecimal integer prefixes;
 - numeric family suffixes `i`, `u`, `f`, `d`, `c`, and `r`;
+- numeric digit separators between valid digits in decimal, binary, octal,
+  hexadecimal, fractional and exponent components;
+- preservation of separator-containing numeric source lexemes in tokens and AST
+  while parser and semantic constant evaluation ignore the separators;
+- rejection of misplaced, repeated and trailing numeric separators as one
+  `ILLEGAL` numeric token for the currently recognized malformed forms;
 - ordinary strings;
 - character-literal tokenization;
 - backtick raw strings;
@@ -1883,7 +1889,6 @@ The following rules are not yet fully implemented:
 - NFC validation of identifiers;
 - diagnostics for unsupported Unicode whitespace;
 - confusable-identifier warnings;
-- numeric digit separators;
 - maximal malformed numeric-token recovery;
 - strict suffix validation by base and literal family;
 - lexer-level escape diagnostics; character-literal escape validation currently

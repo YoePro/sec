@@ -10,12 +10,21 @@ func TestRegistryIsValid(t *testing.T) {
 
 func TestKnownDiagnosticSeverities(t *testing.T) {
 	tests := map[string]Severity{
-		ParserSyntaxError:          SeverityError,
-		MissingModuleDeclaration:   SeverityError,
-		DuplicateModuleDeclaration: SeverityError,
-		ModuleDeclarationConflict:  SeverityError,
-		DuplicateLocalVariable:     SeverityError,
-		LargeValueParameter:        SeverityInformation,
+		ParserSyntaxError:           SeverityError,
+		MissingModuleDeclaration:    SeverityError,
+		DuplicateModuleDeclaration:  SeverityError,
+		ModuleDeclarationConflict:   SeverityError,
+		DuplicateLocalVariable:      SeverityError,
+		InterfaceInheritanceCycle:   SeverityError,
+		IncompatibleUnitConversion:  SeverityError,
+		IncompleteEnumSwitch:        SeverityWarning,
+		DuplicateSwitchCase:         SeverityError,
+		OperatorNonOrderable:        SeverityError,
+		OperatorInvalidShiftCount:   SeverityError,
+		OperatorShiftOverflow:       SeverityError,
+		OperatorNonComparable:       SeverityError,
+		OperatorStringRuntimeConcat: SeverityError,
+		LargeValueParameter:         SeverityInformation,
 	}
 
 	for id, severity := range tests {

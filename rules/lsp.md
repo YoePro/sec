@@ -107,6 +107,11 @@ sec fmt --fix
 
 The LSP is a protocol adapter and interactive client of compiler services.
 
+The compiler owns one canonical semantic call graph for each concrete
+`CompilationPlan`. The LSP consumes that graph and its compiler-produced
+analysis views. It must not construct, cache as semantic truth, or incrementally
+maintain a second LSP-specific call graph.
+
 ---
 
 ## Shared formatter
@@ -366,6 +371,28 @@ Implemented:
 - `self` member resolution;
 - type-aware hover through Sema.
 
+### Navigation
+
+Implemented:
+
+- `textDocument/definition` capability advertisement and request handling;
+- compiler-owned use-to-declaration bindings produced during Sema;
+- definitions for local variables and parameters;
+- definitions for named types and generic type parameters;
+- definitions for resolved functions and the selected overload;
+- definitions for fields, register fields, properties, events, enum values,
+  union variants, and resolved methods, including `self` member access;
+- cross-file definitions in imported project, core, and stdlib sources;
+- exact unqualified declaration ranges after imported declarations are
+  semantically qualified;
+- `null` results for unresolved and tested incomplete source instead of guessed
+  destinations.
+
+The initial implementation resolves from the current immutable document text
+and compiler-loaded source set. A persistent workspace symbol index,
+declaration/type-definition distinction, implementation navigation, references,
+document highlights, and rename remain pending.
+
 ### Document symbols
 
 Implemented:
@@ -573,7 +600,6 @@ The following major areas are not yet implemented:
 - fix-all;
 - safe fixes on save;
 - missing-colon repair;
-- definition;
 - declaration;
 - type definition;
 - implementation navigation;
@@ -591,6 +617,9 @@ The following major areas are not yet implemented:
 - inline values;
 - inline completion;
 - call hierarchy;
+- compiler-owned call-graph queries and per-`CompilationPlan` graph snapshots;
+- indirect target sets, open callable contracts, root reachability, and
+  call-graph cause paths;
 - type hierarchy;
 - folding ranges;
 - selection ranges;
@@ -741,18 +770,26 @@ document versions
 project manifest version
 active target
 output variant
+CompilationPlan identity
 profile
 feature set
 diagnostic policy
 core version
 stdlib version
 module graph version
+call graph version
 ```
 
 Results from an older snapshot must not overwrite results for a newer document
 version.
 
 Analysis is deterministic for a given snapshot.
+
+Call-graph results are valid only for the exact snapshot and
+`CompilationPlan` from which the compiler produced them. A target switch,
+active implementation-variant change, relevant declaration change, or changed
+indirect target set invalidates affected graph facts. Partial or completed
+results from an older graph snapshot must not overwrite newer results.
 
 ---
 
@@ -955,6 +992,12 @@ partial results
 ```
 
 Long analyses must support cancellation and progress reporting.
+
+Call hierarchy, root reachability, path explanations, and graph visualization
+may return partial results when the client supports them. Every result must
+identify its snapshot and active `CompilationPlan`; cancellation must stop
+further traversal without publishing an incomplete result as a complete closed
+target set or complete cause path.
 
 ---
 
@@ -1534,6 +1577,28 @@ target availability
 source location
 ```
 
+For a resolved callable, hover may additionally expose compiler-owned call-graph
+facts:
+
+```text
+direct callers and callees
+possible indirect callers and targets
+closed target set or open callable contract
+roots reaching the callable
+execution relationships
+same-stack recursion component
+task, thread, or process creation relationships
+task spawn origin
+await or join synchronization origin where known
+continuation information where known
+effect, panic, allocation, stack, and unsafe-provenance paths
+active target variant and CompilationPlan
+```
+
+The presentation must distinguish proven direct facts, conservative possible
+facts, and open-world contracts. Unknown facts must not be displayed as closed
+or complete.
+
 Unknown facts must be omitted or explicitly marked unavailable.
 
 The LSP must never invent metadata that the compiler has not resolved.
@@ -1689,6 +1754,24 @@ allocation
 target
 ```
 
+Call navigation and references also distinguish:
+
+```text
+direct call
+interface dispatch
+function-value dispatch
+closure invocation
+foreign call or callback entry
+compiler-generated or intrinsic invocation
+deferred invocation
+destruction
+task spawn
+thread start
+process launch
+interrupt entry
+await or join synchronization
+```
+
 Examples:
 
 ```text
@@ -1724,6 +1807,12 @@ generic specializations
 callers
 callees
 ```
+
+Call-graph lenses use the compiler-owned graph for the active
+`CompilationPlan`. They may show direct and possible counts separately, mark an
+open callable contract, identify roots, and expose same-stack recursion, spawn
+origins, synchronization origins, and available cause paths. A possible or
+open-world relationship must not be presented as a confirmed direct call.
 
 Example:
 
@@ -1991,16 +2080,104 @@ Everything produced by compiler analysis should be available in the editor.
 
 ## Call graph
 
-Features:
+The canonical semantics are defined by `call_graph.md`. The LSP exposes
+compiler-owned graph facts and does not define another graph model.
+
+Required callable queries include:
 
 ```text
-show callers
-show callees
-show complete call chain
-show recursion cycle
-show indirect cycle
-show target-specific edges
+direct callers
+direct callees
+possible indirect callers
+possible indirect targets
+closed target sets
+open callable contracts
+roots reaching a callable
+complete cause paths where available
+same-stack recursion components
+task-spawn relationships
+thread-start relationships
+process-launch relationships
+interrupt and callback entry relationships
+await and join synchronization origins where known
+continuation information where known
+effect paths
+panic paths
+allocation paths
+stack paths and estimates
+unsafe-provenance paths
+active target variant and CompilationPlan
 ```
+
+### Relationship classification
+
+Call hierarchy, hover, code lens, navigation, and graph views preserve both the
+dispatch kind and the execution relationship. They distinguish:
+
+```text
+direct
+interface
+function value
+closure
+foreign
+intrinsic
+compiler generated
+deferred
+destruction
+task
+thread
+process
+interrupt
+callback
+```
+
+Same-stack calls are not conflated with task-, thread-, or process-creation
+edges. Consequently, same-stack recursion is reported separately from task
+spawn cycles, thread-start cycles, and process-launch cycles.
+
+### Call hierarchy
+
+Incoming-call results distinguish:
+
+```text
+confirmed direct caller
+possible indirect caller
+open-world caller contract
+implicit destructor caller
+deferred caller
+task spawner
+thread starter
+process launcher
+foreign callback entry
+interrupt root
+```
+
+Outgoing-call results distinguish direct callees, closed possible-target sets,
+and open callable contracts. An open target set must retain its compiler-proven
+callable contract instead of being shown as an empty or complete target set.
+
+### Root and path explanations
+
+For a callable or diagnostic, the LSP may expose all known root classes that
+reach it and the compiler-owned cause path for an effect, panic, allocation,
+stack contribution, unsafe boundary, reference escape, or ownership fact. Path
+steps retain implicit edges and execution-context boundaries.
+
+Task-spawn origin, and `await` or `join` synchronization origin where known,
+must be navigable. Await and join synchronization are not displayed as ordinary
+call edges to the task body. Continuation information is shown as a separate
+synchronization fact.
+
+### Target and snapshot requirements
+
+Every graph response belongs to one concrete `CompilationPlan` and active
+target variant. Cross-plan comparison is presented as comparison of separate
+graphs, never as one merged runtime graph.
+
+Deep graph requests support cancellation, work-done progress, and partial
+results. Partial target discovery must remain visibly partial. The LSP must not
+label a target set closed, a path complete, or a root set exhaustive until the
+compiler analysis for that snapshot has established that fact.
 
 ---
 
@@ -3161,10 +3338,13 @@ automatically.
 
 ## A.15 Implement navigation
 
-Order:
+Initial `textDocument/definition` support is implemented through Sema-owned
+use-to-declaration bindings. It covers local and cross-file declarations,
+members, and selected overloads without an LSP-owned name resolver.
+
+Remaining order:
 
 ```text
-definition
 declaration
 type definition
 implementation

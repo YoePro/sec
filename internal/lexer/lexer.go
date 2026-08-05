@@ -492,57 +492,57 @@ func (l *Lexer) readIdentifier() string {
 func (l *Lexer) readNumber() (string, TokenType) {
 	start := l.pos
 	typ := INT
+	valid := true
 
 	if l.peek() == '0' {
 		switch l.peekNext() {
 		case 'b', 'B':
 			l.advance()
 			l.advance()
-			for l.peek() == '0' || l.peek() == '1' {
-				l.advance()
-			}
+			_, valid = l.readDigitSequence(func(ch rune) bool { return ch == '0' || ch == '1' })
 			if isNumericSuffix(l.peek()) {
 				l.advance()
+			}
+			if !valid {
+				return string(l.input[start:l.pos]), ILLEGAL
 			}
 			return string(l.input[start:l.pos]), INT
 		case 'o', 'O':
 			l.advance()
 			l.advance()
-			for l.peek() >= '0' && l.peek() <= '7' {
-				l.advance()
-			}
+			_, valid = l.readDigitSequence(func(ch rune) bool { return ch >= '0' && ch <= '7' })
 			if isNumericSuffix(l.peek()) {
 				l.advance()
+			}
+			if !valid {
+				return string(l.input[start:l.pos]), ILLEGAL
 			}
 			return string(l.input[start:l.pos]), INT
 		case 'x', 'X':
 			l.advance()
 			l.advance()
-			for isHexDigit(l.peek()) {
-				l.advance()
-			}
+			_, valid = l.readDigitSequence(isHexDigit)
 			if isNumericSuffix(l.peek()) {
 				l.advance()
+			}
+			if !valid {
+				return string(l.input[start:l.pos]), ILLEGAL
 			}
 			return string(l.input[start:l.pos]), INT
 		}
 	}
 
-	for isDigit(l.peek()) {
-		l.advance()
-	}
-	if l.peek() == '.' && isDigit(l.peekNext()) {
+	_, valid = l.readDigitSequence(isDigit)
+	if l.peek() == '.' && (isDigit(l.peekNext()) || l.peekNext() == '_') {
 		typ = FLOAT
 		l.advance()
-
-		for isDigit(l.peek()) {
-			l.advance()
-		}
+		_, fractionValid := l.readDigitSequence(isDigit)
+		valid = valid && fractionValid
 	}
 	if l.peek() == 'e' || l.peek() == 'E' {
 		typ = FLOAT
 		if !l.readDecimalExponent() {
-			return string(l.input[start:l.pos]), ILLEGAL
+			valid = false
 		}
 	}
 	if isNumericSuffix(l.peek()) {
@@ -551,6 +551,9 @@ func (l *Lexer) readNumber() (string, TokenType) {
 		if suffix == 'f' || suffix == 'd' {
 			typ = FLOAT
 		}
+	}
+	if !valid {
+		return string(l.input[start:l.pos]), ILLEGAL
 	}
 
 	return string(l.input[start:l.pos]), typ
@@ -563,16 +566,17 @@ func (l *Lexer) readLeadingDotNumber() Token {
 	start := l.pos
 
 	l.advance()
-	for isDigit(l.peek()) {
-		l.advance()
-	}
+	_, valid := l.readDigitSequence(isDigit)
 	if l.peek() == 'e' || l.peek() == 'E' {
 		if !l.readDecimalExponent() {
-			return l.token(ILLEGAL, string(l.input[start:l.pos]), line, column)
+			valid = false
 		}
 	}
 	if l.peek() == 'f' || l.peek() == 'd' {
 		l.advance()
+	}
+	if !valid {
+		return l.token(ILLEGAL, string(l.input[start:l.pos]), line, column)
 	}
 
 	return l.token(FLOAT, string(l.input[start:l.pos]), line, column)
@@ -585,12 +589,28 @@ func (l *Lexer) readDecimalExponent() bool {
 	if l.peek() == '+' || l.peek() == '-' {
 		l.advance()
 	}
+	digits, valid := l.readDigitSequence(isDigit)
+	return digits && valid
+}
 
-	digitStart := l.pos
-	for isDigit(l.peek()) {
+func (l *Lexer) readDigitSequence(validDigit func(rune) bool) (bool, bool) {
+	sawDigit := false
+	previousWasDigit := false
+	valid := true
+	for validDigit(l.peek()) || l.peek() == '_' {
+		if l.peek() == '_' {
+			if !previousWasDigit || !validDigit(l.peekNext()) {
+				valid = false
+			}
+			previousWasDigit = false
+			l.advance()
+			continue
+		}
+		sawDigit = true
+		previousWasDigit = true
 		l.advance()
 	}
-	return l.pos > digitStart
+	return sawDigit, valid && sawDigit
 }
 
 // Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
@@ -786,8 +806,6 @@ func lookupIdent(s string) TokenType {
 	switch s {
 	case "after":
 		return AFTER
-	case "arena":
-		return ARENA
 	case "asm":
 		return ASM
 	case "assert":

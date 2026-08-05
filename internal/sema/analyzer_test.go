@@ -482,6 +482,8 @@ func TestDecimalLiteralValueUsesLexeme(t *testing.T) {
 		{input: "1.25e-3", want: DecimalValue{Int64: 125, Scale: 5}},
 		{input: "1.5e2", want: DecimalValue{Int64: 150, Scale: 0}},
 		{input: ".5E+4", want: DecimalValue{Int64: 5000, Scale: 0}},
+		{input: "1_234.5_678", want: DecimalValue{Int64: 12345678, Scale: 4}},
+		{input: "1.25e1_0", want: DecimalValue{Int64: 12500000000, Scale: 0}},
 	}
 
 	for _, tt := range tests {
@@ -1083,6 +1085,75 @@ unit Bad string
 	}
 
 	assertSemaErrors(t, errors, expected)
+}
+
+func TestUnitConversionRequiresCompatibleDimensions(t *testing.T) {
+	input := `
+module main
+
+unit Distance decimal physical
+impl Distance {
+	dimension: [length^1]
+	scale: 1
+	system: SI
+
+	fn Distance(value: Duration) Distance {
+		return 0
+	}
+}
+
+unit Duration decimal physical
+impl Duration {
+	dimension: [time^1]
+	scale: 1
+	system: SI
+}
+`
+
+	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, input)
+	expected := []string{
+		"unit conversion Distance from Duration requires compatible dimensions at 10:21",
+	}
+	assertSemaErrors(t, errors, expected)
+	if errors[0].ID != diagnostics.IncompatibleUnitConversion {
+		t.Fatalf("wrong diagnostic ID. got=%q want=%q", errors[0].ID, diagnostics.IncompatibleUnitConversion)
+	}
+	if errors[0].Help == "" {
+		t.Fatal("expected unit conversion diagnostic help")
+	}
+	if _, exists := analyzer.functions["Distance"]; exists {
+		t.Fatal("incompatible unit conversion must not be registered as a constructor")
+	}
+}
+
+func TestIntegerBackedUnitConversionUsesDimensionValidation(t *testing.T) {
+	input := `
+module main
+
+unit Packet uint other
+impl Packet {
+	dimension: [packet^1]
+	scale: 1
+	system: Domain
+}
+
+unit Batch uint other
+impl Batch {
+	dimension: [packet^1]
+	scale: 10
+	system: Domain
+
+	fn Batch(value: Packet) Batch {
+		return 0
+	}
+}
+`
+
+	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+	if len(analyzer.functions["Batch"]) != 1 {
+		t.Fatalf("integer-backed unit conversion was not registered: %+v", analyzer.functions["Batch"])
+	}
 }
 
 func TestUnitsValidFixture(t *testing.T) {
@@ -1989,6 +2060,60 @@ impl WrongSignature {
 		"type WrongSignature property IsRunning must provide set for interface Vehicle at 8:11",
 	}
 	assertSemaErrors(t, errors, expected)
+}
+
+func TestInterfaceInheritanceCycles(t *testing.T) {
+	input := `module main
+
+interface SelfCycle implements SelfCycle {
+}
+
+interface LeftCycle implements RightCycle {
+}
+
+interface RightCycle implements LeftCycle {
+}
+
+interface FirstCycle implements SecondCycle {
+}
+
+interface SecondCycle implements ThirdCycle {
+}
+
+interface ThirdCycle implements FirstCycle {
+}
+
+interface ReachesCycle implements FirstCycle {
+	fn Required() void
+}
+
+type InvalidImplementation struct implements ReachesCycle {
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	if len(errors) != 3 {
+		t.Fatalf("errors = %+v, want three inheritance-cycle diagnostics", errors)
+	}
+	wantMessages := []string{
+		"interface inheritance cycle: SelfCycle -> SelfCycle",
+		"interface inheritance cycle: LeftCycle -> RightCycle -> LeftCycle",
+		"interface inheritance cycle: FirstCycle -> SecondCycle -> ThirdCycle -> FirstCycle",
+	}
+	for index, err := range errors {
+		if err.ID != diagnostics.InterfaceInheritanceCycle {
+			t.Fatalf("error %d ID = %q, want %q", index, err.ID, diagnostics.InterfaceInheritanceCycle)
+		}
+		if err.Severity != diagnostics.SeverityError {
+			t.Fatalf("error %d severity = %q, want error", index, err.Severity)
+		}
+		if err.Message != wantMessages[index] {
+			t.Fatalf("error %d message = %q, want %q", index, err.Message, wantMessages[index])
+		}
+		if err.Help != "remove one implements relationship from the cycle" {
+			t.Fatalf("error %d help = %q", index, err.Help)
+		}
+	}
 }
 
 func TestImplTargetsNamedKinds(t *testing.T) {
@@ -5751,6 +5876,85 @@ fn Invalid(value: int, name: string) void {
 	assertSemaErrors(t, errors, expected)
 }
 
+func TestSwitchRejectsDuplicateStringConstants(t *testing.T) {
+	input := `
+module main
+
+fn Select(command: string) void {
+	switch command {
+	case "start":
+		return
+	case "start":
+		return
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	expected := []string{
+		`duplicate switch case value "start" at 8:7`,
+	}
+	assertSemaErrors(t, errors, expected)
+	if errors[0].ID != diagnostics.DuplicateSwitchCase {
+		t.Fatalf("wrong diagnostic ID. got=%q want=%q", errors[0].ID, diagnostics.DuplicateSwitchCase)
+	}
+}
+
+func TestSwitchWarnsAboutMissingEnumValuesWithoutDefault(t *testing.T) {
+	input := `
+module main
+
+enum Direction {
+	north,
+	south,
+	east,
+}
+
+fn Select(direction: Direction) void {
+	switch direction {
+	case Direction.north:
+		return
+	}
+}
+`
+
+	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+	warnings := analyzer.Warnings()
+	if len(warnings) != 1 {
+		t.Fatalf("wrong warning count. got=%d warnings=%v", len(warnings), warnings)
+	}
+	if warnings[0].Error() != "switch over Direction omits known values: south, east at 11:9" {
+		t.Fatalf("wrong warning. got=%q", warnings[0].Error())
+	}
+	if warnings[0].ID != diagnostics.IncompleteEnumSwitch || warnings[0].Help == "" {
+		t.Fatalf("wrong warning metadata: %+v", warnings[0])
+	}
+}
+
+func TestEnumSwitchDefaultSuppressesCoverageWarning(t *testing.T) {
+	input := `
+module main
+
+enum Direction { north, south }
+
+fn Select(direction: Direction) void {
+	switch direction {
+	case Direction.north:
+		return
+	default:
+		return
+	}
+}
+`
+
+	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+	if len(analyzer.Warnings()) != 0 {
+		t.Fatalf("expected no warnings. got=%v", analyzer.Warnings())
+	}
+}
+
 func TestSwitchCaseReportsUnreachableAfterReturn(t *testing.T) {
 	input := `
 module main
@@ -8091,6 +8295,220 @@ fn Test(left: int128, right: int128, b: bool) int128 {
 	}
 
 	assertSemaErrors(t, errors, expected)
+}
+
+func TestOrderedComparisonsRequireOrderableCompatibleOperands(t *testing.T) {
+	valid := `
+module main
+
+fn Test(number: int, decimal: float64, character: char, codepoint: rune, text: string) void {
+	let numeric := number < decimal
+	let characters := character <= 'z'
+	let codepoints := codepoint > 'a'
+	let strings := text >= "prefix"
+}
+`
+	assertSemaErrors(t, analyzeSourceRaw(t, valid), nil)
+
+	invalid := `
+module main
+
+enum State {
+	ready,
+}
+
+type Point struct {
+	x: int,
+}
+
+type Choice union {
+	value(int),
+}
+
+fn Test(flag: bool, state: State, point: Point, choice: Choice, values: int[2]) void {
+	let bools := flag < flag
+	let enums := state <= state
+	let structs := point > point
+	let unions := choice >= choice
+	let arrays := values < values
+}
+`
+	errors := analyzeSourceRaw(t, invalid)
+	if len(errors) != 5 {
+		t.Fatalf("wrong sema error count. got=%d want=5 errors=%v", len(errors), errors)
+	}
+	for index, err := range errors {
+		if err.ID != diagnostics.OperatorNonOrderable {
+			t.Fatalf("error %d ID = %q, want %q", index, err.ID, diagnostics.OperatorNonOrderable)
+		}
+		if err.Help == "" {
+			t.Fatalf("error %d is missing help", index)
+		}
+	}
+}
+
+func TestCompileTimeShiftValidation(t *testing.T) {
+	input := `
+module main
+
+type Small int8
+
+fn Test(dynamic: int) void {
+	let negative := Small(1) << -1
+	let equalWidth := Small(1) << 8
+	let tooLarge := Small(1) >> 9
+	let overflow := Small(64) << 1
+	let validMinimum := Small(-1) << 7
+	let unsignedTruncation := uint8(255) << 7
+	let dynamicCount := Small(1) << dynamic
+}
+`
+	errors := analyzeSourceRaw(t, input)
+	if len(errors) != 4 {
+		t.Fatalf("wrong sema error count. got=%d want=4 errors=%v", len(errors), errors)
+	}
+	wantIDs := []string{
+		diagnostics.OperatorInvalidShiftCount,
+		diagnostics.OperatorInvalidShiftCount,
+		diagnostics.OperatorInvalidShiftCount,
+		diagnostics.OperatorShiftOverflow,
+	}
+	for index, err := range errors {
+		if err.ID != wantIDs[index] {
+			t.Fatalf("error %d ID = %q, want %q (%v)", index, err.ID, wantIDs[index], err)
+		}
+		if err.Help == "" {
+			t.Fatalf("error %d is missing help", index)
+		}
+	}
+}
+
+func TestEqualityRequiresComparableCompatibleOperands(t *testing.T) {
+	valid := `
+module main
+
+enum State {
+	ready,
+}
+
+type Percent int range 0..100
+
+type Point struct {
+	x: int,
+	label: string,
+}
+
+type Choice union {
+	none,
+	point(Point),
+}
+
+fn Test(
+	flag: bool,
+	state: State,
+	left: Point,
+	right: Point,
+	choice: Choice,
+	values: Point[2],
+	percent: Percent,
+	first: RawPtr[int],
+	second: RawPtr[int],
+	firstRef: ref int,
+	secondRef: ref int,
+) void {
+	let bools := flag == false
+	let enums := state != State.ready
+	let structs := left == right
+	let unions := choice != choice
+	let arrays := values == values
+	let shapedLiteral := percent == 50
+	let pointers := first != second
+	let references := firstRef == secondRef
+}
+`
+	assertSemaErrors(t, analyzeSourceRaw(t, valid), nil)
+
+	invalid := `
+module main
+
+type Point struct {
+	x: int,
+}
+
+type OtherPoint struct {
+	x: int,
+}
+
+type SliceView struct {
+	values: ref int[],
+}
+
+type MaybeSlice union {
+	none,
+	view(ref int[]),
+}
+
+fn Test(
+	point: Point,
+	other: OtherPoint,
+	leftSlice: ref int[],
+	rightSlice: ref int[],
+	view: SliceView,
+	choice: MaybeSlice,
+	task: Task[int],
+) void {
+	let differentStructs := point == other
+	let slices := leftSlice == rightSlice
+	let structWithSlice := view == view
+	let unionWithSlice := choice != choice
+	let opaqueResource := task == task
+}
+`
+	errors := analyzeSourceRaw(t, invalid)
+	if len(errors) != 5 {
+		t.Fatalf("wrong sema error count. got=%d want=5 errors=%v", len(errors), errors)
+	}
+	for index, err := range errors {
+		if err.ID != diagnostics.OperatorNonComparable {
+			t.Fatalf("error %d ID = %q, want %q", index, err.ID, diagnostics.OperatorNonComparable)
+		}
+		if err.Help == "" {
+			t.Fatalf("error %d is missing help", index)
+		}
+	}
+}
+
+func TestStringPlusRequiresCompileTimeFoldableOperands(t *testing.T) {
+	valid := `
+module main
+
+fn Test() string {
+	return "SEC " + "language" + " compiler"
+}
+`
+	assertSemaErrors(t, analyzeSourceRaw(t, valid), nil)
+
+	invalid := `
+module main
+
+fn Test(left: string, right: string) void {
+	let bothRuntime := left + right
+	let runtimePrefix := left + " suffix"
+	let runtimeSuffix := "prefix " + right
+}
+`
+	errors := analyzeSourceRaw(t, invalid)
+	if len(errors) != 3 {
+		t.Fatalf("wrong sema error count. got=%d want=3 errors=%v", len(errors), errors)
+	}
+	for index, err := range errors {
+		if err.ID != diagnostics.OperatorStringRuntimeConcat {
+			t.Fatalf("error %d ID = %q, want %q", index, err.ID, diagnostics.OperatorStringRuntimeConcat)
+		}
+		if err.Help == "" {
+			t.Fatalf("error %d is missing help", index)
+		}
+	}
 }
 
 func TestImplSelfMethodCallRetainsReturnType(t *testing.T) {

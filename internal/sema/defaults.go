@@ -475,6 +475,7 @@ func exactNumericConstant(expr ast.Expression) (*big.Rat, string, bool) {
 		if suffix == "c" || suffix == "r" {
 			return nil, "", false
 		}
+		lexeme = ast.NormalizeNumericLiteralLexeme(lexeme)
 		exact, ok := new(big.Rat).SetString(lexeme)
 		return exact, value.TokenLiteral(), ok
 	case *ast.PrefixExpression:

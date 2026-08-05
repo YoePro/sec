@@ -174,6 +174,7 @@ func decimalLiteralValue(expr ast.Expression) (DecimalValue, bool) {
 		negative = true
 		lexeme = strings.TrimPrefix(lexeme, "-")
 	}
+	lexeme = ast.NormalizeNumericLiteralLexeme(lexeme)
 
 	exponent := int64(0)
 	if exponentIndex := strings.IndexAny(lexeme, "eE"); exponentIndex >= 0 {

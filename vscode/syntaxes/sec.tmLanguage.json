@@ -440,7 +440,15 @@
         },
         {
           "name": "keyword.other.sec",
-          "match": "\\b(?:module|import|require|range|validate|regex|minLen|maxLen|minLength|maxLength|precision|iota|capture|arena|sec)\\b"
+          "match": "\\b(?:module|import|require|range|validate|regex|minLen|maxLen|minLength|maxLength|precision|iota|capture|sec)\\b"
+        },
+        {
+          "name": "support.variable.property.compiler-known.sec",
+          "match": "(?<=\\.)(?:Ptr|Len|Min|Max|Bits|Epsilon|Infinity|NegativeInfinity|NaN|Scale)\\b"
+        },
+        {
+          "name": "support.function.compiler-known.sec",
+          "match": "(?<=\\.)(?:SizeOf|ToString|ToByteArray|ToCharArray|ToRuneArray|FromByteArray|FromRuneArray|Read|Write|Offset|AddBytes|Difference|FromBuffer|WithCapacity|Growable|New|Alloc|Reset|Release)\\b"
         },
         {
           "name": "support.function.concurrency.sec",

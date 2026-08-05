@@ -64,6 +64,10 @@ panic.md
 runtime_checks.md
 effect_analysis.md
 unsafe.md
+reference_model.md
+call_graph.md
+arena.md
+compiler_known_members.md
 ```
 
 These were written after the older temporary checklist was last synchronized.
@@ -75,13 +79,13 @@ These were written after the older temporary checklist was last synchronized.
 | Rulebook | Status | Notes |
 |---|---|---|
 | `language_philosophy.txt` | **Written** | Core language direction and design principles. |
-| `lexical_structure.md` | **Written** | Includes `default` keyword contexts and canonical `0c`/`0r` literals. |
+| `lexical_structure.md` | **Written** | Includes `default` keyword contexts, canonical `0c`/`0r` literals, and implemented numeric digit separators with preserved source lexemes. |
 | `types.txt` | **Written — sync required** | Defaultability and mutable initialization are synchronized; collections, panic/runtime checks, and layout still require work. |
 | `contracts.md` | **Written** | Canonical named-type contracts; replaces the obsolete variable-contract model. |
 | `default_values.md` | **Written** | Canonical primitive, constrained, aggregate, list and explicit-default semantics. |
-| `units.txt` | **Written — sync required** | Must be synchronized with shaped arithmetic and matrix multiplication. |
+| `units.txt` | **Written — sync required** | Direct conversion dimension validation is implemented; shaped arithmetic, scale paths, and matrix multiplication still require synchronization. |
 | `grammar.md` | **Written** | Canonical consolidated grammar for Sec 0.1; implementation differences are tracked in the document. |
-| `operators.md` | **Written** | Canonical operator inventory, precedence, associativity, contextual `x`, indexing, conversion syntax and constant defaults. |
+| `operators.md` | **Written — partially implemented** | Ordered validation, compile-time shift checks, recursive frontend comparability and compile-time-only string `+` enforcement are implemented with `S1016`-`S1020`; dynamic checks, folded-constant materialization, aggregate equality lowering, identity metadata and checked arithmetic remain. |
 | `names_scopes_visibility.md` | **Written — sync required** | Top-level module declaration namespace conflicts are partially implemented; remaining scope, visibility, reserved-name and naming-rule audit still needed. |
 | `attributes.md` | **Written** | Canonical closed Sec 0.1 attribute set, syntax, attachment, selection, target binding, `@noCopy`, verified guarantees, conflicts, formatter/LSP behavior, and explicit implementation status. |
 | `unsafe.md` | **Written** | Canonical unsafe contexts, operations, functions and extern declarations, caller obligations, raw pointers, trust boundaries and provenance; compiler support remains partial. |
@@ -147,14 +151,14 @@ LSP token classification
 |---|---|---|
 | `struct.txt` | **Written** | Includes recursive semantic initialization of omitted fields. |
 | `enums.txt` | **Written — sync required** | Must remain aligned with `bit[N]`, aliases, and `iota`. |
-| `unions.txt` | **Written** | Tagged union rules. |
+| `unions.txt` | **Written** | Tagged union rules; recursive payload-derived copyability is implemented. Same-type equality currently uses general nominal compatibility, but payload-derived comparability remains pending. |
 | `registers.txt` | **Written** | Register declarations, fields, widths, and reserved `_` bits. |
 | `functions.txt` | **Written — sync required** | Must be synchronized with discard of non-void results and effects. |
 | `functions_lambda.txt` | **Written — sync required** | Canonical lambda and closure rulebook; closure scope for 0.1 must be finalized. |
 | `lambdas.md` | **Covered** | Covered by `functions_lambda.txt`; no duplicate rulebook expected. |
 | `closures.md` | **Covered** | Covered by `functions_lambda.txt`; no duplicate rulebook expected. |
 | `generics.txt` | **Written — sync required** | Must be synchronized with compile-time values, collections, register widths, and lowering. |
-| `interfaces.txt` | **Written — sync required** | Must be synchronized with effects, hashing/equality, and stdlib contracts. |
+| `interfaces.txt` | **Written — sync required** | Interface inheritance-cycle detection is implemented; effects, hashing/equality, and stdlib contracts still require synchronization. |
 | `impl.txt` | **Written — sync required** | Must include privileged core/stdlib impl access for built-in lowercase types. |
 | `properties.txt` | **Written — sync required** | Must include contextual `set` resolution. |
 | `defer.txt` | **Written — sync required** | Must be synchronized with discard, panic, and cancellation cleanup. |
@@ -163,7 +167,7 @@ LSP token classification
 | `flowcontrol_for.txt` | **Written — sync required** | Current Sema includes collection, map/set and rank-one `vector[T, N]` iteration; tensor and axis iteration still need synchronization. |
 | `flowcontrol_for_1.txt` | **Covered** | Merged into `flowcontrol_for.txt`; no separate rulebook remains in `rules/`. |
 | `flowcontrol_while.txt` | **Written** | |
-| `flowcontrol_switch.txt` | **Written** | |
+| `flowcontrol_switch.txt` | **Written** | String-literal duplicate cases and non-exhaustive enum coverage warnings are implemented in Sema. |
 | `flowcontrol_match.txt` | **Written — sync required** | Current Sema covers Result, enum, union/Option matching and rejects pattern-binding shadowing; still needs panic/outcome and future collection-pattern synchronization. |
 
 ---
@@ -266,9 +270,12 @@ The remaining details to close are:
 | Rulebook | Status | Notes |
 |---|---|---|
 | `allocation.txt` | **Written — sync required** | Must be synchronized with collections, threads, explicit backing storage, and shaped buffers. |
+| `arena.md` | **Written** | Canonical Arena ownership, backing, allocation, reset/release, validity epoch, effects, analysis and lowering model. Frontend member support is partial and tracked separately. |
 | `ownership.md` | **Living** | Defines explicit move syntax; remaining collection and lifecycle integration is tracked in the rulebook. |
 | `borrowing.txt` | **Written — sync required** | Must include views, thread-local references, and discard interactions. |
 | `references.txt` | **Written — sync required** | Must include shaped views and thread-bound references. |
+| `reference_model.md` | **Written** | Canonical safe-reference guarantees, validity epochs, stable and weak handles, relocation, profile representations, and `RawPtr` boundaries. |
+| `generational_references.md` | **Covered** | Generational validity is canonical in `reference_model.md`; no separate rulebook is required. |
 | `raw_pointers.txt` | **Written — sync required** | Must be synchronized with memory spaces, ABI, and unsafe rules. |
 | `copy_move.md` | **Living** | Explicit move frontend is implemented; place-sensitive analysis and ownership IR remain incomplete. |
 | `lifetime_analysis.txt` | **Written — sync required** | Must include detached work, thread-local values, views, and explicit storage. |
@@ -379,6 +386,7 @@ Process spawning and IPC do not block the immediate language closure.
 | `impl.txt` | **Written — sync required** | |
 | `properties.txt` | **Written — sync required** | |
 | `core-library.md` | **Written — sync required** | Compiler-known core declarations and privileged impl access. |
+| `compiler_known_members.md` | **Written** | Canonical typed registry, stable member identities, lookup, builtin member surface, core boundary and tooling behavior. Initial Sema/LSP registry integration is implemented. |
 | `stdlib.md` | **Written — sync required** | Standard-library responsibilities, module boundaries, naming, target capability contracts, and compiler-recognized declaration rules. |
 
 Built-in lowercase types may receive privileged implementations in core.
@@ -427,7 +435,7 @@ OrderedMap[K, V]
 | `mlir.txt` | **Written — sync required** | |
 | `mlir-optimize.txt` | **Living** | Updated as implementation and optimization support grows. |
 | `rules_implementations.txt` | **Living** | Canonical implementation progress tracker. |
-| `call_graph.md` | **Planned** | Complete direct and indirect call graph semantics and analysis. |
+| `call_graph.md` | **Written** | Canonical callable reachability, execution relationships, roots, indirect targets, per-`CompilationPlan` analysis, diagnostics, and LSP integration. |
 | `stack_analysis.md` | **Planned** | Per-function, per-path, whole-program, and target frame analysis. |
 | `escape_analysis.md` | **Planned** | No silent stack-to-heap promotion; closure and reference escape rules. |
 | `effect_analysis.md` | **Written** | Canonical compile-time effect domains, inference, call-graph propagation, verified guarantees, blocking/suspension distinction, arena events, trust provenance, diagnostics, and runtime-free model. |
@@ -506,7 +514,7 @@ multiple target outputs
 | `debug_information.md` | **Planned** | Source mapping, variables, optimized code, generics, async/task frames, and targets. |
 | `compiler_testing.md` | **Planned** | Compiler unit, integration, invalid, regression, lowering, and backend tests. |
 | `incremental_compilation.md` | **Planned** | Dependency invalidation, generic specialization caches, and target-aware rebuilds. |
-| `lsp.md` | **Living** | Canonical language-server architecture and feature rulebook. |
+| `lsp.md` | **Living** | Canonical language-server architecture and feature rulebook; synchronized with the compiler-owned call graph per `CompilationPlan`. |
 
 ---
 
@@ -523,6 +531,7 @@ await.md
 blocking.md
 borrowing.txt
 cancellation.md
+call_graph.md
 channels.md
 compiler.txt
 compiler_analysis.txt
@@ -568,6 +577,7 @@ processes.txt
 projects.txt
 properties.txt
 raw_pointers.txt
+reference_model.md
 references.txt
 registers.txt
 rules_implementations.txt
@@ -613,7 +623,6 @@ fully design-closed, unless a later decision explicitly merges one into another.
 storage.md
 layout.md
 
-call_graph.md
 stack_analysis.md
 escape_analysis.md
 isr_analysis.md

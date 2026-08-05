@@ -1716,6 +1716,15 @@ Current infrastructure implemented:
   * `S1009` / `variables.nondefaultable-requires-initializer`
   * `S1010` / `struct.missing-nondefaultable-field`
   * `S1011` / `types.in-list-value-violates-contract`
+  * `S1012` / `interfaces.inheritance-cycle`
+  * `S1013` / `units.incompatible-conversion-dimensions`
+  * `S1014` / `switch.incomplete-enum-coverage` (warning)
+  * `S1015` / `switch.duplicate-constant-case`
+  * `S1016` / `operator.non-orderable-operands`
+  * `S1017` / `operator.invalid-shift-count`
+  * `S1018` / `operator.signed-left-shift-overflow`
+  * `S1019` / `operator.non-comparable-operands`
+  * `S1020` / `operator.string-runtime-concat`
 * parser recovery IDs `P2001` through `P2018` are registered; initial focused
   paths use `P2002`, `P2003`, `P2007`, `P2008`, `P2011` and `P2013`;
 * semantic analysis retains a poisoned local binding after an invalid

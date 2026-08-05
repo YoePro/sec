@@ -963,6 +963,9 @@ Current implementation status:
   arrays/sequences and slice references, including `ref mut T[]`.
 - Semantic analysis validates explicit shared and mutable slice construction,
   slicing bounds, slice indexing, slice mutability and storage origins.
+- Semantic analysis validates fixed-array equality recursively from the element
+  type and rejects ordinary equality for slice views (`ref T[]` and
+  `ref mut T[]`).
 - MLIR lowers fixed arrays whose elements have a direct LLVM representation to
   nested `!llvm.array<N x T>` values.
 - MLIR supports fixed-array literals, local storage, parameters, returns,

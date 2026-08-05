@@ -71,6 +71,17 @@ func TestRespondIncludesNullResult(t *testing.T) {
 	}
 }
 
+func TestInitializeAdvertisesDefinitionProvider(t *testing.T) {
+	var out bytes.Buffer
+	server := &server{out: &out}
+	if err := server.handle(rpcMessage{JSONRPC: "2.0", ID: json.RawMessage("1"), Method: "initialize", Params: json.RawMessage(`{}`)}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), `"definitionProvider":true`) {
+		t.Fatalf("initialize response does not advertise definitions: %q", out.String())
+	}
+}
+
 func TestDidCloseRemovesSnapshotAndClearsDiagnostics(t *testing.T) {
 	var out bytes.Buffer
 	s := &server{
@@ -618,6 +629,251 @@ impl Reader {
 	assertHoverContains("self.readTwo", "fn Reader.readTwo(kind: int) bool")
 }
 
+func TestDefinitionsResolveLocalsParametersFunctionsAndTypes(t *testing.T) {
+	source := `module main
+
+type Count int
+
+fn Increment(value: Count) Count {
+	return value + 1
+}
+
+fn Use() Count {
+	let current: Count := Increment(1)
+	return Increment(current)
+}
+`
+	uri := "file:///tmp/sec-lsp-definition/main.sec"
+
+	tests := []struct {
+		name            string
+		useOffset       int
+		declarationText string
+	}{
+		{name: "parameter", useOffset: strings.Index(source, "return value") + len("return "), declarationText: "value: Count"},
+		{name: "local", useOffset: strings.LastIndex(source, "current"), declarationText: "current: Count"},
+		{name: "function", useOffset: strings.LastIndex(source, "Increment"), declarationText: "Increment(value"},
+		{name: "type", useOffset: strings.Index(source, "fn Use() Count") + len("fn Use() "), declarationText: "Count int"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			locations := definitionsForSource(uri, source, offsetPosition(source, test.useOffset))
+			if len(locations) != 1 {
+				t.Fatalf("definitions = %+v, want one location", locations)
+			}
+			want := offsetPosition(source, strings.Index(source, test.declarationText))
+			if locations[0].URI != uri || locations[0].Range.Start != want {
+				t.Fatalf("definition = %+v, want %s at %+v", locations[0], uri, want)
+			}
+		})
+	}
+}
+
+func TestDefinitionKeepsBindingsSeparateAcrossFunctions(t *testing.T) {
+	source := `module main
+
+fn First(value: int) int {
+	return value
+}
+
+fn Second(value: int) int {
+	return value
+}
+`
+	uri := "file:///tmp/sec-lsp-definition-shadow/main.sec"
+
+	firstUse := strings.Index(source, "return value") + len("return ")
+	first := definitionsForSource(uri, source, offsetPosition(source, firstUse))
+	if len(first) != 1 {
+		t.Fatalf("first definitions = %+v, want one location", first)
+	}
+	wantFirst := offsetPosition(source, strings.Index(source, "value: int"))
+	if first[0].Range.Start != wantFirst {
+		t.Fatalf("first definition starts at %+v, want %+v", first[0].Range.Start, wantFirst)
+	}
+
+	secondUse := strings.LastIndex(source, "value")
+	second := definitionsForSource(uri, source, offsetPosition(source, secondUse))
+	if len(second) != 1 {
+		t.Fatalf("second definitions = %+v, want one location", second)
+	}
+	wantSecond := offsetPosition(source, strings.LastIndex(source, "value: int"))
+	if second[0].Range.Start != wantSecond {
+		t.Fatalf("second definition starts at %+v, want %+v", second[0].Range.Start, wantSecond)
+	}
+}
+
+func TestDefinitionSelectsResolvedOverload(t *testing.T) {
+	source := `module main
+
+fn Parse(value: int) int {
+	return value
+}
+
+fn Parse(value: string) string {
+	return value
+}
+
+fn Use() string {
+	return Parse("value")
+}
+`
+	uri := "file:///tmp/sec-lsp-definition-overload/main.sec"
+	use := strings.LastIndex(source, "Parse")
+	locations := definitionsForSource(uri, source, offsetPosition(source, use))
+	if len(locations) != 1 {
+		t.Fatalf("definitions = %+v, want selected overload", locations)
+	}
+	second := strings.Index(source[strings.Index(source, "fn Parse")+1:], "fn Parse") + strings.Index(source, "fn Parse") + 1 + len("fn ")
+	want := offsetPosition(source, second)
+	if locations[0].Range.Start != want {
+		t.Fatalf("definition starts at %+v, want second overload at %+v", locations[0].Range.Start, want)
+	}
+}
+
+func TestDefinitionsResolveSelfMembers(t *testing.T) {
+	source := `module main
+
+type Reader struct {
+	position: int,
+	storage: EventStorage[int, 4],
+}
+
+impl Reader {
+	event Changed using storage
+
+	property Current: int {
+		get {
+			return self.position
+		}
+	}
+
+	fn advance() int {
+		self.position += 1
+		return self.position
+	}
+
+	fn Read() int {
+		let current := self.Current
+		let changed := self.Changed
+		discard changed
+		return self.advance() + current
+	}
+}
+`
+	uri := "file:///tmp/sec-lsp-definition-self/main.sec"
+	tests := []struct {
+		use         string
+		declaration string
+	}{
+		{use: "self.position +=", declaration: "position: int"},
+		{use: "self.Current", declaration: "Current: int"},
+		{use: "self.Changed", declaration: "Changed using"},
+		{use: "self.advance()", declaration: "advance() int"},
+	}
+	for _, test := range tests {
+		t.Run(test.use, func(t *testing.T) {
+			use := strings.LastIndex(source, test.use) + len("self.")
+			locations := definitionsForSource(uri, source, offsetPosition(source, use))
+			if len(locations) != 1 {
+				t.Fatalf("definitions = %+v, want one location", locations)
+			}
+			want := offsetPosition(source, strings.Index(source, test.declaration))
+			if locations[0].Range.Start != want {
+				t.Fatalf("definition starts at %+v, want %+v", locations[0].Range.Start, want)
+			}
+		})
+	}
+}
+
+func TestDefinitionResolvesImportedProjectFunction(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".sec"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".sec", "sec.toml"), []byte("[project]\nname = \"definition-test\"\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	helperPath := filepath.Join(dir, "helpers.sec")
+	helperSource := `module helpers
+
+fn Build() int {
+	return 1
+}
+`
+	if err := os.WriteFile(helperPath, []byte(helperSource), 0644); err != nil {
+		t.Fatal(err)
+	}
+	mainPath := filepath.Join(dir, "main.sec")
+	mainSource := `module main
+
+import "helpers"
+
+fn Use() int {
+	return helpers.Build()
+}
+`
+	uri := uriFromPath(mainPath)
+	use := strings.Index(mainSource, "Build")
+	locations := definitionsForSource(uri, mainSource, offsetPosition(mainSource, use))
+	if len(locations) != 1 {
+		t.Fatalf("definitions = %+v, want imported function", locations)
+	}
+	want := offsetPosition(helperSource, strings.Index(helperSource, "Build"))
+	if locations[0].URI != uriFromPath(helperPath) || locations[0].Range.Start != want {
+		t.Fatalf("definition = %+v, want %s at %+v", locations[0], uriFromPath(helperPath), want)
+	}
+	if got := locations[0].Range.End.Character - locations[0].Range.Start.Character; got != len("Build") {
+		t.Fatalf("qualified imported definition range length = %d, want %d", got, len("Build"))
+	}
+}
+
+func TestDefinitionResolvesCoreAndStdlibDeclarations(t *testing.T) {
+	source := `module main
+
+import "unicode"
+
+fn Check(text: string, ch: rune) bool {
+	return text.IsEmpty() || unicode.IsLetter(ch)
+}
+`
+	uri := "file:///tmp/sec-lsp-definition-library/main.sec"
+	tests := []struct {
+		name       string
+		use        string
+		fileSuffix string
+	}{
+		{name: "core method", use: "IsEmpty", fileSuffix: filepath.Join("sec", "core", "string.sec")},
+		{name: "stdlib function", use: "IsLetter", fileSuffix: filepath.Join("sec", "stdlib", "unicode", "unicode.sec")},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			use := strings.Index(source, test.use)
+			locations := definitionsForSource(uri, source, offsetPosition(source, use))
+			if len(locations) != 1 {
+				t.Fatalf("definitions = %+v, want one library declaration", locations)
+			}
+			path := pathFromURI(locations[0].URI)
+			if !strings.HasSuffix(path, test.fileSuffix) {
+				t.Fatalf("definition URI = %q, want suffix %q", locations[0].URI, test.fileSuffix)
+			}
+		})
+	}
+}
+
+func TestDefinitionSurvivesIncompleteSource(t *testing.T) {
+	source := "module main\n\nfn Use() void {\n\tself.\n"
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			t.Fatalf("definitionsForSource panicked: %v", recovered)
+		}
+	}()
+	if locations := definitionsForSource("file:///tmp/sec-lsp-definition-incomplete/main.sec", source, position{Line: 3, Character: 6}); len(locations) != 0 {
+		t.Fatalf("incomplete source definitions = %+v, want none", locations)
+	}
+}
+
 func TestCompletionSurvivesIncompleteFunctionWithURI(t *testing.T) {
 	source := `module main
 
@@ -838,6 +1094,34 @@ fn Use(ptr: RawPtr[byte]) void {
 
 	items := completeSource("", source, strings.Index(source, "ptr.")+len("ptr."))
 	assertCompletionLabels(t, items, []string{"Offset", "AddBytes", "Difference"})
+}
+
+func TestCompletionIncludesCompilerKnownMembers(t *testing.T) {
+	source := "module main\n\nfn Use(text: string) void {\n\ttext.\n}\n"
+	textItems := completeSource("", source, strings.Index(source, "text.")+len("text."))
+	assertCompletionLabels(t, textItems, []string{"Len", "Ptr", "SizeOf", "ToByteArray", "ToCharArray", "ToRuneArray", "ToString"})
+
+	source = "module main\n\nfn Use(values: rune[2]) void {\n\tvalues.\n}\n"
+	valueItems := completeSource("", source, strings.Index(source, "values.")+len("values."))
+	assertCompletionLabels(t, valueItems, []string{"Len", "Ptr", "SizeOf", "ToString"})
+
+	source = "module main\n\nfn Use() void {\n\tlet mut arena: Arena := Arena {}\n\tarena.\n}\n"
+	arenaItems := completeSource("", source, strings.Index(source, "arena.")+len("arena."))
+	assertCompletionLabels(t, arenaItems, []string{"Alloc", "New", "Ptr", "Release", "Reset", "SizeOf"})
+}
+
+func TestCompletionIncludesStaticCompilerKnownMembers(t *testing.T) {
+	source := "module main\n\nfn Use() void {\n\tint32.\n}\n"
+	integerItems := completeSource("", source, strings.Index(source, "int32.")+len("int32."))
+	assertCompletionLabels(t, integerItems, []string{"Bits", "Max", "Min", "SizeOf"})
+
+	source = "module main\n\nfn Use() void {\n\tstring.\n}\n"
+	stringItems := completeSource("", source, strings.Index(source, "string.")+len("string."))
+	assertCompletionLabels(t, stringItems, []string{"FromByteArray", "FromRuneArray", "SizeOf"})
+
+	source = "module main\n\nfn Use() void {\n\tArena.\n}\n"
+	arenaItems := completeSource("", source, strings.Index(source, "Arena.")+len("Arena."))
+	assertCompletionLabels(t, arenaItems, []string{"FromBuffer", "Growable", "SizeOf", "WithCapacity"})
 }
 
 func TestCompletionIncludesContractModifiers(t *testing.T) {

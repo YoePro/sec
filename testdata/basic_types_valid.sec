@@ -511,8 +511,8 @@ fn ConvertRuneToCharacterCode(value: rune) CharacterCode {
     return CharacterCode(value)
 }
 
-fn JoinStrings(left: string, right: string) string {
-    return left + right
+fn CompileTimeString() string {
+    return "Sec " + "language"
 }
 
 fn CompareStrings(left: string, right: string) bool {
@@ -522,7 +522,7 @@ fn CompareStrings(left: string, right: string) bool {
 fn TestStrings() void {
     let empty: string := ""
     let word: string := "Sec"
-    let sentence: string := word + " language"
+    let sentence: string := "Sec " + "language"
     let escaped: string := "line one\nline two"
 
     let _empty: string := empty

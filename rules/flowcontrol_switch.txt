@@ -16,6 +16,10 @@ Implemented:
 * Switch termination analysis for default-returning switches.
 * Bool-subject exhaustiveness when both true and false cases are present.
 * Duplicate compile-time integer and bool case value diagnostics.
+* Duplicate string-literal case value diagnostics using decoded constant values.
+* Warning with stable ID `S1014` when an enum switch has no `default` and omits
+  known enum values; enum switches remain valid and are not required to be
+  exhaustive.
 * Compile-time range overlap diagnostics for integer ranges.
 * Compile-time value-covered-by-previous-range diagnostics.
 * Basic unreachable diagnostics for relation cases covered by previous
@@ -33,8 +37,8 @@ Not implemented yet:
 * MLIR lowering for range and relational cases.
 * MLIR lowering for explicit fallthrough.
 * MLIR lowering for string and other non-integer/non-bool subjects.
-* Exhaustiveness or coverage warnings for enum switches.
-* Duplicate/coverage diagnostics for string constants.
+* Coverage diagnostics for computed compile-time string constants beyond direct
+  string literals.
 * Full unit-aware and semantic-type-aware compile-time range overlap beyond
   the currently implemented type compatibility checks.
 * More advanced relational coverage reasoning for dynamic expressions.

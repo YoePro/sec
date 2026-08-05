@@ -2,6 +2,134 @@
 Rules Implementation
 =============================================================================================================================================================================================
 
+Reference model and call graph implementation status
+----------------------------------------------------
+
+Documentation synchronized:
+
+- `reference_model.md` is the canonical safe-reference, validity-epoch,
+  stable-handle, weak-handle, and `RawPtr` boundary rulebook
+- generational references are covered by `reference_model.md`; there is no
+  separate `generational_references.md` rulebook
+- `call_graph.md` is the canonical callable-reachability and execution-
+  relationship rulebook
+- `lsp.md` consumes compiler-owned call-graph facts per concrete
+  `CompilationPlan` and does not define an LSP-owned graph
+
+Implemented foundations:
+
+- safe reference and mutable-reference syntax
+- existing borrow and ownership analysis described by the dedicated
+  implementation sections below and by the owning rulebooks
+- parser and Sema support for spawn and await, including explicit task, thread,
+  and process spawn kinds where currently recorded by the frontend
+- current direct call, method resolution, generic, closure, effect, ownership,
+  and concurrency facts used independently by existing frontend checks
+
+Partial or pending:
+
+- one canonical compiler call-graph service with stable callable and call-site
+  identities per `CompilationPlan`
+- complete indirect and interface target sets, open callable contracts, roots,
+  reachability, same-stack SCCs, spawn cycles, and cause-aware analysis paths
+- complete validity-epoch, relocation, stable-handle, weak-handle, profile-
+  representation, concurrent-invalidation, and FFI-retention analysis
+- LSP call hierarchy, callers/callees, root reachability, graph paths,
+  synchronization origins, and target-aware graph snapshots
+
+Written status does not claim that either complete rulebook is implemented.
+
+Compiler-known member and Arena frontend status
+-----------------------------------------------
+
+Implemented:
+
+- one typed registry in `internal/sema` with stable `CKM` identities
+- canonical `Ptr` and `Len`, with lowercase migration spellings accepted
+- global `len`, value/type `SizeOf`, fundamental `ToString`, string array
+  materialization signatures, associated string constructors, and numeric
+  representation properties
+- RawPtr `Read`, `Write`, `Offset`, `AddBytes`, and `Difference` validation
+- Arena `FromBuffer`, `WithCapacity`, `Growable`, `New`, `Alloc`, `Reset`, and
+  `Release` frontend validation
+- released Arena owners become unavailable and reset/release advance the
+  tracked Arena generation
+- lowercase `arena` is an ordinary identifier in the lexer and TextMate grammar
+- LSP value/static member completion is generated from the Sema registry
+
+Partial or pending:
+
+- materializing helpers, allocation-context selection, layout values,
+  compile-time constant values, effect/call-graph facts, synthetic definitions,
+  hover detail, compatibility diagnostics, Semantic IR and lowering
+- complete Arena backing providers, ownership/destruction, capacity analysis,
+  task/thread dependencies, diagnostics and target-profile verification
+
+LSP definition implementation status
+------------------------------------
+
+Implemented:
+
+- Sema-owned source-token to declaration-token bindings
+- bindings for locals, parameters, named and generic types, fields, register
+  fields, properties, events, enum and union members, functions, methods, and
+  selected overloads
+- `textDocument/definition` capability advertisement and request handling
+- project, core, and stdlib cross-file locations using declaration source paths
+- exact source ranges for semantically qualified imported declarations
+- defensive `null` results for unresolved or incomplete source
+- focused tests for separate function scopes, selected overloads, `self`
+  members, imported declarations, and incomplete-source resilience
+
+Partial or pending:
+
+- a persistent shared workspace symbol and binding index
+- declaration and type-definition requests as distinct protocol features
+- implementation navigation, references, document highlights, and rename
+- complete binding coverage for every future expression and generated source
+  form
+- incremental invalidation and stale-result suppression
+
+Interface inheritance-cycle implementation status
+-------------------------------------------------
+
+Implemented:
+
+- compile-time DFS over explicit interface `implements` relationships
+- direct, indirect, and self-cycle detection independent of declaration order
+- deterministic full cycle paths in diagnostics
+- stable mandatory error `S1012` / `interfaces.inheritance-cycle`
+- actionable help identifying that one `implements` relationship must be
+  removed
+- suppression of dependent interface-conformance cascades for interfaces that
+  are cyclic or reach a cycle
+- focused Sema tests and commented invalid fixture coverage
+
+Partial or pending:
+
+- full generic interface instantiation and conformance
+- interface values and dynamic dispatch
+- visibility checks and complete unsafe/error/lifetime compatibility
+- associated declarations, constants, and variables in interfaces
+
+Union copyability and comparability status
+------------------------------------------
+
+Implemented:
+
+- recursive copy classification for payload-less unions, unnamed payloads, and
+  struct-like payload fields
+- propagation of move-only, non-copyable, and conditional classifications from
+  every possible payload through the existing aggregate classifier
+
+Partial or pending:
+
+- equality currently accepts the same concrete union type through general
+  nominal compatibility
+- payload-derived comparability is not calculated, so the current equality
+  acceptance must not be described as complete union comparability
+- comparability diagnostics and lowering remain pending
+
 Default values implementation status
 ------------------------------------
 
@@ -99,6 +227,37 @@ Grammar synchronization status
   destructuring remain unimplemented as recorded by `grammar.md`
 - generic type-instance cache identity includes constant arguments, preventing
   shaped types with different dimensions from aliasing each other
+
+Operator analysis implementation status
+---------------------------------------
+
+Implemented:
+
+- ordered comparisons accept compatible numeric values and matching `char`,
+  `rune`, or `string` values and reject non-orderable operands with `S1016`
+- compile-time-known shift counts are checked against the left operand's
+  representation width, including user-defined integer types, with `S1017`
+- compile-time-known signed left shifts are checked against the signed
+  representation bounds with `S1018`
+- unsigned left-shift truncation remains valid at compile time
+- equality comparability is calculated recursively for fixed arrays, ordinary
+  structs and unions; incompatible or non-comparable operands emit `S1019`
+- compatible ordinary safe references use the equality permission defined by
+  `reference_model.md`; slice views, interfaces, functions and compiler-known
+  opaque struct types are rejected by ordinary equality
+- numeric literals are context-shaped for compatible named numeric comparison
+- runtime string `+` is rejected with `S1020`; recursively foldable
+  string-literal concatenation remains accepted
+
+Partial or pending:
+
+- dynamic shift-count checks and dynamic signed-left-shift overflow checks
+  require deterministic runtime-check lowering
+- explicit identity/non-comparable metadata, complete user-defined opaque-
+  resource detection, aggregate equality lowering, materialization of folded
+  string constants, checked arithmetic, array/slice membership, shared
+  precedence metadata, and remaining stable operator diagnostics are still
+  pending as described by `operators.md`
 
 Canonical documentation synchronization:
 
@@ -992,6 +1151,10 @@ Preserve and structure current validation for:
 - unreachable match patterns
 - enum payload handling where implemented
 
+Current Sema also rejects duplicate direct string-literal cases with `S1015`
+and reports `S1014` when an enum switch without `default` omits known values.
+The latter is a warning because switch is not required to be exhaustive.
+
 Do not duplicate exhaustiveness logic between switch and match unless their semantics differ.
 
 Use shared query helpers where appropriate.
@@ -1010,6 +1173,11 @@ Units rules may validate:
 - function argument compatibility
 - range compatibility
 - literal interpretation
+
+Current Sema validates normalized source/target dimensions for direct
+constructor-style conversions across decimal-, integer-, unsigned-, and
+floating-backed unit declarations. Incompatible declarations use `S1013` and
+are not exposed as constructor overloads.
 
 Register rules may validate:
 

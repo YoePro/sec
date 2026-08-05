@@ -370,6 +370,33 @@ interface DuplicateInheritedInterface implements RepeatedBase, RepeatedBase {
 }
 
 // =============================================================================
+// Interface inheritance cycles
+// =============================================================================
+
+// ERROR S1012: An interface cannot inherit from itself.
+interface SelfInheritanceCycle implements SelfInheritanceCycle {
+}
+
+// ERROR S1012: These interfaces form a direct inheritance cycle.
+interface DirectCycleLeft implements DirectCycleRight {
+}
+
+interface DirectCycleRight implements DirectCycleLeft {
+}
+
+// ERROR S1012: The complete indirect cycle is reported on the edge that closes
+// it: IndirectCycleFirst -> IndirectCycleSecond -> IndirectCycleThird ->
+// IndirectCycleFirst.
+interface IndirectCycleFirst implements IndirectCycleSecond {
+}
+
+interface IndirectCycleSecond implements IndirectCycleThird {
+}
+
+interface IndirectCycleThird implements IndirectCycleFirst {
+}
+
+// =============================================================================
 // Incompatible duplicate inherited requirements
 // =============================================================================
 

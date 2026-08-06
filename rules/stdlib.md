@@ -1134,20 +1134,48 @@ Their presence does not by itself claim complete API or target coverage.
 Compiler/core already has an established mechanism for compiler-known behavior
 and privileged built-in implementations through `core-library.md`.
 
-The `io` package currently includes Linux/amd64 file-input declarations:
+The `io` package currently includes Linux/amd64 file and directory declarations:
 
 - `io.Open(path) Result[io.File, io.IOError]`;
+- `io.Create(path)`, `io.OpenAppend(path)` and
+  `io.OpenReadWrite(path, create)` for writable handles;
 - `io.File.Read(buffer) Result[uint, io.IOError]` for caller-provided
   `ref mut byte[]` storage;
 - `io.File.Write(data) Result[uint, io.IOError]`;
-- `io.File.Flush() Result[void, io.IOError]`;
-- `io.File.Seek(offset, whence) Result[uint, io.IOError]`, currently returning
-  `IOError.Unsupported`;
-- `io.ReadFileInto(path, buffer) Result[uint, io.IOError]`;
+- `io.File.WriteAll(data)` and `io.File.WriteString(data)`, including partial
+  write handling and interrupted-syscall retry;
+- `io.File.ReadExact(buffer)` for fixed-size records and `io.Copy(source,
+  destination, buffer)` for allocation-free streaming copies;
+- `io.File.Flush() Result[void, io.IOError]` through `fsync`;
+- `io.File.Seek(offset, origin) Result[uint, io.IOError]` through `lseek` and
+  the `io.SeekOrigin` enum;
+- `io.File.Truncate(size)` through `ftruncate`;
+- `io.ReadFileInto(path, buffer) Result[uint, io.IOError]` and
+  `io.File.ReadAllInto(buffer)`, which read through EOF, reject caller-buffer
+  truncation with `IOError.TooLarge`, and close on success and failure;
+- `io.WriteFile(path, data)` and `io.WriteStringFile(path, data)`;
 - `io.File.Close() Result[void, io.IOError]`;
 - lowercase `File` method aliases `read`, `write`, `flush`, `seek` and `close`;
-- a semantic scope-exit diagnostic that requires local `io.File` values to be
-  closed explicitly or returned to transfer ownership;
+- `io.OpenDirectory(path) Result[io.Directory, io.IOError]` and
+  `io.Directory.Next() Result[Option[io.DirectoryEntry], io.IOError]`, backed by
+  a fixed caller-owned iterator buffer and Linux `getdents64`; dot entries are
+  filtered and malformed records are rejected;
+- `io.ReadDirectoryInto(path, entries)`, which reads the complete directory
+  into caller-owned `DirectoryEntry[]` storage and reports `IOError.TooLarge`
+  instead of returning a partial list;
+- `io.Access`, `io.Exists`, `io.CreateDirectory`, `io.RemoveFile`,
+  `io.RemoveDirectory` and `io.Rename` for non-recursive path operations;
+- semantic scope-exit diagnostics that require local `io.File` and
+  `io.Directory` values to be closed explicitly or returned to transfer
+  ownership;
+- `@noCopy` policies on file and directory handles so one descriptor cannot be
+  duplicated by ordinary value copy;
+- close-on-exec on every high-level file and directory open, preventing handle
+  inheritance across subsequently spawned processes;
+- a bounded, NUL-terminating Linux path bridge that rejects embedded NUL and
+  overlong paths before invoking the kernel;
+- typed mapping for common path, descriptor, capacity, blocking, memory,
+  seek, filesystem and write failures through `io.IOError`;
 - a provisional `io.ReadFile(path) Result[string, io.IOError]` API that returns
   `IOError.Unsupported` until owned dynamic storage and string materialization
   are implemented.
@@ -1183,6 +1211,8 @@ The following are also incomplete until implemented and tested:
 - module dependency and initialization validation;
 - public documentation generation;
 - the higher-level collection types listed by this rulebook;
+- owned dynamically sized complete-file results and allocating directory-list
+  convenience APIs;
 - complete cross-target fallback testing.
 
 ---

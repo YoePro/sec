@@ -1,0 +1,58 @@
+module operators.membership.invalid
+
+type ViewHolder struct {
+    values: ref int[],
+}
+
+fn InvalidMembership(
+    text: string,
+    numbers: int[2],
+    view: ref int[],
+    holder: ViewHolder,
+    holders: ViewHolder[1],
+    dynamic: int[],
+    listValues: list[int],
+    mapValues: map[int, string],
+    setValues: set[int],
+) void {
+    /* Expected error S1021: string is incompatible with the int element type.
+     * Reason: membership compares the searched value with array elements.
+     */
+    let arrayMismatch := text in numbers
+
+    /* Expected error S1021: string is incompatible with the int element type.
+     * Reason: slice membership uses the same equality compatibility as arrays.
+     */
+    let sliceMismatch := text in view
+
+    /* Expected error S1021: ViewHolder is not equality-comparable.
+     * Reason: it contains a slice reference, whose equality is intentionally
+     * undefined in Sec 0.1.
+     */
+    let nonComparableElement := holder in holders
+
+    /* Expected error S1021: owning runtime-sized arrays are unsupported here.
+     * Reason: Sec 0.1 defines `in` only for fixed arrays, slices, and ranges.
+     */
+    let ownedDynamicArray := 1 in dynamic
+
+    /* Expected error S1021: list membership requires an explicit API.
+     * Reason: `in` does not dispatch to an arbitrary Contains method.
+     */
+    let unsupportedList := 1 in listValues
+
+    /* Expected error S1021: map membership requires an explicit key API.
+     * Reason: map key and entry membership must not be ambiguous.
+     */
+    let unsupportedMap := 1 in mapValues
+
+    /* Expected error S1021: set membership requires an explicit API.
+     * Reason: Sec 0.1 does not define `in` for collection types.
+     */
+    let unsupportedSet := 1 in setValues
+
+    /* Expected error S1021: string membership is unsupported.
+     * Reason: text search uses an explicit string API.
+     */
+    let unsupportedString := "x" in text
+}

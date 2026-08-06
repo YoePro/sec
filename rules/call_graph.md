@@ -2808,6 +2808,47 @@ spawn and await require explicit Semantic IR representation.
 Current front-end support already includes substantial parser and Sema support
 for spawn and await.
 
+The compiler now also owns an initial semantic call-graph service produced by
+each Sema analysis. It currently provides:
+
+```text
+deterministic callable identities within one analyzed source snapshot;
+deterministic call-site identities within their containing callable;
+callable nodes for declared functions and methods;
+validated synchronous direct-call edges;
+validated synchronous statically resolved method-call edges;
+foreign-direct dispatch classification for valid extern calls;
+incoming and outgoing direct-call queries;
+source declaration and call-site locations;
+defensive immutable graph snapshots for consumers;
+standard LSP incoming and outgoing call hierarchy over these facts;
+ProgramEntryRoot discovery for a valid module-main fn main() int|void;
+root reachability over the represented synchronous graph;
+literal-true and literal-false branch pruning for graph edges;
+same-stack strongly connected components for represented synchronous edges;
+direct and mutual recursion classification;
+LSP hover summaries for callers, callees, root reachability, and recursion;
+validated task-spawn and thread-start execution relationships;
+separate synchronous argument-call edges inside spawn expressions;
+derived task-entry and thread-entry roots for reachable spawn sites;
+whole-program reachability across task/thread execution boundaries;
+same-stack SCC exclusion of task/thread spawn edges and spawn cycles;
+LSP call-hierarchy relationship metadata and hover spawn summaries;
+source-ordered direct Arena effect sites for recognized Arena operations;
+synchronous Arena `MayAllocate` summaries and shortest callable cause paths;
+execution-aware exclusion of spawned-body allocation from synchronous caller
+summaries;
+LSP hover for direct Arena events and allocation cause paths.
+```
+
+These identities do not yet include complete `CompilationPlan`, generic
+specialization, closure, defer, or generated-callable identity. The graph does
+not yet claim the remaining root kinds, complete semantic path pruning,
+indirect target sets, process/interrupt/callback/defer/destruction execution
+relationships, cross-snapshot reachability, spawn-cycle SCC diagnostics, effect
+domains beyond the initial Arena allocation summary, path-aware ordered effect
+merging, or general diagnostic cause paths.
+
 The repository does not yet claim the complete canonical call graph defined by
 this rulebook.
 

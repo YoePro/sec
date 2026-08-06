@@ -1691,6 +1691,14 @@ Current infrastructure implemented:
   `internal/diagnostics`;
 * registry entries contain stable ID, symbolic name, family, default severity
   and whether the diagnostic is mandatory;
+* `sec diagnostics` lists every registered error, warning and information
+  definition in stable ID order and includes all registry-definition fields;
+* `sec diagnostics --json` emits the catalog as machine-readable JSON;
+* the catalog includes complete field schemas for `diagnostics.Definition`,
+  semantic `Error`, parser `Diagnostic`, and source `Token`; reflection-based
+  tests fail when a structure gains a field that the catalog omits;
+* catalog output includes severity totals and an explicit incomplete-coverage
+  marker while raw diagnostics remain unmigrated;
 * the semantic diagnostic `Error` structure carries optional stable `ID` and
   optional `Help` text;
 * the semantic diagnostic `Error` structure carries a severity value;
@@ -1724,7 +1732,10 @@ Current infrastructure implemented:
   * `S1017` / `operator.invalid-shift-count`
   * `S1018` / `operator.signed-left-shift-overflow`
   * `S1019` / `operator.non-comparable-operands`
-  * `S1020` / `operator.string-runtime-concat`
+  * `S1021` / `operator.invalid-membership`
+  * `S1022` / `operator.invalid-concat-operand`
+* retired diagnostic IDs remain registered and reserved:
+  * `S1020` / `operator.string-runtime-concat` (retired; never reuse)
 * parser recovery IDs `P2001` through `P2018` are registered; initial focused
   paths use `P2002`, `P2003`, `P2007`, `P2008`, `P2011` and `P2013`;
 * semantic analysis retains a poisoned local binding after an invalid
@@ -1748,7 +1759,8 @@ Not yet complete:
 * configurable advisory categories and presets
 * target- and variant-specific diagnostic policy
 * source-level advisory suppression
-* machine-readable structured CLI diagnostics
+* machine-readable structured CLI output for emitted diagnostic occurrences;
+  the registry catalog itself is available as JSON
 * full mentor cost analysis
 * stable registered IDs for default-contract violations, unrepresentable or
   ambiguous defaults, empty/duplicate membership lists, immutable omitted

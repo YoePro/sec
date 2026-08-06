@@ -2849,6 +2849,28 @@ partially modeled.
 
 ---
 
+# Current implementation status
+
+Implemented foundations now include:
+
+```text
+compiler-owned direct Arena effect sites for recognized create, allocate,
+Reset, and Release operations;
+MayAllocate classification for WithCapacity, Growable, New, and Alloc;
+synchronous MayAllocate propagation over resolved direct/static-method edges;
+shortest callable allocation cause paths;
+execution-aware exclusion of spawned-body allocation from the spawner's
+synchronous summary;
+LSP hover presentation of these Arena allocation facts.
+```
+
+This remains partial. The repository does not yet claim the complete canonical
+effect set, guarantee verification, ambient allocation-context resolution,
+path-aware ordered Arena state merging, indirect/open-target propagation,
+per-`CompilationPlan` summaries, or general diagnostic cause paths.
+
+---
+
 # Appendix B — Canonical effect table
 
 | Internal effect | Meaning | Forbidden by |

@@ -199,3 +199,26 @@ fn ReturnFile() File {
 		t.Fatalf("Analyze returned errors: %v", errors)
 	}
 }
+
+func TestOpenDirectoryMustBeClosedBeforeScopeExit(t *testing.T) {
+	input := `
+module io
+
+type Directory struct {
+    is_closed: bool,
+}
+
+fn MakeDirectory() Directory {
+    return Directory { is_closed: false }
+}
+
+fn LeakDirectory() void {
+    let directory := MakeDirectory()
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"owned directory directory is still open at scope exit; call directory.Close() or return it to transfer ownership at 13:9",
+	})
+}

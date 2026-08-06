@@ -1,0 +1,30 @@
+module operators.membership.valid
+
+type Percent int range 0..100
+
+fn FixedArrayContains(value: int, values: int[4]) bool {
+    return value in values
+}
+
+fn SharedSliceContains(value: int, values: ref int[]) bool {
+    return value in values
+}
+
+fn MutableSliceContains(value: int, values: ref mut int[]) bool {
+    return value in values
+}
+
+fn ReferencedArrayContains(value: int, values: ref int[4]) bool {
+    return value in values
+}
+
+fn LiteralMembership() bool {
+    let runes: rune[3] := ['a', 'b', 'c']
+    let percentages: Percent[3] := [10, 50, 90]
+    let rows: int[2][2] := [[1, 2], [3, 4]]
+
+    return 2 in [1, 2, 3] &&
+        'b' in runes &&
+        50 in percentages &&
+        [3, 4] in rows
+}

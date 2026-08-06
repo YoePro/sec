@@ -821,24 +821,41 @@ Current implementation status for file input:
 
 - `io.Open(path)` is declared for Linux/amd64 and returns `Result[io.File,
   io.IOError]`.
-- `io.File.Read(buffer)` and `io.ReadFileInto(path, buffer)` are declared and
-  semantically valid for caller-provided `ref mut byte[]` storage.
-- `io.File.Write(data)`, `io.File.Flush()`, `io.File.Seek(offset, whence)` and
-  lowercase aliases `read`, `write`, `flush`, `seek`, `close` are present as
-  early file infrastructure. `Seek` currently returns `IOError.Unsupported`.
+- `io.Create`, `io.OpenAppend` and `io.OpenReadWrite` provide writable handles.
+- `io.File.Read`, `io.File.ReadAllInto` and `io.ReadFileInto` support
+  caller-provided `ref mut byte[]` storage. Complete-buffer reads continue to
+  EOF and report `IOError.TooLarge` instead of silently truncating.
+- `io.File.Write`, `io.File.WriteAll`, `io.File.WriteString`, `io.WriteFile`
+  and `io.WriteStringFile` handle partial writes and interrupted syscalls.
+- `io.File.ReadExact` supports fixed-size input and `io.Copy` performs
+  streaming copies through caller-owned scratch storage.
+- `io.File.Flush()` uses Linux `fsync`, and `io.File.Seek(offset, origin)` uses
+  `lseek` with `io.SeekOrigin`.
+- `io.File.Truncate`, `io.Access`, `io.Exists`, `io.CreateDirectory`,
+  `io.RemoveFile`, `io.RemoveDirectory` and `io.Rename` provide the remaining
+  non-recursive bootstrap filesystem primitives.
 - `io.File.Close()` is declared, semantically valid and marks the file closed.
-- Sema reports a local `io.File` that reaches scope exit without `Close()` or
-  ownership transfer by return.
+- `io.OpenDirectory` and `io.Directory.Next` iterate all non-dot directory
+  entries through Linux `getdents64`; malformed records are rejected.
+- `io.ReadDirectoryInto` fills caller-owned `DirectoryEntry[]` storage with the
+  complete non-dot listing and reports `IOError.TooLarge` rather than silently
+  returning a partial directory.
+- Sema reports a local `io.File` or `io.Directory` that reaches scope exit
+  without `Close()` or ownership transfer by return.
+- Both handle types are `@noCopy`, preventing ordinary copies of a live file
+  descriptor.
+- Runtime paths are copied to a bounded NUL-terminated stack buffer; embedded
+  NUL and paths longer than the platform buffer are rejected before syscall.
 - The Linux/amd64 implementation routes through the existing raw syscall
   surface and normal Sec `Result` values.
 - `io.ReadFile(path) Result[string, io.IOError]` exists as the intended
   complete-file API, but currently returns `IOError.Unsupported`.
 
-Pending for complete-file reads:
+Pending for allocating complete-file and directory-list convenience APIs:
 
-- reviewed CString construction for general runtime paths;
 - owned dynamic byte storage;
 - byte-array-to-string materialization;
+- first-class list population for `DirectoryEntry` values;
 - final lowering/runtime support for the file IO path.
 
 The first bootstrap milestone is complete when a Sec program can:

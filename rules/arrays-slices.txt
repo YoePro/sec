@@ -966,6 +966,9 @@ Current implementation status:
 - Semantic analysis validates fixed-array equality recursively from the element
   type and rejects ordinary equality for slice views (`ref T[]` and
   `ref mut T[]`).
+- Semantic analysis validates `value in fixedArray` and `value in slice`,
+  including shared and mutable slice references, equality-comparable element
+  types, compatible search values, and stable diagnostic `S1021`.
 - MLIR lowers fixed arrays whose elements have a direct LLVM representation to
   nested `!llvm.array<N x T>` values.
 - MLIR supports fixed-array literals, local storage, parameters, returns,
@@ -986,6 +989,7 @@ Not implemented yet:
 - MLIR slice construction, reborrowing, slicing and element borrowing
 - MLIR arrays containing strings or slice descriptors
 - MLIR array equality
+- canonical Semantic IR and MLIR lowering for fixed-array and slice membership
 
 ## Semantic IR requirements
 

@@ -19,48 +19,51 @@ type Definition struct {
 	Family          string
 	DefaultSeverity Severity
 	Mandatory       bool
+	Retired         bool
 }
 
 const (
-	ParserSyntaxError           = "P2001"
-	ParserMissingToken          = "P2002"
-	ParserUnexpectedToken       = "P2003"
-	ParserUnterminatedDelimiter = "P2004"
-	ParserInvalidDeclaration    = "P2005"
-	ParserInvalidStatement      = "P2006"
-	ParserInvalidExpression     = "P2007"
-	ParserInvalidTypeReference  = "P2008"
-	ParserInvalidPattern        = "P2009"
-	ParserMissingSeparator      = "P2010"
-	ParserMisplacedKeyword      = "P2011"
-	ParserReservedSyntax        = "P2012"
-	ParserInvalidAssignmentExpr = "P2013"
-	ParserChainedComparison     = "P2014"
-	ParserRecoveryLimit         = "P2015"
-	ParserUnexpectedEndOfFile   = "P2016"
-	ParserInvalidBlockMember    = "P2017"
-	ParserCompatibilitySyntax   = "P2018"
-	MissingModuleDeclaration    = "S1001"
-	DuplicateModuleDeclaration  = "S1002"
-	ModuleDeclarationConflict   = "S1003"
-	DuplicateLocalVariable      = "S1004"
-	UnhandledMustUseResult      = "S1005"
-	NonDiscardableValue         = "S1006"
-	ImplicitMoveDisallowed      = "S1007"
-	InvalidExplicitDefault      = "S1008"
-	NoDefaultValue              = "S1009"
-	MissingNonDefaultableField  = "S1010"
-	InvalidMembershipValue      = "S1011"
-	InterfaceInheritanceCycle   = "S1012"
-	IncompatibleUnitConversion  = "S1013"
-	IncompleteEnumSwitch        = "S1014"
-	DuplicateSwitchCase         = "S1015"
-	OperatorNonOrderable        = "S1016"
-	OperatorInvalidShiftCount   = "S1017"
-	OperatorShiftOverflow       = "S1018"
-	OperatorNonComparable       = "S1019"
-	OperatorStringRuntimeConcat = "S1020"
-	LargeValueParameter         = "A2001"
+	ParserSyntaxError            = "P2001"
+	ParserMissingToken           = "P2002"
+	ParserUnexpectedToken        = "P2003"
+	ParserUnterminatedDelimiter  = "P2004"
+	ParserInvalidDeclaration     = "P2005"
+	ParserInvalidStatement       = "P2006"
+	ParserInvalidExpression      = "P2007"
+	ParserInvalidTypeReference   = "P2008"
+	ParserInvalidPattern         = "P2009"
+	ParserMissingSeparator       = "P2010"
+	ParserMisplacedKeyword       = "P2011"
+	ParserReservedSyntax         = "P2012"
+	ParserInvalidAssignmentExpr  = "P2013"
+	ParserChainedComparison      = "P2014"
+	ParserRecoveryLimit          = "P2015"
+	ParserUnexpectedEndOfFile    = "P2016"
+	ParserInvalidBlockMember     = "P2017"
+	ParserCompatibilitySyntax    = "P2018"
+	MissingModuleDeclaration     = "S1001"
+	DuplicateModuleDeclaration   = "S1002"
+	ModuleDeclarationConflict    = "S1003"
+	DuplicateLocalVariable       = "S1004"
+	UnhandledMustUseResult       = "S1005"
+	NonDiscardableValue          = "S1006"
+	ImplicitMoveDisallowed       = "S1007"
+	InvalidExplicitDefault       = "S1008"
+	NoDefaultValue               = "S1009"
+	MissingNonDefaultableField   = "S1010"
+	InvalidMembershipValue       = "S1011"
+	InterfaceInheritanceCycle    = "S1012"
+	IncompatibleUnitConversion   = "S1013"
+	IncompleteEnumSwitch         = "S1014"
+	DuplicateSwitchCase          = "S1015"
+	OperatorNonOrderable         = "S1016"
+	OperatorInvalidShiftCount    = "S1017"
+	OperatorShiftOverflow        = "S1018"
+	OperatorNonComparable        = "S1019"
+	OperatorStringRuntimeConcat  = "S1020"
+	OperatorInvalidMembership    = "S1021"
+	OperatorInvalidConcatOperand = "S1022"
+	LargeValueParameter          = "A2001"
 )
 
 var registry = map[string]Definition{
@@ -183,7 +186,13 @@ var registry = map[string]Definition{
 		ID: OperatorNonComparable, Name: "operator.non-comparable-operands", Family: "operators", DefaultSeverity: SeverityError, Mandatory: true,
 	},
 	OperatorStringRuntimeConcat: {
-		ID: OperatorStringRuntimeConcat, Name: "operator.string-runtime-concat", Family: "operators", DefaultSeverity: SeverityError, Mandatory: true,
+		ID: OperatorStringRuntimeConcat, Name: "operator.string-runtime-concat", Family: "operators", DefaultSeverity: SeverityError, Mandatory: true, Retired: true,
+	},
+	OperatorInvalidMembership: {
+		ID: OperatorInvalidMembership, Name: "operator.invalid-membership", Family: "operators", DefaultSeverity: SeverityError, Mandatory: true,
+	},
+	OperatorInvalidConcatOperand: {
+		ID: OperatorInvalidConcatOperand, Name: "operator.invalid-concat-operand", Family: "operators", DefaultSeverity: SeverityError, Mandatory: true,
 	},
 	LargeValueParameter: {
 		ID:              LargeValueParameter,

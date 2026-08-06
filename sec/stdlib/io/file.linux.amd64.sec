@@ -7,11 +7,28 @@ enum IOError {
     PermissionDenied,
     NotFound,
     Interrupted,
+    WouldBlock,
+    OutOfMemory,
+    InputOutput,
     InvalidArgument,
     BadFileDescriptor,
     IsDirectory,
+    NotDirectory,
+    DirectoryNotEmpty,
+    Busy,
+    CrossDevice,
+    AlreadyExists,
     TooManyOpenFiles,
     TooLarge,
+    NameTooLong,
+    TooManySymbolicLinks,
+    NoSpace,
+    ReadOnlyFileSystem,
+    BrokenPipe,
+    IllegalSeek,
+    UnexpectedEndOfFile,
+    WriteZero,
+    InvalidData,
     Unsupported,
     Unknown,
 }
@@ -23,10 +40,50 @@ enum OpenMode {
     Append = 3,
 }
 
+enum SeekOrigin {
+    Start = 0,
+    Current = 1,
+    End = 2,
+}
+
+enum AccessMode {
+    Exists = 0,
+    Execute = 1,
+    Write = 2,
+    Read = 4,
+    ReadWrite = 6,
+}
+
+enum DirectoryEntryType {
+    Unknown = 0,
+    NamedPipe = 1,
+    CharacterDevice = 2,
+    Directory = 4,
+    BlockDevice = 6,
+    File = 8,
+    SymbolicLink = 10,
+    Socket = 12,
+}
+
+type DirectoryEntry struct {
+    Name: string,
+    Type: DirectoryEntryType,
+}
+
+@noCopy
 type File struct {
     fd: int,
     is_closed: bool,
     open_mode: OpenMode,
+}
+
+@noCopy
+type Directory struct {
+    fd: int,
+    is_closed: bool,
+    buffer: byte[4096],
+    buffer_length: int,
+    buffer_position: int,
 }
 
 fn _ioError(error: platform.linux.LinuxError) IOError {
@@ -37,27 +94,106 @@ fn _ioError(error: platform.linux.LinuxError) IOError {
             return IOError.NotFound
         case platform.linux.LinuxError.interrupted:
             return IOError.Interrupted
+        case platform.linux.LinuxError.again:
+            return IOError.WouldBlock
+        case platform.linux.LinuxError.noMemory:
+            return IOError.OutOfMemory
+        case platform.linux.LinuxError.ioError:
+            return IOError.InputOutput
         case platform.linux.LinuxError.invalidArg:
             return IOError.InvalidArgument
         case platform.linux.LinuxError.badFd:
             return IOError.BadFileDescriptor
         case platform.linux.LinuxError.isDirectory:
             return IOError.IsDirectory
+        case platform.linux.LinuxError.notADirectory:
+            return IOError.NotDirectory
+        case platform.linux.LinuxError.directoryNotEmpty:
+            return IOError.DirectoryNotEmpty
+        case platform.linux.LinuxError.deviceBusy:
+            return IOError.Busy
+        case platform.linux.LinuxError.crossDeviceLink:
+            return IOError.CrossDevice
+        case platform.linux.LinuxError.fileExists:
+            return IOError.AlreadyExists
         case platform.linux.LinuxError.tooManyOpenFiles, platform.linux.LinuxError.fileTableOverflow:
             return IOError.TooManyOpenFiles
         case platform.linux.LinuxError.fileTooLarge, platform.linux.LinuxError.valueTooLarge:
             return IOError.TooLarge
+        case platform.linux.LinuxError.nameTooLong:
+            return IOError.NameTooLong
+        case platform.linux.LinuxError.tooManySymlinks:
+            return IOError.TooManySymbolicLinks
+        case platform.linux.LinuxError.noSpace:
+            return IOError.NoSpace
+        case platform.linux.LinuxError.readOnlyFileSystem:
+            return IOError.ReadOnlyFileSystem
+        case platform.linux.LinuxError.brokenPipe:
+            return IOError.BrokenPipe
+        case platform.linux.LinuxError.illegalSeek:
+            return IOError.IllegalSeek
+        case platform.linux.LinuxError.operationNotSupported, platform.linux.LinuxError.invalidSyscall:
+            return IOError.Unsupported
         default:
             return IOError.Unknown
     }
 }
 
+/** Opens an existing file for reading. The returned handle must be closed. */
 fn Open(path: string) Result[File, IOError] {
     match linux.OpenReadOnly(path) {
         Ok(fd) => return Ok(File {
             fd: fd,
             is_closed: false,
             open_mode: OpenMode.ReadOnly,
+        })
+        Err(error) => return Err(_ioError(error))
+    }
+}
+
+/** Creates or truncates a file and opens it for writing. */
+fn Create(path: string) Result[File, IOError] {
+    match linux.OpenWriteOnly(path, true, true, false) {
+        Ok(fd) => return Ok(File {
+            fd: fd,
+            is_closed: false,
+            open_mode: OpenMode.WriteOnly,
+        })
+        Err(error) => return Err(_ioError(error))
+    }
+}
+
+/** Opens a file for atomic append, creating it when necessary. */
+fn OpenAppend(path: string) Result[File, IOError] {
+    match linux.OpenWriteOnly(path, true, false, true) {
+        Ok(fd) => return Ok(File {
+            fd: fd,
+            is_closed: false,
+            open_mode: OpenMode.Append,
+        })
+        Err(error) => return Err(_ioError(error))
+    }
+}
+
+fn OpenReadWrite(path: string, create: bool) Result[File, IOError] {
+    match linux.OpenReadWrite(path, create) {
+        Ok(fd) => return Ok(File {
+            fd: fd,
+            is_closed: false,
+            open_mode: OpenMode.ReadWrite,
+        })
+        Err(error) => return Err(_ioError(error))
+    }
+}
+
+/** Opens a directory iterator. The returned iterator must be closed. */
+fn OpenDirectory(path: string) Result[Directory, IOError] {
+    match linux.OpenDirectory(path) {
+        Ok(fd) => return Ok(Directory {
+            fd: fd,
+            is_closed: false,
+            buffer_length: 0,
+            buffer_position: 0,
         })
         Err(error) => return Err(_ioError(error))
     }
@@ -73,6 +209,94 @@ fn _readFd(fd: int, buffer: ref mut byte[]) Result[uint, IOError] {
 fn _writeFd(fd: int, data: ref byte[]) Result[uint, IOError] {
     match linux.Write(fd, ref data[..]) {
         Ok(count) => return Ok(count)
+        Err(error) => return Err(_ioError(error))
+    }
+}
+
+fn _writeStringFd(fd: int, data: string, offset: uint) Result[uint, IOError] {
+    match linux.WriteStringFrom(fd, data, offset) {
+        Ok(count) => return Ok(count)
+        Err(error) => return Err(_ioError(error))
+    }
+}
+
+fn _seekFd(fd: int, offset: int, origin: SeekOrigin) Result[uint, IOError] {
+    match linux.Seek(fd, offset, int(origin)) {
+        Ok(position) => return Ok(position)
+        Err(error) => return Err(_ioError(error))
+    }
+}
+
+fn _flushFd(fd: int) Result[void, IOError] {
+    match linux.Flush(fd) {
+        Ok(_) => return Ok()
+        Err(error) => return Err(_ioError(error))
+    }
+}
+
+fn _readDirectoryFd(fd: int, buffer: ref mut byte[]) Result[uint, IOError] {
+    match linux.ReadDirectory(fd, ref mut buffer[..]) {
+        Ok(count) => return Ok(count)
+        Err(error) => return Err(_ioError(error))
+    }
+}
+
+fn _truncateFd(fd: int, size: uint) Result[void, IOError] {
+    match linux.Truncate(fd, size) {
+        Ok(_) => return Ok()
+        Err(error) => return Err(_ioError(error))
+    }
+}
+
+/** Observes one access mode; it does not authorize a later filesystem operation. */
+fn Access(path: string, mode: AccessMode) Result[void, IOError] {
+    match linux.Access(path, int(mode)) {
+        Ok(_) => return Ok()
+        Err(error) => return Err(_ioError(error))
+    }
+}
+
+/** Returns false only when the path does not exist or a parent is not a directory. */
+fn Exists(path: string) Result[bool, IOError] {
+    match linux.Access(path, int(AccessMode.Exists)) {
+        Ok(_) => return Ok(true)
+        Err(error) => {
+            if error == platform.linux.LinuxError.noSuchFile || error == platform.linux.LinuxError.notADirectory {
+                return Ok(false)
+            }
+            return Err(_ioError(error))
+        }
+    }
+}
+
+/** Creates one directory; parents must already exist. */
+fn CreateDirectory(path: string) Result[void, IOError] {
+    match linux.CreateDirectory(path, 511) {
+        Ok(_) => return Ok()
+        Err(error) => return Err(_ioError(error))
+    }
+}
+
+/** Removes one non-directory filesystem entry. */
+fn RemoveFile(path: string) Result[void, IOError] {
+    match linux.RemoveFile(path) {
+        Ok(_) => return Ok()
+        Err(error) => return Err(_ioError(error))
+    }
+}
+
+/** Removes one empty directory. */
+fn RemoveDirectory(path: string) Result[void, IOError] {
+    match linux.RemoveDirectory(path) {
+        Ok(_) => return Ok()
+        Err(error) => return Err(_ioError(error))
+    }
+}
+
+/** Atomically renames one path when the selected filesystem supports it. */
+fn Rename(oldPath: string, newPath: string) Result[void, IOError] {
+    match linux.Rename(oldPath, newPath) {
+        Ok(_) => return Ok()
         Err(error) => return Err(_ioError(error))
     }
 }
@@ -105,12 +329,71 @@ fn Close(fd: int) Result[void, IOError] {
     }
 }
 
+/** Replaces a file with the exact bytes in data. */
+fn WriteFile(path: string, data: ref byte[]) Result[void, IOError] {
+    let mut file := try Create(path)
+    match file.WriteAll(ref data[..]) {
+        Err(writeError) => {
+            match file.Close() {
+                Ok(_) => return Err(writeError)
+                Err(closeError) => {
+                    discard closeError
+                    return Err(writeError)
+                }
+            }
+        }
+        Ok(_) => { }
+    }
+
+    match file.Close() {
+        Ok(_) => return Ok()
+        Err(error) => return Err(error)
+    }
+}
+
+/** Replaces a file with the exact UTF-8 bytes in data. */
+fn WriteStringFile(path: string, data: string) Result[void, IOError] {
+    let mut file := try Create(path)
+    match file.WriteString(data) {
+        Err(writeError) => {
+            match file.Close() {
+                Ok(_) => return Err(writeError)
+                Err(closeError) => {
+                    discard closeError
+                    return Err(writeError)
+                }
+            }
+        }
+        Ok(_) => { }
+    }
+
+    match file.Close() {
+        Ok(_) => return Ok()
+        Err(error) => return Err(error)
+    }
+}
+
+/** Reads a complete file into caller-owned storage without silent truncation. */
 fn ReadFileInto(path: string, buffer: ref mut byte[]) Result[uint, IOError] {
     let mut file := try Open(path)
-    let count := try file.Read(ref mut buffer[..])
-    try file.Close()
-
-    return Ok(count)
+    match file.ReadAllInto(ref mut buffer[..]) {
+        Err(readError) => {
+            match file.Close() {
+                Ok(_) => return Err(readError)
+                Err(closeError) => {
+                    discard closeError
+                    return Err(readError)
+                }
+            }
+        }
+        Ok(count) => {
+            match file.Close() {
+                Ok(_) => return Ok(count)
+                Err(closeError) => return Err(closeError)
+            }
+        }
+    }
+    return Err(IOError.Unknown)
 }
 
 fn ReadFile(path: string) Result[string, IOError] {
@@ -118,6 +401,56 @@ fn ReadFile(path: string) Result[string, IOError] {
     // byte-array-to-string materialization path. The API is present now so
     // bootstrap code can type-check against the intended shape.
     return Err(IOError.Unsupported)
+}
+
+/** Copies from the current source position until EOF using caller-owned storage. */
+fn Copy(source: ref mut File, destination: ref mut File, buffer: ref mut byte[]) Result[uint, IOError] {
+    if buffer.len == 0u {
+        return Err(IOError.InvalidArgument)
+    }
+
+    let mut copied := 0u
+    while true {
+        match source.Read(ref mut buffer[..]) {
+            Err(error) => {
+                if error != IOError.Interrupted {
+                    return Err(error)
+                }
+            }
+            Ok(count) => {
+                if count == 0u {
+                    return Ok(copied)
+                }
+                let written := try destination.WriteAll(ref buffer[..<int(count)])
+                copied += written
+            }
+        }
+    }
+}
+
+fn _directoryRecordLength(buffer: ref byte[], position: int) uint {
+    return uint(buffer[position + 16]) | (uint(buffer[position + 17]) << 8)
+}
+
+fn _directoryEntryType(value: byte) DirectoryEntryType {
+    switch value {
+        case 1:
+            return DirectoryEntryType.NamedPipe
+        case 2:
+            return DirectoryEntryType.CharacterDevice
+        case 4:
+            return DirectoryEntryType.Directory
+        case 6:
+            return DirectoryEntryType.BlockDevice
+        case 8:
+            return DirectoryEntryType.File
+        case 10:
+            return DirectoryEntryType.SymbolicLink
+        case 12:
+            return DirectoryEntryType.Socket
+        default:
+            return DirectoryEntryType.Unknown
+    }
 }
 
 impl File {
@@ -132,6 +465,30 @@ impl File {
         }
     }
 
+    fn ReadExact(buffer: ref mut byte[]) Result[uint, IOError] {
+        if self.is_closed {
+            return Err(IOError.BadFileDescriptor)
+        }
+
+        let mut read := 0u
+        while read < buffer.len {
+            match _readFd(self.fd, ref mut buffer[int(read)..]) {
+                Err(error) => {
+                    if error != IOError.Interrupted {
+                        return Err(error)
+                    }
+                }
+                Ok(count) => {
+                    if count == 0u {
+                        return Err(IOError.UnexpectedEndOfFile)
+                    }
+                    read += count
+                }
+            }
+        }
+        return Ok(read)
+    }
+
     fn Write(data: ref byte[]) Result[uint, IOError] {
         if self.is_closed {
             return Err(IOError.BadFileDescriptor)
@@ -143,8 +500,63 @@ impl File {
         }
     }
 
-    fn Seek(offset: int, whence: int) Result[uint, IOError] {
-        return Err(IOError.Unsupported)
+    fn WriteAll(data: ref byte[]) Result[uint, IOError] {
+        if self.is_closed {
+            return Err(IOError.BadFileDescriptor)
+        }
+
+        let mut written := 0u
+        while written < data.len {
+            match _writeFd(self.fd, ref data[int(written)..]) {
+                Err(error) => {
+                    if error != IOError.Interrupted {
+                        return Err(error)
+                    }
+                }
+                Ok(count) => {
+                    if count == 0u {
+                        return Err(IOError.WriteZero)
+                    }
+                    written += count
+                }
+            }
+        }
+        return Ok(written)
+    }
+
+    fn WriteString(data: string) Result[uint, IOError] {
+        if self.is_closed {
+            return Err(IOError.BadFileDescriptor)
+        }
+
+        let mut written := 0u
+        while written < data.len {
+            match _writeStringFd(self.fd, data, written) {
+                Err(error) => {
+                    if error != IOError.Interrupted {
+                        return Err(error)
+                    }
+                }
+                Ok(count) => {
+                    if count == 0u {
+                        return Err(IOError.WriteZero)
+                    }
+                    written += count
+                }
+            }
+        }
+        return Ok(written)
+    }
+
+    fn Seek(offset: int, origin: SeekOrigin) Result[uint, IOError] {
+        if self.is_closed {
+            return Err(IOError.BadFileDescriptor)
+        }
+
+        match _seekFd(self.fd, offset, origin) {
+            Ok(position) => return Ok(position)
+            Err(error) => return Err(error)
+        }
     }
 
     fn Flush() Result[void, IOError] {
@@ -152,7 +564,21 @@ impl File {
             return Err(IOError.BadFileDescriptor)
         }
 
-        return Ok()
+        match _flushFd(self.fd) {
+            Ok(_) => return Ok()
+            Err(error) => return Err(error)
+        }
+    }
+
+    fn Truncate(size: uint) Result[void, IOError] {
+        if self.is_closed {
+            return Err(IOError.BadFileDescriptor)
+        }
+
+        match _truncateFd(self.fd, size) {
+            Ok(_) => return Ok()
+            Err(error) => return Err(error)
+        }
     }
 
     fn close() Result[void, IOError] {
@@ -186,4 +612,205 @@ impl File {
     fn ReadAll() Result[string, IOError] {
         return Err(IOError.Unsupported)
     }
+
+    fn ReadAllInto(buffer: ref mut byte[]) Result[uint, IOError] {
+        if self.is_closed {
+            return Err(IOError.BadFileDescriptor)
+        }
+
+        let mut read := 0u
+        while read < buffer.len {
+            match _readFd(self.fd, ref mut buffer[int(read)..]) {
+                Err(error) => {
+                    if error != IOError.Interrupted {
+                        return Err(error)
+                    }
+                }
+                Ok(count) => {
+                    if count == 0u {
+                        return Ok(read)
+                    }
+                    read += count
+                }
+            }
+        }
+
+        // A full caller buffer is ambiguous. Probe one byte to distinguish an
+        // exact fit from truncation without silently dropping file content.
+        let mut extra: byte[1] := [0]
+        while true {
+            match _readFd(self.fd, ref mut extra[..]) {
+                Err(error) => {
+                    if error != IOError.Interrupted {
+                        return Err(error)
+                    }
+                }
+                Ok(count) => {
+                    if count == 0u {
+                        return Ok(read)
+                    }
+                    return Err(IOError.TooLarge)
+                }
+            }
+        }
+    }
+
+    fn read(buffer: ref mut byte[]) Result[uint, IOError] {
+        match self.Read(ref mut buffer[..]) {
+            Ok(count) => return Ok(count)
+            Err(error) => return Err(error)
+        }
+    }
+
+    fn write(data: ref byte[]) Result[uint, IOError] {
+        match self.Write(ref data[..]) {
+            Ok(count) => return Ok(count)
+            Err(error) => return Err(error)
+        }
+    }
+
+    fn seek(offset: int, origin: SeekOrigin) Result[uint, IOError] {
+        match self.Seek(offset, origin) {
+            Ok(position) => return Ok(position)
+            Err(error) => return Err(error)
+        }
+    }
+
+    fn flush() Result[void, IOError] {
+        match self.Flush() {
+            Ok(_) => return Ok()
+            Err(error) => return Err(error)
+        }
+    }
+}
+
+impl Directory {
+    /** Returns the next non-dot entry, or None after the directory is exhausted. */
+    fn Next() Result[Option[DirectoryEntry], IOError] {
+        if self.is_closed {
+            return Err(IOError.BadFileDescriptor)
+        }
+
+        while true {
+            if self.buffer_position >= self.buffer_length {
+                match _readDirectoryFd(self.fd, ref mut self.buffer[..]) {
+                    Err(error) => {
+                        if error == IOError.Interrupted {
+                            continue
+                        }
+                        return Err(error)
+                    }
+                    Ok(count) => {
+                        if count == 0u {
+                            let end: Option[DirectoryEntry] := None
+                            return Ok(end)
+                        }
+                        self.buffer_length = int(count)
+                        self.buffer_position = 0
+                    }
+                }
+            }
+
+            let recordStart := self.buffer_position
+            if recordStart + 19 > self.buffer_length {
+                return Err(IOError.InvalidData)
+            }
+
+            let recordLength := int(_directoryRecordLength(ref self.buffer[..], recordStart))
+            let recordEnd := recordStart + recordLength
+            if recordLength < 20 || recordEnd > self.buffer_length {
+                return Err(IOError.InvalidData)
+            }
+
+            let nameStart := recordStart + 19
+            let mut nameEnd := nameStart
+            while nameEnd < recordEnd && self.buffer[nameEnd] != 0 {
+                nameEnd += 1
+            }
+            if nameEnd == recordEnd {
+                return Err(IOError.InvalidData)
+            }
+
+            let entryType := _directoryEntryType(self.buffer[recordStart + 18])
+            self.buffer_position = recordEnd
+
+            let name := string.FromByteArray(ref self.buffer[nameStart..<nameEnd])
+            if name != "." && name != ".." {
+                let entry: Option[DirectoryEntry] := Some(DirectoryEntry {
+                    Name: name,
+                    Type: entryType,
+                })
+                return Ok(entry)
+            }
+        }
+    }
+
+    fn Close() Result[void, IOError] {
+        if self.is_closed {
+            return Ok()
+        }
+
+        match _closeFd(self.fd) {
+            Ok(_) => {
+                self.is_closed = true
+                return Ok()
+            }
+            Err(error) => return Err(error)
+        }
+    }
+
+    fn close() Result[void, IOError] {
+        if self.is_closed {
+            return Ok()
+        }
+
+        match _closeFd(self.fd) {
+            Ok(_) => {
+                self.is_closed = true
+                return Ok()
+            }
+            Err(error) => return Err(error)
+        }
+    }
+}
+
+fn _readDirectoryIntoOpen(directory: ref mut Directory, entries: ref mut DirectoryEntry[]) Result[uint, IOError] {
+    let mut count := 0u
+    while true {
+        let next := try directory.Next()
+        match next {
+            Some(entry) => {
+                if count >= entries.len {
+                    discard entry
+                    return Err(IOError.TooLarge)
+                }
+                entries[int(count)] = entry
+                count += 1
+            }
+            None => return Ok(count)
+        }
+    }
+}
+
+/** Reads every non-dot directory entry into caller-owned storage. */
+fn ReadDirectoryInto(path: string, entries: ref mut DirectoryEntry[]) Result[uint, IOError] {
+    let mut directory := try OpenDirectory(path)
+    match _readDirectoryIntoOpen(ref mut directory, ref mut entries[..]) {
+        Err(readError) => {
+            match directory.Close() {
+                Ok(_) => return Err(readError)
+                Err(closeError) => {
+                    discard closeError
+                    return Err(readError)
+                }
+            }
+        }
+        Ok(count) => {
+            match directory.Close() {
+                Ok(_) => return Ok(count)
+                Err(closeError) => return Err(closeError)
+            }
+        }
+    }
+    return Err(IOError.Unknown)
 }

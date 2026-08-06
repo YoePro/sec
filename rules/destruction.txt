@@ -1299,9 +1299,9 @@ The current compiler implementation has:
   control-flow cleanup-adjacent rules
 * a conservative `TriviallyDestructible(type)` classification helper for
   currently resolved Sec types
-* a narrow semantic scope-exit diagnostic for local `io.File` values: a file
-  must be explicitly closed with `file.Close()` or moved out by returning it
-  before its lexical scope exits
+* narrow semantic scope-exit diagnostics for local `io.File` and `io.Directory`
+  values: the resource must be explicitly closed with `Close()` or moved out by
+  returning it before its lexical scope exits
 * semantic rejection of user-defined `free` bodies until ownership, destruction
   and cleanup-region rules are implemented
 * no complete ownership analysis pass
@@ -1316,7 +1316,8 @@ pretend to support non-trivial automatic destruction.
 Completed conservative first steps:
 
 * classify trivially destructible types
-* require explicit close or ownership transfer for local `io.File` values
+* require explicit close or ownership transfer for local `io.File` and
+  `io.Directory` values
 * reject user-defined `free` syntax until parsing and sema rules are explicit
 
 Remaining conservative first steps:

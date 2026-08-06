@@ -3,15 +3,49 @@ module platform.linux
 
 import "platform/linux/amd64"
 
-fn OpenReadOnly(path: string) Result[int, LinuxError] {
-    // Bootstrap limitation: this currently forwards the string storage pointer
-    // directly. General runtime strings still need a reviewed CString bridge.
+let OpenReadOnlyFlag := 0
+let OpenWriteOnlyFlag := 1
+let OpenReadWriteFlag := 2
+let OpenCreateFlag := 64
+let OpenTruncateFlag := 512
+let OpenAppendFlag := 1024
+let OpenDirectoryFlag := 65536
+let OpenCloseOnExecFlag := 524288
+let DefaultFilePermissions := 438 // 0666, filtered by the process umask.
+
+fn _copyPath(path: string, destination: ref mut byte[]) Result[uint, LinuxError] {
+    if path.len + 1u > destination.len {
+        return Err(LinuxError.nameTooLong)
+    }
+
+    let mut index := 0
+    while index < int(path.len) {
+        unsafe {
+            let value := path.ptr.Offset(index).Read()
+            if value == 0 {
+                return Err(LinuxError.invalidArg)
+            }
+            destination[index] = value
+        }
+        index += 1
+    }
+    destination[index] = 0
+    return Ok(uint(index))
+}
+
+fn Open(path: string, flags: int, permissions: int) Result[int, LinuxError] {
+    let mut encodedPath: byte[4096]
+    match _copyPath(path, ref mut encodedPath[..]) {
+        Err(error) => return Err(error)
+        Ok(_) => { }
+    }
+
     unsafe {
         let result := amd64._rawSyscall(
             uint(amd64.sysCall.Open),
-            uint(path.ptr),
-            0,
-            0,
+            uint(encodedPath[0].ptr),
+            uint(flags),
+            uint(permissions),
         )
 
         if result < 0 {
@@ -19,6 +53,48 @@ fn OpenReadOnly(path: string) Result[int, LinuxError] {
         }
 
         return Ok(result)
+    }
+}
+
+fn OpenReadOnly(path: string) Result[int, LinuxError] {
+    match Open(path, OpenReadOnlyFlag | OpenCloseOnExecFlag, 0) {
+        Ok(fd) => return Ok(fd)
+        Err(error) => return Err(error)
+    }
+}
+
+fn OpenWriteOnly(path: string, create: bool, truncate: bool, append: bool) Result[int, LinuxError] {
+    let mut flags := OpenWriteOnlyFlag | OpenCloseOnExecFlag
+    if create {
+        flags |= OpenCreateFlag
+    }
+    if truncate {
+        flags |= OpenTruncateFlag
+    }
+    if append {
+        flags |= OpenAppendFlag
+    }
+    match Open(path, flags, DefaultFilePermissions) {
+        Ok(fd) => return Ok(fd)
+        Err(error) => return Err(error)
+    }
+}
+
+fn OpenReadWrite(path: string, create: bool) Result[int, LinuxError] {
+    let mut flags := OpenReadWriteFlag | OpenCloseOnExecFlag
+    if create {
+        flags |= OpenCreateFlag
+    }
+    match Open(path, flags, DefaultFilePermissions) {
+        Ok(fd) => return Ok(fd)
+        Err(error) => return Err(error)
+    }
+}
+
+fn OpenDirectory(path: string) Result[int, LinuxError] {
+    match Open(path, OpenReadOnlyFlag | OpenDirectoryFlag | OpenCloseOnExecFlag, 0) {
+        Ok(fd) => return Ok(fd)
+        Err(error) => return Err(error)
     }
 }
 
@@ -53,6 +129,195 @@ fn Write(fd: int, data: ref byte[]) Result[uint, LinuxError] {
         }
 
         return Ok(uint(result))
+    }
+}
+
+fn WriteString(fd: int, data: string) Result[uint, LinuxError] {
+    match WriteStringFrom(fd, data, 0u) {
+        Ok(count) => return Ok(count)
+        Err(error) => return Err(error)
+    }
+}
+
+fn WriteStringFrom(fd: int, data: string, offset: uint) Result[uint, LinuxError] {
+    if offset > data.len {
+        return Err(LinuxError.invalidArg)
+    }
+
+    unsafe {
+        let result := amd64._rawSyscall(
+            uint(amd64.sysCall.Write),
+            uint(fd),
+            uint(data.ptr.Offset(int(offset))),
+            data.len - offset,
+        )
+
+        if result < 0 {
+            return Err(LinuxError(-result))
+        }
+
+        return Ok(uint(result))
+    }
+}
+
+fn Seek(fd: int, offset: int, origin: int) Result[uint, LinuxError] {
+    unsafe {
+        let result := amd64._rawSyscall(
+            uint(amd64.sysCall.sysLseek),
+            uint(fd),
+            uint(offset),
+            uint(origin),
+        )
+
+        if result < 0 {
+            return Err(LinuxError(-result))
+        }
+
+        return Ok(uint(result))
+    }
+}
+
+fn Flush(fd: int) Result[void, LinuxError] {
+    unsafe {
+        let result := amd64._rawSyscall(uint(amd64.sysCall.sysFsync), uint(fd))
+        if result < 0 {
+            return Err(LinuxError(-result))
+        }
+        return Ok()
+    }
+}
+
+fn ReadDirectory(fd: int, data: ref mut byte[]) Result[uint, LinuxError] {
+    unsafe {
+        let result := amd64._rawSyscall(
+            uint(amd64.sysCall.sysGetdents64),
+            uint(fd),
+            uint(data.ptr),
+            data.len,
+        )
+
+        if result < 0 {
+            return Err(LinuxError(-result))
+        }
+
+        return Ok(uint(result))
+    }
+}
+
+fn Access(path: string, mode: int) Result[void, LinuxError] {
+    let mut encodedPath: byte[4096]
+    match _copyPath(path, ref mut encodedPath[..]) {
+        Err(error) => return Err(error)
+        Ok(_) => { }
+    }
+
+    unsafe {
+        let result := amd64._rawSyscall(
+            uint(amd64.sysCall.sysAccess),
+            uint(encodedPath[0].ptr),
+            uint(mode),
+        )
+        if result < 0 {
+            return Err(LinuxError(-result))
+        }
+        return Ok()
+    }
+}
+
+fn CreateDirectory(path: string, permissions: int) Result[void, LinuxError] {
+    let mut encodedPath: byte[4096]
+    match _copyPath(path, ref mut encodedPath[..]) {
+        Err(error) => return Err(error)
+        Ok(_) => { }
+    }
+
+    unsafe {
+        let result := amd64._rawSyscall(
+            uint(amd64.sysCall.sysMkdir),
+            uint(encodedPath[0].ptr),
+            uint(permissions),
+        )
+        if result < 0 {
+            return Err(LinuxError(-result))
+        }
+        return Ok()
+    }
+}
+
+fn RemoveFile(path: string) Result[void, LinuxError] {
+    let mut encodedPath: byte[4096]
+    match _copyPath(path, ref mut encodedPath[..]) {
+        Err(error) => return Err(error)
+        Ok(_) => { }
+    }
+
+    unsafe {
+        let result := amd64._rawSyscall(
+            uint(amd64.sysCall.sysUnlink),
+            uint(encodedPath[0].ptr),
+        )
+        if result < 0 {
+            return Err(LinuxError(-result))
+        }
+        return Ok()
+    }
+}
+
+fn RemoveDirectory(path: string) Result[void, LinuxError] {
+    let mut encodedPath: byte[4096]
+    match _copyPath(path, ref mut encodedPath[..]) {
+        Err(error) => return Err(error)
+        Ok(_) => { }
+    }
+
+    unsafe {
+        let result := amd64._rawSyscall(
+            uint(amd64.sysCall.sysRmdir),
+            uint(encodedPath[0].ptr),
+        )
+        if result < 0 {
+            return Err(LinuxError(-result))
+        }
+        return Ok()
+    }
+}
+
+fn Rename(oldPath: string, newPath: string) Result[void, LinuxError] {
+    let mut encodedOldPath: byte[4096]
+    let mut encodedNewPath: byte[4096]
+    match _copyPath(oldPath, ref mut encodedOldPath[..]) {
+        Err(error) => return Err(error)
+        Ok(_) => { }
+    }
+    match _copyPath(newPath, ref mut encodedNewPath[..]) {
+        Err(error) => return Err(error)
+        Ok(_) => { }
+    }
+
+    unsafe {
+        let result := amd64._rawSyscall(
+            uint(amd64.sysCall.sysRename),
+            uint(encodedOldPath[0].ptr),
+            uint(encodedNewPath[0].ptr),
+        )
+        if result < 0 {
+            return Err(LinuxError(-result))
+        }
+        return Ok()
+    }
+}
+
+fn Truncate(fd: int, size: uint) Result[void, LinuxError] {
+    unsafe {
+        let result := amd64._rawSyscall(
+            uint(amd64.sysCall.sysFtruncate),
+            uint(fd),
+            size,
+        )
+        if result < 0 {
+            return Err(LinuxError(-result))
+        }
+        return Ok()
     }
 }
 

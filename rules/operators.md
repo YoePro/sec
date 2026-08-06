@@ -162,13 +162,18 @@ Sema currently implements:
   `reference_model.md`;
 - rejection of ordinary equality for slice views, interfaces, functions and
   compiler-known opaque struct types;
-- rejection of runtime string `+`; only recursively compile-time-foldable
-  string-literal concatenation is accepted;
+- runtime and compile-time string concatenation with the complete direct
+  `string`, `char`, and `rune` operand matrix, always producing `string`;
+- rejection of hidden conversion for non-text concatenation operands through
+  stable diagnostic `S1022`;
+- direct `string +=` type validation for `string`, `char`, and `rune` values;
 - ordered-comparison validation for compatible numeric operands and matching
   `char`, `rune`, and `string` operands;
 - rejection of chained comparisons;
 - contextual shaping of character literals;
 - range membership;
+- fixed-array and slice membership with equality-comparable element validation,
+  compatible left-value shaping, and stable diagnostic `S1021`;
 - assignment validation;
 - compound assignment validation;
 - contract checks;
@@ -211,7 +216,13 @@ The following are only partially implemented:
   dynamically known signed overflow still requires runtime-check lowering;
 - float comparison predicates do not yet fully match the required NaN rules;
 - `%` is accepted broadly by Sema, but float and decimal lowering is incomplete;
-- `in` currently supports ranges but not fixed arrays and slices;
+- array and slice membership is type-checked, but its exact-once,
+  left-to-right short-circuit lowering is not implemented;
+- runtime concatenation is type-checked, but allocation-context resolution,
+  `try`-selected failure flow, `@noPanic` enforcement, interpolation formatting
+  contracts, maximal concat planning and lowering are not implemented;
+- `string +=` accepts the direct text operand matrix, but transactional
+  fallible commit semantics and in-place proof optimization are not implemented;
 - compound assignment does not yet implement every required check and
   evaluation-order guarantee;
 - ordinary formatter support exists for many operators but does not yet cover
@@ -219,15 +230,19 @@ The following are only partially implemented:
 - parser recovery for malformed operator expressions is incomplete;
 - operator diagnostics are not all registered with stable IDs.
 
-The implemented ordered-comparison and compile-time shift checks emit:
+The implemented structured operator checks emit:
 
 ```text
 S1016  operator.non-orderable-operands
 S1017  operator.invalid-shift-count
 S1018  operator.signed-left-shift-overflow
 S1019  operator.non-comparable-operands
-S1020  operator.string-runtime-concat
+S1021  operator.invalid-membership
+S1022  operator.invalid-concat-operand
 ```
+
+`S1020 operator.string-runtime-concat` is retired and its numeric ID remains
+reserved. It must not be emitted or reused.
 
 ## Not implemented
 
@@ -239,10 +254,18 @@ The following are not yet implemented completely:
 - complete deterministic arithmetic-failure lowering;
 - float `%`;
 - decimal `%`;
-- fixed-array membership;
-- slice membership;
+- fixed-array and slice membership Semantic IR and lowering;
 - materialization of accepted compile-time string concatenation as one folded
   constant before Semantic IR/lowering;
+- active allocation-context resolution for runtime concatenation;
+- panic-or-`AllocationError` selection from source `try` context;
+- `@noPanic` validation for runtime concatenation;
+- interpolation-hole formatting-contract validation;
+- canonical maximal `StringConcatPlan` construction and concat/interpolation
+  fusion;
+- transactional fallible `string +=` semantics;
+- canonical `string.Concat` integration and structural `StringBuilder`
+  information;
 - complete aggregate equality lowering;
 - complete detection of user-defined opaque-resource semantics for derived
   struct equality;
@@ -1425,56 +1448,176 @@ The result type follows the resolved decimal compatibility rules.
 
 # String concatenation
 
-## Sec 0.1
+Runtime string concatenation with `+` is supported in Sec 0.1.
 
-`+` is allowed for strings only when the compiler can fold the complete
-concatenation at compile time.
+## Direct operand matrix
 
-Valid:
-
-```sec
-let text := "hello " + "world"
-```
-
-The result is one compile-time string value.
-
-Runtime string concatenation through `+` is not part of Sec 0.1.
-
-Invalid in Sec 0.1 when not compile-time foldable:
-
-```sec
-let text := left + right
-```
-
-Use an explicit allocation- and failure-visible core operation.
-
-Conceptual example:
-
-```sec
-let text := try string.Concat(left, right) {
-    Err(error) => {
-        return Err(error)
-    }
-}
-```
-
-The exact API name belongs to the string and core rulebooks.
-
-## Future note
-
-Runtime string concatenation syntax may be reconsidered after these features are
-implemented consistently:
+The only direct operand types are the built-in, non-nominal types `string`,
+`char`, and `rune`. Every valid pair produces `string`:
 
 ```text
-allocation contexts
-string builders
-interpolated strings
-fallible expression propagation
-capacity planning
-arena selection
+string + string -> string
+string + char   -> string
+char   + string -> string
+string + rune   -> string
+rune   + string -> string
+char   + char   -> string
+rune   + rune   -> string
+char   + rune   -> string
+rune   + char   -> string
 ```
 
-No future behavior is implied by Sec 0.1.
+A `char` or `rune` already represents one textual element and does not require
+an explicit conversion.
+
+## No hidden general conversion
+
+The operator does not convert arbitrary operands to string. Numbers, `bool`,
+enums, structs, unions, user-defined nominal types, arrays, slices,
+collections, interfaces, and all other non-text values require explicit
+conversion:
+
+```sec
+let valid := "Count: " + count.ToString()
+let invalid := "Count: " + count
+```
+
+The compiler must not silently insert `ToString()`.
+
+## Interpolation and formatting
+
+Interpolation is an explicit formatting context and is semantically distinct
+from direct concatenation:
+
+```sec
+let text := $"Count: {count}"
+```
+
+An interpolation hole is valid when its value has a canonical formatting
+contract. Initially, a user-defined type normally supplies that contract through
+`ToString()`. This does not make direct `"value: " + value` valid; direct
+concatenation still requires `value.ToString()`.
+
+Mixed interpolation and concatenation are valid. Interpolation formatting,
+`value.ToString()`, and a future `value.ToString(format)` must share one coherent
+formatting model. This rule does not lock the exact format syntax, format type,
+or locale model.
+
+## Compile-time concatenation
+
+When the complete concatenation is compile-time evaluable, it folds to one
+string constant with:
+
+```text
+no runtime allocation
+no allocation context requirement
+no try
+no allocation-failure panic
+no StringBuilder recommendation
+```
+
+## Runtime allocation and failure policy
+
+Runtime concatenation uses the active allocation context. Missing usable
+allocation context is a compile-time error.
+
+Without `try`, runtime concatenation produces `string` on success and accepts a
+deterministic allocation panic:
+
+```sec
+s = "Hello " + name
+```
+
+With `try`, allocation failure is propagated or locally handled as
+`AllocationError`, while the successful value remains `string`:
+
+```sec
+let result := try ("Hello " + name)
+```
+
+| Form | May allocate | May panic from result allocation |
+|---|---:|---:|
+| Fully compile-time-folded concatenation | No | No |
+| Runtime concatenation without `try` | Yes | Yes |
+| Runtime concatenation with `try` | Yes | No |
+| Runtime concatenation without allocation context | Compile-time error | Not applicable |
+
+Optimization may eliminate allocation or prove success, but must not change the
+source-selected failure policy.
+
+## `@noPanic` and `try` scope
+
+Runtime concatenation without `try` is incompatible with `@noPanic`. A valid
+`try` form may be used when its `AllocationError` flow is handled or propagated.
+
+`try` covers the concatenation's explicit fallible flow and nested operations
+whose error flow is explicitly part of the expression. It does not catch an
+arbitrary panic from operand evaluation or a user-defined `ToString()` call.
+Those operations retain their declared effects and execute exactly once.
+
+## Maximal concatenation plan
+
+A maximal concatenation and interpolation chain becomes one semantic
+`StringConcatPlan`, not nested binary allocations. Conceptual segments include:
+
+```text
+ConstantStringSegment
+StringSegment
+CharSegment
+RuneSegment
+BuiltinFormattedSegment
+MaterializedStringSegment
+InterpolationSegment
+```
+
+Compatible parenthesized text expressions may remain one plan. A separate
+binding creates an observable semantic result; fusion across that boundary is
+only an optimization after ownership, lifetime, and effect proof.
+
+Every segment evaluates left to right and exactly once. The plan may then
+measure segment lengths, calculate the total with checked arithmetic, allocate
+canonical result storage once, and write segments in source order. Static
+impossibility is a compile-time error; dynamic length failure follows the
+selected try-or-panic policy and never wraps silently.
+
+The canonical result is allocated at most once. User-defined `ToString()` calls
+may allocate separate temporary strings; compiler-known formatting may be fused
+without a temporary.
+
+## Compound concatenation assignment
+
+`string +=` uses the same direct operand matrix and failure-policy choice:
+
+```sec
+s += part
+try s += part
+```
+
+It is transactional: evaluate the destination place once, read the old value,
+evaluate the appended segment once, construct and validate the new value, then
+commit. A failed `try` leaves the destination unchanged. In-place append is
+permitted only after proof of unique ownership, sufficient capacity, no
+conflicting alias, stable storage, and compatible allocation context.
+
+## `string.Concat`
+
+`string.Concat` is an explicit core API that shares segment order, accepted
+text operand categories, allocation context, try-or-panic selection, checked
+length calculation, and canonical concat Semantic IR with `+`. Its exact
+overload set belongs to the string/core rulebook; unrestricted variadics are not
+defined here.
+
+## `StringBuilder`
+
+`StringBuilder` is preferred for repeated incremental construction such as
+loops, serialization, code generation, and unknown segment counts. It is not
+required for one finite maximal concatenation expression.
+
+Repeated reconstruction may produce configurable information based on control
+flow and mutation structure. The compiler must not inspect string content to
+infer intent. Do not report one maximal expression, compile-time concatenation,
+one isolated `+=`, a chain already planned as one allocation, proven in-place
+reuse, or construction below the configured threshold.
 
 ---
 
@@ -3177,7 +3320,11 @@ sema.operator-nominal-type-mismatch
 sema.operator-unit-mismatch
 sema.operator-non-comparable
 sema.operator-non-orderable
-sema.operator-string-runtime-concat
+operator.invalid-concat-operand
+operator.concat-missing-allocation-context
+effect.concat-may-panic
+operator.concat-length-overflow
+performance.string-builder-recommended
 sema.operator-invalid-membership
 sema.operator-invalid-range-value
 sema.operator-invalid-shift-count
@@ -3197,8 +3344,18 @@ S1016  operator.non-orderable-operands
 S1017  operator.invalid-shift-count
 S1018  operator.signed-left-shift-overflow
 S1019  operator.non-comparable-operands
+S1021  operator.invalid-membership
+S1022  operator.invalid-concat-operand
+```
+
+Retired and permanently reserved:
+
+```text
 S1020  operator.string-runtime-concat
 ```
+
+Stable IDs for the remaining concat categories must be assigned through the
+diagnostic registry when their checks are implemented.
 
 Safety errors are mandatory.
 
@@ -3208,11 +3365,12 @@ Performance findings may be advisory.
 
 # Diagnostic examples
 
-## Runtime string concatenation
+## Invalid concatenation operand
 
 ```text
-error[S....]: runtime string concatenation with `+` is not available in Sec 0.1
-help: use an explicit fallible string construction operation
+error[S1022]: `int` cannot be concatenated directly with `string`
+string concatenation accepts string, char, and rune
+help: use `value.ToString()` or interpolation when a formatting contract exists
 ```
 
 ## Invalid rune comparison
@@ -3248,10 +3406,17 @@ error[S....]: shift count 32 is outside the valid range 0..<32
 error[S....]: `in` supports ranges, fixed arrays, and slices in Sec 0.1
 ```
 
-## Runtime string `+`
+## Missing concatenation allocation context
 
 ```text
-error[S....]: string `+` must be fully compile-time foldable in Sec 0.1
+error[S....]: runtime string concatenation requires an allocation context
+```
+
+## Concatenation in `@noPanic`
+
+```text
+error[S....]: runtime concatenation without `try` may panic on allocation failure
+help: use the valid `try` form and handle or propagate AllocationError
 ```
 
 ---
@@ -3301,6 +3466,17 @@ Right: Matrix[3, 2, float32]
 Result: Matrix[4, 2, float32]
 ```
 
+Example for runtime string `+`:
+
+```text
+Operator: string concatenation
+Result: string
+May allocate: yes
+Allocation context: current arena
+Failure policy: panic or AllocationError through try
+Concat plan: maximal chain
+```
+
 ---
 
 # Code actions
@@ -3312,7 +3488,9 @@ split chained comparison
 replace invalid rune integer literal with `0r`
 replace invalid char integer literal with `0c`
 insert explicit conversion
-replace runtime string `+` with explicit builder or concat operation
+insert an explicit `.ToString()` for an invalid concat operand
+convert an invalid concat expression to interpolation
+replace repeated reconstruction with `StringBuilder`
 replace unsupported membership with `.Contains(...)`
 add required `try`
 replace invalid copy assignment with explicit move
@@ -3386,6 +3564,7 @@ MemberAccess
 Call
 Conversion
 Spread
+StringConcatPlan
 ```
 
 Exact operation names may differ.
@@ -3417,6 +3596,14 @@ contract validation
 copy or move behavior
 target requirements
 failure edge
+ordered concat segments
+concat segment semantic kinds
+active allocation context
+concat failure policy
+allocation and panic effects
+checked total-length behavior
+compile-time-folded status
+temporary materialization requirements
 ```
 
 ---
@@ -3434,7 +3621,15 @@ Before MLIR lowering:
 - every checked arithmetic operation has a failure edge or proof;
 - every short-circuit expression has explicit control flow;
 - every shift count is proven or checked;
-- every runtime string concatenation has been rejected in Sec 0.1;
+- every concat segment type is valid;
+- every interpolation hole has a formatting contract;
+- every runtime concat allocation context and failure policy is explicit;
+- every concat segment evaluates left to right and exactly once;
+- total concat length arithmetic is checked;
+- every runtime concatenation is represented by one maximal
+  `StringConcatPlan`, not unresolved allocating binary `+` operations;
+- `@noPanic` constraints are satisfied;
+- compound concat assignment commits only after success;
 - every membership source is supported;
 - every range remains in a valid contextual position;
 - contextual `x` has a shaped operation;
@@ -3537,6 +3732,11 @@ short-circuit simplification
 bounds-check elimination
 overflow-check elimination after proof
 shift-check elimination after proof
+constant concat-segment merging
+maximal compatible concat-tree flattening
+one canonical concat-result allocation
+compiler-known formatting fusion
+proven unique-backing-storage reuse
 ```
 
 The compiler must not optimize away:
@@ -3550,6 +3750,9 @@ required failure edge
 destruction
 ownership transfer
 observable allocation
+source-selected concatenation failure policy
+left-to-right exact-once concat evaluation
+transactional string `+=` commit
 ```
 
 ---
@@ -3569,11 +3772,37 @@ not depend on runtime target state
 
 Compile-time string literal concatenation is allowed.
 
+It folds to one string constant and requires no runtime allocation context,
+`try`, or allocation-failure policy.
+
 Compile-time arithmetic uses Sec checked semantics.
 
 ---
 
 # Testing
+
+## String concatenation tests
+
+Test all nine ordered pairs of `string`, `char`, and `rune`; every result must
+be `string`. Reject direct integer, float, decimal, bool, enum, struct, union,
+array, slice, collection, interface, and user-defined nominal operands with
+`S1022`, both operand types, the accepted text categories, and explicit
+conversion/interpolation help.
+
+Test compile-time folding, interpolation formatting contracts, mixed chains,
+left-to-right exact-once evaluation, active allocation contexts, panic and
+`try` policies, `@noPanic`, checked total length, one maximal concat plan, and
+at-most-once canonical result allocation.
+
+For `string +=`, test exact-once destination and source evaluation,
+transactional failure, unchanged destination after failed `try`, and semantic
+equivalence under proven in-place optimization. Test that structural
+`StringBuilder` information appears only for repeated reconstruction and never
+for one isolated operation or one maximal chain.
+
+Verify that valid runtime concatenation never emits retired `S1020`, that the
+ID is not reused, and that every replacement diagnostic has a stable registry
+entry before it is emitted.
 
 ## Lexer tests
 
@@ -4072,7 +4301,7 @@ Do not compare erased descriptor bits or addresses.
 
 ## A.14 Array and slice membership
 
-Extend Sema and backends for:
+Sema implements and validates:
 
 ```text
 value in fixedArray
@@ -4086,6 +4315,8 @@ Evaluate the left value and collection expression exactly once.
 Do not allocate.
 
 Do not use arbitrary `.Contains` method dispatch.
+
+Semantic IR and backend lowering remain pending.
 
 ---
 
@@ -4105,23 +4336,23 @@ Add a focused diagnostic.
 
 ---
 
-## A.16 Restrict string `+`
+## A.16 Complete runtime string concatenation
 
-Change Sema:
-
-```text
-fully compile-time foldable string literal concatenation
-    allowed
-
-runtime string concatenation
-    error
-```
-
-Constant fold before lowering.
-
-Provide a diagnostic suggesting an explicit string construction API.
-
-Do not lower runtime `+` silently.
+1. Accept the canonical direct operand matrix.
+2. Reject non-text operands without hidden conversion.
+3. Recognize interpolation as an explicit formatting context.
+4. Resolve the active allocation context.
+5. Select panic or `AllocationError` flow from source `try` context.
+6. Enforce `@noPanic`.
+7. Construct one maximal `StringConcatPlan`.
+8. Preserve left-to-right exact-once evaluation.
+9. Perform checked total-length calculation.
+10. Allocate canonical result storage at most once.
+11. Support transactional string `+=`.
+12. Route `string.Concat` through the same plan.
+13. Keep `S1020` retired and register replacement diagnostics.
+14. Add LSP fixes and structural performance information.
+15. Lower through Sec MLIR without nested binary allocation semantics.
 
 ---
 
@@ -4247,8 +4478,10 @@ It may not silently produce different semantics.
 7. Restrict ordered comparisons.
 8. Add string comparison.
 9. Add struct equality.
-10. Add array and slice membership.
-11. Restrict runtime string `+`.
+10. Add array and slice membership. (Frontend complete; Semantic IR and
+    lowering remain.)
+11. Complete runtime concat allocation/effect analysis and
+    `StringConcatPlan`. (Direct operand frontend is complete.)
 12. Add question-mark diagnostic.
 13. Complete Semantic IR metadata.
 14. Synchronize formatter and LSP.
@@ -4296,9 +4529,15 @@ Ranges remain contextual in Sec 0.1.
 
 `for value in source` is iteration grammar, not membership.
 
-String `+` is compile-time-only in Sec 0.1.
+String `+` accepts exactly built-in `string`, `char`, and `rune` operands and
+always produces `string`; other values require explicit conversion, while
+interpolation is an explicit formatting context.
 
-Runtime string construction remains explicit and fallible.
+Compile-time concatenation folds without allocation. Runtime concatenation uses
+the active allocation context and selects deterministic allocation panic by
+default or `AllocationError` flow through `try`. Maximal concatenation,
+interpolation, `string.Concat`, and transactional `string +=` share one
+`StringConcatPlan` before MLIR.
 
 `?` remains reserved with no Sec 0.1 meaning.
 

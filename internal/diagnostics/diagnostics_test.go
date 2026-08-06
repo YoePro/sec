@@ -10,21 +10,23 @@ func TestRegistryIsValid(t *testing.T) {
 
 func TestKnownDiagnosticSeverities(t *testing.T) {
 	tests := map[string]Severity{
-		ParserSyntaxError:           SeverityError,
-		MissingModuleDeclaration:    SeverityError,
-		DuplicateModuleDeclaration:  SeverityError,
-		ModuleDeclarationConflict:   SeverityError,
-		DuplicateLocalVariable:      SeverityError,
-		InterfaceInheritanceCycle:   SeverityError,
-		IncompatibleUnitConversion:  SeverityError,
-		IncompleteEnumSwitch:        SeverityWarning,
-		DuplicateSwitchCase:         SeverityError,
-		OperatorNonOrderable:        SeverityError,
-		OperatorInvalidShiftCount:   SeverityError,
-		OperatorShiftOverflow:       SeverityError,
-		OperatorNonComparable:       SeverityError,
-		OperatorStringRuntimeConcat: SeverityError,
-		LargeValueParameter:         SeverityInformation,
+		ParserSyntaxError:            SeverityError,
+		MissingModuleDeclaration:     SeverityError,
+		DuplicateModuleDeclaration:   SeverityError,
+		ModuleDeclarationConflict:    SeverityError,
+		DuplicateLocalVariable:       SeverityError,
+		InterfaceInheritanceCycle:    SeverityError,
+		IncompatibleUnitConversion:   SeverityError,
+		IncompleteEnumSwitch:         SeverityWarning,
+		DuplicateSwitchCase:          SeverityError,
+		OperatorNonOrderable:         SeverityError,
+		OperatorInvalidShiftCount:    SeverityError,
+		OperatorShiftOverflow:        SeverityError,
+		OperatorNonComparable:        SeverityError,
+		OperatorStringRuntimeConcat:  SeverityError,
+		OperatorInvalidMembership:    SeverityError,
+		OperatorInvalidConcatOperand: SeverityError,
+		LargeValueParameter:          SeverityInformation,
 	}
 
 	for id, severity := range tests {
@@ -35,6 +37,24 @@ func TestKnownDiagnosticSeverities(t *testing.T) {
 		if definition.DefaultSeverity != severity {
 			t.Fatalf("%s severity = %q, want %q", id, definition.DefaultSeverity, severity)
 		}
+	}
+}
+
+func TestRetiredDiagnosticIDsRemainReserved(t *testing.T) {
+	definition, ok := Lookup(OperatorStringRuntimeConcat)
+	if !ok {
+		t.Fatal("retired diagnostic S1020 must remain registered")
+	}
+	if !definition.Retired {
+		t.Fatal("S1020 must be marked retired")
+	}
+
+	replacement, ok := Lookup(OperatorInvalidConcatOperand)
+	if !ok {
+		t.Fatal("missing invalid concat operand diagnostic")
+	}
+	if replacement.Retired {
+		t.Fatal("S1022 must be active")
 	}
 }
 

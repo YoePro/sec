@@ -67,6 +67,8 @@ unsafe.md
 reference_model.md
 call_graph.md
 arena.md
+storage.md
+layout.md
 compiler_known_members.md
 ```
 
@@ -85,7 +87,7 @@ These were written after the older temporary checklist was last synchronized.
 | `default_values.md` | **Written** | Canonical primitive, constrained, aggregate, list and explicit-default semantics. |
 | `units.txt` | **Written — sync required** | Direct conversion dimension validation is implemented; shaped arithmetic, scale paths, and matrix multiplication still require synchronization. |
 | `grammar.md` | **Written** | Canonical consolidated grammar for Sec 0.1; implementation differences are tracked in the document. |
-| `operators.md` | **Written — partially implemented** | Ordered validation, compile-time shift checks, recursive frontend comparability and compile-time-only string `+` enforcement are implemented with `S1016`-`S1020`; dynamic checks, folded-constant materialization, aggregate equality lowering, identity metadata and checked arithmetic remain. |
+| `operators.md` | **Written — partially implemented** | Ordered validation, compile-time shift checks, recursive frontend comparability, array/slice membership, and the direct runtime text-concatenation matrix are implemented with `S1016`-`S1022`; `S1020` is retired. Concat allocation/effect analysis and planning, membership lowering, dynamic checks, folded constants, aggregate equality lowering, identity metadata, and checked arithmetic remain. |
 | `names_scopes_visibility.md` | **Written — sync required** | Top-level module declaration namespace conflicts are partially implemented; remaining scope, visibility, reserved-name and naming-rule audit still needed. |
 | `attributes.md` | **Written** | Canonical closed Sec 0.1 attribute set, syntax, attachment, selection, target binding, `@noCopy`, verified guarantees, conflicts, formatter/LSP behavior, and explicit implementation status. |
 | `unsafe.md` | **Written** | Canonical unsafe contexts, operations, functions and extern declarations, caller obligations, raw pointers, trust boundaries and provenance; compiler support remains partial. |
@@ -270,7 +272,7 @@ The remaining details to close are:
 | Rulebook | Status | Notes |
 |---|---|---|
 | `allocation.txt` | **Written — sync required** | Must be synchronized with collections, threads, explicit backing storage, and shaped buffers. |
-| `arena.md` | **Written** | Canonical Arena ownership, backing, allocation, reset/release, validity epoch, effects, analysis and lowering model. Frontend member support is partial and tracked separately. |
+| `arena.md` | **Written** | Canonical Arena ownership, backing, allocation, reset/release, validity epoch, effects, analysis and lowering model. Recognized operations now produce direct graph events, synchronous `MayAllocate` summaries, cause paths, and LSP hover; context, demand, dependency, and lowering work remains partial. |
 | `ownership.md` | **Living** | Defines explicit move syntax; remaining collection and lifecycle integration is tracked in the rulebook. |
 | `borrowing.txt` | **Written — sync required** | Must include views, thread-local references, and discard interactions. |
 | `references.txt` | **Written — sync required** | Must include shaped views and thread-bound references. |
@@ -283,11 +285,11 @@ The remaining details to close are:
 | `memory_model.md` | **Written — sync required** | Default lifetime/origin rules are synchronized; concurrency and volatile integration remain. |
 | `static.md` | **Written — sync required** | Must include thread-local keys, collection backing storage, and initialization order. |
 | `discard.md` | **Written — sync required** | General explicit consumption and early deterministic destruction. |
-| `storage.md` | **Planned** | Storage classes, inline storage, stack, static, arena, allocator-backed storage, and explicit backing storage. |
-| `layout.md` | **Planned** | Alignment, padding, packing, field order, shaped layouts, observable layout, and layout guarantees. |
+| `storage.md` | **Written** | Canonical storage origin, backing relation, reclamation authority, address stability, regions, invalidation domains, validity epochs, memory spaces, and placement guarantees; implementation remains partial. |
+| `layout.md` | **Written** | Canonical semantic/native layout, size, alignment, stride, padding, aggregate representation, explicit contracts, plan-specific queries, and compatibility; the shared layout phase remains partial. |
 
 `storage_allocation.txt` from the old checklist is replaced by the clearer
-planned name:
+canonical rulebook:
 
 ```text
 storage.md
@@ -387,7 +389,7 @@ Process spawning and IPC do not block the immediate language closure.
 | `properties.txt` | **Written — sync required** | |
 | `core-library.md` | **Written — sync required** | Compiler-known core declarations and privileged impl access. |
 | `compiler_known_members.md` | **Written** | Canonical typed registry, stable member identities, lookup, builtin member surface, core boundary and tooling behavior. Initial Sema/LSP registry integration is implemented. |
-| `stdlib.md` | **Written — sync required** | Standard-library responsibilities, module boundaries, naming, target capability contracts, and compiler-recognized declaration rules. |
+| `stdlib.md` | **Written — partially implemented** | Standard-library boundaries and target contracts plus Linux/amd64 streaming file IO, exact and complete caller-buffer reads, writes/copy, seek/flush/truncate/close, directory iteration, non-recursive path operations, path bridging, and explicit resource lifecycle diagnostics. Allocating complete-file and directory-list APIs remain pending. |
 
 Built-in lowercase types may receive privileged implementations in core.
 
@@ -435,10 +437,10 @@ OrderedMap[K, V]
 | `mlir.txt` | **Written — sync required** | |
 | `mlir-optimize.txt` | **Living** | Updated as implementation and optimization support grows. |
 | `rules_implementations.txt` | **Living** | Canonical implementation progress tracker. |
-| `call_graph.md` | **Written** | Canonical callable reachability, execution relationships, roots, indirect targets, per-`CompilationPlan` analysis, diagnostics, and LSP integration. |
+| `call_graph.md` | **Written** | Canonical callable reachability and execution relationships; direct/static-method/task/thread edges, roots, reachability/SCC, call hierarchy, and initial Arena `MayAllocate` cause paths are implemented. Per-plan identities, indirect targets, remaining execution/effect kinds, complete pruning, and general cause paths remain. |
 | `stack_analysis.md` | **Planned** | Per-function, per-path, whole-program, and target frame analysis. |
 | `escape_analysis.md` | **Planned** | No silent stack-to-heap promotion; closure and reference escape rules. |
-| `effect_analysis.md` | **Written** | Canonical compile-time effect domains, inference, call-graph propagation, verified guarantees, blocking/suspension distinction, arena events, trust provenance, diagnostics, and runtime-free model. |
+| `effect_analysis.md` | **Written** | Canonical compile-time effect domains and propagation model. Initial Arena event sites, synchronous `MayAllocate` propagation, cause paths, and LSP hover are implemented; the complete effect set, guarantees, contexts, indirect targets, and per-plan analysis remain. |
 | `isr_analysis.md` | **Planned** | ISR call graph, stack, allocation, blocking, lock, and shared-state restrictions. |
 | `parser_recovery.md` | **Written** | Canonical deterministic recovery model; structured implementation remains partial. |
 | `generics_lowering.md` | **Planned** | Semantic and MLIR lowering of generic code. |
@@ -508,13 +510,13 @@ multiple target outputs
 
 | Rulebook | Status | Notes |
 |---|---|---|
-| `diagnostics.txt` | **Written — sync required** | Central diagnostic registry exists; LSP exposes parser/sema codes; first parser/sema IDs are migrated. Full diagnostic migration, localization and machine-readable CLI output remain. |
+| `diagnostics.txt` | **Written — sync required** | Central registry and `sec diagnostics [--json]` expose all registered definitions plus complete definition/parser/sema/token field schemas; LSP exposes parser/sema codes. Full ID migration, localization and machine-readable emitted-diagnostic output remain. |
 | `formatter.md` | **Written — sync required** | Default clauses, membership order and omission are synchronized; broader collection/shaped formatting remains. |
 | `compiler_diagnostics.md` | **Covered** | Compiler diagnostic policy remains canonical in `diagnostics.txt`; avoid duplication. |
 | `debug_information.md` | **Planned** | Source mapping, variables, optimized code, generics, async/task frames, and targets. |
 | `compiler_testing.md` | **Planned** | Compiler unit, integration, invalid, regression, lowering, and backend tests. |
 | `incremental_compilation.md` | **Planned** | Dependency invalidation, generic specialization caches, and target-aware rebuilds. |
-| `lsp.md` | **Living** | Canonical language-server architecture and feature rulebook; synchronized with the compiler-owned call graph per `CompilationPlan`. |
+| `lsp.md` | **Living** | Canonical language-server architecture and feature rulebook; definition, Sema-backed highlights, direct/task/thread call hierarchy, and compiler-owned root/recursion/spawn/Arena-allocation hover summaries are implemented, while the workspace index, complete per-plan graph views, and broader navigation/reference features remain partial. |
 
 ---
 
@@ -525,6 +527,7 @@ The following rulebooks are currently considered written.
 ```text
 allocation.txt
 arrays-slices.txt
+arena.md
 attributes.md
 atomics.md
 await.md
@@ -536,6 +539,7 @@ channels.md
 compiler.txt
 compiler_analysis.txt
 compiler_pipeline.txt
+compiler_known_members.md
 concurrency.md
 concurrency_memory_model.txt
 concurrency_runtime_model.md
@@ -565,6 +569,7 @@ impl.txt
 interfaces.txt
 language_philosophy.txt
 lexical_structure.md
+layout.md
 lifetime_analysis.txt
 memory_model.md
 mlir-optimize.txt
@@ -588,6 +593,7 @@ semantic_ir.txt
 spawn.md
 spread.txt
 static.md
+storage.md
 struct.txt
 structured_concurrency.md
 tasks.txt
@@ -620,9 +626,6 @@ The following rulebooks are currently expected before Sec 0.1 can be considered
 fully design-closed, unless a later decision explicitly merges one into another.
 
 ```text
-storage.md
-layout.md
-
 stack_analysis.md
 escape_analysis.md
 isr_analysis.md
@@ -693,16 +696,18 @@ Still to decide or lock in their owning rulebooks:
 
 ## Storage, layout, and ABI
 
-Still to decide:
+`storage.md` now defines storage origin, backing relations, reclamation
+authority, address stability, memory spaces, invalidation domains, validity
+epochs, and storage-domain transitions. `layout.md` now defines semantic and
+native layout, alignment, padding, stride, field order, packing and endianness
+semantics, aggregate representations, layout compatibility, and plan-specific
+layout queries.
 
-- observable versus compiler-private layout;
-- alignment and padding;
-- packed layout;
-- endianness;
-- union and enum layout;
-- static, stack, arena, inline, and allocator-backed storage;
-- shaped memory spaces;
-- FFI-stable representation;
+Still to decide or lock in the owning syntax, ABI, FFI, and target rulebooks:
+
+- final source syntax for explicit layout, packing, alignment, field offsets,
+  endianness, and memory-space contracts;
+- exact FFI-stable representation contracts and their source attachment;
 - ABI guarantees by target.
 
 ## Attributes and effects

@@ -25,17 +25,48 @@ Implemented foundations:
   and process spawn kinds where currently recorded by the frontend
 - current direct call, method resolution, generic, closure, effect, ownership,
   and concurrency facts used independently by existing frontend checks
+- one compiler-owned call-graph snapshot per current Sema analysis
+- deterministic callable and call-site identities within that source snapshot
+- callable nodes and validated synchronous edges for direct calls and statically
+  resolved methods, including direct foreign-dispatch classification
+- incoming and outgoing direct-call queries with source locations
+- standard LSP prepare/incoming/outgoing call hierarchy consuming that graph,
+  with grouped call sites and incomplete-source resilience
+- `ProgramEntryRoot` discovery for a valid `main` function
+- root reachability over represented synchronous direct/static-method edges
+- literal bool branch pruning so calls under `if false` do not become reachable
+- Tarjan same-stack SCC analysis with direct and mutual recursion detection
+- LSP hover summaries for incoming/outgoing sites, root reachability, and
+  represented recursion components
+- task-spawn and thread-start execution relationships on the exact resolved
+  top-level spawn call, while argument calls remain synchronous
+- derived task-entry and thread-entry roots only for reachable spawn sites
+- whole-program reachability across represented spawn edges while same-stack
+  SCC analysis excludes those edges and task-spawn cycles
+- LSP call hierarchy preserves dispatch/execution metadata and does not merge a
+  spawn edge with a synchronous edge to the same target
+- direct source-ordered Arena effect sites for `FromBuffer`, `WithCapacity`,
+  `Growable`, `New`, `Alloc`, `Reset`, and `Release`
+- synchronous Arena `MayAllocate` propagation and shortest callable allocation
+  cause paths, excluding spawned-body effects from the spawner's synchronous
+  summary
+- LSP hover for direct Arena effects, transitive allocation, and its cause path
 
 Partial or pending:
 
-- one canonical compiler call-graph service with stable callable and call-site
-  identities per `CompilationPlan`
-- complete indirect and interface target sets, open callable contracts, roots,
-  reachability, same-stack SCCs, spawn cycles, and cause-aware analysis paths
+- complete callable and call-site identity across incremental snapshots and per
+  concrete `CompilationPlan`
+- remaining root kinds beyond program/task/thread entry and complete semantic
+  path-sensitive pruning
+- complete indirect and interface target sets, open callable contracts,
+  process/interrupt/callback/defer/destruction edges, dedicated spawn-cycle SCC
+  diagnostics, and cause-aware analysis paths
 - complete validity-epoch, relocation, stable-handle, weak-handle, profile-
   representation, concurrent-invalidation, and FFI-retention analysis
-- LSP call hierarchy, callers/callees, root reachability, graph paths,
+- LSP indirect callers/callees, root reachability, graph paths,
   synchronization origins, and target-aware graph snapshots
+- propagation of Arena allocation context/effects, storage-domain facts, and
+  resolved layout summaries beyond the initial Arena `MayAllocate` path
 
 Written status does not claim that either complete rulebook is implemented.
 
@@ -80,12 +111,20 @@ Implemented:
 - defensive `null` results for unresolved or incomplete source
 - focused tests for separate function scopes, selected overloads, `self`
   members, imported declarations, and incomplete-source resilience
+- `textDocument/documentHighlight` capability advertisement and request
+  handling backed by the same Sema declaration bindings
+- exact same-document highlights across locals, shadowed bindings, and `self`
+  members, with declarations and direct assignment targets reported as writes
+- defensive empty highlight results for unresolved, ambiguous, or incomplete
+  source
 
 Partial or pending:
 
 - a persistent shared workspace symbol and binding index
 - declaration and type-definition requests as distinct protocol features
-- implementation navigation, references, document highlights, and rename
+- implementation navigation, references, and rename
+- copy, move, borrow, and complex lvalue highlight classification beyond the
+  currently implemented read/write distinction
 - complete binding coverage for every future expression and generated source
   form
 - incremental invalidation and stale-result suppression
@@ -246,18 +285,27 @@ Implemented:
   `reference_model.md`; slice views, interfaces, functions and compiler-known
   opaque struct types are rejected by ordinary equality
 - numeric literals are context-shaped for compatible named numeric comparison
-- runtime string `+` is rejected with `S1020`; recursively foldable
-  string-literal concatenation remains accepted
+- runtime string `+` accepts exactly the built-in `string`, `char`, and `rune`
+  operand matrix and always produces `string`; non-text and user-defined
+  nominal operands emit `S1022`, while retired `S1020` remains reserved
+- direct `string +=` accepts `string`, `char`, and `rune` source values
+- fixed-array and slice membership is validated without method dispatch;
+  unsupported containers, non-comparable element types, and incompatible
+  search values emit `S1021`
 
 Partial or pending:
 
 - dynamic shift-count checks and dynamic signed-left-shift overflow checks
   require deterministic runtime-check lowering
+- runtime string concatenation still requires allocation-context resolution,
+  try-or-panic effect analysis, `@noPanic` enforcement, interpolation
+  formatting contracts, maximal `StringConcatPlan`, transactional fallible
+  `string +=`, `string.Concat`, LSP fixes, and StringBuilder information
 - explicit identity/non-comparable metadata, complete user-defined opaque-
   resource detection, aggregate equality lowering, materialization of folded
-  string constants, checked arithmetic, array/slice membership, shared
-  precedence metadata, and remaining stable operator diagnostics are still
-  pending as described by `operators.md`
+  string constants, checked arithmetic, array/slice membership lowering,
+  shared precedence metadata, and remaining stable operator diagnostics are
+  still pending as described by `operators.md`
 
 Canonical documentation synchronization:
 
@@ -1465,14 +1513,18 @@ Registered IDs wired into the compiler/LSP include:
 - parser recovery IDs `P2001` through `P2018`; existing unmigrated parser
   errors use `P2001`, and initial focused paths use `P2002`, `P2003`, `P2007`,
   `P2008`, `P2011` and `P2013`
-- `S1001` / `modules.missing-module-declaration`
-- `S1002` / `modules.duplicate-module-declaration`
-- `S1003` / `names.module-declaration-conflict`
-- `S1004` / `names.duplicate-local-variable`
+- semantic IDs `S1001` through `S1021`, including mandatory errors and the
+  `S1014` incomplete-enum-switch warning
 - `A2001` / `performance.large-value-parameter`
 
 Semantic diagnostics carry ID, severity and optional help text. LSP diagnostics
 expose the code field and map semantic severity to LSP severity.
+
+`sec diagnostics` lists every registered definition with ID, symbolic name,
+family, default severity and mandatory status. It also lists every runtime
+field on semantic errors, parser diagnostics and source tokens. The `--json`
+form exposes the same catalog machine-readably, and schema-reflection tests
+prevent newly added fields from being omitted silently.
 
 Most existing diagnostics are still raw English messages without registered
 IDs. New or migrated rule implementations should use registered IDs and avoid

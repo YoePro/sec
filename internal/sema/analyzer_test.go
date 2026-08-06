@@ -87,6 +87,307 @@ fn main() int {
 	assertSemaErrors(t, errors, nil)
 }
 
+func TestCallGraphRecordsDirectAndStaticMethodCalls(t *testing.T) {
+	analyzer, errors := analyzeSourceWithAnalyzer(t, `
+module main
+
+fn helper(value: int) int {
+	return value
+}
+
+type Counter struct {
+	value: int,
+}
+
+impl Counter {
+	fn read() int {
+		return self.value
+	}
+}
+
+fn use(counter: Counter) int {
+	return helper(counter.read())
+}
+`)
+	assertSemaErrors(t, errors, nil)
+
+	graph := analyzer.CallGraph()
+	var useID CallableID
+	for _, node := range graph.Nodes() {
+		if node.Name == "use" {
+			useID = node.ID
+		}
+	}
+	if useID == "" {
+		t.Fatal("call graph does not contain use")
+	}
+
+	sites := graph.Outgoing(useID)
+	if len(sites) != 2 {
+		t.Fatalf("outgoing calls = %+v, want helper and Counter.read", sites)
+	}
+	dispatches := map[CallDispatchKind]bool{}
+	targets := map[string]bool{}
+	for _, site := range sites {
+		dispatches[site.Dispatch] = true
+		if len(site.Targets) != 1 {
+			t.Fatalf("site targets = %+v, want one closed target", site.Targets)
+		}
+		target, ok := graph.Node(site.Targets[0])
+		if !ok {
+			t.Fatalf("missing target node %q", site.Targets[0])
+		}
+		targets[target.Name] = true
+		if site.Execution != CallExecutionSynchronous || site.Source.Line == 0 {
+			t.Fatalf("incomplete call-site metadata: %+v", site)
+		}
+	}
+	if !dispatches[CallDispatchDirect] || !dispatches[CallDispatchStaticMethod] {
+		t.Fatalf("dispatches = %+v, want direct and static method", dispatches)
+	}
+	if !targets["helper"] || !targets["Counter.read"] {
+		t.Fatalf("targets = %+v, want helper and Counter.read", targets)
+	}
+}
+
+func TestCallGraphIncomingGroupsCallSitesByTarget(t *testing.T) {
+	analyzer, errors := analyzeSourceWithAnalyzer(t, `
+module main
+
+fn helper() int {
+	return 1
+}
+
+fn first() int {
+	return helper()
+}
+
+fn second() int {
+	return helper() + helper()
+}
+`)
+	assertSemaErrors(t, errors, nil)
+
+	graph := analyzer.CallGraph()
+	var helperID CallableID
+	for _, node := range graph.Nodes() {
+		if node.Name == "helper" {
+			helperID = node.ID
+		}
+	}
+	if helperID == "" {
+		t.Fatal("call graph does not contain helper")
+	}
+	if sites := graph.Incoming(helperID); len(sites) != 3 {
+		t.Fatalf("incoming calls = %+v, want three call sites", sites)
+	}
+}
+
+func TestCallGraphProgramRootReachabilityPrunesLiteralFalseBranch(t *testing.T) {
+	analyzer, errors := analyzeSourceWithAnalyzer(t, `
+module main
+
+fn dead() void {}
+
+fn live() void {}
+
+fn main() void {
+	if false {
+		dead()
+	}
+	live()
+}
+`)
+	assertSemaErrors(t, errors, nil)
+
+	graph := analyzer.CallGraph()
+	roots := graph.Roots()
+	if len(roots) != 1 || roots[0].Kind != CallRootProgramEntry {
+		t.Fatalf("roots = %+v, want main program-entry root", roots)
+	}
+	mainID := callGraphNodeIDByName(t, graph, "main")
+	liveID := callGraphNodeIDByName(t, graph, "live")
+	deadID := callGraphNodeIDByName(t, graph, "dead")
+	reachable := map[CallableID]bool{}
+	for _, node := range graph.ReachableFrom(roots[0].ID) {
+		reachable[node.ID] = true
+	}
+	if !reachable[mainID] || !reachable[liveID] || reachable[deadID] {
+		t.Fatalf("reachable = %+v, want main/live but not dead", reachable)
+	}
+	if roots := graph.RootsReaching(deadID); len(roots) != 0 {
+		t.Fatalf("dead roots = %+v, want none", roots)
+	}
+	if sites := graph.Outgoing(mainID); len(sites) != 1 || sites[0].Targets[0] != liveID {
+		t.Fatalf("main outgoing = %+v, want only live", sites)
+	}
+}
+
+func TestCallGraphDetectsSameStackRecursionComponents(t *testing.T) {
+	analyzer, errors := analyzeSourceWithAnalyzer(t, `
+module main
+
+fn alpha() void {
+	beta()
+}
+
+fn beta() void {
+	alpha()
+}
+
+fn solo() void {
+	solo()
+}
+
+fn main() void {
+	alpha()
+}
+`)
+	assertSemaErrors(t, errors, nil)
+
+	graph := analyzer.CallGraph()
+	alphaID := callGraphNodeIDByName(t, graph, "alpha")
+	betaID := callGraphNodeIDByName(t, graph, "beta")
+	soloID := callGraphNodeIDByName(t, graph, "solo")
+	mainID := callGraphNodeIDByName(t, graph, "main")
+	component := graph.SameStackSCC(alphaID)
+	if len(component) != 2 {
+		t.Fatalf("alpha SCC = %+v, want alpha and beta", component)
+	}
+	if !graph.IsSameStackRecursive(alphaID) || !graph.IsSameStackRecursive(betaID) || !graph.IsSameStackRecursive(soloID) {
+		t.Fatalf("expected alpha, beta, and solo to be recursive")
+	}
+	if graph.IsSameStackRecursive(mainID) {
+		t.Fatal("main must not be recursive")
+	}
+	if roots := graph.RootsReaching(soloID); len(roots) != 0 {
+		t.Fatalf("uninvoked solo roots = %+v, want none", roots)
+	}
+}
+
+func TestCallGraphSeparatesSpawnExecutionAndCreatesDerivedRoots(t *testing.T) {
+	analyzer, errors := analyzeSourceWithAnalyzer(t, `
+module main
+
+fn Build() int {
+	return 1
+}
+
+fn TaskWork(value: int) void {}
+
+fn ThreadWork() void {}
+
+fn main() void {
+	let taskHandle := spawn task TaskWork(Build())
+	let threadHandle := spawn thread ThreadWork()
+	detach taskHandle
+	detach threadHandle
+}
+`)
+	assertSemaErrors(t, errors, nil)
+
+	graph := analyzer.CallGraph()
+	mainID := callGraphNodeIDByName(t, graph, "main")
+	taskID := callGraphNodeIDByName(t, graph, "TaskWork")
+	threadID := callGraphNodeIDByName(t, graph, "ThreadWork")
+	buildID := callGraphNodeIDByName(t, graph, "Build")
+
+	executions := map[CallableID]CallExecutionRelation{}
+	for _, site := range graph.Outgoing(mainID) {
+		if len(site.Targets) == 1 {
+			executions[site.Targets[0]] = site.Execution
+		}
+	}
+	if executions[taskID] != CallExecutionSpawnTask || executions[threadID] != CallExecutionSpawnThread || executions[buildID] != CallExecutionSynchronous {
+		t.Fatalf("execution relations = %+v", executions)
+	}
+
+	roots := graph.Roots()
+	rootKinds := map[CallRootKind]int{}
+	for _, root := range roots {
+		rootKinds[root.Kind]++
+	}
+	if rootKinds[CallRootProgramEntry] != 1 || rootKinds[CallRootTaskEntry] != 1 || rootKinds[CallRootThreadEntry] != 1 {
+		t.Fatalf("root kinds = %+v, want program, task, and thread entry", rootKinds)
+	}
+	if roots := graph.RootsReaching(taskID); len(roots) != 2 {
+		t.Fatalf("TaskWork roots = %+v, want program and task entry", roots)
+	}
+	if roots := graph.RootsReaching(buildID); len(roots) != 1 || roots[0].Kind != CallRootProgramEntry {
+		t.Fatalf("Build roots = %+v, want only program entry", roots)
+	}
+	if graph.IsSameStackRecursive(mainID) || len(graph.SameStackSCC(mainID)) != 1 {
+		t.Fatal("spawn targets must not join main's same-stack SCC")
+	}
+}
+
+func TestCallGraphSpawnCycleIsNotSameStackRecursion(t *testing.T) {
+	analyzer, errors := analyzeSourceWithAnalyzer(t, `
+module main
+
+fn A() void {
+	let child := spawn B()
+	detach child
+}
+
+fn B() void {
+	let child := spawn A()
+	detach child
+}
+
+fn main() void {
+	let child := spawn A()
+	detach child
+}
+`)
+	assertSemaErrors(t, errors, nil)
+
+	graph := analyzer.CallGraph()
+	aID := callGraphNodeIDByName(t, graph, "A")
+	bID := callGraphNodeIDByName(t, graph, "B")
+	if graph.IsSameStackRecursive(aID) || graph.IsSameStackRecursive(bID) {
+		t.Fatal("task-spawn cycle must not be reported as same-stack recursion")
+	}
+	for _, id := range []CallableID{aID, bID} {
+		for _, site := range graph.Outgoing(id) {
+			if site.Execution != CallExecutionSpawnTask {
+				t.Fatalf("spawn-cycle site = %+v, want spawn-task", site)
+			}
+		}
+	}
+}
+
+func TestCallGraphDoesNotRecordUnsupportedProcessSpawn(t *testing.T) {
+	analyzer, errors := analyzeSourceWithAnalyzer(t, `
+module main
+
+fn Work() void {}
+
+fn main() void {
+	let child := spawn process Work()
+}
+`)
+	if len(errors) == 0 || !strings.Contains(errors[0].Message, "spawn process is not implemented yet") {
+		t.Fatalf("errors = %+v, want unsupported process-spawn diagnostic", errors)
+	}
+	graph := analyzer.CallGraph()
+	mainID := callGraphNodeIDByName(t, graph, "main")
+	if sites := graph.Outgoing(mainID); len(sites) != 0 {
+		t.Fatalf("unsupported process spawn produced graph sites: %+v", sites)
+	}
+}
+
+func callGraphNodeIDByName(t *testing.T, graph *CallGraph, name string) CallableID {
+	t.Helper()
+	for _, node := range graph.Nodes() {
+		if node.Name == name {
+			return node.ID
+		}
+	}
+	t.Fatalf("call graph does not contain %s", name)
+	return ""
+}
+
 func TestModuleDeclarationIsRequired(t *testing.T) {
 	errors := analyzeSourceRaw(t, `
 let a := 1
@@ -8478,36 +8779,172 @@ fn Test(
 	}
 }
 
-func TestStringPlusRequiresCompileTimeFoldableOperands(t *testing.T) {
+func TestStringConcatenationAcceptsCanonicalTextOperandMatrix(t *testing.T) {
 	valid := `
 module main
 
-fn Test() string {
-	return "SEC " + "language" + " compiler"
+fn Test(text: string, character: char, codepoint: rune) void {
+	let stringString: string := text + " suffix"
+	let stringChar: string := text + character
+	let charString: string := character + text
+	let stringRune: string := text + codepoint
+	let runeString: string := codepoint + text
+	let charChar: string := character + 'x'
+	let runeRune: string := codepoint + 10r
+	let charRune: string := character + codepoint
+	let runeChar: string := codepoint + character
+	let folded: string := "SEC " + "language" + " compiler"
+
+	let mut appended: string := stringString
+	appended += character
+	appended += codepoint
+	appended += text
 }
 `
 	assertSemaErrors(t, analyzeSourceRaw(t, valid), nil)
+}
 
+func TestStringConcatenationRejectsHiddenConversions(t *testing.T) {
 	invalid := `
 module main
 
-fn Test(left: string, right: string) void {
-	let bothRuntime := left + right
-	let runtimePrefix := left + " suffix"
-	let runtimeSuffix := "prefix " + right
+type Label string
+
+enum State {
+	ready,
+}
+
+type Point struct {
+	x: int,
+}
+
+type Choice union {
+	value(int),
+}
+
+fn Test(
+	number: int,
+	real: float64,
+	decimalValue: decimal,
+	flag: bool,
+	state: State,
+	point: Point,
+	choice: Choice,
+	array: int[2],
+	view: ref int[],
+	values: list[int],
+	label: Label,
+) void {
+	let integerOperand := "value " + number
+	let floatOperand := "value " + real
+	let decimalOperand := "value " + decimalValue
+	let boolOperand := "value " + flag
+	let enumOperand := "value " + state
+	let structOperand := "value " + point
+	let unionOperand := "value " + choice
+	let arrayOperand := "value " + array
+	let sliceOperand := "value " + view
+	let collectionOperand := "value " + values
+	let nominalOperand := "value " + label
+
+	let mut output: string := "value "
+	output += number
 }
 `
 	errors := analyzeSourceRaw(t, invalid)
-	if len(errors) != 3 {
-		t.Fatalf("wrong sema error count. got=%d want=3 errors=%v", len(errors), errors)
+	if len(errors) != 12 {
+		t.Fatalf("wrong sema error count. got=%d want=12 errors=%v", len(errors), errors)
 	}
 	for index, err := range errors {
-		if err.ID != diagnostics.OperatorStringRuntimeConcat {
-			t.Fatalf("error %d ID = %q, want %q", index, err.ID, diagnostics.OperatorStringRuntimeConcat)
+		if err.ID != diagnostics.OperatorInvalidConcatOperand {
+			t.Fatalf("error %d ID = %q, want %q", index, err.ID, diagnostics.OperatorInvalidConcatOperand)
 		}
 		if err.Help == "" {
 			t.Fatalf("error %d is missing help", index)
 		}
+		if !strings.Contains(err.Message, "string, char, and rune") {
+			t.Fatalf("error %d does not name accepted operand categories: %v", index, err)
+		}
+	}
+}
+
+func TestArrayAndSliceMembership(t *testing.T) {
+	input := `
+module main
+
+type Percent int range 0..100
+
+fn Test(
+	number: int,
+	fixed: int[3],
+	fixedRef: ref int[3],
+	view: ref int[],
+	writable: ref mut int[],
+	runes: rune[2],
+	percents: Percent[2],
+	rows: int[2][2],
+) bool {
+	let literalArray := 2 in [1, 2, 3]
+	let fixedArray := number in fixed
+	let referencedArray := number in fixedRef
+	let sharedSlice := number in view
+	let mutableSlice := number in writable
+	let runeLiteral := 'a' in runes
+	let shapedLiteral := 50 in percents
+	let nestedArray := [1, 2] in rows
+
+	return literalArray && fixedArray && referencedArray && sharedSlice &&
+		mutableSlice && runeLiteral && shapedLiteral && nestedArray
+}
+`
+
+	assertSemaErrors(t, analyzeSourceRaw(t, input), nil)
+}
+
+func TestInvalidArrayAndSliceMembershipHasStructuredDiagnostics(t *testing.T) {
+	input := `
+module main
+
+type ViewHolder struct {
+	values: ref int[],
+}
+
+fn Test(
+	text: string,
+	numbers: int[2],
+	view: ref int[],
+	holder: ViewHolder,
+	holders: ViewHolder[1],
+	dynamic: int[],
+	listValues: list[int],
+	mapValues: map[int, string],
+	setValues: set[int],
+) void {
+	let arrayMismatch := text in numbers
+	let sliceMismatch := text in view
+	let nonComparableElement := holder in holders
+	let ownedDynamicArray := 1 in dynamic
+	let unsupportedList := 1 in listValues
+	let unsupportedMap := 1 in mapValues
+	let unsupportedSet := 1 in setValues
+	let unsupportedString := "x" in text
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	if len(errors) != 8 {
+		t.Fatalf("wrong sema error count. got=%d want=8 errors=%v", len(errors), errors)
+	}
+	for index, err := range errors {
+		if err.ID != diagnostics.OperatorInvalidMembership {
+			t.Fatalf("error %d ID = %q, want %q (%v)", index, err.ID, diagnostics.OperatorInvalidMembership, err)
+		}
+		if err.Help == "" {
+			t.Fatalf("error %d is missing help", index)
+		}
+	}
+	if !strings.Contains(errors[2].Message, "element type ViewHolder is not equality-comparable") {
+		t.Fatalf("non-comparable element diagnostic is not specific: %v", errors[2])
 	}
 }
 

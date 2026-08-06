@@ -58,3 +58,113 @@ let mut peripheral: Peripheral
 		t.Fatalf("addressed register metadata missing: %+v", peripheral)
 	}
 }
+
+func TestCallGraphRecordsOrderedDirectArenaEffects(t *testing.T) {
+	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, `
+module main
+
+fn Use(buffer: ref mut byte[]) void {
+	let mut arena := Arena.FromBuffer(buffer)
+	let one := arena.New[int]()
+	arena.Reset()
+	let many := arena.Alloc[byte](4u)
+	arena.Release()
+}
+`)
+	assertSemaErrors(t, errors, nil)
+
+	graph := analyzer.CallGraph()
+	useID := callGraphNodeIDByName(t, graph, "Use")
+	summary := graph.ArenaSummary(useID)
+	want := []ArenaEffectKind{
+		ArenaEffectCreateBorrowed,
+		ArenaEffectAllocate,
+		ArenaEffectReset,
+		ArenaEffectAllocate,
+		ArenaEffectRelease,
+	}
+	if len(summary.DirectEffects) != len(want) {
+		t.Fatalf("direct Arena effects = %+v, want %v", summary.DirectEffects, want)
+	}
+	for index, kind := range want {
+		if summary.DirectEffects[index].Kind != kind {
+			t.Fatalf("Arena effect %d = %q, want %q", index, summary.DirectEffects[index].Kind, kind)
+		}
+	}
+	if !summary.MayAllocate || len(summary.AllocationPath) != 1 || summary.AllocationPath[0] != useID {
+		t.Fatalf("Arena summary = %+v, want direct allocation path", summary)
+	}
+}
+
+func TestCallGraphPropagatesArenaAllocationOnlyAcrossSynchronousCalls(t *testing.T) {
+	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, `
+module main
+
+fn Allocate() void {
+	let arena := Arena.WithCapacity(64u)
+}
+
+fn Forward() void {
+	Allocate()
+}
+
+fn Worker() void {
+	Allocate()
+}
+
+fn main() void {
+	Forward()
+	let worker := spawn Worker()
+	detach worker
+}
+`)
+	assertSemaErrors(t, errors, nil)
+
+	graph := analyzer.CallGraph()
+	allocateID := callGraphNodeIDByName(t, graph, "Allocate")
+	forwardID := callGraphNodeIDByName(t, graph, "Forward")
+	workerID := callGraphNodeIDByName(t, graph, "Worker")
+	mainID := callGraphNodeIDByName(t, graph, "main")
+
+	forward := graph.ArenaSummary(forwardID)
+	if !forward.MayAllocate || len(forward.AllocationPath) != 2 || forward.AllocationPath[0] != forwardID || forward.AllocationPath[1] != allocateID {
+		t.Fatalf("Forward Arena summary = %+v", forward)
+	}
+	worker := graph.ArenaSummary(workerID)
+	if !worker.MayAllocate || len(worker.AllocationPath) != 2 || worker.AllocationPath[1] != allocateID {
+		t.Fatalf("Worker Arena summary = %+v", worker)
+	}
+	mainSummary := graph.ArenaSummary(mainID)
+	if !mainSummary.MayAllocate {
+		t.Fatalf("main should inherit allocation through synchronous Forward: %+v", mainSummary)
+	}
+	if len(mainSummary.AllocationPath) != 3 || mainSummary.AllocationPath[1] != forwardID {
+		t.Fatalf("main allocation path = %+v, want main -> Forward -> Allocate", mainSummary.AllocationPath)
+	}
+}
+
+func TestCallGraphDoesNotPropagateSpawnedArenaAllocationToSpawner(t *testing.T) {
+	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, `
+module main
+
+fn Worker() void {
+	let arena := Arena.Growable(64u)
+}
+
+fn main() void {
+	let worker := spawn Worker()
+	detach worker
+}
+`)
+	assertSemaErrors(t, errors, nil)
+
+	graph := analyzer.CallGraph()
+	workerID := callGraphNodeIDByName(t, graph, "Worker")
+	mainID := callGraphNodeIDByName(t, graph, "main")
+	if !graph.ArenaSummary(workerID).MayAllocate {
+		t.Fatal("Worker must retain its direct Arena allocation effect")
+	}
+	if summary := graph.ArenaSummary(mainID); summary.MayAllocate || len(summary.AllocationPath) != 0 {
+		t.Fatalf("spawned body allocation leaked into spawner summary: %+v", summary)
+	}
+}

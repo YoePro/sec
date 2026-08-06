@@ -31,6 +31,11 @@ type Analyzer struct {
 	completionSymbols           map[string]Symbol
 	expressionTypes             map[ast.Expression]Type
 	definitionTokens            map[sourceTokenKey][]lexer.Token
+	callGraph                   *CallGraph
+	currentCallable             CallableID
+	callGraphPathReachable      bool
+	spawnCallExpression         *ast.CallExpression
+	spawnCallExecution          CallExecutionRelation
 	typeDefinitionTokens        map[string]lexer.Token
 	genericTypeDefinitions      map[string]lexer.Token
 	invalidInterfaceInheritance map[string]bool
@@ -116,6 +121,11 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.completionSymbols = map[string]Symbol{}
 	a.expressionTypes = map[ast.Expression]Type{}
 	a.definitionTokens = map[sourceTokenKey][]lexer.Token{}
+	a.callGraph = newCallGraph()
+	a.currentCallable = ""
+	a.callGraphPathReachable = true
+	a.spawnCallExpression = nil
+	a.spawnCallExecution = ""
 	a.typeDefinitionTokens = map[string]lexer.Token{}
 	a.genericTypeDefinitions = nil
 	a.invalidInterfaceInheritance = map[string]bool{}
@@ -206,6 +216,24 @@ func (a *Analyzer) TypeOf(expr ast.Expression) (Type, bool) {
 func (a *Analyzer) DefinitionsAt(file string, line int, column int) []lexer.Token {
 	definitions := a.definitionTokens[sourceTokenKey{File: file, Line: line, Column: column}]
 	return append([]lexer.Token(nil), definitions...)
+}
+
+// CallGraph returns an immutable snapshot of the graph produced by the most
+// recent analysis.
+func (a *Analyzer) CallGraph() *CallGraph {
+	return a.callGraph.clone()
+}
+
+func (a *Analyzer) recordArenaEffect(kind ArenaEffectKind, arena string, source lexer.Token, mayAllocate bool) {
+	if !a.callGraphPathReachable {
+		return
+	}
+	a.callGraph.addArenaEffect(a.currentCallable, ArenaEffectSite{
+		Kind:        kind,
+		Arena:       arena,
+		Source:      source,
+		MayAllocate: mayAllocate,
+	})
 }
 
 func (a *Analyzer) recordDefinition(token lexer.Token) {
@@ -1596,7 +1624,8 @@ func (a *Analyzer) checkUnclosedResourceAtScopeExit(name string) {
 	if _, closed := a.closedResources[name]; closed {
 		return
 	}
-	a.addErrorAtToken(symbol.Token, "owned file %s is still open at scope exit; call %s.Close() or return it to transfer ownership", name, name)
+	resource := closeTrackedResourceName(symbol.Type)
+	a.addErrorAtToken(symbol.Token, "owned %s %s is still open at scope exit; call %s.Close() or return it to transfer ownership", resource, name, name)
 }
 
 func isCloseTrackedResourceType(typ Type) bool {
@@ -1605,7 +1634,17 @@ func isCloseTrackedResourceType(typ Type) bool {
 		return false
 	}
 	baseName := visibilityBaseName(typ.Name)
-	return baseName == "File" && (typ.Module == "io" || typ.Name == "io.File")
+	if baseName != "File" && baseName != "Directory" {
+		return false
+	}
+	return typ.Module == "io" || typ.Name == "io."+baseName
+}
+
+func closeTrackedResourceName(typ Type) string {
+	if visibilityBaseName(dereferenceType(typ).Name) == "Directory" {
+		return "directory"
+	}
+	return "file"
 }
 
 func (a *Analyzer) markClosedResourceCall(function Function, receiver methodReceiverInfo, isMethodCall bool, token lexer.Token) {
@@ -1623,7 +1662,10 @@ func (a *Analyzer) markClosedResourceCall(function Function, receiver methodRece
 
 func isCloseTrackedResourceName(name string) bool {
 	baseName := visibilityBaseName(name)
-	return baseName == "File" && (name == "File" || name == "io.File")
+	if baseName != "File" && baseName != "Directory" {
+		return false
+	}
+	return name == baseName || name == "io."+baseName
 }
 
 func (a *Analyzer) analyzeDiscardStatement(stmt *ast.DiscardStatement) {
@@ -1734,9 +1776,16 @@ func (a *Analyzer) analyzeIfStatement(stmt *ast.IfStatement) {
 	beforeBorrows := copyBorrows(a.borrows)
 	beforeLocalRefContainers := copyLocalRefContainers(a.localRefContainers)
 	beforeArenaGenerations := copyArenaGenerations(a.arenaGenerations)
-	thenBranch := a.analyzeBranchBlock(stmt.Consequence)
+	thenReachable := true
+	elseReachable := true
+	if isBoolLiteral(stmt.Condition, true) {
+		elseReachable = false
+	} else if isBoolLiteral(stmt.Condition, false) {
+		thenReachable = false
+	}
+	thenBranch := a.analyzeBranchBlockWithCallGraphReachability(stmt.Consequence, thenReachable)
 	if stmt.Alternative != nil {
-		elseBranch := a.analyzeBranchBlock(stmt.Alternative)
+		elseBranch := a.analyzeBranchBlockWithCallGraphReachability(stmt.Alternative, elseReachable)
 		a.assigned = mergeContinuingAssigned(before, thenBranch, elseBranch)
 		a.moved = mergeContinuingMoved(beforeMoved, thenBranch, elseBranch)
 		a.borrows = mergeContinuingBorrows(beforeBorrows, thenBranch, elseBranch)
@@ -1758,6 +1807,15 @@ func (a *Analyzer) analyzeIfStatement(stmt *ast.IfStatement) {
 	a.borrows = mergeContinuingBorrows(beforeBorrows, thenBranch, fallthroughBranch)
 	a.localRefContainers = mergeContinuingLocalRefContainers(beforeLocalRefContainers, thenBranch, fallthroughBranch)
 	a.arenaGenerations = mergeContinuingArenaGenerations(beforeArenaGenerations, thenBranch, fallthroughBranch)
+}
+
+func (a *Analyzer) analyzeBranchBlockWithCallGraphReachability(block *ast.BlockStatement, reachable bool) branchAnalysis {
+	previous := a.callGraphPathReachable
+	a.callGraphPathReachable = previous && reachable
+	defer func() {
+		a.callGraphPathReachable = previous
+	}()
+	return a.analyzeBranchBlock(block)
 }
 
 func (a *Analyzer) analyzeDeferStatement(stmt *ast.DeferStatement) {
@@ -3199,6 +3257,17 @@ func (a *Analyzer) registerFunctionDeclarationBody(fn *ast.FunctionDeclaration, 
 	}
 
 	a.functions[name] = append(a.functions[name], function)
+	nodeID := a.callGraph.addCallable(function)
+	if isProgramEntryFunction(function) {
+		a.callGraph.addRoot(CallRootProgramEntry, nodeID, function.Token)
+	}
+}
+
+func isProgramEntryFunction(function Function) bool {
+	if function.Module != "main" || function.Name != "main" || function.Extern || len(function.Parameters) != 0 {
+		return false
+	}
+	return function.ReturnType.Kind == VoidType || (function.ReturnType.Kind == IntType && function.ReturnType.Name == "int")
 }
 
 func sameFunctionSignature(left Function, right Function) bool {
@@ -3433,6 +3502,7 @@ func (a *Analyzer) analyzeFunctionBodyInScope(fn *ast.FunctionDeclaration, name 
 	previousLocalRefContainers := a.localRefContainers
 	previousArenaGenerations := a.arenaGenerations
 	previousFunctionName := a.currentFunctionName
+	previousCallable := a.currentCallable
 	previousFunctionReturn := a.currentFunctionReturn
 	previousInFunctionBody := a.inFunctionBody
 	previousUnsafe := a.inUnsafe
@@ -3447,6 +3517,7 @@ func (a *Analyzer) analyzeFunctionBodyInScope(fn *ast.FunctionDeclaration, name 
 	a.arenaGenerations = map[string]int{}
 	a.scopeDepth = 0
 	a.currentFunctionName = fn.Name.Value
+	a.currentCallable = a.callGraph.addCallable(function)
 	a.currentFunctionReturn = function.ReturnType
 	a.inFunctionBody = true
 	if fn.Unsafe {
@@ -3462,6 +3533,7 @@ func (a *Analyzer) analyzeFunctionBodyInScope(fn *ast.FunctionDeclaration, name 
 		a.localRefContainers = previousLocalRefContainers
 		a.arenaGenerations = previousArenaGenerations
 		a.currentFunctionName = previousFunctionName
+		a.currentCallable = previousCallable
 		a.currentFunctionReturn = previousFunctionReturn
 		a.inFunctionBody = previousInFunctionBody
 		a.inUnsafe = previousUnsafe
@@ -6754,6 +6826,7 @@ func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement, all
 		a.addErrorAtToken(target.Token, "undefined variable %s", target.Value)
 		return
 	}
+	a.bindDefinition(target.Token, symbol.Token)
 	a.recordDeferCapture(target.Value, symbol, target.Token)
 
 	if !symbol.Mutable {
@@ -6781,22 +6854,20 @@ func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement, all
 		return
 	}
 
-	if stmt.Operator != "=" && !canInitialize(symbol.Type, exprType, stmt.Value) {
-		a.addErrorAtToken(
-			expressionToken(stmt.Value),
-			"cannot %s %s to %s",
-			assignmentVerb(stmt.Operator),
-			typeDisplayName(exprType),
-			typeDisplayName(symbol.Type),
-		)
-		return
+	assignmentType := exprType
+	if stmt.Operator != "=" {
+		var valid bool
+		assignmentType, valid = a.inferCompoundAssignmentType(stmt.Operator, symbol.Type, exprType, stmt.Value)
+		if !valid {
+			return
+		}
 	}
 
 	if a.checkIntegerAssignmentRange(symbol, stmt) {
 		return
 	}
 
-	if a.checkInitializerType(symbol.Type, exprType, stmt.Value) {
+	if a.checkInitializerType(symbol.Type, assignmentType, stmt.Value) {
 		if !a.validateAssignmentOwnership(stmt) {
 			return
 		}
@@ -7025,13 +7096,21 @@ func (a *Analyzer) analyzeIndexAssignmentStatement(stmt *ast.AssignmentStatement
 	if exprType.Kind == InvalidType {
 		return
 	}
+	assignmentType := exprType
+	if stmt.Operator != "=" {
+		var valid bool
+		assignmentType, valid = a.inferCompoundAssignmentType(stmt.Operator, targetType, exprType, stmt.Value)
+		if !valid {
+			return
+		}
+	}
 	if a.checkAssignmentEscapesLocalReference(stmt.Target, stmt.Value) {
 		return
 	}
 	if !a.validateMoveAssignmentTarget(stmt) {
 		return
 	}
-	if a.checkInitializerType(targetType, exprType, stmt.Value) {
+	if a.checkInitializerType(targetType, assignmentType, stmt.Value) {
 		if !a.validateAssignmentOwnership(stmt) {
 			return
 		}
@@ -7413,7 +7492,16 @@ func (a *Analyzer) analyzeMemberAssignmentStatement(stmt *ast.AssignmentStatemen
 		return
 	}
 
-	if !canInitialize(targetType, valueType, stmt.Value) {
+	assignmentType := valueType
+	if stmt.Operator != "=" {
+		var valid bool
+		assignmentType, valid = a.inferCompoundAssignmentType(stmt.Operator, targetType, valueType, stmt.Value)
+		if !valid {
+			return
+		}
+	}
+
+	if !canInitialize(targetType, assignmentType, stmt.Value) {
 		a.addErrorAtToken(expressionToken(stmt.Value), "cannot assign %s to %s", typeDisplayName(valueType), typeDisplayName(targetType))
 		return
 	}
@@ -8210,7 +8298,8 @@ func (a *Analyzer) inferSpawnExpression(expr *ast.SpawnExpression) (Type, expres
 		a.addErrorAtToken(expressionToken(expr.Value), "spawn requires a callable expression")
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
-	spawnedType, _ := a.inferExpressionInCancellableContext(expr.Value)
+	execution, graphSpawn := spawnExecutionRelation(expr.Kind)
+	spawnedType, _ := a.inferSpawnValue(expr.Value, execution, graphSpawn)
 	if spawnedType.Kind == InvalidType {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
@@ -8233,6 +8322,39 @@ func (a *Analyzer) inferSpawnExpression(expr *ast.SpawnExpression) (Type, expres
 		a.addErrorAtToken(expr.Token, "unknown spawn kind %s", expr.Kind)
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
+}
+
+func spawnExecutionRelation(kind string) (CallExecutionRelation, bool) {
+	switch kind {
+	case "", "task":
+		return CallExecutionSpawnTask, true
+	case "thread":
+		return CallExecutionSpawnThread, true
+	case "process":
+		return CallExecutionSpawnProcess, false
+	default:
+		return "", false
+	}
+}
+
+func (a *Analyzer) inferSpawnValue(expr ast.Expression, execution CallExecutionRelation, graphSpawn bool) (Type, expressionValue) {
+	call, isCall := expr.(*ast.CallExpression)
+	if !isCall {
+		return a.inferExpressionInCancellableContext(expr)
+	}
+	previousCall := a.spawnCallExpression
+	previousExecution := a.spawnCallExecution
+	a.spawnCallExpression = call
+	if graphSpawn {
+		a.spawnCallExecution = execution
+	} else {
+		a.spawnCallExecution = ""
+	}
+	defer func() {
+		a.spawnCallExpression = previousCall
+		a.spawnCallExecution = previousExecution
+	}()
+	return a.inferExpressionInCancellableContext(expr)
 }
 
 func (a *Analyzer) inferExpressionInCancellableContext(expr ast.Expression) (Type, expressionValue) {
@@ -9469,6 +9591,16 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
 		a.setDefinitions(callCalleeDefinitionToken(expr), best[0].Function.Token)
+		dispatch := CallDispatchDirect
+		if isMethodCall {
+			dispatch = CallDispatchStaticMethod
+		} else if best[0].Function.Extern {
+			dispatch = CallDispatchForeign
+		}
+		execution, recordCall := a.callGraphExecutionForCall(expr)
+		if a.callGraphPathReachable && recordCall {
+			a.callGraph.addCall(a.currentCallable, best[0].Function, callCalleeDefinitionToken(expr), dispatch, execution)
+		}
 		a.markMovedCallArguments(best[0].Function, sourceArgs, isMethodCall)
 		a.markClosedResourceCall(best[0].Function, methodReceiver, isMethodCall, expr.Token)
 		return best[0].Function.ReturnType, expressionValue{Display: expr.String()}
@@ -9541,6 +9673,16 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 	}
 
 	return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+}
+
+func (a *Analyzer) callGraphExecutionForCall(expr *ast.CallExpression) (CallExecutionRelation, bool) {
+	if expr == a.spawnCallExpression {
+		if a.spawnCallExecution == "" {
+			return "", false
+		}
+		return a.spawnCallExecution, true
+	}
+	return CallExecutionSynchronous, true
 }
 
 func callCalleeDefinitionToken(expr *ast.CallExpression) lexer.Token {
@@ -9713,12 +9855,18 @@ func (a *Analyzer) inferArenaConstructorCall(expr *ast.CallExpression, member Co
 			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "Arena.FromBuffer requires ref mut byte[], got %s", typeDisplayName(argumentType))
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
+		a.recordArenaEffect(ArenaEffectCreateBorrowed, "", callCalleeDefinitionToken(expr), false)
 		return a.types["Arena"], expressionValue{Display: expr.String()}, true
 	}
 	if !canInitialize(a.types["uint"], argumentType, expr.Arguments[0]) {
 		a.addErrorAtToken(expressionToken(expr.Arguments[0]), "Arena.%s capacity must be uint, got %s", member.Name, typeDisplayName(argumentType))
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 	}
+	effect := ArenaEffectCreateOwned
+	if member.Name == "Growable" {
+		effect = ArenaEffectCreateGrowable
+	}
+	a.recordArenaEffect(effect, "", callCalleeDefinitionToken(expr), true)
 	return arenaResultType(a.types["Arena"], a.types["AllocationError"]), expressionValue{Display: expr.String()}, true
 }
 
@@ -9925,6 +10073,7 @@ func (a *Analyzer) inferArenaCall(expr *ast.CallExpression) (Type, expressionVal
 			a.addErrorAtToken(expr.GenericArguments[0].Token, "Arena.New requires a defaultable, trivially destructible type, got %s", typeDisplayName(elementType))
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
+		a.recordArenaEffect(ArenaEffectAllocate, receiver.Value, member.Property.Token, true)
 		refType := Type{Name: "ref mut " + typeDisplayName(elementType), Kind: ReferenceType, Element: &elementType, ReferenceMutable: true, ReferenceOriginName: receiver.Value, ReferenceOriginToken: receiver.Token, ReferenceOriginLocal: symbol.Local, ReferenceOriginStorage: StorageOriginArena, ReferenceOriginGeneration: a.arenaGenerations[receiver.Value]}
 		return arenaResultType(refType, a.types["AllocationError"]), expressionValue{Display: expr.String()}, true
 	case "Alloc":
@@ -9966,6 +10115,7 @@ func (a *Analyzer) inferArenaCall(expr *ast.CallExpression) (Type, expressionVal
 			ReferenceOriginGeneration: a.arenaGenerations[receiver.Value],
 		}
 		errType := a.types["AllocationError"]
+		a.recordArenaEffect(ArenaEffectAllocate, receiver.Value, member.Property.Token, true)
 		return Type{
 			Name:     "Result[" + typeDisplayName(refSliceType) + ", AllocationError]",
 			Kind:     ResultType,
@@ -9985,6 +10135,7 @@ func (a *Analyzer) inferArenaCall(expr *ast.CallExpression) (Type, expressionVal
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		a.arenaGenerations[receiver.Value]++
+		a.recordArenaEffect(ArenaEffectReset, receiver.Value, member.Property.Token, false)
 		return Type{Name: "void", Kind: VoidType}, expressionValue{Display: expr.String()}, true
 	case "Release":
 		if len(expr.GenericArguments) != 0 {
@@ -10002,6 +10153,7 @@ func (a *Analyzer) inferArenaCall(expr *ast.CallExpression) (Type, expressionVal
 		a.arenaGenerations[receiver.Value]++
 		a.moved[receiver.Value] = expr.Token
 		a.moveReasons[receiver.Value] = "released"
+		a.recordArenaEffect(ArenaEffectRelease, receiver.Value, member.Property.Token, false)
 		return a.types["void"], expressionValue{Display: expr.String()}, true
 	default:
 		return Type{}, expressionValue{}, false
@@ -12002,6 +12154,10 @@ func (a *Analyzer) inferInfixExpression(expr *ast.InfixExpression) (Type, expres
 		return leftType, expressionValue{Display: expr.String()}
 	}
 
+	if expr.Operator == "+" && (isTextConcatKind(leftType) || isTextConcatKind(rightType)) {
+		return a.inferPlainArithmeticExpression(expr, leftType, rightType)
+	}
+
 	if leftType.Kind == DecimalType || rightType.Kind == DecimalType {
 		return a.inferDecimalInfixExpression(expr, leftType, rightType)
 	}
@@ -12018,17 +12174,12 @@ func (a *Analyzer) inferInfixExpression(expr *ast.InfixExpression) (Type, expres
 }
 
 func (a *Analyzer) inferPlainArithmeticExpression(expr *ast.InfixExpression, leftType Type, rightType Type) (Type, expressionValue) {
-	if expr.Operator == "+" && leftType.Kind == StringType && rightType.Kind == StringType {
-		if !isCompileTimeStringConcatenation(expr) {
-			a.addErrorAtTokenWithMetadata(
-				expr.Token,
-				diagnostics.OperatorStringRuntimeConcat,
-				"Use an explicit fallible string construction operation for runtime values.",
-				"string + requires a fully compile-time-foldable concatenation in Sec 0.1",
-			)
+	if expr.Operator == "+" && (isTextConcatKind(leftType) || isTextConcatKind(rightType)) {
+		if !isDirectTextConcatOperand(leftType) || !isDirectTextConcatOperand(rightType) {
+			a.addInvalidConcatOperandError(expr.Token, leftType, rightType)
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
-		return leftType, expressionValue{Display: expr.String()}
+		return Type{Name: "string", Kind: StringType}, expressionValue{Display: expr.String()}
 	}
 
 	if !isNumericType(leftType) || !isNumericType(rightType) {
@@ -12059,17 +12210,50 @@ func (a *Analyzer) inferPlainArithmeticExpression(expr *ast.InfixExpression, lef
 	return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 }
 
-func isCompileTimeStringConcatenation(expr ast.Expression) bool {
-	switch expr := expr.(type) {
-	case *ast.StringLiteral:
+func isTextConcatKind(typ Type) bool {
+	switch typ.Kind {
+	case StringType, CharType, RuneType:
 		return true
-	case *ast.InfixExpression:
-		return expr.Operator == "+" &&
-			isCompileTimeStringConcatenation(expr.Left) &&
-			isCompileTimeStringConcatenation(expr.Right)
 	default:
 		return false
 	}
+}
+
+func isDirectTextConcatOperand(typ Type) bool {
+	return !typ.Named && isTextConcatKind(typ)
+}
+
+func (a *Analyzer) addInvalidConcatOperandError(token lexer.Token, left Type, right Type) {
+	a.addErrorAtTokenWithMetadata(
+		token,
+		diagnostics.OperatorInvalidConcatOperand,
+		"Convert the non-text operand explicitly with .ToString(), or use interpolation when it has a formatting contract.",
+		"cannot concatenate %s and %s directly; string concatenation accepts string, char, and rune",
+		typeDisplayName(left),
+		typeDisplayName(right),
+	)
+}
+
+func (a *Analyzer) inferCompoundAssignmentType(operator string, target Type, value Type, expr ast.Expression) (Type, bool) {
+	if operator == "+=" && (isTextConcatKind(target) || isTextConcatKind(value)) {
+		if target.Kind == StringType && !target.Named && isDirectTextConcatOperand(value) {
+			return Type{Name: "string", Kind: StringType}, true
+		}
+		a.addInvalidConcatOperandError(expressionToken(expr), target, value)
+		return Type{Kind: InvalidType}, false
+	}
+
+	if !canInitialize(target, value, expr) {
+		a.addErrorAtToken(
+			expressionToken(expr),
+			"cannot %s %s to %s",
+			assignmentVerb(operator),
+			typeDisplayName(value),
+			typeDisplayName(target),
+		)
+		return Type{Kind: InvalidType}, false
+	}
+	return target, true
 }
 
 func (a *Analyzer) inferMatrixMultiplyExpression(expr *ast.InfixExpression, leftType Type, rightType Type) (Type, expressionValue) {
@@ -12183,11 +12367,57 @@ func (a *Analyzer) inferNumericUnitInfixExpression(expr *ast.InfixExpression, le
 
 func (a *Analyzer) inferMembershipExpression(expr *ast.InfixExpression, leftType Type) (Type, expressionValue) {
 	rangeExpr, ok := expr.Right.(*ast.RangeExpression)
-	if !ok {
-		a.addErrorAtToken(expr.Token, "membership requires range expression")
+	if ok {
+		return a.inferRangeMembershipExpression(expr, rangeExpr, leftType)
+	}
+
+	rightType, _ := a.inferExpression(expr.Right)
+	if rightType.Kind == InvalidType {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 
+	elementType, ok := membershipElementType(rightType)
+	if !ok {
+		a.addErrorAtTokenWithMetadata(
+			expr.Token,
+			diagnostics.OperatorInvalidMembership,
+			"Use a contextual range, a fixed array, or a slice. For other containers, call an explicit membership API such as Contains.",
+			"operator in supports ranges, fixed arrays, and slices in Sec 0.1; got %s",
+			typeDisplayName(rightType),
+		)
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+
+	if !EqualityComparable(elementType) {
+		a.addErrorAtTokenWithMetadata(
+			expr.Token,
+			diagnostics.OperatorInvalidMembership,
+			"Use a collection whose element type supports equality, or perform an explicit content or identity search.",
+			"cannot test membership in %s because element type %s is not equality-comparable",
+			typeDisplayName(rightType),
+			typeDisplayName(elementType),
+		)
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+
+	leftType = a.contextualMembershipValueType(expr.Left, leftType, elementType)
+	if !canCompareEquality(leftType, elementType) {
+		a.addErrorAtTokenWithMetadata(
+			expr.Token,
+			diagnostics.OperatorInvalidMembership,
+			fmt.Sprintf("Search with a value compatible with the collection element type %s.", typeDisplayName(elementType)),
+			"cannot test %s for membership in %s with element type %s",
+			typeDisplayName(leftType),
+			typeDisplayName(rightType),
+			typeDisplayName(elementType),
+		)
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+
+	return Type{Name: "bool", Kind: BoolType}, expressionValue{Display: expr.String()}
+}
+
+func (a *Analyzer) inferRangeMembershipExpression(expr *ast.InfixExpression, rangeExpr *ast.RangeExpression, leftType Type) (Type, expressionValue) {
 	if rangeExpr.Start != nil {
 		startType, _ := a.inferExpression(rangeExpr.Start)
 		if startType.Kind == InvalidType {
@@ -12211,6 +12441,38 @@ func (a *Analyzer) inferMembershipExpression(expr *ast.InfixExpression, leftType
 	}
 
 	return Type{Name: "bool", Kind: BoolType}, expressionValue{Display: expr.String()}
+}
+
+func membershipElementType(collection Type) (Type, bool) {
+	collection = dereferenceType(collection)
+	if collection.Element == nil {
+		return Type{}, false
+	}
+
+	switch collection.Kind {
+	case ArrayType:
+		if collection.ArrayLength == dynamicArrayLength {
+			return Type{}, false
+		}
+		return *collection.Element, true
+	case SliceType:
+		return *collection.Element, true
+	default:
+		return Type{}, false
+	}
+}
+
+func (a *Analyzer) contextualMembershipValueType(expr ast.Expression, actual Type, element Type) Type {
+	if _, ok := expr.(*ast.CharLiteral); ok && element.Kind == RuneType {
+		actual = Type{Name: "rune", Kind: RuneType}
+		a.expressionTypes[expr] = actual
+		return actual
+	}
+	if isUntypedNumericExpression(expr) && isNumericType(element) && canInitialize(element, actual, expr) {
+		a.expressionTypes[expr] = element
+		return element
+	}
+	return actual
 }
 
 func canRangeBoundType(value Type, bound Type, expr ast.Expression) bool {

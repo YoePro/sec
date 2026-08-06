@@ -67,7 +67,8 @@ Codex must not:
 - add arbitrary operator overloading;
 - assign a Sec 0.1 meaning to `?`;
 - make ranges first-class values in Sec 0.1;
-- make runtime string `+` valid in Sec 0.1;
+- restore the retired compile-time-only restriction on runtime string `+` or
+  reuse diagnostic `S1020`;
 - duplicate canonical rules in several conflicting forms;
 - mark an implementation complete when only the rulebook exists.
 

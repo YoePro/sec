@@ -29,6 +29,14 @@ func main() {
 
 	command := flag.Arg(0)
 
+	if command == "diagnostics" {
+		if err := runDiagnosticCatalogCommand(flag.Args()[1:], os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "diagnostics error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	if command == "init" {
 		runInitCommand(flag.Args()[1:])
 		return
@@ -105,6 +113,7 @@ func main() {
 
 func printUsage() {
 	fmt.Fprintln(os.Stderr, "usage: sec <lex|token> <file.sec>")
+	fmt.Fprintln(os.Stderr, "       sec diagnostics [--json]")
 	fmt.Fprintln(os.Stderr, "       sec init [path] [--name <name>] [--target <os-arch>] [--profile <profile>]")
 	fmt.Fprintln(os.Stderr, "       sec <parse|ast|sema> <file.sec|dir|glob>...")
 	fmt.Fprintln(os.Stderr, "       sec emit-llvm <file.sec> -o <file.ll|-> [--target <os-arch>]")

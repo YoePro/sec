@@ -78,6 +78,24 @@ type definitionParams struct {
 	Position     position               `json:"position"`
 }
 
+type documentHighlightParams struct {
+	TextDocument textDocumentIdentifier `json:"textDocument"`
+	Position     position               `json:"position"`
+}
+
+type callHierarchyPrepareParams struct {
+	TextDocument textDocumentIdentifier `json:"textDocument"`
+	Position     position               `json:"position"`
+}
+
+type callHierarchyIncomingCallsParams struct {
+	Item callHierarchyItem `json:"item"`
+}
+
+type callHierarchyOutgoingCallsParams struct {
+	Item callHierarchyItem `json:"item"`
+}
+
 type documentSymbolParams struct {
 	TextDocument textDocumentIdentifier `json:"textDocument"`
 }
@@ -112,6 +130,38 @@ type hoverResult struct {
 type location struct {
 	URI   string   `json:"uri"`
 	Range lspRange `json:"range"`
+}
+
+type documentHighlight struct {
+	Range lspRange `json:"range"`
+	Kind  int      `json:"kind,omitempty"`
+}
+
+type callHierarchyData struct {
+	AnalysisURI string                     `json:"analysisUri"`
+	NodeID      sema.CallableID            `json:"nodeId"`
+	Dispatch    sema.CallDispatchKind      `json:"dispatch,omitempty"`
+	Execution   sema.CallExecutionRelation `json:"execution,omitempty"`
+}
+
+type callHierarchyItem struct {
+	Name           string            `json:"name"`
+	Kind           int               `json:"kind"`
+	Detail         string            `json:"detail,omitempty"`
+	URI            string            `json:"uri"`
+	Range          lspRange          `json:"range"`
+	SelectionRange lspRange          `json:"selectionRange"`
+	Data           callHierarchyData `json:"data"`
+}
+
+type callHierarchyIncomingCall struct {
+	From       callHierarchyItem `json:"from"`
+	FromRanges []lspRange        `json:"fromRanges"`
+}
+
+type callHierarchyOutgoingCall struct {
+	To         callHierarchyItem `json:"to"`
+	FromRanges []lspRange        `json:"fromRanges"`
 }
 
 type completionItem struct {
@@ -256,6 +306,8 @@ func (s *server) handle(message rpcMessage) error {
 				"documentSymbolProvider":     true,
 				"hoverProvider":              true,
 				"definitionProvider":         true,
+				"documentHighlightProvider":  true,
+				"callHierarchyProvider":      true,
 				"codeActionProvider":         true,
 				"completionProvider": map[string]any{
 					"triggerCharacters": []string{"."},
@@ -419,11 +471,308 @@ func (s *server) handle(message rpcMessage) error {
 			return s.respond(message.ID, nil)
 		}
 		return s.respond(message.ID, locations)
+	case "textDocument/documentHighlight":
+		var params documentHighlightParams
+		if err := json.Unmarshal(message.Params, &params); err != nil {
+			return err
+		}
+		snapshot, ok := s.documentSnapshots.Snapshot(params.TextDocument.URI)
+		if !ok {
+			return s.respond(message.ID, []documentHighlight{})
+		}
+		return s.respond(message.ID, documentHighlightsForSource(params.TextDocument.URI, snapshot.Text, params.Position))
+	case "textDocument/prepareCallHierarchy":
+		var params callHierarchyPrepareParams
+		if err := json.Unmarshal(message.Params, &params); err != nil {
+			return err
+		}
+		snapshot, ok := s.documentSnapshots.Snapshot(params.TextDocument.URI)
+		if !ok {
+			return s.respond(message.ID, []callHierarchyItem{})
+		}
+		return s.respond(message.ID, callHierarchyItemsForSource(params.TextDocument.URI, snapshot.Text, params.Position))
+	case "callHierarchy/incomingCalls":
+		var params callHierarchyIncomingCallsParams
+		if err := json.Unmarshal(message.Params, &params); err != nil {
+			return err
+		}
+		analysisURI := params.Item.Data.AnalysisURI
+		if analysisURI == "" {
+			analysisURI = params.Item.URI
+		}
+		snapshot, ok := s.documentSnapshots.Snapshot(analysisURI)
+		if !ok {
+			return s.respond(message.ID, []callHierarchyIncomingCall{})
+		}
+		return s.respond(message.ID, callHierarchyIncomingCallsForSource(analysisURI, snapshot.Text, params.Item.Data.NodeID))
+	case "callHierarchy/outgoingCalls":
+		var params callHierarchyOutgoingCallsParams
+		if err := json.Unmarshal(message.Params, &params); err != nil {
+			return err
+		}
+		analysisURI := params.Item.Data.AnalysisURI
+		if analysisURI == "" {
+			analysisURI = params.Item.URI
+		}
+		snapshot, ok := s.documentSnapshots.Snapshot(analysisURI)
+		if !ok {
+			return s.respond(message.ID, []callHierarchyOutgoingCall{})
+		}
+		return s.respond(message.ID, callHierarchyOutgoingCallsForSource(analysisURI, snapshot.Text, params.Item.Data.NodeID))
 	default:
 		if len(message.ID) == 0 {
 			return nil
 		}
 		return s.respondError(message.ID, -32601, "method not found")
+	}
+}
+
+func callHierarchyItemsForSource(uri string, text string, pos position) (items []callHierarchyItem) {
+	defer func() {
+		if recover() != nil {
+			items = []callHierarchyItem{}
+		}
+	}()
+	analyzer := analyzeNavigationSource(uri, text)
+	if analyzer == nil {
+		return []callHierarchyItem{}
+	}
+	token, ok := sourceTokenAtPosition(uri, text, pos)
+	if !ok {
+		return []callHierarchyItem{}
+	}
+	definitions := uniqueDefinitionTokens(analyzer.DefinitionsAt(token.File, token.Line, token.Column))
+	if len(definitions) != 1 {
+		return []callHierarchyItem{}
+	}
+	for _, node := range analyzer.CallGraph().NodesForDeclaration(definitions[0]) {
+		items = append(items, callHierarchyItemForNode(uri, node))
+	}
+	return items
+}
+
+func callHierarchyIncomingCallsForSource(uri string, text string, nodeID sema.CallableID) (calls []callHierarchyIncomingCall) {
+	defer func() {
+		if recover() != nil {
+			calls = []callHierarchyIncomingCall{}
+		}
+	}()
+	analyzer := analyzeNavigationSource(uri, text)
+	if analyzer == nil {
+		return []callHierarchyIncomingCall{}
+	}
+	graph := analyzer.CallGraph()
+	grouped := map[string]int{}
+	for _, site := range graph.Incoming(nodeID) {
+		caller, ok := graph.Node(site.Caller)
+		if !ok {
+			continue
+		}
+		rng := definitionTokenRange(site.Source)
+		key := callHierarchyRelationshipKey(caller.ID, site.Dispatch, site.Execution)
+		if index, exists := grouped[key]; exists {
+			calls[index].FromRanges = append(calls[index].FromRanges, rng)
+			continue
+		}
+		grouped[key] = len(calls)
+		calls = append(calls, callHierarchyIncomingCall{
+			From:       callHierarchyItemForRelationship(uri, caller, site.Dispatch, site.Execution),
+			FromRanges: []lspRange{rng},
+		})
+	}
+	return calls
+}
+
+func callHierarchyOutgoingCallsForSource(uri string, text string, nodeID sema.CallableID) (calls []callHierarchyOutgoingCall) {
+	defer func() {
+		if recover() != nil {
+			calls = []callHierarchyOutgoingCall{}
+		}
+	}()
+	analyzer := analyzeNavigationSource(uri, text)
+	if analyzer == nil {
+		return []callHierarchyOutgoingCall{}
+	}
+	graph := analyzer.CallGraph()
+	grouped := map[string]int{}
+	for _, site := range graph.Outgoing(nodeID) {
+		for _, targetID := range site.Targets {
+			target, ok := graph.Node(targetID)
+			if !ok || target.Declaration.Line <= 0 {
+				continue
+			}
+			rng := definitionTokenRange(site.Source)
+			key := callHierarchyRelationshipKey(target.ID, site.Dispatch, site.Execution)
+			if index, exists := grouped[key]; exists {
+				calls[index].FromRanges = append(calls[index].FromRanges, rng)
+				continue
+			}
+			grouped[key] = len(calls)
+			calls = append(calls, callHierarchyOutgoingCall{
+				To:         callHierarchyItemForRelationship(uri, target, site.Dispatch, site.Execution),
+				FromRanges: []lspRange{rng},
+			})
+		}
+	}
+	return calls
+}
+
+func callHierarchyRelationshipKey(node sema.CallableID, dispatch sema.CallDispatchKind, execution sema.CallExecutionRelation) string {
+	return fmt.Sprintf("%s|%s|%s", node, dispatch, execution)
+}
+
+func callHierarchyItemForRelationship(analysisURI string, node sema.CallableNode, dispatch sema.CallDispatchKind, execution sema.CallExecutionRelation) callHierarchyItem {
+	item := callHierarchyItemForNode(analysisURI, node)
+	item.Data.Dispatch = dispatch
+	item.Data.Execution = execution
+	if execution != "" && execution != sema.CallExecutionSynchronous {
+		label := strings.ReplaceAll(string(execution), "-", " ")
+		if item.Detail == "" {
+			item.Detail = label
+		} else {
+			item.Detail += " | " + label
+		}
+	}
+	return item
+}
+
+func analyzeNavigationSource(uri string, text string) *sema.Analyzer {
+	program := parseProgramForLSP(uri, text)
+	if program == nil {
+		return nil
+	}
+	path := pathFromURI(uri)
+	if uri != "" {
+		resolveCoreSources(program, path)
+		resolveSourceImports(program, map[string]bool{}, path)
+	}
+	analyzer := sema.NewAnalyzer()
+	analyzer.Analyze(program)
+	return analyzer
+}
+
+func callHierarchyItemForNode(analysisURI string, node sema.CallableNode) callHierarchyItem {
+	uri := analysisURI
+	if node.Declaration.File != "" {
+		uri = uriFromPath(node.Declaration.File)
+	}
+	rng := definitionTokenRange(node.Declaration)
+	name := node.Name
+	if index := strings.LastIndex(name, "."); index >= 0 {
+		name = name[index+1:]
+	}
+	detail := node.Module
+	kind := 12 // SymbolKind.Function
+	if node.ImplTarget != "" {
+		detail = "impl " + node.ImplTarget
+		kind = 6 // SymbolKind.Method
+	}
+	return callHierarchyItem{
+		Name:           name,
+		Kind:           kind,
+		Detail:         detail,
+		URI:            uri,
+		Range:          rng,
+		SelectionRange: rng,
+		Data:           callHierarchyData{AnalysisURI: analysisURI, NodeID: node.ID},
+	}
+}
+
+const (
+	documentHighlightRead  = 2
+	documentHighlightWrite = 3
+)
+
+func documentHighlightsForSource(uri string, text string, pos position) (highlights []documentHighlight) {
+	defer func() {
+		if recover() != nil {
+			highlights = []documentHighlight{}
+		}
+	}()
+
+	program := parseProgramForLSP(uri, text)
+	if program == nil {
+		return []documentHighlight{}
+	}
+	path := pathFromURI(uri)
+	if uri != "" {
+		resolveCoreSources(program, path)
+		resolveSourceImports(program, map[string]bool{}, path)
+	}
+	analyzer := sema.NewAnalyzer()
+	analyzer.Analyze(program)
+
+	use, ok := sourceTokenAtPosition(uri, text, pos)
+	if !ok {
+		return []documentHighlight{}
+	}
+	definitions := uniqueDefinitionTokens(analyzer.DefinitionsAt(use.File, use.Line, use.Column))
+	// A highlight must never combine separate overloads or otherwise ambiguous symbols.
+	if len(definitions) != 1 {
+		return []documentHighlight{}
+	}
+	definition := definitions[0]
+	tokens := sourceTokens(uri, text)
+	for index, token := range tokens {
+		bound := uniqueDefinitionTokens(analyzer.DefinitionsAt(token.File, token.Line, token.Column))
+		if len(bound) != 1 || !sameSourceToken(bound[0], definition) {
+			continue
+		}
+		kind := documentHighlightRead
+		if sameSourceToken(token, definition) || tokenIsDirectAssignmentTarget(tokens, index) {
+			kind = documentHighlightWrite
+		}
+		highlights = append(highlights, documentHighlight{Range: tokenRange(token), Kind: kind})
+	}
+	return highlights
+}
+
+func sourceTokens(uri string, text string) []lexer.Token {
+	l := lexer.New(text)
+	if uri != "" {
+		l = lexer.NewWithFile(text, pathFromURI(uri))
+	}
+	tokens := make([]lexer.Token, 0)
+	for {
+		token := l.NextToken()
+		if token.Type == lexer.EOF {
+			return tokens
+		}
+		tokens = append(tokens, token)
+	}
+}
+
+func uniqueDefinitionTokens(tokens []lexer.Token) []lexer.Token {
+	unique := make([]lexer.Token, 0, len(tokens))
+	seen := map[string]bool{}
+	for _, token := range tokens {
+		key := fmt.Sprintf("%s:%d:%d", token.File, token.Line, token.Column)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		unique = append(unique, token)
+	}
+	return unique
+}
+
+func sameSourceToken(left lexer.Token, right lexer.Token) bool {
+	return left.File == right.File && left.Line == right.Line && left.Column == right.Column
+}
+
+func tokenIsDirectAssignmentTarget(tokens []lexer.Token, index int) bool {
+	if index+1 >= len(tokens) {
+		return false
+	}
+	switch tokens[index+1].Type {
+	case lexer.ASSIGN, lexer.MOVE_ASSIGN,
+		lexer.PLUS_ASSIGN, lexer.MINUS_ASSIGN, lexer.ASTERISK_ASSIGN,
+		lexer.SLASH_ASSIGN, lexer.PERCENT_ASSIGN, lexer.BIT_AND_ASSIGN,
+		lexer.BIT_OR_ASSIGN, lexer.BIT_XOR_ASSIGN, lexer.SHIFT_LEFT_ASSIGN,
+		lexer.SHIFT_RIGHT_ASSIGN:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -881,13 +1230,16 @@ func hoverForSource(uri string, text string, pos position) (hoverResult, bool) {
 		}
 		if isSelfMemberSelector(text, nameStart) {
 			if contents, ok := selfMemberHoverContents(target, name, analyzer.Functions(), text, path); ok {
+				contents += callGraphHoverSuffix(analyzer, uri, text, pos)
 				return hoverResult{Contents: markupContent{Kind: "markdown", Value: contents}, Range: nameRange}, true
 			}
 		}
 	}
 
 	if functions := analyzer.Functions()[name]; len(functions) > 0 {
-		return hoverResult{Contents: markupContent{Kind: "markdown", Value: functionHoverContents(functions, text, path)}, Range: nameRange}, true
+		contents := functionHoverContents(functions, text, path)
+		contents += callGraphHoverSuffix(analyzer, uri, text, pos)
+		return hoverResult{Contents: markupContent{Kind: "markdown", Value: contents}, Range: nameRange}, true
 	}
 	if symbol, ok := analyzer.Symbols()[name]; ok {
 		return typedHover(nameRange, symbol.Name, symbol.Type), true
@@ -897,6 +1249,117 @@ func hoverForSource(uri string, text string, pos position) (hoverResult, bool) {
 	}
 
 	return hoverResult{}, false
+}
+
+func callGraphHoverSuffix(analyzer *sema.Analyzer, uri string, text string, pos position) string {
+	if analyzer == nil {
+		return ""
+	}
+	token, ok := sourceTokenAtPosition(uri, text, pos)
+	if !ok {
+		return ""
+	}
+	definitions := uniqueDefinitionTokens(analyzer.DefinitionsAt(token.File, token.Line, token.Column))
+	if len(definitions) != 1 {
+		return ""
+	}
+	graph := analyzer.CallGraph()
+	nodes := graph.NodesForDeclaration(definitions[0])
+	if len(nodes) != 1 {
+		return ""
+	}
+	node := nodes[0]
+	incoming := graph.Incoming(node.ID)
+	outgoing := graph.Outgoing(node.ID)
+	callerCount := distinctCallers(incoming)
+	calleeCount := distinctCallees(outgoing)
+
+	lines := []string{
+		"**Call graph**",
+		fmt.Sprintf("Incoming: `%d` call sites from `%d` callables", len(incoming), callerCount),
+		fmt.Sprintf("Outgoing: `%d` call sites to `%d` callables", len(outgoing), calleeCount),
+	}
+	roots := graph.RootsReaching(node.ID)
+	if len(roots) == 0 {
+		lines = append(lines, "Reachability: no active root in the current analysis")
+	} else {
+		rootNames := make([]string, 0, len(roots))
+		for _, root := range roots {
+			rootNames = append(rootNames, string(root.Kind))
+		}
+		lines = append(lines, "Reachable from: `"+strings.Join(rootNames, "`, `")+"`")
+	}
+	if graph.IsSameStackRecursive(node.ID) {
+		members := graph.SameStackSCC(node.ID)
+		names := make([]string, 0, len(members))
+		for _, member := range members {
+			names = append(names, member.Name)
+		}
+		lines = append(lines, "Same-stack recursion: `"+strings.Join(names, "`, `")+"`")
+	}
+	spawnCounts := map[sema.CallExecutionRelation]int{}
+	for _, site := range outgoing {
+		switch site.Execution {
+		case sema.CallExecutionSpawnTask, sema.CallExecutionSpawnThread, sema.CallExecutionSpawnProcess:
+			spawnCounts[site.Execution]++
+		}
+	}
+	if len(spawnCounts) > 0 {
+		parts := make([]string, 0, len(spawnCounts))
+		for _, execution := range []sema.CallExecutionRelation{
+			sema.CallExecutionSpawnTask,
+			sema.CallExecutionSpawnThread,
+			sema.CallExecutionSpawnProcess,
+		} {
+			if count := spawnCounts[execution]; count > 0 {
+				parts = append(parts, fmt.Sprintf("%s: `%d`", strings.ReplaceAll(string(execution), "-", " "), count))
+			}
+		}
+		lines = append(lines, "Execution edges: "+strings.Join(parts, ", "))
+	}
+	arenaSummary := graph.ArenaSummary(node.ID)
+	if len(arenaSummary.DirectEffects) > 0 {
+		effects := make([]string, 0, len(arenaSummary.DirectEffects))
+		for _, effect := range arenaSummary.DirectEffects {
+			name := string(effect.Kind)
+			if effect.Arena != "" {
+				name += "(" + effect.Arena + ")"
+			}
+			effects = append(effects, name)
+		}
+		lines = append(lines, "Direct Arena effects: `"+strings.Join(effects, "`, `")+"`")
+	}
+	if arenaSummary.MayAllocate {
+		path := make([]string, 0, len(arenaSummary.AllocationPath))
+		for _, id := range arenaSummary.AllocationPath {
+			if member, ok := graph.Node(id); ok {
+				path = append(path, member.Name)
+			}
+		}
+		lines = append(lines, "May allocate: `yes`")
+		if len(path) > 0 {
+			lines = append(lines, "Allocation path: `"+strings.Join(path, "` -> `")+"`")
+		}
+	}
+	return "\n\n" + strings.Join(lines, "\n\n")
+}
+
+func distinctCallers(sites []sema.CallSite) int {
+	callers := map[sema.CallableID]bool{}
+	for _, site := range sites {
+		callers[site.Caller] = true
+	}
+	return len(callers)
+}
+
+func distinctCallees(sites []sema.CallSite) int {
+	callees := map[sema.CallableID]bool{}
+	for _, site := range sites {
+		for _, target := range site.Targets {
+			callees[target] = true
+		}
+	}
+	return len(callees)
 }
 
 func typedHover(rng lspRange, name string, typ sema.Type) hoverResult {

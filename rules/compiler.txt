@@ -340,6 +340,7 @@ Inspection commands:
     sec parse <file.sec|dir|glob>...
     sec ast <file.sec|dir|glob>...
     sec sema <file.sec|dir|glob>...
+    sec diagnostics [--json]
     sec emit-mlir <file.sec> -o <file.mlir|->
     sec emit-llvm <file.sec> -o <file.ll|->
 
@@ -350,6 +351,11 @@ Rules:
 - `parse` validates grammar and prints the parsed source representation.
 - `ast` prints a formatted tree representation of the AST.
 - `sema` runs semantic analysis and reports errors and warnings.
+- `diagnostics` lists every registered error, warning and information
+  definition with all registry fields. It also lists every field carried by
+  semantic and parser diagnostic occurrences and their source tokens.
+- `diagnostics --json` emits the same catalog and field schemas as stable
+  machine-readable JSON.
 - Inspection commands print a final diagnostic summary to stderr in the form
   `summary: N errors, M warnings`; `sema` combines parser and semantic warnings
   in that total.
@@ -368,8 +374,8 @@ Rules:
 
 Current implementation note:
 
-- `lex`, `token`, `parse`, `ast`, `sema`, `emit-mlir`, `emit-llvm` and
-  `build` exist.
+- `lex`, `token`, `parse`, `ast`, `sema`, `diagnostics`, `emit-mlir`,
+  `emit-llvm` and `build` exist.
 - `parse`, `ast` and `sema` support multiple input files, directories and
   quoted globs.
 - `emit-llvm` supports `--target <os-arch>` and emits a target-specific LLVM

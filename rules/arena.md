@@ -3784,7 +3784,14 @@ initial generation metadata;
 initial stale-generation rejection;
 initial branch and loop generation merging;
 active allocation-context representation;
-initial storage-origin metadata.
+initial storage-origin metadata;
+compiler-owned task-spawn and thread-start call-graph relationships;
+derived task-entry and thread-entry roots for reachable spawn sites;
+source-ordered direct call-graph effect sites for borrowed/owned/growable Arena
+creation, typed allocation, Reset, and Release;
+synchronous call-graph `MayAllocate` propagation with a concrete shortest
+callable cause path;
+LSP hover for direct Arena effects and propagated allocation cause paths;
 ```
 
 The implementation is not complete merely because these partial pieces exist.
@@ -3793,16 +3800,20 @@ Known missing or incomplete areas include:
 
 ```text
 allocation-context propagation;
-complete effect inference;
+path-aware ordered Arena effect-state merging across branches and loops;
+complete effect inference beyond the current Arena `MayAllocate` summary;
 complete ownership and move tracking;
 complete default/layout/destruction validation;
 Semantic IR Arena operations;
 MLIR Arena dialect and lowering;
 backing providers;
-task/thread dependency integration;
-capacity analysis;
+Arena dependency propagation and completion boundaries across the existing
+task/thread call-graph relationships;
+byte-accurate, alignment-aware capacity and demand analysis per
+`CompilationPlan`;
 complete diagnostics;
-complete LSP hover, definitions, effects, and Arena-specific diagnostics.
+complete LSP definitions, capacity/effect details, and Arena-specific
+diagnostics.
 ```
 
 An implementation inventory must verify the repository rather than assuming

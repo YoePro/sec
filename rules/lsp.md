@@ -369,7 +369,13 @@ Implemented:
 - event hover;
 - method hover;
 - `self` member resolution;
-- type-aware hover through Sema.
+- type-aware hover through Sema;
+- compiler-owned call-graph summaries for resolved functions and methods,
+  including incoming/outgoing call-site counts, current root reachability, and
+  represented same-stack recursion components;
+- task-spawn and thread-start edge counts plus derived entry-root reachability;
+- source-ordered direct Arena effects, propagated `MayAllocate`, and the
+  compiler-owned shortest synchronous allocation cause path.
 
 ### Navigation
 
@@ -386,12 +392,36 @@ Implemented:
 - exact unqualified declaration ranges after imported declarations are
   semantically qualified;
 - `null` results for unresolved and tested incomplete source instead of guessed
-  destinations.
+  destinations;
+- `textDocument/documentHighlight` capability advertisement and request
+  handling;
+- semantic same-document highlights based on Sema declaration bindings rather
+  than identifier spelling;
+- separate highlights for shadowed declarations and resolved `self` members;
+- LSP `Write` classification for declarations and direct assignment targets,
+  with other occurrences classified as `Read`;
+- empty highlight results for unresolved, ambiguous, and tested incomplete
+  source;
+- `textDocument/prepareCallHierarchy`, `callHierarchy/incomingCalls`, and
+  `callHierarchy/outgoingCalls` capability advertisement and request handling;
+- compiler-owned callable and call-site identities consumed by call hierarchy;
+- grouped incoming and outgoing synchronous direct-call results for functions
+  and statically resolved methods;
+- defensive empty call-hierarchy results for stale, unresolved, or tested
+  incomplete source;
+- current `ProgramEntryRoot` reachability and same-stack recursion information
+  from the compiler graph, reused by hover rather than recomputed in the LSP;
+- task-spawn and thread-start call-hierarchy entries that preserve dispatch and
+  execution relation in item data and do not merge with synchronous calls to
+  the same target.
 
 The initial implementation resolves from the current immutable document text
 and compiler-loaded source set. A persistent workspace symbol index,
 declaration/type-definition distinction, implementation navigation, references,
-document highlights, and rename remain pending.
+rename, indirect/open call targets, non-synchronous relationships beyond the
+implemented task/thread spawn edges, root classes beyond program/task/thread
+entry, complete path-sensitive graph pruning, per-`CompilationPlan` graph
+snapshots, and richer copy/move/borrow occurrence classification remain pending.
 
 ### Document symbols
 
@@ -604,7 +634,6 @@ The following major areas are not yet implemented:
 - type definition;
 - implementation navigation;
 - references;
-- document highlights;
 - rename;
 - prepare rename;
 - signature help;
@@ -616,7 +645,6 @@ The following major areas are not yet implemented:
 - inlay-hint resolve;
 - inline values;
 - inline completion;
-- call hierarchy;
 - compiler-owned call-graph queries and per-`CompilationPlan` graph snapshots;
 - indirect target sets, open callable contracts, root reachability, and
   call-graph cause paths;
@@ -3342,6 +3370,19 @@ Initial `textDocument/definition` support is implemented through Sema-owned
 use-to-declaration bindings. It covers local and cross-file declarations,
 members, and selected overloads without an LSP-owned name resolver.
 
+Initial `textDocument/documentHighlight` support is also implemented through
+those bindings. It finds exact same-document occurrences, keeps shadowed names
+separate, and classifies declarations and direct assignment targets as writes.
+
+Initial standard call hierarchy is implemented over the compiler-owned direct
+call graph. It covers validated synchronous direct calls and statically resolved
+methods in the current source snapshot. Hover also consumes initial
+program/task/thread root reachability and same-stack SCC results. Task and
+thread spawn relationships retain their execution classification and remain
+outside same-stack recursion. Indirect targets, other execution boundaries,
+specializations, additional root classes, and complete `CompilationPlan`
+identity remain pending.
+
 Remaining order:
 
 ```text
@@ -3349,7 +3390,6 @@ declaration
 type definition
 implementation
 references
-document highlight
 rename
 ```
 

@@ -80,6 +80,12 @@ func TestInitializeAdvertisesDefinitionProvider(t *testing.T) {
 	if !strings.Contains(out.String(), `"definitionProvider":true`) {
 		t.Fatalf("initialize response does not advertise definitions: %q", out.String())
 	}
+	if !strings.Contains(out.String(), `"documentHighlightProvider":true`) {
+		t.Fatalf("initialize response does not advertise document highlights: %q", out.String())
+	}
+	if !strings.Contains(out.String(), `"callHierarchyProvider":true`) {
+		t.Fatalf("initialize response does not advertise call hierarchy: %q", out.String())
+	}
 }
 
 func TestDidCloseRemovesSnapshotAndClearsDiagnostics(t *testing.T) {
@@ -569,6 +575,103 @@ fn Ready() bool {
 	}
 }
 
+func TestHoverShowsCallGraphReachabilityAndRecursion(t *testing.T) {
+	source := `module main
+
+fn alpha() void {
+	beta()
+}
+
+fn beta() void {
+	alpha()
+}
+
+fn main() void {
+	alpha()
+}
+`
+	use := strings.LastIndex(source, "alpha")
+	hover, ok := hoverForSource("file:///tmp/sec-lsp-call-graph-hover/main.sec", source, offsetPosition(source, use))
+	if !ok {
+		t.Fatal("expected hover for alpha")
+	}
+	for _, expected := range []string{
+		"**Call graph**",
+		"Incoming: `2` call sites from `2` callables",
+		"Outgoing: `1` call sites to `1` callables",
+		"Reachable from: `program-entry`",
+		"Same-stack recursion: `alpha`, `beta`",
+	} {
+		if !strings.Contains(hover.Contents.Value, expected) {
+			t.Fatalf("hover does not contain %q: %s", expected, hover.Contents.Value)
+		}
+	}
+}
+
+func TestHoverReportsCallableOutsideActiveRootReachability(t *testing.T) {
+	source := `module main
+
+fn dead() void {}
+
+fn main() void {
+	if false {
+		dead()
+	}
+}
+`
+	declaration := strings.Index(source, "dead()")
+	hover, ok := hoverForSource("file:///tmp/sec-lsp-call-graph-dead/main.sec", source, offsetPosition(source, declaration))
+	if !ok {
+		t.Fatal("expected hover for dead")
+	}
+	if !strings.Contains(hover.Contents.Value, "Reachability: no active root in the current analysis") {
+		t.Fatalf("wrong dead-callable hover: %s", hover.Contents.Value)
+	}
+}
+
+func TestHoverShowsArenaEffectsAndSynchronousAllocationPath(t *testing.T) {
+	source := `module main
+
+fn Allocate() void {
+	let arena := Arena.WithCapacity(64u)
+}
+
+fn Forward() void {
+	Allocate()
+}
+
+fn Worker() void {
+	let arena := Arena.Growable(64u)
+}
+
+fn Spawner() void {
+	let worker := spawn Worker()
+	detach worker
+}
+`
+	uri := "file:///tmp/sec-lsp-arena-hover/main.sec"
+	allocateDeclaration := strings.Index(source, "Allocate() void")
+	hover, ok := hoverForSource(uri, source, offsetPosition(source, allocateDeclaration))
+	if !ok || !strings.Contains(hover.Contents.Value, "Direct Arena effects: `create-owned`") {
+		t.Fatalf("Allocate hover does not show direct Arena effect: %+v", hover)
+	}
+
+	forwardDeclaration := strings.Index(source, "Forward() void")
+	hover, ok = hoverForSource(uri, source, offsetPosition(source, forwardDeclaration))
+	if !ok || !strings.Contains(hover.Contents.Value, "May allocate: `yes`") || !strings.Contains(hover.Contents.Value, "Allocation path: `Forward` -> `Allocate`") {
+		t.Fatalf("Forward hover does not show allocation cause path: %+v", hover)
+	}
+
+	spawnerDeclaration := strings.Index(source, "Spawner() void")
+	hover, ok = hoverForSource(uri, source, offsetPosition(source, spawnerDeclaration))
+	if !ok {
+		t.Fatal("expected Spawner hover")
+	}
+	if strings.Contains(hover.Contents.Value, "May allocate: `yes`") {
+		t.Fatalf("spawned Worker allocation leaked into Spawner hover: %s", hover.Contents.Value)
+	}
+}
+
 func TestHoverResolvesSelfMembersAndMethods(t *testing.T) {
 	source := `module main
 
@@ -871,6 +974,214 @@ func TestDefinitionSurvivesIncompleteSource(t *testing.T) {
 	}()
 	if locations := definitionsForSource("file:///tmp/sec-lsp-definition-incomplete/main.sec", source, position{Line: 3, Character: 6}); len(locations) != 0 {
 		t.Fatalf("incomplete source definitions = %+v, want none", locations)
+	}
+}
+
+func TestDocumentHighlightsClassifyLocalReadsAndWrites(t *testing.T) {
+	source := `module main
+
+fn Use(input: int) int {
+	let mut value := input
+	value += 1
+	return value
+}
+`
+	uri := "file:///tmp/sec-lsp-highlight/main.sec"
+	use := strings.LastIndex(source, "value")
+	highlights := documentHighlightsForSource(uri, source, offsetPosition(source, use))
+	if len(highlights) != 3 {
+		t.Fatalf("highlights = %+v, want declaration, write, and read", highlights)
+	}
+	wantKinds := []int{documentHighlightWrite, documentHighlightWrite, documentHighlightRead}
+	for index, want := range wantKinds {
+		if highlights[index].Kind != want {
+			t.Fatalf("highlight %d kind = %d, want %d", index, highlights[index].Kind, want)
+		}
+	}
+}
+
+func TestDocumentHighlightsKeepShadowedBindingsSeparate(t *testing.T) {
+	source := `module main
+
+fn First(value: int) int {
+	return value
+}
+
+fn Second(value: int) int {
+	return value
+}
+`
+	uri := "file:///tmp/sec-lsp-highlight-shadow/main.sec"
+	use := strings.LastIndex(source, "value")
+	highlights := documentHighlightsForSource(uri, source, offsetPosition(source, use))
+	if len(highlights) != 2 {
+		t.Fatalf("highlights = %+v, want only the second parameter and use", highlights)
+	}
+	wantDeclaration := offsetPosition(source, strings.LastIndex(source, "value: int"))
+	if highlights[0].Range.Start != wantDeclaration {
+		t.Fatalf("first highlight starts at %+v, want %+v", highlights[0].Range.Start, wantDeclaration)
+	}
+}
+
+func TestDocumentHighlightsResolveSelfMemberReadsAndWrites(t *testing.T) {
+	source := `module main
+
+type Counter struct {
+	value: int,
+}
+
+impl Counter {
+	fn Advance() int {
+		self.value += 1
+		return self.value
+	}
+}
+`
+	uri := "file:///tmp/sec-lsp-highlight-member/main.sec"
+	use := strings.LastIndex(source, "value")
+	highlights := documentHighlightsForSource(uri, source, offsetPosition(source, use))
+	if len(highlights) != 3 {
+		t.Fatalf("highlights = %+v, want field declaration, write, and read", highlights)
+	}
+	wantKinds := []int{documentHighlightWrite, documentHighlightWrite, documentHighlightRead}
+	for index, want := range wantKinds {
+		if highlights[index].Kind != want {
+			t.Fatalf("highlight %d kind = %d, want %d", index, highlights[index].Kind, want)
+		}
+	}
+}
+
+func TestDocumentHighlightsSurviveIncompleteSource(t *testing.T) {
+	source := "module main\n\nfn Use() void {\n\tself.\n"
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			t.Fatalf("documentHighlightsForSource panicked: %v", recovered)
+		}
+	}()
+	highlights := documentHighlightsForSource("file:///tmp/sec-lsp-highlight-incomplete/main.sec", source, position{Line: 3, Character: 6})
+	if len(highlights) != 0 {
+		t.Fatalf("incomplete source highlights = %+v, want none", highlights)
+	}
+}
+
+func TestCallHierarchyReportsIncomingAndOutgoingDirectCalls(t *testing.T) {
+	source := `module main
+
+fn leaf() int {
+	return 1
+}
+
+fn middle() int {
+	return leaf() + leaf()
+}
+
+fn top() int {
+	return middle()
+}
+`
+	uri := "file:///tmp/sec-lsp-call-hierarchy/main.sec"
+	middleDeclaration := strings.Index(source, "middle() int")
+	items := callHierarchyItemsForSource(uri, source, offsetPosition(source, middleDeclaration))
+	if len(items) != 1 || items[0].Name != "middle" {
+		t.Fatalf("prepare items = %+v, want middle", items)
+	}
+
+	incoming := callHierarchyIncomingCallsForSource(uri, source, items[0].Data.NodeID)
+	if len(incoming) != 1 || incoming[0].From.Name != "top" || len(incoming[0].FromRanges) != 1 {
+		t.Fatalf("incoming calls = %+v, want one call from top", incoming)
+	}
+
+	outgoing := callHierarchyOutgoingCallsForSource(uri, source, items[0].Data.NodeID)
+	if len(outgoing) != 1 || outgoing[0].To.Name != "leaf" || len(outgoing[0].FromRanges) != 2 {
+		t.Fatalf("outgoing calls = %+v, want two call sites grouped under leaf", outgoing)
+	}
+}
+
+func TestCallHierarchyResolvesStaticMethods(t *testing.T) {
+	source := `module main
+
+type Reader struct {
+	value: int,
+}
+
+impl Reader {
+	fn read() int {
+		return self.value
+	}
+}
+
+fn use(reader: Reader) int {
+	return reader.read()
+}
+`
+	uri := "file:///tmp/sec-lsp-call-hierarchy-method/main.sec"
+	useDeclaration := strings.Index(source, "use(reader")
+	items := callHierarchyItemsForSource(uri, source, offsetPosition(source, useDeclaration))
+	if len(items) != 1 {
+		t.Fatalf("prepare items = %+v, want use", items)
+	}
+	outgoing := callHierarchyOutgoingCallsForSource(uri, source, items[0].Data.NodeID)
+	if len(outgoing) != 1 || outgoing[0].To.Name != "read" || outgoing[0].To.Kind != 6 {
+		t.Fatalf("method outgoing calls = %+v, want Reader.read method", outgoing)
+	}
+}
+
+func TestCallHierarchyAndHoverPreserveSpawnExecutionRelations(t *testing.T) {
+	source := `module main
+
+fn TaskWork() void {}
+
+fn ThreadWork() void {}
+
+fn main() void {
+	let taskHandle := spawn task TaskWork()
+	let threadHandle := spawn thread ThreadWork()
+	detach taskHandle
+	detach threadHandle
+}
+`
+	uri := "file:///tmp/sec-lsp-call-hierarchy-spawn/main.sec"
+	mainDeclaration := strings.Index(source, "main() void")
+	items := callHierarchyItemsForSource(uri, source, offsetPosition(source, mainDeclaration))
+	if len(items) != 1 {
+		t.Fatalf("prepare items = %+v, want main", items)
+	}
+	outgoing := callHierarchyOutgoingCallsForSource(uri, source, items[0].Data.NodeID)
+	if len(outgoing) != 2 {
+		t.Fatalf("spawn outgoing = %+v, want task and thread", outgoing)
+	}
+	relations := map[string]sema.CallExecutionRelation{}
+	for _, call := range outgoing {
+		relations[call.To.Name] = call.To.Data.Execution
+		if !strings.Contains(call.To.Detail, strings.ReplaceAll(string(call.To.Data.Execution), "-", " ")) {
+			t.Fatalf("call hierarchy detail does not preserve execution: %+v", call.To)
+		}
+	}
+	if relations["TaskWork"] != sema.CallExecutionSpawnTask || relations["ThreadWork"] != sema.CallExecutionSpawnThread {
+		t.Fatalf("spawn relations = %+v", relations)
+	}
+
+	hover, ok := hoverForSource(uri, source, offsetPosition(source, mainDeclaration))
+	if !ok || !strings.Contains(hover.Contents.Value, "spawn task: `1`, spawn thread: `1`") {
+		t.Fatalf("main hover does not expose spawn edges: %+v", hover)
+	}
+	taskDeclaration := strings.Index(source, "TaskWork()")
+	hover, ok = hoverForSource(uri, source, offsetPosition(source, taskDeclaration))
+	if !ok || !strings.Contains(hover.Contents.Value, "Reachable from: `program-entry`, `task-entry`") {
+		t.Fatalf("task hover does not expose derived root: %+v", hover)
+	}
+}
+
+func TestCallHierarchySurvivesIncompleteSource(t *testing.T) {
+	source := "module main\n\nfn use() void {\n\tmissing(\n"
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			t.Fatalf("callHierarchyItemsForSource panicked: %v", recovered)
+		}
+	}()
+	items := callHierarchyItemsForSource("file:///tmp/sec-lsp-call-hierarchy-incomplete/main.sec", source, position{Line: 3, Character: 2})
+	if len(items) != 0 {
+		t.Fatalf("incomplete source items = %+v, want none", items)
 	}
 }
 

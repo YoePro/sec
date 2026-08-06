@@ -494,10 +494,11 @@ The current implementation still differs in several places:
 - `++` and `--` are accepted by the language rulebook as formatter-normalized
   statement aliases, but the current lexer and parser do not yet tokenize or
   parse them;
-- `in` currently has complete Sema behavior for ranges, while fixed-array and
-  slice membership require completion;
-- runtime string `+` is more broadly accepted by current Sema than the Sec 0.1
-  compile-time-only rule permits;
+- `in` has Sema behavior for ranges, fixed arrays, and slices, while
+  array/slice membership lowering remains incomplete;
+- runtime string `+` and direct `string +=` implement the canonical
+  `string`/`char`/`rune` operand matrix, while allocation effects,
+  interpolation formatting, concat planning, and lowering remain incomplete;
 - complete checked overflow, shift validation, and remainder lowering remain
   incomplete;
 - float `!=` lowering requires the canonical unordered-NaN behavior.

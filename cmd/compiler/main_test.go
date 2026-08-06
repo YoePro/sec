@@ -151,6 +151,109 @@ fn Load(path: string) Result[uint, io.IOError] {
 	}
 }
 
+func TestCompilerLoadsIOWriteSeekAndDirectoryAPIs(t *testing.T) {
+	source := `module main
+
+import "io"
+
+fn Update(path: string, text: string) Result[uint, io.IOError] {
+	let mut file := try io.OpenReadWrite(path, true)
+	let written := try file.WriteString(text)
+	let position := try file.Seek(0, io.SeekOrigin.Start)
+	try file.Flush()
+	try file.Close()
+
+	return Ok(written + position)
+}
+
+fn Save(path: string, text: string) Result[void, io.IOError] {
+	try io.WriteStringFile(path, text)
+	return Ok()
+}
+
+fn SaveBytes(path: string, data: ref byte[]) Result[void, io.IOError] {
+	try io.WriteFile(path, ref data[..])
+	return Ok()
+}
+
+fn Append(path: string, text: string) Result[uint, io.IOError] {
+	let mut file := try io.OpenAppend(path)
+	let written := try file.WriteString(text)
+	try file.Close()
+	return Ok(written)
+}
+
+fn FirstEntry(path: string) Result[Option[io.DirectoryEntry], io.IOError] {
+	let mut directory := try io.OpenDirectory(path)
+	let entry := try directory.Next()
+	try directory.Close()
+
+	return Ok(entry)
+}
+
+fn ListEntries(path: string, entries: ref mut io.DirectoryEntry[]) Result[uint, io.IOError] {
+	let count := try io.ReadDirectoryInto(path, ref mut entries[..])
+	return Ok(count)
+}
+
+fn EntryName(entry: io.DirectoryEntry) string {
+	return entry.Name
+}
+
+fn EntryType(entry: io.DirectoryEntry) io.DirectoryEntryType {
+	return entry.Type
+}
+
+fn CheckAndRename(oldPath: string, newPath: string) Result[bool, io.IOError] {
+	let exists := try io.Exists(oldPath)
+	try io.Access(oldPath, io.AccessMode.Read)
+	try io.Rename(oldPath, newPath)
+	return Ok(exists)
+}
+
+fn DirectoryLifecycle(path: string) Result[void, io.IOError] {
+	try io.CreateDirectory(path)
+	try io.RemoveDirectory(path)
+	return Ok()
+}
+
+fn Remove(path: string) Result[void, io.IOError] {
+	try io.RemoveFile(path)
+	return Ok()
+}
+
+fn CopyHandles(
+	source: ref mut io.File,
+	destination: ref mut io.File,
+	buffer: ref mut byte[],
+) Result[uint, io.IOError] {
+	let copied := try io.Copy(source, destination, ref mut buffer[..])
+	return Ok(copied)
+}
+
+fn ReadFixed(file: ref mut io.File, buffer: ref mut byte[]) Result[uint, io.IOError] {
+	let count := try file.ReadExact(ref mut buffer[..])
+	try file.Truncate(count)
+	return Ok(count)
+}
+`
+
+	l := lexer.New(source)
+	p := parser.New(l)
+	program := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("parser errors: %v", p.Errors())
+	}
+
+	target := CompilerTarget{OS: "linux", Arch: "amd64"}
+	resolveCoreLibrary(program)
+	resolveStdlibImports(program, target)
+	analyzer := sema.NewAnalyzer()
+	if errors := analyzer.Analyze(program); len(errors) > 0 {
+		t.Fatalf("Analyze(user with complete io API) errors: %v", errors)
+	}
+}
+
 func TestCompilerLoadsUnicodeIsLetter(t *testing.T) {
 	source := `module main
 

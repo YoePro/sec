@@ -185,6 +185,428 @@ fn Invalid() Holder {
 	})
 }
 
+func TestAggregateReferenceProvenanceIsFieldSensitive(t *testing.T) {
+	input := `
+module main
+
+type Views struct {
+    local: ref int,
+    external: ref int,
+}
+
+fn Valid(external: ref int) ref int {
+    let value := 10
+    let views := Views {
+        local: ref value,
+        external: external,
+    }
+    return views.external
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestAggregateReferenceProvenanceRejectsOnlyLocalField(t *testing.T) {
+	input := `
+module main
+
+type Views struct {
+    local: ref int,
+    external: ref int,
+}
+
+fn Invalid(external: ref int) ref int {
+    let value := 10
+    let views := Views {
+        local: ref value,
+        external: external,
+    }
+    return views.local
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"function Invalid cannot return reference to local variable value at 15:17, previous declaration at 10:9",
+	})
+}
+
+func TestNestedAggregateReferenceProvenanceIsFieldSensitive(t *testing.T) {
+	input := `
+module main
+
+type View struct {
+    value: ref int,
+}
+
+type Pair struct {
+    local: View,
+    external: View,
+}
+
+fn Valid(external: ref int) ref int {
+    let value := 10
+    let pair := Pair {
+        local: View { value: ref value },
+        external: View { value: external },
+    }
+    return pair.external.value
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestAggregateFieldAssignmentReplacesReferenceProvenance(t *testing.T) {
+	input := `
+module main
+
+type View struct {
+    value: ref int,
+}
+
+fn Valid(external: ref int) ref int {
+    let value := 10
+    let mut view := View { value: ref value }
+    view.value = external
+    return view.value
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestAggregateFieldProvenanceJoinsAcrossBranches(t *testing.T) {
+	input := `
+module main
+
+type View struct {
+    value: ref int,
+}
+
+fn Invalid(condition: bool, external: ref int) ref int {
+    let local := 10
+    let mut view := View { value: external }
+    if condition {
+        view.value = ref local
+    }
+    return view.value
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"function Invalid cannot return reference to local variable local at 14:16, previous declaration at 9:9",
+	})
+}
+
+func TestAggregateCopyPreservesFieldSensitiveReferenceProvenance(t *testing.T) {
+	input := `
+module main
+
+type Views struct {
+    local: ref int,
+    external: ref int,
+}
+
+fn Valid(external: ref int) ref int {
+    let value := 10
+    let views := Views {
+        local: ref value,
+        external: external,
+    }
+    let copied := views
+    return copied.external
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestReferenceArrayProvenanceIsElementSensitiveForConstantIndex(t *testing.T) {
+	input := `
+module main
+
+fn Valid(external: ref int) ref int {
+    let value := 10
+    let views := [ref value, external]
+    return views[1]
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestReferenceArrayDynamicIndexJoinsElementProvenance(t *testing.T) {
+	input := `
+module main
+
+fn Invalid(index: uint, external: ref int) ref int {
+    let value := 10
+    let views := [ref value, external]
+    return views[index]
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"function Invalid cannot return reference to local variable value at 7:17, previous declaration at 5:9",
+	})
+}
+
+func TestAggregateFieldProvenanceJoinsAcrossLoopBackedges(t *testing.T) {
+	input := `
+module main
+
+type View struct {
+    value: ref int,
+}
+
+fn Invalid(condition: bool, external: ref int) ref int {
+    let local := 10
+    let mut view := View { value: external }
+    while condition {
+        view.value = ref local
+        break
+    }
+    return view.value
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"function Invalid cannot return reference to local variable local at 15:16, previous declaration at 9:9",
+	})
+}
+
+func TestReferenceArrayElementAssignmentReplacesOnlyThatOrigin(t *testing.T) {
+	input := `
+module main
+
+fn Valid(external: ref int) ref int {
+    let value := 10
+    let mut views := [ref value, ref value]
+    views[1] = external
+    return views[1]
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestInterproceduralReferenceSummaryRejectsLocalArgument(t *testing.T) {
+	input := `
+module main
+
+fn Invalid() ref int {
+    let value := 10
+    return Identity(ref value)
+}
+
+fn Identity(value: ref int) ref int {
+    return value
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"function Invalid cannot return reference to local variable value at 6:12, previous declaration at 5:9",
+	})
+}
+
+func TestInterproceduralReferenceSummaryAllowsCallerOwnedArgument(t *testing.T) {
+	input := `
+module main
+
+fn Forward(value: ref int) ref int {
+    return Identity(value)
+}
+
+fn Identity(value: ref int) ref int {
+    return value
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestInterproceduralReferenceSummaryComposesTransitively(t *testing.T) {
+	input := `
+module main
+
+fn Invalid() ref int {
+    let value := 10
+    return Forward(ref value)
+}
+
+fn Forward(value: ref int) ref int {
+    return Identity(value)
+}
+
+fn Identity(value: ref int) ref int {
+    return value
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"function Invalid cannot return reference to local variable value at 6:12, previous declaration at 5:9",
+	})
+}
+
+func TestInterproceduralProjectedReferenceSummary(t *testing.T) {
+	input := `
+module main
+
+type Pair struct {
+    first: int,
+    second: int,
+}
+
+fn Invalid() ref int {
+    let pair := Pair { first: 1, second: 2 }
+    return First(ref pair)
+}
+
+fn First(pair: ref Pair) ref int {
+    return ref pair.first
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"function Invalid cannot return reference to local variable pair at 11:12, previous declaration at 10:9",
+	})
+}
+
+func TestInterproceduralSummaryJoinsMultipleParameters(t *testing.T) {
+	input := `
+module main
+
+fn Invalid(condition: bool, external: ref int) ref int {
+    let local := 10
+    return Select(condition, ref local, external)
+}
+
+fn Select(condition: bool, first: ref int, second: ref int) ref int {
+    if condition {
+        return first
+    }
+    return second
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"function Invalid cannot return reference to local variable local at 6:12, previous declaration at 5:9",
+	})
+}
+
+func TestInterproceduralAggregateSummaryIsFieldSensitive(t *testing.T) {
+	input := `
+module main
+
+type Views struct {
+    local: ref int,
+    external: ref int,
+}
+
+fn Valid(local: ref int, external: ref int) ref int {
+    let views := MakeViews(local, external)
+    return views.external
+}
+
+fn MakeViews(local: ref int, external: ref int) Views {
+    return Views { local: local, external: external }
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestInterproceduralAggregateSummaryRejectsLocalField(t *testing.T) {
+	input := `
+module main
+
+type Views struct {
+    local: ref int,
+    external: ref int,
+}
+
+fn Invalid(external: ref int) ref int {
+    let local := 10
+    let views := MakeViews(ref local, external)
+    return views.local
+}
+
+fn MakeViews(local: ref int, external: ref int) Views {
+    return Views { local: local, external: external }
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"function Invalid cannot return reference to local variable local at 12:17, previous declaration at 10:9",
+	})
+}
+
+func TestInterproceduralMethodSummaryInstantiatesReceiver(t *testing.T) {
+	input := `
+module main
+
+type Pair struct {
+    first: int,
+    second: int,
+}
+
+impl Pair {
+    fn First() ref int {
+        return ref self.first
+    }
+}
+
+fn Invalid() ref int {
+    let pair := Pair { first: 1, second: 2 }
+    return pair.First()
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"function Invalid cannot return reference to local variable pair at 17:16, previous declaration at 16:9",
+	})
+}
+
+func TestInterproceduralReturnedReferenceKeepsGrantingBorrowActive(t *testing.T) {
+	input := `
+module main
+
+fn Identity(value: ref int) ref int {
+    return value
+}
+
+fn Invalid() void {
+    let mut value := 10
+    let view := Identity(ref value)
+    value = 20
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"cannot assign to value while it is shared borrowed at 11:5, previous declaration at 10:17",
+	})
+}
+
 func TestReturnIndirectLambdaCapturingLocalReferenceIsRejected(t *testing.T) {
 	input := `
 module main

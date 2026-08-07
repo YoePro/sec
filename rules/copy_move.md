@@ -109,6 +109,55 @@ The current compiler implements:
 - conservative rejection of ordinary named-source copies whose generic
   copyability has not been proven;
 - self-move rejection for direct and overlapping root destinations;
+- structured place classification for identifiers, fields, properties,
+  constant/dynamic indices, slices, and implicit reference dereference;
+- place-overlap checks used by self-move, borrowing, reads and assignments;
+- proven-disjoint field and constant-index borrows, with dynamic indices
+  treated conservatively as overlapping;
+- explicit nested-field moves with field-sensitive unavailable state;
+- continued sibling-field access and whole-aggregate rejection after a partial
+  move;
+- field assignment that reinitializes a moved field and restores aggregate
+  availability when no moved projections remain;
+- conservative partial-move restriction to independently tracked local struct
+  storage, excluding aliases and externally observable storage;
+- canonical Place provenance for borrow/reborrow operations through directly
+  created local reference and slice aliases, preserved across reference copy
+  or move, with active borrow ownership transferred on mutable-reference move;
+- normalized half-open Place intervals for static slice bounds, including
+  disjoint ranges, outside constant indices, empty ranges and local alias
+  composition;
+- projection-sensitive availability and move-reason merging across continuing
+  `if`, `switch`, `select`, and statement-`match` branches;
+- restoration of a moved field after exhaustive branch reinitialization, while
+  retaining unavailability if any continuing path leaves it moved;
+- loop-header Place availability joined from entry, normal fallthrough and
+  `continue`, with a verification pass over the next condition and iteration;
+- separate `break` exit state and per-iteration availability for `for`
+  bindings;
+- loop-header active-borrow and local-reference-origin joins over entry,
+  fallthrough and `continue`, with post-loop `break` state and a verification
+  pass over the next condition and iteration;
+- preservation of identical canonical reference origins across loop joins and
+  bounded path-disjunctive Place sets for differing known origins, including
+  projection and borrow validation over every alternative;
+- nested field/element reference-origin maps for locally constructed structs
+  and fixed arrays, preserved by aggregate transfer and updated by replacement
+  assignment, with constant-index precision and conservative dynamic joins;
+- declaration-order-independent returned-reference summaries for direct
+  functions and methods, including parameter/receiver projections, multiple
+  sources, aggregate paths, transitive calls and granting-borrow retention;
+- must-closed resource state for local `io.File` and `io.Directory`, intersected
+  across continuing branches and loop exit/back-edge paths, including
+  zero-iteration and `while true` break behavior;
+- union-payload Place projections with inferred move for move-only pattern
+  bindings and ordinary copy for copyable payload bindings;
+- payload extraction from reusable local subjects, temporary forwarding,
+  nested subject paths, borrow conflicts, whole-subject invalidation and
+  exhaustive reinitialization;
+- explicit branch-scoped shared/mutable payload borrowing for named unions and
+  Result, with active-variant provenance and escape rejection;
+- ownership-state merging for both statement and expression `match`;
 - mutable reinitialization after move or explicit discard;
 - formatter preservation and LSP semantic-token classification of both move
   operators;
@@ -121,10 +170,11 @@ The current compiler implements:
 
 The implementation is partial in these areas:
 
-- move state is primarily root-identifier based;
-- member and field move state is not tracked independently;
-- branch state merges moved identifiers conservatively but do not yet implement
-  the complete ownership-state lattice;
+- move state covers root identifiers, nested fields and owned union payload
+  projections; indexed, sliced and aliased move state remains incomplete even
+  though local reference-alias borrow provenance is canonicalized;
+- branch state merges root and nested-field places, but does not yet implement
+  the complete initialization and destruction lattice;
 - type classification exists, but implicit copy implementation is incomplete
   for semantic-copy types;
 - destruction responsibility is inferred indirectly rather than represented as
@@ -134,7 +184,11 @@ The implementation is partial in these areas:
 - call argument transfer uses parameter `ref` information and type
   classification, but does not yet expose structured consumption metadata;
 - current strings are treated as views or static literals at lowering level;
-- loops do not yet implement the complete fixed-point ownership model;
+- loop-carried Place availability, active borrows and local reference origins
+  reach the current conservative finite may-state fixed point; close-tracked
+  resources additionally use a must-closed loop lattice, while general
+  destruction/cleanup state and imported/opaque, function-value or unsupported
+  recursive provenance remain incomplete;
 - current diagnostics are not all registered with stable ownership IDs;
 - LSP move quick fixes are operator-aware, but do not yet prove every borrow,
   alias, and place-overlap condition required for universally safe automatic
@@ -144,9 +198,9 @@ The implementation is partial in these areas:
 
 The following are not yet implemented:
 
-- place-based move tracking;
-- field-sensitive partial moves;
-- field reinitialization after partial move;
+- indexed, sliced and aliased place move availability beyond implemented
+  roots, nested struct fields and union payloads;
+- multi-field active-variant borrowed destructuring;
 - complete aggregate availability masks;
 - fixed-array partial move;
 - dynamic-list consuming extraction;

@@ -36,54 +36,55 @@ const (
 )
 
 type Type struct {
-	Name                      string
-	Module                    string
-	Kind                      TypeKind
-	Named                     bool
-	Declared                  bool
-	Intrinsic                 bool
-	ExplicitlyNonCopyable     bool
-	NoCopyPolicyOrigin        string
-	Underlying                string
-	Unit                      string
-	Dimension                 Dimension
-	ReferenceMutable          bool
-	ReferenceOriginName       string
-	ReferenceOriginToken      lexer.Token
-	ReferenceOriginLocal      bool
-	ReferenceOriginStorage    StorageOrigin
-	ReferenceOriginGeneration int
-	MinInt                    *int64
-	MaxInt                    *int64
-	MinUint                   *uint64
-	MaxUint                   *uint64
-	MinInteger                *big.Int
-	MaxInteger                *big.Int
-	Contracts                 []Contract
-	ExplicitDefault           *DefaultConstant
-	InvalidExplicitDefault    bool
-	EnumValues                []string
-	EnumConsts                map[string]EnumValue
-	BitWidth                  int64
-	UnionVariants             []UnionVariant
-	TypeArgs                  []Type
-	ConstArgs                 []int64
-	Element                   *Type
-	ArrayLength               int64
-	EventCapacity             int64
-	EventCapacitySet          bool
-	FunctionParameterTypes    []Type
-	FunctionReturnType        *Type
-	GenericParameters         []string
-	Fields                    []StructField
-	RegisterWidth             int64
-	RegisterFields            []RegisterField
-	Properties                []Property
-	Events                    []Event
-	Implements                []Type
-	InterfaceMethods          []Function
-	InterfaceProperties       []InterfaceProperty
-	InterfaceEvents           []InterfaceEvent
+	Name                       string
+	Module                     string
+	Kind                       TypeKind
+	Named                      bool
+	Declared                   bool
+	Intrinsic                  bool
+	ExplicitlyNonCopyable      bool
+	NoCopyPolicyOrigin         string
+	Underlying                 string
+	Unit                       string
+	Dimension                  Dimension
+	ReferenceMutable           bool
+	ReferenceOriginName        string
+	ReferenceOriginToken       lexer.Token
+	ReferenceOriginLocal       bool
+	ReferenceOriginMatchScoped bool
+	ReferenceOriginStorage     StorageOrigin
+	ReferenceOriginGeneration  int
+	MinInt                     *int64
+	MaxInt                     *int64
+	MinUint                    *uint64
+	MaxUint                    *uint64
+	MinInteger                 *big.Int
+	MaxInteger                 *big.Int
+	Contracts                  []Contract
+	ExplicitDefault            *DefaultConstant
+	InvalidExplicitDefault     bool
+	EnumValues                 []string
+	EnumConsts                 map[string]EnumValue
+	BitWidth                   int64
+	UnionVariants              []UnionVariant
+	TypeArgs                   []Type
+	ConstArgs                  []int64
+	Element                    *Type
+	ArrayLength                int64
+	EventCapacity              int64
+	EventCapacitySet           bool
+	FunctionParameterTypes     []Type
+	FunctionReturnType         *Type
+	GenericParameters          []string
+	Fields                     []StructField
+	RegisterWidth              int64
+	RegisterFields             []RegisterField
+	Properties                 []Property
+	Events                     []Event
+	Implements                 []Type
+	InterfaceMethods           []Function
+	InterfaceProperties        []InterfaceProperty
+	InterfaceEvents            []InterfaceEvent
 }
 
 type EnumValue struct {
@@ -234,6 +235,8 @@ type Function struct {
 	AllocationEffect  AllocationEffect
 	ImplTarget        string
 	ReceiverMutable   bool
+	ReturnOrigin      localReferenceOrigin
+	HasReturnOrigin   bool
 }
 
 type FunctionParameter struct {

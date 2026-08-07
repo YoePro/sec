@@ -1,0 +1,262 @@
+schema_version: 1
+updated: "2026-08-07"
+purpose: >-
+  Canonical implementation ledger for compiler and tooling work. Normative
+  language behavior remains in rules/, while implementation status is migrated
+  here as rulebooks are rewritten.
+
+status_values:
+  implemented: The described scope is integrated and verified.
+  partial: A usable vertical slice is integrated, with listed work remaining.
+  planned: The scope is documented but no implementation slice is integrated.
+
+integrations:
+  - id: frontend.parser-recovery-result
+    area: frontend
+    status: partial
+    integrated: "2026-08-07"
+    summary: >-
+      Introduces the canonical ParseResult migration path and retains selected
+      malformed syntax and parser repairs as structured recovery data.
+    rules:
+      - rules/parser_recovery.md
+      - rules/grammar.md
+      - rules/diagnostics.txt
+      - rules/lsp.md
+    code:
+      - internal/ast/ast.go
+      - internal/parser/parser.go
+      - internal/parser/expression.go
+      - internal/parser/recovery.go
+      - internal/sema/analyzer.go
+      - cmd/compiler/main.go
+      - cmd/compiler/diagnostic_catalog.go
+      - cmd/lsp/main.go
+    implemented:
+      - ParseResult containing Program, Diagnostics, Warnings, Recovery, HasErrors, and Fatal
+      - compatibility retention of ParseProgram, Errors, Warnings, and Diagnostics
+      - structured recovery events for virtual missing-token insertion
+      - structured recovery events for skipped statement token ranges
+      - InvalidStatement nodes retained at top level and in ordinary statement blocks
+      - InvalidExpression nodes for missing Pratt prefix parsers
+      - invalid TypeReference marking with recovery metadata on selected type paths
+      - InvalidDeclaration nodes for failed declaration-shaped top-level statements
+      - InvalidMember nodes and skipped ranges for disallowed impl members
+      - InvalidPattern nodes for malformed match arms and try handlers
+      - delimiter-aware later-line sibling recovery for match arms and try handlers
+      - skipped-range recovery events for impl members, match arms, and try handlers
+      - semantic ErrorType propagation for invalid expressions and type references
+      - speculative parser rollback removes associated recovery events
+      - recovery contexts and numbered episodes on structured diagnostics and recovery events
+      - diagnostic deduplication by ID, primary token, and recovery context
+      - same-location secondary diagnostic suppression within active recovery episodes
+      - speculative rollback reconstruction of deduplication and episode state
+      - shared delimiter stack preserving mismatched outer closers
+      - delimiter-aware recovery for struct fields, switch/select entries, directives, generic parameters, declaration tails, malformed for headers, attributes, properties, and balanced blocks
+      - skipped-range events from each migrated delimiter-aware recovery helper
+      - deterministic 100-diagnostic parser cap with one terminal P2015 diagnostic
+      - central CLI and LSP parse paths consume ParseResult
+    tests:
+      - internal/parser/parser_test.go
+    verification:
+      - command: go test ./...
+        result: passed
+      - command: emit-mlir --verify over testdata/ir
+        result: passed
+      - command: validate implementation-status.yaml
+        result: passed
+    remaining:
+      - invalid type retention on every type-reference failure path
+      - skipped-range and shared-stack migration for remaining specialized recovery helpers
+      - recovery contexts for remaining specialized parsers
+      - cross-location causal recovery-episode suppression
+      - partial unterminated-block retention
+      - recovery-aware Sema traversal policy for every invalid subtree
+      - recovery fuzzing and mutation tests
+
+  - id: sema.place-analysis
+    area: frontend-analysis
+    status: partial
+    integrated: "2026-08-07"
+    summary: >-
+      Introduces compile-time storage-place identity and structural overlap for
+      borrow, assignment, addressability, and self-move analysis without runtime
+      ownership or borrow tracking.
+    rules:
+      - rules/ownership.md
+      - rules/copy_move.md
+      - rules/borrowing.txt
+      - rules/lifetime_analysis.txt
+      - rules/arrays-slices.txt
+      - rules/properties.txt
+    code:
+      - internal/sema/place.go
+      - internal/sema/analyzer.go
+    tests:
+      - internal/sema/copy_move_test.go
+      - internal/sema/lifetime_test.go
+    implemented:
+      - Place roots with field, property, constant/dynamic index, slice, and reference-dereference projections
+      - place type, mutability, and addressability classification
+      - structural overlap with disjoint fields and distinct constant indices
+      - conservative overlap for dynamic indices, symbolic slice bounds, properties, and root-prefix relationships
+      - place-sensitive borrow creation, read, and assignment conflict checks
+      - place-based explicit self-move overlap validation
+      - rejection of borrowing temporary and non-addressable expressions
+      - explicit moves from nested struct-field places
+      - field-sensitive unavailable state with disjoint sibling-field access
+      - whole-aggregate rejection while a field remains moved
+      - successful field assignment reinitializing the moved place
+      - conservative partial-move rejection for aliased, register, fixed-address, and nonlocal storage
+      - projection-sensitive move-state and causal-reason merging across if, switch, select, and statement-match branches
+      - exhaustive-branch field reinitialization with literal-unreachable-path exclusion
+      - loop-header Place fixed point over entry, normal fallthrough, and continue states
+      - next-condition and next-iteration verification for loop-carried unavailable places
+      - separate break exit availability and fresh per-iteration for bindings
+      - union variant payload Place projections, including nested struct subject paths
+      - inferred move-only payload extraction, copyable payload copy, and temporary forwarding
+      - statement and expression match availability merging with whole-subject invalidation
+      - union payload reinitialization and overlapping-borrow validation
+      - canonical referent Place provenance for directly created local reference and slice aliases
+      - field and index reborrow overlap through aliases, including disjoint constant projections
+      - reference provenance preservation across shared-reference copies and mutable-reference moves, including active-borrow holder transfer
+      - normalized half-open Place intervals for statically known inclusive, exclusive, and open slice bounds
+      - disjoint static slice ranges, outside constant indices, and empty slice ranges
+      - constant index and subrange composition through local slice aliases
+      - branch-scoped ref and ref mut payload patterns for named unions and Result variants
+      - active-variant payload Place provenance with mutability and overlapping-borrow validation
+      - rejection of temporary payload borrows and escape through match values, assignments, returned aggregates, or lambdas
+      - loop-header active-borrow joins over entry, normal fallthrough, and continue states
+      - loop-header local-reference-origin joins with next-condition and next-iteration verification
+      - post-loop borrow and reference-origin joins including explicit break exits and fresh for bindings
+      - bounded path-disjunctive reference-origin sets across branch and loop joins
+      - field, index, and slice projection across every known reference-origin alternative
+      - reborrow registration and conflict checking across every possible owner root
+      - deterministic 16-place provenance cap with conservative unknown-origin rejection
+      - nested field-sensitive reference origins for locally constructed structs and fixed arrays
+      - aggregate-origin preservation through whole-value transfer and replacement assignment
+      - constant-index element precision and conservative dynamic-index origin joins
+      - aggregate-contained origin joins across branches and loop fixed points
+      - declaration-order-independent fixed-point return-origin summaries for direct functions and methods
+      - symbolic parameter, receiver, projection, multi-source, and aggregate return paths
+      - transitive call-site origin instantiation and returned granting-borrow retention
+    verification:
+      - command: go test ./...
+        result: passed
+      - command: emit-mlir --verify over testdata/ir
+        result: passed
+      - command: validate implementation-status.yaml
+        result: passed
+    remaining:
+      - indexed, sliced, and aliased move availability beyond roots, nested fields, and owned union payloads
+      - recursive aggregate availability masks
+      - symbolic slice-range and imported or opaque foreign alias/provenance overlap
+      - multi-field active-variant borrowed payload destructuring
+      - general destruction responsibility and conditional cleanup-state lattices beyond close-tracked resources
+      - persisted summary metadata, function-value calls, recursive summary cycles, and all generic reference calls
+      - Semantic IR copy, move, replacement, and destruction operations
+
+  - id: sema.resource-cleanup-state
+    area: frontend-analysis
+    status: partial
+    integrated: "2026-08-07"
+    summary: >-
+      Tracks the compile-time must-closed state of local io.File and io.Directory
+      resources across branches and loop control-flow edges without runtime
+      ownership tables or cleanup tracking.
+    rules:
+      - rules/destruction.txt
+      - rules/ownership.md
+      - rules/copy_move.md
+      - rules/lifetime_analysis.txt
+    code:
+      - internal/sema/analyzer.go
+    tests:
+      - internal/sema/destruction_test.go
+    implemented:
+      - isolated resource-close state for if, switch, select, and match branches
+      - must-closed intersection over all continuing branch paths
+      - loop-header close-state intersection over entry, fallthrough, and continue edges
+      - separate break and continue close-state snapshots
+      - zero-iteration preservation for ordinary for and while loops
+      - while-true post-state derived from reachable break exits
+      - reassignment reopening a resource on a loop edge
+      - removal of iteration-local resource state from recorded loop edges
+      - next-condition and next-iteration verification when loop close state changes
+    verification:
+      - command: go test ./...
+        result: passed
+      - command: emit-mlir --verify over testdata/ir
+        result: passed
+      - command: validate implementation-status.yaml
+        result: passed
+    remaining:
+      - general non-trivial destruction responsibility beyond File and Directory
+      - conditional and partial aggregate cleanup state
+      - explicit cleanup regions and terminal ownership actions in Semantic IR
+      - destruction and cleanup lowering before LLVM translation
+
+  - id: sema.defer-delayed-uses
+    area: frontend
+    status: partial
+    integrated: "2026-08-03"
+    summary: >-
+      Tracks outer root bindings used by defer as delayed uses and rejects an
+      earlier move or discard without introducing runtime borrow tracking.
+    rules:
+      - rules/defer.txt
+      - rules/lifetime_analysis.txt
+      - rules/borrowing.txt
+      - rules/copy_move.md
+      - rules/memory_model.md
+    code:
+      - internal/sema/analyzer.go
+    tests:
+      - internal/sema/analyzer_test.go
+    verification:
+      - command: go test ./...
+        result: passed
+      - command: emit-mlir --verify over testdata/ir
+        result: passed
+    remaining:
+      - place-sensitive defer captures
+      - explicit owned-copy and move capture modes
+      - cleanup-order validation in Semantic IR
+
+  - id: ffi.link-name-and-declarations
+    area: frontend-and-lowering
+    status: partial
+    integrated: "2026-08-03"
+    summary: >-
+      Implements explicit foreign link names, duplicate-symbol validation,
+      bodyless extern declarations, linked calls, and physical fixed-width LLVM
+      scalar mappings.
+    rules:
+      - rules/ffi.txt
+      - rules/grammar.md
+    code:
+      - internal/parser/parser.go
+      - internal/sema/analyzer.go
+      - internal/sema/types.go
+      - internal/codegen/llvm/functions.go
+      - internal/codegen/llvm/types.go
+      - internal/codegen/mlir/generator.go
+    tests:
+      - internal/parser/parser_test.go
+      - internal/sema/analyzer_test.go
+      - internal/codegen/llvm/generator_test.go
+      - internal/codegen/mlir/generator_test.go
+      - testdata/ir/test_ffi_link_name.sec
+    verification:
+      - command: go test ./...
+        result: passed
+      - command: emit-mlir --verify testdata/ir/test_ffi_link_name.sec
+        result: passed
+      - command: clang LLVM IR verification
+        result: passed
+    remaining:
+      - target-specific calling-convention attributes
+      - target-width ABI validation
+      - explicit foreign struct layout validation
+      - library and object dependency metadata
+      - null, ownership contracts, and callbacks

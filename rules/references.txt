@@ -100,6 +100,15 @@ Implemented:
 - field and index access propagate reference-origin metadata when the accessed
   value is itself a reference
 - slices carry reference-origin metadata from the sliced source
+- local reference and slice bindings retain a canonical structured Place for
+  their referent; reborrows through fields and constant/dynamic indices are
+  checked against the original storage path
+- moving a mutable reference binding and copying a shared reference binding
+  preserve that canonical referent Place; a moved mutable reference also takes
+  over the active granting borrow
+- explicit `ref`/`ref mut` match bindings for union and Result payloads carry
+  active-variant Place provenance and a branch-scoped origin that cannot escape
+  through a match result, outer assignment, returned aggregate or lambda
 - storing a reference to local function storage into caller-owned field or index
   storage is rejected
 - local aggregate variables that receive references to local function storage
@@ -110,17 +119,40 @@ Implemented:
   and `match` branches
 - arena generations are merged conservatively across `for` and `while` loops,
   including recorded `break` exits
+- local reference origins are joined across continuing branches and across
+  `for`/`while` entry, fallthrough, `continue`, and `break` edges
+- a loop header is rechecked when its joined reference-origin state changes;
+  identical origins retain one canonical Place, while differing known origins
+  form a finite path-disjunctive Place set
+- field, index and slice projections through a path-disjunctive reference are
+  applied to every possible referent Place; reborrows register and validate a
+  borrow for every possible owner root
+- finite multi-origin sets contain at most 16 distinct Places. A missing origin
+  or a larger set degrades to unknown provenance and reborrow is rejected,
+  without runtime provenance metadata
+- local struct and fixed-array values retain reference origins per canonical
+  field/element path; nested literals, whole-value transfer, field assignment,
+  constant indexing, dynamic-index joins, branches and loop fixed points all
+  preserve or conservatively join those contained origin sets
+- functions infer deterministic returned-reference summaries over symbolic
+  parameters, projected parameter fields, multiple possible parameters, static
+  method receivers and aggregate result paths; calls instantiate those summaries
+  against the caller's concrete origin sets and retain the granting borrow
 
 Not implemented yet:
 
 - full escape analysis
-- returned-reference origin relationships between input parameters and return
-values
-- complete field-, index- and slice-sensitive origins beyond root-symbol
-tracking
+- persisted/imported returned-reference metadata for separate compilation,
+  function values, recursive summary cycles and all generic reference calls
+- complete origins for references stored inside opaque foreign aggregates, plus
+  symbolic interprocedural range relationships
 - complete closure/reference escape validation
 
 Initial limitation:
 
-Origin tracking is root-symbol based. A reference into `value.field`,
-`value[index]` or `value[..]` currently records `value` as the origin.
+Escape diagnostics use path-specific origins for locally constructed and
+summary-described structs/fixed arrays and a root-symbol fallback elsewhere.
+Borrow analysis retains structured Places for direct aliases, aggregate fields,
+elements and ordinary direct-call results. Statically known slice bounds are
+normalized and composed through local aliases. Imported/opaque foreign values,
+function values and unsupported recursive summary cycles remain conservative.

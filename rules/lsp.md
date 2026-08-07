@@ -572,6 +572,15 @@ The implementation is useful but architecturally misplaced.
 
 Completion and semantic tokens contain selected recovery behavior.
 
+The central LSP parse paths now consume the parser's `ParseResult`, including
+structured diagnostics, recovery context, episode association and error state.
+The partial AST retains failed declarations, statements, impl members,
+match/handler patterns, and selected invalid expressions/types. Episode-aware
+deduplication reduces duplicate parser diagnostics before publication. A
+shared delimiter stack now keeps migrated recovery scans inside their nested
+parenthesis, bracket, and brace boundaries and exposes their skipped ranges to
+tooling.
+
 The general parser and compiler workspace do not yet provide a complete
 error-tolerant syntax tree.
 

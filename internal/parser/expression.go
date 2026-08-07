@@ -1,7 +1,10 @@
 package parser
 
 import (
+	"fmt"
+
 	"sec/internal/ast"
+	compilerdiagnostics "sec/internal/diagnostics"
 	"sec/internal/lexer"
 )
 
@@ -140,21 +143,23 @@ func (p *Parser) parseExpression(currentPrecedence precedence) ast.Expression {
 
 	default:
 		if p.curToken.Type == lexer.ILLEGAL && isMalformedScientificExponent(p.curToken.Lexeme) {
-			p.addError(
+			message := fmt.Sprintf(
 				"malformed scientific exponent %q: expected at least one decimal digit at %d:%d",
 				p.curToken.Lexeme,
 				p.curToken.Line,
 				p.curToken.Column,
 			)
-			return nil
+			p.addDiagnostic(compilerdiagnostics.ParserInvalidExpression, p.curToken, nil, nil, "%s", message)
+			return p.invalidExpression(p.curToken, message, compilerdiagnostics.ParserInvalidExpression)
 		}
-		p.addError(
+		message := fmt.Sprintf(
 			"no prefix parse function for %q at %d:%d",
 			p.curToken.Type,
 			p.curToken.Line,
 			p.curToken.Column,
 		)
-		return nil
+		p.addDiagnostic(compilerdiagnostics.ParserInvalidExpression, p.curToken, nil, nil, "%s", message)
+		return p.invalidExpression(p.curToken, message, compilerdiagnostics.ParserInvalidExpression)
 	}
 
 	for p.peekToken.Type != lexer.EOF && currentPrecedence < p.peekPrecedence() {
@@ -325,8 +330,12 @@ func (p *Parser) parseMatchExpression() *ast.MatchExpression {
 
 func (p *Parser) parseMatchArmBlock() []*ast.MatchArm {
 	arms := []*ast.MatchArm{}
+	previousContext := p.recoveryContext
+	p.recoveryContext = RecoveryContextMatchArm
+	defer func() { p.recoveryContext = previousContext }()
 
 	for {
+		p.endRecoveryEpisode()
 		p.nextToken()
 		if p.curToken.Type == lexer.RBRACE {
 			return arms
@@ -336,15 +345,19 @@ func (p *Parser) parseMatchArmBlock() []*ast.MatchArm {
 			return nil
 		}
 
+		start := p.curToken
+		diagnosticStart := len(p.diagnostics)
 		arm := p.parseMatchArm()
 		if arm == nil {
-			p.skipMatchArm()
-			if p.curToken.Type == lexer.RBRACE {
-				return arms
-			}
+			recovery := p.skipMatchArm(start)
+			pattern := p.invalidPattern(start, diagnosticStart, recovery)
+			arms = append(arms, &ast.MatchArm{
+				Token: start, Pattern: pattern, Invalid: true, Recovery: pattern.Recovery,
+			})
 			continue
 		}
 		arms = append(arms, arm)
+		p.endRecoveryEpisode()
 	}
 }
 
@@ -399,14 +412,8 @@ func (p *Parser) parseMatchArm() *ast.MatchArm {
 	return arm
 }
 
-func (p *Parser) skipMatchArm() {
-	for p.curToken.Type != lexer.RBRACE && p.curToken.Type != lexer.EOF {
-		if p.peekToken.Type == lexer.RBRACE {
-			p.nextToken()
-			return
-		}
-		p.nextToken()
-	}
+func (p *Parser) skipMatchArm(start lexer.Token) RecoveryEvent {
+	return p.skipPatternEntry(start)
 }
 
 func (p *Parser) parseSpawnExpression() ast.Expression {
@@ -803,8 +810,12 @@ func (p *Parser) parseTryExpression() ast.Expression {
 
 func (p *Parser) parseTryHandlerBlock() []*ast.TryHandler {
 	handlers := []*ast.TryHandler{}
+	previousContext := p.recoveryContext
+	p.recoveryContext = RecoveryContextTryHandler
+	defer func() { p.recoveryContext = previousContext }()
 
 	for {
+		p.endRecoveryEpisode()
 		p.nextToken()
 		if p.curToken.Type == lexer.RBRACE {
 			return handlers
@@ -820,15 +831,19 @@ func (p *Parser) parseTryHandlerBlock() []*ast.TryHandler {
 			return p.parseExplicitTryMatchHandlerBlock()
 		}
 
+		start := p.curToken
+		diagnosticStart := len(p.diagnostics)
 		handler := p.parseTryHandler()
 		if handler == nil {
-			p.skipTryHandler()
-			if p.curToken.Type == lexer.RBRACE {
-				return handlers
-			}
+			recovery := p.skipTryHandler(start)
+			pattern := p.invalidPattern(start, diagnosticStart, recovery)
+			handlers = append(handlers, &ast.TryHandler{
+				Token: start, Pattern: pattern, Invalid: true, Recovery: pattern.Recovery,
+			})
 			continue
 		}
 		handlers = append(handlers, handler)
+		p.endRecoveryEpisode()
 
 		if p.isTryHandlerBlockRecoveryStart(p.peekToken.Type) {
 			p.addError("expected '}' after try handler block before %q at %d:%d", p.peekToken.Lexeme, p.peekToken.Line, p.peekToken.Column)
@@ -905,18 +920,34 @@ func (p *Parser) parseTryHandler() *ast.TryHandler {
 	return handler
 }
 
-func (p *Parser) skipTryHandler() {
-	for p.curToken.Type != lexer.RBRACE && p.curToken.Type != lexer.EOF {
-		if p.peekToken.Type == lexer.RBRACE {
-			p.nextToken()
-			return
+func (p *Parser) skipTryHandler(start lexer.Token) RecoveryEvent {
+	return p.skipPatternEntry(start)
+}
+
+// skipPatternEntry synchronizes before the next line's pattern or the closing
+// brace. Delimiter depth prevents a malformed nested call or literal from
+// being mistaken for a sibling arm.
+func (p *Parser) skipPatternEntry(start lexer.Token) RecoveryEvent {
+	end := start
+	skipped := 1
+	delimiters := newDelimiterStack()
+	for p.curToken.Type != lexer.EOF {
+		atTop := delimiters.empty()
+		if atTop && p.peekToken.Type == lexer.RBRACE {
+			break
 		}
-		if p.peekToken.Type == lexer.ARROW {
-			p.nextToken()
-			continue
+		if atTop && p.peekToken.Line > start.Line && (p.peekToken.Type == lexer.UNDERSCORE || p.isExpressionStart(p.peekToken.Type)) {
+			break
+		}
+		if !delimiters.canConsume(p.peekToken.Type) {
+			break
 		}
 		p.nextToken()
+		end = p.curToken
+		skipped++
+		delimiters.consume(p.curToken.Type)
 	}
+	return p.recordSkippedRecovery(start, end, skipped, RecoveryProbable)
 }
 
 func (p *Parser) parseStructLiteralExpression(left ast.Expression) ast.Expression {

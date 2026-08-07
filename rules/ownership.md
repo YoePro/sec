@@ -60,6 +60,58 @@ The current compiler already implements substantial ownership foundations:
 - a user-invoked LSP quick fix for the proven `S1007` implicit-move diagnostic,
   which changes `:=` to `:<-` or `=` to `<-` and explains that the source
   becomes unavailable.
+- a structured compile-time `Place` representation with root identity, field,
+  property, constant/dynamic index, slice, and reference-dereference
+  projections;
+- place mutability and addressability classification without runtime metadata;
+- conservative place-overlap analysis with disjoint struct fields, distinct
+  constant array indices and normalized static slice intervals;
+- place-sensitive borrow creation, read, assignment, and self-move overlap
+  checks on the integrated expression forms;
+- canonical referent Places for directly created local reference and slice
+  aliases, including field/index reborrows and provenance preservation across
+  shared-reference copies and mutable-reference moves, with the granting borrow
+  transferred to the new mutable-reference binding;
+- normalized static slice Place intervals with disjoint-range, slice/index,
+  empty-range and composed local-alias overlap analysis;
+- rejection of borrows from temporary and non-addressable expressions;
+- explicit moves from nested struct-field places;
+- field-sensitive unavailable state for moved struct fields, preserving access
+  to disjoint sibling fields;
+- rejection of whole-aggregate use while a field remains moved;
+- reinitialization of a moved field through successful field assignment;
+- conservative rejection of partial moves through references, properties,
+  registers, indexes, slices, fixed-address storage, and other nonlocal roots;
+- projection-sensitive move-state merging across continuing `if`, `switch`,
+  `select`, and statement-`match` paths, including all-branch field
+  reinitialization;
+- a Place-availability loop fixed point that joins entry, normal back-edge and
+  `continue` states, then rechecks the next condition and iteration;
+- separation of `break` exits from back-edges and per-iteration restoration of
+  `for` bindings;
+- loop-header may-state joins for active borrows and local reference origins,
+  including normal fallthrough and `continue`, with next-iteration rechecking;
+- post-loop joins including explicit `break` borrow/reference states and
+  bounded path-disjunctive provenance for known origins and conservative
+  rejection only after provenance becomes missing or over-limit;
+- nested, field-sensitive reference provenance for locally constructed struct
+  and fixed-array aggregates through transfer, replacement assignment,
+  constant/dynamic indexing and control-flow joins;
+- compile-time function summaries that instantiate returned parameter/receiver
+  Place sets, projections and aggregate paths at direct calls and transfer the
+  returned reference's granting borrow to its caller-side holder;
+- compile-time must-closed state for local `io.File` and `io.Directory`, joined
+  by intersection across branches and across loop entry, fallthrough,
+  `continue`, and `break` cleanup edges;
+- union variant payload Place projections, including payloads nested below
+  ordinary struct fields;
+- inferred move of move-only payload bindings from reusable local union
+  subjects, ordinary copy of copyable payloads, and forwarding from temporary
+  subjects;
+- union-payload availability merging for statement and expression `match`,
+  whole-subject invalidation, reinitialization, and overlapping-borrow checks.
+- explicit branch-scoped `ref` and `ref mut` bindings for named-union and Result
+  payload Places, including mutability, conflict and escape validation;
 
 These implementation facts do not override the normative rules below.
 
@@ -70,15 +122,17 @@ These implementation facts do not override the normative rules below.
 The current ownership implementation is incomplete or follows older semantics in
 these areas:
 
-- current move tracking is primarily identifier-based rather than place-based;
-- field-sensitive partial move is not implemented;
+- move availability uses places for roots and nested struct-field projections;
+  indexes, slices and aliased move state remain incomplete even though local
+  reference-alias borrow provenance is canonicalized;
+- aliased field availability remains incomplete;
 - copy classification is incomplete for several core and collection types;
 - compiler-known and source-declared `@noCopy` types are classified and
   enforced for direct named-source copy;
 - `string` is not yet fully enforced as the source-level copyable value defined
   by this rulebook;
-- branch merging records moved values but does not yet expose the complete
-  availability lattice required here;
+- branch merging distinguishes available and unavailable nested-field paths,
+  but does not yet expose the complete initialization and destruction lattice;
 - destruction responsibility is tracked only indirectly;
 - move diagnostics do not yet consistently use stable registered IDs beyond
   ordinary-copy rejection;
@@ -92,9 +146,8 @@ these areas:
 
 The following are not yet implemented:
 
-- field-sensitive availability state;
-- struct partial move;
-- struct field reinitialization after partial move;
+- aliased aggregate partial-move analysis;
+- multi-field active-variant borrowed destructuring;
 - recursive aggregate availability analysis;
 - dynamic-list indexed consuming extraction;
 - full collection-specific consuming extraction;

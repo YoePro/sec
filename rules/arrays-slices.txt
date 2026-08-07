@@ -963,6 +963,11 @@ Current implementation status:
   arrays/sequences and slice references, including `ref mut T[]`.
 - Semantic analysis validates explicit shared and mutable slice construction,
   slicing bounds, slice indexing, slice mutability and storage origins.
+- Borrow analysis normalizes statically known inclusive, exclusive and open
+  slice bounds to half-open Place intervals, separates disjoint intervals and
+  outside constant indices, and composes constant indexes/subranges through
+  local slice aliases. Empty static intervals borrow no elements; dynamic
+  bounds remain conservatively overlapping.
 - Semantic analysis validates fixed-array equality recursively from the element
   type and rejects ordinary equality for slice views (`ref T[]` and
   `ref mut T[]`).

@@ -2478,12 +2478,15 @@ impl Vehicle {
 	if len(impl.Members) != 1 {
 		t.Fatalf("wrong impl member count. got=%d want=1", len(impl.Members))
 	}
-	invalid, ok := impl.Members[0].(*ast.InvalidStatement)
+	invalid, ok := impl.Members[0].(*ast.InvalidMember)
 	if !ok {
-		t.Fatalf("impl member is not InvalidStatement. got=%T", impl.Members[0])
+		t.Fatalf("impl member is not InvalidMember. got=%T", impl.Members[0])
 	}
 	if invalid.Message != "variable declarations are not allowed inside impl" {
 		t.Fatalf("wrong invalid message. got=%q", invalid.Message)
+	}
+	if invalid.Recovery == nil || invalid.Recovery.DiagnosticID != diagnostics.ParserInvalidBlockMember {
+		t.Fatalf("missing invalid-member recovery: %#v", invalid.Recovery)
 	}
 }
 
@@ -2511,9 +2514,9 @@ impl File {
 	if len(impl.Members) != 2 {
 		t.Fatalf("wrong impl member count. got=%d want=2", len(impl.Members))
 	}
-	invalid, ok := impl.Members[0].(*ast.InvalidStatement)
+	invalid, ok := impl.Members[0].(*ast.InvalidMember)
 	if !ok {
-		t.Fatalf("impl member 0 is not InvalidStatement. got=%T", impl.Members[0])
+		t.Fatalf("impl member 0 is not InvalidMember. got=%T", impl.Members[0])
 	}
 	if invalid.Message != "free operations are reserved for destruction but are not implemented yet" {
 		t.Fatalf("wrong invalid message. got=%q", invalid.Message)
@@ -3377,18 +3380,24 @@ fn Test() void {
 	if len(p.Errors()) != 2 {
 		t.Fatalf("parser errors = %v, want two primary errors", p.Errors())
 	}
-	if len(program.Statements) != 2 {
-		t.Fatalf("top-level statement count = %d, want 2", len(program.Statements))
+	if len(program.Statements) != 3 {
+		t.Fatalf("top-level statement count = %d, want 3", len(program.Statements))
 	}
-	if _, ok := program.Statements[0].(*ast.UnitDeclStatement); !ok {
-		t.Fatalf("first preserved statement = %T, want UnitDeclStatement", program.Statements[0])
+	if _, ok := program.Statements[0].(*ast.InvalidStatement); !ok {
+		t.Fatalf("first recovered statement = %T, want InvalidStatement", program.Statements[0])
 	}
-	fn := program.Statements[1].(*ast.FunctionDeclaration)
-	if len(fn.Body.Statements) != 1 {
-		t.Fatalf("function statement count = %d, want 1", len(fn.Body.Statements))
+	if _, ok := program.Statements[1].(*ast.UnitDeclStatement); !ok {
+		t.Fatalf("first preserved valid statement = %T, want UnitDeclStatement", program.Statements[1])
 	}
-	if _, ok := fn.Body.Statements[0].(*ast.DiscardStatement); !ok {
-		t.Fatalf("preserved body statement = %T, want DiscardStatement", fn.Body.Statements[0])
+	fn := program.Statements[2].(*ast.FunctionDeclaration)
+	if len(fn.Body.Statements) != 2 {
+		t.Fatalf("function statement count = %d, want 2", len(fn.Body.Statements))
+	}
+	if _, ok := fn.Body.Statements[0].(*ast.InvalidStatement); !ok {
+		t.Fatalf("recovered body statement = %T, want InvalidStatement", fn.Body.Statements[0])
+	}
+	if _, ok := fn.Body.Statements[1].(*ast.DiscardStatement); !ok {
+		t.Fatalf("preserved body statement = %T, want DiscardStatement", fn.Body.Statements[1])
 	}
 }
 
@@ -3420,6 +3429,275 @@ func TestFocusedRecoveryDiagnosticMetadata(t *testing.T) {
 		if test.expected != "" && (len(got.Expected) != 1 || got.Expected[0] != test.expected) {
 			t.Fatalf("%q expected tokens = %v, want %s", test.input, got.Expected, test.expected)
 		}
+	}
+}
+
+func TestParseResultRetainsRecoveryEventsAndInvalidNodes(t *testing.T) {
+	input := `
+? damaged
+fn Valid() void {
+	? damaged
+	return
+}
+`
+
+	result := New(lexer.New(input)).Parse()
+	if !result.HasErrors || result.Fatal {
+		t.Fatalf("wrong result flags: hasErrors=%t fatal=%t", result.HasErrors, result.Fatal)
+	}
+	if len(result.Diagnostics) != 2 || len(result.Recovery) != 2 {
+		t.Fatalf("wrong recovery result: diagnostics=%d recovery=%d", len(result.Diagnostics), len(result.Recovery))
+	}
+	if result.Diagnostics[0].Context != RecoveryContextTopLevel || result.Diagnostics[1].Context != RecoveryContextBlock {
+		t.Fatalf("wrong recovery contexts: %+v", result.Diagnostics)
+	}
+	if result.Diagnostics[0].Episode == 0 || result.Diagnostics[1].Episode == 0 || result.Diagnostics[0].Episode == result.Diagnostics[1].Episode {
+		t.Fatalf("diagnostics did not get distinct recovery episodes: %+v", result.Diagnostics)
+	}
+	for index := range result.Recovery {
+		if result.Recovery[index].Episode != result.Diagnostics[index].Episode || result.Recovery[index].Context != result.Diagnostics[index].Context {
+			t.Fatalf("recovery event %d is detached from its diagnostic: diagnostic=%+v recovery=%+v", index, result.Diagnostics[index], result.Recovery[index])
+		}
+	}
+	if len(result.Program.Statements) != 2 {
+		t.Fatalf("statement count=%d, want 2", len(result.Program.Statements))
+	}
+	invalid, ok := result.Program.Statements[0].(*ast.InvalidStatement)
+	if !ok || invalid.Recovery == nil || invalid.Recovery.Skipped == 0 {
+		t.Fatalf("missing top-level invalid recovery node: %#v", result.Program.Statements[0])
+	}
+	fn := result.Program.Statements[1].(*ast.FunctionDeclaration)
+	if len(fn.Body.Statements) != 2 {
+		t.Fatalf("function statement count=%d, want 2", len(fn.Body.Statements))
+	}
+	if _, ok := fn.Body.Statements[0].(*ast.InvalidStatement); !ok {
+		t.Fatalf("body recovery node=%T, want InvalidStatement", fn.Body.Statements[0])
+	}
+}
+
+func TestParseResultRecordsVirtualMissingToken(t *testing.T) {
+	result := New(lexer.New(`type Broken struct (`)).Parse()
+	if !result.HasErrors {
+		t.Fatal("missing-token source should have parser errors")
+	}
+	found := false
+	for _, event := range result.Recovery {
+		if event.Kind == RecoveryInsertMissingToken && len(event.Expected) == 1 && event.Expected[0] == lexer.LBRACE {
+			found = true
+			if event.Confidence != RecoveryUnambiguous {
+				t.Fatalf("missing-token confidence=%s", event.Confidence)
+			}
+			if event.Context != RecoveryContextTopLevel || event.Episode == 0 {
+				t.Fatalf("missing-token recovery lacks context or episode: %+v", event)
+			}
+			matchedDiagnostic := false
+			for _, diagnostic := range result.Diagnostics {
+				if diagnostic.ID == event.DiagnosticID && diagnostic.Context == event.Context && diagnostic.Episode == event.Episode {
+					matchedDiagnostic = true
+					break
+				}
+			}
+			if !matchedDiagnostic {
+				t.Fatalf("missing-token event is detached from diagnostics: %+v", event)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("missing virtual-token recovery event: %+v", result.Recovery)
+	}
+}
+
+func TestInvalidExpressionIsRetained(t *testing.T) {
+	result := New(lexer.New(`fn Test() void { let value := ) }`)).Parse()
+	if !result.HasErrors {
+		t.Fatal("invalid expression should produce parser error")
+	}
+	fn := result.Program.Statements[0].(*ast.FunctionDeclaration)
+	letStmt := fn.Body.Statements[0].(*ast.LetStatement)
+	invalid, ok := letStmt.Value.(*ast.InvalidExpression)
+	if !ok || invalid.Recovery == nil || invalid.Recovery.DiagnosticID != diagnostics.ParserInvalidExpression {
+		t.Fatalf("invalid expression was not retained: %#v", letStmt.Value)
+	}
+}
+
+func TestInvalidTypeReferenceIsRetained(t *testing.T) {
+	result := New(lexer.New(`fn Test(value: ref) void {}`)).Parse()
+	if !result.HasErrors {
+		t.Fatal("invalid reference type should produce parser error")
+	}
+	fn := result.Program.Statements[0].(*ast.FunctionDeclaration)
+	typ := fn.Parameters[0].Type
+	if typ == nil || !typ.Invalid || typ.Recovery == nil || typ.Recovery.DiagnosticID != diagnostics.ParserInvalidTypeReference {
+		t.Fatalf("invalid type reference was not retained: %#v", typ)
+	}
+}
+
+func TestInvalidDeclarationIsRetained(t *testing.T) {
+	result := New(lexer.New("fn Broken(\nfn Valid() void {}\n")).Parse()
+	if !result.HasErrors {
+		t.Fatal("invalid declaration should produce parser errors")
+	}
+	invalid, ok := result.Program.Statements[0].(*ast.InvalidDeclaration)
+	if !ok || invalid.Recovery == nil || invalid.Recovery.DiagnosticID != diagnostics.ParserInvalidDeclaration {
+		t.Fatalf("invalid declaration was not retained: %#v", result.Program.Statements[0])
+	}
+	if len(result.Program.Statements) != 2 {
+		t.Fatalf("statement count=%d, want invalid declaration plus valid sibling", len(result.Program.Statements))
+	}
+	if _, ok := result.Program.Statements[1].(*ast.FunctionDeclaration); !ok {
+		t.Fatalf("following declaration was not retained: %T", result.Program.Statements[1])
+	}
+}
+
+func TestMatchRecoveryRetainsInvalidArmAndFollowingSibling(t *testing.T) {
+	input := `fn Test(value: bool) int {
+	return match value {
+		true 1
+		false => 2
+	}
+}`
+	result := New(lexer.New(input)).Parse()
+	if !result.HasErrors {
+		t.Fatal("malformed match arm should produce parser errors")
+	}
+	fn := result.Program.Statements[0].(*ast.FunctionDeclaration)
+	matchExpr := fn.Body.Statements[0].(*ast.ReturnStatement).Value.(*ast.MatchExpression)
+	if len(matchExpr.Arms) != 2 {
+		t.Fatalf("match arm count=%d, want invalid arm plus valid sibling", len(matchExpr.Arms))
+	}
+	if pattern, ok := matchExpr.Arms[0].Pattern.(*ast.InvalidPattern); !ok || !matchExpr.Arms[0].Invalid || pattern.Recovery == nil {
+		t.Fatalf("first arm did not retain invalid pattern: %#v", matchExpr.Arms[0])
+	}
+	if pattern, ok := matchExpr.Arms[1].Pattern.(*ast.BooleanLiteral); !ok || pattern.Value {
+		t.Fatalf("following match sibling was not retained: %#v", matchExpr.Arms[1].Pattern)
+	}
+}
+
+func TestTryRecoveryRetainsInvalidHandlerAndFollowingSibling(t *testing.T) {
+	input := `fn Test() Result[int, IOError] {
+	let value := try Calculate() {
+		Err(first) 0
+		Err(second) => 1
+	}
+	return Ok(value)
+}`
+	result := New(lexer.New(input)).Parse()
+	if !result.HasErrors {
+		t.Fatal("malformed try handler should produce parser errors")
+	}
+	fn := result.Program.Statements[0].(*ast.FunctionDeclaration)
+	tryExpr := fn.Body.Statements[0].(*ast.LetStatement).Value.(*ast.TryExpression)
+	if len(tryExpr.Handlers) != 2 {
+		t.Fatalf("try handler count=%d, want invalid handler plus valid sibling", len(tryExpr.Handlers))
+	}
+	if pattern, ok := tryExpr.Handlers[0].Pattern.(*ast.InvalidPattern); !ok || !tryExpr.Handlers[0].Invalid || pattern.Recovery == nil {
+		t.Fatalf("first handler did not retain invalid pattern: %#v", tryExpr.Handlers[0])
+	}
+	if _, ok := tryExpr.Handlers[1].Pattern.(*ast.ErrExpression); !ok {
+		t.Fatalf("following try sibling was not retained: %#v", tryExpr.Handlers[1].Pattern)
+	}
+}
+
+func TestDiagnosticDeduplicationUsesIDRangeAndRecoveryContext(t *testing.T) {
+	p := New(lexer.New("?"))
+	primary := p.curToken
+	p.addDiagnostic(diagnostics.ParserUnexpectedToken, primary, nil, &primary, "first")
+	p.addDiagnostic(diagnostics.ParserUnexpectedToken, primary, nil, &primary, "duplicate text may differ")
+	p.addDiagnostic(diagnostics.ParserSyntaxError, primary, nil, &primary, "secondary diagnostic for the same local cause")
+	if len(p.Diagnostics()) != 1 || len(p.Errors()) != 1 {
+		t.Fatalf("same diagnostic or same-cause secondary was not suppressed: diagnostics=%d errors=%d", len(p.Diagnostics()), len(p.Errors()))
+	}
+
+	p.endRecoveryEpisode()
+	p.recoveryContext = RecoveryContextBlock
+	p.addDiagnostic(diagnostics.ParserUnexpectedToken, primary, nil, &primary, "same range in a distinct context")
+	if len(p.Diagnostics()) != 2 {
+		t.Fatalf("distinct recovery context was incorrectly deduplicated: %+v", p.Diagnostics())
+	}
+	if p.Diagnostics()[0].Episode == p.Diagnostics()[1].Episode {
+		t.Fatalf("stable boundary did not start a new episode: %+v", p.Diagnostics())
+	}
+}
+
+func TestDiagnosticRollbackRestoresDeduplicationAndEpisodeState(t *testing.T) {
+	p := New(lexer.New("?"))
+	primary := p.curToken
+	p.addDiagnostic(diagnostics.ParserUnexpectedToken, primary, nil, &primary, "speculative")
+	p.rollbackErrors(0)
+	p.addDiagnostic(diagnostics.ParserUnexpectedToken, primary, nil, &primary, "committed")
+
+	diagnosticsAfterRollback := p.Diagnostics()
+	if len(diagnosticsAfterRollback) != 1 || diagnosticsAfterRollback[0].Message != "committed" {
+		t.Fatalf("rollback left stale diagnostic or dedup key: %+v", diagnosticsAfterRollback)
+	}
+	if diagnosticsAfterRollback[0].Episode != 1 {
+		t.Fatalf("rollback did not restore deterministic episode numbering: %+v", diagnosticsAfterRollback[0])
+	}
+}
+
+func TestDelimiterStackPreservesMismatchedOuterCloser(t *testing.T) {
+	delimiters := newDelimiterStack(lexer.RPAREN)
+	if !delimiters.consume(lexer.LBRACKET) || delimiters.depth() != 2 {
+		t.Fatalf("nested delimiter was not tracked: %#v", delimiters)
+	}
+	if delimiters.canConsume(lexer.RPAREN) || delimiters.consume(lexer.RPAREN) {
+		t.Fatal("mismatched closer should be left to the outer recovery context")
+	}
+	if delimiters.depth() != 2 {
+		t.Fatalf("mismatched closer mutated delimiter stack: %#v", delimiters)
+	}
+	if !delimiters.consume(lexer.RBRACKET) || !delimiters.consume(lexer.RPAREN) || !delimiters.empty() {
+		t.Fatalf("matching closers did not unwind stack: %#v", delimiters)
+	}
+}
+
+func TestMalformedStructFieldRecoveryIgnoresNestedComma(t *testing.T) {
+	p := New(lexer.New("bad(foo, bar), next"))
+	primary := p.curToken
+	p.addDiagnostic(diagnostics.ParserSyntaxError, primary, nil, nil, "malformed field")
+	if !p.skipMalformedStructField() {
+		t.Fatal("outer field comma was not found")
+	}
+	if p.curToken.Type != lexer.COMMA || p.peekToken.Lexeme != "next" {
+		t.Fatalf("recovery synchronized at nested comma: current=%+v peek=%+v", p.curToken, p.peekToken)
+	}
+	events := p.RecoveryEvents()
+	if len(events) != 1 || events[0].Kind != RecoverySkipTokens || events[0].Skipped < 6 || events[0].Episode == 0 {
+		t.Fatalf("malformed field skip was not retained: %+v", events)
+	}
+}
+
+func TestBalancedBlockRecoveryUsesSharedDelimiterStack(t *testing.T) {
+	p := New(lexer.New("{ Call([1]) } fn"))
+	primary := p.curToken
+	p.addDiagnostic(diagnostics.ParserSyntaxError, primary, nil, nil, "skip block")
+	event := p.skipCurrentBlock()
+	if p.curToken.Type != lexer.RBRACE || p.peekToken.Type != lexer.FN {
+		t.Fatalf("balanced block recovery stopped at nested delimiter: current=%+v peek=%+v", p.curToken, p.peekToken)
+	}
+	if event.Kind != RecoverySkipTokens || event.End.Type != lexer.RBRACE || event.Episode == 0 {
+		t.Fatalf("balanced block recovery event=%+v", event)
+	}
+}
+
+func TestParserDiagnosticLimitIsStable(t *testing.T) {
+	input := strings.Repeat("else {}\n", maxParserDiagnostics+25)
+	result := New(lexer.New(input)).Parse()
+	if len(result.Diagnostics) != maxParserDiagnostics {
+		t.Fatalf("diagnostic count=%d, want %d", len(result.Diagnostics), maxParserDiagnostics)
+	}
+	last := result.Diagnostics[len(result.Diagnostics)-1]
+	if last.ID != diagnostics.ParserRecoveryLimit {
+		t.Fatalf("last diagnostic ID=%s, want %s", last.ID, diagnostics.ParserRecoveryLimit)
+	}
+	count := 0
+	for _, diagnostic := range result.Diagnostics {
+		if diagnostic.ID == diagnostics.ParserRecoveryLimit {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("recovery-limit diagnostic count=%d, want 1", count)
 	}
 }
 

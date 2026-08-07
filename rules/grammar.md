@@ -4302,6 +4302,12 @@ The AST must represent:
 
 The AST may contain parser-level ambiguous nodes where Sema decides the meaning.
 
+The current recovery AST retains invalid statements, failed top-level
+declarations, disallowed impl members, malformed match/handler patterns,
+selected invalid expressions, and selected invalid type references with
+syntax-only recovery metadata. These nodes never confer valid semantics and
+batch lowering remains blocked by parser errors.
+
 Example:
 
 ```text

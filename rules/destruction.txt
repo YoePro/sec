@@ -1302,6 +1302,14 @@ The current compiler implementation has:
 * narrow semantic scope-exit diagnostics for local `io.File` and `io.Directory`
   values: the resource must be explicitly closed with `Close()` or moved out by
   returning it before its lexical scope exits
+* a compile-time must-closed state for those resources, isolated and intersected
+  across continuing `if`, `switch`, `select` and `match` branches
+* loop-header must-closed joins across entry, normal fallthrough and `continue`,
+  with separate `break` exit state and a next-iteration verification pass
+* ordinary loops retain the possible zero-iteration exit; `while true` derives
+  its reachable post-loop close state from explicit `break` exits
+* resource reassignment clears the closed state, including on loop back-edges;
+  iteration-local close state is removed at its lexical boundary
 * semantic rejection of user-defined `free` bodies until ownership, destruction
   and cleanup-region rules are implemented
 * no complete ownership analysis pass
@@ -1318,12 +1326,14 @@ Completed conservative first steps:
 * classify trivially destructible types
 * require explicit close or ownership transfer for local `io.File` and
   `io.Directory` values
+* merge close responsibility conservatively across branches and loop edges
 * reject user-defined `free` syntax until parsing and sema rules are explicit
 
 Remaining conservative first steps:
 
 * reject non-trivial global owned values
-* represent cleanup requirements in Semantic IR before lowering
+* generalize cleanup responsibility beyond the narrow close-tracked resource
+  lattice and represent it in Semantic IR before lowering
 * verify that every non-trivial local value has one terminal ownership action
 * lower defer and destruction through cleanup regions before LLVM IR
 

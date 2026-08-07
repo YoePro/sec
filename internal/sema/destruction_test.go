@@ -222,3 +222,223 @@ fn LeakDirectory() void {
 		"owned directory directory is still open at scope exit; call directory.Close() or return it to transfer ownership at 13:9",
 	})
 }
+
+func TestResourceCloseMustReachEveryContinuingBranch(t *testing.T) {
+	input := `
+module io
+
+enum IOError { Failed }
+
+type File struct {
+	is_closed: bool,
+}
+
+fn MakeFile() File {
+	return File { is_closed: false }
+}
+
+impl File {
+	fn Close() Result[void, IOError] {
+		self.is_closed = true
+		return Ok()
+	}
+}
+
+fn Test(condition: bool) Result[void, IOError] {
+	let mut file := MakeFile()
+	if condition {
+		try file.Close()
+	}
+	return Ok()
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"owned file file is still open at scope exit; call file.Close() or return it to transfer ownership at 22:10",
+	})
+}
+
+func TestResourceCloseOnEveryBranchSatisfiesCleanup(t *testing.T) {
+	input := `
+module io
+
+enum IOError { Failed }
+
+type File struct {
+	is_closed: bool,
+}
+
+fn MakeFile() File {
+	return File { is_closed: false }
+}
+
+impl File {
+	fn Close() Result[void, IOError] {
+		self.is_closed = true
+		return Ok()
+	}
+}
+
+fn Test(condition: bool) Result[void, IOError] {
+	let mut file := MakeFile()
+	if condition {
+		try file.Close()
+	} else {
+		try file.Close()
+	}
+	return Ok()
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestConditionalLoopCloseDoesNotSatisfyZeroIterationExit(t *testing.T) {
+	input := `
+module io
+
+enum IOError { Failed }
+
+type File struct {
+	is_closed: bool,
+}
+
+fn MakeFile() File {
+	return File { is_closed: false }
+}
+
+impl File {
+	fn Close() Result[void, IOError] {
+		self.is_closed = true
+		return Ok()
+	}
+}
+
+fn Test(condition: bool) Result[void, IOError] {
+	let mut file := MakeFile()
+	while condition {
+		try file.Close()
+		break
+	}
+	return Ok()
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"owned file file is still open at scope exit; call file.Close() or return it to transfer ownership at 22:10",
+	})
+}
+
+func TestWhileTrueCleanupStateComesFromBreakExits(t *testing.T) {
+	input := `
+module io
+
+enum IOError { Failed }
+
+type File struct {
+	is_closed: bool,
+}
+
+fn MakeFile() File {
+	return File { is_closed: false }
+}
+
+impl File {
+	fn Close() Result[void, IOError] {
+		self.is_closed = true
+		return Ok()
+	}
+}
+
+fn Test() Result[void, IOError] {
+	let mut file := MakeFile()
+	while true {
+		try file.Close()
+		break
+	}
+	return Ok()
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestContinueEdgeCanReopenLoopCarriedResource(t *testing.T) {
+	input := `
+module io
+
+enum IOError { Failed }
+
+type File struct {
+	is_closed: bool,
+}
+
+fn MakeFile() File {
+	return File { is_closed: false }
+}
+
+impl File {
+	fn Close() Result[void, IOError] {
+		self.is_closed = true
+		return Ok()
+	}
+}
+
+fn Test(condition: bool) Result[void, IOError] {
+	let mut file := MakeFile()
+	try file.Close()
+	while condition {
+		file = MakeFile()
+		continue
+	}
+	return Ok()
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"owned file file is still open at scope exit; call file.Close() or return it to transfer ownership at 22:10",
+	})
+}
+
+func TestSwitchResourceCloseStateUsesAllContinuingCases(t *testing.T) {
+	input := `
+module io
+
+enum IOError { Failed }
+
+type File struct {
+	is_closed: bool,
+}
+
+fn MakeFile() File {
+	return File { is_closed: false }
+}
+
+impl File {
+	fn Close() Result[void, IOError] {
+		self.is_closed = true
+		return Ok()
+	}
+}
+
+fn Test(condition: bool) Result[void, IOError] {
+	let mut file := MakeFile()
+	switch condition {
+	case true:
+		try file.Close()
+	default:
+	}
+	return Ok()
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"owned file file is still open at scope exit; call file.Close() or return it to transfer ownership at 22:10",
+	})
+}

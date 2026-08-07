@@ -1,10 +1,13 @@
 package sema
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
+	"sec/internal/ast"
 	"sec/internal/diagnostics"
+	"sec/internal/lexer"
 )
 
 func TestCopyClassificationPrimitiveReferenceAndAggregates(t *testing.T) {
@@ -659,6 +662,1105 @@ fn Test() void {
 	})
 }
 
+func TestPlaceBorrowsPermitDisjointStructFields(t *testing.T) {
+	input := `
+module main
+
+type Pair struct {
+	left: int,
+	right: int,
+}
+
+fn Test() void {
+	let mut pair := Pair { left: 1, right: 2 }
+	let left := ref mut pair.left
+	let right := ref mut pair.right
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestPlaceBorrowPermitsAssignmentToDisjointStructField(t *testing.T) {
+	input := `
+module main
+
+type Pair struct {
+	left: int,
+	right: int,
+}
+
+fn Test() void {
+	let mut pair := Pair { left: 1, right: 2 }
+	let left := ref pair.left
+	pair.right = 3
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestPlaceBorrowConflictsWithOverlappingFieldAssignment(t *testing.T) {
+	input := `
+module main
+
+type Pair struct {
+	left: int,
+	right: int,
+}
+
+fn Test() void {
+	let mut pair := Pair { left: 1, right: 2 }
+	let left := ref pair.left
+	pair.left = 3
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"cannot assign to pair.left while it is shared borrowed at 12:7, previous declaration at 11:14",
+	})
+}
+
+func TestPlaceBorrowsDistinguishConstantArrayIndices(t *testing.T) {
+	input := `
+module main
+
+fn Test() void {
+	let mut values := [1, 2]
+	let first := ref mut values[0]
+	let second := ref mut values[1]
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestReferenceAliasBorrowsConflictOnSameCanonicalField(t *testing.T) {
+	input := `
+module main
+
+type Pair struct {
+	left: int,
+	right: int,
+}
+
+fn Test() void {
+	let mut pair := Pair { left: 1, right: 2 }
+	let alias := ref mut pair
+	let first := ref mut alias.left
+	let second := ref mut alias.left
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"cannot create mutable reference to pair.left while it is already borrowed at 13:16, previous declaration at 12:15",
+	})
+}
+
+func TestReferenceAliasBorrowsPermitDisjointCanonicalFields(t *testing.T) {
+	input := `
+module main
+
+type Pair struct {
+	left: int,
+	right: int,
+}
+
+fn Test() void {
+	let mut pair := Pair { left: 1, right: 2 }
+	let alias := ref mut pair
+	let left := ref mut alias.left
+	let right := ref mut alias.right
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestSharedReferenceAliasDoesNotGrantMutableFieldAccess(t *testing.T) {
+	input := `
+module main
+
+type Pair struct {
+	left: int,
+}
+
+fn Test() void {
+	let mut pair := Pair { left: 1 }
+	let alias := ref pair
+	let invalid := ref mut alias.left
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"cannot create mutable reference to immutable place pair.left at 11:17",
+	})
+}
+
+func TestProjectedReferenceAliasUsesOriginalPlace(t *testing.T) {
+	input := `
+module main
+
+type Inner struct {
+	left: int,
+}
+
+type Pair struct {
+	inner: Inner,
+}
+
+fn Test() void {
+	let mut pair := Pair { inner: Inner { left: 1 } }
+	let alias := ref mut pair.inner
+	let first := ref mut alias.left
+	let second := ref mut alias.left
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"cannot create mutable reference to pair.inner.left while it is already borrowed at 16:16, previous declaration at 15:15",
+	})
+}
+
+func TestConstantIndexReferenceAliasKeepsIndexProvenance(t *testing.T) {
+	input := `
+module main
+
+fn Test() void {
+	let mut values := [1, 2]
+	let alias := ref mut values
+	let first := ref mut alias[0]
+	let second := ref mut alias[1]
+	let duplicate := ref mut alias[0]
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"cannot create mutable reference to values[0] while it is already borrowed at 9:19, previous declaration at 7:15",
+	})
+}
+
+func TestMovedMutableReferenceKeepsCanonicalProvenance(t *testing.T) {
+	input := `
+module main
+
+type Pair struct {
+	left: int,
+	right: int,
+}
+
+fn Test() void {
+	let mut pair := Pair { left: 1, right: 2 }
+	let alias := ref mut pair
+	let moved :<- alias
+	let first := ref mut moved.left
+	let duplicate := ref mut moved.left
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"cannot create mutable reference to pair.left while it is already borrowed at 14:19, previous declaration at 13:15",
+	})
+}
+
+func TestMovedMutableReferenceKeepsOwnerBorrowActive(t *testing.T) {
+	input := `
+module main
+
+type Pair struct {
+	left: int,
+}
+
+fn Test() void {
+	let mut pair := Pair { left: 1 }
+	let alias := ref mut pair
+	let moved :<- alias
+	pair.left = 2
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"cannot assign to pair.left while it is mutably borrowed at 12:7, previous declaration at 10:15",
+	})
+}
+
+func TestPlaceBorrowsConservativelyOverlapDynamicIndices(t *testing.T) {
+	input := `
+module main
+
+fn Test(firstIndex: int, secondIndex: int) void {
+	let mut values := [1, 2]
+	let first := ref mut values[firstIndex]
+	let second := ref mut values[secondIndex]
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"cannot create mutable reference to values[*] while it is already borrowed at 7:16, previous declaration at 6:15",
+	})
+}
+
+func TestWholePlaceBorrowOverlapsFieldBorrow(t *testing.T) {
+	input := `
+module main
+
+type Pair struct {
+	left: int,
+	right: int,
+}
+
+fn Test() void {
+	let mut pair := Pair { left: 1, right: 2 }
+	let left := ref pair.left
+	let whole := ref mut pair
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"cannot create mutable reference to pair while it is already borrowed at 12:15, previous declaration at 11:14",
+	})
+}
+
+func TestBorrowRequiresReusablePlace(t *testing.T) {
+	input := `
+module main
+
+fn Create() int {
+	return 1
+}
+
+fn Test() void {
+	let borrowed := ref Create()
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"cannot borrow temporary expression; a reusable place is required at 9:18",
+	})
+}
+
+func TestPlaceMoveKeepsDisjointStructFieldAvailable(t *testing.T) {
+	input := `
+module main
+
+@noCopy
+type Session struct {
+	value: int,
+}
+
+type Pair struct {
+	first: Session,
+	second: Session,
+}
+
+fn Test() void {
+	let mut pair := Pair {
+		first: Session { value: 1 },
+		second: Session { value: 2 },
+	}
+	let first :<- pair.first
+	let second :<- pair.second
+	discard first
+	discard second
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestPlaceMoveRejectsMovedFieldAndWholeAggregateUse(t *testing.T) {
+	input := `
+module main
+
+@noCopy
+type Session struct {
+	value: int,
+}
+
+type Pair struct {
+	first: Session,
+	second: Session,
+}
+
+fn Test() void {
+	let mut pair := Pair {
+		first: Session { value: 1 },
+		second: Session { value: 2 },
+	}
+	let first :<- pair.first
+	let again :<- pair.first
+	let whole :<- pair
+	discard first
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"use of moved value pair.first at 20:21, previous declaration at 19:20",
+		"cannot use partially moved value pair; place pair.first is unavailable at 21:16, previous declaration at 19:20",
+	})
+}
+
+func TestPlaceFieldReinitializationRestoresAggregateAvailability(t *testing.T) {
+	input := `
+module main
+
+@noCopy
+type Session struct {
+	value: int,
+}
+
+type Pair struct {
+	first: Session,
+	second: Session,
+}
+
+fn Test() void {
+	let mut pair := Pair {
+		first: Session { value: 1 },
+		second: Session { value: 2 },
+	}
+	let first :<- pair.first
+	pair.first = Session { value: 3 }
+	let whole :<- pair
+	discard first
+	discard whole
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestNestedPlaceMoveKeepsSiblingAvailableAndReinitializesParent(t *testing.T) {
+	input := `
+module main
+
+@noCopy
+type Session struct {
+	value: int,
+}
+
+type Pair struct {
+	first: Session,
+	second: Session,
+}
+
+type Envelope struct {
+	pair: Pair,
+}
+
+fn Test() void {
+	let mut envelope := Envelope {
+		pair: Pair {
+			first: Session { value: 1 },
+			second: Session { value: 2 },
+		},
+	}
+	let first :<- envelope.pair.first
+	let second :<- envelope.pair.second
+	envelope.pair.first = Session { value: 3 }
+	envelope.pair.second = Session { value: 4 }
+	let whole :<- envelope.pair
+	discard first
+	discard second
+	discard whole
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestNestedPlaceMoveMakesParentsUnavailable(t *testing.T) {
+	input := `
+module main
+
+@noCopy
+type Session struct {
+	value: int,
+}
+
+type Pair struct {
+	first: Session,
+	second: Session,
+}
+
+type Envelope struct {
+	pair: Pair,
+}
+
+fn Test() void {
+	let mut envelope := Envelope {
+		pair: Pair {
+			first: Session { value: 1 },
+			second: Session { value: 2 },
+		},
+	}
+	let first :<- envelope.pair.first
+	let pair :<- envelope.pair
+	let whole :<- envelope
+	discard first
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"cannot use partially moved value envelope.pair; place envelope.pair.first is unavailable at 26:24, previous declaration at 25:29",
+		"cannot use partially moved value envelope; place envelope.pair.first is unavailable at 27:16, previous declaration at 25:29",
+	})
+}
+
+func TestPlaceMoveRejectsFieldExtractionThroughReference(t *testing.T) {
+	input := `
+module main
+
+@noCopy
+type Session struct {
+	value: int,
+}
+
+type Pair struct {
+	first: Session,
+}
+
+fn Test() void {
+	let mut pair := Pair { first: Session { value: 1 } }
+	let alias := ref mut pair
+	let first :<- alias.first
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"partial move requires independently tracked local struct storage at 16:6",
+	})
+}
+
+func TestPlaceBranchMergeTracksMovesFromDifferentBranches(t *testing.T) {
+	input := `
+module main
+
+@noCopy
+type Session struct {
+	value: int,
+}
+
+type Pair struct {
+	first: Session,
+	second: Session,
+}
+
+fn Test(condition: bool) void {
+	let mut pair := Pair {
+		first: Session { value: 1 },
+		second: Session { value: 2 },
+	}
+	if condition {
+		let moved :<- pair.first
+		discard moved
+	} else {
+		let moved :<- pair.second
+		discard moved
+	}
+	let firstAgain :<- pair.first
+	let secondAgain :<- pair.second
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"use of moved value pair.first at 26:26, previous declaration at 20:21",
+		"use of moved value pair.second at 27:27, previous declaration at 23:21",
+	})
+}
+
+func TestPlaceBranchMergeRestoresFieldWhenEveryBranchReinitializes(t *testing.T) {
+	input := `
+module main
+
+@noCopy
+type Session struct {
+	value: int,
+}
+
+type Pair struct {
+	first: Session,
+	second: Session,
+}
+
+fn Test(condition: bool) void {
+	let mut pair := Pair {
+		first: Session { value: 1 },
+		second: Session { value: 2 },
+	}
+	let first :<- pair.first
+	if condition {
+		pair.first = Session { value: 3 }
+	} else {
+		pair.first = Session { value: 4 }
+	}
+	let whole :<- pair
+	discard first
+	discard whole
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestPlaceBranchMergeKeepsFieldUnavailableWhenOnlyOneBranchReinitializes(t *testing.T) {
+	input := `
+module main
+
+@noCopy
+type Session struct {
+	value: int,
+}
+
+type Pair struct {
+	first: Session,
+	second: Session,
+}
+
+fn Test(condition: bool) void {
+	let mut pair := Pair {
+		first: Session { value: 1 },
+		second: Session { value: 2 },
+	}
+	let first :<- pair.first
+	if condition {
+		pair.first = Session { value: 3 }
+	}
+	let whole :<- pair
+	discard first
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"cannot use partially moved value pair; place pair.first is unavailable at 23:16, previous declaration at 19:20",
+	})
+}
+
+func TestPlaceLiteralBranchExcludesUnreachableMoveState(t *testing.T) {
+	input := `
+module main
+
+@noCopy
+type Session struct {
+	value: int,
+}
+
+type Pair struct {
+	first: Session,
+}
+
+fn Test() void {
+	let mut pair := Pair { first: Session { value: 1 } }
+	if false {
+		let moved :<- pair.first
+		discard moved
+	}
+	let first :<- pair.first
+	discard first
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestPlaceLoopMergeKeepsEntryAndBodyMoveState(t *testing.T) {
+	input := `
+module main
+
+@noCopy
+type Session struct {
+	value: int,
+}
+
+type Pair struct {
+	first: Session,
+	second: Session,
+}
+
+fn MoveInLoop(condition: bool) void {
+	let mut pair := Pair {
+		first: Session { value: 1 },
+		second: Session { value: 2 },
+	}
+	while condition {
+		let first :<- pair.first
+		discard first
+	}
+	let whole :<- pair
+}
+
+fn ReinitializeInLoop(condition: bool) void {
+	let mut pair := Pair {
+		first: Session { value: 1 },
+		second: Session { value: 2 },
+	}
+	let first :<- pair.first
+	while condition {
+		pair.first = Session { value: 3 }
+	}
+	let whole :<- pair
+	discard first
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"place pair.first may be unavailable on a later loop iteration at 20:22, previous declaration at 20:21",
+		"cannot use partially moved value pair; place pair.first is unavailable at 23:16, previous declaration at 20:21",
+		"cannot use partially moved value pair; place pair.first is unavailable at 35:16, previous declaration at 31:20",
+	})
+}
+
+func TestPlaceLoopBackedgeAcceptsReinitializationBeforeReuse(t *testing.T) {
+	input := `
+module main
+
+@noCopy
+type Session struct {
+	value: int,
+}
+
+type Pair struct {
+	first: Session,
+}
+
+fn Test(condition: bool) void {
+	let mut pair := Pair { first: Session { value: 1 } }
+	while condition {
+		pair.first = Session { value: 2 }
+		let first :<- pair.first
+		discard first
+	}
+	pair.first = Session { value: 3 }
+	let whole :<- pair
+	discard whole
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestPlaceLoopBackedgeSeparatesBreakExit(t *testing.T) {
+	input := `
+module main
+
+@noCopy
+type Session struct {
+	value: int,
+}
+
+type Pair struct {
+	first: Session,
+}
+
+fn Test() void {
+	let mut pair := Pair { first: Session { value: 1 } }
+	while true {
+		let first :<- pair.first
+		discard first
+		break
+	}
+	let whole :<- pair
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"cannot use partially moved value pair; place pair.first is unavailable at 20:16, previous declaration at 16:21",
+	})
+}
+
+func TestPlaceLoopBackedgeExcludesConditionalBreakPath(t *testing.T) {
+	input := `
+module main
+
+@noCopy
+type Session struct {
+	value: int,
+}
+
+type Pair struct {
+	first: Session,
+}
+
+fn Test(looping: bool, exit: bool) void {
+	let mut pair := Pair { first: Session { value: 1 } }
+	while looping {
+		if exit {
+			let first :<- pair.first
+			discard first
+			break
+		}
+		pair.first = Session { value: 2 }
+	}
+	let whole :<- pair
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"cannot use partially moved value pair; place pair.first is unavailable at 23:16, previous declaration at 17:22",
+	})
+}
+
+func TestPlaceLoopBackedgeTracksContinueExit(t *testing.T) {
+	input := `
+module main
+
+@noCopy
+type Session struct {
+	value: int,
+}
+
+type Pair struct {
+	first: Session,
+}
+
+fn Test(condition: bool) void {
+	let mut pair := Pair { first: Session { value: 1 } }
+	while condition {
+		let first :<- pair.first
+		discard first
+		continue
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"place pair.first may be unavailable on a later loop iteration at 16:22, previous declaration at 16:21",
+	})
+}
+
+func TestPlaceLoopBackedgeRechecksWhileCondition(t *testing.T) {
+	input := `
+module main
+
+@noCopy
+type Session struct {
+	value: int,
+}
+
+type Pair struct {
+	first: Session,
+}
+
+fn Test() void {
+	let mut pair := Pair { first: Session { value: 1 } }
+	while pair.first.value > 0 {
+		let first :<- pair.first
+		discard first
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"place pair.first may be unavailable on a later loop iteration at 15:13, previous declaration at 16:21",
+	})
+}
+
+func TestPlaceForLoopBackedgeRechecksMovedPlace(t *testing.T) {
+	input := `
+module main
+
+@noCopy
+type Session struct {
+	value: int,
+}
+
+type Pair struct {
+	first: Session,
+}
+
+fn Test() void {
+	let mut pair := Pair { first: Session { value: 1 } }
+	for index in 0..<2 {
+		let first :<- pair.first
+		discard first
+		discard index
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"place pair.first may be unavailable on a later loop iteration at 16:22, previous declaration at 16:21",
+	})
+}
+
+func TestUnionPayloadPlaceVariantsAreDisjoint(t *testing.T) {
+	payloadType := Type{Name: "Session", Kind: StructType}
+	root := Place{Root: "choice", Type: Type{Name: "Choice", Kind: UnionType}}
+	some := unionPayloadPlace(root, "Some", payloadType, lexer.Token{})
+	other := unionPayloadPlace(root, "Other", payloadType, lexer.Token{})
+
+	if PlacesOverlap(some, other) {
+		t.Fatal("different union variant payload places must be disjoint")
+	}
+	if !PlacesOverlap(root, some) {
+		t.Fatal("whole union place must overlap its variant payload")
+	}
+	if some.String() != "choice.<Some>" {
+		t.Fatalf("wrong union payload place: %q", some.String())
+	}
+}
+
+func TestMatchMovesNonCopyableUnionPayloadFromReusableSubject(t *testing.T) {
+	input := `
+module main
+
+@noCopy
+type Session struct {
+	value: int,
+}
+
+type Choice union {
+	Some(Session),
+	None,
+}
+
+fn Test() void {
+	let mut choice: Choice := Choice.Some(Session { value: 1 })
+	match choice {
+		Some(session) => {
+			discard session
+		}
+		None => {}
+	}
+	let whole :<- choice
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"cannot use partially moved value choice; place choice.<Some> is unavailable at 22:16, previous declaration at 17:8",
+	})
+}
+
+func TestMatchExpressionMergesUnionPayloadMoveState(t *testing.T) {
+	input := `
+module main
+
+@noCopy
+type Session struct {
+	value: int,
+}
+
+type Choice union {
+	Some(Session),
+	None,
+}
+
+fn Test() void {
+	let mut choice: Choice := Choice.Some(Session { value: 1 })
+	let code := match choice {
+		Some(session) => 1
+		None => 0
+	}
+	let whole :<- choice
+	discard code
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"cannot use partially moved value choice; place choice.<Some> is unavailable at 20:16, previous declaration at 17:8",
+	})
+}
+
+func TestMatchCopiesCopyableUnionPayload(t *testing.T) {
+	input := `
+module main
+
+type Choice union {
+	Some(int),
+	None,
+}
+
+fn Test() void {
+	let mut choice: Choice := Choice.Some(1)
+	match choice {
+		Some(value) => {
+			discard value
+		}
+		None => {}
+	}
+	let whole :<- choice
+	discard whole
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestMatchUnionPayloadReinitializationRestoresSubject(t *testing.T) {
+	input := `
+module main
+
+@noCopy
+type Session struct {
+	value: int,
+}
+
+type Choice union {
+	Some(Session),
+	None,
+}
+
+fn Test() void {
+	let mut choice: Choice := Choice.Some(Session { value: 1 })
+	match choice {
+		Some(session) => {
+			choice = Choice.None
+			discard session
+		}
+		None => {
+			choice = Choice.None
+		}
+	}
+	let whole :<- choice
+	discard whole
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestMatchUnionPayloadMoveConflictsWithSubjectBorrow(t *testing.T) {
+	input := `
+module main
+
+@noCopy
+type Session struct {
+	value: int,
+}
+
+type Choice union {
+	Some(Session),
+	None,
+}
+
+fn Test() void {
+	let mut choice: Choice := Choice.Some(Session { value: 1 })
+	let view := ref choice
+	match choice {
+		Some(session) => {
+			discard session
+		}
+		None => {}
+	}
+	discard view
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"cannot move choice.<Some> while it is borrowed at 18:8, previous declaration at 16:14",
+	})
+}
+
+func TestMatchCanForwardUnionPayloadFromTemporary(t *testing.T) {
+	input := `
+module main
+
+@noCopy
+type Session struct {
+	value: int,
+}
+
+type Choice union {
+	Some(Session),
+	None,
+}
+
+fn NewSession() Session {
+	return Session { value: 1 }
+}
+
+fn Test() void {
+	match Choice.Some(NewSession()) {
+		Some(session) => {
+			discard session
+		}
+		None => {}
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestNestedUnionPayloadMovePreservesDisjointStructField(t *testing.T) {
+	input := `
+module main
+
+@noCopy
+type Session struct {
+	value: int,
+}
+
+type Choice union {
+	Some(Session),
+	None,
+}
+
+type Wrapper struct {
+	choice: Choice,
+	count: int,
+}
+
+fn Test() void {
+	let mut wrapper := Wrapper {
+		choice: Choice.Some(Session { value: 1 }),
+		count: 2,
+	}
+	match wrapper.choice {
+		Some(session) => {
+			discard session
+		}
+		None => {}
+	}
+	let count := wrapper.count
+	let whole :<- wrapper
+	discard count
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"cannot use partially moved value wrapper; place wrapper.choice.<Some> is unavailable at 31:16, previous declaration at 25:8",
+	})
+}
+
 func TestLargeByValueArrayParameterWarns(t *testing.T) {
 	input := `
 module main
@@ -721,5 +1823,696 @@ fn Process(frame: Frame) int {
 	}
 	if !strings.Contains(warnings[0].Help, "Pass the parameter by shared reference") {
 		t.Fatalf("missing warning help. got=%q", warnings[0].Help)
+	}
+}
+
+func TestStaticSlicePlaceOverlap(t *testing.T) {
+	left := Place{Root: "values", Projections: []PlaceProjection{{
+		Kind: PlaceSlice, SliceStart: 0, SliceEnd: 2, SliceStartKnown: true, SliceEndKnown: true,
+	}}}
+	right := Place{Root: "values", Projections: []PlaceProjection{{
+		Kind: PlaceSlice, SliceStart: 2, SliceEnd: 4, SliceStartKnown: true, SliceEndKnown: true,
+	}}}
+	overlap := Place{Root: "values", Projections: []PlaceProjection{{
+		Kind: PlaceSlice, SliceStart: 1, SliceEnd: 3, SliceStartKnown: true, SliceEndKnown: true,
+	}}}
+	inside := Place{Root: "values", Projections: []PlaceProjection{{Kind: PlaceIndex, ConstantIndex: 1}}}
+	outside := Place{Root: "values", Projections: []PlaceProjection{{Kind: PlaceIndex, ConstantIndex: 4}}}
+	empty := Place{Root: "values", Projections: []PlaceProjection{{
+		Kind: PlaceSlice, SliceStart: 2, SliceEnd: 2, SliceStartKnown: true, SliceEndKnown: true,
+	}}}
+
+	if PlacesOverlap(left, right) {
+		t.Fatal("adjacent static slices must be disjoint")
+	}
+	if !PlacesOverlap(left, overlap) || !PlacesOverlap(left, inside) {
+		t.Fatal("intersecting slice ranges and contained indices must overlap")
+	}
+	if PlacesOverlap(left, outside) || PlacesOverlap(left, empty) {
+		t.Fatal("outside indices and empty static slices must be disjoint")
+	}
+	if got := left.String(); got != "values[..<2]" {
+		t.Fatalf("slice place string = %q, want values[..<2]", got)
+	}
+}
+
+func TestPlaceBorrowsPermitDisjointStaticSlices(t *testing.T) {
+	input := `
+module main
+
+fn Test() void {
+	let mut values := [1, 2, 3, 4]
+	let left := ref mut values[0..<2]
+	let right := ref mut values[2..<4]
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestPlaceBorrowsRejectOverlappingStaticSlices(t *testing.T) {
+	input := `
+module main
+
+fn Test() void {
+	let mut values := [1, 2, 3, 4]
+	let left := ref mut values[0..<3]
+	let right := ref mut values[2..<4]
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"cannot create mutable reference to values[2..<4] while it is already borrowed at 7:15, previous declaration at 6:14",
+	})
+}
+
+func TestStaticSliceAndIndexBorrowOverlap(t *testing.T) {
+	input := `
+module main
+
+fn Test() void {
+	let mut values := [1, 2, 3, 4]
+	let middle := ref mut values[1..<3]
+	let outside := ref mut values[0]
+	let inside := ref mut values[2]
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"cannot create mutable reference to values[2] while it is already borrowed at 8:16, previous declaration at 6:16",
+	})
+}
+
+func TestSliceAliasIndexProvenanceComposesRanges(t *testing.T) {
+	input := `
+module main
+
+fn Test() void {
+	let mut values := [1, 2, 3, 4]
+	let view := ref mut values[1..<3]
+	let first := ref mut view[0]
+	let second := ref mut view[1]
+	let outside := ref mut values[0]
+	let duplicate := ref mut view[0]
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"cannot create mutable reference to values[1] while it is already borrowed at 10:19, previous declaration at 7:15",
+	})
+}
+
+func TestSliceAliasSubrangesComposeAndRemainDisjoint(t *testing.T) {
+	input := `
+module main
+
+fn Test() void {
+	let mut values := [1, 2, 3, 4]
+	let view := ref mut values[1..<4]
+	let left := ref mut view[0..<1]
+	let right := ref mut view[1..<3]
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestInclusiveAndOpenStaticSlicesNormalizeToDisjointRanges(t *testing.T) {
+	input := `
+module main
+
+fn Test() void {
+	let mut values := [1, 2, 3, 4]
+	let left := ref mut values[..1]
+	let right := ref mut values[2..]
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestDynamicSliceRangesRemainConservativelyOverlapping(t *testing.T) {
+	input := `
+module main
+
+fn Test(end: int) void {
+	let mut values := [1, 2, 3, 4]
+	let dynamic := ref mut values[0..<end]
+	let fixed := ref mut values[2..<4]
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"cannot create mutable reference to values[2..<4] while it is already borrowed at 7:15, previous declaration at 6:17",
+	})
+}
+
+func TestEmptyStaticSliceDoesNotBorrowElements(t *testing.T) {
+	input := `
+module main
+
+fn Test() void {
+	let mut values := [1, 2]
+	let empty := ref mut values[0..<0]
+	let whole := ref mut values
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestSharedUnionPayloadPatternBorrowBlocksVariantMutation(t *testing.T) {
+	input := `
+module main
+
+type Pair struct {
+	left: int,
+}
+
+type Choice union {
+	Some(Pair),
+	None,
+}
+
+fn Test() void {
+	let mut choice: Choice := Choice.Some(Pair { left: 1 })
+	match choice {
+		Some(ref payload) => {
+			let value := payload.left
+			choice = Choice.None
+			discard value
+		}
+		None => {}
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"cannot assign to choice while it is shared borrowed at 18:4, previous declaration at 16:12",
+	})
+}
+
+func TestMutableUnionPayloadPatternBorrowAllowsMutationThroughBinding(t *testing.T) {
+	input := `
+module main
+
+type Pair struct {
+	left: int,
+}
+
+type Choice union {
+	Some(Pair),
+	None,
+}
+
+fn Test() void {
+	let mut choice: Choice := Choice.Some(Pair { left: 1 })
+	match choice {
+		Some(ref mut payload) => {
+			payload.left = 2
+		}
+		None => {}
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestMutableUnionPayloadPatternRequiresMutableSubject(t *testing.T) {
+	input := `
+module main
+
+type Pair struct {
+	left: int,
+}
+
+type Choice union {
+	Some(Pair),
+	None,
+}
+
+fn Test() void {
+	let choice: Choice := Choice.Some(Pair { left: 1 })
+	match choice {
+		Some(ref mut payload) => {}
+		None => {}
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"cannot create mutable reference to immutable place choice.<Some> at 16:16",
+	})
+}
+
+func TestUnionPayloadPatternBorrowEndsAtArmExit(t *testing.T) {
+	input := `
+module main
+
+type Choice union {
+	Some(int),
+	None,
+}
+
+fn Test() void {
+	let mut choice: Choice := Choice.Some(1)
+	match choice {
+		Some(ref value) => {
+			let copy := value
+			discard copy
+		}
+		None => {}
+	}
+	choice = Choice.None
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestUnionPayloadPatternBorrowRejectsTemporarySubject(t *testing.T) {
+	input := `
+module main
+
+type Choice union {
+	Some(int),
+	None,
+}
+
+fn Test() void {
+	match Choice.Some(1) {
+		Some(ref value) => {
+			discard value
+		}
+		None => {}
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"cannot borrow union payload from temporary match subject at 11:12",
+	})
+}
+
+func TestUnionPayloadPatternReferenceCannotEscapeBranch(t *testing.T) {
+	input := `
+module main
+
+type Pair struct {
+	left: int,
+}
+
+type Choice union {
+	Left(Pair),
+	Right(Pair),
+}
+
+fn Get(choice: Choice) ref Pair {
+	return match choice {
+		Left(ref value) => value
+		Right(ref value) => value
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"match expression cannot produce a branch-scoped union payload reference at 14:9, previous declaration at 15:12",
+	})
+}
+
+func TestMutableUnionPayloadPatternConflictsWithExistingOwnerBorrow(t *testing.T) {
+	input := `
+module main
+
+type Choice union {
+	Some(int),
+	None,
+}
+
+fn Test() void {
+	let mut choice: Choice := Choice.Some(1)
+	let view := ref choice
+	match choice {
+		Some(ref mut value) => {}
+		None => {}
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"cannot create mutable reference to choice.<Some> while it is already borrowed at 13:16, previous declaration at 11:14",
+	})
+}
+
+func TestNestedUnionPayloadPatternBorrowUsesNestedPlace(t *testing.T) {
+	input := `
+module main
+
+type Choice union {
+	Some(int),
+	None,
+}
+
+type Wrapper struct {
+	choice: Choice,
+	count: int,
+}
+
+fn Test() void {
+	let mut wrapper := Wrapper { choice: Choice.Some(1), count: 2 }
+	match wrapper.choice {
+		Some(ref value) => {
+			wrapper.count = 3
+			wrapper.choice = Choice.None
+			discard value
+		}
+		None => {}
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"cannot assign to wrapper.choice while it is shared borrowed at 19:12, previous declaration at 17:12",
+	})
+}
+
+func TestUnionPayloadReferencePatternRequiresIdentifier(t *testing.T) {
+	input := `
+module main
+
+type Choice union {
+	Some(int),
+	None,
+}
+
+fn Test(choice: Choice) void {
+	match choice {
+		Some(ref 1) => {}
+		None => {}
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"union payload pattern must bind an identifier, ref identifier, or ref mut identifier at 11:8",
+	})
+}
+
+func TestResultPayloadReferencePatternsBorrowActiveVariants(t *testing.T) {
+	input := `
+module main
+
+fn Test(result: Result[int, int]) void {
+	match result {
+		Ok(ref value) => {
+			let alias := value
+			discard alias
+		}
+		Err(ref error) => {
+			let alias := error
+			discard alias
+		}
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestUnionPayloadReferenceCannotBeAssignedOutsideArm(t *testing.T) {
+	input := `
+module main
+
+type Choice union {
+	Some(int),
+	None,
+}
+
+fn Test(choice: Choice, ref fallback: int) void {
+	let mut holder := fallback
+	match choice {
+		Some(ref value) => {
+			holder = value
+		}
+		None => {}
+	}
+	discard holder
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"cannot store branch-scoped union payload reference outside its match arm at 13:13, previous declaration at 12:12",
+	})
+}
+
+func TestAggregateContainingUnionPayloadReferenceCannotReturn(t *testing.T) {
+	input := `
+module main
+
+type View struct {
+	value: ref int,
+}
+
+type Choice union {
+	Some(int),
+	None,
+}
+
+fn Get(choice: Choice, ref fallback: int) View {
+	match choice {
+		Some(ref value) => {
+			return View { value: value }
+		}
+		None => {
+			return View { value: fallback }
+		}
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"function Get cannot return a value containing a branch-scoped union payload reference at 16:11, previous declaration at 15:12",
+	})
+}
+
+func TestLoopBorrowStateIncludesContinueBackedgeAndPostLoopExit(t *testing.T) {
+	input := `
+module main
+
+fn Test(condition: bool) void {
+	let mut target := 1
+	let other := 0
+	let mut view: ref int := ref other
+	while condition {
+		view = ref target
+		continue
+	}
+	target = 2
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"cannot assign to target while it is shared borrowed at 12:2, previous declaration at 9:10",
+	})
+}
+
+func TestLoopBorrowFixedPointRejectsPreviousIterationConflict(t *testing.T) {
+	input := `
+module main
+
+fn Test(condition: bool) void {
+	let mut first := 1
+	let mut second := 2
+	let mut view: ref mut int := ref mut first
+	while condition {
+		view = ref mut second
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"cannot create mutable reference to second because an overlapping borrow may remain active from a previous loop iteration at 9:10, previous declaration at 9:10",
+	})
+}
+
+func TestLoopReferenceProvenanceJoinAllowsFiniteMultiOriginReborrow(t *testing.T) {
+	input := `
+module main
+
+type Pair struct {
+	value: int,
+}
+
+fn Test(condition: bool) void {
+	let left := Pair { value: 1 }
+	let right := Pair { value: 2 }
+	let mut view: ref Pair := ref left
+	while condition {
+		if condition {
+			view = ref right
+		}
+		let field := ref view.value
+		discard field
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestLoopReferenceProvenanceJoinKeepsIdenticalOrigin(t *testing.T) {
+	input := `
+module main
+
+type Pair struct {
+	value: int,
+}
+
+fn Test(condition: bool) void {
+	let pair := Pair { value: 1 }
+	let mut view: ref Pair := ref pair
+	while condition {
+		view = ref pair
+		let field := ref view.value
+		discard field
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestLoopEdgeDoesNotRetainIterationLocalBorrowHolder(t *testing.T) {
+	input := `
+module main
+
+fn Test(condition: bool) void {
+	let mut target := 1
+	while condition {
+		let view := ref target
+		discard view
+		continue
+	}
+	target = 2
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestBranchMultiOriginProvenanceSurvivesSharedReferenceCopy(t *testing.T) {
+	input := `
+module main
+
+type Pair struct {
+	value: int,
+}
+
+fn Test(condition: bool) void {
+	let left := Pair { value: 1 }
+	let right := Pair { value: 2 }
+	let mut view: ref Pair := ref left
+	if condition {
+		view = ref right
+	}
+	let alias := view
+	let field := ref alias.value
+	discard field
+	discard alias
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestReferenceOriginJoinRetainsProjectedAlternativePlaces(t *testing.T) {
+	intType := Type{Name: "int", Kind: IntType}
+	pairType := Type{Name: "Pair", Kind: StructType, Fields: []StructField{{Name: "value", Type: intType}}}
+	left := Place{Root: "left", Type: pairType, Mutable: true, Addressable: true}
+	right := Place{Root: "right", Type: pairType, Mutable: true, Addressable: true}
+	joined := mergeReferenceOriginStates(
+		map[string]localReferenceOrigin{"view": localOriginWithPlaces(localReferenceOrigin{Name: "left", Local: true}, []Place{left})},
+		map[string]localReferenceOrigin{"view": localOriginWithPlaces(localReferenceOrigin{Name: "right", Local: true}, []Place{right})},
+	)
+	origin := joined["view"]
+	if origin.Unknown || !origin.Ambiguous || len(origin.Places) != 2 {
+		t.Fatalf("expected finite two-place provenance, got %+v", origin)
+	}
+
+	analyzer := NewAnalyzer()
+	analyzer.symbols = map[string]Symbol{
+		"view": {Name: "view", Type: Type{Name: "ref Pair", Kind: ReferenceType, Element: &pairType}, Local: true},
+	}
+	analyzer.localRefContainers = joined
+	analyzer.borrows = map[string][]borrowRecord{}
+	expr := &ast.MemberExpression{
+		Object:   &ast.Identifier{Value: "view"},
+		Property: &ast.Identifier{Value: "value"},
+	}
+	place, ok := analyzer.resolvePlace(expr)
+	if !ok {
+		t.Fatal("failed to resolve projected multi-origin reference place")
+	}
+	alternatives := placeOriginAlternatives(place)
+	if len(alternatives) != 2 || alternatives[0].String() != "left.value" || alternatives[1].String() != "right.value" {
+		t.Fatalf("wrong projected alternatives: %#v", alternatives)
+	}
+	analyzer.registerBorrow("field", &ast.RefExpression{Value: expr})
+	if len(analyzer.borrows["left"]) != 1 || len(analyzer.borrows["right"]) != 1 ||
+		analyzer.borrows["left"][0].Place.String() != "left.value" || analyzer.borrows["right"][0].Place.String() != "right.value" {
+		t.Fatalf("reborrow did not register every alternative: %#v", analyzer.borrows)
+	}
+	analyzer.errorKeys = map[string]bool{}
+	analyzer.borrows["right"] = append(analyzer.borrows["right"], borrowRecord{
+		Root: "right", Place: alternatives[1], Holder: "blocker", Kind: mutableBorrow,
+	})
+	if !analyzer.checkBorrowCreationPlace(place, false, lexer.Token{}) {
+		t.Fatal("borrow checking ignored a conflicting alternative origin")
+	}
+}
+
+func TestReferenceOriginJoinCapsPathExplosionAsUnknown(t *testing.T) {
+	states := make([]map[string]localReferenceOrigin, 0, maxReferenceOriginAlternatives+1)
+	for index := 0; index <= maxReferenceOriginAlternatives; index++ {
+		place := Place{Root: fmt.Sprintf("owner%d", index), Addressable: true}
+		states = append(states, map[string]localReferenceOrigin{
+			"view": localOriginWithPlaces(localReferenceOrigin{}, []Place{place}),
+		})
+	}
+	origin := mergeReferenceOriginStates(states...)["view"]
+	if !origin.Unknown || !origin.Ambiguous || len(origin.Places) != 0 || origin.HasPlace {
+		t.Fatalf("expected capped unknown provenance, got %+v", origin)
+	}
+	analyzer := NewAnalyzer()
+	analyzer.localRefContainers = map[string]localReferenceOrigin{"view": origin}
+	if !analyzer.referencePlaceOriginIsAmbiguous(&ast.Identifier{Value: "view"}) {
+		t.Fatal("over-limit provenance must remain conservatively non-reborrowable")
 	}
 }

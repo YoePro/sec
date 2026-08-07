@@ -251,6 +251,118 @@ Partial or pending:
 - explicit foreign struct layouts and target-width checks
 - null handling, ownership contracts and callback trampolines
 
+Parser recovery result implementation status
+--------------------------------------------
+
+Implemented initial vertical slice:
+
+- canonical `ParseResult` containing partial AST, structured diagnostics,
+  warnings, recovery events and error/fatal flags
+- compatibility preservation of the older parser query APIs
+- virtual missing-token and statement-skip recovery events
+- invalid statement retention at top level and in ordinary statement blocks
+- invalid expression retention for Pratt prefix failures
+- invalid type-reference metadata on selected type paths
+- invalid declaration retention for failed top-level declarations
+- invalid pattern retention for malformed match arms and try handlers
+- invalid member retention for disallowed impl members
+- delimiter-aware sibling recovery for later-line match arms and try handlers
+- skipped-range events for impl members, match arms and try handlers
+- stable recovery contexts and numbered diagnostic episodes
+- diagnostic deduplication by ID, primary token and recovery context
+- same-location cascade suppression within one recovery episode
+- transactional reconstruction of dedup and episode state after speculative rollback
+- shared delimiter stack for parentheses, brackets and braces
+- mismatched-closer preservation for migrated recovery helpers
+- delimiter-aware skipped ranges for struct fields, switch/select recovery,
+  compiler directives, generic parameters, declaration tails, malformed for
+  headers, attributes, properties and balanced blocks
+- ErrorType propagation in Sema without dependent diagnostics
+- recovery-event rollback during speculative parsing
+- deterministic parser diagnostic cap with one terminal `P2015`
+- central CLI and LSP migration to `ParseResult`
+
+Partial or pending:
+
+- complete invalid type retention
+- skipped-range and shared-stack migration for remaining specialized helpers
+- broader context coverage and cross-location recovery-cascade suppression
+- unterminated partial-block retention and recovery fuzzing
+
+Machine-readable status:
+
+- `implementation-status.yaml`, entry `frontend.parser-recovery-result`
+
+Place analysis implementation status
+------------------------------------
+
+Implemented initial vertical slice:
+
+- compile-time `Place` roots and field, property, index, slice and dereference
+  projections
+- mutability and addressability classification without runtime state
+- structural overlap analysis with disjoint fields and constant indices
+- conservative overlap for dynamic indices, symbolic slice bounds, properties
+  and prefixes
+- place-sensitive borrow creation, reads and assignment conflicts
+- place-based self-move overlap checks
+- rejection of borrows from temporaries and non-addressable properties
+- explicit nested struct-field moves and field-sensitive unavailable state
+- sibling-field access after partial move and whole-aggregate rejection
+- successful field reinitialization clearing partial move state
+- conservative partial-move rejection for aliased and nonlocal storage
+- projection-sensitive move-state and reason merging across continuing `if`,
+  `switch`, `select` and statement-`match` branches
+- exhaustive-branch field reinitialization and literal-unreachable-path pruning
+- loop-header Place fixed point over entry, fallthrough and `continue`, with
+  next-condition and next-iteration verification
+- separate `break` exit availability and fresh per-iteration `for` bindings
+- union variant payload projections with move-only extraction, copyable payload
+  copy, temporary forwarding and nested subject paths
+- statement/expression `match` availability merging, whole-subject
+  invalidation, exhaustive reinitialization and payload borrow conflicts
+- canonical referent Place provenance for directly created local reference and
+  slice aliases, including field/index reborrows and preservation across
+  shared-reference copies and mutable-reference moves, including active-borrow
+  holder transfer
+- normalized half-open intervals for static slice bounds, with disjoint
+  slice/slice and slice/index overlap plus constant alias-range composition
+- branch-scoped `ref`/`ref mut` payload patterns for named unions and Result,
+  with active-variant Place provenance, mutability/conflict checks and escape
+  rejection
+- loop-header borrow and local-reference-origin joins over entry, fallthrough
+  and `continue`, with next-condition/iteration verification
+- post-loop borrow/reference joins including explicit `break` exits, fresh
+  iteration-local `for` bindings and bounded path-disjunctive provenance
+- finite multi-origin reference sets with field/index/slice projection,
+  reborrow registration and conflict checking across every possible owner root;
+  missing or more than 16 origins degrade to unknown
+- field/element-sensitive reference-origin maps for locally constructed structs
+  and fixed arrays, including nesting, whole-value transfer, replacement
+  assignment, constant/dynamic indexing and branch/loop joins
+- fixed-point returned-reference summaries for direct functions and methods,
+  including symbolic parameter/receiver projections, multiple sources,
+  aggregate result paths, transitive calls and granting-borrow retention
+- must-closed resource-state intersection for local `io.File`/`io.Directory`
+  across branches, loop entry/fallthrough/`continue`, and explicit `break`
+  exits, including zero-iteration and `while true` behavior
+
+Partial or pending:
+
+- indexed, sliced and aliased move availability beyond roots, nested fields and
+  owned union payloads
+- recursive aggregate availability masks
+- symbolic slice-range, imported/opaque foreign, function-value and recursive
+  summary provenance analysis
+- multi-field active-variant borrowed payload destructuring
+- general destruction/conditional-cleanup lattices beyond close-tracked
+  resources and imported/opaque/function-value/recursive reference provenance
+- Semantic IR ownership operations and destruction placement
+
+Machine-readable status:
+
+- `implementation-status.yaml`, entry `sema.place-analysis`
+
 Grammar synchronization status
 ------------------------------
 
@@ -319,8 +431,9 @@ Canonical documentation synchronization:
 - explicit move syntax is implemented in the lexer, parser, AST and Sema for
   direct named sources; formatter preservation, semantic-token classification
   and initial LSP operator quick fixes are also present
-- place-sensitive partial moves, complete safe-fix proof, explicit ownership
-  Semantic IR and backend ownership verification remain incomplete
+- nested-field partial moves are implemented; indexed, sliced, aliased and
+  union-payload moves, complete safe-fix proof, explicit ownership Semantic IR
+  and backend ownership verification remain incomplete
 - compiler-known `CopyNonCopyable` types are enforced in ordinary named copies
   and consuming contexts; generic values without proven copyability are
   conservatively rejected by ordinary named-source copy, while explicit moves

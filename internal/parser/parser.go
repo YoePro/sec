@@ -2,6 +2,7 @@ package parser
 
 import (
 	"fmt"
+	"reflect"
 	"strconv"
 	"strings"
 
@@ -16,14 +17,74 @@ type Diagnostic struct {
 	Primary    lexer.Token
 	Expected   []lexer.TokenType
 	Unexpected *lexer.Token
+	Context    RecoveryContext
+	Episode    int
+}
+
+type RecoveryContext string
+
+const (
+	RecoveryContextTopLevel   RecoveryContext = "top-level"
+	RecoveryContextBlock      RecoveryContext = "block"
+	RecoveryContextMatchArm   RecoveryContext = "match-arm"
+	RecoveryContextTryHandler RecoveryContext = "try-handler"
+	RecoveryContextMember     RecoveryContext = "declaration-member"
+)
+
+type RecoveryKind string
+
+const (
+	RecoveryInsertMissingToken RecoveryKind = "insert-missing-token"
+	RecoverySkipTokens         RecoveryKind = "skip-tokens"
+)
+
+type RecoveryConfidence string
+
+const (
+	RecoveryExact       RecoveryConfidence = "exact"
+	RecoveryUnambiguous RecoveryConfidence = "unambiguous"
+	RecoveryProbable    RecoveryConfidence = "probable"
+	RecoveryUnknown     RecoveryConfidence = "unknown"
+)
+
+type RecoveryEvent struct {
+	Kind         RecoveryKind
+	Confidence   RecoveryConfidence
+	DiagnosticID string
+	Start        lexer.Token
+	End          lexer.Token
+	Expected     []lexer.TokenType
+	Skipped      int
+	Context      RecoveryContext
+	Episode      int
+	// diagnosticIndex associates the repair with the parser diagnostic that
+	// caused it. It is internal bookkeeping for speculative rollback.
+	diagnosticIndex int
+}
+
+type ParseResult struct {
+	Program     *ast.Program
+	Diagnostics []Diagnostic
+	Warnings    []string
+	Recovery    []RecoveryEvent
+	HasErrors   bool
+	Fatal       bool
 }
 
 type Parser struct {
 	l *lexer.Lexer
 
-	errors      []string
-	warnings    []string
-	diagnostics []Diagnostic
+	errors            []string
+	warnings          []string
+	diagnostics       []Diagnostic
+	recovery          []RecoveryEvent
+	limitReached      bool
+	diagnosticKeys    map[diagnosticKey]struct{}
+	recoveryContext   RecoveryContext
+	activeEpisode     int
+	nextEpisode       int
+	episodePrimary    diagnosticLocation
+	hasEpisodePrimary bool
 
 	curToken  lexer.Token
 	peekToken lexer.Token
@@ -32,11 +93,30 @@ type Parser struct {
 	inRefExpression bool
 }
 
+type diagnosticKey struct {
+	id      string
+	file    string
+	line    int
+	column  int
+	context RecoveryContext
+}
+
+type diagnosticLocation struct {
+	file    string
+	line    int
+	column  int
+	context RecoveryContext
+}
+
+const maxParserDiagnostics = 100
+
 func New(l *lexer.Lexer) *Parser {
 	p := &Parser{
-		l:        l,
-		errors:   []string{},
-		warnings: []string{},
+		l:               l,
+		errors:          []string{},
+		warnings:        []string{},
+		diagnosticKeys:  map[diagnosticKey]struct{}{},
+		recoveryContext: RecoveryContextTopLevel,
 	}
 
 	p.nextToken()
@@ -66,9 +146,33 @@ func (p *Parser) Diagnostics() []Diagnostic {
 	return result
 }
 
+func (p *Parser) RecoveryEvents() []RecoveryEvent {
+	result := make([]RecoveryEvent, len(p.recovery))
+	for i, event := range p.recovery {
+		result[i] = event
+		result[i].Expected = append([]lexer.TokenType(nil), event.Expected...)
+	}
+	return result
+}
+
+// Parse returns the canonical parser result. ParseProgram remains available as
+// a compatibility API while compiler and tooling consumers migrate.
+func (p *Parser) Parse() ParseResult {
+	program := p.ParseProgram()
+	return ParseResult{
+		Program:     program,
+		Diagnostics: p.Diagnostics(),
+		Warnings:    append([]string(nil), p.warnings...),
+		Recovery:    p.RecoveryEvents(),
+		HasErrors:   len(p.errors) > 0,
+		Fatal:       false,
+	}
+}
+
 func (p *Parser) ParseProgram() *ast.Program {
 	program := &ast.Program{}
 	for p.curToken.Type != lexer.EOF {
+		p.endRecoveryEpisode()
 		p.skipComments()
 
 		if p.curToken.Type == lexer.EOF {
@@ -85,17 +189,38 @@ func (p *Parser) ParseProgram() *ast.Program {
 			continue
 		}
 
+		start := p.curToken
+		diagnosticStart := len(p.diagnostics)
 		stmt := p.parseStatement()
 
-		if stmt != nil {
+		if parsedStatementPresent(stmt) {
 			program.Statements = append(program.Statements, stmt)
+			p.endRecoveryEpisode()
 			p.nextToken()
 			continue
 		}
 
-		p.skipStatement()
+		recovery := p.skipStatement()
+		if isDeclarationStart(start.Type) {
+			program.Statements = append(program.Statements, p.invalidDeclaration(start, diagnosticStart, recovery))
+		} else {
+			program.Statements = append(program.Statements, p.invalidStatement(start, diagnosticStart, recovery))
+		}
 	}
 	return program
+}
+
+func parsedStatementPresent(stmt ast.Statement) bool {
+	if stmt == nil {
+		return false
+	}
+	value := reflect.ValueOf(stmt)
+	switch value.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return !value.IsNil()
+	default:
+		return true
+	}
 }
 
 func (p *Parser) isTargetDirectiveStart() bool {
@@ -630,17 +755,37 @@ func (p *Parser) parseForBinding() (ast.ForBinding, bool) {
 }
 
 func (p *Parser) skipMalformedForHeader(stmt *ast.ForStatement) {
-	for p.curToken.Type != lexer.EOF && p.curToken.Type != lexer.LBRACE && p.curToken.Type != lexer.RBRACE {
-		if p.peekToken.Type == lexer.LBRACE {
+	start, end, skipped := p.curToken, p.curToken, 0
+	delimiters := newDelimiterStack()
+	for p.curToken.Type != lexer.EOF {
+		if delimiters.empty() && p.curToken.Type == lexer.LBRACE {
+			if skipped > 0 {
+				p.recordSkippedRecovery(start, end, skipped, RecoveryProbable)
+			}
+			stmt.Body = p.parseStatementBlock("for body")
+			return
+		}
+		if delimiters.empty() && p.curToken.Type == lexer.RBRACE {
+			break
+		}
+		if !delimiters.canConsume(p.curToken.Type) {
+			break
+		}
+		end = p.curToken
+		skipped++
+		delimiters.consume(p.curToken.Type)
+		if delimiters.empty() && p.peekToken.Type == lexer.LBRACE {
+			p.recordSkippedRecovery(start, end, skipped, RecoveryProbable)
 			p.nextToken()
 			stmt.Body = p.parseStatementBlock("for body")
 			return
 		}
 		p.nextToken()
 	}
-
-	if p.curToken.Type == lexer.LBRACE {
-		stmt.Body = p.parseStatementBlock("for body")
+	if skipped > 0 {
+		p.recordSkippedRecovery(start, end, skipped, RecoveryProbable)
+	} else {
+		p.endRecoveryEpisode()
 	}
 }
 
@@ -798,14 +943,26 @@ func (p *Parser) parseSelectBranch() *ast.SelectBranch {
 	return branch
 }
 
-func (p *Parser) skipSelectBranch() {
-	for p.curToken.Type != lexer.RBRACE && p.curToken.Type != lexer.EOF &&
-		p.curToken.Type != lexer.DEFAULT && p.curToken.Type != lexer.AFTER {
-		if p.curToken.Type == lexer.IDENT || p.curToken.Type == lexer.AWAIT {
-			return
+func (p *Parser) skipSelectBranch() RecoveryEvent {
+	start, end, skipped := p.curToken, p.curToken, 0
+	delimiters := newDelimiterStack()
+	for p.curToken.Type != lexer.EOF {
+		if delimiters.empty() && (p.curToken.Type == lexer.RBRACE || p.curToken.Type == lexer.DEFAULT || p.curToken.Type == lexer.AFTER || p.curToken.Type == lexer.IDENT || p.curToken.Type == lexer.AWAIT) {
+			break
 		}
+		if !delimiters.canConsume(p.curToken.Type) {
+			break
+		}
+		end = p.curToken
+		skipped++
+		delimiters.consume(p.curToken.Type)
 		p.nextToken()
 	}
+	if skipped == 0 {
+		p.endRecoveryEpisode()
+		return RecoveryEvent{}
+	}
+	return p.recordSkippedRecovery(start, end, skipped, RecoveryProbable)
 }
 
 func (p *Parser) parseSwitchCaseClause(isDefault bool, subjectless bool) *ast.SwitchCase {
@@ -913,10 +1070,26 @@ func (p *Parser) parseSwitchCaseBody() *ast.BlockStatement {
 	return block
 }
 
-func (p *Parser) skipSwitchClause() {
-	for p.curToken.Type != lexer.RBRACE && p.curToken.Type != lexer.EOF && p.curToken.Type != lexer.CASE && p.curToken.Type != lexer.DEFAULT {
+func (p *Parser) skipSwitchClause() RecoveryEvent {
+	start, end, skipped := p.curToken, p.curToken, 0
+	delimiters := newDelimiterStack()
+	for p.curToken.Type != lexer.EOF {
+		if delimiters.empty() && (p.curToken.Type == lexer.RBRACE || p.curToken.Type == lexer.CASE || p.curToken.Type == lexer.DEFAULT) {
+			break
+		}
+		if !delimiters.canConsume(p.curToken.Type) {
+			break
+		}
+		end = p.curToken
+		skipped++
+		delimiters.consume(p.curToken.Type)
 		p.nextToken()
 	}
+	if skipped == 0 {
+		p.endRecoveryEpisode()
+		return RecoveryEvent{}
+	}
+	return p.recordSkippedRecovery(start, end, skipped, RecoveryProbable)
 }
 
 func (p *Parser) parseUnsafeStatement() ast.Statement {
@@ -1123,6 +1296,8 @@ func isSwitchClauseStart(token lexer.Token) bool {
 
 func expressionToken(expr ast.Expression) lexer.Token {
 	switch expr := expr.(type) {
+	case *ast.InvalidExpression:
+		return expr.Token
 	case *ast.Identifier:
 		return expr.Token
 	case *ast.IntegerLiteral:
@@ -1277,10 +1452,19 @@ func (p *Parser) parseTargetDirective(hashToken lexer.Token) ast.Statement {
 	return stmt
 }
 
-func (p *Parser) skipCompilerDirective() {
-	for p.curToken.Type != lexer.EOF && p.curToken.Type != lexer.RPAREN {
+func (p *Parser) skipCompilerDirective() RecoveryEvent {
+	start, end, skipped := p.curToken, p.curToken, 1
+	delimiters := newDelimiterStack(lexer.RPAREN)
+	for p.peekToken.Type != lexer.EOF && !delimiters.empty() {
+		if !delimiters.canConsume(p.peekToken.Type) {
+			break
+		}
 		p.nextToken()
+		end = p.curToken
+		skipped++
+		delimiters.consume(p.curToken.Type)
 	}
+	return p.recordSkippedRecovery(start, end, skipped, RecoveryProbable)
 }
 
 func (p *Parser) parseImportStatement() ast.Statement {
@@ -1577,8 +1761,12 @@ func (p *Parser) parseInterfaceDeclaration() ast.Statement {
 	if !p.expectPeek(lexer.LBRACE) {
 		return nil
 	}
+	previousContext := p.recoveryContext
+	p.recoveryContext = RecoveryContextMember
+	defer func() { p.recoveryContext = previousContext }()
 
 	for p.peekToken.Type != lexer.RBRACE && p.peekToken.Type != lexer.EOF {
+		p.endRecoveryEpisode()
 		p.nextToken()
 		if p.curToken.Type == lexer.COMMENT {
 			continue
@@ -1679,8 +1867,12 @@ func (p *Parser) parseInterfaceProperty() *ast.InterfaceProperty {
 	if !p.expectPeek(lexer.LBRACE) {
 		return nil
 	}
+	previousContext := p.recoveryContext
+	p.recoveryContext = RecoveryContextMember
+	defer func() { p.recoveryContext = previousContext }()
 
 	for p.peekToken.Type != lexer.RBRACE && p.peekToken.Type != lexer.EOF {
+		p.endRecoveryEpisode()
 		p.nextToken()
 		switch p.curToken.Type {
 		case lexer.GET:
@@ -1985,16 +2177,22 @@ func (p *Parser) parseGenericParameters() []*ast.GenericParameter {
 	}
 }
 
-func (p *Parser) skipGenericParameterList() {
-	for p.curToken.Type != lexer.EOF {
-		switch p.curToken.Type {
-		case lexer.RBRACKET:
-			return
-		case lexer.LBRACE, lexer.LPAREN:
-			return
+func (p *Parser) skipGenericParameterList() RecoveryEvent {
+	start, end, skipped := p.curToken, p.curToken, 1
+	delimiters := newDelimiterStack(lexer.RBRACKET)
+	for p.peekToken.Type != lexer.EOF && !delimiters.empty() {
+		if delimiters.depth() == 1 && (p.peekToken.Type == lexer.LBRACE || p.peekToken.Type == lexer.LPAREN) {
+			break
+		}
+		if !delimiters.canConsume(p.peekToken.Type) {
+			break
 		}
 		p.nextToken()
+		end = p.curToken
+		skipped++
+		delimiters.consume(p.curToken.Type)
 	}
+	return p.recordSkippedRecovery(start, end, skipped, RecoveryProbable)
 }
 
 func (p *Parser) parseUnsafeFunctionDeclaration() *ast.FunctionDeclaration {
@@ -2112,22 +2310,30 @@ func (p *Parser) parseFunctionBlockStatement() *ast.BlockStatement {
 
 func (p *Parser) parseStatementBlock(name string) *ast.BlockStatement {
 	block := &ast.BlockStatement{Token: p.curToken}
+	previousContext := p.recoveryContext
+	p.recoveryContext = RecoveryContextBlock
+	defer func() { p.recoveryContext = previousContext }()
 
 	p.nextToken()
 	for p.curToken.Type != lexer.RBRACE && p.curToken.Type != lexer.EOF {
+		p.endRecoveryEpisode()
 		if p.curToken.Type == lexer.COMMENT {
 			p.nextToken()
 			continue
 		}
 
+		start := p.curToken
+		diagnosticStart := len(p.diagnostics)
 		stmt := p.parseStatement()
-		if stmt != nil {
+		if parsedStatementPresent(stmt) {
 			block.Statements = append(block.Statements, stmt)
+			p.endRecoveryEpisode()
 			p.nextToken()
 			continue
 		}
 
-		p.skipStatement()
+		recovery := p.skipStatement()
+		block.Statements = append(block.Statements, p.invalidStatement(start, diagnosticStart, recovery))
 	}
 
 	if p.curToken.Type == lexer.EOF {
@@ -2496,16 +2702,28 @@ func (p *Parser) parseStructFields() []*ast.StructField {
 }
 
 func (p *Parser) skipMalformedStructField() bool {
-	for p.peekToken.Type != lexer.COMMA && p.peekToken.Type != lexer.RBRACE && p.peekToken.Type != lexer.EOF {
+	start, end, skipped := p.curToken, p.curToken, 1
+	delimiters := newDelimiterStack()
+	for p.peekToken.Type != lexer.EOF {
+		if delimiters.empty() && (p.peekToken.Type == lexer.COMMA || p.peekToken.Type == lexer.RBRACE) {
+			break
+		}
+		if !delimiters.canConsume(p.peekToken.Type) {
+			break
+		}
 		p.nextToken()
+		end = p.curToken
+		skipped++
+		delimiters.consume(p.curToken.Type)
 	}
-
-	if p.peekToken.Type == lexer.COMMA {
+	continued := p.peekToken.Type == lexer.COMMA
+	if continued {
 		p.nextToken()
-		return true
+		end = p.curToken
+		skipped++
 	}
-
-	return false
+	p.recordSkippedRecovery(start, end, skipped, RecoveryProbable)
+	return continued
 }
 
 func (p *Parser) parseStructTag(token lexer.Token) ([]ast.StructTag, bool) {
@@ -2553,8 +2771,12 @@ func (p *Parser) parseImplStatement() ast.Statement {
 	if !p.expectPeek(lexer.LBRACE) {
 		return nil
 	}
+	previousContext := p.recoveryContext
+	p.recoveryContext = RecoveryContextMember
+	defer func() { p.recoveryContext = previousContext }()
 
 	for p.peekToken.Type != lexer.RBRACE && p.peekToken.Type != lexer.EOF {
+		p.endRecoveryEpisode()
 		p.nextToken()
 		if p.curToken.Type == lexer.COMMENT {
 			continue
@@ -2605,22 +2827,21 @@ func (p *Parser) parseImplStatement() ast.Statement {
 				}
 				continue
 			}
-			stmt.Members = append(stmt.Members, &ast.InvalidStatement{
-				Token:   p.curToken,
-				Message: "static inside impl must modify fn or let",
-			})
-			p.skipInvalidImplMember()
+			start, diagnosticStart := p.curToken, len(p.diagnostics)
+			message := "static inside impl must modify fn or let"
+			recovery := p.skipInvalidImplMember()
+			stmt.Members = append(stmt.Members, p.invalidMember(start, diagnosticStart, recovery, message))
 		case lexer.FREE:
-			stmt.Members = append(stmt.Members, &ast.InvalidStatement{
-				Token:   p.curToken,
-				Message: "free operations are reserved for destruction but are not implemented yet",
-			})
+			start, diagnosticStart := p.curToken, len(p.diagnostics)
+			message := "free operations are reserved for destruction but are not implemented yet"
+			var recovery RecoveryEvent
 			if p.peekToken.Type == lexer.LBRACE {
 				p.nextToken()
-				p.skipCurrentBlock()
+				recovery = p.skipCurrentBlockRecovery(start)
 			} else {
-				p.skipInvalidImplMember()
+				recovery = p.skipInvalidImplMember()
 			}
+			stmt.Members = append(stmt.Members, p.invalidMember(start, diagnosticStart, recovery, message))
 		case lexer.PROPERTY:
 			property := p.parsePropertyDeclaration()
 			if property == nil {
@@ -2646,23 +2867,19 @@ func (p *Parser) parseImplStatement() ast.Statement {
 			} else if p.isAssignmentOperator(p.peekToken.Type) {
 				message = "executable statements are not allowed inside impl"
 			}
-			stmt.Members = append(stmt.Members, &ast.InvalidStatement{
-				Token:   p.curToken,
-				Message: message,
-			})
-			p.skipInvalidImplMember()
+			start, diagnosticStart := p.curToken, len(p.diagnostics)
+			recovery := p.skipInvalidImplMember()
+			stmt.Members = append(stmt.Members, p.invalidMember(start, diagnosticStart, recovery, message))
 		case lexer.STRUCT:
-			stmt.Members = append(stmt.Members, &ast.InvalidStatement{
-				Token:   p.curToken,
-				Message: "struct declarations inside impl must use type Name struct",
-			})
-			p.skipInvalidImplMember()
+			start, diagnosticStart := p.curToken, len(p.diagnostics)
+			message := "struct declarations inside impl must use type Name struct"
+			recovery := p.skipInvalidImplMember()
+			stmt.Members = append(stmt.Members, p.invalidMember(start, diagnosticStart, recovery, message))
 		case lexer.LET:
-			stmt.Members = append(stmt.Members, &ast.InvalidStatement{
-				Token:   p.curToken,
-				Message: "variable declarations are not allowed inside impl",
-			})
-			p.skipInvalidImplMember()
+			start, diagnosticStart := p.curToken, len(p.diagnostics)
+			message := "variable declarations are not allowed inside impl"
+			recovery := p.skipInvalidImplMember()
+			stmt.Members = append(stmt.Members, p.invalidMember(start, diagnosticStart, recovery, message))
 		default:
 			message := "impl block may only contain type, unit, enum, property, event, and fn declarations"
 			if p.curToken.Type == lexer.IDENT && p.peekToken.Type == lexer.COLON {
@@ -2674,11 +2891,9 @@ func (p *Parser) parseImplStatement() ast.Statement {
 			} else if p.curToken.Type == lexer.IDENT && p.isAssignmentOperator(p.peekToken.Type) {
 				message = "executable statements are not allowed inside impl"
 			}
-			stmt.Members = append(stmt.Members, &ast.InvalidStatement{
-				Token:   p.curToken,
-				Message: message,
-			})
-			p.skipInvalidImplMember()
+			start, diagnosticStart := p.curToken, len(p.diagnostics)
+			recovery := p.skipInvalidImplMember()
+			stmt.Members = append(stmt.Members, p.invalidMember(start, diagnosticStart, recovery, message))
 		}
 	}
 
@@ -2722,29 +2937,44 @@ func (p *Parser) parseUnitMetadataDeclaration() *ast.UnitMetadataDeclaration {
 	return metadata
 }
 
-func (p *Parser) skipInvalidImplMember() {
-	startLine := p.curToken.Line
-	depth := 0
+func (p *Parser) skipInvalidImplMember() RecoveryEvent {
+	return p.skipInvalidImplMemberFrom(p.curToken)
+}
+
+func (p *Parser) skipInvalidImplMemberFrom(start lexer.Token) RecoveryEvent {
+	end := p.curToken
+	skipped := 1
+	if start != p.curToken {
+		skipped++
+	}
+	startLine := start.Line
+	delimiters := newDelimiterStack()
+	delimiters.consume(p.curToken.Type)
 
 	for p.peekToken.Type != lexer.EOF {
-		if depth == 0 && p.peekToken.Type == lexer.RBRACE {
-			return
+		if delimiters.empty() && p.peekToken.Type == lexer.RBRACE {
+			break
 		}
-		if depth == 0 && p.peekToken.Line > startLine && p.isImplMemberStart(p.peekToken.Type) {
-			return
+		if delimiters.empty() && p.peekToken.Line > startLine && p.isImplMemberStart(p.peekToken.Type) {
+			break
+		}
+		if !delimiters.canConsume(p.peekToken.Type) {
+			break
 		}
 
 		p.nextToken()
-		switch p.curToken.Type {
-		case lexer.LBRACE:
-			depth++
-		case lexer.RBRACE:
-			if depth == 0 {
-				return
-			}
-			depth--
-		}
+		end = p.curToken
+		skipped++
+		delimiters.consume(p.curToken.Type)
 	}
+	return p.recordSkippedRecovery(start, end, skipped, RecoveryProbable)
+}
+
+func (p *Parser) skipCurrentBlockRecovery(start lexer.Token) RecoveryEvent {
+	if p.curToken.Type != lexer.LBRACE {
+		return RecoveryEvent{}
+	}
+	return p.skipBalancedBlockFrom(start, false)
 }
 
 func (p *Parser) isImplMemberStart(t lexer.TokenType) bool {
@@ -2956,58 +3186,61 @@ func (p *Parser) parsePropertySetter(propertyName string, fallible bool) *ast.Pr
 	return setter
 }
 
-func (p *Parser) skipCurrentBlock() {
+func (p *Parser) skipCurrentBlock() RecoveryEvent {
 	if p.curToken.Type != lexer.LBRACE {
-		return
+		return RecoveryEvent{}
 	}
-
-	depth := 1
-	for depth > 0 {
-		p.nextToken()
-		switch p.curToken.Type {
-		case lexer.EOF:
-			return
-		case lexer.LBRACE:
-			depth++
-		case lexer.RBRACE:
-			depth--
-		}
-	}
+	return p.skipBalancedBlock(false)
 }
 
-func (p *Parser) skipBraceBlock() {
-	if p.curToken.Type != lexer.LBRACE {
-		return
-	}
-	depth := 1
-	for depth > 0 {
-		p.nextToken()
-		switch p.curToken.Type {
-		case lexer.EOF:
-			p.addError("unterminated block")
-			return
-		case lexer.LBRACE:
-			depth++
-		case lexer.RBRACE:
-			depth--
-		}
-	}
+func (p *Parser) skipBalancedBlock(reportUnterminated bool) RecoveryEvent {
+	return p.skipBalancedBlockFrom(p.curToken, reportUnterminated)
 }
 
-func (p *Parser) skipPropertyRemainder() {
-	depth := 0
-	for p.peekToken.Type != lexer.EOF {
+func (p *Parser) skipBalancedBlockFrom(start lexer.Token, reportUnterminated bool) RecoveryEvent {
+	end, skipped := p.curToken, 1
+	if start != p.curToken {
+		skipped++
+	}
+	delimiters := newDelimiterStack(lexer.RBRACE)
+	for !delimiters.empty() {
 		p.nextToken()
-		switch p.curToken.Type {
-		case lexer.LBRACE:
-			depth++
-		case lexer.RBRACE:
-			if depth == 0 {
-				return
+		if p.curToken.Type == lexer.EOF {
+			if reportUnterminated {
+				p.addError("unterminated block")
 			}
-			depth--
+			break
 		}
+		if !delimiters.canConsume(p.curToken.Type) {
+			break
+		}
+		end = p.curToken
+		skipped++
+		delimiters.consume(p.curToken.Type)
 	}
+	return p.recordSkippedRecovery(start, end, skipped, RecoveryProbable)
+}
+
+func (p *Parser) skipBraceBlock() RecoveryEvent {
+	if p.curToken.Type != lexer.LBRACE {
+		return RecoveryEvent{}
+	}
+	return p.skipBalancedBlock(true)
+}
+
+func (p *Parser) skipPropertyRemainder() RecoveryEvent {
+	start, end, skipped := p.curToken, p.curToken, 1
+	delimiters := newDelimiterStack(lexer.RBRACE)
+	for p.peekToken.Type != lexer.EOF && !delimiters.empty() {
+		if !delimiters.canConsume(p.peekToken.Type) {
+			break
+		}
+		p.nextToken()
+		end = p.curToken
+		skipped++
+		delimiters.consume(p.curToken.Type)
+	}
+	return p.recordSkippedRecovery(start, end, skipped, RecoveryProbable)
 }
 
 func (p *Parser) parseBlockStatement() *ast.BlockStatement {
@@ -3094,11 +3327,11 @@ func (p *Parser) parseTypeReference() *ast.TypeReference {
 func (p *Parser) parseParenthesizedTypeReference() *ast.TypeReference {
 	token := p.curToken
 	if !p.expectPeekTypeStart() {
-		return &ast.TypeReference{Token: token}
+		return p.invalidTypeReference(token, "")
 	}
 	ref := p.parseTypeReference()
 	if !p.expectPeek(lexer.RPAREN) {
-		return ref
+		return p.markInvalidTypeReference(ref)
 	}
 	return p.parsePostfixTypeReference(ref)
 }
@@ -3111,7 +3344,10 @@ func (p *Parser) parseReferenceTypeReference() *ast.TypeReference {
 		mutable = true
 	}
 	if !p.expectPeekTypeStart() {
-		return &ast.TypeReference{Token: refToken, Name: "ref", Ref: true, MutableRef: mutable}
+		ref := p.invalidTypeReference(refToken, "ref")
+		ref.Ref = true
+		ref.MutableRef = mutable
+		return ref
 	}
 	inner := p.parseTypeReference()
 	inner.Ref = true
@@ -3127,12 +3363,12 @@ func (p *Parser) parseFunctionTypeReference() *ast.TypeReference {
 	}
 
 	if !p.expectPeek(lexer.LPAREN) {
-		return ref
+		return p.markInvalidTypeReference(ref)
 	}
 
 	for p.peekToken.Type != lexer.RPAREN && p.peekToken.Type != lexer.EOF {
 		if !p.expectPeekTypeStart() {
-			return ref
+			return p.markInvalidTypeReference(ref)
 		}
 		ref.FunctionParameterTypes = append(ref.FunctionParameterTypes, p.parseTypeReference())
 
@@ -3143,11 +3379,11 @@ func (p *Parser) parseFunctionTypeReference() *ast.TypeReference {
 	}
 
 	if !p.expectPeek(lexer.RPAREN) {
-		return ref
+		return p.markInvalidTypeReference(ref)
 	}
 
 	if !p.expectPeekTypeStart() {
-		return ref
+		return p.markInvalidTypeReference(ref)
 	}
 	ref.FunctionReturnType = p.parseTypeReference()
 
@@ -3170,14 +3406,14 @@ func (p *Parser) parsePostfixTypeReference(ref *ast.TypeReference) *ast.TypeRefe
 		if isCollectionShapedTypeName(ref.Name) {
 			ref = p.parseCollectionShapedTypeReferenceArgs(ref, token)
 			if ref == nil {
-				return &ast.TypeReference{Token: token}
+				return p.invalidTypeReference(token, "")
 			}
 			continue
 		}
 		if ref.Name == "Event" || ref.Name == "EventStorage" {
 			ref = p.parseEventTypeReferenceArgs(ref, token)
 			if ref == nil {
-				return &ast.TypeReference{Token: token}
+				return p.invalidTypeReference(token, "")
 			}
 			continue
 		}
@@ -3346,10 +3582,10 @@ func (p *Parser) parsePrefixSequenceTypeReference() *ast.TypeReference {
 	}
 
 	if !p.expectPeek(lexer.RBRACKET) {
-		return ref
+		return p.markInvalidTypeReference(ref)
 	}
 	if !p.expectPeekTypeStart() {
-		return ref
+		return p.markInvalidTypeReference(ref)
 	}
 
 	ref.ElementType = p.parseTypeReference()
@@ -3664,6 +3900,9 @@ func isPathSegmentToken(tokenType lexer.TokenType) bool {
 func (p *Parser) expectPeek(t lexer.TokenType) bool {
 	if p.peekToken.Type == t {
 		p.nextToken()
+		if isClosingDelimiter(t) {
+			p.endRecoveryEpisode()
+		}
 		return true
 	}
 
@@ -3743,7 +3982,33 @@ func (p *Parser) addError(format string, args ...any) {
 }
 
 func (p *Parser) addDiagnostic(id string, primary lexer.Token, expected []lexer.TokenType, unexpected *lexer.Token, format string, args ...any) {
+	if p.limitReached {
+		return
+	}
+	key := diagnosticKey{id: id, file: primary.File, line: primary.Line, column: primary.Column, context: p.recoveryContext}
+	if _, duplicate := p.diagnosticKeys[key]; duplicate {
+		return
+	}
+	location := diagnosticLocation{file: primary.File, line: primary.Line, column: primary.Column, context: p.recoveryContext}
+	if p.activeEpisode != 0 && p.hasEpisodePrimary && p.episodePrimary == location {
+		return
+	}
+	if len(p.diagnostics) == maxParserDiagnostics-1 {
+		id = compilerdiagnostics.ParserRecoveryLimit
+		expected = nil
+		unexpected = nil
+		format = "parser diagnostic limit reached after %d errors at %d:%d"
+		args = []any{maxParserDiagnostics, primary.Line, primary.Column}
+		p.limitReached = true
+		key.id = id
+	}
+	episode := p.ensureRecoveryEpisode()
+	if !p.hasEpisodePrimary {
+		p.episodePrimary = location
+		p.hasEpisodePrimary = true
+	}
 	message := fmt.Sprintf(format, args...)
+	diagnosticIndex := len(p.diagnostics)
 	p.errors = append(p.errors, message)
 	p.diagnostics = append(p.diagnostics, Diagnostic{
 		ID:         id,
@@ -3751,12 +4016,70 @@ func (p *Parser) addDiagnostic(id string, primary lexer.Token, expected []lexer.
 		Primary:    primary,
 		Expected:   append([]lexer.TokenType(nil), expected...),
 		Unexpected: unexpected,
+		Context:    p.recoveryContext,
+		Episode:    episode,
 	})
+	p.diagnosticKeys[key] = struct{}{}
+	if id == compilerdiagnostics.ParserMissingToken && len(expected) > 0 {
+		p.recovery = append(p.recovery, RecoveryEvent{
+			Kind:            RecoveryInsertMissingToken,
+			Confidence:      RecoveryUnambiguous,
+			DiagnosticID:    id,
+			diagnosticIndex: diagnosticIndex,
+			Start:           primary,
+			End:             primary,
+			Expected:        append([]lexer.TokenType(nil), expected...),
+			Context:         p.recoveryContext,
+			Episode:         episode,
+		})
+	}
+}
+
+func (p *Parser) ensureRecoveryEpisode() int {
+	if p.activeEpisode == 0 {
+		p.nextEpisode++
+		p.activeEpisode = p.nextEpisode
+	}
+	return p.activeEpisode
+}
+
+func (p *Parser) endRecoveryEpisode() {
+	p.activeEpisode = 0
+	p.episodePrimary = diagnosticLocation{}
+	p.hasEpisodePrimary = false
+}
+
+func isClosingDelimiter(t lexer.TokenType) bool {
+	return t == lexer.RPAREN || t == lexer.RBRACKET || t == lexer.RBRACE
 }
 
 func (p *Parser) rollbackErrors(count int) {
 	p.errors = p.errors[:count]
 	p.diagnostics = p.diagnostics[:count]
+	if count < maxParserDiagnostics {
+		p.limitReached = false
+	}
+	out := p.recovery[:0]
+	for _, event := range p.recovery {
+		if event.diagnosticIndex >= 0 && event.diagnosticIndex >= count {
+			continue
+		}
+		out = append(out, event)
+	}
+	p.recovery = out
+	p.diagnosticKeys = make(map[diagnosticKey]struct{}, len(p.diagnostics))
+	p.nextEpisode = 0
+	for _, diagnostic := range p.diagnostics {
+		p.diagnosticKeys[diagnosticKey{
+			id: diagnostic.ID, file: diagnostic.Primary.File,
+			line: diagnostic.Primary.Line, column: diagnostic.Primary.Column,
+			context: diagnostic.Context,
+		}] = struct{}{}
+		if diagnostic.Episode > p.nextEpisode {
+			p.nextEpisode = diagnostic.Episode
+		}
+	}
+	p.endRecoveryEpisode()
 }
 
 func (p *Parser) addWarning(format string, args ...any) {
@@ -3779,12 +4102,165 @@ func trimCharQuotes(s string) string {
 	return s
 }
 
-func (p *Parser) skipStatement() {
+func (p *Parser) skipStatement() RecoveryEvent {
+	start := p.curToken
+	end := start
+	skipped := 0
 	p.nextToken()
+	skipped++
 
 	for !p.isAtEnd() && p.curToken.Type != lexer.RBRACE && !p.isStatementStart(p.curToken.Type) {
+		end = p.curToken
 		p.nextToken()
+		skipped++
 	}
+	if skipped == 1 {
+		end = start
+	}
+	return p.recordSkippedRecovery(start, end, skipped, RecoveryUnknown)
+}
+
+func (p *Parser) invalidStatement(start lexer.Token, diagnosticStart int, recovery RecoveryEvent) *ast.InvalidStatement {
+	message := "invalid statement"
+	diagnosticID := compilerdiagnostics.ParserInvalidStatement
+	if diagnosticStart < len(p.diagnostics) {
+		diagnostic := p.diagnostics[diagnosticStart]
+		message = diagnostic.Message
+		diagnosticID = diagnostic.ID
+	}
+	return &ast.InvalidStatement{
+		Token:   start,
+		Message: message,
+		Recovery: &ast.RecoveryInfo{
+			DiagnosticID: diagnosticID,
+			Message:      message,
+			Start:        recovery.Start,
+			End:          recovery.End,
+			Skipped:      recovery.Skipped,
+		},
+	}
+}
+
+func (p *Parser) invalidDeclaration(start lexer.Token, diagnosticStart int, recovery RecoveryEvent) *ast.InvalidDeclaration {
+	message := "invalid declaration"
+	if diagnosticStart < len(p.diagnostics) {
+		message = p.diagnostics[diagnosticStart].Message
+	}
+	return &ast.InvalidDeclaration{
+		Token:   start,
+		Message: message,
+		Recovery: &ast.RecoveryInfo{
+			DiagnosticID: compilerdiagnostics.ParserInvalidDeclaration,
+			Message:      message,
+			Start:        recovery.Start,
+			End:          recovery.End,
+			Skipped:      recovery.Skipped,
+		},
+	}
+}
+
+func (p *Parser) invalidMember(start lexer.Token, diagnosticStart int, recovery RecoveryEvent, fallback string) *ast.InvalidMember {
+	message := fallback
+	if diagnosticStart < len(p.diagnostics) {
+		message = p.diagnostics[diagnosticStart].Message
+	}
+	return &ast.InvalidMember{
+		Token:   start,
+		Message: message,
+		Recovery: &ast.RecoveryInfo{
+			DiagnosticID: compilerdiagnostics.ParserInvalidBlockMember,
+			Message:      message,
+			Start:        recovery.Start,
+			End:          recovery.End,
+			Skipped:      recovery.Skipped,
+		},
+	}
+}
+
+func (p *Parser) invalidPattern(start lexer.Token, diagnosticStart int, recovery RecoveryEvent) *ast.InvalidPattern {
+	message := "invalid pattern"
+	if diagnosticStart < len(p.diagnostics) {
+		message = p.diagnostics[diagnosticStart].Message
+	}
+	return &ast.InvalidPattern{
+		Token:   start,
+		Message: message,
+		Recovery: &ast.RecoveryInfo{
+			DiagnosticID: compilerdiagnostics.ParserInvalidPattern,
+			Message:      message,
+			Start:        recovery.Start,
+			End:          recovery.End,
+			Skipped:      recovery.Skipped,
+		},
+	}
+}
+
+func (p *Parser) recordSkippedRecovery(start, end lexer.Token, skipped int, confidence RecoveryConfidence) RecoveryEvent {
+	event := RecoveryEvent{
+		Kind:            RecoverySkipTokens,
+		Confidence:      confidence,
+		Start:           start,
+		End:             end,
+		Skipped:         skipped,
+		Context:         p.recoveryContext,
+		Episode:         p.activeEpisode,
+		diagnosticIndex: -1,
+	}
+	if p.activeEpisode != 0 && len(p.diagnostics) > 0 {
+		diagnosticIndex := len(p.diagnostics) - 1
+		diagnostic := p.diagnostics[diagnosticIndex]
+		if diagnostic.Episode == p.activeEpisode {
+			event.DiagnosticID = diagnostic.ID
+			event.diagnosticIndex = diagnosticIndex
+		}
+	}
+	p.recovery = append(p.recovery, event)
+	p.endRecoveryEpisode()
+	return event
+}
+
+func (p *Parser) invalidExpression(token lexer.Token, message string, diagnosticID string) *ast.InvalidExpression {
+	return &ast.InvalidExpression{
+		Token:   token,
+		Message: message,
+		Recovery: &ast.RecoveryInfo{
+			DiagnosticID: diagnosticID,
+			Message:      message,
+			Start:        token,
+			End:          token,
+		},
+	}
+}
+
+func (p *Parser) invalidTypeReference(token lexer.Token, name string) *ast.TypeReference {
+	message := "invalid type reference"
+	diagnosticID := compilerdiagnostics.ParserInvalidTypeReference
+	if len(p.diagnostics) > 0 {
+		diagnostic := p.diagnostics[len(p.diagnostics)-1]
+		message = diagnostic.Message
+		diagnosticID = diagnostic.ID
+	}
+	return &ast.TypeReference{
+		Token:   token,
+		Name:    name,
+		Invalid: true,
+		Recovery: &ast.RecoveryInfo{
+			DiagnosticID: diagnosticID,
+			Message:      message,
+			Start:        token,
+			End:          token,
+		},
+	}
+}
+
+func (p *Parser) markInvalidTypeReference(ref *ast.TypeReference) *ast.TypeReference {
+	if ref == nil {
+		return p.invalidTypeReference(p.curToken, "")
+	}
+	invalid := p.invalidTypeReference(ref.Token, ref.Name)
+	ref.Invalid = true
+	ref.Recovery = invalid.Recovery
+	return ref
 }
 
 func (p *Parser) skipUntilBlockStart() {
@@ -3836,6 +4312,17 @@ func (p *Parser) isStatementStart(t lexer.TokenType) bool {
 		lexer.AT,
 		lexer.SELF,
 		lexer.COMMENT:
+		return true
+	default:
+		return false
+	}
+}
+
+func isDeclarationStart(t lexer.TokenType) bool {
+	switch t {
+	case lexer.MODULE, lexer.IMPORT, lexer.TYPE, lexer.UNIT, lexer.ENUM,
+		lexer.STRUCT, lexer.INTERFACE, lexer.IMPL, lexer.EXTERN, lexer.FN,
+		lexer.PROPERTY, lexer.STATIC:
 		return true
 	default:
 		return false
@@ -4161,8 +4648,8 @@ func (p *Parser) parseNoCopyDeclaration() ast.Statement {
 
 		if p.peekToken.Type == lexer.LPAREN {
 			argumentToken := p.peekToken
-			p.consumeAttributeArguments()
 			p.addError("@noCopy does not take arguments at %d:%d", argumentToken.Line, argumentToken.Column)
+			p.consumeAttributeArguments()
 		}
 
 		p.skipPeekComments()
@@ -4200,18 +4687,20 @@ func (p *Parser) parseNoCopyDeclaration() ast.Statement {
 	return stmt
 }
 
-func (p *Parser) consumeAttributeArguments() {
+func (p *Parser) consumeAttributeArguments() RecoveryEvent {
 	p.nextToken()
-	depth := 1
-	for depth > 0 && p.peekToken.Type != lexer.EOF {
-		p.nextToken()
-		switch p.curToken.Type {
-		case lexer.LPAREN:
-			depth++
-		case lexer.RPAREN:
-			depth--
+	start, end, skipped := p.curToken, p.curToken, 1
+	delimiters := newDelimiterStack(lexer.RPAREN)
+	for !delimiters.empty() && p.peekToken.Type != lexer.EOF {
+		if !delimiters.canConsume(p.peekToken.Type) {
+			break
 		}
+		p.nextToken()
+		end = p.curToken
+		skipped++
+		delimiters.consume(p.curToken.Type)
 	}
+	return p.recordSkippedRecovery(start, end, skipped, RecoveryProbable)
 }
 
 func (p *Parser) parseLinkNameExternDeclaration() ast.Statement {
@@ -4413,13 +4902,25 @@ func parserTypeReferenceName(ref *ast.TypeReference) string {
 	return name
 }
 
-func (p *Parser) skipDeclarationRest() {
-	for p.peekToken.Type != lexer.EOF && p.peekToken.Type != lexer.RBRACE && !p.isStatementStart(p.peekToken.Type) {
+func (p *Parser) skipDeclarationRest() RecoveryEvent {
+	start, end, skipped := p.curToken, p.curToken, 1
+	delimiters := newDelimiterStack()
+	for p.peekToken.Type != lexer.EOF {
+		if delimiters.empty() && (p.peekToken.Type == lexer.RBRACE || p.isStatementStart(p.peekToken.Type)) {
+			break
+		}
+		if !delimiters.canConsume(p.peekToken.Type) {
+			break
+		}
 		p.nextToken()
+		end = p.curToken
+		skipped++
+		delimiters.consume(p.curToken.Type)
 	}
 	if p.peekToken.Type == lexer.EOF {
 		p.nextToken()
 	}
+	return p.recordSkippedRecovery(start, end, skipped, RecoveryProbable)
 }
 
 func (p *Parser) parseLetDeclarator(token lexer.Token, mutable bool, inheritedType *ast.TypeReference, inheritedContract ast.Contract) *ast.LetStatement {

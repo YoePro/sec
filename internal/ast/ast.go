@@ -18,10 +18,36 @@ type Statement interface {
 	statementNode()
 }
 
-type InvalidStatement struct {
-	Token   lexer.Token
-	Message string
+// RecoveryInfo preserves the malformed source region represented by an
+// invalid or incomplete AST node. Recovery metadata is syntax-only and must
+// never be interpreted as valid program semantics.
+type RecoveryInfo struct {
+	DiagnosticID string
+	Message      string
+	Start        lexer.Token
+	End          lexer.Token
+	Skipped      int
 }
+
+type InvalidStatement struct {
+	Token    lexer.Token
+	Message  string
+	Recovery *RecoveryInfo
+}
+
+// InvalidDeclaration preserves a declaration-shaped source region that could
+// not be completed. Keeping it distinct from InvalidStatement lets editor
+// consumers retain the user's declaration intent without treating it as
+// semantically valid.
+type InvalidDeclaration struct {
+	Token    lexer.Token
+	Message  string
+	Recovery *RecoveryInfo
+}
+
+func (id *InvalidDeclaration) statementNode() {}
+
+func (id *InvalidDeclaration) TokenLiteral() string { return id.Token.Lexeme }
 
 func (is *InvalidStatement) statementNode() {}
 
@@ -70,6 +96,36 @@ type Expression interface {
 	Node
 	expressionNode()
 	String() string
+}
+
+type InvalidExpression struct {
+	Token    lexer.Token
+	Message  string
+	Recovery *RecoveryInfo
+}
+
+// InvalidPattern is an expression-shaped placeholder used only in grammar
+// positions that require a pattern, such as match arms and try handlers.
+type InvalidPattern struct {
+	Token    lexer.Token
+	Message  string
+	Recovery *RecoveryInfo
+}
+
+func (ip *InvalidPattern) expressionNode() {}
+
+func (ip *InvalidPattern) TokenLiteral() string { return ip.Token.Lexeme }
+
+func (ip *InvalidPattern) String() string { return "<invalid-pattern>" }
+
+func (ie *InvalidExpression) expressionNode() {}
+
+func (ie *InvalidExpression) TokenLiteral() string {
+	return ie.Token.Lexeme
+}
+
+func (ie *InvalidExpression) String() string {
+	return "<invalid-expression>"
 }
 
 // Program is the root node for a parsed Sec source file.
@@ -277,6 +333,10 @@ func (i *Identifier) String() string {
 //	ref byte[]
 type TypeReference struct {
 	Token lexer.Token
+	// Invalid marks a recovered type reference that must resolve to ErrorType
+	// without producing dependent semantic diagnostics.
+	Invalid  bool
+	Recovery *RecoveryInfo
 
 	Name string
 
@@ -1292,6 +1352,8 @@ type TryHandler struct {
 	Body       Expression
 	ReturnBody *ReturnStatement
 	BlockBody  *BlockStatement
+	Invalid    bool
+	Recovery   *RecoveryInfo
 }
 
 type MatchStatement struct {
@@ -1331,6 +1393,8 @@ type MatchArm struct {
 	Body       Expression
 	ReturnBody *ReturnStatement
 	BlockBody  *BlockStatement
+	Invalid    bool
+	Recovery   *RecoveryInfo
 }
 
 type ImplStatement struct {
@@ -1349,6 +1413,18 @@ type ImplMember interface {
 	Node
 	implMemberNode()
 }
+
+// InvalidMember retains a malformed or disallowed impl member and the exact
+// region skipped while finding the next member boundary.
+type InvalidMember struct {
+	Token    lexer.Token
+	Message  string
+	Recovery *RecoveryInfo
+}
+
+func (im *InvalidMember) implMemberNode() {}
+
+func (im *InvalidMember) TokenLiteral() string { return im.Token.Lexeme }
 
 type UnitMetadataDeclaration struct {
 	Token lexer.Token

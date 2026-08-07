@@ -117,6 +117,12 @@ Index-based disjointness is not assumed unless proven.
 
 Two runtime indexes into the same collection must be treated as potentially overlapping.
 
+The current frontend canonicalizes locally bound reference aliases back to
+their referent Place. Reborrows through distinct struct fields or distinct
+constant array indices may coexist; equal paths and dynamic indices overlap.
+The granting borrow held by the alias is treated as the permission used for an
+access through that alias, while direct owner access remains blocked.
+
 ## Function calls
 
 Borrow rules apply to function arguments and method receivers.
@@ -183,9 +189,12 @@ Implemented:
   parameter type.
 * Calls to `ref` and `ref mut` parameters may currently borrow compatible
   values implicitly.
-* Semantic analysis tracks active borrows for root symbols.
-* Multiple `ref` shared borrows of the same root symbol may coexist.
-* `ref mut` requires exclusive access to the root symbol.
+* Semantic analysis tracks active borrows as structured places rooted in local
+  symbols.
+* Place projections currently cover fields, properties, constant and dynamic
+  indexes, slices, and implicit dereference through references.
+* Multiple shared borrows of overlapping places may coexist.
+* `ref mut` requires exclusive access to overlapping places.
 * Creating `ref mut` while a shared or mutable borrow exists is rejected.
 * Creating `ref` while a mutable borrow exists is rejected.
 * Direct reads through the owner are rejected while an active `ref mut` borrow
@@ -217,16 +226,53 @@ Implemented:
   branch if any continuing path assigns them a borrow.
 * Branch-local borrow holders still end at block exit before branch borrow
   state is merged.
+* `for` and `while` loop headers join active borrows from loop entry, normal
+  body fallthrough and every recorded `continue` edge. The joined state is
+  checked against the next condition and body iteration.
+* Loop exits conservatively join entry, fallthrough, `continue` and explicit
+  `break` borrow states, so a borrow retained by an outer holder remains active
+  after the loop whenever any exit path may retain it.
+* Fresh `for` bindings and borrow holders declared inside a loop body are
+  removed at their iteration boundary rather than leaking into the next
+  iteration.
+* Conflicts caused by a borrow that may survive a back-edge are diagnosed as
+  previous-iteration conflicts and retain the originating borrow location.
+* Reference-origin joins retain up to 16 distinct canonical Places. Reborrows
+  through such a finite set project, register and check every possible referent
+  rather than collapsing immediately to one root or requiring runtime tags.
+* Missing or over-limit provenance remains conservative and cannot be
+  reborrowed as though one canonical origin had been proven.
 * Values used by defer blocks are tracked as delayed root-symbol uses, so a
   later move or discard is rejected while ordinary mutation remains permitted.
 * A reference binding used by defer cannot be moved before the defer executes;
   this keeps the borrow held by an immutable reference binding active.
+* Separate struct fields and distinct compile-time constant array indices are
+  recognized as disjoint.
+* Dynamic indices conservatively overlap other indices under the same base.
+* Statically known inclusive, exclusive and open slice bounds are normalized to
+  half-open intervals. Disjoint intervals and constant indices outside an
+  interval do not conflict; empty intervals borrow no elements.
+* Constant indexes and subranges through local slice aliases compose with the
+  source interval, while dynamic bounds remain conservative.
+* Borrowing a complete place conflicts with borrowing any of its projections.
+* Field/index reads and assignments use place overlap instead of only the root
+  symbol.
+* Borrow creation rejects temporary and non-addressable expressions.
+* Moving a nested struct field checks only borrows overlapping that field;
+  borrowing the complete root still conflicts with every field move.
+* Moving a move-only union payload through pattern binding checks the
+  variant-payload Place against active borrows of the payload or whole subject.
+* Different union variant payload projections are structurally disjoint.
+* `Variant(ref name)` and `Variant(ref mut name)` borrow the active payload
+  Place for named unions and Result `Ok`/`Err` variants. Mutable bindings require
+  a mutable reusable subject and conflict with overlapping owner borrows.
+* Payload pattern borrows end at arm exit. Their references cannot escape via a
+  match value, an outer assignment, returned aggregate or captured lambda.
 
 Not implemented yet:
 
-* loop borrow-state merging
-* disjoint field borrow analysis
-* path-sensitive borrow analysis for fields, indexes and slices
+* symbolic/runtime slice-range disjointness beyond statically known bounds
+* borrowed payload destructuring beyond one positional payload binding
 * returned-reference origin analysis
 * complete place-sensitive borrow effects and explicit owned/moved capture
   modes for defer
@@ -234,7 +280,7 @@ Not implemented yet:
 
 Initial limitation:
 
-Borrow conflict detection is root-symbol based. For example, borrowing
-`value.left` and `value.right` is currently treated as borrowing `value`.
-This is deliberately conservative until field- and index-sensitive place
-analysis exists.
+Place overlap is structural and conservative. Static slice intervals and
+constant indices are separated when disjoint; runtime indices and symbolic
+slice bounds overlap unless their disjointness is proven. Properties overlap
+their receiver because setter effects are not yet summarized.

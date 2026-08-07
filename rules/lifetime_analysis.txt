@@ -58,19 +58,77 @@ Implemented:
   defer use reported as the related source location
 * delayed defer uses are merged conservatively across continuing control-flow
   branches
+* borrow analysis uses structured root-and-projection places for fields,
+  properties, constant/dynamic indices, slices, and reference dereference
+* disjoint fields and distinct constant indices are separated while dynamic
+  indices conservatively overlap
+* directly created local reference and slice aliases retain canonical referent
+  Places through field/index reborrows, shared-reference copies, and mutable-
+  reference moves; the active granting borrow follows a moved mutable reference
+* statically known slice bounds form half-open Place intervals; disjoint ranges,
+  outside constant indices, empty ranges, and composed alias subranges are
+  distinguished without runtime tracking
+* nested struct-field moves create partial place availability, and successful
+  field assignment reinitializes the moved place
+* move availability and its causal source are merged per projection across
+  continuing `if`, `switch`, `select` and statement-`match` branches
+* exhaustive branch reinitialization restores a moved field; any continuing
+  path retaining the move keeps that field unavailable
+* loop-header Place availability joins entry, normal fallthrough and `continue`
+  states and rechecks the next condition and iteration for later-iteration use
+* `break` availability is retained only for loop exit, while `for` bindings are
+  restored as fresh iteration-local places on every back-edge
+* move-only union payload bindings consume a variant-specific Place projection
+  from reusable local subjects, including subjects below struct fields
+* copyable payload bindings leave the source available, while temporary union
+  subjects forward their payload without persistent source state
+* statement and expression `match` merge payload availability; overlapping
+  owner borrows reject payload extraction and exhaustive reinitialization
+  restores the union subject
+* explicit shared and mutable pattern borrows for named-union and Result
+  payloads carry active-variant Places, are bounded by arm scope and reject
+  temporary subjects, incompatible owner borrows and reference escape
+* loop headers join borrow and local-reference-origin states from entry, normal
+  fallthrough and `continue`, then recheck the next condition and iteration
+* explicit `break` states participate only in the post-loop borrow/reference
+  join; iteration-local `for` bindings and block-local holders are cleared at
+  their scope boundary
+* reference origins that differ across a branch or loop join retain a bounded
+  path-disjunctive set of canonical Places; projections and reborrows are
+  checked against every alternative
+* provenance with a missing path or more than 16 distinct alternatives becomes
+  unknown and remains conservatively non-reborrowable
+* reference origins inside locally constructed structs and fixed arrays are
+  retained per nested field/element path through whole-value transfer,
+  replacement assignment, constant/dynamic indexing and control-flow joins
+* a diagnostic-free fixed point infers returned-reference summaries independent
+  of declaration order for direct functions and methods; symbolic parameter,
+  receiver, projection, multi-source and aggregate paths are instantiated at
+  calls, including transitive calls and active granting-borrow retention
 
 Not implemented yet:
 
 * full flow-sensitive lifetime graph
-* complete field-, element- and slice-sensitive origins beyond root-symbol
-  tracking
+* complete element and slice move availability, symbolic slice-range overlap,
+  imported/opaque foreign provenance, function-value and recursive summary
+  relationships, and multi-field borrowed payload destructuring
 * complete closure escape validation for all storage and callback forms
 * complete defer capture modes, place-sensitive captures and cleanup-order
   validation beyond root-symbol delayed-use tracking
 
-The initial implementation is intentionally conservative and root-symbol based.
+Lifetime escape origins are field/element-sensitive for locally constructed
+aggregates and ordinary summarized call results, with root-symbol fallback for
+other forms. Borrow conflicts use structured places and canonical provenance
+for direct aliases, locally tracked aggregate contents and returned direct-call
+references. Imported/opaque, function-value and unsupported recursive summary
+relationships remain conservative.
 Loop analysis uses the maximum observed arena generation from the loop body and
-from explicit `break` exits; it does not prove that a loop has zero iterations.
+from explicit `break` exits. Place move availability computes its finite
+may-unavailable fixed point and diagnoses later-iteration use. Active-borrow
+and local-reference-origin may-state now participate in the loop-header and
+exit joins. Local `io.File`/`io.Directory` cleanup additionally uses a
+must-closed branch and loop lattice; general destruction responsibility,
+conditional cleanup and cleanup ordering remain pending.
 
 ## Design goals
 

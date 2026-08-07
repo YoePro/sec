@@ -33,7 +33,7 @@ Repository baseline reviewed:
 
 ```text
 branch: main
-review date: 2026-08-02
+review date: 2026-08-07
 ```
 
 The repository may contain small unpublished changes after this review.
@@ -390,6 +390,23 @@ Errors() []string
 Warnings() []string
 ```
 
+The canonical migration API now returns:
+
+```go
+type ParseResult struct {
+    Program     *ast.Program
+    Diagnostics []Diagnostic
+    Warnings    []string
+    Recovery    []RecoveryEvent
+    HasErrors   bool
+    Fatal       bool
+}
+```
+
+`ParseProgram`, `Errors`, `Warnings`, and `Diagnostics` remain compatibility
+APIs while compiler and tooling consumers migrate. Central CLI and LSP parse
+paths consume `ParseResult`.
+
 ### Speculative parsing rollback
 
 Typed-declaration lookahead snapshots:
@@ -419,13 +436,62 @@ type InvalidStatement struct {
 
 It is used for selected invalid or reserved statement forms.
 
+Failed top-level statements and failed statements in ordinary function/block
+bodies are also retained as `InvalidStatement` nodes with diagnostic ID,
+message, start/end tokens, and skipped-token count.
+
 Examples include:
 
 ```text
 unsupported `free`
-invalid members inside `impl`
 unexpected `else`
 ```
+
+Malformed declaration-shaped top-level input is retained separately as
+`InvalidDeclaration`. Disallowed or malformed `impl` entries are retained as
+`InvalidMember`, including their recovery range, while their existing semantic
+diagnostic phase remains unchanged.
+
+### Initial invalid expression and type retention
+
+The AST now contains `InvalidExpression` with recovery metadata. Pratt-parser
+failures without a prefix parser retain this node instead of returning only
+`nil`.
+
+`TypeReference` can be marked invalid and carry the same recovery metadata.
+This is wired for parenthesized, reference, function and prefix sequence type
+paths. Remaining specialized type parsers still require migration.
+
+Sema maps these invalid nodes directly to its invalid/error type and does not
+invent dependent semantics.
+
+### Initial recovery event stream
+
+The parser records structured recovery events for:
+
+```text
+unambiguous virtual missing-token insertion
+statement-level skipped token ranges
+malformed impl-member skipped ranges
+malformed match-arm and try-handler skipped ranges
+malformed struct-field, switch-clause, and select-branch skipped ranges
+compiler-directive, generic-parameter, declaration-rest, malformed for-header,
+attribute-argument, property-remainder, and balanced-block skipped ranges
+```
+
+Diagnostics and their associated events carry a stable recovery context and
+episode number. Integrated contexts distinguish top-level, ordinary block,
+declaration-member, match-arm, and try-handler recovery.
+
+Speculative parser rollback also removes repair events associated with rolled
+back diagnostics and reconstructs deduplication and episode numbering state.
+
+### Diagnostic limit
+
+The parser emits at most 100 diagnostics for one parse. When the cap is reached,
+the final diagnostic is the stable `P2015` recovery-limit diagnostic and later
+parser diagnostics are suppressed. Speculative rollback restores the limit
+state when the speculative diagnostics are discarded.
 
 ### Brace-depth skipping
 
@@ -582,20 +648,17 @@ P2001 parser.syntax-error
 but individual parser errors are not emitted as structured diagnostics with
 stable IDs, ranges, expected tokens, related locations, or fixes.
 
-## AST recovery nodes are incomplete
+## AST recovery nodes remain incomplete
 
-Only `InvalidStatement` exists.
+The parser now retains `InvalidStatement`, `InvalidDeclaration`,
+`InvalidExpression`, `InvalidPattern`, `InvalidMember`, and invalid
+`TypeReference` nodes with recovery metadata on integrated paths.
 
-There are no canonical nodes for:
+Canonical AST representation is still absent for:
 
 ```text
-invalid declaration
-invalid expression
-invalid type reference
-invalid pattern
 missing token
 skipped token range
-invalid member
 ```
 
 Many recoverable parse functions therefore return `nil`.
@@ -632,17 +695,17 @@ represented by a simple token-only set.
 
 The current general `skipStatement()` can therefore skip too far.
 
-## Match-arm recovery is coarse
+## Match-arm recovery is partial
 
-The current `skipMatchArm()` normally scans to the closing match brace.
+Malformed match arms are retained with `InvalidPattern`, and recovery stops
+before a likely pattern on a later line or the closing brace. Parenthesis,
+bracket, and brace depth is respected locally. Grammar-derived synchronization
+and same-line sibling recovery remain pending.
 
-A malformed early arm can therefore discard later valid arms.
+## Try-handler recovery is partial
 
-## Try-handler recovery is coarse
-
-The current `skipTryHandler()` normally scans to the closing handler brace.
-
-A malformed early handler can discard later valid handlers.
+Malformed try handlers are retained with `InvalidPattern`, and the same local,
+delimiter-aware sibling synchronization preserves likely later handlers.
 
 The special missing-closing-brace detection recognizes only a subset of
 possible following statement starts.
@@ -660,9 +723,14 @@ token assumed by recovery
 token absent and node abandoned
 ```
 
-## Skipped tokens are not preserved
+## Skipped tokens are only partly preserved
 
-Recovery helpers advance over source without recording the skipped token range.
+General statement recovery and the migrated delimiter-aware helpers record the
+skipped token range. These currently include impl members, match/try siblings,
+struct fields, switch/select entries, compiler directives, generic parameters,
+declaration tails, malformed for headers, attribute arguments, property
+remainders, and balanced blocks. Other specialized helpers still advance
+without recording it.
 
 Formatter, LSP, and diagnostics cannot always reconstruct the malformed region
 from AST data alone.
@@ -684,11 +752,16 @@ They do not carry canonical start and end offsets.
 Accurate zero-width insertion ranges and multi-token diagnostic ranges therefore
 need additional source-position support.
 
-## Cascading-diagnostic suppression is local
+## Recovery episodes and cascading-diagnostic suppression are partial
 
-Some tests explicitly guard against cascading parser errors.
+The parser starts a numbered episode at the first diagnostic and ends it at
+integrated stable statement, member, arm, handler, delimiter, or skip
+boundaries. Diagnostics with identical ID, primary token range, and recovery
+context are deduplicated. A second diagnostic at the same primary location and
+context within the active episode is suppressed as a same-cause cascade.
 
-There is no general recovery episode or suppression model.
+Broader causal suppression across different token locations and full context
+coverage for every specialized parser remain pending.
 
 ## Unterminated constructs often return nil
 
@@ -730,20 +803,12 @@ which diagnostics are suppressed beneath invalid syntax
 The following canonical recovery infrastructure is not yet implemented fully:
 
 ```text
-ParseResult with structured diagnostics
 MissingToken representation
 SkippedTokenRange representation
-InvalidDeclaration
-InvalidExpression
-InvalidTypeReference
-InvalidPattern
-InvalidMember
 ErrorType propagation
-recovery episode tracking
-diagnostic deduplication
-parser error limit
-general delimiter stack
+delimiter-stack migration for remaining specialized helpers
 shared grammar-derived synchronization sets
+cross-location recovery-cascade suppression
 full-fidelity malformed-source token retention
 safe-fix metadata
 recovery-aware formatter behavior
@@ -3181,30 +3246,31 @@ compilation.
 | general `P2001` registry entry | Implemented |
 | focused parser diagnostic IDs | Registered; initial focused paths wired, broader migration pending |
 | speculative lexer rollback | Implemented |
-| speculative diagnostic rollback | Implemented for strings |
-| speculative recovery-event rollback | Not implemented |
+| speculative diagnostic rollback | Implemented for strings, structured diagnostics, dedup keys and deterministic episode numbering |
+| speculative recovery-event rollback | Implemented for diagnostic-associated events |
 | `InvalidStatement` | Implemented |
-| invalid declaration node | Not implemented |
-| invalid expression node | Not implemented |
-| invalid type node | Not implemented |
-| invalid pattern node | Not implemented |
+| invalid declaration node | Implemented for failed top-level declaration-shaped statements |
+| invalid expression node | Implemented for Pratt prefix failures; broader retention pending |
+| invalid type node | Partly implemented through invalid `TypeReference` metadata |
+| invalid pattern node | Implemented for malformed match arms and try handlers |
+| invalid member node | Implemented for disallowed impl members |
 | missing-token node | Not implemented |
-| skipped-token retention | Not implemented |
+| skipped-token retention | Implemented for general statements and migrated delimiter-aware helpers; remaining specialized helpers pending |
 | struct field synchronization | Implemented, node retention partial |
 | malformed for-header recovery | Implemented |
 | switch case synchronization | Implemented |
 | select branch synchronization | Implemented |
-| impl member synchronization | Implemented, incomplete start set |
+| impl member synchronization | Delimiter-aware with retained invalid members; start set remains incomplete |
 | target directive synchronization | Implemented |
 | generic parameter synchronization | Implemented, coarse |
 | unexpected else preservation | Implemented |
 | missing try-handler brace recovery | Implemented for selected starts |
-| sibling-aware match-arm recovery | Not implemented |
-| sibling-aware try-handler recovery | Not implemented |
+| sibling-aware match-arm recovery | Implemented for likely later-line patterns; same-line and grammar-derived sets pending |
+| sibling-aware try-handler recovery | Implemented for likely later-line patterns; same-line and grammar-derived sets pending |
 | partial unterminated block retention | Not implemented consistently |
-| delimiter stack across all helpers | Not implemented |
-| recovery episode suppression | Not implemented |
-| parser diagnostic cap | Not implemented |
+| delimiter stack across all helpers | Shared stack implemented and used by major skip helpers; remaining ad hoc scans pending migration |
+| recovery episode suppression | Implemented at integrated stable boundaries with same-location cascade suppression; broader causal suppression pending |
+| parser diagnostic cap | Implemented at 100 diagnostics with one terminal `P2015` |
 | recovery-aware formatter | Partly implemented or planned |
 | recovery-aware LSP | Partly implemented or planned |
 | progress fuzzing | Not implemented |

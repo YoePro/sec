@@ -198,12 +198,13 @@ func runParse(input string) {
 	l := lexer.New(input)
 	p := parser.New(l)
 
-	program := p.ParseProgram()
+	result := p.Parse()
+	program := result.Program
 
 	printParserWarnings(p)
 	summary := diagnosticSummary{Warnings: len(p.Warnings())}
 
-	if len(p.Errors()) > 0 {
+	if result.HasErrors {
 		for _, err := range p.Errors() {
 			fmt.Fprintf(os.Stderr, "parse error: %s\n", err)
 		}
@@ -226,12 +227,13 @@ func runAST(input string) {
 	l := lexer.New(input)
 	p := parser.New(l)
 
-	program := p.ParseProgram()
+	result := p.Parse()
+	program := result.Program
 
 	printParserWarnings(p)
 	summary := diagnosticSummary{Warnings: len(p.Warnings())}
 
-	if len(p.Errors()) > 0 {
+	if result.HasErrors {
 		for _, err := range p.Errors() {
 			fmt.Fprintf(os.Stderr, "parse error: %s\n", err)
 		}
@@ -746,12 +748,13 @@ func parseAndAnalyzeSourceForTarget(input string, sourceFile string, target Comp
 	l := lexer.NewWithFile(input, sourceFile)
 	p := parser.New(l)
 
-	program := p.ParseProgram()
+	result := p.Parse()
+	program := result.Program
 
 	printParserWarnings(p)
 	summary := diagnosticSummary{Warnings: len(p.Warnings())}
 
-	if len(p.Errors()) > 0 {
+	if result.HasErrors {
 		for _, err := range p.Errors() {
 			fmt.Fprintf(os.Stderr, "parse error: %s\n", err)
 		}
@@ -1036,7 +1039,8 @@ func parseSourceFileWithDiagnostics(path string) (parsedSourceFile, diagnosticSu
 
 	l := lexer.NewWithFile(string(data), path)
 	p := parser.New(l)
-	program := p.ParseProgram()
+	result := p.Parse()
+	program := result.Program
 	return parsedSourceFile{Program: program, Errors: p.Errors(), Warnings: p.Warnings()}, diagnosticSummary{Errors: len(p.Errors()), Warnings: len(p.Warnings())}
 }
 
@@ -1400,7 +1404,7 @@ func parseSourceInclude(path string, target CompilerTarget) *ast.Program {
 
 	l := lexer.NewWithFile(string(data), path)
 	p := parser.New(l)
-	program := p.ParseProgram()
+	program := p.Parse().Program
 	printParserWarnings(p)
 	if len(p.Errors()) > 0 {
 		for _, err := range p.Errors() {

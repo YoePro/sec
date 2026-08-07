@@ -1704,8 +1704,19 @@ Current infrastructure implemented:
 * the semantic diagnostic `Error` structure carries a severity value;
 * LSP semantic diagnostics expose `Error.ID` as the diagnostic `code`;
 * parser diagnostics expose a structured compatibility path carrying ID,
-  primary token, expected tokens and unexpected token; unmigrated errors use
-  `P2001`;
+  primary token, expected tokens, unexpected token, recovery context and
+  episode number; unmigrated errors use `P2001`;
+* the parser exposes a canonical `ParseResult` migration API containing the
+  partial program, structured diagnostics, warnings, recovery events and
+  explicit error/fatal flags;
+* missing-token repairs and skipped ranges from general statements and migrated
+  delimiter-aware recovery helpers are represented as structured recovery
+  events and survive into tooling parse results;
+* parser diagnostics are capped deterministically at 100 entries with one
+  terminal `P2015` diagnostic when the cap is reached;
+* parser diagnostics are deduplicated by ID, primary token and recovery
+  context; same-location secondary diagnostics are suppressed within an active
+  recovery episode, and speculative rollback restores this state;
 * LSP parser diagnostics use focused structured codes when available and retain
   `P2001` for unmigrated syntax errors;
 * LSP semantic diagnostics append `Error.Help` as a `help:` section in the

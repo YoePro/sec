@@ -17,6 +17,11 @@ Implemented:
 * sema supports Option Some/None matching with payload bindings through the
   compiler-known union model
 * sema supports union variant matching with positional payload bindings
+* union and Result payload patterns accept explicit `ref name` and
+  `ref mut name` bindings for reusable subjects
+* borrowed payload bindings use active-variant Places, enforce shared/mutable
+  conflicts, end at arm exit and cannot escape through match results,
+  assignments, returned aggregates or captured lambdas
 * sema supports enum variant matching
 * sema checks Result and enum exhaustiveness
 * sema detects duplicate enum match arms
@@ -32,6 +37,7 @@ Implemented:
 Not implemented yet:
 
 * structural/destructuring patterns
+* borrowed payload destructuring beyond one positional payload binding
 * literal/range policy diagnostics beyond current expression matching behavior
 * LLVM code generation for match
 

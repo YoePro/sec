@@ -77,6 +77,8 @@ var parserOccurrenceFields = []diagnosticCatalogField{
 	{Name: "Primary", Type: "Token", Required: true, Description: "Primary source token and location."},
 	{Name: "Expected", Type: "[]TokenType", Required: false, Description: "Expected token kinds, when known."},
 	{Name: "Unexpected", Type: "*Token", Required: false, Description: "Unexpected token, when known."},
+	{Name: "Context", Type: "RecoveryContext", Required: true, Description: "Stable parser recovery context containing the occurrence."},
+	{Name: "Episode", Type: "int", Required: true, Description: "Positive recovery episode number within the parse."},
 }
 
 var diagnosticTokenFields = []diagnosticCatalogField{

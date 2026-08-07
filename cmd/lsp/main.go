@@ -853,11 +853,12 @@ func completeSource(uri string, text string, offset int) []completionItem {
 		l = lexer.NewWithFile(parseText, pathFromURI(uri))
 	}
 	p := parser.New(l)
-	fileAST := p.ParseProgram()
+	parseResult := p.Parse()
+	fileAST := parseResult.Program
 
 	analyzer := sema.NewAnalyzer()
 	analyzed := false
-	if fileAST != nil && len(p.Errors()) == 0 {
+	if fileAST != nil && !parseResult.HasErrors {
 		if uri != "" {
 			resolveCoreSources(fileAST, pathFromURI(uri))
 			resolveSourceImports(fileAST, map[string]bool{}, pathFromURI(uri))
@@ -1571,7 +1572,7 @@ func parseProgramForLSP(uri string, text string) *ast.Program {
 		l = lexer.NewWithFile(text, pathFromURI(uri))
 	}
 	p := parser.New(l)
-	return p.ParseProgram()
+	return p.Parse().Program
 }
 
 func tokenRange(token lexer.Token) lspRange {
@@ -2787,13 +2788,14 @@ func analyze(uri string, text string) []diagnostic {
 	path := pathFromURI(uri)
 	l := lexer.NewWithFile(text, path)
 	p := parser.New(l)
-	program := p.ParseProgram()
+	parseResult := p.Parse()
+	program := parseResult.Program
 
 	diagnostics := []diagnostic{}
-	for _, parserError := range p.Diagnostics() {
+	for _, parserError := range parseResult.Diagnostics {
 		diagnostics = append(diagnostics, structuredParserDiagnostic(parserError))
 	}
-	if len(p.Errors()) > 0 {
+	if parseResult.HasErrors {
 		return diagnostics
 	}
 	resolveCoreSources(program, path)
@@ -3296,8 +3298,9 @@ func parseSourceInclude(path string) (*ast.Program, bool) {
 	}
 	l := lexer.NewWithFile(string(data), path)
 	p := parser.New(l)
-	program := p.ParseProgram()
-	if len(p.Errors()) > 0 {
+	parseResult := p.Parse()
+	program := parseResult.Program
+	if parseResult.HasErrors {
 		return nil, false
 	}
 	return program, true

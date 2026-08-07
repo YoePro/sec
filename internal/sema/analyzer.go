@@ -46,9 +46,15 @@ type Analyzer struct {
 	closedResources             map[string]lexer.Token
 	borrows                     map[string][]borrowRecord
 	localRefContainers          map[string]localReferenceOrigin
+	expressionReferenceOrigins  map[ast.Expression]localReferenceOrigin
 	arenaGenerations            map[string]int
 	currentFunctionName         string
 	currentFunctionReturn       Type
+	currentFunctionToken        lexer.Token
+	currentFunctionMetadata     Function
+	currentFunctionSummary      localReferenceOrigin
+	hasCurrentFunctionSummary   bool
+	summaryPass                 bool
 	inFunctionBody              bool
 	inLambda                    bool
 	lambdaOuterSymbols          map[string]Symbol
@@ -57,6 +63,8 @@ type Analyzer struct {
 	inDeferBlock                bool
 	deferOuterSymbols           map[string]Symbol
 	deferCaptures               map[string]lexer.Token
+	suppressPlaceRootRead       int
+	loopBackedgePlaces          map[string]bool
 	cancellableDepth            int
 	loopDepth                   int
 	loopBreakFrames             []loopBreakFrame
@@ -76,22 +84,46 @@ const (
 )
 
 const dynamicArrayLength int64 = -1
+const maxReferenceOriginAlternatives = 16
 
 type borrowRecord struct {
-	Root   string
-	Holder string
-	Kind   borrowKind
-	Token  lexer.Token
+	Root        string
+	Place       Place
+	Holder      string
+	Kind        borrowKind
+	Token       lexer.Token
+	LoopCarried bool
 }
 
 type localReferenceOrigin struct {
-	Name  string
-	Token lexer.Token
+	Name        string
+	Token       lexer.Token
+	Local       bool
+	MatchScoped bool
+	Mutable     bool
+	Ambiguous   bool
+	Unknown     bool
+	Place       Place
+	Places      []Place
+	HasPlace    bool
+	// Contained tracks reference origins stored below an aggregate root. Keys
+	// are canonical relative access paths such as ".field" and "[2].view".
+	Contained map[string]localReferenceOrigin
 }
 
 type loopBreakFrame struct {
-	assignments      []map[string]bool
-	arenaGenerations []map[string]int
+	assignments                []map[string]bool
+	moved                      []map[string]lexer.Token
+	moveReasons                []map[string]string
+	continueMoved              []map[string]lexer.Token
+	continueReasons            []map[string]string
+	closedResources            []map[string]lexer.Token
+	continueClosedResources    []map[string]lexer.Token
+	borrows                    []map[string][]borrowRecord
+	localRefContainers         []map[string]localReferenceOrigin
+	continueBorrows            []map[string][]borrowRecord
+	continueLocalRefContainers []map[string]localReferenceOrigin
+	arenaGenerations           []map[string]int
 }
 
 type genericInstanceKey struct {
@@ -136,6 +168,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.closedResources = map[string]lexer.Token{}
 	a.borrows = map[string][]borrowRecord{}
 	a.localRefContainers = map[string]localReferenceOrigin{}
+	a.expressionReferenceOrigins = map[ast.Expression]localReferenceOrigin{}
 	a.arenaGenerations = map[string]int{}
 	a.functions = map[string][]Function{}
 	a.externSymbols = map[string]Function{}
@@ -149,12 +182,19 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.genericFuncInstances = map[genericInstanceKey]Function{}
 	a.currentFunctionName = ""
 	a.currentFunctionReturn = Type{}
+	a.currentFunctionToken = lexer.Token{}
+	a.currentFunctionMetadata = Function{}
+	a.currentFunctionSummary = localReferenceOrigin{}
+	a.hasCurrentFunctionSummary = false
+	a.summaryPass = false
 	a.inFunctionBody = false
 	a.inLambda = false
 	a.lambdaOuterSymbols = nil
 	a.inUnsafe = false
 	a.inSwitchCaseBody = false
 	a.inDeferBlock = false
+	a.suppressPlaceRootRead = 0
+	a.loopBackedgePlaces = nil
 	a.cancellableDepth = 0
 	a.loopDepth = 0
 	a.loopBreakFrames = nil
@@ -173,6 +213,9 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.registerImplDeclarations(program)
 	a.registerFunctionDeclarations(program)
 	a.validateInterfaceConformance()
+	a.inferFunctionReferenceSummaries(program)
+	a.expressionTypes = map[ast.Expression]Type{}
+	a.expressionReferenceOrigins = map[ast.Expression]localReferenceOrigin{}
 
 	a.withProgramModules(program, func(stmt ast.Statement) {
 		switch stmt.(type) {
@@ -225,7 +268,7 @@ func (a *Analyzer) CallGraph() *CallGraph {
 }
 
 func (a *Analyzer) recordArenaEffect(kind ArenaEffectKind, arena string, source lexer.Token, mayAllocate bool) {
-	if !a.callGraphPathReachable {
+	if a.summaryPass || !a.callGraphPathReachable {
 		return
 	}
 	a.callGraph.addArenaEffect(a.currentCallable, ArenaEffectSite{
@@ -395,6 +438,7 @@ func isAllowedModuleStatement(stmt ast.Statement) bool {
 		*ast.LetStatement,
 		*ast.LetGroupStatement,
 		*ast.CommentStatement,
+		*ast.InvalidDeclaration,
 		*ast.InvalidStatement:
 		return true
 	default:
@@ -434,6 +478,8 @@ func isNilStatement(stmt ast.Statement) bool {
 	case *ast.CommentStatement:
 		return stmt == nil
 	case *ast.InvalidStatement:
+		return stmt == nil
+	case *ast.InvalidDeclaration:
 		return stmt == nil
 	case *ast.AssignmentStatement:
 		return stmt == nil
@@ -1389,6 +1435,8 @@ func (a *Analyzer) analyzeStatement(stmt ast.Statement) {
 		}
 		if a.loopDepth == 0 {
 			a.addErrorAtToken(stmt.Token, "continue is only valid inside a loop")
+		} else {
+			a.recordLoopContinue()
 		}
 	case *ast.UnsafeStatement:
 		a.analyzeUnsafeStatement(stmt)
@@ -1401,6 +1449,11 @@ func (a *Analyzer) analyzeStatement(stmt ast.Statement) {
 			a.resolveType(field.Type)
 		}
 	case *ast.InvalidStatement:
+		if stmt.Message != "" {
+			a.addErrorAtToken(stmt.Token, "%s", stmt.Message)
+		}
+		return
+	case *ast.InvalidDeclaration:
 		if stmt.Message != "" {
 			a.addErrorAtToken(stmt.Token, "%s", stmt.Message)
 		}
@@ -1429,6 +1482,7 @@ func (a *Analyzer) analyzeBlockStatements(block *ast.BlockStatement) {
 		for _, name := range newNames {
 			a.checkUnresolvedTaskAtScopeExit(name)
 			a.checkUnclosedResourceAtScopeExit(name)
+			a.clearScopedBindingFromLoopEdges(name)
 			a.endBorrowsHeldBy(name)
 			delete(a.localRefContainers, name)
 		}
@@ -1773,6 +1827,8 @@ func (a *Analyzer) analyzeIfStatement(stmt *ast.IfStatement) {
 
 	before := copyAssigned(a.assigned)
 	beforeMoved := copyMoved(a.moved)
+	beforeMoveReasons := copyMoveReasons(a.moveReasons)
+	beforeClosedResources := copyMoved(a.closedResources)
 	beforeBorrows := copyBorrows(a.borrows)
 	beforeLocalRefContainers := copyLocalRefContainers(a.localRefContainers)
 	beforeArenaGenerations := copyArenaGenerations(a.arenaGenerations)
@@ -1784,10 +1840,17 @@ func (a *Analyzer) analyzeIfStatement(stmt *ast.IfStatement) {
 		thenReachable = false
 	}
 	thenBranch := a.analyzeBranchBlockWithCallGraphReachability(stmt.Consequence, thenReachable)
+	if !thenReachable {
+		thenBranch.continues = false
+	}
 	if stmt.Alternative != nil {
 		elseBranch := a.analyzeBranchBlockWithCallGraphReachability(stmt.Alternative, elseReachable)
+		if !elseReachable {
+			elseBranch.continues = false
+		}
 		a.assigned = mergeContinuingAssigned(before, thenBranch, elseBranch)
-		a.moved = mergeContinuingMoved(beforeMoved, thenBranch, elseBranch)
+		a.moved, a.moveReasons = mergeContinuingMoveState(beforeMoved, beforeMoveReasons, thenBranch, elseBranch)
+		a.closedResources = mergeContinuingClosedResources(beforeClosedResources, thenBranch, elseBranch)
 		a.borrows = mergeContinuingBorrows(beforeBorrows, thenBranch, elseBranch)
 		a.localRefContainers = mergeContinuingLocalRefContainers(beforeLocalRefContainers, thenBranch, elseBranch)
 		a.arenaGenerations = mergeContinuingArenaGenerations(beforeArenaGenerations, thenBranch, elseBranch)
@@ -1797,13 +1860,16 @@ func (a *Analyzer) analyzeIfStatement(stmt *ast.IfStatement) {
 	fallthroughBranch := branchAnalysis{
 		assigned:           before,
 		moved:              beforeMoved,
+		moveReasons:        beforeMoveReasons,
+		closedResources:    beforeClosedResources,
 		borrows:            beforeBorrows,
 		localRefContainers: beforeLocalRefContainers,
 		arenaGenerations:   beforeArenaGenerations,
-		continues:          true,
+		continues:          elseReachable,
 	}
 	a.assigned = mergeContinuingAssigned(before, thenBranch, fallthroughBranch)
-	a.moved = mergeContinuingMoved(beforeMoved, thenBranch, fallthroughBranch)
+	a.moved, a.moveReasons = mergeContinuingMoveState(beforeMoved, beforeMoveReasons, thenBranch, fallthroughBranch)
+	a.closedResources = mergeContinuingClosedResources(beforeClosedResources, thenBranch, fallthroughBranch)
 	a.borrows = mergeContinuingBorrows(beforeBorrows, thenBranch, fallthroughBranch)
 	a.localRefContainers = mergeContinuingLocalRefContainers(beforeLocalRefContainers, thenBranch, fallthroughBranch)
 	a.arenaGenerations = mergeContinuingArenaGenerations(beforeArenaGenerations, thenBranch, fallthroughBranch)
@@ -1843,6 +1909,7 @@ func (a *Analyzer) analyzeDeferStatement(stmt *ast.DeferStatement) {
 	previousConstInts := a.constInts
 	previousAssigned := a.assigned
 	previousMoved := a.moved
+	previousMoveReasons := a.moveReasons
 	previousBorrows := a.borrows
 	previousLocalRefContainers := a.localRefContainers
 	previousInDeferBlock := a.inDeferBlock
@@ -1852,6 +1919,7 @@ func (a *Analyzer) analyzeDeferStatement(stmt *ast.DeferStatement) {
 	a.constInts = copyConstInts(previousConstInts)
 	a.assigned = copyAssigned(previousAssigned)
 	a.moved = copyMoved(previousMoved)
+	a.moveReasons = copyMoveReasons(previousMoveReasons)
 	a.borrows = copyBorrows(previousBorrows)
 	a.localRefContainers = copyLocalRefContainers(previousLocalRefContainers)
 	a.inDeferBlock = true
@@ -1859,8 +1927,10 @@ func (a *Analyzer) analyzeDeferStatement(stmt *ast.DeferStatement) {
 	a.deferCaptures = map[string]lexer.Token{}
 	defer func() {
 		for name, token := range a.deferCaptures {
+			place, _ := a.rootPlace(name)
 			previousBorrows[name] = append(previousBorrows[name], borrowRecord{
 				Root:   name,
+				Place:  place,
 				Holder: "$defer",
 				Kind:   deferredUse,
 				Token:  token,
@@ -1870,6 +1940,7 @@ func (a *Analyzer) analyzeDeferStatement(stmt *ast.DeferStatement) {
 		a.constInts = previousConstInts
 		a.assigned = previousAssigned
 		a.moved = previousMoved
+		a.moveReasons = previousMoveReasons
 		a.borrows = previousBorrows
 		a.localRefContainers = previousLocalRefContainers
 		a.inDeferBlock = previousInDeferBlock
@@ -1892,6 +1963,11 @@ func (a *Analyzer) analyzeForStatement(stmt *ast.ForStatement) {
 	previousSymbols := a.symbols
 	previousConstInts := a.constInts
 	previousAssigned := a.assigned
+	previousMoved := a.moved
+	previousMoveReasons := a.moveReasons
+	previousClosedResources := a.closedResources
+	previousBorrows := a.borrows
+	previousLocalRefContainers := a.localRefContainers
 	previousArenaGenerations := a.arenaGenerations
 	previousLoopDepth := a.loopDepth
 	frame := a.pushLoopBreakFrame()
@@ -1899,22 +1975,70 @@ func (a *Analyzer) analyzeForStatement(stmt *ast.ForStatement) {
 	a.symbols = copySymbols(previousSymbols)
 	a.constInts = copyConstInts(previousConstInts)
 	a.assigned = copyAssigned(previousAssigned)
+	a.moved = copyMoved(previousMoved)
+	a.moveReasons = copyMoveReasons(previousMoveReasons)
+	a.closedResources = copyMoved(previousClosedResources)
+	a.borrows = copyBorrows(previousBorrows)
+	a.localRefContainers = copyLocalRefContainers(previousLocalRefContainers)
 	a.arenaGenerations = copyArenaGenerations(previousArenaGenerations)
 	a.loopDepth++
 
 	if len(stmt.Bindings) > 0 || stmt.Iterable != nil {
 		a.analyzeForIterable(stmt)
 	}
+	iterationEntry := a.captureLoopIterationAnalysisState()
 
 	if stmt.Body != nil {
 		a.analyzeBlockStatements(stmt.Body)
 	}
 
+	loopMoved := a.moved
+	loopMoveReasons := a.moveReasons
+	loopClosedResources := a.closedResources
+	loopBorrows := a.borrows
+	loopLocalRefContainers := a.localRefContainers
 	loopArenaGenerations := a.arenaGenerations
+	frameState := a.loopBreakFrames[frame]
+	for _, binding := range stmt.Bindings {
+		if binding.Discard {
+			continue
+		}
+		clearRootPlaceStateMaps(loopMoved, loopMoveReasons, binding.Name)
+		for index := range frameState.moved {
+			clearRootPlaceStateMaps(frameState.moved[index], frameState.moveReasons[index], binding.Name)
+		}
+		for index := range frameState.continueMoved {
+			clearRootPlaceStateMaps(frameState.continueMoved[index], frameState.continueReasons[index], binding.Name)
+		}
+		delete(loopClosedResources, binding.Name)
+		for index := range frameState.closedResources {
+			delete(frameState.closedResources[index], binding.Name)
+		}
+		for index := range frameState.continueClosedResources {
+			delete(frameState.continueClosedResources[index], binding.Name)
+		}
+		clearLoopBindingReferenceState(loopBorrows, loopLocalRefContainers, binding.Name)
+		for index := range frameState.borrows {
+			clearLoopBindingReferenceState(frameState.borrows[index], frameState.localRefContainers[index], binding.Name)
+		}
+		for index := range frameState.continueBorrows {
+			clearLoopBindingReferenceState(frameState.continueBorrows[index], frameState.continueLocalRefContainers[index], binding.Name)
+		}
+	}
+	a.loopBreakFrames[frame] = frameState
+	headerMoved, headerReasons := loopBackedgeMoveState(iterationEntry.moved, iterationEntry.moveReasons, loopMoved, loopMoveReasons, frameState, blockCanFallThrough(stmt.Body))
+	headerClosedResources := loopBackedgeClosedResourceState(iterationEntry.closedResources, loopClosedResources, frameState, blockCanFallThrough(stmt.Body))
+	headerBorrows := loopBackedgeBorrowState(iterationEntry.borrows, loopBorrows, frameState, blockCanFallThrough(stmt.Body))
+	headerLocalRefContainers := loopBackedgeReferenceState(iterationEntry.localRefContainers, loopLocalRefContainers, frameState, blockCanFallThrough(stmt.Body))
+	a.checkLoopBackedgeFixedPoint(nil, stmt.Body, iterationEntry, headerMoved, headerReasons, headerClosedResources, headerBorrows, headerLocalRefContainers)
 	breakFrame := a.popLoopBreakFrame(frame)
 	a.symbols = previousSymbols
 	a.constInts = previousConstInts
 	a.assigned = previousAssigned
+	a.moved, a.moveReasons = mergeLoopMoveState(previousMoved, previousMoveReasons, loopMoved, loopMoveReasons, breakFrame)
+	a.closedResources = mergeLoopClosedResourceState(previousClosedResources, loopClosedResources, breakFrame, blockCanFallThrough(stmt.Body), false)
+	a.borrows = mergeLoopBorrowState(previousBorrows, loopBorrows, breakFrame)
+	a.localRefContainers = mergeLoopReferenceState(previousLocalRefContainers, loopLocalRefContainers, breakFrame)
 	a.arenaGenerations = mergeLoopArenaGenerations(previousArenaGenerations, loopArenaGenerations, breakFrame.arenaGenerations)
 	a.loopDepth = previousLoopDepth
 }
@@ -1930,6 +2054,11 @@ func (a *Analyzer) analyzeWhileStatement(stmt *ast.WhileStatement) {
 	previousSymbols := a.symbols
 	previousConstInts := a.constInts
 	previousAssigned := a.assigned
+	previousMoved := a.moved
+	previousMoveReasons := a.moveReasons
+	previousClosedResources := a.closedResources
+	previousBorrows := a.borrows
+	previousLocalRefContainers := a.localRefContainers
 	previousArenaGenerations := a.arenaGenerations
 	previousLoopDepth := a.loopDepth
 	frame := a.pushLoopBreakFrame()
@@ -1937,15 +2066,32 @@ func (a *Analyzer) analyzeWhileStatement(stmt *ast.WhileStatement) {
 	a.symbols = copySymbols(previousSymbols)
 	a.constInts = copyConstInts(previousConstInts)
 	a.assigned = copyAssigned(previousAssigned)
+	a.moved = copyMoved(previousMoved)
+	a.moveReasons = copyMoveReasons(previousMoveReasons)
+	a.closedResources = copyMoved(previousClosedResources)
+	a.borrows = copyBorrows(previousBorrows)
+	a.localRefContainers = copyLocalRefContainers(previousLocalRefContainers)
 	a.arenaGenerations = copyArenaGenerations(previousArenaGenerations)
 	a.loopDepth++
+	iterationEntry := a.captureLoopIterationAnalysisState()
 
 	if stmt.Body != nil {
 		a.analyzeBlockStatements(stmt.Body)
 	}
 
 	loopConstInts := a.constInts
+	loopMoved := a.moved
+	loopMoveReasons := a.moveReasons
+	loopClosedResources := a.closedResources
+	loopBorrows := a.borrows
+	loopLocalRefContainers := a.localRefContainers
 	loopArenaGenerations := a.arenaGenerations
+	frameState := a.loopBreakFrames[frame]
+	headerMoved, headerReasons := loopBackedgeMoveState(iterationEntry.moved, iterationEntry.moveReasons, loopMoved, loopMoveReasons, frameState, blockCanFallThrough(stmt.Body))
+	headerClosedResources := loopBackedgeClosedResourceState(iterationEntry.closedResources, loopClosedResources, frameState, blockCanFallThrough(stmt.Body))
+	headerBorrows := loopBackedgeBorrowState(iterationEntry.borrows, loopBorrows, frameState, blockCanFallThrough(stmt.Body))
+	headerLocalRefContainers := loopBackedgeReferenceState(iterationEntry.localRefContainers, loopLocalRefContainers, frameState, blockCanFallThrough(stmt.Body))
+	a.checkLoopBackedgeFixedPoint(stmt.Condition, stmt.Body, iterationEntry, headerMoved, headerReasons, headerClosedResources, headerBorrows, headerLocalRefContainers)
 	breakFrame := a.popLoopBreakFrame(frame)
 	a.symbols = previousSymbols
 	a.constInts = previousConstInts
@@ -1960,6 +2106,10 @@ func (a *Analyzer) analyzeWhileStatement(stmt *ast.WhileStatement) {
 	} else {
 		a.assigned = previousAssigned
 	}
+	a.moved, a.moveReasons = mergeLoopMoveState(previousMoved, previousMoveReasons, loopMoved, loopMoveReasons, breakFrame)
+	a.closedResources = mergeLoopClosedResourceState(previousClosedResources, loopClosedResources, breakFrame, blockCanFallThrough(stmt.Body), isBoolLiteral(stmt.Condition, true))
+	a.borrows = mergeLoopBorrowState(previousBorrows, loopBorrows, breakFrame)
+	a.localRefContainers = mergeLoopReferenceState(previousLocalRefContainers, loopLocalRefContainers, breakFrame)
 	a.arenaGenerations = mergeLoopArenaGenerations(previousArenaGenerations, loopArenaGenerations, breakFrame.arenaGenerations)
 	a.loopDepth = previousLoopDepth
 }
@@ -2147,21 +2297,57 @@ func (a *Analyzer) inferForRangeBindingType(expr *ast.RangeExpression, step ast.
 type branchAnalysis struct {
 	assigned           map[string]bool
 	moved              map[string]lexer.Token
+	moveReasons        map[string]string
+	closedResources    map[string]lexer.Token
 	borrows            map[string][]borrowRecord
 	localRefContainers map[string]localReferenceOrigin
 	arenaGenerations   map[string]int
 	continues          bool
 }
 
+type loopIterationAnalysisState struct {
+	symbols            map[string]Symbol
+	completionSymbols  map[string]Symbol
+	definitionTokens   map[sourceTokenKey][]lexer.Token
+	constInts          map[string]*big.Int
+	assigned           map[string]bool
+	moved              map[string]lexer.Token
+	moveReasons        map[string]string
+	closedResources    map[string]lexer.Token
+	borrows            map[string][]borrowRecord
+	localRefContainers map[string]localReferenceOrigin
+	arenaGenerations   map[string]int
+	scopeDepth         int
+}
+
+func (a *Analyzer) captureLoopIterationAnalysisState() loopIterationAnalysisState {
+	return loopIterationAnalysisState{
+		symbols:            copySymbols(a.symbols),
+		completionSymbols:  copySymbols(a.completionSymbols),
+		definitionTokens:   copyDefinitionTokens(a.definitionTokens),
+		constInts:          copyConstInts(a.constInts),
+		assigned:           copyAssigned(a.assigned),
+		moved:              copyMoved(a.moved),
+		moveReasons:        copyMoveReasons(a.moveReasons),
+		closedResources:    copyMoved(a.closedResources),
+		borrows:            copyBorrows(a.borrows),
+		localRefContainers: copyLocalRefContainers(a.localRefContainers),
+		arenaGenerations:   copyArenaGenerations(a.arenaGenerations),
+		scopeDepth:         a.scopeDepth,
+	}
+}
+
 func (a *Analyzer) analyzeBranchBlock(block *ast.BlockStatement) branchAnalysis {
 	if block == nil {
-		return branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), borrows: copyBorrows(a.borrows), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), continues: true}
+		return branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), moveReasons: copyMoveReasons(a.moveReasons), closedResources: copyMoved(a.closedResources), borrows: copyBorrows(a.borrows), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), continues: true}
 	}
 
 	previousSymbols := a.symbols
 	previousConstInts := a.constInts
 	previousAssigned := a.assigned
 	previousMoved := a.moved
+	previousMoveReasons := a.moveReasons
+	previousClosedResources := a.closedResources
 	previousBorrows := a.borrows
 	previousLocalRefContainers := a.localRefContainers
 	previousArenaGenerations := a.arenaGenerations
@@ -2169,6 +2355,8 @@ func (a *Analyzer) analyzeBranchBlock(block *ast.BlockStatement) branchAnalysis 
 	a.constInts = copyConstInts(previousConstInts)
 	a.assigned = copyAssigned(previousAssigned)
 	a.moved = copyMoved(previousMoved)
+	a.moveReasons = copyMoveReasons(previousMoveReasons)
+	a.closedResources = copyMoved(previousClosedResources)
 	a.borrows = copyBorrows(previousBorrows)
 	a.localRefContainers = copyLocalRefContainers(previousLocalRefContainers)
 	a.arenaGenerations = copyArenaGenerations(previousArenaGenerations)
@@ -2177,6 +2365,8 @@ func (a *Analyzer) analyzeBranchBlock(block *ast.BlockStatement) branchAnalysis 
 		a.constInts = previousConstInts
 		a.assigned = previousAssigned
 		a.moved = previousMoved
+		a.moveReasons = previousMoveReasons
+		a.closedResources = previousClosedResources
 		a.borrows = previousBorrows
 		a.localRefContainers = previousLocalRefContainers
 		a.arenaGenerations = previousArenaGenerations
@@ -2186,10 +2376,12 @@ func (a *Analyzer) analyzeBranchBlock(block *ast.BlockStatement) branchAnalysis 
 	return branchAnalysis{
 		assigned:           copyAssigned(a.assigned),
 		moved:              copyMoved(a.moved),
+		moveReasons:        copyMoveReasons(a.moveReasons),
+		closedResources:    copyMoved(a.closedResources),
 		borrows:            copyBorrows(a.borrows),
 		localRefContainers: copyLocalRefContainers(a.localRefContainers),
 		arenaGenerations:   copyArenaGenerations(a.arenaGenerations),
-		continues:          !blockDefinitelyReturns(block),
+		continues:          blockCanFallThrough(block),
 	}
 }
 
@@ -2215,17 +2407,58 @@ func mergeContinuingAssigned(before map[string]bool, branches ...branchAnalysis)
 	return merged
 }
 
-func mergeContinuingMoved(before map[string]lexer.Token, branches ...branchAnalysis) map[string]lexer.Token {
-	merged := copyMoved(before)
+func mergeContinuingMoveState(beforeMoved map[string]lexer.Token, beforeReasons map[string]string, branches ...branchAnalysis) (map[string]lexer.Token, map[string]string) {
+	mergedMoved := map[string]lexer.Token{}
+	mergedReasons := map[string]string{}
+	foundContinuing := false
 	for _, branch := range branches {
 		if !branch.continues {
 			continue
 		}
-		for name, token := range branch.moved {
-			merged[name] = token
+		foundContinuing = true
+		for place, token := range branch.moved {
+			if _, exists := mergedMoved[place]; exists {
+				continue
+			}
+			mergedMoved[place] = token
+			if reason := branch.moveReasons[place]; reason != "" {
+				mergedReasons[place] = reason
+			}
 		}
 	}
-	return merged
+	if !foundContinuing {
+		return copyMoved(beforeMoved), copyMoveReasons(beforeReasons)
+	}
+	return mergedMoved, mergedReasons
+}
+
+func mergeContinuingClosedResources(before map[string]lexer.Token, branches ...branchAnalysis) map[string]lexer.Token {
+	states := make([]map[string]lexer.Token, 0, len(branches))
+	for _, branch := range branches {
+		if branch.continues {
+			states = append(states, branch.closedResources)
+		}
+	}
+	if len(states) == 0 {
+		return copyMoved(before)
+	}
+	return intersectTokenStates(states...)
+}
+
+func intersectTokenStates(states ...map[string]lexer.Token) map[string]lexer.Token {
+	if len(states) == 0 {
+		return map[string]lexer.Token{}
+	}
+	intersection := copyMoved(states[0])
+	for name := range intersection {
+		for _, state := range states[1:] {
+			if _, exists := state[name]; !exists {
+				delete(intersection, name)
+				break
+			}
+		}
+	}
+	return intersection
 }
 
 func mergeContinuingBorrows(before map[string][]borrowRecord, branches ...branchAnalysis) map[string][]borrowRecord {
@@ -2258,7 +2491,8 @@ func containsBorrowRecord(records []borrowRecord, target borrowRecord) bool {
 			record.Kind == target.Kind &&
 			record.Token.File == target.Token.File &&
 			record.Token.Line == target.Token.Line &&
-			record.Token.Column == target.Token.Column {
+			record.Token.Column == target.Token.Column &&
+			samePlaceIdentity(record.Place, target.Place) {
 			return true
 		}
 	}
@@ -2266,16 +2500,17 @@ func containsBorrowRecord(records []borrowRecord, target borrowRecord) bool {
 }
 
 func mergeContinuingLocalRefContainers(before map[string]localReferenceOrigin, branches ...branchAnalysis) map[string]localReferenceOrigin {
-	merged := copyLocalRefContainers(before)
+	states := make([]map[string]localReferenceOrigin, 0, len(branches))
 	for _, branch := range branches {
 		if !branch.continues {
 			continue
 		}
-		for name, origin := range branch.localRefContainers {
-			merged[name] = origin
-		}
+		states = append(states, branch.localRefContainers)
 	}
-	return merged
+	if len(states) == 0 {
+		return copyLocalRefContainers(before)
+	}
+	return mergeReferenceOriginStates(states...)
 }
 
 func mergeContinuingArenaGenerations(before map[string]int, branches ...branchAnalysis) map[string]int {
@@ -2296,6 +2531,8 @@ func mergeContinuingArenaGenerations(before map[string]int, branches ...branchAn
 func (a *Analyzer) analyzeSwitchStatement(stmt *ast.SwitchStatement) {
 	before := copyAssigned(a.assigned)
 	beforeMoved := copyMoved(a.moved)
+	beforeMoveReasons := copyMoveReasons(a.moveReasons)
+	beforeClosedResources := copyMoved(a.closedResources)
 	beforeBorrows := copyBorrows(a.borrows)
 	beforeLocalRefContainers := copyLocalRefContainers(a.localRefContainers)
 	beforeArenaGenerations := copyArenaGenerations(a.arenaGenerations)
@@ -2336,10 +2573,11 @@ func (a *Analyzer) analyzeSwitchStatement(stmt *ast.SwitchStatement) {
 	}
 
 	if stmt.Default == nil && !tracker.isExhaustive() {
-		branches = append(branches, branchAnalysis{assigned: before, moved: beforeMoved, borrows: beforeBorrows, localRefContainers: beforeLocalRefContainers, arenaGenerations: beforeArenaGenerations, continues: true})
+		branches = append(branches, branchAnalysis{assigned: before, moved: beforeMoved, moveReasons: beforeMoveReasons, closedResources: beforeClosedResources, borrows: beforeBorrows, localRefContainers: beforeLocalRefContainers, arenaGenerations: beforeArenaGenerations, continues: true})
 	}
 	a.assigned = mergeContinuingAssigned(before, branches...)
-	a.moved = mergeContinuingMoved(beforeMoved, branches...)
+	a.moved, a.moveReasons = mergeContinuingMoveState(beforeMoved, beforeMoveReasons, branches...)
+	a.closedResources = mergeContinuingClosedResources(beforeClosedResources, branches...)
 	a.borrows = mergeContinuingBorrows(beforeBorrows, branches...)
 	a.localRefContainers = mergeContinuingLocalRefContainers(beforeLocalRefContainers, branches...)
 	a.arenaGenerations = mergeContinuingArenaGenerations(beforeArenaGenerations, branches...)
@@ -2348,6 +2586,8 @@ func (a *Analyzer) analyzeSwitchStatement(stmt *ast.SwitchStatement) {
 func (a *Analyzer) analyzeSelectStatement(stmt *ast.SelectStatement) {
 	beforeAssigned := copyAssigned(a.assigned)
 	beforeMoved := copyMoved(a.moved)
+	beforeMoveReasons := copyMoveReasons(a.moveReasons)
+	beforeClosedResources := copyMoved(a.closedResources)
 	beforeBorrows := copyBorrows(a.borrows)
 	beforeLocalRefContainers := copyLocalRefContainers(a.localRefContainers)
 	beforeArenaGenerations := copyArenaGenerations(a.arenaGenerations)
@@ -2396,10 +2636,11 @@ func (a *Analyzer) analyzeSelectStatement(stmt *ast.SelectStatement) {
 		branches = append(branches, a.analyzeSelectBranchBody(branch))
 	}
 	if !selectHasDefault(stmt) {
-		branches = append(branches, branchAnalysis{assigned: beforeAssigned, moved: beforeMoved, borrows: beforeBorrows, localRefContainers: beforeLocalRefContainers, arenaGenerations: beforeArenaGenerations, continues: true})
+		branches = append(branches, branchAnalysis{assigned: beforeAssigned, moved: beforeMoved, moveReasons: beforeMoveReasons, closedResources: beforeClosedResources, borrows: beforeBorrows, localRefContainers: beforeLocalRefContainers, arenaGenerations: beforeArenaGenerations, continues: true})
 	}
 	a.assigned = mergeContinuingAssigned(beforeAssigned, branches...)
-	a.moved = mergeContinuingMoved(beforeMoved, branches...)
+	a.moved, a.moveReasons = mergeContinuingMoveState(beforeMoved, beforeMoveReasons, branches...)
+	a.closedResources = mergeContinuingClosedResources(beforeClosedResources, branches...)
 	a.borrows = mergeContinuingBorrows(beforeBorrows, branches...)
 	a.localRefContainers = mergeContinuingLocalRefContainers(beforeLocalRefContainers, branches...)
 	a.arenaGenerations = mergeContinuingArenaGenerations(beforeArenaGenerations, branches...)
@@ -2562,6 +2803,8 @@ func (a *Analyzer) analyzeSelectBranchBody(branch *ast.SelectBranch) branchAnaly
 	previousConstInts := a.constInts
 	previousAssigned := a.assigned
 	previousMoved := a.moved
+	previousMoveReasons := a.moveReasons
+	previousClosedResources := a.closedResources
 	previousBorrows := a.borrows
 	previousLocalRefContainers := a.localRefContainers
 	previousArenaGenerations := a.arenaGenerations
@@ -2569,6 +2812,8 @@ func (a *Analyzer) analyzeSelectBranchBody(branch *ast.SelectBranch) branchAnaly
 	a.constInts = copyConstInts(previousConstInts)
 	a.assigned = copyAssigned(previousAssigned)
 	a.moved = copyMoved(previousMoved)
+	a.moveReasons = copyMoveReasons(previousMoveReasons)
+	a.closedResources = copyMoved(previousClosedResources)
 	a.borrows = copyBorrows(previousBorrows)
 	a.localRefContainers = copyLocalRefContainers(previousLocalRefContainers)
 	a.arenaGenerations = copyArenaGenerations(previousArenaGenerations)
@@ -2577,6 +2822,8 @@ func (a *Analyzer) analyzeSelectBranchBody(branch *ast.SelectBranch) branchAnaly
 		a.constInts = previousConstInts
 		a.assigned = previousAssigned
 		a.moved = previousMoved
+		a.moveReasons = previousMoveReasons
+		a.closedResources = previousClosedResources
 		a.borrows = previousBorrows
 		a.localRefContainers = previousLocalRefContainers
 		a.arenaGenerations = previousArenaGenerations
@@ -2597,10 +2844,12 @@ func (a *Analyzer) analyzeSelectBranchBody(branch *ast.SelectBranch) branchAnaly
 	return branchAnalysis{
 		assigned:           copyAssigned(a.assigned),
 		moved:              copyMoved(a.moved),
+		moveReasons:        copyMoveReasons(a.moveReasons),
+		closedResources:    copyMoved(a.closedResources),
 		borrows:            copyBorrows(a.borrows),
 		localRefContainers: copyLocalRefContainers(a.localRefContainers),
 		arenaGenerations:   copyArenaGenerations(a.arenaGenerations),
-		continues:          !blockDefinitelyReturns(branch.Body),
+		continues:          blockCanFallThrough(branch.Body),
 	}
 }
 
@@ -3006,13 +3255,15 @@ func (a *Analyzer) analyzeSwitchFallthrough(clause *ast.SwitchCase, isFinal bool
 
 func (a *Analyzer) analyzeSwitchCaseBody(block *ast.BlockStatement) branchAnalysis {
 	if block == nil {
-		return branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), borrows: copyBorrows(a.borrows), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), continues: true}
+		return branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), moveReasons: copyMoveReasons(a.moveReasons), closedResources: copyMoved(a.closedResources), borrows: copyBorrows(a.borrows), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), continues: true}
 	}
 
 	previousSymbols := a.symbols
 	previousConstInts := a.constInts
 	previousAssigned := a.assigned
 	previousMoved := a.moved
+	previousMoveReasons := a.moveReasons
+	previousClosedResources := a.closedResources
 	previousBorrows := a.borrows
 	previousLocalRefContainers := a.localRefContainers
 	previousArenaGenerations := a.arenaGenerations
@@ -3021,6 +3272,8 @@ func (a *Analyzer) analyzeSwitchCaseBody(block *ast.BlockStatement) branchAnalys
 	a.constInts = copyConstInts(previousConstInts)
 	a.assigned = copyAssigned(previousAssigned)
 	a.moved = copyMoved(previousMoved)
+	a.moveReasons = copyMoveReasons(previousMoveReasons)
+	a.closedResources = copyMoved(previousClosedResources)
 	a.borrows = copyBorrows(previousBorrows)
 	a.localRefContainers = copyLocalRefContainers(previousLocalRefContainers)
 	a.arenaGenerations = copyArenaGenerations(previousArenaGenerations)
@@ -3030,6 +3283,8 @@ func (a *Analyzer) analyzeSwitchCaseBody(block *ast.BlockStatement) branchAnalys
 		a.constInts = previousConstInts
 		a.assigned = previousAssigned
 		a.moved = previousMoved
+		a.moveReasons = previousMoveReasons
+		a.closedResources = previousClosedResources
 		a.borrows = previousBorrows
 		a.localRefContainers = previousLocalRefContainers
 		a.arenaGenerations = previousArenaGenerations
@@ -3041,10 +3296,12 @@ func (a *Analyzer) analyzeSwitchCaseBody(block *ast.BlockStatement) branchAnalys
 	return branchAnalysis{
 		assigned:           copyAssigned(a.assigned),
 		moved:              copyMoved(a.moved),
+		moveReasons:        copyMoveReasons(a.moveReasons),
+		closedResources:    copyMoved(a.closedResources),
 		borrows:            copyBorrows(a.borrows),
 		localRefContainers: copyLocalRefContainers(a.localRefContainers),
 		arenaGenerations:   copyArenaGenerations(a.arenaGenerations),
-		continues:          !blockDefinitelyReturns(block) && !hasFallthrough,
+		continues:          blockCanFallThrough(block) && !hasFallthrough,
 	}
 }
 
@@ -3467,6 +3724,60 @@ func (a *Analyzer) analyzeFunctionBodies(program *ast.Program) {
 	})
 }
 
+func (a *Analyzer) inferFunctionReferenceSummaries(program *ast.Program) {
+	functionCount := 0
+	for _, overloads := range a.functions {
+		functionCount += len(overloads)
+	}
+	if functionCount == 0 {
+		return
+	}
+	a.summaryPass = true
+	defer func() { a.summaryPass = false }()
+	for iteration := 0; iteration <= functionCount; iteration++ {
+		before := copyFunctionReferenceSummaries(a.functions)
+		a.analyzeFunctionBodies(program)
+		a.analyzeImplBodies(program)
+		if functionReferenceSummariesEqual(before, a.functions) {
+			break
+		}
+	}
+}
+
+func copyFunctionReferenceSummaries(functions map[string][]Function) map[string][]Function {
+	out := make(map[string][]Function, len(functions))
+	for name, overloads := range functions {
+		out[name] = make([]Function, len(overloads))
+		for index, function := range overloads {
+			function.ReturnOrigin = cloneLocalReferenceOrigin(function.ReturnOrigin)
+			out[name][index] = function
+		}
+	}
+	return out
+}
+
+func functionReferenceSummariesEqual(left, right map[string][]Function) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for name, leftOverloads := range left {
+		rightOverloads, ok := right[name]
+		if !ok || len(leftOverloads) != len(rightOverloads) {
+			return false
+		}
+		for index, leftFunction := range leftOverloads {
+			rightFunction := rightOverloads[index]
+			if leftFunction.HasReturnOrigin != rightFunction.HasReturnOrigin {
+				return false
+			}
+			if leftFunction.HasReturnOrigin && !sameReferenceOrigin(leftFunction.ReturnOrigin, rightFunction.ReturnOrigin) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 func (a *Analyzer) analyzeFunctionBody(fn *ast.FunctionDeclaration) {
 	a.analyzeFunctionBodyNamed(fn, fn.Name.Value)
 }
@@ -3486,6 +3797,9 @@ func (a *Analyzer) analyzeFunctionBodyInScope(fn *ast.FunctionDeclaration, name 
 	if !ok || function.ReturnType.Kind == InvalidType {
 		return
 	}
+	if a.summaryPass && !typeContainsReference(function.ReturnType, map[string]bool{}) {
+		return
+	}
 	if function.Extern {
 		a.validateExternFunction(function)
 		if fn.Body == nil {
@@ -3497,6 +3811,7 @@ func (a *Analyzer) analyzeFunctionBodyInScope(fn *ast.FunctionDeclaration, name 
 	previousConstInts := a.constInts
 	previousAssigned := a.assigned
 	previousMoved := a.moved
+	previousMoveReasons := a.moveReasons
 	previousClosedResources := a.closedResources
 	previousBorrows := a.borrows
 	previousLocalRefContainers := a.localRefContainers
@@ -3504,6 +3819,10 @@ func (a *Analyzer) analyzeFunctionBodyInScope(fn *ast.FunctionDeclaration, name 
 	previousFunctionName := a.currentFunctionName
 	previousCallable := a.currentCallable
 	previousFunctionReturn := a.currentFunctionReturn
+	previousFunctionToken := a.currentFunctionToken
+	previousFunctionMetadata := a.currentFunctionMetadata
+	previousFunctionSummary := a.currentFunctionSummary
+	previousHasFunctionSummary := a.hasCurrentFunctionSummary
 	previousInFunctionBody := a.inFunctionBody
 	previousUnsafe := a.inUnsafe
 	previousScopeDepth := a.scopeDepth
@@ -3511,6 +3830,7 @@ func (a *Analyzer) analyzeFunctionBodyInScope(fn *ast.FunctionDeclaration, name 
 	a.constInts = copyConstInts(previousConstInts)
 	a.assigned = copyAssigned(previousAssigned)
 	a.moved = map[string]lexer.Token{}
+	a.moveReasons = map[string]string{}
 	a.closedResources = map[string]lexer.Token{}
 	a.borrows = map[string][]borrowRecord{}
 	a.localRefContainers = map[string]localReferenceOrigin{}
@@ -3519,6 +3839,10 @@ func (a *Analyzer) analyzeFunctionBodyInScope(fn *ast.FunctionDeclaration, name 
 	a.currentFunctionName = fn.Name.Value
 	a.currentCallable = a.callGraph.addCallable(function)
 	a.currentFunctionReturn = function.ReturnType
+	a.currentFunctionToken = function.Token
+	a.currentFunctionMetadata = function
+	a.currentFunctionSummary = localReferenceOrigin{}
+	a.hasCurrentFunctionSummary = false
 	a.inFunctionBody = true
 	if fn.Unsafe {
 		a.inUnsafe = true
@@ -3528,6 +3852,7 @@ func (a *Analyzer) analyzeFunctionBodyInScope(fn *ast.FunctionDeclaration, name 
 		a.constInts = previousConstInts
 		a.assigned = previousAssigned
 		a.moved = previousMoved
+		a.moveReasons = previousMoveReasons
 		a.borrows = previousBorrows
 		a.closedResources = previousClosedResources
 		a.localRefContainers = previousLocalRefContainers
@@ -3535,6 +3860,10 @@ func (a *Analyzer) analyzeFunctionBodyInScope(fn *ast.FunctionDeclaration, name 
 		a.currentFunctionName = previousFunctionName
 		a.currentCallable = previousCallable
 		a.currentFunctionReturn = previousFunctionReturn
+		a.currentFunctionToken = previousFunctionToken
+		a.currentFunctionMetadata = previousFunctionMetadata
+		a.currentFunctionSummary = previousFunctionSummary
+		a.hasCurrentFunctionSummary = previousHasFunctionSummary
 		a.inFunctionBody = previousInFunctionBody
 		a.inUnsafe = previousUnsafe
 		a.scopeDepth = previousScopeDepth
@@ -3549,10 +3878,12 @@ func (a *Analyzer) analyzeFunctionBodyInScope(fn *ast.FunctionDeclaration, name 
 		delete(a.constInts, param.Name)
 		a.assigned[param.Name] = true
 		a.recordDefinition(param.Token)
+		a.seedParameterReferenceOrigin(function, param)
 	}
 	a.defineImplicitImplInstanceSymbols(fn.Body, function.ReceiverMutable)
 
 	a.analyzeBlockStatements(fn.Body)
+	a.setFunctionReferenceSummary(function)
 
 	if !a.blockDefinitelyReturns(fn.Body) && function.ReturnType.Kind != VoidType && function.ReturnType.Kind != NeverType {
 		a.addErrorAtToken(fn.Name.Token, "function %s must return %s", fn.Name.Value, typeDisplayName(function.ReturnType))
@@ -3586,14 +3917,14 @@ func (a *Analyzer) defineImplicitImplInstanceSymbols(block *ast.BlockStatement, 
 }
 
 func (a *Analyzer) defineInstanceSymbols(target Type, mutableSelf bool, selfToken lexer.Token) {
-	a.symbols["self"] = Symbol{Name: "self", Type: target, Mutable: mutableSelf, Token: selfToken, Storage: StorageOriginInline, Local: true, ScopeDepth: 0}
+	a.symbols["self"] = Symbol{Name: "self", Type: target, Mutable: mutableSelf, Token: selfToken, Storage: StorageOriginInline, Local: false, ScopeDepth: 0}
 	a.assigned["self"] = true
 	delete(a.constInts, "self")
 	for _, field := range target.Fields {
 		if _, exists := a.symbols[field.Name]; exists {
 			continue
 		}
-		a.symbols[field.Name] = Symbol{Name: field.Name, Type: field.Type, Mutable: mutableSelf, ImplicitMember: true, Token: field.Token, Storage: StorageOriginInline, Local: true, ScopeDepth: 0}
+		a.symbols[field.Name] = Symbol{Name: field.Name, Type: field.Type, Mutable: mutableSelf, ImplicitMember: true, Token: field.Token, Storage: StorageOriginInline, Local: false, ScopeDepth: 0}
 		a.assigned[field.Name] = true
 		delete(a.constInts, field.Name)
 	}
@@ -3604,7 +3935,7 @@ func (a *Analyzer) defineInstanceSymbols(target Type, mutableSelf bool, selfToke
 		if _, exists := a.symbols[field.Name]; exists {
 			continue
 		}
-		a.symbols[field.Name] = Symbol{Name: field.Name, Type: field.Type, Mutable: mutableSelf, ImplicitMember: true, Token: field.Token, Storage: StorageOriginInline, Local: true, ScopeDepth: 0}
+		a.symbols[field.Name] = Symbol{Name: field.Name, Type: field.Type, Mutable: mutableSelf, ImplicitMember: true, Token: field.Token, Storage: StorageOriginInline, Local: false, ScopeDepth: 0}
 		a.assigned[field.Name] = true
 		delete(a.constInts, field.Name)
 	}
@@ -3612,7 +3943,7 @@ func (a *Analyzer) defineInstanceSymbols(target Type, mutableSelf bool, selfToke
 		if _, exists := a.symbols[property.Name]; exists {
 			continue
 		}
-		a.symbols[property.Name] = Symbol{Name: property.Name, Type: property.Type, Mutable: mutableSelf && property.HasSetter, ImplicitMember: true, Token: property.Token, Storage: StorageOriginInline, Local: true, ScopeDepth: 0}
+		a.symbols[property.Name] = Symbol{Name: property.Name, Type: property.Type, Mutable: mutableSelf && property.HasSetter, ImplicitMember: true, Token: property.Token, Storage: StorageOriginInline, Local: false, ScopeDepth: 0}
 		a.assigned[property.Name] = true
 		delete(a.constInts, property.Name)
 	}
@@ -3620,7 +3951,7 @@ func (a *Analyzer) defineInstanceSymbols(target Type, mutableSelf bool, selfToke
 		if _, exists := a.symbols[event.Name]; exists {
 			continue
 		}
-		a.symbols[event.Name] = Symbol{Name: event.Name, Type: event.Type, Mutable: false, ImplicitMember: true, Token: event.Token, Storage: StorageOriginInline, Local: true, ScopeDepth: 0}
+		a.symbols[event.Name] = Symbol{Name: event.Name, Type: event.Type, Mutable: false, ImplicitMember: true, Token: event.Token, Storage: StorageOriginInline, Local: false, ScopeDepth: 0}
 		a.assigned[event.Name] = true
 		delete(a.constInts, event.Name)
 	}
@@ -4094,8 +4425,8 @@ func (a *Analyzer) matchStatementDefinitelyReturns(stmt *ast.MatchStatement) boo
 		return false
 	}
 
-	subjectType, _ := a.inferExpression(stmt.Match.Subject)
-	if subjectType.Kind == InvalidType {
+	subjectType, ok := a.expressionTypes[stmt.Match.Subject]
+	if !ok || subjectType.Kind == InvalidType {
 		return false
 	}
 
@@ -4167,6 +4498,22 @@ func (a *Analyzer) matchPatternInfoNoDiagnostics(pattern ast.Expression, subject
 			return matchPatternInfo{}, false
 		}
 		return matchPatternInfo{Kind: "variant", Variant: pattern.Property.Value}, true
+	case *ast.CallExpression:
+		if subjectType.Kind != UnionType {
+			return matchPatternInfo{}, false
+		}
+		variantName := ""
+		switch callee := pattern.Callee.(type) {
+		case *ast.Identifier:
+			variantName = callee.Value
+		case *ast.MemberExpression:
+			variantName = callee.Property.Value
+		}
+		variant, ok := lookupUnionVariant(subjectType, variantName)
+		if !ok || len(pattern.Arguments) != 1 || variant.Payload == nil && len(variant.PayloadFields) == 0 {
+			return matchPatternInfo{}, false
+		}
+		return matchPatternInfo{Kind: "variant", Variant: variant.Name}, true
 	case *ast.Identifier:
 		return matchPatternInfo{BindingName: pattern.Value, BindingType: subjectType, Kind: "catchall"}, true
 	default:
@@ -4186,6 +4533,60 @@ func (a *Analyzer) statementTerminatesBlock(stmt ast.Statement) bool {
 		return true
 	default:
 		return a.statementDefinitelyReturns(stmt)
+	}
+}
+
+func blockCanFallThrough(block *ast.BlockStatement) bool {
+	if block == nil {
+		return true
+	}
+	for _, stmt := range block.Statements {
+		if !statementCanFallThrough(stmt) {
+			return false
+		}
+	}
+	return true
+}
+
+func statementCanFallThrough(stmt ast.Statement) bool {
+	switch stmt := stmt.(type) {
+	case *ast.ReturnStatement, *ast.BreakStatement, *ast.ContinueStatement, *ast.CancelStatement, *ast.FallthroughStatement:
+		return false
+	case *ast.IfStatement:
+		if isBoolLiteral(stmt.Condition, true) {
+			return blockCanFallThrough(stmt.Consequence)
+		}
+		if isBoolLiteral(stmt.Condition, false) {
+			return blockCanFallThrough(stmt.Alternative)
+		}
+		if stmt.Alternative == nil {
+			return true
+		}
+		return blockCanFallThrough(stmt.Consequence) || blockCanFallThrough(stmt.Alternative)
+	case *ast.SwitchStatement:
+		if stmt.Default == nil {
+			return true
+		}
+		for _, clause := range stmt.Cases {
+			if clause != nil && blockCanFallThrough(clause.Body) {
+				return true
+			}
+		}
+		return blockCanFallThrough(stmt.Default.Body)
+	case *ast.SelectStatement:
+		if len(stmt.Branches) == 0 {
+			return true
+		}
+		for _, branch := range stmt.Branches {
+			if branch != nil && blockCanFallThrough(branch.Body) {
+				return true
+			}
+		}
+		return false
+	case *ast.UnsafeStatement:
+		return blockCanFallThrough(stmt.Body)
+	default:
+		return !statementDefinitelyReturns(stmt)
 	}
 }
 
@@ -4361,14 +4762,162 @@ func (a *Analyzer) analyzeReturnStatement(functionName string, returnType Type, 
 		a.addErrorAtToken(expressionToken(stmt.Value), "function %s must return %s, got %s", functionName, typeDisplayName(returnType), typeDisplayName(valueType))
 		return
 	}
+	a.recordFunctionReturnOrigin(returnType, stmt.Value)
 	if a.checkReturningReferenceToLocal(functionName, returnType, valueType, stmt.Value) {
 		return
 	}
 	if a.checkExpressionEscapesLocalReference(functionName, stmt.Value) {
 		return
 	}
+	if a.checkExpressionEscapesMatchPayload(functionName, stmt.Value) {
+		return
+	}
 	a.markResourceTransfer(stmt.Value)
 	a.markMoveSource(stmt.Value)
+}
+
+func (a *Analyzer) seedParameterReferenceOrigin(function Function, param FunctionParameter) {
+	if !typeCarriesReferenceOrigin(param.Type) {
+		return
+	}
+	placeType := param.Type
+	if param.Type.Kind == ReferenceType && param.Type.Element != nil {
+		placeType = *param.Type.Element
+	}
+	place := Place{
+		Root:        param.Name,
+		RootToken:   param.Token,
+		Type:        placeType,
+		Mutable:     param.Type.ReferenceMutable || param.MutableRef,
+		Addressable: true,
+	}
+	a.localRefContainers[param.Name] = localOriginWithPlaces(localReferenceOrigin{
+		Name:    param.Name,
+		Token:   param.Token,
+		Mutable: param.Type.ReferenceMutable,
+	}, []Place{place})
+}
+
+func (a *Analyzer) recordFunctionReturnOrigin(returnType Type, expr ast.Expression) {
+	if expr == nil || !typeContainsReference(returnType, map[string]bool{}) {
+		return
+	}
+	candidate := localReferenceOrigin{}
+	if typeCarriesReferenceOrigin(returnType) {
+		origin, ok := a.directReferenceOrigin(expr)
+		if !ok {
+			candidate.Unknown = true
+			candidate.Ambiguous = true
+		} else {
+			candidate = origin
+		}
+	} else {
+		candidate.Contained = a.containedReferenceOrigins(expr)
+		if len(candidate.Contained) == 0 {
+			candidate.Unknown = true
+			candidate.Ambiguous = true
+		} else {
+			recomputeContainedOriginSummary(&candidate)
+		}
+	}
+	candidate = a.symbolizeFunctionReturnOrigin(candidate)
+	if !a.hasCurrentFunctionSummary {
+		a.currentFunctionSummary = candidate
+		a.hasCurrentFunctionSummary = true
+		return
+	}
+	a.currentFunctionSummary = mergeLocalReferenceOrigins([]localReferenceOrigin{a.currentFunctionSummary, candidate}, false)
+}
+
+func typeContainsReference(typ Type, visiting map[string]bool) bool {
+	if typeCarriesReferenceOrigin(typ) {
+		return true
+	}
+	identity := typeDeclarationIdentity(typ)
+	if identity != "" && visiting[identity] {
+		return false
+	}
+	if identity != "" {
+		visiting[identity] = true
+		defer delete(visiting, identity)
+	}
+	if typ.Element != nil && typeContainsReference(*typ.Element, visiting) {
+		return true
+	}
+	for _, field := range typ.Fields {
+		if typeContainsReference(field.Type, visiting) {
+			return true
+		}
+	}
+	for _, arg := range typ.TypeArgs {
+		if typeContainsReference(arg, visiting) {
+			return true
+		}
+	}
+	for _, variant := range typ.UnionVariants {
+		if variant.Payload != nil && typeContainsReference(*variant.Payload, visiting) {
+			return true
+		}
+	}
+	return false
+}
+
+func (a *Analyzer) symbolizeFunctionReturnOrigin(origin localReferenceOrigin) localReferenceOrigin {
+	origin = cloneLocalReferenceOrigin(origin)
+	places := localOriginPlaces(origin)
+	symbolic := make([]Place, 0, len(places))
+	unknown := origin.Unknown
+	for _, place := range places {
+		root, ok := a.symbolicFunctionOriginRoot(place.Root)
+		if !ok {
+			unknown = true
+			continue
+		}
+		place.Root = root
+		symbolic = append(symbolic, place)
+	}
+	origin = localOriginWithPlaces(origin, symbolic)
+	origin.Local = false
+	origin.MatchScoped = false
+	origin.Unknown = origin.Unknown || unknown
+	origin.Ambiguous = origin.Ambiguous || origin.Unknown
+	for path, child := range origin.Contained {
+		origin.Contained[path] = a.symbolizeFunctionReturnOrigin(child)
+		if origin.Contained[path].Unknown {
+			origin.Unknown = true
+			origin.Ambiguous = true
+		}
+	}
+	return origin
+}
+
+func (a *Analyzer) symbolicFunctionOriginRoot(root string) (string, bool) {
+	function := a.currentFunctionMetadata
+	for index, param := range function.Parameters {
+		if param.Name == root {
+			return "$param:" + strconv.Itoa(index), true
+		}
+	}
+	if root == "self" && function.ImplTarget != "" {
+		return "$receiver", true
+	}
+	if symbol, exists := a.symbols[root]; exists && !symbol.Local {
+		return "$static:" + root, true
+	}
+	return "", false
+}
+
+func (a *Analyzer) setFunctionReferenceSummary(function Function) {
+	overloads := a.functions[function.Name]
+	for index := range overloads {
+		if overloads[index].Token.Line != function.Token.Line || overloads[index].Token.Column != function.Token.Column {
+			continue
+		}
+		overloads[index].HasReturnOrigin = a.hasCurrentFunctionSummary
+		overloads[index].ReturnOrigin = cloneLocalReferenceOrigin(a.currentFunctionSummary)
+		a.functions[function.Name] = overloads
+		return
+	}
 }
 
 func containsCapturedLambdaExpression(expr ast.Expression) bool {
@@ -4395,7 +4944,22 @@ func containsCapturedLambdaExpression(expr ast.Expression) bool {
 }
 
 func (a *Analyzer) checkReturningReferenceToLocal(functionName string, returnType Type, valueType Type, expr ast.Expression) bool {
-	if !typeCarriesReferenceOrigin(returnType) || !typeCarriesReferenceOrigin(valueType) || !valueType.ReferenceOriginLocal {
+	if !typeCarriesReferenceOrigin(returnType) || !typeCarriesReferenceOrigin(valueType) {
+		return false
+	}
+	if call, ok := expr.(*ast.CallExpression); ok {
+		if origin, tracked := a.expressionReferenceOrigins[call]; tracked {
+			return a.checkTrackedReturnedReferenceOrigin(functionName, expr, origin)
+		}
+	}
+	if origin, ok := a.containedOriginForAccess(expr); ok {
+		return a.checkTrackedReturnedReferenceOrigin(functionName, expr, origin)
+	}
+	if valueType.ReferenceOriginMatchScoped {
+		a.addErrorAtTokenWithPrevious(expressionToken(expr), valueType.ReferenceOriginToken, "function %s cannot return a branch-scoped union payload reference", functionName)
+		return true
+	}
+	if !valueType.ReferenceOriginLocal {
 		return false
 	}
 	originName := valueType.ReferenceOriginName
@@ -4407,6 +4971,32 @@ func (a *Analyzer) checkReturningReferenceToLocal(functionName string, returnTyp
 		return true
 	}
 	a.addErrorAtTokenWithPrevious(expressionToken(expr), valueType.ReferenceOriginToken, "function %s cannot return reference to local variable %s", functionName, originName)
+	return true
+}
+
+func (a *Analyzer) checkTrackedReturnedReferenceOrigin(functionName string, expr ast.Expression, origin localReferenceOrigin) bool {
+	if origin.Unknown {
+		a.addErrorAtToken(expressionToken(expr), "function %s cannot return reference with unknown control-flow provenance", functionName)
+		return true
+	}
+	if origin.MatchScoped {
+		a.addErrorAtTokenWithPrevious(expressionToken(expr), origin.Token, "function %s cannot return a branch-scoped union payload reference", functionName)
+		return true
+	}
+	if !origin.Local {
+		// The aggregate/call result can be local while the referenced storage
+		// is exclusively caller-owned.
+		return false
+	}
+	originName := origin.Name
+	if originName == "" {
+		originName = "local value"
+	}
+	if functionName == "lambda" {
+		a.addErrorAtTokenWithPrevious(expressionToken(expr), origin.Token, "lambda cannot return reference to local variable %s", originName)
+		return true
+	}
+	a.addErrorAtTokenWithPrevious(expressionToken(expr), origin.Token, "function %s cannot return reference to local variable %s", functionName, originName)
 	return true
 }
 
@@ -4426,7 +5016,19 @@ func (a *Analyzer) checkExpressionEscapesLocalReference(functionName string, exp
 	return true
 }
 
+func (a *Analyzer) checkExpressionEscapesMatchPayload(functionName string, expr ast.Expression) bool {
+	_, originToken, ok := a.matchScopedReferenceOriginInExpression(expr)
+	if !ok {
+		return false
+	}
+	a.addErrorAtTokenWithPrevious(expressionToken(expr), originToken, "function %s cannot return a value containing a branch-scoped union payload reference", functionName)
+	return true
+}
+
 func (a *Analyzer) checkAssignmentEscapesLocalReference(target ast.Expression, value ast.Expression) bool {
+	if a.checkAssignmentEscapesMatchPayload(target, value) {
+		return true
+	}
 	originName, originToken, ok := a.localReferenceOriginInExpression(value)
 	if !ok {
 		return false
@@ -4440,13 +5042,27 @@ func (a *Analyzer) checkAssignmentEscapesLocalReference(target ast.Expression, v
 		return false
 	}
 	if targetSymbol.Local {
-		a.localRefContainers[targetRoot] = localReferenceOrigin{Name: originName, Token: originToken}
 		return false
 	}
 	if originName == "" {
 		originName = "local value"
 	}
 	a.addErrorAtTokenWithPrevious(expressionToken(value), originToken, "cannot store reference to local variable %s into %s", originName, targetRoot)
+	return true
+}
+
+func (a *Analyzer) checkAssignmentEscapesMatchPayload(target ast.Expression, value ast.Expression) bool {
+	_, originToken, ok := a.matchScopedReferenceOriginInExpression(value)
+	if !ok {
+		return false
+	}
+	targetRoot, rootOK := borrowRootName(target)
+	if rootOK {
+		if symbol, symbolOK := a.symbols[targetRoot]; symbolOK && symbol.Local && symbol.ScopeDepth >= a.scopeDepth {
+			return false
+		}
+	}
+	a.addErrorAtTokenWithPrevious(expressionToken(value), originToken, "cannot store branch-scoped union payload reference outside its match arm")
 	return true
 }
 
@@ -4458,14 +5074,532 @@ func (a *Analyzer) markLocalRefContainerFromValue(holder string, value ast.Expre
 	if !ok || !symbol.Local {
 		return
 	}
-	if typeCarriesReferenceOrigin(symbol.Type) {
+	origin, hasOrigin := a.localReferenceOriginForExpression(value)
+	contained := a.containedReferenceOrigins(value)
+	if !hasOrigin && len(contained) == 0 {
 		return
 	}
-	originName, originToken, ok := a.localReferenceOriginInExpression(value)
+	origin.Contained = contained
+	if !hasOrigin {
+		recomputeContainedOriginSummary(&origin)
+	}
+	a.localRefContainers[holder] = origin
+}
+
+func cloneLocalReferenceOrigin(origin localReferenceOrigin) localReferenceOrigin {
+	origin.Place = clonePlace(origin.Place)
+	origin.Places = clonePlaces(origin.Places)
+	if len(origin.Contained) > 0 {
+		contained := origin.Contained
+		origin.Contained = make(map[string]localReferenceOrigin, len(contained))
+		for path, child := range contained {
+			origin.Contained[path] = cloneLocalReferenceOrigin(child)
+		}
+	}
+	return origin
+}
+
+func recomputeContainedOriginSummary(origin *localReferenceOrigin) {
+	if origin == nil {
+		return
+	}
+	origin.Local = false
+	origin.MatchScoped = false
+	origin.Name = ""
+	origin.Token = lexer.Token{}
+	for _, child := range origin.Contained {
+		if child.Local && !origin.Local {
+			origin.Local, origin.Name, origin.Token = true, child.Name, child.Token
+		}
+		if child.MatchScoped && !origin.MatchScoped {
+			origin.MatchScoped = true
+			if origin.Name == "" {
+				origin.Name, origin.Token = child.Name, child.Token
+			}
+		}
+	}
+}
+
+func prefixContainedOrigins(prefix string, origins map[string]localReferenceOrigin, out map[string]localReferenceOrigin) {
+	for path, origin := range origins {
+		out[prefix+path] = cloneLocalReferenceOrigin(origin)
+	}
+}
+
+func (a *Analyzer) containedReferenceOrigins(expr ast.Expression) map[string]localReferenceOrigin {
+	out := map[string]localReferenceOrigin{}
+	switch expr := expr.(type) {
+	case *ast.Identifier:
+		if origin, ok := a.localRefContainers[expr.Value]; ok {
+			prefixContainedOrigins("", origin.Contained, out)
+		}
+	case *ast.CallExpression:
+		if origin, ok := a.expressionReferenceOrigins[expr]; ok {
+			prefixContainedOrigins("", origin.Contained, out)
+		}
+	case *ast.StructLiteral:
+		for _, field := range expr.Fields {
+			if field == nil || field.Value == nil {
+				continue
+			}
+			if field.Spread {
+				prefixContainedOrigins("", a.containedReferenceOrigins(field.Value), out)
+				continue
+			}
+			path := "." + field.Name.Value
+			if origin, ok := a.directReferenceOrigin(field.Value); ok {
+				out[path] = origin
+			}
+			prefixContainedOrigins(path, a.containedReferenceOrigins(field.Value), out)
+		}
+	case *ast.ArrayLiteral:
+		for index, element := range expr.Elements {
+			if spread, ok := element.(*ast.SpreadExpression); ok {
+				for childPath, child := range a.containedReferenceOrigins(spread.Value) {
+					if close := strings.IndexByte(childPath, ']'); strings.HasPrefix(childPath, "[") && close >= 0 {
+						out["[*]"+childPath[close+1:]] = cloneLocalReferenceOrigin(child)
+					}
+				}
+				continue
+			}
+			path := "[" + strconv.Itoa(index) + "]"
+			if origin, ok := a.directReferenceOrigin(element); ok {
+				out[path] = origin
+			}
+			prefixContainedOrigins(path, a.containedReferenceOrigins(element), out)
+		}
+	case *ast.SpreadExpression:
+		return a.containedReferenceOrigins(expr.Value)
+	case *ast.ConversionExpression:
+		return a.containedReferenceOrigins(expr.Value)
+	case *ast.OkExpression:
+		if expr.Value != nil {
+			return a.containedReferenceOrigins(expr.Value)
+		}
+	case *ast.ErrExpression:
+		if expr.Value != nil {
+			return a.containedReferenceOrigins(expr.Value)
+		}
+	}
+	return out
+}
+
+func (a *Analyzer) directReferenceOrigin(expr ast.Expression) (localReferenceOrigin, bool) {
+	if spread, ok := expr.(*ast.SpreadExpression); ok {
+		return a.directReferenceOrigin(spread.Value)
+	}
+	typ, ok := a.expressionTypes[expr]
 	if !ok {
+		typ, _ = a.inferExpression(expr)
+	}
+	if !typeCarriesReferenceOrigin(typ) {
+		return localReferenceOrigin{}, false
+	}
+	origin := localReferenceOrigin{
+		Name:        typ.ReferenceOriginName,
+		Token:       typ.ReferenceOriginToken,
+		Local:       typ.ReferenceOriginLocal,
+		MatchScoped: typ.ReferenceOriginMatchScoped,
+		Mutable:     typ.ReferenceMutable,
+	}
+	if a.referencePlaceOriginIsAmbiguous(expr) {
+		origin.Unknown = true
+		origin.Ambiguous = true
+		return origin, true
+	}
+	if place, placeOK := a.referencePlaceOrigin(expr); placeOK {
+		origin = localOriginWithPlaces(origin, placeOriginAlternatives(place))
+	} else if place, placeOK := a.resolvePlace(expr); placeOK {
+		// A reference parameter has no local holder entry, but its parameter
+		// place is still a stable compile-time provenance root.
+		origin = localOriginWithPlaces(origin, placeOriginAlternatives(place))
+	}
+	if !origin.Local && !origin.MatchScoped && len(localOriginPlaces(origin)) == 0 {
+		return localReferenceOrigin{}, false
+	}
+	return origin, true
+}
+
+func (a *Analyzer) localReferenceOriginForExpression(value ast.Expression) (localReferenceOrigin, bool) {
+	originName, originToken, ok := a.localReferenceOriginInExpression(value)
+	origin := localReferenceOrigin{Name: originName, Token: originToken, Local: ok}
+	if !ok {
+		originName, originToken, ok = a.matchScopedReferenceOriginInExpression(value)
+		if !ok {
+			return localReferenceOrigin{}, false
+		}
+		origin.Name = originName
+		origin.Token = originToken
+		origin.MatchScoped = true
+	}
+	if place, placeOK := a.referencePlaceOrigin(value); placeOK {
+		origin = localOriginWithPlaces(origin, placeOriginAlternatives(place))
+	}
+	return origin, true
+}
+
+func (a *Analyzer) matchScopedReferenceOriginInExpression(expr ast.Expression) (string, lexer.Token, bool) {
+	switch expr := expr.(type) {
+	case *ast.Identifier:
+		if origin, ok := a.localRefContainers[expr.Value]; ok && origin.MatchScoped {
+			return origin.Name, origin.Token, true
+		}
+		if symbol, ok := a.symbols[expr.Value]; ok && typeCarriesReferenceOrigin(symbol.Type) && symbol.Type.ReferenceOriginMatchScoped {
+			return symbol.Type.ReferenceOriginName, symbol.Type.ReferenceOriginToken, true
+		}
+	case *ast.CallExpression:
+		if origin, ok := a.expressionReferenceOrigins[expr]; ok && origin.MatchScoped {
+			return origin.Name, origin.Token, true
+		}
+	case *ast.RefExpression:
+		return a.matchScopedReferenceOriginInExpression(expr.Value)
+	case *ast.MemberExpression:
+		if origin, ok := a.containedOriginForAccess(expr); ok {
+			if origin.MatchScoped {
+				return origin.Name, origin.Token, true
+			}
+			return "", lexer.Token{}, false
+		}
+		if valueType, ok := a.expressionTypes[expr]; ok && typeCarriesReferenceOrigin(valueType) && valueType.ReferenceOriginMatchScoped {
+			return valueType.ReferenceOriginName, valueType.ReferenceOriginToken, true
+		}
+		return a.matchScopedReferenceOriginInExpression(expr.Object)
+	case *ast.IndexExpression:
+		if origin, ok := a.containedOriginForAccess(expr); ok {
+			if origin.MatchScoped {
+				return origin.Name, origin.Token, true
+			}
+			return "", lexer.Token{}, false
+		}
+		if valueType, ok := a.expressionTypes[expr]; ok && typeCarriesReferenceOrigin(valueType) && valueType.ReferenceOriginMatchScoped {
+			return valueType.ReferenceOriginName, valueType.ReferenceOriginToken, true
+		}
+		return a.matchScopedReferenceOriginInExpression(expr.Left)
+	case *ast.SliceExpression:
+		if valueType, ok := a.expressionTypes[expr]; ok && typeCarriesReferenceOrigin(valueType) && valueType.ReferenceOriginMatchScoped {
+			return valueType.ReferenceOriginName, valueType.ReferenceOriginToken, true
+		}
+		return a.matchScopedReferenceOriginInExpression(expr.Left)
+	case *ast.StructLiteral:
+		for _, field := range expr.Fields {
+			if field != nil {
+				if name, token, ok := a.matchScopedReferenceOriginInExpression(field.Value); ok {
+					return name, token, true
+				}
+			}
+		}
+	case *ast.ArrayLiteral:
+		for _, element := range expr.Elements {
+			if name, token, ok := a.matchScopedReferenceOriginInExpression(element); ok {
+				return name, token, true
+			}
+		}
+	case *ast.OkExpression:
+		if expr.Value != nil {
+			return a.matchScopedReferenceOriginInExpression(expr.Value)
+		}
+	case *ast.ErrExpression:
+		if expr.Value != nil {
+			return a.matchScopedReferenceOriginInExpression(expr.Value)
+		}
+	case *ast.ConversionExpression:
+		return a.matchScopedReferenceOriginInExpression(expr.Value)
+	case *ast.PrefixExpression:
+		return a.matchScopedReferenceOriginInExpression(expr.Right)
+	case *ast.InfixExpression:
+		if name, token, ok := a.matchScopedReferenceOriginInExpression(expr.Left); ok {
+			return name, token, true
+		}
+		return a.matchScopedReferenceOriginInExpression(expr.Right)
+	case *ast.LambdaExpression:
+		for _, capture := range expr.Captures {
+			if capture.Name == nil {
+				continue
+			}
+			if origin, ok := a.localRefContainers[capture.Name.Value]; ok && origin.MatchScoped {
+				return origin.Name, origin.Token, true
+			}
+			if symbol, ok := a.symbols[capture.Name.Value]; ok && typeCarriesReferenceOrigin(symbol.Type) && symbol.Type.ReferenceOriginMatchScoped {
+				return symbol.Type.ReferenceOriginName, symbol.Type.ReferenceOriginToken, true
+			}
+		}
+	}
+	return "", lexer.Token{}, false
+}
+
+func (a *Analyzer) localReferenceOriginForTransfer(value ast.Expression) (localReferenceOrigin, bool) {
+	switch value := value.(type) {
+	case *ast.Identifier:
+		if origin, ok := a.localRefContainers[value.Value]; ok {
+			return cloneLocalReferenceOrigin(origin), true
+		}
+	case *ast.ConversionExpression:
+		return a.localReferenceOriginForTransfer(value.Value)
+	}
+	return localReferenceOrigin{}, false
+}
+
+func (a *Analyzer) referencePlaceOrigin(expr ast.Expression) (Place, bool) {
+	switch expr := expr.(type) {
+	case *ast.RefExpression:
+		place, ok := a.resolvePlace(expr.Value)
+		if !ok {
+			return Place{}, false
+		}
+		place.ReferenceHolder = ""
+		for index := range place.AlternativeOrigins {
+			place.AlternativeOrigins[index].ReferenceHolder = ""
+		}
+		return place, true
+	case *ast.SliceExpression:
+		place, ok := a.resolvePlace(expr)
+		if !ok {
+			return Place{}, false
+		}
+		place.ReferenceHolder = ""
+		return place, true
+	case *ast.Identifier:
+		origin, ok := a.localRefContainers[expr.Value]
+		if !ok || origin.Unknown {
+			return Place{}, false
+		}
+		places := localOriginPlaces(origin)
+		if len(places) == 0 {
+			return Place{}, false
+		}
+		place := clonePlace(places[0])
+		place.ReferenceHolder = expr.Value
+		for _, alternative := range places[1:] {
+			alternative = clonePlace(alternative)
+			alternative.ReferenceHolder = expr.Value
+			place.AlternativeOrigins = append(place.AlternativeOrigins, alternative)
+		}
+		return place, true
+	case *ast.CallExpression:
+		origin, ok := a.expressionReferenceOrigins[expr]
+		if !ok || origin.Unknown {
+			return Place{}, false
+		}
+		return placeFromReferenceOrigin(origin, "")
+	case *ast.MemberExpression:
+		origin, ok := a.containedOriginForAccess(expr)
+		if !ok || origin.Unknown {
+			return Place{}, false
+		}
+		return placeFromReferenceOrigin(origin, mustBorrowRootName(expr))
+	case *ast.IndexExpression:
+		origin, ok := a.containedOriginForAccess(expr)
+		if !ok || origin.Unknown {
+			return Place{}, false
+		}
+		return placeFromReferenceOrigin(origin, mustBorrowRootName(expr))
+	case *ast.ConversionExpression:
+		return a.referencePlaceOrigin(expr.Value)
+	default:
+		return Place{}, false
+	}
+}
+
+func (a *Analyzer) referencePlaceOriginIsAmbiguous(expr ast.Expression) bool {
+	if origin, ok := a.containedOriginForAccess(expr); ok {
+		return origin.Unknown
+	}
+	root, ok := borrowRootName(expr)
+	if !ok {
+		return false
+	}
+	origin, ok := a.localRefContainers[root]
+	return ok && origin.Unknown
+}
+
+func placeFromReferenceOrigin(origin localReferenceOrigin, holder string) (Place, bool) {
+	places := localOriginPlaces(origin)
+	if len(places) == 0 {
+		return Place{}, false
+	}
+	place := clonePlace(places[0])
+	place.ReferenceHolder = holder
+	for _, alternative := range places[1:] {
+		alternative = clonePlace(alternative)
+		alternative.ReferenceHolder = holder
+		place.AlternativeOrigins = append(place.AlternativeOrigins, alternative)
+	}
+	return place, true
+}
+
+func mustBorrowRootName(expr ast.Expression) string {
+	root, _ := borrowRootName(expr)
+	return root
+}
+
+func (a *Analyzer) containedOriginForAccess(expr ast.Expression) (localReferenceOrigin, bool) {
+	root, path, ok := a.aggregateAccessPath(expr)
+	if !ok || path == "" {
+		return localReferenceOrigin{}, false
+	}
+	container, ok := a.localRefContainers[root]
+	if !ok || len(container.Contained) == 0 {
+		return localReferenceOrigin{}, false
+	}
+	origins := make([]localReferenceOrigin, 0, 1)
+	for candidate, origin := range container.Contained {
+		if containedPathMatches(path, candidate) {
+			origins = append(origins, origin)
+		}
+	}
+	if len(origins) == 0 {
+		return localReferenceOrigin{}, false
+	}
+	return mergeLocalReferenceOrigins(origins, false), true
+}
+
+func (a *Analyzer) aggregateAccessPath(expr ast.Expression) (string, string, bool) {
+	switch expr := expr.(type) {
+	case *ast.Identifier:
+		return expr.Value, "", true
+	case *ast.MemberExpression:
+		root, path, ok := a.aggregateAccessPath(expr.Object)
+		if !ok || expr.Property == nil {
+			return "", "", false
+		}
+		return root, path + "." + expr.Property.Value, true
+	case *ast.IndexExpression:
+		root, path, ok := a.aggregateAccessPath(expr.Left)
+		if !ok {
+			return "", "", false
+		}
+		index := "*"
+		if value, constant := a.integerConstantValue(expr.Index); constant {
+			index = value.String()
+		}
+		return root, path + "[" + index + "]", true
+	default:
+		return "", "", false
+	}
+}
+
+func containedPathMatches(query, candidate string) bool {
+	if query == candidate {
+		return true
+	}
+	if !strings.Contains(query, "[*]") && !strings.Contains(candidate, "[*]") {
+		return false
+	}
+	return normalizeContainedIndexPath(query) == normalizeContainedIndexPath(candidate)
+}
+
+func normalizeContainedIndexPath(path string) string {
+	var normalized strings.Builder
+	for index := 0; index < len(path); index++ {
+		if path[index] != '[' {
+			normalized.WriteByte(path[index])
+			continue
+		}
+		end := strings.IndexByte(path[index:], ']')
+		if end < 0 {
+			normalized.WriteString(path[index:])
+			break
+		}
+		normalized.WriteString("[*]")
+		index += end
+	}
+	return normalized.String()
+}
+
+func (a *Analyzer) updateContainedOriginsForAssignment(target ast.Expression, value ast.Expression) {
+	root, path, ok := a.aggregateAccessPath(target)
+	if !ok || path == "" {
 		return
 	}
-	a.localRefContainers[holder] = localReferenceOrigin{Name: originName, Token: originToken}
+	symbol, ok := a.symbols[root]
+	if !ok || !symbol.Local || typeCarriesReferenceOrigin(symbol.Type) {
+		return
+	}
+	container := cloneLocalReferenceOrigin(a.localRefContainers[root])
+	if container.Contained == nil {
+		container.Contained = map[string]localReferenceOrigin{}
+	}
+	direct, hasDirect := a.directReferenceOrigin(value)
+	children := a.containedReferenceOrigins(value)
+	if strings.Contains(path, "[*]") {
+		alternatives := make([]localReferenceOrigin, 0, len(container.Contained)+1)
+		for candidate, origin := range container.Contained {
+			if containedPathMatches(path, candidate) {
+				alternatives = append(alternatives, origin)
+			}
+		}
+		if hasDirect {
+			alternatives = append(alternatives, direct)
+		}
+		if len(alternatives) > 0 {
+			container.Contained[path] = mergeLocalReferenceOrigins(alternatives, false)
+		}
+		for childPath, child := range children {
+			container.Contained[path+childPath] = cloneLocalReferenceOrigin(child)
+		}
+	} else {
+		for candidate := range container.Contained {
+			if candidate == path || strings.HasPrefix(candidate, path+".") || strings.HasPrefix(candidate, path+"[") {
+				delete(container.Contained, candidate)
+			}
+		}
+		if hasDirect {
+			container.Contained[path] = direct
+		}
+		prefixContainedOrigins(path, children, container.Contained)
+	}
+	recomputeContainedOriginSummary(&container)
+	if len(container.Contained) == 0 && !container.HasPlace && len(container.Places) == 0 {
+		delete(a.localRefContainers, root)
+		return
+	}
+	a.localRefContainers[root] = container
+}
+
+func localOriginWithPlaces(origin localReferenceOrigin, places []Place) localReferenceOrigin {
+	origin.Place = Place{}
+	origin.Places = nil
+	origin.HasPlace = false
+	origin.Ambiguous = false
+	unique := uniquePlaces(places)
+	if len(unique) > maxReferenceOriginAlternatives {
+		origin.Unknown = true
+		origin.Ambiguous = true
+		return origin
+	}
+	if len(unique) == 1 {
+		origin.Place = clonePlace(unique[0])
+		origin.HasPlace = true
+	} else if len(unique) > 1 {
+		origin.Places = clonePlaces(unique)
+		origin.Ambiguous = true
+	}
+	return origin
+}
+
+func localOriginPlaces(origin localReferenceOrigin) []Place {
+	if origin.HasPlace {
+		return []Place{clonePlace(origin.Place)}
+	}
+	return clonePlaces(origin.Places)
+}
+
+func uniquePlaces(places []Place) []Place {
+	unique := make([]Place, 0, len(places))
+	for _, place := range places {
+		place.AlternativeOrigins = nil
+		found := false
+		for _, existing := range unique {
+			if samePlaceIdentity(existing, place) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			unique = append(unique, clonePlace(place))
+		}
+	}
+	return unique
 }
 
 func (a *Analyzer) checkReturningLambdaCapturingLocalReference(functionName string, expr ast.Expression) bool {
@@ -4509,18 +5643,36 @@ func (a *Analyzer) localReferenceOriginInExpression(expr ast.Expression) (string
 		}
 	case *ast.Identifier:
 		if origin, ok := a.localRefContainers[expr.Value]; ok {
-			return origin.Name, origin.Token, true
+			if origin.Local {
+				return origin.Name, origin.Token, true
+			}
 		}
 		symbol, ok := a.symbols[expr.Value]
 		if ok && typeCarriesReferenceOrigin(symbol.Type) && symbol.Type.ReferenceOriginLocal {
 			return symbol.Type.ReferenceOriginName, symbol.Type.ReferenceOriginToken, true
 		}
+	case *ast.CallExpression:
+		if origin, ok := a.expressionReferenceOrigins[expr]; ok && origin.Local {
+			return origin.Name, origin.Token, true
+		}
 	case *ast.MemberExpression:
+		if origin, ok := a.containedOriginForAccess(expr); ok {
+			if origin.Local {
+				return origin.Name, origin.Token, true
+			}
+			return "", lexer.Token{}, false
+		}
 		valueType, ok := a.inferMemberExpression(expr)
 		if ok && typeCarriesReferenceOrigin(valueType) && valueType.ReferenceOriginLocal {
 			return valueType.ReferenceOriginName, valueType.ReferenceOriginToken, true
 		}
 	case *ast.IndexExpression:
+		if origin, ok := a.containedOriginForAccess(expr); ok {
+			if origin.Local {
+				return origin.Name, origin.Token, true
+			}
+			return "", lexer.Token{}, false
+		}
 		valueType, _ := a.inferIndexExpression(expr)
 		if typeCarriesReferenceOrigin(valueType) && valueType.ReferenceOriginLocal {
 			return valueType.ReferenceOriginName, valueType.ReferenceOriginToken, true
@@ -4567,7 +5719,9 @@ func (a *Analyzer) localReferenceOriginInExpression(expr ast.Expression) (string
 				return symbol.Type.ReferenceOriginName, symbol.Type.ReferenceOriginToken, true
 			}
 			if origin, ok := a.localRefContainers[capture.Name.Value]; ok {
-				return origin.Name, origin.Token, true
+				if origin.Local {
+					return origin.Name, origin.Token, true
+				}
 			}
 		}
 	}
@@ -4660,20 +5814,89 @@ func copyMoved(in map[string]lexer.Token) map[string]lexer.Token {
 	return out
 }
 
+func copyMoveReasons(in map[string]string) map[string]string {
+	out := make(map[string]string, len(in))
+	for place, reason := range in {
+		out[place] = reason
+	}
+	return out
+}
+
+func copyDefinitionTokens(in map[sourceTokenKey][]lexer.Token) map[sourceTokenKey][]lexer.Token {
+	out := make(map[sourceTokenKey][]lexer.Token, len(in))
+	for key, tokens := range in {
+		out[key] = append([]lexer.Token(nil), tokens...)
+	}
+	return out
+}
+
 func copyBorrows(in map[string][]borrowRecord) map[string][]borrowRecord {
 	out := make(map[string][]borrowRecord, len(in))
 	for name, records := range in {
-		out[name] = append([]borrowRecord(nil), records...)
+		copied := make([]borrowRecord, len(records))
+		for index, record := range records {
+			record.Place = clonePlace(record.Place)
+			copied[index] = record
+		}
+		out[name] = copied
 	}
 	return out
+}
+
+func clearLoopBindingReferenceState(borrows map[string][]borrowRecord, origins map[string]localReferenceOrigin, name string) {
+	delete(borrows, name)
+	for root, records := range borrows {
+		kept := records[:0]
+		for _, record := range records {
+			if record.Holder != name {
+				kept = append(kept, record)
+			}
+		}
+		if len(kept) == 0 {
+			delete(borrows, root)
+		} else {
+			borrows[root] = kept
+		}
+	}
+	delete(origins, name)
+}
+
+func (a *Analyzer) clearScopedBindingFromLoopEdges(name string) {
+	for frameIndex := range a.loopBreakFrames {
+		frame := &a.loopBreakFrames[frameIndex]
+		for index := range frame.borrows {
+			delete(frame.closedResources[index], name)
+			clearLoopBindingReferenceState(frame.borrows[index], frame.localRefContainers[index], name)
+		}
+		for index := range frame.continueBorrows {
+			delete(frame.continueClosedResources[index], name)
+			clearLoopBindingReferenceState(frame.continueBorrows[index], frame.continueLocalRefContainers[index], name)
+		}
+	}
 }
 
 func copyLocalRefContainers(in map[string]localReferenceOrigin) map[string]localReferenceOrigin {
 	out := make(map[string]localReferenceOrigin, len(in))
 	for name, origin := range in {
-		out[name] = origin
+		out[name] = cloneLocalReferenceOrigin(origin)
 	}
 	return out
+}
+
+func clonePlace(place Place) Place {
+	place.Projections = append([]PlaceProjection(nil), place.Projections...)
+	place.AlternativeOrigins = clonePlaces(place.AlternativeOrigins)
+	return place
+}
+
+func clonePlaces(places []Place) []Place {
+	cloned := make([]Place, len(places))
+	for index, place := range places {
+		place.Projections = append([]PlaceProjection(nil), place.Projections...)
+		place.AlternativeOrigins = nil
+		cloned[index] = place
+	}
+	return cloned
 }
 
 func copyArenaGenerations(in map[string]int) map[string]int {
@@ -4720,7 +5943,424 @@ func (a *Analyzer) recordLoopBreak() {
 	}
 	top := len(a.loopBreakFrames) - 1
 	a.loopBreakFrames[top].assignments = append(a.loopBreakFrames[top].assignments, copyAssigned(a.assigned))
+	a.loopBreakFrames[top].moved = append(a.loopBreakFrames[top].moved, copyMoved(a.moved))
+	a.loopBreakFrames[top].moveReasons = append(a.loopBreakFrames[top].moveReasons, copyMoveReasons(a.moveReasons))
+	a.loopBreakFrames[top].closedResources = append(a.loopBreakFrames[top].closedResources, copyMoved(a.closedResources))
+	a.loopBreakFrames[top].borrows = append(a.loopBreakFrames[top].borrows, copyBorrows(a.borrows))
+	a.loopBreakFrames[top].localRefContainers = append(a.loopBreakFrames[top].localRefContainers, copyLocalRefContainers(a.localRefContainers))
 	a.loopBreakFrames[top].arenaGenerations = append(a.loopBreakFrames[top].arenaGenerations, copyArenaGenerations(a.arenaGenerations))
+}
+
+func (a *Analyzer) recordLoopContinue() {
+	if len(a.loopBreakFrames) == 0 {
+		return
+	}
+	top := len(a.loopBreakFrames) - 1
+	a.loopBreakFrames[top].continueMoved = append(a.loopBreakFrames[top].continueMoved, copyMoved(a.moved))
+	a.loopBreakFrames[top].continueReasons = append(a.loopBreakFrames[top].continueReasons, copyMoveReasons(a.moveReasons))
+	a.loopBreakFrames[top].continueClosedResources = append(a.loopBreakFrames[top].continueClosedResources, copyMoved(a.closedResources))
+	a.loopBreakFrames[top].continueBorrows = append(a.loopBreakFrames[top].continueBorrows, copyBorrows(a.borrows))
+	a.loopBreakFrames[top].continueLocalRefContainers = append(a.loopBreakFrames[top].continueLocalRefContainers, copyLocalRefContainers(a.localRefContainers))
+}
+
+func mergeMoveStateInto(mergedMoved map[string]lexer.Token, mergedReasons map[string]string, moved map[string]lexer.Token, reasons map[string]string) {
+	for place, token := range moved {
+		if _, exists := mergedMoved[place]; exists {
+			continue
+		}
+		mergedMoved[place] = token
+		if reason := reasons[place]; reason != "" {
+			mergedReasons[place] = reason
+		}
+	}
+}
+
+func mergeLoopMoveState(beforeMoved map[string]lexer.Token, beforeReasons map[string]string, loopMoved map[string]lexer.Token, loopReasons map[string]string, breaks loopBreakFrame) (map[string]lexer.Token, map[string]string) {
+	// Ordinary loops may execute zero times. The post-loop fixed point is thus
+	// the conservative union of entry, back-edge, and every explicit break exit.
+	mergedMoved := map[string]lexer.Token{}
+	mergedReasons := map[string]string{}
+	mergeMoveStateInto(mergedMoved, mergedReasons, beforeMoved, beforeReasons)
+	mergeMoveStateInto(mergedMoved, mergedReasons, loopMoved, loopReasons)
+	for index, moved := range breaks.continueMoved {
+		var reasons map[string]string
+		if index < len(breaks.continueReasons) {
+			reasons = breaks.continueReasons[index]
+		}
+		mergeMoveStateInto(mergedMoved, mergedReasons, moved, reasons)
+	}
+	for index, moved := range breaks.moved {
+		var reasons map[string]string
+		if index < len(breaks.moveReasons) {
+			reasons = breaks.moveReasons[index]
+		}
+		mergeMoveStateInto(mergedMoved, mergedReasons, moved, reasons)
+	}
+	return mergedMoved, mergedReasons
+}
+
+func loopBackedgeMoveState(entryMoved map[string]lexer.Token, entryReasons map[string]string, loopMoved map[string]lexer.Token, loopReasons map[string]string, frame loopBreakFrame, bodyFallsThrough bool) (map[string]lexer.Token, map[string]string) {
+	headerMoved := copyMoved(entryMoved)
+	headerReasons := copyMoveReasons(entryReasons)
+	if bodyFallsThrough {
+		mergeMoveStateInto(headerMoved, headerReasons, loopMoved, loopReasons)
+	}
+	for index, moved := range frame.continueMoved {
+		var reasons map[string]string
+		if index < len(frame.continueReasons) {
+			reasons = frame.continueReasons[index]
+		}
+		mergeMoveStateInto(headerMoved, headerReasons, moved, reasons)
+	}
+	return headerMoved, headerReasons
+}
+
+func loopBackedgeClosedResourceState(entry, loop map[string]lexer.Token, frame loopBreakFrame, bodyFallsThrough bool) map[string]lexer.Token {
+	states := []map[string]lexer.Token{entry}
+	if bodyFallsThrough {
+		states = append(states, loop)
+	}
+	states = append(states, frame.continueClosedResources...)
+	return intersectTokenStates(states...)
+}
+
+func mergeLoopClosedResourceState(entry, loop map[string]lexer.Token, frame loopBreakFrame, bodyFallsThrough, conditionAlwaysTrue bool) map[string]lexer.Token {
+	if conditionAlwaysTrue {
+		if len(frame.closedResources) == 0 {
+			return copyMoved(entry)
+		}
+		return intersectTokenStates(frame.closedResources...)
+	}
+	states := []map[string]lexer.Token{entry}
+	if bodyFallsThrough {
+		states = append(states, loop)
+	}
+	states = append(states, frame.continueClosedResources...)
+	states = append(states, frame.closedResources...)
+	return intersectTokenStates(states...)
+}
+
+func loopBackedgeBorrowState(entry map[string][]borrowRecord, loop map[string][]borrowRecord, frame loopBreakFrame, bodyFallsThrough bool) map[string][]borrowRecord {
+	states := []map[string][]borrowRecord{entry}
+	if bodyFallsThrough {
+		states = append(states, loop)
+	}
+	states = append(states, frame.continueBorrows...)
+	merged := mergeBorrowStates(states...)
+	for root, records := range merged {
+		entryRecords := entry[root]
+		for index := range records {
+			records[index].LoopCarried = !containsBorrowRecord(entryRecords, records[index])
+		}
+		merged[root] = records
+	}
+	return merged
+}
+
+func mergeLoopBorrowState(entry map[string][]borrowRecord, loop map[string][]borrowRecord, frame loopBreakFrame) map[string][]borrowRecord {
+	states := []map[string][]borrowRecord{entry, loop}
+	states = append(states, frame.continueBorrows...)
+	states = append(states, frame.borrows...)
+	merged := mergeBorrowStates(states...)
+	for root, records := range merged {
+		for index := range records {
+			records[index].LoopCarried = false
+		}
+		merged[root] = records
+	}
+	return merged
+}
+
+func mergeBorrowStates(states ...map[string][]borrowRecord) map[string][]borrowRecord {
+	merged := map[string][]borrowRecord{}
+	for _, state := range states {
+		for root, records := range state {
+			for _, record := range records {
+				if containsBorrowRecord(merged[root], record) {
+					continue
+				}
+				record.Place = clonePlace(record.Place)
+				merged[root] = append(merged[root], record)
+			}
+		}
+	}
+	return merged
+}
+
+func loopBackedgeReferenceState(entry map[string]localReferenceOrigin, loop map[string]localReferenceOrigin, frame loopBreakFrame, bodyFallsThrough bool) map[string]localReferenceOrigin {
+	states := []map[string]localReferenceOrigin{entry}
+	if bodyFallsThrough {
+		states = append(states, loop)
+	}
+	states = append(states, frame.continueLocalRefContainers...)
+	return mergeReferenceOriginStates(states...)
+}
+
+func mergeLoopReferenceState(entry map[string]localReferenceOrigin, loop map[string]localReferenceOrigin, frame loopBreakFrame) map[string]localReferenceOrigin {
+	states := []map[string]localReferenceOrigin{entry, loop}
+	states = append(states, frame.continueLocalRefContainers...)
+	states = append(states, frame.localRefContainers...)
+	return mergeReferenceOriginStates(states...)
+}
+
+func mergeReferenceOriginStates(states ...map[string]localReferenceOrigin) map[string]localReferenceOrigin {
+	merged := map[string]localReferenceOrigin{}
+	names := map[string]bool{}
+	for _, state := range states {
+		for name := range state {
+			names[name] = true
+		}
+	}
+	for name := range names {
+		origins := make([]localReferenceOrigin, 0, len(states))
+		missing := false
+		for _, state := range states {
+			origin, ok := state[name]
+			if !ok {
+				missing = true
+				continue
+			}
+			origins = append(origins, origin)
+		}
+		if len(origins) > 0 {
+			merged[name] = mergeLocalReferenceOrigins(origins, missing)
+		}
+	}
+	return merged
+}
+
+func mergeLocalReferenceOrigins(origins []localReferenceOrigin, missing bool) localReferenceOrigin {
+	if len(origins) == 0 {
+		return localReferenceOrigin{Unknown: missing, Ambiguous: missing}
+	}
+	joined := cloneLocalReferenceOrigin(origins[0])
+	places := localOriginPlaces(joined)
+	containedPaths := map[string]bool{}
+	for path := range joined.Contained {
+		containedPaths[path] = true
+	}
+	for _, origin := range origins[1:] {
+		places = append(places, localOriginPlaces(origin)...)
+		joined.Local = joined.Local || origin.Local
+		joined.MatchScoped = joined.MatchScoped || origin.MatchScoped
+		joined.Mutable = joined.Mutable || origin.Mutable
+		joined.Unknown = joined.Unknown || origin.Unknown
+		if joined.Name != origin.Name {
+			joined.Name = ""
+		}
+		for path := range origin.Contained {
+			containedPaths[path] = true
+		}
+	}
+	if joined.Local {
+		for _, origin := range origins {
+			if origin.Local {
+				joined.Name, joined.Token = origin.Name, origin.Token
+				break
+			}
+		}
+	} else if joined.MatchScoped {
+		for _, origin := range origins {
+			if origin.MatchScoped {
+				joined.Name, joined.Token = origin.Name, origin.Token
+				break
+			}
+		}
+	}
+	joined = localOriginWithPlaces(joined, places)
+	joined.Unknown = joined.Unknown || missing
+	joined.Ambiguous = joined.Ambiguous || joined.Unknown
+	if len(containedPaths) > 0 {
+		joined.Contained = make(map[string]localReferenceOrigin, len(containedPaths))
+		for path := range containedPaths {
+			children := make([]localReferenceOrigin, 0, len(origins))
+			childMissing := missing
+			for _, origin := range origins {
+				child, ok := origin.Contained[path]
+				if !ok {
+					childMissing = true
+					continue
+				}
+				children = append(children, child)
+			}
+			joined.Contained[path] = mergeLocalReferenceOrigins(children, childMissing)
+		}
+	}
+	return joined
+}
+
+func sameReferenceOrigin(left, right localReferenceOrigin) bool {
+	if left.Name != right.Name || left.Local != right.Local || left.MatchScoped != right.MatchScoped || left.Mutable != right.Mutable || left.Unknown != right.Unknown {
+		return false
+	}
+	leftPlaces := uniquePlaces(localOriginPlaces(left))
+	rightPlaces := uniquePlaces(localOriginPlaces(right))
+	if len(leftPlaces) != len(rightPlaces) {
+		return false
+	}
+	for _, leftPlace := range leftPlaces {
+		found := false
+		for _, rightPlace := range rightPlaces {
+			if samePlaceIdentity(leftPlace, rightPlace) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	if len(left.Contained) != len(right.Contained) {
+		return false
+	}
+	for path, leftChild := range left.Contained {
+		rightChild, ok := right.Contained[path]
+		if !ok || !sameReferenceOrigin(leftChild, rightChild) {
+			return false
+		}
+	}
+	return true
+}
+
+func samePlaceIdentity(left, right Place) bool {
+	if left.Root != right.Root || len(left.Projections) != len(right.Projections) {
+		return false
+	}
+	for index := range left.Projections {
+		leftProjection := left.Projections[index]
+		rightProjection := right.Projections[index]
+		if leftProjection.Kind != rightProjection.Kind || leftProjection.Name != rightProjection.Name ||
+			leftProjection.ConstantIndex != rightProjection.ConstantIndex || leftProjection.DynamicIndex != rightProjection.DynamicIndex ||
+			leftProjection.SliceStart != rightProjection.SliceStart || leftProjection.SliceEnd != rightProjection.SliceEnd ||
+			leftProjection.SliceStartKnown != rightProjection.SliceStartKnown || leftProjection.SliceEndKnown != rightProjection.SliceEndKnown {
+			return false
+		}
+	}
+	return true
+}
+
+func (a *Analyzer) checkLoopBackedgeFixedPoint(
+	condition ast.Expression,
+	body *ast.BlockStatement,
+	entry loopIterationAnalysisState,
+	headerMoved map[string]lexer.Token,
+	headerReasons map[string]string,
+	headerClosedResources map[string]lexer.Token,
+	headerBorrows map[string][]borrowRecord,
+	headerLocalRefContainers map[string]localReferenceOrigin,
+) {
+	backedgePlaces := map[string]bool{}
+	for place := range headerMoved {
+		if _, existedAtEntry := entry.moved[place]; !existedAtEntry {
+			backedgePlaces[place] = true
+		}
+	}
+	if len(backedgePlaces) == 0 && tokenStateKeysEqual(entry.closedResources, headerClosedResources) && borrowStatesEqual(entry.borrows, headerBorrows) && referenceOriginStatesEqual(entry.localRefContainers, headerLocalRefContainers) {
+		return
+	}
+
+	previousSymbols := a.symbols
+	previousCompletionSymbols := a.completionSymbols
+	previousDefinitionTokens := a.definitionTokens
+	previousConstInts := a.constInts
+	previousAssigned := a.assigned
+	previousMoved := a.moved
+	previousMoveReasons := a.moveReasons
+	previousClosedResources := a.closedResources
+	previousBorrows := a.borrows
+	previousLocalRefContainers := a.localRefContainers
+	previousArenaGenerations := a.arenaGenerations
+	previousScopeDepth := a.scopeDepth
+	previousLoopBackedgePlaces := a.loopBackedgePlaces
+	previousCallGraph := a.callGraph
+	previousCallGraphPathReachable := a.callGraphPathReachable
+	previousWarningCount := len(a.warnings)
+
+	a.symbols = copySymbols(entry.symbols)
+	a.completionSymbols = copySymbols(entry.completionSymbols)
+	a.definitionTokens = copyDefinitionTokens(entry.definitionTokens)
+	a.constInts = copyConstInts(entry.constInts)
+	a.assigned = copyAssigned(entry.assigned)
+	a.moved = copyMoved(headerMoved)
+	a.moveReasons = copyMoveReasons(headerReasons)
+	a.closedResources = copyMoved(headerClosedResources)
+	a.borrows = copyBorrows(headerBorrows)
+	a.localRefContainers = copyLocalRefContainers(headerLocalRefContainers)
+	a.arenaGenerations = copyArenaGenerations(entry.arenaGenerations)
+	a.scopeDepth = entry.scopeDepth
+	a.loopBackedgePlaces = backedgePlaces
+	a.callGraph = previousCallGraph.clone()
+	a.callGraphPathReachable = previousCallGraphPathReachable
+	frame := a.pushLoopBreakFrame()
+
+	conditionErrorCount := len(a.errors)
+	if condition != nil {
+		a.inferExpression(condition)
+	}
+	if len(a.errors) == conditionErrorCount {
+		a.analyzeBlockStatements(body)
+	}
+	a.popLoopBreakFrame(frame)
+
+	a.symbols = previousSymbols
+	a.completionSymbols = previousCompletionSymbols
+	a.definitionTokens = previousDefinitionTokens
+	a.constInts = previousConstInts
+	a.assigned = previousAssigned
+	a.moved = previousMoved
+	a.moveReasons = previousMoveReasons
+	a.closedResources = previousClosedResources
+	a.borrows = previousBorrows
+	a.localRefContainers = previousLocalRefContainers
+	a.arenaGenerations = previousArenaGenerations
+	a.scopeDepth = previousScopeDepth
+	a.loopBackedgePlaces = previousLoopBackedgePlaces
+	a.callGraph = previousCallGraph
+	a.callGraphPathReachable = previousCallGraphPathReachable
+	a.warnings = a.warnings[:previousWarningCount]
+}
+
+func tokenStateKeysEqual(left, right map[string]lexer.Token) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for name := range left {
+		if _, ok := right[name]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func borrowStatesEqual(left, right map[string][]borrowRecord) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for root, leftRecords := range left {
+		rightRecords, ok := right[root]
+		if !ok || len(leftRecords) != len(rightRecords) {
+			return false
+		}
+		for _, record := range leftRecords {
+			if !containsBorrowRecord(rightRecords, record) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func referenceOriginStatesEqual(left, right map[string]localReferenceOrigin) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for name, leftOrigin := range left {
+		rightOrigin, ok := right[name]
+		if !ok || leftOrigin.Ambiguous != rightOrigin.Ambiguous || !sameReferenceOrigin(leftOrigin, rightOrigin) {
+			return false
+		}
+	}
+	return true
 }
 
 func mergeBreakAssigned(before map[string]bool, breaks []map[string]bool) map[string]bool {
@@ -5794,6 +7434,12 @@ func (a *Analyzer) registerImplStatement(stmt *ast.ImplStatement) {
 			}
 			continue
 		}
+		if invalid, ok := member.(*ast.InvalidMember); ok {
+			if invalid.Message != "" {
+				a.addErrorAtToken(invalid.Token, "%s", invalid.Message)
+			}
+			continue
+		}
 		if _, ok := member.(*ast.UnitMetadataDeclaration); ok {
 			continue
 		}
@@ -6171,6 +7817,9 @@ func (a *Analyzer) analyzeImplBody(stmt *ast.ImplStatement) {
 				})
 			})
 		case *ast.PropertyDeclaration:
+			if a.summaryPass {
+				continue
+			}
 			registeredProperty, ok := lookupPropertyByToken(target, member.Name.Value, member.Name.Token)
 			if !ok {
 				continue
@@ -6229,6 +7878,7 @@ func (a *Analyzer) analyzePropertyAccessorBody(target Type, name string, body *a
 	previousConstInts := a.constInts
 	previousAssigned := a.assigned
 	previousMoved := a.moved
+	previousMoveReasons := a.moveReasons
 	previousBorrows := a.borrows
 	previousLocalRefContainers := a.localRefContainers
 	previousArenaGenerations := a.arenaGenerations
@@ -6240,6 +7890,7 @@ func (a *Analyzer) analyzePropertyAccessorBody(target Type, name string, body *a
 	a.constInts = copyConstInts(previousConstInts)
 	a.assigned = copyAssigned(previousAssigned)
 	a.moved = map[string]lexer.Token{}
+	a.moveReasons = map[string]string{}
 	a.borrows = map[string][]borrowRecord{}
 	a.localRefContainers = map[string]localReferenceOrigin{}
 	a.arenaGenerations = map[string]int{}
@@ -6252,6 +7903,7 @@ func (a *Analyzer) analyzePropertyAccessorBody(target Type, name string, body *a
 		a.constInts = previousConstInts
 		a.assigned = previousAssigned
 		a.moved = previousMoved
+		a.moveReasons = previousMoveReasons
 		a.borrows = previousBorrows
 		a.localRefContainers = previousLocalRefContainers
 		a.arenaGenerations = previousArenaGenerations
@@ -6705,6 +8357,7 @@ func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
 
 	if !ok || stmt.Value == nil || stmt.Type == nil {
 		if defined && stmt.Value != nil {
+			referenceOrigin, hasReferenceOrigin := a.localReferenceOriginForTransfer(stmt.Value)
 			if !a.validateLetOwnership(stmt) {
 				return
 			}
@@ -6714,6 +8367,9 @@ func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
 			a.applyLetOwnership(stmt)
 			a.bindBorrowHoldersFromExpression(stmt.Value, stmt.Name.Value)
 			a.markLocalRefContainerFromValue(stmt.Name.Value, stmt.Value)
+			if hasReferenceOrigin {
+				a.localRefContainers[stmt.Name.Value] = referenceOrigin
+			}
 			a.setConstInt(stmt.Name.Value, stmt.Value)
 		}
 		return
@@ -6747,12 +8403,16 @@ func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
 	}
 
 	if a.checkInitializerType(declaredType, exprType, stmt.Value) && defined {
+		referenceOrigin, hasReferenceOrigin := a.localReferenceOriginForTransfer(stmt.Value)
 		if !a.validateLetOwnership(stmt) {
 			return
 		}
 		a.applyLetOwnership(stmt)
 		a.bindBorrowHoldersFromExpression(stmt.Value, stmt.Name.Value)
 		a.markLocalRefContainerFromValue(stmt.Name.Value, stmt.Value)
+		if hasReferenceOrigin {
+			a.localRefContainers[stmt.Name.Value] = referenceOrigin
+		}
 		a.setConstInt(stmt.Name.Value, stmt.Value)
 	}
 }
@@ -6853,6 +8513,9 @@ func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement, all
 	if exprType.Kind == InvalidType {
 		return
 	}
+	if a.checkAssignmentEscapesMatchPayload(stmt.Target, stmt.Value) {
+		return
+	}
 
 	assignmentType := exprType
 	if stmt.Operator != "=" {
@@ -6868,14 +8531,14 @@ func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement, all
 	}
 
 	if a.checkInitializerType(symbol.Type, assignmentType, stmt.Value) {
+		referenceOrigin, hasReferenceOrigin := a.localReferenceOriginForTransfer(stmt.Value)
 		if !a.validateAssignmentOwnership(stmt) {
 			return
 		}
 		a.applyAssignmentOwnership(stmt)
 		a.updateAssignedConstInt(symbol.Name, stmt)
 		a.assigned[symbol.Name] = true
-		delete(a.moved, symbol.Name)
-		delete(a.moveReasons, symbol.Name)
+		a.clearRootPlaceState(symbol.Name)
 		if isCloseTrackedResourceType(symbol.Type) {
 			delete(a.closedResources, symbol.Name)
 		}
@@ -6887,6 +8550,9 @@ func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement, all
 		}
 		delete(a.localRefContainers, symbol.Name)
 		a.markLocalRefContainerFromValue(symbol.Name, stmt.Value)
+		if hasReferenceOrigin {
+			a.localRefContainers[symbol.Name] = referenceOrigin
+		}
 	}
 }
 
@@ -6919,29 +8585,19 @@ func (a *Analyzer) validateMoveAssignmentTarget(stmt *ast.AssignmentStatement) b
 	if stmt == nil || stmt.Ownership != ast.OwnershipMove {
 		return true
 	}
-	source, ok := stmt.Value.(*ast.Identifier)
+	source, ok := a.resolvePlace(stmt.Value)
 	if !ok {
 		return true
 	}
-	root, ok := assignmentTargetRootName(stmt.Target)
-	if !ok || root != source.Value {
+	destination, ok := a.resolvePlace(stmt.Target)
+	if !ok {
 		return true
 	}
-	a.addErrorAtToken(source.Token, "cannot move value %s into itself", source.Value)
-	return false
-}
-
-func assignmentTargetRootName(expr ast.Expression) (string, bool) {
-	switch expr := expr.(type) {
-	case *ast.Identifier:
-		return expr.Value, true
-	case *ast.MemberExpression:
-		return assignmentTargetRootName(expr.Object)
-	case *ast.IndexExpression:
-		return assignmentTargetRootName(expr.Left)
-	default:
-		return "", false
+	if !PlacesOverlap(destination, source) {
+		return true
 	}
+	a.addErrorAtToken(expressionToken(stmt.Value), "cannot move value %s into itself", source.String())
+	return false
 }
 
 func (a *Analyzer) applyAssignmentOwnership(stmt *ast.AssignmentStatement) {
@@ -6956,26 +8612,35 @@ func (a *Analyzer) applyAssignmentOwnership(stmt *ast.AssignmentStatement) {
 }
 
 func (a *Analyzer) validateNamedOwnershipSource(mode ast.OwnershipMode, value ast.Expression, token lexer.Token, declaration bool, inferredDeclaration bool) bool {
-	ident, ok := value.(*ast.Identifier)
+	place, ok := a.resolvePlace(value)
 	if !ok {
 		if mode == ast.OwnershipMove {
-			a.addErrorAtToken(token, "explicit move currently requires a named source binding")
+			a.addErrorAtToken(token, "explicit move requires a reusable source place")
 			return false
 		}
 		return true
 	}
-	symbol, ok := a.symbols[ident.Value]
-	if !ok {
+	if _, _, _, unavailable := a.unavailablePlace(place); unavailable {
+		// inferExpression has already emitted the primary use-after-move error;
+		// do not apply ownership again and overwrite the original move site.
 		return false
 	}
-	if _, moved := a.moved[ident.Value]; moved {
-		// inferExpression has already emitted the primary use-after-move error.
-		return true
-	}
 	if mode == ast.OwnershipMove {
-		return !a.checkBorrowedMove(ident.Value, ident.Token)
+		if !place.Addressable {
+			a.addErrorAtToken(token, "explicit move requires an addressable source place")
+			return false
+		}
+		if _, isIndex := value.(*ast.IndexExpression); isIndex {
+			a.addErrorAtToken(token, "explicit indexed extraction is not implemented; move the containing value")
+			return false
+		}
+		if len(place.Projections) > 0 && !place.PartialMoveSafe {
+			a.addErrorAtToken(token, "partial move requires independently tracked local struct storage")
+			return false
+		}
+		return !a.checkBorrowedMovePlace(place, expressionToken(value))
 	}
-	classification := CopyClassificationOf(symbol.Type)
+	classification := CopyClassificationOf(place.Type)
 	if classification == CopyTrivial || classification == CopySemantic {
 		return true
 	}
@@ -6990,33 +8655,33 @@ func (a *Analyzer) validateNamedOwnershipSource(mode ast.OwnershipMode, value as
 	switch classification {
 	case CopyNonCopyable:
 		a.addErrorAtTokenWithMetadata(
-			ident.Token,
+			expressionToken(value),
 			diagnostics.ImplicitMoveDisallowed,
 			help,
 			"%s value %s cannot be copied because %s; use explicit move syntax %s",
-			typeDisplayName(symbol.Type),
-			ident.Value,
-			nonCopyableCause(symbol.Type),
+			typeDisplayName(place.Type),
+			place.String(),
+			nonCopyableCause(place.Type),
 			moveSyntax,
 		)
 		return false
 	case CopyConditional:
 		a.addErrorAtTokenWithMetadata(
-			ident.Token,
+			expressionToken(value),
 			diagnostics.ImplicitMoveDisallowed,
 			help,
 			"cannot copy value %s because generic copyability has not been proven; use explicit move syntax %s",
-			ident.Value,
+			place.String(),
 			moveSyntax,
 		)
 		return false
 	}
 	a.addErrorAtTokenWithMetadata(
-		ident.Token,
+		expressionToken(value),
 		diagnostics.ImplicitMoveDisallowed,
 		help,
 		"cannot copy move-only value %s; use explicit move syntax %s",
-		ident.Value,
+		place.String(),
 		moveSyntax,
 	)
 	return false
@@ -7063,23 +8728,17 @@ func compilerKnownNonCopyable(typ Type) bool {
 }
 
 func (a *Analyzer) markExplicitMoveSource(expr ast.Expression) bool {
-	ident, ok := expr.(*ast.Identifier)
+	place, ok := a.resolvePlace(expr)
 	if !ok {
 		return false
 	}
-	symbol, ok := a.symbols[ident.Value]
-	if !ok {
+	if a.checkBorrowedMovePlace(place, expressionToken(expr)) {
 		return false
 	}
-	if a.checkBorrowedMove(ident.Value, ident.Token) {
-		return false
+	a.markPlaceUnavailable(place, expressionToken(expr), "moved")
+	if len(place.Projections) == 0 && place.Type.Kind != ReferenceType {
+		a.endBorrowsHeldBy(place.Root)
 	}
-	a.moved[ident.Value] = ident.Token
-	a.moveReasons[ident.Value] = "moved"
-	if symbol.Type.Kind == ReferenceType {
-		delete(a.localRefContainers, ident.Value)
-	}
-	a.endBorrowsHeldBy(ident.Value)
 	return true
 }
 
@@ -7090,6 +8749,9 @@ func (a *Analyzer) analyzeIndexAssignmentStatement(stmt *ast.AssignmentStatement
 	}
 	if !a.indexAssignmentTargetIsMutable(index.Left) {
 		a.addErrorAtToken(expressionToken(index.Left), "cannot assign through immutable index target")
+		return
+	}
+	if place, ok := a.resolvePlace(index); ok && a.checkBorrowedMutationPlace(place, expressionToken(index)) {
 		return
 	}
 	exprType, _ := a.inferExpressionWithExpected(stmt.Value, targetType)
@@ -7115,6 +8777,9 @@ func (a *Analyzer) analyzeIndexAssignmentStatement(stmt *ast.AssignmentStatement
 			return
 		}
 		a.applyAssignmentOwnership(stmt)
+		if stmt.Operator == "=" {
+			a.updateContainedOriginsForAssignment(index, stmt.Value)
+		}
 	}
 }
 
@@ -7218,6 +8883,30 @@ func (a *Analyzer) bindBorrowHoldersFromExpression(expr ast.Expression, holder s
 		a.bindBorrowHoldersFromExpression(expr.Value, holder)
 	case *ast.ConversionExpression:
 		a.bindBorrowHoldersFromExpression(expr.Value, holder)
+	case *ast.CallExpression:
+		if origin, ok := a.expressionReferenceOrigins[expr]; ok {
+			a.registerBorrowFromReturnedOrigin(holder, origin, expr.Token)
+		}
+	}
+}
+
+func (a *Analyzer) registerBorrowFromReturnedOrigin(holder string, origin localReferenceOrigin, token lexer.Token) {
+	if origin.Unknown {
+		return
+	}
+	kind := sharedBorrow
+	if origin.Mutable {
+		kind = mutableBorrow
+	}
+	for _, place := range localOriginPlaces(origin) {
+		for _, alternative := range placeOriginAlternatives(place) {
+			a.borrows[alternative.Root] = append(a.borrows[alternative.Root], borrowRecord{
+				Root: alternative.Root, Place: alternative, Holder: holder, Kind: kind, Token: token,
+			})
+		}
+	}
+	for _, child := range origin.Contained {
+		a.registerBorrowFromReturnedOrigin(holder, child, token)
 	}
 }
 
@@ -7237,7 +8926,7 @@ func (a *Analyzer) registerBorrow(holder string, expr *ast.RefExpression) {
 	if holder == "" || expr == nil {
 		return
 	}
-	root, ok := borrowRootName(expr.Value)
+	place, ok := a.resolvePlace(expr.Value)
 	if !ok {
 		return
 	}
@@ -7245,12 +8934,16 @@ func (a *Analyzer) registerBorrow(holder string, expr *ast.RefExpression) {
 	if expr.Mutable {
 		kind = mutableBorrow
 	}
-	a.borrows[root] = append(a.borrows[root], borrowRecord{
-		Root:   root,
-		Holder: holder,
-		Kind:   kind,
-		Token:  expr.Token,
-	})
+	for _, alternative := range placeOriginAlternatives(place) {
+		root := alternative.Root
+		a.borrows[root] = append(a.borrows[root], borrowRecord{
+			Root:   root,
+			Place:  alternative,
+			Holder: holder,
+			Kind:   kind,
+			Token:  expr.Token,
+		})
+	}
 }
 
 func (a *Analyzer) transferBorrowHolder(from string, to string) {
@@ -7261,6 +8954,10 @@ func (a *Analyzer) transferBorrowHolder(from string, to string) {
 			}
 		}
 		a.borrows[root] = records
+	}
+	if origin, ok := a.localRefContainers[from]; ok {
+		a.localRefContainers[to] = cloneLocalReferenceOrigin(origin)
+		delete(a.localRefContainers, from)
 	}
 }
 
@@ -7280,6 +8977,7 @@ func referenceTypeWithOrigin(target Type, source Type) Type {
 	target.ReferenceOriginName = source.ReferenceOriginName
 	target.ReferenceOriginToken = source.ReferenceOriginToken
 	target.ReferenceOriginLocal = source.ReferenceOriginLocal
+	target.ReferenceOriginMatchScoped = source.ReferenceOriginMatchScoped
 	target.ReferenceOriginStorage = source.ReferenceOriginStorage
 	target.ReferenceOriginGeneration = source.ReferenceOriginGeneration
 	return target
@@ -7292,7 +8990,17 @@ func (a *Analyzer) referenceTypeWithOriginFromExpression(target Type, expr ast.E
 	target.ReferenceOriginLocal = originLocal
 	target.ReferenceOriginStorage = originStorage
 	target.ReferenceOriginGeneration = generation
+	target.ReferenceOriginMatchScoped = a.referenceOriginMatchScopedForExpression(expr)
 	return target
+}
+
+func (a *Analyzer) referenceOriginMatchScopedForExpression(expr ast.Expression) bool {
+	root, ok := borrowRootName(expr)
+	if !ok {
+		return false
+	}
+	symbol, ok := a.symbols[root]
+	return ok && typeCarriesReferenceOrigin(symbol.Type) && symbol.Type.ReferenceOriginMatchScoped
 }
 
 func (a *Analyzer) referenceOriginForExpression(expr ast.Expression) (string, lexer.Token, bool, StorageOrigin, int) {
@@ -7327,37 +9035,93 @@ func (a *Analyzer) checkStaleArenaReference(symbol Symbol, token lexer.Token) bo
 }
 
 func (a *Analyzer) checkBorrowCreation(expr ast.Expression, mutable bool, token lexer.Token) bool {
-	root, ok := borrowRootName(expr)
+	place, ok := a.resolvePlace(expr)
 	if !ok {
-		return false
+		switch expr.(type) {
+		case *ast.Identifier, *ast.MemberExpression, *ast.IndexExpression, *ast.SliceExpression:
+			return false
+		default:
+			a.addErrorAtToken(token, "cannot borrow temporary expression; a reusable place is required")
+			return true
+		}
+	}
+	return a.checkBorrowCreationPlace(place, mutable, token)
+}
+
+func (a *Analyzer) checkBorrowCreationPlace(place Place, mutable bool, token lexer.Token) bool {
+	if place.AmbiguousProvenance {
+		a.addErrorAtToken(token, "cannot borrow through reference with unknown control-flow provenance")
+		return true
+	}
+	if !place.Addressable {
+		a.addErrorAtToken(token, "cannot borrow non-addressable place %s", place.String())
+		return true
 	}
 	if mutable {
-		if symbol, ok := a.symbols[root]; ok && !a.canWriteThroughSymbol(symbol) {
-			a.addErrorAtToken(token, "cannot create mutable reference to immutable variable %s", root)
+		if !place.Mutable {
+			if len(place.Projections) == 0 {
+				a.addErrorAtToken(token, "cannot create mutable reference to immutable variable %s", place.Root)
+			} else {
+				a.addErrorAtToken(token, "cannot create mutable reference to immutable place %s", place.String())
+			}
 			return true
 		}
 	}
-	for _, record := range a.borrows[root] {
-		if record.Kind == deferredUse {
+	for _, candidate := range placeOriginAlternatives(place) {
+		if candidate.Root == "" {
 			continue
 		}
-		if !mutable && record.Kind == sharedBorrow {
-			continue
-		}
-		if mutable {
-			a.addErrorAtTokenWithPrevious(token, record.Token, "cannot create mutable reference to %s while it is already borrowed", root)
+		for _, record := range a.borrows[candidate.Root] {
+			if record.Kind == deferredUse {
+				continue
+			}
+			if candidate.ReferenceHolder != "" && record.Holder == candidate.ReferenceHolder {
+				continue
+			}
+			if !borrowPlacesOverlap(candidate, record) {
+				continue
+			}
+			if !mutable && record.Kind == sharedBorrow {
+				continue
+			}
+			if mutable {
+				if record.LoopCarried {
+					a.addErrorAtTokenWithPrevious(token, record.Token, "cannot create mutable reference to %s because an overlapping borrow may remain active from a previous loop iteration", place.String())
+					return true
+				}
+				a.addErrorAtTokenWithPrevious(token, record.Token, "cannot create mutable reference to %s while it is already borrowed", place.String())
+				return true
+			}
+			if record.LoopCarried {
+				a.addErrorAtTokenWithPrevious(token, record.Token, "cannot create shared reference to %s because an overlapping mutable borrow may remain active from a previous loop iteration", place.String())
+				return true
+			}
+			a.addErrorAtTokenWithPrevious(token, record.Token, "cannot create shared reference to %s while it is mutably borrowed", place.String())
 			return true
 		}
-		a.addErrorAtTokenWithPrevious(token, record.Token, "cannot create shared reference to %s while it is mutably borrowed", root)
-		return true
 	}
 	return false
 }
 
 func (a *Analyzer) checkBorrowedRead(name string, token lexer.Token) bool {
-	for _, record := range a.borrows[name] {
-		if record.Kind == mutableBorrow && record.Holder != name {
-			a.addErrorAtTokenWithPrevious(token, record.Token, "cannot read %s while it is mutably borrowed", name)
+	place, ok := a.rootPlace(name)
+	if !ok {
+		return false
+	}
+	return a.checkBorrowedReadPlace(place, token)
+}
+
+func (a *Analyzer) checkBorrowedReadPlace(place Place, token lexer.Token) bool {
+	for _, candidate := range placeOriginAlternatives(place) {
+		for _, record := range a.borrows[candidate.Root] {
+			if record.Kind != mutableBorrow || record.Holder == candidate.Root || record.Holder == candidate.ReferenceHolder || !borrowPlacesOverlap(candidate, record) {
+				continue
+			}
+			if record.LoopCarried {
+				a.addErrorAtTokenWithPrevious(token, record.Token, "cannot read %s because it may remain mutably borrowed from a previous loop iteration", place.String())
+				return true
+			}
+			a.addErrorAtTokenWithPrevious(token, record.Token, "cannot read %s while it is mutably borrowed", place.String())
 			return true
 		}
 	}
@@ -7365,30 +9129,70 @@ func (a *Analyzer) checkBorrowedRead(name string, token lexer.Token) bool {
 }
 
 func (a *Analyzer) checkBorrowedMutation(name string, token lexer.Token) bool {
-	for _, record := range a.borrows[name] {
-		if record.Kind == deferredUse {
-			continue
-		}
-		if record.Kind == mutableBorrow {
-			a.addErrorAtTokenWithPrevious(token, record.Token, "cannot assign to %s while it is mutably borrowed", name)
+	place, ok := a.rootPlace(name)
+	if !ok {
+		return false
+	}
+	return a.checkBorrowedMutationPlace(place, token)
+}
+
+func (a *Analyzer) checkBorrowedMutationPlace(place Place, token lexer.Token) bool {
+	for _, candidate := range placeOriginAlternatives(place) {
+		for _, record := range a.borrows[candidate.Root] {
+			if record.Kind == deferredUse {
+				continue
+			}
+			if candidate.ReferenceHolder != "" && record.Holder == candidate.ReferenceHolder {
+				continue
+			}
+			if !borrowPlacesOverlap(candidate, record) {
+				continue
+			}
+			if record.LoopCarried {
+				a.addErrorAtTokenWithPrevious(token, record.Token, "cannot assign to %s because it may remain borrowed from a previous loop iteration", place.String())
+				return true
+			}
+			if record.Kind == mutableBorrow {
+				a.addErrorAtTokenWithPrevious(token, record.Token, "cannot assign to %s while it is mutably borrowed", place.String())
+				return true
+			}
+			a.addErrorAtTokenWithPrevious(token, record.Token, "cannot assign to %s while it is shared borrowed", place.String())
 			return true
 		}
-		a.addErrorAtTokenWithPrevious(token, record.Token, "cannot assign to %s while it is shared borrowed", name)
-		return true
 	}
 	return false
 }
 
 func (a *Analyzer) checkBorrowedMove(name string, token lexer.Token) bool {
-	if a.checkDeferredUse(name, token, "move") {
-		return true
+	place, ok := a.rootPlace(name)
+	if !ok {
+		return false
 	}
-	for _, record := range a.borrows[name] {
-		if record.Kind == deferredUse {
-			continue
+	return a.checkBorrowedMovePlace(place, token)
+}
+
+func (a *Analyzer) checkBorrowedMovePlace(place Place, token lexer.Token) bool {
+	for _, candidate := range placeOriginAlternatives(place) {
+		if a.checkDeferredUse(candidate.Root, token, "move") {
+			return true
 		}
-		a.addErrorAtTokenWithPrevious(token, record.Token, "cannot move %s while it is borrowed", name)
-		return true
+		for _, record := range a.borrows[candidate.Root] {
+			if record.Kind == deferredUse {
+				continue
+			}
+			if candidate.ReferenceHolder != "" && record.Holder == candidate.ReferenceHolder {
+				continue
+			}
+			if !borrowPlacesOverlap(candidate, record) {
+				continue
+			}
+			if record.LoopCarried {
+				a.addErrorAtTokenWithPrevious(token, record.Token, "cannot move %s because it may remain borrowed from a previous loop iteration", place.String())
+				return true
+			}
+			a.addErrorAtTokenWithPrevious(token, record.Token, "cannot move %s while it is borrowed", place.String())
+			return true
+		}
 	}
 	return false
 }
@@ -7433,21 +9237,8 @@ func borrowRootName(expr ast.Expression) (string, bool) {
 }
 
 func (a *Analyzer) indexAssignmentTargetIsMutable(expr ast.Expression) bool {
-	switch expr := expr.(type) {
-	case *ast.Identifier:
-		symbol, ok := a.symbols[expr.Value]
-		if !ok {
-			return false
-		}
-		return symbol.Mutable || (symbol.Type.Kind == ReferenceType && symbol.Type.ReferenceMutable)
-	case *ast.MemberExpression:
-		return true
-	case *ast.IndexExpression:
-		return a.indexAssignmentTargetIsMutable(expr.Left)
-	default:
-		typ, _ := a.inferExpression(expr)
-		return typ.Kind == ReferenceType && typ.ReferenceMutable
-	}
+	place, ok := a.resolvePlace(expr)
+	return ok && place.Mutable
 }
 
 func (a *Analyzer) analyzeMemberAssignmentStatement(stmt *ast.AssignmentStatement, member *ast.MemberExpression, allowFallible bool) {
@@ -7467,9 +9258,29 @@ func (a *Analyzer) analyzeMemberAssignmentStatement(stmt *ast.AssignmentStatemen
 			return
 		}
 	}
+	property, propertyOK := a.lookupPropertyOnMember(member)
+	if propertyOK && !property.HasSetter {
+		a.addErrorAtToken(member.Property.Token, "property %s has no setter", member.Property.Value)
+		return
+	}
+	place, placeOK := a.resolvePlace(member)
+	if placeOK && !place.Mutable {
+		a.addErrorAtToken(member.Property.Token, "cannot assign to immutable place %s", place.String())
+		return
+	}
 
-	if property, ok := a.lookupPropertyOnMember(member); ok && property.Fallible && !allowFallible {
-		a.addErrorAtToken(member.Property.Token, "assigning fallible property %s requires try", member.Property.Value)
+	if propertyOK {
+		if property.Fallible && !allowFallible {
+			a.addErrorAtToken(member.Property.Token, "assigning fallible property %s requires try", member.Property.Value)
+			return
+		}
+		if placeOK {
+			rootPlace, ok := a.rootPlace(place.Root)
+			if ok && a.checkBorrowedMutationPlace(rootPlace, member.Property.Token) {
+				return
+			}
+		}
+	} else if placeOK && a.checkBorrowedMutationPlace(place, member.Property.Token) {
 		return
 	}
 
@@ -7509,13 +9320,19 @@ func (a *Analyzer) analyzeMemberAssignmentStatement(stmt *ast.AssignmentStatemen
 		return
 	}
 	a.applyAssignmentOwnership(stmt)
+	if stmt.Operator == "=" && !propertyOK {
+		a.updateContainedOriginsForAssignment(member, stmt.Value)
+	}
+	if placeOK {
+		a.markPlaceAvailable(place)
+	}
 }
 
 func (a *Analyzer) isRegisterBitField(member *ast.MemberExpression) bool {
 	if member == nil || member.Property == nil {
 		return false
 	}
-	objectType, _ := a.inferExpression(member.Object)
+	objectType, _ := a.inferPlaceBase(member.Object)
 	if objectType.Kind == InvalidType {
 		return false
 	}
@@ -7585,7 +9402,7 @@ func (a *Analyzer) tryAssignmentErrorType(stmt *ast.AssignmentStatement) (Type, 
 }
 
 func (a *Analyzer) resolveType(ref *ast.TypeReference) (Type, bool) {
-	if ref == nil {
+	if ref == nil || ref.Invalid {
 		return Type{Kind: InvalidType}, false
 	}
 
@@ -8096,6 +9913,10 @@ func (a *Analyzer) inferExpressionUnrecorded(expr ast.Expression) (Type, express
 	}
 
 	switch expr := expr.(type) {
+	case *ast.InvalidExpression:
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	case *ast.InvalidPattern:
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	case *ast.IntegerLiteral:
 		switch expr.Suffix() {
 		case "u":
@@ -8167,26 +9988,13 @@ func (a *Analyzer) inferExpressionUnrecorded(expr ast.Expression) (Type, express
 			a.addErrorAtToken(expr.Token, "variable %s is unassigned", expr.Value)
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
-		if movedAt, ok := a.moved[expr.Value]; ok {
-			if a.moveReasons[expr.Value] == "discarded" {
-				a.addErrorAtTokenWithPrevious(expr.Token, movedAt, "value %s was discarded here and is no longer available", expr.Value)
-				return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
-			}
-			if a.moveReasons[expr.Value] == "detached" {
-				a.addErrorAtTokenWithPrevious(expr.Token, movedAt, "value %s was detached here and is no longer available", expr.Value)
-				return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
-			}
-			if a.moveReasons[expr.Value] == "released" {
-				a.addErrorAtTokenWithPrevious(expr.Token, movedAt, "arena %s was released here and is no longer available", expr.Value)
-				return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
-			}
-			a.addErrorAtTokenWithPrevious(expr.Token, movedAt, "use of moved value %s", expr.Value)
+		if place, placeOK := a.resolvePlace(expr); placeOK && a.checkPlaceAvailableForRead(place, expr.Token) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
 		if a.checkStaleArenaReference(symbol, expr.Token) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
-		if a.checkBorrowedRead(expr.Value, expr.Token) {
+		if a.suppressPlaceRootRead == 0 && a.checkBorrowedRead(expr.Value, expr.Token) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
 		a.recordDeferCapture(expr.Value, symbol, expr.Token)
@@ -8225,13 +10033,30 @@ func (a *Analyzer) inferExpressionUnrecorded(expr ast.Expression) (Type, express
 		if !ok {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
+		if place, ok := a.resolvePlace(expr); ok {
+			if a.checkPlaceAvailableForRead(place, expr.Property.Token) || a.checkBorrowedReadPlace(place, expr.Property.Token) {
+				return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+			}
+		}
 		return typ, expressionValue{Display: expr.String()}
 	case *ast.ArrayLiteral:
 		return a.inferArrayLiteral(expr)
 	case *ast.IndexExpression:
-		return a.inferIndexExpression(expr)
+		typ, value := a.inferIndexExpression(expr)
+		if typ.Kind != InvalidType {
+			if place, ok := a.resolvePlace(expr); ok && a.checkBorrowedReadPlace(place, expr.Token) {
+				return Type{Kind: InvalidType}, value
+			}
+		}
+		return typ, value
 	case *ast.SliceExpression:
-		return a.inferSliceExpression(expr)
+		typ, value := a.inferSliceExpression(expr)
+		if typ.Kind != InvalidType {
+			if place, ok := a.resolvePlace(expr); ok && a.checkBorrowedReadPlace(place, expr.Token) {
+				return Type{Kind: InvalidType}, value
+			}
+		}
+		return typ, value
 	case *ast.RefExpression:
 		return a.inferRefExpression(expr)
 	case *ast.StructLiteral:
@@ -8720,7 +10545,7 @@ func (a *Analyzer) inferMemberExpression(expr *ast.MemberExpression) (Type, bool
 		return staticType, true
 	}
 
-	objectType, _ := a.inferExpression(expr.Object)
+	objectType, _ := a.inferPlaceBase(expr.Object)
 	if objectType.Kind == InvalidType {
 		return Type{Kind: InvalidType}, false
 	}
@@ -8988,7 +10813,7 @@ func (a *Analyzer) inferIndexExpression(expr *ast.IndexExpression) (Type, expres
 	if elementType, ok := a.inferStringPointerIndex(expr); ok {
 		return elementType, expressionValue{Display: expr.String()}
 	}
-	leftType, _ := a.inferExpression(expr.Left)
+	leftType, _ := a.inferPlaceBase(expr.Left)
 	if leftType.Kind == InvalidType {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
@@ -9049,7 +10874,7 @@ func (a *Analyzer) inferStringPointerIndex(expr *ast.IndexExpression) (Type, boo
 }
 
 func (a *Analyzer) inferSliceExpression(expr *ast.SliceExpression) (Type, expressionValue) {
-	leftType, _ := a.inferExpression(expr.Left)
+	leftType, _ := a.inferPlaceBase(expr.Left)
 	if leftType.Kind == InvalidType {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
@@ -9064,14 +10889,15 @@ func (a *Analyzer) inferSliceExpression(expr *ast.SliceExpression) (Type, expres
 	a.checkSliceBounds(expr, leftType)
 	originName, originToken, originLocal, originStorage, generation := a.referenceOriginForExpression(expr.Left)
 	return Type{
-		Name:                      typeDisplayName(*leftType.Element) + "[]",
-		Kind:                      SliceType,
-		Element:                   leftType.Element,
-		ReferenceOriginName:       originName,
-		ReferenceOriginToken:      originToken,
-		ReferenceOriginLocal:      originLocal,
-		ReferenceOriginStorage:    originStorage,
-		ReferenceOriginGeneration: generation,
+		Name:                       typeDisplayName(*leftType.Element) + "[]",
+		Kind:                       SliceType,
+		Element:                    leftType.Element,
+		ReferenceOriginName:        originName,
+		ReferenceOriginToken:       originToken,
+		ReferenceOriginLocal:       originLocal,
+		ReferenceOriginStorage:     originStorage,
+		ReferenceOriginGeneration:  generation,
+		ReferenceOriginMatchScoped: a.referenceOriginMatchScopedForExpression(expr.Left),
 	}, expressionValue{Display: expr.String()}
 }
 
@@ -9085,15 +10911,16 @@ func (a *Analyzer) inferRefExpression(expr *ast.RefExpression) (Type, expression
 	}
 	originName, originToken, originLocal, originStorage, generation := a.referenceOriginForExpression(expr.Value)
 	return Type{
-		Name:                      referenceTypeName(valueType, expr.Mutable),
-		Kind:                      ReferenceType,
-		Element:                   &valueType,
-		ReferenceMutable:          expr.Mutable,
-		ReferenceOriginName:       originName,
-		ReferenceOriginToken:      originToken,
-		ReferenceOriginLocal:      originLocal,
-		ReferenceOriginStorage:    originStorage,
-		ReferenceOriginGeneration: generation,
+		Name:                       referenceTypeName(valueType, expr.Mutable),
+		Kind:                       ReferenceType,
+		Element:                    &valueType,
+		ReferenceMutable:           expr.Mutable,
+		ReferenceOriginName:        originName,
+		ReferenceOriginToken:       originToken,
+		ReferenceOriginLocal:       originLocal,
+		ReferenceOriginStorage:     originStorage,
+		ReferenceOriginGeneration:  generation,
+		ReferenceOriginMatchScoped: a.referenceOriginMatchScopedForExpression(expr.Value),
 	}, expressionValue{Display: expr.String()}
 }
 
@@ -9270,7 +11097,7 @@ func typePathFromExpression(expr ast.Expression) (string, bool) {
 }
 
 func (a *Analyzer) lookupPropertyOnMember(expr *ast.MemberExpression) (Property, bool) {
-	objectType, _ := a.inferExpression(expr.Object)
+	objectType, _ := a.inferPlaceBase(expr.Object)
 	if objectType.Kind == InvalidType {
 		return Property{}, false
 	}
@@ -9426,6 +11253,107 @@ func (a *Analyzer) inferConversionExpression(expr *ast.ConversionExpression) (Ty
 	}
 
 	return targetType, expressionValue{Display: expr.String()}
+}
+
+func (a *Analyzer) setCallReferenceOrigin(expr *ast.CallExpression, function Function, args []ast.Expression, isMethodCall bool) {
+	delete(a.expressionReferenceOrigins, expr)
+	if !function.HasReturnOrigin {
+		return
+	}
+	var receiver ast.Expression
+	if isMethodCall {
+		if member, ok := expr.Callee.(*ast.MemberExpression); ok {
+			receiver = member.Object
+		}
+	}
+	origin := a.instantiateFunctionReturnOrigin(function.ReturnOrigin, args, receiver)
+	a.expressionReferenceOrigins[expr] = origin
+}
+
+func (a *Analyzer) instantiateFunctionReturnOrigin(summary localReferenceOrigin, args []ast.Expression, receiver ast.Expression) localReferenceOrigin {
+	summary = cloneLocalReferenceOrigin(summary)
+	places := localOriginPlaces(summary)
+	instantiatedPlaces := []Place{}
+	actualOrigins := []localReferenceOrigin{}
+	unknown := summary.Unknown
+	for _, symbolic := range places {
+		actual, ok := a.actualOriginForSummaryRoot(symbolic.Root, args, receiver)
+		if !ok || actual.Unknown {
+			unknown = true
+			continue
+		}
+		actualOrigins = append(actualOrigins, actual)
+		for _, base := range localOriginPlaces(actual) {
+			for _, projection := range symbolic.Projections {
+				base = appendPlaceProjection(base, projection)
+			}
+			instantiatedPlaces = append(instantiatedPlaces, base)
+		}
+	}
+	result := localReferenceOrigin{Unknown: unknown, Ambiguous: unknown, Mutable: summary.Mutable}
+	for _, actual := range actualOrigins {
+		if actual.Local && !result.Local {
+			result.Local, result.Name, result.Token = true, actual.Name, actual.Token
+		}
+		if actual.MatchScoped && !result.MatchScoped {
+			result.MatchScoped = true
+			if result.Name == "" {
+				result.Name, result.Token = actual.Name, actual.Token
+			}
+		}
+	}
+	result = localOriginWithPlaces(result, instantiatedPlaces)
+	result.Unknown = result.Unknown || unknown
+	result.Ambiguous = result.Ambiguous || result.Unknown
+	if len(summary.Contained) > 0 {
+		result.Contained = make(map[string]localReferenceOrigin, len(summary.Contained))
+		for path, child := range summary.Contained {
+			result.Contained[path] = a.instantiateFunctionReturnOrigin(child, args, receiver)
+		}
+		if len(places) == 0 {
+			recomputeContainedOriginSummary(&result)
+			for _, child := range result.Contained {
+				if child.Unknown {
+					result.Unknown = true
+					result.Ambiguous = true
+				}
+			}
+		}
+	}
+	return result
+}
+
+func (a *Analyzer) actualOriginForSummaryRoot(root string, args []ast.Expression, receiver ast.Expression) (localReferenceOrigin, bool) {
+	if strings.HasPrefix(root, "$param:") {
+		index, err := strconv.Atoi(strings.TrimPrefix(root, "$param:"))
+		if err != nil || index < 0 || index >= len(args) {
+			return localReferenceOrigin{Unknown: true, Ambiguous: true}, false
+		}
+		return a.directReferenceOrigin(args[index])
+	}
+	if root == "$receiver" {
+		if receiver == nil {
+			return localReferenceOrigin{Unknown: true, Ambiguous: true}, false
+		}
+		if origin, ok := a.directReferenceOrigin(receiver); ok {
+			return origin, true
+		}
+		place, ok := a.resolvePlace(receiver)
+		if !ok {
+			return localReferenceOrigin{Unknown: true, Ambiguous: true}, false
+		}
+		name, token, local, _, _ := a.referenceOriginForExpression(receiver)
+		return localOriginWithPlaces(localReferenceOrigin{Name: name, Token: token, Local: local}, placeOriginAlternatives(place)), true
+	}
+	if strings.HasPrefix(root, "$static:") {
+		name := strings.TrimPrefix(root, "$static:")
+		place, ok := a.rootPlace(name)
+		if !ok {
+			place = Place{Root: name, Addressable: true}
+		}
+		return localOriginWithPlaces(localReferenceOrigin{Name: name}, []Place{place}), true
+	}
+	return localReferenceOrigin{Unknown: true, Ambiguous: true}, false
 }
 
 func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressionValue) {
@@ -9598,9 +11526,10 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 			dispatch = CallDispatchForeign
 		}
 		execution, recordCall := a.callGraphExecutionForCall(expr)
-		if a.callGraphPathReachable && recordCall {
+		if !a.summaryPass && a.callGraphPathReachable && recordCall {
 			a.callGraph.addCall(a.currentCallable, best[0].Function, callCalleeDefinitionToken(expr), dispatch, execution)
 		}
+		a.setCallReferenceOrigin(expr, best[0].Function, sourceArgs, isMethodCall)
 		a.markMovedCallArguments(best[0].Function, sourceArgs, isMethodCall)
 		a.markClosedResourceCall(best[0].Function, methodReceiver, isMethodCall, expr.Token)
 		return best[0].Function.ReturnType, expressionValue{Display: expr.String()}
@@ -10916,6 +12845,7 @@ func (a *Analyzer) inferCallExpressionWithExpected(expr *ast.CallExpression, exp
 	best := bestOverloadMatches(matches)
 	if len(best) == 1 {
 		a.setDefinitions(callCalleeDefinitionToken(expr), best[0].Function.Token)
+		a.setCallReferenceOrigin(expr, best[0].Function, args, false)
 		return best[0].Function.ReturnType, expressionValue{Display: expr.String()}, true
 	}
 	if len(best) > 1 {
@@ -11524,6 +13454,8 @@ func (a *Analyzer) analyzeTryHandlers(expr *ast.TryExpression, resultType Type) 
 
 func (a *Analyzer) analyzeTryHandlerPattern(handler *ast.TryHandler, successType Type, errorType Type) (kind string, bindingName string, variantName string, bindingType Type, ok bool) {
 	switch pattern := handler.Pattern.(type) {
+	case *ast.InvalidPattern:
+		return "", "", "", Type{}, false
 	case *ast.OkExpression:
 		name, patternOK := tryHandlerBindingName(pattern.Value)
 		if !patternOK {
@@ -11651,10 +13583,16 @@ func (a *Analyzer) inferMatchExpression(expr *ast.MatchExpression) (Type, expres
 }
 
 type matchPatternInfo struct {
-	BindingName string
-	BindingType Type
-	Kind        string
-	Variant     string
+	BindingName          string
+	BindingType          Type
+	Kind                 string
+	Variant              string
+	PayloadVariant       string
+	PayloadPlace         Place
+	PayloadMoves         bool
+	PayloadBorrow        bool
+	PayloadBorrowMutable bool
+	PayloadToken         lexer.Token
 }
 
 func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Type {
@@ -11674,6 +13612,8 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 	hasResultType := false
 	beforeAssigned := copyAssigned(a.assigned)
 	beforeMoved := copyMoved(a.moved)
+	beforeMoveReasons := copyMoveReasons(a.moveReasons)
+	beforeClosedResources := copyMoved(a.closedResources)
 	beforeBorrows := copyBorrows(a.borrows)
 	beforeLocalRefContainers := copyLocalRefContainers(a.localRefContainers)
 	beforeArenaGenerations := copyArenaGenerations(a.arenaGenerations)
@@ -11685,6 +13625,26 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 		if !ok {
 			patternError = true
 			continue
+		}
+		if info.BindingName != "" && info.PayloadVariant != "" {
+			if subjectPlace, placeOK := a.resolvePlace(expr.Subject); placeOK {
+				payloadType := info.BindingType
+				if info.PayloadBorrow && payloadType.Element != nil {
+					payloadType = *payloadType.Element
+				}
+				info.PayloadPlace = unionPayloadPlace(subjectPlace, info.PayloadVariant, payloadType, info.PayloadToken)
+				if info.PayloadBorrow {
+					info.BindingType = a.referenceTypeWithOriginFromExpression(info.BindingType, expr.Subject)
+					info.BindingType.ReferenceOriginMatchScoped = true
+					info.BindingType.ReferenceOriginToken = info.PayloadToken
+				}
+			} else if info.PayloadBorrow {
+				a.addErrorAtToken(info.PayloadToken, "cannot borrow union payload from temporary match subject")
+				info.BindingType = Type{Kind: InvalidType}
+			}
+			if subjectType.Kind == UnionType && !info.PayloadBorrow {
+				info.PayloadMoves = requiresOwnershipTransfer(info.BindingType)
+			}
 		}
 		if catchAll {
 			a.addErrorAtToken(arm.Token, "unreachable match arm")
@@ -11739,20 +13699,23 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 	if !patternError {
 		exhaustive = a.checkMatchExhaustive(expr, subjectType, catchAll, seenKinds, seenVariants)
 	}
-	if !valueContext {
-		if !exhaustive {
-			branches = append(branches, branchAnalysis{assigned: beforeAssigned, moved: beforeMoved, borrows: beforeBorrows, localRefContainers: beforeLocalRefContainers, arenaGenerations: beforeArenaGenerations, continues: true})
-		}
-		a.assigned = mergeContinuingAssigned(beforeAssigned, branches...)
-		a.moved = mergeContinuingMoved(beforeMoved, branches...)
-		a.borrows = mergeContinuingBorrows(beforeBorrows, branches...)
-		a.localRefContainers = mergeContinuingLocalRefContainers(beforeLocalRefContainers, branches...)
-		a.arenaGenerations = mergeContinuingArenaGenerations(beforeArenaGenerations, branches...)
+	if !exhaustive {
+		branches = append(branches, branchAnalysis{assigned: beforeAssigned, moved: beforeMoved, moveReasons: beforeMoveReasons, closedResources: beforeClosedResources, borrows: beforeBorrows, localRefContainers: beforeLocalRefContainers, arenaGenerations: beforeArenaGenerations, continues: true})
 	}
+	a.assigned = mergeContinuingAssigned(beforeAssigned, branches...)
+	a.moved, a.moveReasons = mergeContinuingMoveState(beforeMoved, beforeMoveReasons, branches...)
+	a.closedResources = mergeContinuingClosedResources(beforeClosedResources, branches...)
+	a.borrows = mergeContinuingBorrows(beforeBorrows, branches...)
+	a.localRefContainers = mergeContinuingLocalRefContainers(beforeLocalRefContainers, branches...)
+	a.arenaGenerations = mergeContinuingArenaGenerations(beforeArenaGenerations, branches...)
 
 	if valueContext {
 		if !hasResultType {
 			a.addErrorAtToken(expr.Token, "match expression must produce a value")
+			return Type{Kind: InvalidType}
+		}
+		if typeCarriesReferenceOrigin(resultType) && resultType.ReferenceOriginMatchScoped {
+			a.addErrorAtTokenWithPrevious(expr.Token, resultType.ReferenceOriginToken, "match expression cannot produce a branch-scoped union payload reference")
 			return Type{Kind: InvalidType}
 		}
 		return resultType
@@ -11773,6 +13736,8 @@ func matchPatternAlreadyCovered(info matchPatternInfo, seenKinds map[string]bool
 
 func (a *Analyzer) analyzeMatchPattern(pattern ast.Expression, subjectType Type) (matchPatternInfo, bool) {
 	switch pattern := pattern.(type) {
+	case *ast.InvalidPattern:
+		return matchPatternInfo{}, false
 	case *ast.OkExpression:
 		if subjectType.Kind == UnionType {
 			args := []ast.Expression{}
@@ -11785,14 +13750,7 @@ func (a *Analyzer) analyzeMatchPattern(pattern ast.Expression, subjectType Type)
 			a.addErrorAtToken(pattern.Token, "Ok pattern requires Result subject")
 			return matchPatternInfo{}, false
 		}
-		info := matchPatternInfo{Kind: "Ok"}
-		if ident, ok := pattern.Value.(*ast.Identifier); ok {
-			if ident.Value != "_" {
-				info.BindingName = ident.Value
-				info.BindingType = subjectType.TypeArgs[0]
-			}
-		}
-		return info, true
+		return a.analyzeResultPayloadPattern("Ok", pattern.Value, pattern.Token, subjectType.TypeArgs[0], false)
 	case *ast.ErrExpression:
 		if subjectType.Kind == UnionType {
 			args := []ast.Expression{}
@@ -11805,16 +13763,7 @@ func (a *Analyzer) analyzeMatchPattern(pattern ast.Expression, subjectType Type)
 			a.addErrorAtToken(pattern.Token, "Err pattern requires Result subject")
 			return matchPatternInfo{}, false
 		}
-		info := matchPatternInfo{Kind: "Err"}
-		if ident, ok := pattern.Value.(*ast.Identifier); ok {
-			if ident.Value == "_" {
-				a.addErrorAtToken(ident.Token, "Err payload must be named; use discard name inside the handler")
-				return matchPatternInfo{}, false
-			}
-			info.BindingName = ident.Value
-			info.BindingType = subjectType.TypeArgs[1]
-		}
-		return info, true
+		return a.analyzeResultPayloadPattern("Err", pattern.Value, pattern.Token, subjectType.TypeArgs[1], true)
 	case *ast.MemberExpression:
 		patternType, ok := a.inferMemberExpression(pattern)
 		if !ok || patternType.Kind == InvalidType {
@@ -11901,27 +13850,84 @@ func (a *Analyzer) analyzeUnionPayloadPattern(variantName string, arguments []as
 		a.addErrorAtToken(token, "union variant %s.%s requires 1 payload binding, got %d", typeDisplayName(subjectType), variant.Name, len(arguments))
 		return matchPatternInfo{}, false
 	}
-	binding, ok := arguments[0].(*ast.Identifier)
+	bindingExpression := arguments[0]
+	binding, borrowed, mutable, ok := unionPayloadPatternBinding(bindingExpression)
 	if !ok {
-		a.addErrorAtToken(expressionToken(arguments[0]), "union payload pattern must bind an identifier")
+		a.addErrorAtToken(expressionToken(bindingExpression), "union payload pattern must bind an identifier, ref identifier, or ref mut identifier")
 		return matchPatternInfo{}, false
 	}
 
-	info := matchPatternInfo{Kind: "variant", Variant: variant.Name}
+	info := matchPatternInfo{Kind: "variant", Variant: variant.Name, PayloadVariant: variant.Name}
 	if binding.Value == "_" {
 		return info, true
 	}
 	info.BindingName = binding.Value
+	info.PayloadToken = binding.Token
+	info.PayloadBorrow = borrowed
+	info.PayloadBorrowMutable = mutable
+	var payloadType Type
 	if variant.Payload != nil {
-		info.BindingType = *variant.Payload
+		payloadType = *variant.Payload
 	} else {
-		info.BindingType = Type{
+		payloadType = Type{
 			Name:   typeDisplayName(subjectType) + "." + variant.Name,
 			Kind:   StructType,
 			Fields: variant.PayloadFields,
 		}
 	}
+	info.BindingType = payloadType
+	if borrowed {
+		info.BindingType = Type{
+			Name:             referenceTypeName(payloadType, mutable),
+			Kind:             ReferenceType,
+			Element:          &payloadType,
+			ReferenceMutable: mutable,
+		}
+	}
 	return info, true
+}
+
+func (a *Analyzer) analyzeResultPayloadPattern(kind string, expr ast.Expression, token lexer.Token, payloadType Type, rejectDiscard bool) (matchPatternInfo, bool) {
+	info := matchPatternInfo{Kind: kind, PayloadVariant: kind}
+	if expr == nil {
+		return info, true
+	}
+	binding, borrowed, mutable, ok := unionPayloadPatternBinding(expr)
+	if !ok {
+		a.addErrorAtToken(expressionToken(expr), "%s payload pattern must bind an identifier, ref identifier, or ref mut identifier", kind)
+		return matchPatternInfo{}, false
+	}
+	if binding.Value == "_" {
+		if rejectDiscard {
+			a.addErrorAtToken(binding.Token, "Err payload must be named; use discard name inside the handler")
+			return matchPatternInfo{}, false
+		}
+		return info, true
+	}
+	info.BindingName = binding.Value
+	info.BindingType = payloadType
+	info.PayloadToken = binding.Token
+	info.PayloadBorrow = borrowed
+	info.PayloadBorrowMutable = mutable
+	if borrowed {
+		info.BindingType = Type{
+			Name: referenceTypeName(payloadType, mutable), Kind: ReferenceType,
+			Element: &payloadType, ReferenceMutable: mutable,
+		}
+	}
+	return info, true
+}
+
+func unionPayloadPatternBinding(expr ast.Expression) (binding *ast.Identifier, borrowed bool, mutable bool, ok bool) {
+	switch expr := expr.(type) {
+	case *ast.Identifier:
+		return expr, false, false, true
+	case *ast.RefExpression:
+		binding, ok := expr.Value.(*ast.Identifier)
+		return binding, true, expr.Mutable, ok
+	default:
+		return nil, false, false, false
+	}
 }
 
 func (a *Analyzer) analyzeMatchArmBody(arm *ast.MatchArm, info matchPatternInfo) (Type, branchAnalysis) {
@@ -11929,6 +13935,8 @@ func (a *Analyzer) analyzeMatchArmBody(arm *ast.MatchArm, info matchPatternInfo)
 	previousConstInts := a.constInts
 	previousAssigned := a.assigned
 	previousMoved := a.moved
+	previousMoveReasons := a.moveReasons
+	previousClosedResources := a.closedResources
 	previousBorrows := a.borrows
 	previousLocalRefContainers := a.localRefContainers
 	previousArenaGenerations := a.arenaGenerations
@@ -11936,14 +13944,40 @@ func (a *Analyzer) analyzeMatchArmBody(arm *ast.MatchArm, info matchPatternInfo)
 	a.constInts = copyConstInts(previousConstInts)
 	a.assigned = copyAssigned(previousAssigned)
 	a.moved = copyMoved(previousMoved)
+	a.moveReasons = copyMoveReasons(previousMoveReasons)
+	a.closedResources = copyMoved(previousClosedResources)
 	a.borrows = copyBorrows(previousBorrows)
 	a.localRefContainers = copyLocalRefContainers(previousLocalRefContainers)
 	a.arenaGenerations = copyArenaGenerations(previousArenaGenerations)
+	if info.PayloadMoves && info.PayloadPlace.Root != "" {
+		if !info.PayloadPlace.PartialMoveSafe {
+			a.addErrorAtToken(info.PayloadToken, "union payload move requires independently tracked local union storage")
+		} else if _, _, _, unavailable := a.unavailablePlace(info.PayloadPlace); !unavailable && !a.checkBorrowedMovePlace(info.PayloadPlace, info.PayloadToken) {
+			a.markPlaceUnavailable(info.PayloadPlace, info.PayloadToken, "moved")
+		}
+	}
 	if info.BindingName != "" {
 		if a.defineSymbol(info.BindingName, info.BindingType, false, arm.Token) {
 			a.assigned[info.BindingName] = true
-			delete(a.moved, info.BindingName)
+			a.clearRootPlaceState(info.BindingName)
 			delete(a.constInts, info.BindingName)
+			if info.PayloadBorrow && info.PayloadPlace.Root != "" && info.BindingType.Kind != InvalidType {
+				if !a.checkBorrowCreationPlace(info.PayloadPlace, info.PayloadBorrowMutable, info.PayloadToken) {
+					kind := sharedBorrow
+					if info.PayloadBorrowMutable {
+						kind = mutableBorrow
+					}
+					a.borrows[info.PayloadPlace.Root] = append(a.borrows[info.PayloadPlace.Root], borrowRecord{
+						Root: info.PayloadPlace.Root, Place: info.PayloadPlace, Holder: info.BindingName,
+						Kind: kind, Token: info.PayloadToken,
+					})
+					a.localRefContainers[info.BindingName] = localReferenceOrigin{
+						Name: info.BindingType.ReferenceOriginName, Token: info.BindingType.ReferenceOriginToken,
+						Local: info.BindingType.ReferenceOriginLocal, MatchScoped: true,
+						Place: clonePlace(info.PayloadPlace), HasPlace: true,
+					}
+				}
+			}
 		}
 	}
 	defer func() {
@@ -11951,6 +13985,8 @@ func (a *Analyzer) analyzeMatchArmBody(arm *ast.MatchArm, info matchPatternInfo)
 		a.constInts = previousConstInts
 		a.assigned = previousAssigned
 		a.moved = previousMoved
+		a.moveReasons = previousMoveReasons
+		a.closedResources = previousClosedResources
 		a.borrows = previousBorrows
 		a.localRefContainers = previousLocalRefContainers
 		a.arenaGenerations = previousArenaGenerations
@@ -11965,25 +14001,27 @@ func (a *Analyzer) analyzeMatchArmBody(arm *ast.MatchArm, info matchPatternInfo)
 
 	if arm.ReturnBody != nil {
 		a.analyzeReturnStatement(a.currentFunctionName, a.currentFunctionReturn, arm.ReturnBody)
-		return Type{Kind: InvalidType}, a.finalizeMatchBranch(info, branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), borrows: copyBorrows(a.borrows), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), continues: false})
+		return Type{Kind: InvalidType}, a.finalizeMatchBranch(info, branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), moveReasons: copyMoveReasons(a.moveReasons), closedResources: copyMoved(a.closedResources), borrows: copyBorrows(a.borrows), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), continues: false})
 	}
 	if arm.BlockBody != nil {
 		a.analyzeBlockStatements(arm.BlockBody)
 		return Type{Kind: InvalidType}, a.finalizeMatchBranch(info, branchAnalysis{
 			assigned:           copyAssigned(a.assigned),
 			moved:              copyMoved(a.moved),
+			moveReasons:        copyMoveReasons(a.moveReasons),
+			closedResources:    copyMoved(a.closedResources),
 			borrows:            copyBorrows(a.borrows),
 			localRefContainers: copyLocalRefContainers(a.localRefContainers),
 			arenaGenerations:   copyArenaGenerations(a.arenaGenerations),
-			continues:          !a.blockDefinitelyReturns(arm.BlockBody),
+			continues:          blockCanFallThrough(arm.BlockBody),
 		})
 	}
 	if arm.Body == nil {
-		return Type{Kind: InvalidType}, a.finalizeMatchBranch(info, branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), borrows: copyBorrows(a.borrows), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), continues: true})
+		return Type{Kind: InvalidType}, a.finalizeMatchBranch(info, branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), moveReasons: copyMoveReasons(a.moveReasons), closedResources: copyMoved(a.closedResources), borrows: copyBorrows(a.borrows), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), continues: true})
 	}
 	bodyType, _ := a.inferExpression(arm.Body)
 	a.markMoveSource(arm.Body)
-	return bodyType, a.finalizeMatchBranch(info, branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), borrows: copyBorrows(a.borrows), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), continues: true})
+	return bodyType, a.finalizeMatchBranch(info, branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), moveReasons: copyMoveReasons(a.moveReasons), closedResources: copyMoved(a.closedResources), borrows: copyBorrows(a.borrows), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), continues: true})
 }
 
 func (a *Analyzer) finalizeMatchBranch(info matchPatternInfo, branch branchAnalysis) branchAnalysis {
@@ -11991,10 +14029,32 @@ func (a *Analyzer) finalizeMatchBranch(info matchPatternInfo, branch branchAnaly
 		return branch
 	}
 	delete(branch.assigned, info.BindingName)
-	delete(branch.moved, info.BindingName)
-	delete(branch.borrows, info.BindingName)
+	delete(branch.closedResources, info.BindingName)
+	for place := range branch.moved {
+		if place == info.BindingName || strings.HasPrefix(place, info.BindingName+".") || strings.HasPrefix(place, info.BindingName+"[") {
+			delete(branch.moved, place)
+			delete(branch.moveReasons, place)
+		}
+	}
+	removeBorrowHolder(branch.borrows, info.BindingName)
 	delete(branch.localRefContainers, info.BindingName)
 	return branch
+}
+
+func removeBorrowHolder(borrows map[string][]borrowRecord, holder string) {
+	for root, records := range borrows {
+		kept := records[:0]
+		for _, record := range records {
+			if record.Holder != holder {
+				kept = append(kept, record)
+			}
+		}
+		if len(kept) == 0 {
+			delete(borrows, root)
+		} else {
+			borrows[root] = kept
+		}
+	}
 }
 
 func (a *Analyzer) checkMatchExhaustive(expr *ast.MatchExpression, subjectType Type, catchAll bool, seenKinds map[string]bool, seenVariants map[string]bool) bool {
@@ -12839,6 +14899,9 @@ func (a *Analyzer) addErrorAtTokenWithPreviousID(token lexer.Token, previous lex
 }
 
 func (a *Analyzer) appendError(err Error) {
+	if a.summaryPass {
+		return
+	}
 	if err.Severity == "" {
 		err.Severity = diagnostics.SeverityError
 	}
@@ -12880,6 +14943,9 @@ func (a *Analyzer) addWarningAtTokenWithMetadata(token lexer.Token, id string, h
 }
 
 func (a *Analyzer) appendWarning(warning Error) {
+	if a.summaryPass {
+		return
+	}
 	if warning.Severity == "" {
 		warning.Severity = diagnostics.SeverityWarning
 	}
@@ -12921,7 +14987,7 @@ func (a *Analyzer) defineSymbol(name string, typ Type, mutable bool, token lexer
 	a.symbols[name] = symbol
 	a.completionSymbols[name] = symbol
 	a.recordDefinition(token)
-	delete(a.moved, name)
+	a.clearRootPlaceState(name)
 	return true
 }
 
@@ -13664,6 +15730,11 @@ func statementToken(stmt ast.Statement) lexer.Token {
 			return lexer.Token{}
 		}
 		return stmt.Token
+	case *ast.InvalidDeclaration:
+		if stmt == nil {
+			return lexer.Token{}
+		}
+		return stmt.Token
 	default:
 		return lexer.Token{}
 	}
@@ -13671,6 +15742,10 @@ func statementToken(stmt ast.Statement) lexer.Token {
 
 func expressionToken(expr ast.Expression) lexer.Token {
 	switch expr := expr.(type) {
+	case *ast.InvalidExpression:
+		return expr.Token
+	case *ast.InvalidPattern:
+		return expr.Token
 	case *ast.Identifier:
 		return expr.Token
 	case *ast.IntegerLiteral:

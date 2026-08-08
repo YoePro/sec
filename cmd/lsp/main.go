@@ -328,6 +328,11 @@ func (s *server) handle(message rpcMessage) error {
 		})
 	case "initialized":
 		return nil
+	case "workspace/didChangeConfiguration", "workspace/didChangeWatchedFiles":
+		// Analysis configuration is read from the project manifest for each
+		// analysis. Re-publishing open documents applies a changed depth without
+		// requiring a server restart and replaces facts computed at the old depth.
+		return s.republishOpenDiagnostics()
 	case "shutdown":
 		s.shutdown = true
 		s.stopDiagnosticTimers()
@@ -646,7 +651,7 @@ func analyzeNavigationSource(uri string, text string) *sema.Analyzer {
 		resolveCoreSources(program, path)
 		resolveSourceImports(program, map[string]bool{}, path)
 	}
-	analyzer := sema.NewAnalyzer()
+	analyzer := newLSPAnalyzer(uri)
 	analyzer.Analyze(program)
 	return analyzer
 }
@@ -699,7 +704,7 @@ func documentHighlightsForSource(uri string, text string, pos position) (highlig
 		resolveCoreSources(program, path)
 		resolveSourceImports(program, map[string]bool{}, path)
 	}
-	analyzer := sema.NewAnalyzer()
+	analyzer := newLSPAnalyzer(uri)
 	analyzer.Analyze(program)
 
 	use, ok := sourceTokenAtPosition(uri, text, pos)
@@ -792,7 +797,7 @@ func definitionsForSource(uri string, text string, pos position) (locations []lo
 		resolveCoreSources(program, path)
 		resolveSourceImports(program, map[string]bool{}, path)
 	}
-	analyzer := sema.NewAnalyzer()
+	analyzer := newLSPAnalyzer(uri)
 	analyzer.Analyze(program)
 
 	use, ok := sourceTokenAtPosition(uri, text, pos)
@@ -856,7 +861,7 @@ func completeSource(uri string, text string, offset int) []completionItem {
 	parseResult := p.Parse()
 	fileAST := parseResult.Program
 
-	analyzer := sema.NewAnalyzer()
+	analyzer := newLSPAnalyzer(uri)
 	analyzed := false
 	if fileAST != nil && !parseResult.HasErrors {
 		if uri != "" {
@@ -1059,7 +1064,11 @@ func documentSymbolForStatement(stmt ast.Statement) (documentSymbol, bool) {
 		if stmt == nil || stmt.Target == nil {
 			return documentSymbol{}, false
 		}
-		symbol := namedDocumentSymbol("impl "+stmt.Target.Name, "impl", 3, stmt.Token, stmt.Target.Token)
+		name := "impl " + stmt.Target.Name
+		if stmt.Extends {
+			name = "impl extends " + stmt.Target.Name
+		}
+		symbol := namedDocumentSymbol(name, "impl", 3, stmt.Token, stmt.Target.Token)
 		for _, member := range stmt.Members {
 			if child, ok := documentSymbolForImplMember(member); ok {
 				symbol.Children = append(symbol.Children, child)
@@ -1142,7 +1151,7 @@ func semanticTokenClassification(uri string, text string) (classification map[st
 	path := pathFromURI(uri)
 	resolveCoreSources(program, path)
 	resolveSourceImports(program, map[string]bool{}, path)
-	analyzer := sema.NewAnalyzer()
+	analyzer := newLSPAnalyzer(uri)
 	analyzer.Analyze(program)
 	for name := range analyzer.Types() {
 		classification[name] = "type"
@@ -1216,7 +1225,7 @@ func hoverForSource(uri string, text string, pos position) (hoverResult, bool) {
 		resolveCoreSources(program, path)
 		resolveSourceImports(program, map[string]bool{}, path)
 	}
-	analyzer := sema.NewAnalyzer()
+	analyzer := newLSPAnalyzer(uri)
 	analyzer.Analyze(program)
 
 	name, nameStart, nameEnd, ok := identifierAtOffset(text, offset)
@@ -2195,6 +2204,15 @@ func (s *server) publishDiagnostics(uri string, text string) error {
 	})
 }
 
+func (s *server) republishOpenDiagnostics() error {
+	for _, snapshot := range s.documentSnapshots.Snapshots() {
+		if err := s.publishDiagnostics(snapshot.URI, snapshot.Text); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (s *server) formatDocument(uri string) ([]textEdit, error) {
 	snapshot, ok := s.documentSnapshots.Snapshot(uri)
 	text := snapshot.Text
@@ -2801,7 +2819,7 @@ func analyze(uri string, text string) []diagnostic {
 	resolveCoreSources(program, path)
 	resolveSourceImports(program, map[string]bool{}, path)
 
-	analyzer := sema.NewAnalyzer()
+	analyzer := newLSPAnalyzer(uri)
 	for _, err := range analyzer.Analyze(program) {
 		diagnostics = append(diagnostics, semaDiagnostic(err, 1))
 	}
@@ -3107,6 +3125,64 @@ func findProjectRoot(path string) string {
 		return filepath.Clean(path)
 	}
 	return filepath.Dir(filepath.Clean(path))
+}
+
+func newLSPAnalyzer(uri string) *sema.Analyzer {
+	return sema.NewAnalyzerWithDepth(lspAnalysisDepth(pathFromURI(uri)))
+}
+
+func lspAnalysisDepth(sourcePath string) sema.AnalysisDepth {
+	depth := sema.AnalysisInteractive
+	if sourcePath == "" {
+		return depth
+	}
+	manifest := filepath.Join(findProjectRoot(sourcePath), ".sec", "sec.toml")
+	configured, err := readLSPAnalysisDepth(manifest)
+	if err == nil {
+		return configured
+	}
+	return depth
+}
+
+func readLSPAnalysisDepth(manifest string) (sema.AnalysisDepth, error) {
+	file, err := os.Open(manifest)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	section := ""
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
+			section = strings.TrimSpace(line[1 : len(line)-1])
+			continue
+		}
+		if section != "analysis" {
+			continue
+		}
+		key, value, ok := strings.Cut(line, "=")
+		if !ok || strings.TrimSpace(key) != "lsp_depth" {
+			continue
+		}
+		value = strings.TrimSpace(value)
+		if comment := strings.Index(value, "#"); comment >= 0 {
+			value = strings.TrimSpace(value[:comment])
+		}
+		unquoted, err := strconv.Unquote(value)
+		if err != nil {
+			return "", fmt.Errorf("invalid analysis.lsp_depth in %s: %w", manifest, err)
+		}
+		return sema.ParseAnalysisDepth(unquoted)
+	}
+	if err := scanner.Err(); err != nil {
+		return "", err
+	}
+	return sema.AnalysisInteractive, nil
 }
 
 // findSelectorLHS walks the AST and returns the expression that matches the selector

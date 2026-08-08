@@ -1,0 +1,5 @@
+module main
+
+fn Ready() bool {
+    return true
+}

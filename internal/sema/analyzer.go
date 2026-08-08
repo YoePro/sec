@@ -16,11 +16,14 @@ import (
 )
 
 type Analyzer struct {
+	analysisDepth               AnalysisDepth
+	analysisBudget              AnalysisBudget
 	types                       map[string]Type
 	units                       map[string]UnitDefinition
 	functions                   map[string][]Function
 	externSymbols               map[string]Function
 	implBlocks                  map[string]lexer.Token
+	implBlockModules            map[string]string
 	validImplStatements         map[*ast.ImplStatement]bool
 	currentImplTarget           string
 	currentModule               string
@@ -30,6 +33,10 @@ type Analyzer struct {
 	symbols                     map[string]Symbol
 	completionSymbols           map[string]Symbol
 	expressionTypes             map[ast.Expression]Type
+	bindingIDs                  map[sourceTokenKey]BindingID
+	bindingFacts                map[sourceTokenKey]ResolvedBinding
+	resolvedCalls               map[*ast.CallExpression]ResolvedCall
+	nextBindingID               BindingID
 	definitionTokens            map[sourceTokenKey][]lexer.Token
 	callGraph                   *CallGraph
 	currentCallable             CallableID
@@ -139,11 +146,24 @@ type sourceTokenKey struct {
 }
 
 func NewAnalyzer() *Analyzer {
+	return NewAnalyzerWithDepth(AnalysisStandard)
+}
+
+func NewAnalyzerWithDepth(depth AnalysisDepth) *Analyzer {
+	if _, err := ParseAnalysisDepth(string(depth)); err != nil {
+		depth = AnalysisStandard
+	}
 	return &Analyzer{
-		types: builtinTypes(),
-		units: builtinUnits(),
+		analysisDepth:  depth,
+		analysisBudget: analysisBudget(depth),
+		types:          builtinTypes(),
+		units:          builtinUnits(),
 	}
 }
+
+func (a *Analyzer) AnalysisDepth() AnalysisDepth { return a.analysisDepth }
+
+func (a *Analyzer) AnalysisBudget() AnalysisBudget { return a.analysisBudget }
 
 func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.errors = nil
@@ -152,6 +172,10 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.symbols = map[string]Symbol{}
 	a.completionSymbols = map[string]Symbol{}
 	a.expressionTypes = map[ast.Expression]Type{}
+	a.bindingIDs = map[sourceTokenKey]BindingID{}
+	a.bindingFacts = map[sourceTokenKey]ResolvedBinding{}
+	a.resolvedCalls = map[*ast.CallExpression]ResolvedCall{}
+	a.nextBindingID = 1
 	a.definitionTokens = map[sourceTokenKey][]lexer.Token{}
 	a.callGraph = newCallGraph()
 	a.currentCallable = ""
@@ -174,6 +198,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.externSymbols = map[string]Function{}
 	a.registerCompilerKnownFunctions()
 	a.implBlocks = map[string]lexer.Token{}
+	a.implBlockModules = map[string]string{}
 	a.validImplStatements = map[*ast.ImplStatement]bool{}
 	a.currentImplTarget = ""
 	a.currentModule = ""
@@ -803,41 +828,54 @@ func (a *Analyzer) validateGenericParameterConstraints(parameters []*ast.Generic
 }
 
 func (a *Analyzer) registerImplTypeDeclarations(program *ast.Program) {
-	for _, stmt := range program.Statements {
-		if isNilStatement(stmt) {
-			continue
-		}
+	// Register the single primary impl for each target first. Extension validity
+	// must not depend on which source file was appended to the module program
+	// first.
+	a.withProgramModules(program, func(stmt ast.Statement) {
 		impl, ok := stmt.(*ast.ImplStatement)
-		if !ok {
-			continue
+		if !ok || impl == nil || impl.Extends {
+			return
 		}
-
-		target, ok := a.types[impl.Target.Name]
-		if !ok {
-			a.addErrorAtToken(impl.Target.Token, "unknown impl target %s", impl.Target.Name)
-			continue
-		}
-		if definition, exists := a.typeDefinitionTokens[impl.Target.Name]; exists {
-			a.bindDefinition(impl.Target.Token, definition)
-		}
-		if !target.Named && target.Kind != InvalidType && !isAllowedCoreBuiltinImpl(impl.Target.Name, impl.Target.Token) {
-			a.addErrorAtToken(impl.Target.Token, "impl target %s is not a named type", impl.Target.Name)
-			continue
-		}
-		if target.Kind == InterfaceType {
-			a.addErrorAtToken(impl.Target.Token, "interface %s cannot have an ordinary impl block", impl.Target.Name)
-			continue
-		}
-		if !a.validateImplGenericTarget(impl, target) {
-			continue
+		if _, ok := a.validateImplTarget(impl); !ok {
+			return
 		}
 		if previous, exists := a.implBlocks[impl.Target.Name]; exists {
-			a.addErrorAtTokenWithPrevious(impl.Target.Token, previous, "duplicate impl block for %s", impl.Target.Name)
-			continue
+			a.addErrorAtTokenWithPrevious(impl.Target.Token, previous, "duplicate impl block for %s; additional blocks must use impl extends %s", impl.Target.Name, impl.Target.Name)
+			return
 		}
 		a.implBlocks[impl.Target.Name] = impl.Target.Token
+		a.implBlockModules[impl.Target.Name] = a.currentModule
 		a.validImplStatements[impl] = true
+	})
 
+	// Extensions are validated only after all primaries are known. This permits
+	// the primary and its extensions to live in any files of the same module.
+	a.withProgramModules(program, func(stmt ast.Statement) {
+		impl, ok := stmt.(*ast.ImplStatement)
+		if !ok || impl == nil || !impl.Extends {
+			return
+		}
+		if _, ok := a.validateImplTarget(impl); !ok {
+			return
+		}
+		primary, exists := a.implBlocks[impl.Target.Name]
+		if !exists {
+			a.addErrorAtToken(impl.Target.Token, "impl extends %s requires a primary impl %s block in the same module", impl.Target.Name, impl.Target.Name)
+			return
+		}
+		primaryModule := a.implBlockModules[impl.Target.Name]
+		if primaryModule != a.currentModule {
+			a.addErrorAtTokenWithPrevious(impl.Target.Token, primary, "impl extension for %s must be in module %s", impl.Target.Name, moduleDisplayName(primaryModule))
+			return
+		}
+		a.validImplStatements[impl] = true
+	})
+
+	for _, stmt := range program.Statements {
+		impl, ok := stmt.(*ast.ImplStatement)
+		if !ok || impl == nil || !a.validImplStatements[impl] {
+			continue
+		}
 		nested := map[string]lexer.Token{}
 		for _, member := range impl.Members {
 			name, token, ok := implNestedTypeName(member)
@@ -859,6 +897,32 @@ func (a *Analyzer) registerImplTypeDeclarations(program *ast.Program) {
 			a.registerTypeDefinition(qualified, token)
 		}
 	}
+}
+
+func (a *Analyzer) validateImplTarget(impl *ast.ImplStatement) (Type, bool) {
+	if impl == nil || impl.Target == nil {
+		return Type{}, false
+	}
+	target, ok := a.types[impl.Target.Name]
+	if !ok {
+		a.addErrorAtToken(impl.Target.Token, "unknown impl target %s", impl.Target.Name)
+		return Type{}, false
+	}
+	if definition, exists := a.typeDefinitionTokens[impl.Target.Name]; exists {
+		a.bindDefinition(impl.Target.Token, definition)
+	}
+	if !target.Named && target.Kind != InvalidType && !isAllowedCoreBuiltinImpl(impl.Target.Name, impl.Target.Token) {
+		a.addErrorAtToken(impl.Target.Token, "impl target %s is not a named type", impl.Target.Name)
+		return Type{}, false
+	}
+	if target.Kind == InterfaceType {
+		a.addErrorAtToken(impl.Target.Token, "interface %s cannot have an ordinary impl block", impl.Target.Name)
+		return Type{}, false
+	}
+	if !a.validateImplGenericTarget(impl, target) {
+		return Type{}, false
+	}
+	return target, true
 }
 
 func implNestedTypeName(member ast.ImplMember) (string, lexer.Token, bool) {
@@ -3734,13 +3798,38 @@ func (a *Analyzer) inferFunctionReferenceSummaries(program *ast.Program) {
 	}
 	a.summaryPass = true
 	defer func() { a.summaryPass = false }()
-	for iteration := 0; iteration <= functionCount; iteration++ {
+	iterationLimit := functionCount + 1
+	if configured := a.analysisBudget.MaxSummaryIterations; configured > 0 && configured < iterationLimit {
+		iterationLimit = configured
+	}
+	converged := false
+	for iteration := 0; iteration < iterationLimit; iteration++ {
 		before := copyFunctionReferenceSummaries(a.functions)
 		a.analyzeFunctionBodies(program)
 		a.analyzeImplBodies(program)
 		if functionReferenceSummariesEqual(before, a.functions) {
+			converged = true
 			break
 		}
+	}
+	if !converged {
+		a.widenFunctionReferenceSummaries()
+	}
+}
+
+// widenFunctionReferenceSummaries preserves soundness when an interactive
+// resource limit is reached: unresolved reference-returning calls become
+// unknown rather than retaining a potentially incomplete proof.
+func (a *Analyzer) widenFunctionReferenceSummaries() {
+	for name, overloads := range a.functions {
+		for index := range overloads {
+			if !typeContainsReference(overloads[index].ReturnType, map[string]bool{}) {
+				continue
+			}
+			overloads[index].HasReturnOrigin = true
+			overloads[index].ReturnOrigin = localReferenceOrigin{Unknown: true, Ambiguous: true}
+		}
+		a.functions[name] = overloads
 	}
 }
 
@@ -3878,6 +3967,7 @@ func (a *Analyzer) analyzeFunctionBodyInScope(fn *ast.FunctionDeclaration, name 
 		delete(a.constInts, param.Name)
 		a.assigned[param.Name] = true
 		a.recordDefinition(param.Token)
+		a.recordBinding(param.Token, BindingParameter, param.Name, param.Type, param.MutableRef)
 		a.seedParameterReferenceOrigin(function, param)
 	}
 	a.defineImplicitImplInstanceSymbols(fn.Body, function.ReceiverMutable)
@@ -7409,13 +7499,6 @@ func (a *Analyzer) registerImplStatement(stmt *ast.ImplStatement) {
 	for _, field := range target.Fields {
 		fields[field.Name] = field.Token
 	}
-	nestedTypes := map[string]lexer.Token{}
-	for _, member := range stmt.Members {
-		name, token, ok := implNestedTypeName(member)
-		if ok {
-			nestedTypes[name] = token
-		}
-	}
 	methods := map[string]lexer.Token{}
 	properties := map[string]lexer.Token{}
 	for _, property := range target.Properties {
@@ -7466,7 +7549,7 @@ func (a *Analyzer) registerImplStatement(stmt *ast.ImplStatement) {
 				a.addErrorAtToken(fn.Name.Token, "method %s conflicts with event %s in %s", name, name, stmt.Target.Name)
 				continue
 			}
-			if _, exists := nestedTypes[name]; exists {
+			if _, exists := a.types[stmt.Target.Name+"."+name]; exists {
 				a.addErrorAtToken(fn.Name.Token, "method %s conflicts with nested type %s in %s", name, name, stmt.Target.Name)
 				continue
 			}
@@ -7487,7 +7570,7 @@ func (a *Analyzer) registerImplStatement(stmt *ast.ImplStatement) {
 		}
 
 		if event, ok := member.(*ast.EventDeclaration); ok {
-			a.registerImplEventDeclaration(stmt.Target.Name, &target, event, fields, methods, properties, events, nestedTypes)
+			a.registerImplEventDeclaration(stmt.Target.Name, &target, event, fields, methods, properties, events)
 			targetChanged = true
 			continue
 		}
@@ -7510,11 +7593,11 @@ func (a *Analyzer) registerImplStatement(stmt *ast.ImplStatement) {
 			a.addErrorAtToken(property.Name.Token, "property %s conflicts with event %s in %s", property.Name.Value, property.Name.Value, stmt.Target.Name)
 			continue
 		}
-		if _, exists := methods[property.Name.Value]; exists {
+		if _, exists := methods[property.Name.Value]; exists || len(a.functions[stmt.Target.Name+"."+property.Name.Value]) > 0 {
 			a.addErrorAtToken(property.Name.Token, "property %s conflicts with method %s in %s", property.Name.Value, property.Name.Value, stmt.Target.Name)
 			continue
 		}
-		if _, exists := nestedTypes[property.Name.Value]; exists {
+		if _, exists := a.types[stmt.Target.Name+"."+property.Name.Value]; exists {
 			a.addErrorAtToken(property.Name.Token, "property %s conflicts with nested type %s in %s", property.Name.Value, property.Name.Value, stmt.Target.Name)
 			continue
 		}
@@ -7596,7 +7679,7 @@ func (a *Analyzer) analyzeImplStaticLet(targetName string, stmt *ast.LetStatemen
 	a.recordDefinition(stmt.Name.Token)
 }
 
-func (a *Analyzer) registerImplEventDeclaration(targetName string, target *Type, event *ast.EventDeclaration, fields map[string]lexer.Token, methods map[string]lexer.Token, properties map[string]lexer.Token, events map[string]lexer.Token, nestedTypes map[string]lexer.Token) {
+func (a *Analyzer) registerImplEventDeclaration(targetName string, target *Type, event *ast.EventDeclaration, fields map[string]lexer.Token, methods map[string]lexer.Token, properties map[string]lexer.Token, events map[string]lexer.Token) {
 	if event == nil || event.Name == nil {
 		return
 	}
@@ -7605,7 +7688,7 @@ func (a *Analyzer) registerImplEventDeclaration(targetName string, target *Type,
 		a.addErrorAtToken(event.Name.Token, "event %s conflicts with field %s in %s", name, name, targetName)
 		return
 	}
-	if _, exists := methods[name]; exists {
+	if _, exists := methods[name]; exists || len(a.functions[targetName+"."+name]) > 0 {
 		a.addErrorAtToken(event.Name.Token, "event %s conflicts with method %s in %s", name, name, targetName)
 		return
 	}
@@ -7613,7 +7696,7 @@ func (a *Analyzer) registerImplEventDeclaration(targetName string, target *Type,
 		a.addErrorAtToken(event.Name.Token, "event %s conflicts with property %s in %s", name, name, targetName)
 		return
 	}
-	if _, exists := nestedTypes[name]; exists {
+	if _, exists := a.types[targetName+"."+name]; exists {
 		a.addErrorAtToken(event.Name.Token, "event %s conflicts with nested type %s in %s", name, name, targetName)
 		return
 	}
@@ -8306,6 +8389,7 @@ func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
 	if ok && stmt.Value == nil && stmt.Mutable && stmt.Address == nil {
 		resolution := DefaultValueOf(declaredType)
 		stmt.Value = defaultExpression(resolution, declaredType, stmt.Name.Token)
+		stmt.SynthesizedDefault = stmt.Value != nil
 		if stmt.Value == nil {
 			a.addErrorAtTokenWithMetadata(stmt.Name.Token, diagnostics.NoDefaultValue, "provide an explicit initializer", "mutable variable %s of type %s requires an initializer because the type has no default value", stmt.Name.Value, typeDisplayName(declaredType))
 			ok = false
@@ -11525,6 +11609,7 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 		} else if best[0].Function.Extern {
 			dispatch = CallDispatchForeign
 		}
+		a.resolvedCalls[expr] = ResolvedCall{Function: best[0].Function, Kind: resolvedCallKind(dispatch)}
 		execution, recordCall := a.callGraphExecutionForCall(expr)
 		if !a.summaryPass && a.callGraphPathReachable && recordCall {
 			a.callGraph.addCall(a.currentCallable, best[0].Function, callCalleeDefinitionToken(expr), dispatch, execution)
@@ -14987,6 +15072,9 @@ func (a *Analyzer) defineSymbol(name string, typ Type, mutable bool, token lexer
 	a.symbols[name] = symbol
 	a.completionSymbols[name] = symbol
 	a.recordDefinition(token)
+	if a.inFunctionBody {
+		a.recordBinding(token, BindingLocal, name, typ, mutable)
+	}
 	a.clearRootPlaceState(name)
 	return true
 }

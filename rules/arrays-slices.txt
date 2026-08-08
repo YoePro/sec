@@ -1091,11 +1091,17 @@ Invalid tests should cover:
 - slice passed where an owning array is required
 - array passed where an explicit slice is required
 
-## Initial implementation status
+## Implementation governance
 
-Not implemented by this document yet.
+Implementation status for this rulebook is owned by:
 
-This document is the implementation contract for parser, AST, semantic analysis,
-Semantic IR, MLIR lowering and tests.
+```text
+implementation-status.yaml
+integrations: frontend.arrays-slices, sema.place-analysis,
+              analysis.arena-allocation
+```
+
+This rulebook contains normative requirements and does not duplicate the
+repository's current implementation state.
 
 Full borrow conflict tracking follows in the separate borrow-tracking rules.

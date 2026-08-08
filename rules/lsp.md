@@ -2953,6 +2953,28 @@ sec.diagnostics
 Configuration changes should update the workspace without restarting the server
 where possible.
 
+Closure and callable-flow analysis depth is selected in the project manifest:
+
+```toml
+[analysis]
+lsp_depth = "interactive"
+```
+
+Supported values are `interactive`, `standard`, and `deep`. The default is
+`interactive` when the section, key, or project manifest is absent. The setting
+changes resource budget and optional precision, never source-language semantics
+or which safety proofs are required.
+
+The server must re-read this value after project-configuration notifications or
+watched-file changes, invalidate analysis facts produced under the old depth,
+and refresh affected open-document diagnostics without a server restart.
+
+When pitfall analysis is implemented, its optional configuration and result
+filtering follow `pitfall_analysis.md`. Configuration reload must invalidate
+affected pitfall state and refresh diagnostics and code actions without a
+server restart. Optional pitfall settings never suppress the normative compiler
+diagnostic that owns a proven language error.
+
 ---
 
 # Testing
@@ -3086,6 +3108,7 @@ platform_model.md
 call_graph.md
 stack_analysis.md
 escape_analysis.md
+pitfall_analysis.md
 effect_analysis.md
 isr_analysis.md
 data_races.md

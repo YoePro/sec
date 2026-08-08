@@ -35,6 +35,7 @@ const (
 	ELSE        TokenType = "ELSE"
 	ENUM        TokenType = "ENUM"
 	EXTERN      TokenType = "EXTERN"
+	EXTENDS     TokenType = "EXTENDS"
 	FALLTHROUGH TokenType = "FALLTHROUGH"
 	FALSE       TokenType = "FALSE"
 	FN          TokenType = "FN"
@@ -838,6 +839,8 @@ func lookupIdent(s string) TokenType {
 		return FALLTHROUGH
 	case "extern":
 		return EXTERN
+	case "extends":
+		return EXTENDS
 	case "fn":
 		return FN
 	case "for":

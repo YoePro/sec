@@ -2471,9 +2471,143 @@ impl Vehicle {
 
 	errors := analyzeSource(t, input)
 	expected := []string{
-		"duplicate impl block for Vehicle at 8:6, previous declaration at 5:6",
+		"duplicate impl block for Vehicle; additional blocks must use impl extends Vehicle at 8:6, previous declaration at 5:6",
 	}
 	assertSemaErrors(t, errors, expected)
+}
+
+func TestExplicitImplExtensionsComposeMemberSurface(t *testing.T) {
+	input := `
+type Vehicle struct {
+	speed: int,
+}
+
+impl Vehicle {
+	fn Speed() int {
+		return self.speed
+	}
+}
+
+impl extends Vehicle {
+	fn IsStopped() bool {
+		return self.Speed() == 0
+	}
+}
+
+impl extends Vehicle {
+	fn Stop() void {
+		self.speed = 0
+	}
+}
+
+fn Test(vehicle: Vehicle) bool {
+	return vehicle.IsStopped()
+}
+`
+
+	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
+	assertSemaErrors(t, errors, nil)
+	for _, name := range []string{"Vehicle.Speed", "Vehicle.IsStopped", "Vehicle.Stop"} {
+		if len(analyzer.functions[name]) != 1 {
+			t.Fatalf("missing composed impl method %s: %+v", name, analyzer.functions[name])
+		}
+	}
+}
+
+func TestImplExtensionRequiresPrimaryBlock(t *testing.T) {
+	input := `
+type Vehicle struct {
+}
+
+impl extends Vehicle {
+	fn Stop() void {
+	}
+}
+`
+
+	errors := analyzeSource(t, input)
+	assertSemaErrors(t, errors, []string{
+		"impl extends Vehicle requires a primary impl Vehicle block in the same module at 5:14",
+	})
+}
+
+func TestImplExtensionMayLiveInAnotherFileOfSameModule(t *testing.T) {
+	primary := parser.New(lexer.NewWithFile(`module fleet
+
+type Vehicle struct {
+}
+
+impl Vehicle {
+	fn Start() void {
+	}
+}
+`, "vehicle.sec")).ParseProgram()
+	extension := parser.New(lexer.NewWithFile(`module fleet
+
+impl extends Vehicle {
+	fn Stop() void {
+	}
+}
+`, "vehicle_stop.sec")).ParseProgram()
+	// Put the extension first to prove that neither file nor declaration order
+	// determines whether the primary is found.
+	program := &ast.Program{Statements: append(extension.Statements, primary.Statements...)}
+
+	analyzer := NewAnalyzer()
+	assertSemaErrors(t, analyzer.Analyze(program), nil)
+	for _, name := range []string{"Vehicle.Start", "Vehicle.Stop"} {
+		if len(analyzer.functions[name]) != 1 {
+			t.Fatalf("missing cross-file impl method %s", name)
+		}
+	}
+}
+
+func TestImplExtensionCannotCrossModuleBoundary(t *testing.T) {
+	primary := parser.New(lexer.NewWithFile(`module fleet
+
+type Vehicle struct {
+}
+
+impl Vehicle {
+}
+`, "vehicle.sec")).ParseProgram()
+	extension := parser.New(lexer.NewWithFile(`module workshop
+
+impl extends Vehicle {
+}
+`, "workshop.sec")).ParseProgram()
+	program := &ast.Program{Statements: append(primary.Statements, extension.Statements...)}
+
+	errors := NewAnalyzer().Analyze(program)
+	assertSemaErrors(t, errors, []string{
+		"impl extension for Vehicle must be in module fleet at workshop.sec:3:14, previous declaration at vehicle.sec:6:6",
+	})
+}
+
+func TestImplExtensionMemberConflictsAreCheckedAcrossBlocks(t *testing.T) {
+	input := `
+type Vehicle struct {
+}
+
+impl Vehicle {
+	fn Status() int {
+		return 0
+	}
+}
+
+impl extends Vehicle {
+	property Status: int {
+		get {
+			return 0
+		}
+	}
+}
+`
+
+	errors := analyzeSource(t, input)
+	assertSemaErrors(t, errors, []string{
+		"property Status conflicts with method Status in Vehicle at 12:11",
+	})
 }
 
 func TestDuplicateNestedTypeAcrossImplBlocks(t *testing.T) {

@@ -175,11 +175,44 @@ Members may be:
 
 ## Multiple impl blocks
 
-A type may have only one ordinary `impl` block.
+A type has exactly zero or one primary ordinary `impl` block:
 
-This keeps the language predictable and avoids scattering a type's behavior across multiple files.
+```sec
+impl Vehicle {
+    fn Start() void {
+    }
+}
+```
 
-Interface requirements are satisfied by the same ordinary `impl` block.
+Additional blocks must be explicit extensions:
+
+```sec
+impl extends Vehicle {
+    fn Stop() void {
+    }
+}
+```
+
+Any number of explicit extension blocks may contribute members to the same
+target when all of the following hold:
+
+- the target has a primary `impl Target` block;
+- the primary block and every extension belong to the same module;
+- all ordinary member uniqueness, overload, visibility, generic, and interface
+  conformance rules hold across the combined member surface.
+
+The primary block and extensions may reside in different files of that module.
+Their source-file and declaration order has no semantic significance.
+
+Writing a second `impl Vehicle` remains invalid. Writing `impl extends Vehicle`
+without a same-module primary block is also invalid. Imported modules cannot add
+extensions to another module's type.
+
+The explicit marker makes intentional splitting visible while retaining one
+clear primary home for the type's behavior.
+
+Interface requirements are satisfied by the combined member surface of the
+primary ordinary impl and its valid same-module extensions.
 
 ---
 
@@ -330,7 +363,10 @@ Pass 1 registers the impl target and nested type names:
 - verify that the impl target exists
 - verify that the target is a named type
 - reject interface targets as ordinary impl targets
-- reject duplicate ordinary impl blocks for the same target
+- register at most one primary ordinary impl block for each target
+- collect explicit `impl extends Target` blocks after all primary blocks are known
+- require each extension's primary block to exist in the same module
+- reject duplicate unmarked ordinary impl blocks for the same target
 - validate generic target arguments
 - register nested type names such as `Vehicle.Engine`
 - reject duplicate nested type names
@@ -513,7 +549,8 @@ An `impl` block must not:
 During semantic analysis the compiler validates:
 
 - target type exists
-- only one ordinary `impl` exists
+- only one primary ordinary `impl` exists
+- every explicit impl extension has a same-module primary impl
 - generic parameters match
 - duplicate member names
 - duplicate properties
@@ -528,6 +565,10 @@ During semantic analysis the compiler validates:
 Implemented:
 
 - parsing ordinary `impl Target { ... }`
+- parsing explicit `impl extends Target { ... }` extensions
+- composing primary and extension members across files in the same module
+- declaration-order-independent primary/extension validation
+- rejecting unmarked duplicate blocks, orphan extensions, and cross-module extensions
 - parsing nested `type`, `unit`, `enum`, `property`, `event` and `fn` declarations
 - rejecting free-standing statements inside ordinary impl blocks
 - registering nested type names as qualified names

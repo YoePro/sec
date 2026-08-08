@@ -47,6 +47,16 @@ func (d *Documents) Snapshot(uri string) (Snapshot, bool) {
 	return snapshot, ok
 }
 
+func (d *Documents) Snapshots() []Snapshot {
+	d.mu.RLock()
+	snapshots := make([]Snapshot, 0, len(d.open))
+	for _, snapshot := range d.open {
+		snapshots = append(snapshots, snapshot)
+	}
+	d.mu.RUnlock()
+	return snapshots
+}
+
 func (d *Documents) Close(uri string) {
 	d.mu.Lock()
 	delete(d.open, uri)

@@ -3,6 +3,10 @@ module units
 /** Joule */
 unit J decimal physical
 impl J {
+    LongName: "Joule"
+    Symbol: "J"
+    BaseUnit: false
+    Status: active
     dimension: [mass^1, length^2, time^-2]
     scale: 1
     system: SI
@@ -27,6 +31,10 @@ impl J {
 /** Watt */
 unit W decimal physical
 impl W {
+    LongName: "Watt"
+    Symbol: "W"
+    BaseUnit: false
+    Status: active
     dimension: [mass^1, length^2, time^-3]
     scale: 1
     system: SI
@@ -51,6 +59,10 @@ impl W {
 /** Watt-hour (Energy) */
 unit Wh decimal physical
 impl Wh {
+    LongName: "Watt Hour"
+    Symbol: "Wh"
+    BaseUnit: false
+    Status: active
     dimension: [mass^1, length^2, time^-2]
     scale: 3600 // 1 hour = 3600 seconds
     system: SI
@@ -73,4 +85,3 @@ impl Wh {
         return float<Wh>(float(AmpHour) * float(Volt))
     }
 }
-

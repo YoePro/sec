@@ -23,7 +23,8 @@ impl InterfaceTarget {
 }
 
 // -----------------------------------------------------------------------------
-// Only one ordinary impl block is allowed for a type
+// Only one primary ordinary impl block is allowed for a type. Additional
+// blocks must use `impl extends Target`.
 // -----------------------------------------------------------------------------
 
 type DuplicateImplTarget struct {

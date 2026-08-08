@@ -1,0 +1,7 @@
+module main
+
+fn First() int { return 1 }
+fn Second() int { return 2 }
+fn Pair(left: int, right: int) int { return left }
+
+fn Main() int { return Pair(First(), Second()) }

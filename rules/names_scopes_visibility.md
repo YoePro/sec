@@ -281,8 +281,8 @@ Outside the containing type and its `impl`, the qualified name is required:
 Vehicle.FuelType
 ```
 
-Inside the owning type's `impl`, the short nested name may be used when it is
-unambiguous:
+Inside the owning type's primary `impl` or a same-module `impl extends` block,
+the short nested name may be used when it is unambiguous:
 
 ```sec
 impl Vehicle {
@@ -325,6 +325,11 @@ analysis.
 
 Function, type, and impl-member surfaces are registered before bodies are
 analyzed.
+
+The member surface of a primary `impl Target` and all same-module
+`impl extends Target` blocks is one combined type-member scope. Source-file and
+block order do not change lookup, visibility, overload, or duplicate-name
+results. An extension in another module is not a valid scope contribution.
 
 Local variables normally become visible only after their declaration has been
 successfully analyzed.
@@ -645,7 +650,8 @@ fn __ReadHeader() void {
 The name is unavailable from other files, including other files in the same
 module.
 
-For a type member, the declaring owner is the type and its ordinary `impl`:
+For a type member, the declaring owner is the type, its primary ordinary
+`impl`, and its valid same-module extensions:
 
 ```sec
 type Counter struct {

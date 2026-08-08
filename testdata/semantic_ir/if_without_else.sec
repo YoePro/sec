@@ -1,0 +1,6 @@
+module main
+
+fn Choose(flag: bool) int {
+    if flag { return 1 }
+    return 2
+}

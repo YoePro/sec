@@ -1,0 +1,5 @@
+module main
+
+fn Ratio() float64 {
+    return 1.25
+}

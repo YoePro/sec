@@ -30,3 +30,12 @@ func TestFormatPlacesNoCopyAttributeOnOwnLine(t *testing.T) {
 		t.Fatalf("wrong @noCopy formatting:\n%s\nwant:\n%s", got, want)
 	}
 }
+
+func TestFormatImplExtension(t *testing.T) {
+	input := "impl extends Vehicle {\nfn Stop() void {\n}\n}\n"
+	want := "impl extends Vehicle {\n    fn Stop() void {\n    }\n}\n"
+	got := Format(Source{Text: input}, Options{}).Text
+	if got != want {
+		t.Fatalf("wrong impl extension formatting:\n%s\nwant:\n%s", got, want)
+	}
+}

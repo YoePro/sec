@@ -1,0 +1,306 @@
+package:
+  id: SEC-MLIR-DIALECT-P1
+  name: Dialect Foundation
+  schema_version: 1
+  repository: https://github.com/YoePro/sec
+  branch: main
+  repository_sync_commit: d48035c
+  repository_sync_date: '2026-08-08'
+  implementation_language:
+  - C++
+  - TableGen
+  - CMake
+  - Go
+  package_boundary: Buildable and testable Sec dialect foundation; no compiler migration.
+authority:
+- rules/<applicable-domain-rulebooks>
+- rules/semantic_ir.txt
+- rules/sec_mlir.md
+- rules/sec_mlir_dialect.md
+- implementation
+prerequisite_files:
+  add:
+  - path: rules/sec_mlir_dialect.md
+    source_artifact: sec_mlir_dialect.md
+    required: true
+scope:
+  required:
+  - Sec dialect registration
+  - TableGen/ODS setup
+  - out-of-tree MLIR CMake project
+  - sec-mlir-opt driver
+  - '!sec.named type'
+  - '!sec.distinct type'
+  - reserved metadata conventions
+  - MLIR Location source provenance
+  - schema version marker convention
+  - structural verification
+  - lit test harness
+  - Go Toolchain.VerifySec integration
+  - Go regression coverage
+  forbidden:
+  - Semantic IR to Sec MLIR importer
+  - Sec MLIR lowering passes
+  - ownership operations
+  - copy/move/destruction operations
+  - cleanup/defer operations
+  - references and storage operations
+  - checks and panic operations
+  - Result/Option/try operations
+  - aggregate operations
+  - allocation/arena/string operations
+  - register/MMIO/volatile operations
+  - concurrency operations
+  - ABI lowering
+  - replacement of internal/codegen/mlir/generator.go
+  - placeholder semantic operations for future packages
+dialect:
+  namespace: sec
+  cpp_namespace: ::sec
+  extensible: false
+  version_marker:
+    attribute: sec.dialect_version
+    type: i32
+    value: 1
+  types:
+    named:
+      syntax: '!sec.named<"type-id", base-type>'
+      parameters:
+      - identity:StringAttr
+      - base:Type
+      verify:
+      - identity is non-empty
+      - base is a valid MLIR Type
+      - base is not NoneType
+    distinct:
+      syntax: '!sec.distinct<"type-id", base-type>'
+      parameters:
+      - identity:StringAttr
+      - base:Type
+      verify:
+      - identity is non-empty
+      - base is a valid MLIR Type
+      - base is not NoneType
+  metadata:
+    sec.symbol_id: StringAttr
+    sec.type_id: StringAttr
+    sec.layout_ref: StringAttr
+    sec.synthesized: BoolAttr
+    sec.dialect_version: IntegerAttr(i32)
+  source_provenance: Use standard MLIR Location. Do not add duplicate Sec file/line/column
+    attributes.
+filesystem:
+  root: mlir/
+  required_paths:
+  - mlir/CMakeLists.txt
+  - mlir/include/sec/Dialect/Sec/CMakeLists.txt
+  - mlir/include/sec/Dialect/Sec/SecDialect.td
+  - mlir/include/sec/Dialect/Sec/SecTypes.td
+  - mlir/include/sec/Dialect/Sec/SecDialect.h
+  - mlir/include/sec/Dialect/Sec/SecTypes.h
+  - mlir/lib/Dialect/Sec/CMakeLists.txt
+  - mlir/lib/Dialect/Sec/SecDialect.cpp
+  - mlir/lib/Dialect/Sec/SecTypes.cpp
+  - mlir/tools/sec-mlir-opt/CMakeLists.txt
+  - mlir/tools/sec-mlir-opt/sec-mlir-opt.cpp
+  - mlir/test/CMakeLists.txt
+  - mlir/test/lit.cfg.py
+  - mlir/test/lit.site.cfg.py.in
+  - mlir/test/Dialect/Sec/dialect-loading.mlir
+  - mlir/test/Dialect/Sec/named-type-roundtrip.mlir
+  - mlir/test/Dialect/Sec/distinct-type-roundtrip.mlir
+  - mlir/test/Dialect/Sec/metadata-roundtrip.mlir
+  - mlir/test/Dialect/Sec/invalid-named-type.mlir
+  - mlir/test/Dialect/Sec/invalid-distinct-type.mlir
+build:
+  model: out-of-tree MLIR project
+  must_use:
+  - MLIR_DIR
+  - LLVM_DIR when required by the installed MLIR package
+  - TableGen/ODS
+  - generated headers in build tree
+  must_not:
+  - vendor LLVM/MLIR
+  - hard-code developer-local LLVM/MLIR paths in CMake
+  - commit generated TableGen output
+  configure_example: cmake -S mlir -B build/sec-mlir -G Ninja -DMLIR_DIR=/path/to/llvm-project/build/lib/cmake/mlir
+    -DLLVM_DIR=/path/to/llvm-project/build/lib/cmake/llvm
+  build_command: cmake --build build/sec-mlir
+  test_command: cmake --build build/sec-mlir --target check-sec-mlir
+go_integration:
+  file: internal/mlir/toolchain.go
+  add_method: VerifySec
+  executable: sec-mlir-opt
+  reuse_existing:
+  - Toolchain.run
+  - Toolchain.toolPath
+  - SEC_MLIR_BIN
+  must_not_change:
+  - Verify
+  - TranslateToLLVMIR
+  - normal compilation routing
+tests:
+- id: T01
+  name: dialect registration
+  kind: lit
+  expected: minimal module parses and prints with sec-mlir-opt
+- id: T02
+  name: named type round trip
+  kind: lit
+  expected: '!sec.named<"main::Speed", i64> survives parse/print'
+- id: T03
+  name: distinct type round trip
+  kind: lit
+  expected: '!sec.distinct<"main::CustomerID", i64> survives parse/print'
+- id: T04
+  name: type identity equality
+  kind: C++ unit or equivalent
+  expected: same identity+base equals; different identity with same base does not
+    equal
+- id: T05
+  name: empty named identity rejected
+  kind: negative lit/unit
+  expected: failure with clear diagnostic
+- id: T06
+  name: empty distinct identity rejected
+  kind: negative lit/unit
+  expected: failure with clear diagnostic
+- id: T07
+  name: metadata round trip
+  kind: lit
+  expected: reserved metadata attributes survive parse/print
+- id: T08
+  name: source location round trip
+  kind: lit
+  expected: loc("sample.sec":12:8) survives parse/print
+- id: T09
+  name: unknown Sec type rejected
+  kind: negative lit
+  expected: unregistered Sec type mnemonic fails
+- id: T10
+  name: unknown dialect operation rejected
+  kind: negative lit
+  expected: unregistered operation fails without explicit allow-unregistered option
+- id: T11
+  name: Go VerifySec invocation
+  kind: go unit
+  expected: invokes sec-mlir-opt without requiring a real installed MLIR in the unit
+    test
+- id: T12
+  name: Go full regression
+  kind: command
+  command: go test ./...
+  expected: pass
+- id: T13
+  name: legacy MLIR generator regression
+  kind: go unit
+  path: internal/codegen/mlir
+  expected: existing semantic expectations remain green
+- id: T14
+  name: C++ build
+  kind: command
+  command: cmake --build build/sec-mlir
+  expected: pass and sec-mlir-opt links
+- id: T15
+  name: lit suite
+  kind: command
+  command: cmake --build build/sec-mlir --target check-sec-mlir
+  expected: pass
+acceptance:
+- rules/sec_mlir_dialect.md added from supplied artifact
+- mlir project configures against external MLIR
+- TableGen generates dialect/type code
+- sec dialect registers
+- sec-mlir-opt builds
+- '!sec.named parses/verifies/prints'
+- '!sec.distinct parses/verifies/prints'
+- malformed Package 1 types are rejected
+- source locations round-trip
+- reserved metadata round-trip
+- check-sec-mlir passes
+- go test ./... passes
+- legacy MLIR generator remains operational
+- normal compiler path is not redirected
+- no future semantic placeholder operations are added
+completion_report:
+- files added
+- files modified
+- exact LLVM/MLIR version used
+- CMake configure command
+- build command
+- test commands
+- test results
+- deviations
+- Package 2 follow-up items
+next_package:
+  name: Semantic IR to high-level Sec MLIR import foundation
+  not_part_of_this_package: true
+implementation_status:
+  ledger: sec-mlir-dialect-package
+  status: implemented
+  completed_on: '2026-08-08'
+  compiler_implementation_status_sync: deliberately_not_merged
+  rationale: Dialect package progress is tracked independently from compiler implementation-status.yaml.
+  files_added:
+  - mlir/CMakeLists.txt
+  - mlir/include/CMakeLists.txt
+  - mlir/include/sec/CMakeLists.txt
+  - mlir/include/sec/Dialect/CMakeLists.txt
+  - mlir/include/sec/Dialect/Sec/CMakeLists.txt
+  - mlir/include/sec/Dialect/Sec/SecDialect.td
+  - mlir/include/sec/Dialect/Sec/SecTypes.td
+  - mlir/include/sec/Dialect/Sec/SecDialect.h
+  - mlir/include/sec/Dialect/Sec/SecTypes.h
+  - mlir/lib/CMakeLists.txt
+  - mlir/lib/Dialect/CMakeLists.txt
+  - mlir/lib/Dialect/Sec/CMakeLists.txt
+  - mlir/lib/Dialect/Sec/SecDialect.cpp
+  - mlir/lib/Dialect/Sec/SecTypes.cpp
+  - mlir/tools/CMakeLists.txt
+  - mlir/tools/sec-mlir-opt/CMakeLists.txt
+  - mlir/tools/sec-mlir-opt/sec-mlir-opt.cpp
+  - mlir/test/CMakeLists.txt
+  - mlir/test/lit.cfg.py
+  - mlir/test/lit.site.cfg.py.in
+  - mlir/test/Dialect/Sec/dialect-loading.mlir
+  - mlir/test/Dialect/Sec/named-type-roundtrip.mlir
+  - mlir/test/Dialect/Sec/distinct-type-roundtrip.mlir
+  - mlir/test/Dialect/Sec/identity-separation.mlir
+  - mlir/test/Dialect/Sec/metadata-roundtrip.mlir
+  - mlir/test/Dialect/Sec/source-location-roundtrip.mlir
+  - mlir/test/Dialect/Sec/invalid-named-type.mlir
+  - mlir/test/Dialect/Sec/invalid-distinct-type.mlir
+  - mlir/test/Dialect/Sec/invalid-none-base.mlir
+  - mlir/test/Dialect/Sec/unknown-sec-type.mlir
+  - mlir/test/Dialect/Sec/unknown-operation.mlir
+  - internal/mlir/toolchain_test.go
+  files_modified:
+  - .gitignore
+  - internal/mlir/toolchain.go
+  - rules/mlir-dialect-packages/sec-mlir-dialect_package1.yaml
+  toolchain:
+    llvm_mlir_version: 24.0.0git
+    build_kind: Optimized build with assertions
+  commands:
+    configure: cmake -S mlir -B build/sec-mlir -G Ninja -DMLIR_DIR=/home/jonas/mlir/llvm-project/build/lib/cmake/mlir -DLLVM_DIR=/home/jonas/mlir/llvm-project/build/lib/cmake/llvm
+    build: cmake --build build/sec-mlir
+    dialect_tests: cmake --build build/sec-mlir --target check-sec-mlir
+    go_tests: go test ./...
+  results:
+    cmake_configure: pass
+    cpp_build: pass
+    lit:
+      status: pass
+      discovered: 11
+      passed: 11
+      failed: 0
+    go_test_all: pass
+    legacy_mlir_generator_regression: pass
+  deviations:
+  - Added explicit identity-separation coverage as an equivalent verifier-level equality test.
+  - Added NoneType rejection coverage beyond the two required malformed-identity files.
+  - No compiler routing was redirected to sec-mlir-opt.
+  package_2_follow_up:
+  - Define the Semantic IR import boundary and stable importer API.
+  - Introduce only the high-level operations required by that importer package.
+  - Preserve the existing compiler MLIR generator until an explicit migration package is accepted.

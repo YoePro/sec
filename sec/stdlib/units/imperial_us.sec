@@ -1,0 +1,233 @@
+module units
+
+// =============================================================================
+// Imperial, US customary, and nautical units with exact SI scales
+// =============================================================================
+
+/** Inch */
+unit inch physical
+impl inch {
+    LongName: "Inch"
+    Symbol: "in"
+    BaseUnit: false
+    Status: active
+    Dimension: [length^1]
+    Scale: 127 / 5000
+    System: Imperial
+}
+
+/** Foot */
+unit ft physical
+impl ft {
+    LongName: "Foot"
+    Symbol: "ft"
+    BaseUnit: false
+    Status: active
+    Dimension: [length^1]
+    Scale: 381 / 1250
+    System: Imperial
+}
+
+/** Yard */
+unit yd physical
+impl yd {
+    LongName: "Yard"
+    Symbol: "yd"
+    BaseUnit: false
+    Status: active
+    Dimension: [length^1]
+    Scale: 1143 / 1250
+    System: Imperial
+}
+
+/** International mile */
+unit mi physical
+impl mi {
+    LongName: "Mile"
+    Symbol: "mi"
+    BaseUnit: false
+    Status: active
+    Dimension: [length^1]
+    Scale: 201168 / 125
+    System: Imperial
+}
+
+/** Nautical mile */
+unit nmi physical
+impl nmi {
+    LongName: "Nautical Mile"
+    Symbol: "nmi"
+    BaseUnit: false
+    Status: active
+    Dimension: [length^1]
+    Scale: 1852
+    System: Nautical
+}
+
+/** Knot */
+unit knot physical
+impl knot {
+    LongName: "Knot"
+    Symbol: "kn"
+    BaseUnit: false
+    Status: active
+    Dimension: [length^1, time^-1]
+    Scale: 463 / 900
+    System: Nautical
+}
+
+/** Mile per hour */
+unit mph physical
+impl mph {
+    LongName: "Mile per Hour"
+    Symbol: "mph"
+    BaseUnit: false
+    Status: active
+    Dimension: [length^1, time^-1]
+    Scale: 1397 / 3125
+    System: Imperial
+}
+
+/** Acre */
+unit acre physical
+impl acre {
+    LongName: "Acre"
+    Symbol: "ac"
+    BaseUnit: false
+    Status: active
+    Dimension: [length^2]
+    Scale: 316160658 / 78125
+    System: Imperial
+}
+
+/** Imperial fluid ounce */
+unit floz_imp physical
+impl floz_imp {
+    LongName: "Imperial Fluid Ounce"
+    Symbol: "fl oz imp"
+    BaseUnit: false
+    Status: active
+    Dimension: [length^3]
+    Scale: 284130625 / 10000000000000
+    System: Imperial
+}
+
+/** Imperial pint */
+unit pint_imp physical
+impl pint_imp {
+    LongName: "Imperial Pint"
+    Symbol: "pt imp"
+    BaseUnit: false
+    Status: active
+    Dimension: [length^3]
+    Scale: 56826125 / 100000000000
+    System: Imperial
+}
+
+/** Imperial gallon */
+unit gal_imp physical
+impl gal_imp {
+    LongName: "Imperial Gallon"
+    Symbol: "gal imp"
+    BaseUnit: false
+    Status: active
+    Dimension: [length^3]
+    Scale: 454609 / 100000000
+    System: Imperial
+}
+
+/** US liquid fluid ounce */
+unit floz_us physical
+impl floz_us {
+    LongName: "US Fluid Ounce"
+    Symbol: "fl oz US"
+    BaseUnit: false
+    Status: active
+    Dimension: [length^3]
+    Scale: 473176473 / 16000000000000
+    System: USCustomary
+}
+
+/** US liquid pint */
+unit pint_us physical
+impl pint_us {
+    LongName: "US Liquid Pint"
+    Symbol: "pt US"
+    BaseUnit: false
+    Status: active
+    Dimension: [length^3]
+    Scale: 473176473 / 1000000000000
+    System: USCustomary
+}
+
+/** US liquid gallon */
+unit gal_us physical
+impl gal_us {
+    LongName: "US Liquid Gallon"
+    Symbol: "gal US"
+    BaseUnit: false
+    Status: active
+    Dimension: [length^3]
+    Scale: 473176473 / 125000000000
+    System: USCustomary
+}
+
+/** International avoirdupois ounce */
+unit oz physical
+impl oz {
+    LongName: "Ounce"
+    Symbol: "oz"
+    BaseUnit: false
+    Status: active
+    Dimension: [mass^1]
+    Scale: 45359237 / 1600000000
+    System: Imperial
+}
+
+/** International avoirdupois pound */
+unit lb physical
+impl lb {
+    LongName: "Pound"
+    Symbol: "lb"
+    BaseUnit: false
+    Status: active
+    Dimension: [mass^1]
+    Scale: 45359237 / 100000000
+    System: Imperial
+}
+
+/** Stone */
+unit stone physical
+impl stone {
+    LongName: "Stone"
+    Symbol: "st"
+    BaseUnit: false
+    Status: active
+    Dimension: [mass^1]
+    Scale: 317514659 / 50000000
+    System: Imperial
+}
+
+/** Pound-force */
+unit lbf physical
+impl lbf {
+    LongName: "Pound Force"
+    Symbol: "lbf"
+    BaseUnit: false
+    Status: active
+    Dimension: [mass^1, length^1, time^-2]
+    Scale: 4.4482216152605
+    System: Imperial
+}
+
+/** Pound per square inch */
+unit psi physical
+impl psi {
+    LongName: "Pound per Square Inch"
+    Symbol: "psi"
+    BaseUnit: false
+    Status: active
+    Dimension: [mass^1, length^-1, time^-2]
+    Scale: 6894.757293168
+    System: Imperial
+}

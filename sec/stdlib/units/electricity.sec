@@ -7,6 +7,10 @@ module units
 /** Coulomb */
 unit C decimal physical
 impl C {
+    LongName: "Coulomb"
+    Symbol: "C"
+    BaseUnit: false
+    Status: active
     dimension: [electric_current^1, time^1]
     scale: 1
     system: SI
@@ -87,6 +91,10 @@ impl C {
 /** Volt */
 unit V decimal physical
 impl V {
+    LongName: "Volt"
+    Symbol: "V"
+    BaseUnit: false
+    Status: active
 
     dimension: [mass^1, length^2, time^-3, electric_current^-1]
     scale: 1
@@ -121,6 +129,10 @@ impl V {
 /** Ohm */
 unit ohm decimal physical
 impl ohm {
+    LongName: "Ohm"
+    Symbol: "Ω"
+    BaseUnit: false
+    Status: active
     dimension: [mass^1, length^2, time^-3, electric_current^-2]
     scale: 1
     system: SI
@@ -173,23 +185,27 @@ impl ohm {
 /** Siemens */
 unit S decimal physical
 impl S {
+    LongName: "Siemens"
+    Symbol: "S"
+    BaseUnit: false
+    Status: active
     dimension: [mass^-1, length^-2, time^3, electric_current^2]
     scale: 1
     system: SI
 
-    fn S(Ohm: decimal<ohm>) decimal<S> {
+    fn FromResistance(Ohm: decimal<ohm>) decimal<S> {
         return decimal<S>(decimal(1) / decimal(Ohm))
     }
 
-    fn S(Ohm: float<ohm>) float<S> {
+    fn FromResistance(Ohm: float<ohm>) float<S> {
         return float<S>(1.0f / float(Ohm))
     }
 
-    fn S(Ohm: int<ohm>) int<S> {
+    fn FromResistance(Ohm: int<ohm>) int<S> {
         return int<S>(int(1) / int(Ohm))
     }
 
-    fn S(Ohm: uint<ohm>) uint<S> {
+    fn FromResistance(Ohm: uint<ohm>) uint<S> {
         return uint<S>(uint(1) / uint(Ohm))
     }
 }
@@ -197,6 +213,10 @@ impl S {
 /** Farad */
 unit F decimal physical
 impl F {
+    LongName: "Farad"
+    Symbol: "F"
+    BaseUnit: false
+    Status: active
     dimension: [mass^-1, length^-2, time^4, electric_current^2]
     scale: 1
     system: SI
@@ -221,6 +241,10 @@ impl F {
 /** Weber */
 unit Wb decimal physical
 impl Wb {
+    LongName: "Weber"
+    Symbol: "Wb"
+    BaseUnit: false
+    Status: active
     dimension: [mass^1, length^2, time^-2, electric_current^-1]
     scale: 1
     system: SI
@@ -245,6 +269,10 @@ impl Wb {
 /** Tesla */
 unit T decimal physical
 impl T {
+    LongName: "Tesla"
+    Symbol: "T"
+    BaseUnit: false
+    Status: active
     dimension: [mass^1, time^-2, electric_current^-1]
     scale: 1
     system: SI
@@ -254,6 +282,10 @@ impl T {
 /** Henry */
 unit H decimal physical
 impl H {
+    LongName: "Henry"
+    Symbol: "H"
+    BaseUnit: false
+    Status: active
     dimension: [mass^1, length^2, time^-2, electric_current^-2]
     scale: 1
     system: SI
@@ -278,6 +310,10 @@ impl H {
 /** Radians per second (Angular frequency) */
 unit rad_s decimal physical
 impl rad_s {
+    LongName: "Radian per Second"
+    Symbol: "rad/s"
+    BaseUnit: false
+    Status: active
     dimension: [time^-1]
     scale: 1
     system: SI
@@ -295,6 +331,10 @@ impl rad_s {
 /** Decibel (Ratio/Gain) */
 unit dB decimal physical
 impl dB {
+    LongName: "Decibel"
+    Symbol: "dB"
+    BaseUnit: false
+    Status: active
     dimension: [] // Dimensionless ratio
     scale: 1
     system: SI
@@ -317,6 +357,10 @@ impl dB {
 /** Volt-Ampere (Apparent Power) */
 unit VA decimal physical
 impl VA {
+    LongName: "Volt Ampere"
+    Symbol: "VA"
+    BaseUnit: false
+    Status: active
     dimension: [mass^1, length^2, time^-3]
     scale: 1
     system: SI
@@ -333,6 +377,10 @@ impl VA {
 /** Volt-Ampere Reactive (Reactive Power) */
 unit var decimal physical
 impl var {
+    LongName: "Volt Ampere Reactive"
+    Symbol: "var"
+    BaseUnit: false
+    Status: active
     dimension: [mass^1, length^2, time^-3]
     scale: 1
     system: SI
@@ -350,6 +398,10 @@ impl var {
 /** Ampere-hour (Battery Charge Capacity) */
 unit Ah decimal physical
 impl Ah {
+    LongName: "Ampere Hour"
+    Symbol: "Ah"
+    BaseUnit: false
+    Status: active
     dimension: [electric_current^1, time^1]
     scale: 3600 // 1 hour = 3600 seconds
     system: SI

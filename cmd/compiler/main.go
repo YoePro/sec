@@ -13,6 +13,7 @@ import (
 	"sec/internal/ast"
 	llvmcodegen "sec/internal/codegen/llvm"
 	mlircodegen "sec/internal/codegen/mlir"
+	semantic "sec/internal/ir/semantic"
 	"sec/internal/lexer"
 	mlirtoolchain "sec/internal/mlir"
 	"sec/internal/parser"
@@ -44,6 +45,11 @@ func main() {
 
 	if command == "emit-llvm" {
 		runEmitLLVMCommand(flag.Args()[1:])
+		return
+	}
+
+	if command == "emit-ir" {
+		runEmitIRCommand(flag.Args()[1:])
 		return
 	}
 
@@ -117,6 +123,7 @@ func printUsage() {
 	fmt.Fprintln(os.Stderr, "       sec init [path] [--name <name>] [--target <os-arch>] [--profile <profile>]")
 	fmt.Fprintln(os.Stderr, "       sec <parse|ast|sema> <file.sec|dir|glob>...")
 	fmt.Fprintln(os.Stderr, "       sec emit-llvm <file.sec> -o <file.ll|-> [--target <os-arch>]")
+	fmt.Fprintln(os.Stderr, "       sec emit-ir <file.sec> [-o <file.sir|->] [--target <os-arch>]")
 	fmt.Fprintln(os.Stderr, "       sec emit-mlir <file.sec> -o <file.mlir|-> [--target <os-arch>] [--mlir-bin <path>] [--verify]")
 	fmt.Fprintln(os.Stderr, "       sec build <file.sec> [-o <program>] [--target <os-arch>] [--pipeline <llvm|mlir>] [--keep-mlir] [--keep-llvm] [--mlir-bin <path>] [--clang <path>]")
 }
@@ -287,6 +294,64 @@ func runEmitLLVMCommand(args []string) {
 		fmt.Fprintf(os.Stderr, "write error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func runEmitIRCommand(args []string) {
+	inputFile, outputFile, target, ok := parseEmitIRCommandArgs(args, hostCompilerTarget())
+	if !ok {
+		printUsage()
+		os.Exit(1)
+	}
+	input, err := os.ReadFile(inputFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "read error: %v\n", err)
+		os.Exit(1)
+	}
+	analyzed := parseAndAnalyzeSourceForTargetWithAnalyzerMode(string(input), inputFile, target, false)
+	module, err := semantic.Build(analyzed.Program, analyzed.Analyzer, semantic.BuildOptions{SourceFiles: []string{inputFile}})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "semantic IR error: %v\n", err)
+		os.Exit(4)
+	}
+	if err := semantic.Verify(module); err != nil {
+		fmt.Fprintf(os.Stderr, "semantic IR verification error: %v\n", err)
+		os.Exit(4)
+	}
+	if err := writeCompilerOutput(outputFile, []byte(semantic.Format(module))); err != nil {
+		fmt.Fprintf(os.Stderr, "write error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func parseEmitIRCommandArgs(args []string, defaultTarget CompilerTarget) (inputFile, outputFile string, target CompilerTarget, ok bool) {
+	outputFile = "-"
+	target = defaultTarget
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "-o":
+			if i+1 >= len(args) {
+				return "", "", CompilerTarget{}, false
+			}
+			i++
+			outputFile = args[i]
+		case "--target":
+			if i+1 >= len(args) {
+				return "", "", CompilerTarget{}, false
+			}
+			i++
+			parsed, valid := parseCompilerTarget(args[i])
+			if !valid {
+				return "", "", CompilerTarget{}, false
+			}
+			target = parsed
+		default:
+			if strings.HasPrefix(args[i], "-") || inputFile != "" {
+				return "", "", CompilerTarget{}, false
+			}
+			inputFile = args[i]
+		}
+	}
+	return inputFile, outputFile, target, inputFile != ""
 }
 
 func runEmitMLIRCommand(args []string) {
@@ -745,6 +810,19 @@ func parseAndAnalyzeFileForTarget(path string, target CompilerTarget) *ast.Progr
 }
 
 func parseAndAnalyzeSourceForTarget(input string, sourceFile string, target CompilerTarget) *ast.Program {
+	return parseAndAnalyzeSourceForTargetWithAnalyzer(input, sourceFile, target).Program
+}
+
+type analyzedProgram struct {
+	Program  *ast.Program
+	Analyzer *sema.Analyzer
+}
+
+func parseAndAnalyzeSourceForTargetWithAnalyzer(input string, sourceFile string, target CompilerTarget) analyzedProgram {
+	return parseAndAnalyzeSourceForTargetWithAnalyzerMode(input, sourceFile, target, true)
+}
+
+func parseAndAnalyzeSourceForTargetWithAnalyzerMode(input string, sourceFile string, target CompilerTarget, printSuccessSummary bool) analyzedProgram {
 	l := lexer.NewWithFile(input, sourceFile)
 	p := parser.New(l)
 
@@ -763,9 +841,9 @@ func parseAndAnalyzeSourceForTarget(input string, sourceFile string, target Comp
 		os.Exit(2)
 	}
 
-	analyzeProgramWithSources(program, target, []string{sourceFile}, summary)
+	analyzer := analyzeProgramWithSourcesRetained(program, target, []string{sourceFile}, summary, printSuccessSummary)
 
-	return program
+	return analyzedProgram{Program: program, Analyzer: analyzer}
 }
 
 func analyzeProgram(program *ast.Program, target CompilerTarget) {
@@ -773,6 +851,10 @@ func analyzeProgram(program *ast.Program, target CompilerTarget) {
 }
 
 func analyzeProgramWithSources(program *ast.Program, target CompilerTarget, sourceFiles []string, summary diagnosticSummary) {
+	_ = analyzeProgramWithSourcesRetained(program, target, sourceFiles, summary, true)
+}
+
+func analyzeProgramWithSourcesRetained(program *ast.Program, target CompilerTarget, sourceFiles []string, summary diagnosticSummary, printSuccessSummary bool) *sema.Analyzer {
 	if err := validateProgramTarget(program, target); err != nil {
 		fmt.Fprintf(os.Stderr, "target error: %s\n", err)
 		summary.Errors++
@@ -795,7 +877,10 @@ func analyzeProgramWithSources(program *ast.Program, target CompilerTarget, sour
 		printDiagnosticSummary(summary)
 		os.Exit(3)
 	}
-	printDiagnosticSummary(summary)
+	if printSuccessSummary {
+		printDiagnosticSummary(summary)
+	}
+	return analyzer
 }
 
 func resolveCoreLibrary(program *ast.Program) {

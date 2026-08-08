@@ -306,6 +306,7 @@ Implemented:
 - interface inheritance through `implements`;
 - type conformance declarations through `implements`;
 - `impl Type { ... }`;
+- explicit same-module extensions through `impl extends Type { ... }`;
 - methods inside `impl`;
 - static methods inside `impl`;
 - static values inside `impl`;
@@ -1060,7 +1061,6 @@ Not implemented and not part of Sec:
 
 ```text
 class
-extends
 object inheritance
 virtual class methods
 ```
@@ -2017,7 +2017,7 @@ Interface property accessors have no body.
 
 ```text
 ImplDeclaration
-    ::= "impl" TypeReference ImplBody
+    ::= "impl" [ "extends" ] TypeReference ImplBody
 
 ImplBody
     ::= "{" { ImplMember } "}"
@@ -2052,6 +2052,18 @@ impl Vehicle {
     }
 }
 ```
+
+An additional same-module block is explicit:
+
+```sec
+impl extends Vehicle {
+    fn Stop() void {
+    }
+}
+```
+
+Sema requires one primary `impl Vehicle` block and rejects extensions from a
+different module. File order does not affect extension validity.
 
 Invalid:
 

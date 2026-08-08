@@ -40,6 +40,14 @@ func (t Toolchain) Verify(mlirPath string) error {
 	return t.run("mlir-opt", args...)
 }
 
+// VerifySec parses and verifies Sec-dialect MLIR with the Sec-aware driver.
+// Normal compiler verification remains on Verify until pipeline migration is
+// explicitly implemented.
+func (t Toolchain) VerifySec(mlirPath string) error {
+	args := []string{mlirPath, "-o", os.DevNull}
+	return t.run("sec-mlir-opt", args...)
+}
+
 func (t Toolchain) run(tool string, args ...string) error {
 	path, err := t.toolPath(tool)
 	if err != nil {

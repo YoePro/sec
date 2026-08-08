@@ -1,0 +1,7 @@
+module main
+
+fn Update(input: int) int {
+    let mut value := input
+    value = 2
+    return value
+}

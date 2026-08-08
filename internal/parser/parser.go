@@ -2752,6 +2752,10 @@ func (p *Parser) parseStructTag(token lexer.Token) ([]ast.StructTag, bool) {
 func (p *Parser) parseImplStatement() ast.Statement {
 	stmt := &ast.ImplStatement{Token: p.curToken}
 
+	if p.peekToken.Type == lexer.EXTENDS {
+		p.nextToken()
+		stmt.Extends = true
+	}
 	if !p.expectPeekTypeStart() {
 		return nil
 	}

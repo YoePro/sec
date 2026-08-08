@@ -1,0 +1,520 @@
+package:
+  id: SEC-MLIR-P2
+  name: Semantic IR Core Foundation
+  series: sec-mlir-dialect
+  repository: https://github.com/YoePro/sec
+  branch: main
+  repository_sync_commit: d48035c
+  repository_sync_date: '2026-08-08'
+  semantic_ir_version: 1
+  goal: Create the first canonical Semantic IR and sec emit-ir without MLIR/LLVM dependency.
+  next_package: 'Semantic IR executable core: storage, calls, and if control flow'
+authority:
+- rules/<applicable-language-and-domain-rulebooks>
+- rules/semantic_ir.txt
+- rules/sec_mlir.md
+- rules/sec_mlir_dialect.md
+- implementation package
+- implementation
+repository_facts:
+  semantic_ir_currently_implemented: false
+  sema_analyzer_retains_resolved_types: true
+  normal_compiler_helper_discards_analyzer: true
+  legacy_codegen_ast_direct: true
+  required_dump_command_from_rulebook: sec emit-ir <file.sec>
+scope:
+  required:
+  - internal/ir/semantic package
+  - Semantic IR version 1
+  - module identity
+  - source file table
+  - canonical scalar type table
+  - named scalar type identity
+  - function declarations and definitions
+  - extern function declarations
+  - unique FunctionID
+  - function parameters as values
+  - basic blocks
+  - ValueID allocation
+  - ownership classification on values
+  - source locations independent of lexer.Token
+  - integer constants with arbitrary precision
+  - boolean constants
+  - string constants
+  - decimal constants parsed exactly from lexeme
+  - floating constants preserving lexeme and resolved type
+  - immutable supported local SSA bindings
+  - return terminator
+  - builder consuming validated AST plus successful Analyzer
+  - read-only Sema resolved-type API
+  - dedicated Semantic IR verifier
+  - deterministic textual debug printer
+  - sec emit-ir command
+  - focused tests and full Go regression
+  forbidden:
+  - MLIR construction
+  - Semantic IR to Sec MLIR bridge
+  - Sec dialect changes
+  - LLVM lowering changes
+  - mutable local storage
+  - load/store operations
+  - assignment
+  - function calls
+  - method calls
+  - if/loop/switch/match control flow
+  - Result/Option/try
+  - defer/cleanup
+  - copy/move/destruction
+  - borrow/reference operations
+  - RawPtr operations
+  - aggregate operations
+  - allocation/arena
+  - runtime checks/panic
+  - register/MMIO/volatile
+  - concurrency
+  - ABI lowering
+  - Semantic IR serialization parser
+  - fallback to legacy codegen
+filesystem:
+  required_root: internal/ir/semantic
+  recommended_files:
+  - internal/ir/semantic/doc.go
+  - internal/ir/semantic/version.go
+  - internal/ir/semantic/ids.go
+  - internal/ir/semantic/location.go
+  - internal/ir/semantic/ownership.go
+  - internal/ir/semantic/types.go
+  - internal/ir/semantic/module.go
+  - internal/ir/semantic/function.go
+  - internal/ir/semantic/block.go
+  - internal/ir/semantic/value.go
+  - internal/ir/semantic/operation.go
+  - internal/ir/semantic/constant.go
+  - internal/ir/semantic/builder.go
+  - internal/ir/semantic/verifier.go
+  - internal/ir/semantic/printer.go
+  testdata_root: testdata/semantic_ir
+ids:
+  TypeID:
+    go_type: uint32
+    zero_invalid: true
+    scope: module
+  FunctionID:
+    go_type: string
+    scope: compilation/module set
+    format: <module>::<name>(<canonical-parameter-type-list>)
+    cross_compilation_stability_required: false
+  BlockID:
+    go_type: uint32
+    scope: function
+  ValueID:
+    go_type: uint32
+    scope: function
+    allocation: monotonic deterministic
+location:
+  fields:
+  - File string
+  - Line int
+  - Column int
+  must_not_store:
+  - lexer.Token
+  - AST node
+  zero_means: unknown or synthesized when no better source exists
+ownership:
+  enum:
+  - owned
+  - shared-reference
+  - mutable-reference
+  - raw-pointer
+  - immediate
+  - compiler-temporary
+  package2_emission_policy:
+    numeric_constants: immediate
+    bool_constants: immediate
+    string_constants: immediate
+    ref_parameters: shared-reference
+    ref_mut_parameters: mutable-reference
+    rawptr_parameters: raw-pointer
+    unsupported_owning_parameter: UnsupportedFeatureError
+types:
+  active_supported:
+  - void
+  - never
+  - bool
+  - byte
+  - char
+  - rune
+  - string
+  - decimal
+  - int
+  - int8
+  - int16
+  - int32
+  - int64
+  - uint
+  - uint8
+  - uint16
+  - uint32
+  - uint64
+  - float
+  - float32
+  - float64
+  target_sized:
+  - int
+  - uint
+  named_scalar:
+    supported: true
+    identity: <module>::<name>
+    must_preserve_base: true
+    must_not_equal_base: true
+    contracts_or_units_not_fully_representable: reject as unsupported; do not erase
+  distinct:
+    supported: false
+    reason: Current frontend does not expose a separate reliable distinction for Package
+      2 to consume without heuristics.
+  planned_but_not_activated:
+  - int128
+  - int256
+  - uint128
+  - uint256
+  interning_required: true
+functions:
+  required_fields:
+  - ID
+  - Name
+  - LinkName
+  - Parameters
+  - ReturnType
+  - Unsafe
+  - Extern
+  - ABI
+  - Entry
+  - Blocks
+  - Location
+  extern_has_body: false
+  source_built_blocks_package2: 1
+operations:
+  supported:
+  - const.int
+  - const.bool
+  - const.string
+  - const.decimal
+  - const.float
+  - return
+  immutable_let: builder-time binding to an SSA value; no let operation
+  mutable_let: unsupported
+  integer_storage: math/big.Int or exact immutable equivalent
+  decimal:
+    fields:
+    - Coefficient *big.Int
+    - Scale uint32
+    - Lexeme string
+    parse_binary_float: false
+    normalize_scale: false
+  float:
+    preserve_source_lexeme: true
+    preserve_resolved_sema_type: true
+sema_integration:
+  required_read_only_api: ResolvedTypeOf(expr ast.Expression) (Type, bool)
+  must_not_fallback_infer: true
+  optional_declaration_api: ResolvedFunctionForDeclaration(decl *ast.FunctionDeclaration)
+    (Function, bool)
+  must_not_expose_internal_maps: true
+  must_not_reanalyze: true
+builder:
+  recommended_api: Build(program *ast.Program, analyzer *sema.Analyzer, options BuildOptions)
+    (*Module, error)
+  preconditions:
+  - parse succeeded
+  - target validation succeeded
+  - core/stdlib resolution needed by Sema completed
+  - Analyzer.Analyze completed with zero errors
+  unsupported_error_type: UnsupportedFeatureError
+  must_not:
+  - run Analyzer.Analyze again
+  - perform source name lookup
+  - perform overload resolution
+  - infer unresolved source semantics
+  - use legacy codegen fallback
+frontend_refactor:
+  goal: retain the successful Analyzer without breaking existing helpers
+  recommended_result_type: analyzedProgram{Program *ast.Program, Analyzer *sema.Analyzer}
+  diagnostics_behavior_must_remain: true
+  duplicate_sema_pass_for_emit_ir: false
+verifier:
+  api: Verify(module *Module) error
+  checks:
+  - non-nil module
+  - supported version
+  - non-empty module identity
+  - type table exists
+  - unique FunctionIDs
+  - no duplicate source files
+  - valid referenced TypeIDs
+  - TypeID zero rejected
+  - valid named type identity/base
+  - unique parameter ValueIDs
+  - extern has no body
+  - non-extern has entry block
+  - unique BlockIDs
+  - unique ValueIDs per function
+  - valid ownership classification
+  - operands are defined
+  - same-block use-before-definition rejected
+  - constant result type matches constant kind
+  - return arity matches function
+  - return type matches function
+  - no operation after terminator
+  - every Package 2 block terminates
+printer:
+  debug_format_only: true
+  parser_required: false
+  deterministic: true
+  must_show:
+  - IR version
+  - module identity
+  - source files
+  - type table
+  - FunctionID
+  - source function name
+  - parameters
+  - return type
+  - BlockID
+  - ValueID
+  - operation kind
+  - constant value
+  - source location
+cli:
+  command: sec emit-ir <file.sec>
+  output:
+    default: stdout
+    supported:
+    - -o <file.sir>
+    - -o -
+  target_option: --target <os-arch>
+  pipeline:
+  - parse
+  - target validation
+  - core/stdlib resolution
+  - Sema
+  - Semantic IR Build
+  - Semantic IR Verify
+  - Semantic IR print
+  - stop
+  must_not_invoke:
+  - mlir-opt
+  - sec-mlir-opt
+  - mlir-translate
+  - clang
+  - LLVM codegen
+  - legacy MLIR codegen
+  exit_codes:
+    0: success
+    1: command/input/target error
+    2: parser error
+    3: Sema error
+    4: Semantic IR build/verifier error
+tests:
+- id: T01
+  name: type interning
+  expected: same supported type interns to same TypeID; named identities remain distinct
+- id: T02
+  name: invalid TypeID
+  expected: verifier rejects zero/missing TypeID
+- id: T03
+  name: overload FunctionID
+  expected: parameter signature distinguishes overloads
+- id: T04
+  name: parameter values
+  expected: parameter is explicit ValueID and return can reference it
+- id: T05
+  name: integer exactness
+  expected: integer >64 bits preserved in direct IR unit test
+- id: T06
+  name: decimal exactness
+  expected: 0.10 => coefficient 10, scale 2, lexeme 0.10
+- id: T07
+  name: float resolved context
+  expected: 1.25 in float64 return remains float64
+- id: T08
+  name: immutable local SSA
+  expected: constant ValueID reused by return, no storage op
+- id: T09
+  name: mutable local unsupported
+  expected: typed UnsupportedFeatureError
+- id: T10
+  name: call unsupported
+  expected: typed UnsupportedFeatureError
+- id: T11
+  name: if unsupported
+  expected: typed UnsupportedFeatureError
+- id: T12
+  name: missing terminator
+  expected: verifier rejects
+- id: T13
+  name: wrong return type
+  expected: verifier rejects
+- id: T14
+  name: operation after terminator
+  expected: verifier rejects
+- id: T15
+  name: undefined operand
+  expected: verifier rejects
+- id: T16
+  name: duplicate ValueID
+  expected: verifier rejects
+- id: T17
+  name: source location propagation
+  expected: function/constant/return locations preserved
+- id: T18
+  name: deterministic printer
+  expected: byte-identical repeated output
+- id: T19
+  name: emit-ir success
+  command: sec emit-ir testdata/semantic_ir/basic_return.sec
+  expected: exit 0 and semantic-ir 1 output
+- id: T20
+  name: emit-ir file output
+  expected: -o output matches stdout representation
+- id: T21
+  name: no MLIR/LLVM dependency
+  expected: emit-ir works without mlir-opt/sec-mlir-opt/mlir-translate/clang
+- id: T22
+  name: Analyzer retained
+  expected: builder consumes returned Analyzer; no duplicate Analyze required
+- id: T23
+  name: existing CLI regression
+  expected: cmd/compiler tests pass
+- id: T24
+  name: full Go regression
+  command: go test ./...
+  expected: pass
+- id: T25
+  name: legacy codegen regression
+  expected: internal/codegen/llvm and internal/codegen/mlir tests remain green
+testdata:
+- testdata/semantic_ir/basic_return.sec
+- testdata/semantic_ir/parameter_return.sec
+- testdata/semantic_ir/immutable_local.sec
+- testdata/semantic_ir/bool_return.sec
+- testdata/semantic_ir/decimal_return.sec
+- testdata/semantic_ir/float_return.sec
+- testdata/semantic_ir/void_return.sec
+- testdata/semantic_ir/overloads.sec
+- testdata/semantic_ir/unsupported_mutable.sec
+- testdata/semantic_ir/unsupported_call.sec
+- testdata/semantic_ir/unsupported_if.sec
+acceptance:
+- internal/ir/semantic is independent from AST/Sema node structures
+- Semantic IR version is 1
+- canonical TypeTable exists
+- TypeID zero is invalid
+- named scalar identity is preserved
+- FunctionIDs distinguish overloads
+- parameters are explicit values
+- basic blocks exist
+- constants are explicit operations
+- integers use arbitrary precision
+- decimals are exact and lexeme-based
+- immutable supported locals use SSA bindings
+- return is explicit terminator
+- Semantic IR stores no lexer.Token
+- every value has ownership classification
+- builder consumes successful Analyzer without re-analysis
+- read-only resolved type API exists
+- unsupported constructs fail explicitly
+- dedicated verifier exists
+- deterministic printer exists
+- sec emit-ir exists
+- sec emit-ir has no MLIR/LLVM runtime tool dependency
+- legacy compiler paths unchanged
+- go test ./... passes
+completion_report:
+- repository HEAD
+- files added
+- files modified
+- Semantic IR public API
+- Sema read-only API changes
+- frontend helper refactor
+- supported Package 2 source subset
+- unsupported-feature diagnostics
+- test commands
+- test results
+- deviations
+- missing Sema facts discovered
+- Package 3 recommendation
+package3:
+  scope:
+  - explicit local storage
+  - initialize/load/store
+  - assignment
+  - resolved direct calls
+  - argument evaluation order
+  - call ownership metadata required by current Sema
+  - branch and conditional branch
+  - if lowering
+  - multi-block verification
+  - basic CFG validation
+  package4_after_package3: first Semantic IR to Sec MLIR bridge
+implementation_status:
+  ledger: sec-mlir-dialect-package
+  status: implemented
+  completed_on: '2026-08-08'
+  repository_head: d48035c
+  compiler_implementation_status_sync: deliberately_not_merged
+  semantic_ir_public_api:
+  - semantic.Version
+  - semantic.TypeTable with Intern, Lookup, Get, and All
+  - semantic.Module, Function, Block, Value, and Operation
+  - semantic.Build
+  - semantic.Verify
+  - semantic.Format
+  - semantic.UnsupportedFeatureError
+  sema_read_only_api:
+  - Analyzer.ResolvedTypeOf
+  - Analyzer.ResolvedFunctionForDeclaration
+  frontend_refactor: parseAndAnalyzeSourceForTargetWithAnalyzer retains the successful Analyzer without a second analysis.
+  cli: sec emit-ir with stdout, -o, and --target support
+  files_added:
+  - internal/ir/semantic/model.go
+  - internal/ir/semantic/errors.go
+  - internal/ir/semantic/builder.go
+  - internal/ir/semantic/verifier.go
+  - internal/ir/semantic/printer.go
+  - internal/ir/semantic/semantic_test.go
+  - cmd/compiler/emit_ir_test.go
+  - testdata/semantic_ir/basic_return.sec
+  - testdata/semantic_ir/parameter_return.sec
+  - testdata/semantic_ir/immutable_local.sec
+  - testdata/semantic_ir/bool_return.sec
+  - testdata/semantic_ir/decimal_return.sec
+  - testdata/semantic_ir/float_return.sec
+  - testdata/semantic_ir/void_return.sec
+  - testdata/semantic_ir/overloads.sec
+  - testdata/semantic_ir/unsupported_mutable.sec
+  - testdata/semantic_ir/unsupported_call.sec
+  - testdata/semantic_ir/unsupported_if.sec
+  files_modified:
+  - cmd/compiler/main.go
+  - internal/sema/analyzer.go
+  - internal/ast/ast.go
+  supported_source_subset:
+  - scalar constants and returns
+  - explicit parameters
+  - immutable SSA locals
+  - overloaded function declarations
+  unsupported_diagnostics:
+  - mutable local storage when BuildOptions.MaxPackage is 2
+  - function calls when BuildOptions.MaxPackage is 2
+  - if control flow when BuildOptions.MaxPackage is 2
+  results:
+    focused_go_tests: pass
+    full_go_regression: pass
+    legacy_llvm_codegen: pass
+    legacy_mlir_codegen: pass
+    backend_tool_free_cli: pass
+  deviations:
+  - Recommended per-concept files were consolidated into five cohesive Semantic IR implementation files.
+  - BuildOptions.MaxPackage preserves the Package 2 rejection boundary after Package 3 integration; zero selects the latest implemented package.
+  - Distinct types remain deferred because Sema still has no unambiguous distinct-type fact.
+  package_3_recommendation: Implemented by SEC-MLIR-P3 in the same integration series.

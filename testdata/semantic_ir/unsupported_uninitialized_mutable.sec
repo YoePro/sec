@@ -1,0 +1,6 @@
+module main
+
+fn Main() int {
+    let mut value: int
+    return value
+}

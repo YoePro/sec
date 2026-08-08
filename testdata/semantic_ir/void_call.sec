@@ -1,0 +1,8 @@
+module main
+
+fn Touch() void { return }
+
+fn Main() void {
+    Touch()
+    return
+}

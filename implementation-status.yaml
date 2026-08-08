@@ -1,5 +1,5 @@
 schema_version: 1
-updated: "2026-08-07"
+updated: "2026-08-08"
 purpose: >-
   Canonical implementation ledger for compiler and tooling work. Normative
   language behavior remains in rules/, while implementation status is migrated
@@ -260,3 +260,518 @@ integrations:
       - explicit foreign struct layout validation
       - library and object dependency metadata
       - null, ownership contracts, and callbacks
+
+  - id: stdlib.units-catalog
+    area: standard-library
+    status: partial
+    integrated: "2026-08-07"
+    summary: >-
+      Expands the units package into a documented, metadata-complete catalog of
+      155 physical units across SI and commonly used non-SI systems.
+    rules:
+      - rules/units.txt
+    code:
+      - sec/stdlib/units/base.sec
+      - sec/stdlib/units/core_derived.sec
+      - sec/stdlib/units/electricity.sec
+      - sec/stdlib/units/imperial_us.sec
+      - sec/stdlib/units/light.sec
+      - sec/stdlib/units/mechanics.sec
+      - sec/stdlib/units/power_energy.sec
+      - sec/stdlib/units/scaled_derived.sec
+      - sec/stdlib/units/science.sec
+      - sec/stdlib/units/time_frequency.sec
+    implemented:
+      - documentation comments on every unit declaration
+      - complete LongName, Symbol, BaseUnit, Status, Dimension, Scale, and System metadata
+      - SI base units and commonly used scaled SI units
+      - geometry, motion, mechanics, pressure, density, viscosity, and flow units
+      - time, frequency, angular, electrical, energy, power, and photometric units
+      - radiation, chemistry, thermal, Imperial, US customary, and nautical units
+      - exact rational scales where standardized exact relationships are available
+      - semantically valid reciprocal helper naming for frequency and conductance formulas
+    verification:
+      - command: parse sec/stdlib/units/*.sec
+        result: passed
+      - command: sema sec/stdlib/units/*.sec
+        result: passed
+      - command: validate documentation and required metadata for every catalog unit
+        result: passed
+    remaining:
+      - offset-temperature units after offset conversion support exists
+      - scale-sensitive algebra and automatic fixed scale-path conversion
+      - logarithmic conversion semantics for units such as decibel
+      - additional domain, currency, astronomical, and specialized engineering catalogs
+
+  - id: analysis.call-graph
+    area: frontend-analysis-and-tooling
+    status: partial
+    integrated: "2026-08-07"
+    summary: >-
+      Provides the compiler-owned semantic call-graph slice consumed by Sema
+      analysis and standard LSP call hierarchy without constructing a second
+      tooling-owned graph.
+    rules:
+      - rules/call_graph.md
+    code:
+      - internal/sema/call_graph.go
+      - internal/sema/analyzer.go
+      - cmd/lsp/main.go
+    tests:
+      - internal/sema/analyzer_test.go
+      - internal/sema/allocation_test.go
+      - cmd/lsp/main_test.go
+    implemented:
+      - parser and Sema support for spawn and await with recorded task, thread, and process execution kinds
+      - immutable compiler-owned graph snapshots from each completed Sema analysis
+      - deterministic callable and call-site identities within one analyzed source snapshot
+      - validated synchronous direct, static-method, and foreign-direct call sites
+      - exact selected-overload and resolved-method targets
+      - incoming and outgoing call-site queries with source locations
+      - valid module-main program-entry root discovery
+      - whole-graph root reachability with literal true and false branch pruning
+      - Tarjan same-stack strongly connected components and direct or mutual recursion classification
+      - task-spawn and thread-start execution relations on the resolved outer spawn call
+      - synchronous classification of argument calls evaluated before spawning
+      - derived task-entry and thread-entry roots only for reachable spawn sites
+      - exclusion of task and thread spawn edges from same-stack recursion
+      - standard LSP prepare, incoming, and outgoing call hierarchy
+      - preserved dispatch and execution metadata in LSP call-hierarchy items
+      - LSP hover summaries for callers, callees, roots, recursion, and spawn edges
+      - source-ordered direct Arena create, allocate, reset, and release event sites
+      - synchronous Arena MayAllocate propagation and shortest callable cause paths
+      - exclusion of spawned-body allocation from the spawner synchronous summary
+    verification:
+      - command: go test ./...
+        result: passed
+      - command: go vet ./...
+        result: passed
+      - command: validate implementation-status.yaml
+        result: passed
+    remaining:
+      - callable and call-site identity and reachability stable across snapshots and concrete CompilationPlan variants
+      - generic-specialization, closure, defer, destructor, and compiler-generated callable nodes
+      - indirect function-value and interface target sets with open callable contracts
+      - target, initialization, test, benchmark, interrupt, foreign-export, generated, and open-world roots
+      - complete semantic path pruning beyond literal boolean branches
+      - process, interrupt, callback, await, join, defer, and destruction execution relations
+      - dedicated task-spawn, thread-start, process-launch, and complete-execution SCC views
+      - effect domains beyond the initial Arena allocation summary
+      - path-aware ordered effect merging and general diagnostic cause paths
+      - persistent workspace graph indexing, incremental invalidation, and stale-result suppression
+
+  - id: frontend.properties
+    area: frontend-analysis
+    status: partial
+    integrated: "2026-08-07"
+    summary: >-
+      Parses, registers, and semantically checks impl properties, including
+      ordinary and fallible accessors, without claiming property lowering.
+    rules:
+      - rules/properties.txt
+    code:
+      - internal/ast/ast.go
+      - internal/parser/parser.go
+      - internal/sema/analyzer.go
+      - internal/sema/types.go
+    tests:
+      - internal/parser/parser_test.go
+      - internal/sema/analyzer_test.go
+      - cmd/lsp/main_test.go
+    implemented:
+      - property declarations with get, set value, and try set value accessors
+      - parser recovery for missing property names, types, colons, and setter parameters
+      - property registration, duplicate/conflict diagnostics, and type resolution on impl targets
+      - interface property requirement parsing and implementation conformance checks
+      - property member access type inference and self-member resolution
+      - getter return checking, including constructor-style conversions and missing-return diagnostics
+      - non-fallible setter rejection of Err returns and setter assignment type checking
+      - complete getter and setter body analysis using ordinary function-body rules
+      - fallible property assignment requiring try, including unqualified access inside the defining impl
+      - try-assignment handler typing from declared or inferred property error types
+      - fallible setter error inference from direct and nested-branch Err returns
+      - generic impl property substitution in the current generic model
+      - LSP completion, hover, definition, symbols, and semantic-token support for properties
+    verification:
+      - command: go test ./internal/parser ./internal/sema ./cmd/lsp
+        result: passed
+      - command: validate implementation-status.yaml
+        result: passed
+    remaining:
+      - explicit property reads and writes in Semantic IR and lowering through MLIR and LLVM
+      - complete self borrow and mutability rules for property accessors
+      - explicit property effect model
+      - property visibility rules
+      - property overriding semantics and complete interface-property surface coverage
+      - complete fallible compound-assignment behavior
+
+  - id: analysis.arena-allocation
+    area: frontend-analysis
+    status: partial
+    integrated: "2026-08-07"
+    summary: >-
+      Provides compiler-known Arena allocation validation, allocation generation
+      tracking, and stale-reference diagnostics without allocator lowering.
+    rules:
+      - rules/allocation.txt
+      - rules/arena.md
+    code:
+      - internal/sema/analyzer.go
+      - internal/sema/types.go
+      - internal/sema/call_graph.go
+    tests:
+      - internal/sema/allocation_test.go
+      - internal/sema/lifetime_test.go
+      - internal/sema/analyzer_test.go
+    implemented:
+      - compiler-known Arena type and AllocationError enum
+      - semantic validation of Arena.Alloc[T](count) with Result[ref mut T[], AllocationError] result typing
+      - semantic validation of mutable Arena.Reset calls
+      - semantic arena name and generation metadata on arena-backed references and slices
+      - rejection of arena-backed references and slices after a reset advances their generation
+      - conservative generation-state merging across if, switch, match, for, while, and break control-flow paths
+      - initial allocation context, symbol storage-origin metadata, and allocation-effect facts
+      - source-ordered direct Arena events and synchronous MayAllocate summaries in the compiler call graph
+    verification:
+      - command: go test ./internal/sema
+        result: passed
+      - command: validate implementation-status.yaml
+        result: passed
+    remaining:
+      - allocation-context propagation and complete allocation-effect inference through function bodies
+      - sized, trivially-destructible, default-value, overflow, and alignment checks required by the safe allocation contract
+      - allocation failure handling beyond ordinary Result syntax
+      - complete ownership, move-state, and storage-origin propagation through references, slices, and Semantic IR
+      - explicit arena allocation operations in Semantic IR and lowering through MLIR and LLVM
+      - allocator implementation, target-specific backing storage, capacity analysis, and runtime behavior
+
+  - id: frontend.arrays-slices
+    area: frontend
+    status: planned
+    integrated: "2026-08-07"
+    summary: >-
+      Reserves a dedicated end-to-end implementation ledger for the complete
+      fixed-array, slice, indexing, and slicing contract. Existing Place and
+      Arena slices are recorded by their owning analysis integrations.
+    rules:
+      - rules/arrays-slices.txt
+    remaining:
+      - complete parser, AST, and Sema coverage for the canonical fixed-array and slice syntax contract
+      - array literal inference, bounds, indexing, slicing, assignment, equality, and ownership validation
+      - full borrow and lifetime validation for slice creation, reborrowing, and returned sub-slices
+      - compiler-defined layout, overflow, alignment, and length validation
+      - explicit array and slice operations in Semantic IR and lowering through MLIR and LLVM
+      - focused valid, invalid, recovery, analysis, and backend test coverage
+
+  - id: sema.escape-analysis
+    area: frontend-analysis
+    status: partial
+    integrated: "2026-08-07"
+    summary: >-
+      Builds the current escape-analysis vertical slice on canonical Place and
+      reference provenance: local/aggregate reference escapes, branch/loop
+      provenance joins, and declaration-order-independent direct-call return
+      origin summaries are integrated. Full retention, indirect-call,
+      recursion, separate-compilation, concurrency, and foreign-retention
+      analysis remains to be implemented against rules/escape_analysis.md.
+    rules:
+      - rules/escape_analysis.md
+      - rules/lifetime_analysis.txt
+      - rules/storage.md
+      - rules/reference_model.md
+      - rules/ownership.md
+      - rules/copy_move.md
+      - rules/borrowing.txt
+      - rules/arrays-slices.txt
+      - rules/functions_lambda.txt
+      - rules/ffi.txt
+      - rules/call_graph.md
+    code:
+      - internal/sema/place.go
+      - internal/sema/analyzer.go
+    tests:
+      - internal/sema/lifetime_test.go
+      - internal/sema/copy_move_test.go
+      - internal/sema/analyzer_test.go
+    implemented:
+      - canonical referent Place provenance for directly created local references and slice aliases
+      - field, index, and slice projection across every known reference-origin alternative
+      - bounded path-disjunctive reference-origin sets across branches and loop joins
+      - deterministic provenance-cap fallback to conservative unknown-origin rejection
+      - nested field-sensitive reference origins for locally constructed structs and fixed arrays
+      - aggregate-origin preservation through whole-value transfer and replacement assignment
+      - constant-index element precision and conservative dynamic-index origin joins
+      - aggregate-contained origin joins across branches and loop fixed points
+      - rejection of selected local-reference escape through assignments, returned aggregates, union payload match values, and lambdas
+      - declaration-order-independent fixed-point return-origin summaries for direct functions and methods
+      - symbolic parameter, receiver, projection, multi-source, and aggregate return paths
+      - transitive call-site origin instantiation for supported direct calls
+      - returned granting-borrow retention for supported direct reference calls
+    verification:
+      - command: go test ./...
+        result: passed
+      - command: emit-mlir --verify over testdata/ir
+        result: passed
+      - command: validate implementation-status.yaml
+        result: passed
+    remaining:
+      - separate the dedicated escape-analysis result and summary contract from legacy lifetime-analysis bookkeeping where practical
+      - classify parameter and receiver escape facts including NoEscape, Returned, Retained, StoredInEscapingCarrier, OwnershipTransferred, Captured, task/thread transfer, foreign transfer, and UnknownRetention
+      - track explicit escape subjects, modes, and destinations required by rules/escape_analysis.md
+      - complete indexed, sliced, aliased, aggregate, and dynamic-container dependency propagation without losing canonical Place precision
+      - complete mutation, rebinding, move, copy, replacement, destruction, and carrier-state integration for escape facts
+      - add recursive and mutually recursive escape-summary SCC fixed points with projection widening and guaranteed termination
+      - add persisted, versioned, validated escape-summary metadata for separate compilation
+      - add function-value call summary composition and conservative unknown-target behavior
+      - integrate closure-environment dependency escape and later closure-analysis refinement
+      - implement explicit call retention contracts and retained-borrow propagation
+      - implement task and thread transfer escape classification
+      - implement FFI retention-contract consumption including conservative unknown foreign retention
+      - integrate Static and ThreadLocal escape destinations with lifetime/storage validation
+      - preserve storage-domain, backing, epoch/generation, and handle dependencies needed by lifetime/reference validation
+      - add cause-path production for escape diagnostics
+      - add canonical escape diagnostic IDs through central diagnostics governance
+      - add positive, negative, precision, recursive, separate-compilation, callable, FFI, storage/generation, and concurrency test matrices required by rules/escape_analysis.md
+
+  - id: sema.closure-analysis
+    area: frontend-analysis
+    status: partial
+    integrated: "2026-08-08"
+    summary: >-
+      Existing parser and Sema support provides function types, named function
+      values, function-value calls, explicit immutable value-capture validation,
+      lambda body analysis, selected closure/reference escape rejection, and
+      configurable terminating analysis budgets. The canonical closure/callable-
+      flow service, target-set dataflow, closure summaries, recursive SCC fixed
+      points, and open callable contracts remain to be implemented.
+    rules:
+      - rules/closure_analysis.md
+      - rules/functions_lambda.txt
+      - rules/call_graph.md
+      - rules/escape_analysis.md
+      - rules/lifetime_analysis.txt
+      - rules/ownership.md
+      - rules/copy_move.md
+      - rules/borrowing.txt
+      - rules/storage.md
+      - rules/effect_analysis.md
+      - rules/compiler_analysis.txt
+      - rules/lsp.md
+      - rules/projects.txt
+    code:
+      - internal/ast/ast.go
+      - internal/parser/expression.go
+      - internal/sema/analyzer.go
+      - internal/sema/analysis_budget.go
+      - internal/sema/types.go
+      - internal/lsp/server/documents.go
+      - cmd/compiler/init.go
+      - cmd/lsp/main.go
+    tests:
+      - internal/parser/parser_test.go
+      - internal/sema/analyzer_test.go
+      - internal/sema/analysis_budget_test.go
+      - cmd/lsp/main_test.go
+      - cmd/compiler/main_test.go
+    implemented:
+      - lambda and explicit capture parsing with capture-list AST retention
+      - resolved function-type representation with parameter and return types
+      - named function values with contextual overload resolution
+      - function-value assignment compatibility checking
+      - function-value call argument and return-type validation
+      - lambda-local function scope and normal lambda return validation
+      - explicit capture validation for duplicate, undefined, and unassigned captures
+      - Sec 0.1 captured bindings exposed to the lambda body as immutable bindings
+      - rejection of implicit access to uncaptured enclosing locals
+      - selected rejection of returned lambdas that capture references to local storage
+      - selected aggregate and union-payload reference escape checks that include lambda values
+      - explicit temporary restriction rejecting escaping captured lambdas until environment ownership/lowering is implemented
+      - canonical Place/provenance infrastructure for fields, indices, slices, union payloads, branch/loop joins, aggregate-contained origins, and direct return-origin summaries
+      - direct function/method reference-origin summary fixed points and transitive call-site instantiation available as reusable interprocedural-analysis infrastructure
+      - canonical Interactive, Standard, and Deep analysis-depth configuration that never changes language semantics
+      - Standard-by-default compiler analysis and Interactive-by-default LSP analysis
+      - project-configured LSP depth through analysis.lsp_depth in .sec/sec.toml
+      - finite Interactive return-origin summary iterations with conservative unknown widening at the resource limit
+      - configuration-change and watched-file refresh of diagnostics for all open documents without server restart
+    verification:
+      - command: go test ./...
+        result: passed
+      - command: validate implementation-status.yaml
+        result: passed
+    remaining:
+      - canonical CaptureRecord facts with source Place, captured type, capture mode, transfer, and semantic dependencies
+      - explicit callable-body, function-value, closure-instance, closure-creation-site, and abstract-environment identities
+      - callable TargetSet facts using known targets, closed/open state, and open callable contracts
+      - exact named-function and lambda target facts persisted in the canonical analysis service
+      - callable-value flow through assignment, copy, move, branches, loops, Places, aggregates, arrays, collections, options, and unions
+      - monovariant 0-CFA-equivalent baseline with deterministic bounded precision and conservative widening
+      - callable-parameter symbolic identities and interprocedural invocation, forwarding, and return summaries
+      - created-closure summaries preserving body identity, capture dependencies, capture transfers, and callable contracts
+      - recursive and mutually recursive callable-summary fixed points using call-graph SCCs or an equivalent declaration-order-independent algorithm
+      - closure creation-site abstraction for loops and recursion without conflating runtime closure-instance identity
+      - propagation of reference, slice/view, handle, and nested-callable dependencies through captured values
+      - integration with escape analysis for environment escape and retention destinations
+      - integration with lifetime/storage validation for environment and captured dependency validity
+      - integration with ownership analysis for capture and callable copy/move legality
+      - integration with call graph so indirect function-value calls consume canonical callable target sets instead of a separate target-flow engine
+      - integration with effect, stack, ISR, concurrency, and parameter-usage analyses through callable target/contract and environment facts
+      - persisted versioned closure/callable summaries for separate compilation and conservative stale/missing-summary fallback
+      - summary invalidation keyed by body, capture list, resolved targets, contracts, Place/provenance facts, specialization, CompilationPlan dependencies, and schema version
+      - extend the three budgets across callable targets, origin/cause-path depth, context sensitivity, caching, diagnostics, and optional insight
+      - sec analyse integration where the default runs all available analyses and an explicit analysis may be selected
+      - LSP NeedToKnow versus OptionalInsight presentation and per-feature configuration
+      - explicit cache and summary invalidation when persistent closure-analysis services are introduced
+      - Semantic IR representation of function-value creation/calls, closure creation, capture transfer, environment dependencies, and callable forwarding required by downstream analyses
+      - closure/environment lowering that obeys storage.md and never repairs escape with implicit heap promotion or hidden allocation
+      - synchronization appendix for legacy implementation-oriented closure-storage wording in rules/functions_lambda.txt
+      - dedicated positive, negative, interprocedural, CFA-precision, recursion, analysis-budget, LSP-integration, and termination regression tests
+
+  - id: frontend.impl-extensions
+    area: frontend-analysis-and-tooling
+    status: partial
+    integrated: "2026-08-08"
+    summary: >-
+      Adds explicit, declaration-order-independent impl extensions so one
+      primary impl may be organized with additional blocks across files of the
+      same module without permitting implicit duplicate or cross-module impls.
+      Existing backend limitations for complete method, property, event, and
+      generic lowering remain unchanged.
+    rules:
+      - rules/impl.txt
+      - rules/struct.txt
+      - rules/generics.txt
+      - rules/grammar.md
+      - rules/names_scopes_visibility.md
+    code:
+      - internal/lexer/lexer.go
+      - internal/ast/ast.go
+      - internal/parser/parser.go
+      - internal/sema/analyzer.go
+      - cmd/lsp/main.go
+    tests:
+      - internal/lexer/lexer_test.go
+      - internal/parser/parser_test.go
+      - internal/sema/analyzer_test.go
+      - internal/formatter/formatter_test.go
+      - cmd/lsp/main_test.go
+      - testdata/impl_valid.sec
+      - testdata/impl_invalid.sec
+    implemented:
+      - extends reserved as a lexer keyword and contextual impl-extension marker
+      - canonical impl extends Target syntax retained explicitly in the AST
+      - one unmarked primary impl block per target
+      - any number of explicitly marked extensions with a same-module primary
+      - primary registration before extension validation independent of file and declaration order
+      - cross-file same-module method composition and forward resolution
+      - rejection of orphan extensions and cross-module extensions
+      - rejection of unmarked duplicate primary blocks with extension guidance
+      - generic target validation reused for primary and extension blocks
+      - nested type, property, event, method, and overload conflicts checked against the combined target surface
+      - LSP document-symbol distinction between primary impl and impl extends blocks
+    verification:
+      - command: go test ./...
+        result: passed
+      - command: emit-mlir --verify over testdata/ir
+        result: passed
+      - command: validate implementation-status.yaml
+        result: passed
+    remaining:
+      - complete method, property, event, static-member, and generic backend lowering inherited from the primary impl pipeline
+      - LSP navigation between an extension and its primary impl declaration
+      - workspace index support for listing all extensions of a target
+      - explicit visibility policy if future nested module scopes become finer than the current module identity
+
+  - id: sema.parameter-usage-analysis
+    area: frontend-analysis
+    status: planned
+    integrated: "2026-08-08"
+    summary: >-
+      Reserves the canonical multidimensional parameter-demand analysis that
+      will derive the weakest semantic capabilities required by reachable uses,
+      propagate demand across Sec and FFI boundaries, and produce advisory
+      narrowing candidates without changing source signatures or ABI semantics.
+      Existing receiver-mutability inference and A2001 large-by-value warnings
+      are adjacent legacy mechanisms, not a conforming ParameterDemand slice.
+    rules:
+      - rules/parameter_usage_analysis.md
+      - rules/ownership.md
+      - rules/copy_move.md
+      - rules/borrowing.txt
+      - rules/lifetime_analysis.txt
+      - rules/escape_analysis.md
+      - rules/closure_analysis.md
+      - rules/call_graph.md
+      - rules/storage.md
+      - rules/layout.md
+      - rules/arrays-slices.txt
+      - rules/ffi.txt
+      - rules/effect_analysis.md
+    code:
+      - internal/sema/analyzer.go
+      - internal/sema/place.go
+    tests:
+      - internal/sema/parameter_usage_test.go
+    remaining:
+      - add canonical multidimensional ParameterDemand representation for access, mutation, ownership, lifetime, identity, shape, storage, representation, and precision
+      - replace or suppress the unconditional A2001 size-only narrowing heuristic until BorrowSufficient and all critical dimensions are proven
+      - derive local demand from field reads and writes, indexing, iteration, element mutation, structural collection mutation, address formation, return, move, copy, retention, and whole-value operations
+      - preserve canonical Place and projection precision when demand applies to subobjects
+      - consume escape and lifetime summaries for call-only, returned, retained, task, thread, and foreign-retention demand
+      - add symbolic per-parameter and receiver demand summaries
+      - propagate direct-call demand summaries transitively and solve recursive and mutually recursive call-graph SCCs to fixed point
+      - consume closure/callable target summaries and open callable contracts for function-value calls
+      - add dimension-specific conservative unknown demand rather than whole-result collapse
+      - add explicit FFI contract-boundary propagation for retention, ownership, address, contiguity, alignment, pinning, memory space, and representation requirements
+      - add fixed-array exact-extent, minimum-extent, sequence, random-access, contiguous-sequence, and known-range demand
+      - derive capability-preserving narrowing candidates for large by-value values, fixed arrays, owning sequences, and unnecessary mutability or ownership
+      - separate semantic demand from target-specific cost and recommendation policy
+      - respect explicit fixed-extent, ownership, hardware, FFI, storage, and representation contracts as narrowing blockers
+      - add recommendation confidence, reason, and blocked-candidate reporting
+      - add versioned persisted demand summaries for separate compilation
+      - add independent semantic-demand and recommendation-cache invalidation
+      - add Interactive, Standard, and Deep analysis-budget integration
+      - expose configurable LSP hover/advisory information without making optional insight mandatory
+      - integrate parameter usage into default sec analyse --all behavior and support explicit parameter-usage-only analysis selection
+      - add required local, narrowing, shape, interprocedural, recursive, FFI, recommendation-policy, and false-positive regression tests
+      - update implementation-status verification commands when the first vertical slice is integrated
+
+  - id: sema.pitfall-analysis
+    area: frontend-analysis
+    status: planned
+    summary: >-
+      Adds structured high-confidence pitfall analysis that correlates canonical
+      bounds, range, control-flow, Place/provenance, collection, effect, and FFI
+      contract facts to detect common human mistakes without redefining the
+      normative semantics owned by those analyses.
+    rules:
+      - rules/pitfall_analysis.md
+      - rules/compiler_analysis.txt
+      - rules/call_graph.md
+      - rules/effect_analysis.md
+      - rules/ownership.md
+      - rules/borrowing.txt
+      - rules/lifetime_analysis.txt
+      - rules/escape_analysis.md
+      - rules/closure_analysis.md
+      - rules/storage.md
+      - rules/layout.md
+      - rules/arrays-slices.txt
+      - rules/ffi.txt
+    code:
+      - internal/sema/analyzer.go
+      - internal/sema/place.go
+    tests:
+      - internal/sema/pitfall_analysis_test.go
+    remaining:
+      - add canonical structured PitfallFinding representation with stable rule identity, classification, confidence, evidence, suppression, owning-rule linkage, suggested actions, and analysis state
+      - add canonical pitfall rule registry with family, required semantic facts, minimum analysis budget, and default confidence metadata
+      - add distinct Finding, NoFinding, Suppressed, NotEvaluated, and Pending evaluation states
+      - consume canonical range, bounds, control-flow, Place/provenance, collection-shape, effect, layout, and FFI contract facts rather than reimplementing their analyses
+      - implement the required bounds/range, collection, control-flow, and contract-backed FFI catalog with false-positive suppression
+      - coalesce pitfall findings with owning normative diagnostics so one root cause does not generate duplicate errors and warnings
+      - implement ProvenFix versus SuggestedEdit distinction and verify automatic-fix safety
+      - add dependency-driven pitfall cache invalidation and reuse for unaffected semantic bodies
+      - integrate Interactive, Standard, and Deep budgets without changing source-language semantics
+      - expose configurable LSP diagnostics/code actions and refresh affected findings when project analysis configuration changes
+      - integrate pitfall analysis into default sec analyse --all behavior and support explicit pitfall-only analysis selection
+      - add required bounds/range, collection, control-flow, confidence/suppression, corrective-action, incremental/LSP, FFI, performance, and false-positive regression tests

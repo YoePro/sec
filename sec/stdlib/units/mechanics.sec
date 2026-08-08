@@ -1,0 +1,245 @@
+module units
+
+// =============================================================================
+// Geometry, motion, mechanics, and fluid quantities
+// =============================================================================
+
+/** Square metre */
+unit m2 physical
+impl m2 {
+    LongName: "Square Metre"
+    Symbol: "m²"
+    BaseUnit: false
+    Status: active
+    Dimension: [length^2]
+    Scale: 1
+    System: SI
+}
+
+/** Cubic metre */
+unit m3 physical
+impl m3 {
+    LongName: "Cubic Metre"
+    Symbol: "m³"
+    BaseUnit: false
+    Status: active
+    Dimension: [length^3]
+    Scale: 1
+    System: SI
+}
+
+/** Litre */
+unit L physical
+impl L {
+    LongName: "Litre"
+    Symbol: "L"
+    BaseUnit: false
+    Status: active
+    Dimension: [length^3]
+    Scale: 1 / 1000
+    System: SI
+}
+
+/** Millilitre */
+unit mL physical
+impl mL {
+    LongName: "Millilitre"
+    Symbol: "mL"
+    BaseUnit: false
+    Status: active
+    Dimension: [length^3]
+    Scale: 1 / 1000000
+    System: SI
+}
+
+/** Hectare */
+unit ha physical
+impl ha {
+    LongName: "Hectare"
+    Symbol: "ha"
+    BaseUnit: false
+    Status: active
+    Dimension: [length^2]
+    Scale: 10000
+    System: SI
+}
+
+/** Metre per second */
+unit mps physical
+impl mps {
+    LongName: "Metre per Second"
+    Symbol: "m/s"
+    BaseUnit: false
+    Status: active
+    Dimension: [length^1, time^-1]
+    Scale: 1
+    System: SI
+}
+
+/** Kilometre per hour */
+unit kph physical
+impl kph {
+    LongName: "Kilometre per Hour"
+    Symbol: "km/h"
+    BaseUnit: false
+    Status: active
+    Dimension: [length^1, time^-1]
+    Scale: 5 / 18
+    System: SI
+}
+
+/** Metre per second squared */
+unit mps2 physical
+impl mps2 {
+    LongName: "Metre per Second Squared"
+    Symbol: "m/s²"
+    BaseUnit: false
+    Status: active
+    Dimension: [length^1, time^-2]
+    Scale: 1
+    System: SI
+}
+
+/** Standard acceleration due to gravity */
+unit gee physical
+impl gee {
+    LongName: "Standard Gravity"
+    Symbol: "g₀"
+    BaseUnit: false
+    Status: active
+    Dimension: [length^1, time^-2]
+    Scale: 9.80665
+    System: Other
+}
+
+/** Kilonewton */
+unit kN physical
+impl kN {
+    LongName: "Kilonewton"
+    Symbol: "kN"
+    BaseUnit: false
+    Status: active
+    Dimension: [mass^1, length^1, time^-2]
+    Scale: 1000
+    System: SI
+}
+
+/** Kilopascal */
+unit kPa physical
+impl kPa {
+    LongName: "Kilopascal"
+    Symbol: "kPa"
+    BaseUnit: false
+    Status: active
+    Dimension: [mass^1, length^-1, time^-2]
+    Scale: 1000
+    System: SI
+}
+
+/** Megapascal */
+unit MPa physical
+impl MPa {
+    LongName: "Megapascal"
+    Symbol: "MPa"
+    BaseUnit: false
+    Status: active
+    Dimension: [mass^1, length^-1, time^-2]
+    Scale: 1000000
+    System: SI
+}
+
+/** Bar */
+unit bar physical
+impl bar {
+    LongName: "Bar"
+    Symbol: "bar"
+    BaseUnit: false
+    Status: active
+    Dimension: [mass^1, length^-1, time^-2]
+    Scale: 100000
+    System: Other
+}
+
+/** Standard atmosphere */
+unit atm physical
+impl atm {
+    LongName: "Standard Atmosphere"
+    Symbol: "atm"
+    BaseUnit: false
+    Status: active
+    Dimension: [mass^1, length^-1, time^-2]
+    Scale: 101325
+    System: Other
+}
+
+/** Torr */
+unit torr physical
+impl torr {
+    LongName: "Torr"
+    Symbol: "Torr"
+    BaseUnit: false
+    Status: active
+    Dimension: [mass^1, length^-1, time^-2]
+    Scale: 101325 / 760
+    System: Other
+}
+
+/** Kilogram per cubic metre */
+unit kg_m3 physical
+impl kg_m3 {
+    LongName: "Kilogram per Cubic Metre"
+    Symbol: "kg/m³"
+    BaseUnit: false
+    Status: active
+    Dimension: [mass^1, length^-3]
+    Scale: 1
+    System: SI
+}
+
+/** Pascal second */
+unit Pa_s physical
+impl Pa_s {
+    LongName: "Pascal Second"
+    Symbol: "Pa·s"
+    BaseUnit: false
+    Status: active
+    Dimension: [mass^1, length^-1, time^-1]
+    Scale: 1
+    System: SI
+}
+
+/** Square metre per second */
+unit m2_s physical
+impl m2_s {
+    LongName: "Square Metre per Second"
+    Symbol: "m²/s"
+    BaseUnit: false
+    Status: active
+    Dimension: [length^2, time^-1]
+    Scale: 1
+    System: SI
+}
+
+/** Kilogram metre per second */
+unit kg_m_s physical
+impl kg_m_s {
+    LongName: "Kilogram Metre per Second"
+    Symbol: "kg·m/s"
+    BaseUnit: false
+    Status: active
+    Dimension: [mass^1, length^1, time^-1]
+    Scale: 1
+    System: SI
+}
+
+/** Newton second */
+unit N_s physical
+impl N_s {
+    LongName: "Newton Second"
+    Symbol: "N·s"
+    BaseUnit: false
+    Status: active
+    Dimension: [mass^1, length^1, time^-1]
+    Scale: 1
+    System: SI
+}

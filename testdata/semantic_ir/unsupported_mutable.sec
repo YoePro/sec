@@ -1,0 +1,7 @@
+module main
+
+fn Example() int {
+    let mut value := 1
+    value = 2
+    return value
+}

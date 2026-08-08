@@ -17,6 +17,7 @@ It covers:
 * build targets
 * build variants
 * compiler options
+* analysis and tooling budgets
 * compile-time parameters
 * build output
 * automatic build counters
@@ -664,6 +665,18 @@ Ordinary source modules are discovered through imports and directory structure.
 They do not need manifest entries.
 
 The manifest should describe buildable products, not duplicate the source tree.
+
+Project-wide analysis tooling settings are declared under `[analysis]`.
+The initial closure-analysis setting is:
+
+```toml
+[analysis]
+lsp_depth = "interactive"
+```
+
+Its supported values and reload behavior are defined by `closure_analysis.md`
+and `lsp.md`. This setting controls resource use and optional precision; it does
+not change language semantics or disable required safety analysis.
 
 =============================================================================================================================================================================================
 Targets

@@ -150,50 +150,17 @@ A future uninitialized allocation API must use an explicit uninitialized-memory
 type or unsafe operation. It must not expose uninitialized memory as ordinary
 `ref mut T[]`.
 
-## Current implementation status
+## Implementation governance
 
-Implemented now:
+Implementation status for this rulebook is owned by:
 
-- `arena` is reserved as a language keyword.
-- Function and generic type syntax can represent APIs such as
-  `Alloc[T](count) Result[ref mut T[], AllocationError]`.
-- The array/slice type layer can represent `ref T[]` and `ref mut T[]`, which
-  are required for allocation APIs returning slices.
-- Semantic analysis has initial metadata for allocation effects on functions.
-  Current user functions are classified as non-allocating until allocation APIs
-  are introduced.
-- Semantic analysis has initial storage-origin metadata for symbols.
-  Ordinary source locals are currently `Inline`; fixed-address register
-  bindings are `FixedAddress`.
-- Semantic analysis has an active allocation-context representation. It is
-  currently unavailable by default because arena allocation is not lowered yet.
-- Semantic analysis has initial copy classification. This is used to keep
-  `ref mut` move-only and to drive initial whole-value move-state for known
-  move-only local values before arena-backed containers are introduced.
-- `Arena` exists as a semantic builtin type.
-- `AllocationError` exists as a semantic builtin enum.
-- `Arena.Alloc[T](count)` is recognized by semantic analysis and has conceptual
-  result type `Result[ref mut T[], AllocationError]`.
-- `Arena.Reset()` is recognized by semantic analysis and advances the arena
-  generation.
-- Arena-backed references and slices carry arena name and generation metadata.
-- Using an arena-backed reference or slice after the arena generation has
-  advanced is rejected.
-- Arena generations are merged conservatively across continuing `if`, `switch`
-  and `match` branches.
-- Arena generations are merged conservatively across `for` and `while` loops,
-  including recorded `break` exits.
+```text
+implementation-status.yaml
+integration: analysis.arena-allocation
+```
 
-Not implemented yet:
-
-- allocation context propagation.
-- allocation-effect inference through function bodies.
-- sized/trivially-destructible/default-value checks for allocation.
-- allocation failure plumbing beyond ordinary `Result` syntax.
-- complete ownership and move-state tracking.
-- storage-origin propagation through references, slices and Semantic IR.
-- Semantic IR, MLIR or LLVM lowering for arena allocation.
-- real allocator implementation and target-specific backing storage.
+This rulebook contains normative requirements and does not duplicate the
+repository's current implementation state.
 
 ## Allocation failure
 

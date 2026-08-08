@@ -1114,6 +1114,12 @@ The first advanced unit pass is implemented:
   is another unit are validated
   against the source and target normalized dimensions. Incompatible functions
   produce `S1013` and are not registered as constructor-style conversions.
+- the `units` stdlib catalog contains 155 documented physical units spanning SI
+  bases and prefixes, mechanics, geometry, time/frequency, electricity, energy,
+  photometry, radiation, chemistry, Imperial, US customary and nautical systems.
+- every catalog unit declares `LongName`, `Symbol`, `BaseUnit`, `Status`,
+  `Dimension`, `Scale`, and `System` metadata and the complete package passes
+  parser and semantic analysis without diagnostics.
 
 Still not implemented:
 

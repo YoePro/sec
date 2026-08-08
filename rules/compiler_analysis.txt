@@ -39,6 +39,7 @@ The current configuration contains:
 * selected build target
 * selected build profile
 * default output path
+* language-server analysis depth
 
 If `.sec/sec.toml` is missing, single-file commands may still use the compiler's
 host target defaults.
@@ -73,6 +74,7 @@ The compiler performs the following categories of analysis:
 * mutability analysis
 * control-flow analysis
 * data-flow analysis
+* pitfall analysis
 * definite assignment analysis
 * reachability analysis
 * compile-time evaluation
@@ -410,13 +412,21 @@ The compiler should perform analyses in approximately this order:
 8. data-flow analysis
 9. definite assignment analysis
 10. reachability analysis
-11. compile-time evaluation
-12. contract analysis
-13. platform analysis
-14. ABI analysis
-15. optimization analysis
+11. pitfall analysis
+12. compile-time evaluation
+13. contract analysis
+14. platform analysis
+15. ABI analysis
+16. optimization analysis
 
 The compiler may internally combine analyses provided identical semantic results are produced.
+
+Pitfall analysis consumes canonical facts from the analyses that own Sec
+semantics. It may enrich diagnostics and provide confidence-qualified guidance,
+but it does not redefine validity, downgrade a proven error, or independently
+recompute bounds, ownership, lifetime, escape, or FFI facts. Its normative
+finding, evidence, suppression, budget, incremental, and tooling contract is
+defined by `pitfall_analysis.md`.
 
 ## Diagnostics
 

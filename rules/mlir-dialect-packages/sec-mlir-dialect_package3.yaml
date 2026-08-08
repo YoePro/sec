@@ -1,0 +1,570 @@
+package:
+  id: SEC-MLIR-P3
+  name: Semantic IR Executable Core
+  series: sec-mlir-dialect
+  repository: https://github.com/YoePro/sec
+  branch: main
+  repository_sync_commit: d48035c
+  repository_sync_date: '2026-08-08'
+  semantic_ir_version: 1
+  prerequisite: SEC-MLIR-P2 complete and green
+  goal: Add explicit trivial local storage, resolved calls, and if/CFG to Semantic
+    IR.
+  next_package: First Semantic IR to Sec MLIR bridge
+authority:
+- rules/<applicable-language-and-domain-rulebooks>
+- rules/semantic_ir.txt
+- rules/sec_mlir.md
+- rules/sec_mlir_dialect.md
+- implementation package
+- implementation
+relevant_rules:
+- rules/types.txt
+- rules/functions.txt
+- rules/copy_move.md
+- rules/ownership.txt
+- rules/borrowing.txt
+- rules/destruction.txt
+- rules/ffi.txt
+- rules/call_graph.md
+- rules/effect_analysis.md
+scope:
+  required:
+  - StorageID
+  - local storage descriptors
+  - storage.declare
+  - storage.init
+  - storage.load
+  - storage.store
+  - mutable local declarations with initializer
+  - simple assignment to supported mutable locals
+  - Sema BindingID/resolved binding API
+  - DirectCall
+  - ForeignCall
+  - Sema exact resolved call target API
+  - Sema resolved call kind API
+  - call argument action metadata
+  - left-to-right argument evaluation
+  - void call statements
+  - non-void calls in value context
+  - branch terminator
+  - conditional branch terminator
+  - block-parameter verifier support
+  - if without else
+  - if/else
+  - nested if
+  - else-if
+  - CFG successor verification
+  - branch arity/type verification
+  - SSA dominance verification
+  - storage declaration dominance
+  - storage initialization dominance
+  - deterministic storage/call/CFG printing
+  - sec emit-ir integration
+  - focused and full regression tests
+  forbidden:
+  - MLIR construction
+  - Sec dialect changes
+  - Semantic IR to Sec MLIR bridge
+  - LLVM codegen changes
+  - mutable declarations without initializer
+  - path-sensitive maybe-uninitialized state
+  - copy/move/destruction
+  - replace-owned
+  - cleanup/defer/discard
+  - borrow/reborrow/reference creation
+  - RawPtr operations
+  - move-only call transfer
+  - semantic-copy call transfer
+  - borrowed call transfer
+  - method/function-value/interface/intrinsic/generated calls
+  - spawn/await/callbacks
+  - standalone non-void call discard
+  - arithmetic/checks/contracts/panic
+  - loops/switch/match/break/continue/fallthrough
+  - Result/Option/try
+  - aggregates/properties/interfaces/closures
+  - allocation/arena
+  - register/MMIO/volatile/atomics
+  - concurrency
+  - ABI lowering
+ids:
+  StorageID:
+    go_type: uint32
+    scope: function
+    zero_invalid: true
+    debug_syntax: $N
+    not:
+    - ValueID
+    - pointer
+    - address
+    - physical placement
+storage:
+  record_fields:
+  - ID
+  - Name
+  - Type
+  - Mutable
+  - Class
+  - Location
+  classes:
+  - local-automatic
+  physical_placement_decided: false
+  allowed_builtin_types:
+  - bool
+  - byte
+  - char
+  - rune
+  - int
+  - int8
+  - int16
+  - int32
+  - int64
+  - uint
+  - uint8
+  - uint16
+  - uint32
+  - uint64
+  - float
+  - float32
+  - float64
+  - decimal
+  named_scalar_allowed_if:
+  - base type is Package 3 storage-allowed
+  - no runtime contract semantics are erased
+  - no unit/conversion semantics are erased
+  - copy classification is trivial
+  - destruction classification is trivial
+  - Sema has resolved assignment exactly
+  not_allowed:
+  - string
+  - ref
+  - ref mut
+  - RawPtr
+  - arrays
+  - slices
+  - structs
+  - unions
+  - interfaces
+  - function values
+  - closures
+  - Result
+  - Option
+  - resource-owning values
+  - move-only values
+  - custom destruction
+  operations:
+    storage.declare:
+      operands:
+      - StorageID
+      effects: introduces semantic storage identity at control-flow point
+    storage.init:
+      operands:
+      - StorageID
+      - ValueID
+      constraints:
+      - first initialization only
+      - exact type match
+    storage.load:
+      operands:
+      - StorageID
+      results: 1
+      ownership: immediate
+      semantic_action: trivial copy
+    storage.store:
+      operands:
+      - StorageID
+      - ValueID
+      semantic_action: replace trivial initialized scalar
+  uninitialized_mutable:
+    supported: false
+    error_feature: mutable local declaration without initializer
+    must_not_default_initialize: true
+sema_binding:
+  recommended_id: BindingID uint32
+  required_kinds:
+  - parameter
+  - local
+  query: ResolvedBindingOf(identifier) (ResolvedBinding, bool)
+  must_be_recorded_during_sema: true
+  query_is_read_only: true
+  builder_mapping:
+    immutable_or_parameter: BindingID -> ValueID
+    mutable_package3_local: BindingID -> StorageID
+  must_not_use_identifier_spelling_as_identity: true
+calls:
+  categories_implemented:
+  - DirectCall
+  - ForeignCall
+  categories_deferred:
+  - MethodCall
+  - FunctionValueCall
+  - InterfaceCall
+  - IntrinsicCall
+  - GeneratedCall
+  - SpawnTask
+  - SpawnThread
+  - SpawnProcess
+  - CallbackInvoke
+  resolved_call_query: ResolvedCallTarget(call) plus resolved call kind
+  builder_must_not_overload_resolve: true
+  call_safe_types:
+  - bool
+  - byte
+  - char
+  - rune
+  - int
+  - int8
+  - int16
+  - int32
+  - int64
+  - uint
+  - uint8
+  - uint16
+  - uint32
+  - uint64
+  - float
+  - float32
+  - float64
+  - decimal
+  - compatible named trivial scalar
+  - void return
+  unsafe_types_or_semantics_deferred:
+  - string
+  - ref
+  - ref mut
+  - RawPtr
+  - aggregate
+  - Result
+  - Option
+  - move-only
+  - resource-owning
+  - semantic copy
+  - cleanup-requiring
+  argument_actions:
+  - copy-trivial
+  argument_evaluation_order: left-to-right
+  void_statement_call_supported: true
+  standalone_nonvoid_call_supported: false
+  standalone_nonvoid_reason: discard/ownership semantics not yet represented
+  direct_call:
+    callee_must_be_extern: false
+    result: zero for void, exactly one otherwise
+  foreign_call:
+    callee_must_be_extern: true
+    unsafe_already_validated_by_sema: true
+    ownership_transfer_supported: false
+cfg:
+  terminators:
+  - return
+  - branch
+  - conditional-branch
+  implicit_fallthrough: false
+  block_parameters: true
+  builder_uses_block_parameters_for_ordinary_mutable_locals: false
+  if:
+    without_else: true
+    with_else: true
+    nested: true
+    else_if: true
+    both_branches_return_no_fake_merge: true
+  condition_type: bool
+  condition_expression_subset:
+  - bool parameter
+  - bool immutable local
+  - bool mutable local load
+  - bool literal
+  - supported call returning bool
+dominance:
+  ssa_cross_block_required: true
+  valid_use:
+  - function parameter
+  - current block parameter
+  - earlier same-block definition
+  - definition in a dominating block
+  merge_requires_block_parameter_when_not_dominated: true
+  storage_rules:
+  - storage.declare dominates every storage reference
+  - storage.init dominates every storage.load
+  - storage.init dominates every storage.store
+  - exactly one storage.init in Package 3
+verifier_extensions:
+- StorageID validity/uniqueness
+- storage declaration/init/load/store invariants
+- successor block existence
+- exactly one terminator per block
+- no operations after terminator
+- branch argument arity/type
+- conditional bool type
+- SSA dominance
+- storage declaration dominance
+- storage initialization dominance
+- call target existence
+- call category agrees with extern status
+- call argument arity/type
+- call result arity/type
+- Package 3 argument action is copy-trivial
+printer:
+  storage_id_syntax: $N
+  value_id_syntax: '%N'
+  block_id_syntax: ^N
+  must_print:
+  - storage table
+  - storage class
+  - storage operations
+  - call kind
+  - exact FunctionID
+  - call argument action
+  - branch targets
+  - branch arguments
+  - block parameters
+  - locations
+  deterministic: true
+valid_source_tests:
+- mutable scalar assignment
+- assignment from parameter
+- direct call return
+- overloaded direct target
+- nested call argument order
+- void call statement
+- if without else
+- if/else
+- both branches return
+- nested if
+- mutable storage across branches
+unsupported_source_tests:
+- uninitialized mutable local
+- standalone non-void call
+- method call
+- reference argument call
+- move-only argument call
+- string by-value call
+- arithmetic/comparison condition if not implemented by prior package
+verifier_tests:
+- StorageID zero rejected
+- duplicate StorageID rejected
+- duplicate storage.declare rejected
+- init before declare rejected
+- duplicate init rejected
+- load before init rejected
+- store before init rejected
+- init type mismatch rejected
+- store type mismatch rejected
+- immutable storage store rejected
+- branch missing target rejected
+- branch argument count mismatch rejected
+- branch argument type mismatch rejected
+- cond_br non-bool rejected
+- operation after branch rejected
+- operation after conditional branch rejected
+- non-dominating SSA use rejected
+- dominating SSA use accepted
+- block parameter merge accepted
+- unknown call target rejected
+- DirectCall to extern rejected
+- ForeignCall to non-extern rejected
+- call argument count mismatch rejected
+- call argument type mismatch rejected
+- call result type mismatch rejected
+- non-void call missing result rejected
+- void call with result rejected
+- unsupported argument action rejected
+- storage declared in one branch used outside dominance rejected
+- deterministic CFG printer
+sema_tests:
+- same binding uses same BindingID
+- different bindings use different BindingID
+- parameter binding retained
+- exact overload call target retained
+- resolved call query read-only
+- direct versus foreign call kind retained
+- constructor/conversion/method distinguishable from direct call
+cli_tests:
+- emit mutable local
+- emit direct call
+- emit overload call
+- emit if/else
+- emit nested if
+- unsupported uninitialized mutable exits 4
+- unsupported non-void discard exits 4
+- emit-ir succeeds without backend tools
+- go test ./...
+- legacy LLVM/MLIR codegen regression
+testdata:
+- testdata/semantic_ir/mutable_scalar.sec
+- testdata/semantic_ir/mutable_from_parameter.sec
+- testdata/semantic_ir/direct_call.sec
+- testdata/semantic_ir/overload_call.sec
+- testdata/semantic_ir/call_argument_order.sec
+- testdata/semantic_ir/void_call.sec
+- testdata/semantic_ir/if_without_else.sec
+- testdata/semantic_ir/if_else.sec
+- testdata/semantic_ir/if_all_return.sec
+- testdata/semantic_ir/nested_if.sec
+- testdata/semantic_ir/mutable_across_if.sec
+- testdata/semantic_ir/unsupported_uninitialized_mutable.sec
+- testdata/semantic_ir/unsupported_nonvoid_discard.sec
+- testdata/semantic_ir/unsupported_method_call.sec
+- testdata/semantic_ir/unsupported_reference_call.sec
+- testdata/semantic_ir/unsupported_string_call.sec
+acceptance:
+- Package 2 remains green
+- StorageID exists and differs from ValueID
+- StorageID zero invalid
+- storage descriptors and four storage operations implemented
+- mutable initialized scalar locals lower through storage
+- uninitialized mutable locals explicitly unsupported
+- Sema stable binding identity available
+- builder does not resolve bindings by spelling
+- Sema exact resolved call target available
+- Sema resolved call kind available
+- DirectCall implemented
+- ForeignCall implemented
+- call kinds verified against extern status
+- supported arguments record copy-trivial
+- left-to-right call evaluation preserved
+- void statement calls supported
+- standalone non-void calls explicitly unsupported
+- branch and conditional branch implemented
+- block parameters verifiable
+- if/else/nested if lower correctly
+- no fake merge for fully terminating branches
+- SSA dominance verification implemented
+- storage declaration/init dominance verified
+- printer deterministic
+- sec emit-ir supports Package 3 subset
+- no MLIR/LLVM backend tools invoked by emit-ir
+- go test ./... passes
+- legacy codegen tests pass
+- no future semantic placeholders added
+completion_report:
+- repository HEAD
+- Package 2 pre-status
+- files added
+- files modified
+- StorageID/storage API
+- Sema BindingID API
+- Sema resolved call API
+- supported storage types
+- supported call types
+- call kinds emitted
+- CFG operation types
+- dominance algorithm
+- storage initialization verification
+- test commands
+- test results
+- unsupported constructs
+- deviations
+- Package 4 design issues
+package4:
+  name: First Semantic IR to Sec MLIR bridge
+  requirements:
+  - extend rules/sec_mlir_dialect.md before new dialect constructs
+  - minimum Sec MLIR surface for Package 2/3 subset
+  - module/function/source provenance import
+  - scalar and named type import
+  - constants
+  - storage operations
+  - DirectCall and ForeignCall remain distinct
+  - return
+  - branch
+  - conditional branch
+  - metadata preservation
+  - generated Sec MLIR verification
+  - compiler dump path
+  - sec-mlir-opt round-trip tests
+  must_not_yet_include:
+  - non-trivial ownership
+  - copy/move/destruction
+  - references/borrows
+  - Result/try
+  - defer/cleanup
+  - aggregates
+  - allocation
+  - register/MMIO
+  - concurrency
+  core_invariant: valid Package 2/3 Semantic IR -> valid verified Sec MLIR without
+    AST access or Sema rerun
+implementation_status:
+  ledger: sec-mlir-dialect-package
+  status: implemented
+  completed_on: '2026-08-08'
+  repository_head: d48035c
+  package_2_pre_status: implemented_and_green
+  compiler_implementation_status_sync: deliberately_not_merged
+  storage_api:
+  - StorageID
+  - Storage and StorageClass
+  - storage.declare
+  - storage.init
+  - storage.load
+  - storage.store
+  sema_api:
+  - BindingID and ResolvedBindingOf
+  - ResolvedCall and ResolvedCallTarget
+  - direct, foreign, and static-method call classification
+  call_kinds_emitted:
+  - call.direct
+  - call.foreign
+  cfg_operations:
+  - return
+  - branch
+  - conditional-branch
+  dominance_algorithm: iterative predecessor intersection with same-block definition-order checks
+  storage_initialization_verification: declaration and single initialization must dominate every load/store, including same-block operation order
+  files_added:
+  - internal/sema/semantic_facts.go
+  - internal/sema/semantic_facts_test.go
+  - testdata/semantic_ir/mutable_scalar.sec
+  - testdata/semantic_ir/mutable_from_parameter.sec
+  - testdata/semantic_ir/direct_call.sec
+  - testdata/semantic_ir/overload_call.sec
+  - testdata/semantic_ir/call_argument_order.sec
+  - testdata/semantic_ir/void_call.sec
+  - testdata/semantic_ir/foreign_call.sec
+  - testdata/semantic_ir/if_without_else.sec
+  - testdata/semantic_ir/if_else.sec
+  - testdata/semantic_ir/if_all_return.sec
+  - testdata/semantic_ir/nested_if.sec
+  - testdata/semantic_ir/mutable_across_if.sec
+  - testdata/semantic_ir/unsupported_uninitialized_mutable.sec
+  - testdata/semantic_ir/unsupported_nonvoid_discard.sec
+  - testdata/semantic_ir/unsupported_method_call.sec
+  - testdata/semantic_ir/unsupported_reference_call.sec
+  - testdata/semantic_ir/unsupported_string_call.sec
+  files_modified:
+  - internal/ast/ast.go
+  - internal/sema/analyzer.go
+  - internal/ir/semantic/builder.go
+  - internal/ir/semantic/verifier.go
+  - internal/ir/semantic/printer.go
+  supported_storage_types: trivial scalar and compatible contract-free/unit-free named scalar types except string
+  supported_call_types: trivial scalar and compatible named scalar arguments, plus void returns
+  unsupported_constructs:
+  - uninitialized mutable source declarations
+  - non-trivial storage and transfer
+  - standalone non-void calls
+  - method calls
+  - reference and string by-value calls
+  - arithmetic expressions and conditions
+  - loops, switch, match, try, cleanup, aggregates, allocation, MMIO, and concurrency
+  test_commands:
+  - go test ./internal/ir/semantic ./internal/sema ./cmd/compiler
+  - go test ./...
+  - cmake --build build/sec-mlir --target check-sec-mlir
+  results:
+    semantic_ir_unit_tests: pass
+    sema_fact_tests: pass
+    compiler_cli_tests: pass
+    supported_source_fixtures: pass
+    unsupported_exit_code_4: pass
+    backend_tool_free_cli: pass
+    full_go_regression: pass
+    package_1_lit_regression: pass_11_of_11
+  deviations:
+  - Sema default synthesis is marked explicitly on the AST so Semantic IR can distinguish omitted source initialization without re-analysis.
+  - Reference-typed function signatures currently fail at the Semantic IR type boundary before reference-call action lowering; reference IR remains intentionally deferred.
+  package_4_design_issues:
+  - Map Semantic IR TypeID identity to Sec dialect named types without consulting AST or Sema.
+  - Define the minimum Sec operations for storage, calls, return, branch, and conditional branch before implementing the bridge.
+  - Preserve direct versus foreign call identity and source locations through the import.

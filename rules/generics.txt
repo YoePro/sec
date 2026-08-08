@@ -1010,7 +1010,9 @@ Rules:
 * The impl is instantiated together with the concrete target type.
 * Methods are monomorphized only when used, unless eager instantiation is
   selected for implementation simplicity.
-* A generic type follows the normal rule of at most one impl block.
+* A generic type follows the normal rule of at most one primary impl block.
+* Additional `impl extends Stack[T]` blocks may be declared in the same module
+  and must repeat the primary target's exact generic parameter mapping.
 
 Current implementation:
 

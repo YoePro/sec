@@ -1,0 +1,9 @@
+module main
+
+fn Choose(first: bool, second: bool) int {
+    if first {
+        if second { return 1 }
+        return 2
+    }
+    return 3
+}

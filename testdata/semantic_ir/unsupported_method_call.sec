@@ -1,0 +1,11 @@
+module main
+
+type Counter int
+
+impl Counter {
+    fn Read() int { return 1 }
+}
+
+fn Main(value: Counter) int {
+    return value.Read()
+}

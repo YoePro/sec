@@ -1,0 +1,161 @@
+module units
+
+// =============================================================================
+// Photometry, radiation, chemistry, and additional coherent SI quantities
+// =============================================================================
+
+/** Becquerel */
+unit Bq physical
+impl Bq {
+    LongName: "Becquerel"
+    Symbol: "Bq"
+    BaseUnit: false
+    Status: active
+    Dimension: [time^-1]
+    Scale: 1
+    System: SI
+}
+
+/** Gray */
+unit Gy physical
+impl Gy {
+    LongName: "Gray"
+    Symbol: "Gy"
+    BaseUnit: false
+    Status: active
+    Dimension: [length^2, time^-2]
+    Scale: 1
+    System: SI
+}
+
+/** Sievert */
+unit Sv physical
+impl Sv {
+    LongName: "Sievert"
+    Symbol: "Sv"
+    BaseUnit: false
+    Status: active
+    Dimension: [length^2, time^-2]
+    Scale: 1
+    System: SI
+}
+
+/** Katal */
+unit kat physical
+impl kat {
+    LongName: "Katal"
+    Symbol: "kat"
+    BaseUnit: false
+    Status: active
+    Dimension: [amount_of_substance^1, time^-1]
+    Scale: 1
+    System: SI
+}
+
+/** Mole per cubic metre */
+unit mol_m3 physical
+impl mol_m3 {
+    LongName: "Mole per Cubic Metre"
+    Symbol: "mol/m³"
+    BaseUnit: false
+    Status: active
+    Dimension: [amount_of_substance^1, length^-3]
+    Scale: 1
+    System: SI
+}
+
+/** Mole per litre */
+unit mol_L physical
+impl mol_L {
+    LongName: "Mole per Litre"
+    Symbol: "mol/L"
+    BaseUnit: false
+    Status: active
+    Dimension: [amount_of_substance^1, length^-3]
+    Scale: 1000
+    System: SI
+}
+
+/** Joule per kelvin */
+unit J_K physical
+impl J_K {
+    LongName: "Joule per Kelvin"
+    Symbol: "J/K"
+    BaseUnit: false
+    Status: active
+    Dimension: [mass^1, length^2, time^-2, thermodynamic_temperature^-1]
+    Scale: 1
+    System: SI
+}
+
+/** Joule per kilogram kelvin */
+unit J_kg_K physical
+impl J_kg_K {
+    LongName: "Joule per Kilogram Kelvin"
+    Symbol: "J/(kg·K)"
+    BaseUnit: false
+    Status: active
+    Dimension: [length^2, time^-2, thermodynamic_temperature^-1]
+    Scale: 1
+    System: SI
+}
+
+/** Watt per metre kelvin */
+unit W_m_K physical
+impl W_m_K {
+    LongName: "Watt per Metre Kelvin"
+    Symbol: "W/(m·K)"
+    BaseUnit: false
+    Status: active
+    Dimension: [mass^1, length^1, time^-3, thermodynamic_temperature^-1]
+    Scale: 1
+    System: SI
+}
+
+/** Newton metre */
+unit Nm physical
+impl Nm {
+    LongName: "Newton Metre"
+    Symbol: "N·m"
+    BaseUnit: false
+    Status: active
+    Dimension: [mass^1, length^2, time^-2]
+    Scale: 1
+    System: SI
+}
+
+/** Reciprocal metre */
+unit per_m physical
+impl per_m {
+    LongName: "Reciprocal Metre"
+    Symbol: "m⁻¹"
+    BaseUnit: false
+    Status: active
+    Dimension: [length^-1]
+    Scale: 1
+    System: SI
+}
+
+/** Cubic metre per second */
+unit m3_s physical
+impl m3_s {
+    LongName: "Cubic Metre per Second"
+    Symbol: "m³/s"
+    BaseUnit: false
+    Status: active
+    Dimension: [length^3, time^-1]
+    Scale: 1
+    System: SI
+}
+
+/** Litre per second */
+unit L_s physical
+impl L_s {
+    LongName: "Litre per Second"
+    Symbol: "L/s"
+    BaseUnit: false
+    Status: active
+    Dimension: [length^3, time^-1]
+    Scale: 1 / 1000
+    System: SI
+}

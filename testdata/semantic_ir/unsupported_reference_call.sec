@@ -1,0 +1,7 @@
+module main
+
+fn Read(value: ref int) void { return }
+fn Main(value: ref int) void {
+    Read(value)
+    return
+}

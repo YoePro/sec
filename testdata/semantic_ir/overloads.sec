@@ -1,0 +1,9 @@
+module main
+
+fn Value(value: int) int {
+    return value
+}
+
+fn Value(value: bool) bool {
+    return value
+}

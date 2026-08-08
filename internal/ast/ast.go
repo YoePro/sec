@@ -641,16 +641,20 @@ const (
 )
 
 type LetStatement struct {
-	Token        lexer.Token
-	Static       bool
-	Mutable      bool
-	Ownership    OwnershipMode
-	Name         *Identifier
-	Type         *TypeReference
-	Contract     Contract
-	Value        Expression
-	Address      Expression
-	AddressToken lexer.Token
+	Token     lexer.Token
+	Static    bool
+	Mutable   bool
+	Ownership OwnershipMode
+	Name      *Identifier
+	Type      *TypeReference
+	Contract  Contract
+	Value     Expression
+	// SynthesizedDefault records that Sema supplied Value for a declaration
+	// which had no source initializer. Lowering stages must not mistake it for
+	// an explicit initialization when their package boundary forbids defaults.
+	SynthesizedDefault bool
+	Address            Expression
+	AddressToken       lexer.Token
 }
 
 func (ls *LetStatement) statementNode() {}
@@ -1399,6 +1403,7 @@ type MatchArm struct {
 
 type ImplStatement struct {
 	Token   lexer.Token
+	Extends bool
 	Target  *TypeReference
 	Members []ImplMember
 }

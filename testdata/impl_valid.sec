@@ -17,6 +17,14 @@ type EmptyTarget struct {
 impl EmptyTarget {
 }
 
+// Explicit extensions may contribute members from another file in the same
+// module. This fixture exercises the syntax in the combined single-file suite.
+impl extends EmptyTarget {
+    fn IsEmpty() bool {
+        return true
+    }
+}
+
 // -----------------------------------------------------------------------------
 // Struct target
 //

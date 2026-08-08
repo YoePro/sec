@@ -1832,6 +1832,27 @@ impl Vehicle {
 	}
 }
 
+func TestParseExplicitImplExtension(t *testing.T) {
+	input := `
+impl extends Vehicle {
+	fn Stop() void {
+	}
+}
+`
+
+	p := New(lexer.New(input))
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	impl, ok := program.Statements[0].(*ast.ImplStatement)
+	if !ok {
+		t.Fatalf("statement is not ImplStatement. got=%T", program.Statements[0])
+	}
+	if !impl.Extends || impl.Target == nil || impl.Target.Name != "Vehicle" {
+		t.Fatalf("wrong impl extension AST: %+v", impl)
+	}
+}
+
 func TestParseImplAndInterfaceEvents(t *testing.T) {
 	input := `
 interface PressSource {

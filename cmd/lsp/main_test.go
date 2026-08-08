@@ -452,10 +452,15 @@ impl User {
 	fn Clear() void {
 	}
 }
+
+impl extends User {
+	fn Reset() void {
+	}
+}
 `
 
 	symbols := documentSymbolsForSource("", source)
-	assertDocumentSymbolNames(t, symbols, []string{"main", "User", "Ready", "impl User"})
+	assertDocumentSymbolNames(t, symbols, []string{"main", "User", "Ready", "impl User", "impl extends User"})
 
 	var implSymbol *documentSymbol
 	for i := range symbols {
@@ -1960,6 +1965,36 @@ impl Counter {
 	for _, item := range items {
 		if item.Label == "advance" && item.Detail != "int" {
 			t.Fatalf("advance completion detail. got=%q want=int", item.Detail)
+		}
+	}
+}
+
+func TestLSPAnalysisDepthFromProjectManifest(t *testing.T) {
+	dir := t.TempDir()
+	manifestDir := filepath.Join(dir, ".sec")
+	if err := os.MkdirAll(manifestDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	sourcePath := filepath.Join(dir, "main.sec")
+	if err := os.WriteFile(sourcePath, []byte("module main\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, test := range []struct {
+		config string
+		want   sema.AnalysisDepth
+	}{
+		{"[project]\nname = \"test\"\n", sema.AnalysisInteractive},
+		{"[analysis]\nlsp_depth = \"interactive\"\n", sema.AnalysisInteractive},
+		{"[analysis]\nlsp_depth = \"standard\"\n", sema.AnalysisStandard},
+		{"[analysis]\nlsp_depth = \"deep\"\n", sema.AnalysisDeep},
+		{"[analysis]\nlsp_depth = \"unsupported\"\n", sema.AnalysisInteractive},
+	} {
+		if err := os.WriteFile(filepath.Join(manifestDir, "sec.toml"), []byte(test.config), 0644); err != nil {
+			t.Fatal(err)
+		}
+		if got := lspAnalysisDepth(sourcePath); got != test.want {
+			t.Fatalf("lspAnalysisDepth with %q = %q, want %q", test.config, got, test.want)
 		}
 	}
 }

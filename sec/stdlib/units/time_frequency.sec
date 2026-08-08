@@ -1,0 +1,161 @@
+module units
+
+// =============================================================================
+// Civil time, frequency, angles, and rotational quantities
+// =============================================================================
+
+/** Minute */
+unit min physical
+impl min {
+    LongName: "Minute"
+    Symbol: "min"
+    BaseUnit: false
+    Status: active
+    Dimension: [time^1]
+    Scale: 60
+    System: Other
+}
+
+/** Hour */
+unit h physical
+impl h {
+    LongName: "Hour"
+    Symbol: "h"
+    BaseUnit: false
+    Status: active
+    Dimension: [time^1]
+    Scale: 3600
+    System: Other
+}
+
+/** Day */
+unit day physical
+impl day {
+    LongName: "Day"
+    Symbol: "d"
+    BaseUnit: false
+    Status: active
+    Dimension: [time^1]
+    Scale: 86400
+    System: Other
+}
+
+/** Week */
+unit week physical
+impl week {
+    LongName: "Week"
+    Symbol: "wk"
+    BaseUnit: false
+    Status: active
+    Dimension: [time^1]
+    Scale: 604800
+    System: Other
+}
+
+/** Kilohertz */
+unit kHz physical
+impl kHz {
+    LongName: "Kilohertz"
+    Symbol: "kHz"
+    BaseUnit: false
+    Status: active
+    Dimension: [time^-1]
+    Scale: 1000
+    System: SI
+}
+
+/** Megahertz */
+unit MHz physical
+impl MHz {
+    LongName: "Megahertz"
+    Symbol: "MHz"
+    BaseUnit: false
+    Status: active
+    Dimension: [time^-1]
+    Scale: 1000000
+    System: SI
+}
+
+/** Gigahertz */
+unit GHz physical
+impl GHz {
+    LongName: "Gigahertz"
+    Symbol: "GHz"
+    BaseUnit: false
+    Status: active
+    Dimension: [time^-1]
+    Scale: 1000000000
+    System: SI
+}
+
+/** Revolution per minute */
+unit rpm physical
+impl rpm {
+    LongName: "Revolution per Minute"
+    Symbol: "rpm"
+    BaseUnit: false
+    Status: active
+    Dimension: [time^-1]
+    Scale: 1 / 60
+    System: Other
+}
+
+/** Radian */
+unit rad physical
+impl rad {
+    LongName: "Radian"
+    Symbol: "rad"
+    BaseUnit: false
+    Status: active
+    Dimension: []
+    Scale: 1
+    System: SI
+}
+
+/** Steradian */
+unit sr physical
+impl sr {
+    LongName: "Steradian"
+    Symbol: "sr"
+    BaseUnit: false
+    Status: active
+    Dimension: []
+    Scale: 1
+    System: SI
+}
+
+/** Degree of arc */
+unit deg physical
+impl deg {
+    LongName: "Degree"
+    Symbol: "°"
+    BaseUnit: false
+    Status: active
+    Dimension: []
+    Scale: 0.017453292519943295
+    System: Other
+}
+
+/** Radian per second */
+unit radps physical
+impl radps {
+    LongName: "Radian per Second"
+    Symbol: "rad/s"
+    BaseUnit: false
+    Status: active
+    Dimension: [time^-1]
+    Scale: 1
+    System: SI
+}
+
+/** Radian per second squared */
+unit radps2 physical
+impl radps2 {
+    LongName: "Radian per Second Squared"
+    Symbol: "rad/s²"
+    BaseUnit: false
+    Status: active
+    Dimension: [time^-2]
+    Scale: 1
+    System: SI
+}

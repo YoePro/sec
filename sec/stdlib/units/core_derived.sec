@@ -11,19 +11,19 @@ impl Hz {
     Scale: 1
     System: SI
 
-    fn Hz(Second: decimal<s>) decimal<Hz> {
+    fn FromPeriod(Second: decimal<s>) decimal<Hz> {
         return decimal<Hz>(1d / decimal(Second))
     }
 
-    fn Hz(Second: float<s>) float<Hz> {
+    fn FromPeriod(Second: float<s>) float<Hz> {
         return float<Hz>(1.0f / float(Second))
     }
 
-    fn Hz(Second: int<s>) int<Hz> {
+    fn FromPeriod(Second: int<s>) int<Hz> {
         return int<Hz>(1i / int(Second))
     }
 
-    fn Hz(Second: uint<s>) uint<Hz> {
+    fn FromPeriod(Second: uint<s>) uint<Hz> {
         return uint<Hz>(1u / uint(Second))
     }
 }
@@ -31,6 +31,10 @@ impl Hz {
 /** Newton */
 unit N decimal physical
 impl N {
+    LongName: "Newton"
+    Symbol: "N"
+    BaseUnit: false
+    Status: active
     dimension: [mass^1, length^1, time^-2]
     scale: 1
     system: SI
@@ -47,6 +51,10 @@ impl N {
 /** Pascal */
 unit Pa decimal physical
 impl Pa {
+    LongName: "Pascal"
+    Symbol: "Pa"
+    BaseUnit: false
+    Status: active
     dimension: [mass^1, length^-1, time^-2]
     scale: 1
     system: SI

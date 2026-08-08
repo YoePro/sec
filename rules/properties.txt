@@ -483,52 +483,17 @@ The intended lowering path is:
    concrete implementation
 4. LLVM IR receives only explicit low-level behavior
 
-## Current implementation status
+# Implementation governance
 
-Implemented:
+Implementation status for this rulebook is owned by:
 
-- parser support for `property Name: Type { ... }`
-- parser support for `get`
-- parser support for `set value`
-- parser support for `try set value`
-- parser recovery for missing property name
-- parser recovery for missing `:`
-- parser recovery for missing property type
-- parser recovery for missing setter parameter
-- sema property registration on impl target type
-- duplicate property diagnostics
-- property type resolution
-- member access type inference for properties
-- getter return-type checking
-- missing getter return diagnostics
-- constructor-style conversion resolution in getter returns
-- non-fallible setter cannot return `Err(...)`
-- simple setter assignment type checking
-- full getter body semantic analysis as a normal function body
-- full setter body semantic analysis as a normal function body
-- fallible property assignment requires `try`
-- fallible property assignment through an unqualified property name inside the
-  same impl body requires `try`
-- `try` assignment handlers for unqualified property assignment inside the same
-  impl body use the property's declared or inferred error type
-- fallible setter error type inference for simple `Err(...)` returns
-- fallible setter error type inference scans nested branch bodies for
-  `return Err(...)`
-- generic impl property type substitution in the current generic model
+```text
+implementation-status.yaml
+integration: frontend.properties
+```
 
-Partially implemented:
-
-- property access exists for type checking, but full lowering is incomplete
-- compound assignment to fallible properties depends on the current assignment
-  support
-
-Not implemented yet:
-
-- full `self` borrow and mutability rules
-- explicit property effect model
-- visibility rules for properties
-- property overriding or interface property requirements
-- complete property code generation through Semantic IR and MLIR
+This rulebook contains normative requirements and does not duplicate the
+repository's current implementation state.
 
 ## Design rule
 

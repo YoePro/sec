@@ -1,0 +1,6 @@
+module main
+
+fn Answer() int {
+    let value := 42
+    return value
+}

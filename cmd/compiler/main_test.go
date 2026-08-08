@@ -658,6 +658,8 @@ func TestInitProjectCreatesScaffold(t *testing.T) {
 		`backend = "mlir"`,
 		`profile = "server"`,
 		`diagnostics = "default"`,
+		`[analysis]`,
+		`lsp_depth = "interactive"`,
 		`[profile.server]`,
 		`[variant.linux-amd64]`,
 		`os = "linux"`,

@@ -1,0 +1,7 @@
+module main
+
+fn One() int { return 1 }
+fn Main() void {
+    One()
+    return
+}

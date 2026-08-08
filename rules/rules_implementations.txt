@@ -2,8 +2,8 @@
 Rules Implementation
 =============================================================================================================================================================================================
 
-Reference model and call graph implementation status
-----------------------------------------------------
+Reference model implementation status
+-------------------------------------
 
 Documentation synchronized:
 
@@ -11,64 +11,22 @@ Documentation synchronized:
   stable-handle, weak-handle, and `RawPtr` boundary rulebook
 - generational references are covered by `reference_model.md`; there is no
   separate `generational_references.md` rulebook
-- `call_graph.md` is the canonical callable-reachability and execution-
-  relationship rulebook
-- `lsp.md` consumes compiler-owned call-graph facts per concrete
-  `CompilationPlan` and does not define an LSP-owned graph
 
 Implemented foundations:
 
 - safe reference and mutable-reference syntax
 - existing borrow and ownership analysis described by the dedicated
   implementation sections below and by the owning rulebooks
-- parser and Sema support for spawn and await, including explicit task, thread,
-  and process spawn kinds where currently recorded by the frontend
-- current direct call, method resolution, generic, closure, effect, ownership,
-  and concurrency facts used independently by existing frontend checks
-- one compiler-owned call-graph snapshot per current Sema analysis
-- deterministic callable and call-site identities within that source snapshot
-- callable nodes and validated synchronous edges for direct calls and statically
-  resolved methods, including direct foreign-dispatch classification
-- incoming and outgoing direct-call queries with source locations
-- standard LSP prepare/incoming/outgoing call hierarchy consuming that graph,
-  with grouped call sites and incomplete-source resilience
-- `ProgramEntryRoot` discovery for a valid `main` function
-- root reachability over represented synchronous direct/static-method edges
-- literal bool branch pruning so calls under `if false` do not become reachable
-- Tarjan same-stack SCC analysis with direct and mutual recursion detection
-- LSP hover summaries for incoming/outgoing sites, root reachability, and
-  represented recursion components
-- task-spawn and thread-start execution relationships on the exact resolved
-  top-level spawn call, while argument calls remain synchronous
-- derived task-entry and thread-entry roots only for reachable spawn sites
-- whole-program reachability across represented spawn edges while same-stack
-  SCC analysis excludes those edges and task-spawn cycles
-- LSP call hierarchy preserves dispatch/execution metadata and does not merge a
-  spawn edge with a synchronous edge to the same target
-- direct source-ordered Arena effect sites for `FromBuffer`, `WithCapacity`,
-  `Growable`, `New`, `Alloc`, `Reset`, and `Release`
-- synchronous Arena `MayAllocate` propagation and shortest callable allocation
-  cause paths, excluding spawned-body effects from the spawner's synchronous
-  summary
-- LSP hover for direct Arena effects, transitive allocation, and its cause path
 
 Partial or pending:
 
-- complete callable and call-site identity across incremental snapshots and per
-  concrete `CompilationPlan`
-- remaining root kinds beyond program/task/thread entry and complete semantic
-  path-sensitive pruning
-- complete indirect and interface target sets, open callable contracts,
-  process/interrupt/callback/defer/destruction edges, dedicated spawn-cycle SCC
-  diagnostics, and cause-aware analysis paths
 - complete validity-epoch, relocation, stable-handle, weak-handle, profile-
   representation, concurrent-invalidation, and FFI-retention analysis
-- LSP indirect callers/callees, root reachability, graph paths,
-  synchronization origins, and target-aware graph snapshots
-- propagation of Arena allocation context/effects, storage-domain facts, and
-  resolved layout summaries beyond the initial Arena `MayAllocate` path
 
-Written status does not claim that either complete rulebook is implemented.
+Written status does not claim that the complete rulebook is implemented.
+
+Call-graph implementation status has moved to `implementation-status.yaml`
+under integration ID `analysis.call-graph`.
 
 Compiler-known member and Arena frontend status
 -----------------------------------------------

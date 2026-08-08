@@ -1,2 +1,101 @@
 module units
 
+// =============================================================================
+// Photometric quantities
+// =============================================================================
+
+/** Lumen */
+unit lm physical
+impl lm {
+    LongName: "Lumen"
+    Symbol: "lm"
+    BaseUnit: false
+    Status: active
+    Dimension: [luminous_intensity^1]
+    Scale: 1
+    System: SI
+}
+
+/** Lux */
+unit lx physical
+impl lx {
+    LongName: "Lux"
+    Symbol: "lx"
+    BaseUnit: false
+    Status: active
+    Dimension: [luminous_intensity^1, length^-2]
+    Scale: 1
+    System: SI
+}
+
+/** Candela per square metre */
+unit nit physical
+impl nit {
+    LongName: "Nit"
+    Symbol: "nt"
+    BaseUnit: false
+    Status: active
+    Dimension: [luminous_intensity^1, length^-2]
+    Scale: 1
+    System: SI
+}
+
+/** Phot */
+unit phot physical
+impl phot {
+    LongName: "Phot"
+    Symbol: "ph"
+    BaseUnit: false
+    Status: active
+    Dimension: [luminous_intensity^1, length^-2]
+    Scale: 10000
+    System: CGS
+}
+
+/** Stilb */
+unit stilb physical
+impl stilb {
+    LongName: "Stilb"
+    Symbol: "sb"
+    BaseUnit: false
+    Status: active
+    Dimension: [luminous_intensity^1, length^-2]
+    Scale: 10000
+    System: CGS
+}
+
+/** Foot-candle */
+unit fc physical
+impl fc {
+    LongName: "Foot Candle"
+    Symbol: "fc"
+    BaseUnit: false
+    Status: active
+    Dimension: [luminous_intensity^1, length^-2]
+    Scale: 1562500 / 145161
+    System: Imperial
+}
+
+/** Lumen second */
+unit lm_s physical
+impl lm_s {
+    LongName: "Lumen Second"
+    Symbol: "lm·s"
+    BaseUnit: false
+    Status: active
+    Dimension: [luminous_intensity^1, time^1]
+    Scale: 1
+    System: SI
+}
+
+/** Lumen per watt */
+unit lm_W physical
+impl lm_W {
+    LongName: "Lumen per Watt"
+    Symbol: "lm/W"
+    BaseUnit: false
+    Status: active
+    Dimension: [luminous_intensity^1, mass^-1, length^-2, time^3]
+    Scale: 1
+    System: SI
+}

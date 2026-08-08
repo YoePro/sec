@@ -1,0 +1,4 @@
+module main
+
+fn Echo(value: string) string { return value }
+fn Main() string { return Echo("text") }

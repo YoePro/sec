@@ -11,13 +11,15 @@ This document tracks documentation status only.
 
 It does not claim that a written rulebook has been implemented by the compiler.
 
-Implementation progress belongs in:
+Implementation progress is governed by:
 
 ```text
-rules/rules_implementations.txt
+implementation-status.yaml
 ```
 
-and in the `Implementation status` section of rulebooks that require one.
+Rulebooks contain normative requirements and must not duplicate the current
+repository implementation state. Existing status sections are migrated one
+rulebook at a time into the implementation ledger.
 
 ---
 
@@ -70,6 +72,10 @@ arena.md
 storage.md
 layout.md
 compiler_known_members.md
+escape_analysis.md
+closure_analysis.md
+parameter_usage_analysis.md
+pitfall_analysis.md
 ```
 
 These were written after the older temporary checklist was last synchronized.
@@ -436,10 +442,13 @@ OrderedMap[K, V]
 | `semantic_ir.txt` | **Written — sync required** | Must include discard, threads, collections, shaped values, panic, and effects. |
 | `mlir.txt` | **Written — sync required** | |
 | `mlir-optimize.txt` | **Living** | Updated as implementation and optimization support grows. |
-| `rules_implementations.txt` | **Living** | Canonical implementation progress tracker. |
-| `call_graph.md` | **Written** | Canonical callable reachability and execution relationships; direct/static-method/task/thread edges, roots, reachability/SCC, call hierarchy, and initial Arena `MayAllocate` cause paths are implemented. Per-plan identities, indirect targets, remaining execution/effect kinds, complete pruning, and general cause paths remain. |
+| `rules_implementations.txt` | **Living** | Legacy implementation notes being migrated into `implementation-status.yaml`. |
+| `call_graph.md` | **Written** | Canonical callable reachability and execution relationships. Implementation status is tracked by `analysis.call-graph` in `implementation-status.yaml`. |
 | `stack_analysis.md` | **Planned** | Per-function, per-path, whole-program, and target frame analysis. |
-| `escape_analysis.md` | **Planned** | No silent stack-to-heap promotion; closure and reference escape rules. |
+| `escape_analysis.md` | **Written** | Canonical escape subjects, destinations, retention, summaries, diagnostics, and no-silent-promotion contract. Implementation status is tracked by `sema.escape-analysis`. |
+| `closure_analysis.md` | **Written** | Canonical capture, callable-flow, target-set, closure-summary, and analysis-budget model. Implementation status is tracked by `sema.closure-analysis`. |
+| `parameter_usage_analysis.md` | **Written** | Canonical multidimensional parameter-demand and advisory-narrowing model. Implementation status is tracked by `sema.parameter-usage-analysis`. |
+| `pitfall_analysis.md` | **Written** | Canonical semantic pitfall-finding, evidence, suppression, confidence, corrective-action, budget, incremental, LSP, and FFI-contract model. Implementation status is tracked by `sema.pitfall-analysis`. |
 | `effect_analysis.md` | **Written** | Canonical compile-time effect domains and propagation model. Initial Arena event sites, synchronous `MayAllocate` propagation, cause paths, and LSP hover are implemented; the complete effect set, guarantees, contexts, indirect targets, and per-plan analysis remain. |
 | `isr_analysis.md` | **Planned** | ISR call graph, stack, allocation, blocking, lock, and shared-state restrictions. |
 | `parser_recovery.md` | **Written** | Canonical deterministic recovery model; structured implementation remains partial. |
@@ -616,6 +625,10 @@ repository state:
 collections-shaped-types.md
 thread_local.md
 discard.md
+escape_analysis.md
+closure_analysis.md
+parameter_usage_analysis.md
+pitfall_analysis.md
 ```
 
 ---
@@ -627,7 +640,6 @@ fully design-closed, unless a later decision explicitly merges one into another.
 
 ```text
 stack_analysis.md
-escape_analysis.md
 isr_analysis.md
 generics_lowering.md
 monomorphization.md

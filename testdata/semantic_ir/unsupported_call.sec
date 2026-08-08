@@ -1,0 +1,4 @@
+module main
+
+fn One() int { return 1 }
+fn Main() int { return One() }

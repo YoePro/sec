@@ -2787,73 +2787,17 @@ semantics and selected lowering.
 
 ---
 
-# Current implementation status
+# Implementation governance
 
-The canonical spawn and await rulebooks currently establish:
-
-```text
-spawn is an expression;
-spawn defaults to task execution;
-spawn task, spawn thread, and spawn process preserve requested execution kind;
-spawn is eager;
-the same callable may be synchronous or spawned;
-task handles are move-only lifecycle owners;
-await is task-specific in Sec 0.1;
-await consumes Task[T];
-join preserves the task handle;
-await inside defer is invalid;
-spawn and await require explicit Semantic IR representation.
-```
-
-Current front-end support already includes substantial parser and Sema support
-for spawn and await.
-
-The compiler now also owns an initial semantic call-graph service produced by
-each Sema analysis. It currently provides:
+Implementation status for this rulebook is owned by:
 
 ```text
-deterministic callable identities within one analyzed source snapshot;
-deterministic call-site identities within their containing callable;
-callable nodes for declared functions and methods;
-validated synchronous direct-call edges;
-validated synchronous statically resolved method-call edges;
-foreign-direct dispatch classification for valid extern calls;
-incoming and outgoing direct-call queries;
-source declaration and call-site locations;
-defensive immutable graph snapshots for consumers;
-standard LSP incoming and outgoing call hierarchy over these facts;
-ProgramEntryRoot discovery for a valid module-main fn main() int|void;
-root reachability over the represented synchronous graph;
-literal-true and literal-false branch pruning for graph edges;
-same-stack strongly connected components for represented synchronous edges;
-direct and mutual recursion classification;
-LSP hover summaries for callers, callees, root reachability, and recursion;
-validated task-spawn and thread-start execution relationships;
-separate synchronous argument-call edges inside spawn expressions;
-derived task-entry and thread-entry roots for reachable spawn sites;
-whole-program reachability across task/thread execution boundaries;
-same-stack SCC exclusion of task/thread spawn edges and spawn cycles;
-LSP call-hierarchy relationship metadata and hover spawn summaries;
-source-ordered direct Arena effect sites for recognized Arena operations;
-synchronous Arena `MayAllocate` summaries and shortest callable cause paths;
-execution-aware exclusion of spawned-body allocation from synchronous caller
-summaries;
-LSP hover for direct Arena events and allocation cause paths.
+implementation-status.yaml
+integration: analysis.call-graph
 ```
 
-These identities do not yet include complete `CompilationPlan`, generic
-specialization, closure, defer, or generated-callable identity. The graph does
-not yet claim the remaining root kinds, complete semantic path pruning,
-indirect target sets, process/interrupt/callback/defer/destruction execution
-relationships, cross-snapshot reachability, spawn-cycle SCC diagnostics, effect
-domains beyond the initial Arena allocation summary, path-aware ordered effect
-merging, or general diagnostic cause paths.
-
-The repository does not yet claim the complete canonical call graph defined by
-this rulebook.
-
-Codex must inventory existing graph, call-resolution, recursion, effect,
-allocation, task, and stack structures before implementing a parallel system.
+This rulebook contains normative requirements and does not duplicate the
+repository's current implementation state.
 
 ---
 
@@ -3205,7 +3149,7 @@ attributes.md
 diagnostics.txt
 lsp.md
 language-rulebook-status.md
-rules_implementations.txt
+implementation-status.yaml
 ```
 
 ---
@@ -3223,7 +3167,7 @@ Update:
 
 ```text
 language-rulebook-status.md
-rules_implementations.txt
+implementation-status.yaml
 ```
 
 `reference_model.md` must also be added to the canonical written inventory when
@@ -3253,12 +3197,13 @@ Update:
 
 ```text
 language-rulebook-status.md
-rules/rules_implementations.txt
+implementation-status.yaml
 ```
 
 Mark the rulebook Written.
 
-Do not mark the complete implementation finished.
+Track implementation progress under integration ID `analysis.call-graph` and
+do not mark it complete until the complete rulebook contract is verified.
 
 ---
 

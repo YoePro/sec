@@ -1,0 +1,7 @@
+module main
+
+extern "C" fn foreign_add(left: int32, right: int32) int32
+
+unsafe fn Main() int32 {
+    return foreign_add(1, 2)
+}

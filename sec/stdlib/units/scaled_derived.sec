@@ -1,0 +1,341 @@
+module units
+
+// =============================================================================
+// Common scaled SI-derived units
+// =============================================================================
+
+/** Millinewton */
+unit mN physical
+impl mN {
+    LongName: "Millinewton"
+    Symbol: "mN"
+    BaseUnit: false
+    Status: active
+    Dimension: [mass^1, length^1, time^-2]
+    Scale: 1 / 1000
+    System: SI
+}
+
+/** Meganewton */
+unit MN physical
+impl MN {
+    LongName: "Meganewton"
+    Symbol: "MN"
+    BaseUnit: false
+    Status: active
+    Dimension: [mass^1, length^1, time^-2]
+    Scale: 1000000
+    System: SI
+}
+
+/** Hectopascal */
+unit hPa physical
+impl hPa {
+    LongName: "Hectopascal"
+    Symbol: "hPa"
+    BaseUnit: false
+    Status: active
+    Dimension: [mass^1, length^-1, time^-2]
+    Scale: 100
+    System: SI
+}
+
+/** Kilojoule */
+unit kJ physical
+impl kJ {
+    LongName: "Kilojoule"
+    Symbol: "kJ"
+    BaseUnit: false
+    Status: active
+    Dimension: [mass^1, length^2, time^-2]
+    Scale: 1000
+    System: SI
+}
+
+/** Megajoule */
+unit MJ physical
+impl MJ {
+    LongName: "Megajoule"
+    Symbol: "MJ"
+    BaseUnit: false
+    Status: active
+    Dimension: [mass^1, length^2, time^-2]
+    Scale: 1000000
+    System: SI
+}
+
+/** Gigajoule */
+unit GJ physical
+impl GJ {
+    LongName: "Gigajoule"
+    Symbol: "GJ"
+    BaseUnit: false
+    Status: active
+    Dimension: [mass^1, length^2, time^-2]
+    Scale: 1000000000
+    System: SI
+}
+
+/** Kilowatt */
+unit kW physical
+impl kW {
+    LongName: "Kilowatt"
+    Symbol: "kW"
+    BaseUnit: false
+    Status: active
+    Dimension: [mass^1, length^2, time^-3]
+    Scale: 1000
+    System: SI
+}
+
+/** Megawatt */
+unit MW physical
+impl MW {
+    LongName: "Megawatt"
+    Symbol: "MW"
+    BaseUnit: false
+    Status: active
+    Dimension: [mass^1, length^2, time^-3]
+    Scale: 1000000
+    System: SI
+}
+
+/** Gigawatt */
+unit GW physical
+impl GW {
+    LongName: "Gigawatt"
+    Symbol: "GW"
+    BaseUnit: false
+    Status: active
+    Dimension: [mass^1, length^2, time^-3]
+    Scale: 1000000000
+    System: SI
+}
+
+/** Kilowatt-hour */
+unit kWh physical
+impl kWh {
+    LongName: "Kilowatt Hour"
+    Symbol: "kWh"
+    BaseUnit: false
+    Status: active
+    Dimension: [mass^1, length^2, time^-2]
+    Scale: 3600000
+    System: SI
+}
+
+/** Millicoulomb */
+unit mC physical
+impl mC {
+    LongName: "Millicoulomb"
+    Symbol: "mC"
+    BaseUnit: false
+    Status: active
+    Dimension: [electric_current^1, time^1]
+    Scale: 1 / 1000
+    System: SI
+}
+
+/** Kilocoulomb */
+unit kC physical
+impl kC {
+    LongName: "Kilocoulomb"
+    Symbol: "kC"
+    BaseUnit: false
+    Status: active
+    Dimension: [electric_current^1, time^1]
+    Scale: 1000
+    System: SI
+}
+
+/** Microvolt */
+unit uV physical
+impl uV {
+    LongName: "Microvolt"
+    Symbol: "µV"
+    BaseUnit: false
+    Status: active
+    Dimension: [mass^1, length^2, time^-3, electric_current^-1]
+    Scale: 1 / 1000000
+    System: SI
+}
+
+/** Millivolt */
+unit mV physical
+impl mV {
+    LongName: "Millivolt"
+    Symbol: "mV"
+    BaseUnit: false
+    Status: active
+    Dimension: [mass^1, length^2, time^-3, electric_current^-1]
+    Scale: 1 / 1000
+    System: SI
+}
+
+/** Kilovolt */
+unit kV physical
+impl kV {
+    LongName: "Kilovolt"
+    Symbol: "kV"
+    BaseUnit: false
+    Status: active
+    Dimension: [mass^1, length^2, time^-3, electric_current^-1]
+    Scale: 1000
+    System: SI
+}
+
+/** Megavolt */
+unit MV physical
+impl MV {
+    LongName: "Megavolt"
+    Symbol: "MV"
+    BaseUnit: false
+    Status: active
+    Dimension: [mass^1, length^2, time^-3, electric_current^-1]
+    Scale: 1000000
+    System: SI
+}
+
+/** Milliohm */
+unit mohm physical
+impl mohm {
+    LongName: "Milliohm"
+    Symbol: "mΩ"
+    BaseUnit: false
+    Status: active
+    Dimension: [mass^1, length^2, time^-3, electric_current^-2]
+    Scale: 1 / 1000
+    System: SI
+}
+
+/** Kiloohm */
+unit kohm physical
+impl kohm {
+    LongName: "Kiloohm"
+    Symbol: "kΩ"
+    BaseUnit: false
+    Status: active
+    Dimension: [mass^1, length^2, time^-3, electric_current^-2]
+    Scale: 1000
+    System: SI
+}
+
+/** Megaohm */
+unit Mohm physical
+impl Mohm {
+    LongName: "Megaohm"
+    Symbol: "MΩ"
+    BaseUnit: false
+    Status: active
+    Dimension: [mass^1, length^2, time^-3, electric_current^-2]
+    Scale: 1000000
+    System: SI
+}
+
+/** Microsiemens */
+unit uS physical
+impl uS {
+    LongName: "Microsiemens"
+    Symbol: "µS"
+    BaseUnit: false
+    Status: active
+    Dimension: [mass^-1, length^-2, time^3, electric_current^2]
+    Scale: 1 / 1000000
+    System: SI
+}
+
+/** Millisiemens */
+unit mS physical
+impl mS {
+    LongName: "Millisiemens"
+    Symbol: "mS"
+    BaseUnit: false
+    Status: active
+    Dimension: [mass^-1, length^-2, time^3, electric_current^2]
+    Scale: 1 / 1000
+    System: SI
+}
+
+/** Microfarad */
+unit uF physical
+impl uF {
+    LongName: "Microfarad"
+    Symbol: "µF"
+    BaseUnit: false
+    Status: active
+    Dimension: [mass^-1, length^-2, time^4, electric_current^2]
+    Scale: 1 / 1000000
+    System: SI
+}
+
+/** Nanofarad */
+unit nF physical
+impl nF {
+    LongName: "Nanofarad"
+    Symbol: "nF"
+    BaseUnit: false
+    Status: active
+    Dimension: [mass^-1, length^-2, time^4, electric_current^2]
+    Scale: 1 / 1000000000
+    System: SI
+}
+
+/** Picofarad */
+unit pF physical
+impl pF {
+    LongName: "Picofarad"
+    Symbol: "pF"
+    BaseUnit: false
+    Status: active
+    Dimension: [mass^-1, length^-2, time^4, electric_current^2]
+    Scale: 1 / 1000000000000
+    System: SI
+}
+
+/** Millihenry */
+unit mH physical
+impl mH {
+    LongName: "Millihenry"
+    Symbol: "mH"
+    BaseUnit: false
+    Status: active
+    Dimension: [mass^1, length^2, time^-2, electric_current^-2]
+    Scale: 1 / 1000
+    System: SI
+}
+
+/** Microhenry */
+unit uH physical
+impl uH {
+    LongName: "Microhenry"
+    Symbol: "µH"
+    BaseUnit: false
+    Status: active
+    Dimension: [mass^1, length^2, time^-2, electric_current^-2]
+    Scale: 1 / 1000000
+    System: SI
+}
+
+/** Millitesla */
+unit mT physical
+impl mT {
+    LongName: "Millitesla"
+    Symbol: "mT"
+    BaseUnit: false
+    Status: active
+    Dimension: [mass^1, time^-2, electric_current^-1]
+    Scale: 1 / 1000
+    System: SI
+}
+
+/** Microtesla */
+unit uT physical
+impl uT {
+    LongName: "Microtesla"
+    Symbol: "µT"
+    BaseUnit: false
+    Status: active
+    Dimension: [mass^1, time^-2, electric_current^-1]
+    Scale: 1 / 1000000
+    System: SI
+}

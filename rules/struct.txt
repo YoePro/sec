@@ -809,11 +809,13 @@ Impl block model update
 =======================
 
 Decision:
-A type may have at most one impl block.
+A type may have at most one primary impl block. Additional blocks require the
+explicit `impl extends Type` form and must remain in the same module.
 
 Rationale:
-The impl block is the type-local namespace and behavior block.
-Allowing multiple impl blocks would spread the type definition across the codebase and make the type harder to understand.
+The primary impl block remains the type-local namespace and behavior home.
+Explicit same-module extensions permit deliberate cross-file organization
+without allowing silent or cross-module extension.
 
 Rule:
 Valid:
@@ -855,6 +857,14 @@ Invalid:
 Expected sema error:
 
     duplicate impl block for Vehicle
+
+Valid explicit extension:
+
+    impl Vehicle {
+    }
+
+    impl extends Vehicle {
+    }
 
 
 Nested types inside impl
@@ -1010,16 +1020,18 @@ Parser:
 - impl may not contain `let`
 
 Sema:
-- reject more than one impl block for the same type
+- reject more than one primary impl block for the same type
+- allow explicit same-module impl extensions with a primary block
 - register nested types as qualified names
 - allow struct fields to reference qualified nested types
-- reject duplicate nested type names inside the same impl
+- reject duplicate nested type names across the combined primary and extension surface
 - reject unknown impl target type
 - reject unknown nested type references
 
 Tests:
-- one impl block per type is valid
-- two impl blocks for same type are invalid
+- one primary impl block per type is valid
+- two unmarked impl blocks for the same type are invalid
+- explicit same-module impl extensions are valid across files
 - struct field may reference Vehicle.Engine before Vehicle.Engine is declared
 - impl Vehicle may declare type Engine struct { ... }
 - impl Vehicle may declare enum FuelType { ... }

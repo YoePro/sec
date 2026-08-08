@@ -25,198 +25,19 @@ the explicit move operators.
 
 ---
 
-# Current implementation status
+# Implementation ledger
 
-The compiler already contains a substantial first implementation of copy
-classification and move tracking.
+Mutable implementation progress, completed frontend slices, outstanding work,
+verification, and implementation sequencing are tracked exclusively by the
+`frontend.copy-move` entry in `implementation-status.yaml`.
 
-The direct named-source frontend path follows the canonical explicit-move
-rules. Place-sensitive state, explicit ownership IR, and backend verification
-remain to be migrated.
+This rulebook defines only the normative copy/move contract.
 
-## Implemented
+---
 
-The current compiler implements:
+# Nominal copy policy
 
-- a `CopyClassification` model with:
-  - trivial;
-  - semantic;
-  - move-only;
-  - conditional;
-  - non-copyable;
-- `CopyClassificationOf`;
-- `TriviallyCopyable`;
-- `MoveOnly`;
-- primitive type copy classification;
-- `string` currently classified as trivially copyable;
-- shared references currently classified as copyable;
-- `ref mut` currently classified as move-only;
-- `RawPtr[T]` currently classified as trivially copyable;
-- array and struct classification derived recursively;
-- custom-destruction influence on type classification;
-- move tracking for local identifiers;
-- move reasons including:
-  - moved;
-  - returned;
-  - discarded;
-  - detached;
-- source token tracking for moves;
-- hard diagnostics for later use of moved values;
-- hard diagnostics for later use of discarded values;
-- related source locations for previous move or discard;
-- rejection of move while the root value is borrowed;
-- rejection of move or discard while a registered defer block retains a
-  delayed root-symbol use, including conservative branch merging and a related
-  defer source location;
-- move propagation through:
-  - struct literals;
-  - array literals;
-  - `Ok(...)`;
-  - `Err(...)`;
-  - spread expressions;
-  - conversion expressions;
-- transfer of move-only values into selected by-value parameters;
-- preservation of values passed through `ref` and `ref mut` parameters;
-- transfer of returned move-only locals;
-- transfer of tracked resources through return;
-- branch merging of moved state in:
-  - `if`;
-  - `switch`;
-  - `select`;
-  - `match`;
-- assignment that clears moved state after successful reinitialization;
-- assignment that clears close-tracked resource state;
-- indexed assignment validation;
-- rejection of move-only extraction through ordinary array and slice indexing;
-- explicit AST assignment operator text;
-- dedicated lexer tokens for `:<-` and `<-`, with longest-match handling before
-  `:` and `<`;
-- parser support for inferred move initialization, typed move initialization,
-  and move assignment;
-- parser rejection when inferred declarations use `<-` or typed declarations
-  use `:<-`;
-- explicit AST ownership modes on declarations and assignments;
-- Sema rejection of ordinary copy syntax for named move-only sources through
-  diagnostic `S1007`;
-- explicit move of named copyable and move-only values;
-- enforcement of compiler-known `CopyNonCopyable` types in ordinary named
-  copies and consuming transfer contexts;
-- `@noCopy` AST and parser support for nominal type declarations, Sema
-  classification, generic-instance preservation, formatter layout, LSP
-  modifier classification, and cause-aware diagnostics;
-- internal type metadata for explicit nominal non-copyability and distinct
-  nominal-policy, compiler-known, and aggregate-field diagnostic causes;
-- conservative rejection of ordinary named-source copies whose generic
-  copyability has not been proven;
-- self-move rejection for direct and overlapping root destinations;
-- structured place classification for identifiers, fields, properties,
-  constant/dynamic indices, slices, and implicit reference dereference;
-- place-overlap checks used by self-move, borrowing, reads and assignments;
-- proven-disjoint field and constant-index borrows, with dynamic indices
-  treated conservatively as overlapping;
-- explicit nested-field moves with field-sensitive unavailable state;
-- continued sibling-field access and whole-aggregate rejection after a partial
-  move;
-- field assignment that reinitializes a moved field and restores aggregate
-  availability when no moved projections remain;
-- conservative partial-move restriction to independently tracked local struct
-  storage, excluding aliases and externally observable storage;
-- canonical Place provenance for borrow/reborrow operations through directly
-  created local reference and slice aliases, preserved across reference copy
-  or move, with active borrow ownership transferred on mutable-reference move;
-- normalized half-open Place intervals for static slice bounds, including
-  disjoint ranges, outside constant indices, empty ranges and local alias
-  composition;
-- projection-sensitive availability and move-reason merging across continuing
-  `if`, `switch`, `select`, and statement-`match` branches;
-- restoration of a moved field after exhaustive branch reinitialization, while
-  retaining unavailability if any continuing path leaves it moved;
-- loop-header Place availability joined from entry, normal fallthrough and
-  `continue`, with a verification pass over the next condition and iteration;
-- separate `break` exit state and per-iteration availability for `for`
-  bindings;
-- loop-header active-borrow and local-reference-origin joins over entry,
-  fallthrough and `continue`, with post-loop `break` state and a verification
-  pass over the next condition and iteration;
-- preservation of identical canonical reference origins across loop joins and
-  bounded path-disjunctive Place sets for differing known origins, including
-  projection and borrow validation over every alternative;
-- nested field/element reference-origin maps for locally constructed structs
-  and fixed arrays, preserved by aggregate transfer and updated by replacement
-  assignment, with constant-index precision and conservative dynamic joins;
-- declaration-order-independent returned-reference summaries for direct
-  functions and methods, including parameter/receiver projections, multiple
-  sources, aggregate paths, transitive calls and granting-borrow retention;
-- must-closed resource state for local `io.File` and `io.Directory`, intersected
-  across continuing branches and loop exit/back-edge paths, including
-  zero-iteration and `while true` break behavior;
-- union-payload Place projections with inferred move for move-only pattern
-  bindings and ordinary copy for copyable payload bindings;
-- payload extraction from reusable local subjects, temporary forwarding,
-  nested subject paths, borrow conflicts, whole-subject invalidation and
-  exhaustive reinitialization;
-- explicit branch-scoped shared/mutable payload borrowing for named unions and
-  Result, with active-variant provenance and escape rejection;
-- ownership-state merging for both statement and expression `match`;
-- mutable reinitialization after move or explicit discard;
-- formatter preservation and LSP semantic-token classification of both move
-  operators;
-- LSP quick fixes from `:=` to `:<-` and from `=` to `<-` for `S1007`;
-- tests for derived aggregate copy, compiler-known and aggregate non-copyable
-  rejection, generic no-proof copy and explicit move, method-name neutrality,
-  and several move, borrow, return, resource, branch, and lifecycle cases.
-
-## Partially implemented
-
-The implementation is partial in these areas:
-
-- move state covers root identifiers, nested fields and owned union payload
-  projections; indexed, sliced and aliased move state remains incomplete even
-  though local reference-alias borrow provenance is canonicalized;
-- branch state merges root and nested-field places, but does not yet implement
-  the complete initialization and destruction lattice;
-- type classification exists, but implicit copy implementation is incomplete
-  for semantic-copy types;
-- destruction responsibility is inferred indirectly rather than represented as
-  explicit Semantic IR;
-- aggregate construction moves move-only identifiers recursively, but does not
-  yet record complete destination ownership;
-- call argument transfer uses parameter `ref` information and type
-  classification, but does not yet expose structured consumption metadata;
-- current strings are treated as views or static literals at lowering level;
-- loop-carried Place availability, active borrows and local reference origins
-  reach the current conservative finite may-state fixed point; close-tracked
-  resources additionally use a must-closed loop lattice, while general
-  destruction/cleanup state and imported/opaque, function-value or unsupported
-  recursive provenance remain incomplete;
-- current diagnostics are not all registered with stable ownership IDs;
-- LSP move quick fixes are operator-aware, but do not yet prove every borrow,
-  alias, and place-overlap condition required for universally safe automatic
-  application.
-
-## Not implemented
-
-The following are not yet implemented:
-
-- indexed, sliced and aliased place move availability beyond implemented
-  roots, nested struct fields and union payloads;
-- multi-field active-variant borrowed destructuring;
-- complete aggregate availability masks;
-- fixed-array partial move;
-- dynamic-list consuming extraction;
-- a general relocation classification;
-- pinned or stable-address values;
-- explicit copy/move operations in Semantic IR;
-- MLIR ownership lowering;
-- backend verification of destruction responsibility;
-- complete ABI ownership verification;
-- LSP ownership hints, move-site navigation, and partial-state display;
-- complete copy/move diagnostic registry;
-- complete copy/move test files.
-
-## Source policy syntax status
-
-The canonical nominal opt-out syntax is implemented in the frontend:
+The canonical nominal opt-out syntax is:
 
 ```sec
 @noCopy
@@ -225,32 +46,23 @@ type SessionID struct {
 }
 ```
 
-The parser records `@noCopy` on nominal type declarations, Sema preserves the
-policy through generic instantiation and derived aggregate classification, and
-ordinary copy diagnostics retain the nominal-policy cause.
+`@noCopy` requires the type, including every generic instantiation and derived
+aggregate classification containing it, to be treated as non-copyable.
+`attributes.md` owns its canonical spelling and placement.
 
-Two source declaration mechanisms still require language decisions that do not
-yet exist:
+Sec 0.1 defines no positive copy attribute and no generic source constraint
+that proves copyability. A named `Copy`, `Clone`, or fallible `Duplicate`
+method is an ordinary method and does not alter implicit-copy classification.
 
-- source syntax requiring that a nominal type remain compiler-derivably
-  copyable;
-- generic constraints requiring proven copyability.
+---
 
-Named duplication methods such as `Copy`, `Clone`, or fallible `Duplicate` are
-already ordinary methods. They do not change the type's implicit-copy
-classification.
-
-Compiler-known types may also carry `CopyNonCopyable`, and Sema enforces that
-classification. `attributes.md` owns the canonical `@noCopy` spelling and
-placement. Sec 0.1 intentionally defines no positive copy attribute.
-
-## Intentionally unsupported in Sec 0.1
+# Unsupported implicit-copy mechanisms
 
 Sec 0.1 does not support arbitrary user-defined function bodies as hidden
 implementations of implicit copy. Method-name-based recognition of `Copy`,
 `Clone`, `Duplicate`, `Snapshot`, or `ToOwned` is likewise unsupported, as is
 implicit duplication through a fallible method. These are language guarantees,
-not pending implementation work.
+not extension points.
 
 ---
 
@@ -526,7 +338,7 @@ MoveOnly
 ExplicitlyNonCopyable
 ```
 
-The implementation may use current internal names:
+An implementation may use internal names such as:
 
 ```text
 CopyTrivial
@@ -1500,8 +1312,7 @@ fail
 
 The conversion rule must define ownership.
 
-Current recursive move marking through conversions must be replaced by explicit
-conversion ownership classification.
+A conversion must have explicit conversion ownership classification.
 
 A conversion must not silently consume a named copyable source unless syntax or
 conversion semantics explicitly require it.
@@ -1597,7 +1408,7 @@ reinitialization.
 
 ---
 
-# Initial partial-move policy
+# Partial-move policy
 
 Partial field move may be supported only when:
 
@@ -1613,7 +1424,8 @@ Partial field move may be supported only when:
 - source is not foreign-opaque;
 - union active-state rules are satisfied.
 
-The initial implementation may limit this to local mutable struct bindings.
+An implementation that cannot track all required field state must reject the
+partial move.
 
 ---
 
@@ -1643,8 +1455,8 @@ No old moved field value is destroyed.
 
 A type with custom destruction is move-only by default.
 
-Partial move is initially forbidden unless its destruction contract explicitly
-supports partial state.
+Partial move is forbidden unless its destruction contract explicitly supports
+partial state.
 
 Reason:
 
@@ -1705,7 +1517,8 @@ for fixed arrays.
 
 Moving one element would create a partially initialized fixed array.
 
-This remains deferred until exact initialization tracking is defined.
+The operation is unavailable unless exact initialization tracking defines its
+source state and destruction obligations.
 
 ---
 
@@ -1857,10 +1670,8 @@ Semantics:
 - invalidate relevant views and iterators;
 - obey iteration-freeze rules.
 
-This feature is planned and not yet implemented.
-
-It must not be enabled before parser, place analysis, core API, and collection
-rules agree.
+Consuming indexed extraction is not part of Sec 0.1 until parser, Place
+analysis, core API, and collection rules define one synchronized contract.
 
 ---
 
@@ -2106,8 +1917,8 @@ are known.
 
 A borrowed interface reference follows reference rules.
 
-Current trivial interface classification is provisional and must be reviewed
-before owned interface values are implemented fully.
+Owned interface representation must be reviewed before Sec permits reliance on
+a trivially-copyable interface classification.
 
 ---
 
@@ -2423,8 +2234,8 @@ The selected branch receives ownership according to operation semantics.
 
 Unselected branches retain no transfer.
 
-Current special-case tracking should be replaced by general select ownership
-analysis.
+Select ownership analysis must account for every alternative and preserve the
+source state required by each possible selected branch.
 
 ---
 
@@ -2564,8 +2375,8 @@ The atomics rulebook defines exact behavior.
 
 # Mutexes and locks
 
-Mutex is non-copyable and supports explicit ownership transfer under the
-currently implemented move rules.
+Mutex is non-copyable and may transfer ownership only through the explicit
+move rules.
 
 This statement does not imply that every initialized mutex may always be
 physically relocated. Address stability, pinning, waiter state, foreign
@@ -2681,7 +2492,8 @@ PartiallyAvailable + Available
 
 A non-continuing branch does not constrain later state.
 
-The current implementation's union of moved maps is a conservative first step.
+An implementation may use a conservative join, but it must not treat a
+conditionally unavailable value as definitely available.
 
 ---
 
@@ -3377,393 +3189,6 @@ language-rulebook-status.md
 
 ---
 
-# Appendix A — Codex replacement plan
-
-## A.1 Rename rulebook
-
-The filename migration is complete. `rules/copy_move.md` is canonical,
-repository references are updated, and no duplicate canonical file remains.
-
-## A.2 Preserve existing classification
-
-Retain and test the existing internal classification API:
-
-```text
-CopyClassificationOf
-TriviallyCopyable
-MoveOnly
-```
-
-Adjust classifications only where this rulebook requires.
-
-## A.3 Add lexer tokens
-
-Add:
-
-```text
-MOVE_INIT  for :<-
-MOVE_ASSIGN for <-
-```
-
-Exact internal names may differ.
-
-Longest-match rules:
-
-```text
-:<- before :
-<- before <
-```
-
-Do not assign meaning to `->`.
-
-## A.4 Extend AST declarations
-
-Add initialization mode to `LetStatement`.
-
-Conceptual:
-
-```go
-type InitializationMode int
-
-const (
-    InitializationOrdinary InitializationMode = iota
-    InitializationMove
-)
-```
-
-Preserve source token and range.
-
-Typed form:
-
-```sec
-let value: Type <- source
-```
-
-uses move mode.
-
-## A.5 Extend assignment AST
-
-Preserve `<-` as a distinct assignment operator.
-
-Sema converts it into a move operation.
-
-Do not treat it as compound arithmetic assignment.
-
-## A.6 Classify expression source
-
-Implement a reusable place classifier.
-
-Conceptual categories:
-
-```text
-Temporary
-LocalPlace
-FieldPlace
-IndexPlace
-StaticPlace
-BorrowedPlace
-FixedAddressPlace
-RawPointerPlace
-UnknownPlace
-```
-
-Every copy/move validation uses this classification.
-
-## A.7 Replace implicit named move
-
-Remove current behavior where `markMoveSource` is called unconditionally after
-ordinary declaration or assignment.
-
-Required ordinary behavior:
-
-```text
-named reusable source + copyable type
-    copy
-
-named reusable source + move-only type
-    error with move fix
-
-temporary
-    direct construction or forwarding
-```
-
-## A.8 Explicit move handling
-
-For `:<-` and `<-`:
-
-- require movable source place;
-- require source availability;
-- reject borrow conflict;
-- reject illegal overlap;
-- mark source moved;
-- establish destination;
-- transfer destruction responsibility.
-
-Allow explicit move of copyable types.
-
-## A.9 Retain inferred consuming contexts
-
-Continue to infer transfer for move-only values in:
-
-```text
-return
-by-value parameter
-struct field construction
-Result payload
-Option payload
-union payload
-channel transfer
-lifecycle transfer
-```
-
-Do not require call-site or return arrow syntax.
-
-## A.10 Reinitialization
-
-Change current state handling:
-
-```text
-Moved mutable + assignment
-    reinitialize
-
-Discarded mutable + assignment
-    reinitialize
-
-Uninitialized mutable + assignment
-    initialize
-
-Available mutable + assignment
-    replace
-```
-
-Remove the current hard error rejecting assignment to a discarded mutable
-binding.
-
-Reject immutable reinitialization.
-
-## A.11 Move state model
-
-Replace separate root maps over time with structured state.
-
-Conceptual:
-
-```go
-type AvailabilityState int
-
-const (
-    Uninitialized AvailabilityState = iota
-    Available
-    PartiallyAvailable
-    Moved
-    Discarded
-    Detached
-    ConditionallyAvailable
-)
-```
-
-Record reason, token, field path, and branch origin.
-
-## A.12 Field-sensitive places
-
-Implement field paths:
-
-```text
-root
-root.field
-root.field.subfield
-```
-
-Stage implementation:
-
-1. diagnostics for ordinary copy of move-only field;
-2. explicit direct field move;
-3. partial aggregate state;
-4. field reinitialization;
-5. partial destruction;
-6. branch merging.
-
-## A.13 Arrays and slices
-
-Preserve current rejection of move-only indexed extraction.
-
-Add specific diagnostic ID and help.
-
-Do not add runtime initialization bitmap in Sec 0.1.
-
-## A.14 Lists
-
-Do not implement indexed consuming extraction until:
-
-```text
-list core API
-parser
-place classification
-borrow invalidation
-iteration freeze
-bounds result
-```
-
-are synchronized.
-
-When implemented, lower:
-
-```sec
-let value :<- list[index]
-```
-
-as one structural extraction operation.
-
-## A.15 String
-
-Preserve source classification:
-
-```text
-string -> copyable
-```
-
-Verify no hidden allocation or mutable aliasing occurs.
-
-Add explicit move support.
-
-## A.16 Interface review
-
-Current interfaces are classified trivially copyable.
-
-Review owned interface representation before relying on that classification.
-
-Borrowed interface descriptors may be copyable.
-
-Owned erased values should derive or carry move-only status.
-
-## A.17 Calls
-
-Preserve current `markMovedCallArguments` behavior conceptually, but replace it
-with explicit transfer operations.
-
-Expose parameter consumption metadata to LSP.
-
-Respect argument evaluation order.
-
-## A.18 Returns
-
-Preserve current move/resource transfer for owned locals.
-
-Represent one `ReturnValue` transfer in Semantic IR.
-
-Do not add `return <-`.
-
-## A.19 Aggregate construction
-
-Replace recursive `markMoveSource` with explicit field/payload transfer
-classification.
-
-Record destination ownership.
-
-Handle failure cleanup for partially constructed aggregates.
-
-## A.20 Diagnostics
-
-Register stable IDs.
-
-Attach machine-applicable edits for:
-
-```text
-:= -> :<-
-=  -> <-
-```
-
-only when safe.
-
-Use related locations for use after move and borrow conflicts.
-
-## A.21 Semantic IR
-
-Implement explicit operations and origins defined above.
-
-No verified source program may reach MLIR with unresolved copy/move intent.
-
-## A.22 MLIR
-
-Add ownership-aware lowering.
-
-Verify:
-
-```text
-no copied unique resource
-no moved source destruction
-no lost destination cleanup
-no fixed-address relocation
-```
-
-## A.23 Formatter
-
-Use the shared formatter.
-
-Add token spacing and golden tests.
-
-Ordinary formatting preserves operation.
-
-`--fix` consumes compiler-provided edits.
-
-## A.24 LSP
-
-Add:
-
-```text
-hover classification
-move inlay hints
-consuming parameter hints
-go to move
-safe move quick fix
-partial state display
-consequence preview
-```
-
-## A.25 Status documents
-
-Update:
-
-```text
-language-rulebook-status.md
-rules_implementations.txt
-```
-
-Current status:
-
-```text
-copy_move.md
-    Living
-
-explicit move syntax
-    Implemented through lexer, parser, AST, Sema, formatter preservation,
-    semantic-token classification, and initial LSP quick fixes
-
-current implicit named move behavior
-    replaced for direct named declaration and assignment sources;
-    general place-sensitive analysis remains incomplete
-```
-
-## A.26 Implementation order
-
-Recommended order:
-
-```text
-1. Add lexer tokens.
-2. Add parser and AST modes.
-3. Add source-place classification.
-4. Reject ordinary copy of move-only named sources.
-5. Implement explicit move.
-6. Add safe diagnostics and fixes.
-7. Allow mutable reinitialization after discard.
-8. Add Semantic IR operations.
-9. Update formatter and LSP.
-10. Add field-sensitive moves.
-11. Add list consuming extraction.
-12. Complete MLIR and ABI verification.
-```
-
----
-
 # Design summary
 
 Sec distinguishes copy from move.
@@ -3795,9 +3220,9 @@ Mutable bindings may be reinitialized.
 
 Immutable bindings may not.
 
-Fixed-array indexed move-out is deferred.
+Fixed-array indexed move-out is not part of Sec 0.1.
 
-Dynamic `list` consuming extraction is planned.
+Dynamic `list` consuming extraction is not part of Sec 0.1.
 
 Semantic IR records every copy and move explicitly.
 

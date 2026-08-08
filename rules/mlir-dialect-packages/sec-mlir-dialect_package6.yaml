@@ -1,0 +1,444 @@
+package:
+  id: SEC-MLIR-P6
+  name: Scalar Coverage and Plan-Aware Resolution
+  repository: https://github.com/YoePro/sec
+  branch: main
+  repository_sync_commit: d48035c
+  repository_sync_date: '2026-08-08'
+  semantic_ir_version: 1
+  sec_mlir_schema_before: 2
+  sec_mlir_schema_after: 3
+  lowering_spec_after: 2
+  prerequisites:
+  - SEC-MLIR-DIALECT-P1
+  - SEC-MLIR-P2
+  - SEC-MLIR-P3
+  - SEC-MLIR-P4
+  - SEC-MLIR-P5
+  goal: Close active scalar coverage gaps, correct bool storage layout, attach explicit
+    target/DLTI data, and resolve plan-dependent scalar types without signedness erasure.
+  next_package: Semantic numeric operations and signedness-aware Arith lowering
+mandatory_reconciliation:
+  active_types_missing_from_earlier_packages:
+  - int128
+  - int256
+  - uint128
+  - uint256
+  - decimal128
+  bool_storage_correction:
+    incorrect: '!sec.storage<i1> -> memref<i1>'
+    correct: semantic i1, addressable memref<i8>
+    package5_must_exclude_i1_storage: true
+normative_updates:
+- repository_path: rules/sec_mlir_dialect.md
+  supplied_file: sec_mlir_dialect_package6.md
+  schema_version: 3
+- repository_path: rules/sec_mlir_lowering.md
+  supplied_file: sec_mlir_lowering_package6.md
+  lowering_spec_version: 2
+normative_scalar_facts:
+  int: pointer-sized signed integer of active CompilationPlan
+  uint: pointer-sized unsigned integer of active CompilationPlan
+  float: same semantic numeric width and native layout as float64
+  char: 1 byte
+  rune: 32-bit scalar
+  bool_ssa: i1 allowed
+  bool_addressable_storage: 1 byte
+  decimal: '{signed i64 coefficient, signed i32 scale} at lower physical layer'
+  decimal128: '{signed i128 coefficient, signed i32 scale} at lower physical layer'
+scope:
+  required:
+  - Semantic IR active wide scalar support
+  - Package 2 type-table correction
+  - Package 3 wide fixed integer trivial scalar support
+  - '!sec.decimal128'
+  - schema v3
+  - wide integer constant verifier
+  - decimal128 constant support
+  - ResolvedScalarPlan or canonical CompilationPlan scalar slice
+  - target registry explicit pointer width
+  - target endianness identity
+  - target metadata emission
+  - DLTI dialect registration
+  - explicit dlti index-width emission
+  - Package 5 bool-storage correction
+  - --sec-resolve-scalar-layout
+  - DataLayout query
+  - signature/block/call type conversion
+  - plan-aware !sec.int/!sec.uint
+  - '!sec.float -> f64'
+  - '!sec.char -> ui8'
+  - '!sec.rune -> ui32'
+  - named/distinct base conversion without erasure
+  - plain builtin sec.const.int -> arith.constant
+  - canonical bool storage memref<i8>
+  - --sec-lower-scalar-core pipeline
+  - 32/64-bit tests
+  - wide integer tests
+  - full regressions
+  forbidden:
+  - siN/uiN -> signless iN normalization
+  - integer arithmetic/comparison/division/shift/cast lowering
+  - overflow lowering
+  - float literal rounding rule
+  - sec.const.float lowering
+  - decimal aggregate lowering
+  - decimal arithmetic
+  - string lowering
+  - named/distinct erasure
+  - foreign ABI lowering
+  - LLVM dialect
+  - ownership/copy/move/destruction
+  - borrowing/references/RawPtr
+  - Result/Option/try
+  - cleanup/defer
+  - aggregates
+  - allocation/arena
+  - register/MMIO
+  - concurrency
+semantic_ir:
+  version_bump: false
+  add_active_types:
+  - name: int128
+    signed: true
+    width: 128
+    target_sized: false
+  - name: int256
+    signed: true
+    width: 256
+    target_sized: false
+  - name: uint128
+    signed: false
+    width: 128
+    target_sized: false
+  - name: uint256
+    signed: false
+    width: 256
+    target_sized: false
+  - name: decimal128
+    family: exact-decimal
+    coefficient_width: 128
+    scale_width: 32
+    target_sized: false
+  integer_constant_storage: arbitrary precision
+dialect:
+  schema_version: 3
+  new_type: '!sec.decimal128'
+  high_level_type_mapping:
+    void: no result
+    never: '!sec.never'
+    bool: i1
+    byte: ui8
+    char: '!sec.char'
+    rune: '!sec.rune'
+    string: '!sec.string'
+    decimal: '!sec.decimal'
+    decimal128: '!sec.decimal128'
+    int: '!sec.int'
+    int8: si8
+    int16: si16
+    int32: si32
+    int64: si64
+    int128: si128
+    int256: si256
+    uint: '!sec.uint'
+    uint8: ui8
+    uint16: ui16
+    uint32: ui32
+    uint64: ui64
+    uint128: ui128
+    uint256: ui256
+    float: '!sec.float'
+    float32: f32
+    float64: f64
+  target_metadata:
+  - sec.target_os
+  - sec.target_arch
+  - sec.target_triple
+  - sec.target_abi
+  - sec.target_profile
+  - sec.target_endianness
+  pointer_width_sec_attr: false
+  pointer_width_carrier: explicit DLTI index entry
+constants:
+  sec.const.int_fixed_widths:
+  - 8
+  - 16
+  - 32
+  - 64
+  - 128
+  - 256
+  sec.const.int_arbitrary_precision: true
+  sec.const.decimal_result_types:
+  - '!sec.decimal'
+  - '!sec.decimal128'
+  binary_float_intermediate_for_decimal: false
+target_plan:
+  recommended_type: ResolvedScalarPlan
+  recommended_package: internal/layout
+  fields:
+  - TargetOS
+  - TargetArch
+  - LLVMTriple
+  - ABI
+  - Profile
+  - PointerWidthBits
+  - Endianness
+  authoritative_single_source: true
+  mlir_pass_must_not_parse_arch_string: true
+  mlir_pass_must_not_use_host_width: true
+  concrete_pointer_widths:
+    amd64: 64
+    arm64: 64
+    armv6: 32
+    armv7: 32
+    cortex-m0: 32
+    cortex-m3: 32
+    cortex-m4: 32
+    cortex-m7: 32
+    riscv32: 32
+  any_architecture: must remain unresolved; do not guess
+dlti:
+  required_for_target_resolved_schema3: true
+  form: '#dlti.dl_spec<#dlti.dl_entry<index, N>>'
+  supported_index_widths:
+  - 32
+  - 64
+  missing_explicit_width: error
+  use_mlir_default_width: false
+  sec_int_is_index_type: false
+emitter:
+  recommended_api: Emit(module *semantic.Module, plan layout.ResolvedScalarPlan) ([]byte,
+    error)
+  allowed_dependencies:
+  - standard library
+  - internal/ir/semantic
+  - internal/layout
+  forbidden_dependencies:
+  - internal/ast
+  - internal/lexer
+  - internal/parser
+  - internal/sema
+  - legacy codegen
+  must_validate_plan: true
+package5_correction:
+  generic_storage_lowerable_i1: false
+  bool_constant_still_lowers: true
+  canonical_memref_i1_bool_storage: false
+pass:
+  command: --sec-resolve-scalar-layout
+  recommended_name: SecResolveScalarLayout
+  framework: MLIR Dialect Conversion
+  module_pass: true
+  data_layout_object: construct once and reuse
+  requires_explicit_dlti: true
+  type_conversions:
+    '!sec.int': si32 or si64 from explicit plan
+    '!sec.uint': ui32 or ui64 from explicit plan
+    '!sec.float': f64
+    '!sec.char': ui8
+    '!sec.rune': ui32
+    fixed si/ui integers: identity
+    f32/f64: identity
+    '!sec.string': identity/unresolved
+    '!sec.decimal': identity/unresolved
+    '!sec.decimal128': identity/unresolved
+    '!sec.never': identity/unresolved
+  convert_named_distinct_base: true
+  erase_named_distinct: false
+  normalize_signedness: false
+  convert_function_signatures: true
+  convert_block_arguments: true
+  convert_func_calls: true
+  convert_sec_direct_call_signature: true
+  convert_sec_foreign_call_signature: true
+  lower_foreign_call: false
+  unrealized_cast_residue_allowed: false
+  idempotent: true
+integer_constant_lowering:
+  plain_builtin_result: arith.constant
+  widths:
+  - 8
+  - 16
+  - 32
+  - 64
+  - 128
+  - 256
+  use_arbitrary_precision: true
+  named_distinct_result: remain sec.const.int
+  float_constant: remain sec.const.float
+bool_storage:
+  semantic_ssa: i1
+  addressable_storage: rank-zero memref<i8>
+  declare: 'memref.alloca : memref<i8>'
+  init_store_conversion: zero-extend i1 to i8, then memref.store
+  load_conversion: memref.load i8, then truncate i8 to i1
+  generated_safe_bytes:
+  - 0
+  - 1
+  pre_correction_provenance_memref_i1: reject clearly
+pipeline:
+  command: --sec-lower-scalar-core
+  conceptual_order:
+  - sec-lower-trivial-core
+  - sec-resolve-scalar-layout
+  - sec-lower-trivial-core
+  idempotent: true
+tests:
+  semantic_ir:
+  - wide types intern independently
+  - wide integer exact constants
+  - decimal128 distinct from decimal
+  - wide integer storage
+  - wide integer direct call
+  dialect:
+  - decimal128 roundtrip
+  - wide integer constant boundaries
+  - decimal128 constant
+  - schema v1/v2 regressions
+  package5_correction:
+  - bool const still lowers
+  - bool storage stays Sec in P5
+  - P5 never emits canonical memref<i1> bool storage
+  target_plan:
+  - amd64 64
+  - arm64 64
+  - armv7 32
+  - cortex-m 32
+  - any arch unresolved
+  - host independence
+  - multi-plan cache isolation
+  emitter:
+  - schema v3
+  - DLTI 32/64
+  - target metadata
+  - wide integer mapping
+  - decimal128 mapping
+  - invalid plan rejected
+  scalar_conversion:
+  - int 32/64
+  - uint 32/64
+  - float to f64
+  - char to ui8
+  - rune to ui32
+  - wide integer identity
+  - named base conversion
+  - function signature conversion
+  - block argument conversion
+  - direct call signature conversion
+  - foreign call remains
+  - plain int constant lowers
+  - named int constant remains
+  - float constant remains
+  - decimal families remain
+  bool_storage:
+  - storage i1 -> memref i8
+  - init/store zero extension
+  - load truncation
+  - provenance preservation
+  - legacy canonical memref i1 rejection
+  integration:
+  - 32-bit int source
+  - 64-bit int source
+  - uint source
+  - float
+  - char
+  - rune
+  - int128
+  - uint256
+  - decimal128 remains high level
+  - mutable bool
+  - mutable int 32/64
+  - direct call
+  - foreign fixed-width call
+  - if/else storage
+acceptance:
+- P1-P5 regressions green after bool correction
+- schema v3 normative file installed
+- lowering spec v2 installed
+- Semantic IR covers active wide scalars
+- '!sec.decimal128 implemented'
+- wide mappings implemented
+- wide constant verification exact
+- canonical target scalar plan exists
+- target pointer width central and explicit
+- DLTI explicit index width emitted
+- no implicit MLIR default target width
+- scalar pass registered
+- int/uint plan resolved
+- float/char/rune resolved
+- named/distinct preserved
+- signedness preserved
+- plain integer constants lower exactly
+- float/decimal remain high level
+- P5 bool storage correction complete
+- bool storage one-byte lowering complete
+- scalar-core pipeline registered/idempotent
+- no normal unrealized conversion cast residue
+- 32/64-bit tests pass
+- wide tests pass
+- check-sec-mlir passes
+- go test ./... passes
+- no LLVM dialect emitted
+- legacy paths remain operational
+completion_report:
+- repository HEAD
+- P1-P5 pre-status
+- P5 bool correction
+- files added
+- files modified
+- Semantic IR scalar changes
+- schema v3 changes
+- lowering v2 changes
+- target plan API
+- target registry changes
+- pointer width table
+- DLTI strategy
+- pass registration
+- TypeConverter rules
+- signature conversion
+- wide constants
+- bool storage
+- 32-bit results
+- 64-bit results
+- decimal128 results
+- CMake commands
+- LLVM/MLIR version
+- check-sec-mlir
+- go test
+- end-to-end tests
+- deviations
+- Package 7 issues
+package7:
+  name: Semantic Numeric Operations and Signedness-Aware Arith Lowering
+  likely_scope:
+  - Semantic IR arithmetic/comparison/bitwise/shift/conversion ops
+  - high-level Sec MLIR numeric ops
+  - signed/unsigned operation mapping
+  - signless normalization only with operation semantics retained
+  - overflow policy
+  - division-by-zero policy
+  - shift validation
+  - integer extension/truncation
+  - float literal rounding rule
+  - sec.const.float lowering
+  - 8/16/32/64/128/256 tests
+  - pointer-sized int/uint tests
+  still_deferred:
+  - decimal arithmetic
+  - string
+  - foreign ABI
+  - ownership
+  - borrowing
+  - Result/try
+  - cleanup
+  - aggregates
+  - allocation
+  - register/MMIO
+  - concurrency
+  - LLVM dialect
+upstream_mlir_references:
+- https://mlir.llvm.org/docs/DataLayout/
+- https://mlir.llvm.org/docs/Dialects/DLTIDialect/
+- https://mlir.llvm.org/docs/DialectConversion/
+- https://mlir.llvm.org/docs/Dialects/ArithOps/

@@ -1,0 +1,382 @@
+package:
+  id: SEC-MLIR-P5
+  name: Trivial Core Lowering
+  series: sec-mlir-dialect
+  repository: https://github.com/YoePro/sec
+  branch: main
+  repository_sync_commit: d48035c
+  repository_sync_date: '2026-08-08'
+  requires_semantic_ir_version: 1
+  requires_sec_mlir_schema: 2
+  sec_mlir_schema_after: 2
+  prerequisites:
+  - SEC-MLIR-DIALECT-P1
+  - SEC-MLIR-P2
+  - SEC-MLIR-P3
+  - SEC-MLIR-P4
+  goal: Partially lower only fully discharged schema-v2 semantics to arith/func/memref
+    while unresolved Sec semantics remain explicit.
+  next_package: Target/data-layout-aware scalar representation lowering
+normative_update:
+  repository_path: rules/sec_mlir_lowering.md
+  supplied_file: sec_mlir_lowering_package5.md
+  file_exists_at_sync_commit: false
+  must_add_before_implementation: true
+  sec_mlir_dialect_update_required: false
+scope:
+  required:
+  - SecToCore conversion library
+  - --sec-lower-trivial-core module pass
+  - MLIR Dialect Conversion
+  - applyPartialConversion
+  - ConversionTarget explicit legality
+  - narrow storage TypeConverter
+  - sec.const.bool -> arith.constant
+  - '!sec.storage<T> -> rank-zero memref<T> for lowerable elements'
+  - sec.storage.declare -> memref.alloca
+  - sec.storage.init -> memref.store
+  - sec.storage.load -> memref.load
+  - sec.storage.store -> memref.store
+  - sec.call.direct -> func.call
+  - source location preservation
+  - storage provenance preservation on memref.alloca
+  - pass registration in sec-mlir-opt
+  - lit conversion tests
+  - idempotence tests
+  - mixed partial-conversion tests
+  - Package 4 integration tests
+  - full regression
+  forbidden:
+  - LLVM dialect
+  - LLVM IR/object generation
+  - legacy backend replacement
+  - signed/unsigned normalization
+  - '!sec.int width selection'
+  - '!sec.uint width selection'
+  - '!sec.float representation selection'
+  - float literal rounding policy
+  - char/rune/string/decimal physical representation
+  - named/distinct erasure
+  - sec.const.int lowering
+  - sec.const.float lowering
+  - sec.const.decimal lowering
+  - sec.const.string lowering
+  - sec.call.foreign lowering
+  - ABI/calling convention/link lowering
+  - ownership/copy/move/destruction
+  - borrow/reference/RawPtr
+  - Result/Option/try
+  - cleanup/defer
+  - checks/contracts/panic
+  - aggregates/allocation/arena
+  - register/MMIO/volatile/atomic
+  - concurrency
+  - optimization as a correctness dependency
+schema:
+  dialect_version: 2
+  version_bump: false
+  lowering_stage_attribute_added: false
+  mixed_sec_and_standard_ir_after_pass: true
+filesystem:
+  recommended:
+  - mlir/include/sec/Conversion/SecToCore/CMakeLists.txt
+  - mlir/include/sec/Conversion/SecToCore/Passes.h
+  - mlir/include/sec/Conversion/SecToCore/Passes.td
+  - mlir/lib/Conversion/SecToCore/CMakeLists.txt
+  - mlir/lib/Conversion/SecToCore/SecToCore.cpp
+  - mlir/test/Conversion/SecToCore/bool-constant.mlir
+  - mlir/test/Conversion/SecToCore/storage.mlir
+  - mlir/test/Conversion/SecToCore/direct-call.mlir
+  - mlir/test/Conversion/SecToCore/mixed.mlir
+  - mlir/test/Conversion/SecToCore/nonlowerable-storage.mlir
+  - mlir/test/Conversion/SecToCore/foreign-call-remains.mlir
+  - mlir/test/Conversion/SecToCore/metadata.mlir
+  - mlir/test/Conversion/SecToCore/idempotent.mlir
+  - mlir/test/Conversion/SecToCore/no-unrealized-casts.mlir
+pass:
+  command: --sec-lower-trivial-core
+  recommended_tablegen_name: SecLowerTrivialCore
+  scope: module
+  independently_invokable: true
+  framework:
+  - ConversionTarget
+  - RewritePatternSet
+  - ConversionPattern/OpConversionPattern
+  - TypeConverter where required
+  - applyPartialConversion
+  must_not_be_manual_walk_rewrite: true
+  idempotent: true
+  deterministic: true
+legal_dialects:
+- builtin
+- arith
+- func
+- cf
+- memref
+storage:
+  lowerable_element_types:
+    bool: i1
+    integer_widths:
+    - 8
+    - 16
+    - 32
+    - 64
+    integer_signedness:
+    - signless
+    - signed
+    - unsigned
+    floating:
+    - f32
+    - f64
+  not_lowerable:
+  - index
+  - '!sec.int'
+  - '!sec.uint'
+  - '!sec.float'
+  - '!sec.char'
+  - '!sec.rune'
+  - '!sec.string'
+  - '!sec.decimal'
+  - '!sec.never'
+  - '!sec.named<...>'
+  - '!sec.distinct<...>'
+  - aggregates
+  - other custom types
+  - shaped types
+  - nested !sec.storage
+  type_conversion: '!sec.storage<T> -> memref<T> rank 0'
+  must_not_unwrap_named_distinct: true
+  declare:
+    from: sec.storage.declare
+    to: memref.alloca
+    rank: 0
+    dynamic_dimensions: 0
+    dealloc: false
+    preserve_attrs:
+    - sec.storage_id
+    - sec.source_name
+    - sec.storage_class
+    - sec.mutable
+    preserve_location: true
+  init:
+    from: sec.storage.init
+    to: memref.store
+    indices: 0
+    preserve_location: true
+  load:
+    from: sec.storage.load
+    to: memref.load
+    indices: 0
+    preserve_location: true
+  store:
+    from: sec.storage.store
+    to: memref.store
+    indices: 0
+    preserve_location: true
+  consistency_required: true
+type_converter:
+  conversions:
+  - '!sec.storage<T> -> memref<T> only for Package 5 lowerable T'
+  - all other types -> identity
+  must_not_convert:
+  - siN/uiN to iN
+  - '!sec.int'
+  - '!sec.uint'
+  - '!sec.float'
+  - named/distinct
+  - decimal/string
+  unrealized_conversion_cast_residue_allowed: false
+constants:
+  sec.const.bool:
+    legality_after_pass: illegal/absent
+    lower_to: arith.constant i1
+    preserve_location: true
+  sec.const.int: remain
+  sec.const.float: remain
+  sec.const.decimal: remain
+  sec.const.string: remain
+calls:
+  sec.call.direct:
+    legality_after_pass: illegal/absent
+    lower_to: func.call
+    preserve:
+    - callee symbol
+    - operand order
+    - result order
+    - types
+    - location
+    argument_actions:
+      accepted:
+      - copy-trivial
+      after_lowering: removed/discharged
+      unknown_action: conversion failure
+  sec.call.foreign:
+    lower: false
+    reason: ABI/calling convention/link and foreign-boundary obligations remain unresolved
+cfg:
+  func.func: unchanged
+  func.return: unchanged
+  cf.br: unchanged
+  cf.cond_br: unchanged
+  block_arguments: unchanged
+conversion_target:
+  sec.const.bool: always illegal
+  sec.call.direct: always illegal
+  sec.call.foreign: legal
+  sec.const.int: legal
+  sec.const.float: legal
+  sec.const.decimal: legal
+  sec.const.string: legal
+  sec.storage.*: dynamically illegal only for Package 5 lowerable storage chains
+  other_sec_ops: legal unless explicitly handled
+  sec_dialect_globally_illegal: false
+failure_policy:
+- illegal op cannot be rewritten
+- lowerable storage chain cannot convert consistently
+- unsupported direct-call argument action reaches pass
+- rewrite type mismatch
+- resulting MLIR fails verification
+optimization_boundary:
+  required_for_correctness: []
+  not_required:
+  - canonicalize
+  - CSE
+  - mem2reg
+  - SROA
+  - inlining
+  - DCE
+tests:
+  valid:
+  - bool constant lowers
+  - si32 storage lowers to rank-zero memref<si32>
+  - ui64 storage lowers
+  - i1 storage lowers
+  - f64 storage lowers
+  - zero-index rank-zero loads/stores
+  - storage provenance attrs preserved
+  - direct void call lowers
+  - direct value call lowers
+  - exact overload target symbol preserved
+  - foreign call remains
+  - target-sized int storage remains
+  - decimal storage remains
+  - named storage remains
+  - integer constant remains
+  - float constant remains
+  - decimal constant remains
+  - string constant remains
+  - mixed partial conversion verifies
+  negative:
+  - unsupported direct-call action never silently dropped
+  - malformed lowerable storage chain rejected
+  - half-converted lowerable storage chain not legal
+  - no unrealized_conversion_cast residue
+  idempotence: run pass twice; second run makes no additional semantic change
+  integration_from_package4:
+  - bool return
+  - mutable int32 local
+  - mutable uint64 local
+  - mutable float64 local
+  - direct call
+  - if/else with trivial storage
+  - nested if with trivial storage
+  - mixed direct/foreign when fixture exists
+tooling:
+  sec_mlir_opt_help_exposes_pass: true
+  allow_unregistered_dialect: false
+  verification_enabled: true
+  verify_each_representative_tests: true
+go_regression:
+  go_api_changes_required: false
+  command: go test ./...
+  emit_sec_mlir_stage_changes: false
+  legacy_paths_change: false
+acceptance:
+- Packages 1-4 remain green
+- rules/sec_mlir_lowering.md added
+- schema remains v2
+- SecToCore library builds
+- pass registered
+- applyPartialConversion used
+- explicit legality implemented
+- bool constants fully lower
+- lowerable storage fully lowers to rank-zero memref
+- storage provenance retained
+- no alloca dealloc emitted
+- nonlowerable storage remains Sec
+- named/distinct not unwrapped
+- all direct calls lower to func.call
+- exact callee symbol preserved
+- copy-trivial action discharged safely
+- foreign calls remain Sec
+- int/float/decimal/string constants remain Sec
+- target-sized types remain unresolved
+- no signedness normalization
+- no unrealized cast residue
+- idempotent
+- deterministic
+- mixed output verifies
+- Package 4 generated output lowers directly
+- check-sec-mlir passes
+- go test ./... passes
+- legacy paths unchanged
+- no LLVM dialect emitted
+completion_report:
+- repository HEAD
+- Packages 1-4 pre-status
+- rules/sec_mlir_lowering.md addition
+- files added
+- files modified
+- pass name/registration
+- conversion library target
+- ConversionTarget legality
+- TypeConverter rules
+- lowerable storage predicate
+- bool rewrite
+- storage rewrite
+- direct-call rewrite
+- argument-action handling
+- foreign call remains
+- target-sized types remain
+- CMake commands
+- LLVM/MLIR version
+- check-sec-mlir result
+- direct conversion commands
+- Package 4 integration results
+- go test result
+- idempotence result
+- deviations
+- Package 6 issues
+package6:
+  name: Target/Data-Layout-Aware Scalar Lowering
+  likely_scope:
+  - target information representation
+  - DLTI integration where appropriate
+  - '!sec.int width'
+  - '!sec.uint width'
+  - '!sec.float representation'
+  - fixed-width signed/unsigned normalization to signless integer
+  - preserve signedness in op selection/metadata
+  - sec.const.int lowering
+  - sec.const.float lowering after normative rounding rule
+  - function/block/call type conversion
+  - 32/64-bit target tests
+  still_deferred:
+  - decimal runtime representation
+  - string runtime representation
+  - named/distinct erasure
+  - foreign ABI lowering
+  - ownership
+  - references
+  - Result/try
+  - cleanup
+  - aggregates
+  - allocation
+  - register/MMIO
+  - concurrency
+upstream_references:
+- https://mlir.llvm.org/docs/DialectConversion/
+- https://mlir.llvm.org/docs/Dialects/MemRef/
+- https://mlir.llvm.org/docs/Dialects/Func/
+- https://mlir.llvm.org/docs/Dialects/ArithOps/
+- https://mlir.llvm.org/docs/DataLayout/

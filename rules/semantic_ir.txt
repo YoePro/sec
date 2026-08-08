@@ -127,7 +127,7 @@ Canonical types include:
 * rune
 * string
 * decimal
-* decimal128 when implemented
+* decimal128
 * float
 * float32
 * float64

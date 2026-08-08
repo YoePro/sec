@@ -76,6 +76,7 @@ escape_analysis.md
 closure_analysis.md
 parameter_usage_analysis.md
 pitfall_analysis.md
+stack_analysis.md
 ```
 
 These were written after the older temporary checklist was last synchronized.
@@ -285,7 +286,7 @@ The remaining details to close are:
 | `reference_model.md` | **Written** | Canonical safe-reference guarantees, validity epochs, stable and weak handles, relocation, profile representations, and `RawPtr` boundaries. |
 | `generational_references.md` | **Covered** | Generational validity is canonical in `reference_model.md`; no separate rulebook is required. |
 | `raw_pointers.txt` | **Written — sync required** | Must be synchronized with memory spaces, ABI, and unsafe rules. |
-| `copy_move.md` | **Living** | Explicit move frontend is implemented; place-sensitive analysis and ownership IR remain incomplete. |
+| `copy_move.md` | **Living** | Canonical copy/move semantics. Implementation status is tracked by `frontend.copy-move` in `implementation-status.yaml`. |
 | `lifetime_analysis.txt` | **Written — sync required** | Must include detached work, thread-local values, views, and explicit storage. |
 | `destruction.txt` | **Written — sync required** | Must include discard, panic, cancellation, collection elements, and TLS destruction. |
 | `memory_model.md` | **Written — sync required** | Default lifetime/origin rules are synchronized; concurrency and volatile integration remain. |
@@ -357,15 +358,15 @@ implementation remains tracked separately.
 | `cancellation.md` | **Written — sync required** | |
 | `structured_concurrency.md` | **Written — sync required** | |
 | `transferability.md` | **Written — sync required** | |
-| `data_races.md` | **Written — sync required** | |
-| `deadlock_analysis.md` | **Written — sync required** | |
+| `data_races.md` | **Planned** | |
+| `deadlock_analysis.md` | **Planned** | |
 | `channels.md` | **Written — sync required** | |
 | `events.md` | **Written — sync required** | C#-style publish/subscribe event model; distinct from readiness/completion. |
 | `select.md` | **Written — sync required** | |
 | `mutex.md` | **Written — sync required** | |
 | `atomics.md` | **Written — sync required** | |
-| `processes.txt` | **Written — deferred feature** | Rulebook exists, but `spawn process` design/implementation is intentionally postponed. |
-| `ipc.md` | **Deferred** | Process communication is postponed with process spawning. |
+| `processes.txt` | **Written — planned feature** | Rulebook exists, but `spawn process` design/implementation is intentionally postponed. |
+| `ipc.md` | **Planned** | Process communication is postponed with process spawning. |
 
 Threads are considered design-complete for Sec 0.1.
 
@@ -444,7 +445,7 @@ OrderedMap[K, V]
 | `mlir-optimize.txt` | **Living** | Updated as implementation and optimization support grows. |
 | `rules_implementations.txt` | **Living** | Legacy implementation notes being migrated into `implementation-status.yaml`. |
 | `call_graph.md` | **Written** | Canonical callable reachability and execution relationships. Implementation status is tracked by `analysis.call-graph` in `implementation-status.yaml`. |
-| `stack_analysis.md` | **Planned** | Per-function, per-path, whole-program, and target frame analysis. |
+| `stack_analysis.md` | **Written** | Canonical semantic and machine stack-resource analysis; implementation status is tracked by `sema.stack-analysis` in `implementation-status.yaml`. |
 | `escape_analysis.md` | **Written** | Canonical escape subjects, destinations, retention, summaries, diagnostics, and no-silent-promotion contract. Implementation status is tracked by `sema.escape-analysis`. |
 | `closure_analysis.md` | **Written** | Canonical capture, callable-flow, target-set, closure-summary, and analysis-budget model. Implementation status is tracked by `sema.closure-analysis`. |
 | `parameter_usage_analysis.md` | **Written** | Canonical multidimensional parameter-demand and advisory-narrowing model. Implementation status is tracked by `sema.parameter-usage-analysis`. |
@@ -554,8 +555,6 @@ concurrency_memory_model.txt
 concurrency_runtime_model.md
 copy_move.md
 core-library.md
-data_races.md
-deadlock_analysis.md
 defer.txt
 default_values.md
 destruction.txt

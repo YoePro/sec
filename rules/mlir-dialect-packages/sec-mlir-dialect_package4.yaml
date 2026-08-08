@@ -1,0 +1,456 @@
+package:
+  id: SEC-MLIR-P4
+  name: First Semantic IR to Sec MLIR Bridge
+  series: sec-mlir-dialect
+  repository: https://github.com/YoePro/sec
+  branch: main
+  repository_sync_commit: d48035c
+  repository_sync_date: '2026-08-08'
+  requires_semantic_ir_version: 1
+  introduces_sec_mlir_schema_version: 2
+  prerequisites:
+  - SEC-MLIR-DIALECT-P1
+  - SEC-MLIR-P2
+  - SEC-MLIR-P3
+  goal: Lower verified Package 2/3 Semantic IR to verified high-level Sec MLIR without
+    AST/Sema access.
+  next_package: Lower schema-v2 scalar/storage/call semantics toward lower standard
+    MLIR
+normative_update:
+  repository_path: rules/sec_mlir_dialect.md
+  supplied_file: sec_mlir_dialect_package4.md
+  must_update_before_implementation: true
+scope:
+  required:
+  - dialect schema version 2
+  - semantic scalar Sec MLIR types
+  - '!sec.storage<T>'
+  - exact Sec constant operations
+  - Sec storage operations
+  - sec.call.direct
+  - sec.call.foreign
+  - func.func integration
+  - func.return integration
+  - cf.br integration
+  - cf.cond_br integration
+  - MLIR block arguments
+  - module/function metadata
+  - Semantic IR source-location mapping
+  - Go internal/lowering/secmlir package
+  - deterministic FunctionID to @sec_fn_N mapping
+  - textual MLIR emission from Semantic IR only
+  - sec-mlir-opt verification
+  - sec emit-sec-mlir command
+  - MLIR dialect tests
+  - Go lowering tests
+  - real end-to-end verification tests
+  - full regression
+  forbidden:
+  - Sec MLIR to LLVM lowering
+  - legacy backend replacement
+  - copy/move/destruction
+  - cleanup/defer
+  - borrowing/references/RawPtr operations
+  - ownership-sensitive calls
+  - Result/Option/try
+  - runtime checks/panic
+  - aggregates/properties/interfaces/closures
+  - allocation/arena
+  - register/MMIO/volatile/atomic
+  - concurrency
+  - ABI lowering
+  - Semantic IR serialization
+  - AST to Sec MLIR
+  - Sema to Sec MLIR
+  - future placeholder operations
+dialect:
+  namespace: sec
+  schema_version: 2
+  compiler_module_markers:
+    sec.dialect_version: '2 : i32'
+    sec.semantic_ir_version: '1 : i32'
+  schema_v1_remains_parseable: true
+  new_types:
+  - '!sec.int'
+  - '!sec.uint'
+  - '!sec.float'
+  - '!sec.char'
+  - '!sec.rune'
+  - '!sec.string'
+  - '!sec.decimal'
+  - '!sec.never'
+  - '!sec.storage<T>'
+  existing_types:
+  - '!sec.named<"identity", base>'
+  - '!sec.distinct<"identity", base>'
+  standard_dialects_reused:
+  - builtin
+  - func
+  - cf
+  must_not_define:
+  - sec.func
+  - sec.return
+  - sec.br
+  - sec.cond_br
+type_mapping:
+  void: no MLIR result type
+  never: '!sec.never'
+  bool: i1
+  byte: ui8
+  char: '!sec.char'
+  rune: '!sec.rune'
+  string: '!sec.string'
+  decimal: '!sec.decimal'
+  int: '!sec.int'
+  int8: si8
+  int16: si16
+  int32: si32
+  int64: si64
+  uint: '!sec.uint'
+  uint8: ui8
+  uint16: ui16
+  uint32: ui32
+  uint64: ui64
+  float: '!sec.float'
+  float32: f32
+  float64: f64
+  named: '!sec.named<"identity", mapped-base>'
+  distinct: '!sec.distinct<"identity", mapped-base> when Semantic IR supports it'
+semantic_type_rules:
+  '!sec.int': target-sized signed; not index; no backend width yet
+  '!sec.uint': target-sized unsigned; not index; no backend width yet
+  '!sec.float': source-level float; no final backend representation yet
+  '!sec.char': distinct from rune and integer representation
+  '!sec.rune': distinct from char and integer representation
+  '!sec.string': no physical/ownership/ABI layout in schema v2
+  '!sec.decimal': exact decimal; not binary float; no legacy LLVM layout commitment
+  '!sec.never': semantic never type
+  '!sec.storage<T>':
+    meaning: semantic storage identity containing T
+    not:
+    - pointer
+    - reference
+    - memref
+    - stack slot
+    - heap allocation
+    verify:
+    - T non-void
+    - T is not another !sec.storage
+operations:
+  sec.const.int:
+    result_count: 1
+    attributes:
+      value: StringAttr canonical base-10 arbitrary-precision integer
+    verify:
+    - parse arbitrary precision
+    - unsigned semantic category non-negative
+    - fixed-width builtin representability
+    - named/distinct recurse through base
+  sec.const.bool:
+    result_count: 1
+    attributes:
+      value: BoolAttr
+    result_base:
+    - i1
+  sec.const.float:
+    result_count: 1
+    attributes:
+      lexeme: StringAttr
+    result_base:
+    - '!sec.float'
+    - f32
+    - f64
+  sec.const.decimal:
+    result_count: 1
+    attributes:
+      coefficient: StringAttr arbitrary-precision integer
+      scale: IntegerAttr(i32)
+      lexeme: StringAttr
+    verify:
+    - coefficient parseable
+    - scale >= 0
+    - lexeme non-empty
+  sec.const.string:
+    result_count: 1
+    attributes:
+      value: StringAttr decoded semantic string
+    result_base:
+    - '!sec.string'
+  sec.storage.declare:
+    operands: 0
+    results:
+    - '!sec.storage<T>'
+    attributes:
+      sec.storage_id: IntegerAttr(i32) > 0
+      sec.source_name: StringAttr
+      sec.storage_class: StringAttr == "local-automatic"
+      sec.mutable: BoolAttr
+  sec.storage.init:
+    operands:
+    - '!sec.storage<T>'
+    - T
+    results: 0
+  sec.storage.load:
+    operands:
+    - '!sec.storage<T>'
+    results:
+    - T
+  sec.storage.store:
+    operands:
+    - '!sec.storage<T>'
+    - T
+    results: 0
+  sec.call.direct:
+    callee: FlatSymbolRefAttr
+    argument_actions: ArrayAttr<StringAttr>, schema v2 only "copy-trivial"
+    verify_target: func.func with sec.extern absent/false
+    verify_signature: true
+  sec.call.foreign:
+    callee: FlatSymbolRefAttr
+    argument_actions: ArrayAttr<StringAttr>, schema v2 only "copy-trivial"
+    verify_target: func.func with sec.extern == true
+    verify_signature: true
+module_metadata:
+  sec.dialect_version: IntegerAttr(i32) = 2
+  sec.semantic_ir_version: IntegerAttr(i32) = 1
+  sec.module_id: StringAttr
+  sec.source_files: ArrayAttr<StringAttr>
+function_representation:
+  operation: func.func
+  required_attrs:
+  - sec.function_id:StringAttr
+  - sec.source_name:StringAttr
+  - sec.extern:BoolAttr
+  - sec.unsafe:BoolAttr
+  optional_attrs:
+  - sec.link_name:StringAttr
+  - sec.abi:StringAttr
+  - sec.parameter_names:ArrayAttr<StringAttr>
+  extern_body: false
+  non_extern_body: true
+cfg_mapping:
+  return: func.return
+  branch: cf.br
+  conditional_branch: cf.cond_br
+  block_parameters: MLIR block arguments
+  implicit_fallthrough: false
+symbol_mapping:
+  strategy: deterministic function order -> @sec_fn_0, @sec_fn_1, ...
+  semantic_identity_location: sec.function_id
+  is_abi_mangling: false
+  hash_based: false
+lowering:
+  package: internal/lowering/secmlir
+  recommended_api: Emit(module *semantic.Module) ([]byte, error)
+  allowed_imports:
+  - standard library
+  - internal/ir/semantic
+  forbidden_imports:
+  - internal/ast
+  - internal/lexer
+  - internal/parser
+  - internal/sema
+  - internal/codegen/llvm
+  - internal/codegen/mlir
+  steps:
+  - semantic.Verify
+  - require Semantic IR version 1
+  - supported-subset validation
+  - deterministic mappings
+  - textual Sec MLIR emission
+  external_tool_invocation_inside_emitter: false
+  unsupported_error: UnsupportedLoweringError
+textual_emission:
+  allowed: true
+  reason: Go frontend and C++ MLIR dialect boundary
+  requirements:
+  - Semantic IR only input
+  - syntax defined normatively
+  - sec-mlir-opt parses/verifies output
+  - no semantic analysis in emitter
+  - complete type/op test coverage
+  cgo_required: false
+source_locations:
+  semantic_known: loc("file":line:column)
+  unknown: loc(unknown)
+  must_escape_mlir_strings: true
+  must_not_consult:
+  - lexer
+  - AST
+cli:
+  command: sec emit-sec-mlir <file.sec>
+  outputs:
+  - stdout
+  - -o <file.mlir>
+  - -o -
+  target_option: --target <os-arch>
+  pipeline:
+  - parse
+  - target filtering
+  - Sema
+  - Semantic IR Build
+  - Semantic IR Verify
+  - Sec MLIR Emit
+  - temporary file
+  - sec-mlir-opt VerifySec
+  - publish verified output
+  - stop
+  legacy_emit_mlir_changed: false
+  must_not_invoke:
+  - mlir-translate
+  - clang
+  - LLVM codegen
+  - legacy MLIR generator
+  - legacy LLVM generator
+mlir_files:
+  add_or_update:
+  - mlir/include/sec/Dialect/Sec/SecDialect.td
+  - mlir/include/sec/Dialect/Sec/SecTypes.td
+  - mlir/include/sec/Dialect/Sec/SecOps.td
+  - mlir/include/sec/Dialect/Sec/SecDialect.h
+  - mlir/include/sec/Dialect/Sec/SecTypes.h
+  - mlir/include/sec/Dialect/Sec/SecOps.h
+  - mlir/lib/Dialect/Sec/SecDialect.cpp
+  - mlir/lib/Dialect/Sec/SecTypes.cpp
+  - mlir/lib/Dialect/Sec/SecOps.cpp
+  tests:
+  - scalar-types-roundtrip.mlir
+  - constants-roundtrip.mlir
+  - storage-roundtrip.mlir
+  - calls-roundtrip.mlir
+  - invalid-constants.mlir
+  - invalid-storage.mlir
+  - invalid-calls.mlir
+  - schema-v1-regression.mlir
+  generated_inc_committed: false
+required_mlir_tests:
+- schema v1 regression
+- all new scalar types round-trip
+- nested storage rejected
+- integer constant exactness
+- signed fixed-width overflow rejected
+- unsigned overflow/negative rejected
+- decimal exactness round-trip
+- string constant round-trip
+- all storage ops round-trip
+- storage mismatch rejected
+- storage ID zero rejected
+- unknown storage class rejected
+- direct call valid
+- direct to extern rejected
+- foreign call valid
+- foreign to non-extern rejected
+- call arity mismatch rejected
+- call argument mismatch rejected
+- call result mismatch rejected
+- argument action count mismatch rejected
+- unknown action rejected
+- standard func/cf CFG accepted
+- no allow-unregistered required
+required_go_tests:
+- lowering package dependency boundary
+- Semantic Verify invoked
+- Semantic IR version mismatch rejected
+- module metadata deterministic
+- exact type mapping
+- named identity preserved
+- function symbol mapping deterministic
+- FunctionID retained
+- location escaping
+- SSA naming deterministic
+- StorageID maps once
+- DirectCall exact symbol target
+- ForeignCall remains foreign
+- argument action preserved
+- CFG successor/order preserved
+- block parameters preserved
+- unknown semantic op returns UnsupportedLoweringError
+- no legacy fallback
+integration_tests:
+  go_test_requires_real_mlir: false
+  real_tool_tests_separate: true
+  representative_cases:
+  - integer return
+  - decimal return
+  - named scalar
+  - mutable local
+  - direct call
+  - foreign call when fixture exists
+  - if/else
+  - nested if
+  must_verify_with: sec-mlir-opt
+acceptance:
+- Packages 1-3 remain green
+- rules/sec_mlir_dialect.md updated to schema v2
+- dialect marker 2 emitted
+- Semantic IR marker 1 emitted
+- all new semantic types implemented
+- storage<T> implemented
+- P1 named/distinct regression passes
+- exact type mapping
+- int/uint not index
+- decimal not binary float
+- char/rune distinct
+- five constant ops implemented
+- integer exactness verifier
+- decimal exactness preserved
+- four storage ops implemented
+- no physical storage materialization
+- direct/foreign calls implemented and verified
+- argument actions preserved
+- func.func/func.return/cf.br/cf.cond_br reused
+- FunctionID metadata preserved
+- deterministic @sec_fn_N mapping
+- lowering imports Semantic IR only
+- lowering verifies input
+- unsupported future IR fails explicitly
+- emit-sec-mlir exists
+- output published only after sec-mlir-opt verifies
+- legacy emit-mlir unchanged
+- emit-ir unchanged
+- check-sec-mlir passes
+- real generated MLIR verifies
+- go test ./... passes without real MLIR
+completion_report:
+- repository HEAD
+- Packages 1-3 pre-status
+- normative dialect update
+- files added
+- files modified
+- dialect schema version
+- types added
+- ops added
+- standard dialects reused
+- type mapping
+- lowering package dependencies
+- FunctionID symbol strategy
+- location strategy
+- emit-sec-mlir pipeline
+- CMake commands
+- LLVM/MLIR version
+- check-sec-mlir result
+- Go tests
+- real end-to-end verification
+- unsupported IR
+- deviations
+- Package 5 recommendations
+package5:
+  name: Sec MLIR scalar/storage/call lowering foundation
+  goal: Begin explicit dialect conversion toward lower standard MLIR without ownership
+    features.
+  likely_scope:
+  - target representation policy for !sec.int/!sec.uint/!sec.float
+  - constant lowering where representation is known
+  - trivial local storage lowering
+  - direct call normalization when metadata obligation discharged
+  - foreign call lower representation retaining ABI metadata
+  - conversion target legality tests
+  still_deferred:
+  - copy/move/destruction
+  - borrowing
+  - Result/try
+  - defer/cleanup
+  - aggregates
+  - allocation
+  - register/MMIO
+  - concurrency

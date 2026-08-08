@@ -767,11 +767,172 @@ integrations:
       - add canonical pitfall rule registry with family, required semantic facts, minimum analysis budget, and default confidence metadata
       - add distinct Finding, NoFinding, Suppressed, NotEvaluated, and Pending evaluation states
       - consume canonical range, bounds, control-flow, Place/provenance, collection-shape, effect, layout, and FFI contract facts rather than reimplementing their analyses
-      - implement the required bounds/range, collection, control-flow, and contract-backed FFI catalog with false-positive suppression
+      - implement inclusive-length indexed traversal detection and direct index-at-length enrichment
+      - implement upper-neighbor and lower-neighbor offset checks across normalized iteration domains
+      - implement ineffective <= len and > len rejection-guard correlation
+      - implement final-element access reasoning that consumes non-empty proofs
+      - implement high-confidence skipped-first-element advisory with predecessor, prior-element-handling, explicit-contract, and other suppression evidence
+      - implement omitted-last-element and count-versus-inclusive-endpoint advisory rules where semantic intent evidence is sufficient
+      - implement collection bound-source correlation, equal/sufficient-length suppression, and copy/paste evidence
+      - implement length-versus-capacity pitfall reasoning without conflating capacity with live element length
+      - implement structural-mutation-during-indexed-iteration reasoning with safe-pattern suppression
+      - implement wrong-guard-subject and ineffective-safety-check control-flow correlation
+      - implement tautological/impossible range-condition enrichment and canonical range-membership suggestions using `in` when semantic equivalence is proven
+      - add canonical-idiom suggestion support without inventing a new strict compilation mode
+      - add Option/Result/state-check subject-correlation support when canonical state facts are available
+      - add canonical FFI buffer/extent relationship consumption without inferring pointer/length semantics from parameter names
+      - add FFI pointer/extent provenance mismatch detection when canonical contracts prove argument relationships
+      - add FFI element-count versus byte-count mismatch detection using canonical extent units and resolved element layout
+      - support explicit Sec FFI contracts, trusted imported metadata, generated binding metadata, and compiler-known platform/library metadata through one canonical FFI fact representation
       - coalesce pitfall findings with owning normative diagnostics so one root cause does not generate duplicate errors and warnings
-      - implement ProvenFix versus SuggestedEdit distinction and verify automatic-fix safety
+      - implement ProvenFix versus SuggestedEdit distinction
+      - verify automatic fixes preserve evaluation count/order, effects, ownership/move behavior, and relevant failure semantics
       - add dependency-driven pitfall cache invalidation and reuse for unaffected semantic bodies
-      - integrate Interactive, Standard, and Deep budgets without changing source-language semantics
+      - integrate Interactive, Standard, and Deep pitfall budgets without changing source-language semantics
       - expose configurable LSP diagnostics/code actions and refresh affected findings when project analysis configuration changes
-      - integrate pitfall analysis into default sec analyse --all behavior and support explicit pitfall-only analysis selection
-      - add required bounds/range, collection, control-flow, confidence/suppression, corrective-action, incremental/LSP, FFI, performance, and false-positive regression tests
+      - integrate pitfall analysis into default `sec analyse --all` behavior and support explicit pitfall-only analysis selection
+      - add required bounds/range, collection, control-flow, confidence/suppression, corrective-action, incremental/LSP, FFI, and performance tests
+      - add false-positive regression corpus for neighbor traversal, sentinels, separately handled endpoints, equal-length parallel collections, ring buffers, capacity-level storage manipulation, protocol ranges, and byte-buffer FFI APIs
+      - update implementation-status verification commands when the first vertical slice is integrated
+
+  - id: sema.stack-analysis
+    area: frontend-analysis-and-lowering
+    status: planned
+    summary: >-
+      Adds canonical semantic and machine stack-resource analysis: materialized
+      frame accounting, call-path composition, recursive SCC and finite-depth
+      reasoning, indirect and foreign stack contracts, execution-root stack
+      domains, stack-budget proofs, incremental summaries, and LSP/tooling
+      integration without changing storage origin or performing hidden promotion.
+    rules:
+      - rules/stack_analysis.md
+      - rules/call_graph.md
+      - rules/compiler_analysis.txt
+      - rules/storage.md
+      - rules/layout.md
+      - rules/lifetime_analysis.txt
+      - rules/escape_analysis.md
+      - rules/closure_analysis.md
+      - rules/ownership.md
+      - rules/copy_move.md
+      - rules/borrowing.txt
+      - rules/destruction.txt
+      - rules/defer.txt
+      - rules/arrays-slices.txt
+      - rules/ffi.txt
+      - rules/effect_analysis.md
+      - rules/projects.txt
+      - rules/lsp.md
+    remaining:
+      - add canonical stack-bound representation distinguishing Exact, UpperBound, Unknown, and Unbounded results
+      - add separate semantic and machine stack summary models without overwriting one analysis level with the other
+      - derive semantic own-frame demand from maximum simultaneously live materialized automatic storage rather than summing all declarations
+      - consume ResolvedLayout as the authoritative size, alignment, stride, aggregate, array, union, pointer, and descriptor layout source
+      - integrate canonical lifetime, escape, destruction, defer, addressability, pinning, partial-move, and storage facts to constrain stack-slot reuse
+      - distinguish inline fixed-array and embedded aggregate storage from descriptors, views, arena-backed storage, and allocator-backed backing memory
+      - model materialized semantic temporaries, return storage, direct construction, cleanup state, destruction, error paths, and panic paths without double-counting storage
+      - compose direct acyclic call paths so nested calls sum simultaneously live frames while sequential and mutually exclusive calls contribute their maximum
+      - consume canonical call-graph SCCs for direct, mutual, indirect, callback, and reentrant recursion rather than constructing a parallel call graph
+      - add recursion-depth facts distinguishing exact depth, finite upper-bound depth, unknown depth, and proven unbounded depth
+      - support simple finite recursion-depth proofs from canonical constant, range, constrained-type, root-contract, and call-argument transformation facts
+      - ensure a recursion progress proof applies to every relevant recursive transition before using it for a finite SCC stack bound
+      - add deterministic recursive SCC stack composition that accounts for different frame costs across different cycles
+      - consume closed callable target sets by taking the maximum permitted target stack contribution
+      - consume open callable stack contracts and preserve Unknown when an open target set has no verified finite stack bound
+      - model callable, foreign, runtime, and platform reentry so permitted callback paths can participate in recursive SCCs
+      - consume explicit foreign, runtime, and compiler-known platform stack contracts without defining their import mechanism in stack analysis
+      - add per-execution-root and per-physical-stack-domain maximum stack analysis for program, thread, task, ISR, platform, and runtime-defined roots
+      - compose nested execution contributions when the active runtime or CompilationPlan places logical execution contexts on the same physical stack
+      - add stack budgets that identify stack domain, semantic or machine measurement level, and maximum bytes without inventing stack-specific project syntax
+      - distinguish proven budget excess, failure to prove a required finite bound, and proven unbounded stack demand in diagnostics
+      - revalidate hard machine-stack budgets after target ABI, backend frame layout, spills, saved registers, and outgoing call areas are known
+      - preserve known stack prefixes, contributors, and unknown causes when an overall finite upper bound is unavailable
+      - add deterministic maximum-cause paths, recursive SCC explanations, depth-source reporting, and major frame-contributor reporting
+      - add versioned persisted semantic and CompilationPlan-specific machine stack summaries for separate compilation
+      - add dependency-driven invalidation for body, callee summary, target-set, SCC, layout, lifetime/storage, cleanup, specialization, foreign-contract, CompilationPlan, ABI, and schema changes
+      - add symbolic generic stack summaries where sound and instantiate them when size, constant, specialization, and plan inputs become known
+      - integrate Interactive, Standard, and Deep analysis budgets with Pending or partial tooling state that is never presented as a verified finite bound
+      - expose configurable LSP NeedToKnow versus OptionalInsight stack information and refresh affected analysis when project configuration changes without an LSP restart
+      - integrate stack analysis into default sec analyse all-analysis behavior and support explicit stack-only analysis selection
+      - expose reusable verified stack proofs to build validation, ISR analysis, resource reporting, embedded/platform tooling, and other compiler consumers
+      - add required frame, live-range, call-path, recursion, indirect-call, foreign/runtime, storage-accounting, CompilationPlan, budget, separate-compilation, incremental/LSP, performance, and determinism regression tests
+      - update implementation-status verification commands when the first conforming vertical slice is integrated
+
+  - id: frontend.copy-move
+    area: frontend-analysis-and-lowering
+    status: partial
+    integrated: "2026-08-08"
+    summary: >-
+      Implements the first explicit-copy and explicit-move frontend slice with
+      recursive copy classification, direct and place-sensitive move-state
+      validation, operator-aware formatter/LSP support, and selected resource,
+      branch, loop, borrow, provenance, and union-payload behavior. Explicit
+      ownership operations in Semantic IR and backend ownership verification
+      remain deferred.
+    rules:
+      - rules/copy_move.md
+      - rules/ownership.md
+      - rules/borrowing.txt
+      - rules/destruction.txt
+      - rules/lifetime_analysis.txt
+      - rules/arrays-slices.txt
+      - rules/semantic_ir.txt
+      - rules/sec_mlir.md
+      - rules/formatter.md
+      - rules/lsp.md
+    code:
+      - internal/ast/ast.go
+      - internal/lexer/lexer.go
+      - internal/parser/parser.go
+      - internal/sema/analyzer.go
+      - internal/sema/place.go
+      - internal/sema/types.go
+      - internal/formatter
+      - internal/lsp
+    tests:
+      - internal/sema/copy_move_test.go
+      - internal/sema/lifetime_test.go
+      - internal/sema/destruction_test.go
+      - internal/parser/parser_test.go
+      - internal/lexer/lexer_test.go
+      - internal/formatter/formatter_test.go
+      - cmd/lsp/main_test.go
+    implemented:
+      - CopyClassification, CopyClassificationOf, TriviallyCopyable, and MoveOnly with trivial, semantic, move-only, conditional, and non-copyable classes
+      - recursive primitive, reference, RawPtr, array, struct, custom-destruction, compiler-known, @noCopy, generic-instance, and aggregate-field classification
+      - direct local move tracking with moved, returned, discarded, and detached reasons plus related source locations
+      - diagnostics for use after move/discard, moving borrowed roots, defer-retained values, implicit copy of named move-only values, unproven generic copies, and overlapping self-moves
+      - lexer/parser/AST support for :<-, <-, explicit ownership modes, inferred and typed move initialization, and rejected invalid operator forms
+      - explicit moves of copyable and move-only named values; selected by-value parameter, return, aggregate literal, Result, Option, union payload, spread, and conversion transfer handling
+      - assignment reinitialization after move or discard and close-tracked resource-state clearing
+      - structured Place identity, overlap, nested-field availability, static slice intervals, local reference-alias provenance, union payload projections, and field-sensitive reinitialization
+      - move, borrow, reference-origin, resource-close, and availability joins across if, switch, select, match, loops, continue, and break edges
+      - direct function and method returned-reference summaries with transitive supported call instantiation
+      - formatter preservation, semantic-token classification, and initial S1007 move quick fixes
+    partial:
+      - move availability is precise for roots, nested fields, selected union payloads, static slice intervals, and local aliases but not all indexed, sliced, or opaque/foreign aliases
+      - destruction responsibility and destination ownership are inferred through frontend state instead of explicit Semantic IR operations
+      - semantic-copy lowering, structured argument-consumption metadata, stable diagnostic ownership IDs, and universally safe LSP automatic fixes remain incomplete
+      - loop fixed points remain conservative for imported, opaque, function-value, and unsupported recursive provenance; general cleanup/destruction lattices remain absent
+      - string lowering currently has view/static-literal behavior and requires ownership-aware validation before any move support is relied upon
+    remaining:
+      - complete indexed, sliced, aliased, fixed-array, dynamic-list, and multi-field active-variant move availability
+      - add complete aggregate availability masks, relocation/address-stability/pinning classification, and owned-interface review
+      - represent copy, move, replace, destination ownership, destruction, cleanup, and call consumption explicitly in Semantic IR
+      - lower and verify ownership through Sec MLIR, LLVM, ABI, destruction responsibility, and fixed-address non-relocation rules
+      - complete diagnostic registry, test matrix, LSP ownership hints, move navigation, partial-state display, consequence preview, and universally safe code actions
+      - add consuming list extraction only after list API, parser, Place, borrow invalidation, iteration-freeze, and bounds-result contracts are synchronized
+    implementation_order:
+      - lexer tokens and longest-match handling
+      - parser and AST ownership modes
+      - source Place classification and ordinary named move-only copy rejection
+      - explicit moves, reinitialization, diagnostics, and formatter/LSP support
+      - field-sensitive places and partial aggregate state
+      - collection extraction and complete destruction state
+      - Semantic IR ownership operations
+      - Sec MLIR, LLVM, and ABI ownership verification
+    verification:
+      - command: go test ./...
+        result: passed
+      - command: validate implementation-status.yaml
+        result: passed

@@ -631,18 +631,14 @@ Rules:
 - `bool(float)` is valid.
 - `bool(decimal)` is valid.
 - integer subtypes are valid.
+- `int128` is valid.
+- `int256` is valid.
 - unsigned integer subtypes are valid.
+- `uint128` is valid.
+- `uint256` is valid.
 - floating-point subtypes are valid.
 - decimal is valid.
-
-When implemented, this includes:
-
-```text
-int128
-int256
-uint128
-uint256
-```
+- decimal128 is valid.
 
 The conversion result is:
 

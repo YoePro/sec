@@ -1,0 +1,451 @@
+package:
+  id: SEC-MLIR-P7
+  name: Checked Integer Semantic Operations
+  repository: https://github.com/YoePro/sec
+  branch: main
+  repository_sync_commit: d48035c
+  repository_sync_date: '2026-08-08'
+  semantic_ir_version: 1
+  sec_mlir_schema_before: 3
+  sec_mlir_schema_after: 4
+  lowering_spec_after: 3
+  goal: Represent resolved builtin integer operators explicitly in Semantic IR and
+    Sec MLIR with total checked operations and immediate deterministic failure edges.
+  next_package: Checked Integer Arith Lowering
+authority:
+- rules/operators.md
+- rules/runtime_checks.md
+- rules/types.txt
+- rules/layout.md
+- rules/semantic_ir.txt
+- rules/sec_mlir.md
+- rules/sec_mlir_dialect.md
+- rules/sec_mlir_lowering.md
+normative_updates:
+- repository_path: rules/sec_mlir_dialect.md
+  supplied_file: sec_mlir_dialect_package7.md
+  schema_version: 4
+- repository_path: rules/sec_mlir_lowering.md
+  supplied_file: sec_mlir_lowering_package7.md
+  lowering_version: 3
+wide_builtin_invariant:
+  active:
+  - int128
+  - int256
+  - uint128
+  - uint256
+  - decimal128
+  integer_package_support:
+  - int128
+  - int256
+  - uint128
+  - uint256
+  forbidden_status:
+  - future
+  - planned
+  - reserved
+  - placeholder
+  - not yet active
+source_scope:
+  supported_operators:
+  - unary +
+  - unary -
+  - '~'
+  - +
+  - '-'
+  - '*'
+  - /
+  - '%'
+  - '&'
+  - '|'
+  - ^
+  - '<<'
+  - '>>'
+  - ==
+  - '!='
+  - <
+  - <=
+  - '>'
+  - '>='
+  supported_types:
+  - int
+  - int8
+  - int16
+  - int32
+  - int64
+  - int128
+  - int256
+  - uint
+  - uint8
+  - uint16
+  - uint32
+  - uint64
+  - uint128
+  - uint256
+  - byte
+  deferred:
+  - float operators
+  - decimal operators
+  - decimal128 operators
+  - char/rune comparison
+  - string comparison
+  - bool equality/logical
+  - named numeric operators
+  - unit-bearing operators
+  - compound assignment
+  - try arithmetic
+  - wrapping/saturating APIs
+  - numeric conversions
+sema:
+  required_read_only_api: ResolvedOperatorOf(expr ast.Expression) (ResolvedOperator,
+    bool)
+  must_be_recorded_during_analysis: true
+  must_not_resolve_on_query: true
+  required_kinds:
+  - integer-unary-plus
+  - integer-negate-checked
+  - integer-bit-not
+  - integer-add-checked
+  - integer-subtract-checked
+  - integer-multiply-checked
+  - integer-divide-checked
+  - integer-remainder-checked
+  - integer-bit-and
+  - integer-bit-or
+  - integer-bit-xor
+  - integer-shift-left-unsigned-checked
+  - integer-shift-left-signed-checked
+  - integer-shift-right-unsigned-checked
+  - integer-shift-right-signed-checked
+  - integer-compare-eq
+  - integer-compare-ne
+  - integer-compare-lt
+  - integer-compare-le
+  - integer-compare-gt
+  - integer-compare-ge
+semantic_ir:
+  version_bump: false
+  operation_families:
+  - IntegerUnaryPlusOp
+  - IntegerNegCheckedOp
+  - IntegerBitNotOp
+  - IntegerCheckedBinaryOp
+  - IntegerBitwiseOp
+  - IntegerShiftCheckedOp
+  - IntegerCompareOp
+  - ArithmeticFailureOp
+  checked_ops_return:
+  - result
+  - failed:bool
+  checked_ops:
+  - negation
+  - add
+  - subtract
+  - multiply
+  - divide
+  - remainder
+  - all shifts
+  non_failing_ops:
+  - unary plus
+  - bitwise not
+  - bitwise and
+  - bitwise or
+  - bitwise xor
+  - integer comparison
+  dedicated_failure_block_per_checked_op: true
+  ordinary_failure_terminator: ArithmeticFailureOp
+  try_arithmetic_supported: false
+failure_semantics:
+  add: failed when mathematical sum not representable
+  subtract: failed when mathematical difference not representable
+  multiply: failed when mathematical product not representable
+  divide_signed: failed on zero divisor or minimum / -1
+  divide_unsigned: failed on zero divisor
+  remainder_signed: failed on zero divisor or minimum / -1
+  remainder_unsigned: failed on zero divisor
+  negation_signed: failed on minimum signed value
+  shift_all: failed on invalid count
+  shift_left_signed: also failed on unrepresentable mathematical shifted result
+  shift_left_unsigned: high-bit discard is defined and not overflow failure
+guard_invariant:
+  order:
+  - evaluate left fully
+  - evaluate right fully if present
+  - emit checked op
+  - immediately branch on failed
+  - true -> dedicated arithmetic failure block
+  - false -> success continuation
+  failure_flag_type: bool/i1
+  failure_flag_exactly_one_use: true
+  no_later_source_effect_before_guard: true
+  first_failure_behavior: true
+dialect:
+  schema_version: 4
+  accepted_integer_types:
+  - '!sec.int'
+  - '!sec.uint'
+  - si8
+  - si16
+  - si32
+  - si64
+  - si128
+  - si256
+  - ui8
+  - ui16
+  - ui32
+  - ui64
+  - ui128
+  - ui256
+  new_ops:
+    sec.int.unary_plus:
+      operands:
+      - T
+      results:
+      - T
+      failure: false
+    sec.int.neg_checked:
+      operands:
+      - signed T
+      results:
+      - T
+      - i1 failed
+      failure: true
+    sec.int.binary_checked:
+      kind:
+      - add
+      - subtract
+      - multiply
+      - divide
+      - remainder
+      operands:
+      - T
+      - T
+      results:
+      - T
+      - i1 failed
+    sec.int.bit_not:
+      operands:
+      - T
+      results:
+      - T
+      failure: false
+    sec.int.bitwise:
+      kind:
+      - and
+      - or
+      - xor
+      operands:
+      - T
+      - T
+      results:
+      - T
+      failure: false
+    sec.int.shift_checked:
+      kind:
+      - left_unsigned
+      - left_signed
+      - right_unsigned
+      - right_signed
+      operands:
+      - T value
+      - C count
+      results:
+      - T
+      - i1 failed
+    sec.int.cmp:
+      predicate:
+      - eq
+      - ne
+      - lt
+      - le
+      - gt
+      - ge
+      operands:
+      - T
+      - T
+      results:
+      - i1
+    sec.fail.arithmetic:
+      terminator: true
+      operands: []
+      results: []
+      category:
+      - overflow
+      - division
+      - remainder
+      - shift
+      attributes:
+      - sec.operator:StringAttr
+  checked_ops_total: true
+  checked_ops_must_not_use_ub_or_poison_as_failure: true
+failure_category_mapping:
+  neg_checked: overflow
+  add: overflow
+  subtract: overflow
+  multiply: overflow
+  divide: division
+  remainder: remainder
+  shift: shift
+mlir_guard_verifier:
+  command: --sec-verify-checked-integer-guards
+  modifies_ir: false
+  checks:
+  - failure flag exactly one use
+  - immediate cf.cond_br condition
+  - checked op last non-terminator
+  - true successor dedicated failure block
+  - false successor success continuation
+  - failure block contains sec.fail.arithmetic only
+  - failure category matches operation family
+  - operator provenance matches
+  - checked result unused on failure path
+package5_compatibility:
+  integer_semantic_ops_lowered: false
+  remain_legal: true
+package6_compatibility:
+  resolve_target_sized_operand_result_types: true
+  preserve_operation_kind: true
+  preserve_failure_flag: true
+  preserve_failure_cfg: true
+  signless_normalization: false
+lowering_boundary:
+  signless_conversion: false
+  arith_integer_ops: false
+  llvm_dialect: false
+  overflow_flags_are_sec_checks: false
+  raw_div_before_check: false
+  raw_shift_before_check: false
+tests:
+  semantic_ir:
+  - signed add
+  - unsigned subtract
+  - int128 multiply
+  - uint256 add
+  - signed/unsigned division
+  - remainder
+  - checked negation
+  - bitwise
+  - signed/unsigned shifts
+  - six comparison predicates
+  - nested left-to-right arithmetic with calls
+  unsupported:
+  - try arithmetic
+  - float arithmetic
+  - decimal arithmetic
+  - named integer arithmetic
+  - unit arithmetic
+  - compound assignment
+  dialect:
+  - all op kinds roundtrip
+  - operand mismatch rejected
+  - failed result i1
+  - unsigned negation rejected
+  - shift signedness verifier
+  - different count width accepted
+  - comparison i1 result
+  - named integer rejected
+  - int128 and uint256 accepted
+  - failure category validation
+  - failure terminator validation
+  - schema 1-3 regressions
+  guard_verifier:
+  - canonical guard accepted
+  - unused failure rejected
+  - multiple failure uses rejected
+  - non-branch use rejected
+  - reversed branch rejected
+  - operation between check and branch rejected
+  - extra failure-block op rejected
+  - missing failure terminator rejected
+  - wrong failure category rejected
+  - wrong operator metadata rejected
+  - result used on failure path rejected
+  - nested checks accepted
+  integration:
+  - target 32 int
+  - target 64 int
+  - int128
+  - int256
+  - uint128
+  - uint256
+  - comparison used as if condition
+  - nested arithmetic with direct calls
+acceptance:
+- previous regressions green
+- wide builtins remain active
+- dialect schema v4 installed
+- lowering spec v3 installed
+- Sema resolved operator API exists
+- builder does not re-resolve operators
+- all integer Semantic IR op families exist
+- checked ops return result+failure
+- ordinary checked ops have dedicated explicit failure CFG
+- left-to-right and first-failure preserved
+- 8/16/32/64/128/256 tested
+- all schema-v4 ops implemented
+- checked ops total
+- arithmetic failure terminator implemented
+- guard verifier registered
+- P6 preserves/resolves new op types
+- P5 leaves integer ops untouched
+- no signless conversion
+- no Arith integer lowering
+- no LLVM dialect
+- check-sec-mlir passes
+- go test ./... passes
+- legacy paths operational
+completion_report:
+- repository HEAD
+- previous package status
+- files added
+- files modified
+- Sema resolved-operator API
+- Semantic IR operation API
+- checked block construction
+- failure categories
+- schema-v4 ODS ops
+- custom verifiers
+- guard verifier
+- P6 compatibility
+- 128/256 coverage
+- evaluation-order tests
+- MLIR tests
+- check-sec-mlir
+- go test
+- end-to-end results
+- unsupported forms
+- deviations
+- Package 8 recommendations
+package8:
+  name: Checked Integer Arith Lowering
+  goal: Lower schema-v4 integer semantic ops to total signless standard MLIR computations
+    of (result, failed), retaining existing explicit failure edges.
+  likely_scope:
+  - siN/uiN -> signless iN
+  - signedness-aware lower-op selection
+  - integer constants normalization
+  - unary plus elimination
+  - bitwise Arith lowering
+  - signed/unsigned cmpi predicates
+  - checked add/sub/mul without poison
+  - safe div/rem without UB
+  - safe shifts without poison/masking
+  - signed-left overflow detection
+  - 8/16/32/64/128/256 tests
+  still_deferred:
+  - try/ArithmeticError
+  - panic endpoint lowering
+  - float
+  - decimal
+  - named/unit numeric
+  - numeric casts
+  - foreign ABI
+  - ownership
+  - aggregates
+  - allocation
+  - register/MMIO
+  - concurrency
+  - LLVM dialect
+upstream_mlir_references:
+- https://mlir.llvm.org/docs/Dialects/ArithOps/
+- https://mlir.llvm.org/docs/DialectConversion/

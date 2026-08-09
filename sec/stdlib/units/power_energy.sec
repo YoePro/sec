@@ -69,11 +69,11 @@ impl Wh {
 
     /** Convert Joule to Watt-hours (1 Wh = 3600 J) */
     fn Wh(Joule: decimal<J>) decimal<Wh> {
-        return decimal<Wh>(decimal(Joule) / 3600d)
+        return decimal<Wh>(decimal(Joule) / 3600m)
     }
 
     fn Wh(Joule: float<J>) float<Wh> {
-        return float<Wh>(float(Joule) / 3600f)
+        return float<Wh>(float(Joule) / 3600g)
     }
 
     /** Calculate Wh directly from Ampere-hours and Voltage (Wh = Ah * V) */

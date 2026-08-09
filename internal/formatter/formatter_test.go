@@ -39,3 +39,13 @@ func TestFormatImplExtension(t *testing.T) {
 		t.Fatalf("wrong impl extension formatting:\n%s\nwant:\n%s", got, want)
 	}
 }
+
+func TestFormatPreservesCanonicalNumericFamilySuffixes(t *testing.T) {
+	input := "fn Values() void {\nlet values := [8i, 8u, 8g, 8m, 65t, 65r, 0x41t, 0x10g, 0x10m]\n}\n"
+	got := Format(Source{Text: input}, Options{}).Text
+	for _, literal := range []string{"8i", "8u", "8g", "8m", "65t", "65r", "0x41t", "0x10g", "0x10m"} {
+		if !strings.Contains(got, literal) {
+			t.Fatalf("formatter lost canonical literal %s:\n%s", literal, got)
+		}
+	}
+}

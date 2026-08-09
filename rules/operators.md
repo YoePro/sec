@@ -319,7 +319,7 @@ ownership.md
 formatter.md
     canonical printing and normalization
 
-types.txt
+types.md
     primitive and named types
 
 contracts.md
@@ -931,7 +931,7 @@ Percent(value)
 
 may resolve as a type conversion when `Percent` is a type.
 
-Conversion rules come from `types.txt`, named-type rules, units, and contracts.
+Conversion rules come from `types.md`, named-type rules, units, and contracts.
 
 A conversion is not an ordinary user-overloadable call.
 
@@ -1997,7 +1997,7 @@ if ch == 0r {
 Valid:
 
 ```sec
-if character == 0c {
+if character == 0t {
 }
 ```
 
@@ -3384,7 +3384,7 @@ help: use `0r` for rune zero or convert explicitly
 
 ```text
 error[S....]: char cannot be compared with int
-help: use `0c` for char zero or convert explicitly
+help: use `0t` for char zero or convert explicitly
 ```
 
 ## Chained comparison
@@ -3486,7 +3486,7 @@ Possible operator code actions include:
 ```text
 split chained comparison
 replace invalid rune integer literal with `0r`
-replace invalid char integer literal with `0c`
+replace invalid char integer literal with `0t`
 insert explicit conversion
 insert an explicit `.ToString()` for an invalid concat operand
 convert an invalid concat expression to interpolation
@@ -4064,7 +4064,7 @@ formatter.md
 ownership.md
 copy_move.md
 memory_model.md
-types.txt
+types.md
 contracts.md
 functions.txt
 arrays-slices.txt

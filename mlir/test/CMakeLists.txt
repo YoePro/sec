@@ -9,8 +9,15 @@ set(SEC_MLIR_TEST_DEPENDS
   FileCheck
   count
   not
+  sec-mlir-apint-differential
   sec-mlir-opt
 )
+
+add_llvm_executable(sec-mlir-apint-differential
+  Support/APIntDifferential.cpp
+)
+llvm_update_compile_flags(sec-mlir-apint-differential)
+target_link_libraries(sec-mlir-apint-differential PRIVATE LLVMSupport)
 
 add_lit_testsuite(check-sec-mlir "Running the Sec MLIR regression tests"
   ${CMAKE_CURRENT_BINARY_DIR}

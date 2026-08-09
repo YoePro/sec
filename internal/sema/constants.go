@@ -12,7 +12,7 @@ func constantIntegerValue(expr ast.Expression) (*big.Int, bool) {
 	switch expr := expr.(type) {
 	case *ast.IntegerLiteral:
 		switch expr.Suffix() {
-		case "c", "r":
+		case "t", "r":
 			return nil, false
 		}
 		return ast.ParseIntegerLiteralLexeme(expr.Token.Lexeme)
@@ -47,6 +47,16 @@ func constantIntegerValue(expr ast.Expression) (*big.Int, bool) {
 			return value.Sub(left, right), true
 		case "*":
 			return value.Mul(left, right), true
+		case "/":
+			if right.Sign() == 0 {
+				return nil, false
+			}
+			return value.Quo(left, right), true
+		case "%":
+			if right.Sign() == 0 {
+				return nil, false
+			}
+			return value.Rem(left, right), true
 		case "<<":
 			if !right.IsUint64() {
 				return nil, false
@@ -148,7 +158,7 @@ func decimalLiteralValue(expr ast.Expression) (DecimalValue, bool) {
 	case *ast.IntegerLiteral, *ast.FloatLiteral:
 		var suffix string
 		lexeme, suffix = ast.SplitNumericLiteralSuffix(expr.TokenLiteral())
-		if suffix == "c" || suffix == "r" {
+		if suffix == "t" || suffix == "r" {
 			return DecimalValue{}, false
 		}
 	case *ast.PrefixExpression:
@@ -168,6 +178,13 @@ func decimalLiteralValue(expr ast.Expression) (DecimalValue, bool) {
 		return value, true
 	default:
 		return DecimalValue{}, false
+	}
+
+	if integer, ok := ast.ParseIntegerFormNumericLiteralLexeme(expr.TokenLiteral()); ok {
+		if !integer.IsInt64() {
+			return DecimalValue{}, false
+		}
+		return DecimalValue{Int64: integer.Int64()}, true
 	}
 
 	if strings.HasPrefix(lexeme, "-") {

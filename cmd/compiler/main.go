@@ -15,6 +15,7 @@ import (
 	mlircodegen "sec/internal/codegen/mlir"
 	semantic "sec/internal/ir/semantic"
 	"sec/internal/lexer"
+	secmlirlowering "sec/internal/lowering/secmlir"
 	mlirtoolchain "sec/internal/mlir"
 	"sec/internal/parser"
 	"sec/internal/sema"
@@ -50,6 +51,11 @@ func main() {
 
 	if command == "emit-ir" {
 		runEmitIRCommand(flag.Args()[1:])
+		return
+	}
+
+	if command == "emit-sec-mlir" {
+		runEmitSecMLIRCommand(flag.Args()[1:])
 		return
 	}
 
@@ -124,6 +130,7 @@ func printUsage() {
 	fmt.Fprintln(os.Stderr, "       sec <parse|ast|sema> <file.sec|dir|glob>...")
 	fmt.Fprintln(os.Stderr, "       sec emit-llvm <file.sec> -o <file.ll|-> [--target <os-arch>]")
 	fmt.Fprintln(os.Stderr, "       sec emit-ir <file.sec> [-o <file.sir|->] [--target <os-arch>]")
+	fmt.Fprintln(os.Stderr, "       sec emit-sec-mlir <file.sec> [-o <file.mlir|->] [--target <os-arch>] [--mlir-bin <path>]")
 	fmt.Fprintln(os.Stderr, "       sec emit-mlir <file.sec> -o <file.mlir|-> [--target <os-arch>] [--mlir-bin <path>] [--verify]")
 	fmt.Fprintln(os.Stderr, "       sec build <file.sec> [-o <program>] [--target <os-arch>] [--pipeline <llvm|mlir>] [--keep-mlir] [--keep-llvm] [--mlir-bin <path>] [--clang <path>]")
 }
@@ -352,6 +359,109 @@ func parseEmitIRCommandArgs(args []string, defaultTarget CompilerTarget) (inputF
 		}
 	}
 	return inputFile, outputFile, target, inputFile != ""
+}
+
+type emitSecMLIROptions struct {
+	InputFile  string
+	OutputFile string
+	MLIRBin    string
+	Target     CompilerTarget
+}
+
+func runEmitSecMLIRCommand(args []string) {
+	options, ok := parseEmitSecMLIRCommandArgs(args, hostCompilerTarget())
+	if !ok {
+		printUsage()
+		os.Exit(1)
+	}
+	input, err := os.ReadFile(options.InputFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "read error: %v\n", err)
+		os.Exit(1)
+	}
+	analyzed := parseAndAnalyzeSourceForTargetWithAnalyzerMode(string(input), options.InputFile, options.Target, false)
+	module, err := semantic.Build(analyzed.Program, analyzed.Analyzer, semantic.BuildOptions{SourceFiles: []string{options.InputFile}, MaxPackage: 7})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "semantic IR error: %v\n", err)
+		os.Exit(4)
+	}
+	targetDefinition, ok := findTargetDefinition(options.Target)
+	if !ok {
+		fmt.Fprintf(os.Stderr, "target error: unsupported target %s\n", options.Target.String())
+		os.Exit(1)
+	}
+	scalarPlan, err := targetDefinition.scalarPlan()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "target error: %v\n", err)
+		os.Exit(1)
+	}
+	mlirText, err := secmlirlowering.Emit(module, scalarPlan)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Sec MLIR lowering error: %v\n", err)
+		os.Exit(4)
+	}
+	verifyPath, removeVerifyPath, err := createTempOutputPath(".sec.mlir")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "temp file error: %v\n", err)
+		os.Exit(1)
+	}
+	if removeVerifyPath {
+		defer os.Remove(verifyPath)
+	}
+	if err := os.WriteFile(verifyPath, mlirText, 0600); err != nil {
+		fmt.Fprintf(os.Stderr, "write error: %v\n", err)
+		os.Exit(1)
+	}
+	if err := mlirtoolchain.NewToolchain(options.MLIRBin).VerifySec(verifyPath); err != nil {
+		fmt.Fprintf(os.Stderr, "Sec MLIR verification error: %v\n", err)
+		os.Exit(4)
+	}
+	if err := writeCompilerOutput(options.OutputFile, mlirText); err != nil {
+		fmt.Fprintf(os.Stderr, "write error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func parseEmitSecMLIRCommandArgs(args []string, defaultTarget CompilerTarget) (emitSecMLIROptions, bool) {
+	options := emitSecMLIROptions{OutputFile: "-", Target: defaultTarget}
+	outputSet := false
+	targetSet := false
+	mlirBinSet := false
+	for index := 0; index < len(args); index++ {
+		switch args[index] {
+		case "-o":
+			if outputSet || index+1 >= len(args) {
+				return emitSecMLIROptions{}, false
+			}
+			outputSet = true
+			index++
+			options.OutputFile = args[index]
+		case "--target":
+			if targetSet || index+1 >= len(args) {
+				return emitSecMLIROptions{}, false
+			}
+			targetSet = true
+			index++
+			target, ok := parseCompilerTarget(args[index])
+			if !ok {
+				return emitSecMLIROptions{}, false
+			}
+			options.Target = target
+		case "--mlir-bin":
+			if mlirBinSet || index+1 >= len(args) {
+				return emitSecMLIROptions{}, false
+			}
+			mlirBinSet = true
+			index++
+			options.MLIRBin = args[index]
+		default:
+			if strings.HasPrefix(args[index], "-") || options.InputFile != "" {
+				return emitSecMLIROptions{}, false
+			}
+			options.InputFile = args[index]
+		}
+	}
+	return options, options.InputFile != ""
 }
 
 func runEmitMLIRCommand(args []string) {

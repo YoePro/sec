@@ -34,18 +34,19 @@ const (
 type TypeKind string
 
 const (
-	TypeVoid    TypeKind = "void"
-	TypeNever   TypeKind = "never"
-	TypeBool    TypeKind = "bool"
-	TypeByte    TypeKind = "byte"
-	TypeChar    TypeKind = "char"
-	TypeRune    TypeKind = "rune"
-	TypeString  TypeKind = "string"
-	TypeDecimal TypeKind = "decimal"
-	TypeInt     TypeKind = "int"
-	TypeUint    TypeKind = "uint"
-	TypeFloat   TypeKind = "float"
-	TypeNamed   TypeKind = "named"
+	TypeVoid       TypeKind = "void"
+	TypeNever      TypeKind = "never"
+	TypeBool       TypeKind = "bool"
+	TypeByte       TypeKind = "byte"
+	TypeChar       TypeKind = "char"
+	TypeRune       TypeKind = "rune"
+	TypeString     TypeKind = "string"
+	TypeDecimal    TypeKind = "decimal"
+	TypeDecimal128 TypeKind = "decimal128"
+	TypeInt        TypeKind = "int"
+	TypeUint       TypeKind = "uint"
+	TypeFloat      TypeKind = "float"
+	TypeNamed      TypeKind = "named"
 )
 
 type Type struct {
@@ -184,20 +185,75 @@ type Storage struct {
 type OpKind string
 
 const (
-	OpConstInt       OpKind = "const.int"
-	OpConstBool      OpKind = "const.bool"
-	OpConstString    OpKind = "const.string"
-	OpConstDecimal   OpKind = "const.decimal"
-	OpConstFloat     OpKind = "const.float"
-	OpReturn         OpKind = "return"
-	OpStorageDeclare OpKind = "storage.declare"
-	OpStorageInit    OpKind = "storage.init"
-	OpStorageLoad    OpKind = "storage.load"
-	OpStorageStore   OpKind = "storage.store"
-	OpDirectCall     OpKind = "call.direct"
-	OpForeignCall    OpKind = "call.foreign"
-	OpBranch         OpKind = "branch"
-	OpCondBranch     OpKind = "conditional-branch"
+	OpConstInt          OpKind = "const.int"
+	OpConstBool         OpKind = "const.bool"
+	OpConstString       OpKind = "const.string"
+	OpConstDecimal      OpKind = "const.decimal"
+	OpConstFloat        OpKind = "const.float"
+	OpReturn            OpKind = "return"
+	OpStorageDeclare    OpKind = "storage.declare"
+	OpStorageInit       OpKind = "storage.init"
+	OpStorageLoad       OpKind = "storage.load"
+	OpStorageStore      OpKind = "storage.store"
+	OpDirectCall        OpKind = "call.direct"
+	OpForeignCall       OpKind = "call.foreign"
+	OpBranch            OpKind = "branch"
+	OpCondBranch        OpKind = "conditional-branch"
+	OpIntUnaryPlus      OpKind = "int.unary-plus"
+	OpIntNegChecked     OpKind = "int.neg-checked"
+	OpIntBitNot         OpKind = "int.bit-not"
+	OpIntBinaryChecked  OpKind = "int.binary-checked"
+	OpIntBitwise        OpKind = "int.bitwise"
+	OpIntShiftChecked   OpKind = "int.shift-checked"
+	OpIntCompare        OpKind = "int.compare"
+	OpArithmeticFailure OpKind = "fail.arithmetic"
+)
+
+type IntegerCheckedBinaryKind string
+
+const (
+	IntegerCheckedAdd       IntegerCheckedBinaryKind = "add"
+	IntegerCheckedSubtract  IntegerCheckedBinaryKind = "subtract"
+	IntegerCheckedMultiply  IntegerCheckedBinaryKind = "multiply"
+	IntegerCheckedDivide    IntegerCheckedBinaryKind = "divide"
+	IntegerCheckedRemainder IntegerCheckedBinaryKind = "remainder"
+)
+
+type IntegerBitwiseKind string
+
+const (
+	IntegerBitwiseAnd IntegerBitwiseKind = "and"
+	IntegerBitwiseOr  IntegerBitwiseKind = "or"
+	IntegerBitwiseXor IntegerBitwiseKind = "xor"
+)
+
+type IntegerShiftKind string
+
+const (
+	IntegerShiftLeftUnsigned  IntegerShiftKind = "left_unsigned"
+	IntegerShiftLeftSigned    IntegerShiftKind = "left_signed"
+	IntegerShiftRightUnsigned IntegerShiftKind = "right_unsigned"
+	IntegerShiftRightSigned   IntegerShiftKind = "right_signed"
+)
+
+type IntegerComparePredicate string
+
+const (
+	IntegerCompareEQ IntegerComparePredicate = "eq"
+	IntegerCompareNE IntegerComparePredicate = "ne"
+	IntegerCompareLT IntegerComparePredicate = "lt"
+	IntegerCompareLE IntegerComparePredicate = "le"
+	IntegerCompareGT IntegerComparePredicate = "gt"
+	IntegerCompareGE IntegerComparePredicate = "ge"
+)
+
+type ArithmeticFailureCategory string
+
+const (
+	ArithmeticFailureOverflow  ArithmeticFailureCategory = "overflow"
+	ArithmeticFailureDivision  ArithmeticFailureCategory = "division"
+	ArithmeticFailureRemainder ArithmeticFailureCategory = "remainder"
+	ArithmeticFailureShift     ArithmeticFailureCategory = "shift"
 )
 
 type ArgumentAction string
@@ -227,8 +283,14 @@ type Operation struct {
 	Callee          FunctionID
 	ArgumentActions []ArgumentAction
 	Successors      []BranchTarget
+	IntegerBinary   IntegerCheckedBinaryKind
+	IntegerBitwise  IntegerBitwiseKind
+	IntegerShift    IntegerShiftKind
+	IntegerCompare  IntegerComparePredicate
+	FailureCategory ArithmeticFailureCategory
+	Operator        string
 }
 
 func (o Operation) IsTerminator() bool {
-	return o.Kind == OpReturn || o.Kind == OpBranch || o.Kind == OpCondBranch
+	return o.Kind == OpReturn || o.Kind == OpBranch || o.Kind == OpCondBranch || o.Kind == OpArithmeticFailure
 }

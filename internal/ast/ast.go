@@ -487,20 +487,9 @@ func SplitNumericLiteralSuffix(lexeme string) (string, string) {
 	if lexeme == "" {
 		return lexeme, ""
 	}
-	if len(lexeme) > 2 && lexeme[0] == '0' && (lexeme[1] == 'x' || lexeme[1] == 'X') {
-		last := lexeme[len(lexeme)-1]
-		switch last {
-		// c is a hexadecimal digit, so 0x41c is a hexadecimal integer rather
-		// than 0x41 with a char suffix. Rune suffixes remain unambiguous.
-		case 'i', 'u', 'r':
-			return lexeme[:len(lexeme)-1], string(last)
-		default:
-			return lexeme, ""
-		}
-	}
 	last := lexeme[len(lexeme)-1]
 	switch last {
-	case 'i', 'u', 'f', 'd', 'c', 'r':
+	case 'i', 'u', 'g', 'm', 't', 'r':
 		return lexeme[:len(lexeme)-1], string(last)
 	default:
 		return lexeme, ""
@@ -512,8 +501,18 @@ func NormalizeNumericLiteralLexeme(lexeme string) string {
 }
 
 func ParseIntegerLiteralLexeme(lexeme string) (*big.Int, bool) {
-	digits, suffix := SplitNumericLiteralSuffix(lexeme)
-	if suffix == "f" || suffix == "d" || digits == "" {
+	_, suffix := SplitNumericLiteralSuffix(lexeme)
+	if suffix == "g" || suffix == "m" {
+		return nil, false
+	}
+	return ParseIntegerFormNumericLiteralLexeme(lexeme)
+}
+
+// ParseIntegerFormNumericLiteralLexeme preserves the exact integer value even
+// when a family suffix shapes it as float or decimal later in the frontend.
+func ParseIntegerFormNumericLiteralLexeme(lexeme string) (*big.Int, bool) {
+	digits, _ := SplitNumericLiteralSuffix(lexeme)
+	if digits == "" || strings.ContainsAny(digits, ".") {
 		return nil, false
 	}
 
@@ -550,10 +549,21 @@ func ParseIntegerLiteralInt64(lexeme string) (int64, bool) {
 
 func ParseFloatLiteralFloat64(lexeme string) (float64, bool) {
 	digits, suffix := SplitNumericLiteralSuffix(lexeme)
-	if suffix == "i" || suffix == "u" || suffix == "c" || suffix == "r" || digits == "" {
+	if suffix == "i" || suffix == "u" || suffix == "t" || suffix == "r" || digits == "" {
 		return 0, false
 	}
 	digits = NormalizeNumericLiteralLexeme(digits)
+	if len(digits) > 2 && digits[0] == '0' {
+		switch digits[1] {
+		case 'b', 'B', 'o', 'O', 'x', 'X':
+			integer, ok := ParseIntegerFormNumericLiteralLexeme(digits)
+			if !ok {
+				return 0, false
+			}
+			value, _ := new(big.Float).SetInt(integer).Float64()
+			return value, true
+		}
+	}
 	value, err := strconv.ParseFloat(digits, 64)
 	return value, err == nil
 }

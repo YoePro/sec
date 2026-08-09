@@ -19,7 +19,7 @@ func TestVerifySecUsesSecAwareDriver(t *testing.T) {
 		t.Fatal(err)
 	}
 	tool := filepath.Join(dir, "sec-mlir-opt")
-	script := fmt.Sprintf("#!/bin/sh\n[ \"$1\" = %q ] && [ \"$2\" = -o ] && [ \"$3\" = %q ]\n", input, os.DevNull)
+	script := fmt.Sprintf("#!/bin/sh\n[ \"$1\" = %q ] && [ \"$2\" = --sec-verify-checked-integer-guards ] && [ \"$3\" = -o ] && [ \"$4\" = %q ]\n", input, os.DevNull)
 	if err := os.WriteFile(tool, []byte(script), 0755); err != nil {
 		t.Fatal(err)
 	}

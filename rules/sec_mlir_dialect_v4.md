@@ -11,7 +11,7 @@ This document is subordinate to:
 ```text
 rules/operators.md
 rules/runtime_checks.md
-rules/types.txt
+rules/types.md
 rules/layout.md
 rules/semantic_ir.txt
 rules/sec_mlir.md

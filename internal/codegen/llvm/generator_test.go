@@ -111,14 +111,15 @@ func TestGenerateDecimalLiterals(t *testing.T) {
 module main
 
 fn Pi() decimal {
-	return 3.14d
+	return 3.14m
 }
 
 fn main() int {
 	let a: decimal := 3.14
 	let b: decimal := 1
-	let c := 2.5d
+	let c := 2.5m
 	let d: decimal := decimal(5)
+	let e := 0x10m
 	return 0
 }
 `

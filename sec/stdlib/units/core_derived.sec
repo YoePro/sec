@@ -12,11 +12,11 @@ impl Hz {
     System: SI
 
     fn FromPeriod(Second: decimal<s>) decimal<Hz> {
-        return decimal<Hz>(1d / decimal(Second))
+        return decimal<Hz>(1m / decimal(Second))
     }
 
     fn FromPeriod(Second: float<s>) float<Hz> {
-        return float<Hz>(1.0f / float(Second))
+        return float<Hz>(1.0g / float(Second))
     }
 
     fn FromPeriod(Second: int<s>) int<Hz> {

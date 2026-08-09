@@ -1056,7 +1056,7 @@ It belongs to:
 
 ```text
 attributes.md
-types.txt
+types.md
 ```
 
 The semantic requirement is already fixed:
@@ -1532,7 +1532,7 @@ This replacement requires updates to:
 
 ```text
 lexical_structure.md
-types.txt
+types.md
 functions.txt
 copy_move.md
 ownership.md
@@ -1562,7 +1562,7 @@ language-rulebook-status.md
 
 Required key changes include:
 
-- `types.txt`: define must-use, discardability, and unavailable state;
+- `types.md`: define must-use, discardability, and unavailable state;
 - `functions.txt`: permit implicit discard of ordinary standalone call results
   and require handling of must-use results;
 - `copy_move.md`: distinguish copy, move, explicit discard, and implicit

@@ -789,6 +789,37 @@ func TestFindTargetDefinition(t *testing.T) {
 	}
 }
 
+func TestTargetScalarPlansAreExplicit(t *testing.T) {
+	for _, test := range []struct {
+		target CompilerTarget
+		width  uint16
+	}{
+		{CompilerTarget{OS: "linux", Arch: "amd64"}, 64},
+		{CompilerTarget{OS: "linux", Arch: "arm64"}, 64},
+		{CompilerTarget{OS: "linux", Arch: "armv7"}, 32},
+		{CompilerTarget{OS: "baremetal", Arch: "cortex-m4"}, 32},
+	} {
+		definition, ok := findTargetDefinition(test.target)
+		if !ok {
+			t.Fatalf("target %s missing", test.target.String())
+		}
+		plan, err := definition.scalarPlan()
+		if err != nil {
+			t.Fatalf("target %s: %v", test.target.String(), err)
+		}
+		if plan.PointerWidthBits != test.width {
+			t.Errorf("target %s width = %d, want %d", test.target.String(), plan.PointerWidthBits, test.width)
+		}
+	}
+	definition, ok := findTargetDefinition(CompilerTarget{OS: "rtems", Arch: "any"})
+	if !ok {
+		t.Fatal("rtems-any target missing")
+	}
+	if _, err := definition.scalarPlan(); err == nil {
+		t.Fatal("rtems-any unexpectedly has a resolved scalar plan")
+	}
+}
+
 func TestTargetCapabilities(t *testing.T) {
 	if _, err := requireTargetCanEmitLLVM(CompilerTarget{OS: "linux", Arch: "arm64"}); err != nil {
 		t.Fatalf("linux-arm64 should be able to emit LLVM: %v", err)

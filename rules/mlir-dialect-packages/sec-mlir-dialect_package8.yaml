@@ -1,0 +1,391 @@
+package:
+  id: SEC-MLIR-P8
+  name: Checked Integer Arith Lowering
+  repository: https://github.com/YoePro/sec
+  branch: main
+  repository_sync_commit: d48035c
+  repository_sync_date: '2026-08-09'
+  requires_semantic_ir_version: 1
+  requires_sec_mlir_schema: 4
+  sec_mlir_schema_after: 4
+  lowering_spec_after: 4
+  goal: Lower schema-v4 checked integer semantic ops to total signless Arith computations
+    while preserving explicit Sec failure CFG.
+  next_package: Arithmetic failure endpoint and fallible integer flow, or float semantic
+    operations if the error model is not yet frozen
+normative_update:
+  repository_path: rules/sec_mlir_lowering.md
+  supplied_file: sec_mlir_lowering_package8.md
+  version: 4
+  dialect_rulebook_update_required: false
+wide_builtin_invariant:
+  active_integer_types:
+  - int128
+  - int256
+  - uint128
+  - uint256
+  active_non_integer_type: decimal128
+  required_widths:
+  - 8
+  - 16
+  - 32
+  - 64
+  - 128
+  - 256
+  host_width_arithmetic_for_lowering: false
+scope:
+  required:
+  - sec.scalar_kind provenance
+  - Package 6 provenance correction
+  - --sec-lower-checked-integers
+  - --sec-lower-integer-core
+  - signless integer TypeConverter
+  - function/block/call type conversion
+  - Sec-origin rank-zero memref conversion
+  - integer constant APInt conversion
+  - unary plus lowering
+  - checked negation lowering
+  - checked add/sub/mul lowering
+  - safe checked div/rem lowering
+  - bitwise lowering
+  - safe checked shift lowering
+  - signed/unsigned comparison lowering
+  - guard verification before lowering
+  - preservation of sec.fail.arithmetic
+  - wide integer tests
+  - provenance tests
+  - differential APInt tests
+  forbidden:
+  - sec.fail.arithmetic lowering
+  - try/ArithmeticError/Result propagation
+  - float arithmetic
+  - float literal lowering
+  - decimal/decimal128 arithmetic
+  - source numeric casts
+  - named/distinct numeric lowering
+  - nominal type erasure
+  - foreign ABI/calling convention/link lowering
+  - ownership/borrowing/cleanup
+  - aggregates/allocation/register/concurrency
+  - LLVM dialect
+  - production backend migration
+scalar_provenance:
+  attribute: sec.scalar_kind
+  values:
+  - bool
+  - byte
+  - char
+  - rune
+  - int
+  - int8
+  - int16
+  - int32
+  - int64
+  - int128
+  - int256
+  - uint
+  - uint8
+  - uint16
+  - uint32
+  - uint64
+  - uint128
+  - uint256
+  - float
+  - float32
+  - float64
+  - decimal
+  - decimal128
+  - string
+  - other
+  required_on:
+  - compiler-generated func.func plain scalar arguments
+  - compiler-generated func.func plain scalar results
+  - extern integer arguments/results before signless normalization
+  - Sec-origin scalar storage provenance
+  purpose:
+  - future FFI/ABI classification
+  - debugging/tooling provenance
+  - distinguish bit-identical semantic scalar origins
+  does_not_replace_nominal_identity: true
+type_conversion:
+  plain_integer:
+    si8: i8
+    si16: i16
+    si32: i32
+    si64: i64
+    si128: i128
+    si256: i256
+    ui8: i8
+    ui16: i16
+    ui32: i32
+    ui64: i64
+    ui128: i128
+    ui256: i256
+  do_not_recurse:
+  - '!sec.named<...>'
+  - '!sec.distinct<...>'
+  - '!sec.string'
+  - '!sec.decimal'
+  - '!sec.decimal128'
+  - '!sec.never'
+  contexts:
+  - func.func signatures
+  - block arguments
+  - func.call
+  - cf branch/return plumbing
+  - Sec-origin rank-zero memrefs
+  - sec.call.direct
+  - sec.call.foreign
+  - plain integer arith.constant
+  - schema-v4 integer ops
+pass:
+  command: --sec-lower-checked-integers
+  pipeline: --sec-lower-integer-core
+  pipeline_order:
+  - sec-verify-checked-integer-guards
+  - sec-lower-scalar-core
+  - sec-lower-checked-integers
+  framework: MLIR Dialect Conversion
+  preconditions:
+  - normal MLIR verification
+  - checked integer guard verification
+  - no !sec.int/!sec.uint operand in schema-v4 integer ops
+  - no named/distinct operand in schema-v4 integer ops
+  idempotent: true
+  no_llvm: true
+operation_lowering:
+  unary_plus: identity
+  bit_not: arith.xori with all-ones APInt
+  bitwise:
+    and: arith.andi
+    or: arith.ori
+    xor: arith.xori
+  compare:
+    eq: arith.cmpi eq
+    ne: arith.cmpi ne
+    signed:
+      lt: slt
+      le: sle
+      gt: sgt
+      ge: sge
+    unsigned:
+      lt: ult
+      le: ule
+      gt: ugt
+      ge: uge
+  neg_signed_checked:
+    result: arith.subi zero, value without overflow flags
+    failed: value == signed minimum
+  add_unsigned_checked: arith.addui_extended
+  subtract_unsigned_checked: arith.subui_extended
+  add_signed_checked:
+    temporary_width: N+1
+    extend: arith.extsi
+    compute: arith.addi without overflow flags
+    failed: wide result outside signed N-bit min/max
+    result: arith.trunci
+  subtract_signed_checked:
+    temporary_width: N+1
+    extend: arith.extsi
+    compute: arith.subi without overflow flags
+    failed: wide result outside signed N-bit min/max
+    result: arith.trunci
+  multiply_unsigned_checked:
+    compute: arith.mului_extended
+    failed: high half != 0
+    result: low half
+  multiply_signed_checked:
+    compute: arith.mulsi_extended
+    failed: high half != sign extension of low half
+    result: low half
+    alternative: exact i(2N) widening accepted
+  divide_unsigned_checked:
+    failed: rhs == 0
+    safe_rhs: 'select failed ? 1 : rhs'
+    compute: arith.divui with safe_rhs
+  divide_signed_checked:
+    failed: rhs == 0 OR (lhs == signedMin AND rhs == -1)
+    safe_rhs: 'select failed ? 1 : rhs'
+    compute: arith.divsi with safe_rhs
+  remainder_unsigned_checked:
+    failed: rhs == 0
+    safe_rhs: 'select failed ? 1 : rhs'
+    compute: arith.remui with safe_rhs
+  remainder_signed_checked:
+    failed: rhs == 0 OR (lhs == signedMin AND rhs == -1)
+    safe_rhs: 'select failed ? 1 : rhs'
+    compute: arith.remsi with safe_rhs
+  shift_count:
+    comparison_width: max(N+1, M+1)
+    signed_negative_check: true
+    upper_check: count >= N
+    safe_count: 'select invalid ? 0 : count, then truncate to iN'
+  shift_left_unsigned:
+    compute: arith.shli without overflow flags using safe_count
+    failed: invalid count
+  shift_right_unsigned:
+    compute: arith.shrui using safe_count
+    failed: invalid count
+  shift_right_signed:
+    compute: arith.shrsi using safe_count
+    failed: invalid count
+  shift_left_signed:
+    temporary_width: 2N
+    compute: sign-extend value, zero-extend safe count, arith.shli
+    failed: invalid count OR wide result outside signed N-bit range
+    result: arith.trunci wide result
+safety:
+  overflow_flags_emitted: false
+  nneg_required: false
+  exact_required: false
+  raw_divisor_always_safe: true
+  raw_shift_count_always_safe: true
+  sec_failure_as_poison: false
+  sec_failure_as_undefined_behavior: false
+failure_cfg:
+  existing_cf_cond_br_preserved: true
+  sec_fail_arithmetic_preserved: true
+  new_failure_blocks_created: false
+  guard_verifier_run_before_lowering: true
+foreign_boundary:
+  sec_call_foreign_lowered: false
+  operand_result_types_may_be_signless: true
+  callee_extern_scalar_provenance_required: true
+  abi_lowering_deferred: true
+storage:
+  scope: Sec-origin rank-zero scalar memrefs only
+  examples:
+    memref<si32>: memref<i32>
+    memref<ui32>: memref<i32>
+    memref<si128>: memref<i128>
+    memref<ui256>: memref<i256>
+  bool_storage: memref<i8> remains unchanged
+  preserve_attrs:
+  - sec.storage_id
+  - sec.source_name
+  - sec.storage_class
+  - sec.mutable
+  - sec.scalar_kind
+tests:
+  widths:
+  - 8
+  - 16
+  - 32
+  - 64
+  - 128
+  - 256
+  checked_add: true
+  checked_subtract: true
+  checked_multiply: true
+  checked_divide: true
+  checked_remainder: true
+  checked_negate: true
+  bitwise: true
+  shifts: true
+  comparisons: true
+  provenance:
+  - extern int32
+  - extern uint32
+  - char/rune
+  - byte
+  - int128 versus uint128
+  - missing extern provenance rejected
+  storage:
+  - signed/unsigned rank-zero memref normalization
+  - wide integer memref
+  - bool storage unchanged
+  - provenance preserved
+  calls:
+  - func.call signature conversion
+  - sec.call.foreign remains
+  - foreign provenance retained
+  safety_audit:
+  - no nsw
+  - no nuw
+  - no nneg
+  - no exact
+  - div/rem use safe divisor
+  - shift uses safe count
+  differential_apint: true
+  integration:
+  - int32 add
+  - uint32 subtract
+  - int64 divide
+  - uint64 remainder
+  - int128 multiply
+  - int256 signed left shift
+  - uint128 logical right shift
+  - uint256 compare
+  - target int 32
+  - target int 64
+  - nested arithmetic with calls
+  - signed compare if
+  - unsigned compare if
+acceptance:
+- previous regressions green
+- lowering spec v4 installed
+- schema remains v4
+- scalar provenance correction implemented
+- extern provenance required
+- checked integer pass registered
+- integer core pipeline registered
+- guard verifier runs before lowering
+- all active plain integer widths normalize to signless
+- nominal types not recursively normalized
+- function/block/call types consistent
+- foreign call remains
+- Sec-origin integer memrefs normalize
+- integer constants preserve APInt bits
+- all schema-v4 sec.int ops lower
+- no poison assumption flags
+- safe div/rem
+- safe shifts
+- correct signed/unsigned comparisons
+- failure CFG preserved
+- sec.fail.arithmetic remains
+- no sec.int ops remain
+- idempotent
+- wide tests pass
+- provenance tests pass
+- differential APInt tests pass
+- check-sec-mlir passes
+- go test ./... passes
+- no LLVM dialect
+- legacy paths operational
+completion_report:
+- repository HEAD
+- previous package status
+- files added
+- files modified
+- Package 6 provenance correction
+- scalar provenance
+- pass/pipeline registration
+- TypeConverter
+- function/block/call conversion
+- memref conversion
+- signed add/sub
+- unsigned add/sub
+- multiply
+- div/rem safe substitution
+- shift count normalization
+- signed-left shift
+- comparison mapping
+- poison/UB audit
+- wide tests
+- provenance tests
+- APInt differential tests
+- CMake commands
+- LLVM/MLIR version
+- check-sec-mlir
+- go test
+- end-to-end results
+- deviations
+- Package 9 recommendation
+package9:
+  preferred_if_error_model_is_ready: Arithmetic Failure Endpoint and Fallible Integer
+    Flow
+  alternative: Float Semantic Operations
+  do_not_mix_unless_rules_frozen: true
+upstream_references:
+- https://mlir.llvm.org/docs/Dialects/ArithOps/
+- https://mlir.llvm.org/docs/DialectConversion/

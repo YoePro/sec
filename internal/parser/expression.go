@@ -142,6 +142,12 @@ func (p *Parser) parseExpression(currentPrecedence precedence) ast.Expression {
 		left = p.parseGroupedExpression()
 
 	default:
+		if p.curToken.Type == lexer.ILLEGAL {
+			if message, ok := numericSuffixMigrationMessage(p.curToken); ok {
+				p.addDiagnostic(compilerdiagnostics.ParserInvalidExpression, p.curToken, nil, nil, "%s", message)
+				return p.invalidExpression(p.curToken, message, compilerdiagnostics.ParserInvalidExpression)
+			}
+		}
 		if p.curToken.Type == lexer.ILLEGAL && isMalformedScientificExponent(p.curToken.Lexeme) {
 			message := fmt.Sprintf(
 				"malformed scientific exponent %q: expected at least one decimal digit at %d:%d",
@@ -228,6 +234,29 @@ func (p *Parser) parseExpression(currentPrecedence precedence) ast.Expression {
 	}
 
 	return left
+}
+
+func numericSuffixMigrationMessage(token lexer.Token) (string, bool) {
+	if token.Lexeme == "" {
+		return "", false
+	}
+	replacements := map[byte]struct {
+		newSuffix string
+		family    string
+	}{
+		'c': {newSuffix: "t", family: "char"},
+		'd': {newSuffix: "m", family: "decimal"},
+		'f': {newSuffix: "g", family: "binary float"},
+	}
+	replacement, ok := replacements[token.Lexeme[len(token.Lexeme)-1]]
+	if !ok {
+		return "", false
+	}
+	return fmt.Sprintf(
+		"literal suffix '%c' was replaced by '%s' for %s at %d:%d",
+		token.Lexeme[len(token.Lexeme)-1], replacement.newSuffix,
+		replacement.family, token.Line, token.Column,
+	), true
 }
 
 func isMalformedScientificExponent(lexeme string) bool {

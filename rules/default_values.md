@@ -134,7 +134,7 @@ An explicit default must satisfy every rule and contract of the type.
 | `byte` | numeric zero |
 | `bool` | `false` |
 | `string` | `""` |
-| `char` | zero character, written `0c` |
+| `char` | zero character, written `0t` |
 | `rune` | Unicode scalar zero, written `0r` |
 
 ## Numeric types
@@ -165,8 +165,6 @@ float32
 float64
 
 decimal
-decimal32
-decimal64
 decimal128
 ```
 
@@ -191,6 +189,12 @@ Their initial values are semantically:
 according to the destination type.
 
 The exact physical bit representation remains target- and type-defined.
+
+The temporal types `date`, `time`, `datetime`, and `duration` are not included
+in this primitive-default table. Their defaultability is intentionally
+undecided until the temporal and default-value rulebooks define it explicitly;
+an implementation must not infer a zero, epoch, empty, or backend-derived
+default for them.
 
 ---
 
@@ -247,7 +251,7 @@ The empty string default must not require dynamic allocation.
 The canonical explicit zero literal is:
 
 ```sec
-0c
+0t
 ```
 
 Example:
@@ -259,7 +263,7 @@ let mut character: char
 is equivalent to:
 
 ```sec
-let mut character: char := 0c
+let mut character: char := 0t
 ```
 
 ---
@@ -1819,7 +1823,7 @@ Test:
 every numeric type -> 0
 bool -> false
 string -> ""
-char -> 0c
+char -> 0t
 rune -> 0r
 ```
 
@@ -1899,7 +1903,7 @@ nested defaults lower completely
 This rulebook must remain synchronized with:
 
 ```text
-types.txt
+types.md
 contracts.md
 struct.txt
 arrays-slices.txt
@@ -2166,7 +2170,7 @@ Primitive defaults are:
 numeric -> 0
 bool -> false
 string -> ""
-char -> 0c
+char -> 0t
 rune -> 0r
 ```
 

@@ -715,8 +715,8 @@ func TestScientificExponentLiteralInference(t *testing.T) {
 	input := `
 let exact := 1.25e-3
 let exactUpper := .5E+4
-let floating := 1e3f
-let decimal := 1e3d
+let floating := 1e3g
+let decimal := 1e3m
 `
 
 	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
@@ -739,14 +739,14 @@ func TestNumericLiteralSuffixesAndBases(t *testing.T) {
 	input := `
 let i := 10i
 let u := 10u
-let f := 10f
-let d := 10d
-let hf := 1.5f
-let hd := 1.5d
+let f := 10g
+let d := 10m
+let hf := 1.5g
+let hd := 1.5m
 let b := 0b1000
 let o := 0o10
 let x := 0x8u
-let h := 0x8d
+let h := 0x8m
 `
 
 	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
@@ -762,7 +762,7 @@ let h := 0x8d
 		"b":  "int",
 		"o":  "int",
 		"x":  "uint",
-		"h":  "int",
+		"h":  "decimal",
 	}
 	for name, want := range expected {
 		if got := analyzer.symbols[name].Type.Name; got != want {
@@ -1325,13 +1325,13 @@ impl hp {
 	BaseUnit: false
 	Status: deprecated
 	Dimension: [mass^1, length^2, time^-3]
-	Scale: 735.49875f
+	Scale: 735.49875g
 	System: Imperial
 }
 
 let seconds: <s> := 5
-let fast: <s> := 5f
-let power: <hp> := 10f
+let fast: <s> := 5g
+let power: <hp> := 10g
 `
 
 	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
@@ -1359,7 +1359,7 @@ let power: <hp> := 10f
 	if horsepower.LongName != "Horsepower" || horsepower.Symbol != "hp" || horsepower.IsBaseUnit {
 		t.Fatalf("wrong hp descriptive metadata: %+v", horsepower)
 	}
-	if horsepower.Status != StatusDeprecated || horsepower.System != "Imperial" || horsepower.Scale != "735.49875f" {
+	if horsepower.Status != StatusDeprecated || horsepower.System != "Imperial" || horsepower.Scale != "735.49875g" {
 		t.Fatalf("wrong hp semantic metadata: %+v", horsepower)
 	}
 
@@ -1892,11 +1892,49 @@ func TestBuiltinTypes(t *testing.T) {
 		t.Fatalf("decimal has wrong type kind: %q", decimal.Kind)
 	}
 
-	for _, name := range []string{"bytes", "date", "datetime", "duration", "time"} {
+	for _, name := range []string{"date", "datetime", "duration", "time"} {
+		typ, exists := analyzer.types[name]
+		if !exists || !typ.Intrinsic || typ.Name != name {
+			t.Errorf("%s must be a compiler-known intrinsic type: %+v", name, typ)
+		}
+		if IsDefaultable(typ) {
+			t.Errorf("%s must not acquire a default before temporal rules define one", name)
+		}
+		if canInitialize(typ, analyzer.types["int"], &ast.IntegerLiteral{Token: lexer.Token{Lexeme: "1"}}) ||
+			canInitialize(typ, analyzer.types["string"], &ast.StringLiteral{Token: lexer.Token{Lexeme: `"value"`}}) {
+			t.Errorf("%s must not accept an implicit numeric or string conversion", name)
+		}
+	}
+
+	for _, name := range []string{"bytes"} {
 		if _, exists := analyzer.types[name]; exists {
 			t.Errorf("%s must not be a builtin type", name)
 		}
 	}
+}
+
+func TestTemporalBuiltinTypesResolveWithoutImport(t *testing.T) {
+	input := `
+module main
+
+fn PreserveDate(value: date) date {
+	return value
+}
+
+fn PreserveTime(value: time) time {
+	return value
+}
+
+fn PreserveDateTime(value: datetime) datetime {
+	return value
+}
+
+fn PreserveDuration(value: duration) duration {
+	return value
+}
+`
+
+	assertSemaErrors(t, analyzeSource(t, input), nil)
 }
 
 func TestRedeclarationDoesNotReplaceExistingSymbol(t *testing.T) {
@@ -1949,9 +1987,9 @@ let marker: rune := '$'
 fn Matches(ch: rune, letter: char) bool {
 	switch ch {
 	case '$':
-		return letter == 65c
+		return letter == 65t
 	default:
-		return ch == '$' && ch == '\n' && ch == 0r && letter == 65c
+		return ch == '$' && ch == '\n' && ch == 0r && letter == 65t
 }
 }
 `
@@ -2008,7 +2046,7 @@ func TestCharAndRuneNumericSuffixesRequireUnicodeScalarsAndExactTypes(t *testing
 module main
 
 let high: rune := 1114112r
-let surrogate: char := 55296c
+let surrogate: char := 55296t
 let wrong: char := 65r
 
 fn Values(items: int[65r]) void {
@@ -2023,7 +2061,7 @@ fn Different(letter: char, codepoint: rune) bool {
 	expected := []string{
 		"array length must be a compile-time integer at 8:22",
 		"value 1114112r is not a valid Unicode scalar value at 4:19",
-		"value 55296c is not a valid Unicode scalar value at 5:24",
+		"value 55296t is not a valid Unicode scalar value at 5:24",
 		"cannot initialize char with rune at 6:20",
 		"cannot compare char and rune at 12:16",
 	}
@@ -8797,6 +8835,7 @@ fn Test(dynamic: int) void {
 	let unsignedTruncation := uint8(255) << 7
 	let dynamicCount := Small(1) << dynamic
 }
+
 `
 	errors := analyzeSourceRaw(t, input)
 	if len(errors) != 4 {
@@ -8814,6 +8853,49 @@ fn Test(dynamic: int) void {
 		}
 		if err.Help == "" {
 			t.Fatalf("error %d is missing help", index)
+		}
+	}
+}
+
+func TestCompileTimeCheckedIntegerFailuresDoNotReachSemanticIR(t *testing.T) {
+	input := `
+module main
+
+fn Invalid() void {
+    let add := int8(127) + int8(1)
+    let subtract := uint8(0) - uint8(1)
+    let multiply := int8(64) * int8(2)
+    let divideZero := int32(1) / int32(0)
+    let remainderZero := uint64(1) % uint64(0)
+    let divideOverflow := int8(-128) / int8(-1)
+    let remainderOverflow := int8(-128) % int8(-1)
+    let negateOverflow := -int8(-128)
+}
+
+fn Valid() void {
+    let add := int8(126) + int8(1)
+    let divide := int32(8) / int32(2)
+    let remainder := uint64(9) % uint64(4)
+    let negate := -int8(127)
+}
+`
+	errors := analyzeSourceRaw(t, input)
+	want := []string{
+		diagnostics.OperatorIntegerOverflow,
+		diagnostics.OperatorIntegerOverflow,
+		diagnostics.OperatorIntegerOverflow,
+		diagnostics.OperatorDivisionByZero,
+		diagnostics.OperatorRemainderByZero,
+		diagnostics.OperatorIntegerOverflow,
+		diagnostics.OperatorIntegerOverflow,
+		diagnostics.OperatorIntegerOverflow,
+	}
+	if len(errors) != len(want) {
+		t.Fatalf("errors = %v, want %d", errors, len(want))
+	}
+	for index, id := range want {
+		if errors[index].ID != id || errors[index].Help == "" {
+			t.Errorf("error %d = %#v, want ID %s with help", index, errors[index], id)
 		}
 	}
 }

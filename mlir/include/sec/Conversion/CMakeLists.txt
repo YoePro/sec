@@ -1,0 +1,2 @@
+add_subdirectory(SecToCore)
+add_subdirectory(SecIntegerToArith)

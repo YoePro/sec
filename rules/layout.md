@@ -65,7 +65,7 @@ storage.md
     storage origin, storage lifetime, backing storage, relocation,
     invalidation, reclamation, memory spaces, and pinning
 
-types.txt
+types.md
     semantic type identity, scalar families, named types, and conversions
 
 struct.txt
@@ -3009,7 +3009,7 @@ Remove competing layout calculations where possible.
 Synchronize at least:
 
 ```text
-types.txt
+types.md
 arrays-slices.txt
 struct.txt
 enums.txt

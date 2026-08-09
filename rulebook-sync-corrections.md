@@ -136,10 +136,10 @@ Add the following canonical table wherever primitive defaults are summarized:
 | `byte` | numeric zero |
 | `bool` | `false` |
 | `string` | `""` |
-| `char` | zero character, written `0c` |
+| `char` | zero character, written `0t` |
 | `rune` | Unicode scalar zero, written `0r` |
 
-The source spellings `0c` and `0r` are canonical explicit zero literals.
+The source spellings `0t` and `0r` are canonical explicit zero literals.
 
 The semantic values must not be described as empty source literals such as
 `''`.
@@ -1078,7 +1078,7 @@ Do not add field-level default syntax.
 
 ---
 
-# Required changes to `rules/types.txt`
+# Required changes to `rules/types.md`
 
 Add `default_values.md` to the document's canonical scope and related documents.
 
@@ -1393,7 +1393,7 @@ Do not make its meaning lexical.
 
 The parser resolves context.
 
-Ensure `0c` and `0r` remain canonical zero literals.
+Ensure `0t` and `0r` remain canonical zero literals.
 
 ---
 
@@ -1450,7 +1450,7 @@ lsp.md
 Update existing rows:
 
 ```text
-types.txt
+types.md
     Written — sync required
     include defaults and mutable initialization
 
@@ -1957,7 +1957,7 @@ The synchronization is complete only when:
 2. Rename/remove replaced rulebooks.
 3. Correct default_values.md.
 4. Correct variables_contracts.txt semantics.
-5. Update types.txt.
+5. Update types.md.
 6. Update struct.txt.
 7. Update arrays-slices.txt.
 8. Update collections-shaped-types.md.

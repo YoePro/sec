@@ -722,7 +722,7 @@ Current MLIR implementation note:
 * Integer range `for` lowering supports explicit signed steps, including
   descending loops such as `for i in 3..-1 step -1`.
 * Float range `for` lowering supports explicit float steps such as
-  `for f in 0.0f..5.0f step 0.5f`.
+  `for f in 0.0g..5.0g step 0.5g`.
 * `in` with finite integer or float ranges lowers to lower-bound and
   upper-bound comparisons. Inclusive ranges use `<=` for the upper bound;
   exclusive ranges use `<`.

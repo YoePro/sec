@@ -212,11 +212,11 @@
       "patterns": [
         {
           "name": "constant.numeric.float.sec",
-          "match": "(?<![A-Za-z0-9_])(?:(?:\\d+\\.\\d+|\\.\\d+)(?:[eE][+-]?\\d+)?|\\d+[eE][+-]?\\d+)(?:[fFdD])?\\b"
+          "match": "(?<![A-Za-z0-9_])(?:(?:(?:\\d+\\.\\d+|\\.\\d+)(?:[eE][+-]?\\d+)?|\\d+[eE][+-]?\\d+)(?:[gm])?|(?:0[bB][01_]+|0[oO][0-7_]+|0[xX][0-9A-Fa-f_]+|\\d[\\d_]*)[gm])\\b"
         },
         {
           "name": "constant.numeric.integer.sec",
-          "match": "\\b(?:0[bB][01_]+|0[oO][0-7_]+|0[xX][0-9A-Fa-f_]+|\\d[\\d_]*)(?:[iIuUfFdD])?\\b"
+          "match": "\\b(?:0[bB][01_]+|0[oO][0-7_]+|0[xX][0-9A-Fa-f_]+|\\d[\\d_]*)(?:[iutr])?\\b"
         }
       ]
     },
@@ -461,7 +461,7 @@
       "patterns": [
         {
           "name": "storage.type.primitive.sec",
-          "match": "\\b(?:bit|bool|byte|char|rune|int|int8|int16|int32|int64|int128|int256|uint|uint8|uint16|uint32|uint64|uint128|uint256|float|float32|float64|decimal|decimal128|string|void|ptr)\\b"
+          "match": "\\b(?:bit|bool|byte|char|rune|int|int8|int16|int32|int64|int128|int256|uint|uint8|uint16|uint32|uint64|uint128|uint256|float|float32|float64|decimal|decimal128|date|time|datetime|duration|string|void|ptr)\\b"
         },
         {
           "name": "support.type.sec",

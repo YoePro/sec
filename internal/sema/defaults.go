@@ -74,7 +74,7 @@ func defaultValueOf(typ Type, visiting map[string]bool) DefaultResolution {
 	case StringType:
 		return scalarDefault(typ, DefaultConstant{Kind: StringType, Lexeme: `""`, String: ""})
 	case CharType:
-		return scalarDefault(typ, DefaultConstant{Kind: CharType, Lexeme: "0c", Integer: big.NewInt(0)})
+		return scalarDefault(typ, DefaultConstant{Kind: CharType, Lexeme: "0t", Integer: big.NewInt(0)})
 	case RuneType:
 		return scalarDefault(typ, DefaultConstant{Kind: RuneType, Lexeme: "0r", Integer: big.NewInt(0)})
 	case IntType, UintType:
@@ -472,8 +472,11 @@ func exactNumericConstant(expr ast.Expression) (*big.Rat, string, bool) {
 	switch value := expr.(type) {
 	case *ast.IntegerLiteral, *ast.FloatLiteral:
 		lexeme, suffix := ast.SplitNumericLiteralSuffix(value.TokenLiteral())
-		if suffix == "c" || suffix == "r" {
+		if suffix == "t" || suffix == "r" {
 			return nil, "", false
+		}
+		if integer, ok := ast.ParseIntegerFormNumericLiteralLexeme(value.TokenLiteral()); ok {
+			return new(big.Rat).SetInt(integer), value.TokenLiteral(), true
 		}
 		lexeme = ast.NormalizeNumericLiteralLexeme(lexeme)
 		exact, ok := new(big.Rat).SetString(lexeme)

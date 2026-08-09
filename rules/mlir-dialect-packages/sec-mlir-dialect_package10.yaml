@@ -1,0 +1,290 @@
+package:
+  id: SEC-MLIR-P10
+  name: Local Try Handlers and Result Branching
+  repository: https://github.com/YoePro/sec
+  branch: main
+  repository_sync_commit: 152c772
+  repository_sync_date: '2026-08-09'
+  requires_semantic_ir_version: 1
+  requires_sec_mlir_schema: 5
+  sec_mlir_schema_after: 6
+  lowering_spec_after: 6
+  goal: Implement local try handler CFG and high-level Result discrimination without
+    choosing physical Result or user enum/union representation.
+  next_package: Enum and Union Semantic Value Representation
+source_rules:
+  handler_order: top-to-bottom
+  selection: first matching
+  catch_all: Err(identifier)
+  specific: Err(qualified enum variant)
+  handlers_with_block: locally handle errors; unmatched errors are not automatically
+    propagated
+  exhaustive_required: true
+  implicit_ok: true
+  explicit_ok_allowed: true
+  value_context_handler_requirement:
+  - produce success type
+  - return
+  - propagate/return Err
+  - terminate
+frontend_reuse:
+  ast_already_has:
+  - TryExpression
+  - TryHandler
+  sema_already_has:
+  - ordered handlers
+  - catch-all detection
+  - variant matching
+  - unreachable handler diagnostics
+  - enum exhaustiveness
+  - fallback type checking
+  - binding scope
+  new_required_api: ResolvedTryPlanOf(*ast.TryExpression)
+  builder_must_not_resolve_patterns: true
+  token_return_heuristic_not_authoritative: true
+scope:
+  required:
+  - resolved try handler plan
+  - structural handler flow classification
+  - ResultIsErrOp
+  - ResultUnwrapOkOp
+  - ResultUnwrapErrOp
+  - CoreErrorIsVariantOp
+  - naked Result[T,ArithmeticError] propagation
+  - local Result[T,ArithmeticError] handlers
+  - local arithmetic handlers
+  - implicit Ok
+  - explicit Ok(value)
+  - explicit Ok(_)
+  - ArithmeticError specific variants
+  - Err catch-all binding
+  - ordered dispatch
+  - exhaustive variant-only dispatch
+  - fallback merge
+  - return/termination handler paths
+  - schema v6
+  - Result guard verifier
+  - try handler verifier
+  - P8/P9 compatibility
+  forbidden:
+  - physical Result layout
+  - general enum representation
+  - general union representation
+  - user error enum/union lowering
+  - automatic error mapping/wrapping
+  - try assignment
+  - general match lowering
+  - richer handler patterns
+  - ownership-sensitive payload movement
+  - panic endpoint lowering
+  - LLVM dialect
+  - production backend migration
+error_scope:
+  required: ArithmeticError
+  specific_variants:
+  - Overflow
+  - DivisionByZero
+  - InvalidShift
+  catch_all: true
+  user_error_enum: deferred until canonical enum representation
+  user_error_union: deferred until canonical union representation
+sema:
+  recommended_pattern_kinds:
+  - implicit-ok
+  - ok-binding
+  - ok-discard
+  - err-variant
+  - err-catch-all
+  recommended_flow:
+  - produces-value
+  - returns
+  - terminates
+  resolved_plan_fields:
+  - success type
+  - error type
+  - explicit Ok presence
+  - exhaustive
+  - handlers in source order
+  read_only_query: true
+semantic_ir:
+  version_bump: false
+  new_ops:
+  - ResultIsErrOp
+  - ResultUnwrapOkOp
+  - ResultUnwrapErrOp
+  - CoreErrorIsVariantOp
+  result_guard:
+    test: ResultIsErrOp
+    'true': Err
+    'false': Ok
+    safe_projection_required: true
+  handler_cfg:
+    specific_dispatch: source-ordered variant-test chain
+    catch_all: direct error binding
+    fallback: branch to merge with T
+    return: no merge edge
+    terminate: no merge edge
+    merge: single T block parameter
+dialect:
+  schema_version: 6
+  new_ops:
+    sec.result.is_err:
+      operand: '!sec.result<T,E>'
+      result: i1
+      total: true
+    sec.result.unwrap_ok:
+      operand: '!sec.result<T,E>'
+      result: T
+      requires_guarded_ok_path: true
+    sec.result.unwrap_err:
+      operand: '!sec.result<T,E>'
+      result: E
+      requires_guarded_err_path: true
+    sec.core_error.is_variant:
+      operand: '!sec.core_error<"core::ArithmeticError">'
+      variants:
+      - Overflow
+      - DivisionByZero
+      - InvalidShift
+      result: i1
+      total: true
+  physical_result_layout: false
+  physical_error_layout: false
+verifiers:
+  --sec-verify-result-guards:
+  - same Result SSA for is_err and unwrap
+  - true successor Err
+  - false successor Ok
+  - Err unwrap only on Err path
+  - Ok unwrap only on Ok path
+  - dominance
+  --sec-verify-try-handlers:
+  - source-order indexes
+  - catch-all finality
+  - variant uniqueness
+  - ArithmeticError exhaustiveness
+  - fallback merge type
+  - return/terminate no merge
+  - explicit versus implicit Ok exclusivity
+handler_semantics:
+  implicit_ok: success T -> merge
+  explicit_ok_binding: bind T and execute handler
+  explicit_ok_discard: execute handler without binding
+  specific_err: core error variant test in source order
+  catch_all: bind complete exact ArithmeticError
+  variant_only_exhaustive: final remaining variant may be routed directly after previous
+    tests
+  unmatched_auto_propagation: false
+result_propagation:
+  naked_result_error_type: ArithmeticError
+  err_path: unwrap Err -> ResultErr outer -> return
+  ok_path: unwrap Ok -> continue
+  generalize_p9_arithmetic_only: true
+compatibility:
+  package9: arithmetic reason -> ArithmeticError before handler dispatch
+  package8: handler CFG survives sec.int.* to Arith lowering
+  legacy_backends_changed: false
+tests:
+  sema:
+  - handler order
+  - catch-all unreachable
+  - duplicate variant
+  - exhaustive ArithmeticError variants
+  - non-exhaustive rejected
+  - fallback exact type
+  - Ok binding/discard
+  - binding scope
+  - structural conditional-return validation
+  semantic_ir:
+  - Result guard ops
+  - naked Result propagation
+  - implicit Ok
+  - explicit Ok
+  - variant source order
+  - catch-all
+  - fallback merge
+  - return/terminate no merge
+  - arithmetic local handlers
+  - Result call local handlers
+  - int128/uint256 success values
+  dialect:
+  - new op roundtrip
+  - wrong Result types rejected
+  - wrong core error identity rejected
+  - unknown variant rejected
+  - schema v5 regression
+  result_guard_verifier:
+  - canonical accepted
+  - reversed branches rejected
+  - opposite unwrap rejected
+  - different Result rejected
+  - unwrap before guard rejected
+  - missing projection rejected
+  handler_verifier:
+  - ordered accepted
+  - index disorder rejected
+  - catch-all followed by variant rejected
+  - non-exhaustive rejected
+  - fallback merge mismatch rejected
+  - return merge edge rejected
+  - explicit plus implicit Ok rejected
+  integration:
+  - int32 arithmetic fallback
+  - int64 division variants
+  - int128 arithmetic catch-all
+  - uint256 shift handler
+  - explicit Ok
+  - return Err handler
+  - Result int32 local handler
+  - Result int128 naked propagation
+  - Result uint256 local handler
+  unsupported:
+  - user error enum
+  - user error union
+  - try assignment
+  - non-trivial ownership payload
+  - automatic error mapping
+  - general Result match
+acceptance:
+- baseline 152c772 or newer sync documented
+- previous regressions green
+- wide builtin invariant preserved
+- schema v6 installed
+- lowering v6 installed
+- resolved try plan API
+- structural handler flow
+- Result guard Semantic IR ops
+- CoreErrorIsVariant Semantic IR op
+- naked Result ArithmeticError propagation
+- local Result handlers
+- local arithmetic handlers
+- implicit/explicit Ok
+- specific/catch-all Err
+- ordered dispatch
+- exhaustive handlers
+- fallback SSA merge
+- return/terminate path separation
+- no unmatched auto propagation
+- new dialect ops
+- result guard verifier
+- try handler verifier
+- P8/P9 compatibility
+- wide tests
+- unsupported user enum/union explicit
+- no physical Result/error layout
+- no mandatory runtime
+- check-sec-mlir passes
+- go test ./... passes
+- legacy paths operational
+package11:
+  name: Enum and Union Semantic Value Representation
+  reason: Enable canonical user error enum/union handlers without creating an error-specific
+    parallel representation.
+  likely_scope:
+  - Semantic IR enum types/values
+  - enum variant identity
+  - enum underlying types
+  - Semantic IR union types/variants
+  - payload/no-payload variants
+  - Sec MLIR enum/union types and high-level variant tests
+  - no physical LLVM layout yet

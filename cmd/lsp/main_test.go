@@ -1390,6 +1390,9 @@ func TestCompletionIncludesIntrinsicTypesInTypePosition(t *testing.T) {
 type Holder struct {
 	ptr: RawPtr[byte],
 	values: list[int],
+	created: datetime,
+	elapsed: duration,
+	wall: time,
 }
 `
 
@@ -1398,6 +1401,15 @@ type Holder struct {
 
 	items = completeSource("", source, strings.Index(source, "list")+len("li"))
 	assertCompletionLabels(t, items, []string{"list"})
+
+	items = completeSource("", source, strings.Index(source, "datetime")+len("date"))
+	assertCompletionLabels(t, items, []string{"date", "datetime"})
+
+	items = completeSource("", source, strings.Index(source, "duration")+len("dur"))
+	assertCompletionLabels(t, items, []string{"duration"})
+
+	items = completeSource("", source, strings.LastIndex(source, "time")+len("ti"))
+	assertCompletionLabels(t, items, []string{"time"})
 }
 
 func TestCompletionIncludesRawPtrMembers(t *testing.T) {

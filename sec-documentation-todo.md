@@ -320,7 +320,7 @@ rules/core-library.md
 rules/stdlib.md
 rules/impl.txt
 rules/properties.txt
-rules/types.txt
+rules/types.md
 rules/arrays-slices.txt
 rules/reference_model.md
 rules/raw_pointers.txt

@@ -19,7 +19,7 @@ authority:
 - implementation package
 - implementation
 relevant_rules:
-- rules/types.txt
+- rules/types.md
 - rules/functions.txt
 - rules/copy_move.md
 - rules/ownership.txt

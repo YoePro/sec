@@ -34,7 +34,7 @@ All normative compiler-known-member semantics belong to this document.
 
 `impl.txt` owns ordinary user-defined implementation blocks.
 
-`types.txt`, `arrays-slices.txt`, `reference_model.md`, `unsafe.md`,
+`types.md`, `arrays-slices.txt`, `reference_model.md`, `unsafe.md`,
 `allocation.txt`, `arena.md`, `layout.md`, `effect_analysis.md`, and
 `semantic_ir.txt` own their respective semantic domains.
 
@@ -1597,7 +1597,7 @@ or another explicit decoder.
 
 # Char-sequence semantics
 
-`char` sequence conversion follows the canonical `char` model in `types.txt`
+`char` sequence conversion follows the canonical `char` model in `types.md`
 and the string rulebook.
 
 Each `char` is converted according to the same semantics as
@@ -3113,7 +3113,7 @@ semantic_ir.txt
 stdlib.md
 string memory rules
 target_profiles.md
-types.txt
+types.md
 unsafe.md
 ```
 

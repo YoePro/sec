@@ -1038,8 +1038,10 @@ fn main() int {
         x = 200
     }
 
-    let mut float_sum := 0.0f
-    for f in 0.0f..5.0f step 0.5f {
+    let mut float_sum := 0.0g
+    let hexadecimal_float := 0x10g
+    let hexadecimal_decimal := 0x10m
+    for f in 0.0g..5.0g step 0.5g {
         float_sum = float_sum + f
     }
 

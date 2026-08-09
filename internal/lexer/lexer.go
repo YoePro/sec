@@ -501,35 +501,29 @@ func (l *Lexer) readNumber() (string, TokenType) {
 			l.advance()
 			l.advance()
 			_, valid = l.readDigitSequence(func(ch rune) bool { return ch == '0' || ch == '1' })
-			if isNumericSuffix(l.peek()) {
-				l.advance()
-			}
+			typ = l.consumeIntegerSuffix(typ)
 			if !valid {
 				return string(l.input[start:l.pos]), ILLEGAL
 			}
-			return string(l.input[start:l.pos]), INT
+			return string(l.input[start:l.pos]), typ
 		case 'o', 'O':
 			l.advance()
 			l.advance()
 			_, valid = l.readDigitSequence(func(ch rune) bool { return ch >= '0' && ch <= '7' })
-			if isNumericSuffix(l.peek()) {
-				l.advance()
-			}
+			typ = l.consumeIntegerSuffix(typ)
 			if !valid {
 				return string(l.input[start:l.pos]), ILLEGAL
 			}
-			return string(l.input[start:l.pos]), INT
+			return string(l.input[start:l.pos]), typ
 		case 'x', 'X':
 			l.advance()
 			l.advance()
 			_, valid = l.readDigitSequence(isHexDigit)
-			if isNumericSuffix(l.peek()) {
-				l.advance()
-			}
+			typ = l.consumeIntegerSuffix(typ)
 			if !valid {
 				return string(l.input[start:l.pos]), ILLEGAL
 			}
-			return string(l.input[start:l.pos]), INT
+			return string(l.input[start:l.pos]), typ
 		}
 	}
 
@@ -546,12 +540,18 @@ func (l *Lexer) readNumber() (string, TokenType) {
 			valid = false
 		}
 	}
-	if isNumericSuffix(l.peek()) {
+	if isCanonicalNumericSuffix(l.peek()) {
 		suffix := l.peek()
 		l.advance()
-		if suffix == 'f' || suffix == 'd' {
+		if typ == FLOAT && !isFractionalNumericSuffix(suffix) {
+			valid = false
+		}
+		if suffix == 'g' || suffix == 'm' {
 			typ = FLOAT
 		}
+	} else if isLegacyNumericSuffix(l.peek()) {
+		l.advance()
+		valid = false
 	}
 	if !valid {
 		return string(l.input[start:l.pos]), ILLEGAL
@@ -573,8 +573,11 @@ func (l *Lexer) readLeadingDotNumber() Token {
 			valid = false
 		}
 	}
-	if l.peek() == 'f' || l.peek() == 'd' {
+	if isFractionalNumericSuffix(l.peek()) {
 		l.advance()
+	} else if isCanonicalNumericSuffix(l.peek()) || isLegacyNumericSuffix(l.peek()) {
+		l.advance()
+		valid = false
 	}
 	if !valid {
 		return l.token(ILLEGAL, string(l.input[start:l.pos]), line, column)
@@ -940,13 +943,37 @@ func isHexDigit(ch rune) bool {
 }
 
 // Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
-func isNumericSuffix(ch rune) bool {
+func isCanonicalNumericSuffix(ch rune) bool {
 	switch ch {
-	case 'i', 'u', 'f', 'd', 'c', 'r':
+	case 'i', 'u', 'g', 'm', 't', 'r':
 		return true
 	default:
 		return false
 	}
+}
+
+func isFractionalNumericSuffix(ch rune) bool {
+	return ch == 'g' || ch == 'm'
+}
+
+func isLegacyNumericSuffix(ch rune) bool {
+	return ch == 'c' || ch == 'd' || ch == 'f'
+}
+
+func (l *Lexer) consumeIntegerSuffix(typ TokenType) TokenType {
+	if isCanonicalNumericSuffix(l.peek()) {
+		suffix := l.peek()
+		l.advance()
+		if suffix == 'g' || suffix == 'm' {
+			return FLOAT
+		}
+		return typ
+	}
+	if isLegacyNumericSuffix(l.peek()) {
+		l.advance()
+		return ILLEGAL
+	}
+	return typ
 }
 
 // Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.

@@ -22,7 +22,7 @@ This document does not redefine:
 - lexical tokenization from `lexical_structure.md`;
 - operator precedence or operator semantics from `operators.md`;
 - formatting from `formatter.md`;
-- type semantics from `types.txt`;
+- type semantics from `types.md`;
 - ownership semantics from `ownership.md` and `copy_move.md`;
 - detailed feature semantics from specialized rulebooks.
 
@@ -445,7 +445,7 @@ Implemented expression forms:
 - integer literals;
 - floating and decimal-family literals;
 - character literals;
-- rune numeric suffixes;
+- canonical `i`/`u`/`g`/`m`/`t`/`r` numeric family suffixes;
 - string literals;
 - interpolated-string tokens;
 - booleans;
@@ -1035,10 +1035,13 @@ The lexer reserves spellings including:
 ```text
 panic
 assert
-require
 ```
 
 Complete parser and semantic syntax is not implemented.
+
+`require` is not globally reserved. Any grammar that assigns it a
+contract-specific role must resolve it contextually and leave ordinary
+identifier uses valid.
 
 `panic.md` and `runtime_checks.md` remain planned.
 
@@ -3222,7 +3225,7 @@ Literal
 ```
 
 Numeric suffixes, bases, escapes, and literal token boundaries belong to
-`lexical_structure.md` and `types.txt`.
+`lexical_structure.md` and `types.md`.
 
 ---
 
@@ -4186,10 +4189,11 @@ Reserved or recognized spellings without complete Sec 0.1 meaning include:
 free
 panic
 assert
-require
 ```
 
 The parser should issue focused diagnostics rather than generic token failures.
+
+`require` is an ordinary identifier spelling, not reserved syntax.
 
 ---
 
@@ -4525,7 +4529,7 @@ lexical_structure.md
 operators.md
 formatter.md
 default_values.md
-types.txt
+types.md
 contracts.md
 units.txt
 struct.txt
@@ -4857,7 +4861,6 @@ Add focused parser diagnostics for:
 free
 panic
 assert
-require
 C-style for
 condition-only for
 assignment expression

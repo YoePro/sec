@@ -237,7 +237,7 @@ contract declaration when practical.
 ## Related rulebooks
 
 - `default_values.md` defines default selection and defaultability.
-- `types.txt` defines named identity, declarations, conversions and assignment.
+- `types.md` defines named identity, declarations, conversions and assignment.
 - `operators.md` defines constant-expression operator semantics.
 - `struct.txt` requires named constrained field types.
 - `collections-shaped-types.md` defines collection-shaped types.

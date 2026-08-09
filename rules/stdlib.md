@@ -1226,7 +1226,7 @@ core-library.md
 language_philosophy.txt
 language-rulebook-status.md
 names_scopes_visibility.md
-types.txt
+types.md
 functions.txt
 generics.txt
 interfaces.txt

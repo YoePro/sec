@@ -442,7 +442,8 @@ imports and aliases
 ```
 
 Compiler-known fundamental type names and built-in type constructors are also
-reserved language names.
+reserved language names unless their canonical lexical rule explicitly makes
+their spelling contextual.
 
 Examples include:
 
@@ -451,7 +452,6 @@ int
 string
 list
 map
-set
 vector
 matrix
 tensor
@@ -506,26 +506,22 @@ property Value: int {
 
 The parser resolves `set` from grammar context.
 
-`set` is nevertheless a reserved language spelling and may not be declared as
-an identifier.
+Outside these type and property contexts, `set` remains an ordinary identifier.
 
-Invalid:
+Valid:
 
 ```sec
 let set: int := 3
-```
 
-Invalid:
-
-```sec
-fn set() void {
+fn set(value: int) int {
+    return value
 }
 ```
 
 The contextual treatment prevents grammar collision between the type
 constructor and property syntax.
 
-It does not make `set` available as a user declaration name.
+It does not globally reserve `set` as a user declaration name.
 
 ---
 
@@ -1022,10 +1018,6 @@ local declaration count shadows visible declaration count
 ```
 
 ```text
-set is a reserved language name and cannot be declared as a variable
-```
-
-```text
 mut is a keyword and cannot be used as a function name
 ```
 
@@ -1176,7 +1168,7 @@ This rulebook must be synchronized with:
 lexical_structure.md
 grammar.md
 operators.md
-types.txt
+types.md
 contracts.md
 functions.txt
 functions_lambda.txt

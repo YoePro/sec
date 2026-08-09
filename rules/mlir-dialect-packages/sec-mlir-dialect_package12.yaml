@@ -1,0 +1,299 @@
+package:
+  id: SEC-MLIR-P12
+  name: Enum, Union, Result and Option Match CFG
+  repository: https://github.com/YoePro/sec
+  branch: main
+  repository_sync_commit: 152c772
+  repository_sync_date: '2026-08-09'
+  semantic_ir_version_before: 1
+  semantic_ir_version_after: 1
+  sec_mlir_schema_before: 7
+  sec_mlir_schema_after: 8
+  lowering_spec_before: 7
+  lowering_spec_after: 8
+  goal: Lower resolved variant-oriented match semantics to explicit verified CFG while
+    preserving source order, guards and payload safety.
+  next_package: Struct Semantic Value Representation
+normative_updates:
+- repository_paths:
+  - rules/flowcontrol_match.txt
+  - rules/enums.txt
+  supplied_file: sec_match_enum_domain_package12.md
+  purpose: Resolve enum alias/unnamed-value match-domain inconsistency.
+- repository_path: rules/semantic_ir.txt
+  supplied_file: sec_semantic_ir_match_package12.md
+- repository_path: rules/sec_mlir_dialect.md
+  supplied_file: sec_mlir_dialect_package12.md
+  schema_version: 8
+- repository_path: rules/sec_mlir_lowering.md
+  supplied_file: sec_mlir_lowering_package12.md
+  version: 8
+wide_builtin_invariant:
+  active:
+  - int128
+  - int256
+  - uint128
+  - uint256
+  - decimal128
+  forbidden_status:
+  - future
+  - planned
+  - reserved
+  - placeholder
+  - not yet active
+enum_match_correction:
+  pattern_semantics: numeric enum value equality
+  alias_same_numeric_value: same runtime match domain
+  unguarded_alias_after_covered_value: unreachable
+  guarded_alias_then_unguarded_equivalent: valid
+  runtime_domain: complete representable underlying enum domain
+  unnamed_converted_values_in_domain: true
+  exhaustive_if:
+  - unguarded catch-all
+  - or unique unguarded numeric coverage proves complete representable domain
+  guarded_arms_count_as_full_coverage: false
+  coverage_arithmetic: arbitrary precision
+scope:
+  required_subjects:
+  - enum
+  - union
+  - Result
+  - Option
+  required:
+  - catch-all
+  - where guards
+  - match statement
+  - match expression
+  - return arms
+  - copy-trivial single payload binding
+  - single payload discard
+  - explicit CFG
+  - source-order first-match
+  - SSA merge
+  - synthesized unreachable residual
+  deferred:
+  - ref/ref mut payload binding
+  - move-only payload binding
+  - semantic/conditional copy binding
+  - struct-like whole-payload union binding
+  - direct struct destructuring
+  - nested patterns
+  - pattern alternatives
+  - literal patterns
+  - range patterns
+  - runtime type patterns
+  - general bool match
+  - loop continue/break until loop IR
+  - nontrivial ignored-result discard
+  - physical enum/union/Result lowering
+  - LLVM
+sema:
+  api: ResolvedMatchPlanOf(*ast.MatchExpression)
+  query_read_only: true
+  subject_kinds:
+  - enum
+  - union
+  - result
+  - option
+  pattern_kinds:
+  - enum-value
+  - union-variant
+  - result-ok
+  - result-err
+  - option-some
+  - option-none
+  - catch-all
+  binding_actions:
+  - none
+  - discard
+  - copy-trivial
+  - borrow-shared
+  - borrow-mutable
+  - move
+  - copy-semantic
+  p12_accepted_binding_actions:
+  - none
+  - discard
+  - copy-trivial
+  arm_flows:
+  - produces-value
+  - continues
+  - returns
+  - terminates
+  - loop-control
+  required_fields:
+  - subject kind/type
+  - value context
+  - result type
+  - source indexes
+  - resolved pattern kind
+  - enum numeric value
+  - union variant index
+  - binding name/type/action
+  - guarded
+  - flow
+  - exhaustive
+  - ResidualAlwaysMatches
+semantic_ir:
+  version_bump: false
+  monolithic_match_op: false
+  new_id: MatchID
+  metadata:
+  - MatchRecord
+  - MatchArmRecord
+  new_terminator: UnreachableOp
+  unreachable_reason: exhaustive-match-fallthrough
+  subject_evaluated_once: true
+  execution: explicit CFG
+  expression_merge: one block argument of resolved result type
+dialect:
+  schema_version: 8
+  new_ops:
+  - sec.unreachable
+  new_reserved_attributes:
+  - sec.match_id
+  - sec.match_arm_index
+  - sec.match_stage
+  - sec.match_pattern_kind
+  monolithic_match_op: false
+  standard_cfg:
+  - cf.cond_br
+  - cf.br
+  - block arguments
+  - func.return
+  verifier: --sec-verify-match-cfg
+lowering:
+  enum_pattern:
+  - sec.enum.constant
+  - sec.enum.cmp eq
+  union_pattern:
+  - sec.union.is_variant
+  - sec.union.unwrap_payload when copy-trivial binding
+  result_pattern:
+  - sec.result.is_err
+  - sec.result.unwrap_ok
+  - sec.result.unwrap_err
+  option_pattern: canonical union Some/None
+  guard: after pattern success only
+  catch_all: direct body or guarded body
+  residual: sec.unreachable
+  cf_switch: deferred optimization
+compatibility:
+  p10_result_verifier: extend for source-order match Result guards
+  p11_union_verifier: extend for match-dominated variant projections
+  p11_enum: numeric cmp naturally implements alias equivalence
+  p8: integer lowering inside guard/body must not reorder match CFG
+tests:
+  enum_rule_correction:
+  - unguarded numeric alias duplicate
+  - guarded alias then equivalent fallback
+  - ordinary enum requires catch-all when unnamed values possible
+  - bit1 complete domain
+  - bit2 complete domain
+  - bit2 missing value
+  - wide underlying arbitrary precision
+  sema_plan:
+  - read-only
+  - source indexes
+  - pattern kinds
+  - binding actions
+  - guard flags
+  - flow
+  - residual proof
+  semantic_ir:
+  - subject once
+  - source-order chain
+  - guard false continuation
+  - first-match body selection
+  - expression merge
+  - statement continuation
+  - residual unreachable
+  enum:
+  - catch-all
+  - guard
+  - expression
+  - alias
+  - int128 underlying
+  - uint256 underlying
+  union:
+  - empty
+  - single trivial
+  - payload discard
+  - guarded repeated variant
+  - Option int32
+  - Option int128
+  - uint256 payload
+  result:
+  - Ok binding
+  - Ok discard
+  - Err named
+  - guarded Ok fallback
+  - int128 success
+  - uint256 success
+  verifier:
+  - arm order
+  - pattern false edge
+  - guard false edge
+  - body no later-pattern edge
+  - merge type
+  - catch-all finality
+  - unreachable residual
+  unsupported:
+  - ref payload
+  - ref mut payload
+  - move-only payload
+  - struct-like payload binding
+  - nested pattern
+  - literal/range pattern
+  - loop control before loop IR
+  - ignored owned/must-use statement value
+  regression:
+  - check-sec-mlir
+  - go test ./...
+  - legacy paths
+acceptance:
+- baseline documented
+- previous regressions green
+- enum-domain amendment applied
+- Semantic IR match amendment applied
+- schema v8 installed
+- lowering v8 installed
+- enum numeric coverage
+- unnamed enum values in exhaustiveness
+- ResolvedMatchPlan API
+- subject once
+- source order
+- guard semantics
+- enum/union/Result/Option match
+- catch-all
+- expression merge
+- statement continuation
+- UnreachableOp
+- sec.unreachable
+- match CFG verifier
+- Result/union verifier compatibility
+- ownership-sensitive bindings rejected
+- struct-like whole payload rejected
+- no physical representation lowering
+- check-sec-mlir passes
+- go test ./... passes
+- legacy paths operational
+package13:
+  name: Struct Semantic Value Representation
+  reason: 'Remove the next concrete blocker: canonical struct and struct-like union
+    payload values.'
+  scope:
+  - struct definitions
+  - field identity/order
+  - construction
+  - omitted/default fields from resolved defaults
+  - field projection
+  - trivial-copy subset
+  - '!sec.struct'
+  - struct construct/project ops
+  - struct-like union payload materialization
+  deferred:
+  - nontrivial ownership
+  - aggregate ABI
+  - arrays/slices
+  - LLVM

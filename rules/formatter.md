@@ -2273,7 +2273,7 @@ copy_move.md
 lexical_structure.md
 grammar.md
 operators.md
-types.txt
+types.md
 struct.txt
 enum rules
 register rules

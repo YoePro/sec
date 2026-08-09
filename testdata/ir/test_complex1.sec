@@ -17,9 +17,9 @@ fn main() int {
         x = 200
     }
 
-    // Test 2: Float-for loop med explicit float-literal (0.0f)
-    let mut float_sum := 0.0f
-    for f in 0.0f..5.0f step 0.5f {
+    // Test 2: Float-for loop med explicit float-literal (0.0g)
+    let mut float_sum := 0.0g
+    for f in 0.0g..5.0g step 0.5g {
         float_sum = float_sum + f
     }
 

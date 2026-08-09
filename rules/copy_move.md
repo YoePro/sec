@@ -3157,7 +3157,7 @@ ownership.md
 discard.md
 formatter.md
 lsp.md
-types.txt
+types.md
 contracts.md
 functions.txt
 struct.txt

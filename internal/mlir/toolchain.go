@@ -44,7 +44,7 @@ func (t Toolchain) Verify(mlirPath string) error {
 // Normal compiler verification remains on Verify until pipeline migration is
 // explicitly implemented.
 func (t Toolchain) VerifySec(mlirPath string) error {
-	args := []string{mlirPath, "-o", os.DevNull}
+	args := []string{mlirPath, "--sec-verify-checked-integer-guards", "-o", os.DevNull}
 	return t.run("sec-mlir-opt", args...)
 }
 

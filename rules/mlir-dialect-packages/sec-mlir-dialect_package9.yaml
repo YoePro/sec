@@ -1,0 +1,214 @@
+package:
+  id: SEC-MLIR-P9
+  name: Typed Arithmetic Failure Flow
+  repository: https://github.com/YoePro/sec
+  branch: main
+  repository_sync_commit: 152c772
+  repository_sync_full: 152c7727d805b4e66349de48700c369fc70ef2db
+  repository_sync_date: '2026-08-09'
+  semantic_ir_version: 1
+  sec_mlir_schema_before: 4
+  sec_mlir_schema_after: 5
+  lowering_spec_after: 5
+  goal: Preserve exact arithmetic failure reason and implement naked try propagation
+    to Result[U, ArithmeticError].
+  next_package: Local Try Handlers and Error Mapping
+normative_updates:
+- repository_path: rules/sec_mlir_dialect.md
+  supplied_file: sec_mlir_dialect_package9.md
+  schema_version: 5
+- repository_path: rules/sec_mlir_lowering.md
+  supplied_file: sec_mlir_lowering_package9.md
+  version: 5
+- repository_path: rules/core-library.md
+  supplied_instruction: sec_core_arithmetic_error_package9.md
+  adds: ArithmeticError
+arithmetic_error:
+  kind: core enum
+  variants:
+  - Overflow
+  - DivisionByZero
+  - InvalidShift
+  always_available: true
+  allocation_free: true
+  implicit_conversion: false
+  mapping:
+    neg_overflow: Overflow
+    add_overflow: Overflow
+    subtract_overflow_or_underflow: Overflow
+    multiply_overflow: Overflow
+    signed_min_div_minus_one: Overflow
+    signed_min_rem_minus_one: Overflow
+    signed_left_shift_overflow: Overflow
+    division_by_zero: DivisionByZero
+    remainder_by_zero: DivisionByZero
+    negative_shift_count: InvalidShift
+    shift_count_too_large: InvalidShift
+  priority:
+    division_remainder:
+    - DivisionByZero
+    - Overflow
+    signed_left_shift:
+    - InvalidShift
+    - Overflow
+failure_reason:
+  semantic_values:
+  - none
+  - overflow
+  - division-by-zero
+  - invalid-shift
+  invariant: failed == (reason != none)
+  checked_operation_results:
+  - result
+  - failed
+  - reason
+  failure_edge_passes_reason: true
+semantic_ir:
+  version_bump: false
+  new:
+  - ArithmeticFailureReason
+  - CoreErrorType
+  - ResultType
+  - ResultOkOp
+  - ResultErrOp
+  - ArithmeticErrorFromReasonOp
+  checked_ops_evolve_to_three_results: true
+  ordinary_failure_consumes_reason: true
+  try_failure_constructs_result_err: true
+try_scope:
+  implemented: naked checked integer arithmetic propagation
+  enclosing_return: Result[U, ArithmeticError]
+  error_match_policy: exact ArithmeticError in Package 9
+  local_handlers: false
+  try_assignment: false
+  general_result_call_try: false
+  automatic_error_wrapping: false
+  catches_arbitrary_panic: false
+effect_analysis:
+  ordinary_checked_arithmetic: may arithmetic panic when not proven safe
+  try_arithmetic: explicit ArithmeticError flow; no arithmetic panic effect
+  operand_effects_preserved: true
+  no_panic_test_required: true
+dialect:
+  schema_version: 5
+  new_types:
+  - '!sec.arithmetic_failure_reason'
+  - '!sec.core_error<"identity">'
+  - '!sec.result<T,E>'
+  new_ops:
+  - sec.arithmetic_failure_reason.constant
+  - sec.arithmetic_error.from_reason
+  - sec.result.ok
+  - sec.result.err
+  evolved_ops:
+    checked_integer_ops: result + failed + reason for schema-v5 compiler output
+    sec.fail.arithmetic: takes reason operand
+  physical_result_layout: false
+  physical_core_error_layout: false
+package8_correction:
+  must_compute_reason: true
+  reason_rules:
+    neg_add_sub_mul: 'failed ? overflow : none'
+    unsigned_div_rem: 'zero ? division_by_zero : none'
+    signed_div_rem: 'zero ? division_by_zero : min_minus_one ? overflow : none'
+    unsigned_and_signed_right_shift: 'invalid_count ? invalid_shift : none'
+    signed_left_shift: 'invalid_count ? invalid_shift : overflow ? overflow : none'
+  computation_total: true
+panic:
+  ordinary_endpoint_remains: sec.fail.arithmetic(reason)
+  reason_ids:
+    overflow: panic.arithmetic-overflow
+    division-by-zero: panic.division-by-zero
+    invalid-shift: panic.invalid-shift
+  physical_endpoint_selected: false
+  mandatory_runtime: false
+tests:
+  sema:
+  - try add -> ArithmeticError
+  - try division -> ArithmeticError
+  - try shift -> ArithmeticError
+  - exact Result error requirement
+  - other Result error rejected without local mapping
+  - try does not catch operand panic
+  - ordinary/try effect distinction
+  - wide integer try
+  semantic_ir:
+  - ordinary result+failed+reason
+  - try failure returns Result Err
+  - division dynamic reason
+  - signed-left dynamic reason
+  - Result int128
+  - Result uint256
+  dialect:
+  - reason type/constant
+  - core error type
+  - Result type
+  - Ok/Err construction
+  - ArithmeticError conversion
+  - schema-v5 checked arity
+  - schema-v5 fail reason operand
+  - schema-v4 regression
+  guard_verifier:
+  - reason passed on true edge
+  - wrong reason rejected
+  - wrong failure block type rejected
+  - none to failure rejected
+  - ordinary/fallible endpoint validation
+  package8_reason:
+  - signed division zero versus overflow
+  - signed remainder zero versus overflow
+  - signed-left invalid-count versus overflow
+  - add/sub/mul/neg overflow reason
+  - unsigned shift invalid reason
+  integration:
+  - ordinary arithmetic retains fail endpoint
+  - noPanic try add returns Result
+  - int128 try add
+  - int256 try multiply
+  - uint128 try subtract
+  - uint256 try shift
+acceptance:
+- baseline 152c772 or newer sync documented
+- previous regressions green
+- wide builtin invariant preserved
+- ArithmeticError core enum defined
+- failure mapping fixed
+- Semantic IR reason implemented
+- checked ops have result+failed+reason
+- Result Semantic IR implemented
+- naked arithmetic try implemented
+- exact ArithmeticError propagation required
+- local handlers deferred
+- try does not catch arbitrary panic
+- effect analysis updated
+- schema v5 implemented
+- reason/core-error/Result types implemented
+- Ok/Err/error conversion ops implemented
+- fail arithmetic reason operand implemented
+- guard verifier v5 implemented
+- P8 dynamic reason implemented
+- reason priorities tested
+- ordinary failure remains panic-capable
+- fallible failure returns Err without panic endpoint
+- no physical Result/core-error layout
+- no mandatory runtime
+- wide fallible arithmetic tests pass
+- check-sec-mlir passes
+- go test ./... passes
+- legacy paths operational
+package10:
+  name: Local Try Handlers and Error Mapping
+  scope:
+  - try handler blocks
+  - Err(error)
+  - Err(ArithmeticError.Variant)
+  - handler ordering
+  - exhaustiveness
+  - fallback value
+  - return/propagation handlers
+  - explicit user-union mapping
+  - handler CFG
+  still_deferred:
+  - physical Result representation
+  - LLVM
+  - general unrelated enum match

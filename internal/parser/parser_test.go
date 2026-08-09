@@ -828,7 +828,7 @@ func TestMoveDeclarationsRequireCanonicalOperator(t *testing.T) {
 }
 
 func TestParseCharAndRuneNumericSuffixes(t *testing.T) {
-	input := `let ch: char := 65c
+	input := `let ch: char := 65t
 let ru: rune := 0x41r`
 
 	p := New(lexer.New(input))
@@ -839,7 +839,7 @@ let ru: rune := 0x41r`
 		t.Fatalf("wrong statement count. got=%d want=2", len(program.Statements))
 	}
 
-	for index, suffix := range []string{"c", "r"} {
+	for index, suffix := range []string{"t", "r"} {
 		stmt, ok := program.Statements[index].(*ast.LetStatement)
 		if !ok {
 			t.Fatalf("statement %d is not LetStatement. got=%T", index, program.Statements[index])
@@ -851,6 +851,26 @@ let ru: rune := 0x41r`
 		if literal.Suffix() != suffix {
 			t.Fatalf("statement %d: wrong suffix. got=%q want=%q", index, literal.Suffix(), suffix)
 		}
+	}
+}
+
+func TestLegacyNumericSuffixMigrationDiagnostics(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"65c", "literal suffix 'c' was replaced by 't' for char at 1:1"},
+		{"1.5d", "literal suffix 'd' was replaced by 'm' for decimal at 1:1"},
+		{"1e3f", "literal suffix 'f' was replaced by 'g' for binary float at 1:1"},
+	}
+	for _, test := range tests {
+		t.Run(test.input, func(t *testing.T) {
+			p := New(lexer.New(test.input))
+			p.ParseProgram()
+			if len(p.Errors()) == 0 || !strings.Contains(p.Errors()[0], test.want) {
+				t.Fatalf("errors = %v, want %q", p.Errors(), test.want)
+			}
+		})
 	}
 }
 

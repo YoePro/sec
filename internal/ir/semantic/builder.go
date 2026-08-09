@@ -22,7 +22,7 @@ func Build(program *ast.Program, analyzer *sema.Analyzer, options BuildOptions) 
 		return nil, fmt.Errorf("program and completed analyzer are required")
 	}
 	if options.MaxPackage == 0 {
-		options.MaxPackage = 3
+		options.MaxPackage = 7
 	}
 	identity := options.RequestedModule
 	if identity == "" {
@@ -152,6 +152,9 @@ func builtinType(t sema.Type) (TypeKind, bool, uint16, bool, bool) {
 	case sema.StringType:
 		return TypeString, false, 0, false, true
 	case sema.DecimalType:
+		if name == "decimal128" {
+			return TypeDecimal128, true, 128, false, true
+		}
 		return TypeDecimal, true, 0, false, true
 	case sema.FloatType:
 		w := uint16(0)
@@ -179,13 +182,19 @@ func builtinType(t sema.Type) (TypeKind, bool, uint16, bool, bool) {
 	}
 }
 func numericWidth(name string) uint16 {
-	for _, p := range []struct {
-		s string
-		w uint16
-	}{{"8", 8}, {"16", 16}, {"32", 32}, {"64", 64}} {
-		if strings.HasSuffix(name, p.s) {
-			return p.w
-		}
+	switch name {
+	case "int8", "uint8":
+		return 8
+	case "int16", "uint16":
+		return 16
+	case "int32", "uint32":
+		return 32
+	case "int64", "uint64":
+		return 64
+	case "int128", "uint128":
+		return 128
+	case "int256", "uint256":
+		return 256
 	}
 	return 0
 }
@@ -389,7 +398,7 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 		if resolvedType.Kind == TypeNamed {
 			resolvedType, _ = fb.owner.module.Types.Lookup(resolvedType.Base)
 		}
-		if resolvedType.Kind == TypeDecimal {
+		if resolvedType.Kind == TypeDecimal || resolvedType.Kind == TypeDecimal128 {
 			decimal, err := parseDecimal(e.Token.Lexeme)
 			if err != nil {
 				return builtValue{}, err
@@ -437,8 +446,155 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 			return builtValue{}, fb.unsupported("function call", e.Token)
 		}
 		return fb.buildCall(e)
+	case *ast.PrefixExpression, *ast.InfixExpression:
+		if fb.owner.maxPackage < 7 {
+			return builtValue{}, fb.unsupported("integer operator", expressionToken(expr))
+		}
+		return fb.buildResolvedOperator(expr)
 	default:
 		return builtValue{}, fb.unsupported(fmt.Sprintf("expression %T", expr), expressionToken(expr))
+	}
+}
+
+func (fb *functionBuilder) buildResolvedOperator(expr ast.Expression) (builtValue, error) {
+	resolved, ok := fb.owner.analyzer.ResolvedOperatorOf(expr)
+	if !ok {
+		return builtValue{}, fb.unsupported("unresolved or unsupported operator", expressionToken(expr))
+	}
+	leftType, err := fb.owner.internType(resolved.LeftType)
+	if err != nil {
+		return builtValue{}, err
+	}
+	resultType, err := fb.owner.internType(resolved.ResultType)
+	if err != nil {
+		return builtValue{}, err
+	}
+	var leftExpr, rightExpr ast.Expression
+	switch expression := expr.(type) {
+	case *ast.PrefixExpression:
+		leftExpr = expression.Right
+	case *ast.InfixExpression:
+		leftExpr, rightExpr = expression.Left, expression.Right
+	default:
+		return builtValue{}, fb.unsupported("operator expression", expressionToken(expr))
+	}
+	if _, ok := leftExpr.(*ast.TryExpression); ok {
+		return builtValue{}, fb.unsupported("try arithmetic", expressionToken(leftExpr))
+	}
+	if _, ok := rightExpr.(*ast.TryExpression); ok {
+		return builtValue{}, fb.unsupported("try arithmetic", expressionToken(rightExpr))
+	}
+	left, err := fb.buildExpr(leftExpr, leftType)
+	if err != nil {
+		return builtValue{}, err
+	}
+	operands := []ValueID{left.id}
+	if rightExpr != nil {
+		rightType, err := fb.owner.internType(*resolved.RightType)
+		if err != nil {
+			return builtValue{}, err
+		}
+		right, err := fb.buildExpr(rightExpr, rightType)
+		if err != nil {
+			return builtValue{}, err
+		}
+		operands = append(operands, right.id)
+	}
+	loc := locationFromExpression(expr)
+	op := Operation{Operands: operands, Location: loc, Operator: operatorSpelling(expr)}
+	switch resolved.Kind {
+	case sema.ResolvedIntegerUnaryPlus:
+		op.Kind = OpIntUnaryPlus
+	case sema.ResolvedIntegerNegateChecked:
+		op.Kind = OpIntNegChecked
+	case sema.ResolvedIntegerBitNot:
+		op.Kind = OpIntBitNot
+	case sema.ResolvedIntegerAddChecked:
+		op.Kind, op.IntegerBinary = OpIntBinaryChecked, IntegerCheckedAdd
+	case sema.ResolvedIntegerSubtractChecked:
+		op.Kind, op.IntegerBinary = OpIntBinaryChecked, IntegerCheckedSubtract
+	case sema.ResolvedIntegerMultiplyChecked:
+		op.Kind, op.IntegerBinary = OpIntBinaryChecked, IntegerCheckedMultiply
+	case sema.ResolvedIntegerDivideChecked:
+		op.Kind, op.IntegerBinary = OpIntBinaryChecked, IntegerCheckedDivide
+	case sema.ResolvedIntegerRemainderChecked:
+		op.Kind, op.IntegerBinary = OpIntBinaryChecked, IntegerCheckedRemainder
+	case sema.ResolvedIntegerBitAnd:
+		op.Kind, op.IntegerBitwise = OpIntBitwise, IntegerBitwiseAnd
+	case sema.ResolvedIntegerBitOr:
+		op.Kind, op.IntegerBitwise = OpIntBitwise, IntegerBitwiseOr
+	case sema.ResolvedIntegerBitXor:
+		op.Kind, op.IntegerBitwise = OpIntBitwise, IntegerBitwiseXor
+	case sema.ResolvedIntegerShiftLeftUnsignedChecked:
+		op.Kind, op.IntegerShift = OpIntShiftChecked, IntegerShiftLeftUnsigned
+	case sema.ResolvedIntegerShiftLeftSignedChecked:
+		op.Kind, op.IntegerShift = OpIntShiftChecked, IntegerShiftLeftSigned
+	case sema.ResolvedIntegerShiftRightUnsignedChecked:
+		op.Kind, op.IntegerShift = OpIntShiftChecked, IntegerShiftRightUnsigned
+	case sema.ResolvedIntegerShiftRightSignedChecked:
+		op.Kind, op.IntegerShift = OpIntShiftChecked, IntegerShiftRightSigned
+	case sema.ResolvedIntegerCompareEQ:
+		op.Kind, op.IntegerCompare = OpIntCompare, IntegerCompareEQ
+	case sema.ResolvedIntegerCompareNE:
+		op.Kind, op.IntegerCompare = OpIntCompare, IntegerCompareNE
+	case sema.ResolvedIntegerCompareLT:
+		op.Kind, op.IntegerCompare = OpIntCompare, IntegerCompareLT
+	case sema.ResolvedIntegerCompareLE:
+		op.Kind, op.IntegerCompare = OpIntCompare, IntegerCompareLE
+	case sema.ResolvedIntegerCompareGT:
+		op.Kind, op.IntegerCompare = OpIntCompare, IntegerCompareGT
+	case sema.ResolvedIntegerCompareGE:
+		op.Kind, op.IntegerCompare = OpIntCompare, IntegerCompareGE
+	default:
+		return builtValue{}, fb.unsupported("operator "+string(resolved.Kind), expressionToken(expr))
+	}
+	if resolved.RuntimeCheck {
+		return fb.emitCheckedOperator(op, resultType)
+	}
+	return fb.result(op, resultType), nil
+}
+
+func (fb *functionBuilder) emitCheckedOperator(op Operation, resultType TypeID) (builtValue, error) {
+	boolType, err := fb.owner.internType(sema.Type{Name: "bool", Kind: sema.BoolType})
+	if err != nil {
+		return builtValue{}, err
+	}
+	result := fb.newValue(resultType, OwnershipImmediate, op.Location)
+	failed := fb.newValue(boolType, OwnershipImmediate, op.Location)
+	op.Results = []Value{result, failed}
+	fb.emit(op)
+	failure := fb.newBlock()
+	success := fb.newBlock()
+	fb.emit(Operation{Kind: OpCondBranch, Operands: []ValueID{failed.ID}, Successors: []BranchTarget{{Block: failure.ID}, {Block: success.ID}}, Location: op.Location})
+	fb.current = failure
+	fb.emit(Operation{Kind: OpArithmeticFailure, FailureCategory: failureCategory(op), Operator: op.Operator, Location: op.Location})
+	fb.current = success
+	return builtValue{id: result.ID, typ: result.Type}, nil
+}
+
+func failureCategory(op Operation) ArithmeticFailureCategory {
+	if op.Kind == OpIntShiftChecked {
+		return ArithmeticFailureShift
+	}
+	if op.Kind == OpIntBinaryChecked {
+		switch op.IntegerBinary {
+		case IntegerCheckedDivide:
+			return ArithmeticFailureDivision
+		case IntegerCheckedRemainder:
+			return ArithmeticFailureRemainder
+		}
+	}
+	return ArithmeticFailureOverflow
+}
+
+func operatorSpelling(expr ast.Expression) string {
+	switch expression := expr.(type) {
+	case *ast.PrefixExpression:
+		return expression.Operator
+	case *ast.InfixExpression:
+		return expression.Operator
+	default:
+		return ""
 	}
 }
 
@@ -617,6 +773,10 @@ func expressionToken(e ast.Expression) lexer.Token {
 	case *ast.CallExpression:
 		return x.Token
 	case *ast.RefExpression:
+		return x.Token
+	case *ast.PrefixExpression:
+		return x.Token
+	case *ast.InfixExpression:
 		return x.Token
 	}
 	return lexer.Token{}

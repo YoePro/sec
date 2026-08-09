@@ -2,357 +2,720 @@
 
 ## Status
 
-Normative detailed dialect specification for the currently implemented Sec MLIR
-surface.
+Normative detailed representation specification for the Sec MLIR dialect.
 
-Dialect schema version: `1`
+Current dialect schema version: `4`
 
-This rulebook is subordinate to:
+This document is subordinate to:
 
 ```text
+rules/operators.md
+rules/runtime_checks.md
+rules/types.md
+rules/layout.md
+rules/semantic_ir.txt
 rules/sec_mlir.md
 ```
 
-and to all higher-authority Sec language/domain rulebooks and
-`rules/semantic_ir.txt`.
+It defines representation and verifier obligations.
 
-It defines representation only.
-
-It must not introduce or redefine Sec language semantics.
+It does not redefine Sec source-language operator semantics.
 
 ---
 
-# 1. Scope of dialect schema version 1
+# 1. Version history
 
-Schema version 1 intentionally defines only the dialect foundation required by
-Sec MLIR implementation Package 1.
+## Schema version 1
 
-Defined in version 1:
+Dialect foundation.
+
+## Schema version 2
+
+First Semantic IR bridge, semantic scalar/storage/call operations.
+
+## Schema version 3
+
+Wide scalar completion, decimal128, target/DLTI metadata.
+
+## Schema version 4
+
+Adds explicit builtin-integer semantic operations and ordinary arithmetic
+failure termination:
 
 ```text
-dialect namespace
-dialect version marker
-named type representation
-distinct type representation
-common metadata key names
-source-location policy
-basic structural verification
+sec.int.unary_plus
+sec.int.neg_checked
+sec.int.binary_checked
+sec.int.bit_not
+sec.int.bitwise
+sec.int.shift_checked
+sec.int.cmp
+sec.fail.arithmetic
 ```
-
-Not defined in version 1:
-
-```text
-Sec semantic operations
-ownership operations
-lifetime operations
-reference operations
-storage operations
-checks
-failure operations
-aggregate operations
-allocation operations
-string operations
-hardware operations
-concurrency operations
-ABI lowering
-Semantic IR import
-standard MLIR lowering
-LLVM lowering
-```
-
-A future version of this rulebook must define those surfaces before they are
-implemented.
 
 ---
 
-# 2. Dialect identity
+# 2. Wide builtin invariant
 
-MLIR dialect namespace:
-
-```text
-sec
-```
-
-C++ namespace:
+The following are active Sec builtins:
 
 ```text
-::sec
+int128
+int256
+uint128
+uint256
+decimal128
 ```
 
-The Sec dialect is not runtime-extensible.
+Schema version 4 integer operations support the active 128-bit and 256-bit
+integer families exactly like smaller builtin integers.
 
-Sec operations and types must be statically registered.
+No dialect documentation may classify them as future or planned types.
 
 ---
 
-# 3. Dialect schema version
+# 3. Accepted builtin integer semantic types
 
-Compiler-generated high-level Sec MLIR modules use the module attribute:
+Schema-v4 integer operations accept:
+
+```text
+!sec.int
+!sec.uint
+
+si8
+si16
+si32
+si64
+si128
+si256
+
+ui8
+ui16
+ui32
+ui64
+ui128
+ui256
+```
+
+Excluded:
+
+```text
+i1
+!sec.char
+!sec.rune
+!sec.float
+!sec.decimal
+!sec.decimal128
+f32
+f64
+!sec.named
+!sec.distinct
+```
+
+Named/distinct integer operator representation is not defined by schema v4.
+
+---
+
+# 4. Signed integer category
+
+Signed integer semantic types:
+
+```text
+!sec.int
+si8
+si16
+si32
+si64
+si128
+si256
+```
+
+---
+
+# 5. Unsigned integer category
+
+Unsigned integer semantic types:
+
+```text
+!sec.uint
+ui8
+ui16
+ui32
+ui64
+ui128
+ui256
+```
+
+`byte` appears as `ui8` at this layer.
+
+---
+
+# 6. Checked operation contract
+
+A checked integer semantic operation produces:
+
+```text
+result
+failed
+```
+
+where:
+
+```text
+failed: i1
+```
+
+The high-level operation is total.
+
+The operation must define its `(result, failed)` pair for every input bit
+pattern accepted by its operand types.
+
+It must not model Sec failure as:
+
+```text
+undefined behavior
+poison
+implicit target trap
+masked shift count
+silent checked-arithmetic wrap
+```
+
+When `failed=true`, the result is semantically unavailable to source execution.
+
+Compiler-generated MLIR must immediately guard the flag before evaluating later
+source operations.
+
+---
+
+# 7. `sec.int.unary_plus`
+
+Operands:
+
+```text
+value: T
+```
+
+Results:
+
+```text
+result: T
+```
+
+T must be a schema-v4 integer semantic type.
+
+No failure.
+
+No memory effect.
+
+---
+
+# 8. `sec.int.neg_checked`
+
+Operand:
+
+```text
+value: signed integer T
+```
+
+Results:
+
+```text
+result: T
+failed: i1
+```
+
+`failed=true` exactly for the minimum representable signed value.
+
+No unsigned operand is valid.
+
+---
+
+# 9. `sec.int.binary_checked`
+
+Required enum attribute:
+
+```text
+kind
+```
+
+Allowed cases:
+
+```text
+add
+subtract
+multiply
+divide
+remainder
+```
+
+Operands:
+
+```text
+left: T
+right: T
+```
+
+Results:
+
+```text
+result: T
+failed: i1
+```
+
+Verifier:
+
+```text
+T is schema-v4 integer semantic type
+left/right types equal
+result type equals T
+failed result type is i1
+```
+
+Semantics:
+
+```text
+add:
+    failed when mathematical sum not representable
+
+subtract:
+    failed when mathematical difference not representable
+
+multiply:
+    failed when mathematical product not representable
+
+divide:
+    truncation toward zero
+    unsigned: failed on zero divisor
+    signed: failed on zero divisor or minimum / -1
+
+remainder:
+    uses truncation-toward-zero quotient
+    unsigned: failed on zero divisor
+    signed: failed on zero divisor or minimum / -1
+```
+
+---
+
+# 10. `sec.int.bit_not`
+
+Operand/result:
+
+```text
+T -> T
+```
+
+T is schema-v4 integer semantic type.
+
+Flips every value bit.
+
+No failure.
+
+---
+
+# 11. `sec.int.bitwise`
+
+Required enum:
+
+```text
+and
+or
+xor
+```
+
+Operands:
+
+```text
+T, T
+```
+
+Result:
+
+```text
+T
+```
+
+No failure.
+
+---
+
+# 12. `sec.int.shift_checked`
+
+Required enum:
+
+```text
+left_unsigned
+left_signed
+right_unsigned
+right_signed
+```
+
+Operands:
+
+```text
+value: T
+count: C
+```
+
+Results:
+
+```text
+result: T
+failed: i1
+```
+
+T and C must be schema-v4 integer semantic types.
+
+Count type may differ from value type.
+
+Verifier:
+
+```text
+left_unsigned/right_unsigned require unsigned T
+left_signed/right_signed require signed T
+result type equals T
+failed result is i1
+```
+
+Semantics:
+
+```text
+all modes:
+    failed on count < 0 when count type is signed
+    failed on count >= value bit width
+
+left_unsigned:
+    valid count performs fixed-width left shift
+    high bits are discarded
+    no arithmetic overflow failure
+
+left_signed:
+    valid count still fails if mathematical shifted result is not representable
+
+right_unsigned:
+    logical right shift
+
+right_signed:
+    arithmetic right shift
+```
+
+No target-specific count masking is permitted.
+
+---
+
+# 13. `sec.int.cmp`
+
+Required enum:
+
+```text
+eq
+ne
+lt
+le
+gt
+ge
+```
+
+Operands:
+
+```text
+left: T
+right: T
+```
+
+Result:
+
+```text
+i1
+```
+
+Verifier:
+
+```text
+T is schema-v4 integer semantic type
+operand types equal
+result is i1
+```
+
+Semantics:
+
+```text
+eq/ne:
+    integer equality
+
+lt/le/gt/ge:
+    signed ordering for signed T
+    unsigned ordering for unsigned T
+```
+
+---
+
+# 14. Integer operation effects
+
+All `sec.int.*` operations defined in schema v4:
+
+```text
+have no memory effects
+do not themselves perform the arithmetic failure action
+```
+
+Checked operations calculate a semantic failure flag.
+
+They may be treated as total computational operations.
+
+The dialect implementation must not claim target poison/UB semantics.
+
+---
+
+# 15. Arithmetic failure categories
+
+Define enum:
+
+```text
+overflow
+division
+remainder
+shift
+```
+
+---
+
+# 16. `sec.fail.arithmetic`
+
+No operands.
+
+No results.
+
+No successors.
+
+Terminator.
+
+Required attributes:
+
+```text
+category: Sec arithmetic failure category
+sec.operator: StringAttr
+```
+
+Meaning:
+
+```text
+ordinary deterministic non-returning arithmetic failure
+```
+
+It does not define the lower implementation mechanism.
+
+It must not be:
+
+```text
+speculatable
+canonicalized away
+treated as a pure no-op
+```
+
+---
+
+# 17. Canonical checked guard
+
+Compiler-generated checked integer operation:
 
 ```mlir
-sec.dialect_version = 1 : i32
+%result, %failed = "sec.int.binary_checked"(...)
+    {kind = ...} : (...) -> (T, i1)
+
+cf.cond_br %failed, ^failure, ^success
 ```
 
-The version identifies the Sec MLIR schema, not the Sec source-language version.
+Canonical meaning:
 
-Schema version 1 does not define migration between versions.
+```text
+true -> arithmetic failure
+false -> success continuation
+```
 
-Development tools may parse hand-written test modules without the marker.
-
-A production Semantic IR importer, when implemented, must emit the marker.
-
----
-
-# 4. Named type
-
-Canonical textual form:
+Dedicated failure block:
 
 ```mlir
-!sec.named<"type-id", base-type>
-```
-
-Example:
-
-```mlir
-!sec.named<"main::Speed", i64>
-```
-
-Parameters:
-
-```text
-identity: StringAttr
-base: Type
-```
-
-The identity is an opaque compiler identity.
-
-The displayed identity is not interpreted by MLIR lowering.
-
-The base type records the already-selected lower representation type available
-at this MLIR level.
-
-`!sec.named` preserves Sec named-type identity.
-
-Two named types are identical only when both their identity and base type are
-identical.
-
-A named type must not be treated as implicitly interchangeable with its base
-type.
-
-The existence of the base parameter does not authorize an implicit cast.
-
-Verifier requirements:
-
-```text
-identity must not be empty
-base must be a valid MLIR type
-base must not be NoneType
-```
-
-The type does not itself encode:
-
-```text
-contracts
-units
-ownership
-copy classification
-destruction
-ABI
-layout offsets
-```
-
-Those are represented or resolved by their applicable compiler layers.
-
----
-
-# 5. Distinct type
-
-Canonical textual form:
-
-```mlir
-!sec.distinct<"type-id", base-type>
-```
-
-Example:
-
-```mlir
-!sec.distinct<"main::CustomerID", i64>
-```
-
-Parameters:
-
-```text
-identity: StringAttr
-base: Type
-```
-
-The identity is an opaque compiler identity.
-
-`!sec.distinct` preserves complete Sec distinct-type identity.
-
-Two distinct types are identical only when both their identity and base type are
-identical.
-
-A distinct type must not be treated as implicitly interchangeable with its base
-type.
-
-Verifier requirements:
-
-```text
-identity must not be empty
-base must be a valid MLIR type
-base must not be NoneType
+^failure:
+    "sec.fail.arithmetic"() {
+        category = ...,
+        sec.operator = "..."
+    } : () -> ()
 ```
 
 ---
 
-# 6. Common metadata keys
+# 18. Failure-category mapping
 
-Schema version 1 reserves these attribute names:
-
-```text
-sec.symbol_id
-sec.type_id
-sec.layout_ref
-sec.synthesized
-sec.dialect_version
-```
-
-Their values use standard MLIR attributes:
+Canonical mapping:
 
 ```text
-sec.symbol_id       StringAttr
-sec.type_id         StringAttr
-sec.layout_ref      StringAttr
-sec.synthesized     BoolAttr
-sec.dialect_version IntegerAttr(i32)
+neg_checked
+    overflow
+
+binary add
+    overflow
+
+binary subtract
+    overflow
+
+binary multiply
+    overflow
+
+binary divide
+    division
+
+binary remainder
+    remainder
+
+any shift_checked
+    shift
 ```
-
-The strings are opaque values supplied by earlier compiler layers.
-
-MLIR code must not infer Sec semantics by parsing identity strings.
-
-This version does not standardize a cross-compilation identity serialization.
 
 ---
 
-# 7. Source provenance
+# 19. Source operator spelling metadata
 
-Normal MLIR `Location` is the canonical representation of source file, line and
-column information.
+`sec.operator` on `sec.fail.arithmetic` uses the resolved source operator
+spelling where available.
 
-Example:
-
-```mlir
-loc("example.sec":12:8)
-```
-
-The Sec dialect must not duplicate ordinary source coordinates into a
-Sec-specific attribute.
-
-Compiler-synthesized IR may carry:
+Examples:
 
 ```text
-sec.synthesized = true
+negation: "-"
+add: "+"
+subtract: "-"
+multiply: "*"
+divide: "/"
+remainder: "%"
+left shift: "<<"
+right shift: ">>"
 ```
 
-when a synthesized marker is useful.
+This is provenance/diagnostic metadata.
 
-Later dialect schema versions may define richer origin metadata only when the
-information cannot be represented adequately by normal MLIR locations and the
-higher-authority Sec rules require it.
+It does not determine operation semantics.
 
 ---
 
-# 8. Verification boundary
+# 20. Checked result availability
 
-Sec MLIR verification validates representation invariants.
+The result of a checked operation is semantically usable only on the
+success continuation.
 
-It does not repeat source semantic analysis.
+The dialect operation verifier checks local type structure.
 
-Schema version 1 verification includes:
-
-```text
-registered dialect/type recognition
-non-empty named type identity
-non-empty distinct type identity
-valid base type
-valid textual representation
-```
-
-It does not perform:
-
-```text
-name lookup
-overload resolution
-ownership analysis
-borrow analysis
-lifetime analysis
-contract validation
-unit algebra
-layout calculation
-ABI selection
-failure-policy selection
-```
-
-Invalid Semantic IR must be rejected before Sec MLIR construction.
+Cross-block result availability and guard shape are validated by the dedicated
+checked-integer guard verifier pass.
 
 ---
 
-# 9. Parser and printer
+# 21. Scalar resolution compatibility
 
-The canonical parser/printer forms for schema version 1 are:
-
-```mlir
-!sec.named<"identity", base-type>
-!sec.distinct<"identity", base-type>
-```
-
-Round-tripping through the canonical MLIR parser and printer must preserve:
+Schema-v4 operations may initially contain:
 
 ```text
-type kind
-identity
-base type
-source locations
-reserved Sec metadata attributes
+!sec.int
+!sec.uint
 ```
 
-The printer need not preserve insignificant whitespace.
+The scalar-layout pass may convert those operand/result types to:
+
+```text
+si32/si64
+ui32/ui64
+```
+
+without changing operation kind.
+
+The checked failure result remains `i1`.
 
 ---
 
-# 10. Evolution rule
+# 22. No signless normalization
 
-New Sec types, attributes, operations, interfaces or traits must not be added
-only because an implementation needs a convenient placeholder.
+Schema-v4 semantic integer operations retain signed/unsigned type identity.
 
-Before a new Sec dialect construct is implemented:
+They are not standard Arith operations.
 
-1. the corresponding Sec semantics must already be defined by higher-authority
-   rulebooks;
-2. this rulebook must define the representation contract;
-3. the implementation must conform to that contract;
-4. tests must verify the contract.
+No schema-v4 rule converts:
 
-The dialect may reuse standard MLIR dialect constructs whenever they preserve all
-remaining Sec obligations exactly.
+```text
+siN
+uiN
+```
+
+to signless `iN`.
 
 ---
 
-# 11. Package 1 completion
+# 23. No named integer operators yet
 
-Dialect schema version 1 is considered implemented when:
+Schema version 4 does not define integer operators whose result/operands are:
 
 ```text
-the dialect registers
-the Package 1 types parse
-the Package 1 types print
-the Package 1 types verify
-invalid Package 1 forms are rejected
-normal MLIR locations are preserved
-reserved metadata survives round-trip
-a Sec-aware MLIR driver can load the dialect
+!sec.named
+!sec.distinct
 ```
 
-No Semantic IR import or lowering is required for schema version 1.
+The source language may support such operators through higher-authority rules.
+
+Their Sec MLIR representation requires a later package preserving nominal/unit
+semantics.
+
+Do not unwrap nominal identity to reuse builtin-integer schema-v4 operations.
+
+---
+
+# 24. No float/decimal operator representation in schema v4
+
+Existing scalar types remain valid:
+
+```text
+!sec.float
+!sec.decimal
+!sec.decimal128
+```
+
+but schema v4 does not add their arithmetic operator operations.
+
+---
+
+# 25. Verification boundary
+
+Operation verifiers enforce:
+
+```text
+allowed integer type category
+signedness requirements
+operand type equality
+result type equality
+failure i1 type
+enum attribute validity
+failure terminator attribute validity
+```
+
+They do not perform:
+
+```text
+source operator resolution
+constant overflow diagnostics
+range proof
+try/error propagation
+runtime implementation selection
+```
+
+---
+
+# 26. Schema-v4 completion
+
+Schema v4 is complete when:
+
+```text
+all integer operation kinds parse/print/verify
+128/256-bit integer operands verify
+invalid signedness combinations reject
+checked results use T + i1
+arithmetic failure terminator verifies
+schema-v1/v2/v3 regression tests remain green
+compiler-generated checked operator CFG passes the dedicated guard verifier
+```

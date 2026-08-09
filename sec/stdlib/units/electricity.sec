@@ -198,7 +198,7 @@ impl S {
     }
 
     fn FromResistance(Ohm: float<ohm>) float<S> {
-        return float<S>(1.0f / float(Ohm))
+        return float<S>(1.0g / float(Ohm))
     }
 
     fn FromResistance(Ohm: int<ohm>) int<S> {
@@ -320,11 +320,11 @@ impl rad_s {
 
     /** Calculate angular frequency from Hertz (omega = 2 * pi * f) */
     fn rad_s(Hertz: decimal<Hz>) decimal<rad_s> {
-        return decimal<rad_s>(3.141592653589793d * 2d * decimal(Hertz))
+        return decimal<rad_s>(3.141592653589793m * 2m * decimal(Hertz))
     }
 
     fn rad_s(Hertz: float<Hz>) float<rad_s> {
-        return float<rad_s>(3.14159265f * 2f * float(Hertz))
+        return float<rad_s>(3.14159265g * 2g * float(Hertz))
     }
 }
 
@@ -345,11 +345,11 @@ impl dB {
     // but here is a direct constructor helper from raw numeric log values.
     /*
     fn dB(LogRatio: decimal) decimal<dB> {
-        return decimal<dB>(20d * LogRatio)
+        return decimal<dB>(20m * LogRatio)
     }
 
     fn dB(LogRatio: float) float<dB> {
-        return float<dB>(20f * LogRatio)
+        return float<dB>(20g * LogRatio)
     }
     */
 }
@@ -408,10 +408,10 @@ impl Ah {
 
     /** Convert Coulomb to Ampere-hours (1 Ah = 3600 C) */
     fn Ah(Coulomb: decimal<C>) decimal<Ah> {
-        return decimal<Ah>(decimal(Coulomb) / 3600d)
+        return decimal<Ah>(decimal(Coulomb) / 3600m)
     }
 
     fn Ah(Coulomb: float<C>) float<Ah> {
-        return float<Ah>(float(Coulomb) / 3600f)
+        return float<Ah>(float(Coulomb) / 3600g)
     }
 }

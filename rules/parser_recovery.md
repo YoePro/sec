@@ -2712,7 +2712,6 @@ Examples:
 free
 panic
 assert
-require
 ```
 
 Reserved syntax is not an unknown-token lexer failure.
@@ -2720,6 +2719,9 @@ Reserved syntax is not an unknown-token lexer failure.
 Preserve a dedicated invalid or reserved node where it helps tooling.
 
 `?` remains without Sec 0.1 meaning.
+
+`require` is an ordinary identifier spelling and is not handled by reserved
+syntax recovery outside any future explicitly contextual grammar role.
 
 Recovery must not assume ternary or Rust-style propagation semantics.
 
@@ -3492,7 +3494,7 @@ lsp.md
 formatter.md
 semantic_ir.txt
 compiler_pipeline.txt
-types.txt
+types.md
 functions.txt
 struct.txt
 enums.txt

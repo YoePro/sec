@@ -36,9 +36,12 @@ type Analyzer struct {
 	bindingIDs                  map[sourceTokenKey]BindingID
 	bindingFacts                map[sourceTokenKey]ResolvedBinding
 	resolvedCalls               map[*ast.CallExpression]ResolvedCall
+	resolvedOperators           map[ast.Expression]ResolvedOperator
 	nextBindingID               BindingID
 	definitionTokens            map[sourceTokenKey][]lexer.Token
 	callGraph                   *CallGraph
+	escapeAnalysis              *EscapeAnalysis
+	parameterUsageAnalysis      *ParameterUsageAnalysis
 	currentCallable             CallableID
 	callGraphPathReachable      bool
 	spawnCallExpression         *ast.CallExpression
@@ -175,9 +178,12 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.bindingIDs = map[sourceTokenKey]BindingID{}
 	a.bindingFacts = map[sourceTokenKey]ResolvedBinding{}
 	a.resolvedCalls = map[*ast.CallExpression]ResolvedCall{}
+	a.resolvedOperators = map[ast.Expression]ResolvedOperator{}
 	a.nextBindingID = 1
 	a.definitionTokens = map[sourceTokenKey][]lexer.Token{}
 	a.callGraph = newCallGraph()
+	a.escapeAnalysis = newEscapeAnalysis()
+	a.parameterUsageAnalysis = newParameterUsageAnalysis()
 	a.currentCallable = ""
 	a.callGraphPathReachable = true
 	a.spawnCallExpression = nil
@@ -256,6 +262,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 
 	a.analyzeFunctionBodies(program)
 	a.analyzeImplBodies(program)
+	a.parameterUsageAnalysis = buildParameterUsageAnalysis(program, a)
 
 	return a.errors
 }
@@ -290,6 +297,18 @@ func (a *Analyzer) DefinitionsAt(file string, line int, column int) []lexer.Toke
 // recent analysis.
 func (a *Analyzer) CallGraph() *CallGraph {
 	return a.callGraph.clone()
+}
+
+// EscapeAnalysis returns an immutable snapshot of escape facts and callable
+// summaries produced by the most recent analysis.
+func (a *Analyzer) EscapeAnalysis() *EscapeAnalysis {
+	return a.escapeAnalysis.clone()
+}
+
+// ParameterUsageAnalysis returns an immutable snapshot of the demands derived
+// from the most recent completed semantic analysis.
+func (a *Analyzer) ParameterUsageAnalysis() *ParameterUsageAnalysis {
+	return a.parameterUsageAnalysis.clone()
 }
 
 func (a *Analyzer) recordArenaEffect(kind ArenaEffectKind, arena string, source lexer.Token, mayAllocate bool) {
@@ -4889,7 +4908,12 @@ func (a *Analyzer) seedParameterReferenceOrigin(function Function, param Functio
 }
 
 func (a *Analyzer) recordFunctionReturnOrigin(returnType Type, expr ast.Expression) {
-	if expr == nil || !typeContainsReference(returnType, map[string]bool{}) {
+	if expr == nil {
+		return
+	}
+	if !typeContainsReference(returnType, map[string]bool{}) {
+		raw, symbolic := a.ownedReturnEscapeOrigins(expr)
+		a.recordReturnEscapeFact(returnType, expr, raw, symbolic)
 		return
 	}
 	candidate := localReferenceOrigin{}
@@ -4910,7 +4934,9 @@ func (a *Analyzer) recordFunctionReturnOrigin(returnType Type, expr ast.Expressi
 			recomputeContainedOriginSummary(&candidate)
 		}
 	}
+	rawCandidate := cloneLocalReferenceOrigin(candidate)
 	candidate = a.symbolizeFunctionReturnOrigin(candidate)
+	a.recordReturnEscapeFact(returnType, expr, rawCandidate, candidate)
 	if !a.hasCurrentFunctionSummary {
 		a.currentFunctionSummary = candidate
 		a.hasCurrentFunctionSummary = true
@@ -5137,6 +5163,7 @@ func (a *Analyzer) checkAssignmentEscapesLocalReference(target ast.Expression, v
 	if originName == "" {
 		originName = "local value"
 	}
+	a.recordOuterPlaceEscapeFact(value, originName, originToken)
 	a.addErrorAtTokenWithPrevious(expressionToken(value), originToken, "cannot store reference to local variable %s into %s", originName, targetRoot)
 	return true
 }
@@ -5844,6 +5871,7 @@ func (a *Analyzer) analyzeResultReturnStatement(functionName string, returnType 
 			a.addErrorAtToken(expressionToken(expr.Value), "function %s must return Ok(%s), got Ok(%s)", functionName, typeDisplayName(expected), typeDisplayName(valueType))
 			return
 		}
+		a.recordFunctionReturnOrigin(expected, expr.Value)
 		if a.checkReturningReferenceToLocal(functionName, expected, valueType, expr.Value) {
 			return
 		}
@@ -5866,6 +5894,7 @@ func (a *Analyzer) analyzeResultReturnStatement(functionName string, returnType 
 			a.addErrorAtToken(expressionToken(expr.Value), "function %s must return Err(%s), got Err(%s)", functionName, typeDisplayName(expected), typeDisplayName(valueType))
 			return
 		}
+		a.recordFunctionReturnOrigin(expected, expr.Value)
 		a.markMoveSource(expr.Value)
 	default:
 		a.addErrorAtToken(expressionToken(stmt.Value), "function %s returning %s must return Ok(...) or Err(...)", functionName, typeDisplayName(returnType))
@@ -9985,6 +10014,7 @@ func (a *Analyzer) inferExpression(expr ast.Expression) (Type, expressionValue) 
 	typ, value := a.inferExpressionUnrecorded(expr)
 	if expr != nil {
 		a.expressionTypes[expr] = typ
+		a.recordResolvedOperator(expr, typ)
 	}
 	return typ, value
 }
@@ -10005,11 +10035,11 @@ func (a *Analyzer) inferExpressionUnrecorded(expr ast.Expression) (Type, express
 		switch expr.Suffix() {
 		case "u":
 			return Type{Name: "uint", Kind: UintType}, expressionValue{Display: expr.String()}
-		case "f":
+		case "g":
 			return Type{Name: "float", Kind: FloatType}, expressionValue{Display: expr.String()}
-		case "d":
+		case "m":
 			return Type{Name: "decimal", Kind: DecimalType}, expressionValue{Display: expr.String()}
-		case "c":
+		case "t":
 			if !a.validUnicodeScalarLiteral(expr) {
 				return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 			}
@@ -10023,9 +10053,9 @@ func (a *Analyzer) inferExpressionUnrecorded(expr ast.Expression) (Type, express
 		return Type{Name: "int", Kind: IntType}, expressionValue{Display: expr.String()}
 	case *ast.FloatLiteral:
 		switch expr.Suffix() {
-		case "f":
+		case "g":
 			return Type{Name: "float", Kind: FloatType}, expressionValue{Display: expr.String()}
-		case "d":
+		case "m":
 			return Type{Name: "decimal", Kind: DecimalType}, expressionValue{Display: expr.String()}
 		}
 		return Type{Name: "decimal", Kind: DecimalType}, expressionValue{Display: expr.String()}
@@ -10615,6 +10645,7 @@ func (a *Analyzer) defineLambdaCaptures(expr *ast.LambdaExpression, outerSymbols
 		a.symbols[name] = symbol
 		a.assigned[name] = true
 		delete(a.constInts, name)
+		a.recordCaptureEscapeFact(name, capture.Name.Token, symbol)
 	}
 }
 
@@ -14333,26 +14364,97 @@ func (a *Analyzer) inferPlainArithmeticExpression(expr *ast.InfixExpression, lef
 	}
 
 	if sameConcreteType(leftType, rightType) {
+		if !a.validateCompileTimeIntegerArithmetic(expr, leftType) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
 		return leftType, expressionValue{Display: expr.String()}
 	}
 
 	if compatiblePlainNumericAlias(leftType, rightType) {
 		if leftType.Named {
+			if !a.validateCompileTimeIntegerArithmetic(expr, rightType) {
+				return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+			}
 			return rightType, expressionValue{Display: expr.String()}
+		}
+		if !a.validateCompileTimeIntegerArithmetic(expr, leftType) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
 		return leftType, expressionValue{Display: expr.String()}
 	}
 
 	if isNumericLiteral(expr.Right) && canInitialize(leftType, rightType, expr.Right) {
+		if !a.validateCompileTimeIntegerArithmetic(expr, leftType) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
 		return leftType, expressionValue{Display: expr.String()}
 	}
 
 	if isNumericLiteral(expr.Left) && canInitialize(rightType, leftType, expr.Left) {
+		if !a.validateCompileTimeIntegerArithmetic(expr, rightType) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
 		return rightType, expressionValue{Display: expr.String()}
 	}
 
 	a.addErrorAtToken(expr.Token, "cannot apply operator %s to %s and %s", expr.Operator, typeDisplayName(leftType), typeDisplayName(rightType))
 	return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+}
+
+func (a *Analyzer) validateCompileTimeIntegerArithmetic(expr *ast.InfixExpression, resultType Type) bool {
+	if expr == nil || !isBuiltinIntegerOperatorType(resultType) {
+		return true
+	}
+	left, leftKnown := a.integerConstantValue(expr.Left)
+	right, rightKnown := a.integerConstantValue(expr.Right)
+	if !leftKnown || !rightKnown {
+		return true
+	}
+	representation, _, ok := a.integerRepresentation(resultType)
+	if !ok || representation.MinInteger == nil || representation.MaxInteger == nil {
+		return true
+	}
+	if (expr.Operator == "/" || expr.Operator == "%") && right.Sign() == 0 {
+		id := diagnostics.OperatorDivisionByZero
+		operation := "division"
+		help := "Use a non-zero divisor or guard the operation before evaluating it."
+		if expr.Operator == "%" {
+			id = diagnostics.OperatorRemainderByZero
+			operation = "remainder"
+			help = "Use a non-zero remainder divisor or guard the operation before evaluating it."
+		}
+		a.addErrorAtTokenWithMetadata(expr.Token, id, help, "constant integer %s by zero", operation)
+		return false
+	}
+	value := new(big.Int)
+	switch expr.Operator {
+	case "+":
+		value.Add(left, right)
+	case "-":
+		value.Sub(left, right)
+	case "*":
+		value.Mul(left, right)
+	case "/":
+		value.Quo(left, right)
+	case "%":
+		value.Rem(left, right)
+	default:
+		return true
+	}
+	divisionOverflow := (expr.Operator == "/" || expr.Operator == "%") &&
+		representation.Kind == IntType && left.Cmp(representation.MinInteger) == 0 && right.Cmp(big.NewInt(-1)) == 0
+	if !divisionOverflow && value.Cmp(representation.MinInteger) >= 0 && value.Cmp(representation.MaxInteger) <= 0 {
+		return true
+	}
+	a.addErrorAtTokenWithMetadata(
+		expr.Token,
+		diagnostics.OperatorIntegerOverflow,
+		fmt.Sprintf("Use a wider integer type or restructure the constant expression to remain within %s..%s.", representation.MinInteger, representation.MaxInteger),
+		"constant integer operation %s overflows %s",
+		expr.String(),
+		typeDisplayName(resultType),
+	)
+	return false
 }
 
 func isTextConcatKind(typ Type) bool {
@@ -14891,6 +14993,22 @@ func (a *Analyzer) inferPrefixExpression(expr *ast.PrefixExpression) (Type, expr
 		}
 	case "-":
 		if rightType.Kind == IntType || rightType.Kind == FloatType || rightType.Kind == DecimalType {
+			if isBuiltinIntegerOperatorType(rightType) {
+				if value, known := a.integerConstantValue(expr.Right); known {
+					representation, _, ok := a.integerRepresentation(rightType)
+					if ok && representation.MinInteger != nil && value.Cmp(representation.MinInteger) == 0 {
+						a.addErrorAtTokenWithMetadata(
+							expr.Token,
+							diagnostics.OperatorIntegerOverflow,
+							"Use a wider signed integer type; the minimum value has no positive counterpart in the same type.",
+							"constant negation %s overflows %s",
+							expr.String(),
+							typeDisplayName(rightType),
+						)
+						return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+					}
+				}
+			}
 			return rightType, expressionValue{
 				Display:  "-" + rightValue.Display,
 				Negative: true,
@@ -15178,18 +15296,18 @@ func preferredUnitOnlyNumeric(expr ast.Expression, valueType Type) string {
 			return "int"
 		case "u":
 			return "uint"
-		case "f":
+		case "g":
 			return "float"
-		case "d":
+		case "m":
 			return "decimal"
 		default:
 			return ""
 		}
 	case *ast.FloatLiteral:
 		switch expr.Suffix() {
-		case "f":
+		case "g":
 			return "float"
-		case "d":
+		case "m":
 			return "decimal"
 		default:
 			return ""

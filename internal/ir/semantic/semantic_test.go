@@ -38,6 +38,83 @@ func TestTypeTableInternsStructuralIdentity(t *testing.T) {
 	}
 }
 
+func TestBuiltinTypeCoversWideScalars(t *testing.T) {
+	for _, test := range []struct {
+		typ    sema.Type
+		kind   TypeKind
+		width  uint16
+		signed bool
+	}{
+		{sema.Type{Name: "int128", Kind: sema.IntType}, TypeInt, 128, true},
+		{sema.Type{Name: "int256", Kind: sema.IntType}, TypeInt, 256, true},
+		{sema.Type{Name: "uint128", Kind: sema.UintType}, TypeUint, 128, false},
+		{sema.Type{Name: "uint256", Kind: sema.UintType}, TypeUint, 256, false},
+		{sema.Type{Name: "decimal128", Kind: sema.DecimalType}, TypeDecimal128, 128, true},
+	} {
+		kind, signed, width, targetSized, ok := builtinType(test.typ)
+		if !ok || kind != test.kind || signed != test.signed || width != test.width || targetSized {
+			t.Errorf("builtinType(%s) = (%s, %t, %d, %t, %t)", test.typ.Name, kind, signed, width, targetSized, ok)
+		}
+	}
+}
+
+func TestPackage3BuildsWideScalarConstantsStorageAndCalls(t *testing.T) {
+	module, err := analyzedModule(t, `
+module main
+fn Max() int128 { return 170141183460469231731687303715884105727 }
+fn Hold(value: int128) int128 {
+    let mut current: int128 := value
+    return current
+}
+fn Identity(value: uint256) uint256 { return value }
+fn Call(value: uint256) uint256 { return Identity(value) }
+fn Exact() decimal128 { return 1.25 }
+`, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := map[string]bool{}
+	for _, typ := range module.Types.All() {
+		if typ.Name == "int128" && typ.Kind == TypeInt && typ.BitWidth == 128 {
+			found["int128"] = true
+		}
+		if typ.Name == "uint256" && typ.Kind == TypeUint && typ.BitWidth == 256 {
+			found["uint256"] = true
+		}
+		if typ.Name == "decimal128" && typ.Kind == TypeDecimal128 {
+			found["decimal128"] = true
+		}
+	}
+	for _, name := range []string{"int128", "uint256", "decimal128"} {
+		if !found[name] {
+			t.Errorf("missing Semantic IR type %s", name)
+		}
+	}
+	var hasWideConstant, hasStorage, hasWideCall, hasDecimal128 bool
+	for _, function := range module.Functions {
+		for _, block := range function.Blocks {
+			for _, operation := range block.Operations {
+				switch operation.Kind {
+				case OpConstInt:
+					hasWideConstant = operation.Integer != nil && operation.Integer.BitLen() == 127
+				case OpStorageDeclare:
+					hasStorage = true
+				case OpDirectCall:
+					hasWideCall = true
+				case OpConstDecimal:
+					if len(operation.Results) == 1 {
+						typ, _ := module.Types.Lookup(operation.Results[0].Type)
+						hasDecimal128 = typ.Kind == TypeDecimal128
+					}
+				}
+			}
+		}
+	}
+	if !hasWideConstant || !hasStorage || !hasWideCall || !hasDecimal128 {
+		t.Fatalf("coverage constant=%t storage=%t call=%t decimal128=%t", hasWideConstant, hasStorage, hasWideCall, hasDecimal128)
+	}
+}
+
 func TestExactConstantsAndDeterministicFormat(t *testing.T) {
 	decimal, err := parseDecimal("0.10")
 	if err != nil {
@@ -92,6 +169,236 @@ fn Choose(flag: bool) int {
 		if !strings.Contains(text, want) {
 			t.Errorf("missing %q in:\n%s", want, text)
 		}
+	}
+}
+
+func TestPackage7BuildsCheckedIntegerGuards(t *testing.T) {
+	module, err := analyzedModule(t, `module main
+fn Calculate(a: int128, b: int128, c: int128) int128 { return a + b * c }
+fn Shift(a: uint256, count: int) uint256 { return a >> count }
+fn Compare(a: int, b: int) bool { return a >= b }
+`, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Verify(module); err != nil {
+		t.Fatal(err)
+	}
+	counts := map[OpKind]int{}
+	for _, function := range module.Functions {
+		for _, block := range function.Blocks {
+			for _, operation := range block.Operations {
+				counts[operation.Kind]++
+			}
+		}
+	}
+	if counts[OpIntBinaryChecked] != 2 || counts[OpIntShiftChecked] != 1 || counts[OpIntCompare] != 1 || counts[OpArithmeticFailure] != 3 {
+		t.Fatalf("unexpected package-7 operations: %#v", counts)
+	}
+	calculate := module.Functions[0]
+	if len(calculate.Blocks) != 5 || calculate.Blocks[0].Operations[0].IntegerBinary != IntegerCheckedMultiply || calculate.Blocks[2].Operations[0].IntegerBinary != IntegerCheckedAdd {
+		t.Fatalf("nested evaluation/guard order is not canonical: %#v", calculate.Blocks)
+	}
+}
+
+func TestPackage7ReportsUnsupportedOperatorBoundaries(t *testing.T) {
+	tests := []struct {
+		name    string
+		source  string
+		feature string
+	}{
+		{
+			name: "try arithmetic",
+			source: `module main
+enum Failure { failed, }
+fn Use() int {
+    return try Calculate() {
+        Ok(value) => value
+        Err(error) => 0
+    } + 1
+}
+fn Calculate() Result[int, Failure] { return Ok(1) }
+`,
+			feature: "try arithmetic",
+		},
+		{
+			name:    "float arithmetic",
+			source:  "module main\nfn Add(a: float32, b: float32) float32 { return a + b }\n",
+			feature: "unresolved or unsupported operator",
+		},
+		{
+			name:    "decimal arithmetic",
+			source:  "module main\nfn Add(a: decimal, b: decimal) decimal { return a + b }\n",
+			feature: "unresolved or unsupported operator",
+		},
+		{
+			name:    "named integer arithmetic",
+			source:  "module main\ntype Count int\nfn Add(a: Count, b: Count) Count { return a + b }\n",
+			feature: "unresolved or unsupported operator",
+		},
+		{
+			name:    "unit-bearing arithmetic",
+			source:  "module main\nunit ticks uint physical\nfn Add(a: ticks, b: ticks) ticks { return a + b }\n",
+			feature: "named type contracts or units",
+		},
+		{
+			name: "compound assignment",
+			source: `module main
+fn Add(value: int) int {
+    let mut result := value
+    result += 1
+    return result
+}
+`,
+			feature: "compound assignment",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := analyzedModule(t, test.source, 7)
+			var unsupported *UnsupportedFeatureError
+			if !errors.As(err, &unsupported) {
+				t.Fatalf("error = %v, want UnsupportedFeatureError", err)
+			}
+			if unsupported.Feature != test.feature {
+				t.Fatalf("feature = %q, want %q", unsupported.Feature, test.feature)
+			}
+		})
+	}
+}
+
+func TestPackage7BuildsEveryIntegerOperationAndFailureCategory(t *testing.T) {
+	module, err := analyzedModule(t, `module main
+fn Add(a: int32, b: int32) int32 { return a + b }
+fn Subtract(a: uint32, b: uint32) uint32 { return a - b }
+fn Multiply(a: int128, b: int128) int128 { return a * b }
+fn Divide(a: int64, b: int64) int64 { return a / b }
+fn Remainder(a: uint64, b: uint64) uint64 { return a % b }
+fn Plus(a: int8) int8 { return +a }
+fn Negate(a: int256) int256 { return -a }
+fn BitNot(a: uint16) uint16 { return ~a }
+fn BitAnd(a: uint16, b: uint16) uint16 { return a & b }
+fn BitOr(a: uint16, b: uint16) uint16 { return a | b }
+fn BitXor(a: uint16, b: uint16) uint16 { return a ^ b }
+fn LeftSigned(a: int256, count: uint8) int256 { return a << count }
+fn LeftUnsigned(a: uint128, count: int16) uint128 { return a << count }
+fn RightSigned(a: int64, count: uint8) int64 { return a >> count }
+fn RightUnsigned(a: uint64, count: int8) uint64 { return a >> count }
+fn Eq(a: int32, b: int32) bool { return a == b }
+fn Ne(a: int32, b: int32) bool { return a != b }
+fn Lt(a: uint32, b: uint32) bool { return a < b }
+fn Le(a: uint32, b: uint32) bool { return a <= b }
+fn Gt(a: int32, b: int32) bool { return a > b }
+fn Ge(a: int32, b: int32) bool { return a >= b }
+fn First() int64 { return 1 }
+fn Second() int64 { return 2 }
+fn Third() int64 { return 3 }
+fn Nested() int64 { return First() + Second() * Third() }
+`, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Verify(module); err != nil {
+		t.Fatal(err)
+	}
+
+	type expectation struct {
+		kind    OpKind
+		binary  IntegerCheckedBinaryKind
+		bitwise IntegerBitwiseKind
+		shift   IntegerShiftKind
+		compare IntegerComparePredicate
+		failure ArithmeticFailureCategory
+	}
+	wants := map[string]expectation{
+		"Add":           {kind: OpIntBinaryChecked, binary: IntegerCheckedAdd, failure: ArithmeticFailureOverflow},
+		"Subtract":      {kind: OpIntBinaryChecked, binary: IntegerCheckedSubtract, failure: ArithmeticFailureOverflow},
+		"Multiply":      {kind: OpIntBinaryChecked, binary: IntegerCheckedMultiply, failure: ArithmeticFailureOverflow},
+		"Divide":        {kind: OpIntBinaryChecked, binary: IntegerCheckedDivide, failure: ArithmeticFailureDivision},
+		"Remainder":     {kind: OpIntBinaryChecked, binary: IntegerCheckedRemainder, failure: ArithmeticFailureRemainder},
+		"Plus":          {kind: OpIntUnaryPlus},
+		"Negate":        {kind: OpIntNegChecked, failure: ArithmeticFailureOverflow},
+		"BitNot":        {kind: OpIntBitNot},
+		"BitAnd":        {kind: OpIntBitwise, bitwise: IntegerBitwiseAnd},
+		"BitOr":         {kind: OpIntBitwise, bitwise: IntegerBitwiseOr},
+		"BitXor":        {kind: OpIntBitwise, bitwise: IntegerBitwiseXor},
+		"LeftSigned":    {kind: OpIntShiftChecked, shift: IntegerShiftLeftSigned, failure: ArithmeticFailureShift},
+		"LeftUnsigned":  {kind: OpIntShiftChecked, shift: IntegerShiftLeftUnsigned, failure: ArithmeticFailureShift},
+		"RightSigned":   {kind: OpIntShiftChecked, shift: IntegerShiftRightSigned, failure: ArithmeticFailureShift},
+		"RightUnsigned": {kind: OpIntShiftChecked, shift: IntegerShiftRightUnsigned, failure: ArithmeticFailureShift},
+		"Eq":            {kind: OpIntCompare, compare: IntegerCompareEQ},
+		"Ne":            {kind: OpIntCompare, compare: IntegerCompareNE},
+		"Lt":            {kind: OpIntCompare, compare: IntegerCompareLT},
+		"Le":            {kind: OpIntCompare, compare: IntegerCompareLE},
+		"Gt":            {kind: OpIntCompare, compare: IntegerCompareGT},
+		"Ge":            {kind: OpIntCompare, compare: IntegerCompareGE},
+	}
+	for _, function := range module.Functions {
+		want, ok := wants[function.Name]
+		if !ok {
+			continue
+		}
+		var operation *Operation
+		var failure ArithmeticFailureCategory
+		for _, block := range function.Blocks {
+			for index := range block.Operations {
+				candidate := &block.Operations[index]
+				if candidate.Kind == want.kind {
+					operation = candidate
+				}
+				if candidate.Kind == OpArithmeticFailure {
+					failure = candidate.FailureCategory
+				}
+			}
+		}
+		if operation == nil || operation.IntegerBinary != want.binary || operation.IntegerBitwise != want.bitwise || operation.IntegerShift != want.shift || operation.IntegerCompare != want.compare || failure != want.failure {
+			t.Errorf("%s operation=%#v failure=%q, want %#v", function.Name, operation, failure, want)
+		}
+		delete(wants, function.Name)
+	}
+	if len(wants) != 0 {
+		t.Fatalf("missing operation functions: %#v", wants)
+	}
+
+	var nested []string
+	for _, function := range module.Functions {
+		if function.Name != "Nested" {
+			continue
+		}
+		for _, block := range function.Blocks {
+			for _, operation := range block.Operations {
+				switch operation.Kind {
+				case OpDirectCall:
+					nested = append(nested, string(operation.Callee))
+				case OpIntBinaryChecked:
+					nested = append(nested, string(operation.IntegerBinary))
+				}
+			}
+		}
+	}
+	if got := strings.Join(nested, ","); !strings.Contains(got, "First") || !strings.Contains(got, "Second") || !strings.Contains(got, "Third") || !strings.HasSuffix(got, "multiply,add") {
+		t.Fatalf("nested evaluation order = %q", got)
+	}
+}
+
+func TestVerifierRejectsUncheckedIntegerFailureFlag(t *testing.T) {
+	types := NewTypeTable()
+	intID := types.Intern(Type{Kind: TypeInt, Name: "int", Signed: true, TargetSize: true})
+	boolID := types.Intern(Type{Kind: TypeBool, Name: "bool", BitWidth: 1})
+	left := Value{ID: 0, Type: intID, Ownership: OwnershipImmediate}
+	right := Value{ID: 1, Type: intID, Ownership: OwnershipImmediate}
+	result := Value{ID: 2, Type: intID, Ownership: OwnershipImmediate}
+	failed := Value{ID: 3, Type: boolID, Ownership: OwnershipImmediate}
+	fn := &Function{ID: "main::Bad(int,int)", Name: "Bad", ReturnType: intID, Entry: 0,
+		Parameters: []Parameter{{Name: "left", Value: left}, {Name: "right", Value: right}},
+		Blocks: []*Block{{ID: 0, Operations: []Operation{
+			{Kind: OpIntBinaryChecked, Operands: []ValueID{0, 1}, Results: []Value{result, failed}, IntegerBinary: IntegerCheckedAdd, Operator: "+"},
+			{Kind: OpReturn, Operands: []ValueID{2}},
+		}}},
+	}
+	err := Verify(&Module{Version: Version, Identity: "main", Types: types, Functions: []*Function{fn}})
+	if err == nil || !strings.Contains(err.Error(), "must have exactly one use") {
+		t.Fatalf("error = %v", err)
 	}
 }
 

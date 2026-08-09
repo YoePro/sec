@@ -1868,7 +1868,7 @@ func (g *Generator) emitExpression(expr ast.Expression) (value, error) {
 	case *ast.Identifier:
 		return g.emitIdentifier(expr)
 	case *ast.IntegerLiteral:
-		if expr.Suffix() == "d" {
+		if expr.Suffix() == "m" {
 			return g.emitDecimalLiteral(expr, mlirDecimalType)
 		}
 		parsed, ok := ast.ParseIntegerLiteralLexeme(expr.Token.Lexeme)
@@ -1881,7 +1881,7 @@ func (g *Generator) emitExpression(expr ast.Expression) (value, error) {
 		}
 		return g.emitIntegerConstantUnsigned(parsed.String(), typ, expr.Suffix() == "u"), nil
 	case *ast.FloatLiteral:
-		if expr.Suffix() != "f" {
+		if expr.Suffix() != "g" {
 			return g.emitDecimalLiteral(expr, mlirDecimalType)
 		}
 		return g.emitFloatConstant(expr.Token.Lexeme, "f64")
@@ -2308,9 +2308,9 @@ func (g *Generator) emitPrefixExpression(expr *ast.PrefixExpression) (value, err
 func isDefaultDecimalLiteral(expr ast.Expression) bool {
 	switch literal := expr.(type) {
 	case *ast.IntegerLiteral:
-		return literal.Suffix() == "d"
+		return literal.Suffix() == "m"
 	case *ast.FloatLiteral:
-		return literal.Suffix() != "f"
+		return literal.Suffix() != "g"
 	default:
 		return false
 	}
@@ -2697,13 +2697,14 @@ func decimalLiteralParts(expr ast.Expression) (*big.Int, int32, bool) {
 	}
 
 	digits, suffix := ast.SplitNumericLiteralSuffix(lexeme)
-	if suffix == "f" || suffix == "i" || suffix == "u" || digits == "" {
+	if suffix == "g" || suffix == "i" || suffix == "u" || suffix == "t" || suffix == "r" || digits == "" {
 		return nil, 0, false
 	}
-	if strings.HasPrefix(digits, "0x") || strings.HasPrefix(digits, "0X") ||
-		strings.HasPrefix(digits, "0b") || strings.HasPrefix(digits, "0B") ||
-		strings.HasPrefix(digits, "0o") || strings.HasPrefix(digits, "0O") {
-		return nil, 0, false
+	if integer, ok := ast.ParseIntegerFormNumericLiteralLexeme(lexeme); ok {
+		if negative {
+			integer.Neg(integer)
+		}
+		return integer, 0, true
 	}
 
 	parts := strings.Split(digits, ".")

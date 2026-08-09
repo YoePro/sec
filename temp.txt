@@ -40,7 +40,7 @@ rules_implementations.txt
 semantic_ir.txt
 spread.txt
 struct.txt
-types.txt
+types.md
 unions.txt
 units.txt
 contracts.md

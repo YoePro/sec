@@ -200,6 +200,9 @@ func verifyFunction(module *Module, fn *Function, functions map[FunctionID]*Func
 	if err := verifyStorageDominance(fn, blocks, dom); err != nil {
 		return err
 	}
+	if err := verifyCheckedIntegerGuards(fn, blocks, values); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -251,7 +254,8 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 			return fmt.Errorf("invalid const.string")
 		}
 	case OpConstDecimal:
-		if len(op.Results) != 1 || op.Decimal == nil || op.Decimal.Coefficient == nil || !typeHasKind(module.Types, resultType, TypeDecimal) {
+		if len(op.Results) != 1 || op.Decimal == nil || op.Decimal.Coefficient == nil ||
+			(!typeHasKind(module.Types, resultType, TypeDecimal) && !typeHasKind(module.Types, resultType, TypeDecimal128)) {
 			return fmt.Errorf("invalid const.decimal")
 		}
 	case OpConstFloat:
@@ -332,10 +336,160 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 				return err
 			}
 		}
+	case OpIntUnaryPlus, OpIntBitNot:
+		if len(op.Operands) != 1 || len(op.Results) != 1 || !isBuiltinIntegerType(module.Types, values[op.Operands[0]].Type) || op.Results[0].Type != values[op.Operands[0]].Type {
+			return fmt.Errorf("invalid %s", op.Kind)
+		}
+	case OpIntNegChecked:
+		if !validCheckedResults(module.Types, op, values, 1) || !isSignedBuiltinIntegerType(module.Types, values[op.Operands[0]].Type) {
+			return fmt.Errorf("invalid int.neg-checked")
+		}
+	case OpIntBinaryChecked:
+		if !validIntegerBinaryKind(op.IntegerBinary) || !validCheckedResults(module.Types, op, values, 2) || values[op.Operands[0]].Type != values[op.Operands[1]].Type {
+			return fmt.Errorf("invalid int.binary-checked")
+		}
+	case OpIntBitwise:
+		if !validIntegerBitwiseKind(op.IntegerBitwise) || len(op.Operands) != 2 || len(op.Results) != 1 || !isBuiltinIntegerType(module.Types, values[op.Operands[0]].Type) || values[op.Operands[0]].Type != values[op.Operands[1]].Type || op.Results[0].Type != values[op.Operands[0]].Type {
+			return fmt.Errorf("invalid int.bitwise")
+		}
+	case OpIntShiftChecked:
+		if !validIntegerShiftKind(op.IntegerShift) || !validCheckedResults(module.Types, op, values, 2) || !isBuiltinIntegerType(module.Types, values[op.Operands[1]].Type) || shiftKindSigned(op.IntegerShift) != isSignedBuiltinIntegerType(module.Types, values[op.Operands[0]].Type) {
+			return fmt.Errorf("invalid int.shift-checked")
+		}
+	case OpIntCompare:
+		if !validIntegerComparePredicate(op.IntegerCompare) || len(op.Operands) != 2 || len(op.Results) != 1 || !isBuiltinIntegerType(module.Types, values[op.Operands[0]].Type) || values[op.Operands[0]].Type != values[op.Operands[1]].Type || !typeHasKind(module.Types, op.Results[0].Type, TypeBool) {
+			return fmt.Errorf("invalid int.compare")
+		}
+	case OpArithmeticFailure:
+		if len(op.Operands) != 0 || len(op.Results) != 0 || len(op.Successors) != 0 || !validArithmeticFailureCategory(op.FailureCategory) || op.Operator == "" {
+			return fmt.Errorf("invalid fail.arithmetic")
+		}
 	default:
 		return fmt.Errorf("unknown operation %q", op.Kind)
 	}
 	return nil
+}
+
+func validCheckedResults(types *TypeTable, op Operation, values map[ValueID]Value, operands int) bool {
+	return len(op.Operands) == operands && len(op.Results) == 2 &&
+		isBuiltinIntegerType(types, values[op.Operands[0]].Type) &&
+		op.Results[0].Type == values[op.Operands[0]].Type &&
+		typeHasKind(types, op.Results[1].Type, TypeBool)
+}
+
+func isBuiltinIntegerType(types *TypeTable, id TypeID) bool {
+	typ, ok := types.Lookup(id)
+	return ok && (typ.Kind == TypeInt || typ.Kind == TypeUint || typ.Kind == TypeByte)
+}
+
+func isSignedBuiltinIntegerType(types *TypeTable, id TypeID) bool {
+	typ, ok := types.Lookup(id)
+	return ok && typ.Kind == TypeInt && typ.Signed
+}
+
+func validIntegerBinaryKind(kind IntegerCheckedBinaryKind) bool {
+	switch kind {
+	case IntegerCheckedAdd, IntegerCheckedSubtract, IntegerCheckedMultiply, IntegerCheckedDivide, IntegerCheckedRemainder:
+		return true
+	default:
+		return false
+	}
+}
+
+func validIntegerBitwiseKind(kind IntegerBitwiseKind) bool {
+	return kind == IntegerBitwiseAnd || kind == IntegerBitwiseOr || kind == IntegerBitwiseXor
+}
+
+func validIntegerShiftKind(kind IntegerShiftKind) bool {
+	switch kind {
+	case IntegerShiftLeftUnsigned, IntegerShiftLeftSigned, IntegerShiftRightUnsigned, IntegerShiftRightSigned:
+		return true
+	default:
+		return false
+	}
+}
+
+func shiftKindSigned(kind IntegerShiftKind) bool {
+	return kind == IntegerShiftLeftSigned || kind == IntegerShiftRightSigned
+}
+
+func validIntegerComparePredicate(predicate IntegerComparePredicate) bool {
+	switch predicate {
+	case IntegerCompareEQ, IntegerCompareNE, IntegerCompareLT, IntegerCompareLE, IntegerCompareGT, IntegerCompareGE:
+		return true
+	default:
+		return false
+	}
+}
+
+func validArithmeticFailureCategory(category ArithmeticFailureCategory) bool {
+	switch category {
+	case ArithmeticFailureOverflow, ArithmeticFailureDivision, ArithmeticFailureRemainder, ArithmeticFailureShift:
+		return true
+	default:
+		return false
+	}
+}
+
+func isCheckedIntegerOperation(kind OpKind) bool {
+	return kind == OpIntNegChecked || kind == OpIntBinaryChecked || kind == OpIntShiftChecked
+}
+
+func verifyCheckedIntegerGuards(fn *Function, blocks map[BlockID]*Block, values map[ValueID]Value) error {
+	uses := map[ValueID]int{}
+	incoming := map[BlockID]int{}
+	for _, block := range fn.Blocks {
+		for _, op := range block.Operations {
+			for _, operand := range operationOperands(op) {
+				uses[operand]++
+			}
+			for _, successor := range op.Successors {
+				incoming[successor.Block]++
+			}
+		}
+	}
+	for _, block := range fn.Blocks {
+		for index, op := range block.Operations {
+			if !isCheckedIntegerOperation(op.Kind) {
+				continue
+			}
+			if len(op.Results) != 2 || index+1 != len(block.Operations)-1 {
+				return fmt.Errorf("checked integer operation in ^%d must be immediately guarded", block.ID)
+			}
+			failed := op.Results[1].ID
+			if uses[failed] != 1 {
+				return fmt.Errorf("checked integer failure %%%d must have exactly one use", failed)
+			}
+			branch := block.Operations[index+1]
+			if branch.Kind != OpCondBranch || len(branch.Operands) != 1 || branch.Operands[0] != failed || len(branch.Successors) != 2 {
+				return fmt.Errorf("checked integer failure %%%d must guard with conditional branch", failed)
+			}
+			failureBlock := blocks[branch.Successors[0].Block]
+			if failureBlock == nil || len(failureBlock.Parameters) != 0 || len(failureBlock.Operations) != 1 || incoming[failureBlock.ID] != 1 {
+				return fmt.Errorf("checked integer failure block must be dedicated")
+			}
+			failure := failureBlock.Operations[0]
+			if failure.Kind != OpArithmeticFailure || failure.FailureCategory != expectedFailureCategory(op) || failure.Operator != op.Operator {
+				return fmt.Errorf("checked integer failure endpoint does not match %s", op.Kind)
+			}
+		}
+	}
+	return nil
+}
+
+func expectedFailureCategory(op Operation) ArithmeticFailureCategory {
+	if op.Kind == OpIntShiftChecked {
+		return ArithmeticFailureShift
+	}
+	if op.Kind == OpIntBinaryChecked {
+		switch op.IntegerBinary {
+		case IntegerCheckedDivide:
+			return ArithmeticFailureDivision
+		case IntegerCheckedRemainder:
+			return ArithmeticFailureRemainder
+		}
+	}
+	return ArithmeticFailureOverflow
 }
 func verifyTarget(target BranchTarget, blocks map[BlockID]*Block, values map[ValueID]Value) error {
 	block := blocks[target.Block]

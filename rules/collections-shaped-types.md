@@ -2297,7 +2297,7 @@ completion requirements in this rulebook are satisfied.
 This rulebook must be synchronized with:
 
 ```text
-types.txt
+types.md
 generics.txt
 arrays-slices.txt
 registers.txt

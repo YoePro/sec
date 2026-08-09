@@ -3637,7 +3637,7 @@ ffi.txt
 registers.txt
 arrays-slices.txt
 collections-shaped-types.md
-types.txt
+types.md
 contracts.md
 functions.txt
 struct.txt

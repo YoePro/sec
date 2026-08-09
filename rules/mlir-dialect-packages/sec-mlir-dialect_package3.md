@@ -55,7 +55,7 @@ implementation
 Additional directly relevant rulebooks include:
 
 ```text
-rules/types.txt
+rules/types.md
 rules/functions.txt
 rules/copy_move.md
 rules/ownership.txt

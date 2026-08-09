@@ -31,7 +31,7 @@ context, including switch/select default branches, the named-type default clause
 and any other separately defined default context. This contextual parsing does
 not change lexical meaning.
 
-The canonical explicit zero literals are `0c` for `char` and `0r` for `rune`;
+The canonical explicit zero literals are `0t` for `char` and `0r` for `rune`;
 they must not be documented as empty character source literals.
 
 ---
@@ -526,8 +526,10 @@ Reserved words cannot be used as names for:
 - labels;
 - aliases.
 
-The reservation applies even when a word is only meaningful in a particular
-grammar context.
+Global reservation applies only to spellings deliberately defined as hard language
+keywords or reserved language words. Contextual spellings are governed by their
+separate contextual rules and remain ordinary identifiers outside those contexts
+when those rules explicitly permit it.
 
 ---
 
@@ -574,7 +576,6 @@ range
 ref
 require
 return
-sec
 select
 self
 spawn
@@ -591,10 +592,10 @@ where
 while
 ```
 
-Some listed words are not yet fully implemented.
-
-Their reservation prevents source compatibility problems while their rulebooks
-are completed.
+Some listed words are not yet fully implemented. A word may remain reserved when
+its language role has already been deliberately established even if implementation
+is incomplete. A spelling must not be reserved merely because it might be useful
+for unspecified future syntax.
 
 ---
 
@@ -603,7 +604,6 @@ are completed.
 The following words are reserved but interpreted only in specific contexts:
 
 ```text
-set
 task
 thread
 process
@@ -623,18 +623,21 @@ let worker := try spawn task Work()
 let worker := try spawn thread Work()
 ```
 
-Although the parser uses context to determine their role, they are not valid
-user declaration names.
+Although the parser uses context to determine their role, these reserved words are
+not valid user declaration names.
 
 Invalid:
 
 ```sec
-let set: int := 3
 let task := 1
 
 fn thread() void {
 }
 ```
+
+`set` is intentionally different: it is a contextual spelling defined in section 9
+and remains a valid ordinary identifier outside set-type and property-setter
+contexts.
 
 `process` remains reserved even while process spawning is deferred.
 
@@ -689,8 +692,10 @@ A modifier may be lexed contextually, but it cannot be reused as a user symbol.
 Fundamental types and first-class compiler-known type constructors use lowercase
 names.
 
-They cannot be redeclared or used as names for variables, functions, fields,
-parameters, modules, or user-defined types.
+Except for spellings explicitly defined as contextual, these names cannot be
+redeclared or used as names for variables, functions, fields, parameters, modules,
+or user-defined types. The built-in collection spelling `set` is contextual and is
+defined separately in section 9.
 
 The initial reserved type-name set includes:
 
@@ -701,6 +706,10 @@ byte
 char
 decimal
 decimal128
+date
+time
+datetime
+duration
 float
 float32
 float64
@@ -826,21 +835,33 @@ it introduces a fallible setter.
 
 ---
 
-## 9.3 Reservation
+## 9.3 Identifier use and contextual resolution
 
-`set` is contextually interpreted but lexically reserved.
+`set` is not globally reserved.
 
-It cannot be an ordinary identifier:
+Outside the built-in set-type and property-setter contexts, it is an ordinary
+identifier:
 
 ```sec
-let set := 1 // invalid
+let set := 1
+
+fn set(value: int) int {
+    return value
+}
 ```
 
-The parser must not require two different source spellings for collection set
-and property set.
+In type position where the built-in set constructor grammar applies, `set[...]`
+resolves to the compiler-known collection type. Inside property accessor grammar,
+`set value { ... }` and `try set value { ... }` resolve as property setters.
 
-The formatter and syntax highlighter determine presentation from syntactic
-context.
+The lexer must preserve the spelling without globally rejecting ordinary identifier
+uses. The parser resolves the contextual role from grammar. Sema validates the
+resolved type or member semantics.
+
+The parser must not require different source spellings for the collection type and
+property setter.
+
+The formatter and syntax highlighter determine presentation from syntactic context.
 
 ---
 
@@ -1057,14 +1078,14 @@ The exponent contains:
 - optional `+` or `-`;
 - one or more ASCII decimal digits.
 
-An exponent literal without an explicit `f` suffix follows Sec's ordinary exact
+An exponent literal without an explicit `g` suffix follows Sec's ordinary exact
 decimal literal inference.
 
 Examples:
 
 ```sec
 let exact := 1.25e-3
-let floating := 1.25e-3f
+let floating := 1.25e-3g
 ```
 
 Exponent notation is not permitted on binary, octal, or hexadecimal literals.
@@ -1119,9 +1140,9 @@ A one-letter suffix may select the numeric family:
 ```text
 i    signed integer family
 u    unsigned integer family
-f    binary floating-point family
-d    exact decimal family
-c    char scalar type
+g    binary floating-point family
+m    exact decimal family
+t    char scalar type
 r    rune scalar type
 ```
 
@@ -1130,14 +1151,14 @@ Examples:
 ```sec
 8i
 8u
-8f
-8d
-65c
+8g
+8m
+65t
 65r
-1.5f
-1.5d
-1e3f
-1e3d
+1.5g
+1.5m
+1e3g
+1e3m
 ```
 
 The suffix selects a family, not a fixed width.
@@ -1147,26 +1168,23 @@ Width is selected by context or explicit type:
 ```sec
 let small: int8 := 8i
 let wide: int128 := 8i
-let exact: decimal128 := 8d
+let exact: decimal128 := 8m
 ```
 
-`c` and `r` apply only to integer literals and select the exact `char` and
+`t` and `r` apply only to integer literals and select the exact `char` and
 `rune` scalar types. Their value must be a Unicode scalar value: within
 `0..U+10FFFF` and outside the surrogate range `U+D800..U+DFFF`.
 
-Binary and octal literals accept `i`, `u`, `c`, or `r`. Hexadecimal literals
-accept `i`, `u`, or `r`. The spelling `c` is already a hexadecimal digit, so
-`0x41c` is one unsuffixed hexadecimal literal rather than `0x41` with a char
-suffix. Write hexadecimal character values in decimal, binary, or octal form
-when using the `c` suffix.
+Binary, octal, decimal, and hexadecimal integer-form literals accept
+`i`, `u`, `g`, `m`, `t`, or `r`. The canonical suffix letters are not
+hexadecimal digits, so hexadecimal family suffixes are unambiguous.
 
-Fractional and exponent forms accept only `f` or `d`.
+Fractional and exponent forms accept only `g` or `m`.
 
 Invalid:
 
 ```sec
-0b10d
-1.5c
+1.5t
 1e3r
 ```
 
@@ -1550,7 +1568,7 @@ literal:
 [ ]
 ```
 
-`@` begins attribute syntax as defined by the future attribute rulebook.
+`@` begins attribute syntax as defined by `attributes.md`.
 
 `#` is reserved for compiler or source-directive syntax.
 
@@ -1644,7 +1662,7 @@ fn Poll() void {
 ```
 
 The lexer treats the attribute name as an identifier or reserved attribute word
-according to the final attribute grammar.
+according to the attribute grammar defined by `attributes.md`.
 
 Attributes are not comments.
 
@@ -1716,7 +1734,7 @@ The lexer is responsible for:
 The parser is responsible for:
 
 - grammatical role;
-- contextual `set`;
+- contextual `set` type/accessor resolution;
 - contextual operator `x`;
 - declaration structure;
 - type-argument structure;
@@ -1790,125 +1808,10 @@ highlighted as an operator after parsing.
 
 ---
 
-# 24. Implementation status
+# 24. Implementation governance
 
-## Implemented
-
-The current lexer already provides substantial support for:
-
-- Unicode-rune input processing;
-- one-based line and column tracking;
-- identifier starts using underscore, ASCII letters, and Unicode letters;
-- ASCII digits after identifier start;
-- keyword lookup for a large current subset;
-- dedicated bare `_` tokens while `_name` and `__name` remain identifiers;
-- decimal integer literals;
-- fractional literals including leading-period forms such as `.5`;
-- scientific exponent literals, including signed exponents and leading-period
-  mantissas;
-- focused parser diagnostics when an exponent marker or sign lacks decimal
-  digits;
-- binary, octal, and hexadecimal integer prefixes;
-- numeric family suffixes `i`, `u`, `f`, `d`, `c`, and `r`;
-- numeric digit separators between valid digits in decimal, binary, octal,
-  hexadecimal, fractional and exponent components;
-- preservation of separator-containing numeric source lexemes in tokens and AST
-  while parser and semantic constant evaluation ignore the separators;
-- rejection of misplaced, repeated and trailing numeric separators as one
-  `ILLEGAL` numeric token for the currently recognized malformed forms;
-- ordinary strings;
-- character-literal tokenization;
-- backtick raw strings;
-- `$"..."` interpolated-string tokenization;
-- line comments;
-- nested block comments;
-- comment tokens;
-- LSP semantic tokens for keywords, variables, types, functions, methods,
-  comments, literals and operators;
-- LSP member completion resolves `self` to its enclosing impl target, including
-  fields, register fields, properties, events and instance methods;
-- LSP member completion retains inferred local types from function and method
-  return values, including while an `if` condition is incomplete in the editor;
-- LSP hover resolves `self`, `self.field`, `self.property`, `self.event` and
-  `self.Method(...)` against the enclosing impl target, displaying member type
-  information or method signatures and adjacent `/** ... */` method docs;
-- semantic-token fallback to lexical classification when semantic analysis
-  encounters an incomplete editor AST;
-- LSP member-completion traversal ignores typed-nil AST nodes produced during
-  parser recovery, preventing completion requests from terminating the server;
-- LSP document outline for module, type, enum, interface, function, struct,
-  variable and impl members;
-- LSP hover information from `/** ... */` documentation comments immediately
-  above function declarations;
-- common arithmetic, logical, bitwise, range, spread, delimiter, and assignment
-  tokens;
-- longest matching for existing multi-character punctuation;
-- `ILLEGAL` tokens for some unterminated literals and comments;
-- lexer snapshot and restore.
-
-These implementation facts do not override the normative rules above.
-
----
-
-## Partially implemented
-
-The following currently exist but require synchronization or stronger
-validation:
-
-- keyword inventory;
-- contextual `set`;
-- character-literal content validation;
-- escape validation;
-- interpolation parsing;
-- malformed base-literal diagnostics;
-- comment attachment for formatter and documentation;
-- CR and CRLF line accounting;
-- built-in type-name reservation;
-- parser rejection of semicolons;
-- source position integration across lexer, parser, diagnostics, and LSP;
-- documentation-comment support in LSP hover without AST-level comment
-  attachment.
-- semantic validation of character literals, including exactly one decoded
-  scalar and the documented `\\`, `\"`, `\'`, `\n`, `\r`, `\t`, `\0`, `\xNN`, and
-  `\u{...}` escape forms.
-
-The current repository keyword notes and lexer keyword switch are not fully
-synchronized.
-
-This rulebook becomes the canonical lexical inventory.
-
----
-
-## Not implemented
-
-The following rules are not yet fully implemented:
-
-- explicit UTF-8 validation;
-- initial BOM handling;
-- rejection of BOM elsewhere;
-- NFC validation of identifiers;
-- diagnostics for unsupported Unicode whitespace;
-- confusable-identifier warnings;
-- maximal malformed numeric-token recovery;
-- strict suffix validation by base and literal family;
-- lexer-level escape diagnostics; character-literal escape validation currently
-  occurs during semantic analysis;
-- balanced interpolation expression lexing;
-- doubled literal braces in interpolated strings;
-- parser-aware formatter and semantic-token classification for contextual `x`;
-- built-in `list`, `map`, `set`, `vector`, `matrix`, `tensor`, and
-  `tensor_view` lexical/parser integration;
-- complete reserved contract-word inventory;
-- documentation-comment attachment in the parser and AST;
-- dedicated lexical tests for every invalid category;
-- stable lexer diagnostic IDs for all categories;
-- formatter and complete LSP support for all contextual classifications in this
-  rulebook.
-
-The existing unused `BYTES` token does not represent a Sec 0.1 source feature.
-
-Bare underscore is classified as `UNDERSCORE`; identifier spellings beginning
-with underscore remain ordinary identifiers.
+Current implementation state for this rulebook is tracked by
+`frontend.lexical-structure` in `implementation-status.yaml`.
 
 ---
 
@@ -1980,7 +1883,7 @@ This rulebook must be synchronized with:
 
 ```text
 names_scopes_visibility.md
-types.txt
+types.md
 contracts.md
 properties.txt
 collections-shaped-types.md
@@ -1998,7 +1901,7 @@ parser_recovery.md
 core-library.md
 stdlib.md
 compiler_pipeline.txt
-rules_implementations.txt
+implementation-status.yaml
 VS Code grammar
 LSP token classification
 lexer implementation
@@ -2023,8 +1926,8 @@ Identifiers are case-sensitive NFC spellings.
 Keywords, modifiers, contract words, and compiler-known lowercase type names
 cannot be reused as declarations.
 
-`set` is reserved and interpreted contextually as either a collection type or a
-property setter.
+`set` is a contextual spelling: it denotes the built-in set type or a property
+setter in those grammar contexts and remains an ordinary identifier elsewhere.
 
 `x` remains an ordinary identifier spelling and becomes matrix multiplication
 only in infix expression context.

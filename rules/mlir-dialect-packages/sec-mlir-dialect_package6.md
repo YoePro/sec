@@ -32,7 +32,7 @@ Implementation follows:
 language/domain rulebooks
     ↓
 rules/layout.md
-rules/types.txt
+rules/types.md
     ↓
 rules/semantic_ir.txt
     ↓
@@ -65,7 +65,7 @@ must now be corrected before further lowering.
 
 ## 2.1 Active wide scalar types
 
-Current `rules/types.txt` states that these integer types are active:
+Current `rules/types.md` states that these integer types are active:
 
 ```text
 int128

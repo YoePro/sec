@@ -14,7 +14,7 @@ closures.txt - To be done
 spread.txt - Written
 discard.md - Written
 struct.txt - Written
-types.txt - Written
+types.md - Written
 unions.txt - Written
 units.txt - Written
 contracts.md - Written

@@ -8,15 +8,20 @@ def Sec_Dialect : Dialect {
   let summary = "Sec semantic lowering dialect";
   let description = [{
     The Sec dialect preserves semantic obligations that remain after validated
-    Sec Semantic IR enters MLIR. Schema version 1 contains only nominal type
-    identity primitives and common metadata conventions.
+    Sec Semantic IR enters MLIR. Schema version 3 completes active scalar
+    coverage, carries explicit target-plan metadata, and represents checked
+    builtin integer semantics while retaining earlier schema constructs.
   }];
   let cppNamespace = "::sec";
   let useDefaultTypePrinterParser = 1;
   let isExtensible = 0;
   let extraClassDeclaration = [{
-    static constexpr unsigned kSchemaVersion = 1;
+    static constexpr unsigned kSchemaVersion = 4;
     void registerTypes();
+    void registerOperations();
+    ::llvm::LogicalResult verifyOperationAttribute(
+        ::mlir::Operation *operation,
+        ::mlir::NamedAttribute attribute) override;
   }];
 }
 

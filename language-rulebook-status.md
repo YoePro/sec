@@ -88,8 +88,8 @@ These were written after the older temporary checklist was last synchronized.
 | Rulebook | Status | Notes |
 |---|---|---|
 | `language_philosophy.txt` | **Written** | Core language direction and design principles. |
-| `lexical_structure.md` | **Written** | Includes `default` keyword contexts, canonical `0c`/`0r` literals, and implemented numeric digit separators with preserved source lexemes. |
-| `types.txt` | **Written — sync required** | Defaultability and mutable initialization are synchronized; collections, panic/runtime checks, and layout still require work. |
+| `lexical_structure.md` | **Written** | Canonical lexical rules; implementation status is tracked by `frontend.lexical-structure` in `implementation-status.yaml`. |
+| `types.md` | **Written** | Canonical replacement for the retired `types.txt`; implementation is tracked by `frontend.types-core`, `frontend.literal-family-suffix-v2`, `frontend.temporal-builtin-types`, and `frontend.wide-numeric-language-types`. |
 | `contracts.md` | **Written** | Canonical named-type contracts; replaces the obsolete variable-contract model. |
 | `default_values.md` | **Written** | Canonical primitive, constrained, aggregate, list and explicit-default semantics. |
 | `units.txt` | **Written — sync required** | Direct conversion dimension validation is implemented; shaped arithmetic, scale paths, and matrix multiplication still require synchronization. |
@@ -144,7 +144,7 @@ This decision requires synchronization of:
 ```text
 lexical_structure.md
 grammar.md
-types.txt
+types.md
 properties.txt
 collections-shaped-types.md
 formatter.md
@@ -346,7 +346,7 @@ implementation remains tracked separately.
 | Rulebook | Status | Notes |
 |---|---|---|
 | `concurrency.md` | **Written — sync required** | Overview must be synchronized with the complete concurrency set. |
-| `concurrency_memory_model.txt` | **Written — sync required** | Must remain aligned with tasks, threads, channels, atomics, and events. |
+| `concurrency_memory_model.md` | **Written — sync required** | Must remain aligned with tasks, threads, channels, atomics, and events. |
 | `concurrency_runtime_model.md` | **Written — sync required** | Must include core errors and no-required-runtime profiles. |
 | `tasks.txt` | **Written — sync required** | Must be synchronized with fallible spawn and discard. |
 | `spawn.md` | **Written — sync required** | All spawn forms are fallible; process spawn is deferred. |
@@ -358,7 +358,7 @@ implementation remains tracked separately.
 | `cancellation.md` | **Written — sync required** | |
 | `structured_concurrency.md` | **Written — sync required** | |
 | `transferability.md` | **Written — sync required** | |
-| `data_races.md` | **Planned** | |
+| `data_races.md` | **Written** | Canonical data-race analysis rules; implementation status is tracked by `sema.data-race-analysis` in `implementation-status.yaml`. |
 | `deadlock_analysis.md` | **Planned** | |
 | `channels.md` | **Written — sync required** | |
 | `events.md` | **Written — sync required** | C#-style publish/subscribe event model; distinct from readiness/completion. |
@@ -389,7 +389,7 @@ Process spawning and IPC do not block the immediate language closure.
 
 | Rulebook | Status | Notes |
 |---|---|---|
-| `types.txt` | **Written — sync required** | Fundamental and named types. |
+| `types.md` | **Written** | Canonical fundamental, scalar, temporal, named, collection-shaped, and declaration type contract; implementation status is maintained in `implementation-status.yaml`. |
 | `generics.txt` | **Written — sync required** | Type and compile-time value arguments. |
 | `interfaces.txt` | **Written — sync required** | |
 | `impl.txt` | **Written — sync required** | |
@@ -442,6 +442,9 @@ OrderedMap[K, V]
 | `compiler_pipeline.txt` | **Written — sync required** | |
 | `semantic_ir.txt` | **Written — sync required** | Must include discard, threads, collections, shaped values, panic, and effects. |
 | `mlir.txt` | **Written — sync required** | |
+| `sec_mlir.md` | **Written** | Canonical high-level Sec MLIR boundary; implementation status is tracked by the schema-2 and scalar-layout integrations. |
+| `sec_mlir_dialect.md` | **Written** | Canonical schema-v4 dialect after Package 7; implementation status is tracked by `lowering.sec-mlir-checked-integers`. |
+| `sec_mlir_lowering.md` | **Written** | Canonical lowering specification v4; status is tracked by the trivial-core, scalar-layout, checked-integer, and checked-integer-to-Arith integrations. |
 | `mlir-optimize.txt` | **Living** | Updated as implementation and optimization support grows. |
 | `rules_implementations.txt` | **Living** | Legacy implementation notes being migrated into `implementation-status.yaml`. |
 | `call_graph.md` | **Written** | Canonical callable reachability and execution relationships. Implementation status is tracked by `analysis.call-graph` in `implementation-status.yaml`. |
@@ -551,7 +554,7 @@ compiler_analysis.txt
 compiler_pipeline.txt
 compiler_known_members.md
 concurrency.md
-concurrency_memory_model.txt
+concurrency_memory_model.md
 concurrency_runtime_model.md
 copy_move.md
 core-library.md
@@ -607,7 +610,7 @@ structured_concurrency.md
 tasks.txt
 threads.md
 transferability.md
-types.txt
+types.md
 unsafe.md
 unions.txt
 units.txt

@@ -1,0 +1,18 @@
+module main
+
+fn Hold(value: int128) int128 {
+    let mut current: int128 := value
+    return current
+}
+
+fn Identity(value: uint256) uint256 {
+    return value
+}
+
+fn Call(value: uint256) uint256 {
+    return Identity(value)
+}
+
+fn Exact() decimal128 {
+    return 1.25
+}

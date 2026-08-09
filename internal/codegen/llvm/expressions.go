@@ -20,7 +20,7 @@ func (g *Generator) emitExpression(expr ast.Expression) (value, error) {
 	case *ast.Identifier:
 		return g.emitIdentifier(expr)
 	case *ast.IntegerLiteral:
-		if expr.Suffix() == "d" {
+		if expr.Suffix() == "m" {
 			return g.emitDecimalLiteral(expr, false)
 		}
 		parsed, ok := ast.ParseIntegerLiteralLexeme(expr.Token.Lexeme)
@@ -33,7 +33,7 @@ func (g *Generator) emitExpression(expr ast.Expression) (value, error) {
 		}
 		return value{typ: typ, ref: parsed.String()}, nil
 	case *ast.FloatLiteral:
-		if expr.Suffix() == "f" {
+		if expr.Suffix() == "g" {
 			return value{}, fmt.Errorf("emit-llvm does not support float literals yet")
 		}
 		return g.emitDecimalLiteral(expr, false)
@@ -130,12 +130,12 @@ func (g *Generator) emitDecimalValue(decimal decimalLiteral) value {
 func decimalLiteralValue(expr ast.Expression, allowPlainInteger bool) (decimalLiteral, bool) {
 	switch expr := expr.(type) {
 	case *ast.IntegerLiteral:
-		if !allowPlainInteger && expr.Suffix() != "d" {
+		if !allowPlainInteger && expr.Suffix() != "m" {
 			return decimalLiteral{}, false
 		}
 		return parseDecimalLiteralLexeme(expr.Token.Lexeme)
 	case *ast.FloatLiteral:
-		if expr.Suffix() == "f" {
+		if expr.Suffix() == "g" {
 			return decimalLiteral{}, false
 		}
 		return parseDecimalLiteralLexeme(expr.Token.Lexeme)
@@ -156,13 +156,14 @@ func decimalLiteralValue(expr ast.Expression, allowPlainInteger bool) (decimalLi
 
 func parseDecimalLiteralLexeme(lexeme string) (decimalLiteral, bool) {
 	digits, suffix := ast.SplitNumericLiteralSuffix(lexeme)
-	if suffix == "f" || suffix == "i" || suffix == "u" || digits == "" {
+	if suffix == "g" || suffix == "i" || suffix == "u" || suffix == "t" || suffix == "r" || digits == "" {
 		return decimalLiteral{}, false
 	}
-	if strings.HasPrefix(digits, "0x") || strings.HasPrefix(digits, "0X") ||
-		strings.HasPrefix(digits, "0b") || strings.HasPrefix(digits, "0B") ||
-		strings.HasPrefix(digits, "0o") || strings.HasPrefix(digits, "0O") {
-		return decimalLiteral{}, false
+	if integer, ok := ast.ParseIntegerFormNumericLiteralLexeme(lexeme); ok {
+		if !integer.IsInt64() {
+			return decimalLiteral{}, false
+		}
+		return decimalLiteral{number: integer.Int64()}, true
 	}
 
 	negative := false

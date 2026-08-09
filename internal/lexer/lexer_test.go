@@ -234,19 +234,18 @@ func TestCharLiteral(t *testing.T) {
 }
 
 func TestCharAndRuneNumericSuffixes(t *testing.T) {
-	input := `65c 0r 0b1000001c 0o101r 0x41r 0x41c`
+	input := `65t 0r 0b1000001t 0o101r 0x41r 0x41t`
 
 	tests := []struct {
 		typ    TokenType
 		lexeme string
 	}{
-		{INT, "65c"},
+		{INT, "65t"},
 		{INT, "0r"},
-		{INT, "0b1000001c"},
+		{INT, "0b1000001t"},
 		{INT, "0o101r"},
 		{INT, "0x41r"},
-		// c is part of the hexadecimal digit sequence, not a suffix here.
-		{INT, "0x41c"},
+		{INT, "0x41t"},
 		{EOF, ""},
 	}
 
@@ -354,7 +353,7 @@ func TestKeywords(t *testing.T) {
 }
 
 func TestNumbersAndRanges(t *testing.T) {
-	input := `123 45.67 .1 1..10 1..<10 1.. ..10 10i 10u 10f 10d 1.5f 1.5d .5f .5d 0b1000 0o10 0x8 0x8u`
+	input := `123 45.67 .1 1..10 1..<10 1.. ..10 10i 10u 10g 10m 1.5g 1.5m .5g .5m 0b1000 0o10 0x8 0x8u 0x10g 0x10m`
 
 	tests := []struct {
 		typ    TokenType
@@ -375,16 +374,18 @@ func TestNumbersAndRanges(t *testing.T) {
 		{INT, "10"},
 		{INT, "10i"},
 		{INT, "10u"},
-		{FLOAT, "10f"},
-		{FLOAT, "10d"},
-		{FLOAT, "1.5f"},
-		{FLOAT, "1.5d"},
-		{FLOAT, ".5f"},
-		{FLOAT, ".5d"},
+		{FLOAT, "10g"},
+		{FLOAT, "10m"},
+		{FLOAT, "1.5g"},
+		{FLOAT, "1.5m"},
+		{FLOAT, ".5g"},
+		{FLOAT, ".5m"},
 		{INT, "0b1000"},
 		{INT, "0o10"},
 		{INT, "0x8"},
 		{INT, "0x8u"},
+		{FLOAT, "0x10g"},
+		{FLOAT, "0x10m"},
 		{EOF, ""},
 	}
 
@@ -436,7 +437,7 @@ func TestInvalidNumericDigitSeparatorsAreIllegalTokens(t *testing.T) {
 }
 
 func TestScientificExponentLiterals(t *testing.T) {
-	input := `1e3 1E3 1.5e-2 .5E+4 1e3f 1e3d`
+	input := `1e3 1E3 1.5e-2 .5E+4 1e3g 1e3m`
 
 	tests := []struct {
 		typ    TokenType
@@ -446,12 +447,35 @@ func TestScientificExponentLiterals(t *testing.T) {
 		{FLOAT, "1E3"},
 		{FLOAT, "1.5e-2"},
 		{FLOAT, ".5E+4"},
-		{FLOAT, "1e3f"},
-		{FLOAT, "1e3d"},
+		{FLOAT, "1e3g"},
+		{FLOAT, "1e3m"},
 		{EOF, ""},
 	}
 
 	assertTokens(t, input, tests)
+}
+
+func TestLegacyNumericSuffixesAreSingleIllegalTokens(t *testing.T) {
+	for _, input := range []string{"65c", "10d", "10f", "1.5d", "1.5f", "1e3d", "1e3f", "0b10c", "0o10d"} {
+		t.Run(input, func(t *testing.T) {
+			l := New(input)
+			token := l.NextToken()
+			if token.Type != ILLEGAL || token.Lexeme != input {
+				t.Fatalf("legacy literal = %q %q, want %q %q", token.Type, token.Lexeme, ILLEGAL, input)
+			}
+		})
+	}
+}
+
+func TestFractionalLiteralsRejectIntegerOnlySuffixes(t *testing.T) {
+	for _, input := range []string{"1.5i", "1.5u", "1.5t", "1.5r", ".5t", "1e3r"} {
+		t.Run(input, func(t *testing.T) {
+			token := New(input).NextToken()
+			if token.Type != ILLEGAL || token.Lexeme != input {
+				t.Fatalf("invalid fractional literal = %q %q, want %q %q", token.Type, token.Lexeme, ILLEGAL, input)
+			}
+		})
+	}
 }
 
 func TestMalformedScientificExponentIsOneIllegalToken(t *testing.T) {

@@ -745,18 +745,22 @@ Runtime values use ordinary branches and Result construction.
 
 ---
 
-# `require` contract
+# Contextual `require` contract proposal
 
-`require` is the general named-type predicate contract.
+`require` is not globally reserved and is not part of the canonical Sec 0.1
+contract grammar in `contracts.md`.
 
-Illustrative direction:
+If a future rulebook introduces a named-type predicate form, it may use
+`require` contextually while preserving ordinary identifier uses. Illustrative
+direction:
 
 ```sec
 type InvoiceNumber string
     require IsValidInvoiceNumber
 ```
 
-The exact grammar must be synchronized with the contract rulebook.
+The exact grammar requires an explicit update to `contracts.md` before this form
+becomes normative.
 
 A require predicate must be:
 
@@ -1223,7 +1227,7 @@ grammar.md
 errorhandling.txt
 default_values.md
 contracts.md or variables_contracts.txt
-types.txt
+types.md
 arrays-slices.txt
 collections-shaped-types.md
 references.txt

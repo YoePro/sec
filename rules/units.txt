@@ -738,7 +738,7 @@ unit Name decimal physical
 Units are unit symbols, not inherently decimal types. Numeric unit types are
 written explicitly as `decimal<m>`, `float<m>`, `int<m>` and so on. The shorthand
 `<m>` is allowed in type position and expands to the unit's default numeric
-representation, unless a clearly typed numeric initializer such as `5f` selects
+representation, unless a clearly typed numeric initializer such as `5g` selects
 another numeric representation.
 
 Implemented built-in physical aliases:
@@ -908,7 +908,7 @@ Status
 
 The scale is relative to the canonical unit for the normalized dimension.
 It must be a positive, non-zero compile-time numeric expression.
-`Scale: 1` is valid and preferred for canonical units. Suffixes such as `1d`
+`Scale: 1` is valid and preferred for canonical units. Suffixes such as `1m`
 are allowed but not required for exact integer scale values.
 
 Metadata names are case-tolerant and underscore-tolerant in source. The

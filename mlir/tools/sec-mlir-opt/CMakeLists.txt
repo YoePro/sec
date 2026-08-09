@@ -1,8 +1,15 @@
 set(LIBS
+  MLIRArithDialect
   MLIRFuncDialect
+  MLIRControlFlowDialect
+  MLIRDLTIDialect
+  MLIRMemRefDialect
   MLIROptLib
   MLIRRegisterAllPasses
+  SecMLIRAnalysis
   SecMLIRDialect
+  SecMLIRSecIntegerToArith
+  SecMLIRSecToCore
 )
 
 add_llvm_executable(sec-mlir-opt sec-mlir-opt.cpp)

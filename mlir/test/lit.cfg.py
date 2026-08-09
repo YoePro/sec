@@ -15,4 +15,7 @@ llvm_config.with_system_environment(["HOME", "INCLUDE", "LIB", "TMP", "TEMP"])
 llvm_config.with_environment("PATH", config.llvm_tools_dir, append_path=True)
 
 tool_dirs = [os.path.join(config.sec_mlir_obj_root, "bin"), config.llvm_tools_dir]
-llvm_config.add_tool_substitutions(["sec-mlir-opt", "FileCheck", "not"], tool_dirs)
+llvm_config.add_tool_substitutions(
+    ["sec-mlir-apint-differential", "sec-mlir-opt", "FileCheck", "not"],
+    tool_dirs,
+)

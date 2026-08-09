@@ -35,6 +35,16 @@ DistinctType::verify(function_ref<InFlightDiagnostic()> emitError,
   return verifyIdentityType(emitError, identity, base, "sec.distinct");
 }
 
+LogicalResult
+StorageType::verify(function_ref<InFlightDiagnostic()> emitError,
+                    Type elementType) {
+  if (!elementType || isa<NoneType>(elementType))
+    return emitError() << "sec.storage element type must be non-void";
+  if (isa<StorageType>(elementType))
+    return emitError() << "sec.storage cannot contain another sec.storage";
+  return success();
+}
+
 void SecDialect::registerTypes() {
   addTypes<
 #define GET_TYPEDEF_LIST

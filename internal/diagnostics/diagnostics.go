@@ -63,6 +63,9 @@ const (
 	OperatorStringRuntimeConcat  = "S1020"
 	OperatorInvalidMembership    = "S1021"
 	OperatorInvalidConcatOperand = "S1022"
+	OperatorIntegerOverflow      = "S1023"
+	OperatorDivisionByZero       = "S1024"
+	OperatorRemainderByZero      = "S1025"
 	LargeValueParameter          = "A2001"
 )
 
@@ -193,6 +196,15 @@ var registry = map[string]Definition{
 	},
 	OperatorInvalidConcatOperand: {
 		ID: OperatorInvalidConcatOperand, Name: "operator.invalid-concat-operand", Family: "operators", DefaultSeverity: SeverityError, Mandatory: true,
+	},
+	OperatorIntegerOverflow: {
+		ID: OperatorIntegerOverflow, Name: "operator.constant-integer-overflow", Family: "operators", DefaultSeverity: SeverityError, Mandatory: true,
+	},
+	OperatorDivisionByZero: {
+		ID: OperatorDivisionByZero, Name: "operator.constant-division-by-zero", Family: "operators", DefaultSeverity: SeverityError, Mandatory: true,
+	},
+	OperatorRemainderByZero: {
+		ID: OperatorRemainderByZero, Name: "operator.constant-remainder-by-zero", Family: "operators", DefaultSeverity: SeverityError, Mandatory: true,
 	},
 	LargeValueParameter: {
 		ID:              LargeValueParameter,

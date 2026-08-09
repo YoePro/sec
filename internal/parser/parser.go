@@ -336,6 +336,9 @@ func (p *Parser) parseStatement() ast.Statement {
 	case lexer.SPAWN, lexer.AWAIT:
 		return p.parseExpressionOrAssignmentStatement()
 
+	case lexer.ILLEGAL:
+		return p.parseExpressionOrAssignmentStatement()
+
 	case lexer.AT:
 		if p.peekToken.Type == lexer.IDENT && p.peekToken.Lexeme == "address" {
 			return p.parseAddressedLetStatement()
@@ -3429,7 +3432,7 @@ func (p *Parser) parsePostfixTypeReference(ref *ast.TypeReference) *ast.TypeRefe
 		case lexer.INT:
 			p.nextToken()
 			_, suffix := ast.SplitNumericLiteralSuffix(p.curToken.Lexeme)
-			if suffix == "c" || suffix == "r" {
+			if suffix == "t" || suffix == "r" {
 				bigValue, _ := ast.ParseIntegerLiteralLexeme(p.curToken.Lexeme)
 				lengthExpr := &ast.IntegerLiteral{Token: p.curToken, BigValue: bigValue}
 				if !p.expectPeek(lexer.RBRACKET) {

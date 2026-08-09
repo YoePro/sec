@@ -382,7 +382,7 @@ Canonical documentation synchronization:
 - `contracts.md` now defines contracts only on named types; obsolete variable-
   and ordinary-field contract syntax is noncanonical, while compiler rejection
   of every legacy form still requires an audit
-- `types.txt`, `struct.txt`, `arrays-slices.txt`,
+- `types.md`, `struct.txt`, `arrays-slices.txt`,
   `collections-shaped-types.md`, `memory_model.md`, `ownership.md`,
   `copy_move.md`, `formatter.md`, `operators.md` and `lexical_structure.md`
   cross-reference the canonical default model

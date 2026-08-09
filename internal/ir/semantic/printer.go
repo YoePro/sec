@@ -87,7 +87,13 @@ func formatFunction(out *strings.Builder, fn *Function) {
 }
 func formatOperation(out *strings.Builder, op Operation) {
 	if len(op.Results) > 0 {
-		fmt.Fprintf(out, "%%%d = ", op.Results[0].ID)
+		for index, result := range op.Results {
+			if index > 0 {
+				out.WriteString(", ")
+			}
+			fmt.Fprintf(out, "%%%d", result.ID)
+		}
+		out.WriteString(" = ")
 	}
 	out.WriteString(string(op.Kind))
 	switch op.Kind {
@@ -127,9 +133,27 @@ func formatOperation(out *strings.Builder, op Operation) {
 		formatTarget(out, op.Successors[0])
 		out.WriteString(",")
 		formatTarget(out, op.Successors[1])
+	case OpIntUnaryPlus, OpIntNegChecked, OpIntBitNot:
+		fmt.Fprintf(out, " %%%d", op.Operands[0])
+	case OpIntBinaryChecked:
+		fmt.Fprintf(out, " %s %%%d, %%%d", op.IntegerBinary, op.Operands[0], op.Operands[1])
+	case OpIntBitwise:
+		fmt.Fprintf(out, " %s %%%d, %%%d", op.IntegerBitwise, op.Operands[0], op.Operands[1])
+	case OpIntShiftChecked:
+		fmt.Fprintf(out, " %s %%%d, %%%d", op.IntegerShift, op.Operands[0], op.Operands[1])
+	case OpIntCompare:
+		fmt.Fprintf(out, " %s %%%d, %%%d", op.IntegerCompare, op.Operands[0], op.Operands[1])
+	case OpArithmeticFailure:
+		fmt.Fprintf(out, " %s %q", op.FailureCategory, op.Operator)
 	}
 	if len(op.Results) > 0 {
-		fmt.Fprintf(out, " : !%d [%s]", op.Results[0].Type, op.Results[0].Ownership)
+		out.WriteString(" : ")
+		for index, result := range op.Results {
+			if index > 0 {
+				out.WriteString(", ")
+			}
+			fmt.Fprintf(out, "!%d [%s]", result.Type, result.Ownership)
+		}
 	}
 	out.WriteByte(' ')
 	out.WriteString(formatLocation(op.Location))

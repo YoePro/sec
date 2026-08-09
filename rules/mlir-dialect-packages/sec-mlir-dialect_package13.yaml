@@ -1,0 +1,289 @@
+package:
+  id: SEC-MLIR-P13
+  name: Struct Semantic Value Representation
+  repository: https://github.com/YoePro/sec
+  branch: main
+  repository_sync_commit: 152c772
+  repository_sync_date: '2026-08-09'
+  semantic_ir_version_before: 1
+  semantic_ir_version_after: 1
+  sec_mlir_schema_before: 8
+  sec_mlir_schema_after: 9
+  lowering_spec_before: 8
+  lowering_spec_after: 9
+  goal: Add canonical struct semantic values, defaults, spread, field projection and
+    trivial replacement without physical layout or hidden ownership.
+  next_package: Fixed Array Semantic Value Representation
+normative_updates:
+- repository_path: rules/semantic_ir.txt
+  supplied_file: sec_semantic_ir_struct_package13.md
+- repository_path: rules/sec_mlir_dialect.md
+  supplied_file: sec_mlir_dialect_package13.md
+  schema_version: 9
+- repository_path: rules/sec_mlir_lowering.md
+  supplied_file: sec_mlir_lowering_package13.md
+  version: 9
+wide_builtin_invariant:
+  active:
+  - int128
+  - int256
+  - uint128
+  - uint256
+  - decimal128
+  allowed_in_struct_fields: true
+  forbidden_status:
+  - future
+  - planned
+  - reserved
+  - placeholder
+  - not yet active
+struct_type:
+  nominal: true
+  field_order: declaration order
+  field_id: zero-based declaration-order identity, not byte offset
+  empty_struct: true
+  generic_runtime_instances: concrete only
+  nested_identity: qualified
+  stored_members_only: true
+  field_tags: preserved metadata
+  properties_are_fields: false
+  layout_ref_optional: true
+sema:
+  new_queries:
+  - ResolvedStructLiteralPlanOf(*ast.StructLiteral)
+  - ResolvedStructMemberOf(*ast.MemberExpression)
+  ast_default_mutation:
+    may_remain_for_legacy: true
+    new_ir_semantic_authority: false
+  literal_plan:
+    entries:
+    - explicit
+    - spread
+    final_field_sources:
+    - explicit
+    - spread
+    - default
+    actions_recorded:
+    - construct-direct
+    - copy-trivial
+    - move
+    - copy-semantic
+    - borrow-shared
+    - borrow-mutable
+    p13_actions_accepted:
+    - construct-direct
+    - copy-trivial
+    default: canonical sema.DefaultResolution
+    final_fields_order: declaration order
+    entries_order: source order
+  member_resolution:
+    kinds:
+    - stored-field
+    - property
+    - other
+    p13_accepts:
+    - stored-field
+    builder_must_not_guess_from_name: true
+semantic_ir:
+  version_bump: false
+  new_ids:
+  - StructFieldID
+  new_definitions:
+  - StructDefinition
+  - StructFieldDefinition
+  - StructTag
+  new_ops:
+  - StructConstructOp
+  - StructSpreadFieldsOp
+  - StructExtractFieldOp
+  - StructReplaceFieldOp
+  field_origins:
+  - explicit
+  - spread
+  - default
+  complete_initialization_required: true
+  default_resolution_consumed: true
+  struct_spread_explicit: true
+  mutable_storage_extension: CopyTrivial + TriviallyDestructible structs
+  physical_layout: false
+synthetic_union_payload_struct:
+  enabled: true
+  identity_basis:
+  - union TypeID
+  - UnionVariantIndex
+  source_nameable: false
+  physical_second_layout: false
+  p12_whole_payload_binding: enabled for copy-trivial fields
+  materialization: guarded union field projections + StructConstructOp
+dialect:
+  schema_version: 9
+  new_attrs:
+  - StructTagAttr
+  - StructFieldAttr
+  new_types:
+  - '!sec.struct'
+  new_ops:
+  - sec.struct.construct
+  - sec.struct.spread_fields
+  - sec.struct.extract
+  - sec.struct.replace_field
+  construct_origins:
+  - explicit
+  - spread
+  - default
+  construct_actions:
+  - construct-direct
+  - copy-trivial
+  physical_layout: false
+storage:
+  semantic_struct_storage: true
+  eligibility:
+  - CopyTrivial
+  - TriviallyDestructible
+  - no unrepresented reference-origin obligation
+  - supported field value types
+  p5_memref_lowering: false
+  field_assignment:
+  - evaluate RHS
+  - storage.load whole struct
+  - struct.replace_field
+  - storage.store whole struct
+  nested_assignment: rebuild leaf-to-root and store root once
+evaluation_order:
+  struct_entries: left-to-right source order
+  spread_source: exactly once
+  spread_results: declaration field order
+  defaults: after source entries; recursive declaration order
+  final_construct_operands: declaration order
+ownership_boundary:
+  supported_actions:
+  - construct-direct
+  - copy-trivial
+  deferred_actions:
+  - move
+  - copy-semantic
+  - borrow-shared
+  - borrow-mutable
+  - conditional copy
+  - non-copyable transfer
+  nontrivial_destruction: unsupported value path
+  partial_move: false
+  hidden_ssa_copy_for_ownership: false
+compatibility:
+  p5: struct storage remains high-level
+  p6: target-sized scalar resolution recurses through struct fields, preserving wrapper
+  p8: signless normalization does not recurse into struct
+  p11: struct-like union fields receive synthetic struct whole-payload view
+  p12: whole struct-like payload match binding enabled for trivial subset
+  properties: remain separate semantic operations
+tests:
+  types:
+  - empty
+  - nested
+  - generic
+  - wide fields
+  - tags
+  - properties excluded
+  literal_plan:
+  - explicit
+  - empty default
+  - partial default
+  - nested default
+  - named constrained default
+  - spread
+  - overrides
+  - read-only query
+  - AST-mutation independence
+  construction:
+  - source order vs declaration order
+  - fully initialized
+  - origins/actions
+  - int128
+  - uint256
+  - empty struct
+  spread:
+  - source once
+  - declaration-order expansion
+  - explicit override
+  - multiple spreads
+  - nontrivial transfer unsupported
+  field_read:
+  - scalar
+  - wide
+  - nested
+  - parameter/return
+  - property distinction
+  mutable:
+  - default local
+  - explicit local
+  - field replace
+  - nested replace
+  - root store once
+  - P5 leaves high-level
+  union_payload:
+  - synthetic identity
+  - trivial whole payload match
+  - wide fields
+  - guard dominance
+  - nontrivial rejected
+  dialect:
+  - attrs/types roundtrip
+  - construct/spread/extract/replace
+  - invalid field/arity/type
+  - schema8 regression
+  regression:
+  - check-sec-mlir
+  - go test ./...
+  - legacy paths
+acceptance:
+- baseline documented
+- previous regressions green
+- wide invariant preserved
+- Semantic IR amendment applied
+- schema v9 installed
+- lowering v9 installed
+- StructFieldID/StructDefinition
+- tags
+- empty/generic/nested structs
+- ResolvedStructLiteralPlan
+- read-only plan
+- new IR independent of AST default mutation
+- origins/defaults/spread explicit
+- source order preserved
+- spread source once
+- construct fully initialized declaration-order fields
+- field extract
+- member field/property distinction
+- trivial replace
+- mutable trivial storage
+- nested rebuild
+- new MLIR attrs/type/ops
+- P5/P6/P8 compatibility
+- synthetic union payload struct
+- P12 trivial whole-payload binding
+- nontrivial ownership explicitly rejected
+- no physical layout
+- no undef/poison defaults
+- no LLVM
+- check-sec-mlir
+- go test ./...
+- legacy paths
+package14:
+  name: Fixed Array Semantic Value Representation
+  scope:
+  - fixed-array type
+  - zero length
+  - array literals
+  - array defaults
+  - array spread
+  - checked/proven-safe indexing
+  - trivial element update
+  - '!sec.array'
+  - array construct/extract/update
+  deferred:
+  - dynamic arrays
+  - slices/references
+  - move-out
+  - nontrivial destruction
+  - aggregate ABI
+  - LLVM

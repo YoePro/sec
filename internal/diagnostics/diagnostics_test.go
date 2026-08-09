@@ -26,6 +26,9 @@ func TestKnownDiagnosticSeverities(t *testing.T) {
 		OperatorStringRuntimeConcat:  SeverityError,
 		OperatorInvalidMembership:    SeverityError,
 		OperatorInvalidConcatOperand: SeverityError,
+		OperatorIntegerOverflow:      SeverityError,
+		OperatorDivisionByZero:       SeverityError,
+		OperatorRemainderByZero:      SeverityError,
 		LargeValueParameter:          SeverityInformation,
 	}
 

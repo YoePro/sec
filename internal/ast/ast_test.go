@@ -17,3 +17,20 @@ func TestNumericLiteralParsersIgnoreDigitSeparators(t *testing.T) {
 		t.Fatalf("normalized lexeme = %q", got)
 	}
 }
+
+func TestIntegerFormFamilySuffixesPreserveBasePrefixedValue(t *testing.T) {
+	integer, ok := ParseIntegerFormNumericLiteralLexeme("0x41t")
+	if !ok || integer.String() != "65" {
+		t.Fatalf("char-shaped hex value = %v, %t", integer, ok)
+	}
+
+	floating, ok := ParseFloatLiteralFloat64("0x10g")
+	if !ok || floating != 16 {
+		t.Fatalf("float-shaped hex value = %v, %t", floating, ok)
+	}
+
+	integer, ok = ParseIntegerFormNumericLiteralLexeme("0x10m")
+	if !ok || integer.String() != "16" {
+		t.Fatalf("decimal-shaped hex value = %v, %t", integer, ok)
+	}
+}

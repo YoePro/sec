@@ -9,6 +9,54 @@ class Sec_Type<string name, string typeMnemonic>
   let mnemonic = typeMnemonic;
 }
 
+class Sec_SingletonType<string name, string typeMnemonic>
+    : Sec_Type<name, typeMnemonic> {
+  let assemblyFormat = "";
+}
+
+def Sec_IntType : Sec_SingletonType<"Int", "int"> {
+  let summary = "Sec target-sized signed integer";
+}
+
+def Sec_UIntType : Sec_SingletonType<"UInt", "uint"> {
+  let summary = "Sec target-sized unsigned integer";
+}
+
+def Sec_FloatType : Sec_SingletonType<"Float", "float"> {
+  let summary = "Sec default semantic floating-point type";
+}
+
+def Sec_CharType : Sec_SingletonType<"Char", "char"> {
+  let summary = "Sec character type";
+}
+
+def Sec_RuneType : Sec_SingletonType<"Rune", "rune"> {
+  let summary = "Sec Unicode scalar type";
+}
+
+def Sec_StringType : Sec_SingletonType<"String", "string"> {
+  let summary = "Sec high-level string type";
+}
+
+def Sec_DecimalType : Sec_SingletonType<"Decimal", "decimal"> {
+  let summary = "Sec exact decimal type";
+}
+
+def Sec_Decimal128Type : Sec_SingletonType<"Decimal128", "decimal128"> {
+  let summary = "Sec exact decimal type with a 128-bit coefficient family";
+}
+
+def Sec_NeverType : Sec_SingletonType<"Never", "never"> {
+  let summary = "Sec never type";
+}
+
+def Sec_StorageType : Sec_Type<"Storage", "storage"> {
+  let summary = "Sec semantic storage identity";
+  let parameters = (ins "::mlir::Type":$elementType);
+  let assemblyFormat = "`<` $elementType `>`";
+  let genVerifyDecl = 1;
+}
+
 def Sec_NamedType : Sec_Type<"Named", "named"> {
   let summary = "Sec named type identity over a selected base representation";
   let parameters = (ins

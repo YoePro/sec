@@ -11,7 +11,7 @@ This document is subordinate to:
 ```text
 all applicable Sec language/domain rulebooks
 rules/layout.md
-rules/types.txt
+rules/types.md
 rules/semantic_ir.txt
 rules/sec_mlir.md
 ```

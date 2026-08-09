@@ -3045,7 +3045,7 @@ This rulebook must remain synchronized with:
 ```text
 copy_move.md
 contracts.md
-types.txt
+types.md
 functions.txt
 struct.txt
 arrays-slices.txt
@@ -3515,7 +3515,7 @@ Ensure implicit string copy:
 Update:
 
 ```text
-types.txt
+types.md
 core-library.md
 sec/core/string.sec
 copy_move.md
@@ -3682,7 +3682,7 @@ Highest-priority files:
 ```text
 copy_move.md
 contracts.md
-types.txt
+types.md
 functions.txt
 struct.txt
 arrays-slices.txt

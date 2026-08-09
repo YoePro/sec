@@ -1,0 +1,297 @@
+package:
+  id: SEC-MLIR-P14
+  name: Fixed Array Semantic Value Representation
+  repository: https://github.com/YoePro/sec
+  branch: main
+  repository_sync_commit: 152c772
+  repository_sync_date: '2026-08-09'
+  local_predecessor: SEC-MLIR-P13
+  semantic_ir_version_before: 1
+  semantic_ir_version_after: 1
+  sec_mlir_schema_before: 9
+  sec_mlir_schema_after: 10
+  lowering_spec_before: 9
+  lowering_spec_after: 10
+  goal: Canonical fixed-array values, compact spread/default construction and safe
+    bounds-checked indexing without physical array layout.
+  next_package: Safe Place and Reference Semantic Core
+normative_updates:
+- repository_paths:
+  - rules/arrays-slices.txt
+  - rules/runtime_checks.md
+  - rules/core-library.md
+  supplied_file: sec_fixed_array_sync_package14.md
+- repository_path: rules/semantic_ir.txt
+  supplied_file: sec_semantic_ir_fixed_array_package14.md
+- repository_path: rules/sec_mlir_dialect.md
+  supplied_file: sec_mlir_dialect_package14.md
+  schema_version: 10
+- repository_path: rules/sec_mlir_lowering.md
+  supplied_file: sec_mlir_lowering_package14.md
+  version: 10
+rule_reconciliation:
+  array_literal_spread:
+    canonical_source: rules/spread.txt
+    status: implemented/current
+    stale_no_spread_wording: remove/synchronize
+  fixed_index_error:
+    runtime_checks_wording: BoundsError or canonical equivalent
+    canonical_type: IndexError
+    variant: OutOfBounds
+    new_bounds_error_type: false
+wide_builtin_invariant:
+  active:
+  - int128
+  - int256
+  - uint128
+  - uint256
+  - decimal128
+  fixed_array_elements: true
+  forbidden_status:
+  - future
+  - planned
+  - reserved
+  - placeholder
+  - not yet active
+sema_array_shape:
+  current_debt:
+    length_type: int64
+    dynamic_sentinel: -1
+    canonical_after_p14: false
+  canonical:
+    shape_kind:
+    - fixed
+    - dynamic
+    fixed_length: arbitrary precision *big.Int
+    dynamic_length: null
+    negative_sentinel: false
+  fixed_length_semantics:
+  - compile-time integer
+  - non-negative
+  - exact arbitrary precision
+  - target uint validation per CompilationPlan
+  - physical layout validation when required
+  legacy: may translate to int64/-1 only inside legacy compatibility code after explicit
+    range check
+literal_plan:
+  api: ResolvedArrayLiteralPlanOf(*ast.ArrayLiteral)
+  read_only: true
+  entry_kinds:
+  - element
+  - spread
+  length: arbitrary precision
+  spread_source: fixed array only
+  spread_evaluated_once: true
+  multiple_spreads: true
+  source_order: true
+  no_expanded_type_slice: true
+  p14_actions:
+  - construct-direct
+  - copy-trivial
+semantic_ir:
+  version_bump: false
+  type: FixedArrayTypeData
+  type_identity:
+  - element TypeID
+  - exact length
+  ops:
+  - ArrayConstructOp
+  - ArrayDefaultOp
+  - ArrayLengthOp
+  - ArrayIndexInBoundsOp
+  - ArrayExtractOp
+  - ArrayReplaceOp
+  - BoundsFailureOp
+  construction:
+    compact_segments: true
+    segment_kinds:
+    - element
+    - spread
+    spread_expansion_complexity: O(source entries), not O(expanded length)
+  default:
+    compact: true
+    fully_initialized: true
+    zero_length_constructs_element: false
+indexing:
+  source_semantics: place before use selection
+  plan_api: ResolvedArrayIndexPlanOf(*ast.IndexExpression)
+  check_kinds:
+  - proven-safe
+  - runtime-check
+  proof_kinds:
+  - constant
+  - range
+  - branch
+  - contract
+  - analysis
+  use_kinds:
+  - read
+  - write
+  - borrow
+  - mut-borrow
+  p14_supported_actions:
+  - copy-trivial read
+  - trivial replacement
+  constant_arithmetic: arbitrary precision
+  ordinary_failure: BoundsFailureOp / sec.fail.bounds / panic.bounds
+  fallible_error: IndexError.OutOfBounds
+  unsafe_bypass: false
+try_and_effects:
+  resolved_try_extension: bounds-propagation or equivalent normalized source kind
+  naked_try: Result[U, IndexError]
+  local_handlers: true
+  error_mapping_automatic: false
+  ordinary_effect: MayBoundsPanic when unproven
+  proven_safe_effect: no bounds panic
+  fallible_effect: IndexError flow; no bounds panic for the check
+  operand_effects_preserved: true
+storage:
+  trivial_fixed_array_storage: true
+  eligibility:
+  - CopyTrivial
+  - TriviallyDestructible
+  - supported element representation
+  p5_memref_lowering: false
+  replacement: load whole array -> semantic replace -> store whole array
+  nested_replacement: rebuild leaf-to-root
+dialect:
+  schema_version: 10
+  type: '!sec.array<T,"N">'
+  length_encoding: canonical arbitrary-precision decimal StringAttr
+  ops:
+  - sec.array.construct
+  - sec.array.default
+  - sec.array.len
+  - sec.array.index_in_bounds
+  - sec.array.extract
+  - sec.array.replace
+  - sec.fail.bounds
+  verifier: --sec-verify-array-index-guards
+  physical_layout: false
+compatibility:
+  p5: fixed-array storage remains high-level
+  p6: target-sized scalar resolution may recurse inside array wrapper; preserve length
+  p8: signless normalization does not recurse inside array wrapper
+  p11: union payload may be fixed array for supported transfer subset
+  p12: match values may carry trivial fixed arrays; no array patterns added
+  p13: structs and arrays may nest in either direction
+boundaries:
+  deferred:
+  - dynamic owning T[]
+  - slices
+  - shared/mutable element borrow
+  - safe references
+  - move-out
+  - semantic-copy spread
+  - non-trivial element replacement/destruction
+  - array equality lowering
+  - array membership lowering
+  - physical fixed-array layout
+  - aggregate ABI
+  - foreign ABI
+  - LLVM
+tests:
+  length:
+  - '0'
+  - ordinary compile-time
+  - target uint32 boundary
+  - target uint64 boundary
+  - '>int64 <=uint64 semantic length'
+  - multi-output independent validation
+  - no dynamic -1 semantic sentinel
+  literal:
+  - ordinary
+  - target typed
+  - inferred
+  - empty target
+  - spread
+  - multiple spread
+  - large spread no expansion
+  default:
+  - scalar
+  - nested aggregate
+  - zero-length non-defaultable element
+  - no undef
+  - compact IR
+  index:
+  - arbitrary-precision constant
+  - proven-safe
+  - runtime signed
+  - runtime unsigned
+  - zero-length
+  - ordinary panic path
+  - fallible IndexError path
+  - local handler
+  replacement:
+  - trivial local
+  - nested
+  - RHS before commit
+  - root stored once
+  - nontrivial unsupported
+  dialect:
+  - array type roundtrip
+  - large length
+  - construct segments
+  - default
+  - len
+  - bounds
+  - extract
+  - replace
+  - fail.bounds
+  - schema9 regression
+  regression:
+  - check-sec-mlir
+  - go test ./...
+  - legacy paths
+acceptance:
+- baseline repo + local P13 documented
+- spread rule synchronized
+- IndexError canonicalized
+- arbitrary precision fixed length
+- no canonical dynamic sentinel
+- plan-specific uint validation
+- compact literal plan
+- compact spread
+- compact default
+- zero-length semantics
+- array length op
+- resolved index plan
+- arbitrary precision bounds
+- proven/runtime classification
+- bounds predicate
+- guarded extract
+- trivial replace
+- ordinary bounds failure
+- fallible IndexError flow
+- try/effect integration
+- trivial high-level storage
+- schema v10
+- index guard verifier
+- P5/P6/P8/P13 compatibility
+- no dynamic/slice conflation
+- no physical layout
+- no LLVM
+- check-sec-mlir
+- go test ./...
+- legacy paths
+package15:
+  name: Safe Place and Reference Semantic Core
+  reason: Array element borrowing, slice creation, borrowed struct fields and generational
+    references need one canonical place/reference layer.
+  scope:
+  - PlaceID/place paths
+  - local storage places
+  - struct field places
+  - fixed-array element places
+  - place mutability
+  - shared ref
+  - ref mut
+  - reference origin
+  - generation/epoch semantic metadata
+  - borrow/reborrow
+  - reference verifier
+  - high-level !sec.ref / !sec.ref_mut
+  deferred:
+  - physical pointer/reference representation
+  - slices to Package 16
+  - LLVM

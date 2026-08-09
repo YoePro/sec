@@ -1,5 +1,5 @@
 schema_version: 1
-updated: "2026-08-08"
+updated: "2026-08-09"
 purpose: >-
   Canonical implementation ledger for compiler and tooling work. Normative
   language behavior remains in rules/, while implementation status is migrated
@@ -65,6 +65,7 @@ integrations:
         result: passed
       - command: validate implementation-status.yaml
         result: passed
+
     remaining:
       - invalid type retention on every type-reference failure path
       - skipped-range and shared-stack migration for remaining specialized recovery helpers
@@ -468,12 +469,12 @@ integrations:
     status: partial
     integrated: "2026-08-07"
     summary: >-
-      Builds the current escape-analysis vertical slice on canonical Place and
-      reference provenance: local/aggregate reference escapes, branch/loop
-      provenance joins, and declaration-order-independent direct-call return
-      origin summaries are integrated. Full retention, indirect-call,
-      recursion, separate-compilation, concurrency, and foreign-retention
-      analysis remains to be implemented against rules/escape_analysis.md.
+      Builds a compiler-owned immutable escape-fact and callable-summary slice
+      on canonical Place and reference provenance. Return, aggregate-carrier,
+      explicit-capture, and outer-place facts are integrated with existing
+      branch/loop provenance and direct-call return-origin summaries. Full
+      retention, indirect-call, recursion, separate-compilation, concurrency,
+      and foreign-retention analysis remains.
     rules:
       - rules/escape_analysis.md
       - rules/lifetime_analysis.txt
@@ -488,8 +489,10 @@ integrations:
       - rules/call_graph.md
     code:
       - internal/sema/place.go
+      - internal/sema/escape_analysis.go
       - internal/sema/analyzer.go
     tests:
+      - internal/sema/escape_analysis_test.go
       - internal/sema/lifetime_test.go
       - internal/sema/copy_move_test.go
       - internal/sema/analyzer_test.go
@@ -507,6 +510,16 @@ integrations:
       - symbolic parameter, receiver, projection, multi-source, and aggregate return paths
       - transitive call-site origin instantiation for supported direct calls
       - returned granting-borrow retention for supported direct reference calls
+      - dedicated immutable EscapeAnalysis snapshots with deterministic fact and callable-summary ordering
+      - canonical escape subject, mode, destination, source, and parameter-disposition representation
+      - historical return facts for owned values, references, views, raw pointers, callable values, and reference-carrying aggregates
+      - canonical Place source provenance and field-sensitive carrier paths on returned aggregate dependencies
+      - symbolic Returned parameter and receiver dispositions without inferring NoEscape from absent facts
+      - closure capture facts and Captured parameter or receiver dispositions for explicit lambda captures
+      - historical OuterPlace borrow-escape facts retained for rejected local-reference assignments
+      - Result Ok and Err payload return facts using the payload's semantic type
+      - isolation of final escape facts from iterative reference-summary passes and unattributed lambda-body returns
+      - defensive snapshot cloning that does not expose mutable compiler type internals
     verification:
       - command: go test ./...
         result: passed
@@ -515,9 +528,9 @@ integrations:
       - command: validate implementation-status.yaml
         result: passed
     remaining:
-      - separate the dedicated escape-analysis result and summary contract from legacy lifetime-analysis bookkeeping where practical
-      - classify parameter and receiver escape facts including NoEscape, Returned, Retained, StoredInEscapingCarrier, OwnershipTransferred, Captured, task/thread transfer, foreign transfer, and UnknownRetention
-      - track explicit escape subjects, modes, and destinations required by rules/escape_analysis.md
+      - migrate remaining legacy lifetime-analysis bookkeeping to consume the dedicated escape-analysis result where practical
+      - prove NoEscape and classify Retained, StoredInEscapingCarrier, OwnershipTransferred, task/thread transfer, foreign transfer, and UnknownRetention parameter and receiver facts
+      - produce facts for the represented retention, aggregate, task, thread, static, thread-local, foreign, handle, and unknown destinations
       - complete indexed, sliced, aliased, aggregate, and dynamic-container dependency propagation without losing canonical Place precision
       - complete mutation, rebinding, move, copy, replacement, destruction, and carrier-state integration for escape facts
       - add recursive and mutually recursive escape-summary SCC fixed points with projection widening and guaranteed termination
@@ -598,6 +611,7 @@ integrations:
         result: passed
       - command: validate implementation-status.yaml
         result: passed
+
     remaining:
       - canonical CaptureRecord facts with source Place, captured type, capture mode, transfer, and semantic dependencies
       - explicit callable-body, function-value, closure-instance, closure-creation-site, and abstract-environment identities
@@ -626,6 +640,184 @@ integrations:
       - synchronization appendix for legacy implementation-oriented closure-storage wording in rules/functions_lambda.txt
       - dedicated positive, negative, interprocedural, CFA-precision, recursion, analysis-budget, LSP-integration, and termination regression tests
 
+  - id: lowering.sec-mlir-schema-2
+    area: semantic-ir-lowering
+    status: implemented
+    integrated: "2026-08-09"
+    summary: >-
+      Implements SEC-MLIR-P4 as the first verified Semantic IR v1 to Sec MLIR
+      bridge. The emitter consumes only canonical Semantic IR, emits dialect
+      schema 2, and publishes CLI output only after verification by the real
+      Sec MLIR toolchain.
+    rules:
+      - rules/semantic_ir.txt
+      - rules/sec_mlir.md
+      - rules/sec_mlir_dialect.md
+      - rules/mlir-dialect-packages/sec-mlir-dialect_package4.md
+      - rules/mlir-dialect-packages/sec-mlir-dialect_package4.yaml
+    code:
+      - internal/lowering/secmlir/emitter.go
+      - internal/lowering/secmlir/errors.go
+      - cmd/compiler/main.go
+      - mlir/include/sec/Dialect/Sec/SecDialect.td
+      - mlir/include/sec/Dialect/Sec/SecTypes.td
+      - mlir/include/sec/Dialect/Sec/SecOps.td
+      - mlir/include/sec/Dialect/Sec/SecOps.h
+      - mlir/lib/Dialect/Sec/SecDialect.cpp
+      - mlir/lib/Dialect/Sec/SecTypes.cpp
+      - mlir/lib/Dialect/Sec/SecOps.cpp
+      - mlir/tools/sec-mlir-opt/sec-mlir-opt.cpp
+    tests:
+      - internal/lowering/secmlir/emitter_test.go
+      - cmd/compiler/emit_sec_mlir_test.go
+      - mlir/test/Dialect/Sec
+    implemented:
+      - Sec MLIR dialect schema 2 while retaining schema 1 parsing and regression coverage
+      - semantic scalar types and non-nested !sec.storage<T> with dialect verification
+      - exact integer, boolean, float, decimal, and string constant operations
+      - semantic storage declare, init, load, and store operations
+      - distinct direct and foreign call operations with symbol, signature, extern-kind, and argument-action verification
+      - func.func, func.return, cf.br, cf.cond_br, and MLIR block arguments for standard control flow
+      - required module, function, source, storage, and call metadata verification
+      - deterministic Semantic IR type, function, block, value, storage, and source-location emission
+      - Semantic IR dependency boundary and UnsupportedLoweringError for verified unsupported constructs
+      - emit-sec-mlir CLI pipeline with target filtering, Package 3 Semantic IR construction, temporary output, VerifySec, and verification-before-publication
+      - unchanged legacy emit-mlir and LLVM code-generation paths
+    verification:
+      - command: go test ./...
+        result: passed
+      - command: go vet ./...
+        result: passed
+      - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
+        result: passed with 25 tests under LLVM/MLIR 24.0.0git
+      - command: SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./internal/lowering/secmlir -run TestEmittedModuleVerifiesWithRealTool -count=1
+        result: passed
+      - command: emit-sec-mlir over representative Package 2 and 3 fixtures followed by sec-mlir-opt verification
+        result: passed
+      - command: validate implementation-status.yaml
+        result: passed
+  - id: lowering.sec-mlir-trivial-core
+    area: mlir-dialect-conversion
+    status: implemented
+    integrated: "2026-08-09"
+    summary: >-
+      Implements SEC-MLIR-P5 as a deliberately partial dialect conversion.
+      Fully discharged boolean, trivial-storage, and ordinary direct-call
+      semantics lower to core MLIR while unresolved Sec representation and ABI
+      obligations remain explicit.
+    rules:
+      - rules/sec_mlir_lowering.md
+      - rules/sec_mlir_dialect.md
+      - rules/mlir-dialect-packages/sec-mlir-dialect_package5.md
+      - rules/mlir-dialect-packages/sec-mlir-dialect_package5.yaml
+    code:
+      - mlir/include/sec/Conversion/SecToCore/Passes.h
+      - mlir/include/sec/Conversion/SecToCore/Passes.td
+      - mlir/lib/Conversion/SecToCore/SecToCore.cpp
+      - mlir/tools/sec-mlir-opt/sec-mlir-opt.cpp
+    tests:
+      - mlir/test/Conversion/SecToCore
+      - internal/lowering/secmlir/emitter_test.go
+    implemented:
+      - independently registered --sec-lower-trivial-core module pass
+      - MLIR Dialect Conversion through TypeConverter, ConversionTarget, rewrite patterns, and applyPartialConversion
+      - sec.const.bool to location-preserving arith.constant i1 conversion
+      - narrow !sec.storage<T> to rank-zero memref<T> conversion for fixed-width 8/16/32/64/128/256-bit integer, f32, and f64 elements
+      - corrected exclusion of i1 from generic storage lowering because addressable bool occupies one byte
+      - storage declare, init, load, and store conversion to memref.alloca, memref.store, and memref.load
+      - storage provenance attributes and source locations preserved without memref.dealloc
+      - sec.call.direct conversion to func.call with exact symbol, operand, result, and location preservation
+      - copy-trivial argument actions validated and discharged while sec.call.foreign remains explicit
+      - target-sized, named, distinct, decimal, string, char, rune, never, shaped, and custom storage remains Sec MLIR
+      - integer, float, decimal, and string constants remain Sec operations
+      - deterministic and idempotent mixed-dialect output without unrealized conversion casts or LLVM operations
+      - explicit failure for storage handles that cannot be converted consistently across a forbidden boundary
+    verification:
+      - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
+        result: passed with 32 tests under LLVM/MLIR 24.0.0git
+      - command: SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./internal/lowering/secmlir -count=1
+        result: passed including real Package 4 to Package 5 integration
+      - command: sec-mlir-opt --help
+        result: exposes --sec-lower-trivial-core
+      - command: emit-sec-mlir fixtures for bool, direct call, and foreign call followed by --sec-lower-trivial-core
+        result: passed with expected partial conversion and no LLVM dialect
+      - command: validate implementation-status.yaml with duplicate-key rejection
+        result: passed
+  - id: lowering.sec-mlir-scalar-layout
+    area: semantic-ir-and-mlir-dialect-conversion
+    status: implemented
+    integrated: "2026-08-09"
+    summary: >-
+      Implements the complete SEC-MLIR-P6 target-plan and scalar-layout
+      vertical. Package 8 now performs the previously deferred operation-aware
+      signless normalization and exact signed/unsigned constant discharge.
+    rules:
+      - rules/layout.md
+      - rules/types.md
+      - rules/semantic_ir.txt
+      - rules/sec_mlir.md
+      - rules/sec_mlir_dialect.md
+      - rules/sec_mlir_lowering.md
+      - rules/mlir-dialect-packages/sec-mlir-dialect_package6.md
+      - rules/mlir-dialect-packages/sec-mlir-dialect_package6.yaml
+    code:
+      - internal/layout/scalar_plan.go
+      - internal/ir/semantic/model.go
+      - internal/ir/semantic/builder.go
+      - internal/ir/semantic/verifier.go
+      - internal/lowering/secmlir/emitter.go
+      - cmd/compiler/target.go
+      - cmd/compiler/main.go
+      - mlir/include/sec/Dialect/Sec/SecDialect.td
+      - mlir/include/sec/Dialect/Sec/SecTypes.td
+      - mlir/lib/Dialect/Sec/SecDialect.cpp
+      - mlir/lib/Dialect/Sec/SecOps.cpp
+      - mlir/include/sec/Conversion/SecToCore/Passes.td
+      - mlir/lib/Conversion/SecToCore/SecToCore.cpp
+      - mlir/lib/Conversion/SecIntegerToArith/SecIntegerToArith.cpp
+      - mlir/tools/sec-mlir-opt/sec-mlir-opt.cpp
+    tests:
+      - internal/layout/scalar_plan_test.go
+      - internal/ir/semantic/semantic_test.go
+      - internal/lowering/secmlir/emitter_test.go
+      - cmd/compiler/main_test.go
+      - mlir/test/Dialect/Sec
+      - mlir/test/Conversion/SecToCore
+      - testdata/semantic_ir/wide_scalars.sec
+    implemented:
+      - Semantic IR v1 coverage for int128, int256, uint128, uint256, and a distinct decimal128 family
+      - corrected exact 128/256-bit width inference, arbitrary-precision constants, storage, and direct calls
+      - Sec MLIR schema 3 with !sec.decimal128 and exact wide integer and decimal-family verification
+      - canonical frontend-neutral ResolvedScalarPlan with explicit target, ABI, profile, pointer-width, and endianness facts
+      - explicit target scalar facts for known 32-bit and 64-bit compiler targets while any-architecture targets remain unresolved
+      - schema-3 emitter target metadata and explicit DLTI index-width emission for every compiler-generated module
+      - DLTI, Arith, MemRef, Func, and ControlFlow registration in sec-mlir-opt
+      - independently registered --sec-resolve-scalar-layout dialect-conversion pass using one DataLayout query
+      - "!sec.int, !sec.uint, !sec.float, !sec.char, and !sec.rune resolution without host-width inference or signedness erasure"
+      - named and distinct base conversion while preserving identity wrappers
+      - function signature, all block argument, func.call, return, control-flow, direct-call, and foreign-call type conversion
+      - corrected bool storage lowering from semantic i1 through rank-zero memref<i8> with extui and trunci boundaries
+      - explicit rejection of provenance-marked legacy memref<i1> bool storage
+      - corrected trivial storage coverage for fixed 8/16/32/64/128/256-bit integer types while excluding i1
+      - registered idempotent --sec-lower-scalar-core pipeline in trivial-core, scalar-layout, trivial-core order
+      - signless plain sec.const.int lowering to arith.constant with arbitrary-precision range validation
+      - signed and unsigned integer constants retained as sec.const.int after width resolution to preserve verifiable signedness
+      - scalar-kind provenance on plain builtin function boundaries and automatic storage before representation erasure
+      - exact signed/unsigned integer constant discharge after Package 8 selects signless core representation
+      - float and both decimal families remain high-level; foreign calls remain semantically explicit; no LLVM dialect is emitted
+    verification:
+      - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
+        result: passed with 43 tests under LLVM/MLIR 24.0.0git
+      - command: go test ./...
+        result: passed
+      - command: go vet ./...
+        result: passed
+      - command: SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./internal/lowering/secmlir -count=1
+        result: passed including idempotent 32-bit and 64-bit scalar-core integration
+      - command: emit-sec-mlir testdata/semantic_ir/wide_scalars.sec followed by --sec-lower-scalar-core
+        result: passed with si128 storage, ui256 calls, and high-level decimal128
+      - command: validate implementation-status.yaml with duplicate-key rejection
+        result: passed
   - id: frontend.impl-extensions
     area: frontend-analysis-and-tooling
     status: partial
@@ -683,15 +875,15 @@ integrations:
 
   - id: sema.parameter-usage-analysis
     area: frontend-analysis
-    status: planned
+    status: partial
     integrated: "2026-08-08"
     summary: >-
-      Reserves the canonical multidimensional parameter-demand analysis that
-      will derive the weakest semantic capabilities required by reachable uses,
-      propagate demand across Sec and FFI boundaries, and produce advisory
-      narrowing candidates without changing source signatures or ABI semantics.
-      Existing receiver-mutability inference and A2001 large-by-value warnings
-      are adjacent legacy mechanisms, not a conforming ParameterDemand slice.
+      Implements the first report-free ParameterDemand slice as a post-Sema,
+      immutable analysis snapshot. It derives local parameter and implicit
+      receiver demand from resolved bindings, canonical Places, expression and
+      call facts, and escape summaries without changing signatures, diagnostics,
+      ABI semantics, or lowering. Interprocedural fixed-point propagation and
+      advisory narrowing policy remain future work.
     rules:
       - rules/parameter_usage_analysis.md
       - rules/ownership.md
@@ -709,31 +901,45 @@ integrations:
     code:
       - internal/sema/analyzer.go
       - internal/sema/place.go
+      - internal/sema/parameter_usage.go
+      - internal/sema/escape_analysis.go
     tests:
       - internal/sema/parameter_usage_test.go
+    implemented:
+      - canonical access, mutation, ownership, lifetime, identity, shape, storage, representation, and precision dimensions
+      - deterministic per-callable summaries for explicit parameters and implicit impl receivers
+      - immutable Analyzer snapshot API with defensive cloning of types, Places, projections, uses, and demand sets
+      - local read, field and element write, index, slice, iteration, reference formation, and explicit move evidence
+      - canonical Place evidence for fields, constant and dynamic indexes, and half-open slices
+      - random-access, sequence, known-range, and constant minimum-extent shape demand
+      - direct resolved ref and ref-mut call-boundary demand plus dimension-specific conservative unknown demand for unresolved and foreign calls
+      - returned, retained, transferred, task, thread, and foreign lifetime demand consumed from escape summaries
+      - focused regressions for unused parameters, field reads and writes, indexing, iteration, returned borrows, implicit self, and snapshot immutability
+      - transitive direct-call demand propagation for ordinary parameters and method receivers with translated Place projections
+      - declaration-order-independent monotone fixed-point solving over call-graph SCC ordering, including recursive and mutually recursive callables
+      - bounded propagated projection depth with partial-precision widening and conservative unknown widening when an interactive summary budget is exhausted
+      - interprocedural convergence metadata in immutable analysis snapshots
     remaining:
-      - add canonical multidimensional ParameterDemand representation for access, mutation, ownership, lifetime, identity, shape, storage, representation, and precision
       - replace or suppress the unconditional A2001 size-only narrowing heuristic until BorrowSufficient and all critical dimensions are proven
-      - derive local demand from field reads and writes, indexing, iteration, element mutation, structural collection mutation, address formation, return, move, copy, retention, and whole-value operations
-      - preserve canonical Place and projection precision when demand applies to subobjects
-      - consume escape and lifetime summaries for call-only, returned, retained, task, thread, and foreign-retention demand
-      - add symbolic per-parameter and receiver demand summaries
-      - propagate direct-call demand summaries transitively and solve recursive and mutually recursive call-graph SCCs to fixed point
+      - complete structural collection mutation, explicit copy, retention, whole-value, unreachable-path, and implicit unqualified receiver-member demand
       - consume closure/callable target summaries and open callable contracts for function-value calls
-      - add dimension-specific conservative unknown demand rather than whole-result collapse
       - add explicit FFI contract-boundary propagation for retention, ownership, address, contiguity, alignment, pinning, memory space, and representation requirements
-      - add fixed-array exact-extent, minimum-extent, sequence, random-access, contiguous-sequence, and known-range demand
+      - add fixed-array exact-extent and contiguous-sequence demand where semantic operations prove those requirements
       - derive capability-preserving narrowing candidates for large by-value values, fixed arrays, owning sequences, and unnecessary mutability or ownership
       - separate semantic demand from target-specific cost and recommendation policy
       - respect explicit fixed-extent, ownership, hardware, FFI, storage, and representation contracts as narrowing blockers
       - add recommendation confidence, reason, and blocked-candidate reporting
       - add versioned persisted demand summaries for separate compilation
       - add independent semantic-demand and recommendation-cache invalidation
-      - add Interactive, Standard, and Deep analysis-budget integration
+      - extend the current Interactive summary-iteration budget to depth-specific Standard and Deep recommendation and persistence work
       - expose configurable LSP hover/advisory information without making optional insight mandatory
       - integrate parameter usage into default sec analyse --all behavior and support explicit parameter-usage-only analysis selection
-      - add required local, narrowing, shape, interprocedural, recursive, FFI, recommendation-policy, and false-positive regression tests
-      - update implementation-status verification commands when the first vertical slice is integrated
+      - add narrowing, projection-widening recursion, FFI, recommendation-policy, shadowing, and false-positive regression tests
+    verification:
+      - command: go test ./internal/sema -run TestParameterUsage
+        result: passed
+      - command: go test ./...
+        result: passed
 
   - id: sema.pitfall-analysis
     area: frontend-analysis
@@ -760,8 +966,6 @@ integrations:
     code:
       - internal/sema/analyzer.go
       - internal/sema/place.go
-    tests:
-      - internal/sema/pitfall_analysis_test.go
     remaining:
       - add canonical structured PitfallFinding representation with stable rule identity, classification, confidence, evidence, suppression, owning-rule linkage, suggested actions, and analysis state
       - add canonical pitfall rule registry with family, required semantic facts, minimum analysis budget, and default confidence metadata
@@ -936,3 +1140,497 @@ integrations:
         result: passed
       - command: validate implementation-status.yaml
         result: passed
+
+  - id: frontend.lexical-structure
+    area: frontend-and-tooling
+    status: partial
+    integrated: "2026-08-09"
+    summary: >-
+      Records the current lexer, parser, formatter, diagnostic, and LSP
+      implementation baseline for the normative lexical structure rules.
+    rules:
+      - rules/lexical_structure.md
+      - rules/grammar.md
+      - rules/attributes.md
+      - rules/operators.md
+      - rules/formatter.md
+      - rules/lsp.md
+      - rules/diagnostics.txt
+      - rules/parser_recovery.md
+    code:
+      - internal/lexer/lexer.go
+      - internal/parser
+      - internal/ast
+      - internal/sema
+      - internal/formatter
+      - internal/lsp
+      - cmd/lsp
+      - vscode/syntaxes/sec.tmLanguage.json
+    tests:
+      - internal/lexer/lexer_test.go
+      - internal/parser/parser_test.go
+      - internal/formatter/formatter_test.go
+      - internal/sema/analyzer_test.go
+      - cmd/lsp/main_test.go
+    implemented:
+      - Unicode-rune input processing
+      - one-based line and column tracking
+      - identifier starts using underscore, ASCII letters, and Unicode letters
+      - ASCII digits after identifier start
+      - keyword lookup for a large current subset
+      - dedicated bare underscore tokens while underscore-prefixed names remain identifiers
+      - decimal integer literals
+      - fractional literals including leading-period forms such as .5
+      - scientific exponent literals including signed exponents and leading-period mantissas
+      - focused parser diagnostics when an exponent marker or sign lacks decimal digits
+      - binary, octal, and hexadecimal integer prefixes
+      - canonical numeric family suffixes i, u, g, m, t, and r with fractional/exponent restriction to g and m
+      - focused c/d/f to t/m/g migration diagnostics for unambiguous obsolete literals
+      - require retained as a globally reserved keyword
+      - numeric digit separators between valid digits in decimal, binary, octal, hexadecimal, fractional, and exponent components
+      - separator-containing numeric source lexemes preserved in tokens and AST while parser and semantic constant evaluation ignore separators
+      - misplaced, repeated, and trailing numeric separators rejected as one ILLEGAL numeric token for currently recognized malformed forms
+      - ordinary strings
+      - character-literal tokenization
+      - backtick raw strings
+      - interpolated-string tokenization using dollar-quoted syntax
+      - line comments
+      - nested block comments
+      - comment tokens
+      - LSP semantic tokens for keywords, variables, types, functions, methods, comments, literals, and operators
+      - LSP member completion resolves self to its enclosing impl target including fields, register fields, properties, events, and instance methods
+      - LSP member completion retains inferred local types from function and method return values including while an if condition is incomplete
+      - LSP hover resolves self and self members against the enclosing impl target and displays member types, method signatures, and adjacent documentation comments where supported
+      - semantic-token fallback to lexical classification when semantic analysis encounters an incomplete editor AST
+      - LSP member-completion traversal ignores typed-nil AST nodes produced during parser recovery
+      - LSP document outline for module, type, enum, interface, function, struct, variable, and impl members
+      - LSP hover information from adjacent documentation comments above function declarations
+      - common arithmetic, logical, bitwise, range, spread, delimiter, and assignment tokens
+      - longest matching for existing multi-character punctuation
+      - ILLEGAL tokens for some unterminated literals and comments
+      - lexer snapshot and restore
+    partial:
+      - keyword inventory synchronization, including removal of the obsolete sec reservation
+      - contextual set handling, including synchronization with the rule that set is not globally reserved
+      - character-literal content validation
+      - escape validation
+      - interpolation parsing
+      - malformed base-literal diagnostics
+      - comment attachment for formatter and documentation
+      - CR and CRLF line accounting
+      - built-in type-name reservation
+      - parser rejection of semicolons
+      - source-position integration across lexer, parser, diagnostics, and LSP
+      - documentation-comment support in LSP hover without AST-level comment attachment
+      - semantic validation of character literals including exactly one decoded scalar and the documented escape forms
+      - repository keyword notes and lexer keyword switch are not yet fully synchronized
+    remaining:
+      - explicit UTF-8 validation
+      - initial BOM handling
+      - rejection of BOM outside the initial source position
+      - NFC validation of identifiers
+      - diagnostics for unsupported Unicode whitespace
+      - confusable-identifier warnings
+      - maximal malformed numeric-token recovery
+      - lexer-level escape diagnostics; character-literal escape validation currently occurs during semantic analysis
+      - balanced interpolation-expression lexing
+      - doubled literal braces in interpolated strings
+      - parser-aware formatter and semantic-token classification for contextual x
+      - built-in list, map, set, vector, matrix, tensor, and tensor_view lexical/parser integration
+      - complete reserved contract-word inventory
+      - documentation-comment attachment in parser and AST
+      - dedicated lexical tests for every invalid category
+      - stable lexer diagnostic IDs for all categories
+      - formatter and complete LSP support for all contextual classifications in rules/lexical_structure.md
+      - remove or repurpose the existing unused BYTES token because it does not represent a Sec 0.1 source feature
+
+  - id: sema.data-race-analysis
+    area: frontend-analysis-and-lowering
+    status: planned
+    summary: >-
+      Adds canonical Sec data-race analysis over the concurrency memory model,
+      including symbolic memory-access summaries, Place overlap, execution
+      contexts, synchronization, happens-before reasoning, bounded race
+      candidate pairing, diagnostics, and incremental LSP refinement.
+    rules:
+      - rules/data_races.md
+      - rules/concurrency_memory_model.md
+      - rules/call_graph.md
+      - rules/compiler_analysis.txt
+      - rules/storage.md
+      - rules/layout.md
+      - rules/lifetime_analysis.txt
+      - rules/escape_analysis.md
+      - rules/closure_analysis.md
+      - rules/ownership.md
+      - rules/borrowing.txt
+      - rules/copy_move.md
+      - rules/effect_analysis.md
+      - rules/ffi.txt
+      - rules/lsp.md
+      - rules/projects.txt
+    remaining:
+      - add canonical semantic memory-access events carrying Place/provenance, access kind, execution context, atomicity, and source location
+      - consume canonical Place/provenance rather than coarse variable identity so fields, constant indices, dynamic indices, slices, and disjoint backing ranges retain precision
+      - add storage-overlap classification that distinguishes Disjoint, Overlap, and MayOverlap without treating lost alias precision as a proven race
+      - add finite execution-context abstractions for threads, tasks, repeated spawn sites, foreign callbacks, ISR execution, platform execution, and unknown contexts
+      - represent whether one creation-site context class may have multiple overlapping runtime instances so a task body can race with another instance of itself
+      - consume canonical program-order, publication, synchronization, completion/join, atomic, platform, and foreign happens-before facts from the concurrency memory model
+      - distinguish ProvenRace, scoped ProvenRaceFree, and Unknown results throughout analysis and diagnostics
+      - preserve structural Unknown reasons such as alias, concurrency, synchronization, foreign, callable, atomic, platform-preemption, and precision-widening uncertainty
+      - distinguish a proven race from failure to prove a positive race-freedom requirement imposed by language, runtime, target, project, or CompilationPlan policy
+      - consume canonical borrow exclusivity and ownership-transfer facts as positive evidence that conflicting concurrent accesses cannot coexist
+      - consume escape and publication facts so retained or published storage can become reachable from additional execution contexts without treating publication itself as permanent race protection
+      - add symbolic function summaries for parameter, receiver, captured, static, thread-local, foreign, and unknown Place roots
+      - preserve field, index, slice, and other Place projections in exported summaries to the precision supported by Place analysis
+      - add may-read and may-write summary domains and keep them distinct from must-properties used for positive synchronization proofs
+      - track definitely-held synchronization identity at each relevant access and use intersection rather than union for must-held facts across control-flow joins
+      - preserve canonical lock identity and synchronization-guard/token relationships across function boundaries without inferring protection from naming conventions
+      - instantiate symbolic callee memory, lock, publication, and execution summaries at caller Places using canonical provenance
+      - keep ordinary synchronous calls in the caller execution context unless canonical semantics state otherwise
+      - model spawn, thread, task, foreign-callback, ISR, and runtime execution effects according to their canonical semantics
+      - consume canonical join/completion relationships so worker completion can establish ordering before subsequent accesses
+      - support execution-context overlap intervals sufficiently to avoid treating a completed joined task as concurrent with all later continuation code
+      - consume closed callable target sets from closure/callable-flow analysis and conservatively join race-relevant summaries over all possible targets
+      - consume open callable memory, retention, publication, spawn, synchronization, and concurrency contracts and widen only missing dimensions
+      - solve recursive and mutually recursive call-graph SCC summaries by deterministic monotone fixed point without treating ordinary recursion itself as concurrency
+      - add bounded Place/index/range widening so large arrays and dynamic collections do not require one analysis node per runtime index
+      - prove disjoint concurrent collection partitions and aggregate fields race-free when canonical Place/range/borrowing facts establish disjoint storage
+      - avoid treating distinct union payload projections as disjoint unless canonical layout and active-variant facts justify the proof
+      - integrate MMIO, volatile, and target-defined memory spaces through canonical memory-space and CompilationPlan semantics rather than ordinary race assumptions
+      - consume FFI contracts for foreign reads, writes, retention, publication, callback execution context, asynchronous access, completion ordering, and synchronization without inferring behavior from names
+      - integrate ISR/thread access pairing with canonical preemption, interrupt masking, priority, and nesting facts while leaving ISR-specific policy to ISR analysis
+      - add bounded race candidate indexing/grouping by Place root or alias class, projection/range class, access kind, execution context, and synchronization class
+      - support summary-level candidate pairing before event-level expansion so large programs do not require naive global O(n^2) access comparison
+      - require a sound reachable unsafe witness before classifying a candidate as ProvenRace and preserve Unknown when only possible aliasing or concurrency is established
+      - add scoped reusable RaceFreeProof facts for disjoint storage, exclusive ownership, non-overlapping execution, read-only sharing, mutual exclusion, happens-before ordering, and canonical atomic safety
+      - retain deterministic representative access pairs, cause paths, overlap reasons, concurrency reasons, and missing-ordering explanations
+      - group equivalent abstract race occurrences to avoid diagnostic explosion while preserving distinct Place/context root causes
+      - provide LSP diagnostics with primary and related source locations so programmers can navigate between conflicting accesses
+      - ensure race diagnostics explain the missing safety relationship without prescribing a mutex or other architectural synchronization strategy as an automatic universal fix
+      - offer automatic race fixes only when a canonical transformation is proven semantically safe; prioritize explanation, navigation, and cause paths otherwise
+      - integrate Interactive, Standard, and Deep analysis budgets without introducing a separate global Intermediate analysis mode
+      - support progressive LSP refinement from fast Interactive results through Standard-equivalent results and optional Deep precision
+      - represent Pending tooling state separately from Unknown, ProvenRace, and ProvenRaceFree and invalidate stale positive proofs immediately when dependencies change
+      - expose ProvenRace and required race-freedom failures as NeedToKnow LSP diagnostics while keeping positive proof explanations and detailed concurrency facts configurable OptionalInsight
+      - watch project analysis configuration and refresh affected summaries, findings, diagnostics, and optional insight without requiring an LSP restart
+      - add dependency-driven incremental invalidation for body, callee summary, callable target, execution context, ownership, escape/publication, Place/range, synchronization, FFI, ISR/platform, CompilationPlan, and schema changes
+      - stop unnecessary transitive invalidation when a reanalyzed function produces an exported data-race summary semantically equivalent to the previous summary
+      - add versioned separate-compilation summaries carrying symbolic accesses, publication, execution effects, must-held synchronization, callback behavior, and localized uncertainty
+      - introduce CompilationPlan dependence only where atomic, runtime, ISR/preemption, foreign, or memory-space behavior actually differs
+      - integrate data-race analysis into default sec analyse all-analysis behavior and support explicit data-race-only analysis selection
+      - add deterministic grouping and representative-cause selection independent of declaration order, worklist order, cache order, or parallel compiler scheduling
+      - add required proven-race, race-free, Unknown, failure-to-prove, synchronization, publication/join, Place/provenance, ownership, callable, FFI, ISR, incremental-LSP, performance, and false-positive regression tests
+      - update implementation-status verification commands when the first conforming vertical slice is integrated
+
+  - id: lowering.sec-mlir-checked-integers
+    area: frontend-analysis-semantic-ir-and-mlir
+    status: implemented
+    integrated: "2026-08-09"
+    summary: >-
+      Implements Package 7's checked builtin-integer path from immutable Sema
+      operator facts through canonical Semantic IR failure CFG and Sec MLIR
+      schema v4. Checked operations remain explicit and total; Package 8 Arith
+      lowering and signless normalization are intentionally not included.
+    rules:
+      - rules/mlir-dialect-packages/sec-mlir-dialect_package7.md
+      - rules/mlir-dialect-packages/sec-mlir-dialect_package7.yaml
+      - rules/operators.md
+      - rules/runtime_checks.md
+      - rules/semantic_ir.txt
+      - rules/sec_mlir.md
+      - rules/sec_mlir_dialect.md
+      - rules/sec_mlir_lowering.md
+    code:
+      - internal/sema/semantic_facts.go
+      - internal/sema/analyzer.go
+      - internal/sema/constants.go
+      - internal/diagnostics/diagnostics.go
+      - internal/ir/semantic/model.go
+      - internal/ir/semantic/builder.go
+      - internal/ir/semantic/verifier.go
+      - internal/ir/semantic/printer.go
+      - internal/lowering/secmlir/emitter.go
+      - internal/mlir/toolchain.go
+      - mlir/include/sec/Analysis/Passes.h
+      - mlir/include/sec/Analysis/Passes.td
+      - mlir/include/sec/Dialect/Sec/SecDialect.td
+      - mlir/include/sec/Dialect/Sec/SecOps.td
+      - mlir/include/sec/Conversion/SecToCore/Passes.td
+      - mlir/lib/Dialect/Sec/SecDialect.cpp
+      - mlir/lib/Dialect/Sec/SecOps.cpp
+      - mlir/lib/Analysis/VerifyCheckedIntegerGuards.cpp
+      - mlir/lib/Conversion/SecToCore/SecToCore.cpp
+    tests:
+      - internal/sema/semantic_facts_test.go
+      - internal/ir/semantic/semantic_test.go
+      - internal/lowering/secmlir/emitter_test.go
+      - internal/mlir/toolchain_test.go
+      - cmd/compiler/emit_sec_mlir_test.go
+      - testdata/semantic_ir/checked_integer_ops.sec
+      - mlir/test/Dialect/Sec/checked-integers-roundtrip.mlir
+      - mlir/test/Dialect/Sec/checked-integer-guard.mlir
+      - mlir/test/Dialect/Sec/invalid-checked-integer-type.mlir
+      - mlir/test/Dialect/Sec/invalid-checked-integer-negation.mlir
+      - mlir/test/Dialect/Sec/invalid-checked-integer-guard.mlir
+      - mlir/test/Dialect/Sec/invalid-checked-integer-guards.mlir
+      - mlir/test/Dialect/Sec/invalid-checked-integer-operations.mlir
+      - mlir/test/Conversion/SecToCore/schema4-checked-integer-layout.mlir
+      - mlir/test/Conversion/SecToCore/schema4-checked-integer-layout-32.mlir
+    implemented:
+      - read-only ResolvedOperatorOf facts recorded during successful Sema without query-time inference
+      - closed builtin-integer classifications for unary plus, checked negation, checked arithmetic, bitwise operations, signed/unsigned checked shifts, and six comparisons
+      - active integer width coverage for 8, 16, 32, 64, 128, 256, int, uint, and byte families
+      - Semantic IR operations with explicit semantic kinds rather than AST operator strings
+      - checked result and bool failure pairs for negation, arithmetic, and shifts
+      - dedicated immediate failure and success blocks for every checked operation
+      - overflow, division, remainder, and shift arithmetic-failure terminators with source operator provenance
+      - Semantic IR verification of integer categories, signedness, result types, enums, failure categories, and canonical checked guard structure
+      - deterministic Semantic IR formatting for multi-result integer operations
+      - Sec MLIR schema version 4 with seven integer operations and sec.fail.arithmetic
+      - ODS operation definitions and custom verifiers rejecting named, distinct, signless, i1, mismatched, and invalid-signedness operands
+      - dedicated sec/Analysis sec-verify-checked-integer-guards function pass with immediate-use, dedicated-failure-block, category, operator, and result-use validation
+      - compiler verification invokes the checked-integer guard pass for emitted Sec MLIR
+      - scalar-layout conversion preserves schema-v4 operation meaning and failure CFG while resolving target-sized signed and unsigned types
+      - trivial-core lowering leaves checked integer semantics explicit
+      - compile-time rejection of proven integer overflow, underflow, zero division/remainder, signed minimum divided or remaindered by minus one, invalid shifts, signed shift overflow, and signed-minimum negation
+      - focused UnsupportedFeatureError boundaries for try, float, decimal, named, unit-bearing, and compound-assignment arithmetic
+      - complete schema-v4 enum, active-width, malformed-operation, and checked-guard G01-G12 regression matrices
+      - end-to-end Sec source emission and real sec-mlir-opt verification before and after scalar-core lowering for 32-bit and 64-bit target plans
+    verification:
+      - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
+        result: passed, 52 tests
+      - command: go test ./...
+        result: passed
+      - command: go run ./cmd/compiler emit-sec-mlir testdata/semantic_ir/checked_integer_ops.sec --target linux-armv7 --mlir-bin build/sec-mlir/bin -o /tmp/sec-package7-armv7.mlir
+        result: passed with schema-v4 guard verification
+      - command: build/sec-mlir/bin/sec-mlir-opt --sec-verify-checked-integer-guards --sec-lower-scalar-core --sec-verify-checked-integer-guards /tmp/sec-package7-armv7.mlir
+        result: passed; target-sized int resolved to si32 and wide integer widths were preserved
+      - command: go run ./cmd/compiler emit-sec-mlir testdata/semantic_ir/checked_integer_ops.sec --target linux-amd64 --mlir-bin build/sec-mlir/bin -o /tmp/sec-package7-amd64.mlir
+        result: passed with schema-v4 guard verification
+      - command: build/sec-mlir/bin/sec-mlir-opt --sec-verify-checked-integer-guards --sec-lower-scalar-core --sec-verify-checked-integer-guards /tmp/sec-package7-amd64.mlir
+        result: passed; target-sized int resolved to si64 and wide integer widths were preserved
+      - command: validate implementation-status.yaml
+        result: passed
+
+  - id: lowering.sec-mlir-checked-integer-arith
+    area: mlir-dialect-conversion
+    status: implemented
+    integrated: "2026-08-09"
+    summary: >-
+      Implements SEC-MLIR-P8 by lowering every schema-v4 builtin integer
+      semantic operation to total signless Arith computations while preserving
+      explicit failure flags, failure CFG, scalar provenance, nominal identity,
+      and foreign-call boundaries.
+    rules:
+      - rules/sec_mlir_lowering.md
+      - rules/sec_mlir_dialect.md
+      - rules/mlir-dialect-packages/sec-mlir-dialect_package8.md
+      - rules/mlir-dialect-packages/sec-mlir-dialect_package8.yaml
+    code:
+      - internal/lowering/secmlir/emitter.go
+      - mlir/include/sec/Analysis/Passes.h
+      - mlir/include/sec/Conversion/SecIntegerToArith/Passes.h
+      - mlir/include/sec/Conversion/SecIntegerToArith/Passes.td
+      - mlir/lib/Analysis/VerifyCheckedIntegerGuards.cpp
+      - mlir/lib/Conversion/SecIntegerToArith/SecIntegerToArith.cpp
+      - mlir/tools/sec-mlir-opt/sec-mlir-opt.cpp
+    tests:
+      - internal/lowering/secmlir/emitter_test.go
+      - mlir/test/Conversion/SecIntegerToArith/arithmetic.mlir
+      - mlir/test/Conversion/SecIntegerToArith/widths-constants-idempotent.mlir
+      - mlir/test/Conversion/SecIntegerToArith/provenance-storage-calls.mlir
+      - mlir/test/Conversion/SecIntegerToArith/pipeline-storage-provenance.mlir
+      - mlir/test/Conversion/SecIntegerToArith/invalid-preconditions.mlir
+      - mlir/test/Conversion/SecIntegerToArith/apint-differential.mlir
+      - mlir/test/Support/APIntDifferential.cpp
+      - testdata/semantic_ir/checked_integer_ops.sec
+    implemented:
+      - independently registered --sec-lower-checked-integers conversion pass
+      - registered --sec-lower-integer-core pipeline after trivial-core and target-aware scalar-layout resolution
+      - shared Package 7 checked-guard verifier invoked as a mandatory precondition
+      - plain siN/uiN normalization to signless iN for widths 8, 16, 32, 64, 128, and 256 without host-width arithmetic
+      - compatible function, block, return, branch, direct-call, foreign-call, constant, and Sec-origin rank-zero storage conversion
+      - mandatory extern and preserved storage/function sec.scalar_kind provenance
+      - closed scalar-kind compatibility validation for normalized extern integer arguments, extern integer results, and Sec-origin integer storage
+      - end-to-end integer-core pipeline preservation of storage scalar provenance through trivial-core, scalar-layout, and signless conversion
+      - exact APInt conversion of arbitrary-width signed and unsigned constants
+      - checked signed and unsigned add, subtract, and multiply using exact widening and explicit range tests
+      - checked negation and signedness-correct comparisons
+      - total signed and unsigned divide/remainder through safe-divisor substitution
+      - total shifts through safe-count normalization, arithmetic/logical right shift selection, and representability-checked signed left shift
+      - bitwise and unary-plus lowering without overflow assumptions
+      - explicit preservation of sec.fail.arithmetic, foreign calls, named/distinct types, and failure CFG
+      - output free of schema-v4 sec.int operations, unrealized casts, poison assumption flags, and LLVM operations
+      - idempotent conversion and APInt differential coverage over representative and deterministic random values at every active width
+    verification:
+      - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
+        result: passed, 58 tests under LLVM/MLIR 24.0.0git
+      - command: go test ./...
+        result: passed
+      - command: emit-sec-mlir checked_integer_ops.sec for linux-armv7 and linux-amd64 followed by --sec-lower-integer-core
+        result: passed; target int became i32/i64 respectively, all sec.int operations were discharged, explicit arithmetic failures remained, and no unrealized cast, poison flag, or LLVM operation was emitted
+
+  - id: frontend.types-core
+    area: frontend-and-lowering
+    status: partial
+    integrated: "2026-08-09"
+    summary: >-
+      Tracks implemented core type syntax and semantics migrated from the
+      retired types.txt rulebook under the canonical rules/types.md contract.
+    rules:
+      - rules/types.md
+      - rules/default_values.md
+      - rules/contracts.md
+    code:
+      - internal/lexer/lexer.go
+      - internal/parser/parser.go
+      - internal/sema/analyzer.go
+      - internal/sema/defaults.go
+      - internal/sema/types.go
+      - internal/codegen/llvm
+      - internal/codegen/mlir
+    tests:
+      - internal/parser/parser_test.go
+      - internal/sema/analyzer_test.go
+      - internal/sema/defaults_test.go
+      - internal/codegen/llvm/generator_test.go
+      - internal/codegen/mlir/generator_test.go
+    implemented:
+      - immutable-by-default let declarations with inferred or explicit types
+      - comma-separated let declarations and type-first declaration groups
+      - mutable typed declarations without initializers when current defaultability rules permit them
+      - rejection of immutable typed declarations without initializers
+      - redeclaration diagnostics that preserve the previous symbol
+      - named range and unit types
+      - explicit TargetType(value) conversions and explicit numeric-to-bool conversion
+      - exact decimal literal semantic interpretation and legacy direct LLVM decimal constants, integer conversion, and return values
+      - active int128, int256, uint128, uint256, and decimal128 language identities
+    remaining:
+      - complete checked decimal arithmetic lowering and overflow handling
+      - decimal division precision and failure policy implementation
+      - complete decimal comparison lowering
+      - complete runtime contract failure paths for decimal overflow, division by zero, and precision exhaustion
+      - formatter coverage for every declaration form
+    verification:
+      - command: go test ./...
+        result: passed
+
+  - id: frontend.literal-family-suffix-v2
+    area: frontend-bootstrap-tooling
+    status: partial
+    integrated: "2026-08-09"
+    summary: >-
+      Implements the breaking primary-compiler migration from c/d/f literal
+      suffixes to t/m/g while retaining i/u/r. Bootstrap convergence remains
+      separately owned and is not imported into this repository.
+    rules:
+      - rules/types.md
+      - rules/lexical_structure.md
+    code:
+      - internal/lexer/lexer.go
+      - internal/ast/ast.go
+      - internal/parser/expression.go
+      - internal/sema/constants.go
+      - internal/sema/defaults.go
+      - internal/sema/analyzer.go
+      - internal/codegen/llvm/expressions.go
+      - internal/codegen/mlir/generator.go
+      - vscode/syntaxes/sec.tmLanguage.json
+    tests:
+      - internal/lexer/lexer_test.go
+      - internal/parser/parser_test.go
+      - internal/sema/analyzer_test.go
+      - internal/formatter/formatter_test.go
+      - internal/codegen/llvm/generator_test.go
+      - internal/codegen/mlir/generator_test.go
+    implemented:
+      - canonical i/u/g/m/t/r suffix recognition on integer-form literals
+      - canonical g/m-only suffix recognition on fractional and exponent literals
+      - hexadecimal t/r/g/m suffix support without the obsolete char ambiguity
+      - char zero spelling 0t while rune zero remains 0r
+      - focused parser migration diagnostics for unambiguous legacy c/d/f suffixes
+      - synchronized AST parsing, Sema inference, defaults, formatter preservation, legacy code generators, maintained Sec sources, documentation, and TextMate highlighting
+    remaining:
+      - synchronize the separately owned bootstrap lexer and its tests to the same i/u/g/m/t/r matrix
+      - add a cross-repository primary/bootstrap token-stream conformance test when bootstrap integration policy permits it
+    verification:
+      - command: go test ./...
+        result: passed
+      - command: npm --prefix vscode run compile
+        result: passed
+      - command: search maintained Sec sources and rulebooks for obsolete canonical c/d/f literal uses
+        result: passed; only migration examples/tests and unrelated hexadecimal or repository identifiers remain
+
+  - id: frontend.temporal-builtin-types
+    area: frontend-and-tooling
+    status: partial
+    integrated: "2026-08-09"
+    summary: >-
+      Registers date, time, datetime, and duration as compiler-known lowercase
+      opaque type identities requiring no import, without inventing temporal
+      representation, operations, conversions, or defaults.
+    rules:
+      - rules/types.md
+      - rules/lexical_structure.md
+      - rules/default_values.md
+    code:
+      - internal/sema/types.go
+      - cmd/lsp/main.go
+      - vscode/syntaxes/sec.tmLanguage.json
+    tests:
+      - internal/sema/analyzer_test.go
+      - cmd/lsp/main_test.go
+    implemented:
+      - intrinsic type-name resolution for date, time, datetime, and duration
+      - declaration and function-signature use without imports
+      - LSP completion and TextMate type classification
+      - no implicit numeric or string initialization
+      - no inferred zero, epoch, empty, or backend-derived default
+    remaining:
+      - write and synchronize the dedicated temporal rulebook
+      - decide calendar, timezone, arithmetic, literal, formatting, parsing, representation, and defaultability semantics
+      - implement temporal operations only after those decisions are canonical
+    verification:
+      - command: go test ./internal/sema ./cmd/lsp
+        result: passed
+
+  - id: frontend.wide-numeric-language-types
+    area: frontend-and-lowering
+    status: partial
+    integrated: "2026-08-09"
+    summary: >-
+      Records int128, int256, uint128, uint256, and decimal128 as active
+      language types. Integer frontend, Semantic IR, Sec MLIR layout, constants,
+      storage, calls, and checked Arith lowering are implemented; remaining
+      decimal/backend gaps are implementation gaps rather than future types.
+    rules:
+      - rules/types.md
+      - rules/layout.md
+      - rules/sec_mlir_lowering.md
+    code:
+      - internal/sema/types.go
+      - internal/ir/semantic
+      - internal/layout
+      - internal/lowering/secmlir
+      - mlir/lib/Conversion/SecToCore
+      - mlir/lib/Conversion/SecIntegerToArith
+    tests:
+      - internal/sema/analyzer_test.go
+      - internal/ir/semantic/semantic_test.go
+      - internal/layout/scalar_plan_test.go
+      - internal/lowering/secmlir/emitter_test.go
+      - mlir/test/Conversion/SecIntegerToArith
+    implemented:
+      - exact arbitrary-width integer bounds and constant validation
+      - target-independent 128-bit and 256-bit integer identities
+      - Semantic IR and Sec MLIR representation for all listed wide types
+      - checked integer Arith lowering without host-width narrowing
+    remaining:
+      - complete decimal128 arithmetic, comparison, precision, and failure semantics
+      - complete any still-selected legacy backend paths that cannot preserve the active wide type contract
+    verification:
+      - command: go test ./...
+        result: passed
+      - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
+        result: passed, 57 tests

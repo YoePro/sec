@@ -2106,7 +2106,7 @@ var secKeywords = []string{
 	"free", "get", "if", "impl", "implements", "import", "in", "interface",
 	"let", "match", "module", "multipleOf", "mut", "notEmpty", "odd", "panic", "process",
 	"property", "ref", "return", "select", "self", "set", "spawn", "static", "struct",
-	"switch", "task", "thread", "true", "try", "type", "unique", "unit", "union",
+	"require", "switch", "task", "thread", "true", "try", "type", "unique", "unit", "union",
 	"unsafe", "where", "while",
 }
 

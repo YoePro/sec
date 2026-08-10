@@ -453,6 +453,8 @@ Implemented:
 - standard token types including namespace, type, enum, interface, struct,
   parameter, variable, property, event, function, method, keyword, comment,
   string, number, and operator;
+- standard `variable` token classification with the `readonly` modifier for
+  immutable bindings at both their declaration and resolved use sites;
 - declaration and static modifiers;
 - compiler-known attribute-name classification as `modifier`, including the
   implemented `@noCopy` path;

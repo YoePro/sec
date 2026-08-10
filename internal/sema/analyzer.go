@@ -37,6 +37,8 @@ type Analyzer struct {
 	bindingFacts                map[sourceTokenKey]ResolvedBinding
 	resolvedCalls               map[*ast.CallExpression]ResolvedCall
 	resolvedOperators           map[ast.Expression]ResolvedOperator
+	resolvedTries               map[*ast.TryExpression]ResolvedTry
+	resolvedTryPlans            map[*ast.TryExpression]ResolvedTryPlan
 	nextBindingID               BindingID
 	definitionTokens            map[sourceTokenKey][]lexer.Token
 	callGraph                   *CallGraph
@@ -179,6 +181,8 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.bindingFacts = map[sourceTokenKey]ResolvedBinding{}
 	a.resolvedCalls = map[*ast.CallExpression]ResolvedCall{}
 	a.resolvedOperators = map[ast.Expression]ResolvedOperator{}
+	a.resolvedTries = map[*ast.TryExpression]ResolvedTry{}
+	a.resolvedTryPlans = map[*ast.TryExpression]ResolvedTryPlan{}
 	a.nextBindingID = 1
 	a.definitionTokens = map[sourceTokenKey][]lexer.Token{}
 	a.callGraph = newCallGraph()
@@ -10438,6 +10442,9 @@ func (a *Analyzer) inferStructLiteral(expr *ast.StructLiteral) (Type, expression
 			a.addErrorAtToken(field.Name.Token, "unknown field %q in struct %s", field.Name.Value, typ.Name)
 			continue
 		}
+		if definition, exists := memberDefinitionToken(typ, field.Name.Value); exists {
+			a.bindDefinition(field.Name.Token, definition)
+		}
 
 		valueType, _ := a.inferExpression(field.Value)
 		if valueType.Kind != InvalidType && !canInitialize(fieldType, valueType, field.Value) {
@@ -13482,6 +13489,10 @@ func (a *Analyzer) inferTryExpression(expr *ast.TryExpression) (Type, expression
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 
+	if operator, ok := a.ResolvedOperatorOf(expr.Expression); ok && operator.RuntimeCheck {
+		return a.inferArithmeticTryExpression(expr, operator)
+	}
+
 	if valueType.Kind != ResultType || len(valueType.TypeArgs) != 2 {
 		a.addErrorAtToken(expr.Token, "try requires Result expression")
 		return valueType, expressionValue{Display: expr.String()}
@@ -13493,7 +13504,13 @@ func (a *Analyzer) inferTryExpression(expr *ast.TryExpression) (Type, expression
 	}
 
 	if len(expr.Handlers) > 0 {
-		a.analyzeTryHandlers(expr, valueType)
+		plan, valid := a.analyzeTryHandlers(expr, valueType)
+		a.resolvedTries[expr] = ResolvedTry{
+			Kind: ResolvedTryHandledResult, SuccessType: valueType.TypeArgs[0], ErrorType: valueType.TypeArgs[1],
+		}
+		if valid {
+			a.resolvedTryPlans[expr] = plan
+		}
 		return valueType.TypeArgs[0], expressionValue{Display: expr.String()}
 	}
 
@@ -13512,18 +13529,62 @@ func (a *Analyzer) inferTryExpression(expr *ast.TryExpression) (Type, expression
 	if !sameConcreteType(valueErrorType, functionErrorType) {
 		a.addErrorAtToken(expr.Token, "cannot propagate %s from function returning %s", typeDisplayName(valueErrorType), typeDisplayName(a.currentFunctionReturn))
 	}
+	a.resolvedTries[expr] = ResolvedTry{
+		Kind: ResolvedTryResultPropagation, SuccessType: valueType.TypeArgs[0], ErrorType: valueErrorType,
+		EnclosingResultType: a.currentFunctionReturn,
+	}
 
 	return valueType.TypeArgs[0], expressionValue{Display: expr.String()}
 }
 
-func (a *Analyzer) analyzeTryHandlers(expr *ast.TryExpression, resultType Type) {
+func (a *Analyzer) inferArithmeticTryExpression(expr *ast.TryExpression, operator ResolvedOperator) (Type, expressionValue) {
+	result := expressionValue{Display: expr.String()}
+	arithmeticError := a.types["ArithmeticError"]
+	if len(expr.Handlers) != 0 {
+		resultType := Type{Name: "Result", Kind: ResultType, TypeArgs: []Type{operator.ResultType, arithmeticError}}
+		plan, valid := a.analyzeTryHandlers(expr, resultType)
+		a.resolvedTries[expr] = ResolvedTry{
+			Kind: ResolvedTryHandledArithmetic, SuccessType: operator.ResultType, ErrorType: arithmeticError,
+		}
+		if valid {
+			a.resolvedTryPlans[expr] = plan
+		}
+		return operator.ResultType, result
+	}
+	if a.inDeferBlock {
+		a.addErrorAtToken(expr.Token, "try cannot propagate from inside defer")
+		return operator.ResultType, result
+	}
+	if !a.inFunctionBody {
+		a.addErrorAtToken(expr.Token, "cannot use arithmetic try outside function")
+		return operator.ResultType, result
+	}
+	if a.currentFunctionReturn.Kind != ResultType || len(a.currentFunctionReturn.TypeArgs) != 2 {
+		a.addErrorAtToken(expr.Token, "arithmetic try requires enclosing return type Result[U, ArithmeticError], got %s", typeDisplayName(a.currentFunctionReturn))
+		return operator.ResultType, result
+	}
+	functionError := a.currentFunctionReturn.TypeArgs[1]
+	if !sameConcreteType(functionError, arithmeticError) {
+		a.addErrorAtToken(expr.Token, "arithmetic try cannot propagate ArithmeticError from function returning %s; map the error explicitly", typeDisplayName(a.currentFunctionReturn))
+		return operator.ResultType, result
+	}
+	a.resolvedTries[expr] = ResolvedTry{
+		Kind: ResolvedTryArithmeticPropagation, SuccessType: operator.ResultType,
+		ErrorType: arithmeticError, EnclosingResultType: a.currentFunctionReturn,
+	}
+	return operator.ResultType, result
+}
+
+func (a *Analyzer) analyzeTryHandlers(expr *ast.TryExpression, resultType Type) (ResolvedTryPlan, bool) {
 	successType := resultType.TypeArgs[0]
 	errorType := resultType.TypeArgs[1]
+	plan := ResolvedTryPlan{SuccessType: successType, ErrorType: errorType}
+	errorsBefore := len(a.errors)
 	errorCatchAllSeen := false
 	okSeen := false
 	matchedVariants := map[string]lexer.Token{}
 
-	for _, handler := range expr.Handlers {
+	for sourceIndex, handler := range expr.Handlers {
 		kind, bindingName, variantName, bindingType, ok := a.analyzeTryHandlerPattern(handler, successType, errorType)
 		if !ok {
 			continue
@@ -13535,7 +13596,13 @@ func (a *Analyzer) analyzeTryHandlers(expr *ast.TryExpression, resultType Type) 
 				continue
 			}
 			okSeen = true
-			a.analyzeTryHandlerBody(handler, successType, bindingType, bindingName)
+			plan.HasExplicitOk = true
+			patternKind := TryHandlerOkBinding
+			if bindingName == "" {
+				patternKind = TryHandlerOkDiscard
+			}
+			flow := a.analyzeTryHandlerBody(handler, successType, bindingType, bindingName)
+			plan.Handlers = append(plan.Handlers, ResolvedTryHandler{PatternKind: patternKind, BindingName: bindingName, BindingType: bindingType, Flow: flow, ResultType: successType, SourceIndex: sourceIndex})
 			continue
 		}
 
@@ -13551,21 +13618,30 @@ func (a *Analyzer) analyzeTryHandlers(expr *ast.TryExpression, resultType Type) 
 			matchedVariants[variantName] = handler.Token
 		}
 
-		a.analyzeTryHandlerBody(handler, successType, bindingType, bindingName)
+		patternKind := TryHandlerErrVariant
+		if bindingName != "" {
+			patternKind = TryHandlerErrCatchAll
+		}
+		flow := a.analyzeTryHandlerBody(handler, successType, bindingType, bindingName)
+		plan.Handlers = append(plan.Handlers, ResolvedTryHandler{PatternKind: patternKind, Variant: variantName, BindingName: bindingName, BindingType: bindingType, Flow: flow, ResultType: successType, SourceIndex: sourceIndex})
 	}
 
 	if errorCatchAllSeen {
-		return
+		plan.Exhaustive = true
+		return plan, len(a.errors) == errorsBefore
 	}
 
 	if errorType.Kind == EnumType {
 		if len(matchedVariants) < len(errorType.EnumValues) {
 			a.addErrorAtToken(expr.Token, "non-exhaustive try handlers for %s", typeDisplayName(errorType))
+		} else {
+			plan.Exhaustive = true
 		}
-		return
+		return plan, len(a.errors) == errorsBefore
 	}
 
 	a.addErrorAtToken(expr.Token, "non-exhaustive try handlers for %s", typeDisplayName(errorType))
+	return plan, false
 }
 
 func (a *Analyzer) analyzeTryHandlerPattern(handler *ast.TryHandler, successType Type, errorType Type) (kind string, bindingName string, variantName string, bindingType Type, ok bool) {
@@ -13633,13 +13709,20 @@ func tryHandlerBindingName(expr ast.Expression) (string, bool) {
 	return ident.Value, true
 }
 
-func (a *Analyzer) analyzeTryHandlerBody(handler *ast.TryHandler, successType Type, errorType Type, bindingName string) {
+func (a *Analyzer) analyzeTryHandlerBody(handler *ast.TryHandler, successType Type, errorType Type, bindingName string) ResolvedTryHandlerFlow {
 	previousSymbols := a.symbols
 	previousConstInts := a.constInts
 	a.symbols = copySymbols(previousSymbols)
 	a.constInts = copyConstInts(previousConstInts)
 	if bindingName != "" {
-		a.symbols[bindingName] = Symbol{Name: bindingName, Type: errorType, Mutable: false, Token: handler.Token, Storage: StorageOriginInline}
+		bindingIdentifier := tryHandlerBindingIdentifier(handler)
+		bindingToken := handler.Token
+		if bindingIdentifier != nil {
+			bindingToken = bindingIdentifier.Token
+			a.recordDefinition(bindingToken)
+			a.recordBinding(bindingToken, BindingLocal, bindingName, errorType, false)
+		}
+		a.symbols[bindingName] = Symbol{Name: bindingName, Type: errorType, Mutable: false, Token: bindingToken, Storage: StorageOriginInline}
 		delete(a.constInts, bindingName)
 	}
 	defer func() {
@@ -13649,41 +13732,59 @@ func (a *Analyzer) analyzeTryHandlerBody(handler *ast.TryHandler, successType Ty
 
 	if handler.ReturnBody != nil {
 		a.analyzeReturnStatement(a.currentFunctionName, a.currentFunctionReturn, handler.ReturnBody)
-		return
+		return TryHandlerReturns
 	}
 
 	if handler.BlockBody != nil {
 		a.analyzeBlockStatements(handler.BlockBody)
 		if successType.Kind == VoidType {
-			return
+			if blockCanFallThrough(handler.BlockBody) {
+				return TryHandlerProducesValue
+			}
+			if blockDefinitelyReturns(handler.BlockBody) {
+				return TryHandlerReturns
+			}
+			return TryHandlerTerminates
 		}
-		if !blockContainsReturn(handler.BlockBody) {
+		if blockCanFallThrough(handler.BlockBody) {
 			a.addErrorAtToken(handler.Token, "try handler must return, propagate, terminate or produce %s", typeDisplayName(successType))
+			return TryHandlerInvalidFlow
 		}
-		return
+		if blockDefinitelyReturns(handler.BlockBody) {
+			return TryHandlerReturns
+		}
+		return TryHandlerTerminates
 	}
 
 	if handler.Body == nil {
 		a.addErrorAtToken(handler.Token, "try handler must return, propagate, terminate or produce %s", typeDisplayName(successType))
-		return
+		return TryHandlerInvalidFlow
 	}
 
 	bodyType, _ := a.inferExpression(handler.Body)
 	if bodyType.Kind == InvalidType {
-		return
+		return TryHandlerInvalidFlow
 	}
 	if !canInitialize(successType, bodyType, handler.Body) {
 		a.addErrorAtToken(expressionToken(handler.Body), "try handler must produce %s, got %s", typeDisplayName(successType), typeDisplayName(bodyType))
 	}
+	return TryHandlerProducesValue
 }
 
-func blockContainsReturn(block *ast.BlockStatement) bool {
-	for _, token := range block.Tokens {
-		if token.Type == lexer.RETURN {
-			return true
-		}
+func tryHandlerBindingIdentifier(handler *ast.TryHandler) *ast.Identifier {
+	if handler == nil {
+		return nil
 	}
-	return false
+	switch pattern := handler.Pattern.(type) {
+	case *ast.OkExpression:
+		identifier, _ := pattern.Value.(*ast.Identifier)
+		return identifier
+	case *ast.ErrExpression:
+		identifier, _ := pattern.Value.(*ast.Identifier)
+		return identifier
+	default:
+		return nil
+	}
 }
 
 func (a *Analyzer) analyzeMatchStatement(stmt *ast.MatchStatement) {

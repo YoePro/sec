@@ -79,6 +79,60 @@ type ResolvedOperator struct {
 	FailureBehavior OperatorFailureBehavior
 }
 
+type ResolvedTryKind string
+
+const (
+	ResolvedTryResultPropagation     ResolvedTryKind = "result-propagation"
+	ResolvedTryHandledResult         ResolvedTryKind = "handled-result"
+	ResolvedTryHandledArithmetic     ResolvedTryKind = "handled-arithmetic"
+	ResolvedTryArithmeticPropagation ResolvedTryKind = "arithmetic-propagation"
+)
+
+// ResolvedTry records the exact success/error contract selected by Sema.
+// Lowering consumers must not reconstruct this decision from source syntax.
+type ResolvedTry struct {
+	Kind                ResolvedTryKind
+	SuccessType         Type
+	ErrorType           Type
+	EnclosingResultType Type
+}
+
+type ResolvedTryHandlerPatternKind string
+
+const (
+	TryHandlerOkBinding   ResolvedTryHandlerPatternKind = "ok-binding"
+	TryHandlerOkDiscard   ResolvedTryHandlerPatternKind = "ok-discard"
+	TryHandlerErrVariant  ResolvedTryHandlerPatternKind = "err-variant"
+	TryHandlerErrCatchAll ResolvedTryHandlerPatternKind = "err-catch-all"
+)
+
+type ResolvedTryHandlerFlow string
+
+const (
+	TryHandlerInvalidFlow   ResolvedTryHandlerFlow = "invalid"
+	TryHandlerProducesValue ResolvedTryHandlerFlow = "produces-value"
+	TryHandlerReturns       ResolvedTryHandlerFlow = "returns"
+	TryHandlerTerminates    ResolvedTryHandlerFlow = "terminates"
+)
+
+type ResolvedTryHandler struct {
+	PatternKind ResolvedTryHandlerPatternKind
+	Variant     string
+	BindingName string
+	BindingType Type
+	Flow        ResolvedTryHandlerFlow
+	ResultType  Type
+	SourceIndex int
+}
+
+type ResolvedTryPlan struct {
+	SuccessType   Type
+	ErrorType     Type
+	HasExplicitOk bool
+	Exhaustive    bool
+	Handlers      []ResolvedTryHandler
+}
+
 // ResolvedTypeOf returns only facts recorded by the completed analysis. It
 // never invokes inference and does not mutate Analyzer state.
 func (a *Analyzer) ResolvedTypeOf(expr ast.Expression) (Type, bool) {
@@ -103,7 +157,16 @@ func (a *Analyzer) ResolvedBindingOf(identifier *ast.Identifier) (ResolvedBindin
 	if a == nil || identifier == nil {
 		return ResolvedBinding{}, false
 	}
-	use := sourceTokenLocation(identifier.Token)
+	return a.ResolvedBindingAt(identifier.Token.File, identifier.Token.Line, identifier.Token.Column)
+}
+
+// ResolvedBindingAt returns the local or parameter binding selected for one
+// source position without invoking inference or mutating analyzer state.
+func (a *Analyzer) ResolvedBindingAt(file string, line int, column int) (ResolvedBinding, bool) {
+	if a == nil {
+		return ResolvedBinding{}, false
+	}
+	use := sourceTokenKey{File: file, Line: line, Column: column}
 	definitions := a.definitionTokens[use]
 	if len(definitions) != 1 {
 		return ResolvedBinding{}, false
@@ -142,6 +205,29 @@ func (a *Analyzer) ResolvedOperatorOf(expr ast.Expression) (ResolvedOperator, bo
 		resolved.RightType = &right
 	}
 	return resolved, true
+}
+
+// ResolvedTryOf returns the completed Sema decision for a try expression.
+func (a *Analyzer) ResolvedTryOf(expr *ast.TryExpression) (ResolvedTry, bool) {
+	if a == nil || expr == nil {
+		return ResolvedTry{}, false
+	}
+	resolved, ok := a.resolvedTries[expr]
+	return resolved, ok
+}
+
+// ResolvedTryPlanOf returns the immutable handler plan recorded by successful
+// Sema. It performs no pattern resolution, exhaustiveness checking or inference.
+func (a *Analyzer) ResolvedTryPlanOf(expr *ast.TryExpression) (ResolvedTryPlan, bool) {
+	if a == nil || expr == nil {
+		return ResolvedTryPlan{}, false
+	}
+	plan, ok := a.resolvedTryPlans[expr]
+	if !ok {
+		return ResolvedTryPlan{}, false
+	}
+	plan.Handlers = append([]ResolvedTryHandler(nil), plan.Handlers...)
+	return plan, true
 }
 
 func (a *Analyzer) recordResolvedOperator(expr ast.Expression, result Type) {

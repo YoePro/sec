@@ -1,5 +1,5 @@
 schema_version: 1
-updated: "2026-08-09"
+updated: "2026-08-10"
 purpose: >-
   Canonical implementation ledger for compiler and tooling work. Normative
   language behavior remains in rules/, while implementation status is migrated
@@ -657,6 +657,7 @@ integrations:
       - rules/mlir-dialect-packages/sec-mlir-dialect_package4.yaml
     code:
       - internal/lowering/secmlir/emitter.go
+      - internal/mlir/toolchain.go
       - internal/lowering/secmlir/errors.go
       - cmd/compiler/main.go
       - mlir/include/sec/Dialect/Sec/SecDialect.td
@@ -1062,6 +1063,145 @@ integrations:
       - add required frame, live-range, call-path, recursion, indirect-call, foreign/runtime, storage-accounting, CompilationPlan, budget, separate-compilation, incremental/LSP, performance, and determinism regression tests
       - update implementation-status verification commands when the first conforming vertical slice is integrated
 
+  - id: lowering.sec-mlir-typed-arithmetic-failure
+    area: frontend-analysis-semantic-ir-and-mlir
+    status: partial
+    integrated: "2026-08-10"
+    summary: >-
+      Implements the Package 9 typed arithmetic failure path from compiler-known
+      ArithmeticError and resolved naked arithmetic try facts through Semantic IR
+      Result construction, Sec MLIR schema 5, guard verification, and exact
+      dynamic failure-reason computation. General callable effect summaries and
+      @noPanic validation remain outside this vertical slice.
+    rules:
+      - rules/mlir-dialect-packages/sec-mlir-dialect_package9.md
+      - rules/mlir-dialect-packages/sec-mlir-dialect_package9.yaml
+      - rules/core-library.md
+      - rules/runtime_checks.md
+      - rules/effect_analysis.md
+      - rules/sec_mlir_dialect.md
+      - rules/sec_mlir_lowering.md
+    code:
+      - internal/parser/expression.go
+      - internal/sema/types.go
+      - internal/sema/analyzer.go
+      - internal/sema/semantic_facts.go
+      - internal/ir/semantic/model.go
+      - internal/ir/semantic/builder.go
+      - internal/ir/semantic/verifier.go
+      - internal/lowering/secmlir/emitter.go
+      - mlir/include/sec/Dialect/Sec/SecTypes.td
+      - mlir/include/sec/Dialect/Sec/SecOps.td
+      - mlir/lib/Dialect/Sec/SecTypes.cpp
+      - mlir/lib/Dialect/Sec/SecOps.cpp
+      - mlir/lib/Analysis/VerifyCheckedIntegerGuards.cpp
+      - mlir/lib/Conversion/SecIntegerToArith/SecIntegerToArith.cpp
+    tests:
+      - internal/sema/semantic_facts_test.go
+      - internal/ir/semantic/semantic_test.go
+      - internal/lowering/secmlir/emitter_test.go
+      - testdata/semantic_ir/typed_arithmetic_try.sec
+      - mlir/test/Dialect/Sec/schema5-typed-arithmetic-flow.mlir
+      - mlir/test/Dialect/Sec/invalid-schema5-typed-arithmetic-flow.mlir
+      - mlir/test/Conversion/SecIntegerToArith/schema5-reasons.mlir
+    implemented:
+      - compiler-known exact ArithmeticError enum with Overflow, DivisionByZero, and InvalidShift
+      - parser binding of try to the complete following arithmetic expression
+      - read-only ResolvedTryOf facts for ordinary Result propagation, handled Result, and arithmetic propagation
+      - exact Result[U, ArithmeticError] requirement with mentor diagnostics for non-Result and other-error returns
+      - naked checked arithmetic try across active 8/16/32/64/128/256-bit integer families
+      - Semantic IR arithmetic-failure-reason, core-error, and Result types without physical layout
+      - checked integer result, failed, and typed reason triples with explicit reason block arguments
+      - ordinary sec.fail.arithmetic and fallible ArithmeticErrorFromReason, ResultErr, return paths
+      - ResultOk construction for successful Result returns
+      - Sec MLIR schema 5 reason/core-error/Result types and reason/error/Result operations
+      - schema-aware operation and checked-guard verification retaining schema-4 fixture compatibility
+      - exact dynamic reason selection with zero-divisor and invalid-shift precedence
+      - signless Arith conversion preserving typed reason SSA flow and introducing no mandatory runtime
+    remaining:
+      - integrate resolved arithmetic-try facts into general callable effect summaries
+      - implement and verify @noPanic arithmetic-try behavior while retaining operand-call panic effects
+      - keep physical Result and ArithmeticError layout deferred to their dedicated package
+    verification:
+      - command: ninja -C build/sec-mlir check-sec-mlir
+        result: passed, 61 tests under LLVM/MLIR 24.0.0git
+      - command: go test ./...
+        result: passed
+      - command: go run ./cmd/compiler emit-sec-mlir testdata/semantic_ir/typed_arithmetic_try.sec --target linux-amd64 --mlir-bin build/sec-mlir/bin -o /tmp/sec-package9.mlir
+        result: passed with schema-v5 checked-guard verification
+
+  - id: lowering.sec-mlir-local-try-handlers
+    area: frontend-analysis-semantic-ir-and-mlir
+    status: implemented
+    integrated: "2026-08-10"
+    repository_baseline: a5d5cd4a0557
+    mlir_toolchain: LLVM 24.0.0git optimized build with assertions
+    summary: >-
+      Implements SEC-MLIR Package 10 from immutable Sema handler plans through
+      Semantic IR Result discrimination and ordered local handler CFG to Sec
+      MLIR schema 6 operations, provenance, and dedicated guard verifiers.
+    rules:
+      - rules/mlir-dialect-packages/sec-mlir-dialect_package10.md
+      - rules/mlir-dialect-packages/sec-mlir-dialect_package10.yaml
+      - rules/sec_mlir_dialect.md
+      - rules/sec_mlir_lowering.md
+      - rules/semantic_ir.txt
+    code:
+      - internal/sema/analyzer.go
+      - internal/sema/semantic_facts.go
+      - internal/ir/semantic/model.go
+      - internal/ir/semantic/builder.go
+      - internal/ir/semantic/verifier.go
+      - internal/ir/semantic/printer.go
+      - internal/lowering/secmlir/emitter.go
+      - internal/mlir/toolchain.go
+      - mlir/include/sec/Dialect/Sec/SecDialect.td
+      - mlir/include/sec/Dialect/Sec/SecOps.td
+      - mlir/lib/Dialect/Sec/SecDialect.cpp
+      - mlir/lib/Dialect/Sec/SecOps.cpp
+      - mlir/include/sec/Analysis/Passes.td
+      - mlir/lib/Analysis/VerifyCheckedIntegerGuards.cpp
+    tests:
+      - internal/sema/semantic_facts_test.go
+      - internal/ir/semantic/semantic_test.go
+      - internal/ir/semantic/package10_test.go
+      - cmd/compiler/emit_sec_mlir_package10_test.go
+      - internal/mlir/toolchain_test.go
+      - mlir/test/Dialect/Sec/schema6-result-handlers.mlir
+      - mlir/test/Dialect/Sec/invalid-schema6-result-guard.mlir
+      - mlir/test/Dialect/Sec/invalid-schema6-try-handlers.mlir
+    implemented:
+      - immutable ResolvedTryPlan facts with source order, resolved pattern kind, exact binding type, flow classification, explicit-Ok state, and exhaustiveness
+      - structural handler-flow analysis without return-token scanning
+      - stable immutable BindingID facts for Ok and Err handler-local bindings
+      - canonical naked Result propagation using ResultIsErr, ResultUnwrapErr, ResultErr, return, and ResultUnwrapOk
+      - one shared local-handler builder for ordinary Result and checked arithmetic entries
+      - implicit Ok, explicit Ok binding, explicit Ok discard, specific Err variants, and Err catch-all bindings
+      - source-ordered CoreErrorIsVariant dispatch and final unmatched routing for proven exhaustive variant-only ArithmeticError handlers
+      - typed SSA merge parameters for fallback expressions and normal lowering of handler return bodies
+      - direct arithmetic failure-reason conversion to ArithmeticError without a temporary Result container
+      - Semantic IR Result-guard and try-handler provenance verification
+      - Sec MLIR schema 6 Result test/projection and core-error variant operations with local type verifiers
+      - sec-verify-result-guards and sec-verify-try-handlers function passes
+      - compiler Sec-MLIR verification invokes checked-integer, Result-guard, and try-handler passes together
+      - schema-6 checked-integer guard acceptance for local arithmetic handler dispatch while retaining schema 1 through 5 parsing
+      - end-to-end source-to-Sec-MLIR verification for ordinary Result and arithmetic handlers
+    remaining:
+      - physical Result and core-error representation remains deferred to its dedicated ABI/layout package
+      - user-defined enum and union payload lowering remains outside Package 10
+      - nontrivial owned handler payloads remain deferred to later ownership packages
+    verification:
+      - command: ninja -C build/sec-mlir check-sec-mlir
+        result: passed, 64 tests under LLVM/MLIR 24.0.0git
+      - command: SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./cmd/compiler -run Package10 -v
+        result: passed with schema-6 guard and handler passes
+      - command: go test ./internal/sema ./internal/ir/semantic
+        result: passed
+      - command: go test ./... && go vet ./...
+        result: passed
+      - command: SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./internal/lowering/secmlir ./cmd/compiler ./internal/mlir
+        result: passed with real sec-mlir-opt integration
+
   - id: frontend.copy-move
     area: frontend-analysis-and-lowering
     status: partial
@@ -1197,7 +1337,8 @@ integrations:
       - line comments
       - nested block comments
       - comment tokens
-      - LSP semantic tokens for keywords, variables, types, functions, methods, comments, literals, and operators
+      - LSP semantic tokens for keywords, mutable variables, immutable bindings as readonly variables, types, functions, methods, comments, literals, and operators
+      - position-specific LSP member classification and hover resolution so struct fields, struct-literal field names, and same-named methods retain distinct semantic identities
       - LSP member completion resolves self to its enclosing impl target including fields, register fields, properties, events, and instance methods
       - LSP member completion retains inferred local types from function and method return values including while an if condition is incomplete
       - LSP hover resolves self and self members against the enclosing impl target and displays member types, method signatures, and adjacent documentation comments where supported
@@ -1209,6 +1350,11 @@ integrations:
       - longest matching for existing multi-character punctuation
       - ILLEGAL tokens for some unterminated literals and comments
       - lexer snapshot and restore
+      - strict UTF-8 source decoding with L1001 diagnostics retained through parser results, including invalid bytes inside literals and comments
+      - one optional initial UTF-8 byte-order mark ignored without shifting the first token position and removed by the formatter
+      - unexpected byte-order marks rejected with L1002 at their exact source position while tokenization recovers
+      - unsupported Unicode spacing outside literals and comments rejected as one ILLEGAL token with code-point-specific L1003 diagnostics
+      - bootstrap lexer source synchronized with initial-BOM skipping, later-BOM and Unicode-whitespace diagnostics, diagnostic snapshot state, and a parser-valid DecodedSource boundary
     partial:
       - keyword inventory synchronization, including removal of the obsolete sec reservation
       - contextual set handling, including synchronization with the rule that set is not globally reserved
@@ -1224,12 +1370,9 @@ integrations:
       - documentation-comment support in LSP hover without AST-level comment attachment
       - semantic validation of character literals including exactly one decoded scalar and the documented escape forms
       - repository keyword notes and lexer keyword switch are not yet fully synchronized
+      - bootstrap L1001 invalid-byte equivalence awaits a byte-preserving string decode API; ToRuneArray currently discards the original invalid byte before lexical inspection
     remaining:
-      - explicit UTF-8 validation
-      - initial BOM handling
-      - rejection of BOM outside the initial source position
       - NFC validation of identifiers
-      - diagnostics for unsupported Unicode whitespace
       - confusable-identifier warnings
       - maximal malformed numeric-token recovery
       - lexer-level escape diagnostics; character-literal escape validation currently occurs during semantic analysis
@@ -1328,10 +1471,10 @@ integrations:
     status: implemented
     integrated: "2026-08-09"
     summary: >-
-      Implements Package 7's checked builtin-integer path from immutable Sema
-      operator facts through canonical Semantic IR failure CFG and Sec MLIR
-      schema v4. Checked operations remain explicit and total; Package 8 Arith
-      lowering and signless normalization are intentionally not included.
+      Implements Package 7's checked builtin-integer foundation from immutable
+      Sema operator facts through canonical Semantic IR failure CFG. The current
+      representation has subsequently evolved to Package 9 schema v5 typed
+      reasons; Package 8 owns Arith lowering and signless normalization.
     rules:
       - rules/mlir-dialect-packages/sec-mlir-dialect_package7.md
       - rules/mlir-dialect-packages/sec-mlir-dialect_package7.yaml
@@ -1382,12 +1525,12 @@ integrations:
       - closed builtin-integer classifications for unary plus, checked negation, checked arithmetic, bitwise operations, signed/unsigned checked shifts, and six comparisons
       - active integer width coverage for 8, 16, 32, 64, 128, 256, int, uint, and byte families
       - Semantic IR operations with explicit semantic kinds rather than AST operator strings
-      - checked result and bool failure pairs for negation, arithmetic, and shifts
+      - checked result, bool failure, and typed reason triples for negation, arithmetic, and shifts after the Package 9 evolution
       - dedicated immediate failure and success blocks for every checked operation
       - overflow, division, remainder, and shift arithmetic-failure terminators with source operator provenance
       - Semantic IR verification of integer categories, signedness, result types, enums, failure categories, and canonical checked guard structure
       - deterministic Semantic IR formatting for multi-result integer operations
-      - Sec MLIR schema version 4 with seven integer operations and sec.fail.arithmetic
+      - Sec MLIR checked integer operations and sec.fail.arithmetic, currently emitted as schema version 6 with schema-4 and schema-5 parsing compatibility
       - ODS operation definitions and custom verifiers rejecting named, distinct, signless, i1, mismatched, and invalid-signedness operands
       - dedicated sec/Analysis sec-verify-checked-integer-guards function pass with immediate-use, dedicated-failure-block, category, operator, and result-use validation
       - compiler verification invokes the checked-integer guard pass for emitted Sec MLIR
@@ -1418,10 +1561,10 @@ integrations:
     status: implemented
     integrated: "2026-08-09"
     summary: >-
-      Implements SEC-MLIR-P8 by lowering every schema-v4 builtin integer
-      semantic operation to total signless Arith computations while preserving
-      explicit failure flags, failure CFG, scalar provenance, nominal identity,
-      and foreign-call boundaries.
+      Implements SEC-MLIR-P8 by lowering every builtin integer semantic
+      operation to total signless Arith computations while preserving explicit
+      failure flags, Package 9 typed reasons, failure CFG, scalar provenance,
+      nominal identity, and foreign-call boundaries.
     rules:
       - rules/sec_mlir_lowering.md
       - rules/sec_mlir_dialect.md
@@ -1459,6 +1602,7 @@ integrations:
       - checked negation and signedness-correct comparisons
       - total signed and unsigned divide/remainder through safe-divisor substitution
       - total shifts through safe-count normalization, arithmetic/logical right shift selection, and representability-checked signed left shift
+      - exact Package 9 dynamic reason selection where zero divisor takes precedence over overflow and invalid shift takes precedence over signed-left representability overflow
       - bitwise and unary-plus lowering without overflow assumptions
       - explicit preservation of sec.fail.arithmetic, foreign calls, named/distinct types, and failure CFG
       - output free of schema-v4 sec.int operations, unrealized casts, poison assumption flags, and LLVM operations
@@ -1634,3 +1778,104 @@ integrations:
         result: passed
       - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
         result: passed, 57 tests
+
+  - id: sema.deadlock-analysis
+    area: frontend-analysis-and-lowering
+    status: planned
+    summary: >-
+      Adds canonical Sec deadlock analysis over synchronization resources and
+      execution contexts: flow-sensitive held-resource tracking, symbolic
+      acquisition/release and wait summaries, lock-order and generalized wait-for
+      graphs, self-deadlock, task/thread completion cycles, callback/reentry,
+      FFI/ISR integration, cycle realizability classification, deterministic
+      witnesses, and incremental LSP/Deep tooling that distinguishes proven,
+      potential, unknown, and failure-to-prove states.
+    rules:
+      - rules/deadlock_analysis.md
+      - rules/concurrency_memory_model.md
+      - rules/data_races.md
+      - rules/call_graph.md
+      - rules/compiler_analysis.txt
+      - rules/storage.md
+      - rules/layout.md
+      - rules/lifetime_analysis.txt
+      - rules/escape_analysis.md
+      - rules/closure_analysis.md
+      - rules/ownership.md
+      - rules/borrowing.txt
+      - rules/copy_move.md
+      - rules/destruction.txt
+      - rules/defer.txt
+      - rules/effect_analysis.md
+      - rules/ffi.txt
+      - rules/lsp.md
+      - rules/projects.txt
+    remaining:
+      - add canonical synchronization-resource identity using Place/provenance and resource semantics rather than resource names
+      - preserve Same, Disjoint, MayAlias, and Unknown resource-identity relationships or equivalent canonical precision
+      - add flow-sensitive held-resource state distinguishing definitely-held from possibly-held resources
+      - integrate canonical acquire, successful acquisition, release, nonblocking/fallible acquisition, guard lifetime, guard move, destruction, defer, cleanup, and error-path semantics
+      - distinguish waiting for a blocking resource from successful ownership so wait dependencies and held-resource state are modeled separately
+      - add lock-order relationships only when the predecessor resource may still be held at the later acquisition point
+      - preserve weaker proof strength for edges derived from PossiblyHeld state rather than silently treating them as definite
+      - add symbolic interprocedural deadlock summaries for acquisitions, releases, waits, held-on-return state, required held-on-entry state, execution effects, and localized uncertainty
+      - preserve symbolic parameter, receiver, captured, static, allocation-site, and bounded collection resource origins across summaries
+      - instantiate callee resource identities at call sites and detect self-aliasing when distinct symbolic parameters resolve to the same non-reentrant runtime resource
+      - propagate caller-held resources across callees that acquire additional resources while allowing canonical release or ownership-transfer semantics to remove inherited held state
+      - add caller-to-callee acquisition-order propagation so a caller-held external resource can order before a callee internal or static acquisition
+      - consume canonical guard/token ownership and lifetime facts so synchronization ownership follows move, destruction, release, and scoped lifetime semantics
+      - add deterministic interprocedural fixed points over canonical call-graph SCCs without conflating call-graph recursion SCCs with deadlock dependency SCCs
+      - add LockOrderGraph construction as a compact projection of nested acquisition relationships
+      - add generalized WaitForGraph construction for execution-to-resource, resource-to-owner/progress-provider, task/thread completion, foreign completion, condition/event, and mixed dependency relationships
+      - consume canonical task/thread join and completion semantics so direct, mutual, and mixed completion cycles can participate in deadlock analysis
+      - support join-while-holding-resource cases where a joined worker or thread requires the held resource to complete
+      - preserve finite execution-context abstractions for threads, tasks, repeated creation sites, callbacks, ISR execution, platform execution, and unknown contexts
+      - represent whether one semantic creation-site context class may have multiple overlapping runtime instances so same-body instances can participate in one cycle
+      - keep ordinary synchronous calls in the caller execution context while propagating callee resource behavior interprocedurally
+      - consume closed callable target sets and open callable contracts for MayBlock, MayAcquire, completion waits, callback execution, and reentry behavior
+      - add callback-while-holding-resource propagation so callable targets can contribute lock-order or wait-for edges across indirect calls
+      - consume canonical FFI contracts for blocking, foreign resource acquisition, completion waits, callback execution context, synchronous/asynchronous reentry, and foreign synchronization without inferring behavior from names
+      - keep unknown foreign waits localized rather than connecting them speculatively to unrelated program resources
+      - integrate ISR/preemption relationships so an ISR waiting for a resource held by the preempted context can form a self/cross-context deadlock witness
+      - consume canonical interrupt masking, priority, nesting, and exclusion facts to eliminate impossible ISR cycles without moving ISR-specific policy into deadlock analysis
+      - consume canonical condition/event progress-provider semantics and model condition waits that release/reacquire a resource according to their actual contract
+      - preserve resource-specific reentrancy, capacity, acquisition-count, release, and progress semantics instead of silently treating all synchronization resources as exclusive mutexes
+      - add bounded symbolic resource abstractions for dynamic resource collections, including indexed resources and AnyIndex-like widened identities while preserving known roots/projections
+      - consume canonical range, index, alias, ownership, and ordering facts so same-resource, proven-disjoint, and sorted dynamic acquisition cases remain distinguishable
+      - add dependency-edge evidence carrying source cause, execution context, interprocedural cause path, path-condition summary, and proof strength sufficient for stable cycle diagnostics
+      - distinguish ProvenDeadlock, PotentialDeadlock, and Unknown throughout analysis, summaries, diagnostics, and tooling
+      - require a sound reachable simultaneously realizable cyclic wait witness before classifying a result as ProvenDeadlock
+      - classify meaningful supported cycles with incomplete path, identity, scheduling, capacity, or compatibility proof as PotentialDeadlock rather than ProvenDeadlock
+      - keep insufficient dependency information as Unknown rather than fabricating a potential cycle
+      - distinguish deadlock findings from failure to prove a positive deadlock-freedom requirement imposed by language, target, runtime, ISR, project, or CompilationPlan policy
+      - add path-compatibility reasoning coupled to execution-instance identity so mutually exclusive branches in one instance can still be considered across distinct concurrent instances where permitted
+      - consume MayOverlap, CannotOverlap, MayPreempt, MayReenter, completion, and related canonical execution-context facts when deciding cycle realizability
+      - add explicit self-deadlock reasoning for non-reentrant resource reacquisition and self-wait dependencies without requiring a second execution context
+      - consume guaranteed timeout, cancellation, completion, and other progress facts only when canonical semantics guarantee cycle-breaking progress; merely possible escape must not eliminate a deadlock proof
+      - add resource-capacity reasoning sufficient to avoid treating counting or multi-capacity resources as capacity-one locks; preserve PotentialDeadlock or Unknown when capacity precision is insufficient
+      - add deterministic cycle detection and SCC condensation over lock-order and generalized wait-for dependency graphs
+      - select deterministic representative cycles favoring stronger proof, smaller understandable dependency chains, precise identities, clear source locations, and minimal uncertainty
+      - retain compact interprocedural cause paths for every representative cycle edge so diagnostics can navigate through nested calls without dumping the full graph
+      - use symbolic path summaries, bounded context sensitivity, SCC condensation, edge aggregation, and widening to avoid exponential path or runtime-instance explosion
+      - ensure precision loss may weaken ProvenDeadlock to PotentialDeadlock or Unknown but never strengthen an unsupported result
+      - allow increased Deep precision to upgrade PotentialDeadlock to ProvenDeadlock when the missing witness is established or remove it when path/resource/execution incompatibility is proven
+      - add scoped positive NoLockOrderCycle or NoDeadlockCycle facts where a partial-order or generalized no-cycle proof is established
+      - provide LSP diagnostics with primary and related source locations for acquisitions, waits, completion dependencies, callbacks, and other representative cycle edges
+      - present ProvenDeadlock and high-confidence PotentialDeadlock findings as NeedToKnow while keeping positive no-cycle explanations and detailed graph views configurable OptionalInsight
+      - ensure Unknown is not presented as PotentialDeadlock and that required deadlock-freedom proof failures receive their own diagnostic category
+      - prioritize cycle explanation, navigation, resource order, and cause paths over generic automatic lock-reordering fixes
+      - integrate Interactive, Standard, and Deep analysis budgets without introducing a separate global Intermediate analysis mode
+      - support progressive LSP refinement from fast Interactive/cached findings through Standard-equivalent analysis and optional Deep precision
+      - represent Pending LSP analysis state separately from ProvenDeadlock, PotentialDeadlock, and Unknown and invalidate stale findings immediately when proof dependencies change
+      - keep finding identity stable across refinement when the same semantic cycle persists and only proof detail or classification strength changes
+      - watch project analysis configuration and refresh affected summaries, findings, graph views, and optional insight without requiring an LSP restart
+      - add dependency-driven incremental invalidation for body, callee summary, callable target, resource identity, Place/provenance, acquire/release, guard lifetime, ownership, completion, callback/reentry, FFI, ISR/platform, capacity, CompilationPlan, and schema changes
+      - stop unnecessary transitive invalidation when a reanalyzed function produces an exported deadlock summary semantically equivalent to its previous summary
+      - invalidate dependent cycle findings when any required supporting edge disappears even if other graph edges remain
+      - add versioned separate-compilation summaries carrying symbolic acquisitions, releases, waits, resource-order edges, held-on-return state, execution effects, callback/reentry behavior, and localized uncertainty
+      - introduce CompilationPlan dependence only where runtime scheduling, ISR/preemption, platform synchronization, foreign behavior, resource capacity, or callback/reentry semantics actually differ
+      - integrate deadlock analysis into default sec analyse all-analysis behavior and support explicit deadlock-only analysis selection
+      - expose optional Deep lock-order and WaitForGraph views, unknown-wait causes, held-resource state, resource aliases, join dependencies, callback/reentry edges, ISR/preemption edges, and positive no-cycle proofs
+      - add required ProvenDeadlock, PotentialDeadlock, Unknown, safe/non-deadlock, interprocedural, defer/cleanup, task/thread, callable, FFI, ISR, resource-semantics, dynamic-resource, incremental-LSP, performance, determinism, and false-positive regression tests
+      - maintain a permanent false-positive regression corpus for partial lock orders, scoped guards, condition waits that release mutexes, nonblocking acquisition, guaranteed timeout, serialized execution, ISR masking, ordered dynamic locks, resource transfer, reentrancy, and join-after-release patterns
+      - update implementation-status verification commands when the first conforming vertical slice is integrated

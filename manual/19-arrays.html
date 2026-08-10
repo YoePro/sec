@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Arrays - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+</head>
+<body>
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+
+        <div class="sidebar-section">Arrays</div>
+        <a href="#arrays">Overview</a>
+        <a href="#array-type-syntax">Type Syntax</a>
+        <a href="#array-type-identity">Type Identity</a>
+        <a href="#array-length">Array Length</a>
+        <a href="#array-layout">Array Layout</a>
+        <a href="#nested-arrays">Nested Arrays</a>
+        <a href="#array-declarations">Declarations</a>
+        <a href="#array-literals">Literals</a>
+        <a href="#array-default-initialization">Default Initialization</a>
+        <a href="#array-copy-and-move">Copy and Move</a>
+        <a href="#array-destruction">Destruction</a>
+        <a href="#array-equality">Equality</a>
+        <a href="#array-function-parameters">Function Parameters</a>
+        <a href="#array-ffi">FFI</a>
+
+        <div class="sidebar-section">Pages</div>
+        <a href="index.html">Index</a>
+        <a href="01-introduction.html">Introduction</a>
+        <a href="02-basic-syntax.html">Basic Syntax</a>
+        <a href="03-types.html">Types</a>
+        <a href="18-interfaces.html">Interfaces</a>
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Arrays</div>
+
+        <h1 id="arrays">Arrays</h1>
+
+        <p>
+            An array is a fixed-size, contiguous collection of elements of the same type. The length is part
+            of the type and is known at compile time. Arrays own their storage inline — there is no hidden
+            pointer, length field, or capacity field.
+        </p>
+
+        <div class="section" id="array-type-syntax">
+            <h2>Type Syntax</h2>
+
+            <p>Sec uses postfix array syntax:</p>
+
+            <pre><code>T[N]</code></pre>
+
+            <p>Examples:</p>
+
+            <pre><code>byte[256]
+int[4]
+Packet[32]
+Percent[10]</code></pre>
+
+            <p><code>N</code> is the number of elements and must be a non-negative compile-time integer.</p>
+        </div>
+
+        <div class="section" id="array-type-identity">
+            <h2>Type Identity</h2>
+
+            <p>Array length is part of the type. These are different types:</p>
+
+            <pre><code>int[4]
+int[5]</code></pre>
+
+            <p>The element type also participates in identity:</p>
+
+            <pre><code>int[4]
+uint[4]</code></pre>
+
+            <div class="rule">
+                <strong>Rule:</strong> Two arrays are the same type only when both their element type and length match exactly.
+            </div>
+        </div>
+
+        <div class="section" id="array-length">
+            <h2>Array Length</h2>
+
+            <p>An array length must be a non-negative compile-time integer.</p>
+
+            <p>Valid:</p>
+
+            <pre><code>int[0]
+int[4]
+byte[HeaderSize]</code></pre>
+
+            <p>Invalid:</p>
+
+            <pre><code>int[-1]
+int[length]  // when length is a runtime value</code></pre>
+
+            <p>The compiler rejects negative lengths, non-integer lengths, runtime-dependent lengths, arithmetic overflow, and lengths that cannot be represented by <code>uint</code>.</p>
+
+            <p>Zero-length arrays are valid.</p>
+        </div>
+
+        <div class="section" id="array-layout">
+            <h2>Array Layout</h2>
+
+            <p>An array owns <code>N</code> contiguous elements of type <code>T</code>. Its size is conceptually:</p>
+
+            <pre><code>N * sizeof(T)</code></pre>
+
+            <p>with checked layout arithmetic. Element alignment is the alignment of <code>T</code>. <code>T</code> must be a sized type.</p>
+
+            <p>A bare unsized type such as <code>U[]</code> cannot be an array element, but a reference to one can:</p>
+
+            <pre><code>(ref byte[])[4]</code></pre>
+
+            <p>This means an array of four shared byte slices.</p>
+        </div>
+
+        <div class="section" id="nested-arrays">
+            <h2>Nested Arrays</h2>
+
+            <p>Postfix dimensions are written from outermost to innermost:</p>
+
+            <pre><code>int[3][4]</code></pre>
+
+            <p>This means 3 arrays, each containing 4 int values. A matrix-like value may therefore be indexed as:</p>
+
+            <pre><code>matrix[row][column]</code></pre>
+
+            <p>Every dimension participates in type identity and layout checking.</p>
+        </div>
+
+        <div class="section" id="array-declarations">
+            <h2>Declarations</h2>
+
+            <p>Examples:</p>
+
+            <pre><code>let values: int[4] := [10, 20, 30, 40]
+let mut buffer: byte[256]</code></pre>
+
+            <p>An immutable array requires an initializer. A mutable fixed array may omit its initializer only when its element type is defaultable. Every element is then constructed from the element-type default before the binding becomes readable:</p>
+
+            <pre><code>let mut values: int[4]  // equivalent to [0, 0, 0, 0]</code></pre>
+
+            <div class="rule">
+                <strong>Rule:</strong> Partially undefined element storage must never become a readable safe array.
+            </div>
+        </div>
+
+        <div class="section" id="array-literals">
+            <h2>Literals</h2>
+
+            <p>Array literal syntax uses square brackets:</p>
+
+            <pre><code>[expression, expression, expression]</code></pre>
+
+            <p>A trailing comma is allowed:</p>
+
+            <pre><code>[1, 2, 3,]</code></pre>
+
+            <p>A target array type provides element type and required length:</p>
+
+            <pre><code>let values: byte[3] := [1, 2, 3]
+let percentages: Percent[2] := [10, 20]</code></pre>
+
+            <p>Untyped literals are checked in the target element context.</p>
+
+            <p>When no target type exists, the compiler may infer the array type when:</p>
+
+            <ul>
+                <li>the literal contains at least one element</li>
+                <li>every element resolves to one identical type</li>
+                <li>the length is the literal element count</li>
+            </ul>
+
+            <pre><code>let values := [10, 20, 30]  // inferred as int[3]</code></pre>
+
+            <p>The compiler must not infer a common type through implicit conversion.</p>
+
+            <p>An empty array literal requires target context:</p>
+
+            <pre><code>let empty: int[0] := []</code></pre>
+
+            <div class="rule">
+                <strong>Rule:</strong> The literal length must exactly match the target length. No spread, repetition, or dynamic-length array literal syntax is included in the initial implementation.
+            </div>
+        </div>
+
+        <div class="section" id="array-default-initialization">
+            <h2>Default Initialization</h2>
+
+            <p>Normal semantic default-initialization rules apply. A mutable fixed array may omit its initializer only when its element type is defaultable. Every element is then constructed from the element-type default.</p>
+
+            <p>A struct array recursively default-constructs each complete struct element. A zero-length array is defaultable without constructing an element.</p>
+        </div>
+
+        <div class="section" id="array-copy-and-move">
+            <h2>Copy and Move</h2>
+
+            <p>Array classification depends on its element type:</p>
+
+            <ul>
+                <li>An array is trivially copyable when its element type is trivially copyable.</li>
+                <li>Copying an array copies every element and preserves the source.</li>
+                <li>Moving an array transfers ownership of every element and invalidates the source when the array type is move-only.</li>
+            </ul>
+
+            <p>The compiler may warn about unusually large implicit array copies, but the warning must not change semantics.</p>
+        </div>
+
+        <div class="section" id="array-destruction">
+            <h2>Destruction</h2>
+
+            <p>Array destruction destroys every still-initialized owned element in reverse index order:</p>
+
+            <pre><code>N - 1, N - 2, ..., 0</code></pre>
+
+            <p>A zero-length array has no element destruction. Moved array values are not destroyed by the previous owner.</p>
+        </div>
+
+        <div class="section" id="array-equality">
+            <h2>Equality</h2>
+
+            <p>Arrays support <code>==</code> and <code>!=</code> when the element type supports equality. Comparison is element-by-element in increasing index order. Both operands must have the same array type, including the same length.</p>
+        </div>
+
+        <div class="section" id="array-function-parameters">
+            <h2>Function Parameters</h2>
+
+            <p>Examples:</p>
+
+            <pre><code>fn Sum(values: int[4]) int
+fn Clear(values: ref mut byte[]) void</code></pre>
+
+            <p>A by-value array parameter follows normal copy or move rules. A slice parameter borrows the source.</p>
+        </div>
+
+        <div class="section" id="array-ffi">
+            <h2>FFI</h2>
+
+            <p>Arrays may cross an FFI boundary only when the complete array layout is ABI-compatible with the declared foreign ABI. Slices must not cross an FFI boundary directly.</p>
+        </div>
+
+        <nav class="page-navigation" aria-label="Page navigation">
+            <a href="18-interfaces.html">Previous: Interfaces</a>
+            <a href="index.html">Manual Index</a>
+            <a href="20-slices.html">Next: Slices</a>
+        </nav>
+    </main>
+</div>
+</body>
+</html>

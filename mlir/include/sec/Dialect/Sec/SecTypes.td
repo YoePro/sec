@@ -38,6 +38,26 @@ def Sec_StringType : Sec_SingletonType<"String", "string"> {
   let summary = "Sec high-level string type";
 }
 
+def Sec_ArithmeticFailureReasonType
+    : Sec_SingletonType<"ArithmeticFailureReason", "arithmetic_failure_reason"> {
+  let summary = "Typed reason produced by checked Sec integer arithmetic";
+}
+
+def Sec_CoreErrorType : Sec_Type<"CoreError", "core_error"> {
+  let summary = "Compiler-known core error identity without physical layout";
+  let parameters = (ins "::mlir::StringAttr":$identity);
+  let assemblyFormat = "`<` $identity `>`";
+  let genVerifyDecl = 1;
+}
+
+def Sec_ResultType : Sec_Type<"Result", "result"> {
+  let summary = "Semantic Sec Result success and error identity";
+  let parameters = (ins "::mlir::Type":$successType,
+                         "::mlir::Type":$errorType);
+  let assemblyFormat = "`<` $successType `,` $errorType `>`";
+  let genVerifyDecl = 1;
+}
+
 def Sec_DecimalType : Sec_SingletonType<"Decimal", "decimal"> {
   let summary = "Sec exact decimal type";
 }

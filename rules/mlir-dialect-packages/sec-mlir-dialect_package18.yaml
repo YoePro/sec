@@ -1,0 +1,301 @@
+package:
+  id: SEC-MLIR-P18
+  name: Owning Dynamic Array Semantic Value Representation
+  repository: https://github.com/YoePro/sec
+  branch: main
+  repository_sync_commit: 152c772
+  repository_sync_date: '2026-08-10'
+  local_predecessors:
+  - SEC-MLIR-P13
+  - SEC-MLIR-P14
+  - SEC-MLIR-P15
+  - SEC-MLIR-P16
+  - SEC-MLIR-P17
+  semantic_ir_version_before: 1
+  semantic_ir_version_after: 1
+  sec_mlir_schema_before: 13
+  sec_mlir_schema_after: 14
+  lowering_spec_before: 13
+  lowering_spec_after: 14
+  goal: Represent owning runtime-sized T[] values, backing storage, invalidation and
+    destruction without inventing a public collection API or physical descriptor.
+  next_package: Allocation Context and Arena Semantic Lowering
+normative_updates:
+- repository_paths:
+  - rules/arrays-slices.txt
+  - rules/default_values.md
+  - rules/copy_move.md
+  - rules/ownership.md
+  - rules/core-library.md
+  - rules/layout.md
+  - rules/storage.md
+  - rules/allocation.txt
+  supplied_file: sec_dynamic_array_sync_package18.md
+- repository_path: rules/semantic_ir.txt
+  supplied_file: sec_semantic_ir_dynamic_array_package18.md
+- repository_path: rules/sec_mlir_dialect.md
+  supplied_file: sec_mlir_dialect_package18.md
+  schema_version: 14
+- repository_path: rules/sec_mlir_lowering.md
+  supplied_file: sec_mlir_lowering_package18.md
+  version: 14
+wide_builtin_invariant:
+  active:
+  - int128
+  - int256
+  - uint128
+  - uint256
+  - decimal128
+  allowed_as_elements: true
+type_semantics:
+  source: T[]
+  runtime_sized: true
+  sized_descriptor: true
+  length_in_type_identity: false
+  copy_classification: MoveOnly
+  destruction: non-trivial
+  distinct_from:
+  - T[N]
+  - ref T[]
+  - ref mut T[]
+  - list[T]
+default:
+  defaultable: true
+  requires_element_default: false
+  length: 0
+  capacity: 0
+  backing: none
+  allocation: false
+  mutable_omitted_initializer: true
+  immutable_omitted_initializer: false
+public_surface:
+  member_len: uint
+  core_len: int with representability proof
+  capacity_member: false
+  invented_growth_methods: false
+  forbidden_to_invent:
+  - Push
+  - Append
+  - Reserve
+  - Resize
+  - Clear
+  - Clone
+  - Capacity
+value_invariant:
+  length_le_capacity: true
+  initialized_elements: '[0,length)'
+  capacity_tail_live_objects: false
+  partial_construction: length equals initialized prefix
+storage:
+  facts:
+  - StorageIdentity
+  - AllocationIdentity
+  - AllocationContext
+  - BackingRelation
+  - ReclamationAuthority
+  - ReclamationPlan
+  - InvalidationDomain
+  - EpochDependency
+  - AddressStability
+  - RelocationClass
+  - MemorySpace
+  value_owns_elements: true
+  value_always_reclaims_bytes: false
+  arena_reclamation: Arena
+  allocator_reclamation: OwningValue when plan says so
+  transitions:
+  - EstablishDomain
+  - AdvanceEpoch
+  - EndDomain
+  - ReclaimStorage
+allocation:
+  explicit_in_semantic_ir: true
+  selected_context_may_be_source_implicit: true
+  error: AllocationError
+  panic_on_failure: false
+  null_on_failure: false
+  noalloc_profile_empty_allowed: true
+  noalloc_profile_allocating_operation: compile-time error
+growth:
+  public_api: false
+  internal_append_prepared: true
+  internal_grow_backing: true
+  failure_transactional: true
+  transition_kinds:
+  - none
+  - advance-epoch
+  - replace-domain
+  live_direct_borrow_blocks_invalidating_growth: true
+  physical_relocation_is_source_move: false
+indexing:
+  valid: 0 <= index < runtime length
+  semantic_result: P15 Place
+  ordinary_failure: panic.bounds / dynamic-array-index
+  fallible_error: IndexError.OutOfBounds
+  move_only_index_move_out: false
+  replacement: P17 ReplacePlaceOp
+  borrow: P15 ref/ref mut
+slice_integration:
+  p16_dynamic_owner_source_unlocked: true
+  explicit_only: true
+  allocation: false
+  backing_dependency_preserved: true
+  invalidating_growth_conflict: true
+destruction:
+  plan_kind: DestroyDynamicArray
+  element_order: reverse logical index
+  then_end_domain: true
+  then_reclaim_if_authorized: true
+  arena_individual_reclaim: false
+  moved_source_destroyed: false
+semantic_ir:
+  version_bump: false
+  type: DynamicArrayType
+  facts:
+  - DynamicArrayFacts
+  - ResolvedDynamicArrayPlan
+  - ResolvedAllocationPlan or canonical global equivalent
+  ops:
+  - DynamicArrayEmptyOp
+  - DynamicArrayAllocateOp
+  - DynamicArrayLengthOp
+  - DynamicArrayLengthIntOp
+  - DynamicArrayCapacityInternalOp
+  - DynamicArrayIndexInBoundsOp
+  - DynamicArrayElementPlaceOp
+  - DynamicArrayAppendPreparedOp
+  - DynamicArrayGrowBackingOp
+  - StorageEstablishDomainOp
+  - StorageAdvanceEpochOp
+  - StorageEndDomainOp
+  - StorageReclaimOp
+dialect:
+  schema_version: 14
+  type: '!sec.dynamic_array<T>'
+  ops:
+  - sec.dynamic_array.empty
+  - sec.dynamic_array.allocate
+  - sec.dynamic_array.len
+  - sec.dynamic_array.len_int
+  - sec.dynamic_array.capacity_internal
+  - sec.dynamic_array.index_in_bounds
+  - sec.dynamic_array.element_place
+  - sec.dynamic_array.append_prepared
+  - sec.dynamic_array.grow_backing
+  - sec.storage.establish_domain
+  - sec.storage.advance_epoch
+  - sec.storage.end_domain
+  - sec.storage.reclaim
+  verifiers:
+  - --sec-verify-dynamic-arrays
+  - --sec-verify-storage-transitions
+  physical_descriptor: false
+  physical_allocator_abi: false
+compatibility:
+  p13: T[] fields make aggregates move-only and participate in destruction
+  p14: fixed arrays remain distinct inline aggregates
+  p15: element refs use backing invalidation domain
+  p16: slice borrow from dynamic owner is enabled
+  p17: move/replacement/destruction/cleanup own lifecycle
+  p6: target scalar resolution preserves wrapper
+  p8: signless normalization does not recurse through wrapper
+deferred:
+- public T[] Push/Append/Reserve/Capacity API
+- explicit deep clone API
+- runtime-index move-out of move-only elements
+- physical dynamic-array descriptor
+- physical allocator ABI
+- Arena physical implementation
+- general dynamic-array iteration lowering
+- dynamic-array equality
+- FFI descriptor ABI
+- stable/weak handles
+- LLVM
+tests:
+  type_default:
+  - move-only
+  - empty default
+  - no allocation
+  - immutable initializer requirement
+  - element default independence
+  allocation:
+  - AllocationError
+  - noalloc
+  - Arena context
+  - allocator context
+  - reclamation pairing
+  state:
+  - length/capacity
+  - initialized prefix
+  - partial failure cleanup
+  index_slice:
+  - element read/write/ref
+  - IndexError
+  - slice borrow
+  - empty slice
+  - borrow blocks growth
+  storage_transition:
+  - establish
+  - no-transition mutation
+  - advance epoch
+  - replace domain
+  - end domain
+  - reclaim
+  destruction:
+  - reverse elements
+  - Arena no individual reclaim
+  - allocator reclaim
+  - moved source
+  regression:
+  - schema13
+  - check-sec-mlir
+  - go test ./...
+  - legacy paths
+acceptance:
+- sync applied
+- Semantic IR amendment
+- schema v14
+- lowering v14
+- T[] MoveOnly
+- empty no-allocation default
+- allocation plan/error
+- internal capacity state
+- initialized prefix
+- internal append/growth
+- storage transitions
+- destruction/reclamation separation
+- index Place
+- slice borrowing
+- P17 lifecycle integration
+- two new verifiers
+- no invented public growth API
+- no physical descriptor
+- no allocator ABI
+- no mandatory runtime
+- check-sec-mlir
+- go test ./...
+package19:
+  name: Allocation Context and Arena Semantic Lowering
+  scope:
+  - AllocationContext
+  - context propagation
+  - explicit ref mut Arena
+  - Arena.Alloc[T]
+  - AllocationError
+  - Arena storage domain
+  - Arena epoch
+  - Arena.Reset
+  - Arena destruction/release
+  - allocation effects
+  - sized/alignment/default checks
+  - P18 owning-array allocation integration
+  - reference/slice generation dependencies
+  - noalloc profile
+  - '!sec.arena / high-level allocation ops'
+  deferred:
+  - physical Arena representation
+  - universal allocator ABI
+  - malloc/free choice
+  - list/map/set
+  - stable handles
+  - LLVM

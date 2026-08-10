@@ -1,0 +1,291 @@
+package:
+  id: SEC-MLIR-P17
+  name: Ownership Transfer and Destruction Semantic Core
+  repository: https://github.com/YoePro/sec
+  branch: main
+  repository_sync_commit: 152c772
+  repository_sync_date: '2026-08-10'
+  local_predecessors:
+  - SEC-MLIR-P13
+  - SEC-MLIR-P14
+  - SEC-MLIR-P15
+  - SEC-MLIR-P16
+  semantic_ir_version_before: 1
+  semantic_ir_version_after: 1
+  sec_mlir_schema_before: 12
+  sec_mlir_schema_after: 13
+  lowering_spec_before: 12
+  lowering_spec_after: 13
+  goal: Make copy, move, initialization, replacement, discard, destruction and cleanup
+    explicit before physical lowering.
+  next_package: Owning Dynamic Array Semantic Value Representation
+normative_updates:
+- repository_paths:
+  - rules/ownership.md
+  - rules/copy_move.md
+  - rules/destruction.txt
+  - rules/defer.txt
+  - rules/discard.md
+  - rules/semantic_ir.txt
+  supplied_file: sec_ownership_destruction_sync_package17.md
+- repository_path: rules/semantic_ir.txt
+  supplied_file: sec_semantic_ir_ownership_destruction_package17.md
+- repository_path: rules/sec_mlir_dialect.md
+  supplied_file: sec_mlir_dialect_package17.md
+  schema_version: 13
+- repository_path: rules/sec_mlir_lowering.md
+  supplied_file: sec_mlir_lowering_package17.md
+  version: 13
+wide_builtin_invariant:
+  active:
+  - int128
+  - int256
+  - uint128
+  - uint256
+  - decimal128
+  status_change: false
+rule_sync:
+  cleanup_order: unified reverse semantic registration order
+  cleanup_registration_events:
+  - successful non-trivial ownership initialization
+  - executed defer
+  - reinitialization
+  - replacement new incarnation
+  defer_capture: binding/place identity; no value copy at registration
+  defer_scope: function
+  defer_loop: one registration per execution
+  panic_unwinding: false
+  fallible_implicit_copy: false
+  custom_free_source_acceptance: still gated
+copy_move:
+  actions:
+  - construct
+  - copy-trivial
+  - copy-semantic-infallible
+  - move
+  - borrow-shared
+  - borrow-mutable
+  - non-consuming
+  pure_move_can_fail: false
+  semantic_copy_can_fail: false
+  fallible_clone: ordinary explicit Result-returning call
+  shared_ref: CopyTrivial
+  mutable_ref: MoveOnly
+  shared_slice: CopyTrivial
+  mutable_slice: MoveOnly
+ownership_state:
+  states:
+  - uninitialized
+  - initialized
+  - moved
+  - destroyed
+  - partial
+  partial_subobjects_p17:
+  - struct fields
+  - active union payload
+  - Result payload
+  - Option payload
+  array_element_partial_move: false
+sema:
+  read_only_plans:
+  - ResolvedTransferPlan
+  - ResolvedDestructionPlan
+  - ResolvedCleanupPlan
+  builder_must_not_reclassify_copy_move: true
+  builder_must_not_recompute_cleanup: true
+  cleanup_plan_tracks:
+  - registration order
+  - scope ID
+  - value/place
+  - destruction plan
+  - defer capture places
+  - normal exit edges
+  - protected transfer values
+destruction:
+  plan_kinds:
+  - trivial
+  - derived-struct
+  - derived-fixed-array
+  - active-union
+  - active-result
+  - active-option
+  - compiler-known
+  - custom-free
+  struct_order: reverse declaration order
+  array_order: reverse index order
+  variant: active initialized unmoved payload only
+  references_destroy_referent: false
+  slices_destroy_elements: false
+  custom_free_ir_hook: true
+  custom_free_source_syntax: false
+semantic_ir:
+  version_bump: false
+  ownership_ops:
+  - CopyValueOp
+  - SemanticCopyValueOp
+  - MoveValueOp
+  - CopyFromPlaceOp
+  - MoveFromPlaceOp
+  - InitializePlaceOp
+  - ReplacePlaceOp
+  - DiscardValueOp
+  - DestroyValueOp
+  - DestroyPlaceOp
+  cleanup_ops:
+  - CleanupTrackOwnedOp
+  - CleanupCancelOp
+  - CleanupDeferRegisterOp
+  - CleanupRunScopeOp
+  - CleanupRunFunctionOp
+  cleanup_ids:
+  - CleanupActionID
+  - CleanupScopeID
+  - DeferID
+  - DestructionPlanID
+  defer_capture: Place/binding identity
+  runtime_ownership_table: false
+dialect:
+  schema_version: 13
+  ownership_ops:
+  - sec.own.copy
+  - sec.own.semantic_copy
+  - sec.own.move
+  - sec.own.copy_from_place
+  - sec.own.move_from_place
+  - sec.own.initialize_place
+  - sec.own.replace_place
+  - sec.own.discard
+  - sec.own.destroy_value
+  - sec.own.destroy_place
+  cleanup_ops:
+  - sec.cleanup.track_owned
+  - sec.cleanup.cancel
+  - sec.cleanup.defer_register
+  - sec.cleanup.defer_yield
+  - sec.cleanup.run_scope
+  - sec.cleanup.run_function
+  verifiers:
+  - --sec-verify-ownership
+  - --sec-verify-destruction-plans
+  - --sec-verify-cleanups
+  physical_cleanup_stack: false
+  physical_destructor_abi: false
+cleanup:
+  normal_function_exit:
+  - evaluate exit payload
+  - transfer exit payload ownership
+  - run remaining cleanup reverse registration order
+  - return
+  lexical_exit: automatic owned cleanup only; function defer remains pending
+  panic: no general unwinding
+  dynamic_defer: high-level registration; physical representation deferred
+discard:
+  explicit: true
+  implicit_call_result: true
+  nontrivial_uses_destruction: true
+  reference_ends_holder_not_referent: true
+  must_use_legality: Sema-owned
+replacement:
+  rhs_before_old_destroy: true
+  fallible_rhs_failure_preserves_old: true
+  moved_storage_assignment: reinitialization, no old destruction
+  new_cleanup_registration_at_replacement: true
+compatibility:
+  p11: move/copy union payloads and non-trivial active destruction
+  p12: move-only payload bindings on proven variants
+  p13: non-trivial structs, field move/reinit/replacement
+  p14: non-trivial fixed arrays and whole-array move/destruction
+  p15: reference discard/end-borrow; no referent destruction
+  p16: shared slice copy, mutable slice move, no element destruction
+deferred:
+- user-defined free syntax
+- fallible implicit copy
+- runtime-index fixed-array element partial move
+- owning dynamic T[]
+- physical allocator/deallocator lowering
+- physical cleanup stack
+- panic unwinding
+- source replace/take/swap intrinsics
+- physical memcpy/memmove selection
+- LLVM ownership/destruction lowering
+tests:
+  transfer:
+  - trivial copy
+  - semantic infallible copy
+  - move-only local
+  - argument move
+  - return move
+  - whole reinitialization
+  - partial field move/reinit
+  - variant payload move
+  destruction:
+  - struct reverse fields
+  - array reverse indexes
+  - active variant
+  - partial aggregate
+  - reference no referent destroy
+  - slice no element destroy
+  discard:
+  - explicit resource
+  - implicit call result
+  - Result/Option
+  - reference
+  - partial field
+  cleanup:
+  - reverse local init
+  - interleaved defer/local
+  - conditional defer
+  - loop defer
+  - return
+  - error propagation
+  - break
+  - continue
+  - no panic unwinding
+  regression:
+  - schema12
+  - check-sec-mlir
+  - go test ./...
+  - legacy paths
+acceptance:
+- normative sync applied
+- Semantic IR amendment
+- schema v13
+- lowering v13
+- transfer/destruction/cleanup read-only plans
+- copy/move ops
+- place transfer ops
+- initialization/replacement
+- partial struct/payload state
+- discard
+- non-trivial destruction
+- cleanup track/cancel
+- defer registration
+- scope/function cleanup
+- three verifiers
+- P11-P16 integration
+- no panic unwinding
+- no mandatory runtime
+- no physical cleanup/destructor ABI
+- check-sec-mlir
+- go test ./...
+package18:
+  name: Owning Dynamic Array Semantic Value Representation
+  scope:
+  - owning T[] type
+  - length/capacity
+  - allocation identity
+  - allocator/deallocator pairing
+  - construction
+  - growth/relocation semantics
+  - element initialization
+  - push/append ownership transfer
+  - index Place
+  - array-to-slice borrowing
+  - move-only descriptor ownership
+  - reverse element destruction
+  - backing storage release
+  - generation/epoch invalidation
+  - '!sec.dynamic_array'
+  deferred:
+  - physical allocator ABI
+  - LLVM

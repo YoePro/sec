@@ -2,13 +2,14 @@
 package features
 
 import (
+	"fmt"
 	"strings"
 
 	"sec/internal/lexer"
 )
 
 var SemanticTokenTypes = []string{"namespace", "type", "class", "enum", "interface", "struct", "typeParameter", "parameter", "variable", "property", "enumMember", "event", "function", "method", "keyword", "modifier", "comment", "string", "number", "operator"}
-var SemanticTokenModifiers = []string{"declaration", "static"}
+var SemanticTokenModifiers = []string{"declaration", "static", "readonly"}
 
 var compilerKnownAttributes = map[string]bool{
 	"address":       true,
@@ -31,6 +32,14 @@ var tokenTypeIndex = func() map[string]int {
 	return result
 }()
 
+var tokenModifierIndex = func() map[string]uint32 {
+	result := map[string]uint32{}
+	for index, name := range SemanticTokenModifiers {
+		result[name] = 1 << index
+	}
+	return result
+}()
+
 // SemanticTokens encodes lexical tokens using compiler-provided semantic names.
 func SemanticTokens(text, file string, classification map[string]string) []int {
 	l := lexer.NewWithFile(text, file)
@@ -42,9 +51,10 @@ func SemanticTokens(text, file string, classification map[string]string) []int {
 		if token.Type == lexer.EOF {
 			break
 		}
-		kind := tokenKind(token, classification)
+		kind, modifiers := tokenKind(token, classification)
 		if token.Type == lexer.IDENT && previousToken.Type == lexer.AT && compilerKnownAttributes[token.Lexeme] {
 			kind = "modifier"
+			modifiers = 0
 		}
 		previousToken = token
 		index, ok := tokenTypeIndex[kind]
@@ -60,32 +70,53 @@ func SemanticTokens(text, file string, classification map[string]string) []int {
 		if line == previousLine {
 			deltaStart = start - previousStart
 		}
-		data = append(data, line-previousLine, deltaStart, length, index, 0)
+		data = append(data, line-previousLine, deltaStart, length, index, int(modifiers))
 		previousLine, previousStart = line, start
 	}
 	return data
 }
 
-func tokenKind(token lexer.Token, names map[string]string) string {
+func tokenKind(token lexer.Token, names map[string]string) (string, uint32) {
 	switch token.Type {
 	case lexer.COMMENT:
-		return "comment"
+		return "comment", 0
 	case lexer.STRING, lexer.CHAR, lexer.RAW_STRING, lexer.INTERPSTRING:
-		return "string"
+		return "string", 0
 	case lexer.INT, lexer.FLOAT:
-		return "number"
+		return "number", 0
 	case lexer.IDENT, lexer.SELF:
-		if kind := names[token.Lexeme]; kind != "" {
-			return kind
+		if classification := names[ClassificationKey(token.File, token.Line, token.Column)]; classification != "" {
+			return decodeClassification(classification)
 		}
-		return "variable"
+		if classification := names[token.Lexeme]; classification != "" {
+			return decodeClassification(classification)
+		}
+		return "variable", 0
 	case lexer.ASSIGN, lexer.DECLARE, lexer.MOVE_ASSIGN, lexer.MOVE_DECLARE, lexer.ARROW, lexer.PLUS, lexer.MINUS, lexer.ASTERISK, lexer.SLASH, lexer.PERCENT, lexer.PLUS_ASSIGN, lexer.MINUS_ASSIGN, lexer.ASTERISK_ASSIGN, lexer.SLASH_ASSIGN, lexer.PERCENT_ASSIGN, lexer.EQ, lexer.NEQ, lexer.LT, lexer.LTE, lexer.GT, lexer.GTE, lexer.AND, lexer.OR, lexer.NOT, lexer.BIT_AND, lexer.BIT_OR, lexer.BIT_XOR, lexer.BIT_NOT, lexer.SHIFT_LEFT, lexer.SHIFT_RIGHT, lexer.BIT_AND_ASSIGN, lexer.BIT_OR_ASSIGN, lexer.BIT_XOR_ASSIGN, lexer.SHIFT_LEFT_ASSIGN, lexer.SHIFT_RIGHT_ASSIGN, lexer.DOT, lexer.RANGE, lexer.RANGE_EXCLUSIVE, lexer.SPREAD, lexer.COLON:
-		return "operator"
+		return "operator", 0
 	case lexer.COMMA, lexer.SEMICOLON, lexer.QUESTION, lexer.UNDERSCORE, lexer.AT, lexer.HASH, lexer.LPAREN, lexer.RPAREN, lexer.LBRACE, lexer.RBRACE, lexer.LBRACKET, lexer.RBRACKET:
-		return ""
+		return "", 0
 	default:
-		return "keyword"
+		return "keyword", 0
 	}
+}
+
+func decodeClassification(classification string) (string, uint32) {
+	parts := strings.Fields(classification)
+	if len(parts) == 0 {
+		return "", 0
+	}
+	var modifiers uint32
+	for _, modifier := range parts[1:] {
+		modifiers |= tokenModifierIndex[modifier]
+	}
+	return parts[0], modifiers
+}
+
+// ClassificationKey identifies one token independently of same-named symbols
+// in other scopes.
+func ClassificationKey(file string, line int, column int) string {
+	return fmt.Sprintf("%s:%d:%d", file, line, column)
 }
 func tokenLength(t lexer.Token) int {
 	if strings.Contains(t.Lexeme, "\n") {

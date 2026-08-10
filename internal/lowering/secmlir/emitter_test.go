@@ -31,7 +31,7 @@ func TestEmitIsDeterministicAndPreservesSchemaMetadata(t *testing.T) {
 	}
 	text := string(first)
 	for _, expected := range []string{
-		"sec.dialect_version = 4 : i32",
+		"sec.dialect_version = 6 : i32",
 		"sec.semantic_ir_version = 1 : i32",
 		`sec.module_id = "main"`,
 		`sec.target_os = "linux"`,
@@ -157,22 +157,25 @@ func TestEmitPreservesStorageCallsAndCFG(t *testing.T) {
 	}
 }
 
-func TestEmitSchema4CheckedIntegerGuard(t *testing.T) {
+func TestEmitSchema6CheckedIntegerGuard(t *testing.T) {
 	types := semantic.NewTypeTable()
 	intType := types.Intern(semantic.Type{Kind: semantic.TypeInt, Name: "int128", Signed: true, BitWidth: 128})
 	boolType := types.Intern(semantic.Type{Kind: semantic.TypeBool, Name: "bool", BitWidth: 1})
+	reasonType := types.Intern(semantic.Type{Kind: semantic.TypeArithmeticFailureReason, Name: "ArithmeticFailureReason"})
 	left := semantic.Value{ID: 0, Type: intType, Ownership: semantic.OwnershipImmediate}
 	right := semantic.Value{ID: 1, Type: intType, Ownership: semantic.OwnershipImmediate}
 	result := semantic.Value{ID: 2, Type: intType, Ownership: semantic.OwnershipImmediate}
 	failed := semantic.Value{ID: 3, Type: boolType, Ownership: semantic.OwnershipImmediate}
+	reason := semantic.Value{ID: 4, Type: reasonType, Ownership: semantic.OwnershipImmediate}
+	reasonArgument := semantic.Value{ID: 5, Type: reasonType, Ownership: semantic.OwnershipImmediate}
 	function := &semantic.Function{ID: "main::Add(int128,int128)", Name: "Add", ReturnType: intType, Entry: 0,
 		Parameters: []semantic.Parameter{{Name: "left", Value: left}, {Name: "right", Value: right}},
 		Blocks: []*semantic.Block{
 			{ID: 0, Operations: []semantic.Operation{
-				{Kind: semantic.OpIntBinaryChecked, Operands: []semantic.ValueID{0, 1}, Results: []semantic.Value{result, failed}, IntegerBinary: semantic.IntegerCheckedAdd, Operator: "+"},
-				{Kind: semantic.OpCondBranch, Operands: []semantic.ValueID{3}, Successors: []semantic.BranchTarget{{Block: 1}, {Block: 2}}},
+				{Kind: semantic.OpIntBinaryChecked, Operands: []semantic.ValueID{0, 1}, Results: []semantic.Value{result, failed, reason}, IntegerBinary: semantic.IntegerCheckedAdd, Operator: "+"},
+				{Kind: semantic.OpCondBranch, Operands: []semantic.ValueID{3}, Successors: []semantic.BranchTarget{{Block: 1, Arguments: []semantic.ValueID{4}}, {Block: 2}}},
 			}},
-			{ID: 1, Operations: []semantic.Operation{{Kind: semantic.OpArithmeticFailure, FailureCategory: semantic.ArithmeticFailureOverflow, Operator: "+"}}},
+			{ID: 1, Parameters: []semantic.Value{reasonArgument}, Operations: []semantic.Operation{{Kind: semantic.OpArithmeticFailure, Operands: []semantic.ValueID{5}, FailureCategory: semantic.ArithmeticFailureOverflow, Operator: "+"}}},
 			{ID: 2, Operations: []semantic.Operation{{Kind: semantic.OpReturn, Operands: []semantic.ValueID{2}}}},
 		},
 	}
@@ -182,10 +185,11 @@ func TestEmitSchema4CheckedIntegerGuard(t *testing.T) {
 	}
 	text := string(output)
 	for _, expected := range []string{
-		`sec.dialect_version = 4 : i32`,
-		`%v2, %v3 = "sec.int.binary_checked"(%v0, %v1) <{kind = "add"}> : (si128, si128) -> (si128, i1)`,
-		`cf.cond_br %v3, ^bb1, ^bb2`,
-		`"sec.fail.arithmetic"() <{category = "overflow"}> {sec.operator = "+"} : () -> ()`,
+		`sec.dialect_version = 6 : i32`,
+		`%v2, %v3, %v4 = "sec.int.binary_checked"(%v0, %v1) <{kind = "add"}> : (si128, si128) -> (si128, i1, !sec.arithmetic_failure_reason)`,
+		`cf.cond_br %v3, ^bb1(%v4 : !sec.arithmetic_failure_reason), ^bb2`,
+		`^bb1(%v5: !sec.arithmetic_failure_reason):`,
+		`"sec.fail.arithmetic"(%v5) {sec.operator = "+"} : (!sec.arithmetic_failure_reason) -> ()`,
 	} {
 		if !strings.Contains(text, expected) {
 			t.Errorf("missing %q in:\n%s", expected, text)

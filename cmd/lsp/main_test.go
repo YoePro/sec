@@ -526,6 +526,69 @@ type SessionID int
 	assertSemanticToken(t, tokens, 2, 1, 6, "modifier")
 }
 
+func TestSemanticTokensClassifyImmutableBindingsAsReadonlyVariables(t *testing.T) {
+	source := `module main
+
+let Global := 1
+
+fn Check() int {
+    let local := Global
+    let mut mutable := local
+    mutable += 1
+    return local + mutable
+}
+`
+
+	tokens := decodeSemanticTokens(semanticTokensForSource("", source))
+	assertSemanticTokenWithModifier(t, tokens, 2, 4, 6, "variable", "readonly")     // Global declaration
+	assertSemanticTokenWithModifier(t, tokens, 5, 8, 5, "variable", "readonly")     // local declaration
+	assertSemanticTokenWithModifier(t, tokens, 5, 17, 6, "variable", "readonly")    // Global use
+	assertSemanticTokenWithoutModifier(t, tokens, 6, 12, 7, "variable", "readonly") // mutable declaration
+	assertSemanticTokenWithModifier(t, tokens, 6, 23, 5, "variable", "readonly")    // local use
+	assertSemanticTokenWithoutModifier(t, tokens, 7, 4, 7, "variable", "readonly")  // mutable write
+	assertSemanticTokenWithModifier(t, tokens, 8, 11, 5, "variable", "readonly")    // local return use
+	assertSemanticTokenWithoutModifier(t, tokens, 8, 19, 7, "variable", "readonly") // mutable return use
+}
+
+func TestSemanticTokensPreferStructFieldOverSameNamedMethod(t *testing.T) {
+	source := `module main
+
+type State struct {
+    Diagnostics: int,
+}
+
+type Lexer struct {
+    diagnostics: int,
+}
+
+impl Lexer {
+    fn Snapshot() State {
+        return State {
+            Diagnostics: self.diagnostics
+        }
+    }
+
+    fn Diagnostics() int {
+        return self.diagnostics
+    }
+}
+`
+
+	tokens := decodeSemanticTokens(semanticTokensForSource("", source))
+	assertSemanticToken(t, tokens, 3, 4, 11, "property")   // field declaration
+	assertSemanticToken(t, tokens, 13, 12, 11, "property") // struct literal field
+	assertSemanticToken(t, tokens, 17, 7, 11, "method")    // method declaration
+
+	fieldOffset := strings.Index(source, "Diagnostics: self") + 1
+	hover, ok := hoverForSource("", source, offsetPosition(source, fieldOffset))
+	if !ok || !strings.Contains(hover.Contents.Value, "field Diagnostics: int") {
+		t.Fatalf("struct literal field hover = %+v, %v; want field Diagnostics", hover, ok)
+	}
+	if strings.Contains(hover.Contents.Value, "fn Lexer.Diagnostics") {
+		t.Fatalf("struct literal field hover resolved the same-named method: %s", hover.Contents.Value)
+	}
+}
+
 func TestSemanticTokensTolerateIncompleteExpressions(t *testing.T) {
 	source := `module main
 
@@ -1664,6 +1727,7 @@ type decodedSemanticToken struct {
 	Start     int
 	Length    int
 	TokenType string
+	Modifiers []string
 }
 
 func decodeSemanticTokens(tokens semanticTokens) []decodedSemanticToken {
@@ -1681,14 +1745,58 @@ func decodeSemanticTokens(tokens semanticTokens) []decodedSemanticToken {
 		if tokens.Data[i+3] >= 0 && tokens.Data[i+3] < len(semanticTokenTypes) {
 			tokenType = semanticTokenTypes[tokens.Data[i+3]]
 		}
+		modifiers := []string{}
+		for index, modifier := range semanticTokenModifiers {
+			if tokens.Data[i+4]&(1<<index) != 0 {
+				modifiers = append(modifiers, modifier)
+			}
+		}
 		decoded = append(decoded, decodedSemanticToken{
 			Line:      line,
 			Start:     start,
 			Length:    tokens.Data[i+2],
 			TokenType: tokenType,
+			Modifiers: modifiers,
 		})
 	}
 	return decoded
+}
+
+func assertSemanticTokenWithModifier(t *testing.T, tokens []decodedSemanticToken, line int, start int, length int, tokenType string, modifier string) {
+	t.Helper()
+	for _, token := range tokens {
+		if token.Line != line || token.Start != start || token.Length != length {
+			continue
+		}
+		if token.TokenType != tokenType || !containsString(token.Modifiers, modifier) {
+			t.Fatalf("semantic token at %d:%d = %q %+v, want %q with %q; tokens=%+v", line, start, token.TokenType, token.Modifiers, tokenType, modifier, tokens)
+		}
+		return
+	}
+	t.Fatalf("missing semantic token at %d:%d length %d type %q with modifier %q; tokens=%+v", line, start, length, tokenType, modifier, tokens)
+}
+
+func assertSemanticTokenWithoutModifier(t *testing.T, tokens []decodedSemanticToken, line int, start int, length int, tokenType string, modifier string) {
+	t.Helper()
+	for _, token := range tokens {
+		if token.Line != line || token.Start != start || token.Length != length {
+			continue
+		}
+		if token.TokenType != tokenType || containsString(token.Modifiers, modifier) {
+			t.Fatalf("semantic token at %d:%d = %q %+v, want %q without %q; tokens=%+v", line, start, token.TokenType, token.Modifiers, tokenType, modifier, tokens)
+		}
+		return
+	}
+	t.Fatalf("missing semantic token at %d:%d length %d type %q without modifier %q; tokens=%+v", line, start, length, tokenType, modifier, tokens)
+}
+
+func containsString(values []string, expected string) bool {
+	for _, value := range values {
+		if value == expected {
+			return true
+		}
+	}
+	return false
 }
 
 func assertSemanticToken(t *testing.T, tokens []decodedSemanticToken, line int, start int, length int, tokenType string) {

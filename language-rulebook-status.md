@@ -359,7 +359,7 @@ implementation remains tracked separately.
 | `structured_concurrency.md` | **Written — sync required** | |
 | `transferability.md` | **Written — sync required** | |
 | `data_races.md` | **Written** | Canonical data-race analysis rules; implementation status is tracked by `sema.data-race-analysis` in `implementation-status.yaml`. |
-| `deadlock_analysis.md` | **Planned** | |
+| `deadlock_analysis.md` | **Written** | Canonical deadlock-analysis rules; implementation status is tracked by `sema.deadlock-analysis` in `implementation-status.yaml`. |
 | `channels.md` | **Written — sync required** | |
 | `events.md` | **Written — sync required** | C#-style publish/subscribe event model; distinct from readiness/completion. |
 | `select.md` | **Written — sync required** | |
@@ -443,8 +443,8 @@ OrderedMap[K, V]
 | `semantic_ir.txt` | **Written — sync required** | Must include discard, threads, collections, shaped values, panic, and effects. |
 | `mlir.txt` | **Written — sync required** | |
 | `sec_mlir.md` | **Written** | Canonical high-level Sec MLIR boundary; implementation status is tracked by the schema-2 and scalar-layout integrations. |
-| `sec_mlir_dialect.md` | **Written** | Canonical schema-v4 dialect after Package 7; implementation status is tracked by `lowering.sec-mlir-checked-integers`. |
-| `sec_mlir_lowering.md` | **Written** | Canonical lowering specification v4; status is tracked by the trivial-core, scalar-layout, checked-integer, and checked-integer-to-Arith integrations. |
+| `sec_mlir_dialect.md` | **Written** | Canonical schema-v6 dialect after Package 10; implementation status is tracked by the checked-integer, typed-arithmetic-flow, and local try-handler integrations. |
+| `sec_mlir_lowering.md` | **Written** | Canonical lowering specification v6; status is tracked by the trivial-core, scalar-layout, checked-integer-to-Arith, typed-arithmetic-flow, and local try-handler integrations. |
 | `mlir-optimize.txt` | **Living** | Updated as implementation and optimization support grows. |
 | `rules_implementations.txt` | **Living** | Legacy implementation notes being migrated into `implementation-status.yaml`. |
 | `call_graph.md` | **Written** | Canonical callable reachability and execution relationships. Implementation status is tracked by `analysis.call-graph` in `implementation-status.yaml`. |

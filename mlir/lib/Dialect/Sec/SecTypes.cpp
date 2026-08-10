@@ -45,6 +45,22 @@ StorageType::verify(function_ref<InFlightDiagnostic()> emitError,
   return success();
 }
 
+LogicalResult CoreErrorType::verify(
+    function_ref<InFlightDiagnostic()> emitError, StringAttr identity) {
+  if (!identity || identity.getValue().empty())
+    return emitError() << "sec.core_error identity must not be empty";
+  return success();
+}
+
+LogicalResult ResultType::verify(
+    function_ref<InFlightDiagnostic()> emitError, Type successType,
+    Type errorType) {
+  if (!successType || !errorType || isa<NoneType>(successType) ||
+      isa<NoneType>(errorType))
+    return emitError() << "sec.result requires non-void success and error types";
+  return success();
+}
+
 void SecDialect::registerTypes() {
   addTypes<
 #define GET_TYPEDEF_LIST

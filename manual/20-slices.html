@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Slices - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+</head>
+<body>
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+
+        <div class="sidebar-section">Slices</div>
+        <a href="#slices">Overview</a>
+        <a href="#slice-type-syntax">Type Syntax</a>
+        <a href="#slice-values">Slice Values</a>
+        <a href="#owning-dynamic-array">Owning Dynamic Array</a>
+        <a href="#slice-creation">Slice Creation</a>
+        <a href="#slice-ranges">Slice Ranges</a>
+        <a href="#slicing-a-slice">Slicing a Slice</a>
+        <a href="#slice-length">Length</a>
+        <a href="#slice-copy-and-move">Copy and Move</a>
+        <a href="#slice-destruction">Destruction</a>
+        <a href="#slice-null-and-empty">Null and Empty Slices</a>
+        <a href="#slice-function-parameters">Function Parameters</a>
+        <a href="#returning-slices">Returning Slices</a>
+        <a href="#slice-borrowing">Borrowing</a>
+        <a href="#slice-equality">Equality</a>
+        <a href="#slice-ffi">FFI</a>
+
+        <div class="sidebar-section">Pages</div>
+        <a href="index.html">Index</a>
+        <a href="01-introduction.html">Introduction</a>
+        <a href="02-basic-syntax.html">Basic Syntax</a>
+        <a href="03-types.html">Types</a>
+        <a href="19-arrays.html">Arrays</a>
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Slices</div>
+
+        <h1 id="slices">Slices</h1>
+
+        <p>
+            A slice is a non-owning reference to a contiguous sequence of elements. It borrows storage owned
+            elsewhere and never allocates or deallocates its own elements.
+        </p>
+
+        <div class="section" id="slice-type-syntax">
+            <h2>Type Syntax</h2>
+
+            <p>Slice types use the <code>ref</code> keyword with a sequence type:</p>
+
+            <pre><code>ref T[]
+ref mut T[]</code></pre>
+
+            <p>Examples:</p>
+
+            <pre><code>ref byte[]
+ref mut int[]</code></pre>
+
+            <p>The <code>ref</code> keyword distinguishes a slice view from an owning <code>T[]</code> array value.</p>
+        </div>
+
+        <div class="section" id="slice-values">
+            <h2>Slice Values</h2>
+
+            <p>A slice contains conceptual runtime information equivalent to:</p>
+
+            <ul>
+                <li>data address</li>
+                <li>length</li>
+            </ul>
+
+            <p>The representation is compiler-defined and is not an FFI-stable struct layout. A slice contains no capacity and no allocator identity.</p>
+
+            <p>A slice inherits storage origin and lifetime from its source. A slice never owns or deallocates its elements.</p>
+        </div>
+
+        <div class="section" id="owning-dynamic-array">
+            <h2>Owning Dynamic Array Type</h2>
+
+            <p><code>T[]</code> is a valid owning value type and may appear in storage positions such as struct fields, variables, parameters, and return types:</p>
+
+            <pre><code>let values: byte[]
+type Lexer struct {
+    input: rune[],
+}</code></pre>
+
+            <p>The length is runtime-known rather than part of the nominal type identity.</p>
+
+            <div class="rule">
+                <strong>Rule:</strong> <code>ref T[]</code> references a type, not storage. It must be applied to an actual value: <code>ref buffer[..]</code>.
+            </div>
+        </div>
+
+        <div class="section" id="slice-creation">
+            <h2>Slice Creation</h2>
+
+            <p>A slice is created explicitly with <code>ref</code> or <code>ref mut</code>:</p>
+
+            <pre><code>// Complete array
+let view := ref values[..]
+
+// Mutable complete array
+let writable := ref mut values[..]
+
+// Subrange
+let middle := ref values[1..<4]
+let inclusive := ref values[1..3]</code></pre>
+
+            <p>Slice creation does not copy elements and does not allocate backing storage. Only the small reference descriptor is produced.</p>
+
+            <div class="rule">
+                <strong>Rule:</strong> There is no implicit array-to-slice conversion. Use explicit source syntax: <code>Process(ref values[..])</code>.
+            </div>
+        </div>
+
+        <div class="section" id="slice-ranges">
+            <h2>Slice Ranges</h2>
+
+            <p>Slice ranges use the existing range operators:</p>
+
+            <p>Exclusive upper bound:</p>
+
+            <pre><code>source[start..<end]  // indexes: start through end - 1</code></pre>
+
+            <p>Inclusive upper bound:</p>
+
+            <pre><code>source[start..end]   // indexes: start through end</code></pre>
+
+            <p>Open bounds are allowed:</p>
+
+            <pre><code>source[..]       // complete sequence
+source[start..]  // start through final element
+source[..end]    // first element through end, inclusive
+source[..<end]   // first element through end - 1</code></pre>
+
+            <p>Descending slice ranges are invalid. A slice range does not reverse a sequence. Empty slices are valid through an exclusive range.</p>
+
+            <div class="rule">
+                <strong>Rule:</strong> Range endpoints must use valid integer index types. Negative endpoints are invalid.
+            </div>
+        </div>
+
+        <div class="section" id="slicing-a-slice">
+            <h2>Slicing a Slice</h2>
+
+            <p>A slice may be sliced again:</p>
+
+            <pre><code>// Shared reborrow
+let part := ref view[2..<5]
+
+// Mutable reborrow
+let part := ref mut writable[2..<5]</code></pre>
+
+            <p>A mutable reborrow requires a <code>ref mut T[]</code> source. A shared reborrow may be created from either shared or mutable source access, subject to borrow rules.</p>
+
+            <p>The resulting slice lifetime cannot exceed the source slice lifetime or the ultimate storage owner lifetime.</p>
+        </div>
+
+        <div class="section" id="slice-length">
+            <h2>Length</h2>
+
+            <p>Slices expose <code>.len</code>:</p>
+
+            <pre><code>let sliceLength := view.len</code></pre>
+
+            <p>The type of <code>len</code> is <code>uint</code>. It is read-only. No <code>capacity</code> member exists for slices.</p>
+        </div>
+
+        <div class="section" id="slice-copy-and-move">
+            <h2>Copy and Move</h2>
+
+            <p>Slice classification:</p>
+
+            <ul>
+                <li><code>ref T[]</code> — copyable shared reference descriptor. Copying copies only the descriptor, never elements.</li>
+                <li><code>ref mut T[]</code> — move-only exclusive reference descriptor. Must not be freely copied because that would duplicate exclusive access. May be moved or safely reborrowed.</li>
+            </ul>
+        </div>
+
+        <div class="section" id="slice-destruction">
+            <h2>Destruction</h2>
+
+            <p>A slice is trivially destructible. Destroying a slice:</p>
+
+            <ul>
+                <li>does not destroy elements</li>
+                <li>does not release backing storage</li>
+                <li>does not reset an arena</li>
+                <li>does not affect the owner except by ending the borrow</li>
+            </ul>
+        </div>
+
+        <div class="section" id="slice-null-and-empty">
+            <h2>Null and Empty Slices</h2>
+
+            <p>A safe slice is never null. There is no null slice value.</p>
+
+            <p>An empty slice is valid, but it must still originate from valid storage or a compiler-defined empty-storage sentinel that obeys reference rules.</p>
+
+            <div class="rule">
+                <strong>Rule:</strong> A slice has no implicit default value because a reference must have a valid origin. Consequently a mutable safe-slice declaration cannot omit its initializer.
+            </div>
+        </div>
+
+        <div class="section" id="slice-function-parameters">
+            <h2>Function Parameters</h2>
+
+            <p>Examples:</p>
+
+            <pre><code>fn Sum(values: ref int[]) int
+fn Clear(values: ref mut byte[]) void
+fn Consume(values: int[4]) void</code></pre>
+
+            <p>A by-value array parameter follows normal copy or move rules. A slice parameter borrows the source. Explicit slice creation is required initially.</p>
+        </div>
+
+        <div class="section" id="returning-slices">
+            <h2>Returning Slices</h2>
+
+            <p>A returned slice must originate from storage that remains valid after the function returns. Returning a slice into local array storage is invalid.</p>
+
+            <pre><code>fn Prefix(
+    source: ref byte[],
+    count: uint,
+) ref byte[] {
+    return ref source[..<count]
+}</code></pre>
+        </div>
+
+        <div class="section" id="slice-borrowing">
+            <h2>Borrowing</h2>
+
+            <p>Basic array and slice implementation must record:</p>
+
+            <ul>
+                <li>storage owner or origin</li>
+                <li>shared or mutable reference mode</li>
+                <li>element type</li>
+                <li>slice length</li>
+                <li>source range when statically known</li>
+            </ul>
+
+            <p>The compiler must immediately reject obvious lifetime errors such as returning a slice into a local array.</p>
+        </div>
+
+        <div class="section" id="slice-equality">
+            <h2>Equality</h2>
+
+            <p>Slices do not support <code>==</code> or <code>!=</code> in the initial implementation. Slice equality is ambiguous between reference identity and content equality. Content comparison may later be provided by an explicit function or method.</p>
+        </div>
+
+        <div class="section" id="slice-ffi">
+            <h2>FFI</h2>
+
+            <p>Slices must not cross an FFI boundary directly. A wrapper must pass explicit foreign-compatible components such as <code>RawPtr[T]</code> and <code>uint</code>. Ownership, nullability, and lifetime remain explicit at the FFI boundary.</p>
+        </div>
+
+        <nav class="page-navigation" aria-label="Page navigation">
+            <a href="19-arrays.html">Previous: Arrays</a>
+            <a href="index.html">Manual Index</a>
+            <a href="21-indexing.html">Next: Indexing</a>
+        </nav>
+    </main>
+</div>
+</body>
+</html>

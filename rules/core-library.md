@@ -1327,6 +1327,12 @@ enum DivisionByZeroError {
     DivisionByZero
 }
 
+enum ArithmeticError {
+    Overflow
+    DivisionByZero
+    InvalidShift
+}
+
 enum RangeError {
     InvalidRange
     StartAfterEnd
@@ -1552,6 +1558,10 @@ Implemented:
   `PrecisionError`, `FormatError`, `EncodingError` and `MathError`.
 - `AllocationError` remains compiler-known and has the minimum core values
   `OutOfMemory`, `Unsupported`, `InvalidSize` and `InvalidAlignment`.
+- `ArithmeticError` is compiler-known, always available and has the exact
+  values `Overflow`, `DivisionByZero` and `InvalidShift`. It is used by naked
+  `try` over checked integer arithmetic and does not implicitly convert to
+  another error or an error union.
 - Compiler intrinsic types are registered in semantic-analysis metadata and
   remain compiler-owned rather than declared in core source. This includes
   fundamental builtins (`bool`, integer/float/decimal types, `string`, `void`,

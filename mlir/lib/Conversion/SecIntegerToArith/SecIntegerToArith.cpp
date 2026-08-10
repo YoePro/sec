@@ -84,6 +84,32 @@ Value combineOr(ConversionPatternRewriter &rewriter, Location location,
   return arith::OrIOp::create(rewriter, location, left, right);
 }
 
+Value arithmeticReasonConstant(ConversionPatternRewriter &rewriter,
+                               Location location, StringRef value) {
+  OperationState state(location,
+      sec::ArithmeticFailureReasonConstantOp::getOperationName());
+  state.addAttribute("value", rewriter.getStringAttr(value));
+  state.addTypes(sec::ArithmeticFailureReasonType::get(rewriter.getContext()));
+  return rewriter.create(state)->getResult(0);
+}
+
+Value selectArithmeticReason(ConversionPatternRewriter &rewriter,
+                             Location location, Value condition,
+                             StringRef trueReason, Value falseReason) {
+  Value selected = arithmeticReasonConstant(rewriter, location, trueReason);
+  return arith::SelectOp::create(rewriter, location, condition, selected,
+                                 falseReason);
+}
+
+void replaceCheckedOperation(ConversionPatternRewriter &rewriter,
+                             Operation *operation, Value result, Value failed,
+                             Value reason) {
+  if (operation->getNumResults() == 3)
+    rewriter.replaceOp(operation, ValueRange{result, failed, reason});
+  else
+    rewriter.replaceOp(operation, ValueRange{result, failed});
+}
+
 std::optional<APInt> parseInteger(StringRef spelling, unsigned width) {
   bool negative = spelling.consume_front("-");
   spelling.consume_front("+");
@@ -393,7 +419,10 @@ public:
           rewriter, location, arith::CmpIPredicate::eq, operands[0], minimum);
       Value result =
           arith::SubIOp::create(rewriter, location, zero, operands[0]);
-      rewriter.replaceOp(operation, ValueRange{result, failed});
+      Value reason = selectArithmeticReason(
+          rewriter, location, failed, "overflow",
+          arithmeticReasonConstant(rewriter, location, "none"));
+      replaceCheckedOperation(rewriter, operation, result, failed, reason);
       return success();
     }
     if (auto binary = dyn_cast<sec::IntBinaryCheckedOp>(operation))
@@ -417,8 +446,9 @@ private:
     if (kind == "divide" || kind == "remainder") {
       Value zero = integerConstant(rewriter, location, type, APInt(width, 0));
       Value one = integerConstant(rewriter, location, type, APInt(width, 1));
-      Value failed = arith::CmpIOp::create(
+      Value divisionByZero = arith::CmpIOp::create(
           rewriter, location, arith::CmpIPredicate::eq, right, zero);
+      Value overflow = arith::ConstantIntOp::create(rewriter, location, 0, 1);
       if (signedValue) {
         Value minimum = integerConstant(rewriter, location, type,
                                         APInt::getSignedMinValue(width));
@@ -428,10 +458,10 @@ private:
             rewriter, location, arith::CmpIPredicate::eq, left, minimum);
         Value rightMinusOne = arith::CmpIOp::create(
             rewriter, location, arith::CmpIPredicate::eq, right, minusOne);
-        Value overflow = arith::AndIOp::create(rewriter, location, leftMinimum,
-                                              rightMinusOne);
-        failed = combineOr(rewriter, location, failed, overflow);
+    overflow = arith::AndIOp::create(rewriter, location, leftMinimum,
+                                       rightMinusOne);
       }
+    Value failed = combineOr(rewriter, location, divisionByZero, overflow);
       Value safeRight =
           arith::SelectOp::create(rewriter, location, failed, one, right);
       Value result;
@@ -447,7 +477,12 @@ private:
                                                     safeRight))
                      : Value(arith::RemUIOp::create(rewriter, location, left,
                                                     safeRight));
-      rewriter.replaceOp(operation, ValueRange{result, failed});
+    Value reason = selectArithmeticReason(
+      rewriter, location, overflow, "overflow",
+      arithmeticReasonConstant(rewriter, location, "none"));
+    reason = selectArithmeticReason(rewriter, location, divisionByZero,
+                                  "division-by-zero", reason);
+    replaceCheckedOperation(rewriter, operation, result, failed, reason);
       return success();
     }
 
@@ -455,7 +490,10 @@ private:
       Value result = arith::SubIOp::create(rewriter, location, left, right);
       Value failed = arith::CmpIOp::create(
           rewriter, location, arith::CmpIPredicate::ult, left, right);
-      rewriter.replaceOp(operation, ValueRange{result, failed});
+    Value reason = selectArithmeticReason(
+      rewriter, location, failed, "overflow",
+      arithmeticReasonConstant(rewriter, location, "none"));
+    replaceCheckedOperation(rewriter, operation, result, failed, reason);
       return success();
     }
 
@@ -491,7 +529,10 @@ private:
         signedValue ? arith::CmpIPredicate::sgt : arith::CmpIPredicate::ugt,
         wideResult, maximumValue);
     Value failed = combineOr(rewriter, location, below, above);
-    rewriter.replaceOp(operation, ValueRange{result, failed});
+  Value reason = selectArithmeticReason(
+    rewriter, location, failed, "overflow",
+    arithmeticReasonConstant(rewriter, location, "none"));
+  replaceCheckedOperation(rewriter, operation, result, failed, reason);
     return success();
   }
 
@@ -529,6 +570,7 @@ private:
     StringRef kind = operation.getKind();
     Value result;
     Value failed = invalid;
+  Value overflow = arith::ConstantIntOp::create(rewriter, location, 0, 1);
     if (kind == "left_signed") {
       auto wideType = IntegerType::get(rewriter.getContext(), width * 2);
       Value valueWide =
@@ -547,8 +589,8 @@ private:
           rewriter, location, arith::CmpIPredicate::slt, shifted, minimum);
       Value above = arith::CmpIOp::create(
           rewriter, location, arith::CmpIPredicate::sgt, shifted, maximum);
-      failed = combineOr(rewriter, location, invalid,
-                         combineOr(rewriter, location, below, above));
+    overflow = combineOr(rewriter, location, below, above);
+      failed = combineOr(rewriter, location, invalid, overflow);
       result = arith::TruncIOp::create(rewriter, location, type, shifted);
     } else if (kind == "left_unsigned") {
       result = arith::ShLIOp::create(rewriter, location, operands[0], safeCount);
@@ -559,7 +601,12 @@ private:
       result =
           arith::ShRUIOp::create(rewriter, location, operands[0], safeCount);
     }
-    rewriter.replaceOp(operation, ValueRange{result, failed});
+  Value reason = selectArithmeticReason(
+    rewriter, location, overflow, "overflow",
+    arithmeticReasonConstant(rewriter, location, "none"));
+  reason = selectArithmeticReason(rewriter, location, invalid,
+                                  "invalid-shift", reason);
+  replaceCheckedOperation(rewriter, operation, result, failed, reason);
     return success();
   }
 };

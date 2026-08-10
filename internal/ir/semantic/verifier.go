@@ -73,6 +73,23 @@ func verifyTypes(table *TypeTable) error {
 		if t.TargetSize && !(t.Kind == TypeInt || t.Kind == TypeUint || t.Kind == TypeFloat) {
 			return fmt.Errorf("invalid target-sized type !%d", id)
 		}
+		switch t.Kind {
+		case TypeArithmeticFailureReason:
+			if t.Base != 0 || t.Success != 0 || t.Error != 0 {
+				return fmt.Errorf("invalid arithmetic failure reason type !%d", id)
+			}
+		case TypeCoreError:
+			if t.Identity == "" {
+				return fmt.Errorf("core error !%d has no identity", id)
+			}
+		case TypeResult:
+			if _, ok := table.Lookup(t.Success); !ok {
+				return fmt.Errorf("result !%d has invalid success type", id)
+			}
+			if _, ok := table.Lookup(t.Error); !ok {
+				return fmt.Errorf("result !%d has invalid error type", id)
+			}
+		}
 	}
 	return nil
 }
@@ -201,6 +218,12 @@ func verifyFunction(module *Module, fn *Function, functions map[FunctionID]*Func
 		return err
 	}
 	if err := verifyCheckedIntegerGuards(fn, blocks, values); err != nil {
+		return err
+	}
+	if err := verifyResultGuards(module.Types, fn, blocks, values); err != nil {
+		return err
+	}
+	if err := verifyTryHandlers(fn); err != nil {
 		return err
 	}
 	return nil
@@ -361,8 +384,58 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 			return fmt.Errorf("invalid int.compare")
 		}
 	case OpArithmeticFailure:
-		if len(op.Operands) != 0 || len(op.Results) != 0 || len(op.Successors) != 0 || !validArithmeticFailureCategory(op.FailureCategory) || op.Operator == "" {
+		if len(op.Operands) != 1 || len(op.Results) != 0 || len(op.Successors) != 0 || !isFailureReasonType(module.Types, values[op.Operands[0]].Type) || !validArithmeticFailureCategory(op.FailureCategory) || op.Operator == "" {
 			return fmt.Errorf("invalid fail.arithmetic")
+		}
+	case OpArithmeticFailureReasonConstant:
+		if len(op.Operands) != 0 || len(op.Results) != 1 || !isFailureReasonType(module.Types, resultType) || !validArithmeticFailureReason(op.FailureReason) {
+			return fmt.Errorf("invalid arithmetic failure reason constant")
+		}
+	case OpArithmeticErrorFromReason:
+		if len(op.Operands) != 1 || len(op.Results) != 1 || !isFailureReasonType(module.Types, values[op.Operands[0]].Type) || !isArithmeticErrorType(module.Types, resultType) {
+			return fmt.Errorf("invalid arithmetic-error.from-reason")
+		}
+	case OpResultOk, OpResultErr:
+		if len(op.Results) != 1 {
+			return fmt.Errorf("invalid %s", op.Kind)
+		}
+		result, ok := module.Types.Lookup(resultType)
+		if !ok || result.Kind != TypeResult {
+			return fmt.Errorf("%s result is not Result", op.Kind)
+		}
+		expected := result.Error
+		if op.Kind == OpResultOk {
+			expected = result.Success
+		}
+		if typeHasKind(module.Types, expected, TypeVoid) {
+			if len(op.Operands) != 0 {
+				return fmt.Errorf("void %s has payload", op.Kind)
+			}
+		} else if len(op.Operands) != 1 || values[op.Operands[0]].Type != expected {
+			return fmt.Errorf("%s payload type mismatch", op.Kind)
+		}
+	case OpResultIsErr:
+		if len(op.Operands) != 1 || len(op.Results) != 1 || !typeHasKind(module.Types, values[op.Operands[0]].Type, TypeResult) || !typeHasKind(module.Types, resultType, TypeBool) {
+			return fmt.Errorf("invalid result.is-err")
+		}
+	case OpResultUnwrapOk, OpResultUnwrapErr:
+		if len(op.Operands) != 1 || len(op.Results) != 1 {
+			return fmt.Errorf("invalid %s", op.Kind)
+		}
+		container, ok := module.Types.Lookup(values[op.Operands[0]].Type)
+		if !ok || container.Kind != TypeResult {
+			return fmt.Errorf("%s operand is not Result", op.Kind)
+		}
+		expected := container.Error
+		if op.Kind == OpResultUnwrapOk {
+			expected = container.Success
+		}
+		if resultType != expected {
+			return fmt.Errorf("%s result type mismatch", op.Kind)
+		}
+	case OpCoreErrorIsVariant:
+		if len(op.Operands) != 1 || len(op.Results) != 1 || !isArithmeticErrorType(module.Types, values[op.Operands[0]].Type) || !typeHasKind(module.Types, resultType, TypeBool) || !validArithmeticErrorVariant(op.Variant) {
+			return fmt.Errorf("invalid core-error.is-variant")
 		}
 	default:
 		return fmt.Errorf("unknown operation %q", op.Kind)
@@ -370,11 +443,33 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 	return nil
 }
 
+func validArithmeticErrorVariant(variant string) bool {
+	return variant == "Overflow" || variant == "DivisionByZero" || variant == "InvalidShift"
+}
+
 func validCheckedResults(types *TypeTable, op Operation, values map[ValueID]Value, operands int) bool {
-	return len(op.Operands) == operands && len(op.Results) == 2 &&
+	return len(op.Operands) == operands && len(op.Results) == 3 &&
 		isBuiltinIntegerType(types, values[op.Operands[0]].Type) &&
 		op.Results[0].Type == values[op.Operands[0]].Type &&
-		typeHasKind(types, op.Results[1].Type, TypeBool)
+		typeHasKind(types, op.Results[1].Type, TypeBool) && isFailureReasonType(types, op.Results[2].Type)
+}
+
+func isFailureReasonType(types *TypeTable, id TypeID) bool {
+	return typeHasKind(types, id, TypeArithmeticFailureReason)
+}
+
+func isArithmeticErrorType(types *TypeTable, id TypeID) bool {
+	t, ok := types.Lookup(id)
+	return ok && t.Kind == TypeCoreError && t.Identity == "core::ArithmeticError"
+}
+
+func validArithmeticFailureReason(reason ArithmeticFailureReason) bool {
+	switch reason {
+	case ArithmeticFailureNone, ArithmeticFailureReasonOverflow, ArithmeticFailureDivisionByZero, ArithmeticFailureInvalidShift:
+		return true
+	default:
+		return false
+	}
 }
 
 func isBuiltinIntegerType(types *TypeTable, id TypeID) bool {
@@ -453,10 +548,11 @@ func verifyCheckedIntegerGuards(fn *Function, blocks map[BlockID]*Block, values 
 			if !isCheckedIntegerOperation(op.Kind) {
 				continue
 			}
-			if len(op.Results) != 2 || index+1 != len(block.Operations)-1 {
+			if len(op.Results) != 3 || index+1 != len(block.Operations)-1 {
 				return fmt.Errorf("checked integer operation in ^%d must be immediately guarded", block.ID)
 			}
 			failed := op.Results[1].ID
+			reason := op.Results[2].ID
 			if uses[failed] != 1 {
 				return fmt.Errorf("checked integer failure %%%d must have exactly one use", failed)
 			}
@@ -465,16 +561,164 @@ func verifyCheckedIntegerGuards(fn *Function, blocks map[BlockID]*Block, values 
 				return fmt.Errorf("checked integer failure %%%d must guard with conditional branch", failed)
 			}
 			failureBlock := blocks[branch.Successors[0].Block]
-			if failureBlock == nil || len(failureBlock.Parameters) != 0 || len(failureBlock.Operations) != 1 || incoming[failureBlock.ID] != 1 {
+			if failureBlock == nil || len(failureBlock.Parameters) != 1 || incoming[failureBlock.ID] != 1 || len(branch.Successors[0].Arguments) != 1 || branch.Successors[0].Arguments[0] != reason {
 				return fmt.Errorf("checked integer failure block must be dedicated")
 			}
-			failure := failureBlock.Operations[0]
-			if failure.Kind != OpArithmeticFailure || failure.FailureCategory != expectedFailureCategory(op) || failure.Operator != op.Operator {
-				return fmt.Errorf("checked integer failure endpoint does not match %s", op.Kind)
+			if failureBlock.Parameters[0].Type != op.Results[2].Type {
+				return fmt.Errorf("checked integer failure reason block parameter type mismatch")
+			}
+			failureReason := failureBlock.Parameters[0].ID
+			if len(failureBlock.Operations) == 1 {
+				failure := failureBlock.Operations[0]
+				if failure.Kind != OpArithmeticFailure || len(failure.Operands) != 1 || failure.Operands[0] != failureReason || failure.FailureCategory != expectedFailureCategory(op) || failure.Operator != op.Operator {
+					return fmt.Errorf("checked integer failure endpoint does not match %s", op.Kind)
+				}
+			} else if !validFallibleArithmeticFailureBlock(failureBlock, failureReason) && !validHandledArithmeticFailureBlock(failureBlock, failureReason) {
+				return fmt.Errorf("checked integer fallible failure endpoint does not return Result.err")
 			}
 		}
 	}
 	return nil
+}
+
+func validHandledArithmeticFailureBlock(block *Block, reason ValueID) bool {
+	if len(block.Operations) < 2 {
+		return false
+	}
+	convert := block.Operations[0]
+	if convert.Kind != OpArithmeticErrorFromReason || len(convert.Operands) != 1 || convert.Operands[0] != reason || len(convert.Results) != 1 {
+		return false
+	}
+	if next := block.Operations[1]; next.Kind == OpCoreErrorIsVariant {
+		return len(next.Operands) == 1 && next.Operands[0] == convert.Results[0].ID
+	}
+	return block.Operations[len(block.Operations)-1].IsTerminator()
+}
+
+func verifyResultGuards(types *TypeTable, fn *Function, blocks map[BlockID]*Block, values map[ValueID]Value) error {
+	uses := map[ValueID]int{}
+	for _, block := range fn.Blocks {
+		for _, op := range block.Operations {
+			for _, operand := range operationOperands(op) {
+				uses[operand]++
+			}
+		}
+	}
+	for _, block := range fn.Blocks {
+		for index, op := range block.Operations {
+			if op.Kind != OpResultIsErr {
+				continue
+			}
+			if len(op.Operands) != 1 || len(op.Results) != 1 || index+1 != len(block.Operations)-1 {
+				return fmt.Errorf("result.is-err in ^%d must be immediately guarded", block.ID)
+			}
+			predicate := op.Results[0].ID
+			if uses[predicate] != 1 {
+				return fmt.Errorf("result guard %%%d must have exactly one use", predicate)
+			}
+			branch := block.Operations[index+1]
+			if branch.Kind != OpCondBranch || len(branch.Operands) != 1 || branch.Operands[0] != predicate || len(branch.Successors) != 2 {
+				return fmt.Errorf("result guard %%%d must branch to Err then Ok", predicate)
+			}
+			container := op.Operands[0]
+			if !blockStartsWithUnwrap(blocks[branch.Successors[0].Block], OpResultUnwrapErr, container) {
+				return fmt.Errorf("result guard %%%d Err successor must unwrap Err", predicate)
+			}
+			resultType, _ := types.Lookup(values[container].Type)
+			if !typeHasKind(types, resultType.Success, TypeVoid) && !blockStartsWithUnwrap(blocks[branch.Successors[1].Block], OpResultUnwrapOk, container) {
+				return fmt.Errorf("result guard %%%d Ok successor must unwrap Ok", predicate)
+			}
+		}
+	}
+	return nil
+}
+
+func blockStartsWithUnwrap(block *Block, kind OpKind, container ValueID) bool {
+	return block != nil && len(block.Operations) != 0 && block.Operations[0].Kind == kind &&
+		len(block.Operations[0].Operands) == 1 && block.Operations[0].Operands[0] == container
+}
+
+func verifyTryHandlers(fn *Function) error {
+	type handlerGroup struct {
+		okCount             int
+		catchAll            bool
+		catchAllIndex       int
+		highestVariantIndex int
+		variants            map[string]bool
+	}
+	groups := map[BlockID]*handlerGroup{}
+	for _, block := range fn.Blocks {
+		for _, op := range block.Operations {
+			if op.TryHandlerKind == "" {
+				continue
+			}
+			if op.TryHandlerIndex < -1 {
+				return fmt.Errorf("try handler index must be >= -1")
+			}
+			switch op.TryHandlerKind {
+			case TryHandlerOK, TryHandlerErrVariant, TryHandlerErrCatchAll, TryHandlerMerge:
+			default:
+				return fmt.Errorf("invalid try handler kind %q", op.TryHandlerKind)
+			}
+			if op.Kind == OpCoreErrorIsVariant && (op.TryHandlerKind != TryHandlerErrVariant || op.Variant == "") {
+				return fmt.Errorf("core error variant test lacks matching try handler provenance")
+			}
+			if op.Kind != OpBranch || len(op.Successors) != 1 {
+				continue
+			}
+			group := groups[op.Successors[0].Block]
+			if group == nil {
+				group = &handlerGroup{highestVariantIndex: -1, catchAllIndex: -1, variants: map[string]bool{}}
+				groups[op.Successors[0].Block] = group
+			}
+			switch op.TryHandlerKind {
+			case TryHandlerOK:
+				group.okCount++
+			case TryHandlerErrCatchAll:
+				if group.catchAll {
+					return fmt.Errorf("duplicate Err catch-all for try merge ^%d", op.Successors[0].Block)
+				}
+				group.catchAll = true
+				group.catchAllIndex = op.TryHandlerIndex
+			case TryHandlerErrVariant:
+				if op.Variant == "" || group.variants[op.Variant] {
+					return fmt.Errorf("duplicate or missing Err variant for try merge ^%d", op.Successors[0].Block)
+				}
+				group.variants[op.Variant] = true
+				if op.TryHandlerIndex > group.highestVariantIndex {
+					group.highestVariantIndex = op.TryHandlerIndex
+				}
+			}
+		}
+	}
+	for merge, group := range groups {
+		if len(group.variants) == 0 && !group.catchAll {
+			continue
+		}
+		if group.okCount != 1 {
+			return fmt.Errorf("try merge ^%d must have exactly one implicit or explicit Ok edge", merge)
+		}
+		if group.catchAll {
+			if group.catchAllIndex <= group.highestVariantIndex {
+				return fmt.Errorf("Err catch-all must follow specific handlers for try merge ^%d", merge)
+			}
+			continue
+		}
+		if !group.variants["Overflow"] || !group.variants["DivisionByZero"] || !group.variants["InvalidShift"] || len(group.variants) != 3 {
+			return fmt.Errorf("ArithmeticError handlers for try merge ^%d are not exhaustive", merge)
+		}
+	}
+	return nil
+}
+
+func validFallibleArithmeticFailureBlock(block *Block, reason ValueID) bool {
+	if len(block.Operations) != 3 {
+		return false
+	}
+	convert, construct, ret := block.Operations[0], block.Operations[1], block.Operations[2]
+	return convert.Kind == OpArithmeticErrorFromReason && len(convert.Operands) == 1 && convert.Operands[0] == reason && len(convert.Results) == 1 &&
+		construct.Kind == OpResultErr && len(construct.Operands) == 1 && construct.Operands[0] == convert.Results[0].ID && len(construct.Results) == 1 &&
+		ret.Kind == OpReturn && len(ret.Operands) == 1 && ret.Operands[0] == construct.Results[0].ID
 }
 
 func expectedFailureCategory(op Operation) ArithmeticFailureCategory {

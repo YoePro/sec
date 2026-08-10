@@ -23,6 +23,9 @@ type Definition struct {
 }
 
 const (
+	LexerInvalidUTF8             = "L1001"
+	LexerUnexpectedByteOrderMark = "L1002"
+	LexerUnsupportedWhitespace   = "L1003"
 	ParserSyntaxError            = "P2001"
 	ParserMissingToken           = "P2002"
 	ParserUnexpectedToken        = "P2003"
@@ -70,6 +73,15 @@ const (
 )
 
 var registry = map[string]Definition{
+	LexerInvalidUTF8: {
+		ID: LexerInvalidUTF8, Name: "lexer.invalid-utf8", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true,
+	},
+	LexerUnexpectedByteOrderMark: {
+		ID: LexerUnexpectedByteOrderMark, Name: "lexer.unexpected-byte-order-mark", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true,
+	},
+	LexerUnsupportedWhitespace: {
+		ID: LexerUnsupportedWhitespace, Name: "lexer.unsupported-unicode-whitespace", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true,
+	},
 	ParserSyntaxError: {
 		ID:              ParserSyntaxError,
 		Name:            "parser.syntax-error",

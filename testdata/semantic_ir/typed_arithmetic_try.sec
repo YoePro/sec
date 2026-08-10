@@ -1,0 +1,11 @@
+module main
+
+fn Add(left: int128, right: int128) Result[int128, ArithmeticError] {
+    let total := try left + right
+    return Ok(total)
+}
+
+fn Shift(value: uint256, count: int) Result[uint256, ArithmeticError] {
+    let shifted := try value << count
+    return Ok(shifted)
+}

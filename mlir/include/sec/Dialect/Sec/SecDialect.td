@@ -16,7 +16,7 @@ def Sec_Dialect : Dialect {
   let useDefaultTypePrinterParser = 1;
   let isExtensible = 0;
   let extraClassDeclaration = [{
-    static constexpr unsigned kSchemaVersion = 4;
+    static constexpr unsigned kSchemaVersion = 6;
     void registerTypes();
     void registerOperations();
     ::llvm::LogicalResult verifyOperationAttribute(

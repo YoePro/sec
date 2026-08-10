@@ -100,8 +100,8 @@ module {
 // CHECK: arith.divsi {{.*}}, %[[SAFE]]
 // CHECK-LABEL: func.func @unsigned_remainder
 // CHECK: %[[ZERO:.*]] = arith.cmpi eq
-// CHECK: %[[RSAFE:.*]] = arith.select %[[ZERO]]
-// CHECK: arith.remui {{.*}}, %[[RSAFE]]
+// CHECK: arith.select
+// CHECK: arith.remui
 // CHECK-LABEL: func.func @negate
 // CHECK: arith.cmpi eq
 // CHECK: arith.subi

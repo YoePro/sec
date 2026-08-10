@@ -35,7 +35,7 @@ module {
 
 // -----
 
-// CHECK: op true successor must end in sec.fail.arithmetic
+// CHECK: op checked result must not be used in failure block
 module {
   func.func @reversed_targets(%left: si32, %right: si32) -> si32 {
     %result, %failed = "sec.int.binary_checked"(%left, %right) <{kind = "add"}> : (si32, si32) -> (si32, i1)
@@ -64,7 +64,7 @@ module {
 
 // -----
 
-// CHECK: op true successor must be a dedicated one-operation failure block
+// CHECK: op ordinary failure successor must contain only sec.fail.arithmetic
 module {
   func.func @extra_failure_operation(%left: si32, %right: si32) -> si32 {
     %result, %failed = "sec.int.binary_checked"(%left, %right) <{kind = "add"}> : (si32, si32) -> (si32, i1)

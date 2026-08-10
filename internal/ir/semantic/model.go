@@ -34,19 +34,22 @@ const (
 type TypeKind string
 
 const (
-	TypeVoid       TypeKind = "void"
-	TypeNever      TypeKind = "never"
-	TypeBool       TypeKind = "bool"
-	TypeByte       TypeKind = "byte"
-	TypeChar       TypeKind = "char"
-	TypeRune       TypeKind = "rune"
-	TypeString     TypeKind = "string"
-	TypeDecimal    TypeKind = "decimal"
-	TypeDecimal128 TypeKind = "decimal128"
-	TypeInt        TypeKind = "int"
-	TypeUint       TypeKind = "uint"
-	TypeFloat      TypeKind = "float"
-	TypeNamed      TypeKind = "named"
+	TypeVoid                    TypeKind = "void"
+	TypeNever                   TypeKind = "never"
+	TypeBool                    TypeKind = "bool"
+	TypeByte                    TypeKind = "byte"
+	TypeChar                    TypeKind = "char"
+	TypeRune                    TypeKind = "rune"
+	TypeString                  TypeKind = "string"
+	TypeDecimal                 TypeKind = "decimal"
+	TypeDecimal128              TypeKind = "decimal128"
+	TypeInt                     TypeKind = "int"
+	TypeUint                    TypeKind = "uint"
+	TypeFloat                   TypeKind = "float"
+	TypeNamed                   TypeKind = "named"
+	TypeArithmeticFailureReason TypeKind = "arithmetic-failure-reason"
+	TypeCoreError               TypeKind = "core-error"
+	TypeResult                  TypeKind = "result"
 )
 
 type Type struct {
@@ -55,6 +58,8 @@ type Type struct {
 	Module     string
 	Identity   string
 	Base       TypeID
+	Success    TypeID
+	Error      TypeID
 	Signed     bool
 	BitWidth   uint16
 	TargetSize bool
@@ -106,7 +111,8 @@ func (t *TypeTable) All() []Type {
 
 func typeKey(t Type) string {
 	return string(t.Kind) + "\x00" + t.Module + "\x00" + t.Name + "\x00" + t.Identity + "\x00" +
-		fmtUint(uint64(t.Base)) + "\x00" + fmtUint(uint64(t.BitWidth)) + "\x00" + boolKey(t.Signed) + boolKey(t.TargetSize)
+		fmtUint(uint64(t.Base)) + "\x00" + fmtUint(uint64(t.Success)) + "\x00" + fmtUint(uint64(t.Error)) + "\x00" +
+		fmtUint(uint64(t.BitWidth)) + "\x00" + boolKey(t.Signed) + boolKey(t.TargetSize)
 }
 
 func fmtUint(value uint64) string {
@@ -185,28 +191,36 @@ type Storage struct {
 type OpKind string
 
 const (
-	OpConstInt          OpKind = "const.int"
-	OpConstBool         OpKind = "const.bool"
-	OpConstString       OpKind = "const.string"
-	OpConstDecimal      OpKind = "const.decimal"
-	OpConstFloat        OpKind = "const.float"
-	OpReturn            OpKind = "return"
-	OpStorageDeclare    OpKind = "storage.declare"
-	OpStorageInit       OpKind = "storage.init"
-	OpStorageLoad       OpKind = "storage.load"
-	OpStorageStore      OpKind = "storage.store"
-	OpDirectCall        OpKind = "call.direct"
-	OpForeignCall       OpKind = "call.foreign"
-	OpBranch            OpKind = "branch"
-	OpCondBranch        OpKind = "conditional-branch"
-	OpIntUnaryPlus      OpKind = "int.unary-plus"
-	OpIntNegChecked     OpKind = "int.neg-checked"
-	OpIntBitNot         OpKind = "int.bit-not"
-	OpIntBinaryChecked  OpKind = "int.binary-checked"
-	OpIntBitwise        OpKind = "int.bitwise"
-	OpIntShiftChecked   OpKind = "int.shift-checked"
-	OpIntCompare        OpKind = "int.compare"
-	OpArithmeticFailure OpKind = "fail.arithmetic"
+	OpConstInt                        OpKind = "const.int"
+	OpConstBool                       OpKind = "const.bool"
+	OpConstString                     OpKind = "const.string"
+	OpConstDecimal                    OpKind = "const.decimal"
+	OpConstFloat                      OpKind = "const.float"
+	OpReturn                          OpKind = "return"
+	OpStorageDeclare                  OpKind = "storage.declare"
+	OpStorageInit                     OpKind = "storage.init"
+	OpStorageLoad                     OpKind = "storage.load"
+	OpStorageStore                    OpKind = "storage.store"
+	OpDirectCall                      OpKind = "call.direct"
+	OpForeignCall                     OpKind = "call.foreign"
+	OpBranch                          OpKind = "branch"
+	OpCondBranch                      OpKind = "conditional-branch"
+	OpIntUnaryPlus                    OpKind = "int.unary-plus"
+	OpIntNegChecked                   OpKind = "int.neg-checked"
+	OpIntBitNot                       OpKind = "int.bit-not"
+	OpIntBinaryChecked                OpKind = "int.binary-checked"
+	OpIntBitwise                      OpKind = "int.bitwise"
+	OpIntShiftChecked                 OpKind = "int.shift-checked"
+	OpIntCompare                      OpKind = "int.compare"
+	OpArithmeticFailure               OpKind = "fail.arithmetic"
+	OpArithmeticFailureReasonConstant OpKind = "arithmetic-failure-reason.constant"
+	OpArithmeticErrorFromReason       OpKind = "arithmetic-error.from-reason"
+	OpResultOk                        OpKind = "result.ok"
+	OpResultErr                       OpKind = "result.err"
+	OpResultIsErr                     OpKind = "result.is-err"
+	OpResultUnwrapOk                  OpKind = "result.unwrap-ok"
+	OpResultUnwrapErr                 OpKind = "result.unwrap-err"
+	OpCoreErrorIsVariant              OpKind = "core-error.is-variant"
 )
 
 type IntegerCheckedBinaryKind string
@@ -256,9 +270,27 @@ const (
 	ArithmeticFailureShift     ArithmeticFailureCategory = "shift"
 )
 
+type ArithmeticFailureReason string
+
+const (
+	ArithmeticFailureNone           ArithmeticFailureReason = "none"
+	ArithmeticFailureReasonOverflow ArithmeticFailureReason = "overflow"
+	ArithmeticFailureDivisionByZero ArithmeticFailureReason = "division-by-zero"
+	ArithmeticFailureInvalidShift   ArithmeticFailureReason = "invalid-shift"
+)
+
 type ArgumentAction string
 
 const ArgumentCopyTrivial ArgumentAction = "copy-trivial"
+
+type TryHandlerKind string
+
+const (
+	TryHandlerOK          TryHandlerKind = "ok"
+	TryHandlerErrVariant  TryHandlerKind = "err-variant"
+	TryHandlerErrCatchAll TryHandlerKind = "err-catch-all"
+	TryHandlerMerge       TryHandlerKind = "merge"
+)
 
 type DecimalConstant struct {
 	Coefficient *big.Int
@@ -288,6 +320,10 @@ type Operation struct {
 	IntegerShift    IntegerShiftKind
 	IntegerCompare  IntegerComparePredicate
 	FailureCategory ArithmeticFailureCategory
+	FailureReason   ArithmeticFailureReason
+	Variant         string
+	TryHandlerKind  TryHandlerKind
+	TryHandlerIndex int
 	Operator        string
 }
 

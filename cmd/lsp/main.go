@@ -1166,13 +1166,82 @@ func semanticTokenClassification(uri string, text string) (classification map[st
 		if strings.Contains(name, ".") {
 			continue
 		}
-		if symbol.Local {
+		if symbol.ImplicitMember {
+			classification[name] = "property"
+		} else if !symbol.Mutable {
+			classification[name] = "variable readonly"
+		} else if symbol.Local {
 			classification[name] = "variable"
 		} else {
-			classification[name] = "property"
+			classification[name] = "variable"
+		}
+	}
+	declarationKinds := semanticDeclarationKinds(analyzer)
+	for _, token := range sourceTokens(uri, text) {
+		if token.Type != lexer.IDENT && token.Type != lexer.SELF {
+			continue
+		}
+		positionKey := features.ClassificationKey(token.File, token.Line, token.Column)
+		binding, ok := analyzer.ResolvedBindingAt(token.File, token.Line, token.Column)
+		if ok {
+			kind := "variable"
+			if !binding.Mutable {
+				kind += " readonly"
+			}
+			classification[positionKey] = kind
+			continue
+		}
+		if kind := declarationKinds[positionKey]; kind != "" {
+			classification[positionKey] = kind
+			continue
+		}
+		definitions := uniqueDefinitionTokens(analyzer.DefinitionsAt(token.File, token.Line, token.Column))
+		if len(definitions) != 1 {
+			continue
+		}
+		definition := definitions[0]
+		if kind := declarationKinds[features.ClassificationKey(definition.File, definition.Line, definition.Column)]; kind != "" {
+			classification[positionKey] = kind
 		}
 	}
 	return classification
+}
+
+func semanticDeclarationKinds(analyzer *sema.Analyzer) map[string]string {
+	kinds := map[string]string{}
+	set := func(token lexer.Token, kind string) {
+		if token.Line <= 0 || token.Column <= 0 {
+			return
+		}
+		kinds[features.ClassificationKey(token.File, token.Line, token.Column)] = kind
+	}
+	for _, typ := range analyzer.Types() {
+		for _, field := range typ.Fields {
+			set(field.Token, "property")
+		}
+		for _, field := range typ.RegisterFields {
+			set(field.Token, "property")
+		}
+		for _, property := range typ.Properties {
+			set(property.Token, "property")
+		}
+		for _, event := range typ.Events {
+			set(event.Token, "event")
+		}
+		for _, value := range typ.EnumConsts {
+			set(value.Token, "enumMember")
+		}
+	}
+	for _, overloads := range analyzer.Functions() {
+		for _, function := range overloads {
+			kind := "function"
+			if function.ImplTarget != "" {
+				kind = "method"
+			}
+			set(function.Token, kind)
+		}
+	}
+	return kinds
 }
 
 func semanticTokenType(token lexer.Token, classification map[string]string) string {
@@ -1245,6 +1314,14 @@ func hoverForSource(uri string, text string, pos position) (hoverResult, bool) {
 			}
 		}
 	}
+	if token, found := sourceTokenAtPosition(uri, text, pos); found {
+		definitions := uniqueDefinitionTokens(analyzer.DefinitionsAt(token.File, token.Line, token.Column))
+		if len(definitions) == 1 {
+			if contents, found := memberHoverContentsForDefinition(analyzer.Types(), definitions[0]); found {
+				return hoverResult{Contents: markupContent{Kind: "markdown", Value: contents}, Range: nameRange}, true
+			}
+		}
+	}
 
 	if functions := analyzer.Functions()[name]; len(functions) > 0 {
 		contents := functionHoverContents(functions, text, path)
@@ -1259,6 +1336,32 @@ func hoverForSource(uri string, text string, pos position) (hoverResult, bool) {
 	}
 
 	return hoverResult{}, false
+}
+
+func memberHoverContentsForDefinition(types map[string]sema.Type, definition lexer.Token) (string, bool) {
+	for _, typ := range types {
+		for _, field := range typ.Fields {
+			if sameSourceToken(field.Token, definition) {
+				return fmt.Sprintf("```sec\nfield %s: %s\n```", field.Name, lspTypeName(field.Type)), true
+			}
+		}
+		for _, field := range typ.RegisterFields {
+			if sameSourceToken(field.Token, definition) {
+				return fmt.Sprintf("```sec\nregister field %s: %s\n```", field.Name, lspTypeName(field.Type)), true
+			}
+		}
+		for _, property := range typ.Properties {
+			if sameSourceToken(property.Token, definition) {
+				return fmt.Sprintf("```sec\nproperty %s: %s\n```", property.Name, lspTypeName(property.Type)), true
+			}
+		}
+		for _, event := range typ.Events {
+			if sameSourceToken(event.Token, definition) {
+				return fmt.Sprintf("```sec\nevent %s: %s\n```", event.Name, lspTypeName(event.Type)), true
+			}
+		}
+	}
+	return "", false
 }
 
 func callGraphHoverSuffix(analyzer *sema.Analyzer, uri string, text string, pos position) string {

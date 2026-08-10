@@ -1079,6 +1079,14 @@ flow.
 
 The same allocation under a panic-accepting policy has panic behavior instead.
 
+Checked integer arithmetic preserves a typed failure reason in Sec MLIR until
+the failure policy has been made explicit. Schema 5 carries `(result, failed,
+reason)` from checked operations and passes `reason` to the dedicated failure
+successor. An ordinary path terminates with `sec.fail.arithmetic(reason)`; a
+naked arithmetic `try` path maps the reason to exact core `ArithmeticError`,
+constructs semantic `Result.err`, and returns it. No runtime call or physical
+Result/error layout is implied by these high-level operations.
+
 One must not be silently converted into the other.
 
 # Allocation family

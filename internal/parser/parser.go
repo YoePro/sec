@@ -85,6 +85,7 @@ type Parser struct {
 	nextEpisode       int
 	episodePrimary    diagnosticLocation
 	hasEpisodePrimary bool
+	lexerDiagnostics  int
 
 	curToken  lexer.Token
 	peekToken lexer.Token
@@ -3982,6 +3983,16 @@ func (p *Parser) isTypeNameToken(tokenType lexer.TokenType) bool {
 func (p *Parser) nextToken() {
 	p.curToken = p.peekToken
 	p.peekToken = p.l.NextToken()
+	p.collectLexerDiagnostics()
+}
+
+func (p *Parser) collectLexerDiagnostics() {
+	diagnostics := p.l.Diagnostics()
+	for p.lexerDiagnostics < len(diagnostics) {
+		diagnostic := diagnostics[p.lexerDiagnostics]
+		p.lexerDiagnostics++
+		p.addDiagnostic(diagnostic.ID, diagnostic.Primary, nil, nil, "%s", diagnostic.Message)
+	}
 }
 
 func (p *Parser) addError(format string, args ...any) {

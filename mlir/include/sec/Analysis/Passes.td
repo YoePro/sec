@@ -15,4 +15,14 @@ def SecVerifyCheckedIntegerGuards : Pass<"sec-verify-checked-integer-guards", "m
   ];
 }
 
+def SecVerifyResultGuards : Pass<"sec-verify-result-guards", "mlir::func::FuncOp"> {
+  let summary = "Verify canonical Sec Result test and projection guards";
+  let dependentDialects = ["mlir::cf::ControlFlowDialect"];
+}
+
+def SecVerifyTryHandlers : Pass<"sec-verify-try-handlers", "mlir::func::FuncOp"> {
+  let summary = "Verify ordered and exhaustive local Sec try handlers";
+  let dependentDialects = ["mlir::cf::ControlFlowDialect"];
+}
+
 #endif // SEC_ANALYSIS_PASSES_TD

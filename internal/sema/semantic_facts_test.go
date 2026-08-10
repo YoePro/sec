@@ -1,6 +1,7 @@
 package sema
 
 import (
+	"strings"
 	"testing"
 
 	"sec/internal/ast"
@@ -146,5 +147,147 @@ fn F21(a: int, b: int) bool { return a >= b }
 		if !ok || resolved.Kind != want {
 			t.Errorf("%s: resolved = %#v, %t; want %s", function.Name.Value, resolved, ok, want)
 		}
+	}
+}
+
+func TestResolvedArithmeticTryRequiresExactCoreErrorAndCoversWideIntegers(t *testing.T) {
+	source := `module main
+fn Add(left: int, right: int) Result[int, ArithmeticError] {
+  let value := try left + right
+  return Ok(value)
+}
+fn Divide(left: int128, right: int128) Result[int128, ArithmeticError] {
+  return Ok(try left / right)
+}
+fn Shift(left: uint256, right: int) Result[uint256, ArithmeticError] {
+  return Ok(try left << right)
+}
+`
+	p := parser.New(lexer.NewWithFile(source, "arithmetic-try.sec"))
+	result := p.Parse()
+	if result.HasErrors {
+		t.Fatalf("parse: %v", p.Errors())
+	}
+	a := NewAnalyzer()
+	if errs := a.Analyze(result.Program); len(errs) > 0 {
+		t.Fatalf("sema: %v", errs)
+	}
+	for _, index := range []int{1, 2, 3} {
+		function := result.Program.Statements[index].(*ast.FunctionDeclaration)
+		var expression ast.Expression
+		if let, ok := function.Body.Statements[0].(*ast.LetStatement); ok {
+			expression = let.Value
+		} else {
+			expression = function.Body.Statements[0].(*ast.ReturnStatement).Value.(*ast.OkExpression).Value
+		}
+		tryExpr := expression.(*ast.TryExpression)
+		fact, ok := a.ResolvedTryOf(tryExpr)
+		if !ok || fact.Kind != ResolvedTryArithmeticPropagation || fact.ErrorType.Name != "ArithmeticError" || fact.EnclosingResultType.Kind != ResultType {
+			t.Errorf("%s resolved try = %#v, %t", function.Name.Value, fact, ok)
+		}
+	}
+}
+
+func TestArithmeticTryRejectsNonResultAndDifferentError(t *testing.T) {
+	source := `module main
+enum OtherError { Failed }
+fn Plain(left: int, right: int) int { return try left + right }
+fn Other(left: int, right: int) Result[int, OtherError] {
+  return Ok(try left / right)
+}
+`
+	p := parser.New(lexer.NewWithFile(source, "invalid-arithmetic-try.sec"))
+	result := p.Parse()
+	if result.HasErrors {
+		t.Fatalf("parse: %v", p.Errors())
+	}
+	a := NewAnalyzer()
+	errors := a.Analyze(result.Program)
+	if len(errors) != 2 || !strings.Contains(errors[0].Message, "Result[U, ArithmeticError]") || !strings.Contains(errors[1].Message, "map the error explicitly") {
+		t.Fatalf("errors = %#v", errors)
+	}
+}
+
+func TestResolvedTryPlanPreservesHandlerOrderPatternsAndFlow(t *testing.T) {
+	source := `module main
+fn Divide(left: int64, right: int64) int64 {
+  let value := try left / right {
+    Err(ArithmeticError.DivisionByZero) => 0
+    Err(ArithmeticError.Overflow) => 1
+    Err(ArithmeticError.InvalidShift) => 2
+    Ok(success) => success
+  }
+  return value
+}
+fn Add(left: int128, right: int128) Result[int128, ArithmeticError] {
+  let value := try left + right {
+    Err(error) => return Err(error)
+  }
+  return Ok(value)
+}
+`
+	p := parser.New(lexer.NewWithFile(source, "try-plan.sec"))
+	result := p.Parse()
+	if result.HasErrors {
+		t.Fatalf("parse: %v", p.Errors())
+	}
+	a := NewAnalyzer()
+	if errors := a.Analyze(result.Program); len(errors) != 0 {
+		t.Fatalf("sema: %v", errors)
+	}
+
+	divideTry := result.Program.Statements[1].(*ast.FunctionDeclaration).Body.Statements[0].(*ast.LetStatement).Value.(*ast.TryExpression)
+	plan, ok := a.ResolvedTryPlanOf(divideTry)
+	if !ok || !plan.Exhaustive || !plan.HasExplicitOk || len(plan.Handlers) != 4 {
+		t.Fatalf("divide plan = %#v, %t", plan, ok)
+	}
+	wants := []struct {
+		kind    ResolvedTryHandlerPatternKind
+		variant string
+	}{
+		{TryHandlerErrVariant, "DivisionByZero"},
+		{TryHandlerErrVariant, "Overflow"},
+		{TryHandlerErrVariant, "InvalidShift"},
+		{TryHandlerOkBinding, ""},
+	}
+	for index, want := range wants {
+		got := plan.Handlers[index]
+		if got.SourceIndex != index || got.PatternKind != want.kind || got.Variant != want.variant || got.Flow != TryHandlerProducesValue {
+			t.Errorf("handler %d = %#v, want %#v", index, got, want)
+		}
+	}
+
+	addTry := result.Program.Statements[2].(*ast.FunctionDeclaration).Body.Statements[0].(*ast.LetStatement).Value.(*ast.TryExpression)
+	returnPlan, ok := a.ResolvedTryPlanOf(addTry)
+	if !ok || len(returnPlan.Handlers) != 1 || returnPlan.Handlers[0].PatternKind != TryHandlerErrCatchAll || returnPlan.Handlers[0].BindingName != "error" || returnPlan.Handlers[0].Flow != TryHandlerReturns {
+		t.Fatalf("return plan = %#v, %t", returnPlan, ok)
+	}
+
+	before := len(a.resolvedTryPlans)
+	if _, ok := a.ResolvedTryPlanOf(&ast.TryExpression{}); ok || len(a.resolvedTryPlans) != before {
+		t.Fatal("read-only try-plan query resolved or mutated an unknown expression")
+	}
+}
+
+func TestTryHandlerBlockRequiresStructuralTermination(t *testing.T) {
+	source := `module main
+fn Divide(left: int, right: int, condition: bool) int {
+  let value := try left / right {
+    Err(error) => {
+      if condition { return 0 }
+    }
+  }
+  return value
+}
+`
+	p := parser.New(lexer.NewWithFile(source, "try-flow.sec"))
+	result := p.Parse()
+	if result.HasErrors {
+		t.Fatalf("parse: %v", p.Errors())
+	}
+	a := NewAnalyzer()
+	errors := a.Analyze(result.Program)
+	if len(errors) != 1 || !strings.Contains(errors[0].Message, "try handler must return, propagate, terminate or produce int") {
+		t.Fatalf("errors = %#v", errors)
 	}
 }

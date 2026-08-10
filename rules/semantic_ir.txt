@@ -881,6 +881,42 @@ The propagation path must execute required cleanup before returning the error.
 
 Result must not be lowered to an arbitrary integer convention before ABI or target lowering requires it.
 
+For checked builtin integer arithmetic, Semantic IR represents the operation as
+the triple:
+
+```text
+result
+failed
+reason: ArithmeticFailureReason
+```
+
+`ArithmeticFailureReason` has the semantic values `none`, `overflow`,
+`division-by-zero` and `invalid-shift`. The failure successor receives the
+reason as an explicit block argument. Ordinary arithmetic ends that successor
+with an arithmetic-failure operation consuming a non-`none` reason.
+
+Naked arithmetic `try` in a function returning exact
+`Result[U, ArithmeticError]` instead maps the reason to the compiler-known core
+error, constructs `Result.err`, and returns it. The success continuation
+receives the arithmetic result and may construct `Result.ok`. These Result and
+core-error types retain semantic identity only; this stage does not choose a
+physical tag, payload, or enum representation.
+
+Ordinary `Result[T, ArithmeticError]` propagation and local handlers use
+explicit `ResultIsErr`, `ResultUnwrapOk`, and `ResultUnwrapErr` operations.
+The tested Result SSA value must dominate both projections; the true successor
+is the Err path and the false successor is the Ok path.
+
+Local handlers consume an immutable Sema-resolved handler plan. Semantic IR
+must preserve source order, explicit versus implicit Ok handling, exact
+handler-local binding types, exhaustiveness, and handler flow classification.
+Specific compiler-known errors use `CoreErrorIsVariant`; catch-all handlers
+receive the complete exact error value. Value-producing paths converge through
+a typed block parameter, while returning or terminating handlers have no merge
+edge. Checked arithmetic maps its failure reason directly to `ArithmeticError`
+before entering the same handler engine and must not construct a temporary
+Result merely to discriminate it again.
+
 ## Option
 
 Option must retain its semantic variant structure until representation lowering.
@@ -1269,66 +1305,6 @@ LLVM types and instructions must not appear in the Semantic IR package.
 Semantic IR builders must require resolved types and validated operands.
 
 Builders should reject malformed operations as early as practical.
-
-## Current implementation status
-
-Semantic IR is a design target.
-
-The current compiler implementation has:
-
-* lexer
-* parser
-* AST
-* AST printer
-* semantic analysis
-* target registry
-* project initialization
-* minimal direct LLVM emission for early experiments
-
-The current direct LLVM emission path is temporary.
-
-It may exist while the language frontend is being developed, but it must not
-become the canonical compiler architecture.
-
-New language semantics should be validated in the frontend and represented in
-Semantic IR before they are treated as backend behavior.
-
-When Semantic IR implementation begins, it should live in a dedicated package,
-for example:
-
-```text
-internal/ir/semantic/
-```
-
-The first implementation milestone should be intentionally small:
-
-* module identity
-* type table
-* function declarations
-* function bodies
-* basic blocks
-* parameters
-* integer, boolean, string and decimal constants
-* local storage
-* assignment
-* calls
-* returns
-* if control flow
-* source locations
-* verifier
-* textual dump command
-
-The initial dump command should be separate from AST dumping.
-
-Expected command:
-
-```text
-sec emit-ir <file.sec>
-```
-
-`sec emit-ir` should stop after Semantic IR generation and verification.
-
-It must not require MLIR or LLVM to be available.
 
 ## Design rule
 

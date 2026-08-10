@@ -2,330 +2,99 @@
 
 ## Status
 
-Normative detailed representation specification for the Sec MLIR dialect.
+Normative detailed representation specification.
 
-Current dialect schema version: `4`
+Current Sec MLIR dialect schema version: `6`
 
-This document is subordinate to:
+Schema version 6 adds semantic Result discrimination/unwrapping and core error
+variant testing for local `try` handler control flow.
 
-```text
-rules/operators.md
-rules/runtime_checks.md
-rules/types.md
-rules/layout.md
-rules/semantic_ir.txt
-rules/sec_mlir.md
-```
-
-It defines representation and verifier obligations.
-
-It does not redefine Sec source-language operator semantics.
+It does not define physical Result or enum layout.
 
 ---
 
 # 1. Version history
 
-## Schema version 1
-
-Dialect foundation.
-
-## Schema version 2
-
-First Semantic IR bridge, semantic scalar/storage/call operations.
-
-## Schema version 3
-
-Wide scalar completion, decimal128, target/DLTI metadata.
-
-## Schema version 4
-
-Adds explicit builtin-integer semantic operations and ordinary arithmetic
-failure termination:
-
 ```text
-sec.int.unary_plus
-sec.int.neg_checked
-sec.int.binary_checked
-sec.int.bit_not
-sec.int.bitwise
-sec.int.shift_checked
-sec.int.cmp
-sec.fail.arithmetic
+v1  dialect foundation
+v2  Semantic IR bridge
+v3  scalar/target coverage
+v4  checked integer operations
+v5  typed arithmetic failure and high-level Result construction
+v6  Result guard/unwrapping and local try handler support
+```
+
+Compiler-generated v6 modules carry:
+
+```mlir
+sec.dialect_version = 6 : i32
 ```
 
 ---
 
-# 2. Wide builtin invariant
+# 2. Existing Result type
 
-The following are active Sec builtins:
+Unchanged:
 
-```text
-int128
-int256
-uint128
-uint256
-decimal128
+```mlir
+!sec.result<T,E>
 ```
 
-Schema version 4 integer operations support the active 128-bit and 256-bit
-integer families exactly like smaller builtin integers.
-
-No dialect documentation may classify them as future or planned types.
+No physical representation is implied.
 
 ---
 
-# 3. Accepted builtin integer semantic types
+# 3. Existing core error type
 
-Schema-v4 integer operations accept:
+Unchanged:
 
-```text
-!sec.int
-!sec.uint
-
-si8
-si16
-si32
-si64
-si128
-si256
-
-ui8
-ui16
-ui32
-ui64
-ui128
-ui256
+```mlir
+!sec.core_error<"identity">
 ```
 
-Excluded:
+Package 10 required end-to-end identity:
 
 ```text
-i1
-!sec.char
-!sec.rune
-!sec.float
-!sec.decimal
-!sec.decimal128
-f32
-f64
-!sec.named
-!sec.distinct
-```
-
-Named/distinct integer operator representation is not defined by schema v4.
-
----
-
-# 4. Signed integer category
-
-Signed integer semantic types:
-
-```text
-!sec.int
-si8
-si16
-si32
-si64
-si128
-si256
+core::ArithmeticError
 ```
 
 ---
 
-# 5. Unsigned integer category
-
-Unsigned integer semantic types:
-
-```text
-!sec.uint
-ui8
-ui16
-ui32
-ui64
-ui128
-ui256
-```
-
-`byte` appears as `ui8` at this layer.
-
----
-
-# 6. Checked operation contract
-
-A checked integer semantic operation produces:
-
-```text
-result
-failed
-```
-
-where:
-
-```text
-failed: i1
-```
-
-The high-level operation is total.
-
-The operation must define its `(result, failed)` pair for every input bit
-pattern accepted by its operand types.
-
-It must not model Sec failure as:
-
-```text
-undefined behavior
-poison
-implicit target trap
-masked shift count
-silent checked-arithmetic wrap
-```
-
-When `failed=true`, the result is semantically unavailable to source execution.
-
-Compiler-generated MLIR must immediately guard the flag before evaluating later
-source operations.
-
----
-
-# 7. `sec.int.unary_plus`
-
-Operands:
-
-```text
-value: T
-```
-
-Results:
-
-```text
-result: T
-```
-
-T must be a schema-v4 integer semantic type.
-
-No failure.
-
-No memory effect.
-
----
-
-# 8. `sec.int.neg_checked`
+# 4. `sec.result.is_err`
 
 Operand:
 
 ```text
-value: signed integer T
+result: !sec.result<T,E>
 ```
 
-Results:
+Result:
 
 ```text
-result: T
-failed: i1
+i1
 ```
 
-`failed=true` exactly for the minimum representable signed value.
+Meaning:
 
-No unsigned operand is valid.
+```text
+false -> Ok
+true  -> Err
+```
+
+Total operation.
+
+No memory effect.
+
+No physical discriminant representation implied.
 
 ---
 
-# 9. `sec.int.binary_checked`
+# 5. `sec.result.unwrap_ok`
 
-Required enum attribute:
-
-```text
-kind
-```
-
-Allowed cases:
+Operand:
 
 ```text
-add
-subtract
-multiply
-divide
-remainder
-```
-
-Operands:
-
-```text
-left: T
-right: T
-```
-
-Results:
-
-```text
-result: T
-failed: i1
-```
-
-Verifier:
-
-```text
-T is schema-v4 integer semantic type
-left/right types equal
-result type equals T
-failed result type is i1
-```
-
-Semantics:
-
-```text
-add:
-    failed when mathematical sum not representable
-
-subtract:
-    failed when mathematical difference not representable
-
-multiply:
-    failed when mathematical product not representable
-
-divide:
-    truncation toward zero
-    unsigned: failed on zero divisor
-    signed: failed on zero divisor or minimum / -1
-
-remainder:
-    uses truncation-toward-zero quotient
-    unsigned: failed on zero divisor
-    signed: failed on zero divisor or minimum / -1
-```
-
----
-
-# 10. `sec.int.bit_not`
-
-Operand/result:
-
-```text
-T -> T
-```
-
-T is schema-v4 integer semantic type.
-
-Flips every value bit.
-
-No failure.
-
----
-
-# 11. `sec.int.bitwise`
-
-Required enum:
-
-```text
-and
-or
-xor
-```
-
-Operands:
-
-```text
-T, T
+result: !sec.result<T,E>
 ```
 
 Result:
@@ -334,92 +103,93 @@ Result:
 T
 ```
 
-No failure.
+Valid semantic use requires the current control-flow path to be proven the Ok
+path of the same Result SSA value.
+
+The operation verifier checks types.
+
+`--sec-verify-result-guards` checks path validity.
+
+For `T=void`, compiler-generated code does not emit this value-producing op.
 
 ---
 
-# 12. `sec.int.shift_checked`
+# 6. `sec.result.unwrap_err`
 
-Required enum:
-
-```text
-left_unsigned
-left_signed
-right_unsigned
-right_signed
-```
-
-Operands:
+Operand:
 
 ```text
-value: T
-count: C
+result: !sec.result<T,E>
 ```
 
-Results:
+Result:
 
 ```text
-result: T
-failed: i1
+E
 ```
 
-T and C must be schema-v4 integer semantic types.
-
-Count type may differ from value type.
-
-Verifier:
-
-```text
-left_unsigned/right_unsigned require unsigned T
-left_signed/right_signed require signed T
-result type equals T
-failed result is i1
-```
-
-Semantics:
-
-```text
-all modes:
-    failed on count < 0 when count type is signed
-    failed on count >= value bit width
-
-left_unsigned:
-    valid count performs fixed-width left shift
-    high bits are discarded
-    no arithmetic overflow failure
-
-left_signed:
-    valid count still fails if mathematical shifted result is not representable
-
-right_unsigned:
-    logical right shift
-
-right_signed:
-    arithmetic right shift
-```
-
-No target-specific count masking is permitted.
+Valid semantic use requires the Err path of the same Result SSA value.
 
 ---
 
-# 13. `sec.int.cmp`
+# 7. Canonical Result guard
 
-Required enum:
+```mlir
+%is_err = "sec.result.is_err"(%result)
+    : (!sec.result<T,E>) -> i1
 
-```text
-eq
-ne
-lt
-le
-gt
-ge
+cf.cond_br %is_err, ^err, ^ok
+
+^err:
+    %error = "sec.result.unwrap_err"(%result)
+        : (!sec.result<T,E>) -> E
+    ...
+
+^ok:
+    %value = "sec.result.unwrap_ok"(%result)
+        : (!sec.result<T,E>) -> T
+    ...
 ```
 
-Operands:
+The true branch is always Err.
+
+The false branch is always Ok.
+
+---
+
+# 8. Result projection is internal
+
+`unwrap_ok` and `unwrap_err` are compiler-internal semantic projections.
+
+They are not source operations.
+
+They do not introduce a new panic/check.
+
+An invalid projection path is malformed compiler IR, not a source runtime
+failure.
+
+---
+
+# 9. `sec.core_error.is_variant`
+
+Operand:
 
 ```text
-left: T
-right: T
+!sec.core_error<"core::ArithmeticError">
+```
+
+Required attribute:
+
+```text
+variant
+```
+
+Allowed schema-v6 compiler-generated variants:
+
+```text
+Overflow
+DivisionByZero
+InvalidShift
 ```
 
 Result:
@@ -428,294 +198,252 @@ Result:
 i1
 ```
 
-Verifier:
+Total.
+
+No memory effect.
+
+No physical enum representation implied.
+
+---
+
+# 10. Variant identity
+
+The variant attribute is semantic identity.
+
+It is not:
 
 ```text
-T is schema-v4 integer semantic type
-operand types equal
-result is i1
+an integer discriminant
+an ABI code
+a panic reason ID
 ```
 
-Semantics:
+Physical encoding is deferred.
+
+---
+
+# 11. Handler CFG representation
+
+Schema v6 uses standard:
 
 ```text
-eq/ne:
-    integer equality
+cf.cond_br
+cf.br
+MLIR block arguments
+func.return
+```
 
-lt/le/gt/ge:
-    signed ordering for signed T
-    unsigned ordering for unsigned T
+for handler CFG.
+
+No dedicated:
+
+```text
+sec.try
+sec.try_handler
+sec.try_merge
+```
+
+operation is required.
+
+Sec-specific semantics remain in:
+
+```text
+Result projections
+core-error variant tests
+handler verifier metadata
 ```
 
 ---
 
-# 14. Integer operation effects
+# 12. Handler provenance metadata
 
-All `sec.int.*` operations defined in schema v4:
+Reserved optional block-associated implementation metadata:
 
 ```text
-have no memory effects
-do not themselves perform the arithmetic failure action
+sec.try_handler_kind
+sec.try_handler_index
+sec.try_handler_variant
 ```
 
-Checked operations calculate a semantic failure flag.
+Canonical kinds:
 
-They may be treated as total computational operations.
+```text
+ok
+err-variant
+err-catch-all
+merge
+```
 
-The dialect implementation must not claim target poison/UB semantics.
+This metadata assists verification/debugging.
+
+It is not source semantic authority.
+
+Sema's resolved handler plan remains authoritative before MLIR construction.
 
 ---
 
-# 15. Arithmetic failure categories
+# 13. Handler ordering
 
-Define enum:
+Compiler-generated variant-test CFG preserves source handler order.
 
-```text
-overflow
-division
-remainder
-shift
-```
+The dialect does not permit variant-test reordering that changes first-match
+behavior.
+
+Later optimization may simplify only when semantic equivalence is proven.
 
 ---
 
-# 16. `sec.fail.arithmetic`
+# 14. Catch-all
 
-No operands.
+A catch-all handler consumes the complete error value.
 
-No results.
+No variant test is needed at the catch-all entry.
 
-No successors.
-
-Terminator.
-
-Required attributes:
-
-```text
-category: Sec arithmetic failure category
-sec.operator: StringAttr
-```
-
-Meaning:
-
-```text
-ordinary deterministic non-returning arithmetic failure
-```
-
-It does not define the lower implementation mechanism.
-
-It must not be:
-
-```text
-speculatable
-canonicalized away
-treated as a pure no-op
-```
+No later live Err handler is valid.
 
 ---
 
-# 17. Canonical checked guard
+# 15. Exhaustive variant-only handlers
 
-Compiler-generated checked integer operation:
-
-```mlir
-%result, %failed = "sec.int.binary_checked"(...)
-    {kind = ...} : (...) -> (T, i1)
-
-cf.cond_br %failed, ^failure, ^success
-```
-
-Canonical meaning:
+For closed `ArithmeticError`, exhaustive specific variants are:
 
 ```text
-true -> arithmetic failure
-false -> success continuation
+Overflow
+DivisionByZero
+InvalidShift
 ```
 
-Dedicated failure block:
+The compiler may omit the final comparison and route the remaining case to the
+last uncovered handler after the preceding comparisons.
 
-```mlir
-^failure:
-    "sec.fail.arithmetic"() {
-        category = ...,
-        sec.operator = "..."
-    } : () -> ()
-```
+This is valid only because Sema already proved exhaustive closed coverage and
+the handler verifier confirms the metadata.
 
 ---
 
-# 18. Failure-category mapping
+# 16. Fallback merge
 
-Canonical mapping:
+A value-producing local try has a standard merge block.
+
+Every continuing value-producing path supplies exactly:
 
 ```text
-neg_checked
-    overflow
+one value of success type T
+```
 
-binary add
-    overflow
+The merge block has one block argument of T.
 
-binary subtract
-    overflow
+Returning/terminating handlers have no merge edge.
 
-binary multiply
-    overflow
+---
 
-binary divide
-    division
+# 17. Explicit Ok handler
 
-binary remainder
-    remainder
+When present, an explicit Ok handler replaces the implicit Ok continuation.
 
-any shift_checked
-    shift
+Only one live explicit Ok handler is valid.
+
+`Ok(value)` receives T.
+
+`Ok(_)` receives no binding.
+
+---
+
+# 18. Implicit Ok handler
+
+When no explicit Ok handler exists, compiler-generated handler CFG contains the
+normal success continuation.
+
+For value context it supplies the unwrapped T to the merge.
+
+---
+
+# 19. Result guard verifier
+
+`--sec-verify-result-guards` validates canonical Result discrimination.
+
+It verifies at least:
+
+```text
+same Result SSA for test and projection
+true branch is Err
+false branch is Ok
+Err projection occurs only on Err path
+Ok projection occurs only on Ok path
+Result dominates projections
 ```
 
 ---
 
-# 19. Source operator spelling metadata
+# 20. Try handler verifier
 
-`sec.operator` on `sec.fail.arithmetic` uses the resolved source operator
-spelling where available.
+`--sec-verify-try-handlers` validates compiler-generated local handler CFG for
+the schema-v6 supported domain.
 
-Examples:
-
-```text
-negation: "-"
-add: "+"
-subtract: "-"
-multiply: "*"
-divide: "/"
-remainder: "%"
-left shift: "<<"
-right shift: ">>"
-```
-
-This is provenance/diagnostic metadata.
-
-It does not determine operation semantics.
-
----
-
-# 20. Checked result availability
-
-The result of a checked operation is semantically usable only on the
-success continuation.
-
-The dialect operation verifier checks local type structure.
-
-Cross-block result availability and guard shape are validated by the dedicated
-checked-integer guard verifier pass.
-
----
-
-# 21. Scalar resolution compatibility
-
-Schema-v4 operations may initially contain:
+It checks:
 
 ```text
-!sec.int
-!sec.uint
-```
-
-The scalar-layout pass may convert those operand/result types to:
-
-```text
-si32/si64
-ui32/ui64
-```
-
-without changing operation kind.
-
-The checked failure result remains `i1`.
-
----
-
-# 22. No signless normalization
-
-Schema-v4 semantic integer operations retain signed/unsigned type identity.
-
-They are not standard Arith operations.
-
-No schema-v4 rule converts:
-
-```text
-siN
-uiN
-```
-
-to signless `iN`.
-
----
-
-# 23. No named integer operators yet
-
-Schema version 4 does not define integer operators whose result/operands are:
-
-```text
-!sec.named
-!sec.distinct
-```
-
-The source language may support such operators through higher-authority rules.
-
-Their Sec MLIR representation requires a later package preserving nominal/unit
-semantics.
-
-Do not unwrap nominal identity to reuse builtin-integer schema-v4 operations.
-
----
-
-# 24. No float/decimal operator representation in schema v4
-
-Existing scalar types remain valid:
-
-```text
-!sec.float
-!sec.decimal
-!sec.decimal128
-```
-
-but schema v4 does not add their arithmetic operator operations.
-
----
-
-# 25. Verification boundary
-
-Operation verifiers enforce:
-
-```text
-allowed integer type category
-signedness requirements
-operand type equality
-result type equality
-failure i1 type
-enum attribute validity
-failure terminator attribute validity
-```
-
-They do not perform:
-
-```text
-source operator resolution
-constant overflow diagnostics
-range proof
-try/error propagation
-runtime implementation selection
+source-order metadata
+catch-all finality
+specific variant uniqueness
+ArithmeticError exhaustive coverage when no catch-all
+fallback merge type
+return/terminate path separation
+explicit-versus-implicit Ok exclusivity
 ```
 
 ---
 
-# 26. Schema-v4 completion
+# 21. Error-type boundary
 
-Schema v4 is complete when:
+`sec.result.*` operations are generic in E.
+
+`sec.core_error.is_variant` schema-v6 implementation is specifically defined for:
 
 ```text
-all integer operation kinds parse/print/verify
-128/256-bit integer operands verify
-invalid signedness combinations reject
-checked results use T + i1
-arithmetic failure terminator verifies
-schema-v1/v2/v3 regression tests remain green
-compiler-generated checked operator CFG passes the dedicated guard verifier
+core::ArithmeticError
+```
+
+General user enum/union variant testing requires canonical enum/union Sec MLIR
+representation.
+
+Do not encode user errors as `core_error`.
+
+---
+
+# 22. No physical layout
+
+Schema v6 does not define:
+
+```text
+Result tag
+Result payload union
+core error integer value
+enum integer value
+LLVM representation
+ABI representation
+```
+
+---
+
+# 23. No runtime implication
+
+Schema-v6 Result/handler operations imply only static SSA semantics.
+
+No exception runtime, allocation, or unwinder is required.
+
+---
+
+# 24. Schema-v6 completion
+
+Schema v6 is complete when:
+
+```text
+Result guard operations parse/print/verify
+core ArithmeticError variant test verifies
+canonical Result guard passes dedicated verifier
+invalid projection paths fail dedicated verifier
+handler CFG passes dedicated verifier
+local ArithmeticError handlers round-trip
+schema-v5 regressions remain valid
 ```

@@ -31,6 +31,13 @@ func TestFormatPlacesNoCopyAttributeOnOwnLine(t *testing.T) {
 	}
 }
 
+func TestFormatRemovesInitialByteOrderMark(t *testing.T) {
+	got := Format(Source{Text: "\uFEFFmodule main\n"}, Options{}).Text
+	if got != "module main\n" {
+		t.Fatalf("formatter retained initial BOM: %q", got)
+	}
+}
+
 func TestFormatImplExtension(t *testing.T) {
 	input := "impl extends Vehicle {\nfn Stop() void {\n}\n}\n"
 	want := "impl extends Vehicle {\n    fn Stop() void {\n    }\n}\n"

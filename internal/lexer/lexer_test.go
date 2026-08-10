@@ -563,6 +563,87 @@ func TestPosition(t *testing.T) {
 	}
 }
 
+func TestInitialByteOrderMarkIsIgnored(t *testing.T) {
+	l := NewWithFile("\uFEFFmodule main", "main.sec")
+	module := l.NextToken()
+	if module.Type != MODULE || module.Line != 1 || module.Column != 1 {
+		t.Fatalf("module after BOM = %+v", module)
+	}
+	if diagnostics := l.Diagnostics(); len(diagnostics) != 0 {
+		t.Fatalf("initial BOM diagnostics = %+v", diagnostics)
+	}
+}
+
+func TestUnexpectedByteOrderMarkProducesLexicalDiagnostic(t *testing.T) {
+	l := NewWithFile("module\uFEFF main", "main.sec")
+	assertLexerDiagnostic(t, l.Diagnostics(), "L1002", 1, 7, "\uFEFF")
+	if token := l.NextToken(); token.Type != MODULE {
+		t.Fatalf("first token = %+v", token)
+	}
+	if token := l.NextToken(); token.Type != IDENT || token.Lexeme != "main" || token.Column != 9 {
+		t.Fatalf("recovered token = %+v", token)
+	}
+}
+
+func TestInvalidUTF8ProducesLexicalDiagnostic(t *testing.T) {
+	input := string([]byte{'m', 'o', 'd', 'u', 'l', 'e', ' ', 0xff, 'm', 'a', 'i', 'n'})
+	l := NewWithFile(input, "invalid.sec")
+	assertLexerDiagnostic(t, l.Diagnostics(), "L1001", 1, 8, string([]byte{0xff}))
+}
+
+func TestUnsupportedUnicodeWhitespaceIsIllegalOutsideLiteralsAndComments(t *testing.T) {
+	l := NewWithFile("let\u00A0value := \"kept\u00A0inside\" // kept\u00A0inside", "space.sec")
+	if token := l.NextToken(); token.Type != LET {
+		t.Fatalf("first token = %+v", token)
+	}
+	if token := l.NextToken(); token.Type != ILLEGAL || token.Lexeme != "\u00A0" {
+		t.Fatalf("Unicode whitespace token = %+v", token)
+	}
+	assertLexerDiagnostic(t, l.Diagnostics(), "L1003", 1, 4, "\u00A0")
+	for token := l.NextToken(); token.Type != EOF; token = l.NextToken() {
+		if token.Type == ILLEGAL {
+			t.Fatalf("whitespace inside literal or comment became illegal: %+v", token)
+		}
+	}
+	if diagnostics := l.Diagnostics(); len(diagnostics) != 1 {
+		t.Fatalf("diagnostics = %+v, want one", diagnostics)
+	}
+}
+
+func TestRestoreRollsBackSpeculativeLexerDiagnostics(t *testing.T) {
+	l := New("let\u00A0value")
+	if token := l.NextToken(); token.Type != LET {
+		t.Fatalf("first token = %+v", token)
+	}
+	state := l.Snapshot()
+	if token := l.NextToken(); token.Type != ILLEGAL {
+		t.Fatalf("speculative token = %+v", token)
+	}
+	if len(l.Diagnostics()) != 1 {
+		t.Fatalf("speculative diagnostics = %+v", l.Diagnostics())
+	}
+	l.Restore(state)
+	if len(l.Diagnostics()) != 0 {
+		t.Fatalf("diagnostics survived restore: %+v", l.Diagnostics())
+	}
+	if token := l.NextToken(); token.Type != ILLEGAL {
+		t.Fatalf("re-read token = %+v", token)
+	}
+	if len(l.Diagnostics()) != 1 {
+		t.Fatalf("re-read diagnostics = %+v", l.Diagnostics())
+	}
+}
+
+func assertLexerDiagnostic(t *testing.T, diagnostics []Diagnostic, id string, line int, column int, lexeme string) {
+	t.Helper()
+	for _, diagnostic := range diagnostics {
+		if diagnostic.ID == id && diagnostic.Primary.Line == line && diagnostic.Primary.Column == column && diagnostic.Primary.Lexeme == lexeme {
+			return
+		}
+	}
+	t.Fatalf("missing diagnostic %s at %d:%d for %q in %+v", id, line, column, lexeme, diagnostics)
+}
+
 func TestIllegalUnterminatedString(t *testing.T) {
 	input := `"unterminated`
 

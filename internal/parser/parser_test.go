@@ -2124,6 +2124,7 @@ fn UseResult() Result[int, IOError] {
 	let value := try Calculate()
 	return Ok(value)
 }
+
 `
 
 	l := lexer.New(input)
@@ -2135,6 +2136,23 @@ fn UseResult() Result[int, IOError] {
 	letStmt := fn.Body.Statements[0].(*ast.LetStatement)
 	if _, ok := letStmt.Value.(*ast.TryExpression); !ok {
 		t.Fatalf("let value is not TryExpression. got=%T", letStmt.Value)
+	}
+}
+
+func TestParseTryCoversFollowingArithmeticExpression(t *testing.T) {
+	p := New(lexer.New(`fn Add(left: int, right: int) Result[int, ArithmeticError] {
+	let value := try left + right
+	return Ok(value)
+}`))
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+	letStmt := program.Statements[0].(*ast.FunctionDeclaration).Body.Statements[0].(*ast.LetStatement)
+	tryExpr, ok := letStmt.Value.(*ast.TryExpression)
+	if !ok {
+		t.Fatalf("initializer is %T, want TryExpression", letStmt.Value)
+	}
+	if infix, ok := tryExpr.Expression.(*ast.InfixExpression); !ok || infix.Operator != "+" {
+		t.Fatalf("try operand is %#v, want complete addition", tryExpr.Expression)
 	}
 }
 
@@ -4312,5 +4330,29 @@ fn Less(left: int, right: int) bool {
 	}
 	if infix.Operator != "<" {
 		t.Fatalf("wrong operator. got=%q want=<", infix.Operator)
+	}
+}
+
+func TestParserPreservesLexerDiagnosticIDs(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		id    string
+	}{
+		{name: "invalid UTF-8", input: string([]byte{'m', 'o', 'd', 'u', 'l', 'e', ' ', 0xff}), id: diagnostics.LexerInvalidUTF8},
+		{name: "unexpected BOM", input: "module main\n\uFEFFlet value := 1", id: diagnostics.LexerUnexpectedByteOrderMark},
+		{name: "unsupported whitespace", input: "module\u00A0main", id: diagnostics.LexerUnsupportedWhitespace},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result := New(lexer.NewWithFile(test.input, "invalid.sec")).Parse()
+			for _, diagnostic := range result.Diagnostics {
+				if diagnostic.ID == test.id {
+					return
+				}
+			}
+			t.Fatalf("missing lexer diagnostic %s in %+v", test.id, result.Diagnostics)
+		})
 	}
 }

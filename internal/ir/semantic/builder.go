@@ -22,7 +22,7 @@ func Build(program *ast.Program, analyzer *sema.Analyzer, options BuildOptions) 
 		return nil, fmt.Errorf("program and completed analyzer are required")
 	}
 	if options.MaxPackage == 0 {
-		options.MaxPackage = 7
+		options.MaxPackage = 10
 	}
 	identity := options.RequestedModule
 	if identity == "" {
@@ -117,6 +117,20 @@ func (b *builder) buildFunction(decl *ast.FunctionDeclaration) error {
 }
 
 func (b *builder) internType(t sema.Type) (TypeID, error) {
+	if t.Kind == sema.ResultType && len(t.TypeArgs) == 2 {
+		success, err := b.internType(t.TypeArgs[0])
+		if err != nil {
+			return 0, err
+		}
+		failure, err := b.internType(t.TypeArgs[1])
+		if err != nil {
+			return 0, err
+		}
+		return b.module.Types.Intern(Type{Kind: TypeResult, Name: "Result", Success: success, Error: failure}), nil
+	}
+	if t.Kind == sema.EnumType && t.Name == "ArithmeticError" && t.Intrinsic {
+		return b.module.Types.Intern(Type{Kind: TypeCoreError, Name: "ArithmeticError", Identity: "core::ArithmeticError"}), nil
+	}
 	kind, signed, width, target, ok := builtinType(t)
 	if !ok {
 		return 0, &UnsupportedFeatureError{Feature: "type " + t.Name}
@@ -380,6 +394,12 @@ type builtValue struct {
 }
 
 func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (builtValue, error) {
+	if okExpr, ok := expr.(*ast.OkExpression); ok {
+		return fb.buildResultConstructor(okExpr.Value, expected, true, location(okExpr.Token))
+	}
+	if errExpr, ok := expr.(*ast.ErrExpression); ok {
+		return fb.buildResultConstructor(errExpr.Value, expected, false, location(errExpr.Token))
+	}
 	resolved, ok := fb.owner.analyzer.ResolvedTypeOf(expr)
 	if !ok {
 		return builtValue{}, fmt.Errorf("missing resolved type for %T", expr)
@@ -451,12 +471,312 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 			return builtValue{}, fb.unsupported("integer operator", expressionToken(expr))
 		}
 		return fb.buildResolvedOperator(expr)
+	case *ast.TryExpression:
+		if fb.owner.maxPackage < 9 {
+			return builtValue{}, fb.unsupported("try expression", e.Token)
+		}
+		return fb.buildTryExpression(e)
 	default:
 		return builtValue{}, fb.unsupported(fmt.Sprintf("expression %T", expr), expressionToken(expr))
 	}
 }
 
+func (fb *functionBuilder) buildResultConstructor(value ast.Expression, resultType TypeID, okResult bool, loc Location) (builtValue, error) {
+	typ, exists := fb.owner.module.Types.Lookup(resultType)
+	if !exists || typ.Kind != TypeResult {
+		return builtValue{}, fb.unsupported("Result constructor without expected Result type", expressionToken(value))
+	}
+	payloadType := typ.Error
+	kind := OpResultErr
+	if okResult {
+		payloadType, kind = typ.Success, OpResultOk
+	}
+	op := Operation{Kind: kind, Location: loc}
+	if value != nil {
+		payload, err := fb.buildExpr(value, payloadType)
+		if err != nil {
+			return builtValue{}, err
+		}
+		op.Operands = []ValueID{payload.id}
+	} else if !fb.owner.isVoidType(payloadType) {
+		return builtValue{}, fb.unsupported("empty non-void Result constructor", lexer.Token{})
+	}
+	return fb.result(op, resultType), nil
+}
+
+func (b *builder) isVoidType(id TypeID) bool {
+	t, ok := b.module.Types.Lookup(id)
+	return ok && t.Kind == TypeVoid
+}
+
+func (fb *functionBuilder) buildTryExpression(expr *ast.TryExpression) (builtValue, error) {
+	resolved, ok := fb.owner.analyzer.ResolvedTryOf(expr)
+	if !ok {
+		return builtValue{}, fb.unsupported("unresolved try expression", expr.Token)
+	}
+	switch resolved.Kind {
+	case sema.ResolvedTryArithmeticPropagation:
+		if len(expr.Handlers) != 0 {
+			return builtValue{}, fb.unsupported("handled arithmetic try", expr.Token)
+		}
+		return fb.buildResolvedOperatorWithFailure(expr.Expression, &resolved, nil)
+	case sema.ResolvedTryResultPropagation:
+		if fb.owner.maxPackage < 10 {
+			return builtValue{}, fb.unsupported("Result try propagation", expr.Token)
+		}
+		return fb.buildResultPropagation(expr, resolved)
+	case sema.ResolvedTryHandledResult:
+		if fb.owner.maxPackage < 10 {
+			return builtValue{}, fb.unsupported("handled Result try", expr.Token)
+		}
+		return fb.buildHandledResult(expr)
+	case sema.ResolvedTryHandledArithmetic:
+		if fb.owner.maxPackage < 10 {
+			return builtValue{}, fb.unsupported("handled arithmetic try", expr.Token)
+		}
+		return fb.buildResolvedOperatorWithFailure(expr.Expression, nil, expr)
+	default:
+		return builtValue{}, fb.unsupported("handled try expression", expr.Token)
+	}
+}
+
+func (fb *functionBuilder) buildHandledResult(expr *ast.TryExpression) (builtValue, error) {
+	plan, ok := fb.owner.analyzer.ResolvedTryPlanOf(expr)
+	if !ok || !plan.Exhaustive {
+		return builtValue{}, fb.unsupported("unresolved or non-exhaustive Result handler plan", expr.Token)
+	}
+	resultValue, err := fb.buildExpr(expr.Expression, 0)
+	if err != nil {
+		return builtValue{}, err
+	}
+	resultType, ok := fb.owner.module.Types.Lookup(resultValue.typ)
+	if !ok || resultType.Kind != TypeResult {
+		return builtValue{}, fb.unsupported("handled try operand without Semantic IR Result type", expr.Token)
+	}
+	boolType, err := fb.owner.internType(sema.Type{Name: "bool", Kind: sema.BoolType})
+	if err != nil {
+		return builtValue{}, err
+	}
+	isErr := fb.result(Operation{Kind: OpResultIsErr, Operands: []ValueID{resultValue.id}, Location: location(expr.Token)}, boolType)
+	errorBlock, successBlock := fb.newBlock(), fb.newBlock()
+	fb.emit(Operation{Kind: OpCondBranch, Operands: []ValueID{isErr.id}, Successors: []BranchTarget{{Block: errorBlock.ID}, {Block: successBlock.ID}}, Location: location(expr.Token)})
+
+	fb.current = errorBlock
+	errorValue := fb.result(Operation{Kind: OpResultUnwrapErr, Operands: []ValueID{resultValue.id}, Location: location(expr.Token)}, resultType.Error)
+	fb.current = successBlock
+	successValue := builtValue{typ: resultType.Success}
+	if !fb.owner.isVoidType(resultType.Success) {
+		successValue = fb.result(Operation{Kind: OpResultUnwrapOk, Operands: []ValueID{resultValue.id}, Location: location(expr.Token)}, resultType.Success)
+	}
+	return fb.buildLocalTryHandlers(expr, plan, successBlock, successValue, errorBlock, errorValue)
+}
+
+func (fb *functionBuilder) buildLocalTryHandlers(expr *ast.TryExpression, plan sema.ResolvedTryPlan, successBlock *Block, successValue builtValue, errorBlock *Block, errorValue builtValue) (builtValue, error) {
+	successType, err := fb.owner.internType(plan.SuccessType)
+	if err != nil {
+		return builtValue{}, err
+	}
+	merge := fb.newBlock()
+	var merged builtValue
+	if !fb.owner.isVoidType(successType) {
+		parameter := fb.newValue(successType, OwnershipImmediate, location(expr.Token))
+		merge.Parameters = []Value{parameter}
+		merged = builtValue{id: parameter.ID, typ: successType}
+	} else {
+		merged = builtValue{typ: successType}
+	}
+
+	var okHandler *sema.ResolvedTryHandler
+	errHandlers := make([]sema.ResolvedTryHandler, 0, len(plan.Handlers))
+	for index := range plan.Handlers {
+		handler := &plan.Handlers[index]
+		switch handler.PatternKind {
+		case sema.TryHandlerOkBinding, sema.TryHandlerOkDiscard:
+			okHandler = handler
+		default:
+			errHandlers = append(errHandlers, *handler)
+		}
+	}
+
+	fb.current = successBlock
+	if okHandler == nil {
+		fb.branchToTryMerge(merge, successValue, Operation{TryHandlerKind: TryHandlerOK, TryHandlerIndex: -1, Location: location(expr.Token)})
+	} else if err := fb.buildTryHandler(expr, *okHandler, successValue, merge); err != nil {
+		return builtValue{}, err
+	}
+
+	fb.current = errorBlock
+	for index, handler := range errHandlers {
+		last := index == len(errHandlers)-1
+		if handler.PatternKind == sema.TryHandlerErrCatchAll || (last && plan.Exhaustive) {
+			if err := fb.buildTryHandler(expr, handler, errorValue, merge); err != nil {
+				return builtValue{}, err
+			}
+			break
+		}
+		boolType, err := fb.owner.internType(sema.Type{Name: "bool", Kind: sema.BoolType})
+		if err != nil {
+			return builtValue{}, err
+		}
+		condition := fb.result(Operation{Kind: OpCoreErrorIsVariant, Operands: []ValueID{errorValue.id}, Variant: handler.Variant, TryHandlerKind: TryHandlerErrVariant, TryHandlerIndex: handler.SourceIndex, Location: location(expr.Handlers[handler.SourceIndex].Token)}, boolType)
+		handlerBlock, nextTest := fb.newBlock(), fb.newBlock()
+		fb.emit(Operation{Kind: OpCondBranch, Operands: []ValueID{condition.id}, Successors: []BranchTarget{{Block: handlerBlock.ID}, {Block: nextTest.ID}}, TryHandlerKind: TryHandlerErrVariant, TryHandlerIndex: handler.SourceIndex, Variant: handler.Variant, Location: location(expr.Handlers[handler.SourceIndex].Token)})
+		fb.current = handlerBlock
+		if err := fb.buildTryHandler(expr, handler, errorValue, merge); err != nil {
+			return builtValue{}, err
+		}
+		fb.current = nextTest
+	}
+	if fb.current != nil && fb.current != merge && len(fb.current.Operations) == 0 {
+		return builtValue{}, fb.unsupported("non-exhaustive local try handler dispatch", expr.Token)
+	}
+	fb.current = merge
+	return merged, nil
+}
+
+func (fb *functionBuilder) buildTryHandler(expr *ast.TryExpression, plan sema.ResolvedTryHandler, input builtValue, merge *Block) error {
+	if plan.SourceIndex < 0 || plan.SourceIndex >= len(expr.Handlers) {
+		return fb.unsupported("invalid resolved try handler source index", expr.Token)
+	}
+	handler := expr.Handlers[plan.SourceIndex]
+	kind := semanticTryHandlerKind(plan.PatternKind)
+	previous, hadBinding := binding{}, false
+	var bindingID sema.BindingID
+	if identifier := tryHandlerPatternIdentifier(handler); identifier != nil && identifier.Value != "_" {
+		fact, ok := fb.owner.analyzer.ResolvedBindingOf(identifier)
+		if !ok {
+			return fmt.Errorf("try handler binding %s has no resolved identity", identifier.Value)
+		}
+		bindingID = fact.ID
+		previous, hadBinding = fb.bindings[bindingID]
+		fb.bindings[bindingID] = binding{value: input.id, typ: input.typ}
+		defer func() {
+			if hadBinding {
+				fb.bindings[bindingID] = previous
+			} else {
+				delete(fb.bindings, bindingID)
+			}
+		}()
+	}
+
+	metadata := Operation{TryHandlerKind: kind, TryHandlerIndex: plan.SourceIndex, Variant: plan.Variant, Location: location(handler.Token)}
+	if handler.ReturnBody != nil {
+		return fb.buildTryHandlerReturn(handler.ReturnBody, metadata)
+	}
+	if handler.BlockBody != nil {
+		if err := fb.buildStatements(handler.BlockBody.Statements); err != nil {
+			return err
+		}
+		if fb.current != nil {
+			fb.branchToTryMerge(merge, builtValue{typ: input.typ}, metadata)
+		}
+		return nil
+	}
+	if handler.Body == nil {
+		return fb.unsupported("empty resolved try handler", handler.Token)
+	}
+	value, err := fb.buildExpr(handler.Body, mergeParameterType(merge, input.typ))
+	if err != nil {
+		return err
+	}
+	fb.branchToTryMerge(merge, value, metadata)
+	return nil
+}
+
+func (fb *functionBuilder) buildTryHandlerReturn(statement *ast.ReturnStatement, metadata Operation) error {
+	block := fb.current
+	if err := fb.buildReturn(statement); err != nil {
+		return err
+	}
+	terminator := &block.Operations[len(block.Operations)-1]
+	terminator.TryHandlerKind = metadata.TryHandlerKind
+	terminator.TryHandlerIndex = metadata.TryHandlerIndex
+	terminator.Variant = metadata.Variant
+	return nil
+}
+
+func (fb *functionBuilder) branchToTryMerge(merge *Block, value builtValue, metadata Operation) {
+	metadata.Kind = OpBranch
+	metadata.Successors = []BranchTarget{{Block: merge.ID}}
+	if len(merge.Parameters) != 0 {
+		metadata.Successors[0].Arguments = []ValueID{value.id}
+	}
+	fb.emit(metadata)
+	fb.current = nil
+}
+
+func mergeParameterType(merge *Block, fallback TypeID) TypeID {
+	if len(merge.Parameters) != 0 {
+		return merge.Parameters[0].Type
+	}
+	return fallback
+}
+
+func semanticTryHandlerKind(kind sema.ResolvedTryHandlerPatternKind) TryHandlerKind {
+	switch kind {
+	case sema.TryHandlerOkBinding, sema.TryHandlerOkDiscard:
+		return TryHandlerOK
+	case sema.TryHandlerErrCatchAll:
+		return TryHandlerErrCatchAll
+	default:
+		return TryHandlerErrVariant
+	}
+}
+
+func tryHandlerPatternIdentifier(handler *ast.TryHandler) *ast.Identifier {
+	if handler == nil {
+		return nil
+	}
+	switch pattern := handler.Pattern.(type) {
+	case *ast.OkExpression:
+		identifier, _ := pattern.Value.(*ast.Identifier)
+		return identifier
+	case *ast.ErrExpression:
+		identifier, _ := pattern.Value.(*ast.Identifier)
+		return identifier
+	default:
+		return nil
+	}
+}
+
+func (fb *functionBuilder) buildResultPropagation(expr *ast.TryExpression, resolved sema.ResolvedTry) (builtValue, error) {
+	resultValue, err := fb.buildExpr(expr.Expression, 0)
+	if err != nil {
+		return builtValue{}, err
+	}
+	resultType, ok := fb.owner.module.Types.Lookup(resultValue.typ)
+	if !ok || resultType.Kind != TypeResult {
+		return builtValue{}, fb.unsupported("try operand without Semantic IR Result type", expr.Token)
+	}
+	boolType, err := fb.owner.internType(sema.Type{Name: "bool", Kind: sema.BoolType})
+	if err != nil {
+		return builtValue{}, err
+	}
+	isErr := fb.result(Operation{Kind: OpResultIsErr, Operands: []ValueID{resultValue.id}, Location: location(expr.Token)}, boolType)
+	errorBlock, successBlock := fb.newBlock(), fb.newBlock()
+	fb.emit(Operation{Kind: OpCondBranch, Operands: []ValueID{isErr.id}, Successors: []BranchTarget{{Block: errorBlock.ID}, {Block: successBlock.ID}}, Location: location(expr.Token)})
+
+	fb.current = errorBlock
+	errorValue := fb.result(Operation{Kind: OpResultUnwrapErr, Operands: []ValueID{resultValue.id}, Location: location(expr.Token)}, resultType.Error)
+	enclosingResult, err := fb.owner.internType(resolved.EnclosingResultType)
+	if err != nil {
+		return builtValue{}, err
+	}
+	propagated := fb.result(Operation{Kind: OpResultErr, Operands: []ValueID{errorValue.id}, Location: location(expr.Token)}, enclosingResult)
+	fb.emit(Operation{Kind: OpReturn, Operands: []ValueID{propagated.id}, Location: location(expr.Token)})
+
+	fb.current = successBlock
+	if fb.owner.isVoidType(resultType.Success) {
+		return builtValue{typ: resultType.Success}, nil
+	}
+	return fb.result(Operation{Kind: OpResultUnwrapOk, Operands: []ValueID{resultValue.id}, Location: location(expr.Token)}, resultType.Success), nil
+}
+
 func (fb *functionBuilder) buildResolvedOperator(expr ast.Expression) (builtValue, error) {
+	return fb.buildResolvedOperatorWithFailure(expr, nil, nil)
+}
+
+func (fb *functionBuilder) buildResolvedOperatorWithFailure(expr ast.Expression, arithmeticTry *sema.ResolvedTry, localTry *ast.TryExpression) (builtValue, error) {
 	resolved, ok := fb.owner.analyzer.ResolvedOperatorOf(expr)
 	if !ok {
 		return builtValue{}, fb.unsupported("unresolved or unsupported operator", expressionToken(expr))
@@ -549,27 +869,61 @@ func (fb *functionBuilder) buildResolvedOperator(expr ast.Expression) (builtValu
 		return builtValue{}, fb.unsupported("operator "+string(resolved.Kind), expressionToken(expr))
 	}
 	if resolved.RuntimeCheck {
-		return fb.emitCheckedOperator(op, resultType)
+		return fb.emitCheckedOperator(op, resultType, arithmeticTry, localTry)
 	}
 	return fb.result(op, resultType), nil
 }
 
-func (fb *functionBuilder) emitCheckedOperator(op Operation, resultType TypeID) (builtValue, error) {
+func (fb *functionBuilder) emitCheckedOperator(op Operation, resultType TypeID, arithmeticTry *sema.ResolvedTry, localTry *ast.TryExpression) (builtValue, error) {
 	boolType, err := fb.owner.internType(sema.Type{Name: "bool", Kind: sema.BoolType})
 	if err != nil {
 		return builtValue{}, err
 	}
 	result := fb.newValue(resultType, OwnershipImmediate, op.Location)
 	failed := fb.newValue(boolType, OwnershipImmediate, op.Location)
-	op.Results = []Value{result, failed}
+	reasonType := fb.owner.module.Types.Intern(Type{Kind: TypeArithmeticFailureReason, Name: "ArithmeticFailureReason"})
+	reason := fb.newValue(reasonType, OwnershipImmediate, op.Location)
+	op.Results = []Value{result, failed, reason}
 	fb.emit(op)
 	failure := fb.newBlock()
 	success := fb.newBlock()
-	fb.emit(Operation{Kind: OpCondBranch, Operands: []ValueID{failed.ID}, Successors: []BranchTarget{{Block: failure.ID}, {Block: success.ID}}, Location: op.Location})
+	failureReason := fb.newValue(reasonType, OwnershipImmediate, op.Location)
+	failure.Parameters = []Value{failureReason}
+	fb.emit(Operation{Kind: OpCondBranch, Operands: []ValueID{failed.ID}, Successors: []BranchTarget{{Block: failure.ID, Arguments: []ValueID{reason.ID}}, {Block: success.ID}}, Location: op.Location})
 	fb.current = failure
-	fb.emit(Operation{Kind: OpArithmeticFailure, FailureCategory: failureCategory(op), Operator: op.Operator, Location: op.Location})
+	var localError builtValue
+	if localTry != nil {
+		plan, ok := fb.owner.analyzer.ResolvedTryPlanOf(localTry)
+		if !ok || !plan.Exhaustive {
+			return builtValue{}, fb.unsupported("unresolved or non-exhaustive arithmetic handler plan", localTry.Token)
+		}
+		errorType, err := fb.owner.internType(plan.ErrorType)
+		if err != nil {
+			return builtValue{}, err
+		}
+		localError = fb.result(Operation{Kind: OpArithmeticErrorFromReason, Operands: []ValueID{failureReason.ID}, Location: op.Location}, errorType)
+	} else if arithmeticTry == nil {
+		fb.emit(Operation{Kind: OpArithmeticFailure, Operands: []ValueID{failureReason.ID}, FailureCategory: failureCategory(op), Operator: op.Operator, Location: op.Location})
+	} else {
+		errorType, err := fb.owner.internType(arithmeticTry.ErrorType)
+		if err != nil {
+			return builtValue{}, err
+		}
+		resultContainer, err := fb.owner.internType(arithmeticTry.EnclosingResultType)
+		if err != nil {
+			return builtValue{}, err
+		}
+		errorValue := fb.result(Operation{Kind: OpArithmeticErrorFromReason, Operands: []ValueID{failureReason.ID}, Location: op.Location}, errorType)
+		errResult := fb.result(Operation{Kind: OpResultErr, Operands: []ValueID{errorValue.id}, Location: op.Location}, resultContainer)
+		fb.emit(Operation{Kind: OpReturn, Operands: []ValueID{errResult.id}, Location: op.Location})
+	}
 	fb.current = success
-	return builtValue{id: result.ID, typ: result.Type}, nil
+	successValue := builtValue{id: result.ID, typ: result.Type}
+	if localTry != nil {
+		plan, _ := fb.owner.analyzer.ResolvedTryPlanOf(localTry)
+		return fb.buildLocalTryHandlers(localTry, plan, success, successValue, failure, localError)
+	}
+	return successValue, nil
 }
 
 func failureCategory(op Operation) ArithmeticFailureCategory {

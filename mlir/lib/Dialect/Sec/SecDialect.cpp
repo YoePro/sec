@@ -48,7 +48,8 @@ LogicalResult SecDialect::verifyOperationAttribute(Operation *operation,
       return operation->emitError(
           "sec.dialect_version must be an i32 module attribute");
     int64_t number = version.getInt();
-    if (number != 1 && number != 2 && number != 3 && number != 4)
+    if (number != 1 && number != 2 && number != 3 && number != 4 &&
+        number != 5 && number != 6)
       return operation->emitError("unsupported Sec dialect schema version");
     if (number == 1)
       return success();
@@ -137,7 +138,8 @@ LogicalResult SecDialect::verifyOperationAttribute(Operation *operation,
       name == "sec.target_triple" || name == "sec.target_abi" ||
       name == "sec.target_profile" || name == "sec.target_endianness")
     return requireString();
-  if (name == "sec.operator")
+  if (name == "sec.operator" || name == "sec.try_handler_kind" ||
+      name == "sec.try_handler_variant")
     return requireString();
   if (name == "sec.extern" || name == "sec.unsafe" ||
       name == "sec.mutable" || name == "sec.synthesized")
@@ -157,6 +159,14 @@ LogicalResult SecDialect::verifyOperationAttribute(Operation *operation,
     if (!integer || !type || type.getWidth() != 32)
       return operation->emitError(
           "sec.storage_id must be an i32 integer attribute");
+  }
+  if (name == "sec.try_handler_index") {
+    auto integer = dyn_cast<IntegerAttr>(value);
+    auto type = integer ? dyn_cast<IntegerType>(integer.getType())
+                        : IntegerType{};
+    if (!integer || !type || type.getWidth() != 32 || integer.getInt() < -1)
+      return operation->emitError(
+          "sec.try_handler_index must be an i32 integer >= -1");
   }
   return success();
 }

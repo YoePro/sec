@@ -11,6 +11,10 @@ namespace sec {
 
 std::unique_ptr<mlir::Pass> createSecVerifyCheckedIntegerGuardsPass();
 mlir::LogicalResult verifyCheckedIntegerGuards(mlir::func::FuncOp function);
+std::unique_ptr<mlir::Pass> createSecVerifyResultGuardsPass();
+mlir::LogicalResult verifyResultGuards(mlir::func::FuncOp function);
+std::unique_ptr<mlir::Pass> createSecVerifyTryHandlersPass();
+mlir::LogicalResult verifyTryHandlers(mlir::func::FuncOp function);
 
 #define GEN_PASS_REGISTRATION
 #include "sec/Analysis/Passes.h.inc"

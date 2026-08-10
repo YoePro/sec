@@ -201,6 +201,184 @@ fn Compare(a: int, b: int) bool { return a >= b }
 	}
 }
 
+func TestPackage9BuildsTypedArithmeticTryFlow(t *testing.T) {
+	module, err := analyzedModule(t, `module main
+fn Add(left: int128, right: int128) Result[int128, ArithmeticError] {
+  let total := try left + right
+  return Ok(total)
+}
+fn Divide(left: int, right: int) int { return left / right }
+`, 9)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Verify(module); err != nil {
+		t.Fatal(err)
+	}
+
+	add := module.Functions[0]
+	counts := map[OpKind]int{}
+	for _, block := range add.Blocks {
+		for _, operation := range block.Operations {
+			counts[operation.Kind]++
+		}
+	}
+	if counts[OpIntBinaryChecked] != 1 || counts[OpArithmeticErrorFromReason] != 1 ||
+		counts[OpResultErr] != 1 || counts[OpResultOk] != 1 || counts[OpArithmeticFailure] != 0 {
+		t.Fatalf("fallible operations = %#v\n%s", counts, Format(module))
+	}
+	checked := add.Blocks[0].Operations[0]
+	if len(checked.Results) != 3 {
+		t.Fatalf("checked results = %#v", checked.Results)
+	}
+	failure := add.Blocks[1]
+	if len(failure.Parameters) != 1 || failure.Operations[len(failure.Operations)-1].Kind != OpReturn {
+		t.Fatalf("fallible failure block = %#v", failure)
+	}
+
+	divide := module.Functions[1]
+	ordinaryFailures := 0
+	for _, block := range divide.Blocks {
+		for _, operation := range block.Operations {
+			if operation.Kind == OpArithmeticFailure && len(operation.Operands) == 1 {
+				ordinaryFailures++
+			}
+		}
+	}
+	if ordinaryFailures != 1 {
+		t.Fatalf("ordinary failure flow missing: %s", Format(module))
+	}
+
+	var hasResult, hasArithmeticError bool
+	for _, typ := range module.Types.All() {
+		hasResult = hasResult || typ.Kind == TypeResult
+		hasArithmeticError = hasArithmeticError || (typ.Kind == TypeCoreError && typ.Identity == "core::ArithmeticError")
+	}
+	if !hasResult || !hasArithmeticError {
+		t.Fatalf("types missing: %s", Format(module))
+	}
+}
+
+func TestPackage10BuildsCanonicalResultPropagation(t *testing.T) {
+	module, err := analyzedModule(t, `module main
+fn Source(value: int) Result[int, ArithmeticError] { return Ok(value) }
+fn Forward(value: int) Result[int, ArithmeticError] {
+  let resolved := try Source(value)
+  return Ok(resolved)
+}
+`, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Verify(module); err != nil {
+		t.Fatal(err)
+	}
+
+	forward := module.Functions[1]
+	counts := map[OpKind]int{}
+	for _, block := range forward.Blocks {
+		for _, operation := range block.Operations {
+			counts[operation.Kind]++
+		}
+	}
+	if counts[OpResultIsErr] != 1 || counts[OpResultUnwrapErr] != 1 || counts[OpResultUnwrapOk] != 1 || counts[OpResultErr] != 1 {
+		t.Fatalf("Result propagation is not canonical: %#v\n%s", counts, Format(module))
+	}
+
+	guardBlock := forward.Blocks[0]
+	branch := &guardBlock.Operations[len(guardBlock.Operations)-1]
+	branch.Successors[0], branch.Successors[1] = branch.Successors[1], branch.Successors[0]
+	if err := Verify(module); err == nil || !strings.Contains(err.Error(), "Err successor must unwrap Err") {
+		t.Fatalf("malformed Result guard accepted: %v", err)
+	}
+}
+
+func TestPackage10BuildsOrderedLocalResultHandlers(t *testing.T) {
+	module, err := analyzedModule(t, `module main
+fn Source(value: int) Result[int, ArithmeticError] { return Ok(value) }
+fn Handle(value: int) int {
+  return try Source(value) {
+    Ok(found) => found
+    Err(ArithmeticError.DivisionByZero) => 0
+    Err(error) => 1
+  }
+}
+fn Forward(value: int) Result[int, ArithmeticError] {
+  let resolved := try Source(value) {
+    Err(error) => return Err(error)
+  }
+  return Ok(resolved)
+}
+`, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Verify(module); err != nil {
+		t.Fatal(err)
+	}
+
+	handle := module.Functions[1]
+	counts := map[OpKind]int{}
+	var variant Operation
+	for _, block := range handle.Blocks {
+		for _, operation := range block.Operations {
+			counts[operation.Kind]++
+			if operation.Kind == OpCoreErrorIsVariant {
+				variant = operation
+			}
+		}
+	}
+	if counts[OpResultIsErr] != 1 || counts[OpCoreErrorIsVariant] != 1 || variant.Variant != "DivisionByZero" || variant.TryHandlerIndex != 1 {
+		t.Fatalf("ordered handlers were not preserved: %#v\n%s", counts, Format(module))
+	}
+	mergeFound := false
+	for _, block := range handle.Blocks {
+		mergeFound = mergeFound || len(block.Parameters) == 1
+	}
+	if !mergeFound {
+		t.Fatalf("value handlers have no SSA merge: %s", Format(module))
+	}
+	forward := module.Functions[2]
+	if countOperations(forward, OpResultErr) != 1 || countOperations(forward, OpReturn) != 2 {
+		t.Fatalf("return handler was not lowered normally: %s", Format(module))
+	}
+}
+
+func TestPackage10BuildsLocalArithmeticHandlersWithoutTemporaryResult(t *testing.T) {
+	module, err := analyzedModule(t, `module main
+fn Divide(left: int, right: int) int {
+  return try left / right {
+    Ok(value) => value
+    Err(ArithmeticError.DivisionByZero) => 0
+    Err(error) => 1
+  }
+}
+`, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Verify(module); err != nil {
+		t.Fatal(err)
+	}
+	function := module.Functions[0]
+	if countOperations(function, OpIntBinaryChecked) != 1 || countOperations(function, OpArithmeticErrorFromReason) != 1 ||
+		countOperations(function, OpCoreErrorIsVariant) != 1 || countOperations(function, OpResultOk) != 0 || countOperations(function, OpResultErr) != 0 {
+		t.Fatalf("arithmetic handlers did not use direct reason dispatch: %s", Format(module))
+	}
+}
+
+func countOperations(function *Function, kind OpKind) int {
+	count := 0
+	for _, block := range function.Blocks {
+		for _, operation := range block.Operations {
+			if operation.Kind == kind {
+				count++
+			}
+		}
+	}
+	return count
+}
+
 func TestPackage7ReportsUnsupportedOperatorBoundaries(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -385,14 +563,16 @@ func TestVerifierRejectsUncheckedIntegerFailureFlag(t *testing.T) {
 	types := NewTypeTable()
 	intID := types.Intern(Type{Kind: TypeInt, Name: "int", Signed: true, TargetSize: true})
 	boolID := types.Intern(Type{Kind: TypeBool, Name: "bool", BitWidth: 1})
+	reasonID := types.Intern(Type{Kind: TypeArithmeticFailureReason, Name: "ArithmeticFailureReason"})
 	left := Value{ID: 0, Type: intID, Ownership: OwnershipImmediate}
 	right := Value{ID: 1, Type: intID, Ownership: OwnershipImmediate}
 	result := Value{ID: 2, Type: intID, Ownership: OwnershipImmediate}
 	failed := Value{ID: 3, Type: boolID, Ownership: OwnershipImmediate}
+	reason := Value{ID: 4, Type: reasonID, Ownership: OwnershipImmediate}
 	fn := &Function{ID: "main::Bad(int,int)", Name: "Bad", ReturnType: intID, Entry: 0,
 		Parameters: []Parameter{{Name: "left", Value: left}, {Name: "right", Value: right}},
 		Blocks: []*Block{{ID: 0, Operations: []Operation{
-			{Kind: OpIntBinaryChecked, Operands: []ValueID{0, 1}, Results: []Value{result, failed}, IntegerBinary: IntegerCheckedAdd, Operator: "+"},
+			{Kind: OpIntBinaryChecked, Operands: []ValueID{0, 1}, Results: []Value{result, failed, reason}, IntegerBinary: IntegerCheckedAdd, Operator: "+"},
 			{Kind: OpReturn, Operands: []ValueID{2}},
 		}}},
 	}

@@ -18,6 +18,7 @@ type branch struct {
 }
 
 func format(text string) string {
+	text = strings.TrimPrefix(text, "\uFEFF")
 	eol := "\n"
 	if strings.Contains(text, "\r\n") {
 		eol = "\r\n"

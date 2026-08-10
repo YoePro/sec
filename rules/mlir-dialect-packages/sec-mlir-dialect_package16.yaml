@@ -1,0 +1,340 @@
+package:
+  id: SEC-MLIR-P16
+  name: Slice Semantic Value Representation
+  repository: https://github.com/YoePro/sec
+  branch: main
+  repository_sync_commit: 152c772
+  repository_sync_date: '2026-08-09'
+  local_predecessors:
+  - SEC-MLIR-P13
+  - SEC-MLIR-P14
+  - SEC-MLIR-P15
+  semantic_ir_version_before: 1
+  semantic_ir_version_after: 1
+  sec_mlir_schema_before: 11
+  sec_mlir_schema_after: 12
+  lowering_spec_before: 11
+  lowering_spec_after: 12
+  goal: Canonical shared/mutable borrowed slices with normalized ranges, reference
+    provenance and place-based indexing, without physical slice descriptor layout.
+  next_package: Ownership Transfer and Destruction Semantic Core
+normative_updates:
+- repository_paths:
+  - rules/arrays-slices.txt
+  - rules/runtime_checks.md
+  - rules/core-library.md
+  - rules/reference_model.md
+  supplied_file: sec_slice_sync_package16.md
+- repository_path: rules/semantic_ir.txt
+  supplied_file: sec_semantic_ir_slice_package16.md
+- repository_path: rules/sec_mlir_dialect.md
+  supplied_file: sec_mlir_dialect_package16.md
+  schema_version: 12
+- repository_path: rules/sec_mlir_lowering.md
+  supplied_file: sec_mlir_lowering_package16.md
+  version: 12
+wide_builtin_invariant:
+  active:
+  - int128
+  - int256
+  - uint128
+  - uint256
+  - decimal128
+  allowed_as_slice_elements: true
+  forbidden_status:
+  - future
+  - planned
+  - reserved
+  - placeholder
+  - not yet active
+rule_sync:
+  slice_creation: explicit ref/ref mut
+  fallible_slice_syntax: try ref source[range] / try ref mut source[range]
+  normalized_range: '[start,endExclusive)'
+  range_error: RangeError
+  range_error_mapping:
+    negative_or_invalid_endpoint: InvalidRange
+    start_after_end: StartAfterEnd
+    out_of_source_extent: OutOfBounds
+  range_failure_precedence:
+  - invalid endpoint
+  - start-after-end
+  - out-of-bounds
+  slice_index_error: IndexError.OutOfBounds
+  ordinary_spatial_panic: panic.bounds
+  stale_direct_slice_panic: panic.invalid-reference-generation
+  try_catches_stale_direct_slice: false
+  slice_equality: false
+len_rule:
+  member:
+    syntax: slice.len
+    result: uint
+    p16_status: complete
+  compiler_known:
+    syntax: len(slice)
+    result: int
+    p16_status: requires proven int representability
+  unresolved_normative_case: runtime slice length fits uint but not int
+  forbidden_implicit_resolution:
+  - truncate
+  - wrap
+  - saturate
+  - change return type
+  - silently cap slice length
+slice_types:
+  shared:
+    source: ref T[]
+    copy: CopyTrivial
+    destruction: trivial
+    authority: shared-read
+  mutable:
+    source: ref mut T[]
+    copy: MoveOnly
+    destruction: trivial
+    authority: exclusive-read-write
+  owns_elements: false
+  nullable: false
+  runtime_length_in_type_identity: false
+  default_value: false
+source_support:
+  complete:
+  - fixed array -> shared slice
+  - fixed mutable array -> mutable slice
+  - slice -> shared reborrow
+  - mutable slice -> mutable reborrow
+  new_ir_deferred:
+  - owning dynamic T[] -> slice
+range_model:
+  static_bounds: arbitrary precision
+  dynamic_id: SliceRangeID
+  canonical_form: half-open
+  open_start: 0
+  open_end: source length
+  inclusive_end: validated end + 1
+  empty_exclusive_range: true
+  dynamic_disjointness: conservative unless proven
+  nested_static_composition: true
+sema:
+  new_queries:
+  - ResolvedSliceCreationPlanOf(*ast.RefExpression)
+  - ResolvedSliceIndexPlanOf(*ast.IndexExpression)
+  queries_read_only: true
+  creation_plan:
+  - mode
+  - source kind
+  - element type
+  - source place/slice
+  - start/end facts
+  - inclusive/exclusive
+  - range check/proof
+  - static normalized range
+  - BorrowID/LifetimeID
+  - P15 reference facts
+  - RangeError type
+  index_plan:
+  - slice type/mutability
+  - element type
+  - index type/signedness
+  - constant index big.Int
+  - proven/runtime bounds
+  - proof kind
+  - use kind
+  - transfer action
+  - IndexError
+  place_slice_migration: int64 -> arbitrary precision / SliceRangeID
+semantic_ir:
+  version_bump: false
+  facts:
+  - SliceFacts
+  - StaticSliceRange
+  - SliceRangeID
+  ops:
+  - SliceRangeNormalizeOp
+  - SliceRangeCheckOp
+  - SliceBorrowSharedOp
+  - SliceBorrowMutableOp
+  - SliceReborrowSharedOp
+  - SliceReborrowMutableOp
+  - SliceCopySharedOp
+  - SliceMoveMutableOp
+  - SliceLengthOp
+  - SliceLengthIntOp
+  - SliceIndexInBoundsOp
+  - SliceElementPlaceOp
+  reused_p15_ops:
+  - ReferenceIsValidOp
+  - ReferenceGenerationFailureOp
+  - ReferenceEndBorrowOp
+  - PlaceReadOp
+  - PlaceWriteOp
+  - ReferenceBorrowSharedOp
+  - ReferenceBorrowMutableOp
+  physical_descriptor: false
+dialect:
+  schema_version: 12
+  types:
+  - '!sec.slice<T>'
+  - '!sec.slice_mut<T>'
+  ops:
+  - sec.slice.range_normalize
+  - sec.slice.range_check
+  - sec.slice.borrow_shared
+  - sec.slice.borrow_mut
+  - sec.slice.reborrow_shared
+  - sec.slice.reborrow_mut
+  - sec.slice.copy_shared
+  - sec.slice.move_mut
+  - sec.slice.len
+  - sec.slice.len_int
+  - sec.slice.index_in_bounds
+  - sec.slice.element_place
+  extended_ops:
+  - sec.ref.is_valid
+  - sec.ref.end_borrow
+  - sec.fail.bounds
+  verifier: --sec-verify-slice-guards
+  physical_descriptor: false
+validity_order:
+  dynamic_source:
+  - evaluate source/endpoints/index
+  - reference generation/provenance validation
+  - range/index spatial validation
+  - slice reborrow or element-place use
+  try_converts:
+  - range failure
+  - index failure
+  try_does_not_convert:
+  - stale direct slice
+indexing:
+  semantic_result: P15 Place
+  shared_authority: ro
+  mutable_authority: rw
+  read: P15 PlaceReadOp
+  write: P15 PlaceWriteOp
+  shared_element_borrow: P15 ReferenceBorrowSharedOp
+  mutable_element_borrow: P15 ReferenceBorrowMutableOp
+  move_out: false
+copy_move:
+  shared_slice: copy descriptor/reference only
+  mutable_slice: move exclusive holder only
+  elements_transferred: false
+return_origin:
+  reuse_p15: true
+  add_slice_range: true
+  unknown_runtime_range: conservative full-origin overlap
+  local_origin_return: source error
+compatibility:
+  p6: resolve scalar element/len result types while preserving slice wrapper
+  p8: do not recursively signless-normalize slice element types
+  p13: shared slices may be trivial struct fields; mutable slices make aggregate move-only
+  p14: fixed-array source place and bounds facts reused
+  p15: places/reference validity/origin/borrow/epoch model reused
+  p12: slice values may appear as normal values; no slice patterns added
+deferred:
+- owning dynamic T[] Semantic IR
+- physical pointer+length descriptor
+- FFI slice ABI
+- slice .ptr lowering
+- slice equality
+- slice ordering
+- slice membership lowering
+- slice iteration lowering
+- Reverse lowering
+- move-only element read
+- semantic-copy element read
+- non-trivial element replacement
+- RawPtr-to-slice
+- stable/weak handle slice API
+tests:
+  range:
+  - all open/inclusive/exclusive forms
+  - empty
+  - negative
+  - start-after-end
+  - out-of-bounds
+  - arbitrary precision
+  - nested static composition
+  - dynamic conservative overlap
+  creation:
+  - fixed shared
+  - fixed mutable
+  - shared reborrow
+  - mutable shared reborrow
+  - mutable reborrow
+  - shared-to-mutable rejected
+  - empty
+  index:
+  - read
+  - write
+  - element shared ref
+  - element mutable ref
+  - proven-safe
+  - runtime
+  - IndexError
+  - zero length
+  validity:
+  - proven
+  - dynamic range
+  - dynamic index
+  - dynamic len
+  - stale not caught by try
+  copy_move:
+  - shared copy
+  - mutable copy rejected
+  - mutable move
+  return:
+  - input slice
+  - prefix
+  - static subrange
+  - runtime conservative range
+  - local rejected
+  regression:
+  - schema11
+  - check-sec-mlir
+  - go test ./...
+  - legacy paths
+acceptance:
+- sync applied
+- Semantic IR amendment
+- schema v12
+- lowering v12
+- arbitrary precision slice ranges
+- SliceRangeID
+- read-only creation/index plans
+- shared/mutable slice types
+- P15 facts reused
+- fixed array borrow
+- slice reborrow
+- shared copy/mutable move
+- range normalize/check
+- RangeError flow
+- length ops
+- place-based indexing
+- IndexError flow
+- reference validity ordering
+- returned range/origin summaries
+- slice guard verifier
+- P15 verifier extensions
+- dynamic owning T[] distinct
+- no physical descriptor
+- no mandatory runtime
+- check-sec-mlir
+- go test ./...
+package17:
+  name: Ownership Transfer and Destruction Semantic Core
+  reason: Non-trivial structs/arrays/unions and owning dynamic T[] require explicit
+    move/copy/destroy/replacement semantics before descriptor ownership can be canonical.
+  scope:
+  - MoveOp
+  - SemanticCopyOp
+  - DestroyOp
+  - ReplaceOp
+  - InitializeOp
+  - ownership transfer IDs
+  - resolved transfer plans
+  - cleanup edges
+  - partial initialization
+  - reverse aggregate destruction hooks
+  - non-trivial aggregate value paths
+  - function argument/return transfer
+  next_after: Owning Dynamic T[] Semantic Value Representation

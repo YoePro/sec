@@ -415,6 +415,13 @@ func builtinTypes() map[string]Type {
 			EnumValues: []string{"OutOfMemory", "Unsupported", "InvalidSize", "InvalidAlignment"},
 			EnumConsts: builtinEnumConsts([]string{"OutOfMemory", "Unsupported", "InvalidSize", "InvalidAlignment"}),
 		},
+		"ArithmeticError": {
+			Name:       "ArithmeticError",
+			Kind:       EnumType,
+			Underlying: "uint",
+			EnumValues: []string{"Overflow", "DivisionByZero", "InvalidShift"},
+			EnumConsts: builtinEnumConsts([]string{"Overflow", "DivisionByZero", "InvalidShift"}),
+		},
 		"ContractError": {Name: "ContractError", Kind: StructType},
 		"Option": {
 			Name:              "Option",

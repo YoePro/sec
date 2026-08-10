@@ -112,6 +112,31 @@ bool isOneOf(StringRef value, std::initializer_list<StringRef> allowed) {
   return llvm::is_contained(allowed, value);
 }
 
+int64_t schemaVersion(Operation *operation) {
+  if (auto module = operation->getParentOfType<ModuleOp>())
+    if (auto version = module->getAttrOfType<IntegerAttr>("sec.dialect_version"))
+      return version.getInt();
+  return 0;
+}
+
+LogicalResult verifyCheckedResultTuple(Operation *operation, Value operand) {
+  const unsigned expected = schemaVersion(operation) >= 5 ? 3 : 2;
+  if (operation->getNumResults() != expected)
+    return operation->emitOpError()
+           << "schema " << schemaVersion(operation) << " requires " << expected
+           << " checked results";
+  if (operand.getType() != operation->getResult(0).getType())
+    return operation->emitOpError("operand and result types must match exactly");
+  auto failed = dyn_cast<IntegerType>(operation->getResult(1).getType());
+  if (!failed || failed.getWidth() != 1)
+    return operation->emitOpError("failed result must be i1");
+  if (expected == 3 &&
+      !isa<ArithmeticFailureReasonType>(operation->getResult(2).getType()))
+    return operation->emitOpError(
+        "reason result must be !sec.arithmetic_failure_reason");
+  return success();
+}
+
 LogicalResult verifyIntegerResult(Operation *operation, StringAttr valueAttr,
                                   Type resultType) {
   auto parsed = parseDecimalInteger(valueAttr.getValue());
@@ -284,13 +309,17 @@ LogicalResult IntUnaryPlusOp::verify() {
 LogicalResult IntNegCheckedOp::verify() {
   if (!isSignedIntegerSemanticType(getValue().getType()))
     return emitOpError("operand must be a signed builtin Sec integer semantic type");
-  return verifyUnaryInteger(*this, getValue(), getResult());
+  if (failed(verifyCheckedResultTuple(*this, getValue())))
+    return failure();
+  return verifyUnaryInteger(*this, getValue(), (*this)->getResult(0));
 }
 
 LogicalResult IntBinaryCheckedOp::verify() {
   if (!isOneOf(getKind(), {"add", "subtract", "multiply", "divide", "remainder"}))
     return emitOpError("kind must be add, subtract, multiply, divide, or remainder");
-  return verifyBinaryInteger(*this, getLeft(), getRight(), getResult());
+  if (failed(verifyCheckedResultTuple(*this, getLeft())))
+    return failure();
+  return verifyBinaryInteger(*this, getLeft(), getRight(), (*this)->getResult(0));
 }
 
 LogicalResult IntBitNotOp::verify() {
@@ -309,7 +338,9 @@ LogicalResult IntShiftCheckedOp::verify() {
   if (!isBuiltinIntegerSemanticType(getValue().getType()) ||
       !isBuiltinIntegerSemanticType(getCount().getType()))
     return emitOpError("value and count must be builtin Sec integer semantic types");
-  if (getValue().getType() != getResult().getType())
+  if (failed(verifyCheckedResultTuple(*this, getValue())))
+    return failure();
+  if (getValue().getType() != (*this)->getResult(0).getType())
     return emitOpError("value and result types must match exactly");
   bool signedKind = getKind().contains("_signed");
   if (signedKind != isSignedIntegerSemanticType(getValue().getType()))
@@ -327,10 +358,103 @@ LogicalResult IntCmpOp::verify() {
 }
 
 LogicalResult FailArithmeticOp::verify() {
-  if (!isOneOf(getCategory(), {"overflow", "division", "remainder", "shift"}))
-    return emitOpError("invalid arithmetic failure category");
+  if (schemaVersion(*this) >= 5) {
+    if ((*this)->getNumOperands() != 1 ||
+        !isa<ArithmeticFailureReasonType>((*this)->getOperand(0).getType()))
+      return emitOpError(
+          "schema 5 requires one !sec.arithmetic_failure_reason operand");
+    if ((*this)->hasAttr("category"))
+      return emitOpError("schema 5 does not use category attribute");
+  if (auto constant = (*this)->getOperand(0).getDefiningOp<
+      ArithmeticFailureReasonConstantOp>())
+    if (constant.getValue() == "none")
+    return emitOpError("cannot consume the none arithmetic failure reason");
+  } else {
+    auto category = (*this)->getAttrOfType<StringAttr>("category");
+    if ((*this)->getNumOperands() != 0 || !category ||
+        !isOneOf(category.getValue(),
+                 {"overflow", "division", "remainder", "shift"}))
+      return emitOpError("schema 4 requires a valid arithmetic category");
+  }
   auto sourceOperator = (*this)->getAttrOfType<StringAttr>("sec.operator");
   if (!sourceOperator || sourceOperator.getValue().empty())
     return emitOpError("requires non-empty sec.operator string attribute");
+  return success();
+}
+
+LogicalResult ArithmeticFailureReasonConstantOp::verify() {
+  if (!isa<ArithmeticFailureReasonType>(getResult().getType()))
+    return emitOpError("result must be !sec.arithmetic_failure_reason");
+  if (!isOneOf(getValue(), {"none", "overflow", "division-by-zero",
+                            "invalid-shift"}))
+    return emitOpError("invalid arithmetic failure reason");
+  return success();
+}
+
+LogicalResult ArithmeticErrorFromReasonOp::verify() {
+  if (!isa<ArithmeticFailureReasonType>(getReason().getType()))
+    return emitOpError("operand must be !sec.arithmetic_failure_reason");
+  auto error = dyn_cast<CoreErrorType>(getResult().getType());
+  if (!error || error.getIdentity().getValue() != "core::ArithmeticError")
+    return emitOpError("result must be !sec.core_error<\"core::ArithmeticError\">");
+  if (auto constant = getReason().getDefiningOp<
+      ArithmeticFailureReasonConstantOp>())
+    if (constant.getValue() == "none")
+    return emitOpError("cannot map the none arithmetic failure reason");
+  return success();
+}
+
+template <typename ResultOp>
+LogicalResult verifyResultConstructor(ResultOp operation, bool successValue) {
+  auto result = dyn_cast<ResultType>(operation.getResult().getType());
+  if (!result)
+    return operation.emitOpError("result must have !sec.result type");
+  Type expected = successValue ? result.getSuccessType() : result.getErrorType();
+  if (operation->getNumOperands() != 1 ||
+      operation->getOperand(0).getType() != expected)
+    return operation.emitOpError("payload type must exactly match Result component");
+  return success();
+}
+
+LogicalResult ResultOkOp::verify() {
+  return verifyResultConstructor(*this, true);
+}
+
+LogicalResult ResultErrOp::verify() {
+  return verifyResultConstructor(*this, false);
+}
+
+LogicalResult ResultIsErrOp::verify() {
+  if (!isa<ResultType>(getValue().getType()))
+    return emitOpError("operand must have !sec.result type");
+  return success();
+}
+
+LogicalResult ResultUnwrapOkOp::verify() {
+  auto result = dyn_cast<ResultType>(getValue().getType());
+  if (!result)
+    return emitOpError("operand must have !sec.result type");
+  if (getResult().getType() != result.getSuccessType())
+    return emitOpError("result type must exactly match Result success type");
+  return success();
+}
+
+LogicalResult ResultUnwrapErrOp::verify() {
+  auto result = dyn_cast<ResultType>(getValue().getType());
+  if (!result)
+    return emitOpError("operand must have !sec.result type");
+  if (getResult().getType() != result.getErrorType())
+    return emitOpError("result type must exactly match Result error type");
+  return success();
+}
+
+LogicalResult CoreErrorIsVariantOp::verify() {
+  auto error = dyn_cast<CoreErrorType>(getValue().getType());
+  if (!error || error.getIdentity().getValue() != "core::ArithmeticError")
+    return emitOpError(
+        "operand must be !sec.core_error<\"core::ArithmeticError\">");
+  if (!isOneOf(getVariant(),
+               {"Overflow", "DivisionByZero", "InvalidShift"}))
+    return emitOpError("unknown ArithmeticError variant");
   return success();
 }

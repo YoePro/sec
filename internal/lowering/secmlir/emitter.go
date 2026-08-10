@@ -11,7 +11,7 @@ import (
 	"sec/internal/layout"
 )
 
-const dialectSchemaVersion = 4
+const dialectSchemaVersion = 6
 
 type emitter struct {
 	module    *semantic.Module
@@ -285,6 +285,20 @@ func (e *emitter) emitOperation(function *semantic.Function, operation semantic.
 			return err
 		}
 	case semantic.OpReturn:
+		if operation.TryHandlerKind != "" {
+			e.out.WriteString("\"func.return\"(")
+			if len(operation.Operands) == 1 {
+				e.out.WriteString(valueName(operation.Operands[0]))
+			}
+			e.out.WriteString(") ")
+			e.emitTryHandlerAttributes(operation)
+			e.out.WriteString(": (")
+			if err := e.emitOperandTypes(operation.Operands, values); err != nil {
+				return err
+			}
+			e.out.WriteString(") -> ()")
+			break
+		}
 		e.out.WriteString("return")
 		if len(operation.Operands) == 1 {
 			typeText, err := e.valueTypeText(operation.Operands[0], values)
@@ -301,6 +315,8 @@ func (e *emitter) emitOperation(function *semantic.Function, operation semantic.
 		if err := e.emitTarget(operation.Successors[0], values); err != nil {
 			return err
 		}
+		e.out.WriteByte(' ')
+		e.emitTryHandlerAttributes(operation)
 	case semantic.OpCondBranch:
 		if len(operation.Operands) != 1 || len(operation.Successors) != 2 {
 			return fmt.Errorf("invalid conditional branch")
@@ -313,6 +329,8 @@ func (e *emitter) emitOperation(function *semantic.Function, operation semantic.
 		if err := e.emitTarget(operation.Successors[1], values); err != nil {
 			return err
 		}
+		e.out.WriteByte(' ')
+		e.emitTryHandlerAttributes(operation)
 	case semantic.OpIntUnaryPlus:
 		return e.emitSemanticIntegerOperation(operation, "sec.int.unary_plus", "", "", values)
 	case semantic.OpIntNegChecked:
@@ -328,10 +346,118 @@ func (e *emitter) emitOperation(function *semantic.Function, operation semantic.
 	case semantic.OpIntCompare:
 		return e.emitSemanticIntegerOperation(operation, "sec.int.cmp", "predicate", string(operation.IntegerCompare), values)
 	case semantic.OpArithmeticFailure:
-		fmt.Fprintf(&e.out, "\"sec.fail.arithmetic\"() <{category = %s}> {sec.operator = %s} : () -> ()", mlirString(string(operation.FailureCategory)), mlirString(operation.Operator))
+		if len(operation.Operands) != 1 {
+			return fmt.Errorf("invalid arithmetic failure operand")
+		}
+		typeText, err := e.valueTypeText(operation.Operands[0], values)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(&e.out, "\"sec.fail.arithmetic\"(%s) {sec.operator = %s} : (%s) -> ()", valueName(operation.Operands[0]), mlirString(operation.Operator), typeText)
+	case semantic.OpArithmeticFailureReasonConstant:
+		if err := e.emitResult(operation); err != nil {
+			return err
+		}
+		fmt.Fprintf(&e.out, "\"sec.arithmetic_failure_reason.constant\"() <{value = %s}> : () -> ", mlirString(string(operation.FailureReason)))
+		return e.finishResultOperation(operation)
+	case semantic.OpArithmeticErrorFromReason:
+		return e.emitUnarySemanticOperation(operation, "sec.arithmetic_error.from_reason", values)
+	case semantic.OpResultOk:
+		return e.emitResultConstructor(operation, "sec.result.ok", values)
+	case semantic.OpResultErr:
+		return e.emitResultConstructor(operation, "sec.result.err", values)
+	case semantic.OpResultIsErr:
+		return e.emitUnarySemanticOperation(operation, "sec.result.is_err", values)
+	case semantic.OpResultUnwrapOk:
+		return e.emitUnarySemanticOperation(operation, "sec.result.unwrap_ok", values)
+	case semantic.OpResultUnwrapErr:
+		return e.emitUnarySemanticOperation(operation, "sec.result.unwrap_err", values)
+	case semantic.OpCoreErrorIsVariant:
+		return e.emitCoreErrorIsVariant(operation, values)
 	default:
 		return &UnsupportedLoweringError{Feature: string(operation.Kind), Function: function.ID}
 	}
+	e.emitLocation(operation.Location)
+	e.out.WriteByte('\n')
+	return nil
+}
+
+func (e *emitter) emitCoreErrorIsVariant(operation semantic.Operation, values map[semantic.ValueID]semantic.Value) error {
+	if len(operation.Operands) != 1 || len(operation.Results) != 1 || operation.Variant == "" {
+		return fmt.Errorf("invalid %s", operation.Kind)
+	}
+	if err := e.emitResult(operation); err != nil {
+		return err
+	}
+	operandType, err := e.valueTypeText(operation.Operands[0], values)
+	if err != nil {
+		return err
+	}
+	resultType, err := e.typeText(operation.Results[0].Type)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(&e.out, "\"sec.core_error.is_variant\"(%s) <{variant = %s}> ", valueName(operation.Operands[0]), mlirString(operation.Variant))
+	e.emitTryHandlerAttributes(operation)
+	fmt.Fprintf(&e.out, ": (%s) -> %s", operandType, resultType)
+	e.emitLocation(operation.Location)
+	e.out.WriteByte('\n')
+	return nil
+}
+
+func (e *emitter) emitTryHandlerAttributes(operation semantic.Operation) {
+	if operation.TryHandlerKind == "" {
+		return
+	}
+	fmt.Fprintf(&e.out, "{sec.try_handler_kind = %s, sec.try_handler_index = %d : i32", mlirString(string(operation.TryHandlerKind)), operation.TryHandlerIndex)
+	if operation.Variant != "" {
+		fmt.Fprintf(&e.out, ", sec.try_handler_variant = %s", mlirString(operation.Variant))
+	}
+	e.out.WriteString("} ")
+}
+
+func (e *emitter) emitUnarySemanticOperation(operation semantic.Operation, name string, values map[semantic.ValueID]semantic.Value) error {
+	if len(operation.Operands) != 1 || len(operation.Results) != 1 {
+		return fmt.Errorf("invalid %s", operation.Kind)
+	}
+	if err := e.emitResult(operation); err != nil {
+		return err
+	}
+	operandType, err := e.valueTypeText(operation.Operands[0], values)
+	if err != nil {
+		return err
+	}
+	resultType, err := e.typeText(operation.Results[0].Type)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(&e.out, "\"%s\"(%s) : (%s) -> %s", name, valueName(operation.Operands[0]), operandType, resultType)
+	e.emitLocation(operation.Location)
+	e.out.WriteByte('\n')
+	return nil
+}
+
+func (e *emitter) emitResultConstructor(operation semantic.Operation, name string, values map[semantic.ValueID]semantic.Value) error {
+	if len(operation.Results) != 1 || len(operation.Operands) > 1 {
+		return fmt.Errorf("invalid %s", operation.Kind)
+	}
+	if err := e.emitResult(operation); err != nil {
+		return err
+	}
+	fmt.Fprintf(&e.out, "\"%s\"(", name)
+	if len(operation.Operands) == 1 {
+		e.out.WriteString(valueName(operation.Operands[0]))
+	}
+	e.out.WriteString(") : (")
+	if err := e.emitOperandTypes(operation.Operands, values); err != nil {
+		return err
+	}
+	e.out.WriteString(") -> ")
+	resultType, err := e.typeText(operation.Results[0].Type)
+	if err != nil {
+		return err
+	}
+	e.out.WriteString(resultType)
 	e.emitLocation(operation.Location)
 	e.out.WriteByte('\n')
 	return nil
@@ -534,6 +660,20 @@ func (e *emitter) typeText(id semantic.TypeID) (string, error) {
 			return "", err
 		}
 		text = fmt.Sprintf("!sec.named<%s, %s>", mlirString(typeValue.Identity), base)
+	case semantic.TypeArithmeticFailureReason:
+		text = "!sec.arithmetic_failure_reason"
+	case semantic.TypeCoreError:
+		text = fmt.Sprintf("!sec.core_error<%s>", mlirString(typeValue.Identity))
+	case semantic.TypeResult:
+		success, err := e.typeText(typeValue.Success)
+		if err != nil {
+			return "", err
+		}
+		failure, err := e.typeText(typeValue.Error)
+		if err != nil {
+			return "", err
+		}
+		text = fmt.Sprintf("!sec.result<%s, %s>", success, failure)
 	case semantic.TypeVoid:
 		return "", fmt.Errorf("void has no MLIR value type")
 	}

@@ -47,7 +47,7 @@ func TestParseEmitSecMLIRCommandArgsRejectsMalformedInput(t *testing.T) {
 	}
 }
 
-func TestPackage7SourceEmitsSchema4CheckedIntegerMLIR(t *testing.T) {
+func TestCheckedIntegerSourceEmitsSchema6TypedFailureMLIR(t *testing.T) {
 	source := `module main
 fn Arithmetic(a: int, b: int, count: int) bool {
     let sum := a + b
@@ -83,7 +83,7 @@ fn CompareInIf(a: int32, b: int32) int32 {
 	if errors := a.Analyze(parsed.Program); len(errors) != 0 {
 		t.Fatalf("sema: %v", errors)
 	}
-	module, err := semantic.Build(parsed.Program, a, semantic.BuildOptions{RequestedModule: "main", SourceFiles: []string{"checked.sec"}, MaxPackage: 7})
+	module, err := semantic.Build(parsed.Program, a, semantic.BuildOptions{RequestedModule: "main", SourceFiles: []string{"checked.sec"}, MaxPackage: 9})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,13 +103,13 @@ fn CompareInIf(a: int32, b: int32) int32 {
 			}
 			text := string(output)
 			for _, expected := range []string{
-				"sec.dialect_version = 4 : i32", "sec.int.binary_checked",
+				"sec.dialect_version = 6 : i32", "sec.int.binary_checked",
 				"sec.int.neg_checked", "sec.int.bit_not", "sec.int.bitwise",
 				"sec.int.shift_checked", "sec.int.cmp", "sec.fail.arithmetic",
 				`kind = "subtract"`, `kind = "divide"`, `kind = "remainder"`,
 				`kind = "right_signed"`, `kind = "left_unsigned"`, `predicate = "lt"`,
 				"si32", "ui32", "si64", "ui64", "si128", "si256", "ui128", "ui256",
-				"sec.call.direct", "cf.cond_br",
+				"sec.call.direct", "cf.cond_br", "!sec.arithmetic_failure_reason",
 				"#dlti.dl_entry<index, " + strconv.Itoa(int(plan.PointerWidthBits)) + ">",
 			} {
 				if !strings.Contains(text, expected) {

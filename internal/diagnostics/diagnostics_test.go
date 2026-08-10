@@ -10,6 +10,9 @@ func TestRegistryIsValid(t *testing.T) {
 
 func TestKnownDiagnosticSeverities(t *testing.T) {
 	tests := map[string]Severity{
+		LexerInvalidUTF8:             SeverityError,
+		LexerUnexpectedByteOrderMark: SeverityError,
+		LexerUnsupportedWhitespace:   SeverityError,
 		ParserSyntaxError:            SeverityError,
 		MissingModuleDeclaration:     SeverityError,
 		DuplicateModuleDeclaration:   SeverityError,

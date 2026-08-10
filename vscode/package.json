@@ -45,13 +45,35 @@
         "path": "./syntaxes/sec.tmLanguage.json"
       }
     ],
+    "semanticTokenScopes": [
+      {
+        "language": "sec",
+        "scopes": {
+          "variable": ["variable.other.readwrite.sec"],
+          "variable.readonly": ["variable.other.constant.sec"]
+        }
+      }
+    ],
     "configurationDefaults": {
       "[sec]": {
         "editor.formatOnSave": true,
-        "editor.defaultFormatter": "sec-lang.sec-syntax"
+        "editor.defaultFormatter": "sec-lang.sec-syntax",
+        "editor.semanticHighlighting.enabled": true
       },
       "editor.tokenColorCustomizations": {
         "textMateRules": [
+          {
+            "scope": "variable.other.readwrite.sec",
+            "settings": {
+              "foreground": "#9CDCFE"
+            }
+          },
+          {
+            "scope": "variable.other.constant.sec",
+            "settings": {
+              "foreground": "#4FC1FF"
+            }
+          },
           {
             "scope": "support.type.unit.sec",
             "settings": {
@@ -120,6 +142,13 @@
             }
           }
         ]
+      },
+      "editor.semanticTokenColorCustomizations": {
+        "enabled": true,
+        "rules": {
+          "variable:sec": "#9CDCFE",
+          "variable.readonly:sec": "#4FC1FF"
+        }
       }
     },
     "configuration": {

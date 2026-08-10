@@ -37,10 +37,10 @@ module attributes {
 
 // CHECK-LABEL: func.func @add(
 // CHECK-SAME: %[[LEFT:.*]]: si64, %[[RIGHT:.*]]: si64) -> si64
-// CHECK: %[[RESULT:.*]], %[[FAILED:.*]] = "sec.int.binary_checked"(%[[LEFT]], %[[RIGHT]]) <{kind = "add"}> : (si64, si64) -> (si64, i1)
-// CHECK-NEXT: cf.cond_br %[[FAILED]]
+// CHECK: %[[PAIR:.*]]:2 = "sec.int.binary_checked"(%[[LEFT]], %[[RIGHT]]) <{kind = "add"}> : (si64, si64) -> (si64, i1)
+// CHECK-NEXT: cf.cond_br %[[PAIR]]#1
 // CHECK: "sec.fail.arithmetic"
-// CHECK: return %[[RESULT]] : si64
+// CHECK: return %[[PAIR]]#0 : si64
 // CHECK-LABEL: func.func @compare(
 // CHECK-SAME: ui64
 // CHECK: "sec.int.cmp"

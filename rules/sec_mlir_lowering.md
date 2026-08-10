@@ -4,658 +4,335 @@
 
 Normative lowering specification.
 
-Current lowering specification version: `4`
+Current lowering specification version: `6`
 
-This document is subordinate to:
+This version adds local try handler CFG and high-level Result discrimination.
+
+Physical Result/error lowering remains deferred.
+
+---
+
+# 1. Local handler lowering principle
+
+A resolved local `try` handler list lowers to explicit CFG.
+
+The lowering consumes Sema-resolved facts.
+
+It does not resolve patterns or handler coverage.
+
+---
+
+# 2. Two fallible inputs
+
+Package 10 supports two fallible input forms.
+
+## Result value
 
 ```text
-rules/operators.md
-rules/runtime_checks.md
-rules/types.md
-rules/layout.md
-rules/semantic_ir.txt
-rules/sec_mlir.md
-rules/sec_mlir_dialect.md
+Result[T, ArithmeticError]
 ```
 
-It defines when resolved Sec MLIR semantics may be discharged into lower MLIR.
+Use:
 
----
+```text
+result.is_err
+conditional branch
+unwrap_err / unwrap_ok
+```
 
-# 1. Version history
+## Checked arithmetic
 
-## Version 1
-
-Trivial-core lowering.
-
-## Version 2
-
-Scalar coverage, plan-aware scalar resolution, canonical one-byte bool storage.
-
-## Version 3
-
-Checked integer semantic-lowering boundary.
-
-## Version 4
-
-Checked integer conversion to signless standard Arith while preserving explicit
-Sec failure CFG and deterministic checked behavior.
-
----
-
-# 2. Fundamental rule
-
-A schema-v4 checked integer operation may lower to standard Arith only when the
-lower computation is total for every input accepted by the Sec operation.
-
-The lower computation must produce:
+Use existing:
 
 ```text
 result
 failed
+reason
 ```
 
-without:
+On failure:
 
 ```text
-undefined behavior
-poison as failure semantics
-target shift-count masking
-silent checked wrap
-host-width truncation
+reason -> ArithmeticError
 ```
 
-The existing Sec failure branch remains explicit.
+Then enter the same Err handler dispatch model.
 
 ---
 
-# 3. Checked guard precondition
+# 3. No temporary Result required for arithmetic
 
-Before lowering:
+Do not construct:
 
 ```text
---sec-verify-checked-integer-guards
+ResultOk
+ResultErr
 ```
 
-must succeed.
+merely to implement a local arithmetic handler.
 
-Package 8 lowering must not consume malformed high-level checked CFG.
+Arithmetic already has direct success/error control data.
 
-The lowering implementation should share/call the guard verifier rather than
-trust external pass ordering only.
+Construct Result only when the handler source explicitly returns/propagates one.
 
 ---
 
-# 4. Signless core integer representation
+# 4. Implicit success path
 
-After Package 8, plain builtin integer representation in the lowered core uses:
-
-```text
-i8
-i16
-i32
-i64
-i128
-i256
-```
-
-Conversion:
+Without explicit Ok handler:
 
 ```text
-siN -> iN
-uiN -> iN
+success T -> try merge
 ```
 
-for active builtin widths.
+for value context.
 
-Signed/unsigned semantics are encoded in already-selected lower operations and
-predicates.
+No additional semantic operation.
 
 ---
 
-# 5. Semantic provenance before type erasure
+# 5. Explicit Ok path
 
-Before signedness type information is erased, compiler-generated ABI-relevant
-boundaries preserve source scalar origin using:
-
-```text
-sec.scalar_kind
-```
-
-on `func.func` arguments/results.
-
-Sec-origin scalar storage preserves the same metadata on its declaration or
-lowered allocation.
-
-Examples that become representation-identical but retain distinct provenance:
+With explicit:
 
 ```text
-int32
-uint32
-
-int128
-uint128
-
-byte
-char
-uint8
+Ok(value)
+Ok(_)
 ```
 
-This is lowering provenance, not a substitute for nominal type identity.
+route success to that handler.
+
+A value-producing Ok handler supplies T to merge.
+
+A returning/terminating Ok handler has no merge edge.
 
 ---
 
-# 6. Nominal boundary
+# 6. Ordered error dispatch
 
-Do not normalize inside:
+Specific error variants are tested in source order.
+
+For Package 10:
 
 ```text
-!sec.named
-!sec.distinct
+ArithmeticError.Overflow
+ArithmeticError.DivisionByZero
+ArithmeticError.InvalidShift
 ```
 
-in lowering specification version 4.
+using:
+
+```text
+sec.core_error.is_variant
+cf.cond_br
+```
+
+Catch-all receives the exact error directly.
 
 ---
 
-# 7. Foreign boundary
+# 7. Exhaustive specific handlers
 
-`sec.call.foreign` remains explicit.
+When no catch-all exists, Sema must have proven the closed variant set exhaustive.
 
-Its plain integer operand/result representation may become signless.
+Lowering may route the final unmatched case directly to the only remaining
+variant handler.
 
-The target extern function retains `sec.scalar_kind` on arguments/results.
-
-Foreign ABI lowering must use preserved semantic provenance and ABI contracts,
-not infer signedness from signless `iN`.
+Do not add automatic propagation.
 
 ---
 
-# 8. No poison-producing assumptions
+# 8. Fallback merge
 
-Package 8-generated checked integer lowering does not use:
+A fallback expression produces T.
+
+Branch:
 
 ```text
-overflow<nsw>
-overflow<nuw>
-nneg
-exact
+cf.br merge(fallback)
 ```
 
-as correctness requirements.
+Implicit/explicit success path also branches with T.
 
-Those attributes are reserved for later optimization after proof.
+Merge block argument:
+
+```text
+T
+```
+
+is the local try expression value.
 
 ---
 
-# 9. Checked negation
+# 9. Return handler
 
-For signed `iN`:
+A return handler uses ordinary Semantic IR/MLIR return construction.
+
+Examples:
 
 ```text
-failed = value == signedMinimum(N)
-result = 0 - value
+return plain value
+return Result Ok
+return Result Err
 ```
 
-The subtraction uses ordinary modulo bitvector arithmetic with no poison flag.
-
-The result is semantically consumed only when `failed=false`.
+No edge to merge.
 
 ---
 
-# 10. Unsigned checked addition
+# 10. Error propagation handler
 
-Use:
-
-```text
-arith.addui_extended
-```
-
-Map:
+For:
 
 ```text
-Sec result = sum
-Sec failed = overflow
+return Err(error)
 ```
+
+construct the exact enclosing Result Err using existing Package 9 operation.
+
+No implicit conversion of E.
 
 ---
 
-# 11. Unsigned checked subtraction
+# 11. Result naked propagation
 
-Use:
-
-```text
-arith.subui_extended
-```
-
-Map:
+For:
 
 ```text
-Sec result = difference
-Sec failed = borrow
+try Result[T, ArithmeticError]
 ```
+
+without local handlers:
+
+```text
+Err:
+    unwrap error
+    construct enclosing ResultErr
+    return
+
+Ok:
+    unwrap success
+    continue
+```
+
+This generalizes Package 9 arithmetic-only naked propagation.
 
 ---
 
-# 12. Signed checked addition
+# 12. Result guard remains high-level
 
-For source width `N`, sign-extend both operands to:
-
-```text
-i(N+1)
-```
-
-Perform ordinary `arith.addi`.
-
-The widened sum is exact.
-
-Failure:
+Do not lower:
 
 ```text
-wide < signedMinimum(N)
-or
-wide > signedMaximum(N)
+sec.result.is_err
+sec.result.unwrap_ok
+sec.result.unwrap_err
 ```
 
-Result:
+to memory/tag operations in Package 10.
 
-```text
-truncate wide to iN
-```
-
-No overflow flags.
+The physical representation is unresolved.
 
 ---
 
-# 13. Signed checked subtraction
+# 13. Core error variant test remains high-level
 
-Use exact `i(N+1)` signed widening and signed range comparison.
+Do not lower:
 
-No overflow flags.
+```text
+sec.core_error.is_variant
+```
+
+to integer comparison in Package 10.
+
+The physical ArithmeticError encoding is unresolved.
 
 ---
 
-# 14. Unsigned checked multiplication
+# 14. Verification before further lowering
 
-Use:
-
-```text
-arith.mului_extended
-```
-
-Failure:
+Compiler output must pass:
 
 ```text
-highHalf != 0
+normal MLIR verification
+sec-verify-result-guards
+sec-verify-try-handlers
 ```
 
-Result:
-
-```text
-lowHalf
-```
+Checked arithmetic stages additionally use the checked-integer guard verifier
+where applicable.
 
 ---
 
-# 15. Signed checked multiplication
+# 15. Package 8 compatibility
 
-Use:
+Integer arithmetic may already be lowered to standard Arith.
 
-```text
-arith.mulsi_extended
-```
-
-Failure when the high half is not the sign extension of the low half.
-
-Canonical check:
+The local handler flow depends only on:
 
 ```text
-signFill = arithmeticRightShift(low, N - 1)
-failed = high != signFill
+failed
+reason
+ArithmeticError conversion
 ```
 
-Equivalent exact `i(2N)` widening is permitted.
+and therefore remains valid after Package 8.
 
 ---
 
-# 16. Unsigned division
+# 16. Ownership boundary
 
-Failure:
+Result projections do not define copy/move ownership semantics for non-trivial
+payloads.
 
-```text
-rhs == 0
-```
+Package 10 end-to-end compiler support is limited to payloads accepted by the
+current Semantic IR ownership subset.
 
-Safe execution:
-
-```text
-safeRhs = select failed, 1, rhs
-result = arith.divui lhs, safeRhs
-```
-
-The raw division never sees zero.
+Do not silently copy resource-owning Result payloads.
 
 ---
 
-# 17. Signed division
+# 17. User error enum/union boundary
 
-Failure:
+Do not create special lowering representations for unsupported user error types.
 
-```text
-rhs == 0
-or
-lhs == signedMinimum(N) && rhs == -1
-```
+The generic Result operations may accept future E types once those types exist
+canonically.
 
-Safe execution:
-
-```text
-safeRhs = select failed, 1, rhs
-result = arith.divsi lhs, safeRhs
-```
-
-The raw operation never receives an undefined input.
-
-No `exact` attribute.
+Variant tests for user enums/unions are deferred to the enum/union
+representation package.
 
 ---
 
-# 18. Unsigned remainder
-
-Failure:
-
-```text
-rhs == 0
-```
-
-Safe execution:
-
-```text
-safeRhs = select failed, 1, rhs
-result = arith.remui lhs, safeRhs
-```
-
----
-
-# 19. Signed remainder
-
-Use the same Sec failure set as signed division:
-
-```text
-rhs == 0
-or
-lhs == signedMinimum(N) && rhs == -1
-```
-
-Then:
-
-```text
-safeRhs = select failed, 1, rhs
-result = arith.remsi lhs, safeRhs
-```
-
-This keeps Sec checked semantics independent of lower-level remainder edge-case
-choices.
-
----
-
-# 20. Shift-count validation
-
-For value width `N`, count width `M`:
-
-```text
-K = max(N + 1, M + 1)
-```
-
-Extend count to `iK` using original semantic count signedness.
-
-Failure:
-
-```text
-signed count < 0
-count >= N
-```
-
-Create:
-
-```text
-safeCountWide = select invalid, 0, countWide
-safeCount = truncate safeCountWide to iN
-```
-
-Every raw Arith shift receives `safeCount`.
-
----
-
-# 21. Unsigned left shift
-
-```text
-result = arith.shli value, safeCount
-failed = invalidCount
-```
-
-No overflow flags.
-
-Discarding high bits is Sec-defined behavior.
-
----
-
-# 22. Signed left shift
-
-Use exact widened signed computation in `i(2N)`:
-
-```text
-wideValue = signExtend(value)
-wideCount = zeroExtend(safeCount)
-wideResult = arith.shli wideValue, wideCount
-```
-
-Failure:
-
-```text
-invalidCount
-or
-wideResult < signedMinimum(N)
-or
-wideResult > signedMaximum(N)
-```
-
-Result:
-
-```text
-truncate wideResult to iN
-```
-
----
-
-# 23. Signed right shift
-
-```text
-result = arith.shrsi value, safeCount
-failed = invalidCount
-```
-
-No `exact`.
-
----
-
-# 24. Unsigned right shift
-
-```text
-result = arith.shrui value, safeCount
-failed = invalidCount
-```
-
----
-
-# 25. Bitwise lowering
-
-```text
-sec.int.bit_not -> arith.xori with all-ones
-and -> arith.andi
-or  -> arith.ori
-xor -> arith.xori
-```
-
----
-
-# 26. Comparison lowering
-
-Equality:
-
-```text
-eq
-ne
-```
-
-Ordered signed:
-
-```text
-slt
-sle
-sgt
-sge
-```
-
-Ordered unsigned:
-
-```text
-ult
-ule
-ugt
-uge
-```
-
-Signedness is selected from the schema-v4 semantic operation before type
-normalization.
-
----
-
-# 27. Unary plus
-
-Lower to identity.
-
----
-
-# 28. Existing failure CFG
-
-Package 8 does not reconstruct failure control flow.
-
-The schema-v4:
-
-```text
-cf.cond_br failed, failure, success
-```
-
-remains.
-
-Value replacement connects generated `failed` to the same branch.
-
-`sec.fail.arithmetic` remains unchanged.
-
----
-
-# 29. Standard type conversion
-
-Convert plain builtin integer types consistently in:
-
-```text
-func.func
-block arguments
-func.call
-cf branch operands
-func.return operands
-Sec-origin rank-zero scalar memrefs
-sec.call.direct
-sec.call.foreign
-plain integer arith.constant
-schema-v4 integer op inputs/results
-```
-
-Do not recurse into nominal Sec types.
-
----
-
-# 30. Wide integer rule
-
-All arithmetic construction uses arbitrary-width MLIR/LLVM APInt facilities.
-
-Required widths:
-
-```text
-8
-16
-32
-64
-128
-256
-```
-
-Temporary widths include:
-
-```text
-N+1
-2N
-max(N+1, M+1)
-```
-
-Therefore implementations must support temporary widths such as:
-
-```text
-257
-512
-```
-
-No fixed host-width arithmetic is valid.
-
----
-
-# 31. Post-lowering state
-
-After successful Package 8:
-
-```text
-schema-v4 sec.int.* ops are absent
-plain lowered integer core values use signless iN
-checked failure flags remain i1
-checked failure branches remain
-sec.fail.arithmetic remains
-sec.call.foreign remains
-nominal integer types remain when present
-decimal/string remain high-level
-```
-
----
-
-# 32. Optimization independence
+# 18. Optimization independence
 
 Correctness does not depend on:
 
 ```text
-canonicalization
+canonicalize
 CSE
-inlining
 SCCP
 DCE
 ```
 
-Future optimization may simplify safe substitutions or overflow checks only
-after proof.
+Handler ordering must remain semantically visible before any proof-based
+simplification.
 
 ---
 
-# 33. Completion rule
+# 19. Completion
 
-Lowering specification version 4 is implemented when:
+Lowering specification version 6 is implemented when:
 
 ```text
-all schema-v4 builtin integer ops lower to standard Arith
-no raw div/rem can receive invalid divisor
-no raw shift can receive invalid count
-checked failure flags match Sec semantics
-signed/unsigned comparison semantics are preserved
-active 128/256-bit integers are fully covered
-ABI-relevant scalar provenance survives signless normalization
-sec.fail.arithmetic remains explicit
-no LLVM dialect is generated
+ordinary Result branching works without physical layout
+naked Result propagation works
+local ArithmeticError handlers work
+handler order is preserved
+fallback merges work
+return/terminate paths do not merge
+implicit Ok semantics work
+explicit Ok semantics work
+no unmatched error auto-propagation is introduced
+Result/error physical representation remains deferred
 ```

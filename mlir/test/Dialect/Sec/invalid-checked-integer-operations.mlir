@@ -1,6 +1,6 @@
 // RUN: not sec-mlir-opt --split-input-file %s 2>&1 | FileCheck %s
 
-// CHECK: op result #1 must be 1-bit signless integer
+// CHECK: op failed result must be i1
 module {
   func.func @failure_not_i1(%value: si32) {
     %result:2 = "sec.int.neg_checked"(%value) : (si32) -> (si32, i8)
@@ -40,7 +40,7 @@ module {
 
 // -----
 
-// CHECK: op invalid arithmetic failure category
+// CHECK: op schema 4 requires a valid arithmetic category
 module {
   func.func @unknown_failure_category() {
     "sec.fail.arithmetic"() <{category = "unknown"}> {sec.operator = "+"} : () -> ()

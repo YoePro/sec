@@ -31,6 +31,12 @@ func formatType(t Type) string {
 	if t.Kind == TypeNamed {
 		return fmt.Sprintf("named %q base !%d", t.Identity, t.Base)
 	}
+	if t.Kind == TypeCoreError {
+		return fmt.Sprintf("core-error %q", t.Identity)
+	}
+	if t.Kind == TypeResult {
+		return fmt.Sprintf("Result<!%d, !%d>", t.Success, t.Error)
+	}
 	s := t.Name
 	if s == "" {
 		s = string(t.Kind)
@@ -144,7 +150,26 @@ func formatOperation(out *strings.Builder, op Operation) {
 	case OpIntCompare:
 		fmt.Fprintf(out, " %s %%%d, %%%d", op.IntegerCompare, op.Operands[0], op.Operands[1])
 	case OpArithmeticFailure:
-		fmt.Fprintf(out, " %s %q", op.FailureCategory, op.Operator)
+		fmt.Fprintf(out, " %%%d %s %q", op.Operands[0], op.FailureCategory, op.Operator)
+	case OpArithmeticFailureReasonConstant:
+		fmt.Fprintf(out, " %s", op.FailureReason)
+	case OpArithmeticErrorFromReason:
+		fmt.Fprintf(out, " %%%d", op.Operands[0])
+	case OpResultOk, OpResultErr:
+		if len(op.Operands) == 1 {
+			fmt.Fprintf(out, " %%%d", op.Operands[0])
+		}
+	case OpResultIsErr, OpResultUnwrapOk, OpResultUnwrapErr:
+		fmt.Fprintf(out, " %%%d", op.Operands[0])
+	case OpCoreErrorIsVariant:
+		fmt.Fprintf(out, " %s %%%d", op.Variant, op.Operands[0])
+	}
+	if op.TryHandlerKind != "" {
+		fmt.Fprintf(out, " [handler=%s index=%d", op.TryHandlerKind, op.TryHandlerIndex)
+		if op.Variant != "" {
+			fmt.Fprintf(out, " variant=%s", op.Variant)
+		}
+		out.WriteByte(']')
 	}
 	if len(op.Results) > 0 {
 		out.WriteString(" : ")

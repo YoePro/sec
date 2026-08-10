@@ -821,7 +821,9 @@ func (p *Parser) parseTryExpression() ast.Expression {
 
 	previousStopBeforeBrace := p.stopBeforeBrace
 	p.stopBeforeBrace = true
-	expr.Expression = p.parseExpression(PREFIX)
+	// try applies to the complete following expression. stopBeforeBrace keeps a
+	// handler block distinct from postfix expression syntax.
+	expr.Expression = p.parseExpression(LOWEST)
 	p.stopBeforeBrace = previousStopBeforeBrace
 	if expr.Expression == nil {
 		return nil

@@ -33,8 +33,10 @@ type Analyzer struct {
 	symbols                     map[string]Symbol
 	completionSymbols           map[string]Symbol
 	expressionTypes             map[ast.Expression]Type
+	expectedExpressionTypes     map[ast.Expression]Type
 	bindingIDs                  map[sourceTokenKey]BindingID
 	bindingFacts                map[sourceTokenKey]ResolvedBinding
+	compilerKnownMemberFacts    map[sourceTokenKey]CompilerKnownMember
 	resolvedCalls               map[*ast.CallExpression]ResolvedCall
 	resolvedOperators           map[ast.Expression]ResolvedOperator
 	resolvedTries               map[*ast.TryExpression]ResolvedTry
@@ -177,8 +179,10 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.symbols = map[string]Symbol{}
 	a.completionSymbols = map[string]Symbol{}
 	a.expressionTypes = map[ast.Expression]Type{}
+	a.expectedExpressionTypes = map[ast.Expression]Type{}
 	a.bindingIDs = map[sourceTokenKey]BindingID{}
 	a.bindingFacts = map[sourceTokenKey]ResolvedBinding{}
+	a.compilerKnownMemberFacts = map[sourceTokenKey]CompilerKnownMember{}
 	a.resolvedCalls = map[*ast.CallExpression]ResolvedCall{}
 	a.resolvedOperators = map[ast.Expression]ResolvedOperator{}
 	a.resolvedTries = map[*ast.TryExpression]ResolvedTry{}
@@ -295,6 +299,14 @@ func (a *Analyzer) TypeOf(expr ast.Expression) (Type, bool) {
 func (a *Analyzer) DefinitionsAt(file string, line int, column int) []lexer.Token {
 	definitions := a.definitionTokens[sourceTokenKey{File: file, Line: line, Column: column}]
 	return append([]lexer.Token(nil), definitions...)
+}
+
+// CompilerKnownMemberAt returns the canonical registry entry resolved for a
+// source selector. Tooling consumes this Sema fact instead of duplicating
+// member-name or receiver-category rules.
+func (a *Analyzer) CompilerKnownMemberAt(file string, line int, column int) (CompilerKnownMember, bool) {
+	member, ok := a.compilerKnownMemberFacts[sourceTokenKey{File: file, Line: line, Column: column}]
+	return member, ok
 }
 
 // CallGraph returns an immutable snapshot of the graph produced by the most
@@ -3510,15 +3522,18 @@ func (a *Analyzer) registerFunctionDeclarationNamed(fn *ast.FunctionDeclaration,
 }
 
 func (a *Analyzer) registerCompilerKnownFunctions() {
-	a.functions["len"] = []Function{{
-		Name:       "len",
-		Module:     "core",
-		ReturnType: a.types["int"],
-	}}
+	for _, known := range CompilerKnownFunctions() {
+		a.functions[known.Name] = []Function{{
+			Name:       known.Name,
+			Module:     "core",
+			ReturnType: known.Result,
+		}}
+	}
 }
 
 func isCompilerKnownFunctionName(name string) bool {
-	return name == "len"
+	_, ok := compilerKnownFunction(name)
+	return ok
 }
 
 func (a *Analyzer) registerFunctionDeclarationBody(fn *ast.FunctionDeclaration, name string) {
@@ -10194,6 +10209,14 @@ func (a *Analyzer) validUnicodeScalarLiteral(expr *ast.IntegerLiteral) bool {
 }
 
 func (a *Analyzer) inferExpressionWithExpected(expr ast.Expression, expected Type) (Type, expressionValue) {
+	if tryExpr, ok := expr.(*ast.TryExpression); ok && tryExpr.Expression != nil {
+		a.expectedExpressionTypes[tryExpr.Expression] = expected
+		defer delete(a.expectedExpressionTypes, tryExpr.Expression)
+	}
+	if expr != nil {
+		a.expectedExpressionTypes[expr] = expected
+		defer delete(a.expectedExpressionTypes, expr)
+	}
 	if _, ok := expr.(*ast.CharLiteral); ok && expected.Kind == RuneType {
 		return Type{Name: "rune", Kind: RuneType}, expressionValue{Display: expr.String()}
 	}
@@ -10677,10 +10700,17 @@ func (a *Analyzer) inferMemberExpression(expr *ast.MemberExpression) (Type, bool
 	}
 
 	if expr.Property.Value == "Ptr" || expr.Property.Value == "ptr" {
+		member, exists := compilerKnownMember(objectType, expr.Property.Value, false)
+		if !exists || member.Kind != CompilerKnownProperty {
+			a.addErrorAtToken(expr.Property.Token, "unknown member %s on %s", expr.Property.Value, typeDisplayName(objectType))
+			return Type{Kind: InvalidType}, false
+		}
+		a.compilerKnownMemberFacts[sourceTokenLocation(expr.Property.Token)] = member
 		return a.inferPointerMember(expr, objectType)
 	}
 
 	if member, ok := compilerKnownMember(objectType, expr.Property.Value, false); ok && member.Kind == CompilerKnownProperty {
+		a.compilerKnownMemberFacts[sourceTokenLocation(expr.Property.Token)] = member
 		return member.Result, true
 	}
 
@@ -10790,6 +10820,7 @@ func (a *Analyzer) inferStaticMemberExpression(expr *ast.MemberExpression) (Type
 	symbol, exists := a.symbols[memberName]
 	if !exists {
 		if member, ok := compilerKnownMember(typ, expr.Property.Value, true); ok && member.Kind == CompilerKnownProperty {
+			a.compilerKnownMemberFacts[sourceTokenLocation(expr.Property.Token)] = member
 			return member.Result, true
 		}
 		return Type{}, false
@@ -11775,8 +11806,16 @@ func (a *Analyzer) contextualCallArgumentType(arg ast.Expression, actual Type, e
 }
 
 func (a *Analyzer) inferCompilerKnownFunction(expr *ast.CallExpression) (Type, expressionValue, bool) {
-	if callExpressionName(expr) != "len" {
+	name := callExpressionName(expr)
+	if _, known := compilerKnownFunction(name); !known {
 		return Type{}, expressionValue{}, false
+	}
+	if name == "SizeOf" {
+		return a.inferCompilerKnownGlobalSizeOf(expr)
+	}
+	if name == "fill" {
+		expected, hasExpected := a.expectedExpressionTypes[expr]
+		return a.inferCompilerKnownFill(expr, expected, hasExpected)
 	}
 	if len(expr.GenericArguments) > 0 {
 		a.addErrorAtToken(expr.Token, "len infers its element type from its argument")
@@ -11791,18 +11830,100 @@ func (a *Analyzer) inferCompilerKnownFunction(expr *ast.CallExpression) (Type, e
 	if argumentType.Kind == InvalidType {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 	}
-	if argumentType.Kind == StringType || argumentType.Kind == ArrayType {
+	if compilerKnownSequenceType(argumentType) {
 		return a.types["int"], expressionValue{Display: expr.String()}, true
 	}
-	if argumentType.Kind == ReferenceType && argumentType.Element != nil {
-		referencedType := *argumentType.Element
-		if referencedType.Kind == ArrayType || referencedType.Kind == SliceType {
-			return a.types["int"], expressionValue{Display: expr.String()}, true
-		}
-	}
 
-	a.addErrorAtToken(expressionToken(expr.Arguments[0]), "len requires string, an array, or a slice reference, got %s", typeDisplayName(argumentType))
+	a.addErrorAtToken(expressionToken(expr.Arguments[0]), "len requires a compiler-known sequence or collection, got %s", typeDisplayName(argumentType))
 	return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+}
+
+func (a *Analyzer) inferCompilerKnownGlobalSizeOf(expr *ast.CallExpression) (Type, expressionValue, bool) {
+	if len(expr.GenericArguments) > 0 {
+		a.addErrorAtToken(expr.Token, "SizeOf accepts a type argument in parentheses, not generic arguments")
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+	}
+	if len(expr.Arguments) != 1 {
+		a.addErrorAtToken(expr.Token, "SizeOf expects 1 type argument, got %d", len(expr.Arguments))
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+	}
+	path, ok := typePathFromExpression(expr.Arguments[0])
+	if !ok {
+		a.addErrorAtToken(expressionToken(expr.Arguments[0]), "SizeOf requires a type, not a value expression")
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+	}
+	name := a.resolveTypeName(path)
+	typ, exists := a.types[name]
+	if !exists && a.genericTypes != nil {
+		typ, exists = a.genericTypes[name]
+	}
+	if !exists || !compilerKnownSizedType(typ) {
+		a.addErrorAtToken(expressionToken(expr.Arguments[0]), "SizeOf requires a complete sized type, got %s", path)
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+	}
+	return a.types["uint"], expressionValue{Display: expr.String()}, true
+}
+
+func (a *Analyzer) inferCompilerKnownFill(expr *ast.CallExpression, expected Type, hasExpected bool) (Type, expressionValue, bool) {
+	result := expressionValue{Display: expr.String()}
+	if len(expr.GenericArguments) > 0 {
+		a.addErrorAtToken(expr.Token, "fill uses target context and does not accept generic arguments")
+		return Type{Kind: InvalidType}, result, true
+	}
+	if !hasExpected || expected.Kind == InvalidType || expected.Kind == "" {
+		a.addErrorAtToken(expr.Token, "fill requires an explicit array or string target type")
+		return Type{Kind: InvalidType}, result, true
+	}
+	if expected.Kind == ArrayType && expected.Element != nil {
+		if expected.ArrayLength != dynamicArrayLength {
+			if !a.checkCompilerKnownCallArity(expr, "fill", 1, 1) {
+				return Type{Kind: InvalidType}, result, true
+			}
+			valueType, _ := a.inferExpressionWithExpected(expr.Arguments[0], *expected.Element)
+			if !canInitialize(*expected.Element, valueType, expr.Arguments[0]) {
+				a.addErrorAtToken(expressionToken(expr.Arguments[0]), "fill value must be %s, got %s", typeDisplayName(*expected.Element), typeDisplayName(valueType))
+				return Type{Kind: InvalidType}, result, true
+			}
+			return expected, result, true
+		}
+		if !a.checkCompilerKnownCallArity(expr, "fill", 2, 2) {
+			return Type{Kind: InvalidType}, result, true
+		}
+		valueType, _ := a.inferExpressionWithExpected(expr.Arguments[0], *expected.Element)
+		if !canInitialize(*expected.Element, valueType, expr.Arguments[0]) {
+			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "fill value must be %s, got %s", typeDisplayName(*expected.Element), typeDisplayName(valueType))
+			return Type{Kind: InvalidType}, result, true
+		}
+		if !a.compilerKnownCountArgument(expr.Arguments[1], "fill") {
+			return Type{Kind: InvalidType}, result, true
+		}
+		return compilerKnownResult(expected, a.types["CollectionError"]), result, true
+	}
+	if expected.Kind == StringType {
+		if !a.checkCompilerKnownCallArity(expr, "fill", 2, 2) {
+			return Type{Kind: InvalidType}, result, true
+		}
+		fragmentType, _ := a.inferExpressionWithExpected(expr.Arguments[0], expected)
+		if fragmentType.Kind != StringType && fragmentType.Kind != CharType && fragmentType.Kind != RuneType {
+			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "string fill fragment must be string, char, or rune, got %s", typeDisplayName(fragmentType))
+			return Type{Kind: InvalidType}, result, true
+		}
+		if !a.compilerKnownCountArgument(expr.Arguments[1], "fill") {
+			return Type{Kind: InvalidType}, result, true
+		}
+		return compilerKnownResult(expected, a.types["CollectionError"]), result, true
+	}
+	a.addErrorAtToken(expr.Token, "fill target must be a fixed array, owning dynamic array, or string, got %s", typeDisplayName(expected))
+	return Type{Kind: InvalidType}, result, true
+}
+
+func (a *Analyzer) compilerKnownCountArgument(expr ast.Expression, operation string) bool {
+	typ, _ := a.inferExpression(expr)
+	if isIntegerType(typ) {
+		return true
+	}
+	a.addErrorAtToken(expressionToken(expr), "%s count must be an integer, got %s", operation, typeDisplayName(typ))
+	return false
 }
 
 func (a *Analyzer) inferCompilerKnownMemberCall(expr *ast.CallExpression) (Type, expressionValue, bool) {
@@ -11818,12 +11939,8 @@ func (a *Analyzer) inferCompilerKnownMemberCall(expr *ast.CallExpression) (Type,
 			if !memberExists || (member.Kind != CompilerKnownMethod && member.Kind != CompilerKnownAssociatedFunction) {
 				return Type{}, expressionValue{}, false
 			}
+			a.compilerKnownMemberFacts[sourceTokenLocation(memberExpr.Property.Token)] = member
 			switch member.Name {
-			case "SizeOf":
-				if !a.checkCompilerKnownCallArity(expr, typeDisplayName(typ)+".SizeOf", 0, 0) {
-					return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-				}
-				return member.Result, expressionValue{Display: expr.String()}, true
 			case "FromByteArray", "FromRuneArray":
 				return a.inferCompilerKnownStringConstructor(expr, member)
 			case "FromBuffer", "WithCapacity", "Growable":
@@ -11843,10 +11960,11 @@ func (a *Analyzer) inferCompilerKnownMemberCall(expr *ast.CallExpression) (Type,
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 	}
 	lookupType := dereferenceType(receiverType)
-	member, exists := compilerKnownMember(lookupType, memberExpr.Property.Value, false)
+	member, exists := compilerKnownMember(receiverType, memberExpr.Property.Value, false)
 	if !exists || member.Kind != CompilerKnownMethod {
 		return Type{}, expressionValue{}, false
 	}
+	a.compilerKnownMemberFacts[sourceTokenLocation(memberExpr.Property.Token)] = member
 	if lookupType.Named && len(a.functions[lookupType.Name+"."+member.Name]) > 0 {
 		return Type{}, expressionValue{}, false
 	}
@@ -11854,14 +11972,138 @@ func (a *Analyzer) inferCompilerKnownMemberCall(expr *ast.CallExpression) (Type,
 		return Type{}, expressionValue{}, false
 	}
 	switch member.Name {
-	case "SizeOf", "ToString", "ToByteArray", "ToCharArray", "ToRuneArray":
+	case "ToString":
+		if !a.checkCompilerKnownCallArity(expr, typeDisplayName(lookupType)+".ToString", 0, 1) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		if len(expr.Arguments) == 1 {
+			formatType, _ := a.inferExpressionWithExpected(expr.Arguments[0], a.types["string"])
+			if formatType.Kind != StringType {
+				a.addErrorAtToken(expressionToken(expr.Arguments[0]), "ToString format must be string, got %s", typeDisplayName(formatType))
+				return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+			}
+		}
+		return member.Result, expressionValue{Display: expr.String()}, true
+	case "ToByteArray", "ToCharArray", "ToRuneArray", "Clear", "Reverse", "Sort":
 		if !a.checkCompilerKnownCallArity(expr, typeDisplayName(lookupType)+"."+member.Name, 0, 0) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		return member.Result, expressionValue{Display: expr.String()}, true
+	case "Append", "Fill":
+		if !a.checkCompilerKnownCallArity(expr, typeDisplayName(lookupType)+"."+member.Name, 1, 1) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		elementType, hasElement := compilerKnownCollectionElement(lookupType)
+		if !hasElement {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		valueType, _ := a.inferExpressionWithExpected(expr.Arguments[0], elementType)
+		if !canInitialize(elementType, valueType, expr.Arguments[0]) {
+			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "%s value must be %s, got %s", member.Name, typeDisplayName(elementType), typeDisplayName(valueType))
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		classification := CopyClassificationOf(elementType)
+		if member.Name == "Fill" && classification != CopyTrivial && classification != CopySemantic {
+			a.addErrorAtToken(memberExpr.Property.Token, "Fill requires a copyable element type, got %s", typeDisplayName(elementType))
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		return member.Result, expressionValue{Display: expr.String()}, true
+	case "RemoveAt":
+		if !a.checkCompilerKnownCallArity(expr, typeDisplayName(lookupType)+".RemoveAt", 1, 1) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		if !a.compilerKnownCountArgument(expr.Arguments[0], "RemoveAt") {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		return member.Result, expressionValue{Display: expr.String()}, true
+	case "Insert":
+		if !a.checkCompilerKnownCallArity(expr, "list.Insert", 2, 2) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		if !a.compilerKnownCountArgument(expr.Arguments[0], "Insert") {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		elementType, ok := compilerKnownCollectionElement(lookupType)
+		if !ok {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		valueType, _ := a.inferExpressionWithExpected(expr.Arguments[1], elementType)
+		if !canInitialize(elementType, valueType, expr.Arguments[1]) {
+			a.addErrorAtToken(expressionToken(expr.Arguments[1]), "Insert value must be %s, got %s", typeDisplayName(elementType), typeDisplayName(valueType))
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		return member.Result, expressionValue{Display: expr.String()}, true
+	case "Remove", "Contains", "IndexOf", "Add":
+		if !a.checkCompilerKnownCallArity(expr, typeDisplayName(lookupType)+"."+member.Name, 1, 1) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		argumentType, ok := compilerKnownCollectionElement(lookupType)
+		if lookupType.Name == "map" && len(lookupType.TypeArgs) == 2 {
+			argumentType, ok = lookupType.TypeArgs[0], true
+		}
+		if !ok {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		valueType, _ := a.inferExpressionWithExpected(expr.Arguments[0], argumentType)
+		if !canInitialize(argumentType, valueType, expr.Arguments[0]) {
+			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "%s argument must be %s, got %s", member.Name, typeDisplayName(argumentType), typeDisplayName(valueType))
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		return member.Result, expressionValue{Display: expr.String()}, true
+	case "ContainsKey":
+		if !a.checkCompilerKnownCallArity(expr, "map.ContainsKey", 1, 1) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		if len(lookupType.TypeArgs) != 2 {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		keyType := lookupType.TypeArgs[0]
+		valueType, _ := a.inferExpressionWithExpected(expr.Arguments[0], keyType)
+		if !canInitialize(keyType, valueType, expr.Arguments[0]) {
+			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "ContainsKey argument must be %s, got %s", typeDisplayName(keyType), typeDisplayName(valueType))
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		return member.Result, expressionValue{Display: expr.String()}, true
+	case "SortBy":
+		if !a.checkCompilerKnownCallArity(expr, "list.SortBy", 1, 1) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		compareType, _ := a.inferExpression(expr.Arguments[0])
+		if compareType.Kind != FunctionType {
+			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "SortBy requires a comparison function, got %s", typeDisplayName(compareType))
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		return member.Result, expressionValue{Display: expr.String()}, true
+	case "Union", "Intersection", "Difference", "SymmetricDifference":
+		if !a.checkCompilerKnownCallArity(expr, "set."+member.Name, 1, 1) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		otherType, _ := a.inferExpressionWithExpected(expr.Arguments[0], lookupType)
+		if !sameConcreteType(lookupType, otherType) {
+			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "%s argument must be %s, got %s", member.Name, typeDisplayName(lookupType), typeDisplayName(otherType))
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		elementType, ok := compilerKnownCollectionElement(lookupType)
+		classification := CopyClassificationOf(elementType)
+		if !ok || classification != CopyTrivial && classification != CopySemantic {
+			a.addErrorAtToken(memberExpr.Property.Token, "%s requires a copyable set element type", member.Name)
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		return member.Result, expressionValue{Display: expr.String()}, true
 	default:
 		return Type{}, expressionValue{}, false
 	}
+}
+
+func compilerKnownCollectionElement(typ Type) (Type, bool) {
+	typ = dereferenceType(typ)
+	if (typ.Kind == ArrayType || typ.Kind == SliceType) && typ.Element != nil {
+		return *typ.Element, true
+	}
+	if (typ.Name == "list" || typ.Name == "set") && len(typ.TypeArgs) == 1 {
+		return typ.TypeArgs[0], true
+	}
+	return Type{}, false
 }
 
 func compilerKnownReceiverRoot(expr ast.Expression) *ast.Identifier {
@@ -12918,6 +13160,12 @@ func splitUnionVariantTypeName(name string) (string, string, bool) {
 
 func (a *Analyzer) inferCallExpressionWithExpected(expr *ast.CallExpression, expected Type) (Type, expressionValue, bool) {
 	name := callExpressionName(expr)
+	if name == "fill" {
+		return a.inferCompilerKnownFill(expr, expected, true)
+	}
+	if name == "len" || name == "SizeOf" {
+		return a.inferCompilerKnownFunction(expr)
+	}
 	functions, ok := a.functions[name]
 	if !ok || len(functions) == 0 {
 		if implName, implOK := a.implScopedFunctionName(name); implOK {

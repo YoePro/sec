@@ -3635,8 +3635,8 @@ data_races.md
 deadlock_analysis.md
 ffi.txt
 registers.txt
-arrays-slices.txt
-collections-shaped-types.md
+collections.md
+shaped-types.md
 types.md
 contracts.md
 functions.txt

@@ -130,43 +130,9 @@ Partial or pending:
 Default values implementation status
 ------------------------------------
 
-Implemented:
-
-- compiler-owned `DefaultValueOf` and `IsDefaultable` queries
-- primitive numeric, bool, string, char and rune defaults
-- named primitive default inheritance
-- exact integer range defaults, including even, odd and `multipleOf`
-- exact inclusive decimal range defaults without binary-float conversion
-- ambiguity rejection for equally near integer defaults
-- ordered `in [...]` defaults for primitive constants
-- declaration-time validation of every `in [...]` member against the complete
-  named-type contract set
-- explicit `default <constant-expression>` parsing and validation
-- recursive struct and fixed-array default resolution with cycle protection
-- omitted stored struct-field materialization during Sema
-- mutable typed declaration default materialization during Sema
-- non-defaultable references, slices, unions, Result, Option, functions,
-  interfaces and intrinsic resources
-- stable diagnostic IDs for invalid explicit defaults, non-defaultable mutable
-  declarations and missing non-defaultable struct fields
-- MLIR coverage proving defaulted struct fields are inserted explicitly
-- LSP hover and type-completion display of resolved defaults
-- no runtime calls or hidden allocation for implicit defaults
-- fixed-array elementwise defaults, including zero-length arrays
-- safe slices intentionally have no implicit default
-
-Partial or pending:
-
-- exact float range-derived defaults and exclusive decimal upper-bound successors
-- enum default selection synchronized with `enums.txt`
-- union default variants synchronized with `unions.txt`
-- parser/AST/Sema/lowering support for canonical empty `list[T] {}` and
-  `list[T, Capacity] {}` literals and descriptors; the rule is written but the
-  compiler currently treats intrinsic lists as non-defaultable
-- explicit Semantic IR default operations and cleanup regions
-- complete LLVM struct lowering and backend default verification
-- LSP code actions for expanding or declaring defaults
-- full fixture matrix listed by `default_values.md`
+Canonical status has moved to `implementation-status.yaml` under integration ID
+`frontend.default-values`. This legacy index must not duplicate its implemented
+or remaining lists.
 
 Defer lifetime implementation status
 ------------------------------------
@@ -382,8 +348,8 @@ Canonical documentation synchronization:
 - `contracts.md` now defines contracts only on named types; obsolete variable-
   and ordinary-field contract syntax is noncanonical, while compiler rejection
   of every legacy form still requires an audit
-- `types.md`, `struct.txt`, `arrays-slices.txt`,
-  `collections-shaped-types.md`, `memory_model.md`, `ownership.md`,
+- `types.md`, `struct.txt`, `collections.md`, `shaped-types.md`,
+  `memory_model.md`, `ownership.md`,
   `copy_move.md`, `formatter.md`, `operators.md` and `lexical_structure.md`
   cross-reference the canonical default model
 - explicit move syntax is implemented in the lexer, parser, AST and Sema for

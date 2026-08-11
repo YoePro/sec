@@ -1,0 +1,322 @@
+package:
+  id: SEC-MLIR-P19
+  name: Allocation Context and Arena Semantic Lowering
+  repository: https://github.com/YoePro/sec
+  branch: main
+  repository_sync_commit: 152c772
+  repository_sync_date: '2026-08-10'
+  local_predecessors:
+  - SEC-MLIR-P13
+  - SEC-MLIR-P14
+  - SEC-MLIR-P15
+  - SEC-MLIR-P16
+  - SEC-MLIR-P17
+  - SEC-MLIR-P18
+  semantic_ir_version_before: 1
+  semantic_ir_version_after: 1
+  sec_mlir_schema_before: 14
+  sec_mlir_schema_after: 15
+  lowering_spec_before: 14
+  lowering_spec_after: 15
+  goal: Make Arena and allocation context explicit in Semantic IR/Sec MLIR while preserving
+    target-independent provider, storage, ownership, and epoch semantics.
+  next_package: Floating-Point Semantic Operations and Arith Lowering
+normative_updates:
+- repository_paths:
+  - rules/arena.md
+  - rules/allocation.txt
+  - rules/storage.md
+  - rules/reference_model.md
+  - rules/core-library.md
+  supplied_file: sec_arena_allocation_sync_package19.md
+- repository_path: rules/semantic_ir.txt
+  supplied_file: sec_semantic_ir_arena_package19.md
+- repository_path: rules/sec_mlir_dialect.md
+  supplied_file: sec_mlir_dialect_package19.md
+  schema_version: 15
+- repository_path: rules/sec_mlir_lowering.md
+  supplied_file: sec_mlir_lowering_package19.md
+  version: 15
+wide_builtin_invariant:
+  active:
+  - int128
+  - int256
+  - uint128
+  - uint256
+  - decimal128
+  status_change: false
+arena:
+  source_type: Arena
+  semantic_builtin: true
+  copy_classification: MoveOnly
+  lowercase_arena_keyword: false
+  domain_identity: ArenaDomainID
+  state_version: ArenaStateVersionID
+  validity_epoch: separate from state version
+  backing_kinds:
+  - Owned
+  - Borrowed
+  - Static
+  - TargetProvided
+  growth_kinds:
+  - Fixed
+  - Growable
+  physical_descriptor_selected: false
+constructors:
+  from_buffer:
+    source: Arena.FromBuffer(ref mut byte[])
+    fallible: false
+    backing: borrowed fixed
+    allocates: false
+    fresh_domain: true
+  with_capacity:
+    source: Arena.WithCapacity(uint)
+    result: Result[Arena, AllocationError]
+    backing: owned fixed
+    fallible: true
+    fresh_domain_on_success: true
+  growable:
+    source: Arena.Growable(uint) when frontend/profile enabled
+    result: Result[Arena, AllocationError]
+    fallible: true
+    semantic_model_required: true
+    relocate_existing_allocations: false
+typed_allocation:
+  new: Result[ref mut T, AllocationError]
+  alloc: Result[ref mut T[], AllocationError]
+  requirements:
+  - complete layout
+  - sized
+  - known alignment
+  - canonical default
+  - safe initialization
+  - trivially destructible
+  atomic: true
+  ordinary_allocation_advances_epoch: false
+  zero_element_alloc_succeeds: true
+  individual_free: false
+allocation_error:
+  type: AllocationError
+  variants:
+  - OutOfMemory
+  - Unsupported
+  - InvalidSize
+  - InvalidAlignment
+  panic_on_failure: false
+  null_on_failure: false
+reset_release:
+  reset:
+    consumes_arena: false
+    domain_identity_preserved: true
+    transition: AdvanceEpoch
+    backing_retained: true
+    requires_no_live_dependency: true
+  release:
+    consumes_arena: true
+    transition: EndDomain
+    requires_no_live_dependency: true
+  implicit_destruction: terminal Release semantics
+  epoch_silent_wrap: false
+nested_arena:
+  supported: true
+  child_domain: fresh
+  child_epoch: independent
+  depends_on_parent_domain_epoch: true
+  blocks_parent_reset_release: true
+allocation_context:
+  per_invocation: zero or one
+  source_visible: false
+  may_allocate_distinct_from_requires_context: true
+  selection_order:
+  - explicit Arena selected by operation
+  - propagated ambient
+  - compiler-local proven
+  - target-provided
+  - otherwise compile-time error
+  lexical_arena_guessing: false
+  sync_propagation: true
+  spawn_inherits_parent_mutable_context: false
+  foreign_hidden_arg_without_contract: false
+semantic_ir:
+  version_bump: false
+  types:
+  - ArenaType
+  - AllocationContextType
+  ids_facts:
+  - ArenaDomainID
+  - ArenaStateVersionID
+  - ResolvedArenaPlan
+  - ResolvedArenaCreatePlan
+  - ResolvedArenaAllocationPlan
+  - ResolvedArenaResetPlan
+  - ResolvedArenaReleasePlan
+  ops:
+  - ArenaCreateBorrowedOp
+  - ArenaCreateOwnedFixedOp
+  - ArenaCreateGrowableOp
+  - ArenaNewOp
+  - ArenaAllocOp
+  - ArenaResetOp
+  - ArenaReleaseOp
+  - ArenaDestroyOp
+  - AllocationContextFromArenaOp
+  - AllocationContextTargetOp
+  - AllocationContextCompilerLocalOp
+  reuses_storage_ops:
+  - StorageEstablishDomainOp
+  - StorageAdvanceEpochOp
+  - StorageEndDomainOp
+  - StorageReclaimOp
+dialect:
+  schema_version: 15
+  types:
+  - '!sec.arena'
+  - '!sec.alloc_context'
+  ops:
+  - sec.arena.create_borrowed
+  - sec.arena.create_owned_fixed
+  - sec.arena.create_growable
+  - sec.arena.new
+  - sec.arena.alloc
+  - sec.arena.reset
+  - sec.arena.release
+  - sec.arena.destroy
+  - sec.alloc_context.from_arena
+  - sec.alloc_context.target
+  - sec.alloc_context.compiler_local
+  hidden_context_arg_attr: sec.hidden_allocation_context
+  verifiers:
+  - --sec-verify-arenas
+  - --sec-verify-allocation-contexts
+  physical_descriptor: false
+  provider_abi: false
+effects:
+  ordered:
+  - ArenaCreate
+  - ArenaAllocate
+  - ArenaReset
+  - ArenaRelease
+  domain_aware_resource: ArenaResource(ArenaDomainID)
+  may_allocate: true
+  requires_context_separate: true
+capacity_analysis:
+  included: basic
+  summary_forms:
+  - constant
+  - sum
+  - maximum
+  - constant multiplication
+  - range upper bound
+  - unknown
+  - unbounded
+  strict_profiles_can_require_bounded: true
+  full_concurrency_capacity_analysis: false
+profiles:
+  hosted: ambient context and growable strategies normally available
+  embedded_fixed: borrowed/static/target fixed backing preferred
+  bare_metal_bounded: bounded demand/no hidden growth may be required
+  noalloc: no hidden ambient provider; FromBuffer may remain
+compatibility:
+  p15: Arena.New ref mut and domain/epoch dependencies
+  p16: Arena.Alloc mutable slices
+  p17: Arena move/destruction/cleanup
+  p18: dynamic arrays consume same allocation context/storage transition model
+  storage: EstablishDomain/AdvanceEpoch/EndDomain/Reclaim reused
+deferred:
+- physical Arena descriptor
+- physical provider ABI
+- malloc/free selection
+- uninitialized safe Arena allocation
+- individual Arena allocation Free
+- full task/thread execution lowering
+- concurrent Arena
+- stable/weak handles
+- full FFI retention lowering
+- universal panic unwinder
+- general collections
+- LLVM Arena lowering
+tests:
+  arena_source:
+  - builtin
+  - lowercase identifier
+  - move-only
+  - FromBuffer
+  - WithCapacity
+  - New
+  - Alloc
+  - Reset
+  - Release
+  - nested
+  allocation:
+  - safe T restrictions
+  - zero count
+  - atomic failure
+  - AllocationError
+  - repeated allocation
+  - wide active types
+  context:
+  - MayAllocate vs RequiresAllocationContext
+  - sync propagation
+  - explicit Arena
+  - lexical no-guess
+  - compiler-local proof
+  - target context
+  - no context error
+  - foreign boundary
+  capacity:
+  - sum
+  - branch max
+  - bounded loop
+  - reset window
+  - unknown
+  - unbounded
+  - strict profile
+  regression:
+  - schema14
+  - check-sec-mlir
+  - go test ./...
+  - legacy paths
+acceptance:
+- Arena/allocation sync
+- Semantic IR amendment
+- schema v15
+- lowering v15
+- Arena MoveOnly
+- ArenaDomain/state/epoch
+- FromBuffer
+- WithCapacity
+- growable semantic model
+- New/Alloc
+- AllocationError
+- atomic failure
+- Reset/Release
+- implicit destruction
+- nested Arena
+- allocation context summary
+- hidden internal context propagation
+- foreign boundary
+- ordered Arena effects
+- basic capacity summaries
+- strict profile checks
+- Arena/context MLIR
+- two new verifiers
+- P15-P18 integration
+- no physical descriptor/provider ABI
+- no mandatory runtime
+- check-sec-mlir
+- go test ./...
+package20:
+  name: Floating-Point Semantic Operations and Arith Lowering
+  scope:
+  - float/float32/float64 operations
+  - literal conversion
+  - IEEE NaN/infinity/signed zero
+  - ordered comparisons
+  - float remainder
+  - classification intrinsics
+  - integer/float conversions
+  - constant folding parity
+  - Arith lowering
+  - target capability checks
+  - no accidental fast-math
+  next_after: decimal and decimal128 semantic/lowering package

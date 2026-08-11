@@ -20,7 +20,7 @@ package:
   next_package: Ownership Transfer and Destruction Semantic Core
 normative_updates:
 - repository_paths:
-  - rules/arrays-slices.txt
+  - rules/collections.md
   - rules/runtime_checks.md
   - rules/core-library.md
   - rules/reference_model.md

@@ -71,7 +71,7 @@ types.md
 struct.txt
     struct declarations, fields, literals, properties, and field tags
 
-arrays-slices.txt
+collections.md
     fixed arrays, owning dynamic arrays, slice references, indexing, and slicing
 
 enums.txt
@@ -84,7 +84,7 @@ registers.txt
     register bit layout and addressed hardware access
 
 compiler_known_members.md
-    source-facing compiler-known layout queries such as SizeOf()
+    source-facing compiler-known layout queries such as `T.SizeOf` and `SizeOf(T)`
 
 reference_model.md
     safe-reference guarantees and profile-selected reference representation
@@ -147,8 +147,8 @@ The current compiler implements:
 - union declaration-order variant indices;
 - the conceptual union representation of tag plus largest payload storage;
 - register declarations with exact semantic bit widths;
-- compiler-known `SizeOf()` semantics for complete layouts;
-- target-plan-sensitive `SizeOf()` evaluation;
+- compiler-known `SizeOf` semantics for complete layouts;
+- target-plan-sensitive `SizeOf` evaluation;
 - descriptor-size semantics that exclude separate backing storage;
 - semantic metadata for fields, enum representation, union representation,
   register width, ABI requirements, and explicit layout attributes;
@@ -616,7 +616,7 @@ runtime-sized payload while remaining sized itself.
 
 It has no addressable storage layout.
 
-`void.SizeOf()` is invalid.
+`void.SizeOf` is invalid.
 
 ## Internal `never`
 
@@ -700,7 +700,7 @@ The pointer-sized rule is semantic and must be applied consistently across:
 - constant range checks;
 - MLIR;
 - LLVM;
-- `SizeOf()`;
+- `SizeOf`;
 - ABI validation;
 - FFI validation.
 
@@ -936,7 +936,7 @@ The following do not add stored bytes:
 
 ## Tail padding
 
-Tail padding is included in `SizeOf()`.
+Tail padding is included in `SizeOf`.
 
 It ensures that adjacent values in an array or aggregate can satisfy the
 struct's alignment.
@@ -1173,6 +1173,10 @@ It does not return:
 length * SizeOf(T)
 ```
 
+This is the type-layout query. For an owning-array instance, `values.SizeOf`
+reports `values.Len * stride(T)` payload bytes and does not reveal descriptor
+layout or unused capacity.
+
 and does not include separate backing allocation.
 
 The exact native descriptor representation is profile-selected.
@@ -1213,7 +1217,10 @@ ref mut T[]
 
 are sized safe-reference descriptors.
 
-Their backing element sequence is not included in descriptor `SizeOf()`.
+Their backing element sequence is not included in the internal descriptor-layout
+query or type-form `SizeOf(ref T[])`. The public instance property
+`view.SizeOf` instead reports represented payload bytes as defined by
+`compiler_known_members.md`.
 
 A valid representation must preserve:
 
@@ -2147,7 +2154,7 @@ explicit contract.
 
 Normally observable layout facts include:
 
-- `SizeOf()`;
+- `SizeOf`;
 - compiler-known alignment queries when exposed;
 - compiler-known stride queries when exposed;
 - explicit field offsets;
@@ -2282,7 +2289,7 @@ StrideOf
 FieldOffset
 ```
 
-`SizeOf()` already has compiler-known source forms defined by
+`SizeOf` already has compiler-known source forms defined by
 `compiler_known_members.md`.
 
 The final source spellings of the remaining queries may be defined there or by
@@ -2946,7 +2953,7 @@ Make scalar layout consistent across:
 - MLIR;
 - direct LLVM paths that remain;
 - enum lowering;
-- `SizeOf()`;
+- `SizeOf`;
 - FFI validation.
 
 In particular:
@@ -3010,7 +3017,7 @@ Synchronize at least:
 
 ```text
 types.md
-arrays-slices.txt
+collections.md
 struct.txt
 enums.txt
 unions.txt
@@ -3119,7 +3126,8 @@ Fixed arrays use T[N], inline contiguous element slots, and no hidden
 descriptor.
 
 T[] is a sized owning descriptor whose separate backing storage is excluded from
-descriptor SizeOf().
+the internal/type descriptor-size query; instance `values.SizeOf` is the live
+payload byte extent.
 
 Slices and safe references use profile-selected sized representations.
 

@@ -280,7 +280,7 @@ Example:
 Grammar:
 
     TryAssignment
-        := "try" Assignment TryHandlerBlock
+        := "try" Assignment [TryHandlerBlock]
 
 Rules:
 
@@ -291,7 +291,23 @@ Rules:
 - the success case does not need to be written in the handler block,
 - an explicit `Ok(...)` handler is also allowed,
 - handlers do not need to produce a fallback value,
+- without a handler block, the exact setter error is propagated by immediate
+  return from the enclosing `Result[_, E]` function,
+- bodyless propagation performs no implicit error conversion and never
+  propagates `Option`,
 - a fallible setter assignment without `try` is invalid.
+
+Bodyless propagation:
+
+    try car.TopSpeed = current_speed
+
+is semantically equivalent on failure to:
+
+    return Err(error)
+
+where `error` has the setter's exact declared error type. Sema, Semantic IR,
+control-flow, ownership, borrow, escape, and definite-initialization analyses
+must model this as a possible early-return edge.
 
 Invalid:
 
@@ -309,7 +325,7 @@ Try grammar
         := "try" Expression [TryHandlerBlock]
 
     TryAssignment
-        := "try" Assignment TryHandlerBlock
+        := "try" Assignment [TryHandlerBlock]
 
     TryHandlerBlock
         := "{" TryHandler { TryHandler } "}"

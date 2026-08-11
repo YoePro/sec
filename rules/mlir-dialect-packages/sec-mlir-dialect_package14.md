@@ -65,7 +65,7 @@ aggregate ABI lowering
 Implementation follows:
 
 ```text
-rules/arrays-slices.txt
+rules/collections.md
 rules/spread.txt
 rules/default_values.md
 rules/runtime_checks.md
@@ -135,7 +135,7 @@ continuing.
 
 # 3. Mandatory rule synchronization: array literal spread
 
-`rules/arrays-slices.txt` still contains older wording saying:
+`rules/collections.md` still contains older wording saying:
 
 ```text
 No spread ... is included in the initial implementation.

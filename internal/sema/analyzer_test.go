@@ -2101,7 +2101,7 @@ fn Test() int {
 	expected := []string{
 		"function len is compiler-known and cannot be declared at 4:4",
 		"len expects 1 argument, got 0 at 9:14",
-		"len requires string, an array, or a slice reference, got bool at 10:17",
+		"len requires a compiler-known sequence or collection, got bool at 10:17",
 		"len infers its element type from its argument at 11:18",
 	}
 	assertSemaErrors(t, errors, expected)

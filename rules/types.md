@@ -1419,7 +1419,8 @@ Array length is part of type identity.
 
 Slices are non-owning references to sequence storage.
 
-The complete rules for layout, indexing, slicing, ownership, defaultability, and bounds are defined by the array/slice rulebook.
+The complete rules for layout, indexing, slicing, ownership, defaultability,
+and bounds are defined by `collections.md`.
 
 ---
 
@@ -1528,7 +1529,7 @@ OrderedMap[K, V]
 OrderedSet[T]
 ```
 
-Detailed collection semantics are defined by `collections-shaped-types.md`.
+Detailed collection semantics are defined by `collections.md`.
 
 ---
 
@@ -1560,7 +1561,7 @@ The uppercase supporting types remain nominal core types.
 
 Physical layout is not inferred from the source spelling unless the shaped-type rulebook explicitly makes layout observable.
 
-Detailed shape, stride, layout, memory-space, view, and matrix-operation rules are defined by `collections-shaped-types.md`.
+Detailed shape, stride, layout, memory-space, view, and matrix-operation rules are defined by `shaped-types.md`.
 
 ---
 
@@ -1761,8 +1762,8 @@ contracts.md
 runtime_checks.md
 default_values.md
 units.txt
-arrays-slices.txt
-collections-shaped-types.md
+collections.md
+shaped-types.md
 reference_model.md
 ownership.md
 copy_move.md

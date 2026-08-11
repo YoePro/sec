@@ -1519,7 +1519,7 @@ move targets are supported:
 resources[23] <- replacement
 ```
 
-Support for indexed move targets must be specified by `arrays-slices.txt`.
+Support for indexed move targets must be specified by `collections.md`.
 
 An API such as:
 
@@ -3048,8 +3048,8 @@ contracts.md
 types.md
 functions.txt
 struct.txt
-arrays-slices.txt
-collections-shaped-types.md
+collections.md
+shaped-types.md
 borrowing.txt
 references.txt
 lifetime_analysis.txt
@@ -3479,7 +3479,7 @@ Update diagnostics to mention borrowing or replacement.
 
 ## A.13 Collections
 
-Update `collections-shaped-types.md`:
+Update `collections.md` and `shaped-types.md`:
 
 - ordinary collection reads copy when the element is copyable;
 - `list` may support `let value :<- list[index]` as structural consuming
@@ -3491,6 +3491,12 @@ Update `collections-shaped-types.md`:
 
 Implement list extraction only after parser, Sema place analysis, and core API
 semantics agree.
+
+Owning dynamic arrays `T[]` are `MoveOnly` for every element type. The owner is
+the sole authority that destroys initialized elements and reclaims its backing
+allocation. No descriptor copy may duplicate that authority. `RemoveAt`
+performs explicit consuming extraction; ordinary indexing never silently moves
+an element. Slices carry no reclamation authority.
 
 ---
 
@@ -3685,8 +3691,8 @@ contracts.md
 types.md
 functions.txt
 struct.txt
-arrays-slices.txt
-collections-shaped-types.md
+collections.md
+shaped-types.md
 borrowing.txt
 references.txt
 lifetime_analysis.txt

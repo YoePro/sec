@@ -61,7 +61,7 @@ rules/copy_move.md
 rules/runtime_checks.md
 rules/panic.md
 rules/raw_pointers.txt
-rules/arrays-slices.txt
+rules/collections.md
 rules/struct.txt
 rules/unions.txt
     ↓

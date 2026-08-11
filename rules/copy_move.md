@@ -1730,6 +1730,15 @@ Extract
 
 The operations define ownership on success and failure.
 
+Owning dynamic arrays `T[]` are always move-only, independently of whether `T`
+is copyable. Assignment, argument passing, and return therefore move the owner;
+the language never inserts a deep backing-store copy. Element extraction is an
+explicit structural operation such as `RemoveAt(index)`, which moves the
+selected element out, compacts the initialized suffix, and updates `Len`.
+
+Slices remain non-owning views. Copying a slice copies only the view and never
+copies or transfers its backing elements.
+
 ---
 
 # Iteration
@@ -3161,8 +3170,8 @@ types.md
 contracts.md
 functions.txt
 struct.txt
-arrays-slices.txt
-collections-shaped-types.md
+collections.md
+shaped-types.md
 borrowing.txt
 references.txt
 lifetime_analysis.txt

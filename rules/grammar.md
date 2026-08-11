@@ -675,10 +675,9 @@ list[T] {}
 list[T, Capacity] {}
 ```
 
-Dedicated list-literal semantic resolution is not complete.
-
-The parser must preserve enough syntax to distinguish a compiler-known
-collection literal from a struct literal.
+The parser and AST must preserve enough syntax to distinguish a compiler-known
+collection literal from a struct literal. Implementation progress is tracked by
+`frontend.default-values` in `implementation-status.yaml`.
 
 ## Properties
 
@@ -2517,7 +2516,7 @@ The target is evaluated exactly once.
 
 ```text
 TryAssignmentStatement
-    ::= "try" PlaceExpression AssignmentOperator Expression TryHandlerBlock
+    ::= "try" PlaceExpression AssignmentOperator Expression [TryHandlerBlock]
 ```
 
 Example:
@@ -2530,7 +2529,11 @@ try percent += Percent(value) {
 }
 ```
 
-The handler block is mandatory for try assignment.
+Without a handler block, a failed setter result is propagated as an immediate
+`return Err(error)` from the enclosing function. The enclosing return type must
+be `Result[_, E]` with the exact setter error type `E`; this form does not
+propagate `Option` and performs no implicit error conversion. With a handler
+block, the ordinary local-handler rules apply.
 
 ---
 
@@ -3282,9 +3285,6 @@ Examples:
 list[string] {}
 list[Packet, 32] {}
 ```
-
-This is canonical but semantic resolution is not yet complete in the current
-compiler.
 
 It is not a struct literal.
 
@@ -4543,8 +4543,8 @@ interfaces.txt
 impl.txt
 properties.txt
 events.md
-arrays-slices.txt
-collections-shaped-types.md
+collections.md
+shaped-types.md
 spread.txt
 flowcontrol_if.txt
 flowcontrol_for.txt

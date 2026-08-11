@@ -1,5 +1,5 @@
 schema_version: 1
-updated: "2026-08-10"
+updated: "2026-08-11"
 purpose: >-
   Canonical implementation ledger for compiler and tooling work. Normative
   language behavior remains in rules/, while implementation status is migrated
@@ -88,7 +88,7 @@ integrations:
       - rules/copy_move.md
       - rules/borrowing.txt
       - rules/lifetime_analysis.txt
-      - rules/arrays-slices.txt
+      - rules/collections.md
       - rules/properties.txt
     code:
       - internal/sema/place.go
@@ -446,16 +446,23 @@ integrations:
       - explicit arena allocation operations in Semantic IR and lowering through MLIR and LLVM
       - allocator implementation, target-specific backing storage, capacity analysis, and runtime behavior
 
-  - id: frontend.arrays-slices
+  - id: frontend.collections
     area: frontend
-    status: planned
+    status: partial
     integrated: "2026-08-07"
+    audited: "2026-08-11"
     summary: >-
-      Reserves a dedicated end-to-end implementation ledger for the complete
-      fixed-array, slice, indexing, and slicing contract. Existing Place and
-      Arena slices are recorded by their owning analysis integrations.
+      Tracks fixed arrays, owning dynamic arrays, slices, list, map, and set
+      against the unified collections rulebook. Parser/type recognition and
+      Place-backed indexing provide a usable slice; canonical public members,
+      allocation-aware owners, library collections, and lowering remain.
     rules:
-      - rules/arrays-slices.txt
+      - rules/collections.md
+    implemented:
+      - parser and AST support for canonical fixed-array, dynamic-array, slice, list, map, and set type forms
+      - Sema recognition and arity validation for compiler-known collection families
+      - Place-backed fixed-array and slice indexing used by borrow and ownership analysis
+      - contextual collection type identities exposed to formatter and LSP registries
     remaining:
       - complete parser, AST, and Sema coverage for the canonical fixed-array and slice syntax contract
       - array literal inference, bounds, indexing, slicing, assignment, equality, and ownership validation
@@ -464,10 +471,225 @@ integrations:
       - explicit array and slice operations in Semantic IR and lowering through MLIR and LLVM
       - focused valid, invalid, recovery, analysis, and backend test coverage
 
+  - id: frontend.shaped-types
+    area: frontend-and-lowering
+    status: partial
+    integrated: "2026-08-11"
+    summary: >-
+      Tracks vector, matrix, tensor, tensor_view, Shape, Strides, TensorLayout,
+      and MemorySpace independently from ordinary collections.
+    rules:
+      - rules/shaped-types.md
+    implemented:
+      - parser and AST accept mixed type/value generic arguments used by shaped types
+      - Sema recognizes vector, matrix, tensor, and tensor_view identities and validates basic arity and dimensions
+      - rank-one vector values participate in iterable type inference
+    remaining:
+      - complete shape, stride, layout, memory-space, view, and matrix-operation semantics
+      - add explicit shaped operations and verification to Semantic IR and Sec MLIR
+      - complete ownership, alias, runtime-check, formatter, LSP, and end-to-end test coverage
+
+  - id: collections.rulebook-split
+    area: documentation-governance
+    status: implemented
+    integrated: "2026-08-11"
+    summary: >-
+      Replaces the legacy arrays/slices and mixed collections/shaped books with
+      collections.md and shaped-types.md, and migrates canonical references.
+    rules:
+      - rules/collections.md
+      - rules/shaped-types.md
+    implemented:
+      - ordinary collection semantics consolidated in collections.md
+      - shaped value, view, layout, and memory-space semantics isolated in shaped-types.md
+      - legacy rulebooks retired and repository references migrated
+
+  - id: frontend.collection-member-migration
+    area: frontend-and-tooling
+    status: partial
+    integrated: "2026-08-11"
+    rules:
+      - rules/collections.md
+      - rules/compiler_known_members.md
+      - rules/core-library.md
+    code:
+      - internal/sema/compiler_known_members.go
+      - internal/sema/analyzer.go
+      - cmd/lsp/main.go
+    tests:
+      - internal/sema/compiler_known_members_test.go
+      - internal/sema/analyzer_test.go
+      - cmd/lsp/main_test.go
+    implemented:
+      - one canonical Sema registry supplies compiler and LSP member availability
+      - Len, IsEmpty, Ptr, and property-form instance and associated SizeOf resolution
+      - global len and SizeOf(T) validation without treating the type operand as a runtime value
+      - list, map, set, dynamic-array, and mutable-slice member surfaces with stable semantic IDs
+      - LSP completion, hover, and semantic-token classification consume registry and resolved Sema facts
+      - removed LSP-local array, rune-sequence, and RawPtr completion duplication
+    remaining:
+      - migrate remaining bootstrap and source-corpus uses of legacy .len and .ptr spellings
+      - represent stable member IDs and collection payload-byte SizeOf explicitly in Semantic IR and lowering
+      - add target-layout evaluation and backend verification for instance and type SizeOf
+      - complete synthetic definitions and signature documentation for editor navigation
+
+  - id: frontend.dynamic-array-public-api
+    area: frontend-and-lowering
+    status: partial
+    integrated: "2026-08-11"
+    rules:
+      - rules/collections.md
+      - rules/mlir-dialect-packages/sec-mlir-dialect_package18.md
+    depends_on:
+      - SEC-MLIR-P18
+      - allocation-context semantics from P19 where required
+    implemented:
+      - Sema and LSP expose exactly Len, IsEmpty, Ptr, SizeOf, Append, Clear, RemoveAt, and ToString
+      - Append validates element type and returns Result[void, CollectionError]
+      - Clear resolves as infallible void mutation
+      - RemoveAt validates an integer index and returns Option[T]
+    remaining:
+      - resolve omitted mutable T[] initialization as an allocation-free empty owning value with zero length, zero internal capacity, no backing storage, and no live elements
+      - implement transactional Append on the P18 growth substrate
+      - make Clear reverse-destroy live elements while retaining backing
+      - make RemoveAt return Option[T], compact the suffix, and preserve the initialized prefix
+      - enforce active-borrow and storage-invalidation rules on mutating methods
+
+  - id: frontend.bodyless-try-assignment
+    area: frontend-analysis
+    status: planned
+    integrated: "2026-08-11"
+    rules:
+      - rules/grammar.md
+      - rules/errorhandling.txt
+    remaining:
+      - accept try Assignment without a handler block
+      - require enclosing Result success/error shape with the setter's exact error type
+      - model failure as an early return in Semantic IR, cleanup, defer, borrow, and definite-initialization analyses
+      - reject implicit Option propagation and implicit error conversion
+
+  - id: frontend.compiler-known-fill
+    area: frontend-and-lowering
+    status: partial
+    integrated: "2026-08-11"
+    rules:
+      - rules/collections.md
+      - rules/compiler_known_members.md
+    implemented:
+      - reserve fill as a compiler-known global and expose it through ordinary compiler/LSP function inventories
+      - resolve fixed-array fill(value) from expected target element type and extent
+      - resolve fallible dynamic-array fill(value, count) and string fill(fragment, count) from expected target type
+      - reject missing target context, wrong arity, incompatible values, and non-integer counts
+      - expose mutable-slice Fill only on ref mut T[] and reject non-copyable element types
+    remaining:
+      - lower fixed-array fill to repeated inline initialization without runtime support
+      - lower dynamic-array and string fill through explicit allocation and CollectionError paths
+      - represent fill and mutable-slice Fill as stable Semantic IR operations
+
+  - id: frontend.map-indexed-upsert
+    area: frontend
+    status: planned
+    integrated: "2026-08-11"
+    rules:
+      - rules/collections.md
+    remaining:
+      - make existing map entries produce indexed Places and missing lookup use checked key-access failure
+      - make indexed assignment an upsert, including bodyless try for fallible upsert
+      - support key-value iteration with unspecified order
+      - do not add map Set or repurpose declaration assignment as mutation
+
+  - id: frontend.collection-errors
+    area: frontend-and-core
+    status: planned
+    integrated: "2026-08-11"
+    rules:
+      - rules/collections.md
+      - rules/core-library.md
+    remaining:
+      - use bool or Option for normal absence and rejection where specified
+      - normalize CollectionError with AllocationFailed, CapacityExceeded, and SizeOverflow
+      - map lower-level AllocationError at collection API boundaries
+      - retain IndexError, RangeError, and key-access errors for checked access
+
+  - id: frontend.default-values
+    area: frontend-and-lowering
+    status: partial
+    integrated: "2026-08-11"
+    audited: "2026-08-11"
+    summary: >-
+      Tracks the compiler-owned, allocation-free default resolver required by
+      default_values.md and its synchronized type, contract, aggregate, and
+      collection rules. Parser and Sema materialize primitive, constrained,
+      struct, and fixed-array defaults without a runtime; owning dynamic-array
+      and list defaults, Semantic IR, cleanup, and end-to-end verifier coverage
+      remain incomplete.
+    rules:
+      - rules/default_values.md
+      - rules/types.md
+      - rules/contracts.md
+      - rules/struct.txt
+      - rules/collections.md
+      - rules/shaped-types.md
+      - rules/grammar.md
+      - rules/formatter.md
+    code:
+      - internal/ast/ast.go
+      - internal/parser/parser.go
+      - internal/sema/contracts.go
+      - internal/sema/defaults.go
+      - internal/sema/analyzer.go
+      - internal/diagnostics/diagnostics.go
+      - internal/codegen/mlir/generator.go
+    tests:
+      - internal/parser/parser_test.go
+      - internal/sema/defaults_test.go
+      - internal/codegen/mlir/generator_test.go
+      - cmd/lsp/main_test.go
+    implemented:
+      - one compiler-owned DefaultValueOf and IsDefaultable resolver shared by Sema, mutable declarations, omitted struct fields, fixed arrays, and LSP default display
+      - allocation-free primitive defaults for bool, string, char, rune, integer, unsigned, binary-float, and exact-decimal families
+      - inherited named-type defaults validated against every represented contract
+      - exact integer nearest-to-zero range defaults with inclusive and exclusive bounds, multipleOf, even, odd, and ambiguous-tie handling
+      - exact inclusive-decimal nearest-to-zero range defaults without binary-float conversion
+      - source-ordered in-list defaults with duplicate detection, base-type compatibility, and S1011 cross-contract validation
+      - explicit type-default parsing and AST retention of the default token, expression, and source range
+      - constant folding for the supported primitive expression subset and S1008 invalid-explicit-default validation
+      - recursive struct defaultability and complete synthesis of omitted defaultable stored fields
+      - fixed-array defaultability including zero-length arrays and recursive element construction
+      - mutable typed declaration synthesis marked by AST SynthesizedDefault and S1009 rejection for non-defaultable types
+      - immutable declarations without initializers remain rejected
+      - S1010 rejection of omitted non-defaultable struct fields
+      - safe references and slices remain non-defaultable and no origin-free safe slice is synthesized
+      - unions, Result, Option, functions, interfaces, and intrinsic resource types remain non-defaultable unless an owning rule defines a semantic default
+      - LSP hover and completion display resolved default value and source from the Sema-owned resolver
+      - legacy MLIR materialization of complete struct and constrained scalar defaults without runtime calls or undefined fields
+    remaining:
+      - represent explicit, mutable, omitted-field, aggregate, array-element, range-derived, membership-derived, and empty-collection initialization origins in Semantic IR
+      - add an explicit AST or resolved compiler-known collection-literal category that distinguishes list[T] {} and list[T, Capacity] {} from struct literals
+      - semantically materialize allocation-free empty defaults and explicit literals for list[T] and list[T, Capacity], independently of element defaultability
+      - semantically materialize omitted mutable T[] initialization as an empty owning descriptor without allocating or constructing an element
+      - lower synthesized mutable, struct, fixed-array, owning dynamic-array, and list defaults through the maintained Semantic IR and Sec MLIR pipelines
+      - track partial aggregate, array, and collection construction cleanup for nontrivial elements and failure paths
+      - add a verifier proving all readable struct fields and fixed-array elements are initialized, constrained defaults are valid, empty owning descriptors are complete, and no safe slice is fabricated without provenance
+      - implement exact binary-float range-derived defaults and exact successors for exclusive decimal upper bounds
+      - extend explicit-default constant evaluation to the complete permitted compile-time constant subset while rejecting allocation, I/O, volatile, FFI, and fallible runtime operations
+      - add stable diagnostic IDs for types.default-violates-contract, types.default-not-representable, types.ambiguous-implicit-default, types.no-default-value, types.empty-in-contract, types.duplicate-in-contract-value, types.default-cycle, struct.invalid-defaulted-field, variables.immutable-requires-initializer, and backend.default-left-undefined
+      - add related-location metadata for membership failures, range ambiguity and representability failures, explicit defaults, omitted fields, and missing initializers
+      - verify formatter preservation and LSP presentation for every explicit and derived default form
+      - add LSP code actions that explicitly expand omitted defaults or declare an explicit type default without changing ordinary formatting
+      - add default_values_valid.sec and default_values_invalid.sec coverage for primitive, mutable, immutable, and owning dynamic-array defaults
+      - add default_ranges_valid.sec and default_ranges_invalid.sec coverage for zero, positive, negative, additional-contract, ambiguity, representability, and explicit-override cases
+      - add default_in_contract_valid.sec and default_in_contract_invalid.sec coverage for source order, explicit override, empty and duplicate lists, compatibility, and cross-contract validation
+      - add default_structs_valid.sec and default_structs_invalid.sec coverage for empty, partial, nested, constrained, spread, non-defaultable, and cleanup cases
+      - add default_lists_valid.sec and default_lists_invalid.sec coverage for dynamic and bounded empty literals, non-defaultable element types, AST category, allocation, and backend support
+      - add default_arrays_valid.sec and default_arrays_invalid.sec coverage for numeric, struct, zero-length, non-defaultable-element, cleanup, and backend cases
+      - verify maintained LLVM and Sec MLIR backends in addition to the legacy MLIR generator
+
   - id: sema.escape-analysis
     area: frontend-analysis
     status: partial
     integrated: "2026-08-07"
+    audited: "2026-08-11"
     summary: >-
       Builds a compiler-owned immutable escape-fact and callable-summary slice
       on canonical Place and reference provenance. Return, aggregate-carrier,
@@ -483,7 +705,7 @@ integrations:
       - rules/ownership.md
       - rules/copy_move.md
       - rules/borrowing.txt
-      - rules/arrays-slices.txt
+      - rules/collections.md
       - rules/functions_lambda.txt
       - rules/ffi.txt
       - rules/call_graph.md
@@ -544,6 +766,7 @@ integrations:
       - preserve storage-domain, backing, epoch/generation, and handle dependencies needed by lifetime/reference validation
       - add cause-path production for escape diagnostics
       - add canonical escape diagnostic IDs through central diagnostics governance
+      - connect escape facts to the common Interactive, Standard, and Deep analysis execution surface, sec analyse selection, and LSP consumers without weakening required proofs
       - add positive, negative, precision, recursive, separate-compilation, callable, FFI, storage/generation, and concurrency test matrices required by rules/escape_analysis.md
 
   - id: sema.closure-analysis
@@ -896,7 +1119,7 @@ integrations:
       - rules/call_graph.md
       - rules/storage.md
       - rules/layout.md
-      - rules/arrays-slices.txt
+      - rules/collections.md
       - rules/ffi.txt
       - rules/effect_analysis.md
     code:
@@ -945,6 +1168,7 @@ integrations:
   - id: sema.pitfall-analysis
     area: frontend-analysis
     status: planned
+    audited: "2026-08-11"
     summary: >-
       Adds structured high-confidence pitfall analysis that correlates canonical
       bounds, range, control-flow, Place/provenance, collection, effect, and FFI
@@ -962,7 +1186,7 @@ integrations:
       - rules/closure_analysis.md
       - rules/storage.md
       - rules/layout.md
-      - rules/arrays-slices.txt
+      - rules/collections.md
       - rules/ffi.txt
     code:
       - internal/sema/analyzer.go
@@ -1003,6 +1227,7 @@ integrations:
   - id: sema.stack-analysis
     area: frontend-analysis-and-lowering
     status: planned
+    audited: "2026-08-11"
     summary: >-
       Adds canonical semantic and machine stack-resource analysis: materialized
       frame accounting, call-path composition, recursive SCC and finite-depth
@@ -1023,7 +1248,7 @@ integrations:
       - rules/borrowing.txt
       - rules/destruction.txt
       - rules/defer.txt
-      - rules/arrays-slices.txt
+      - rules/collections.md
       - rules/ffi.txt
       - rules/effect_analysis.md
       - rules/projects.txt
@@ -1219,7 +1444,7 @@ integrations:
       - rules/borrowing.txt
       - rules/destruction.txt
       - rules/lifetime_analysis.txt
-      - rules/arrays-slices.txt
+      - rules/collections.md
       - rules/semantic_ir.txt
       - rules/sec_mlir.md
       - rules/formatter.md
@@ -1390,6 +1615,7 @@ integrations:
   - id: sema.data-race-analysis
     area: frontend-analysis-and-lowering
     status: planned
+    audited: "2026-08-11"
     summary: >-
       Adds canonical Sec data-race analysis over the concurrency memory model,
       including symbolic memory-access summaries, Place overlap, execution
@@ -1408,6 +1634,7 @@ integrations:
       - rules/ownership.md
       - rules/borrowing.txt
       - rules/copy_move.md
+      - rules/collections.md
       - rules/effect_analysis.md
       - rules/ffi.txt
       - rules/lsp.md
@@ -1619,6 +1846,7 @@ integrations:
     area: frontend-and-lowering
     status: partial
     integrated: "2026-08-09"
+    audited: "2026-08-11"
     summary: >-
       Tracks implemented core type syntax and semantics migrated from the
       retired types.txt rulebook under the canonical rules/types.md contract.
@@ -1648,13 +1876,23 @@ integrations:
       - redeclaration diagnostics that preserve the previous symbol
       - named range and unit types
       - explicit TargetType(value) conversions and explicit numeric-to-bool conversion
+      - function-type parsing, semantic identity, assignability, direct callable-value invocation, and capture-independent source signatures
+      - RawPtr[T] and RawPtr[void] semantic identities with unsafe conversion, dereference, and pointer-operation validation
+      - compiler-known list, map, set, vector, matrix, tensor, tensor_view, Result, Option, Task, Thread, shape, layout, and memory-space identities
       - exact decimal literal semantic interpretation and legacy direct LLVM decimal constants, integer conversion, and return values
       - active int128, int256, uint128, uint256, and decimal128 language identities
     remaining:
+      - implement the canonical any top-type representation, assignability, narrowing, conversion, diagnostics, and lowering model
+      - finish compiler-known lowercase-name reservation and contextual set handling consistently across parser, Sema, formatter, LSP, and TextMate grammar
+      - validate the complete compiler-known type inventory, generic and const-argument arities, nominal identity, assignability, and conversion matrix against rules/types.md
+      - complete list, map, set, vector, matrix, tensor, tensor_view, Shape, Strides, TensorLayout, and MemorySpace semantics and lowering under their owning collection and layout integrations
+      - complete fixed-array, owning dynamic-array, borrowed-slice, reference, and defaultability integration under frontend.collections, sema.place-analysis, and frontend.default-values
+      - finish Result, Option, Task, Thread, interface, union, register, unit, and other nominal-core representation/lowering audits without deriving source identity from backend layout
       - complete checked decimal arithmetic lowering and overflow handling
       - decimal division precision and failure policy implementation
       - complete decimal comparison lowering
       - complete runtime contract failure paths for decimal overflow, division by zero, and precision exhaustion
+      - add focused type-diagnostic coverage for expected/actual types, named contracts, generic arguments, dimensions, conversions, and backend-independent incompatibility explanations
       - formatter coverage for every declaration form
     verification:
       - command: go test ./...
@@ -1782,6 +2020,7 @@ integrations:
   - id: sema.deadlock-analysis
     area: frontend-analysis-and-lowering
     status: planned
+    audited: "2026-08-11"
     summary: >-
       Adds canonical Sec deadlock analysis over synchronization resources and
       execution contexts: flow-sensitive held-resource tracking, symbolic
@@ -1806,6 +2045,7 @@ integrations:
       - rules/copy_move.md
       - rules/destruction.txt
       - rules/defer.txt
+      - rules/collections.md
       - rules/effect_analysis.md
       - rules/ffi.txt
       - rules/lsp.md

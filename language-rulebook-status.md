@@ -49,7 +49,8 @@ concurrency, compiler, MLIR, diagnostics, and project rule sets.
 The following newer rulebooks have been added to the canonical inventory:
 
 ```text
-collections-shaped-types.md
+collections.md
+shaped-types.md
 thread_local.md
 discard.md
 ownership.md
@@ -77,6 +78,8 @@ closure_analysis.md
 parameter_usage_analysis.md
 pitfall_analysis.md
 stack_analysis.md
+data_races.md
+deadlock_analysis.md
 ```
 
 These were written after the older temporary checklist was last synchronized.
@@ -93,8 +96,8 @@ These were written after the older temporary checklist was last synchronized.
 | `contracts.md` | **Written** | Canonical named-type contracts; replaces the obsolete variable-contract model. |
 | `default_values.md` | **Written** | Canonical primitive, constrained, aggregate, list and explicit-default semantics. |
 | `units.txt` | **Written — sync required** | Direct conversion dimension validation is implemented; shaped arithmetic, scale paths, and matrix multiplication still require synchronization. |
-| `grammar.md` | **Written** | Canonical consolidated grammar for Sec 0.1; implementation differences are tracked in the document. |
-| `operators.md` | **Written — partially implemented** | Ordered validation, compile-time shift checks, recursive frontend comparability, array/slice membership, and the direct runtime text-concatenation matrix are implemented with `S1016`-`S1022`; `S1020` is retired. Concat allocation/effect analysis and planning, membership lowering, dynamic checks, folded constants, aggregate equality lowering, identity metadata, and checked arithmetic remain. |
+| `grammar.md` | **Written** | Canonical consolidated grammar for Sec 0.1. |
+| `operators.md` | **Written** | Canonical operator semantics; compiler progress belongs in `implementation-status.yaml`. |
 | `names_scopes_visibility.md` | **Written — sync required** | Top-level module declaration namespace conflicts are partially implemented; remaining scope, visibility, reserved-name and naming-rule audit still needed. |
 | `attributes.md` | **Written** | Canonical closed Sec 0.1 attribute set, syntax, attachment, selection, target binding, `@noCopy`, verified guarantees, conflicts, formatter/LSP behavior, and explicit implementation status. |
 | `unsafe.md` | **Written** | Canonical unsafe contexts, operations, functions and extern declarations, caller obligations, raw pointers, trust boundaries and provenance; compiler support remains partial. |
@@ -146,7 +149,8 @@ lexical_structure.md
 grammar.md
 types.md
 properties.txt
-collections-shaped-types.md
+collections.md
+shaped-types.md
 formatter.md
 VS Code grammar
 LSP token classification
@@ -185,8 +189,8 @@ LSP token classification
 
 | Rulebook | Status | Notes |
 |---|---|---|
-| `arrays-slices.txt` | **Written — sync required** | Fixed-array defaults and slice non-defaultability are synchronized; common indexing and collection integration remain. |
-| `collections-shaped-types.md` | **Written — sync required** | Empty list defaults/literals are canonical; constructors, APIs, shaped values and lowering remain incomplete. |
+| `collections.md` | **Written** | Canonical fixed-array, owning dynamic-array, slice, list, map, and set semantics. |
+| `shaped-types.md` | **Written** | Canonical shaped values, views, layout, and memory-space semantics. |
 | `spread.txt` | **Written — sync required** | Collection expansion and literal integration. |
 | `flowcontrol_for.txt` | **Written — sync required** | Iteration over collections and shaped values; rank-one `vector[T, N]` now participates in Sema iterable inference. |
 
@@ -289,7 +293,7 @@ The remaining details to close are:
 | `copy_move.md` | **Living** | Canonical copy/move semantics. Implementation status is tracked by `frontend.copy-move` in `implementation-status.yaml`. |
 | `lifetime_analysis.txt` | **Written — sync required** | Must include detached work, thread-local values, views, and explicit storage. |
 | `destruction.txt` | **Written — sync required** | Must include discard, panic, cancellation, collection elements, and TLS destruction. |
-| `memory_model.md` | **Written — sync required** | Default lifetime/origin rules are synchronized; concurrency and volatile integration remain. |
+| `memory_model.md` | **Written** | Canonical source and compiler memory model, including default lifetime and origin rules. |
 | `static.md` | **Written — sync required** | Must include thread-local keys, collection backing storage, and initialization order. |
 | `discard.md` | **Written — sync required** | General explicit consumption and early deterministic destruction. |
 | `storage.md` | **Written** | Canonical storage origin, backing relation, reclamation authority, address stability, regions, invalidation domains, validity epochs, memory spaces, and placement guarantees; implementation remains partial. |
@@ -524,7 +528,7 @@ multiple target outputs
 | Rulebook | Status | Notes |
 |---|---|---|
 | `diagnostics.txt` | **Written — sync required** | Central registry and `sec diagnostics [--json]` expose all registered definitions plus complete definition/parser/sema/token field schemas; LSP exposes parser/sema codes. Full ID migration, localization and machine-readable emitted-diagnostic output remain. |
-| `formatter.md` | **Written — sync required** | Default clauses, membership order and omission are synchronized; broader collection/shaped formatting remains. |
+| `formatter.md` | **Written** | Canonical formatting behavior; implementation progress belongs in `implementation-status.yaml`. |
 | `compiler_diagnostics.md` | **Covered** | Compiler diagnostic policy remains canonical in `diagnostics.txt`; avoid duplication. |
 | `debug_information.md` | **Planned** | Source mapping, variables, optimized code, generics, async/task frames, and targets. |
 | `compiler_testing.md` | **Planned** | Compiler unit, integration, invalid, regression, lowering, and backend tests. |
@@ -539,7 +543,7 @@ The following rulebooks are currently considered written.
 
 ```text
 allocation.txt
-arrays-slices.txt
+collections.md
 arena.md
 attributes.md
 atomics.md
@@ -624,13 +628,17 @@ The following newer rulebooks are also written and present in the canonical
 repository state:
 
 ```text
-collections-shaped-types.md
+collections.md
+shaped-types.md
 thread_local.md
 discard.md
 escape_analysis.md
 closure_analysis.md
 parameter_usage_analysis.md
 pitfall_analysis.md
+stack_analysis.md
+data_races.md
+deadlock_analysis.md
 ```
 
 ---
@@ -641,7 +649,6 @@ The following rulebooks are currently expected before Sec 0.1 can be considered
 fully design-closed, unless a later decision explicitly merges one into another.
 
 ```text
-stack_analysis.md
 isr_analysis.md
 generics_lowering.md
 monomorphization.md

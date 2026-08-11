@@ -1228,8 +1228,8 @@ errorhandling.txt
 default_values.md
 contracts.md or variables_contracts.txt
 types.md
-arrays-slices.txt
-collections-shaped-types.md
+collections.md
+shaped-types.md
 references.txt
 ownership.md
 copy_move.md

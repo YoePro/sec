@@ -560,8 +560,8 @@ let x := 10
 let result := left x right
 ```
 
-The operator semantics and precedence belong in `operators.md` and
-`collections-shaped-types.md`.
+The operator semantics and precedence belong in `operators.md`,
+`collections.md`, and `shaped-types.md`.
 
 ---
 
@@ -1181,7 +1181,8 @@ enums.txt
 unions.txt
 registers.txt
 units.txt
-collections-shaped-types.md
+collections.md
+shaped-types.md
 flowcontrol_for.txt
 flowcontrol_match.txt
 projects.txt

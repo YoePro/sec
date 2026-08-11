@@ -74,8 +74,11 @@ lifetime_analysis.txt
 destruction.txt
     deterministic destruction and cleanup
 
-collections-shaped-types.md
+collections.md
     collection families and collection APIs
+
+shaped-types.md
+    shaped values, views, layouts, and memory spaces
 
 ffi.txt
     foreign ABI and ownership contracts
@@ -2524,7 +2527,7 @@ Arena ownership kinds and backing kinds must map to `BackingRelation` and
 
 Arena reset and release must use `AdvanceEpoch` and `EndDomain` respectively.
 
-## `collections-shaped-types.md`
+## `collections.md` and `shaped-types.md`
 
 Collection storage models must distinguish:
 

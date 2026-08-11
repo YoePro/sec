@@ -134,19 +134,19 @@ Unit metadata defines dimensions and conversion relationships.
 
 ```sec
 impl Meter {
-    dimension: [length * 1]
+    dimension: [length^1]
     scale: 1
     system: SI
 }
 
 impl Second {
-    dimension: [time * 1]
+    dimension: [time^1]
     scale: 1
     system: SI
 }
 
 impl Speed {
-    dimension: [length * 1, time * -1]
+    dimension: [length^1, time^-1]
     scale: 1
     system: SI
 }

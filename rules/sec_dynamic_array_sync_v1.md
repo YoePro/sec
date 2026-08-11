@@ -5,7 +5,7 @@
 Normative synchronization for:
 
 ```text
-rules/arrays-slices.txt
+rules/collections.md
 rules/default_values.md
 rules/copy_move.md
 rules/ownership.md
@@ -186,23 +186,26 @@ through this synchronization.
 
 ---
 
-# 9. No public growth API is invented
+# 9. Canonical public API
 
-Current normative sources do not define public:
+The approved public surface is:
 
 ```text
-Push
 Append
-Reserve
-Resize
 Clear
-Clone
+RemoveAt
+ToString
+Len
+IsEmpty
+Ptr
+SizeOf
 ```
 
-for `T[]`.
+for `T[]`. P18 may define the internal primitives needed to implement these
+operations.
 
-P18 may define internal semantic primitives required for compiler/core
-materialization and future approved APIs.
+Do not add `Push`, `Reserve`, `Resize`, `Capacity`, `AsSlice`,
+`AsMutableSlice`, or `Slice`.
 
 Those internal primitives are not source members.
 
@@ -213,7 +216,7 @@ Those internal primitives are not source members.
 Existing rules remain:
 
 ```text
-T[].len -> uint
+T[].Len -> uint
 len(T[]) -> int
 ```
 

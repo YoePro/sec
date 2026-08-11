@@ -5,7 +5,7 @@
 Normative synchronization for:
 
 ```text
-rules/arrays-slices.txt
+rules/collections.md
 rules/runtime_checks.md
 rules/core-library.md
 rules/reference_model.md

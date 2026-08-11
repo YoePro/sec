@@ -35,33 +35,8 @@ type Port int range 1..65535 default 8080
 Its grammar is `"default" ConstantExpression`, after every type contract in a
 named-type declaration.
 
-## Current implementation status
-
-Implemented in the compiler frontend:
-
-- default-resolution and defaultability queries;
-- primitive defaults without runtime calls or allocation;
-- named primitive inheritance;
-- exact integer range defaults with odd, even and `multipleOf` contracts;
-- exact inclusive decimal range defaults without binary-float conversion;
-- ambiguity detection for equally near integer defaults;
-- ordered primitive `in [...]` defaults;
-- explicit `default <constant-expression>` syntax and validation;
-- recursive struct and fixed-array defaults;
-- omitted stored struct fields;
-- mutable typed declarations without source initializers;
-- hard diagnostics with stable IDs for invalid and missing defaults;
-- LSP hover and type-completion information;
-- explicit MLIR field construction for defaulted structs.
-
-Still partial or deferred to synchronized rulebooks:
-
-- floating range-derived defaults and exclusive decimal upper-bound successors;
-- enum and union default-selection policy;
-- lowering for canonical empty `list` defaults and literals;
-- explicit Semantic IR default operations and cleanup regions;
-- complete LLVM struct lowering;
-- LSP expansion and declaration code actions.
+Implementation progress is tracked exclusively by `frontend.default-values` in
+`implementation-status.yaml`.
 
 ---
 
@@ -982,8 +957,7 @@ No field may be initialized twice.
 
 # Non-defaultable struct fields
 
-A struct literal may omit a field only when that field's type is defaultable or
-the field declaration provides its own approved default.
+A struct literal may omit a field only when that field's type is defaultable.
 
 Example conceptually:
 
@@ -1160,6 +1134,17 @@ is semantically equivalent to:
 ```
 
 A zero-length fixed array is defaultable without constructing an element.
+
+---
+
+# Owning dynamic arrays
+
+`T[]` is defaultable independently of whether `T` is defaultable. Its default
+is an initialized, non-allocating empty owner with length and capacity zero and
+no initialized elements. Default construction does not construct a `T`.
+
+This rule applies only to the owning dynamic array. It does not create a null
+or origin-free default for a safe slice.
 
 ---
 
@@ -1602,7 +1587,7 @@ Ordinary by-value recursive default construction is invalid.
 
 # Diagnostics
 
-Suggested stable diagnostic rules:
+The compiler must provide stable diagnostics for:
 
 ```text
 types.invalid-explicit-default
@@ -1611,6 +1596,8 @@ types.default-not-representable
 types.ambiguous-implicit-default
 types.no-default-value
 types.empty-in-contract
+types.duplicate-in-contract-value
+types.in-list-value-violates-contract
 types.default-cycle
 
 struct.missing-nondefaultable-field
@@ -1811,6 +1798,10 @@ default_ranges_valid.sec
 default_ranges_invalid.sec
 default_in_contract_valid.sec
 default_in_contract_invalid.sec
+default_lists_valid.sec
+default_lists_invalid.sec
+default_arrays_valid.sec
+default_arrays_invalid.sec
 ```
 
 ---
@@ -1859,6 +1850,7 @@ boolean list
 first value default
 explicit override
 empty list rejection
+duplicate list rejection
 invalid explicit default
 additional contract interaction
 ```
@@ -1883,6 +1875,25 @@ construction failure cleanup
 
 ---
 
+# Collection and array tests
+
+Test:
+
+```text
+default numeric fixed array
+default struct fixed array
+non-defaultable fixed-array element
+zero-length fixed array
+empty owning dynamic array without allocation
+empty dynamic list literal
+empty bounded list literal
+empty list with non-defaultable element type
+safe slice rejected without a valid origin
+list and struct literal categories remain distinct
+```
+
+---
+
 # Backend tests
 
 Verify:
@@ -1890,10 +1901,13 @@ Verify:
 ```text
 no omitted field remains undef
 no omitted field remains poison
+every defaulted fixed-array element is initialized
 range default is not blindly zeroed
 in-list default uses first value
 explicit default overrides implicit default
 nested defaults lower completely
+empty dynamic-array and list descriptors are fully initialized
+no safe slice is fabricated without a valid origin
 ```
 
 ---
@@ -1906,8 +1920,8 @@ This rulebook must remain synchronized with:
 types.md
 contracts.md
 struct.txt
-arrays-slices.txt
-collections-shaped-types.md
+collections.md
+shaped-types.md
 enums.txt
 unions.txt
 memory_model.md
@@ -1929,28 +1943,9 @@ rules_implementations.txt
 
 ---
 
-# Appendix A — Codex implementation plan
+# Appendix A — Compiler conformance requirements
 
-## A.1 Add the rulebook
-
-Add:
-
-```text
-rules/default_values.md
-```
-
-Update:
-
-```text
-language-rulebook-status.md
-rules_implementations.txt
-```
-
-Mark the rulebook as written.
-
----
-
-## A.2 Add defaultability to types
+## A.1 Defaultability interface
 
 Add compiler-owned type queries such as:
 
@@ -1973,7 +1968,7 @@ Exact implementation types may differ.
 
 ---
 
-## A.3 Primitive defaults
+## A.2 Primitive defaults
 
 Implement canonical primitive defaults:
 
@@ -1989,7 +1984,7 @@ Add constant and target-representation tests.
 
 ---
 
-## A.4 Named types
+## A.3 Named types
 
 Resolve named-type defaults after:
 
@@ -2006,7 +2001,7 @@ Do not return only the underlying primitive type.
 
 ---
 
-## A.5 Explicit default clause
+## A.4 Explicit default clause
 
 Synchronize exact grammar.
 
@@ -2025,7 +2020,7 @@ Validate against the complete type.
 
 ---
 
-## A.6 Range defaults
+## A.5 Range defaults
 
 For a constrained numeric type:
 
@@ -2041,19 +2036,20 @@ Do not convert decimal search through binary float.
 
 ---
 
-## A.7 `in [...]` defaults
+## A.6 `in [...]` defaults
 
-Use the first listed value satisfying all contracts.
+Validate every listed value against the base type and every other contract.
+Reject the declaration when any listed value is invalid; do not filter the
+list. Preserve source order and use the first listed value as the implicit
+default.
 
-Validate list ordering and membership constants.
-
-Reject empty valid sets.
+Reject empty and duplicate lists.
 
 An explicit default overrides this result.
 
 ---
 
-## A.8 Struct omitted fields
+## A.7 Struct omitted fields
 
 Update struct-literal Sema:
 
@@ -2066,7 +2062,7 @@ Update struct-literal Sema:
 
 ---
 
-## A.9 Backend correction
+## A.8 Backend correction
 
 Replace current aggregate construction from undefined base values unless every
 field is filled before any read.
@@ -2077,7 +2073,7 @@ Verify no source-level default depends on backend `undef`.
 
 ---
 
-## A.10 Mutable declarations
+## A.9 Mutable declarations
 
 Permit omitted initializer only for mutable bindings with defaultable type.
 
@@ -2089,7 +2085,7 @@ Keep immutable omitted initialization invalid.
 
 ---
 
-## A.11 Partial construction cleanup
+## A.10 Partial construction cleanup
 
 If a later field construction fails:
 
@@ -2100,7 +2096,7 @@ If a later field construction fails:
 
 ---
 
-## A.12 LSP
+## A.11 LSP
 
 Expose:
 
@@ -2116,7 +2112,7 @@ Add code actions for explicit expansion.
 
 ---
 
-## A.13 Diagnostics
+## A.12 Diagnostics
 
 Register stable diagnostics.
 
@@ -2131,32 +2127,13 @@ omitted field
 
 ---
 
-## A.14 Synchronize existing docs
+## A.13 Documentation consistency
 
 Remove legacy statements that require every field, leave omissions without a
 semantic value, force every range default to zero, or assume underlying zero is
 always valid.
 
 Do not leave conflicting canonical rules.
-
----
-
-## A.15 Recommended implementation order
-
-```text
-1. Add type default-resolution API.
-2. Implement primitive defaults.
-3. Implement named-type inheritance.
-4. Implement range-derived defaults.
-5. Implement `in [...]` defaults.
-6. Add explicit type-default grammar.
-7. Validate explicit defaults.
-8. Add omitted struct-field initialization.
-9. Add mutable declaration default initialization.
-10. Correct Semantic IR and backend lowering.
-11. Add diagnostics and LSP information.
-12. Synchronize rulebooks and tests.
-```
 
 ---
 

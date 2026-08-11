@@ -5,7 +5,7 @@
 Normative synchronization for:
 
 ```text
-rules/arrays-slices.txt
+rules/collections.md
 rules/runtime_checks.md
 rules/core-library.md
 ```
@@ -29,7 +29,7 @@ canonical fixed-array Semantic IR is implemented.
 
 # 1. Fixed-array literal spread is current syntax
 
-`rules/arrays-slices.txt` contains older initial-scope wording stating that array
+`rules/collections.md` contains older initial-scope wording stating that array
 literals do not include spread.
 
 That statement is superseded by the dedicated newer:

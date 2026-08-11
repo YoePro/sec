@@ -45,10 +45,11 @@ fallible allocation
 internal growth primitives
 ```
 
-Package 18 does not invent a new public collection API.
-
-No source-level `Push`, `Append`, `Reserve`, `Capacity`, `Clone`, or dynamic-array
-literal syntax is added by this package.
+Package 18 consumes the public `T[]` surface fixed by `collections.md`; it does
+not invent names beyond that surface. The canonical properties are `Len`,
+`IsEmpty`, unsafe `Ptr`, and `SizeOf`. The canonical methods are `Append`,
+`Clear`, `RemoveAt`, and `ToString`. `Push`, `Reserve`, `Resize`, `Capacity`,
+`AsSlice`, `AsMutableSlice`, and `Clone` are not added.
 
 ---
 
@@ -57,7 +58,7 @@ literal syntax is added by this package.
 Implementation follows:
 
 ```text
-rules/arrays-slices.txt
+rules/collections.md
 rules/layout.md
 rules/storage.md
 rules/allocation.txt
@@ -89,6 +90,10 @@ Before implementation:
    `sec_mlir_dialect_package18.md`;
 4. update `rules/sec_mlir_lowering.md` with
    `sec_mlir_lowering_package18.md`.
+
+The package's C++/MLIR implementation must not begin until these prerequisite
+documents and predecessor packages are present. Recording the public surface in
+this package does not imply that a runtime or physical allocator ABI exists.
 
 No new source syntax is introduced.
 
@@ -321,7 +326,7 @@ Do not add one.
 Owning `T[]` supports the existing intrinsic member:
 
 ```sec
-values.len
+values.Len
 ```
 
 with result:
@@ -351,7 +356,7 @@ P18 keeps those operations distinct.
 The same outstanding issue identified in P16 applies:
 
 ```text
-.len -> uint
+.Len -> uint
 len(...) -> int
 ```
 
@@ -361,7 +366,7 @@ The current language rules do not define what happens when runtime length fits
 P18 therefore:
 
 ```text
-fully supports .len
+fully supports .Len
 emits len(T[]) -> int only when representability is proven
 never silently narrows
 ```
@@ -371,26 +376,35 @@ reduction is invented.
 
 ---
 
-# 15. No public growth API in P18
+# 15. Canonical public surface and internal growth
 
-Current normative sources do not define public:
+`collections.md` defines `Append`, `Clear`, `RemoveAt`, and `ToString` for
+`T[]`. P18 must reserve and lower exactly those identities when their frontend
+and allocation prerequisites are available. It must not expose its internal
+capacity or growth primitives as public `Push`, `Reserve`, `Resize`,
+`Capacity`, `AsSlice`, `AsMutableSlice`, or `Clone` members.
 
-```text
-Push
-Append
-Reserve
-Capacity
-Resize
-Clear
-Clone
-```
+The compiler/core-internal primitives below implement the storage transitions
+needed by the approved surface; they are not separately callable source APIs.
 
-members for `T[]`.
+`Append(value)` first validates/prepares input ownership, then establishes any
+required growth transaction, initializes the new logical slot, and increments
+`Len` last. Failure preserves both the original owner and input ownership. The
+allocation plan remains P18/P19-owned; public structural/resource failures are
+reported as `CollectionError`, never an allocation panic.
 
-P18 does not invent those names or source signatures.
+`Clear()` destroys live elements in reverse index order, sets `Len` to zero,
+retains reusable backing, and does not allocate. The retained storage domain
+remains live.
 
-It does define compiler/core-internal semantic primitives that future approved
-APIs and existing allocation-aware core producers may use.
+`RemoveAt(index) -> Option[T]` is explicit owning extraction. A valid index
+moves out the element, shifts later live elements left, decrements `Len`, leaves
+the former final slot uninitialized, and returns `Some(value)`. An invalid index
+returns `None` without mutation. It never allocates or introduces holes: the
+initialized prefix remains `[0, Len)`.
+
+All three mutations obey active-borrow and backing-domain invalidation rules.
+Slices continue to use only `ref values[..]` and `ref mut values[..]`.
 
 ---
 
@@ -1946,11 +1960,12 @@ P18 defines no foreign descriptor layout.
 
 # 107. Raw pointer boundary
 
-P18 does not expose an element-data `.ptr` member for `T[]`.
+P18 exposes the compiler-known unsafe property `values.Ptr`, yielding the first
+element address for FFI and unsafe integration. It also exposes `values.SizeOf`
+as initialized payload bytes and `values.IsEmpty` as `values.Len == 0`.
 
-Unsafe raw extraction remains governed by explicit raw-pointer/core rules.
-
-No ownership is transferred merely by obtaining a RawPtr.
+No ownership is transferred and no lifetime is extended merely by obtaining a
+`RawPtr`. The pointer is not a stable descriptor ABI.
 
 ---
 
@@ -2346,12 +2361,19 @@ let mut values: byte[]
 move values into another owner
 T[] parameter consumption
 T[] return ownership
-values.len
+values.Len
+values.IsEmpty
+values.SizeOf
+unsafe values.Ptr
 supported len(values)
 values[index]
 values[index] = replacement
 ref values[..]
 ref mut values[..]
+values.Append(value)
+values.Clear()
+values.RemoveAt(index)
+values.ToString()
 T[] field in struct
 T[] payload in Result/Option/union
 ```
@@ -2447,11 +2469,12 @@ Slice borrowing reuses P15/P16 storage/epoch facts.
 
 Element indexing produces a P15 Place.
 
-Move-only element move-out through runtime indexing remains deferred.
+Implicit move-only element move-out through ordinary runtime indexing remains
+deferred; `RemoveAt` is the explicit structural extraction operation.
 
 Destruction is reverse logical element order, then domain end/reclamation.
 
-No public Push/Append/Reserve/Capacity API is invented.
+No public Push/Reserve/Resize/Capacity/AsSlice/AsMutableSlice API is invented.
 
 No physical descriptor layout is selected.
 
@@ -2480,7 +2503,7 @@ Package 18 is complete only when:
 [ ] T[] non-trivial destruction plan exists
 [ ] empty non-allocating default implemented
 [ ] immutable no-initializer example corrected
-[ ] .len implemented
+[ ] .Len, .IsEmpty, unsafe .Ptr, and payload-byte .SizeOf implemented
 [ ] len(T[]) no-truncation guard preserved
 [ ] internal capacity state represented
 [ ] no public capacity member added
@@ -2496,7 +2519,8 @@ Package 18 is complete only when:
 [ ] P17 partial construction cleanup integrated
 [ ] P17 move/replacement/cleanup integrated
 [ ] runtime index/place lowering implemented
-[ ] move-only indexed extraction remains rejected
+[ ] ordinary move-only indexed extraction remains rejected
+[ ] Append, Clear, RemoveAt, and ToString implement the canonical public surface
 [ ] P15 element reference integration implemented
 [ ] P16 slice borrowing from T[] implemented
 [ ] storage establish/advance/end/reclaim ops implemented
@@ -2507,7 +2531,7 @@ Package 18 is complete only when:
 [ ] --sec-verify-dynamic-arrays registered
 [ ] --sec-verify-storage-transitions registered
 [ ] existing ownership/place/reference/slice verifiers extended
-[ ] no public Push/Append/Reserve API invented
+[ ] no public Push/Reserve/Resize/Capacity/AsSlice/AsMutableSlice API invented
 [ ] no physical descriptor selected
 [ ] no allocator ABI selected
 [ ] no mandatory runtime

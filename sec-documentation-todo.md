@@ -111,7 +111,7 @@ Required examples include:
 
 ```sec
 let text := myCharArray[start..<end].ToString()
-let size := myInt.SizeOf()
+let size := myInt.SizeOf
 let chars := "test string".ToCharArray()
 let runes := "test string".ToRuneArray()
 ```
@@ -321,7 +321,7 @@ rules/stdlib.md
 rules/impl.txt
 rules/properties.txt
 rules/types.md
-rules/arrays-slices.txt
+rules/collections.md
 rules/reference_model.md
 rules/raw_pointers.txt
 rules/unsafe.md

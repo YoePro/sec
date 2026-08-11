@@ -68,7 +68,7 @@ ownership operations.
 Implementation follows:
 
 ```text
-rules/arrays-slices.txt
+rules/collections.md
 rules/reference_model.md
 rules/borrowing.txt
 rules/runtime_checks.md

@@ -18,11 +18,11 @@ package:
   lowering_spec_before: 13
   lowering_spec_after: 14
   goal: Represent owning runtime-sized T[] values, backing storage, invalidation and
-    destruction without inventing a public collection API or physical descriptor.
+    destruction while implementing only the canonical collection surface and no physical descriptor.
   next_package: Allocation Context and Arena Semantic Lowering
 normative_updates:
 - repository_paths:
-  - rules/arrays-slices.txt
+  - rules/collections.md
   - rules/default_values.md
   - rules/copy_move.md
   - rules/ownership.md
@@ -69,18 +69,26 @@ default:
   mutable_omitted_initializer: true
   immutable_omitted_initializer: false
 public_surface:
-  member_len: uint
+  properties:
+  - Len: uint
+  - IsEmpty: bool
+  - Ptr: unsafe RawPtr[T]
+  - SizeOf: uint payload bytes
+  methods:
+  - Append
+  - Clear
+  - RemoveAt
+  - ToString
   core_len: int with representability proof
   capacity_member: false
-  invented_growth_methods: false
   forbidden_to_invent:
   - Push
-  - Append
   - Reserve
   - Resize
-  - Clear
   - Clone
   - Capacity
+  - AsSlice
+  - AsMutableSlice
 value_invariant:
   length_le_capacity: true
   initialized_elements: '[0,length)'
@@ -200,7 +208,7 @@ compatibility:
   p6: target scalar resolution preserves wrapper
   p8: signless normalization does not recurse through wrapper
 deferred:
-- public T[] Push/Append/Reserve/Capacity API
+- public T[] methods until their frontend and allocation package prerequisites are implemented
 - explicit deep clone API
 - runtime-index move-out of move-only elements
 - physical dynamic-array descriptor
@@ -268,7 +276,7 @@ acceptance:
 - slice borrowing
 - P17 lifecycle integration
 - two new verifiers
-- no invented public growth API
+- canonical public surface recorded without inventing extra growth APIs
 - no physical descriptor
 - no allocator ABI
 - no mandatory runtime

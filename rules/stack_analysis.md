@@ -14,6 +14,12 @@ criteria for Sec stack analysis.
 Mutable implementation status does not belong in this rulebook. It is governed
 by the repository-level `implementation-status.yaml` ledger.
 
+The canonical ledger integration identifier is:
+
+```text
+sema.stack-analysis
+```
+
 ---
 
 # Purpose

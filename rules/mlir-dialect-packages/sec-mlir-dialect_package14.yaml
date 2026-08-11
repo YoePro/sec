@@ -17,7 +17,7 @@ package:
   next_package: Safe Place and Reference Semantic Core
 normative_updates:
 - repository_paths:
-  - rules/arrays-slices.txt
+  - rules/collections.md
   - rules/runtime_checks.md
   - rules/core-library.md
   supplied_file: sec_fixed_array_sync_package14.md

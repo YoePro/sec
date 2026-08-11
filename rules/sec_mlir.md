@@ -105,7 +105,7 @@ runtime_checks.md
 allocation.txt
 arena.md
 operators.md
-arrays-slices.txt
+collections.md
 struct.txt
 enums.txt
 unions.txt

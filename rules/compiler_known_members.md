@@ -34,7 +34,7 @@ All normative compiler-known-member semantics belong to this document.
 
 `impl.txt` owns ordinary user-defined implementation blocks.
 
-`types.md`, `arrays-slices.txt`, `reference_model.md`, `unsafe.md`,
+`types.md`, `collections.md`, `reference_model.md`, `unsafe.md`,
 `allocation.txt`, `arena.md`, `layout.md`, `effect_analysis.md`, and
 `semantic_ir.txt` own their respective semantic domains.
 
@@ -76,8 +76,8 @@ Examples include:
 value.Ptr
 value.Len
 len(value)
-value.SizeOf()
-int32.SizeOf()
+value.SizeOf
+int32.SizeOf
 value.ToString()
 "test string".ToByteArray()
 "test string".ToCharArray()
@@ -145,7 +145,7 @@ Ptr:
 
 Len:
     this document owns availability and result type
-    arrays-slices.txt owns array and slice length semantics
+    collections.md owns array and slice length semantics
     string rules own string byte-length semantics
 
 SizeOf:
@@ -185,14 +185,14 @@ float NaN
 decimal Scale
 ```
 
-## Intrinsic method
+## Intrinsic operation
 
 A method whose semantics require explicit compiler representation.
 
 Examples:
 
 ```text
-SizeOf()
+SizeOf
 RawPtr.Read()
 RawPtr.Write()
 RawPtr.Offset()
@@ -212,7 +212,7 @@ ToString()
 ToByteArray()
 ToCharArray()
 ToRuneArray()
-IsEmpty()
+Fill(value)
 ```
 
 Only methods explicitly listed as compiler-known belong to this category.
@@ -272,7 +272,7 @@ Examples:
 ```sec
 value.Ptr
 value.Len
-value.SizeOf()
+value.SizeOf
 string.FromRuneArray(runes)
 ```
 
@@ -371,7 +371,10 @@ For the members defined here:
 ```text
 Ptr
 Len
+IsEmpty
+Capacity on list
 SizeOf
+Fill
 ToString
 ToByteArray
 ToCharArray
@@ -457,8 +460,8 @@ Ptr
 SizeOf
 ```
 
-`Len` is reserved on compiler-known sequence types for the canonical length
-property.
+`Len`, `IsEmpty`, and `Fill` are reserved on the compiler-known collection
+receiver categories where their canonical properties or operation apply.
 
 The global function name `len` is compiler-owned and cannot be redeclared or
 overloaded by user code.
@@ -544,7 +547,7 @@ Examples that are normally eligible:
 ```sec
 type CustomerID uint64
 let text := customerID.ToString()
-let bytes := customerID.SizeOf()
+let bytes := customerID.SizeOf
 ```
 
 Examples that require special care:
@@ -584,7 +587,7 @@ ToString;
 Ptr.
 ```
 
-`SizeOf()` is available only when `T` is statically sized for the active
+`SizeOf` is available only when `T` is statically sized for the active
 CompilationPlan.
 
 `Ptr` additionally requires an addressable value expression.
@@ -823,6 +826,13 @@ It refers to the first element storage when the array has at least one element.
 The array must have stable addressable storage.
 
 The pointer does not contain the array length.
+
+The same property is available on owning dynamic arrays `T[]` and `list[T]`.
+It refers to their current contiguous element backing. It does not expose
+capacity, transfer ownership, or stabilize storage across a mutating operation.
+
+`map[K, V]` and `set[T]` do not have compiler-known `Ptr`: their physical
+storage is not a public contiguous sequence contract.
 
 ---
 
@@ -1067,6 +1077,13 @@ view.Len * SizeOf(T)
 
 ---
 
+# `Len` on library collections
+
+For `list[T]`, `map[K, V]`, and `set[T]`, `Len` is the logical element or entry
+count. It is never capacity or backing-storage size.
+
+---
+
 # `Len` evaluation
 
 `Len`:
@@ -1082,6 +1099,23 @@ may be folded when statically known.
 
 For a volatile sequence descriptor, reading descriptor metadata follows the
 volatile rulebook when the descriptor itself is volatile.
+
+---
+
+# `IsEmpty`
+
+`IsEmpty` is a read-only compiler-known property on fixed arrays, owning
+dynamic arrays, slices, `list[T]`, `map[K, V]`, and `set[T]`:
+
+```sec
+if values.IsEmpty {
+    return
+}
+```
+
+It is equivalent to `values.Len == 0`, evaluates the receiver exactly once,
+and does not allocate, consume, or inspect elements. `IsEmpty()` is not a
+second callable spelling.
 
 ---
 
@@ -1169,15 +1203,16 @@ A future interface-based overload requires a separate rule.
 
 ---
 
-# `SizeOf()`
+# `SizeOf`
 
-`SizeOf()` is a compiler-known layout query.
+`SizeOf` is a compiler-known layout query.
 
 Required forms:
 
 ```sec
-let valueSize := value.SizeOf()
-let typeSize := TypeName.SizeOf()
+let valueSize := value.SizeOf
+let typeSize := TypeName.SizeOf
+let queriedSize := SizeOf(TypeName)
 ```
 
 The result type is:
@@ -1186,19 +1221,20 @@ The result type is:
 uint
 ```
 
-Both forms return the physical storage size in bytes for the active
-CompilationPlan.
+The associated type property and the global type query return physical storage
+size for one value of the type. The instance property follows the category
+rules below.
 
 The semantic size comes from `layout.md`.
 
 ---
 
-# Value-form `SizeOf()`
+# Value-form `SizeOf`
 
 Example:
 
 ```sec
-let size := myInt.SizeOf()
+let size := myInt.SizeOf
 ```
 
 The size is determined from the exact semantic type of the receiver.
@@ -1211,7 +1247,7 @@ Its stored value is not inspected to determine the result.
 Therefore:
 
 ```sec
-let size := MakeValue().SizeOf()
+let size := MakeValue().SizeOf
 ```
 
 still evaluates `MakeValue()` and preserves its effects.
@@ -1221,12 +1257,12 @@ effect/ownership analysis permits it.
 
 ---
 
-# Type-form `SizeOf()`
+# Type-form `SizeOf`
 
 Example:
 
 ```sec
-let size := int64.SizeOf()
+let size := int64.SizeOf
 ```
 
 The type form has no value receiver.
@@ -1237,7 +1273,7 @@ complete layout.
 Generic type form:
 
 ```sec
-let size := T.SizeOf()
+let size := T.SizeOf
 ```
 
 is valid only when the generic contract guarantees that `T` is sized and has
@@ -1245,7 +1281,7 @@ complete layout at specialization.
 
 ---
 
-# `SizeOf()` meaning by category
+# `SizeOf` meaning by category
 
 ## Scalar value
 
@@ -1259,21 +1295,23 @@ It uses the exact nominal type layout.
 
 ## Fixed array
 
-Returns the physical inline storage size of the complete array, including any
-layout-required element stride.
+Returns the contiguous element payload size, including layout-required element
+stride.
 
 ## Owning dynamic array
 
-Returns the physical size of the owning array value or descriptor itself.
-
-It does not include separately allocated element backing unless the canonical
-layout says the backing is inline.
+Returns `value.Len * SizeOf(T)`: the initialized element payload bytes. It does
+not return descriptor size or reserved capacity.
 
 ## Slice
 
-Returns the physical size of the slice/reference representation.
+Returns `value.Len * SizeOf(T)`: the represented payload bytes. It does not
+return the slice/reference descriptor size.
 
-It does not return the payload byte count.
+## List
+
+Returns `value.Len * SizeOf(T)`: the initialized contiguous payload bytes. It
+does not include capacity, allocation headers, or the owner descriptor.
 
 ## String
 
@@ -1302,7 +1340,7 @@ It does not include owned backing capacity.
 
 # Unsized and incomplete types
 
-`SizeOf()` is invalid when:
+`SizeOf` is invalid when:
 
 ```text
 the type is unsized;
@@ -1314,14 +1352,14 @@ the value exists only at compile time.
 
 The diagnostic must identify the missing layout fact.
 
-`void.SizeOf()` is invalid unless a later layout rule explicitly assigns a
+`void.SizeOf` is invalid unless a later layout rule explicitly assigns a
 representation.
 
 ---
 
-# `SizeOf()` and target plans
+# `SizeOf` and target plans
 
-`SizeOf()` is evaluated per concrete `CompilationPlan`.
+`SizeOf` is evaluated per concrete `CompilationPlan`.
 
 The same source type may have different size on:
 
@@ -1341,7 +1379,7 @@ It must not merge them into one runtime value.
 
 ---
 
-# `SizeOf()` effects
+# `SizeOf` effects
 
 The layout result itself:
 
@@ -1356,6 +1394,42 @@ does not require unsafe.
 Value-form receiver evaluation may still carry effects.
 
 Type-form has no receiver effects.
+
+---
+
+# Contextual `fill`
+
+`fill` is a compiler-known contextual construction form, not an ordinary
+globally overloadable function. Its expected destination type selects one of
+these forms:
+
+```sec
+let fixed: T[N] := fill(value)
+let owned: T[] := try fill(value, count)
+let text: string := try fill(fragment, count)
+```
+
+The fixed-array form initializes exactly `N` elements. The owning-array form
+allocates and initializes exactly `count` elements and may fail according to
+the active allocation context. The string form produces `count` repetitions of
+the supplied fragment according to the string encoding rules. The value
+expression is evaluated once and each stored element is copied from that value,
+so element type `T` must be copyable unless a later rule defines a distinct
+factory form.
+
+A mutable slice also has the compiler-known operation:
+
+```sec
+view.Fill(value)
+```
+
+It overwrites every represented element in index order. `T` must be copyable;
+the receiver must be `ref mut T[]`; the operation neither reallocates nor
+changes `Len`. Shared slices have no `Fill`.
+
+The registry must give contextual `fill` and mutable-slice `Fill` stable,
+distinct semantic identities so Sema, LSP, Semantic IR, and lowering do not
+infer them from spelling alone.
 
 ---
 
@@ -2247,12 +2321,12 @@ type.
 
 ---
 
-# `SizeOf()` diagnostics
+# `SizeOf` diagnostics
 
 Invalid:
 
 ```sec
-let size := UnsizedType.SizeOf()
+let size := UnsizedType.SizeOf
 ```
 
 Diagnostic:
@@ -2477,8 +2551,8 @@ Ptr
     result: RawPtr[byte]
     does not extend lifetime
 
-SizeOf()
-    compiler-known layout query
+SizeOf
+    compiler-known property or global type query
     result for linux/amd64: 16 bytes
 ```
 
@@ -2604,8 +2678,37 @@ SizeOf
 
 ```text
 Len
+IsEmpty
+```
+
+## Collection initialization and mutation
+
+```text
+fill
+Fill
+Reverse
+Append
+Insert
+RemoveAt
+Remove
+Clear
+Contains
+ContainsKey
+IndexOf
+Sort
+SortBy
+Add
+Union
+Intersection
+Difference
+SymmetricDifference
 len
 ```
+
+Availability and result types are receiver-specific and are defined by
+`collections.md`. Listing a name here does not make it universal: for example,
+`Ptr` is absent on map/set, `Fill` is limited to mutable slices, and dynamic
+arrays expose no `Capacity`.
 
 ## String and formatting
 
@@ -2783,7 +2886,7 @@ legacy len migration.
 
 ---
 
-# `SizeOf()` tests
+# `SizeOf` tests
 
 Test:
 
@@ -2795,8 +2898,9 @@ enum;
 union;
 register;
 fixed array;
-owning array descriptor;
-slice descriptor;
+owning array live payload bytes;
+slice represented payload bytes;
+list live payload bytes;
 string descriptor;
 safe reference profile;
 RawPtr target width;
@@ -3091,7 +3195,7 @@ This rulebook must remain synchronized with:
 ```text
 allocation.txt
 arena.md
-arrays-slices.txt
+collections.md
 attributes.md
 call_graph.md
 compiler_analysis.txt
@@ -3140,7 +3244,7 @@ impl.txt
 layout.md
     owns physical size and alignment
 
-arrays-slices.txt
+collections.md
     owns array and slice bounds and sequence semantics
 
 reference_model.md
@@ -3190,7 +3294,7 @@ arithmetic.
 extend lifetime, preserve bounds, transfer ownership, or keep Arena storage
 alive.
 
-`SizeOf()` is available in value and type form for complete sized layouts and
+`SizeOf` is available in value and type form for complete sized layouts and
 returns target-specific physical storage size in bytes.
 
 Value-form receiver effects remain observable.

@@ -899,6 +899,14 @@ An owning container that exposes a slice still owns and destroys its elements th
 
 The compiler must not infer ownership from slice element type alone.
 
+## Owning dynamic arrays
+
+Destroying `T[]` destroys its initialized elements in reverse index order and
+then reclaims the backing allocation through the allocation authority recorded
+by the owner. Moved-from owners do neither. Capacity beyond `Len` contains no
+initialized elements and is not destroyed. `RemoveAt` transfers the removed
+element to its result, so that element is not destroyed by the array.
+
 ## Strings
 
 String destruction depends on the string representation.

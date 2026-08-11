@@ -218,6 +218,13 @@ Wrappers must define:
 
 CString conversion must ensure a terminating zero byte and must define behavior for embedded zero bytes.
 
+Collection descriptors are likewise not stable foreign ABI values. A
+contiguous collection is passed to foreign code explicitly as `value.Ptr`
+together with either `value.Len` for an element count or `value.SizeOf` for a
+byte count. `Ptr` access is unsafe, does not transfer ownership, and does not
+extend the backing lifetime. `map` and `set` have no compiler-known `Ptr` and
+require an explicit marshaling wrapper.
+
 ## Callbacks
 
 Callbacks require an explicit extern-compatible function type.

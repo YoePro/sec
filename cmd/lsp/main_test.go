@@ -619,6 +619,14 @@ fn Count(text: string) int {
 	assertCompletionLabels(t, items, []string{"len"})
 }
 
+func TestCompletionIncludesAllCompilerKnownGlobalFunctions(t *testing.T) {
+	source := "module main\n\nfn Use() void {\n\tSi\n\tfi\n}\n"
+	sizeItems := completeSource("", source, strings.Index(source, "Si")+len("Si"))
+	assertCompletionLabels(t, sizeItems, []string{"SizeOf"})
+	fillItems := completeSource("", source, strings.Index(source, "fi")+len("fi"))
+	assertCompletionLabels(t, fillItems, []string{"fill"})
+}
+
 func TestHoverUsesDocCommentAboveFunction(t *testing.T) {
 	source := `module main
 
@@ -1494,11 +1502,50 @@ func TestCompletionIncludesCompilerKnownMembers(t *testing.T) {
 
 	source = "module main\n\nfn Use(values: rune[2]) void {\n\tvalues.\n}\n"
 	valueItems := completeSource("", source, strings.Index(source, "values.")+len("values."))
-	assertCompletionLabels(t, valueItems, []string{"Len", "Ptr", "SizeOf", "ToString"})
+	assertCompletionLabels(t, valueItems, []string{"IsEmpty", "Len", "Ptr", "SizeOf", "ToString"})
+
+	source = "module main\n\nfn Use(values: int[]) void {\n\tvalues.\n}\n"
+	dynamicItems := completeSource("", source, strings.Index(source, "values.")+len("values."))
+	assertCompletionLabels(t, dynamicItems, []string{"Append", "Clear", "IsEmpty", "Len", "Ptr", "RemoveAt", "SizeOf", "ToString"})
+
+	source = "module main\n\nfn Use(view: ref mut int[]) void {\n\tview.\n}\n"
+	sliceItems := completeSource("", source, strings.Index(source, "view.")+len("view."))
+	assertCompletionLabels(t, sliceItems, []string{"Fill", "IsEmpty", "Len", "Ptr", "Reverse", "SizeOf", "ToString"})
+
+	source = "module main\n\nfn Use(values: list[int]) void {\n\tvalues.\n}\n"
+	listItems := completeSource("", source, strings.Index(source, "values.")+len("values."))
+	assertCompletionLabels(t, listItems, []string{"Append", "Capacity", "Clear", "Contains", "IndexOf", "Insert", "IsEmpty", "Len", "Ptr", "Remove", "RemoveAt", "Reverse", "SizeOf", "Sort", "SortBy", "ToString"})
+	source = "module main\n\nfn Use(entries: map[int, string]) void {\n\tentries.\n}\n"
+	mapItems := completeSource("", source, strings.Index(source, "entries.")+len("entries."))
+	assertCompletionLabels(t, mapItems, []string{"Clear", "ContainsKey", "IsEmpty", "Len", "Remove", "ToString"})
+	source = "module main\n\nfn Use(unique: set[int]) void {\n\tunique.\n}\n"
+	setItems := completeSource("", source, strings.Index(source, "unique.")+len("unique."))
+	assertCompletionLabels(t, setItems, []string{"Add", "Clear", "Contains", "Difference", "Intersection", "IsEmpty", "Len", "Remove", "SymmetricDifference", "ToString", "Union"})
 
 	source = "module main\n\nfn Use() void {\n\tlet mut arena: Arena := Arena {}\n\tarena.\n}\n"
 	arenaItems := completeSource("", source, strings.Index(source, "arena.")+len("arena."))
 	assertCompletionLabels(t, arenaItems, []string{"Alloc", "New", "Ptr", "Release", "Reset", "SizeOf"})
+}
+
+func TestCompilerKnownMembersUseSemaFactsForTokensAndHover(t *testing.T) {
+	source := `module main
+
+fn Use(values: int[]) uint {
+	values.Clear()
+	return values.Len
+}
+`
+	tokens := decodeSemanticTokens(semanticTokensForSource("", source))
+	clearStart := strings.Index(sourceLine(source, 3), "Clear")
+	lenStart := strings.Index(sourceLine(source, 4), "Len")
+	assertSemanticToken(t, tokens, 3, clearStart, len("Clear"), "method")
+	assertSemanticToken(t, tokens, 4, lenStart, len("Len"), "property")
+
+	hoverOffset := strings.LastIndex(source, "Len") + 1
+	hover, ok := hoverForSource("", source, offsetPosition(source, hoverOffset))
+	if !ok || !strings.Contains(hover.Contents.Value, "property Len: uint") || !strings.Contains(hover.Contents.Value, "CKM-LEN-ARRAY") {
+		t.Fatalf("compiler-known hover = %+v, %v", hover, ok)
+	}
 }
 
 func TestCompletionIncludesStaticCompilerKnownMembers(t *testing.T) {

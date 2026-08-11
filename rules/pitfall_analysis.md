@@ -1277,7 +1277,7 @@ The same provenance rule applies to size-bearing objects or structures.
 Conceptually:
 
 ```sec
-ForeignSend(header.Ptr, payload.SizeOf())
+ForeignSend(header.Ptr, payload.SizeOf)
 ```
 
 may be suspicious if the canonical foreign contract requires the size argument

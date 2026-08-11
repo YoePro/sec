@@ -1,0 +1,124 @@
+module spi_master_driver
+
+// =====================================================================
+// ENUMS FOR SPI PROTOCOL CONFIGURATION
+// =====================================================================
+
+// SPI Clock Phase and Polarity Modes (2 bits)
+enum SpiMode bit[2] {
+    MODE_0 = 0b00, // CPOL=0, CPHA=0
+    MODE_1 = 0b01, // CPOL=0, CPHA=1
+    MODE_2 = 0b10, // CPOL=1, CPHA=0
+    MODE_3 = 0b11, // CPOL=1, CPHA=1
+}
+
+// SPI Prescaler / Baud Rate Divider (3 bits)
+enum SpiBaudRate bit[3] {
+    DIV_2   = 0b000,
+    DIV_4   = 0b001,
+    DIV_8   = 0b010,
+    DIV_16  = 0b011,
+    DIV_32  = 0b100,
+    DIV_64  = 0b101,
+    DIV_128 = 0b110,
+    DIV_256 = 0b111,
+}
+
+// Frame Data Width (2 bits)
+enum SpiDataSize bit[2] {
+    BITS_8  = 0b00,
+    BITS_16 = 0b01,
+    BITS_32 = 0b10,
+    RESERVED = 0b11,
+}
+
+// =====================================================================
+// REGISTER LAYOUTS
+// =====================================================================
+
+// SPI Control Register (32-bit width)
+type SpiControl register[32] {
+    Enable: bit[1]
+    MasterMode: bit[1]
+    Mode: SpiMode
+    BaudRate: SpiBaudRate
+    DataSize: SpiDataSize
+    LsbFirst: bit[1]
+    SoftwareCs: bit[1]
+    CsActive: bit[1]       // Explicit Chip Select signal line control
+    _: bit[22]
+}
+
+// SPI Status Register (32-bit width)
+type SpiStatus register[32] {
+    TxEmpty: bit[1]
+    TxFull: bit[1]
+    RxNotEmpty: bit[1]
+    RxFull: bit[1]
+    Busy: bit[1]
+    OverrunError: bit[1]
+    _: bit[26]
+}
+
+// SPI Data Register (32-bit width for Tx/Rx FIFO buffer)
+type SpiDataBuffer register[32] {
+    Data: bit[8]
+    _: bit[24]
+}
+
+// =====================================================================
+// REGISTER IMPLEMENTATIONS
+// =====================================================================
+
+impl SpiControl {
+    fn InitializeMaster(mode: SpiMode, baud: SpiBaudRate) void {
+        self.Enable = 1
+        self.MasterMode = 1
+        self.Mode = mode
+        self.BaudRate = baud
+        self.DataSize = SpiDataSize.BITS_8
+        self.SoftwareCs = 1
+        self.CsActive = 0
+    }
+
+    fn SelectSlave() void {
+        self.CsActive = 1
+    }
+
+    fn DeselectSlave() void {
+        self.CsActive = 0
+    }
+}
+
+impl SpiStatus {
+    property IsReadyToTransmit: bool {
+        get {
+            return bool(self.TxEmpty == true)
+        }
+    }
+
+    property HasDataToRead: bool {
+        get {
+            return bool(self.RxNotEmpty == true)
+        }
+    }
+
+    property IsBusy: bool {
+        get {
+            return bool(self.Busy == true)
+        }
+    }
+}
+
+// =====================================================================
+// MEMORY-MAPPED HARDWARE INSTANCES
+// =====================================================================
+
+@address(0x40013000)
+let mut SPI1_CR: SpiControl
+
+@address(0x40013004)
+let SPI1_SR: SpiStatus
+
+@address(0x4001300C)
+let mut SPI1_DR: SpiDataBuffer

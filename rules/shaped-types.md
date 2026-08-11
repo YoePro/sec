@@ -1,543 +1,18 @@
-# Collections and Shaped Types
+# Shaped Types
+
+**Canonical rulebook:** Sec 0.1  
+**Split from:** `collections-shaped-types.md`  
+**Collection semantics:** `collections.md`
 
 ## Purpose
 
-This rulebook defines Sec's first-class collection and shaped-data type families.
-
-It covers:
-
-- `list`
-- `map`
-- `set`
-- `vector`
-- `matrix`
-- `tensor`
-- `tensor_view`
-- `Shape`
-- `Strides`
-- `TensorLayout`
-- matrix multiplication with the contextual `x` operator
-- the division between compiler semantics and standard-library implementation
-- expected MLIR representation and lowering
-
-Existing arrays, slices, registers, and bit-backed enums remain governed by
-their own rulebooks, but must be integrated with the type model described here.
-
----
-
-# Design principles
-
-## Small first-class set
-
-Sec should provide only the collection and shaped types whose semantics benefit
-materially from compiler knowledge.
-
-More specialized data structures belong in the standard library.
-
-The first-class set is:
-
-```sec
-list[T]
-list[T, Capacity]
-
-map[K, V]
-map[K, V, Capacity]
-
-set[T]
-set[T, Capacity]
-
-vector[T, N]
-
-matrix[T, Rows, Columns]
-
-tensor[T, Dimensions...]
-
-tensor_view[T, Rank]
-```
-
-Supporting nominal types include:
-
-```sec
-Shape[Rank]
-Strides[Rank]
-TensorLayout[Rank]
-MemorySpace
-```
-
----
-
-## Lowercase and uppercase type names
-
-Fundamental language types and compiler-known type constructors begin with a
-lowercase letter:
-
-```sec
-bool
-int
-string
-
-list[T]
-map[K, V]
-set[T]
-
-vector[T, N]
-matrix[T, Rows, Columns]
-tensor[T, Dimensions...]
-tensor_view[T, Rank]
-```
-
-Named and nominal types begin with an uppercase letter.
-
-This applies to user types, core types, and standard-library types:
-
-```sec
-Result[T, E]
-Option[T]
-Task[T]
-Thread[T]
-
-Shape[Rank]
-Strides[Rank]
-TensorLayout[Rank]
-
-Stack[T]
-RingBuffer[T, Capacity]
-OrderedMap[K, V]
-
-CollectionError
-ShapeError
-LayoutError
-```
-
-The declaration form does not change the naming rule:
-
-```sec
-type Person struct {
-    name: string,
-}
-
-type Response union {
-    // variants
-}
-
-enum Permissions bit[8] {
-    Read = 1,
-    Write = 2,
-}
-
-type Control register[32] {
-    Enabled: bit,
-    Mode: bit[3],
-    _: bit[28],
-}
-```
-
----
-
-## Existing compiler-known generic forms
-
-The new types must coexist with existing compile-time-parameterized forms:
-
-```sec
-type Control register[32] {
-    Enabled: bit,
-    Mode: bit[3],
-    _: bit[28],
-}
-
-enum Permissions bit[8] {
-    Read = 1,
-    Write = 2,
-}
-```
-
-`register[N]` and `bit[N]` are compiler-known language forms.
-
-They are not standard-library generics.
-
-Square brackets are resolved by context:
-
-```text
-list[T]
-    element type
-
-list[T, Capacity]
-    element type and compile-time capacity
-
-matrix[T, Rows, Columns]
-    element type and compile-time dimensions
-
-Shape[Rank]
-    compile-time rank
-
-register[N]
-    compile-time register width
-
-bit[N]
-    compile-time bit width
-```
-
-The parser, AST, Sema, Semantic IR, formatter, and diagnostics must preserve the
-different semantic categories.
-
----
-
-# Type families
-
-The collection model has three families.
-
-```text
-Linear collections
-    array
-    slice
-    list
-
-Associative collections
-    map
-    set
-
-Shaped values and views
-    vector
-    matrix
-    tensor
-    tensor_view
-    Shape
-    Strides
-    TensorLayout
-```
-
----
-
-# Existing arrays and slices
-
-## Arrays
-
-An array is fixed-length owned linear storage.
-
-Its canonical type syntax remains defined by the array rulebook.
-
-Arrays:
-
-- own their elements;
-- have compile-time-known length;
-- do not grow;
-- have canonical contiguous element storage unless another explicit layout rule
-  says otherwise;
-- may live in stack, static, arena, or other explicitly selected storage.
-
-Arrays are not replaced by `list`.
-
----
-
-## Slices
-
-A slice is a non-owning linear view.
-
-A normal slice contains:
-
-- storage origin;
-- start;
-- runtime length;
-- borrow mode.
-
-A normal slice has unit element stride.
-
-General non-unit, negative, or zero-stride views belong to `tensor_view`, not to
-ordinary slice semantics.
-
----
-
-# list
-
-## Meaning
-
-`list[T]` is a variable-length ordered linear collection.
-
-```sec
-let values: list[int]
-```
-
-The default semantic model is contiguous storage.
-
-`list[T]` is not a linked list.
-
-A linked list is a standard-library type:
-
-```sec
-LinkedList[T]
-```
-
----
-
-## Dynamic list
-
-```sec
-list[T]
-```
-
-has runtime-variable length and capacity.
-
-A dynamic list must be associated with a permitted allocation strategy before an
-operation may grow its storage.
-
-The language must not assume a hidden global heap.
-
-Permitted strategies may include:
-
-- explicit allocator;
-- arena;
-- target runtime allocator;
-- another allocation source approved by `allocation.txt`.
-
-Growth is fallible.
-
-## Empty defaults and literals
-
-`list[T]` is defaultable independently of whether `T` is defaultable. Its
-default is an initialized empty list with:
-
-```text
-length 0
-capacity 0
-element storage none
-initialized elements none
-dynamic allocation none
-```
-
-`list[T, Capacity]` is also defaultable. Its empty default has length zero,
-maximum capacity `Capacity`, no initialized elements and no hidden growth
-allocation. Reserved backing capacity does not construct elements.
-
-Canonical explicit forms are:
-
-```sec
-list[string] {}
-list[Packet, 32] {}
-```
-
-These are collection literals, not named-struct literals. Parser, AST, Sema,
-formatter and lowering must retain that distinction. Empty construction never
-allocates; later dynamic growth remains fallible and requires an approved
-allocation context. This rule does not decide map or set literal syntax.
-
----
-
-## Bounded list
-
-```sec
-list[T, Capacity]
-```
-
-has runtime-variable length and a compile-time maximum capacity.
-
-```sec
-let packets: list[Packet, 32]
-```
-
-The bounded form:
-
-- performs no hidden growth allocation;
-- never exceeds `Capacity`;
-- may use inline, stack, static, arena, or explicit backing storage;
-- reports capacity exhaustion explicitly;
-- is suitable for MCU, RTOS, and no-heap profiles.
-
-`Capacity` must be greater than zero.
-
----
-
-## List properties
-
-The public API should provide harmonized members where their meaning is clear:
-
-```sec
-values.Len()
-values.Capacity()
-values.IsEmpty()
-```
-
-Mutation and fallibility belong to the standard-library implementation of the
-built-in type.
-
-Exact member names must be synchronized with the core and standard-library
-naming rules.
-
----
-
-# map
-
-## Meaning
-
-`map[K, V]` stores unique keys associated with values.
-
-```sec
-let users: map[UserID, User]
-```
-
-The source-level semantics require:
-
-- unique keys;
-- lookup;
-- insertion;
-- replacement;
-- removal;
-- iteration;
-- ownership of keys and values;
-- stable key equality and hashing while stored;
-- explicit capacity and allocation behavior;
-- mutation-during-iteration checks.
-
----
-
-## Dynamic map
-
-```sec
-map[K, V]
-```
-
-may grow only through an explicitly permitted allocation strategy.
-
-Growth failure is explicit.
-
-No hidden heap is assumed.
-
----
-
-## Bounded map
-
-```sec
-map[K, V, Capacity]
-```
-
-has a compile-time maximum entry count.
-
-```sec
-let routes: map[RouteID, Route, 64]
-```
-
-The bounded form:
-
-- performs no hidden growth allocation;
-- never stores more than `Capacity` entries;
-- reports capacity exhaustion explicitly;
-- may use a compiler-selected fixed hash-table representation.
-
----
-
-## Representation
-
-The initial implementation should use hash-based semantics.
-
-The physical representation is not part of the source contract unless this
-rulebook explicitly guarantees it.
-
-The compiler and standard library may select:
-
-- open addressing;
-- robin-hood hashing;
-- another fixed-capacity hash strategy;
-- target-specialized hashing;
-- compile-time perfect hashing for immutable known maps.
-
-The selected representation must preserve source semantics.
-
----
-
-## Iteration order
-
-`map` does not guarantee iteration order.
-
-Programs must not depend on:
-
-- insertion order;
-- hash-bucket order;
-- sorted order;
-- target-specific order.
-
-Ordered behavior belongs in the standard library:
-
-```sec
-OrderedMap[K, V]
-```
-
-This permits the compiler and standard library to improve the normal map
-representation without changing source semantics.
-
----
-
-## Key requirements
-
-A key type must support:
-
-```text
-equality
-hashing
-stable key identity while stored
-```
-
-The final core interface or compiler-known contract names remain defined by the
-map implementation rule.
-
-Candidate nominal names include:
-
-```sec
-Equal
-Hash
-```
-
-A stored key must not be mutated in a way that changes equality or hash.
-
-The compiler should derive equality and hashing for eligible types.
-
----
-
-# set
-
-## Meaning
-
-`set[T]` stores unique values.
-
-```sec
-let activeUsers: set[UserID]
-```
-
-It is a distinct source-level type even when its implementation shares map
-infrastructure.
-
-It provides:
-
-- insertion;
-- removal;
-- membership;
-- iteration over values;
-- set operations;
-- explicit allocation and capacity behavior.
-
----
-
-## Bounded set
-
-```sec
-set[T, Capacity]
-```
-
-has a compile-time maximum value count.
-
-The same bounded-storage principles as `map` apply.
-
----
-
-## Iteration order
-
-`set` does not guarantee iteration order.
-
-Ordered behavior belongs in:
-
-```sec
-OrderedSet[T]
-```
-
-in the standard library.
+This rulebook defines the shaped-value families `vector`, `matrix`, `tensor`,
+and `tensor_view`, together with `Shape`, `Strides`, `TensorLayout`, and
+`MemorySpace`. Collection semantics for arrays, dynamic arrays, slices, lists,
+maps, and sets belong exclusively to `collections.md`.
+
+Mutable implementation status belongs in `implementation-status.yaml`, under
+the `frontend.shaped-types` integration.
 
 ---
 
@@ -882,13 +357,8 @@ rank 1
 shape [N]
 ```
 
-It is not a growable collection.
-
-Growable ordered storage is:
-
-```sec
-list[T]
-```
+It is not growable storage. Growable ordered storage belongs to
+`collections.md`.
 
 ---
 
@@ -1417,7 +887,6 @@ Iteration must support the relevant forms:
 value iteration
 index iteration
 index and value iteration
-map entry iteration
 axis iteration
 ```
 
@@ -1426,8 +895,6 @@ contract permits it.
 
 Element mutation is permitted only when storage stability, borrowing, and
 aliasing rules permit it.
-
-Map and set iteration must not promise ordering.
 
 ---
 
@@ -1438,10 +905,6 @@ Map and set iteration must not promise ordering.
 The following normally own their storage:
 
 ```text
-array
-list
-map
-set
 vector
 matrix
 tensor
@@ -1450,7 +913,6 @@ tensor
 The following are non-owning:
 
 ```text
-slice
 tensor_view
 ```
 
@@ -1500,7 +962,7 @@ Descriptor values are normally trivially destructible.
 
 ## No hidden heap
 
-No first-class collection or shaped type may assume a hidden global heap.
+No shaped type may assume a hidden global heap.
 
 Any operation requiring allocation must use:
 
@@ -1509,10 +971,6 @@ Any operation requiring allocation must use:
 - explicit target runtime allocation;
 - another approved allocation source.
 
-Bounded forms must not allocate merely because they become full.
-
----
-
 # Standard-library responsibility
 
 ## Compiler and standard library split
@@ -1520,9 +978,6 @@ Bounded forms must not allocate merely because they become full.
 These types are first-class language types:
 
 ```sec
-list
-map
-set
 vector
 matrix
 tensor
@@ -1535,24 +990,17 @@ mapping are compiler-defined.
 Their public member APIs and reusable algorithms must also be declared and
 implemented in the standard library.
 
-The standard library receives privileged permission to define implementations
-for built-in lowercase types, conceptually:
+The standard library may provide compiler-validated implementations for the
+canonical shaped-type surface, conceptually:
 
 ```sec
-impl list[T] {
-    // public collection API
-}
-
-impl map[K, V] {
-    // public associative API
-}
-
 impl matrix[T, Rows, Columns] {
     // public matrix API
 }
 ```
 
-Ordinary user modules may not globally extend built-in types.
+This does not grant permission to add arbitrary public members to compiler-owned
+types. Ordinary user modules may not globally extend built-in types.
 
 ---
 
@@ -1562,9 +1010,6 @@ This rulebook is not considered fully implemented until stdlib contains working
 implementations for at least:
 
 ```text
-list
-map
-set
 vector
 matrix
 tensor
@@ -1579,17 +1024,16 @@ The stdlib implementation must include:
 - constructors;
 - destruction;
 - core member operations;
-- fallible capacity/allocation behavior;
+- fallible allocation behavior where materialization requires it;
 - iteration;
 - copy/move integration;
 - indexing helpers where not intrinsic;
 - equality where semantically valid;
-- hashing support for map/set keys;
 - matrix and vector operations;
 - explicit tensor reshape, transpose, broadcast, reduction, and contraction
   foundations;
 - target-independent tests;
-- bounded no-allocation variants.
+- explicit no-allocation variants where the shaped contract provides them.
 
 Compiler intrinsics may replace selected stdlib bodies during lowering.
 
@@ -1615,7 +1059,7 @@ stdlib declaration against compiler expectations.
 
 ## Completion requirement
 
-A collection feature is not fully implemented merely because parser and Sema
+A shaped feature is not fully implemented merely because parser and Sema
 accept the type.
 
 Full implementation requires:
@@ -1638,144 +1082,7 @@ Full implementation requires:
 
 ---
 
-# Standard-library data structures
-
-The following are standard-library nominal types and begin with uppercase
-letters.
-
-They are not first-class language type constructors.
-
-## Linear and queue structures
-
-```sec
-Stack[T]
-Queue[T]
-Deque[T]
-LinkedList[T]
-RingBuffer[T, Capacity]
-```
-
-`RingBuffer` is especially important for:
-
-- MCU;
-- RTOS;
-- ISR deferred work;
-- audio;
-- networking;
-- telemetry;
-- bounded producer/consumer pipelines.
-
-An ISR-safe ring buffer may use a separate stdlib type or explicit policy.
-
----
-
-## Priority structures
-
-```sec
-BinaryHeap[T]
-PriorityQueue[T, Priority]
-```
-
-Ordering and comparison policy belong to stdlib contracts.
-
----
-
-## Ordered and specialized associative structures
-
-```sec
-OrderedMap[K, V]
-OrderedSet[T]
-MultiMap[K, V]
-MultiSet[T]
-FlatMap[K, V]
-FlatSet[T]
-```
-
-`OrderedMap` and `OrderedSet` provide ordering that built-in `map` and `set` do
-not guarantee.
-
-`FlatMap` and `FlatSet` may use sorted contiguous storage and are useful for
-small collections and embedded systems.
-
----
-
-## Bit and lookup structures
-
-```sec
-BitSet[N]
-BloomFilter[T, Bits]
-Trie[K, V]
-RadixTree[K, V]
-```
-
-`BitSet[N]` is a collection of independently addressable bits.
-
-It is not the same as:
-
-```sec
-enum Permissions bit[8] {
-}
-```
-
-where `bit[8]` defines enum representation width.
-
----
-
-## Trees and graphs
-
-```sec
-Tree[T]
-BinaryTree[T]
-Graph[Node, Edge]
-DirectedAcyclicGraph[Node, Edge]
-```
-
-These remain library-owned unless compiler implementation experience proves a
-language-level need.
-
----
-
-## Numerical types and algorithms
-
-```sec
-Complex[T]
-Quaternion[T]
-Polynomial[T]
-```
-
-Potential stdlib numerical modules include:
-
-```text
-matrix decomposition
-linear solvers
-eigenvalues
-singular value decomposition
-FFT
-convolution
-statistics
-signal processing
-image processing
-automatic differentiation
-neural-network operators
-```
-
-The compiler may recognize selected stdlib operations as intrinsics while the
-source API remains in stdlib.
-
----
-
-## Domain-shaped wrappers
-
-```sec
-Grid[T, Rows, Columns]
-Image[T, Width, Height]
-Volume[T, X, Y, Z]
-```
-
-These may wrap `matrix`, `tensor`, or `tensor_view` while adding domain
-invariants and APIs.
-
----
+# Standard-library layout policies
 
 ## Sparse layout policies
 
@@ -1809,13 +1116,6 @@ core/errors.sec
 The initial set should include or be refined from:
 
 ```sec
-enum CollectionError {
-    CapacityExceeded
-    AllocationFailed
-    InvalidOperation
-    UnsupportedOperation
-}
-
 enum IndexError {
     Negative
     OutOfBounds
@@ -1854,11 +1154,9 @@ Sema must validate at least:
 
 - lowercase built-in type constructor names;
 - type and compile-time value argument counts;
-- capacities;
 - ranks;
 - dimensions;
 - element storage eligibility;
-- map/set key contracts;
 - allocation capability;
 - ownership and move state;
 - view borrow lifetime;
@@ -1878,34 +1176,11 @@ Sema must validate at least:
 
 # Semantic IR
 
-Semantic IR must preserve collection and shaped semantics explicitly.
+Semantic IR must preserve shaped semantics explicitly.
 
 At minimum, it should support operations equivalent to:
 
 ```text
-ListCreate
-ListLen
-ListCapacity
-ListGet
-ListSet
-ListInsert
-ListRemove
-ListDestroy
-
-MapCreate
-MapLookup
-MapInsert
-MapRemove
-MapIterate
-MapDestroy
-
-SetCreate
-SetContains
-SetInsert
-SetRemove
-SetIterate
-SetDestroy
-
 ShapeCreate
 StridesCreate
 TensorCreate
@@ -1934,7 +1209,6 @@ MemorySpaceTransfer
 Semantic IR must record:
 
 - element type;
-- capacity;
 - rank;
 - static and runtime shape;
 - strides;
@@ -1967,7 +1241,7 @@ Sec source
     -> AST
     -> Sema
     -> Sec Semantic IR
-    -> Sec collection/shaped MLIR dialect
+    -> Sec shaped-value MLIR dialect
     -> standard MLIR dialects
     -> bufferization and target lowering
     -> LLVM, SPIR-V, or another backend
@@ -2097,26 +1371,6 @@ Unsupported sparse layouts must fail explicitly.
 
 ---
 
-## list, map, and set
-
-MLIR does not define Sec's source semantics for general `list`, `map`, and `set`.
-
-Sec should define a custom high-level dialect for these operations.
-
-The custom dialect may then lower to:
-
-- fixed inline storage;
-- arena storage;
-- heap storage;
-- compiler-generated loops;
-- target library calls;
-- specialized immutable representations.
-
-MLIR dialect extensibility is an implementation tool, not a reason to expose
-backend details in Sec syntax.
-
----
-
 ## GPU and accelerator lowering
 
 Shaped operations may later lower through MLIR GPU, SPIR-V, NVVM, or another
@@ -2132,14 +1386,6 @@ transfer has observable cost or failure.
 # Diagnostics
 
 Examples:
-
-```text
-list capacity must be greater than zero
-```
-
-```text
-map key type MutableBuffer does not provide stable hashing while stored
-```
 
 ```text
 matrix multiplication requires matching inner dimensions, got 4 and 5
@@ -2165,14 +1411,6 @@ tensor element count overflows target address size
 view stride reaches outside backing storage
 ```
 
-```text
-dynamic collection growth requires an allocator or arena
-```
-
-```text
-OrderedMap is a standard-library type; builtin map does not guarantee order
-```
-
 Diagnostics must have stable IDs.
 
 ---
@@ -2182,15 +1420,6 @@ Diagnostics must have stable IDs.
 Required Sec integration tests include at least:
 
 ```text
-list_valid.sec
-list_invalid.sec
-
-map_valid.sec
-map_invalid.sec
-
-set_valid.sec
-set_invalid.sec
-
 vector_valid.sec
 vector_invalid.sec
 
@@ -2217,81 +1446,6 @@ stdlib behavior as each phase becomes implemented.
 
 ---
 
-# Implementation status
-
-## Implemented
-
-According to the current relevant Sec rule documents:
-
-- fixed postfix array type parsing is implemented;
-- unsized sequence and slice-reference type parsing is implemented;
-- AST distinguishes fixed arrays from unsized sequence types;
-- Sema resolves fixed arrays and accepts `ref T[]` and `ref mut T[]`;
-- Sema rejects bare unsized `T[]` in ordinary value positions;
-- parser and AST support mixed type/value arguments for `list`, `map`, `set`,
-  `vector`, `matrix`, `tensor`, `tensor_view`, `Shape`, `Strides` and
-  `TensorLayout`;
-- Sema recognizes `list[T]`, `list[T, Capacity]`, `map[K, V]`,
-  `map[K, V, Capacity]`, `set[T]`, `set[T, Capacity]`, `vector[T, N]`,
-  `matrix[T, Rows, Columns]`, `tensor[T, Dimensions...]`,
-  `tensor_view[T, Rank]`, `Shape[Rank]`, `Strides[Rank]`,
-  `TensorLayout[Rank]` and `MemorySpace` as compiler-known types;
-- Sema validates type-argument counts and compile-time integer argument counts
-  for those collection-shaped type constructors;
-- Sema rejects non-positive bounded collection capacities;
-- Sema rejects negative shaped dimensions and ranks;
-- `set[T]` is accepted in type positions despite `set` also being a contextual
-  property-setter keyword;
-- `list[T]`, `set[T]`, `map[K, V]` and `vector[T, N]` participate in the
-  current `for` iterable type inference;
-- LSP type completion sees the new compiler-known types through the intrinsic
-  type registry;
-- VS Code TextMate grammar highlights the new collection-shaped type names;
-- `register[N]`, `bit`, and `bit[N]` parsing is implemented;
-- bit-backed enum widths are preserved through AST and Sema;
-- register widths and field widths are validated;
-- bit-backed enum widths have MLIR and LLVM scalar-width lowering;
-- the compiler has an active MLIR pipeline for an existing scalar/numeric
-  subset.
-
-These existing implementations are dependencies and must not be regressed.
-
----
-
-## Not Implemented
-
-The following are not considered implemented by this rulebook yet:
-
-- parsing, AST distinction, Sema construction and lowering for the canonical
-  empty `list[T] {}` and `list[T, Capacity] {}` literals;
-- other collection constructors, map/set literals and mutation APIs;
-- shaped constructors, literals and member APIs for `vector`, `matrix`,
-  `tensor`, `tensor_view`, `Shape`, `Strides` and `TensorLayout`;
-- `for` iterable type inference for shaped types beyond rank-one
-  `vector[T, N]`;
-- contextual `x` parsing;
-- matrix multiplication Sema;
-- shape and stride analysis;
-- mutable-overlap analysis;
-- collection and shaped Semantic IR;
-- collection and shaped MLIR lowering;
-- sparse layout lowering;
-- GPU or accelerator lowering;
-- runtime collection errors in `core/errors.sec`;
-- required stdlib implementations for the first-class types;
-- planned standard-library structures listed by this document;
-- complete indexing, slicing, and bounds lowering for the existing array/slice
-  rules;
-- formatter support and complete LSP member/signature support for these types;
-- required valid and invalid integration tests.
-
-This section must be updated as implementation progresses.
-
-A type or operation may move to `Implemented` only when all applicable
-completion requirements in this rulebook are satisfied.
-
----
-
 # Required synchronization
 
 This rulebook must be synchronized with:
@@ -2299,7 +1453,7 @@ This rulebook must be synchronized with:
 ```text
 types.md
 generics.txt
-arrays-slices.txt
+collections.md
 registers.txt
 enums.txt
 allocation.txt
@@ -2326,7 +1480,6 @@ formatter.md
 default_values.md
 language_philosophy.txt
 core/errors.sec
-stdlib collection modules
 stdlib numerical modules
 ```
 

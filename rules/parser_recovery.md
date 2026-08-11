@@ -3502,7 +3502,7 @@ unions.txt
 interfaces.txt
 impl.txt
 properties.txt
-arrays-slices.txt
+collections.md
 flowcontrol_if.txt
 flowcontrol_for.txt
 flowcontrol_while.txt

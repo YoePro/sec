@@ -12,8 +12,8 @@ FFI wrappers and performance-sensitive code.
 
 This document defines allocation semantics. It does not define `list[T]`,
 `map[K, V]`, `set[T]`, legacy `Vec[T]`/`Map[K, V]`/`Set[T]`, `String`,
-`Box[T]` or other dynamic containers. First-class collection and shaped types
-are governed by `collections-shaped-types.md`.
+`Box[T]` or other dynamic containers. First-class collections are governed by
+`collections.md`; shaped types are governed by `shaped-types.md`.
 
 ## Core rule
 

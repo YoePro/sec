@@ -240,5 +240,5 @@ contract declaration when practical.
 - `types.md` defines named identity, declarations, conversions and assignment.
 - `operators.md` defines constant-expression operator semantics.
 - `struct.txt` requires named constrained field types.
-- `collections-shaped-types.md` defines collection-shaped types.
+- `collections.md` defines collection types and `shaped-types.md` defines shaped types.
 - `diagnostics.txt` defines diagnostic structure and stability.

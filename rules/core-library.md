@@ -836,14 +836,22 @@ multiple runes.
 
 This section applies to fixed arrays using the final Sec postfix array syntax.
 
-## 12.1 Intrinsic members
+## 12.1 Compiler-known properties
 
 ```sec
-property len: uint {
+property Len: uint {
     get
 }
 
-unsafe property ptr: RawPtr[T] {
+property IsEmpty: bool {
+    get
+}
+
+unsafe property Ptr: RawPtr[T] {
+    get
+}
+
+property SizeOf: uint {
     get
 }
 ```
@@ -852,15 +860,13 @@ unsafe property ptr: RawPtr[T] {
 
 ```sec
 impl T[N] {
-    fn IsEmpty() bool
-
-    fn First() Option[ref T]
-    fn Last() Option[ref T]
-
-    fn AsSlice() ref T[]
-    fn AsMutableSlice() ref mut T[]
+    fn ToString() string
 }
 ```
+
+Borrowed views are formed with the explicit reference-slicing syntax from
+`collections.md`. `AsSlice`, `AsMutableSlice`, `First`, and `Last` are not
+universal array members.
 
 Methods requiring equality, ordering, copying or allocation may be added through
 generic constraints later.
@@ -883,14 +889,22 @@ They are not mandatory in the minimum core surface.
 
 Slices are non-owning views.
 
-## 13.1 Intrinsic members
+## 13.1 Compiler-known properties
 
 ```sec
-property len: uint {
+property Len: uint {
     get
 }
 
-unsafe property ptr: RawPtr[T] {
+property IsEmpty: bool {
+    get
+}
+
+unsafe property Ptr: RawPtr[T] {
+    get
+}
+
+property SizeOf: uint {
     get
 }
 ```
@@ -899,14 +913,7 @@ unsafe property ptr: RawPtr[T] {
 
 ```sec
 impl ref T[] {
-    fn IsEmpty() bool
-
-    fn First() Option[ref T]
-    fn Last() Option[ref T]
-
-    fn Slice(start: uint, end: uint) Result[ref T[], RangeError]
-
-    fn Iterator() SliceIterator[T]
+    fn ToString() string
 }
 ```
 
@@ -914,24 +921,18 @@ impl ref T[] {
 
 ```sec
 impl ref mut T[] {
-    fn IsEmpty() bool
-
-    fn First() Option[ref mut T]
-    fn Last() Option[ref mut T]
-
-    fn Slice(
-        start: uint,
-        end: uint,
-    ) Result[ref mut T[], RangeError]
-
     fn Reverse() void
-
-    fn Iterator() MutableSliceIterator[T]
+    fn Fill(value: T) void where T: Copy
 }
 ```
 
-`Fill`, `Contains`, `IndexOf` and similar methods require finalized generic
-constraints and copy/equality semantics.
+Sub-slices are formed with explicit reference slicing. The core library does
+not add `Slice`, iterator-helper, `First`, or `Last` members. Iteration uses the
+language's ordinary collection iteration protocol.
+
+`Contains`, `IndexOf`, and similar conveniences are not privileged core
+members; they require ordinary library APIs and the corresponding generic
+constraints.
 
 ---
 

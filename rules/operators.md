@@ -325,10 +325,10 @@ types.md
 contracts.md
     constrained assignment
 
-arrays-slices.txt
+collections.md
     indexing, slicing, array equality, and slice behavior
 
-collections-shaped-types.md
+shaped-types.md
     shaped values and matrix multiplication
 
 spread.txt
@@ -4067,8 +4067,8 @@ memory_model.md
 types.md
 contracts.md
 functions.txt
-arrays-slices.txt
-collections-shaped-types.md
+collections.md
+shaped-types.md
 spread.txt
 enums.txt
 unions.txt

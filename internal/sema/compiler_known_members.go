@@ -19,6 +19,33 @@ type CompilerKnownMember struct {
 	Unsafe      bool
 }
 
+type CompilerKnownFunction struct {
+	ID     string
+	Name   string
+	Result Type
+}
+
+// CompilerKnownFunctions is the canonical catalog used to reserve and expose
+// compiler-owned global functions. Their detailed contextual validation stays
+// in Sema, while LSP observes the same registered Function values.
+func CompilerKnownFunctions() []CompilerKnownFunction {
+	types := builtinTypes()
+	return []CompilerKnownFunction{
+		{ID: "CKF-LEN", Name: "len", Result: types["int"]},
+		{ID: "CKF-SIZEOF-TYPE", Name: "SizeOf", Result: types["uint"]},
+		{ID: "CKF-FILL", Name: "fill", Result: Type{Kind: InvalidType}},
+	}
+}
+
+func compilerKnownFunction(name string) (CompilerKnownFunction, bool) {
+	for _, function := range CompilerKnownFunctions() {
+		if function.Name == name {
+			return function, true
+		}
+	}
+	return CompilerKnownFunction{}, false
+}
+
 func CompilerKnownMembersForType(typ Type, static bool) []CompilerKnownMember {
 	if static {
 		return compilerKnownStaticMembers(typ)
@@ -29,19 +56,72 @@ func CompilerKnownMembersForType(typ Type, static bool) []CompilerKnownMember {
 func compilerKnownValueMembers(typ Type) []CompilerKnownMember {
 	members := []CompilerKnownMember{}
 	uintType := builtinTypes()["uint"]
+	boolType := builtinTypes()["bool"]
 	stringType := builtinTypes()["string"]
 
-	if compilerKnownSizedType(typ) {
-		members = append(members,
-			CompilerKnownMember{ID: "CKM-PTR-VALUE", Name: "Ptr", LegacyNames: []string{"ptr"}, Kind: CompilerKnownProperty, Result: compilerKnownRawPointerResult(typ), Unsafe: true},
-			CompilerKnownMember{ID: "CKM-SIZEOF-VALUE", Name: "SizeOf", Kind: CompilerKnownMethod, Result: uintType},
-		)
+	if compilerKnownPointerReceiver(typ) {
+		members = append(members, CompilerKnownMember{ID: "CKM-PTR-VALUE", Name: "Ptr", LegacyNames: []string{"ptr"}, Kind: CompilerKnownProperty, Result: compilerKnownRawPointerResult(typ), Unsafe: true})
+	}
+	if compilerKnownValueSizeReceiver(typ) {
+		members = append(members, CompilerKnownMember{ID: "CKM-SIZEOF-VALUE", Name: "SizeOf", Kind: CompilerKnownProperty, Result: uintType})
 	}
 	if compilerKnownSequenceType(typ) {
 		members = append(members, CompilerKnownMember{ID: compilerKnownLenID(typ), Name: "Len", LegacyNames: []string{"len"}, Kind: CompilerKnownProperty, Result: uintType})
+		if dereferenceType(typ).Kind != StringType {
+			members = append(members, CompilerKnownMember{ID: compilerKnownIsEmptyID(typ), Name: "IsEmpty", Kind: CompilerKnownProperty, Result: boolType})
+		}
 	}
 	if compilerKnownPrintableType(typ) {
 		members = append(members, CompilerKnownMember{ID: compilerKnownToStringID(typ), Name: "ToString", Kind: CompilerKnownMethod, Result: stringType})
+	}
+	sequence := dereferenceType(typ)
+	if sequence.Kind == ArrayType && sequence.ArrayLength == dynamicArrayLength && sequence.Element != nil {
+		members = append(members,
+			CompilerKnownMember{ID: "CKM-DYNAMIC-ARRAY-APPEND", Name: "Append", Kind: CompilerKnownMethod, Result: compilerKnownResult(builtinTypes()["void"], builtinTypes()["CollectionError"])},
+			CompilerKnownMember{ID: "CKM-DYNAMIC-ARRAY-CLEAR", Name: "Clear", Kind: CompilerKnownMethod, Result: builtinTypes()["void"]},
+			CompilerKnownMember{ID: "CKM-DYNAMIC-ARRAY-REMOVEAT", Name: "RemoveAt", Kind: CompilerKnownMethod, Result: compilerKnownOption(*sequence.Element)},
+		)
+	}
+	if compilerKnownMutableSlice(typ) {
+		members = append(members,
+			CompilerKnownMember{ID: "CKM-MUTABLE-SLICE-REVERSE", Name: "Reverse", Kind: CompilerKnownMethod, Result: builtinTypes()["void"]},
+			CompilerKnownMember{ID: "CKM-MUTABLE-SLICE-FILL", Name: "Fill", Kind: CompilerKnownMethod, Result: builtinTypes()["void"]},
+		)
+	}
+	if sequence.Name == "list" && len(sequence.TypeArgs) == 1 {
+		element := sequence.TypeArgs[0]
+		members = append(members,
+			CompilerKnownMember{ID: "CKM-LIST-CAPACITY", Name: "Capacity", Kind: CompilerKnownProperty, Result: uintType},
+			CompilerKnownMember{ID: "CKM-LIST-APPEND", Name: "Append", Kind: CompilerKnownMethod, Result: compilerKnownResult(builtinTypes()["void"], builtinTypes()["CollectionError"])},
+			CompilerKnownMember{ID: "CKM-LIST-INSERT", Name: "Insert", Kind: CompilerKnownMethod, Result: compilerKnownResult(boolType, builtinTypes()["CollectionError"])},
+			CompilerKnownMember{ID: "CKM-LIST-REMOVEAT", Name: "RemoveAt", Kind: CompilerKnownMethod, Result: compilerKnownOption(element)},
+			CompilerKnownMember{ID: "CKM-LIST-REMOVE", Name: "Remove", Kind: CompilerKnownMethod, Result: boolType},
+			CompilerKnownMember{ID: "CKM-LIST-CLEAR", Name: "Clear", Kind: CompilerKnownMethod, Result: builtinTypes()["void"]},
+			CompilerKnownMember{ID: "CKM-LIST-CONTAINS", Name: "Contains", Kind: CompilerKnownMethod, Result: boolType},
+			CompilerKnownMember{ID: "CKM-LIST-INDEXOF", Name: "IndexOf", Kind: CompilerKnownMethod, Result: compilerKnownOption(uintType)},
+			CompilerKnownMember{ID: "CKM-LIST-REVERSE", Name: "Reverse", Kind: CompilerKnownMethod, Result: builtinTypes()["void"]},
+			CompilerKnownMember{ID: "CKM-LIST-SORT", Name: "Sort", Kind: CompilerKnownMethod, Result: builtinTypes()["void"]},
+			CompilerKnownMember{ID: "CKM-LIST-SORTBY", Name: "SortBy", Kind: CompilerKnownMethod, Result: builtinTypes()["void"]},
+		)
+	}
+	if sequence.Name == "map" && len(sequence.TypeArgs) == 2 {
+		members = append(members,
+			CompilerKnownMember{ID: "CKM-MAP-REMOVE", Name: "Remove", Kind: CompilerKnownMethod, Result: compilerKnownOption(sequence.TypeArgs[1])},
+			CompilerKnownMember{ID: "CKM-MAP-CONTAINSKEY", Name: "ContainsKey", Kind: CompilerKnownMethod, Result: boolType},
+			CompilerKnownMember{ID: "CKM-MAP-CLEAR", Name: "Clear", Kind: CompilerKnownMethod, Result: builtinTypes()["void"]},
+		)
+	}
+	if sequence.Name == "set" && len(sequence.TypeArgs) == 1 {
+		members = append(members,
+			CompilerKnownMember{ID: "CKM-SET-ADD", Name: "Add", Kind: CompilerKnownMethod, Result: compilerKnownResult(boolType, builtinTypes()["CollectionError"])},
+			CompilerKnownMember{ID: "CKM-SET-REMOVE", Name: "Remove", Kind: CompilerKnownMethod, Result: boolType},
+			CompilerKnownMember{ID: "CKM-SET-CONTAINS", Name: "Contains", Kind: CompilerKnownMethod, Result: boolType},
+			CompilerKnownMember{ID: "CKM-SET-CLEAR", Name: "Clear", Kind: CompilerKnownMethod, Result: builtinTypes()["void"]},
+			CompilerKnownMember{ID: "CKM-SET-UNION", Name: "Union", Kind: CompilerKnownMethod, Result: compilerKnownResult(sequence, builtinTypes()["CollectionError"])},
+			CompilerKnownMember{ID: "CKM-SET-INTERSECTION", Name: "Intersection", Kind: CompilerKnownMethod, Result: compilerKnownResult(sequence, builtinTypes()["CollectionError"])},
+			CompilerKnownMember{ID: "CKM-SET-DIFFERENCE", Name: "Difference", Kind: CompilerKnownMethod, Result: compilerKnownResult(sequence, builtinTypes()["CollectionError"])},
+			CompilerKnownMember{ID: "CKM-SET-SYMMETRIC-DIFFERENCE", Name: "SymmetricDifference", Kind: CompilerKnownMethod, Result: compilerKnownResult(sequence, builtinTypes()["CollectionError"])},
+		)
 	}
 	if typ.Kind == StringType {
 		members = append(members,
@@ -73,7 +153,7 @@ func compilerKnownValueMembers(typ Type) []CompilerKnownMember {
 func compilerKnownStaticMembers(typ Type) []CompilerKnownMember {
 	members := []CompilerKnownMember{}
 	if compilerKnownSizedType(typ) {
-		members = append(members, CompilerKnownMember{ID: "CKM-SIZEOF-TYPE", Name: "SizeOf", Kind: CompilerKnownMethod, Result: builtinTypes()["uint"]})
+		members = append(members, CompilerKnownMember{ID: "CKM-SIZEOF-TYPE", Name: "SizeOf", Kind: CompilerKnownProperty, Result: builtinTypes()["uint"]})
 	}
 	if isIntegerType(typ) {
 		members = append(members,
@@ -86,6 +166,9 @@ func compilerKnownStaticMembers(typ Type) []CompilerKnownMember {
 		for _, name := range []string{"Min", "Max", "Epsilon", "Infinity", "NegativeInfinity", "NaN"} {
 			members = append(members, CompilerKnownMember{ID: "CKM-FLOAT-" + strings.ToUpper(name), Name: name, Kind: CompilerKnownProperty, Result: typ})
 		}
+	}
+	if typ.Kind == DecimalType {
+		members = append(members, CompilerKnownMember{ID: "CKM-DECIMAL-SCALE", Name: "Scale", Kind: CompilerKnownProperty, Result: builtinTypes()["int"]})
 	}
 	if typ.Kind == StringType {
 		members = append(members,
@@ -118,10 +201,11 @@ func compilerKnownMember(typ Type, name string, static bool) (CompilerKnownMembe
 }
 
 func compilerKnownSequenceType(typ Type) bool {
-	if typ.Kind == StringType || typ.Kind == ArrayType || typ.Kind == SliceType {
+	sequence := dereferenceType(typ)
+	if sequence.Kind == StringType || sequence.Kind == ArrayType || sequence.Kind == SliceType {
 		return true
 	}
-	return typ.Kind == ReferenceType && typ.Element != nil && (typ.Element.Kind == ArrayType || typ.Element.Kind == SliceType)
+	return compilerKnownCollectionName(sequence.Name)
 }
 
 func compilerKnownPrintableType(typ Type) bool {
@@ -129,7 +213,30 @@ func compilerKnownPrintableType(typ Type) bool {
 		return true
 	}
 	sequence := dereferenceType(typ)
-	return (sequence.Kind == ArrayType || sequence.Kind == SliceType) && sequence.Element != nil && (sequence.Element.Kind == CharType || sequence.Element.Kind == RuneType)
+	return sequence.Kind == ArrayType || sequence.Kind == SliceType || compilerKnownCollectionName(sequence.Name)
+}
+
+func compilerKnownCollectionName(name string) bool {
+	switch name {
+	case "list", "map", "set":
+		return true
+	default:
+		return false
+	}
+}
+
+func compilerKnownPointerReceiver(typ Type) bool {
+	sequence := dereferenceType(typ)
+	return sequence.Name != "map" && sequence.Name != "set" && compilerKnownSizedType(typ)
+}
+
+func compilerKnownValueSizeReceiver(typ Type) bool {
+	sequence := dereferenceType(typ)
+	return sequence.Name != "map" && sequence.Name != "set" && compilerKnownSizedType(typ)
+}
+
+func compilerKnownMutableSlice(typ Type) bool {
+	return typ.Kind == ReferenceType && typ.ReferenceMutable && typ.Element != nil && typ.Element.Kind == SliceType
 }
 
 func compilerKnownSizedType(typ Type) bool {
@@ -149,6 +256,8 @@ func compilerKnownRawPointerResult(typ Type) Type {
 		sequence := dereferenceType(typ)
 		if (sequence.Kind == ArrayType || sequence.Kind == SliceType) && sequence.Element != nil {
 			element = *sequence.Element
+		} else if sequence.Name == "list" && len(sequence.TypeArgs) == 1 {
+			element = sequence.TypeArgs[0]
 		}
 	}
 	return rawPointerType(element)
@@ -166,13 +275,28 @@ func compilerKnownDynamicArray(element Type) Type {
 }
 
 func compilerKnownLenID(typ Type) string {
+	typ = dereferenceType(typ)
 	if typ.Kind == StringType {
 		return "CKM-LEN-STRING"
 	}
 	if typ.Kind == ArrayType {
 		return "CKM-LEN-ARRAY"
 	}
+	if compilerKnownCollectionName(typ.Name) {
+		return "CKM-LEN-" + strings.ToUpper(typ.Name)
+	}
 	return "CKM-LEN-SLICE"
+}
+
+func compilerKnownIsEmptyID(typ Type) string {
+	typ = dereferenceType(typ)
+	if typ.Kind == ArrayType {
+		return "CKM-ISEMPTY-ARRAY"
+	}
+	if typ.Kind == SliceType {
+		return "CKM-ISEMPTY-SLICE"
+	}
+	return "CKM-ISEMPTY-" + strings.ToUpper(typ.Name)
 }
 
 func compilerKnownToStringID(typ Type) string {
@@ -203,4 +327,14 @@ func compilerKnownToStringID(typ Type) string {
 	default:
 		return "CKM-TOSTRING-VALUE"
 	}
+}
+
+func compilerKnownOption(value Type) Type {
+	typ := builtinTypes()["Option"]
+	typ.TypeArgs = []Type{value}
+	return typ
+}
+
+func compilerKnownResult(value Type, err Type) Type {
+	return Type{Name: "Result", Kind: ResultType, TypeArgs: []Type{value, err}}
 }

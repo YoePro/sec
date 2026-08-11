@@ -1238,7 +1238,8 @@ ownership.md
 borrowing.txt
 copy_move.md
 destruction.txt
-collections-shaped-types.md
+collections.md
+shaped-types.md
 units.txt
 concurrency.md
 threads.md

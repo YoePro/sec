@@ -1886,7 +1886,7 @@ names_scopes_visibility.md
 types.md
 contracts.md
 properties.txt
-collections-shaped-types.md
+shaped-types.md
 registers.txt
 enums.txt
 units.txt

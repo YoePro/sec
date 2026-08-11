@@ -1182,6 +1182,14 @@ func semanticTokenClassification(uri string, text string) (classification map[st
 			continue
 		}
 		positionKey := features.ClassificationKey(token.File, token.Line, token.Column)
+		if member, ok := analyzer.CompilerKnownMemberAt(token.File, token.Line, token.Column); ok {
+			kind := "method"
+			if member.Kind == sema.CompilerKnownProperty {
+				kind = "property"
+			}
+			classification[positionKey] = kind
+			continue
+		}
 		binding, ok := analyzer.ResolvedBindingAt(token.File, token.Line, token.Column)
 		if ok {
 			kind := "variable"
@@ -1315,6 +1323,9 @@ func hoverForSource(uri string, text string, pos position) (hoverResult, bool) {
 		}
 	}
 	if token, found := sourceTokenAtPosition(uri, text, pos); found {
+		if member, resolved := analyzer.CompilerKnownMemberAt(token.File, token.Line, token.Column); resolved {
+			return compilerKnownMemberHover(nameRange, member), true
+		}
 		definitions := uniqueDefinitionTokens(analyzer.DefinitionsAt(token.File, token.Line, token.Column))
 		if len(definitions) == 1 {
 			if contents, found := memberHoverContentsForDefinition(analyzer.Types(), definitions[0]); found {
@@ -1336,6 +1347,19 @@ func hoverForSource(uri string, text string, pos position) (hoverResult, bool) {
 	}
 
 	return hoverResult{}, false
+}
+
+func compilerKnownMemberHover(sourceRange lspRange, member sema.CompilerKnownMember) hoverResult {
+	kind := string(member.Kind)
+	if member.Unsafe {
+		kind = "unsafe " + kind
+	}
+	result := lspTypeName(member.Result)
+	if member.Result.Kind == sema.InvalidType || member.Result.Kind == "" {
+		result = "context-dependent"
+	}
+	contents := fmt.Sprintf("```sec\n%s %s: %s\n```\n\nCompiler-known `%s`.", kind, member.Name, result, member.ID)
+	return hoverResult{Contents: markupContent{Kind: "markdown", Value: contents}, Range: sourceRange}
 }
 
 func memberHoverContentsForDefinition(types map[string]sema.Type, definition lexer.Token) (string, bool) {
@@ -1939,14 +1963,6 @@ func memberCompletionItems(exprType sema.Type, functions map[string][]sema.Funct
 			for _, field := range exprType.Fields {
 				add(completionItem{Label: field.Name, Kind: 5, Detail: lspTypeName(field.Type)})
 			}
-		case sema.ArrayType, sema.SliceType:
-			if exprType.Element != nil && exprType.Element.Kind == sema.RuneType {
-				add(completionItem{Label: "ToString", Kind: 2, Detail: "string"})
-			}
-		case sema.RawPtrType:
-			add(completionItem{Label: "Offset", Kind: 2, Detail: lspTypeName(exprType)})
-			add(completionItem{Label: "AddBytes", Kind: 2, Detail: "RawPtr[byte]"})
-			add(completionItem{Label: "Difference", Kind: 2, Detail: "int"})
 		case sema.RegisterType:
 			for _, field := range exprType.RegisterFields {
 				add(completionItem{Label: field.Name, Kind: 5, Detail: lspTypeName(field.Type)})

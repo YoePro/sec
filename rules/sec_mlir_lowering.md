@@ -4,335 +4,366 @@
 
 Normative lowering specification.
 
-Current lowering specification version: `6`
+Current lowering specification version: `7`
 
-This version adds local try handler CFG and high-level Result discrimination.
+Version 7 defines the high-level enum/union representation boundary and the
+compatibility rules for earlier scalar, integer, Result and try lowering.
 
-Physical Result/error lowering remains deferred.
-
----
-
-# 1. Local handler lowering principle
-
-A resolved local `try` handler list lowers to explicit CFG.
-
-The lowering consumes Sema-resolved facts.
-
-It does not resolve patterns or handler coverage.
+It does not perform physical tagged-union lowering.
 
 ---
 
-# 2. Two fallible inputs
+# 1. Enum high-level boundary
 
-Package 10 supports two fallible input forms.
+`!sec.enum` remains a high-level semantic type after Package 11.
 
-## Result value
-
-```text
-Result[T, ArithmeticError]
-```
-
-Use:
+Even though the native representation is the underlying integer type, enum
+identity remains useful for:
 
 ```text
-result.is_err
-conditional branch
-unwrap_err / unwrap_ok
+safe explicit conversions
+handler dispatch
+future match lowering
+debugging
+verification
 ```
 
-## Checked arithmetic
-
-Use existing:
-
-```text
-result
-failed
-reason
-```
-
-On failure:
-
-```text
-reason -> ArithmeticError
-```
-
-Then enter the same Err handler dispatch model.
+Do not erase enum identity in lowering v7.
 
 ---
 
-# 3. No temporary Result required for arithmetic
+# 2. Enum target resolution
 
-Do not construct:
+The scalar-layout pass may resolve target-sized enum underlying types.
+
+Example:
 
 ```text
-ResultOk
-ResultErr
+!sec.enum<..., !sec.int, ...>
+    -> !sec.enum<..., si32, ...>
 ```
 
-merely to implement a local arithmetic handler.
+on a 32-bit plan.
 
-Arithmetic already has direct success/error control data.
+Likewise:
 
-Construct Result only when the handler source explicitly returns/propagates one.
+```text
+-> si64
+```
+
+on a 64-bit plan.
+
+The wrapper/case table remains unchanged.
 
 ---
 
-# 4. Implicit success path
+# 3. No enum signless normalization yet
 
-Without explicit Ok handler:
+The checked-integer Arith pass must not recurse into `!sec.enum`.
 
-```text
-success T -> try merge
-```
-
-for value context.
-
-No additional semantic operation.
+A dedicated future enum-representation pass will convert the enum to the lower
+integer representation when semantic variant identity is no longer required.
 
 ---
 
-# 5. Explicit Ok path
+# 4. Enum constants remain high-level
 
-With explicit:
+`sec.enum.constant` remains.
 
-```text
-Ok(value)
-Ok(_)
-```
+Do not prematurely convert it to `arith.constant` in P11.
 
-route success to that handler.
-
-A value-producing Ok handler supplies T to merge.
-
-A returning/terminating Ok handler has no merge edge.
+This preserves declared-case provenance and enum identity.
 
 ---
 
-# 6. Ordered error dispatch
+# 5. Enum conversions remain high-level
 
-Specific error variants are tested in source order.
-
-For Package 10:
+Keep:
 
 ```text
-ArithmeticError.Overflow
-ArithmeticError.DivisionByZero
-ArithmeticError.InvalidShift
+sec.enum.from_integer
+sec.enum.to_integer
 ```
 
-using:
+until integer conversion semantics and enum representation erasure are lowered
+together.
 
-```text
-sec.core_error.is_variant
-cf.cond_br
-```
-
-Catch-all receives the exact error directly.
+No hidden truncation.
 
 ---
 
-# 7. Exhaustive specific handlers
+# 6. Enum comparison remains high-level
 
-When no catch-all exists, Sema must have proven the closed variant set exhaustive.
+Keep:
 
-Lowering may route the final unmatched case directly to the only remaining
-variant handler.
+```text
+sec.enum.cmp
+```
 
-Do not add automatic propagation.
+through P11.
+
+Future enum representation lowering may convert it to integer equality once both
+operands use the same erased representation.
 
 ---
 
-# 8. Fallback merge
+# 7. Union high-level boundary
 
-A fallback expression produces T.
+`!sec.union` remains a high-level semantic tagged union.
 
-Branch:
-
-```text
-cf.br merge(fallback)
-```
-
-Implicit/explicit success path also branches with T.
-
-Merge block argument:
+Keep:
 
 ```text
-T
+sec.union.construct
+sec.union.is_variant
+sec.union.unwrap_payload
+sec.union.unwrap_field
 ```
 
-is the local try expression value.
+No operation becomes a raw tag/load/store in P11.
 
 ---
 
-# 9. Return handler
+# 8. Optional layout metadata
 
-A return handler uses ordinary Semantic IR/MLIR return construction.
-
-Examples:
+When Semantic IR carries a valid resolved layout reference, preserve:
 
 ```text
-return plain value
-return Result Ok
-return Result Err
+sec.layout_ref
 ```
 
-No edge to merge.
+where the existing metadata convention applies.
+
+When no resolved layout exists, do not invent one.
 
 ---
 
-# 10. Error propagation handler
+# 9. Union construction is semantic
 
-For:
+`sec.union.construct` means:
 
 ```text
-return Err(error)
+create a semantic union value with active variant V and initialized payload
 ```
 
-construct the exact enclosing Result Err using existing Package 9 operation.
+It does not mean:
 
-No implicit conversion of E.
+```text
+allocate stack storage
+write integer tag
+memcpy payload bytes
+```
+
+Those are later representation operations.
 
 ---
 
-# 11. Result naked propagation
+# 10. Union variant test is semantic
 
-For:
+`sec.union.is_variant` tests the semantic active variant.
 
-```text
-try Result[T, ArithmeticError]
-```
-
-without local handlers:
-
-```text
-Err:
-    unwrap error
-    construct enclosing ResultErr
-    return
-
-Ok:
-    unwrap success
-    continue
-```
-
-This generalizes Package 9 arithmetic-only naked propagation.
+It does not expose or compare the physical tag integer.
 
 ---
 
-# 12. Result guard remains high-level
+# 11. Union projection safety
 
-Do not lower:
+`sec.union.unwrap_payload` and `sec.union.unwrap_field` require a verified
+matching path.
+
+Run:
 
 ```text
-sec.result.is_err
-sec.result.unwrap_ok
-sec.result.unwrap_err
+--sec-verify-union-guards
 ```
 
-to memory/tag operations in Package 10.
-
-The physical representation is unresolved.
+before transformations that may discard high-level control information.
 
 ---
 
-# 13. Core error variant test remains high-level
+# 12. Payload ownership gate
 
-Do not lower:
+Lowering v7 compiler generation permits:
 
 ```text
+copy-trivial
+```
+
+payload action only.
+
+If a union payload requires:
+
+```text
+move
+semantic copy
+non-copyable handling
+conditional copy
+non-trivial destruction
+```
+
+the P11 pipeline rejects that value operation as unsupported.
+
+Do not lower it as an ordinary SSA copy.
+
+---
+
+# 13. ArithmeticError migration
+
+Schema-v7 new output uses:
+
+```text
+!sec.enum
+```
+
+for ArithmeticError.
+
+The local try handler path uses:
+
+```text
+enum constant
+enum equality
+```
+
+for specific variants.
+
+Do not emit new `!sec.core_error`/`sec.core_error.is_variant` operations for
+ArithmeticError.
+
+---
+
+# 14. Legacy schema compatibility
+
+Schema-v6 regression tests may retain:
+
+```text
+!sec.core_error
 sec.core_error.is_variant
 ```
 
-to integer comparison in Package 10.
+No automatic migration pass is required in Package 11.
 
-The physical ArithmeticError encoding is unresolved.
+The schema-v7 compiler emitter simply uses the new representation.
 
 ---
 
-# 14. Verification before further lowering
+# 15. Result boundary
 
-Compiler output must pass:
+`!sec.result<T,E>` remains high-level.
+
+It may contain:
+
+```text
+E = !sec.enum<...>
+```
+
+P10 Result guard/unwrapping remains valid.
+
+Do not lower Result to `!sec.union` in P11.
+
+---
+
+# 16. Option boundary
+
+Concrete Option may use ordinary union representation.
+
+If older code has a dedicated Option representation, migration may be deferred
+provided new P11 union semantics remain canonical.
+
+---
+
+# 17. Generic union boundary
+
+Runtime union ops require concrete substituted payload types.
+
+Do not lower unresolved generic union template values.
+
+---
+
+# 18. Struct-like source evaluation order
+
+Lowering from source/Semantic IR to `sec.union.construct` preserves source
+expression evaluation order.
+
+Canonical operand ordering inside the final construct op may follow declaration
+field order only after all source expressions have been evaluated to SSA values.
+
+---
+
+# 19. No general match lowering
+
+P11 lowering does not create complete match CFG.
+
+The operations introduced by P11 are the primitives consumed by Package 12.
+
+---
+
+# 20. No physical union lowering
+
+Do not lower to:
+
+```text
+arith tag constants
+memref byte buffer
+LLVM struct
+LLVM insertvalue/extractvalue
+manual alignment padding
+```
+
+in lowering v7.
+
+---
+
+# 21. No union equality lowering
+
+Current frontend may classify unions as equality-comparable when every payload
+is comparable.
+
+The baseline rulebook explicitly notes union equality lowering is still
+pending.
+
+P11 leaves it pending.
+
+Do not synthesize recursive equality here.
+
+---
+
+# 22. No runtime dependency
+
+Enum and union semantic operations are static compiler IR constructs.
+
+No runtime variant table, reflection table, allocation service or type registry
+is introduced.
+
+---
+
+# 23. Verification pipeline
+
+Schema-v7 compiler-generated output should pass:
 
 ```text
 normal MLIR verification
-sec-verify-result-guards
-sec-verify-try-handlers
+sec-verify-checked-integer-guards when applicable
+sec-verify-result-guards when applicable
+sec-verify-try-handlers when applicable
+sec-verify-union-guards when union projections exist
 ```
 
-Checked arithmetic stages additionally use the checked-integer guard verifier
-where applicable.
-
 ---
 
-# 15. Package 8 compatibility
+# 24. Completion
 
-Integer arithmetic may already be lowered to standard Arith.
-
-The local handler flow depends only on:
+Lowering specification version 7 is implemented when:
 
 ```text
-failed
-reason
-ArithmeticError conversion
-```
-
-and therefore remains valid after Package 8.
-
----
-
-# 16. Ownership boundary
-
-Result projections do not define copy/move ownership semantics for non-trivial
-payloads.
-
-Package 10 end-to-end compiler support is limited to payloads accepted by the
-current Semantic IR ownership subset.
-
-Do not silently copy resource-owning Result payloads.
-
----
-
-# 17. User error enum/union boundary
-
-Do not create special lowering representations for unsupported user error types.
-
-The generic Result operations may accept future E types once those types exist
-canonically.
-
-Variant tests for user enums/unions are deferred to the enum/union
-representation package.
-
----
-
-# 18. Optimization independence
-
-Correctness does not depend on:
-
-```text
-canonicalize
-CSE
-SCCP
-DCE
-```
-
-Handler ordering must remain semantically visible before any proof-based
-simplification.
-
----
-
-# 19. Completion
-
-Lowering specification version 6 is implemented when:
-
-```text
-ordinary Result branching works without physical layout
-naked Result propagation works
-local ArithmeticError handlers work
-handler order is preserved
-fallback merges work
-return/terminate paths do not merge
-implicit Ok semantics work
-explicit Ok semantics work
-no unmatched error auto-propagation is introduced
-Result/error physical representation remains deferred
+enum identity survives scalar/integer lowering stages
+default enum underlying int resolves by target plan
+bit-backed width remains exact
+ArithmeticError uses ordinary enum representation
+Result enum errors remain high-level
+union active variant remains semantic
+union projections remain guarded
+trivial payload action is explicit
+non-trivial ownership is rejected rather than hidden
+no physical union layout is selected
+no LLVM dialect is generated
 ```

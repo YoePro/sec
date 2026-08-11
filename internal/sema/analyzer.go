@@ -46,6 +46,7 @@ type Analyzer struct {
 	callGraph                   *CallGraph
 	escapeAnalysis              *EscapeAnalysis
 	parameterUsageAnalysis      *ParameterUsageAnalysis
+	pitfallAnalysis             *PitfallAnalysis
 	currentCallable             CallableID
 	callGraphPathReachable      bool
 	spawnCallExpression         *ast.CallExpression
@@ -192,6 +193,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.callGraph = newCallGraph()
 	a.escapeAnalysis = newEscapeAnalysis()
 	a.parameterUsageAnalysis = newParameterUsageAnalysis()
+	a.pitfallAnalysis = newPitfallAnalysis()
 	a.currentCallable = ""
 	a.callGraphPathReachable = true
 	a.spawnCallExpression = nil
@@ -271,6 +273,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.analyzeFunctionBodies(program)
 	a.analyzeImplBodies(program)
 	a.parameterUsageAnalysis = buildParameterUsageAnalysis(program, a)
+	a.pitfallAnalysis = buildPitfallAnalysis(program, a)
 
 	return a.errors
 }
@@ -325,6 +328,12 @@ func (a *Analyzer) EscapeAnalysis() *EscapeAnalysis {
 // from the most recent completed semantic analysis.
 func (a *Analyzer) ParameterUsageAnalysis() *ParameterUsageAnalysis {
 	return a.parameterUsageAnalysis.clone()
+}
+
+// PitfallAnalysis returns an immutable snapshot of structured pitfall results
+// produced from facts recorded by the most recent completed semantic analysis.
+func (a *Analyzer) PitfallAnalysis() *PitfallAnalysis {
+	return a.pitfallAnalysis.clone()
 }
 
 func (a *Analyzer) recordArenaEffect(kind ArenaEffectKind, arena string, source lexer.Token, mayAllocate bool) {
@@ -10224,6 +10233,7 @@ func (a *Analyzer) inferExpressionWithExpected(expr ast.Expression, expected Typ
 		return a.inferArrayLiteralWithExpected(lit, expected)
 	}
 	if typ, value, ok := a.inferExpectedUnionVariantExpression(expr, expected); ok {
+		a.expressionTypes[expr] = typ
 		return typ, value
 	}
 	call, ok := expr.(*ast.CallExpression)
@@ -10232,6 +10242,7 @@ func (a *Analyzer) inferExpressionWithExpected(expr ast.Expression, expected Typ
 		return typeWithExpectedDimension(expr, typ, value, expected)
 	}
 	if typ, value, ok := a.inferCallAsUnionVariantConstructor(call, &expected); ok {
+		a.expressionTypes[expr] = typ
 		return typ, value
 	}
 	if len(call.GenericArguments) > 0 {
@@ -14632,10 +14643,18 @@ func (a *Analyzer) inferInfixExpression(expr *ast.InfixExpression) (Type, expres
 
 	if isEqualityOperator(expr.Operator) {
 		if !canCompareEquality(leftType, rightType) {
+			help := "Compare values of the same equality-comparable type, or use an explicit content or identity operation for views and resources."
+			if intent, ok := booleanLiteralComparisonIntent(expr, leftType, rightType); ok && intent.numericLiteral {
+				help = fmt.Sprintf(
+					"A bool cannot be compared with an integer, but this operand represents %t. Did you mean `%s`?",
+					intent.literalValue,
+					intent.replacement,
+				)
+			}
 			a.addErrorAtTokenWithMetadata(
 				expr.Token,
 				diagnostics.OperatorNonComparable,
-				"Compare values of the same equality-comparable type, or use an explicit content or identity operation for views and resources.",
+				help,
 				"cannot compare %s and %s",
 				typeDisplayName(leftType),
 				typeDisplayName(rightType),

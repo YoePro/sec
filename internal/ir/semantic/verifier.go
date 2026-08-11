@@ -1,6 +1,9 @@
 package semantic
 
-import "fmt"
+import (
+	"fmt"
+	"math/big"
+)
 
 func Verify(module *Module) error {
 	if module == nil {
@@ -23,6 +26,9 @@ func Verify(module *Module) error {
 		seenSources[source] = true
 	}
 	if err := verifyTypes(module.Types); err != nil {
+		return err
+	}
+	if err := verifyEnumUnionDefinitions(module); err != nil {
 		return err
 	}
 	functions := map[FunctionID]*Function{}
@@ -92,6 +98,116 @@ func verifyTypes(table *TypeTable) error {
 		}
 	}
 	return nil
+}
+
+func verifyEnumUnionDefinitions(module *Module) error {
+	seenEnums := map[TypeID]bool{}
+	for _, definition := range module.Enums {
+		typ, ok := module.Types.Lookup(definition.TypeID)
+		if !ok || typ.Kind != TypeEnum || definition.SymbolID == "" || definition.Name == "" || definition.Underlying != typ.Underlying || seenEnums[definition.TypeID] {
+			return fmt.Errorf("invalid enum definition !%d", definition.TypeID)
+		}
+		seenEnums[definition.TypeID] = true
+		if !isBuiltinIntegerType(module.Types, definition.Underlying) {
+			return fmt.Errorf("enum !%d has non-integer underlying type", definition.TypeID)
+		}
+		if definition.RepresentationKind == EnumRepresentationInteger && definition.BitWidth != 0 {
+			return fmt.Errorf("integer enum !%d has bit width", definition.TypeID)
+		}
+		if definition.RepresentationKind == EnumRepresentationBitBacked && (definition.BitWidth == 0 || definition.BitWidth > 256) {
+			return fmt.Errorf("bit-backed enum !%d has invalid width", definition.TypeID)
+		}
+		caseNames := map[string]bool{}
+		caseIDs := map[EnumCaseID]bool{}
+		for ordinal, enumCase := range definition.Cases {
+			if enumCase.ID != EnumCaseID(ordinal) || caseIDs[enumCase.ID] || enumCase.Name == "" || caseNames[enumCase.Name] || enumCase.Value == nil {
+				return fmt.Errorf("invalid enum case in !%d", definition.TypeID)
+			}
+			caseIDs[enumCase.ID], caseNames[enumCase.Name] = true, true
+			if definition.RepresentationKind == EnumRepresentationBitBacked && !fitsUnsignedWidth(enumCase.Value, definition.BitWidth) {
+				return fmt.Errorf("enum case %s is outside bit[%d]", enumCase.Name, definition.BitWidth)
+			}
+		}
+	}
+	for id, typ := range module.Types.types {
+		if typ.Kind == TypeEnum && !seenEnums[TypeID(id+1)] {
+			return fmt.Errorf("enum type !%d has no definition", id+1)
+		}
+	}
+
+	seenUnions := map[TypeID]bool{}
+	for _, definition := range module.Unions {
+		typ, ok := module.Types.Lookup(definition.TypeID)
+		if !ok || typ.Kind != TypeUnion || definition.SymbolID == "" || definition.Name == "" || seenUnions[definition.TypeID] || len(definition.Variants) == 0 {
+			return fmt.Errorf("invalid union definition !%d", definition.TypeID)
+		}
+		seenUnions[definition.TypeID] = true
+		if len(definition.TypeArguments) != len(typ.TypeArgs) {
+			return fmt.Errorf("union !%d type arguments disagree", definition.TypeID)
+		}
+		variantNames := map[string]bool{}
+		for index, variant := range definition.Variants {
+			if variant.Index != UnionVariantIndex(index) || variant.Name == "" || variantNames[variant.Name] {
+				return fmt.Errorf("invalid union variant in !%d", definition.TypeID)
+			}
+			variantNames[variant.Name] = true
+			switch variant.Kind {
+			case UnionVariantEmpty:
+				if variant.Payload != 0 || len(variant.PayloadFields) != 0 {
+					return fmt.Errorf("empty union variant %s has payload", variant.Name)
+				}
+			case UnionVariantSingle:
+				if _, ok := module.Types.Lookup(variant.Payload); !ok || len(variant.PayloadFields) != 0 {
+					return fmt.Errorf("single union variant %s has invalid payload", variant.Name)
+				}
+			case UnionVariantFields:
+				if variant.Payload != 0 || len(variant.PayloadFields) == 0 {
+					return fmt.Errorf("field union variant %s has invalid shape", variant.Name)
+				}
+				fieldNames := map[string]bool{}
+				for _, field := range variant.PayloadFields {
+					if field.Name == "" || fieldNames[field.Name] {
+						return fmt.Errorf("invalid field in union variant %s", variant.Name)
+					}
+					if _, ok := module.Types.Lookup(field.Type); !ok {
+						return fmt.Errorf("union field %s has invalid type", field.Name)
+					}
+					fieldNames[field.Name] = true
+				}
+			default:
+				return fmt.Errorf("union variant %s has invalid kind", variant.Name)
+			}
+		}
+	}
+	for id, typ := range module.Types.types {
+		if typ.Kind == TypeUnion && !seenUnions[TypeID(id+1)] {
+			return fmt.Errorf("union type !%d has no definition", id+1)
+		}
+	}
+	return nil
+}
+
+func fitsUnsignedWidth(value *big.Int, width uint16) bool {
+	return value != nil && value.Sign() >= 0 && value.BitLen() <= int(width)
+}
+
+func enumDefinition(module *Module, typeID TypeID) (EnumDefinition, bool) {
+	for _, definition := range module.Enums {
+		if definition.TypeID == typeID {
+			return definition, true
+		}
+	}
+	return EnumDefinition{}, false
+}
+
+func unionVariant(module *Module, typeID TypeID, index UnionVariantIndex) (UnionDefinition, UnionVariantDefinition, bool) {
+	for _, definition := range module.Unions {
+		if definition.TypeID != typeID || int(index) >= len(definition.Variants) {
+			continue
+		}
+		return definition, definition.Variants[index], true
+	}
+	return UnionDefinition{}, UnionVariantDefinition{}, false
 }
 
 func verifyFunction(module *Module, fn *Function, functions map[FunctionID]*Function) error {
@@ -224,6 +340,9 @@ func verifyFunction(module *Module, fn *Function, functions map[FunctionID]*Func
 		return err
 	}
 	if err := verifyTryHandlers(fn); err != nil {
+		return err
+	}
+	if err := verifyUnionGuards(fn, blocks); err != nil {
 		return err
 	}
 	return nil
@@ -437,6 +556,85 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 		if len(op.Operands) != 1 || len(op.Results) != 1 || !isArithmeticErrorType(module.Types, values[op.Operands[0]].Type) || !typeHasKind(module.Types, resultType, TypeBool) || !validArithmeticErrorVariant(op.Variant) {
 			return fmt.Errorf("invalid core-error.is-variant")
 		}
+	case OpEnumConstant:
+		definition, ok := enumDefinition(module, resultType)
+		if len(op.Operands) != 0 || len(op.Results) != 1 || !ok || int(op.EnumCase) >= len(definition.Cases) {
+			return fmt.Errorf("invalid enum.constant")
+		}
+	case OpEnumFromInteger:
+		if len(op.Operands) != 1 || len(op.Results) != 1 || !typeHasKind(module.Types, resultType, TypeEnum) || !isBuiltinIntegerType(module.Types, values[op.Operands[0]].Type) {
+			return fmt.Errorf("invalid enum.from-integer")
+		}
+	case OpEnumToInteger:
+		if len(op.Operands) != 1 || len(op.Results) != 1 || !typeHasKind(module.Types, values[op.Operands[0]].Type, TypeEnum) || !isBuiltinIntegerType(module.Types, resultType) {
+			return fmt.Errorf("invalid enum.to-integer")
+		}
+	case OpEnumCompare:
+		if len(op.Operands) != 2 || len(op.Results) != 1 || (op.IntegerCompare != IntegerCompareEQ && op.IntegerCompare != IntegerCompareNE) || values[op.Operands[0]].Type != values[op.Operands[1]].Type || !typeHasKind(module.Types, values[op.Operands[0]].Type, TypeEnum) || !typeHasKind(module.Types, resultType, TypeBool) {
+			return fmt.Errorf("invalid enum.compare")
+		}
+	case OpUnionConstruct:
+		definition, variant, ok := unionVariant(module, resultType, op.UnionVariant)
+		if len(op.Results) != 1 || !ok || len(op.PayloadActions) != len(op.Operands) {
+			return fmt.Errorf("invalid union.construct")
+		}
+		for _, action := range op.PayloadActions {
+			if action != UnionPayloadCopyTrivial {
+				return fmt.Errorf("union.construct requires copy-trivial payload actions")
+			}
+		}
+		_ = definition
+		switch variant.Kind {
+		case UnionVariantEmpty:
+			if len(op.Operands) != 0 || len(op.UnionFields) != 0 {
+				return fmt.Errorf("empty union variant has payload")
+			}
+		case UnionVariantSingle:
+			if len(op.Operands) != 1 || values[op.Operands[0]].Type != variant.Payload || len(op.UnionFields) != 0 {
+				return fmt.Errorf("single union payload mismatch")
+			}
+		case UnionVariantFields:
+			if len(op.Operands) != len(variant.PayloadFields) || len(op.UnionFields) != len(variant.PayloadFields) {
+				return fmt.Errorf("union field payload arity mismatch")
+			}
+			for index, field := range variant.PayloadFields {
+				if op.UnionFields[index] != field.Name || values[op.Operands[index]].Type != field.Type {
+					return fmt.Errorf("union fields are not in canonical declaration order")
+				}
+			}
+		}
+	case OpUnionIsVariant:
+		if len(op.Operands) != 1 || len(op.Results) != 1 || !typeHasKind(module.Types, resultType, TypeBool) {
+			return fmt.Errorf("invalid union.is-variant")
+		}
+		if _, _, ok := unionVariant(module, values[op.Operands[0]].Type, op.UnionVariant); !ok {
+			return fmt.Errorf("union.is-variant uses invalid variant")
+		}
+	case OpUnionUnwrapPayload:
+		if len(op.Operands) != 1 || len(op.Results) != 1 || len(op.PayloadActions) != 1 || op.PayloadActions[0] != UnionPayloadCopyTrivial {
+			return fmt.Errorf("invalid union.unwrap-payload")
+		}
+		_, variant, ok := unionVariant(module, values[op.Operands[0]].Type, op.UnionVariant)
+		if !ok || variant.Kind != UnionVariantSingle || resultType != variant.Payload {
+			return fmt.Errorf("union.unwrap-payload type mismatch")
+		}
+	case OpUnionUnwrapField:
+		if len(op.Operands) != 1 || len(op.Results) != 1 || len(op.PayloadActions) != 1 || op.PayloadActions[0] != UnionPayloadCopyTrivial || op.UnionField == "" {
+			return fmt.Errorf("invalid union.unwrap-field")
+		}
+		_, variant, ok := unionVariant(module, values[op.Operands[0]].Type, op.UnionVariant)
+		if !ok || variant.Kind != UnionVariantFields {
+			return fmt.Errorf("union.unwrap-field variant mismatch")
+		}
+		found := false
+		for _, field := range variant.PayloadFields {
+			if field.Name == op.UnionField && field.Type == resultType {
+				found = true
+			}
+		}
+		if !found {
+			return fmt.Errorf("union.unwrap-field field mismatch")
+		}
 	default:
 		return fmt.Errorf("unknown operation %q", op.Kind)
 	}
@@ -460,7 +658,7 @@ func isFailureReasonType(types *TypeTable, id TypeID) bool {
 
 func isArithmeticErrorType(types *TypeTable, id TypeID) bool {
 	t, ok := types.Lookup(id)
-	return ok && t.Kind == TypeCoreError && t.Identity == "core::ArithmeticError"
+	return ok && (t.Kind == TypeCoreError || t.Kind == TypeEnum) && t.Identity == "core::ArithmeticError"
 }
 
 func validArithmeticFailureReason(reason ArithmeticFailureReason) bool {
@@ -591,6 +789,9 @@ func validHandledArithmeticFailureBlock(block *Block, reason ValueID) bool {
 	}
 	if next := block.Operations[1]; next.Kind == OpCoreErrorIsVariant {
 		return len(next.Operands) == 1 && next.Operands[0] == convert.Results[0].ID
+	} else if next.Kind == OpEnumConstant && len(block.Operations) >= 3 && len(next.Results) == 1 {
+		compare := block.Operations[2]
+		return compare.Kind == OpEnumCompare && len(compare.Operands) == 2 && compare.Operands[0] == convert.Results[0].ID && compare.Operands[1] == next.Results[0].ID
 	}
 	return block.Operations[len(block.Operations)-1].IsTerminator()
 }
@@ -636,6 +837,59 @@ func verifyResultGuards(types *TypeTable, fn *Function, blocks map[BlockID]*Bloc
 func blockStartsWithUnwrap(block *Block, kind OpKind, container ValueID) bool {
 	return block != nil && len(block.Operations) != 0 && block.Operations[0].Kind == kind &&
 		len(block.Operations[0].Operands) == 1 && block.Operations[0].Operands[0] == container
+}
+
+func verifyUnionGuards(fn *Function, blocks map[BlockID]*Block) error {
+	type guard struct {
+		container ValueID
+		variant   UnionVariantIndex
+	}
+	trueGuards := map[BlockID][]guard{}
+	incoming := map[BlockID]int{}
+	for _, block := range fn.Blocks {
+		for _, operation := range block.Operations {
+			for _, successor := range operation.Successors {
+				incoming[successor.Block]++
+			}
+		}
+	}
+	for _, block := range fn.Blocks {
+		for index, operation := range block.Operations {
+			if operation.Kind != OpUnionIsVariant {
+				continue
+			}
+			if index+1 >= len(block.Operations) || len(operation.Results) != 1 || len(operation.Operands) != 1 {
+				return fmt.Errorf("union.is-variant in ^%d must be immediately guarded", block.ID)
+			}
+			branch := block.Operations[index+1]
+			if branch.Kind != OpCondBranch || len(branch.Operands) != 1 || branch.Operands[0] != operation.Results[0].ID || len(branch.Successors) != 2 {
+				return fmt.Errorf("union variant test in ^%d must feed a conditional branch", block.ID)
+			}
+			trueBlock := branch.Successors[0].Block
+			trueGuards[trueBlock] = append(trueGuards[trueBlock], guard{container: operation.Operands[0], variant: operation.UnionVariant})
+		}
+	}
+	for _, block := range fn.Blocks {
+		for _, operation := range block.Operations {
+			if operation.Kind != OpUnionUnwrapPayload && operation.Kind != OpUnionUnwrapField {
+				continue
+			}
+			matched := false
+			if incoming[block.ID] != 1 {
+				return fmt.Errorf("union projection in ^%d requires one dedicated guarded predecessor", block.ID)
+			}
+			for _, guard := range trueGuards[block.ID] {
+				if len(operation.Operands) == 1 && operation.Operands[0] == guard.container && operation.UnionVariant == guard.variant {
+					matched = true
+					break
+				}
+			}
+			if !matched {
+				return fmt.Errorf("union projection in ^%d is not on its matching guarded path", block.ID)
+			}
+		}
+	}
+	return nil
 }
 
 func verifyTryHandlers(fn *Function) error {

@@ -1,6 +1,8 @@
 package sema
 
 import (
+	"math/big"
+
 	"sec/internal/ast"
 	"sec/internal/lexer"
 )
@@ -61,6 +63,8 @@ const (
 	ResolvedIntegerCompareLE                 ResolvedOperatorKind = "integer-compare-le"
 	ResolvedIntegerCompareGT                 ResolvedOperatorKind = "integer-compare-gt"
 	ResolvedIntegerCompareGE                 ResolvedOperatorKind = "integer-compare-ge"
+	ResolvedEnumCompareEQ                    ResolvedOperatorKind = "enum-compare-eq"
+	ResolvedEnumCompareNE                    ResolvedOperatorKind = "enum-compare-ne"
 )
 
 type OperatorFailureBehavior string
@@ -133,6 +137,44 @@ type ResolvedTryPlan struct {
 	Handlers      []ResolvedTryHandler
 }
 
+type ResolvedEnumCase struct {
+	EnumType Type
+	Name     string
+	Ordinal  uint32
+	Value    *big.Int
+	Token    lexer.Token
+}
+
+type ResolvedEnumConversionKind string
+
+const (
+	ResolvedIntegerToEnum ResolvedEnumConversionKind = "integer-to-enum"
+	ResolvedEnumToInteger ResolvedEnumConversionKind = "enum-to-integer"
+)
+
+type ResolvedEnumConversion struct {
+	Kind        ResolvedEnumConversionKind
+	EnumType    Type
+	IntegerType Type
+}
+
+type ResolvedUnionVariantKind string
+
+const (
+	ResolvedUnionVariantEmpty  ResolvedUnionVariantKind = "empty"
+	ResolvedUnionVariantSingle ResolvedUnionVariantKind = "single"
+	ResolvedUnionVariantFields ResolvedUnionVariantKind = "fields"
+)
+
+type ResolvedUnionConstruction struct {
+	UnionType        Type
+	VariantName      string
+	VariantIndex     uint32
+	Kind             ResolvedUnionVariantKind
+	CanonicalFields  []string
+	SourceFieldOrder []string
+}
+
 // ResolvedTypeOf returns only facts recorded by the completed analysis. It
 // never invokes inference and does not mutate Analyzer state.
 func (a *Analyzer) ResolvedTypeOf(expr ast.Expression) (Type, bool) {
@@ -141,6 +183,117 @@ func (a *Analyzer) ResolvedTypeOf(expr ast.Expression) (Type, bool) {
 	}
 	typ, ok := a.expressionTypes[expr]
 	return typ, ok && typ.Kind != InvalidType
+}
+
+// ResolvedTypeDeclarationLocation returns declaration provenance recorded by
+// Sema without exposing its mutable symbol tables.
+func (a *Analyzer) ResolvedTypeDeclarationLocation(typ Type) (lexer.Token, bool) {
+	if a == nil {
+		return lexer.Token{}, false
+	}
+	token, ok := a.typeDefinitionTokens[typ.Name]
+	return token, ok
+}
+
+// ResolvedEnumCaseOf returns the exact declared case selected by a successfully
+// analyzed member expression. Alias cases retain distinct ordinals.
+func (a *Analyzer) ResolvedEnumCaseOf(expr *ast.MemberExpression) (ResolvedEnumCase, bool) {
+	if a == nil || expr == nil || expr.Property == nil {
+		return ResolvedEnumCase{}, false
+	}
+	typ, ok := a.ResolvedTypeOf(expr)
+	if !ok || typ.Kind != EnumType {
+		return ResolvedEnumCase{}, false
+	}
+	value, ok := typ.EnumConsts[expr.Property.Value]
+	if !ok || value.Value == nil {
+		return ResolvedEnumCase{}, false
+	}
+	for ordinal, name := range typ.EnumValues {
+		if name == value.Name {
+			return ResolvedEnumCase{EnumType: typ, Name: value.Name, Ordinal: uint32(ordinal), Value: new(big.Int).Set(value.Value), Token: value.Token}, true
+		}
+	}
+	return ResolvedEnumCase{}, false
+}
+
+// ResolvedEnumConversionOf classifies only explicit conversions accepted by
+// Sema. It does not infer a conversion from callee spelling alone.
+func (a *Analyzer) ResolvedEnumConversionOf(call *ast.CallExpression) (ResolvedEnumConversion, bool) {
+	if a == nil || call == nil || len(call.Arguments) != 1 {
+		return ResolvedEnumConversion{}, false
+	}
+	result, resultOK := a.ResolvedTypeOf(call)
+	operand, operandOK := a.ResolvedTypeOf(call.Arguments[0])
+	if !resultOK || !operandOK {
+		return ResolvedEnumConversion{}, false
+	}
+	if result.Kind == EnumType && isIntegerType(operand) {
+		return ResolvedEnumConversion{Kind: ResolvedIntegerToEnum, EnumType: result, IntegerType: operand}, true
+	}
+	if operand.Kind == EnumType && isIntegerType(result) {
+		return ResolvedEnumConversion{Kind: ResolvedEnumToInteger, EnumType: operand, IntegerType: result}, true
+	}
+	return ResolvedEnumConversion{}, false
+}
+
+// ResolvedUnionConstructionOf exposes the concrete union and stable variant
+// selected by Sema, including source and canonical field order.
+func (a *Analyzer) ResolvedUnionConstructionOf(expr ast.Expression) (ResolvedUnionConstruction, bool) {
+	if a == nil || expr == nil {
+		return ResolvedUnionConstruction{}, false
+	}
+	typ, ok := a.ResolvedTypeOf(expr)
+	if !ok || typ.Kind != UnionType || len(typ.GenericParameters) != 0 {
+		return ResolvedUnionConstruction{}, false
+	}
+	name := ""
+	sourceFields := []string{}
+	switch value := expr.(type) {
+	case *ast.MemberExpression:
+		if value.Property != nil {
+			name = value.Property.Value
+		}
+	case *ast.Identifier:
+		name = value.Value
+	case *ast.CallExpression:
+		if member, memberOK := value.Callee.(*ast.MemberExpression); memberOK && member.Property != nil {
+			name = member.Property.Value
+		} else {
+			name = callExpressionName(value)
+		}
+	case *ast.StructLiteral:
+		_, name, ok = splitUnionVariantTypeName(value.Type.Name)
+		if !ok {
+			return ResolvedUnionConstruction{}, false
+		}
+		for _, field := range value.Fields {
+			if field != nil && field.Name != nil && !field.Spread {
+				sourceFields = append(sourceFields, field.Name.Value)
+			}
+		}
+	default:
+		return ResolvedUnionConstruction{}, false
+	}
+	for index, variant := range typ.UnionVariants {
+		if variant.Name != name {
+			continue
+		}
+		resolved := ResolvedUnionConstruction{UnionType: typ, VariantName: name, VariantIndex: uint32(index), SourceFieldOrder: sourceFields}
+		switch {
+		case variant.Payload != nil:
+			resolved.Kind = ResolvedUnionVariantSingle
+		case len(variant.PayloadFields) != 0:
+			resolved.Kind = ResolvedUnionVariantFields
+			for _, field := range variant.PayloadFields {
+				resolved.CanonicalFields = append(resolved.CanonicalFields, field.Name)
+			}
+		default:
+			resolved.Kind = ResolvedUnionVariantEmpty
+		}
+		return resolved, true
+	}
+	return ResolvedUnionConstruction{}, false
 }
 
 // ResolvedFunctionForDeclaration returns the already registered declaration.
@@ -260,10 +413,24 @@ func (a *Analyzer) recordResolvedOperator(expr ast.Expression, result Type) {
 	case *ast.InfixExpression:
 		left, leftOK := a.expressionTypes[expression.Left]
 		right, rightOK := a.expressionTypes[expression.Right]
-		if !leftOK || !rightOK || !isBuiltinIntegerOperatorType(left) || !isBuiltinIntegerOperatorType(right) {
+		if !leftOK || !rightOK {
 			return
 		}
 		resolved = ResolvedOperator{LeftType: left, RightType: &right, ResultType: result, FailureBehavior: OperatorDoesNotFail}
+		if left.Kind == EnumType && right.Kind == EnumType && sameConcreteType(left, right) {
+			switch expression.Operator {
+			case "==":
+				resolved.Kind = ResolvedEnumCompareEQ
+			case "!=":
+				resolved.Kind = ResolvedEnumCompareNE
+			default:
+				return
+			}
+			break
+		}
+		if !isBuiltinIntegerOperatorType(left) || !isBuiltinIntegerOperatorType(right) {
+			return
+		}
 		switch expression.Operator {
 		case "+":
 			resolved.Kind = ResolvedIntegerAddChecked

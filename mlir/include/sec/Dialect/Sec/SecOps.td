@@ -199,4 +199,65 @@ def Sec_CoreErrorIsVariantOp : Sec_Op<"core_error.is_variant", [Pure]> {
   let hasVerifier = 1;
 }
 
+def Sec_EnumConstantOp : Sec_Op<"enum.constant", [Pure]> {
+  let summary = "Construct one declared Sec enum case";
+  let arguments = (ins I32Attr:$caseOrdinal);
+  let results = (outs AnyType:$result);
+  let hasVerifier = 1;
+}
+
+def Sec_EnumFromIntegerOp : Sec_Op<"enum.from_integer", [Pure]> {
+  let summary = "Explicit validated integer-to-enum conversion";
+  let arguments = (ins AnyType:$value);
+  let results = (outs AnyType:$result);
+  let hasVerifier = 1;
+}
+
+def Sec_EnumToIntegerOp : Sec_Op<"enum.to_integer", [Pure]> {
+  let summary = "Explicit validated enum-to-integer conversion";
+  let arguments = (ins AnyType:$value);
+  let results = (outs AnyType:$result);
+  let hasVerifier = 1;
+}
+
+def Sec_EnumCmpOp : Sec_Op<"enum.cmp", [Pure]> {
+  let summary = "Same-enum numeric equality comparison";
+  let arguments = (ins StrAttr:$predicate, AnyType:$left, AnyType:$right);
+  let results = (outs I1:$result);
+  let hasVerifier = 1;
+}
+
+def Sec_UnionConstructOp : Sec_Op<"union.construct", [Pure]> {
+  let summary = "Construct a high-level union semantic value";
+  let arguments = (ins I32Attr:$variant,
+                       ArrayAttr:$payloadActions,
+                       ArrayAttr:$fieldNames,
+                       Variadic<AnyType>:$payloads);
+  let results = (outs AnyType:$result);
+  let hasVerifier = 1;
+}
+
+def Sec_UnionIsVariantOp : Sec_Op<"union.is_variant", [Pure]> {
+  let summary = "Test the active semantic union variant";
+  let arguments = (ins I32Attr:$variant, AnyType:$value);
+  let results = (outs I1:$result);
+  let hasVerifier = 1;
+}
+
+def Sec_UnionUnwrapPayloadOp : Sec_Op<"union.unwrap_payload", [Pure]> {
+  let summary = "Project a single payload on its proven variant path";
+  let arguments = (ins I32Attr:$variant, StrAttr:$payloadAction,
+                       AnyType:$value);
+  let results = (outs AnyType:$result);
+  let hasVerifier = 1;
+}
+
+def Sec_UnionUnwrapFieldOp : Sec_Op<"union.unwrap_field", [Pure]> {
+  let summary = "Project a named payload field on its proven variant path";
+  let arguments = (ins I32Attr:$variant, StrAttr:$field,
+                       StrAttr:$payloadAction, AnyType:$value);
+  let results = (outs AnyType:$result);
+  let hasVerifier = 1;
+}
+
 #endif // SEC_DIALECT_SEC_OPS_TD

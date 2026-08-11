@@ -1,0 +1,141 @@
+module tmp126_driver
+
+// =====================================================================
+// PHYSICAL UNIT DEFINITION: Degree Celsius (°C)
+// =====================================================================
+
+/** Degree Celsius for relative thermodynamic temperature */
+unit DegC physical
+
+impl DegC {
+    LongName: "DegreeCelsius"
+    Symbol: "°C"
+    BaseUnit: false
+    Status: active
+    Dimension: [temperature^1]
+    Scale: 1
+    System: SI
+}
+
+// =====================================================================
+// ENUMS FOR TMP126 CONFIGURATION
+// =====================================================================
+
+// Conversion Rate / Averaging Mode (3 bits)
+enum TmpConversionRate bit[3] {
+    CONTINUOUS_16HZ = 0b000,
+    CONTINUOUS_8HZ  = 0b001,
+    CONTINUOUS_4HZ  = 0b010,
+    CONTINUOUS_1HZ  = 0b011,
+    ONE_SHOT        = 0b100,
+    SHUTDOWN        = 0b101,
+    RESERVED_1      = 0b110,
+    RESERVED_2      = 0b111,
+}
+
+// Alert Pin Functionality (2 bits)
+enum AlertPinMode bit[2] {
+    ALERT_DISABLED = 0b00,
+    COMPARATOR     = 0b01,
+    INTERRUPT      = 0b10,
+    TRACK_MAX_MIN  = 0b11,
+}
+
+// =====================================================================
+// REGISTER LAYOUTS (TI TMP126-Q1 16-bit registers)
+// =====================================================================
+
+// TMP126 Configuration Register
+type TmpConfig register[16] {
+    ConvRate: TmpConversionRate
+    AlertMode: AlertPinMode
+    CrcEnable: bit[1]
+    Spi3Wire: bit[1]
+    SoftwareReset: bit[1]
+    _: bit[8]
+}
+
+// TMP126 Temperature Result Register (16-bit, 0.03125 °C/LSB resolution)
+type TmpResultBuffer register[16] {
+    RawTemp: bit[16]<DegC>   // 16-bit signed temperature data bound to <DegC>
+}
+
+// TMP126 Status and Alert Flags Register
+type TmpStatus register[16] {
+    DataReady: bit[1]
+    HighAlert: bit[1]
+    LowAlert: bit[1]
+    CrcError: bit[1]
+    PowerOnReset: bit[1]
+    _: bit[11]
+}
+
+// =====================================================================
+// REGISTER IMPLEMENTATIONS
+// =====================================================================
+
+impl TmpConfig {
+    fn ConfigureContinuousMode(rate: TmpConversionRate) void {
+        self.ConvRate = rate
+        self.AlertMode = AlertPinMode.INTERRUPT
+        self.CrcEnable = 1      // Turn on CRC-validation for automotive applications (Q1)
+        self.Spi3Wire = 0       // Use standard 4-pin SPI (CS, SCLK, MISO, MOSI)
+        self.SoftwareReset = 0
+    }
+}
+
+impl TmpResultBuffer {
+    // Read-only property that return temperature safely typed in °C
+    property Temperature: DegC {
+        get {
+            return DegC(self.RawTemp)
+        }
+    }
+}
+
+impl TmpStatus {
+    property IsDataAvailable: bool {
+        get {
+            return self.DataReady
+        }
+    }
+
+    property HasCrcFailed: bool {
+        get {
+            return self.CrcError
+        }
+    }
+}
+
+// =====================================================================
+// MEMORY-MAPPED HARDWARE INSTANCES
+// =====================================================================
+
+@address(0x40013030)
+let mut TMP126_CFG: TmpConfig
+
+@address(0x40013032)
+let TMP126_STAT: TmpStatus
+
+@address(0x40013034)
+let TMP126_RESULT: TmpResultBuffer
+
+// =====================================================================
+// APPLICATION LOGIC FOR TMP126-Q1
+// =====================================================================
+
+fn InitializeTmp126Sensor() void {
+    // Turn on continous measurement at 4Hz with activated CRC
+    TMP126_CFG.ConfigureContinuousMode(TmpConversionRate.CONTINUOUS_4HZ)
+}
+
+fn ReadTmp126Temperature() void {
+    // 1. Check if new temperature data is available
+    let dataReady: bool := TMP126_STAT.IsDataAvailable
+
+    // 2. Check that no CRC-errors has occurd on SPI-bussen
+    let crcFailed: bool := TMP126_STAT.HasCrcFailed
+
+    // 3. Read temperature with full unit safety
+    let currentTemp: DegC := TMP126_RESULT.Temperature
+}

@@ -25,4 +25,9 @@ def SecVerifyTryHandlers : Pass<"sec-verify-try-handlers", "mlir::func::FuncOp">
   let dependentDialects = ["mlir::cf::ControlFlowDialect"];
 }
 
+def SecVerifyUnionGuards : Pass<"sec-verify-union-guards", "mlir::func::FuncOp"> {
+  let summary = "Verify canonical Sec union variant projection guards";
+  let dependentDialects = ["mlir::cf::ControlFlowDialect"];
+}
+
 #endif // SEC_ANALYSIS_PASSES_TD

@@ -21,6 +21,35 @@ func Format(module *Module) string {
 		fmt.Fprintf(&out, "    !%d = %s\n", i+1, formatType(t))
 	}
 	out.WriteString("  }\n")
+	if len(module.Enums) > 0 {
+		out.WriteString("\n  enums {\n")
+		for _, definition := range module.Enums {
+			fmt.Fprintf(&out, "    !%d %q underlying=!%d representation=%s width=%d {\n", definition.TypeID, definition.SymbolID, definition.Underlying, definition.RepresentationKind, definition.BitWidth)
+			for _, enumCase := range definition.Cases {
+				fmt.Fprintf(&out, "      #%d %s = %s %s\n", enumCase.ID, enumCase.Name, enumCase.Value.String(), formatLocation(enumCase.Location))
+			}
+			out.WriteString("    }\n")
+		}
+		out.WriteString("  }\n")
+	}
+	if len(module.Unions) > 0 {
+		out.WriteString("\n  unions {\n")
+		for _, definition := range module.Unions {
+			fmt.Fprintf(&out, "    !%d %q copy=%s trivial-destroy=%t {\n", definition.TypeID, definition.SymbolID, definition.CopyClassification, definition.TriviallyDestructible)
+			for _, variant := range definition.Variants {
+				fmt.Fprintf(&out, "      #%d %s %s", variant.Index, variant.Name, variant.Kind)
+				if variant.Payload != 0 {
+					fmt.Fprintf(&out, " !%d", variant.Payload)
+				}
+				for _, field := range variant.PayloadFields {
+					fmt.Fprintf(&out, " %s:!%d", field.Name, field.Type)
+				}
+				fmt.Fprintf(&out, " %s\n", formatLocation(variant.Location))
+			}
+			out.WriteString("    }\n")
+		}
+		out.WriteString("  }\n")
+	}
 	for _, fn := range module.Functions {
 		formatFunction(&out, fn)
 	}
@@ -36,6 +65,12 @@ func formatType(t Type) string {
 	}
 	if t.Kind == TypeResult {
 		return fmt.Sprintf("Result<!%d, !%d>", t.Success, t.Error)
+	}
+	if t.Kind == TypeEnum {
+		return fmt.Sprintf("enum %q underlying !%d", t.Identity, t.Underlying)
+	}
+	if t.Kind == TypeUnion {
+		return fmt.Sprintf("union %q", t.Identity)
 	}
 	s := t.Name
 	if s == "" {
@@ -163,6 +198,27 @@ func formatOperation(out *strings.Builder, op Operation) {
 		fmt.Fprintf(out, " %%%d", op.Operands[0])
 	case OpCoreErrorIsVariant:
 		fmt.Fprintf(out, " %s %%%d", op.Variant, op.Operands[0])
+	case OpEnumConstant:
+		fmt.Fprintf(out, " case=#%d", op.EnumCase)
+	case OpEnumFromInteger, OpEnumToInteger:
+		fmt.Fprintf(out, " %%%d", op.Operands[0])
+	case OpEnumCompare:
+		fmt.Fprintf(out, " %s %%%d, %%%d", op.IntegerCompare, op.Operands[0], op.Operands[1])
+	case OpUnionConstruct:
+		fmt.Fprintf(out, " variant=#%d", op.UnionVariant)
+		for index, operand := range op.Operands {
+			field := ""
+			if index < len(op.UnionFields) {
+				field = op.UnionFields[index] + "="
+			}
+			fmt.Fprintf(out, " %s%%%d[%s]", field, operand, op.PayloadActions[index])
+		}
+	case OpUnionIsVariant:
+		fmt.Fprintf(out, " %%%d variant=#%d", op.Operands[0], op.UnionVariant)
+	case OpUnionUnwrapPayload:
+		fmt.Fprintf(out, " %%%d variant=#%d[%s]", op.Operands[0], op.UnionVariant, op.PayloadActions[0])
+	case OpUnionUnwrapField:
+		fmt.Fprintf(out, " %%%d variant=#%d field=%s[%s]", op.Operands[0], op.UnionVariant, op.UnionField, op.PayloadActions[0])
 	}
 	if op.TryHandlerKind != "" {
 		fmt.Fprintf(out, " [handler=%s index=%d", op.TryHandlerKind, op.TryHandlerIndex)

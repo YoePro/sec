@@ -1,0 +1,15 @@
+module main
+
+fn Seed() int {
+    return 7
+}
+
+fn Build() int[4] {
+    return fill(Seed())
+}
+
+fn main() int {
+    let values: int[3] := fill(5)
+    let built := Build()
+    return values[2] + built[3]
+}

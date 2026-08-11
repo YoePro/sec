@@ -11,7 +11,7 @@ import (
 	"sec/internal/layout"
 )
 
-const dialectSchemaVersion = 6
+const dialectSchemaVersion = 7
 
 type emitter struct {
 	module    *semantic.Module
@@ -374,9 +374,111 @@ func (e *emitter) emitOperation(function *semantic.Function, operation semantic.
 		return e.emitUnarySemanticOperation(operation, "sec.result.unwrap_err", values)
 	case semantic.OpCoreErrorIsVariant:
 		return e.emitCoreErrorIsVariant(operation, values)
+	case semantic.OpEnumConstant:
+		if err := e.emitResult(operation); err != nil {
+			return err
+		}
+		fmt.Fprintf(&e.out, "\"sec.enum.constant\"() <{caseOrdinal = %d : i32}> : () -> ", operation.EnumCase)
+		return e.finishResultOperation(operation)
+	case semantic.OpEnumFromInteger:
+		return e.emitUnarySemanticOperation(operation, "sec.enum.from_integer", values)
+	case semantic.OpEnumToInteger:
+		return e.emitUnarySemanticOperation(operation, "sec.enum.to_integer", values)
+	case semantic.OpEnumCompare:
+		return e.emitSemanticIntegerOperation(operation, "sec.enum.cmp", "predicate", string(operation.IntegerCompare), values)
+	case semantic.OpUnionConstruct:
+		return e.emitUnionConstruct(operation, values)
+	case semantic.OpUnionIsVariant:
+		return e.emitUnionUnary(operation, "sec.union.is_variant", values)
+	case semantic.OpUnionUnwrapPayload:
+		return e.emitUnionUnwrap(operation, "sec.union.unwrap_payload", values)
+	case semantic.OpUnionUnwrapField:
+		return e.emitUnionUnwrap(operation, "sec.union.unwrap_field", values)
 	default:
 		return &UnsupportedLoweringError{Feature: string(operation.Kind), Function: function.ID}
 	}
+	e.emitLocation(operation.Location)
+	e.out.WriteByte('\n')
+	return nil
+}
+
+func (e *emitter) emitUnionConstruct(operation semantic.Operation, values map[semantic.ValueID]semantic.Value) error {
+	if len(operation.Results) != 1 || len(operation.PayloadActions) != len(operation.Operands) {
+		return fmt.Errorf("invalid %s", operation.Kind)
+	}
+	if err := e.emitResult(operation); err != nil {
+		return err
+	}
+	e.out.WriteString("\"sec.union.construct\"(")
+	for index, operand := range operation.Operands {
+		if index > 0 {
+			e.out.WriteString(", ")
+		}
+		e.out.WriteString(valueName(operand))
+	}
+	fmt.Fprintf(&e.out, ") <{fieldNames = [")
+	for index, field := range operation.UnionFields {
+		if index > 0 {
+			e.out.WriteString(", ")
+		}
+		e.out.WriteString(mlirString(field))
+	}
+	e.out.WriteString("], payloadActions = [")
+	for index, action := range operation.PayloadActions {
+		if index > 0 {
+			e.out.WriteString(", ")
+		}
+		e.out.WriteString(mlirString(string(action)))
+	}
+	fmt.Fprintf(&e.out, "], variant = %d : i32}> : (", operation.UnionVariant)
+	if err := e.emitOperandTypes(operation.Operands, values); err != nil {
+		return err
+	}
+	e.out.WriteString(") -> ")
+	return e.finishResultOperation(operation)
+}
+
+func (e *emitter) emitUnionUnary(operation semantic.Operation, name string, values map[semantic.ValueID]semantic.Value) error {
+	if len(operation.Operands) != 1 || len(operation.Results) != 1 {
+		return fmt.Errorf("invalid %s", operation.Kind)
+	}
+	if err := e.emitResult(operation); err != nil {
+		return err
+	}
+	operandType, err := e.valueTypeText(operation.Operands[0], values)
+	if err != nil {
+		return err
+	}
+	resultType, err := e.typeText(operation.Results[0].Type)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(&e.out, "\"%s\"(%s) <{variant = %d : i32}> : (%s) -> %s", name, valueName(operation.Operands[0]), operation.UnionVariant, operandType, resultType)
+	e.emitLocation(operation.Location)
+	e.out.WriteByte('\n')
+	return nil
+}
+
+func (e *emitter) emitUnionUnwrap(operation semantic.Operation, name string, values map[semantic.ValueID]semantic.Value) error {
+	if len(operation.Operands) != 1 || len(operation.Results) != 1 || len(operation.PayloadActions) != 1 {
+		return fmt.Errorf("invalid %s", operation.Kind)
+	}
+	if err := e.emitResult(operation); err != nil {
+		return err
+	}
+	operandType, err := e.valueTypeText(operation.Operands[0], values)
+	if err != nil {
+		return err
+	}
+	resultType, err := e.typeText(operation.Results[0].Type)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(&e.out, "\"%s\"(%s) <{", name, valueName(operation.Operands[0]))
+	if operation.Kind == semantic.OpUnionUnwrapField {
+		fmt.Fprintf(&e.out, "field = %s, ", mlirString(operation.UnionField))
+	}
+	fmt.Fprintf(&e.out, "payloadAction = %s, variant = %d : i32}> : (%s) -> %s", mlirString(string(operation.PayloadActions[0])), operation.UnionVariant, operandType, resultType)
 	e.emitLocation(operation.Location)
 	e.out.WriteByte('\n')
 	return nil
@@ -674,6 +776,48 @@ func (e *emitter) typeText(id semantic.TypeID) (string, error) {
 			return "", err
 		}
 		text = fmt.Sprintf("!sec.result<%s, %s>", success, failure)
+	case semantic.TypeEnum:
+		definition, ok := e.enumDefinition(id)
+		if !ok {
+			return "", fmt.Errorf("missing enum definition for semantic type %d", id)
+		}
+		underlying, err := e.enumUnderlyingText(definition.Underlying)
+		if err != nil {
+			return "", err
+		}
+		var cases strings.Builder
+		cases.WriteByte('[')
+		for index, enumCase := range definition.Cases {
+			if index > 0 {
+				cases.WriteString(", ")
+			}
+			fmt.Fprintf(&cases, "#sec.enum_case<ordinal = %d, name = %s, value = %s>", enumCase.ID, mlirString(enumCase.Name), mlirString(enumCase.Value.String()))
+		}
+		cases.WriteByte(']')
+		text = fmt.Sprintf("!sec.enum<identity = %s, underlying = %s, representation = %s, bitWidth = %d, cases = %s>", mlirString(typeValue.Identity), underlying, mlirString(string(definition.RepresentationKind)), definition.BitWidth, cases.String())
+	case semantic.TypeUnion:
+		definition, ok := e.unionDefinition(id)
+		if !ok {
+			return "", fmt.Errorf("missing union definition for semantic type %d", id)
+		}
+		var arguments strings.Builder
+		arguments.WriteByte('[')
+		for index, argument := range definition.TypeArguments {
+			if index > 0 {
+				arguments.WriteString(", ")
+			}
+			argumentText, err := e.typeText(argument)
+			if err != nil {
+				return "", err
+			}
+			arguments.WriteString(argumentText)
+		}
+		arguments.WriteByte(']')
+		variants, err := e.unionVariantsText(definition)
+		if err != nil {
+			return "", err
+		}
+		text = fmt.Sprintf("!sec.union<identity = %s, typeArguments = %s, variants = %s>", mlirString(typeValue.Identity), arguments.String(), variants)
 	case semantic.TypeVoid:
 		return "", fmt.Errorf("void has no MLIR value type")
 	}
@@ -682,6 +826,67 @@ func (e *emitter) typeText(id semantic.TypeID) (string, error) {
 	}
 	e.types[id] = text
 	return text, nil
+}
+
+func (e *emitter) enumDefinition(id semantic.TypeID) (semantic.EnumDefinition, bool) {
+	for _, definition := range e.module.Enums {
+		if definition.TypeID == id {
+			return definition, true
+		}
+	}
+	return semantic.EnumDefinition{}, false
+}
+
+func (e *emitter) unionDefinition(id semantic.TypeID) (semantic.UnionDefinition, bool) {
+	for _, definition := range e.module.Unions {
+		if definition.TypeID == id {
+			return definition, true
+		}
+	}
+	return semantic.UnionDefinition{}, false
+}
+
+func (e *emitter) enumUnderlyingText(id semantic.TypeID) (string, error) {
+	typ, ok := e.module.Types.Lookup(id)
+	if !ok {
+		return "", fmt.Errorf("missing enum underlying type %d", id)
+	}
+	if typ.Kind == semantic.TypeUint && typ.BitWidth >= 1 && typ.BitWidth <= 256 && !typ.TargetSize {
+		return fmt.Sprintf("ui%d", typ.BitWidth), nil
+	}
+	return e.typeText(id)
+}
+
+func (e *emitter) unionVariantsText(definition semantic.UnionDefinition) (string, error) {
+	var out strings.Builder
+	out.WriteByte('[')
+	for index, variant := range definition.Variants {
+		if index > 0 {
+			out.WriteString(", ")
+		}
+		fmt.Fprintf(&out, "#sec.union_variant<index = %d, name = %s, kind = %s", variant.Index, mlirString(variant.Name), mlirString(string(variant.Kind)))
+		if variant.Payload != 0 {
+			payload, err := e.typeText(variant.Payload)
+			if err != nil {
+				return "", err
+			}
+			fmt.Fprintf(&out, ", payload = %s", payload)
+		}
+		out.WriteString(", fields = [")
+		for fieldIndex, field := range variant.PayloadFields {
+			if fieldIndex > 0 {
+				out.WriteString(", ")
+			}
+			fieldType, err := e.typeText(field.Type)
+			if err != nil {
+				return "", err
+			}
+			fmt.Fprintf(&out, "#sec.union_field<name = %s, type = %s>", mlirString(field.Name), fieldType)
+		}
+		out.WriteString("]>")
+	}
+	out.WriteByte(']')
+	return out.String(), nil
 }
 
 func validFixedIntegerWidth(width uint16) bool {

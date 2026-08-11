@@ -80,6 +80,7 @@ pitfall_analysis.md
 stack_analysis.md
 data_races.md
 deadlock_analysis.md
+isr_analysis.md
 ```
 
 These were written after the older temporary checklist was last synchronized.
@@ -447,8 +448,8 @@ OrderedMap[K, V]
 | `semantic_ir.txt` | **Written — sync required** | Must include discard, threads, collections, shaped values, panic, and effects. |
 | `mlir.txt` | **Written — sync required** | |
 | `sec_mlir.md` | **Written** | Canonical high-level Sec MLIR boundary; implementation status is tracked by the schema-2 and scalar-layout integrations. |
-| `sec_mlir_dialect.md` | **Written** | Canonical schema-v6 dialect after Package 10; implementation status is tracked by the checked-integer, typed-arithmetic-flow, and local try-handler integrations. |
-| `sec_mlir_lowering.md` | **Written** | Canonical lowering specification v6; status is tracked by the trivial-core, scalar-layout, checked-integer-to-Arith, typed-arithmetic-flow, and local try-handler integrations. |
+| `sec_mlir_dialect.md` | **Written** | Canonical schema-v7 dialect after Package 11; implementation status is tracked by the checked-integer, typed-arithmetic-flow, local try-handler, and enum/union-value integrations. |
+| `sec_mlir_lowering.md` | **Written** | Canonical lowering specification v7; status is tracked by the trivial-core, scalar-layout, checked-integer-to-Arith, typed-arithmetic-flow, local try-handler, and enum/union-value integrations. |
 | `mlir-optimize.txt` | **Living** | Updated as implementation and optimization support grows. |
 | `rules_implementations.txt` | **Living** | Legacy implementation notes being migrated into `implementation-status.yaml`. |
 | `call_graph.md` | **Written** | Canonical callable reachability and execution relationships. Implementation status is tracked by `analysis.call-graph` in `implementation-status.yaml`. |
@@ -458,7 +459,7 @@ OrderedMap[K, V]
 | `parameter_usage_analysis.md` | **Written** | Canonical multidimensional parameter-demand and advisory-narrowing model. Implementation status is tracked by `sema.parameter-usage-analysis`. |
 | `pitfall_analysis.md` | **Written** | Canonical semantic pitfall-finding, evidence, suppression, confidence, corrective-action, budget, incremental, LSP, and FFI-contract model. Implementation status is tracked by `sema.pitfall-analysis`. |
 | `effect_analysis.md` | **Written** | Canonical compile-time effect domains and propagation model. Initial Arena event sites, synchronous `MayAllocate` propagation, cause paths, and LSP hover are implemented; the complete effect set, guarantees, contexts, indirect targets, and per-plan analysis remain. |
-| `isr_analysis.md` | **Planned** | ISR call graph, stack, allocation, blocking, lock, and shared-state restrictions. |
+| `isr_analysis.md` | **Written** | Canonical cross-analysis ISR constraint verifier: resolved profiles, reusable requirement summaries, execution-context propagation, stack/race/deadlock/FFI composition, Valid/Invalid/Unproven proof states, incremental dependencies, and progressive LSP refinement. Implementation status is tracked by `sema.isr-analysis`. |
 | `parser_recovery.md` | **Written** | Canonical deterministic recovery model; structured implementation remains partial. |
 | `generics_lowering.md` | **Planned** | Semantic and MLIR lowering of generic code. |
 | `monomorphization.md` | **Planned** | Specialization, symbol identity, code size, and cross-module behavior. |
@@ -488,7 +489,7 @@ repository-wide migration is chosen.
 | `inline_assembly.md` | **Planned** | Operands, constraints, clobbers, volatility, memory effects, and target restrictions. |
 | `volatile.md` | **Planned** | Volatile access, MMIO, compiler reordering, atomics distinction, and read-modify-write. |
 | `interrupts.md` | **Planned** | ISR syntax, vector binding, nesting, priorities, stacks, and deferred work. |
-| `isr_analysis.md` | **Planned** | Compiler verification for interrupt-safe code. |
+| `isr_analysis.md` | **Written** | Compiler verification for profile-scoped interrupt safety using canonical analysis results; implementation status is tracked by `sema.isr-analysis`. |
 
 This group is a central remaining language-closure block.
 
@@ -582,6 +583,7 @@ functions_lambda.txt
 generics.txt
 impl.txt
 interfaces.txt
+isr_analysis.md
 language_philosophy.txt
 lexical_structure.md
 layout.md
@@ -639,6 +641,7 @@ pitfall_analysis.md
 stack_analysis.md
 data_races.md
 deadlock_analysis.md
+isr_analysis.md
 ```
 
 ---
@@ -649,7 +652,6 @@ The following rulebooks are currently expected before Sec 0.1 can be considered
 fully design-closed, unless a later decision explicitly merges one into another.
 
 ```text
-isr_analysis.md
 generics_lowering.md
 monomorphization.md
 compile_time_evaluation.md

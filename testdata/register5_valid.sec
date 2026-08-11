@@ -1,5 +1,7 @@
 module spi_master_driver
 
+// Sample code for ESP32
+
 // =====================================================================
 // ENUMS FOR SPI PROTOCOL CONFIGURATION
 // =====================================================================
@@ -46,7 +48,7 @@ type SpiControl register[32] {
     LsbFirst: bit[1]
     SoftwareCs: bit[1]
     CsActive: bit[1]       // Explicit Chip Select signal line control
-    _: bit[22]
+    _: bit[20]
 }
 
 // SPI Status Register (32-bit width)
@@ -93,19 +95,19 @@ impl SpiControl {
 impl SpiStatus {
     property IsReadyToTransmit: bool {
         get {
-            return bool(self.TxEmpty == true)
+            return self.TxEmpty
         }
     }
 
     property HasDataToRead: bool {
         get {
-            return bool(self.RxNotEmpty == true)
+            return self.RxNotEmpty
         }
     }
 
     property IsBusy: bool {
         get {
-            return bool(self.Busy == true)
+            return self.Busy
         }
     }
 }
@@ -122,3 +124,71 @@ let SPI1_SR: SpiStatus
 
 @address(0x4001300C)
 let mut SPI1_DR: SpiDataBuffer
+
+// =====================================================================
+// PHYSICAL UNIT DEFINITION: Acceleration (m/s^2)
+// =====================================================================
+
+/** Meter per second squared for linear acceleration */
+unit MPS2 physical
+
+impl MPS2 {
+    LongName: "MetersPerSecondSquared"
+    Symbol: "m/s^2"
+    BaseUnit: false
+    Status: active
+    Dimension: [length^1, time^-2]
+    Scale: 1
+    System: SI
+}
+
+// =====================================================================
+// SENSOR DATA BUFFER REGISTER LAYOUT
+// =====================================================================
+
+// ADXL345 Raw Acceleration Data Buffer
+type AccelerationBuffer register[32] {
+    AccelX: bit[16]<MPS2>  // 16 bits signed raw X-axis data bound to MPS2
+    AccelY: bit[16]<MPS2>  // 16 bits signed raw Y-axis data bound to MPS2
+}
+
+impl AccelerationBuffer {
+    property XAxis: MPS2 {
+        get {
+            return MPS2(self.AccelX)
+        }
+    }
+
+    property YAxis: MPS2 {
+        get {
+            return MPS2(self.AccelY)
+        }
+    }
+}
+
+@address(0x40013020)
+let ADXL345_BUFFER: AccelerationBuffer
+
+// =====================================================================
+// APPLICATION LOGIC FUNCTIONS
+// =====================================================================
+
+fn SetupSpiAndSensor() void {
+    // 1. Konfigurera SPI-mastern i Mode 3 med DIV_16 klockdelning
+    SPI1_CR.InitializeMaster(SpiMode.MODE_3, SpiBaudRate.DIV_16)
+}
+
+fn ReadAccelerationData() void {
+    // 2. Aktivera Chip Select för sensorn
+    SPI1_CR.SelectSlave()
+
+    // 3. Kontrollera om bussen är redo innan sändning/läsning
+    let isReady: bool := SPI1_SR.IsReadyToTransmit
+
+    // 4. Läs av acceleration i X- och Y-led med typ- och enhetsvalidering
+    let xAcc: MPS2 := ADXL345_BUFFER.XAxis
+    let yAcc: MPS2 := ADXL345_BUFFER.YAxis
+
+    // 5. Koppla från Chip Select
+    SPI1_CR.DeselectSlave()
+}

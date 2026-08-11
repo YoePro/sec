@@ -1,0 +1,134 @@
+module ip_header_parser
+
+// =====================================================================
+// ENUMS FOR IP PROTOCOL & ERRORS
+// =====================================================================
+
+// Common Transport Layer Protocols (8-bit)
+enum IpProtocol bit[8] {
+    ICMP = 1,
+    IGMP = 2,
+    TCP  = 6,
+    UDP  = 17,
+}
+
+// IP Flags (3-bit bitfield)
+enum IpFlags bit[3] {
+    RESERVED       = 0b100,
+    DONT_FRAGMENT  = 0b010,
+    MORE_FRAGMENTS = 0b001,
+}
+
+// Packet Processing Errors
+enum IpError {
+    InvalidVersion,
+    HeaderTooShort,
+    TtlExpired,
+    ChecksumMismatch,
+}
+
+// =====================================================================
+// IPv4 HEADER LAYOUT (20-byte base register layout)
+// =====================================================================
+
+// Explicit bit-level representation of an IPv4 Packet Header
+type Ipv4Header register[160] { // 160 bits = 20 bytes
+    Version: bit[4]            // Normally 4 for IPv4
+    Ihl: bit[4]                // Internet Header Length (number of 32-bit words)
+    Dscp: bit[6]               // Differentiated Services Code Point
+    Ecn: bit[2]                // Explicit Congestion Notification
+    TotalLength: bit[16]       // Entire packet size in bytes
+
+    Identification: bit[16]    // Unique ID for fragmentation
+    Flags: IpFlags             // Fragmentation control flags
+    FragmentOffset: bit[13]    // Offset in 8-byte blocks
+
+    TimeToLive: bit[8]         // TTL counter
+    Protocol: IpProtocol       // Upper layer protocol (TCP, UDP, etc.)
+    HeaderChecksum: bit[16]    // Error-checking checksum
+
+    SourceAddress: bit[32]     // Sender IPv4 Address
+    DestinationAddress: bit[32]// Recipient IPv4 Address
+}
+
+// =====================================================================
+// IMPLEMENTATION & HELPER METHODS
+// =====================================================================
+
+impl Ipv4Header {
+    // Validates packet version and decrements TTL using Result
+    fn ValidateAndForward() Result<void, IpError> {
+        if self.Version != 4 {
+            return Err(IpError.InvalidVersion)
+        }
+
+        if self.Ihl < 5 {
+            return Err(IpError.HeaderTooShort)
+        }
+
+        if self.TimeToLive <= 1 {
+            self.TimeToLive = 0
+            return Err(IpError.TtlExpired)
+        }
+
+        self.TimeToLive = self.TimeToLive - 1
+        return Ok()
+    }
+
+    // Returns destination port if protocol carries one, or None
+    fn GetDestinationPort(payloadData: bit[32]) Option<bit[16]> {
+        match self.Protocol {
+            IpProtocol.TCP => {
+                // Extract 16-bit destination port from TCP payload
+                let port: bit[16] := bit[16](payloadData >> 16)
+                return Some(port)
+            }
+            IpProtocol.UDP => {
+                let port: bit[16] := bit[16](payloadData >> 16)
+                return Some(port)
+            }
+            _ => {
+                return None
+            }
+        }
+    }
+}
+
+// =====================================================================
+// APPLICATION LOGIC USING FALLIBLE TRY & BODYLESS TRY
+// =====================================================================
+
+// Helper function that propagates error via bodyless try (?)
+fn RoutePacket(header: Ipv4Header) Result[void, IpError] {
+    // Bodyless try propagates IpError automatically if validation fails
+    try header.ValidateAndForward()
+
+    // Continue routing logic...
+    return Ok()
+}
+
+// Top-level packet processing with explicit try block
+fn ProcessIncomingPacket(header: Ipv4Header, payloadSample: uint32) void {
+    // Explicit try block catching potential errors
+    try RoutePacket(header) {
+        Err(error) => {
+            match err {
+                IpError.InvalidVersion => { /* Log invalid packet version */ }
+                IpError.TtlExpired     => { /* Send ICMP Time Exceeded */ }
+                _                      => { /* Drop packet */ }
+            }
+            return
+        }
+    }
+
+    // Match on Option returned when extracting port numbers
+    let destPort: Option[uint16] := header.GetDestinationPort(payloadSample)
+    match destPort {
+        Some(port) => {
+            // Route to specific application port
+        }
+        None => {
+            // Handle non-ported traffic (e.g. ICMP)
+        }
+    }
+}

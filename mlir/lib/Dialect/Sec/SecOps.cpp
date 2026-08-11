@@ -394,9 +394,14 @@ LogicalResult ArithmeticFailureReasonConstantOp::verify() {
 LogicalResult ArithmeticErrorFromReasonOp::verify() {
   if (!isa<ArithmeticFailureReasonType>(getReason().getType()))
     return emitOpError("operand must be !sec.arithmetic_failure_reason");
-  auto error = dyn_cast<CoreErrorType>(getResult().getType());
-  if (!error || error.getIdentity().getValue() != "core::ArithmeticError")
-    return emitOpError("result must be !sec.core_error<\"core::ArithmeticError\">");
+  bool arithmeticError = false;
+  if (auto legacy = dyn_cast<CoreErrorType>(getResult().getType()))
+    arithmeticError = legacy.getIdentity().getValue() == "core::ArithmeticError";
+  if (auto enumType = dyn_cast<EnumType>(getResult().getType()))
+    arithmeticError = enumType.getIdentity().getValue() == "core::ArithmeticError";
+  if (!arithmeticError)
+    return emitOpError(
+        "result must be the canonical core::ArithmeticError semantic type");
   if (auto constant = getReason().getDefiningOp<
       ArithmeticFailureReasonConstantOp>())
     if (constant.getValue() == "none")
@@ -457,4 +462,136 @@ LogicalResult CoreErrorIsVariantOp::verify() {
                {"Overflow", "DivisionByZero", "InvalidShift"}))
     return emitOpError("unknown ArithmeticError variant");
   return success();
+}
+
+namespace {
+FailureOr<UnionVariantAttr> lookupUnionVariant(Type type, IntegerAttr index,
+                                               Operation *operation) {
+  auto unionType = dyn_cast<UnionType>(type);
+  if (!unionType)
+    return operation->emitOpError("value must have !sec.union type");
+  int64_t ordinal = index.getInt();
+  if (ordinal < 0 || static_cast<uint64_t>(ordinal) >= unionType.getVariants().size())
+    return operation->emitOpError("union variant index is out of range");
+  auto variant = dyn_cast<UnionVariantAttr>(unionType.getVariants()[ordinal]);
+  if (!variant)
+    return operation->emitOpError("union variant table contains an invalid attribute");
+  if (variant.getIndex() != static_cast<uint32_t>(ordinal))
+    return operation->emitOpError("union variant table is not canonical");
+  return variant;
+}
+
+LogicalResult verifyCopyTrivialAction(Operation *operation, StringRef action) {
+  if (action != "copy-trivial")
+    return operation->emitOpError(
+        "Package 11 union payload action must be copy-trivial");
+  return success();
+}
+} // namespace
+
+LogicalResult EnumConstantOp::verify() {
+  auto enumType = dyn_cast<EnumType>(getResult().getType());
+  if (!enumType)
+    return emitOpError("result must have !sec.enum type");
+  int64_t ordinal = getCaseOrdinalAttr().getInt();
+  if (ordinal < 0 || static_cast<uint64_t>(ordinal) >= enumType.getCases().size())
+    return emitOpError("case ordinal is out of range for result enum");
+  auto enumCase = dyn_cast<EnumCaseAttr>(enumType.getCases()[ordinal]);
+  if (!enumCase || enumCase.getOrdinal() != static_cast<uint32_t>(ordinal))
+    return emitOpError("result enum case table is not canonical");
+  return success();
+}
+
+LogicalResult EnumFromIntegerOp::verify() {
+  auto enumType = dyn_cast<EnumType>(getResult().getType());
+  if (!enumType)
+    return emitOpError("result must have !sec.enum type");
+  if (!isBuiltinIntegerSemanticType(getValue().getType()))
+    return emitOpError("operand must have an integer semantic type");
+  return success();
+}
+
+LogicalResult EnumToIntegerOp::verify() {
+  if (!isa<EnumType>(getValue().getType()))
+    return emitOpError("operand must have !sec.enum type");
+  if (!isBuiltinIntegerSemanticType(getResult().getType()))
+    return emitOpError("result must have an integer semantic type");
+  return success();
+}
+
+LogicalResult EnumCmpOp::verify() {
+  if (!isa<EnumType>(getLeft().getType()) ||
+      getLeft().getType() != getRight().getType())
+    return emitOpError("operands must have the same !sec.enum type");
+  if (getPredicate() != "eq" && getPredicate() != "ne")
+    return emitOpError("predicate must be eq or ne");
+  return success();
+}
+
+LogicalResult UnionConstructOp::verify() {
+  auto variant = lookupUnionVariant(getResult().getType(), getVariantAttr(), *this);
+  if (failed(variant))
+    return failure();
+  if (getPayloadActions().size() != getPayloads().size())
+    return emitOpError("payload action count must equal payload count");
+  for (Attribute action : getPayloadActions()) {
+    auto string = dyn_cast<StringAttr>(action);
+    if (!string || failed(verifyCopyTrivialAction(*this, string.getValue())))
+      return failure();
+  }
+  StringRef kind = variant->getKind().getValue();
+  if (kind == "empty") {
+    if (!getPayloads().empty() || !getFieldNames().empty())
+      return emitOpError("empty variant must not have payloads or field names");
+  } else if (kind == "single") {
+    if (getPayloads().size() != 1 || !getFieldNames().empty() ||
+        getPayloads()[0].getType() != variant->getPayload())
+      return emitOpError("single variant payload type must match exactly");
+  } else {
+    if (getPayloads().size() != variant->getFields().size() ||
+        getFieldNames().size() != variant->getFields().size())
+      return emitOpError("fields variant payload arity must match exactly");
+    for (auto [position, attribute] : llvm::enumerate(variant->getFields())) {
+      auto field = cast<UnionFieldAttr>(attribute);
+      auto name = dyn_cast<StringAttr>(getFieldNames()[position]);
+      if (!name || name.getValue() != field.getName().getValue() ||
+          getPayloads()[position].getType() != field.getType())
+        return emitOpError(
+            "fields variant operands must use declaration order and exact types");
+    }
+  }
+  return success();
+}
+
+LogicalResult UnionIsVariantOp::verify() {
+  if (failed(lookupUnionVariant(getValue().getType(), getVariantAttr(), *this)))
+    return failure();
+  return success();
+}
+
+LogicalResult UnionUnwrapPayloadOp::verify() {
+  auto variant = lookupUnionVariant(getValue().getType(), getVariantAttr(), *this);
+  if (failed(variant))
+    return failure();
+  if (variant->getKind().getValue() != "single" ||
+      variant->getPayload() != getResult().getType())
+    return emitOpError("projection requires matching single-payload variant");
+  return verifyCopyTrivialAction(*this, getPayloadAction());
+}
+
+LogicalResult UnionUnwrapFieldOp::verify() {
+  auto variant = lookupUnionVariant(getValue().getType(), getVariantAttr(), *this);
+  if (failed(variant))
+    return failure();
+  if (variant->getKind().getValue() != "fields")
+    return emitOpError("field projection requires a fields variant");
+  if (failed(verifyCopyTrivialAction(*this, getPayloadAction())))
+    return failure();
+  for (Attribute attribute : variant->getFields()) {
+    auto field = cast<UnionFieldAttr>(attribute);
+    if (field.getName().getValue() == getField() &&
+        field.getType() == getResult().getType())
+      return success();
+  }
+  return emitOpError("field does not exist with the projected result type");
 }

@@ -591,7 +591,7 @@ Resources
 Sec 0.1 does not require every possible family to have a large catalog.
 
 The required initial implementation prioritizes high-confidence bounds, range,
-collection, control-flow, and contract-backed FFI mistakes.
+collection, control-flow, boolean-intent, and contract-backed FFI mistakes.
 
 ---
 
@@ -986,6 +986,50 @@ proven safe structural pattern
 ```
 
 rather than warning on every mutation inside a loop.
+
+---
+
+# Boolean representation pitfalls
+
+## Comparing a boolean with `0` or `1`
+
+A one-bit register field is read as `bool`. The register write boundary may
+permit the hardware spellings `0` and `1`, but that convenience does not make
+the value an integer when it is read. The ordinary equality rule therefore
+continues to reject a comparison between `bool` and an integer.
+
+When the integer operand is the exact compile-time value `0` or `1`, however,
+the likely boolean intent is unambiguous enough for a corrective suggestion.
+Pitfall analysis must use the following equivalences:
+
+```text
+value == 1    -> value
+value != 0    -> value
+value == 0    -> !value
+value != 1    -> !value
+```
+
+The same proven simplifications apply to explicit boolean literals:
+
+```text
+value == true     -> value
+value != false    -> value
+value == false    -> !value
+value != true     -> !value
+```
+
+Operand order does not affect the result. An outer conversion such as
+`bool(value == 1)` is redundant because an equality expression already
+produces `bool`; the suggested replacement must therefore cover the whole
+expression rather than producing a second, overlapping finding.
+
+For an integer `0` or `1`, the owning equality diagnostic remains the primary
+type error and the pitfall result supplies a `SuggestedEdit`. For a valid
+comparison with `true` or `false`, semantic equivalence is proven and the
+replacement may be a `ProvenFix`.
+
+No boolean intent may be inferred from another integer, a non-constant numeric
+value, or an expression whose boolean operand type has not been resolved.
 
 ---
 
@@ -1761,6 +1805,8 @@ The required baseline must support at least the following semantic classes:
 ```text
 inclusive len upper-bound errors
 direct index-at-len errors
+redundant bool comparison with true/false
+bool comparison with exact integer 0/1, linked to the owning type error
 upper neighbor i + 1 boundary errors
 lower neighbor i - 1 boundary errors
 ineffective <= len guards

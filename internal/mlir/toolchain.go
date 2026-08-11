@@ -49,6 +49,7 @@ func (t Toolchain) VerifySec(mlirPath string) error {
 		"--sec-verify-checked-integer-guards",
 		"--sec-verify-result-guards",
 		"--sec-verify-try-handlers",
+		"--sec-verify-union-guards",
 		"-o", os.DevNull,
 	}
 	return t.run("sec-mlir-opt", args...)

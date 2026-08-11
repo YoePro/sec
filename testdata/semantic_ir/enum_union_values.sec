@@ -1,0 +1,146 @@
+module main
+
+enum Status int {
+    unknown = 0
+    active = 10
+    aliasActive = 10
+}
+
+enum Wide uint256 {
+    huge = 340282366920938463463374607431768211456
+}
+
+enum Flag: bit[2] {
+    off = 0
+    on = 1
+}
+
+enum MassiveFlag: bit[256] {
+    top = 57896044618658097711785492504343953926634992332820282019728792003956564819968
+}
+
+enum DefaultState {
+    ready
+    waiting
+}
+
+type Token struct {
+}
+
+impl Token {
+    enum Kind {
+        identifier
+        number
+    }
+
+    type Payload union {
+        empty
+        integer(int)
+    }
+}
+
+type State union {
+    idle
+    count(int128)
+    status(Status)
+    point {
+        x: int,
+        y: int,
+    }
+}
+
+type Maybe[T] union {
+    Some(T)
+    None
+}
+
+fn IdentityStatus(value: Status) Status {
+    return value
+}
+
+fn EnumValues(value: int) bool {
+    let declared := IdentityStatus(Status.aliasActive)
+    let converted := Status(value)
+    let numeric := int(converted)
+    return declared == Status.active
+}
+
+fn EnumInequality(value: Status) bool {
+    return value != Status.unknown
+}
+
+fn EnumNumber(value: Status) int {
+    return int(value)
+}
+
+fn WideValue() uint256 {
+    return uint256(Wide.huge)
+}
+
+fn BitValue() int {
+    return int(Flag.on)
+}
+
+fn MassiveBitValue() uint256 {
+    return uint256(MassiveFlag.top)
+}
+
+fn DefaultValue() DefaultState {
+    let mut state := DefaultState.ready
+    state = DefaultState.waiting
+    return state
+}
+
+fn NestedEnumValue() Token.Kind {
+    return Token.Kind.number
+}
+
+fn NestedUnionValue() Token.Payload {
+    return Token.Payload.integer(7)
+}
+
+fn EmptyState() State {
+    return State.idle
+}
+
+fn SingleState(value: int128) State {
+    return State.count(value)
+}
+
+fn EnumState(value: Status) State {
+    return State.status(value)
+}
+
+fn FieldState(first: int, second: int) State {
+    return State.point {
+        y: second,
+        x: first,
+    }
+}
+
+fn First() int {
+    return 1
+}
+
+fn Second() int {
+    return 2
+}
+
+fn OrderedFieldState() State {
+    return State.point {
+        y: Second(),
+        x: First(),
+    }
+}
+
+fn SomeInteger(value: int) Maybe[int] {
+    return Maybe.Some(value)
+}
+
+fn SomeWide(value: int128) Maybe[int128] {
+    return Maybe.Some(value)
+}
+
+fn NoInteger() Maybe[int] {
+    return Maybe.None
+}

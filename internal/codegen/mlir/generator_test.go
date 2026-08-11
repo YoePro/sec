@@ -1707,6 +1707,43 @@ fn main() int {
 	}
 }
 
+func TestGenerateFixedArrayFillInlineAndEvaluatesValueOnce(t *testing.T) {
+	input := `
+module main
+
+fn Seed() int {
+    return 7
+}
+
+fn Build() int[4] {
+    return fill(Seed())
+}
+
+fn main() int {
+    let values: int[3] := fill(5)
+    let built := Build()
+    return values[2] + built[3]
+}
+`
+	program := parseTestProgram(t, input)
+
+	got, err := GenerateWithTriple(program, "x86_64-pc-linux-gnu")
+	if err != nil {
+		t.Fatalf("GenerateWithTriple returned error: %v", err)
+	}
+	if calls := strings.Count(got, "llvm.call @Seed("); calls != 1 {
+		t.Fatalf("fill value must be evaluated once, Seed calls = %d:\n%s", calls, got)
+	}
+	if inserts := strings.Count(got, "llvm.insertvalue"); inserts != 7 {
+		t.Fatalf("fixed fills must inline one insertion per element, insertions = %d:\n%s", inserts, got)
+	}
+	for _, forbidden := range []string{"@fill", "malloc", "realloc", "memset"} {
+		if strings.Contains(got, forbidden) {
+			t.Fatalf("fixed-array fill introduced runtime dependency %q:\n%s", forbidden, got)
+		}
+	}
+}
+
 func TestGenerateNamedStringTypesAndStructFields(t *testing.T) {
 	input := `
 module main

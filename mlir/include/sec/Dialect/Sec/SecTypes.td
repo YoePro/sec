@@ -3,6 +3,7 @@
 
 include "mlir/IR/AttrTypeBase.td"
 include "sec/Dialect/Sec/SecDialect.td"
+include "sec/Dialect/Sec/SecAttributes.td"
 
 class Sec_Type<string name, string typeMnemonic>
     : TypeDef<Sec_Dialect, name> {
@@ -55,6 +56,30 @@ def Sec_ResultType : Sec_Type<"Result", "result"> {
   let parameters = (ins "::mlir::Type":$successType,
                          "::mlir::Type":$errorType);
   let assemblyFormat = "`<` $successType `,` $errorType `>`";
+  let genVerifyDecl = 1;
+}
+
+def Sec_EnumType : Sec_Type<"Enum", "enum"> {
+  let summary = "Nominal Sec enum with semantic underlying representation";
+  let parameters = (ins
+    "::mlir::StringAttr":$identity,
+    "::mlir::Type":$underlying,
+    "::mlir::StringAttr":$representation,
+    "uint32_t":$bitWidth,
+    "::mlir::ArrayAttr":$cases
+  );
+  let assemblyFormat = "`<` struct(params) `>`";
+  let genVerifyDecl = 1;
+}
+
+def Sec_UnionType : Sec_Type<"Union", "union"> {
+  let summary = "Nominal Sec tagged union without selected physical layout";
+  let parameters = (ins
+    "::mlir::StringAttr":$identity,
+    "::mlir::ArrayAttr":$typeArguments,
+    "::mlir::ArrayAttr":$variants
+  );
+  let assemblyFormat = "`<` struct(params) `>`";
   let genVerifyDecl = 1;
 }
 

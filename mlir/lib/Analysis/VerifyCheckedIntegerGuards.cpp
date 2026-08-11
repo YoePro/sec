@@ -13,6 +13,7 @@ namespace sec {
 #define GEN_PASS_DEF_SECVERIFYCHECKEDINTEGERGUARDS
 #define GEN_PASS_DEF_SECVERIFYRESULTGUARDS
 #define GEN_PASS_DEF_SECVERIFYTRYHANDLERS
+#define GEN_PASS_DEF_SECVERIFYUNIONGUARDS
 #include "sec/Analysis/Passes.h.inc"
 } // namespace sec
 
@@ -263,6 +264,43 @@ LogicalResult sec::verifyTryHandlers(func::FuncOp function) {
   return success();
 }
 
+LogicalResult sec::verifyUnionGuards(func::FuncOp function) {
+  WalkResult result = function.walk([&](Operation *operation) {
+    if (auto test = dyn_cast<sec::UnionIsVariantOp>(operation)) {
+      auto branch = dyn_cast_or_null<cf::CondBranchOp>(operation->getNextNode());
+      if (!branch || branch.getCondition() != test.getResult())
+        return test.emitOpError(
+                   "must immediately feed a conditional branch"),
+               WalkResult::interrupt();
+      return WalkResult::advance();
+    }
+    auto payload = dyn_cast<sec::UnionUnwrapPayloadOp>(operation);
+    auto field = dyn_cast<sec::UnionUnwrapFieldOp>(operation);
+    if (!payload && !field)
+      return WalkResult::advance();
+
+    Value value = payload ? payload.getValue() : field.getValue();
+    int64_t variant = payload ? payload.getVariantAttr().getInt()
+                              : field.getVariantAttr().getInt();
+    Block *matchingBlock = operation->getBlock();
+    Block *predecessor = matchingBlock->getSinglePredecessor();
+    auto branch = predecessor
+                      ? dyn_cast<cf::CondBranchOp>(predecessor->getTerminator())
+                      : cf::CondBranchOp();
+    auto test = branch && branch.getTrueDest() == matchingBlock
+                    ? branch.getCondition().getDefiningOp<sec::UnionIsVariantOp>()
+                    : sec::UnionIsVariantOp();
+    if (test && test.getValue() == value &&
+        test.getVariantAttr().getInt() == variant &&
+        test->getNextNode() == branch.getOperation())
+      return WalkResult::advance();
+    return operation->emitOpError(
+               "must be in the true successor of a matching union.is_variant guard on the same SSA value"),
+           WalkResult::interrupt();
+  });
+  return result.wasInterrupted() ? failure() : success();
+}
+
 namespace {
 
 class VerifyCheckedIntegerGuardsPass final
@@ -293,6 +331,15 @@ public:
   }
 };
 
+class VerifyUnionGuardsPass final
+    : public sec::impl::SecVerifyUnionGuardsBase<VerifyUnionGuardsPass> {
+public:
+  void runOnOperation() override {
+    if (failed(sec::verifyUnionGuards(getOperation())))
+      signalPassFailure();
+  }
+};
+
 } // namespace
 
 std::unique_ptr<mlir::Pass> sec::createSecVerifyCheckedIntegerGuardsPass() {
@@ -305,4 +352,8 @@ std::unique_ptr<mlir::Pass> sec::createSecVerifyResultGuardsPass() {
 
 std::unique_ptr<mlir::Pass> sec::createSecVerifyTryHandlersPass() {
   return std::make_unique<VerifyTryHandlersPass>();
+}
+
+std::unique_ptr<mlir::Pass> sec::createSecVerifyUnionGuardsPass() {
+  return std::make_unique<VerifyUnionGuardsPass>();
 }

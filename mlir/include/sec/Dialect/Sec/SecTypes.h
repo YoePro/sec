@@ -3,6 +3,7 @@
 
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "sec/Dialect/Sec/SecAttributes.h"
 
 #define GET_TYPEDEF_CLASSES
 #include "sec/Dialect/Sec/SecTypes.h.inc"

@@ -575,16 +575,31 @@ integrations:
     rules:
       - rules/collections.md
       - rules/compiler_known_members.md
+    code:
+      - internal/sema/analyzer.go
+      - internal/sema/compiler_known_members.go
+      - internal/codegen/mlir/generator.go
+    tests:
+      - internal/sema/compiler_known_members_test.go
+      - internal/codegen/mlir/generator_test.go
+      - testdata/ir/test_fixed_array_fill.sec
     implemented:
       - reserve fill as a compiler-known global and expose it through ordinary compiler/LSP function inventories
       - resolve fixed-array fill(value) from expected target element type and extent
       - resolve fallible dynamic-array fill(value, count) and string fill(fragment, count) from expected target type
       - reject missing target context, wrong arity, incompatible values, and non-integer counts
       - expose mutable-slice Fill only on ref mut T[] and reject non-copyable element types
+      - lower fixed-array fill to one source-value evaluation followed by one inline aggregate insertion per element without allocation, runtime helpers, memset, or a runtime fill symbol
     remaining:
-      - lower fixed-array fill to repeated inline initialization without runtime support
       - lower dynamic-array and string fill through explicit allocation and CollectionError paths
       - represent fill and mutable-slice Fill as stable Semantic IR operations
+    verification:
+      - command: go test ./internal/codegen/mlir -run 'TestGenerateFixedArray' -v
+        result: passed
+      - command: go run ./cmd/compiler emit-mlir testdata/ir/test_fixed_array_fill.sec --verify -o /tmp/sec-fixed-array-fill.mlir
+        result: passed; value evaluated once, seven total inline insertions emitted, and no allocation or runtime fill dependency introduced
+      - command: SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./... && go vet ./...
+        result: passed
 
   - id: frontend.map-indexed-upsert
     area: frontend
@@ -1167,7 +1182,8 @@ integrations:
 
   - id: sema.pitfall-analysis
     area: frontend-analysis
-    status: planned
+    status: partial
+    integrated: "2026-08-11"
     audited: "2026-08-11"
     summary: >-
       Adds structured high-confidence pitfall analysis that correlates canonical
@@ -1191,12 +1207,29 @@ integrations:
     code:
       - internal/sema/analyzer.go
       - internal/sema/place.go
+      - internal/sema/pitfall_analysis.go
+    tests:
+      - internal/sema/pitfall_analysis_test.go
+    implemented:
+      - canonical structured PitfallFinding model with stable rule identity, family, classification, confidence, subject, evidence for and against, suppression, owning-rule linkage, suggested actions, and analysis state
+      - canonical defensive rule registry with required semantic facts, minimum Interactive/Standard/Deep analysis depth, and default confidence
+      - distinct Finding, NoFinding, Suppressed, NotEvaluated, and Pending states plus per-rule evaluation counts
+      - immutable deterministic Analyzer snapshot API for findings, suppressed results, evaluations, evidence, suppressions, and actions
+      - direct index-at-Len detection correlated through resolved binding identity and Sema-owned compiler-known Len facts
+      - inclusive range endpoint detection when the same resolved loop binding indexes the same collection that supplies Len
+      - suppression of the inclusive endpoint finding when a preceding semantically matched equality guard exits before the indexed access
+      - ProvenInvalid and Proven classification linked to the owning bounds rule without emitting a duplicate pitfall diagnostic
+      - half-open ranges, different bound/index collection identities, and guarded inclusive endpoints covered as negative or suppression cases
+      - boolean-intent rule correlating resolved bool operand types, exact 0/1 constants, equality operators, and redundant outer bool conversions
+      - truth-table simplification for == and != with 0, 1, true, and false in either operand order
+      - one-bit register-field comparison diagnostics retain the owning bool/int type error while supplying the intended direct or negated bool replacement
+      - coalescing of outer bool conversion and inner literal comparison into one structured finding and one non-overlapping action
+      - ProvenFix actions for valid true/false simplifications and SuggestedEdit actions for invalid but unambiguous bool/0-or-1 intent
+      - negative coverage preventing boolean-intent inference from integers other than 0 and 1
     remaining:
-      - add canonical structured PitfallFinding representation with stable rule identity, classification, confidence, evidence, suppression, owning-rule linkage, suggested actions, and analysis state
-      - add canonical pitfall rule registry with family, required semantic facts, minimum analysis budget, and default confidence metadata
-      - add distinct Finding, NoFinding, Suppressed, NotEvaluated, and Pending evaluation states
-      - consume canonical range, bounds, control-flow, Place/provenance, collection-shape, effect, layout, and FFI contract facts rather than reimplementing their analyses
-      - implement inclusive-length indexed traversal detection and direct index-at-length enrichment
+      - extend canonical fact consumption beyond resolved bindings and compiler-known Len to normalized range, bounds, control-flow, Place/provenance, collection-shape, effect, layout, and FFI contract facts
+      - integrate direct index-at-Len and inclusive-length findings with the owning bounds diagnostic and coalescing pipeline
+      - generalize endpoint-guard reachability beyond the initial preceding equality-and-break proof
       - implement upper-neighbor and lower-neighbor offset checks across normalized iteration domains
       - implement ineffective <= len and > len rejection-guard correlation
       - implement final-element access reasoning that consumes non-empty proofs
@@ -1214,7 +1247,7 @@ integrations:
       - add FFI element-count versus byte-count mismatch detection using canonical extent units and resolved element layout
       - support explicit Sec FFI contracts, trusted imported metadata, generated binding metadata, and compiler-known platform/library metadata through one canonical FFI fact representation
       - coalesce pitfall findings with owning normative diagnostics so one root cause does not generate duplicate errors and warnings
-      - implement ProvenFix versus SuggestedEdit distinction
+      - extend the implemented ProvenFix versus SuggestedEdit distinction to further pitfall families
       - verify automatic fixes preserve evaluation count/order, effects, ownership/move behavior, and relevant failure semantics
       - add dependency-driven pitfall cache invalidation and reuse for unaffected semantic bodies
       - integrate Interactive, Standard, and Deep pitfall budgets without changing source-language semantics
@@ -1222,7 +1255,11 @@ integrations:
       - integrate pitfall analysis into default `sec analyse --all` behavior and support explicit pitfall-only analysis selection
       - add required bounds/range, collection, control-flow, confidence/suppression, corrective-action, incremental/LSP, FFI, and performance tests
       - add false-positive regression corpus for neighbor traversal, sentinels, separately handled endpoints, equal-length parallel collections, ring buffers, capacity-level storage manipulation, protocol ranges, and byte-buffer FFI APIs
-      - update implementation-status verification commands when the first vertical slice is integrated
+    verification:
+      - command: go test ./internal/sema -run TestPitfall
+        result: passed
+      - command: go test ./internal/sema -run 'TestPitfall|TestEqualityRequiresCompatibleTypes'
+        result: passed
 
   - id: sema.stack-analysis
     area: frontend-analysis-and-lowering
@@ -1288,6 +1325,91 @@ integrations:
       - add required frame, live-range, call-path, recursion, indirect-call, foreign/runtime, storage-accounting, CompilationPlan, budget, separate-compilation, incremental/LSP, performance, and determinism regression tests
       - update implementation-status verification commands when the first conforming vertical slice is integrated
 
+  - id: sema.isr-analysis
+    area: frontend-analysis-and-lowering
+    status: planned
+    summary: >-
+      Adds canonical Sec ISR constraint analysis using resolved interrupt profiles,
+      reusable transitive function-requirement summaries, execution-context
+      propagation, stack/data-race/deadlock composition, runtime and FFI interrupt
+      contracts, generic specialization, dependency-tracked positive proofs,
+      progressive LSP refinement, and deterministic Valid/Invalid/Unproven root
+      classification without duplicating the supporting analyses.
+    rules:
+      - rules/isr_analysis.md
+      - rules/call_graph.md
+      - rules/compiler_analysis.txt
+      - rules/effect_analysis.md
+      - rules/stack_analysis.md
+      - rules/data_races.md
+      - rules/deadlock_analysis.md
+      - rules/closure_analysis.md
+      - rules/escape_analysis.md
+      - rules/lifetime_analysis.txt
+      - rules/storage.md
+      - rules/layout.md
+      - rules/ownership.md
+      - rules/borrowing.txt
+      - rules/ffi.txt
+      - rules/concurrency_memory_model.md
+      - rules/lsp.md
+      - rules/projects.txt
+    remaining:
+      - add deterministic ISR-root discovery and resolved ISR-profile lookup from the active CompilationPlan and canonical platform/runtime execution model
+      - keep ISR profile capabilities distinct from mandatory positive safety proofs such as bounded stack, race freedom, deadlock freedom, and foreign interrupt safety
+      - add reusable per-function local ISR-requirement summaries over canonical semantic operations rather than source-name blacklists
+      - represent ISR requirement facts per semantic dimension with proven absence, reachable presence, and localized Unknown rather than one global unknown state
+      - retain deterministic representative semantic cause sites for local and transitive requirement facts
+      - account for compiler-required runtime helpers and target-specific lowering requirements before a source operation can serve as positive ISR-safety evidence
+      - define and enforce the invariant that lowering cannot silently introduce behavior that violates the active ISR profile assumptions used during analysis
+      - build transitive function-requirement summaries over the canonical call graph rather than reanalyzing helper bodies independently for every ISR root
+      - solve recursive and mutually recursive call-graph SCC requirement summaries with deterministic monotone fixed-point iteration
+      - propagate ordinary synchronous callees in the current execution context and consume canonical execution transitions for deferred, worker, spawned, runtime, and foreign handoff behavior
+      - preserve symbolic context requirements such as thread-local, runtime, memory-space, and interrupt-safety dependencies where this avoids per-root summary explosion
+      - consume closed callable target sets and conservatively join requirements for every target that may execute in the interrupt context
+      - consume open callable contracts and localize Unknown to missing blocking, allocation, runtime, context, or interrupt-safety dimensions
+      - support symbolic generic requirement summaries and specialization-aware instantiation where layout, destruction, stack, runtime, or semantic behavior differs
+      - consume canonical storage origins and distinguish automatic, static, thread-local, arena, and allocator-backed requirements rather than treating all dynamic storage as heap allocation
+      - consume runtime reentrancy, thread-context, compiler-known helper, and interrupt-safety contracts as independent semantic dimensions
+      - include destruction, defer, cleanup, panic, error, and compiler-required cleanup behavior in reachable ISR requirements
+      - consume synchronous foreign reentry callbacks in the current ISR context when required by the FFI contract
+      - consume asynchronous foreign handoff and callback context transitions without attributing later worker execution to the ISR while still checking the handoff operation itself
+      - consume resolved platform preemption, nesting, masking, and reentry relationships rather than deriving interrupt behavior from raw priority values alone
+      - consume nested physical stack-domain results from stack analysis without recomputing or double-counting nested ISR stack contributions
+      - map Exact stack use below or at budget to satisfied and Exact stack use above budget to proven violation
+      - map UpperBound stack use below or at budget to satisfied but treat UpperBound above budget as failure to prove safety unless actual overflow is independently proven
+      - preserve stack Unknown as Unproven and stack Unbounded as a violation when a finite stack requirement is mandatory
+      - consume relevant data-race results without duplicating Place, alias, race pairing, or happens-before logic
+      - map ProvenRace to violated, ProvenRaceFree to satisfied, and Unknown to unproven when the ISR profile requires race freedom
+      - consume relevant deadlock results without duplicating WaitForGraph or cycle-proof logic
+      - preserve ProvenDeadlock, PotentialDeadlock, and Unknown proof strength when evaluating ISR deadlock-freedom requirements
+      - keep ISR capability violations such as forbidden blocking synchronization distinct from supporting deadlock classifications
+      - add deterministic per-profile constraint evaluation with statuses equivalent to Satisfied, Violated, Unproven, Pending, and NotApplicable where appropriate
+      - classify an ISR root Invalid when any mandatory constraint is proven violated and Valid only when every mandatory proof is current and satisfied
+      - distinguish Pending analysis from completed Unproven safety and never use stale or pending dependencies as positive ISR-safety evidence
+      - preserve unresolved dimensions even when another proven violation already makes the root Invalid
+      - add explicit supporting proof dependencies from ISR root results to function summaries, stack results, race results, deadlock results, runtime contracts, FFI contracts, and resolved profiles
+      - integrate ISR analysis with the compiler's canonical dependency graph rather than introducing incompatible private invalidation where shared infrastructure exists
+      - on edits, invalidate changed local summaries, dependent transitive summaries, and affected positive ISR-root proofs before expensive recomputation
+      - propagate incremental recomputation through a dependency worklist only when an exported requirement summary changes
+      - reevaluate profile-only changes such as ISR stack budgets without unnecessarily recomputing unaffected function summaries
+      - invalidate target/CompilationPlan-sensitive summaries when runtime helpers, stack ABI, preemption/nesting, FFI/platform contracts, memory spaces, or lowering behavior changes
+      - support fast Interactive reporting of direct proven ISR violations before unrelated supporting analysis completes
+      - prevent the LSP from presenting a root as Valid while any mandatory supporting dependency is stale or Pending
+      - use progressive Interactive refinement toward Standard-equivalent results and optional Deep precision without adding a separate global Intermediate mode
+      - make Deep ISR analysis preferentially request stronger precision from the owning supporting analysis responsible for an unresolved dependency rather than reimplementing stack, alias, race, deadlock, or callable reasoning
+      - expose proven violations and required ISR-safety proof failures as NeedToKnow LSP diagnostics while keeping positive proof explanations and detailed dependency chains configurable OptionalInsight
+      - retain the applicable ISR root/profile and transitive semantic call/cause path in diagnostics
+      - group multiple presentation consequences of one semantic cause without merging independent underlying proof states
+      - avoid generic automatic fixes such as moving work to a thread or replacing synchronization unless a canonical transformation proves the edit correct
+      - integrate ISR analysis into default sec analyse all-analysis behavior and support explicit ISR-only selection through canonical tooling
+      - export compatible versioned function-requirement summaries for separate compilation and localize Unknown when required imported dimensions are missing
+      - include summary schema, compiler/language semantic version, effect/runtime/storage/callable/FFI contract versions, and relevant CompilationPlan keys in compatibility decisions where they can change ISR meaning
+      - make requirement summaries, ISR-root classifications, representative causes, and diagnostic ordering deterministic independent of declaration order, worklist order, cache iteration, or compiler worker scheduling
+      - add required profile-resolution, effects, context-propagation, stack, race, deadlock, runtime/reentrancy, FFI, callable, generic, cleanup, incremental-LSP, progressive-result, performance, determinism, and false-positive regression tests
+      - add explicit regression coverage for the UpperBound-above-stack-budget case so insufficient upper-bound precision is not misreported as proven stack overflow
+      - update implementation-status verification commands when the first conforming ISR-analysis vertical slice is integrated
+
   - id: lowering.sec-mlir-typed-arithmetic-failure
     area: frontend-analysis-semantic-ir-and-mlir
     status: partial
@@ -1346,7 +1468,8 @@ integrations:
     remaining:
       - integrate resolved arithmetic-try facts into general callable effect summaries
       - implement and verify @noPanic arithmetic-try behavior while retaining operand-call panic effects
-      - keep physical Result and ArithmeticError layout deferred to their dedicated package
+    deferred:
+      - physical Result and ArithmeticError layout belongs to its dedicated ABI/layout package
     verification:
       - command: ninja -C build/sec-mlir check-sec-mlir
         result: passed, 61 tests under LLVM/MLIR 24.0.0git
@@ -1411,10 +1534,10 @@ integrations:
       - compiler Sec-MLIR verification invokes checked-integer, Result-guard, and try-handler passes together
       - schema-6 checked-integer guard acceptance for local arithmetic handler dispatch while retaining schema 1 through 5 parsing
       - end-to-end source-to-Sec-MLIR verification for ordinary Result and arithmetic handlers
-    remaining:
-      - physical Result and core-error representation remains deferred to its dedicated ABI/layout package
-      - user-defined enum and union payload lowering remains outside Package 10
-      - nontrivial owned handler payloads remain deferred to later ownership packages
+      - schema-7 Package 11 extends the handler path with user-defined fieldless enum errors while preserving ordinary ArithmeticError handling
+    deferred:
+      - physical Result and legacy core-error representation belongs to its dedicated ABI/layout package
+      - union payload try patterns and nontrivial owned handler payloads belong to later match and ownership packages
     verification:
       - command: ninja -C build/sec-mlir check-sec-mlir
         result: passed, 64 tests under LLVM/MLIR 24.0.0git
@@ -1426,6 +1549,81 @@ integrations:
         result: passed
       - command: SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./internal/lowering/secmlir ./cmd/compiler ./internal/mlir
         result: passed with real sec-mlir-opt integration
+
+  - id: lowering.sec-mlir-enum-union-values
+    area: frontend-analysis-semantic-ir-and-mlir
+    status: implemented
+    integrated: "2026-08-11"
+    mlir_toolchain: LLVM 24.0.0git optimized build with assertions
+    summary: >-
+      Implements SEC-MLIR Package 11 as schema 7: nominal enums retain exact
+      case identity and arbitrary-precision values, concrete tagged unions
+      retain stable semantic variants and payload shapes, and both flow from
+      immutable Sema facts through Semantic IR into verified high-level MLIR
+      without selecting runtime representation or physical union layout.
+    rules:
+      - rules/mlir-dialect-packages/sec-mlir-dialect_package11.md
+      - rules/mlir-dialect-packages/sec-mlir-dialect_package11.yaml
+      - rules/semantic_ir.txt
+      - rules/sec_semantic_ir_enum_union_v1.md
+      - rules/sec_mlir_dialect.md
+      - rules/sec_mlir_lowering.md
+      - rules/copy_move.md
+      - rules/layout.md
+    code:
+      - internal/sema/analyzer.go
+      - internal/sema/semantic_facts.go
+      - internal/ir/semantic/model.go
+      - internal/ir/semantic/builder.go
+      - internal/ir/semantic/verifier.go
+      - internal/ir/semantic/printer.go
+      - internal/lowering/secmlir/emitter.go
+      - internal/mlir/toolchain.go
+      - mlir/include/sec/Dialect/Sec/SecAttributes.td
+      - mlir/include/sec/Dialect/Sec/SecTypes.td
+      - mlir/include/sec/Dialect/Sec/SecOps.td
+      - mlir/lib/Dialect/Sec/SecAttributes.cpp
+      - mlir/lib/Dialect/Sec/SecTypes.cpp
+      - mlir/lib/Dialect/Sec/SecOps.cpp
+      - mlir/lib/Analysis/VerifyCheckedIntegerGuards.cpp
+      - mlir/lib/Conversion/SecToCore/SecToCore.cpp
+    tests:
+      - internal/ir/semantic/package11_test.go
+      - cmd/compiler/emit_sec_mlir_package11_test.go
+      - testdata/semantic_ir/enum_union_values.sec
+      - mlir/test/Dialect/Sec/schema7-enum-union.mlir
+      - mlir/test/Dialect/Sec/invalid-union-guards.mlir
+      - mlir/test/Conversion/SecToCore/schema7-enum-union-scalar-layout.mlir
+    implemented:
+      - immutable Sema queries for declared enum cases, explicit enum conversions, and concrete union constructions with stable source and canonical field order
+      - expected-type union inference records the resolved concrete expression type for downstream compiler consumers and the LSP
+      - Semantic IR enum and union identities, definitions, cases, variants, payload fields, concrete generic arguments, copy classification, destruction classification, and source provenance
+      - arbitrary-precision enum case values and distinct declaration ordinals for numeric aliases
+      - enum constants, explicit integer-to-enum and enum-to-integer conversion, and same-enum equality and inequality
+      - empty, single-payload, and named-field union construction with explicit copy-trivial payload actions
+      - source-order field evaluation followed by deterministic declaration-order construction operands
+      - union active-variant tests and single/named payload projections as explicit high-level operations
+      - Semantic IR definition, operation, ownership-boundary, canonical guard, and matching-variant projection verification
+      - Sec MLIR schema 7 enum-case, union-field, and union-variant attributes plus self-contained enum and union types
+      - schema 7 enum and union operations with local shape, type, index, field, predicate, and payload-action verification
+      - sec-verify-union-guards rejects unguarded projections and requires every union variant test to immediately feed its conditional branch
+      - concrete generic union type arguments use MLIR type attributes and empty non-generic argument lists round-trip correctly
+      - scalar-layout conversion preserves enum identity while converting its semantic underlying scalar and recursively maps concrete union type arguments and payload types without choosing physical layout
+      - ArithmeticError and user fieldless error enums use ordinary enum constants and equality in new schema-7 handler output while schema-6 core-error input remains accepted
+      - compiler emission defaults to Package 11 and invokes union-guard verification without introducing a runtime or physical tagged-union layout
+      - end-to-end enum aliases, 128/256-bit values, bit-backed enum types, generic Option values, union payload shapes, and real sec-mlir-opt round trips
+    deferred:
+      - enum and union match CFG lowering belongs to Package 12
+      - physical union tag and payload layout, ABI lowering, destruction dispatch, and LLVM representation remain later packages
+      - ownership-sensitive union payload moves, semantic copies, partial moves, and nontrivial destruction remain explicit unsupported boundaries
+      - enum ordering and arithmetic and union equality or ordering are not introduced by Package 11
+    verification:
+      - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
+        result: passed, 67 tests under LLVM/MLIR 24.0.0git
+      - command: SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./cmd/compiler ./internal/mlir ./internal/lowering/secmlir ./internal/ir/semantic
+        result: passed with real sec-mlir-opt schema-7 verification
+      - command: go run ./cmd/compiler emit-sec-mlir testdata/semantic_ir/enum_union_values.sec --target linux-amd64 --mlir-bin build/sec-mlir/bin -o /tmp/sec-p11.mlir
+        result: passed through parse, Sema, Semantic IR, schema-7 emission, and all Sec verification passes
 
   - id: frontend.copy-move
     area: frontend-analysis-and-lowering
@@ -1903,9 +2101,10 @@ integrations:
     status: partial
     integrated: "2026-08-09"
     summary: >-
-      Implements the breaking primary-compiler migration from c/d/f literal
-      suffixes to t/m/g while retaining i/u/r. Bootstrap convergence remains
-      separately owned and is not imported into this repository.
+      Implements the breaking migration from c/d/f literal suffixes to t/m/g
+      while retaining i/u/r in the primary compiler and synchronizes the
+      separately owned bootstrap lexer. Bootstrap-native and cross-repository
+      conformance tests remain.
     rules:
       - rules/types.md
       - rules/lexical_structure.md
@@ -1919,6 +2118,7 @@ integrations:
       - internal/codegen/llvm/expressions.go
       - internal/codegen/mlir/generator.go
       - vscode/syntaxes/sec.tmLanguage.json
+      - ../bootstrap/internal/lexer/lexer.sec
     tests:
       - internal/lexer/lexer_test.go
       - internal/parser/parser_test.go
@@ -1933,9 +2133,9 @@ integrations:
       - char zero spelling 0t while rune zero remains 0r
       - focused parser migration diagnostics for unambiguous legacy c/d/f suffixes
       - synchronized AST parsing, Sema inference, defaults, formatter preservation, legacy code generators, maintained Sec sources, documentation, and TextMate highlighting
+      - synchronized the separately owned bootstrap lexer implementation to the same canonical i/u/g/m/t/r matrix, g/m fractional restriction, and c/d/f legacy rejection behavior
     remaining:
-      - synchronize the separately owned bootstrap lexer and its tests to the same i/u/g/m/t/r matrix
-      - add a cross-repository primary/bootstrap token-stream conformance test when bootstrap integration policy permits it
+      - add bootstrap-native numeric-suffix tests and a cross-repository primary/bootstrap token-stream conformance test when bootstrap execution and integration policy permit them
     verification:
       - command: go test ./...
         result: passed

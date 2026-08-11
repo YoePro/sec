@@ -574,6 +574,66 @@ public:
           return sec::DistinctType::get(context, type.getIdentity(), base);
         });
     typeConverter.addConversion(
+        [&](sec::EnumType type) -> std::optional<Type> {
+          Type underlying = typeConverter.convertType(type.getUnderlying());
+          if (!underlying)
+            return std::nullopt;
+          if (underlying == type.getUnderlying())
+            return type;
+          return sec::EnumType::get(
+              context, type.getIdentity(), underlying,
+              type.getRepresentation(), type.getBitWidth(), type.getCases());
+        });
+    typeConverter.addConversion(
+        [&](sec::UnionType type) -> std::optional<Type> {
+          SmallVector<Attribute> arguments;
+          SmallVector<Attribute> variants;
+          bool changed = false;
+          for (Attribute attribute : type.getTypeArguments()) {
+            auto typeAttribute = dyn_cast<TypeAttr>(attribute);
+            if (!typeAttribute)
+              return std::nullopt;
+            Type converted = typeConverter.convertType(typeAttribute.getValue());
+            if (!converted)
+              return std::nullopt;
+            changed |= converted != typeAttribute.getValue();
+            arguments.push_back(TypeAttr::get(converted));
+          }
+          for (Attribute attribute : type.getVariants()) {
+            auto variant = dyn_cast<sec::UnionVariantAttr>(attribute);
+            if (!variant)
+              return std::nullopt;
+            Type payload = variant.getPayload();
+            if (payload) {
+              Type converted = typeConverter.convertType(payload);
+              if (!converted)
+                return std::nullopt;
+              changed |= converted != payload;
+              payload = converted;
+            }
+            SmallVector<Attribute> fields;
+            for (Attribute fieldAttribute : variant.getFields()) {
+              auto field = dyn_cast<sec::UnionFieldAttr>(fieldAttribute);
+              if (!field)
+                return std::nullopt;
+              Type converted = typeConverter.convertType(field.getType());
+              if (!converted)
+                return std::nullopt;
+              changed |= converted != field.getType();
+              fields.push_back(sec::UnionFieldAttr::get(
+                  context, field.getName(), converted));
+            }
+            variants.push_back(sec::UnionVariantAttr::get(
+                context, variant.getIndex(), variant.getName(),
+                variant.getKind(), payload, ArrayAttr::get(context, fields)));
+          }
+          if (!changed)
+            return type;
+          return sec::UnionType::get(
+              context, type.getIdentity(), ArrayAttr::get(context, arguments),
+              ArrayAttr::get(context, variants));
+        });
+    typeConverter.addConversion(
         [&](sec::StorageType type) -> std::optional<Type> {
           Type element = type.getElementType();
           if (auto integer = dyn_cast<IntegerType>(element);
@@ -619,7 +679,12 @@ public:
     target.addDynamicallyLegalOp<
         sec::IntUnaryPlusOp, sec::IntNegCheckedOp,
         sec::IntBinaryCheckedOp, sec::IntBitNotOp, sec::IntBitwiseOp,
-        sec::IntShiftCheckedOp, sec::IntCmpOp>(
+        sec::IntShiftCheckedOp, sec::IntCmpOp, sec::EnumConstantOp,
+        sec::EnumFromIntegerOp, sec::EnumToIntegerOp, sec::EnumCmpOp,
+        sec::UnionConstructOp, sec::UnionIsVariantOp,
+        sec::UnionUnwrapPayloadOp, sec::UnionUnwrapFieldOp,
+        sec::ArithmeticErrorFromReasonOp, sec::ResultOkOp, sec::ResultErrOp,
+        sec::ResultIsErrOp, sec::ResultUnwrapOkOp, sec::ResultUnwrapErrOp>(
         [&](Operation *op) { return typeConverter.isLegal(op); });
 
     RewritePatternSet patterns(context);
@@ -638,7 +703,21 @@ public:
              sec::IntBitNotOp::getOperationName(),
              sec::IntBitwiseOp::getOperationName(),
              sec::IntShiftCheckedOp::getOperationName(),
-             sec::IntCmpOp::getOperationName()})
+             sec::IntCmpOp::getOperationName(),
+             sec::EnumConstantOp::getOperationName(),
+             sec::EnumFromIntegerOp::getOperationName(),
+             sec::EnumToIntegerOp::getOperationName(),
+             sec::EnumCmpOp::getOperationName(),
+             sec::UnionConstructOp::getOperationName(),
+             sec::UnionIsVariantOp::getOperationName(),
+             sec::UnionUnwrapPayloadOp::getOperationName(),
+             sec::UnionUnwrapFieldOp::getOperationName(),
+             sec::ArithmeticErrorFromReasonOp::getOperationName(),
+             sec::ResultOkOp::getOperationName(),
+             sec::ResultErrOp::getOperationName(),
+             sec::ResultIsErrOp::getOperationName(),
+             sec::ResultUnwrapOkOp::getOperationName(),
+             sec::ResultUnwrapErrOp::getOperationName()})
       patterns.add<ScalarSemanticIntegerLowering>(typeConverter, context,
                                                   operationName);
     populateCallOpTypeConversionPattern(patterns, typeConverter);

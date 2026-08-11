@@ -380,7 +380,7 @@ func runEmitSecMLIRCommand(args []string) {
 		os.Exit(1)
 	}
 	analyzed := parseAndAnalyzeSourceForTargetWithAnalyzerMode(string(input), options.InputFile, options.Target, false)
-	module, err := semantic.Build(analyzed.Program, analyzed.Analyzer, semantic.BuildOptions{SourceFiles: []string{options.InputFile}, MaxPackage: 10})
+	module, err := semantic.Build(analyzed.Program, analyzed.Analyzer, semantic.BuildOptions{SourceFiles: []string{options.InputFile}, MaxPackage: 11})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "semantic IR error: %v\n", err)
 		os.Exit(4)

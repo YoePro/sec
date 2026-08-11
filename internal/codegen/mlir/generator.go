@@ -1931,6 +1931,11 @@ func (g *Generator) emitExpressionForTargetUnsigned(expr ast.Expression, targetT
 	if array, ok := expr.(*ast.ArrayLiteral); ok {
 		return g.emitArrayLiteral(array, targetType, targetUnsigned)
 	}
+	if call, ok := expr.(*ast.CallExpression); ok && callExpressionName(call) == "fill" {
+		if _, _, fixedArray := parseMLIRArrayType(targetType); fixedArray {
+			return g.emitFixedArrayFill(call, targetType, targetUnsigned)
+		}
+	}
 	switch expr := expr.(type) {
 	case *ast.IntegerLiteral:
 		if isMLIRIntegerType(targetType) {
@@ -1953,6 +1958,40 @@ func (g *Generator) emitExpressionForTargetUnsigned(expr ast.Expression, targetT
 		}
 	}
 	return g.emitExpression(expr)
+}
+
+func (g *Generator) emitFixedArrayFill(expr *ast.CallExpression, targetType string, targetUnsigned bool) (value, error) {
+	length, elementType, ok := parseMLIRArrayType(targetType)
+	if !ok {
+		return value{}, fmt.Errorf("emit-mlir fixed-array fill requires an array target, got %s", targetType)
+	}
+	if len(expr.Arguments) != 1 {
+		return value{}, fmt.Errorf("emit-mlir fixed-array fill expects one value, got %d", len(expr.Arguments))
+	}
+
+	// The source value is evaluated exactly once. Reusing its SSA value for
+	// every insert models the copy semantics established by Sema and does not
+	// introduce a runtime helper or dynamic allocation.
+	element, err := g.emitExpressionForTargetUnsigned(expr.Arguments[0], elementType, targetUnsigned)
+	if err != nil {
+		return value{}, err
+	}
+	element, err = g.coerceValue(element, elementType, targetUnsigned)
+	if err != nil {
+		return value{}, fmt.Errorf("emit-mlir fixed-array fill value has type %s, expected %s", element.typ, elementType)
+	}
+	if elementType == "string" || elementType == "void" {
+		return value{}, fmt.Errorf("emit-mlir does not support fixed-array fill element type %s yet", elementType)
+	}
+
+	aggregate := g.nextTemp()
+	g.write("    %s = llvm.mlir.undef : %s\n", aggregate, targetType)
+	for index := int64(0); index < length; index++ {
+		next := g.nextTemp()
+		g.write("    %s = llvm.insertvalue %s, %s[%d] : %s\n", next, element.ref, aggregate, index, targetType)
+		aggregate = next
+	}
+	return value{typ: targetType, ref: aggregate, unsigned: targetUnsigned}, nil
 }
 
 func (g *Generator) emitArrayLiteral(expr *ast.ArrayLiteral, targetType string, targetUnsigned bool) (value, error) {

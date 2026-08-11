@@ -14,9 +14,11 @@ def Sec_Dialect : Dialect {
   }];
   let cppNamespace = "::sec";
   let useDefaultTypePrinterParser = 1;
+  let useDefaultAttributePrinterParser = 1;
   let isExtensible = 0;
   let extraClassDeclaration = [{
-    static constexpr unsigned kSchemaVersion = 6;
+    static constexpr unsigned kSchemaVersion = 7;
+    void registerAttributes();
     void registerTypes();
     void registerOperations();
     ::llvm::LogicalResult verifyOperationAttribute(

@@ -22,14 +22,14 @@ func Build(program *ast.Program, analyzer *sema.Analyzer, options BuildOptions) 
 		return nil, fmt.Errorf("program and completed analyzer are required")
 	}
 	if options.MaxPackage == 0 {
-		options.MaxPackage = 10
+		options.MaxPackage = 11
 	}
 	identity := options.RequestedModule
 	if identity == "" {
 		identity = requestedModule(program, options.SourceFiles)
 	}
 	module := &Module{Version: Version, Identity: identity, Types: NewTypeTable(), SourceFiles: uniqueSorted(options.SourceFiles)}
-	b := &builder{module: module, analyzer: analyzer, maxPackage: options.MaxPackage}
+	b := &builder{module: module, analyzer: analyzer, maxPackage: options.MaxPackage, definedEnums: map[TypeID]bool{}, definedUnions: map[TypeID]bool{}}
 	currentModule := ""
 	for _, statement := range program.Statements {
 		if declaration, ok := statement.(*ast.ModuleStatement); ok {
@@ -48,9 +48,11 @@ func Build(program *ast.Program, analyzer *sema.Analyzer, options BuildOptions) 
 }
 
 type builder struct {
-	module     *Module
-	analyzer   *sema.Analyzer
-	maxPackage uint8
+	module        *Module
+	analyzer      *sema.Analyzer
+	maxPackage    uint8
+	definedEnums  map[TypeID]bool
+	definedUnions map[TypeID]bool
 }
 type functionBuilder struct {
 	owner       *builder
@@ -128,8 +130,20 @@ func (b *builder) internType(t sema.Type) (TypeID, error) {
 		}
 		return b.module.Types.Intern(Type{Kind: TypeResult, Name: "Result", Success: success, Error: failure}), nil
 	}
-	if t.Kind == sema.EnumType && t.Name == "ArithmeticError" && t.Intrinsic {
+	if t.Kind == sema.EnumType && b.maxPackage < 11 && t.Name == "ArithmeticError" && t.Intrinsic {
 		return b.module.Types.Intern(Type{Kind: TypeCoreError, Name: "ArithmeticError", Identity: "core::ArithmeticError"}), nil
+	}
+	if t.Kind == sema.EnumType {
+		if b.maxPackage < 11 {
+			return 0, &UnsupportedFeatureError{Feature: "type " + t.Name, Package: b.maxPackage}
+		}
+		return b.internEnumType(t)
+	}
+	if t.Kind == sema.UnionType {
+		if b.maxPackage < 11 {
+			return 0, &UnsupportedFeatureError{Feature: "union type " + t.Name, Package: b.maxPackage}
+		}
+		return b.internUnionType(t)
 	}
 	kind, signed, width, target, ok := builtinType(t)
 	if !ok {
@@ -148,6 +162,125 @@ func (b *builder) internType(t sema.Type) (TypeID, error) {
 		return b.module.Types.Intern(Type{Kind: TypeNamed, Name: t.Name, Module: module, Identity: module + "::" + t.Name, Base: baseID}), nil
 	}
 	return b.module.Types.Intern(base), nil
+}
+
+func (b *builder) internEnumType(t sema.Type) (TypeID, error) {
+	module, identity := b.semanticIdentity(t)
+	underlyingSema, ok := b.lookupEnumUnderlying(t)
+	if !ok {
+		return 0, &UnsupportedFeatureError{Feature: "enum underlying type " + t.Underlying, Package: b.maxPackage}
+	}
+	underlying, err := b.internType(underlyingSema)
+	if err != nil {
+		return 0, err
+	}
+	typeID := b.module.Types.Intern(Type{Kind: TypeEnum, Name: t.Name, Module: module, Identity: identity, Underlying: underlying, BitWidth: uint16(t.BitWidth)})
+	if b.definedEnums[typeID] {
+		return typeID, nil
+	}
+	b.definedEnums[typeID] = true
+	representation := EnumRepresentationInteger
+	if t.BitWidth > 0 {
+		representation = EnumRepresentationBitBacked
+	}
+	definition := EnumDefinition{TypeID: typeID, SymbolID: SymbolID(identity), Name: t.Name, Underlying: underlying, RepresentationKind: representation, BitWidth: uint16(t.BitWidth)}
+	if token, ok := b.analyzer.ResolvedTypeDeclarationLocation(t); ok {
+		definition.Location = location(token)
+	}
+	for ordinal, name := range t.EnumValues {
+		value, ok := t.EnumConsts[name]
+		if !ok || value.Value == nil {
+			return 0, fmt.Errorf("enum %s case %s has no resolved value", identity, name)
+		}
+		definition.Cases = append(definition.Cases, EnumCase{ID: EnumCaseID(ordinal), Name: name, Value: new(big.Int).Set(value.Value), Location: location(value.Token)})
+	}
+	b.module.Enums = append(b.module.Enums, definition)
+	return typeID, nil
+}
+
+func (b *builder) lookupEnumUnderlying(t sema.Type) (sema.Type, bool) {
+	if t.BitWidth > 0 {
+		return sema.Type{Name: t.Underlying, Kind: sema.UintType, BitWidth: t.BitWidth}, true
+	}
+	typ, ok := b.analyzer.Types()[t.Underlying]
+	if ok {
+		return typ, true
+	}
+	return sema.Type{}, false
+}
+
+func (b *builder) internUnionType(t sema.Type) (TypeID, error) {
+	if len(t.GenericParameters) != 0 {
+		return 0, &UnsupportedFeatureError{Feature: "unresolved generic union " + t.Name, Package: b.maxPackage}
+	}
+	module, identity := b.semanticIdentity(t)
+	typeArguments := make([]TypeID, 0, len(t.TypeArgs))
+	for _, argument := range t.TypeArgs {
+		id, err := b.internType(argument)
+		if err != nil {
+			return 0, err
+		}
+		typeArguments = append(typeArguments, id)
+	}
+	typeID := b.module.Types.Intern(Type{Kind: TypeUnion, Name: t.Name, Module: module, Identity: identity, TypeArgs: typeArguments})
+	if b.definedUnions[typeID] {
+		return typeID, nil
+	}
+	b.definedUnions[typeID] = true
+	definition := UnionDefinition{
+		TypeID: typeID, SymbolID: SymbolID(identity), Name: t.Name,
+		TypeArguments: typeArguments, CopyClassification: string(sema.CopyClassificationOf(t)),
+		TriviallyDestructible: sema.TriviallyDestructible(t),
+	}
+	if token, ok := b.analyzer.ResolvedTypeDeclarationLocation(t); ok {
+		definition.Location = location(token)
+	}
+	for index, variant := range t.UnionVariants {
+		resolved := UnionVariantDefinition{Index: UnionVariantIndex(index), Name: variant.Name, Location: location(variant.Token)}
+		switch {
+		case variant.Payload != nil:
+			resolved.Kind = UnionVariantSingle
+			payload, err := b.internType(*variant.Payload)
+			if err != nil {
+				return 0, err
+			}
+			resolved.Payload = payload
+		case len(variant.PayloadFields) != 0:
+			resolved.Kind = UnionVariantFields
+			for _, field := range variant.PayloadFields {
+				fieldType, err := b.internType(field.Type)
+				if err != nil {
+					return 0, err
+				}
+				resolved.PayloadFields = append(resolved.PayloadFields, UnionPayloadField{Name: field.Name, Type: fieldType, Location: location(field.Token)})
+			}
+		default:
+			resolved.Kind = UnionVariantEmpty
+		}
+		definition.Variants = append(definition.Variants, resolved)
+	}
+	b.module.Unions = append(b.module.Unions, definition)
+	return typeID, nil
+}
+
+func (b *builder) semanticIdentity(t sema.Type) (string, string) {
+	module := t.Module
+	if module == "" {
+		if t.Intrinsic {
+			module = "core"
+		} else {
+			module = b.module.Identity
+		}
+	}
+	identity := module + "::" + t.Name
+	if len(t.TypeArgs) != 0 {
+		parts := make([]string, len(t.TypeArgs))
+		for index, argument := range t.TypeArgs {
+			parts[index] = canonicalSemaType(argument)
+		}
+		identity += "<" + strings.Join(parts, ",") + ">"
+	}
+	return module, identity
 }
 
 func builtinType(t sema.Type) (TypeKind, bool, uint16, bool, bool) {
@@ -188,6 +321,9 @@ func builtinType(t sema.Type) (TypeKind, bool, uint16, bool, bool) {
 	case sema.UintType:
 		if name == "byte" {
 			return TypeByte, false, 8, false, true
+		}
+		if t.BitWidth > 0 {
+			return TypeUint, false, uint16(t.BitWidth), false, true
 		}
 		w, target := numericWidth(name), name == "uint"
 		return TypeUint, false, w, target, true
@@ -402,7 +538,23 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 	}
 	resolved, ok := fb.owner.analyzer.ResolvedTypeOf(expr)
 	if !ok {
-		return builtValue{}, fmt.Errorf("missing resolved type for %T", expr)
+		// Generic union constructors may be resolved from the expected type or
+		// their payload arguments without acquiring a standalone expression-type
+		// fact.  The construction fact is nevertheless complete and immutable, so
+		// use its concrete substituted union type directly.
+		if fb.owner.maxPackage >= 11 {
+			if plan, resolved := fb.owner.analyzer.ResolvedUnionConstructionOf(expr); resolved {
+				typeID, err := fb.owner.internType(plan.UnionType)
+				if err != nil {
+					return builtValue{}, err
+				}
+				if expected != 0 {
+					typeID = expected
+				}
+				return fb.buildUnionConstruction(expr, plan, typeID)
+			}
+		}
+		return builtValue{}, fmt.Errorf("missing resolved type for %T at %s", expr, formatLocation(location(expressionToken(expr))))
 	}
 	typeID, err := fb.owner.internType(resolved)
 	if err != nil {
@@ -451,6 +603,11 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 	case *ast.Identifier:
 		fact, ok := fb.owner.analyzer.ResolvedBindingOf(e)
 		if !ok {
+			if fb.owner.maxPackage >= 11 {
+				if plan, resolved := fb.owner.analyzer.ResolvedUnionConstructionOf(e); resolved {
+					return fb.buildUnionConstruction(e, plan, typeID)
+				}
+			}
 			return builtValue{}, fmt.Errorf("missing resolved binding for %s", e.Value)
 		}
 		bind, ok := fb.bindings[fact.ID]
@@ -461,7 +618,25 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 			return fb.result(Operation{Kind: OpStorageLoad, Storage: bind.storage, Location: loc}, bind.typ), nil
 		}
 		return builtValue{id: bind.value, typ: bind.typ}, nil
+	case *ast.MemberExpression:
+		if fb.owner.maxPackage >= 11 {
+			if enumCase, resolved := fb.owner.analyzer.ResolvedEnumCaseOf(e); resolved {
+				return fb.result(Operation{Kind: OpEnumConstant, EnumCase: EnumCaseID(enumCase.Ordinal), Location: loc}, typeID), nil
+			}
+			if plan, resolved := fb.owner.analyzer.ResolvedUnionConstructionOf(e); resolved {
+				return fb.buildUnionConstruction(e, plan, typeID)
+			}
+		}
+		return builtValue{}, fb.unsupported("member expression", e.Token)
 	case *ast.CallExpression:
+		if fb.owner.maxPackage >= 11 {
+			if conversion, resolved := fb.owner.analyzer.ResolvedEnumConversionOf(e); resolved {
+				return fb.buildEnumConversion(e, conversion, typeID)
+			}
+			if plan, resolved := fb.owner.analyzer.ResolvedUnionConstructionOf(e); resolved {
+				return fb.buildUnionConstruction(e, plan, typeID)
+			}
+		}
 		if fb.owner.maxPackage < 3 {
 			return builtValue{}, fb.unsupported("function call", e.Token)
 		}
@@ -471,6 +646,13 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 			return builtValue{}, fb.unsupported("integer operator", expressionToken(expr))
 		}
 		return fb.buildResolvedOperator(expr)
+	case *ast.StructLiteral:
+		if fb.owner.maxPackage >= 11 {
+			if plan, resolved := fb.owner.analyzer.ResolvedUnionConstructionOf(e); resolved {
+				return fb.buildUnionConstruction(e, plan, typeID)
+			}
+		}
+		return builtValue{}, fb.unsupported("struct literal", e.Token)
 	case *ast.TryExpression:
 		if fb.owner.maxPackage < 9 {
 			return builtValue{}, fb.unsupported("try expression", e.Token)
@@ -479,6 +661,127 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 	default:
 		return builtValue{}, fb.unsupported(fmt.Sprintf("expression %T", expr), expressionToken(expr))
 	}
+}
+
+func (fb *functionBuilder) buildEnumConversion(call *ast.CallExpression, conversion sema.ResolvedEnumConversion, resultType TypeID) (builtValue, error) {
+	if len(call.Arguments) != 1 {
+		return builtValue{}, fb.unsupported("enum conversion arity", call.Token)
+	}
+	operandType, err := fb.owner.internType(conversion.IntegerType)
+	if conversion.Kind == sema.ResolvedEnumToInteger {
+		operandType, err = fb.owner.internType(conversion.EnumType)
+	}
+	if err != nil {
+		return builtValue{}, err
+	}
+	operand, err := fb.buildExpr(call.Arguments[0], operandType)
+	if err != nil {
+		return builtValue{}, err
+	}
+	kind := OpEnumFromInteger
+	if conversion.Kind == sema.ResolvedEnumToInteger {
+		kind = OpEnumToInteger
+	}
+	return fb.result(Operation{Kind: kind, Operands: []ValueID{operand.id}, Location: location(call.Token)}, resultType), nil
+}
+
+func (fb *functionBuilder) buildUnionConstruction(expr ast.Expression, plan sema.ResolvedUnionConstruction, resultType TypeID) (builtValue, error) {
+	definition, ok := fb.owner.unionDefinition(resultType)
+	if !ok || int(plan.VariantIndex) >= len(definition.Variants) {
+		return builtValue{}, fb.unsupported("union construction without definition", expressionToken(expr))
+	}
+	variant := definition.Variants[plan.VariantIndex]
+	op := Operation{Kind: OpUnionConstruct, UnionVariant: UnionVariantIndex(plan.VariantIndex), Location: locationFromExpression(expr)}
+	switch plan.Kind {
+	case sema.ResolvedUnionVariantEmpty:
+		if variant.Kind != UnionVariantEmpty {
+			return builtValue{}, fmt.Errorf("resolved empty union variant disagrees with definition")
+		}
+	case sema.ResolvedUnionVariantSingle:
+		call, ok := expr.(*ast.CallExpression)
+		if !ok || len(call.Arguments) != 1 || variant.Kind != UnionVariantSingle {
+			return builtValue{}, fb.unsupported("single-payload union construction", expressionToken(expr))
+		}
+		semaVariant := plan.UnionType.UnionVariants[plan.VariantIndex]
+		if semaVariant.Payload == nil || sema.CopyClassificationOf(*semaVariant.Payload) != sema.CopyTrivial {
+			return builtValue{}, fb.unsupported("non-trivial union payload transfer", expressionToken(call.Arguments[0]))
+		}
+		payload, err := fb.buildExpr(call.Arguments[0], variant.Payload)
+		if err != nil {
+			return builtValue{}, err
+		}
+		op.Operands = []ValueID{payload.id}
+		op.PayloadActions = []UnionPayloadAction{UnionPayloadCopyTrivial}
+	case sema.ResolvedUnionVariantFields:
+		literal, ok := expr.(*ast.StructLiteral)
+		if !ok || variant.Kind != UnionVariantFields {
+			return builtValue{}, fb.unsupported("field-payload union construction", expressionToken(expr))
+		}
+		values := map[string]builtValue{}
+		fieldTypes := map[string]TypeID{}
+		for _, field := range variant.PayloadFields {
+			fieldTypes[field.Name] = field.Type
+		}
+		semaVariant := plan.UnionType.UnionVariants[plan.VariantIndex]
+		semaFields := map[string]sema.Type{}
+		for _, field := range semaVariant.PayloadFields {
+			semaFields[field.Name] = field.Type
+		}
+		// Evaluate in source order before canonical declaration-order assembly.
+		for _, sourceField := range literal.Fields {
+			if sourceField == nil || sourceField.Name == nil || sourceField.Spread {
+				continue
+			}
+			name := sourceField.Name.Value
+			if sema.CopyClassificationOf(semaFields[name]) != sema.CopyTrivial {
+				return builtValue{}, fb.unsupported("non-trivial union field transfer", sourceField.Token)
+			}
+			value, err := fb.buildExpr(sourceField.Value, fieldTypes[name])
+			if err != nil {
+				return builtValue{}, err
+			}
+			values[name] = value
+		}
+		for _, field := range variant.PayloadFields {
+			value, exists := values[field.Name]
+			if !exists {
+				return builtValue{}, fmt.Errorf("union field %s was not evaluated", field.Name)
+			}
+			op.Operands = append(op.Operands, value.id)
+			op.UnionFields = append(op.UnionFields, field.Name)
+			op.PayloadActions = append(op.PayloadActions, UnionPayloadCopyTrivial)
+		}
+	default:
+		return builtValue{}, fb.unsupported("union variant kind", expressionToken(expr))
+	}
+	return fb.result(op, resultType), nil
+}
+
+func (b *builder) unionDefinition(typeID TypeID) (UnionDefinition, bool) {
+	for _, definition := range b.module.Unions {
+		if definition.TypeID == typeID {
+			return definition, true
+		}
+	}
+	return UnionDefinition{}, false
+}
+
+func (b *builder) enumDefinition(typeID TypeID) (EnumDefinition, bool) {
+	for _, definition := range b.module.Enums {
+		if definition.TypeID == typeID {
+			return definition, true
+		}
+	}
+	return EnumDefinition{}, false
+}
+
+func enumCaseIDByName(definition EnumDefinition, name string) (EnumCaseID, bool) {
+	for _, enumCase := range definition.Cases {
+		if enumCase.Name == name {
+			return enumCase.ID, true
+		}
+	}
+	return 0, false
 }
 
 func (fb *functionBuilder) buildResultConstructor(value ast.Expression, resultType TypeID, okResult bool, loc Location) (builtValue, error) {
@@ -618,7 +921,21 @@ func (fb *functionBuilder) buildLocalTryHandlers(expr *ast.TryExpression, plan s
 		if err != nil {
 			return builtValue{}, err
 		}
-		condition := fb.result(Operation{Kind: OpCoreErrorIsVariant, Operands: []ValueID{errorValue.id}, Variant: handler.Variant, TryHandlerKind: TryHandlerErrVariant, TryHandlerIndex: handler.SourceIndex, Location: location(expr.Handlers[handler.SourceIndex].Token)}, boolType)
+		var condition builtValue
+		if fb.owner.maxPackage >= 11 {
+			definition, ok := fb.owner.enumDefinition(errorValue.typ)
+			if !ok {
+				return builtValue{}, fb.unsupported("try handler error type without enum definition", expr.Handlers[handler.SourceIndex].Token)
+			}
+			caseID, ok := enumCaseIDByName(definition, handler.Variant)
+			if !ok {
+				return builtValue{}, fb.unsupported("unknown resolved enum handler case", expr.Handlers[handler.SourceIndex].Token)
+			}
+			constant := fb.result(Operation{Kind: OpEnumConstant, EnumCase: caseID, TryHandlerKind: TryHandlerErrVariant, TryHandlerIndex: handler.SourceIndex, Variant: handler.Variant, Location: location(expr.Handlers[handler.SourceIndex].Token)}, errorValue.typ)
+			condition = fb.result(Operation{Kind: OpEnumCompare, Operands: []ValueID{errorValue.id, constant.id}, IntegerCompare: IntegerCompareEQ, TryHandlerKind: TryHandlerErrVariant, TryHandlerIndex: handler.SourceIndex, Variant: handler.Variant, Location: location(expr.Handlers[handler.SourceIndex].Token)}, boolType)
+		} else {
+			condition = fb.result(Operation{Kind: OpCoreErrorIsVariant, Operands: []ValueID{errorValue.id}, Variant: handler.Variant, TryHandlerKind: TryHandlerErrVariant, TryHandlerIndex: handler.SourceIndex, Location: location(expr.Handlers[handler.SourceIndex].Token)}, boolType)
+		}
 		handlerBlock, nextTest := fb.newBlock(), fb.newBlock()
 		fb.emit(Operation{Kind: OpCondBranch, Operands: []ValueID{condition.id}, Successors: []BranchTarget{{Block: handlerBlock.ID}, {Block: nextTest.ID}}, TryHandlerKind: TryHandlerErrVariant, TryHandlerIndex: handler.SourceIndex, Variant: handler.Variant, Location: location(expr.Handlers[handler.SourceIndex].Token)})
 		fb.current = handlerBlock
@@ -865,6 +1182,10 @@ func (fb *functionBuilder) buildResolvedOperatorWithFailure(expr ast.Expression,
 		op.Kind, op.IntegerCompare = OpIntCompare, IntegerCompareGT
 	case sema.ResolvedIntegerCompareGE:
 		op.Kind, op.IntegerCompare = OpIntCompare, IntegerCompareGE
+	case sema.ResolvedEnumCompareEQ:
+		op.Kind, op.IntegerCompare = OpEnumCompare, IntegerCompareEQ
+	case sema.ResolvedEnumCompareNE:
+		op.Kind, op.IntegerCompare = OpEnumCompare, IntegerCompareNE
 	default:
 		return builtValue{}, fb.unsupported("operator "+string(resolved.Kind), expressionToken(expr))
 	}
@@ -1027,6 +1348,10 @@ func (fb *functionBuilder) storageAllowed(id TypeID) bool {
 	if t.Kind == TypeNamed {
 		return fb.storageAllowed(t.Base)
 	}
+	if t.Kind == TypeUnion {
+		definition, ok := fb.owner.unionDefinition(id)
+		return ok && definition.CopyClassification == string(sema.CopyTrivial) && definition.TriviallyDestructible
+	}
 	return t.Kind != TypeString && t.Kind != TypeVoid && t.Kind != TypeNever
 }
 
@@ -1040,8 +1365,12 @@ func ownershipForParameter(p sema.FunctionParameter) (OwnershipClass, error) {
 	switch p.Type.Kind {
 	case sema.RawPtrType:
 		return OwnershipRawPointer, nil
-	case sema.BoolType, sema.IntType, sema.UintType, sema.FloatType, sema.DecimalType, sema.CharType, sema.RuneType:
+	case sema.BoolType, sema.IntType, sema.UintType, sema.FloatType, sema.DecimalType, sema.CharType, sema.RuneType, sema.EnumType:
 		return OwnershipImmediate, nil
+	case sema.UnionType:
+		if sema.CopyClassificationOf(p.Type) == sema.CopyTrivial && sema.TriviallyDestructible(p.Type) {
+			return OwnershipImmediate, nil
+		}
 	}
 	return "", &UnsupportedFeatureError{Feature: "non-scalar parameter type " + p.Type.Name}
 }
@@ -1125,6 +1454,12 @@ func expressionToken(e ast.Expression) lexer.Token {
 	case *ast.StringLiteral:
 		return x.Token
 	case *ast.CallExpression:
+		return x.Token
+	case *ast.ConversionExpression:
+		return x.Token
+	case *ast.MemberExpression:
+		return x.Token
+	case *ast.StructLiteral:
 		return x.Token
 	case *ast.RefExpression:
 		return x.Token

@@ -1,4 +1,5 @@
 add_mlir_dialect_library(SecMLIRDialect
+  SecAttributes.cpp
   SecDialect.cpp
   SecTypes.cpp
   SecOps.cpp
@@ -9,6 +10,7 @@ add_mlir_dialect_library(SecMLIRDialect
   DEPENDS
   SecDialectIncGen
   SecTypesIncGen
+  SecAttributesIncGen
   SecOpsIncGen
 
   LINK_LIBS PUBLIC

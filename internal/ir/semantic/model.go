@@ -13,6 +13,9 @@ type FunctionID string
 type BlockID uint32
 type ValueID uint32
 type StorageID uint32
+type SymbolID string
+type EnumCaseID uint32
+type UnionVariantIndex uint32
 
 type Location struct {
 	File   string
@@ -50,6 +53,8 @@ const (
 	TypeArithmeticFailureReason TypeKind = "arithmetic-failure-reason"
 	TypeCoreError               TypeKind = "core-error"
 	TypeResult                  TypeKind = "result"
+	TypeEnum                    TypeKind = "enum"
+	TypeUnion                   TypeKind = "union"
 )
 
 type Type struct {
@@ -60,9 +65,71 @@ type Type struct {
 	Base       TypeID
 	Success    TypeID
 	Error      TypeID
+	Underlying TypeID
+	TypeArgs   []TypeID
 	Signed     bool
 	BitWidth   uint16
 	TargetSize bool
+}
+
+type EnumRepresentationKind string
+
+const (
+	EnumRepresentationInteger   EnumRepresentationKind = "integer"
+	EnumRepresentationBitBacked EnumRepresentationKind = "bit-backed"
+)
+
+type EnumCase struct {
+	ID       EnumCaseID
+	Name     string
+	Value    *big.Int
+	Location Location
+}
+
+type EnumDefinition struct {
+	TypeID             TypeID
+	SymbolID           SymbolID
+	Name               string
+	Underlying         TypeID
+	RepresentationKind EnumRepresentationKind
+	BitWidth           uint16
+	Cases              []EnumCase
+	Location           Location
+}
+
+type UnionVariantKind string
+
+const (
+	UnionVariantEmpty  UnionVariantKind = "empty"
+	UnionVariantSingle UnionVariantKind = "single"
+	UnionVariantFields UnionVariantKind = "fields"
+)
+
+type UnionPayloadField struct {
+	Name     string
+	Type     TypeID
+	Location Location
+}
+
+type UnionVariantDefinition struct {
+	Index         UnionVariantIndex
+	Name          string
+	Kind          UnionVariantKind
+	Payload       TypeID
+	PayloadFields []UnionPayloadField
+	Location      Location
+}
+
+type UnionDefinition struct {
+	TypeID                TypeID
+	SymbolID              SymbolID
+	Name                  string
+	TypeArguments         []TypeID
+	Variants              []UnionVariantDefinition
+	CopyClassification    string
+	TriviallyDestructible bool
+	LayoutRef             string
+	Location              Location
 }
 
 type TypeTable struct {
@@ -110,9 +177,13 @@ func (t *TypeTable) All() []Type {
 }
 
 func typeKey(t Type) string {
-	return string(t.Kind) + "\x00" + t.Module + "\x00" + t.Name + "\x00" + t.Identity + "\x00" +
+	key := string(t.Kind) + "\x00" + t.Module + "\x00" + t.Name + "\x00" + t.Identity + "\x00" +
 		fmtUint(uint64(t.Base)) + "\x00" + fmtUint(uint64(t.Success)) + "\x00" + fmtUint(uint64(t.Error)) + "\x00" +
-		fmtUint(uint64(t.BitWidth)) + "\x00" + boolKey(t.Signed) + boolKey(t.TargetSize)
+		fmtUint(uint64(t.Underlying)) + "\x00" + fmtUint(uint64(t.BitWidth)) + "\x00" + boolKey(t.Signed) + boolKey(t.TargetSize)
+	for _, argument := range t.TypeArgs {
+		key += "\x00" + fmtUint(uint64(argument))
+	}
+	return key
 }
 
 func fmtUint(value uint64) string {
@@ -141,6 +212,8 @@ type Module struct {
 	SourceFiles []string
 	Types       *TypeTable
 	Functions   []*Function
+	Enums       []EnumDefinition
+	Unions      []UnionDefinition
 }
 
 type Function struct {
@@ -221,6 +294,14 @@ const (
 	OpResultUnwrapOk                  OpKind = "result.unwrap-ok"
 	OpResultUnwrapErr                 OpKind = "result.unwrap-err"
 	OpCoreErrorIsVariant              OpKind = "core-error.is-variant"
+	OpEnumConstant                    OpKind = "enum.constant"
+	OpEnumFromInteger                 OpKind = "enum.from-integer"
+	OpEnumToInteger                   OpKind = "enum.to-integer"
+	OpEnumCompare                     OpKind = "enum.compare"
+	OpUnionConstruct                  OpKind = "union.construct"
+	OpUnionIsVariant                  OpKind = "union.is-variant"
+	OpUnionUnwrapPayload              OpKind = "union.unwrap-payload"
+	OpUnionUnwrapField                OpKind = "union.unwrap-field"
 )
 
 type IntegerCheckedBinaryKind string
@@ -283,6 +364,10 @@ type ArgumentAction string
 
 const ArgumentCopyTrivial ArgumentAction = "copy-trivial"
 
+type UnionPayloadAction string
+
+const UnionPayloadCopyTrivial UnionPayloadAction = "copy-trivial"
+
 type TryHandlerKind string
 
 const (
@@ -322,6 +407,11 @@ type Operation struct {
 	FailureCategory ArithmeticFailureCategory
 	FailureReason   ArithmeticFailureReason
 	Variant         string
+	EnumCase        EnumCaseID
+	UnionVariant    UnionVariantIndex
+	UnionField      string
+	UnionFields     []string
+	PayloadActions  []UnionPayloadAction
 	TryHandlerKind  TryHandlerKind
 	TryHandlerIndex int
 	Operator        string

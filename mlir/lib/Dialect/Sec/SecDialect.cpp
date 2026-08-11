@@ -1,4 +1,5 @@
 #include "sec/Dialect/Sec/SecDialect.h"
+#include "sec/Dialect/Sec/SecAttributes.h"
 #include "sec/Dialect/Sec/SecTypes.h"
 #include "sec/Dialect/Sec/SecOps.h"
 
@@ -13,6 +14,7 @@ using namespace sec;
 #include "sec/Dialect/Sec/SecDialect.cpp.inc"
 
 void SecDialect::initialize() {
+  registerAttributes();
   registerTypes();
   registerOperations();
 }
@@ -49,7 +51,7 @@ LogicalResult SecDialect::verifyOperationAttribute(Operation *operation,
           "sec.dialect_version must be an i32 module attribute");
     int64_t number = version.getInt();
     if (number != 1 && number != 2 && number != 3 && number != 4 &&
-        number != 5 && number != 6)
+        number != 5 && number != 6 && number != 7)
       return operation->emitError("unsupported Sec dialect schema version");
     if (number == 1)
       return success();

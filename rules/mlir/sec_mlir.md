@@ -13,7 +13,7 @@ It does not define the exact TableGen or C++ surface of the Sec dialect.
 The exact dialect surface is defined separately by:
 
 ```text
-rules/sec_mlir_dialect.md
+rules/mlir/sec_mlir_dialect.md
 ```
 
 That detailed specification must conform to this rulebook and must not introduce

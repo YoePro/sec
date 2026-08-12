@@ -15,13 +15,13 @@ package:
     union layout or hidden ownership semantics.
   next_package: Enum and Union Match CFG
 normative_updates:
-- repository_path: rules/semantic_ir.txt
+- repository_path: rules/compiler/semantic_ir.txt
   supplied_file: sec_semantic_ir_enum_union_package11.md
   kind: normative amendment
-- repository_path: rules/sec_mlir_dialect.md
+- repository_path: rules/mlir/sec_mlir_dialect.md
   supplied_file: sec_mlir_dialect_package11.md
   schema_version: 7
-- repository_path: rules/sec_mlir_lowering.md
+- repository_path: rules/mlir/sec_mlir_lowering.md
   supplied_file: sec_mlir_lowering_package11.md
   version: 7
 wide_builtin_invariant:

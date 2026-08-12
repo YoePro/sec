@@ -20,17 +20,17 @@ package:
   next_package: Ownership Transfer and Destruction Semantic Core
 normative_updates:
 - repository_paths:
-  - rules/collections.md
-  - rules/runtime_checks.md
-  - rules/core-library.md
-  - rules/reference_model.md
+  - rules/collections/collections.md
+  - rules/errors/runtime_checks.md
+  - rules/library/core-library.md
+  - rules/memory/reference_model.md
   supplied_file: sec_slice_sync_package16.md
-- repository_path: rules/semantic_ir.txt
+- repository_path: rules/compiler/semantic_ir.txt
   supplied_file: sec_semantic_ir_slice_package16.md
-- repository_path: rules/sec_mlir_dialect.md
+- repository_path: rules/mlir/sec_mlir_dialect.md
   supplied_file: sec_mlir_dialect_package16.md
   schema_version: 12
-- repository_path: rules/sec_mlir_lowering.md
+- repository_path: rules/mlir/sec_mlir_lowering.md
   supplied_file: sec_mlir_lowering_package16.md
   version: 12
 wide_builtin_invariant:

@@ -9,14 +9,14 @@ Current lowering specification version: `5`
 This document is subordinate to:
 
 ```text
-rules/runtime_checks.md
-rules/errorhandling.txt
-rules/operators.md
-rules/panic.md
-rules/core-library.md
-rules/semantic_ir.txt
-rules/sec_mlir.md
-rules/sec_mlir_dialect.md
+rules/errors/runtime_checks.md
+rules/errors/errorhandling.txt
+rules/foundations/operators.md
+rules/errors/panic.md
+rules/library/core-library.md
+rules/compiler/semantic_ir.txt
+rules/mlir/sec_mlir.md
+rules/mlir/sec_mlir_dialect.md
 ```
 
 Version 5 extends checked integer lowering with typed failure reasons and the

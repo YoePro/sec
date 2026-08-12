@@ -5,10 +5,10 @@
 Normative synchronization for:
 
 ```text
-rules/references.txt
-rules/runtime_checks.md
-rules/reference_model.md
-rules/panic.md
+rules/memory/references.txt
+rules/errors/runtime_checks.md
+rules/memory/reference_model.md
+rules/errors/panic.md
 ```
 
 Package:
@@ -23,7 +23,7 @@ Repository baseline:
 152c772
 ```
 
-`rules/reference_model.md` is canonical for Sec 0.1 reference semantics.
+`rules/memory/reference_model.md` is canonical for Sec 0.1 reference semantics.
 
 This synchronization removes older wording that can otherwise be read as
 contradicting the canonical model.

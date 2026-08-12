@@ -58,23 +58,23 @@ not invent names beyond that surface. The canonical properties are `Len`,
 Implementation follows:
 
 ```text
-rules/collections.md
-rules/layout.md
-rules/storage.md
-rules/allocation.txt
-rules/default_values.md
-rules/core-library.md
-rules/reference_model.md
-rules/ownership.md
-rules/copy_move.md
-rules/destruction.txt
+rules/collections/collections.md
+rules/memory/layout.md
+rules/memory/storage.md
+rules/memory/allocation.txt
+rules/types/default_values.md
+rules/library/core-library.md
+rules/memory/reference_model.md
+rules/memory/ownership.md
+rules/memory/copy_move.md
+rules/memory/destruction.txt
     ↓
 local P13-P17 normative amendments
     ↓
-rules/semantic_ir.txt
-rules/sec_mlir.md
-rules/sec_mlir_dialect.md
-rules/sec_mlir_lowering.md
+rules/compiler/semantic_ir.txt
+rules/mlir/sec_mlir.md
+rules/mlir/sec_mlir_dialect.md
+rules/mlir/sec_mlir_lowering.md
     ↓
 implementation package
     ↓
@@ -85,10 +85,10 @@ Before implementation:
 
 1. apply `sec_dynamic_array_sync_package18.md`;
 2. apply `sec_semantic_ir_dynamic_array_package18.md` to
-   `rules/semantic_ir.txt`;
-3. update `rules/sec_mlir_dialect.md` with
+   `rules/compiler/semantic_ir.txt`;
+3. update `rules/mlir/sec_mlir_dialect.md` with
    `sec_mlir_dialect_package18.md`;
-4. update `rules/sec_mlir_lowering.md` with
+4. update `rules/mlir/sec_mlir_lowering.md` with
    `sec_mlir_lowering_package18.md`.
 
 The package's C++/MLIR implementation must not begin until these prerequisite

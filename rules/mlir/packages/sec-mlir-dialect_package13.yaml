@@ -15,12 +15,12 @@ package:
     trivial replacement without physical layout or hidden ownership.
   next_package: Fixed Array Semantic Value Representation
 normative_updates:
-- repository_path: rules/semantic_ir.txt
+- repository_path: rules/compiler/semantic_ir.txt
   supplied_file: sec_semantic_ir_struct_package13.md
-- repository_path: rules/sec_mlir_dialect.md
+- repository_path: rules/mlir/sec_mlir_dialect.md
   supplied_file: sec_mlir_dialect_package13.md
   schema_version: 9
-- repository_path: rules/sec_mlir_lowering.md
+- repository_path: rules/mlir/sec_mlir_lowering.md
   supplied_file: sec_mlir_lowering_package13.md
   version: 9
 wide_builtin_invariant:

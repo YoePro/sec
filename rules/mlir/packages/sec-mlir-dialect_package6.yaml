@@ -30,10 +30,10 @@ mandatory_reconciliation:
     correct: semantic i1, addressable memref<i8>
     package5_must_exclude_i1_storage: true
 normative_updates:
-- repository_path: rules/sec_mlir_dialect.md
+- repository_path: rules/mlir/sec_mlir_dialect.md
   supplied_file: sec_mlir_dialect_package6.md
   schema_version: 3
-- repository_path: rules/sec_mlir_lowering.md
+- repository_path: rules/mlir/sec_mlir_lowering.md
   supplied_file: sec_mlir_lowering_package6.md
   lowering_spec_version: 2
 normative_scalar_facts:

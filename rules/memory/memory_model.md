@@ -3667,7 +3667,7 @@ and marked Planned in the status document.
 
 ## A.1 Rename the rulebook
 
-The filename migration is complete. `rules/memory_model.md` is canonical,
+The filename migration is complete. `rules/memory/memory_model.md` is canonical,
 repository references are updated, and no duplicate canonical file remains.
 
 ---

@@ -9,8 +9,8 @@ Current dialect schema version: `2`
 This rulebook is subordinate to:
 
 ```text
-rules/sec_mlir.md
-rules/semantic_ir.txt
+rules/mlir/sec_mlir.md
+rules/compiler/semantic_ir.txt
 all applicable Sec language/domain rulebooks
 ```
 

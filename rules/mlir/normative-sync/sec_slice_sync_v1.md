@@ -5,10 +5,10 @@
 Normative synchronization for:
 
 ```text
-rules/collections.md
-rules/runtime_checks.md
-rules/core-library.md
-rules/reference_model.md
+rules/collections/collections.md
+rules/errors/runtime_checks.md
+rules/library/core-library.md
+rules/memory/reference_model.md
 ```
 
 Package:

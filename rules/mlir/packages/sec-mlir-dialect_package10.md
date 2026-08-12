@@ -35,20 +35,20 @@ general user enum/union lowering.
 Implementation follows:
 
 ```text
-rules/errorhandling.txt
-rules/runtime_checks.md
-rules/operators.md
-rules/panic.md
-rules/core-library.md
-rules/effect_analysis.md
+rules/errors/errorhandling.txt
+rules/errors/runtime_checks.md
+rules/foundations/operators.md
+rules/errors/panic.md
+rules/library/core-library.md
+rules/analysis/effect_analysis.md
     ↓
-rules/semantic_ir.txt
+rules/compiler/semantic_ir.txt
     ↓
-rules/sec_mlir.md
+rules/mlir/sec_mlir.md
     ↓
-rules/sec_mlir_dialect.md
+rules/mlir/sec_mlir_dialect.md
     ↓
-rules/sec_mlir_lowering.md
+rules/mlir/sec_mlir_lowering.md
     ↓
 implementation package
     ↓
@@ -57,9 +57,9 @@ implementation
 
 Before implementation:
 
-1. update `rules/sec_mlir_dialect.md` with
+1. update `rules/mlir/sec_mlir_dialect.md` with
    `sec_mlir_dialect_package10.md`;
-2. update `rules/sec_mlir_lowering.md` with
+2. update `rules/mlir/sec_mlir_lowering.md` with
    `sec_mlir_lowering_package10.md`.
 
 No source-language grammar change is required.

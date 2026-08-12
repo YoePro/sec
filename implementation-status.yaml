@@ -19,10 +19,10 @@ integrations:
       Introduces the canonical ParseResult migration path and retains selected
       malformed syntax and parser repairs as structured recovery data.
     rules:
-      - rules/parser_recovery.md
-      - rules/grammar.md
-      - rules/diagnostics.txt
-      - rules/lsp.md
+      - rules/compiler/parser_recovery.md
+      - rules/foundations/grammar.md
+      - rules/tooling/diagnostics.txt
+      - rules/tooling/lsp.md
     code:
       - internal/ast/ast.go
       - internal/parser/parser.go
@@ -84,12 +84,12 @@ integrations:
       borrow, assignment, addressability, and self-move analysis without runtime
       ownership or borrow tracking.
     rules:
-      - rules/ownership.md
-      - rules/copy_move.md
-      - rules/borrowing.txt
-      - rules/lifetime_analysis.txt
-      - rules/collections.md
-      - rules/properties.txt
+      - rules/memory/ownership.md
+      - rules/memory/copy_move.md
+      - rules/memory/borrowing.txt
+      - rules/memory/lifetime_analysis.txt
+      - rules/collections/collections.md
+      - rules/declarations/properties.txt
     code:
       - internal/sema/place.go
       - internal/sema/analyzer.go
@@ -166,10 +166,10 @@ integrations:
       resources across branches and loop control-flow edges without runtime
       ownership tables or cleanup tracking.
     rules:
-      - rules/destruction.txt
-      - rules/ownership.md
-      - rules/copy_move.md
-      - rules/lifetime_analysis.txt
+      - rules/memory/destruction.txt
+      - rules/memory/ownership.md
+      - rules/memory/copy_move.md
+      - rules/memory/lifetime_analysis.txt
     code:
       - internal/sema/analyzer.go
     tests:
@@ -205,11 +205,11 @@ integrations:
       Tracks outer root bindings used by defer as delayed uses and rejects an
       earlier move or discard without introducing runtime borrow tracking.
     rules:
-      - rules/defer.txt
-      - rules/lifetime_analysis.txt
-      - rules/borrowing.txt
-      - rules/copy_move.md
-      - rules/memory_model.md
+      - rules/control-flow/defer.txt
+      - rules/memory/lifetime_analysis.txt
+      - rules/memory/borrowing.txt
+      - rules/memory/copy_move.md
+      - rules/memory/memory_model.md
     code:
       - internal/sema/analyzer.go
     tests:
@@ -233,8 +233,8 @@ integrations:
       bodyless extern declarations, linked calls, and physical fixed-width LLVM
       scalar mappings.
     rules:
-      - rules/ffi.txt
-      - rules/grammar.md
+      - rules/platform/ffi.txt
+      - rules/foundations/grammar.md
     code:
       - internal/parser/parser.go
       - internal/sema/analyzer.go
@@ -270,7 +270,7 @@ integrations:
       Expands the units package into a documented, metadata-complete catalog of
       155 physical units across SI and commonly used non-SI systems.
     rules:
-      - rules/units.txt
+      - rules/types/units.txt
     code:
       - sec/stdlib/units/base.sec
       - sec/stdlib/units/core_derived.sec
@@ -313,7 +313,7 @@ integrations:
       analysis and standard LSP call hierarchy without constructing a second
       tooling-owned graph.
     rules:
-      - rules/call_graph.md
+      - rules/analysis/call_graph.md
     code:
       - internal/sema/call_graph.go
       - internal/sema/analyzer.go
@@ -369,7 +369,7 @@ integrations:
       Parses, registers, and semantically checks impl properties, including
       ordinary and fallible accessors, without claiming property lowering.
     rules:
-      - rules/properties.txt
+      - rules/declarations/properties.txt
     code:
       - internal/ast/ast.go
       - internal/parser/parser.go
@@ -414,8 +414,8 @@ integrations:
       Provides compiler-known Arena allocation validation, allocation generation
       tracking, and stale-reference diagnostics without allocator lowering.
     rules:
-      - rules/allocation.txt
-      - rules/arena.md
+      - rules/memory/allocation.txt
+      - rules/memory/arena.md
     code:
       - internal/sema/analyzer.go
       - internal/sema/types.go
@@ -457,7 +457,7 @@ integrations:
       Place-backed indexing provide a usable slice; canonical public members,
       allocation-aware owners, library collections, and lowering remain.
     rules:
-      - rules/collections.md
+      - rules/collections/collections.md
     implemented:
       - parser and AST support for canonical fixed-array, dynamic-array, slice, list, map, and set type forms
       - Sema recognition and arity validation for compiler-known collection families
@@ -479,7 +479,7 @@ integrations:
       Tracks vector, matrix, tensor, tensor_view, Shape, Strides, TensorLayout,
       and MemorySpace independently from ordinary collections.
     rules:
-      - rules/shaped-types.md
+      - rules/collections/shaped-types.md
     implemented:
       - parser and AST accept mixed type/value generic arguments used by shaped types
       - Sema recognizes vector, matrix, tensor, and tensor_view identities and validates basic arity and dimensions
@@ -497,8 +497,8 @@ integrations:
       Replaces the legacy arrays/slices and mixed collections/shaped books with
       collections.md and shaped-types.md, and migrates canonical references.
     rules:
-      - rules/collections.md
-      - rules/shaped-types.md
+      - rules/collections/collections.md
+      - rules/collections/shaped-types.md
     implemented:
       - ordinary collection semantics consolidated in collections.md
       - shaped value, view, layout, and memory-space semantics isolated in shaped-types.md
@@ -509,9 +509,9 @@ integrations:
     status: partial
     integrated: "2026-08-11"
     rules:
-      - rules/collections.md
-      - rules/compiler_known_members.md
-      - rules/core-library.md
+      - rules/collections/collections.md
+      - rules/compiler/compiler_known_members.md
+      - rules/library/core-library.md
     code:
       - internal/sema/compiler_known_members.go
       - internal/sema/analyzer.go
@@ -538,8 +538,8 @@ integrations:
     status: partial
     integrated: "2026-08-11"
     rules:
-      - rules/collections.md
-      - rules/mlir-dialect-packages/sec-mlir-dialect_package18.md
+      - rules/collections/collections.md
+      - rules/mlir/packages/sec-mlir-dialect_package18.md
     depends_on:
       - SEC-MLIR-P18
       - allocation-context semantics from P19 where required
@@ -560,8 +560,8 @@ integrations:
     status: planned
     integrated: "2026-08-11"
     rules:
-      - rules/grammar.md
-      - rules/errorhandling.txt
+      - rules/foundations/grammar.md
+      - rules/errors/errorhandling.txt
     remaining:
       - accept try Assignment without a handler block
       - require enclosing Result success/error shape with the setter's exact error type
@@ -573,8 +573,8 @@ integrations:
     status: partial
     integrated: "2026-08-11"
     rules:
-      - rules/collections.md
-      - rules/compiler_known_members.md
+      - rules/collections/collections.md
+      - rules/compiler/compiler_known_members.md
     code:
       - internal/sema/analyzer.go
       - internal/sema/compiler_known_members.go
@@ -606,7 +606,7 @@ integrations:
     status: planned
     integrated: "2026-08-11"
     rules:
-      - rules/collections.md
+      - rules/collections/collections.md
     remaining:
       - make existing map entries produce indexed Places and missing lookup use checked key-access failure
       - make indexed assignment an upsert, including bodyless try for fallible upsert
@@ -618,8 +618,8 @@ integrations:
     status: planned
     integrated: "2026-08-11"
     rules:
-      - rules/collections.md
-      - rules/core-library.md
+      - rules/collections/collections.md
+      - rules/library/core-library.md
     remaining:
       - use bool or Option for normal absence and rejection where specified
       - normalize CollectionError with AllocationFailed, CapacityExceeded, and SizeOverflow
@@ -639,14 +639,14 @@ integrations:
       and list defaults, Semantic IR, cleanup, and end-to-end verifier coverage
       remain incomplete.
     rules:
-      - rules/default_values.md
-      - rules/types.md
-      - rules/contracts.md
-      - rules/struct.txt
-      - rules/collections.md
-      - rules/shaped-types.md
-      - rules/grammar.md
-      - rules/formatter.md
+      - rules/types/default_values.md
+      - rules/types/types.md
+      - rules/types/contracts.md
+      - rules/declarations/struct.txt
+      - rules/collections/collections.md
+      - rules/collections/shaped-types.md
+      - rules/foundations/grammar.md
+      - rules/tooling/formatter.md
     code:
       - internal/ast/ast.go
       - internal/parser/parser.go
@@ -713,17 +713,17 @@ integrations:
       retention, indirect-call, recursion, separate-compilation, concurrency,
       and foreign-retention analysis remains.
     rules:
-      - rules/escape_analysis.md
-      - rules/lifetime_analysis.txt
-      - rules/storage.md
-      - rules/reference_model.md
-      - rules/ownership.md
-      - rules/copy_move.md
-      - rules/borrowing.txt
-      - rules/collections.md
-      - rules/functions_lambda.txt
-      - rules/ffi.txt
-      - rules/call_graph.md
+      - rules/analysis/escape_analysis.md
+      - rules/memory/lifetime_analysis.txt
+      - rules/memory/storage.md
+      - rules/memory/reference_model.md
+      - rules/memory/ownership.md
+      - rules/memory/copy_move.md
+      - rules/memory/borrowing.txt
+      - rules/collections/collections.md
+      - rules/declarations/functions_lambda.txt
+      - rules/platform/ffi.txt
+      - rules/analysis/call_graph.md
     code:
       - internal/sema/place.go
       - internal/sema/escape_analysis.go
@@ -782,7 +782,7 @@ integrations:
       - add cause-path production for escape diagnostics
       - add canonical escape diagnostic IDs through central diagnostics governance
       - connect escape facts to the common Interactive, Standard, and Deep analysis execution surface, sec analyse selection, and LSP consumers without weakening required proofs
-      - add positive, negative, precision, recursive, separate-compilation, callable, FFI, storage/generation, and concurrency test matrices required by rules/escape_analysis.md
+      - add positive, negative, precision, recursive, separate-compilation, callable, FFI, storage/generation, and concurrency test matrices required by rules/analysis/escape_analysis.md
 
   - id: sema.closure-analysis
     area: frontend-analysis
@@ -796,19 +796,19 @@ integrations:
       flow service, target-set dataflow, closure summaries, recursive SCC fixed
       points, and open callable contracts remain to be implemented.
     rules:
-      - rules/closure_analysis.md
-      - rules/functions_lambda.txt
-      - rules/call_graph.md
-      - rules/escape_analysis.md
-      - rules/lifetime_analysis.txt
-      - rules/ownership.md
-      - rules/copy_move.md
-      - rules/borrowing.txt
-      - rules/storage.md
-      - rules/effect_analysis.md
-      - rules/compiler_analysis.txt
-      - rules/lsp.md
-      - rules/projects.txt
+      - rules/analysis/closure_analysis.md
+      - rules/declarations/functions_lambda.txt
+      - rules/analysis/call_graph.md
+      - rules/analysis/escape_analysis.md
+      - rules/memory/lifetime_analysis.txt
+      - rules/memory/ownership.md
+      - rules/memory/copy_move.md
+      - rules/memory/borrowing.txt
+      - rules/memory/storage.md
+      - rules/analysis/effect_analysis.md
+      - rules/compiler/compiler_analysis.txt
+      - rules/tooling/lsp.md
+      - rules/projects/projects.txt
     code:
       - internal/ast/ast.go
       - internal/parser/expression.go
@@ -875,7 +875,7 @@ integrations:
       - explicit cache and summary invalidation when persistent closure-analysis services are introduced
       - Semantic IR representation of function-value creation/calls, closure creation, capture transfer, environment dependencies, and callable forwarding required by downstream analyses
       - closure/environment lowering that obeys storage.md and never repairs escape with implicit heap promotion or hidden allocation
-      - synchronization appendix for legacy implementation-oriented closure-storage wording in rules/functions_lambda.txt
+      - synchronization appendix for legacy implementation-oriented closure-storage wording in rules/declarations/functions_lambda.txt
       - dedicated positive, negative, interprocedural, CFA-precision, recursion, analysis-budget, LSP-integration, and termination regression tests
 
   - id: lowering.sec-mlir-schema-2
@@ -888,11 +888,11 @@ integrations:
       schema 2, and publishes CLI output only after verification by the real
       Sec MLIR toolchain.
     rules:
-      - rules/semantic_ir.txt
-      - rules/sec_mlir.md
-      - rules/sec_mlir_dialect.md
-      - rules/mlir-dialect-packages/sec-mlir-dialect_package4.md
-      - rules/mlir-dialect-packages/sec-mlir-dialect_package4.yaml
+      - rules/compiler/semantic_ir.txt
+      - rules/mlir/sec_mlir.md
+      - rules/mlir/sec_mlir_dialect.md
+      - rules/mlir/packages/sec-mlir-dialect_package4.md
+      - rules/mlir/packages/sec-mlir-dialect_package4.yaml
     code:
       - internal/lowering/secmlir/emitter.go
       - internal/mlir/toolchain.go
@@ -945,10 +945,10 @@ integrations:
       semantics lower to core MLIR while unresolved Sec representation and ABI
       obligations remain explicit.
     rules:
-      - rules/sec_mlir_lowering.md
-      - rules/sec_mlir_dialect.md
-      - rules/mlir-dialect-packages/sec-mlir-dialect_package5.md
-      - rules/mlir-dialect-packages/sec-mlir-dialect_package5.yaml
+      - rules/mlir/sec_mlir_lowering.md
+      - rules/mlir/sec_mlir_dialect.md
+      - rules/mlir/packages/sec-mlir-dialect_package5.md
+      - rules/mlir/packages/sec-mlir-dialect_package5.yaml
     code:
       - mlir/include/sec/Conversion/SecToCore/Passes.h
       - mlir/include/sec/Conversion/SecToCore/Passes.td
@@ -991,14 +991,14 @@ integrations:
       vertical. Package 8 now performs the previously deferred operation-aware
       signless normalization and exact signed/unsigned constant discharge.
     rules:
-      - rules/layout.md
-      - rules/types.md
-      - rules/semantic_ir.txt
-      - rules/sec_mlir.md
-      - rules/sec_mlir_dialect.md
-      - rules/sec_mlir_lowering.md
-      - rules/mlir-dialect-packages/sec-mlir-dialect_package6.md
-      - rules/mlir-dialect-packages/sec-mlir-dialect_package6.yaml
+      - rules/memory/layout.md
+      - rules/types/types.md
+      - rules/compiler/semantic_ir.txt
+      - rules/mlir/sec_mlir.md
+      - rules/mlir/sec_mlir_dialect.md
+      - rules/mlir/sec_mlir_lowering.md
+      - rules/mlir/packages/sec-mlir-dialect_package6.md
+      - rules/mlir/packages/sec-mlir-dialect_package6.yaml
     code:
       - internal/layout/scalar_plan.go
       - internal/ir/semantic/model.go
@@ -1068,11 +1068,11 @@ integrations:
       Existing backend limitations for complete method, property, event, and
       generic lowering remain unchanged.
     rules:
-      - rules/impl.txt
-      - rules/struct.txt
-      - rules/generics.txt
-      - rules/grammar.md
-      - rules/names_scopes_visibility.md
+      - rules/declarations/impl.txt
+      - rules/declarations/struct.txt
+      - rules/declarations/generics.txt
+      - rules/foundations/grammar.md
+      - rules/foundations/names_scopes_visibility.md
     code:
       - internal/lexer/lexer.go
       - internal/ast/ast.go
@@ -1124,19 +1124,19 @@ integrations:
       ABI semantics, or lowering. Interprocedural fixed-point propagation and
       advisory narrowing policy remain future work.
     rules:
-      - rules/parameter_usage_analysis.md
-      - rules/ownership.md
-      - rules/copy_move.md
-      - rules/borrowing.txt
-      - rules/lifetime_analysis.txt
-      - rules/escape_analysis.md
-      - rules/closure_analysis.md
-      - rules/call_graph.md
-      - rules/storage.md
-      - rules/layout.md
-      - rules/collections.md
-      - rules/ffi.txt
-      - rules/effect_analysis.md
+      - rules/analysis/parameter_usage_analysis.md
+      - rules/memory/ownership.md
+      - rules/memory/copy_move.md
+      - rules/memory/borrowing.txt
+      - rules/memory/lifetime_analysis.txt
+      - rules/analysis/escape_analysis.md
+      - rules/analysis/closure_analysis.md
+      - rules/analysis/call_graph.md
+      - rules/memory/storage.md
+      - rules/memory/layout.md
+      - rules/collections/collections.md
+      - rules/platform/ffi.txt
+      - rules/analysis/effect_analysis.md
     code:
       - internal/sema/analyzer.go
       - internal/sema/place.go
@@ -1191,19 +1191,19 @@ integrations:
       contract facts to detect common human mistakes without redefining the
       normative semantics owned by those analyses.
     rules:
-      - rules/pitfall_analysis.md
-      - rules/compiler_analysis.txt
-      - rules/call_graph.md
-      - rules/effect_analysis.md
-      - rules/ownership.md
-      - rules/borrowing.txt
-      - rules/lifetime_analysis.txt
-      - rules/escape_analysis.md
-      - rules/closure_analysis.md
-      - rules/storage.md
-      - rules/layout.md
-      - rules/collections.md
-      - rules/ffi.txt
+      - rules/analysis/pitfall_analysis.md
+      - rules/compiler/compiler_analysis.txt
+      - rules/analysis/call_graph.md
+      - rules/analysis/effect_analysis.md
+      - rules/memory/ownership.md
+      - rules/memory/borrowing.txt
+      - rules/memory/lifetime_analysis.txt
+      - rules/analysis/escape_analysis.md
+      - rules/analysis/closure_analysis.md
+      - rules/memory/storage.md
+      - rules/memory/layout.md
+      - rules/collections/collections.md
+      - rules/platform/ffi.txt
     code:
       - internal/sema/analyzer.go
       - internal/sema/place.go
@@ -1272,24 +1272,24 @@ integrations:
       domains, stack-budget proofs, incremental summaries, and LSP/tooling
       integration without changing storage origin or performing hidden promotion.
     rules:
-      - rules/stack_analysis.md
-      - rules/call_graph.md
-      - rules/compiler_analysis.txt
-      - rules/storage.md
-      - rules/layout.md
-      - rules/lifetime_analysis.txt
-      - rules/escape_analysis.md
-      - rules/closure_analysis.md
-      - rules/ownership.md
-      - rules/copy_move.md
-      - rules/borrowing.txt
-      - rules/destruction.txt
-      - rules/defer.txt
-      - rules/collections.md
-      - rules/ffi.txt
-      - rules/effect_analysis.md
-      - rules/projects.txt
-      - rules/lsp.md
+      - rules/analysis/stack_analysis.md
+      - rules/analysis/call_graph.md
+      - rules/compiler/compiler_analysis.txt
+      - rules/memory/storage.md
+      - rules/memory/layout.md
+      - rules/memory/lifetime_analysis.txt
+      - rules/analysis/escape_analysis.md
+      - rules/analysis/closure_analysis.md
+      - rules/memory/ownership.md
+      - rules/memory/copy_move.md
+      - rules/memory/borrowing.txt
+      - rules/memory/destruction.txt
+      - rules/control-flow/defer.txt
+      - rules/collections/collections.md
+      - rules/platform/ffi.txt
+      - rules/analysis/effect_analysis.md
+      - rules/projects/projects.txt
+      - rules/tooling/lsp.md
     remaining:
       - add canonical stack-bound representation distinguishing Exact, UpperBound, Unknown, and Unbounded results
       - add separate semantic and machine stack summary models without overwriting one analysis level with the other
@@ -1336,24 +1336,24 @@ integrations:
       progressive LSP refinement, and deterministic Valid/Invalid/Unproven root
       classification without duplicating the supporting analyses.
     rules:
-      - rules/isr_analysis.md
-      - rules/call_graph.md
-      - rules/compiler_analysis.txt
-      - rules/effect_analysis.md
-      - rules/stack_analysis.md
-      - rules/data_races.md
-      - rules/deadlock_analysis.md
-      - rules/closure_analysis.md
-      - rules/escape_analysis.md
-      - rules/lifetime_analysis.txt
-      - rules/storage.md
-      - rules/layout.md
-      - rules/ownership.md
-      - rules/borrowing.txt
-      - rules/ffi.txt
-      - rules/concurrency_memory_model.md
-      - rules/lsp.md
-      - rules/projects.txt
+      - rules/analysis/isr_analysis.md
+      - rules/analysis/call_graph.md
+      - rules/compiler/compiler_analysis.txt
+      - rules/analysis/effect_analysis.md
+      - rules/analysis/stack_analysis.md
+      - rules/analysis/data_races.md
+      - rules/analysis/deadlock_analysis.md
+      - rules/analysis/closure_analysis.md
+      - rules/analysis/escape_analysis.md
+      - rules/memory/lifetime_analysis.txt
+      - rules/memory/storage.md
+      - rules/memory/layout.md
+      - rules/memory/ownership.md
+      - rules/memory/borrowing.txt
+      - rules/platform/ffi.txt
+      - rules/concurrency/concurrency_memory_model.md
+      - rules/tooling/lsp.md
+      - rules/projects/projects.txt
     remaining:
       - add deterministic ISR-root discovery and resolved ISR-profile lookup from the active CompilationPlan and canonical platform/runtime execution model
       - keep ISR profile capabilities distinct from mandatory positive safety proofs such as bounded stack, race freedom, deadlock freedom, and foreign interrupt safety
@@ -1421,13 +1421,13 @@ integrations:
       dynamic failure-reason computation. General callable effect summaries and
       @noPanic validation remain outside this vertical slice.
     rules:
-      - rules/mlir-dialect-packages/sec-mlir-dialect_package9.md
-      - rules/mlir-dialect-packages/sec-mlir-dialect_package9.yaml
-      - rules/core-library.md
-      - rules/runtime_checks.md
-      - rules/effect_analysis.md
-      - rules/sec_mlir_dialect.md
-      - rules/sec_mlir_lowering.md
+      - rules/mlir/packages/sec-mlir-dialect_package9.md
+      - rules/mlir/packages/sec-mlir-dialect_package9.yaml
+      - rules/library/core-library.md
+      - rules/errors/runtime_checks.md
+      - rules/analysis/effect_analysis.md
+      - rules/mlir/sec_mlir_dialect.md
+      - rules/mlir/sec_mlir_lowering.md
     code:
       - internal/parser/expression.go
       - internal/sema/types.go
@@ -1489,11 +1489,11 @@ integrations:
       Semantic IR Result discrimination and ordered local handler CFG to Sec
       MLIR schema 6 operations, provenance, and dedicated guard verifiers.
     rules:
-      - rules/mlir-dialect-packages/sec-mlir-dialect_package10.md
-      - rules/mlir-dialect-packages/sec-mlir-dialect_package10.yaml
-      - rules/sec_mlir_dialect.md
-      - rules/sec_mlir_lowering.md
-      - rules/semantic_ir.txt
+      - rules/mlir/packages/sec-mlir-dialect_package10.md
+      - rules/mlir/packages/sec-mlir-dialect_package10.yaml
+      - rules/mlir/sec_mlir_dialect.md
+      - rules/mlir/sec_mlir_lowering.md
+      - rules/compiler/semantic_ir.txt
     code:
       - internal/sema/analyzer.go
       - internal/sema/semantic_facts.go
@@ -1562,14 +1562,14 @@ integrations:
       immutable Sema facts through Semantic IR into verified high-level MLIR
       without selecting runtime representation or physical union layout.
     rules:
-      - rules/mlir-dialect-packages/sec-mlir-dialect_package11.md
-      - rules/mlir-dialect-packages/sec-mlir-dialect_package11.yaml
-      - rules/semantic_ir.txt
-      - rules/sec_semantic_ir_enum_union_v1.md
-      - rules/sec_mlir_dialect.md
-      - rules/sec_mlir_lowering.md
-      - rules/copy_move.md
-      - rules/layout.md
+      - rules/mlir/packages/sec-mlir-dialect_package11.md
+      - rules/mlir/packages/sec-mlir-dialect_package11.yaml
+      - rules/compiler/semantic_ir.txt
+      - rules/mlir/semantic-ir/sec_semantic_ir_enum_union_v1.md
+      - rules/mlir/sec_mlir_dialect.md
+      - rules/mlir/sec_mlir_lowering.md
+      - rules/memory/copy_move.md
+      - rules/memory/layout.md
     code:
       - internal/sema/analyzer.go
       - internal/sema/semantic_facts.go
@@ -1637,16 +1637,16 @@ integrations:
       ownership operations in Semantic IR and backend ownership verification
       remain deferred.
     rules:
-      - rules/copy_move.md
-      - rules/ownership.md
-      - rules/borrowing.txt
-      - rules/destruction.txt
-      - rules/lifetime_analysis.txt
-      - rules/collections.md
-      - rules/semantic_ir.txt
-      - rules/sec_mlir.md
-      - rules/formatter.md
-      - rules/lsp.md
+      - rules/memory/copy_move.md
+      - rules/memory/ownership.md
+      - rules/memory/borrowing.txt
+      - rules/memory/destruction.txt
+      - rules/memory/lifetime_analysis.txt
+      - rules/collections/collections.md
+      - rules/compiler/semantic_ir.txt
+      - rules/mlir/sec_mlir.md
+      - rules/tooling/formatter.md
+      - rules/tooling/lsp.md
     code:
       - internal/ast/ast.go
       - internal/lexer/lexer.go
@@ -1712,14 +1712,14 @@ integrations:
       Records the current lexer, parser, formatter, diagnostic, and LSP
       implementation baseline for the normative lexical structure rules.
     rules:
-      - rules/lexical_structure.md
-      - rules/grammar.md
-      - rules/attributes.md
-      - rules/operators.md
-      - rules/formatter.md
-      - rules/lsp.md
-      - rules/diagnostics.txt
-      - rules/parser_recovery.md
+      - rules/foundations/lexical_structure.md
+      - rules/foundations/grammar.md
+      - rules/foundations/attributes.md
+      - rules/foundations/operators.md
+      - rules/tooling/formatter.md
+      - rules/tooling/lsp.md
+      - rules/tooling/diagnostics.txt
+      - rules/compiler/parser_recovery.md
     code:
       - internal/lexer/lexer.go
       - internal/parser
@@ -1807,7 +1807,7 @@ integrations:
       - documentation-comment attachment in parser and AST
       - dedicated lexical tests for every invalid category
       - stable lexer diagnostic IDs for all categories
-      - formatter and complete LSP support for all contextual classifications in rules/lexical_structure.md
+      - formatter and complete LSP support for all contextual classifications in rules/foundations/lexical_structure.md
       - remove or repurpose the existing unused BYTES token because it does not represent a Sec 0.1 source feature
 
   - id: sema.data-race-analysis
@@ -1820,23 +1820,23 @@ integrations:
       contexts, synchronization, happens-before reasoning, bounded race
       candidate pairing, diagnostics, and incremental LSP refinement.
     rules:
-      - rules/data_races.md
-      - rules/concurrency_memory_model.md
-      - rules/call_graph.md
-      - rules/compiler_analysis.txt
-      - rules/storage.md
-      - rules/layout.md
-      - rules/lifetime_analysis.txt
-      - rules/escape_analysis.md
-      - rules/closure_analysis.md
-      - rules/ownership.md
-      - rules/borrowing.txt
-      - rules/copy_move.md
-      - rules/collections.md
-      - rules/effect_analysis.md
-      - rules/ffi.txt
-      - rules/lsp.md
-      - rules/projects.txt
+      - rules/analysis/data_races.md
+      - rules/concurrency/concurrency_memory_model.md
+      - rules/analysis/call_graph.md
+      - rules/compiler/compiler_analysis.txt
+      - rules/memory/storage.md
+      - rules/memory/layout.md
+      - rules/memory/lifetime_analysis.txt
+      - rules/analysis/escape_analysis.md
+      - rules/analysis/closure_analysis.md
+      - rules/memory/ownership.md
+      - rules/memory/borrowing.txt
+      - rules/memory/copy_move.md
+      - rules/collections/collections.md
+      - rules/analysis/effect_analysis.md
+      - rules/platform/ffi.txt
+      - rules/tooling/lsp.md
+      - rules/projects/projects.txt
     remaining:
       - add canonical semantic memory-access events carrying Place/provenance, access kind, execution context, atomicity, and source location
       - consume canonical Place/provenance rather than coarse variable identity so fields, constant indices, dynamic indices, slices, and disjoint backing ranges retain precision
@@ -1901,14 +1901,14 @@ integrations:
       representation has subsequently evolved to Package 9 schema v5 typed
       reasons; Package 8 owns Arith lowering and signless normalization.
     rules:
-      - rules/mlir-dialect-packages/sec-mlir-dialect_package7.md
-      - rules/mlir-dialect-packages/sec-mlir-dialect_package7.yaml
-      - rules/operators.md
-      - rules/runtime_checks.md
-      - rules/semantic_ir.txt
-      - rules/sec_mlir.md
-      - rules/sec_mlir_dialect.md
-      - rules/sec_mlir_lowering.md
+      - rules/mlir/packages/sec-mlir-dialect_package7.md
+      - rules/mlir/packages/sec-mlir-dialect_package7.yaml
+      - rules/foundations/operators.md
+      - rules/errors/runtime_checks.md
+      - rules/compiler/semantic_ir.txt
+      - rules/mlir/sec_mlir.md
+      - rules/mlir/sec_mlir_dialect.md
+      - rules/mlir/sec_mlir_lowering.md
     code:
       - internal/sema/semantic_facts.go
       - internal/sema/analyzer.go
@@ -1991,10 +1991,10 @@ integrations:
       failure flags, Package 9 typed reasons, failure CFG, scalar provenance,
       nominal identity, and foreign-call boundaries.
     rules:
-      - rules/sec_mlir_lowering.md
-      - rules/sec_mlir_dialect.md
-      - rules/mlir-dialect-packages/sec-mlir-dialect_package8.md
-      - rules/mlir-dialect-packages/sec-mlir-dialect_package8.yaml
+      - rules/mlir/sec_mlir_lowering.md
+      - rules/mlir/sec_mlir_dialect.md
+      - rules/mlir/packages/sec-mlir-dialect_package8.md
+      - rules/mlir/packages/sec-mlir-dialect_package8.yaml
     code:
       - internal/lowering/secmlir/emitter.go
       - mlir/include/sec/Analysis/Passes.h
@@ -2047,11 +2047,11 @@ integrations:
     audited: "2026-08-11"
     summary: >-
       Tracks implemented core type syntax and semantics migrated from the
-      retired types.txt rulebook under the canonical rules/types.md contract.
+      retired types.txt rulebook under the canonical rules/types/types.md contract.
     rules:
-      - rules/types.md
-      - rules/default_values.md
-      - rules/contracts.md
+      - rules/types/types.md
+      - rules/types/default_values.md
+      - rules/types/contracts.md
     code:
       - internal/lexer/lexer.go
       - internal/parser/parser.go
@@ -2082,7 +2082,7 @@ integrations:
     remaining:
       - implement the canonical any top-type representation, assignability, narrowing, conversion, diagnostics, and lowering model
       - finish compiler-known lowercase-name reservation and contextual set handling consistently across parser, Sema, formatter, LSP, and TextMate grammar
-      - validate the complete compiler-known type inventory, generic and const-argument arities, nominal identity, assignability, and conversion matrix against rules/types.md
+      - validate the complete compiler-known type inventory, generic and const-argument arities, nominal identity, assignability, and conversion matrix against rules/types/types.md
       - complete list, map, set, vector, matrix, tensor, tensor_view, Shape, Strides, TensorLayout, and MemorySpace semantics and lowering under their owning collection and layout integrations
       - complete fixed-array, owning dynamic-array, borrowed-slice, reference, and defaultability integration under frontend.collections, sema.place-analysis, and frontend.default-values
       - finish Result, Option, Task, Thread, interface, union, register, unit, and other nominal-core representation/lowering audits without deriving source identity from backend layout
@@ -2106,8 +2106,8 @@ integrations:
       separately owned bootstrap lexer. Bootstrap-native and cross-repository
       conformance tests remain.
     rules:
-      - rules/types.md
-      - rules/lexical_structure.md
+      - rules/types/types.md
+      - rules/foundations/lexical_structure.md
     code:
       - internal/lexer/lexer.go
       - internal/ast/ast.go
@@ -2153,9 +2153,9 @@ integrations:
       opaque type identities requiring no import, without inventing temporal
       representation, operations, conversions, or defaults.
     rules:
-      - rules/types.md
-      - rules/lexical_structure.md
-      - rules/default_values.md
+      - rules/types/types.md
+      - rules/foundations/lexical_structure.md
+      - rules/types/default_values.md
     code:
       - internal/sema/types.go
       - cmd/lsp/main.go
@@ -2187,9 +2187,9 @@ integrations:
       storage, calls, and checked Arith lowering are implemented; remaining
       decimal/backend gaps are implementation gaps rather than future types.
     rules:
-      - rules/types.md
-      - rules/layout.md
-      - rules/sec_mlir_lowering.md
+      - rules/types/types.md
+      - rules/memory/layout.md
+      - rules/mlir/sec_mlir_lowering.md
     code:
       - internal/sema/types.go
       - internal/ir/semantic
@@ -2230,26 +2230,26 @@ integrations:
       witnesses, and incremental LSP/Deep tooling that distinguishes proven,
       potential, unknown, and failure-to-prove states.
     rules:
-      - rules/deadlock_analysis.md
-      - rules/concurrency_memory_model.md
-      - rules/data_races.md
-      - rules/call_graph.md
-      - rules/compiler_analysis.txt
-      - rules/storage.md
-      - rules/layout.md
-      - rules/lifetime_analysis.txt
-      - rules/escape_analysis.md
-      - rules/closure_analysis.md
-      - rules/ownership.md
-      - rules/borrowing.txt
-      - rules/copy_move.md
-      - rules/destruction.txt
-      - rules/defer.txt
-      - rules/collections.md
-      - rules/effect_analysis.md
-      - rules/ffi.txt
-      - rules/lsp.md
-      - rules/projects.txt
+      - rules/analysis/deadlock_analysis.md
+      - rules/concurrency/concurrency_memory_model.md
+      - rules/analysis/data_races.md
+      - rules/analysis/call_graph.md
+      - rules/compiler/compiler_analysis.txt
+      - rules/memory/storage.md
+      - rules/memory/layout.md
+      - rules/memory/lifetime_analysis.txt
+      - rules/analysis/escape_analysis.md
+      - rules/analysis/closure_analysis.md
+      - rules/memory/ownership.md
+      - rules/memory/borrowing.txt
+      - rules/memory/copy_move.md
+      - rules/memory/destruction.txt
+      - rules/control-flow/defer.txt
+      - rules/collections/collections.md
+      - rules/analysis/effect_analysis.md
+      - rules/platform/ffi.txt
+      - rules/tooling/lsp.md
+      - rules/projects/projects.txt
     remaining:
       - add canonical synchronization-resource identity using Place/provenance and resource semantics rather than resource names
       - preserve Same, Disjoint, MayAlias, and Unknown resource-identity relationships or equivalent canonical precision

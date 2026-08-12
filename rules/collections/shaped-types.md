@@ -1478,7 +1478,7 @@ rules_implementations.txt
 core-library.md
 formatter.md
 default_values.md
-language_philosophy.txt
+foundations/language_philosophy.md
 core/errors.sec
 stdlib numerical modules
 ```

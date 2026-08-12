@@ -18,7 +18,7 @@ package:
     while unresolved Sec semantics remain explicit.
   next_package: Target/data-layout-aware scalar representation lowering
 normative_update:
-  repository_path: rules/sec_mlir_lowering.md
+  repository_path: rules/mlir/sec_mlir_lowering.md
   supplied_file: sec_mlir_lowering_package5.md
   file_exists_at_sync_commit: false
   must_add_before_implementation: true
@@ -293,7 +293,7 @@ go_regression:
   legacy_paths_change: false
 acceptance:
 - Packages 1-4 remain green
-- rules/sec_mlir_lowering.md added
+- rules/mlir/sec_mlir_lowering.md added
 - schema remains v2
 - SecToCore library builds
 - pass registered
@@ -324,7 +324,7 @@ acceptance:
 completion_report:
 - repository HEAD
 - Packages 1-4 pre-status
-- rules/sec_mlir_lowering.md addition
+- rules/mlir/sec_mlir_lowering.md addition
 - files added
 - files modified
 - pass name/registration

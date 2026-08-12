@@ -23,18 +23,18 @@ package:
   next_package: Floating-Point Semantic Operations and Arith Lowering
 normative_updates:
 - repository_paths:
-  - rules/arena.md
-  - rules/allocation.txt
-  - rules/storage.md
-  - rules/reference_model.md
-  - rules/core-library.md
+  - rules/memory/arena.md
+  - rules/memory/allocation.txt
+  - rules/memory/storage.md
+  - rules/memory/reference_model.md
+  - rules/library/core-library.md
   supplied_file: sec_arena_allocation_sync_package19.md
-- repository_path: rules/semantic_ir.txt
+- repository_path: rules/compiler/semantic_ir.txt
   supplied_file: sec_semantic_ir_arena_package19.md
-- repository_path: rules/sec_mlir_dialect.md
+- repository_path: rules/mlir/sec_mlir_dialect.md
   supplied_file: sec_mlir_dialect_package19.md
   schema_version: 15
-- repository_path: rules/sec_mlir_lowering.md
+- repository_path: rules/mlir/sec_mlir_lowering.md
   supplied_file: sec_mlir_lowering_package19.md
   version: 15
 wide_builtin_invariant:

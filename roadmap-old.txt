@@ -157,7 +157,7 @@ Questions to settle before implementation:
 
 Create:
 
-* rules/unions.txt
+* rules/declarations/unions.txt
 * union_valid.sec
 * union_invalid.sec
 
@@ -313,9 +313,9 @@ impl User {
 
 Create or update:
 
-* rules/impl.txt
+* rules/declarations/impl.txt
 * rules/methods.txt
-* rules/properties.txt
+* rules/declarations/properties.txt
 * impl_valid.sec
 * impl_invalid.sec
 * methods_valid.sec
@@ -543,7 +543,7 @@ constraints depend on interfaces.
 
 Create:
 
-* rules/interfaces.txt
+* rules/declarations/interfaces.txt
 * interface_valid.sec
 * interface_invalid.sec
 
@@ -617,7 +617,7 @@ Questions to settle:
 
 Create:
 
-* rules/generics.txt
+* rules/declarations/generics.txt
 * generics_valid.sec
 * generics_invalid.sec
 
@@ -739,9 +739,9 @@ Questions to settle:
 
 Create:
 
-* rules/references.txt
+* rules/memory/references.txt
 * rules/ownership.txt
-* rules/borrowing.txt
+* rules/memory/borrowing.txt
 * references_valid.sec
 * references_invalid.sec
 * ownership_valid.sec
@@ -816,7 +816,7 @@ Questions to settle:
 
 Create:
 
-* rules/spread.txt
+* rules/declarations/spread.txt
 * rules/variadic.txt
 * spread_valid.sec
 * spread_invalid.sec
@@ -950,7 +950,7 @@ Likely implementation phases:
 
 Create only after design work:
 
-* rules/tasks.txt
+* rules/concurrency/tasks.txt
 * rules/spawn.txt
 * rules/await.txt
 * spawn_valid.sec
@@ -1136,7 +1136,7 @@ expected.
 After defer:
 
 ```
-Discuss and write rules/unions.txt.
+Discuss and write rules/declarations/unions.txt.
 ```
 
 Then:

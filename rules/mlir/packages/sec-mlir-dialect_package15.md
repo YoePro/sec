@@ -50,28 +50,28 @@ conversion, physical pinning, physical epoch storage, or LLVM pointer lowering.
 Implementation follows:
 
 ```text
-rules/reference_model.md
-rules/references.txt
-rules/borrowing.txt
-rules/memory_model.md
-rules/lifetime_analysis.txt
-rules/storage.md
-rules/ownership.md
-rules/copy_move.md
-rules/runtime_checks.md
-rules/panic.md
-rules/raw_pointers.txt
-rules/collections.md
-rules/struct.txt
-rules/unions.txt
+rules/memory/reference_model.md
+rules/memory/references.txt
+rules/memory/borrowing.txt
+rules/memory/memory_model.md
+rules/memory/lifetime_analysis.txt
+rules/memory/storage.md
+rules/memory/ownership.md
+rules/memory/copy_move.md
+rules/errors/runtime_checks.md
+rules/errors/panic.md
+rules/memory/raw_pointers.txt
+rules/collections/collections.md
+rules/declarations/struct.txt
+rules/declarations/unions.txt
     ↓
-rules/semantic_ir.txt
+rules/compiler/semantic_ir.txt
     ↓
-rules/sec_mlir.md
+rules/mlir/sec_mlir.md
     ↓
-rules/sec_mlir_dialect.md
+rules/mlir/sec_mlir_dialect.md
     ↓
-rules/sec_mlir_lowering.md
+rules/mlir/sec_mlir_lowering.md
     ↓
 implementation package
     ↓
@@ -82,10 +82,10 @@ Before implementation:
 
 1. apply `sec_reference_sync_package15.md`;
 2. apply `sec_semantic_ir_place_reference_package15.md` to
-   `rules/semantic_ir.txt`;
-3. update `rules/sec_mlir_dialect.md` with
+   `rules/compiler/semantic_ir.txt`;
+3. update `rules/mlir/sec_mlir_dialect.md` with
    `sec_mlir_dialect_package15.md`;
-4. update `rules/sec_mlir_lowering.md` with
+4. update `rules/mlir/sec_mlir_lowering.md` with
    `sec_mlir_lowering_package15.md`.
 
 No new source syntax is introduced.
@@ -119,13 +119,13 @@ must report the new HEAD and verify semantic equivalence.
 
 # 3. Canonical reference rulebook precedence
 
-`rules/reference_model.md` is the canonical Sec 0.1 reference model.
+`rules/memory/reference_model.md` is the canonical Sec 0.1 reference model.
 
 Older compact statements in:
 
 ```text
-rules/references.txt
-rules/runtime_checks.md
+rules/memory/references.txt
+rules/errors/runtime_checks.md
 ```
 
 must be interpreted consistently with it.

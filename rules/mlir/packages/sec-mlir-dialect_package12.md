@@ -49,21 +49,21 @@ payload extraction and physical enum/union lowering remain outside this package.
 Implementation follows:
 
 ```text
-rules/flowcontrol_match.txt
-rules/enums.txt
-rules/unions.txt
-rules/errorhandling.txt
-rules/copy_move.md
-rules/borrowing.txt
-rules/ownership.md
+rules/control-flow/flowcontrol_match.txt
+rules/declarations/enums.txt
+rules/declarations/unions.txt
+rules/errors/errorhandling.txt
+rules/memory/copy_move.md
+rules/memory/borrowing.txt
+rules/memory/ownership.md
     ↓
-rules/semantic_ir.txt
+rules/compiler/semantic_ir.txt
     ↓
-rules/sec_mlir.md
+rules/mlir/sec_mlir.md
     ↓
-rules/sec_mlir_dialect.md
+rules/mlir/sec_mlir_dialect.md
     ↓
-rules/sec_mlir_lowering.md
+rules/mlir/sec_mlir_lowering.md
     ↓
 implementation package
     ↓
@@ -73,10 +73,10 @@ implementation
 Before implementation:
 
 1. apply `sec_match_enum_domain_package12.md` to the normative match/enum rules;
-2. apply `sec_semantic_ir_match_package12.md` to `rules/semantic_ir.txt`;
-3. update `rules/sec_mlir_dialect.md` with
+2. apply `sec_semantic_ir_match_package12.md` to `rules/compiler/semantic_ir.txt`;
+3. update `rules/mlir/sec_mlir_dialect.md` with
    `sec_mlir_dialect_package12.md`;
-4. update `rules/sec_mlir_lowering.md` with
+4. update `rules/mlir/sec_mlir_lowering.md` with
    `sec_mlir_lowering_package12.md`.
 
 The enum-domain amendment is required before coding enum match lowering.

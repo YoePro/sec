@@ -57,41 +57,41 @@ manager, or final provider implementation.
 Implementation follows:
 
 ```text
-rules/arena.md
-rules/allocation.txt
-rules/storage.md
-rules/reference_model.md
-rules/layout.md
-rules/default_values.md
-rules/core-library.md
-rules/effect_analysis.md
-rules/call_graph.md
-rules/ownership.md
-rules/borrowing.txt
-rules/destruction.txt
-rules/panic.md
+rules/memory/arena.md
+rules/memory/allocation.txt
+rules/memory/storage.md
+rules/memory/reference_model.md
+rules/memory/layout.md
+rules/types/default_values.md
+rules/library/core-library.md
+rules/analysis/effect_analysis.md
+rules/analysis/call_graph.md
+rules/memory/ownership.md
+rules/memory/borrowing.txt
+rules/memory/destruction.txt
+rules/errors/panic.md
     ↓
 local P13-P18 normative amendments
     ↓
-rules/semantic_ir.txt
-rules/sec_mlir.md
-rules/sec_mlir_dialect.md
-rules/sec_mlir_lowering.md
+rules/compiler/semantic_ir.txt
+rules/mlir/sec_mlir.md
+rules/mlir/sec_mlir_dialect.md
+rules/mlir/sec_mlir_lowering.md
     ↓
 implementation package
     ↓
 implementation
 ```
 
-`rules/arena.md` is canonical for Arena-specific Sec 0.1 semantics.
+`rules/memory/arena.md` is canonical for Arena-specific Sec 0.1 semantics.
 
 Before implementation:
 
 1. apply `sec_arena_allocation_sync_package19.md`;
-2. apply `sec_semantic_ir_arena_package19.md` to `rules/semantic_ir.txt`;
-3. update `rules/sec_mlir_dialect.md` with
+2. apply `sec_semantic_ir_arena_package19.md` to `rules/compiler/semantic_ir.txt`;
+3. update `rules/mlir/sec_mlir_dialect.md` with
    `sec_mlir_dialect_package19.md`;
-4. update `rules/sec_mlir_lowering.md` with
+4. update `rules/mlir/sec_mlir_lowering.md` with
    `sec_mlir_lowering_package19.md`.
 
 No new source syntax is introduced.

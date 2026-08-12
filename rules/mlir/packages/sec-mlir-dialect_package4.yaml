@@ -17,7 +17,7 @@ package:
   next_package: Lower schema-v2 scalar/storage/call semantics toward lower standard
     MLIR
 normative_update:
-  repository_path: rules/sec_mlir_dialect.md
+  repository_path: rules/mlir/sec_mlir_dialect.md
   supplied_file: sec_mlir_dialect_package4.md
   must_update_before_implementation: true
 scope:
@@ -381,7 +381,7 @@ integration_tests:
   must_verify_with: sec-mlir-opt
 acceptance:
 - Packages 1-3 remain green
-- rules/sec_mlir_dialect.md updated to schema v2
+- rules/mlir/sec_mlir_dialect.md updated to schema v2
 - dialect marker 2 emitted
 - Semantic IR marker 1 emitted
 - all new semantic types implemented

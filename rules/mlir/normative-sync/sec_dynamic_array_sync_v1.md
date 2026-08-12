@@ -5,14 +5,14 @@
 Normative synchronization for:
 
 ```text
-rules/collections.md
-rules/default_values.md
-rules/copy_move.md
-rules/ownership.md
-rules/core-library.md
-rules/layout.md
-rules/storage.md
-rules/allocation.txt
+rules/collections/collections.md
+rules/types/default_values.md
+rules/memory/copy_move.md
+rules/memory/ownership.md
+rules/library/core-library.md
+rules/memory/layout.md
+rules/memory/storage.md
+rules/memory/allocation.txt
 ```
 
 Package:

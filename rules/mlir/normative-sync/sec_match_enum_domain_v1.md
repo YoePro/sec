@@ -5,8 +5,8 @@
 Normative amendment for:
 
 ```text
-rules/flowcontrol_match.txt
-rules/enums.txt
+rules/control-flow/flowcontrol_match.txt
+rules/declarations/enums.txt
 ```
 
 Package:
@@ -316,8 +316,8 @@ No hidden provenance bit is introduced.
 Update:
 
 ```text
-rules/flowcontrol_match.txt
-rules/enums.txt
+rules/control-flow/flowcontrol_match.txt
+rules/declarations/enums.txt
 Sema enum match coverage
 enum match tests
 manual examples derived from these rules

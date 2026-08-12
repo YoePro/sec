@@ -5,9 +5,9 @@
 Normative synchronization for:
 
 ```text
-rules/collections.md
-rules/runtime_checks.md
-rules/core-library.md
+rules/collections/collections.md
+rules/errors/runtime_checks.md
+rules/library/core-library.md
 ```
 
 Package:
@@ -29,13 +29,13 @@ canonical fixed-array Semantic IR is implemented.
 
 # 1. Fixed-array literal spread is current syntax
 
-`rules/collections.md` contains older initial-scope wording stating that array
+`rules/collections/collections.md` contains older initial-scope wording stating that array
 literals do not include spread.
 
 That statement is superseded by the dedicated newer:
 
 ```text
-rules/spread.txt
+rules/declarations/spread.txt
 ```
 
 which defines and marks implemented:
@@ -149,7 +149,7 @@ Multi-output builds validate each output independently.
 
 # 6. Canonical fixed-index fallible error
 
-`rules/runtime_checks.md` currently says bounds access produces:
+`rules/errors/runtime_checks.md` currently says bounds access produces:
 
 ```text
 BoundsError or the canonical equivalent

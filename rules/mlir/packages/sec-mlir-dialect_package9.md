@@ -40,21 +40,21 @@ Local `try { Err(...) => ... }` handlers are deliberately deferred.
 Implementation follows:
 
 ```text
-rules/runtime_checks.md
-rules/errorhandling.txt
-rules/operators.md
-rules/panic.md
-rules/core-library.md
-rules/effect_analysis.md
-rules/types.md
+rules/errors/runtime_checks.md
+rules/errors/errorhandling.txt
+rules/foundations/operators.md
+rules/errors/panic.md
+rules/library/core-library.md
+rules/analysis/effect_analysis.md
+rules/types/types.md
     ↓
-rules/semantic_ir.txt
+rules/compiler/semantic_ir.txt
     ↓
-rules/sec_mlir.md
+rules/mlir/sec_mlir.md
     ↓
-rules/sec_mlir_dialect.md
+rules/mlir/sec_mlir_dialect.md
     ↓
-rules/sec_mlir_lowering.md
+rules/mlir/sec_mlir_lowering.md
     ↓
 implementation package
     ↓
@@ -63,9 +63,9 @@ implementation
 
 Before implementation:
 
-1. update `rules/sec_mlir_dialect.md` with
+1. update `rules/mlir/sec_mlir_dialect.md` with
    `sec_mlir_dialect_package9.md`;
-2. update `rules/sec_mlir_lowering.md` with
+2. update `rules/mlir/sec_mlir_lowering.md` with
    `sec_mlir_lowering_package9.md`;
 3. apply the normative core error addition described by
    `sec_core_arithmetic_error_package9.md`.

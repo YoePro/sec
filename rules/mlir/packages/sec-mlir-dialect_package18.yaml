@@ -22,21 +22,21 @@ package:
   next_package: Allocation Context and Arena Semantic Lowering
 normative_updates:
 - repository_paths:
-  - rules/collections.md
-  - rules/default_values.md
-  - rules/copy_move.md
-  - rules/ownership.md
-  - rules/core-library.md
-  - rules/layout.md
-  - rules/storage.md
-  - rules/allocation.txt
+  - rules/collections/collections.md
+  - rules/types/default_values.md
+  - rules/memory/copy_move.md
+  - rules/memory/ownership.md
+  - rules/library/core-library.md
+  - rules/memory/layout.md
+  - rules/memory/storage.md
+  - rules/memory/allocation.txt
   supplied_file: sec_dynamic_array_sync_package18.md
-- repository_path: rules/semantic_ir.txt
+- repository_path: rules/compiler/semantic_ir.txt
   supplied_file: sec_semantic_ir_dynamic_array_package18.md
-- repository_path: rules/sec_mlir_dialect.md
+- repository_path: rules/mlir/sec_mlir_dialect.md
   supplied_file: sec_mlir_dialect_package18.md
   schema_version: 14
-- repository_path: rules/sec_mlir_lowering.md
+- repository_path: rules/mlir/sec_mlir_lowering.md
   supplied_file: sec_mlir_lowering_package18.md
   version: 14
 wide_builtin_invariant:

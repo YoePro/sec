@@ -65,24 +65,24 @@ aggregate ABI lowering
 Implementation follows:
 
 ```text
-rules/collections.md
-rules/spread.txt
-rules/default_values.md
-rules/runtime_checks.md
-rules/core-library.md
-rules/operators.md
-rules/layout.md
-rules/copy_move.md
-rules/ownership.md
-rules/destruction.txt
+rules/collections/collections.md
+rules/declarations/spread.txt
+rules/types/default_values.md
+rules/errors/runtime_checks.md
+rules/library/core-library.md
+rules/foundations/operators.md
+rules/memory/layout.md
+rules/memory/copy_move.md
+rules/memory/ownership.md
+rules/memory/destruction.txt
     ↓
-rules/semantic_ir.txt
+rules/compiler/semantic_ir.txt
     ↓
-rules/sec_mlir.md
+rules/mlir/sec_mlir.md
     ↓
-rules/sec_mlir_dialect.md
+rules/mlir/sec_mlir_dialect.md
     ↓
-rules/sec_mlir_lowering.md
+rules/mlir/sec_mlir_lowering.md
     ↓
 implementation package
     ↓
@@ -93,10 +93,10 @@ Before implementation:
 
 1. apply `sec_fixed_array_sync_package14.md`;
 2. apply `sec_semantic_ir_fixed_array_package14.md` to
-   `rules/semantic_ir.txt`;
-3. update `rules/sec_mlir_dialect.md` with
+   `rules/compiler/semantic_ir.txt`;
+3. update `rules/mlir/sec_mlir_dialect.md` with
    `sec_mlir_dialect_package14.md`;
-4. update `rules/sec_mlir_lowering.md` with
+4. update `rules/mlir/sec_mlir_lowering.md` with
    `sec_mlir_lowering_package14.md`.
 
 No new source syntax is introduced.
@@ -135,13 +135,13 @@ continuing.
 
 # 3. Mandatory rule synchronization: array literal spread
 
-`rules/collections.md` still contains older wording saying:
+`rules/collections/collections.md` still contains older wording saying:
 
 ```text
 No spread ... is included in the initial implementation.
 ```
 
-The newer dedicated `rules/spread.txt` explicitly defines and marks implemented:
+The newer dedicated `rules/declarations/spread.txt` explicitly defines and marks implemented:
 
 ```text
 fixed-size array spread in array literals
@@ -160,7 +160,7 @@ P14 must not regress accepted fixed-array literal spread.
 
 # 4. Mandatory rule synchronization: index error type
 
-`rules/runtime_checks.md` describes fallible bounds access as producing:
+`rules/errors/runtime_checks.md` describes fallible bounds access as producing:
 
 ```text
 BoundsError or the canonical equivalent

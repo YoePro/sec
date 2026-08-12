@@ -108,15 +108,15 @@ rules_implementations.txt - Written
 
 --- From Codex:
 Skapat:
-rules/threads.md
-rules/processes.txt
-rules/scheduling.md
-rules/cancellation.md
-rules/blocking.md
-rules/structured_concurrency.md
-rules/transferability.md
-rules/data_races.md
-rules/deadlock_analysis.md
-rules/concurrency_runtime_model.md
-rules/thread_local.md
-rules/discard.md
+rules/concurrency/threads.md
+rules/concurrency/processes.txt
+rules/concurrency/scheduling.md
+rules/concurrency/cancellation.md
+rules/concurrency/blocking.md
+rules/concurrency/structured_concurrency.md
+rules/memory/transferability.md
+rules/analysis/data_races.md
+rules/analysis/deadlock_analysis.md
+rules/concurrency/concurrency_runtime_model.md
+rules/concurrency/thread_local.md
+rules/control-flow/discard.md

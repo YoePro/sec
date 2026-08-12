@@ -4582,14 +4582,14 @@ Planned files remain references to future canonical closure work.
 Add:
 
 ```text
-rules/grammar.md
+rules/foundations/grammar.md
 ```
 
 Update:
 
 ```text
 language-rulebook-status.md
-rules/rules_implementations.txt
+rules/compiler/rules_implementations.txt
 ```
 
 Mark `grammar.md` as Written.

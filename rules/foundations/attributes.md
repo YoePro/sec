@@ -2640,14 +2640,14 @@ rules_implementations.txt
 Add:
 
 ```text
-rules/attributes.md
+rules/foundations/attributes.md
 ```
 
 Update:
 
 ```text
 language-rulebook-status.md
-rules/rules_implementations.txt
+rules/compiler/rules_implementations.txt
 ```
 
 Mark the rulebook Written.

@@ -40,20 +40,20 @@ General `match` CFG lowering is Package 12.
 Implementation follows:
 
 ```text
-rules/enums.txt
-rules/unions.txt
-rules/layout.md
-rules/errorhandling.txt
-rules/destruction.txt
-rules/types.md
+rules/declarations/enums.txt
+rules/declarations/unions.txt
+rules/memory/layout.md
+rules/errors/errorhandling.txt
+rules/memory/destruction.txt
+rules/types/types.md
     ↓
-rules/semantic_ir.txt
+rules/compiler/semantic_ir.txt
     ↓
-rules/sec_mlir.md
+rules/mlir/sec_mlir.md
     ↓
-rules/sec_mlir_dialect.md
+rules/mlir/sec_mlir_dialect.md
     ↓
-rules/sec_mlir_lowering.md
+rules/mlir/sec_mlir_lowering.md
     ↓
 implementation package
     ↓
@@ -64,9 +64,9 @@ Before implementation:
 
 1. apply the Semantic IR amendment described by
    `sec_semantic_ir_enum_union_package11.md`;
-2. update `rules/sec_mlir_dialect.md` with
+2. update `rules/mlir/sec_mlir_dialect.md` with
    `sec_mlir_dialect_package11.md`;
-3. update `rules/sec_mlir_lowering.md` with
+3. update `rules/mlir/sec_mlir_lowering.md` with
    `sec_mlir_lowering_package11.md`.
 
 No source-language grammar change is introduced.
@@ -206,7 +206,7 @@ source location
 
 # 7. Enum underlying representation
 
-Canonical enum native layout follows `rules/layout.md`.
+Canonical enum native layout follows `rules/memory/layout.md`.
 
 A fieldless enum uses exactly the layout of its resolved underlying integer type.
 
@@ -1561,7 +1561,7 @@ No special whitelist of ArithmeticError variants remains in the handler engine.
 
 P11 provides generic union variant test/projection primitives.
 
-However `rules/errorhandling.txt` currently defines the initial specific local
+However `rules/errors/errorhandling.txt` currently defines the initial specific local
 error pattern in terms of a qualified error value and specifically describes
 static exhaustiveness for enum error types.
 

@@ -1223,7 +1223,7 @@ This rulebook must be synchronized with:
 
 ```text
 core-library.md
-language_philosophy.txt
+foundations/language_philosophy.md
 language-rulebook-status.md
 names_scopes_visibility.md
 types.md

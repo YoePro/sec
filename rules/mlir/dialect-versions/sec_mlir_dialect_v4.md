@@ -9,12 +9,12 @@ Current dialect schema version: `4`
 This document is subordinate to:
 
 ```text
-rules/operators.md
-rules/runtime_checks.md
-rules/types.md
-rules/layout.md
-rules/semantic_ir.txt
-rules/sec_mlir.md
+rules/foundations/operators.md
+rules/errors/runtime_checks.md
+rules/types/types.md
+rules/memory/layout.md
+rules/compiler/semantic_ir.txt
+rules/mlir/sec_mlir.md
 ```
 
 It defines representation and verifier obligations.

@@ -3278,7 +3278,7 @@ refactoring output
 
 Preserve all current formatter tests.
 
-The formatter-rulebook filename migration to `rules/formatter.md` is complete.
+The formatter-rulebook filename migration to `rules/tooling/formatter.md` is complete.
 
 ---
 

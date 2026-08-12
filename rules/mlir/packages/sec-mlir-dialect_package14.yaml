@@ -17,21 +17,21 @@ package:
   next_package: Safe Place and Reference Semantic Core
 normative_updates:
 - repository_paths:
-  - rules/collections.md
-  - rules/runtime_checks.md
-  - rules/core-library.md
+  - rules/collections/collections.md
+  - rules/errors/runtime_checks.md
+  - rules/library/core-library.md
   supplied_file: sec_fixed_array_sync_package14.md
-- repository_path: rules/semantic_ir.txt
+- repository_path: rules/compiler/semantic_ir.txt
   supplied_file: sec_semantic_ir_fixed_array_package14.md
-- repository_path: rules/sec_mlir_dialect.md
+- repository_path: rules/mlir/sec_mlir_dialect.md
   supplied_file: sec_mlir_dialect_package14.md
   schema_version: 10
-- repository_path: rules/sec_mlir_lowering.md
+- repository_path: rules/mlir/sec_mlir_lowering.md
   supplied_file: sec_mlir_lowering_package14.md
   version: 10
 rule_reconciliation:
   array_literal_spread:
-    canonical_source: rules/spread.txt
+    canonical_source: rules/declarations/spread.txt
     status: implemented/current
     stale_no_spread_wording: remove/synchronize
   fixed_index_error:

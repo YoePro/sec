@@ -16,16 +16,16 @@ package:
   next_package: Struct Semantic Value Representation
 normative_updates:
 - repository_paths:
-  - rules/flowcontrol_match.txt
-  - rules/enums.txt
+  - rules/control-flow/flowcontrol_match.txt
+  - rules/declarations/enums.txt
   supplied_file: sec_match_enum_domain_package12.md
   purpose: Resolve enum alias/unnamed-value match-domain inconsistency.
-- repository_path: rules/semantic_ir.txt
+- repository_path: rules/compiler/semantic_ir.txt
   supplied_file: sec_semantic_ir_match_package12.md
-- repository_path: rules/sec_mlir_dialect.md
+- repository_path: rules/mlir/sec_mlir_dialect.md
   supplied_file: sec_mlir_dialect_package12.md
   schema_version: 8
-- repository_path: rules/sec_mlir_lowering.md
+- repository_path: rules/mlir/sec_mlir_lowering.md
   supplied_file: sec_mlir_lowering_package12.md
   version: 8
 wide_builtin_invariant:

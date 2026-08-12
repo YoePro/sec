@@ -5,7 +5,7 @@
 Apply this normative addition to:
 
 ```text
-rules/core-library.md
+rules/library/core-library.md
 ```
 
 The purpose is to close the current mismatch where `runtime_checks.md` defines

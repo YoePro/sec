@@ -10,11 +10,11 @@ This document is subordinate to:
 
 ```text
 all applicable Sec language/domain rulebooks
-rules/layout.md
-rules/types.md
-rules/semantic_ir.txt
-rules/sec_mlir.md
-rules/sec_mlir_dialect.md
+rules/memory/layout.md
+rules/types/types.md
+rules/compiler/semantic_ir.txt
+rules/mlir/sec_mlir.md
+rules/mlir/sec_mlir_dialect.md
 ```
 
 It defines when resolved Sec MLIR semantics may be discharged into lower MLIR.

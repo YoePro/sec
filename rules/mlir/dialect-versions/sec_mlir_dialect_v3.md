@@ -10,10 +10,10 @@ This document is subordinate to:
 
 ```text
 all applicable Sec language/domain rulebooks
-rules/layout.md
-rules/types.md
-rules/semantic_ir.txt
-rules/sec_mlir.md
+rules/memory/layout.md
+rules/types/types.md
+rules/compiler/semantic_ir.txt
+rules/mlir/sec_mlir.md
 ```
 
 It defines representation and verifier obligations.
@@ -289,7 +289,7 @@ Schema version 3 does not define its physical runtime representation.
 
 Exact Sec decimal semantic value.
 
-Canonical lower physical components are defined by `rules/layout.md` as:
+Canonical lower physical components are defined by `rules/memory/layout.md` as:
 
 ```text
 signed 64-bit coefficient
@@ -376,7 +376,7 @@ addressable Sec bool storage is one byte
 
 Therefore no schema rule may equate canonical bool storage with `memref<i1>`.
 
-Storage lowering is governed by `rules/sec_mlir_lowering.md`.
+Storage lowering is governed by `rules/mlir/sec_mlir_lowering.md`.
 
 ---
 

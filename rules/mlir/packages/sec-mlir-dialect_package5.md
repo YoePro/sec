@@ -35,20 +35,20 @@ Implementation follows:
 ```text
 language/domain rulebooks
     ↓
-rules/semantic_ir.txt
+rules/compiler/semantic_ir.txt
     ↓
-rules/sec_mlir.md
+rules/mlir/sec_mlir.md
     ↓
-rules/sec_mlir_dialect.md
+rules/mlir/sec_mlir_dialect.md
     ↓
-rules/sec_mlir_lowering.md
+rules/mlir/sec_mlir_lowering.md
     ↓
 implementation package
     ↓
 implementation
 ```
 
-At repository sync `d48035c`, `rules/sec_mlir_lowering.md` does not exist.
+At repository sync `d48035c`, `rules/mlir/sec_mlir_lowering.md` does not exist.
 
 Before implementing Package 5, add the supplied normative file:
 
@@ -59,10 +59,10 @@ sec_mlir_lowering_package5.md
 to the repository as:
 
 ```text
-rules/sec_mlir_lowering.md
+rules/mlir/sec_mlir_lowering.md
 ```
 
-Package 5 does not require a change to `rules/sec_mlir_dialect.md` because it
+Package 5 does not require a change to `rules/mlir/sec_mlir_dialect.md` because it
 does not add or modify Sec dialect types or operations.
 
 ---
@@ -144,7 +144,7 @@ It is not yet "LLVM-ready MLIR".
 Implement:
 
 ```text
-rules/sec_mlir_lowering.md
+rules/mlir/sec_mlir_lowering.md
 SecToCore conversion library
 --sec-lower-trivial-core module pass
 partial dialect conversion
@@ -1725,7 +1725,7 @@ Package 5 is complete only when:
 
 ```text
 [ ] Packages 1-4 remain green
-[ ] rules/sec_mlir_lowering.md added from supplied normative file
+[ ] rules/mlir/sec_mlir_lowering.md added from supplied normative file
 [ ] Sec dialect schema remains version 2
 [ ] SecToCore conversion library builds
 [ ] --sec-lower-trivial-core is registered
@@ -1773,7 +1773,7 @@ Codex must report:
 ```text
 1. repository HEAD implemented against
 2. Packages 1-4 pre-status
-3. rules/sec_mlir_lowering.md addition
+3. rules/mlir/sec_mlir_lowering.md addition
 4. files added
 5. files modified
 6. pass name and registration method

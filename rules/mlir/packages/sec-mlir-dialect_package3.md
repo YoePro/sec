@@ -41,11 +41,11 @@ Implementation must follow the existing authority chain:
 ```text
 language/domain rulebooks
     ↓
-rules/semantic_ir.txt
+rules/compiler/semantic_ir.txt
     ↓
-rules/sec_mlir.md
+rules/mlir/sec_mlir.md
     ↓
-rules/sec_mlir_dialect.md
+rules/mlir/sec_mlir_dialect.md
     ↓
 implementation packages
     ↓
@@ -55,15 +55,15 @@ implementation
 Additional directly relevant rulebooks include:
 
 ```text
-rules/types.md
-rules/functions.txt
-rules/copy_move.md
-rules/ownership.txt
-rules/borrowing.txt
-rules/destruction.txt
-rules/ffi.txt
-rules/call_graph.md
-rules/effect_analysis.md
+rules/types/types.md
+rules/declarations/functions.txt
+rules/memory/copy_move.md
+rules/memory/ownership.md
+rules/memory/borrowing.txt
+rules/memory/destruction.txt
+rules/platform/ffi.txt
+rules/analysis/call_graph.md
+rules/analysis/effect_analysis.md
 ```
 
 When Package 3 deliberately supports only a subset, valid Sec source outside
@@ -2250,7 +2250,7 @@ using only the already-verifiable scalar subset from Packages 2 and 3.
 Package 4 should:
 
 ```text
-extend rules/sec_mlir_dialect.md before adding operations;
+extend rules/mlir/sec_mlir_dialect.md before adding operations;
 add the minimum Sec MLIR operation/type surface required by the bridge;
 import module/function/source provenance;
 import Package 2 scalar and named types;

@@ -11,9 +11,9 @@ This document is subordinate to:
 
 ```text
 all applicable Sec language/domain rulebooks
-rules/semantic_ir.txt
-rules/sec_mlir.md
-rules/sec_mlir_dialect.md
+rules/compiler/semantic_ir.txt
+rules/mlir/sec_mlir.md
+rules/mlir/sec_mlir_dialect.md
 ```
 
 It defines when already-resolved Sec MLIR semantics may be discharged into

@@ -49,22 +49,22 @@ offsets, aggregate ABI, non-trivial ownership transfer, properties or methods.
 Implementation follows:
 
 ```text
-rules/struct.txt
-rules/default_values.md
-rules/spread.txt
-rules/layout.md
-rules/copy_move.md
-rules/ownership.md
-rules/destruction.txt
-rules/properties.txt
+rules/declarations/struct.txt
+rules/types/default_values.md
+rules/declarations/spread.txt
+rules/memory/layout.md
+rules/memory/copy_move.md
+rules/memory/ownership.md
+rules/memory/destruction.txt
+rules/declarations/properties.txt
     ↓
-rules/semantic_ir.txt
+rules/compiler/semantic_ir.txt
     ↓
-rules/sec_mlir.md
+rules/mlir/sec_mlir.md
     ↓
-rules/sec_mlir_dialect.md
+rules/mlir/sec_mlir_dialect.md
     ↓
-rules/sec_mlir_lowering.md
+rules/mlir/sec_mlir_lowering.md
     ↓
 implementation package
     ↓
@@ -74,10 +74,10 @@ implementation
 Before implementation:
 
 1. apply `sec_semantic_ir_struct_package13.md` to
-   `rules/semantic_ir.txt`;
-2. update `rules/sec_mlir_dialect.md` with
+   `rules/compiler/semantic_ir.txt`;
+2. update `rules/mlir/sec_mlir_dialect.md` with
    `sec_mlir_dialect_package13.md`;
-3. update `rules/sec_mlir_lowering.md` with
+3. update `rules/mlir/sec_mlir_lowering.md` with
    `sec_mlir_lowering_package13.md`.
 
 No source-language syntax change is introduced.

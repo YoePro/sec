@@ -1363,7 +1363,7 @@ rules_implementations.txt
 Add:
 
 ```text
-rules/panic.md
+rules/errors/panic.md
 ```
 
 Update status and implementation trackers.

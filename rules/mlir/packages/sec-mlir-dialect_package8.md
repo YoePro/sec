@@ -41,18 +41,18 @@ Package 8 does not lower to LLVM.
 Implementation follows:
 
 ```text
-rules/operators.md
-rules/runtime_checks.md
-rules/types.md
-rules/layout.md
+rules/foundations/operators.md
+rules/errors/runtime_checks.md
+rules/types/types.md
+rules/memory/layout.md
     ↓
-rules/semantic_ir.txt
+rules/compiler/semantic_ir.txt
     ↓
-rules/sec_mlir.md
+rules/mlir/sec_mlir.md
     ↓
-rules/sec_mlir_dialect.md
+rules/mlir/sec_mlir_dialect.md
     ↓
-rules/sec_mlir_lowering.md
+rules/mlir/sec_mlir_lowering.md
     ↓
 implementation package
     ↓
@@ -62,7 +62,7 @@ implementation
 Before implementation, update:
 
 ```text
-rules/sec_mlir_lowering.md
+rules/mlir/sec_mlir_lowering.md
 ```
 
 with the supplied:
@@ -71,7 +71,7 @@ with the supplied:
 sec_mlir_lowering_package8.md
 ```
 
-No `rules/sec_mlir_dialect.md` update is required because Package 8 adds no new
+No `rules/mlir/sec_mlir_dialect.md` update is required because Package 8 adds no new
 Sec dialect type or operation.
 
 ---
@@ -1505,7 +1505,7 @@ Package 8 is complete only when:
 
 ```text
 [ ] previous regressions remain green
-[ ] rules/sec_mlir_lowering.md updated to v4
+[ ] rules/mlir/sec_mlir_lowering.md updated to v4
 [ ] Sec dialect schema remains v4
 [ ] Package 6 emits scalar provenance before representation erasure
 [ ] extern plain integer params/results retain sec.scalar_kind

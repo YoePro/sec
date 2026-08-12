@@ -14,13 +14,13 @@ package:
   package_boundary: Buildable and testable Sec dialect foundation; no compiler migration.
 authority:
 - rules/<applicable-domain-rulebooks>
-- rules/semantic_ir.txt
-- rules/sec_mlir.md
-- rules/sec_mlir_dialect.md
+- rules/compiler/semantic_ir.txt
+- rules/mlir/sec_mlir.md
+- rules/mlir/sec_mlir_dialect.md
 - implementation
 prerequisite_files:
   add:
-  - path: rules/sec_mlir_dialect.md
+  - path: rules/mlir/sec_mlir_dialect.md
     source_artifact: sec_mlir_dialect.md
     required: true
 scope:
@@ -207,7 +207,7 @@ tests:
   command: cmake --build build/sec-mlir --target check-sec-mlir
   expected: pass
 acceptance:
-- rules/sec_mlir_dialect.md added from supplied artifact
+- rules/mlir/sec_mlir_dialect.md added from supplied artifact
 - mlir project configures against external MLIR
 - TableGen generates dialect/type code
 - sec dialect registers
@@ -277,7 +277,7 @@ implementation_status:
   files_modified:
   - .gitignore
   - internal/mlir/toolchain.go
-  - rules/mlir-dialect-packages/sec-mlir-dialect_package1.yaml
+  - rules/mlir/packages/sec-mlir-dialect_package1.yaml
   toolchain:
     llvm_mlir_version: 24.0.0git
     build_kind: Optimized build with assertions

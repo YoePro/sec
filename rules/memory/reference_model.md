@@ -2092,7 +2092,7 @@ marked merged into `reference_model.md`.
 Add:
 
 ```text
-rules/reference_model.md
+rules/memory/reference_model.md
 ```
 
 Remove or merge the planned entry:
@@ -2105,7 +2105,7 @@ Update:
 
 ```text
 language-rulebook-status.md
-rules/rules_implementations.txt
+rules/compiler/rules_implementations.txt
 ```
 
 Mark `reference_model.md` Written.

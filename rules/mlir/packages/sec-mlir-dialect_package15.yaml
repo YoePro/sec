@@ -19,17 +19,17 @@ package:
   next_package: Slice Semantic Value Representation
 normative_updates:
 - repository_paths:
-  - rules/references.txt
-  - rules/runtime_checks.md
-  - rules/reference_model.md
-  - rules/panic.md
+  - rules/memory/references.txt
+  - rules/errors/runtime_checks.md
+  - rules/memory/reference_model.md
+  - rules/errors/panic.md
   supplied_file: sec_reference_sync_package15.md
-- repository_path: rules/semantic_ir.txt
+- repository_path: rules/compiler/semantic_ir.txt
   supplied_file: sec_semantic_ir_place_reference_package15.md
-- repository_path: rules/sec_mlir_dialect.md
+- repository_path: rules/mlir/sec_mlir_dialect.md
   supplied_file: sec_mlir_dialect_package15.md
   schema_version: 11
-- repository_path: rules/sec_mlir_lowering.md
+- repository_path: rules/mlir/sec_mlir_lowering.md
   supplied_file: sec_mlir_lowering_package15.md
   version: 11
 rule_sync:

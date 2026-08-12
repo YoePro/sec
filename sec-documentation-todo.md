@@ -85,7 +85,7 @@ Rationale:
 The final decision belongs in:
 
 ```text
-rules/compiler_known_members.md
+rules/compiler/compiler_known_members.md
 ```
 
 Possible compatibility handling for existing lowercase `.ptr` and `.len` must
@@ -132,7 +132,7 @@ The compiler-known/core boundary must be explicit.
 
 # Immediate work order
 
-## 1. Synchronize call-graph semantics into `rules/lsp.md`
+## 1. Synchronize call-graph semantics into `rules/tooling/lsp.md`
 
 Status:
 
@@ -164,12 +164,12 @@ Required work:
 Output:
 
 ```text
-updated rules/lsp.md
+updated rules/tooling/lsp.md
 ```
 
 ---
 
-## 2. Write `rules/compiler_known_members.md`
+## 2. Write `rules/compiler/compiler_known_members.md`
 
 Status:
 
@@ -316,25 +316,25 @@ Define:
 Synchronize with:
 
 ```text
-rules/core-library.md
-rules/stdlib.md
-rules/impl.txt
-rules/properties.txt
-rules/types.md
-rules/collections.md
-rules/reference_model.md
-rules/raw_pointers.txt
-rules/unsafe.md
-rules/ffi.txt
-rules/layout.md
-rules/semantic_ir.txt
-rules/effect_analysis.md
-rules/lsp.md
+rules/library/core-library.md
+rules/library/stdlib.md
+rules/declarations/impl.txt
+rules/declarations/properties.txt
+rules/types/types.md
+rules/collections/collections.md
+rules/memory/reference_model.md
+rules/memory/raw_pointers.txt
+rules/memory/unsafe.md
+rules/platform/ffi.txt
+rules/memory/layout.md
+rules/compiler/semantic_ir.txt
+rules/analysis/effect_analysis.md
+rules/tooling/lsp.md
 ```
 
 ---
 
-## 3. Design and write `rules/arena.md`
+## 3. Design and write `rules/memory/arena.md`
 
 Status:
 
@@ -392,22 +392,22 @@ The design discussion must resolve:
 Synchronize with:
 
 ```text
-rules/reference_model.md
-rules/allocation.txt
-rules/storage.md
-rules/layout.md
-rules/ownership.md
-rules/borrowing.txt
-rules/lifetime_analysis.txt
-rules/escape_analysis.md
-rules/destruction.txt
-rules/effect_analysis.md
-rules/call_graph.md
-rules/tasks.txt
-rules/threads.md
-rules/cancellation.md
-rules/panic.md
-rules/runtime_checks.md
+rules/memory/reference_model.md
+rules/memory/allocation.txt
+rules/memory/storage.md
+rules/memory/layout.md
+rules/memory/ownership.md
+rules/memory/borrowing.txt
+rules/memory/lifetime_analysis.txt
+rules/analysis/escape_analysis.md
+rules/memory/destruction.txt
+rules/analysis/effect_analysis.md
+rules/analysis/call_graph.md
+rules/concurrency/tasks.txt
+rules/concurrency/threads.md
+rules/concurrency/cancellation.md
+rules/errors/panic.md
+rules/errors/runtime_checks.md
 rules/target_profiles.md
 ```
 
@@ -419,7 +419,7 @@ Update:
 
 ```text
 language-rulebook-status.md
-rules/rules_implementations.txt
+rules/compiler/rules_implementations.txt
 ```
 
 Required status changes include:
@@ -1135,12 +1135,12 @@ Not a normative source.
 # Current next actions
 
 ```text
-[x] Synchronize call_graph.md into rules/lsp.md
-[ ] Write rules/compiler_known_members.md
-[ ] Design rules/arena.md
-[ ] Write rules/arena.md
+[x] Synchronize call_graph.md into rules/tooling/lsp.md
+[ ] Write rules/compiler/compiler_known_members.md
+[ ] Design rules/memory/arena.md
+[ ] Write rules/memory/arena.md
 [x] Synchronize language-rulebook-status.md
-[x] Synchronize rules/rules_implementations.txt
+[x] Synchronize rules/compiler/rules_implementations.txt
 [ ] Create documentation-closure-inventory.md
 [ ] Classify every remaining planned rulebook
 [ ] Complete required Sec 0.1 normative rulebooks in dependency order

@@ -1657,7 +1657,7 @@ regression coverage.
 Normative ISR-analysis semantics belong in:
 
 ```text
-rules/isr_analysis.md
+rules/analysis/isr_analysis.md
 ```
 
 Mutable implementation progress belongs in:

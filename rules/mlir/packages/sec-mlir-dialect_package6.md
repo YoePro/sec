@@ -31,16 +31,16 @@ Implementation follows:
 ```text
 language/domain rulebooks
     ↓
-rules/layout.md
-rules/types.md
+rules/memory/layout.md
+rules/types/types.md
     ↓
-rules/semantic_ir.txt
+rules/compiler/semantic_ir.txt
     ↓
-rules/sec_mlir.md
+rules/mlir/sec_mlir.md
     ↓
-rules/sec_mlir_dialect.md
+rules/mlir/sec_mlir_dialect.md
     ↓
-rules/sec_mlir_lowering.md
+rules/mlir/sec_mlir_lowering.md
     ↓
 implementation package
     ↓
@@ -49,9 +49,9 @@ implementation
 
 Before implementing Package 6:
 
-1. replace/update `rules/sec_mlir_dialect.md` with the supplied
+1. replace/update `rules/mlir/sec_mlir_dialect.md` with the supplied
    `sec_mlir_dialect_package6.md`;
-2. replace/update `rules/sec_mlir_lowering.md` with the supplied
+2. replace/update `rules/mlir/sec_mlir_lowering.md` with the supplied
    `sec_mlir_lowering_package6.md`.
 
 Package 6 must not alter higher-authority source-language semantics.
@@ -65,7 +65,7 @@ must now be corrected before further lowering.
 
 ## 2.1 Active wide scalar types
 
-Current `rules/types.md` states that these integer types are active:
+Current `rules/types/types.md` states that these integer types are active:
 
 ```text
 int128
@@ -83,7 +83,7 @@ This is a coverage correction, not a new source-language feature.
 
 ## 2.2 Addressable bool layout
 
-Current `rules/layout.md` states:
+Current `rules/memory/layout.md` states:
 
 ```text
 an addressable bool occupies one byte;
@@ -121,7 +121,7 @@ Do not continue with a `memref<i1>` canonical bool storage model.
 
 # 3. Relevant scalar layout rules
 
-Package 6 implements only scalar facts already fixed by `rules/layout.md`.
+Package 6 implements only scalar facts already fixed by `rules/memory/layout.md`.
 
 Canonical facts:
 
@@ -688,7 +688,7 @@ The scalar plan records native target endianness.
 Package 6 does not perform endian conversion.
 
 Ordinary scalar storage uses native target endianness according to
-`rules/layout.md`.
+`rules/memory/layout.md`.
 
 The value is retained so later explicit-layout, FFI, register and LLVM-lowering
 stages use the same target plan.
@@ -848,7 +848,7 @@ compiler.
 
 # 21. Package 5 mandatory bool-storage correction
 
-Update `rules/sec_mlir_lowering.md` and the Package 5 implementation.
+Update `rules/mlir/sec_mlir_lowering.md` and the Package 5 implementation.
 
 Remove `i1` from:
 
@@ -2268,8 +2268,8 @@ Package 6 is complete only when:
 
 ```text
 [ ] Packages 1-5 regressions are green after corrections
-[ ] rules/sec_mlir_dialect.md updated to schema v3
-[ ] rules/sec_mlir_lowering.md updated to lowering spec v2
+[ ] rules/mlir/sec_mlir_dialect.md updated to schema v3
+[ ] rules/mlir/sec_mlir_lowering.md updated to lowering spec v2
 [ ] Semantic IR v1 includes int128/int256/uint128/uint256/decimal128
 [ ] Package 2 type interning covers all active scalar types
 [ ] Package 3 supports wide fixed integers in trivial storage/calls

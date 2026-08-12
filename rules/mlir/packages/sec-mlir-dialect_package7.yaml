@@ -13,19 +13,19 @@ package:
     Sec MLIR with total checked operations and immediate deterministic failure edges.
   next_package: Checked Integer Arith Lowering
 authority:
-- rules/operators.md
-- rules/runtime_checks.md
-- rules/types.md
-- rules/layout.md
-- rules/semantic_ir.txt
-- rules/sec_mlir.md
-- rules/sec_mlir_dialect.md
-- rules/sec_mlir_lowering.md
+- rules/foundations/operators.md
+- rules/errors/runtime_checks.md
+- rules/types/types.md
+- rules/memory/layout.md
+- rules/compiler/semantic_ir.txt
+- rules/mlir/sec_mlir.md
+- rules/mlir/sec_mlir_dialect.md
+- rules/mlir/sec_mlir_lowering.md
 normative_updates:
-- repository_path: rules/sec_mlir_dialect.md
+- repository_path: rules/mlir/sec_mlir_dialect.md
   supplied_file: sec_mlir_dialect_package7.md
   schema_version: 4
-- repository_path: rules/sec_mlir_lowering.md
+- repository_path: rules/mlir/sec_mlir_lowering.md
   supplied_file: sec_mlir_lowering_package7.md
   lowering_version: 3
 wide_builtin_invariant:

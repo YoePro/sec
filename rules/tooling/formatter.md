@@ -2292,7 +2292,7 @@ rules_implementations.txt
 
 ## A.1 Rename the rulebook
 
-The filename migration is complete. `rules/formatter.md` is canonical,
+The filename migration is complete. `rules/tooling/formatter.md` is canonical,
 repository references are updated, and no duplicate canonical file remains.
 
 ## A.2 Preserve current tests

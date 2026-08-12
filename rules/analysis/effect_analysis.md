@@ -2578,14 +2578,14 @@ rules_implementations.txt
 Add:
 
 ```text
-rules/effect_analysis.md
+rules/analysis/effect_analysis.md
 ```
 
 Update:
 
 ```text
 language-rulebook-status.md
-rules/rules_implementations.txt
+rules/compiler/rules_implementations.txt
 ```
 
 Mark the rulebook Written.

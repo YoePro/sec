@@ -14,7 +14,7 @@ package:
   next_package: Arithmetic failure endpoint and fallible integer flow, or float semantic
     operations if the error model is not yet frozen
 normative_update:
-  repository_path: rules/sec_mlir_lowering.md
+  repository_path: rules/mlir/sec_mlir_lowering.md
   supplied_file: sec_mlir_lowering_package8.md
   version: 4
   dialect_rulebook_update_required: false

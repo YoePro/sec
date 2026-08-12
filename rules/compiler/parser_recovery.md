@@ -3525,14 +3525,14 @@ Implemented.
 Add:
 
 ```text
-rules/parser_recovery.md
+rules/compiler/parser_recovery.md
 ```
 
 Update:
 
 ```text
 language-rulebook-status.md
-rules/rules_implementations.txt
+rules/compiler/rules_implementations.txt
 ```
 
 Mark the rulebook as Written.

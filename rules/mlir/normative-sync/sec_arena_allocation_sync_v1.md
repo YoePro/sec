@@ -5,11 +5,11 @@
 Normative synchronization for:
 
 ```text
-rules/arena.md
-rules/allocation.txt
-rules/storage.md
-rules/reference_model.md
-rules/core-library.md
+rules/memory/arena.md
+rules/memory/allocation.txt
+rules/memory/storage.md
+rules/memory/reference_model.md
+rules/library/core-library.md
 ```
 
 Package:
@@ -30,7 +30,7 @@ Local predecessors:
 SEC-MLIR-P13 through SEC-MLIR-P18
 ```
 
-`rules/arena.md` is the canonical Sec 0.1 Arena rulebook.
+`rules/memory/arena.md` is the canonical Sec 0.1 Arena rulebook.
 
 This document locks the compiler choices needed by the new Semantic IR pipeline
 without changing the existing source semantics.

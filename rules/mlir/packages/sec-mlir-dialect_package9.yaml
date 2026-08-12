@@ -14,13 +14,13 @@ package:
     to Result[U, ArithmeticError].
   next_package: Local Try Handlers and Error Mapping
 normative_updates:
-- repository_path: rules/sec_mlir_dialect.md
+- repository_path: rules/mlir/sec_mlir_dialect.md
   supplied_file: sec_mlir_dialect_package9.md
   schema_version: 5
-- repository_path: rules/sec_mlir_lowering.md
+- repository_path: rules/mlir/sec_mlir_lowering.md
   supplied_file: sec_mlir_lowering_package9.md
   version: 5
-- repository_path: rules/core-library.md
+- repository_path: rules/library/core-library.md
   supplied_instruction: sec_core_arithmetic_error_package9.md
   adds: ArithmeticError
 arithmetic_error:

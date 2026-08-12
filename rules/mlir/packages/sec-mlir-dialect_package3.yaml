@@ -13,21 +13,21 @@ package:
   next_package: First Semantic IR to Sec MLIR bridge
 authority:
 - rules/<applicable-language-and-domain-rulebooks>
-- rules/semantic_ir.txt
-- rules/sec_mlir.md
-- rules/sec_mlir_dialect.md
+- rules/compiler/semantic_ir.txt
+- rules/mlir/sec_mlir.md
+- rules/mlir/sec_mlir_dialect.md
 - implementation package
 - implementation
 relevant_rules:
-- rules/types.md
-- rules/functions.txt
-- rules/copy_move.md
-- rules/ownership.txt
-- rules/borrowing.txt
-- rules/destruction.txt
-- rules/ffi.txt
-- rules/call_graph.md
-- rules/effect_analysis.md
+- rules/types/types.md
+- rules/declarations/functions.txt
+- rules/memory/copy_move.md
+- rules/memory/ownership.md
+- rules/memory/borrowing.txt
+- rules/memory/destruction.txt
+- rules/platform/ffi.txt
+- rules/analysis/call_graph.md
+- rules/analysis/effect_analysis.md
 scope:
   required:
   - StorageID
@@ -459,7 +459,7 @@ completion_report:
 package4:
   name: First Semantic IR to Sec MLIR bridge
   requirements:
-  - extend rules/sec_mlir_dialect.md before new dialect constructs
+  - extend rules/mlir/sec_mlir_dialect.md before new dialect constructs
   - minimum Sec MLIR surface for Package 2/3 subset
   - module/function/source provenance import
   - scalar and named type import

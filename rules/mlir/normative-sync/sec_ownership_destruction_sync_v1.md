@@ -5,12 +5,12 @@
 Normative synchronization for:
 
 ```text
-rules/ownership.md
-rules/copy_move.md
-rules/destruction.txt
-rules/defer.txt
-rules/discard.md
-rules/semantic_ir.txt
+rules/memory/ownership.md
+rules/memory/copy_move.md
+rules/memory/destruction.txt
+rules/control-flow/defer.txt
+rules/control-flow/discard.md
+rules/compiler/semantic_ir.txt
 ```
 
 Package:

@@ -191,7 +191,7 @@ match the implementation that already exists.
 
 Already completed after the older defer roadmap entry:
 
-rules/unions.txt
+rules/declarations/unions.txt
 
 union_valid.sec
 
@@ -389,7 +389,7 @@ Are union variants values, constructors or both?
 
 Create:
 
-rules/unions.txt
+rules/declarations/unions.txt
 
 union_valid.sec
 
@@ -609,11 +609,11 @@ impl User {
 
 Create or update:
 
-rules/impl.txt
+rules/declarations/impl.txt
 
 rules/methods.txt
 
-rules/properties.txt
+rules/declarations/properties.txt
 
 impl_valid.sec
 
@@ -936,7 +936,7 @@ Interfaces should be implemented before full generic constraints if generic cons
 
 Create:
 
-rules/interfaces.txt
+rules/declarations/interfaces.txt
 
 interface_valid.sec
 
@@ -1091,7 +1091,7 @@ LLVM/codegen support for monomorphized instances
 
 Create:
 
-rules/generics.txt
+rules/declarations/generics.txt
 
 generics_valid.sec
 
@@ -1215,11 +1215,11 @@ How are temporary values handled?
 
 Create:
 
-rules/references.txt
+rules/memory/references.txt
 
 rules/ownership.txt
 
-rules/borrowing.txt
+rules/memory/borrowing.txt
 
 references_valid.sec
 
@@ -1309,7 +1309,7 @@ Are duplicate explicit fields always errors?
 
 Create:
 
-rules/spread.txt
+rules/declarations/spread.txt
 
 rules/variadic.txt
 

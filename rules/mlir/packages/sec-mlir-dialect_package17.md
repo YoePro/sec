@@ -55,20 +55,20 @@ Sema resolves the transfer action and Semantic IR records it explicitly.
 Implementation follows:
 
 ```text
-rules/ownership.md
-rules/copy_move.md
-rules/destruction.txt
-rules/defer.txt
-rules/discard.md
-rules/borrowing.txt
-rules/errorhandling.txt
-rules/semantic_ir.txt
+rules/memory/ownership.md
+rules/memory/copy_move.md
+rules/memory/destruction.txt
+rules/control-flow/defer.txt
+rules/control-flow/discard.md
+rules/memory/borrowing.txt
+rules/errors/errorhandling.txt
+rules/compiler/semantic_ir.txt
     ↓
 local P13-P16 normative amendments
     ↓
-rules/sec_mlir.md
-rules/sec_mlir_dialect.md
-rules/sec_mlir_lowering.md
+rules/mlir/sec_mlir.md
+rules/mlir/sec_mlir_dialect.md
+rules/mlir/sec_mlir_lowering.md
     ↓
 implementation package
     ↓
@@ -79,10 +79,10 @@ Before implementation:
 
 1. apply `sec_ownership_destruction_sync_package17.md`;
 2. apply `sec_semantic_ir_ownership_destruction_package17.md` to
-   `rules/semantic_ir.txt`;
-3. update `rules/sec_mlir_dialect.md` with
+   `rules/compiler/semantic_ir.txt`;
+3. update `rules/mlir/sec_mlir_dialect.md` with
    `sec_mlir_dialect_package17.md`;
-4. update `rules/sec_mlir_lowering.md` with
+4. update `rules/mlir/sec_mlir_lowering.md` with
    `sec_mlir_lowering_package17.md`.
 
 No new source-level `move`, `copy`, `free`, `replace`, `take`, or destructor

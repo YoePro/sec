@@ -26,23 +26,23 @@ Implementation must follow the existing Sec authority chain:
 ```text
 language/domain rulebooks
     ↓
-rules/semantic_ir.txt
+rules/compiler/semantic_ir.txt
     ↓
-rules/sec_mlir.md
+rules/mlir/sec_mlir.md
     ↓
-rules/sec_mlir_dialect.md
+rules/mlir/sec_mlir_dialect.md
     ↓
 implementation
 ```
 
-At repository sync `d48035c`, `rules/sec_mlir.md` already requires
-`rules/sec_mlir_dialect.md`, but that detailed dialect rulebook is not present in
+At repository sync `d48035c`, `rules/mlir/sec_mlir.md` already requires
+`rules/mlir/sec_mlir_dialect.md`, but that detailed dialect rulebook is not present in
 the repository.
 
 Package 1 therefore includes adding the supplied `sec_mlir_dialect.md` as:
 
 ```text
-rules/sec_mlir_dialect.md
+rules/mlir/sec_mlir_dialect.md
 ```
 
 The supplied rulebook defines only the Package 1 surface and leaves later
@@ -87,7 +87,7 @@ internal/codegen/mlir/generator_test.go
 The current `internal/codegen/mlir/generator.go` is a legacy path. It emits
 LLVM-dialect MLIR directly from the AST.
 
-The target architecture defined by `rules/sec_mlir.md` is instead:
+The target architecture defined by `rules/mlir/sec_mlir.md` is instead:
 
 ```text
 Sec source
@@ -112,7 +112,7 @@ Package 1 must **not** rewrite `internal/codegen/mlir/generator.go`.
 Package 1 must **not** route normal compilation through the new dialect yet.
 
 The legacy path may remain operational during migration, as permitted by
-`rules/sec_mlir.md`.
+`rules/mlir/sec_mlir.md`.
 
 ---
 
@@ -873,7 +873,7 @@ Expected:
 Package 1 is complete only when all of the following are true:
 
 ```text
-[ ] rules/sec_mlir_dialect.md exists and matches the supplied Package 1 rulebook
+[ ] rules/mlir/sec_mlir_dialect.md exists and matches the supplied Package 1 rulebook
 [ ] mlir/ configures against an external MLIR installation/build
 [ ] TableGen generates Sec dialect/type code
 [ ] Sec dialect registers successfully

@@ -31,11 +31,11 @@ Implementation follows:
 ```text
 language/domain rulebooks
     ↓
-rules/semantic_ir.txt
+rules/compiler/semantic_ir.txt
     ↓
-rules/sec_mlir.md
+rules/mlir/sec_mlir.md
     ↓
-rules/sec_mlir_dialect.md
+rules/mlir/sec_mlir_dialect.md
     ↓
 implementation package
     ↓
@@ -46,7 +46,7 @@ Before implementing the new dialect constructs in this package, replace or
 update:
 
 ```text
-rules/sec_mlir_dialect.md
+rules/mlir/sec_mlir_dialect.md
 ```
 
 with the supplied normative file:
@@ -1235,7 +1235,7 @@ This is allowed only under these constraints:
 
 ```text
 the emitter consumes Semantic IR only;
-syntax is defined by rules/sec_mlir_dialect.md;
+syntax is defined by rules/mlir/sec_mlir_dialect.md;
 sec-mlir-opt parses and verifies the generated output;
 the textual emitter contains no source-language semantic analysis;
 tests cover every emitted operation/type;
@@ -2022,7 +2022,7 @@ Package 4 is complete only when:
 
 ```text
 [ ] Packages 1-3 remain green
-[ ] rules/sec_mlir_dialect.md updated to supplied schema version 2
+[ ] rules/mlir/sec_mlir_dialect.md updated to supplied schema version 2
 [ ] compiler-generated dialect marker is 2
 [ ] semantic_ir_version marker is emitted as 1
 [ ] !sec.int implemented
@@ -2083,7 +2083,7 @@ Codex must report:
 ```text
 1. repository HEAD implemented against
 2. Package 1-3 pre-status
-3. rules/sec_mlir_dialect.md update performed
+3. rules/mlir/sec_mlir_dialect.md update performed
 4. files added
 5. files modified
 6. dialect schema version

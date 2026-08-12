@@ -32,18 +32,18 @@ normalized to signless MLIR bitvectors.
 Implementation follows:
 
 ```text
-rules/operators.md
-rules/runtime_checks.md
-rules/types.md
-rules/layout.md
+rules/foundations/operators.md
+rules/errors/runtime_checks.md
+rules/types/types.md
+rules/memory/layout.md
     ↓
-rules/semantic_ir.txt
+rules/compiler/semantic_ir.txt
     ↓
-rules/sec_mlir.md
+rules/mlir/sec_mlir.md
     ↓
-rules/sec_mlir_dialect.md
+rules/mlir/sec_mlir_dialect.md
     ↓
-rules/sec_mlir_lowering.md
+rules/mlir/sec_mlir_lowering.md
     ↓
 implementation package
     ↓
@@ -52,9 +52,9 @@ implementation
 
 Before implementation:
 
-1. update `rules/sec_mlir_dialect.md` with the supplied
+1. update `rules/mlir/sec_mlir_dialect.md` with the supplied
    `sec_mlir_dialect_package7.md`;
-2. update `rules/sec_mlir_lowering.md` with the supplied
+2. update `rules/mlir/sec_mlir_lowering.md` with the supplied
    `sec_mlir_lowering_package7.md`.
 
 Do not change the source-language operator rules in this package.
@@ -2087,8 +2087,8 @@ Package 7 is complete only when:
 ```text
 [ ] previous package regressions remain green
 [ ] wide-builtin cleanup invariant is preserved
-[ ] rules/sec_mlir_dialect.md updated to schema v4
-[ ] rules/sec_mlir_lowering.md updated to lowering spec v3
+[ ] rules/mlir/sec_mlir_dialect.md updated to schema v4
+[ ] rules/mlir/sec_mlir_lowering.md updated to lowering spec v3
 [ ] Sema exposes read-only resolved operator metadata
 [ ] builder never re-resolves integer operators
 [ ] Semantic IR integer unary plus exists

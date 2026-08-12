@@ -21,19 +21,19 @@ package:
   next_package: Owning Dynamic Array Semantic Value Representation
 normative_updates:
 - repository_paths:
-  - rules/ownership.md
-  - rules/copy_move.md
-  - rules/destruction.txt
-  - rules/defer.txt
-  - rules/discard.md
-  - rules/semantic_ir.txt
+  - rules/memory/ownership.md
+  - rules/memory/copy_move.md
+  - rules/memory/destruction.txt
+  - rules/control-flow/defer.txt
+  - rules/control-flow/discard.md
+  - rules/compiler/semantic_ir.txt
   supplied_file: sec_ownership_destruction_sync_package17.md
-- repository_path: rules/semantic_ir.txt
+- repository_path: rules/compiler/semantic_ir.txt
   supplied_file: sec_semantic_ir_ownership_destruction_package17.md
-- repository_path: rules/sec_mlir_dialect.md
+- repository_path: rules/mlir/sec_mlir_dialect.md
   supplied_file: sec_mlir_dialect_package17.md
   schema_version: 13
-- repository_path: rules/sec_mlir_lowering.md
+- repository_path: rules/mlir/sec_mlir_lowering.md
   supplied_file: sec_mlir_lowering_package17.md
   version: 13
 wide_builtin_invariant:

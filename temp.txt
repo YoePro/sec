@@ -49,7 +49,7 @@ Suggested (inkl. written)
 ------------------------------------------
 rules/lambdas.txt
 rules/closures.txt
-rules/tasks.txt
+rules/concurrency/tasks.txt
 rules/spawn.txt
 rules/await.txt
 rules/concurrency.txt
@@ -59,7 +59,7 @@ rules/escape_analysis.txt
 rules/effect_analysis.txt
 rules/isr_analysis.txt
 rules/parser_recovery.txt
-rules/diagnostics.txt
+rules/tooling/diagnostics.txt
 
 och
 rules/

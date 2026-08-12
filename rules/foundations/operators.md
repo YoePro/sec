@@ -4098,7 +4098,7 @@ Files that do not yet exist remain planned dependencies.
 Add:
 
 ```text
-rules/operators.md
+rules/foundations/operators.md
 ```
 
 Update:

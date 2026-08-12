@@ -1259,7 +1259,7 @@ rules_implementations.txt
 Add:
 
 ```text
-rules/runtime_checks.md
+rules/errors/runtime_checks.md
 ```
 
 Update status and implementation trackers.

@@ -68,24 +68,24 @@ ownership operations.
 Implementation follows:
 
 ```text
-rules/collections.md
-rules/reference_model.md
-rules/borrowing.txt
-rules/runtime_checks.md
-rules/core-library.md
-rules/panic.md
-rules/layout.md
-rules/copy_move.md
-rules/ownership.md
-rules/raw_pointers.txt
+rules/collections/collections.md
+rules/memory/reference_model.md
+rules/memory/borrowing.txt
+rules/errors/runtime_checks.md
+rules/library/core-library.md
+rules/errors/panic.md
+rules/memory/layout.md
+rules/memory/copy_move.md
+rules/memory/ownership.md
+rules/memory/raw_pointers.txt
     ↓
-rules/semantic_ir.txt
+rules/compiler/semantic_ir.txt
     ↓
-rules/sec_mlir.md
+rules/mlir/sec_mlir.md
     ↓
-rules/sec_mlir_dialect.md
+rules/mlir/sec_mlir_dialect.md
     ↓
-rules/sec_mlir_lowering.md
+rules/mlir/sec_mlir_lowering.md
     ↓
 implementation package
     ↓
@@ -96,10 +96,10 @@ Before implementation:
 
 1. apply `sec_slice_sync_package16.md`;
 2. apply `sec_semantic_ir_slice_package16.md` to
-   `rules/semantic_ir.txt`;
-3. update `rules/sec_mlir_dialect.md` with
+   `rules/compiler/semantic_ir.txt`;
+3. update `rules/mlir/sec_mlir_dialect.md` with
    `sec_mlir_dialect_package16.md`;
-4. update `rules/sec_mlir_lowering.md` with
+4. update `rules/mlir/sec_mlir_lowering.md` with
    `sec_mlir_lowering_package16.md`.
 
 No new source syntax is introduced.

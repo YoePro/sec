@@ -35,7 +35,7 @@ It creates the project structure and default compiler configuration consumed by
 later pipeline stages.
 
 The canonical project, manifest, target and variant model is defined in
-`rules/projects.txt`. This section records the current implementation status
+`rules/projects/projects.txt`. This section records the current implementation status
 only.
 
 The command is:
@@ -791,7 +791,7 @@ Current MLIR implementation note:
 ## Diagnostics
 
 The canonical diagnostic, severity, mentor-analysis and localization model is
-defined in `rules/diagnostics.txt`.
+defined in `rules/tooling/diagnostics.txt`.
 
 Each pipeline stage must emit diagnostics using the shared diagnostic system.
 

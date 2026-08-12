@@ -9,13 +9,13 @@ Current dialect schema version: `5`
 This rulebook is subordinate to:
 
 ```text
-rules/runtime_checks.md
-rules/errorhandling.txt
-rules/operators.md
-rules/panic.md
-rules/core-library.md
-rules/semantic_ir.txt
-rules/sec_mlir.md
+rules/errors/runtime_checks.md
+rules/errors/errorhandling.txt
+rules/foundations/operators.md
+rules/errors/panic.md
+rules/library/core-library.md
+rules/compiler/semantic_ir.txt
+rules/mlir/sec_mlir.md
 ```
 
 Schema version 5 adds typed arithmetic failure flow and the minimum high-level

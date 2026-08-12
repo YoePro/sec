@@ -3190,7 +3190,7 @@ reference_model.md
 Add:
 
 ```text
-rules/call_graph.md
+rules/analysis/call_graph.md
 ```
 
 Update:

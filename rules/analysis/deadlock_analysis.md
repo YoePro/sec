@@ -2323,7 +2323,7 @@ pass the required safety, false-positive, incremental, scalability, and determin
 Normative deadlock semantics belong in:
 
 ```text
-rules/deadlock_analysis.md
+rules/analysis/deadlock_analysis.md
 ```
 
 Mutable implementation state, code locations, remaining implementation work,

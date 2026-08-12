@@ -23,7 +23,7 @@ When synchronizing against repository state:
 workstream does not need to re-read unchanged baseline material.
 
 The separate new-rulebook workstream has now processed the locally authored
-`rules/isr_analysis.md` without advancing the Git anchor:
+`rules/analysis/isr_analysis.md` without advancing the Git anchor:
 
 - `language-rulebook-status.md` lists it as **Written**;
 - `implementation-status.yaml` contains the planned `sema.isr-analysis`

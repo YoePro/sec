@@ -56,3 +56,44 @@ func TestFormatPreservesCanonicalNumericFamilySuffixes(t *testing.T) {
 		}
 	}
 }
+
+func TestFormatTryHandlerAfterStructLiteralCallArgument(t *testing.T) {
+	input := `fn NextToken() Token {
+if invalid {
+let token := self.readOne(ILLEGAL)
+try self.diagnostics.Append(Diagnostic {
+ID: "L1002",
+Message: $"unexpected byte-order mark at {line}:{column}",
+Primary: token,
+}) {
+Err(error) => { return }
+}
+return token
+}
+return self.readOne(ILLEGAL)
+}
+`
+	want := `fn NextToken() Token {
+    if invalid {
+        let token := self.readOne(ILLEGAL)
+        try self.diagnostics.Append(Diagnostic {
+            ID: "L1002",
+            Message: $"unexpected byte-order mark at {line}:{column}",
+            Primary: token,
+        }) {
+            Err(error) => { return }
+        }
+        return token
+    }
+    return self.readOne(ILLEGAL)
+}
+`
+
+	got := Format(Source{Text: input}, Options{}).Text
+	if got != want {
+		t.Fatalf("wrong try-handler indentation:\n%s\nwant:\n%s", got, want)
+	}
+	if again := Format(Source{Text: got}, Options{}).Text; again != got {
+		t.Fatalf("try-handler formatting is not idempotent:\nfirst:\n%s\nsecond:\n%s", got, again)
+	}
+}

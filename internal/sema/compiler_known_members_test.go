@@ -64,6 +64,28 @@ fn Test(values: int[], view: ref mut int[], users: list[int], entries: map[int, 
 	assertSemaErrors(t, analyzeSourceRaw(t, input), nil)
 }
 
+func TestCompilerKnownAppendAcceptsTypedStructLiteralUnderTry(t *testing.T) {
+	input := `
+module main
+
+type Message struct {
+	Message: string,
+	ID: string,
+	OtherData: string,
+}
+
+fn Add(messages: Message[]) Result[void, CollectionError] {
+	try messages.Append(Message {
+		Message: "abc",
+		ID: "P1230",
+		OtherData: "asdgh",
+	})
+	return Ok()
+}
+`
+	assertSemaErrors(t, analyzeSourceRaw(t, input), nil)
+}
+
 func TestCompilerKnownContextualFill(t *testing.T) {
 	input := `
 module main

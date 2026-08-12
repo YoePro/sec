@@ -58,6 +58,42 @@ fn Main(flag: bool) bool {
 	}
 }
 
+func TestResolvedMatchPlanIsReadOnlyAndNumeric(t *testing.T) {
+	source := `module main
+enum Flag: bit[1] { Off = 0, On = 1 }
+fn Choose(flag: Flag, condition: bool) int {
+  return match flag {
+    Flag.Off where condition => 10
+    Flag.Off => 20
+    Flag.On => 30
+  }
+}`
+	p := parser.New(lexer.NewWithFile(source, "match-plan.sec"))
+	result := p.Parse()
+	if result.HasErrors {
+		t.Fatalf("parse: %v", p.Errors())
+	}
+	a := NewAnalyzer()
+	if errs := a.Analyze(result.Program); len(errs) > 0 {
+		t.Fatalf("sema: %v", errs)
+	}
+	function := result.Program.Statements[2].(*ast.FunctionDeclaration)
+	match := function.Body.Statements[0].(*ast.ReturnStatement).Value.(*ast.MatchExpression)
+	before := len(a.resolvedMatchPlans)
+	plan, ok := a.ResolvedMatchPlanOf(match)
+	if !ok || plan.SubjectKind != MatchSubjectEnum || !plan.ValueContext || !plan.Exhaustive || len(plan.Arms) != 3 {
+		t.Fatalf("plan = %#v, %t", plan, ok)
+	}
+	if plan.Arms[0].EnumNumericValue.String() != "0" || !plan.Arms[0].Guarded || plan.Arms[1].EnumNumericValue.String() != "0" || plan.Arms[2].EnumNumericValue.String() != "1" {
+		t.Fatalf("arms = %#v", plan.Arms)
+	}
+	plan.Arms[0].EnumNumericValue.SetInt64(99)
+	again, _ := a.ResolvedMatchPlanOf(match)
+	if again.Arms[0].EnumNumericValue.String() != "0" || len(a.resolvedMatchPlans) != before {
+		t.Fatal("read-only match query exposed or mutated analyzer state")
+	}
+}
+
 func TestSemanticFactsRetainResolvedBuiltinIntegerOperators(t *testing.T) {
 	source := `module main
 fn Signed(a: int, b: int) int { return -(a + b) }
@@ -203,7 +239,7 @@ fn Other(left: int, right: int) Result[int, OtherError] {
 	}
 	a := NewAnalyzer()
 	errors := a.Analyze(result.Program)
-	if len(errors) != 2 || !strings.Contains(errors[0].Message, "Result[U, ArithmeticError]") || !strings.Contains(errors[1].Message, "map the error explicitly") {
+	if len(errors) != 2 || !strings.Contains(errors[0].Message, "bodyless arithmetic try propagates ArithmeticError with return Err") || !strings.Contains(errors[0].Message, "add a local try handler") || !strings.Contains(errors[1].Message, "map ArithmeticError to OtherError") {
 		t.Fatalf("errors = %#v", errors)
 	}
 }

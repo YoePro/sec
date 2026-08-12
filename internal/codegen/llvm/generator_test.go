@@ -907,6 +907,7 @@ fn main() int {
 		Color.red => 1
 		Color.green => 2
 		Color.blue => 3
+		_ => 0
 	}
 
 	return code

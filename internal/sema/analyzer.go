@@ -41,6 +41,7 @@ type Analyzer struct {
 	resolvedOperators           map[ast.Expression]ResolvedOperator
 	resolvedTries               map[*ast.TryExpression]ResolvedTry
 	resolvedTryPlans            map[*ast.TryExpression]ResolvedTryPlan
+	resolvedMatchPlans          map[*ast.MatchExpression]ResolvedMatchPlan
 	nextBindingID               BindingID
 	definitionTokens            map[sourceTokenKey][]lexer.Token
 	callGraph                   *CallGraph
@@ -52,6 +53,7 @@ type Analyzer struct {
 	spawnCallExpression         *ast.CallExpression
 	spawnCallExecution          CallExecutionRelation
 	typeDefinitionTokens        map[string]lexer.Token
+	invalidTypeDeclarations     map[sourceTokenKey]bool
 	genericTypeDefinitions      map[string]lexer.Token
 	invalidInterfaceInheritance map[string]bool
 	constInts                   map[string]*big.Int
@@ -188,6 +190,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.resolvedOperators = map[ast.Expression]ResolvedOperator{}
 	a.resolvedTries = map[*ast.TryExpression]ResolvedTry{}
 	a.resolvedTryPlans = map[*ast.TryExpression]ResolvedTryPlan{}
+	a.resolvedMatchPlans = map[*ast.MatchExpression]ResolvedMatchPlan{}
 	a.nextBindingID = 1
 	a.definitionTokens = map[sourceTokenKey][]lexer.Token{}
 	a.callGraph = newCallGraph()
@@ -199,6 +202,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.spawnCallExpression = nil
 	a.spawnCallExecution = ""
 	a.typeDefinitionTokens = map[string]lexer.Token{}
+	a.invalidTypeDeclarations = map[sourceTokenKey]bool{}
 	a.genericTypeDefinitions = nil
 	a.invalidInterfaceInheritance = map[string]bool{}
 	a.constInts = map[string]*big.Int{}
@@ -346,6 +350,27 @@ func (a *Analyzer) recordArenaEffect(kind ArenaEffectKind, arena string, source 
 		Source:      source,
 		MayAllocate: mayAllocate,
 	})
+}
+
+func (a *Analyzer) recordResolvedOperatorEffect(expr ast.Expression) {
+	if a.summaryPass || !a.callGraphPathReachable || expr == nil {
+		return
+	}
+	resolved, ok := a.resolvedOperators[expr]
+	if !ok || !resolved.RuntimeCheck || resolved.FailureBehavior != OperatorArithmeticFailure {
+		return
+	}
+	a.callGraph.addEffect(a.currentCallable, EffectSite{
+		Kind:   EffectMayPanicArithmetic,
+		Source: expressionToken(expr),
+	})
+}
+
+func (a *Analyzer) resolveArithmeticFailureEffect(expr ast.Expression) {
+	if a.summaryPass || expr == nil {
+		return
+	}
+	a.callGraph.removeEffect(a.currentCallable, EffectMayPanicArithmetic, expressionToken(expr))
 }
 
 func (a *Analyzer) recordDefinition(token lexer.Token) {
@@ -729,6 +754,9 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 			if stmt.Name == nil {
 				return
 			}
+			if a.rejectIntrinsicTypeRedeclaration(stmt.Name.Value, stmt.Name.Token) {
+				return
+			}
 			a.registerTypeDefinition(stmt.Name.Value, stmt.Name.Token)
 			params := a.genericParameterNames(stmt.GenericParameters)
 			noCopy := hasAttribute(stmt.Attributes, "noCopy")
@@ -739,6 +767,9 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 			a.types[stmt.Name.Value] = Type{Name: stmt.Name.Value, Module: a.currentModule, Kind: InvalidType, GenericParameters: params, ExplicitlyNonCopyable: noCopy, NoCopyPolicyOrigin: origin}
 		case *ast.UnitDeclStatement:
 			if stmt.Name == nil {
+				return
+			}
+			if a.rejectIntrinsicTypeRedeclaration(stmt.Name.Value, stmt.Name.Token) {
 				return
 			}
 			a.registerTypeDefinition(stmt.Name.Value, stmt.Name.Token)
@@ -770,6 +801,9 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 			if stmt.Name == nil {
 				return
 			}
+			if a.rejectIntrinsicTypeRedeclaration(stmt.Name.Value, stmt.Name.Token) {
+				return
+			}
 			a.registerTypeDefinition(stmt.Name.Value, stmt.Name.Token)
 			noCopy := hasAttribute(stmt.Attributes, "noCopy")
 			origin := ""
@@ -781,11 +815,28 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 			if stmt.Name == nil {
 				return
 			}
+			if a.rejectIntrinsicTypeRedeclaration(stmt.Name.Value, stmt.Name.Token) {
+				return
+			}
 			a.registerTypeDefinition(stmt.Name.Value, stmt.Name.Token)
 			params := a.genericParameterNames(stmt.GenericParameters)
 			a.types[stmt.Name.Value] = Type{Name: stmt.Name.Value, Module: a.currentModule, Kind: InterfaceType, Named: true, Declared: true, Underlying: "interface", GenericParameters: params}
 		}
 	})
+}
+
+func (a *Analyzer) rejectIntrinsicTypeRedeclaration(name string, token lexer.Token) bool {
+	existing, exists := a.types[name]
+	if !exists || !existing.Intrinsic {
+		return false
+	}
+	a.addErrorAtToken(token, "type name %s is compiler-known and cannot be redeclared", name)
+	a.invalidTypeDeclarations[sourceTokenLocation(token)] = true
+	return true
+}
+
+func (a *Analyzer) invalidTypeDeclaration(token lexer.Token) bool {
+	return a.invalidTypeDeclarations[sourceTokenLocation(token)]
 }
 
 func (a *Analyzer) genericParameterNames(parameters []*ast.GenericParameter) []string {
@@ -1138,6 +1189,9 @@ func (a *Analyzer) analyzeEnumDeclarations(program *ast.Program) {
 		if !ok || enum.Name == nil {
 			return
 		}
+		if a.invalidTypeDeclaration(enum.Name.Token) {
+			return
+		}
 		if enum.BitUnderlying {
 			return
 		}
@@ -1152,6 +1206,9 @@ func (a *Analyzer) analyzeEarlyEnumDeclarations(program *ast.Program) {
 	a.withProgramModules(program, func(stmt ast.Statement) {
 		enum, ok := stmt.(*ast.EnumDeclaration)
 		if !ok || enum.Name == nil || !a.enumCanAnalyzeEarly(enum) {
+			return
+		}
+		if a.invalidTypeDeclaration(enum.Name.Token) {
 			return
 		}
 		a.types[enum.Name.Value] = a.typeFromEnumDeclaration(enum.Name.Value, enum)
@@ -3584,6 +3641,10 @@ func (a *Analyzer) registerFunctionDeclarationBody(fn *ast.FunctionDeclaration, 
 		if !ok {
 			continue
 		}
+		if paramType.Kind == VoidType {
+			a.addErrorAtToken(param.Type.Token, "parameter %q cannot have type void; void is only valid as a function result or in an explicitly permitted type argument", param.Name.Value)
+			continue
+		}
 		if isBareSliceType(paramType) {
 			a.addErrorAtToken(param.Type.Token, "bare slice type %s must be used behind ref", typeDisplayName(paramType))
 			continue
@@ -4634,7 +4695,17 @@ func (a *Analyzer) matchPatternInfoNoDiagnostics(pattern ast.Expression, subject
 		if !ok || patternType.Kind == InvalidType || !sameConcreteType(patternType, subjectType) {
 			return matchPatternInfo{}, false
 		}
-		return matchPatternInfo{Kind: "variant", Variant: pattern.Property.Value}, true
+		if subjectType.Kind == EnumType {
+			enumCase, exists := subjectType.EnumConsts[pattern.Property.Value]
+			if !exists || enumCase.Value == nil {
+				return matchPatternInfo{}, false
+			}
+			return matchPatternInfo{
+				Kind: "variant", Variant: pattern.Property.Value,
+				EnumNumericValue: new(big.Int).Set(enumCase.Value), EnumCaseName: enumCase.Name,
+			}, true
+		}
+		return matchPatternInfo{Kind: "variant", Variant: pattern.Property.Value, VariantIndex: unionVariantIndex(subjectType, pattern.Property.Value)}, true
 	case *ast.CallExpression:
 		if subjectType.Kind != UnionType {
 			return matchPatternInfo{}, false
@@ -6547,6 +6618,9 @@ func mergeArenaGenerationMaxInto(merged, next map[string]int) {
 }
 
 func (a *Analyzer) analyzeTypeDeclaration(stmt *ast.TypeDeclStatement) {
+	if stmt == nil || stmt.Name == nil || a.invalidTypeDeclaration(stmt.Name.Token) {
+		return
+	}
 	if len(stmt.GenericParameters) > 0 {
 		a.validateGenericParameterConstraints(stmt.GenericParameters)
 		a.withGenericTypeParameters(stmt.GenericParameters, func() {
@@ -6658,7 +6732,7 @@ func (a *Analyzer) validateInterfaceInheritanceCycles(program *ast.Program) {
 }
 
 func (a *Analyzer) analyzeInterfaceDeclaration(stmt *ast.InterfaceDeclaration) {
-	if stmt == nil || stmt.Name == nil {
+	if stmt == nil || stmt.Name == nil || a.invalidTypeDeclaration(stmt.Name.Token) {
 		return
 	}
 
@@ -6712,6 +6786,10 @@ func (a *Analyzer) analyzeInterfaceDeclarationBody(stmt *ast.InterfaceDeclaratio
 		seenProperties[property.Name.Value] = property.Name.Token
 		propertyType, ok := a.resolveType(property.Type)
 		if !ok {
+			continue
+		}
+		if propertyType.Kind == VoidType {
+			a.addErrorAtToken(property.Type.Token, "interface property %s.%s cannot have type void", stmt.Name.Value, property.Name.Value)
 			continue
 		}
 		iface.InterfaceProperties = append(iface.InterfaceProperties, InterfaceProperty{
@@ -6816,6 +6894,10 @@ func (a *Analyzer) interfaceMethodRequirement(interfaceName string, fn *ast.Func
 			if !ok {
 				continue
 			}
+			if paramType.Kind == VoidType {
+				a.addErrorAtToken(param.Type.Token, "interface method parameter %q cannot have type void", param.Name.Value)
+				continue
+			}
 			function.Parameters = append(function.Parameters, FunctionParameter{
 				Name:       param.Name.Value,
 				Type:       paramType,
@@ -6856,7 +6938,7 @@ func sameInterfaceRequirementSignature(left Function, right Function) bool {
 }
 
 func (a *Analyzer) analyzeUnitDeclaration(stmt *ast.UnitDeclStatement) {
-	if stmt.Name == nil || stmt.BaseType == nil {
+	if stmt.Name == nil || stmt.BaseType == nil || a.invalidTypeDeclaration(stmt.Name.Token) {
 		return
 	}
 
@@ -7057,6 +7139,10 @@ func (a *Analyzer) typeFromStructDeclarationWithName(name string, stmt *ast.Type
 
 		fieldType, ok := a.resolveType(field.Type)
 		if !ok {
+			continue
+		}
+		if fieldType.Kind == VoidType {
+			a.addErrorAtToken(field.Type.Token, "stored field %s.%s cannot have type void", name, field.Name.Value)
 			continue
 		}
 		if isEventType(fieldType) {
@@ -7668,6 +7754,10 @@ func (a *Analyzer) registerImplStatement(stmt *ast.ImplStatement) {
 			})
 		})
 		if !typeOK {
+			continue
+		}
+		if propertyType.Kind == VoidType {
+			a.addErrorAtToken(property.Type.Token, "property %s.%s cannot have type void", stmt.Target.Name, property.Name.Value)
 			continue
 		}
 
@@ -8442,6 +8532,14 @@ func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
 	if ok && stmt.Contract != nil {
 		a.checkContractLiteralBounds(declaredType, stmt.Contract)
 		declaredType = a.applyContracts(declaredType, stmt.Contract)
+	}
+	if ok && declaredType.Kind == VoidType {
+		token := stmt.Name.Token
+		if stmt.Type != nil {
+			token = stmt.Type.Token
+		}
+		a.addErrorAtToken(token, "variable %s cannot have type void; void is only valid as a function result or in an explicitly permitted type argument", stmt.Name.Value)
+		ok = false
 	}
 	if ok && stmt.Value == nil && stmt.Mutable && stmt.Address == nil {
 		resolution := DefaultValueOf(declaredType)
@@ -9557,6 +9655,10 @@ func (a *Analyzer) resolveType(ref *ast.TypeReference) (Type, bool) {
 			if !ok {
 				return Type{Kind: InvalidType}, false
 			}
+			if element.Kind == VoidType {
+				a.addErrorAtToken(ref.Token, "slice element type cannot be void")
+				return Type{Kind: InvalidType}, false
+			}
 			slice := Type{
 				Name:    typeDisplayName(element) + "[]",
 				Kind:    SliceType,
@@ -9578,6 +9680,10 @@ func (a *Analyzer) resolveType(ref *ast.TypeReference) (Type, bool) {
 		innerRef.MutableRef = false
 		inner, ok := a.resolveType(&innerRef)
 		if !ok {
+			return Type{Kind: InvalidType}, false
+		}
+		if inner.Kind == VoidType {
+			a.addErrorAtToken(ref.Token, "safe reference cannot target void; use RawPtr[void] for an opaque raw address")
 			return Type{Kind: InvalidType}, false
 		}
 		name := "ref " + typeDisplayName(inner)
@@ -9611,6 +9717,10 @@ func (a *Analyzer) resolveType(ref *ast.TypeReference) (Type, bool) {
 	if ref.ElementType != nil {
 		element, ok := a.resolveType(ref.ElementType)
 		if !ok {
+			return Type{Kind: InvalidType}, false
+		}
+		if element.Kind == VoidType {
+			a.addErrorAtToken(ref.Token, "sequence element type cannot be void")
 			return Type{Kind: InvalidType}, false
 		}
 		if !ref.Slice {
@@ -9702,6 +9812,9 @@ func (a *Analyzer) resolveType(ref *ast.TypeReference) (Type, bool) {
 
 	typ.TypeArgs = typeArgs
 	typ.ConstArgs = constArgs
+	if !a.validateVoidTypeArguments(ref.Token, typ) {
+		return Type{Kind: InvalidType}, false
+	}
 	if ref.EventCapacitySet {
 		typ.EventCapacity = ref.EventCapacity
 		typ.EventCapacitySet = true
@@ -9798,6 +9911,20 @@ func (a *Analyzer) validateCompilerKnownGenericType(token lexer.Token, typ Type)
 			return false
 		}
 		return true
+	}
+	return true
+}
+
+func (a *Analyzer) validateVoidTypeArguments(token lexer.Token, typ Type) bool {
+	for index, argument := range typ.TypeArgs {
+		if argument.Kind != VoidType {
+			continue
+		}
+		if typ.Name == "RawPtr" || typ.Name == "Result" && index == 0 {
+			continue
+		}
+		a.addErrorAtToken(token, "%s does not permit void as a type argument", typ.Name)
+		return false
 	}
 	return true
 }
@@ -10009,6 +10136,11 @@ func (a *Analyzer) resolveFunctionType(ref *ast.TypeReference) (Type, bool) {
 			ok = false
 			continue
 		}
+		if paramType.Kind == VoidType {
+			a.addErrorAtToken(paramRef.Token, "function type parameter cannot have type void")
+			ok = false
+			continue
+		}
 		params = append(params, paramType)
 	}
 
@@ -10043,6 +10175,7 @@ func (a *Analyzer) inferExpression(expr ast.Expression) (Type, expressionValue) 
 	if expr != nil {
 		a.expressionTypes[expr] = typ
 		a.recordResolvedOperator(expr, typ)
+		a.recordResolvedOperatorEffect(expr)
 	}
 	return typ, value
 }
@@ -12930,7 +13063,10 @@ func (a *Analyzer) markMovedCallArguments(function Function, sourceArgs []ast.Ex
 		}
 		arg := sourceArgs[sourceIndex]
 		sourceIndex++
-		if param.Ref {
+		// Both shared and mutable-reference parameters borrow their argument.
+		// MutableRef is represented separately from Ref in FunctionParameter, so
+		// checking only Ref incorrectly consumed ref-mut reborrows after calls.
+		if param.Ref || param.MutableRef {
 			continue
 		}
 		if a.markMoveSource(arg) {
@@ -13758,7 +13894,7 @@ func (a *Analyzer) inferTryExpression(expr *ast.TryExpression) (Type, expression
 	}
 
 	if a.inDeferBlock && len(expr.Handlers) == 0 {
-		a.addErrorAtToken(expr.Token, "try cannot propagate from inside defer")
+		a.addErrorAtToken(expr.Token, "bodyless try cannot propagate from inside defer; add a local try handler")
 		return valueType.TypeArgs[0], expressionValue{Display: expr.String()}
 	}
 
@@ -13774,19 +13910,26 @@ func (a *Analyzer) inferTryExpression(expr *ast.TryExpression) (Type, expression
 	}
 
 	if !a.inFunctionBody {
-		a.addErrorAtToken(expr.Token, "cannot use try outside function")
+		a.addErrorAtToken(expr.Token, "bodyless try cannot propagate outside a function; add a local try handler")
 		return valueType.TypeArgs[0], expressionValue{Display: expr.String()}
 	}
 
 	if a.currentFunctionReturn.Kind != ResultType || len(a.currentFunctionReturn.TypeArgs) != 2 {
-		a.addErrorAtToken(expr.Token, "cannot use try in function returning %s", typeDisplayName(a.currentFunctionReturn))
+		a.addErrorAtToken(
+			expr.Token,
+			"bodyless try propagates %s with return Err, but this function returns %s; add a local try handler or change the function return type to Result[%s, %s]",
+			typeDisplayName(valueType.TypeArgs[1]),
+			typeDisplayName(a.currentFunctionReturn),
+			typeDisplayName(a.currentFunctionReturn),
+			typeDisplayName(valueType.TypeArgs[1]),
+		)
 		return valueType.TypeArgs[0], expressionValue{Display: expr.String()}
 	}
 
 	valueErrorType := valueType.TypeArgs[1]
 	functionErrorType := a.currentFunctionReturn.TypeArgs[1]
 	if !sameConcreteType(valueErrorType, functionErrorType) {
-		a.addErrorAtToken(expr.Token, "cannot propagate %s from function returning %s", typeDisplayName(valueErrorType), typeDisplayName(a.currentFunctionReturn))
+		a.addErrorAtToken(expr.Token, "bodyless try propagates %s with return Err, but this function returns %s; add a local try handler or map %s to %s", typeDisplayName(valueErrorType), typeDisplayName(a.currentFunctionReturn), typeDisplayName(valueErrorType), typeDisplayName(functionErrorType))
 	}
 	a.resolvedTries[expr] = ResolvedTry{
 		Kind: ResolvedTryResultPropagation, SuccessType: valueType.TypeArgs[0], ErrorType: valueErrorType,
@@ -13807,30 +13950,32 @@ func (a *Analyzer) inferArithmeticTryExpression(expr *ast.TryExpression, operato
 		}
 		if valid {
 			a.resolvedTryPlans[expr] = plan
+			a.resolveArithmeticFailureEffect(expr.Expression)
 		}
 		return operator.ResultType, result
 	}
 	if a.inDeferBlock {
-		a.addErrorAtToken(expr.Token, "try cannot propagate from inside defer")
+		a.addErrorAtToken(expr.Token, "bodyless try cannot propagate from inside defer; add a local try handler")
 		return operator.ResultType, result
 	}
 	if !a.inFunctionBody {
-		a.addErrorAtToken(expr.Token, "cannot use arithmetic try outside function")
+		a.addErrorAtToken(expr.Token, "bodyless arithmetic try cannot propagate outside a function; add a local try handler")
 		return operator.ResultType, result
 	}
 	if a.currentFunctionReturn.Kind != ResultType || len(a.currentFunctionReturn.TypeArgs) != 2 {
-		a.addErrorAtToken(expr.Token, "arithmetic try requires enclosing return type Result[U, ArithmeticError], got %s", typeDisplayName(a.currentFunctionReturn))
+		a.addErrorAtToken(expr.Token, "bodyless arithmetic try propagates ArithmeticError with return Err, but this function returns %s; add a local try handler or change the function return type to Result[%s, ArithmeticError]", typeDisplayName(a.currentFunctionReturn), typeDisplayName(a.currentFunctionReturn))
 		return operator.ResultType, result
 	}
 	functionError := a.currentFunctionReturn.TypeArgs[1]
 	if !sameConcreteType(functionError, arithmeticError) {
-		a.addErrorAtToken(expr.Token, "arithmetic try cannot propagate ArithmeticError from function returning %s; map the error explicitly", typeDisplayName(a.currentFunctionReturn))
+		a.addErrorAtToken(expr.Token, "bodyless arithmetic try propagates ArithmeticError with return Err, but this function returns %s; add a local try handler or map ArithmeticError to %s", typeDisplayName(a.currentFunctionReturn), typeDisplayName(functionError))
 		return operator.ResultType, result
 	}
 	a.resolvedTries[expr] = ResolvedTry{
 		Kind: ResolvedTryArithmeticPropagation, SuccessType: operator.ResultType,
 		ErrorType: arithmeticError, EnclosingResultType: a.currentFunctionReturn,
 	}
+	a.resolveArithmeticFailureEffect(expr.Expression)
 	return operator.ResultType, result
 }
 
@@ -14063,7 +14208,11 @@ type matchPatternInfo struct {
 	BindingType          Type
 	Kind                 string
 	Variant              string
+	EnumNumericValue     *big.Int
+	EnumCaseName         string
+	VariantIndex         uint32
 	PayloadVariant       string
+	PayloadDiscard       bool
 	PayloadPlace         Place
 	PayloadMoves         bool
 	PayloadBorrow        bool
@@ -14072,6 +14221,7 @@ type matchPatternInfo struct {
 }
 
 func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Type {
+	analysisErrorCount := len(a.errors)
 	subjectType, _ := a.inferExpression(expr.Subject)
 	if subjectType.Kind == InvalidType {
 		return Type{Kind: InvalidType}
@@ -14083,7 +14233,9 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 
 	seenKinds := map[string]bool{}
 	seenVariants := map[string]bool{}
+	seenEnumValues := map[string]string{}
 	catchAll := false
+	plan := ResolvedMatchPlan{SubjectKind: resolvedMatchSubjectKind(subjectType), SubjectType: subjectType, ValueContext: valueContext}
 	var resultType Type
 	hasResultType := false
 	beforeAssigned := copyAssigned(a.assigned)
@@ -14096,7 +14248,7 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 	branches := []branchAnalysis{}
 	patternError := false
 
-	for _, arm := range expr.Arms {
+	for sourceIndex, arm := range expr.Arms {
 		info, ok := a.analyzeMatchPattern(arm.Pattern, subjectType)
 		if !ok {
 			patternError = true
@@ -14127,7 +14279,7 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 			continue
 		}
 		guarded := arm.Guard != nil
-		if guarded && matchPatternAlreadyCovered(info, seenKinds, seenVariants) {
+		if guarded && matchPatternAlreadyCovered(info, seenKinds, seenVariants, seenEnumValues) {
 			a.addErrorAtToken(arm.Token, "unreachable match arm")
 			continue
 		}
@@ -14144,7 +14296,14 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 			} else if info.Kind != "" {
 				seenKinds[info.Kind] = true
 			}
-			if info.Variant != "" {
+			if info.EnumNumericValue != nil {
+				key := info.EnumNumericValue.String()
+				if previous, exists := seenEnumValues[key]; exists {
+					a.addErrorAtToken(arm.Token, "unreachable enum match arm; numeric value is already covered by %s", previous)
+					continue
+				}
+				seenEnumValues[key] = info.EnumCaseName
+			} else if info.Variant != "" {
 				if seenVariants[info.Variant] {
 					a.addErrorAtToken(arm.Token, "duplicate match arm for %s.%s", typeDisplayName(subjectType), info.Variant)
 					continue
@@ -14155,6 +14314,11 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 
 		armType, branch := a.analyzeMatchArmBody(arm, info)
 		branches = append(branches, branch)
+		resolvedArm := resolvedMatchArmFromAnalysis(subjectType, sourceIndex, arm, info, armType, valueContext)
+		if !guarded && matchCoverageComplete(subjectType, catchAll, seenKinds, seenVariants, seenEnumValues) {
+			resolvedArm.ResidualAlwaysMatches = true
+		}
+		plan.Arms = append(plan.Arms, resolvedArm)
 		if !valueContext || armType.Kind == InvalidType {
 			continue
 		}
@@ -14173,7 +14337,7 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 	}
 	exhaustive := true
 	if !patternError {
-		exhaustive = a.checkMatchExhaustive(expr, subjectType, catchAll, seenKinds, seenVariants)
+		exhaustive = a.checkMatchExhaustive(expr, subjectType, catchAll, seenKinds, seenVariants, seenEnumValues)
 	}
 	if !exhaustive {
 		branches = append(branches, branchAnalysis{assigned: beforeAssigned, moved: beforeMoved, moveReasons: beforeMoveReasons, closedResources: beforeClosedResources, borrows: beforeBorrows, localRefContainers: beforeLocalRefContainers, arenaGenerations: beforeArenaGenerations, continues: true})
@@ -14194,13 +14358,27 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 			a.addErrorAtTokenWithPrevious(expr.Token, resultType.ReferenceOriginToken, "match expression cannot produce a branch-scoped union payload reference")
 			return Type{Kind: InvalidType}
 		}
+		plan.ResultType = resultType
+		plan.Exhaustive = exhaustive
+		if plan.SubjectKind != "" && exhaustive && len(a.errors) == analysisErrorCount {
+			a.resolvedMatchPlans[expr] = plan
+		}
 		return resultType
 	}
 
+	plan.ResultType = Type{Name: "void", Kind: VoidType}
+	plan.Exhaustive = exhaustive
+	if plan.SubjectKind != "" && exhaustive && len(a.errors) == analysisErrorCount {
+		a.resolvedMatchPlans[expr] = plan
+	}
 	return Type{Name: "void", Kind: VoidType}
 }
 
-func matchPatternAlreadyCovered(info matchPatternInfo, seenKinds map[string]bool, seenVariants map[string]bool) bool {
+func matchPatternAlreadyCovered(info matchPatternInfo, seenKinds map[string]bool, seenVariants map[string]bool, seenEnumValues map[string]string) bool {
+	if info.EnumNumericValue != nil {
+		_, covered := seenEnumValues[info.EnumNumericValue.String()]
+		return covered
+	}
 	if info.Variant != "" {
 		return seenVariants[info.Variant]
 	}
@@ -14249,7 +14427,17 @@ func (a *Analyzer) analyzeMatchPattern(pattern ast.Expression, subjectType Type)
 			a.addErrorAtToken(expressionToken(pattern), "match pattern must match %s, got %s", typeDisplayName(subjectType), typeDisplayName(patternType))
 			return matchPatternInfo{}, false
 		}
-		return matchPatternInfo{Kind: "variant", Variant: pattern.Property.Value}, true
+		if subjectType.Kind == EnumType {
+			enumCase, exists := subjectType.EnumConsts[pattern.Property.Value]
+			if !exists || enumCase.Value == nil {
+				return matchPatternInfo{}, false
+			}
+			return matchPatternInfo{
+				Kind: "variant", Variant: pattern.Property.Value,
+				EnumNumericValue: new(big.Int).Set(enumCase.Value), EnumCaseName: enumCase.Name,
+			}, true
+		}
+		return matchPatternInfo{Kind: "variant", Variant: pattern.Property.Value, VariantIndex: unionVariantIndex(subjectType, pattern.Property.Value)}, true
 	case *ast.CallExpression:
 		if subjectType.Kind == UnionType {
 			return a.analyzeUnionPayloadMatchPattern(pattern, subjectType)
@@ -14270,7 +14458,7 @@ func (a *Analyzer) analyzeMatchPattern(pattern ast.Expression, subjectType Type)
 					a.addErrorAtToken(pattern.Token, "union variant %s.%s requires payload binding", typeDisplayName(subjectType), variant.Name)
 					return matchPatternInfo{}, false
 				}
-				return matchPatternInfo{Kind: "variant", Variant: variant.Name}, true
+				return matchPatternInfo{Kind: "variant", Variant: variant.Name, VariantIndex: unionVariantIndex(subjectType, variant.Name)}, true
 			}
 		}
 		return matchPatternInfo{BindingName: pattern.Value, BindingType: subjectType, Kind: "catchall"}, true
@@ -14333,8 +14521,9 @@ func (a *Analyzer) analyzeUnionPayloadPattern(variantName string, arguments []as
 		return matchPatternInfo{}, false
 	}
 
-	info := matchPatternInfo{Kind: "variant", Variant: variant.Name, PayloadVariant: variant.Name}
+	info := matchPatternInfo{Kind: "variant", Variant: variant.Name, VariantIndex: unionVariantIndex(subjectType, variant.Name), PayloadVariant: variant.Name}
 	if binding.Value == "_" {
+		info.PayloadDiscard = true
 		return info, true
 	}
 	info.BindingName = binding.Value
@@ -14378,6 +14567,7 @@ func (a *Analyzer) analyzeResultPayloadPattern(kind string, expr ast.Expression,
 			a.addErrorAtToken(binding.Token, "Err payload must be named; use discard name inside the handler")
 			return matchPatternInfo{}, false
 		}
+		info.PayloadDiscard = true
 		return info, true
 	}
 	info.BindingName = binding.Value
@@ -14533,34 +14723,164 @@ func removeBorrowHolder(borrows map[string][]borrowRecord, holder string) {
 	}
 }
 
-func (a *Analyzer) checkMatchExhaustive(expr *ast.MatchExpression, subjectType Type, catchAll bool, seenKinds map[string]bool, seenVariants map[string]bool) bool {
+func resolvedMatchSubjectKind(subjectType Type) ResolvedMatchSubjectKind {
+	switch subjectType.Kind {
+	case EnumType:
+		return MatchSubjectEnum
+	case ResultType:
+		return MatchSubjectResult
+	case UnionType:
+		if subjectType.Name == "Option" {
+			return MatchSubjectOption
+		}
+		return MatchSubjectUnion
+	default:
+		return ""
+	}
+}
+
+func unionVariantIndex(subjectType Type, name string) uint32 {
+	for index, variant := range subjectType.UnionVariants {
+		if variant.Name == name {
+			return uint32(index)
+		}
+	}
+	return 0
+}
+
+func resolvedMatchArmFromAnalysis(subjectType Type, sourceIndex int, arm *ast.MatchArm, info matchPatternInfo, resultType Type, valueContext bool) ResolvedMatchArm {
+	resolved := ResolvedMatchArm{
+		SourceIndex:       sourceIndex,
+		EnumCaseName:      info.EnumCaseName,
+		UnionVariantIndex: info.VariantIndex,
+		UnionVariantName:  info.Variant,
+		BindingName:       info.BindingName,
+		BindingType:       info.BindingType,
+		BindingAction:     resolvedMatchBindingAction(info),
+		Guarded:           arm.Guard != nil,
+		Flow:              MatchArmContinues,
+		ResultType:        resultType,
+		EnumNumericValue:  nil,
+	}
+	if info.EnumNumericValue != nil {
+		resolved.EnumNumericValue = new(big.Int).Set(info.EnumNumericValue)
+	}
+	switch {
+	case info.Kind == "catchall":
+		resolved.PatternKind = MatchPatternCatchAll
+	case subjectType.Kind == EnumType:
+		resolved.PatternKind = MatchPatternEnumValue
+	case subjectType.Kind == ResultType && info.Kind == "Ok":
+		resolved.PatternKind = MatchPatternResultOk
+	case subjectType.Kind == ResultType && info.Kind == "Err":
+		resolved.PatternKind = MatchPatternResultErr
+	case subjectType.Kind == UnionType && subjectType.Name == "Option" && info.Variant == "Some":
+		resolved.PatternKind = MatchPatternOptionSome
+	case subjectType.Kind == UnionType && subjectType.Name == "Option" && info.Variant == "None":
+		resolved.PatternKind = MatchPatternOptionNone
+	default:
+		resolved.PatternKind = MatchPatternUnionVariant
+	}
+	switch {
+	case arm.ReturnBody != nil:
+		resolved.Flow = MatchArmReturns
+	case arm.BlockBody != nil && !blockCanFallThrough(arm.BlockBody):
+		if blockDefinitelyReturns(arm.BlockBody) {
+			resolved.Flow = MatchArmReturns
+		} else {
+			resolved.Flow = MatchArmTerminates
+		}
+	case arm.Body != nil && valueContext:
+		resolved.Flow = MatchArmProducesValue
+	}
+	return resolved
+}
+
+func resolvedMatchBindingAction(info matchPatternInfo) ResolvedMatchBindingAction {
+	if info.PayloadVariant == "" {
+		return MatchBindingNone
+	}
+	if info.PayloadDiscard {
+		return MatchBindingDiscard
+	}
+	if info.PayloadBorrowMutable {
+		return MatchBindingBorrowMutable
+	}
+	if info.PayloadBorrow {
+		return MatchBindingBorrowShared
+	}
+	if info.BindingName == "" {
+		return MatchBindingNone
+	}
+	switch CopyClassificationOf(info.BindingType) {
+	case CopyTrivial:
+		return MatchBindingCopyTrivial
+	case CopySemantic:
+		return MatchBindingCopySemantic
+	case CopyConditional:
+		return MatchBindingConditional
+	default:
+		return MatchBindingMove
+	}
+}
+
+func matchCoverageComplete(subjectType Type, catchAll bool, seenKinds map[string]bool, seenVariants map[string]bool, seenEnumValues map[string]string) bool {
 	if catchAll {
 		return true
 	}
-
 	if subjectType.Kind == ResultType && len(subjectType.TypeArgs) == 2 {
-		ok := true
-		if !seenKinds["Ok"] {
-			a.addErrorAtToken(expr.Token, "non-exhaustive match for %s: missing Ok", typeDisplayName(subjectType))
-			ok = false
-		}
-		if !seenKinds["Err"] {
-			a.addErrorAtToken(expr.Token, "non-exhaustive match for %s: missing Err", typeDisplayName(subjectType))
-			ok = false
-		}
-		return ok
+		return seenKinds["Ok"] && seenKinds["Err"]
 	}
-
-	if enumValues, ok := a.enumValuesForType(subjectType); ok {
-		for _, variant := range enumValues {
-			if !seenVariants[variant] {
-				a.addErrorAtToken(expr.Token, "non-exhaustive match for %s", typeDisplayName(subjectType))
+	if subjectType.Kind == EnumType {
+		return enumNumericDomainCovered(subjectType, seenEnumValues)
+	}
+	if subjectType.Kind == UnionType {
+		for _, variant := range subjectType.UnionVariants {
+			if !seenVariants[variant.Name] {
 				return false
 			}
 		}
 		return true
 	}
+	return false
+}
 
+func enumNumericDomainCovered(subjectType Type, seenEnumValues map[string]string) bool {
+	if subjectType.Kind != EnumType {
+		return false
+	}
+	if subjectType.BitWidth > 0 {
+		cardinality := new(big.Int).Lsh(big.NewInt(1), uint(subjectType.BitWidth))
+		return cardinality.Cmp(new(big.Int).SetUint64(uint64(len(seenEnumValues)))) == 0
+	}
+	if subjectType.MinInteger == nil || subjectType.MaxInteger == nil {
+		return false
+	}
+	if subjectType.BitWidth == 0 && (subjectType.Underlying == "int" || subjectType.Underlying == "uint") {
+		return false
+	}
+	cardinality := new(big.Int).Sub(subjectType.MaxInteger, subjectType.MinInteger)
+	cardinality.Add(cardinality, big.NewInt(1))
+	return cardinality.Sign() > 0 && cardinality.Cmp(new(big.Int).SetUint64(uint64(len(seenEnumValues)))) == 0
+}
+
+func (a *Analyzer) checkMatchExhaustive(expr *ast.MatchExpression, subjectType Type, catchAll bool, seenKinds map[string]bool, seenVariants map[string]bool, seenEnumValues map[string]string) bool {
+	if matchCoverageComplete(subjectType, catchAll, seenKinds, seenVariants, seenEnumValues) {
+		return true
+	}
+	if subjectType.Kind == ResultType && len(subjectType.TypeArgs) == 2 {
+		if !seenKinds["Ok"] {
+			a.addErrorAtToken(expr.Token, "non-exhaustive match for %s: missing Ok", typeDisplayName(subjectType))
+		}
+		if !seenKinds["Err"] {
+			a.addErrorAtToken(expr.Token, "non-exhaustive match for %s: missing Err", typeDisplayName(subjectType))
+		}
+		return false
+	}
+	if subjectType.Kind == EnumType {
+		a.addErrorAtToken(expr.Token, "non-exhaustive match for %s; enum may contain undeclared numeric values; add _ or cover the complete underlying domain", typeDisplayName(subjectType))
+		return false
+	}
 	if subjectType.Kind == UnionType {
 		missing := []string{}
 		for _, variant := range subjectType.UnionVariants {
@@ -14570,9 +14890,8 @@ func (a *Analyzer) checkMatchExhaustive(expr *ast.MatchExpression, subjectType T
 		}
 		if len(missing) > 0 {
 			a.addErrorAtToken(expr.Token, "non-exhaustive match for %s: missing %s", typeDisplayName(subjectType), strings.Join(missing, ", "))
-			return false
 		}
-		return true
+		return false
 	}
 	return false
 }
@@ -14623,13 +14942,14 @@ func (a *Analyzer) inferInfixExpression(expr *ast.InfixExpression) (Type, expres
 			leftType = Type{Name: "rune", Kind: RuneType}
 			a.expressionTypes[expr.Left] = leftType
 		}
-		if isUntypedNumericExpression(expr.Right) && isNumericType(leftType) && canInitialize(leftType, rightType, expr.Right) {
-			rightType = leftType
-			a.expressionTypes[expr.Right] = rightType
+		var valid bool
+		rightType, valid = a.contextualNumericLiteralType(expr.Right, rightType, leftType)
+		if !valid {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
-		if isUntypedNumericExpression(expr.Left) && isNumericType(rightType) && canInitialize(rightType, leftType, expr.Left) {
-			leftType = rightType
-			a.expressionTypes[expr.Left] = leftType
+		leftType, valid = a.contextualNumericLiteralType(expr.Left, leftType, rightType)
+		if !valid {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
 	}
 
@@ -14691,6 +15011,15 @@ func (a *Analyzer) inferInfixExpression(expr *ast.InfixExpression) (Type, expres
 			}
 			return leftType, expressionValue{Display: expr.String()}
 		}
+		var valid bool
+		rightType, valid = a.contextualNumericLiteralType(expr.Right, rightType, leftType)
+		if !valid {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
+		leftType, valid = a.contextualNumericLiteralType(expr.Left, leftType, rightType)
+		if !valid {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
 		if !sameConcreteType(leftType, rightType) {
 			a.addErrorAtToken(expr.Token, "cannot apply operator %s to %s and %s", expr.Operator, typeDisplayName(leftType), typeDisplayName(rightType))
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
@@ -14730,6 +15059,15 @@ func (a *Analyzer) inferPlainArithmeticExpression(expr *ast.InfixExpression, lef
 		a.addErrorAtToken(expr.Token, "operator %s requires numeric operands", expr.Operator)
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
+	var valid bool
+	rightType, valid = a.contextualNumericLiteralType(expr.Right, rightType, leftType)
+	if !valid {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+	leftType, valid = a.contextualNumericLiteralType(expr.Left, leftType, rightType)
+	if !valid {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
 
 	if sameConcreteType(leftType, rightType) {
 		if !a.validateCompileTimeIntegerArithmetic(expr, leftType) {
@@ -14767,6 +15105,20 @@ func (a *Analyzer) inferPlainArithmeticExpression(expr *ast.InfixExpression, lef
 
 	a.addErrorAtToken(expr.Token, "cannot apply operator %s to %s and %s", expr.Operator, typeDisplayName(leftType), typeDisplayName(rightType))
 	return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+}
+
+func (a *Analyzer) contextualNumericLiteralType(expr ast.Expression, actual Type, target Type) (Type, bool) {
+	if !isUntypedNumericExpression(expr) || !isNumericType(target) || !canInitialize(target, actual, expr) {
+		return actual, true
+	}
+	if isIntegerType(target) {
+		value, known := a.integerConstantValue(expr)
+		if known && a.checkIntegerValueRange(target, value, expressionToken(expr)) {
+			return Type{Kind: InvalidType}, false
+		}
+	}
+	a.expressionTypes[expr] = target
+	return target, true
 }
 
 func (a *Analyzer) validateCompileTimeIntegerArithmetic(expr *ast.InfixExpression, resultType Type) bool {
@@ -15583,6 +15935,12 @@ func canInitialize(target Type, value Type, expr ast.Expression) bool {
 	if target.Kind == InvalidType || value.Kind == InvalidType {
 		return true
 	}
+	if target.Kind == AnyType {
+		return value.Kind != VoidType && value.Kind != NeverType
+	}
+	if value.Kind == AnyType {
+		return target.Kind == AnyType
+	}
 
 	if target.Kind == FunctionType || value.Kind == FunctionType {
 		return sameFunctionType(target, value)
@@ -15707,6 +16065,12 @@ func canUntypedNumericInitializeNominal(target Type, value Type, expr ast.Expres
 
 func canExplicitConvert(target Type, value Type) bool {
 	if target.Kind == InvalidType || value.Kind == InvalidType {
+		return false
+	}
+	if target.Kind == AnyType {
+		return value.Kind != VoidType && value.Kind != NeverType
+	}
+	if value.Kind == AnyType {
 		return false
 	}
 

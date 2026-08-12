@@ -1179,6 +1179,9 @@ fn Use(
     image: tensor[float32, 3, 224, 224],
     view: tensor_view[float32, 3],
     shape: Shape[3],
+	strides: Strides[3],
+	layout: TensorLayout[3],
+	space: MemorySpace,
 ) void {
     return
 }
@@ -1197,6 +1200,9 @@ fn Use(
 		"tensor[float32, 3, 224, 224]",
 		"tensor_view[float32, 3]",
 		"Shape[3]",
+		"Strides[3]",
+		"TensorLayout[3]",
+		"MemorySpace",
 	}
 	for i, want := range expected {
 		if got := typeDisplayName(fn.Parameters[i].Type); got != want {
@@ -1214,6 +1220,9 @@ fn Invalid(
     badVector: vector[int],
     negativeMatrix: matrix[int, -1, 4],
     badShape: Shape[int],
+	missingStridesRank: Strides,
+	tooManyLayoutRanks: TensorLayout[2, 3],
+	genericMemorySpace: MemorySpace[int],
 ) void {
     return
 }
@@ -1225,6 +1234,9 @@ fn Invalid(
 		"vector requires 1 compile-time integer arguments, got 0 at 6:16",
 		"matrix arguments must be non-negative at 7:21",
 		"Shape argument must be a compile-time integer at 8:21",
+		"Strides requires 1 compile-time integer arguments, got 0 at 9:22",
+		"TensorLayout requires 1 compile-time integer arguments, got 2 at 10:22",
+		"MemorySpace is not generic at 11:22",
 	})
 }
 
@@ -1741,6 +1753,16 @@ func TestRegisterValidFixture(t *testing.T) {
 	assertSemaErrors(t, errors, nil)
 }
 
+func TestRegister7TryAndMatchFixture(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/register7_valid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	errors := analyzeSourceRaw(t, string(input))
+	assertSemaErrors(t, errors, nil)
+}
+
 func TestRegisterInvalidFixture(t *testing.T) {
 	input, err := os.ReadFile("../../testdata/register_invalid.sec")
 	if err != nil {
@@ -1888,6 +1910,9 @@ fn Test() void {
 func TestBuiltinTypes(t *testing.T) {
 	analyzer := NewAnalyzer()
 
+	if anyType := analyzer.types["any"]; anyType.Kind != AnyType || !anyType.Intrinsic {
+		t.Fatalf("any must be a compiler-known intrinsic top type: %+v", anyType)
+	}
 	if decimal := analyzer.types["decimal"]; decimal.Kind != DecimalType {
 		t.Fatalf("decimal has wrong type kind: %q", decimal.Kind)
 	}
@@ -1909,6 +1934,171 @@ func TestBuiltinTypes(t *testing.T) {
 	for _, name := range []string{"bytes"} {
 		if _, exists := analyzer.types[name]; exists {
 			t.Errorf("%s must not be a builtin type", name)
+		}
+	}
+}
+
+func TestAnyAcceptsValuesWithoutImplicitNarrowing(t *testing.T) {
+	input := `
+module main
+
+type User struct {
+	name: string,
+}
+
+fn BoxInteger(value: int) any {
+	return value
+}
+
+fn BoxUser(value: User) any {
+	return value
+}
+
+fn Preserve(value: any) any {
+	return value
+}
+`
+
+	assertSemaErrors(t, analyzeSource(t, input), nil)
+
+	invalid := `
+module main
+
+fn Narrow(value: any) int {
+	return value
+}
+
+fn Inspect(value: any) void {
+	value.Unknown
+}
+`
+	errors := analyzeSource(t, invalid)
+	if len(errors) != 2 {
+		t.Fatalf("errors = %#v, want implicit-narrowing and member-access diagnostics", errors)
+	}
+	if !strings.Contains(errors[0].Message, "must return int, got any") {
+		t.Fatalf("first error = %q", errors[0].Message)
+	}
+	if !strings.Contains(errors[1].Message, "unknown member Unknown on any") {
+		t.Fatalf("second error = %q", errors[1].Message)
+	}
+}
+
+func TestCompilerKnownTypeNamesCannotBeRedeclared(t *testing.T) {
+	input := `
+module main
+
+type int int
+
+enum Result {
+	Replacement,
+}
+
+interface any {
+}
+
+unit string decimal physical
+
+fn Preserve(value: any) int {
+	return 1
+}
+`
+
+	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
+	wants := []string{
+		"type name int is compiler-known and cannot be redeclared",
+		"type name Result is compiler-known and cannot be redeclared",
+		"type name any is compiler-known and cannot be redeclared",
+		"type name string is compiler-known and cannot be redeclared",
+	}
+	if len(errors) != len(wants) {
+		t.Fatalf("errors = %#v, want %d diagnostics", errors, len(wants))
+	}
+	for _, want := range wants {
+		found := false
+		for _, diagnostic := range errors {
+			if strings.Contains(diagnostic.Message, want) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("errors = %#v, missing %q", errors, want)
+		}
+	}
+	if analyzer.types["int"].Kind != IntType || analyzer.types["Result"].Kind != ResultType || analyzer.types["any"].Kind != AnyType || analyzer.types["string"].Kind != StringType {
+		t.Fatalf("compiler-known types were replaced: int=%+v Result=%+v any=%+v string=%+v", analyzer.types["int"], analyzer.types["Result"], analyzer.types["any"], analyzer.types["string"])
+	}
+}
+
+func TestVoidTypeUseRestrictions(t *testing.T) {
+	input := `
+module main
+
+type Invalid struct {
+	field: void,
+}
+
+interface InvalidInterface {
+	fn Apply(value: void) void
+	property Value: void {
+		get
+	}
+}
+
+impl Invalid {
+	property Value: void {
+		get { return }
+	}
+}
+
+fn InvalidParameter(value: void) void {
+}
+
+fn InvalidStorage() void {
+	let mut local: void
+}
+
+fn InvalidTypeArguments(
+	optional: Option[void],
+	badError: Result[int, void],
+	sequence: void[2],
+	slice: ref void[],
+	function: fn(void) void,
+) void {
+}
+
+fn Allowed(opaque: RawPtr[void], result: Result[void, ContractError]) void {
+}
+`
+
+	errors := analyzeSource(t, input)
+	wants := []string{
+		"stored field Invalid.field cannot have type void",
+		"interface method parameter \"value\" cannot have type void",
+		"interface property InvalidInterface.Value cannot have type void",
+		"property Invalid.Value cannot have type void",
+		"parameter \"value\" cannot have type void",
+		"variable local cannot have type void",
+		"Option does not permit void as a type argument",
+		"Result does not permit void as a type argument",
+		"sequence element type cannot be void",
+		"slice element type cannot be void",
+		"function type parameter cannot have type void",
+	}
+	if len(errors) != len(wants) {
+		t.Fatalf("errors = %#v, want %d diagnostics", errors, len(wants))
+	}
+	for _, want := range wants {
+		found := false
+		for _, diagnostic := range errors {
+			if strings.Contains(diagnostic.Message, want) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("errors = %#v, missing %q", errors, want)
 		}
 	}
 }
@@ -4313,8 +4503,8 @@ fn CannotPropagate() Speed {
 	errors := analyzeSource(t, input)
 
 	expected := []string{
-		"cannot propagate ParseError from function returning Result[Speed, IOError] at 23:15",
-		"cannot use try in function returning Speed at 28:9",
+		"bodyless try propagates ParseError with return Err, but this function returns Result[Speed, IOError]; add a local try handler or map ParseError to IOError at 23:15",
+		"bodyless try propagates IOError with return Err, but this function returns Speed; add a local try handler or change the function return type to Result[Speed, IOError] at 28:9",
 	}
 
 	assertSemaErrors(t, errors, expected)
@@ -4639,7 +4829,7 @@ fn Test() Result[int, IOError] {
 
 	errors := analyzeSource(t, input)
 	expected := []string{
-		"try cannot propagate from inside defer at 12:3",
+		"bodyless try cannot propagate from inside defer; add a local try handler at 12:3",
 	}
 	assertSemaErrors(t, errors, expected)
 }
@@ -5437,11 +5627,11 @@ func TestErrorHandlingMatchInvalidFixture(t *testing.T) {
 
 	expected := []string{
 		"non-exhaustive match for Result[Speed, IOError]: missing Err at 17:18",
-		"non-exhaustive match for IOError at 25:17",
+		"non-exhaustive match for IOError; enum may contain undeclared numeric values; add _ or cover the complete underlying domain at 25:17",
 		"match arms must produce compatible types, got int and string at 36:29",
 		"match pattern must match Result[Speed, IOError], got IOError at 45:16",
 		"catch-all pattern may not hide Err at 44:18",
-		"duplicate match arm for IOError.InvalidValue at 55:9",
+		"unreachable enum match arm; numeric value is already covered by InvalidValue at 55:9",
 		"unreachable match arm at 65:9",
 	}
 
@@ -5711,6 +5901,9 @@ fn AllEnumArmsAssign(direction: Direction) int {
 		Direction.East => {
 			result = 2
 		}
+		_ => {
+			result = 0
+		}
 	}
 
 	return result
@@ -5734,6 +5927,50 @@ fn ResultReturningArmAssigns(result: Result[int, IOError]) int {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, nil)
+}
+
+func TestMatchEnumNumericCoverageAndAliases(t *testing.T) {
+	input := `
+module main
+
+enum Alias: bit[1] {
+	Off = 0,
+	Disabled = 0,
+	On = 1,
+}
+
+fn Complete(value: Alias) int {
+	return match value {
+		Alias.Off => 0
+		Alias.On => 1
+	}
+}
+
+fn Duplicate(value: Alias) int {
+	return match value {
+		Alias.Off => 0
+		Alias.Disabled => 1
+		Alias.On => 2
+	}
+}
+
+enum Open {
+	First,
+	Second,
+}
+
+fn OpenDomain(value: Open) int {
+	return match value {
+		Open.First => 0
+		Open.Second => 1
+	}
+}
+`
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"unreachable enum match arm; numeric value is already covered by Off at 20:3",
+		"non-exhaustive match for Open; enum may contain undeclared numeric values; add _ or cover the complete underlying domain at 31:9",
+	})
 }
 
 func TestMatchErrDiscardPatternIsInvalid(t *testing.T) {
@@ -6783,7 +7020,34 @@ func TestCompilerIntrinsicTypesAreRegistered(t *testing.T) {
 	intrinsic := analyzer.IntrinsicTypes()
 
 	for _, name := range []string{
+		"any",
 		"bool",
+		"byte",
+		"char",
+		"rune",
+		"int",
+		"int8",
+		"int16",
+		"int32",
+		"int64",
+		"int128",
+		"int256",
+		"uint",
+		"uint8",
+		"uint16",
+		"uint32",
+		"uint64",
+		"uint128",
+		"uint256",
+		"float",
+		"float32",
+		"float64",
+		"decimal",
+		"decimal128",
+		"date",
+		"time",
+		"datetime",
+		"duration",
 		"string",
 		"void",
 		"RawPtr",
@@ -8768,6 +9032,39 @@ fn Test(left: int128, right: int128, b: bool) int128 {
 	}
 
 	assertSemaErrors(t, errors, expected)
+}
+
+func TestNumericLiteralsUseIntegerOperandContext(t *testing.T) {
+	valid := `
+module main
+
+fn Mask(crc: uint32) uint32 {
+	if (crc & 1) != 0 {
+		return crc ^ 0xFFFFFFFFu
+	}
+	return 1u | crc
+}
+`
+	analyzer, errors := analyzeSourceWithAnalyzer(t, valid)
+	assertSemaErrors(t, errors, nil)
+	function := analyzer.functions["Mask"][0]
+	if function.ReturnType.Name != "uint32" {
+		t.Fatalf("Mask return type = %s, want uint32", typeDisplayName(function.ReturnType))
+	}
+
+	invalid := `
+module main
+
+fn Invalid(value: uint8, runtimeMask: uint) void {
+	let overflow := value & 256
+	let typedMismatch := value & runtimeMask
+}
+`
+	errors = analyzeSourceRaw(t, invalid)
+	assertSemaErrors(t, errors, []string{
+		"value 256 overflows uint8 at 5:26",
+		"cannot apply operator & to uint8 and uint at 6:29",
+	})
 }
 
 func TestOrderedComparisonsRequireOrderableCompatibleOperands(t *testing.T) {

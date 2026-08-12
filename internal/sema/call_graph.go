@@ -66,6 +66,26 @@ type ArenaCallableSummary struct {
 	AllocationPath []CallableID
 }
 
+// EffectKind identifies a language-semantic callable effect. These facts are
+// recorded before optimization and are therefore suitable for verified
+// guarantees such as @noPanic.
+type EffectKind string
+
+const (
+	EffectMayPanicArithmetic EffectKind = "may-panic-arithmetic"
+)
+
+type EffectSite struct {
+	Kind   EffectKind
+	Source lexer.Token
+}
+
+type CallableEffectSummary struct {
+	DirectEffects []EffectSite
+	MayPanic      bool
+	PanicPath     []CallableID
+}
+
 type CallableNode struct {
 	ID          CallableID
 	Name        string
@@ -102,6 +122,7 @@ type CallGraph struct {
 	roots        map[CallRootID]CallRoot
 	rootOrder    []CallRootID
 	arenaEffects map[CallableID][]ArenaEffectSite
+	effects      map[CallableID][]EffectSite
 }
 
 func newCallGraph() *CallGraph {
@@ -110,6 +131,28 @@ func newCallGraph() *CallGraph {
 		siteIDs:      map[CallSiteID]bool{},
 		roots:        map[CallRootID]CallRoot{},
 		arenaEffects: map[CallableID][]ArenaEffectSite{},
+		effects:      map[CallableID][]EffectSite{},
+	}
+}
+
+func (g *CallGraph) addEffect(caller CallableID, effect EffectSite) {
+	if g == nil || caller == "" || effect.Kind == "" || effect.Source.Line <= 0 || effect.Source.Column <= 0 {
+		return
+	}
+	g.effects[caller] = append(g.effects[caller], effect)
+}
+
+func (g *CallGraph) removeEffect(caller CallableID, kind EffectKind, source lexer.Token) {
+	if g == nil || caller == "" {
+		return
+	}
+	effects := g.effects[caller]
+	for index := len(effects) - 1; index >= 0; index-- {
+		candidate := effects[index]
+		if candidate.Kind == kind && sourceTokenLocation(candidate.Source) == sourceTokenLocation(source) {
+			g.effects[caller] = append(effects[:index], effects[index+1:]...)
+			return
+		}
 	}
 }
 
@@ -196,6 +239,9 @@ func (g *CallGraph) clone() *CallGraph {
 	}
 	for id, effects := range g.arenaEffects {
 		copyGraph.arenaEffects[id] = append([]ArenaEffectSite(nil), effects...)
+	}
+	for id, effects := range g.effects {
+		copyGraph.effects[id] = append([]EffectSite(nil), effects...)
 	}
 	return copyGraph
 }
@@ -435,6 +481,25 @@ func (g *CallGraph) ArenaSummary(id CallableID) ArenaCallableSummary {
 		return false
 	})
 	summary.MayAllocate = len(summary.AllocationPath) > 0
+	return summary
+}
+
+// EffectSummary returns direct semantic effects and a deterministic shortest
+// synchronous cause path for transitive panic behavior.
+func (g *CallGraph) EffectSummary(id CallableID) CallableEffectSummary {
+	if g == nil {
+		return CallableEffectSummary{}
+	}
+	summary := CallableEffectSummary{DirectEffects: append([]EffectSite(nil), g.effects[id]...)}
+	summary.PanicPath = g.synchronousPathTo(id, func(candidate CallableID) bool {
+		for _, effect := range g.effects[candidate] {
+			if effect.Kind == EffectMayPanicArithmetic {
+				return true
+			}
+		}
+		return false
+	})
+	summary.MayPanic = len(summary.PanicPath) > 0
 	return summary
 }
 

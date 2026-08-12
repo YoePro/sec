@@ -975,8 +975,6 @@ func lookupIdent(s string) TokenType {
 		return SELF
 	case "select":
 		return SELECT
-	case "set":
-		return SET
 	case "spawn":
 		return SPAWN
 	case "static":

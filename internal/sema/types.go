@@ -11,6 +11,7 @@ type TypeKind string
 
 const (
 	InvalidType   TypeKind = "invalid"
+	AnyType       TypeKind = "any"
 	BoolType      TypeKind = "bool"
 	IntType       TypeKind = "int"
 	UintType      TypeKind = "uint"
@@ -401,6 +402,7 @@ type Symbol struct {
 
 func builtinTypes() map[string]Type {
 	types := map[string]Type{
+		"any":    {Name: "any", Kind: AnyType},
 		"bool":   {Name: "bool", Kind: BoolType},
 		"byte":   unsignedType("byte", 255),
 		"char":   {Name: "char", Kind: CharType},
@@ -732,6 +734,9 @@ func EqualityComparable(typ Type) bool {
 
 func equalityComparable(typ Type, visiting map[string]bool) bool {
 	switch typ.Kind {
+	case AnyType:
+		// An any value may contain a non-trivial or move-only concrete value.
+		return false
 	case BoolType,
 		IntType,
 		UintType,
@@ -816,6 +821,8 @@ func copyClassificationOf(typ Type, visiting map[string]bool) CopyClassification
 	switch typ.Kind {
 	case InvalidType, VoidType, NeverType:
 		return CopyNonCopyable
+	case AnyType:
+		return CopyConditional
 	case BoolType,
 		IntType,
 		UintType,

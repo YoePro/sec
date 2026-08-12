@@ -97,7 +97,7 @@ fn NestedDefer() void {
     }
 }
 
-// Ok: sema error: try cannot propagate from inside defer
+// Ok: sema error: bodyless try cannot propagate from inside defer; add a local try handler
 fn TryPropagationInsideDefer(resource: Resource) Result[void, CleanupError] {
     defer {
         let value := try ReadResource(resource)
@@ -107,7 +107,7 @@ fn TryPropagationInsideDefer(resource: Resource) Result[void, CleanupError] {
     return Ok()
 }
 
-// Ok: sema error: try cannot propagate from inside defer
+// Ok: sema error: bodyless try cannot propagate from inside defer; add a local try handler
 fn BareTryInsideDefer(resource: Resource) Result[void, CleanupError] {
     defer {
         try CloseResource(resource)

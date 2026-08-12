@@ -27,7 +27,7 @@ type Value union {
     Second(int)
 }
 
-type Shape union {
+type DrawingShape union {
     Circle {
         radius: decimal
     },
@@ -142,14 +142,14 @@ fn DuplicatePayloadTypesAreValid() bool {
     return first != second
 }
 
-fn CircleShape() Shape {
-    return Shape.Circle {
+fn CircleShape() DrawingShape {
+    return DrawingShape.Circle {
         radius: decimal(12)
     }
 }
 
-fn RectangleShape() Shape {
-    return Shape.Rectangle {
+fn RectangleShape() DrawingShape {
+    return DrawingShape.Rectangle {
         width: decimal(10),
         height: decimal(20),
     }
@@ -196,7 +196,7 @@ fn NumberIsPositive(number: Number) bool {
     }
 }
 
-fn ShapeArea(shape: Shape) decimal {
+fn ShapeArea(shape: DrawingShape) decimal {
     return match shape {
         Circle(circle) => decimal(3.14159) * circle.radius * circle.radius
         Rectangle(rectangle) => rectangle.width * rectangle.height

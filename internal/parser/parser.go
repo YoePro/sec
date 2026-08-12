@@ -1885,12 +1885,17 @@ func (p *Parser) parseInterfaceProperty() *ast.InterfaceProperty {
 				return nil
 			}
 			property.RequiresGet = true
-		case lexer.SET:
+		case lexer.SET, lexer.IDENT:
+			if p.curToken.Lexeme != "set" {
+				p.addError("unexpected token %q in interface property %s at %d:%d", p.curToken.Lexeme, property.Name.Value, p.curToken.Line, p.curToken.Column)
+				return nil
+			}
 			if property.RequiresSet {
 				p.addError("duplicate set in interface property %q", property.Name.Value)
 				return nil
 			}
 			property.RequiresSet = true
+			property.SetToken = p.curToken
 		case lexer.COMMENT:
 			continue
 		default:
@@ -3100,7 +3105,12 @@ func (p *Parser) parsePropertyDeclaration() *ast.PropertyDeclaration {
 				p.skipPropertyRemainder()
 				return nil
 			}
-		case lexer.SET:
+		case lexer.SET, lexer.IDENT:
+			if p.curToken.Lexeme != "set" {
+				p.addError("unexpected token %q in property %s at %d:%d", p.curToken.Lexeme, property.Name.Value, p.curToken.Line, p.curToken.Column)
+				p.skipPropertyRemainder()
+				return nil
+			}
 			if property.Setter != nil {
 				p.addError("duplicate set in property %q", property.Name.Value)
 				if p.peekToken.Type == lexer.IDENT {
@@ -3119,7 +3129,7 @@ func (p *Parser) parsePropertyDeclaration() *ast.PropertyDeclaration {
 				return nil
 			}
 		case lexer.TRY:
-			if !p.expectPeek(lexer.SET) {
+			if !p.expectPeekContextualSet() {
 				p.skipPropertyRemainder()
 				return nil
 			}
@@ -3249,32 +3259,6 @@ func (p *Parser) skipPropertyRemainder() RecoveryEvent {
 		delimiters.consume(p.curToken.Type)
 	}
 	return p.recordSkippedRecovery(start, end, skipped, RecoveryProbable)
-}
-
-func (p *Parser) parseBlockStatement() *ast.BlockStatement {
-	if !p.expectPeek(lexer.LBRACE) {
-		return nil
-	}
-
-	block := &ast.BlockStatement{Token: p.curToken}
-	depth := 1
-	for depth > 0 {
-		p.nextToken()
-		switch p.curToken.Type {
-		case lexer.EOF:
-			p.addError("unterminated block")
-			return nil
-		case lexer.LBRACE:
-			depth++
-		case lexer.RBRACE:
-			depth--
-		}
-		if depth > 0 {
-			block.Tokens = append(block.Tokens, p.curToken)
-		}
-	}
-
-	return block
 }
 
 func (p *Parser) parseTypeReference() *ast.TypeReference {
@@ -3972,6 +3956,15 @@ func (p *Parser) expectPeekTypeStart() bool {
 	return false
 }
 
+func (p *Parser) expectPeekContextualSet() bool {
+	if (p.peekToken.Type == lexer.IDENT || p.peekToken.Type == lexer.SET) && p.peekToken.Lexeme == "set" {
+		p.nextToken()
+		return true
+	}
+	p.addError("expected 'set', got %q at %d:%d", p.peekToken.Lexeme, p.peekToken.Line, p.peekToken.Column)
+	return false
+}
+
 func isTypeStart(tokenType lexer.TokenType) bool {
 	return tokenType == lexer.IDENT || tokenType == lexer.SET || tokenType == lexer.LT || tokenType == lexer.LBRACKET || tokenType == lexer.LPAREN || tokenType == lexer.VOID || tokenType == lexer.FN || tokenType == lexer.REF
 }
@@ -4380,7 +4373,10 @@ func (p *Parser) parseTryAssignmentStatement() ast.Statement {
 	stmt := &ast.TryAssignmentStatement{Token: p.curToken}
 
 	p.nextToken()
+	previousStopBeforeBrace := p.stopBeforeBrace
+	p.stopBeforeBrace = true
 	target := p.parseExpression(LOWEST)
+	p.stopBeforeBrace = previousStopBeforeBrace
 	if target == nil {
 		return nil
 	}
@@ -4412,7 +4408,7 @@ func (p *Parser) parseTryAssignmentStatement() ast.Statement {
 	}
 	p.nextToken()
 
-	previousStopBeforeBrace := p.stopBeforeBrace
+	previousStopBeforeBrace = p.stopBeforeBrace
 	p.stopBeforeBrace = true
 	assignment.Value = p.parseExpression(LOWEST)
 	p.stopBeforeBrace = previousStopBeforeBrace

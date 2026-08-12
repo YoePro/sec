@@ -185,6 +185,7 @@ fn EnumInMatch(value: Direction) int {
         Direction.east => 1
         Direction.south => 2
         Direction.west => 3
+		_ => -1
     }
 }
 

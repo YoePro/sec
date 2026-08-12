@@ -436,7 +436,7 @@
         },
         {
           "name": "keyword.other.property-accessor.sec",
-          "match": "\\b(?:get|set)\\b"
+          "match": "\\bget\\b"
         },
         {
           "name": "keyword.other.sec",
@@ -461,11 +461,11 @@
       "patterns": [
         {
           "name": "storage.type.primitive.sec",
-          "match": "\\b(?:bit|bool|byte|char|rune|int|int8|int16|int32|int64|int128|int256|uint|uint8|uint16|uint32|uint64|uint128|uint256|float|float32|float64|decimal|decimal128|date|time|datetime|duration|string|void|ptr)\\b"
+          "match": "\\b(?:any|bit|bool|byte|char|rune|int|int8|int16|int32|int64|int128|int256|uint|uint8|uint16|uint32|uint64|uint128|uint256|float|float32|float64|decimal|decimal128|date|time|datetime|duration|string|void)\\b"
         },
         {
           "name": "support.type.sec",
-          "match": "\\b(?:Result|Option|Vec|Map|Set|list|map|set|vector|matrix|tensor|tensor_view|Shape|Strides|TensorLayout|MemorySpace|Box|Any|RawPtr)\\b"
+          "match": "\\b(?:Result|Option|Vec|Map|Set|list|map|vector|matrix|tensor|tensor_view|Shape|Strides|TensorLayout|MemorySpace|Box|Any|RawPtr)\\b|\\bset(?=\\s*\\[)"
         },
         {
           "name": "support.type.concurrency.sec",

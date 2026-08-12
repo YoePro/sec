@@ -334,7 +334,7 @@ func TestKeywords(t *testing.T) {
 		{PROPERTY, "property"},
 		{GET, "get"},
 		{SELECT, "select"},
-		{SET, "set"},
+		{IDENT, "set"},
 		{ENUM, "enum"},
 		{UNION, "union"},
 		{SPAWN, "spawn"},

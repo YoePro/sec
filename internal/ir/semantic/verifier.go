@@ -111,11 +111,17 @@ func verifyEnumUnionDefinitions(module *Module) error {
 		if !isBuiltinIntegerType(module.Types, definition.Underlying) {
 			return fmt.Errorf("enum !%d has non-integer underlying type", definition.TypeID)
 		}
+		if definition.RepresentationKind != EnumRepresentationInteger && definition.RepresentationKind != EnumRepresentationBitBacked {
+			return fmt.Errorf("enum !%d has invalid representation %q", definition.TypeID, definition.RepresentationKind)
+		}
 		if definition.RepresentationKind == EnumRepresentationInteger && definition.BitWidth != 0 {
 			return fmt.Errorf("integer enum !%d has bit width", definition.TypeID)
 		}
 		if definition.RepresentationKind == EnumRepresentationBitBacked && (definition.BitWidth == 0 || definition.BitWidth > 256) {
 			return fmt.Errorf("bit-backed enum !%d has invalid width", definition.TypeID)
+		}
+		if definition.RepresentationKind == EnumRepresentationBitBacked && !isExactUnsignedIntegerType(module.Types, definition.Underlying, definition.BitWidth) {
+			return fmt.Errorf("bit-backed enum !%d requires an unsigned underlying type of width %d", definition.TypeID, definition.BitWidth)
 		}
 		caseNames := map[string]bool{}
 		caseIDs := map[EnumCaseID]bool{}
@@ -124,8 +130,8 @@ func verifyEnumUnionDefinitions(module *Module) error {
 				return fmt.Errorf("invalid enum case in !%d", definition.TypeID)
 			}
 			caseIDs[enumCase.ID], caseNames[enumCase.Name] = true, true
-			if definition.RepresentationKind == EnumRepresentationBitBacked && !fitsUnsignedWidth(enumCase.Value, definition.BitWidth) {
-				return fmt.Errorf("enum case %s is outside bit[%d]", enumCase.Name, definition.BitWidth)
+			if !enumValueFits(module.Types, definition, enumCase.Value) {
+				return fmt.Errorf("enum case %s is not representable by its underlying type", enumCase.Name)
 			}
 		}
 	}
@@ -189,6 +195,37 @@ func verifyEnumUnionDefinitions(module *Module) error {
 
 func fitsUnsignedWidth(value *big.Int, width uint16) bool {
 	return value != nil && value.Sign() >= 0 && value.BitLen() <= int(width)
+}
+
+func isExactUnsignedIntegerType(types *TypeTable, id TypeID, width uint16) bool {
+	underlying, ok := types.Lookup(id)
+	return ok && underlying.Kind == TypeUint && !underlying.Signed && !underlying.TargetSize && underlying.BitWidth == width
+}
+
+func enumValueFits(types *TypeTable, definition EnumDefinition, value *big.Int) bool {
+	if value == nil {
+		return false
+	}
+	if definition.RepresentationKind == EnumRepresentationBitBacked {
+		return fitsUnsignedWidth(value, definition.BitWidth)
+	}
+	underlying, ok := types.Lookup(definition.Underlying)
+	if !ok {
+		return false
+	}
+	if underlying.TargetSize || underlying.BitWidth == 0 {
+		return true
+	}
+	width := int(underlying.BitWidth)
+	if !underlying.Signed {
+		return value.Sign() >= 0 && value.BitLen() <= width
+	}
+	if value.Sign() >= 0 {
+		return value.BitLen() < width
+	}
+	minimum := new(big.Int).Lsh(big.NewInt(1), uint(width-1))
+	minimum.Neg(minimum)
+	return value.Cmp(minimum) >= 0
 }
 
 func enumDefinition(module *Module, typeID TypeID) (EnumDefinition, bool) {
@@ -345,6 +382,34 @@ func verifyFunction(module *Module, fn *Function, functions map[FunctionID]*Func
 	if err := verifyUnionGuards(fn, blocks); err != nil {
 		return err
 	}
+	if err := verifyMatchRecords(fn, blocks, values); err != nil {
+		return err
+	}
+	return nil
+}
+
+func verifyMatchRecords(fn *Function, blocks map[BlockID]*Block, values map[ValueID]Value) error {
+	seen := map[MatchID]bool{}
+	for _, match := range fn.Matches {
+		if match.ID == 0 || seen[match.ID] || !match.Exhaustive || !match.ValueContext || len(match.Arms) == 0 {
+			return fmt.Errorf("invalid match record %d", match.ID)
+		}
+		seen[match.ID] = true
+		subject, ok := values[match.Subject]
+		if !ok || subject.Type != match.SubjectType || blocks[match.MergeBlock] == nil || len(blocks[match.MergeBlock].Parameters) != 1 || blocks[match.MergeBlock].Parameters[0].Type != match.ResultType {
+			return fmt.Errorf("invalid match %d subject or merge", match.ID)
+		}
+		previous := -1
+		for _, arm := range match.Arms {
+			if arm.SourceIndex <= previous || blocks[arm.PatternBlock] == nil || blocks[arm.BodyBlock] == nil || arm.PatternKind == "" {
+				return fmt.Errorf("invalid match %d arm provenance", match.ID)
+			}
+			if arm.Guarded && blocks[arm.GuardBlock] == nil {
+				return fmt.Errorf("invalid match %d guard provenance", match.ID)
+			}
+			previous = arm.SourceIndex
+		}
+	}
 	return nil
 }
 
@@ -414,6 +479,10 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 		}
 		if !void && values[op.Operands[0]].Type != fn.ReturnType {
 			return fmt.Errorf("return type mismatch")
+		}
+	case OpUnreachable:
+		if len(op.Operands) != 0 || len(op.Results) != 0 || len(op.Successors) != 0 || !op.Synthesized || op.Reason == "" {
+			return fmt.Errorf("invalid synthesized unreachable")
 		}
 	case OpStorageDeclare:
 		if op.Storage == 0 || storages[op.Storage].ID == 0 {
@@ -899,6 +968,7 @@ func verifyTryHandlers(fn *Function) error {
 		catchAllIndex       int
 		highestVariantIndex int
 		variants            map[string]bool
+		exhaustive          bool
 	}
 	groups := map[BlockID]*handlerGroup{}
 	for _, block := range fn.Blocks {
@@ -934,11 +1004,13 @@ func verifyTryHandlers(fn *Function) error {
 				}
 				group.catchAll = true
 				group.catchAllIndex = op.TryHandlerIndex
+				group.exhaustive = group.exhaustive || op.TryHandlerExhaustive
 			case TryHandlerErrVariant:
 				if op.Variant == "" || group.variants[op.Variant] {
 					return fmt.Errorf("duplicate or missing Err variant for try merge ^%d", op.Successors[0].Block)
 				}
 				group.variants[op.Variant] = true
+				group.exhaustive = group.exhaustive || op.TryHandlerExhaustive
 				if op.TryHandlerIndex > group.highestVariantIndex {
 					group.highestVariantIndex = op.TryHandlerIndex
 				}
@@ -952,14 +1024,14 @@ func verifyTryHandlers(fn *Function) error {
 		if group.okCount != 1 {
 			return fmt.Errorf("try merge ^%d must have exactly one implicit or explicit Ok edge", merge)
 		}
+		if !group.exhaustive {
+			return fmt.Errorf("try merge ^%d is missing exhaustive handler provenance", merge)
+		}
 		if group.catchAll {
 			if group.catchAllIndex <= group.highestVariantIndex {
 				return fmt.Errorf("Err catch-all must follow specific handlers for try merge ^%d", merge)
 			}
 			continue
-		}
-		if !group.variants["Overflow"] || !group.variants["DivisionByZero"] || !group.variants["InvalidShift"] || len(group.variants) != 3 {
-			return fmt.Errorf("ArithmeticError handlers for try merge ^%d are not exhaustive", merge)
 		}
 	}
 	return nil

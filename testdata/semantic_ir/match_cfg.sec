@@ -1,0 +1,15 @@
+module main
+
+enum Flag: bit[1] {
+    Off = 0,
+    Disabled = 0,
+    On = 1,
+}
+
+fn Choose(flag: Flag, enabled: bool) int {
+    return match flag {
+        Flag.Off where enabled => 10
+        Flag.Disabled => 20
+        Flag.On => 30
+    }
+}

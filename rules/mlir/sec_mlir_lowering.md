@@ -4,10 +4,10 @@
 
 Normative lowering specification.
 
-Current lowering specification version: `7`
+Current lowering specification version: `8`
 
-Version 7 defines the high-level enum/union representation boundary and the
-compatibility rules for earlier scalar, integer, Result and try lowering.
+Version 8 retains the high-level enum/union representation boundary and adds
+resolved variant-oriented match lowering as explicit verified CFG.
 
 It does not perform physical tagged-union lowering.
 
@@ -367,3 +367,20 @@ non-trivial ownership is rejected rather than hidden
 no physical union layout is selected
 no LLVM dialect is generated
 ```
+
+---
+
+# 25. Match CFG lowering
+
+Lowering consumes verified Semantic IR and its Sema-resolved match provenance.
+It evaluates one subject SSA value, emits source-order pattern blocks, evaluates
+guards only after pattern success, and uses one typed merge argument for match
+expressions or a continuation block for match statements.
+
+Enum patterns use `sec.enum.constant` plus `sec.enum.cmp eq`; union and Option
+patterns use `sec.union.is_variant` and guarded copy-trivial projection; Result
+patterns use `sec.result.is_err` and guarded unwrap operations. An impossible
+exhaustive residual emits `sec.unreachable`. The output carries deterministic
+function-local match provenance and runs `sec-verify-match-cfg` in addition to
+applicable Result/union verifiers. No physical representation or switch-table
+optimization is selected in this pass.

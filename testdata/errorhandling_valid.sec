@@ -53,6 +53,7 @@ fn MatchEnum(error: IOError) int {
         IOError.InvalidValue => 1
         IOError.NotFound => 2
         IOError.PermissionDenied => 3
+		_ => 0
     }
 
     return code

@@ -158,6 +158,8 @@ func formatOperation(out *strings.Builder, op Operation) {
 		if len(op.Operands) > 0 {
 			fmt.Fprintf(out, " %%%d", op.Operands[0])
 		}
+	case OpUnreachable:
+		fmt.Fprintf(out, " synthesized=%t reason=%q", op.Synthesized, op.Reason)
 	case OpDirectCall, OpForeignCall:
 		fmt.Fprintf(out, " %q(", op.Callee)
 		for i, id := range op.Operands {

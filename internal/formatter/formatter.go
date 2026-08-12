@@ -271,6 +271,7 @@ func delimiters(s string) int {
 	delta := 0
 	quote := rune(0)
 	esc := false
+	lastCode := rune(0)
 	for i, r := range s {
 		if quote != 0 {
 			if esc {
@@ -287,7 +288,11 @@ func delimiters(s string) int {
 		}
 		if r == '"' || r == '\'' {
 			quote = r
+			lastCode = r
 			continue
+		}
+		if !unicode.IsSpace(r) {
+			lastCode = r
 		}
 		if r == '{' || r == '(' || r == '[' {
 			delta++
@@ -295,6 +300,15 @@ func delimiters(s string) int {
 		if r == '}' || r == ')' || r == ']' {
 			delta--
 		}
+	}
+	// A line such as `}) {` closes a multiline call/struct literal and opens
+	// the attached try-handler block. The line-oriented formatter intentionally
+	// collapses multiple opens on the preceding line to one visual indentation
+	// level, so consuming the raw net -1 here would lose the newly opened block.
+	// Keep the current level when a closing-heavy continuation hands off to a
+	// trailing opening brace.
+	if delta < 0 && lastCode == '{' {
+		return 0
 	}
 	if delta < 0 {
 		return -1

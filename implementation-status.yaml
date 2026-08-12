@@ -1,5 +1,5 @@
 schema_version: 1
-updated: "2026-08-11"
+updated: "2026-08-12"
 purpose: >-
   Canonical implementation ledger for compiler and tooling work. Normative
   language behavior remains in rules/, while implementation status is migrated
@@ -11,6 +11,33 @@ status_values:
   planned: The scope is documented but no implementation slice is integrated.
 
 integrations:
+  - id: tooling.formatter-delimiter-handoff
+    area: tooling
+    status: implemented
+    integrated: "2026-08-12"
+    summary: >-
+      Preserves indentation when one continuation line closes a multiline call
+      and aggregate literal while opening an attached try-handler block.
+    rules:
+      - rules/tooling/formatter.md
+      - rules/foundations/grammar.md
+      - rules/errors/errorhandling.txt
+    code:
+      - internal/formatter/formatter.go
+    tests:
+      - internal/formatter/formatter_test.go
+      - cmd/lsp/main_test.go
+    implemented:
+      - recognize closing-heavy delimiter handoff lines such as `}) {` without discarding the newly opened handler indentation level
+      - indent try-handler arms beneath the attached handler block and restore the enclosing statement and function indentation after its closing brace
+      - ignore interpolated-string braces while determining the last structural delimiter on the continuation line
+      - verify formatting idempotence for a multiline typed struct literal passed to a fallible method under try
+    verification:
+      - command: go test ./internal/formatter -run TestFormatTryHandlerAfterStructLiteralCallArgument -v
+        result: passed
+      - command: go test ./cmd/lsp -run 'Format|Formatting' -v
+        result: passed
+
   - id: frontend.parser-recovery-result
     area: frontend
     status: partial
@@ -54,6 +81,7 @@ integrations:
       - shared delimiter stack preserving mismatched outer closers
       - delimiter-aware recovery for struct fields, switch/select entries, directives, generic parameters, declaration tails, malformed for headers, attributes, properties, and balanced blocks
       - skipped-range events from each migrated delimiter-aware recovery helper
+      - try handler-brace disambiguation is scoped to the outer try operand in both expression and statement parser paths, so typed struct literals remain valid inside nested call arguments and a following handler block is not misread as a struct literal on the completed call
       - deterministic 100-diagnostic parser cap with one terminal P2015 diagnostic
       - central CLI and LSP parse paths consume ParseResult
     tests:
@@ -65,6 +93,8 @@ integrations:
         result: passed
       - command: validate implementation-status.yaml
         result: passed
+      - command: go test ./internal/parser -run 'TestParse.*Try.*StructLiteral' -v && go run ./cmd/compiler parse ../bootstrap/internal/lexer/lexer.sec
+        result: passed; the bootstrap Diagnostic struct literal in the Append argument parses without treating its brace as a try-handler boundary
 
     remaining:
       - invalid type retention on every type-reference failure path
@@ -121,6 +151,7 @@ integrations:
       - canonical referent Place provenance for directly created local reference and slice aliases
       - field and index reborrow overlap through aliases, including disjoint constant projections
       - reference provenance preservation across shared-reference copies and mutable-reference moves, including active-borrow holder transfer
+      - calls through ref mut parameters reborrow rather than consume the caller's reference, preserving later try and match uses of the same Place
       - normalized half-open Place intervals for statically known inclusive, exclusive, and open slice bounds
       - disjoint static slice ranges, outside constant indices, and empty slice ranges
       - constant index and subrange composition through local slice aliases
@@ -546,6 +577,7 @@ integrations:
     implemented:
       - Sema and LSP expose exactly Len, IsEmpty, Ptr, SizeOf, Append, Clear, RemoveAt, and ToString
       - Append validates element type and returns Result[void, CollectionError]
+      - Append accepts contextually typed struct literals directly as values, including under naked try propagation
       - Clear resolves as infallible void mutation
       - RemoveAt validates an integer index and returns Option[T]
     remaining:
@@ -554,6 +586,11 @@ integrations:
       - make Clear reverse-destroy live elements while retaining backing
       - make RemoveAt return Option[T], compact the suffix, and preserve the initialized prefix
       - enforce active-borrow and storage-invalidation rules on mutating methods
+    tests:
+      - internal/sema/compiler_known_members_test.go
+    verification:
+      - command: go test ./internal/sema -run TestCompilerKnownAppendAcceptsTypedStructLiteralUnderTry -v
+        result: passed
 
   - id: frontend.bodyless-try-assignment
     area: frontend-analysis
@@ -1432,6 +1469,7 @@ integrations:
       - internal/parser/expression.go
       - internal/sema/types.go
       - internal/sema/analyzer.go
+      - internal/sema/call_graph.go
       - internal/sema/semantic_facts.go
       - internal/ir/semantic/model.go
       - internal/ir/semantic/builder.go
@@ -1445,6 +1483,7 @@ integrations:
       - mlir/lib/Conversion/SecIntegerToArith/SecIntegerToArith.cpp
     tests:
       - internal/sema/semantic_facts_test.go
+      - internal/sema/effect_analysis_test.go
       - internal/ir/semantic/semantic_test.go
       - internal/lowering/secmlir/emitter_test.go
       - testdata/semantic_ir/typed_arithmetic_try.sec
@@ -1455,6 +1494,7 @@ integrations:
       - compiler-known exact ArithmeticError enum with Overflow, DivisionByZero, and InvalidShift
       - parser binding of try to the complete following arithmetic expression
       - read-only ResolvedTryOf facts for ordinary Result propagation, handled Result, and arithmetic propagation
+      - bodyless try diagnostics explain the implicit return Err propagation, name the incompatible enclosing return type, and suggest either a local handler or the exact compatible Result return shape
       - exact Result[U, ArithmeticError] requirement with mentor diagnostics for non-Result and other-error returns
       - naked checked arithmetic try across active 8/16/32/64/128/256-bit integer families
       - Semantic IR arithmetic-failure-reason, core-error, and Result types without physical layout
@@ -1465,9 +1505,11 @@ integrations:
       - schema-aware operation and checked-guard verification retaining schema-4 fixture compatibility
       - exact dynamic reason selection with zero-divisor and invalid-shift precedence
       - signless Arith conversion preserving typed reason SSA flow and introducing no mandatory runtime
+      - compiler-owned callable effect summaries record direct arithmetic MayPanic sites and deterministic transitive synchronous cause paths
+      - resolved handled and propagated arithmetic try removes only its own checked-arithmetic panic effect while preserving panic effects from operand calls and nested argument evaluation
+      - invalid arithmetic try is never accepted as positive panic-free evidence
     remaining:
-      - integrate resolved arithmetic-try facts into general callable effect summaries
-      - implement and verify @noPanic arithmetic-try behavior while retaining operand-call panic effects
+      - complete the remaining MayPanic sources, unknown/foreign contracts, cleanup effects, and attribute diagnostics required for full transitive @noPanic verification; arithmetic-try transformation and operand-call preservation are now represented in the canonical callable summary
     deferred:
       - physical Result and ArithmeticError layout belongs to its dedicated ABI/layout package
     verification:
@@ -1477,6 +1519,8 @@ integrations:
         result: passed
       - command: go run ./cmd/compiler emit-sec-mlir testdata/semantic_ir/typed_arithmetic_try.sec --target linux-amd64 --mlir-bin build/sec-mlir/bin -o /tmp/sec-package9.mlir
         result: passed with schema-v5 checked-guard verification
+      - command: go test ./internal/sema -run 'TestArithmeticTry|TestInvalidArithmeticTry' -v
+        result: passed with direct, handled, transitive operand-call, ordinary Result try, and invalid-try effect coverage
 
   - id: lowering.sec-mlir-local-try-handlers
     area: frontend-analysis-semantic-ir-and-mlir
@@ -1589,16 +1633,22 @@ integrations:
       - mlir/lib/Conversion/SecToCore/SecToCore.cpp
     tests:
       - internal/ir/semantic/package11_test.go
+      - internal/ir/semantic/package11_verifier_test.go
       - cmd/compiler/emit_sec_mlir_package11_test.go
       - testdata/semantic_ir/enum_union_values.sec
       - mlir/test/Dialect/Sec/schema7-enum-union.mlir
+      - mlir/test/Dialect/Sec/invalid-schema7-enum-types.mlir
+      - mlir/test/Dialect/Sec/invalid-schema7-try-exhaustiveness.mlir
       - mlir/test/Dialect/Sec/invalid-union-guards.mlir
+      - mlir/test/Dialect/Sec/invalid-union-guard-matrix.mlir
       - mlir/test/Conversion/SecToCore/schema7-enum-union-scalar-layout.mlir
     implemented:
       - immutable Sema queries for declared enum cases, explicit enum conversions, and concrete union constructions with stable source and canonical field order
       - expected-type union inference records the resolved concrete expression type for downstream compiler consumers and the LSP
       - Semantic IR enum and union identities, definitions, cases, variants, payload fields, concrete generic arguments, copy classification, destruction classification, and source provenance
       - arbitrary-precision enum case values and distinct declaration ordinals for numeric aliases
+      - fixed-width enum case values are verified against signed or unsigned underlying bounds, while target-sized bounds remain target-plan dependent
+      - bit-backed enum definitions require an exact-width unsigned underlying type across Semantic IR and Sec MLIR, including the bit[1] and bit[256] boundaries
       - enum constants, explicit integer-to-enum and enum-to-integer conversion, and same-enum equality and inequality
       - empty, single-payload, and named-field union construction with explicit copy-trivial payload actions
       - source-order field evaluation followed by deterministic declaration-order construction operands
@@ -1610,6 +1660,7 @@ integrations:
       - concrete generic union type arguments use MLIR type attributes and empty non-generic argument lists round-trip correctly
       - scalar-layout conversion preserves enum identity while converting its semantic underlying scalar and recursively maps concrete union type arguments and payload types without choosing physical layout
       - ArithmeticError and user fieldless error enums use ordinary enum constants and equality in new schema-7 handler output while schema-6 core-error input remains accepted
+      - schema-7 enum handler merges carry Sema's generic exhaustiveness proof instead of relying on hard-coded ArithmeticError case names
       - compiler emission defaults to Package 11 and invokes union-guard verification without introducing a runtime or physical tagged-union layout
       - end-to-end enum aliases, 128/256-bit values, bit-backed enum types, generic Option values, union payload shapes, and real sec-mlir-opt round trips
     deferred:
@@ -1619,11 +1670,91 @@ integrations:
       - enum ordering and arithmetic and union equality or ordering are not introduced by Package 11
     verification:
       - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
-        result: passed, 67 tests under LLVM/MLIR 24.0.0git
+        result: passed, 70 tests under LLVM/MLIR 24.0.0git
       - command: SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./cmd/compiler ./internal/mlir ./internal/lowering/secmlir ./internal/ir/semantic
         result: passed with real sec-mlir-opt schema-7 verification
+      - command: go vet ./...
+        result: passed
+      - command: go test ./...
+        result: >-
+          Package 11 and all non-Sema packages passed; the repository-wide run
+          remains red in the independently modified TestRegister7TryAndMatchFixture
+          because TcpHeader declares 160 bits for 158 bits of fields and header is
+          diagnosed as moved after RoutePacket.
       - command: go run ./cmd/compiler emit-sec-mlir testdata/semantic_ir/enum_union_values.sec --target linux-amd64 --mlir-bin build/sec-mlir/bin -o /tmp/sec-p11.mlir
         result: passed through parse, Sema, Semantic IR, schema-7 emission, and all Sec verification passes
+
+  - id: lowering.sec-mlir-match-cfg
+    area: frontend-analysis-semantic-ir-and-mlir
+    status: partial
+    integrated: "2026-08-12"
+    summary: >-
+      Begins SEC-MLIR Package 12 by correcting enum match coverage to numeric
+      runtime value classes, recording immutable Sema-resolved match plans, and
+      installing the schema-8 synthesized unreachable boundary used by explicit
+      match CFG.
+    rules:
+      - rules/mlir/packages/sec-mlir-dialect_package12.md
+      - rules/mlir/packages/sec-mlir-dialect_package12.yaml
+      - rules/control-flow/flowcontrol_match.txt
+      - rules/declarations/enums.txt
+      - rules/compiler/semantic_ir.txt
+      - rules/mlir/semantic-ir/sec_semantic_ir_match_v1.md
+      - rules/mlir/sec_mlir_dialect.md
+      - rules/mlir/sec_mlir_lowering.md
+    code:
+      - internal/sema/semantic_facts.go
+      - internal/sema/analyzer.go
+      - internal/ir/semantic/model.go
+      - internal/ir/semantic/verifier.go
+      - internal/ir/semantic/printer.go
+      - internal/lowering/secmlir/emitter.go
+      - mlir/include/sec/Dialect/Sec/SecOps.td
+      - mlir/lib/Dialect/Sec/SecOps.cpp
+      - mlir/lib/Dialect/Sec/SecDialect.cpp
+      - mlir/include/sec/Analysis/Passes.h
+      - mlir/include/sec/Analysis/Passes.td
+      - mlir/lib/Analysis/VerifyCheckedIntegerGuards.cpp
+      - internal/mlir/toolchain.go
+    tests:
+      - internal/sema/semantic_facts_test.go
+      - internal/sema/analyzer_test.go
+      - internal/ir/semantic/package12_test.go
+      - mlir/test/Dialect/Sec/schema8-unreachable.mlir
+      - mlir/test/Dialect/Sec/invalid-schema8-unreachable.mlir
+      - mlir/test/Analysis/schema8-match-cfg.mlir
+      - mlir/test/Analysis/invalid-schema8-match-cfg.mlir
+      - testdata/semantic_ir/match_cfg.sec
+    implemented:
+      - enum match aliases normalize to arbitrary-precision numeric value classes for duplicate and unreachable analysis
+      - enum exhaustiveness includes undeclared explicitly converted values and accepts finite complete bit-backed domains by cardinality proof
+      - ResolvedMatchPlanOf exposes immutable subject, arm, binding, guard, flow, result and residual-coverage facts without re-analysis
+      - Semantic IR UnreachableOp requires synthesized provenance and a non-empty reason
+      - schema 8 accepts and verifies sec.unreachable while schemas 1 through 7 remain accepted inputs
+      - compiler-generated Sec MLIR now identifies as schema 8
+      - Semantic IR MatchRecord and MatchArmRecord retain function-local identity, shared subject, source indexes, pattern/guard/body blocks, numeric enum values, flow, merge and locations
+      - the Package 12 builder consumes ResolvedMatchPlan for enum match expressions, evaluates the subject once and emits source-order numeric comparisons with guard-false continuation
+      - continuing expression arms join through one typed SSA merge parameter while return arms remain merge-free
+      - complete finite enum chains retain the final test and terminate its impossible false edge with exhaustive-match-fallthrough
+      - schema-8 emission attaches match ID, arm index, stage and pattern-kind provenance to generated operations
+      - --sec-verify-match-cfg validates complete provenance, source arm order, a shared enum subject, immediate comparison branches, common merge and exhaustive residual
+      - the standard Sec verification toolchain invokes the match-CFG verifier
+    remaining:
+      - generalize the source-order builder from enum subjects to union, Result and Option with copy-trivial payload binding and discard
+      - implement match statements, continuation blocks and all-terminating statement forms
+      - extend Result and union guard verification for repeated guarded match-arm CFG shapes
+      - add the complete Package 12 positive, negative and end-to-end matrix
+    verification:
+      - command: go test ./internal/sema -run 'TestMatch|TestErrorHandlingMatch|TestResolvedMatchPlan' -count=1
+        result: passed
+      - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
+        result: passed, 74 tests under LLVM/MLIR 24.0.0git
+      - command: go run ./cmd/compiler emit-sec-mlir testdata/semantic_ir/match_cfg.sec --target linux-amd64 --mlir-bin build/sec-mlir/bin -o /tmp/sec-p12-match.mlir
+        result: passed through Sema-resolved plan, Semantic IR match CFG, schema-8 emission and sec-verify-match-cfg
+      - command: go test ./...
+        result: all packages pass except the explicitly excluded in-progress TestRegister7TryAndMatchFixture
+      - command: go vet ./...
+        result: passed
 
   - id: frontend.copy-move
     area: frontend-analysis-and-lowering
@@ -1760,6 +1891,7 @@ integrations:
       - line comments
       - nested block comments
       - comment tokens
+      - comments treated as parser trivia before, between, and after struct-literal fields, including trailing line comments after commas
       - LSP semantic tokens for keywords, mutable variables, immutable bindings as readonly variables, types, functions, methods, comments, literals, and operators
       - position-specific LSP member classification and hover resolution so struct fields, struct-literal field names, and same-named methods retain distinct semantic identities
       - LSP member completion resolves self to its enclosing impl target including fields, register fields, properties, events, and instance methods
@@ -1777,17 +1909,18 @@ integrations:
       - one optional initial UTF-8 byte-order mark ignored without shifting the first token position and removed by the formatter
       - unexpected byte-order marks rejected with L1002 at their exact source position while tokenization recovers
       - unsupported Unicode spacing outside literals and comments rejected as one ILLEGAL token with code-point-specific L1003 diagnostics
+      - contextual set lexed as an ordinary identifier and resolved by parser context as collection type syntax, property setter syntax, or a value identifier
+      - contextual set classified positionally by LSP semantic tokens and constrained by TextMate lookahead instead of globally reserved highlighting
+      - compiler-known type names protected against replacement by user type, enum, interface, or unit declarations
       - bootstrap lexer source synchronized with initial-BOM skipping, later-BOM and Unicode-whitespace diagnostics, diagnostic snapshot state, and a parser-valid DecodedSource boundary
     partial:
       - keyword inventory synchronization, including removal of the obsolete sec reservation
-      - contextual set handling, including synchronization with the rule that set is not globally reserved
       - character-literal content validation
       - escape validation
       - interpolation parsing
       - malformed base-literal diagnostics
       - comment attachment for formatter and documentation
       - CR and CRLF line accounting
-      - built-in type-name reservation
       - parser rejection of semicolons
       - source-position integration across lexer, parser, diagnostics, and LSP
       - documentation-comment support in LSP hover without AST-level comment attachment
@@ -2044,7 +2177,7 @@ integrations:
     area: frontend-and-lowering
     status: partial
     integrated: "2026-08-09"
-    audited: "2026-08-11"
+    audited: "2026-08-12"
     summary: >-
       Tracks implemented core type syntax and semantics migrated from the
       retired types.txt rulebook under the canonical rules/types/types.md contract.
@@ -2079,10 +2212,20 @@ integrations:
       - compiler-known list, map, set, vector, matrix, tensor, tensor_view, Result, Option, Task, Thread, shape, layout, and memory-space identities
       - exact decimal literal semantic interpretation and legacy direct LLVM decimal constants, integer conversion, and return values
       - active int128, int256, uint128, uint256, and decimal128 language identities
+      - representability-checked contextual shaping of integer-family literals for comparisons, arithmetic, and non-shift bitwise operators, including fixed-width contexts such as uint32 & 1 and uint32 ^ 1u
+      - typed runtime numeric operands remain subject to exact compatibility and are not treated as shapeable literals
+      - compiler-known any top-type identity with safe implicit widening from non-void values, exact any-to-any assignment, and rejection of implicit or explicit unchecked narrowing
+      - any member access remains statically closed rather than enabling dynamic unchecked dispatch
+      - void rejected for variables, parameters, stored fields, properties, safe references, sequence elements, function-type parameters, and non-permitted generic arguments
+      - RawPtr[void] and Result[void, E] retained as the explicitly permitted void type-argument forms while Result[T, void] is rejected
+      - contextual set support across ordinary identifiers, collection type positions, type-first declarations, property setters, LSP semantic tokens, and TextMate highlighting
+      - compiler-known type-name reservation with poisoned-declaration suppression so invalid redeclarations cannot replace intrinsic type identity in later analysis passes
+      - conformance coverage for the canonical ordinary scalar type inventory and compiler-known collection, shaped, rank-support, result, option, task, thread, and raw-pointer identities
+      - type and compile-time integer arity validation for list, map, set, vector, matrix, tensor, tensor_view, Shape, Strides, TensorLayout, and non-generic MemorySpace
     remaining:
-      - implement the canonical any top-type representation, assignability, narrowing, conversion, diagnostics, and lowering model
-      - finish compiler-known lowercase-name reservation and contextual set handling consistently across parser, Sema, formatter, LSP, and TextMate grammar
-      - validate the complete compiler-known type inventory, generic and const-argument arities, nominal identity, assignability, and conversion matrix against rules/types/types.md
+      - define and implement the runtime representation, ownership-preserving erasure, type-safe narrowing operations, and lowering model for any in its owning specialized rulebook
+      - complete the nominal identity, assignability, and explicit conversion matrix audit against rules/types/types.md
+      - define the canonical Result error type for runtime-checked scalar conversions such as try rune(codePoint) before implementing their fallible frontend contract
       - complete list, map, set, vector, matrix, tensor, tensor_view, Shape, Strides, TensorLayout, and MemorySpace semantics and lowering under their owning collection and layout integrations
       - complete fixed-array, owning dynamic-array, borrowed-slice, reference, and defaultability integration under frontend.collections, sema.place-analysis, and frontend.default-values
       - finish Result, Option, Task, Thread, interface, union, register, unit, and other nominal-core representation/lowering audits without deriving source identity from backend layout
@@ -2095,6 +2238,8 @@ integrations:
     verification:
       - command: go test ./...
         result: passed
+      - command: go test ./internal/lexer ./internal/parser ./cmd/lsp with contextual-set tests and focused internal/sema any/void/intrinsic-type tests
+        result: passed on 2026-08-12; the full internal/sema package still has pre-existing discard/resource diagnostics in three contract tests
 
   - id: frontend.literal-family-suffix-v2
     area: frontend-bootstrap-tooling

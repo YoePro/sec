@@ -14,6 +14,7 @@ namespace sec {
 #define GEN_PASS_DEF_SECVERIFYRESULTGUARDS
 #define GEN_PASS_DEF_SECVERIFYTRYHANDLERS
 #define GEN_PASS_DEF_SECVERIFYUNIONGUARDS
+#define GEN_PASS_DEF_SECVERIFYMATCHCFG
 #include "sec/Analysis/Passes.h.inc"
 } // namespace sec
 
@@ -198,6 +199,7 @@ LogicalResult sec::verifyTryHandlers(func::FuncOp function) {
     bool catchAll = false;
     int64_t catchAllIndex = -1;
     int64_t highestVariantIndex = -1;
+    bool exhaustive = false;
   };
   std::map<Block *, Group> groups;
   WalkResult result = function.walk([&](Operation *operation) {
@@ -231,6 +233,9 @@ LogicalResult sec::verifyTryHandlers(func::FuncOp function) {
                     kind.getValue() != "err-catch-all"))
       return WalkResult::advance();
     Group &group = groups[branch.getDest()];
+    if (auto exhaustive = operation->getAttrOfType<BoolAttr>(
+            "sec.try_handler_exhaustive"))
+      group.exhaustive = group.exhaustive || exhaustive.getValue();
     if (kind.getValue() == "err-catch-all") {
       if (group.catchAll)
         return branch.emitOpError("duplicate Err catch-all for try merge"),
@@ -254,7 +259,15 @@ LogicalResult sec::verifyTryHandlers(func::FuncOp function) {
     if (group.catchAll && group.catchAllIndex <= group.highestVariantIndex)
       return merge->getParentOp()->emitError(
           "Err catch-all must follow all specific handlers for a try merge");
-    if (!group.catchAll &&
+    int64_t schema = 0;
+    if (auto module = function->getParentOfType<ModuleOp>())
+      if (auto version =
+              module->getAttrOfType<IntegerAttr>("sec.dialect_version"))
+        schema = version.getInt();
+    if (schema >= 7 && !group.exhaustive)
+      return merge->getParentOp()->emitError(
+          "try handlers require exhaustive Sema provenance");
+    if (schema < 7 && !group.catchAll &&
         group.variants !=
             std::set<std::string>{"Overflow", "DivisionByZero",
                                   "InvalidShift"})
@@ -301,6 +314,77 @@ LogicalResult sec::verifyUnionGuards(func::FuncOp function) {
   return result.wasInterrupted() ? failure() : success();
 }
 
+LogicalResult sec::verifyMatchCFG(func::FuncOp function) {
+  struct Group {
+    int64_t lastArm = -1;
+    Block *merge = nullptr;
+    Value enumSubject;
+    bool hasPattern = false;
+    bool hasBodyExit = false;
+    bool hasResidual = false;
+    bool hasCatchAll = false;
+  };
+  std::map<int64_t, Group> groups;
+  WalkResult result = function.walk([&](Operation *operation) {
+    auto id = operation->getAttrOfType<IntegerAttr>("sec.match_id");
+    auto arm = operation->getAttrOfType<IntegerAttr>("sec.match_arm_index");
+    auto stage = operation->getAttrOfType<StringAttr>("sec.match_stage");
+    auto kind = operation->getAttrOfType<StringAttr>("sec.match_pattern_kind");
+    if (!id && !arm && !stage && !kind)
+      return WalkResult::advance();
+    if (!id || !arm || !stage || !kind)
+      return operation->emitOpError("incomplete Sec match provenance"),
+             WalkResult::interrupt();
+    Group &group = groups[id.getInt()];
+    if (arm.getInt() < group.lastArm)
+      return operation->emitOpError("match arm provenance is not source ordered"),
+             WalkResult::interrupt();
+    group.lastArm = arm.getInt();
+    if (stage.getValue() == "pattern") {
+      group.hasPattern = true;
+      group.hasCatchAll = group.hasCatchAll || kind.getValue() == "catch-all";
+      if (auto compare = dyn_cast<sec::EnumCmpOp>(operation)) {
+        if (group.enumSubject && group.enumSubject != compare.getLeft())
+          return compare.emitOpError("match tests must reuse one enum subject"),
+                 WalkResult::interrupt();
+        group.enumSubject = compare.getLeft();
+        auto branch = dyn_cast_or_null<cf::CondBranchOp>(operation->getNextNode());
+        if (!branch || branch.getCondition() != compare.getResult())
+          return compare.emitOpError("enum match comparison must immediately feed cf.cond_br"),
+                 WalkResult::interrupt();
+      }
+    } else if (stage.getValue() == "body-exit") {
+      auto branch = dyn_cast<cf::BranchOp>(operation);
+      if (!branch)
+        return operation->emitOpError("match body exit must be cf.br"),
+               WalkResult::interrupt();
+      if (group.merge && group.merge != branch.getDest())
+        return branch.emitOpError("match body exits must share one merge"),
+               WalkResult::interrupt();
+      group.merge = branch.getDest();
+      group.hasBodyExit = true;
+    } else if (stage.getValue() == "residual") {
+      auto unreachable = dyn_cast<sec::UnreachableOp>(operation);
+      if (!unreachable || unreachable.getReason() !=
+                              "exhaustive-match-fallthrough")
+        return operation->emitOpError(
+                   "match residual must be exhaustive sec.unreachable"),
+               WalkResult::interrupt();
+      group.hasResidual = true;
+    }
+    return WalkResult::advance();
+  });
+  if (result.wasInterrupted())
+    return failure();
+  for (const auto &[id, group] : groups)
+    if (!group.hasPattern || !group.hasBodyExit ||
+        (!group.hasResidual && !group.hasCatchAll))
+      return function.emitError()
+             << "match " << id
+             << " lacks pattern, body-exit, or exhaustive residual provenance";
+  return success();
+}
+
 namespace {
 
 class VerifyCheckedIntegerGuardsPass final
@@ -340,6 +424,15 @@ public:
   }
 };
 
+class VerifyMatchCFGPass final
+    : public sec::impl::SecVerifyMatchCFGBase<VerifyMatchCFGPass> {
+public:
+  void runOnOperation() override {
+    if (failed(sec::verifyMatchCFG(getOperation())))
+      signalPassFailure();
+  }
+};
+
 } // namespace
 
 std::unique_ptr<mlir::Pass> sec::createSecVerifyCheckedIntegerGuardsPass() {
@@ -356,4 +449,8 @@ std::unique_ptr<mlir::Pass> sec::createSecVerifyTryHandlersPass() {
 
 std::unique_ptr<mlir::Pass> sec::createSecVerifyUnionGuardsPass() {
   return std::make_unique<VerifyUnionGuardsPass>();
+}
+
+std::unique_ptr<mlir::Pass> sec::createSecVerifyMatchCFGPass() {
+  return std::make_unique<VerifyMatchCFGPass>();
 }

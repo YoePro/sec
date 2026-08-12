@@ -228,7 +228,34 @@ type Function struct {
 	Entry      BlockID
 	Blocks     []*Block
 	Storages   []Storage
+	Matches    []MatchRecord
 	Location   Location
+}
+
+type MatchID uint32
+
+type MatchRecord struct {
+	ID           MatchID
+	Subject      ValueID
+	SubjectType  TypeID
+	ResultType   TypeID
+	ValueContext bool
+	Exhaustive   bool
+	Arms         []MatchArmRecord
+	MergeBlock   BlockID
+	Location     Location
+}
+
+type MatchArmRecord struct {
+	SourceIndex  int
+	PatternKind  string
+	PatternBlock BlockID
+	GuardBlock   BlockID
+	BodyBlock    BlockID
+	EnumValue    *big.Int
+	Guarded      bool
+	Flow         string
+	Location     Location
 }
 
 type Parameter struct {
@@ -278,6 +305,7 @@ const (
 	OpForeignCall                     OpKind = "call.foreign"
 	OpBranch                          OpKind = "branch"
 	OpCondBranch                      OpKind = "conditional-branch"
+	OpUnreachable                     OpKind = "unreachable"
 	OpIntUnaryPlus                    OpKind = "int.unary-plus"
 	OpIntNegChecked                   OpKind = "int.neg-checked"
 	OpIntBitNot                       OpKind = "int.bit-not"
@@ -387,36 +415,43 @@ type BranchTarget struct {
 	Arguments []ValueID
 }
 type Operation struct {
-	Kind            OpKind
-	Location        Location
-	Results         []Value
-	Operands        []ValueID
-	Integer         *big.Int
-	Bool            *bool
-	String          string
-	Decimal         *DecimalConstant
-	FloatLexeme     string
-	Storage         StorageID
-	Callee          FunctionID
-	ArgumentActions []ArgumentAction
-	Successors      []BranchTarget
-	IntegerBinary   IntegerCheckedBinaryKind
-	IntegerBitwise  IntegerBitwiseKind
-	IntegerShift    IntegerShiftKind
-	IntegerCompare  IntegerComparePredicate
-	FailureCategory ArithmeticFailureCategory
-	FailureReason   ArithmeticFailureReason
-	Variant         string
-	EnumCase        EnumCaseID
-	UnionVariant    UnionVariantIndex
-	UnionField      string
-	UnionFields     []string
-	PayloadActions  []UnionPayloadAction
-	TryHandlerKind  TryHandlerKind
-	TryHandlerIndex int
-	Operator        string
+	Kind                 OpKind
+	Location             Location
+	Results              []Value
+	Operands             []ValueID
+	Integer              *big.Int
+	Bool                 *bool
+	String               string
+	Decimal              *DecimalConstant
+	FloatLexeme          string
+	Storage              StorageID
+	Callee               FunctionID
+	ArgumentActions      []ArgumentAction
+	Successors           []BranchTarget
+	IntegerBinary        IntegerCheckedBinaryKind
+	IntegerBitwise       IntegerBitwiseKind
+	IntegerShift         IntegerShiftKind
+	IntegerCompare       IntegerComparePredicate
+	FailureCategory      ArithmeticFailureCategory
+	FailureReason        ArithmeticFailureReason
+	Variant              string
+	EnumCase             EnumCaseID
+	UnionVariant         UnionVariantIndex
+	UnionField           string
+	UnionFields          []string
+	PayloadActions       []UnionPayloadAction
+	TryHandlerKind       TryHandlerKind
+	TryHandlerIndex      int
+	TryHandlerExhaustive bool
+	Operator             string
+	Synthesized          bool
+	Reason               string
+	MatchID              MatchID
+	MatchArmIndex        int
+	MatchStage           string
+	MatchPatternKind     string
 }
 
 func (o Operation) IsTerminator() bool {
-	return o.Kind == OpReturn || o.Kind == OpBranch || o.Kind == OpCondBranch || o.Kind == OpArithmeticFailure
+	return o.Kind == OpReturn || o.Kind == OpBranch || o.Kind == OpCondBranch || o.Kind == OpArithmeticFailure || o.Kind == OpUnreachable
 }

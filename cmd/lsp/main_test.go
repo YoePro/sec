@@ -537,6 +537,7 @@ fn Check() int {
     mutable += 1
     return local + mutable
 }
+
 `
 
 	tokens := decodeSemanticTokens(semanticTokensForSource("", source))
@@ -548,6 +549,38 @@ fn Check() int {
 	assertSemanticTokenWithoutModifier(t, tokens, 7, 4, 7, "variable", "readonly")  // mutable write
 	assertSemanticTokenWithModifier(t, tokens, 8, 11, 5, "variable", "readonly")    // local return use
 	assertSemanticTokenWithoutModifier(t, tokens, 8, 19, 7, "variable", "readonly") // mutable return use
+}
+
+func TestSemanticTokensClassifyContextualSet(t *testing.T) {
+	source := `module main
+
+interface Writable {
+	property Value: int {
+		set
+	}
+}
+
+type Holder struct {
+	value: int,
+}
+
+impl Holder {
+	property Value: int {
+		get { return value }
+		set next { value = next }
+	}
+}
+
+fn Use() void {
+	let set := 1
+	discard set
+}
+`
+	tokens := decodeSemanticTokens(semanticTokensForSource("", source))
+	assertSemanticToken(t, tokens, 4, 2, len("set"), "keyword")
+	assertSemanticToken(t, tokens, 15, 2, len("set"), "keyword")
+	assertSemanticTokenWithModifier(t, tokens, 20, 5, len("set"), "variable", "readonly")
+	assertSemanticTokenWithModifier(t, tokens, 21, 9, len("set"), "variable", "readonly")
 }
 
 func TestSemanticTokensPreferStructFieldOverSameNamedMethod(t *testing.T) {

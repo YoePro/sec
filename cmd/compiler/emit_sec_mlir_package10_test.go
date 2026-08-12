@@ -63,7 +63,7 @@ fn Forward(value: int) Result[int, ArithmeticError] {
 	}
 	text := string(output)
 	for _, expected := range []string{
-		"sec.dialect_version = 7 : i32",
+		"sec.dialect_version = 8 : i32",
 		"sec.result.is_err",
 		"sec.result.unwrap_ok",
 		"sec.result.unwrap_err",

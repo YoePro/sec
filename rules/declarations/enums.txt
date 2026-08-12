@@ -546,6 +546,13 @@ Implemented:
 
 * Enum values work as `match` subjects and patterns in semantic analysis.
 
+* Match patterns compare semantic numeric enum values. Alias names sharing a
+  numeric value are one coverage class, and undeclared values produced through
+  explicit integer conversion remain part of the enum's match domain.
+
+* Exhaustiveness requires `_` unless unique unguarded numeric patterns prove
+  complete coverage of the representable underlying domain.
+
 * Exhaustiveness diagnostics for enum `match` are implemented.
 
 * Bit-backed enum types may be used as named register fields.

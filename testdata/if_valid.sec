@@ -1,6 +1,5 @@
 module main
 
-/*
 fn Simple() void {
     if true {
     }
@@ -55,7 +54,7 @@ fn Range(score: int) void {
     }
 
     if !(score in 0..100) {
-        
+
     }
 }
 
@@ -80,8 +79,6 @@ fn Branches(score: int) void {
     } else {
     }
 }
-
-
 
 type User struct {
     Active: bool,
@@ -203,7 +200,6 @@ fn ConstantConditions() void {
     if !false {
     }
 }
-*/
 
 fn ElseBinding(a: bool, b: bool) void {
     if a {

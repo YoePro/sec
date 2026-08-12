@@ -1317,3 +1317,21 @@ MLIR represents how that meaning is progressively lowered.
 LLVM IR represents how the lowered program is implemented for a target.
 
 Semantic IR is the final authority for validated Sec semantics before lowering begins.
+
+## Match CFG amendment (SEC-MLIR-P12)
+
+Resolved `match` is represented as explicit CFG, not a monolithic MatchOp. The
+builder consumes Sema's immutable ResolvedMatchPlan, evaluates the subject once,
+emits source-ordered pattern tests, evaluates guards only on matched paths, and
+joins continuing expression arms through one typed block argument.
+
+Function-local MatchRecord and MatchArmRecord metadata retain subject identity,
+source arm order, pattern kind, binding action, guard/flow classification and
+merge provenance without retaining AST nodes. Enum pattern values are arbitrary-
+precision numeric values; union, Result and Option patterns retain resolved
+variant identity.
+
+Compiler-proven exhaustive residual paths terminate with synthesized
+UnreachableOp carrying reason `exhaustive-match-fallthrough`. P12 payload binding
+accepts only none, discard and copy-trivial; borrow, move, semantic copy and
+struct-like whole payload forms remain explicit unsupported boundaries.

@@ -11,7 +11,7 @@ import (
 	"sec/internal/layout"
 )
 
-const dialectSchemaVersion = 7
+const dialectSchemaVersion = 8
 
 type emitter struct {
 	module    *semantic.Module
@@ -284,6 +284,10 @@ func (e *emitter) emitOperation(function *semantic.Function, operation semantic.
 		if err := e.emitResultTypes(operation.Results); err != nil {
 			return err
 		}
+	case semantic.OpUnreachable:
+		fmt.Fprintf(&e.out, "\"sec.unreachable\"() <{reason = %s}> ", mlirString(operation.Reason))
+		e.emitOperationAttributes(operation, true)
+		e.out.WriteString(": () -> ()")
 	case semantic.OpReturn:
 		if operation.TryHandlerKind != "" {
 			e.out.WriteString("\"func.return\"(")
@@ -316,7 +320,7 @@ func (e *emitter) emitOperation(function *semantic.Function, operation semantic.
 			return err
 		}
 		e.out.WriteByte(' ')
-		e.emitTryHandlerAttributes(operation)
+		e.emitOperationAttributes(operation, false)
 	case semantic.OpCondBranch:
 		if len(operation.Operands) != 1 || len(operation.Successors) != 2 {
 			return fmt.Errorf("invalid conditional branch")
@@ -330,7 +334,7 @@ func (e *emitter) emitOperation(function *semantic.Function, operation semantic.
 			return err
 		}
 		e.out.WriteByte(' ')
-		e.emitTryHandlerAttributes(operation)
+		e.emitOperationAttributes(operation, false)
 	case semantic.OpIntUnaryPlus:
 		return e.emitSemanticIntegerOperation(operation, "sec.int.unary_plus", "", "", values)
 	case semantic.OpIntNegChecked:
@@ -378,7 +382,9 @@ func (e *emitter) emitOperation(function *semantic.Function, operation semantic.
 		if err := e.emitResult(operation); err != nil {
 			return err
 		}
-		fmt.Fprintf(&e.out, "\"sec.enum.constant\"() <{caseOrdinal = %d : i32}> : () -> ", operation.EnumCase)
+		fmt.Fprintf(&e.out, "\"sec.enum.constant\"() <{caseOrdinal = %d : i32}> ", operation.EnumCase)
+		e.emitOperationAttributes(operation, false)
+		e.out.WriteString(": () -> ")
 		return e.finishResultOperation(operation)
 	case semantic.OpEnumFromInteger:
 		return e.emitUnarySemanticOperation(operation, "sec.enum.from_integer", values)
@@ -512,8 +518,44 @@ func (e *emitter) emitTryHandlerAttributes(operation semantic.Operation) {
 		return
 	}
 	fmt.Fprintf(&e.out, "{sec.try_handler_kind = %s, sec.try_handler_index = %d : i32", mlirString(string(operation.TryHandlerKind)), operation.TryHandlerIndex)
+	if operation.TryHandlerExhaustive {
+		e.out.WriteString(", sec.try_handler_exhaustive = true")
+	}
 	if operation.Variant != "" {
 		fmt.Fprintf(&e.out, ", sec.try_handler_variant = %s", mlirString(operation.Variant))
+	}
+	e.out.WriteString("} ")
+}
+
+func (e *emitter) emitOperationAttributes(operation semantic.Operation, synthesized bool) {
+	if operation.TryHandlerKind == "" && operation.MatchID == 0 && !synthesized {
+		return
+	}
+	e.out.WriteByte('{')
+	separator := ""
+	attribute := func(name, value string) {
+		e.out.WriteString(separator)
+		fmt.Fprintf(&e.out, "%s = %s", name, value)
+		separator = ", "
+	}
+	if synthesized {
+		attribute("sec.synthesized", "true")
+	}
+	if operation.TryHandlerKind != "" {
+		attribute("sec.try_handler_kind", mlirString(string(operation.TryHandlerKind)))
+		attribute("sec.try_handler_index", fmt.Sprintf("%d : i32", operation.TryHandlerIndex))
+		if operation.TryHandlerExhaustive {
+			attribute("sec.try_handler_exhaustive", "true")
+		}
+		if operation.Variant != "" {
+			attribute("sec.try_handler_variant", mlirString(operation.Variant))
+		}
+	}
+	if operation.MatchID != 0 {
+		attribute("sec.match_id", fmt.Sprintf("%d : i32", operation.MatchID))
+		attribute("sec.match_arm_index", fmt.Sprintf("%d : i32", operation.MatchArmIndex))
+		attribute("sec.match_stage", mlirString(operation.MatchStage))
+		attribute("sec.match_pattern_kind", mlirString(operation.MatchPatternKind))
 	}
 	e.out.WriteString("} ")
 }
@@ -579,6 +621,10 @@ func (e *emitter) emitSemanticIntegerOperation(operation semantic.Operation, nam
 	e.out.WriteByte(')')
 	if attributeName != "" {
 		fmt.Fprintf(&e.out, " <{%s = %s}>", attributeName, mlirString(attributeValue))
+	}
+	if operation.TryHandlerKind != "" || operation.MatchID != 0 {
+		e.out.WriteByte(' ')
+		e.emitOperationAttributes(operation, false)
 	}
 	e.out.WriteString(" : (")
 	if err := e.emitOperandTypes(operation.Operands, values); err != nil {

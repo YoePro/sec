@@ -132,7 +132,7 @@ Invalid propagation:
 
 Expected:
 
-    cannot propagate ParseError from function returning Result[Speed, IOError]
+    bodyless try propagates ParseError with return Err, but this function returns Result[Speed, IOError]; add a local try handler or map ParseError to IOError
 
 Invalid non-Result context:
 
@@ -142,7 +142,7 @@ Invalid non-Result context:
 
 Expected:
 
-    cannot use try in function returning Speed
+    bodyless try propagates IOError with return Err, but this function returns Speed; add a local try handler or change the function return type to Result[Speed, IOError]
 
 Invalid operand:
 

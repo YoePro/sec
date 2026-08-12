@@ -1343,6 +1343,18 @@ match.end
 
 Exhaustiveness guarantees that a valid subject reaches some branch.
 
+Enum patterns match the enum's semantic numeric value, not declaration-name
+provenance. Numeric aliases therefore cover the same runtime value class; an
+unguarded alias after an equivalent covered value is unreachable. A guarded
+alias does not fully cover that value class.
+
+An enum match is exhaustive only with an unguarded catch-all or when the unique
+unguarded numeric patterns cover the enum's complete representable underlying
+domain. Explicit integer-to-enum conversion means that merely listing every
+declared case name is not generally exhaustive. Coverage uses arbitrary-
+precision range/cardinality arithmetic; unknown target-sized domains require
+the catch-all.
+
 The backend may still emit an unreachable fallback block for defensive IR
 correctness.
 

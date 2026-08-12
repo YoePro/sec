@@ -595,3 +595,12 @@ LogicalResult UnionUnwrapFieldOp::verify() {
   }
   return emitOpError("field does not exist with the projected result type");
 }
+
+LogicalResult UnreachableOp::verify() {
+  auto synthesized = (*this)->getAttrOfType<BoolAttr>("sec.synthesized");
+  if (!synthesized || !synthesized.getValue())
+    return emitOpError("requires sec.synthesized = true");
+  if (getReason().empty())
+    return emitOpError("requires a non-empty reason");
+  return success();
+}

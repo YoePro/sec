@@ -1,10 +1,9 @@
-module ip_header_parser
+module ip_tcp_stack
 
 // =====================================================================
-// ENUMS FOR IP PROTOCOL & ERRORS
+// ENUMS FOR IP & TCP PROTOCOLS
 // =====================================================================
 
-// Common Transport Layer Protocols (8-bit)
 enum IpProtocol bit[8] {
     ICMP = 1,
     IGMP = 2,
@@ -12,52 +11,79 @@ enum IpProtocol bit[8] {
     UDP  = 17,
 }
 
-// IP Flags (3-bit bitfield)
 enum IpFlags bit[3] {
     RESERVED       = 0b100,
     DONT_FRAGMENT  = 0b010,
     MORE_FRAGMENTS = 0b001,
 }
 
-// Packet Processing Errors
 enum IpError {
     InvalidVersion,
     HeaderTooShort,
     TtlExpired,
     ChecksumMismatch,
+    UnsupportedProtocol,
+}
+
+enum TcpError {
+    PortClosed,
+    InvalidFlags,
+    BufferFull,
 }
 
 // =====================================================================
-// IPv4 HEADER LAYOUT (20-byte base register layout)
+// REGISTER LAYOUTS FOR HARDWARE/PACKET BOUNDARIES
 // =====================================================================
 
-// Explicit bit-level representation of an IPv4 Packet Header
-type Ipv4Header register[160] { // 160 bits = 20 bytes
-    Version: bit[4]            // Normally 4 for IPv4
-    Ihl: bit[4]                // Internet Header Length (number of 32-bit words)
-    Dscp: bit[6]               // Differentiated Services Code Point
-    Ecn: bit[2]                // Explicit Congestion Notification
-    TotalLength: bit[16]       // Entire packet size in bytes
+// IPv4 Base Header Register Layout (160 bits = 20 bytes)
+type Ipv4Header register[160] {
+    Version: bit[4]
+    Ihl: bit[4]
+    Dscp: bit[6]
+    Ecn: bit[2]
+    TotalLength: bit[16]
 
-    Identification: bit[16]    // Unique ID for fragmentation
-    Flags: IpFlags             // Fragmentation control flags
-    FragmentOffset: bit[13]    // Offset in 8-byte blocks
+    Identification: bit[16]
+    Flags: IpFlags
+    FragmentOffset: bit[13]
 
-    TimeToLive: bit[8]         // TTL counter
-    Protocol: IpProtocol       // Upper layer protocol (TCP, UDP, etc.)
-    HeaderChecksum: bit[16]    // Error-checking checksum
+    TimeToLive: bit[8]
+    Protocol: IpProtocol
+    HeaderChecksum: bit[16]
 
-    SourceAddress: bit[32]     // Sender IPv4 Address
-    DestinationAddress: bit[32]// Recipient IPv4 Address
+    SourceAddress: bit[32]
+    DestinationAddress: bit[32]
+}
+
+// TCP Base Header Register Layout (160 bits = 20 bytes)
+type TcpHeader register[160] {
+    SourcePort: bit[16]
+    DestinationPort: bit[16]
+    SequenceNumber: bit[32]
+    AckNumber: bit[32]
+
+    DataOffset: bit[4]
+    Reserved: bit[4]
+    CwrFlag: bit[1]         // Explicit Congestion Notification Echo / CWR
+    EceFlag: bit[1]         // ECN-Echo
+    UrgFlag: bit[1]
+    AckFlag: bit[1]
+    PshFlag: bit[1]
+    RstFlag: bit[1]
+    SynFlag: bit[1]
+    FinFlag: bit[1]          // Total: 4 + 4 + 8 flags = 16 bits
+
+    WindowSize: bit[16]
+    Checksum: bit[16]
+    UrgentPointer: bit[16]  // Total: 160 bits (20 bytes)
 }
 
 // =====================================================================
-// IMPLEMENTATION & HELPER METHODS
+// IMPLEMENTATION BLOCKS
 // =====================================================================
 
 impl Ipv4Header {
-    // Validates packet version and decrements TTL using Result
-    fn ValidateAndForward() Result<void, IpError> {
+    fn ValidateAndForward() Result[void, IpError] {
         if self.Version != 4 {
             return Err(IpError.InvalidVersion)
         }
@@ -74,61 +100,77 @@ impl Ipv4Header {
         self.TimeToLive = self.TimeToLive - 1
         return Ok()
     }
+}
 
-    // Returns destination port if protocol carries one, or None
-    fn GetDestinationPort(payloadData: bit[32]) Option<bit[16]> {
-        match self.Protocol {
-            IpProtocol.TCP => {
-                // Extract 16-bit destination port from TCP payload
-                let port: bit[16] := bit[16](payloadData >> 16)
-                return Some(port)
-            }
-            IpProtocol.UDP => {
-                let port: bit[16] := bit[16](payloadData >> 16)
-                return Some(port)
-            }
-            _ => {
-                return None
-            }
+impl TcpHeader {
+    // Read-only reference context using ref
+    fn ProcessSegment(appPort: uint16) Result[uint32, TcpError] {
+        let destPort: uint16 := uint16(self.DestinationPort)
+
+        if destPort != appPort {
+            return Err(TcpError.PortClosed)
         }
+
+        if self.SynFlag && self.FinFlag {
+            return Err(TcpError.InvalidFlags)
+        }
+
+        let seqNum: uint32 := uint32(self.SequenceNumber)
+        return Ok(seqNum)
     }
 }
 
 // =====================================================================
-// APPLICATION LOGIC USING FALLIBLE TRY & BODYLESS TRY
+// ROUTING & PROCESSING LOGIC
 // =====================================================================
 
-// Helper function that propagates error via bodyless try (?)
-fn RoutePacket(header: Ipv4Header) Result[void, IpError] {
-    // Bodyless try propagates IpError automatically if validation fails
+// Ref mut explicitly used to modify the original IPv4 header in-place
+fn RoutePacket(header: ref mut Ipv4Header) Result[void, IpError] {
     try header.ValidateAndForward()
 
-    // Continue routing logic...
+    if header.Protocol != IpProtocol.TCP {
+        return Err(IpError.UnsupportedProtocol)
+    }
+
     return Ok()
 }
 
-// Top-level packet processing with explicit try block
-fn ProcessIncomingPacket(header: Ipv4Header, payloadSample: uint32) void {
-    // Explicit try block catching potential errors
-    try RoutePacket(header) {
+// Read-only reference ref to prevent copying large register structs
+fn DispatchTcpSegment(tcpHeader: ref TcpHeader, targetPort: uint16) Result[uint32, TcpError] {
+    let seqNum: uint32 := try tcpHeader.ProcessSegment(targetPort)
+    return Ok(seqNum)
+}
+
+fn ProcessIncomingFrame(ipHeader: ref mut Ipv4Header, tcpHeader: ref TcpHeader, localPort: uint16) void {
+    try RoutePacket(ipHeader) {
+        Err(IpError.InvalidVersion) => {
+            return
+        }
+
+        Err(IpError.TtlExpired) => {
+            return
+        }
+
+        Err(IpError.UnsupportedProtocol) => {
+            return
+        }
+
         Err(error) => {
-            match err {
-                IpError.InvalidVersion => { /* Log invalid packet version */ }
-                IpError.TtlExpired     => { /* Send ICMP Time Exceeded */ }
-                _                      => { /* Drop packet */ }
-            }
             return
         }
     }
 
-    // Match on Option returned when extracting port numbers
-    let destPort: Option[uint16] := header.GetDestinationPort(payloadSample)
-    match destPort {
-        Some(port) => {
-            // Route to specific application port
+    try DispatchTcpSegment(tcpHeader, localPort) {
+        Err(TcpError.PortClosed) => {
+            return
         }
-        None => {
-            // Handle non-ported traffic (e.g. ICMP)
+
+        Err(TcpError.InvalidFlags) => {
+            return
+        }
+
+        Err(error) => {
+            return
         }
     }
 }

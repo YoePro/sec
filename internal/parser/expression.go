@@ -787,7 +787,15 @@ func (p *Parser) parseCallArguments() ([]ast.Expression, bool) {
 		if p.curToken.Type == lexer.UNDERSCORE {
 			arg = &ast.Identifier{Token: p.curToken, Value: "_"}
 		} else {
+			// A try expression stops before a brace at its own expression level so
+			// the brace can introduce handlers. That decision must not leak into a
+			// nested call argument: Type { ... } here is a struct literal, while a
+			// handler brace following the completed call is still seen by the outer
+			// try parser after this flag is restored.
+			previousStopBeforeBrace := p.stopBeforeBrace
+			p.stopBeforeBrace = false
 			arg = p.parseExpression(LOWEST)
+			p.stopBeforeBrace = previousStopBeforeBrace
 			if arg == nil {
 				return nil, false
 			}
@@ -931,7 +939,8 @@ func (p *Parser) parseTryHandler() *ast.TryHandler {
 
 	switch p.peekToken.Type {
 	case lexer.LBRACE:
-		handler.BlockBody = p.parseBlockStatement()
+		p.nextToken()
+		handler.BlockBody = p.parseStatementBlock("try handler")
 	case lexer.RETURN:
 		p.nextToken()
 		returnStmt := p.parseReturnStatement()
@@ -997,7 +1006,13 @@ func (p *Parser) parseStructLiteralWithType(ref *ast.TypeReference) ast.Expressi
 		Type:  ref,
 	}
 
-	for p.peekToken.Type != lexer.RBRACE && p.peekToken.Type != lexer.EOF {
+	for {
+		for p.peekToken.Type == lexer.COMMENT {
+			p.nextToken()
+		}
+		if p.peekToken.Type == lexer.RBRACE || p.peekToken.Type == lexer.EOF {
+			break
+		}
 		p.nextToken()
 		value := p.parseExpression(LOWEST)
 		if value == nil {
@@ -1032,6 +1047,9 @@ func (p *Parser) parseStructLiteralWithType(ref *ast.TypeReference) ast.Expressi
 		}
 
 		lit.Fields = append(lit.Fields, field)
+		for p.peekToken.Type == lexer.COMMENT {
+			p.nextToken()
+		}
 
 		switch p.peekToken.Type {
 		case lexer.COMMA:

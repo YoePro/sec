@@ -30,4 +30,9 @@ def SecVerifyUnionGuards : Pass<"sec-verify-union-guards", "mlir::func::FuncOp">
   let dependentDialects = ["mlir::cf::ControlFlowDialect"];
 }
 
+def SecVerifyMatchCFG : Pass<"sec-verify-match-cfg", "mlir::func::FuncOp"> {
+  let summary = "Verify source-ordered Sec match CFG and provenance";
+  let dependentDialects = ["mlir::cf::ControlFlowDialect"];
+}
+
 #endif // SEC_ANALYSIS_PASSES_TD

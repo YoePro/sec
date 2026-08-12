@@ -1176,6 +1176,9 @@ func semanticTokenClassification(uri string, text string) (classification map[st
 			classification[name] = "variable"
 		}
 	}
+	for key, kind := range contextualKeywordClassifications(program) {
+		classification[key] = kind
+	}
 	declarationKinds := semanticDeclarationKinds(analyzer)
 	for _, token := range sourceTokens(uri, text) {
 		if token.Type != lexer.IDENT && token.Type != lexer.SELF {
@@ -1210,6 +1213,43 @@ func semanticTokenClassification(uri string, text string) (classification map[st
 		definition := definitions[0]
 		if kind := declarationKinds[features.ClassificationKey(definition.File, definition.Line, definition.Column)]; kind != "" {
 			classification[positionKey] = kind
+		}
+	}
+	return classification
+}
+
+func contextualKeywordClassifications(program *ast.Program) map[string]string {
+	classification := map[string]string{}
+	if program == nil {
+		return classification
+	}
+	setKeyword := func(token lexer.Token) {
+		if token.Line <= 0 || token.Column <= 0 {
+			return
+		}
+		classification[features.ClassificationKey(token.File, token.Line, token.Column)] = "keyword"
+	}
+	for _, statement := range program.Statements {
+		switch statement := statement.(type) {
+		case *ast.InterfaceDeclaration:
+			if statement == nil {
+				continue
+			}
+			for _, property := range statement.Properties {
+				if property != nil && property.RequiresSet {
+					setKeyword(property.SetToken)
+				}
+			}
+		case *ast.ImplStatement:
+			if statement == nil {
+				continue
+			}
+			for _, member := range statement.Members {
+				property, ok := member.(*ast.PropertyDeclaration)
+				if ok && property != nil && property.Setter != nil {
+					setKeyword(property.Setter.Token)
+				}
+			}
 		}
 	}
 	return classification

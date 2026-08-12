@@ -31,7 +31,7 @@ func TestEmitIsDeterministicAndPreservesSchemaMetadata(t *testing.T) {
 	}
 	text := string(first)
 	for _, expected := range []string{
-		"sec.dialect_version = 7 : i32",
+		"sec.dialect_version = 8 : i32",
 		"sec.semantic_ir_version = 1 : i32",
 		`sec.module_id = "main"`,
 		`sec.target_os = "linux"`,
@@ -185,7 +185,7 @@ func TestEmitSchema6CheckedIntegerGuard(t *testing.T) {
 	}
 	text := string(output)
 	for _, expected := range []string{
-		`sec.dialect_version = 7 : i32`,
+		`sec.dialect_version = 8 : i32`,
 		`%v2, %v3, %v4 = "sec.int.binary_checked"(%v0, %v1) <{kind = "add"}> : (si128, si128) -> (si128, i1, !sec.arithmetic_failure_reason)`,
 		`cf.cond_br %v3, ^bb1(%v4 : !sec.arithmetic_failure_reason), ^bb2`,
 		`^bb1(%v5: !sec.arithmetic_failure_reason):`,

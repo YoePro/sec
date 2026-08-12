@@ -2740,6 +2740,40 @@ vehicle.TopSpeed = speed
 	}
 }
 
+func TestParseStructLiteralWithTrailingFieldComments(t *testing.T) {
+	input := `
+type Config struct {
+	Polynomial: uint32,
+	InitialValue: uint32,
+	Enabled: bool,
+}
+
+fn Build() Config {
+	return Config {
+		// The first field may also have a leading comment.
+		Polynomial: 0xED888320, // trailing comment after comma
+		InitialValue: 0xFFFFFFFF // line layout remains a valid separator
+		Enabled: true,
+	}
+}
+`
+
+	p := New(lexer.New(input))
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	fn := program.Statements[1].(*ast.FunctionDeclaration)
+	literal := fn.Body.Statements[0].(*ast.ReturnStatement).Value.(*ast.StructLiteral)
+	if len(literal.Fields) != 3 {
+		t.Fatalf("struct literal fields = %d, want 3", len(literal.Fields))
+	}
+	for index, want := range []string{"Polynomial", "InitialValue", "Enabled"} {
+		if literal.Fields[index].Name == nil || literal.Fields[index].Name.Value != want {
+			t.Fatalf("field %d = %#v, want %s", index, literal.Fields[index], want)
+		}
+	}
+}
+
 func TestParseExplicitTypeDefault(t *testing.T) {
 	p := New(lexer.New(`type Port int range 1..65535 default 8080`))
 	program := p.ParseProgram()
@@ -2816,6 +2850,106 @@ fn NewWithFile(input: string, file: string) Result[Lexer, AllocationError] {
 	}
 	if len(literal.Fields) != 5 {
 		t.Fatalf("struct literal field count = %d, want 5", len(literal.Fields))
+	}
+}
+
+func TestParseTryCallWithStructLiteralArgumentAndFollowingHandlers(t *testing.T) {
+	input := `
+fn AppendDiagnostic(diagnostics: Diagnostic[]) Result[Diagnostic[], CollectionError] {
+    return try diagnostics.Append(Diagnostic {
+        ID: "L1002",
+        Message: "unexpected byte-order mark",
+    }) {
+        Err(error) => return Err(error)
+    }
+}
+`
+
+	p := New(lexer.NewWithFile(input, "try-struct-argument.sec"))
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	tryExpr := fn.Body.Statements[0].(*ast.ReturnStatement).Value.(*ast.TryExpression)
+	call, ok := tryExpr.Expression.(*ast.CallExpression)
+	if !ok {
+		t.Fatalf("try operand is %T, want CallExpression", tryExpr.Expression)
+	}
+	if len(call.Arguments) != 1 {
+		t.Fatalf("call arguments = %d, want 1", len(call.Arguments))
+	}
+	literal, ok := call.Arguments[0].(*ast.StructLiteral)
+	if !ok || literal.Type.Name != "Diagnostic" || len(literal.Fields) != 2 {
+		t.Fatalf("call argument = %#v, want Diagnostic struct literal", call.Arguments[0])
+	}
+	if len(tryExpr.Handlers) != 1 {
+		t.Fatalf("try handlers = %d, want 1", len(tryExpr.Handlers))
+	}
+}
+
+func TestParseTryCallStatementWithFollowingHandlers(t *testing.T) {
+	input := `
+fn Process(header: Header) void {
+    try RoutePacket(header) {
+        Err(IpError.InvalidVersion) => {
+            return
+        }
+        Err(error) => {
+            return
+        }
+    }
+}
+`
+
+	p := New(lexer.NewWithFile(input, "try-call-statement.sec"))
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	statement := fn.Body.Statements[0].(*ast.ExpressionStatement)
+	tryExpr, ok := statement.Expression.(*ast.TryExpression)
+	if !ok || len(tryExpr.Handlers) != 2 {
+		t.Fatalf("statement expression = %#v, want try with two handlers", statement.Expression)
+	}
+	if _, ok := tryExpr.Expression.(*ast.CallExpression); !ok {
+		t.Fatalf("try operand is %T, want CallExpression", tryExpr.Expression)
+	}
+	for index, handler := range tryExpr.Handlers {
+		if handler.BlockBody == nil || len(handler.BlockBody.Statements) != 1 {
+			t.Fatalf("handler %d block = %#v, want one statement", index, handler.BlockBody)
+		}
+		if _, ok := handler.BlockBody.Statements[0].(*ast.ReturnStatement); !ok {
+			t.Fatalf("handler %d statement is %T, want ReturnStatement", index, handler.BlockBody.Statements[0])
+		}
+	}
+}
+
+func TestParseNakedTryAppendWithStructLiteralArgument(t *testing.T) {
+	input := `
+fn AppendDiagnostic(diagnostics: Diagnostic[]) Result[void, CollectionError] {
+    try diagnostics.Append(Diagnostic {
+        ID: "L1002",
+        Message: "unexpected byte-order mark",
+    })
+}
+`
+
+	p := New(lexer.NewWithFile(input, "naked-try-struct-argument.sec"))
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	statement := fn.Body.Statements[0].(*ast.ExpressionStatement)
+	tryExpr, ok := statement.Expression.(*ast.TryExpression)
+	if !ok {
+		t.Fatalf("expression is %T, want TryExpression", statement.Expression)
+	}
+	call, ok := tryExpr.Expression.(*ast.CallExpression)
+	if !ok || len(call.Arguments) != 1 {
+		t.Fatalf("try operand = %#v, want one-argument call", tryExpr.Expression)
+	}
+	if _, ok := call.Arguments[0].(*ast.StructLiteral); !ok {
+		t.Fatalf("call argument is %T, want StructLiteral", call.Arguments[0])
 	}
 }
 
@@ -4232,7 +4366,11 @@ fn Test() void {
 	let image: tensor[float32, 3, 224, 224]
 	let view: tensor_view[float32, 3]
 	let shape: Shape[3]
+	let strides: Strides[3]
+	let layout: TensorLayout[3]
+	let space: MemorySpace
 }
+
 `
 
 	l := lexer.New(input)
@@ -4257,6 +4395,9 @@ fn Test() void {
 		{5, "tensor", 1, []string{"3", "224", "224"}, "float32", ""},
 		{6, "tensor_view", 1, []string{"3"}, "float32", ""},
 		{7, "Shape", 0, []string{"3"}, "", ""},
+		{8, "Strides", 0, []string{"3"}, "", ""},
+		{9, "TensorLayout", 0, []string{"3"}, "", ""},
+		{10, "MemorySpace", 0, nil, "", ""},
 	}
 
 	for _, tt := range tests {
@@ -4281,6 +4422,50 @@ fn Test() void {
 				t.Fatalf("%s wrong const arg %d. got=%q want=%q", tt.name, i, letStmt.Type.ConstArgs[i].String(), arg)
 			}
 		}
+	}
+}
+
+func TestSetIsContextualAcrossTypeAndIdentifierPositions(t *testing.T) {
+	input := `
+fn UseSet() void {
+	let set := 10
+	set[int] mut: values
+	set = 11
+}
+
+impl Holder {
+	property Value: int {
+		get {
+			return 0
+		}
+		set value {
+			discard value
+		}
+	}
+}
+`
+
+	p := New(lexer.New(input))
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	declaration := fn.Body.Statements[0].(*ast.LetStatement)
+	if declaration.Name.Value != "set" {
+		t.Fatalf("ordinary identifier = %q, want set", declaration.Name.Value)
+	}
+	typed := fn.Body.Statements[1].(*ast.LetStatement)
+	if typed.Type.Name != "set" || len(typed.Type.TypeArgs) != 1 || typed.Type.TypeArgs[0].Name != "int" {
+		t.Fatalf("typed declaration = %#v, want set[int]", typed.Type)
+	}
+	assignment := fn.Body.Statements[2].(*ast.AssignmentStatement)
+	if target, ok := assignment.Target.(*ast.Identifier); !ok || target.Value != "set" {
+		t.Fatalf("assignment target = %#v, want identifier set", assignment.Target)
+	}
+	impl := program.Statements[1].(*ast.ImplStatement)
+	property := impl.Members[0].(*ast.PropertyDeclaration)
+	if property.Setter == nil || property.Setter.Parameter.Value != "value" {
+		t.Fatalf("property setter = %#v", property.Setter)
 	}
 }
 

@@ -4,7 +4,7 @@
 
 Normative detailed representation specification.
 
-Current Sec MLIR dialect schema version: `7`
+Current Sec MLIR dialect schema version: `8`
 
 Schema version 7 adds canonical high-level enum and tagged-union semantic value
 representation.
@@ -12,7 +12,8 @@ representation.
 It also migrates enum-shaped core errors, including ArithmeticError, to the
 ordinary enum representation.
 
-Physical union layout remains deferred.
+Schema version 8 additionally defines verified explicit match CFG and the
+synthesized `sec.unreachable` terminator. Physical union layout remains deferred.
 
 ---
 
@@ -26,15 +27,16 @@ v4  checked integer operations
 v5  typed arithmetic failure and high-level Result construction
 v6  Result branching and local try handlers
 v7  enum and tagged-union semantic value representation
+v8  verified match CFG support and synthesized unreachable
 ```
 
-Compiler-generated v7 modules carry:
+Compiler-generated v8 modules carry:
 
 ```mlir
-sec.dialect_version = 7 : i32
+sec.dialect_version = 8 : i32
 ```
 
-Schema versions 1 through 6 remain valid regression inputs.
+Schema versions 1 through 7 remain valid regression inputs.
 
 ---
 
@@ -572,6 +574,16 @@ sec.core_error.is_variant
 
 Catch-all binds the complete enum value.
 
+Every schema-v7 branch that reaches a local enum-error handler merge carries:
+
+```text
+sec.try_handler_exhaustive = true
+```
+
+This boolean records Sema's exhaustiveness proof. The MLIR verifier consumes
+that proof instead of inferring a closed error domain from hard-coded enum case
+names. Schema-v6 compatibility input retains its legacy ArithmeticError check.
+
 ---
 
 # 27. Result with enum error
@@ -675,3 +687,21 @@ P10 enum handlers use ordinary enum operations
 schema-v6 regression fixtures remain valid
 no physical union layout is selected
 ```
+
+---
+
+# 35. Schema-v8 match CFG
+
+Schema v8 intentionally adds no monolithic match operation. Match lowering uses
+`cf.cond_br`, `cf.br`, block arguments and ordinary function returns.
+
+`sec.unreachable` is a no-operand, no-result, no-successor terminator requiring
+`sec.synthesized = true` and a non-empty `reason`. Exhaustive match residuals
+use reason `exhaustive-match-fallthrough`.
+
+Compiler-generated CFG may carry positive `sec.match_id`, non-negative
+`sec.match_arm_index`, `sec.match_stage` (`pattern`, `guard`, `body-exit`,
+`merge`, `residual`) and `sec.match_pattern_kind` provenance. Provenance aids
+verification but does not define semantics. `--sec-verify-match-cfg` validates
+source order, false/true edges, guarded projections, merge types and exhaustive
+residual termination.

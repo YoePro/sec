@@ -34,7 +34,7 @@ fn IncompatibleArmTypes(error: IOError) int {
     let value := match error {
         IOError.InvalidValue => 1
         IOError.NotFound => "missing"
-        IOError.PermissionDenied => 3
+        _ => 3
     }
 
     return value

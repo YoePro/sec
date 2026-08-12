@@ -137,6 +137,75 @@ type ResolvedTryPlan struct {
 	Handlers      []ResolvedTryHandler
 }
 
+type ResolvedMatchSubjectKind string
+
+const (
+	MatchSubjectEnum   ResolvedMatchSubjectKind = "enum"
+	MatchSubjectUnion  ResolvedMatchSubjectKind = "union"
+	MatchSubjectResult ResolvedMatchSubjectKind = "result"
+	MatchSubjectOption ResolvedMatchSubjectKind = "option"
+)
+
+type ResolvedMatchPatternKind string
+
+const (
+	MatchPatternEnumValue    ResolvedMatchPatternKind = "enum-value"
+	MatchPatternUnionVariant ResolvedMatchPatternKind = "union-variant"
+	MatchPatternResultOk     ResolvedMatchPatternKind = "result-ok"
+	MatchPatternResultErr    ResolvedMatchPatternKind = "result-err"
+	MatchPatternOptionSome   ResolvedMatchPatternKind = "option-some"
+	MatchPatternOptionNone   ResolvedMatchPatternKind = "option-none"
+	MatchPatternCatchAll     ResolvedMatchPatternKind = "catch-all"
+)
+
+type ResolvedMatchBindingAction string
+
+const (
+	MatchBindingNone          ResolvedMatchBindingAction = "none"
+	MatchBindingDiscard       ResolvedMatchBindingAction = "discard"
+	MatchBindingCopyTrivial   ResolvedMatchBindingAction = "copy-trivial"
+	MatchBindingBorrowShared  ResolvedMatchBindingAction = "borrow-shared"
+	MatchBindingBorrowMutable ResolvedMatchBindingAction = "borrow-mutable"
+	MatchBindingMove          ResolvedMatchBindingAction = "move"
+	MatchBindingCopySemantic  ResolvedMatchBindingAction = "copy-semantic"
+	MatchBindingConditional   ResolvedMatchBindingAction = "copy-conditional"
+)
+
+type ResolvedMatchArmFlow string
+
+const (
+	MatchArmProducesValue ResolvedMatchArmFlow = "produces-value"
+	MatchArmContinues     ResolvedMatchArmFlow = "continues"
+	MatchArmReturns       ResolvedMatchArmFlow = "returns"
+	MatchArmTerminates    ResolvedMatchArmFlow = "terminates"
+	MatchArmLoopControl   ResolvedMatchArmFlow = "loop-control"
+)
+
+type ResolvedMatchArm struct {
+	SourceIndex           int
+	PatternKind           ResolvedMatchPatternKind
+	EnumNumericValue      *big.Int
+	EnumCaseName          string
+	UnionVariantIndex     uint32
+	UnionVariantName      string
+	BindingName           string
+	BindingType           Type
+	BindingAction         ResolvedMatchBindingAction
+	Guarded               bool
+	Flow                  ResolvedMatchArmFlow
+	ResultType            Type
+	ResidualAlwaysMatches bool
+}
+
+type ResolvedMatchPlan struct {
+	SubjectKind  ResolvedMatchSubjectKind
+	SubjectType  Type
+	ValueContext bool
+	ResultType   Type
+	Exhaustive   bool
+	Arms         []ResolvedMatchArm
+}
+
 type ResolvedEnumCase struct {
 	EnumType Type
 	Name     string
@@ -380,6 +449,25 @@ func (a *Analyzer) ResolvedTryPlanOf(expr *ast.TryExpression) (ResolvedTryPlan, 
 		return ResolvedTryPlan{}, false
 	}
 	plan.Handlers = append([]ResolvedTryHandler(nil), plan.Handlers...)
+	return plan, true
+}
+
+// ResolvedMatchPlanOf returns the immutable source-order match decision recorded
+// by successful Sema. It performs no inference or coverage analysis.
+func (a *Analyzer) ResolvedMatchPlanOf(expr *ast.MatchExpression) (ResolvedMatchPlan, bool) {
+	if a == nil || expr == nil {
+		return ResolvedMatchPlan{}, false
+	}
+	plan, ok := a.resolvedMatchPlans[expr]
+	if !ok {
+		return ResolvedMatchPlan{}, false
+	}
+	plan.Arms = append([]ResolvedMatchArm(nil), plan.Arms...)
+	for index := range plan.Arms {
+		if plan.Arms[index].EnumNumericValue != nil {
+			plan.Arms[index].EnumNumericValue = new(big.Int).Set(plan.Arms[index].EnumNumericValue)
+		}
+	}
 	return plan, true
 }
 

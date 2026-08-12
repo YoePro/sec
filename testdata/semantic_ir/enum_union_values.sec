@@ -10,6 +10,16 @@ enum Wide uint256 {
     huge = 340282366920938463463374607431768211456
 }
 
+enum SignedWide int128 {
+    lowest = -170141183460469231731687303715884105728
+    highest = 170141183460469231731687303715884105727
+}
+
+enum OneBit: bit[1] {
+    zero = 0
+    one = 1
+}
+
 enum Flag: bit[2] {
     off = 0
     on = 1
@@ -77,6 +87,14 @@ fn WideValue() uint256 {
     return uint256(Wide.huge)
 }
 
+fn SignedWideValue() int128 {
+    return int128(SignedWide.lowest)
+}
+
+fn OneBitValue() int {
+    return int(OneBit.one)
+}
+
 fn BitValue() int {
     return int(Flag.on)
 }
@@ -101,6 +119,10 @@ fn NestedUnionValue() Token.Payload {
 
 fn EmptyState() State {
     return State.idle
+}
+
+fn IdentityState(value: State) State {
+    return value
 }
 
 fn SingleState(value: int128) State {

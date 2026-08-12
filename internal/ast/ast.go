@@ -292,6 +292,7 @@ type InterfaceProperty struct {
 	Type        *TypeReference
 	RequiresGet bool
 	RequiresSet bool
+	SetToken    lexer.Token
 }
 
 func (ip *InterfaceProperty) TokenLiteral() string {

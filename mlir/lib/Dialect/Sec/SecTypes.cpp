@@ -110,6 +110,11 @@ LogicalResult EnumType::verify(
   } else if (representation.getValue() == "bit-backed") {
     if (bitWidth == 0 || bitWidth > 256)
       return emitError() << "bit-backed sec.enum width must be 1 through 256";
+    auto integer = dyn_cast<IntegerType>(underlying);
+    if (!integer || !integer.isUnsigned() || integer.getWidth() != bitWidth)
+      return emitError()
+             << "bit-backed sec.enum underlying type must be unsigned and "
+                "match bitWidth";
   } else {
     return emitError() << "sec.enum representation must be integer or bit-backed";
   }

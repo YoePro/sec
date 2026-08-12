@@ -22,7 +22,7 @@ func Build(program *ast.Program, analyzer *sema.Analyzer, options BuildOptions) 
 		return nil, fmt.Errorf("program and completed analyzer are required")
 	}
 	if options.MaxPackage == 0 {
-		options.MaxPackage = 11
+		options.MaxPackage = 12
 	}
 	identity := options.RequestedModule
 	if identity == "" {
@@ -61,6 +61,7 @@ type functionBuilder struct {
 	nextValue   ValueID
 	nextBlock   BlockID
 	nextStorage StorageID
+	nextMatch   MatchID
 	bindings    map[sema.BindingID]binding
 }
 type binding struct {
@@ -81,7 +82,7 @@ func (b *builder) buildFunction(decl *ast.FunctionDeclaration) error {
 	}
 	fn := &Function{ID: functionID(resolved, b.module.Types), Name: resolved.Name, LinkName: resolved.LinkName, ReturnType: returnType, Unsafe: decl.Unsafe, Extern: resolved.Extern, ABI: resolved.ABI, Location: location(decl.Token)}
 	b.module.Functions = append(b.module.Functions, fn)
-	fb := &functionBuilder{owner: b, fn: fn, bindings: map[sema.BindingID]binding{}, nextStorage: 1}
+	fb := &functionBuilder{owner: b, fn: fn, bindings: map[sema.BindingID]binding{}, nextStorage: 1, nextMatch: 1}
 	for i, parameter := range resolved.Parameters {
 		typeID, err := b.internType(parameter.Type)
 		if err != nil {
@@ -658,6 +659,11 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 			return builtValue{}, fb.unsupported("try expression", e.Token)
 		}
 		return fb.buildTryExpression(e)
+	case *ast.MatchExpression:
+		if fb.owner.maxPackage < 12 {
+			return builtValue{}, fb.unsupported("match expression", e.Token)
+		}
+		return fb.buildMatchExpression(e, typeID)
 	default:
 		return builtValue{}, fb.unsupported(fmt.Sprintf("expression %T", expr), expressionToken(expr))
 	}
@@ -784,6 +790,168 @@ func enumCaseIDByName(definition EnumDefinition, name string) (EnumCaseID, bool)
 	return 0, false
 }
 
+func (fb *functionBuilder) buildMatchExpression(expr *ast.MatchExpression, resultType TypeID) (builtValue, error) {
+	plan, ok := fb.owner.analyzer.ResolvedMatchPlanOf(expr)
+	if !ok || !plan.Exhaustive || !plan.ValueContext {
+		return builtValue{}, fb.unsupported("unresolved or non-exhaustive match expression", expr.Token)
+	}
+	if plan.SubjectKind != sema.MatchSubjectEnum {
+		return builtValue{}, fb.unsupported("non-enum match expression", expr.Token)
+	}
+	subject, err := fb.buildExpr(expr.Subject, 0)
+	if err != nil {
+		return builtValue{}, err
+	}
+	if subject.typ == 0 || resultType == 0 {
+		return builtValue{}, fb.unsupported("untyped match expression", expr.Token)
+	}
+	definition, ok := fb.owner.enumDefinition(subject.typ)
+	if !ok {
+		return builtValue{}, fb.unsupported("enum match without definition", expr.Token)
+	}
+	boolType, err := fb.owner.internType(sema.Type{Name: "bool", Kind: sema.BoolType})
+	if err != nil {
+		return builtValue{}, err
+	}
+	merge := fb.newBlock()
+	parameter := fb.newValue(resultType, OwnershipImmediate, location(expr.Token))
+	merge.Parameters = []Value{parameter}
+	matchID := fb.nextMatch
+	fb.nextMatch++
+	record := MatchRecord{
+		ID: matchID, Subject: subject.id, SubjectType: subject.typ, ResultType: resultType,
+		ValueContext: true, Exhaustive: true, MergeBlock: merge.ID, Location: location(expr.Token),
+	}
+
+	for planIndex, armPlan := range plan.Arms {
+		if armPlan.SourceIndex < 0 || armPlan.SourceIndex >= len(expr.Arms) {
+			return builtValue{}, fmt.Errorf("resolved match arm source index is invalid")
+		}
+		arm := expr.Arms[armPlan.SourceIndex]
+		patternBlock := fb.current
+		if patternBlock == nil {
+			return builtValue{}, fmt.Errorf("match pattern chain terminated before arm %d", armPlan.SourceIndex)
+		}
+		bodyBlock := fb.newBlock()
+		matchedBlock := bodyBlock
+		if armPlan.Guarded {
+			matchedBlock = fb.newBlock()
+		}
+		needsNext := armPlan.PatternKind != sema.MatchPatternCatchAll || armPlan.Guarded
+		var nextBlock *Block
+		if needsNext {
+			nextBlock = fb.newBlock()
+		}
+		meta := Operation{MatchID: matchID, MatchArmIndex: armPlan.SourceIndex, MatchPatternKind: string(armPlan.PatternKind), Location: location(arm.Token)}
+		if armPlan.PatternKind == sema.MatchPatternCatchAll {
+			meta.Kind, meta.MatchStage = OpBranch, "pattern"
+			meta.Successors = []BranchTarget{{Block: matchedBlock.ID}}
+			fb.emit(meta)
+		} else {
+			caseID, exists := enumCaseIDByName(definition, armPlan.EnumCaseName)
+			if !exists || armPlan.EnumNumericValue == nil {
+				return builtValue{}, fb.unsupported("unresolved enum match pattern", arm.Token)
+			}
+			constant := fb.result(Operation{Kind: OpEnumConstant, EnumCase: caseID, MatchID: matchID, MatchArmIndex: armPlan.SourceIndex, MatchStage: "pattern", MatchPatternKind: string(armPlan.PatternKind), Location: location(arm.Token)}, subject.typ)
+			condition := fb.result(Operation{Kind: OpEnumCompare, Operands: []ValueID{subject.id, constant.id}, IntegerCompare: IntegerCompareEQ, MatchID: matchID, MatchArmIndex: armPlan.SourceIndex, MatchStage: "pattern", MatchPatternKind: string(armPlan.PatternKind), Location: location(arm.Token)}, boolType)
+			meta.Kind, meta.MatchStage = OpCondBranch, "pattern"
+			meta.Operands = []ValueID{condition.id}
+			meta.Successors = []BranchTarget{{Block: matchedBlock.ID}, {Block: nextBlock.ID}}
+			fb.emit(meta)
+		}
+
+		restore, err := fb.bindMatchArm(arm, armPlan, subject)
+		if err != nil {
+			return builtValue{}, err
+		}
+		if armPlan.Guarded {
+			fb.current = matchedBlock
+			guard, err := fb.buildExpr(arm.Guard, boolType)
+			if err != nil {
+				restore()
+				return builtValue{}, err
+			}
+			fb.emit(Operation{Kind: OpCondBranch, Operands: []ValueID{guard.id}, Successors: []BranchTarget{{Block: bodyBlock.ID}, {Block: nextBlock.ID}}, MatchID: matchID, MatchArmIndex: armPlan.SourceIndex, MatchStage: "guard", MatchPatternKind: string(armPlan.PatternKind), Location: location(arm.Token)})
+		}
+		fb.current = bodyBlock
+		if err := fb.buildMatchExpressionArm(arm, armPlan, merge, resultType, matchID); err != nil {
+			restore()
+			return builtValue{}, err
+		}
+		restore()
+		record.Arms = append(record.Arms, MatchArmRecord{
+			SourceIndex: armPlan.SourceIndex, PatternKind: string(armPlan.PatternKind), PatternBlock: patternBlock.ID,
+			GuardBlock: blockIDOrZero(matchedBlock, armPlan.Guarded), BodyBlock: bodyBlock.ID,
+			EnumValue: cloneBigInt(armPlan.EnumNumericValue), Guarded: armPlan.Guarded, Flow: string(armPlan.Flow), Location: location(arm.Token),
+		})
+		if nextBlock == nil {
+			fb.current = nil
+			break
+		}
+		fb.current = nextBlock
+		if planIndex == len(plan.Arms)-1 {
+			fb.emit(Operation{Kind: OpUnreachable, Synthesized: true, Reason: "exhaustive-match-fallthrough", MatchID: matchID, MatchArmIndex: armPlan.SourceIndex, MatchStage: "residual", MatchPatternKind: string(armPlan.PatternKind), Location: location(expr.Token)})
+			fb.current = nil
+		}
+	}
+	fb.fn.Matches = append(fb.fn.Matches, record)
+	fb.current = merge
+	return builtValue{id: parameter.ID, typ: resultType}, nil
+}
+
+func (fb *functionBuilder) bindMatchArm(arm *ast.MatchArm, plan sema.ResolvedMatchArm, value builtValue) (func(), error) {
+	if plan.BindingName == "" {
+		return func() {}, nil
+	}
+	identifier, ok := arm.Pattern.(*ast.Identifier)
+	if !ok || identifier.Value == "_" {
+		return func() {}, nil
+	}
+	fact, ok := fb.owner.analyzer.ResolvedBindingOf(identifier)
+	if !ok {
+		return nil, fmt.Errorf("match binding %s has no resolved identity", identifier.Value)
+	}
+	previous, existed := fb.bindings[fact.ID]
+	fb.bindings[fact.ID] = binding{value: value.id, typ: value.typ}
+	return func() {
+		if existed {
+			fb.bindings[fact.ID] = previous
+		} else {
+			delete(fb.bindings, fact.ID)
+		}
+	}, nil
+}
+
+func (fb *functionBuilder) buildMatchExpressionArm(arm *ast.MatchArm, plan sema.ResolvedMatchArm, merge *Block, resultType TypeID, matchID MatchID) error {
+	if arm.ReturnBody != nil {
+		return fb.buildReturn(arm.ReturnBody)
+	}
+	if arm.BlockBody != nil || arm.Body == nil || plan.Flow != sema.MatchArmProducesValue {
+		return fb.unsupported("non-expression match arm", arm.Token)
+	}
+	value, err := fb.buildExpr(arm.Body, resultType)
+	if err != nil {
+		return err
+	}
+	fb.emit(Operation{Kind: OpBranch, Successors: []BranchTarget{{Block: merge.ID, Arguments: []ValueID{value.id}}}, MatchID: matchID, MatchArmIndex: plan.SourceIndex, MatchStage: "body-exit", MatchPatternKind: string(plan.PatternKind), Location: location(arm.Token)})
+	fb.current = nil
+	return nil
+}
+
+func blockIDOrZero(block *Block, present bool) BlockID {
+	if !present || block == nil {
+		return 0
+	}
+	return block.ID
+}
+
+func cloneBigInt(value *big.Int) *big.Int {
+	if value == nil {
+		return nil
+	}
+	return new(big.Int).Set(value)
+}
+
 func (fb *functionBuilder) buildResultConstructor(value ast.Expression, resultType TypeID, okResult bool, loc Location) (builtValue, error) {
 	typ, exists := fb.owner.module.Types.Lookup(resultType)
 	if !exists || typ.Kind != TypeResult {
@@ -904,7 +1072,7 @@ func (fb *functionBuilder) buildLocalTryHandlers(expr *ast.TryExpression, plan s
 	fb.current = successBlock
 	if okHandler == nil {
 		fb.branchToTryMerge(merge, successValue, Operation{TryHandlerKind: TryHandlerOK, TryHandlerIndex: -1, Location: location(expr.Token)})
-	} else if err := fb.buildTryHandler(expr, *okHandler, successValue, merge); err != nil {
+	} else if err := fb.buildTryHandler(expr, *okHandler, successValue, merge, plan.Exhaustive); err != nil {
 		return builtValue{}, err
 	}
 
@@ -912,7 +1080,7 @@ func (fb *functionBuilder) buildLocalTryHandlers(expr *ast.TryExpression, plan s
 	for index, handler := range errHandlers {
 		last := index == len(errHandlers)-1
 		if handler.PatternKind == sema.TryHandlerErrCatchAll || (last && plan.Exhaustive) {
-			if err := fb.buildTryHandler(expr, handler, errorValue, merge); err != nil {
+			if err := fb.buildTryHandler(expr, handler, errorValue, merge, plan.Exhaustive); err != nil {
 				return builtValue{}, err
 			}
 			break
@@ -939,7 +1107,7 @@ func (fb *functionBuilder) buildLocalTryHandlers(expr *ast.TryExpression, plan s
 		handlerBlock, nextTest := fb.newBlock(), fb.newBlock()
 		fb.emit(Operation{Kind: OpCondBranch, Operands: []ValueID{condition.id}, Successors: []BranchTarget{{Block: handlerBlock.ID}, {Block: nextTest.ID}}, TryHandlerKind: TryHandlerErrVariant, TryHandlerIndex: handler.SourceIndex, Variant: handler.Variant, Location: location(expr.Handlers[handler.SourceIndex].Token)})
 		fb.current = handlerBlock
-		if err := fb.buildTryHandler(expr, handler, errorValue, merge); err != nil {
+		if err := fb.buildTryHandler(expr, handler, errorValue, merge, plan.Exhaustive); err != nil {
 			return builtValue{}, err
 		}
 		fb.current = nextTest
@@ -951,7 +1119,7 @@ func (fb *functionBuilder) buildLocalTryHandlers(expr *ast.TryExpression, plan s
 	return merged, nil
 }
 
-func (fb *functionBuilder) buildTryHandler(expr *ast.TryExpression, plan sema.ResolvedTryHandler, input builtValue, merge *Block) error {
+func (fb *functionBuilder) buildTryHandler(expr *ast.TryExpression, plan sema.ResolvedTryHandler, input builtValue, merge *Block, exhaustive bool) error {
 	if plan.SourceIndex < 0 || plan.SourceIndex >= len(expr.Handlers) {
 		return fb.unsupported("invalid resolved try handler source index", expr.Token)
 	}
@@ -976,7 +1144,7 @@ func (fb *functionBuilder) buildTryHandler(expr *ast.TryExpression, plan sema.Re
 		}()
 	}
 
-	metadata := Operation{TryHandlerKind: kind, TryHandlerIndex: plan.SourceIndex, Variant: plan.Variant, Location: location(handler.Token)}
+	metadata := Operation{TryHandlerKind: kind, TryHandlerIndex: plan.SourceIndex, TryHandlerExhaustive: exhaustive, Variant: plan.Variant, Location: location(handler.Token)}
 	if handler.ReturnBody != nil {
 		return fb.buildTryHandlerReturn(handler.ReturnBody, metadata)
 	}

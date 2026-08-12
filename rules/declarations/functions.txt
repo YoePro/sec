@@ -296,19 +296,19 @@ Valid:
         return Ok(speed)
     }
 
-Invalid later:
+Invalid:
 
     fn Use() Speed {
         return try CalculateSpeed()
     }
 
-Expected later:
+Expected:
 
-    cannot propagate IOError from function returning Speed
+    bodyless try propagates IOError with return Err, but this function returns Speed; add a local try handler or change the function return type to Result[Speed, IOError]
 
-This propagation check does not need to be implemented in the first Result/try
-step, but the AST and semantic model must keep the Result error type available
-so the check can be added without changing parsing.
+This diagnostic names the implicit `return Err(...)` behavior because the
+`try` expression itself is valid; only bodyless propagation is incompatible
+with the enclosing function result.
 
 Tests
 =====

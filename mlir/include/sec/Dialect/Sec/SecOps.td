@@ -141,6 +141,12 @@ def Sec_FailArithmeticOp : Sec_Op<"fail.arithmetic", [Terminator]> {
   let hasVerifier = 1;
 }
 
+def Sec_UnreachableOp : Sec_Op<"unreachable", [Terminator]> {
+  let summary = "Compiler-proven unreachable Sec control-flow path";
+  let arguments = (ins StrAttr:$reason);
+  let hasVerifier = 1;
+}
+
 def Sec_ArithmeticFailureReasonConstantOp
     : Sec_Op<"arithmetic_failure_reason.constant", [Pure]> {
   let summary = "Constant typed arithmetic failure reason";

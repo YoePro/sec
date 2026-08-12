@@ -1,0 +1,89 @@
+module crc32_crypto
+
+enum CrcError {
+    InvalidDataLength,
+    PolynomialNotSupported,
+}
+
+type Crc32Context struct {
+    Polynomial: uint32,
+    InitialValue: uint32,
+    FinalXorValue: uint32,
+    ReflectInput: bool,
+    ReflectOutput: bool,
+}
+
+impl Crc32Context {
+    fn InitStandard() Crc32Context {
+        let ctx: Crc32Context := Crc32Context {
+            Polynomial: 0xED888320,
+            InitialValue: 0xFFFFFFFF,
+            FinalXorValue: 0xFFFFFFFF,
+            ReflectInput: true,
+            ReflectOutput: true,
+        }
+        return ctx
+    }
+
+    fn Update(data: ref uint8[256], length: int) Result[uint32, CrcError] {
+        // Simple comparison checks
+        if length <= 0 {
+            return Err(CrcError.InvalidDataLength)
+        }
+
+        if length > 256 {
+            return Err(CrcError.InvalidDataLength)
+        }
+
+        let mut table: uint32[256]
+
+        let mut i: int := 0
+        while i < 256 {
+            let mut crc: uint32 := uint32(i)
+            let mut j: int := 0
+            while j < 8 {
+                if (crc & 1) != 0 {
+                    crc = (crc >> 1) ^ self.Polynomial
+                } else {
+                    crc = crc >> 1
+                }
+                j = j + 1
+            }
+            table[i] = crc
+            i = i + 1
+        }
+
+        // Pure lambda taking 'tbl' via ref parameter instead of capturing outer state
+        let bitProcessor: fn(uint32, uint8, ref uint32[256]) uint32 := fn(currentCrc: uint32, byteVal: uint8, ref tbl: uint32[256]) uint32 {
+            let index: uint8 := uint8(currentCrc ^ uint32(byteVal))
+            return (currentCrc >> 8) ^ tbl[int(index)]
+        }
+
+        let mut crcState: uint32 := self.InitialValue
+        let mut idx: int := 0
+
+        while idx < length {
+            let byteVal: uint8 := data[idx]
+
+            // Pass 'ref table' explicitly to avoid outer variable capture error
+            switch int(byteVal) {
+                case 0..<32:
+                    crcState = bitProcessor(crcState, byteVal, ref table)
+
+                case 32..<128:
+                    crcState = bitProcessor(crcState, byteVal, ref table)
+
+                case 128..255:
+                    crcState = bitProcessor(crcState, byteVal, ref table)
+
+                default:
+                    crcState = bitProcessor(crcState, byteVal, ref table)
+            }
+
+            idx = idx + 1
+        }
+
+        let finalCrc: uint32 := crcState ^ self.FinalXorValue
+        return Ok(finalCrc)
+    }
+}

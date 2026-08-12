@@ -51,7 +51,7 @@ LogicalResult SecDialect::verifyOperationAttribute(Operation *operation,
           "sec.dialect_version must be an i32 module attribute");
     int64_t number = version.getInt();
     if (number != 1 && number != 2 && number != 3 && number != 4 &&
-        number != 5 && number != 6 && number != 7)
+        number != 5 && number != 6 && number != 7 && number != 8)
       return operation->emitError("unsupported Sec dialect schema version");
     if (number == 1)
       return success();
@@ -140,11 +140,32 @@ LogicalResult SecDialect::verifyOperationAttribute(Operation *operation,
       name == "sec.target_triple" || name == "sec.target_abi" ||
       name == "sec.target_profile" || name == "sec.target_endianness")
     return requireString();
+  if (name == "sec.match_stage") {
+    if (failed(requireString()))
+      return failure();
+    StringRef stage = cast<StringAttr>(value).getValue();
+    if (stage != "pattern" && stage != "guard" && stage != "body-exit" &&
+        stage != "merge" && stage != "residual")
+      return operation->emitError("invalid sec.match_stage");
+    return success();
+  }
+  if (name == "sec.match_pattern_kind") {
+    if (failed(requireString()))
+      return failure();
+    StringRef kind = cast<StringAttr>(value).getValue();
+    if (kind != "enum-value" && kind != "union-variant" &&
+        kind != "result-ok" && kind != "result-err" &&
+        kind != "option-some" && kind != "option-none" &&
+        kind != "catch-all")
+      return operation->emitError("invalid sec.match_pattern_kind");
+    return success();
+  }
   if (name == "sec.operator" || name == "sec.try_handler_kind" ||
       name == "sec.try_handler_variant")
     return requireString();
   if (name == "sec.extern" || name == "sec.unsafe" ||
-      name == "sec.mutable" || name == "sec.synthesized")
+      name == "sec.mutable" || name == "sec.synthesized" ||
+      name == "sec.try_handler_exhaustive")
     return requireBool();
   if (name == "sec.parameter_names" || name == "sec.source_files" ||
       name == "sec.argument_actions") {
@@ -169,6 +190,16 @@ LogicalResult SecDialect::verifyOperationAttribute(Operation *operation,
     if (!integer || !type || type.getWidth() != 32 || integer.getInt() < -1)
       return operation->emitError(
           "sec.try_handler_index must be an i32 integer >= -1");
+  }
+  if (name == "sec.match_id" || name == "sec.match_arm_index") {
+    auto integer = dyn_cast<IntegerAttr>(value);
+    auto type = integer ? dyn_cast<IntegerType>(integer.getType())
+                        : IntegerType{};
+    int64_t minimum = name == "sec.match_id" ? 1 : 0;
+    if (!integer || !type || type.getWidth() != 32 ||
+        integer.getInt() < minimum)
+      return operation->emitError()
+             << name << " must be an i32 integer >= " << minimum;
   }
   return success();
 }

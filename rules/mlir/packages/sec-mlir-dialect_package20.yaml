@@ -1,0 +1,206 @@
+package:
+  id: SEC-MLIR-P20
+  name: Floating-Point Semantic Operations and Arith Lowering
+  repository: https://github.com/YoePro/sec
+  branch: main
+  repository_sync_commit: e0af215
+  repository_sync_date: '2026-08-11'
+  local_predecessors:
+  - corrected SEC-MLIR-P18
+  - SEC-MLIR-P19
+  - earlier local package chain
+  semantic_ir_version_before: 1
+  semantic_ir_version_after: 1
+  sec_mlir_schema_before: 15
+  sec_mlir_schema_after: 16
+  lowering_spec_before: 15
+  lowering_spec_after: 16
+  goal: Complete binary floating semantics, direct literal rounding, precision-preserving
+    checked conversions, and Arith/Math lowering.
+  next_package: Decimal and Decimal128 Semantic Operations
+normative_updates:
+- repository_paths:
+  - rules/types.md
+  - rules/operators.md
+  - rules/core-library.md
+  - rules/runtime_checks.md
+  - rules/compiler_known_members.md
+  supplied_file: sec_float_numeric_sync_package20.md
+- repository_path: rules/semantic_ir.txt
+  supplied_file: sec_semantic_ir_float_package20.md
+- repository_path: rules/sec_mlir_dialect.md
+  supplied_file: sec_mlir_dialect_package20.md
+  schema_version: 16
+- repository_path: rules/sec_mlir_lowering.md
+  supplied_file: sec_mlir_lowering_package20.md
+  version: 16
+float_formats:
+  float32: binary32
+  float64: binary64
+  float: binary64 semantic format
+  rounding: nearest-even
+  subnormals: preserve
+  fast_math: none
+  contraction: false
+literals:
+  family_suffix: g
+  direct_target_rounding: true
+  float32_via_float64_forbidden: true
+  finite_overflow: compile-time error
+  canonical: resolved format + exact bit pattern + source lexeme
+operators:
+  arithmetic:
+  - add
+  - sub
+  - mul
+  - div
+  - rem
+  - unary-plus
+  - neg
+  remainder: truncation
+  compare:
+    eq: oeq
+    ne: une
+    lt: olt
+    le: ole
+    gt: ogt
+    ge: oge
+  division_by_zero_error: false
+  legacy_fix: ONE -> UNE
+core_float:
+  properties:
+  - min
+  - max
+  - epsilon
+  - infinity
+  - negativeInfinity
+  - nan
+  methods:
+  - Abs
+  - Min
+  - Max
+  - Clamp
+  - IsFinite
+  - IsInfinite
+  - IsNaN
+  - IsNormal
+  - IsSubnormal
+  - Floor
+  - Ceiling
+  - Truncate
+  - Round
+  round: ties-to-even
+  min_max: NaN-propagating
+  square_root: deferred
+  formatting: deferred
+numeric_conversion_error:
+  name: NumericConversionError
+  variants:
+  - OutOfRange
+  - PrecisionLoss
+  - NotFinite
+  priority:
+  - NotFinite
+  - OutOfRange
+  - PrecisionLoss
+conversions:
+  scope:
+  - integer <-> binary float
+  - binary float <-> binary float
+  - binary float -> bool
+  float32_to_float64: exact
+  float64_to_float32: checked
+  integer_to_float: exact representability required
+  float_to_integer: finite + range + integral
+  decimal: P21
+semantic_ir:
+  version_bump: false
+  ops:
+  - FloatUnaryPlusOp
+  - FloatNegOp
+  - FloatBinaryOp
+  - FloatCompareOp
+  - FloatAbsOp
+  - FloatMinOp
+  - FloatMaxOp
+  - FloatClampCheckedOp
+  - FloatClassifyOp
+  - FloatRoundOp
+  - FloatPropertyOp
+  - NumericConvertExactOp
+  - NumericConvertCheckedOp
+  - NumericConversionErrorFromReasonOp
+  - FloatToBoolOp
+  refined_existing:
+  - ConstFloatOp
+dialect:
+  schema_version: 16
+  types:
+  - '!sec.numeric_conversion_reason'
+  ops:
+  - sec.float.unary_plus
+  - sec.float.neg
+  - sec.float.binary
+  - sec.float.cmp
+  - sec.float.abs
+  - sec.float.minimum
+  - sec.float.maximum
+  - sec.float.clamp_checked
+  - sec.float.classify
+  - sec.float.round
+  - sec.float.property
+  - sec.float.to_bool
+  - sec.numeric.convert_exact
+  - sec.numeric.convert_checked
+  - sec.numeric_conversion_error.from_reason
+  refined_existing:
+  - sec.const.float
+  verifiers:
+  - --sec-verify-float-semantics
+  - --sec-verify-numeric-conversions
+lowering:
+  version: 16
+  passes:
+  - --sec-lower-checked-numeric-conversions
+  - --sec-lower-float-core
+  dialects:
+  - Arith
+  - Math
+  - CF
+  - Func
+  llvm_required: false
+active_wide_types:
+- int128
+- int256
+- uint128
+- uint256
+- decimal128
+deferred:
+- decimal arithmetic
+- decimal128 arithmetic
+- decimal-float conversions
+- SquareRoot semantics
+- advanced math
+- float formatting
+- float parsing
+- totalOrder
+- lossy conversion APIs
+- dynamic rounding environment
+- fast-math source mode
+- NaN payload APIs
+- LLVM
+package21:
+  name: Decimal and Decimal128 Semantic Operations
+  scope:
+  - active decimal
+  - active decimal128
+  - exact literal preservation
+  - checked decimal arithmetic
+  - scale/precision
+  - rounding/rescaling
+  - comparison
+  - numeric conversions
+  - PrecisionError
+  - NumericConversionError reuse
+  - constant folding parity
+  - no binary-float fallback

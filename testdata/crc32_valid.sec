@@ -1,5 +1,9 @@
 module crc32_crypto
 
+// =====================================================================
+// ERRORS & ENUMS
+// =====================================================================
+
 enum CrcError {
     InvalidDataLength,
     PolynomialNotSupported,
@@ -12,6 +16,10 @@ type Crc32Context struct {
     ReflectInput: bool,
     ReflectOutput: bool,
 }
+
+// =====================================================================
+// CRC-32 IMPLEMENTATION
+// =====================================================================
 
 impl Crc32Context {
     fn InitStandard() Crc32Context {
@@ -85,5 +93,37 @@ impl Crc32Context {
 
         let finalCrc: uint32 := crcState ^ self.FinalXorValue
         return Ok(finalCrc)
+    }
+}
+
+// =====================================================================
+// TOP-LEVEL PIPELINE USING LAMBDAS
+// =====================================================================
+fn ExecuteCrcPipeline(
+    dataBuffer: ref uint8[256],
+    len: int,
+    postProcess: fn(uint32) uint32,
+) Result[uint32, CrcError] {
+    let mut ctx: Crc32Context := Crc32Context.InitStandard()
+
+    let rawCrc: uint32 := try ctx.Update(dataBuffer, len)
+    let processedCrc: uint32 := postProcess(rawCrc)
+
+    return Ok(processedCrc)
+}
+
+fn ComputeAndVerifyCrc(buffer: ref uint8[256], length: int) void {
+    // Typed lambda for post-processing the checksum
+    let customXor: fn(uint32) uint32 := fn(val: uint32) uint32 {
+        return val ^ 0x00000000
+    }
+
+    try ExecuteCrcPipeline(buffer, length, customXor) {
+        Err(CrcError.InvalidDataLength) => {
+            return
+        }
+        Err(error) => {
+            return
+        }
     }
 }

@@ -1,0 +1,215 @@
+module sha256_crypto
+
+// =====================================================================
+// ERRORS & TYPES
+// =====================================================================
+
+enum CryptoError {
+    BufferTooLarge,
+    InvalidDataLength,
+    StateCorrupted,
+}
+
+// SHA-256 operates on 512-bit message blocks (64 bytes)
+type Sha256Block register[512] {
+    Word0: bit[32]
+    Word1: bit[32]
+    Word2: bit[32]
+    Word3: bit[32]
+    Word4: bit[32]
+    Word5: bit[32]
+    Word6: bit[32]
+    Word7: bit[32]
+    Word8: bit[32]
+    Word9: bit[32]
+    Word10: bit[32]
+    Word11: bit[32]
+    Word12: bit[32]
+    Word13: bit[32]
+    Word14: bit[32]
+    Word15: bit[32]
+}
+
+// SHA-256 State representation holding 8 32-bit words (256 bits)
+type Sha256Context struct {
+    State0: uint32,
+    State1: uint32,
+    State2: uint32,
+    State3: uint32,
+    State4: uint32,
+    State5: uint32,
+    State6: uint32,
+    State7: uint32,
+    TotalBytes: uint64,
+}
+
+// =====================================================================
+// HELPER BITWISE FUNCTIONS (Rotate Right, Shift Right)
+// =====================================================================
+
+fn RotateRight(val: uint32, bits: uint32) uint32 {
+    return (val >> bits) | (val << (32 - bits))
+}
+
+fn ShiftRight(val: uint32, bits: uint32) uint32 {
+    return val >> bits
+}
+
+// SHA-256 transformation functions
+fn Sig0(x: uint32) uint32 {
+    return RotateRight(x, 7) ^ RotateRight(x, 18) ^ ShiftRight(x, 3)
+}
+
+fn Sig1(x: uint32) uint32 {
+    return RotateRight(x, 17) ^ RotateRight(x, 19) ^ ShiftRight(x, 10)
+}
+
+fn Ep0(x: uint32) uint32 {
+    return RotateRight(x, 2) ^ RotateRight(x, 13) ^ RotateRight(x, 22)
+}
+
+fn Ep1(x: uint32) uint32 {
+    return RotateRight(x, 6) ^ RotateRight(x, 11) ^ RotateRight(x, 25)
+}
+
+fn Ch(x: uint32, y: uint32, z: uint32) uint32 {
+    return (x & y) ^ ((~x) & z)
+}
+
+fn Maj(x: uint32, y: uint32, z: uint32) uint32 {
+    return (x & y) ^ (x & z) ^ (y & z)
+}
+
+// =====================================================================
+// CONTEXT IMPLEMENTATION
+// =====================================================================
+
+impl Sha256Context {
+    // Initializing the 8 magic constants for SHA-256
+    fn Init() Sha256Context {
+        let ctx: Sha256Context := Sha256Context {
+            State0: 0x6a09e667,
+            State1: 0xbb67ae85,
+            State2: 0x3c6ef372,
+            State3: 0xa54ff53a,
+            State4: 0x510e527f,
+            State5: 0x9b05688c,
+            State6: 0x1f83d9ab,
+            State7: 0x5be0cd19,
+            TotalBytes: 0,
+        }
+        return ctx
+    }
+
+    // Process a single 512-bit block
+    fn TransformBlock(block: ref Sha256Block) Result[void, CryptoError] {
+        // Message schedule array W[0..63]
+        let mut W: uint32[64]
+
+        // Load register words into first 16 words of schedule
+        W[0] = uint32(block.Word0)
+        W[1] = uint32(block.Word1)
+        W[2] = uint32(block.Word2)
+        W[3] = uint32(block.Word3)
+        W[4] = uint32(block.Word4)
+        W[5] = uint32(block.Word5)
+        W[6] = uint32(block.Word6)
+        W[7] = uint32(block.Word7)
+        W[8] = uint32(block.Word8)
+        W[9] = uint32(block.Word9)
+        W[10] = uint32(block.Word10)
+        W[11] = uint32(block.Word11)
+        W[12] = uint32(block.Word12)
+        W[13] = uint32(block.Word13)
+        W[14] = uint32(block.Word14)
+        W[15] = uint32(block.Word15)
+
+        // Extend first 16 words into the remaining 48 words
+        let mut i: uint32 := 16
+        while i < 64 {
+            let s0: uint32 := Sig0(W[i - 15])
+            let s1: uint32 := Sig1(W[i - 2])
+            W[i] = W[i - 16] + s0 + W[i - 7] + s1
+            i = i + 1
+        }
+
+        // Initialize working variables with current state
+        let mut a: uint32 := self.State0
+        let mut b: uint32 := self.State1
+        let mut c: uint32 := self.State2
+        let mut d: uint32 := self.State3
+        let mut e: uint32 := self.State4
+        let mut f: uint32 := self.State5
+        let mut g: uint32 := self.State6
+        let mut h: uint32 := self.State7
+
+        // SHA-256 Round Constants K[0..63] sample subset
+        let K: uint32[8] := [
+            0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5,
+            0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5
+        ]
+
+        // Main compression loop (showing first 8 rounds for illustration)
+        let mut t: uint32 := 0
+        while t < 8 {
+            let temp1: uint32 := h + Ep1(e) + Ch(e, f, g) + K[t] + W[t]
+            let temp2: uint32 := Ep0(a) + Maj(a, b, c)
+
+            h = g
+            g = f
+            f = e
+            e = d + temp1
+            d = c
+            c = b
+            b = a
+            a = temp1 + temp2
+
+            t = t + 1
+        }
+
+        // Compute the new intermediate hash state
+        self.State0 = self.State0 + a
+        self.State1 = self.State1 + b
+        self.State2 = self.State2 + c
+        self.State3 = self.State3 + d
+        self.State4 = self.State4 + e
+        self.State5 = self.State5 + f
+        self.State6 = self.State6 + g
+        self.State7 = self.State7 + h
+
+        self.TotalBytes = self.TotalBytes + 64
+        return Ok()
+    }
+}
+
+// =====================================================================
+// TOP-LEVEL PIPELINE EXECUTION
+// =====================================================================
+
+fn ProcessCryptoBlock(ctx: ref mut Sha256Context, block: ref Sha256Block) Result[void, CryptoError] {
+    // Bodyless try propagates errors during state mutation
+    try ctx.TransformBlock(block)
+    return Ok()
+}
+
+fn ComputeHash(block: ref Sha256Block) void {
+    let mut context: Sha256Context := Sha256Context.Init()
+
+    // Pass mutable context by ref mut and read-only block by ref
+    try ProcessCryptoBlock(ref mut context, block) {
+        Err(CryptoError.BufferTooLarge) => {
+            /* Handle error */
+            return
+        }
+        Err(CryptoError.StateCorrupted) => {
+            /* Handle error */
+            return
+        }
+        Err(error) => {
+            /* Handle catch-all error */
+            return
+        }
+    }
+
+    // Hash computation successfully updated state
+}

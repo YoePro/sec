@@ -62,8 +62,8 @@ rules/errors/runtime_checks.md
 rules/errors/panic.md
 rules/memory/raw_pointers.txt
 rules/collections/collections.md
-rules/declarations/struct.txt
-rules/declarations/unions.txt
+rules/declarations/struct.md
+rules/declarations/unions.md
     ↓
 rules/compiler/semantic_ir.txt
     ↓

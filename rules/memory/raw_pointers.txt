@@ -186,7 +186,9 @@ string, slice or another owning type.
 
 Fixed hardware addresses may be represented through dedicated language constructs such as @address rather than ordinary integer-to-RawPtr conversion.
 
-Register access rules are defined in registers.txt.
+Register layout rules are defined in `rules/declarations/registers.md`.
+Fixed-address access rules are defined in
+`rules/platform/fixed-address-bindings.md`.
 
 ## Diagnostics
 

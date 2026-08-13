@@ -460,6 +460,17 @@ Implemented:
   implemented `@noCopy` path;
 - resilience against selected panics during active editing.
 
+`new` is classified as a keyword. Bare lifecycle `init` and `free` members are
+recognized contextually inside impl bodies without changing the classification
+of an ordinary function named `init`.
+
+Hover and signature help for an initializer show its parameters, constructed
+type, and optional construction error separately. Hover on `new Type(args...)`
+shows the selected init overload and whether `try`/handling is required.
+Definition/references connect lifecycle construction to the selected explicit
+init (or identify the permitted implicit path). Completion offers `init` and
+`free` only where valid in an impl body and offers `new` at expression sites.
+
 ### Project and source integration
 
 Implemented:
@@ -1863,6 +1874,30 @@ Targets: 3 valid, 1 invalid
 ```
 
 Expensive lenses may load lazily.
+
+---
+
+# Shaped values
+
+Completion and hover for shaped values consume the canonical compiler-known
+member registry and resolved Sema facts. The LSP must not maintain an
+independent shaped API table.
+
+Hover presents the exact resolved expression/member type and exact property or
+call return type. Where useful for correct use it additionally presents `Rank`,
+`Shape`, `Len`, whether shape knowledge is static or runtime, `IsContiguous`,
+`Layout`, `MemorySpace`, an unsafe `Ptr` requirement, and any runtime shape
+check requiring `try`.
+
+Hover must preserve the distinction between normal absence and failure. For
+example, `Normalize() -> Option[vector[float32, 3]]` states that zero magnitude
+produces `None`, while a storage-producing operation displays its exact
+`Result[..., StorageError]` and principal failure condition.
+
+When a shaped operation requires `try` only because compatibility is not
+statically proven, hover states the runtime shape condition rather than implying
+allocation failure. When Sema proves compatibility, hover presents the
+infallible result. It must never invent shaped facts that Sema has not resolved.
 
 ---
 
@@ -3566,6 +3601,21 @@ missing LSP features.
 ---
 
 # Design summary
+
+## Enum domains and conversions
+
+Enum hover should identify ordinary enums as closed over their declared numeric
+value classes and bit-backed enums as open over every value representable by
+`bit[N]`. For hardware enums it should make clear that unnamed patterns may
+occur at runtime.
+
+When declared members do not exhaust an open bit-backed enum, match diagnostics
+should explain the uncovered hardware encodings and may suggest a final `_`
+fallback. Checked runtime integer-to-enum conversion hover and signatures show
+fallibility and the `EnumValueError` family so that the reason for `try` is
+visible.
+
+---
 
 The Sec language server is an interactive view of the real compiler.
 

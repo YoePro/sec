@@ -246,23 +246,13 @@ Implemented:
 
 ## Enum syntax
 
-Implemented:
+Enum implementation progress is tracked by `frontend.enums` in
+`implementation-status.yaml`.
 
-- default `int` underlying type;
-- explicit integer underlying type;
-- `bit`;
-- `bit[N]`;
-- optional colon before `bit[N]`;
-- explicit `=` initializer;
-- automatic numeric continuation;
-- `iota`;
-- aliases;
-- nested enums;
-- enum namespace access;
-- enum conversions;
-- same-enum equality;
-- enum use in `switch`;
-- enum patterns and exhaustiveness checks in `match`.
+The first omitted initializer is implicit `iota`. Every later omitted
+initializer repeats the preceding initializer expression and evaluates it using
+the current member's `iota`; it is not automatic previous-value-plus-one
+continuation.
 
 The parser also accepts `Value: expression` as formatter-recovery syntax and
 warns that `=` is canonical.
@@ -767,7 +757,8 @@ defined.
 
 ## Explicit `self` parameter recovery
 
-The parser accepts a special `ref self` parameter form.
+The parser may recognize the obsolete `ref self` or `ref mut self` parameter
+form only to issue a focused migration diagnostic.
 
 Canonical Sec methods have implicit `self`, and `self` is not written in the
 parameter list.
@@ -1011,10 +1002,10 @@ impl Interface for Type {
 }
 ```
 
-Interfaces are listed on the type declaration:
+Interfaces are listed on the primary implementation:
 
 ```sec
-type Car struct implements Vehicle {
+impl Car implements Vehicle {
 }
 ```
 
@@ -1523,15 +1514,17 @@ This compact form must not be expanded without a dedicated modern rule.
 # Implements clause
 
 ```text
-ImplementsClause
+InterfaceImplementsClause
+    ::= "implements" TypeReference { "," TypeReference }
+
+ImplImplementsClause
     ::= "implements" TypeReference { "," TypeReference }
 ```
 
 Examples:
 
 ```sec
-type Car struct implements Vehicle {
-    running: bool,
+impl Car implements Vehicle {
 }
 ```
 
@@ -1541,6 +1534,9 @@ interface Vehicle implements Startable, Stoppable {
 ```
 
 Separate `impl Interface for Type` syntax is invalid.
+
+`ImplImplementsClause` is valid only on the primary `impl Type`. An
+`impl extends Type` fragment cannot redeclare conformance.
 
 ---
 
@@ -1759,8 +1755,11 @@ EnumValueSeparator
       | LineBreak
 
 EnumValue
-    ::= Identifier [ "=" ConstantExpression ]
+    ::= Identifier [ "default" ] [ "=" ConstantExpression ]
 ```
+
+The marker order is normative: `MEMBER default [= expression]`.
+`default MEMBER` is not enum-member syntax.
 
 Examples:
 
@@ -1808,9 +1807,9 @@ UnionBody
     ::= "{" UnionVariant { [ "," ] UnionVariant } [ "," ] "}"
 
 UnionVariant
-    ::= Identifier
-      | Identifier "(" TypeReference ")"
-      | Identifier StructPayload
+    ::= Identifier [ "default" ]
+      | Identifier "(" TypeReference ")" [ "default" ]
+      | Identifier StructPayload [ "default" ]
 
 StructPayload
     ::= StructBody
@@ -1820,7 +1819,7 @@ Examples:
 
 ```sec
 type State union {
-    idle
+    idle default
     running
     stopped
 }
@@ -1851,6 +1850,10 @@ A comma after a union variant is optional.
 Struct-like payload fields currently follow struct declaration field grammar and
 require commas.
 
+At most one variant may carry the post-variant `default` marker. Its payload
+must be default-constructible under `rules/declarations/unions.md` and
+`rules/types/default_values.md`.
+
 An empty union is invalid.
 
 ---
@@ -1862,8 +1865,18 @@ RegisterTypeDeclaration
     ::= "type" Identifier
         Contextual("register")
         "[" IntegerConstant "]"
+        [ RegisterAllocationOrder ]
+        [ RegisterByteOrder ]
         RegisterBody
         [ ImplementsClause ]
+
+RegisterAllocationOrder
+    ::= Contextual("lsb-first")
+      | Contextual("msb-first")
+
+RegisterByteOrder
+    ::= Contextual("little-endian")
+      | Contextual("big-endian")
 
 RegisterBody
     ::= "{" [ RegisterField
@@ -1896,6 +1909,16 @@ type MotorProtocol register[8] {
     Speed: bit[4]<rpm>,
     Enabled: bit,
     _: bit[3],
+}
+```
+
+The allocation and byte-order modifiers are independent and may both be
+present:
+
+```sec
+type PacketWord register[16] msb-first big-endian {
+    Kind: bit[4],
+    Value: bit[12],
 }
 ```
 
@@ -1975,14 +1998,21 @@ InterfaceMember
       | InterfaceEvent
 
 InterfaceMethod
-    ::= FunctionSignature
+    ::= "fn" MethodSignature
+      | "mut" "fn" MethodSignature
+      | "->" "fn" MethodSignature
+      | "static" "fn" MethodSignature
 
 InterfaceProperty
     ::= "property" Identifier ":" TypeReference
         "{"
-        [ "get" ]
-        [ Contextual("set") ]
+        InterfacePropertyAccessor { InterfacePropertyAccessor }
         "}"
+
+InterfacePropertyAccessor
+    ::= "get"
+      | Contextual("set") Identifier
+      | "try" Contextual("set") Identifier
 
 InterfaceEvent
     ::= Contextual("event") Identifier "[" TypeReference "]"
@@ -2013,6 +2043,9 @@ Interface methods have no body.
 
 Interface property accessors have no body.
 
+The setter identifier is mandatory in implementation, static, and interface
+property forms. Sec does not provide an implicit setter-value binding.
+
 ---
 
 # Impl declaration
@@ -2028,13 +2061,38 @@ ImplMember
     ::= FunctionDeclaration
       | StaticFunctionDeclaration
       | StaticLetDeclaration
+      | StaticPropertyDeclaration
       | PropertyDeclaration
       | EventDeclaration
       | NestedTypeDeclaration
       | NestedUnitDeclaration
       | NestedEnumDeclaration
+	  | InitDeclaration
+	  | FreeDeclaration
+	  | NestedImplDeclaration
       | UnitMetadataDeclaration
 ```
+
+Lifecycle and construction syntax:
+
+```text
+InitDeclaration
+    ::= "init" "(" [ ParameterList ] ")" [ TypeReference ] Block
+
+FreeDeclaration
+    ::= "free" Block
+
+NestedImplDeclaration
+    ::= "impl" TypeReference ImplBody
+
+NewExpression
+    ::= "new" TypeReference "(" [ ArgumentList ] ")"
+```
+
+The optional type after `init(...)` is a construction error type, not a return
+type. `new Type(args...)` selects lifecycle construction; `Type(value)` remains
+conversion syntax. Ordinary impl methods have compiler-provided implicit
+`self` and do not declare receiver parameters.
 
 Example:
 
@@ -2128,6 +2186,9 @@ PropertyAccessor
     ::= Getter
       | Setter
       | FallibleSetter
+
+StaticPropertyDeclaration
+    ::= "static" PropertyDeclaration
 
 Getter
     ::= "get" Block
@@ -3688,13 +3749,25 @@ SpreadExpression
 
 Spread is valid only in approved contexts.
 
-Sec 0.1 approved contexts are governed by `spread.txt`, including:
+Sec 0.1 approved contexts are governed by `declarations/spread.md`, including:
 
 ```text
 call arguments
 array literals
 struct literals
 ```
+
+Fixed-arity calls and fixed-array literals require every spread contribution to
+have a compile-time-known expansion count. A runtime-length sequence may be
+spread only when the destination's canonical rule defines runtime arity.
+
+`expression...` is non-consuming syntax. It does not imply a move or partial
+move.
+
+For struct literals, explicit entries and spreads are resolved from left to
+right before semantic defaults are supplied for still-omitted Defaultable
+fields. A still-omitted NonDefaultable field is invalid. Canonical construction
+rules are defined by `declarations/struct.md`.
 
 Spread is not a general standalone value operator.
 
@@ -4532,20 +4605,20 @@ default_values.md
 types.md
 contracts.md
 units.txt
-struct.txt
-enums.txt
-unions.txt
-registers.txt
+struct.md
+enums.md
+unions.md
+declarations/registers.md
 functions.txt
 functions_lambda.txt
 generics.txt
-interfaces.txt
-impl.txt
-properties.txt
+declarations/interfaces.md
+impl.md
+properties.md
 events.md
 collections.md
 shaped-types.md
-spread.txt
+declarations/spread.md
 flowcontrol_if.txt
 flowcontrol_for.txt
 flowcontrol_while.txt

@@ -50,8 +50,8 @@ Implementation follows:
 
 ```text
 rules/control-flow/flowcontrol_match.txt
-rules/declarations/enums.txt
-rules/declarations/unions.txt
+rules/declarations/enums.md
+rules/declarations/unions.md
 rules/errors/errorhandling.txt
 rules/memory/copy_move.md
 rules/memory/borrowing.txt
@@ -230,8 +230,9 @@ enum Direction {
 }
 ```
 
-A match containing only those four patterns is not exhaustive if other
-underlying integer values can exist.
+For an ordinary enum, a match containing those four patterns is exhaustive
+because its semantic domain is closed over the unique declared numeric value
+classes.
 
 Use:
 
@@ -245,22 +246,26 @@ match direction {
 }
 ```
 
-unless the compiler proves that the declared unguarded numeric patterns cover
-the complete representable enum domain.
+For an open `bit[N]` enum, use a catch-all unless the compiler proves that the
+unguarded numeric patterns cover every representable N-bit pattern.
 
 ---
 
-# 7. Finite full enum-domain proof
+# 7. Enum-domain proof
 
-The compiler may prove an enum match exhaustive without `_` when the unique
-unguarded numeric pattern set covers the complete representable domain.
+For a closed ordinary enum, the compiler proves exhaustiveness when unguarded
+patterns cover every unique declared numeric value class.
+
+For an open bit-backed enum, the compiler may prove exhaustiveness without `_`
+when the unique unguarded numeric pattern set covers the complete representable
+bit domain.
 
 Examples where this is realistic:
 
 ```text
 bit[1]
 bit[2]
-small fixed-width integer enum with all values declared
+closed ordinary enum with all declared value classes covered
 ```
 
 Coverage is by unique numeric value, not declaration name.
@@ -285,8 +290,11 @@ unreachable enum match arm; numeric value is already covered by <earlier case>
 and:
 
 ```text
-non-exhaustive match for <Enum>; enum may contain undeclared numeric values;
-add _ or cover the complete underlying domain
+non-exhaustive match for closed enum <Enum>; cover every declared numeric value
+class or add _
+
+non-exhaustive match for open bit-backed enum <Enum>; undeclared hardware
+encodings remain possible; add _ or cover the complete bit[N] domain
 ```
 
 The exact diagnostic IDs follow the repository diagnostic registry.
@@ -301,7 +309,7 @@ After Package 12:
 
 1. Sema records a stable read-only `ResolvedMatchPlan`;
 2. enum aliases are normalized to numeric coverage classes for matching;
-3. enum exhaustiveness reflects the real underlying value domain;
+3. enum exhaustiveness reflects the closed ordinary or open bit-backed semantic domain;
 4. Semantic IR evaluates every match subject exactly once;
 5. Semantic IR emits source-order pattern test CFG;
 6. guards execute only after their pattern matches;
@@ -1256,7 +1264,7 @@ synthesized residual tail is UnreachableOp when needed
 Verify:
 
 ```text
-EnumNumericValue is representable by enum underlying domain
+EnumNumericValue belongs to the enum's closed declared or open bit-backed domain
 unguarded duplicate numeric coverage is absent
 guarded numeric arm may precede same numeric class
 Exhaustive true follows corrected numeric-domain rules

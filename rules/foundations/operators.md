@@ -331,7 +331,7 @@ collections.md
 shaped-types.md
     shaped values and matrix multiplication
 
-spread.txt
+declarations/spread.md
     spread contexts and ownership
 
 units.txt
@@ -4069,10 +4069,10 @@ contracts.md
 functions.txt
 collections.md
 shaped-types.md
-spread.txt
-enums.txt
-unions.txt
-struct.txt
+declarations/spread.md
+enums.md
+unions.md
+struct.md
 units.txt
 references.txt
 raw_pointers.txt

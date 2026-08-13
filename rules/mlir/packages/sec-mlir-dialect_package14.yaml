@@ -31,7 +31,7 @@ normative_updates:
   version: 10
 rule_reconciliation:
   array_literal_spread:
-    canonical_source: rules/declarations/spread.txt
+    canonical_source: rules/declarations/spread.md
     status: implemented/current
     stale_no_spread_wording: remove/synchronize
   fixed_index_error:

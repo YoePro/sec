@@ -10,14 +10,14 @@ type Options struct{ Fix bool }
 type Source struct{ Text string }
 type Result struct{ Text string }
 
-func Format(source Source, options Options) Result { return Result{Text: format(source.Text)} }
+func Format(source Source, options Options) Result { return Result{Text: format(source.Text, options)} }
 
 type branch struct {
 	depth         int
 	active, extra bool
 }
 
-func format(text string) string {
+func format(text string, options Options) string {
 	text = strings.TrimPrefix(text, "\uFEFF")
 	eol := "\n"
 	if strings.Contains(text, "\r\n") {
@@ -51,7 +51,10 @@ func format(text string) string {
 			out = append(out, strings.Repeat(" ", indent*4)+"@noCopy")
 			line = strings.TrimSpace(strings.TrimPrefix(line, "@noCopy"))
 		}
-		line = formatLet(formatSignature(normalizeFunc(line)))
+		if options.Fix {
+			line = normalizeReversedTypeDeclaration(line)
+		}
+		line = formatLet(formatSignature(formatInitSignature(normalizeFunc(line))))
 		level := indent - closing(line)
 		if level < 0 {
 			level = 0
@@ -101,6 +104,42 @@ func format(text string) string {
 	return result
 }
 
+func normalizeReversedTypeDeclaration(line string) string {
+	for _, kind := range []string{"struct", "union"} {
+		prefix := "type " + kind + " "
+		if !strings.HasPrefix(line, prefix) {
+			continue
+		}
+		name, rest := leadingIdentifier(line[len(prefix):])
+		if name != "" && (rest == "" || strings.HasPrefix(rest, " ") || strings.HasPrefix(rest, "{")) {
+			return "type " + name + " " + kind + rest
+		}
+	}
+
+	const registerPrefix = "type register "
+	if strings.HasPrefix(line, registerPrefix) {
+		name, rest := leadingIdentifier(line[len(registerPrefix):])
+		if name != "" && strings.HasPrefix(rest, "[") {
+			return "type " + name + " register" + rest
+		}
+	}
+	return line
+}
+
+func leadingIdentifier(text string) (string, string) {
+	end := 0
+	for index, r := range text {
+		if r != '_' && !unicode.IsLetter(r) && (index == 0 || !unicode.IsDigit(r)) {
+			break
+		}
+		end = index + len(string(r))
+	}
+	if end == 0 {
+		return "", text
+	}
+	return text[:end], text[end:]
+}
+
 func normalizeFunc(line string) string {
 	if !strings.HasPrefix(line, "func ") {
 		return line
@@ -127,7 +166,14 @@ func ident(name string) bool {
 	return true
 }
 func formatSignature(line string) string {
-	if !strings.HasPrefix(line, "fn ") {
+	prefix := "fn "
+	for _, candidate := range []string{"mut fn ", "-> fn ", "static fn "} {
+		if strings.HasPrefix(line, candidate) {
+			prefix = candidate
+			break
+		}
+	}
+	if !strings.HasPrefix(line, prefix) {
 		return line
 	}
 	open := strings.Index(line, "(")
@@ -143,6 +189,25 @@ func formatSignature(line string) string {
 		return line
 	}
 	return line[:open+1] + strings.Join(parts, ", ") + line[close:]
+}
+
+func formatInitSignature(line string) string {
+	if !strings.HasPrefix(line, "init(") && !strings.HasPrefix(line, "init (") {
+		return line
+	}
+	open := strings.Index(line, "(")
+	if open < 0 {
+		return line
+	}
+	close := matchingParen(line, open)
+	if close < 0 {
+		return line
+	}
+	parts := split(line[open+1 : close])
+	if parts == nil {
+		return line
+	}
+	return "init(" + strings.Join(parts, ", ") + line[close:]
 }
 func formatLet(line string) string {
 	if !strings.HasPrefix(line, "let ") || strings.Contains(line, "//") || strings.Contains(line, "/*") {

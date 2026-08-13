@@ -126,20 +126,22 @@ fn ExplicitEnumToIntegerCasts() bool {
 
 fn ExplicitIntegerToEnumCasts() bool {
     let declaredColor: Color := Color(1)
-    let unnamedColor: Color := Color(99)
-    let status: Status := Status(404)
+    let anotherColor: Color := Color(2)
+    let status: Status := Status(10)
     let permission: Permission := Permission(8)
 
     AcceptColor(declaredColor)
-    AcceptColor(unnamedColor)
+    AcceptColor(anotherColor)
 
-    return int(status) == 404 && uint(permission) == 8
+    return int(status) == 10 && uint(permission) == 8
 }
 
 fn ExplicitConversionBetweenEnums() bool {
     let color: Color := Color.red
     let numeric: int := int(color)
-    let other: OtherColor := OtherColor(numeric)
+    let other: OtherColor := try OtherColor(numeric) {
+        Err(error) => OtherColor.red
+    }
 
     return int(other) == numeric
 }

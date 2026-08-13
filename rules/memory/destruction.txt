@@ -812,6 +812,20 @@ Initially, custom free should release non-field-represented resources and leave 
 
 A value under construction may be partially initialized.
 
+Lifecycle construction written `new Type(args...)` selects the `init` member
+or permitted implicit path defined by `impl.md`. On successful completion the
+fully initialized value enters ordinary destruction responsibility. On
+construction failure no completed outer value is produced: only successfully
+initialized fields/resources and construction temporaries are cleaned in
+reverse successful-initialization order, and the completed-value custom `free`
+body does not run.
+
+Every resource acquired during `init` must have a statically defined cleanup
+path both after each possible failure and after successful construction.
+Compiler-derived owned-field destruction satisfies this rule where sufficient;
+a handwritten `free` is not mandatory in that case. Allocator/deallocator pairs
+must remain compatible on both success and failure paths.
+
 If construction exits early, only successfully initialized fields are destroyed.
 
 Field cleanup follows reverse successful initialization order.

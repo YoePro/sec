@@ -236,6 +236,8 @@ type UnionVariant struct {
 	Name          *Identifier
 	Payload       *TypeReference
 	PayloadFields []*StructField
+	Default       bool
+	DefaultToken  lexer.Token
 }
 
 func (gp *GenericParameter) TokenLiteral() string {
@@ -261,9 +263,11 @@ func (ed *EnumDeclaration) TokenLiteral() string {
 }
 
 type EnumValue struct {
-	Token       lexer.Token
-	Name        *Identifier
-	Initializer Expression
+	Token        lexer.Token
+	Name         *Identifier
+	Default      bool
+	DefaultToken lexer.Token
+	Initializer  Expression
 }
 
 func (ev *EnumValue) TokenLiteral() string {
@@ -287,12 +291,14 @@ func (id *InterfaceDeclaration) TokenLiteral() string {
 }
 
 type InterfaceProperty struct {
-	Token       lexer.Token
-	Name        *Identifier
-	Type        *TypeReference
-	RequiresGet bool
-	RequiresSet bool
-	SetToken    lexer.Token
+	Token           lexer.Token
+	Name            *Identifier
+	Type            *TypeReference
+	RequiresGet     bool
+	RequiresSet     bool
+	SetterParameter *Identifier
+	SetterFallible  bool
+	SetToken        lexer.Token
 }
 
 func (ip *InterfaceProperty) TokenLiteral() string {
@@ -736,18 +742,27 @@ func (es *ExpressionStatement) TokenLiteral() string {
 }
 
 type FunctionDeclaration struct {
-	Token             lexer.Token
-	Name              *Identifier
-	GenericParameters []*GenericParameter
-	Parameters        []*Parameter
-	ReturnType        *TypeReference
-	Body              *BlockStatement
-	Unsafe            bool
-	Extern            bool
-	ABI               string
-	LinkName          string
-	Static            bool
+	Token              lexer.Token
+	Name               *Identifier
+	GenericParameters  []*GenericParameter
+	Parameters         []*Parameter
+	ReturnType         *TypeReference
+	Body               *BlockStatement
+	Unsafe             bool
+	Extern             bool
+	ABI                string
+	LinkName           string
+	Static             bool
+	ReceiverCapability ReceiverCapability
 }
+
+type ReceiverCapability string
+
+const (
+	ReceiverShared    ReceiverCapability = "shared"
+	ReceiverMutable   ReceiverCapability = "mutable"
+	ReceiverConsuming ReceiverCapability = "consuming"
+)
 
 func (fd *FunctionDeclaration) statementNode() {}
 
@@ -1082,9 +1097,11 @@ func (st *StructType) TokenLiteral() string {
 }
 
 type RegisterType struct {
-	Token  lexer.Token
-	Width  int64
-	Fields []*RegisterField
+	Token           lexer.Token
+	Width           int64
+	AllocationOrder string
+	ByteOrder       string
+	Fields          []*RegisterField
 }
 
 func (rt *RegisterType) TokenLiteral() string {
@@ -1240,6 +1257,61 @@ type CallExpression struct {
 	Function         *Identifier
 	GenericArguments []*TypeReference
 	Arguments        []Expression
+}
+
+// NewExpression selects lifecycle construction for Type. It is deliberately
+// distinct from CallExpression so semantic analysis cannot confuse `new T()`
+// with conversion syntax such as `T(value)`.
+type NewExpression struct {
+	Token     lexer.Token
+	Type      *TypeReference
+	Arguments []Expression
+}
+
+func (ne *NewExpression) expressionNode() {}
+
+func (ne *NewExpression) TokenLiteral() string { return ne.Token.Lexeme }
+
+func (ne *NewExpression) String() string {
+	target := "<nil>"
+	if ne.Type != nil {
+		target = constructionTypeReferenceString(ne.Type)
+	}
+	parts := make([]string, 0, len(ne.Arguments))
+	for _, argument := range ne.Arguments {
+		parts = append(parts, argument.String())
+	}
+	return "new " + target + "(" + strings.Join(parts, ", ") + ")"
+}
+
+func constructionTypeReferenceString(ref *TypeReference) string {
+	if ref == nil {
+		return "<nil>"
+	}
+	name := ref.Name
+	if ref.UnitOnly {
+		name = "<" + ref.Unit + ">"
+	} else if ref.Unit != "" {
+		name += "<" + ref.Unit + ">"
+	}
+	arguments := make([]string, 0, len(ref.TypeArgs)+len(ref.ConstArgs))
+	for _, argument := range ref.TypeArgs {
+		arguments = append(arguments, constructionTypeReferenceString(argument))
+	}
+	for _, argument := range ref.ConstArgs {
+		arguments = append(arguments, argument.String())
+	}
+	if len(arguments) > 0 {
+		name += "[" + strings.Join(arguments, ", ") + "]"
+	}
+	if ref.Ref {
+		prefix := "ref "
+		if ref.MutableRef {
+			prefix = "ref mut "
+		}
+		name = prefix + name
+	}
+	return name
 }
 
 func (ce *CallExpression) expressionNode() {}
@@ -1413,10 +1485,11 @@ type MatchArm struct {
 }
 
 type ImplStatement struct {
-	Token   lexer.Token
-	Extends bool
-	Target  *TypeReference
-	Members []ImplMember
+	Token      lexer.Token
+	Extends    bool
+	Target     *TypeReference
+	Implements []*TypeReference
+	Members    []ImplMember
 }
 
 func (is *ImplStatement) statementNode() {}
@@ -1429,6 +1502,19 @@ type ImplMember interface {
 	Node
 	implMemberNode()
 }
+
+// InitDeclaration is a lifecycle member. ErrorType describes construction
+// failure only; successful completion produces the enclosing impl target.
+type InitDeclaration struct {
+	Token      lexer.Token
+	Parameters []*Parameter
+	ErrorType  *TypeReference
+	Body       *BlockStatement
+}
+
+func (id *InitDeclaration) implMemberNode() {}
+
+func (id *InitDeclaration) TokenLiteral() string { return id.Token.Lexeme }
 
 // InvalidMember retains a malformed or disallowed impl member and the exact
 // region skipped while finding the next member boundary.

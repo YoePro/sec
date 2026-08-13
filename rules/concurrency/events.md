@@ -608,10 +608,10 @@ static event short forms
 ## Related rules
 
 ```text
-struct.txt
-impl.txt
-properties.txt
-interfaces.txt
+struct.md
+impl.md
+properties.md
+declarations/interfaces.md
 functions.txt
 closures.txt
 ownership.md

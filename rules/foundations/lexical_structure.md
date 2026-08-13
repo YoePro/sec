@@ -570,6 +570,7 @@ let
 match
 module
 mut
+new
 panic
 property
 range
@@ -608,6 +609,11 @@ task
 thread
 process
 ```
+
+`new` is a hard keyword in every context. It cannot be used as a declaration,
+parameter, field, property, module, alias, or generic-parameter name. `init`
+remains an identifier lexically and is interpreted contextually only in bare
+`init(...) { ... }` lifecycle-member form inside an `impl`.
 
 Examples:
 
@@ -1459,6 +1465,7 @@ The lexer recognizes the longest valid token at the current source position.
 <-      move assignment
 :<-     move declaration assignment
 =>      arm or mapping arrow
+->      consuming interface receiver marker
 ```
 
 ---
@@ -1595,6 +1602,7 @@ Examples:
 := before :
 <- before <
 => before =
+-> before -
 ```
 
 The longest-match rule does not cross:
@@ -1885,10 +1893,10 @@ This rulebook must be synchronized with:
 names_scopes_visibility.md
 types.md
 contracts.md
-properties.txt
+properties.md
 shaped-types.md
-registers.txt
-enums.txt
+declarations/registers.md
+enums.md
 units.txt
 functions.txt
 functions_lambda.txt

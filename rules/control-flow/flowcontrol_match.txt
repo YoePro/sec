@@ -36,8 +36,8 @@ Implemented:
 
 Not implemented yet:
 
-* structural/destructuring patterns
-* borrowed payload destructuring beyond one positional payload binding
+* general struct and nested recursive destructuring beyond the canonical
+  shallow union-field pattern model
 * literal/range policy diagnostics beyond current expression matching behavior
 * LLVM code generation for match
 
@@ -354,19 +354,51 @@ match shape {
 }
 ```
 
-Direct field destructuring is not required in the initial implementation.
+Direct field destructuring of a struct-like union payload is canonical and
+shallow. Whole-payload binding remains valid, and named fields may instead be
+bound directly:
 
-Not supported initially:
-
-```
-Circle { Radius } => ...
+```sec
+Rectangle { width, height } => Use(width, height)
 ```
 
-Use:
+Partial binding is valid. Omitted fields are not bound, do not constrain the
+matched value, and require no `..` marker:
 
+```sec
+Rectangle { width } => Use(width)
 ```
-Circle(circle) => circle.Radius
+
+Bindings may be renamed or borrowed:
+
+```sec
+Rectangle { width: w, height: ref h } => Use(w, h)
+Rectangle { width: ref mut w } => Modify(w)
 ```
+
+Destructuring must not create hidden partial moves or hidden cloning. Nested
+recursive patterns remain outside this rule; use another `match` for nested
+structured or variant values.
+
+A union binding whose initialization state may still be empty may use the
+compiler-known pattern `empty`:
+
+```sec
+match state {
+    empty => Initialize()
+    Idle => Wait()
+    Running => Work()
+}
+```
+
+`empty` is not a union variant. When reachable, exhaustiveness must cover it or
+an unguarded catch-all must cover the remaining states. A proven initialized
+subject does not include `empty` in exhaustiveness, while `_` covers reachable
+empty state as well as remaining variants.
+
+`value is Variant` is a non-destructuring active-variant test and `value is
+empty` tests the compiler-known empty initialization state where possible.
+Neither form binds payloads; use `match` for extraction.
 
 Binding types:
 
@@ -966,9 +998,10 @@ match value {
 
 Union variants provide static type alternatives and should be used instead.
 
-Struct destructuring:
+General struct destructuring:
 
-Struct destructuring is postponed.
+Destructuring ordinary struct subjects is postponed. This does not apply to the
+canonical shallow named-field destructuring of a struct-like union variant.
 
 Not supported initially:
 
@@ -1348,12 +1381,16 @@ provenance. Numeric aliases therefore cover the same runtime value class; an
 unguarded alias after an equivalent covered value is unreachable. A guarded
 alias does not fully cover that value class.
 
-An enum match is exhaustive only with an unguarded catch-all or when the unique
-unguarded numeric patterns cover the enum's complete representable underlying
-domain. Explicit integer-to-enum conversion means that merely listing every
-declared case name is not generally exhaustive. Coverage uses arbitrary-
-precision range/cardinality arithmetic; unknown target-sized domains require
-the catch-all.
+For an ordinary closed enum, the complete semantic domain is its set of unique
+declared numeric value classes. A match is exhaustive when unguarded patterns
+cover each class or an unguarded catch-all exists. Numeric aliases share one
+coverage class.
+
+A `bit[N]` enum is open over all `2^N` representable patterns. Its match is
+exhaustive only when unguarded patterns cover that complete domain or an
+unguarded catch-all exists. Listing all declared hardware names is insufficient
+when unnamed encodings remain. Tooling should explain that a fallback handles
+reserved, undocumented, future, or otherwise undeclared hardware encodings.
 
 The backend may still emit an unreachable fallback block for defensive IR
 correctness.
@@ -1374,8 +1411,10 @@ Design rules:
 * match may be a statement or an expression.
 * Expression branches must produce compatible types.
 * Terminating branches do not need to produce a value.
-* Variant payload destructuring is initially shallow.
-* Struct and nested destructuring are postponed.
+* Variant payload destructuring is shallow.
+* Named fields of struct-like union payloads support partial binding, rename,
+  and explicit borrowing.
+* Nested recursive destructuring is postponed.
 * Literal and range matching belong to switch.
 * Runtime type inspection is postponed.
 * Matching must respect ownership and borrowing.

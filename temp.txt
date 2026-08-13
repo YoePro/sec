@@ -10,7 +10,7 @@ copy_move.md
 defer.txt
 destruction.txt
 diagnostics.txt
-enums.txt
+enums.md
 errorhandling.txt
 ffi.txt
 flowcontrol_for.txt
@@ -23,8 +23,8 @@ formatter.md
 functions.txt
 functions_lambda.txt
 generics.txt
-impl.txt
-interfaces.txt
+impl.md
+declarations/interfaces.md
 language_philosophy.txt
 lifetime_analysis.txt
 memory_model.md
@@ -32,16 +32,17 @@ mlir-optimize.txt
 mlir.txt
 ownership.md
 projects.txt
-properties.txt
+properties.md
 raw_pointers.txt
 references.txt
-registers.txt
+declarations/registers.md
+platform/fixed-address-bindings.md
 rules_implementations.txt
 semantic_ir.txt
-spread.txt
-struct.txt
+declarations/spread.md
+struct.md
 types.md
-unions.txt
+declarations/unions.md
 units.txt
 contracts.md
 

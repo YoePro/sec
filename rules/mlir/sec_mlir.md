@@ -106,10 +106,11 @@ allocation.txt
 arena.md
 operators.md
 collections.md
-struct.txt
-enums.txt
-unions.txt
-registers.txt
+struct.md
+enums.md
+unions.md
+declarations/registers.md
+platform/fixed-address-bindings.md
 volatile.md
 ffi.txt
 ```

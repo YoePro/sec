@@ -239,6 +239,6 @@ contract declaration when practical.
 - `default_values.md` defines default selection and defaultability.
 - `types.md` defines named identity, declarations, conversions and assignment.
 - `operators.md` defines constant-expression operator semantics.
-- `struct.txt` requires named constrained field types.
+- `struct.md` requires named constrained field types.
 - `collections.md` defines collection types and `shaped-types.md` defines shaped types.
 - `diagnostics.txt` defines diagnostic structure and stability.

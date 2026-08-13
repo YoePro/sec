@@ -40,8 +40,8 @@ General `match` CFG lowering is Package 12.
 Implementation follows:
 
 ```text
-rules/declarations/enums.txt
-rules/declarations/unions.txt
+rules/declarations/enums.md
+rules/declarations/unions.md
 rules/memory/layout.md
 rules/errors/errorhandling.txt
 rules/memory/destruction.txt

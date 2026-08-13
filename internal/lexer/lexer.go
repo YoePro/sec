@@ -58,6 +58,7 @@ const (
 	LET         TokenType = "LET"
 	MATCH       TokenType = "MATCH"
 	MUT         TokenType = "MUT"
+	NEW         TokenType = "NEW"
 	PANIC       TokenType = "PANIC"
 	PROPERTY    TokenType = "PROPERTY"
 	REF         TokenType = "REF"
@@ -80,9 +81,10 @@ const (
 	WHERE       TokenType = "WHERE"
 	WHILE       TokenType = "WHILE"
 
-	ASSIGN  TokenType = "ASSIGN"
-	DECLARE TokenType = "DECLARE"
-	ARROW   TokenType = "ARROW"
+	ASSIGN        TokenType = "ASSIGN"
+	DECLARE       TokenType = "DECLARE"
+	ARROW         TokenType = "ARROW"
+	CONSUME_ARROW TokenType = "CONSUME_ARROW" // ->
 
 	PLUS     TokenType = "PLUS"
 	MINUS    TokenType = "MINUS"
@@ -356,6 +358,9 @@ func (l *Lexer) NextToken() Token {
 		return l.readOne(PLUS)
 
 	case '-':
+		if l.peekNext() == '>' {
+			return l.readTwo(CONSUME_ARROW)
+		}
 		if l.peekNext() == '=' {
 			return l.readTwo(MINUS_ASSIGN)
 		}
@@ -957,6 +962,8 @@ func lookupIdent(s string) TokenType {
 		return MODULE
 	case "mut":
 		return MUT
+	case "new":
+		return NEW
 	case "panic":
 		return PANIC
 	case "property":

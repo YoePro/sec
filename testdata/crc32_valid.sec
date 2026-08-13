@@ -45,10 +45,10 @@ impl Crc32Context {
 
         let mut table: uint32[256]
 
-        let mut i: int := 0
+        int mut: i
         while i < 256 {
-            let mut crc: uint32 := uint32(i)
-            let mut j: int := 0
+            let mut crc := uint32(i)
+            int mut: j
             while j < 8 {
                 if (crc & 1) != 0 {
                     crc = (crc >> 1) ^ self.Polynomial
@@ -67,11 +67,11 @@ impl Crc32Context {
             return (currentCrc >> 8) ^ tbl[int(index)]
         }
 
-        let mut crcState: uint32 := self.InitialValue
-        let mut idx: int := 0
+        uint32 mut: crcState := self.InitialValue
+        int mut: idx
 
         while idx < length {
-            let byteVal: uint8 := data[idx]
+            let byteVal := data[idx]
 
             // Pass 'ref table' explicitly to avoid outer variable capture error
             switch int(byteVal) {

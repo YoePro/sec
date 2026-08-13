@@ -66,7 +66,7 @@ Implementation follows:
 
 ```text
 rules/collections/collections.md
-rules/declarations/spread.txt
+rules/declarations/spread.md
 rules/types/default_values.md
 rules/errors/runtime_checks.md
 rules/library/core-library.md
@@ -141,7 +141,7 @@ continuing.
 No spread ... is included in the initial implementation.
 ```
 
-The newer dedicated `rules/declarations/spread.txt` explicitly defines and marks implemented:
+The newer dedicated `rules/declarations/spread.md` explicitly defines and marks implemented:
 
 ```text
 fixed-size array spread in array literals

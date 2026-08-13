@@ -210,6 +210,18 @@ Semantic IR must not introduce implicit conversions between a distinct type and 
 
 Any permitted construction, conversion or extraction must already have been validated and must appear as an explicit Semantic IR operation.
 
+Lifecycle construction must remain distinct from conversion after frontend
+resolution. A resolved construction operation records the target type, selected
+explicit `init` or implicit path, arguments and ownership actions, exact
+construction error type, source location, partial-initialization state, and
+cleanup/effect metadata. Success produces exactly one fully initialized target
+value; failure produces the exact error and cleans only initialized state.
+
+The completed-value custom `free` operation must not run on failed partial
+construction. `new` alone must not introduce heap allocation. Verification must
+reject escaping incomplete instances, lost cleanup, duplicate cleanup, and any
+loss of the exact construction error channel.
+
 ## Unit types
 
 Unit information must remain attached to values and types until all dimensional validation and conversion operations are complete.
@@ -966,6 +978,21 @@ Field source order and evaluation order must preserve Sec semantics.
 
 Physical layout is not required to be finalized in target-independent Semantic IR.
 
+## Properties
+
+Property access must remain semantically distinct from ordinary field access.
+Semantic IR must distinguish at least:
+
+* property read
+* infallible property write
+* fallible property write
+* compound property update, or an equivalent expanded sequence with guaranteed
+  single evaluation
+
+The representation must preserve receiver evaluation order, getter and setter
+side effects, ownership and borrow effects, fallible setter error edges, cleanup,
+and defer behavior. Backends must not infer property behavior from field access.
+
 ## Unions
 
 Tagged unions must retain explicit discriminant and payload semantics.
@@ -1006,6 +1033,26 @@ Indexing must distinguish:
 Slice creation must preserve reference validity.
 
 A slice must not imply ownership of its elements or backing storage unless a separate owning type defines that behavior.
+
+## Spread
+
+Semantic IR must preserve spread semantics until they are safely normalized.
+Its representation must make the following facts explicit or otherwise prove
+them before normalization:
+
+* the spread source is evaluated exactly once
+* the destination context and any required fixed expansion count are known
+* arrays expand in increasing index order and structs in declaration order
+* call expansion is resolved before final parameter and overload matching
+* each expanded use has a resolved copy, borrow, or rejection outcome
+* struct entries override from left to right
+* omitted-field defaults are applied only after spread and override resolution
+* spread introduces no hidden allocation
+
+Dedicated spread operations are permitted but not required. A normalized form
+may use ordinary arguments, array segments, or field initializers only after it
+has preserved the facts above. MLIR and LLVM lowering must not reconstruct
+ownership, ordering, defaults, or override semantics from source syntax.
 
 ## Strings
 

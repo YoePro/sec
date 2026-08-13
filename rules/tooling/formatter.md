@@ -219,7 +219,13 @@ replace invalid copy initialization with explicit move initialization
 replace invalid copy assignment with explicit move assignment
 insert an unambiguous missing comma
 insert one canonical import when exactly one module provides the symbol
+rewrite a proven reversed type declaration from `type kind Name` to
+    `type Name kind`
 ```
+
+For the contextual word `register`, the fix requires a proving register shape
+such as `type register Name[Width]`. It must not rewrite an ordinary identifier
+named `register` when that shape is absent.
 
 Safe fixing runs before canonical formatting.
 
@@ -1672,6 +1678,25 @@ Nested types and enums follow their ordinary formatting rules.
 
 No unnecessary `self` parameter is inserted.
 
+Lifecycle members and construction retain their distinct canonical forms:
+
+```sec
+impl Buffer {
+    init(size: uint) AllocationError {
+    }
+
+    free {
+    }
+}
+
+let buffer := try new Buffer(4096)
+```
+
+`init` is formatted without `fn`; its trailing type is not described as a
+return type. The formatter must never rewrite `Type(value)` to `new Type(value)`
+or the reverse, and must not imply heap allocation. Nested impls use ordinary
+impl-block indentation. Explicit receiver parameters are not canonical output.
+
 ---
 
 # Control flow
@@ -2274,7 +2299,7 @@ lexical_structure.md
 grammar.md
 operators.md
 types.md
-struct.txt
+struct.md
 enum rules
 register rules
 comments and documentation rules

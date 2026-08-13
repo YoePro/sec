@@ -35,7 +35,7 @@ literals do not include spread.
 That statement is superseded by the dedicated newer:
 
 ```text
-rules/declarations/spread.txt
+rules/declarations/spread.md
 ```
 
 which defines and marks implemented:

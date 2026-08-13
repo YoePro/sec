@@ -68,20 +68,23 @@ storage.md
 types.md
     semantic type identity, scalar families, named types, and conversions
 
-struct.txt
+struct.md
     struct declarations, fields, literals, properties, and field tags
 
 collections.md
     fixed arrays, owning dynamic arrays, slice references, indexing, and slicing
 
-enums.txt
+enums.md
     enum declarations, values, and underlying types
 
-unions.txt
+unions.md
     union declarations, variants, construction, matching, and active payloads
 
-registers.txt
-    register bit layout and addressed hardware access
+declarations/registers.md
+    register type and bit layout
+
+platform/fixed-address-bindings.md
+    addressed hardware access
 
 compiler_known_members.md
     source-facing compiler-known layout queries such as `T.SizeOf` and `SizeOf(T)`
@@ -3018,10 +3021,11 @@ Synchronize at least:
 ```text
 types.md
 collections.md
-struct.txt
-enums.txt
-unions.txt
-registers.txt
+struct.md
+enums.md
+unions.md
+declarations/registers.md
+platform/fixed-address-bindings.md
 compiler_known_members.md
 reference_model.md
 ffi.txt

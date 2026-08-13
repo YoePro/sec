@@ -83,8 +83,11 @@ shaped-types.md
 ffi.txt
     foreign ABI and ownership contracts
 
-registers.txt
-    register layouts and addressed hardware bindings
+declarations/registers.md
+    register type and bit-layout semantics
+
+platform/fixed-address-bindings.md
+    @address, MMIO, and volatile fixed-address binding semantics
 
 concurrency_memory_model.md
     synchronization, visibility, ordering, and data races
@@ -947,7 +950,8 @@ Its contract may require:
 - restrictions on ordinary references.
 
 MMIO is distinct from `AddressStability.Fixed` and from volatility, although an
-addressed register binding normally combines them through `registers.txt`.
+addressed register binding normally combines them through
+`rules/platform/fixed-address-bindings.md`.
 
 ## TargetDefined
 
@@ -985,7 +989,41 @@ atomicity, and address stability remain separate properties.
 
 Transfers between different memory spaces must be explicit and may be fallible.
 
-Sec 0.1 does not require general source-level memory-space syntax.
+Sec 0.1 does not introduce general memory-space annotations. It does provide
+compiler-known structured destination requests for operations that explicitly
+produce shaped storage.
+
+## Source-level storage requests
+
+`MemorySpace` is a compiler-known nominal storage descriptor for an access and
+transfer domain. It remains orthogonal to `StorageOrigin`, `BackingRelation`,
+`ReclamationAuthority`, and `AddressStability`. Automatic, static, Arena, and
+allocator-backed storage are not memory-space values.
+
+The common destination request is:
+
+```sec
+struct StorageRequest {
+    MemorySpace: Option[MemorySpace]
+    MinAlignment: Option[uint]
+}
+```
+
+An explicitly supplied field is a hard requirement. `None` means no additional
+requirement for that dimension; it does not explicitly request `Ordinary`.
+`MinAlignment: Some(n)` requires actual destination alignment of at least `n`.
+Allocation authority such as `ref mut Arena` is supplied separately and is not
+stored in `StorageRequest`.
+
+Allocation-context resolution for an explicit memory-space request must select
+a provider capable of satisfying it and must not silently substitute another
+space. Public `.MemorySpace` observation is read-only; changing memory space
+requires an explicit storage-producing operation.
+
+A successful synchronous `TransferTo` returns a fully initialized destination
+and leaves no unrepresented asynchronous dependency on the source. DMA or other
+asynchronous transfer requires a distinct explicit API or handle that represents
+completion, cancellation, publication, and source/destination lifetime.
 
 ---
 
@@ -1975,8 +2013,8 @@ Creating a binding to fixed-address storage:
 - thread safety;
 - permanent lifetime.
 
-An `@address` register binding is volatile because `registers.txt` defines that
-additional rule.
+An `@address` register binding is volatile because
+`rules/platform/fixed-address-bindings.md` defines that additional rule.
 
 Statically known overlapping fixed-address bindings must be validated against:
 
@@ -2430,7 +2468,8 @@ At minimum, tests must cover the following groups.
 - foreign storage with matching release operation;
 - missing foreign lifetime contract;
 - fixed address without implied mutability;
-- addressed register volatility through `registers.txt`;
+- addressed register volatility through
+  `rules/platform/fixed-address-bindings.md`;
 - overlapping fixed-address validation;
 - target-defined memory-space restrictions.
 
@@ -2549,7 +2588,7 @@ optimization.
 Semantic IR must add or map all stable facts, path-dependent states, and
 explicit operations required by this rulebook.
 
-## `ffi.txt`, `registers.txt`, and concurrency rulebooks
+## `ffi.txt`, `declarations/registers.md`, `platform/fixed-address-bindings.md`, and concurrency rulebooks
 
 These documents must consume the foreign, fixed-address, MMIO, generation, and
 concurrent-reclamation principles without redefining storage origin or epoch

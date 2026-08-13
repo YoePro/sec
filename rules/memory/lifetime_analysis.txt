@@ -3543,7 +3543,8 @@ Destruction of the binding must not:
 * write a default value
 * invoke ordinary owned-field destruction against hardware storage
 
-External storage semantics are defined by registers.txt and volatile rules.
+External addressed-storage semantics are defined by
+`rules/platform/fixed-address-bindings.md` and the volatile rules.
 
 ## Reference lifetime
 

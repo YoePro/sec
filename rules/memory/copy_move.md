@@ -3169,7 +3169,7 @@ lsp.md
 types.md
 contracts.md
 functions.txt
-struct.txt
+struct.md
 collections.md
 shaped-types.md
 borrowing.txt
@@ -3184,7 +3184,8 @@ tasks.txt
 threads.md
 processes.txt
 ffi.txt
-registers.txt
+declarations/registers.md
+platform/fixed-address-bindings.md
 static.md
 semantic_ir.txt
 compiler_pipeline.txt

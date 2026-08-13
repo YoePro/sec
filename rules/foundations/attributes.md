@@ -2616,8 +2616,8 @@ destruction.txt
 inline_assembly.md
 ffi.txt
 functions.txt
-interfaces.txt
-impl.txt
+declarations/interfaces.md
+impl.md
 generics rulebook
 registers rulebook
 addressed-variable rulebook

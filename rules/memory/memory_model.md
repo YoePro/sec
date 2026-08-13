@@ -18,7 +18,8 @@ destruction.txt
 allocation.txt
 concurrency_memory_model.txt
 ffi.txt
-registers.txt
+declarations/registers.md
+platform/fixed-address-bindings.md
 ```
 
 It does not duplicate the complete analysis algorithms or source syntax from
@@ -261,8 +262,11 @@ concurrency_memory_model.txt
 ffi.txt
     foreign contracts and ABI boundaries
 
-registers.txt
-    register layouts and hardware access
+declarations/registers.md
+    register layouts
+
+platform/fixed-address-bindings.md
+    addressed hardware access
 ```
 
 ---
@@ -3634,14 +3638,15 @@ concurrency_memory_model.txt
 data_races.md
 deadlock_analysis.md
 ffi.txt
-registers.txt
+declarations/registers.md
+platform/fixed-address-bindings.md
 collections.md
 shaped-types.md
 types.md
 contracts.md
 functions.txt
-struct.txt
-unions.txt
+struct.md
+unions.md
 atomics rulebook
 mutex rulebook
 target_profiles.md

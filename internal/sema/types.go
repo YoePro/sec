@@ -66,8 +66,10 @@ type Type struct {
 	InvalidExplicitDefault     bool
 	EnumValues                 []string
 	EnumConsts                 map[string]EnumValue
+	EnumDefault                string
 	BitWidth                   int64
 	UnionVariants              []UnionVariant
+	UnionDefault               string
 	TypeArgs                   []Type
 	ConstArgs                  []int64
 	Element                    *Type
@@ -79,6 +81,8 @@ type Type struct {
 	GenericParameters          []string
 	Fields                     []StructField
 	RegisterWidth              int64
+	RegisterAllocationOrder    string
+	RegisterByteOrder          string
 	RegisterFields             []RegisterField
 	Properties                 []Property
 	Events                     []Event
@@ -99,6 +103,8 @@ type UnionVariant struct {
 	Payload       *Type
 	PayloadFields []StructField
 	Token         lexer.Token
+	Default       bool
+	DefaultToken  lexer.Token
 }
 
 type StructField struct {
@@ -109,11 +115,12 @@ type StructField struct {
 }
 
 type RegisterField struct {
-	Name  string
-	Width int64
-	Unit  string
-	Type  Type
-	Token lexer.Token
+	Name      string
+	Width     int64
+	BitOffset int64
+	Unit      string
+	Type      Type
+	Token     lexer.Token
 }
 
 type StructTag struct {
@@ -151,13 +158,21 @@ type InterfaceEvent struct {
 type StorageOrigin string
 
 const (
-	StorageOriginInline       StorageOrigin = "Inline"
-	StorageOriginStatic       StorageOrigin = "Static"
-	StorageOriginArena        StorageOrigin = "Arena"
-	StorageOriginExternal     StorageOrigin = "External"
-	StorageOriginForeign      StorageOrigin = "Foreign"
-	StorageOriginFixedAddress StorageOrigin = "FixedAddress"
-	StorageOriginUnknown      StorageOrigin = "Unknown"
+	StorageOriginInline   StorageOrigin = "Inline"
+	StorageOriginStatic   StorageOrigin = "Static"
+	StorageOriginArena    StorageOrigin = "Arena"
+	StorageOriginExternal StorageOrigin = "External"
+	StorageOriginForeign  StorageOrigin = "Foreign"
+	StorageOriginUnknown  StorageOrigin = "Unknown"
+)
+
+type AddressStability string
+
+const (
+	AddressStabilityMovable AddressStability = "Movable"
+	AddressStabilityStable  AddressStability = "Stable"
+	AddressStabilityFixed   AddressStability = "Fixed"
+	AddressStabilityUnknown AddressStability = "Unknown"
 )
 
 type AllocationEffect string
@@ -186,11 +201,12 @@ const (
 )
 
 type InterfaceProperty struct {
-	Name        string
-	Type        Type
-	Token       lexer.Token
-	RequiresGet bool
-	RequiresSet bool
+	Name           string
+	Type           Type
+	Token          lexer.Token
+	RequiresGet    bool
+	RequiresSet    bool
+	SetterFallible bool
 }
 
 type UnitCategory string
@@ -231,11 +247,16 @@ type Function struct {
 	ReturnType        Type
 	Token             lexer.Token
 	Extern            bool
+	Static            bool
 	ABI               string
 	LinkName          string
 	AllocationEffect  AllocationEffect
 	ImplTarget        string
 	ReceiverMutable   bool
+	ReceiverConsuming bool
+	Initializer       bool
+	ConstructionType  *Type
+	ConstructionError *Type
 	ReturnOrigin      localReferenceOrigin
 	HasReturnOrigin   bool
 }
@@ -352,6 +373,8 @@ const (
 	ExplicitTypeDefault DefaultKind = "explicit"
 	StructDefault       DefaultKind = "struct"
 	ArrayDefault        DefaultKind = "array"
+	EnumDefault         DefaultKind = "enum"
+	UnionDefault        DefaultKind = "union"
 )
 
 type DefaultResolution struct {
@@ -359,6 +382,8 @@ type DefaultResolution struct {
 	Value    DefaultConstant
 	Fields   []DefaultField
 	Elements []DefaultResolution
+	Variant  string
+	Payload  *DefaultResolution
 }
 
 type DefaultField struct {
@@ -390,14 +415,15 @@ type Symbol struct {
 	// ImplicitMember marks the short-name alias injected for an impl member.
 	// A lexical declaration may shadow such an alias without redeclaring the
 	// underlying field, property or event.
-	ImplicitMember bool
-	Token          lexer.Token
-	Addressed      bool
-	Address        string
-	Volatile       bool
-	Storage        StorageOrigin
-	Local          bool
-	ScopeDepth     int
+	ImplicitMember   bool
+	Token            lexer.Token
+	Addressed        bool
+	Address          string
+	Volatile         bool
+	Storage          StorageOrigin
+	AddressStability AddressStability
+	Local            bool
+	ScopeDepth       int
 }
 
 func builtinTypes() map[string]Type {
@@ -423,6 +449,14 @@ func builtinTypes() map[string]Type {
 			Underlying: "uint",
 			EnumValues: []string{"Overflow", "DivisionByZero", "InvalidShift"},
 			EnumConsts: builtinEnumConsts([]string{"Overflow", "DivisionByZero", "InvalidShift"}),
+		},
+		"EnumValueError": {
+			Name:        "EnumValueError",
+			Kind:        EnumType,
+			Underlying:  "uint",
+			EnumValues:  []string{"UndeclaredValue", "OutOfRange"},
+			EnumConsts:  builtinEnumConsts([]string{"UndeclaredValue", "OutOfRange"}),
+			EnumDefault: "UndeclaredValue",
 		},
 		"ContractError": {Name: "ContractError", Kind: StructType},
 		"CollectionError": {

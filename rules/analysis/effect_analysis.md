@@ -2871,6 +2871,28 @@ per-`CompilationPlan` summaries, or general diagnostic cause paths.
 
 ---
 
+# Shaped operation effects
+
+Logical shaped operations do not contribute `MayAllocate` merely because later
+materialization could require storage. This applies to elementwise shaped
+arithmetic, `x`, `Dot`, `Outer`, `Magnitude`, `Normalize`, `Cross`, `Contract`,
+`Reshape`, `ToShape`, `Permute`, `Transpose`, and `BroadcastTo`.
+
+Returning an explicit `ShapeError` after runtime validation is ordinary error
+flow and is not itself an effect.
+
+`Create(request)`, `Materialize(request)`, `TransferTo(request)`, and
+`Relayout(...)` contribute the actual effects of their selected provider or
+helper path. Those concrete effects may include `MayAllocate`, `MayBlock`,
+`MaySuspend`, `MayIO`, `MayAccessVolatile`, or `MayMutateExternalState`; being a
+tensor or transfer operation does not create a separate public effect.
+
+A synchronous `TransferTo` must not hide outstanding asynchronous work. An
+explicit asynchronous transfer contributes the effects and lifetime/publication
+obligations of its actual contract.
+
+---
+
 # Appendix B — Canonical effect table
 
 | Internal effect | Meaning | Forbidden by |

@@ -142,11 +142,11 @@ impl DeviceWithHiddenEvent {
     event Changed using missingStorage
 }
 
-type DeviceWithWrongStorage struct implements PressSource {
+type DeviceWithWrongStorage struct {
     changedStorage: EventStorage[int, 4]
 }
 
-impl DeviceWithWrongStorage {
+impl DeviceWithWrongStorage implements PressSource {
     // ERROR: PressSource requires ButtonPressed[ButtonPressData], but this
     // event is backed by EventStorage[int, 4].
     event ButtonPressed using changedStorage

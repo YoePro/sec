@@ -318,8 +318,8 @@ Synchronize with:
 ```text
 rules/library/core-library.md
 rules/library/stdlib.md
-rules/declarations/impl.txt
-rules/declarations/properties.txt
+rules/declarations/impl.md
+rules/declarations/properties.md
 rules/types/types.md
 rules/collections/collections.md
 rules/memory/reference_model.md
@@ -651,7 +651,8 @@ Recommended order:
 6. `inline_assembly.md`
 7. final synchronization of `isr_analysis.md`
 8. synchronize `ffi.txt`
-9. synchronize `registers.txt`
+9. synchronize `declarations/registers.md` and
+   `platform/fixed-address-bindings.md`
 
 ### Reasoning
 

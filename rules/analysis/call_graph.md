@@ -3132,7 +3132,7 @@ concurrency_memory_model.txt
 functions.txt
 functions_lambda.txt
 generics.txt
-interfaces.txt
+declarations/interfaces.md
 defer.txt
 destruction.txt
 panic.md

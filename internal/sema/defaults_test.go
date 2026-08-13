@@ -2,6 +2,7 @@ package sema
 
 import (
 	"math/big"
+	"strings"
 	"testing"
 
 	"sec/internal/ast"
@@ -47,6 +48,13 @@ func TestDefaultValueOfPrimitiveAndConstrainedTypes(t *testing.T) {
 	array := Type{Name: "int[3]", Kind: ArrayType, Element: &Type{Name: "int", Kind: IntType}, ArrayLength: 3}
 	if resolved := DefaultValueOf(array); resolved.Kind != ArrayDefault || len(resolved.Elements) != 3 {
 		t.Fatalf("array default = %#v", resolved)
+	}
+	largeArray := Type{Name: "int[2048]", Kind: ArrayType, Element: &Type{Name: "int", Kind: IntType}, ArrayLength: 2048}
+	if display, kind, ok := DefaultValuePreview(largeArray, 8); !ok || kind != ArrayDefault || display != "[0, ...]" {
+		t.Fatalf("large array default preview = %q, %q, %v; want [0, ...], array, true", display, kind, ok)
+	}
+	if display, kind, ok := DefaultValuePreview(array, 8); !ok || kind != ArrayDefault || display != "[0, 0, 0]" {
+		t.Fatalf("small array default preview = %q, %q, %v", display, kind, ok)
 	}
 	emptyRefs := Type{Name: "ref int[0]", Kind: ArrayType, Element: &Type{Name: "ref int", Kind: ReferenceType}, ArrayLength: 0}
 	if resolved := DefaultValueOf(emptyRefs); resolved.Kind != ArrayDefault || len(resolved.Elements) != 0 {
@@ -217,6 +225,49 @@ fn Invalid(ref source: int) Holder {
 	}
 	if errors[0].ID != diagnostics.NoDefaultValue || errors[1].ID != diagnostics.MissingNonDefaultableField {
 		t.Fatalf("wrong default diagnostic IDs: %v", errors)
+	}
+}
+
+func TestEnumDefaultUsesDeclaredMemberIdentity(t *testing.T) {
+	analyzer, errors := analyzeSourceWithAnalyzer(t, `module main
+
+enum Status int {
+	UNKNOWN = 10,
+	ACTIVE = 20,
+}
+
+enum ConnectionState int {
+	CONNECTING = 10,
+	CONNECTED,
+	DISCONNECTED default = 30,
+}
+
+fn Defaults() void {
+	let mut status: Status
+	let mut connection: ConnectionState
+}
+`)
+	if len(errors) != 0 {
+		t.Fatalf("enum defaults produced errors: %v", errors)
+	}
+	if value, kind, ok := DefaultValueDisplay(analyzer.Types()["Status"]); !ok || kind != EnumDefault || value != "Status.UNKNOWN" {
+		t.Fatalf("Status default = %q, %q, %v", value, kind, ok)
+	}
+	if value, kind, ok := DefaultValueDisplay(analyzer.Types()["ConnectionState"]); !ok || kind != EnumDefault || value != "ConnectionState.DISCONNECTED" {
+		t.Fatalf("ConnectionState default = %q, %q, %v", value, kind, ok)
+	}
+}
+
+func TestEnumRejectsMultipleDefaultMembers(t *testing.T) {
+	errors := analyzeSourceRaw(t, `module main
+
+enum Invalid {
+	FIRST default,
+	SECOND default,
+}
+`)
+	if len(errors) != 1 || !strings.Contains(errors[0].Message, "may only mark one member default") {
+		t.Fatalf("errors = %v, want duplicate enum default diagnostic", errors)
 	}
 }
 

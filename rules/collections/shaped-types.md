@@ -1,24 +1,69 @@
 # Shaped Types
 
-**Canonical rulebook:** Sec 0.1  
-**Split from:** `collections-shaped-types.md`  
-**Collection semantics:** `collections.md`
-
-## Purpose
-
-This rulebook defines the shaped-value families `vector`, `matrix`, `tensor`,
-and `tensor_view`, together with `Shape`, `Strides`, `TensorLayout`, and
-`MemorySpace`. Collection semantics for arrays, dynamic arrays, slices, lists,
-maps, and sets belong exclusively to `collections.md`.
-
-Mutable implementation status belongs in `implementation-status.yaml`, under
-the `frontend.shaped-types` integration.
+**Status:** Canonical normative rulebook
+**Language version:** Sec 0.1
+**Document revision:** 2.0
+**Created:** 2026-08-13
+**Last updated:** 2026-08-13
+**Replaces:** the previous `rules/collections/shaped-types.md` revision 1.
+**Collection semantics:** `rules/collections/collections.md`
+**Storage semantics:** `rules/memory/storage.md`, `rules/memory/memory_model.md`
+**Compiler-known members:** `rules/compiler/compiler_known_members.md`
+**MLIR and lowering:** `rules/mlir/`
 
 ---
 
-# Shaped values
+# 1. Purpose
 
-## General model
+This rulebook defines Sec's shaped-value model.
+
+It owns the source-language semantics of:
+
+```text
+vector
+matrix
+tensor
+tensor_view
+Shape
+Strides
+TensorLayout
+Axes
+AxisList
+ShapedStorageRequest
+```
+
+It also defines how shaped values interact with:
+
+```text
+MemorySpace
+StorageRequest
+ownership
+borrowing
+indexing
+slicing
+layout
+contiguity
+materialization
+storage transfer
+operators
+vector algebra
+matrix multiplication
+tensor contraction
+```
+
+Ordinary collections such as fixed arrays, dynamic arrays, slices, `list`,
+`map`, and `set` belong to `collections.md`.
+
+This rulebook defines language semantics, not mutable implementation status.
+Implementation progress belongs only in `implementation-status.yaml`.
+
+MLIR operation schemas and lowering details belong under `rules/mlir/`. This
+rulebook states the source semantics that those documents must preserve, but it
+does not duplicate the detailed MLIR model.
+
+---
+
+# 2. Core model
 
 A shaped value has:
 
@@ -26,138 +71,316 @@ A shaped value has:
 element type
 rank
 shape
+logical element order
 logical value semantics
+semantic storage-placement contract
 optional materialized storage
 ```
 
-A materialized view additionally has:
+A shaped storage view additionally has or derives:
 
 ```text
-storage origin
-offset
+backing storage identity
+element origin or offset
 strides
 layout
 memory space
-borrow mode
+borrow authority
 ```
 
 Not every property occupies runtime storage.
 
-Static information should remain in the type or Semantic IR and be erased when
-unnecessary.
+Compile-time-known facts may be represented entirely in type metadata or
+compiler analysis and erased when no runtime representation is required.
+
+Sec distinguishes:
+
+```text
+logical shaped value
+    what the value means
+
+storage representation
+    how an addressable representation is laid out
+
+view
+    a borrowed mapping over existing storage
+```
+
+The compiler may keep logical shaped values in SSA form or registers, scalarize
+them, fuse operations, eliminate intermediates, and defer materialization until
+ordinary language semantics require observable storage.
+
+The compiler must not invent a fallible allocation, storage transfer, or
+lifetime extension merely to satisfy an observation that the language does not
+otherwise require.
 
 ---
 
-## Value versus storage view
+# 3. Shaped type families
 
-The following are logical shaped values:
+## 3.1 `vector`
 
 ```sec
 vector[T, N]
-matrix[T, Rows, Columns]
-tensor[T, Dimensions...]
 ```
 
-They do not promise one permanently observable physical memory layout.
+is an owning rank-one shaped value.
 
-The compiler may:
+Semantically:
 
-- keep a value in registers;
-- scalarize it;
-- fuse operations;
-- eliminate temporaries;
-- change physical layout before it becomes observable;
-- lower it through MLIR tensor semantics;
-- materialize a buffer only when needed.
+```text
+Rank  = 1
+Shape = [N]
+Len   = N
+```
 
-The following is an explicit view of storage:
+`N` is compile-time-known.
+
+A vector is not a growable collection.
+
+## 3.2 `matrix`
+
+```sec
+matrix[T, Rows, Columns]
+```
+
+is an owning rank-two shaped value.
+
+Semantically:
+
+```text
+Rank  = 2
+Shape = [Rows, Columns]
+Len   = Rows * Columns
+```
+
+Both extents are compile-time-known.
+
+## 3.3 Statically shaped `tensor`
+
+```sec
+tensor[T, D0, D1, ...]
+```
+
+is an owning shaped value whose rank and all extents are compile-time-known.
+
+Example:
+
+```sec
+let image: tensor[float32, 3, 224, 224]
+```
+
+has:
+
+```text
+Rank  = 3
+Shape = [3, 224, 224]
+```
+
+The variadic dimension form is compiler-known and does not imply general
+variadic generic parameters for ordinary user-defined types.
+
+## 3.4 Runtime-shaped owning `tensor`
+
+```sec
+tensor[T, Shape[Rank]]
+```
+
+is an owning tensor whose rank is compile-time-known and whose extents are
+runtime values.
+
+Example:
+
+```sec
+let image: tensor[float32, Shape[3]]
+```
+
+has:
+
+```text
+Rank
+    compile-time-known as 3
+
+Shape
+    runtime Shape[3]
+
+Len
+    runtime product of Shape
+```
+
+The older rule that deferred runtime-shaped owning tensors is superseded.
+
+Runtime-shaped owning tensors are part of the Sec language model. A particular
+compiler release may report an explicit unsupported-feature diagnostic until
+implementation is complete; it must not reinterpret the type as a view or an
+ordinary dynamic array.
+
+## 3.5 `tensor_view`
 
 ```sec
 tensor_view[T, Rank]
 ```
 
-A `tensor_view` preserves observable shape, offset, stride, layout, memory-space,
-and borrow information.
+is the compiler-known non-owning affine-strided shaped-view type form.
+
+It is not an independently owning runtime value that grants backing access.
+Actual safe source-level access uses:
+
+```sec
+ref tensor_view[T, Rank]
+ref mut tensor_view[T, Rank]
+```
+
+Mutability authority comes from `ref` or `ref mut`, not from a separate mutable
+view type.
+
+Example:
+
+```sec
+fn ProcessImage(image: ref tensor_view[float32, 3]) void {
+}
+
+fn MutateImage(image: ref mut tensor_view[float32, 3]) void {
+}
+```
+
+A view remains tied to its backing storage lifetime, provenance, generation,
+invalidation domain, and memory-space contract.
 
 ---
 
-# Shape
-
-## Shape type
+# 4. `Shape[Rank]`
 
 ```sec
 Shape[Rank]
 ```
 
-represents one non-negative extent per axis.
-
-```sec
-let dimensions: Shape[3] := value.shape
-```
+is a compiler-known immutable nominal value containing one non-negative extent
+per axis.
 
 Rank is part of the type.
 
-A `Shape[3]` is not interchangeable with `list[uint]`.
+A `Shape[3]` is not interchangeable with `list[uint]` or `uint[3]` merely
+because the representations could be similar.
 
 Zero extents are valid.
 
-A shaped value with at least one zero extent contains zero logical elements.
+A shaped value with at least one zero extent has:
+
+```text
+Len == 0
+```
 
 Negative extents are invalid.
 
-The product of all extents must be checked for overflow.
+The product of all extents must be checked for overflow whenever it is not
+proven safe at compile time.
 
 ---
 
-## Static rank
+# 5. Rank, Shape, and Len
 
-Sec 0.1 requires rank to be known at compile time.
+All shaped values and shaped views expose the semantic read-only properties:
+
+```sec
+value.Rank
+value.Shape
+value.Len
+```
+
+The canonical result types are:
+
+```text
+Rank  -> uint
+Shape -> Shape[Rank]
+Len   -> uint
+```
+
+`Len` is the total logical number of scalar elements:
+
+```text
+Len = product of all extents in Shape
+```
+
+It never means only the first dimension.
+
+Examples:
+
+```sec
+let v: vector[float32, 4]
+let m: matrix[float32, 3, 4]
+let t: tensor[float32, 2, 3, 4]
+
+v.Len // 4
+m.Len // 12
+t.Len // 24
+```
+
+For a broadcast view, `Len` remains the number of logical elements even when
+multiple logical indexes refer to the same backing element.
+
+`Rank`, `Shape`, and `Len` are compiler-known facts and may be folded when
+statically known.
+
+The returned `Shape` is read-only semantic metadata. Mutating a shaped value's
+elements through `ref mut` does not grant permission to mutate its shape
+metadata directly.
+
+## 5.1 Type-level access
+
+When the complete fact belongs to the static type, the corresponding associated
+property is available.
+
+Examples:
+
+```sec
+matrix[float32, 3, 4].Rank
+matrix[float32, 3, 4].Shape
+matrix[float32, 3, 4].Len
+
+tensor_view[float32, 3].Rank
+```
 
 For:
 
 ```sec
-tensor[T, D0, D1, D2]
+tensor_view[float32, 3]
 ```
 
-the rank is three.
+the type knows rank but not a particular runtime shape, so a complete associated
+`.Shape` or `.Len` is not available from the type alone.
 
-The first owned tensor form requires compile-time-known extents.
+The same restriction applies to:
 
-Runtime-dynamic owned tensor dimensions are a later extension.
+```sec
+tensor[float32, Shape[3]]
+```
 
-`tensor_view[T, Rank]` may carry runtime shape values while retaining static
-rank.
+for runtime extents.
 
 ---
 
-# Strides
-
-## Strides type
+# 6. Strides
 
 ```sec
 Strides[Rank]
 ```
 
-contains one element stride per axis.
-
-```sec
-let strides: Strides[2] := view.strides
-```
+is a compiler-known immutable nominal value containing one element stride per
+axis.
 
 Stride values are measured in elements, not bytes.
 
-Target byte addresses are derived from:
+Every affine-strided shaped value or view exposes:
 
-```text
-base address
-element offset
-element strides
-element size
+```sec
+value.Strides
 ```
 
----
+as a read-only property.
 
-## Stride values
+For canonical dense owning values, strides are normally compile-time-known.
+For runtime-shaped values or views, they may be runtime-derived.
 
 A stride may be:
 
@@ -166,21 +389,18 @@ positive
     forward traversal
 
 negative
-    reversed traversal
+    reverse traversal
 
 zero
     broadcasted axis
 ```
 
-Canonical owned dense storage uses positive non-zero strides.
+Zero and negative strides are valid view semantics.
 
-Zero and negative strides are primarily view semantics.
+## 6.1 Canonical dense row-major strides
 
----
-
-## Canonical row-major layout
-
-The default materialized dense layout is row-major.
+The canonical ordinary owning layout is dense row-major unless an explicit
+storage request requires another supported layout.
 
 For:
 
@@ -188,498 +408,1013 @@ For:
 matrix[T, Rows, Columns]
 ```
 
-the canonical element strides are:
+canonical element strides are:
 
 ```text
-row stride       Columns
-column stride    1
+[Columns, 1]
 ```
 
-For a rank-N dense tensor:
-
-- the last axis has unit stride;
-- each preceding stride is the product of later extents.
-
-Statically derivable strides require no runtime metadata.
-
----
-
-## Addressing
-
-A tensor-view element address is conceptually selected by:
+For a rank-N dense row-major tensor:
 
 ```text
-offset + sum(index[axis] * stride[axis])
+the last axis has stride 1
+each preceding stride is the product of later extents
+```
+
+## 6.2 Address selection
+
+For an affine-strided view, an element is conceptually selected by:
+
+```text
+origin + sum(index[axis] * stride[axis])
 ```
 
 in element units.
 
-The compiler must validate:
-
-- each index;
-- arithmetic overflow;
-- negative-stride bounds;
-- zero-stride aliasing;
-- backing-storage range;
-- memory-space compatibility.
+The compiler must validate all required bounds, overflow, backing-range,
+addressability, and memory-space facts before safe access is accepted.
 
 ---
 
-## Aliasing and mutation
-
-A mutable view must be proven non-overlapping for its permitted index domain.
-
-A zero-stride broadcast view aliases one element through multiple logical
-indexes and is therefore shared-only by default.
-
-Invalid:
-
-```sec
-ref mut tensor_view[T, Rank]
-```
-
-when the selected view has overlapping logical indexes.
-
-A negative-stride reversed view may be mutable when every logical index maps to
-a unique element.
-
----
-
-# TensorLayout
-
-## Purpose
-
-Simple strides can represent:
-
-- row-major layout;
-- column-major layout;
-- padded rows;
-- transpose;
-- reversal;
-- subsampling;
-- broadcasting.
-
-Strides alone cannot represent every layout.
-
-Examples requiring a richer description include:
-
-- tiled layout;
-- blocked layout;
-- Morton or Z-order;
-- accelerator swizzles;
-- compressed sparse formats;
-- banked memory.
-
-The nominal type:
+# 7. Tensor layout
 
 ```sec
 TensorLayout[Rank]
 ```
 
-describes the layout category and associated metadata.
+is a compiler-known nominal description of the shaped storage-layout category.
 
-Initial conceptual categories include:
+All shaped values and views for which layout is meaningful expose:
+
+```sec
+value.Layout
+```
+
+as a read-only property.
+
+The canonical public affine-strided categories are:
 
 ```text
 DenseRowMajor
 DenseColumnMajor
 Strided
-Tiled
-Sparse
-TargetSpecific
 ```
 
-The exact enum/union representation belongs in core or stdlib.
+`DenseRowMajor` and `DenseColumnMajor` are contiguous dense layouts with a
+canonical axis order.
+
+`Strided` represents an affine mapping that is not represented as one of those
+canonical dense categories.
+
+Additional source-visible layout categories may be defined by additive
+rulebooks without changing the meaning of these categories or the affine
+`Strides` contract defined here.
+
+The compiler/backend may internally use tiled, blocked, sparse, swizzled, or
+other representations when they are observationally equivalent to the source
+contract. Such internal choices do not automatically become public
+`TensorLayout` values.
+
+Changing `.Layout` by property assignment is invalid.
 
 ---
 
-## Sec 0.1 public view restriction
+# 8. Contiguity
 
-The initial `tensor_view[T, Rank]` implementation should support affine strided
-views.
-
-More advanced sparse and target-specific views may use dedicated layout
-metadata and operations later.
-
-This restriction keeps:
+All shaped values and views expose the read-only property:
 
 ```sec
-view.strides
+value.IsContiguous
 ```
 
-well-defined in the initial implementation.
+`IsContiguous` is intentionally symmetric across the shaped API even when the
+answer is statically always `true` for a canonical dense owning value.
 
----
+This symmetry allows generic shaped code to ask the same meaningful question
+without branching on the concrete shaped family.
 
-# MemorySpace
+A shaped mapping is contiguous when its logical elements are represented by one
+forward, dense, non-overlapping storage range in logical traversal order.
 
-A shaped value or view may reside in a nominal memory space such as:
+Consequences include:
 
 ```text
-host memory
-stack
-static storage
-arena
-shared memory
-device memory
-GPU memory
-accelerator memory
-MMIO-backed storage where explicitly permitted
+canonical dense owning vector/matrix/tensor
+    true
+
+canonical row view of row-major matrix
+    normally true
+
+column view of row-major matrix
+    normally false
+
+ordinary transpose view
+    normally false
+
+step greater than 1
+    false
+
+negative-stride reversal
+    false
+
+broadcast with zero stride
+    false
 ```
 
-The source syntax is not locked by this document.
+A physically adjacent but reverse-traversed range is not contiguous under this
+public definition.
 
-Relevant memory-space information must remain in Semantic IR.
-
-A view must not cross an incompatible memory-space boundary without an explicit
-transfer.
+This strict definition makes `IsContiguous` safe and useful for FFI and raw
+buffer decisions.
 
 ---
 
-# vector
+# 9. Memory space
 
-## Meaning
-
-```sec
-vector[T, N]
-```
-
-is a rank-one shaped value.
+A shaped value or view with a storage-placement contract exposes:
 
 ```sec
-let position: vector[float64, 3]
+value.MemorySpace
 ```
 
-Semantically:
+as a read-only property.
+
+`MemorySpace` describes the semantic access and transfer domain of the value's
+storage contract. It does not describe storage origin or allocation lifetime.
+
+Examples of distinct concepts:
 
 ```text
-rank 1
-shape [N]
+StorageOrigin.Arena
+    allocation/lifetime origin
+
+MemorySpace ordinary or target-defined accelerator memory
+    access/transfer domain
 ```
 
-It is not growable storage. Growable ordered storage belongs to
-`collections.md`.
+They are orthogonal.
+
+A logical shaped value may have a semantic `MemorySpace` contract even while the
+compiler temporarily keeps the value in SSA or registers.
+
+Reading `.MemorySpace` does not by itself force allocation or materialization.
+
+A view inherits the memory space of its backing storage.
+
+A view cannot independently assign or change its memory space.
+
+Changing memory space is an explicit storage-producing operation and is never a
+property assignment.
 
 ---
 
-## Vector orientation
+# 10. Ptr and SizeOf
 
-A plain `vector[T, N]` is treated as a column vector for matrix multiplication.
+## 10.1 `Ptr`
 
-Therefore:
+Addressable shaped values and shaped views expose the compiler-known unsafe
+read-only property:
 
 ```sec
-matrix[T, R, C] x vector[T, C]
+value.Ptr
+```
+
+The result is a raw pointer to the logical origin element of the current
+addressable representation.
+
+For a view, `.Ptr` does not imply that subsequent logical elements are adjacent.
+The caller must use `.IsContiguous`, `.Shape`, `.Strides`, `.Layout`, and the
+foreign/unsafe contract as required.
+
+Accessing `.Ptr` must not silently allocate merely to make a pure temporary
+addressable.
+
+## 10.2 `SizeOf`
+
+Shaped values and views expose:
+
+```sec
+value.SizeOf
+```
+
+as the logical represented payload byte count.
+
+Conceptually:
+
+```text
+value.SizeOf = value.Len * element payload size
+```
+
+with checked arithmetic and target layout rules.
+
+For a non-contiguous or broadcast view, `.SizeOf` is not:
+
+```text
+the descriptor size
+the byte span between minimum and maximum backing address
+the count of unique backing bytes touched
+```
+
+A broadcast view may therefore have a large logical `.SizeOf` while referring
+to one backing element repeatedly.
+
+`Ptr + SizeOf` describes one directly usable contiguous payload buffer only when
+the relevant layout and FFI requirements are satisfied and `.IsContiguous` is
+true.
+
+Associated type `.SizeOf` and global `SizeOf(T)` remain physical type-layout
+queries under the compiler-known-member and layout rules.
+
+---
+
+# 11. Storage requests
+
+## 11.1 General request
+
+The general memory/storage rulebook owns:
+
+```sec
+struct StorageRequest {
+    MemorySpace: Option[MemorySpace]
+    MinAlignment: Option[uint]
+}
+```
+
+The exact declaration may be compiler-known rather than ordinary source, but
+these fields and semantics are normative.
+
+An explicitly supplied field is a requirement, not a hint.
+
+```text
+MemorySpace: None
+    no additional memory-space requirement
+
+MemorySpace: Some(space)
+    destination storage must use that space
+
+MinAlignment: None
+    use at least the natural required alignment
+
+MinAlignment: Some(n)
+    destination alignment must be at least n
+```
+
+`None` is not equivalent to explicitly requesting ordinary memory.
+
+## 11.2 Shaped request
+
+Shaped storage adds layout requirements by composition:
+
+```sec
+struct ShapedStorageRequest[Rank] {
+    Storage: StorageRequest
+    Layout: Option[TensorLayout[Rank]]
+}
+```
+
+An explicitly supplied `Layout` is a hard destination requirement.
+
+An omitted layout uses the operation's canonical valid layout. For ordinary
+owned dense shaped construction that canonical layout is `DenseRowMajor`.
+
+Allocation authority is not a field of `StorageRequest` or
+`ShapedStorageRequest`.
+
+An `Arena`, allocator, or equivalent allocation capability remains a separate
+argument/capability with its own ownership and borrowing semantics.
+
+---
+
+# 12. Ordinary construction and explicit creation
+
+Ordinary canonical value construction does not require or imply a source-level
+parameterless `Create()` call.
+
+Example:
+
+```sec
+let matrix: matrix[float32, 4, 4]
+```
+
+uses the type's canonical storage contract when storage is required.
+
+The compiler must not model this source construct as if the programmer had
+written a meaningless `.Create()` call.
+
+Explicit `Create(...)` is reserved for active storage control, such as a
+non-default request or explicit allocation authority.
+
+Conceptual forms include:
+
+```sec
+let value := try matrix[float32, 4096, 4096].Create(request)
+
+let value := try matrix[float32, 4096, 4096].Create(
+    ref mut arena,
+    request,
+)
+```
+
+Storage-related fallibility must not be hidden by ordinary construction.
+
+If a source operation semantically requires a fallible storage acquisition, the
+fallibility must be explicit at that storage-producing boundary.
+
+---
+
+# 13. Storage-producing operations
+
+## 13.1 `Materialize`
+
+A view may create new owning storage from its logical contents:
+
+```sec
+let owned := try view.Materialize()
+let placed := try view.Materialize(request)
+```
+
+For:
+
+```sec
+ref tensor_view[T, Rank]
+```
+
+the canonical runtime-shaped owning result is:
+
+```sec
+tensor[T, Shape[Rank]]
+```
+
+unless the programmer explicitly requests construction into a compatible
+statically shaped destination type through that destination type's checked
+conversion API.
+
+`Materialize`:
+
+```text
+creates new owning storage
+may allocate
+copies/materializes logical elements
+preserves logical element order
+uses the requested destination storage contract
+leaves the source view and backing unchanged
+```
+
+A non-contiguous or broadcast view may be packed into canonical dense storage by
+materialization.
+
+## 13.2 `TransferTo`
+
+An owning shaped value may explicitly produce a new owning value under a
+different storage request:
+
+```sec
+let deviceValue := try value.TransferTo(request)
+```
+
+`TransferTo`:
+
+```text
+creates a new owning destination
+leaves the source owner valid
+may allocate
+may copy, map, use DMA, synchronize, or use target-specific transfer mechanisms
+must satisfy the complete destination request
+must not silently substitute an incompatible memory space
+```
+
+A successful synchronous `TransferTo` is complete on return.
+
+After `Ok`, the destination is fully initialized and usable according to its
+memory-space contract.
+
+A genuinely asynchronous transfer must use a separate explicit asynchronous
+API/handle that represents outstanding source/destination lifetime and
+completion obligations. It must not reuse synchronous `TransferTo` semantics.
+
+## 13.3 `Relayout`
+
+An owning shaped value may request a new owning representation with a different
+layout:
+
+```sec
+let columnMajor := try value.Relayout(TensorLayout[2].DenseColumnMajor)
+```
+
+`Relayout` may allocate and reorder elements.
+
+It leaves the source owner valid.
+
+An implementation may combine transfer and relayout work when the destination
+request permits it. Source semantics describe the required destination
+contract, not a mandatory sequence of physical implementation steps.
+
+---
+
+# 14. Reshape, ToShape, and Materialize
+
+Sec distinguishes three operations deliberately.
+
+## 14.1 `Reshape`
+
+```sec
+let view := try value.Reshape(newShape)
+```
+
+`Reshape` creates a non-owning view over the same backing storage.
+
+It:
+
+```text
+does not allocate
+does not copy elements
+does not transfer ownership
+preserves backing storage identity
+preserves MemorySpace
+requires equal logical element count
+requires reshape-compatible contiguous logical storage
+```
+
+The result is:
+
+```sec
+ref tensor_view[T, NewRank]
+```
+
+or, when mutable authority may legally be preserved:
+
+```sec
+ref mut tensor_view[T, NewRank]
+```
+
+The result rank is the rank encoded by the supplied `Shape[NewRank]`.
+
+When element-count compatibility is compile-time-proven, no runtime check or
+`try` is required.
+
+When compatibility depends on runtime shape values, the operation is checked and
+uses `ShapeError`.
+
+`Reshape` never hides a copy to make a non-contiguous input acceptable.
+
+## 14.2 `ToShape`
+
+```sec
+let reshaped := try value.ToShape(newShape)
+```
+
+`ToShape` is the consuming owning reshape operation.
+
+It:
+
+```text
+consumes the source owner
+reuses the same backing storage
+performs no element copy
+performs no allocation
+preserves MemorySpace
+preserves storage identity
+changes the owning shaped type/shape metadata
+requires equal logical element count
+```
+
+Example:
+
+```sec
+let image: tensor[float32, Shape[3]]
+
+let flat := try image.ToShape(
+    Shape[1] { image.Len },
+)
+
+// image has been consumed
+```
+
+`ToShape` is prohibited when active borrows prevent consuming or reinterpreting
+the owner.
+
+The `To` spelling is canonical Sec naming and does not imply copying.
+
+## 14.3 Why the operations are distinct
+
+```text
+Reshape
+    same backing
+    borrowed result
+    no allocation
+    no copy
+
+ToShape
+    same backing
+    new owner
+    consumes source
+    no allocation
+    no copy
+
+Materialize
+    new backing
+    new owner
+    may allocate
+    copies/materializes logical contents
+```
+
+---
+
+# 15. Axis values
+
+## 15.1 `Axes[Rank]`
+
+```sec
+Axes[Rank]
+```
+
+is a compiler-known immutable axis-permutation value.
+
+It contains every axis index in:
+
+```text
+0..<Rank
+```
+
+exactly once.
+
+Example:
+
+```sec
+Axes[3] { 2, 0, 1 }
 ```
 
 is valid.
 
-A vector used as a row vector requires an explicit row view or conversion.
+Duplicate, missing, or out-of-range axes are invalid.
 
-The final API may provide a nominal row-view type or a method such as:
+`Axes` is not itself a shaped value merely because it is an indexed fixed-size
+metadata value. It does not gain meaningless `Shape`, `Strides`, `Layout`, or
+`MemorySpace` members.
+
+## 15.2 `AxisList[Count]`
 
 ```sec
-value.AsRow()
+AxisList[Count]
 ```
 
-The exact name remains part of the vector stdlib API.
+is a compiler-known immutable ordered list of distinct axis indexes used when an
+operation selects only part of a rank.
 
----
+Example:
 
-## Vector operations
+```sec
+AxisList[2] { 1, 3 }
+```
 
-Potential vector operations include:
+Rules:
 
 ```text
-Dot
-Outer
-Magnitude
-Normalize
-Cross for valid dimensions
+every axis must be in range for the consuming operation
+no axis may occur twice
+order is semantically significant
 ```
 
-These are standard-library members or compiler-recognized intrinsics.
-
-They do not all require dedicated language operators.
+`AxisList` is not required to contain every axis.
 
 ---
 
-# matrix
+# 16. Permutation and transpose
 
-## Meaning
-
-```sec
-matrix[T, Rows, Columns]
-```
-
-is a rank-two shaped value.
+## 16.1 `Permute`
 
 ```sec
-let transform: matrix[float32, 4, 4]
+let view := value.Permute(
+    Axes[3] { 2, 0, 1 },
+)
 ```
 
-Semantically:
+`Permute` is a non-owning view transformation.
+
+It:
 
 ```text
-rank 2
-shape [Rows, Columns]
+uses the same backing storage
+does not allocate
+does not copy elements
+preserves MemorySpace
+permutes Shape
+permutes Strides
+recomputes Layout classification
+recomputes IsContiguous
 ```
 
----
-
-## Matrix operations
-
-The type supports or may expose:
+Conceptually:
 
 ```text
-row view
-column view
-transpose
-diagonal
-trace
-matrix multiplication
-determinant where defined
-inverse where defined
+result.Shape[i]   = source.Shape[axes[i]]
+result.Strides[i] = source.Strides[axes[i]]
 ```
 
-Basic shape-aware operations may be compiler-known.
+Mutability follows ordinary borrow and overlap rules.
 
-Numerical algorithms such as inverse, decomposition, eigensolvers, and
-factorization belong in the standard library.
+## 16.2 `Transpose`
+
+For rank two:
+
+```sec
+let transposed := matrix.Transpose()
+```
+
+is the convenience form of:
+
+```sec
+matrix.Permute(Axes[2] { 1, 0 })
+```
+
+`Transpose()` is a view operation and does not physically reorder backing
+storage.
+
+Physical reordered ownership is obtained explicitly, for example:
+
+```sec
+let packed := try matrix.Transpose().Materialize()
+```
 
 ---
 
-# tensor
+# 17. Indexing and slicing
 
-## Meaning
+## 17.1 One selector per axis
+
+A multidimensional shaped index expression supplies exactly one selector for
+each source axis.
+
+For a rank-three tensor:
 
 ```sec
-tensor[T, Dimensions...]
+value[i, j, k]
+value[i, .., k]
+value[.., .., ..]
 ```
 
-is the general rank-N shaped value.
+are structurally valid selector counts.
+
+Sec does not implicitly append omitted trailing `..` selectors.
+
+Core shaped slicing has no ellipsis selector.
+
+## 17.2 Scalar selector
+
+A scalar index removes that axis from the result.
+
+If every selector is scalar:
 
 ```sec
-let image: tensor[float32, 3, 224, 224]
-let volume: tensor[float64, 64, 64, 64]
+value[i, j, k]
 ```
 
-The number of dimensions determines rank.
+the result is a `Place[T]` according to ordinary Place and mutability rules.
 
-The dimensions are compile-time integer values in Sec 0.1.
+Sec does not create a rank-zero tensor for full scalar indexing.
 
-This variadic dimension form is compiler-known and does not automatically imply
-general variadic generic parameters for user-defined types.
+## 17.3 Range selector
+
+A range selector preserves the axis.
+
+Examples:
+
+```sec
+matrix[2, ..]
+matrix[.., 2]
+tensor[1, .., 2]
+tensor[1..<3, .., 4..<10]
+```
+
+When at least one axis remains, the result is:
+
+```sec
+ref tensor_view[T, ResultRank]
+```
+
+or:
+
+```sec
+ref mut tensor_view[T, ResultRank]
+```
+
+when the source authority and resulting mapping permit mutable borrowing.
+
+Slicing:
+
+```text
+does not allocate
+does not copy
+preserves backing identity
+preserves MemorySpace
+derives new Shape and Strides
+recomputes IsContiguous
+```
+
+The result view type is rank-parametrized, not extent-parametrized. Even when a
+slice result shape is fully compile-time-known, its type remains:
+
+```sec
+ref tensor_view[T, ResultRank]
+```
+
+with the static shape retained as compiler-known metadata.
+
+## 17.4 Ranges
+
+Shaped slicing reuses ordinary Sec range syntax:
+
+```sec
+start..end
+start..<end
+..
+start..
+..<end
+```
+
+The existing inclusive/exclusive endpoint rules remain unchanged.
+
+Internal normalization may use half-open `[start, endExclusive)` form.
 
 ---
 
-## Element types
+# 18. Step and reversed views
 
-A tensor may store any type satisfying the shaped-storage contract.
+A range selector may use the existing Sec `step` syntax:
 
-Arithmetic requires stronger element contracts.
+```sec
+value[.. step 2]
+value[10..<90 step 2]
+value[.. step -1]
+```
+
+No tensor-specific colon slicing language is introduced.
+
+The step must be non-zero.
+
+```text
+step > 0
+    forward strided view
+
+step < 0
+    reverse strided view
+
+step == 0
+    invalid
+```
+
+Zero stride remains reserved for broadcast semantics and is not created by
+`step 0`.
+
+For a selected axis:
+
+```text
+resultStride = sourceStride * step
+```
+
+subject to checked arithmetic.
+
+For negative steps, inclusive/exclusive end semantics remain the ordinary Sec
+range semantics; direction does not invert the meaning of `..` versus `..<`.
+
+Open bounds are direction-sensitive:
+
+```text
+positive step
+    omitted start -> first logical element
+    omitted end   -> end boundary
+
+negative step
+    omitted start -> last logical element
+    omitted end   -> before-start boundary
+```
+
+Therefore:
+
+```sec
+value[.. step -1]
+```
+
+is the canonical zero-copy reversed view of one axis.
+
+A separate shaped `Reverse(axis)` view operation is not required by the core
+language semantics.
+
+---
+
+# 19. Aliasing and mutable views
+
+A safe `ref mut tensor_view[T, Rank]` must not expose overlapping logical indexes
+that can mutate the same backing element through the same exclusive view.
+
+Negative strides do not inherently forbid mutable views. A reversed view may
+remain mutable when every logical index maps to a unique backing element.
+
+Zero-stride broadcast expansion creates overlapping logical indexes and removes
+mutable authority from the result.
+
+This is a source-level rule, not merely an optimizer observation.
+
+---
+
+# 20. Broadcasting
+
+## 20.1 Scalar operations
+
+Scalar-to-shaped arithmetic is direct shaped arithmetic and does not require a
+broadcast view.
+
+Examples:
+
+```sec
+let scaled := image * 0.5g
+let shifted := image + biasValue
+```
+
+A scalar has no shaped axes that require axis matching.
+
+## 20.2 Explicit shaped broadcasting
+
+Different shaped values are not implicitly broadcast for shaped arithmetic.
+
+The programmer requests shaped broadcasting explicitly:
+
+```sec
+let expanded := right.BroadcastTo(left.Shape)
+let result := left + expanded
+```
+
+`BroadcastTo(targetShape)` uses canonical right-aligned matching.
 
 Example:
 
 ```text
-tensor[Pixel, ...]
-    storage and indexing
-
-tensor[float32, ...]
-    storage, indexing, arithmetic, reductions, and contraction
+source:       [   3, 1]
+destination:  [2, 3, 4]
 ```
 
-The compiler must not assume every storable element type is numeric.
+is valid.
 
----
+Matching proceeds from trailing axes toward leading axes.
 
-# tensor_view
-
-## Meaning
-
-```sec
-tensor_view[T, Rank]
-```
-
-is a non-owning affine strided view.
-
-```sec
-fn ProcessImage(image: tensor_view[float32, 3]) void {
-}
-```
-
-A view contains or derives:
+For each aligned source axis:
 
 ```text
-borrowed storage origin
-element offset
-runtime Shape[Rank]
-runtime or static Strides[Rank]
-TensorLayout[Rank]
-MemorySpace
-element type
-borrow mode
+source extent == destination extent
+    preserve the source stride
+
+source extent == 1
+    expansion is allowed and destination stride becomes 0
 ```
 
----
+Missing leading source axes behave as extent 1 and use zero stride in the
+expanded view.
 
-## View forms
+Any other extent mismatch is invalid.
 
-A tensor view may represent:
-
-- complete tensor storage;
-- tensor slice;
-- submatrix;
-- row;
-- column;
-- transpose;
-- reversed axis;
-- strided sampling;
-- broadcast view;
-- reshape when layout permits it.
-
-Mutability comes from the reference:
-
-```sec
-ref tensor_view[T, Rank]
-ref mut tensor_view[T, Rank]
-```
-
-Separate mutable and immutable view type names are not required.
-
----
-
-## Properties
-
-A shaped view exposes:
-
-```sec
-view.rank
-view.shape
-view.strides
-view.layout
-view.memorySpace
-view.isContiguous
-```
-
-When statically known, these may be compile-time values.
-
----
-
-## Contiguity
-
-Contiguity means that the view describes one canonical uninterrupted element
-range for its selected layout.
-
-Examples:
+Broadcasting:
 
 ```text
-owned dense matrix
-    normally contiguous
-
-row view
-    normally contiguous
-
-column view
-    normally non-contiguous
-
-transposed view
-    normally non-contiguous
-
-broadcast view
-    non-contiguous and overlapping
+does not allocate
+does not copy
+preserves backing identity
+preserves MemorySpace
 ```
 
-Operations requiring contiguous storage must state that requirement.
+A real expansion that creates zero-stride aliasing produces a shared:
 
-The compiler should prove contiguity statically where possible.
+```sec
+ref tensor_view[T, ResultRank]
+```
+
+even when the source had mutable authority.
+
+An identity/no-expansion broadcast may preserve `ref mut` authority when normal
+borrow rules permit it.
+
+An additive explicit axis-mapping API may be defined separately without changing
+the meaning of canonical right-aligned `BroadcastTo(targetShape)`.
 
 ---
 
-# Operators
+# 21. Elementwise arithmetic
 
-## Ordinary multiplication
+For shaped values, ordinary arithmetic operators retain ordinary scalar
+semantics and use elementwise shaped semantics when both operands are shaped.
 
-The `*` operator retains ordinary scalar or elementwise multiplication.
-
-Valid conceptual cases include:
+Canonical elementwise operators include, where valid for the element type:
 
 ```sec
-scalar * scalar
-shapedValue * scalar
-scalar * shapedValue
+left + right
+left - right
 left * right
+left / right
 ```
 
-For two shaped values, elementwise multiplication requires identical shapes.
+Two shaped operands require exactly compatible shapes.
+
+Sec does not perform implicit shaped broadcasting.
+
+Example:
 
 ```sec
-let products := left * right
+let a: matrix[float32, 3, 4]
+let b: matrix[float32, 1, 4]
+
+let expanded := b.BroadcastTo(a.Shape)
+let c := a + expanded
 ```
 
-does not mean matrix multiplication.
+Scalar forms are direct and ergonomic:
 
-The result element type follows normal scalar multiplication and unit algebra.
+```sec
+matrix * scalar
+scalar * matrix
+matrix / scalar
+matrix + scalar
+scalar + matrix
+matrix - scalar
+```
+
+The result element type follows ordinary scalar operator and unit algebra.
+
+## 21.1 Logical result and allocation
+
+Shaped arithmetic produces a logical shaped value.
+
+Arithmetic itself is not fallible merely because a later materialized result
+might require allocation.
+
+Examples do not acquire allocation-related `try`:
+
+```sec
+let c := a + b
+let d := a * b
+```
+
+The compiler may fuse, scalarize, keep intermediates in SSA/registers, reuse
+storage when semantically legal, or otherwise optimize the logical result.
+
+If a later ownership/storage boundary genuinely requires a fallible storage
+resource, that fallibility must be explicit at that boundary.
+
+The compiler must not hide a required fallible materialization.
+
+## 21.2 Runtime shape checks
+
+If shape compatibility is compile-time-proven, no `try` is required.
+
+If incompatibility is compile-time-proven, compilation fails.
+
+If compatibility depends on runtime shape values, the shaped operation is
+checked and uses `ShapeError`, so `try` is required.
+
+Example:
+
+```sec
+let a: tensor[float32, Shape[3]]
+let b: tensor[float32, Shape[3]]
+
+let c := try a + b
+```
+
+The `try` is for the runtime shape check, never for speculative allocation by
+the arithmetic expression.
 
 ---
 
-## Matrix multiplication operator
+# 22. Algebraic multiplication operator `x`
 
-Sec uses the contextual infix operator:
+Sec uses contextual infix:
 
 ```sec
 x
 ```
 
-for linear-algebraic multiplication.
+for canonical algebraic multiplication, especially matrix multiplication.
+
+`*` remains elementwise/scalar multiplication.
 
 Example:
 
 ```sec
-let result := left x right
+let elementwise := left * right
+let product := left x right
 ```
 
-The formatter requires one space on each side:
-
-```sec
-left x right
-```
-
-`x` remains a valid identifier in ordinary identifier positions:
+`x` is contextual and remains a valid ordinary identifier outside operator
+position:
 
 ```sec
 let x := 10
 ```
 
-It is recognized as a contextual operator only between expressions in an
-operator position.
+The formatter requires one space on each side of operator `x`.
 
-It is not a globally reserved identifier.
+`x` has multiplicative precedence with `*`, `/`, and `%`, and is
+left-associative.
 
----
-
-## Precedence and associativity
-
-`x` has multiplicative precedence.
-
-It has the same precedence level as:
-
-```text
-*
-/
-%
-```
-
-It is left-associative.
-
-Parentheses should be used when dimensions or intended grouping would otherwise
-be unclear.
-
----
-
-## Valid matrix multiplication forms
-
-### Matrix by matrix
+## 22.1 Matrix by matrix
 
 ```sec
 matrix[L, Rows, Inner] x matrix[R, Inner, Columns]
@@ -691,25 +1426,12 @@ produces:
 matrix[ProductElement[L, R], Rows, Columns]
 ```
 
-`ProductElement[L, R]` means the scalar product type derived by Sema.
+where the scalar product type is derived from ordinary element multiplication
+and the product terms support compatible addition for accumulation.
 
-The product terms must also be addable into one result element.
+## 22.2 Matrix by vector
 
-Example:
-
-```sec
-let result: matrix[float32, 3, 2] :=
-    left x right
-```
-
-when:
-
-```text
-left  matrix[float32, 3, 4]
-right matrix[float32, 4, 2]
-```
-
-### Matrix by vector
+A plain `vector[T, N]` is treated as a column vector for matrix multiplication.
 
 ```sec
 matrix[L, Rows, Columns] x vector[R, Columns]
@@ -721,13 +1443,12 @@ produces:
 vector[ProductElement[L, R], Rows]
 ```
 
-A plain vector is treated as a column vector.
+## 22.3 No hidden interpretation
 
----
+The core `x` operator is not general tensor contraction and does not implicitly
+choose tensor axes.
 
-## Invalid or explicit cases
-
-The following are not implicitly defined in Sec 0.1:
+The following are not given a hidden meaning by this rulebook:
 
 ```sec
 vector[T, N] x vector[T, N]
@@ -737,662 +1458,610 @@ matrix[T, R, C] x scalar
 scalar x matrix[T, R, C]
 ```
 
-Use explicit operations:
+Use the explicit operation that expresses the intended algebra, such as:
 
 ```sec
 left.Dot(right)
 left.Outer(right)
-row.AsRow() x matrix
-left.Contract(right, ...)
+left.Contract(right, leftAxes, rightAxes)
 matrix * scalar
 ```
 
-The exact contraction API belongs to the tensor stdlib implementation.
+## 22.4 Runtime dimensions
 
----
-
-## Dimension checking
-
-The contraction dimension must match exactly.
-
-Invalid:
-
-```sec
-matrix[float32, 3, 4] x matrix[float32, 5, 2]
-```
-
-Expected error:
+Matrix or other canonical `x` forms with runtime-known extents follow the same
+static-proof rule as elementwise arithmetic:
 
 ```text
-matrix multiplication requires matching inner dimensions, got 4 and 5
-```
+provably valid
+    no try
 
-When dimensions are compile-time-known, the error is compile-time.
+provably invalid
+    compile-time error
+
+runtime-dependent
+    checked ShapeError and try
+```
 
 ---
 
-## Element-type checking
+# 23. Memory-space compatibility of arithmetic
 
-The scalar multiplication of the two element types must be valid.
+A shaped binary arithmetic operation does not implicitly transfer storage
+between memory spaces.
 
-All product terms accumulated into one output element must support compatible
-addition.
+When both operands carry shaped storage-placement contracts, the operation must
+be legal under compatible `MemorySpace` contracts.
+
+The compiler must not silently copy RAM to accelerator memory, accelerator
+memory to RAM, or between distinct device spaces merely to make an operator
+expression legal.
+
+An explicit transfer is required first when the spaces are incompatible.
+
+Scalar operands do not contribute a shaped memory-space contract.
+
+A logical arithmetic result inherits the applicable shaped storage-placement
+contract until an explicit destination request changes it.
+
+---
+
+# 24. Vector algebra
+
+The following canonical vector methods are compiler-known shaped operations
+when their element algebra is valid.
+
+## 24.1 `Dot`
+
+```sec
+let result := left.Dot(right)
+```
+
+For two compatible vectors of the same length, `Dot` returns a scalar formed by
+multiplying corresponding elements and accumulating the products.
+
+It does not return a rank-zero tensor.
+
+## 24.2 `Outer`
+
+```sec
+let result := left.Outer(right)
+```
+
+For:
+
+```sec
+vector[L, N]
+vector[R, M]
+```
+
+it produces:
+
+```sec
+matrix[ProductElement[L, R], N, M]
+```
+
+as a logical shaped result.
+
+## 24.3 `Magnitude`
+
+```sec
+let length := value.Magnitude()
+```
+
+is available only when the element type supplies the required multiplication,
+addition, and square-root semantics.
 
 Units participate in ordinary Sec unit algebra.
 
-Example conceptually:
-
-```text
-Meter x Scalar -> Meter
-Meter x PerSecond -> Speed
-```
-
-The compiler must derive the result element type from scalar operations rather
-than requiring both matrices to have an identical element type.
-
-Named-type and explicit-conversion rules still apply.
-
----
-
-## No generic operator overloading yet
-
-The `x` operator is compiler-known for shaped linear-algebra types in Sec 0.1.
-
-User-defined arbitrary `x` operator overloading is not introduced by this
-rulebook.
-
-A future operator-interface design may generalize it separately.
-
----
-
-## Tensor contraction
-
-The `x` operator is not general tensor contraction.
-
-General rank-N contraction must be explicit:
+## 24.4 `Normalize`
 
 ```sec
-left.Contract(right, ...)
+value.Normalize()
 ```
 
-This prevents hidden axis selection and accidental shape interpretation.
-
-The compiler and MLIR backend may still preserve contraction as a high-level
-operation.
-
----
-
-# Broadcasting
-
-## Scalar broadcasting
-
-Scalar-to-shaped multiplication and other selected scalar operations may
-broadcast the scalar:
+returns:
 
 ```sec
-let scaled := matrix * 2.0
+Option[vector[...]]
 ```
 
-This is unambiguous.
+A zero-magnitude vector returns `None`.
 
----
+This is a normal domain case, not a `Result` error.
 
-## Shaped broadcasting
-
-Different shaped values are not automatically broadcast in Sec 0.1.
-
-The programmer must request it explicitly:
+## 24.5 `Cross`
 
 ```sec
-let expanded := right.BroadcastTo(left.shape)
-let result := left + expanded
+left.Cross(right)
 ```
 
-This makes shape changes visible while preserving compiler optimization
-opportunities.
+is the canonical cross product for compatible rank-one vectors with extent 3.
 
-Broadcast views normally use zero strides and are shared-only.
+It returns a compatible extent-3 vector whose element type follows ordinary
+multiply/subtract algebra.
+
+`Cross` is not generalized to arbitrary dimensions by hidden rules.
 
 ---
 
-# Indexing
+# 25. General tensor contraction
 
-Indexing remains part of each type's complete implementation.
-
-Examples:
+General tensor contraction is explicit:
 
 ```sec
-value[index]
-matrix[row, column]
-tensor[i, j, k]
+let result := left.Contract(
+    right,
+    leftAxes,
+    rightAxes,
+)
 ```
 
-The compiler must:
+where both axis arguments are `AxisList[Count]` values of equal `Count`.
 
-- validate index count against rank;
-- validate index types;
-- perform compile-time bounds checks where possible;
-- emit explicit runtime bounds operations otherwise;
-- use shape and stride metadata;
-- preserve place mutability;
-- enforce alias and overlap restrictions.
+Axes pair positionally.
+
+Example:
+
+```sec
+let result := left.Contract(
+    right,
+    AxisList[2] { 1, 3 },
+    AxisList[2] { 0, 2 },
+)
+```
+
+pairs:
+
+```text
+left axis 1 with right axis 0
+left axis 3 with right axis 2
+```
+
+Each paired extent must match exactly.
+
+No implicit broadcasting occurs during contraction.
+
+Result axis order is:
+
+```text
+all uncontracted left axes in original order
+followed by
+all uncontracted right axes in original order
+```
+
+Result rank is:
+
+```text
+left.Rank + right.Rank - 2 * Count
+```
+
+Result categories:
+
+```text
+rank 0
+    scalar
+
+rank >= 1, all extents static
+    statically shaped tensor
+
+rank >= 1, any result extent runtime
+    tensor[T, Shape[ResultRank]]
+```
+
+The general `Contract` operation does not dynamically switch to `vector` or
+`matrix` result families merely because the resulting rank is one or two.
+
+`Dot`, `Outer`, and `x` remain the ergonomic canonical specialized operations.
+
+Static and runtime validity follow the ordinary shaped proof/check rules.
 
 ---
 
-# Iteration
+# 26. Iteration
 
-Iteration must support the relevant forms:
+Shaped iteration follows logical index order, not accidental physical address
+order.
 
-```text
-value iteration
-index iteration
-index and value iteration
-axis iteration
-```
+Canonical logical traversal is lexicographic by axis with the last axis varying
+fastest.
 
-Structural mutation during iteration is forbidden unless a specific iterator
-contract permits it.
+A view with negative strides, permutation, or other non-canonical physical
+mapping still iterates according to its logical shape and axis order.
 
-Element mutation is permitted only when storage stability, borrowing, and
-aliasing rules permit it.
+A broadcast view may therefore yield the same backing element at several
+logical indexes.
+
+Mutation during iteration is permitted only when ordinary borrow, alias,
+overlap, and storage-stability rules permit it.
+
+No iteration rule grants mutable access through an overlapping shared broadcast
+view.
+
+Axis-oriented iterators or higher-level numerical iteration helpers may be added
+by ordinary/core library APIs without changing this logical traversal contract.
 
 ---
 
-# Ownership and allocation
+# 27. Ownership, copying, moving, and destruction
 
-## Owned types
+`vector`, `matrix`, and `tensor` are owning shaped families.
 
-The following normally own their storage:
+`tensor_view` is non-owning.
+
+`Shape`, `Strides`, `TensorLayout`, `Axes`, `AxisList`, `MemorySpace`, and
+storage-request values are metadata/descriptor-like nominal values according to
+their owning rulebooks.
+
+Copyability of an owning shaped value follows the ordinary Sec copy/move rules,
+element type, storage representation, and active borrow state.
+
+The compiler must not invent an implicit deep copy merely because a shaped value
+has owning backing storage.
+
+A move transfers ownership according to the ordinary ownership model.
+
+`ToShape` is explicitly consuming even though it performs no element copy.
+
+Each initialized element owned by an owning shaped value must be destroyed
+exactly once.
+
+Views never destroy backing elements.
+
+---
+
+# 28. No hidden heap
+
+No shaped type assumes a hidden global heap.
+
+Any storage-producing operation that requires allocation must use a valid
+allocation context/provider such as:
 
 ```text
-vector
-matrix
-tensor
+Arena
+explicit allocator
+target/device provider
+other approved allocation authority
 ```
 
-The following are non-owning:
+An explicitly requested `MemorySpace` constrains allocation-provider selection.
+The compiler must select a provider capable of satisfying the requested space or
+report the operation as unsupported/fallible according to the storage contract.
+
+Escape analysis must not repair an invalid shaped borrow or view escape by
+silently materializing or deep-copying it.
+
+---
+
+# 29. Error model
+
+Shaped operations use a small consistent error model.
+
+## 29.1 Compile-time rejection
+
+When invalidity is statically proven, compilation fails.
+
+Examples include:
 
 ```text
-tensor_view
+static out-of-bounds index
+invalid static range
+step 0 known at compile time
+invalid static axis index
+duplicate axis in a compile-time Axes/AxisList value
+static shape mismatch
+static invalid reshape
+static invalid contraction
 ```
 
-The following are small nominal descriptor values:
+## 29.2 `Option`
+
+`Option[T]` is used when the operation is semantically valid but there may be no
+result for a normal domain case and no error reason is required.
+
+Canonical shaped example:
+
+```sec
+value.Normalize() -> Option[vector[...]]
+```
+
+A zero vector yields `None`.
+
+## 29.3 `ShapeError`
+
+Runtime-dependent shape validity uses `ShapeError`.
+
+The canonical family must cover at least:
 
 ```text
+RankMismatch
+DimensionMismatch
+ElementCountOverflow
+InvalidReshape
+InvalidBroadcast
+InvalidContraction
+InvalidAxis
+DuplicateAxis
+InvalidStep
+```
+
+Implementations may use more precise internal reasons while preserving the
+public error contract.
+
+## 29.4 Index and range errors
+
+Scalar indexing uses `IndexError` where runtime checking is required.
+
+Range/slicing validity uses `RangeError` where runtime checking is required.
+
+## 29.5 `StorageError`
+
+Explicit shaped storage-producing operations use `StorageError` when the
+requested destination contract or physical operation can fail.
+
+The public family must be able to represent at least:
+
+```text
+AllocationFailed
+UnsupportedMemorySpace
+UnsupportedLayout
+AlignmentUnsatisfied
+TransferFailed
+SizeOverflow
+```
+
+The underlying allocator may use `AllocationError`; shaped/storage APIs map
+provider-specific failures to the public storage-facing contract where required.
+
+An explicit `Err` return is not itself an effect.
+
+---
+
+# 30. Static proof and `try`
+
+Sec uses static proof first.
+
+For shaped validity:
+
+```text
+provably valid
+    operation is infallible for that condition
+    no try is required
+
+provably invalid
+    compile-time diagnostic
+
+runtime-dependent
+    checked operation
+    try is required when the operation returns Result
+```
+
+This applies to:
+
+```text
+runtime-shaped elementwise arithmetic
+runtime matrix multiplication
+Reshape
+ToShape
+BroadcastTo
+Contract
+runtime indexing and slicing where applicable
+```
+
+`try` on shaped arithmetic is for a real runtime semantic check such as shape
+compatibility. It is never inserted merely because a logical arithmetic result
+might eventually need materialized storage.
+
+---
+
+# 31. Sema requirements
+
+Sema must track enough information to validate shaped semantics without
+reconstructing them from backend pointer arithmetic.
+
+At minimum it must know or conservatively represent:
+
+```text
+ElementType
+Rank
 Shape
+static versus runtime shape facts
 Strides
-TensorLayout
+Layout
 MemorySpace
+IsContiguous
+ownership state
+borrow authority
+backing identity/dependency
 ```
-
----
-
-## Copy and move
-
-Copyability is derived from:
-
-- element type;
-- storage representation;
-- allocator ownership;
-- active borrows;
-- explicit copy policy.
-
-Dynamic collections must not be implicitly deep-copied unless the final copy
-rule explicitly permits it.
-
-Moving transfers storage ownership.
-
-Views remain tied to backing-storage lifetime.
-
----
-
-## Destruction
-
-Owned collections destroy each initialized element exactly once.
-
-Maps destroy each stored key and value exactly once.
-
-Sets destroy each stored value exactly once.
-
-Views do not destroy backing elements.
-
-Descriptor values are normally trivially destructible.
-
----
-
-## No hidden heap
-
-No shaped type may assume a hidden global heap.
-
-Any operation requiring allocation must use:
-
-- an attached allocator;
-- an arena;
-- explicit target runtime allocation;
-- another approved allocation source.
-
-# Standard-library responsibility
-
-## Compiler and standard library split
-
-These types are first-class language types:
-
-```sec
-vector
-matrix
-tensor
-tensor_view
-```
-
-Their type identity, syntax, validation, ownership model, Semantic IR, and MLIR
-mapping are compiler-defined.
-
-Their public member APIs and reusable algorithms must also be declared and
-implemented in the standard library.
-
-The standard library may provide compiler-validated implementations for the
-canonical shaped-type surface, conceptually:
-
-```sec
-impl matrix[T, Rows, Columns] {
-    // public matrix API
-}
-```
-
-This does not grant permission to add arbitrary public members to compiler-owned
-types. Ordinary user modules may not globally extend built-in types.
-
----
-
-## Mandatory stdlib implementation
-
-This rulebook is not considered fully implemented until stdlib contains working
-implementations for at least:
-
-```text
-vector
-matrix
-tensor
-tensor_view
-Shape
-Strides
-TensorLayout
-```
-
-The stdlib implementation must include:
-
-- constructors;
-- destruction;
-- core member operations;
-- fallible allocation behavior where materialization requires it;
-- iteration;
-- copy/move integration;
-- indexing helpers where not intrinsic;
-- equality where semantically valid;
-- matrix and vector operations;
-- explicit tensor reshape, transpose, broadcast, reduction, and contraction
-  foundations;
-- target-independent tests;
-- explicit no-allocation variants where the shaped contract provides them.
-
-Compiler intrinsics may replace selected stdlib bodies during lowering.
-
-The source-visible API must still exist in stdlib.
-
----
-
-## Compiler access to stdlib declarations
-
-AST and Sema must load compiler-known stdlib declarations for these built-in
-types.
-
-This follows the same general principle as compiler-known core members on
-fundamental types.
-
-The compiler must not hard-code every public method signature independently of
-stdlib source.
-
-Intrinsic operations may be marked or registered so Sema can validate the
-stdlib declaration against compiler expectations.
-
----
-
-## Completion requirement
-
-A shaped feature is not fully implemented merely because parser and Sema
-accept the type.
-
-Full implementation requires:
-
-1. lexer/parser support where syntax changes are needed;
-2. AST representation;
-3. semantic type resolution;
-4. ownership, borrowing, lifetime, and destruction rules;
-5. stable diagnostics;
-6. Semantic IR operations;
-7. MLIR lowering;
-8. target lowering or explicit unsupported-target diagnostics;
-9. `core/errors.sec` runtime errors;
-10. stdlib type API and implementations;
-11. valid and invalid Sec integration tests;
-12. Go compiler unit tests where useful;
-13. formatter support;
-14. LSP/type-display support;
-15. implementation-status update in this rulebook.
-
----
-
-# Standard-library layout policies
-
-## Sparse layout policies
-
-Potential stdlib layout policy types include:
-
-```sec
-CsrLayout
-CscLayout
-CooLayout
-BlockSparseLayout
-```
-
-A sparse matrix remains mathematically a `matrix`.
-
-A sparse rank-N value remains mathematically a `tensor`.
-
-Sparsity is represented through layout or encoding, not by replacing the
-mathematical type family.
-
----
-
-# Core errors
-
-All language-level runtime error types required by these features must be
-declared in:
-
-```text
-core/errors.sec
-```
-
-The initial set should include or be refined from:
-
-```sec
-enum IndexError {
-    Negative
-    OutOfBounds
-    RankMismatch
-}
-
-enum ShapeError {
-    NegativeExtent
-    RankMismatch
-    DimensionMismatch
-    ElementCountOverflow
-    InvalidReshape
-    InvalidBroadcast
-}
-
-enum LayoutError {
-    InvalidStride
-    AddressOverflow
-    OutOfStorageBounds
-    OverlappingMutableView
-    UnsupportedLayout
-    IncompatibleMemorySpace
-}
-```
-
-The final API may split errors more narrowly.
-
-Compiler diagnostics are not runtime error values and do not belong in
-`core/errors.sec`.
-
----
-
-# Semantic analysis
 
 Sema must validate at least:
 
-- lowercase built-in type constructor names;
-- type and compile-time value argument counts;
-- ranks;
-- dimensions;
-- element storage eligibility;
-- allocation capability;
-- ownership and move state;
-- view borrow lifetime;
-- index rank and bounds;
-- shape compatibility;
-- stride arithmetic;
-- contiguity requirements;
-- mutable overlap;
-- memory-space compatibility;
-- `*` elementwise semantics;
-- `x` matrix multiplication dimensions and element algebra;
-- tensor contraction arguments;
-- iteration mutation restrictions;
-- stdlib intrinsic declaration consistency.
+```text
+shaped type forms and arity
+static and runtime extents
+element-count overflow
+storage eligibility
+Rank/Shape/Len properties
+layout and stride validity
+index selector count
+index and range bounds
+step validity
+view overlap and mutable authority
+Reshape and ToShape compatibility
+Axes and AxisList validity
+Permute and Transpose
+BroadcastTo compatibility
+operator shape compatibility
+x matrix/matrix and matrix/vector algebra
+Dot, Outer, Magnitude, Normalize, Cross
+Contract axis and extent compatibility
+MemorySpace compatibility
+StorageRequest and ShapedStorageRequest requirements
+Materialize, TransferTo, and Relayout ownership/effect boundaries
+Ptr addressability
+```
+
+Shaped Place/projection analysis must remain compatible with ordinary Sec
+borrowing and lifetime analysis.
 
 ---
 
-# Semantic IR
+# 32. Effects
 
-Semantic IR must preserve shaped semantics explicitly.
+Logical shaped operations do not acquire effects merely because a future
+materialization could allocate.
 
-At minimum, it should support operations equivalent to:
+The following are non-allocating by source semantics:
 
 ```text
-ShapeCreate
-StridesCreate
-TensorCreate
-TensorCopy
-TensorMove
-TensorDestroy
-TensorElementPlace
-TensorViewCreate
-TensorViewSlice
-TensorViewTranspose
-TensorViewBroadcast
-TensorReshape
-TensorReduce
-TensorContract
-
-VectorDot
-VectorOuter
-MatrixMultiply
-
-BoundsCheck
-ShapeCheck
-LayoutCheck
-MemorySpaceTransfer
+Rank / Shape / Len / Strides / Layout / MemorySpace / IsContiguous queries
+index/view formation when checks themselves need no external resource
+Reshape
+ToShape
+Permute
+Transpose
+BroadcastTo
+ordinary logical shaped arithmetic
+Dot
+Outer
+Magnitude
+Normalize
+Cross
+Contract
 ```
 
-Semantic IR must record:
+`Materialize`, explicit `Create`, `TransferTo`, and `Relayout` are
+storage-producing operations and contribute the actual provider/helper effects
+required by the selected implementation.
 
-- element type;
-- rank;
-- static and runtime shape;
-- strides;
-- offset;
-- layout;
-- memory space;
-- ownership;
-- borrow mode;
-- allocation strategy;
-- index and bounds proof;
-- operator-selected scalar algebra;
-- source location.
-
-MLIR lowering must not reconstruct these semantics from pointer arithmetic.
-
----
-
-# MLIR
-
-## Principle
-
-MLIR provides lowering and optimization mechanisms.
-
-It does not define Sec source semantics.
-
-The pipeline is conceptually:
+Examples may include:
 
 ```text
-Sec source
-    -> AST
-    -> Sema
-    -> Sec Semantic IR
-    -> Sec shaped-value MLIR dialect
-    -> standard MLIR dialects
-    -> bufferization and target lowering
-    -> LLVM, SPIR-V, or another backend
+MayAllocate
+MayBlock
+MaySuspend
+MayIO
 ```
 
-Language validation must be complete before MLIR lowering.
+A synchronous `TransferTo` must not return success while an unrepresented
+background transfer still depends on source storage.
+
+The detailed effect lattice remains owned by `effect_analysis.md`.
 
 ---
 
-## Logical shaped values
+# 33. LSP and tooling requirements
 
-Sec `vector`, `matrix`, and `tensor` should remain logical shaped values while
-high-level optimization is useful.
+LSP completion and hover must use the same compiler-known shaped member registry
+and Sema facts as compilation.
 
-Expected standard MLIR forms include:
+Hover must clearly display:
 
 ```text
-builtin ranked tensor
-tensor dialect operations
-linalg structured operations
-shape information
-vector dialect where appropriate
+resolved shaped type
+Rank
+Shape when useful
+Len when useful
+static versus runtime status when useful
+exact method/property return type
+required try when runtime checking is required
+Option versus Result meaning
+MemorySpace/Layout/IsContiguous facts when they materially affect use
+unsafe requirement for Ptr
 ```
 
-MLIR tensor values model abstract value semantics.
-
-This permits:
-
-- fusion;
-- tiling;
-- vectorization;
-- destination-style optimization;
-- temporary elimination;
-- shape propagation;
-- target-independent algebraic transformations.
-
----
-
-## Bufferization
-
-Bufferization converts logical tensor semantics into physical memory-buffer
-semantics.
-
-Sec ownership and lifetime analysis must guide this process.
-
-The bufferization pass must not invent ownership rules.
-
-Expected physical forms include:
+For `Normalize`, hover should make the domain absence explicit, for example:
 
 ```text
-memref
-offset
-sizes
-strides
-memory space
-explicit allocation/deallocation decisions
+Normalize() -> Option[vector[float32, 3]]
+Returns None when the vector has zero magnitude.
 ```
 
-A `tensor_view` naturally maps to a memref-like descriptor or equivalent
-strided-view representation.
+For a storage-producing operation, hover should show the exact `Result` error
+contract and concise storage-failure meaning.
+
+The LSP must not invent a separate shaped API table independent from Sema.
+
+Formatter support must preserve the canonical contextual `x` operator and
+ordinary Sec `step` syntax.
 
 ---
 
-## vector lowering
+# 34. Compiler/core/standard-library boundary
 
-Sec `vector[T, N]` is a source mathematical rank-one value.
+The shaped families are compiler-known first-class language types.
 
-It may lower to:
+The compiler owns their:
 
-- MLIR vector;
-- ranked tensor;
-- memref;
-- scalarized values;
-- target SIMD registers.
-
-The backend chooses according to target and operation.
-
-Sec source semantics do not require every `vector` to become one MLIR vector
-value.
-
----
-
-## Matrix multiplication
-
-The source expression:
-
-```sec
-left x right
+```text
+type identity
+source type forms
+canonical intrinsic properties
+canonical shaped operations
+operator semantics
+validation rules
+ownership/borrow-sensitive semantics
+required compiler-known member identities
 ```
 
-must be preserved as a high-level `MatrixMultiply` operation through Semantic IR.
+A core helper or standard-library algorithm may implement reusable behavior, but
+it does not own or redefine the semantics listed in this rulebook.
 
-It should lower to an appropriate structured MLIR operation, normally through
-Linalg or an equivalent optimized path.
+Ordinary user modules may not globally monkey-patch or add privileged `impl`
+blocks to compiler-owned shaped types.
 
-It must not be immediately expanded into scalar loops before shape-aware
-optimization.
+The standard library may provide additive higher-level numerical algorithms that
+do not alter the canonical shaped language surface.
 
-The backend may later select:
+Examples include decompositions, eigensolvers, domain-specific reductions, and
+specialized numerical algorithms.
 
-- tiled loops;
-- SIMD;
-- BLAS-compatible calls where allowed;
-- GPU kernels;
-- accelerator operations;
-- static unrolled code for small fixed matrices.
-
-No mandatory runtime or external BLAS dependency is implied.
+No stdlib implementation is required merely to make a compiler-known property
+such as `.Rank`, `.Shape`, `.Len`, `.Strides`, `.IsContiguous`, `.Ptr`, or
+`.SizeOf` semantically exist.
 
 ---
 
-## Sparse tensors
+# 35. MLIR ownership of lowering details
 
-Sparse layout metadata should lower through MLIR sparse-tensor encodings and
-operations where supported.
+The canonical detailed IR and lowering model for shaped operations belongs under:
 
-The Sec compiler must preserve:
+```text
+rules/mlir/
+```
 
-- logical shape;
-- sparse encoding;
-- index widths;
-- storage ordering;
-- mutability;
-- allocation policy.
+In particular, the MLIR rulebooks own the detailed operation schemas,
+verification, bufferization, memory-space lowering, target mapping, and
+optimization constraints.
 
-Unsupported sparse layouts must fail explicitly.
+Those documents must preserve the source distinctions defined here, including:
+
+```text
+logical value versus view
+Reshape versus ToShape versus Materialize
+explicit MemorySpace transfer
+layout requirements
+zero-stride broadcast aliasing
+non-allocating logical arithmetic
+x versus elementwise *
+runtime shape checks
+ownership and borrow authority
+```
+
+Backend lowering must not reinterpret these source semantics.
 
 ---
 
-## GPU and accelerator lowering
+# 36. Diagnostics
 
-Shaped operations may later lower through MLIR GPU, SPIR-V, NVVM, or another
-target path.
-
-Memory-space transfers must remain explicit in Semantic IR.
-
-The compiler must not silently move data between host and device memory when the
-transfer has observable cost or failure.
-
----
-
-# Diagnostics
+Diagnostics must have stable IDs and should state the violated shaped contract,
+not merely report a backend type mismatch.
 
 Examples:
 
 ```text
 matrix multiplication requires matching inner dimensions, got 4 and 5
-```
-
-```text
-operator x requires matrix or matrix-vector operands
 ```
 
 ```text
@@ -1400,88 +2069,175 @@ elementwise multiplication requires identical shapes, got [3, 4] and [4, 3]
 ```
 
 ```text
-mutable tensor view overlaps itself through zero stride on axis 0
+broadcast target [2, 3, 4] is incompatible with source shape [3, 2]
 ```
 
 ```text
-tensor element count overflows target address size
+mutable broadcast view would alias backing storage through zero stride on axis 0
 ```
 
 ```text
-view stride reaches outside backing storage
+reshape requires 24 elements but target shape contains 30
 ```
 
-Diagnostics must have stable IDs.
+```text
+step must not be zero
+```
+
+```text
+requested memory space is not supported by the active allocation provider
+```
+
+Diagnostics should identify whether a failure is:
+
+```text
+compile-time-proven invalidity
+runtime check requiring try
+storage request failure
+borrow/ownership restriction
+unsafe Ptr requirement
+```
 
 ---
 
-# Tests
+# 37. Conformance requirements
 
-Required Sec integration tests include at least:
+A conforming implementation must test at least:
 
 ```text
-vector_valid.sec
-vector_invalid.sec
-
-matrix_valid.sec
-matrix_invalid.sec
-
-tensor_valid.sec
-tensor_invalid.sec
-
-tensor_view_valid.sec
-tensor_view_invalid.sec
+vector, matrix, static tensor, runtime-shaped tensor identities
+shared and mutable tensor_view forms
+Rank, Shape, Len
+Strides, Layout, MemorySpace, IsContiguous
+Ptr addressability and unsafe requirements
+SizeOf logical payload semantics
+static and runtime shape checks
+indexing and multidimensional slicing
+positive and negative step
+broadcast and broadcast mutability
+Reshape
+ToShape ownership consumption
+Materialize
+TransferTo
+Relayout
+Axes and AxisList
+Permute and Transpose
+elementwise + - * /
+scalar-shaped arithmetic
+x matrix multiplication
+Dot, Outer, Magnitude, Normalize, Cross
+Contract
+same-space arithmetic rejection for incompatible spaces
+StorageRequest and ShapedStorageRequest
+no hidden allocation in logical arithmetic
+formatter and LSP display
 ```
 
-Every invalid test case must document:
-
-```sec
-/* Expected error: ...
- * Reason: ...
- */
-```
-
-Tests must cover parser, AST, Sema, ownership, analysis, Semantic IR, MLIR, and
-stdlib behavior as each phase becomes implemented.
+Invalid tests must document the expected diagnostic and reason.
 
 ---
 
-# Required synchronization
-
-This rulebook must be synchronized with:
+# 38. Canonical summary
 
 ```text
-types.md
-generics.txt
-collections.md
-registers.txt
-enums.txt
-allocation.txt
-ownership.md
-borrowing.txt
-references.txt
-lifetime_analysis.txt
-copy_move.md
-destruction.txt
-functions.txt
-impl.txt
-interfaces.txt
-flowcontrol_for.txt
-spread.txt
-units.txt
-diagnostics.txt
-semantic_ir.txt
-mlir.txt
-mlir-optimize.txt
-compiler_pipeline.txt
-rules_implementations.txt
-core-library.md
-formatter.md
-default_values.md
-foundations/language_philosophy.md
-core/errors.sec
-stdlib numerical modules
-```
+vector[T, N]
+    owning static rank-1 shaped value
 
-The type names and status must also be synchronized with the compact manual,
-keyword/predeclared-type lists, VS Code grammar, formatter, and LSP.
+matrix[T, R, C]
+    owning static rank-2 shaped value
+
+tensor[T, D0, D1, ...]
+    owning statically shaped tensor
+
+tensor[T, Shape[Rank]]
+    owning runtime-shaped tensor with static rank
+
+tensor_view[T, Rank]
+    non-owning view type form
+
+ref tensor_view[T, Rank]
+    shared safe shaped view
+
+ref mut tensor_view[T, Rank]
+    exclusive mutable shaped view when mapping is non-overlapping
+
+Rank / Shape / Len
+    logical shaped properties
+
+Strides / Layout / MemorySpace / IsContiguous
+    meaningful shaped storage properties
+    read-only
+
+Ptr
+    unsafe read-only address observation
+
+SizeOf
+    logical represented payload byte count on shaped instances
+
+StorageRequest
+    hard general destination-storage requirements
+
+ShapedStorageRequest
+    StorageRequest plus shaped layout requirement
+
+ordinary construction
+    uses canonical storage semantics without parameterless Create()
+
+Create(request)
+    explicit initial storage control
+
+Reshape
+    borrowed zero-copy shape reinterpretation
+
+ToShape
+    consuming zero-copy owning shape reinterpretation
+
+Materialize
+    new owning backing from a view
+
+TransferTo
+    explicit new owning destination under a storage request
+
+Relayout
+    explicit new owning representation with another layout
+
+Axes
+    complete axis permutation
+
+AxisList
+    ordered distinct axis subset
+
+Permute / Transpose
+    zero-copy view transformations
+
+multidimensional slicing
+    one selector per source axis
+    scalar selector removes axis
+    range selector preserves axis
+
+step
+    reused for shaped strided and reversed views
+    zero is invalid
+
+BroadcastTo
+    explicit right-aligned shaped broadcasting
+    real expansion creates shared overlapping view
+
+*
+    elementwise/scalar multiplication
+
+x
+    canonical algebraic multiplication, especially matrix multiplication
+
+Contract
+    explicit general tensor contraction
+
+logical shaped arithmetic
+    not allocation-fallible
+
+runtime shape uncertainty
+    checked with ShapeError and try
+
+MemorySpace transfer
+    explicit; never hidden in ordinary arithmetic or assignment
+```

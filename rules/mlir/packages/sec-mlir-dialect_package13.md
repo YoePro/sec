@@ -49,14 +49,14 @@ offsets, aggregate ABI, non-trivial ownership transfer, properties or methods.
 Implementation follows:
 
 ```text
-rules/declarations/struct.txt
+rules/declarations/struct.md
 rules/types/default_values.md
-rules/declarations/spread.txt
+rules/declarations/spread.md
 rules/memory/layout.md
 rules/memory/copy_move.md
 rules/memory/ownership.md
 rules/memory/destruction.txt
-rules/declarations/properties.txt
+rules/declarations/properties.md
     ↓
 rules/compiler/semantic_ir.txt
     ↓

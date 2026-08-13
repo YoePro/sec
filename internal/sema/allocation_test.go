@@ -51,8 +51,11 @@ let mut peripheral: Peripheral
 	}
 
 	peripheral := analyzer.symbols["peripheral"]
-	if peripheral.Storage != StorageOriginFixedAddress {
-		t.Fatalf("addressed register storage origin = %q, want %q", peripheral.Storage, StorageOriginFixedAddress)
+	if peripheral.Storage != StorageOriginUnknown {
+		t.Fatalf("addressed register storage origin = %q, want %q", peripheral.Storage, StorageOriginUnknown)
+	}
+	if peripheral.AddressStability != AddressStabilityFixed {
+		t.Fatalf("addressed register stability = %q, want %q", peripheral.AddressStability, AddressStabilityFixed)
 	}
 	if !peripheral.Addressed || !peripheral.Volatile {
 		t.Fatalf("addressed register metadata missing: %+v", peripheral)

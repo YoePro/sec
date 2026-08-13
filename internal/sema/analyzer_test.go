@@ -34,6 +34,111 @@ let e: uuid := 1
 	assertSemaErrors(t, errors, expected)
 }
 
+func TestLifecycleInitAndNewSemantics(t *testing.T) {
+	errors := analyzeSource(t, `
+module main
+
+type BuildError enum {
+    Invalid,
+}
+
+type Point struct {
+    x: int,
+}
+
+impl Point {
+    init(x: int) {
+        self.x = x
+    }
+}
+
+type Resource struct {
+    value: int,
+}
+
+impl Resource {
+    init(value: int) BuildError {
+        self.value = value
+    }
+}
+
+type Defaults struct {
+    value: int,
+}
+
+impl Defaults {
+    init(value: int) {
+        self.value = value
+    }
+}
+
+fn PointAt(x: int) Point {
+    return new Point(x)
+}
+
+fn Open(value: int) Result[Resource, BuildError] {
+    return Ok(try new Resource(value))
+}
+
+fn DefaultValue() Defaults {
+    return new Defaults()
+}
+`)
+	assertSemaErrors(t, errors, nil)
+
+	errors = analyzeSource(t, `
+module main
+type BuildError enum { Invalid }
+type Resource struct { value: int, }
+impl Resource {
+    init(value: int) BuildError { self.value = value }
+}
+fn Invalid() void {
+    let resource := new Resource(1)
+}
+`)
+	if len(errors) == 0 || !strings.Contains(errors[0].Message, "selects a fallible init") {
+		t.Fatalf("missing unhandled construction diagnostic: %+v", errors)
+	}
+}
+
+func TestInitOverloadIdentityIgnoresConstructionErrorType(t *testing.T) {
+	errors := analyzeSource(t, `
+module main
+type FirstError enum { Failed }
+type SecondError enum { Failed }
+type Resource struct { value: int, }
+impl Resource {
+    init(value: int) FirstError { self.value = value }
+}
+
+impl extends Resource {
+    init(value: int) SecondError { self.value = value }
+}
+`)
+	if len(errors) == 0 || !strings.Contains(errors[0].Message, "duplicate init signature init(int) for Resource") {
+		t.Fatalf("missing duplicate init signature diagnostic: %+v", errors)
+	}
+}
+
+func TestOrdinaryImplMustBelongToDefiningModule(t *testing.T) {
+	program := parser.New(lexer.NewWithFile(`
+module graphics
+type Image struct { width: int, }
+`, "graphics.sec")).ParseProgram()
+	application := parser.New(lexer.NewWithFile(`
+module application
+impl Image {
+    fn Width() int { return self.width }
+}
+`, "application.sec")).ParseProgram()
+	program.Statements = append(program.Statements, application.Statements...)
+	errors := NewAnalyzer().Analyze(program)
+	if len(errors) == 0 || !strings.Contains(errors[0].Message, "must be declared in defining module graphics") {
+		t.Fatalf("missing defining-module impl diagnostic: %+v", errors)
+	}
+}
+
 func TestRuneArrayToStringMaterializesText(t *testing.T) {
 	errors := analyzeSource(t, `
 module main
@@ -1637,6 +1742,43 @@ fn StartMotor(speed: rpm) void {
 	}
 }
 
+func TestRegisterAllocationOrderProducesDeterministicBitOffsets(t *testing.T) {
+	input := `
+module main
+
+type Low register[8] {
+	First: bit[2],
+	Second: bit[3],
+	_: bit[3],
+}
+
+type High register[8] msb-first big-endian {
+	First: bit[2],
+	Second: bit[3],
+	_: bit[3],
+}
+`
+
+	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
+	assertSemaErrors(t, errors, nil)
+
+	low := analyzer.types["Low"]
+	if low.RegisterAllocationOrder != "lsb-first" || low.RegisterByteOrder != "" {
+		t.Fatalf("wrong Low layout metadata: %+v", low)
+	}
+	if low.RegisterFields[0].BitOffset != 0 || low.RegisterFields[1].BitOffset != 2 || low.RegisterFields[2].BitOffset != 5 {
+		t.Fatalf("wrong lsb-first offsets: %+v", low.RegisterFields)
+	}
+
+	high := analyzer.types["High"]
+	if high.RegisterAllocationOrder != "msb-first" || high.RegisterByteOrder != "big-endian" {
+		t.Fatalf("wrong High layout metadata: %+v", high)
+	}
+	if high.RegisterFields[0].BitOffset != 6 || high.RegisterFields[1].BitOffset != 3 || high.RegisterFields[2].BitOffset != 0 {
+		t.Fatalf("wrong msb-first offsets: %+v", high.RegisterFields)
+	}
+}
+
 func TestRegisterValidationErrors(t *testing.T) {
 	input := `
 module main
@@ -2502,11 +2644,11 @@ interface Vehicle {
 	}
 }
 
-type Car struct implements Vehicle {
+type Car struct {
 	running: bool,
 }
 
-impl Car {
+impl Car implements Vehicle {
 	property IsRunning: bool {
 		get {
 			return running
@@ -2537,7 +2679,7 @@ interface Vehicle {
 
 	property IsRunning: bool {
 		get
-		set
+		set running
 	}
 }
 
@@ -2547,20 +2689,29 @@ interface Marker {
 type NotInterface struct {
 }
 
-type Duplicate struct implements Marker, Marker {
+type Duplicate struct {
 }
 
-type BadTarget struct implements NotInterface {
+type BadTarget struct {
 }
 
-type MissingMembers struct implements Vehicle {
+type MissingMembers struct {
 }
 
-type WrongSignature struct implements Vehicle {
+impl Duplicate implements Marker, Marker {
+}
+
+impl BadTarget implements NotInterface {
+}
+
+impl MissingMembers implements Vehicle {
+}
+
+type WrongSignature struct {
 	running: bool,
 }
 
-impl WrongSignature {
+impl WrongSignature implements Vehicle {
 	property IsRunning: bool {
 		get {
 			return running
@@ -2579,8 +2730,8 @@ impl WrongSignature {
 
 	errors := analyzeSourceRaw(t, input)
 	expected := []string{
-		"duplicate implemented interface Marker on Duplicate at 20:42",
-		"implemented type NotInterface on BadTarget is not an interface at 23:34",
+		"duplicate implemented interface Marker on Duplicate at 29:35",
+		"implemented type NotInterface on BadTarget is not an interface at 32:27",
 		"type MissingMembers implements Vehicle but is missing method Start at 5:5",
 		"type MissingMembers implements Vehicle but is missing method Stop at 6:5",
 		"type MissingMembers implements Vehicle but is missing property IsRunning at 8:11",
@@ -2616,7 +2767,10 @@ interface ReachesCycle implements FirstCycle {
 	fn Required() void
 }
 
-type InvalidImplementation struct implements ReachesCycle {
+type InvalidImplementation struct {
+}
+
+impl InvalidImplementation implements ReachesCycle {
 }
 `
 
@@ -2642,6 +2796,86 @@ type InvalidImplementation struct implements ReachesCycle {
 		if err.Help != "remove one implements relationship from the cycle" {
 			t.Fatalf("error %d help = %q", index, err.Help)
 		}
+	}
+}
+
+func TestInterfaceReceiverCapabilitiesAtCallSites(t *testing.T) {
+	errors := analyzeSourceRaw(t, `
+module main
+
+interface Resource {
+	fn Inspect() int
+	mut fn Update() void
+	-> fn Detach() int
+}
+
+fn Shared(value: ref Resource) void {
+	discard value.Inspect()
+	value.Update()
+	value.Detach()
+}
+
+fn Mutable(value: ref mut Resource) void {
+	discard value.Inspect()
+	value.Update()
+	value.Detach()
+}
+
+fn Owned(value: Resource) void {
+	discard value.Detach()
+	discard value
+}
+`)
+	if len(errors) != 4 {
+		t.Fatalf("errors = %v, want four receiver diagnostics", errors)
+	}
+	want := []string{
+		"method Update requires mutable receiver",
+		"consuming method Detach requires an owned receiver; ref Resource does not transfer ownership",
+		"consuming method Detach requires an owned receiver; ref mut Resource does not transfer ownership",
+		"use of moved value value",
+	}
+	for index, fragment := range want {
+		if !strings.Contains(errors[index].Message, fragment) {
+			t.Fatalf("error %d = %q, want fragment %q", index, errors[index].Message, fragment)
+		}
+	}
+}
+
+func TestInterfaceReceiverCapabilityConformance(t *testing.T) {
+	errors := analyzeSourceRaw(t, `
+module main
+
+interface SharedContract {
+	fn Change() void
+}
+
+interface MutableContract {
+	mut fn Observe() int
+}
+
+type MutableImplementation struct {
+	value: int,
+}
+
+impl MutableImplementation implements SharedContract {
+	fn Change() void {
+		self.value = 1
+	}
+}
+
+type SharedImplementation struct {
+	value: int,
+}
+
+impl SharedImplementation implements MutableContract {
+	fn Observe() int {
+		return self.value
+	}
+}
+`)
+	if len(errors) != 1 || !strings.Contains(errors[0].Message, "method Change does not match interface SharedContract") {
+		t.Fatalf("errors = %v", errors)
 	}
 }
 
@@ -2991,7 +3225,7 @@ let explicitInt: int := int(Color.green)
 	}
 
 	status := analyzer.types["Status"]
-	if status.Kind != EnumType || status.EnumConsts["paused"].Value.String() != "11" {
+	if status.Kind != EnumType || status.EnumConsts["paused"].Value.String() != "10" {
 		t.Fatalf("wrong Status enum: %+v", status)
 	}
 
@@ -3132,7 +3366,7 @@ type InvalidFields register[2] {
 	assertSemaErrors(t, errors, expected)
 }
 
-func TestBitEnumRejectsUnprovenDynamicConversion(t *testing.T) {
+func TestBitEnumDynamicConversionRequiresTry(t *testing.T) {
 	input := `
 enum ClockSource: bit[2] {
 	Internal,
@@ -3146,7 +3380,7 @@ fn Convert(value: int) ClockSource {
 
 	errors := analyzeSource(t, input)
 	expected := []string{
-		"conversion to 2-bit enum ClockSource requires a value proven to be in range 0..3 at 8:21",
+		"function Convert must return ClockSource, got Result[ClockSource, EnumValueError] at 8:9",
 	}
 	assertSemaErrors(t, errors, expected)
 }
@@ -3362,6 +3596,63 @@ fn Test() void {
 	current := analyzer.symbols["current"]
 	if current.Type.Name != "Speed" {
 		t.Fatalf("wrong property type. got=%q want=Speed", current.Type.Name)
+	}
+}
+
+func TestInterfacePropertySetterFallibilityConformance(t *testing.T) {
+	input := `
+enum ConfigError {
+	Invalid,
+}
+
+interface FallibleConfig {
+	property Mode: int {
+		try set mode
+	}
+}
+
+interface PlainConfig {
+	property Mode: int {
+		set mode
+	}
+}
+
+type Plain struct {}
+impl Plain implements FallibleConfig {
+	property Mode: int {
+		set mode {}
+	}
+}
+
+type Fallible struct {}
+impl Fallible implements PlainConfig {
+	property Mode: int {
+		try set mode {
+			return Err(ConfigError.Invalid)
+		}
+	}
+}
+`
+
+	errors := analyzeSource(t, input)
+	if len(errors) != 2 {
+		t.Fatalf("wrong sema error count: got %d, want 2: %v", len(errors), errors)
+	}
+	want := []string{
+		"type Plain property Mode must provide fallible setter for interface FallibleConfig, got infallible setter",
+		"type Fallible property Mode must provide infallible setter for interface PlainConfig, got fallible setter",
+	}
+	for _, expected := range want {
+		found := false
+		for _, diagnostic := range errors {
+			if strings.Contains(diagnostic.Error(), expected) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("missing sema error %q in %v", expected, errors)
+		}
 	}
 }
 
@@ -5516,6 +5807,122 @@ func TestUnionValidFixture(t *testing.T) {
 	assertSemaErrors(t, errors, nil)
 }
 
+func TestUnionDefaultsAndOmittedDefaultablePayloadFields(t *testing.T) {
+	input := `
+module main
+
+type State union {
+	Idle default
+	Running
+}
+
+type Value union {
+	Number(int) default
+	Text(string)
+}
+
+type Position union {
+	Unknown
+	Known {
+		x: int,
+		label: string,
+	} default
+}
+
+fn Use() void {
+	let mut state: State
+	let mut value: Value
+	let mut position: Position
+	let explicit := Position.Known { x: 10 }
+	discard state
+	discard value
+	discard position
+	discard explicit
+}
+`
+
+	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+
+	state := analyzer.types["State"]
+	if state.UnionDefault != "Idle" {
+		t.Fatalf("State default variant = %q, want Idle", state.UnionDefault)
+	}
+	if display, kind, ok := DefaultValueDisplay(state); !ok || kind != UnionDefault || display != "State.Idle" {
+		t.Fatalf("State default = %q, %q, %v", display, kind, ok)
+	}
+	value := analyzer.types["Value"]
+	if display, kind, ok := DefaultValueDisplay(value); !ok || kind != UnionDefault || display != "Value.Number(0)" {
+		t.Fatalf("Value default = %q, %q, %v", display, kind, ok)
+	}
+	position := analyzer.types["Position"]
+	if display, kind, ok := DefaultValueDisplay(position); !ok || kind != UnionDefault || display != `Position.Known { x: 0, label: "" }` {
+		t.Fatalf("Position default = %q, %q, %v", display, kind, ok)
+	}
+}
+
+func TestUnionRejectsMultipleAndNonDefaultableDefaults(t *testing.T) {
+	input := `
+module main
+
+type Multiple union {
+	First default
+	Second default
+}
+
+type Invalid union {
+	Borrowed(ref int) default
+	None
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	if len(errors) != 2 {
+		t.Fatalf("wrong union default error count: got %d errors=%v", len(errors), errors)
+	}
+	if !strings.Contains(errors[0].Message, "may only mark one variant default") || !strings.Contains(errors[1].Message, "cannot be default-constructed") {
+		t.Fatalf("wrong union default errors: %v", errors)
+	}
+}
+
+func TestNonDefaultableMutableUnionUsesLegacyEmptyAssignmentState(t *testing.T) {
+	valid := `
+module main
+
+type State union {
+	Idle
+	Running
+}
+
+fn Use() void {
+	let mut state: State
+	state = State.Idle
+	discard state
+}
+`
+	assertSemaErrors(t, analyzeSourceRaw(t, valid), nil)
+
+	invalid := `
+module main
+
+type State union {
+	Idle
+	Running
+}
+
+fn Consume(state: State) void {}
+
+fn Use() void {
+	let mut state: State
+	Consume(state)
+}
+`
+	errors := analyzeSourceRaw(t, invalid)
+	if len(errors) != 1 || !strings.Contains(errors[0].Message, "is unassigned") {
+		t.Fatalf("wrong empty union use diagnostics: %v", errors)
+	}
+}
+
 func TestUnionInvalidFixture(t *testing.T) {
 	input, err := os.ReadFile("../../testdata/union_invalid.sec")
 	if err != nil {
@@ -5627,7 +6034,7 @@ func TestErrorHandlingMatchInvalidFixture(t *testing.T) {
 
 	expected := []string{
 		"non-exhaustive match for Result[Speed, IOError]: missing Err at 17:18",
-		"non-exhaustive match for IOError; enum may contain undeclared numeric values; add _ or cover the complete underlying domain at 25:17",
+		"non-exhaustive match for closed enum IOError; cover every declared numeric value class or add _ at 25:17",
 		"match arms must produce compatible types, got int and string at 36:29",
 		"match pattern must match Result[Speed, IOError], got IOError at 45:16",
 		"catch-all pattern may not hide Err at 44:18",
@@ -5969,7 +6376,6 @@ fn OpenDomain(value: Open) int {
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
 		"unreachable enum match arm; numeric value is already covered by Off at 20:3",
-		"non-exhaustive match for Open; enum may contain undeclared numeric values; add _ or cover the complete underlying domain at 31:9",
 	})
 }
 
@@ -8082,7 +8488,26 @@ fn Invalid() void {
 
 	errors := analyzeSourceRaw(t, input)
 	expected := []string{
-		"cannot spread Resource[2] into function arguments; Resource is not implicitly copyable at 18:19",
+		"cannot spread Resource[2] into function arguments; indexed expansion would require unsupported consuming element reads at 18:19",
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestCallSpreadRuntimeLengthDiagnosticRetainsReferenceType(t *testing.T) {
+	input := `
+module main
+
+fn Use(first: int, second: int) void {
+}
+
+fn Invalid(values: ref int[]) void {
+	Use(values...)
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	expected := []string{
+		"cannot spread ref int[] into fixed-arity call; expansion count is not known at compile time at 8:12",
 	}
 	assertSemaErrors(t, errors, expected)
 }
@@ -8108,7 +8533,7 @@ fn Invalid() void {
 
 	errors := analyzeSourceRaw(t, input)
 	expected := []string{
-		"cannot spread Resource[2] into array literal; Resource is not implicitly copyable at 15:24",
+		"cannot spread Resource[2] into fixed-array literal; indexed expansion would require unsupported consuming element reads at 15:24",
 	}
 	assertSemaErrors(t, errors, expected)
 }
@@ -8158,6 +8583,50 @@ fn Valid() void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, nil)
+}
+
+func TestInvalidStructSpreadDoesNotSuppressOmittedFieldDefaults(t *testing.T) {
+	input := `
+module main
+
+type Source struct {
+	name: string,
+}
+
+type Target struct {
+	name: string,
+	view: ref int,
+}
+
+fn Invalid(source: Source) Target {
+	return Target {
+		source...,
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	expected := []string{
+		"cannot spread Source into Target; spread source must have type Target at 15:9",
+		`field "view" in struct Target has no default value and must be initialized at 14:9`,
+	}
+	assertSemaErrors(t, errors, expected)
+}
+
+func TestArrayLiteralSpreadLengthUsesCheckedCompactAccounting(t *testing.T) {
+	input := `
+module main
+
+fn Invalid(first: int[9223372036854775807], second: int[1]) void {
+	let values := [first..., second...]
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	expected := []string{
+		"fixed-array literal result length overflows int64 at 5:33",
+	}
+	assertSemaErrors(t, errors, expected)
 }
 
 func TestResultTypeArgumentCountErrors(t *testing.T) {
@@ -9518,6 +9987,105 @@ fn BadLeft(left: int, right: matrix[int, 2, 2]) matrix[int, 2, 2] {
 		"matrix multiplication element types differ: int and float32 at 9:14",
 		"left operand of x must be matrix, got int at 13:14",
 	})
+}
+
+func TestEnumInitializerRepetitionUsesCurrentIota(t *testing.T) {
+	analyzer, errors := analyzeSourceWithAnalyzer(t, `module main
+
+enum X int {
+	A = iota,
+	B,
+	C,
+	D = 10,
+	E,
+	F = iota + 7,
+	G,
+}
+`)
+	if len(errors) != 0 {
+		t.Fatalf("enum initializer repetition produced errors: %v", errors)
+	}
+	want := map[string]string{"A": "0", "B": "1", "C": "2", "D": "10", "E": "10", "F": "12", "G": "13"}
+	for name, expected := range want {
+		got := analyzer.Types()["X"].EnumConsts[name].Value
+		if got == nil || got.String() != expected {
+			t.Fatalf("X.%s = %v, want %s", name, got, expected)
+		}
+	}
+}
+
+func TestClosedAndOpenEnumDomains(t *testing.T) {
+	valid := `module main
+
+enum Closed int {
+	FIRST = 1,
+	ALIAS = 1,
+	SECOND = 2,
+}
+
+enum Open bit[2] {
+	ZERO = 0,
+	ONE = 1,
+	TWO = 2,
+}
+
+fn ClosedMatch(value: Closed) int {
+	return match value {
+		Closed.FIRST => 1
+		Closed.SECOND => 2
+	}
+}
+
+fn OpenValue() Open {
+	return Open(3)
+}
+
+fn CheckedClosed(raw: int) Result[Closed, EnumValueError] {
+	let value := try Closed(raw)
+	return Ok(value)
+}
+
+fn CheckedOpen(raw: int) Result[Open, EnumValueError] {
+	let value := try Open(raw)
+	return Ok(value)
+}
+`
+	assertSemaErrors(t, analyzeSourceRaw(t, valid), nil)
+
+	invalidConversion := analyzeSourceRaw(t, `module main
+
+enum Closed int {
+	FIRST = 1,
+	SECOND = 2,
+}
+
+fn Invalid() Closed {
+	return Closed(9)
+}
+`)
+	if len(invalidConversion) != 1 || !strings.Contains(invalidConversion[0].Message, "not a declared value of closed enum Closed") {
+		t.Fatalf("invalid closed enum conversion errors = %v", invalidConversion)
+	}
+
+	openMatch := analyzeSourceRaw(t, `module main
+
+enum Open bit[2] {
+	ZERO = 0,
+	ONE = 1,
+	TWO = 2,
+}
+
+fn Invalid(value: Open) int {
+	return match value {
+		Open.ZERO => 0
+		Open.ONE => 1
+		Open.TWO => 2
+	}
+}
+`)
+	if len(openMatch) != 1 || !strings.Contains(openMatch[0].Message, "open bit-backed enum Open") {
+		t.Fatalf("open enum match errors = %v", openMatch)
+	}
 }
 
 func assertSemaErrors(t *testing.T, errors []Error, expected []string) {

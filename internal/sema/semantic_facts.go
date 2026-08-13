@@ -39,6 +39,15 @@ type ResolvedCall struct {
 	Kind     ResolvedCallKind
 }
 
+// ResolvedConstruction records the init overload selected by a new
+// expression. Construction remains distinct from both calls and conversions.
+type ResolvedConstruction struct {
+	Initializer Function
+	Target      Type
+	ErrorType   *Type
+	Implicit    bool
+}
+
 type ResolvedOperatorKind string
 
 const (

@@ -261,6 +261,32 @@ let mut motorProtocol: MotorProtocol
 	}
 }
 
+func TestParseRegisterLayoutModifiers(t *testing.T) {
+	input := `
+type Header register[16] msb-first big-endian {
+	Version: bit[4],
+	Payload: bit[12],
+}
+
+type Native register[8] lsb-first little-endian {
+	Value: bit[8],
+}
+`
+
+	p := New(lexer.New(input))
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	header := program.Statements[0].(*ast.TypeDeclStatement).RegisterType
+	if header.AllocationOrder != "msb-first" || header.ByteOrder != "big-endian" {
+		t.Fatalf("wrong Header layout modifiers: %+v", header)
+	}
+	native := program.Statements[1].(*ast.TypeDeclStatement).RegisterType
+	if native.AllocationOrder != "lsb-first" || native.ByteOrder != "little-endian" {
+		t.Fatalf("wrong Native layout modifiers: %+v", native)
+	}
+}
+
 func TestParseBitBackedEnumAndRegisterField(t *testing.T) {
 	input := `
 enum ClockSource bit[2] {
@@ -503,6 +529,36 @@ type Choice union {
 		if len(attributes) != 1 || attributes[0].Name == nil || attributes[0].Name.Value != "noCopy" {
 			t.Fatalf("statement %d has wrong attributes: %+v", i, attributes)
 		}
+	}
+}
+
+func TestParseUnionDefaultVariantMarkers(t *testing.T) {
+	input := `type State union {
+    Idle default
+    Running
+    Position {
+        x: int,
+        y: int,
+    } default
+}
+`
+
+	p := New(lexer.New(input))
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	declaration := program.Statements[0].(*ast.TypeDeclStatement)
+	if len(declaration.UnionVariants) != 3 {
+		t.Fatalf("union variant count = %d, want 3", len(declaration.UnionVariants))
+	}
+	if !declaration.UnionVariants[0].Default || declaration.UnionVariants[0].DefaultToken.Lexeme != "default" {
+		t.Fatalf("payload-less default marker not retained: %+v", declaration.UnionVariants[0])
+	}
+	if declaration.UnionVariants[1].Default {
+		t.Fatalf("unmarked variant became default: %+v", declaration.UnionVariants[1])
+	}
+	if !declaration.UnionVariants[2].Default {
+		t.Fatalf("struct-like default marker not retained: %+v", declaration.UnionVariants[2])
 	}
 }
 
@@ -1873,6 +1929,41 @@ impl extends Vehicle {
 	}
 }
 
+func TestParseInitAndNewLifecycleSyntax(t *testing.T) {
+	input := `
+type Buffer struct {
+    size: uint,
+}
+
+impl Buffer {
+    init(size: uint) AllocationError {
+        self.size = size
+    }
+}
+
+fn Make() Result[Buffer, AllocationError] {
+    return Ok(try new Buffer(4096))
+}
+`
+	p := New(lexer.New(input))
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	impl := program.Statements[1].(*ast.ImplStatement)
+	initializer, ok := impl.Members[0].(*ast.InitDeclaration)
+	if !ok || len(initializer.Parameters) != 1 || initializer.ErrorType == nil || initializer.ErrorType.Name != "AllocationError" {
+		t.Fatalf("wrong init declaration: %#v", impl.Members[0])
+	}
+	fn := program.Statements[2].(*ast.FunctionDeclaration)
+	ret := fn.Body.Statements[0].(*ast.ReturnStatement)
+	okExpr := ret.Value.(*ast.OkExpression)
+	tryExpr := okExpr.Value.(*ast.TryExpression)
+	construction, ok := tryExpr.Expression.(*ast.NewExpression)
+	if !ok || construction.Type.Name != "Buffer" || len(construction.Arguments) != 1 {
+		t.Fatalf("wrong new expression: %#v", tryExpr.Expression)
+	}
+}
+
 func TestParseImplAndInterfaceEvents(t *testing.T) {
 	input := `
 interface PressSource {
@@ -1929,8 +2020,11 @@ interface Vehicle {
 	}
 }
 
-type Car struct implements Vehicle {
+type Car struct {
 	running: bool,
+}
+
+impl Car implements Vehicle {
 }
 `
 
@@ -1954,8 +2048,109 @@ type Car struct implements Vehicle {
 	if !ok {
 		t.Fatalf("statement 1 is not TypeDeclStatement. got=%T", program.Statements[1])
 	}
-	if len(typeDecl.Implements) != 1 || typeDecl.Implements[0].Name != "Vehicle" {
-		t.Fatalf("wrong implements list: %+v", typeDecl.Implements)
+	if len(typeDecl.Implements) != 0 {
+		t.Fatalf("type declaration retained obsolete implements list: %+v", typeDecl.Implements)
+	}
+	impl, ok := program.Statements[2].(*ast.ImplStatement)
+	if !ok || len(impl.Implements) != 1 || impl.Implements[0].Name != "Vehicle" {
+		t.Fatalf("wrong primary impl conformance list: %+v", impl)
+	}
+}
+
+func TestParseInterfaceReceiverCapabilities(t *testing.T) {
+	input := `
+interface Resource {
+	fn Inspect() int
+	mut fn Update() void
+	-> fn Detach() int
+	static fn Create() int
+}
+`
+
+	p := New(lexer.New(input))
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+	iface := program.Statements[0].(*ast.InterfaceDeclaration)
+	if len(iface.Methods) != 4 {
+		t.Fatalf("methods = %d, want 4", len(iface.Methods))
+	}
+	if iface.Methods[0].ReceiverCapability != "" || iface.Methods[1].ReceiverCapability != ast.ReceiverMutable || iface.Methods[2].ReceiverCapability != ast.ReceiverConsuming || !iface.Methods[3].Static {
+		t.Fatalf("receiver capabilities = %#v", iface.Methods)
+	}
+}
+
+func TestParseInterfacePropertyExplicitSetters(t *testing.T) {
+	input := `
+interface Configurable {
+	property Mode: int {
+		get
+		try set mode
+	}
+	property Name: string {
+		set banana
+	}
+}
+`
+
+	p := New(lexer.New(input))
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	iface := program.Statements[0].(*ast.InterfaceDeclaration)
+	if len(iface.Properties) != 2 {
+		t.Fatalf("property count = %d, want 2", len(iface.Properties))
+	}
+	mode := iface.Properties[0]
+	if !mode.RequiresGet || !mode.RequiresSet || !mode.SetterFallible || mode.SetterParameter == nil || mode.SetterParameter.Value != "mode" {
+		t.Fatalf("wrong fallible property requirement: %#v", mode)
+	}
+	name := iface.Properties[1]
+	if name.RequiresGet || !name.RequiresSet || name.SetterFallible || name.SetterParameter == nil || name.SetterParameter.Value != "banana" {
+		t.Fatalf("wrong infallible property requirement: %#v", name)
+	}
+}
+
+func TestRejectsInterfacePropertySetterWithoutParameter(t *testing.T) {
+	input := `
+interface Configurable {
+	property Mode: int {
+		set
+	}
+}
+`
+
+	p := New(lexer.New(input))
+	p.ParseProgram()
+	if len(p.Errors()) != 1 || !strings.Contains(p.Errors()[0], "setter for Mode must declare value parameter") {
+		t.Fatalf("unexpected parser errors: %v", p.Errors())
+	}
+}
+
+func TestRejectsTypeLevelInterfaceConformance(t *testing.T) {
+	p := New(lexer.New(`type Car struct implements Vehicle {}`))
+	_ = p.ParseProgram()
+	if len(p.Errors()) != 1 || !strings.Contains(p.Errors()[0], "interface conformance for Car belongs on its primary impl") {
+		t.Fatalf("errors = %v", p.Errors())
+	}
+}
+
+func TestRejectsConformanceOnImplExtension(t *testing.T) {
+	p := New(lexer.New(`impl extends Car implements Vehicle {}`))
+	program := p.ParseProgram()
+	if len(p.Errors()) != 1 || !strings.Contains(p.Errors()[0], "impl extends Car cannot declare interface conformance") {
+		t.Fatalf("errors = %v", p.Errors())
+	}
+	impl := program.Statements[0].(*ast.ImplStatement)
+	if !impl.Extends || len(impl.Implements) != 1 {
+		t.Fatalf("recovered impl = %+v", impl)
+	}
+}
+
+func TestRejectsStoredFieldRequirementInInterface(t *testing.T) {
+	p := New(lexer.New("interface Positioned {\nposition: Point\n}\n"))
+	_ = p.ParseProgram()
+	if len(p.Errors()) != 1 || !strings.Contains(p.Errors()[0], `interfaces cannot require stored field "position"; use a property or method`) {
+		t.Fatalf("errors = %v", p.Errors())
 	}
 }
 
@@ -3625,6 +3820,38 @@ func TestFocusedRecoveryDiagnosticMetadata(t *testing.T) {
 	}
 }
 
+func TestReversedTypeDeclarationOrderMentorDiagnostic(t *testing.T) {
+	tests := []struct {
+		input string
+		kind  string
+		name  string
+	}{
+		{input: "type struct User {\n    name: string,\n}\n", kind: "struct", name: "User"},
+		{input: "type union State {\n    Ready\n}\n", kind: "union", name: "State"},
+		{input: "type register Status[8] {\n    Ready: bit,\n    _: bit[7],\n}\n", kind: "register", name: "Status"},
+	}
+
+	for _, test := range tests {
+		p := New(lexer.New(test.input))
+		p.ParseProgram()
+		gotDiagnostics := p.Diagnostics()
+		if len(gotDiagnostics) == 0 {
+			t.Fatalf("%q produced no parser diagnostic", test.input)
+		}
+		got := gotDiagnostics[0]
+		if got.ID != diagnostics.ParserMisplacedKeyword {
+			t.Fatalf("%s diagnostic ID = %s, want %s", test.kind, got.ID, diagnostics.ParserMisplacedKeyword)
+		}
+		want := "type declaration name must come before " + test.kind + "; write 'type " + test.name + " " + test.kind + "'"
+		if !strings.Contains(got.Message, want) {
+			t.Fatalf("%s diagnostic = %q, want mentor text %q", test.kind, got.Message, want)
+		}
+		if got.Unexpected == nil || got.Unexpected.Lexeme != test.kind {
+			t.Fatalf("%s unexpected token = %+v", test.kind, got.Unexpected)
+		}
+	}
+}
+
 func TestParseResultRetainsRecoveryEventsAndInvalidNodes(t *testing.T) {
 	input := `
 ? damaged
@@ -4539,5 +4766,32 @@ func TestParserPreservesLexerDiagnosticIDs(t *testing.T) {
 			}
 			t.Fatalf("missing lexer diagnostic %s in %+v", test.id, result.Diagnostics)
 		})
+	}
+}
+
+func TestParseEnumDefaultMemberMarker(t *testing.T) {
+	input := `enum ConnectionState int {
+	CONNECTING = 10,
+	CONNECTED,
+	DISCONNECTED default = 30,
+}`
+
+	p := New(lexer.New(input))
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	declaration, ok := program.Statements[0].(*ast.EnumDeclaration)
+	if !ok {
+		t.Fatalf("statement = %T, want EnumDeclaration", program.Statements[0])
+	}
+	if len(declaration.Values) != 3 {
+		t.Fatalf("enum values = %d, want 3", len(declaration.Values))
+	}
+	if declaration.Values[1].Default {
+		t.Fatal("CONNECTED unexpectedly marked default")
+	}
+	value := declaration.Values[2]
+	if !value.Default || value.DefaultToken.Lexeme != "default" || value.Initializer == nil {
+		t.Fatalf("default enum value = %#v", value)
 	}
 }

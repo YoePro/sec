@@ -1194,7 +1194,8 @@ concurrency_memory_model.txt
 static.txt
 mutex.txt
 tasks.txt
-registers.txt
+declarations/registers.md
+platform/fixed-address-bindings.md
 numeric_types.txt
 ffi.txt
 ```

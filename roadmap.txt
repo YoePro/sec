@@ -191,7 +191,7 @@ match the implementation that already exists.
 
 Already completed after the older defer roadmap entry:
 
-rules/declarations/unions.txt
+rules/declarations/unions.md
 
 union_valid.sec
 
@@ -389,7 +389,7 @@ Are union variants values, constructors or both?
 
 Create:
 
-rules/declarations/unions.txt
+rules/declarations/unions.md
 
 union_valid.sec
 
@@ -609,11 +609,11 @@ impl User {
 
 Create or update:
 
-rules/declarations/impl.txt
+rules/declarations/impl.md
 
 rules/methods.txt
 
-rules/declarations/properties.txt
+rules/declarations/properties.md
 
 impl_valid.sec
 
@@ -936,7 +936,7 @@ Interfaces should be implemented before full generic constraints if generic cons
 
 Create:
 
-rules/declarations/interfaces.txt
+rules/declarations/interfaces.md
 
 interface_valid.sec
 
@@ -1307,9 +1307,9 @@ Is overriding a moved field valid?
 
 Are duplicate explicit fields always errors?
 
-Create:
+Canonical rule:
 
-rules/declarations/spread.txt
+rules/declarations/spread.md
 
 rules/variadic.txt
 

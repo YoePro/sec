@@ -23,10 +23,60 @@ func DefaultValueDisplay(typ Type) (string, DefaultKind, bool) {
 	return defaultResolutionDisplay(typ, resolution), resolution.Kind, true
 }
 
+// DefaultValuePreview returns a bounded presentation of a semantic default.
+// It avoids materializing every element solely to render large fixed arrays in
+// interactive tooling. DefaultValueOf remains the exact construction model.
+func DefaultValuePreview(typ Type, maxArrayElements int) (string, DefaultKind, bool) {
+	if typ.Kind != ArrayType {
+		return DefaultValueDisplay(typ)
+	}
+	if typ.Element == nil || typ.ArrayLength < 0 {
+		return "", NoDefault, false
+	}
+	if typ.ArrayLength == 0 {
+		return "[]", ArrayDefault, true
+	}
+
+	element, _, ok := DefaultValuePreview(*typ.Element, maxArrayElements)
+	if !ok {
+		return "", NoDefault, false
+	}
+	if maxArrayElements < 1 {
+		maxArrayElements = 1
+	}
+	if typ.ArrayLength > int64(maxArrayElements) {
+		return "[" + element + ", ...]", ArrayDefault, true
+	}
+
+	elements := make([]string, int(typ.ArrayLength))
+	for index := range elements {
+		elements[index] = element
+	}
+	return "[" + strings.Join(elements, ", ") + "]", ArrayDefault, true
+}
+
 func defaultResolutionDisplay(typ Type, resolution DefaultResolution) string {
 	switch resolution.Kind {
 	case PrimitiveDefault, NamedDefault, RangeDefault, MembershipDefault, ExplicitTypeDefault:
 		return resolution.Value.Lexeme
+	case EnumDefault:
+		return typ.Name + "." + resolution.Value.Lexeme
+	case UnionDefault:
+		if resolution.Payload != nil {
+			return typ.Name + "." + resolution.Variant + "(" + defaultResolutionDisplay(unionDefaultPayloadType(typ, resolution.Variant), *resolution.Payload) + ")"
+		}
+		if len(resolution.Fields) > 0 {
+			variant, _ := unionVariantByName(typ, resolution.Variant)
+			parts := make([]string, 0, len(resolution.Fields))
+			for _, field := range resolution.Fields {
+				fieldType, ok := unionPayloadFieldType(variant, field.Name)
+				if ok {
+					parts = append(parts, field.Name+": "+defaultResolutionDisplay(fieldType, field.Value))
+				}
+			}
+			return typ.Name + "." + resolution.Variant + " { " + strings.Join(parts, ", ") + " }"
+		}
+		return typ.Name + "." + resolution.Variant
 	case StructDefault:
 		parts := make([]string, 0, len(resolution.Fields))
 		for _, field := range resolution.Fields {
@@ -48,6 +98,32 @@ func defaultResolutionDisplay(typ Type, resolution DefaultResolution) string {
 	default:
 		return ""
 	}
+}
+
+func unionVariantByName(typ Type, name string) (UnionVariant, bool) {
+	for _, variant := range typ.UnionVariants {
+		if variant.Name == name {
+			return variant, true
+		}
+	}
+	return UnionVariant{}, false
+}
+
+func unionDefaultPayloadType(typ Type, variantName string) Type {
+	variant, ok := unionVariantByName(typ, variantName)
+	if !ok || variant.Payload == nil {
+		return Type{Kind: InvalidType}
+	}
+	return *variant.Payload
+}
+
+func unionPayloadFieldType(variant UnionVariant, name string) (Type, bool) {
+	for _, field := range variant.PayloadFields {
+		if field.Name == name {
+			return field.Type, true
+		}
+	}
+	return Type{}, false
 }
 
 func defaultValueOf(typ Type, visiting map[string]bool) DefaultResolution {
@@ -91,6 +167,45 @@ func defaultValueOf(typ Type, visiting map[string]bool) DefaultResolution {
 		return scalarDefault(typ, zero)
 	case DecimalType:
 		return decimalDefault(typ)
+	case EnumType:
+		member := typ.EnumDefault
+		if member == "" && len(typ.EnumValues) > 0 {
+			member = typ.EnumValues[0]
+		}
+		if member == "" {
+			return DefaultResolution{Kind: NoDefault}
+		}
+		return DefaultResolution{Kind: EnumDefault, Value: DefaultConstant{Kind: EnumType, Lexeme: member}}
+	case UnionType:
+		if typ.UnionDefault == "" {
+			return DefaultResolution{Kind: NoDefault}
+		}
+		key := typ.Module + "." + typ.Name
+		if visiting[key] {
+			return DefaultResolution{Kind: NoDefault}
+		}
+		visiting[key] = true
+		defer delete(visiting, key)
+		variant, ok := unionVariantByName(typ, typ.UnionDefault)
+		if !ok {
+			return DefaultResolution{Kind: NoDefault}
+		}
+		result := DefaultResolution{Kind: UnionDefault, Variant: variant.Name}
+		if variant.Payload != nil {
+			payload := defaultValueOf(*variant.Payload, visiting)
+			if payload.Kind == NoDefault {
+				return DefaultResolution{Kind: NoDefault}
+			}
+			result.Payload = &payload
+		}
+		for _, field := range variant.PayloadFields {
+			value := defaultValueOf(field.Type, visiting)
+			if value.Kind == NoDefault {
+				return DefaultResolution{Kind: NoDefault}
+			}
+			result.Fields = append(result.Fields, DefaultField{Name: field.Name, Value: value})
+		}
+		return result
 	case ArrayType:
 		if typ.Element == nil || typ.ArrayLength < 0 {
 			return DefaultResolution{Kind: NoDefault}
@@ -502,6 +617,32 @@ func defaultExpression(resolution DefaultResolution, typ Type, token lexer.Token
 	switch resolution.Kind {
 	case PrimitiveDefault, NamedDefault, RangeDefault, MembershipDefault, ExplicitTypeDefault:
 		return defaultConstantExpression(resolution.Value, token)
+	case EnumDefault:
+		return &ast.MemberExpression{
+			Token:    token,
+			Object:   &ast.Identifier{Token: token, Value: typ.Name},
+			Property: &ast.Identifier{Token: token, Value: resolution.Value.Lexeme},
+		}
+	case UnionDefault:
+		variant, ok := unionVariantByName(typ, resolution.Variant)
+		if !ok {
+			return nil
+		}
+		member := &ast.MemberExpression{Token: token, Object: &ast.Identifier{Token: token, Value: typ.Name}, Property: &ast.Identifier{Token: token, Value: resolution.Variant}}
+		if resolution.Payload != nil && variant.Payload != nil {
+			return &ast.CallExpression{Token: token, Callee: member, Arguments: []ast.Expression{defaultExpression(*resolution.Payload, *variant.Payload, token)}}
+		}
+		if len(variant.PayloadFields) > 0 {
+			literal := &ast.StructLiteral{Token: token, Type: &ast.TypeReference{Token: token, Name: typ.Name + "." + resolution.Variant}}
+			for _, field := range resolution.Fields {
+				fieldType, ok := unionPayloadFieldType(variant, field.Name)
+				if ok {
+					literal.Fields = append(literal.Fields, &ast.StructLiteralField{Token: token, Name: &ast.Identifier{Token: token, Value: field.Name}, Value: defaultExpression(field.Value, fieldType, token)})
+				}
+			}
+			return literal
+		}
+		return member
 	case StructDefault:
 		literal := &ast.StructLiteral{Token: token, Type: &ast.TypeReference{Token: token, Name: typ.Name}}
 		for i, field := range resolution.Fields {

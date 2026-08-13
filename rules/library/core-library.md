@@ -1334,6 +1334,11 @@ enum ArithmeticError {
     InvalidShift
 }
 
+enum EnumValueError {
+    UndeclaredValue
+    OutOfRange
+}
+
 enum RangeError {
     InvalidRange
     StartAfterEnd
@@ -1563,6 +1568,9 @@ Implemented:
   values `Overflow`, `DivisionByZero` and `InvalidShift`. It is used by naked
   `try` over checked integer arithmetic and does not implicitly convert to
   another error or an error union.
+- `EnumValueError` is compiler-known, always available and has the exact values
+  `UndeclaredValue` and `OutOfRange`. It is used by checked runtime
+  integer-to-enum conversion.
 - Compiler intrinsic types are registered in semantic-analysis metadata and
   remain compiler-owned rather than declared in core source. This includes
   fundamental builtins (`bool`, integer/float/decimal types, `string`, `void`,
@@ -1570,7 +1578,7 @@ Implemented:
   `Option[T]`, `Result[T, E]`, `Task[T]`, `Mutex[T]`, `MutexGuard[T]`,
   `Atomic[T]`, `CompareExchangeResult[T]`, `Event[T]`,
   `EventStorage[T, Capacity]`, `Subscription`, `EventSubscribeResult`, `Arena`
-  and `AllocationError`.
+  `AllocationError` and `EnumValueError`.
 - `RawPtr[void]` is supported as an extern C/FFI pointer type.
 - Minimum core source currently includes `bool.ToString()`, selected `int`
   and `uint` methods, a semantically valid subset of `string` methods
@@ -1644,7 +1652,30 @@ Current intentional deviation from the desired final surface:
 
 ---
 
-# 24. Design summary
+# 24. Shaped compiler/core boundary
+
+`vector`, `matrix`, `tensor`, and `tensor_view` are compiler-known first-class
+language type families. Their intrinsic properties and operations exist because
+the compiler-owned registry and `shaped-types.md` define them; they do not
+require ordinary privileged core or standard-library `impl` declarations.
+
+The compiler-owned shaped surface includes `Rank`, `Shape`, `Len`, `Strides`,
+`Layout`, `MemorySpace`, `IsContiguous`, `Ptr`, `SizeOf`, `Reshape`, `ToShape`,
+`Materialize`, `TransferTo`, `Relayout`, `Permute`, `Transpose`, `BroadcastTo`,
+`Dot`, `Outer`, `Magnitude`, `Normalize`, `Cross`, `Contract`, and contextual
+operator `x` semantics.
+
+Core and standard-library source may provide implementation helpers and
+additive numerical algorithms, but cannot redefine these semantics. Ordinary
+modules cannot monkey-patch compiler-owned shaped types with privileged global
+`impl` blocks.
+
+Legacy lowercase `.len` and `.ptr` examples do not override canonical `.Len`
+and `.Ptr` spellings or the existing compatibility migration.
+
+---
+
+# 25. Design summary
 
 The compiler owns representation-sensitive primitives.
 

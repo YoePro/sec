@@ -1958,6 +1958,23 @@ A malformed payload must not discard later variants.
 
 ---
 
+# Reversed type declaration order
+
+The parser recognizes declaration-kind-before-name mistakes such as:
+
+```sec
+type struct User { ... }
+type union State { ... }
+type register Status[8] { ... }
+```
+
+These forms remain syntax errors. The parser emits `P2011` and explains the
+canonical `type Name kind` order. Because the intended ordering is unique,
+fix-enabled formatting may rewrite them while ordinary formatting preserves
+the invalid source around the diagnostic.
+
+---
+
 # Register recovery
 
 Inside a register body, synchronize at:
@@ -3496,12 +3513,12 @@ semantic_ir.txt
 compiler_pipeline.txt
 types.md
 functions.txt
-struct.txt
-enums.txt
-unions.txt
-interfaces.txt
-impl.txt
-properties.txt
+struct.md
+enums.md
+unions.md
+declarations/interfaces.md
+impl.md
+properties.md
 collections.md
 flowcontrol_if.txt
 flowcontrol_for.txt

@@ -1194,40 +1194,82 @@ governed by their own collection rules.
 
 # Enums
 
-Enum default semantics remain governed by the canonical enum rulebook.
+Every valid enum is non-empty and defaultable. Its default is the single member
+marked `default`, when present, and otherwise its first declared member. Member
+identity selects the default; underlying numeric zero has no special priority.
 
-The enum rulebook must define how a valid member is selected when:
+```sec
+enum Status int {
+    UNKNOWN = 10,
+    ACTIVE = 20,
+}
 
-```text
-a zero-valued member exists
-the first member is explicitly nonzero
-aliases exist
-no member has value zero
-an explicit enum default is declared
+enum ConnectionState {
+    CONNECTING,
+    CONNECTED,
+    DISCONNECTED default,
+}
 ```
 
-This document does not invent a conflicting enum rule.
+The defaults are `Status.UNKNOWN` and `ConnectionState.DISCONNECTED`.
+The marker does not alter the initializer, `iota`, aliases, or initializer
+repetition. For an open bit-backed enum, the default is still a declared member;
+an unnamed raw pattern is never selected merely because it is zero.
 
-An enum used in omitted struct fields must have a resolved valid default.
+A mutable enum declaration without an initializer is initialized with the
+resolved enum default. This is initialized storage and does not require a later
+definite assignment before first read. An enum used in an omitted struct field
+uses the same resolved default.
 
 ---
 
 # Unions
 
-A union default requires one active variant and a valid payload default.
+A union has no implicit first-variant default.
 
-No union may default to untagged or undefined payload storage.
+A union is `Defaultable` only when exactly one declared variant is explicitly
+marked `default` and that variant can be default-constructed.
 
-The union rulebook must define:
+- A payload-less default variant is constructible.
+- A single-payload default variant requires a Defaultable payload type.
+- A struct-like default variant uses the normal omitted-field/default rules and
+  is valid only when all required payload state can be constructed.
 
-```text
-default variant
-explicit default variant
-payload initialization
-non-defaultable union behavior
+```sec
+type State union {
+    Idle default
+    Running
+}
+
+let mut state: State
 ```
 
-Until a union has such a rule, it is non-defaultable.
+The resolved default is `State.Idle`.
+
+A mutable binding of a NonDefaultable union has one explicit exception to the
+general omitted-initializer rule:
+
+```sec
+type PendingState union {
+    Idle
+    Running
+}
+
+let mut pending: PendingState
+```
+
+The binding begins in the compiler-known `empty` initialization state. `empty`
+is not a default value, a valid union value, `null`, `None`, `Nothing`, or a
+hidden union variant. The binding must contain a real union value before it may
+escape or be used in a context requiring a value. `is empty` and the `empty`
+match pattern inspect this initialization state under the union and match
+rules.
+
+Immutable union bindings still require an explicit initializer.
+
+A struct-like union payload construction may omit a field whose type is
+Defaultable; that field receives its normal resolved default. A NonDefaultable
+payload field must be supplied explicitly.
 
 ---
 
@@ -1919,11 +1961,11 @@ This rulebook must remain synchronized with:
 ```text
 types.md
 contracts.md
-struct.txt
+struct.md
 collections.md
 shaped-types.md
-enums.txt
-unions.txt
+enums.md
+unions.md
 memory_model.md
 ownership.md
 copy_move.md

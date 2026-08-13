@@ -503,7 +503,7 @@ concurrency_runtime_model.md
 concurrency.md
 concurrency_memory_model.txt
 static.md
-properties.txt
+properties.md
 types.md
 functions.txt
 ownership.md

@@ -22,11 +22,11 @@ type ComparisonKey struct {
 interface Marker {
 }
 
-type MarkedValue struct implements Marker {
+type MarkedValue struct {
     value: int,
 }
 
-impl MarkedValue {
+impl MarkedValue implements Marker {
 }
 
 // =============================================================================
@@ -37,11 +37,11 @@ interface Identified {
     fn Identifier() Identifier
 }
 
-type Entity struct implements Identified {
+type Entity struct {
     _identifier: Identifier,
 }
 
-impl Entity {
+impl Entity implements Identified {
     fn Identifier() Identifier {
         return _identifier
     }
@@ -53,15 +53,30 @@ impl Entity {
 
 interface Switchable {
     fn IsEnabled() bool
-    fn Enable() void
-    fn Disable() void
+    mut fn Enable() void
+    mut fn Disable() void
 }
 
-type Switch struct implements Switchable {
+// A concrete non-mutating receiver is less demanding and may satisfy mut fn.
+interface MutableObservation {
+    mut fn Observe() bool
+}
+
+type Observation struct {
+    value: bool,
+}
+
+impl Observation implements MutableObservation {
+    fn Observe() bool {
+        return self.value
+    }
+}
+
+type Switch struct {
     _enabled: bool,
 }
 
-impl Switch {
+impl Switch implements Switchable {
     fn IsEnabled() bool {
         return _enabled
     }
@@ -80,15 +95,15 @@ impl Switch {
 // =============================================================================
 
 interface Processor {
-    fn Process(value: int, limit: uint) bool
+    mut fn Process(value: int, limit: uint) bool
     fn Matches(key: ref ComparisonKey) bool
 }
 
-type NumberProcessor struct implements Processor {
+type NumberProcessor struct {
     _lastValue: int,
 }
 
-impl NumberProcessor {
+impl NumberProcessor implements Processor {
     // Parameter names do not form part of the interface signature.
     fn Process(input: int, maximum: uint) bool {
         _lastValue = input
@@ -110,11 +125,11 @@ interface Named {
     }
 }
 
-type ReadOnlyName struct implements Named {
+type ReadOnlyName struct {
     _name: string,
 }
 
-impl ReadOnlyName {
+impl ReadOnlyName implements Named {
     property Name: string {
         get {
             return _name
@@ -123,11 +138,11 @@ impl ReadOnlyName {
 }
 
 // A get requirement may be satisfied by a property that also has a setter.
-type MutableName struct implements Named {
+type MutableName struct {
     _name: string,
 }
 
-impl MutableName {
+impl MutableName implements Named {
     property Name: string {
         get {
             return _name
@@ -146,15 +161,15 @@ impl MutableName {
 interface Counted {
     property Count: CounterValue {
         get
-        set
+        set count
     }
 }
 
-type Counter struct implements Counted {
+type Counter struct {
     _count: CounterValue,
 }
 
-impl Counter {
+impl Counter implements Counted {
     property Count: CounterValue {
         get {
             return _count
@@ -175,16 +190,16 @@ interface Described {
 }
 
 interface Resettable {
-    fn Reset() void
+    mut fn Reset() void
 }
 
-type Service struct implements Identified, Named, Described, Resettable {
+type Service struct {
     _identifier: Identifier,
     _name: string,
     _resetCount: int,
 }
 
-impl Service {
+impl Service implements Identified, Named, Described, Resettable {
     // Member declaration order does not need to match interface order.
     fn Reset() void {
         _resetCount = 0
@@ -225,17 +240,17 @@ interface Readable {
 }
 
 interface Writable {
-    fn Write(value: int) void
+    mut fn Write(value: int) void
 }
 
 interface ReadWriter implements Readable, Writable {
 }
 
-type MemoryCell struct implements ReadWriter {
+type MemoryCell struct {
     _value: int,
 }
 
-impl MemoryCell {
+impl MemoryCell implements ReadWriter {
     fn Read() int {
         return _value
     }
@@ -250,23 +265,23 @@ impl MemoryCell {
 // =============================================================================
 
 interface Startable {
-    fn Start() void
+    mut fn Start() void
 }
 
 interface Stoppable {
-    fn Stop() void
+    mut fn Stop() void
 }
 
 interface Managed implements Startable, Stoppable, Named {
     fn IsRunning() bool
 }
 
-type Worker struct implements Managed {
+type Worker struct {
     _name: string,
     _running: bool,
 }
 
-impl Worker {
+impl Worker implements Managed {
     fn Start() void {
         _running = true
     }
@@ -301,11 +316,11 @@ interface RightState {
 interface CombinedState implements LeftState, RightState {
 }
 
-type StateMachine struct implements CombinedState {
+type StateMachine struct {
     _state: int,
 }
 
-impl StateMachine {
+impl StateMachine implements CombinedState {
     // One compatible member satisfies both inherited declarations.
     fn State() int {
         return _state
@@ -329,11 +344,11 @@ interface RightBranch implements RootValue {
 interface Diamond implements LeftBranch, RightBranch {
 }
 
-type DiamondValue struct implements Diamond {
+type DiamondValue struct {
     _root: int,
 }
 
-impl DiamondValue {
+impl DiamondValue implements Diamond {
     fn Root() int {
         return _root
     }
@@ -358,11 +373,11 @@ interface RightLabel {
 interface CombinedLabel implements LeftLabel, RightLabel {
 }
 
-type LabelledValue struct implements CombinedLabel {
+type LabelledValue struct {
     _label: string,
 }
 
-impl LabelledValue {
+impl LabelledValue implements CombinedLabel {
     property Label: string {
         get {
             return _label

@@ -6,7 +6,7 @@ Normative amendment for:
 
 ```text
 rules/control-flow/flowcontrol_match.txt
-rules/declarations/enums.txt
+rules/declarations/enums.md
 ```
 
 Package:
@@ -141,24 +141,23 @@ Use declaration names only for diagnostics/provenance.
 
 # 6. Enum runtime domain
 
-Because explicit integer-to-enum conversion may produce an undeclared value,
-the possible enum value domain is the full representable domain of the enum's
-underlying representation.
+Ordinary enums are closed over their unique declared numeric value classes.
+Explicit conversion cannot create an undeclared ordinary enum value.
+
+Bit-backed enums are open over the complete representable domain of their
+declared `bit[N]` width. Explicit conversion may create an unnamed in-width
+value.
 
 Examples:
 
 ```text
 bit[1]  -> 0..1
 bit[2]  -> 0..3
-uint8   -> 0..255
-int8    -> -128..127
+ordinary enum -> unique declared numeric classes
 ```
 
-For target-sized `int`/`uint`, use the active CompilationPlan when width is
-available.
-
-If width/range is not available at the analysis point, the compiler must not
-assume declared cases are the entire runtime domain.
+The machine representation of an ordinary enum does not expand its semantic
+domain.
 
 ---
 
@@ -170,11 +169,16 @@ An enum match is exhaustive when either:
 an unguarded catch-all _ exists
 ```
 
-or:
+or, for an ordinary enum:
 
 ```text
-the compiler proves that the unique numeric values covered by unguarded enum
-patterns cover the complete representable enum domain
+unguarded enum patterns cover every unique declared numeric value class
+```
+
+or, for a bit-backed enum:
+
+```text
+unguarded patterns cover every representable bit[N] value
 ```
 
 Guarded arms do not count as full coverage.
@@ -183,7 +187,7 @@ Aliases contribute only one numeric coverage value.
 
 ---
 
-# 8. Ordinary enums normally require catch-all
+# 8. Ordinary enums are closed
 
 Example:
 
@@ -196,7 +200,7 @@ enum Direction {
 }
 ```
 
-The following is generally non-exhaustive:
+The following is exhaustive:
 
 ```sec
 match direction {
@@ -207,23 +211,11 @@ match direction {
 }
 ```
 
-because explicit conversion can create other numeric `Direction` values.
-
-Canonical exhaustive form:
-
-```sec
-match direction {
-    Direction.North => A()
-    Direction.East => B()
-    Direction.South => C()
-    Direction.West => D()
-    _ => Other()
-}
-```
+because all unique declared numeric value classes are covered.
 
 ---
 
-# 9. Full finite-domain exception
+# 9. Open bit-backed full-domain proof
 
 A catch-all is not required when full domain coverage is proven.
 
@@ -266,7 +258,8 @@ Do not enumerate a huge integer domain.
 Conceptually:
 
 ```text
-coveredUniqueNumericCount == representableDomainCardinality
+closed: covered declared numeric classes == all declared numeric classes
+open bit-backed: coveredUniqueNumericCount == 2^N
 ```
 
 is sufficient when every covered numeric value is known representable.
@@ -281,16 +274,17 @@ finite declared pattern set, reject as non-exhaustive without enumeration.
 Example:
 
 ```sec
-let status: Status := Status(77)
+let mode: HardwareMode := HardwareMode(3)
 ```
 
-A later match must handle the possibility of numeric value `77` even if no
-declared Status case has that value.
+A later match must handle numeric value `3` when `HardwareMode` is an open
+bit-backed enum even if no declared member names that pattern.
 
 A catch-all handles it.
 
-Do not reinterpret explicit conversion as choosing the nearest or matching
-declared case name.
+For a closed ordinary enum, an undeclared constant conversion is rejected and a
+runtime conversion performs checked validation. Do not reinterpret conversion
+as choosing a nearest member name.
 
 ---
 
@@ -317,7 +311,7 @@ Update:
 
 ```text
 rules/control-flow/flowcontrol_match.txt
-rules/declarations/enums.txt
+rules/declarations/enums.md
 Sema enum match coverage
 enum match tests
 manual examples derived from these rules
@@ -327,7 +321,7 @@ Do not change enum storage layout to solve match aliases.
 
 Do not prohibit aliases.
 
-Do not prohibit explicit unnamed enum values.
+Permit explicit unnamed values only for open bit-backed enums.
 
 ---
 
@@ -342,8 +336,11 @@ unreachable enum match arm Status.Ok; numeric value 0 is already fully covered
 and:
 
 ```text
-non-exhaustive match for Status; enum may contain undeclared numeric values;
-add _ or cover the complete underlying domain
+non-exhaustive match for closed enum Status; cover every declared numeric value
+class or add _
+
+non-exhaustive match for open bit-backed enum HardwareMode; undeclared hardware
+encodings remain possible; add _ or cover the complete bit[N] domain
 ```
 
 Stable diagnostic IDs follow the normal diagnostic registry.

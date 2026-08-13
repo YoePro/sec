@@ -1,7 +1,7 @@
 Kategori: Språkkonstruktioner & Syntax
 arrays-slices.txt - Written
 defer.txt - Written
-enums.txt - Written
+enums.md - Written
 flowcontrol_for.txt - Written
 flowcontrol_if.txt - Written
 flowcontrol_match.txt - Written
@@ -13,9 +13,9 @@ lambdas.txt - To be done
 closures.txt - To be done
 spread.txt - Written
 discard.md - Written
-struct.txt - Written
+struct.md - Written
 types.md - Written
-unions.txt - Written
+declarations/unions.md - Written
 units.txt - Written
 contracts.md - Written
 
@@ -59,7 +59,7 @@ ipc.txt - To be done
 
 Kategori: Typ- & Metodsystem
 generics.txt - Written
-impl.txt - Written
+impl.md - Written
 interfaces.txt - Written
 properties.txt - Written
 
@@ -87,7 +87,8 @@ platform_model.txt - To be done
 inline_assembly.txt - To be done
 volatile.txt - To be done
 interrupts.txt - To be done
-registers.txt - Written
+declarations/registers.md - Written
+platform/fixed-address-bindings.md - Written
 
 Kategori: Verktyg, Diagnostik & Testning
 diagnostics.txt - Written

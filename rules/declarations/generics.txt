@@ -1010,9 +1010,15 @@ Rules:
 * The impl is instantiated together with the concrete target type.
 * Methods are monomorphized only when used, unless eager instantiation is
   selected for implementation simplicity.
-* A generic type follows the normal rule of at most one primary impl block.
-* Additional `impl extends Stack[T]` blocks may be declared in the same module
-  and must repeat the primary target's exact generic parameter mapping.
+* A generic named type has exactly one primary ordinary `impl Stack[T]` in its
+  defining module.
+* Additional same-module `impl extends Stack[T]` fragments may appear in any
+  source file and must repeat the target's exact generic parameter mapping.
+* The primary and all fragments form one member namespace; duplicate methods,
+  properties, nested declarations and lifecycle signatures conflict across
+  fragment boundaries.
+* Generic impls may contain `init` and `free` under `impl.md`; `extends` does
+  not introduce unrelated generic parameters.
 
 Current implementation:
 

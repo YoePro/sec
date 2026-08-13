@@ -1067,6 +1067,12 @@ func documentSymbolForStatement(stmt ast.Statement) (documentSymbol, bool) {
 		name := "impl " + stmt.Target.Name
 		if stmt.Extends {
 			name = "impl extends " + stmt.Target.Name
+		} else if len(stmt.Implements) > 0 {
+			interfaces := make([]string, 0, len(stmt.Implements))
+			for _, ref := range stmt.Implements {
+				interfaces = append(interfaces, typeReferenceName(ref))
+			}
+			name += " implements " + strings.Join(interfaces, ", ")
 		}
 		symbol := namedDocumentSymbol(name, "impl", 3, stmt.Token, stmt.Target.Token)
 		for _, member := range stmt.Members {
@@ -1087,6 +1093,15 @@ func documentSymbolForImplMember(member ast.ImplMember) (documentSymbol, bool) {
 			return documentSymbol{}, false
 		}
 		return functionDocumentSymbol(member, 6), true
+	case *ast.InitDeclaration:
+		if member == nil {
+			return documentSymbol{}, false
+		}
+		detail := "constructs"
+		if member.ErrorType != nil {
+			detail += "; error " + typeReferenceName(member.ErrorType)
+		}
+		return namedDocumentSymbol("init", detail, 9, member.Token, member.Token), true
 	case *ast.PropertyDeclaration:
 		if member == nil || member.Name == nil {
 			return documentSymbol{}, false
@@ -1185,6 +1200,9 @@ func semanticTokenClassification(uri string, text string) (classification map[st
 			continue
 		}
 		positionKey := features.ClassificationKey(token.File, token.Line, token.Column)
+		if classification[positionKey] == "keyword" {
+			continue
+		}
 		if member, ok := analyzer.CompilerKnownMemberAt(token.File, token.Line, token.Column); ok {
 			kind := "method"
 			if member.Kind == sema.CompilerKnownProperty {
@@ -1229,6 +1247,12 @@ func contextualKeywordClassifications(program *ast.Program) map[string]string {
 		}
 		classification[features.ClassificationKey(token.File, token.Line, token.Column)] = "keyword"
 	}
+	setParameter := func(identifier *ast.Identifier) {
+		if identifier == nil || identifier.Token.Line <= 0 || identifier.Token.Column <= 0 {
+			return
+		}
+		classification[features.ClassificationKey(identifier.Token.File, identifier.Token.Line, identifier.Token.Column)] = "parameter"
+	}
 	for _, statement := range program.Statements {
 		switch statement := statement.(type) {
 		case *ast.InterfaceDeclaration:
@@ -1238,6 +1262,7 @@ func contextualKeywordClassifications(program *ast.Program) map[string]string {
 			for _, property := range statement.Properties {
 				if property != nil && property.RequiresSet {
 					setKeyword(property.SetToken)
+					setParameter(property.SetterParameter)
 				}
 			}
 		case *ast.ImplStatement:
@@ -1245,9 +1270,15 @@ func contextualKeywordClassifications(program *ast.Program) map[string]string {
 				continue
 			}
 			for _, member := range statement.Members {
-				property, ok := member.(*ast.PropertyDeclaration)
-				if ok && property != nil && property.Setter != nil {
-					setKeyword(property.Setter.Token)
+				switch member := member.(type) {
+				case *ast.PropertyDeclaration:
+					if member != nil && member.Setter != nil {
+						setKeyword(member.Setter.Token)
+					}
+				case *ast.InitDeclaration:
+					if member != nil {
+						setKeyword(member.Token)
+					}
 				}
 			}
 		}
@@ -1305,7 +1336,7 @@ func semanticTokenType(token lexer.Token, classification map[string]string) stri
 			return classified
 		}
 		return "variable"
-	case lexer.ASSIGN, lexer.DECLARE, lexer.MOVE_ASSIGN, lexer.MOVE_DECLARE, lexer.ARROW, lexer.PLUS, lexer.MINUS, lexer.ASTERISK, lexer.SLASH, lexer.PERCENT,
+	case lexer.ASSIGN, lexer.DECLARE, lexer.MOVE_ASSIGN, lexer.MOVE_DECLARE, lexer.ARROW, lexer.CONSUME_ARROW, lexer.PLUS, lexer.MINUS, lexer.ASTERISK, lexer.SLASH, lexer.PERCENT,
 		lexer.PLUS_ASSIGN, lexer.MINUS_ASSIGN, lexer.ASTERISK_ASSIGN, lexer.SLASH_ASSIGN, lexer.PERCENT_ASSIGN,
 		lexer.EQ, lexer.NEQ, lexer.LT, lexer.LTE, lexer.GT, lexer.GTE, lexer.AND, lexer.OR, lexer.NOT,
 		lexer.BIT_AND, lexer.BIT_OR, lexer.BIT_XOR, lexer.BIT_NOT, lexer.SHIFT_LEFT, lexer.SHIFT_RIGHT,
@@ -1541,7 +1572,7 @@ func distinctCallees(sites []sema.CallSite) int {
 
 func typedHover(rng lspRange, name string, typ sema.Type) hoverResult {
 	contents := fmt.Sprintf("```sec\n%s: %s\n```", name, lspTypeName(typ))
-	if value, source, ok := sema.DefaultValueDisplay(typ); ok {
+	if value, source, ok := sema.DefaultValuePreview(typ, 8); ok {
 		contents += fmt.Sprintf("\n\nDefault: `%s`\n\nSource: `%s`", value, source)
 	} else {
 		contents += "\n\nDefault: _none_"
@@ -2264,7 +2295,7 @@ var secKeywords = []string{
 	"defer", "detach", "else", "enum", "even", "extern", "fallthrough", "false", "finite", "fn", "for",
 	"free", "get", "if", "impl", "implements", "import", "in", "interface",
 	"let", "match", "module", "multipleOf", "mut", "notEmpty", "odd", "panic", "process",
-	"property", "ref", "return", "select", "self", "set", "spawn", "static", "struct",
+	"new", "property", "ref", "return", "select", "self", "set", "spawn", "static", "struct",
 	"require", "switch", "task", "thread", "true", "try", "type", "unique", "unit", "union",
 	"unsafe", "where", "while",
 }
@@ -3390,6 +3421,11 @@ func findSelectorLHS(node any, text string, dotOffset int) ast.Expression {
 		if n.Setter != nil {
 			return findSelectorLHS(n.Setter.Body, text, dotOffset)
 		}
+	case *ast.InitDeclaration:
+		if n == nil {
+			return nil
+		}
+		return findSelectorLHS(n.Body, text, dotOffset)
 	case *ast.BlockStatement:
 		for _, stmt := range n.Statements {
 			if found := findSelectorLHS(stmt, text, dotOffset); found != nil {
@@ -3675,8 +3711,15 @@ func rewriteImportQualifier(program *ast.Program, from string, to string) {
 				continue
 			}
 			for _, member := range stmt.Members {
-				if fn, ok := member.(*ast.FunctionDeclaration); ok && fn != nil {
-					rewriteQualifierInBlock(fn.Body, from, to)
+				switch member := member.(type) {
+				case *ast.FunctionDeclaration:
+					if member != nil {
+						rewriteQualifierInBlock(member.Body, from, to)
+					}
+				case *ast.InitDeclaration:
+					if member != nil {
+						rewriteQualifierInBlock(member.Body, from, to)
+					}
 				}
 			}
 		default:
@@ -3744,6 +3787,13 @@ func rewriteQualifierInExpression(expr ast.Expression, from string, to string) {
 		rewriteQualifierInExpression(expr.Callee, from, to)
 		for _, arg := range expr.Arguments {
 			rewriteQualifierInExpression(arg, from, to)
+		}
+	case *ast.NewExpression:
+		if expr.Type != nil {
+			expr.Type.Name = rewriteQualifiedName(expr.Type.Name, from, to)
+		}
+		for _, argument := range expr.Arguments {
+			rewriteQualifierInExpression(argument, from, to)
 		}
 	case *ast.MemberExpression:
 		rewriteQualifierInExpression(expr.Object, from, to)
@@ -3969,6 +4019,15 @@ func qualifyLocalTypeReferencesInImplMember(member ast.ImplMember, module string
 		qualifyLocalTypeReferencesInStatement(member, module, localTypes)
 	case *ast.FunctionDeclaration:
 		qualifyLocalTypeReferencesInFunction(member, module, localTypes)
+	case *ast.InitDeclaration:
+		if member == nil {
+			return
+		}
+		for _, parameter := range member.Parameters {
+			qualifyLocalTypeReference(parameter.Type, module, localTypes)
+		}
+		qualifyLocalTypeReference(member.ErrorType, module, localTypes)
+		qualifyLocalTypeReferencesInBlock(member.Body, module, localTypes)
 	case *ast.PropertyDeclaration:
 		if member == nil {
 			return
@@ -4036,6 +4095,11 @@ func qualifyLocalTypesInExpression(expr ast.Expression, module string, localType
 		for _, arg := range expr.Arguments {
 			qualifyLocalTypesInExpression(arg, module, localTypes)
 		}
+	case *ast.NewExpression:
+		qualifyLocalTypeReference(expr.Type, module, localTypes)
+		for _, argument := range expr.Arguments {
+			qualifyLocalTypesInExpression(argument, module, localTypes)
+		}
 	case *ast.MemberExpression:
 		if ident, ok := expr.Object.(*ast.Identifier); ok && localTypes[ident.Value] {
 			ident.Value = module + "." + ident.Value
@@ -4101,6 +4165,8 @@ func qualifyLocalCallsInImplMembers(members []ast.ImplMember, module string, loc
 	for _, member := range members {
 		switch member := member.(type) {
 		case *ast.FunctionDeclaration:
+			qualifyLocalCalls(member.Body, module, localFunctions)
+		case *ast.InitDeclaration:
 			qualifyLocalCalls(member.Body, module, localFunctions)
 		case *ast.PropertyDeclaration:
 			if member == nil {
@@ -4187,6 +4253,10 @@ func qualifyLocalCallsInExpression(expr ast.Expression, module string, localFunc
 		qualifyLocalCallsInExpression(expr.Callee, module, localFunctions)
 		for _, arg := range expr.Arguments {
 			qualifyLocalCallsInExpression(arg, module, localFunctions)
+		}
+	case *ast.NewExpression:
+		for _, argument := range expr.Arguments {
+			qualifyLocalCallsInExpression(argument, module, localFunctions)
 		}
 	case *ast.PrefixExpression:
 		qualifyLocalCallsInExpression(expr.Right, module, localFunctions)

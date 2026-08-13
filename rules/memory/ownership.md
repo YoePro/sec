@@ -2048,6 +2048,19 @@ independent copy semantics are known.
 
 Borrowed interface references follow normal reference rules.
 
+Interface receiver capability is part of the interface contract:
+
+```sec
+fn Inspect() Data
+mut fn Update() void
+-> fn Consume() ResultData
+```
+
+A shared borrow may call only shared methods. A mutable borrow may call shared
+and mutable methods but does not transfer ownership and therefore cannot call a
+consuming method. A consuming method requires an owned interface value and
+consumes that receiver on successful invocation.
+
 ---
 
 # Static values
@@ -3047,7 +3060,7 @@ copy_move.md
 contracts.md
 types.md
 functions.txt
-struct.txt
+struct.md
 collections.md
 shaped-types.md
 borrowing.txt
@@ -3061,7 +3074,8 @@ tasks.txt
 threads.md
 processes.txt
 ffi.txt
-registers.txt
+declarations/registers.md
+platform/fixed-address-bindings.md
 static.md
 allocation.txt
 memory_model.md
@@ -3690,7 +3704,7 @@ copy_move.md
 contracts.md
 types.md
 functions.txt
-struct.txt
+struct.md
 collections.md
 shaped-types.md
 borrowing.txt

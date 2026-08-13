@@ -348,7 +348,7 @@ Canonical documentation synchronization:
 - `contracts.md` now defines contracts only on named types; obsolete variable-
   and ordinary-field contract syntax is noncanonical, while compiler rejection
   of every legacy form still requires an audit
-- `types.md`, `struct.txt`, `collections.md`, `shaped-types.md`,
+- `types.md`, `struct.md`, `collections.md`, `shaped-types.md`,
   `memory_model.md`, `ownership.md`,
   `copy_move.md`, `formatter.md`, `operators.md` and `lexical_structure.md`
   cross-reference the canonical default model
@@ -1278,7 +1278,7 @@ Register rules may validate:
 
 Do not fully reimplement units or registers unless those features are already ready.
 
-Use units.txt and registers.txt as semantic authority.
+Use `units.txt` and `rules/declarations/registers.md` as semantic authority.
 
 Rule ownership
 --------------

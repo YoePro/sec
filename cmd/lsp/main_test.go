@@ -155,6 +155,27 @@ fn Use(value: Port) void {
 	}
 }
 
+func TestHoverAbbreviatesLargeArrayDefault(t *testing.T) {
+	source := `module main
+
+fn Use() void {
+    let mut values: int[2048]
+    values[0] = 1
+}
+`
+	offset := strings.Index(source, "values")
+	result, ok := hoverForSource("", source, offsetPosition(source, offset))
+	if !ok {
+		t.Fatal("missing hover for large fixed array")
+	}
+	if !strings.Contains(result.Contents.Value, "Default: `[0, ...]`") {
+		t.Fatalf("large array hover is not abbreviated: %s", result.Contents.Value)
+	}
+	if strings.Contains(result.Contents.Value, "0, 0, 0, 0, 0, 0, 0, 0") {
+		t.Fatalf("large array hover rendered the full default: %s", result.Contents.Value)
+	}
+}
+
 func TestCompletionShowsResolvedTypeDefault(t *testing.T) {
 	source := `module main
 
@@ -556,7 +577,7 @@ func TestSemanticTokensClassifyContextualSet(t *testing.T) {
 
 interface Writable {
 	property Value: int {
-		set
+		set next
 	}
 }
 
@@ -578,9 +599,41 @@ fn Use() void {
 `
 	tokens := decodeSemanticTokens(semanticTokensForSource("", source))
 	assertSemanticToken(t, tokens, 4, 2, len("set"), "keyword")
+	assertSemanticToken(t, tokens, 4, 6, len("next"), "parameter")
 	assertSemanticToken(t, tokens, 15, 2, len("set"), "keyword")
 	assertSemanticTokenWithModifier(t, tokens, 20, 5, len("set"), "variable", "readonly")
 	assertSemanticTokenWithModifier(t, tokens, 21, 9, len("set"), "variable", "readonly")
+}
+
+func TestLifecycleInitAndNewTooling(t *testing.T) {
+	source := "type Buffer struct {\n" +
+		"    value: int,\n" +
+		"}\n\n" +
+		"impl Buffer {\n" +
+		"    init() {\n" +
+		"    }\n" +
+		"}\n\n" +
+		"fn Make() Buffer {\n" +
+		"    return new Buffer()\n" +
+		"}\n"
+
+	tokens := decodeSemanticTokens(semanticTokensForSource("", source))
+	assertSemanticToken(t, tokens, 5, 4, len("init"), "keyword")
+	assertSemanticToken(t, tokens, 10, 11, len("new"), "keyword")
+
+	symbols := documentSymbolsForSource("", source)
+	var impl *documentSymbol
+	for index := range symbols {
+		if symbols[index].Name == "impl Buffer" {
+			impl = &symbols[index]
+			break
+		}
+	}
+	if impl == nil {
+		t.Fatal("missing impl outline symbol")
+	}
+	assertDocumentSymbolNames(t, impl.Children, []string{"init"})
+	assertDocumentSymbolRangesContainSelections(t, symbols)
 }
 
 func TestSemanticTokensPreferStructFieldOverSameNamedMethod(t *testing.T) {

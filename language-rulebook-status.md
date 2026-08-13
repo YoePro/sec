@@ -153,7 +153,7 @@ This decision requires synchronization of:
 foundations/lexical_structure.md
 foundations/grammar.md
 types/types.md
-declarations/properties.txt
+declarations/properties.md
 collections/collections.md
 collections/shaped-types.md
 tooling/formatter.md
@@ -167,20 +167,20 @@ LSP token classification
 
 | Rulebook | Status | Notes |
 |---|---|---|
-| `declarations/struct.txt` | **Written** | Includes recursive semantic initialization of omitted fields. |
-| `declarations/enums.txt` | **Written — sync required** | Must remain aligned with `bit[N]`, aliases, and `iota`. |
-| `declarations/unions.txt` | **Written** | Tagged union rules; recursive payload-derived copyability is implemented. Same-type equality currently uses general nominal compatibility, but payload-derived comparability remains pending. |
-| `platform/registers.txt` | **Written** | Register declarations, fields, widths, and reserved `_` bits. |
+| `declarations/struct.md` | **Written** | Canonical named aggregate declarations, field tags, complete/partial/spread construction, recursive defaults, field Places, copy/move, equality, destruction, and layout boundaries. Implementation is tracked by `frontend.structs`. |
+| `declarations/enums.md` | **Written** | Canonical closed ordinary and open bit-backed enum domains, Go-style `iota` repetition, declared-member defaults, aliases, checked conversions, match semantics, and lowering requirements. Implementation is tracked by `frontend.enums`. |
+| `declarations/unions.md` | **Written** | Canonical closed nominal unions, payload construction, explicit defaults, empty initialization state, matching, ownership, equality, generics, recursion, and representation requirements. Implementation is tracked by `frontend.unions`. |
+| `declarations/registers.md` | **Written** | Canonical nominal `register[N]` types, logical bit layout, nested registers, field access semantics, conversions, and impl eligibility. Implementation is tracked by `frontend.registers`. |
 | `declarations/functions.txt` | **Written — sync required** | Must be synchronized with discard of non-void results and effects. |
 | `declarations/functions_lambda.txt` | **Written — sync required** | Canonical lambda and closure rulebook; closure scope for 0.1 must be finalized. |
 | `lambdas.md` | **Covered** | Covered by `declarations/functions_lambda.txt`; no duplicate rulebook expected. |
 | `closures.md` | **Covered** | Covered by `declarations/functions_lambda.txt`; no duplicate rulebook expected. |
 | `declarations/generics.txt` | **Written — sync required** | Must be synchronized with compile-time values, collections, register widths, and lowering. |
-| `declarations/interfaces.txt` | **Written — sync required** | Interface inheritance-cycle detection is implemented; effects, hashing/equality, and stdlib contracts still require synchronization. |
-| `declarations/impl.txt` | **Written — sync required** | Must include privileged core/stdlib impl access for built-in lowercase types. |
-| `declarations/properties.txt` | **Written — sync required** | Must include contextual `set` resolution. |
+| `declarations/interfaces.md` | **Written** | Canonical behavioral interfaces, receiver capabilities, inheritance, and primary-impl conformance. Frontend progress is tracked by `frontend.interfaces`. |
+| `declarations/impl.md` | **Written** | Revision 2.0 defines primary/extensions, implicit self, associated declarations, and lifecycle `init`/`free` with `new`; frontend lifecycle status is tracked by `frontend.impl-lifecycle-construction`. |
+| `declarations/properties.md` | **Written** | Canonical property declarations, explicit setter parameters, fallible setters, impl fragments, static properties, and interface requirements. Frontend progress is tracked by `frontend.properties`. |
 | `control-flow/defer.txt` | **Written — sync required** | Must be synchronized with discard, panic, and cancellation cleanup. |
-| `declarations/spread.txt` | **Written — sync required** | Must be synchronized with collection and shaped literals. |
+| `declarations/spread.md` | **Written** | Canonical postfix spread for fixed-array calls/literals and same-type struct construction. Frontend progress is tracked by `frontend.spread`. |
 | `control-flow/flowcontrol_if.txt` | **Written** | |
 | `control-flow/flowcontrol_for.txt` | **Written — sync required** | Current Sema includes collection, map/set and rank-one `vector[T, N]` iteration; tensor and axis iteration still need synchronization. |
 | `flowcontrol_for_1.txt` | **Covered** | Merged into `control-flow/flowcontrol_for.txt`; no separate rulebook remains in `rules/`. |
@@ -195,8 +195,8 @@ LSP token classification
 | Rulebook | Status | Notes |
 |---|---|---|
 | `collections/collections.md` | **Written** | Canonical fixed-array, owning dynamic-array, slice, list, map, and set semantics. |
-| `collections/shaped-types.md` | **Written** | Canonical shaped values, views, layout, and memory-space semantics. |
-| `declarations/spread.txt` | **Written — sync required** | Collection expansion and literal integration. |
+| `collections/shaped-types.md` | **Written** | Canonical runtime/static shaped values, affine views, layout, storage requests and transfer, broadcasting, vector/matrix algebra, and contraction semantics. Implementation progress is tracked by `frontend.shaped-types` in `implementation-status.yaml`. |
+| `declarations/spread.md` | **Written** | Fixed-array expansion and struct construction integration. Frontend progress is tracked by `frontend.spread`. |
 | `control-flow/flowcontrol_for.txt` | **Written — sync required** | Iteration over collections and shaped values; rank-one `vector[T, N]` now participates in Sema iterable inference. |
 
 The first-class language types are expected to include:
@@ -301,7 +301,7 @@ The remaining details to close are:
 | `memory/memory_model.md` | **Written** | Canonical source and compiler memory model, including default lifetime and origin rules. |
 | `declarations/static.md` | **Written — sync required** | Must include thread-local keys, collection backing storage, and initialization order. |
 | `control-flow/discard.md` | **Written — sync required** | General explicit consumption and early deterministic destruction. |
-| `memory/storage.md` | **Written** | Canonical storage origin, backing relation, reclamation authority, address stability, regions, invalidation domains, validity epochs, memory spaces, and placement guarantees; implementation remains partial. |
+| `memory/storage.md` | **Written** | Canonical storage origin, backing relation, reclamation authority, address stability, regions, invalidation domains, validity epochs, memory spaces, placement guarantees, and shaped `StorageRequest` integration; implementation remains partial. |
 | `memory/layout.md` | **Written** | Canonical semantic/native layout, size, alignment, stride, padding, aggregate representation, explicit contracts, plan-specific queries, and compatibility; the shared layout phase remains partial. |
 
 `storage_allocation.txt` from the old checklist is replaced by the clearer
@@ -400,11 +400,11 @@ Process spawning and IPC do not block the immediate language closure.
 |---|---|---|
 | `types/types.md` | **Written** | Canonical fundamental, scalar, temporal, named, collection-shaped, and declaration type contract; implementation status is maintained in `implementation-status.yaml`. |
 | `declarations/generics.txt` | **Written — sync required** | Type and compile-time value arguments. |
-| `declarations/interfaces.txt` | **Written — sync required** | |
-| `declarations/impl.txt` | **Written — sync required** | |
-| `declarations/properties.txt` | **Written — sync required** | |
+| `declarations/interfaces.md` | **Written** | Interface declarations and generic constraints; implementation progress is tracked by `frontend.interfaces`. |
+| `declarations/impl.md` | **Written** | Frontend lifecycle construction is partially implemented and tracked canonically in `implementation-status.yaml`. |
+| `declarations/properties.md` | **Written** | Implementation progress is tracked by `frontend.properties`. |
 | `library/core-library.md` | **Written — sync required** | Compiler-known core declarations and privileged impl access. |
-| `compiler/compiler_known_members.md` | **Written** | Canonical typed registry, stable member identities, lookup, builtin member surface, core boundary and tooling behavior. Initial Sema/LSP registry integration is implemented. |
+| `compiler/compiler_known_members.md` | **Written** | Canonical typed registry, stable member identities, lookup, builtin and shaped member surfaces, core boundary and tooling behavior. Initial Sema/LSP registry integration is implemented. |
 | `library/stdlib.md` | **Written — partially implemented** | Standard-library boundaries and target contracts plus Linux/amd64 streaming file IO, exact and complete caller-buffer reads, writes/copy, seek/flush/truncate/close, directory iteration, non-recursive path operations, path bridging, and explicit resource lifecycle diagnostics. Allocating complete-file and directory-list APIs remain pending. |
 
 Built-in lowercase types may receive privileged implementations in core.
@@ -457,7 +457,7 @@ OrderedMap[K, V]
 | `analysis/closure_analysis.md` | **Written** | Canonical capture, callable-flow, target-set, closure-summary, and analysis-budget model. Implementation status is tracked by `sema.closure-analysis`. |
 | `analysis/parameter_usage_analysis.md` | **Written** | Canonical multidimensional parameter-demand and advisory-narrowing model. Implementation status is tracked by `sema.parameter-usage-analysis`. |
 | `analysis/pitfall_analysis.md` | **Written** | Canonical semantic pitfall-finding, evidence, suppression, confidence, corrective-action, budget, incremental, LSP, and FFI-contract model. Implementation status is tracked by `sema.pitfall-analysis`. |
-| `analysis/effect_analysis.md` | **Written** | Canonical compile-time effect domains and propagation model. Initial Arena event sites, synchronous `MayAllocate` propagation, cause paths, and LSP hover are implemented; the complete effect set, guarantees, contexts, indirect targets, and per-plan analysis remain. |
+| `analysis/effect_analysis.md` | **Written** | Canonical compile-time effect domains and propagation model, including the distinction between logical shaped operations and storage-producing shaped operations. Initial Arena event sites, synchronous `MayAllocate` propagation, cause paths, and LSP hover are implemented; the complete effect set, guarantees, contexts, indirect targets, and per-plan analysis remain. |
 | `analysis/isr_analysis.md` | **Written** | Canonical cross-analysis ISR constraint verifier: resolved profiles, reusable requirement summaries, execution-context propagation, stack/race/deadlock/FFI composition, Valid/Invalid/Unproven proof states, incremental dependencies, and progressive LSP refinement. Implementation status is tracked by `sema.isr-analysis`. |
 | `compiler/parser_recovery.md` | **Written** | Canonical deterministic recovery model; structured implementation remains partial. |
 | `generics_lowering.md` | **Planned** | Semantic and MLIR lowering of generic code. |
@@ -507,10 +507,10 @@ from the presence of a versioned document.
 | Rulebook | Status | Notes |
 |---|---|---|
 | `platform/ffi.txt` | **Written — sync required** | Must be synchronized with ABI, layout, effects, panic, and foreign thread attachment. |
-| `platform/registers.txt` | **Written — sync required** | Must remain aligned with volatile/MMIO and target layout. |
+| `platform/fixed-address-bindings.md` | **Written** | Canonical `@address`, MMIO volatility, binding mutability, validation, overlap, and addressed-access semantics. Implementation is tracked by `frontend.fixed-address-bindings`. |
 | `abi.md` | **Planned** | Calling conventions, value representation, symbol ABI, FFI stability, and target differences. |
 | `target_profiles.md` | **Planned** | Hosted, RTOS, bare-metal, allocation, concurrency, checks, and capability profiles. |
-| `platform_model.md` | **Planned** | Platform views, target services, system calls, capabilities, and source selection. |
+| `platform/platform_model.md` | **Written** | Canonical Target/Variant terminology, immutable CompilationPlan resolution, typed platform submodels, capabilities, source selection, fingerprints, diagnostics, and LSP invalidation. Implementation is tracked by `compiler.platform-model`. |
 | `inline_assembly.md` | **Planned** | Operands, constraints, clobbers, volatility, memory effects, and target restrictions. |
 | `volatile.md` | **Planned** | Volatile access, MMIO, compiler reordering, atomics distinction, and read-modify-write. |
 | `interrupts.md` | **Planned** | ISR syntax, vector binding, nesting, priorities, stacks, and deferred work. |
@@ -592,7 +592,7 @@ control-flow/defer.txt
 types/default_values.md
 memory/destruction.txt
 tooling/diagnostics.txt
-declarations/enums.txt
+declarations/enums.md
 errors/errorhandling.txt
 analysis/effect_analysis.md
 concurrency/events.md
@@ -606,8 +606,8 @@ tooling/formatter.md
 declarations/functions.txt
 declarations/functions_lambda.txt
 declarations/generics.txt
-declarations/impl.txt
-declarations/interfaces.txt
+declarations/impl.md
+declarations/interfaces.md
 analysis/isr_analysis.md
 foundations/language_philosophy.md
 foundations/lexical_structure.md
@@ -625,28 +625,29 @@ memory/ownership.md
 errors/panic.md
 concurrency/processes.txt
 projects/projects.txt
-declarations/properties.txt
+declarations/properties.md
 memory/raw_pointers.txt
 memory/reference_model.md
 memory/references.txt
-platform/registers.txt
+declarations/registers.md
+platform/fixed-address-bindings.md
 compiler/rules_implementations.txt
 errors/runtime_checks.md
 concurrency/scheduling.md
 concurrency/select.md
 compiler/semantic_ir.txt
 concurrency/spawn.md
-declarations/spread.txt
+declarations/spread.md
 declarations/static.md
 memory/storage.md
-declarations/struct.txt
+declarations/struct.md
 concurrency/structured_concurrency.md
 concurrency/tasks.txt
 concurrency/threads.md
 memory/transferability.md
 types/types.md
 memory/unsafe.md
-declarations/unions.txt
+declarations/unions.md
 types/units.txt
 types/contracts.md
 tooling/lsp.md
@@ -691,7 +692,6 @@ compile_time_evaluation.md
 
 abi.md
 target_profiles.md
-platform_model.md
 inline_assembly.md
 volatile.md
 interrupts.md

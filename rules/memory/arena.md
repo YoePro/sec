@@ -3842,7 +3842,7 @@ diagnostics.txt
 effect_analysis.md
 escape_analysis.md
 ffi.txt
-interfaces.txt
+declarations/interfaces.md
 isr_analysis.md
 layout.md
 lifetime_analysis.txt

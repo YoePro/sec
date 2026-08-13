@@ -2,6 +2,16 @@ package lexer
 
 import "testing"
 
+func TestNewIsHardKeyword(t *testing.T) {
+	tokens := []TokenType{NEW, IDENT, LPAREN, RPAREN, EOF}
+	l := New("new Buffer()")
+	for index, want := range tokens {
+		if got := l.NextToken(); got.Type != want {
+			t.Fatalf("token %d type = %s, want %s", index, got.Type, want)
+		}
+	}
+}
+
 func TestBareUnderscoreIsDistinctFromIdentifiers(t *testing.T) {
 	l := New("_ _name __name")
 	want := []Token{
@@ -145,7 +155,7 @@ impl Reader for FileReader {
 }
 
 func TestOperators(t *testing.T) {
-	input := `= := :<- <- => + - * / % += -= *= /= %= == != < <= > >= && || ! & | ^ ~ << >> &= |= ^= <<= >>= . .. ..< ... , : ; ? @ # () {} []`
+	input := `= := :<- <- => -> + - * / % += -= *= /= %= == != < <= > >= && || ! & | ^ ~ << >> &= |= ^= <<= >>= . .. ..< ... , : ; ? @ # () {} []`
 
 	tests := []struct {
 		typ    TokenType
@@ -156,6 +166,7 @@ func TestOperators(t *testing.T) {
 		{MOVE_DECLARE, ":<-"},
 		{MOVE_ASSIGN, "<-"},
 		{ARROW, "=>"},
+		{CONSUME_ARROW, "->"},
 		{PLUS, "+"},
 		{MINUS, "-"},
 		{ASTERISK, "*"},

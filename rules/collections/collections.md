@@ -2265,7 +2265,7 @@ grammar.md
 compiler_known_members.md
 core-library.md
 default_values.md
-spread.txt
+declarations/spread.md
 allocation.txt
 storage.md
 layout.md

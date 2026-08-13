@@ -114,6 +114,9 @@ func (p *Parser) parseExpression(currentPrecedence precedence) ast.Expression {
 	case lexer.TRY:
 		left = p.parseTryExpression()
 
+	case lexer.NEW:
+		left = p.parseNewExpression()
+
 	case lexer.SPAWN:
 		left = p.parseSpawnExpression()
 
@@ -234,6 +237,27 @@ func (p *Parser) parseExpression(currentPrecedence precedence) ast.Expression {
 	}
 
 	return left
+}
+
+func (p *Parser) parseNewExpression() ast.Expression {
+	expr := &ast.NewExpression{Token: p.curToken}
+	if !p.expectPeekTypeStart() {
+		return nil
+	}
+	expr.Type = p.parseTypeReference()
+	if expr.Type == nil || expr.Type.Invalid {
+		return nil
+	}
+	if !p.expectPeek(lexer.LPAREN) {
+		p.addError("new construction requires an argument list at %d:%d", p.peekToken.Line, p.peekToken.Column)
+		return nil
+	}
+	arguments, ok := p.parseCallArguments()
+	if !ok {
+		return nil
+	}
+	expr.Arguments = arguments
+	return expr
 }
 
 func numericSuffixMigrationMessage(token lexer.Token) (string, bool) {
@@ -1367,6 +1391,7 @@ func (p *Parser) isExpressionStart(t lexer.TokenType) bool {
 		lexer.NOT,
 		lexer.BIT_NOT,
 		lexer.TRY,
+		lexer.NEW,
 		lexer.MATCH,
 		lexer.SPAWN,
 		lexer.AWAIT,

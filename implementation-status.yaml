@@ -1,5 +1,5 @@
 schema_version: 1
-updated: "2026-08-12"
+updated: "2026-08-13"
 purpose: >-
   Canonical implementation ledger for compiler and tooling work. Normative
   language behavior remains in rules/, while implementation status is migrated
@@ -84,6 +84,8 @@ integrations:
       - try handler-brace disambiguation is scoped to the outer try operand in both expression and statement parser paths, so typed struct literals remain valid inside nested call arguments and a following handler block is not misread as a struct literal on the completed call
       - deterministic 100-diagnostic parser cap with one terminal P2015 diagnostic
       - central CLI and LSP parse paths consume ParseResult
+      - P2011 mentor diagnostics recognize reversed type declaration order such as type struct Name, type union Name, and type register Name and show the canonical type Name kind form
+      - fix-enabled formatting safely rewrites reversed struct and union declarations and register declarations with a proving Name[width] shape while ordinary formatting leaves invalid source unchanged
     tests:
       - internal/parser/parser_test.go
     verification:
@@ -119,7 +121,7 @@ integrations:
       - rules/memory/borrowing.txt
       - rules/memory/lifetime_analysis.txt
       - rules/collections/collections.md
-      - rules/declarations/properties.txt
+      - rules/declarations/properties.md
     code:
       - internal/sema/place.go
       - internal/sema/analyzer.go
@@ -395,12 +397,17 @@ integrations:
   - id: frontend.properties
     area: frontend-analysis
     status: partial
-    integrated: "2026-08-07"
+    integrated: "2026-08-13"
     summary: >-
       Parses, registers, and semantically checks impl properties, including
       ordinary and fallible accessors, without claiming property lowering.
     rules:
-      - rules/declarations/properties.txt
+      - rules/declarations/properties.md
+      - rules/declarations/interfaces.md
+      - rules/declarations/impl.md
+      - rules/declarations/static.md
+      - rules/foundations/grammar.md
+      - rules/compiler/semantic_ir.txt
     code:
       - internal/ast/ast.go
       - internal/parser/parser.go
@@ -414,7 +421,8 @@ integrations:
       - property declarations with get, set value, and try set value accessors
       - parser recovery for missing property names, types, colons, and setter parameters
       - property registration, duplicate/conflict diagnostics, and type resolution on impl targets
-      - interface property requirement parsing and implementation conformance checks
+      - bodyless interface property requirements with explicit set name and try set name parameters
+      - interface property conformance checks for type, getter/setter availability, and setter fallibility
       - property member access type inference and self-member resolution
       - getter return checking, including constructor-style conversions and missing-return diagnostics
       - non-fallible setter rejection of Err returns and setter assignment type checking
@@ -424,18 +432,90 @@ integrations:
       - fallible setter error inference from direct and nested-branch Err returns
       - generic impl property substitution in the current generic model
       - LSP completion, hover, definition, symbols, and semantic-token support for properties
+      - LSP semantic-token classification of bodyless interface setter names as parameters
+      - duplicate property checks across the combined primary impl and impl extends surface
     verification:
-      - command: go test ./internal/parser ./internal/sema ./cmd/lsp
+      - command: go test ./internal/parser ./internal/sema ./internal/formatter -run 'InterfaceProperty|InterfaceImplementation|Properties|PropertyAccessAndFallibleAssignment|FormatInterface' -count=1
+        result: passed
+      - command: go test ./cmd/lsp -run 'SemanticTokensClassifyContextualSet|Interface|Property' -count=1
         result: passed
       - command: validate implementation-status.yaml
         result: passed
     remaining:
-      - explicit property reads and writes in Semantic IR and lowering through MLIR and LLVM
+      - static property parser, AST, Sema, formatter, LSP, and conformance support
+      - explicit property read/write operation implementation in Semantic IR and lowering through MLIR and LLVM
       - complete self borrow and mutability rules for property accessors
       - explicit property effect model
       - property visibility rules
-      - property overriding semantics and complete interface-property surface coverage
+      - property overriding semantics and complete interface receiver/static-category conformance
       - complete fallible compound-assignment behavior
+
+  - id: frontend.interfaces
+    area: frontend-analysis-and-tooling
+    status: partial
+    integrated: "2026-08-13"
+    summary: >-
+      Implements canonical behavioral interface declarations, inherited
+      requirements, explicit conformance on primary impl blocks, and shared,
+      mutable, consuming, and static receiver contracts without claiming
+      dynamic-dispatch or backend support.
+    rules:
+      - rules/declarations/interfaces.md
+      - rules/declarations/impl.md
+      - rules/declarations/generics.txt
+      - rules/declarations/properties.md
+      - rules/memory/ownership.md
+      - rules/memory/borrowing.txt
+      - rules/foundations/grammar.md
+      - rules/foundations/lexical_structure.md
+      - rules/tooling/formatter.md
+      - rules/tooling/lsp.md
+    code:
+      - internal/lexer/lexer.go
+      - internal/ast/ast.go
+      - internal/parser/parser.go
+      - internal/sema/analyzer.go
+      - internal/sema/types.go
+      - internal/formatter/formatter.go
+      - internal/lsp/features/semantic_tokens.go
+      - cmd/lsp/main.go
+      - vscode/syntaxes/sec.tmLanguage.json
+    tests:
+      - internal/lexer/lexer_test.go
+      - internal/parser/parser_test.go
+      - internal/sema/analyzer_test.go
+      - internal/formatter/formatter_test.go
+      - testdata/interface_valid.sec
+      - testdata/interface_invalid.sec
+    implemented:
+      - interface declarations and interface inheritance through implements
+      - bodyless method, property, and event requirements
+      - primary impl Type implements Interface conformance placement
+      - rejection of obsolete type-level concrete conformance with a migration diagnostic
+      - rejection of conformance lists on impl extends fragments
+      - shared fn, mutable mut fn, consuming -> fn, and static fn interface method syntax
+      - dedicated -> punctuation token, formatter handling, TextMate highlighting, and LSP operator classification
+      - concrete receiver mutation inference and rejection when stronger than a shared interface contract
+      - mutable interface call rejection through shared references and acceptance through mutable references
+      - consuming interface call rejection through both shared and mutable references
+      - owned interface receiver consumption and later-use diagnostics
+      - exact method parameter/result/static compatibility and property accessor compatibility
+      - direct, indirect, and self-referential inheritance cycle diagnostics
+      - defining-module ownership inherited from canonical primary impl validation
+      - focused parser diagnostic for stored-field-shaped interface requirements
+      - LSP outline display of conformance lists on primary impl symbols
+    remaining:
+      - complete generic interface instantiation and constraint conformance
+      - support every associated and nested declaration category permitted by its owning rulebook
+      - complete interface visibility and cross-module accessible-member validation
+      - represent interface values, dispatch targets, receiver ownership, and conformance explicitly in Semantic IR
+      - implement interface value representation and dynamic dispatch in MLIR and LLVM lowering
+      - complete indirect interface target sets in call-graph and effect analysis
+      - expose receiver capability and inherited requirement provenance in hover, completion, and diagnostics
+      - add stable dedicated diagnostic IDs for the new conformance-placement and receiver-capability errors
+    verification:
+      - command: go test ./internal/lexer ./internal/parser ./internal/sema ./internal/formatter -run 'TestOperators|TestParseInterface|TestRejectsTypeLevel|TestInterface|TestFormatInterface' -count=1
+        result: passed
 
   - id: analysis.arena-allocation
     area: frontend-analysis
@@ -508,7 +588,12 @@ integrations:
     integrated: "2026-08-11"
     summary: >-
       Tracks vector, matrix, tensor, tensor_view, Shape, Strides, TensorLayout,
-      and MemorySpace independently from ordinary collections.
+      and MemorySpace independently from ordinary collections. The canonical
+      shaped rulebook now also specifies runtime-shaped owning tensors,
+      compiler-known shaped properties, affine view slicing and step semantics,
+      explicit broadcasting, ownership-preserving reshape operations,
+      structured storage requests and transfers, vector algebra, matrix
+      multiplication, and general tensor contraction.
     rules:
       - rules/collections/shaped-types.md
     implemented:
@@ -516,9 +601,27 @@ integrations:
       - Sema recognizes vector, matrix, tensor, and tensor_view identities and validates basic arity and dimensions
       - rank-one vector values participate in iterable type inference
     remaining:
-      - complete shape, stride, layout, memory-space, view, and matrix-operation semantics
-      - add explicit shaped operations and verification to Semantic IR and Sec MLIR
-      - complete ownership, alias, runtime-check, formatter, LSP, and end-to-end test coverage
+      - recognize owning runtime-shaped tensor[T, Shape[Rank]] without conflating it with tensor_view
+      - implement Rank, Shape, Len, Strides, Layout, MemorySpace, IsContiguous, Ptr, and shaped instance SizeOf member semantics
+      - implement ShapedStorageRequest composition with StorageRequest and explicit Create request validation
+      - implement Reshape as borrowed zero-copy view formation with runtime ShapeError checking where required
+      - implement ToShape as consuming zero-copy ownership-preserving shape reinterpretation
+      - implement Materialize as fallible new owning backing from tensor_view
+      - implement explicit TransferTo and Relayout storage-producing semantics without implicit cross-space transfer
+      - implement Axes and AxisList compiler-known identities and validation
+      - implement Permute and rank-two Transpose as zero-copy view transformations
+      - implement multidimensional shaped slicing with exactly one selector per axis and scalar/range rank reduction rules
+      - implement step on shaped range selectors including negative step reversal and zero-step rejection
+      - implement right-aligned explicit BroadcastTo with zero-stride aliasing and shared-only expanded views
+      - implement elementwise shaped + - * / with no implicit shaped broadcasting
+      - implement contextual x matrix/matrix and matrix/vector algebra including runtime ShapeError checking
+      - implement Dot, Outer, Magnitude, Normalize Option semantics, and extent-three Cross
+      - implement explicit Contract with AxisList pairs and canonical result-axis ordering
+      - preserve no-allocation semantics for logical shaped arithmetic and view transformations
+      - integrate shaped runtime checks with ShapeError, IndexError, RangeError, and StorageError
+      - integrate shaped Place/view overlap, borrow, lifetime, escape, and destruction semantics
+      - synchronize shaped operations and invariants with the canonical rules/mlir dialect and lowering documents
+      - add formatter, LSP hover/completion, diagnostic, valid/invalid, analysis, and end-to-end shaped test coverage
 
   - id: collections.rulebook-split
     area: documentation-governance
@@ -679,7 +782,7 @@ integrations:
       - rules/types/default_values.md
       - rules/types/types.md
       - rules/types/contracts.md
-      - rules/declarations/struct.txt
+      - rules/declarations/struct.md
       - rules/collections/collections.md
       - rules/collections/shaped-types.md
       - rules/foundations/grammar.md
@@ -714,6 +817,7 @@ integrations:
       - safe references and slices remain non-defaultable and no origin-free safe slice is synthesized
       - unions, Result, Option, functions, interfaces, and intrinsic resource types remain non-defaultable unless an owning rule defines a semantic default
       - LSP hover and completion display resolved default value and source from the Sema-owned resolver
+      - LSP hover abbreviates large fixed-array defaults as a bounded preview such as [0, ...] without materializing or rendering every element
       - legacy MLIR materialization of complete struct and constrained scalar defaults without runtime calls or undefined fields
     remaining:
       - represent explicit, mutable, omitted-field, aggregate, array-element, range-derived, membership-derived, and empty-collection initialization origins in Semantic IR
@@ -1105,8 +1209,8 @@ integrations:
       Existing backend limitations for complete method, property, event, and
       generic lowering remain unchanged.
     rules:
-      - rules/declarations/impl.txt
-      - rules/declarations/struct.txt
+      - rules/declarations/impl.md
+      - rules/declarations/struct.md
       - rules/declarations/generics.txt
       - rules/foundations/grammar.md
       - rules/foundations/names_scopes_visibility.md
@@ -1148,6 +1252,72 @@ integrations:
       - LSP navigation between an extension and its primary impl declaration
       - workspace index support for listing all extensions of a target
       - explicit visibility policy if future nested module scopes become finer than the current module identity
+
+  - id: frontend.impl-lifecycle-construction
+    area: frontend-analysis-and-tooling
+    status: partial
+    integrated: "2026-08-13"
+    summary: >-
+      Introduces the revision-2.0 lifecycle syntax boundary: contextual init
+      declarations and hard-keyword new construction remain distinct from
+      ordinary methods, conversions, and allocation placement.
+    rules:
+      - rules/declarations/impl.md
+      - rules/foundations/lexical_structure.md
+      - rules/foundations/grammar.md
+      - rules/foundations/names_scopes_visibility.md
+      - rules/errors/errorhandling.txt
+      - rules/tooling/formatter.md
+      - rules/tooling/lsp.md
+    code:
+      - internal/lexer/lexer.go
+      - internal/ast/ast.go
+      - internal/parser/expression.go
+      - internal/parser/parser.go
+      - internal/sema/analyzer.go
+      - internal/sema/types.go
+      - internal/sema/semantic_facts.go
+      - internal/formatter/formatter.go
+      - internal/lsp/features/semantic_tokens.go
+      - cmd/lsp/main.go
+      - vscode/syntaxes/sec.tmLanguage.json
+    tests:
+      - internal/lexer/lexer_test.go
+      - internal/parser/parser_test.go
+      - internal/sema/analyzer_test.go
+      - internal/formatter/formatter_test.go
+    implemented:
+      - new is a hard lexer keyword, LSP keyword, completion item, and TextMate keyword
+      - dedicated NewExpression AST and parser support for new Type(arguments)
+      - contextual bare init declarations with parameters, optional exact construction error type, and ordinary statement bodies
+      - init overload registration across primary and extension fragments with parameter-only signature identity
+      - separate internal initializer identity so init is not exposed as an ordinary self method
+      - new overload resolution with argument type checking and definition binding to the selected init
+      - successful new expressions infer the constructed target type
+      - fallible new requires try or local handling and preserves the exact initializer error type through existing try analysis
+      - zero-argument implicit new construction when canonical default construction exists and no explicit init group exists
+      - initializer bodies receive implicit self and ordinary function-body semantic analysis
+      - initializer success by body completion, typed Err return for failure, and rejection of arbitrary success return values
+      - primary ordinary impl rejection when a named target belongs to another defining module
+      - canonical formatter handling for init signatures and preservation of new versus conversion syntax
+    remaining:
+      - full field-sensitive definite initialization and partial-self escape analysis in init
+      - construction resource-balance and failure-cleanup analysis
+      - custom free AST, parser, Sema, and destruction integration
+      - nested impl declarations and qualified nested-target ownership
+      - complete generic initializer specialization
+      - dedicated LSP initializer hover, signature help, completion contexts, and references beyond current definition binding
+      - targeted migration diagnostics for every declaration position that previously accepted new as an identifier
+      - Semantic IR and lowering owned by their dedicated pipeline
+    verification:
+      - command: go test ./internal/lexer -run NewIsHardKeyword -count=1
+        result: passed
+      - command: go test ./internal/parser -run InitAndNewLifecycleSyntax -count=1
+        result: passed
+      - command: go test ./internal/sema -run 'LifecycleInitAndNewSemantics|InitOverloadIdentity' -count=1
+        result: passed
+      - command: go test ./internal/formatter -run InitAndNewLifecycleSyntax -count=1
+        result: passed
 
   - id: sema.parameter-usage-analysis
     area: frontend-analysis
@@ -1361,6 +1531,165 @@ integrations:
       - expose reusable verified stack proofs to build validation, ISR analysis, resource reporting, embedded/platform tooling, and other compiler consumers
       - add required frame, live-range, call-path, recursion, indirect-call, foreign/runtime, storage-accounting, CompilationPlan, budget, separate-compilation, incremental/LSP, performance, and determinism regression tests
       - update implementation-status verification commands when the first conforming vertical slice is integrated
+
+  - id: frontend.unions
+    area: frontend-analysis-and-lowering
+    status: partial
+    integrated: "2026-08-13"
+    summary: >-
+      Tracks canonical closed nominal unions, payload construction, explicit
+      defaults, empty initialization state, matching, ownership, equality,
+      generics, recursion, semantic facts, and lowering.
+    rules:
+      - rules/declarations/unions.md
+      - rules/control-flow/flowcontrol_match.txt
+      - rules/types/default_values.md
+      - rules/memory/copy_move.md
+      - rules/memory/ownership.md
+      - rules/foundations/grammar.md
+    code:
+      - internal/ast/ast.go
+      - internal/parser/parser.go
+      - internal/sema/types.go
+      - internal/sema/defaults.go
+      - internal/sema/analyzer.go
+      - internal/sema/place.go
+      - internal/sema/semantic_facts.go
+    tests:
+      - internal/parser/parser_test.go
+      - internal/sema/analyzer_test.go
+      - internal/sema/defaults_test.go
+      - internal/sema/copy_move_test.go
+      - internal/sema/semantic_facts_test.go
+      - testdata/union_valid.sec
+      - testdata/union_invalid.sec
+    implemented:
+      - named closed payload-less, single-payload, struct-like, and mixed union declarations
+      - nominal variant namespaces, duplicate and empty-union validation, and payload construction arity and type checking
+      - generic union declarations, expected-type and payload-driven constructor inference, and concrete payload substitution
+      - nested union declaration registration through the existing nested-type path
+      - direct immediate recursive-storage rejection for unnamed and struct-like payloads
+      - post-variant default marker parsing and AST retention with rejection of multiple marked variants
+      - union Defaultable resolution for payload-less, single-payload, and struct-like explicit default variants
+      - synthesized mutable union defaults through the canonical DefaultValueOf model
+      - mutable NonDefaultable union declarations may omit initialization and use the existing unassigned-state dataflow until a real variant is assigned
+      - omitted Defaultable struct-like construction fields receive canonical defaults while omitted NonDefaultable fields remain errors
+      - payload-less and whole-payload union match patterns with exhaustiveness, duplicate, unreachable, and guard-aware coverage
+      - whole-payload shared and mutable borrowing with branch-local lifetimes and subject mutability checks
+      - Place-based payload ownership, copy versus move classification, reinitialization, borrow conflicts, and hidden partial-move rejection for whole payloads
+      - recursive payload-derived copyability, trivial destruction, and equality-comparability classification
+      - resolved union construction and match facts with stable declaration-order variant indices
+    remaining:
+      - formalize mutable NonDefaultable union declarations as source-observable empty initialization state rather than only legacy unassigned state
+      - parse and analyze value is Variant and value is empty with definite-assignment and active-variant refinement
+      - parse and analyze the compiler-known empty match pattern and include reachable empty state in exhaustiveness
+      - support shallow named-field payload destructuring, partial binding, rename, and field-level ref or ref mut modes
+      - extend Place tracking from whole payloads to named destructured fields without hidden moves or cloning
+      - complete layout-aware recursive-storage validation across every finite and infinite indirection form
+      - support explicit generic constructor qualification such as Option[int].Some(10)
+      - provide complete backend layout metadata, equality lowering, construction, match, destruction, and runtime-dependent empty-state lowering
+      - expose empty-state, active-variant, ownership, and exhaustiveness facts through diagnostics and LSP
+      - add complete parser recovery, formatter, valid/invalid, dataflow, LSP, Semantic IR, MLIR, and end-to-end coverage
+    verification:
+      - command: go test ./internal/parser -run UnionDefault -count=1
+        result: passed
+      - command: go test ./internal/sema -run 'Union|Default|Match.*Payload' -count=1
+        result: passed
+
+  - id: frontend.registers
+    area: frontend-analysis-and-lowering
+    status: partial
+    integrated: "2026-08-13"
+    summary: >-
+      Tracks canonical nominal register types independently from fixed-address
+      storage, including exact bit layouts, field types, access semantics,
+      conversions, impl integration, diagnostics, and lowering.
+    rules:
+      - rules/declarations/registers.md
+      - rules/declarations/enums.md
+      - rules/declarations/impl.md
+      - rules/foundations/grammar.md
+      - rules/memory/layout.md
+    code:
+      - internal/ast/ast.go
+      - internal/parser/parser.go
+      - internal/sema/types.go
+      - internal/sema/analyzer.go
+      - internal/sema/place.go
+    tests:
+      - internal/parser/parser_test.go
+      - internal/sema/analyzer_test.go
+      - internal/sema/allocation_test.go
+      - testdata/register_valid.sec
+      - testdata/register_invalid.sec
+    implemented:
+      - nominal declarations through type Name register[N] with positive integer-literal width
+      - bit and bit[N] fields with positive integer-literal widths and exact total-width validation
+      - duplicate named-field rejection and inaccessible reserved underscore fields that retain layout width
+      - unit annotations and constant assignment range checks against field width
+      - bit-backed enum fields with exact backing width and retained nominal field type
+      - lsb-first default and explicit lsb-first or msb-first allocation modifiers with deterministic semantic bit offsets
+      - independent little-endian and big-endian byte-order modifiers retained as semantic type facts
+      - ordinary register values remain nonvolatile unless their storage binding supplies stronger semantics
+      - impl blocks, methods, properties, and implicit self access without changing register storage width
+    remaining:
+      - support nested register fields, finite-layout validation, and preservation of nested nominal and access semantics
+      - accept general positive compile-time constant expressions for register and bit-field widths rather than only integer literals
+      - implement read-write, read-only, write-only, write-one-clear, write-zero-clear, and clear-on-read field semantics
+      - complete compile-time and checked runtime integer-to-register conversion behavior
+      - preserve unnamed open bit-backed enum encodings through field extraction and insertion
+      - provide semantics-preserving masks, shifts, extraction, insertion, reserved-bit handling, and special-field lowering
+      - add complete parser, sema, LSP, Semantic IR, MLIR, diagnostics, and end-to-end coverage
+    verification:
+      - command: go test ./internal/parser -run Register -count=1
+        result: passed
+      - command: go test ./internal/sema -run Register -count=1
+        result: passed
+
+  - id: frontend.fixed-address-bindings
+    area: frontend-analysis-and-lowering
+    status: partial
+    integrated: "2026-08-13"
+    summary: >-
+      Tracks Sec 0.1 @address hardware bindings as fixed-address storage
+      contracts independent from register type identity and storage origin.
+    rules:
+      - rules/platform/fixed-address-bindings.md
+      - rules/memory/storage.md
+      - rules/declarations/registers.md
+      - rules/memory/unsafe.md
+    code:
+      - internal/ast/ast.go
+      - internal/parser/parser.go
+      - internal/sema/types.go
+      - internal/sema/analyzer.go
+      - internal/sema/place.go
+    tests:
+      - internal/parser/parser_test.go
+      - internal/sema/analyzer_test.go
+      - internal/sema/allocation_test.go
+    implemented:
+      - parse @address(...) on explicitly typed register bindings
+      - reject ordinary initializers on addressed bindings
+      - require the current source form to use an integer-literal address
+      - retain addressed and volatile semantic markers
+      - represent AddressStability.Fixed independently from conservative Unknown storage origin for platform-owned hardware without a stronger target contract
+      - reject field writes through non-mut addressed register bindings
+    remaining:
+      - propagate AddressStability.Fixed independently from storage origin through Place, Semantic IR, MLIR, and tooling facts
+      - validate target address domain, alignment, extent, access width, memory space, layout, and permissions
+      - accept arbitrary compile-time-known integer address expressions rather than only integer literals
+      - diagnose statically known incompatible overlapping bindings
+      - preserve volatile semantics through impl receivers and all field/property access paths
+      - lower volatile loads/stores and safe addressed field updates
+      - preserve read-only, write-only, W1C, W0C, clear-on-read, nested-register, and byte-order semantics at addressed boundaries
+      - specify and implement the separate checked or unsafe dynamic-address mechanism
+      - add complete target-profile, diagnostics, LSP, IR, lowering, and end-to-end coverage
+    verification:
+      - command: go test ./internal/parser -run Register -count=1
+        result: passed
+      - command: go test ./internal/sema -run 'Register|StorageOrigin' -count=1
+        result: passed
 
   - id: sema.isr-analysis
     area: frontend-analysis-and-lowering
@@ -1594,6 +1923,169 @@ integrations:
       - command: SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./internal/lowering/secmlir ./cmd/compiler ./internal/mlir
         result: passed with real sec-mlir-opt integration
 
+  - id: frontend.enums
+    area: frontend-analysis-and-tooling
+    status: partial
+    integrated: "2026-08-13"
+    summary: >-
+      Tracks the canonical closed ordinary and open bit-backed enum model,
+      Go-style iota initializer repetition, declared-member defaults, aliases,
+      conversions, match coverage, register integration, and tooling.
+    rules:
+      - rules/declarations/enums.md
+      - rules/foundations/grammar.md
+      - rules/types/default_values.md
+      - rules/control-flow/flowcontrol_match.txt
+      - rules/declarations/registers.md
+      - rules/errors/errorhandling.txt
+      - rules/tooling/lsp.md
+    code:
+      - internal/ast/ast.go
+      - internal/parser/parser.go
+      - internal/sema/types.go
+      - internal/sema/defaults.go
+      - internal/sema/analyzer.go
+    tests:
+      - internal/parser/parser_test.go
+      - internal/sema/defaults_test.go
+      - internal/sema/analyzer_test.go
+      - testdata/enum_valid.sec
+      - testdata/errorhandling_match_invalid.sec
+    implemented:
+      - ordinary enum declarations with default int or explicit integer underlying representation
+      - exact-width open bit and bit[N] enum identities from width 1 through 256
+      - non-empty declarations, unique member names, aliases, and compile-time representability checks
+      - first omitted initializer as iota and later omitted initializers as repetition of the preceding expression at the current iota
+      - post-member default marker parsing in MEMBER default and MEMBER default = expression forms
+      - rejection of multiple explicit default members
+      - first-member fallback and explicit declared-member enum default resolution
+      - default initialization of mutable enum declarations without an initializer
+      - rejection of constant conversions to undeclared values of closed ordinary enums
+      - acceptance of unnamed in-range constant values of open bit-backed enums
+      - compiler-known EnumValueError with UndeclaredValue and OutOfRange members
+      - Result-valued runtime integer-to-closed-enum conversion requiring ordinary try handling
+      - Result-valued runtime out-of-width bit-enum conversion with proof-based infallible range elimination
+      - closed ordinary match exhaustiveness over unique declared numeric value classes
+      - open bit-backed match exhaustiveness over the complete bit[N] domain
+      - alias normalization for duplicate and unreachable match analysis
+      - bit-backed enum register-field width validation and nominal type retention
+    remaining:
+      - preserve unnamed bit-backed enum register encodings through register extraction and insertion lowering
+      - expose closed/open domain and checked-conversion facts in LSP hover and match diagnostics
+      - synchronize Semantic IR and Sec MLIR conversion operations with checked EnumValueError control flow and runtime validation
+      - add formatter coverage for the enum default marker and recovery from noncanonical initializer spelling
+      - add complete valid, invalid, recovery, LSP, Semantic IR, and end-to-end enum coverage
+    verification:
+      - command: go test ./internal/parser -run EnumDefault -count=1
+        result: passed
+      - command: go test ./internal/sema -run 'TestEnum(Default|Rejects|Initializer|ClosedAndOpen|ValuesAndNamespace|ValidFixture|MatchEnumNumericCoverage)|TestErrorHandlingMatchInvalidFixture' -count=1
+        result: passed
+
+  - id: frontend.structs
+    area: frontend-analysis-and-lowering
+    status: partial
+    integrated: "2026-08-13"
+    summary: >-
+      Tracks canonical named struct declarations, stored fields and tags,
+      complete and partial literals, recursive semantic defaults, field Places,
+      derived value classifications, spread construction, and backend coverage.
+    rules:
+      - rules/declarations/struct.md
+      - rules/types/default_values.md
+      - rules/declarations/spread.md
+      - rules/memory/copy_move.md
+      - rules/memory/ownership.md
+      - rules/memory/layout.md
+    code:
+      - internal/ast/ast.go
+      - internal/parser/parser.go
+      - internal/parser/expression.go
+      - internal/sema/types.go
+      - internal/sema/defaults.go
+      - internal/sema/analyzer.go
+      - internal/sema/place.go
+      - internal/codegen/mlir/generator.go
+    tests:
+      - internal/parser/parser_test.go
+      - internal/sema/analyzer_test.go
+      - internal/sema/defaults_test.go
+      - internal/sema/copy_move_test.go
+      - internal/codegen/mlir/generator_test.go
+    implemented:
+      - named struct declarations through type Name struct syntax
+      - typed comma-separated stored fields with trailing comma support
+      - empty structs and duplicate or unknown field diagnostics
+      - raw-string field tags parsed and preserved as open-key metadata
+      - named complete, partial, empty, multiline, comma-separated, and trailing-comma struct literals
+      - unknown and duplicate explicit struct-literal field diagnostics
+      - recursive semantic defaults for omitted defaultable fields
+      - rejection of omitted non-defaultable fields
+      - mutable declaration default initialization for defaultable structs
+      - same-type struct spread parsing and Sema validation for implicitly copyable sources
+      - stored-field member access, assignment, borrow, move, Place projection, and sibling-field distinction
+      - derived frontend equality comparability when every stored field is comparable
+      - derived copy and destruction classification from stored fields and nominal no-copy policy
+      - concrete non-generic struct lowering with nested values and supported direct field reads and assignments
+    remaining:
+      - resolve forward and mutually recursive non-generic struct field graphs completely before field-dependent analysis
+      - diagnose every direct or indirect by-value recursive struct cycle as infinite size
+      - lower generic structs across all supported operations
+      - lower struct spread across copy, move, override, and ownership-sensitive cases
+      - support reference and slice fields consistently across every backend path
+      - complete partial-move and partial-initialization masks for nested aggregates
+      - represent and lower construction-failure cleanup for already initialized nontrivial fields
+      - complete derived struct equality lowering
+      - validate explicit foreign-compatible struct layout contracts
+      - synchronize remaining struct diagnostics and valid, invalid, recovery, ownership, cleanup, FFI, and end-to-end tests
+    verification:
+      - command: go test ./internal/parser -run Struct -count=1
+        result: passed
+      - command: go test ./internal/sema -run Struct -count=1
+        result: passed
+
+  - id: frontend.spread
+    area: frontend-analysis-and-semantic-ir
+    status: partial
+    integrated: "2026-08-13"
+    summary: >-
+      Tracks canonical postfix spread parsing and fixed-array call, fixed-array
+      literal, and same-type struct spread semantics without hidden moves or
+      allocation.
+    rules:
+      - rules/declarations/spread.md
+      - rules/declarations/struct.md
+      - rules/collections/collections.md
+      - rules/memory/copy_move.md
+      - rules/memory/ownership.md
+      - rules/compiler/semantic_ir.txt
+    code:
+      - internal/ast/ast.go
+      - internal/lexer/lexer.go
+      - internal/parser/expression.go
+      - internal/sema/analyzer.go
+    tests:
+      - internal/lexer/lexer_test.go
+      - internal/parser/parser_test.go
+      - internal/sema/analyzer_test.go
+    implemented:
+      - postfix expression... syntax in call arguments, fixed-array literals, and struct literal entries
+      - fixed-array expansion counts for calls and array literals
+      - compact, checked fixed-array literal length accounting without materializing one analysis entry per expanded element
+      - same-exact-type non-consuming struct spread with left-to-right source analysis and explicit-field overrides
+      - semantic struct defaults after explicit/spread resolution, with invalid spreads unable to suppress missing NonDefaultable field diagnostics
+      - rejection of standalone spread and runtime-length sources in fixed-arity calls and fixed-array literals
+      - rejection of hidden consuming reads for move-only fixed-array elements and move-only struct sources
+      - diagnostics that retain the original reference or dynamic-array source type for runtime-arity failures
+    remaining:
+      - preserve exactly-once evaluation, expansion order, ownership decisions, and struct override/default provenance in Semantic IR or a proven equivalent normalized representation
+      - complete visibility and construction-invariant diagnostics for struct spread across module boundaries
+      - add permanent spread_valid.sec and spread_invalid.sec fixtures covering all canonical cases
+      - add parser recovery coverage for prefix, repeated, missing-source, and out-of-context spread
+      - support runtime-length sequence spread only if a separate runtime-arity destination rule defines it
+    verification:
+      - command: go test ./internal/sema -run 'Test(CallSpread|ArrayLiteralSpread|StructSpread|InvalidStructSpread)' -count=1
+        result: passed
+
   - id: lowering.sec-mlir-enum-union-values
     area: frontend-analysis-semantic-ir-and-mlir
     status: implemented
@@ -1697,7 +2189,7 @@ integrations:
       - rules/mlir/packages/sec-mlir-dialect_package12.md
       - rules/mlir/packages/sec-mlir-dialect_package12.yaml
       - rules/control-flow/flowcontrol_match.txt
-      - rules/declarations/enums.txt
+      - rules/declarations/enums.md
       - rules/compiler/semantic_ir.txt
       - rules/mlir/semantic-ir/sec_semantic_ir_match_v1.md
       - rules/mlir/sec_mlir_dialect.md
@@ -1727,7 +2219,7 @@ integrations:
       - testdata/semantic_ir/match_cfg.sec
     implemented:
       - enum match aliases normalize to arbitrary-precision numeric value classes for duplicate and unreachable analysis
-      - enum exhaustiveness includes undeclared explicitly converted values and accepts finite complete bit-backed domains by cardinality proof
+      - enum exhaustiveness distinguishes closed declared numeric value classes from complete open bit-backed domains and accepts finite complete bit domains by cardinality proof
       - ResolvedMatchPlanOf exposes immutable subject, arm, binding, guard, flow, result and residual-coverage facts without re-analysis
       - Semantic IR UnreachableOp requires synthesized provenance and a non-empty reason
       - schema 8 accepts and verifies sec.unreachable while schemas 1 through 7 remain accepted inputs
@@ -2464,3 +2956,83 @@ integrations:
       - add required ProvenDeadlock, PotentialDeadlock, Unknown, safe/non-deadlock, interprocedural, defer/cleanup, task/thread, callable, FFI, ISR, resource-semantics, dynamic-resource, incremental-LSP, performance, determinism, and false-positive regression tests
       - maintain a permanent false-positive regression corpus for partial lock orders, scoped guards, condition waits that release mutexes, nonblocking acquisition, guaranteed timeout, serialized execution, ISR masking, ordered dynamic locks, resource transfer, reentrancy, and join-after-release patterns
       - update implementation-status verification commands when the first conforming vertical slice is integrated
+
+  - id: compiler.platform-model
+    area: compiler-platform-and-tooling
+    status: planned
+    summary: >-
+      Adds the canonical Sec platform registry and resolver, producing immutable
+      per-Target/per-Variant CompilationPlans with typed architecture, CPU, Device,
+      memory, runtime, execution, ABI, link, source-selection, capability,
+      fingerprint, diagnostic, and LSP-invalidation facts without host-dependent
+      target guessing or duplicated downstream platform resolution.
+    rules:
+      - rules/platform/platform_model.md
+      - rules/projects/projects.txt
+      - rules/compiler/compiler.txt
+      - rules/compiler/compiler_pipeline.txt
+      - rules/memory/storage.md
+      - rules/memory/layout.md
+      - rules/platform/ffi.txt
+      - rules/declarations/registers.md
+      - rules/platform/fixed-address-bindings.md
+      - rules/concurrency/concurrency_runtime_model.md
+      - rules/concurrency/concurrency_memory_model.md
+      - rules/analysis/stack_analysis.md
+      - rules/analysis/data_races.md
+      - rules/analysis/deadlock_analysis.md
+      - rules/analysis/isr_analysis.md
+      - rules/tooling/lsp.md
+      - rules/tooling/diagnostics.txt
+    remaining:
+      - add canonical Target and Variant platform-resolution integration that produces one concrete CompilationPlan for each requested Target x Variant pair
+      - keep Target as the logical product and Variant as the concrete platform-specific build configuration throughout compiler and tooling APIs
+      - introduce typed canonical identities for platform, architecture, CPU, Device, ABI, TargetProfile, runtime, execution, memory, and link definitions instead of downstream free-form target strings
+      - add deterministic alias normalization and reject unknown or ambiguous canonical platform identities
+      - add explicit BuildProfile versus TargetProfile separation in platform resolution and downstream plan consumers
+      - add immutable registry snapshots and immutable verified CompilationPlan snapshots for each compiler/LSP generation
+      - add typed resolved ArchitectureModel facts including CPU baseline, optional TuneCPU, resolved CPU features, pointer/word properties, endianness, alignment, and target hardware capabilities required by consumers
+      - support explicit project and CLI CPU selection without implicit host CPU fallback
+      - support explicit native-CPU discovery only as a requested resolution step and freeze the detected canonical CPU/features into the plan
+      - add optional Device definitions that may provide and constrain architecture, CPU, features, memory regions, MMIO, interrupt inputs, source mapping, and other concrete hardware facts
+      - reject incompatible explicit CPU, architecture, ABI, feature, TargetProfile, runtime, execution, and Device combinations regardless of configuration precedence
+      - distinguish configuration precedence from compatibility so a higher-precedence override selects only among legal alternatives
+      - add canonical MemoryEnvironment identities and facts for address spaces, memory spaces, MMIO, Device regions, and pointer-relevant platform properties without redefining storage ownership/lifetime semantics
+      - add canonical RuntimeEnvironment service and helper contracts including availability and relevant MayBlock, MayAllocate, MayPanic, reentrancy, interrupt-safety, and required-context information where needed by analyses/lowering
+      - add canonical ExecutionEnvironment facts for threads, tasks, interrupts, scheduling, preemption, nesting, masking, reentry, context transitions, and physical stack domains by referencing the owning concurrency/interrupt models
+      - expose resolved preemption/nesting/reentry relationships to race, deadlock, stack, and ISR analyses instead of making those analyses derive platform semantics from raw priorities or OS names
+      - add a resolved ABIModel reference selected once by the platform resolver and consumed consistently by lowering, FFI, machine-stack analysis, linking, and debug-information work
+      - add a resolved LinkEnvironment for object format, entry conventions, startup requirements, relocation/link capabilities, and target libraries while keeping detailed linking semantics in its own rulebook
+      - separate platform semantic capabilities from CompilerTargetSupport and toolchain availability so missing compiler emission/link support is not reported as invalid source or missing hardware capability
+      - model capability availability as Supported, Unsupported, or Unknown and capability activation separately as Enabled, Disabled, or NotApplicable
+      - reject or defer consumers that require Unknown platform facts instead of guessing from the compiler host or another target
+      - add deterministic TargetProfile capability/constraint composition without arbitrary registry inheritance or late overwrite semantics
+      - add deterministic default selection for omitted ABI, CPU, and other target facts and reject ambiguous defaults
+      - add CPU feature dependency/conflict validation and ensure TuneCPU cannot broaden the CPU capability baseline
+      - add platform source selection from canonical resolved identities rather than inferring semantics from directory depth or file presence
+      - validate required platform/runtime source implementations before later linker failure obscures missing platform support
+      - add canonical resolution provenance so diagnostics/tooling can explain whether an effective value came from a compiler default, TargetProfile, project Variant, Target override, Device, or command-line override
+      - add structured platform diagnostics distinguishing unknown definitions, invalid configuration, unsupported combinations, disabled capabilities, missing required capabilities, missing platform implementation, missing compiler support, missing toolchain support, and malformed registry definitions
+      - keep Target and Variant identity on plan-dependent diagnostics and support safe presentation grouping without merging distinct per-plan semantic results
+      - add declarative external platform/Device definition schema support after the built-in typed registry path is stable; do not require arbitrary executable compiler plugins for target definitions
+      - schema-validate external registry definitions and reject unknown references, duplicate identities, illegal overrides, feature conflicts, malformed numeric/address ranges, invalid memory regions, and invalid interrupt metadata before plan resolution
+      - enforce project/package source-path trust boundaries for platform source mappings and prevent external metadata from injecting arbitrary host filesystem sources
+      - add explicit registry/domain ownership and override/refinement rules so Device metadata may refine concrete hardware facts without redefining underlying architecture/CPU semantics
+      - make platform fact derivation acyclic for Sec 0.1 and perform cross-domain compatibility validation after independently resolving the participating models
+      - add a CompilationPlan verifier that checks required identities/facts, feature legality, Device constraints, cross-domain compatibility, runtime/execution requirements, source-selection coherence, and fingerprint readiness before freeze
+      - prevent arbitrary partially initialized CompilationPlans from becoming valid compiler inputs
+      - add domain-specific semantic fingerprints for architecture/layout, memory, runtime, execution, ABI, link, and optimization dependencies plus a composite plan identity where useful
+      - base semantic fingerprints on canonical resolved meaning rather than timestamps, display text, filesystem order, registry insertion order, or non-semantic provenance
+      - keep TuneCPU-only changes out of semantic fingerprints when they affect only optimization while invalidating the appropriate optimization/codegen artifacts
+      - add plan-domain dependency declarations so compiler passes and analyses can invalidate only target-dependent results affected by changed platform facts
+      - support safe target-independent cache reuse across multiple CompilationPlans and prevent reuse of stale plan-dependent results
+      - add multi-Variant regression coverage for one logical Target built as linux-amd64, linux-arm64, linux-armv7, and windows-amd64 with four concrete plans and isolated plan-dependent results
+      - add cross-compilation tests proving pointer width, endianness, ABI, object format, CPU features, memory facts, and platform source selection come from the CompilationPlan rather than the compiler host
+      - add LSP project/config/registry watchers that resolve new plan snapshots and invalidate affected diagnostics, analyses, hovers, and other plan-dependent state without restart
+      - when configuration becomes temporarily invalid, invalidate prior positive plan-dependent results while retaining sound target-independent editor functionality
+      - add registry dependency tracking so Device, CPU, ABI, runtime, execution, memory, profile, and other definition changes invalidate only dependent plans where precision permits
+      - add deterministic registry validation, resolution, fingerprints, source selection, and diagnostic ordering independent of map order, filesystem enumeration, and parallel compiler scheduling
+      - add property/fuzz tests for frozen-plan invariants, Device constraints, TuneCPU capability containment, capability-state distinctions, malformed external metadata, and deterministic resolution
+      - reserve separately resolved accelerator devices without implementing GPU execution or memory semantics as part of the Sec 0.1 platform-model milestone
+      - expose an inspectable read-only resolved-plan view for diagnostics, tests, LSP, and future target-info tooling
+      - update implementation-status verification commands when the first conforming platform-model vertical slice is integrated

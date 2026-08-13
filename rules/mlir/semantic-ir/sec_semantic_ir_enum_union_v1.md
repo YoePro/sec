@@ -70,8 +70,10 @@ explicit integer-to-enum conversion
 other validated semantic operation
 ```
 
-An enum SSA value is not required to have one declared case identity because
-explicit integer-to-enum conversion may produce an undeclared numeric value.
+An ordinary enum SSA value belongs to one declared numeric value class, although
+aliases mean that it need not have one unique case-name identity. An open
+bit-backed enum SSA value need not have a declared case identity because every
+in-width pattern is valid.
 
 ---
 

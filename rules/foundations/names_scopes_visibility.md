@@ -294,7 +294,7 @@ impl Vehicle {
 
 A nested type must not leak into the surrounding module namespace.
 
-Nested declaration support remains governed by `impl.txt`.
+Nested declaration support remains governed by `rules/declarations/impl.md`.
 
 ---
 
@@ -330,6 +330,16 @@ The member surface of a primary `impl Target` and all same-module
 `impl extends Target` blocks is one combined type-member scope. Source-file and
 block order do not change lookup, visibility, overload, or duplicate-name
 results. An extension in another module is not a valid scope contribution.
+
+The combined surface contains one special `init` overload group. Initializer
+identity uses only the parameter signature; a construction error type does not
+distinguish two overloads. `free` is non-overloadable and may occur at most once
+across the combined surface. User ordinary impls must be declared in the module
+that defines their target, except for the explicit compiler/core privilege.
+
+A nested `impl NestedType` is valid only when the nested type is owned by the
+enclosing impl target and resolves to that qualified identity. Since `new` is a
+hard keyword, declaration and rename validation must reject it everywhere.
 
 Local variables normally become visible only after their declaration has been
 successfully analyzed.
@@ -1173,13 +1183,13 @@ contracts.md
 functions.txt
 functions_lambda.txt
 generics.txt
-interfaces.txt
-impl.txt
-properties.txt
-struct.txt
-enums.txt
-unions.txt
-registers.txt
+declarations/interfaces.md
+declarations/impl.md
+properties.md
+struct.md
+enums.md
+unions.md
+declarations/registers.md
 units.txt
 collections.md
 shaped-types.md

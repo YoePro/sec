@@ -17,7 +17,7 @@ package:
 normative_updates:
 - repository_paths:
   - rules/control-flow/flowcontrol_match.txt
-  - rules/declarations/enums.txt
+  - rules/declarations/enums.md
   supplied_file: sec_match_enum_domain_package12.md
   purpose: Resolve enum alias/unnamed-value match-domain inconsistency.
 - repository_path: rules/compiler/semantic_ir.txt
@@ -46,11 +46,11 @@ enum_match_correction:
   alias_same_numeric_value: same runtime match domain
   unguarded_alias_after_covered_value: unreachable
   guarded_alias_then_unguarded_equivalent: valid
-  runtime_domain: complete representable underlying enum domain
-  unnamed_converted_values_in_domain: true
+  runtime_domain: closed declared classes for ordinary enums; complete representable bit domain for bit-backed enums
+  unnamed_converted_values_in_domain: bit-backed enums only
   exhaustive_if:
   - unguarded catch-all
-  - or unique unguarded numeric coverage proves complete representable domain
+  - or unique unguarded numeric coverage proves the complete closed or open semantic domain
   guarded_arms_count_as_full_coverage: false
   coverage_arithmetic: arbitrary precision
 scope:

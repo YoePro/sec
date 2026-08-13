@@ -357,7 +357,8 @@ The compiler verifies:
 * address annotations
 * generated access operations
 
-Register analysis follows registers.txt.
+Register analysis follows `rules/declarations/registers.md`. Addressed-storage
+analysis follows `rules/platform/fixed-address-bindings.md`.
 
 ## Unit analysis
 

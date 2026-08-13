@@ -30,9 +30,9 @@ All normative compiler-known-member semantics belong to this document.
 
 `stdlib.md` owns optional higher-level library APIs.
 
-`properties.txt` owns ordinary user-defined property syntax and behavior.
+`properties.md` owns ordinary user-defined property syntax and behavior.
 
-`impl.txt` owns ordinary user-defined implementation blocks.
+`rules/declarations/impl.md` owns ordinary user-defined implementation blocks.
 
 `types.md`, `collections.md`, `reference_model.md`, `unsafe.md`,
 `allocation.txt`, `arena.md`, `layout.md`, `effect_analysis.md`, and
@@ -3207,11 +3207,11 @@ effect_analysis.md
 ffi.txt
 formatting.md
 generics.txt
-impl.txt
+impl.md
 layout.md
 lsp.md
 ownership.md
-properties.txt
+properties.md
 reference_model.md
 semantic_ir.txt
 stdlib.md
@@ -3235,10 +3235,10 @@ compiler_known_members.md
 core-library.md
     owns ordinary core declarations and helper bodies
 
-properties.txt
+properties.md
     owns user-defined property syntax
 
-impl.txt
+impl.md
     owns user-defined methods and implementations
 
 layout.md
@@ -3265,6 +3265,53 @@ semantic_ir.txt
 lsp.md
     owns tooling presentation, not semantic truth
 ```
+
+---
+
+# Shaped types
+
+The canonical registry recognizes these shaped receiver families:
+
+```text
+vector[T, N]
+matrix[T, Rows, Columns]
+tensor[T, Dims...]
+tensor[T, Shape[Rank]]
+ref tensor_view[T, Rank]
+ref mut tensor_view[T, Rank]
+```
+
+It also recognizes `Shape[Rank]`, `Strides[Rank]`, `TensorLayout[Rank]`,
+`Axes[Rank]`, `AxisList[Count]`, `MemorySpace`, `StorageRequest`, and
+`ShapedStorageRequest[Rank]` as compiler-known supporting identities.
+
+Where meaningful for the receiver, the read-only properties are `Rank`,
+`Shape`, `Len`, `Strides`, `Layout`, `MemorySpace`, `IsContiguous`, and
+`SizeOf`. `Ptr` is additionally unsafe and requires addressability. These are
+properties rather than zero-argument methods. Shaped `Len` is the total logical
+scalar element count.
+
+On a shaped instance, `SizeOf` is the represented logical payload byte count,
+conceptually `value.Len * element payload size`. It is not descriptor size,
+storage span, or unique backing-byte count. Associated `Type.SizeOf` and global
+`SizeOf(Type)` remain physical layout queries.
+
+The registry provides stable semantic identities for `Reshape`, `ToShape`,
+`Materialize`, `TransferTo`, `Relayout`, `Permute`, `Transpose`, `BroadcastTo`,
+`Dot`, `Outer`, `Magnitude`, `Normalize`, `Cross`, and `Contract`. The `x`
+operator remains compiler-known shaped algebraic multiplication.
+
+Ownership and effect facts distinguish borrowed non-allocating `Reshape`,
+consuming non-allocating `ToShape`, new-owner `Materialize`, source-preserving
+`TransferTo`, and potentially storage-producing `Relayout`.
+
+Associated `Rank`, `Shape`, and `Len` exist only when the complete value is a
+static type fact. Runtime-shaped tensors and tensor views do not synthesize
+type-level runtime `Shape` or `Len` values.
+
+Compiler, Sema, completion, hover, definition lookup, overload resolution, and
+diagnostics consume this same registry. No LSP-local shaped member inventory is
+permitted.
 
 ---
 

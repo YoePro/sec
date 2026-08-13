@@ -302,19 +302,14 @@ impl Counter {
 }
 ```
 
-Expected diagnostic:
-
-```text
-method Create must declare self or be marked static
-```
-
 Explicit `static fn` is required for semantic clarity.
 
 ---
 
 ## Instance methods
 
-An ordinary method belongs to an instance and must declare `self`.
+An ordinary method belongs to an instance and receives compiler-provided
+implicit `self`; it must not declare a receiver parameter.
 
 Example:
 
@@ -325,8 +320,6 @@ impl Counter {
     }
 }
 ```
-
-A non-static method without a valid `self` parameter is invalid.
 
 A static method must not use `self`.
 
@@ -431,14 +424,16 @@ impl Application {
             return Application._mode
         }
 
-        set {
-            Application._mode = value
+        set mode {
+            Application._mode = mode
         }
     }
 }
 ```
 
 The setter operates on type-associated storage.
+Its incoming value parameter is always explicit and programmer-named. The same
+rule applies to `try set name`; there is no implicit `value` binding.
 
 It must obey:
 
@@ -548,7 +543,9 @@ fn main() Result[void, StartupError] {
 }
 ```
 
-Sec must not introduce hidden `init()` behavior.
+Sec must not introduce hidden module or static startup initializers. The
+explicit `init(...)` lifecycle member defined by `impl.md` constructs an
+instance and does not authorize hidden static/module initialization.
 
 ---
 
@@ -918,10 +915,6 @@ static is redundant on module-level declaration State
 ```
 
 ```text
-method Create must declare self or be marked static
-```
-
-```text
 self cannot be used in static method Create
 ```
 
@@ -974,8 +967,8 @@ cannot return mutable reference to shared static State
 Detailed behavior is defined in:
 
 ```text
-impl.txt
-properties.txt
+impl.md
+properties.md
 tasks.txt
 concurrency.txt
 mutex.txt

@@ -1229,9 +1229,9 @@ names_scopes_visibility.md
 types.md
 functions.txt
 generics.txt
-interfaces.txt
-impl.txt
-properties.txt
+declarations/interfaces.md
+impl.md
+properties.md
 errorhandling.txt
 allocation.txt
 ownership.md

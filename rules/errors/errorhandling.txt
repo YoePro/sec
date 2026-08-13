@@ -24,6 +24,23 @@ Goals:
 - `match` remains the general pattern-matching construct,
 - `try` provides concise Result unwrapping and error handling.
 
+Initializer construction errors
+===============================
+
+The lifecycle member `init(args...) ErrorType` declares exactly one typed
+construction-error channel. The trailing type is not a success return type.
+Successful `new Type(args...)` produces `Type`; failure produces the exact
+declared error and must use ordinary `try` propagation or local handling.
+
+```sec
+let connection := try new Connection(address)
+```
+
+In a local handler the success arm receives the constructed instance. A failed
+initializer produces no completed instance, and partial-construction cleanup
+precedes propagation. This error channel is not modeled as `Option[E]`, and a
+fallible initializer must not return an arbitrary success payload.
+
 
 Result
 ======
@@ -707,6 +724,46 @@ Expected:
     expected '=>' after match pattern
 
 Avoid cascading errors from tokens inside a malformed handler.
+
+
+Option and Result API selection
+===============================
+
+Use `Option[T]` when an operation is semantically valid but a normal input or
+domain case may have no result and callers do not require a failure reason.
+Examples include `RemoveAt(index) -> Option[T]`, `map.Remove(key) -> Option[V]`,
+and `Normalize() -> Option[vector[...]]`; zero magnitude produces `None` for
+`Normalize`.
+
+Use `Result[T, E]` when an operation can genuinely fail and the reason is part
+of correct handling or control flow. Shaped storage operations such as
+`TransferTo(request)` and `Materialize(request)` therefore return
+`Result[..., StorageError]`.
+
+This distinction follows source semantics, not the presence of an internal
+branch. APIs must not turn normal absence into an error merely because an error
+type could be invented. Documentation and hover show the exact return type and,
+when necessary for correct use, the normal `None` condition or principal `Err`
+condition.
+
+
+Checked enum conversions
+========================
+
+Checked integer-to-enum conversion participates in the normal `try` model and
+uses:
+
+    EnumValueError.UndeclaredValue
+    EnumValueError.OutOfRange
+
+For a closed ordinary enum, `UndeclaredValue` means that the integer fits the
+underlying representation but is not a declared numeric value class.
+`OutOfRange` means that it does not fit the underlying representation.
+
+For an open `bit[N]` enum, every in-width pattern is valid, including unnamed
+patterns, so only `OutOfRange` applies. A conversion proven infallible by Sema
+needs no runtime validation; otherwise normal `try` handling or propagation is
+required.
 
 
 Implementation phases

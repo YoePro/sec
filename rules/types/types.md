@@ -1541,6 +1541,7 @@ The compiler-known shaped type constructors are:
 vector[T, N]
 matrix[T, Rows, Columns]
 tensor[T, Dimensions...]
+tensor[T, Shape[Rank]]
 tensor_view[T, Rank]
 ```
 
@@ -1552,12 +1553,26 @@ Supporting nominal types include:
 Shape[Rank]
 Strides[Rank]
 TensorLayout[Rank]
+Axes[Rank]
+AxisList[Count]
 MemorySpace
+StorageRequest
+ShapedStorageRequest[Rank]
 ```
 
 The lowercase shaped constructors are fundamental compiler-known type forms.
 
 The uppercase supporting types remain nominal core types.
+
+`tensor[T, Dimensions...]` is an owning tensor whose rank and extents are
+compile-time-known. `tensor[T, Shape[Rank]]` is an owning runtime-shaped tensor:
+its rank is compile-time-known while its extents are runtime values. It must not
+be reinterpreted as `tensor_view[T, Rank]`, which remains a compiler-known
+non-owning view type form. Safe source-level views use `ref tensor_view[T, Rank]`
+or `ref mut tensor_view[T, Rank]`.
+
+The supporting shaped types are nominal semantic types, not aliases for
+ordinary arrays or lists.
 
 Physical layout is not inferred from the source spelling unless the shaped-type rulebook explicitly makes layout observable.
 
@@ -1773,9 +1788,10 @@ raw_pointers.txt
 functions.txt
 functions_lambda.txt
 generics.txt
-interfaces.txt
+declarations/interfaces.md
 errorhandling.txt
-registers.txt
+declarations/registers.md
+platform/fixed-address-bindings.md
 ffi.txt
 storage.md
 ```

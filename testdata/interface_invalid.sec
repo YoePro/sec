@@ -7,13 +7,19 @@ module interfaces
 // Unknown and non-interface implementation targets
 // =============================================================================
 
-type UnknownInterfaceTarget struct implements DoesNotExist {
+type UnknownInterfaceTarget struct {
+}
+
+impl UnknownInterfaceTarget implements DoesNotExist {
 }
 
 type OrdinaryContract struct {
 }
 
-type NonInterfaceTarget struct implements OrdinaryContract {
+type NonInterfaceTarget struct {
+}
+
+impl NonInterfaceTarget implements OrdinaryContract {
 }
 
 // =============================================================================
@@ -23,10 +29,10 @@ type NonInterfaceTarget struct implements OrdinaryContract {
 interface DuplicateMarker {
 }
 
-type DuplicateImplementation struct implements DuplicateMarker, DuplicateMarker {
+type DuplicateImplementation struct {
 }
 
-impl DuplicateImplementation {
+impl DuplicateImplementation implements DuplicateMarker, DuplicateMarker {
 }
 
 // =============================================================================
@@ -37,20 +43,20 @@ interface RequiresRun {
     fn Run() void
 }
 
-type MissingMethod struct implements RequiresRun {
+type MissingMethod struct {
 }
 
-impl MissingMethod {
+impl MissingMethod implements RequiresRun {
 }
 
 interface RequiresStop {
     fn Stop() void
 }
 
-type WrongMethodName struct implements RequiresStop {
+type WrongMethodName struct {
 }
 
-impl WrongMethodName {
+impl WrongMethodName implements RequiresStop {
     // ERROR: Halt does not satisfy Stop.
     fn Halt() void {
     }
@@ -64,25 +70,14 @@ interface RequiresSharedReceiver {
     fn Inspect() void
 }
 
-type MutableInsteadOfShared struct implements RequiresSharedReceiver {
+type MutableInsteadOfShared struct {
+	value: int,
 }
 
-impl MutableInsteadOfShared {
-    // ERROR: ref mut self does not exactly match ref self.
+impl MutableInsteadOfShared implements RequiresSharedReceiver {
+    // ERROR: Body analysis infers a mutable receiver, stronger than plain fn.
     fn Inspect() void {
-    }
-}
-
-interface RequiresMutableReceiver {
-    fn Reset() void
-}
-
-type SharedInsteadOfMutable struct implements RequiresMutableReceiver {
-}
-
-impl SharedInsteadOfMutable {
-    // ERROR: ref self does not satisfy ref mut self.
-    fn Reset() void {
+		self.value = 1
     }
 }
 
@@ -90,12 +85,12 @@ interface RequiresInstanceReceiver {
     fn Value() int
 }
 
-type StaticInsteadOfInstance struct implements RequiresInstanceReceiver {
+type StaticInsteadOfInstance struct {
 }
 
-impl StaticInsteadOfInstance {
+impl StaticInsteadOfInstance implements RequiresInstanceReceiver {
     // ERROR: A static method does not satisfy an instance method requirement.
-    fn Value() int {
+    static fn Value() int {
         return 0
     }
 }
@@ -108,19 +103,19 @@ interface RequiresOneParameter {
     fn Set(value: int) void
 }
 
-type MissingParameter struct implements RequiresOneParameter {
+type MissingParameter struct {
 }
 
-impl MissingParameter {
+impl MissingParameter implements RequiresOneParameter {
     // ERROR: Missing required int parameter.
     fn Set() void {
     }
 }
 
-type ExtraParameter struct implements RequiresOneParameter {
+type ExtraParameter struct {
 }
 
-impl ExtraParameter {
+impl ExtraParameter implements RequiresOneParameter {
     // ERROR: The implementation has one extra parameter.
     fn Set(value: int, extra: int) void {
     }
@@ -130,10 +125,10 @@ interface RequiresOrderedParameters {
     fn Configure(count: int, enabled: bool) void
 }
 
-type WrongParameterOrder struct implements RequiresOrderedParameters {
+type WrongParameterOrder struct {
 }
 
-impl WrongParameterOrder {
+impl WrongParameterOrder implements RequiresOrderedParameters {
     // ERROR: Parameter order and types do not match.
     fn Configure(enabled: bool, count: int) void {
     }
@@ -143,10 +138,10 @@ interface RequiresIntegerParameter {
     fn Accept(value: int) bool
 }
 
-type WrongParameterType struct implements RequiresIntegerParameter {
+type WrongParameterType struct {
 }
 
-impl WrongParameterType {
+impl WrongParameterType implements RequiresIntegerParameter {
     // ERROR: string is incompatible with int.
     fn Accept(value: string) bool {
         return false
@@ -165,10 +160,10 @@ interface RequiresSharedParameter {
     fn Use(buffer: ref Buffer) void
 }
 
-type OwnedParameterInsteadOfReference struct implements RequiresSharedParameter {
+type OwnedParameterInsteadOfReference struct {
 }
 
-impl OwnedParameterInsteadOfReference {
+impl OwnedParameterInsteadOfReference implements RequiresSharedParameter {
     // ERROR: Buffer does not match ref Buffer.
     fn Use(buffer: Buffer) void {
     }
@@ -178,10 +173,10 @@ interface RequiresMutableParameter {
     fn Update(buffer: ref mut Buffer) void
 }
 
-type SharedParameterInsteadOfMutable struct implements RequiresMutableParameter {
+type SharedParameterInsteadOfMutable struct {
 }
 
-impl SharedParameterInsteadOfMutable {
+impl SharedParameterInsteadOfMutable implements RequiresMutableParameter {
     // ERROR: ref Buffer does not match ref mut Buffer.
     fn Update(buffer: ref Buffer) void {
     }
@@ -195,10 +190,10 @@ interface RequiresIntegerResult {
     fn Measure() int
 }
 
-type WrongReturnType struct implements RequiresIntegerResult {
+type WrongReturnType struct {
 }
 
-impl WrongReturnType {
+impl WrongReturnType implements RequiresIntegerResult {
     // ERROR: bool does not match int.
     fn Measure() bool {
         return false
@@ -209,10 +204,10 @@ interface RequiresValueResult {
     fn Read() int
 }
 
-type VoidReturnInsteadOfValue struct implements RequiresValueResult {
+type VoidReturnInsteadOfValue struct {
 }
 
-impl VoidReturnInsteadOfValue {
+impl VoidReturnInsteadOfValue implements RequiresValueResult {
     // ERROR: void does not match int.
     fn Read() void {
     }
@@ -228,19 +223,19 @@ interface RequiresNameProperty {
     }
 }
 
-type MissingProperty struct implements RequiresNameProperty {
+type MissingProperty struct {
     _name: string,
 }
 
-impl MissingProperty {
+impl MissingProperty implements RequiresNameProperty {
 }
 
 // A stored field does not satisfy a property requirement.
-type FieldInsteadOfProperty struct implements RequiresNameProperty {
+type FieldInsteadOfProperty struct {
     Name: string,
 }
 
-impl FieldInsteadOfProperty {
+impl FieldInsteadOfProperty implements RequiresNameProperty {
 }
 
 interface RequiresIntegerProperty {
@@ -249,11 +244,11 @@ interface RequiresIntegerProperty {
     }
 }
 
-type WrongPropertyType struct implements RequiresIntegerProperty {
+type WrongPropertyType struct {
     _value: string,
 }
 
-impl WrongPropertyType {
+impl WrongPropertyType implements RequiresIntegerProperty {
     // ERROR: Property type string does not match int.
     property Value: string {
         get {
@@ -268,11 +263,11 @@ interface RequiresReadableProperty {
     }
 }
 
-type SetterOnlyProperty struct implements RequiresReadableProperty {
+type SetterOnlyProperty struct {
     _value: int,
 }
 
-impl SetterOnlyProperty {
+impl SetterOnlyProperty implements RequiresReadableProperty {
     // ERROR: The required getter is missing.
     property Value: int {
         set value {
@@ -284,15 +279,15 @@ impl SetterOnlyProperty {
 interface RequiresReadWriteProperty {
     property Value: int {
         get
-        set
+        set value
     }
 }
 
-type GetterOnlyProperty struct implements RequiresReadWriteProperty {
+type GetterOnlyProperty struct {
     _value: int,
 }
 
-impl GetterOnlyProperty {
+impl GetterOnlyProperty implements RequiresReadWriteProperty {
     // ERROR: The required setter is missing.
     property Value: int {
         get {
@@ -313,10 +308,10 @@ interface DerivedRead implements BaseRead {
     fn Revision() int
 }
 
-type MissingInheritedMethod struct implements DerivedRead {
+type MissingInheritedMethod struct {
 }
 
-impl MissingInheritedMethod {
+impl MissingInheritedMethod implements DerivedRead {
     // ERROR: Read inherited from BaseRead is missing.
     fn Revision() int {
         return 1
@@ -335,10 +330,10 @@ interface ThirdLevel implements SecondLevel {
     fn Third() int
 }
 
-type MissingDeepRequirement struct implements ThirdLevel {
+type MissingDeepRequirement struct {
 }
 
-impl MissingDeepRequirement {
+impl MissingDeepRequirement implements ThirdLevel {
     fn Second() int {
         return 2
     }

@@ -53,6 +53,14 @@ They are not macros.
 They are not runtime reflection metadata unless a future rule explicitly says
 otherwise.
 
+`static` is a storage-duration and type-association modifier, not a physical
+placement mechanism. It does not by itself select a linker section, absolute
+address, MMIO binding, memory space, or target-specific storage class. Physical
+placement uses only mechanisms defined by this closed attribute set or by the
+canonical storage, ABI, and platform rules. In particular, source must not
+assume a conceptual `@section(...)` attribute unless it is separately added to
+the compiler-known set with complete semantics.
+
 ---
 
 # Initial compiler-known attribute set
@@ -2615,7 +2623,7 @@ defer.txt
 destruction.txt
 inline_assembly.md
 ffi.txt
-functions.txt
+functions.md
 declarations/interfaces.md
 impl.md
 generics rulebook

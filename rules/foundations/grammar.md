@@ -107,7 +107,7 @@ Implemented:
 - `odd`;
 - `even`;
 - generic type parameter lists;
-- one interface constraint per generic parameter;
+- one interface constraint per generic parameter in the current parser;
 - named struct declarations;
 - enum declarations;
 - type-declaration enum form;
@@ -518,10 +518,11 @@ Parsing and substantial Sema support exist for:
 Still incomplete:
 
 - complete generic lowering;
-- monomorphization rulebook;
+- multiple interface constraints in the parser, AST, Sema, formatter, and LSP;
+- partial explicit generic argument prefixes with inference of the remainder;
 - compile-time value-parameter syntax as a general generic facility;
-- method-level generic coverage;
-- generic enums;
+- method-level generic Sema, overload resolution, monomorphization, and lowering;
+- generic named-type and generic-interface closure;
 - complete ambiguity diagnostics between indexing and explicit generic calls;
 - full generic symbol identity across modules.
 
@@ -1124,7 +1125,8 @@ A token such as `+` does not dynamically resolve to an arbitrary user method.
 
 ## Generic enums
 
-Not implemented.
+Generic enum declarations are invalid in Sec 0.1. Generic payload variation
+belongs in unions.
 
 ## Field-level match destructuring
 
@@ -1383,7 +1385,10 @@ GenericParameterList
     ::= "[" GenericParameter { "," GenericParameter } [ "," ] "]"
 
 GenericParameter
-    ::= Identifier [ ":" TypeReference ]
+    ::= Identifier [ GenericConstraintClause ]
+
+GenericConstraintClause
+    ::= ":" TypeReference { "&" TypeReference }
 ```
 
 Examples:
@@ -1401,7 +1406,8 @@ fn Save[T: Serializable](value: T) Result[void, IOError] {
 }
 ```
 
-The current syntax permits one constraint type after `:`.
+`&` combines multiple interface constraints. It is a compile-time conjunction,
+not a runtime intersection type.
 
 A general `where` clause for generic declarations is not part of the current
 grammar.
@@ -2067,9 +2073,9 @@ ImplMember
       | NestedTypeDeclaration
       | NestedUnitDeclaration
       | NestedEnumDeclaration
-	  | InitDeclaration
-	  | FreeDeclaration
-	  | NestedImplDeclaration
+      | InitDeclaration
+      | FreeDeclaration
+      | NestedImplDeclaration
       | UnitMetadataDeclaration
 ```
 
@@ -2263,6 +2269,11 @@ FunctionBody
     ::= Block
 ```
 
+The return type and body are mandatory for an ordinary function declaration.
+`FunctionSignature` is used only by constructs that explicitly permit a
+bodyless callable contract, such as an interface requirement or foreign
+`extern` declaration. It is not an ordinary prototype form.
+
 Examples:
 
 ```sec
@@ -2291,8 +2302,8 @@ ParameterList
 
 Parameter
     ::= Identifier ":" TypeReference
-      | "ref" Identifier ":" TypeReference
-      | "ref" "mut" Identifier ":" TypeReference
+      | "->" Identifier ":" TypeReference
+      | Identifier ":" "..." TypeReference
 ```
 
 Examples:
@@ -2303,14 +2314,19 @@ fn Inspect(value: Token) void {
 ```
 
 ```sec
-fn Read(ref value: Token) void {
+fn Read(value: ref Token) void {
 }
 ```
 
 ```sec
-fn Update(ref mut value: Token) void {
+fn Update(value: ref mut Token) void {
 }
 ```
+
+`-> name: Type` is a forced-consuming by-value parameter. `name: ...Type` is
+the final native typed variadic parameter. `->` cannot combine with `ref`,
+`ref mut`, or `...`; a function has at most one variadic parameter and it must
+be last.
 
 `self` is implicit in methods.
 
@@ -2396,7 +2412,18 @@ StaticFunctionDeclaration
     ::= "static" FunctionDeclaration
 ```
 
-Inside `impl`, `static` may modify `fn` or `let`.
+Inside `impl`, `static` may modify `fn`, `let`, or `property`. Ordinary `fn`
+members are instance-bound with compiler-provided implicit `self`; only
+`static fn` is type-level and has no receiver. Static property setters use the
+`StaticPropertyDeclaration` production defined with properties above and the
+same mandatory explicit identifier as instance setters:
+
+```text
+"set" Identifier Block
+"try" "set" Identifier Block
+```
+
+There is no implicit setter-value binding.
 
 Complete initialization order belongs to `static.md` and
 `initialization.md`.
@@ -3449,6 +3476,12 @@ pkg.Make[Box[string]]("hello")
 The bracket must be attached and followed by a call context.
 
 Otherwise the syntax is indexing.
+
+For generic function and method calls, the explicit type arguments may be a
+positional prefix of the declaration's parameters. Remaining parameters are
+inferred from arguments, receiver, and permitted expected-result context.
+Generic argument holes such as `Foo[_, B](...)` or `Foo[, B](...)` are invalid.
+Generic type references still require their complete type argument list.
 
 ---
 
@@ -4609,9 +4642,9 @@ struct.md
 enums.md
 unions.md
 declarations/registers.md
-functions.txt
+functions.md
 functions_lambda.txt
-generics.txt
+declarations/generics.md
 declarations/interfaces.md
 impl.md
 properties.md

@@ -1180,9 +1180,9 @@ grammar.md
 operators.md
 types.md
 contracts.md
-functions.txt
+functions.md
 functions_lambda.txt
-generics.txt
+declarations/generics.md
 declarations/interfaces.md
 declarations/impl.md
 properties.md

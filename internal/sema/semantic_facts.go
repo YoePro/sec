@@ -421,6 +421,26 @@ func (a *Analyzer) ResolvedCallTarget(call *ast.CallExpression) (ResolvedCall, b
 	return resolved, ok
 }
 
+// ResolvedConstructionOf returns the exact initializer selection recorded for
+// a successfully analyzed new expression. Tooling and lowering consume this
+// fact instead of reconstructing lifecycle overload resolution from syntax.
+func (a *Analyzer) ResolvedConstructionOf(expr *ast.NewExpression) (ResolvedConstruction, bool) {
+	if a == nil || expr == nil {
+		return ResolvedConstruction{}, false
+	}
+	resolved, ok := a.resolvedConstructions[expr]
+	if !ok {
+		return ResolvedConstruction{}, false
+	}
+	resolved.Initializer.GenericParameters = append([]string(nil), resolved.Initializer.GenericParameters...)
+	resolved.Initializer.Parameters = append([]FunctionParameter(nil), resolved.Initializer.Parameters...)
+	if resolved.ErrorType != nil {
+		errorType := *resolved.ErrorType
+		resolved.ErrorType = &errorType
+	}
+	return resolved, true
+}
+
 // ResolvedOperatorOf returns operator metadata recorded by successful Sema.
 // It performs no inference or resolution and never mutates Analyzer state.
 func (a *Analyzer) ResolvedOperatorOf(expr ast.Expression) (ResolvedOperator, bool) {

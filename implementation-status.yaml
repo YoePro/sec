@@ -1,5 +1,5 @@
 schema_version: 1
-updated: "2026-08-13"
+updated: "2026-08-14"
 purpose: >-
   Canonical implementation ledger for compiler and tooling work. Normative
   language behavior remains in rules/, while implementation status is migrated
@@ -11,6 +11,274 @@ status_values:
   planned: The scope is documented but no implementation slice is integrated.
 
 integrations:
+  - id: tooling.lsp-same-module-analysis
+    area: tooling
+    status: implemented
+    integrated: "2026-08-14"
+    summary: >-
+      Analyzes every valid sibling source declaring the active file's module
+      as one compiler-owned semantic program, including unsaved editor
+      snapshots, so declarations resolve consistently across module files.
+    rules:
+      - rules/projects/projects.txt
+      - rules/tooling/lsp.md
+    code:
+      - cmd/lsp/main.go
+      - internal/lsp/server/documents.go
+      - internal/lsp/server/module_sources.go
+    tests:
+      - cmd/lsp/main_test.go
+      - internal/lsp/server/module_sources_test.go
+    implemented:
+      - deterministic same-directory .sec discovery and same-module filtering
+      - active in-memory source retained while assembling sibling AST statements
+      - open sibling snapshots take precedence over their on-disk contents
+      - one Sema analysis supplies diagnostics, completion, hover, definitions, highlights, semantic tokens, and call hierarchy
+      - cross-file definition locations retain the declaring file URI and range
+      - diagnostics are published only for the requested source while sibling declarations contribute semantic facts
+      - opening, changing, saving, or closing one module document refreshes diagnostics for open sibling documents
+      - malformed siblings are isolated until their own document analysis instead of poisoning every open file in the module
+    verification:
+      - command: go test ./cmd/lsp -run 'SameModule|CoreInt|OpenSibling|DifferentModule' -count=1
+        result: passed
+
+  - id: tooling.lsp-try-result-hover
+    area: tooling
+    status: planned
+    integrated: "2026-08-14"
+    summary: >-
+      Makes hover at try and its operand explain the callable's declared
+      carrier, the value produced on success, and the exact failure-handling
+      path. This keeps ordinary absence in Option distinct from typed failure
+      in Result and makes bodyless propagation visible to the user.
+    rules:
+      - rules/errors/errorhandling.txt
+      - rules/tooling/lsp.md
+    remaining:
+      - show the operand callable's exact declared Option[T] or Result[T, E] return type
+      - for valid try over Result[T, E], show that the try expression itself produces T rather than Result[T, E]
+      - for bodyless try, show the propagated E and the enclosing function's required Result[U, E] return type
+      - distinguish bodyless propagation from a local try handler and identify where Err is consumed
+      - explain that Option[T] represents ordinary absence, is not an error channel, and cannot be propagated with try
+      - consume ResolvedTryOf and resolved callable facts from Sema without reconstructing Result or Option semantics in the LSP
+      - add hover tests for Result propagation, local handling, Option-returning calls, invalid try operands, and mismatched enclosing error types
+
+  - id: frontend.static-declarations-members
+    area: frontend-analysis-and-lowering
+    status: partial
+    integrated: "2026-08-14"
+    summary: >-
+      Tracks revision-2.0 static storage and type-associated member semantics.
+      The frontend recognizes static storage and functions and resolves the
+      established type-qualified storage path, while compile-time
+      initialization, static properties, specialization, concurrency proofs,
+      deterministic destruction, and explicit backend representation remain
+      incomplete.
+    rules:
+      - rules/declarations/static.md
+      - rules/declarations/impl.md
+      - rules/declarations/properties.md
+      - rules/foundations/grammar.md
+      - rules/foundations/attributes.md
+      - rules/compiler/semantic_ir.txt
+    code:
+      - internal/lexer/lexer.go
+      - internal/ast/ast.go
+      - internal/parser/parser.go
+      - internal/sema/analyzer.go
+      - internal/sema/types.go
+      - internal/sema/call_graph.go
+      - cmd/lsp/main.go
+    tests:
+      - internal/lexer/lexer_test.go
+      - internal/parser/parser_test.go
+      - internal/sema/analyzer_test.go
+      - internal/sema/concurrency_test.go
+      - cmd/lsp/main_test.go
+    implemented:
+      - static keyword tokenization and declaration-position parsing
+      - static let and static let mut parsing at module, function, and impl-member positions
+      - static fn parsing and AST classification, including receiver-free interface requirements
+      - ordinary impl fn declarations remain instance-bound with compiler-provided implicit self while static fn bodies receive no self
+      - static-let symbols are classified with Static storage origin by Sema
+      - type-associated static storage is registered under its qualified type member identity and supports Type.Name reads
+      - static functions participate in resolved static-method calls and compiler-owned call-graph dispatch facts
+      - static storage declarations in primary and same-module impl extends fragments enter the combined semantic member surface
+      - static members remain separate from nominal instance fields and layout
+      - compiler-known static properties and functions participate in LSP member completion through the shared Sema registry
+    remaining:
+      - verify and complete static overload/member distinction and duplicate diagnostics across every primary and extension fragment member category
+      - complete Type.Name writes and targeted diagnostics rejecting instance-qualified access to static storage, methods, and properties
+      - add static property AST classification, parser, formatter, Sema, LSP, interface conformance, and lowering support with mandatory explicit setter parameters
+      - ensure function-local static declarations use one persistent storage location rather than ordinary per-invocation local lowering
+      - enforce compile-time-evaluable static initializers and reject runtime calls without synthesizing startup or lazy-init functions
+      - resolve source-order-independent static initializer dependencies and diagnose cycles
+      - specialize generic static storage independently for every concrete monomorphization
+      - analyze statically provable unsynchronized shared mutable access and unsafe mutable-reference escape
+      - remove redundant module-level static during canonical formatting and optionally provide an informational LSP diagnostic
+      - represent StaticStorage, StaticLoad, StaticStore, StaticMethod, StaticProperty, StaticInitialize, and StaticDestroy explicitly or unambiguously in Semantic IR
+      - lower static storage, initialization, access, mutation, specialization, and target-supported deterministic destruction through Sec MLIR and LLVM
+      - preserve dependency- and use-constrained shutdown order without promising destruction after forced termination
+      - verify that static never implies linker section, absolute address, MMIO, memory space, or another physical placement policy
+      - add the revision-2.0 parser, Sema, formatter, LSP, concurrency, Semantic IR, and backend regression matrix recorded by the static rulebook
+    verification:
+      - command: go test ./internal/lexer ./internal/parser ./internal/sema ./cmd/lsp -run 'Static|static' -count=1
+        result: passed; current matching parser, Sema, and LSP coverage confirms the integrated frontend subset
+
+  - id: frontend.generics-v2
+    area: frontend-analysis-and-lowering
+    status: partial
+    integrated: "2026-08-14"
+    summary: >-
+      Tracks revision-2.0 compile-time type generics and demand-driven
+      monomorphization. Generic structs, functions, unions, interfaces, impl
+      scopes, inference, substitution, nominal instance caching, and basic
+      constraint declaration validation have substantial frontend support;
+      multi-constraints, partial explicit prefixes, method-level generics,
+      explicit conformance checks, complete specialization identity, and
+      concrete-only backend lowering remain incomplete.
+    rules:
+      - rules/declarations/generics.md
+      - rules/declarations/impl.md
+      - rules/declarations/interfaces.md
+      - rules/foundations/grammar.md
+      - rules/types/types.md
+      - rules/compiler/semantic_ir.txt
+    code:
+      - internal/ast/ast.go
+      - internal/parser/parser.go
+      - internal/parser/expression.go
+      - internal/sema/analyzer.go
+      - internal/sema/types.go
+    tests:
+      - internal/parser/parser_test.go
+      - internal/sema/analyzer_test.go
+      - internal/sema/copy_move_test.go
+      - testdata/generics_valid.sec
+      - testdata/generics_invalid.sec
+    implemented:
+      - generic parameter parsing on type, function, and interface declarations
+      - generic type-argument parsing, nested generic references, and attached explicit generic calls
+      - generic declaration arity registration, parameter scopes, and duplicate parameter diagnostics
+      - generic struct template instantiation with recursive concrete field substitution and preserved nominal identity
+      - canonical caching of repeated concrete generic type instances by declaration identity and ordered arguments
+      - generic function template registration, exact full explicit argument calls, argument-based inference, and expected-result inference
+      - canonical caching of repeated concrete generic function instances within one analysis
+      - generic union template registration, concrete payload substitution, and empty and single-payload construction paths
+      - generic impl target correspondence, owning parameter scopes, and concrete nested type and property substitution paths
+      - generic interface declaration parsing, header registration, and use of interface-owned parameters in requirement types
+      - rejection of unknown constraints and constraints that do not name interfaces
+      - conservative copy/move treatment when a generic parameter lacks a proven copy capability
+      - direct, array-mediated, and changing-argument recursive generic storage diagnostics with indirection cases retained
+    remaining:
+      - represent and validate multiple interface constraints joined by & across parser, AST, Sema, formatter, LSP, and diagnostics
+      - accept a positional prefix of explicit generic function or method arguments and infer the remainder while rejecting holes
+      - implement method-level generics for instance and static methods, including nested owning/method scopes, overload resolution, monomorphization, and lowering
+      - reject additional method-level generic parameters on interface requirements while permitting use of the interface's own parameters
+      - complete generic named-type semantics for type ID[T] int and valid type Wrapped[T] T forms, including identity, conversions, contracts, and lowering
+      - complete concrete generic interface instantiation, inheritance, conformance substitution, and canonical identity
+      - require valid explicit interface conformance when satisfying every generic constraint; matching members alone are insufficient
+      - retain ordered constraint sets in templates and recheck them for every explicit or inferred concrete substitution
+      - ensure generic templates use only operations guaranteed by their declared constraints
+      - complete generic primary and impl extends member composition for every substituted member category
+      - specialize static storage independently for every concrete generic instantiation
+      - complete generic-union layout, match, ownership, destruction, Semantic IR, and backend lowering after substitution
+      - detect every non-converging recursive instantiation and report the complete concrete instantiation path
+      - assign deterministic cross-module symbol identities to concrete types, functions, methods, and static storage
+      - represent generic templates and canonical concrete instances explicitly in Semantic IR with declaration identity, ordered arguments, resolved constraints, substitution, and source provenance
+      - prevent unresolved generic parameters or constraints from reaching ABI, FFI, Sec MLIR, LLVM, or any representation-dependent lowering
+      - add the complete revision-2.0 parser, Sema, formatter, LSP, interface, ownership, recursion, Semantic IR, ABI, and backend regression matrix
+    excluded:
+      - generic enums
+      - runtime generic dispatch, type erasure, implicit boxing, and runtime reflection-based specialization
+      - higher-kinded types, type-parameter packs, variadic type parameters, generic argument holes, and default generic arguments
+      - negative constraints, union-of-types constraints, inferred structural conformance, and automatic interface implementation
+      - const or value generics without a separate normative rulebook and syntax
+    verification:
+      - command: go test ./internal/parser ./internal/sema -run 'Generic|Generics' -count=1
+        result: passed
+
+  - id: frontend.functions-v2
+    area: frontend-analysis-and-lowering
+    status: partial
+    integrated: "2026-08-14"
+    summary: >-
+      Tracks revision-2.0 ordinary functions, parameter ownership contracts,
+      deterministic call entry, overloads, and native typed variadics. The
+      established parser and Sema cover explicit ordinary declarations,
+      signatures, bodies, calls, overloads, returns, generics, fixed-array
+      spread, and receiver contracts. Owned by-value parameter bindings now
+      have the required callee-local mutability and call ownership is committed
+      only after every source argument has analyzed successfully; consuming
+      arrow parameters and native variadic packs remain major frontend and
+      lowering work.
+    rules:
+      - rules/declarations/functions.md
+      - rules/declarations/generics.md
+      - rules/declarations/interfaces.md
+      - rules/declarations/spread.md
+      - rules/foundations/grammar.md
+      - rules/memory/ownership.md
+      - rules/memory/copy_move.md
+      - rules/errors/errorhandling.txt
+      - rules/compiler/semantic_ir.txt
+    code:
+      - internal/ast/ast.go
+      - internal/parser/parser.go
+      - internal/parser/expression.go
+      - internal/sema/analyzer.go
+      - internal/sema/types.go
+      - internal/sema/semantic_facts.go
+      - internal/sema/parameter_usage.go
+      - cmd/lsp/main.go
+    tests:
+      - internal/parser/parser_test.go
+      - internal/sema/analyzer_test.go
+      - internal/sema/copy_move_test.go
+      - internal/sema/semantic_facts_test.go
+      - cmd/lsp/main_test.go
+    implemented:
+      - ordinary named fn declarations with mandatory explicit return types and bodies
+      - parameter parsing including canonical name colon ref Type and name colon ref mut Type, trailing commas, duplicate diagnostics, resolved parameter and result types, and function-local scopes
+      - signature registration before body analysis, including direct and mutual recursion
+      - single-value returns, explicit void, result-type checking, and reachable-path return diagnostics
+      - basic overload sets distinguished by parameter signature with return types excluded as discriminators
+      - exact matches preferred over conversions and ambiguity and no-match diagnostics
+      - generic function templates, full explicit specialization, argument inference, expected-result inference, and concrete instance caching
+      - implicit concrete method receivers plus explicit shared, mutable, consuming, and static interface receiver contracts
+      - calls retain resolved concrete callable and call-dispatch facts for Sema, LSP, and call-graph consumers
+      - call and spread-source expressions are analyzed left-to-right
+      - outer-call move transfer is applied only after all arguments analyze successfully, so a failed later argument does not consume an earlier direct binding
+      - fixed-array argument spread with exactly-once source analysis, increasing-index expansion, and copyability checks
+      - owned by-value parameters are mutable callee-local bindings while shared and mutable-reference parameter bindings remain non-rebindable
+      - parameter mutability facts flow from Sema into LSP semantic-token readonly classification without LSP-owned language reconstruction
+      - ordinary move-only by-value arguments consume the caller at successful call entry while reference parameters borrow
+      - standalone discardable call results and compiler-known must-use result categories participate in Sema validation
+    remaining:
+      - remove legacy ref name colon Type parameter spelling after migrating remaining formatter, bootstrap, diagnostics, and examples, and normalize legacy and canonical reference modes to one AST and signature identity during the transition
+      - add lexer/parser/AST/Sema/formatter/LSP support for forced-consuming `-> name: T` parameters
+      - reject consuming parameters whose type is ref or ref mut and preserve the distinction through callable types and lowering
+      - reject overload pairs that differ only by ordinary versus forced-consuming mode
+      - add native final `name: ...T` parameter syntax and reject multiple, non-final, and consuming variadic parameters
+      - model compiler-known call-lifetime variadic packs with Len, indexing, iteration, re-spread, structural read-only behavior, no Ptr, no escape, and no element move-out
+      - implement per-element copy or move transfer for direct variadic arguments and destruction of remaining owned pack elements
+      - support runtime-length and multiple spread sources into native variadic destinations while rejecting consuming spread from move-only collections
+      - prefer a fixed-arity overload over an otherwise equally ranked variadic overload
+      - preserve consuming modes, variadic shape, and concrete specialization in function values and callable compatibility
+      - make receiver-capability inference include consuming concrete receivers and complete interface conformance for every parameter ownership and variadic contract
+      - represent parameter modes, strict argument order, delayed transfer commit, cleanup edges, and native packs explicitly in Semantic IR
+      - lower calls and native packs through Sec MLIR and LLVM without hidden heap allocation or confusion with foreign varargs
+      - add exact revision-2.0 diagnostics and the full parser, Sema, ownership, formatter, LSP, Semantic IR, ABI, and backend test matrix from functions.md
+    excluded:
+      - ordinary bodyless prototypes
+      - multiple return values
+      - consuming native variadic parameter syntax
+      - runtime-generic callables or unresolved overload sets as function values
+      - native variadic ABI equivalence with C or foreign varargs
+    verification:
+      - command: go test ./internal/sema -run 'TestOwnedParametersAreMutableReferenceBindingsAreNot|TestFunctionDeclarations' -count=1
+        result: passed
+
   - id: tooling.formatter-delimiter-handoff
     area: tooling
     status: implemented
@@ -462,7 +730,7 @@ integrations:
     rules:
       - rules/declarations/interfaces.md
       - rules/declarations/impl.md
-      - rules/declarations/generics.txt
+      - rules/declarations/generics.md
       - rules/declarations/properties.md
       - rules/memory/ownership.md
       - rules/memory/borrowing.txt
@@ -1211,7 +1479,7 @@ integrations:
     rules:
       - rules/declarations/impl.md
       - rules/declarations/struct.md
-      - rules/declarations/generics.txt
+      - rules/declarations/generics.md
       - rules/foundations/grammar.md
       - rules/foundations/names_scopes_visibility.md
     code:
@@ -1286,6 +1554,7 @@ integrations:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
       - internal/formatter/formatter_test.go
+      - cmd/lsp/main_test.go
     implemented:
       - new is a hard lexer keyword, LSP keyword, completion item, and TextMate keyword
       - dedicated NewExpression AST and parser support for new Type(arguments)
@@ -1300,13 +1569,18 @@ integrations:
       - initializer success by body completion, typed Err return for failure, and rejection of arbitrary success return values
       - primary ordinary impl rejection when a named target belongs to another defining module
       - canonical formatter handling for init signatures and preservation of new versus conversion syntax
+      - read-only ResolvedConstructionOf Sema facts expose the exact selected initializer, target, and construction error to tooling and lowering
+      - initializer declaration and new-expression hover render parameters, constructed type, construction error, and try or local-handling requirement separately
+      - signature help uses the Sema-selected init overload and tracks the active argument without duplicating lifecycle overload resolution in the LSP
+      - contextual completion offers init directly in impl bodies and new only in callable expression scopes while hiding internal initializer identities
+      - workspace references follow compiler definition bindings between init declarations and selected new expressions across all assembled module sources
     remaining:
       - full field-sensitive definite initialization and partial-self escape analysis in init
       - construction resource-balance and failure-cleanup analysis
       - custom free AST, parser, Sema, and destruction integration
       - nested impl declarations and qualified nested-target ownership
       - complete generic initializer specialization
-      - dedicated LSP initializer hover, signature help, completion contexts, and references beyond current definition binding
+      - initializer signature help and overload previews while a new expression is still syntactically incomplete and Sema cannot yet select a construction
       - targeted migration diagnostics for every declaration position that previously accepted new as an identifier
       - Semantic IR and lowering owned by their dedicated pipeline
     verification:
@@ -1317,6 +1591,8 @@ integrations:
       - command: go test ./internal/sema -run 'LifecycleInitAndNewSemantics|InitOverloadIdentity' -count=1
         result: passed
       - command: go test ./internal/formatter -run InitAndNewLifecycleSyntax -count=1
+        result: passed
+      - command: go test ./cmd/lsp -run 'LifecycleInitAndNewTooling|ReferencesConnectInitializer' -count=1
         result: passed
 
   - id: sema.parameter-usage-analysis
@@ -2146,6 +2422,9 @@ integrations:
       - source-order field evaluation followed by deterministic declaration-order construction operands
       - union active-variant tests and single/named payload projections as explicit high-level operations
       - Semantic IR definition, operation, ownership-boundary, canonical guard, and matching-variant projection verification
+      - Semantic IR verifier agreement between enum and union TypeID metadata, declaration name, and nominal SymbolID identity
+      - exact concrete generic union type-argument identity rather than arity-only acceptance
+      - canonical union copy-classification validation for trivial, semantic, move-only, conditional, and non-copyable metadata
       - Sec MLIR schema 7 enum-case, union-field, and union-variant attributes plus self-contained enum and union types
       - schema 7 enum and union operations with local shape, type, index, field, predicate, and payload-action verification
       - sec-verify-union-guards rejects unguarded projections and requires every union variant test to immediately feed its conditional branch
@@ -2155,26 +2434,30 @@ integrations:
       - schema-7 enum handler merges carry Sema's generic exhaustiveness proof instead of relying on hard-coded ArithmeticError case names
       - compiler emission defaults to Package 11 and invokes union-guard verification without introducing a runtime or physical tagged-union layout
       - end-to-end enum aliases, 128/256-bit values, bit-backed enum types, generic Option values, union payload shapes, and real sec-mlir-opt round trips
+      - Package 11 enum conversion fixtures remain inside the Sema-proven infallible boundary after runtime integer-to-enum conversion became Result-valued
     deferred:
+      - Result-valued runtime integer-to-enum validation and EnumValueError control flow remain outside Package 11's Sema-proven conversion boundary
       - enum and union match CFG lowering belongs to Package 12
       - physical union tag and payload layout, ABI lowering, destruction dispatch, and LLVM representation remain later packages
       - ownership-sensitive union payload moves, semantic copies, partial moves, and nontrivial destruction remain explicit unsupported boundaries
       - enum ordering and arithmetic and union equality or ordering are not introduced by Package 11
     verification:
       - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
-        result: passed, 70 tests under LLVM/MLIR 24.0.0git
-      - command: SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./cmd/compiler ./internal/mlir ./internal/lowering/secmlir ./internal/ir/semantic
-        result: passed with real sec-mlir-opt schema-7 verification
+        result: passed, 74 tests under LLVM/MLIR 24.0.0git
+      - command: SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./cmd/compiler -run Package11 -count=1
+        result: passed with real sec-mlir-opt verification
       - command: go vet ./...
         result: passed
       - command: go test ./...
         result: >-
-          Package 11 and all non-Sema packages passed; the repository-wide run
-          remains red in the independently modified TestRegister7TryAndMatchFixture
-          because TcpHeader declares 160 bits for 158 bits of fields and header is
-          diagnosed as moved after RoutePacket.
+          Package 11 passes; the repository-wide run remains red after the
+          updated enum and contract rules because platform/linux/file.sec still
+          treats runtime LinuxError conversion as infallible and three Sema
+          contract tests retain pre-discard-analysis diagnostic counts.
       - command: go run ./cmd/compiler emit-sec-mlir testdata/semantic_ir/enum_union_values.sec --target linux-amd64 --mlir-bin build/sec-mlir/bin -o /tmp/sec-p11.mlir
         result: passed through parse, Sema, Semantic IR, schema-7 emission, and all Sec verification passes
+      - command: go test ./internal/ir/semantic ./cmd/compiler -run Package11 -count=1
+        result: passed with nominal identity, concrete type-argument, copy-classification, and updated enum-conversion coverage
 
   - id: lowering.sec-mlir-match-cfg
     area: frontend-analysis-semantic-ir-and-mlir

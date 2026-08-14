@@ -3512,7 +3512,7 @@ formatter.md
 semantic_ir.txt
 compiler_pipeline.txt
 types.md
-functions.txt
+functions.md
 struct.md
 enums.md
 unions.md

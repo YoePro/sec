@@ -63,7 +63,7 @@ Not implemented yet:
 - complete `spawn Result[Handle, Error]` modelling for thread and process spawn;
 - advisory diagnostics for useless literal and constant discards;
 - configurable severity integration for implicit discard;
-- complete synchronization with `functions.txt`, `ownership.md`,
+- complete synchronization with `functions.md`, `ownership.md`,
   `destruction.txt`, and `semantic_ir.txt`.
 
 The normative rules below supersede the older rule that every non-`void` call
@@ -1533,7 +1533,7 @@ This replacement requires updates to:
 ```text
 lexical_structure.md
 types.md
-functions.txt
+functions.md
 copy_move.md
 ownership.md
 borrowing.txt
@@ -1563,7 +1563,7 @@ language-rulebook-status.md
 Required key changes include:
 
 - `types.md`: define must-use, discardability, and unavailable state;
-- `functions.txt`: permit implicit discard of ordinary standalone call results
+- `functions.md`: permit implicit discard of ordinary standalone call results
   and require handling of must-use results;
 - `copy_move.md`: distinguish copy, move, explicit discard, and implicit
   temporary discard;

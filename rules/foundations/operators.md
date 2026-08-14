@@ -4066,7 +4066,7 @@ copy_move.md
 memory_model.md
 types.md
 contracts.md
-functions.txt
+functions.md
 collections.md
 shaped-types.md
 declarations/spread.md

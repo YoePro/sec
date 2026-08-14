@@ -710,7 +710,7 @@ and specialization identity are frozen.
 This group must synchronize with:
 
 ```text
-generics.txt;
+declarations/generics.md;
 call_graph.md;
 layout.md;
 linking.md;

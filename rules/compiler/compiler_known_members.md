@@ -3206,7 +3206,7 @@ diagnostics.txt
 effect_analysis.md
 ffi.txt
 formatting.md
-generics.txt
+declarations/generics.md
 impl.md
 layout.md
 lsp.md

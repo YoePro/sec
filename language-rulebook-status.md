@@ -57,6 +57,8 @@ collections/collections.md
 collections/shaped-types.md
 concurrency/thread_local.md
 control-flow/discard.md
+declarations/generics.md
+declarations/static.md
 memory/ownership.md
 tooling/lsp.md
 tooling/formatter.md
@@ -171,11 +173,11 @@ LSP token classification
 | `declarations/enums.md` | **Written** | Canonical closed ordinary and open bit-backed enum domains, Go-style `iota` repetition, declared-member defaults, aliases, checked conversions, match semantics, and lowering requirements. Implementation is tracked by `frontend.enums`. |
 | `declarations/unions.md` | **Written** | Canonical closed nominal unions, payload construction, explicit defaults, empty initialization state, matching, ownership, equality, generics, recursion, and representation requirements. Implementation is tracked by `frontend.unions`. |
 | `declarations/registers.md` | **Written** | Canonical nominal `register[N]` types, logical bit layout, nested registers, field access semantics, conversions, and impl eligibility. Implementation is tracked by `frontend.registers`. |
-| `declarations/functions.txt` | **Written — sync required** | Must be synchronized with discard of non-void results and effects. |
+| `declarations/functions.md` | **Written** | Canonical revision 2.0 functions, owned/borrowed/consuming parameters, call-transfer commit, overloads, and native typed variadics. Frontend and lowering progress is tracked by `frontend.functions-v2`. |
 | `declarations/functions_lambda.txt` | **Written — sync required** | Canonical lambda and closure rulebook; closure scope for 0.1 must be finalized. |
 | `lambdas.md` | **Covered** | Covered by `declarations/functions_lambda.txt`; no duplicate rulebook expected. |
 | `closures.md` | **Covered** | Covered by `declarations/functions_lambda.txt`; no duplicate rulebook expected. |
-| `declarations/generics.txt` | **Written — sync required** | Must be synchronized with compile-time values, collections, register widths, and lowering. |
+| `declarations/generics.md` | **Written** | Canonical revision 2.0 compile-time type generics, constraints, inference, method generics, generic interfaces/named types, monomorphization, ABI boundaries, and diagnostics. Implementation progress is tracked by `frontend.generics-v2`. |
 | `declarations/interfaces.md` | **Written** | Canonical behavioral interfaces, receiver capabilities, inheritance, and primary-impl conformance. Frontend progress is tracked by `frontend.interfaces`. |
 | `declarations/impl.md` | **Written** | Revision 2.0 defines primary/extensions, implicit self, associated declarations, and lifecycle `init`/`free` with `new`; frontend lifecycle status is tracked by `frontend.impl-lifecycle-construction`. |
 | `declarations/properties.md` | **Written** | Canonical property declarations, explicit setter parameters, fallible setters, impl fragments, static properties, and interface requirements. Frontend progress is tracked by `frontend.properties`. |
@@ -299,7 +301,7 @@ The remaining details to close are:
 | `memory/lifetime_analysis.txt` | **Written — sync required** | Must include detached work, thread-local values, views, and explicit storage. |
 | `memory/destruction.txt` | **Written — sync required** | Must include discard, panic, cancellation, collection elements, and TLS destruction. |
 | `memory/memory_model.md` | **Written** | Canonical source and compiler memory model, including default lifetime and origin rules. |
-| `declarations/static.md` | **Written — sync required** | Must include thread-local keys, collection backing storage, and initialization order. |
+| `declarations/static.md` | **Written** | Canonical revision 2.0 for module, function-local, and type-associated static storage; static methods/properties, generic specialization, compile-time initialization, dependency order, concurrency, destruction, placement boundaries, Semantic IR, and diagnostics. Implementation progress is tracked by `frontend.static-declarations-members`. |
 | `control-flow/discard.md` | **Written — sync required** | General explicit consumption and early deterministic destruction. |
 | `memory/storage.md` | **Written** | Canonical storage origin, backing relation, reclamation authority, address stability, regions, invalidation domains, validity epochs, memory spaces, placement guarantees, and shaped `StorageRequest` integration; implementation remains partial. |
 | `memory/layout.md` | **Written** | Canonical semantic/native layout, size, alignment, stride, padding, aggregate representation, explicit contracts, plan-specific queries, and compatibility; the shared layout phase remains partial. |
@@ -399,7 +401,7 @@ Process spawning and IPC do not block the immediate language closure.
 | Rulebook | Status | Notes |
 |---|---|---|
 | `types/types.md` | **Written** | Canonical fundamental, scalar, temporal, named, collection-shaped, and declaration type contract; implementation status is maintained in `implementation-status.yaml`. |
-| `declarations/generics.txt` | **Written — sync required** | Type and compile-time value arguments. |
+| `declarations/generics.md` | **Written** | Type-generic parameters and concrete monomorphization. Compile-time value parameters require separate normative semantics and are not inferred from type-generic syntax. |
 | `declarations/interfaces.md` | **Written** | Interface declarations and generic constraints; implementation progress is tracked by `frontend.interfaces`. |
 | `declarations/impl.md` | **Written** | Frontend lifecycle construction is partially implemented and tracked canonically in `implementation-status.yaml`. |
 | `declarations/properties.md` | **Written** | Implementation progress is tracked by `frontend.properties`. |
@@ -529,7 +531,7 @@ as one compatible model.
 |---|---|---|
 | `projects/projects.txt` | **Written — sync required** | Repository manifest, targets, outputs, internal directories, and build structure. |
 | `modules.md` | **Planned** | Module identity, imports, cycles, visibility, and resolution. |
-| `initialization.md` | **Planned** | Static/module initialization order, deinitialization, and failure behavior. |
+| `initialization.md` | **Planned** | Explicit module/program startup, cross-module coordination, deinitialization integration, and failure behavior. Compile-time static dependency order and the ban on hidden runtime initialization are defined by `declarations/static.md`. |
 | `linking.md` | **Planned** | Link-time symbol and output semantics. |
 
 The following must eventually be defined coherently:
@@ -538,7 +540,7 @@ The following must eventually be defined coherently:
 module identity
 import resolution
 internal visibility
-static initialization order
+cross-module initialization coordination
 deinitialization order
 entry points
 generic symbol identity
@@ -603,9 +605,9 @@ control-flow/flowcontrol_match.txt
 control-flow/flowcontrol_switch.txt
 control-flow/flowcontrol_while.txt
 tooling/formatter.md
-declarations/functions.txt
+declarations/functions.md
 declarations/functions_lambda.txt
-declarations/generics.txt
+declarations/generics.md
 declarations/impl.md
 declarations/interfaces.md
 analysis/isr_analysis.md
@@ -835,7 +837,7 @@ Still to decide:
 
 - module identity and duplicate resolution;
 - import cycles;
-- static/module initialization order;
+- explicit module/program initialization order beyond compile-time static dependencies;
 - deinitialization;
 - initialization failure;
 - symbol identity and mangling.

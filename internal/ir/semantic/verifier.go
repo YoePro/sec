@@ -104,7 +104,8 @@ func verifyEnumUnionDefinitions(module *Module) error {
 	seenEnums := map[TypeID]bool{}
 	for _, definition := range module.Enums {
 		typ, ok := module.Types.Lookup(definition.TypeID)
-		if !ok || typ.Kind != TypeEnum || definition.SymbolID == "" || definition.Name == "" || definition.Underlying != typ.Underlying || seenEnums[definition.TypeID] {
+		if !ok || typ.Kind != TypeEnum || typ.Identity == "" || definition.SymbolID != SymbolID(typ.Identity) ||
+			definition.Name == "" || definition.Name != typ.Name || definition.Underlying != typ.Underlying || seenEnums[definition.TypeID] {
 			return fmt.Errorf("invalid enum definition !%d", definition.TypeID)
 		}
 		seenEnums[definition.TypeID] = true
@@ -144,12 +145,21 @@ func verifyEnumUnionDefinitions(module *Module) error {
 	seenUnions := map[TypeID]bool{}
 	for _, definition := range module.Unions {
 		typ, ok := module.Types.Lookup(definition.TypeID)
-		if !ok || typ.Kind != TypeUnion || definition.SymbolID == "" || definition.Name == "" || seenUnions[definition.TypeID] || len(definition.Variants) == 0 {
+		if !ok || typ.Kind != TypeUnion || typ.Identity == "" || definition.SymbolID != SymbolID(typ.Identity) ||
+			definition.Name == "" || definition.Name != typ.Name || seenUnions[definition.TypeID] || len(definition.Variants) == 0 {
 			return fmt.Errorf("invalid union definition !%d", definition.TypeID)
 		}
 		seenUnions[definition.TypeID] = true
-		if len(definition.TypeArguments) != len(typ.TypeArgs) {
+		if !sameTypeIDs(definition.TypeArguments, typ.TypeArgs) {
 			return fmt.Errorf("union !%d type arguments disagree", definition.TypeID)
+		}
+		for _, argument := range definition.TypeArguments {
+			if _, ok := module.Types.Lookup(argument); !ok {
+				return fmt.Errorf("union !%d has invalid type argument !%d", definition.TypeID, argument)
+			}
+		}
+		if !validCopyClassification(definition.CopyClassification) {
+			return fmt.Errorf("union !%d has invalid copy classification %q", definition.TypeID, definition.CopyClassification)
 		}
 		variantNames := map[string]bool{}
 		for index, variant := range definition.Variants {
@@ -191,6 +201,27 @@ func verifyEnumUnionDefinitions(module *Module) error {
 		}
 	}
 	return nil
+}
+
+func sameTypeIDs(left []TypeID, right []TypeID) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
+}
+
+func validCopyClassification(classification string) bool {
+	switch classification {
+	case "trivial", "semantic", "move-only", "conditional", "non-copyable":
+		return true
+	default:
+		return false
+	}
 }
 
 func fitsUnsignedWidth(value *big.Int, width uint16) bool {

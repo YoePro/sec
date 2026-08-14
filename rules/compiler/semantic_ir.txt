@@ -370,6 +370,36 @@ Local storage allocation does not imply heap allocation.
 
 Storage class must remain explicit or derivable.
 
+## Static storage and type-associated members
+
+Semantic IR must preserve static semantics explicitly. It must represent, or
+make unambiguously derivable, the following conceptual operations and entities:
+
+```text
+StaticStorage
+StaticLoad
+StaticStore
+StaticMethod
+StaticProperty
+StaticInitialize
+StaticDestroy
+```
+
+Static metadata includes, where applicable:
+
+* owner module or nominal type
+* concrete value type
+* mutability
+* visibility
+* initialization dependencies
+* concrete generic specialization
+* concurrency requirements
+* source location
+
+Static members are never instance fields and must not affect instance layout.
+`StaticInitialize` records compile-time-resolved initialization semantics; it
+must not imply a hidden runtime startup or lazy-initialization function.
+
 ## Ownership representation
 
 Ownership semantics must be explicit in Semantic IR.
@@ -710,6 +740,12 @@ A Semantic IR function must contain:
 * cleanup information
 * source location
 
+Each parameter preserves its by-value, shared-borrow, mutable-borrow, or
+forced-consuming mode. A native variadic parameter additionally preserves its
+element type and final position. Receiver metadata distinguishes static,
+shared, mutable, and consuming receiver contracts after method syntax has been
+resolved.
+
 Function parameters must be explicit values.
 
 Receiver parameters must be lowered into ordinary explicit parameters with retained receiver metadata when useful.
@@ -733,6 +769,11 @@ A call operation must contain:
 * source location
 
 Argument evaluation order must be explicit and preserve Sec semantics.
+
+Arguments evaluate left-to-right. Transfer into callee-owned parameters has an
+explicit commit point after every argument has evaluated successfully and the
+call is ready to enter the callee. IR must retain enough structure to clean
+earlier temporaries and preserve caller ownership when a later argument fails.
 
 Ownership transfer through arguments must use move operations or explicit consuming operands.
 
@@ -1054,6 +1095,12 @@ may use ordinary arguments, array segments, or field initializers only after it
 has preserved the facts above. MLIR and LLVM lowering must not reconstruct
 ownership, ordering, defaults, or override semantics from source syntax.
 
+A native variadic pack remains distinct from arrays, slices, and foreign
+varargs until legal lowering selects its representation. It is call-lifetime,
+structurally read-only, non-escaping, has no `Ptr` or contiguity guarantee, and
+does not permit individual move-out. Lowering must not introduce semantic heap
+allocation merely to materialize the pack.
+
 ## Strings
 
 Sec string semantics must remain distinct from raw byte sequences and foreign C strings.
@@ -1092,20 +1139,22 @@ Semantic IR must not mandate a runtime-wide object model.
 
 ## Generics
 
-Semantic IR must record how each generic declaration is handled.
+Semantic IR distinguishes generic source templates from canonical concrete
+monomorphized instances. Every concrete instance preserves at least:
 
-Permitted strategies may include:
+* generic source declaration identity
+* ordered concrete generic arguments
+* resolved interface constraints
+* concrete substituted type or callable signature
+* canonical concrete instance identity
+* instantiation source location
 
-* monomorphization
-* shared representation where semantically safe
-* delayed specialization
-* target-specific specialization
-
-The initial implementation should prefer monomorphization unless another strategy is explicitly defined.
-
-Before final MLIR lowering, every generic operation requiring concrete layout must have resolved concrete types.
-
-Unresolved generic constraints must not reach lowering.
+Repeated requests for the same declaration and ordered concrete arguments
+resolve to the same canonical instance. ABI-facing and backend-facing types and
+callables are concrete monomorphized instances. Representation-dependent
+lowering must never receive unresolved generic parameters or constraints; Sec
+does not use runtime generic dispatch, type erasure, or a shared boxed generic
+ABI.
 
 ## Compile-time values
 

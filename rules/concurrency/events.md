@@ -612,7 +612,7 @@ struct.md
 impl.md
 properties.md
 declarations/interfaces.md
-functions.txt
+functions.md
 closures.txt
 ownership.md
 borrowing.txt

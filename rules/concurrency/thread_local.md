@@ -505,7 +505,7 @@ concurrency_memory_model.txt
 static.md
 properties.md
 types.md
-functions.txt
+functions.md
 ownership.md
 borrowing.txt
 references.txt

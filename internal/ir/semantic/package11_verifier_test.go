@@ -26,6 +26,20 @@ func TestPackage11EnumDefinitionVerifierMatrix(t *testing.T) {
 			wantError: "invalid enum case",
 		},
 		{
+			name: "symbol identity mismatch",
+			mutate: func(module *Module) {
+				module.Enums[0].SymbolID = "main::Other"
+			},
+			wantError: "invalid enum definition",
+		},
+		{
+			name: "type name mismatch",
+			mutate: func(module *Module) {
+				module.Enums[0].Name = "Other"
+			},
+			wantError: "invalid enum definition",
+		},
+		{
 			name: "duplicate case name",
 			mutate: func(module *Module) {
 				module.Enums[0].Cases[1].Name = module.Enums[0].Cases[0].Name
@@ -153,6 +167,17 @@ func TestPackage11UnionDefinitionVerifierMatrix(t *testing.T) {
 		{"single shape", func(module *Module) { module.Unions[0].Variants[1].Payload = 0 }, "invalid payload"},
 		{"field shape", func(module *Module) { module.Unions[0].Variants[2].PayloadFields = nil }, "invalid shape"},
 		{"duplicate fields", func(module *Module) { module.Unions[0].Variants[2].PayloadFields[1].Name = "x" }, "invalid field"},
+		{"symbol identity mismatch", func(module *Module) { module.Unions[0].SymbolID = "main::Other" }, "invalid union definition"},
+		{"type name mismatch", func(module *Module) { module.Unions[0].Name = "Other" }, "invalid union definition"},
+		{"invalid copy classification", func(module *Module) { module.Unions[0].CopyClassification = "implicit" }, "invalid copy classification"},
+		{"exact concrete type arguments", func(module *Module) {
+			first := module.Unions[0].Variants[1].Payload
+			second := module.Types.Intern(Type{Kind: TypeUint, Name: "uint", TargetSize: true})
+			typ, _ := module.Types.Lookup(module.Unions[0].TypeID)
+			typ.TypeArgs = []TypeID{first}
+			module.Types.types[module.Unions[0].TypeID-1] = typ
+			module.Unions[0].TypeArguments = []TypeID{second}
+		}, "type arguments disagree"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

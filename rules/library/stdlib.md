@@ -1227,8 +1227,8 @@ foundations/language_philosophy.md
 language-rulebook-status.md
 names_scopes_visibility.md
 types.md
-functions.txt
-generics.txt
+functions.md
+declarations/generics.md
 declarations/interfaces.md
 impl.md
 properties.md

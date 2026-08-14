@@ -1088,19 +1088,15 @@ The diagnostic should explain the evaluation order and move origin.
 
 # Fallible calls and argument ownership
 
-For a call that may fail before accepting ownership, the function or ABI
-contract must define ownership on every outcome.
+Ordinary Sec calls use one deterministic transfer boundary. Arguments evaluate
+strictly left-to-right, but ownership transfer from prepared values into the
+outer callee is committed only after every argument has evaluated successfully
+and the call is ready to enter the callee.
 
-Possible rules:
-
-```text
-ownership transfers before call
-ownership transfers only on success
-ownership returns to caller on failure
-callee always consumes
-```
-
-Ordinary Sec by-value calls should use one deterministic language rule.
+If a later argument fails before call entry, an earlier direct caller binding
+is not consumed by that outer call and earlier caller-owned temporaries are
+cleaned normally. Effects and ownership transfers performed inside evaluation
+of an earlier argument expression are not rolled back.
 
 Special FFI or channel operations may define result-sensitive ownership
 explicitly.
@@ -3168,7 +3164,7 @@ formatter.md
 lsp.md
 types.md
 contracts.md
-functions.txt
+functions.md
 struct.md
 collections.md
 shaped-types.md

@@ -4,7 +4,8 @@
 **Document revision:** 2.0  
 **Sec language version:** 0.1  
 **Created:** 2026-08-13  
-**Last updated:** 2026-08-13  
+**Last updated:** 2026-08-14
+
 **Supersedes:** `rules/declarations/impl.txt`
 
 ## Replacement notice
@@ -505,6 +506,16 @@ Static members do not contribute to instance layout.
 
 Static members do not receive `self`.
 
+Static storage, methods, and properties may occur in either the primary
+implementation or a same-module `impl extends` fragment. All fragments
+contribute to one combined static member surface, and duplicate or conflicting
+members are rejected across that complete surface.
+
+Static members are accessed through the target type, never through an
+instance. An ordinary `fn` remains instance-bound with implicit `self`; only
+`static fn` declares a receiver-free type-level function. A named static
+factory is not lifecycle `init`, and `new Type(...)` never selects it.
+
 ---
 
 ## 14. Lifecycle model
@@ -854,10 +865,15 @@ impl Holder[T] {
 The generic target arguments must correspond to the target declaration's
 generic parameters according to `generics.md`.
 
-The same rule applies to `impl extends Holder[T]`.
+The same rule applies to `impl extends Holder[T]`. The primary and all valid
+same-module extensions compose into one concrete member surface for each
+monomorphized `Holder[T]`.
 
-Method-level generic parameters are governed by the function/generic rulebooks
-and are not redefined here.
+Methods, including static methods, may introduce additional method-level
+generic parameters. A method inside `impl Holder[T]` sees both the owning `T`
+and its own parameters, such as `fn Transform[U](...) Holder[U]`. Method-level
+generic parameters are canonical Sec 0.1 behavior and are not postponed.
+Concrete instance methods continue to use implicit `self`.
 
 ---
 

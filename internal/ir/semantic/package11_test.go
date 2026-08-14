@@ -14,7 +14,7 @@ type State union { idle count(int128) point { x: int, y: int } }
 type Maybe[T] union { Some(T) None }
 fn Identity(value: Status) Status { return value }
 fn EnumValue(value: int) bool {
-  let restored := Status(value)
+  let restored := Status(10)
   let numeric := int(restored)
   return Identity(Status.aliasActive) == Status.active
 }

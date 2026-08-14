@@ -335,6 +335,24 @@ Expected:
     assigning fallible property TopSpeed requires try
 
 
+Fallible argument evaluation and call entry
+===========================================
+
+Arguments evaluate left-to-right. Ownership transfer into parameters of the
+outer call is committed only after all arguments have evaluated successfully
+and the call is ready to enter the callee.
+
+If a later argument fails under `try`, an earlier direct caller binding is not
+consumed by the outer call and earlier caller-owned temporaries are cleaned.
+Bodyless propagation or the local handler then observes ownership state for an
+outer call that never entered its callee. Effects and ownership transfers that
+completed inside evaluation of an earlier argument expression are not rolled
+back.
+
+This applies to ordinary move-only by-value parameters and explicit `->`
+consuming parameters.
+
+
 Try grammar
 ===========
 

@@ -78,6 +78,21 @@ type definitionParams struct {
 	Position     position               `json:"position"`
 }
 
+type signatureHelpParams struct {
+	TextDocument textDocumentIdentifier `json:"textDocument"`
+	Position     position               `json:"position"`
+}
+
+type referenceParams struct {
+	TextDocument textDocumentIdentifier `json:"textDocument"`
+	Position     position               `json:"position"`
+	Context      referenceContext       `json:"context"`
+}
+
+type referenceContext struct {
+	IncludeDeclaration bool `json:"includeDeclaration"`
+}
+
 type documentHighlightParams struct {
 	TextDocument textDocumentIdentifier `json:"textDocument"`
 	Position     position               `json:"position"`
@@ -125,6 +140,22 @@ type markupContent struct {
 type hoverResult struct {
 	Contents markupContent `json:"contents"`
 	Range    lspRange      `json:"range,omitempty"`
+}
+
+type signatureHelp struct {
+	Signatures      []signatureInformation `json:"signatures"`
+	ActiveSignature int                    `json:"activeSignature"`
+	ActiveParameter int                    `json:"activeParameter"`
+}
+
+type signatureInformation struct {
+	Label         string                 `json:"label"`
+	Documentation markupContent          `json:"documentation,omitempty"`
+	Parameters    []parameterInformation `json:"parameters,omitempty"`
+}
+
+type parameterInformation struct {
+	Label string `json:"label"`
 }
 
 type location struct {
@@ -253,6 +284,22 @@ type server struct {
 	shutdown          bool                   //
 }
 
+type sourceOverlay = lspserver.SourceOverlay
+
+func (s *server) sourceOverlay() sourceOverlay {
+	overlay := sourceOverlay{}
+	if s == nil || s.documentSnapshots == nil {
+		return overlay
+	}
+	for _, snapshot := range s.documentSnapshots.Snapshots() {
+		path := pathFromURI(snapshot.URI)
+		if path != "" {
+			overlay[normalizedSourcePath(path)] = snapshot.Text
+		}
+	}
+	return overlay
+}
+
 type formatterBranchContext struct {
 	contentDepth int
 	branchActive bool
@@ -306,11 +353,16 @@ func (s *server) handle(message rpcMessage) error {
 				"documentSymbolProvider":     true,
 				"hoverProvider":              true,
 				"definitionProvider":         true,
+				"referencesProvider":         true,
 				"documentHighlightProvider":  true,
 				"callHierarchyProvider":      true,
 				"codeActionProvider":         true,
 				"completionProvider": map[string]any{
 					"triggerCharacters": []string{"."},
+				},
+				"signatureHelpProvider": map[string]any{
+					"triggerCharacters":   []string{"(", ","},
+					"retriggerCharacters": []string{","},
 				},
 				"semanticTokensProvider": map[string]any{
 					"legend": map[string]any{
@@ -349,7 +401,7 @@ func (s *server) handle(message rpcMessage) error {
 			return err
 		}
 		s.documentSnapshots.Open(params.TextDocument.URI, params.TextDocument.Version, params.TextDocument.Text)
-		return s.publishDiagnostics(params.TextDocument.URI, params.TextDocument.Text)
+		return s.publishModuleDiagnostics(params.TextDocument.URI)
 	case "textDocument/didChange":
 		var params didChangeParams
 		if err := json.Unmarshal(message.Params, &params); err != nil {
@@ -362,7 +414,7 @@ func (s *server) handle(message rpcMessage) error {
 		if _, changed := s.documentSnapshots.Change(params.TextDocument.URI, params.TextDocument.Version, text); !changed {
 			return nil
 		}
-		s.scheduleDiagnostics(params.TextDocument.URI, text)
+		s.scheduleModuleDiagnostics(params.TextDocument.URI)
 		return nil
 	case "textDocument/didClose":
 		var params didCloseParams
@@ -371,10 +423,13 @@ func (s *server) handle(message rpcMessage) error {
 		}
 		s.stopDiagnosticTimer(params.TextDocument.URI)
 		s.documentSnapshots.Close(params.TextDocument.URI)
-		return s.notify("textDocument/publishDiagnostics", map[string]any{
+		if err := s.notify("textDocument/publishDiagnostics", map[string]any{
 			"uri":         params.TextDocument.URI,
 			"diagnostics": []diagnostic{},
-		})
+		}); err != nil {
+			return err
+		}
+		return s.publishModuleDiagnostics(params.TextDocument.URI)
 	case "textDocument/didSave":
 		var params didSaveParams
 		if err := json.Unmarshal(message.Params, &params); err != nil {
@@ -384,7 +439,7 @@ func (s *server) handle(message rpcMessage) error {
 		if !ok {
 			return nil
 		}
-		return s.publishDiagnostics(snapshot.URI, snapshot.Text)
+		return s.publishModuleDiagnostics(snapshot.URI)
 	case "textDocument/willSave":
 		var params willSaveParams
 		return json.Unmarshal(message.Params, &params)
@@ -426,7 +481,7 @@ func (s *server) handle(message rpcMessage) error {
 		}
 
 		offset := lineCharToOffset(snapshot.Text, params.Position.Line, params.Position.Character)
-		items := completeSource(params.TextDocument.URI, snapshot.Text, offset)
+		items := completeSource(params.TextDocument.URI, snapshot.Text, offset, s.sourceOverlay())
 		return s.respond(message.ID, items)
 	case "textDocument/documentSymbol":
 		var params documentSymbolParams
@@ -447,7 +502,7 @@ func (s *server) handle(message rpcMessage) error {
 		if !ok {
 			return s.respond(message.ID, semanticTokens{})
 		}
-		return s.respond(message.ID, semanticTokensForSource(params.TextDocument.URI, snapshot.Text))
+		return s.respond(message.ID, semanticTokensForSource(params.TextDocument.URI, snapshot.Text, s.sourceOverlay()))
 	case "textDocument/hover":
 		var params hoverParams
 		if err := json.Unmarshal(message.Params, &params); err != nil {
@@ -457,7 +512,7 @@ func (s *server) handle(message rpcMessage) error {
 		if !ok {
 			return s.respond(message.ID, nil)
 		}
-		result, ok := hoverForSource(params.TextDocument.URI, snapshot.Text, params.Position)
+		result, ok := hoverForSource(params.TextDocument.URI, snapshot.Text, params.Position, s.sourceOverlay())
 		if !ok {
 			return s.respond(message.ID, nil)
 		}
@@ -471,11 +526,35 @@ func (s *server) handle(message rpcMessage) error {
 		if !ok {
 			return s.respond(message.ID, nil)
 		}
-		locations := definitionsForSource(params.TextDocument.URI, snapshot.Text, params.Position)
+		locations := definitionsForSource(params.TextDocument.URI, snapshot.Text, params.Position, s.sourceOverlay())
 		if len(locations) == 0 {
 			return s.respond(message.ID, nil)
 		}
 		return s.respond(message.ID, locations)
+	case "textDocument/signatureHelp":
+		var params signatureHelpParams
+		if err := json.Unmarshal(message.Params, &params); err != nil {
+			return err
+		}
+		snapshot, ok := s.documentSnapshots.Snapshot(params.TextDocument.URI)
+		if !ok {
+			return s.respond(message.ID, nil)
+		}
+		result, ok := signatureHelpForSource(params.TextDocument.URI, snapshot.Text, params.Position, s.sourceOverlay())
+		if !ok {
+			return s.respond(message.ID, nil)
+		}
+		return s.respond(message.ID, result)
+	case "textDocument/references":
+		var params referenceParams
+		if err := json.Unmarshal(message.Params, &params); err != nil {
+			return err
+		}
+		snapshot, ok := s.documentSnapshots.Snapshot(params.TextDocument.URI)
+		if !ok {
+			return s.respond(message.ID, []location{})
+		}
+		return s.respond(message.ID, referencesForSource(params.TextDocument.URI, snapshot.Text, params.Position, params.Context.IncludeDeclaration, s.sourceOverlay()))
 	case "textDocument/documentHighlight":
 		var params documentHighlightParams
 		if err := json.Unmarshal(message.Params, &params); err != nil {
@@ -485,7 +564,7 @@ func (s *server) handle(message rpcMessage) error {
 		if !ok {
 			return s.respond(message.ID, []documentHighlight{})
 		}
-		return s.respond(message.ID, documentHighlightsForSource(params.TextDocument.URI, snapshot.Text, params.Position))
+		return s.respond(message.ID, documentHighlightsForSource(params.TextDocument.URI, snapshot.Text, params.Position, s.sourceOverlay()))
 	case "textDocument/prepareCallHierarchy":
 		var params callHierarchyPrepareParams
 		if err := json.Unmarshal(message.Params, &params); err != nil {
@@ -495,7 +574,7 @@ func (s *server) handle(message rpcMessage) error {
 		if !ok {
 			return s.respond(message.ID, []callHierarchyItem{})
 		}
-		return s.respond(message.ID, callHierarchyItemsForSource(params.TextDocument.URI, snapshot.Text, params.Position))
+		return s.respond(message.ID, callHierarchyItemsForSource(params.TextDocument.URI, snapshot.Text, params.Position, s.sourceOverlay()))
 	case "callHierarchy/incomingCalls":
 		var params callHierarchyIncomingCallsParams
 		if err := json.Unmarshal(message.Params, &params); err != nil {
@@ -509,7 +588,7 @@ func (s *server) handle(message rpcMessage) error {
 		if !ok {
 			return s.respond(message.ID, []callHierarchyIncomingCall{})
 		}
-		return s.respond(message.ID, callHierarchyIncomingCallsForSource(analysisURI, snapshot.Text, params.Item.Data.NodeID))
+		return s.respond(message.ID, callHierarchyIncomingCallsForSource(analysisURI, snapshot.Text, params.Item.Data.NodeID, s.sourceOverlay()))
 	case "callHierarchy/outgoingCalls":
 		var params callHierarchyOutgoingCallsParams
 		if err := json.Unmarshal(message.Params, &params); err != nil {
@@ -523,7 +602,7 @@ func (s *server) handle(message rpcMessage) error {
 		if !ok {
 			return s.respond(message.ID, []callHierarchyOutgoingCall{})
 		}
-		return s.respond(message.ID, callHierarchyOutgoingCallsForSource(analysisURI, snapshot.Text, params.Item.Data.NodeID))
+		return s.respond(message.ID, callHierarchyOutgoingCallsForSource(analysisURI, snapshot.Text, params.Item.Data.NodeID, s.sourceOverlay()))
 	default:
 		if len(message.ID) == 0 {
 			return nil
@@ -532,13 +611,13 @@ func (s *server) handle(message rpcMessage) error {
 	}
 }
 
-func callHierarchyItemsForSource(uri string, text string, pos position) (items []callHierarchyItem) {
+func callHierarchyItemsForSource(uri string, text string, pos position, overlays ...sourceOverlay) (items []callHierarchyItem) {
 	defer func() {
 		if recover() != nil {
 			items = []callHierarchyItem{}
 		}
 	}()
-	analyzer := analyzeNavigationSource(uri, text)
+	analyzer := analyzeNavigationSource(uri, text, overlays...)
 	if analyzer == nil {
 		return []callHierarchyItem{}
 	}
@@ -556,13 +635,13 @@ func callHierarchyItemsForSource(uri string, text string, pos position) (items [
 	return items
 }
 
-func callHierarchyIncomingCallsForSource(uri string, text string, nodeID sema.CallableID) (calls []callHierarchyIncomingCall) {
+func callHierarchyIncomingCallsForSource(uri string, text string, nodeID sema.CallableID, overlays ...sourceOverlay) (calls []callHierarchyIncomingCall) {
 	defer func() {
 		if recover() != nil {
 			calls = []callHierarchyIncomingCall{}
 		}
 	}()
-	analyzer := analyzeNavigationSource(uri, text)
+	analyzer := analyzeNavigationSource(uri, text, overlays...)
 	if analyzer == nil {
 		return []callHierarchyIncomingCall{}
 	}
@@ -588,13 +667,13 @@ func callHierarchyIncomingCallsForSource(uri string, text string, nodeID sema.Ca
 	return calls
 }
 
-func callHierarchyOutgoingCallsForSource(uri string, text string, nodeID sema.CallableID) (calls []callHierarchyOutgoingCall) {
+func callHierarchyOutgoingCallsForSource(uri string, text string, nodeID sema.CallableID, overlays ...sourceOverlay) (calls []callHierarchyOutgoingCall) {
 	defer func() {
 		if recover() != nil {
 			calls = []callHierarchyOutgoingCall{}
 		}
 	}()
-	analyzer := analyzeNavigationSource(uri, text)
+	analyzer := analyzeNavigationSource(uri, text, overlays...)
 	if analyzer == nil {
 		return []callHierarchyOutgoingCall{}
 	}
@@ -641,16 +720,13 @@ func callHierarchyItemForRelationship(analysisURI string, node sema.CallableNode
 	return item
 }
 
-func analyzeNavigationSource(uri string, text string) *sema.Analyzer {
+func analyzeNavigationSource(uri string, text string, overlays ...sourceOverlay) *sema.Analyzer {
 	program := parseProgramForLSP(uri, text)
 	if program == nil {
 		return nil
 	}
 	path := pathFromURI(uri)
-	if uri != "" {
-		resolveCoreSources(program, path)
-		resolveSourceImports(program, map[string]bool{}, path)
-	}
+	prepareProgramForLSP(program, path, firstSourceOverlay(overlays))
 	analyzer := newLSPAnalyzer(uri)
 	analyzer.Analyze(program)
 	return analyzer
@@ -688,7 +764,7 @@ const (
 	documentHighlightWrite = 3
 )
 
-func documentHighlightsForSource(uri string, text string, pos position) (highlights []documentHighlight) {
+func documentHighlightsForSource(uri string, text string, pos position, overlays ...sourceOverlay) (highlights []documentHighlight) {
 	defer func() {
 		if recover() != nil {
 			highlights = []documentHighlight{}
@@ -700,10 +776,7 @@ func documentHighlightsForSource(uri string, text string, pos position) (highlig
 		return []documentHighlight{}
 	}
 	path := pathFromURI(uri)
-	if uri != "" {
-		resolveCoreSources(program, path)
-		resolveSourceImports(program, map[string]bool{}, path)
-	}
+	prepareProgramForLSP(program, path, firstSourceOverlay(overlays))
 	analyzer := newLSPAnalyzer(uri)
 	analyzer.Analyze(program)
 
@@ -781,7 +854,7 @@ func tokenIsDirectAssignmentTarget(tokens []lexer.Token, index int) bool {
 	}
 }
 
-func definitionsForSource(uri string, text string, pos position) (locations []location) {
+func definitionsForSource(uri string, text string, pos position, overlays ...sourceOverlay) (locations []location) {
 	defer func() {
 		if recover() != nil {
 			locations = nil
@@ -793,10 +866,7 @@ func definitionsForSource(uri string, text string, pos position) (locations []lo
 		return nil
 	}
 	path := pathFromURI(uri)
-	if uri != "" {
-		resolveCoreSources(program, path)
-		resolveSourceImports(program, map[string]bool{}, path)
-	}
+	prepareProgramForLSP(program, path, firstSourceOverlay(overlays))
 	analyzer := newLSPAnalyzer(uri)
 	analyzer.Analyze(program)
 
@@ -819,6 +889,76 @@ func definitionsForSource(uri string, text string, pos position) (locations []lo
 		seen[key] = true
 		locations = append(locations, location{URI: definitionURI, Range: rng})
 	}
+	return locations
+}
+
+func referencesForSource(uri string, text string, pos position, includeDeclaration bool, overlays ...sourceOverlay) (locations []location) {
+	defer func() {
+		if recover() != nil {
+			locations = []location{}
+		}
+	}()
+
+	program := parseProgramForLSP(uri, text)
+	if program == nil {
+		return []location{}
+	}
+	path := pathFromURI(uri)
+	overlay := firstSourceOverlay(overlays)
+	prepareProgramForLSP(program, path, overlay)
+	analyzer := newLSPAnalyzer(uri)
+	analyzer.Analyze(program)
+
+	use, ok := sourceTokenAtPosition(uri, text, pos)
+	if !ok {
+		return []location{}
+	}
+	definitions := uniqueDefinitionTokens(analyzer.DefinitionsAt(use.File, use.Line, use.Column))
+	if len(definitions) != 1 {
+		return []location{}
+	}
+	definition := definitions[0]
+
+	files := map[string]bool{}
+	if path != "" {
+		files[normalizedSourcePath(path)] = true
+	}
+	for _, statement := range program.Statements {
+		token, found := lspStatementTokenForSource(statement)
+		if found && token.File != "" {
+			files[normalizedSourcePath(token.File)] = true
+		}
+	}
+	seen := map[string]bool{}
+	for file := range files {
+		data, err := lspserver.ReadSource(file, overlay)
+		if err != nil {
+			continue
+		}
+		fileURI := uriFromPath(file)
+		for _, token := range sourceTokens(fileURI, string(data)) {
+			bound := uniqueDefinitionTokens(analyzer.DefinitionsAt(token.File, token.Line, token.Column))
+			if len(bound) != 1 || !sameSourceToken(bound[0], definition) {
+				continue
+			}
+			if !includeDeclaration && sameSourceToken(token, definition) {
+				continue
+			}
+			rng := tokenRange(token)
+			key := fmt.Sprintf("%s:%d:%d", fileURI, rng.Start.Line, rng.Start.Character)
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			locations = append(locations, location{URI: fileURI, Range: rng})
+		}
+	}
+	sort.Slice(locations, func(i, j int) bool {
+		if locations[i].URI != locations[j].URI {
+			return locations[i].URI < locations[j].URI
+		}
+		return comparePosition(locations[i].Range.Start, locations[j].Range.Start) < 0
+	})
 	return locations
 }
 
@@ -849,7 +989,7 @@ func definitionTokenRange(token lexer.Token) lspRange {
 	return rng
 }
 
-func completeSource(uri string, text string, offset int) []completionItem {
+func completeSource(uri string, text string, offset int, overlays ...sourceOverlay) []completionItem {
 	context := completionContextAt(text, offset)
 	parseText := completionParseText(text, offset, context)
 
@@ -864,10 +1004,7 @@ func completeSource(uri string, text string, offset int) []completionItem {
 	analyzer := newLSPAnalyzer(uri)
 	analyzed := false
 	if fileAST != nil && !parseResult.HasErrors {
-		if uri != "" {
-			resolveCoreSources(fileAST, pathFromURI(uri))
-			resolveSourceImports(fileAST, map[string]bool{}, pathFromURI(uri))
-		}
+		prepareProgramForLSP(fileAST, pathFromURI(uri), firstSourceOverlay(overlays))
 		analyzer.Analyze(fileAST)
 		analyzed = true
 		if expected, ok := expectedReturnTypeAt(fileAST, analyzer, parseText, offset); ok {
@@ -1144,12 +1281,12 @@ func namedDocumentSymbol(name string, detail string, kind int, token lexer.Token
 	}
 }
 
-func semanticTokensForSource(uri string, text string) semanticTokens {
-	tokenTypes := semanticTokenClassification(uri, text)
+func semanticTokensForSource(uri string, text string, overlays ...sourceOverlay) semanticTokens {
+	tokenTypes := semanticTokenClassification(uri, text, overlays...)
 	return semanticTokens{Data: features.SemanticTokens(text, pathFromURI(uri), tokenTypes)}
 }
 
-func semanticTokenClassification(uri string, text string) (classification map[string]string) {
+func semanticTokenClassification(uri string, text string, overlays ...sourceOverlay) (classification map[string]string) {
 	classification = map[string]string{}
 	defer func() {
 		if recover() != nil {
@@ -1164,8 +1301,7 @@ func semanticTokenClassification(uri string, text string) (classification map[st
 		return classification
 	}
 	path := pathFromURI(uri)
-	resolveCoreSources(program, path)
-	resolveSourceImports(program, map[string]bool{}, path)
+	prepareProgramForLSP(program, path, firstSourceOverlay(overlays))
 	analyzer := newLSPAnalyzer(uri)
 	analyzer.Analyze(program)
 	for name := range analyzer.Types() {
@@ -1358,7 +1494,7 @@ func semanticTokenLength(token lexer.Token) int {
 	return len([]rune(token.Lexeme))
 }
 
-func hoverForSource(uri string, text string, pos position) (hoverResult, bool) {
+func hoverForSource(uri string, text string, pos position, overlays ...sourceOverlay) (hoverResult, bool) {
 	program := parseProgramForLSP(uri, text)
 	if program == nil {
 		return hoverResult{}, false
@@ -1369,10 +1505,7 @@ func hoverForSource(uri string, text string, pos position) (hoverResult, bool) {
 	}
 
 	path := pathFromURI(uri)
-	if uri != "" {
-		resolveCoreSources(program, path)
-		resolveSourceImports(program, map[string]bool{}, path)
-	}
+	prepareProgramForLSP(program, path, firstSourceOverlay(overlays))
 	analyzer := newLSPAnalyzer(uri)
 	analyzer.Analyze(program)
 
@@ -1381,6 +1514,24 @@ func hoverForSource(uri string, text string, pos position) (hoverResult, bool) {
 		return hoverResult{}, false
 	}
 	nameRange := offsetsRange(text, nameStart, nameEnd)
+	if construction, openOffset, _, found := constructionAtOffset(program, path, text, offset); found && offset <= openOffset {
+		if resolved, ok := analyzer.ResolvedConstructionOf(construction); ok {
+			return hoverResult{Contents: markupContent{Kind: "markdown", Value: initializerHoverContents(resolved)}, Range: nameRange}, true
+		}
+	}
+	if token, found := sourceTokenAtPosition(uri, text, pos); found {
+		if initializer, ok := initializerForToken(analyzer, token); ok {
+			resolved := sema.ResolvedConstruction{
+				Initializer: initializer,
+				Implicit:    false,
+			}
+			if initializer.ConstructionType != nil {
+				resolved.Target = *initializer.ConstructionType
+			}
+			resolved.ErrorType = initializer.ConstructionError
+			return hoverResult{Contents: markupContent{Kind: "markdown", Value: initializerHoverContents(resolved)}, Range: nameRange}, true
+		}
+	}
 
 	if target, ok := implTargetAtOffset(program, analyzer, text, path, offset); ok {
 		if name == "self" {
@@ -1418,6 +1569,234 @@ func hoverForSource(uri string, text string, pos position) (hoverResult, bool) {
 	}
 
 	return hoverResult{}, false
+}
+
+func signatureHelpForSource(uri string, text string, pos position, overlays ...sourceOverlay) (signatureHelp, bool) {
+	program := parseProgramForLSP(uri, text)
+	if program == nil {
+		return signatureHelp{}, false
+	}
+	offset := lineCharToOffset(text, pos.Line, pos.Character)
+	if offset < 0 {
+		return signatureHelp{}, false
+	}
+	path := pathFromURI(uri)
+	prepareProgramForLSP(program, path, firstSourceOverlay(overlays))
+	analyzer := newLSPAnalyzer(uri)
+	analyzer.Analyze(program)
+	construction, openOffset, closeOffset, found := constructionAtOffset(program, path, text, offset)
+	if !found || offset <= openOffset || offset > closeOffset {
+		return signatureHelp{}, false
+	}
+	resolved, ok := analyzer.ResolvedConstructionOf(construction)
+	if !ok {
+		return signatureHelp{}, false
+	}
+	parameters := resolved.Initializer.Parameters
+	labels := make([]string, 0, len(parameters))
+	information := make([]parameterInformation, 0, len(parameters))
+	for _, parameter := range parameters {
+		label := initializerParameterLabel(parameter)
+		labels = append(labels, label)
+		information = append(information, parameterInformation{Label: label})
+	}
+	activeParameter := activeConstructionParameter(text, openOffset, offset)
+	if len(parameters) == 0 {
+		activeParameter = 0
+	} else if activeParameter >= len(parameters) {
+		activeParameter = len(parameters) - 1
+	}
+	documentation := initializerConstructionDetails(resolved)
+	return signatureHelp{
+		Signatures: []signatureInformation{{
+			Label:         "init(" + strings.Join(labels, ", ") + ")",
+			Documentation: markupContent{Kind: "markdown", Value: documentation},
+			Parameters:    information,
+		}},
+		ActiveParameter: activeParameter,
+	}, true
+}
+
+func initializerForToken(analyzer *sema.Analyzer, token lexer.Token) (sema.Function, bool) {
+	if analyzer == nil {
+		return sema.Function{}, false
+	}
+	definitions := uniqueDefinitionTokens(analyzer.DefinitionsAt(token.File, token.Line, token.Column))
+	if len(definitions) == 1 {
+		token = definitions[0]
+	}
+	for _, overloads := range analyzer.Functions() {
+		for _, function := range overloads {
+			if function.Initializer && sameSourceToken(function.Token, token) {
+				return function, true
+			}
+		}
+	}
+	return sema.Function{}, false
+}
+
+func initializerParameterLabel(parameter sema.FunctionParameter) string {
+	prefix := ""
+	if parameter.Ref {
+		prefix = "ref "
+		if parameter.MutableRef {
+			prefix = "ref mut "
+		}
+	}
+	return fmt.Sprintf("%s%s: %s", prefix, parameter.Name, lspTypeName(parameter.Type))
+}
+
+func initializerHoverContents(resolved sema.ResolvedConstruction) string {
+	labels := make([]string, 0, len(resolved.Initializer.Parameters))
+	for _, parameter := range resolved.Initializer.Parameters {
+		labels = append(labels, initializerParameterLabel(parameter))
+	}
+	signature := "init(" + strings.Join(labels, ", ") + ")"
+	if resolved.Implicit {
+		signature = "implicit init()"
+	}
+	return "```sec\n" + signature + "\n```\n\n" + initializerConstructionDetails(resolved)
+}
+
+func initializerConstructionDetails(resolved sema.ResolvedConstruction) string {
+	lines := []string{"Constructs: `" + lspTypeName(resolved.Target) + "`"}
+	if resolved.Implicit {
+		lines = append(lines, "Initializer: implicit default construction")
+	}
+	if resolved.ErrorType == nil {
+		lines = append(lines, "Construction error: _none_", "Requires `try` or local handling: `no`")
+	} else {
+		lines = append(lines, "Construction error: `"+lspTypeName(*resolved.ErrorType)+"`", "Requires `try` or local handling: `yes`")
+	}
+	return strings.Join(lines, "\n\n")
+}
+
+func constructionAtOffset(program *ast.Program, sourcePath string, text string, offset int) (*ast.NewExpression, int, int, bool) {
+	var selected *ast.NewExpression
+	selectedOpen := -1
+	selectedClose := -1
+	selectedStart := -1
+	for _, construction := range newExpressionsInProgram(program) {
+		if construction == nil || !statementSourceMatches(construction.Token, sourcePath) {
+			continue
+		}
+		start := textPositionOffset(text, construction.Token.Line, construction.Token.Column)
+		if start < 0 || start > offset || start < selectedStart {
+			continue
+		}
+		open, close, ok := constructionParentheses(text, start)
+		if !ok || offset > close+1 {
+			continue
+		}
+		selected = construction
+		selectedOpen = open
+		selectedClose = close
+		selectedStart = start
+	}
+	return selected, selectedOpen, selectedClose, selected != nil
+}
+
+func newExpressionsInProgram(program *ast.Program) []*ast.NewExpression {
+	if program == nil {
+		return nil
+	}
+	result := []*ast.NewExpression{}
+	newExpressionType := reflect.TypeOf((*ast.NewExpression)(nil))
+	var visit func(reflect.Value)
+	visit = func(value reflect.Value) {
+		if !value.IsValid() {
+			return
+		}
+		if value.Kind() == reflect.Interface {
+			if !value.IsNil() {
+				visit(value.Elem())
+			}
+			return
+		}
+		if value.Kind() == reflect.Pointer {
+			if value.IsNil() {
+				return
+			}
+			if value.Type() == newExpressionType {
+				result = append(result, value.Interface().(*ast.NewExpression))
+			}
+			if value.Type().Elem().PkgPath() == "sec/internal/ast" {
+				visit(value.Elem())
+			}
+			return
+		}
+		switch value.Kind() {
+		case reflect.Struct:
+			if value.Type().PkgPath() != "sec/internal/ast" {
+				return
+			}
+			for index := 0; index < value.NumField(); index++ {
+				visit(value.Field(index))
+			}
+		case reflect.Slice, reflect.Array:
+			for index := 0; index < value.Len(); index++ {
+				visit(value.Index(index))
+			}
+		}
+	}
+	visit(reflect.ValueOf(program))
+	return result
+}
+
+func constructionParentheses(text string, constructionStart int) (int, int, bool) {
+	tokens := sourceTokens("", text)
+	open := -1
+	depth := 0
+	for _, token := range tokens {
+		tokenOffset := textPositionOffset(text, token.Line, token.Column)
+		if tokenOffset < constructionStart {
+			continue
+		}
+		if open < 0 {
+			if token.Type == lexer.LPAREN {
+				open = tokenOffset
+				depth = 1
+			}
+			continue
+		}
+		switch token.Type {
+		case lexer.LPAREN:
+			depth++
+		case lexer.RPAREN:
+			depth--
+			if depth == 0 {
+				return open, tokenOffset, true
+			}
+		}
+	}
+	return 0, 0, false
+}
+
+func activeConstructionParameter(text string, openOffset int, cursorOffset int) int {
+	active := 0
+	depth := 0
+	for _, token := range sourceTokens("", text) {
+		tokenOffset := textPositionOffset(text, token.Line, token.Column)
+		if tokenOffset <= openOffset {
+			continue
+		}
+		if tokenOffset >= cursorOffset {
+			break
+		}
+		switch token.Type {
+		case lexer.LPAREN, lexer.LBRACKET, lexer.LBRACE:
+			depth++
+		case lexer.RPAREN, lexer.RBRACKET, lexer.RBRACE:
+			if depth > 0 {
+				depth--
+			}
+		case lexer.COMMA:
+			if depth == 0 {
+				active++
+			}
+		}
+	}
+	return active
 }
 
 func compilerKnownMemberHover(sourceRange lspRange, member sema.CompilerKnownMember) hoverResult {
@@ -1861,6 +2240,8 @@ type completionContext struct {
 	DotOffset           int
 	TypeForm            bool
 	ContractModifier    bool
+	LifecycleMember     bool
+	ExpressionSite      bool
 	ReturnValue         bool
 	ExpectedType        *sema.Type
 	CursorOffset        int
@@ -1892,7 +2273,56 @@ func completionContextAt(text string, offset int) completionContext {
 	context.ReturnValue = isReturnValueContext(text[:prefixStart], offset)
 	context.TypeForm = isTypeDeclarationFormContext(text[:prefixStart])
 	context.ContractModifier = isContractModifierContext(text[:prefixStart])
+	context.LifecycleMember, context.ExpressionSite = completionScopeContext(text[:prefixStart])
 	return context
+}
+
+func completionScopeContext(prefix string) (directImplMember bool, expressionSite bool) {
+	type scope struct {
+		impl     bool
+		callable bool
+	}
+	stack := []scope{}
+	pendingImpl := false
+	pendingCallable := false
+	l := lexer.New(prefix)
+	for {
+		token := l.NextToken()
+		if token.Type == lexer.EOF {
+			break
+		}
+		if token.Type == lexer.COMMENT {
+			continue
+		}
+		directImpl := len(stack) > 0 && stack[len(stack)-1].impl
+		switch token.Type {
+		case lexer.IMPL:
+			pendingImpl = true
+		case lexer.FN:
+			pendingCallable = true
+		case lexer.IDENT:
+			if directImpl && token.Lexeme == "init" {
+				pendingCallable = true
+			}
+		case lexer.LBRACE:
+			parentCallable := len(stack) > 0 && stack[len(stack)-1].callable
+			stack = append(stack, scope{
+				impl:     pendingImpl,
+				callable: parentCallable || pendingCallable,
+			})
+			pendingImpl = false
+			pendingCallable = false
+		case lexer.RBRACE:
+			if len(stack) > 0 {
+				stack = stack[:len(stack)-1]
+			}
+		}
+	}
+	if len(stack) == 0 {
+		return false, false
+	}
+	current := stack[len(stack)-1]
+	return current.impl, current.callable
 }
 
 func isReturnValueContext(prefix string, offset int) bool {
@@ -2106,9 +2536,18 @@ func globalCompletionItems(text string, analyzer *sema.Analyzer, context complet
 	for _, keyword := range keywords {
 		add(completionItem{Label: keyword, Kind: 14})
 	}
+	if context.LifecycleMember {
+		add(completionItem{Label: "init", Kind: 14, Detail: "lifecycle initializer"})
+	}
+	if context.ExpressionSite {
+		add(completionItem{Label: "new", Kind: 14, Detail: "lifecycle construction"})
+	}
 
 	if !context.TypeForm {
 		for name, overloads := range analyzer.Functions() {
+			if initializerOverloads(overloads) {
+				continue
+			}
 			add(completionItem{Label: name, Kind: 3, Detail: functionCompletionDetail(overloads)})
 		}
 		for name, symbol := range analyzer.Symbols() {
@@ -2137,6 +2576,9 @@ func addReturnValueCompletionItems(text string, analyzer *sema.Analyzer, context
 	}
 
 	for name, overloads := range analyzer.Functions() {
+		if initializerOverloads(overloads) {
+			continue
+		}
 		for _, function := range overloads {
 			if !completionTypeMatches(expected, function.ReturnType) {
 				continue
@@ -2157,6 +2599,10 @@ func addReturnValueCompletionItems(text string, analyzer *sema.Analyzer, context
 			add(completionItem{Label: name, Kind: 6, Detail: lspTypeName(symbol.Type)})
 		}
 	}
+}
+
+func initializerOverloads(functions []sema.Function) bool {
+	return len(functions) > 0 && functions[0].Initializer
 }
 
 func completionTypeMatches(expected sema.Type, actual sema.Type) bool {
@@ -2293,9 +2739,9 @@ func contextHasFunction(context completionContext) bool {
 var secKeywords = []string{
 	"after", "asm", "assert", "await", "break", "case", "capture", "continue", "default",
 	"defer", "detach", "else", "enum", "even", "extern", "fallthrough", "false", "finite", "fn", "for",
-	"free", "get", "if", "impl", "implements", "import", "in", "interface",
+	"get", "if", "impl", "implements", "import", "in", "interface",
 	"let", "match", "module", "multipleOf", "mut", "notEmpty", "odd", "panic", "process",
-	"new", "property", "ref", "return", "select", "self", "set", "spawn", "static", "struct",
+	"property", "ref", "return", "select", "self", "set", "spawn", "static", "struct",
 	"require", "switch", "task", "thread", "true", "try", "type", "unique", "unit", "union",
 	"unsafe", "where", "while",
 }
@@ -2367,6 +2813,18 @@ func (s *server) scheduleDiagnostics(uri string, text string) {
 	})
 }
 
+func (s *server) scheduleModuleDiagnostics(uri string) {
+	if s == nil || s.documentSnapshots == nil {
+		return
+	}
+	dir := normalizedSourcePath(filepath.Dir(pathFromURI(uri)))
+	for _, snapshot := range s.documentSnapshots.Snapshots() {
+		if normalizedSourcePath(filepath.Dir(pathFromURI(snapshot.URI))) == dir {
+			s.scheduleDiagnostics(snapshot.URI, snapshot.Text)
+		}
+	}
+}
+
 func (s *server) stopDiagnosticTimers() {
 	s.timerMu.Lock()
 	defer s.timerMu.Unlock()
@@ -2387,11 +2845,27 @@ func (s *server) stopDiagnosticTimer(uri string) {
 }
 
 func (s *server) publishDiagnostics(uri string, text string) error {
-	diagnostics := analyze(uri, text)
+	diagnostics := analyze(uri, text, s.sourceOverlay())
 	return s.notify("textDocument/publishDiagnostics", map[string]any{
 		"uri":         uri,
 		"diagnostics": diagnostics,
 	})
+}
+
+func (s *server) publishModuleDiagnostics(uri string) error {
+	if s == nil || s.documentSnapshots == nil {
+		return nil
+	}
+	dir := normalizedSourcePath(filepath.Dir(pathFromURI(uri)))
+	for _, snapshot := range s.documentSnapshots.Snapshots() {
+		if normalizedSourcePath(filepath.Dir(pathFromURI(snapshot.URI))) != dir {
+			continue
+		}
+		if err := s.publishDiagnostics(snapshot.URI, snapshot.Text); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *server) republishOpenDiagnostics() error {
@@ -2992,7 +3466,7 @@ func textPositionOffset(text string, line int, column int) int {
 	return lineCharToOffset(text, line-1, column-1)
 }
 
-func analyze(uri string, text string) []diagnostic {
+func analyze(uri string, text string, overlays ...sourceOverlay) []diagnostic {
 	path := pathFromURI(uri)
 	l := lexer.NewWithFile(text, path)
 	p := parser.New(l)
@@ -3006,20 +3480,47 @@ func analyze(uri string, text string) []diagnostic {
 	if parseResult.HasErrors {
 		return diagnostics
 	}
-	resolveCoreSources(program, path)
-	resolveSourceImports(program, map[string]bool{}, path)
+	prepareProgramForLSP(program, path, firstSourceOverlay(overlays))
 
 	analyzer := newLSPAnalyzer(uri)
 	for _, err := range analyzer.Analyze(program) {
-		diagnostics = append(diagnostics, semaDiagnostic(err, 1))
+		if diagnosticBelongsToSource(err, path) {
+			diagnostics = append(diagnostics, semaDiagnostic(err, 1))
+		}
 	}
 	for _, warning := range analyzer.Warnings() {
-		diagnostics = append(diagnostics, semaDiagnostic(warning, 2))
+		if diagnosticBelongsToSource(warning, path) {
+			diagnostics = append(diagnostics, semaDiagnostic(warning, 2))
+		}
 	}
 	return diagnostics
 }
 
-func resolveCoreSources(program *ast.Program, sourceFile string) {
+func firstSourceOverlay(overlays []sourceOverlay) sourceOverlay {
+	if len(overlays) == 0 {
+		return nil
+	}
+	return overlays[0]
+}
+
+func normalizedSourcePath(path string) string {
+	return lspserver.NormalizeSourcePath(path)
+}
+
+func prepareProgramForLSP(program *ast.Program, sourceFile string, overlay sourceOverlay) {
+	if program == nil || sourceFile == "" {
+		return
+	}
+	lspserver.AssembleModule(program, sourceFile, overlay)
+	resolveCoreSources(program, sourceFile, overlay)
+	resolveSourceImports(program, map[string]bool{}, sourceFile, overlay)
+}
+
+func diagnosticBelongsToSource(err sema.Error, sourceFile string) bool {
+	return err.File == "" || sourceFile == "" || normalizedSourcePath(err.File) == normalizedSourcePath(sourceFile)
+}
+
+func resolveCoreSources(program *ast.Program, sourceFile string, overlays ...sourceOverlay) {
 	if program == nil || lspProgramContainsCoreSource(program) {
 		return
 	}
@@ -3031,7 +3532,7 @@ func resolveCoreSources(program *ast.Program, sourceFile string) {
 	sort.Strings(matches)
 	coreStatements := []ast.Statement{}
 	for _, match := range matches {
-		imported, ok := parseSourceInclude(match)
+		imported, ok := parseSourceInclude(match, firstSourceOverlay(overlays))
 		if !ok {
 			continue
 		}
@@ -3114,7 +3615,8 @@ func lspStatementTokenForSource(stmt ast.Statement) (lexer.Token, bool) {
 	}
 }
 
-func resolveSourceImports(program *ast.Program, seen map[string]bool, sourceFile string) {
+func resolveSourceImports(program *ast.Program, seen map[string]bool, sourceFile string, overlays ...sourceOverlay) {
+	overlay := firstSourceOverlay(overlays)
 	for _, stmt := range append([]ast.Statement{}, program.Statements...) {
 		importStmt, ok := stmt.(*ast.ImportStatement)
 		if !ok || importStmt == nil {
@@ -3125,18 +3627,18 @@ func resolveSourceImports(program *ast.Program, seen map[string]bool, sourceFile
 		module := ""
 		for _, sourcePath := range sourcePaths {
 			if seen[sourcePath] {
-				if imported, parsed := parseSourceInclude(sourcePath); parsed {
+				if imported, parsed := parseSourceInclude(sourcePath, overlay); parsed {
 					rewriteImportQualifier(program, importQualifier(importStmt), programModulePath(imported))
 				}
 				continue
 			}
 			seen[sourcePath] = true
 
-			imported, ok := parseSourceInclude(sourcePath)
+			imported, ok := parseSourceInclude(sourcePath, overlay)
 			if !ok {
 				continue
 			}
-			resolveSourceImports(imported, seen, sourcePath)
+			resolveSourceImports(imported, seen, sourcePath, overlay)
 			if module == "" {
 				module = programModulePath(imported)
 			}
@@ -3562,29 +4064,12 @@ func importQualifier(stmt *ast.ImportStatement) string {
 	return trimmed
 }
 
-func parseSourceInclude(path string) (*ast.Program, bool) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, false
-	}
-	l := lexer.NewWithFile(string(data), path)
-	p := parser.New(l)
-	parseResult := p.Parse()
-	program := parseResult.Program
-	if parseResult.HasErrors {
-		return nil, false
-	}
-	return program, true
+func parseSourceInclude(path string, overlays ...sourceOverlay) (*ast.Program, bool) {
+	return lspserver.ParseSource(path, firstSourceOverlay(overlays))
 }
 
 func programModulePath(program *ast.Program) string {
-	for _, stmt := range program.Statements {
-		module, ok := stmt.(*ast.ModuleStatement)
-		if ok {
-			return module.Path
-		}
-	}
-	return ""
+	return lspserver.ProgramModule(program)
 }
 
 func qualifyImportedModule(program *ast.Program, module string) {

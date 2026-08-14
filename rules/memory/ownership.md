@@ -1094,6 +1094,10 @@ explicit move rules apply to that source.
 A by-value parameter owns its received value for the duration defined by the
 function.
 
+Its local binding is mutable by default. Reassignment replaces the callee-owned
+working value under the ordinary destruction and definite-assignment rules.
+For a copyable argument this cannot mutate the caller's retained copy.
+
 For a copyable argument:
 
 ```sec
@@ -1120,6 +1124,11 @@ No call-site `<-` expression syntax is required in Sec 0.1.
 The function signature and resolved type determine whether the by-value
 parameter consumes a move-only value.
 
+An explicit `-> name: T` parameter forces consumption even when `T` would
+otherwise be copied. It consumes the value itself, not a pointee merely
+represented by that value, and cannot be combined with `ref` or `ref mut`.
+Overloads may not differ only by ordinary versus forced-consuming mode.
+
 The LSP must make this ownership effect visible.
 
 ---
@@ -1137,14 +1146,21 @@ The caller remains owner.
 
 Borrowing restrictions apply for the duration of the borrow.
 
+The reference parameter binding itself is not implicitly rebindable. `ref mut`
+grants exclusive mutable access to the referent, not mutable binding syntax.
+
 ---
 
 ## Argument evaluation
 
-Arguments are evaluated according to the language's defined evaluation order.
+Arguments and spread sources are evaluated strictly left-to-right. Ownership
+transfer into the outer callee is committed only after every argument has
+evaluated successfully and the call is ready to enter the callee.
 
-Ownership must not transfer before all earlier required evaluations are safely
-complete.
+If a later argument fails, earlier caller bindings have not been consumed by
+that outer call and caller-owned temporaries are cleaned normally. Effects and
+ownership transfers performed inside an earlier argument expression are not
+rolled back.
 
 If one argument moves a value needed by another argument, the compiler must
 reject the call or enforce the defined evaluation order without use after move.
@@ -3059,7 +3075,7 @@ This rulebook must remain synchronized with:
 copy_move.md
 contracts.md
 types.md
-functions.txt
+functions.md
 struct.md
 collections.md
 shaped-types.md
@@ -3703,7 +3719,7 @@ Highest-priority files:
 copy_move.md
 contracts.md
 types.md
-functions.txt
+functions.md
 struct.md
 collections.md
 shaped-types.md

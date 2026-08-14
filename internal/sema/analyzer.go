@@ -4094,7 +4094,11 @@ func (a *Analyzer) analyzeFunctionBodyInScope(fn *ast.FunctionDeclaration, name 
 	}()
 
 	for _, param := range function.Parameters {
-		symbol := Symbol{Name: param.Name, Type: param.Type, Mutable: param.MutableRef, Token: param.Token, Storage: StorageOriginInline, Local: false, ScopeDepth: 0}
+		// An owned by-value parameter is the callee's mutable working binding.
+		// Reference parameters retain their referent authority in the type, but
+		// the reference binding itself is not implicitly rebindable.
+		mutableBinding := !param.Ref && !param.MutableRef && param.Type.Kind != ReferenceType
+		symbol := Symbol{Name: param.Name, Type: param.Type, Mutable: mutableBinding, Token: param.Token, Storage: StorageOriginInline, Local: false, ScopeDepth: 0}
 		a.symbols[param.Name] = symbol
 		completionSymbol := symbol
 		completionSymbol.Local = true
@@ -4102,7 +4106,7 @@ func (a *Analyzer) analyzeFunctionBodyInScope(fn *ast.FunctionDeclaration, name 
 		delete(a.constInts, param.Name)
 		a.assigned[param.Name] = true
 		a.recordDefinition(param.Token)
-		a.recordBinding(param.Token, BindingParameter, param.Name, param.Type, param.MutableRef)
+		a.recordBinding(param.Token, BindingParameter, param.Name, param.Type, mutableBinding)
 		a.seedParameterReferenceOrigin(function, param)
 	}
 	a.defineImplicitImplInstanceSymbols(fn.Body, function.ReceiverMutable)

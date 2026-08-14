@@ -187,7 +187,7 @@ They must not be collapsed into one universal pointer type.
 Conceptual example:
 
 ```sec
-fn Read(ref value: Item) int {
+fn Read(value: ref Item) int {
     return value.count
 }
 ```

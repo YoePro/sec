@@ -3644,7 +3644,7 @@ collections.md
 shaped-types.md
 types.md
 contracts.md
-functions.txt
+functions.md
 struct.md
 unions.md
 atomics rulebook

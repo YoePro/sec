@@ -56,7 +56,7 @@ Additional directly relevant rulebooks include:
 
 ```text
 rules/types/types.md
-rules/declarations/functions.txt
+rules/declarations/functions.md
 rules/memory/copy_move.md
 rules/memory/ownership.md
 rules/memory/borrowing.txt

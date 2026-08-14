@@ -309,6 +309,11 @@ Implemented:
 - lexer/parser execution through compiler packages;
 - Sema execution through the compiler Sema package;
 - core source loading;
+- same-directory, same-module source assembly through the compiler lexer,
+  parser, AST, and Sema pipeline;
+- open-document overlays for active and sibling module files;
+- dependent diagnostic refresh when a sibling module document opens, changes,
+  saves, or closes;
 - project import loading;
 - stdlib import loading for currently recognized modules;
 - transitive import loading;
@@ -1652,6 +1657,17 @@ or complete.
 Unknown facts must be omitted or explicitly marked unavailable.
 
 The LSP must never invent metadata that the compiler has not resolved.
+
+Hover on `try` and on its operand must make the value and error channels
+explicit. For an operand of type `Result[T, E]`, hover shows the declared
+`Result[T, E]`, the unwrapped success type `T` produced by the `try` expression,
+and the exact error type `E`. A bodyless `try` additionally shows the enclosing
+function's `Result[U, E]` return type and that failure propagates as an implicit
+`return Err(E)`; a handler-bearing `try` instead identifies the local handler.
+For an `Option[T]` operand, hover states that `None` is ordinary absence rather
+than an error channel and that `try` propagation is not applicable. These facts
+come from Sema's resolved call and try facts rather than from LSP-side type
+reconstruction.
 
 ## Default information
 

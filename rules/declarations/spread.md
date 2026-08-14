@@ -6,7 +6,7 @@
 - **Language version:** Sec 0.1
 - **Document revision:** 2.0
 - **Created:** 2026-08-13
-- **Last updated:** 2026-08-13
+- **Last updated:** 2026-08-14
 - **Replaces:** `rules/declarations/spread.txt`
 
 ---
@@ -158,6 +158,11 @@ a runtime-length source may be accepted only when that destination explicitly
 defines how such arguments are received. Spread itself does not define variadic
 parameters.
 
+Native `...T` parameters are such an explicit runtime-arity destination.
+Ordinary and spread arguments may mix, multiple spread sources are permitted,
+and every expanded element must satisfy `T`. Each source is evaluated exactly
+once in the call's left-to-right argument order.
+
 ### 4.2 Call resolution
 
 Expansion occurs before final argument matching.
@@ -192,6 +197,10 @@ Consume(resources...)
 
 Spread must not hide per-element moves, partial array state, clones, or
 allocation.
+
+The same non-consuming rule applies to native variadic destinations. A spread
+from move-only collection elements is invalid when satisfying the call would
+require moving individual elements out of the source.
 
 Passing references remains explicit according to ordinary call and borrowing
 syntax; spread does not invent implicit borrows.
@@ -529,6 +538,7 @@ Sema must:
 - preserve exactly-once source evaluation;
 - preserve array index order and struct declaration order;
 - expand arguments before final call resolution;
+- allow runtime-length expansion only into a destination such as a native typed variadic that explicitly accepts runtime arity;
 - compute fixed-array result length with checked arithmetic;
 - validate target element types;
 - resolve struct overrides left to right;
@@ -653,4 +663,3 @@ let updated := User {
 
 Do not use multiple spreads merely to simulate deep merge semantics; Sec struct
 spread is deliberately shallow and nominal.
-

@@ -3129,9 +3129,9 @@ processes.txt
 structured_concurrency.md
 concurrency.md
 concurrency_memory_model.txt
-functions.txt
+functions.md
 functions_lambda.txt
-generics.txt
+declarations/generics.md
 declarations/interfaces.md
 defer.txt
 destruction.txt

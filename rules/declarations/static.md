@@ -1,9 +1,16 @@
-# Static
+# Sec Static Declarations and Members
 
-## Purpose
+- **Status:** Normative
+- **Created:** 2026-08-13
+- **Last updated:** 2026-08-14
+- **Document revision:** 2.0
+- **Language version:** Sec 0.1
+- **Supersedes:** document revision 1.0
+- **Canonical path:** `rules/declarations/static.md`
 
-`static` declares storage or members that belong to a type, function or program
-rather than to one ordinary instance.
+## 1. Purpose
+
+`static` declares storage or members that belong to a program, function, or type rather than to one ordinary instance.
 
 `static` is a declaration modifier.
 
@@ -21,101 +28,71 @@ Invalid:
 let State: static ApplicationState
 ```
 
----
+`static` has two related meanings:
 
-## Core meanings
+1. static storage duration;
+2. type-associated membership.
 
-`static` has two related uses:
+These meanings are related but distinct.
 
-1. static storage duration
-2. type-associated membership
+## 2. Immutable and mutable static storage
 
-Static storage exists independently of an ordinary local scope or object
-instance.
+Sec has no `const` keyword.
 
-A static member belongs to a type rather than to one instance of that type.
-
----
-
-## No const keyword
-
-Sec does not use a `const` keyword.
-
-Immutable declarations use:
+Immutable static storage uses:
 
 ```sec
-let
+static let Maximum: int := 100
 ```
 
-Mutable declarations use:
+Mutable static storage uses:
 
 ```sec
-let mut
+static let mut Total: int := 0
 ```
 
-Static immutable storage therefore uses:
+`static let` is immutable after initialization.
 
-```sec
-static let
-```
+`static let mut` permits mutation subject to the ordinary ownership, borrowing, effect, and concurrency rules.
 
-Static mutable storage uses:
+Mutability never implies thread safety.
 
-```sec
-static let mut
-```
+## 3. Module-level storage
 
----
-
-## Module-level declarations
-
-Module-level bindings have static storage duration implicitly.
-
-Example:
+Module-level bindings already have static storage duration.
 
 ```sec
 let Configuration: ApplicationConfiguration
 let mut State: ApplicationState
 ```
 
-These values exist for the lifetime defined for the module or program.
-
-The programmer may write `static` explicitly:
+Writing `static` explicitly at module scope is accepted but semantically redundant.
 
 ```sec
 static let Configuration: ApplicationConfiguration
 static let mut State: ApplicationState
 ```
 
-The explicit modifier is semantically redundant at module level.
+The formatter should remove redundant module-level `static`.
 
-The compiler should accept it.
-
-The formatter should remove it.
-
-Formatted result:
+Formatted form:
 
 ```sec
 let Configuration: ApplicationConfiguration
 let mut State: ApplicationState
 ```
 
-The compiler may emit an informational diagnostic:
+A compiler or LSP may emit an informational diagnostic.
 
 ```text
 static is redundant on module-level declaration State
 ```
 
-This should not normally be a warning or error.
+This is not normally a warning or error.
 
----
+## 4. Function-local static storage
 
-## Function-local static storage
-
-A local declaration may use `static` to preserve one storage location across
-function calls.
-
-Example:
+A function-local declaration may use `static` when one storage location must persist across calls.
 
 ```sec
 fn NextID() int {
@@ -126,27 +103,26 @@ fn NextID() int {
 }
 ```
 
-`value`:
+The static local:
 
-- is visible only inside `NextID`
-- is initialized once
-- retains its value between calls
-- is shared by all concurrent calls to `NextID`
-- has static storage duration
+- is visible only in the declaring lexical scope;
+- is initialized once from a compile-time-valid initializer;
+- retains its value across function invocations;
+- is shared by all executions that reach the same declaration;
+- has static storage duration;
+- is not allocated separately for each invocation.
 
-It is not allocated separately for each invocation.
+Function-local static storage is not thread-local storage.
 
----
+Sec 0.1 defines no thread-local static syntax.
 
-## Static local instances
+## 5. References to static storage
 
-Any valid value type may use function-local static storage.
-
-Example:
+Static lifetime may make a reference lifetime-valid.
 
 ```sec
 fn State() ref ApplicationState {
-    static let mut state: ApplicationState := ApplicationState {
+    static let state: ApplicationState := ApplicationState {
         running: false
     }
 
@@ -154,34 +130,23 @@ fn State() ref ApplicationState {
 }
 ```
 
-Returning a reference to static storage may be valid because the storage outlives
-the function call.
+Lifetime validity does not imply synchronization safety.
 
-Lifetime validity does not imply concurrency safety.
+A mutable reference to shared mutable static storage must not bypass required synchronization.
 
-Mutable static storage still requires valid synchronization.
+Invalid unless exclusive access can be proven:
 
-Static mutable storage accessed by tasks, threads or mixed task/thread execution
-requires valid synchronization.
+```sec
+static let mut State: ApplicationState
 
-Examples include:
+fn GetState() ref mut ApplicationState {
+    return ref mut State
+}
+```
 
-- `Mutex[T]`
-- `Atomic[T]`
-- channel ownership transfer
-- another compiler-approved synchronization primitive
+## 6. Static declarations in implementations
 
-Using a physical thread does not bypass static mutability or borrowing rules.
-
-Sec v0.1 does not define thread-local storage syntax.
-
----
-
-## Static declarations in impl
-
-Static type-associated storage belongs in `impl`.
-
-Example:
+Type-associated static members belong in `impl`.
 
 ```sec
 type Counter struct {
@@ -194,25 +159,23 @@ impl Counter {
 }
 ```
 
-Static declarations do not belong in the struct field list.
+A static declaration may also appear in an `impl extends` fragment.
 
-This preserves the distinction:
-
-```text
-type
-    instance data and physical layout
-
-impl
-    behavior and type-associated members
+```sec
+impl extends Counter {
+    static fn ResetTotal() void {
+        Counter.Total = 0
+    }
+}
 ```
 
----
+Primary and extended implementation fragments form one combined member surface.
 
-## Static storage and instance layout
+Duplicate or conflicting static members are invalid across the complete implementation.
+
+## 7. Static members never change instance representation
 
 Static members are not instance fields.
-
-Example:
 
 ```sec
 type Counter struct {
@@ -224,21 +187,21 @@ impl Counter {
 }
 ```
 
-`Counter.Total` does not affect:
+`Counter.Total` does not change:
 
-- `sizeof(Counter)`
-- alignment of `Counter`
-- field offsets
-- ABI layout
-- object construction
+- `Counter.SizeOf`;
+- alignment of `Counter`;
+- instance field offsets;
+- ABI layout of `Counter`;
+- construction or destruction of one ordinary `Counter` instance.
 
-Every `Counter` instance contains only its declared instance fields.
+Stored instance representation is defined by the type declaration.
 
----
+Static state is separate storage.
 
-## Static access
+## 8. Static member access
 
-Static members are accessed through the type name.
+Static members are accessed through the type.
 
 Valid:
 
@@ -256,8 +219,7 @@ counter.Create()
 counter.Count
 ```
 
-The compiler should require type-qualified access to make shared type-level state
-explicit.
+The compiler must require type-qualified access to make shared type-level state explicit.
 
 Suggested diagnostic:
 
@@ -265,18 +227,9 @@ Suggested diagnostic:
 static member Total must be accessed through type Counter
 ```
 
----
+## 9. Static methods
 
-## Static methods
-
-A method that belongs to the type rather than an instance must be declared
-explicitly with:
-
-```sec
-static fn
-```
-
-Example:
+A type-level method is declared explicitly with `static fn`.
 
 ```sec
 impl Counter {
@@ -288,40 +241,7 @@ impl Counter {
 }
 ```
 
-Sec does not infer static membership merely because `self` is absent.
-
-This is invalid:
-
-```sec
-impl Counter {
-    fn Create() Counter {
-        return Counter {
-            value: 0
-        }
-    }
-}
-```
-
-Explicit `static fn` is required for semantic clarity.
-
----
-
-## Instance methods
-
-An ordinary method belongs to an instance and receives compiler-provided
-implicit `self`; it must not declare a receiver parameter.
-
-Example:
-
-```sec
-impl Counter {
-    fn Increment() void {
-        self.value += 1
-    }
-}
-```
-
-A static method must not use `self`.
+`static fn` has no instance receiver and may not use `self`.
 
 Invalid:
 
@@ -339,17 +259,57 @@ Expected diagnostic:
 self cannot be used in static method Reset
 ```
 
----
+### 9.1 Ordinary instance methods
 
-## Static properties
-
-A property that belongs to a type must be declared explicitly:
+An ordinary method is declared with `fn`.
 
 ```sec
-static property
+impl Counter {
+    fn Increment() void {
+        self.value += 1
+    }
+}
 ```
 
-Example:
+Instance methods have implicit `self`.
+
+The programmer does not declare `self`, `ref self`, or `ref mut self`.
+
+Sema infers receiver requirements from the method body.
+
+The absence of explicit `self` in the parameter list does not make a method static.
+
+Only `static fn` declares a static method.
+
+## 10. Static functions and lifecycle construction
+
+A static function may act as a named factory or helper.
+
+```sec
+impl Counter {
+    static fn Zero() Counter {
+        return Counter {
+            value: 0
+        }
+    }
+}
+```
+
+A static function is not a lifecycle `init` member.
+
+Lifecycle construction through `init` is selected explicitly with `new`.
+
+```sec
+let counter := new Counter(...)
+```
+
+`new` does not imply heap allocation.
+
+The lifecycle rules are defined by `impl.md`.
+
+## 11. Static properties
+
+A type-level property is declared with `static property`.
 
 ```sec
 impl Counter {
@@ -363,57 +323,16 @@ impl Counter {
 }
 ```
 
-Access:
+A static property:
 
-```sec
-let count := Counter.Count
-```
+- has no instance receiver;
+- may not use `self`;
+- is accessed through the type;
+- follows the ordinary property accessor rules.
 
-A static property has no instance receiver.
+## 12. Static property setters
 
-It must not use `self`.
-
-Expected diagnostic:
-
-```text
-self cannot be used in static property Count
-```
-
----
-
-## Instance properties
-
-An ordinary property belongs to an instance.
-
-Example:
-
-```sec
-impl Counter {
-    property Value: int {
-        get {
-            return self.value
-        }
-    }
-}
-```
-
-Access:
-
-```sec
-let value := counter.Value
-```
-
-An instance property may use `self`.
-
-A property without `static` must resolve against an instance.
-
----
-
-## Static setters
-
-A static property may define a setter.
-
-Example:
+Static property setters always declare their incoming value parameter explicitly.
 
 ```sec
 impl Application {
@@ -431,57 +350,45 @@ impl Application {
 }
 ```
 
-The setter operates on type-associated storage.
-Its incoming value parameter is always explicit and programmer-named. The same
-rule applies to `try set name`; there is no implicit `value` binding.
-
-It must obey:
-
-- mutability rules
-- validation rules
-- concurrency rules
-- property rules
-- visibility rules
-
----
-
-## Static generic members
-
-Generic types may declare static members.
-
-Example:
+Fallible form:
 
 ```sec
-impl Cache[T] {
-    static fn Create() Cache[T] {
-        return Cache[T] {}
+static property Mode: Mode {
+    try set mode {
+        ...
     }
 }
 ```
 
-Whether static storage is shared across all type arguments or specialized per
-concrete generic instantiation must be defined explicitly.
+The parameter name is programmer-chosen.
 
-Version 0.1 should use:
+There is no implicit setter variable.
 
-```text
-Static storage in a generic impl is specialized per concrete generic type.
-```
-
-Therefore:
+Invalid:
 
 ```sec
-Cache[int].Count
-Cache[string].Count
+static property Mode: Mode {
+    set {
+        Application._mode = value
+    }
+}
 ```
 
-refer to distinct static storage locations.
+The detailed property rules are defined by `properties.md`.
 
----
+## 13. Static members on nominal types
 
-## Static named types
+Any eligible nominal `impl` target may own static members.
 
-Named types may define static methods, properties and storage.
+This includes, where permitted by the corresponding type rules:
+
+- structs;
+- enums;
+- unions;
+- registers;
+- named scalar types;
+- generic nominal types;
+- other valid implementation targets.
 
 Example:
 
@@ -492,47 +399,59 @@ impl UserID {
     static let Invalid: UserID := UserID(-1)
 
     static fn Parse(value: string) Result[UserID, ParseError] {
+        ...
     }
 }
 ```
 
-The same static rules apply to:
+Ordinary `impl` ownership remains restricted to the type's defining module.
 
-- structs
-- enums
-- unions
-- registers
-- named types
-- generic types
-- other valid impl targets
+## 14. Generic static members
 
----
+Generic implementations may declare static members.
 
-## Static initialization
+```sec
+impl Cache[T] {
+    static let mut Count: int := 0
+}
+```
+
+Static storage in a generic implementation is specialized per concrete generic instantiation.
+
+Therefore:
+
+```sec
+Cache[int].Count
+Cache[string].Count
+```
+
+refer to distinct static storage locations.
+
+The same rule applies to function-local static storage inside monomorphized generic functions unless a more specific generic rule says otherwise.
+
+No implicit storage is shared across all generic instantiations merely because the source declaration is shared.
+
+## 15. Static initialization
 
 Static initialization must be deterministic and visible to semantic analysis.
 
-Version 0.1 should allow static initializers that are compile-time evaluable.
+A static initializer must be compile-time evaluable under the compile-time evaluation rules.
 
-Example:
+Valid:
 
 ```sec
 static let mut Count: int := 0
 ```
 
-Runtime initialization must not occur through hidden startup functions.
+A runtime operation must not be hidden inside static initialization.
 
-Invalid as an implicit static initializer:
+Invalid when `LoadConfiguration()` requires runtime execution:
 
 ```sec
 static let Configuration := LoadConfiguration()
 ```
 
-when `LoadConfiguration()` requires runtime execution.
-
-Runtime initialization must be explicit in ordinary program flow.
-
-Example:
+Runtime setup must occur explicitly in ordinary program flow.
 
 ```sec
 let mut Configuration: Option[ApplicationConfiguration] := None
@@ -543,21 +462,21 @@ fn main() Result[void, StartupError] {
 }
 ```
 
-Sec must not introduce hidden module or static startup initializers. The
-explicit `init(...)` lifecycle member defined by `impl.md` constructs an
-instance and does not authorize hidden static/module initialization.
+Normative rule:
 
----
+> Static declarations must not cause hidden runtime startup initialization. Runtime initialization occurs only through explicit program flow.
 
-## Initialization order
+This rule is unrelated to lifecycle `init` members. `init` constructs an explicitly requested instance; it is not an implicit static-startup mechanism.
+
+## 16. Static initialization dependency order
 
 Static initialization order must not depend on source-file discovery order.
 
-Compile-time static initialization may be resolved from dependency analysis.
+Compile-time static initializers may depend on other compile-time static values.
 
-Cycles are invalid.
+The compiler must resolve initialization dependencies.
 
-Example:
+Dependency cycles are invalid.
 
 ```sec
 static let A: int := B
@@ -570,42 +489,15 @@ Expected diagnostic:
 cyclic static initialization: A -> B -> A
 ```
 
-Runtime initialization remains explicit and follows ordinary control flow.
+Because runtime static initialization is forbidden, there is no hidden runtime initialization-order model.
 
----
+## 17. Static mutability and concurrency
 
-## Static mutability
-
-`static let` is immutable after initialization.
-
-Example:
-
-```sec
-static let Maximum: int := 100
-```
-
-`static let mut` is mutable.
-
-Example:
-
-```sec
-static let mut Total: int := 0
-```
-
-Mutability does not imply thread safety.
-
-Static mutable storage is shared mutable state whenever multiple tasks may access
-it.
-
----
-
-## Concurrency
-
-Static lifetime solves lifetime requirements.
+Static lifetime solves lifetime duration.
 
 It does not solve synchronization.
 
-Invalid concurrent access:
+Unsynchronized shared mutation is invalid when concurrent access is possible.
 
 ```sec
 static let mut Total: int := 0
@@ -615,23 +507,20 @@ fn Increment() void {
 }
 ```
 
-when multiple tasks may execute `Increment()` concurrently.
+If multiple tasks or threads may execute `Increment()` concurrently, the access requires a synchronization strategy.
 
-Preferred synchronized form:
+Examples include:
 
-```sec
-static let Total: Mutex[int] := Mutex(0)
-```
-
-or an appropriate atomic type.
+- `Mutex[T]`;
+- `Atomic[T]`;
+- ownership transfer through a channel;
+- another compiler-approved synchronization primitive.
 
 The compiler should diagnose statically provable unsynchronized shared mutation.
 
----
+## 18. Static synchronized storage
 
-## Static Mutex storage
-
-A static mutex is the preferred form for shared structured mutable state.
+An immutable binding to a synchronization primitive is normally preferred over replacing the primitive itself.
 
 ```sec
 static let State: Mutex[ApplicationState] := Mutex(
@@ -641,160 +530,93 @@ static let State: Mutex[ApplicationState] := Mutex(
 )
 ```
 
-The mutex binding itself is immutable.
-
-Mutation occurs through:
+Mutation then occurs through the primitive's access mechanism.
 
 ```sec
 let mut state := State.lock()
 state.running = true
 ```
 
-This normally avoids:
+Static storage does not weaken the concurrency memory model.
 
-```sec
-static let mut State: Mutex[ApplicationState]
-```
+## 19. Detached execution and static storage
 
-because replacing the shared mutex is usually invalid or unnecessary.
+Detached tasks or threads may use static storage only when:
 
----
+- the storage outlives the execution;
+- access obeys synchronization requirements;
+- shutdown ordering remains valid;
+- destruction cannot occur while the storage is still in use.
 
-## Detached tasks
+Static lifetime alone never authorizes unsynchronized mutable references.
 
-Detached tasks may use references to static storage when:
-
-- the storage outlives the task
-- access is synchronized correctly
-- shutdown ordering is valid
-- the value is not destroyed while still in use
-
-Example:
-
-```sec
-static let State: Mutex[ApplicationState]
-
-fn Worker() void {
-    let mut state := State.lock()
-    state.running = true
-}
-```
-
-Static lifetime does not permit unsynchronized mutable references.
-
----
-
-## References to static storage
-
-A reference to immutable static storage may be returned or stored when the type
-and access are concurrency-safe.
-
-Example:
-
-```sec
-static let Configuration: ApplicationConfiguration
-
-fn GetConfiguration() ref ApplicationConfiguration {
-    return ref Configuration
-}
-```
-
-A mutable reference to shared static storage must not bypass synchronization.
-
-Invalid:
-
-```sec
-static let mut State: ApplicationState
-
-fn GetState() ref mut ApplicationState {
-    return ref mut State
-}
-```
-
-unless the compiler can prove exclusive program-wide access.
-
----
-
-## Static destruction
+## 20. Static destruction
 
 Static values normally live until program shutdown.
 
-Destruction order must be based on dependency and use relationships rather than
-arbitrary source order.
+Deterministic destruction, when supported by the selected target profile, must follow dependency and use relationships rather than arbitrary source order.
 
 A static value must not be destroyed while:
 
-- a detached task may use it
-- a reference remains active
-- a mutex guard remains active
-- another static destructor depends on it
-
-Normal shutdown may perform deterministic destruction.
+- a live reference still depends on it;
+- a detached task or thread may still access it;
+- a synchronization guard remains active;
+- another static destruction path still depends on it.
 
 Forced termination does not guarantee static destruction.
 
 Examples include:
 
-- Unix `SIGKILL`
-- power loss
-- hardware reset
-- kernel failure
+- process termination that bypasses cleanup;
+- power loss;
+- hardware reset;
+- kernel or runtime failure.
 
----
+Static destruction follows the general destruction rules.
 
-## Target profiles
+## 21. Target profiles
 
-Hosted targets may place static storage in normal process data sections.
+Hosted targets may place static storage in ordinary process data sections.
 
-Embedded and bare-metal targets may place static storage in:
+Embedded and bare-metal targets may place static storage in target-defined regions such as:
 
-- `.data`
-- `.bss`
-- ROM
-- flash
-- target-specific memory sections
+- initialized writable data;
+- zero-initialized storage;
+- ROM;
+- flash;
+- explicitly selected target storage.
 
-The target profile may restrict:
+A target profile may restrict:
 
-- static memory size
-- writable static storage
-- initialization mechanisms
-- destruction support
-- thread-safe access
+- total static storage size;
+- writable static storage;
+- supported placement;
+- destruction support;
+- concurrency behavior.
 
 These restrictions must not change source-level ownership semantics.
 
----
+## 22. Physical placement is separate from `static`
 
-## Static and memory sections
+`static` defines lifetime and association.
 
-A future attribute system may allow explicit placement.
+It does not by itself define:
 
-Conceptual examples:
+- a linker section;
+- an absolute address;
+- a memory space;
+- an MMIO binding;
+- a target-specific placement class.
 
-```sec
-@section(".fast")
-static let mut Buffer: byte[1024]
-```
+Physical placement is governed by the canonical attribute, storage, ABI, or platform rules when such a mechanism is defined.
 
-```sec
-@section(".persistent")
-static let mut State: PersistentState
-```
+Sec 0.1 uses a closed set of compiler-known attributes. A placement syntax must not be assumed merely because a conceptual attribute name would be convenient.
 
-This is not required for version 0.1.
+## 23. Shadowing
 
-`static` itself declares lifetime and association, not physical section
-placement.
+Ordinary visibility and shadowing rules apply.
 
----
-
-## Shadowing
-
-A local declaration may shadow a static declaration only when normal visibility
-rules permit it.
-
-Example:
+A local declaration may shadow a module static when normal scope rules permit it.
 
 ```sec
 let State: int := 1
@@ -804,82 +626,61 @@ fn Example() void {
 }
 ```
 
-The compiler or linter may diagnose confusing shadowing.
+The compiler or analysis layer may diagnose confusing shadowing.
 
-Type-qualified static members remain unambiguous:
+Type-qualified static members remain unambiguous.
 
 ```sec
 Application.State
 ```
 
----
-
-## Visibility
-
-Static members follow ordinary Sec visibility rules.
-
-This includes rules for:
-
-- public names
-- identifiers beginning with `_`
-- identifiers beginning with `__`
-- module visibility
-- impl visibility
+## 24. Visibility
 
 `static` does not change visibility.
 
----
+Static members follow the ordinary visibility rules for:
 
-## Formatter behavior
+- public names;
+- module visibility;
+- implementation visibility;
+- underscore-prefixed names;
+- other visibility categories defined by the language.
 
-The formatter should:
+## 25. Formatter behavior
 
-- preserve required `static`
-- remove redundant module-level `static`
-- normalize canonical keyword spacing
-- preserve `static fn`
-- preserve `static property`
-- preserve `static let`
-- preserve `static let mut`
+The formatter must:
 
-Example input:
+- preserve required `static`;
+- remove redundant module-level `static`;
+- preserve `static fn`;
+- preserve `static property`;
+- preserve `static let`;
+- preserve `static let mut`;
+- preserve explicit static-property setter parameters;
+- never rewrite an instance `fn` into `static fn` merely because `self` is not textually referenced.
 
-```sec
-static let mut State: ApplicationState
-```
+## 26. Semantic analysis
 
-at module level may format to:
+The compiler must determine at least:
 
-```sec
-let mut State: ApplicationState
-```
+- whether `static` is valid in the declaration context;
+- whether module-level `static` is redundant;
+- whether a member is static or instance-bound;
+- whether `self` use is invalid in a static member;
+- whether a static initializer is compile-time evaluable;
+- whether initialization dependencies contain a cycle;
+- whether mutable static access is concurrency-safe;
+- whether references remain valid through static destruction;
+- whether generic static storage is specialized per concrete instantiation;
+- whether a static member is accessed through the type;
+- whether static declarations affect instance layout;
+- whether duplicate members exist across primary and extended implementation fragments.
 
-Inside a function or `impl`, `static` must remain.
+## 27. Semantic IR
 
----
+Semantic IR must preserve static semantics explicitly.
 
-## Semantic analysis
-
-The compiler must determine:
-
-- whether static is valid in the declaration context
-- whether static is redundant
-- whether a member is static or instance-bound
-- whether `self` use is valid
-- whether initialization is compile-time valid
-- whether initialization has cycles
-- whether mutable static access is synchronized
-- whether references outlive static destruction
-- whether generic static storage is specialized correctly
-- whether static storage affects instance layout
-
----
-
-## Semantic IR
-
-Semantic IR must represent static declarations explicitly.
-
-At minimum:
+At minimum it must represent or make unambiguously derivable:
 
 ```text
 StaticStorage
@@ -891,31 +692,31 @@ StaticInitialize
 StaticDestroy
 ```
 
-IR must record:
+Static IR metadata must include, where applicable:
 
-- owner module or type
-- concrete value type
-- mutability
-- visibility
-- initialization dependency
-- generic specialization
-- concurrency requirements
-- source location
+- owner module or type;
+- concrete value type;
+- mutability;
+- visibility;
+- initialization dependency;
+- generic specialization;
+- concurrency requirements;
+- source location.
 
-Static members must not be represented as instance fields.
+Static members must never be lowered as instance fields.
 
----
+`StaticInitialize` represents compile-time-resolved static initialization semantics. It must not imply a hidden runtime startup call.
 
-## Diagnostics
+## 28. Diagnostics
 
-Examples:
+Required diagnostics include at least:
 
 ```text
 static is redundant on module-level declaration State
 ```
 
 ```text
-self cannot be used in static method Create
+self cannot be used in static method Reset
 ```
 
 ```text
@@ -942,59 +743,48 @@ shared mutable access to static State requires synchronization
 cannot return mutable reference to shared static State
 ```
 
----
+Diagnostics must identify the relevant declaration and violated rule.
 
-## Restrictions
+## 29. Restrictions
 
 `static` must not:
 
-- be used as a type modifier
-- silently make access thread-safe
-- add hidden runtime initialization
-- add hidden lazy initialization
-- add hidden locking
-- affect struct instance layout
-- permit `self` in static methods
-- permit `self` in static properties
-- bypass ownership or borrowing rules
-- bypass shutdown ordering
-- imply physical memory-section placement
+- be used as a type modifier;
+- silently make access thread-safe;
+- add hidden runtime startup initialization;
+- add hidden lazy initialization;
+- add hidden locking;
+- change instance layout;
+- permit `self` inside a static member;
+- bypass ownership or borrowing;
+- bypass shutdown ordering;
+- imply physical address or linker-section placement.
 
----
+## 30. Best practice
 
-## Related rules
+- Use module-level bindings directly instead of redundant `static`.
+- Use function-local `static` only when one persistent storage location is genuinely part of the function's semantics.
+- Prefer immutable static bindings whenever possible.
+- Prefer synchronization objects over exposing mutable references to shared static state.
+- Keep type-associated static API close to the type's primary behavior; use `impl extends` when splitting a large implementation improves readability.
+- Use `static fn` only for genuinely type-level behavior.
+- Do not use a static factory where lifecycle `new Type(...)` better expresses actual construction through `init`.
+- Keep runtime setup explicit in ordinary program flow.
+- Do not invent placement conventions in source; use only placement mechanisms defined by the canonical platform/attribute rules.
 
-Detailed behavior is defined in:
+## 31. Cross-rulebook ownership
 
-```text
-impl.md
-properties.md
-tasks.txt
-concurrency.txt
-mutex.txt
-atomics.txt
-concurrency_memory_model.txt
-```
+This rulebook owns static storage duration and static type-associated member semantics.
 
-## Current implementation status
+Related semantics are owned elsewhere:
 
-Implemented:
-
-- `static` is a lexer keyword.
-- parser accepts `static let`.
-- parser accepts `static fn`.
-- parser accepts `static let` and `static fn` inside `impl`.
-- sema marks `static let` storage as `Static`.
-- function-local `static let` is accepted as static storage.
-- `impl Type { static let Name ... }` is registered as type-associated static
-  storage and can be read as `Type.Name`.
-
-Not implemented yet:
-
-- formatter removal of redundant module-level `static`
-- static initializer purity/compile-time validation
-- cyclic static initialization checks
-- mutable static synchronization diagnostics
-- full static method distinction in overload/member lookup
-- static member assignment through `Type.Name`
-- MLIR/LLVM lowering for static storage
+- implementation structure, `impl extends`, `init`, `free`, and `new`: `rules/declarations/impl.md`;
+- properties and explicit setter parameters: `rules/declarations/properties.md`;
+- interfaces and `static fn` requirements in contracts: `rules/declarations/interfaces.md`;
+- generics and monomorphization: generics rulebook;
+- ownership and borrowing: memory rulebooks;
+- concurrency: concurrency rulebooks;
+- destruction: destruction rulebook;
+- attributes and physical placement annotations: `rules/foundations/attributes.md`;
+- ABI-visible layout and storage representation: platform ABI rulebook;
+- Semantic IR and MLIR lowering: compiler and MLIR rulebooks.

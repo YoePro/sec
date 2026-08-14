@@ -1089,9 +1089,9 @@ broader expected-result inference beyond generic call expressions, if needed
 
 LLVM/codegen support for monomorphized instances
 
-Create:
+Canonical documentation and fixtures:
 
-rules/declarations/generics.txt
+rules/declarations/generics.md
 
 generics_valid.sec
 

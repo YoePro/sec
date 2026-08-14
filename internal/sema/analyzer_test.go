@@ -4045,7 +4045,7 @@ impl Counter {
 	assertSemaErrors(t, errors, nil)
 }
 
-func TestImplMethodShortFieldWriteRequiresMutableReceiver(t *testing.T) {
+func TestImplMethodShortFieldWriteAcceptsOwnedMutableParameterReceiver(t *testing.T) {
 	input := `
 module main
 
@@ -4065,10 +4065,7 @@ fn Use(counter: Counter) void {
 `
 
 	errors := analyzeSourceRaw(t, input)
-	expected := []string{
-		"method Increment requires mutable receiver at 15:9",
-	}
-	assertSemaErrors(t, errors, expected)
+	assertSemaErrors(t, errors, nil)
 }
 
 func TestDiscardedMutableSelfMethodCallInfersMutableReceiver(t *testing.T) {
@@ -4184,6 +4181,29 @@ fn noop() void {
 	if noop.ReturnType.Name != "void" || len(noop.Parameters) != 0 {
 		t.Fatalf("wrong noop function: %+v", noop)
 	}
+}
+
+func TestOwnedParametersAreMutableReferenceBindingsAreNot(t *testing.T) {
+	input := `
+fn Normalize(value: int) int {
+	value = 0
+	return value
+}
+
+fn RebindShared(value: ref int) void {
+	value = value
+}
+
+fn RebindMutable(value: ref mut int) void {
+	value = value
+}
+`
+
+	_, errors := analyzeSourceWithAnalyzer(t, input)
+	assertSemaErrors(t, errors, []string{
+		"cannot assign to immutable variable value at 8:2",
+		"cannot assign to immutable variable value at 12:2",
+	})
 }
 
 func TestFunctionOverloads(t *testing.T) {

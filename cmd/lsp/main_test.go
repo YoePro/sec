@@ -59,6 +59,106 @@ fn IsLetter(ch: rune) bool {
 	t.Fatalf("analyze returned diagnostics for unicode import:\n%s", strings.Join(messages, "\n"))
 }
 
+func TestAnalyzeLoadsDeclarationsFromSameModuleFiles(t *testing.T) {
+	dir := t.TempDir()
+	errorPath := filepath.Join(dir, "error.sec")
+	errorSource := `module sample
+
+enum OverflowError {
+	Overflow,
+}
+`
+	if err := os.WriteFile(errorPath, []byte(errorSource), 0644); err != nil {
+		t.Fatal(err)
+	}
+	intPath := filepath.Join(dir, "int.sec")
+	intSource := `module sample
+
+fn Checked() Result[int, OverflowError] {
+	return Ok(1)
+}
+`
+
+	for _, got := range analyze(uriFromPath(intPath), intSource) {
+		if strings.Contains(got.Message, "unknown type OverflowError") {
+			t.Fatalf("same-module declaration was not loaded: %+v", got)
+		}
+	}
+}
+
+func TestAnalyzeCoreIntLoadsOverflowErrorFromErrorFile(t *testing.T) {
+	intPath, err := filepath.Abs(filepath.Join("..", "..", "sec", "core", "int.sec"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	intSource, err := os.ReadFile(intPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, got := range analyze(uriFromPath(intPath), string(intSource)) {
+		if strings.Contains(got.Message, "unknown type OverflowError") {
+			t.Fatalf("sec/core/int.sec did not see sec/core/error.sec: %+v", got)
+		}
+	}
+}
+
+func TestAnalyzeUsesOpenSiblingSnapshotBeforeDisk(t *testing.T) {
+	dir := t.TempDir()
+	errorPath := filepath.Join(dir, "error.sec")
+	if err := os.WriteFile(errorPath, []byte("module sample\n\nenum OldError { Old }\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	usePath := filepath.Join(dir, "use.sec")
+	useSource := "module sample\n\nfn Checked() Result[int, NewError] { return Ok(1) }\n"
+	overlay := sourceOverlay{
+		normalizedSourcePath(errorPath): "module sample\n\nenum NewError { New }\n",
+	}
+
+	for _, got := range analyze(uriFromPath(usePath), useSource, overlay) {
+		if strings.Contains(got.Message, "unknown type NewError") {
+			t.Fatalf("open sibling snapshot was not used: %+v", got)
+		}
+	}
+}
+
+func TestAnalyzeDoesNotLoadDifferentModuleSibling(t *testing.T) {
+	dir := t.TempDir()
+	siblingPath := filepath.Join(dir, "other.sec")
+	if err := os.WriteFile(siblingPath, []byte("module other\n\nenum ForeignError { Foreign }\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	usePath := filepath.Join(dir, "use.sec")
+	useSource := "module sample\n\nfn Checked() Result[int, ForeignError] { return Ok(1) }\n"
+	diagnostics := analyze(uriFromPath(usePath), useSource)
+	for _, got := range diagnostics {
+		if strings.Contains(got.Message, "unknown type ForeignError") {
+			return
+		}
+	}
+	t.Fatalf("different-module sibling leaked into analysis: %+v", diagnostics)
+}
+
+func TestDefinitionResolvesSameModuleDeclaration(t *testing.T) {
+	dir := t.TempDir()
+	errorPath := filepath.Join(dir, "error.sec")
+	errorSource := "module sample\n\nenum OverflowError { Overflow }\n"
+	if err := os.WriteFile(errorPath, []byte(errorSource), 0644); err != nil {
+		t.Fatal(err)
+	}
+	usePath := filepath.Join(dir, "use.sec")
+	useSource := "module sample\n\nfn Checked() Result[int, OverflowError] { return Ok(1) }\n"
+	use := strings.Index(useSource, "OverflowError")
+
+	locations := definitionsForSource(uriFromPath(usePath), useSource, offsetPosition(useSource, use))
+	if len(locations) != 1 {
+		t.Fatalf("definitions = %+v, want same-module declaration", locations)
+	}
+	want := offsetPosition(errorSource, strings.Index(errorSource, "OverflowError"))
+	if locations[0].URI != uriFromPath(errorPath) || locations[0].Range.Start != want {
+		t.Fatalf("definition = %+v, want %s at %+v", locations[0], uriFromPath(errorPath), want)
+	}
+}
+
 func TestRespondIncludesNullResult(t *testing.T) {
 	var out bytes.Buffer
 	server := &server{out: &out}
@@ -109,6 +209,39 @@ func TestDidCloseRemovesSnapshotAndClearsDiagnostics(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), `"diagnostics":[]`) {
 		t.Fatalf("didClose did not clear diagnostics: %q", out.String())
+	}
+}
+
+func TestDidOpenRepublishesSameModuleDiagnosticsWithOverlay(t *testing.T) {
+	dir := t.TempDir()
+	usePath := filepath.Join(dir, "use.sec")
+	useURI := uriFromPath(usePath)
+	useSource := "module sample\n\nfn Checked() Result[int, NewError] { return Ok(1) }\n"
+	errorPath := filepath.Join(dir, "error.sec")
+
+	var out bytes.Buffer
+	s := &server{
+		out:               &out,
+		documentSnapshots: lspserver.NewDocuments(),
+		diagnosticTimers:  map[string]*time.Timer{},
+	}
+	s.documentSnapshots.Open(useURI, 1, useSource)
+	params, err := json.Marshal(didOpenParams{TextDocument: textDocumentItem{
+		URI:     uriFromPath(errorPath),
+		Version: 1,
+		Text:    "module sample\n\nenum NewError { New }\n",
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.handle(rpcMessage{JSONRPC: "2.0", Method: "textDocument/didOpen", Params: params}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), useURI) {
+		t.Fatalf("opening a sibling did not republish the existing document: %q", out.String())
+	}
+	if strings.Contains(out.String(), "unknown type NewError") {
+		t.Fatalf("republished diagnostics ignored the open sibling snapshot: %q", out.String())
 	}
 }
 
@@ -558,7 +691,6 @@ fn Check() int {
     mutable += 1
     return local + mutable
 }
-
 `
 
 	tokens := decodeSemanticTokens(semanticTokensForSource("", source))
@@ -570,6 +702,23 @@ fn Check() int {
 	assertSemanticTokenWithoutModifier(t, tokens, 7, 4, 7, "variable", "readonly")  // mutable write
 	assertSemanticTokenWithModifier(t, tokens, 8, 11, 5, "variable", "readonly")    // local return use
 	assertSemanticTokenWithoutModifier(t, tokens, 8, 19, 7, "variable", "readonly") // mutable return use
+}
+
+func TestSemanticTokensUseFunctionParameterBindingMutability(t *testing.T) {
+	source := `module main
+
+fn Normalize(value: int, shared: ref int, exclusive: ref mut int) int {
+    value = 0
+    return value
+}
+`
+
+	tokens := decodeSemanticTokens(semanticTokensForSource("", source))
+	assertSemanticTokenWithoutModifier(t, tokens, 2, 13, len("value"), "variable", "readonly")
+	assertSemanticTokenWithModifier(t, tokens, 2, 25, len("shared"), "variable", "readonly")
+	assertSemanticTokenWithModifier(t, tokens, 2, 42, len("exclusive"), "variable", "readonly")
+	assertSemanticTokenWithoutModifier(t, tokens, 3, 4, len("value"), "variable", "readonly")
+	assertSemanticTokenWithoutModifier(t, tokens, 4, 11, len("value"), "variable", "readonly")
 }
 
 func TestSemanticTokensClassifyContextualSet(t *testing.T) {
@@ -610,16 +759,17 @@ func TestLifecycleInitAndNewTooling(t *testing.T) {
 		"    value: int,\n" +
 		"}\n\n" +
 		"impl Buffer {\n" +
-		"    init() {\n" +
+		"    init(value: int) {\n" +
+		"        self.value = value\n" +
 		"    }\n" +
 		"}\n\n" +
 		"fn Make() Buffer {\n" +
-		"    return new Buffer()\n" +
+		"    return new Buffer(1)\n" +
 		"}\n"
 
 	tokens := decodeSemanticTokens(semanticTokensForSource("", source))
 	assertSemanticToken(t, tokens, 5, 4, len("init"), "keyword")
-	assertSemanticToken(t, tokens, 10, 11, len("new"), "keyword")
+	assertSemanticToken(t, tokens, 11, 11, len("new"), "keyword")
 
 	symbols := documentSymbolsForSource("", source)
 	var impl *documentSymbol
@@ -634,6 +784,79 @@ func TestLifecycleInitAndNewTooling(t *testing.T) {
 	}
 	assertDocumentSymbolNames(t, impl.Children, []string{"init"})
 	assertDocumentSymbolRangesContainSelections(t, symbols)
+
+	initOffset := strings.Index(source, "init(") + 1
+	initHover, ok := hoverForSource("", source, offsetPosition(source, initOffset))
+	if !ok || !strings.Contains(initHover.Contents.Value, "init(value: int)") || !strings.Contains(initHover.Contents.Value, "Constructs: `Buffer`") {
+		t.Fatalf("initializer hover = %+v, %v", initHover, ok)
+	}
+	newOffset := strings.Index(source, "new Buffer") + 1
+	newHover, ok := hoverForSource("", source, offsetPosition(source, newOffset))
+	if !ok || !strings.Contains(newHover.Contents.Value, "Construction error: _none_") {
+		t.Fatalf("construction hover = %+v, %v", newHover, ok)
+	}
+	argumentOffset := strings.Index(source, "Buffer(1)") + len("Buffer(")
+	help, ok := signatureHelpForSource("", source, offsetPosition(source, argumentOffset))
+	if !ok || len(help.Signatures) != 1 || help.Signatures[0].Label != "init(value: int)" || help.ActiveParameter != 0 {
+		t.Fatalf("initializer signature help = %+v, %v", help, ok)
+	}
+
+	memberSource := "type Buffer struct {}\nimpl Buffer {\n    ini"
+	memberItems := completeSource("", memberSource, len(memberSource))
+	assertCompletionLabels(t, memberItems, []string{"init"})
+	for _, item := range memberItems {
+		if item.Label == "new" {
+			t.Fatalf("new must not be offered as an impl member: %+v", memberItems)
+		}
+	}
+	expressionSource := "fn Make() void {\n    ne"
+	expressionItems := completeSource("", expressionSource, len(expressionSource))
+	assertCompletionLabels(t, expressionItems, []string{"new"})
+}
+
+func TestReferencesConnectInitializerDeclarationAndConstruction(t *testing.T) {
+	dir := t.TempDir()
+	declarationPath := filepath.Join(dir, "buffer.sec")
+	usePath := filepath.Join(dir, "make.sec")
+	declarationSource := "module sample\n\ntype Buffer struct { value: int, }\nimpl Buffer {\n    init(value: int) { self.value = value }\n}\n"
+	useSource := "module sample\n\nfn Make() Buffer { return new Buffer(1) }\n"
+	if err := os.WriteFile(declarationPath, []byte(declarationSource), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(usePath, []byte(useSource), 0644); err != nil {
+		t.Fatal(err)
+	}
+	declarationOffset := strings.Index(declarationSource, "init(") + 1
+	references := referencesForSource(uriFromPath(declarationPath), declarationSource, offsetPosition(declarationSource, declarationOffset), true)
+	if len(references) != 2 {
+		t.Fatalf("initializer references = %+v; want declaration and new construction", references)
+	}
+	if references[0].URI != uriFromPath(declarationPath) || references[1].URI != uriFromPath(usePath) {
+		t.Fatalf("initializer reference URIs = %+v", references)
+	}
+}
+
+func TestInitializerHoverSeparatesConstructionErrorFromReturnType(t *testing.T) {
+	source := `module sample
+
+type BuildError enum { Invalid }
+type Resource struct { value: int, }
+impl Resource {
+    init(value: int) BuildError { self.value = value }
+}
+fn Open(value: int) Result[Resource, BuildError] {
+    return Ok(try new Resource(value))
+}
+`
+	offset := strings.Index(source, "new Resource") + 1
+	hover, ok := hoverForSource("", source, offsetPosition(source, offset))
+	if !ok || !strings.Contains(hover.Contents.Value, "Construction error: `BuildError`") ||
+		!strings.Contains(hover.Contents.Value, "Requires `try` or local handling: `yes`") {
+		t.Fatalf("fallible construction hover = %+v, %v", hover, ok)
+	}
+	if strings.Contains(hover.Contents.Value, ") BuildError") {
+		t.Fatalf("construction error was rendered as an initializer return type: %s", hover.Contents.Value)
+	}
 }
 
 func TestSemanticTokensPreferStructFieldOverSameNamedMethod(t *testing.T) {

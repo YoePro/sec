@@ -70,7 +70,9 @@ fn IdentityStatus(value: Status) Status {
 
 fn EnumValues(value: int) bool {
     let declared := IdentityStatus(Status.aliasActive)
-    let converted := Status(value)
+    // Package 11 lowers integer-to-enum conversions only after Sema proves
+    // them infallible. Dynamic checked conversion remains a later package.
+    let converted := Status(10)
     let numeric := int(converted)
     return declared == Status.active
 }

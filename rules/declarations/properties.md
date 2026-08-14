@@ -287,9 +287,13 @@ impl Application {
 Static properties:
 
 - have no instance receiver;
-- use the same explicit setter-parameter rule;
+- require the same explicit, programmer-named setter parameter as instance
+  properties;
 - use the same `get`, `set`, and `try set` semantics;
 - are accessed through the type.
+
+`set { ... }` and an implicit variable named `value` are not valid static
+property syntax.
 
 ```sec
 let current := Application.Mode

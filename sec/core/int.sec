@@ -6,6 +6,8 @@ impl int {
         return ""
     }
 
+    // Also needed: ToString(format)
+
     fn Abs() Result[int, OverflowError] {
         if self < 0 {
             return Ok(-self)

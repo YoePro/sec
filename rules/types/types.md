@@ -1088,6 +1088,19 @@ let percent: Percent := age
 
 No implicit conversion is performed merely because both types use integer semantics.
 
+Named types may be generic:
+
+```sec
+type ID[T] int
+type Wrapped[T] T
+```
+
+Concrete instantiations preserve nominal identity. `ID[User]` and
+`ID[Product]` are distinct types even when their substituted representation is
+identical. After substitution, ordinary named-type conversion, contracts,
+defaultability, copy/move behavior, layout, interface conformance, and ABI rules
+apply to the concrete type.
+
 ## Generic and parameterized types
 
 Type arguments participate in type identity.
@@ -1785,9 +1798,9 @@ copy_move.md
 borrowing.txt
 lifetime_analysis.txt
 raw_pointers.txt
-functions.txt
+functions.md
 functions_lambda.txt
-generics.txt
+declarations/generics.md
 declarations/interfaces.md
 errorhandling.txt
 declarations/registers.md

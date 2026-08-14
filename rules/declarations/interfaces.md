@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-13
-- **Last updated:** 2026-08-13
+- **Last updated:** 2026-08-14
 - **Document revision:** 2.0
 - **Replaces:** `rules/declarations/interfaces.txt`
 - **Sec language version:** 0.1
@@ -99,6 +99,20 @@ impl CounterImpl implements Counter {
 
 Sema infers the concrete receiver requirement from the method body and verifies that the implementation does not require stronger receiver capability than the interface contract permits.
 
+### 3.6 Receiver and parameter ownership are independent
+
+Receiver capability does not replace the ownership contract of ordinary
+parameters. For example:
+
+```sec
+interface Sender {
+    mut fn Send(-> message: Message) Result[void, SendError]
+}
+```
+
+requires mutable/exclusive receiver access and independently consumes
+`message`. Interface conformance must preserve both contracts.
+
 ## 4. Explicit conformance
 
 Concrete interface conformance is declared on the primary implementation.
@@ -155,6 +169,7 @@ Conformance checks include, where applicable:
 - member name,
 - member category,
 - parameter count and parameter types,
+- parameter borrow, consuming, and variadic modes,
 - generic constraints,
 - result type,
 - fallibility,
@@ -236,12 +251,38 @@ instance category.
 Interfaces may be used as generic constraints according to the generic rules.
 
 ```sec
-fn Print[T implements Printable](value: ref T) void {
+fn Print[T: Printable](value: ref T) void {
     ...
 }
 ```
 
-Interface inheritance and explicit implementation participate in generic constraint satisfaction.
+`T: Printable` constrains substitution; it does not declare implementation.
+Constraint satisfaction requires valid explicit conformance such as
+`impl Document implements Printable`.
+
+Interfaces may themselves declare generic parameters:
+
+```sec
+interface Sink[T] {
+    mut fn Write(value: T) void
+}
+```
+
+`Sink[byte]` is one concrete interface contract. A method requirement may use
+the interface's generic parameters but may not introduce additional
+method-level generic parameters, because interface dispatch must remain finite
+and Sec has no runtime generic dispatch.
+
+Invalid:
+
+```sec
+interface Mapper[T] {
+    fn Map[U](value: T) U
+}
+```
+
+Interface inheritance and explicit implementation participate in generic
+constraint satisfaction.
 
 ## 10. Associated and nested declarations
 

@@ -1,5 +1,5 @@
 #target(os: "linux", arch: "any")
-module platform.linux
+module linux
 
 import "platform/linux/amd64"
 
@@ -41,8 +41,8 @@ fn Open(path: string, flags: int, permissions: int) Result[int, LinuxError] {
     }
 
     unsafe {
-        let result := amd64._rawSyscall(
-            uint(amd64.sysCall.Open),
+        let result := amd64.RawSyscall(
+            uint(amd64.SysCall.Open),
             uint(encodedPath[0].ptr),
             uint(flags),
             uint(permissions),
@@ -100,8 +100,8 @@ fn OpenDirectory(path: string) Result[int, LinuxError] {
 
 fn Read(fd: int, data: ref mut byte[]) Result[uint, LinuxError] {
     unsafe {
-        let result := amd64._rawSyscall(
-            uint(amd64.sysCall.Read),
+        let result := amd64.RawSyscall(
+            uint(amd64.SysCall.Read),
             uint(fd),
             uint(data.ptr),
             data.len,
@@ -117,8 +117,8 @@ fn Read(fd: int, data: ref mut byte[]) Result[uint, LinuxError] {
 
 fn Write(fd: int, data: ref byte[]) Result[uint, LinuxError] {
     unsafe {
-        let result := amd64._rawSyscall(
-            uint(amd64.sysCall.Write),
+        let result := amd64.RawSyscall(
+            uint(amd64.SysCall.Write),
             uint(fd),
             uint(data.ptr),
             data.len,
@@ -145,8 +145,8 @@ fn WriteStringFrom(fd: int, data: string, offset: uint) Result[uint, LinuxError]
     }
 
     unsafe {
-        let result := amd64._rawSyscall(
-            uint(amd64.sysCall.Write),
+        let result := amd64.RawSyscall(
+            uint(amd64.SysCall.Write),
             uint(fd),
             uint(data.ptr.Offset(int(offset))),
             data.len - offset,
@@ -162,8 +162,8 @@ fn WriteStringFrom(fd: int, data: string, offset: uint) Result[uint, LinuxError]
 
 fn Seek(fd: int, offset: int, origin: int) Result[uint, LinuxError] {
     unsafe {
-        let result := amd64._rawSyscall(
-            uint(amd64.sysCall.sysLseek),
+        let result := amd64.RawSyscall(
+            uint(amd64.SysCall.sysLseek),
             uint(fd),
             uint(offset),
             uint(origin),
@@ -179,7 +179,7 @@ fn Seek(fd: int, offset: int, origin: int) Result[uint, LinuxError] {
 
 fn Flush(fd: int) Result[void, LinuxError] {
     unsafe {
-        let result := amd64._rawSyscall(uint(amd64.sysCall.sysFsync), uint(fd))
+        let result := amd64.RawSyscall(uint(amd64.SysCall.sysFsync), uint(fd))
         if result < 0 {
             return Err(LinuxError(-result))
         }
@@ -189,8 +189,8 @@ fn Flush(fd: int) Result[void, LinuxError] {
 
 fn ReadDirectory(fd: int, data: ref mut byte[]) Result[uint, LinuxError] {
     unsafe {
-        let result := amd64._rawSyscall(
-            uint(amd64.sysCall.sysGetdents64),
+        let result := amd64.RawSyscall(
+            uint(amd64.SysCall.sysGetdents64),
             uint(fd),
             uint(data.ptr),
             data.len,
@@ -212,8 +212,8 @@ fn Access(path: string, mode: int) Result[void, LinuxError] {
     }
 
     unsafe {
-        let result := amd64._rawSyscall(
-            uint(amd64.sysCall.sysAccess),
+        let result := amd64.RawSyscall(
+            uint(amd64.SysCall.sysAccess),
             uint(encodedPath[0].ptr),
             uint(mode),
         )
@@ -232,8 +232,8 @@ fn CreateDirectory(path: string, permissions: int) Result[void, LinuxError] {
     }
 
     unsafe {
-        let result := amd64._rawSyscall(
-            uint(amd64.sysCall.sysMkdir),
+        let result := amd64.RawSyscall(
+            uint(amd64.SysCall.sysMkdir),
             uint(encodedPath[0].ptr),
             uint(permissions),
         )
@@ -252,8 +252,8 @@ fn RemoveFile(path: string) Result[void, LinuxError] {
     }
 
     unsafe {
-        let result := amd64._rawSyscall(
-            uint(amd64.sysCall.sysUnlink),
+        let result := amd64.RawSyscall(
+            uint(amd64.SysCall.sysUnlink),
             uint(encodedPath[0].ptr),
         )
         if result < 0 {
@@ -271,8 +271,8 @@ fn RemoveDirectory(path: string) Result[void, LinuxError] {
     }
 
     unsafe {
-        let result := amd64._rawSyscall(
-            uint(amd64.sysCall.sysRmdir),
+        let result := amd64.RawSyscall(
+            uint(amd64.SysCall.sysRmdir),
             uint(encodedPath[0].ptr),
         )
         if result < 0 {
@@ -295,8 +295,8 @@ fn Rename(oldPath: string, newPath: string) Result[void, LinuxError] {
     }
 
     unsafe {
-        let result := amd64._rawSyscall(
-            uint(amd64.sysCall.sysRename),
+        let result := amd64.RawSyscall(
+            uint(amd64.SysCall.sysRename),
             uint(encodedOldPath[0].ptr),
             uint(encodedNewPath[0].ptr),
         )
@@ -309,8 +309,8 @@ fn Rename(oldPath: string, newPath: string) Result[void, LinuxError] {
 
 fn Truncate(fd: int, size: uint) Result[void, LinuxError] {
     unsafe {
-        let result := amd64._rawSyscall(
-            uint(amd64.sysCall.sysFtruncate),
+        let result := amd64.RawSyscall(
+            uint(amd64.SysCall.sysFtruncate),
             uint(fd),
             size,
         )
@@ -323,7 +323,7 @@ fn Truncate(fd: int, size: uint) Result[void, LinuxError] {
 
 fn Close(fd: int) Result[void, LinuxError] {
     unsafe {
-        let result := amd64._rawSyscall(uint(amd64.sysCall.Close), uint(fd))
+        let result := amd64.RawSyscall(uint(amd64.SysCall.Close), uint(fd))
 
         if result < 0 {
             return Err(LinuxError(-result))

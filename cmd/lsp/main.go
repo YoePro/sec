@@ -1636,14 +1636,10 @@ func initializerForToken(analyzer *sema.Analyzer, token lexer.Token) (sema.Funct
 }
 
 func initializerParameterLabel(parameter sema.FunctionParameter) string {
-	prefix := ""
-	if parameter.Ref {
-		prefix = "ref "
-		if parameter.MutableRef {
-			prefix = "ref mut "
-		}
+	if parameter.Consuming {
+		return fmt.Sprintf("-> %s: %s", parameter.Name, lspTypeName(parameter.Type))
 	}
-	return fmt.Sprintf("%s%s: %s", prefix, parameter.Name, lspTypeName(parameter.Type))
+	return fmt.Sprintf("%s: %s", parameter.Name, lspTypeName(parameter.Type))
 }
 
 func initializerHoverContents(resolved sema.ResolvedConstruction) string {
@@ -1994,14 +1990,7 @@ func functionHoverContents(functions []sema.Function, text string, sourcePath st
 	for _, function := range functions {
 		params := make([]string, 0, len(function.Parameters))
 		for _, parameter := range function.Parameters {
-			prefix := ""
-			if parameter.Ref {
-				prefix = "ref "
-				if parameter.MutableRef {
-					prefix = "ref mut "
-				}
-			}
-			params = append(params, fmt.Sprintf("%s%s: %s", prefix, parameter.Name, lspTypeName(parameter.Type)))
+			params = append(params, initializerParameterLabel(parameter))
 		}
 		lines = append(lines, fmt.Sprintf("fn %s(%s) %s", function.Name, strings.Join(params, ", "), lspTypeName(function.ReturnType)))
 	}

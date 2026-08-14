@@ -132,6 +132,15 @@ fn TestLambdaLocalScope(value: int) int {
     return operation(value)
 }
 
+fn TestMutableOwnedLambdaParameter() int {
+    let normalize := fn(value: int) int {
+        value = 0
+        return value
+    }
+
+    return normalize(10)
+}
+
 // =============================================================================
 // Function type assignment and reassignment
 // =============================================================================
@@ -261,7 +270,7 @@ fn TestImmediateReturnedLambdaCall() int {
 }
 
 // =============================================================================
-// Explicit immutable value captures
+// Explicit owned value captures
 // =============================================================================
 
 fn TestSingleCapture(factor: int) int {

@@ -620,7 +620,7 @@ func TestAnalyzeIgnoresTypedNilTopLevelStatements(t *testing.T) {
 
 func TestUnderscoreVisibilityAcrossModules(t *testing.T) {
 	input := `
-module x.y
+module y
 
 type _SharedInt int
 type __PrivateInt int
@@ -633,7 +633,7 @@ fn __private() int {
 	return 2
 }
 
-module x.z
+module z
 
 fn UseShared() int {
 	let value: _SharedInt := 1
@@ -653,8 +653,10 @@ fn UsePrivateType() int {
 	errors := analyzeSourceRaw(t, input)
 
 	expected := []string{
-		"function __private is not accessible from module x.z at 23:9",
-		"type __PrivateInt is not accessible from module x.z at 27:13",
+		"type _SharedInt is not accessible from module z at 18:13",
+		"function _shared is not accessible from module z at 19:9",
+		"function __private is not accessible from module z at 23:9",
+		"type __PrivateInt is not accessible from module z at 27:13",
 	}
 
 	assertSemaErrors(t, errors, expected)
@@ -662,7 +664,7 @@ fn UsePrivateType() int {
 
 func TestDoubleUnderscoreIsVisibleInExactModule(t *testing.T) {
 	input := `
-module x.y
+module y
 
 type __PrivateInt int
 
@@ -2669,6 +2671,29 @@ impl Car implements Vehicle {
 	assertSemaErrors(t, errors, nil)
 }
 
+func TestInterfaceConformancePreservesConsumingParameterContract(t *testing.T) {
+	errors := analyzeSourceRaw(t, `
+module main
+
+interface Sink {
+	fn Send(-> value: int) void
+}
+
+type Correct struct {}
+impl Correct implements Sink {
+	fn Send(-> value: int) void {}
+}
+
+type Wrong struct {}
+impl Wrong implements Sink {
+	fn Send(value: int) void {}
+}
+`)
+	if len(errors) != 1 || !strings.Contains(errors[0].Message, "type Wrong method Send does not match interface Sink") {
+		t.Fatalf("wrong consuming interface errors: %v", errors)
+	}
+}
+
 func TestInterfaceImplementationErrors(t *testing.T) {
 	input := `
 module main
@@ -4204,6 +4229,52 @@ fn RebindMutable(value: ref mut int) void {
 		"cannot assign to immutable variable value at 8:2",
 		"cannot assign to immutable variable value at 12:2",
 	})
+}
+
+func TestConsumingParameterConsumesCopyableArgument(t *testing.T) {
+	input := `
+module main
+
+fn Consume(-> value: int) void {}
+
+fn Use() void {
+	let value := 1
+	Consume(value)
+	discard value
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	if len(errors) != 1 || !strings.Contains(errors[0].Message, "consumed by call") || !strings.Contains(errors[0].Message, "no longer available") {
+		t.Fatalf("wrong consuming-call errors: %v", errors)
+	}
+}
+
+func TestConsumingParameterRejectsReferencesAndOwnershipOnlyOverload(t *testing.T) {
+	input := `
+module main
+
+fn Shared(-> value: ref int) void {}
+fn Mutable(-> value: ref mut int) void {}
+
+fn Process(value: int) void {}
+fn Process(-> value: int) void {}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	if len(errors) != 3 {
+		t.Fatalf("wrong consuming-parameter error count: got %d errors=%v", len(errors), errors)
+	}
+	want := []string{
+		"consuming parameter cannot use ref type",
+		"consuming parameter cannot use ref mut type",
+		"function overloads cannot differ only by consuming parameter mode",
+	}
+	for i := range want {
+		if !strings.Contains(errors[i].Message, want[i]) {
+			t.Fatalf("error %d = %q, want %q", i, errors[i].Message, want[i])
+		}
+	}
 }
 
 func TestFunctionOverloads(t *testing.T) {
@@ -9249,6 +9320,23 @@ fn Test() int {
 	}
 
 	return double(10)
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestOwnedLambdaParameterIsMutable(t *testing.T) {
+	input := `
+module main
+
+fn Test() int {
+	let normalize := fn(value: int) int {
+		value = 0
+		return value
+	}
+	return normalize(10)
 }
 `
 

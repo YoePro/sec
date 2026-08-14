@@ -1,4 +1,4 @@
-module test.events_invalid
+module events_invalid
 
 // This fixture documents both currently implemented event diagnostics and
 // event rules that are intentionally still future work. Comments marked ERROR

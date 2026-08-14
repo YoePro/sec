@@ -55,6 +55,14 @@ func TestFormatInitAndNewLifecycleSyntax(t *testing.T) {
 	}
 }
 
+func TestFormatConsumingFunctionParameter(t *testing.T) {
+	input := "fn Test( -> a: int, b: string, ) void {\n}\n"
+	want := "fn Test(-> a: int, b: string) void {\n}\n"
+	if got := Format(Source{Text: input}, Options{}).Text; got != want {
+		t.Fatalf("wrong consuming parameter formatting:\n%s\nwant:\n%s", got, want)
+	}
+}
+
 func TestFormatPreservesRegisterLayoutModifiers(t *testing.T) {
 	input := "type Header register[16] msb-first big-endian {\nVersion: bit[4],\nPayload: bit[12],\n}\n"
 	want := "type Header register[16] msb-first big-endian {\n    Version: bit[4],\n    Payload: bit[12],\n}\n"

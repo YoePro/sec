@@ -680,6 +680,7 @@ A named function may be used as a function value only after one concrete callabl
 
 The callable type preserves:
 
+- callable environment capability: shared `fn`, mutable `mut fn`, or consuming `-> fn`;
 - parameter types;
 - borrow modes;
 - consuming parameter modes;
@@ -697,6 +698,20 @@ fn Release(-> resource: Resource) void {
 ```
 
 A compatible callable type must preserve the consuming parameter contract.
+
+Callable capability describes authority over the callable value/environment,
+independently of parameter ownership:
+
+```sec
+fn(int) int
+mut fn() int
+-> fn() Resource
+```
+
+A callable requiring less authority may satisfy a target that intentionally
+permits more authority: `fn` may satisfy `fn`, `mut fn`, or `-> fn`; `mut fn`
+may satisfy `mut fn` or `-> fn`; `-> fn` satisfies only `-> fn`. A conversion
+must never erase a stronger source requirement.
 
 An unresolved overload set is not one runtime function value.
 

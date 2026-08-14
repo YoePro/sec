@@ -86,53 +86,53 @@ type Directory struct {
     buffer_position: int,
 }
 
-fn _ioError(error: platform.linux.LinuxError) IOError {
+fn _ioError(error: linux.LinuxError) IOError {
     switch error {
-        case platform.linux.LinuxError.permDenied, platform.linux.LinuxError.accessDenied:
+        case linux.LinuxError.permDenied, linux.LinuxError.accessDenied:
             return IOError.PermissionDenied
-        case platform.linux.LinuxError.noSuchFile:
+        case linux.LinuxError.noSuchFile:
             return IOError.NotFound
-        case platform.linux.LinuxError.interrupted:
+        case linux.LinuxError.interrupted:
             return IOError.Interrupted
-        case platform.linux.LinuxError.again:
+        case linux.LinuxError.again:
             return IOError.WouldBlock
-        case platform.linux.LinuxError.noMemory:
+        case linux.LinuxError.noMemory:
             return IOError.OutOfMemory
-        case platform.linux.LinuxError.ioError:
+        case linux.LinuxError.ioError:
             return IOError.InputOutput
-        case platform.linux.LinuxError.invalidArg:
+        case linux.LinuxError.invalidArg:
             return IOError.InvalidArgument
-        case platform.linux.LinuxError.badFd:
+        case linux.LinuxError.badFd:
             return IOError.BadFileDescriptor
-        case platform.linux.LinuxError.isDirectory:
+        case linux.LinuxError.isDirectory:
             return IOError.IsDirectory
-        case platform.linux.LinuxError.notADirectory:
+        case linux.LinuxError.notADirectory:
             return IOError.NotDirectory
-        case platform.linux.LinuxError.directoryNotEmpty:
+        case linux.LinuxError.directoryNotEmpty:
             return IOError.DirectoryNotEmpty
-        case platform.linux.LinuxError.deviceBusy:
+        case linux.LinuxError.deviceBusy:
             return IOError.Busy
-        case platform.linux.LinuxError.crossDeviceLink:
+        case linux.LinuxError.crossDeviceLink:
             return IOError.CrossDevice
-        case platform.linux.LinuxError.fileExists:
+        case linux.LinuxError.fileExists:
             return IOError.AlreadyExists
-        case platform.linux.LinuxError.tooManyOpenFiles, platform.linux.LinuxError.fileTableOverflow:
+        case linux.LinuxError.tooManyOpenFiles, linux.LinuxError.fileTableOverflow:
             return IOError.TooManyOpenFiles
-        case platform.linux.LinuxError.fileTooLarge, platform.linux.LinuxError.valueTooLarge:
+        case linux.LinuxError.fileTooLarge, linux.LinuxError.valueTooLarge:
             return IOError.TooLarge
-        case platform.linux.LinuxError.nameTooLong:
+        case linux.LinuxError.nameTooLong:
             return IOError.NameTooLong
-        case platform.linux.LinuxError.tooManySymlinks:
+        case linux.LinuxError.tooManySymlinks:
             return IOError.TooManySymbolicLinks
-        case platform.linux.LinuxError.noSpace:
+        case linux.LinuxError.noSpace:
             return IOError.NoSpace
-        case platform.linux.LinuxError.readOnlyFileSystem:
+        case linux.LinuxError.readOnlyFileSystem:
             return IOError.ReadOnlyFileSystem
-        case platform.linux.LinuxError.brokenPipe:
+        case linux.LinuxError.brokenPipe:
             return IOError.BrokenPipe
-        case platform.linux.LinuxError.illegalSeek:
+        case linux.LinuxError.illegalSeek:
             return IOError.IllegalSeek
-        case platform.linux.LinuxError.operationNotSupported, platform.linux.LinuxError.invalidSyscall:
+        case linux.LinuxError.operationNotSupported, linux.LinuxError.invalidSyscall:
             return IOError.Unsupported
         default:
             return IOError.Unknown
@@ -261,7 +261,7 @@ fn Exists(path: string) Result[bool, IOError] {
     match linux.Access(path, int(AccessMode.Exists)) {
         Ok(_) => return Ok(true)
         Err(error) => {
-            if error == platform.linux.LinuxError.noSuchFile || error == platform.linux.LinuxError.notADirectory {
+            if error == linux.LinuxError.noSuchFile || error == linux.LinuxError.notADirectory {
                 return Ok(false)
             }
             return Err(_ioError(error))

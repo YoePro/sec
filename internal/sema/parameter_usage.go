@@ -625,8 +625,12 @@ func (b *parameterUsageBuilder) walkCall(call *ast.CallExpression) {
 			b.markExpression(argument, ParameterUseCall, mutable, ParameterBorrowSufficient, ParameterAddressRequired)
 			b.walkExpressionChildren(argument)
 		} else {
+			ownership := ParameterBorrowSufficient
+			if parameter.Consuming {
+				ownership = ParameterConsumptionRequired
+			}
 			b.walkExpression(argument)
-			b.markExpression(argument, ParameterUseCall, false, ParameterBorrowSufficient, ParameterValueOnly)
+			b.markExpression(argument, ParameterUseCall, false, ownership, ParameterValueOnly)
 		}
 		if callerParameter, place, rooted := b.parameterPlace(argument); rooted {
 			site.arguments = append(site.arguments, parameterUsageCallArgument{

@@ -108,6 +108,18 @@ import (
 	}
 }
 
+func TestParseRejectsNonCanonicalImportPaths(t *testing.T) {
+	for _, path := range []string{"../orders", "./orders", "/orders", `domain\\orders`, "domain//orders", "orders/"} {
+		t.Run(path, func(t *testing.T) {
+			p := New(lexer.New("module main\nimport \"" + path + "\"\n"))
+			p.ParseProgram()
+			if len(p.Errors()) != 1 || !strings.Contains(p.Errors()[0], "invalid import path") {
+				t.Fatalf("errors = %v, want one invalid import path diagnostic", p.Errors())
+			}
+		})
+	}
+}
+
 func TestParseGenericTypeDeclarations(t *testing.T) {
 	input := `
 type Stack[T] struct {
@@ -625,6 +637,18 @@ func TestParseModuleRequiresName(t *testing.T) {
 	expected := "module declaration missing name at 1:1"
 	if p.Errors()[0] != expected {
 		t.Fatalf("wrong parser error. got=%q want=%q", p.Errors()[0], expected)
+	}
+}
+
+func TestParseRejectsDottedModuleName(t *testing.T) {
+	p := New(lexer.New("module domain.orders\n"))
+	p.ParseProgram()
+	if len(p.Errors()) != 1 {
+		t.Fatalf("errors = %v, want one dotted module diagnostic", p.Errors())
+	}
+	want := `module declaration must contain one identifier, got "domain.orders" at 1:8`
+	if p.Errors()[0] != want {
+		t.Fatalf("error = %q, want %q", p.Errors()[0], want)
 	}
 }
 
@@ -2267,6 +2291,20 @@ fn noop() void {
 	returnStmt := noop.Body.Statements[0].(*ast.ReturnStatement)
 	if returnStmt.Value != nil {
 		t.Fatalf("expected void return without value, got %+v", returnStmt.Value)
+	}
+}
+
+func TestParseConsumingFunctionParameter(t *testing.T) {
+	program := New(lexer.New(`fn Test(-> a: int, b: string) void {}`)).ParseProgram()
+	if len(program.Statements) != 1 {
+		t.Fatalf("wrong statement count: %d", len(program.Statements))
+	}
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	if len(fn.Parameters) != 2 || !fn.Parameters[0].Consuming || fn.Parameters[1].Consuming {
+		t.Fatalf("wrong consuming parameter metadata: %+v", fn.Parameters)
+	}
+	if fn.Parameters[0].Name.Value != "a" || fn.Parameters[0].Type.Name != "int" {
+		t.Fatalf("wrong consuming parameter: %+v", fn.Parameters[0])
 	}
 }
 

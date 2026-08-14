@@ -1,0 +1,52 @@
+module sensor_management
+
+// =====================================================================
+// ENUMS & NAMED TYPES
+// =====================================================================
+
+type Percentage int range 0..100
+
+impl Percentage {
+    property IsOptimal: bool {
+        get {
+            return self in 90..100
+        }
+    }
+
+    property IsCritical: bool {
+        get {
+            return self <= 20
+        }
+    }
+}
+
+enum DeviceState {
+    Offline = 0,
+    Active = 1,
+    Maintenance = 2,
+}
+
+impl DeviceState {
+    property CanTransmit: bool {
+        get {
+            return self == DeviceState.Active
+        }
+    }
+}
+
+// =====================================================================
+// USAGE EXAMPLE
+// =====================================================================
+
+fn MonitorDevice(battery: Percentage, state: DeviceState) void {
+    // Nu läser vi dem som rena properties utan parenteser
+    if battery.IsCritical {
+        // Trigger low battery warning
+    } else if battery.IsOptimal {
+        // All good
+    }
+
+    if state.CanTransmit {
+        // Proceed with data transmission
+    }
+}

@@ -1899,7 +1899,7 @@ declarations/registers.md
 enums.md
 units.txt
 functions.md
-functions_lambda.txt
+declarations/lambda-functions.md
 attributes.md
 operators.md
 grammar.md

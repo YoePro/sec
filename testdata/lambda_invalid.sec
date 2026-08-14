@@ -81,13 +81,6 @@ fn LambdaValueReturnFromVoid() void {
     }
 }
 
-fn AssignLambdaParameter() void {
-    let operation := fn(value: int) int {
-        value = 10
-        return value
-    }
-}
-
 // =============================================================================
 // Function type compatibility
 // =============================================================================

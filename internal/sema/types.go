@@ -267,6 +267,7 @@ type FunctionParameter struct {
 	Token      lexer.Token
 	Ref        bool
 	MutableRef bool
+	Consuming  bool
 }
 
 type Dimension struct {

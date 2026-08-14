@@ -174,9 +174,9 @@ LSP token classification
 | `declarations/unions.md` | **Written** | Canonical closed nominal unions, payload construction, explicit defaults, empty initialization state, matching, ownership, equality, generics, recursion, and representation requirements. Implementation is tracked by `frontend.unions`. |
 | `declarations/registers.md` | **Written** | Canonical nominal `register[N]` types, logical bit layout, nested registers, field access semantics, conversions, and impl eligibility. Implementation is tracked by `frontend.registers`. |
 | `declarations/functions.md` | **Written** | Canonical revision 2.0 functions, owned/borrowed/consuming parameters, call-transfer commit, overloads, and native typed variadics. Frontend and lowering progress is tracked by `frontend.functions-v2`. |
-| `declarations/functions_lambda.txt` | **Written — sync required** | Canonical lambda and closure rulebook; closure scope for 0.1 must be finalized. |
-| `lambdas.md` | **Covered** | Covered by `declarations/functions_lambda.txt`; no duplicate rulebook expected. |
-| `closures.md` | **Covered** | Covered by `declarations/functions_lambda.txt`; no duplicate rulebook expected. |
+| `declarations/lambda-functions.md` | **Written** | Canonical revision 2.0 lambda, capture, callable-capability, and closure rulebook. Frontend and lowering progress is tracked by `frontend.lambda-functions-v2`. |
+| `lambdas.md` | **Covered** | Covered by `declarations/lambda-functions.md`; no duplicate rulebook expected. |
+| `closures.md` | **Covered** | Covered by `declarations/lambda-functions.md`; no duplicate rulebook expected. |
 | `declarations/generics.md` | **Written** | Canonical revision 2.0 compile-time type generics, constraints, inference, method generics, generic interfaces/named types, monomorphization, ABI boundaries, and diagnostics. Implementation progress is tracked by `frontend.generics-v2`. |
 | `declarations/interfaces.md` | **Written** | Canonical behavioral interfaces, receiver capabilities, inheritance, and primary-impl conformance. Frontend progress is tracked by `frontend.interfaces`. |
 | `declarations/impl.md` | **Written** | Revision 2.0 defines primary/extensions, implicit self, associated declarations, and lifecycle `init`/`free` with `new`; frontend lifecycle status is tracked by `frontend.impl-lifecycle-construction`. |
@@ -529,8 +529,8 @@ as one compatible model.
 
 | Rulebook | Status | Notes |
 |---|---|---|
-| `projects/projects.txt` | **Written — sync required** | Repository manifest, targets, outputs, internal directories, and build structure. |
-| `modules.md` | **Planned** | Module identity, imports, cycles, visibility, and resolution. |
+| `projects/projects.txt` | **Written** | Repository manifest, targets, outputs, internal directories, and build structure; module semantics are delegated to `projects/modules.md`. |
+| `projects/modules.md` | **Written** | Canonical module identity, membership, imports, cycles, visibility, resolution, surfaces, separate compilation, and incremental-tooling model. Implementation progress is tracked by `frontend.modules`. |
 | `initialization.md` | **Planned** | Explicit module/program startup, cross-module coordination, deinitialization integration, and failure behavior. Compile-time static dependency order and the ban on hidden runtime initialization are defined by `declarations/static.md`. |
 | `linking.md` | **Planned** | Link-time symbol and output semantics. |
 
@@ -606,7 +606,7 @@ control-flow/flowcontrol_switch.txt
 control-flow/flowcontrol_while.txt
 tooling/formatter.md
 declarations/functions.md
-declarations/functions_lambda.txt
+declarations/lambda-functions.md
 declarations/generics.md
 declarations/impl.md
 declarations/interfaces.md
@@ -627,6 +627,7 @@ memory/ownership.md
 errors/panic.md
 concurrency/processes.txt
 projects/projects.txt
+projects/modules.md
 declarations/properties.md
 memory/raw_pointers.txt
 memory/reference_model.md
@@ -698,7 +699,6 @@ inline_assembly.md
 volatile.md
 interrupts.md
 
-modules.md
 initialization.md
 linking.md
 
@@ -805,7 +805,7 @@ Still to decide for Sec 0.1:
 - callable mutability;
 - task/thread transfer.
 
-The canonical rule remains `declarations/functions_lambda.txt`.
+The canonical rule is `declarations/lambda-functions.md`.
 
 ## Compile-time evaluation and generics
 

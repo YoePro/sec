@@ -538,6 +538,8 @@ func (a *Analyzer) checkPlaceAvailableForRead(place Place, token lexer.Token) bo
 		a.addErrorAtTokenWithPrevious(token, movedAt, "value %s was detached here and is no longer available", place.String())
 	case "released":
 		a.addErrorAtTokenWithPrevious(token, movedAt, "arena %s was released here and is no longer available", place.String())
+	case "consumed by call":
+		a.addErrorAtTokenWithPrevious(token, movedAt, "value %s was consumed by call here and is no longer available", place.String())
 	default:
 		a.addErrorAtTokenWithPrevious(token, movedAt, "use of moved value %s", place.String())
 	}

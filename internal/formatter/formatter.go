@@ -293,7 +293,9 @@ func split(s string) []string {
 		case '<':
 			angle++
 		case '>':
-			angle--
+			if angle > 0 {
+				angle--
+			}
 		case ',':
 			if paren == 0 && bracket == 0 && angle == 0 {
 				if p := strings.TrimSpace(s[start:i]); p != "" {

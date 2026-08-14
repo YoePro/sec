@@ -1980,6 +1980,18 @@ obligation.
 
 # Closures
 
+Capture modes are explicit:
+
+```text
+value          ordinary owned copy/move capture
+-> value       forced-consuming owned capture
+ref value      shared borrowed capture
+ref mut value  exclusive mutable borrowed capture
+```
+
+Owned capture bindings are mutable inside the closure. `->` forces transfer
+even for a copyable value. No `capture(mut value)` form exists.
+
 A closure is copyable only when:
 
 - every owned capture is copyable;
@@ -1990,6 +2002,9 @@ A closure is copyable only when:
 A closure capturing a move-only value becomes move-only.
 
 A closure capturing `ref mut` becomes move-only.
+
+A consuming `-> fn` closure is move-only. Invocation consumes it when moving
+environment state out leaves the callable unusable.
 
 Moving the closure transfers its captures.
 

@@ -9,6 +9,7 @@ import (
 	"sec/internal/ast"
 	compilerdiagnostics "sec/internal/diagnostics"
 	"sec/internal/lexer"
+	"sec/internal/modules"
 )
 
 type Diagnostic struct {
@@ -1383,8 +1384,11 @@ func (p *Parser) parseModuleStatement() ast.Statement {
 	}
 	p.nextToken()
 
-	// TODO: Fix module name bug
+	nameToken := p.curToken
 	stmt.Path = p.parseDottedPath()
+	if strings.Contains(stmt.Path, ".") {
+		p.addError("module declaration must contain one identifier, got %q at %d:%d", stmt.Path, nameToken.Line, nameToken.Column)
+	}
 
 	return stmt
 }
@@ -1486,6 +1490,7 @@ func (p *Parser) parseImportStatement() ast.Statement {
 	}
 
 	stmt.Path = trimStringQuotes(p.curToken.Lexeme)
+	p.validateImportPath(stmt.Path, p.curToken)
 
 	return stmt
 }
@@ -1519,7 +1524,14 @@ func (p *Parser) parseImportGroup() []ast.Statement {
 			return imports
 		}
 		stmt.Path = trimStringQuotes(p.curToken.Lexeme)
+		p.validateImportPath(stmt.Path, p.curToken)
 		imports = append(imports, stmt)
+	}
+}
+
+func (p *Parser) validateImportPath(path string, token lexer.Token) {
+	if err := modules.ValidateImportPath(path); err != nil {
+		p.addError("invalid import path %q: %s at %d:%d", path, err, token.Line, token.Column)
 	}
 }
 
@@ -2326,7 +2338,16 @@ func (p *Parser) parseParameters() []*ast.Parameter {
 	}
 
 	for {
+		consuming := false
+		if p.peekToken.Type == lexer.CONSUME_ARROW {
+			p.nextToken()
+			consuming = true
+		}
 		if p.peekToken.Type == lexer.REF {
+			if consuming {
+				p.addError("consuming parameter cannot use ref type at %d:%d", p.peekToken.Line, p.peekToken.Column)
+				return nil
+			}
 			p.nextToken()
 		}
 		ref := p.curToken.Type == lexer.REF
@@ -2347,6 +2368,7 @@ func (p *Parser) parseParameters() []*ast.Parameter {
 			Name:       &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme},
 			Ref:        ref,
 			MutableRef: mutableRef,
+			Consuming:  consuming,
 		}
 
 		if ref && p.curToken.Type == lexer.SELF && p.peekToken.Type != lexer.COLON {

@@ -137,6 +137,21 @@ A function call must not receive overlapping mutable references.
 
 The compiler must reject calls where arguments may alias incompatibly.
 
+## Closure captures
+
+Closures may explicitly capture shared and mutable borrows:
+
+```sec
+capture(ref value) fn() int { return value }
+capture(ref mut value) fn() void { value += 1 }
+```
+
+The closure may not outlive the captured borrow. A mutable capture reserves
+exclusive authority for the lifetime of that capture and blocks conflicting
+outer access. A closure containing `ref mut` capture is move-only and requires
+at least mutable callable capability. Normal borrow/lifetime analysis proves
+validity without new source lifetime syntax.
+
 ## Returning references
 
 A returned reference must originate from a valid external owner.

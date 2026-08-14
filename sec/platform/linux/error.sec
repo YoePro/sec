@@ -1,5 +1,5 @@
 #target(os: "linux", arch: "any")
-module platform.linux
+module linux
 
 enum LinuxError int {
     success = 0,                        // Success (Not an error)

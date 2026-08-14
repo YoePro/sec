@@ -3662,6 +3662,14 @@ func (a *Analyzer) registerFunctionDeclarationBody(fn *ast.FunctionDeclaration, 
 			a.addErrorAtToken(param.Type.Token, "bare slice type %s must be used behind ref", typeDisplayName(paramType))
 			continue
 		}
+		if param.Consuming && paramType.Kind == ReferenceType {
+			if paramType.ReferenceMutable {
+				a.addErrorAtToken(param.Name.Token, "consuming parameter cannot use ref mut type")
+			} else {
+				a.addErrorAtToken(param.Name.Token, "consuming parameter cannot use ref type")
+			}
+			continue
+		}
 		a.warnLargeByValueParameter(param.Name.Value, paramType, param.Ref, param.MutableRef, param.Name.Token)
 		function.Parameters = append(function.Parameters, FunctionParameter{
 			Name:       param.Name.Value,
@@ -3669,6 +3677,7 @@ func (a *Analyzer) registerFunctionDeclarationBody(fn *ast.FunctionDeclaration, 
 			Token:      param.Name.Token,
 			Ref:        param.Ref,
 			MutableRef: param.MutableRef,
+			Consuming:  param.Consuming,
 		})
 	}
 
@@ -3697,6 +3706,10 @@ func (a *Analyzer) registerFunctionDeclarationBody(fn *ast.FunctionDeclaration, 
 					strings.Join(parameters, ", "),
 					strings.TrimPrefix(name, "@init:"),
 				)
+				return
+			}
+			if functionParametersDifferOnlyByConsumingMode(existing.Parameters, function.Parameters) {
+				a.addErrorAtTokenWithPrevious(fn.Name.Token, existing.Token, "function overloads cannot differ only by consuming parameter mode")
 				return
 			}
 			a.addErrorAtTokenWithPrevious(fn.Name.Token, existing.Token, "duplicate function %q with same signature", name)
@@ -3739,6 +3752,19 @@ func sameFunctionSignature(left Function, right Function) bool {
 		}
 	}
 	return true
+}
+
+func functionParametersDifferOnlyByConsumingMode(left []FunctionParameter, right []FunctionParameter) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	different := false
+	for i := range left {
+		if left[i].Consuming != right[i].Consuming {
+			different = true
+		}
+	}
+	return different
 }
 
 func isSupportedExternABI(abi string) bool {
@@ -6954,12 +6980,21 @@ func (a *Analyzer) interfaceMethodRequirement(interfaceName string, fn *ast.Func
 				a.addErrorAtToken(param.Type.Token, "interface method parameter %q cannot have type void", param.Name.Value)
 				continue
 			}
+			if param.Consuming && paramType.Kind == ReferenceType {
+				if paramType.ReferenceMutable {
+					a.addErrorAtToken(param.Name.Token, "consuming parameter cannot use ref mut type")
+				} else {
+					a.addErrorAtToken(param.Name.Token, "consuming parameter cannot use ref type")
+				}
+				continue
+			}
 			function.Parameters = append(function.Parameters, FunctionParameter{
 				Name:       param.Name.Value,
 				Type:       paramType,
 				Token:      param.Name.Token,
 				Ref:        param.Ref,
 				MutableRef: param.MutableRef,
+				Consuming:  param.Consuming,
 			})
 		}
 		returnType, ok := a.resolveType(fn.ReturnType)
@@ -6980,7 +7015,7 @@ func sameInterfaceRequirementSignature(left Function, right Function) bool {
 		return false
 	}
 	for i := range left.Parameters {
-		if left.Parameters[i].Ref != right.Parameters[i].Ref || left.Parameters[i].MutableRef != right.Parameters[i].MutableRef {
+		if left.Parameters[i].Ref != right.Parameters[i].Ref || left.Parameters[i].MutableRef != right.Parameters[i].MutableRef || left.Parameters[i].Consuming != right.Parameters[i].Consuming {
 			return false
 		}
 		if isSelfParameter(left.Parameters[i]) && isSelfParameter(right.Parameters[i]) {
@@ -8166,7 +8201,7 @@ func compatibleInterfaceMethodSignature(method Function, required Function) bool
 		return false
 	}
 	for i := range methodParams {
-		if methodParams[i].Ref != requiredParams[i].Ref || methodParams[i].MutableRef != requiredParams[i].MutableRef {
+		if methodParams[i].Ref != requiredParams[i].Ref || methodParams[i].MutableRef != requiredParams[i].MutableRef || methodParams[i].Consuming != requiredParams[i].Consuming {
 			return false
 		}
 		if !sameConcreteType(methodParams[i].Type, requiredParams[i].Type) {
@@ -10988,7 +11023,8 @@ func (a *Analyzer) inferLambdaExpression(expr *ast.LambdaExpression) (Type, expr
 	a.defineLambdaCaptures(expr, previousSymbols, previousAssigned)
 
 	for i, param := range expr.Parameters {
-		if !a.defineSymbol(param.Name.Value, params[i], false, param.Name.Token) {
+		mutableBinding := !param.Ref && !param.MutableRef && params[i].Kind != ReferenceType
+		if !a.defineSymbol(param.Name.Value, params[i], mutableBinding, param.Name.Token) {
 			continue
 		}
 		a.assigned[param.Name.Value] = true
@@ -13388,6 +13424,15 @@ func (a *Analyzer) markMovedCallArguments(function Function, sourceArgs []ast.Ex
 		// MutableRef is represented separately from Ref in FunctionParameter, so
 		// checking only Ref incorrectly consumed ref-mut reborrows after calls.
 		if param.Ref || param.MutableRef {
+			continue
+		}
+		if param.Consuming {
+			if a.markExplicitMoveSource(arg) {
+				if ident, ok := arg.(*ast.Identifier); ok {
+					a.moveReasons[ident.Value] = "consumed by call"
+					a.endBorrowsHeldBy(ident.Value)
+				}
+			}
 			continue
 		}
 		if a.markMoveSource(arg) {

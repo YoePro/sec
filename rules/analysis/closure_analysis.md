@@ -94,8 +94,9 @@ Those semantics remain owned by their respective normative rulebooks.
 
 # Relationship to existing language rules
 
-`functions_lambda.txt` defines the source-language function-value and lambda
-semantics consumed by this analysis.
+`rules/declarations/lambda-functions.md` defines the source-language
+function-value, callable-capability, and lambda semantics consumed by this
+analysis.
 
 In Sec 0.1:
 
@@ -107,8 +108,11 @@ In Sec 0.1:
 - optional absence is represented explicitly with `Option[fn(...)]`;
 - enclosing locals are never captured implicitly;
 - `capture(...)` explicitly identifies captured values;
-- initial captures are immutable value captures;
-- mutable captures and explicit reference captures are postponed;
+- capture modes are explicit value, forced-consuming value, shared reference,
+  and mutable reference;
+- owned capture bindings are mutable inside the closure, independently of the
+  mutability of the outer binding;
+- callable environment capability is inferred as `fn`, `mut fn`, or `-> fn`;
 - capture expressions are evaluated exactly once;
 - capturing and non-capturing callables with the same parameter and return
   types have the same source-level function type;
@@ -437,12 +441,15 @@ Sec 0.1 defines:
 
 ```text
 Value
+ForcedConsume
+SharedReference
+MutableReference
 ```
 
-as the only capture mode.
-
-Future language rules may add reference or mutable capture modes, but this
-rulebook does not introduce them.
+These correspond to `capture(value)`, `capture(-> value)`,
+`capture(ref value)`, and `capture(ref mut value)`. Capture mode is explicit;
+closure analysis must not infer reference capture from the captured value's
+type or outer-binding mutability.
 
 ## Transfer
 
@@ -533,14 +540,19 @@ continued access to the outer binding.
 
 ---
 
-## Sec 0.1 captured values are immutable
+## Owned capture bindings are mutable
 
-A Sec 0.1 value capture is immutable inside the lambda regardless of whether the
-outer binding was mutable.
+An owned value capture is a mutable closure-local binding regardless of whether
+the outer binding was mutable. Mutating it requires at least `mut fn` callable
+capability.
 
-Mutable capture requires a future explicit language rule.
+`capture(-> value)` differs only in forcing the creation-time transfer to be a
+move even when the captured type is copyable. It does not introduce a distinct
+binding-mutability class.
 
-Closure analysis must not infer mutable capture from outer-binding mutability.
+Closure analysis records environment mutation and consumption so callable
+capability inference can distinguish reusable shared, reusable mutable, and
+consuming callables.
 
 ---
 
@@ -580,7 +592,7 @@ borrow validity
 
 as applicable.
 
-This is distinct from future explicit reference-capture syntax such as:
+This is distinct from explicit reference-capture syntax such as:
 
 ```sec
 capture(ref item) fn() int {
@@ -588,8 +600,10 @@ capture(ref item) fn() int {
 }
 ```
 
-which would establish a borrow directly from another Place and is not part of
-Sec 0.1.
+which establishes a borrow directly from another Place. Shared and mutable
+reference captures retain the normal borrow, lifetime, storage, and provenance
+dependencies of that Place. A mutable-reference capture is move-only and
+requires at least `mut fn` callable capability.
 
 ---
 
@@ -2507,7 +2521,9 @@ copyable value capture
 move-only value capture
 invalid move capture
 invalid copy capture
-immutable captured binding
+mutable owned captured binding and `mut fn` capability inference
+forced-consuming copyable capture and `-> fn` capability inference
+shared and mutable reference capture lifetime and borrow conflicts
 outer mutation after capture does not change captured value
 duplicate capture
 undefined capture
@@ -2708,7 +2724,8 @@ sound target coverage
 
 Closure analysis is complete for Sec 0.1 when all of the following hold:
 
-1. all Sec 0.1 immutable value captures are represented correctly;
+1. all Sec 0.1 value, forced-consuming, shared-reference, and
+   mutable-reference captures are represented correctly;
 2. capture Copy/Move transfer follows ownership semantics;
 3. captured reference/view/handle/callable values preserve transitive
    dependencies;
@@ -2761,14 +2778,17 @@ are not part of function type identity.
 Named functions and non-capturing lambdas have no closure-environment
 dependency. Capturing callables depend on an explicit environment.
 
-Captures are explicit. Sec 0.1 captures are immutable value captures.
+Captures are explicit. Sec 0.1 supports owned value, forced-consuming value,
+shared-reference, and mutable-reference capture. Owned environment bindings are
+mutable; borrowed captures retain their borrow and lifetime dependencies.
 
 Capture analysis operates on canonical Place/provenance and consumes ownership,
 lifetime, borrow, storage, and dependency facts rather than recreating those
 analyses.
 
-Capture mode and transfer mechanism are distinct. Value capture may use Copy or
-Move according to normal Sec ownership semantics.
+Capture mode and transfer mechanism are distinct. Plain value capture may use
+Copy or Move according to normal Sec ownership semantics, while
+forced-consuming capture requires Move even for a copyable value.
 
 Capturing a reference-like, view-like, handle-like, or callable value by value
 preserves the value's underlying dependencies.

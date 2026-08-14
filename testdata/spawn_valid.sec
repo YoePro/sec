@@ -1,4 +1,4 @@
-module test.spawn_valid
+module spawn_valid
 
 fn Work() void {
 }

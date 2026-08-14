@@ -778,6 +778,7 @@ type Parameter struct {
 	Type       *TypeReference
 	Ref        bool
 	MutableRef bool
+	Consuming  bool
 }
 
 func (p *Parameter) TokenLiteral() string {

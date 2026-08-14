@@ -1,4 +1,4 @@
-module operators.membership.invalid
+module operators_membership_invalid
 
 type ViewHolder struct {
     values: ref int[],

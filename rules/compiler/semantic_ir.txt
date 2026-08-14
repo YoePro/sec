@@ -552,6 +552,19 @@ The compiler must determine whether termination operations bypass defer accordin
 
 Defer lowering must not be postponed until LLVM IR.
 
+## Lambda and closure representation
+
+Semantic IR preserves lambda source identity, concrete callable signature,
+shared/mutable/consuming callable capability, ordered parameter ownership
+modes, captures and their modes/types, environment copy/move and escape class,
+environment lifetime, construction, invocation, consumption, and destruction.
+
+IR must not prematurely force every callable into one universal
+`{code_ptr, env_ptr}` representation. Escaping environments may require owned
+dynamic storage, but representation remains compiler-controlled and any
+allocation/resource effect remains visible. Native closure representation is
+not automatically a foreign callback ABI.
+
 ## References
 
 A Semantic IR reference must retain:

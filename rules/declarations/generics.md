@@ -805,6 +805,11 @@ where otherwise valid.
 
 Sec does not represent an unresolved generic function template as a runtime callable object.
 
+Generic lambda templates are not part of Sec 0.1. An anonymous
+`fn[T](value: T) T { ... }` would be an unresolved compile-time template rather
+than one concrete runtime callable. Use a named generic function and concretely
+specialize it before converting it to a function value.
+
 ## 29. Overload resolution
 
 Generic resolution participates in ordinary overload resolution.

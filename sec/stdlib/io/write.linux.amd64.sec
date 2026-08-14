@@ -6,7 +6,7 @@ import (
     "platform/linux/amd64"
 )
 unsafe fn _sysWrite(fd: int, ptr: RawPtr[byte], len: uint) int {
-    return amd64._rawSyscall(uint(amd64.sysCall.Write), uint(fd), uint(ptr), uint(len))
+    return amd64.RawSyscall(uint(amd64.SysCall.Write), uint(fd), uint(ptr), uint(len))
 }
 
 unsafe fn Write(fd: int, ptr: RawPtr[byte], len: uint) int {

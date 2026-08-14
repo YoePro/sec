@@ -1,4 +1,4 @@
-module testdata.attributes_invalid
+module attributes_invalid
 
 @noCopy
 type SessionID struct {

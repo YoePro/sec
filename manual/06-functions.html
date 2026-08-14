@@ -1199,8 +1199,9 @@ fn main() int {
             <h2>Capture by Value</h2>
 
             <p>
-                A plain capture entry captures the value when the lambda expression is evaluated. The captured
-                binding is immutable inside the lambda.
+                A plain capture entry captures the value when the lambda expression is evaluated. The owned
+                captured binding is mutable inside the lambda; mutating it gives the callable at least
+                <code>mut fn</code> capability.
             </p>
 
             <pre><code>let mut factor: int := 2
@@ -1215,14 +1216,17 @@ let result := multiply(10) // result is 20.</code></pre>
 
             <p>
                 Changing the outer variable later does not change the already captured value. A mutable outer
-                variable may therefore be captured, but the captured copy remains immutable.
+                variable may therefore be captured, but the captured value remains an independent environment
+                binding.
             </p>
 
             <pre><code>let mut factor: int := 2
 
-let operation := capture(factor) fn() void {
+let mut operation := capture(factor) fn() void {
     factor = 4
-} // Error: captured value factor is immutable.</code></pre>
+}
+
+operation() // The outer factor is still 2.</code></pre>
 
             <p>
                 Copyable values may be copied into the closure environment. Capturing a non-copyable value may
@@ -1472,7 +1476,8 @@ fn ReadSpeed() Result[Speed, IOError] {
                 <li>Lambda parameter and return types are currently explicit.</li>
                 <li>Lambdas and named functions follow the same call and return rules.</li>
                 <li>Enclosing local variables are never captured implicitly.</li>
-                <li><code>capture(...)</code> creates explicit immutable value captures.</li>
+                <li><code>capture(value)</code>, <code>capture(-&gt; value)</code>, <code>capture(ref value)</code>, and <code>capture(ref mut value)</code> select explicit capture modes.</li>
+                <li>Callable environment capability is <code>fn</code>, <code>mut fn</code>, or <code>-&gt; fn</code>.</li>
                 <li>Capture occurs when the lambda expression is evaluated.</li>
                 <li>A lambda creates its own scope and function boundary.</li>
                 <li>Function values do not support equality, ordering, or null.</li>

@@ -1,0 +1,47 @@
+module resource_management
+
+enum BufferError {
+    AllocationFailed,
+    CleanupFailed,
+}
+
+type Buffer struct {
+    Data: uint8[256],
+    Size: int,
+}
+
+impl Buffer {
+    // Fallible initializer
+    init(size: int) BufferError {
+        if size <= 0 {
+            return Err(BufferError.AllocationFailed)
+        }
+        self.Size = size
+    }
+
+    // Destructor - ingen fn-deklaration
+    // free {
+    //     // Städning sker här automatiskt när objektet går ur scope eller konsumeras
+    // }
+}
+
+// Konsumerar 'buf' helt via move (->)
+fn DestroyBuffer(->buf: Buffer) void {
+    // 'buf' är nu ägd av denna funktion och kör sin free när scopet stängs
+}
+
+fn TestOwnershipAndLifecycle() void {
+    // Skapar en ny instans med 'new'
+    let mut myBuf: Buffer := try new Buffer(128) {
+        // We could not allocate this buffer.. let's leave.
+        Err(error) => return
+    }
+
+    // Explicit move av 'myBuf' till 'newBuf'
+    let mut newBuf: Buffer <- myBuf
+    // 'myBuf' kan inte längre användas här!
+
+    // Skickar ägandeskapet vidare till DestroyBuffer
+    DestroyBuffer(newBuf)
+    // 'newBuf' kan inte heller användas här efter flytten
+}

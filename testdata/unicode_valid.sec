@@ -1,4 +1,4 @@
-module test.unicode_valid
+module unicode_valid
 
 import "unicode"
 

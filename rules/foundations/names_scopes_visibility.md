@@ -862,8 +862,10 @@ A generic parameter must not shadow:
 
 # 16. Imports and aliases
 
-Imported module names and import aliases enter the current module declaration
-namespace.
+Imported module names and import aliases enter the declaring source file's
+import-binding scope. They do not become bindings in sibling files of the same
+module, although all resolved imports contribute edges to the module-wide
+dependency graph.
 
 They must not conflict with:
 
@@ -894,8 +896,9 @@ storage.Open()
 Import aliases must satisfy the same identifier and reserved-name rules as other
 declarations.
 
-Import visibility and project-internal access are defined by the module and
-project rulebooks.
+Import identity, qualifier collisions, duplicate imports, visibility, and
+project-internal access are defined by `rules/projects/modules.md` and
+`rules/projects/projects.txt`.
 
 ---
 
@@ -910,7 +913,7 @@ Conceptually:
 3. generic parameter scope;
 4. owning type and impl member scope;
 5. module scope;
-6. imported names and aliases;
+6. the current source file's imported module bindings and aliases;
 7. always-available core declarations.
 
 Because shadowing is forbidden, finding the same unqualified declaration name at
@@ -954,7 +957,7 @@ types
 interfaces
 functions and overload groups
 constants where supported
-imports and aliases
+the current source file's imports and aliases
 ```
 
 For a type and its impl, it registers at least:
@@ -1181,7 +1184,7 @@ operators.md
 types.md
 contracts.md
 functions.md
-functions_lambda.txt
+declarations/lambda-functions.md
 declarations/generics.md
 declarations/interfaces.md
 declarations/impl.md
@@ -1195,8 +1198,8 @@ collections.md
 shaped-types.md
 flowcontrol_for.txt
 flowcontrol_match.txt
-projects.txt
-modules.md
+projects/projects.txt
+projects/modules.md
 linking.md
 diagnostics.txt
 formatter.md

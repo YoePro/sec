@@ -1,5 +1,5 @@
 #target(os: "linux", arch: "any")
-module platform.linux
+module linux
 
 /*
 fn MapMemory(...)

@@ -20,6 +20,7 @@ integrations:
       as one compiler-owned semantic program, including unsaved editor
       snapshots, so declarations resolve consistently across module files.
     rules:
+      - rules/projects/modules.md
       - rules/projects/projects.txt
       - rules/tooling/lsp.md
     code:
@@ -40,6 +41,91 @@ integrations:
       - malformed siblings are isolated until their own document analysis instead of poisoning every open file in the module
     verification:
       - command: go test ./cmd/lsp -run 'SameModule|CoreInt|OpenSibling|DifferentModule' -count=1
+        result: passed
+
+  - id: frontend.modules
+    area: frontend-projects-and-resolution
+    status: partial
+    integrated: "2026-08-14"
+    summary: >-
+      Establishes the canonical Sec module model shared by compiler and tooling.
+      The first integrated slice provides host-independent logical import-path
+      validation, root-qualified ModuleIdentity, plan-qualified ModuleInstance,
+      deterministic dependency graph ordering and SCC cycle reports, parser
+      rejection of dotted module declarations, and existing deterministic LSP
+      same-directory assembly. Full project/std/platform resolution, file-local
+      binding tables, surfaces, visibility, and incremental invalidation remain.
+    rules:
+      - rules/projects/modules.md
+      - rules/projects/projects.txt
+      - rules/foundations/grammar.md
+      - rules/foundations/names_scopes_visibility.md
+      - rules/foundations/lexical_structure.md
+      - rules/compiler/compiler_pipeline.txt
+      - rules/compiler/semantic_ir.txt
+      - rules/platform/platform_model.md
+      - rules/tooling/diagnostics.txt
+      - rules/tooling/lsp.md
+    code:
+      - internal/modules/model.go
+      - internal/modules/graph.go
+      - internal/parser/parser.go
+      - internal/lsp/server/module_sources.go
+      - cmd/compiler/main.go
+      - cmd/lsp/main.go
+    tests:
+      - internal/modules/model_test.go
+      - internal/modules/graph_test.go
+      - internal/parser/parser_test.go
+      - internal/lsp/server/module_sources_test.go
+      - cmd/compiler/main_test.go
+      - cmd/lsp/main_test.go
+    implemented:
+      - root-qualified canonical ModuleIdentity distinct from short source ModuleName
+      - CompilationPlan-qualified ModuleInstance identity without changing logical ModuleIdentity
+      - host-independent canonical import-path validation rejecting empty components, traversal, absolute paths, backslashes, and trailing separators
+      - parser rejection of dotted source module declarations with a dedicated explanatory diagnostic
+      - platform and regression sources migrated from legacy dotted module declarations to canonical short ModuleName declarations
+      - cross-module platform syscall entry points made explicitly public instead of relying on legacy dotted-name visibility grouping
+      - single, aliased, and grouped import syntax with canonical-path validation
+      - deterministic ModuleGraph storage, duplicate-edge and self-import rejection, strongly connected components, representative cycle paths, and dependency-first topological ordering
+      - deterministic same-directory LSP module assembly with editor overlays and shared declaration analysis
+      - partial project, std, and platform source import discovery with deterministic source-file ordering
+    remaining:
+      - enforce one source directory per module and validate every selected source file's ModuleName against its directory or project-root rule
+      - assemble every CompilationPlan module namespace before body analysis in the command-line compiler, independent of filesystem and source-file order
+      - preserve source-file ownership for private declarations while exposing module-internal declarations across all sibling source files
+      - replace flattened imported AST inclusion with source-file-local import binding tables and module-wide dependency-edge union
+      - resolve canonical project, std, and platform ImportRootIdentity values without reserved-root fallback into project sources
+      - validate every resolved import destination's module declaration, source membership, and active-plan selection
+      - derive default qualifiers from resolved ModuleName and support aliases without rewriting declaration or module identity
+      - enforce per-file qualifier uniqueness and require aliases when distinct ModuleIdentities share one ModuleName
+      - reject duplicate canonical ModuleIdentity imports per source file and integrate canonical self-import checks with resolver diagnostics
+      - keep imported declarations qualified, prevent implicit name injection and re-export, and reject unsupported selective and wildcard imports
+      - enforce internal-directory access during canonical resolution before declaration visibility checks
+      - integrate the canonical ModuleGraph into compiler and LSP resolution, cycle diagnostics, and CompilationPlan processing
+      - retain deterministic navigable import-edge locations in cycle reports
+      - keep logical ModuleIdentity stable across Variants while separating plan-specific ModuleInstance graphs and selected sources
+      - implement canonical ModuleSurface creation from public declarations and reject public signatures exposing inaccessible semantic types
+      - construct stable cross-module declaration identities from ModuleIdentity and owning declaration identity
+      - retain module graph facts for initialization consumers without treating dependency order as initialization order
+      - discover only the source graph reachable for the active Target and CompilationPlan
+      - add deterministic ModuleSurface fingerprints and compatible separate-compilation serialization
+      - invalidate importer resolution only as permitted by semantic surface changes, with conservative fallback when equivalence is unproven
+      - add dependency-driven SourceFile to ModuleInstance to ModuleSurface incremental invalidation
+      - share the complete canonical resolver between command-line compilation and LSP completion, navigation, rename, and diagnostics
+      - add structured diagnostics for inconsistent module declarations, unresolved imports, illegal internal access, duplicate imports, qualifier collisions, cycles, and inaccessible public signatures
+      - preserve original import spelling, resolved identity, local qualifier, source location, access cause, and CompilationPlan in diagnostic facts
+      - add multi-module integration tests for same-name modules, file-local bindings, roots, case sensitivity, internal access, graph shapes, Variants, surfaces, invalidation, and scheduling determinism
+    excluded:
+      - implicit import re-export
+      - selective and wildcard imports
+      - conditional-import source syntax
+      - source-level dotted module declarations
+      - module graph as an implicit initialization or deinitialization order
+      - ABI, mangling, or linker spelling defined by ModuleSurface
+    verification:
+      - command: go test ./internal/modules ./internal/parser -run 'Module|Import' -count=1
         result: passed
 
   - id: tooling.lsp-try-result-hover
@@ -210,8 +296,9 @@ integrations:
       spread, and receiver contracts. Owned by-value parameter bindings now
       have the required callee-local mutability and call ownership is committed
       only after every source argument has analyzed successfully; consuming
-      arrow parameters and native variadic packs remain major frontend and
-      lowering work.
+      arrow parameters now have a verified parser/Sema/tooling slice, while
+      native variadic packs and complete callable/backend ownership metadata
+      remain major work.
     rules:
       - rules/declarations/functions.md
       - rules/declarations/generics.md
@@ -230,12 +317,14 @@ integrations:
       - internal/sema/types.go
       - internal/sema/semantic_facts.go
       - internal/sema/parameter_usage.go
+      - internal/formatter/formatter.go
       - cmd/lsp/main.go
     tests:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
       - internal/sema/copy_move_test.go
       - internal/sema/semantic_facts_test.go
+      - internal/formatter/formatter_test.go
       - cmd/lsp/main_test.go
     implemented:
       - ordinary named fn declarations with mandatory explicit return types and bodies
@@ -251,14 +340,20 @@ integrations:
       - outer-call move transfer is applied only after all arguments analyze successfully, so a failed later argument does not consume an earlier direct binding
       - fixed-array argument spread with exactly-once source analysis, increasing-index expansion, and copyability checks
       - owned by-value parameters are mutable callee-local bindings while shared and mutable-reference parameter bindings remain non-rebindable
+      - forced-consuming `-> name: T` parameter parsing and AST/Sema retention for ordinary, generic, method, interface, initializer, and lambda parameter-list consumers
+      - forced consumption marks copyable as well as move-only caller Places unavailable only after successful outer-call argument analysis
+      - consuming ref and ref mut parameter rejection with dedicated diagnostics
+      - rejection of overload pairs differing only by ordinary versus consuming parameter mode
+      - interface requirements and concrete conformance preserve consuming parameter contracts independently of receiver capability
+      - formatter preservation and canonical spacing for consuming parameter arrows
+      - LSP function and initializer hover labels expose `-> name: T` from compiler-owned resolved signatures
+      - parameter-usage analysis records forced-consuming call demand
       - parameter mutability facts flow from Sema into LSP semantic-token readonly classification without LSP-owned language reconstruction
       - ordinary move-only by-value arguments consume the caller at successful call entry while reference parameters borrow
       - standalone discardable call results and compiler-known must-use result categories participate in Sema validation
     remaining:
       - remove legacy ref name colon Type parameter spelling after migrating remaining formatter, bootstrap, diagnostics, and examples, and normalize legacy and canonical reference modes to one AST and signature identity during the transition
-      - add lexer/parser/AST/Sema/formatter/LSP support for forced-consuming `-> name: T` parameters
-      - reject consuming parameters whose type is ref or ref mut and preserve the distinction through callable types and lowering
-      - reject overload pairs that differ only by ordinary versus forced-consuming mode
+      - preserve forced-consuming parameter modes in first-class callable types, Semantic IR parameter ownership, call ArgumentActions, Sec MLIR, and LLVM lowering
       - add native final `name: ...T` parameter syntax and reject multiple, non-final, and consuming variadic parameters
       - model compiler-known call-lifetime variadic packs with Len, indexing, iteration, re-spread, structural read-only behavior, no Ptr, no escape, and no element move-out
       - implement per-element copy or move transfer for direct variadic arguments and destruction of remaining owned pack elements
@@ -276,7 +371,82 @@ integrations:
       - runtime-generic callables or unresolved overload sets as function values
       - native variadic ABI equivalence with C or foreign varargs
     verification:
-      - command: go test ./internal/sema -run 'TestOwnedParametersAreMutableReferenceBindingsAreNot|TestFunctionDeclarations' -count=1
+      - command: go test ./internal/parser ./internal/sema ./internal/formatter ./cmd/lsp -run 'Consuming|FunctionHoverShowsConsuming|OwnedParameters' -count=1
+        result: passed
+
+  - id: frontend.lambda-functions-v2
+    area: frontend-analysis-and-lowering
+    status: partial
+    integrated: "2026-08-14"
+    summary: >-
+      Tracks revision-2.0 lambdas, first-class callable capabilities, explicit
+      capture modes, and closure ownership. Basic anonymous functions, function
+      values and calls, explicit plain captures, lambda scopes and returns, and
+      non-capturing backend lowering already exist. Owned by-value lambda
+      parameters are now mutable like ordinary function parameters. Capture
+      modes beyond plain value capture, callable-capability types and inference,
+      escaping environments, and complete closure lowering remain substantial
+      work.
+    rules:
+      - rules/declarations/lambda-functions.md
+      - rules/declarations/functions.md
+      - rules/declarations/generics.md
+      - rules/foundations/grammar.md
+      - rules/memory/ownership.md
+      - rules/memory/copy_move.md
+      - rules/memory/borrowing.txt
+      - rules/analysis/closure_analysis.md
+      - rules/analysis/escape_analysis.md
+      - rules/compiler/semantic_ir.txt
+    code:
+      - internal/ast/ast.go
+      - internal/parser/expression.go
+      - internal/sema/analyzer.go
+      - internal/sema/types.go
+      - internal/formatter/formatter.go
+      - cmd/lsp/main.go
+    tests:
+      - internal/parser/parser_test.go
+      - internal/sema/analyzer_test.go
+      - internal/formatter/formatter_test.go
+      - testdata/lambda_valid.sec
+      - testdata/lambda_invalid.sec
+    implemented:
+      - anonymous `fn` expressions with explicit typed parameters, explicit result type, and block body
+      - basic `fn(ParameterTypes) ReturnType` types, named function values, target-directed overload selection, and function-value calls
+      - explicit plain-name capture lists with duplicate, undefined-name, parameter-conflict, and implicit-capture diagnostics
+      - exactly-once plain capture analysis and compiler-owned capture facts consumed by escape analysis
+      - lambda-local scope, return validation, and control-flow boundary handling
+      - shared parser and AST retention of consuming lambda parameter syntax
+      - owned by-value lambda parameters are mutable local bindings while reference parameters remain non-rebindable
+      - selected rejection of local-reference escape through captured lambdas
+      - non-capturing lambda lowering through the maintained backends
+    remaining:
+      - add `fn`, `mut fn`, and `-> fn` callable capabilities to parser, AST, semantic types, formatter, and compiler-owned LSP facts
+      - infer callable capability from environment mutation and consumption and enforce capability compatibility
+      - preserve parameter ownership modes and native variadic shape in first-class callable type identity and calls
+      - parse, represent, format, and expose `capture(-> value)`, `capture(ref value)`, and `capture(ref mut value)`
+      - make owned capture bindings mutable and connect their mutation to `mut fn` inference
+      - force transfer for consuming captures even when their values are copyable
+      - establish shared and mutable capture borrows with canonical Place, provenance, lifetime, and conflict checking
+      - classify closure copyability and movability from capture modes, captured types, and callable capability
+      - consume `-> fn` closures only after successful calls and reject reuse
+      - allow owned closure environments to escape and allow borrowed environments only within valid borrow lifetimes
+      - select compiler-managed environment storage without implicit source-level allocation semantics
+      - implement native typed variadic lambdas after the functions-v2 variadic pack model exists
+      - add dedicated rejection and diagnostics for generic lambdas, attributes, arbitrary capture expressions, shorthand bodies, and direct recursive initializer binding
+      - represent function values, captures, capability, ownership, lifetime, escape class, and closure calls in Semantic IR
+      - lower capturing environments and indirect calls through Sec MLIR and LLVM without assuming foreign callback ABI compatibility
+      - complete the revision-2.0 parser, Sema, ownership, borrow, escape, formatter, LSP, analysis, Semantic IR, and backend test matrix
+    excluded:
+      - implicit local capture
+      - generic lambda templates and contextual omission of parameter or return types
+      - expression-body or arrow-only lambda shorthand
+      - arbitrary capture expressions and lambda attributes
+      - direct recursive self-binding syntax
+      - callable equality, ordering, or null callable values
+    verification:
+      - command: go test ./internal/parser ./internal/sema ./internal/formatter ./cmd/lsp -run 'Lambda|FunctionType|OwnedLambdaParameter' -count=1
         result: passed
 
   - id: tooling.formatter-delimiter-handoff
@@ -1130,7 +1300,7 @@ integrations:
       - rules/memory/copy_move.md
       - rules/memory/borrowing.txt
       - rules/collections/collections.md
-      - rules/declarations/functions_lambda.txt
+      - rules/declarations/lambda-functions.md
       - rules/platform/ffi.txt
       - rules/analysis/call_graph.md
     code:
@@ -1199,14 +1369,14 @@ integrations:
     integrated: "2026-08-08"
     summary: >-
       Existing parser and Sema support provides function types, named function
-      values, function-value calls, explicit immutable value-capture validation,
+      values, function-value calls, explicit owned value-capture validation,
       lambda body analysis, selected closure/reference escape rejection, and
       configurable terminating analysis budgets. The canonical closure/callable-
       flow service, target-set dataflow, closure summaries, recursive SCC fixed
       points, and open callable contracts remain to be implemented.
     rules:
       - rules/analysis/closure_analysis.md
-      - rules/declarations/functions_lambda.txt
+      - rules/declarations/lambda-functions.md
       - rules/analysis/call_graph.md
       - rules/analysis/escape_analysis.md
       - rules/memory/lifetime_analysis.txt
@@ -1284,7 +1454,7 @@ integrations:
       - explicit cache and summary invalidation when persistent closure-analysis services are introduced
       - Semantic IR representation of function-value creation/calls, closure creation, capture transfer, environment dependencies, and callable forwarding required by downstream analyses
       - closure/environment lowering that obeys storage.md and never repairs escape with implicit heap promotion or hidden allocation
-      - synchronization appendix for legacy implementation-oriented closure-storage wording in rules/declarations/functions_lambda.txt
+      - synchronize closure-analysis implementation with lambda v2 capture modes and callable-capability inference
       - dedicated positive, negative, interprocedural, CFA-precision, recursion, analysis-budget, LSP-integration, and termination regression tests
 
   - id: lowering.sec-mlir-schema-2

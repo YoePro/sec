@@ -1902,6 +1902,11 @@ A closure capturing a move-only value is move-only.
 
 A closure capturing `ref mut` is move-only.
 
+A consuming `-> fn` callable is move-only even when every stored capture would
+otherwise be copyable. Copying a mutable closure with copyable owned state must
+create independent environment state, never untracked aliases to one mutable
+environment.
+
 Moving the closure transfers captures.
 
 ---

@@ -1,4 +1,4 @@
-module test.events_valid
+module events_valid
 
 type ButtonPressData struct {
     buttonID: int,

@@ -1,4 +1,4 @@
-module testdata.attributes_valid
+module attributes_valid
 
 @noCopy
 type SessionID struct {

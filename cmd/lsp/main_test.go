@@ -341,7 +341,7 @@ import (
 
 fn main() int {
     fmt.Println("grouped")
-    return int(amd64.sysCall.Write)
+    return int(amd64.SysCall.Write)
 }
 `
 
@@ -719,6 +719,22 @@ fn Normalize(value: int, shared: ref int, exclusive: ref mut int) int {
 	assertSemanticTokenWithModifier(t, tokens, 2, 42, len("exclusive"), "variable", "readonly")
 	assertSemanticTokenWithoutModifier(t, tokens, 3, 4, len("value"), "variable", "readonly")
 	assertSemanticTokenWithoutModifier(t, tokens, 4, 11, len("value"), "variable", "readonly")
+}
+
+func TestFunctionHoverShowsConsumingParameter(t *testing.T) {
+	source := `module main
+
+fn Consume(-> value: int) void {}
+
+fn Use() void {
+    Consume(1)
+}
+`
+	offset := strings.LastIndex(source, "Consume") + 1
+	hover, ok := hoverForSource("", source, offsetPosition(source, offset))
+	if !ok || !strings.Contains(hover.Contents.Value, "fn Consume(-> value: int) void") {
+		t.Fatalf("consuming function hover = %+v, %v", hover, ok)
+	}
 }
 
 func TestSemanticTokensClassifyContextualSet(t *testing.T) {

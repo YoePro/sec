@@ -1,4 +1,4 @@
-module platform.linux.arm64
+module arm64
 
 enum _sysCall int {
     // --- File I/O & Descriptor Management ---

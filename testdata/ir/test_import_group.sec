@@ -7,5 +7,5 @@ import (
 
 fn main() int {
     fmt.Println("grouped imports")
-    return int(sys.sysCall.Write) - 1
+    return int(sys.SysCall.Write) - 1
 }

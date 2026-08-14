@@ -138,6 +138,11 @@ A source module is not a project.
 
 A source module does not require its own manifest entry unless it is also the entry module of an explicitly buildable target.
 
+Canonical `ModuleName`, `ModuleIdentity`, `ModuleInstance`, import binding,
+module graph, cycle, and `ModuleSurface` semantics are owned by
+`rules/projects/modules.md`. This project rulebook supplies project roots,
+Targets, Variants, and CompilationPlans consumed by that model.
+
 =============================================================================================================================================================================================
 Single-manifest rule
 ====================
@@ -275,6 +280,9 @@ The complete module identity is derived from the canonical import path and proje
 
 The compiler must not identify modules only by their short source-level name.
 
+The canonical identity and source-membership rules are defined in
+`rules/projects/modules.md`; this section defines their project-layout inputs.
+
 =============================================================================================================================================================================================
 Import paths and module qualifiers
 ==================================
@@ -309,6 +317,9 @@ internal.storage.Open()
 ```
 
 If two imported modules have the same source module name, an explicit import alias is required.
+
+Aliases are local to the source file containing the import. They do not alter
+module or declaration identity and do not become available in sibling files.
 
 Example:
 

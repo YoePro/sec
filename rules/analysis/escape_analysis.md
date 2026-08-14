@@ -1194,6 +1194,10 @@ Escape analysis must remain sound before that additional precision exists.
 A capturing callable establishes explicit dependencies from its environment to
 captured entities.
 
+Escape analysis distinguishes at least non-capturing callables, non-escaping
+owned closures, escaping owned closures, shared-borrow closures,
+mutable-borrow closures, and consuming closures.
+
 For example, conceptually:
 
 ```text
@@ -1211,6 +1215,13 @@ transitively.
 
 Escape analysis owns the movement/retention facts once those dependencies are
 known.
+
+Owned closures may escape when their environment receives sufficient lifetime.
+Borrowed closures may escape only while every captured borrow remains valid.
+Environment storage is compiler-selected and may be eliminated, lexical,
+regional, static, or dynamically owned; escaping does not itself promise heap
+allocation. Any selected allocation or resource effect remains visible to the
+relevant analyses.
 
 ---
 

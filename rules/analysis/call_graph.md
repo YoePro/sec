@@ -3130,7 +3130,7 @@ structured_concurrency.md
 concurrency.md
 concurrency_memory_model.txt
 functions.md
-functions_lambda.txt
+declarations/lambda-functions.md
 declarations/generics.md
 declarations/interfaces.md
 defer.txt

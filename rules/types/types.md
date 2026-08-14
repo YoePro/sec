@@ -1799,7 +1799,7 @@ borrowing.txt
 lifetime_analysis.txt
 raw_pointers.txt
 functions.md
-functions_lambda.txt
+declarations/lambda-functions.md
 declarations/generics.md
 declarations/interfaces.md
 errorhandling.txt

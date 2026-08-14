@@ -1148,11 +1148,14 @@ Array literals and empty list literal syntax are defined separately.
 
 ## Complete module grammar
 
-Basic module and import syntax is implemented.
+Basic module and import syntax is implemented. The canonical module model is
+defined by `rules/projects/modules.md`; source module declarations contain one
+identifier, imports contain canonical logical paths, and aliases are
+source-file-local bindings.
 
 Still not implemented as a closed language area:
 
-- import cycles;
+- complete module resolution and import-cycle enforcement;
 - re-export syntax;
 - selective imports;
 - wildcard imports;
@@ -1162,7 +1165,8 @@ Still not implemented as a closed language area:
 - conditional imports;
 - target-conditioned declaration blocks.
 
-`modules.md` and `initialization.md` remain planned.
+Module-graph, resolution, and cycle semantics are specified in
+`rules/projects/modules.md`. Initialization syntax remains planned.
 
 ---
 
@@ -1271,10 +1275,7 @@ Only `target` is currently recognized after `#`.
 
 ```text
 ModuleDeclaration
-    ::= "module" ModulePath
-
-ModulePath
-    ::= Identifier { "." Identifier }
+    ::= "module" Identifier
 ```
 
 Example:
@@ -1283,16 +1284,13 @@ Example:
 module parser
 ```
 
-Example:
-
-```sec
-module platform.linux.amd64
-```
-
-A module name is a semantic namespace.
+Dotted source module declarations are invalid. Directory hierarchy,
+`internal`, and compiler-reserved roots belong to canonical import paths and
+never become part of the source `ModuleName`.
 
 The complete relationship between source path, `internal` directories, module
-identity, and imports belongs to `modules.md` and `projects.txt`.
+identity, and imports belongs to `rules/projects/modules.md` and
+`rules/projects/projects.txt`.
 
 ---
 
@@ -1328,9 +1326,12 @@ import (
 )
 ```
 
-The string is an import path.
+The string is a canonical logical import path. It uses `/`, is case-sensitive,
+is not an absolute host path, and contains neither `.` nor `..` traversal
+components.
 
-An optional identifier is a local import alias.
+An optional identifier is a source-file-local import alias. Imports do not
+inject unqualified names and are not implicitly re-exported.
 
 Selective and wildcard imports are not part of Sec 0.1.
 
@@ -3382,7 +3383,7 @@ It is not a struct literal.
 
 ```text
 LambdaExpression
-    ::= "fn" ParameterList TypeReference Block
+    ::= CaptureClause? "fn" ParameterList TypeReference Block
 ```
 
 Example:
@@ -3397,12 +3398,17 @@ The return type is required.
 
 ---
 
-# Capture lambda expression
+# Capture clause
 
 ```text
-CaptureLambdaExpression
-    ::= "capture" "(" Identifier { "," Identifier } [ "," ] ")"
-        LambdaExpression
+CaptureClause
+    ::= "capture" "(" [ CaptureEntry { "," CaptureEntry } [ "," ] ] ")"
+
+CaptureEntry
+    ::= Identifier
+      | "->" Identifier
+      | "ref" Identifier
+      | "ref" "mut" Identifier
 ```
 
 Example:
@@ -3413,9 +3419,9 @@ let closure := capture(value) fn(input: int) int {
 }
 ```
 
-The parser currently records names.
-
-Complete capture mode and escape semantics remain partial.
+The lambda introducer itself is always plain `fn`. Generic parameter lists,
+`mut fn`, and `-> fn` are not lambda-expression introducers. `mut fn` and
+`-> fn` are callable-type capability syntax.
 
 ---
 
@@ -3950,15 +3956,26 @@ A bare safe slice is represented through reference syntax.
 
 ```text
 FunctionType
-    ::= "fn"
-        "(" [ TypeReference { "," TypeReference } [ "," ] ] ")"
+    ::= [ CallableCapability ] "fn"
+        "(" [ CallableParameterType { "," CallableParameterType } [ "," ] ] ")"
         TypeReference
+
+CallableCapability
+    ::= "mut"
+      | "->"
+
+CallableParameterType
+    ::= TypeReference
+      | "->" TypeReference
+      | "..." TypeReference
 ```
 
 Example:
 
 ```sec
 fn(int) bool
+mut fn() int
+-> fn(-> Resource) Handle
 ```
 
 Parameter names do not appear in function type references.
@@ -4643,7 +4660,7 @@ enums.md
 unions.md
 declarations/registers.md
 functions.md
-functions_lambda.txt
+declarations/lambda-functions.md
 declarations/generics.md
 declarations/interfaces.md
 impl.md

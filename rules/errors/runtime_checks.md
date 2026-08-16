@@ -1233,7 +1233,7 @@ shaped-types.md
 references.txt
 ownership.md
 copy_move.md
-defer.txt
+defer.md
 discard.md
 destruction.txt
 allocation.txt

@@ -1,5 +1,5 @@
 schema_version: 1
-updated: "2026-08-14"
+updated: "2026-08-16"
 purpose: >-
   Canonical implementation ledger for compiler and tooling work. Normative
   language behavior remains in rules/, while implementation status is migrated
@@ -11,6 +11,628 @@ status_values:
   planned: The scope is documented but no implementation slice is integrated.
 
 integrations:
+  - id: frontend.if-statements-v2
+    area: frontend-control-flow
+    status: partial
+    integrated: "2026-08-16"
+    document_revision: "2.0"
+    repository_baseline: "0f92cf4"
+    replaces: rules/control-flow/flowcontrol_if.txt
+    summary: >-
+      Tracks revision-2.0 if, else-if, and else semantics. The established
+      parser and Sema cover mandatory branch blocks, boolean-only conditions,
+      ordinary logical/comparison/membership expressions, source-ordered
+      branch evaluation, lexical branch scopes, definite-assignment merging,
+      terminating branches, comparison-chain rejection, and proven
+      unreachable statements. State-test/FFI boundaries and the complete
+      revision-2.0 regression matrix still require synchronization.
+    rules:
+      - rules/control-flow/flowcontrol_if.md
+      - rules/foundations/grammar.md
+      - rules/tooling/formatter.md
+      - rules/tooling/diagnostics.txt
+      - rules/errors/errorhandling.txt
+      - rules/platform/ffi.md
+    code:
+      - internal/ast/ast.go
+      - internal/parser/parser.go
+      - internal/sema/analyzer.go
+      - internal/formatter/formatter.go
+      - internal/codegen/mlir/generator.go
+      - internal/codegen/llvm/statements.go
+    tests:
+      - internal/parser/parser_test.go
+      - internal/sema/analyzer_test.go
+      - internal/formatter/formatter_test.go
+      - internal/codegen/mlir/generator_test.go
+      - testdata/if_invalid.sec
+      - testdata/basic_types_valid.sec
+    implemented:
+      - if, else-if, and else syntax with mandatory braces
+      - bool-only conditions without implicit truthiness
+      - logical !, &&, and || expressions with left-to-right short-circuit lowering
+      - ordinary comparison, equality, and membership expressions in conditions
+      - try in a condition when the successful result type is bool
+      - source-ordered lazy if-chain evaluation
+      - independent lexical branch scopes
+      - definite-assignment merging over continuing paths
+      - assignment and declaration headers excluded from condition expression syntax
+      - payload and structural pattern binding excluded from if conditions
+      - comparison chaining rejected with a dedicated diagnostic
+      - branch continuation and termination reflected in flow-state merging
+      - literal-unreachable branches routed through the canonical unreachable-code error policy
+      - canonical Markdown metadata and current Len and IsEmpty property spellings in the normative rulebook
+    remaining:
+      - distinguish permitted non-binding boolean is state tests from forbidden payload binding and destructuring in conditions
+      - permit raw is null only under the canonical unsafe foreign raw-pointer rules without making if an unsafe context
+      - audit compiler examples and regression sources for stale Length, IsEmpty(), and Option payload-after-state-test assumptions
+      - complete focused tests for short-circuit side effects and lazy source-order evaluation across else-if chains
+      - add explicit try Result[bool, E] acceptance and non-bool successful-result rejection coverage
+      - complete the revision-2.0 parser, Sema, flow-analysis, formatter, diagnostics, LSP, Semantic IR, and backend regression matrix
+    required_tests:
+      - bool condition accepted
+      - numeric, string, and collection truthiness rejected
+      - "&& short-circuits its right operand when the left operand is false"
+      - "|| short-circuits its right operand when the left operand is true"
+      - else-if conditions are evaluated lazily in source order
+      - try Result[bool, E] condition accepted
+      - try Result[non-bool, E] condition rejected
+      - assignment condition rejected
+      - declaration header rejected
+      - non-binding is state test accepted when its owning rule permits it
+      - payload-binding is condition rejected
+      - raw is null follows unsafe FFI rules
+      - comparison chaining rejected
+      - definite assignment succeeds when all continuing paths assign
+      - definite assignment fails when a continuing path does not assign
+      - proven unreachable statements follow the canonical unreachable-code diagnostic policy
+    verification:
+      - command: go test ./internal/parser -run 'If|ComparisonChaining' -count=1
+        result: passed
+      - command: go test ./internal/sema -run 'IfConditionMustBeBool|IfBranchesCanSatisfyFunctionReturn|ComparisonChainingIsRejected|IfBranch|DefiniteAssignment' -count=1
+        result: passed
+      - command: go test ./internal/formatter -run If -count=1
+        result: passed with no matching focused tests; formatter coverage remains in the required matrix
+
+  - id: frontend.while-statements-v2
+    area: frontend-control-flow
+    status: partial
+    integrated: "2026-08-16"
+    document_revision: "2.0"
+    repository_baseline: "56be75d"
+    replaces: rules/control-flow/flowcontrol_while.txt
+    summary: >-
+      Tracks revision-2.0 condition-controlled while loops. The established
+      frontend covers while syntax, boolean-only conditions, lexical body
+      scope, nearest-loop break and continue tracking, zero-iteration flow,
+      non-continuing while-true loops, reachable-break continuations, and
+      backend condition/body/end control flow. State-test integration,
+      switch-nested loop targets, fully general post-loop assignment proof,
+      and the complete revision-2.0 diagnostic matrix remain incomplete.
+    rules:
+      - rules/control-flow/flowcontrol_while.md
+      - rules/control-flow/flowcontrol_if.md
+      - rules/control-flow/flowcontrol_switch.md
+      - rules/control-flow/flowcontrol_for.md
+      - rules/foundations/grammar.md
+      - rules/tooling/formatter.md
+      - rules/tooling/diagnostics.txt
+      - rules/errors/errorhandling.txt
+    code:
+      - internal/ast/ast.go
+      - internal/parser/parser.go
+      - internal/sema/analyzer.go
+      - internal/formatter/formatter.go
+      - internal/codegen/mlir/generator.go
+      - internal/codegen/llvm/statements.go
+    tests:
+      - internal/parser/parser_test.go
+      - internal/sema/analyzer_test.go
+      - internal/sema/copy_move_test.go
+      - internal/sema/destruction_test.go
+      - internal/codegen/mlir/generator_test.go
+      - internal/codegen/llvm/generator_test.go
+      - testdata/while_valid.sec
+      - testdata/while_invalid.sec
+    implemented:
+      - lexer recognition and AST representation of while statements
+      - while condition and mandatory block parsing with missing-condition recovery
+      - bool-only conditions without implicit truthiness
+      - ordinary logical, comparison, membership, and try expressions in conditions
+      - lexical loop-body scope
+      - break and continue validation and nearest active loop tracking
+      - zero-iteration continuation path for normal while loops
+      - while true without a reachable break treated as non-continuing
+      - reachable while-true break paths included in continuation and definite-assignment state
+      - unreachable statements after break, continue, and return routed through the canonical error policy
+      - LLVM and MLIR condition, body, backedge, continue, break, and exit lowering
+      - canonical Markdown metadata with implementation governance kept in this ledger
+    remaining:
+      - add dedicated parser diagnostics and tests for do-while, while-else, labeled loop control, loop values, declarations in headers, and pattern-binding conditions
+      - permit non-binding boolean is state tests from owning rulebooks while rejecting payload and structural binding in conditions
+      - diagnose bodies and statements proven unreachable by constant conditions and non-continuing flow through the canonical unreachable-code policy
+      - generalize post-loop definite-assignment merging to the all-reachable-continuing-path rule instead of relying on while-true break special cases
+      - verify that break and continue inside a switch nested in while target the surrounding loop in Sema, CFG, Semantic IR, and both backends
+      - complete focused short-circuit, condition-frequency, try-condition, nesting, formatter, diagnostics, LSP, Semantic IR, and backend coverage
+    excluded:
+      - do-while
+      - while-else
+      - labeled break or continue
+      - while expression values
+      - pattern-binding while conditions
+      - declarations in while headers
+    required_tests:
+      - bool while condition accepted
+      - truthiness rejected
+      - "&& short-circuit preserved"
+      - "|| short-circuit preserved"
+      - condition evaluated once per attempted iteration
+      - try bool condition accepted
+      - try non-bool condition rejected
+      - non-binding is state test accepted when its owning rule permits it
+      - pattern-binding condition rejected
+      - assignment condition rejected
+      - declaration header rejected
+      - continue targets next condition evaluation
+      - break exits nearest loop
+      - nested break does not exit outer loop
+      - break inside switch nested in while exits the while
+      - continue inside switch nested in while continues the while
+      - while true without reachable exit is non-continuing
+      - reachable break creates continuation path
+      - normal while contributes a zero-iteration path
+      - post-loop definite assignment requires proof on every continuing path
+      - do-while rejected
+      - while-else rejected
+      - labeled loop control rejected
+    verification:
+      - command: go test ./internal/parser -run While -count=1
+        result: passed
+      - command: go test ./internal/sema -run 'While|BreakAndContinue|ComparisonChaining' -count=1
+        result: passed
+      - command: go test ./internal/codegen/mlir -run While -count=1
+        result: passed
+      - command: go test ./internal/codegen/llvm -run While -count=1
+        result: passed
+      - command: go test ./internal/formatter -run While -count=1
+        result: passed with no matching focused tests; formatter coverage remains in the required matrix
+
+  - id: frontend.switch-statements-v2
+    area: frontend-control-flow
+    status: partial
+    integrated: "2026-08-16"
+    document_revision: "2.0"
+    repository_baseline: "56be75d"
+    replaces: rules/control-flow/flowcontrol_switch.txt
+    summary: >-
+      Tracks revision-2.0 subject and subjectless switch statements. Parser
+      and Sema support ordered value, range, relational, and comma-separated
+      alternatives, default and explicit fallthrough validation, independent
+      case scopes, continuing-path assignment merges, termination analysis,
+      and substantial compile-time duplicate and coverage diagnostics. LLVM
+      covers the currently supported expression families, while MLIR covers
+      integer and bool subject switches; broader lowering, cleanup edges, and
+      the complete statement-only and loop-control boundary matrix remain.
+    rules:
+      - rules/control-flow/flowcontrol_switch.md
+      - rules/control-flow/flowcontrol_if.md
+      - rules/control-flow/flowcontrol_while.md
+      - rules/control-flow/flowcontrol_match.txt
+      - rules/foundations/grammar.md
+      - rules/tooling/formatter.md
+      - rules/tooling/diagnostics.txt
+      - rules/compiler/semantic_ir.txt
+    code:
+      - internal/ast/ast.go
+      - internal/parser/parser.go
+      - internal/sema/analyzer.go
+      - internal/formatter/formatter.go
+      - internal/codegen/mlir/generator.go
+      - internal/codegen/llvm/statements.go
+    tests:
+      - internal/parser/parser_test.go
+      - internal/sema/analyzer_test.go
+      - internal/sema/destruction_test.go
+      - internal/codegen/mlir/generator_test.go
+      - internal/codegen/llvm/generator_test.go
+      - testdata/switch_valid.sec
+      - testdata/switch_invalid.sec
+    implemented:
+      - subject and subjectless switch parsing with AST source-order retention
+      - value, range, relational, and comma-separated case alternatives
+      - unique final default validation
+      - explicit fallthrough syntax, direct-case placement, final-statement, and successor validation
+      - subject and case compatibility plus bool-only subjectless case checking
+      - independent case scopes and definite-assignment merging over continuing paths
+      - switch termination analysis including explicit fallthrough chains
+      - exactly-once subject evaluation and ordered lazy case evaluation
+      - compile-time duplicate integer, bool, and direct string-literal case diagnostics
+      - compile-time integer range overlap and value-covered-by-range diagnostics
+      - basic relational reachability diagnostics with partial overlap retained
+      - enum non-exhaustiveness warning without default and bool-domain coverage
+      - unreachable statements inside case bodies routed through the canonical error policy
+      - LLVM lowering for the currently supported subject, subjectless, range, relational, and fallthrough subset
+      - MLIR lowering for integer and bool subject switches with value alternatives
+      - canonical Markdown metadata with implementation governance kept in this ledger
+    remaining:
+      - add focused Sema and lowering tests proving switch creates no break or continue target and nested switch control resolves only to an enclosing loop
+      - add dedicated parser and Sema diagnostics for switch value use, case where guards, and structural or payload-binding patterns
+      - route every statically covered case and item through the canonical unreachable-code policy with useful earlier-case provenance
+      - preserve independent case scopes and emit correct ownership, destruction, cleanup, and control-flow edges across fallthrough
+      - lower subjectless switch through MLIR
+      - lower range and relational switch cases through MLIR
+      - lower explicit fallthrough through MLIR
+      - lower string and other currently unsupported subject types through MLIR
+      - extend compile-time coverage to computed string constants beyond direct literals
+      - implement full unit-aware and named-semantic-type-aware overlap reasoning
+      - extend relational coverage reasoning for dynamic expressions where reachability is statically provable
+      - complete code generation for every Sema-supported switch subject and case family
+      - complete the revision-2.0 parser, Sema, CFG, formatter, diagnostics, LSP, Semantic IR, ownership, and backend regression matrix
+    required_tests:
+      - subject expression evaluated exactly once
+      - cases evaluated in source order
+      - first matching case wins
+      - later dynamic case expressions are not evaluated after a match
+      - comma-separated value alternatives are evaluated left to right
+      - subjectless alternatives use left-to-right short circuit
+      - subjectless non-bool case rejected
+      - duplicate compile-time case rejected
+      - overlapping compile-time ranges rejected
+      - later value covered by previous range rejected
+      - partially overlapping relational cases remain valid when reachable values remain
+      - fully covered relational case diagnosed unreachable
+      - default unique and final
+      - normal case completion does not fall through
+      - fallthrough enters next body without evaluating next case tests
+      - fallthrough final-statement requirement
+      - fallthrough in final case rejected
+      - fallthrough in default rejected
+      - nested fallthrough targeting outer switch rejected
+      - empty case does not fall through
+      - case scopes remain independent across fallthrough
+      - pattern binding in switch rejected
+      - switch case guard rejected
+      - switch expression or value use rejected
+      - break and continue are not switch targets
+      - definite assignment includes unmatched path when coverage is incomplete
+      - terminating switch recognized when every reachable path terminates
+    verification:
+      - command: go test ./internal/parser -run Switch -count=1
+        result: passed
+      - command: go test ./internal/sema -run Switch -count=1
+        result: passed
+      - command: go test ./internal/codegen/mlir -run Switch -count=1
+        result: passed
+      - command: go test ./internal/codegen/llvm -run Switch -count=1
+        result: passed
+      - command: go test ./internal/formatter -run Switch -count=1
+        result: passed with no matching focused tests; formatter coverage remains in the required matrix
+
+  - id: frontend.for-loops-v2
+    area: frontend-control-flow-ownership-and-lowering
+    status: partial
+    integrated: "2026-08-16"
+    document_revision: "2.0"
+    repository_baseline: "56be75d"
+    replaces: rules/control-flow/flowcontrol_for.txt
+    summary: >-
+      Tracks revision-2.0 infinite, finite-range, and compiler-known iterable
+      loops. The established parser and Sema cover plain/discard bindings,
+      sequential index/value and map key/value arity, iterable inference,
+      finite range validation, immutable lexical bindings, loop-control flow,
+      and zero/non-continuing path analysis. LLVM lowers infinite and integer
+      range loops; MLIR additionally lowers fixed arrays and explicit floating
+      ranges. Explicit ref/ref-mut binding modes, copy-only value iteration,
+      canonical ascending default steps, structural iteration borrows, and
+      broad collection lowering remain incomplete.
+    rules:
+      - rules/control-flow/flowcontrol_for.md
+      - rules/collections/collections.md
+      - rules/collections/shaped-types.md
+      - rules/memory/copy_move.md
+      - rules/memory/ownership.md
+      - rules/memory/borrowing.txt
+      - rules/memory/destruction.txt
+      - rules/control-flow/defer.md
+      - rules/foundations/grammar.md
+      - rules/compiler/semantic_ir.txt
+      - rules/tooling/formatter.md
+    code:
+      - internal/ast/ast.go
+      - internal/parser/parser.go
+      - internal/sema/analyzer.go
+      - internal/sema/place.go
+      - internal/formatter/formatter.go
+      - internal/codegen/mlir/generator.go
+      - internal/codegen/llvm/statements.go
+    tests:
+      - internal/parser/parser_test.go
+      - internal/sema/analyzer_test.go
+      - internal/sema/copy_move_test.go
+      - internal/sema/destruction_test.go
+      - internal/codegen/mlir/generator_test.go
+      - internal/codegen/llvm/generator_test.go
+      - testdata/for_valid.sec
+      - testdata/for_invalid.sec
+      - testdata/ir/test_arrays_basic.sec
+    implemented:
+      - infinite for block syntax
+      - iterable for binding in expression block syntax
+      - plain-name and discard loop bindings
+      - sequential one-binding value and two-binding index/value iteration
+      - map key/value, set value, and compiler-known collection-family arity inference
+      - explicit range step parsing
+      - mandatory braces and dedicated condition-only and C-style for rejection
+      - break and continue loop-context validation
+      - immutable lexical loop bindings with no-shadowing checks
+      - exactly-once iterable, range-bound, and explicit-step evaluation model
+      - finite inclusive and exclusive range forms with direct open-range rejection
+      - bound and explicit-step type compatibility checking
+      - compile-time zero-step and known wrong-direction rejection for established numeric cases
+      - string iteration inferred as rune
+      - fixed array, reference-slice, list, set, map, vector, and legacy collection-family inference
+      - unspecified ordinary map and set iteration order
+      - finite-loop zero-iteration preservation and infinite-loop non-continuation without reachable break
+      - LLVM lowering for infinite loops, integer ranges, explicit integer steps, break, and continue
+      - MLIR lowering for infinite loops, integer and explicit floating ranges, break, and continue
+      - MLIR fixed-array iteration with one value or two index/value bindings and discard support without runtime allocation
+      - canonical grammar, collections, and copy/move documentation synchronized to explicit value, ref, ref-mut, and discard semantics
+    remaining:
+      - add binding-mode representation to AST and parse, format, and expose canonical ref name and ref mut name loop bindings through compiler-owned LSP facts
+      - require plain by-value iteration to copy only implicitly copyable yielded types without silently moving or borrowing move-only elements
+      - implement shared element-reference iteration only for stable addressable iterable positions
+      - implement mutable element-reference iteration with mutable authority and exclusive borrow tracking
+      - keep a sequential two-binding index as ordinary int or discard and apply reference modes only to its element binding
+      - enforce exact map key/value reference modes, including shared keys and values, mutable values with authority, and rejection of mutable key references
+      - permit plain-copy or shared-reference set iteration and reject mutable set element references
+      - ensure discard bindings introduce no transfer, copy, move, or copyability requirement for the discarded yielded component
+      - reject consuming for-arrow and move-source syntax without adding a consuming iteration mode in Sec 0.1
+      - make omitted integer-like range step unconditionally ascending +1 so start greater than end yields zero iterations in Sema, Semantic IR, MLIR, and LLVM
+      - require explicit compatible negative steps for descending iteration without synthesizing signed conversion for unsigned ranges
+      - require explicit steps for float and decimal range iteration
+      - complete float and decimal range lowering with resolved-type arithmetic and stable source-visible endpoint behavior
+      - lower dynamic arrays, lists, slices, strings, maps, sets, and vectors through Semantic IR and maintained backends
+      - reject structural operations that invalidate active iteration state or element references while preserving legal mutation through iterator-provided ref mut
+      - keep user-defined naming-based and interface-based iterable discovery excluded from Sec 0.1 with dedicated diagnostics and tests
+      - represent yielded component modes, iteration state, source authority, structural stability, and cleanup edges explicitly in Semantic IR
+      - complete the revision-2.0 parser, Sema, ownership, borrowing, flow, cleanup, formatter, diagnostics, LSP, Semantic IR, and backend regression matrix
+    excluded:
+      - condition-only and C-style for loops
+      - consuming for bindings or move-source iteration in Sec 0.1
+      - user-defined iterable protocols or discovery by member names
+      - reference binding to synthesized range values or decoded string runes
+      - mutable map-key or set-element iteration
+      - single-binding map iteration
+    required_tests:
+      - plain iteration over copyable element copies the element
+      - plain iteration over move-only element is rejected
+      - plain iteration is never silently converted to shared borrow
+      - plain iteration is never silently converted to move
+      - shared for ref item works for move-only elements
+      - mutable for ref mut item requires mutable source authority
+      - mutation through ref mut element binding is accepted when structurally safe
+      - structural mutation of iterated dynamic collection is rejected
+      - sequential for index, ref item is accepted
+      - sequential for index, ref mut item is accepted with authority
+      - sequential ref index, item is rejected
+      - map for ref key, ref value is accepted
+      - map for ref key, ref mut value is accepted with mutable authority
+      - map for ref mut key, value is rejected
+      - single-binding map iteration is rejected
+      - set shared-ref iteration is accepted
+      - set mutable-ref iteration is rejected
+      - discard binding does not require copyability of discarded component
+      - for-arrow consuming binding is rejected
+      - for item in move items is rejected
+      - integer range without step progresses upward by +1
+      - 10 less-than range 5 without step performs zero iterations
+      - descending integer range with explicit negative step is accepted
+      - statically known wrong-sign explicit step is rejected
+      - zero explicit step is rejected
+      - float range without explicit step is rejected
+      - decimal range without explicit step is rejected
+      - float range with explicit compatible step is accepted by Sema
+      - decimal range with explicit compatible step is accepted by Sema
+      - range bounds and step are each evaluated exactly once
+      - open-ended range is rejected as direct for iterable
+      - string iteration yields rune
+      - string ref and ref-mut rune binding is rejected
+      - finite loop preserves zero-iteration path in definite-assignment analysis
+      - infinite for block without reachable break is non-continuing
+      - reachable break restores a continuing post-loop path
+      - break and continue execute required cleanup edges
+    verification:
+      - command: go test ./internal/parser -run For -count=1
+        result: passed
+      - command: go test ./internal/sema -run '^(TestFor|TestInfiniteFor)' -count=1
+        result: passed
+      - command: go test ./internal/codegen/mlir -run 'For|Array' -count=1
+        result: passed
+      - command: go test ./internal/codegen/llvm -run For -count=1
+        result: passed
+      - command: go test ./internal/formatter -run For -count=1
+        result: passed
+
+  - id: frontend.defer-v2
+    area: frontend-control-flow-ownership-and-lowering
+    status: partial
+    integrated: "2026-08-16"
+    document_revision: "2.0"
+    repository_baseline: "56be75d"
+    replaces: rules/control-flow/defer.txt
+    summary: >-
+      Tracks revision-2.0 invocation-scoped deferred cleanup. The parser and
+      Sema support block-form defer, delayed outer-binding uses, later move and
+      discard conflicts, loop-registration diagnostics, forbidden loop/switch
+      transfer, nested-defer rejection, and local handling of fallible cleanup.
+      MLIR provides a usable static defer stack with reached-registration flags
+      and reverse defer order. Unified ordering with automatic destruction,
+      exact lifetime shortening, all callable-context boundaries, dynamic loop
+      registration, Semantic IR cleanup regions, and complete backend lowering
+      remain incomplete.
+    rules:
+      - rules/control-flow/defer.md
+      - rules/memory/destruction.txt
+      - rules/memory/ownership.md
+      - rules/memory/borrowing.txt
+      - rules/memory/lifetime_analysis.txt
+      - rules/memory/copy_move.md
+      - rules/errors/errorhandling.txt
+      - rules/errors/panic.md
+      - rules/control-flow/discard.md
+      - rules/compiler/semantic_ir.txt
+    code:
+      - internal/ast/ast.go
+      - internal/parser/parser.go
+      - internal/sema/analyzer.go
+      - internal/sema/semantic_facts.go
+      - internal/formatter/formatter.go
+      - internal/codegen/mlir/generator.go
+      - internal/codegen/llvm/statements.go
+    tests:
+      - internal/parser/parser_test.go
+      - internal/sema/analyzer_test.go
+      - internal/sema/copy_move_test.go
+      - internal/sema/destruction_test.go
+      - internal/codegen/mlir/generator_test.go
+      - testdata/defer_valid.sec
+      - testdata/defer_invalid.sec
+    implemented:
+      - block-form defer syntax and dedicated AST statement
+      - registration represented when execution reaches the defer statement
+      - invocation-scoped delayed-use analysis rather than lexical-block execution
+      - multiple statically represented deferred blocks emitted in reverse registration order by MLIR
+      - loop defer warning records that every reached execution registers cleanup for invocation exit
+      - deferred reads analyzed against ordinary values at cleanup time
+      - pending deferred uses reject conflicting later move and discard operations
+      - definite-assignment and lexical name resolution applied at the registration site
+      - break, continue, and fallthrough rejected inside deferred cleanup
+      - nested defer rejected
+      - bodyless try propagation rejected and unhandled fallible cleanup results diagnosed
+      - return expressions established before statically supported MLIR defer cleanup paths
+      - canonical documentation now defines one common LIFO order for deferred cleanup and automatic destruction
+    remaining:
+      - remove the legacy defer return shorthand and reject every non-block defer form
+      - reject return inside a deferred block as an error instead of retaining the legacy superfluous-defer-return warning
+      - explicitly permit defer in ordinary and static functions and methods, lambdas, property accessors, and init while rejecting it in free
+      - model defer registration and automatic destruction in one source-ordered cleanup stack across ownership and destruction analysis
+      - extend only defer-referenced lifetimes while preserving earliest legal destruction for unrelated locals
+      - preserve unified cleanup ordering on every normal return, propagated error, conditional branch, loop, and fallthrough edge
+      - represent registration points, invocation ownership, dependencies, cleanup ordering, and source provenance explicitly in Semantic IR
+      - replace LLVM's immediate defer-body placeholder with real invocation-exit cleanup lowering
+      - lower per-execution defer registration inside loops and every supported nested control-flow form through MLIR
+      - ensure a deferred operation cannot alter an already-established return or propagated-error result
+      - complete local fallible-cleanup handling without imposing any defer-specific discard rule beyond canonical must-use policy
+      - define and lower defer behavior only on panic or abnormal paths where the canonical panic/unwind policy requires cleanup
+      - complete the revision-2.0 parser, Sema, ownership, borrow, destruction, formatter, diagnostics, LSP, Semantic IR, and backend regression matrix
+    required_tests:
+      - defer runs on ordinary return
+      - multiple defers run in reverse registration order
+      - defer inside false branch is not registered
+      - defer inside loop registers once per reached iteration
+      - defer is invocation-scoped rather than lexical-block-scoped
+      - defer reads mutated value at execution time
+      - create first, defer, create second cleans up second then defer then first
+      - defer extends referenced local lifetime
+      - unrelated block local still destroys at earliest legal lifetime end
+      - move conflicting with pending deferred use rejected
+      - defer in lambda belongs to lambda invocation
+      - defer in init accepted
+      - defer in property accessor accepted
+      - defer in free rejected
+      - return inside defer rejected
+      - break inside defer rejected
+      - continue inside defer rejected
+      - fallthrough inside defer rejected
+      - nested defer rejected
+      - return expression value is established before defer executes
+      - fallible operation in defer cannot propagate with try outside defer
+      - defer does not impose a mandatory discard keyword
+      - uninitialized value referenced by registered defer rejected
+    verification:
+      - command: go test ./internal/parser -run Defer -count=1
+        result: passed
+      - command: go test ./internal/sema -run Defer -count=1
+        result: passed
+      - command: go test ./internal/codegen/mlir -run Defer -count=1
+        result: passed
+      - command: go test ./internal/formatter -run Defer -count=1
+        result: passed with no matching focused tests; formatter coverage remains in the required matrix
+
+  - id: lowering.abi-model
+    area: platform-and-lowering
+    status: planned
+    integrated: "2026-08-16"
+    document_revision: "1"
+    summary: >-
+      Adds the canonical Sec ABI model selected by each CompilationPlan,
+      including Sec, C, and system calling-convention resolution,
+      target-neutral parameter and return classification,
+      aggregate/direct/indirect transport, MLIR-stage CallABIPlan construction
+      and verification, native-versus-foreign representation boundaries, ABI
+      signatures and fingerprints, and separate-compilation compatibility
+      without duplicating FFI legality or source ownership semantics.
+    rules:
+      - rules/platform/abi.md
+      - rules/platform/platform_model.md
+      - rules/platform/ffi.md
+      - rules/memory/layout.md
+      - rules/memory/copy_move.md
+      - rules/memory/ownership.md
+      - rules/memory/borrowing.txt
+      - rules/memory/raw_pointers.txt
+      - rules/declarations/functions.md
+      - rules/projects/modules.md
+      - rules/compiler/semantic_ir.txt
+      - rules/mlir/sec_mlir.md
+    remaining:
+      - add canonical ABIIdentity and ABIModel selection to CompilationPlan and make downstream consumers use that resolved model instead of inferring ABI behavior from OS, architecture, target triple, host, or backend defaults
+      - resolve Sec, C, and system calling-convention families independently and allow system to reuse C only where the active CompilationPlan explicitly declares physical equivalence
+      - define canonical target-neutral ABIArgInfo and ABIValuePart representations for direct, indirect, ignored, split, alignment-sensitive, extension, and transport-attribute classification
+      - separate semantic type identity, resolved physical representation, ABI transport representation, ABI signature identity, and final linker symbol identity throughout frontend and lowering metadata
+      - implement position-sensitive ABI classification for parameters, returns, and foreign variadic arguments
+      - implement scalar transport rules including sign and zero extension and target-dependent machine classes without treating ABI extension as a Sec numeric conversion
+      - implement aggregate classification from canonical ResolvedLayout plus ABI-specific field and category rules without a universal size-only register threshold
+      - represent indirect parameters and hidden return storage as compiler ABI machinery without introducing source RawPtr, ownership, borrow, lifetime, copy, or move semantics
+      - consume complete resolved native Sec safe-reference representations rather than hard-coding ref T as one native pointer
+      - classify RawPtr values using the active address-space raw-pointer representation without attaching ownership, lifetime, bounds, or non-null guarantees
+      - classify native Sec descriptors, structs, enums, tagged unions, Result, Option, and callable values from their canonical resolved representations without recreating their layout rules in the ABI subsystem
+      - keep ABI physical representability separate from FFI source-position legality and reject any implicit string, slice, list, or collection decomposition that is not explicitly defined by FFI
+      - resolve compiler-known C scalar physical representation through the active C ABI and keep C:: identities distinct from physically similar Sec scalar types
+      - integrate C struct, union, enum, bitfield, flexible-array, function-pointer, and foreign-vararg representation and classification with one coherent C ABI identity while leaving legality to ffi.md
+      - implement verified FFI ref and ref mut boundary adaptation from call-bounded Sec borrow semantics to the selected foreign address representation without changing native Sec reference representation
+      - implement native callable and C::fn as distinct representation families and construct callback thunks as explicit two-sided ABI bridges validated by FFI and Sema
+      - make callback and other ABI bridges materialize only semantic adaptations already approved by owning rules and never invent conversions or ownership changes to fit a foreign signature
+      - build whole-call assignment state after classification so register and resource exhaustion, stack fallback, split-value rules, hidden parameters, and outgoing stack layout follow the selected ABI
+      - represent stack argument offsets, sizes, alignments, and call-stack requirements explicitly in the final ABI plan rather than recomputing them approximately in later lowering
+      - keep target-neutral ABI classification independent of Sec MLIR and LLVM encoding and avoid requiring concrete physical register names unless an owning target rule needs them
+      - retain high-level semantic callable shape and calling-convention intent before Sec MLIR ABI lowering rather than materializing the final physical signature prematurely
+      - construct and verify CallABIPlan objects during the canonical Sec MLIR ABI-lowering stage from resolved semantic representations and the active ABIModel
+      - verify ABI-lowered Sec MLIR functions and calls against CallABIPlan for calling convention, return transport, hidden parameters, parameter part ordering, stack placement, variadic state, and required attributes
+      - prevent lower MLIR, LLVM dialect, LLVM IR, and backend stages from reclassifying a competing Sec ABI after the canonical ABI plan has been verified
+      - derive deterministic canonical ABISignature values for every concrete callable crossing a binary ABI boundary
+      - derive stable ABI fingerprints from canonical physical contract facts and ABI and schema identity while excluding source locations, display names, and other presentation-only metadata
+      - implement semantic ABI compatibility checks distinct from Sec type and callable compatibility and permit fingerprint equality only as an implementation optimization for canonical contract comparison
+      - persist sufficient semantic declaration identity, semantic signature identity, ABI signature, ABI fingerprint, ABI schema and model identity, and CompilationPlan ABI identity for separate compilation
+      - reject stale or incompatible native Sec artifacts before or during linking when persisted ABI metadata proves caller and callee physical contracts are incompatible
+      - introduce a native Sec ABI schema and version identity without promising binary compatibility across arbitrary Sec 0.1 compiler revisions
+      - keep native Sec ABI schema identity distinct from selected C and system ABI identity
+      - invalidate ABI-dependent lowering and artifacts when layout, parameter or result signature, calling convention, reference representation, ABI model or schema, hidden parameters, target, or other ABI-relevant CompilationPlan facts change
+      - avoid downstream ABI invalidation solely for implementation-body edits that preserve the complete canonical ABI contract where dependency tracking can prove equivalence
+      - preserve semantic-to-physical parameter and result correspondence for diagnostics and debug-information generation even when ABI lowering introduces hidden storage, widened transports, split parts, or machine-only temporaries
+      - add deterministic scalar, aggregate, reference, descriptor, C ABI, system ABI, callback, variadic, hidden-parameter, stack-layout, separate-compilation, stale-artifact, multi-Variant, and MLIR-boundary regression tests
+      - add cross-compilation tests proving ABI selection and classification come from the CompilationPlan rather than the compiler host
+      - add determinism tests proving identical ABI classification, CallABIPlan, ABISignature, ABIFingerprint, and diagnostics independent of map order, source traversal, and compiler worker scheduling
+      - update implementation-status verification commands when the first canonical ABI-model vertical slice is integrated
+    excluded:
+      - source ownership, borrow, copy, move, and destruction semantics
+      - FFI source-position legality and foreign resource ownership
+      - general storage-layout ownership
+      - linker symbol spelling, mangling, dead stripping, and export policy
+      - stable native Sec ABI compatibility across arbitrary compiler releases
+      - implicit string or collection decomposition for C ABI
+      - hard-coded physical register names in the target-neutral ABI classification model
+
   - id: tooling.lsp-same-module-analysis
     area: tooling
     status: implemented
@@ -676,7 +1298,7 @@ integrations:
       Tracks outer root bindings used by defer as delayed uses and rejects an
       earlier move or discard without introducing runtime borrow tracking.
     rules:
-      - rules/control-flow/defer.txt
+      - rules/control-flow/defer.md
       - rules/memory/lifetime_analysis.txt
       - rules/memory/borrowing.txt
       - rules/memory/copy_move.md
@@ -1989,7 +2611,7 @@ integrations:
       - rules/memory/copy_move.md
       - rules/memory/borrowing.txt
       - rules/memory/destruction.txt
-      - rules/control-flow/defer.txt
+      - rules/control-flow/defer.md
       - rules/collections/collections.md
       - rules/platform/ffi.md
       - rules/analysis/effect_analysis.md
@@ -3386,7 +4008,7 @@ integrations:
       - rules/memory/borrowing.txt
       - rules/memory/copy_move.md
       - rules/memory/destruction.txt
-      - rules/control-flow/defer.txt
+      - rules/control-flow/defer.md
       - rules/collections/collections.md
       - rules/analysis/effect_analysis.md
       - rules/platform/ffi.md

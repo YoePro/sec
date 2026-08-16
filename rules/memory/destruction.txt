@@ -614,9 +614,9 @@ Before return exits a function:
 1. the return expression is evaluated
 2. return ownership is established
 3. the returned value is moved or borrowed according to the signature
-4. deferred operations execute according to defer rules
-5. remaining owned locals are destroyed
-6. control returns to the caller
+4. applicable deferred operations and automatic destructions execute in one
+   reverse registration order
+5. control returns to the caller
 
 The returned owned value must not be destroyed by the callee.
 
@@ -632,9 +632,9 @@ For `try` or equivalent propagation:
 2. the Ok or Err variant is determined
 3. on Ok, the payload continues according to ownership rules
 4. on Err, the error value is prepared for return
-5. required defer operations execute
-6. remaining owned values are destroyed
-7. the Err value returns to the caller
+5. applicable deferred operations and automatic destructions execute in one
+   reverse registration order
+6. the Err value returns to the caller
 
 The propagated error value must not be destroyed by the callee after ownership transfer.
 
@@ -652,11 +652,8 @@ At a merge point, all reachable paths must produce compatible ownership and init
 
 defer is part of cleanup but remains distinct from automatic destruction.
 
-The language must define the ordering between defer and ordinary local destruction.
-
-The recommended rule is:
-
-Cleanup entries execute in reverse registration and initialization order within a scope.
+Deferred cleanup and ordinary automatic destruction participate in one common
+LIFO cleanup order according to when their cleanup obligations are registered.
 
 A defer statement registers a cleanup entry at the point where defer is evaluated.
 
@@ -668,7 +665,9 @@ Example:
 fn Example() void {
     let first := First.Create()
 
-    defer Log("leaving")
+    defer {
+        Log("leaving")
+    }
 
     let second := Second.Create()
 }
@@ -688,15 +687,17 @@ Reverse cleanup execution:
 
 This creates a single predictable cleanup stack.
 
-Alternatively, the language may define all defers before all local destruction, but only one rule must be selected and applied consistently.
+This ordering is normative. Defer is not a separate phase that runs all deferred
+operations before all automatic destruction.
 
-The recommended unified cleanup-stack model is easier to reason about and lower.
+The unified cleanup order does not require every local to remain alive until
+invocation exit. Ordinary destruction still occurs at the earliest legal
+lifetime end. A registered defer may extend the lifetime of a value it uses
+until that deferred cleanup executes.
 
 ## Free operation and defer
 
-A free body should not permit defer unless its exact semantics are defined.
-
-The initial implementation should reject defer inside free.
+A free body does not permit defer in Sec 0.1.
 
 This avoids creating nested destruction-time cleanup behavior before necessary.
 

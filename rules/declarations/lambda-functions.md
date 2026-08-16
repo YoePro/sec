@@ -931,7 +931,7 @@ No particular pair-of-pointers representation is guaranteed by Sec source semant
 
 A target may represent non-capturing functions, closures, stateless callables, and other callable values differently while preserving the language contract.
 
-ABI-visible callable representation is governed by `abi.md`/FFI rules.
+ABI-visible callable representation is governed by `rules/platform/abi.md` and FFI rules.
 
 ## 39. Direct-call optimization
 

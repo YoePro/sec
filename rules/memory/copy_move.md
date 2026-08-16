@@ -1741,18 +1741,31 @@ copies or transfers its backing elements.
 
 Ordinary iteration does not silently consume the collection.
 
-Loop variables may receive:
+Sec 0.1 loop bindings have these fixed meanings:
 
 ```text
-copy
-shared borrow
-mutable borrow
-explicit consuming item
+plain item
+    by-value copy
+    requires an implicitly copyable yielded type
+
+ref item
+    shared borrow
+
+ref mut item
+    exclusive mutable borrow
 ```
 
-according to iterator semantics.
+A plain binding is never contextually upgraded to a move or borrow for a
+move-only element. The compiler must not silently clone or duplicate it.
 
-A consuming iterator must be explicit in type or operation.
+Use a shared binding for non-owning inspection of a move-only element. Use an
+explicit collection-specific extraction or removal operation when ownership
+must leave the collection.
+
+Sec 0.1 has no `for -> item in items`, `for item in move items`, or other
+consuming-loop source syntax. Future consuming iteration requires separate
+rules for partial consumption, early exits, cleanup of remaining elements,
+backing reclamation, and map/set invariants; no conceptual syntax is reserved.
 
 Structural mutation during ordinary iteration follows iteration-freeze rules.
 

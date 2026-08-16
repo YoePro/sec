@@ -26,7 +26,7 @@ This document must be read with:
 
 ```text
 runtime_checks.md
-defer.txt
+defer.md
 destruction.txt
 spawn.md
 await.md
@@ -1332,7 +1332,7 @@ runtime_checks.md
 attributes.md
 grammar.md
 operators.md
-defer.txt
+defer.md
 destruction.txt
 ownership.md
 copy_move.md

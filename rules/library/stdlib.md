@@ -1256,7 +1256,7 @@ modules.md
 initialization.md
 target_profiles.md
 platform_model.md
-abi.md
+platform/abi.md
 semantic_ir.txt
 mlir.txt
 mlir-optimize.txt

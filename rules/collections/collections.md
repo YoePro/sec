@@ -1209,15 +1209,33 @@ Iteration must preserve:
 
 ```text
 index order
-copy/move rules
+copy rules
 borrow rules
 element ownership
 ```
 
-Iteration does not implicitly move move-only elements out of the collection.
+A plain binding such as `for item in items` copies the yielded element and is
+valid only when the element type is implicitly copyable. It never implicitly
+moves, borrows, clones, or duplicates a move-only element.
+
+Sequential collections that provide stable addressable elements support
+`for ref item in items` as a shared element borrow. Sources with mutable
+element authority additionally support `for ref mut item in items` as an
+exclusive mutable element borrow.
+
+For two-binding sequential iteration, the first binding is an ordinary `int`
+index or `_`; `ref` and `ref mut` apply only to the element binding.
+
+A discarded component `_` introduces no symbol and does not require copying or
+moving the yielded component merely to discard it.
 
 Structural mutation that can invalidate the iterator's storage/range is not
-permitted while the iteration borrow is active.
+permitted while the iteration or an element borrow is active. Element mutation
+through an approved `ref mut` binding remains valid when it preserves
+structural stability.
+
+Sec 0.1 ordinary `for` iteration is not consuming. Owning extraction remains an
+explicit collection-specific operation.
 
 ---
 
@@ -1687,10 +1705,24 @@ The exact move behavior remains governed by the ownership and assignment rules.
 
 ## 14.6 Map iteration
 
-Canonical form:
+Map iteration has exactly two logical binding positions, key and value.
+
+Canonical forms include:
 
 ```sec
 for key, value in users {
+    ...
+}
+```
+
+```sec
+for ref key, ref value in users {
+    ...
+}
+```
+
+```sec
+for ref key, ref mut value in users {
     ...
 }
 ```
@@ -1699,11 +1731,15 @@ Iteration is over entries.
 
 The iteration order is unspecified.
 
-Ordinary iteration must not implicitly move owned keys or values out of the
-map.
+Plain key or value bindings copy their components and require those component
+types to be implicitly copyable. A discarded component does not force a copy
+or move merely to discard it. A single-binding map loop is invalid.
 
-Stored keys must not be mutated in a way that changes equality/hash identity
-while stored.
+Shared key and value references are permitted when the map provides stable
+addressable entries. Mutable value references require mutable authority.
+
+`ref mut` map keys are invalid. Stored keys must not be mutated in a way that
+changes equality/hash identity while stored.
 
 Structural mutation of the map while a conflicting iteration borrow is active
 is invalid.
@@ -1888,7 +1924,7 @@ No hidden element copying or hidden allocation is permitted.
 
 ## 15.4 Set iteration
 
-Canonical form:
+Canonical forms are:
 
 ```sec
 for value in activeUsers {
@@ -1896,9 +1932,21 @@ for value in activeUsers {
 }
 ```
 
+```sec
+for ref value in activeUsers {
+    ...
+}
+```
+
 Iteration order is unspecified.
 
-Ordinary iteration must not implicitly move an owned set element out.
+Plain iteration copies the stored value and requires an implicitly copyable
+element type. Shared-reference iteration is permitted when the set provides a
+stable addressable element.
+
+`ref mut` set iteration is invalid because a stored set value participates in
+equality and hash identity. Ordinary iteration never moves an owned set element
+out of the set.
 
 Structural mutation during a conflicting active iteration borrow is invalid.
 

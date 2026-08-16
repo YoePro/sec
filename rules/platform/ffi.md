@@ -1408,7 +1408,7 @@ This rulebook owns:
 
 Other rulebooks own:
 
-- physical ABI register/stack/aggregate classification: ABI rules;
+- physical ABI register/stack/aggregate classification: `rules/platform/abi.md`;
 - target/ABI selection and `CompilationPlan`: platform model;
 - general storage layout, explicit packing/alignment, and layout queries: layout rules;
 - `RawPtr[T]` primitive operations: raw-pointer rules;

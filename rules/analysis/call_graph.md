@@ -3133,7 +3133,7 @@ functions.md
 declarations/lambda-functions.md
 declarations/generics.md
 declarations/interfaces.md
-defer.txt
+defer.md
 destruction.txt
 panic.md
 runtime_checks.md

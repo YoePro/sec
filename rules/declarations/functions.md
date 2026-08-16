@@ -1055,7 +1055,7 @@ It does not define C-style heterogeneous varargs.
 
 Foreign declarations such as C variadic functions have ABI-defined rules including representation, default argument promotions, calling convention, and foreign safety constraints.
 
-Those rules belong to `abi.md` and `ffi.md`.
+Those rules belong to `rules/platform/abi.md` and `rules/platform/ffi.md`.
 
 Native `...T` semantics must not be inferred from C `va_list`, and C varargs must not be inferred from native Sec `...T`.
 

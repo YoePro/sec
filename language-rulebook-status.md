@@ -181,13 +181,13 @@ LSP token classification
 | `declarations/interfaces.md` | **Written** | Canonical behavioral interfaces, receiver capabilities, inheritance, and primary-impl conformance. Frontend progress is tracked by `frontend.interfaces`. |
 | `declarations/impl.md` | **Written** | Revision 2.0 defines primary/extensions, implicit self, associated declarations, and lifecycle `init`/`free` with `new`; frontend lifecycle status is tracked by `frontend.impl-lifecycle-construction`. |
 | `declarations/properties.md` | **Written** | Canonical property declarations, explicit setter parameters, fallible setters, impl fragments, static properties, and interface requirements. Frontend progress is tracked by `frontend.properties`. |
-| `control-flow/defer.txt` | **Written — sync required** | Must be synchronized with discard, panic, and cancellation cleanup. |
+| `control-flow/defer.md` | **Written** | Canonical revision 2.0 invocation-scoped deferred cleanup, unified LIFO ordering with automatic destruction, lifetime extension, forbidden control transfer, and callable-context boundaries. Implementation progress is tracked by `frontend.defer-v2`. |
 | `declarations/spread.md` | **Written** | Canonical postfix spread for fixed-array calls/literals and same-type struct construction. Frontend progress is tracked by `frontend.spread`. |
-| `control-flow/flowcontrol_if.txt` | **Written** | |
-| `control-flow/flowcontrol_for.txt` | **Written — sync required** | Current Sema includes collection, map/set and rank-one `vector[T, N]` iteration; tensor and axis iteration still need synchronization. |
-| `flowcontrol_for_1.txt` | **Covered** | Merged into `control-flow/flowcontrol_for.txt`; no separate rulebook remains in `rules/`. |
-| `control-flow/flowcontrol_while.txt` | **Written** | |
-| `control-flow/flowcontrol_switch.txt` | **Written** | String-literal duplicate cases and non-exhaustive enum coverage warnings are implemented in Sema. |
+| `control-flow/flowcontrol_if.md` | **Written** | Canonical revision 2.0 `if`/`else if`/`else` semantics, boolean-only conditions, short-circuiting, state-test boundaries, branch flow, and diagnostics. Implementation progress is tracked by `frontend.if-statements-v2`. |
+| `control-flow/flowcontrol_for.md` | **Written** | Canonical revision 2.0 infinite, range, and compiler-known iteration with explicit value/ref/ref-mut binding modes, collection invariants, range direction, flow, and cleanup. Implementation progress is tracked by `frontend.for-loops-v2`. |
+| `flowcontrol_for_1.txt` | **Covered** | Merged into `control-flow/flowcontrol_for.md`; no separate rulebook remains in `rules/`. |
+| `control-flow/flowcontrol_while.md` | **Written** | Canonical revision 2.0 condition-controlled loops, boolean conditions, loop-control targets, non-continuing loops, flow merging, and explicit Sec 0.1 exclusions. Implementation progress is tracked by `frontend.while-statements-v2`. |
+| `control-flow/flowcontrol_switch.md` | **Written** | Canonical revision 2.0 subject and subjectless switches, ordered value/range/relational cases, explicit fallthrough, case flow, and statement-only boundaries. Implementation progress is tracked by `frontend.switch-statements-v2`. |
 | `control-flow/flowcontrol_match.txt` | **Written — sync required** | Current Sema covers Result, enum, union/Option matching and rejects pattern-binding shadowing; still needs panic/outcome and future collection-pattern synchronization. |
 
 ---
@@ -199,7 +199,7 @@ LSP token classification
 | `collections/collections.md` | **Written** | Canonical fixed-array, owning dynamic-array, slice, list, map, and set semantics. |
 | `collections/shaped-types.md` | **Written** | Canonical runtime/static shaped values, affine views, layout, storage requests and transfer, broadcasting, vector/matrix algebra, and contraction semantics. Implementation progress is tracked by `frontend.shaped-types` in `implementation-status.yaml`. |
 | `declarations/spread.md` | **Written** | Fixed-array expansion and struct construction integration. Frontend progress is tracked by `frontend.spread`. |
-| `control-flow/flowcontrol_for.txt` | **Written — sync required** | Iteration over collections and shaped values; rank-one `vector[T, N]` now participates in Sema iterable inference. |
+| `control-flow/flowcontrol_for.md` | **Written** | Canonical compiler-known collection and shaped-value iteration; implementation progress is tracked by `frontend.for-loops-v2`. |
 
 The first-class language types are expected to include:
 
@@ -510,7 +510,7 @@ from the presence of a versioned document.
 |---|---|---|
 | `platform/ffi.md` | **Written** | Canonical revision 2.0 foreign declarations, C ABI type families, data representations, callbacks, varargs, strings, ownership, effects, symbols, and legality. Implementation progress is tracked by `frontend.ffi-v2`. |
 | `platform/fixed-address-bindings.md` | **Written** | Canonical `@address`, MMIO volatility, binding mutability, validation, overlap, and addressed-access semantics. Implementation is tracked by `frontend.fixed-address-bindings`. |
-| `abi.md` | **Planned** | Calling conventions, value representation, symbol ABI, FFI stability, and target differences. |
+| `platform/abi.md` | **Written** | Canonical Sec, C, and system ABI families; plan-selected classification, call plans, signatures, fingerprints, MLIR staging, and separate-compilation compatibility. Implementation is tracked by `lowering.abi-model`. |
 | `target_profiles.md` | **Planned** | Hosted, RTOS, bare-metal, allocation, concurrency, checks, and capability profiles. |
 | `platform/platform_model.md` | **Written** | Canonical Target/Variant terminology, immutable CompilationPlan resolution, typed platform submodels, capabilities, source selection, fingerprints, diagnostics, and LSP invalidation. Implementation is tracked by `compiler.platform-model`. |
 | `inline_assembly.md` | **Planned** | Operands, constraints, clobbers, volatility, memory effects, and target restrictions. |
@@ -590,7 +590,7 @@ concurrency/concurrency_memory_model.md
 concurrency/concurrency_runtime_model.md
 memory/copy_move.md
 library/core-library.md
-control-flow/defer.txt
+control-flow/defer.md
 types/default_values.md
 memory/destruction.txt
 tooling/diagnostics.txt
@@ -599,11 +599,12 @@ errors/errorhandling.txt
 analysis/effect_analysis.md
 concurrency/events.md
 platform/ffi.md
-control-flow/flowcontrol_for.txt
-control-flow/flowcontrol_if.txt
+platform/abi.md
+control-flow/flowcontrol_for.md
+control-flow/flowcontrol_if.md
 control-flow/flowcontrol_match.txt
-control-flow/flowcontrol_switch.txt
-control-flow/flowcontrol_while.txt
+control-flow/flowcontrol_switch.md
+control-flow/flowcontrol_while.md
 tooling/formatter.md
 declarations/functions.md
 declarations/lambda-functions.md
@@ -693,7 +694,6 @@ generics_lowering.md
 monomorphization.md
 compile_time_evaluation.md
 
-abi.md
 target_profiles.md
 inline_assembly.md
 volatile.md
@@ -766,7 +766,7 @@ Still to decide or lock in the owning syntax, ABI, FFI, and target rulebooks:
 - final source syntax for explicit layout, packing, alignment, field offsets,
   endianness, and memory-space contracts;
 - exact FFI-stable representation contracts and their source attachment;
-- ABI guarantees by target.
+- concrete `ABIModel` definitions and classification algorithms for each supported target ABI.
 
 ## Attributes and effects
 

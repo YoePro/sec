@@ -1196,7 +1196,7 @@ declarations/registers.md
 units.txt
 collections.md
 shaped-types.md
-flowcontrol_for.txt
+flowcontrol_for.md
 flowcontrol_match.txt
 projects/projects.txt
 projects/modules.md

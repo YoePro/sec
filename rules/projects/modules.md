@@ -964,6 +964,6 @@ rules/tooling/diagnostics.txt
 rules/tooling/lsp.md
 ```
 
-Future `initialization.md`, `abi.md`, `linking.md`, dependency/package rules, and
+Future `initialization.md`, `linking.md`, dependency/package rules, and
 incremental-compilation rules consume the module identities and surfaces defined
 here and must not redefine their source-level meaning.

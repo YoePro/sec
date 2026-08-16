@@ -3520,10 +3520,10 @@ declarations/interfaces.md
 impl.md
 properties.md
 collections.md
-flowcontrol_if.txt
-flowcontrol_for.txt
-flowcontrol_while.txt
-flowcontrol_switch.txt
+flowcontrol_if.md
+flowcontrol_for.md
+flowcontrol_while.md
+flowcontrol_switch.md
 flowcontrol_match.txt
 errorhandling.txt
 inline_assembly.md

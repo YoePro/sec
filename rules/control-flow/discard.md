@@ -1540,7 +1540,7 @@ borrowing.txt
 references.txt
 lifetime_analysis.txt
 destruction.txt
-defer.txt
+defer.md
 errorhandling.txt
 diagnostics.txt
 semantic_ir.txt

@@ -482,7 +482,7 @@ unless that representation is already required by a defined earlier boundary.
 High-level Sec MLIR must be capable of reaching different target ABI lowerings
 without embedding one target ABI as its general function model.
 
-ABI rules belong to `abi.md` and relevant FFI/target rulebooks.
+ABI rules belong to `rules/platform/abi.md` and relevant FFI/target rulebooks.
 
 # Layout model
 

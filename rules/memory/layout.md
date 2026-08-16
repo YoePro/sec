@@ -101,7 +101,7 @@ destruction.txt
 platform/ffi.md
     foreign ABI compatibility and foreign representation contracts
 
-abi.md
+platform/abi.md
     function calling conventions, parameter passing, and return classification
 
 target_profiles.md
@@ -2580,7 +2580,7 @@ Storage layout and callable ABI are separate.
 
 `layout.md` defines how a value exists in storage.
 
-`abi.md` defines how a value is passed or returned by a function.
+`rules/platform/abi.md` defines how a value is passed or returned by a function.
 
 A value may have complete storage layout while the ABI:
 

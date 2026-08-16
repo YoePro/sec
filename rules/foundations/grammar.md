@@ -2814,6 +2814,8 @@ IterableForStatement
 ForBinding
     ::= Identifier
       | "_"
+      | "ref" Identifier
+      | "ref" "mut" Identifier
 ```
 
 Examples:
@@ -2834,6 +2836,15 @@ for i in 0..<10 step 2 {
 ```
 
 The number and meaning of bindings depend on the iterable.
+
+The grammar accepts plain, shared-reference, mutable-reference, and discard
+bindings. Semantic analysis determines whether a binding mode is valid for the
+iterable category and position. Sequential indices, range values, and decoded
+string runes do not accept reference binding modes. Map keys and set elements
+do not accept `ref mut`.
+
+Sec 0.1 does not add `for -> item in source`, `for item in move source`, or
+another consuming-loop grammar form.
 
 `step` is valid for approved range iteration.
 
@@ -4685,13 +4696,13 @@ events.md
 collections.md
 shaped-types.md
 declarations/spread.md
-flowcontrol_if.txt
-flowcontrol_for.txt
-flowcontrol_while.txt
-flowcontrol_switch.txt
+flowcontrol_if.md
+flowcontrol_for.md
+flowcontrol_while.md
+flowcontrol_switch.md
 flowcontrol_match.txt
 errorhandling.txt
-defer.txt
+defer.md
 discard.md
 ownership.md
 copy_move.md
@@ -4911,7 +4922,7 @@ syntax.
 
 ## A.11 Extern declaration distinction
 
-Synchronize grammar with `rules/platform/ffi.md` and future `abi.md`.
+Synchronize grammar with `rules/platform/ffi.md` and `rules/platform/abi.md`.
 
 Preserve enough AST/recovery information to distinguish:
 

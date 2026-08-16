@@ -593,7 +593,7 @@ operation has a `MayBlock` effect.
 `ABIModel` is a resolved plan component used consistently by function lowering, FFI,
 machine stack reasoning, linking, and debug information.
 
-The ABI rulebook owns the detailed semantics of calling conventions, parameter and
+`rules/platform/abi.md` owns the detailed semantics of calling conventions, parameter and
 return placement, stack conventions, aggregate passing, symbol ABI, and foreign
 interface compatibility.
 

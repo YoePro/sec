@@ -58,7 +58,7 @@ Implementation follows:
 rules/memory/ownership.md
 rules/memory/copy_move.md
 rules/memory/destruction.txt
-rules/control-flow/defer.txt
+rules/control-flow/defer.md
 rules/control-flow/discard.md
 rules/memory/borrowing.txt
 rules/errors/errorhandling.txt

@@ -2631,7 +2631,7 @@ ownership.md
 runtime_checks.md
 panic.md
 allocation.txt
-defer.txt
+defer.md
 destruction.txt
 inline_assembly.md
 platform/ffi.md

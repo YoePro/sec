@@ -528,6 +528,15 @@ layout compatibility.
 Behavior added through `impl` must never alter the stored field representation
 of the struct.
 
+An explicit `extern "C" type Name struct { ... }` is the foreign-compatible
+struct contract. It uses source field order and the active C ABI's natural
+layout and is not implicitly Defaultable; complete explicit construction is
+required. The bodyless form declares an incomplete foreign struct, which has no
+known by-value size and is legal only behind `RawPtr`, or as a call-bounded
+foreign `ref`/`ref mut` parameter. A final `C::flex[T]` field has no Sec
+descriptor or implicit length. C bitfields use ABI-owned placement and are not
+independently addressable.
+
 ---
 
 ## 16. Nested structs and associated types

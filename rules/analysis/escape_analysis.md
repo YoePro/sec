@@ -1269,7 +1269,7 @@ TransfersOwnership
 Unknown
 ```
 
-The exact source syntax and FFI declaration format are defined by `ffi.txt`.
+The exact source syntax and FFI declaration format are defined by `rules/platform/ffi.md`.
 
 Unknown foreign retention is conservative.
 

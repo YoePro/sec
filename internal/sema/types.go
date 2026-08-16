@@ -247,6 +247,7 @@ type Function struct {
 	ReturnType        Type
 	Token             lexer.Token
 	Extern            bool
+	Unsafe            bool
 	Static            bool
 	ABI               string
 	LinkName          string

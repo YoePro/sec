@@ -678,7 +678,7 @@ concurrency.md
 concurrency_memory_model.txt
 allocation.txt
 static.md
-ffi.txt
+platform/ffi.md
 compiler.txt
 compiler_analysis.txt
 compiler_pipeline.txt

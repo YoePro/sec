@@ -3629,9 +3629,7 @@ impl Buffer {
 
 func TestParseUnsafeExternSystemFunctionDeclaration(t *testing.T) {
 	input := `
-unsafe extern "system" fn _rawSyscall(number: int64) int {
-	return 0
-}
+unsafe extern "system" fn _rawSyscall(number: int64) int
 `
 
 	l := lexer.New(input)
@@ -3647,8 +3645,17 @@ unsafe extern "system" fn _rawSyscall(number: int64) int {
 	if !fn.Unsafe || !fn.Extern || fn.ABI != "system" {
 		t.Fatalf("wrong unsafe extern metadata: unsafe=%t extern=%t abi=%q", fn.Unsafe, fn.Extern, fn.ABI)
 	}
-	if fn.Body == nil || len(fn.Body.Statements) != 1 {
-		t.Fatalf("extern system function should have body. got=%+v", fn.Body)
+	if fn.Body != nil {
+		t.Fatalf("extern system function should be bodyless. got=%+v", fn.Body)
+	}
+}
+
+func TestParseRejectsExternFunctionBody(t *testing.T) {
+	p := New(lexer.New(`extern "C" fn imported() int { return 1 }`))
+	p.ParseProgram()
+	want := "extern function declarations may not have a Sec body at 1:1"
+	if len(p.Errors()) != 1 || p.Errors()[0] != want {
+		t.Fatalf("errors = %v, want %q", p.Errors(), want)
 	}
 }
 

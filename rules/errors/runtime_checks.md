@@ -1238,7 +1238,7 @@ discard.md
 destruction.txt
 allocation.txt
 unsafe.md
-ffi.txt
+platform/ffi.md
 attributes.md
 compiler_pipeline.txt
 semantic_ir.txt

@@ -1007,6 +1007,14 @@ That mechanism:
 
 ## 20. Implementations
 
+An `extern "C" type Name union { ... }` is a distinct foreign representation,
+not an ordinary tagged Sec union. Its fields overlap under the active C ABI, it
+has no hidden tag or compiler-tracked active variant, and direct member access
+is classified as foreign-unsafe. Ordinary Sec unions remain closed, tagged, and
+governed by the rules above.
+
+---
+
 A union is a nominal Sec type and may participate in ordinary `impl` declarations where permitted by the implementation rulebook.
 
 This rulebook does not duplicate general method, property, or interface implementation semantics.

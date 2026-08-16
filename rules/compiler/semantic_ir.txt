@@ -812,12 +812,18 @@ Extern calls must retain:
 
 * foreign symbol name
 * calling convention
+* ordinary versus unsafe-extern caller contract
 * ABI parameter types
 * ABI return type
 * ownership contract metadata
 * nullability metadata
 * target restrictions
 * unsafe provenance
+* foreign `C::`/`c::` type identity
+* C struct, union, enum, incomplete, bitfield and flexible-array metadata
+* `C::fn` signature or `C::callback` adaptation when applicable
+* C varargs marker and trusted effect-contract provenance
+* resolved native dependency references
 
 Extern wrapper semantics remain ordinary Semantic IR around the extern call.
 

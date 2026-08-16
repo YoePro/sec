@@ -143,6 +143,11 @@ module graph, cycle, and `ModuleSurface` semantics are owned by
 `rules/projects/modules.md`. This project rulebook supplies project roots,
 Targets, Variants, and CompilationPlans consumed by that model.
 
+Native libraries, objects, import libraries, frameworks, and search paths are
+project/package/build metadata resolved into the active CompilationPlan. FFI
+declarations carry symbol and ABI semantics and do not repeat linker dependency
+metadata through per-function `@library` annotations.
+
 =============================================================================================================================================================================================
 Single-manifest rule
 ====================

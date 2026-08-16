@@ -17,7 +17,7 @@ lifetime_analysis.txt
 destruction.txt
 allocation.txt
 concurrency_memory_model.txt
-ffi.txt
+platform/ffi.md
 declarations/registers.md
 platform/fixed-address-bindings.md
 ```
@@ -259,7 +259,7 @@ allocation.txt
 concurrency_memory_model.txt
     happens-before, atomic ordering, visibility, and data races
 
-ffi.txt
+platform/ffi.md
     foreign contracts and ABI boundaries
 
 declarations/registers.md
@@ -3637,7 +3637,7 @@ allocation.txt
 concurrency_memory_model.txt
 data_races.md
 deadlock_analysis.md
-ffi.txt
+platform/ffi.md
 declarations/registers.md
 platform/fixed-address-bindings.md
 collections.md

@@ -1064,5 +1064,5 @@ static.txt
 processes.txt
 spawn_process.txt
 ipc.txt
-ffi.txt
+platform/ffi.md
 ```

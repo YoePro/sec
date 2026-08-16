@@ -2275,7 +2275,7 @@ ownership.md
 copy_move.md
 destruction.txt
 errorhandling.txt
-ffi.txt
+platform/ffi.md
 shaped-types.md
 semantic_ir.txt
 sec_mlir.md

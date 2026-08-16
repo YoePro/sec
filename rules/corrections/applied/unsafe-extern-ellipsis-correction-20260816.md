@@ -1,6 +1,6 @@
 # Correction: bare ellipsis in `unsafe extern` example
 
-- **Status:** Normative correction
+- **Status:** Applied 2026-08-16
 - **Created:** 2026-08-14
 - **Last updated:** 2026-08-14
 - **Document revision:** 1

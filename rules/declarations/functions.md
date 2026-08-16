@@ -1059,6 +1059,15 @@ Those rules belong to `abi.md` and `ffi.md`.
 
 Native `...T` semantics must not be inferred from C `va_list`, and C varargs must not be inferred from native Sec `...T`.
 
+A C vararg marker is a bare final `...` and is legal only in an `unsafe extern
+"C"` signature or `C::fn` type. Its arguments use target C default promotions,
+do not accept `ref`/`ref mut` directly, and do not support Sec spread.
+
+`C::fn(...) R` is a foreign ABI function-pointer type distinct from native
+`fn`/`mut fn`/`-> fn`. `C::callback(callable)` adapts only an environment-free,
+reusable callable with an exact foreign-facing signature; capturing, mutable,
+and consuming callables are rejected in Sec 0.1.
+
 ## 39. Recursion
 
 Functions may call themselves directly or participate in mutually recursive call graphs where ordinary declaration and analysis rules permit.

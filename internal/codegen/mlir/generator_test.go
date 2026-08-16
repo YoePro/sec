@@ -157,7 +157,7 @@ func TestGenerateLinuxAMD64SyscallInlineAsm(t *testing.T) {
 	input := `
 module main
 
-unsafe extern "system" fn rawWrite(number: uint, fd: uint, ptr: uint, len: uint) int {
+unsafe fn rawWrite(number: uint, fd: uint, ptr: uint, len: uint) int {
     asm {
         "syscall"
         inputs:

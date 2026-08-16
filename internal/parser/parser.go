@@ -2193,6 +2193,7 @@ func (p *Parser) parseExternFunctionDeclaration() *ast.FunctionDeclaration {
 		if fn.Body == nil {
 			return nil
 		}
+		p.addError("extern function declarations may not have a Sec body at %d:%d", externToken.Line, externToken.Column)
 	}
 	return fn
 }

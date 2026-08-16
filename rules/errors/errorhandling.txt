@@ -784,6 +784,21 @@ needs no runtime validation; otherwise normal `try` handling or propagation is
 required.
 
 
+Foreign failure and unwind boundaries
+=====================================
+
+Raw foreign negative values, status enums, null pointers, auxiliary error
+state, and out-parameter protocols do not become `Result` or `Option`
+automatically. A Sec wrapper explicitly translates the foreign convention;
+`try` applies only when the declared Sec expression itself has ordinary Sec
+fallible semantics.
+
+No foreign exception, `longjmp`-style non-local transfer, or Sec unwind may
+cross an active FFI boundary in either direction. A foreign shim or Sec callback
+must translate failure into the declared return protocol before crossing that
+boundary.
+
+
 Implementation phases
 =====================
 

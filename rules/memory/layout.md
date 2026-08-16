@@ -98,7 +98,7 @@ allocation.txt
 destruction.txt
     destruction and cleanup ordering
 
-ffi.txt
+platform/ffi.md
     foreign ABI compatibility and foreign representation contracts
 
 abi.md
@@ -2615,6 +2615,13 @@ offset equality.
 Strings, owning arrays, slices, references, interfaces, closures, and other
 descriptors require explicit foreign representations or wrappers.
 
+`extern "C"` structs and unions consume the active C ABI layout model.
+Bitfield allocation units, ordering, padding, and zero-width effects are
+ABI-owned and do not reuse register bit-order rules. `C::flex[T]` contributes no
+descriptor and is valid only as the final stored field; the containing
+structure's size excludes runtime trailing elements. Incomplete foreign types
+have no by-value layout.
+
 ---
 
 # Memory spaces
@@ -3028,7 +3035,7 @@ declarations/registers.md
 platform/fixed-address-bindings.md
 compiler_known_members.md
 reference_model.md
-ffi.txt
+platform/ffi.md
 semantic_ir.txt
 storage.md
 language-rulebook-status.md

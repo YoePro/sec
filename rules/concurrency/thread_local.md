@@ -511,7 +511,7 @@ borrowing.txt
 references.txt
 lifetime_analysis.txt
 destruction.txt
-ffi.txt
+platform/ffi.md
 compiler_analysis.txt
 semantic_ir.txt
 core-library.md

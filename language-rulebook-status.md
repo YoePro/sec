@@ -508,7 +508,7 @@ from the presence of a versioned document.
 
 | Rulebook | Status | Notes |
 |---|---|---|
-| `platform/ffi.txt` | **Written — sync required** | Must be synchronized with ABI, layout, effects, panic, and foreign thread attachment. |
+| `platform/ffi.md` | **Written** | Canonical revision 2.0 foreign declarations, C ABI type families, data representations, callbacks, varargs, strings, ownership, effects, symbols, and legality. Implementation progress is tracked by `frontend.ffi-v2`. |
 | `platform/fixed-address-bindings.md` | **Written** | Canonical `@address`, MMIO volatility, binding mutability, validation, overlap, and addressed-access semantics. Implementation is tracked by `frontend.fixed-address-bindings`. |
 | `abi.md` | **Planned** | Calling conventions, value representation, symbol ABI, FFI stability, and target differences. |
 | `target_profiles.md` | **Planned** | Hosted, RTOS, bare-metal, allocation, concurrency, checks, and capability profiles. |
@@ -598,7 +598,7 @@ declarations/enums.md
 errors/errorhandling.txt
 analysis/effect_analysis.md
 concurrency/events.md
-platform/ffi.txt
+platform/ffi.md
 control-flow/flowcontrol_for.txt
 control-flow/flowcontrol_if.txt
 control-flow/flowcontrol_match.txt

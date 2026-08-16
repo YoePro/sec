@@ -823,6 +823,14 @@ bit patterns remain possible, tooling may provide a focused warning or suggestio
 
 ## 19. Lowering requirements
 
+An `extern "C" type Name enum { ... }` is separate from both ordinary closed
+Sec enums and `bit[N]` hardware enums. Its representation is selected by the
+active C ABI and its value domain is open over every representable raw value;
+foreign interpretation therefore requires an unknown fallback where exhaustive
+handling is needed.
+
+---
+
 An enum lowers through its declared underlying representation while preserving source-level
 nominal identity in compiler metadata where needed.
 

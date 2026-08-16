@@ -7429,17 +7429,21 @@ fn Invalid() void {
 	assertSemaErrors(t, errors, expected)
 }
 
-func TestExternFunctionRequiresUnsafeCall(t *testing.T) {
+func TestOnlyUnsafeExternFunctionRequiresUnsafeCall(t *testing.T) {
 	input := `
 module main
 
-extern "C" fn write(fd: int32, buffer: RawPtr[byte], length: uint) int64
+extern "C" fn inspect(value: ref int) int32
+extern "C" fn modify(value: ref mut int) int32
+unsafe extern "C" fn write(fd: int32, buffer: RawPtr[byte], length: uint) int64
 
-fn Bad(buffer: RawPtr[byte]) void {
+fn Bad(value: ref int, buffer: RawPtr[byte]) void {
+	let inspected := inspect(value)
 	let result := write(1, buffer, 4u)
 }
 
-fn Good(buffer: RawPtr[byte]) void {
+fn Good(value: ref mut int, buffer: RawPtr[byte]) void {
+	let modified := modify(value)
 	unsafe {
 		let result := write(1, buffer, 4u)
 	}
@@ -7449,7 +7453,7 @@ fn Good(buffer: RawPtr[byte]) void {
 	errors := analyzeSourceRaw(t, input)
 
 	expected := []string{
-		"calling extern function write requires unsafe at 7:16",
+		"calling unsafe extern function write requires unsafe at 10:16",
 	}
 
 	assertSemaErrors(t, errors, expected)
@@ -7462,6 +7466,7 @@ module main
 extern "Rust" fn badABI(value: int32) int32
 extern "C" fn badParam(value: string) int32
 extern "C" fn badReturn() string
+extern "C" fn badReferenceReturn() ref int
 `
 
 	errors := analyzeSourceRaw(t, input)
@@ -7470,6 +7475,7 @@ extern "C" fn badReturn() string
 		"unknown extern ABI \"Rust\" at 4:1",
 		"extern C parameter 1 value has non-ABI-compatible type string at 5:24",
 		"extern C function badReturn has non-ABI-compatible return type string at 6:15",
+		"extern C function badReferenceReturn has non-ABI-compatible return type ref int at 7:15",
 	}
 
 	assertSemaErrors(t, errors, expected)

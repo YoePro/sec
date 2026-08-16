@@ -1342,7 +1342,7 @@ select.md
 cancellation.md
 threads.md
 unsafe.md
-ffi.txt
+platform/ffi.md
 allocation.txt
 diagnostics.txt
 lsp.md

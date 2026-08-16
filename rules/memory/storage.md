@@ -80,7 +80,7 @@ collections.md
 shaped-types.md
     shaped values, views, layouts, and memory spaces
 
-ffi.txt
+platform/ffi.md
     foreign ABI and ownership contracts
 
 declarations/registers.md
@@ -1962,7 +1962,7 @@ unprotected long-lived `ref`.
 Unknown foreign lifetime is conservative and must not be treated as static or
 unlimited.
 
-The complete ABI and wrapper rules remain defined by `ffi.txt`.
+The complete ABI and wrapper rules remain defined by `rules/platform/ffi.md`.
 
 ---
 
@@ -2588,7 +2588,7 @@ optimization.
 Semantic IR must add or map all stable facts, path-dependent states, and
 explicit operations required by this rulebook.
 
-## `ffi.txt`, `declarations/registers.md`, `platform/fixed-address-bindings.md`, and concurrency rulebooks
+## `platform/ffi.md`, `declarations/registers.md`, `platform/fixed-address-bindings.md`, and concurrency rulebooks
 
 These documents must consume the foreign, fixed-address, MMIO, generation, and
 concurrent-reclamation principles without redefining storage origin or epoch

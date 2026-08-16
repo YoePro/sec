@@ -112,7 +112,7 @@ unions.md
 declarations/registers.md
 platform/fixed-address-bindings.md
 volatile.md
-ffi.txt
+platform/ffi.md
 ```
 
 The exact list may grow as Sec 0.1 is completed.

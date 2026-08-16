@@ -741,20 +741,10 @@ extern "C" fn name(...) ReturnType
 extern "C" fn local_name(...) ReturnType
 ```
 
-It also accepts an optional body after an extern signature.
-
-The canonical distinction between:
-
-```text
-pure foreign declaration
-foreign-exported Sec function
-foreign shim with Sec body
-```
-
-must be finalized by `ffi.txt`, `abi.md`, and the consolidated grammar.
-
-Until that distinction is explicit, body-bearing extern syntax is only partly
-defined.
+The current parser still accepts an optional body after an extern signature;
+that compatibility behavior is non-conforming and must be removed. Sec 0.1
+extern declarations are imported and bodyless. General Sec-to-C exported
+definitions are outside Sec 0.1.
 
 ## Explicit `self` parameter recovery
 
@@ -2357,7 +2347,14 @@ Use a named type when several related fields must be returned.
 
 ```text
 ExternFunctionDeclaration
-    ::= [ LinkNameAnnotation ] "extern" StringLiteral FunctionSignature [ FunctionBody ]
+    ::= [ LinkNameAnnotation ] [ "unsafe" ] "extern" StringLiteral ForeignFunctionSignature
+
+ForeignFunctionSignature
+    ::= "fn" Identifier "(" [ ForeignParameterList ] ")" TypeReference
+
+ForeignParameterList
+    ::= ParameterList
+      | ParameterList "," "..."
 
 LinkNameAnnotation
     ::= "@" "link_name" "(" StringLiteral ")"
@@ -2373,8 +2370,27 @@ extern "C" fn write(
 ) int64
 ```
 
-The optional-body form is parsed but remains semantically partial pending the
-ABI and FFI rules.
+An extern body is invalid. A bare final `...` is valid only for `unsafe extern
+"C"` and is distinct from a native typed variadic parameter.
+
+Foreign data declarations and types additionally use:
+
+```text
+ForeignTypeDeclaration
+    ::= "extern" "C" "type" Identifier "struct" [ ForeignStructBody ]
+      | "extern" "C" "type" Identifier "union" ForeignUnionBody
+      | "extern" "C" "type" Identifier "enum" ForeignEnumBody
+
+ForeignTypeReference
+    ::= "C" "::" Identifier
+      | "c" "::" Identifier { "::" Identifier }
+      | "C" "::" "fn" "(" [ ForeignParameterTypeList ] ")" TypeReference
+      | "C" "::" "flex" "[" TypeReference "]"
+```
+
+`bit[N]` after a field's C base type is a C bitfield declarator only inside an
+`extern "C"` data declaration. `C::callback(expression)` is the explicit
+environment-free callback adapter expression.
 
 ---
 
@@ -4389,7 +4405,7 @@ prefix sequence syntax []Type
 enum value initializer Value: 1
 explicit ref self parameter
 explicit nested try match wrapper
-body-bearing extern declaration until FFI grammar is finalized
+body-bearing extern declaration solely for focused rejection and recovery
 ```
 
 Compatibility syntax must be marked in AST or diagnostics where needed.
@@ -4895,17 +4911,17 @@ syntax.
 
 ## A.11 Extern declaration distinction
 
-Synchronize grammar with `ffi.txt` and future `abi.md`.
+Synchronize grammar with `rules/platform/ffi.md` and future `abi.md`.
 
-Define separate AST semantics for:
+Preserve enough AST/recovery information to distinguish:
 
 ```text
 foreign declaration without body
-foreign-exported Sec definition with body
-foreign shim
+invalid body-bearing extern declaration
 ```
 
-Do not let optional parser body presence remain the only distinction.
+Sec 0.1 does not define general foreign-exported Sec definitions or body-bearing
+foreign shims.
 
 ---
 

@@ -1,6 +1,6 @@
 # Correction: register `@link_name` as a compiler-known FFI attribute
 
-- **Status:** Normative correction
+- **Status:** Applied 2026-08-16
 - **Created:** 2026-08-14
 - **Last updated:** 2026-08-14
 - **Document revision:** 1

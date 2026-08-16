@@ -695,17 +695,29 @@ integrations:
       - explicit owned-copy and move capture modes
       - cleanup-order validation in Semantic IR
 
-  - id: ffi.link-name-and-declarations
+  - id: frontend.ffi-v2
     area: frontend-and-lowering
     status: partial
-    integrated: "2026-08-03"
+    integrated: "2026-08-16"
     summary: >-
-      Implements explicit foreign link names, duplicate-symbol validation,
-      bodyless extern declarations, linked calls, and physical fixed-width LLVM
-      scalar mappings.
+      Tracks the revision-2.0 foreign interface model. Existing frontend and
+      lowering support covers imported extern signatures, supported calling
+      convention names, explicit link symbols, basic ABI type gating and linked
+      calls. Ordinary extern calls no longer require unsafe solely because they
+      cross a foreign boundary; unsafe extern declarations retain explicit
+      caller proof obligations. Call-bounded foreign reference parameters are
+      accepted, while foreign data types, C scalar families, null syntax,
+      callbacks, C varargs, ABI-driven legality and complete Semantic IR remain.
     rules:
-      - rules/platform/ffi.txt
+      - rules/platform/ffi.md
       - rules/foundations/grammar.md
+      - rules/foundations/attributes.md
+      - rules/types/types.md
+      - rules/memory/raw_pointers.txt
+      - rules/memory/borrowing.txt
+      - rules/memory/layout.md
+      - rules/memory/unsafe.md
+      - rules/compiler/semantic_ir.txt
     code:
       - internal/parser/parser.go
       - internal/sema/analyzer.go
@@ -713,25 +725,65 @@ integrations:
       - internal/codegen/llvm/functions.go
       - internal/codegen/llvm/types.go
       - internal/codegen/mlir/generator.go
+      - internal/ir/semantic/model.go
+      - internal/ir/semantic/builder.go
     tests:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
       - internal/codegen/llvm/generator_test.go
       - internal/codegen/mlir/generator_test.go
       - testdata/ir/test_ffi_link_name.sec
+    implemented:
+      - bodyless extern C, system, and Sec function declaration parsing and AST retention
+      - parser and defensive Sema rejection of body-bearing extern declarations
+      - Linux inline-assembly syscall implementations migrated from body-bearing extern to ordinary unsafe Sec functions
+      - rejection of unknown extern calling-convention strings during semantic registration
+      - ordinary extern calls permitted without an unsafe context solely for foreignness
+      - unsafe extern declarations preserved in Sema and calls rejected outside an explicit unsafe context
+      - call-bounded non-null ref and ref mut extern parameters accepted by position-specific FFI validation
+      - raw foreign ref and ref mut returns remain rejected as non-ABI-compatible
+      - RawPtr and fixed-width integer and floating scalar gating for current extern signatures
+      - direct Sec string and other obviously non-ABI-compatible signature types rejected
+      - explicit @link_name parsing, AST and semantic retention, linked backend symbol selection, and duplicate-symbol validation
+      - foreign call kind, ABI, symbol, and unsafe declaration provenance retained through existing Semantic IR
+      - fixed-width scalar and RawPtr lowering through maintained LLVM and legacy MLIR paths
+    remaining:
+      - "parse and resolve compiler-known C fundamental types under C:: and target binding namespaces under c::"
+      - resolve C scalar widths, signedness, conversions, literal shaping, and checked narrowing from the active ABI model
+      - add target-specific calling-convention and per-position ABI legality validation before backend lowering
+      - implement unsafe-only null sentinel parsing, contextual typing, is null refinement, and equality rejection without giving null a standalone type
+      - parse and validate complete and incomplete extern C structs with ABI layout and no implicit Defaultable construction
+      - implement untagged extern C unions with ABI layout and foreign-unsafe member-access facts
+      - implement open extern C enums with ABI-selected representation and unknown-value handling
+      - parse, lay out, range-check, and lower C bitfields including unnamed and zero-width rules and non-addressability
+      - implement final-field-only descriptor-free C::flex flexible-array members
+      - validate foreign references as non-retained call-bounded borrows and connect them to borrow, lifetime, escape, and effect analyses
+      - add C::fn foreign function-pointer types, nullable-call proof, ABI classification, and lowering distinct from native callable types
+      - implement C::callback for exact environment-free reusable callables and reject capturing, mut fn, and consuming callables
+      - implement final bare C varargs only for unsafe extern C and C::fn, including default promotions and target classification
+      - keep C varargs distinct from native typed variadics, Sec spread, ref parameters, and native pack representation
+      - add explicit string encoding, termination, embedded-zero, buffer length, and incoming foreign-text wrapper support without hidden string ABI conversion
+      - model foreign resources through nominal Sec owners, explicit retain/clone, transfer-on-success, and fallible-close contracts
+      - keep raw foreign status/null/error protocols distinct from Result and Option until wrappers normalize them
+      - reject unwind and non-local transfer across active FFI and callback boundaries
+      - preserve trusted extern effect-contract provenance and treat unspecified foreign effects conservatively
+      - resolve libraries, objects, frameworks, import libraries, and search paths through package/build CompilationPlan metadata
+      - preserve foreign data kind, ABI identity, bitfield/flex metadata, function pointers, callback adaptation, varargs, effects, and dependencies in Semantic IR and Sec MLIR
+      - add the complete parser, Sema, borrow, lifetime, ownership, effects, layout, formatter, LSP, target, Semantic IR, MLIR, LLVM, and diagnostic regression matrix required by ffi.md
+    excluded:
+      - C or C++ header parsing, preprocessing, typedef syntax, macros, and static-inline import
+      - general named Sec-to-C symbol export
+      - capturing closure adaptation to C callbacks
+      - automatic slice decomposition and implicit Sec string to C string conversion
+      - per-function @library annotations
+      - foreign unwind across Sec frames
     verification:
-      - command: go test ./...
+      - command: go test ./internal/sema -run 'Extern|FFI' -count=1
         result: passed
-      - command: emit-mlir --verify testdata/ir/test_ffi_link_name.sec
+      - command: go run ./cmd/compiler emit-mlir testdata/ir/test_ffi_link_name.sec -o /tmp/sec-ffi-link-name.mlir --verify
         result: passed
       - command: clang LLVM IR verification
         result: passed
-    remaining:
-      - target-specific calling-convention attributes
-      - target-width ABI validation
-      - explicit foreign struct layout validation
-      - library and object dependency metadata
-      - null, ownership contracts, and callbacks
 
   - id: stdlib.units-catalog
     area: standard-library
@@ -1301,7 +1353,7 @@ integrations:
       - rules/memory/borrowing.txt
       - rules/collections/collections.md
       - rules/declarations/lambda-functions.md
-      - rules/platform/ffi.txt
+      - rules/platform/ffi.md
       - rules/analysis/call_graph.md
     code:
       - internal/sema/place.go
@@ -1788,7 +1840,7 @@ integrations:
       - rules/memory/storage.md
       - rules/memory/layout.md
       - rules/collections/collections.md
-      - rules/platform/ffi.txt
+      - rules/platform/ffi.md
       - rules/analysis/effect_analysis.md
     code:
       - internal/sema/analyzer.go
@@ -1856,7 +1908,7 @@ integrations:
       - rules/memory/storage.md
       - rules/memory/layout.md
       - rules/collections/collections.md
-      - rules/platform/ffi.txt
+      - rules/platform/ffi.md
     code:
       - internal/sema/analyzer.go
       - internal/sema/place.go
@@ -1939,7 +1991,7 @@ integrations:
       - rules/memory/destruction.txt
       - rules/control-flow/defer.txt
       - rules/collections/collections.md
-      - rules/platform/ffi.txt
+      - rules/platform/ffi.md
       - rules/analysis/effect_analysis.md
       - rules/projects/projects.txt
       - rules/tooling/lsp.md
@@ -2162,7 +2214,7 @@ integrations:
       - rules/memory/layout.md
       - rules/memory/ownership.md
       - rules/memory/borrowing.txt
-      - rules/platform/ffi.txt
+      - rules/platform/ffi.md
       - rules/concurrency/concurrency_memory_model.md
       - rules/tooling/lsp.md
       - rules/projects/projects.txt
@@ -2912,7 +2964,7 @@ integrations:
       - rules/memory/copy_move.md
       - rules/collections/collections.md
       - rules/analysis/effect_analysis.md
-      - rules/platform/ffi.txt
+      - rules/platform/ffi.md
       - rules/tooling/lsp.md
       - rules/projects/projects.txt
     remaining:
@@ -3337,7 +3389,7 @@ integrations:
       - rules/control-flow/defer.txt
       - rules/collections/collections.md
       - rules/analysis/effect_analysis.md
-      - rules/platform/ffi.txt
+      - rules/platform/ffi.md
       - rules/tooling/lsp.md
       - rules/projects/projects.txt
     remaining:
@@ -3426,7 +3478,7 @@ integrations:
       - rules/compiler/compiler_pipeline.txt
       - rules/memory/storage.md
       - rules/memory/layout.md
-      - rules/platform/ffi.txt
+      - rules/platform/ffi.md
       - rules/declarations/registers.md
       - rules/platform/fixed-address-bindings.md
       - rules/concurrency/concurrency_runtime_model.md

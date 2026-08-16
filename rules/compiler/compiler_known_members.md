@@ -3204,7 +3204,7 @@ core-library.md
 default_values.md
 diagnostics.txt
 effect_analysis.md
-ffi.txt
+platform/ffi.md
 formatting.md
 declarations/generics.md
 impl.md

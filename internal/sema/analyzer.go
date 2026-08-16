@@ -3622,6 +3622,7 @@ func (a *Analyzer) registerFunctionDeclarationBody(fn *ast.FunctionDeclaration, 
 		GenericParameters: genericParameterNameValues(fn.GenericParameters),
 		Token:             fn.Name.Token,
 		Extern:            fn.Extern,
+		Unsafe:            fn.Unsafe,
 		Static:            fn.Static,
 		ABI:               fn.ABI,
 		LinkName:          fn.LinkName,
@@ -3910,13 +3911,20 @@ func maxInt64(left int64, right int64) int64 {
 
 func (a *Analyzer) validateExternFunction(function Function) {
 	for i, param := range function.Parameters {
-		if !isFFICompatibleType(param.Type) {
+		if !isFFICompatibleParameterType(param.Type) {
 			a.addErrorAtToken(param.Token, "extern %s parameter %d %s has non-ABI-compatible type %s", function.ABI, i+1, param.Name, typeDisplayName(param.Type))
 		}
 	}
 	if function.ReturnType.Kind != VoidType && !isFFICompatibleType(function.ReturnType) {
 		a.addErrorAtToken(function.Token, "extern %s function %s has non-ABI-compatible return type %s", function.ABI, function.Name, typeDisplayName(function.ReturnType))
 	}
+}
+
+func isFFICompatibleParameterType(typ Type) bool {
+	// Safe references are legal only in this parameter-specific position. They
+	// express a non-null, call-bounded, non-retained foreign borrow and remain
+	// invalid as raw foreign returns or stored foreign pointer fields.
+	return typ.Kind == ReferenceType || isFFICompatibleType(typ)
 }
 
 func isFFICompatibleType(typ Type) bool {
@@ -4055,6 +4063,8 @@ func (a *Analyzer) analyzeFunctionBodyInScope(fn *ast.FunctionDeclaration, name 
 		if fn.Body == nil {
 			return
 		}
+		a.addErrorAtToken(fn.Token, "extern function declarations may not have a Sec body")
+		return
 	}
 
 	previousSymbols := a.symbols
@@ -12148,8 +12158,12 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 
 	best := bestOverloadMatches(matches)
 	if len(best) == 1 {
-		if best[0].Function.Extern && !a.inUnsafe {
-			a.addErrorAtToken(expr.Token, "calling extern function %s requires unsafe", name)
+		if best[0].Function.Unsafe && !a.inUnsafe {
+			kind := "function"
+			if best[0].Function.Extern {
+				kind = "extern function"
+			}
+			a.addErrorAtToken(expr.Token, "calling unsafe %s %s requires unsafe", kind, name)
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
 		a.setDefinitions(callCalleeDefinitionToken(expr), best[0].Function.Token)

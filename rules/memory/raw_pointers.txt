@@ -64,11 +64,22 @@ Inside unsafe code, the compiler must still validate:
 
 ## Null
 
-RawPtr may represent a null address only at an FFI boundary or inside an extern wrapper.
+Null is part of the possible value domain of `RawPtr[T]`.
 
-The null literal is not valid in ordinary Sec code.
+A raw pointer may contain null after a foreign operation, unsafe conversion,
+platform operation, or another valid raw-pointer-producing operation. Storing,
+moving, returning, passing, or testing that raw address creates neither a safe
+reference nor pointee ownership.
 
-Code outside the extern boundary must convert nullable foreign pointers into an explicit Sec representation such as:
+Safe references remain non-null. Conversion of a raw pointer to `ref` or
+`ref mut` requires proof of non-nullness in addition to every ordinary
+reference obligation.
+
+The `null` source sentinel is separately restricted to unsafe foreign/raw-
+pointer contexts by the FFI rules; its restricted syntax does not narrow the
+RawPtr value domain.
+
+Safe wrappers should convert nullable foreign pointers into an explicit Sec representation such as:
 
 * Option[RawPtr[T]]
 * Result[RawPtr[T], E]

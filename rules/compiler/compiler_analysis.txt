@@ -342,7 +342,7 @@ The compiler verifies:
 * alignment
 * padding
 
-ABI validation follows ffi.txt.
+ABI validation follows `rules/platform/ffi.md`.
 
 ## Register analysis
 

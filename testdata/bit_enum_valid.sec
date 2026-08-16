@@ -27,4 +27,7 @@ fn SelectExternalClock() void {
 
 fn main() int {
     return int(ClockSource.Bypass)
+    ClockSource mut: A
+
+    if A is Nothing
 }

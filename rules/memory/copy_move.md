@@ -3184,7 +3184,7 @@ channels.md
 tasks.txt
 threads.md
 processes.txt
-ffi.txt
+platform/ffi.md
 declarations/registers.md
 platform/fixed-address-bindings.md
 static.md

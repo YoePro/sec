@@ -16,7 +16,7 @@ module amd64
  * Raw syscall with no Parameters. OS: Linux Arch: AMD64
  * PARAM: "number" uint 
  */
-unsafe extern "system" fn RawSyscall(number: uint) int {
+unsafe fn RawSyscall(number: uint) int {
     asm {
         "syscall"
         inputs:
@@ -34,7 +34,7 @@ unsafe extern "system" fn RawSyscall(number: uint) int {
 }
 
 // Call with 1 argument
-unsafe extern "system" fn RawSyscall(number: uint, arg1: uint) int {
+unsafe fn RawSyscall(number: uint, arg1: uint) int {
         asm {
         "syscall"
 
@@ -55,7 +55,7 @@ unsafe extern "system" fn RawSyscall(number: uint, arg1: uint) int {
 }
 
 // Call with 2 arguments
-unsafe extern "system" fn RawSyscall(number: uint, arg1: uint, arg2: uint) int {
+unsafe fn RawSyscall(number: uint, arg1: uint, arg2: uint) int {
         asm {
         "syscall"
 
@@ -77,7 +77,7 @@ unsafe extern "system" fn RawSyscall(number: uint, arg1: uint, arg2: uint) int {
 }
 
 // Call with 3 arguments
-unsafe extern "system" fn RawSyscall(number: uint, arg1: uint, arg2: uint, arg3: uint) int {
+unsafe fn RawSyscall(number: uint, arg1: uint, arg2: uint, arg3: uint) int {
     asm {
         "syscall"
 
@@ -100,7 +100,7 @@ unsafe extern "system" fn RawSyscall(number: uint, arg1: uint, arg2: uint, arg3:
 }
 
 // Call with 4 arguments
-unsafe extern "system" fn RawSyscall(number: uint, arg1: uint, arg2: uint, arg3: uint, arg4: uint) int {
+unsafe fn RawSyscall(number: uint, arg1: uint, arg2: uint, arg3: uint, arg4: uint) int {
     asm {
         "syscall"
 
@@ -124,7 +124,7 @@ unsafe extern "system" fn RawSyscall(number: uint, arg1: uint, arg2: uint, arg3:
 }
 
 // Call with 5 arguments
-unsafe extern "system" fn RawSyscall(number: uint, arg1: uint, arg2: uint, arg3: uint, arg4: uint, arg5: uint) int {
+unsafe fn RawSyscall(number: uint, arg1: uint, arg2: uint, arg3: uint, arg4: uint, arg5: uint) int {
     asm {
         "syscall"
 
@@ -148,7 +148,7 @@ unsafe extern "system" fn RawSyscall(number: uint, arg1: uint, arg2: uint, arg3:
 }
 
 // Call with 6 arguments
-unsafe extern "system" fn RawSyscall6(number: uint, arg1: uint, arg2: uint, arg3: uint, arg4: uint, arg5: uint, arg6: uint) int {
+unsafe fn RawSyscall6(number: uint, arg1: uint, arg2: uint, arg3: uint, arg4: uint, arg5: uint, arg6: uint) int {
     asm {
         "syscall"
 

@@ -63,7 +63,7 @@ The categories are semantic. They do not require one common runtime representati
 | borrowed slices | `ref T[]`, `ref mut T[]` |
 | safe references | `ref T`, `ref mut T` |
 | raw addresses | `RawPtr[T]` |
-| function types | `fn(T, U) R` |
+| callable types | `fn(T, U) R`, `mut fn() R`, `-> fn() R` |
 | first-class collections | `list`, `map`, `set` |
 | first-class shaped types | `vector`, `matrix`, `tensor`, `tensor_view` |
 | hardware layout forms | `bit`, `bit[N]`, `register[N]` |
@@ -1144,13 +1144,20 @@ are distinct reference types.
 
 ## Function types
 
-Function parameter types and return type participate in function-type identity.
+Callable capability, ordered parameter types and ownership modes, variadic
+shape, and return type participate in function-type identity.
 
 Example:
 
 ```text
 fn(int) bool
 fn(int) int
+mut fn() int
+-> fn() Resource
+fn(ref Buffer) void
+fn(ref mut Buffer) void
+fn(-> Buffer) void
+fn(...int) int
 ```
 
 are distinct.
@@ -1505,7 +1512,11 @@ fn(string) void
 
 Parameter names are not part of function-type identity.
 
-Capture state is not part of the source-level function signature.
+Callable capability and parameter consumption are distinct. For example,
+`-> fn(-> Resource) Handle` consumes both the callable environment and its
+argument. Parameter names and individual capture contents are not part of
+source-level callable type identity, although captures determine capability,
+copy/move classification, and lifetime.
 
 Lambda, closure, capture, call, and ownership rules are defined by the function and closure rulebooks.
 
@@ -1805,7 +1816,7 @@ declarations/interfaces.md
 errorhandling.txt
 declarations/registers.md
 platform/fixed-address-bindings.md
-ffi.txt
+platform/ffi.md
 storage.md
 ```
 

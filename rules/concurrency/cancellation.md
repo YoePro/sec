@@ -535,7 +535,7 @@ concurrency.md
 concurrency_runtime_model.md
 concurrency_memory_model.txt
 thread_local.md
-ffi.txt
+platform/ffi.md
 defer.txt
 destruction.txt
 errorhandling.txt

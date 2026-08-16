@@ -78,6 +78,7 @@ Sec 0.1 initially defines:
 @noAlloc
 @noPanic
 @noBlock
+@link_name("foreign-symbol")
 ```
 
 The set may grow in later language versions.
@@ -183,6 +184,18 @@ They are not unchecked programmer promises for ordinary Sec code.
 ```
 
 These change a nominal type's semantic classification.
+
+## Foreign-binding attributes
+
+```text
+@link_name("foreign-symbol")
+```
+
+`@link_name` is valid only on an `extern` declaration. It requires exactly one
+non-empty string-literal argument and may appear at most once on a declaration.
+It changes only the foreign/link symbol: the Sec name, calling convention,
+safety, ownership, effects, dependency metadata, and ABI compatibility are
+unchanged. Conflicting explicit symbols in one link domain are invalid.
 
 ---
 
@@ -1863,15 +1876,14 @@ compiler.
 For foreign declarations, the compiler normally cannot prove the foreign
 implementation.
 
-Sec 0.1 does not silently reinterpret a verified attribute as a trusted promise.
-
-Foreign effect declarations require an explicit unsafe FFI design.
-
-Until that design is locked:
+On an extern declaration, an applicable effect-guarantee attribute is a trusted
+foreign contract rather than a compiler proof of the foreign body. The compiler
+must preserve this trust provenance and treat unspecified foreign effects
+conservatively.
 
 ```text
 unknown foreign effects violate noPanic, noAlloc, noBlock, and interruptSafe
-ordinary verified attributes on extern declarations are not sufficient proof
+extern guarantees are usable only as explicitly trusted foreign facts
 ```
 
 ---
@@ -2622,7 +2634,7 @@ allocation.txt
 defer.txt
 destruction.txt
 inline_assembly.md
-ffi.txt
+platform/ffi.md
 functions.md
 declarations/interfaces.md
 impl.md

@@ -524,7 +524,7 @@ raw_pointers.txt
 copy_move.md
 lifetime_analysis.txt
 destruction.txt
-ffi.txt
+platform/ffi.md
 concurrency.md
 concurrency_memory_model.txt
 data_races.md

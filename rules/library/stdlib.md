@@ -1250,7 +1250,7 @@ mutex.md
 atomics.md
 blocking.md
 scheduling.md
-ffi.txt
+platform/ffi.md
 projects.txt
 modules.md
 initialization.md

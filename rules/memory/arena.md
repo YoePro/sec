@@ -3841,7 +3841,7 @@ destruction.txt
 diagnostics.txt
 effect_analysis.md
 escape_analysis.md
-ffi.txt
+platform/ffi.md
 declarations/interfaces.md
 isr_analysis.md
 layout.md

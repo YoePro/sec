@@ -1197,7 +1197,7 @@ tasks.txt
 declarations/registers.md
 platform/fixed-address-bindings.md
 numeric_types.txt
-ffi.txt
+platform/ffi.md
 ```
 
 ## Current implementation status

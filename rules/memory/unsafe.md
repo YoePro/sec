@@ -365,7 +365,10 @@ The default diagnostic may be informational and configurable.
 Canonical foreign declaration form:
 
 ```sec
-unsafe extern "system" fn rawSysCall(...) int64
+unsafe extern "system" fn rawSysCall(
+    number: int,
+    argument1: uint64,
+) int64
 ```
 
 The tokens have separate meanings:
@@ -384,6 +387,9 @@ fn
 `unsafe extern` is not one indivisible keyword.
 
 Other linkage forms remain defined by the FFI rulebook.
+
+Bare foreign `...` is defined only by the FFI rules for final C varargs and is
+not native Sec typed-variadic syntax.
 
 Examples include:
 
@@ -1738,7 +1744,7 @@ let value := unsafe {
 ```
 
 ```sec
-unsafe extern "system" fn rawSysCall(...) int64
+unsafe extern "system" fn rawSysCall(number: int, argument1: uint64) int64
 ```
 
 ---
@@ -1752,7 +1758,7 @@ Visibility and scope use the language's established `_` and `__` conventions.
 Canonical unsafe foreign order is:
 
 ```sec
-unsafe extern "system" fn rawSysCall(...) int64
+unsafe extern "system" fn rawSysCall(number: int, argument1: uint64) int64
 ```
 
 Canonical Sec unsafe function order is:
@@ -2071,7 +2077,7 @@ physical consequences.
 The current language direction already uses forms such as:
 
 ```sec
-unsafe extern "system" fn rawSysCall(...) int64
+unsafe extern "system" fn rawSysCall(number: int, argument1: uint64) int64
 ```
 
 and:
@@ -2442,7 +2448,7 @@ The body is not implicitly unsafe.
 Support canonical:
 
 ```sec
-unsafe extern "system" fn rawSysCall(...) int64
+unsafe extern "system" fn rawSysCall(number: int, argument1: uint64) int64
 ```
 
 Keep unsafe status separate from linkage.
@@ -2621,7 +2627,7 @@ let value := unsafe {
 ```
 
 ```sec
-unsafe extern "system" fn rawSysCall(...) int64
+unsafe extern "system" fn rawSysCall(number: int, argument1: uint64) int64
 ```
 
 Do not add or remove unsafe semantics.
@@ -2724,7 +2730,7 @@ unsafe fn Name(...) ReturnType {
 and:
 
 ```sec
-unsafe extern "system" fn rawSysCall(...) int64
+unsafe extern "system" fn rawSysCall(number: int, argument1: uint64) int64
 ```
 
 Calling either requires unsafe context.

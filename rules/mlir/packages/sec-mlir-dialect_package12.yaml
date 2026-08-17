@@ -16,7 +16,7 @@ package:
   next_package: Struct Semantic Value Representation
 normative_updates:
 - repository_paths:
-  - rules/control-flow/flowcontrol_match.txt
+  - rules/control-flow/flowcontrol_match.md
   - rules/declarations/enums.md
   supplied_file: sec_match_enum_domain_package12.md
   purpose: Resolve enum alias/unnamed-value match-domain inconsistency.

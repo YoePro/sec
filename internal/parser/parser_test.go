@@ -4429,7 +4429,7 @@ fn Test() void {
 	}
 }
 
-func TestParseDeferReturnStatement(t *testing.T) {
+func TestRejectDeferReturnShorthand(t *testing.T) {
 	input := `
 fn Test() void {
 	defer return
@@ -4438,19 +4438,11 @@ fn Test() void {
 
 	l := lexer.New(input)
 	p := New(l)
-	program := p.ParseProgram()
-	checkParserErrors(t, p)
+	p.ParseProgram()
 
-	fn := program.Statements[0].(*ast.FunctionDeclaration)
-	deferStmt, ok := fn.Body.Statements[0].(*ast.DeferStatement)
-	if !ok {
-		t.Fatalf("statement is not DeferStatement. got=%T", fn.Body.Statements[0])
-	}
-	if deferStmt.Body == nil || len(deferStmt.Body.Statements) != 1 {
-		t.Fatalf("wrong defer return body. got=%#v", deferStmt.Body)
-	}
-	if _, ok := deferStmt.Body.Statements[0].(*ast.ReturnStatement); !ok {
-		t.Fatalf("defer body is not return. got=%T", deferStmt.Body.Statements[0])
+	want := "defer requires a block at 3:8"
+	if len(p.Errors()) != 1 || p.Errors()[0] != want {
+		t.Fatalf("wrong parser errors. got=%v want=[%s]", p.Errors(), want)
 	}
 }
 

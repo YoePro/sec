@@ -188,7 +188,7 @@ LSP token classification
 | `flowcontrol_for_1.txt` | **Covered** | Merged into `control-flow/flowcontrol_for.md`; no separate rulebook remains in `rules/`. |
 | `control-flow/flowcontrol_while.md` | **Written** | Canonical revision 2.0 condition-controlled loops, boolean conditions, loop-control targets, non-continuing loops, flow merging, and explicit Sec 0.1 exclusions. Implementation progress is tracked by `frontend.while-statements-v2`. |
 | `control-flow/flowcontrol_switch.md` | **Written** | Canonical revision 2.0 subject and subjectless switches, ordered value/range/relational cases, explicit fallthrough, case flow, and statement-only boundaries. Implementation progress is tracked by `frontend.switch-statements-v2`. |
-| `control-flow/flowcontrol_match.txt` | **Written — sync required** | Current Sema covers Result, enum, union/Option matching and rejects pattern-binding shadowing; still needs panic/outcome and future collection-pattern synchronization. |
+| `control-flow/flowcontrol_match.md` | **Written** | Canonical revision 2.0 structural and variant matching, exhaustiveness, guarded ownership commit, contextual arm-block values, union empty state, and match/LSP facts. Implementation progress is tracked by `frontend.match-v2`. |
 
 ---
 
@@ -302,7 +302,7 @@ The remaining details to close are:
 | `memory/destruction.txt` | **Written — sync required** | Must include discard, panic, cancellation, collection elements, and TLS destruction. |
 | `memory/memory_model.md` | **Written** | Canonical source and compiler memory model, including default lifetime and origin rules. |
 | `declarations/static.md` | **Written** | Canonical revision 2.0 for module, function-local, and type-associated static storage; static methods/properties, generic specialization, compile-time initialization, dependency order, concurrency, destruction, placement boundaries, Semantic IR, and diagnostics. Implementation progress is tracked by `frontend.static-declarations-members`. |
-| `control-flow/discard.md` | **Written — sync required** | General explicit consumption and early deterministic destruction. |
+| `control-flow/discard.md` | **Written** | Canonical revision 2.0 explicit and implicit discard, must-use/discardability, reinitialization, lifecycle-handle, and deterministic destruction semantics. The implemented frontend slice and remaining lowering, Place, diagnostics, and path-sensitive work are tracked by `frontend.discard-v2`. |
 | `memory/storage.md` | **Written** | Canonical storage origin, backing relation, reclamation authority, address stability, regions, invalidation domains, validity epochs, memory spaces, placement guarantees, and shaped `StorageRequest` integration; implementation remains partial. |
 | `memory/layout.md` | **Written** | Canonical semantic/native layout, size, alignment, stride, padding, aggregate representation, explicit contracts, plan-specific queries, and compatibility; the shared layout phase remains partial. |
 
@@ -602,7 +602,7 @@ platform/ffi.md
 platform/abi.md
 control-flow/flowcontrol_for.md
 control-flow/flowcontrol_if.md
-control-flow/flowcontrol_match.txt
+control-flow/flowcontrol_match.md
 control-flow/flowcontrol_switch.md
 control-flow/flowcontrol_while.md
 tooling/formatter.md

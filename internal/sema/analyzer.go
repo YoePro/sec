@@ -2077,11 +2077,6 @@ func (a *Analyzer) analyzeDeferStatement(stmt *ast.DeferStatement) {
 	if a.loopDepth > 0 {
 		a.addWarningAtToken(stmt.Token, "defer inside loop registers once per execution and runs at function exit")
 	}
-	if deferBodyIsBareReturn(stmt.Body) {
-		a.addWarningAtToken(stmt.Token, "superfluous defer return")
-		return
-	}
-
 	previousSymbols := a.symbols
 	previousConstInts := a.constInts
 	previousAssigned := a.assigned
@@ -2126,14 +2121,6 @@ func (a *Analyzer) analyzeDeferStatement(stmt *ast.DeferStatement) {
 	}()
 
 	a.analyzeBlockStatements(stmt.Body)
-}
-
-func deferBodyIsBareReturn(block *ast.BlockStatement) bool {
-	if block == nil || len(block.Statements) != 1 {
-		return false
-	}
-	ret, ok := block.Statements[0].(*ast.ReturnStatement)
-	return ok && ret.Value == nil
 }
 
 func (a *Analyzer) analyzeForStatement(stmt *ast.ForStatement) {

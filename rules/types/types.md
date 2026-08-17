@@ -1741,6 +1741,55 @@ Backend loads and stores must not be used to infer source-level copy or move sem
 
 ---
 
+# Must-use and discardability
+
+`must-use` and `discardability` are distinct semantic properties of a resolved
+type or concrete type instance.
+
+```text
+must-use
+    an unnamed produced value may not disappear through implicit discard
+
+discardable
+    explicit terminal discard is legal
+```
+
+A type may therefore be must-use while remaining explicitly discardable.
+
+Canonical examples include:
+
+```text
+Result[int, IOError]
+    must-use
+    discardable
+
+Thread[int] while unresolved
+    must-use
+    non-discardable
+
+Result[Thread[int], SpawnError]
+    must-use
+    non-discardable while Ok may contain an unresolved Thread[int]
+
+Option[int]
+    not automatically must-use
+    discardable
+```
+
+Discardability is recursive through concrete aggregate and variant payload
+structure. It is not derived merely from copy classification or physical
+representation.
+
+Compiler-known core types may carry these properties before a general
+user-defined must-use declaration mechanism exists. The source declaration
+mechanism for user-defined must-use types remains owned by the attribute and
+type-design rules.
+
+Detailed terminal consumption and implicit call-result behavior is defined by
+`rules/control-flow/discard.md`.
+
+---
+
 # Type semantics and representation
 
 A source type may have different physical representations under different targets or profiles when the owning rule permits this.
@@ -1817,6 +1866,7 @@ errorhandling.txt
 declarations/registers.md
 platform/fixed-address-bindings.md
 platform/ffi.md
+control-flow/discard.md
 storage.md
 ```
 

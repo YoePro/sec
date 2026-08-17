@@ -1,96 +1,30 @@
 # Discard
 
-## Current implementation status
-
-Implemented:
-
-- lexer keyword support for `discard`;
-- parser support for `discard expression`;
-- AST representation through `DiscardStatement`;
-- compatibility `Name` field for identifier discards;
-- parser rejection of `discard` without an expression;
-- semantic analysis of the discarded expression;
-- explicit discard of temporary expression results such as function and method
-  calls;
-- normal receiver mutability requirements for methods called by a discarded
-  expression, including implicit `self` mutability inference in `impl` methods;
-- identifier discard consumes the named binding and records the reason as
-  `discarded`;
-- later reads of a discarded local identifier are rejected with a related source
-  location;
-- ordinary assignment to a discarded local binding is rejected through the
-  existing unavailable/moved-state handling;
-- discard of `ref` and `ref mut` bindings ends the reference binding;
-- discard rejects unresolved `Task[T]` and `Thread[T]` handles;
-- discard rejects a direct `spawn` expression because successful creation would
-  abandon the returned lifecycle handle;
-- standalone expression statements are already parsed and semantically
-  evaluated;
-- standalone `spawn` expressions are rejected;
-- an unhandled `Result` expression inside `defer` is rejected;
-- parser, AST, and compiler dump output preserve the discarded expression.
-
-Partially implemented:
-
-- ordinary non-`void` call expressions are accepted as standalone statements
-  and semantically treated as implicit temporary discards;
-- direct compiler-known must-use results (`Result[T, E]`, `Task[T]`, and
-  `Thread[T]`) are rejected when used as standalone call statements;
-- must-use and explicit discardability checks recurse through type arguments,
-  array elements, struct fields, and union payloads, preventing wrappers and
-  aggregates from silently hiding unresolved tasks or threads;
-- the current frontend validates explicit discard ownership state for simple
-  local identifiers, but not arbitrary places;
-- task and thread lifecycle checks exist, but the complete recursive
-  discardability model is not yet implemented;
-- diagnostics use current English messages, but most discard diagnostics do not
-  yet use stable registered IDs, structured notes, and help.
-
-Not implemented yet:
-
-- the configurable advisory diagnostic for implicitly discarded ordinary call
-  results;
-- path-sensitive wrapper and union-variant reasoning that proves a specific
-  active payload is discardable;
-- field-sensitive partial discard;
-- path-sensitive discarded-state diagnostics distinct from moved-state after
-  branch merges;
-- destructor lowering;
-- Semantic IR `DiscardValue`;
-- explicit Semantic IR origin metadata distinguishing explicit and implicit
-  discard;
-- non-discardable `Process` checks before that type is fully compiler-known;
-- complete `spawn Result[Handle, Error]` modelling for thread and process spawn;
-- advisory diagnostics for useless literal and constant discards;
-- configurable severity integration for implicit discard;
-- complete synchronization with `functions.md`, `ownership.md`,
-  `destruction.txt`, and `semantic_ir.txt`.
-
-The normative rules below supersede the older rule that every non-`void` call
-statement always requires explicit `discard`.
+- **Status:** Normative
+- **Created:** 2026-07-31
+- **Last updated:** 2026-08-16
+- **Document revision:** 2.0
+- **Sec language version:** 0.1
+- **Canonical path:** `rules/control-flow/discard.md`
+- **Repository baseline reviewed:** `56be75d`
 
 ---
 
-## Purpose
+## 1. Purpose
 
-`discard` explicitly consumes a value whose result or remaining lifetime the
-programmer intentionally does not need.
+`discard` explicitly consumes a value whose result or remaining lifetime the programmer intentionally does not need.
 
 It is a general ownership and deterministic-destruction operation.
 
 It is not specific to tasks, threads, error handling, or function results.
 
-Sec also permits an ordinary non-`void` function or method result to be
-implicitly discarded when the call is used as a standalone statement.
-
-The compiler reports that implicit discard through a configurable advisory
-diagnostic.
+Sec also permits an ordinary non-`void` function or method result to be implicitly discarded when the call is used as a standalone statement.
 
 Values with must-use semantics are never implicitly discarded.
 
 ---
 
-## Syntax
+## 2. Syntax
 
 ```text
 discard-statement:
@@ -109,31 +43,43 @@ discard worker.value
 
 It does not produce a value.
 
-The expression is evaluated exactly once.
+The operand expression is evaluated exactly once.
 
 ---
 
-## Core meaning
+## 3. Core meaning
+
+For:
 
 ```sec
 discard value
 ```
 
-means:
+the compiler must:
 
 1. evaluate and resolve `value`;
-2. consume the resulting owned value;
-3. execute deterministic destruction when required;
-4. mark the consumed binding or storage value unavailable;
-5. continue with the next statement.
+2. validate that explicit discard is legal for the resolved value;
+3. consume the resulting value or place;
+4. execute deterministic destruction when required;
+5. end any ownership or borrow responsibility carried by that consumed value;
+6. mark consumed storage unavailable when applicable;
+7. continue with the next statement.
 
 For trivially destructible values, lowering may produce no machine instruction.
 
 The semantic consumption still exists.
 
+`discard` is not:
+
+- an unused SSA result;
+- an implicit copy followed by destruction of the copy;
+- a move to another owner;
+- a general exception or error-suppression mechanism;
+- a replacement for lifecycle operations such as `await`, `join`, or `detach`.
+
 ---
 
-## Explicit and implicit discard
+## 4. Explicit and implicit discard
 
 Sec distinguishes:
 
@@ -141,65 +87,89 @@ Sec distinguishes:
 explicit discard
     the programmer writes `discard expression`
 
-implicit discard
-    an ordinary non-void call is used as a standalone statement
+implicit call-result discard
+    an ordinary discardable non-void call result is unused because the call is a standalone statement
 ```
 
-Both consume and destroy the returned temporary.
+Both forms consume the produced value and run its required deterministic destruction.
 
-Only explicit discard may acknowledge a must-use result.
+Only explicit discard may acknowledge a must-use value.
 
-Example of explicit discard:
+Explicit:
 
 ```sec
 discard Calculate()
 ```
 
-Example of implicit discard:
+Implicit ordinary call-result discard:
 
 ```sec
 Calculate()
 ```
 
-The second form is valid only when the returned value is ordinary and
-discardable.
-
-The compiler emits a configurable advisory diagnostic for the second form.
+The second form is valid only when the result is not must-use and is discardable.
 
 ---
 
-## Discarding a binding
+## 5. Discarding a binding
 
 ```sec
 let resource := OpenResource()
 discard resource
 ```
 
-After the statement, `resource` is unavailable.
+After the statement, the current value of `resource` is unavailable.
 
-Later use is invalid:
+A later read, borrow, move, or second discard is invalid until a legal reinitialization occurs.
 
 ```sec
 Use(resource)
 ```
 
-Expected diagnostic:
+must be rejected.
 
-```text
-value resource was discarded here and is no longer available
-```
+A diagnostic must identify the discard that made the value unavailable.
 
-`discard` ends the binding's current value lifetime.
-
-The binding is not reinitialized by ordinary assignment afterward under the
-current binding-state rules.
-
-A separate declaration may reuse the spelling only when permitted by the normal
-scope and shadowing rules.
+`discard` ends the lifetime of the binding's current value. It does not remove the binding name from scope.
 
 ---
 
-## Copyable values
+## 6. Reinitialization after discard
+
+Mutability and availability are separate.
+
+A mutable binding may be reinitialized after its previous value has been discarded:
+
+```sec
+let mut resource := OpenResource()
+discard resource
+
+resource = OpenResource()
+Use(resource)
+```
+
+The assignment after `discard` is reinitialization, not replacement.
+
+Therefore:
+
+- no old destination value is destroyed;
+- the new value becomes available;
+- a new destruction responsibility is established for the new value;
+- cleanup registration occurs at the reinitialization point when required.
+
+An immutable binding cannot be reinitialized after discard.
+
+```sec
+let resource := OpenResource()
+discard resource
+resource = OpenResource()
+```
+
+is invalid.
+
+---
+
+## 7. Copyable values
 
 An ordinary read of a copyable value may copy it.
 
@@ -210,14 +180,21 @@ let number := 42
 discard number
 ```
 
-This consumes the binding's owned value and ends its availability.
+consumes the binding's current value and makes that binding unavailable.
 
-The compiler must not implement this as an ordinary copy followed by destruction
-of the copy.
+The compiler must not implement explicit discard of a binding as:
+
+```text
+copy binding
+destroy copy
+leave original binding available
+```
+
+That would change the source semantics.
 
 ---
 
-## Move-only values
+## 8. Move-only values
 
 Discarding a move-only value consumes it exactly once.
 
@@ -226,18 +203,17 @@ let file := OpenFile()
 discard file
 ```
 
-This performs the type's deterministic destruction.
+The value's deterministic destruction executes according to its type.
 
-A later move or read is invalid.
+The source becomes unavailable.
 
-No explicit `move(...)` syntax is required.
+No explicit `move(...)` syntax is required for discard.
 
 ---
 
-## Explicitly discarding an expression result
+## 9. Explicitly discarding an expression result
 
-A function result may always be explicitly ignored when its type is
-discardable:
+A function or method result may be explicitly ignored when the complete result type is discardable:
 
 ```sec
 discard Calculate()
@@ -245,26 +221,25 @@ discard Calculate()
 
 The call executes normally.
 
-This includes receiver effects. For example:
+Receiver, argument, ownership, borrow, error, and effect checks are unchanged by the surrounding `discard`.
+
+For example:
 
 ```sec
 discard self.Advance()
 ```
 
-requires a mutable implicit `self` when `Advance` mutates its receiver, just as
-using the same call in another expression context would.
+still requires whatever receiver authority `Advance` normally requires.
 
-The returned temporary is consumed and destroyed before the next statement.
+The produced temporary is consumed and destroyed before the next statement.
 
-Explicit discard documents programmer intent and suppresses the implicit-discard
-advisory diagnostic.
+Explicit discard documents programmer intent and does not trigger the implicit-discard advisory for that result.
 
 ---
 
-## Implicitly discarding an ordinary call result
+## 10. Implicitly discarding an ordinary call result
 
-An ordinary function or method call returning a discardable non-`void` value may
-be used as a standalone statement:
+An ordinary function or method call returning a discardable non-`void` value may be used as a standalone statement:
 
 ```sec
 Calculate()
@@ -274,42 +249,34 @@ buffer.WriteByte(value)
 
 The call is evaluated normally.
 
-Its returned temporary is then implicitly consumed and destroyed at the end of
-the statement.
+Its returned temporary is then implicitly consumed and destroyed at the end of the statement.
 
 Conceptually:
 
 ```text
-1. evaluate the receiver and arguments;
-2. perform the call;
-3. construct the returned temporary;
-4. consume and destroy that temporary;
-5. continue with the next statement.
+1. evaluate receiver and arguments
+2. perform the call
+3. construct the returned temporary
+4. validate implicit-discard legality
+5. consume and destroy the temporary
+6. continue with the next statement
 ```
 
 No user-visible binding is created.
 
-The backend must not treat implicit discard as merely an unused SSA result when
-the return type requires destruction.
-
-Implicit discard is intended to avoid boilerplate where the call's effects are
-wanted but its ordinary return value is not.
-
-It does not apply to must-use values.
+The backend must not treat a non-trivial returned value as merely an unused SSA result.
 
 ---
 
-## Expression-statement boundary
+## 11. Expression-statement boundary
 
-The implicit-discard rule is defined for call-like expression statements.
+Implicit discard is defined for call-like standalone expression statements.
 
 Initial call-like forms include:
 
-```text
-function call
-method call
-constructor or compiler-known call form that follows normal call semantics
-```
+- ordinary function calls;
+- method calls;
+- constructors and compiler-known call forms that follow ordinary call semantics.
 
 Examples:
 
@@ -321,8 +288,7 @@ string.FromRuneArray(runes)
 
 This rule does not make arbitrary value expressions meaningful statements.
 
-Examples that remain invalid or receive their own diagnostics under expression
-and operator rules include:
+Examples such as:
 
 ```sec
 1 + 2
@@ -330,29 +296,27 @@ value
 person.name
 ```
 
-The parser may represent these as expression statements for recovery or later
-semantic validation.
+do not become valid merely because a discarded-result mechanism exists.
+
+Their legality is defined by the ordinary expression-statement and unused-expression rules.
 
 ---
 
-## Implicit-discard diagnostic
+## 12. Advisory for implicit ordinary results
 
-Every implicitly discarded ordinary non-`void` call result is eligible for the
-advisory diagnostic:
+An implicitly discarded ordinary non-`void` call result is eligible for the configurable advisory:
 
 ```text
 ownership.implicit-discarded-result
 ```
 
-The diagnostic belongs to the configurable `A` family.
-
-Its default severity is:
+Default severity:
 
 ```text
 info
 ```
 
-It may be configured as:
+Allowed policy levels:
 
 ```text
 off
@@ -361,62 +325,37 @@ warning
 error
 ```
 
-A project that requires explicit handling of every non-`void` call result can
-promote this single diagnostic to `error`.
+The diagnostic ID is stable regardless of configured severity.
 
-Conceptual configuration:
+Promoting the advisory to `error` is a project diagnostic policy. It does not change Sec ownership semantics.
 
-```toml
-[diagnostics.rules]
-"ownership.implicit-discarded-result" = "error"
-```
-
-A strict diagnostics preset may also promote it.
-
-No separate language-level `@option explicitDiscard` is required.
-
-Changing this diagnostic's severity does not change ownership semantics.
-
-It changes whether implicit syntax is accepted by the selected build policy.
-
-When promoted to `error`, the programmer may satisfy the policy by:
+A project requiring explicit acknowledgement may therefore require:
 
 ```sec
 discard Calculate()
 ```
 
-or by using the returned value in another valid consuming context.
+instead of:
 
-Suggested default diagnostic:
-
-```text
-info[A....]: return value of Calculate with type Measurement is implicitly discarded
+```sec
+Calculate()
 ```
-
-Suggested help:
-
-```text
-use the value or write `discard Calculate()` to document the intent
-```
-
-The final numeric ID must be allocated in the central diagnostics registry and
-must remain stable regardless of configured severity.
 
 No implicit-discard advisory is emitted for a `void` call.
 
-A must-use violation emits a mandatory semantic error instead of this advisory.
+A must-use violation is a mandatory semantic error and is not replaced by this advisory.
 
 ---
 
-## void expressions
+## 13. `void` expressions
 
-A `void` function call is already a normal standalone statement:
+A `void` call is already a normal standalone statement:
 
 ```sec
 LogMessage()
 ```
 
-Explicit discard is valid but unnecessary:
+Explicit discard remains legal:
 
 ```sec
 discard LogMessage()
@@ -424,136 +363,165 @@ discard LogMessage()
 
 The expression is evaluated and produces no payload to destroy.
 
-The compiler should emit a configurable information diagnostic for redundant
-explicit discard of `void`.
-
-Suggested message:
-
-```text
-discard is unnecessary because LogMessage returns void
-```
+The compiler may emit a configurable advisory that the explicit discard is unnecessary.
 
 ---
 
-## Must-use values
+## 14. Must-use and discardability
 
-A must-use value carries semantic information or an ownership obligation that
-must not disappear implicitly.
+Must-use and discardability are distinct semantic properties.
 
-Initial must-use categories include:
+```text
+must-use
+    implicit discard is forbidden
+
+discardable
+    explicit discard is permitted
+```
+
+A value may therefore be:
+
+- not must-use and discardable;
+- must-use and discardable;
+- must-use and non-discardable.
+
+A must-use value cannot disappear through implicit discard.
+
+Explicit discard acknowledges intentional non-use only when the complete value is discardable.
+
+---
+
+## 15. Initial must-use categories
+
+Compiler-known must-use categories include at least:
 
 ```text
 Result[T, E]
 unresolved Task[T]
 unresolved Thread[T]
-unresolved Process
+unresolved Process, when Process is available
 spawn results whose successful payload contains an unresolved lifecycle handle
 other types explicitly defined as carrying a must-use obligation
 ```
 
-A standalone expression producing a must-use value is a mandatory semantic
-error.
+A standalone expression producing a must-use value is a mandatory semantic error.
 
 The diagnostic must explain:
 
 - the exact result type;
-- why it is must-use;
-- what obligation would otherwise be hidden;
-- which valid handling forms are available;
-- whether explicit `discard` is permitted.
+- why the value is must-use;
+- which obligation would otherwise be hidden;
+- valid handling forms;
+- whether explicit `discard` is legal.
 
-Must-use is not a configurable advisory rule.
-
-It cannot be disabled, demoted, or suppressed.
+Must-use errors cannot be disabled or demoted by advisory configuration.
 
 ---
 
-## Result
+## 16. `Result[T, E]`
 
 `Result[T, E]` is always must-use.
 
-Invalid:
+This is invalid:
 
 ```sec
 TryWriteLog()
 ```
 
-Reason:
+because implicit discard could hide `Err(E)`.
 
-> An implicit discard could hide the `Err(E)` variant.
+Valid handling forms include:
 
-The compiler must issue a mandatory error.
+- `try`;
+- `match`;
+- binding the result;
+- returning it;
+- passing it into another valid consuming context;
+- explicit `discard` when the complete `Result` is discardable.
 
-Suggested diagnostic:
-
-```text
-error[S....]: result of TryWriteLog has type Result[void, IOError] and must be handled explicitly
-```
-
-Suggested note:
-
-```text
-Result may contain IOError; implicit discard would hide the failure
-```
-
-Suggested help:
-
-```text
-handle it with try or match, bind it, return it, or write `discard TryWriteLog()` to explicitly ignore both variants
-```
-
-Explicit discard acknowledges that both success and error payloads are
-intentionally ignored:
+Explicit acknowledgement:
 
 ```sec
 discard TryWriteLog()
 ```
 
-This satisfies must-use analysis only because the programmer wrote `discard`
-explicitly.
+means that both success and error variants are intentionally ignored.
 
 The compiler must not infer this acknowledgement.
 
-Discarding a `Result` destroys the active variant payload according to ordinary
-rules.
+Discarding a `Result` destroys only the active initialized payload according to ordinary destruction rules.
 
-Explicit discard is valid only when every possible active payload is itself
-discardable.
-
-For example, a `Result[Thread[T], E]` is not discardable while the successful
-variant would contain an unresolved thread handle.
-
----
-
-## Option
-
-`Option[T]` is not automatically must-use merely because it is an option.
-
-A standalone call returning an ordinary discardable `Option[T]` may therefore
-be implicitly discarded and receive the normal advisory diagnostic.
-
-Explicit discard destroys the contained `T` when the value is `Some`.
-
-`None` requires no payload destruction.
-
-Discardability is recursive.
-
-If `T` carries a non-discardable obligation, then `Option[T]` is also
-non-discardable while that obligation may be active.
+Explicit discard is legal only when every possible active payload that may occur at that point is discardable, unless control-flow analysis has already proven a more specific active state.
 
 Example:
 
 ```text
-Option[Thread[void]]
-```
+Result[int, IOError]
+    must-use
+    explicitly discardable
 
-cannot be discarded while `Some` may contain an unresolved thread.
+Result[Thread[int], SpawnError]
+    must-use
+    not discardable while Ok may contain an unresolved thread
+```
 
 ---
 
-## References
+## 17. `Option[T]`
 
-Discarding a reference value ends that reference binding.
+`Option[T]` is not automatically must-use merely because it is an option.
+
+A standalone call returning an ordinary discardable `Option[T]` may therefore be implicitly discarded and receive the normal advisory.
+
+Explicit discard destroys the active `Some` payload according to ordinary destruction rules.
+
+`None` has no payload to destroy.
+
+Discardability is recursive.
+
+For example:
+
+```text
+Option[int]
+    discardable
+
+Option[Thread[void]]
+    not discardable while Some may contain an unresolved thread
+```
+
+---
+
+## 18. Recursive discardability
+
+Discardability is derived from semantic obligations, not merely from representation.
+
+Conceptually:
+
+```text
+ordinary scalar
+    discardable
+
+aggregate
+    discardable only when every still-initialized owned field that may be active is discardable
+
+Option[T]
+    discardable when T is discardable
+
+Result[T, E]
+    discardable when every possible active success/error payload is discardable
+
+union
+    discardable when every possible active owned payload is discardable,
+    unless control-flow analysis proves a specific active discardable variant
+```
+
+A type-specific rule may define another non-discardable obligation.
+
+---
+
+## 19. References
+
+Discarding a reference value ends that reference holder.
 
 It does not destroy the referent.
 
@@ -562,25 +530,37 @@ let view := ref value
 discard view
 ```
 
-Afterward `view` is unavailable, while `value` remains owned by its original
-owner.
+Afterward:
+
+- `view` is unavailable;
+- `value` remains owned by its original owner;
+- the borrow held only by `view` may end when the compiler proves no other holder retains it.
 
 Discarding an owned value while an incompatible live borrow exists is invalid.
 
 ---
 
-## Mutable references
+## 20. Mutable references
 
-Discarding `ref mut` ends that mutable reference's lifetime.
-
-This may release the exclusive borrow early when the compiler can prove that the
-reference is not otherwise retained.
+Discarding `ref mut` ends that mutable reference holder.
 
 It does not destroy the referent.
 
+Because `ref mut` represents exclusive borrowed authority, ending the holder may release that exclusive borrow early when the compiler proves that no other retained value carries it.
+
 ---
 
-## Guards and subscriptions
+## 21. Slices and other non-owning views
+
+Discarding a non-owning reference-like view ends the view value and any borrow responsibility carried by that view.
+
+It does not destroy the backing elements merely because the view is discarded.
+
+The owning rulebook for the specific view type determines whether additional obligations exist.
+
+---
+
+## 22. Guards and subscriptions
 
 Discard follows ordinary deterministic destruction.
 
@@ -590,222 +570,154 @@ Therefore:
 discard guard
 ```
 
-may release a `MutexGuard[T]` early.
+may release a guard early when the guard type's destruction releases the protected resource.
+
+Likewise:
 
 ```sec
 discard subscription
 ```
 
-closes and unregisters a `Subscription` when its destructor defines that
-behavior.
+may close or unregister a subscription when its destruction semantics define that behavior.
 
-The rulebook for each type defines its destruction effect.
-
-An implicitly discarded temporary guard or subscription is permitted only when
-the returned type is not defined as must-use.
-
-An API should mark such a type must-use when immediate destruction would almost
-always defeat the operation's purpose.
-
-The exact declaration mechanism for user-defined must-use types is deferred to
-the attribute and type rules.
+An API whose returned value should almost never be destroyed immediately should mark that type must-use when such a semantic classification is available.
 
 ---
 
-## Execution handles
+## 23. Execution handles
 
-Unresolved lifecycle handles are not discardable.
+An unresolved lifecycle handle is not discardable.
 
-Invalid:
+Examples:
 
 ```sec
 discard task
 discard thread
-discard process
 ```
 
-Also invalid:
+are invalid while those values still carry unresolved execution obligations.
 
-```sec
-StartTask()
-StartThread()
+The owner must use a lifecycle operation permitted by the handle type, such as:
+
+```text
+await
+join
+detach
+return or transfer ownership
 ```
 
-when those calls return unresolved handles.
+where applicable.
 
-Reason:
-
-> Destruction or implicit discard must not silently abandon an unresolved
-> execution entity.
-
-The owner must use an explicit lifecycle operation:
-
-```sec
-await task
-join thread
-detach task
-detach thread
-```
-
-After successful join, the stored result may be discarded:
-
-```sec
-join worker
-discard worker.value
-```
-
-For a future result intentionally abandoned at detach:
+Lifecycle-specific source forms such as:
 
 ```sec
 detach worker discard
 ```
 
-This is lifecycle syntax defined by task and thread rules.
-
-It is not parsed as:
+are not equivalent to:
 
 ```sec
 discard worker
 ```
 
-The mandatory diagnostic must name the lifecycle obligation.
-
-Suggested message:
-
-```text
-error[S....]: Thread[int] must be joined, detached, returned, or transferred; it cannot be discarded
-```
+The former is governed by lifecycle rules and may explicitly define what happens to a future result.
 
 ---
 
-## Spawn results
+## 24. Spawn results
 
 Spawn is fallible.
 
-Conceptually:
+A successful spawn produces an unresolved lifecycle handle.
 
-```sec
-spawn thread Work()
-```
-
-produces:
+Conceptually, a thread spawn may produce:
 
 ```text
 Result[Thread[T], SpawnError]
 ```
 
-Discarding the complete spawn result is invalid because the `Ok` variant would
-contain an unresolved lifecycle handle.
-
-Invalid:
+Therefore both of these are invalid:
 
 ```sec
 discard spawn thread Work()
-```
-
-Implicit discard is also invalid:
-
-```sec
 spawn thread Work()
 ```
 
-The caller must match, propagate with `try`, bind, return, or otherwise resolve
-both:
+when the successful result would abandon an unresolved thread.
+
+The caller must resolve both:
 
 - creation failure;
 - successful handle ownership.
 
-The diagnostic must not suggest `discard` because explicit discard is not valid
-for this result type.
-
-Suggested help:
-
-```text
-handle the Result and then await, join, detach, return, or transfer the created thread
-```
+A diagnostic for this case must not suggest explicit `discard`, because explicit discard is itself invalid.
 
 ---
 
-## Joined copyable results
+## 25. Stored lifecycle results
 
-After join:
+After a lifecycle operation has resolved the execution obligation, the handle rulebook determines what stored result remains available and whether it is discardable.
 
-```sec
-join worker
-```
-
-a copyable result may be read repeatedly until the stored result is consumed or
-the joined handle is destroyed.
-
-```sec
-let first := worker.value
-let second := worker.value
-```
-
-Explicit discard consumes the stored result:
+If a stored result is explicitly discarded:
 
 ```sec
 discard worker.value
 ```
 
-A later access is invalid even when `T` is copyable.
+that place is consumed.
 
-Implicit discard applies only when a call returns the value as an unnamed
-temporary.
+A later access is invalid until a legal reinitialization exists under the containing type's rules.
 
-It does not implicitly consume an existing stored member merely because the
-programmer reads it as a standalone expression.
+Implicit call-result discard never implicitly consumes an existing stored member merely because that member is read as a standalone expression.
 
 ---
 
-## Partial values
+## 26. Aggregates and partial values
 
-Discarding a complete aggregate destroys all still-initialized fields.
+Discarding a complete aggregate destroys every still-initialized owned field according to the aggregate's destruction plan.
 
-Discarding a field consumes and destroys that field.
+A direct field may be discarded only where the ownership and partial-state rules permit that field to be consumed independently.
 
-The containing aggregate becomes partially initialized when partial move rules
-permit it.
+```sec
+discard object.payload
+```
 
-The compiler must not later destroy an already discarded field.
+may make the containing aggregate partially initialized.
 
-Field-sensitive tracking is not yet implemented.
+The compiler must then:
 
-Collection element removal or extraction follows the collection API and
-ownership rules rather than arbitrary partial discard through runtime indexing.
+- mark the field unavailable;
+- prevent later destruction of that already discarded field;
+- reject complete-value use while the aggregate remains incomplete;
+- permit reinitialization only where the general partial-reinitialization rules allow it.
+
+Runtime-indexed arbitrary partial discard of collection elements is not implied by this rule.
+
+Collection removal and extraction use the collection's explicit ownership API.
 
 ---
 
-## Constants and literals
+## 27. Constants and literals
 
-Discarding a literal or compile-time constant is valid but normally useless:
+Discarding a literal or compile-time constant is legal but normally has no useful semantic effect:
 
 ```sec
 discard 42
 ```
 
-The compiler should emit a configurable advisory diagnostic because no owned
-resource or effect is consumed.
-
-Suggested default severity:
-
-```text
-info
-```
-
-Suggested message:
+The compiler may emit a configurable advisory such as:
 
 ```text
 discard of literal int has no observable effect
 ```
 
-The statement may lower to no code.
+The statement may lower to no machine code.
 
 ---
 
-## Unused variables
+## 28. Unused variables
 
-Unused local variables are compiler errors under Sec's diagnostics rules.
+Unused local variables remain subject to the ordinary unused-local rules.
 
 Explicit discard documents intentional non-use:
 
@@ -814,18 +726,13 @@ let result := Calculate()
 discard result
 ```
 
-A declaration immediately followed by discard may receive a configurable style
-diagnostic when the expression could be discarded directly:
+A style advisory may suggest the direct form when equivalent:
 
 ```sec
 discard Calculate()
 ```
 
-The semantic program remains valid.
-
-This rule is distinct from implicit discard of an unnamed call result.
-
-Example:
+A standalone ordinary call:
 
 ```sec
 Calculate()
@@ -837,38 +744,32 @@ It may trigger the implicit-discard advisory.
 
 ---
 
-## Relationship to underscore
+## 29. Relationship to `_`
 
 `discard` does not replace the context-specific meanings of `_`.
 
-The underscore remains distinct for:
+The underscore remains distinct for language contexts including:
 
 - match ignore patterns;
-- register reserved bits;
-- loop or pattern discard positions defined by their rulebooks;
-- visibility and scope naming rules;
-- any separately defined declaration discard syntax.
+- register reserved fields;
+- loop discard binding positions;
+- other explicitly defined pattern discard positions.
 
-Bare `_` must not be reused as a general destruction statement.
+Bare `_` is not a general destruction expression.
 
-Invalid:
+This is invalid:
 
 ```sec
 discard _
 ```
 
-because `discard` requires an expression identifying or producing a value.
+because `discard` requires an expression that identifies or produces a value.
 
 ---
 
-## Control flow
+## 30. Control-flow state
 
-A value discarded on one branch is unavailable only on paths where the discard
-executed.
-
-At merge points the compiler must reconcile ownership state.
-
-Example:
+Discard is path-sensitive.
 
 ```sec
 if condition {
@@ -878,36 +779,35 @@ if condition {
 }
 ```
 
-After the `if`, `value` is not definitely available and cannot be used unless
-control-flow analysis proves a valid state.
+After the merge, the compiler must reconcile the value's availability across all continuing paths.
 
-An implicitly discarded temporary does not create a binding state that survives
-the statement.
+If the value is unavailable on any continuing path and no rule proves one compatible available state, later complete use is invalid.
+
+An implicitly discarded call-result temporary creates no binding state that survives the statement.
 
 ---
 
-## defer
+## 31. Interaction with `defer`
 
-A deferred operation that captures an owned value may conflict with earlier
-discard.
+A registered `defer` may retain a future use of a binding or place.
 
-Invalid:
+If an active defer still requires the value, an earlier discard is invalid.
+
+Conceptually:
 
 ```sec
-defer Close(resource)
+defer {
+    Close(resource)
+}
+
 discard resource
 ```
 
-when the deferred call requires the same owned value.
+must be rejected when the deferred operation requires the same owned value.
 
-The compiler must diagnose the later deferred use.
+A `Result` produced inside `defer` remains must-use.
 
-A defer registered to run destruction may itself be unnecessary when `discard`
-already performs deterministic destruction.
-
-A `Result` produced inside a deferred block remains must-use.
-
-Invalid:
+Therefore:
 
 ```sec
 defer {
@@ -915,7 +815,9 @@ defer {
 }
 ```
 
-Valid when the programmer intentionally ignores both variants:
+is invalid when `TryClose` returns `Result` and the result is otherwise unhandled.
+
+Explicit acknowledgement is possible only when the complete result is discardable:
 
 ```sec
 defer {
@@ -923,226 +825,57 @@ defer {
 }
 ```
 
-or when the result is otherwise handled.
+---
+
+## 32. Cleanup and destruction
+
+Explicit and implicit discard use the same resolved destruction machinery as normal lifetime end.
+
+For a non-trivial owned binding, explicit discard must conceptually:
+
+1. execute the value's resolved destruction plan;
+2. cancel the old pending cleanup responsibility for that consumed value;
+3. mark the place unavailable;
+4. prevent later automatic destruction of the consumed value.
+
+A later legal reinitialization creates a new destruction responsibility.
+
+This rule prevents double destruction.
+
+For aggregates:
+
+- structs destroy still-initialized owned fields according to their destruction order;
+- arrays destroy still-initialized elements according to their destruction order;
+- unions destroy only the active initialized unmoved payload;
+- `Result` destroys only the active `Ok` or `Err` payload;
+- `Option` destroys only an active `Some` payload;
+- references and borrowed slices do not destroy their referents.
 
 ---
 
-## Function return values
+## 33. Destruction failure boundary
 
-A non-`void` function or method result must enter one of these contexts:
+`discard` introduces no independent error-return channel.
 
-```text
-binding
-assignment
-argument
-return
-try
-match
-explicit discard
-implicit discard of an ordinary standalone call result
-another type-specific consuming context
-```
+If a type's destruction may panic, abort, fail, or require another policy, that behavior is defined by the destruction and panic rules for the type and target profile.
 
-Ordinary result:
+`discard` must not silently suppress a failure that ordinary deterministic destruction would expose.
 
-```sec
-Calculate()
-```
-
-is valid and receives the configurable implicit-discard advisory.
-
-Must-use result:
-
-```sec
-TryCalculate()
-```
-
-is invalid when `TryCalculate` returns `Result[T, E]`.
-
-Explicit acknowledgement:
-
-```sec
-discard TryCalculate()
-```
-
-is valid only when the complete `Result` type is discardable.
-
-A `void` call remains a normal statement without discard:
-
-```sec
-LogMessage()
-```
+No runtime `DiscardError` is introduced.
 
 ---
 
-## Discardability
+## 34. Parser and AST requirements
 
-Most owned values are discardable through deterministic destruction.
-
-A type is not discardable while it carries an unresolved semantic obligation
-that ordinary destruction is forbidden to hide.
-
-Initial non-discardable examples:
-
-```text
-unresolved Task[T]
-unresolved Thread[T]
-unresolved Process
-Result[Handle, E] when Handle is an unresolved lifecycle handle
-Option[Handle] when Handle is an unresolved lifecycle handle
-an aggregate containing a non-discardable active field
-```
-
-A type-specific rule may add another obligation.
-
-The compiler derives discardability recursively from type semantics.
-
-Conceptually:
-
-```text
-discardable scalar
-    yes
-
-discardable aggregate
-    only when every still-initialized owned field is discardable
-
-Option[T]
-    only when T is discardable
-
-Result[T, E]
-    only when both T and E are discardable
-
-union
-    only when every possible active owned payload is discardable, unless
-    control-flow analysis proves a specific discardable active variant
-```
-
-Must-use and discardability are related but distinct:
-
-```text
-must-use
-    implicit discard is forbidden
-
-discardable
-    explicit discard is permitted
-```
-
-Examples:
-
-```text
-Result[int, IOError]
-    must-use
-    explicitly discardable
-
-Thread[int]
-    must-use
-    not discardable while unresolved
-
-Result[Thread[int], SpawnError]
-    must-use
-    not discardable while Ok may contain an unresolved thread
-```
-
----
-
-## User-defined must-use types
-
-The language should permit a core or user-defined nominal type to declare that
-its values are must-use.
-
-The exact declaration syntax is not defined by this rulebook.
-
-It belongs to:
-
-```text
-attributes.md
-types.md
-```
-
-The semantic requirement is already fixed:
-
-- a must-use value cannot be implicitly discarded;
-- a mandatory diagnostic explains the obligation;
-- explicit discard is accepted only if the type is also discardable.
-
-Core types such as `Result[T, E]`, `Task[T]`, and `Thread[T]` may be
-compiler-known must-use types before general user syntax exists.
-
----
-
-## Panic and errors during destruction
-
-`discard` uses the normal destruction model.
-
-It does not introduce a separate error-return path.
-
-If destruction may panic or fail, the owning type's destruction rule must define
-that behavior.
-
-`discard` must not silently suppress destruction failure.
-
-The same rule applies to the destruction of an implicitly discarded temporary.
-
-The future panic and destruction rulebooks must define:
-
-- panic during explicit discard;
-- panic during implicit temporary destruction;
-- double panic;
-- destruction failure across FFI;
-- profile-specific abort or unwind behavior.
-
----
-
-## Core runtime errors
-
-This rule introduces no runtime `DiscardError`.
-
-Discard validity is determined statically.
-
-All runtime errors produced by the discarded expression belong to that
-expression's API and, when they are language-level core errors, must be declared
-in:
-
-```text
-core/errors.sec
-```
-
-Compiler diagnostics are not runtime errors.
-
----
-
-## Parser
-
-The parser must recognize:
+The parser recognizes:
 
 ```sec
 discard expression
 ```
 
-as `DiscardStatement`.
+as an explicit discard statement.
 
-The expression extends to the normal statement boundary.
-
-`discard` is a keyword.
-
-It must not be parsed as a function call.
-
-Ordinary standalone call expressions remain `ExpressionStatement`.
-
-The parser does not decide whether the expression's result is:
-
-- ordinary;
-- must-use;
-- discardable;
-- non-discardable.
-
-That is semantic analysis.
-
----
-
-## AST
-
-Conceptual explicit-discard AST:
+Conceptual AST:
 
 ```text
 DiscardStatement
@@ -1150,265 +883,145 @@ DiscardStatement
     Value Expression
 ```
 
-The current AST also retains a compatibility identifier field:
+The AST does not decide whether the operand is must-use, discardable, borrowed, owned, partial, or lifecycle-constrained.
 
-```text
-Name *Identifier
-```
+Those are semantic decisions.
 
-for simple identifier discards.
+Ordinary standalone calls remain ordinary expression statements in the source AST.
 
-New semantic logic should use `Value` as the canonical operand.
-
-Conceptual implicit-discard AST remains:
-
-```text
-ExpressionStatement
-    Expression CallExpression
-```
-
-The AST does not need a separate source node for implicit discard.
-
-Sema and Semantic IR attach the validated discard meaning.
+The source AST does not require a separate implicit-discard node.
 
 ---
 
-## Semantic analysis
+## 35. Semantic analysis requirements
 
-For explicit discard, Sema must determine:
+For explicit discard, Sema must determine at least:
 
-- expression type;
-- ownership category;
-- copy/move state;
-- active borrows;
+- resolved expression type;
+- whether the operand is a value, temporary, binding, field, or another place;
+- ownership state;
+- copy/move availability state;
+- active borrow conflicts;
+- must-use classification;
 - discardability;
-- destruction effect;
-- partial initialization;
+- destruction plan;
+- partial initialization state;
 - lifecycle obligations;
-- must-use acknowledgement;
-- control-flow availability after discard.
+- control-flow state after consumption.
 
-For standalone call expressions, Sema must determine:
+For standalone call expressions, Sema must determine at least:
 
-- whether the expression is call-like;
+- whether the expression is a permitted call-like statement;
 - return type;
-- whether the return type is `void`;
-- whether the result is must-use;
-- whether the result is discardable;
-- whether implicit discard is valid;
-- which advisory diagnostic policy applies;
-- required temporary destruction;
+- whether the return is `void`;
+- must-use classification;
+- discardability;
+- whether implicit discard is legal;
+- applicable advisory policy;
+- required destruction of the returned temporary;
 - receiver and argument effects.
 
-When an explicit operand names owned storage, the original storage becomes
-uninitialized or unavailable.
-
-When an explicit or implicit operand is a temporary, the temporary is destroyed
-before the next statement.
-
-Mandatory ordering:
+Required validation ordering is conceptually:
 
 ```text
-1. infer and validate the call;
-2. reject invalid call semantics;
-3. determine must-use status;
-4. reject implicit must-use loss;
-5. determine discardability;
-6. reject non-discardable explicit or implicit consumption;
-7. emit configurable implicit-discard advisory when applicable;
-8. record destruction and ownership effects.
+1. resolve and validate the call/expression
+2. validate ownership and borrow legality
+3. determine must-use status
+4. reject illegal implicit loss of must-use values
+5. determine discardability
+6. reject explicit or implicit discard of non-discardable values
+7. emit configurable advisory when applicable
+8. record terminal ownership and destruction effects
 ```
 
-A mandatory must-use error must be emitted even when the implicit-discard
-advisory is configured `off`.
+A mandatory semantic error must remain mandatory even when all related advisories are configured `off`.
 
 ---
 
-## Semantic IR
+## 36. Semantic IR requirements
 
-Semantic IR must represent:
+Semantic IR must represent validated discard as an explicit terminal ownership action.
+
+Canonical conceptual operation:
 
 ```text
 DiscardValue
 ```
 
-The operation records:
+It records at least:
 
-- consumed value or storage;
-- type;
-- destruction operation;
+- consumed value or place;
+- resolved type;
+- destruction plan or trivial-destruction classification;
 - source location;
-- whether the source was a temporary, binding, field, or another place;
-- resulting initialization state;
-- discard origin.
+- resulting availability state when a place is consumed;
+- discard provenance.
 
-Discard origin is:
+Discard provenance distinguishes at least:
 
 ```text
 Explicit
-ImplicitCallStatement
+ImplicitCallResult
+CompilerTemporary
 ```
 
-Conceptual form:
+`CompilerTemporary` describes compiler-created terminal temporary cleanup and is not a third source spelling of `discard`.
 
-```text
-DiscardValue {
-    value
-    type
-    destruction
-    origin
-    sourceLocation
-}
-```
-
-A lifecycle-specific detach discard remains a distinct operation:
-
-```text
-TaskDetachDiscard
-ThreadDetachDiscard
-```
+Lifecycle-specific operations remain separate when their semantics are not ordinary discard, including detach-with-result-discard forms.
 
 The backend must not infer semantic discard merely from an unused SSA value.
 
-An ordinary trivially destructible implicit result may later optimize to no
-machine instruction after its validated semantic discard is recorded.
-
 ---
 
-## Diagnostics
+## 37. Diagnostics
 
-All primary discard diagnostics require stable registered IDs.
+Primary discard diagnostics use stable registered IDs and symbolic names.
 
-Diagnostic IDs identify the rule, not the configured severity.
+Important diagnostic categories include:
 
 ### Implicit ordinary result
-
-Symbolic name:
 
 ```text
 ownership.implicit-discarded-result
 ```
 
-Classification:
-
-```text
-configurable advisory
-default severity: info
-allowed: off, info, warning, error
-```
-
-Example:
-
-```text
-info[A....]: return value of NextToken with type Token is implicitly discarded
-help: use the value or write `discard NextToken()` to document the intent
-```
+Configurable advisory, default `info`.
 
 ### Unhandled must-use result
 
-Classification:
+Mandatory semantic error.
 
-```text
-mandatory semantic error
-```
+The diagnostic must explain the hidden obligation and valid handling forms.
 
-Example:
+### Non-discardable value
 
-```text
-error[S....]: result of TryWriteLog has type Result[void, IOError] and must be handled explicitly
-note: Result may contain IOError; implicit discard would hide the failure
-help: use try, match, binding, return, or explicit discard
-```
+Mandatory semantic error.
 
-### Non-discardable lifecycle value
+The diagnostic must identify the obligation that makes explicit discard illegal.
 
-Classification:
+### Use after discard
 
-```text
-mandatory semantic error
-```
+Mandatory semantic error with a related location pointing to the discard.
 
-Example:
+### Discard while borrowed
 
-```text
-error[S....]: cannot discard unresolved Task[int]
-note: ordinary destruction must not abandon an unresolved task
-help: await, join, detach, return, or transfer it explicitly
-```
-
-### Non-discardable spawn result
-
-Example:
-
-```text
-error[S....]: cannot discard Result[Thread[void], SpawnError]
-note: the Ok variant would contain an unresolved Thread[void]
-help: handle the Result and resolve the created thread lifecycle
-```
-
-The help must not recommend `discard` when explicit discard is invalid.
-
-### Use after explicit discard
-
-Example:
-
-```text
-error[S....]: value resource was discarded here and is no longer available
-```
-
-with a related location pointing to the discard statement.
-
-### Borrow conflict
-
-Example:
-
-```text
-error[S....]: cannot discard value while it is borrowed by view
-```
-
-### Partial value
-
-Example:
-
-```text
-error[S....]: field payload has already been moved or discarded
-```
+Mandatory semantic error identifying the conflicting borrow.
 
 ### Useless explicit discard
 
-Classification:
+Configurable advisory.
 
-```text
-configurable advisory
-default severity: info
-```
+### Redundant `void` discard
 
-Example:
+Configurable advisory.
 
-```text
-info[A....]: discard of literal int has no observable effect
-```
-
-### Redundant void discard
-
-Classification:
-
-```text
-configurable advisory
-default severity: info
-```
-
-Example:
-
-```text
-info[A....]: discard is unnecessary because LogMessage returns void
-```
+Diagnostic IDs identify rules, not severity.
 
 ---
 
-## Diagnostic configuration
+## 38. Diagnostic configuration
 
-The general diagnostics configuration model governs advisory discard findings.
+Advisory discard diagnostics follow the general project diagnostic configuration model.
 
 Example:
 
@@ -1417,53 +1030,7 @@ Example:
 "ownership.implicit-discarded-result" = "warning"
 ```
 
-A project that wants the old explicit-everywhere behavior may use:
-
-```toml
-[diagnostics.rules]
-"ownership.implicit-discarded-result" = "error"
-```
-
-A project that does not want the information may use:
-
-```toml
-[diagnostics.rules]
-"ownership.implicit-discarded-result" = "off"
-```
-
-Must-use and ownership-safety errors are mandatory and cannot be configured
-away.
-
-The `strict` diagnostics preset may promote the advisory, but `strict` does not
-change the Sec language rule.
-
-This preserves one language semantics across builds while allowing different
-review policies.
-
----
-
-## Required tests
-
-Required valid cases include:
-
-```sec
-fn Calculate() int {
-    return 1
-}
-
-fn Run() void {
-    Calculate()
-    discard Calculate()
-}
-```
-
-Required configurable-diagnostic cases include:
-
-```sec
-Calculate()
-```
-
-tested with:
+A project may configure the advisory as:
 
 ```text
 off
@@ -1472,140 +1039,106 @@ warning
 error
 ```
 
-The diagnostic ID must remain unchanged across severities.
+Must-use, ownership-safety, borrow-safety, and lifecycle-obligation errors are mandatory and cannot be configured away.
 
-Required must-use invalid case:
+---
 
-```sec
-fn TryCalculate() Result[int, Error] {
-    return Ok(1)
-}
+## 39. Formatter requirements
 
-fn Run() void {
-    TryCalculate()
-}
-```
-
-Expected:
-
-```text
-mandatory error explaining Result and the hidden error path
-```
-
-Required explicit acknowledgement:
+Canonical explicit syntax is:
 
 ```sec
-discard TryCalculate()
+discard expression
 ```
 
-Required non-discardable wrapper case:
+The formatter must preserve explicit `discard` and format its operand using ordinary expression formatting.
 
-```sec
-discard spawn thread Work()
-```
+Ordinary formatting must not insert or remove `discard` merely because a configurable advisory is enabled or disabled.
 
-Expected:
+Changing an ordinary standalone call into explicit discard is a semantic/documentation code action, not unconditional canonical formatting.
 
-```text
-mandatory error because Ok contains an unresolved thread
-```
+---
 
-Existing tests for:
+## 40. Required language tests
 
-- identifier discard;
+The language test suite must cover at least:
+
+- explicit discard of a trivially destructible binding;
+- explicit discard of a move-only resource;
 - use after discard;
-- assignment after discard;
-- reference discard;
-- task discard;
-- thread discard;
-- spawn discard;
-- receiver mutability;
-- parser dump output;
-
-must remain valid.
+- double discard;
+- mutable reinitialization after discard;
+- immutable reinitialization rejection after discard;
+- implicit ordinary non-`void` call-result discard;
+- implicit-discard advisory at `off`, `info`, `warning`, and `error` policy levels;
+- explicit discard suppressing the implicit-discard advisory;
+- `void` call as an ordinary statement;
+- redundant explicit discard of `void`;
+- standalone `Result[T, E]` rejection;
+- explicit discard of discardable `Result[T, E]`;
+- rejection of `Result` whose possible active payload is non-discardable;
+- implicit discard of ordinary discardable `Option[T]`;
+- rejection of non-discardable `Option[T]`;
+- discard of `ref` ending the holder but not destroying the referent;
+- discard of `ref mut` ending the exclusive holder;
+- rejection of owned-value discard while incompatible borrow is live;
+- lifecycle-handle discard rejection;
+- spawn-result discard rejection;
+- direct field discard where partial-state rules permit it;
+- aggregate destruction skipping an already discarded field;
+- branch-sensitive discard state;
+- defer-retained value preventing early discard;
+- useless literal discard advisory;
+- `discard _` rejection;
+- Semantic IR explicit-discard provenance;
+- Semantic IR implicit-call-result provenance;
+- no double destruction after discard;
+- new cleanup registration after legal reinitialization.
 
 ---
 
-## Required synchronization
+## 41. Related rulebooks
 
-This replacement requires updates to:
+Detailed adjacent semantics remain owned by their specialized rulebooks, including:
 
 ```text
-lexical_structure.md
-types.md
-functions.md
-copy_move.md
-ownership.md
-borrowing.txt
-references.txt
-lifetime_analysis.txt
-destruction.txt
-defer.md
-errorhandling.txt
-diagnostics.txt
-semantic_ir.txt
-compiler_pipeline.txt
-formatter.md
-tasks.txt
-threads.md
-processes.txt
-spawn.md
-await.md
-channels.md
-mutex.md
-events.md
-rules_implementations.txt
-core-library.md
-core/errors.sec
-language-rulebook-status.md
+rules/types/types.md
+rules/declarations/functions.md
+rules/memory/ownership.md
+rules/memory/copy_move.md
+rules/memory/borrowing.txt
+rules/memory/references.txt
+rules/memory/destruction.txt
+rules/errors/errorhandling.txt
+rules/compiler/semantic_ir.txt
+rules/tooling/diagnostics.txt
+rules/tooling/formatter.md
 ```
 
-Required key changes include:
-
-- `types.md`: define must-use, discardability, and unavailable state;
-- `functions.md`: permit implicit discard of ordinary standalone call results
-  and require handling of must-use results;
-- `copy_move.md`: distinguish copy, move, explicit discard, and implicit
-  temporary discard;
-- `destruction.txt`: define destruction of explicit and implicit discarded
-  values;
-- `ownership.md`: add discard as ownership consumption and define unnamed
-  returned temporaries;
-- `borrowing.txt`: reject discard while incompatible borrows are live;
-- `errorhandling.txt`: define mandatory handling and explicit discard of
-  `Result[T, E]`;
-- `diagnostics.txt`: register the advisory and mandatory discard-related rules;
-- `semantic_ir.txt`: add `DiscardValue` with explicit/implicit origin;
-- task, thread, and process rules: forbid ordinary discard of unresolved
-  lifecycle handles;
-- formatter: preserve canonical `discard expression` formatting;
-- implementation tracker: reflect existing frontend support and remaining
-  advisory, must-use, destruction, and IR work.
+Concurrency and lifecycle rulebooks define the exact obligations for tasks, threads, processes, spawn, await, join, and detach.
 
 ---
 
-## Design summary
+## 42. Design summary
 
-`discard expression` is an explicit ownership operation.
+`discard expression` is an explicit terminal ownership operation.
 
-It consumes the value, performs deterministic destruction, and makes consumed
-storage unavailable.
+It consumes the value, performs deterministic destruction when required, and makes consumed storage unavailable.
 
-An ordinary non-`void` call may also be used as a standalone statement.
+A mutable whole binding may later be reinitialized; an immutable one may not.
 
-Its returned temporary is implicitly consumed and destroyed.
+An ordinary discardable non-`void` call result may be implicitly discarded when the call is a standalone statement. That implicit loss is advisory-policy-controlled but semantically still a real discard and destruction action.
 
-The compiler reports that implicit loss through a configurable information
-diagnostic that may be disabled or promoted to warning or error.
+Must-use values cannot be implicitly discarded.
 
-`Result[T, E]`, unresolved execution handles, and other must-use values cannot be
-implicitly discarded.
+Explicit discard acknowledges intentional non-use only when the complete value is itself discardable.
 
-The compiler must explain both that explicit handling is required and why the
-value carries that obligation.
+`Result[T, E]` is must-use, while `Option[T]` is not automatically must-use.
 
-Explicit `discard` acknowledges a must-use value only when the complete value is
-itself discardable.
+Unresolved lifecycle handles are non-discardable.
 
-A result containing an unresolved lifecycle handle remains non-discardable even
-when wrapped in `Result`, `Option`, a union, or another aggregate.
+Discardability is recursive through aggregates and variant payloads.
+
+References and borrowed views may be discarded without destroying their referents.
+
+The frontend determines discard legality and ownership effects before lowering. Semantic IR records the terminal ownership action explicitly. No backend stage may infer discard from an unused machine-level value.

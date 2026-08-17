@@ -1821,10 +1821,16 @@ discard Calculate()
 
 Exactly one space follows `discard`.
 
-The formatter does not insert explicit `discard` for ordinary implicit call
-results.
+The formatter preserves the keyword, formats the operand using ordinary
+expression rules, and keeps `discard` as a statement rather than a function
+call. It must preserve evaluation order and ownership semantics.
 
-That is a diagnostics or fix-policy decision.
+The formatter does not insert explicit `discard` for ordinary implicit call
+results and does not remove an explicit `discard` from source.
+
+Diagnostic configuration must not make an otherwise valid file fail to format
+or change canonical formatting. Insertion of explicit discard is a separately
+requested semantic code action, not an unconditional formatter rewrite.
 
 ---
 

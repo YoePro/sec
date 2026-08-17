@@ -500,6 +500,50 @@ Destruction order must follow Sec language rules.
 
 Backend passes must not reorder observable destruction.
 
+## Discard operations
+
+Validated discard is an explicit terminal ownership action in Semantic IR.
+
+The canonical conceptual operation is:
+
+```text
+DiscardValue
+```
+
+It records at least:
+
+```text
+consumed value or Place
+resolved type
+destruction plan or trivial-destruction classification
+source location
+resulting availability state when a Place is consumed
+discard provenance
+```
+
+Discard provenance distinguishes at least:
+
+```text
+Explicit
+ImplicitCallResult
+CompilerTemporary
+```
+
+`CompilerTemporary` is compiler provenance, not another source spelling of
+`discard`.
+
+For a non-trivial value, `DiscardValue` executes or links to the resolved
+destruction plan. A consumed Place remains unavailable until a legal
+reinitialization is represented. Cleanup registered for the consumed old value
+must be cancelled or otherwise proven unable to execute twice.
+
+Lifecycle-specific operations remain distinct when their semantics are not
+ordinary discard.
+
+No lower stage may infer semantic discard, must-use acknowledgement, borrow
+legality, or lifecycle resolution from an unused SSA result, unused load,
+missing store, or dead machine value.
+
 ## Cleanup regions
 
 Semantic IR may represent cleanup behavior using explicit cleanup regions.
@@ -891,15 +935,40 @@ Source-level match must become explicit variant tests, payload extraction and br
 Semantic IR must retain:
 
 * matched type
+* one evaluated subject and its Place or temporary identity
 * selected variant tests
-* payload bindings
+* resolved variant identity and enum numeric value class
+* reachable compiler-known union `empty` state
+* payload and shallow-field binding identities
+* binding actions: None, Discard, Copy, Move, SharedBorrow, MutableBorrow, or TemporaryForward
 * guard expressions
+* candidate guard bindings and guard-success ownership commit points
+* branch-scoped borrow begin/end behavior
 * branch results
+* contextual final-expression values from value-producing arm blocks
+* arm-result ownership established before arm cleanup
+* statement-arm discard and must-use resolution
+* post-arm and post-match availability state
 * exhaustiveness guarantee
 
 The backend must not perform match exhaustiveness analysis.
 
 Payload extraction must occur only after the appropriate variant has been established.
+
+For guarded move-only bindings, required CFG order is subject evaluation,
+pattern test, candidate binding and guard evaluation, then binding-action commit
+only on the guard-success selected-arm edge. Guard-false continuation must not
+contain the prospective move and must end rejected-arm candidate borrows before
+testing the next arm.
+
+Move-only shallow fields are rejected before Semantic IR and cannot appear as
+field-move actions. Lower stages must not infer match ownership actions,
+availability, discard, or must-use acknowledgement from loads, stores, unused
+SSA values, or physical payload representation.
+
+A statement match applies ordinary discard rules before IR construction. A
+legal implicit call-result discard is an explicit terminal semantic action;
+must-use violations do not lower as valid IR.
 
 ## Loops
 

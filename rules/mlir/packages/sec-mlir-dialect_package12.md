@@ -49,7 +49,7 @@ payload extraction and physical enum/union lowering remain outside this package.
 Implementation follows:
 
 ```text
-rules/control-flow/flowcontrol_match.txt
+rules/control-flow/flowcontrol_match.md
 rules/declarations/enums.md
 rules/declarations/unions.md
 rules/errors/errorhandling.txt

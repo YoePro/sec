@@ -2271,6 +2271,32 @@ the transfer independently.
 A value moved by one arm and retained by another becomes conditionally
 available after the construct.
 
+For a whole-payload plain match binding, an implicitly copyable payload is
+copied, a move-only payload is moved only from an owned reusable Place that may
+legally transfer it, and a fresh temporary payload may be forwarded directly.
+The compiler must not silently clone or turn a by-value binding into a borrow.
+
+A subject available only through `ref` or `ref mut` cannot transfer ownership
+of a move-only payload. Such access requires copyability or an explicit pattern
+`ref` / `ref mut` borrow as permitted by the subject authority.
+
+For a guarded move-only by-value binding, pattern success creates only a
+prospective binding. The move commits after guard success when the arm is
+selected. Consuming the prospective binding inside the guard is invalid. A
+guard-false edge retains the subject's ownership state except for actual guard
+side effects, and candidate arm borrows end before the next arm is tested.
+
+Plain shallow named-field match bindings are copy-only. A move-only field must
+be borrowed or ownership must be taken through a legal whole-payload binding;
+shallow destructuring never creates a hidden partial union move.
+
+Every continuing match arm contributes its availability state to the
+post-match merge. Available plus moved becomes conditionally available, and a
+later whole-value use is rejected unless every continuing path establishes
+availability. Terminating arms do not contribute a post-match state. Match
+ownership facts retain the subject Place, affected payload, arm and binding,
+guard-success commit point, and merge provenance for diagnostics and tooling.
+
 Select operations must also account for ownership of messages on:
 
 - selected arm;

@@ -37,7 +37,7 @@ fn ReadResource(resource: Resource) Result[int, CleanupError] {
 
 // Defer tests
 
-// Ok: Warning: superfluous defer return 
+// Sema error: return is not allowed inside defer
 fn DeferWithReturn() void {
     defer {
         return

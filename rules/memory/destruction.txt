@@ -1135,6 +1135,41 @@ Analysis must complete before Semantic IR generation or be finalized during expl
 
 No unresolved destruction responsibility may reach MLIR.
 
+## Discard terminal ownership
+
+Explicit and implicit discard use the same resolved deterministic destruction
+machinery as ordinary lifetime end.
+
+For an owned non-trivial value, successful discard:
+
+1. executes the resolved destruction plan;
+2. consumes the current value;
+3. cancels pending automatic cleanup responsibility for that consumed value;
+4. marks the consumed Place unavailable when applicable;
+5. prevents later destruction of the already consumed value.
+
+A later legal reinitialization of a mutable binding creates a new destruction
+responsibility at the reinitialization point. Discard must never cause double
+destruction.
+
+Discard of a complete aggregate destroys only still-initialized, still-owned
+components in ordinary destruction order. Struct fields and fixed-array
+elements already moved or discarded are skipped. A union destroys only its
+active initialized unmoved payload; `Result` destroys only its active `Ok` or
+`Err` payload; `Option` destroys an active `Some` payload and has no payload to
+destroy for `None`.
+
+Discarding a reference, mutable reference, borrowed slice, or another
+non-owning view does not destroy its referent or backing elements. Ending the
+holder may end its borrow lifetime when borrowing analysis proves that legal.
+
+A discardable non-`void` temporary returned by an ordinary standalone call is
+destroyed before the next statement. This is semantic destruction, not merely
+omission of an unused backend value.
+
+Detailed legality and must-use rules are defined by
+`rules/control-flow/discard.md`.
+
 ## Semantic IR representation
 
 Semantic IR must contain explicit destruction semantics.

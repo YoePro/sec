@@ -39,7 +39,7 @@ Implemented defer checks:
 - local error handling through match
 - definite-assignment checks for deferred reads
 - loop defer warnings
-- superfluous defer return warnings
+- rejection of the legacy `defer return` shorthand
 
 Defer MLIR lowering has a first limited implementation.
 

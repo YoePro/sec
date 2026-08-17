@@ -1678,6 +1678,44 @@ Implement:
 * unused suppression reporting
 
 =============================================================================================================================================================================================
+Discard diagnostic requirements
+===============================
+
+The central registry must allocate stable IDs and symbolic names for discard
+diagnostics. Numeric IDs come from the appropriate existing family and must not
+reuse a published or retired ID.
+
+Required symbolic rules include at least:
+
+* `ownership.implicit-discarded-result`: configurable advisory, recommended
+  family `A3xxx`, default `info`, configurable as `off`, `info`, `warning`, or
+  `error` without changing diagnostic identity;
+* `ownership.unhandled-must-use`: mandatory semantic error for implicit loss of
+  any must-use value;
+* `ownership.non-discardable-value`: mandatory semantic error identifying the
+  obligation that prevents explicit discard;
+* `ownership.use-after-discard`: mandatory semantic error with the discard
+  location attached as a related location;
+* `ownership.discard-while-borrowed`: mandatory semantic error identifying the
+  conflicting borrow when known;
+* `ownership.useless-explicit-discard`: configurable advisory, recommended
+  family `A3xxx`, default `info`;
+* `ownership.redundant-void-discard`: configurable advisory, recommended family
+  `A3xxx`, default `info`.
+
+The existing `S1005` / `ownership.unhandled-must-use-result` definition remains
+the stable Result-specific implemented subset. It must not be silently renamed
+or repurposed; the broader rule receives its own registry identity when
+implemented. Existing `S1006` / `ownership.non-discardable-value` remains the
+registered non-discardable-value rule.
+
+Must-use, ownership, borrow, and lifecycle-safety errors are mandatory and
+cannot be disabled, demoted, or source-suppressed. Only advisory discard
+diagnostics participate in project severity policy.
+
+The semantic conditions are defined by `rules/control-flow/discard.md`.
+
+=============================================================================================================================================================================================
 Current implementation status
 =============================
 

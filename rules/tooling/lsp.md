@@ -2001,6 +2001,44 @@ are resolved.
 
 ---
 
+## Match ownership and coverage
+
+The LSP consumes compiler-resolved match facts and does not implement a
+parallel pattern, ownership, borrow, or exhaustiveness analyzer.
+
+Hover on a payload or field binding exposes its resolved type and binding mode:
+
+```text
+copy
+move
+shared borrow
+mutable borrow
+temporary forwarding
+```
+
+For a guarded move-only binding, tooling distinguishes a prospective move from
+a committed move and may display `moves payload if this arm is selected`.
+Pattern success alone must not make the subject appear moved.
+
+After a match, hover and mandatory diagnostics expose compiler-produced
+`Moved`, `Partially available`, or `Conditionally available` state and retain
+related locations for the affected Place, moving arm, ownership binding, move
+commit, later invalid use, and merge reason where available.
+
+Configurable inlay hints may show `copy`, `move`, `ref`, `ref mut`, or `moves if
+selected`. Disabling hints never disables ownership analysis or diagnostics.
+
+Exhaustiveness diagnostics and generated-match actions use the resolved
+coverage domain, including ordinary enum numeric value classes, open bit-enum
+domains, guarded residual coverage, and reachable compiler-known union `empty`
+state. Generated patterns must not introduce direct bool, general literal,
+range, nested recursive, or ordinary struct-subject patterns.
+
+Completion and code actions must not recommend payload use that is invalid in
+the compiler-resolved ownership state.
+
+---
+
 # Contracts
 
 The LSP should display:

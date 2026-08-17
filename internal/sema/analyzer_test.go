@@ -5164,31 +5164,19 @@ fn Test() void {
 	assertSemaErrors(t, errors, expected)
 }
 
-func TestDeferReturnWarnsAsSuperfluous(t *testing.T) {
+func TestDeferRejectsReturn(t *testing.T) {
 	input := `
 fn Test() void {
 	defer {
 		return
 	}
-	defer return
 }
 `
 
-	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
-	assertSemaErrors(t, errors, nil)
-	warnings := analyzer.Warnings()
 	expected := []string{
-		"superfluous defer return at 3:2",
-		"superfluous defer return at 6:2",
+		"return is not allowed inside defer at 4:3",
 	}
-	if len(warnings) != len(expected) {
-		t.Fatalf("wrong warning count. got=%d warnings=%v", len(warnings), warnings)
-	}
-	for i, want := range expected {
-		if warnings[i].Error() != want {
-			t.Fatalf("wrong warning %d. got=%q want=%q", i, warnings[i].Error(), want)
-		}
-	}
+	assertSemaErrors(t, analyzeSource(t, input), expected)
 }
 
 func TestDeferRejectsTryPropagation(t *testing.T) {

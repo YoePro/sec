@@ -376,7 +376,6 @@ Implemented:
 Implemented syntax and Sema paths exist for:
 
 - `defer { ... }`;
-- `defer return`;
 - `discard expression`;
 - `detach handle`;
 - `detach handle discard`;
@@ -2966,7 +2965,7 @@ It is not a general jump statement.
 MatchExpression
     ::= "match" Expression
         "{"
-        { MatchArm }
+        MatchArm { MatchArm }
         "}"
 
 MatchArm
@@ -2990,12 +2989,9 @@ let value := match result {
 }
 ```
 
-```sec
-let number := match condition {
-    _ where condition => 1
-    _ => 0
-}
-```
+In expression-match result position, a block arm contextually produces its
+value from the final expression on every continuing path. Terminating paths do
+not require an arm value. This is not general block-expression syntax.
 
 ---
 
@@ -3017,10 +3013,11 @@ Canonical initial pattern grammar:
 ```text
 MatchPattern
     ::= "_"
+      | "empty"
       | Identifier
       | QualifiedIdentifier
       | CallPattern
-      | LiteralPattern
+      | StructLikeUnionPattern
 
 CallPattern
     ::= QualifiedIdentifier "(" [ PatternArgument ] ")"
@@ -3028,13 +3025,31 @@ CallPattern
 PatternArgument
     ::= Identifier
       | "_"
-      | MatchPattern
+      | "ref" Identifier
+      | "ref" "mut" Identifier
+
+StructLikeUnionPattern
+    ::= QualifiedIdentifier
+        "{"
+        [ FieldPattern { "," FieldPattern } [ "," ] ]
+        "}"
+
+FieldPattern
+    ::= Identifier
+      | Identifier ":" Identifier
+      | Identifier ":" "ref" Identifier
+      | Identifier ":" "ref" "mut" Identifier
 ```
 
 The parser currently accepts a broader ordinary expression grammar as a
 pattern.
 
 Sema restricts valid patterns.
+
+General literal, range, and direct `true` / `false` patterns are not part of
+Sec 0.1 `match`; use `switch` or `if`. Enum-member patterns remain valid
+resolved finite-domain patterns. Struct-like destructuring is shallow, allows
+partial binding without `..`, and does not introduce recursive patterns.
 
 Examples:
 
@@ -3044,10 +3059,10 @@ Err(error)
 Option.Some(value)
 Option.None
 Color.red
+empty
+Rectangle { width, height: h }
 _
 ```
-
-Field-level payload destructuring is not part of Sec 0.1.
 
 ---
 
@@ -3056,7 +3071,6 @@ Field-level payload destructuring is not part of Sec 0.1.
 ```text
 DeferStatement
     ::= "defer" Block
-      | "defer" "return"
 ```
 
 Examples:
@@ -3065,10 +3079,6 @@ Examples:
 defer {
     Close()
 }
-```
-
-```sec
-defer return
 ```
 
 Control transfer from inside a defer block is restricted.
@@ -4700,7 +4710,7 @@ flowcontrol_if.md
 flowcontrol_for.md
 flowcontrol_while.md
 flowcontrol_switch.md
-flowcontrol_match.txt
+flowcontrol_match.md
 errorhandling.txt
 defer.md
 discard.md

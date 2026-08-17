@@ -5,7 +5,7 @@
 Normative amendment for:
 
 ```text
-rules/control-flow/flowcontrol_match.txt
+rules/control-flow/flowcontrol_match.md
 rules/declarations/enums.md
 ```
 
@@ -310,7 +310,7 @@ No hidden provenance bit is introduced.
 Update:
 
 ```text
-rules/control-flow/flowcontrol_match.txt
+rules/control-flow/flowcontrol_match.md
 rules/declarations/enums.md
 Sema enum match coverage
 enum match tests

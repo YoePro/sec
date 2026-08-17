@@ -673,11 +673,16 @@ Pattern borrows are scoped according to the normal match and borrowing rules.
 
 Field destructuring must not introduce an implicit partial move that leaves a reusable union value in an invalid hidden state.
 
-A by-value field binding is valid only when normal copy/move rules make that binding legal for the subject and field type.
+A plain by-value field binding is valid only when the field type is implicitly
+copyable. It copies the field; it never silently moves a move-only field out of
+the reusable union payload.
 
-When reuse requires borrowing, the programmer must use the appropriate `ref` or `ref mut` binding.
+When a field is move-only, the programmer must use the appropriate `ref` or
+`ref mut` binding for field access, or bind the complete variant payload by
+value when ownership transfer is required.
 
-The compiler must not silently clone payload data.
+The compiler must not silently clone or borrow payload data, and shallow field
+destructuring must not create a hidden partially moved reusable union subject.
 
 ### 9.9 No nested recursive pattern language
 

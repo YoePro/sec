@@ -506,16 +506,6 @@ func (p *Parser) parseDetachStatement() ast.Statement {
 
 func (p *Parser) parseDeferStatement() ast.Statement {
 	stmt := &ast.DeferStatement{Token: p.curToken}
-	if p.peekToken.Type == lexer.RETURN {
-		p.nextToken()
-		returnStmt := p.parseReturnStatement()
-		block := &ast.BlockStatement{Token: stmt.Token}
-		if returnStmt != nil {
-			block.Statements = append(block.Statements, returnStmt)
-		}
-		stmt.Body = block
-		return stmt
-	}
 	if p.peekToken.Type != lexer.LBRACE {
 		p.addError("defer requires a block at %d:%d", p.peekToken.Line, p.peekToken.Column)
 		return stmt

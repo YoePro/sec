@@ -289,6 +289,20 @@ func (e *emitter) emitOperation(function *semantic.Function, operation semantic.
 		e.emitOperationAttributes(operation, true)
 		e.out.WriteString(": () -> ()")
 	case semantic.OpReturn:
+		if operation.MatchID != 0 {
+			e.out.WriteString("\"func.return\"(")
+			if len(operation.Operands) == 1 {
+				e.out.WriteString(valueName(operation.Operands[0]))
+			}
+			e.out.WriteString(") ")
+			e.emitOperationAttributes(operation, false)
+			e.out.WriteString(": (")
+			if err := e.emitOperandTypes(operation.Operands, values); err != nil {
+				return err
+			}
+			e.out.WriteString(") -> ()")
+			break
+		}
 		if operation.TryHandlerKind != "" {
 			e.out.WriteString("\"func.return\"(")
 			if len(operation.Operands) == 1 {
@@ -459,7 +473,9 @@ func (e *emitter) emitUnionUnary(operation semantic.Operation, name string, valu
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(&e.out, "\"%s\"(%s) <{variant = %d : i32}> : (%s) -> %s", name, valueName(operation.Operands[0]), operation.UnionVariant, operandType, resultType)
+	fmt.Fprintf(&e.out, "\"%s\"(%s) <{variant = %d : i32}> ", name, valueName(operation.Operands[0]), operation.UnionVariant)
+	e.emitOperationAttributes(operation, false)
+	fmt.Fprintf(&e.out, ": (%s) -> %s", operandType, resultType)
 	e.emitLocation(operation.Location)
 	e.out.WriteByte('\n')
 	return nil
@@ -484,7 +500,9 @@ func (e *emitter) emitUnionUnwrap(operation semantic.Operation, name string, val
 	if operation.Kind == semantic.OpUnionUnwrapField {
 		fmt.Fprintf(&e.out, "field = %s, ", mlirString(operation.UnionField))
 	}
-	fmt.Fprintf(&e.out, "payloadAction = %s, variant = %d : i32}> : (%s) -> %s", mlirString(string(operation.PayloadActions[0])), operation.UnionVariant, operandType, resultType)
+	fmt.Fprintf(&e.out, "payloadAction = %s, variant = %d : i32}> ", mlirString(string(operation.PayloadActions[0])), operation.UnionVariant)
+	e.emitOperationAttributes(operation, false)
+	fmt.Fprintf(&e.out, ": (%s) -> %s", operandType, resultType)
 	e.emitLocation(operation.Location)
 	e.out.WriteByte('\n')
 	return nil
@@ -575,7 +593,9 @@ func (e *emitter) emitUnarySemanticOperation(operation semantic.Operation, name 
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(&e.out, "\"%s\"(%s) : (%s) -> %s", name, valueName(operation.Operands[0]), operandType, resultType)
+	fmt.Fprintf(&e.out, "\"%s\"(%s) ", name, valueName(operation.Operands[0]))
+	e.emitOperationAttributes(operation, false)
+	fmt.Fprintf(&e.out, ": (%s) -> %s", operandType, resultType)
 	e.emitLocation(operation.Location)
 	e.out.WriteByte('\n')
 	return nil

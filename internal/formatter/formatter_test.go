@@ -155,6 +155,35 @@ return self.readOne(ILLEGAL)
 	}
 }
 
+func TestFormatCanonicalMatchPatterns(t *testing.T) {
+	input := `fn Test(value: Shape) int {
+match value {
+Shape.Circle( ref mut circle )=> 1
+Rectangle { width : w, height:ref h } where ready=>2
+_=>0
+}
+}
+`
+	want := `fn Test(value: Shape) int {
+    match value {
+        Shape.Circle(ref mut circle) => 1
+        Rectangle { width: w, height: ref h } where ready => 2
+        _ => 0
+    }
+}
+`
+	if got := Format(Source{Text: input}, Options{}).Text; got != want {
+		t.Fatalf("formatted match patterns:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestFormatterDoesNotCanonicalizeInvalidExpressionPattern(t *testing.T) {
+	input := "A | B=>1\n"
+	if got := Format(Source{Text: input}, Options{Fix: true}).Text; got != input {
+		t.Fatalf("formatter rewrote non-canonical match-like expression: %q", got)
+	}
+}
+
 func TestFormatInterfaceReceiverSignatures(t *testing.T) {
 	input := "interface Resource {\nmut fn Update( value: int, ) void\n-> fn Detach( ) int\nstatic fn Create( ) int\n}\n"
 	want := "interface Resource {\n    mut fn Update(value: int) void\n    -> fn Detach() int\n    static fn Create() int\n}\n"

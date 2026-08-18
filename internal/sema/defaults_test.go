@@ -60,6 +60,13 @@ func TestDefaultValueOfPrimitiveAndConstrainedTypes(t *testing.T) {
 	if resolved := DefaultValueOf(emptyRefs); resolved.Kind != ArrayDefault || len(resolved.Elements) != 0 {
 		t.Fatalf("zero-length array default = %#v", resolved)
 	}
+	dynamic := Type{Name: "int[]", Kind: ArrayType, Element: &Type{Name: "int", Kind: IntType}, ArrayLength: dynamicArrayLength}
+	if resolved := DefaultValueOf(dynamic); resolved.Kind != ArrayDefault || len(resolved.Elements) != 0 {
+		t.Fatalf("dynamic array default = %#v", resolved)
+	}
+	if display, kind, ok := DefaultValuePreview(dynamic, 8); !ok || kind != ArrayDefault || display != "[]" {
+		t.Fatalf("dynamic array default preview = %q, %q, %v", display, kind, ok)
+	}
 	combinedMultiples := Type{Name: "CombinedMultiples", Kind: IntType, Named: true, MinInteger: intBound(-100), MaxInteger: intBound(100), Contracts: []Contract{
 		RangeContract{Min: intBound(1), Max: intBound(100)},
 		MultipleOfContract{Value: intBound(4)},
@@ -96,6 +103,7 @@ type Position struct {
 fn Test() Position {
     let mut count: int
     let mut amount: PositiveAmount
+    let mut values: int[]
     return Position { line: count }
 }
 `
@@ -127,7 +135,11 @@ fn Test() Position {
 	if amountLet.Value == nil || amountLet.Value.String() != "0.01" {
 		t.Fatalf("mutable decimal default = %v", amountLet.Value)
 	}
-	ret := fn.Body.Statements[2].(*ast.ReturnStatement)
+	dynamicLet := fn.Body.Statements[2].(*ast.LetStatement)
+	if dynamicLet.Value == nil || dynamicLet.Value.String() != "[]" || !dynamicLet.SynthesizedDefault {
+		t.Fatalf("mutable dynamic array default = %v", dynamicLet.Value)
+	}
+	ret := fn.Body.Statements[3].(*ast.ReturnStatement)
 	literal := ret.Value.(*ast.StructLiteral)
 	if len(literal.Fields) != 4 {
 		t.Fatalf("materialized fields = %d, want 4", len(literal.Fields))

@@ -72,3 +72,5 @@ sp += mo
 // type Range5 int8 range 0..1000
 // let _b: bool := "test"
 // let w: uuid // Should fail - not a native type
+
+unit SEK currency

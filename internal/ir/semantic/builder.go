@@ -375,6 +375,13 @@ func (fb *functionBuilder) buildStatements(statements []ast.Statement) error {
 			if err := fb.buildIf(stmt); err != nil {
 				return err
 			}
+		case *ast.MatchStatement:
+			if fb.owner.maxPackage < 12 {
+				return fb.unsupported("match statement", stmt.Token)
+			}
+			if err := fb.buildMatchStatement(stmt); err != nil {
+				return err
+			}
 		case *ast.ExpressionStatement:
 			call, ok := stmt.Expression.(*ast.CallExpression)
 			if !ok {
@@ -791,36 +798,59 @@ func enumCaseIDByName(definition EnumDefinition, name string) (EnumCaseID, bool)
 }
 
 func (fb *functionBuilder) buildMatchExpression(expr *ast.MatchExpression, resultType TypeID) (builtValue, error) {
-	plan, ok := fb.owner.analyzer.ResolvedMatchPlanOf(expr)
-	if !ok || !plan.Exhaustive || !plan.ValueContext {
-		return builtValue{}, fb.unsupported("unresolved or non-exhaustive match expression", expr.Token)
+	return fb.buildResolvedMatch(expr, resultType, true)
+}
+
+func (fb *functionBuilder) buildMatchStatement(stmt *ast.MatchStatement) error {
+	if stmt == nil || stmt.Match == nil {
+		return fb.unsupported("empty match statement", stmt.Token)
 	}
-	if plan.SubjectKind != sema.MatchSubjectEnum {
-		return builtValue{}, fb.unsupported("non-enum match expression", expr.Token)
+	_, err := fb.buildResolvedMatch(stmt.Match, 0, false)
+	return err
+}
+
+func (fb *functionBuilder) buildResolvedMatch(expr *ast.MatchExpression, resultType TypeID, valueContext bool) (builtValue, error) {
+	plan, ok := fb.owner.analyzer.ResolvedMatchPlanOf(expr)
+	if !ok || !plan.Exhaustive || plan.ValueContext != valueContext {
+		return builtValue{}, fb.unsupported("unresolved or non-exhaustive match", expr.Token)
+	}
+	switch plan.SubjectKind {
+	case sema.MatchSubjectEnum, sema.MatchSubjectUnion, sema.MatchSubjectResult, sema.MatchSubjectOption:
+	default:
+		return builtValue{}, fb.unsupported("match subject kind "+string(plan.SubjectKind), expr.Token)
 	}
 	subject, err := fb.buildExpr(expr.Subject, 0)
 	if err != nil {
 		return builtValue{}, err
 	}
-	if subject.typ == 0 || resultType == 0 {
-		return builtValue{}, fb.unsupported("untyped match expression", expr.Token)
-	}
-	definition, ok := fb.owner.enumDefinition(subject.typ)
-	if !ok {
-		return builtValue{}, fb.unsupported("enum match without definition", expr.Token)
+	if subject.typ == 0 || valueContext && resultType == 0 {
+		return builtValue{}, fb.unsupported("untyped match", expr.Token)
 	}
 	boolType, err := fb.owner.internType(sema.Type{Name: "bool", Kind: sema.BoolType})
 	if err != nil {
 		return builtValue{}, err
 	}
-	merge := fb.newBlock()
-	parameter := fb.newValue(resultType, OwnershipImmediate, location(expr.Token))
-	merge.Parameters = []Value{parameter}
+	var merge *Block
+	var parameter Value
+	recordResultType := resultType
+	if valueContext {
+		merge = fb.newBlock()
+		parameter = fb.newValue(resultType, OwnershipImmediate, location(expr.Token))
+		merge.Parameters = []Value{parameter}
+	} else {
+		recordResultType, err = fb.owner.internType(sema.Type{Name: "void", Kind: sema.VoidType})
+		if err != nil {
+			return builtValue{}, err
+		}
+		if matchPlanContinues(plan) {
+			merge = fb.newBlock()
+		}
+	}
 	matchID := fb.nextMatch
 	fb.nextMatch++
 	record := MatchRecord{
-		ID: matchID, Subject: subject.id, SubjectType: subject.typ, ResultType: resultType,
-		ValueContext: true, Exhaustive: true, MergeBlock: merge.ID, Location: location(expr.Token),
+		ID: matchID, Subject: subject.id, SubjectType: subject.typ, ResultType: recordResultType,
+		ValueContext: valueContext, Exhaustive: true, MergeBlock: blockIDOrZero(merge, merge != nil), Location: location(expr.Token),
 	}
 
 	for planIndex, armPlan := range plan.Arms {
@@ -842,30 +872,20 @@ func (fb *functionBuilder) buildMatchExpression(expr *ast.MatchExpression, resul
 		if needsNext {
 			nextBlock = fb.newBlock()
 		}
-		meta := Operation{MatchID: matchID, MatchArmIndex: armPlan.SourceIndex, MatchPatternKind: string(armPlan.PatternKind), Location: location(arm.Token)}
-		if armPlan.PatternKind == sema.MatchPatternCatchAll {
-			meta.Kind, meta.MatchStage = OpBranch, "pattern"
-			meta.Successors = []BranchTarget{{Block: matchedBlock.ID}}
-			fb.emit(meta)
-		} else {
-			caseID, exists := enumCaseIDByName(definition, armPlan.EnumCaseName)
-			if !exists || armPlan.EnumNumericValue == nil {
-				return builtValue{}, fb.unsupported("unresolved enum match pattern", arm.Token)
-			}
-			constant := fb.result(Operation{Kind: OpEnumConstant, EnumCase: caseID, MatchID: matchID, MatchArmIndex: armPlan.SourceIndex, MatchStage: "pattern", MatchPatternKind: string(armPlan.PatternKind), Location: location(arm.Token)}, subject.typ)
-			condition := fb.result(Operation{Kind: OpEnumCompare, Operands: []ValueID{subject.id, constant.id}, IntegerCompare: IntegerCompareEQ, MatchID: matchID, MatchArmIndex: armPlan.SourceIndex, MatchStage: "pattern", MatchPatternKind: string(armPlan.PatternKind), Location: location(arm.Token)}, boolType)
-			meta.Kind, meta.MatchStage = OpCondBranch, "pattern"
-			meta.Operands = []ValueID{condition.id}
-			meta.Successors = []BranchTarget{{Block: matchedBlock.ID}, {Block: nextBlock.ID}}
-			fb.emit(meta)
+		if err := fb.emitMatchPattern(subject, plan, armPlan, matchedBlock, nextBlock, boolType, matchID, arm.Token); err != nil {
+			return builtValue{}, err
 		}
 
-		restore, err := fb.bindMatchArm(arm, armPlan, subject)
+		fb.current = matchedBlock
+		payload, hasPayload, err := fb.projectMatchPayload(subject, armPlan, matchID, arm.Token)
+		if err != nil {
+			return builtValue{}, err
+		}
+		restore, err := fb.bindMatchArm(arm, armPlan, payload, hasPayload)
 		if err != nil {
 			return builtValue{}, err
 		}
 		if armPlan.Guarded {
-			fb.current = matchedBlock
 			guard, err := fb.buildExpr(arm.Guard, boolType)
 			if err != nil {
 				restore()
@@ -874,15 +894,23 @@ func (fb *functionBuilder) buildMatchExpression(expr *ast.MatchExpression, resul
 			fb.emit(Operation{Kind: OpCondBranch, Operands: []ValueID{guard.id}, Successors: []BranchTarget{{Block: bodyBlock.ID}, {Block: nextBlock.ID}}, MatchID: matchID, MatchArmIndex: armPlan.SourceIndex, MatchStage: "guard", MatchPatternKind: string(armPlan.PatternKind), Location: location(arm.Token)})
 		}
 		fb.current = bodyBlock
-		if err := fb.buildMatchExpressionArm(arm, armPlan, merge, resultType, matchID); err != nil {
+		newBodyBlocksFrom := len(fb.fn.Blocks)
+		if valueContext {
+			err = fb.buildMatchExpressionArm(arm, armPlan, merge, resultType, matchID)
+		} else {
+			err = fb.buildMatchStatementArm(arm, armPlan, merge, matchID)
+		}
+		if err != nil {
 			restore()
 			return builtValue{}, err
 		}
+		fb.markMatchArmTerminators(append([]*Block{bodyBlock}, fb.fn.Blocks[newBodyBlocksFrom:]...), armPlan, matchID)
 		restore()
 		record.Arms = append(record.Arms, MatchArmRecord{
 			SourceIndex: armPlan.SourceIndex, PatternKind: string(armPlan.PatternKind), PatternBlock: patternBlock.ID,
 			GuardBlock: blockIDOrZero(matchedBlock, armPlan.Guarded), BodyBlock: bodyBlock.ID,
-			EnumValue: cloneBigInt(armPlan.EnumNumericValue), Guarded: armPlan.Guarded, Flow: string(armPlan.Flow), Location: location(arm.Token),
+			VariantIndex: UnionVariantIndex(armPlan.UnionVariantIndex), EnumValue: cloneBigInt(armPlan.EnumNumericValue),
+			Guarded: armPlan.Guarded, Flow: string(armPlan.Flow), Location: location(arm.Token),
 		})
 		if nextBlock == nil {
 			fb.current = nil
@@ -896,16 +924,194 @@ func (fb *functionBuilder) buildMatchExpression(expr *ast.MatchExpression, resul
 	}
 	fb.fn.Matches = append(fb.fn.Matches, record)
 	fb.current = merge
+	if !valueContext {
+		return builtValue{}, nil
+	}
 	return builtValue{id: parameter.ID, typ: resultType}, nil
 }
 
-func (fb *functionBuilder) bindMatchArm(arm *ast.MatchArm, plan sema.ResolvedMatchArm, value builtValue) (func(), error) {
-	if plan.BindingName == "" {
+func (fb *functionBuilder) markMatchArmTerminators(blocks []*Block, arm sema.ResolvedMatchArm, matchID MatchID) {
+	for _, block := range blocks {
+		if block == nil || len(block.Operations) == 0 {
+			continue
+		}
+		terminator := &block.Operations[len(block.Operations)-1]
+		if terminator.MatchID != 0 || (terminator.Kind != OpReturn && terminator.Kind != OpUnreachable && terminator.Kind != OpArithmeticFailure) {
+			continue
+		}
+		terminator.MatchID = matchID
+		terminator.MatchArmIndex = arm.SourceIndex
+		terminator.MatchStage = "body-exit"
+		terminator.MatchPatternKind = string(arm.PatternKind)
+	}
+}
+
+func matchPlanContinues(plan sema.ResolvedMatchPlan) bool {
+	for _, arm := range plan.Arms {
+		if arm.Flow == sema.MatchArmContinues || arm.Flow == sema.MatchArmProducesValue {
+			return true
+		}
+	}
+	return false
+}
+
+func (fb *functionBuilder) emitMatchPattern(subject builtValue, plan sema.ResolvedMatchPlan, arm sema.ResolvedMatchArm, matchedBlock, nextBlock *Block, boolType TypeID, matchID MatchID, token lexer.Token) error {
+	meta := Operation{
+		MatchID: matchID, MatchArmIndex: arm.SourceIndex, MatchStage: "pattern",
+		MatchPatternKind: string(arm.PatternKind), Location: location(token),
+	}
+	if arm.PatternKind == sema.MatchPatternCatchAll {
+		meta.Kind = OpBranch
+		meta.Successors = []BranchTarget{{Block: matchedBlock.ID}}
+		fb.emit(meta)
+		return nil
+	}
+	if nextBlock == nil {
+		return fmt.Errorf("non-catch-all match arm %d has no false successor", arm.SourceIndex)
+	}
+
+	var condition builtValue
+	switch plan.SubjectKind {
+	case sema.MatchSubjectEnum:
+		definition, ok := fb.owner.enumDefinition(subject.typ)
+		if !ok || arm.EnumNumericValue == nil {
+			return fb.unsupported("unresolved enum match pattern", token)
+		}
+		caseID, ok := enumCaseIDByName(definition, arm.EnumCaseName)
+		if !ok {
+			return fb.unsupported("unresolved enum match case", token)
+		}
+		constant := fb.result(Operation{
+			Kind: OpEnumConstant, EnumCase: caseID, MatchID: matchID,
+			MatchArmIndex: arm.SourceIndex, MatchStage: "pattern",
+			MatchPatternKind: string(arm.PatternKind), Location: location(token),
+		}, subject.typ)
+		condition = fb.result(Operation{
+			Kind: OpEnumCompare, Operands: []ValueID{subject.id, constant.id},
+			IntegerCompare: IntegerCompareEQ, MatchID: matchID,
+			MatchArmIndex: arm.SourceIndex, MatchStage: "pattern",
+			MatchPatternKind: string(arm.PatternKind), Location: location(token),
+		}, boolType)
+	case sema.MatchSubjectUnion, sema.MatchSubjectOption:
+		definition, ok := fb.owner.unionDefinition(subject.typ)
+		if !ok || int(arm.UnionVariantIndex) >= len(definition.Variants) {
+			return fb.unsupported("unresolved union match variant", token)
+		}
+		condition = fb.result(Operation{
+			Kind: OpUnionIsVariant, Operands: []ValueID{subject.id},
+			UnionVariant: UnionVariantIndex(arm.UnionVariantIndex), MatchID: matchID,
+			MatchArmIndex: arm.SourceIndex, MatchStage: "pattern",
+			MatchPatternKind: string(arm.PatternKind), Location: location(token),
+		}, boolType)
+	case sema.MatchSubjectResult:
+		condition = fb.result(Operation{
+			Kind: OpResultIsErr, Operands: []ValueID{subject.id}, MatchID: matchID,
+			MatchArmIndex: arm.SourceIndex, MatchStage: "pattern",
+			MatchPatternKind: string(arm.PatternKind), Location: location(token),
+		}, boolType)
+	default:
+		return fb.unsupported("match subject kind "+string(plan.SubjectKind), token)
+	}
+
+	meta.Kind = OpCondBranch
+	meta.Operands = []ValueID{condition.id}
+	if plan.SubjectKind == sema.MatchSubjectResult && arm.PatternKind == sema.MatchPatternResultOk {
+		// result.is-err is false for an Ok pattern.
+		meta.Successors = []BranchTarget{{Block: nextBlock.ID}, {Block: matchedBlock.ID}}
+	} else {
+		meta.Successors = []BranchTarget{{Block: matchedBlock.ID}, {Block: nextBlock.ID}}
+	}
+	fb.emit(meta)
+	return nil
+}
+
+func (fb *functionBuilder) projectMatchPayload(subject builtValue, arm sema.ResolvedMatchArm, matchID MatchID, token lexer.Token) (builtValue, bool, error) {
+	switch arm.BindingAction {
+	case sema.MatchBindingNone, sema.MatchBindingDiscard:
+		return builtValue{}, false, nil
+	case sema.MatchBindingCopyTrivial:
+		// Package 12 deliberately supports only payload copies that need no
+		// ownership commit or cleanup when a later guard rejects the arm.
+	default:
+		return builtValue{}, false, fb.unsupported("ownership-sensitive match payload binding "+string(arm.BindingAction), token)
+	}
+
+	bindingType, err := fb.owner.internType(arm.BindingType)
+	if err != nil {
+		return builtValue{}, false, err
+	}
+	meta := Operation{
+		Operands: []ValueID{subject.id}, MatchID: matchID, MatchArmIndex: arm.SourceIndex,
+		MatchStage: "pattern", MatchPatternKind: string(arm.PatternKind), Location: location(token),
+	}
+	switch arm.PatternKind {
+	case sema.MatchPatternUnionVariant, sema.MatchPatternOptionSome:
+		definition, ok := fb.owner.unionDefinition(subject.typ)
+		if !ok || int(arm.UnionVariantIndex) >= len(definition.Variants) {
+			return builtValue{}, false, fb.unsupported("unresolved union match payload", token)
+		}
+		variant := definition.Variants[arm.UnionVariantIndex]
+		if variant.Kind != UnionVariantSingle || variant.Payload != bindingType {
+			return builtValue{}, false, fb.unsupported("non-single or mismatched union match payload", token)
+		}
+		meta.Kind = OpUnionUnwrapPayload
+		meta.UnionVariant = UnionVariantIndex(arm.UnionVariantIndex)
+		meta.PayloadActions = []UnionPayloadAction{UnionPayloadCopyTrivial}
+	case sema.MatchPatternResultOk, sema.MatchPatternResultErr:
+		result, ok := fb.owner.module.Types.Lookup(subject.typ)
+		if !ok || result.Kind != TypeResult {
+			return builtValue{}, false, fb.unsupported("Result match payload without Result subject", token)
+		}
+		expected := result.Success
+		meta.Kind = OpResultUnwrapOk
+		if arm.PatternKind == sema.MatchPatternResultErr {
+			expected = result.Error
+			meta.Kind = OpResultUnwrapErr
+		}
+		if expected != bindingType {
+			return builtValue{}, false, fb.unsupported("mismatched Result match payload", token)
+		}
+	default:
+		return builtValue{}, false, fb.unsupported("payload binding for "+string(arm.PatternKind), token)
+	}
+	return fb.result(meta, bindingType), true, nil
+}
+
+func matchArmBindingIdentifier(pattern ast.Expression) *ast.Identifier {
+	unwrap := func(expression ast.Expression) ast.Expression {
+		if reference, ok := expression.(*ast.RefExpression); ok {
+			return reference.Value
+		}
+		return expression
+	}
+	switch pattern := pattern.(type) {
+	case *ast.CallExpression:
+		if len(pattern.Arguments) == 1 {
+			identifier, _ := unwrap(pattern.Arguments[0]).(*ast.Identifier)
+			return identifier
+		}
+	case *ast.OkExpression:
+		identifier, _ := unwrap(pattern.Value).(*ast.Identifier)
+		return identifier
+	case *ast.ErrExpression:
+		identifier, _ := unwrap(pattern.Value).(*ast.Identifier)
+		return identifier
+	case *ast.Identifier:
+		return pattern
+	}
+	return nil
+}
+
+func (fb *functionBuilder) bindMatchArm(arm *ast.MatchArm, plan sema.ResolvedMatchArm, value builtValue, hasValue bool) (func(), error) {
+	if plan.BindingName == "" || plan.BindingName == "_" {
 		return func() {}, nil
 	}
-	identifier, ok := arm.Pattern.(*ast.Identifier)
-	if !ok || identifier.Value == "_" {
-		return func() {}, nil
+	if !hasValue {
+		return nil, fmt.Errorf("match binding %s has no projected payload", plan.BindingName)
+	}
+	identifier := matchArmBindingIdentifier(arm.Pattern.Expression())
+	if identifier == nil || identifier.Value == "_" {
+		return nil, fmt.Errorf("match binding %s has no source identifier", plan.BindingName)
 	}
 	fact, ok := fb.owner.analyzer.ResolvedBindingOf(identifier)
 	if !ok {
@@ -934,6 +1140,48 @@ func (fb *functionBuilder) buildMatchExpressionArm(arm *ast.MatchArm, plan sema.
 		return err
 	}
 	fb.emit(Operation{Kind: OpBranch, Successors: []BranchTarget{{Block: merge.ID, Arguments: []ValueID{value.id}}}, MatchID: matchID, MatchArmIndex: plan.SourceIndex, MatchStage: "body-exit", MatchPatternKind: string(plan.PatternKind), Location: location(arm.Token)})
+	fb.current = nil
+	return nil
+}
+
+func (fb *functionBuilder) buildMatchStatementArm(arm *ast.MatchArm, plan sema.ResolvedMatchArm, continuation *Block, matchID MatchID) error {
+	if plan.Flow == sema.MatchArmLoopControl {
+		return fb.unsupported("match arm loop control before loop Semantic IR", arm.Token)
+	}
+	if arm.ReturnBody != nil {
+		return fb.buildReturn(arm.ReturnBody)
+	}
+	if arm.BlockBody != nil {
+		if err := fb.buildStatements(arm.BlockBody.Statements); err != nil {
+			return err
+		}
+	} else if arm.Body != nil {
+		armType, ok := fb.owner.analyzer.ResolvedTypeOf(arm.Body)
+		if !ok {
+			return fb.unsupported("untyped match statement arm", arm.Token)
+		}
+		armTypeID, err := fb.owner.internType(armType)
+		if err != nil {
+			return err
+		}
+		if _, err := fb.buildExpr(arm.Body, armTypeID); err != nil {
+			return err
+		}
+		if armType.Kind != sema.VoidType && (sema.CopyClassificationOf(armType) != sema.CopyTrivial || !sema.TriviallyDestructible(armType)) {
+			return fb.unsupported("ignored non-trivial match statement arm value", arm.Token)
+		}
+	}
+	if fb.current == nil {
+		return nil
+	}
+	if continuation == nil {
+		return fmt.Errorf("continuing match arm %d has no continuation", plan.SourceIndex)
+	}
+	fb.emit(Operation{
+		Kind: OpBranch, Successors: []BranchTarget{{Block: continuation.ID}}, MatchID: matchID,
+		MatchArmIndex: plan.SourceIndex, MatchStage: "body-exit",
+		MatchPatternKind: string(plan.PatternKind), Location: location(arm.Token),
+	})
 	fb.current = nil
 	return nil
 }
@@ -1535,7 +1783,7 @@ func ownershipForParameter(p sema.FunctionParameter) (OwnershipClass, error) {
 		return OwnershipRawPointer, nil
 	case sema.BoolType, sema.IntType, sema.UintType, sema.FloatType, sema.DecimalType, sema.CharType, sema.RuneType, sema.EnumType:
 		return OwnershipImmediate, nil
-	case sema.UnionType:
+	case sema.UnionType, sema.ResultType:
 		if sema.CopyClassificationOf(p.Type) == sema.CopyTrivial && sema.TriviallyDestructible(p.Type) {
 			return OwnershipImmediate, nil
 		}

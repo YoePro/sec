@@ -94,6 +94,40 @@ fn Choose(flag: Flag, condition: bool) int {
 	}
 }
 
+func TestResolvedMatchPlanRetainsAllTerminatingExpressionFlow(t *testing.T) {
+	source := `module main
+fn Choose(value: Option[int]) int {
+  return match value {
+    Some(number) => { return number }
+    None => { return 0 }
+  }
+}`
+	p := parser.New(lexer.NewWithFile(source, "terminating-match-plan.sec"))
+	result := p.Parse()
+	if result.HasErrors {
+		t.Fatalf("parse: %v", p.Errors())
+	}
+	a := NewAnalyzer()
+	if errs := a.Analyze(result.Program); len(errs) > 0 {
+		t.Fatalf("sema: %v", errs)
+	}
+	function := result.Program.Statements[1].(*ast.FunctionDeclaration)
+	match := function.Body.Statements[0].(*ast.ReturnStatement).Value.(*ast.MatchExpression)
+	resolvedType, ok := a.ResolvedTypeOf(match)
+	if !ok || resolvedType.Kind != NeverType {
+		t.Fatalf("match type = %#v, %t; want never", resolvedType, ok)
+	}
+	plan, ok := a.ResolvedMatchPlanOf(match)
+	if !ok || !plan.Exhaustive || plan.ResultType.Kind != NeverType || len(plan.Arms) != 2 {
+		t.Fatalf("plan = %#v, %t", plan, ok)
+	}
+	for index, arm := range plan.Arms {
+		if arm.Flow != MatchArmReturns {
+			t.Fatalf("arm %d flow = %q, want returns", index, arm.Flow)
+		}
+	}
+}
+
 func TestSemanticFactsRetainResolvedBuiltinIntegerOperators(t *testing.T) {
 	source := `module main
 fn Signed(a: int, b: int) int { return -(a + b) }

@@ -1461,6 +1461,173 @@ type MatchExpression struct {
 	Arms    []*MatchArm
 }
 
+type MatchPatternKind string
+
+const (
+	MatchPatternInvalid  MatchPatternKind = "invalid"
+	MatchPatternCatchAll MatchPatternKind = "catch-all"
+	MatchPatternEmpty    MatchPatternKind = "empty"
+	MatchPatternVariant  MatchPatternKind = "variant"
+	MatchPatternFields   MatchPatternKind = "fields"
+)
+
+type MatchBindingMode string
+
+const (
+	MatchBindingValue      MatchBindingMode = "value"
+	MatchBindingSharedRef  MatchBindingMode = "ref"
+	MatchBindingMutableRef MatchBindingMode = "ref-mut"
+)
+
+// MatchPattern is deliberately not an Expression. Sec 0.1 match syntax is a
+// closed structural grammar, so arbitrary value expressions cannot enter the
+// AST through a pattern position.
+type MatchPattern struct {
+	Token     lexer.Token
+	Kind      MatchPatternKind
+	Name      string
+	NameToken lexer.Token
+	Binding   *MatchPatternBinding
+	Fields    []*MatchFieldPattern
+	Invalid   bool
+	Recovery  *RecoveryInfo
+}
+
+type MatchPatternBinding struct {
+	Token lexer.Token
+	Name  *Identifier
+	Mode  MatchBindingMode
+}
+
+type MatchFieldPattern struct {
+	Token   lexer.Token
+	Field   *Identifier
+	Binding *MatchPatternBinding
+}
+
+func (mp *MatchPattern) TokenLiteral() string {
+	if mp == nil {
+		return ""
+	}
+	return mp.Token.Lexeme
+}
+
+func (mp *MatchPattern) String() string {
+	if mp == nil {
+		return "<nil-pattern>"
+	}
+	switch mp.Kind {
+	case MatchPatternCatchAll:
+		return "_"
+	case MatchPatternEmpty:
+		return "empty"
+	case MatchPatternVariant:
+		if mp.Binding == nil {
+			return mp.Name
+		}
+		return mp.Name + "(" + mp.Binding.String() + ")"
+	case MatchPatternFields:
+		fields := make([]string, 0, len(mp.Fields))
+		for _, field := range mp.Fields {
+			if field == nil || field.Field == nil {
+				continue
+			}
+			text := field.Field.Value
+			if field.Binding != nil && (field.Binding.Name == nil || field.Binding.Name.Value != field.Field.Value || field.Binding.Mode != MatchBindingValue) {
+				text += ": " + field.Binding.String()
+			}
+			fields = append(fields, text)
+		}
+		return mp.Name + " { " + strings.Join(fields, ", ") + " }"
+	default:
+		return "<invalid-pattern>"
+	}
+}
+
+func (binding *MatchPatternBinding) String() string {
+	if binding == nil || binding.Name == nil {
+		return "<invalid-binding>"
+	}
+	switch binding.Mode {
+	case MatchBindingSharedRef:
+		return "ref " + binding.Name.Value
+	case MatchBindingMutableRef:
+		return "ref mut " + binding.Name.Value
+	default:
+		return binding.Name.Value
+	}
+}
+
+// Expression preserves compatibility for analysis and legacy generators while
+// they consume the new closed pattern AST. It can only produce canonical
+// shapes represented by MatchPattern.
+func (mp *MatchPattern) Expression() Expression {
+	if mp == nil || mp.Invalid {
+		return nil
+	}
+	switch mp.Kind {
+	case MatchPatternCatchAll, MatchPatternEmpty:
+		value := "_"
+		if mp.Kind == MatchPatternEmpty {
+			value = "empty"
+		}
+		return &Identifier{Token: mp.Token, Value: value}
+	case MatchPatternVariant:
+		base := matchPatternNameExpression(mp.Token, mp.NameToken, mp.Name)
+		if mp.Binding == nil {
+			return base
+		}
+		binding := mp.Binding.Expression()
+		if mp.Name == "Ok" {
+			return &OkExpression{Token: mp.Token, Value: binding, Arguments: []Expression{binding}}
+		}
+		if mp.Name == "Err" {
+			return &ErrExpression{Token: mp.Token, Value: binding, Arguments: []Expression{binding}}
+		}
+		return &CallExpression{Token: mp.Token, Callee: base, Arguments: []Expression{binding}}
+	case MatchPatternFields:
+		literal := &StructLiteral{Token: mp.Token, Type: &TypeReference{Token: mp.Token, Name: mp.Name}}
+		for _, field := range mp.Fields {
+			if field == nil || field.Field == nil || field.Binding == nil {
+				continue
+			}
+			literal.Fields = append(literal.Fields, &StructLiteralField{Token: field.Token, Name: field.Field, Value: field.Binding.Expression()})
+		}
+		return literal
+	default:
+		return nil
+	}
+}
+
+func (binding *MatchPatternBinding) Expression() Expression {
+	if binding == nil || binding.Name == nil {
+		return nil
+	}
+	if binding.Mode == MatchBindingValue {
+		return binding.Name
+	}
+	return &RefExpression{Token: binding.Token, Mutable: binding.Mode == MatchBindingMutableRef, Value: binding.Name}
+}
+
+func matchPatternNameExpression(token, nameToken lexer.Token, name string) Expression {
+	separator := strings.LastIndex(name, ".")
+	if separator < 0 {
+		return &Identifier{Token: token, Value: name}
+	}
+	object := &Identifier{Token: token, Value: name[:separator]}
+	propertyToken := nameToken
+	if propertyToken.Lexeme == "" {
+		propertyToken = token
+		propertyToken.Lexeme = name[separator+1:]
+	}
+	memberToken := propertyToken
+	memberToken.Lexeme = "."
+	if memberToken.Column > token.Column {
+		memberToken.Column--
+	}
+	return &MemberExpression{Token: memberToken, Object: object, Property: &Identifier{Token: propertyToken, Value: propertyToken.Lexeme}}
+}
+
 func (me *MatchExpression) expressionNode() {}
 
 func (me *MatchExpression) TokenLiteral() string {
@@ -1476,7 +1643,7 @@ func (me *MatchExpression) String() string {
 
 type MatchArm struct {
 	Token      lexer.Token
-	Pattern    Expression
+	Pattern    *MatchPattern
 	Guard      Expression
 	Body       Expression
 	ReturnBody *ReturnStatement

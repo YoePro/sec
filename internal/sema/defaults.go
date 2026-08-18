@@ -30,7 +30,13 @@ func DefaultValuePreview(typ Type, maxArrayElements int) (string, DefaultKind, b
 	if typ.Kind != ArrayType {
 		return DefaultValueDisplay(typ)
 	}
-	if typ.Element == nil || typ.ArrayLength < 0 {
+	if typ.Element == nil {
+		return "", NoDefault, false
+	}
+	if typ.ArrayLength == dynamicArrayLength {
+		return "[]", ArrayDefault, true
+	}
+	if typ.ArrayLength < 0 {
 		return "", NoDefault, false
 	}
 	if typ.ArrayLength == 0 {
@@ -207,7 +213,13 @@ func defaultValueOf(typ Type, visiting map[string]bool) DefaultResolution {
 		}
 		return result
 	case ArrayType:
-		if typ.Element == nil || typ.ArrayLength < 0 {
+		if typ.Element == nil {
+			return DefaultResolution{Kind: NoDefault}
+		}
+		if typ.ArrayLength == dynamicArrayLength {
+			return DefaultResolution{Kind: ArrayDefault}
+		}
+		if typ.ArrayLength < 0 {
 			return DefaultResolution{Kind: NoDefault}
 		}
 		if typ.ArrayLength == 0 {

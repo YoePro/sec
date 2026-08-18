@@ -1742,7 +1742,7 @@ func (p *Parser) parseUnitDeclStatement() ast.Statement {
 		if isUnitCategoryName(p.curToken.Lexeme) {
 			stmt.Category = p.curToken.Lexeme
 		} else {
-			p.addError("unit %s category must be physical, currency, or other, got %q at %d:%d", stmt.Name.Value, p.curToken.Lexeme, p.curToken.Line, p.curToken.Column)
+			p.addError("unit %s category must be physical, currency, information, ratio, or other, got %q at %d:%d", stmt.Name.Value, p.curToken.Lexeme, p.curToken.Line, p.curToken.Column)
 		}
 	}
 
@@ -1751,7 +1751,7 @@ func (p *Parser) parseUnitDeclStatement() ast.Statement {
 
 func isUnitCategoryName(name string) bool {
 	switch name {
-	case "physical", "currency", "other":
+	case "physical", "currency", "information", "ratio", "other":
 		return true
 	default:
 		return false
@@ -3118,7 +3118,7 @@ func (p *Parser) parseInitDeclaration() *ast.InitDeclaration {
 
 func (p *Parser) isUnitMetadataName(name string) bool {
 	switch normalizeUnitMetadataName(name) {
-	case "dimension", "scale", "system", "longname", "symbol", "baseunit", "status":
+	case "dimension", "scale", "system", "longname", "symbol", "baseunit", "status", "kind", "transform", "offset", "origin", "logbase", "logfactor", "reference":
 		return true
 	default:
 		return false
@@ -4315,19 +4315,36 @@ func trimCharQuotes(s string) string {
 func (p *Parser) skipStatement() RecoveryEvent {
 	start := p.curToken
 	end := start
-	skipped := 0
-	p.nextToken()
-	skipped++
+	skipped := 1
+	delimiters := newDelimiterStack()
+	delimiters.consume(p.curToken.Type)
 
-	for !p.isAtEnd() && p.curToken.Type != lexer.RBRACE && !p.isStatementStart(p.curToken.Type) {
-		end = p.curToken
+	for p.peekToken.Type != lexer.EOF {
+		if p.recoveryContext == RecoveryContextTopLevel && p.peekToken.Line > start.Line && isDeclarationStart(p.peekToken.Type) {
+			p.nextToken()
+			break
+		}
+		if delimiters.empty() && p.peekToken.Type == lexer.RBRACE {
+			p.nextToken()
+			break
+		}
+		if delimiters.empty() && p.peekToken.Line > start.Line && p.isStatementStart(p.peekToken.Type) {
+			p.nextToken()
+			break
+		}
+		if !delimiters.canConsume(p.peekToken.Type) {
+			p.nextToken()
+			break
+		}
 		p.nextToken()
+		end = p.curToken
 		skipped++
+		delimiters.consume(p.curToken.Type)
 	}
-	if skipped == 1 {
-		end = start
+	if p.peekToken.Type == lexer.EOF && p.curToken.Type != lexer.EOF {
+		p.nextToken()
 	}
-	return p.recordSkippedRecovery(start, end, skipped, RecoveryUnknown)
+	return p.recordSkippedRecovery(start, end, skipped, RecoveryProbable)
 }
 
 func (p *Parser) invalidStatement(start lexer.Token, diagnosticStart int, recovery RecoveryEvent) *ast.InvalidStatement {
@@ -4401,6 +4418,20 @@ func (p *Parser) invalidPattern(start lexer.Token, diagnosticStart int, recovery
 			Start:        recovery.Start,
 			End:          recovery.End,
 			Skipped:      recovery.Skipped,
+		},
+	}
+}
+
+func (p *Parser) invalidMatchPattern(start lexer.Token, diagnosticStart int, recovery RecoveryEvent) *ast.MatchPattern {
+	message := "invalid match pattern"
+	if diagnosticStart < len(p.diagnostics) {
+		message = p.diagnostics[diagnosticStart].Message
+	}
+	return &ast.MatchPattern{
+		Token: start, Kind: ast.MatchPatternInvalid, Invalid: true,
+		Recovery: &ast.RecoveryInfo{
+			DiagnosticID: compilerdiagnostics.ParserInvalidPattern,
+			Message:      message, Start: recovery.Start, End: recovery.End, Skipped: recovery.Skipped,
 		},
 	}
 }

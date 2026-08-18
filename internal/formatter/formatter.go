@@ -54,7 +54,7 @@ func format(text string, options Options) string {
 		if options.Fix {
 			line = normalizeReversedTypeDeclaration(line)
 		}
-		line = formatLet(formatSignature(formatInitSignature(normalizeFunc(line))))
+		line = formatMatchArm(formatLet(formatSignature(formatInitSignature(normalizeFunc(line)))))
 		level := indent - closing(line)
 		if level < 0 {
 			level = 0
@@ -102,6 +102,106 @@ func format(text string, options Options) string {
 		result = strings.ReplaceAll(result, "\n", eol)
 	}
 	return result
+}
+
+func formatMatchArm(line string) string {
+	arrow := strings.Index(line, "=>")
+	if arrow < 0 {
+		return line
+	}
+	left := strings.TrimSpace(line[:arrow])
+	right := strings.TrimSpace(line[arrow+2:])
+	guard := ""
+	if where := strings.Index(left, " where "); where >= 0 {
+		guard = " where " + strings.TrimSpace(left[where+7:])
+		left = strings.TrimSpace(left[:where])
+	}
+	pattern, ok := normalizeCanonicalMatchPattern(left)
+	if !ok {
+		return line
+	}
+	if right == "" {
+		return pattern + guard + " =>"
+	}
+	return pattern + guard + " => " + right
+}
+
+func normalizeCanonicalMatchPattern(text string) (string, bool) {
+	text = strings.TrimSpace(text)
+	if text == "_" || text == "empty" {
+		return text, true
+	}
+	if open := strings.Index(text, "{"); open >= 0 {
+		if !strings.HasSuffix(text, "}") {
+			return "", false
+		}
+		name := strings.TrimSpace(text[:open])
+		if !qualifiedIdentifier(name) {
+			return "", false
+		}
+		parts := split(text[open+1 : len(text)-1])
+		if parts == nil {
+			return "", false
+		}
+		fields := make([]string, 0, len(parts))
+		for _, part := range parts {
+			field := strings.TrimSpace(part)
+			colon := strings.Index(field, ":")
+			if colon < 0 {
+				if !ident(field) {
+					return "", false
+				}
+				fields = append(fields, field)
+				continue
+			}
+			fieldName := strings.TrimSpace(field[:colon])
+			binding, ok := normalizeMatchBinding(field[colon+1:])
+			if !ident(fieldName) || !ok {
+				return "", false
+			}
+			fields = append(fields, fieldName+": "+binding)
+		}
+		return name + " { " + strings.Join(fields, ", ") + " }", true
+	}
+	if open := strings.Index(text, "("); open >= 0 {
+		if !strings.HasSuffix(text, ")") {
+			return "", false
+		}
+		name := strings.TrimSpace(text[:open])
+		binding, ok := normalizeMatchBinding(text[open+1 : len(text)-1])
+		if !qualifiedIdentifier(name) || !ok {
+			return "", false
+		}
+		return name + "(" + binding + ")", true
+	}
+	return text, qualifiedIdentifier(text)
+}
+
+func normalizeMatchBinding(text string) (string, bool) {
+	parts := strings.Fields(text)
+	switch {
+	case len(parts) == 1 && (parts[0] == "_" || ident(parts[0])):
+		return parts[0], true
+	case len(parts) == 2 && parts[0] == "ref" && ident(parts[1]):
+		return "ref " + parts[1], true
+	case len(parts) == 3 && parts[0] == "ref" && parts[1] == "mut" && ident(parts[2]):
+		return "ref mut " + parts[2], true
+	default:
+		return "", false
+	}
+}
+
+func qualifiedIdentifier(text string) bool {
+	parts := strings.Split(text, ".")
+	if len(parts) == 0 {
+		return false
+	}
+	for _, part := range parts {
+		if !ident(part) {
+			return false
+		}
+	}
+	return true
 }
 
 func normalizeReversedTypeDeclaration(line string) string {

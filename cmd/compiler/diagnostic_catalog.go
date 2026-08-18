@@ -66,6 +66,8 @@ var semanticOccurrenceFields = []diagnosticCatalogField{
 	{Name: "File", Type: "string", Required: false, Description: "Primary source file."},
 	{Name: "Line", Type: "int", Required: false, Description: "One-based primary source line."},
 	{Name: "Column", Type: "int", Required: false, Description: "One-based primary source column."},
+	{Name: "EndLine", Type: "int", Required: false, Description: "One-based final source line of the primary range."},
+	{Name: "EndColumn", Type: "int", Required: false, Description: "One-based exclusive final source column of the primary range."},
 	{Name: "PreviousFile", Type: "string", Required: false, Description: "Related previous declaration source file."},
 	{Name: "PreviousLine", Type: "int", Required: false, Description: "One-based related source line."},
 	{Name: "PreviousColumn", Type: "int", Required: false, Description: "One-based related source column."},

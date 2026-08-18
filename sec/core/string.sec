@@ -1,6 +1,46 @@
 module core
 
 type StringSplitIterator struct {
+    source: string,
+    separator: string,
+    position: uint,
+    finished: bool,
+}
+
+impl StringSplitIterator {
+    fn Next() Option[string] {
+        if self.finished {
+            return None()
+        }
+
+        let found := self.source.IndexOf(self.separator, self.position)
+
+        return match found {
+            Some(index) => {
+                let part := try self.source.Slice(self.position, index) {
+                    Err(error) => {
+                        self.finished = true
+                        return None()
+                    }
+                }
+
+                self.position = index + self.separator.len
+                return Some(part)
+            }
+
+            None => {
+                let part := try self.source.Slice(self.position,self.source.len) {
+                    Err(error) => {
+                        self.finished = true
+                        return None()
+                    }
+                }
+
+                self.finished = true
+                return Some(part)
+            }
+        }
+    }
 }
 
 impl string {
@@ -22,8 +62,38 @@ impl string {
     }
 
     fn Compare(other: string) int {
-        // TODO: Implement string.Compare
+        uint mut: index := 0
+
+        while index < self.len && index < other.len {
+            let left := self.ByteAt(index)
+            let right := other.ByteAt(index)
+
+            if left < right {
+                return -1
+            }
+
+            if left > right {
+                return 1
+            }
+
+            index += 1
+        }
+
+        if self.len < other.len {
+            return -1
+        }
+
+        if self.len > other.len {
+            return 1
+        }
+
         return 0
+    }
+
+    fn ByteAt(index: uint) byte {
+        unsafe {
+            return self.Ptr.Offset(int(index)).Read()
+        }
     }
 
     fn FromByteArray(value: ref byte[]) string {
@@ -43,27 +113,139 @@ impl string {
     }
 
     fn StartsWith(prefix: string) bool {
-        // TODO: implement string.StartsWith
-        return false
+        if prefix.len > self.len {
+            return false
+        }
+
+        let mut index: uint := 0
+
+        while index < prefix.len {
+            if self.ByteAt(index) != prefix.ByteAt(index) {
+                return false
+            }
+
+            index += 1
+        }
+
+        return true
     }
 
     fn EndsWith(suffix: string) bool {
-        // TODO: implement string.EndsWith
-        return false
+        if suffix.len > self.len {
+            return false
+        }
+
+        let start := self.len - suffix.len
+        let mut index: uint := 0
+
+        while index < suffix.len {
+            if self.ByteAt(start + index) != suffix.ByteAt(index) {
+                return false
+            }
+
+            index += 1
+        }
+
+        return true
     }
 
     fn Contains(value: string) bool {
-        // TODO: implement string.Contains
-        return false
+        return match self.IndexOf(value) {
+            Some(_) => true
+            None => false
+        }
     }
 
     fn IndexOf(value: string) Option[uint] {
-        // TODO: Implement string.IndexOf
+        return self.IndexOf(value, 0)
+    }
+
+    fn IndexOf(value: string, start: uint) Option[uint] {
+        if start > self.len {
+            return None()
+        }
+
+        if value.len == 0 {
+            return Some(start)
+        }
+
+        if value.len > self.len - start {
+            return None()
+        }
+
+        // Fast path: one-byte separator/search value.
+        if value.len == 1 {
+            let needle := value.ByteAt(0)
+            let mut index := start
+
+            while index < self.len {
+                if self.ByteAt(index) == needle {
+                    return Some(index)
+                }
+
+                index += 1
+            }
+
+            return None()
+        }
+
+        let lastStart := self.len - value.len
+        let mut index := start
+
+        while index <= lastStart {
+            let mut needleIndex: uint := 0
+
+            while needleIndex < value.len {
+                if self.ByteAt(index + needleIndex) != value.ByteAt(needleIndex) {
+                    break
+                }
+
+                needleIndex += 1
+            }
+
+            if needleIndex == value.len {
+                return Some(index)
+            }
+
+            index += 1
+        }
+
         return None()
     }
 
     fn LastIndexOf(value: string) Option[uint] {
-        // TODO: Implement string.LastIndexOf
+        if value.len == 0 {
+            return Some(self.len)
+        }
+
+        if value.len > self.len {
+            return None()
+        }
+
+        let mut index := self.len - value.len
+
+        for {
+            let mut needleIndex: uint := 0
+
+            while needleIndex < value.len {
+                if self.ByteAt(index + needleIndex) != value.ByteAt(needleIndex) {
+                    break
+                }
+
+                needleIndex += 1
+            }
+
+            if needleIndex == value.len {
+                return Some(index)
+            }
+
+            if index == 0 {
+                break
+            }
+
+            index -= 1
+        }
+
         return None()
     }
 
@@ -83,13 +265,25 @@ impl string {
     }
 
     fn Slice(start: uint, end: uint) Result[string, RangeError] {
-        // TODO: Implement string.Slice
-        return Ok("")
+        if start > end {
+            return Err(RangeError.StartAfterEnd)
+        }
+
+        if end > self.len {
+            return Err(RangeError.OutOfBounds)
+        }
+
+        // This is the one operation that must become compiler-backed.
+        return Ok(__StringSliceUnchecked(self, start, end))
     }
 
     fn Split(separator: string) StringSplitIterator {
-        // TODO: Implement string.Split
-        return StringSplitIterator {}
+        return StringSplitIterator {
+            source: self,
+            separator: separator,
+            position: 0,
+            finished: false,
+        }
     }
 
     /** Returns a copy of self */

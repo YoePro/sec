@@ -602,7 +602,11 @@ tooling.
 The general parser and compiler workspace do not yet provide a complete
 error-tolerant syntax tree.
 
-Sema is currently skipped for ordinary diagnostics when parser errors exist.
+After a non-fatal parser error, the LSP may continue semantic analysis over
+retained declarations and unaffected subtrees. It must not publish semantic
+diagnostics whose primary location lies inside a parser recovery range, and a
+local malformed body must not hide independent declaration diagnostics in
+following siblings.
 
 ### Project loading
 
@@ -2097,12 +2101,21 @@ When compiler metadata exists, hover may show:
 ```text
 Name
 Symbol
+Numeric carrier
+Default numeric representation
+Category
 Dimension
+Kind
 Scale
 Offset
+Origin
 System
+Transform
+Logarithmic base, factor, and reference
+Named or structural identity
 Canonical form
-Compatible units
+Point or difference role
+Conversion exactness
 Definition
 Source module
 ```
@@ -2119,6 +2132,9 @@ System: SI
 ```
 
 When metadata is not implemented, show only verified facts.
+Unknown Kind is shown as unknown and is never guessed from dimension. Tooling
+preserves named versus structural source identity and does not rewrite `<m/s>`
+to `<mps>`.
 
 Example:
 
@@ -2142,6 +2158,16 @@ Go to unit definition
 Find unit references
 Show exact scale and offset
 ```
+
+The LSP surfaces compiler diagnostics for incompatible dimension or Kind,
+point/difference and Origin misuse, invalid affine/logarithmic arithmetic,
+lossy conversion, deprecated units, and derived currency warnings. Expressions
+such as `<EUR/s>` and `<SEK/EUR>` remain valid when warned about.
+
+Code actions may offer a compiler-proven fixed conversion, declared conversion
+function, in-scope factor-provided conversion, or exact carrier change. They
+must not invent an exchange rate or rounding policy. Unit algebra and derivation
+facts come from Sema rather than an LSP-owned implementation.
 
 ---
 
@@ -3193,7 +3219,7 @@ copy_move.md
 borrowing.txt
 lifetime_analysis.txt
 contracts.md
-units.txt
+types/units.md
 target_profiles.md
 platform_model.md
 call_graph.md

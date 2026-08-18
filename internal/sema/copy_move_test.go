@@ -8,6 +8,7 @@ import (
 	"sec/internal/ast"
 	"sec/internal/diagnostics"
 	"sec/internal/lexer"
+	"sec/internal/parser"
 )
 
 func TestCopyClassificationPrimitiveReferenceAndAggregates(t *testing.T) {
@@ -2230,10 +2231,11 @@ fn Test(choice: Choice) void {
 }
 `
 
-	errors := analyzeSourceRaw(t, input)
-	assertSemaErrors(t, errors, []string{
-		"union payload pattern must bind an identifier, ref identifier, or ref mut identifier at 11:8",
-	})
+	p := parser.New(lexer.New(input))
+	result := p.Parse()
+	if !result.HasErrors || len(p.Errors()) == 0 || !strings.Contains(p.Errors()[0], "match payload reference must bind an identifier") {
+		t.Fatalf("parser errors = %v", p.Errors())
+	}
 }
 
 func TestResultPayloadReferencePatternsBorrowActiveVariants(t *testing.T) {

@@ -212,9 +212,19 @@ type InterfaceProperty struct {
 type UnitCategory string
 
 const (
-	PhysicalUnit UnitCategory = "physical"
-	CurrencyUnit UnitCategory = "currency"
-	OtherUnit    UnitCategory = "other"
+	PhysicalUnit    UnitCategory = "physical"
+	CurrencyUnit    UnitCategory = "currency"
+	InformationUnit UnitCategory = "information"
+	RatioUnit       UnitCategory = "ratio"
+	OtherUnit       UnitCategory = "other"
+)
+
+type UnitTransform string
+
+const (
+	LinearUnitTransform      UnitTransform = "linear"
+	AffineUnitTransform      UnitTransform = "affine"
+	LogarithmicUnitTransform UnitTransform = "logarithmic"
 )
 
 type UnitStatus string
@@ -231,11 +241,18 @@ type UnitDefinition struct {
 	Symbol         string
 	Category       UnitCategory
 	Dimension      Dimension
+	Kind           string
 	Scale          string
 	DefaultNumeric string
 	IsBaseUnit     bool
 	Status         UnitStatus
 	System         string
+	Transform      UnitTransform
+	Offset         string
+	Origin         string
+	LogBase        string
+	LogFactor      string
+	Reference      string
 	Token          lexer.Token
 }
 

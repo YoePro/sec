@@ -334,7 +334,7 @@ shaped-types.md
 declarations/spread.md
     spread contexts and ownership
 
-units.txt
+types/units.md
     unit compatibility and unit algebra
 
 references.txt
@@ -1636,17 +1636,24 @@ distance / time
 
 General rules:
 
-- `+` and `-` require compatible dimensions;
-- exact scale conversion may be inserted where unit rules allow;
-- `*` combines dimensions;
-- `/` divides dimensions;
+- ordinary numeric operator validity is checked first;
+- `+`, `-`, and comparison require compatible dimensions, known Kind,
+  transform, point/difference role, Origin where applicable, and an exact valid
+  conversion plan;
+- different known Kinds are not implicitly combined merely because dimensions
+  match;
+- ordinary linear `*` and `/` produce structural unit expressions and do not
+  invent a named result or Kind;
 - `%` requires compatible operands and preserves the left operand's unit;
-- comparison requires compatible dimensions;
-- implicit conversion must be exact;
-- offset units follow their specialized rules;
+- point algebra is `P-P -> D`, `P+D -> P`, `P-D -> P`, `D+D -> D`, and
+  `D-D -> D`; `P+P` and ordinary point multiplication/division are invalid;
+- logarithmic quantities do not silently use ordinary linear arithmetic;
+- implicit conversion must be exactly representable without hidden rounding,
+  truncation, overflow, or precision loss;
+- structural currency results remain valid but may produce warning diagnostics;
 - contracts and representability remain checked.
 
-The complete unit algebra belongs to `units.txt`.
+The complete unit algebra belongs to `rules/types/units.md`.
 
 ---
 
@@ -4073,7 +4080,7 @@ declarations/spread.md
 enums.md
 unions.md
 struct.md
-units.txt
+types/units.md
 references.txt
 raw_pointers.txt
 allocation.txt

@@ -413,22 +413,38 @@ func verifyFunction(module *Module, fn *Function, functions map[FunctionID]*Func
 	if err := verifyUnionGuards(fn, blocks); err != nil {
 		return err
 	}
-	if err := verifyMatchRecords(fn, blocks, values); err != nil {
+	if err := verifyMatchRecords(module.Types, fn, blocks, values); err != nil {
 		return err
 	}
 	return nil
 }
 
-func verifyMatchRecords(fn *Function, blocks map[BlockID]*Block, values map[ValueID]Value) error {
+func verifyMatchRecords(types *TypeTable, fn *Function, blocks map[BlockID]*Block, values map[ValueID]Value) error {
 	seen := map[MatchID]bool{}
 	for _, match := range fn.Matches {
-		if match.ID == 0 || seen[match.ID] || !match.Exhaustive || !match.ValueContext || len(match.Arms) == 0 {
+		if match.ID == 0 || seen[match.ID] || !match.Exhaustive || len(match.Arms) == 0 {
 			return fmt.Errorf("invalid match record %d", match.ID)
 		}
 		seen[match.ID] = true
 		subject, ok := values[match.Subject]
-		if !ok || subject.Type != match.SubjectType || blocks[match.MergeBlock] == nil || len(blocks[match.MergeBlock].Parameters) != 1 || blocks[match.MergeBlock].Parameters[0].Type != match.ResultType {
-			return fmt.Errorf("invalid match %d subject or merge", match.ID)
+		if !ok || subject.Type != match.SubjectType {
+			return fmt.Errorf("invalid match %d subject", match.ID)
+		}
+		if match.ValueContext {
+			merge := blocks[match.MergeBlock]
+			if merge == nil || len(merge.Parameters) != 1 || merge.Parameters[0].Type != match.ResultType {
+				return fmt.Errorf("invalid value match %d merge", match.ID)
+			}
+		} else {
+			if !typeHasKind(types, match.ResultType, TypeVoid) {
+				return fmt.Errorf("statement match %d result is not void", match.ID)
+			}
+			if match.MergeBlock != 0 {
+				merge := blocks[match.MergeBlock]
+				if merge == nil || len(merge.Parameters) != 0 {
+					return fmt.Errorf("invalid statement match %d continuation", match.ID)
+				}
+			}
 		}
 		previous := -1
 		for _, arm := range match.Arms {
@@ -920,6 +936,15 @@ func verifyResultGuards(types *TypeTable, fn *Function, blocks map[BlockID]*Bloc
 			branch := block.Operations[index+1]
 			if branch.Kind != OpCondBranch || len(branch.Operands) != 1 || branch.Operands[0] != predicate || len(branch.Successors) != 2 {
 				return fmt.Errorf("result guard %%%d must branch to Err then Ok", predicate)
+			}
+			if op.MatchID != 0 {
+				if op.MatchStage != "pattern" || branch.MatchID != op.MatchID || branch.MatchArmIndex != op.MatchArmIndex || branch.MatchStage != "pattern" {
+					return fmt.Errorf("match Result guard %%%d has inconsistent provenance", predicate)
+				}
+				// Match may discard a payload, and an Ok arm reverses the ordinary
+				// Err/Ok successor roles. MatchRecord verifies the selected body;
+				// payload operations are independently type- and CFG-verified.
+				continue
 			}
 			container := op.Operands[0]
 			if !blockStartsWithUnwrap(blocks[branch.Successors[0].Block], OpResultUnwrapErr, container) {

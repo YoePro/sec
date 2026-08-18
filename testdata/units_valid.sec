@@ -21,6 +21,7 @@ unit EUR decimal other
 unit item decimal other
 unit packet decimal other
 unit batch decimal other
+unit request decimal other
 
 // Numeric storage variants currently accepted by the front-end.
 unit SignedCount int
@@ -28,8 +29,10 @@ unit UnsignedCount uint other
 unit FloatingTemperature float physical
 unit PlainDecimal decimal
 
-// A unit declaration may use a compound unit expression directly.
-unit PacketsPerBatch decimal<packet/batch>
+unit PacketsPerBatch decimal other
+impl PacketsPerBatch {
+    Dimension: [packet^1, batch^-1]
+}
 
 // =============================================================================
 // Named semantic types built from unit expressions
@@ -58,7 +61,7 @@ type ItemsPerBatch decimal<item/batch>
 type MetreDistance decimal<metre>
 type MeterDistance decimal<meter>
 
-// Unknown unit symbols remain valid domain dimensions.
+// Domain symbols must be declared before use.
 type RequestAmount decimal<request>
 type RequestRate decimal<request/s>
 

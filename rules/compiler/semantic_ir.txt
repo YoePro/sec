@@ -226,16 +226,30 @@ loss of the exact construction error channel.
 
 Unit information must remain attached to values and types until all dimensional validation and conversion operations are complete.
 
-Semantic IR should represent:
+Semantic IR must preserve, where relevant:
 
-* unit identity
-* physical dimension
-* scale
-* category
-* normalized representation
-* explicit conversion operations
+* numeric carrier
+* named unit identity or structural unit identity
+* source named factors and canonical structural form
+* normalized dimension and category provenance
+* known or unknown Kind and System
+* linear, affine, or logarithmic Transform
+* Scale, Offset, Origin, LogBase, LogFactor, and Reference
+* point or difference role
+* explicit conversion plan and conversion exactness
+
+Named `<mps>` and structural `<m/s>` remain distinguishable even if compatible.
+Kind must not be inferred solely from dimension. Point subtraction must produce
+explicit difference semantics, and affine or logarithmic conversion must not be
+represented as an ordinary scale-only conversion.
+
+Factor-provided conversion such as `EUR(sek, factor)` records target, source,
+factor expression, normalized factor relationship, carrier conversion, and
+exactness requirements. It is never an implicit assignment conversion.
 
 Unit erasure must not occur during Semantic IR generation.
+It is permitted only after every unit-sensitive operation has become explicit
+and verified. Backend IR must not rediscover units from raw numeric types.
 
 ## Register types
 

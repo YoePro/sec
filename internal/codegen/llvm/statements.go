@@ -1011,7 +1011,7 @@ func (g *Generator) emitMatchArmCondition(subject value, arm *ast.MatchArm) (val
 		return value{}, fmt.Errorf("emit-llvm match guards are not supported yet")
 	}
 
-	switch pattern := arm.Pattern.(type) {
+	switch pattern := arm.Pattern.Expression().(type) {
 	case *ast.Identifier:
 		return value{typ: "i1", ref: "true"}, nil
 	case *ast.MemberExpression, *ast.IntegerLiteral, *ast.BooleanLiteral:
@@ -1032,7 +1032,7 @@ func (g *Generator) emitMatchArmBody(arm *ast.MatchArm, subject value, resultPtr
 		g.locals = previousLocals
 	}()
 
-	if ident, ok := arm.Pattern.(*ast.Identifier); ok && ident.Value != "_" {
+	if ident, ok := arm.Pattern.Expression().(*ast.Identifier); ok && ident.Value != "_" {
 		g.locals[ident.Value] = local{typ: subject.typ, ref: subject.ref, direct: true}
 	}
 

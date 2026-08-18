@@ -964,6 +964,7 @@ rules/tooling/diagnostics.txt
 rules/tooling/lsp.md
 ```
 
-Future `initialization.md`, `linking.md`, dependency/package rules, and
+`rules/compiler/initialization.md`, future linking, dependency/package, and
 incremental-compilation rules consume the module identities and surfaces defined
-here and must not redefine their source-level meaning.
+here and must not redefine their source-level meaning. The ModuleGraph is not a
+runtime initialization graph.

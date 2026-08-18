@@ -231,6 +231,18 @@ The following classes are mandatory errors:
 
 A mandatory error has a fixed severity of `error`.
 
+Unit errors distinguish unknown or malformed unit expressions, incompatible
+dimension or known Kind, point/difference or Origin misuse, affine/logarithmic
+misuse, invalid metadata, reserved unit names, lossy implicit conversion,
+missing runtime/configured conversion, and invalid factor-provided conversion.
+The diagnostic reports the semantic reason rather than only the numeric carrier
+mismatch and provides conversion or carrier help when known.
+
+Anonymous structural expressions derived through currency multiplication or
+division, including `<EUR/s>` and `<SEK/EUR>`, are valid but warning-worthy by
+default. Such warnings explain that the compiler does not invent a runtime
+exchange rate. They remain warnings unless project policy promotes them.
+
 The following must be rejected:
 
 ```toml

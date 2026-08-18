@@ -1634,21 +1634,28 @@ Detailed register and bit-field semantics are defined by the register rulebook.
 
 # Units
 
-Units are semantic numeric types.
-
-They are not erased merely because their underlying representation is numeric.
-
-Unit identity and dimensional algebra participate in type checking.
+Units are semantic quantity identities. A unit is not itself a numeric
+representation; a unit-bearing numeric type combines a numeric carrier with a
+unit semantic descriptor.
 
 Examples:
 
 ```sec
-unit Meter decimal physical
-unit Second decimal physical
-unit Speed decimal physical
+unit Meter physical
+unit Second physical
+unit Item uint other
+
+let exact: decimal<Meter> := 10
+let measured: float64<Meter> := 10
+let count: <Item> := 4
 ```
 
-The complete unit declaration, dimensional algebra, scale, conversion, and system rules are defined by `units.md`.
+The optional declaration carrier is only the default used by `<NamedUnit>`; it
+is not part of unit identity. A compound unit-only expression such as `<m/s>`
+defaults to `decimal`.
+
+The complete unit declaration, structural algebra, Kind, transform, conversion,
+and system rules are defined by `units.md`.
 
 Named unit types remain distinct according to their unit semantics.
 
@@ -1849,7 +1856,7 @@ grammar.md
 contracts.md
 runtime_checks.md
 default_values.md
-units.txt
+types/units.md
 collections.md
 shaped-types.md
 reference_model.md

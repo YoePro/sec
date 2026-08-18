@@ -14,6 +14,8 @@ type Error struct {
 	File           string
 	Line           int
 	Column         int
+	EndLine        int
+	EndColumn      int
 	PreviousFile   string
 	PreviousLine   int
 	PreviousColumn int

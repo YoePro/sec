@@ -1,0 +1,110 @@
+module main
+
+fn main() int {
+    return 0
+}
+
+enum ParseError {
+    NoServiceSKU
+    InvalidSegmentCount
+    InvalidIdentifier
+    InvalidEnrollment
+    InvalidFamily
+    InvalidHardware
+    InvalidDuration
+    InvalidCoverage
+    InvalidSuffix
+    ResourceFailure
+}
+
+enum Enrollment {
+    NewSale
+    Aged
+    Renewal
+}
+
+enum ServiceFamily {
+    Essentials
+    Select
+    Premium
+}
+
+enum Coverage {
+    Comprehensive
+    Advanced
+    Standard
+    None
+}
+
+type SIN struct {
+    Identifier: string,
+    Enrollment: Enrollment,
+    Family: ServiceFamily,
+    Hardware: string,
+    Duration: int,
+    Coverage: Coverage,
+    Suffix: string,
+    Raw: string,
+}
+
+type SINSegments struct {
+    Prefix: string,
+    Hardware: string,
+    Tail: string,
+}
+
+fn Tokenize(value: string) Result[string[], ParseError] {
+    let mut result: string[]
+    let mut current: rune[]
+
+    for character in value {
+        switch character {
+            case '-':
+                let token := string.FromRuneArray(ref current)
+
+                try result.Append(token) {
+                    Err(error) => {
+                        return Err(ParseError.ResourceFailure)
+                    }
+                }
+
+                current.Clear()
+
+            default:
+                try current.Append(character) {
+                    Err(error) => {
+                        return Err(ParseError.ResourceFailure)
+                    }
+                }
+        }
+    }
+
+    if !current.IsEmpty {
+        let token := string.FromRuneArray(ref current)
+
+        try result.Append(token) {
+            Err(error) => {
+                discard error
+                return Err(ParseError.ResourceFailure)
+            }
+        }
+    }
+
+    return Ok(result)
+}
+
+fn SplitSIN(value: string) Result[SINSegments, ParseError] {
+    let segments := try Tokenize(value) {
+        Err(error) => return Err(error)
+    }
+
+    if segments.Len != 3 {
+        return Err(ParseError.InvalidSegmentCount)
+    }
+
+    return Ok(SINSegments {
+        Prefix: segments[0],
+        Hardware: segments[1],
+        Tail: segments[2],
+    })
+}

@@ -371,7 +371,7 @@ The compiler verifies:
 * dimensional consistency
 * compile-time unit evaluation
 
-Unit analysis follows units.txt.
+Unit analysis follows `rules/types/units.md`.
 
 ## Optimization analysis
 

@@ -1278,7 +1278,7 @@ Register rules may validate:
 
 Do not fully reimplement units or registers unless those features are already ready.
 
-Use `units.txt` and `rules/declarations/registers.md` as semantic authority.
+Use `rules/types/units.md` and `rules/declarations/registers.md` as semantic authority.
 
 Rule ownership
 --------------

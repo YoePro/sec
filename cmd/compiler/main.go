@@ -1797,7 +1797,7 @@ func rewriteQualifierInExpression(expr ast.Expression, from string, to string) {
 	case *ast.MatchExpression:
 		rewriteQualifierInExpression(expr.Subject, from, to)
 		for _, arm := range expr.Arms {
-			rewriteQualifierInExpression(arm.Pattern, from, to)
+			rewriteQualifierInMatchPattern(arm.Pattern, from, to)
 			rewriteQualifierInExpression(arm.Guard, from, to)
 			rewriteQualifierInExpression(arm.Body, from, to)
 			if arm.ReturnBody != nil {
@@ -1816,6 +1816,23 @@ func rewriteQualifiedName(name string, from string, to string) string {
 		return to + strings.TrimPrefix(name, from)
 	}
 	return name
+}
+
+func rewriteQualifierInMatchPattern(pattern *ast.MatchPattern, from string, to string) {
+	if pattern == nil {
+		return
+	}
+	pattern.Name = rewriteQualifiedName(pattern.Name, from, to)
+}
+
+func qualifyLocalTypesInMatchPattern(pattern *ast.MatchPattern, module string, localTypes map[string]bool) {
+	if pattern == nil {
+		return
+	}
+	separator := strings.LastIndex(pattern.Name, ".")
+	if separator > 0 && localTypes[pattern.Name[:separator]] {
+		pattern.Name = module + "." + pattern.Name
+	}
 }
 
 func qualifyLocalTypeReferencesInStatement(stmt ast.Statement, module string, localTypes map[string]bool) {
@@ -2097,7 +2114,7 @@ func qualifyLocalTypesInExpression(expr ast.Expression, module string, localType
 	case *ast.MatchExpression:
 		qualifyLocalTypesInExpression(expr.Subject, module, localTypes)
 		for _, arm := range expr.Arms {
-			qualifyLocalTypesInExpression(arm.Pattern, module, localTypes)
+			qualifyLocalTypesInMatchPattern(arm.Pattern, module, localTypes)
 			qualifyLocalTypesInExpression(arm.Guard, module, localTypes)
 			qualifyLocalTypesInExpression(arm.Body, module, localTypes)
 			if arm.ReturnBody != nil {
@@ -2203,7 +2220,6 @@ func qualifyLocalCallsInExpression(expr ast.Expression, module string, localFunc
 	case *ast.MatchExpression:
 		qualifyLocalCallsInExpression(expr.Subject, module, localFunctions)
 		for _, arm := range expr.Arms {
-			qualifyLocalCallsInExpression(arm.Pattern, module, localFunctions)
 			qualifyLocalCallsInExpression(arm.Guard, module, localFunctions)
 			qualifyLocalCallsInExpression(arm.Body, module, localFunctions)
 			if arm.ReturnBody != nil {
@@ -2957,7 +2973,7 @@ func printASTMatchArm(prefix string, arm *ast.MatchArm, last bool) {
 	printASTBranch(prefix, last, "Arm")
 	childrenPrefix := childPrefix(prefix, last)
 	hasGuard := arm.Guard != nil
-	printASTExpression(childrenPrefix, false, "Pattern", arm.Pattern)
+	printASTExpression(childrenPrefix, false, "Pattern", arm.Pattern.Expression())
 	if hasGuard {
 		printASTExpression(childrenPrefix, false, "Guard", arm.Guard)
 	}

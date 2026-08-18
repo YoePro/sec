@@ -102,7 +102,7 @@ These were written after the older temporary checklist was last synchronized.
 | `types/types.md` | **Written** | Canonical replacement for the retired `types.txt`; implementation is tracked by `frontend.types-core`, `frontend.literal-family-suffix-v2`, `frontend.temporal-builtin-types`, and `frontend.wide-numeric-language-types`. |
 | `types/contracts.md` | **Written** | Canonical named-type contracts; replaces the obsolete variable-contract model. |
 | `types/default_values.md` | **Written** | Canonical primitive, constrained, aggregate, list and explicit-default semantics. |
-| `types/units.txt` | **Written — sync required** | Direct conversion dimension validation is implemented; shaped arithmetic, scale paths, and matrix multiplication still require synchronization. |
+| `types/units.md` | **Written** | Canonical revision 2.0 carrier-independent unit model; implementation progress is tracked by `frontend.units-v2` and `stdlib.units-catalog` in `implementation-status.yaml`. |
 | `foundations/grammar.md` | **Written** | Canonical consolidated grammar for Sec 0.1. |
 | `foundations/operators.md` | **Written** | Canonical operator semantics; compiler progress belongs in `implementation-status.yaml`. |
 | `foundations/names_scopes_visibility.md` | **Written — sync required** | Top-level module declaration namespace conflicts are partially implemented; remaining scope, visibility, reserved-name and naming-rule audit still needed. |
@@ -531,7 +531,7 @@ as one compatible model.
 |---|---|---|
 | `projects/projects.txt` | **Written** | Repository manifest, targets, outputs, internal directories, and build structure; module semantics are delegated to `projects/modules.md`. |
 | `projects/modules.md` | **Written** | Canonical module identity, membership, imports, cycles, visibility, resolution, surfaces, separate compilation, and incremental-tooling model. Implementation progress is tracked by `frontend.modules`. |
-| `initialization.md` | **Planned** | Explicit module/program startup, cross-module coordination, deinitialization integration, and failure behavior. Compile-time static dependency order and the ban on hidden runtime initialization are defined by `declarations/static.md`. |
+| `compiler/initialization.md` | **Written** | Canonical executable entry, runtime-free startup, initialization/shutdown plans, dependency ordering, startup rollback, static-destruction integration, target termination, and lowering/linking boundaries. Implementation is tracked by `compiler.program-initialization`. |
 | `linking.md` | **Planned** | Link-time symbol and output semantics. |
 
 The following must eventually be defined coherently:
@@ -652,7 +652,7 @@ memory/transferability.md
 types/types.md
 memory/unsafe.md
 declarations/unions.md
-types/units.txt
+types/units.md
 types/contracts.md
 tooling/lsp.md
 foundations/grammar.md
@@ -699,7 +699,6 @@ inline_assembly.md
 volatile.md
 interrupts.md
 
-initialization.md
 linking.md
 
 debug_information.md

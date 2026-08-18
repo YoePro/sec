@@ -771,7 +771,7 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 			if stmt.Name == nil {
 				return
 			}
-			if a.rejectIntrinsicTypeRedeclaration(stmt.Name.Value, stmt.Name.Token) {
+			if a.rejectUnitNameCollision(stmt.Name.Value, stmt.Name.Token) {
 				return
 			}
 			a.registerTypeDefinition(stmt.Name.Value, stmt.Name.Token)
@@ -780,11 +780,11 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 				return
 			}
 			seenUnits[stmt.Name.Value] = stmt.Name.Token
-			dimension := a.parseDimension(stmt.Name.Value)
-			if dimension.IsZero() {
-				dimension = dimensionFromBase(stmt.Name.Value, 1)
+			category := UnitCategory(stmt.Category)
+			if category == "" {
+				category = OtherUnit
 			}
-			category := OtherUnit
+			dimension := defaultUnitDimension(stmt.Name.Value, category)
 			defaultNumeric := "decimal"
 			status := StatusActive
 			if existing, ok := a.units[stmt.Name.Value]; ok {
@@ -797,7 +797,7 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 					status = existing.Status
 				}
 			}
-			a.units[stmt.Name.Value] = UnitDefinition{Name: stmt.Name.Value, Category: category, Dimension: dimension, DefaultNumeric: defaultNumeric, Status: status, Token: stmt.Name.Token}
+			a.units[stmt.Name.Value] = UnitDefinition{Name: stmt.Name.Value, Category: category, Dimension: dimension, DefaultNumeric: defaultNumeric, Status: status, Transform: LinearUnitTransform, Token: stmt.Name.Token}
 			a.types[stmt.Name.Value] = Type{Name: stmt.Name.Value, Module: a.currentModule, Kind: InvalidType}
 		case *ast.EnumDeclaration:
 			if stmt.Name == nil {
@@ -833,6 +833,16 @@ func (a *Analyzer) rejectIntrinsicTypeRedeclaration(name string, token lexer.Tok
 		return false
 	}
 	a.addErrorAtToken(token, "type name %s is compiler-known and cannot be redeclared", name)
+	a.invalidTypeDeclarations[sourceTokenLocation(token)] = true
+	return true
+}
+
+func (a *Analyzer) rejectUnitNameCollision(name string, token lexer.Token) bool {
+	existing, intrinsic := a.types[name]
+	if name != "bit" && (!intrinsic || !existing.Intrinsic) {
+		return false
+	}
+	a.addErrorAtToken(token, "unit name %s is compiler-known and cannot be declared", name)
 	a.invalidTypeDeclarations[sourceTokenLocation(token)] = true
 	return true
 }
@@ -1168,6 +1178,11 @@ func typeReferenceDisplayName(ref *ast.TypeReference) string {
 		return fmt.Sprintf("%s[%d]", element, ref.ArrayLength)
 	}
 	out := ref.Name
+	if ref.UnitOnly {
+		out = "<" + ref.Unit + ">"
+	} else if ref.Unit != "" {
+		out += "<" + ref.Unit + ">"
+	}
 	if len(ref.TypeArgs) > 0 || len(ref.ConstArgs) > 0 {
 		parts := make([]string, 0, len(ref.TypeArgs)+len(ref.ConstArgs))
 		for _, arg := range ref.TypeArgs {
@@ -1377,8 +1392,63 @@ func (a *Analyzer) analyzeUnitMetadata(program *ast.Program) {
 				}
 				unit.Status = status
 				changed = true
+			case "kind":
+				kind, ok := parseUnitMetadataIdentifier(value)
+				if !ok {
+					a.addErrorAtToken(metadata.Token, "invalid Kind metadata for unit %s", impl.Target.Name)
+					continue
+				}
+				unit.Kind = kind
+				changed = true
+			case "transform":
+				transform, ok := parseUnitMetadataTransform(value)
+				if !ok {
+					a.addErrorAtToken(metadata.Token, "invalid Transform metadata for unit %s; expected linear, affine, or logarithmic", impl.Target.Name)
+					continue
+				}
+				unit.Transform = transform
+				changed = true
+			case "offset":
+				unit.Offset, ok = parseUnitMetadataExpression(value)
+				if !ok {
+					a.addErrorAtToken(metadata.Token, "invalid Offset metadata for unit %s", impl.Target.Name)
+					continue
+				}
+				changed = true
+			case "origin":
+				unit.Origin, ok = parseUnitMetadataExpression(value)
+				if !ok {
+					a.addErrorAtToken(metadata.Token, "invalid Origin metadata for unit %s", impl.Target.Name)
+					continue
+				}
+				changed = true
+			case "logbase":
+				unit.LogBase, ok = parseUnitMetadataExpression(value)
+				if !ok {
+					a.addErrorAtToken(metadata.Token, "invalid LogBase metadata for unit %s", impl.Target.Name)
+					continue
+				}
+				changed = true
+			case "logfactor":
+				unit.LogFactor, ok = parseUnitMetadataExpression(value)
+				if !ok {
+					a.addErrorAtToken(metadata.Token, "invalid LogFactor metadata for unit %s", impl.Target.Name)
+					continue
+				}
+				changed = true
+			case "reference":
+				unit.Reference, ok = parseUnitMetadataExpression(value)
+				if !ok {
+					a.addErrorAtToken(metadata.Token, "invalid Reference metadata for unit %s", impl.Target.Name)
+					continue
+				}
+				changed = true
 			}
 		}
+		if unit.Transform == "" {
+			unit.Transform = LinearUnitTransform
+		}
+		a.validateUnitTransformMetadata(impl.Target.Name, impl.Target.Token, unit)
 		if !changed {
 			continue
 		}
@@ -1448,6 +1518,47 @@ func parseUnitMetadataStatus(tokens []lexer.Token) (UnitStatus, bool) {
 		return status, true
 	default:
 		return "", false
+	}
+}
+
+func parseUnitMetadataIdentifier(tokens []lexer.Token) (string, bool) {
+	if len(tokens) != 1 || tokens[0].Type != lexer.IDENT {
+		return "", false
+	}
+	return tokens[0].Lexeme, true
+}
+
+func parseUnitMetadataTransform(tokens []lexer.Token) (UnitTransform, bool) {
+	name, ok := parseUnitMetadataIdentifier(tokens)
+	if !ok {
+		return "", false
+	}
+	transform := UnitTransform(name)
+	switch transform {
+	case LinearUnitTransform, AffineUnitTransform, LogarithmicUnitTransform:
+		return transform, true
+	default:
+		return "", false
+	}
+}
+
+func parseUnitMetadataExpression(tokens []lexer.Token) (string, bool) {
+	if len(tokens) == 0 {
+		return "", false
+	}
+	return tokensDisplay(tokens), true
+}
+
+func (a *Analyzer) validateUnitTransformMetadata(name string, token lexer.Token, unit UnitDefinition) {
+	switch unit.Transform {
+	case AffineUnitTransform:
+		if unit.Scale == "" || unit.Offset == "" || unit.Origin == "" {
+			a.addErrorAtToken(token, "affine unit %s requires Scale, Offset, and Origin metadata", name)
+		}
+	case LogarithmicUnitTransform:
+		if unit.LogBase == "" || unit.LogFactor == "" || unit.Reference == "" {
+			a.addErrorAtToken(token, "logarithmic unit %s requires LogBase, LogFactor, and Reference metadata", name)
+		}
 	}
 }
 
@@ -4570,7 +4681,7 @@ func expressionUsesSelf(expr ast.Expression) bool {
 			if arm == nil {
 				continue
 			}
-			if expressionUsesSelf(arm.Pattern) || expressionUsesSelf(arm.Guard) || expressionUsesSelf(arm.Body) {
+			if expressionUsesSelf(arm.Guard) || expressionUsesSelf(arm.Body) {
 				return true
 			}
 			if arm.ReturnBody != nil && statementUsesSelf(arm.ReturnBody) {
@@ -4693,7 +4804,7 @@ func (a *Analyzer) matchStatementDefinitelyReturns(stmt *ast.MatchStatement) boo
 		if arm.Guard != nil {
 			continue
 		}
-		info, ok := a.matchPatternInfoNoDiagnostics(arm.Pattern, subjectType)
+		info, ok := a.matchPatternInfoNoDiagnostics(arm.Pattern.Expression(), subjectType)
 		if !ok {
 			return false
 		}
@@ -4779,11 +4890,7 @@ func (a *Analyzer) matchPatternInfoNoDiagnostics(pattern ast.Expression, subject
 	case *ast.Identifier:
 		return matchPatternInfo{BindingName: pattern.Value, BindingType: subjectType, Kind: "catchall"}, true
 	default:
-		patternType, _ := a.inferExpression(pattern)
-		if patternType.Kind == InvalidType || !canInitialize(subjectType, patternType, pattern) {
-			return matchPatternInfo{}, false
-		}
-		return matchPatternInfo{Kind: "literal"}, true
+		return matchPatternInfo{}, false
 	}
 }
 
@@ -7037,15 +7144,15 @@ func (a *Analyzer) analyzeUnitDeclaration(stmt *ast.UnitDeclStatement) {
 	if !ok {
 		return
 	}
-	if !isNumericType(baseType) {
-		a.addErrorAtToken(stmt.BaseType.Token, "unit %s must use numeric storage, got %s", stmt.Name.Value, typeDisplayName(baseType))
+	if !isPlainUnitNumericCarrier(baseType, stmt.BaseType) {
+		a.addErrorAtToken(stmt.BaseType.Token, "unit %s default representation must be a plain compiler-known numeric scalar, got %s", stmt.Name.Value, typeReferenceDisplayName(stmt.BaseType))
 		return
 	}
 
 	unitName := stmt.Name.Value
 	unit := a.units[unitName]
 	if unit.Name == "" {
-		unit = UnitDefinition{Name: unitName, Category: OtherUnit, Dimension: dimensionFromBase(unitName, 1), DefaultNumeric: "decimal", Status: StatusActive, Token: stmt.Name.Token}
+		unit = UnitDefinition{Name: unitName, Category: OtherUnit, Dimension: defaultUnitDimension(unitName, OtherUnit), DefaultNumeric: "decimal", Status: StatusActive, Transform: LinearUnitTransform, Token: stmt.Name.Token}
 	}
 	if stmt.Category != "" {
 		unit.Category = UnitCategory(stmt.Category)
@@ -7053,9 +7160,6 @@ func (a *Analyzer) analyzeUnitDeclaration(stmt *ast.UnitDeclStatement) {
 	unit.DefaultNumeric = baseType.Name
 	if unit.Status == "" {
 		unit.Status = StatusActive
-	}
-	if stmt.BaseType.Unit != "" {
-		unit.Dimension = a.parseDimension(stmt.BaseType.Unit)
 	}
 	a.units[unitName] = unit
 
@@ -7068,6 +7172,13 @@ func (a *Analyzer) analyzeUnitDeclaration(stmt *ast.UnitDeclStatement) {
 	typ.Unit = unitName
 	typ.Dimension = unit.Dimension
 	a.types[unitName] = typ
+}
+
+func isPlainUnitNumericCarrier(typ Type, ref *ast.TypeReference) bool {
+	if ref == nil || ref.Unit != "" || ref.UnitOnly || len(ref.TypeArgs) != 0 || len(ref.ConstArgs) != 0 || ref.ElementType != nil {
+		return false
+	}
+	return isNumericType(typ) && typ.Intrinsic && !typ.Named && !typ.Declared
 }
 
 func (a *Analyzer) analyzeTypeDeclarationBody(stmt *ast.TypeDeclStatement) {
@@ -8744,9 +8855,7 @@ func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
 	var ok bool
 
 	if stmt.Type != nil && stmt.Type.UnitOnly && stmt.Value != nil {
-		valueType, _ := a.inferExpression(stmt.Value)
-		preferred := preferredUnitOnlyNumeric(stmt.Value, valueType)
-		declaredType, ok = a.resolveUnitOnlyType(stmt.Type, preferred)
+		declaredType, ok = a.resolveUnitOnlyType(stmt.Type)
 	} else if stmt.Type != nil {
 		declaredType, ok = a.resolveType(stmt.Type)
 	} else if stmt.Value != nil {
@@ -9875,7 +9984,7 @@ func (a *Analyzer) resolveType(ref *ast.TypeReference) (Type, bool) {
 	}
 
 	if ref.UnitOnly {
-		return a.resolveUnitOnlyType(ref, "")
+		return a.resolveUnitOnlyType(ref)
 	}
 
 	if ref.Ref {
@@ -10052,9 +10161,14 @@ func (a *Analyzer) resolveType(ref *ast.TypeReference) (Type, bool) {
 		return Type{Kind: InvalidType}, false
 	}
 	if ref.Unit != "" {
+		dimension, err := resolveUnitExpression(ref.Unit, a.units)
+		if err != nil {
+			a.addErrorAtToken(ref.Token, "invalid unit expression %s: %s", ref.Unit, err)
+			return Type{Kind: InvalidType}, false
+		}
 		a.warnUnitStatus(ref.Token, ref.Unit)
 		typ.Unit = ref.Unit
-		typ.Dimension = a.parseDimension(ref.Unit)
+		typ.Dimension = dimension
 	}
 	if (typ.Kind == StructType || typ.Kind == UnionType) && len(typ.GenericParameters) > 0 {
 		typ = a.instantiateGenericType(typ)
@@ -10226,14 +10340,10 @@ func (a *Analyzer) resolveArrayLength(ref *ast.TypeReference) (int64, bool) {
 	return value.Int64(), true
 }
 
-func (a *Analyzer) resolveUnitOnlyType(ref *ast.TypeReference, preferredNumeric string) (Type, bool) {
-	unit, ok := a.units[ref.Unit]
-	if !ok {
-		a.addErrorAtToken(ref.Token, "unknown unit %s", ref.Unit)
-		return Type{Kind: InvalidType}, false
-	}
-	numeric := preferredNumeric
-	if numeric == "" {
+func (a *Analyzer) resolveUnitOnlyType(ref *ast.TypeReference) (Type, bool) {
+	unit, named := a.units[ref.Unit]
+	numeric := "decimal"
+	if named {
 		numeric = unit.DefaultNumeric
 	}
 	if numeric == "" {
@@ -10241,13 +10351,20 @@ func (a *Analyzer) resolveUnitOnlyType(ref *ast.TypeReference, preferredNumeric 
 	}
 	baseType, ok := a.types[numeric]
 	if !ok || !isNumericType(baseType) {
-		a.addErrorAtToken(ref.Token, "unit %s has invalid default numeric type %s", ref.Unit, numeric)
+		a.addErrorAtToken(ref.Token, "unit expression %s has invalid default numeric type %s", ref.Unit, numeric)
 		return Type{Kind: InvalidType}, false
 	}
-	a.warnUnitStatus(ref.Token, ref.Unit)
+	dimension, err := resolveUnitExpression(ref.Unit, a.units)
+	if err != nil {
+		a.addErrorAtToken(ref.Token, "invalid unit expression %s: %s", ref.Unit, err)
+		return Type{Kind: InvalidType}, false
+	}
+	if named {
+		a.warnUnitStatus(ref.Token, ref.Unit)
+	}
 	typ := baseType
 	typ.Unit = ref.Unit
-	typ.Dimension = unit.Dimension
+	typ.Dimension = dimension
 	return typ, true
 }
 
@@ -12082,7 +12199,15 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 	}
 
 	if len(arityMatches) == 0 {
-		a.addErrorAtToken(expr.Token, "function %s expects %s arguments, got %d", name, formatFunctionArities(functions), len(sourceArgTypes))
+		maximumArity := 0
+		for _, function := range functions {
+			maximumArity = max(maximumArity, len(function.Parameters))
+		}
+		if len(expr.Arguments) > maximumArity && maximumArity < len(expr.Arguments) {
+			a.addErrorAtExpression(expr.Arguments[maximumArity], "function %s expects %s arguments, got %d", name, formatFunctionArities(functions), len(sourceArgTypes))
+		} else {
+			a.addErrorAtToken(expr.Token, "function %s expects %s arguments, got %d", name, formatFunctionArities(functions), len(sourceArgTypes))
+		}
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 
@@ -14648,7 +14773,17 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 	patternError := false
 
 	for sourceIndex, arm := range expr.Arms {
-		info, ok := a.analyzeMatchPattern(arm.Pattern, subjectType)
+		if arm.Pattern.Kind == ast.MatchPatternEmpty {
+			a.addErrorAtToken(arm.Pattern.Token, "compiler-known empty match patterns are not implemented yet")
+			patternError = true
+			continue
+		}
+		if arm.Pattern.Kind == ast.MatchPatternFields {
+			a.addErrorAtToken(arm.Pattern.Token, "shallow named-field match patterns are not implemented yet")
+			patternError = true
+			continue
+		}
+		info, ok := a.analyzeMatchPattern(arm.Pattern.Expression(), subjectType)
 		if !ok {
 			patternError = true
 			continue
@@ -14750,6 +14885,22 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 
 	if valueContext {
 		if !hasResultType {
+			allArmsTerminate := !patternError && exhaustive && len(branches) > 0
+			for _, branch := range branches {
+				if branch.continues {
+					allArmsTerminate = false
+					break
+				}
+			}
+			if allArmsTerminate {
+				resultType = Type{Name: "never", Kind: NeverType}
+				plan.ResultType = resultType
+				plan.Exhaustive = true
+				if plan.SubjectKind != "" && len(a.errors) == analysisErrorCount {
+					a.resolvedMatchPlans[expr] = plan
+				}
+				return resultType
+			}
 			a.addErrorAtToken(expr.Token, "match expression must produce a value")
 			return Type{Kind: InvalidType}
 		}
@@ -14841,15 +14992,8 @@ func (a *Analyzer) analyzeMatchPattern(pattern ast.Expression, subjectType Type)
 		if subjectType.Kind == UnionType {
 			return a.analyzeUnionPayloadMatchPattern(pattern, subjectType)
 		}
-		patternType, _ := a.inferExpression(pattern)
-		if patternType.Kind == InvalidType {
-			return matchPatternInfo{}, false
-		}
-		if !canInitialize(subjectType, patternType, pattern) {
-			a.addErrorAtToken(expressionToken(pattern), "match pattern must match %s, got %s", typeDisplayName(subjectType), typeDisplayName(patternType))
-			return matchPatternInfo{}, false
-		}
-		return matchPatternInfo{Kind: "literal"}, true
+		a.addErrorAtToken(pattern.Token, "payload match pattern requires a union, Result, or Option subject")
+		return matchPatternInfo{}, false
 	case *ast.Identifier:
 		if subjectType.Kind == UnionType {
 			if variant, ok := lookupUnionVariant(subjectType, pattern.Value); ok {
@@ -14862,15 +15006,8 @@ func (a *Analyzer) analyzeMatchPattern(pattern ast.Expression, subjectType Type)
 		}
 		return matchPatternInfo{BindingName: pattern.Value, BindingType: subjectType, Kind: "catchall"}, true
 	default:
-		patternType, _ := a.inferExpression(pattern)
-		if patternType.Kind == InvalidType {
-			return matchPatternInfo{}, false
-		}
-		if !canInitialize(subjectType, patternType, pattern) {
-			a.addErrorAtToken(expressionToken(pattern), "match pattern must match %s, got %s", typeDisplayName(subjectType), typeDisplayName(patternType))
-			return matchPatternInfo{}, false
-		}
-		return matchPatternInfo{Kind: "literal"}, true
+		a.addErrorAtToken(expressionToken(pattern), "non-structural match pattern reached semantic analysis; use switch for literal or range selection")
+		return matchPatternInfo{}, false
 	}
 }
 
@@ -15023,6 +15160,9 @@ func (a *Analyzer) analyzeMatchArmBody(arm *ast.MatchArm, info matchPatternInfo)
 	}
 	if info.BindingName != "" {
 		if a.defineSymbol(info.BindingName, info.BindingType, false, arm.Token) {
+			if info.PayloadToken.Line > 0 && info.PayloadToken.Column > 0 {
+				a.bindDefinition(info.PayloadToken, arm.Token)
+			}
 			a.assigned[info.BindingName] = true
 			a.clearRootPlaceState(info.BindingName)
 			delete(a.constInts, info.BindingName)
@@ -16164,36 +16304,80 @@ func (a *Analyzer) addError(format string, args ...any) {
 
 func (a *Analyzer) addErrorAtToken(token lexer.Token, format string, args ...any) {
 	err := Error{
-		Severity: diagnostics.SeverityError,
-		Message:  fmt.Sprintf(format, args...),
-		File:     token.File,
-		Line:     token.Line,
-		Column:   token.Column,
+		Severity:  diagnostics.SeverityError,
+		Message:   fmt.Sprintf(format, args...),
+		File:      token.File,
+		Line:      token.Line,
+		Column:    token.Column,
+		EndLine:   token.Line,
+		EndColumn: token.Column + len([]rune(token.Lexeme)),
 	}
 	a.appendError(err)
 }
 
+func (a *Analyzer) addErrorAtExpression(expr ast.Expression, format string, args ...any) {
+	start := expressionStartToken(expr)
+	end := expressionEndToken(expr)
+	err := Error{
+		Severity:  diagnostics.SeverityError,
+		Message:   fmt.Sprintf(format, args...),
+		File:      start.File,
+		Line:      start.Line,
+		Column:    start.Column,
+		EndLine:   end.Line,
+		EndColumn: end.Column + len([]rune(end.Lexeme)),
+	}
+	a.appendError(err)
+}
+
+func expressionStartToken(expr ast.Expression) lexer.Token {
+	if expr == nil {
+		return lexer.Token{}
+	}
+	switch expr := expr.(type) {
+	case *ast.InfixExpression:
+		return expressionStartToken(expr.Left)
+	case *ast.RangeExpression:
+		return expressionStartToken(expr.Start)
+	case *ast.CallExpression:
+		return expressionStartToken(expr.Callee)
+	case *ast.MemberExpression:
+		return expressionStartToken(expr.Object)
+	case *ast.SpreadExpression:
+		return expressionStartToken(expr.Value)
+	case *ast.IndexExpression:
+		return expressionStartToken(expr.Left)
+	case *ast.SliceExpression:
+		return expressionStartToken(expr.Left)
+	}
+	return expressionToken(expr)
+}
+
 func (a *Analyzer) addErrorAtTokenWithID(token lexer.Token, id string, format string, args ...any) {
 	err := Error{
-		ID:       id,
-		Severity: diagnostics.SeverityError,
-		Message:  fmt.Sprintf(format, args...),
-		File:     token.File,
-		Line:     token.Line,
-		Column:   token.Column,
+		ID:        id,
+		Severity:  diagnostics.SeverityError,
+		Message:   fmt.Sprintf(format, args...),
+		File:      token.File,
+		Line:      token.Line,
+		Column:    token.Column,
+		EndLine:   token.Line,
+		EndColumn: token.Column + len([]rune(token.Lexeme)),
 	}
 	a.appendError(err)
 }
 
 func (a *Analyzer) addErrorAtTokenWithMetadata(token lexer.Token, id string, help string, format string, args ...any) {
 	err := Error{
-		ID:       id,
-		Severity: diagnostics.SeverityError,
-		Help:     help,
-		Message:  fmt.Sprintf(format, args...),
-		File:     token.File,
-		Line:     token.Line,
-		Column:   token.Column,
+		ID:        id,
+		Severity:  diagnostics.SeverityError,
+		Help:      help,
+		Message:   fmt.Sprintf(format, args...),
+		File:      token.File,
+		Line:      token.Line,
+		Column:    token.Column,
+		EndLine:   token.Line,
+		EndColumn: token.Column + len([]rune(token.Lexeme)),
 	}
 	a.appendError(err)
 }
@@ -16205,6 +16389,8 @@ func (a *Analyzer) addErrorAtTokenWithPrevious(token lexer.Token, previous lexer
 		File:           token.File,
 		Line:           token.Line,
 		Column:         token.Column,
+		EndLine:        token.Line,
+		EndColumn:      token.Column + len([]rune(token.Lexeme)),
 		PreviousFile:   previous.File,
 		PreviousLine:   previous.Line,
 		PreviousColumn: previous.Column,
@@ -16220,6 +16406,8 @@ func (a *Analyzer) addErrorAtTokenWithPreviousID(token lexer.Token, previous lex
 		File:           token.File,
 		Line:           token.Line,
 		Column:         token.Column,
+		EndLine:        token.Line,
+		EndColumn:      token.Column + len([]rune(token.Lexeme)),
 		PreviousFile:   previous.File,
 		PreviousLine:   previous.Line,
 		PreviousColumn: previous.Column,
@@ -16247,11 +16435,13 @@ func (a *Analyzer) appendError(err Error) {
 
 func (a *Analyzer) addWarningAtToken(token lexer.Token, format string, args ...any) {
 	a.appendWarning(Error{
-		Severity: diagnostics.SeverityWarning,
-		Message:  fmt.Sprintf(format, args...),
-		File:     token.File,
-		Line:     token.Line,
-		Column:   token.Column,
+		Severity:  diagnostics.SeverityWarning,
+		Message:   fmt.Sprintf(format, args...),
+		File:      token.File,
+		Line:      token.Line,
+		Column:    token.Column,
+		EndLine:   token.Line,
+		EndColumn: token.Column + len([]rune(token.Lexeme)),
 	})
 }
 
@@ -16261,13 +16451,15 @@ func (a *Analyzer) addWarningAtTokenWithMetadata(token lexer.Token, id string, h
 		severity = diagnostics.SeverityWarning
 	}
 	a.appendWarning(Error{
-		ID:       id,
-		Severity: severity,
-		Help:     help,
-		Message:  fmt.Sprintf(format, args...),
-		File:     token.File,
-		Line:     token.Line,
-		Column:   token.Column,
+		ID:        id,
+		Severity:  severity,
+		Help:      help,
+		Message:   fmt.Sprintf(format, args...),
+		File:      token.File,
+		Line:      token.Line,
+		Column:    token.Column,
+		EndLine:   token.Line,
+		EndColumn: token.Column + len([]rune(token.Lexeme)),
 	})
 }
 
@@ -16339,6 +16531,11 @@ func (a *Analyzer) checkInitializerType(target Type, value Type, expr ast.Expres
 
 func canInitialize(target Type, value Type, expr ast.Expression) bool {
 	if target.Kind == InvalidType || value.Kind == InvalidType {
+		return true
+	}
+	// A never expression has no continuing path on which a value would need to
+	// inhabit the target type.
+	if value.Kind == NeverType {
 		return true
 	}
 	if target.Kind == AnyType {
@@ -16418,37 +16615,6 @@ func canInitialize(target Type, value Type, expr ast.Expression) bool {
 	}
 
 	return false
-}
-
-func preferredUnitOnlyNumeric(expr ast.Expression, valueType Type) string {
-	switch expr := expr.(type) {
-	case *ast.IntegerLiteral:
-		switch expr.Suffix() {
-		case "i":
-			return "int"
-		case "u":
-			return "uint"
-		case "g":
-			return "float"
-		case "m":
-			return "decimal"
-		default:
-			return ""
-		}
-	case *ast.FloatLiteral:
-		switch expr.Suffix() {
-		case "g":
-			return "float"
-		case "m":
-			return "decimal"
-		default:
-			return ""
-		}
-	}
-	if isNumericType(valueType) {
-		return valueType.Name
-	}
-	return ""
 }
 
 func canUntypedNumericInitializeNominal(target Type, value Type, expr ast.Expression) bool {
@@ -17145,4 +17311,46 @@ func expressionToken(expr ast.Expression) lexer.Token {
 	default:
 		return lexer.Token{}
 	}
+}
+
+func expressionEndToken(expr ast.Expression) lexer.Token {
+	if expr == nil {
+		return lexer.Token{}
+	}
+	switch expr := expr.(type) {
+	case *ast.PrefixExpression:
+		return expressionEndToken(expr.Right)
+	case *ast.InfixExpression:
+		return expressionEndToken(expr.Right)
+	case *ast.RangeExpression:
+		return expressionEndToken(expr.End)
+	case *ast.ConversionExpression:
+		return expressionEndToken(expr.Value)
+	case *ast.CallExpression:
+		if len(expr.Arguments) > 0 {
+			return expressionEndToken(expr.Arguments[len(expr.Arguments)-1])
+		}
+	case *ast.NewExpression:
+		if len(expr.Arguments) > 0 {
+			return expressionEndToken(expr.Arguments[len(expr.Arguments)-1])
+		}
+	case *ast.MemberExpression:
+		if expr.Property != nil {
+			return expr.Property.Token
+		}
+	case *ast.SpreadExpression:
+		return expressionEndToken(expr.Value)
+	case *ast.IndexExpression:
+		return expressionEndToken(expr.Index)
+	case *ast.SliceExpression:
+		if expr.End != nil {
+			return expressionEndToken(expr.End)
+		}
+		if expr.Start != nil {
+			return expressionEndToken(expr.Start)
+		}
+	case *ast.RefExpression:
+		return expressionEndToken(expr.Value)
+	}
+	return expressionToken(expr)
 }

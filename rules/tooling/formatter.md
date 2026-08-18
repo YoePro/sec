@@ -1627,6 +1627,24 @@ type Box[T] struct {
 The formatter does not change type meaning or normalize unit expressions beyond
 operator and delimiter spacing.
 
+Unit declarations preserve the optional default numeric carrier and category;
+the formatter does not insert redundant `decimal`. Compiler-known unit metadata
+uses canonical PascalCase:
+
+```text
+LongName Symbol BaseUnit Status Dimension Kind Scale System Transform Offset
+Origin LogBase LogFactor Reference
+```
+
+Dimension vectors use compact exponent notation with ordinary comma spacing,
+for example `[length^1, time^-1]`. Structural annotations use compact operator
+spacing such as `<kg*m/s^2>` while preserving source factor order and required
+parentheses.
+
+Formatting never replaces a named unit with a structural expression or the
+reverse, reorders factors for semantic canonicalization, changes a carrier, or
+invents/removes a conversion.
+
 ---
 
 # Struct literals

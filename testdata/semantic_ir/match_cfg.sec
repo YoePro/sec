@@ -6,10 +6,80 @@ enum Flag: bit[1] {
     On = 1,
 }
 
+enum Failure {
+    Missing,
+    Other,
+}
+
+type Number union {
+    Integer(int)
+    Missing
+}
+
 fn Choose(flag: Flag, enabled: bool) int {
     return match flag {
         Flag.Off where enabled => 10
         Flag.Disabled => 20
         Flag.On => 30
+    }
+}
+
+fn ChooseNumber(number: Number) int {
+    return match number {
+        Integer(value) => value
+        Missing => 0
+    }
+}
+
+fn ChooseResult(result: Result[int, Failure], enabled: bool) int {
+    return match result {
+        Ok(value) where enabled => value
+        Ok(value) => value
+        Err(error) => 0
+    }
+}
+
+fn ChooseOption(option: Option[int]) int {
+    return match option {
+        Some(value) => value
+        None => 0
+    }
+}
+
+fn IgnoreResult(result: Result[int, Failure]) int {
+    return match result {
+        Ok(_) => 1
+        Err(error) => 0
+    }
+}
+
+fn CatchNumber(number: Number) int {
+    return match number {
+        Integer(value) => value
+        _ => 0
+    }
+}
+
+fn RecordNumber(number: Number) int {
+    let mut result: int := 0
+    match number {
+        Integer(value) => {
+            result = value
+        }
+        Missing => {
+            result = -1
+        }
+    }
+    return result
+}
+
+fn ReturnNumber(number: Number) int {
+    match number {
+        Integer(value) => {
+            return value
+        }
+        Missing => {
+            return 0
+        }
     }
 }

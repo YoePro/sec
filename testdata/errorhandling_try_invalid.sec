@@ -50,3 +50,5 @@ fn MissingHandlerValue() Speed {
 
     return speed
 }
+
+unit SEK currency

@@ -67,3 +67,5 @@ fn UnreachableArm(error: IOError) int {
 
     return code
 }
+
+unit SEK currency

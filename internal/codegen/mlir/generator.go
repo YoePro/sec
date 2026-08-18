@@ -1647,7 +1647,7 @@ func (g *Generator) emitMatch(expr *ast.MatchExpression, targetType string, targ
 		}
 		g.write("  ^%s:\n", testLabels[i])
 		g.blockOpen = true
-		condition, err := g.emitMatchPatternCondition(subject, arm.Pattern)
+		condition, err := g.emitMatchPatternCondition(subject, arm.Pattern.Expression())
 		if err != nil {
 			return err
 		}
@@ -1660,7 +1660,7 @@ func (g *Generator) emitMatch(expr *ast.MatchExpression, targetType string, targ
 		g.write("  ^%s:\n", bodyLabels[i])
 		g.blockOpen = true
 		g.locals = copyMLIRLocals(outerLocals)
-		if err := g.bindMatchPattern(subject, arm.Pattern); err != nil {
+		if err := g.bindMatchPattern(subject, arm.Pattern.Expression()); err != nil {
 			g.locals = outerLocals
 			return err
 		}

@@ -252,6 +252,7 @@ type MatchArmRecord struct {
 	PatternBlock BlockID
 	GuardBlock   BlockID
 	BodyBlock    BlockID
+	VariantIndex UnionVariantIndex
 	EnumValue    *big.Int
 	Guarded      bool
 	Flow         string

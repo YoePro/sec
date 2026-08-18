@@ -1,8 +1,11 @@
 package sema
 
 import (
+	"fmt"
 	"sort"
+	"strconv"
 	"strings"
+	"unicode"
 )
 
 func builtinUnits() map[string]UnitDefinition {
@@ -10,7 +13,7 @@ func builtinUnits() map[string]UnitDefinition {
 
 	addPhysical := func(names []string, dimension Dimension) {
 		for _, name := range names {
-			units[name] = UnitDefinition{Name: name, Category: PhysicalUnit, Dimension: dimension, DefaultNumeric: "decimal", Status: StatusActive}
+			units[name] = UnitDefinition{Name: name, Category: PhysicalUnit, Dimension: dimension, DefaultNumeric: "decimal", Status: StatusActive, Transform: LinearUnitTransform}
 		}
 	}
 
@@ -30,6 +33,176 @@ func dimensionFromBase(name string, exponent int) Dimension {
 		return Dimension{Base: map[string]int{}}
 	}
 	return Dimension{Base: map[string]int{name: exponent}}
+}
+
+func defaultUnitDimension(name string, category UnitCategory) Dimension {
+	switch category {
+	case RatioUnit:
+		return Dimension{Base: map[string]int{}}
+	case InformationUnit:
+		return dimensionFromBase("information", 1)
+	default:
+		return dimensionFromBase(name, 1)
+	}
+}
+
+type unitExpressionParser struct {
+	input []rune
+	pos   int
+	units map[string]UnitDefinition
+}
+
+func resolveUnitExpression(source string, units map[string]UnitDefinition) (Dimension, error) {
+	parser := unitExpressionParser{input: []rune(source), units: units}
+	dimension, err := parser.parseProduct()
+	if err != nil {
+		return Dimension{}, err
+	}
+	parser.skipSpace()
+	if parser.pos != len(parser.input) {
+		return Dimension{}, fmt.Errorf("unexpected %q", string(parser.input[parser.pos]))
+	}
+	return dimension, nil
+}
+
+func (p *unitExpressionParser) parseProduct() (Dimension, error) {
+	left, err := p.parseFactor()
+	if err != nil {
+		return Dimension{}, err
+	}
+	for {
+		p.skipSpace()
+		if p.pos >= len(p.input) || p.input[p.pos] != '*' && p.input[p.pos] != '/' {
+			return left, nil
+		}
+		op := p.input[p.pos]
+		p.pos++
+		right, err := p.parseFactor()
+		if err != nil {
+			return Dimension{}, err
+		}
+		if op == '/' {
+			right = scaleDimension(right, -1)
+		}
+		left = addDimensions(left, right)
+	}
+}
+
+func (p *unitExpressionParser) parseFactor() (Dimension, error) {
+	dimension, err := p.parseAtom()
+	if err != nil {
+		return Dimension{}, err
+	}
+	p.skipSpace()
+	if p.pos >= len(p.input) || p.input[p.pos] != '^' {
+		return dimension, nil
+	}
+	p.pos++
+	p.skipSpace()
+	start := p.pos
+	if p.pos < len(p.input) && (p.input[p.pos] == '+' || p.input[p.pos] == '-') {
+		p.pos++
+	}
+	for p.pos < len(p.input) && unicode.IsDigit(p.input[p.pos]) {
+		p.pos++
+	}
+	if start == p.pos || p.pos == start+1 && (p.input[start] == '+' || p.input[start] == '-') {
+		return Dimension{}, fmt.Errorf("unit exponent must be a signed integer")
+	}
+	exponent, err := strconv.Atoi(string(p.input[start:p.pos]))
+	if err != nil || exponent == 0 {
+		return Dimension{}, fmt.Errorf("unit exponent must be a non-zero signed integer")
+	}
+	return scaleDimension(dimension, exponent), nil
+}
+
+func (p *unitExpressionParser) parseAtom() (Dimension, error) {
+	p.skipSpace()
+	if p.pos >= len(p.input) {
+		return Dimension{}, fmt.Errorf("expected unit factor")
+	}
+	if p.input[p.pos] == '(' {
+		p.pos++
+		dimension, err := p.parseProduct()
+		if err != nil {
+			return Dimension{}, err
+		}
+		p.skipSpace()
+		if p.pos >= len(p.input) || p.input[p.pos] != ')' {
+			return Dimension{}, fmt.Errorf("expected ')' in unit expression")
+		}
+		p.pos++
+		return dimension, nil
+	}
+	if p.input[p.pos] == '1' {
+		p.pos++
+		return Dimension{Base: map[string]int{}}, nil
+	}
+	name, ok := p.parseQualifiedIdentifier()
+	if !ok {
+		return Dimension{}, fmt.Errorf("expected a unit name, 1, or parenthesized unit expression")
+	}
+	unit, exists := p.units[name]
+	if !exists {
+		return Dimension{}, fmt.Errorf("unknown unit %s", name)
+	}
+	return unit.Dimension, nil
+}
+
+func (p *unitExpressionParser) parseQualifiedIdentifier() (string, bool) {
+	start := p.pos
+	for {
+		if p.pos >= len(p.input) || !isUnitIdentifierStart(p.input[p.pos]) {
+			return "", false
+		}
+		p.pos++
+		for p.pos < len(p.input) && isUnitIdentifierContinue(p.input[p.pos]) {
+			p.pos++
+		}
+		if p.pos >= len(p.input) || p.input[p.pos] != '.' {
+			break
+		}
+		p.pos++
+	}
+	return string(p.input[start:p.pos]), true
+}
+
+func (p *unitExpressionParser) skipSpace() {
+	for p.pos < len(p.input) && unicode.IsSpace(p.input[p.pos]) {
+		p.pos++
+	}
+}
+
+func isUnitIdentifierStart(r rune) bool {
+	return r == '_' || unicode.IsLetter(r)
+}
+
+func isUnitIdentifierContinue(r rune) bool {
+	return isUnitIdentifierStart(r) || unicode.IsDigit(r)
+}
+
+func addDimensions(left, right Dimension) Dimension {
+	result := Dimension{Base: map[string]int{}}
+	for name, exponent := range left.Base {
+		result.Base[name] = exponent
+	}
+	for name, exponent := range right.Base {
+		result.Base[name] += exponent
+		if result.Base[name] == 0 {
+			delete(result.Base, name)
+		}
+	}
+	return result
+}
+
+func scaleDimension(dimension Dimension, scale int) Dimension {
+	result := Dimension{Base: map[string]int{}}
+	for name, exponent := range dimension.Base {
+		if scaled := exponent * scale; scaled != 0 {
+			result.Base[name] = scaled
+		}
+	}
+	return result
 }
 
 func parseDimension(unit string) Dimension {

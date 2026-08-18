@@ -312,6 +312,7 @@ integrations:
     area: frontend-control-flow-ownership-and-lowering
     status: partial
     integrated: "2026-08-17"
+    audited: "2026-08-18"
     document_revision: "2.0"
     repository_baseline: "56be75d"
     replaces: rules/control-flow/flowcontrol_match.txt
@@ -385,15 +386,22 @@ integrations:
       - open bit-backed enum exhaustiveness uses the complete representable domain
       - Result and enum exhaustiveness are checked
       - duplicate and unreachable match arms are diagnosed in implemented cases
+      - MatchArm stores a closed MatchPattern AST instead of an arbitrary expression pattern
+      - parser accepts only catch-all, compiler-known empty, variant, one whole-payload binding, and shallow named-field patterns
+      - parser rejects boolean, literal, range, alternative, nested, and arbitrary expression patterns, with focused guidance for boolean, literal, range, and nested cases and arm-level recovery
+      - formatter normalizes only structurally proven canonical match patterns and leaves invalid expression-like patterns unchanged
       - empty zero-arm matches are rejected
       - catch-all hiding Result Err is rejected in implemented error-sensitive cases
       - expression matches infer a common branch type
+      - exhaustive expression matches whose reachable arms all return or otherwise terminate resolve to never, require no arm result value, and retain terminating flow in ResolvedMatchPlan
       - move-only whole payloads move from reusable owned union subjects
       - copyable whole payloads copy and temporary payloads forward
       - statement and expression match ownership availability is merged and may invalidate the whole subject
       - union rules normatively define shallow named-field destructuring, rename, field borrows, and compiler-known empty
-      - Semantic IR records Sema-resolved match plans and explicit source-order enum CFG
-      - implemented enum CFG evaluates the subject once and preserves guard-false continuation
+      - Semantic IR records Sema-resolved match plans and explicit source-order enum, union, Result, and Option CFG
+      - implemented match CFG evaluates the subject once and preserves guard-false continuation
+      - copy-trivial whole payload bindings and discard lower after successful union, Option, or Result discrimination
+      - expression matches use typed SSA merge values and statement matches use zero-argument continuation or all-terminating control flow
       - canonical revision-2 match grammar and contextual arm-block semantics are documented
       - ownership.md now specifies whole-payload actions, borrowed-subject restrictions, guarded move commit, field copy-only behavior, and post-match merging
       - unions.md now explicitly restricts shallow by-value fields to implicitly copyable types
@@ -401,12 +409,10 @@ integrations:
       - lsp.md now requires compiler-owned match binding, guarded move, availability, coverage, hover, hint, completion, and refactoring facts
       - implementation status was removed from the normative match rulebook and migrated here
     remaining:
-      - restrict parser, AST, formatter, and recovery behavior to canonical Sec 0.1 match patterns instead of the current broader expression-pattern representation
       - implement compiler-known empty union patterns and include reachable empty state in definite-assignment, coverage, Semantic IR, MLIR, diagnostics, and LSP facts without treating moved-from as empty
       - implement shallow named-field union destructuring with partial binding, rename, ref and ref mut modes
       - enforce copy-only shallow by-value fields and reject move-only fields without hidden partial moves
-      - reject direct bool subjects and true or false patterns with guidance to use if and else
-      - reject general literal and range patterns with guidance to use switch while retaining enum-member patterns
+      - reject direct bool subjects with guidance to use if and else
       - make every whole-payload plain binding action explicitly resolve to copy, legal move, or temporary forwarding without silent borrow or clone
       - reject move-only payload transfer from ref and ref mut subjects unless an explicit permitted pattern borrow is used
       - delay guarded move-only binding commitment until guard success and retain ownership on the guard-false continuation
@@ -417,8 +423,8 @@ integrations:
       - establish move-only arm-result ownership before arm-scope cleanup
       - expose compiler-resolved binding action, prospective guarded move, commit location, post-match availability, and coverage through LSP hover, diagnostics, hints, completion, and refactoring
       - extend ResolvedMatchPlan and CFG binding actions beyond none, discard, and copy-trivial to Move, SharedBorrow, MutableBorrow, TemporaryForward, field bindings, guard-success commit, and ownership merges
-      - generalize explicit source-order CFG from enum matches to union, Result, Option, and reachable empty state
-      - complete statement-match continuation and all-terminating CFG with ownership, cleanup, and discard effects
+      - extend explicit source-order CFG with reachable compiler-known empty state once frontend initialization-state facts exist
+      - extend statement-match continuation with non-trivial ownership, cleanup, and discard effects
       - complete parser, Sema, ownership, borrowing, formatter, diagnostics, LSP, Semantic IR, MLIR, LLVM, and end-to-end coverage
     required_tests:
       - match subject expression evaluates exactly once
@@ -475,6 +481,8 @@ integrations:
       - LSP distinguishes prospective guarded move from committed move
       - LSP publishes compiler use-after-match-move diagnostics with related move arm
     verification:
+      - command: GOMAXPROCS=2 go test ./internal/sema -run 'TestExhaustiveMatchExpressionWithReturningBlockArmsIsNever|TestResolvedMatchPlanRetainsAllTerminatingExpressionFlow|TestMatchStatementReturnArmsSatisfyFunctionReturn|TestResolvedMatchPlanIsReadOnlyAndNumeric' -count=1
+        result: passed
       - command: go test ./internal/parser -run Match -count=1
         result: passed
       - command: go test ./internal/sema -run 'Match|Union.*Payload' -count=1
@@ -1064,6 +1072,82 @@ integrations:
       - command: go test ./internal/modules ./internal/parser -run 'Module|Import' -count=1
         result: passed
 
+  - id: compiler.program-initialization
+    area: projects-initialization-and-build
+    status: planned
+    integrated: "2026-08-18"
+    document_revision: "1"
+    repository_baseline: "20b3606"
+    summary: >-
+      Implements canonical Sec executable initialization and shutdown planning:
+      target-kind entry contracts, no implicit module initialization, optional
+      runtime-free startup, CompilationPlan-specific ProgramInitializationPlan
+      and ProgramShutdownPlan artifacts, dependency-ordered startup and teardown,
+      startup-failure rollback, deterministic static-destruction integration,
+      and explicit lowering/linking handoff.
+    rules:
+      - rules/compiler/initialization.md
+      - rules/projects/modules.md
+      - rules/projects/projects.txt
+      - rules/declarations/static.md
+      - rules/memory/destruction.txt
+      - rules/concurrency/concurrency.md
+      - rules/concurrency/structured_concurrency.md
+      - rules/platform/platform_model.md
+      - rules/platform/abi.md
+      - rules/mlir/sec_mlir.md
+      - rules/compiler/semantic_ir.txt
+    remaining:
+      - introduce canonical ProgramInitializationPlan and ProgramShutdownPlan artifacts for every executable concrete CompilationPlan
+      - validate command entry as exactly one concrete non-generic module-level fn main() int in the designated entry module
+      - validate firmware entry as exactly one concrete non-generic module-level fn main() void in the designated entry module
+      - ensure library targets acquire no program entry, startup, shutdown, or hidden module-initialization behavior merely by being compiled
+      - support compiler-generated test harness entry through the same executable initialization and shutdown model
+      - remove or reject any implementation path that executes user code merely because a module is imported or present in ModuleGraph
+      - keep lifecycle init strictly tied to explicit instance construction rather than module or program startup
+      - consume compile-time static values and model only physical static-storage establishment during runtime startup
+      - model startup actions as typed compiler-known requirements with explicit prerequisites
+      - derive an acyclic deterministic startup dependency graph independent of source, import, linker, map, or worker order
+      - add deterministic tie-breaking for independent startup actions when concrete order is observable
+      - resolve runtime requirements from semantic program needs and TargetProfile before lowering rather than in the backend
+      - support valid runtime-free executable plans where no reachable feature requires runtime facilities
+      - separate execution-environment startup, required Sec runtime startup, and transfer to source entry
+      - track establishment state for fallible pre-entry actions and roll back only established resources
+      - make startup-failure cleanup respect resource lifetime and teardown dependencies
+      - distinguish ProgramStartupFailure from ordinary execution failure after main begins
+      - treat command main return as logical status while leaving external encoding to ExecutionEnvironment
+      - avoid implicit Result-to-exit, error-printing, panic, retry, or argument-injection semantics for main
+      - generate or select physical platform entry adapters separately from source main using resolved target and ABI rules
+      - ensure ordinary main-scope defer and destruction cleanup finishes before ProgramShutdown
+      - integrate structured concurrency so entry cannot complete while owning unresolved child execution
+      - transfer legal detached execution to program shutdown ownership and cancel or clean it before dependent runtime teardown
+      - derive ProgramShutdownPlan from actual lifetime and teardown dependencies rather than reversing startup
+      - integrate deterministic static destruction only where TargetProfile supports it and order it from canonical dependency and use relations
+      - reject unresolved deterministic shutdown dependency cycles instead of selecting arbitrary destruction order
+      - keep runtime facilities alive until every dependent cleanup completes
+      - distinguish NormalTermination and ForcedTermination without weakening owning panic, destruction, or platform rules
+      - record entry, runtime, static-lifetime, detached-execution, and termination requirements before target lowering
+      - materialize resolved plans in MLIR and platform lowering and treat late missing semantic runtime requirements as invariant failures
+      - expose linking-facing startup object, runtime component, entry adapter, termination adapter, and relevant section requirements without owning linker assembly
+      - verify target-kind entry, TargetProfile support, runtime availability, startup and shutdown acyclicity, static-destruction capability, detached shutdown support, and termination policy before lowering
+      - add diagnostics for missing, invalid, or duplicate entry, unsupported runtime requirements, startup cycles, rollback failures, unsupported termination policy, static destruction support, and shutdown cycles
+      - track incremental dependencies on target kind, entry identity and signature, runtime requirements, detached execution, static destruction, TargetProfile, environment models, ABI adapter requirements, and termination policy
+      - add cross-compilation and multi-Variant tests proving initialization planning depends on CompilationPlan rather than compiler host
+      - add determinism tests covering source traversal, filesystem enumeration, map order, import order, linker input order, and worker scheduling
+      - add end-to-end tests proving hidden module initialization is absent and runtime-free programs do not acquire unconditional runtime startup
+      - update repository-level implementation-status verification commands after the first initialization-plan vertical slice is implemented
+    excluded:
+      - lifecycle init semantics beyond distinction from program startup
+      - compile-time static-expression evaluation
+      - ordinary block or function cleanup semantics
+      - module import and visibility semantics
+      - linker symbol spelling, object or library assembly, section naming, and dead stripping
+      - target-profile capability definitions
+      - ABI call-classification rules
+      - exact Sec MLIR operation syntax
+      - operating-system loader or firmware startup implementation details
+      - C++-style global constructors and Go-style package initialization
+
   - id: tooling.lsp-try-result-hover
     area: tooling
     status: planned
@@ -1455,6 +1539,11 @@ integrations:
       - shared delimiter stack preserving mismatched outer closers
       - delimiter-aware recovery for struct fields, switch/select entries, directives, generic parameters, declaration tails, malformed for headers, attributes, properties, and balanced blocks
       - skipped-range events from each migrated delimiter-aware recovery helper
+      - unsupported if expressions in initializer position retain one InvalidExpression and consume their complete if, else-if, and else bodies without losing following statements or impl members
+      - LSP diagnostics continue semantic declaration analysis after non-fatal parser recovery and suppress semantic diagnostics whose primary location belongs to a parser recovery range
+      - duplicate function and method signatures remain visible after a recovered error in an earlier function body
+      - semantic diagnostic occurrences carry explicit primary end line and exclusive end column fields, and LSP ranges use them instead of hardcoded one-character highlights
+      - fixed-arity calls with excess arguments focus the first excess argument and retain the complete expression range
       - try handler-brace disambiguation is scoped to the outer try operand in both expression and statement parser paths, so typed struct literals remain valid inside nested call arguments and a following handler block is not misread as a struct literal on the completed call
       - deterministic 100-diagnostic parser cap with one terminal P2015 diagnostic
       - central CLI and LSP parse paths consume ParseResult
@@ -1471,6 +1560,10 @@ integrations:
         result: passed
       - command: go test ./internal/parser -run 'TestParse.*Try.*StructLiteral' -v && go run ./cmd/compiler parse ../bootstrap/internal/lexer/lexer.sec
         result: passed; the bootstrap Diagnostic struct literal in the Append argument parses without treating its brace as a try-handler boundary
+      - command: GOMAXPROCS=2 go test ./cmd/lsp -count=1
+        result: passed
+      - command: GOMAXPROCS=2 go test ./internal/parser -run 'TestInvalidIfInitializerRecoveryPreservesFollowingImplMethods|TestParseResultRetainsRecoveryEventsAndInvalidNodes' -count=1
+        result: passed
 
     remaining:
       - invalid type retention on every type-reference failure path
@@ -1721,15 +1814,113 @@ integrations:
       - command: clang LLVM IR verification
         result: passed
 
+  - id: frontend.units-v2
+    area: frontend-analysis-tooling-and-semantic-ir
+    status: partial
+    integrated: "2026-08-18"
+    document_revision: "2.0"
+    repository_baseline: "20b3606"
+    replaces: rules/types/units.txt
+    summary: >-
+      Tracks the carrier-independent quantity model, structural unit expressions,
+      category policy, Kind and transform metadata, conversion exactness, and
+      compiler-owned tooling facts defined by units revision 2.0. Declaration,
+      type-resolution, structural dimension, and metadata foundations are in
+      place; complete Kind, transform, conversion, operator, warning, LSP, and
+      Semantic IR behavior remains partial.
+    rules:
+      - rules/types/units.md
+      - rules/foundations/grammar.md
+      - rules/types/types.md
+      - rules/foundations/operators.md
+      - rules/compiler/semantic_ir.txt
+      - rules/tooling/lsp.md
+      - rules/tooling/diagnostics.txt
+      - rules/tooling/formatter.md
+    code:
+      - internal/ast/ast.go
+      - internal/parser/parser.go
+      - internal/sema/types.go
+      - internal/sema/units.go
+      - internal/sema/analyzer.go
+      - internal/formatter/formatter.go
+      - cmd/lsp/main.go
+    tests:
+      - internal/parser/parser_test.go
+      - internal/sema/analyzer_test.go
+      - testdata/units_valid.sec
+      - testdata/units_advanced_valid.sec
+      - testdata/units_invalid.sec
+    implemented:
+      - unit declarations support an omitted decimal default carrier or an explicit plain compiler-known numeric scalar default
+      - unit identity is retained separately from the selected numeric carrier on resolved numeric types
+      - named unit-only types use the declaration default carrier while compound structural unit-only types default to decimal
+      - physical, currency, information, ratio, and other categories parse and resolve; omitted category defaults to other
+      - ratio defaults to dimensionless, information defaults to information^1, and currency and other declarations receive identity-derived axes
+      - compiler-known unit-name collisions including bit, byte, and intrinsic type constructors are rejected
+      - structural unit expressions validate named factors, identity 1, multiplication, division, non-zero signed integer exponents, and grouping
+      - structural dimensions normalize exponent addition, subtraction, multiplication, and cancellation without rewriting source spelling
+      - named and structural source identity remains distinguishable in the retained Unit spelling
+      - Dimension metadata validates canonical ^ exponents, duplicate axes, zero exponents, and order-independent normalized dimensions
+      - LongName, Symbol, BaseUnit, Status, Dimension, Kind, Scale, System, Transform, Offset, Origin, LogBase, LogFactor, and Reference metadata parse and are stored
+      - Transform defaults to linear; affine and logarithmic declarations validate their required metadata sets
+      - direct named use of deprecated and obsolete units produces compiler-owned warnings
+      - explicit conversion functions are registered and currently validate normalized source and target dimensions for implemented numeric unit forms
+      - revision-2 corrections were consumed into grammar, types, operators, Semantic IR, LSP, diagnostics, and formatter rulebooks
+    remaining:
+      - replace the retained unit-expression string with a first-class structural AST while preserving exact source identity
+      - preserve category provenance through every derived structural operation
+      - represent named versus structural identity explicitly throughout Type and Semantic IR rather than relying on source spelling
+      - add complete Kind compatibility and propagation rules without inferring Kind from dimension alone
+      - migrate safety-relevant standard-library Kind metadata, especially frequency versus rotational frequency and energy versus torque
+      - validate Scale as a positive non-zero compile-time exact expression
+      - implement complete affine point and anonymous difference semantics, Origin compatibility, and offset cancellation
+      - implement logarithmic conversion and arithmetic restrictions
+      - preserve named ratio identity while allowing valid ratio scaling
+      - emit warning-class diagnostics for valid anonymous currency-derived structural expressions
+      - implement explicit factor-provided TargetUnit(source, factor) conversion with normalized factor-unit validation
+      - complete fixed scale and transform conversion planning with exact carrier representability
+      - reject every implicit conversion that would hide rounding, truncation, overflow, or precision loss
+      - generalize explicit conversion functions to the carrier-independent and Kind-aware model
+      - stop dimension-only result inference from selecting an arbitrary named unit when multiple units are compatible
+      - preserve carrier, identity, factors, category provenance, Kind, transform, point role, and conversion plan in Semantic IR
+      - expose resolved unit quantity facts and currency warnings through LSP hover, diagnostics, derivation views, and safe code actions
+      - implement canonical unit metadata and compact structural-expression formatting without semantic rewriting or factor reordering
+      - complete parser, Sema, operator, constant-evaluation, diagnostics, LSP, formatter, Semantic IR, MLIR, runtime, and end-to-end coverage
+      - keep unit-polymorphic generic parameters reserved for a future language revision
+    required_tests:
+      - one named unit works with decimal, float, signed integer, and unsigned integer carriers where numeric rules permit
+      - compound unit-only expressions default to decimal and explicit carriers remain explicit
+      - all five categories and their omitted Dimension defaults resolve correctly
+      - bit, byte, and other compiler-known unit declaration names are rejected
+      - structural multiplication, division, signed exponents, grouping, and identity normalize correctly
+      - named dimensionless ratios retain nominal identity
+      - named and structural compatible units remain distinct and ambiguous named results are not invented
+      - equal known Kind permits and differing known Kind blocks implicit compatibility
+      - invalid and incomplete linear, affine, and logarithmic metadata is rejected
+      - point and difference arithmetic follows the complete affine-space matrix
+      - logarithmic values reject ordinary linear arithmetic
+      - currency-derived structural expressions remain valid and produce warnings
+      - factor-provided conversions validate target/source factor algebra
+      - implicit fixed conversion never hides precision loss
+      - Semantic IR and LSP retain the complete compiler-resolved unit facts
+      - formatter preserves named identity, structural identity, grouping, and source factor order
+    verification:
+      - command: go test ./internal/parser -run Unit -count=1
+        result: passed
+      - command: go test ./internal/sema -run 'Test.*Unit|TestStructuralUnit' -count=1
+        result: passed
+
   - id: stdlib.units-catalog
     area: standard-library
     status: partial
     integrated: "2026-08-07"
+    audited: "2026-08-18"
     summary: >-
       Expands the units package into a documented, metadata-complete catalog of
       155 physical units across SI and commonly used non-SI systems.
     rules:
-      - rules/types/units.txt
+      - rules/types/units.md
     code:
       - sec/stdlib/units/base.sec
       - sec/stdlib/units/core_derived.sec
@@ -1758,6 +1949,7 @@ integrations:
       - command: validate documentation and required metadata for every catalog unit
         result: passed
     remaining:
+      - Kind metadata migration for safety-relevant same-dimension quantity families
       - offset-temperature units after offset conversion support exists
       - scale-sensitive algebra and automatic fixed scale-path conversion
       - logarithmic conversion semantics for units such as decibel
@@ -1987,7 +2179,7 @@ integrations:
     area: frontend
     status: partial
     integrated: "2026-08-07"
-    audited: "2026-08-11"
+    audited: "2026-08-18"
     summary: >-
       Tracks fixed arrays, owning dynamic arrays, slices, list, map, and set
       against the unified collections rulebook. Parser/type recognition and
@@ -2000,6 +2192,7 @@ integrations:
       - Sema recognition and arity validation for compiler-known collection families
       - Place-backed fixed-array and slice indexing used by borrow and ownership analysis
       - contextual collection type identities exposed to formatter and LSP registries
+      - omitted initialization of mutable owning T[] produces its canonical allocation-free empty default
     remaining:
       - complete parser, AST, and Sema coverage for the canonical fixed-array and slice syntax contract
       - array literal inference, bounds, indexing, slicing, assignment, equality, and ownership validation
@@ -2196,14 +2389,14 @@ integrations:
     area: frontend-and-lowering
     status: partial
     integrated: "2026-08-11"
-    audited: "2026-08-11"
+    audited: "2026-08-18"
     summary: >-
       Tracks the compiler-owned, allocation-free default resolver required by
       default_values.md and its synchronized type, contract, aggregate, and
       collection rules. Parser and Sema materialize primitive, constrained,
-      struct, and fixed-array defaults without a runtime; owning dynamic-array
-      and list defaults, Semantic IR, cleanup, and end-to-end verifier coverage
-      remain incomplete.
+      struct, fixed-array, and empty owning dynamic-array defaults without a
+      runtime; list defaults, Semantic IR, cleanup, and end-to-end verifier
+      coverage remain incomplete.
     rules:
       - rules/types/default_values.md
       - rules/types/types.md
@@ -2237,6 +2430,7 @@ integrations:
       - constant folding for the supported primitive expression subset and S1008 invalid-explicit-default validation
       - recursive struct defaultability and complete synthesis of omitted defaultable stored fields
       - fixed-array defaultability including zero-length arrays and recursive element construction
+      - mutable T[] declarations may omit their initializer and synthesize an allocation-free empty owning array independently of element defaultability
       - mutable typed declaration synthesis marked by AST SynthesizedDefault and S1009 rejection for non-defaultable types
       - immutable declarations without initializers remain rejected
       - S1010 rejection of omitted non-defaultable struct fields
@@ -2249,7 +2443,6 @@ integrations:
       - represent explicit, mutable, omitted-field, aggregate, array-element, range-derived, membership-derived, and empty-collection initialization origins in Semantic IR
       - add an explicit AST or resolved compiler-known collection-literal category that distinguishes list[T] {} and list[T, Capacity] {} from struct literals
       - semantically materialize allocation-free empty defaults and explicit literals for list[T] and list[T, Capacity], independently of element defaultability
-      - semantically materialize omitted mutable T[] initialization as an empty owning descriptor without allocating or constructing an element
       - lower synthesized mutable, struct, fixed-array, owning dynamic-array, and list defaults through the maintained Semantic IR and Sec MLIR pipelines
       - track partial aggregate, array, and collection construction cleanup for nontrivial elements and failure paths
       - add a verifier proving all readable struct fields and fixed-array elements are initialized, constrained defaults are valid, empty owning descriptors are complete, and no safe slice is fabricated without provenance
@@ -3619,13 +3812,14 @@ integrations:
 
   - id: lowering.sec-mlir-match-cfg
     area: frontend-analysis-semantic-ir-and-mlir
-    status: partial
-    integrated: "2026-08-12"
+    status: implemented
+    integrated: "2026-08-18"
     summary: >-
-      Begins SEC-MLIR Package 12 by correcting enum match coverage to numeric
-      runtime value classes, recording immutable Sema-resolved match plans, and
-      installing the schema-8 synthesized unreachable boundary used by explicit
-      match CFG.
+      Completes the dependency-bounded SEC-MLIR Package 12 CFG for enum, union,
+      Result, and Option matches, including copy-trivial payloads, guards,
+      expression merges, statement continuations, terminating arms, and
+      schema-8 verification. Newer match revision-2 ownership, field, and empty
+      initialization-state features remain tracked by the frontend match item.
     rules:
       - rules/mlir/packages/sec-mlir-dialect_package12.md
       - rules/mlir/packages/sec-mlir-dialect_package12.yaml
@@ -3666,17 +3860,27 @@ integrations:
       - schema 8 accepts and verifies sec.unreachable while schemas 1 through 7 remain accepted inputs
       - compiler-generated Sec MLIR now identifies as schema 8
       - Semantic IR MatchRecord and MatchArmRecord retain function-local identity, shared subject, source indexes, pattern/guard/body blocks, numeric enum values, flow, merge and locations
-      - the Package 12 builder consumes ResolvedMatchPlan for enum match expressions, evaluates the subject once and emits source-order numeric comparisons with guard-false continuation
+      - the Package 12 builder consumes ResolvedMatchPlan for enum, union, Result, and Option matches, evaluates the subject once, and emits source-order tests with guard-false continuation
+      - payload-less union variants, copy-trivial single payload bindings, and payload discard lower through the Package 11 union operations
+      - Result Ok and Err matching lowers through Package 10 predicates and projections, including reversed Ok edges, repeated guarded variants, and discard without mandatory unwrap
+      - Option Some and None use the canonical compiler-known union definition and the same verified union CFG
       - continuing expression arms join through one typed SSA merge parameter while return arms remain merge-free
+      - match statements join continuing arms through a zero-argument continuation and omit that block when every arm terminates
+      - return and failure terminators carry body-exit provenance, while ignored statement-arm values are limited to trivial copyable and trivially destructible values
       - complete finite enum chains retain the final test and terminate its impossible false edge with exhaustive-match-fallthrough
-      - schema-8 emission attaches match ID, arm index, stage and pattern-kind provenance to generated operations
-      - --sec-verify-match-cfg validates complete provenance, source arm order, a shared enum subject, immediate comparison branches, common merge and exhaustive residual
+      - schema-8 emission attaches match ID, arm index, stage and pattern-kind provenance to tests, projections, guards, exits, and residuals
+      - --sec-verify-match-cfg validates complete provenance, source arm order, a shared enum, union, Option, or Result subject, immediate test branches, guard form, catch-all finality, common merge arity, terminating exits, and exhaustive residual
+      - Result guard verification preserves the strict Package 10 try shape while accepting match-specific edge direction and payload discard
+      - union payload verification accepts projections only in the dedicated matching successor selected by the corresponding variant test
+      - the package document and YAML are synchronized with flowcontrol_match.md revision 2.0 and distinguish payload-less variants from compiler-known empty initialization state
       - the standard Sec verification toolchain invokes the match-CFG verifier
     remaining:
-      - generalize the source-order builder from enum subjects to union, Result and Option with copy-trivial payload binding and discard
-      - implement match statements, continuation blocks and all-terminating statement forms
-      - extend Result and union guard verification for repeated guarded match-arm CFG shapes
-      - add the complete Package 12 positive, negative and end-to-end matrix
+      - compiler-known empty initialization-state matching awaits a distinct resolved frontend fact and is not the payload-less variant support completed here
+      - shallow named-field and struct-like whole-payload binding await canonical struct semantic values and field-binding facts
+      - ref, ref mut, move, temporary-forward, semantic-copy, and conditional-copy payload actions await ownership commit, cleanup, and destruction IR
+      - contextual value-producing arm blocks await resolved final-value facts for every continuing block path
+      - loop-control arms await loop Semantic IR targets and cleanup edges
+      - general literal and range patterns are intentionally not lowered because canonical match revision 2.0 assigns them to switch
     verification:
       - command: go test ./internal/sema -run 'TestMatch|TestErrorHandlingMatch|TestResolvedMatchPlan' -count=1
         result: passed
@@ -3685,7 +3889,12 @@ integrations:
       - command: go run ./cmd/compiler emit-sec-mlir testdata/semantic_ir/match_cfg.sec --target linux-amd64 --mlir-bin build/sec-mlir/bin -o /tmp/sec-p12-match.mlir
         result: passed through Sema-resolved plan, Semantic IR match CFG, schema-8 emission and sec-verify-match-cfg
       - command: go test ./...
-        result: all packages pass except the explicitly excluded in-progress TestRegister7TryAndMatchFixture
+        result: >-
+          Package 12 paths pass. The repository-wide run remains red in two
+          compiler IO API tests because runtime LinuxError conversion is
+          fallible, in three existing contract tests whose expected diagnostic
+          counts predate discard analysis, and in TestBitEnumFixtures because
+          the currently edited fixture has a parser error at line 32.
       - command: go vet ./...
         result: passed
 

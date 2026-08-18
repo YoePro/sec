@@ -3466,14 +3466,14 @@ func analyze(uri string, text string, overlays ...sourceOverlay) []diagnostic {
 	for _, parserError := range parseResult.Diagnostics {
 		diagnostics = append(diagnostics, structuredParserDiagnostic(parserError))
 	}
-	if parseResult.HasErrors {
+	if parseResult.Fatal {
 		return diagnostics
 	}
 	prepareProgramForLSP(program, path, firstSourceOverlay(overlays))
 
 	analyzer := newLSPAnalyzer(uri)
 	for _, err := range analyzer.Analyze(program) {
-		if diagnosticBelongsToSource(err, path) {
+		if diagnosticBelongsToSource(err, path) && !semanticDiagnosticComesFromRecovery(err, parseResult.Recovery) {
 			diagnostics = append(diagnostics, semaDiagnostic(err, 1))
 		}
 	}
@@ -3483,6 +3483,24 @@ func analyze(uri string, text string, overlays ...sourceOverlay) []diagnostic {
 		}
 	}
 	return diagnostics
+}
+
+func semanticDiagnosticComesFromRecovery(err sema.Error, recovery []parser.RecoveryEvent) bool {
+	if err.Line <= 0 || err.Column <= 0 {
+		return false
+	}
+	location := position{Line: err.Line - 1, Character: err.Column - 1}
+	for _, event := range recovery {
+		if event.Start.Line <= 0 || event.Start.Column <= 0 || event.End.Line <= 0 || event.End.Column <= 0 {
+			continue
+		}
+		start := position{Line: event.Start.Line - 1, Character: event.Start.Column - 1}
+		end := position{Line: event.End.Line - 1, Character: event.End.Column - 1 + max(len([]rune(event.End.Lexeme)), 1)}
+		if comparePosition(location, start) >= 0 && comparePosition(location, end) < 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func firstSourceOverlay(overlays []sourceOverlay) sourceOverlay {
@@ -4292,7 +4310,7 @@ func rewriteQualifierInExpression(expr ast.Expression, from string, to string) {
 	case *ast.MatchExpression:
 		rewriteQualifierInExpression(expr.Subject, from, to)
 		for _, arm := range expr.Arms {
-			rewriteQualifierInExpression(arm.Pattern, from, to)
+			rewriteQualifierInMatchPattern(arm.Pattern, from, to)
 			rewriteQualifierInExpression(arm.Guard, from, to)
 			rewriteQualifierInExpression(arm.Body, from, to)
 			if arm.ReturnBody != nil {
@@ -4311,6 +4329,23 @@ func rewriteQualifiedName(name string, from string, to string) string {
 		return to + strings.TrimPrefix(name, from)
 	}
 	return name
+}
+
+func rewriteQualifierInMatchPattern(pattern *ast.MatchPattern, from string, to string) {
+	if pattern == nil {
+		return
+	}
+	pattern.Name = rewriteQualifiedName(pattern.Name, from, to)
+}
+
+func qualifyLocalTypesInMatchPattern(pattern *ast.MatchPattern, module string, localTypes map[string]bool) {
+	if pattern == nil {
+		return
+	}
+	separator := strings.LastIndex(pattern.Name, ".")
+	if separator > 0 && localTypes[pattern.Name[:separator]] {
+		pattern.Name = module + "." + pattern.Name
+	}
 }
 
 func qualifyLocalTypeReferencesInStatement(stmt ast.Statement, module string, localTypes map[string]bool) {
@@ -4615,7 +4650,7 @@ func qualifyLocalTypesInExpression(expr ast.Expression, module string, localType
 	case *ast.MatchExpression:
 		qualifyLocalTypesInExpression(expr.Subject, module, localTypes)
 		for _, arm := range expr.Arms {
-			qualifyLocalTypesInExpression(arm.Pattern, module, localTypes)
+			qualifyLocalTypesInMatchPattern(arm.Pattern, module, localTypes)
 			qualifyLocalTypesInExpression(arm.Guard, module, localTypes)
 			qualifyLocalTypesInExpression(arm.Body, module, localTypes)
 			if arm.ReturnBody != nil {
@@ -4755,7 +4790,6 @@ func qualifyLocalCallsInExpression(expr ast.Expression, module string, localFunc
 	case *ast.MatchExpression:
 		qualifyLocalCallsInExpression(expr.Subject, module, localFunctions)
 		for _, arm := range expr.Arms {
-			qualifyLocalCallsInExpression(arm.Pattern, module, localFunctions)
 			qualifyLocalCallsInExpression(arm.Guard, module, localFunctions)
 			qualifyLocalCallsInExpression(arm.Body, module, localFunctions)
 			if arm.ReturnBody != nil {
@@ -4769,6 +4803,12 @@ func qualifyLocalCallsInExpression(expr ast.Expression, module string, localFunc
 func semaDiagnostic(err sema.Error, severity int) diagnostic {
 	line := max(err.Line-1, 0)
 	column := max(err.Column-1, 0)
+	endLine := line
+	endColumn := column + 1
+	if err.EndLine > 0 && err.EndColumn > 0 {
+		endLine = err.EndLine - 1
+		endColumn = err.EndColumn - 1
+	}
 	message := err.Error()
 	if err.Help != "" {
 		message += "\n\nhelp: " + err.Help
@@ -4776,7 +4816,7 @@ func semaDiagnostic(err sema.Error, severity int) diagnostic {
 	return diagnostic{
 		Range: lspRange{
 			Start: position{Line: line, Character: column},
-			End:   position{Line: line, Character: column + 1},
+			End:   position{Line: endLine, Character: endColumn},
 		},
 		Severity: lspSeverity(err.Severity, severity),
 		Code:     err.ID,

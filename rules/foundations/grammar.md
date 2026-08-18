@@ -1150,12 +1150,13 @@ Still not implemented as a closed language area:
 - wildcard imports;
 - module aliases beyond import aliases;
 - explicit export lists;
-- module initialization syntax;
 - conditional imports;
 - target-conditioned declaration blocks.
 
 Module-graph, resolution, and cycle semantics are specified in
-`rules/projects/modules.md`. Initialization syntax remains planned.
+`rules/projects/modules.md`. Sec 0.1 has no implicit user-level module
+initializer; executable startup is defined by
+`rules/compiler/initialization.md` and remains ordinary explicit program flow.
 
 ---
 
@@ -1928,42 +1929,55 @@ The total field width must match the register width.
 
 ```text
 UnitDeclaration
-    ::= "unit" Identifier [ TypeReference ] [ UnitCategory ]
+    ::= "unit" Identifier [ UnitDefaultNumericType ] [ UnitCategory ]
 
 UnitCategory
     ::= Contextual("physical")
       | Contextual("currency")
+      | Contextual("information")
+      | Contextual("ratio")
       | Contextual("other")
 ```
+
+`UnitDefaultNumericType` must resolve to a plain compiler-known numeric scalar
+carrier and must not itself be unit-bearing. It defaults to `decimal`.
+`UnitCategory` defaults to `other`. Unit identifiers remain subject to semantic
+reserved-name validation; in particular, `bit` and `byte` cannot be declared as
+units.
 
 Examples:
 
 ```sec
-unit Hertz decimal<Hz>
+unit Hertz physical
 unit Packet uint other
-unit Metre decimal physical
+unit Metre physical
 unit Count
 unit Euro currency
 ```
 
-When no base type is written, the current parser uses `decimal`.
-
-Complete unit metadata belongs to `units.txt`.
+Complete unit semantics belong to `rules/types/units.md`.
 
 ---
 
 # Unit metadata inside impl
 
-The parser recognizes contextual unit metadata names inside `impl`:
+The parser recognizes these contextual unit metadata names inside `impl`:
 
 ```text
-dimension
-scale
-system
-longName
-symbol
-baseUnit
-status
+LongName
+Symbol
+BaseUnit
+Status
+Dimension
+Kind
+Scale
+System
+Transform
+Offset
+Origin
+LogBase
+LogFactor
+Reference
 ```
 
 Grammar shape:
@@ -1973,7 +1987,8 @@ UnitMetadataDeclaration
     ::= ContextualUnitMetadataName ":" TokensUntilLineEnd
 ```
 
-This syntax remains specialized and must be synchronized with `units.txt`.
+PascalCase is canonical. Case and underscore tolerant parsing may remain as a
+Sec 0.1 migration aid.
 
 ---
 
@@ -2441,8 +2456,9 @@ same mandatory explicit identifier as instance setters:
 
 There is no implicit setter-value binding.
 
-Complete initialization order belongs to `static.md` and
-`initialization.md`.
+Compile-time static dependency order belongs to `rules/declarations/static.md`.
+Executable startup and shutdown planning belong to
+`rules/compiler/initialization.md`.
 
 ---
 
@@ -4023,7 +4039,21 @@ Parameter names do not appear in function type references.
 
 ```text
 UnitAnnotation
-    ::= "<" UnitTokens ">"
+    ::= "<" UnitExpression ">"
+
+UnitExpression
+    ::= UnitProduct
+
+UnitProduct
+    ::= UnitFactor { ( "*" | "/" ) UnitFactor }
+
+UnitFactor
+    ::= UnitAtom [ "^" SignedIntegerConstant ]
+
+UnitAtom
+    ::= QualifiedIdentifier
+      | "1"
+      | "(" UnitExpression ")"
 ```
 
 Examples:
@@ -4034,10 +4064,9 @@ decimal<m/s>
 Speed<km/h>
 ```
 
-The unit parser currently preserves the inner token spelling as one unit
-expression.
-
-Unit algebra is semantic.
+The parser preserves source spelling. Semantic normalization determines
+dimensional equivalence and does not make `<mps>` a syntactic alias for
+`<m/s>`.
 
 ---
 
@@ -4048,9 +4077,10 @@ UnitOnlyType
     ::= UnitAnnotation
 ```
 
-This syntax is parsed for specialized unit contexts.
-
-Its general use must remain synchronized with `units.txt`.
+`<NamedUnit>` uses the named unit's declared default numeric carrier, or
+`decimal` when none is declared. A compound structural unit-only type such as
+`<m/s>` always defaults to `decimal`; an explicit carrier may be written as
+`float64<m/s>` or `decimal<m/s>`.
 
 ---
 
@@ -4691,7 +4721,7 @@ formatter.md
 default_values.md
 types.md
 contracts.md
-units.txt
+types/units.md
 struct.md
 enums.md
 unions.md

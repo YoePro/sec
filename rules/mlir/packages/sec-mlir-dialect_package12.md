@@ -8,8 +8,8 @@ Package ID: `SEC-MLIR-P12`\
 Package title: `Enum, Union, Result and Option Match CFG`\
 Repository: `https://github.com/YoePro/sec`\
 Repository branch: `main`\
-Repository sync commit used for this package: `152c772`\
-Repository sync date: `2026-08-09`\
+Repository sync commit used for this package: `20b3606`\
+Repository sync date: `2026-08-18`\
 Semantic IR version before package: `1`\
 Semantic IR version after package: `1`\
 Sec MLIR dialect schema before package: `7`\
@@ -39,8 +39,46 @@ Arms are considered in source order.
 
 The first arm whose pattern and optional guard both succeed is selected.
 
-General structural destructuring, literal/range matching, ownership-sensitive
-payload extraction and physical enum/union lowering remain outside this package.
+Shallow named-field destructuring, compiler-known union `empty` state,
+ownership-sensitive payload extraction and physical enum/union lowering remain
+outside this package.
+
+## Match revision 2.0 synchronization
+
+This package was re-audited on 2026-08-18 against the canonical
+`rules/control-flow/flowcontrol_match.md`, document revision 2.0, repository
+baseline `56be75d`.
+
+The following revision-2 requirements are part of the implemented P12 CFG
+contract:
+
+```text
+single subject evaluation
+source-order first-match selection
+guard-false continuation
+enum, union, Result and Option variant tests
+whole-payload copy-trivial binding and payload discard
+expression SSA merge
+statement continuation
+all-terminating statement match
+synthesized exhaustive residual
+```
+
+The phrase `union empty variant` in the original package material means a
+payload-less declared variant. It does not mean the compiler-known `empty`
+initialization state introduced by match revision 2.0. The latter needs a
+distinct resolved pattern kind and initialization-state fact before Semantic IR
+can lower it, and remains tracked by the frontend match integration.
+
+Revision-2 shallow named-field destructuring depends on resolved field-binding
+facts and struct semantic values. Guard-committed moves, pattern borrows and
+non-trivial discarded arm values depend on ownership, cleanup and destruction
+IR. Contextual value-producing arm blocks depend on a resolved final-value fact
+for every continuing block path. P12 rejects these forms explicitly instead of
+guessing their semantics; their normative validity is unchanged.
+
+Revision 2.0 assigns general literal and range selection to `switch`. P12 does
+not introduce literal or range pattern lowering.
 
 ---
 
@@ -2177,48 +2215,48 @@ No LLVM dialect is generated.
 Package 12 is complete only when:
 
 ```text
-[ ] repository baseline 152c772 or newer sync documented
+[x] repository baseline 152c772 or newer sync documented
 [ ] previous regressions remain green
-[ ] wide builtin invariant remains
-[ ] enum-domain normative amendment applied
-[ ] Semantic IR match amendment applied
-[ ] dialect schema v8 installed
-[ ] lowering spec v8 installed
-[ ] enum alias coverage corrected to numeric value classes
-[ ] unnamed enum values reflected in exhaustiveness
-[ ] finite full-domain enum proof implemented
-[ ] ResolvedMatchPlan API implemented
-[ ] MatchPlan query is read-only
-[ ] subject evaluated exactly once
-[ ] source arm order preserved
-[ ] guard order preserved
-[ ] guard evaluated only after match
-[ ] first-match semantics preserved
-[ ] enum match lowering implemented
-[ ] union empty variant lowering implemented
-[ ] union copy-trivial single payload lowering implemented
-[ ] union payload discard implemented
-[ ] Result match lowering implemented
-[ ] Option match lowering implemented
-[ ] catch-all implemented
-[ ] expression SSA merge implemented
-[ ] statement continuation implemented
-[ ] return/terminate arm separation implemented
-[ ] Semantic IR UnreachableOp implemented
-[ ] sec.unreachable implemented
-[ ] exhaustive residual path uses synthesized unreachable
-[ ] match provenance metadata emitted
-[ ] --sec-verify-match-cfg registered
-[ ] Result guard verifier accepts match form
-[ ] union guard verifier accepts match form
-[ ] ref/ref mut payload remains explicit unsupported
-[ ] move-only payload remains explicit unsupported
-[ ] struct-like whole-payload binding remains explicit unsupported
-[ ] no general literal/range matching added
-[ ] no physical enum/union lowering added
-[ ] check-sec-mlir passes
+[x] wide builtin invariant remains
+[x] enum-domain normative amendment applied
+[x] Semantic IR match amendment applied
+[x] dialect schema v8 installed
+[x] lowering spec v8 installed
+[x] enum alias coverage corrected to numeric value classes
+[x] unnamed enum values reflected in exhaustiveness
+[x] finite full-domain enum proof implemented
+[x] ResolvedMatchPlan API implemented
+[x] MatchPlan query is read-only
+[x] subject evaluated exactly once
+[x] source arm order preserved
+[x] guard order preserved
+[x] guard evaluated only after match
+[x] first-match semantics preserved
+[x] enum match lowering implemented
+[x] payload-less union variant lowering implemented
+[x] union copy-trivial single payload lowering implemented
+[x] union payload discard implemented
+[x] Result match lowering implemented
+[x] Option match lowering implemented
+[x] catch-all implemented
+[x] expression SSA merge implemented
+[x] statement continuation implemented
+[x] return/terminate arm separation implemented
+[x] Semantic IR UnreachableOp implemented
+[x] sec.unreachable implemented
+[x] exhaustive residual path uses synthesized unreachable
+[x] match provenance metadata emitted
+[x] --sec-verify-match-cfg registered
+[x] Result guard verifier accepts match form
+[x] union guard verifier accepts match form
+[x] ref/ref mut payload remains explicit unsupported
+[x] move-only payload remains explicit unsupported
+[x] struct-like whole-payload binding remains explicit unsupported
+[x] no general literal/range lowering added
+[x] no physical enum/union lowering added
+[x] check-sec-mlir passes
 [ ] go test ./... passes
-[ ] legacy paths remain operational
+[x] legacy paths remain operational
 ```
 
 ---

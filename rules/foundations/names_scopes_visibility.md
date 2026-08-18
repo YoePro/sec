@@ -1193,7 +1193,7 @@ struct.md
 enums.md
 unions.md
 declarations/registers.md
-units.txt
+types/units.md
 collections.md
 shaped-types.md
 flowcontrol_for.md

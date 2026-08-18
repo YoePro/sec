@@ -1349,6 +1349,7 @@ fn Invalid(
 
 func TestNamedUnitTypeRegistryStoresUnit(t *testing.T) {
 	input := `
+unit SEK currency
 type Money decimal<SEK>
 type Speed decimal<m/s>
 `
@@ -1377,9 +1378,9 @@ func TestUnitDeclarationRegistersSemanticUnit(t *testing.T) {
 	input := `
 module main
 
-unit Hertz decimal<Hz>
+unit Hertz physical
 unit Packet uint other
-type Frequency decimal<hertz>
+type Frequency decimal<Hertz>
 
 let hz: Hertz := 10
 let f: Frequency := 10
@@ -1394,7 +1395,7 @@ let p: Packet := 3u
 		t.Fatalf("wrong Hertz type: %+v", hertz)
 	}
 	if !hertz.Dimension.Equal(analyzer.types["Frequency"].Dimension) {
-		t.Fatalf("Hertz and hertz should share physical dimension. got=%+v want=%+v", hertz.Dimension, analyzer.types["Frequency"].Dimension)
+		t.Fatalf("Hertz declaration and use should share one unit dimension. got=%+v want=%+v", hertz.Dimension, analyzer.types["Frequency"].Dimension)
 	}
 
 	if unit := analyzer.units["Hertz"]; unit.Category != PhysicalUnit {
@@ -1462,7 +1463,7 @@ let power: <hp> := 10g
 	}
 
 	fastType := analyzer.symbols["fast"].Type
-	if fastType.Name != "float" || fastType.Unit != "s" {
+	if fastType.Name != "decimal" || fastType.Unit != "s" {
 		t.Fatalf("wrong fast type: %+v", fastType)
 	}
 
@@ -1501,10 +1502,141 @@ unit Bad string
 	errors := analyzeSourceRaw(t, input)
 
 	expected := []string{
-		"unit Bad must use numeric storage, got string at 4:10",
+		"unit Bad default representation must be a plain compiler-known numeric scalar, got string at 4:10",
 	}
 
 	assertSemaErrors(t, errors, expected)
+}
+
+func TestUnitDeclarationRejectsNamedNumericDefaultCarrier(t *testing.T) {
+	input := `
+module main
+
+type Count int
+unit Item Count other
+`
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"unit Item default representation must be a plain compiler-known numeric scalar, got Count at 5:11",
+	})
+}
+
+func TestRevisionTwoUnitCategoryDefaults(t *testing.T) {
+	input := `
+unit Percent ratio
+unit Octet uint information
+unit EUR currency
+unit Packet
+`
+	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
+	assertSemaErrors(t, errors, nil)
+	if unit := analyzer.units["Percent"]; unit.Category != RatioUnit || !unit.Dimension.IsZero() {
+		t.Fatalf("ratio default=%+v", unit)
+	}
+	if unit := analyzer.units["Octet"]; unit.Category != InformationUnit || unit.Dimension.Base["information"] != 1 {
+		t.Fatalf("information default=%+v", unit)
+	}
+	if unit := analyzer.units["EUR"]; unit.Category != CurrencyUnit || unit.Dimension.Base["EUR"] != 1 {
+		t.Fatalf("currency default=%+v", unit)
+	}
+	if unit := analyzer.units["Packet"]; unit.Category != OtherUnit || unit.Dimension.Base["Packet"] != 1 {
+		t.Fatalf("other default=%+v", unit)
+	}
+}
+
+func TestUnitNamesRejectCompilerKnownCollisions(t *testing.T) {
+	input := `
+module main
+
+unit bit information
+unit byte information
+unit list other
+`
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"unit name bit is compiler-known and cannot be declared at 4:6",
+		"unit name byte is compiler-known and cannot be declared at 5:6",
+		"unit name list is compiler-known and cannot be declared at 6:6",
+	})
+}
+
+func TestStructuralUnitExpressionsAndCarrierDefaults(t *testing.T) {
+	input := `
+unit widget other
+unit tick other
+
+let speed: <widget/tick> := 10
+let acceleration: <widget/tick^2> := 2
+let grouped: float<(widget/tick)^2> := 3g
+let identity: <widget/widget> := 1
+`
+	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
+	assertSemaErrors(t, errors, nil)
+	if speed := analyzer.symbols["speed"].Type; speed.Kind != DecimalType || speed.Dimension.Base["widget"] != 1 || speed.Dimension.Base["tick"] != -1 {
+		t.Fatalf("speed type=%+v", speed)
+	}
+	if acceleration := analyzer.symbols["acceleration"].Type; acceleration.Dimension.Base["tick"] != -2 {
+		t.Fatalf("acceleration type=%+v", acceleration)
+	}
+	if grouped := analyzer.symbols["grouped"].Type; grouped.Kind != FloatType || grouped.Dimension.Base["widget"] != 2 || grouped.Dimension.Base["tick"] != -2 {
+		t.Fatalf("grouped type=%+v", grouped)
+	}
+	if identity := analyzer.symbols["identity"].Type; identity.Kind != DecimalType || !identity.Dimension.IsZero() {
+		t.Fatalf("identity type=%+v", identity)
+	}
+}
+
+func TestUnitMetadataKindAndTransforms(t *testing.T) {
+	input := `
+unit Celsius physical
+impl Celsius {
+	Kind: temperature
+	Scale: 1
+	Transform: affine
+	Offset: 273.15
+	Origin: absolute_zero
+}
+
+unit Decibel ratio
+impl Decibel {
+	Kind: ratio
+	Transform: logarithmic
+	LogBase: 10
+	LogFactor: 10
+	Reference: 1
+}
+`
+	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
+	assertSemaErrors(t, errors, nil)
+	celsius := analyzer.units["Celsius"]
+	if celsius.Kind != "temperature" || celsius.Transform != AffineUnitTransform || celsius.Offset != "273.15" || celsius.Origin != "absolute_zero" {
+		t.Fatalf("Celsius metadata=%+v", celsius)
+	}
+	decibel := analyzer.units["Decibel"]
+	if decibel.Kind != "ratio" || decibel.Transform != LogarithmicUnitTransform || decibel.LogBase != "10" || decibel.LogFactor != "10" || decibel.Reference != "1" {
+		t.Fatalf("Decibel metadata=%+v", decibel)
+	}
+}
+
+func TestUnitMetadataRejectsIncompleteTransforms(t *testing.T) {
+	input := `
+module main
+
+unit BadAffine physical
+impl BadAffine {
+	Transform: affine
+}
+unit BadLog ratio
+impl BadLog {
+	Transform: logarithmic
+	LogBase: 10
+}
+`
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"affine unit BadAffine requires Scale, Offset, and Origin metadata at 5:6",
+		"logarithmic unit BadLog requires LogBase, LogFactor, and Reference metadata at 9:6",
+	})
 }
 
 func TestUnitConversionRequiresCompatibleDimensions(t *testing.T) {
@@ -1921,6 +2053,7 @@ func TestRegisterInvalidFixture(t *testing.T) {
 
 func TestUnitAliasTypesAreNominal(t *testing.T) {
 	input := `
+unit SEK currency
 type Money decimal<SEK>
 type Speed decimal<m/s>
 
@@ -1934,7 +2067,7 @@ fn Test() void {
 	errors := analyzeSource(t, input)
 
 	expected := []string{
-		"cannot add Speed to Money at 8:8",
+		"cannot add Speed to Money at 9:8",
 	}
 
 	assertSemaErrors(t, errors, expected)
@@ -1982,6 +2115,7 @@ let d := v * t
 
 func TestUnitTypeMultipliedByIntKeepsUnitType(t *testing.T) {
 	input := `
+unit SEK currency
 type Money decimal<SEK>
 
 let m: Money := 10
@@ -1999,6 +2133,7 @@ let doubled := m * 2
 
 func TestMoneyTimesMoneyIsInvalid(t *testing.T) {
 	input := `
+unit SEK currency
 type Money decimal<SEK>
 
 let a: Money := 10
@@ -2009,7 +2144,7 @@ let invalid := a * b
 	errors := analyzeSource(t, input)
 
 	expected := []string{
-		"cannot multiply Money by Money at 6:18",
+		"cannot multiply Money by Money at 7:18",
 	}
 
 	assertSemaErrors(t, errors, expected)
@@ -2017,6 +2152,7 @@ let invalid := a * b
 
 func TestSameUnitDivisionInfersDecimal(t *testing.T) {
 	input := `
+unit SEK currency
 type Money decimal<SEK>
 
 let a: Money := 10
@@ -2153,7 +2289,7 @@ fn Preserve(value: any) int {
 		"type name int is compiler-known and cannot be redeclared",
 		"type name Result is compiler-known and cannot be redeclared",
 		"type name any is compiler-known and cannot be redeclared",
-		"type name string is compiler-known and cannot be redeclared",
+		"unit name string is compiler-known and cannot be declared",
 	}
 	if len(errors) != len(wants) {
 		t.Fatalf("errors = %#v, want %d diagnostics", errors, len(wants))
@@ -3933,6 +4069,8 @@ impl Vehicle {
 		}
 	}
 }
+
+unit SEK currency
 `
 
 	errors := analyzeSource(t, input)
@@ -4987,6 +5125,8 @@ fn MissingHandler() Speed {
 	}
 	return speed
 }
+
+unit SEK currency
 `
 
 	errors := analyzeSource(t, input)
@@ -6364,6 +6504,31 @@ fn Test() int {
 	assertSemaErrors(t, errors, nil)
 }
 
+func TestExhaustiveMatchExpressionWithReturningBlockArmsIsNever(t *testing.T) {
+	input := `
+module main
+
+fn Next(found: Option[int]) Option[int] {
+	return match found {
+		Some(index) => {
+			return Some(index)
+		}
+		None => {
+			return None()
+		}
+	}
+}
+`
+
+	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+
+	functions := analyzer.functions["Next"]
+	if len(functions) != 1 {
+		t.Fatalf("Next functions = %#v, want one", functions)
+	}
+}
+
 func TestMatchStatementAssignmentsMergeAcrossExhaustiveArms(t *testing.T) {
 	input := `
 module main
@@ -6456,6 +6621,31 @@ fn OpenDomain(value: Open) int {
 	assertSemaErrors(t, errors, []string{
 		"unreachable enum match arm; numeric value is already covered by Off at 20:3",
 	})
+}
+
+func TestMatchRuneSubjectRejectsCharacterLiteralPatterns(t *testing.T) {
+	input := `
+module main
+
+fn Classify(character: rune) int {
+	return match character {
+		'-' => 1
+		'\n' => 2
+		_ => 0
+	}
+}
+`
+
+	p := parser.New(lexer.New(input))
+	result := p.Parse()
+	if !result.HasErrors || len(p.Errors()) != 2 {
+		t.Fatalf("parser errors = %v", p.Errors())
+	}
+	for _, err := range p.Errors() {
+		if !strings.Contains(err, "literal and range match patterns are not part of Sec 0.1; use switch") {
+			t.Fatalf("wrong parser guidance: %s", err)
+		}
+	}
 }
 
 func TestMatchErrDiscardPatternIsInvalid(t *testing.T) {

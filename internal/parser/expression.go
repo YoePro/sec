@@ -2,6 +2,7 @@ package parser
 
 import (
 	"fmt"
+	"strings"
 
 	"sec/internal/ast"
 	compilerdiagnostics "sec/internal/diagnostics"
@@ -168,7 +169,14 @@ func (p *Parser) parseExpression(currentPrecedence precedence) ast.Expression {
 			p.curToken.Column,
 		)
 		p.addDiagnostic(compilerdiagnostics.ParserInvalidExpression, p.curToken, nil, nil, "%s", message)
-		return p.invalidExpression(p.curToken, message, compilerdiagnostics.ParserInvalidExpression)
+		invalid := p.invalidExpression(p.curToken, message, compilerdiagnostics.ParserInvalidExpression)
+		if p.curToken.Type == lexer.IF {
+			recovery := p.skipUnsupportedConditionalExpression()
+			invalid.Recovery.Start = recovery.Start
+			invalid.Recovery.End = recovery.End
+			invalid.Recovery.Skipped = recovery.Skipped
+		}
+		return invalid
 	}
 
 	for p.peekToken.Type != lexer.EOF && currentPrecedence < p.peekPrecedence() {
@@ -237,6 +245,48 @@ func (p *Parser) parseExpression(currentPrecedence precedence) ast.Expression {
 	}
 
 	return left
+}
+
+// skipUnsupportedConditionalExpression keeps a currently unsupported `if`
+// expression from breaking the surrounding statement and declaration shape.
+// It consumes the complete if/else-if/else chain but leaves the next sibling
+// statement untouched.
+func (p *Parser) skipUnsupportedConditionalExpression() RecoveryEvent {
+	start := p.curToken
+	end := start
+	skipped := 1
+	delimiters := newDelimiterStack()
+	seenBody := false
+	allowContinuation := false
+
+	for p.peekToken.Type != lexer.EOF {
+		if delimiters.empty() && seenBody {
+			if p.peekToken.Type == lexer.ELSE {
+				p.nextToken()
+				end = p.curToken
+				skipped++
+				allowContinuation = true
+				continue
+			}
+			if !allowContinuation {
+				break
+			}
+		}
+
+		if !delimiters.canConsume(p.peekToken.Type) {
+			break
+		}
+		p.nextToken()
+		end = p.curToken
+		skipped++
+		if p.curToken.Type == lexer.LBRACE {
+			seenBody = true
+			allowContinuation = false
+		}
+		delimiters.consume(p.curToken.Type)
+	}
+
+	return p.recordSkippedRecovery(start, end, skipped, RecoveryProbable)
 }
 
 func (p *Parser) parseNewExpression() ast.Expression {
@@ -403,7 +453,7 @@ func (p *Parser) parseMatchArmBlock() []*ast.MatchArm {
 		arm := p.parseMatchArm()
 		if arm == nil {
 			recovery := p.skipMatchArm(start)
-			pattern := p.invalidPattern(start, diagnosticStart, recovery)
+			pattern := p.invalidMatchPattern(start, diagnosticStart, recovery)
 			arms = append(arms, &ast.MatchArm{
 				Token: start, Pattern: pattern, Invalid: true, Recovery: pattern.Recovery,
 			})
@@ -416,14 +466,9 @@ func (p *Parser) parseMatchArmBlock() []*ast.MatchArm {
 
 func (p *Parser) parseMatchArm() *ast.MatchArm {
 	arm := &ast.MatchArm{Token: p.curToken}
-	if p.curToken.Type == lexer.UNDERSCORE {
-		arm.Pattern = &ast.Identifier{Token: p.curToken, Value: "_"}
-	} else {
-		pattern := p.parseExpression(LOWEST)
-		if pattern == nil {
-			return nil
-		}
-		arm.Pattern = pattern
+	arm.Pattern = p.parseMatchPattern()
+	if arm.Pattern == nil {
+		return nil
 	}
 
 	if p.peekToken.Type == lexer.WHERE {
@@ -463,6 +508,134 @@ func (p *Parser) parseMatchArm() *ast.MatchArm {
 	}
 
 	return arm
+}
+
+func (p *Parser) parseMatchPattern() *ast.MatchPattern {
+	start := p.curToken
+	if start.Type == lexer.UNDERSCORE {
+		return &ast.MatchPattern{Token: start, Kind: ast.MatchPatternCatchAll}
+	}
+	if start.Type != lexer.IDENT {
+		p.addCanonicalMatchPatternError(start)
+		return nil
+	}
+	if start.Lexeme == "empty" {
+		if p.peekToken.Type == lexer.DOT || p.peekToken.Type == lexer.LPAREN || p.peekToken.Type == lexer.LBRACE {
+			p.addError("the compiler-known empty match pattern cannot be qualified or bind a payload at %d:%d", start.Line, start.Column)
+			return nil
+		}
+		return &ast.MatchPattern{Token: start, Kind: ast.MatchPatternEmpty, Name: "empty"}
+	}
+
+	parts := []string{start.Lexeme}
+	for p.peekToken.Type == lexer.DOT {
+		p.nextToken()
+		if !p.expectPeek(lexer.IDENT) {
+			p.addError("expected variant name after '.' in match pattern at %d:%d", p.peekToken.Line, p.peekToken.Column)
+			return nil
+		}
+		parts = append(parts, p.curToken.Lexeme)
+	}
+	pattern := &ast.MatchPattern{Token: start, Kind: ast.MatchPatternVariant, Name: strings.Join(parts, "."), NameToken: p.curToken}
+	switch p.peekToken.Type {
+	case lexer.LPAREN:
+		p.nextToken()
+		p.nextToken()
+		pattern.Binding = p.parseMatchPatternBinding()
+		if pattern.Binding == nil {
+			return nil
+		}
+		if p.peekToken.Type != lexer.RPAREN {
+			if p.peekToken.Type == lexer.LPAREN {
+				p.addError("nested match patterns are not part of Sec 0.1; use another match at %d:%d", p.peekToken.Line, p.peekToken.Column)
+			} else {
+				p.addError("match variant payload must contain exactly one binding at %d:%d", p.peekToken.Line, p.peekToken.Column)
+			}
+			return nil
+		}
+		p.nextToken()
+	case lexer.LBRACE:
+		p.nextToken()
+		pattern.Kind = ast.MatchPatternFields
+		pattern.Fields = p.parseMatchFieldPatterns()
+		if pattern.Fields == nil {
+			return nil
+		}
+	}
+	return pattern
+}
+
+func (p *Parser) parseMatchPatternBinding() *ast.MatchPatternBinding {
+	binding := &ast.MatchPatternBinding{Token: p.curToken, Mode: ast.MatchBindingValue}
+	if p.curToken.Type == lexer.REF {
+		binding.Mode = ast.MatchBindingSharedRef
+		if p.peekToken.Type == lexer.MUT {
+			p.nextToken()
+			binding.Mode = ast.MatchBindingMutableRef
+		}
+		if p.peekToken.Type != lexer.IDENT {
+			p.addError("match payload reference must bind an identifier at %d:%d", p.peekToken.Line, p.peekToken.Column)
+			return nil
+		}
+		p.nextToken()
+	}
+	if p.curToken.Type != lexer.IDENT && p.curToken.Type != lexer.UNDERSCORE {
+		p.addError("match payload must bind an identifier, ref identifier, ref mut identifier, or _ at %d:%d", p.curToken.Line, p.curToken.Column)
+		return nil
+	}
+	binding.Name = &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme}
+	return binding
+}
+
+func (p *Parser) parseMatchFieldPatterns() []*ast.MatchFieldPattern {
+	fields := []*ast.MatchFieldPattern{}
+	for p.peekToken.Type != lexer.RBRACE && p.peekToken.Type != lexer.EOF {
+		p.nextToken()
+		if p.curToken.Type != lexer.IDENT {
+			p.addError("expected field name in shallow match pattern at %d:%d", p.curToken.Line, p.curToken.Column)
+			return nil
+		}
+		fieldName := &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme}
+		field := &ast.MatchFieldPattern{Token: p.curToken, Field: fieldName}
+		if p.peekToken.Type == lexer.COLON {
+			p.nextToken()
+			p.nextToken()
+			field.Binding = p.parseMatchPatternBinding()
+			if field.Binding == nil {
+				return nil
+			}
+		} else {
+			field.Binding = &ast.MatchPatternBinding{Token: fieldName.Token, Name: &ast.Identifier{Token: fieldName.Token, Value: fieldName.Value}, Mode: ast.MatchBindingValue}
+		}
+		fields = append(fields, field)
+		switch p.peekToken.Type {
+		case lexer.COMMA:
+			p.nextToken()
+		case lexer.RBRACE:
+		default:
+			if p.peekToken.Line <= p.curToken.Line {
+				p.addError("expected ',' or '}' after match field pattern at %d:%d", p.peekToken.Line, p.peekToken.Column)
+				return nil
+			}
+		}
+	}
+	if p.peekToken.Type != lexer.RBRACE {
+		p.addError("unterminated shallow match field pattern")
+		return nil
+	}
+	p.nextToken()
+	return fields
+}
+
+func (p *Parser) addCanonicalMatchPatternError(token lexer.Token) {
+	switch token.Type {
+	case lexer.TRUE, lexer.FALSE:
+		p.addError("boolean match patterns are not part of Sec 0.1; use if/else at %d:%d", token.Line, token.Column)
+	case lexer.INT, lexer.FLOAT, lexer.STRING, lexer.CHAR:
+		p.addError("literal and range match patterns are not part of Sec 0.1; use switch at %d:%d", token.Line, token.Column)
+	default:
+		p.addError("expected _, empty, or a variant pattern at %d:%d", token.Line, token.Column)
+	}
 }
 
 func (p *Parser) skipMatchArm(start lexer.Token) RecoveryEvent {

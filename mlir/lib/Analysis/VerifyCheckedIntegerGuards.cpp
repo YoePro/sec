@@ -7,6 +7,7 @@
 #include "llvm/ADT/STLExtras.h"
 
 #include <map>
+#include <optional>
 #include <set>
 
 namespace sec {
@@ -170,6 +171,25 @@ LogicalResult sec::verifyResultGuards(func::FuncOp function) {
       return test.emitOpError("predicate must have exactly one use"),
              WalkResult::interrupt();
 
+    if (test->hasAttr("sec.match_id")) {
+      auto testID = test->getAttrOfType<IntegerAttr>("sec.match_id");
+      auto testArm = test->getAttrOfType<IntegerAttr>("sec.match_arm_index");
+      auto testStage = test->getAttrOfType<StringAttr>("sec.match_stage");
+      auto branchID = branch->getAttrOfType<IntegerAttr>("sec.match_id");
+      auto branchArm = branch->getAttrOfType<IntegerAttr>("sec.match_arm_index");
+      auto branchStage = branch->getAttrOfType<StringAttr>("sec.match_stage");
+      if (!testID || !testArm || !testStage || !branchID || !branchArm ||
+          !branchStage || testID != branchID || testArm != branchArm ||
+          testStage.getValue() != "pattern" ||
+          branchStage.getValue() != "pattern")
+        return test.emitOpError("has inconsistent match provenance"),
+               WalkResult::interrupt();
+      // A Result match arm may reverse the predicate edges for Ok and may
+      // intentionally discard either payload. Match CFG and the unwrap ops
+      // verify those paths without imposing try's fixed Err/Ok shape.
+      return WalkResult::advance();
+    }
+
     Block *errBlock = branch.getTrueDest();
     Block *okBlock = branch.getFalseDest();
     auto err = errBlock->empty()
@@ -317,8 +337,11 @@ LogicalResult sec::verifyUnionGuards(func::FuncOp function) {
 LogicalResult sec::verifyMatchCFG(func::FuncOp function) {
   struct Group {
     int64_t lastArm = -1;
+    int64_t catchAllArm = -1;
     Block *merge = nullptr;
-    Value enumSubject;
+    Value subject;
+    std::optional<unsigned> mergeArity;
+    std::set<int64_t> guardedArms;
     bool hasPattern = false;
     bool hasBodyExit = false;
     bool hasResidual = false;
@@ -339,29 +362,73 @@ LogicalResult sec::verifyMatchCFG(func::FuncOp function) {
     if (arm.getInt() < group.lastArm)
       return operation->emitOpError("match arm provenance is not source ordered"),
              WalkResult::interrupt();
+    if (group.catchAllArm >= 0 && arm.getInt() > group.catchAllArm &&
+        group.guardedArms.count(group.catchAllArm) == 0)
+      return operation->emitOpError("match arm follows an unguarded catch-all"),
+             WalkResult::interrupt();
     group.lastArm = arm.getInt();
     if (stage.getValue() == "pattern") {
       group.hasPattern = true;
-      group.hasCatchAll = group.hasCatchAll || kind.getValue() == "catch-all";
+      if (kind.getValue() == "catch-all") {
+        group.hasCatchAll = true;
+        group.catchAllArm = arm.getInt();
+      }
       if (auto compare = dyn_cast<sec::EnumCmpOp>(operation)) {
-        if (group.enumSubject && group.enumSubject != compare.getLeft())
+        if (group.subject && group.subject != compare.getLeft())
           return compare.emitOpError("match tests must reuse one enum subject"),
                  WalkResult::interrupt();
-        group.enumSubject = compare.getLeft();
+        group.subject = compare.getLeft();
         auto branch = dyn_cast_or_null<cf::CondBranchOp>(operation->getNextNode());
         if (!branch || branch.getCondition() != compare.getResult())
-          return compare.emitOpError("enum match comparison must immediately feed cf.cond_br"),
+          return compare.emitOpError(
+                     "enum match comparison must immediately feed cf.cond_br"),
+                 WalkResult::interrupt();
+      } else if (auto test = dyn_cast<sec::UnionIsVariantOp>(operation)) {
+        if (group.subject && group.subject != test.getValue())
+          return test.emitOpError("match tests must reuse one union subject"),
+                 WalkResult::interrupt();
+        group.subject = test.getValue();
+        auto branch = dyn_cast_or_null<cf::CondBranchOp>(operation->getNextNode());
+        if (!branch || branch.getCondition() != test.getResult())
+          return test.emitOpError(
+                     "union match test must immediately feed cf.cond_br"),
+                 WalkResult::interrupt();
+      } else if (auto test = dyn_cast<sec::ResultIsErrOp>(operation)) {
+        if (group.subject && group.subject != test.getValue())
+          return test.emitOpError("match tests must reuse one Result subject"),
+                 WalkResult::interrupt();
+        group.subject = test.getValue();
+        auto branch = dyn_cast_or_null<cf::CondBranchOp>(operation->getNextNode());
+        if (!branch || branch.getCondition() != test.getResult())
+          return test.emitOpError(
+                     "Result match test must immediately feed cf.cond_br"),
                  WalkResult::interrupt();
       }
+    } else if (stage.getValue() == "guard") {
+      if (!isa<cf::CondBranchOp>(operation))
+        return operation->emitOpError("match guard must be cf.cond_br"),
+               WalkResult::interrupt();
+      group.guardedArms.insert(arm.getInt());
     } else if (stage.getValue() == "body-exit") {
       auto branch = dyn_cast<cf::BranchOp>(operation);
-      if (!branch)
-        return operation->emitOpError("match body exit must be cf.br"),
+      auto returning = dyn_cast<func::ReturnOp>(operation);
+      auto unreachable = dyn_cast<sec::UnreachableOp>(operation);
+      auto failure = dyn_cast<sec::FailArithmeticOp>(operation);
+      if (!branch && !returning && !unreachable && !failure)
+        return operation->emitOpError(
+                   "match body exit must branch or terminate"),
                WalkResult::interrupt();
-      if (group.merge && group.merge != branch.getDest())
-        return branch.emitOpError("match body exits must share one merge"),
-               WalkResult::interrupt();
-      group.merge = branch.getDest();
+      if (branch) {
+        if (group.merge && group.merge != branch.getDest())
+          return branch.emitOpError("match body exits must share one merge"),
+                 WalkResult::interrupt();
+        if (group.mergeArity &&
+            *group.mergeArity != branch.getDestOperands().size())
+          return branch.emitOpError("match body exits must share merge arity"),
+                 WalkResult::interrupt();
+        group.merge = branch.getDest();
+        group.mergeArity = branch.getDestOperands().size();
+      }
       group.hasBodyExit = true;
     } else if (stage.getValue() == "residual") {
       auto unreachable = dyn_cast<sec::UnreachableOp>(operation);

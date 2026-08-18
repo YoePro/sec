@@ -3,8 +3,8 @@ package:
   name: Enum, Union, Result and Option Match CFG
   repository: https://github.com/YoePro/sec
   branch: main
-  repository_sync_commit: 152c772
-  repository_sync_date: '2026-08-09'
+  repository_sync_commit: 20b3606
+  repository_sync_date: '2026-08-18'
   semantic_ir_version_before: 1
   semantic_ir_version_after: 1
   sec_mlir_schema_before: 7
@@ -14,6 +14,30 @@ package:
   goal: Lower resolved variant-oriented match semantics to explicit verified CFG while
     preserving source order, guards and payload safety.
   next_package: Struct Semantic Value Representation
+canonical_match_sync:
+  path: rules/control-flow/flowcontrol_match.md
+  document_revision: '2.0'
+  repository_baseline_reviewed: 56be75d
+  audited: '2026-08-18'
+  implemented_in_p12:
+  - subject evaluated once
+  - source-order first-match CFG
+  - guard-false continuation
+  - enum, union, Result, and Option variant tests
+  - copy-trivial whole-payload binding and discard
+  - expression SSA merge
+  - statement continuation and all-terminating statement forms
+  - synthesized exhaustive residual
+  terminology:
+    package_union_empty_variant: payload-less declared union variant
+    compiler_known_empty: distinct initialization state; not a union variant
+  dependency_boundaries:
+  - compiler-known empty requires resolved initialization-state pattern facts
+  - shallow named-field destructuring requires field-binding and struct-value facts
+  - guarded moves and borrows require ownership commit and cleanup IR
+  - contextual value-producing blocks require resolved final-value path facts
+  - non-trivial statement-arm discard requires destruction IR
+  literal_and_range_patterns: not lowered; canonical revision 2.0 assigns them to switch
 normative_updates:
 - repository_paths:
   - rules/control-flow/flowcontrol_match.md
@@ -72,6 +96,9 @@ scope:
   - SSA merge
   - synthesized unreachable residual
   deferred:
+  - compiler-known union empty initialization-state pattern
+  - shallow named-field destructuring
+  - contextual value-producing arm blocks
   - ref/ref mut payload binding
   - move-only payload binding
   - semantic/conditional copy binding
@@ -216,7 +243,7 @@ tests:
   - int128 underlying
   - uint256 underlying
   union:
-  - empty
+  - payload-less variant
   - single trivial
   - payload discard
   - guarded repeated variant

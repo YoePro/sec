@@ -2109,8 +2109,9 @@ Access may instead require:
 - a synchronization guard;
 - a type-specific operation.
 
-Static initialization and destruction order belong to `initialization.md` and
-`static.md`.
+Executable initialization and shutdown planning belong to
+`rules/compiler/initialization.md`; compile-time static initialization belongs
+to `rules/declarations/static.md`.
 
 ---
 

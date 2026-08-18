@@ -514,6 +514,57 @@ fn main() void {
 	}
 }
 
+func TestAnalyzeContinuesDeclarationAnalysisAfterRecoveredBodyError(t *testing.T) {
+	source := `module core
+
+impl string {
+    fn Compare(other: string) int {
+        let minimum := if true {
+            1
+        } else {
+            2
+        }
+        return 0
+    }
+
+    fn StartsWith(prefix: string) bool { return true }
+    fn StartsWith(prefix: string) bool { return false }
+}`
+
+	reported := analyze("file:///tmp/sec/core/recovery.sec", source)
+	if len(reported) != 2 {
+		t.Fatalf("diagnostics = %+v, want the parser error and duplicate signature only", reported)
+	}
+	assertDiagnosticMessage(t, reported, `no prefix parse function for "IF"`)
+	assertDiagnosticMessage(t, reported, `duplicate function "string.StartsWith" with same signature`)
+}
+
+func TestTooManyArgumentsHighlightsFirstExtraExpression(t *testing.T) {
+	source := `module core
+
+fn Only(value: int) int { return value }
+
+fn Use(second: int) int {
+    return Only(1, second + 3)
+}`
+
+	reported := analyze("file:///tmp/sec/core/range.sec", source)
+	for _, diagnostic := range reported {
+		if !strings.Contains(diagnostic.Message, "function Only expects 1 arguments, got 2") {
+			continue
+		}
+		want := lspRange{
+			Start: position{Line: 5, Character: 19},
+			End:   position{Line: 5, Character: 29},
+		}
+		if diagnostic.Range != want {
+			t.Fatalf("extra argument range = %+v, want %+v", diagnostic.Range, want)
+		}
+		return
+	}
+	t.Fatalf("missing too-many-arguments diagnostic in %+v", reported)
+}
+
 func TestOwnershipCodeActionsOfferExplicitMoveFixes(t *testing.T) {
 	tests := []struct {
 		name          string

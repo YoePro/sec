@@ -225,6 +225,38 @@ unit Horsepower float physical
 	}
 }
 
+func TestParseRevisionTwoUnitCategoriesAndMetadata(t *testing.T) {
+	input := `
+unit Octet uint information
+unit Percent ratio
+
+impl Percent {
+	Kind: ratio
+	Transform: logarithmic
+	Offset: 0
+	Origin: zero
+	LogBase: 10
+	LogFactor: 10
+	Reference: 1
+}
+`
+	p := New(lexer.New(input))
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+	if len(program.Statements) != 3 {
+		t.Fatalf("statement count=%d", len(program.Statements))
+	}
+	octet := program.Statements[0].(*ast.UnitDeclStatement)
+	percent := program.Statements[1].(*ast.UnitDeclStatement)
+	if octet.Category != "information" || percent.Category != "ratio" {
+		t.Fatalf("categories: octet=%q percent=%q", octet.Category, percent.Category)
+	}
+	impl := program.Statements[2].(*ast.ImplStatement)
+	if len(impl.Members) != 7 {
+		t.Fatalf("metadata count=%d", len(impl.Members))
+	}
+}
+
 func TestParseRegisterTypeDeclaration(t *testing.T) {
 	input := `
 type MotorProtocol register[8] {
@@ -2911,7 +2943,7 @@ func TestParseUnitsInvalidFixtureRecovery(t *testing.T) {
 	if len(p.Errors()) == 0 {
 		t.Fatal("expected units_invalid.sec to produce parser errors")
 	}
-	if p.Errors()[0] != `unit InvalidCategory category must be physical, currency, or other, got "experimental" at 271:30` {
+	if p.Errors()[0] != `unit InvalidCategory category must be physical, currency, information, ratio, or other, got "experimental" at 271:30` {
 		t.Fatalf("wrong first parser error. got=%q errors=%v", p.Errors()[0], p.Errors())
 	}
 }
@@ -4015,10 +4047,10 @@ func TestInvalidDeclarationIsRetained(t *testing.T) {
 }
 
 func TestMatchRecoveryRetainsInvalidArmAndFollowingSibling(t *testing.T) {
-	input := `fn Test(value: bool) int {
+	input := `fn Test(value: Choice) int {
 	return match value {
-		true 1
-		false => 2
+		First 1
+		Second => 2
 	}
 }`
 	result := New(lexer.New(input)).Parse()
@@ -4030,10 +4062,10 @@ func TestMatchRecoveryRetainsInvalidArmAndFollowingSibling(t *testing.T) {
 	if len(matchExpr.Arms) != 2 {
 		t.Fatalf("match arm count=%d, want invalid arm plus valid sibling", len(matchExpr.Arms))
 	}
-	if pattern, ok := matchExpr.Arms[0].Pattern.(*ast.InvalidPattern); !ok || !matchExpr.Arms[0].Invalid || pattern.Recovery == nil {
+	if pattern := matchExpr.Arms[0].Pattern; pattern == nil || pattern.Kind != ast.MatchPatternInvalid || !matchExpr.Arms[0].Invalid || pattern.Recovery == nil {
 		t.Fatalf("first arm did not retain invalid pattern: %#v", matchExpr.Arms[0])
 	}
-	if pattern, ok := matchExpr.Arms[1].Pattern.(*ast.BooleanLiteral); !ok || pattern.Value {
+	if pattern := matchExpr.Arms[1].Pattern; pattern == nil || pattern.Kind != ast.MatchPatternVariant || pattern.Name != "Second" {
 		t.Fatalf("following match sibling was not retained: %#v", matchExpr.Arms[1].Pattern)
 	}
 }
@@ -4187,8 +4219,8 @@ fn Test(value: bool) int {
 	if !ok {
 		t.Fatalf("let value is not MatchExpression. got=%T", letStmt.Value)
 	}
-	pattern, ok := matchExpr.Arms[0].Pattern.(*ast.Identifier)
-	if !ok || pattern.Value != "_" {
+	pattern := matchExpr.Arms[0].Pattern
+	if pattern == nil || pattern.Kind != ast.MatchPatternCatchAll {
 		t.Fatalf("wrong match pattern. got=%T %#v", matchExpr.Arms[0].Pattern, matchExpr.Arms[0].Pattern)
 	}
 }
@@ -4260,15 +4292,71 @@ fn Test(result: Result[int, IOError]) int {
 	fn := program.Statements[0].(*ast.FunctionDeclaration)
 	ret := fn.Body.Statements[0].(*ast.ReturnStatement)
 	matchExpr := ret.Value.(*ast.MatchExpression)
-	okPattern := matchExpr.Arms[0].Pattern.(*ast.OkExpression)
-	okIdent := okPattern.Value.(*ast.Identifier)
-	if okIdent.Value != "_" {
-		t.Fatalf("wrong Ok discard pattern. got=%q", okIdent.Value)
+	okPattern := matchExpr.Arms[0].Pattern
+	if okPattern.Kind != ast.MatchPatternVariant || okPattern.Name != "Ok" || okPattern.Binding == nil || okPattern.Binding.Name.Value != "_" {
+		t.Fatalf("wrong Ok discard pattern: %#v", okPattern)
 	}
-	errPattern := matchExpr.Arms[1].Pattern.(*ast.ErrExpression)
-	errIdent := errPattern.Value.(*ast.Identifier)
-	if errIdent.Value != "_" {
-		t.Fatalf("wrong Err discard pattern. got=%q", errIdent.Value)
+	errPattern := matchExpr.Arms[1].Pattern
+	if errPattern.Kind != ast.MatchPatternVariant || errPattern.Name != "Err" || errPattern.Binding == nil || errPattern.Binding.Name.Value != "_" {
+		t.Fatalf("wrong Err discard pattern: %#v", errPattern)
+	}
+}
+
+func TestParseCanonicalMatchPatternShapes(t *testing.T) {
+	input := `fn Test(value: Shape) int {
+	return match value {
+		empty => 0
+		Shape.Circle(circle) => 1
+		Rectangle { width, height: h, data: ref payload, state: ref mut mutableState } => 2
+		_ => 3
+	}
+}`
+	p := New(lexer.New(input))
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+	matchExpr := program.Statements[0].(*ast.FunctionDeclaration).Body.Statements[0].(*ast.ReturnStatement).Value.(*ast.MatchExpression)
+	if len(matchExpr.Arms) != 4 {
+		t.Fatalf("arm count=%d", len(matchExpr.Arms))
+	}
+	if pattern := matchExpr.Arms[0].Pattern; pattern.Kind != ast.MatchPatternEmpty {
+		t.Fatalf("empty pattern=%#v", pattern)
+	}
+	if pattern := matchExpr.Arms[1].Pattern; pattern.Kind != ast.MatchPatternVariant || pattern.Name != "Shape.Circle" || pattern.Binding.Name.Value != "circle" {
+		t.Fatalf("whole payload pattern=%#v", pattern)
+	}
+	fields := matchExpr.Arms[2].Pattern
+	if fields.Kind != ast.MatchPatternFields || fields.Name != "Rectangle" || len(fields.Fields) != 4 {
+		t.Fatalf("field pattern=%#v", fields)
+	}
+	wants := []ast.MatchBindingMode{ast.MatchBindingValue, ast.MatchBindingValue, ast.MatchBindingSharedRef, ast.MatchBindingMutableRef}
+	for index, want := range wants {
+		if fields.Fields[index].Binding.Mode != want {
+			t.Fatalf("field %d mode=%s want=%s", index, fields.Fields[index].Binding.Mode, want)
+		}
+	}
+}
+
+func TestRejectsNonCanonicalMatchExpressionPatternsAndRecovers(t *testing.T) {
+	for name, pattern := range map[string]string{
+		"bool":               "true",
+		"integer":            "1",
+		"character":          "'x'",
+		"range":              "1..<4",
+		"infix":              "A | B",
+		"nested":             "Some(Ok(value))",
+		"payload expression": "Some(value + 1)",
+	} {
+		t.Run(name, func(t *testing.T) {
+			input := "fn Test(value: Choice) int { return match value { " + pattern + " => 1 _ => 0 } }"
+			p := New(lexer.New(input))
+			program := p.ParseProgram()
+			if len(p.Errors()) == 0 {
+				t.Fatal("non-canonical pattern should fail")
+			}
+			if len(program.Statements) == 0 {
+				t.Fatal("recovery lost enclosing function")
+			}
+		})
 	}
 }
 
@@ -4803,6 +4891,45 @@ func TestParserPreservesLexerDiagnosticIDs(t *testing.T) {
 			}
 			t.Fatalf("missing lexer diagnostic %s in %+v", test.id, result.Diagnostics)
 		})
+	}
+}
+
+func TestInvalidIfInitializerRecoveryPreservesFollowingImplMethods(t *testing.T) {
+	input := `module core
+
+impl string {
+    fn Compare(other: string) int {
+        let minimum := if true {
+            1
+        } else {
+            2
+        }
+        return 0
+    }
+
+    fn StartsWith(prefix: string) bool { return true }
+    fn StartsWith(prefix: string) bool { return false }
+}`
+
+	result := New(lexer.NewWithFile(input, "sec/core/recovery.sec")).Parse()
+	if !result.HasErrors {
+		t.Fatal("invalid if initializer should produce a parser diagnostic")
+	}
+	if len(result.Program.Statements) != 2 {
+		t.Fatalf("top-level statements = %d, want module plus impl", len(result.Program.Statements))
+	}
+	impl, ok := result.Program.Statements[1].(*ast.ImplStatement)
+	if !ok {
+		t.Fatalf("second statement = %T, want ImplStatement", result.Program.Statements[1])
+	}
+	if len(impl.Members) != 3 {
+		t.Fatalf("impl members = %d, want malformed-body method plus two following methods: %#v", len(impl.Members), impl.Members)
+	}
+	for index := 1; index < 3; index++ {
+		method, ok := impl.Members[index].(*ast.FunctionDeclaration)
+		if !ok || method.Name.Value != "StartsWith" {
+			t.Fatalf("impl member %d = %#v, want StartsWith method", index, impl.Members[index])
+		}
 	}
 }
 

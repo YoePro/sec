@@ -633,7 +633,6 @@ func (b *pitfallBuilder) walkMatch(expression *ast.MatchExpression) {
 		if arm == nil {
 			continue
 		}
-		b.walkExpression(arm.Pattern)
 		b.walkExpression(arm.Guard)
 		b.walkExpression(arm.Body)
 		if arm.ReturnBody != nil {

@@ -921,7 +921,6 @@ func (b *parameterUsageBuilder) walkMatch(expression *ast.MatchExpression) {
 		if arm == nil {
 			continue
 		}
-		b.walkExpression(arm.Pattern)
 		b.walkExpression(arm.Guard)
 		b.walkExpression(arm.Body)
 		b.walkStatement(arm.ReturnBody)

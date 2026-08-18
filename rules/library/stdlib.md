@@ -1240,7 +1240,7 @@ copy_move.md
 destruction.txt
 collections.md
 shaped-types.md
-units.txt
+types/units.md
 concurrency.md
 threads.md
 tasks.txt
@@ -1253,7 +1253,7 @@ scheduling.md
 platform/ffi.md
 projects.txt
 modules.md
-initialization.md
+compiler/initialization.md
 target_profiles.md
 platform_model.md
 platform/abi.md

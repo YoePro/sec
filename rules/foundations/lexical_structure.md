@@ -1897,7 +1897,7 @@ properties.md
 shaped-types.md
 declarations/registers.md
 enums.md
-units.txt
+types/units.md
 functions.md
 declarations/lambda-functions.md
 attributes.md

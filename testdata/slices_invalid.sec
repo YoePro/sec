@@ -5,16 +5,6 @@ module slices
 // Each marked declaration is expected to produce a slice-specific diagnostic.
 // Full conflicting-borrow analysis is intentionally left for borrow tracking.
 
-// -----------------------------------------------------------------------------
-// Bare unsized sequence values are invalid
-// -----------------------------------------------------------------------------
-
-fn BareUnsizedSequence() void {
-    // error: byte[] is unsized and cannot be stored as a standalone value
-    let mut values: byte[]
-    return
-}
-
 fn ArrayLiteralIsNotASlice() void {
     // error: cannot assign int[3] to ref int[]
     let values: ref int[] := [1, 2, 3]

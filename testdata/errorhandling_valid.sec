@@ -81,3 +81,5 @@ fn StatementMatch() void {
 
     return
 }
+
+unit SEK currency

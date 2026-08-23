@@ -35,12 +35,13 @@ type loopContext struct {
 }
 
 type local struct {
-	typ    string
-	ptr    string
-	ref    string
-	lenRef string
-	fnType *ast.TypeReference
-	direct bool
+	typ      string
+	ptr      string
+	ref      string
+	lenRef   string
+	fnType   *ast.TypeReference
+	direct   bool
+	unsigned bool
 }
 
 type enumInfo struct {

@@ -250,9 +250,10 @@ func TestCompilerKnownRegistryHasStableRequiredIDs(t *testing.T) {
 
 func TestCompilerKnownGlobalRegistryHasStableRequiredIDs(t *testing.T) {
 	want := map[string]string{
-		"len":    "CKF-LEN",
-		"SizeOf": "CKF-SIZEOF-TYPE",
-		"fill":   "CKF-FILL",
+		"len":                    "CKF-LEN",
+		"SizeOf":                 "CKF-SIZEOF-TYPE",
+		"fill":                   "CKF-FILL",
+		"__StringSliceUnchecked": "CKF-STRING-SLICE-UNCHECKED",
 	}
 	for _, function := range CompilerKnownFunctions() {
 		if id, ok := want[function.Name]; ok {
@@ -264,6 +265,25 @@ func TestCompilerKnownGlobalRegistryHasStableRequiredIDs(t *testing.T) {
 	}
 	if len(want) != 0 {
 		t.Fatalf("compiler-known global registry is missing %v", want)
+	}
+}
+
+func TestCompilerKnownStringSliceIsInternalAndTyped(t *testing.T) {
+	known, ok := compilerKnownFunction("__StringSliceUnchecked")
+	if !ok {
+		t.Fatal("missing compiler-known string slice operation")
+	}
+	if !known.Internal {
+		t.Fatal("compiler-known string slice operation must be internal")
+	}
+	if known.Result.Kind != StringType || len(known.Parameters) != 3 {
+		t.Fatalf("unexpected string slice signature: %#v", known)
+	}
+	want := []TypeKind{StringType, UintType, UintType}
+	for index, parameter := range known.Parameters {
+		if parameter.Type.Kind != want[index] {
+			t.Fatalf("parameter %d has kind %s, want %s", index, parameter.Type.Kind, want[index])
+		}
 	}
 }
 

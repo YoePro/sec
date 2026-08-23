@@ -381,7 +381,7 @@ func TestAnalyzeLoadsCoreLibrary(t *testing.T) {
 	source := `module main
 
 fn IsBlank(value: string) bool {
-	return value.IsEmpty()
+	return value.IsEmpty
 }
 `
 
@@ -1003,6 +1003,16 @@ func TestCompletionIncludesAllCompilerKnownGlobalFunctions(t *testing.T) {
 	assertCompletionLabels(t, fillItems, []string{"fill"})
 }
 
+func TestCompletionExcludesCompilerInternalFunctions(t *testing.T) {
+	source := "module main\n\nfn Use() void {\n\t__String\n}\n"
+	items := completeSource("", source, strings.Index(source, "__String")+len("__String"))
+	for _, item := range items {
+		if item.Label == "__StringSliceUnchecked" {
+			t.Fatal("compiler-internal string slice operation leaked into completion")
+		}
+	}
+}
+
 func TestHoverUsesDocCommentAboveFunction(t *testing.T) {
 	source := `module main
 
@@ -1390,7 +1400,7 @@ func TestDefinitionResolvesCoreAndStdlibDeclarations(t *testing.T) {
 import "unicode"
 
 fn Check(text: string, ch: rune) bool {
-	return text.IsEmpty() || unicode.IsLetter(ch)
+	return text.IsEmpty || unicode.IsLetter(ch)
 }
 `
 	uri := "file:///tmp/sec-lsp-definition-library/main.sec"

@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"sec/internal/ast"
 	compilerdiagnostics "sec/internal/diagnostics"
@@ -2844,8 +2845,12 @@ func (p *Parser) parseStructFields() []*ast.StructField {
 			p.nextToken()
 			tags, ok := p.parseStructTag(p.curToken)
 			if !ok {
-				for p.peekToken.Type != lexer.RBRACE && p.peekToken.Type != lexer.EOF {
-					p.nextToken()
+				// rules/declarations/struct.md, Field-tag recovery;
+				// correction16.md keeps the valid field and synchronizes at its
+				// comma instead of discarding every later struct field.
+				fields = append(fields, field)
+				if p.skipMalformedStructField() {
+					continue
 				}
 				return fields
 			}
@@ -2898,27 +2903,78 @@ func (p *Parser) skipMalformedStructField() bool {
 	return continued
 }
 
+// parseStructTag implements the open-key field-tag grammar from
+// rules/declarations/struct.md. correction16.md requires separators to be
+// recognized only outside quoted values and malformed quote structure to fail.
 func (p *Parser) parseStructTag(token lexer.Token) ([]ast.StructTag, bool) {
-	raw := strings.TrimPrefix(strings.TrimSuffix(token.Lexeme, "`"), "`")
-	if strings.TrimSpace(raw) == "" {
+	if len(token.Lexeme) < 2 || token.Lexeme[0] != '`' || token.Lexeme[len(token.Lexeme)-1] != '`' {
+		p.addError("invalid struct field tag")
+		return nil, false
+	}
+	raw := []rune(token.Lexeme[1 : len(token.Lexeme)-1])
+	if len(raw) == 0 {
 		return nil, true
 	}
 
 	tags := []ast.StructTag{}
-	for _, part := range strings.Fields(raw) {
-		key, value, ok := strings.Cut(part, ":")
-		if !ok || key == "" || len(value) < 2 || value[0] != '"' || value[len(value)-1] != '"' {
+	for offset := 0; ; {
+		for offset < len(raw) && unicode.IsSpace(raw[offset]) {
+			offset++
+		}
+		if offset == len(raw) {
+			return tags, true
+		}
+
+		keyStart := offset
+		for offset < len(raw) && raw[offset] != ':' && !unicode.IsSpace(raw[offset]) && raw[offset] != '"' {
+			offset++
+		}
+		if offset == keyStart || offset >= len(raw) || raw[offset] != ':' {
+			p.addError("invalid struct field tag")
+			return nil, false
+		}
+		key := string(raw[keyStart:offset])
+		offset++
+		if offset >= len(raw) || raw[offset] != '"' {
+			p.addError("invalid struct field tag")
+			return nil, false
+		}
+		offset++
+
+		var value strings.Builder
+		closed := false
+		for offset < len(raw) {
+			ch := raw[offset]
+			if ch == '"' {
+				offset++
+				closed = true
+				break
+			}
+			if ch == '\\' {
+				if offset+1 >= len(raw) {
+					break
+				}
+				// Struct tags are nested in a raw Sec literal. Preserve the
+				// escape spelling while using it only to find the closing quote.
+				value.WriteRune(ch)
+				offset++
+				value.WriteRune(raw[offset])
+				offset++
+				continue
+			}
+			value.WriteRune(ch)
+			offset++
+		}
+		if !closed || offset < len(raw) && !unicode.IsSpace(raw[offset]) {
 			p.addError("invalid struct field tag")
 			return nil, false
 		}
 
 		tags = append(tags, ast.StructTag{
 			Key:   key,
-			Value: strings.Trim(value, `"`),
+			Value: value.String(),
 		})
 	}
-
-	return tags, true
 }
 
 func (p *Parser) parseImplStatement() ast.Statement {

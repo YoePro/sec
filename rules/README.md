@@ -44,3 +44,17 @@ different lifecycles:
 
 New documents should be placed in the narrowest applicable directory and use
 `.md` unless they extend an existing `.txt` rulebook.
+
+## Implementation traceability
+
+Compiler code that implements a normative language decision should cite the
+canonical rulebook path in a nearby file- or function-level English comment.
+When a correction document drives the change, cite that correction while it is
+active; after archival, the canonical rulebook remains the durable authority.
+
+Comments should identify the semantic reason for non-obvious parser, Sema,
+ownership, control-flow, diagnostic, Semantic IR, lowering, ABI, target, or
+formatter behavior. Generic infrastructure and self-explanatory mechanics do
+not need artificial rule citations. Tests should carry the same traceability
+where it clarifies the contract being protected. Rulebook moves require code
+references to be updated in the same change.

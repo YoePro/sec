@@ -55,6 +55,32 @@ func TestCopyClassificationPrimitiveReferenceAndAggregates(t *testing.T) {
 	}
 }
 
+func TestOwningDynamicArrayAndArenaTraits(t *testing.T) {
+	intType := Type{Name: "int", Kind: IntType}
+	dynamic := Type{Name: "int[]", Kind: ArrayType, Element: &intType, ArrayLength: dynamicArrayLength}
+	fixed := Type{Name: "int[4]", Kind: ArrayType, Element: &intType, ArrayLength: 4}
+	arena := Type{Name: "Arena", Kind: StructType, Intrinsic: true}
+
+	if got := CopyClassificationOf(dynamic); got != CopyMoveOnly {
+		t.Fatalf("dynamic array classification = %q, want %q", got, CopyMoveOnly)
+	}
+	if TriviallyDestructible(dynamic) || EqualityComparable(dynamic) {
+		t.Fatal("owning dynamic array must require destruction and have no ordinary equality")
+	}
+	if got := CopyClassificationOf(fixed); got != CopyTrivial || !TriviallyDestructible(fixed) || !EqualityComparable(fixed) {
+		t.Fatalf("fixed array traits changed: copy=%q destructible=%v comparable=%v", got, TriviallyDestructible(fixed), EqualityComparable(fixed))
+	}
+	if got := CopyClassificationOf(arena); got != CopyMoveOnly || TriviallyDestructible(arena) {
+		t.Fatalf("Arena traits = copy %q, trivial destruction %v", got, TriviallyDestructible(arena))
+	}
+	if canInitialize(dynamic, fixed, nil) || canInitialize(fixed, dynamic, nil) {
+		t.Fatal("fixed and dynamic arrays must not initialize each other implicitly")
+	}
+	if !canInitialize(dynamic, dynamic, nil) {
+		t.Fatal("matching dynamic array owners must remain initialization-compatible")
+	}
+}
+
 func TestCompilerKnownNonCopyableClassification(t *testing.T) {
 	mutex := Type{Name: "Mutex", Kind: StructType}
 	if got := CopyClassificationOf(mutex); got != CopyNonCopyable {
@@ -1561,6 +1587,34 @@ fn Test() void {
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
 		"cannot use partially moved value choice; place choice.<Some> is unavailable at 22:16, previous declaration at 17:8",
+	})
+}
+
+func TestUnionConstructorMovesNonCopyablePayloadSource(t *testing.T) {
+	input := `
+module main
+
+@noCopy
+type Session struct {
+	value: int,
+}
+
+type Choice union {
+	Some(Session),
+	None,
+}
+
+fn Test() void {
+	let session := Session { value: 1 }
+	let choice := Choice.Some(session)
+	discard session
+	discard choice
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"use of moved value session at 17:10, previous declaration at 16:28",
 	})
 }
 

@@ -1,5 +1,5 @@
 schema_version: 1
-updated: "2026-08-17"
+updated: "2026-08-23"
 purpose: >-
   Canonical implementation ledger for compiler and tooling work. Normative
   language behavior remains in rules/, while implementation status is migrated
@@ -50,7 +50,7 @@ integrations:
     implemented:
       - if, else-if, and else syntax with mandatory braces
       - bool-only conditions without implicit truthiness
-      - logical !, &&, and || expressions with left-to-right short-circuit lowering
+      - logical !, &&, and || expressions with left-to-right short-circuit backend lowering; frontend runtime-state effects remain partial
       - ordinary comparison, equality, and membership expressions in conditions
       - try in a condition when the successful result type is bool
       - source-ordered lazy if-chain evaluation
@@ -142,12 +142,13 @@ integrations:
       - lexical loop-body scope
       - break and continue validation and nearest active loop tracking
       - zero-iteration continuation path for normal while loops
-      - while true without a reachable break treated as non-continuing
+      - while true uses a current-loop-targeted break query that stops at nested loops and excludes constant-unreachable branches
       - reachable while-true break paths included in continuation and definite-assignment state
       - unreachable statements after break, continue, and return routed through the canonical error policy
       - LLVM and MLIR condition, body, backedge, continue, break, and exit lowering
       - canonical Markdown metadata with implementation governance kept in this ledger
     remaining:
+      - carry Arena generation through loop-header and backedge fixed points, continue edges, change detection, and replay
       - add dedicated parser diagnostics and tests for do-while, while-else, labeled loop control, loop values, declarations in headers, and pattern-binding conditions
       - permit non-binding boolean is state tests from owning rulebooks while rejecting payload and structural binding in conditions
       - diagnose bodies and statements proven unreachable by constant conditions and non-continuing flow through the canonical unreachable-code policy
@@ -243,9 +244,9 @@ integrations:
       - unique final default validation
       - explicit fallthrough syntax, direct-case placement, final-statement, and successor validation
       - subject and case compatibility plus bool-only subjectless case checking
-      - independent case scopes and definite-assignment merging over continuing paths
-      - switch termination analysis including explicit fallthrough chains
-      - exactly-once subject evaluation and ordered lazy case evaluation
+      - independent case scopes with partial definite-assignment merging; fallthrough destination-state propagation remains incomplete
+      - switch termination analysis for represented direct cases; canonical fallthrough-chain flow remains partial
+      - exactly-once subject inference and lazy backend case evaluation; frontend case-test runtime-state effects remain eager
       - compile-time duplicate integer, bool, and direct string-literal case diagnostics
       - compile-time integer range overlap and value-covered-by-range diagnostics
       - basic relational reachability diagnostics with partial overlap retained
@@ -257,6 +258,8 @@ integrations:
     remaining:
       - add focused Sema and lowering tests proving switch creates no break or continue target and nested switch control resolves only to an enclosing loop
       - add dedicated parser and Sema diagnostics for switch value use, case where guards, and structural or payload-binding patterns
+      - analyze lazy case tests and explicit fallthrough with path-specific runtime state instead of committing skipped-case effects or dropping fallthrough state
+      - normalize enum cases to numeric value classes and recognize complete closed-enum coverage in continuation and return analysis
       - route every statically covered case and item through the canonical unreachable-code policy with useful earlier-case provenance
       - preserve independent case scopes and emit correct ownership, destruction, cleanup, and control-flow edges across fallthrough
       - lower subjectless switch through MLIR
@@ -408,8 +411,11 @@ integrations:
       - semantic_ir.txt now specifies complete resolved match binding actions, guarded commit ordering, arm results, discard, and availability facts
       - lsp.md now requires compiler-owned match binding, guarded move, availability, coverage, hover, hint, completion, and refactoring facts
       - implementation status was removed from the normative match rulebook and migrated here
+      - parser and Sema accept Err(_) as an exhaustive Result error-payload discard in match arms and try handlers
     remaining:
       - implement compiler-known empty union patterns and include reachable empty state in definite-assignment, coverage, Semantic IR, MLIR, diagnostics, and LSP facts without treating moved-from as empty
+      - complete ownership, destruction, Semantic IR, lowering, and LSP facts for discarded Err payloads beyond the represented frontend subset
+      - derive statement-match termination from ResolvedMatchPlan so exhaustive Option, union, enum-alias, open-bit-enum, and nested matches agree with return and reachability analysis
       - implement shallow named-field union destructuring with partial binding, rename, ref and ref mut modes
       - enforce copy-only shallow by-value fields and reject move-only fields without hidden partial moves
       - reject direct bool subjects with guidance to use if and else
@@ -440,7 +446,7 @@ integrations:
       - ordinary enum aliases are duplicate or unreachable by normalized value class
       - open bit-backed enum requires coverage of complete bit domain or catch-all
       - Result match requires explicit Err handling
-      - Err underscore is rejected
+      - Err underscore is accepted as explicit error-payload discard
       - named Err payload plus explicit discard is accepted when discardable
       - Option Some and None exhaustiveness
       - reachable union empty state participates in exhaustiveness
@@ -560,12 +566,13 @@ integrations:
       - string iteration inferred as rune
       - fixed array, reference-slice, list, set, map, vector, and legacy collection-family inference
       - unspecified ordinary map and set iteration order
-      - finite-loop zero-iteration preservation and infinite-loop non-continuation without reachable break
+      - finite-loop zero-iteration preservation and infinite-loop non-continuation through a current-loop-targeted break query that excludes nested-loop and constant-unreachable breaks
       - LLVM lowering for infinite loops, integer ranges, explicit integer steps, break, and continue
       - MLIR lowering for infinite loops, integer and explicit floating ranges, break, and continue
       - MLIR fixed-array iteration with one value or two index/value bindings and discard support without runtime allocation
       - canonical grammar, collections, and copy/move documentation synchronized to explicit value, ref, ref-mut, and discard semantics
     remaining:
+      - carry Arena generation through the shared loop-header and backedge fixed-point analysis, including continue edges and replay
       - add binding-mode representation to AST and parse, format, and expose canonical ref name and ref mut name loop bindings through compiler-owned LSP facts
       - require plain by-value iteration to copy only implicitly copyable yielded types without silently moving or borrowing move-only elements
       - implement shared element-reference iteration only for stable addressable iterable positions
@@ -702,6 +709,7 @@ integrations:
       - return expressions established before statically supported MLIR defer cleanup paths
       - canonical documentation now defines one common LIFO order for deferred cleanup and automatic destruction
     remaining:
+      - isolate cleanup-time state mutations such as deferred Arena.Reset or Arena.Release from ordinary post-registration flow state
       - explicitly permit defer in ordinary and static functions and methods, lambdas, property accessors, and init while rejecting it in free
       - model defer registration and automatic destruction in one source-ordered cleanup stack across ownership and destruction analysis
       - extend only defer-referenced lifetimes while preserving earliest legal destruction for unrelated locals
@@ -815,6 +823,7 @@ integrations:
       - ordinary non-void standalone calls are represented as implicit temporary discards
       - direct compiler-known must-use Result, Task, and Thread call results are rejected as standalone statements
       - current recursive must-use and discardability checks traverse type arguments, arrays, struct fields, and union payloads
+      - named try and match error bindings may be explicitly discarded
       - standalone spawn expressions are rejected
       - unhandled Result expressions inside defer are rejected
       - parser, AST, and compiler dump output preserve explicitly discarded expressions
@@ -1205,7 +1214,7 @@ integrations:
       - static keyword tokenization and declaration-position parsing
       - static let and static let mut parsing at module, function, and impl-member positions
       - static fn parsing and AST classification, including receiver-free interface requirements
-      - ordinary impl fn declarations remain instance-bound with compiler-provided implicit self while static fn bodies receive no self
+      - ordinary impl fn declarations remain instance-bound with compiler-provided implicit self
       - static-let symbols are classified with Static storage origin by Sema
       - type-associated static storage is registered under its qualified type member identity and supports Type.Name reads
       - static functions participate in resolved static-method calls and compiler-owned call-graph dispatch facts
@@ -1213,6 +1222,8 @@ integrations:
       - static members remain separate from nominal instance fields and layout
       - compiler-known static properties and functions participate in LSP member completion through the shared Sema registry
     remaining:
+      - prevent static fn bodies from receiving implicit self or unqualified instance-member access
+      - classify ordinary module-level bindings as static storage and reject static fn outside valid impl/interface contexts
       - verify and complete static overload/member distinction and duplicate diagnostics across every primary and extension fragment member category
       - complete Type.Name writes and targeted diagnostics rejecting instance-qualified access to static storage, methods, and properties
       - add static property AST classification, parser, formatter, Sema, LSP, interface conformance, and lowering support with mandatory explicit setter parameters
@@ -1275,8 +1286,9 @@ integrations:
       - generic interface declaration parsing, header registration, and use of interface-owned parameters in requirement types
       - rejection of unknown constraints and constraints that do not name interfaces
       - conservative copy/move treatment when a generic parameter lacks a proven copy capability
-      - direct, array-mediated, and changing-argument recursive generic storage diagnostics with indirection cases retained
+      - direct, array-mediated, and changing-argument recursive generic struct storage diagnostics with indirection cases retained
     remaining:
+      - apply finite-representation recursion analysis to generic union payloads and payload fields, including concrete specialization
       - represent and validate multiple interface constraints joined by & across parser, AST, Sema, formatter, LSP, and diagnostics
       - accept a positional prefix of explicit generic function or method arguments and infer the remainder while rejecting holes
       - implement method-level generics for instance and static methods, including nested owning/method scopes, overload resolution, monomorphization, and lowering
@@ -1435,7 +1447,7 @@ integrations:
       - anonymous `fn` expressions with explicit typed parameters, explicit result type, and block body
       - basic `fn(ParameterTypes) ReturnType` types, named function values, target-directed overload selection, and function-value calls
       - explicit plain-name capture lists with duplicate, undefined-name, parameter-conflict, and implicit-capture diagnostics
-      - exactly-once plain capture analysis and compiler-owned capture facts consumed by escape analysis
+      - exactly-once plain capture analysis for the currently represented symbol subset and compiler-owned capture facts consumed by escape analysis
       - lambda-local scope, return validation, and control-flow boundary handling
       - shared parser and AST retention of consuming lambda parameter syntax
       - owned by-value lambda parameters are mutable local bindings while reference parameters remain non-rebindable
@@ -1891,7 +1903,7 @@ integrations:
     required_tests:
       - one named unit works with decimal, float, signed integer, and unsigned integer carriers where numeric rules permit
       - compound unit-only expressions default to decimal and explicit carriers remain explicit
-      - all five categories and their omitted Dimension defaults resolve correctly
+      - ratio, information, currency, and other omitted Dimension defaults resolve correctly; physical synthesizes no Dimension
       - bit, byte, and other compiler-known unit declaration names are rejected
       - structural multiplication, division, signed exponents, grouping, and identity normalize correctly
       - named dimensionless ratios retain nominal identity
@@ -2041,7 +2053,7 @@ integrations:
       - property registration, duplicate/conflict diagnostics, and type resolution on impl targets
       - bodyless interface property requirements with explicit set name and try set name parameters
       - interface property conformance checks for type, getter/setter availability, and setter fallibility
-      - property member access type inference and self-member resolution
+      - property lookup, member type inference, self-member resolution, write-only read rejection, and getter-plus-setter validation for compound assignment in represented access paths
       - getter return checking, including constructor-style conversions and missing-return diagnostics
       - non-fallible setter rejection of Err returns and setter assignment type checking
       - complete getter and setter body analysis using ordinary function-body rules
@@ -2117,12 +2129,13 @@ integrations:
       - mutable interface call rejection through shared references and acceptance through mutable references
       - consuming interface call rejection through both shared and mutable references
       - owned interface receiver consumption and later-use diagnostics
-      - exact method parameter/result/static compatibility and property accessor compatibility
+      - exact method parameter/result/static compatibility for represented interface requirements and property accessor compatibility; same-name overload sets remain partial
       - direct, indirect, and self-referential inheritance cycle diagnostics
       - defining-module ownership inherited from canonical primary impl validation
       - focused parser diagnostic for stored-field-shaped interface requirements
       - LSP outline display of conformance lists on primary impl symbols
     remaining:
+      - preserve and validate same-name interface method overload sets through declaration, inheritance, conformance, and call resolution
       - complete generic interface instantiation and constraint conformance
       - support every associated and nested declaration category permitted by its owning rulebook
       - complete interface visibility and cross-module accessible-member validation
@@ -2155,11 +2168,13 @@ integrations:
       - internal/sema/analyzer_test.go
     implemented:
       - compiler-known Arena type and AllocationError enum
+      - compiler-known Arena.New, Arena.FromBuffer, Arena.WithCapacity, Arena.Growable, Arena.Alloc, Arena.Reset, and Arena.Release member recognition in the represented frontend subset
       - semantic validation of Arena.Alloc[T](count) with Result[ref mut T[], AllocationError] result typing
-      - semantic validation of mutable Arena.Reset calls
-      - semantic arena name and generation metadata on arena-backed references and slices
-      - rejection of arena-backed references and slices after a reset advances their generation
-      - conservative generation-state merging across if, switch, match, for, while, and break control-flow paths
+      - Arena.Reset syntax, arity, mutable-receiver validation, and generation mutation
+      - Arena.Release syntax, arity, mutable-receiver validation, generation mutation, and consumption of the represented lexical owner
+      - lexical Arena binding-name and generation metadata on arena-backed references and slices in the represented subset
+      - rejection of arena-backed references and slices after a reset through the same represented Arena identity advances their generation
+      - initial conservative generation-state merging with known defer, switch-fallthrough, and loop-backedge limitations
       - initial allocation context, symbol storage-origin metadata, and allocation-effect facts
       - source-ordered direct Arena events and synchronous MayAllocate summaries in the compiler call graph
     verification:
@@ -2168,6 +2183,10 @@ integrations:
       - command: validate implementation-status.yaml
         result: passed
     remaining:
+      - prove that no validity-preserving dependency crosses Arena.Reset or Arena.Release
+      - classify Arena itself as move-only and non-trivially destructible and derive those traits through containing aggregates
+      - replace lexical Arena binding-name identity with stable compiler-owned ArenaDomain identity
+      - retain Arena.FromBuffer backing identity as an exclusive mutable borrow for the complete Arena lifetime and transfer that responsibility with the Arena owner
       - allocation-context propagation and complete allocation-effect inference through function bodies
       - sized, trivially-destructible, default-value, overflow, and alignment checks required by the safe allocation contract
       - allocation failure handling beyond ordinary Result syntax
@@ -2194,6 +2213,7 @@ integrations:
       - contextual collection type identities exposed to formatter and LSP registries
       - omitted initialization of mutable owning T[] produces its canonical allocation-free empty default
     remaining:
+      - preserve owning dynamic-array identity across copyability, destruction, equality, initialization, and ownership transfer instead of inheriting fixed-array traits through ArrayType
       - complete parser, AST, and Sema coverage for the canonical fixed-array and slice syntax contract
       - array literal inference, bounds, indexing, slicing, assignment, equality, and ownership validation
       - full borrow and lifetime validation for slice creation, reborrowing, and returned sub-slices
@@ -2219,6 +2239,7 @@ integrations:
       - parser and AST accept mixed type/value generic arguments used by shaped types
       - Sema recognizes vector, matrix, tensor, and tensor_view identities and validates basic arity and dimensions
       - rank-one vector values participate in iterable type inference
+      - contextual x parsing, multiplicative precedence, and static matrix/matrix and matrix/vector Sema with inner-dimension checks; scalar result algebra is partial
     remaining:
       - recognize owning runtime-shaped tensor[T, Shape[Rank]] without conflating it with tensor_view
       - implement Rank, Shape, Len, Strides, Layout, MemorySpace, IsContiguous, Ptr, and shaped instance SizeOf member semantics
@@ -2233,7 +2254,7 @@ integrations:
       - implement step on shaped range selectors including negative step reversal and zero-step rejection
       - implement right-aligned explicit BroadcastTo with zero-stride aliasing and shared-only expanded views
       - implement elementwise shaped + - * / with no implicit shaped broadcasting
-      - implement contextual x matrix/matrix and matrix/vector algebra including runtime ShapeError checking
+      - complete contextual x scalar product/result algebra, accumulation proof, Semantic IR, lowering, and runtime ShapeError checking; static matrix/matrix and matrix/vector Sema already exists partially
       - implement Dot, Outer, Magnitude, Normalize Option semantics, and extent-three Cross
       - implement explicit Contract with AxisList pairs and canonical result-axis ordering
       - preserve no-allocation semantics for logical shaped arithmetic and view transformations
@@ -2440,6 +2461,7 @@ integrations:
       - LSP hover abbreviates large fixed-array defaults as a bounded preview such as [0, ...] without materializing or rendering every element
       - legacy MLIR materialization of complete struct and constrained scalar defaults without runtime calls or undefined fields
     remaining:
+      - revalidate inherited membership-contract values against every newly added derived contract without filtering invalid members
       - represent explicit, mutable, omitted-field, aggregate, array-element, range-derived, membership-derived, and empty-collection initialization origins in Semantic IR
       - add an explicit AST or resolved compiler-known collection-literal category that distinguishes list[T] {} and list[T, Capacity] {} from struct literals
       - semantically materialize allocation-free empty defaults and explicit literals for list[T] and list[T, Capacity], independently of element defaultability
@@ -2915,7 +2937,7 @@ integrations:
       - new overload resolution with argument type checking and definition binding to the selected init
       - successful new expressions infer the constructed target type
       - fallible new requires try or local handling and preserves the exact initializer error type through existing try analysis
-      - zero-argument implicit new construction when canonical default construction exists and no explicit init group exists
+      - zero-argument implicit new construction when canonical default construction exists and no matching init() overload exists, even when non-zero-argument init overloads are present
       - initializer bodies receive implicit self and ordinary function-body semantic analysis
       - initializer success by body completion, typed Err return for failure, and rejection of arbitrary success return values
       - primary ordinary impl rejection when a named target belongs to another defining module
@@ -3192,7 +3214,7 @@ integrations:
       - testdata/union_invalid.sec
     implemented:
       - named closed payload-less, single-payload, struct-like, and mixed union declarations
-      - nominal variant namespaces, duplicate and empty-union validation, and payload construction arity and type checking
+      - nominal variant namespaces, duplicate and empty-union validation, payload arity checking, and broad payload type compatibility; complete representability and ownership preparation remain partial
       - generic union declarations, expected-type and payload-driven constructor inference, and concrete payload substitution
       - nested union declaration registration through the existing nested-type path
       - direct immediate recursive-storage rejection for unnamed and struct-like payloads
@@ -3253,7 +3275,7 @@ integrations:
       - nominal declarations through type Name register[N] with positive integer-literal width
       - bit and bit[N] fields with positive integer-literal widths and exact total-width validation
       - duplicate named-field rejection and inaccessible reserved underscore fields that retain layout width
-      - unit annotations and constant assignment range checks against field width
+      - unit annotations and arbitrary-precision constant assignment range checks against exact raw bit-field width
       - bit-backed enum fields with exact backing width and retained nominal field type
       - lsb-first default and explicit lsb-first or msb-first allocation modifiers with deterministic semantic bit offsets
       - independent little-endian and big-endian byte-order modifiers retained as semantic type facts
@@ -3598,6 +3620,7 @@ integrations:
       - bit-backed enum register-field width validation and nominal type retention
     remaining:
       - preserve unnamed bit-backed enum register encodings through register extraction and insertion lowering
+      - prove enum-to-integer representability over the known value or complete enum domain and use the canonical checked Result path when narrowing may fail
       - expose closed/open domain and checked-conversion facts in LSP hover and match diagnostics
       - synchronize Semantic IR and Sec MLIR conversion operations with checked EnumValueError control flow and runtime validation
       - add formatter coverage for the enum default marker and recovery from noncanonical initializer spelling
@@ -3642,7 +3665,7 @@ integrations:
       - named struct declarations through type Name struct syntax
       - typed comma-separated stored fields with trailing comma support
       - empty structs and duplicate or unknown field diagnostics
-      - raw-string field tags parsed and preserved as open-key metadata
+      - quote-aware raw-string field tags retained as ordered open-key metadata, including quoted whitespace, structural quote validation, and field-boundary recovery
       - named complete, partial, empty, multiline, comma-separated, and trailing-comma struct literals
       - unknown and duplicate explicit struct-literal field diagnostics
       - recursive semantic defaults for omitted defaultable fields
@@ -3699,7 +3722,7 @@ integrations:
       - fixed-array expansion counts for calls and array literals
       - compact, checked fixed-array literal length accounting without materializing one analysis entry per expanded element
       - same-exact-type non-consuming struct spread with left-to-right source analysis and explicit-field overrides
-      - semantic struct defaults after explicit/spread resolution, with invalid spreads unable to suppress missing NonDefaultable field diagnostics
+      - semantic struct defaults after accepted explicit/spread resolution; invalid same-type move-only spreads can still suppress missing NonDefaultable field diagnostics
       - rejection of standalone spread and runtime-length sources in fixed-arity calls and fixed-array literals
       - rejection of hidden consuming reads for move-only fixed-array elements and move-only struct sources
       - diagnostics that retain the original reference or dynamic-array source type for runtime-arity failures
@@ -3768,7 +3791,7 @@ integrations:
       - arbitrary-precision enum case values and distinct declaration ordinals for numeric aliases
       - fixed-width enum case values are verified against signed or unsigned underlying bounds, while target-sized bounds remain target-plan dependent
       - bit-backed enum definitions require an exact-width unsigned underlying type across Semantic IR and Sec MLIR, including the bit[1] and bit[256] boundaries
-      - enum constants, explicit integer-to-enum and enum-to-integer conversion, and same-enum equality and inequality
+      - enum constants, explicit integer-to-enum conversion, Sema-proven infallible enum-to-integer conversion, and same-enum equality and inequality
       - empty, single-payload, and named-field union construction with explicit copy-trivial payload actions
       - source-order field evaluation followed by deterministic declaration-order construction operands
       - union active-variant tests and single/named payload projections as explicit high-level operations
@@ -3939,7 +3962,7 @@ integrations:
       - cmd/lsp/main_test.go
     implemented:
       - CopyClassification, CopyClassificationOf, TriviallyCopyable, and MoveOnly with trivial, semantic, move-only, conditional, and non-copyable classes
-      - recursive primitive, reference, RawPtr, array, struct, custom-destruction, compiler-known, @noCopy, generic-instance, and aggregate-field classification
+      - recursive primitive, reference, RawPtr, fixed-array, struct, custom-destruction, compiler-known, @noCopy, generic-instance, and aggregate-field classification; owning dynamic arrays remain incorrectly conflated with fixed arrays
       - direct local move tracking with moved, returned, discarded, and detached reasons plus related source locations
       - diagnostics for use after move/discard, moving borrowed roots, defer-retained values, implicit copy of named move-only values, unproven generic copies, and overlapping self-moves
       - lexer/parser/AST support for :<-, <-, explicit ownership modes, inferred and typed move initialization, and rejected invalid operator forms
@@ -4033,6 +4056,7 @@ integrations:
       - line comments
       - nested block comments
       - comment tokens
+      - LF, CRLF, and bare-CR physical-line accounting, line-comment termination, and ordinary string/character newline rejection
       - comments treated as parser trivia before, between, and after struct-literal fields, including trailing line comments after commas
       - LSP semantic tokens for keywords, mutable variables, immutable bindings as readonly variables, types, functions, methods, comments, literals, and operators
       - position-specific LSP member classification and hover resolution so struct fields, struct-literal field names, and same-named methods retain distinct semantic identities
@@ -4062,7 +4086,22 @@ integrations:
       - interpolation parsing
       - malformed base-literal diagnostics
       - comment attachment for formatter and documentation
-      - CR and CRLF line accounting
+      - >-
+        reserved declaration-name enforcement is incomplete: compiler-known
+        lowercase type names are protected against user type, enum, interface,
+        and unit declarations, but the normative prohibition is not enforced
+        consistently for variables, constants, functions, parameters, fields,
+        properties, events, modules, imports, generic parameters, labels, and
+        aliases where those declaration forms exist; the contextual `set`
+        exception must remain valid outside its special grammar contexts
+      - >-
+        context-specific reserved words such as task, thread, and process are
+        interpreted in spawn contexts but are not yet enforced consistently as
+        forbidden user declaration names in ordinary declaration namespaces
+      - >-
+        canonical contract words are recognized by contract grammar only where
+        implemented, but their independent status as reserved declaration names
+        is not yet enforced consistently outside contract positions
       - parser rejection of semicolons
       - source-position integration across lexer, parser, diagnostics, and LSP
       - documentation-comment support in LSP hover without AST-level comment attachment
@@ -4077,8 +4116,18 @@ integrations:
       - balanced interpolation-expression lexing
       - doubled literal braces in interpolated strings
       - parser-aware formatter and semantic-token classification for contextual x
-      - built-in list, map, set, vector, matrix, tensor, and tensor_view lexical/parser integration
+      - complete contextual lexical, formatter, and semantic-token classification for built-in collection and shaped type names; parser/type recognition already exists
       - complete reserved contract-word inventory
+      - >-
+        centralize reserved-symbol validation so hard keywords, context-specific
+        reserved words, compiler-known lowercase type names, contract words, and
+        reserved modifiers receive the same declaration-name checks across every
+        applicable parser/Sema declaration namespace without globally reserving
+        contextual `set`
+      - >-
+        add focused negative tests for declarations using int, map, task, thread,
+        process, even, finite, multipleOf, notEmpty, odd, and unique, plus positive
+        tests proving that ordinary identifier uses of contextual `set` remain valid
       - documentation-comment attachment in parser and AST
       - dedicated lexical tests for every invalid category
       - stable lexer diagnostic IDs for all categories
@@ -4366,6 +4415,8 @@ integrations:
       - type and compile-time integer arity validation for list, map, set, vector, matrix, tensor, tensor_view, Shape, Strides, TensorLayout, and non-generic MemorySpace
     remaining:
       - define and implement the runtime representation, ownership-preserving erasure, type-safe narrowing operations, and lowering model for any in its owning specialized rulebook
+      - derive target-sized int and uint semantic bounds from the selected compilation target instead of fixed 64-bit frontend bounds
+      - remove independent int and uint width guesses from maintained legacy LLVM and MLIR backends or reject unsupported target-sized lowering explicitly
       - complete the nominal identity, assignability, and explicit conversion matrix audit against rules/types/types.md
       - define the canonical Result error type for runtime-checked scalar conversions such as try rune(codePoint) before implementing their fallible frontend contract
       - complete list, map, set, vector, matrix, tensor, tensor_view, Shape, Strides, TensorLayout, and MemorySpace semantics and lowering under their owning collection and layout integrations
@@ -4686,3 +4737,2480 @@ integrations:
       - reserve separately resolved accelerator devices without implementing GPU execution or memory semantics as part of the Sec 0.1 platform-model milestone
       - expose an inspectable read-only resolved-plan view for diagnostics, tests, LSP, and future target-info tooling
       - update implementation-status verification commands when the first conforming platform-model vertical slice is integrated
+
+  - id: core.string-slice-helper
+    area: core-and-lowering
+    status: partial
+    integrated: "2026-08-23"
+    summary: >-
+      The checked core API and representation-level behavior exist, but the
+      current compiler-known registry and name-specific direct-generator path
+      predate the correction that assigns this implementation detail to a
+      private privileged-core helper. They remain a temporary compatibility
+      path until the referenced direct MLIR/LLVM core-body syntax is defined
+      and implemented in the frontend.
+    rules:
+      - rules/compiler/compiler_known_members.md
+      - rules/library/core-library.md
+      - rules/types/types.md
+    code:
+      - internal/sema/compiler_known_members.go
+      - internal/sema/analyzer.go
+      - internal/codegen/llvm/statements.go
+      - internal/codegen/mlir/generator.go
+      - cmd/lsp/main.go
+      - sec/core/string.sec
+    tests:
+      - internal/sema/compiler_known_members_test.go
+      - internal/sema/analyzer_test.go
+      - internal/codegen/llvm/generator_test.go
+      - internal/codegen/mlir/generator_test.go
+      - cmd/lsp/main_test.go
+    implemented:
+      - checked string.Slice validates start <= end and end <= string length before calling the unchecked operation
+      - the current compatibility path restricts calls to privileged sec/core source and validates (string, uint, uint) -> string
+      - the current compatibility path keeps the operation out of ordinary LSP completion
+      - directly emit pointer offset and end-minus-start length in the AST LLVM and MLIR generators without a helper symbol
+      - remove the invalid core implementation that attempted to apply array slice syntax to string
+    remaining:
+      - define or identify the exact privileged-core inline MLIR/LLVM function-body syntax referenced by the correction
+      - implement that syntax in lexer, parser, AST, Sema, formatter, and the applicable backend path
+      - move __StringSliceUnchecked into core/string.sec as a source-file-private helper with a direct low-level body
+      - remove CKF-STRING-SLICE-UNCHECKED and the name-specific Sema, LSP, LLVM, and MLIR compatibility cases
+      - connect backing-storage lifetime facts to the finalized owned-string representation
+    verification:
+      - command: go test ./internal/sema -run 'TestCompilerKnown(StringSlice|GlobalRegistry)' -count=1 -v
+        result: passed
+      - command: go test ./internal/codegen/llvm -run TestGenerateCompilerKnownStringSliceUnchecked -count=1 -v
+        result: passed
+      - command: go test ./internal/codegen/mlir -run TestGenerateCompilerKnownStringSliceUnchecked -count=1 -v
+        result: passed
+      - command: go test ./cmd/lsp -run TestCompletionExcludesCompilerInternalFunctions -count=1 -v
+        result: passed
+
+  - id: analysis.arena-reset-release-dependency-legality
+    area: frontend-analysis
+    status: partial
+    audited: '2026-08-20'
+    repository_baseline: c515862
+    primary_rule: rules/memory/allocation.txt
+    canonical_arena_rule: rules/memory/arena.md
+    summary: Arena.Reset and Arena.Release perform an operation-point dependency query in addition to receiver, arity,
+      and generation/domain validation. The implemented query rejects represented escaping dependencies while allowing
+      immediate locals to become stale and be diagnosed on later use. Complete NLL across containers, captures, tasks,
+      foreign retention, and nested Arenas remains incomplete.
+    code:
+    - internal/sema/analyzer.go
+    - internal/sema/types.go
+    - internal/sema/call_graph.go
+    tests:
+    - internal/sema/allocation_test.go
+    - internal/sema/lifetime_test.go
+    - internal/sema/analyzer_test.go
+    implemented:
+    - Arena.Reset arity/type-argument validation
+    - Arena.Reset mutable-receiver validation
+    - Arena.Reset generation advancement
+    - Arena.Release arity/type-argument validation
+    - Arena.Release mutable-receiver validation
+    - Arena.Release generation advancement
+    - Arena.Release consumes the represented Arena owner
+    - stale-generation diagnostics for represented Arena-backed references/slices
+    - direct Arena Reset/Release call-graph effect recording
+    - operation-point validation of represented validity-preserving Arena dependencies
+    - stable ArenaDomain identity across owner moves
+    - corrected defer, switch, match, and loop generation-state propagation in the represented frontend subset
+    partial:
+    - dependency liveness is conservative and does not yet model every nested Arena, container, capture, task/thread,
+      foreign-retained, weak-handle, or implicit-destruction path
+    remaining:
+    - broaden the ArenaDomain dependency query to full NLL/last-use semantics
+    - distinguish weak/stale-capable handles from strong validity-preserving dependencies
+    - integrate nested Arena, container, capture, task/thread, foreign-retained, and deferred-use dependencies
+    - consume corrected branch/switch/loop/defer flow state from the relevant corrections
+    - add focused Reset/Release operation-point diagnostics and regression tests
+    - add correction25 rulebook/rule traceability comments to touched semantic functions
+    bug_reference:
+    - correction28.md
+    governance_reconciliation:
+    - Narrow "semantic validation of mutable Arena.Reset calls" to syntax, receiver mutability, and generation mutation
+      until dependency-crossing legality is implemented.
+    - Keep stale-generation rejection as implemented in its represented subset; it is not the same as Reset legality
+      proof.
+    - Add Release dependency legality explicitly to remaining work.
+    - Qualify "conservative generation-state merging across if, switch, match, for, while, and break" with correction18.md,
+      correction24.md, and correction25.md until those flow-state bugs are implemented.
+    - Keep the already-listed Alloc[T] sized/destructibility/default/overflow/ alignment gaps as existing remaining
+      work; do not duplicate them as new correction28 findings.
+
+  - id: governance.allocation-storage-origin-taxonomy
+    area: rulebook-consistency
+    status: implemented
+    audited: '2026-08-20'
+    repository_baseline: c515862
+    summary: allocation.txt delegates canonical storage-origin classification to storage.md. Arena remains an origin;
+      inline layout, external/foreign provenance, and fixed address stability are documented as independent properties.
+    rules:
+    - rules/memory/allocation.txt
+    - rules/memory/storage.md
+    - rules/platform/fixed-address-bindings.md
+    implemented:
+    - obsolete allocation.txt origin list removed
+    - canonical storage classification delegated to rules/memory/storage.md
+    - Arena retained as a canonical storage origin
+    - foreign, external, fixed-address, and inline properties separated from storage origin
+    bug_reference:
+    - correction28.md
+    status_note: Normalized from audit supplement status correction-needed; canonical governance uses planned.
+
+  - id: frontend.arena-value-traits-and-domain-identity
+    area: frontend-arena-semantics
+    status: implemented
+    audited: '2026-08-20'
+    repository_baseline: c515862
+    primary_rule: rules/memory/arena.md
+    rulebook_status: canonical Sec 0.1 Arena rulebook
+    explicit_document_revision: null
+    summary: The Arena frontend preserves the canonical owner traits and domain identity. Arena is MoveOnly and
+      non-trivially destructible, aggregates derive those traits compositionally, and owner moves preserve a stable
+      ArenaDomain ID used by Reset/Release epoch validation while diagnostics retain source-friendly owner names.
+    rules:
+    - rules/memory/arena.md
+    - rules/memory/copy_move.md
+    - rules/memory/ownership.md
+    - rules/memory/destruction.txt
+    - rules/memory/reference_model.md
+    code:
+    - internal/sema/types.go
+    - internal/sema/analyzer.go
+    tests:
+    - internal/sema/allocation_test.go
+    - internal/sema/lifetime_test.go
+    - internal/sema/analyzer_test.go
+    - internal/sema/copy_move_test.go
+    - internal/sema/destruction_test.go
+    implemented:
+    - compiler-known Arena type exists
+    - Arena New and Alloc return Arena-origin reference metadata
+    - Arena Reset and Release update a represented generation state
+    - stale-generation checks compare reference generation to current represented generation
+    - Release marks the current lexical Arena owner consumed
+    - generic ownership infrastructure can mark values requiring ownership transfer unavailable
+    - Arena is MoveOnly and non-trivially destructible
+    - containing aggregates derive Arena ownership/destruction traits compositionally
+    - Arena creation assigns stable semantic ArenaDomain identity
+    - owner moves preserve ArenaDomain identity and epoch state
+    - diagnostics keep source display names separate from semantic domain identity
+      to the destination
+    - Reset through a moved-to owner can therefore fail to stale references created through the moved-from owner
+    remaining:
+    - make Arena explicitly MoveOnly in compiler-owned type traits
+    - make Arena explicitly non-trivially destructible
+    - derive containing aggregate copy/destruction traits correctly from Arena
+    - introduce stable ArenaDomainID separate from lexical owner names
+    - assign ArenaDomainID at all Arena creation sites
+    - carry ArenaDomainID and current epoch through Arena ownership moves
+    - key epoch validity by ArenaDomainID rather than source variable name
+    - keep diagnostic naming/source provenance separate from semantic identity
+    - update stale-reference validation to consume domain/epoch identity
+    - add owner-move/Reset/Release regression coverage
+    - add correction25 traceability comments to touched Arena/type-trait functions
+    bug_reference:
+    - correction29.md
+    governance_reconciliation:
+    - Keep analysis.arena-allocation partial, but explicitly record that Arena builtin copy/destruction traits are
+      currently incorrect rather than only saying "complete ownership" remains.
+    - Qualify "semantic arena name and generation metadata" as the current lexical-name-based mechanism, not stable
+      canonical ArenaDomain identity.
+    - Qualify stale-generation rejection as valid only within the represented identity/control-flow subset until corrections
+      18, 25, 28, and 29 are implemented.
+
+  - id: frontend.arena-borrowed-backing-lifetime
+    area: frontend-arena-borrowing
+    status: partial
+    audited: '2026-08-20'
+    repository_baseline: c515862
+    primary_rule: rules/memory/arena.md
+    summary: Arena.FromBuffer retains its supplied mutable backing Place as an exclusive borrow owned by the resulting
+      Arena. The holder and ArenaDomain identity transfer across owner moves, Reset retains the backing borrow, Release
+      ends it, and direct conflicting backing access is rejected. Escape, task, nested-Arena, and implicit-destruction
+      integration remains partial.
+    rules:
+    - rules/memory/arena.md
+    - rules/memory/borrowing.txt
+    - rules/memory/lifetime_analysis.txt
+    - rules/memory/reference_model.md
+    code:
+    - internal/sema/analyzer.go
+    tests:
+    - internal/sema/allocation_test.go
+    - internal/sema/lifetime_test.go
+    - internal/sema/analyzer_test.go
+    implemented:
+    - Arena.FromBuffer compiler-known member recognition
+    - exact ref mut byte[] argument-shape validation
+    - ArenaEffectCreateBorrowed call-graph event
+    - general ref mut borrow conflict checking infrastructure
+    - general borrow-holder registration for direct RefExpression bindings
+    - borrow-holder transfer for represented reference-returning calls
+    - FromBuffer attaches the backing mutable borrow to its result holder
+    - Arena owner moves transfer backing-borrow responsibility
+    - Reset retains and Release ends the backing borrow
+    - direct conflicting backing access is rejected while the borrowed Arena lives
+    partial:
+    - implicit destruction does not yet end the represented backing borrow on every path
+    - return/escape, nested Arena, capture, and task transfer remain incomplete
+    remaining:
+    - end the borrow on implicit Arena destruction
+    - enforce backing lifetime on Arena return/escape
+    - integrate nested Arena parent/backing dependencies
+    - add focused borrowed-backing lifetime regression tests
+    - add correction25 traceability comments
+    bug_reference:
+    - correction29.md
+
+  - id: governance.arena-root-status-synchronization
+    area: implementation-governance
+    status: implemented
+    audited: '2026-08-20'
+    repository_baseline: c515862
+    summary: Root governance now records Arena.New, Release, FromBuffer, WithCapacity, Growable, stable ArenaDomain
+      identity, canonical owner traits, and represented borrowed-backing lifetime behavior. Broader Arena analysis remains
+      partial in its owning entries rather than being hidden from the root ledger.
+    bug_reference:
+    - correction29.md
+    status_note: Normalized from audit supplement status correction-needed; canonical governance uses planned.
+
+  - id: rulebook.arena-backing-kind-summary
+    area: rulebook-consistency
+    status: implemented
+    audited: '2026-08-20'
+    repository_baseline: c515862
+    summary: arena.md consistently separates backing ownership kind (Owned, Borrowed, Static, or TargetProvided) from
+      fixed/growable capacity policy.
+    correction:
+    - State that backing ownership may be Owned, Borrowed, Static, or TargetProvided.
+    - State separately that an Arena is Fixed or Growable according to capacity/growth policy.
+    bug_reference:
+    - correction29.md
+    status_note: Normalized from audit supplement status correction-needed; canonical governance uses planned.
+
+  - id: frontend.attributes-v2
+    area: frontend-selection-target-binding-effects-and-tooling
+    status: partial
+    audited: '2026-08-19'
+    document_revision: 2-era
+    repository_baseline: c515862
+    summary: 'Tracks the canonical Sec 0.1 compiler-known attribute system. Individual verticals exist for #target
+      compatibility, @address, @noCopy, and @link_name, but the general attribute parser, attachment-set model, declaration
+      selection, verified-effect attributes, interrupt attributes, generic diagnostics, formatter integration, and
+      LSP support are not yet unified. This entry centralizes implementation status that is still embedded in rules/foundations/attributes.md
+      while preserving the more detailed owning governance entries for fixed-address bindings, FFI, copy/move, target/platform
+      resolution, and ISR analysis.'
+    rules:
+    - rules/foundations/attributes.md
+    - rules/foundations/grammar.md
+    - rules/platform/fixed-address-bindings.md
+    - rules/platform/ffi.md
+    - rules/analysis/isr_analysis.md
+    - rules/analysis/effect_analysis.md
+    - rules/tooling/formatter.md
+    - rules/tooling/lsp.md
+    code:
+    - internal/ast/ast.go
+    - internal/parser/parser.go
+    - internal/sema/analyzer.go
+    - internal/sema/types.go
+    - internal/formatter
+    - internal/lsp
+    - cmd/lsp
+    tests:
+    - internal/parser/parser_test.go
+    - internal/sema/analyzer_test.go
+    - internal/formatter/formatter_test.go
+    - cmd/lsp/main_test.go
+    implemented:
+    - 'file-level ''#target(os: ..., arch: ...)'' compatibility directive parsing with required os and arch string-literal
+      arguments and duplicate-argument rejection'
+    - '''@address(expression)'' parser special case for one following let declaration, including grouped-declaration
+      rejection and AST retention of the address expression'
+    - current fixed-address Sema subset for explicitly typed register bindings, including initializer rejection, integer-literal
+      address requirement, AddressStability.Fixed, and volatile semantic markers
+    - Attribute AST representation used by the current '@noCopy' vertical
+    - '''@noCopy'' parsing on supported nominal type and enum declarations with argument rejection, duplicate rejection,
+      wrong-target rejection, semantic non-copyability classification, generic-instance preservation, formatter placement,
+      and LSP semantic-token classification'
+    - '''@link_name("symbol")'' parsing on extern declarations with non-empty string-literal validation, AST and Sema
+      retention, duplicate foreign-symbol validation, and backend linked-symbol selection'
+    - lexer support for '@' as the common attribute introducer
+    partial:
+    - attribute handling is split across special-case parser paths rather than one grammar-driven attribute parser
+      and attachment-set representation
+    - fixed-address behavior is implemented only for the currently specified addressed-register subset and still lacks
+      complete target validation and lowering
+    - '''@noCopy'' has a substantial vertical implementation but is not yet integrated into a general mixed attribute-set
+      engine'
+    - call-graph and effect-analysis foundations exist, but source-level verified effect attributes are not generally
+      parseable or enforceable as one attribute system
+    - target/platform concepts exist, but canonical '@target' selection is not generally implemented
+    remaining:
+    - implement one general parser for the closed compiler-known attribute set with positional and named arguments,
+      trailing commas, source locations, and recovery
+    - implement consecutive mixed attribute attachment sets with comments and whitespace preserving attachment and
+      EOF/unattached-attribute diagnostics
+    - reject unknown attributes through the canonical attribute diagnostic path rather than falling through ordinary
+      expression parsing
+    - enforce allowed attachment targets, duplicate rules, conflict rules, argument shape, and compile-time argument
+      requirements uniformly
+    - implement canonical '@target' file and statement forms with os, arch, cpu, device, and board selectors
+    - implement target-variant overlap detection, no-active-variant handling, and public-shape compatibility checks
+    - implement '@when' and typed 'config.<name>' compile-time parameter access with the restricted Sec 0.1 boolean
+      expression language
+    - complete '@address' compile-time-address evaluation, target pointer-width and address-domain validation, alignment,
+      extent, permissions, overlap checking, target knowledge-pack constants, volatile lowering, and end-to-end tests
+    - implement '@interrupt(vector: '...)'', ''@isr'', and ''@interruptSafe'' parsing, implication, target-profile
+        validation, call-graph restrictions, vector uniqueness, and lowering'
+    - implement '@noAlloc', '@noPanic', and '@noBlock' source attributes with transitive verified-effect analysis
+      and foreign-contract provenance
+    - implement the attribute implication graph while distinguishing explicit attributes from effective implied guarantees
+    - implement canonical generic attribute diagnostics and stable diagnostic IDs
+    - implement general attribute-aware formatter behavior beyond the existing '@noCopy' vertical
+    - implement LSP completion, hover, effective-guarantee display, excluded-source display, target/config/vector/address
+      argument completion, diagnostics, and code actions
+    - migrate the remaining implementation-status material out of rules/foundations/attributes.md into this governance
+      ledger
+    cross_references:
+    - frontend.fixed-address-bindings
+    - frontend.ffi-v2
+    - frontend.copy-move
+    - sema.isr-analysis
+    - compiler.platform-model
+    required_tests:
+    - unknown compiler attribute rejected
+    - unattached attribute at EOF rejected
+    - duplicate attribute rejected with both locations
+    - mixed consecutive attributes attach to exactly one declaration
+    - comments and blank lines do not break attribute attachment
+    - attribute on an unsupported declaration target rejected
+    - canonical '@target' file selection
+    - canonical '@target' statement selection
+    - target selector overlap and public-shape mismatch diagnostics
+    - '''@when'' true and false declaration selection'
+    - '''@address'' target validation and volatile lowering'
+    - '''@interrupt'' implies ''@isr'''
+    - '''@isr'' and ''@interruptSafe'' effect violations'
+    - direct and transitive '@noAlloc', '@noPanic', and '@noBlock' violations
+    - unknown foreign effects violate verified guarantees unless an explicit trusted foreign contract supplies the
+      required fact
+    - formatter preserves explicit redundant attributes and source order
+    - LSP offers only compiler-known attributes valid at the current attachment location
+
+  - id: frontend.dynamic-array-semantic-identity
+    area: frontend-collections-and-ownership
+    status: implemented
+    audited: '2026-08-20'
+    repository_baseline: c515862
+    document_revision: '1'
+    document_created: '2026-08-11'
+    document_last_updated: '2026-08-11'
+    summary: >-
+      Owning T[] and fixed T[N] share the Sema ArrayType representation, with
+      ArrayLength=-1 as a robust dynamic-owner category. Core frontend traits
+      preserve that distinction: T[] is always MoveOnly and non-trivially
+      destructible, is excluded from ordinary fixed-array equality, and is not
+      implicitly initialization-compatible with T[N].
+    rules:
+    - rules/collections/collections.md
+    - rules/memory/copy_move.md
+    - rules/memory/ownership.md
+    - rules/memory/destruction.txt
+    - rules/compiler/semantic_ir.txt
+    code:
+    - internal/sema/types.go
+    - internal/sema/analyzer.go
+    implemented:
+    - canonical parser syntax for fixed T[N] and owning T[]
+    - type resolver retains fixed array length N
+    - type resolver uses a dedicated dynamic-array length sentinel for T[]
+    - omitted mutable T[] initialization has the canonical empty-owner path
+    - fixed-array copy classification derives from element classification
+    - fixed-array elementwise equality infrastructure exists
+    - dynamic-array compiler-known public member signatures are independently registered
+    - every owning T[] is MoveOnly independently of element type
+    - every owning T[] is non-trivially destructible independently of element type
+    - ordinary fixed-array equality excludes owning T[]
+    - implicit initialization preserves fixed-array versus dynamic-owner identity
+    - explicit owner-to-slice borrowing remains separate from owner conversion
+    remaining:
+    - audit every ArrayType consumer across Sema, Semantic IR, formatter, LSP, lowering, ABI, FFI, layout, ownership,
+      equality, and destruction
+    bug_reference:
+    - correction26.md
+    governance_reconciliation:
+    - Keep frontend.collections partial, but add an explicit dynamic-array semantic-identity gap. Parser/type spelling
+      recognition exists; core semantic traits do not yet preserve fixed-array versus owning T[] identity reliably.
+    - Narrow frontend.copy-move implemented wording for recursive "array" classification. Fixed-array classification
+      is implemented, while owning T[] classification is incorrect until it is unconditionally MoveOnly.
+    - Keep frontend.dynamic-array-public-api member availability/signatures as implemented within its current scope;
+      this correction concerns owner value semantics.
+    - Keep the allocation-free empty mutable T[] default as implemented; the resulting owner's copy/destruction/equality
+      traits are the defect.
+    traceability:
+      policy_source: correction25.md
+      touched_functions_should_reference:
+      - rules/collections/collections.md §5 fixed arrays
+      - rules/collections/collections.md §6 owning dynamic arrays
+      - rules/collections/collections.md §10 equality
+      - rules/collections/collections.md §11 parameters and return values
+      - rules/collections/collections.md §12 destruction
+      - relevant copy_move, ownership, and destruction rules
+      functions:
+      - collection type resolution for T[N] and T[]
+      - copyClassificationOf
+      - triviallyDestructible
+      - equalityComparable
+      - canCompareEquality
+      - sameComparableArrayType
+      - canInitialize
+    required_tests:
+    - int[] copy classification is MoveOnly
+    - copyable-struct[] copy classification is MoveOnly
+    - fixed copyable array retains element-derived copyability
+    - int[] is non-trivially destructible
+    - fixed trivial int[N] remains trivially destructible
+    - int[] ordinary equality is rejected
+    - fixed int[N] equality remains valid
+    - T[N] cannot implicitly initialize T[]
+    - T[] cannot implicitly initialize T[N]
+    - by-value T[] transfer consumes the owner
+    - explicit slices remain borrowed and distinct
+    - Semantic IR preserves fixed versus dynamic owner identity
+
+  - id: frontend.type-contracts-v2
+    area: frontend-types-analysis-and-lowering
+    status: partial
+    audited: '2026-08-19'
+    repository_baseline: c515862
+    document_revision: inferred 2.0
+    document_revision_note: rules/types/contracts.md has no explicit revision metadata. Repository history places
+      the canonical rewrite on 2026-08-12 to 2026-08-13, inside the revision-2 rulebook period. Later specialized
+      rulebooks take precedence on conflicts.
+    summary: Tracks canonical named-type contracts. Integer ranges, ordered primitive membership, odd/even/multipleOf,
+      finite/notEmpty/unique marker parsing, compile-time primitive checks, contract inheritance, and explicit/default
+      integration have substantial frontend support. The full canonical contract inventory, complete compile-time
+      equality membership domain, rejection of obsolete storage-site contracts, complete consistency proofs, runtime
+      validation, fallible conversion/assignment, collection/string contracts, diagnostics, Semantic IR, lowering,
+      and tooling remain partial.
+    rules:
+    - rules/types/contracts.md
+    - rules/types/default_values.md
+    - rules/types/types.md
+    - rules/declarations/struct.md
+    - rules/collections/collections.md
+    - rules/foundations/operators.md
+    - rules/foundations/grammar.md
+    - rules/errors/errorhandling.txt
+    - rules/tooling/diagnostics.txt
+    code:
+    - internal/ast/ast.go
+    - internal/parser/parser.go
+    - internal/sema/contracts.go
+    - internal/sema/defaults.go
+    - internal/sema/analyzer.go
+    - internal/diagnostics/diagnostics.go
+    - internal/ir/semantic
+    - internal/lowering/secmlir
+    - internal/codegen/mlir
+    - internal/codegen/llvm
+    tests:
+    - internal/parser/parser_test.go
+    - internal/sema/analyzer_test.go
+    - internal/sema/defaults_test.go
+    - internal/codegen/mlir/generator_test.go
+    implemented:
+    - contracts are represented on named semantic types and inherited contracts are copied into derived named types
+    - sequential contract syntax is represented as an ordered ContractList
+    - integer range contracts with inclusive and exclusive upper bounds
+    - integer odd and even marker contracts
+    - integer multipleOf parsing, nonzero-divisor diagnostic, literal validation, and default integration
+    - ordered primitive in-list parsing with non-empty-list rejection
+    - primitive membership compatibility checking
+    - duplicate membership-value rejection
+    - membership values are checked against represented sibling contracts
+    - notEmpty, unique, and finite marker-contract parsing and basic applicability checks
+    - contract applicability diagnostics for currently recognized contract families
+    - integer literal and supported explicit-conversion contract checks
+    - explicit type defaults are checked against represented contracts
+    - range, membership, multipleOf, odd, and even participate in the implemented default resolver
+    - string notEmpty participates in primitive default validation
+    - float and decimal finite markers participate in represented default validation
+    - selected provably inconsistent integer contract sets are rejected
+    - all integer ranges are intersected and all nonzero multipleOf divisors combine through exact LCM
+    - inherited and local range, divisibility, and parity contracts participate in one satisfiability proof
+    - assignment to currently represented constrained storage requires try in implemented paths
+    partial:
+    - membership is currently restricted by implementation to primitive/scalar/enum compile-time constants rather
+      than the full canonical domain of named values with compile-time semantic equality
+    - finite, notEmpty, and unique have parser/applicability representation but not complete runtime validation semantics
+    - range bounds are parsed from a narrow numeric-literal form rather than the complete permitted compile-time-constant
+      domain
+    - explicit-default constant evaluation supports only a subset of the canonical allocation-free compile-time constant
+      domain
+    - obsolete variable-level, type-first-storage-level, and ordinary struct-field contracts are still accepted and
+      applied by parser/Sema even though contracts.md makes them invalid Sec 0.1 syntax
+    - contract diagnostics are a mixture of stable IDs and ad-hoc messages
+    - contract facts are not yet represented end-to-end in the maintained Semantic IR and Sec MLIR pipelines
+    remaining:
+    - add parser and AST support for regex pattern contracts
+    - define the canonical regular-expression syntax/engine before runtime regex validation is enabled
+    - add parser and AST support for minLen, maxLen, and exactLen integer-valued contracts
+    - implement string length-contract validation in the same length unit used by canonical string Len semantics
+    - implement supported collection-shaped minLen, maxLen, exactLen, notEmpty, and unique validation
+    - enforce unique using semantic equality on direct elements without recursive uniqueness
+    - extend in-list membership to every named type whose values support the required compile-time semantic equality,
+      without memory-identity comparison or hidden coercion
+    - extend contract-bound and membership constant evaluation to the complete canonical compile-time constant subset
+    - combine every range, multipleOf, odd/even, inherited, and local integer constraint into one exact satisfiability
+      proof
+    - reject every obsolete variable-level and ordinary field-level contract form with focused migration diagnostics
+      instead of applying a hidden storage-site contract
+    - implement runtime validation for explicit conversion into constrained named types
+    - implement canonical fallible constrained assignment and compound-assignment behavior through try
+    - define and use the canonical Result error type for failed contract validation
+    - preserve contract identity and validation requirements in Semantic IR
+    - lower runtime validation and failure paths through the maintained Sec MLIR pipeline
+    - audit legacy/direct LLVM behavior so accepted constrained operations cannot silently bypass validation
+    - assign stable diagnostics for inapplicable/unsatisfiable sets, empty/duplicate membership, incompatible values,
+      sibling-contract violations, invalid defaults, ambiguous defaults, and missing try
+    - attach related locations to the offending value/default and relevant contract declaration where practical
+    - add formatter and LSP coverage for all canonical contract families
+    - migrate the remaining implementation-status prose out of contracts.md into implementation-status.yaml
+    governance_reconciliation:
+    - frontend.default-values remains authoritative for detailed default selection/materialization status and should
+      not be duplicated here.
+    - frontend.types-core remains authoritative for general nominal type, conversion, scalar, and backend type status.
+    - The contracts.md embedded status correctly records obsolete variable and field contracts plus incomplete runtime
+      validation as known work; those are not new bugs from this audit.
+    - regex, minLen, maxLen, exactLen, the broader compile-time-equality membership domain, and complete same-family
+      consistency composition are not adequately represented in the current root governance ledger.
+    required_tests:
+    - regex contract parses only after regex syntax is canonicalized
+    - minLen, maxLen, exactLen, and notEmpty applicability
+    - unique direct-element semantic equality
+    - membership values preserve source order
+    - membership duplicate detection uses semantic equality
+    - membership of every supported compile-time comparable named value family
+    - multiple ranges intersect correctly
+    - multiple multipleOf contracts combine by conjunction
+    - parity combines with all divisibility constraints
+    - inherited and local contracts participate in one consistency proof
+    - obsolete variable-level contract rejected
+    - obsolete struct-field contract rejected
+    - runtime conversion success and contract failure
+    - constrained assignment outside try rejected
+    - constrained assignment inside try leaves destination unchanged on failure
+
+  - id: frontend.default-values-inherited-membership
+    area: frontend-default-resolution-and-contract-validation
+    status: implemented
+    audited: '2026-08-19'
+    repository_baseline: c515862
+    document_revision: inferred 2.0
+    document_revision_note: rules/types/default_values.md has no explicit document-revision metadata. Repository history
+      places the current canonical rewrite/update on 2026-08-12 to 2026-08-13, inside the revision-2 rulebook period.
+    summary: Every inherited and local semantic membership value is revalidated against the complete derived contract
+      conjunction, preserving source order and rejecting invalid derivations before default selection.
+    rules:
+    - rules/types/default_values.md
+    - rules/types/contracts.md
+    - rules/types/types.md
+    code:
+    - internal/sema/contracts.go
+    - internal/sema/defaults.go
+    tests:
+    - internal/sema/analyzer_test.go
+    - internal/sema/defaults_test.go
+    implemented:
+    - inherited membership values are checked against newly introduced range, parity, multipleOf, and membership contracts
+    - invalid members reject the derived declaration and are never filtered to manufacture another default
+    - valid membership source order and first-member default behavior are preserved
+    bug_reference:
+    - correction4.md
+    required_tests:
+    - inherited membership plus derived even rejects an odd inherited member
+    - inherited membership plus derived range rejects an out-of-range member
+    - inherited membership plus derived multipleOf rejects an incompatible member
+    - compatible derived constraints preserve the first inherited membership value as default
+    - multi-level inherited membership is revalidated against newly added contracts
+    - default resolution never silently selects a later member after an earlier member becomes invalid
+
+  - id: frontend.defer-cleanup-state-isolation
+    area: frontend-control-flow-and-lifetime
+    status: partial
+    audited: '2026-08-19'
+    repository_baseline: c515862
+    document_revision: '2.0'
+    document_created: '2026-08-16'
+    document_last_updated: '2026-08-16'
+    summary: Defer registration analysis now isolates Arena generations and current resource-close state along with
+      symbols, assignment, move, borrow, and reference state. Cleanup-time effects still require explicit Semantic IR
+      representation and application on cleanup edges.
+    rules:
+    - rules/control-flow/defer.md
+    - rules/memory/ownership.md
+    - rules/memory/borrowing.txt
+    - rules/memory/lifetime_analysis.txt
+    - rules/compiler/semantic_ir.txt
+    code:
+    - internal/sema/analyzer.go
+    - internal/sema/semantic_facts.go
+    tests:
+    - internal/sema/analyzer_test.go
+    - internal/sema/copy_move_test.go
+    - internal/sema/destruction_test.go
+    - testdata/defer_valid.sec
+    - testdata/defer_invalid.sec
+    implemented:
+    - defer body is analyzed in copied symbol state
+    - defer body is analyzed in copied definite-assignment state
+    - defer body is analyzed in copied move/move-reason state
+    - defer body is analyzed in copied borrow state
+    - defer body is analyzed in copied local-reference-container state
+    - defer body is analyzed in copied Arena-generation and current resource-close state
+    - captured outer uses are converted to pending deferred-use borrow records after defer-body analysis
+    - immediate Arena.Reset and Arena.Release increment arena generation so older arena-derived references become
+      stale
+    partial:
+    - deferred cleanup effects are not yet represented independently for later cleanup-edge consumers
+    remaining:
+    - isolate arena generation state while validating a deferred body
+    - represent deferred Arena.Reset/Release invalidation as a future cleanup effect rather than mutating the ordinary
+      continuation
+    - audit every mutable Sema flow domain touched by defer-body analysis for registration-time versus cleanup-time
+      semantics
+    - separate current resource lifecycle state from registered future cleanup where the present closedResources model
+      conflates them
+    - preserve deferred cleanup effects explicitly in resolved Sema/Semantic IR facts with registration point and
+      canonical cleanup order
+    - apply arena/resource invalidation only on cleanup edges in later flow analysis and lowering
+    - add focused regression coverage for ordinary use between defer registration and cleanup
+    bug_reference:
+    - correction18.md
+    governance_reconciliation:
+    - 'Keep frontend.defer-v2 partial. Qualify the implemented registration and delayed-use statements: pending outer-value
+      use restrictions are represented, but cleanup-time state mutation is not completely isolated from registration-time
+      analysis.'
+    - Add "isolate cleanup-time state mutations such as Arena.Reset/Release generation invalidation from ordinary
+      post-registration flow state" to remaining work.
+    - Existing remaining work for unified cleanup order, callable contexts, dynamic loop registration, Semantic IR,
+      and backend lowering remains unchanged.
+    required_tests:
+    - deferred Arena.Reset does not stale a pre-existing arena reference before cleanup
+    - immediate Arena.Reset still stales an older arena reference
+    - deferred Arena.Release does not advance current arena generation before cleanup
+    - multiple deferred arena invalidations do not mutate current generation at registration
+    - conditional deferred arena invalidation does not leak into ordinary continuation
+    - cleanup-time arena invalidation retains canonical LIFO ordering
+
+  - id: frontend.discard-aggregate-temporary-ownership
+    area: frontend-ownership-and-discard
+    status: partial
+    audited: '2026-08-19'
+    repository_baseline: c515862
+    document_revision: '2.0'
+    document_created: '2026-07-31'
+    document_last_updated_metadata: '2026-08-16'
+    document_later_sync_commit: 20b3606
+    document_later_sync_date: '2026-08-17'
+    summary: Aggregate temporaries accepted by explicit discard now commit the same represented construction-time
+      ownership moves as ordinary aggregate initialization while preserving selected call-parameter semantics.
+    rules:
+    - rules/control-flow/discard.md
+    - rules/memory/ownership.md
+    - rules/memory/copy_move.md
+    - rules/memory/destruction.txt
+    - rules/declarations/struct.md
+    - rules/declarations/unions.md
+    - rules/compiler/semantic_ir.txt
+    code:
+    - internal/sema/analyzer.go
+    - internal/sema/semantic_facts.go
+    - internal/ir/semantic
+    tests:
+    - internal/sema/analyzer_test.go
+    - internal/sema/copy_move_test.go
+    implemented:
+    - explicit discard of a local identifier consumes the binding even when the value is copyable
+    - explicit discard of a move-only local identifier makes it unavailable
+    - discard checks pending deferred use and active borrow conflicts for simple identifier bindings
+    - discard of ref and ref mut local holders ends the holder
+    - explicit discard of function and method result temporaries is accepted when the result type is discardable
+    - explicit discard of named try/match error bindings is accepted in the current frontend
+    - current tests include Err(error) handler bodies containing discard error
+    - bare discard _ is rejected
+    - discarded struct and array literals commit represented move-only source transfers before terminal discard
+    - discard does not recursively reinterpret ordinary call arguments as aggregate ownership transfers
+    partial:
+    - ownership preparation of the operand result and terminal destruction of that result are not represented as separate
+      resolved semantic actions
+    remaining:
+    - preserve resolved ownership preparation for every aggregate expression result before explicit discard
+    - commit required move-only source transfers when constructing a discarded struct or array temporary
+    - preserve ordinary call parameter ownership rather than recursively treating arbitrary CallExpression arguments
+      as aggregate moves
+    - integrate union constructor payload preparation through the separately tracked union constructor correction
+    - preserve borrow, deferred-use, and source availability diagnostics for ownership transfers into discarded temporaries
+    - represent operand preparation followed by explicit DiscardValue in Semantic IR
+    - lower the resolved destruction plan without double destruction
+    bug_reference:
+    - correction19.md
+    governance_reconciliation:
+    - Keep arbitrary Place discard as remaining; aggregate temporary ownership preparation is a distinct frontend
+      gap because the discarded operand is a temporary value rather than a user Place.
+    - Add named try/match error-binding discard to implemented status. At c515862, analyzer tests exercise Err(error)
+      => { discard error } successfully.
+    - Err(_) support is a separate match/try issue tracked by correction20.md and must not be described as intentionally
+      invalid by discard governance.
+    required_tests:
+    - discarded move-only struct temporary makes transferred source unavailable
+    - discarded move-only array temporary makes transferred sources unavailable
+    - copyable aggregate discard does not consume reusable copyable source bindings merely through field reads
+    - borrow conflict blocks move into discarded aggregate
+    - deferred-use conflict blocks move into discarded aggregate
+    - function-call discard preserves selected parameter ownership semantics
+    - named Err(error) discard remains valid
+    - discard _ remains invalid
+
+  - id: frontend.enum-to-integer-checked-conversion
+    area: frontend-analysis-semantic-ir-and-lowering
+    status: partial
+    audited: '2026-08-19'
+    repository_baseline: c515862
+    document_revision: '1.0'
+    document_created: '2026-08-13'
+    document_last_updated_metadata: '2026-08-13'
+    document_later_sync: '2026-08-16'
+    summary: Sema checks enum-to-integer conversion against a known member value or the complete closed/open enum domain.
+      Proven conversions remain direct; narrowing returns Result[target, ArithmeticError] and requires ordinary try.
+    rules:
+    - rules/declarations/enums.md
+    - rules/types/types.md
+    - rules/errors/errorhandling.txt
+    - rules/compiler/semantic_ir.txt
+    - rules/mlir/packages/sec-mlir-dialect_package11.md
+    - rules/mlir/semantic-ir/sec_semantic_ir_enum_union_v1.md
+    code:
+    - internal/sema/analyzer.go
+    - internal/sema/semantic_facts.go
+    - internal/ir/semantic/model.go
+    - internal/ir/semantic/builder.go
+    - internal/ir/semantic/verifier.go
+    - internal/lowering/secmlir/emitter.go
+    tests:
+    - internal/sema/analyzer_test.go
+    - internal/ir/semantic/package11_test.go
+    - internal/ir/semantic/package11_verifier_test.go
+    - cmd/compiler/emit_sec_mlir_package11_test.go
+    - testdata/semantic_ir/enum_union_values.sec
+    implemented:
+    - explicit enum-to-integer conversion is recognized by Sema
+    - Package 11 Semantic IR represents Sema-proven infallible enum-to-integer conversion
+    - Package 11 Sec MLIR represents and verifies the infallible enum-to-integer operation
+    - existing Package 11 enum conversion fixtures stay within an infallible conversion boundary
+    - integer-to-enum checked conversion has separate Result-valued frontend handling
+    - known enum member conversion uses exact integer representability checking
+    - closed enum runtime conversion proves every numeric value class fits the target
+    - open bit enum runtime conversion uses the complete bit domain
+    - unproven narrowing is Result-valued with ArithmeticError and records a fallible enum conversion fact
+    partial:
+    - Semantic IR and lowering do not yet consume the represented fallible enum-to-integer conversion path
+    remaining:
+    - add enum-to-integer checked-conversion analysis in Sema
+    - for statically known enum values apply the canonical checked integer-conversion rule to the resolved numeric
+      value
+    - for closed ordinary enums prove target representability over all unique declared numeric value classes
+    - for open bit-backed enums prove target representability over the complete unsigned bit[N] domain
+    - return the direct target integer type only when conversion is proven infallible
+    - use the canonical fallible checked integer-conversion Result/error semantics when proof fails
+    - require ordinary try handling for runtime-fallible enum-to-integer conversions
+    - preserve infallibility/fallibility and source enum identity in immutable Sema/Semantic IR facts
+    - prevent unconditional OpEnumToInteger emission for conversions that may fail
+    - lower the fallible case through canonical checked-integer conversion and explicit failure control flow
+    - add fixed-width narrowing tests independent of target-sized int/uint behavior
+    - add open-bit-enum tests proving the complete bit domain is used rather than declared members only
+    bug_reference:
+    - correction7.md
+    governance_reconciliation:
+    - Keep lowering.sec-mlir-enum-union-values at implemented for Package 11's dependency-bounded scope. Its own governance
+      text explicitly says the enum conversion fixtures remain inside the Sema-proven infallible boundary.
+    - Qualify Package 11's implemented enum-to-integer conversion as the Sema-proven infallible form. The missing
+      functionality is frontend proof and checked/fallible conversion outside that boundary.
+    - frontend.enums currently tracks Result-valued integer-to-enum runtime conversion but does not explicitly list
+      the reciprocal enum-to-integer checked narrowing rule.
+    required_tests:
+    - closed enum whose complete domain fits target integer converts infallibly
+    - closed enum with one out-of-range member produces a fallible runtime conversion
+    - closed enum aliases are normalized for conversion-domain proof
+    - known fitting enum member converts infallibly
+    - known out-of-range enum member receives checked-conversion diagnostic
+    - bit[8] enum to uint8 is infallible
+    - bit[16] enum to uint8 is fallible even when declared members all fit uint8
+    - fallible enum-to-integer conversion requires ordinary try handling
+    - fallible conversion is not emitted as unconditional OpEnumToInteger
+    - existing Package 11 infallible enum conversion fixtures continue to pass
+
+  - id: frontend.loop-break-targeted-exit-analysis
+    area: frontend-control-flow
+    status: implemented
+    audited: '2026-08-19'
+    repository_baseline: c515862
+    primary_document: rules/control-flow/flowcontrol_for.md
+    primary_document_revision: '2.0'
+    primary_document_created: '2026-08-16'
+    primary_document_last_updated: '2026-08-16'
+    related_document: rules/control-flow/flowcontrol_while.md
+    summary: Implements current-loop-targeted infinite-loop exit classification for for and while true. The query
+      stops at nested loop ownership boundaries, remains transparent through switch/select/unsafe containers, and
+      excludes breaks in constant-unreachable if branches.
+    rules:
+    - rules/control-flow/flowcontrol_for.md
+    - rules/control-flow/flowcontrol_while.md
+    - rules/control-flow/flowcontrol_switch.md
+    - rules/compiler/semantic_ir.txt
+    code:
+    - internal/sema/analyzer.go
+    tests:
+    - internal/sema/analyzer_test.go
+    - testdata/for_valid.sec
+    - testdata/for_invalid.sec
+    - testdata/while_valid.sec
+    - testdata/while_invalid.sec
+    implemented:
+    - break statements are validated against active loop context
+    - break analysis records state in the nearest active loop break frame
+    - direct break from an infinite for creates a continuing post-loop path
+    - direct break from while true creates a continuing post-loop path
+    - break inside switch nested in a loop semantically targets the surrounding loop
+    - infinite for with no syntactically discovered break is classified non-continuing
+    - while true with no syntactically discovered break is classified non-continuing
+    - outer-loop break search stops at nested for and while boundaries
+    - nested for and while breaks no longer make an outer infinite loop appear continuing
+    - switch remains transparent because it creates no Sec break target
+    - constant-unreachable if branches do not create false loop exits
+    verification:
+    - command: go test ./internal/sema -run 'Test(NestedWhileBreak|NestedForBreak|UnreachableBreakDoesNotExit)' -count=1
+      result: passed
+    bug_reference:
+    - correction21.md
+    governance_reconciliation:
+    - 'Narrow frontend.for-loops-v2''s implemented claim "infinite-loop non-continuation without reachable break":
+      direct/current-loop cases are represented, but nested-loop break target identity is not preserved by the return/fallthrough
+      helper.'
+    - Add the same limitation to frontend.while-statements-v2. Its required matrix already says "nested break does
+      not exit outer loop", but the shared blockContainsBreak() helper violates that rule for return-path classification.
+    - Keep actual nearest-loop break-frame tracking as implemented; the defect is the secondary AST-based break-presence
+      query.
+    - Keep switch-nested break targeting the surrounding loop. The correction must not introduce a C-style switch
+      break target.
+    required_tests:
+    - outer infinite for with nested for break remains non-continuing
+    - outer infinite for with nested while break remains non-continuing
+    - outer while true with nested for break remains non-continuing
+    - outer while true with nested while break remains non-continuing
+    - direct outer-loop break creates continuation
+    - break inside if directly belonging to outer loop creates continuation
+    - break inside switch nested in outer loop creates continuation
+    - code after outer infinite loop with only nested-loop breaks is unreachable
+    - non-void function ending in such outer loop satisfies return analysis
+
+  - id: frontend.function-overload-backend-identity
+    area: frontend-semantic-ir-and-lowering
+    status: partial
+    audited: '2026-08-19'
+    repository_baseline: c515862
+    document_revision: '2.0'
+    document_created: '2026-08-14'
+    document_last_updated: '2026-08-14'
+    summary: Supplements frontend.functions-v2 with the missing backend identity status for ordinary overloads. Sema
+      resolves overloads by parameter signature and records the exact selected callable, but the legacy direct LLVM
+      generator stores only one declaration per source function name and emits ordinary overload declarations under
+      the same unmangled LLVM symbol. The legacy AST-to-LLVM-dialect MLIR generator distinguishes overloads only by
+      arity and explicitly rejects same-arity overloads. End-to-end lowering therefore does not yet preserve the canonical
+      Sema-selected overload identity for overloads distinguished by parameter type.
+    rules:
+    - rules/declarations/functions.md
+    - rules/declarations/generics.md
+    - rules/compiler/semantic_ir.txt
+    - rules/mlir/sec_mlir_lowering.md
+    code:
+    - internal/sema/analyzer.go
+    - internal/sema/semantic_facts.go
+    - internal/codegen/llvm/generator.go
+    - internal/codegen/llvm/functions.go
+    - internal/codegen/llvm/expressions.go
+    - internal/codegen/mlir/generator.go
+    - internal/ir/semantic
+    - internal/lowering/secmlir
+    tests:
+    - internal/sema/analyzer_test.go
+    - internal/codegen/llvm/generator_test.go
+    - internal/codegen/mlir/generator_test.go
+    - internal/ir/semantic
+    - internal/lowering/secmlir
+    implemented:
+    - ordinary overload groups are registered in Sema by source name
+    - overload identity excludes return type
+    - overloads differing only by ordinary versus forced-consuming parameter mode are rejected
+    - exact parameter matches are preferred over matches requiring conversion
+    - ambiguous equally ranked Sema candidates are rejected
+    - the exact selected ordinary callable is retained in resolved Sema call facts
+    - legacy MLIR provides deterministic arity-based symbols when overloads differ in arity
+    - legacy MLIR explicitly rejects same-name same-arity overload groups rather than guessing a parameter-type overload
+    partial:
+    - direct LLVM stores functions in map[string]*ast.FunctionDeclaration, so later declarations replace earlier declarations
+      in the name lookup used by code generation and function-value materialization
+    - direct LLVM llvmFunctionSymbol() returns the ordinary source function name for every non-extern overload, so
+      distinct ordinary overload definitions do not receive distinct backend symbols
+    - legacy AST-to-LLVM-dialect MLIR mangles overloads only by parameter count and rejects overloads that share the
+      same arity even when Sema has resolved them unambiguously by parameter type
+    - legacy MLIR resolveFunction() performs backend call lookup by source name and arity instead of consuming the
+      exact callable selected by Sema
+    - backend symbol identity is therefore not yet a preserved consequence of canonical parameter-signature overload
+      identity
+    remaining:
+    - preserve the exact Sema-selected callable identity in Semantic IR call facts
+    - assign deterministic backend symbols to ordinary overloads using canonical semantic signature identity rather
+      than source name or arity alone
+    - ensure symbol identity includes parameter types and all signature dimensions that participate in callable identity,
+      while excluding return type and non-discriminating ownership mode exactly as required by the rulebooks
+    - make direct LLVM retain overload groups or consume resolved callable facts rather than overwriting declarations
+      by source name
+    - prevent direct LLVM from emitting multiple distinct overload definitions under one ordinary source symbol
+    - make legacy MLIR consume the resolved overload identity instead of re-resolving calls by arity
+    - support same-arity parameter-type overloads through every maintained backend or reject the backend path with
+      an explicit unsupported-lowering diagnostic before producing IR
+    - preserve deterministic overload symbols across source order, modules, generic specialization, and repeated builds
+    - add end-to-end tests where two overloads have the same name and arity but different parameter types and both
+      are called
+    - add tests proving overload symbols cannot collide when physical lowered parameter types happen to coincide but
+      semantic overload identity remains distinct where the ABI permits the distinction
+    - integrate native variadic overload identity later without conflating it with C/foreign varargs
+    governance_reconciliation:
+    - frontend.functions-v2 already records the broad remaining work to represent calls in Semantic IR and lower calls
+      through Sec MLIR/LLVM. This supplement makes the specifically missing ordinary-overload symbol and selected-callable
+      identity problem explicit.
+    - Do not downgrade Sema ordinary-overload resolution. The frontend already resolves same-arity overloads by semantic
+      parameter types.
+    - 'Do not classify the legacy MLIR same-arity error itself as a semantic compiler bug: that backend explicitly
+      reports the unsupported case. The missing implementation is preservation/lowering of the already resolved callable.'
+    - The direct LLVM path requires special care because it does not provide the same explicit same-arity-overload
+      guard and uses one source symbol for every ordinary overload.
+    required_tests:
+    - same-name different-arity overloads lower to distinct deterministic symbols
+    - same-name same-arity different-parameter-type overloads both lower and call the Sema-selected targets
+    - source declaration order does not change backend overload symbols
+    - return type never contributes to overload symbol identity because such source overloads are already invalid
+    - forced-consuming versus ordinary mode does not create a distinct overload symbol because such source overload
+      pairs are already invalid
+    - direct LLVM never silently overwrites overload lookup by source name
+    - direct LLVM never emits distinct overload definitions under the same backend symbol
+    - legacy MLIR no longer re-resolves a Sema-resolved call by arity
+    - unsupported backend paths fail before publishing invalid or ambiguous IR
+
+  - id: frontend.generic-union-recursive-storage
+    area: frontend-generics-and-representation
+    status: partial
+    audited: '2026-08-19'
+    repository_baseline: c515862
+    document_revision: '2.0'
+    document_created: '2026-08-14'
+    document_last_updated: '2026-08-14'
+    summary: Generic struct and union inline-storage edges are checked before type resolution for direct, fixed-array-mediated,
+      and changing-argument recursion. Concrete generic union payloads are checked again after substitution. Complete
+      cross-template forward-reference finalization and cycle-path reporting remain partial.
+    rules:
+    - rules/declarations/generics.md
+    - rules/declarations/unions.md
+    - rules/declarations/struct.md
+    - rules/collections/collections.md
+    - rules/compiler/semantic_ir.txt
+    code:
+    - internal/sema/analyzer.go
+    - internal/sema/types.go
+    tests:
+    - internal/sema/analyzer_test.go
+    - testdata/generics_valid.sec
+    - testdata/generics_invalid.sec
+    implemented:
+    - generic declaration name and arity pre-registration
+    - generic struct template parameter scopes
+    - generic struct direct recursive-storage diagnostic
+    - generic struct fixed-array-mediated recursive-storage diagnostic
+    - generic struct changing-argument non-convergence diagnostic for the implemented forms
+    - generic struct selected finite-indirection cases remain accepted
+    - generic union template registration
+    - generic union ordinary payload substitution for non-recursive examples
+    - generic union direct-payload construction and payload type checking for ordinary concrete instances
+    - canonical generic type instance caching by declaration identity and ordered arguments
+    - generic union direct and named payload recursive-storage diagnostics
+    - generic union fixed-array-mediated and changing-argument recursion diagnostics
+    - post-substitution recursive-storage checks for concrete union payloads
+    partial:
+    - generic type references encountered before a referenced generic declaration has completed body analysis can
+      retain InvalidType template metadata, requiring a broader forward-template finalization audit
+    remaining:
+    - ensure no representation-dependent accepted generic instance contains unresolved InvalidType field or variant
+      metadata
+    - audit and fix forward references between generic type templates so declaration order cannot preserve incomplete
+      predeclaration skeletons
+    - evolve recursive generic diagnostics from the current local cases to complete canonical instantiation-cycle
+      path reporting
+    - preserve finite reference/slice/container boundaries according to their owning representation rules
+    bug_reference:
+    - correction8.md
+    governance_reconciliation:
+    - In frontend.generics-v2, narrow the current implemented statement "direct, array-mediated, and changing-argument
+      recursive generic storage diagnostics with indirection cases retained" to explicitly say "generic struct storage"
+      until union payload storage receives the same analysis.
+    - Keep generic union template registration, payload substitution, and the existing ordinary generic union frontend
+      tests as implemented within their current scope.
+    - The existing remaining item requiring detection of every non-converging recursive generic instantiation and
+      complete cycle-path diagnostics remains valid, but it does not by itself document that even the direct generic-union
+      storage case is currently missed.
+    required_tests:
+    - direct recursive generic union payload rejected
+    - recursive generic union named payload field rejected
+    - fixed-array recursive generic union payload rejected
+    - changing-argument recursive generic union rejected
+    - recursive generic union through valid ref indirection accepted
+    - recursive generic union through finite supported container boundary classified correctly
+    - concrete generic union instance contains no unresolved InvalidType payload
+    - forward generic type reference cannot leave unresolved InvalidType storage metadata
+    - existing generic struct recursion tests remain green
+    - existing Maybe[T] generic union substitution and construction tests remain green
+
+  - id: frontend.grammar-conformance
+    area: frontend-parser-ast-sema-and-recovery
+    status: partial
+    audited: '2026-08-19'
+    document_revision: inferred 1.x / pre-v2 consolidated grammar; no explicit revision metadata
+    document_baseline:
+      review_date: '2026-08-01'
+      note: grammar.md has later point synchronizations, so its current text mixes the older reviewed implementation-status
+        snapshot with newer normative decisions. Later specialized rulebooks take precedence on conflicts.
+    repository_baseline: c515862
+    summary: Tracks cross-cutting grammar conformance and legacy compatibility/recovery forms that are still accepted
+      by the parser but are not canonical under later Sec 0.1 rulebooks. Feature-specific semantic and lowering status
+      remains owned by the corresponding governance entries.
+    rules:
+    - rules/foundations/grammar.md
+    - rules/foundations/lexical_structure.md
+    - rules/projects/modules.md
+    - rules/declarations/struct.md
+    - rules/types/contracts.md
+    - rules/collections/collections.md
+    code:
+    - internal/parser/parser.go
+    - internal/ast/ast.go
+    - internal/sema/analyzer.go
+    - internal/formatter
+    tests:
+    - internal/parser/parser_test.go
+    implemented:
+    - canonical postfix fixed-array and owning-dynamic-array type syntax
+    - rejection of dotted source module declarations according to modules.md revision 1, superseding stale grammar
+      implementation-status text
+    - standalone 'struct Name { ... }' parsing as legacy compatibility syntax
+    - prefix '[N]Type' and '[]Type' sequence-type parsing as legacy compatibility syntax
+    - '''type Name = ExistingType'' and compact ''='' variant parsing as legacy compatibility syntax'
+    - inline field-contract parsing remains available as a legacy parser path
+    - substantial parser unit coverage exists for canonical declarations, expressions, control flow, types, recovery,
+      and several legacy forms
+    partial:
+    - compatibility syntax is not handled through one uniform migration/recovery policy
+    - prefix sequence syntax is accepted, while canonical collections.md revision 1 defines postfix T[N] and T[] syntax
+    - standalone struct syntax is accepted, while struct.md revision 2.0 defines 'type Name struct' as the canonical
+      declaration
+    - inline field and variable contract syntax is still accepted even though the canonical contracts rulebook restricts
+      contracts to named types
+    - the continuing language role of compact '=' type/variant syntax is unresolved by a dedicated modern rulebook
+    - grammar.md still contains a 2026-08-01 implementation-status snapshot that is partly stale relative to later
+      rulebooks and current governance
+    remaining:
+    - migrate the remaining grammar implementation-status material into implementation-status.yaml
+    - reconcile or remove stale grammar status statements that conflict with later rulebooks, including the old dotted-module
+      claim
+    - reconcile stale 'require' contextual-identifier text with the later lexical_structure.md rule that reserves
+      require globally
+    - define and enforce one policy for legacy compatibility forms: reject, emit a focused migration diagnostic, or
+        formatter-normalize where the owning rule explicitly permits normalization
+    - remove or focused-diagnose obsolete inline field and variable contracts according to contracts.md
+    - normalize or focused-diagnose prefix sequence types rather than silently treating them as ordinary canonical
+      source
+    - provide focused migration treatment for standalone struct declarations if they remain parser recovery syntax
+    - resolve the future of 'type Name = ExistingType' and compact '=' variants against the modern named-type, enum,
+      and union rulebooks
+    - create the canonical grammar fixture suite required by grammar.md
+    - keep parser recovery tests distinct from accepted canonical-language tests so compatibility syntax cannot silently
+      become canonical
+    required_fixtures:
+    - grammar_valid.sec
+    - grammar_invalid.sec
+    - grammar_declarations_valid.sec
+    - grammar_declarations_invalid.sec
+    - grammar_types_valid.sec
+    - grammar_types_invalid.sec
+    - grammar_statements_valid.sec
+    - grammar_statements_invalid.sec
+    - grammar_expressions_valid.sec
+    - grammar_expressions_invalid.sec
+    - grammar_contextual_valid.sec
+    - grammar_contextual_invalid.sec
+    - grammar_recovery.sec
+    verification_notes:
+    - grammar.md explicitly requires the fixture suite above; representative grammar_valid.sec, grammar_invalid.sec,
+      and grammar_recovery.sec are not present under testdata/ at the audited repository baseline.
+    - parser_test.go still contains positive tests for standalone struct, compact '=' variants, and inline struct-field
+      contracts, confirming that these legacy paths remain accepted rather than merely recognized for an error diagnostic.
+
+  - id: frontend.logical-short-circuit-flow
+    area: frontend-expression-control-flow
+    status: partial
+    audited: '2026-08-19'
+    repository_baseline: c515862
+    primary_document: rules/control-flow/flowcontrol_if.md
+    document_revision: '2.0'
+    document_created: '2026-08-16'
+    document_last_updated: '2026-08-16'
+    summary: Logical operators use a dedicated Sema flow path. Proven-skipped RHS expressions retain static diagnostics
+      without committing runtime state or reachable call-graph effects; conditionally executed RHS state is merged with
+      the bypass path.
+    rules:
+    - rules/control-flow/flowcontrol_if.md
+    - rules/control-flow/flowcontrol_while.md
+    - rules/foundations/operators.md
+    - rules/memory/ownership.md
+    - rules/memory/borrowing.txt
+    - rules/compiler/semantic_ir.txt
+    code:
+    - internal/sema/analyzer.go
+    - internal/sema/call_graph.go
+    - internal/sema/semantic_facts.go
+    - internal/ir/semantic
+    - internal/lowering/secmlir
+    - internal/codegen/mlir/generator.go
+    - internal/codegen/llvm/statements.go
+    tests:
+    - internal/sema/analyzer_test.go
+    - internal/sema/copy_move_test.go
+    - internal/sema/call_graph_test.go
+    - internal/codegen/mlir/generator_test.go
+    - internal/codegen/llvm/generator_test.go
+    implemented:
+    - logical bool operand type validation
+    - logical expression result type bool
+    - maintained backend lowering has left-to-right short-circuit branch structure
+    - if branch bodies use callGraphPathReachable for literal unreachable branches
+    - consuming call arguments update caller ownership state when the call is on the analyzed live path
+    - false && RHS and true || RHS restore ownership, resource, borrow, reference, and Arena state after static checking
+    - proven-skipped RHS calls are excluded from reachable call-graph recording
+    - non-constant RHS execution is merged with the short-circuit bypass state
+    partial:
+    - logical expressions do not expose a canonical branch-specific short-circuit flow fact to ownership/lifetime/control-flow
+      consumers
+    - literal reachability helpers recognize only BooleanLiteral syntax rather than a general compiler-proven constant-bool
+      fact
+    remaining:
+    - handle && and || through a short-circuit-aware frontend flow path before eager generic infix RHS analysis
+    - statically validate unreachable RHS source without committing its runtime ownership/resource/arena/borrow effects
+    - model RHS execution only on the selected logical edge for non-constant left operands
+    - preserve exactly-once left and at-most-once RHS analysis/evaluation facts
+    - apply canonical compile-time bool facts rather than only literal syntax where available
+    - prevent proven short-circuited RHS calls/effects from entering reachable call-graph/effect summaries
+    - publish resolved short-circuit CFG/effect facts to Semantic IR and all maintained lowering paths
+    - add ownership, resource, arena, call-graph, nested-expression, and cross-context regression coverage
+    bug_reference:
+    - correction22.md
+    governance_reconciliation:
+    - 'Narrow frontend.if-statements-v2 implemented wording "logical !, &&, and || expressions with left-to-right
+      short-circuit lowering": backend short-circuit lowering is implemented, but frontend runtime-state/effect analysis
+      of the RHS is still eager.'
+    - The existing remaining item for focused short-circuit side-effect tests is not sufficient to describe the current
+      state; record this as a concrete partial implementation bug.
+    - Keep bool-only operand checking and lazy backend control-flow lowering as implemented.
+    required_tests:
+    - false && consuming-call leaves source available
+    - true || consuming-call leaves source available
+    - true && consuming-call consumes source
+    - false || consuming-call consumes source
+    - proven skipped RHS does not advance arena generation
+    - proven skipped RHS does not close resource state
+    - proven skipped RHS does not register reachable call/effect
+    - non-literal logical RHS is represented only on its selected CFG edge
+    - nested logical expressions preserve left-to-right short-circuit flow
+    - while and non-if expression contexts use identical short-circuit semantics
+
+  - id: frontend.impl-core-privilege
+    area: frontend-source-provenance-and-impl-coherence
+    status: implemented
+    audited: '2026-08-19'
+    repository_baseline: c515862
+    document_revision: '2.0'
+    document_created: '2026-08-13'
+    document_last_updated: '2026-08-14'
+    summary: Compiler-known implementation authority requires immutable trusted-core source provenance supplied by
+      the compiler or LSP loader after canonical source-root resolution. User-controlled path spelling cannot grant
+      the privilege, and the explicit compiler-known target allowlist remains enforced.
+    rules:
+    - rules/declarations/impl.md
+    - rules/projects/modules.md
+    code:
+    - internal/sema/analyzer.go
+    - cmd/compiler/main.go
+    tests:
+    - internal/sema/analyzer_test.go
+    implemented:
+    - ordinary non-named compiler-known types are rejected as user impl targets unless the core privilege predicate
+      succeeds
+    - interface types are rejected as ordinary impl targets
+    - an explicit allowlist limits which compiler-known targets may receive core implementations
+    - ast.Program carries explicit source provenance independently of token path text
+    - compiler and LSP core loaders canonicalize roots and resolve symlinks before assigning trusted-core provenance
+    - Sema requires trusted-core provenance and the target allowlist for compiler-known implementations
+    - forged core-looking paths remain ordinary user sources
+    remaining:
+    - audit core target/module ownership against the canonical core-library rulebook when that ownership matrix is
+      centralized
+    bug_reference:
+    - correction9.md
+    required_tests:
+    - trusted compiler-selected core source may implement permitted builtin
+    - ordinary user source cannot implement permitted builtin
+    - user project/sec/core source does not gain core privilege
+    - absolute user path containing /sec/core/ does not gain core privilege
+    - module name alone cannot grant core privilege
+    - trusted core source cannot implement a compiler-known target outside the explicit allowlist
+    - LSP and CLI Sema enforce identical provenance rules
+
+  - id: frontend.interface-method-overloads
+    area: frontend-interface-analysis
+    status: implemented
+    audited: '2026-08-19'
+    repository_baseline: c515862
+    document_revision: '2.0'
+    document_created: '2026-08-13'
+    document_last_updated: '2026-08-14'
+    summary: Interface declarations and inheritance preserve canonical same-name overload sets. Distinct parameter
+      signatures coexist, exact duplicates are diagnosed or merged according to origin, incompatible contracts are
+      rejected, and conformance checks every retained requirement independently.
+    rules:
+    - rules/declarations/interfaces.md
+    - rules/declarations/functions.md
+    - rules/declarations/generics.md
+    - rules/declarations/impl.md
+    code:
+    - internal/sema/analyzer.go
+    - internal/sema/types.go
+    - internal/sema/semantic_facts.go
+    tests:
+    - internal/sema/analyzer_test.go
+    - testdata/interface_valid.sec
+    - testdata/interface_invalid.sec
+    implemented:
+    - interface methods retain parameter, return, static, receiver, and parameter-ownership contract facts
+    - concrete interface conformance searches the concrete method overload group by target name plus method name
+    - concrete conformance compares explicit parameter types and borrow or consuming parameter modes
+    - return type is checked as a compatibility requirement
+    - inherited requirements with distinct names are merged
+    - direct and inherited same-name requirements are grouped by canonical parameter signature
+    - distinct same-name overloads from one or more parents are retained
+    - exact duplicates and same-signature incompatible contracts are distinguished
+    - interface inheritance cycle diagnostics are implemented
+    remaining:
+    - preserve the exact selected interface overload in resolved call facts before eventual runtime interface dispatch
+    - add future dynamic-dispatch lowering coverage once that backend contract is implemented
+    bug_reference:
+    - correction10.md
+    governance_reconciliation:
+    - Keep frontend.interfaces partial. Amend its implemented wording "exact method parameter/result/static compatibility"
+      so it is clear that the comparison exists for represented requirements, while interface declaration and inheritance
+      do not yet preserve multiple same-name overload requirements.
+    - Do not downgrade ordinary concrete method overload resolution; the defect is the interface requirement-set representation.
+    - The existing remaining item for dynamic dispatch does not document this frontend overload loss, because the
+      requirements are already rejected or collapsed before Semantic IR/backend lowering.
+    required_tests:
+    - direct interface same-name different-type overloads accepted
+    - direct interface same-name different-arity overloads accepted
+    - exact duplicate interface requirement rejected
+    - same parameter signature different return type rejected
+    - two parent interfaces contribute distinct same-name overloads
+    - inherited same-overload incompatible return contract rejected
+    - inherited same-overload incompatible receiver contract rejected
+    - concrete implementation must provide every required overload
+    - one missing concrete overload is diagnosed
+    - selected interface overload is resolved before future dynamic dispatch
+
+  - id: frontend.lambda-capture-binding-classification
+    area: frontend-lambda-scope-and-capture-resolution
+    status: implemented
+    audited: '2026-08-19'
+    repository_baseline: c515862
+    document_revision: '2.0'
+    document_created: '2026-08-14'
+    document_last_updated: '2026-08-14'
+    summary: Lambda lookup separates capture-eligible enclosing locals from ordinary module/type lookup. Module values
+      remain directly visible, explicit non-local captures are rejected, and function parameters are capture-eligible.
+    rules:
+    - rules/declarations/lambda-functions.md
+    - rules/declarations/functions.md
+    - rules/foundations/names_scopes_visibility.md
+    - rules/projects/modules.md
+    code:
+    - internal/sema/analyzer.go
+    - internal/sema/semantic_facts.go
+    - internal/sema/types.go
+    tests:
+    - internal/sema/analyzer_test.go
+    - testdata/lambda_valid.sec
+    - testdata/lambda_invalid.sec
+    implemented:
+    - lambda-local symbol environment
+    - explicit plain-name capture syntax
+    - duplicate capture diagnostics
+    - undefined capture diagnostics
+    - unassigned enclosing-symbol capture diagnostics
+    - missing explicit-capture diagnostic for represented enclosing symbols
+    - parameter/capture collision is rejected through the current symbol collision path
+    - named functions remain separately resolvable as callable values inside lambdas
+    - capture candidates are filtered by local-binding identity rather than the complete enclosing symbol map
+    - module-level values resolve normally inside lambdas without capture
+    - explicit capture of a non-local declaration receives a focused diagnostic
+    - ordinary function parameters are classified as capture-eligible local bindings
+    bug_reference:
+    - correction11.md
+    governance_reconciliation:
+    - Keep frontend.lambda-functions-v2 partial. Narrow the implemented plain capture/implicit-capture wording to
+      the currently represented symbol subset; binding-class correctness between enclosing locals and normal non-local
+      declarations is not implemented.
+    - This issue is independent of the already documented missing capture modes, mutable owned captures, callable
+      capability inference, escaping environments, and closure lowering.
+    - sema.closure-analysis likewise should not infer that every represented capture fact corresponds to a canonically
+      valid local capture until this binding-class boundary is corrected.
+    required_tests:
+    - module-level value readable inside lambda without capture
+    - module-level value rejected as explicit capture
+    - enclosing local still requires explicit capture
+    - enclosing function parameter remains capture-eligible
+    - named function usable without capture and rejected as explicit capture
+    - imported non-local declaration follows ordinary lookup
+    - nested lambda retains direct module-level lookup
+    - nested lambda separately enforces explicit capture of eligible enclosing local
+
+  - id: frontend.match-termination-consistency
+    area: frontend-control-flow
+    status: implemented
+    audited: '2026-08-19'
+    repository_baseline: c515862
+    document_revision: '2.0'
+    document_created: '2026-08-17'
+    document_last_updated: '2026-08-17'
+    summary: Statement-match termination, function return checks, and nested match arm flow consume the canonical
+      ResolvedMatchPlan rather than rebuilding coverage from pattern spellings. Union, Option, Result, enum aliases,
+      and complete open-bit domains therefore share the primary match analyzer's normalized coverage.
+    rules:
+    - rules/control-flow/flowcontrol_match.md
+    - rules/declarations/unions.md
+    - rules/declarations/enums.md
+    - rules/compiler/semantic_ir.txt
+    - rules/mlir/packages/sec-mlir-dialect_package12.md
+    code:
+    - internal/sema/analyzer.go
+    - internal/sema/semantic_facts.go
+    - internal/ir/semantic/model.go
+    - internal/ir/semantic/builder.go
+    - internal/lowering/secmlir/emitter.go
+    tests:
+    - internal/sema/analyzer_test.go
+    - internal/sema/semantic_facts_test.go
+    - internal/ir/semantic/package12_test.go
+    - testdata/match_valid.sec
+    - testdata/semantic_ir/match_cfg.sec
+    implemented:
+    - canonical analyzeMatch coverage for Result
+    - canonical analyzeMatch coverage for UnionType including Option
+    - enum match coverage normalized to arbitrary-precision numeric value classes
+    - open bit-backed enum complete-domain coverage in matchCoverageComplete
+    - ResolvedMatchPlan records exhaustive status for successful supported matches
+    - ResolvedMatchArm records source arm flow in the current supported subset
+    - Result statement match with all-returning arms is recognized by the dedicated legacy return helper
+    - Package 12 consumes ResolvedMatchPlan for enum, union, Result, and Option CFG
+    - statement termination consumes ResolvedMatchPlan.Exhaustive and resolved arm flow
+    - nested analyzed match statements participate in analyzer-aware block fallthrough and return queries
+    remaining:
+    - replace package-level structural flow reconstruction with compiler-owned resolved statement-flow facts
+    - ensure function return, unreachable-code, cleanup, Semantic IR, and lowering consume one canonical match flow
+      result
+    - add union, Option, alias-enum, open-bit-enum, and nested-match termination regression coverage
+    bug_reference:
+    - correction23.md
+    governance_reconciliation:
+    - Keep frontend.match-v2's canonical analyzeMatch coverage and Package 12 ResolvedMatchPlan CFG support as implemented.
+      Add a separate partial item for frontend statement termination/return consumers that still reconstruct coverage
+      independently.
+    - Qualify broad statement/all-terminating control-flow wording until exhaustive UnionType/Option and enum-alias
+      statement matches are recognized consistently by function return analysis.
+    - Do not duplicate the Err(_) rulebook/Sema issue here; that is tracked by correction20.md.
+    - Existing remaining work for compiler-known empty, field patterns, guarded move commit, statement-result discardability,
+      non-trivial ownership lowering, and LSP remains unchanged.
+    required_tests:
+    - exhaustive Option statement match with all returns satisfies function return
+    - exhaustive ordinary union statement match with all returns satisfies function return
+    - code after exhaustive all-returning union match is unreachable
+    - enum alias statement match uses normalized numeric classes for termination
+    - complete bit-backed enum statement match is recognized as non-continuing
+    - duplicate alias arm remains rejected
+    - nested exhaustive match can terminate an outer match arm
+    - ResolvedMatchPlan exhaustiveness agrees with function-return analysis
+
+  - id: frontend.names-scopes-visibility
+    area: frontend-name-resolution
+    status: partial
+    audited: '2026-08-19'
+    repository_baseline: c515862
+    summary: Tracks the consolidated revision-2-era rules for declaration namespaces, lexical and member scopes, shadowing,
+      visibility prefixes, name lookup, overload identity, and nominal-type naming. The compiler has substantial module,
+      member, overload, and ordinary lexical-scope support, but the cross-cutting namespace and naming rules are not
+      yet enforced uniformly.
+    rules:
+    - rules/foundations/names_scopes_visibility.md
+    code:
+    - internal/sema/analyzer.go
+    - internal/parser/parser.go
+    - internal/lsp/server
+    - cmd/lsp/main.go
+    tests:
+    - internal/sema/analyzer_test.go
+    - internal/parser/parser_test.go
+    - cmd/lsp/main_test.go
+    implemented:
+    - top-level module declaration conflict checks across types, units, enums, interfaces, function overload groups,
+      and module variables
+    - function overload groups distinguished by parameter signature with return type excluded from overload identity
+    - substantial member conflict checking across fields, properties, methods, events, and nested types
+    - function, method, property, and impl declaration surfaces are substantially registered before body analysis
+    - ordinary nested lexical scopes inherit visible value symbols, so a subset of local and loop-binding shadowing
+      is rejected
+    - duplicate generic parameter names are rejected
+    partial:
+    - no-shadowing enforcement exists for some inherited value-symbol scopes but is not a unified rule across parameters,
+      members, types, generics, imports, aliases, and compiler-provided contextual bindings
+    - the compiler maintains separate symbol, type, generic-type, function, and member registries rather than one
+      uniformly collision-checked declaration namespace
+    - module and member namespace checks cover substantial declaration subsets but cross-category coverage is distributed
+      across feature-specific code paths
+    remaining:
+    - enforce the no-shadowing rule uniformly for locals, parameters, loop and pattern bindings, generic parameters,
+      nested declarations, imports, aliases, visible types, visible values, and directly visible members
+    - prevent parameters and compiler-provided contextual bindings such as self and property-setter value parameters
+      from silently replacing visible declarations
+    - reject user-defined nominal type names that do not begin with an uppercase letter after any visibility prefix
+    - reject generic type-parameter names that do not begin with an uppercase letter after any visibility prefix
+    - reject generic parameters that shadow a visible type, visible value, or directly visible member
+    - complete one declaration namespace per scope across all declaration categories instead of relying on category-specific
+      registries and collision checks
+    - provide stable dedicated diagnostics that identify both the new declaration and the hidden or conflicting declaration
+    - make LSP rename validation consume the same namespace, shadowing, reserved-name, capitalization, overload, and
+      visibility rules as Sema
+    required_tests:
+    - lowercase user-defined nominal type is rejected
+    - visibility-prefixed nominal type checks capitalization after the prefix
+    - lowercase generic type parameter is rejected
+    - generic parameter shadowing a visible type is rejected
+    - generic parameter shadowing a visible value is rejected
+    - function parameter shadowing a visible declaration is rejected
+    - local declaration shadowing a visible type is rejected
+    - compiler-provided property-setter binding cannot silently replace a visible declaration
+    - reuse of the same local name in disjoint sibling scopes remains valid
+    - overloads differing only by return type remain rejected
+
+  - id: frontend.operators-v2
+    area: frontend-semantic-ir-lowering-and-tooling
+    status: partial
+    audited: '2026-08-19'
+    repository_baseline: c515862
+    document_revision: inferred 2.x
+    document_revision_note: rules/foundations/operators.md has no explicit document-revision metadata. Repository
+      history shows substantial updates during the revision-2 period, including 2026-08-13, 2026-08-14, and 2026-08-18.
+      Later specialized rulebooks and newer governance entries take precedence on conflicts.
+    summary: Tracks the canonical Sec operator model across lexer, Pratt parsing, Sema, resolved operator facts, Semantic
+      IR, Sec MLIR, legacy/direct LLVM, formatter, diagnostics, and LSP. The frontend implements a substantial operator
+      surface and the P7-P9 checked-integer path is implemented through Semantic IR and Sec MLIR. Matrix multiplication,
+      aggregate/string operations, collection membership lowering, runtime concatenation, operator effects/tooling,
+      and some legacy backend paths remain partial.
+    rules:
+    - rules/foundations/operators.md
+    - rules/types/types.md
+    - rules/types/contracts.md
+    - rules/types/units.md
+    - rules/collections/collections.md
+    - rules/collections/shaped-types.md
+    - rules/memory/copy_move.md
+    - rules/memory/ownership.md
+    - rules/errors/runtime_checks.md
+    - rules/compiler/semantic_ir.txt
+    - rules/mlir/sec_mlir_dialect.md
+    - rules/mlir/sec_mlir_lowering.md
+    - rules/mlir/packages/sec-mlir-dialect_package7.md
+    - rules/mlir/packages/sec-mlir-dialect_package8.md
+    - rules/mlir/packages/sec-mlir-dialect_package9.md
+    - rules/tooling/formatter.md
+    - rules/tooling/lsp.md
+    code:
+    - internal/lexer/lexer.go
+    - internal/parser/expression.go
+    - internal/parser/parser.go
+    - internal/sema/analyzer.go
+    - internal/sema/constants.go
+    - internal/sema/semantic_facts.go
+    - internal/ir/semantic
+    - internal/lowering/secmlir
+    - internal/codegen/mlir
+    - internal/codegen/llvm
+    - internal/formatter
+    - internal/lsp
+    tests:
+    - internal/lexer/lexer_test.go
+    - internal/parser/parser_test.go
+    - internal/sema/analyzer_test.go
+    - internal/sema/semantic_facts_test.go
+    - internal/ir/semantic
+    - internal/lowering/secmlir
+    - internal/codegen/mlir/generator_test.go
+    - internal/codegen/llvm/generator_test.go
+    - internal/formatter/formatter_test.go
+    implemented:
+    - lexer recognition and longest-match tokenization for the established operator inventory
+    - Pratt expression parsing with canonical logical, bitwise, equality, comparison/membership, shift, additive,
+      multiplicative, prefix, call/index, and member precedence
+    - contextual matrix-multiply spelling x at multiplicative precedence
+    - boolean validation and short-circuit semantics for && and ||
+    - numeric arithmetic operand validation in Sema
+    - integer-only bitwise and shift validation
+    - compile-time invalid shift-count and signed-left-shift-overflow diagnostics
+    - rejection of chained comparisons
+    - ordered-comparison validation for compatible numeric operands and matching char, rune, and string operands
+    - recursive equality-comparability analysis for implemented fixed-array, struct, union, enum, reference, and scalar
+      cases
+    - rejection of ordinary equality for unsupported slice, interface, function, and opaque compiler-known categories
+    - range membership frontend semantics
+    - fixed-array and slice membership Sema validation
+    - direct string-concatenation operand matrix for built-in string, char, and rune with S1022 rejection of hidden
+      non-text conversion
+    - direct string += frontend operand validation
+    - resolved checked-integer operator facts and deterministic compile-time arithmetic failures
+    - P7 checked-integer Semantic IR and Sec MLIR foundation
+    - P8 signedness-correct integer Arith lowering including signed/unsigned comparison, division, remainder, and
+      shifts
+    - P9 typed arithmetic-failure reasons and Result integration
+    - stable structured diagnostics S1016, S1017, S1018, S1019, S1021, and S1022
+    - direct LLVM CFG short-circuit lowering for && and ||
+    - legacy direct LLVM division, ordered comparison, and range membership preserve represented integer signedness
+    - legacy direct LLVM rejects string comparison explicitly instead of emitting invalid or identity-based icmp
+    partial:
+    - operator precedence is duplicated rather than generated or shared from one canonical definition
+    - contextual matrix x has parser and fixed-shape Sema support but incomplete Semantic IR, lowering, and tooling
+      integration
+    - floating comparison lowering does not yet fully satisfy the canonical NaN predicate matrix
+    - float and decimal remainder support is incomplete
+    - fixed-array and slice membership are type-checked but Semantic IR and short-circuit backend lowering remain
+      incomplete
+    - runtime string concatenation lacks complete allocation-context, panic-versus-AllocationError, noPanic, interpolation-contract,
+      maximal-plan, and lowering semantics
+    - string += lacks complete transactional failure and commit semantics
+    - aggregate equality lowering and explicit identity/non-comparable metadata remain incomplete
+    - string equality and Unicode-scalar lexicographic ordering are not complete across maintained backend paths
+    - compound assignment still requires a complete exact-once, checked-failure, contract, volatile, atomic, ownership,
+      and commit-order audit
+    - operator Semantic IR metadata and effect metadata are not complete for all operator families
+    - formatter, diagnostics, LSP explanations, and quick fixes are incomplete across the full operator matrix
+    - parser recovery around malformed operator expressions is incomplete
+    remaining:
+    - centralize precedence and associativity metadata so parser, formatter, diagnostics, and tooling cannot drift
+    - complete contextual matrix x Semantic IR, lowering, diagnostics, formatter, and LSP behavior
+    - complete all floating NaN comparison predicates and float remainder semantics
+    - complete decimal arithmetic/remainder/comparison lowering under the owning decimal rules
+    - lower fixed-array and slice membership as exact-once left-to-right short-circuit search without allocation
+    - implement exact string-content equality and Unicode-scalar lexicographic ordering through Semantic IR and every
+      maintained backend
+    - complete compile-time string concatenation materialization as one folded constant
+    - implement active allocation-context selection and one maximal StringConcatPlan for runtime concatenation
+    - implement panic or AllocationError selection from source try context and enforce noPanic
+    - integrate interpolation formatting contracts and string.Concat with the same concat plan
+    - implement transactional fallible string += and only apply in-place reuse after proof
+    - complete derived aggregate equality lowering and identity/resource exclusion metadata
+    - complete compound-assignment exact-once and failure-before-commit semantics
+    - complete resolved operator/effect facts in Semantic IR for every accepted operator
+    - add focused reserved-question-mark diagnostic while retaining ? as reserved with no Sec 0.1 expression meaning
+    - complete formatter normalization, operator hover, precedence/result/failure explanations, and safe quick fixes
+    - complete the canonical operator regression matrices across frontend, Semantic IR, Sec MLIR, direct LLVM where
+      maintained, and end-to-end execution
+    governance_reconciliation:
+    - Do not migrate the operators.md statement that complete checked integer arithmetic/lowering is unimplemented
+      as a current blanket status. Newer governance entries for the P7/P8/P9 pipeline supersede that stale embedded
+      status for the implemented builtin-integer Sec MLIR path.
+    - Keep feature-specific ownership with frontend.collections, frontend.shaped-types, frontend.types-core, lowering.sec-mlir-checked-integers,
+      lowering.sec-mlir-checked-integer-arith, and lowering.sec-mlir-typed-arithmetic-failure rather than duplicating
+      their detailed implementation matrices here.
+    required_tests:
+    - canonical precedence and associativity matrix
+    - comparison chaining rejection
+    - short-circuit exact-once side effects
+    - signed and unsigned integer division
+    - signed and unsigned ordered comparison
+    - signed and unsigned range membership
+    - dynamic invalid shift-count failure
+    - signed-left-shift dynamic overflow failure
+    - float NaN equality and ordering matrix
+    - char and rune equality and ordering
+    - exact string equality
+    - string prefix ordering
+    - Unicode-scalar string ordering
+    - fixed-array membership first-match short-circuit
+    - slice membership first-match short-circuit
+    - all nine direct string-concatenation operand pairs
+    - non-text concat rejection with S1022
+    - runtime concat evaluation order and one maximal allocation plan
+    - transactional failed string += leaves destination unchanged
+    - struct and fixed-array equality short-circuit
+    - unsupported equality and ordering categories rejected
+    - reserved ? receives focused Sec 0.1 diagnostic
+    - backend parity or explicit unsupported-lowering diagnostics
+
+  - id: frontend.property-readability
+    area: frontend-property-access
+    status: partial
+    audited: '2026-08-19'
+    repository_baseline: c515862
+    document_revision: '2.0'
+    document_created: '2026-08-13'
+    document_last_updated: '2026-08-13'
+    summary: Supplements frontend.properties with read-access validation for write-only properties. Raw metadata lookup
+      remains available to writes, while a dedicated readable-property path now enforces HasGetter for ordinary,
+      unqualified impl, early property-body, and represented guard-forwarded reads. Compound assignment requires
+      both accessors and simple assignment remains setter-only. Explicit resolved access-kind facts remain partial.
+    rules:
+    - rules/declarations/properties.md
+    - rules/declarations/interfaces.md
+    - rules/declarations/impl.md
+    - rules/declarations/static.md
+    - rules/foundations/operators.md
+    code:
+    - internal/sema/analyzer.go
+    - internal/sema/types.go
+    tests:
+    - internal/sema/analyzer_test.go
+    implemented:
+    - property semantic metadata records getter availability
+    - property semantic metadata records setter availability
+    - interface property conformance checks required getter availability
+    - interface property conformance checks required setter availability
+    - simple property assignment rejects properties with no setter
+    - fallible simple property assignment requires try
+    - ordinary property lookup resolves declared property type and definition
+    - readable-property validation is distinct from raw metadata lookup
+    - ordinary and guard-forwarded member reads reject write-only properties
+    - unqualified impl and early property-body reads reject write-only properties
+    - compound assignment requires both getter and setter before RHS analysis
+    - simple assignment to write-only properties remains valid when receiver and setter rules permit it
+    partial:
+    - resolved Sema/Semantic IR does not yet preserve PropertyRead, PropertyWrite, FalliblePropertyWrite, and PropertyCompoundUpdate
+      facts
+    - future static and interface-runtime property reads must consume the same readable-property boundary when those
+      access paths are implemented
+    remaining:
+    - preserve explicit property access kind in resolved Sema/Semantic IR facts
+    - apply readable-property validation to future static and interface-runtime access paths
+    - complete fallible compound-assignment execution and lowering behavior
+    verification:
+    - command: go test ./internal/sema -run 'TestWriteOnlyPropertyReadAndCompoundAssignmentAreRejected|TestProperty'
+        -count=1
+      result: passed
+    bug_reference:
+    - correction12.md
+    governance_reconciliation:
+    - Narrow frontend.properties implemented wording "property member access type inference and self-member resolution"
+      to make clear that property lookup/type inference exists but read-access validation for write-only properties
+      is incomplete.
+    - Keep "complete getter and setter body analysis using ordinary function-body rules" as implemented; this correction
+      concerns property use sites, not accessor body validation.
+    - Keep the existing remaining item "complete fallible compound-assignment behavior". Add the getter requirement
+      separately because it is a more basic frontend rule that also affects infallible compound assignments.
+    required_tests:
+    - read-write property member read accepted
+    - getter-only property member read accepted
+    - write-only property member read rejected
+    - write-only property unqualified impl read rejected
+    - write-only property simple assignment accepted
+    - read-only property simple assignment rejected
+    - write-only property compound assignment rejected for missing getter
+    - getter-only property compound assignment rejected for missing setter
+    - fallible read-write property compound assignment retains try requirement
+
+  - id: frontend.register-wide-bit-fields
+    area: frontend-register-analysis
+    status: implemented
+    audited: '2026-08-19'
+    repository_baseline: c515862
+    document_revision: '2'
+    document_created: '2026-08-13'
+    document_last_updated: '2026-08-13'
+    summary: Implements exact arbitrary-precision value domains for raw register bit[N] fields independently from
+      host and target-sized uint widths. Field identity retains the declared width and compile-time assignment checks
+      consume the exact big.Int bounds.
+    rules:
+    - rules/declarations/registers.md
+    - rules/types/types.md
+    - rules/memory/layout.md
+    code:
+    - internal/sema/analyzer.go
+    - internal/sema/types.go
+    tests:
+    - internal/sema/analyzer_test.go
+    - testdata/register_valid.sec
+    - testdata/register_invalid.sec
+    implemented:
+    - positive integer-literal register widths
+    - positive integer-literal raw bit-field widths
+    - exact sum-of-field-width validation
+    - lsb-first and msb-first bit-offset calculation from declared widths
+    - raw bit-field range checking through arbitrary-precision MinInteger and MaxInteger bounds
+    - arbitrary-precision MinInteger and MaxInteger storage exists in the general semantic Type representation
+    - raw bit[N] semantic type names and BitWidth facts remain distinct from target-sized uint identity
+    - bit[65] and bit[128] assignment boundaries are covered with values above uint64
+    verification:
+    - command: go test ./internal/sema -run 'TestWideRegisterField|TestRegister' -count=1
+      result: passed
+    bug_reference:
+    - correction13.md
+    governance_reconciliation:
+    - 'Narrow frontend.registers implemented wording for bit[N] field value ranges and constant assignment checks:
+      layout width is exact, but raw semantic field ranges are currently capped at 64 bits.'
+    - Keep the separately documented remaining work for nested registers, compile-time width expressions, access semantics,
+      checked integer-to-register conversions, and lowering.
+    required_tests:
+    - bit[64] exact maximum accepted
+    - bit[64] first out-of-range value rejected
+    - bit[65] value 2^64 accepted
+    - bit[65] exact maximum accepted
+    - bit[65] first out-of-range value rejected
+    - bit[128] value 2^100 accepted
+    - bit[128] exact maximum accepted
+    - bit[128] first out-of-range value rejected
+    - backend inability to lower wide field does not change frontend semantic width
+
+  - id: frontend.shaped-static-extent-product
+    area: frontend-shaped-types
+    status: partial
+    audited: '2026-08-20'
+    repository_baseline: c515862
+    rulebook_generation: v2
+    document_revision: '2.0'
+    document_created: '2026-08-13'
+    document_last_updated: '2026-08-13'
+    summary: Sema validates static vector/matrix/tensor dimensions and computes their canonical element-count product
+      with arbitrary-precision arithmetic. Zero extents short-circuit the product, and the retained count must fit
+      the selected target uint representation. Downstream consumers do not yet all reuse this canonical fact.
+    rules:
+    - rules/collections/shaped-types.md
+    - rules/types/types.md
+    - rules/memory/layout.md
+    - rules/compiler/semantic_ir.txt
+    code:
+    - internal/sema/analyzer.go
+    - internal/sema/types.go
+    tests:
+    - internal/sema/analyzer_test.go
+    implemented:
+    - vector static arity validation
+    - matrix static arity validation
+    - variadic static tensor dimension arity validation
+    - individual shaped const arguments must be compile-time integers
+    - individual shaped const arguments must fit int64
+    - individual shaped dimensions must be non-negative
+    - zero dimensions are currently accepted syntactically and semantically
+    - static extent products use arbitrary-precision arithmetic
+    - zero extents produce a canonical zero element count without intermediate overflow
+    - static element count is checked against the selected target uint representation
+    - the canonical static element count is retained on the resolved Sema type
+    partial:
+    - layout, Semantic IR, and lowering do not yet uniformly consume the retained static element-count fact
+    remaining:
+    - reuse that fact for Len, SizeOf, dense strides, storage eligibility, Semantic IR, and lowering
+    bug_reference:
+    - correction27.md
+
+  - id: frontend.shaped-contextual-x
+    area: frontend-shaped-algebra
+    status: partial
+    audited: '2026-08-20'
+    repository_baseline: c515862
+    rulebook_generation: v2
+    document_revision: '2.0'
+    summary: Parser and Sema implement static contextual matrix x algebra. The result element is derived through ordinary
+      scalar multiplication and must support stable ordinary scalar accumulation; operand element types need not be
+      identical merely because the shaped operands differ. Runtime-shaped x and resolved Semantic IR facts remain.
+    rules:
+    - rules/collections/shaped-types.md
+    - rules/foundations/operators.md
+    - rules/types/units.md
+    code:
+    - internal/parser/expression.go
+    - internal/sema/analyzer.go
+    tests:
+    - internal/sema/analyzer_test.go
+    implemented:
+    - contextual identifier x recognized as infix operator only when followed by an expression
+    - x uses PRODUCT precedence
+    - x is left-associative through Pratt parser behavior
+    - Sema dispatches x to shaped matrix multiplication analysis
+    - static matrix by matrix inner-dimension validation
+    - static matrix by vector length validation
+    - static matrix by matrix result shape
+    - static matrix by vector result shape
+    - result element type derived from ordinary scalar multiplication
+    - product-term accumulation validated through ordinary scalar addition semantics
+    - focused Sema tests exercise the active subset
+    partial:
+    - runtime shaped x and ShapeError behavior remain absent
+    - no explicit resolved shaped-algebra fact is published to Semantic IR
+    remaining:
+    - implement runtime-shaped x with ShapeError and try where required
+    - publish canonical resolved x facts for Semantic IR/lowering
+    bug_reference:
+    - correction27.md
+    governance_reconciliation:
+    - 'Move contextual x from a wholly-remaining description to an explicit partial implementation: parser, precedence,
+      static matrix/matrix and matrix/vector Sema, shape checks, and tests already exist.'
+    - Record the active same-element restriction/result-type shortcut as incorrect relative to shaped-types v2.
+    - Keep runtime ShapeError, complete scalar algebra, Semantic IR, and lowering work as remaining.
+
+  - id: governance.lexical-shaped-parser-status
+    area: documentation-governance
+    status: implemented
+    audited: '2026-08-20'
+    repository_baseline: c515862
+    summary: Governance now treats built-in collection and shaped type parser integration as implemented. Remaining
+      lexical/tooling work is limited to genuinely unsupported formatter, semantic-token, contextual-classification,
+      and recovery behavior.
+    governance_reconciliation:
+    - remove or narrow the stale built-in collection/shaped parser-integration remaining item
+    - keep contextual x formatter/semantic-token classification as remaining
+    - keep incomplete lexical/tooling classifications that are actually unsupported
+    status_note: Normalized from audit supplement status correction-needed; canonical governance uses planned.
+
+  - id: frontend.spread-validity-and-ownership
+    area: frontend-spread-analysis
+    status: partial
+    audited: '2026-08-19'
+    repository_baseline: c515862
+    document_revision: '2.0'
+    document_created: '2026-08-13'
+    document_last_updated: '2026-08-14'
+    summary: Struct spread contributes omitted fields only after full type and copyability validation. Fixed-array
+      call spread prepares non-consuming copied argument slots, including for consuming destinations, so ownership
+      bookkeeping never consumes the source array. Explicit indexed Semantic IR projection facts remain pending.
+    rules:
+    - rules/declarations/spread.md
+    - rules/declarations/functions.md
+    - rules/declarations/struct.md
+    - rules/memory/copy_move.md
+    - rules/memory/ownership.md
+    - rules/compiler/semantic_ir.txt
+    code:
+    - internal/sema/analyzer.go
+    tests:
+    - internal/sema/analyzer_test.go
+    implemented:
+    - postfix spread source type analysis
+    - fixed-array compile-time expansion counts for calls
+    - fixed-array spread element copyability rejection for move-only elements
+    - same-exact-type validation for struct spread
+    - struct-spread source copyability diagnostic
+    - explicit-field duplicate checking remains independent of spread entries
+    - missing NonDefaultable-field diagnostics work when no spread is treated as supplying the struct
+    - invalid same-type move-only struct spreads contribute no fields to omitted-field/default resolution
+    - fixed-array expanded arguments are marked as prepared copied values for ownership analysis
+    - consuming destination parameters do not consume a valid fixed-array spread source
+    partial:
+    - expanded slots retain the source expression plus a prepared-value marker rather than a canonical indexed Semantic
+      IR projection fact
+    remaining:
+    - introduce resolved per-expanded-argument facts carrying source, index, prepared value, destination parameter,
+      and ownership operation
+    - preserve one source evaluation and increasing-index expansion order
+    - feed resolved spread facts into Semantic IR rather than reconstructing source semantics from repeated AST expressions
+    - audit return-reference/provenance and borrow bookkeeping for spread arguments once indexed expanded-argument
+      facts exist
+    bug_reference:
+    - correction14.md
+    governance_reconciliation:
+    - Narrow frontend.spread's implemented statement that invalid spreads are unable to suppress missing NonDefaultable-field
+      diagnostics; the same-type non-copyable case currently violates it.
+    - Keep fixed-array call spread type/arity/copyability analysis as implemented within that scope, but record post-resolution
+      ownership as partial because consuming destination parameters can currently consume the whole source array.
+    - The existing remaining Semantic-IR spread-provenance item does not by itself document these frontend Sema defects.
+    required_tests:
+    - move-only same-type struct spread does not suppress missing field errors
+    - wrong-type struct spread does not suppress missing field errors
+    - valid struct spread supplies required fields
+    - copyable array spread into consuming parameters leaves source available
+    - direct non-spread consuming argument still becomes unavailable
+    - multiple consuming expanded slots never move source array
+    - move-only element spread remains rejected
+    - spread source analyzed exactly once
+    - expanded call slots preserve increasing indices
+
+  - id: frontend.static-context-receiver-storage
+    area: frontend-static-analysis
+    status: implemented
+    audited: '2026-08-19'
+    repository_baseline: c515862
+    document_revision: '2.0'
+    document_created: '2026-08-13'
+    document_last_updated: '2026-08-14'
+    summary: Static impl functions retain owning-type qualification without receiving self or implicit instance members.
+      Module bindings have static storage independent of redundant spelling, and static fn outside impl is rejected.
+    rules:
+    - rules/declarations/static.md
+    - rules/declarations/functions.md
+    - rules/declarations/impl.md
+    - rules/declarations/properties.md
+    - rules/foundations/grammar.md
+    - rules/compiler/semantic_ir.txt
+    code:
+    - internal/parser/parser.go
+    - internal/sema/analyzer.go
+    - internal/sema/types.go
+    - internal/sema/semantic_facts.go
+    - internal/sema/call_graph.go
+    tests:
+    - internal/parser/parser_test.go
+    - internal/sema/analyzer_test.go
+    - internal/sema/concurrency_test.go
+    implemented:
+    - static keyword tokenization
+    - AST Static classification for static fn
+    - AST Static classification for static let and static let mut
+    - static fn is accepted as an impl member
+    - static function metadata retains Static=true
+    - static let symbols with an explicit static modifier are assigned StorageOriginStatic
+    - static member owner type is retained through impl-qualified function registration
+    - ordinary instance methods receive compiler-provided implicit self and instance-member aliases
+    - static method bodies do not receive self or implicit instance-member aliases
+    - receiver mutability inference and receiver-use classification exclude static methods
+    - ordinary module-level bindings use StorageOriginStatic without requiring explicit static
+    - Sema rejects static fn outside impl with focused guidance
+    bug_reference:
+    - correction15.md
+    governance_reconciliation:
+    - Remove or downgrade the current implemented claim "ordinary impl fn declarations remain instance-bound with
+      compiler-provided implicit self while static fn bodies receive no self". The ordinary-method half is implemented;
+      the static-method half is false at c515862.
+    - Keep "static-let symbols are classified with Static storage origin by Sema" only for explicitly static declarations,
+      and add that automatic module-level static storage classification is not yet implemented.
+    - Add validation of static declaration context to remaining work; parser acceptance of static fn is currently
+      broader than revision 2.0.
+    - Existing remaining items for static properties, access qualification, compile-time initialization, specialization,
+      concurrency, destruction, formatter normalization, and explicit Semantic IR/lowering remain unchanged.
+    required_tests:
+    - static method self use rejected
+    - static method unqualified instance field read rejected
+    - static method unqualified instance field write rejected
+    - ordinary instance method retains implicit self
+    - static method semantic fact has no receiver
+    - module-level ordinary let has static storage origin
+    - module-level ordinary let mut has static storage origin
+    - redundant module static let has identical semantic storage
+    - function-local ordinary let remains automatic
+    - function-local static let remains static
+    - module-level static fn rejected
+    - block-local static fn rejected
+    - impl static fn accepted
+    - impl extends static fn accepted
+
+  - id: frontend.struct-field-tags
+    area: frontend-struct-parser-and-metadata
+    status: partial
+    audited: '2026-08-19'
+    repository_baseline: c515862
+    document_revision: '2.0'
+    document_created: '2026-08-13'
+    document_last_updated: '2026-08-13'
+    summary: Supplements frontend.structs with quote-aware field-tag parsing. The parser now scans key/value entries
+      left-to-right, recognizes separators only outside quoted values, preserves whitespace and escape spelling,
+      rejects malformed quote structure, and recovers at the current field comma. AST and Sema retain ordered open-key
+      metadata. A fully normative escape interpretation and broader metadata coverage remain partial.
+    rules:
+    - rules/declarations/struct.md
+    - rules/foundations/grammar.md
+    code:
+    - internal/parser/parser.go
+    - internal/ast/ast.go
+    - internal/sema/analyzer.go
+    - internal/sema/types.go
+    tests:
+    - internal/parser/parser_test.go
+    - internal/sema/analyzer_test.go
+    implemented:
+    - optional raw-string tag token recognized after a stored field type
+    - multiple simple whitespace-separated key/value entries represented in AST
+    - open key names with no compiler hard-coded consumer allowlist
+    - tag key/value metadata copied from AST into semantic StructField metadata
+    - generic struct specialization preserves StructField metadata while substituting field types
+    - quote-aware key:"value" scanning without strings.Fields or destructive quote trimming
+    - whitespace and empty content inside quoted values are preserved
+    - malformed internal and unterminated quote structure is rejected
+    - escape spelling is preserved while escaped quotes do not terminate the value
+    - malformed tags recover at the current field comma and retain later fields
+    partial:
+    - struct.md does not yet define whether preserved inner escape spelling is decoded by the compiler or interpreted
+      only by metadata consumers
+    - complete end-to-end metadata preservation coverage across every generic, reflection, serialization, FFI, and
+      tooling consumer remains incomplete
+    remaining:
+    - define or consume the canonical quoted-value escape rules explicitly
+    - add complete semantic metadata-preservation and downstream-consumer tests
+    verification:
+    - command: go test ./internal/parser -run StructFieldTag -count=1
+      result: passed
+    bug_reference:
+    - correction16.md
+    governance_reconciliation:
+    - Narrow frontend.structs implemented wording "raw-string field tags parsed and preserved as open-key metadata".
+      Metadata preservation and open-key behavior are implemented, but the full revision-2.0 tag grammar and malformed-tag
+      recovery are not.
+    - The generic remaining struct diagnostics/recovery item does not make the current implemented tag-parser claim
+      accurate; record this limitation explicitly.
+    required_tests:
+    - simple tag entry accepted
+    - multiple simple tag entries accepted
+    - custom key accepted
+    - empty quoted tag value accepted
+    - quoted tag value containing whitespace accepted
+    - malformed internal quote structure rejected
+    - unterminated quoted value rejected
+    - tag source order preserved
+    - malformed first-field tag still permits parsing later valid fields
+    - malformed middle-field tag recovers at field boundary
+
+  - id: frontend.switch-cfg-and-enum-coverage
+    area: frontend-control-flow
+    status: partial
+    audited: '2026-08-20'
+    repository_baseline: c515862
+    document_revision: '2.0'
+    document_created: '2026-08-16'
+    document_last_updated: '2026-08-16'
+    summary: Supplements frontend.switch-statements-v2 with four related frontend control-flow/coverage defects. Case
+      expressions are all inferred through the live analyzer state even though runtime case tests are lazy; skipped
+      dynamic cases can therefore commit ownership/resource/arena/borrow/effect state. Case bodies are analyzed independently
+      and a body ending in fallthrough is marked non-continuing without routing its resulting state into the next
+      case body, so fallthrough ownership/assignment state can be lost. Enum switch coverage records member names
+      rather than semantic numeric value classes, allowing numeric aliases to evade duplicate-case detection and distort
+      missing-value warnings. Finally, switchCoverageTracker.isExhaustive() recognizes only bool true+false, so a
+      fully covered closed enum still gets a synthetic unmatched continuation path and is not recognized by termination/return
+      analysis.
+    rules:
+    - rules/control-flow/flowcontrol_switch.md
+    - rules/control-flow/flowcontrol_if.md
+    - rules/declarations/enums.md
+    - rules/memory/ownership.md
+    - rules/memory/borrowing.txt
+    - rules/compiler/semantic_ir.txt
+    code:
+    - internal/sema/analyzer.go
+    - internal/codegen/mlir/generator.go
+    - internal/codegen/llvm/statements.go
+    tests:
+    - internal/sema/analyzer_test.go
+    - internal/sema/copy_move_test.go
+    - internal/sema/destruction_test.go
+    - internal/codegen/mlir/generator_test.go
+    - internal/codegen/llvm/generator_test.go
+    - testdata/switch_valid.sec
+    - testdata/switch_invalid.sec
+    implemented:
+    - switch subject expression is inferred once
+    - subject and subjectless switch syntax and source order are preserved
+    - value, range, relational, and comma-separated alternatives are represented
+    - direct fallthrough placement/final/successor validation
+    - independent lexical symbol scopes for case bodies
+    - compile-time integer/bool/direct-string duplicate checks
+    - integer range overlap and value-covered-by-range diagnostics
+    - bool true+false coverage removes the unmatched path
+    - backend subsets contain ordered/lazy switch control-flow lowering
+    - case-test effects follow the source-order unmatched path instead of being committed before every body
+    - fallthrough state is merged into the destination body while destination tests remain on the direct-selection path
+    - enum case identity and warnings use canonical numeric value classes
+    - complete closed-enum coverage removes the unmatched path and participates in return analysis
+    partial:
+    - comma-separated alternatives retain conservative aggregate frontend state rather than an explicit per-alternative
+      resolved CFG edge
+    - no durable ResolvedSwitchPlan is published to Semantic IR yet
+    remaining:
+    - build a canonical path-sensitive resolved switch CFG
+    - preserve source-order and comma-alternative short-circuit state
+    - keep open bit-backed enum domains open unless the complete bit domain is proven covered
+    - make definite assignment, ownership, resources, borrows, termination, call/effect reachability, Semantic IR,
+      diagnostics, and lowering consume the same resolved switch plan
+    - add focused lazy-case, fallthrough-state, alias, and enum-exhaustiveness regression coverage
+    bug_reference:
+    - correction24.md
+    governance_reconciliation:
+    - 'Narrow "exactly-once subject evaluation and ordered lazy case evaluation": subject inference is once and backend
+      subsets lower lazily, but frontend runtime-state/effect analysis of case tests is eager.'
+    - 'Narrow "independent case scopes and definite-assignment merging over continuing paths" and "termination analysis
+      including explicit fallthrough chains": lexical scopes exist, but fallthrough state is not propagated as a CFG
+      edge into the destination case.'
+    - Keep integer/bool/direct-string duplicate and integer-range coverage as implemented. Add enum alias/value-class
+      duplicate coverage as partial.
+    - Keep enum non-exhaustiveness warning support only at the current member-name level; semantic value-class coverage
+      and complete closed-enum flow proof remain partial.
+    - Existing remaining backend, cleanup, unit, diagnostics, formatter, LSP, and loop-control work remains unchanged.
+    required_tests:
+    - skipped later consuming case call leaves source available
+    - skipped later case call does not register reachable effect
+    - subjectless comma alternatives short-circuit frontend state
+    - move in fallthrough source remains moved after destination continuation
+    - destination body merges direct and fallthrough ownership state
+    - assignment/resource/arena/borrow state propagates across fallthrough
+    - destination tests are skipped on fallthrough edge
+    - enum numeric aliases are duplicate switch cases
+    - enum warning reasons by unique runtime value class
+    - complete closed-enum switch removes unmatched path
+    - complete closed-enum all-returning switch satisfies function return analysis
+    - open bit-backed declared members alone remain non-exhaustive
+
+  - id: frontend.target-sized-integer-semantics
+    area: frontend-target-semantics-and-legacy-lowering
+    status: partial
+    audited: '2026-08-19'
+    repository_baseline: c515862
+    document_revision: inferred 2.x
+    document_revision_note: rules/types/types.md has no explicit document-revision metadata. It is the canonical replacement
+      for types.txt and its current structure and Sec 0.1 decisions belong to the revision-2-era rulebook set. Later
+      specialized target/layout and MLIR package rulebooks take precedence where more specific.
+    summary: Compiler target selection now passes the authoritative ResolvedScalarPlan into Sema, where target-sized
+      int and uint bounds are instantiated for 32-bit and 64-bit targets. Legacy AST backends still require complete
+      scalar-plan integration or explicit rejection.
+    rules:
+    - rules/types/types.md
+    - rules/memory/layout.md
+    - rules/compiler/semantic_ir.txt
+    - rules/mlir/sec_mlir_lowering.md
+    - rules/mlir/packages/sec-mlir-dialect_package6.md
+    - rules/mlir/packages/sec-mlir-dialect_package7.md
+    - rules/mlir/packages/sec-mlir-dialect_package8.md
+    code:
+    - internal/sema/types.go
+    - internal/sema/analyzer.go
+    - cmd/compiler/main.go
+    - cmd/compiler/target.go
+    - internal/layout/scalar_plan.go
+    - internal/ir/semantic
+    - internal/lowering/secmlir
+    - internal/codegen/llvm/types.go
+    - internal/codegen/llvm/generator.go
+    - internal/codegen/mlir/generator.go
+    tests:
+    - internal/sema/analyzer_test.go
+    - internal/layout/scalar_plan_test.go
+    - internal/ir/semantic/semantic_test.go
+    - internal/lowering/secmlir/emitter_test.go
+    - internal/codegen/llvm/generator_test.go
+    - internal/codegen/mlir/generator_test.go
+    - cmd/compiler/main_test.go
+    implemented:
+    - canonical language identity of int and uint as distinct signed and unsigned target-sized types
+    - fixed-width integer type identities and arbitrary-precision bounds
+    - target-aware ResolvedScalarPlan for known 32-bit and 64-bit targets
+    - Sec MLIR target-aware resolution of semantic !sec.int and !sec.uint
+    - P7/P8 checked integer lowering after target-aware scalar resolution
+    - verified 32-bit and 64-bit Sec MLIR target plans
+    - Sema target-sized int and uint bounds derive from ResolvedScalarPlan.PointerWidthBits
+    - compiler target analysis constructs Sema with the selected scalar plan
+    partial:
+    - direct LLVM independently maps int to i32 and uint to i64 regardless of selected target
+    - legacy AST-to-LLVM-dialect MLIR independently maps int to i32 and uint to i64 regardless of selected target
+    remaining:
+    - audit literal shaping, conversion, constant arithmetic, shifts, enums, named types, contracts, defaults, constants,
+      and generic substitutions for target-sized bounds
+    - remove independent target-sized width guesses from legacy direct LLVM
+    - remove independent target-sized width guesses from legacy AST-to-LLVM-dialect MLIR
+    - make any maintained legacy backend consume canonical target scalar facts or reject unsupported target-sized
+      lowering explicitly
+    - extend 32-bit versus 64-bit frontend representability coverage across every integer consumer
+    - add cross-layer tests proving frontend acceptance agrees with scalar-layout representability
+    bug_reference:
+    - correction5.md
+    governance_reconciliation:
+    - lowering.sec-mlir-scalar-layout remains implemented and authoritative for target-aware scalar physical layout.
+    - lowering.sec-mlir-checked-integers and lowering.sec-mlir-checked-integer-arith remain implemented for their
+      documented P7/P8 scope.
+    - frontend.types-core currently says that the nominal identity, assignability, and conversion matrix still needs
+      audit, but it does not explicitly record target-unaware int/uint semantic bounds or the conflicting legacy backend
+      width mappings.
+    required_tests:
+    - int maximum and overflow on 32-bit target
+    - int minimum and underflow on 32-bit target
+    - uint maximum and overflow on 32-bit target
+    - same larger values on 64-bit target
+    - fixed-width integer behavior unchanged across targets
+    - target-sized named type bounds
+    - target-sized constant arithmetic overflow
+    - target-sized explicit conversion bounds
+    - target-sized enum underlying bounds
+    - direct LLVM int and uint target-width parity or explicit unsupported error
+    - legacy MLIR int and uint target-width parity or explicit unsupported error
+    - Sema and Sec MLIR scalar-layout representability agreement
+
+  - id: frontend.union-constructor-value-semantics
+    area: frontend-union-construction
+    status: partial
+    audited: '2026-08-19'
+    repository_baseline: c515862
+    document_revision: '2'
+    document_created: '2026-08-13'
+    document_last_updated: '2026-08-13'
+    summary: Union constructor payloads apply ordinary compatibility and integer representability validation. Resolved
+      unnamed constructors transfer move-only payload ownership into the aggregate without treating ordinary function
+      calls as constructors. Canonical Semantic IR payload-preparation facts remain pending.
+    rules:
+    - rules/declarations/unions.md
+    - rules/declarations/struct.md
+    - rules/types/types.md
+    - rules/memory/copy_move.md
+    - rules/memory/ownership.md
+    - rules/compiler/semantic_ir.txt
+    - rules/mlir/packages/sec-mlir-dialect_package11.md
+    code:
+    - internal/sema/analyzer.go
+    - internal/sema/types.go
+    - internal/sema/semantic_facts.go
+    - internal/ir/semantic
+    - internal/lowering/secmlir
+    tests:
+    - internal/sema/analyzer_test.go
+    - internal/sema/copy_move_test.go
+    - internal/sema/semantic_facts_test.go
+    - testdata/union_valid.sec
+    - testdata/union_invalid.sec
+    - testdata/semantic_ir/enum_union_values.sec
+    implemented:
+    - payload-less union construction arity checking
+    - single unnamed payload arity checking
+    - single unnamed payload broad type compatibility checking
+    - struct-like payload known-field and duplicate-field checking
+    - struct-like payload broad field type compatibility checking
+    - omitted Defaultable struct-like payload field synthesis
+    - omitted NonDefaultable struct-like payload field diagnostics
+    - generic payload substitution before represented concrete construction
+    - union payload copyability classification
+    - struct-literal aggregate ownership walk used by struct-like payload construction
+    - resolved union variant identity and declaration-order variant index facts
+    - integer representability validation for expected, qualified, generic-substituted, and named-field payloads
+    - resolved unnamed union constructors transfer ownership from move-only payload sources
+    - ordinary function calls remain governed by ordinary call-argument ownership
+    partial:
+    - union constructor payload preparation is not yet represented as one explicit resolved value/ownership fact independent
+      of AST shape
+    remaining:
+    - introduce explicit resolved union-constructor payload preparation facts
+    - distinguish payload copy preparation from ownership transfer
+    - make unnamed and struct-like payload ownership semantics independent of AST representation
+    - audit reference-origin/contained-origin propagation through both union constructor forms
+    - feed resolved constructor preparation into Semantic IR and lowering without reconstructing copy/move semantics
+      from syntax
+    bug_reference:
+    - correction17.md
+    governance_reconciliation:
+    - 'Narrow frontend.unions implemented wording "payload construction arity and type checking": arity and broad
+      type compatibility are implemented, but complete typed initialization/representability checking is partial.'
+    - Keep implemented match payload Place ownership and copyability classification. Add union-constructor payload
+      ownership transfer as a separate partial frontend area.
+    - Keep Package 11 implemented within its documented dependency-bounded scope; this correction concerns the frontend
+      preparation/proof supplied to later IR.
+    - Generic-union recursive storage remains governed by correction8.md and should not be duplicated here.
+    required_tests:
+    - unnamed uint8 payload accepts 255
+    - unnamed uint8 payload rejects 256
+    - named uint8 payload field rejects 300
+    - generic uint8 union payload rejects out-of-range literal
+    - equivalent struct and union field representability behavior
+    - copyable unnamed payload leaves source usable
+    - move-only unnamed payload transfers ownership
+    - moved unnamed payload source cannot be reused
+    - borrowed move-only source cannot be transferred into unnamed payload
+    - unnamed and struct-like payload ownership semantics agree
+    - temporary move-only payload constructor remains valid
+    - resolved constructor fact records payload ownership preparation
+
+  - id: frontend.units-declaration-authority
+    area: frontend-unit-resolution
+    status: implemented
+    audited: '2026-08-19'
+    repository_baseline: c515862
+    document_revision: '2.0'
+    document_created: '2026-08-18'
+    document_last_updated: '2026-08-18'
+    summary: Ordinary unit identities are declaration/catalog driven. Sema has no spelling-based physical-unit prelude,
+      and omitted physical Dimension is represented as not established rather than a fabricated identity axis.
+    rules:
+    - rules/types/units.md
+    - rules/projects/modules.md
+    code:
+    - internal/sema/units.go
+    - internal/sema/analyzer.go
+    tests:
+    - internal/sema/analyzer_test.go
+    - testdata/units_valid.sec
+    - testdata/units_advanced_valid.sec
+    implemented:
+    - omitted numeric carrier defaults to decimal
+    - omitted category defaults to other
+    - ratio omitted Dimension resolves to the canonical dimensionless vector
+    - information omitted Dimension resolves to information^1
+    - currency omitted Dimension receives an identity-derived currency axis
+    - other omitted Dimension receives an identity-derived semantic axis
+    - explicit Dimension metadata replaces the initially retained unit dimension
+    - ordinary units enter Sema only through analyzed declarations and imported catalogs
+    - physical units without Dimension retain DimensionEstablished=false and no fabricated axis
+    - explicit Dimension metadata establishes the exact declared vector
+    - undeclared former builtin spellings receive the ordinary unknown-unit diagnostic
+    bug_reference:
+    - correction6.md
+    governance_reconciliation:
+    - Keep frontend.units-v2 implemented claims for ratio, information, currency, and other omitted-Dimension defaults.
+    - Replace the existing required-test wording "all five categories and their omitted Dimension defaults resolve
+      correctly". Revision 2.0 does not define a synthesized omitted-Dimension default for physical.
+    - 'Suggested replacement tests: ratio omitted Dimension -> []; information -> information^1; currency -> unique
+      currency axis; other -> unique semantic axis; physical -> no synthesized Dimension.'
+    - The existing stdlib.units-catalog entry remains authoritative for the standard-library unit declarations and
+      metadata. It should replace, not be supplemented by, a hidden Sema-only ordinary-unit catalog.
+    required_tests:
+    - undeclared ordinary unit factor is rejected
+    - undeclared m is rejected when no standard unit catalog declaration is present
+    - standard unit catalog declaration makes m available
+    - ordinary identifier spelling does not inject hidden unit semantics
+    - ratio omitted Dimension becomes dimensionless
+    - information omitted Dimension becomes information^1
+    - currency omitted Dimension gets a unique currency axis
+    - other omitted Dimension gets a unique semantic axis
+    - physical omitted Dimension is not synthesized
+    - explicit physical Dimension is authoritative
+
+  - id: frontend.loop-arena-generation-fixed-point
+    area: frontend-control-flow-and-reference-validity
+    status: implemented
+    audited: '2026-08-20'
+    repository_baseline: c515862
+    primary_document: rules/control-flow/flowcontrol_while.md
+    primary_document_revision: '2.0'
+    related_documents:
+    - rules/control-flow/flowcontrol_for.md
+    - rules/memory/reference_model.md
+    - rules/compiler/rules_implementations.txt
+    summary: Loop fixed-point analysis carries ArenaDomain generations with move state, resources, borrows, and local
+      reference origins. Fallthrough and continue backedges merge generations into the loop header, generation changes
+      participate in convergence, and replay uses the merged header state for both while and for loops.
+    code:
+    - internal/sema/analyzer.go
+    implemented:
+    - arena reset/release advance current Sema arena generation
+    - stale arena-reference checks compare reference generation to current arena generation
+    - loop fixed-point state carries move state
+    - loop fixed-point state carries close-tracked resource state
+    - loop fixed-point state carries borrow state
+    - loop fixed-point state carries local reference-origin state
+    - break edges record arena generation for post-loop merging
+    - post-loop arena generations are conservatively merged
+    - loop header/backedge state carries ArenaDomain generations
+    - continue edges snapshot and merge ArenaDomain generations
+    - fixed-point convergence compares generation maps
+    - replay restores the merged header generation state
+    - while and for use the corrected shared fixed-point helper
+    remaining:
+    - prefer one structured LoopEdgeState carrying every tracked semantic domain
+    bug_reference:
+    - correction25.md
+    governance_reconciliation:
+    - Add loop-carried arena-generation validity to frontend.while-statements-v2 remaining work. The existing generic
+      loop/fixed-point claims do not document this omitted semantic state.
+    - Add the same shared-helper limitation to for-loop governance where loop-header fixed-point support is described.
+    - correction21.md continues to own nested break-target return/fallthrough analysis; correction22.md continues
+      to own logical short-circuit frontend runtime-state analysis.
+    required_tests:
+    - while second iteration sees Arena.Reset from first iteration
+    - for second iteration sees Arena.Reset from first iteration
+    - while continue edge carries arena generation
+    - for continue edge carries arena generation
+    - Arena.Release has identical generation behavior
+    - break-only arena generation affects exit but not nonexistent backedge
+    - nested loops preserve generation on the correct loop edge
+
+  - id: governance.source-rulebook-traceability
+    area: compiler-implementation-governance
+    status: implemented
+    introduced_by: correction25.md
+    audited: '2026-08-20'
+    repository_baseline: c515862
+    summary: Establish a general Sec implementation traceability rule. Where applicable, every source file and every
+      function that implements, validates, analyzes, or lowers normative Sec behavior must identify in comments the
+      canonical rulebook(s) and the specific rule/section(s) it implements. Narrow functions should cite precise rules;
+      broad cross-cutting functions may cite several books or higher-level sections. Pure non-normative infrastructure
+      may use a documented exception.
+    canonical_destination:
+    - rules/README.md
+    required_policy:
+    - file-level comments identify principal normative rulebook owners
+    - function-level comments identify the most precise practical rule or section owners
+    - multiple materially relevant rulebooks are listed rather than forcing a false single owner
+    - canonical rulebook paths are used
+    - stable rule IDs or section headings/numbers are preferred over source line numbers
+    - comments are updated in the same change when semantic ownership changes
+    - rulebook moves/replacements require source-reference migration
+    - comments are traceability metadata and never override normative rulebooks
+    - genuinely non-normative infrastructure may be exempt where no useful rule mapping exists
+    - focused semantic regression tests should cite their rule and correction where practical
+    implemented:
+    - canonical implementation traceability policy is defined in rules/README.md
+    - preferred Go and Sec source-reference forms are documented
+    - touched semantic functions for corrections 23 through 29 carry rulebook-oriented comments where applicable
+    remaining:
+    - decide whether lint/CI should verify traceability on new or modified semantic functions
+    - migrate high-value semantic files incrementally
+    - prioritize parser, Sema, Semantic IR, lowering, ABI/FFI, ownership, and diagnostics code
+    - add correction references to focused regression tests where useful
+    audit_targets:
+    - source: correction28.md
+      functions:
+      - inferArenaCall
+      - Arena Reset/Release dependency validation helpers
+      - Arena generation and epoch validity helpers
+      - dependency-liveness and last-use integration
+    - source: correction29.md
+      functions:
+      - builtinTypes
+      - copyClassificationOf
+      - triviallyDestructible
+      - inferArenaConstructorCall
+      - inferArenaCall
+      - ArenaDomain creation, transfer, epoch, and borrowed-backing helpers
+    - source: correction27.md
+      functions:
+      - validateCompilerKnownGenericType
+      - validateCompilerKnownTypeArity
+      - static shaped product and Len validation
+      - contextualMatrixMultiplyAhead
+      - curPrecedence
+      - inferMatrixMultiplyExpression

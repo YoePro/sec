@@ -1,0 +1,85 @@
+module core
+
+impl char {
+    fn ToString() string {
+        return string.FromByteArray([self])
+    }
+
+    property IsDigit: bool {
+        get {
+            return self >= 48t && self <= 57t
+        }
+    }
+
+    /** Reports whether this char is an ASCII letter. */
+    property IsLetter: bool {
+        get {
+            return (self >= 65t && self <= 90t) || (self >= 97t && self <= 122t)
+        }
+    }
+
+    /** Reports whether this char is an ASCII letter or decimal digit. */
+    property IsLetterOrDigit: bool {
+        get {
+            return self.IsLetter || self.IsDigit
+        }
+    }
+
+    /** Reports whether this char is an ASCII whitespace character. */
+    property IsWhitespace: bool {
+        get {
+            return self == 9t || self == 10t || self == 13t || self == 32t
+        }
+    }
+
+    /** Reports whether this char is an ASCII control character. */
+    property IsControl: bool {
+        get {
+            return self < 32t || self == 127t
+        }
+    }
+
+    /** Reports whether this char belongs to the ASCII range. */
+    property IsAscii: bool {
+        get {
+            return self >= 0t && self <= 127t
+        }
+    }
+
+    /** Reports whether this char is a hexadecimal 'digit' */
+    property IsHexDigit: bool {
+        get {
+            // 0 - 9, A-F, a-f
+            return (self >= 48t && self <= 57t) || (self >= 65t && self <= 70t) || (self >= 97t && self <= 102t)
+        }
+    }
+
+    /** Returns the intvalue of a char or None() */
+    fn ToNumericValue() Option[int] {
+        if self >= 48t && self <= 57t {
+            return Some(int(self - 48t))
+        }
+        return None()
+    }
+
+    /** Returns the lowercase variant of a letter when possible */
+    fn ToLower() char {
+        // TODO: We need to cover other formats such as Latin1 and not just ASCII
+        if self >= 65t && self <= 90t {
+            return self | 0x20t
+        }
+
+        return self
+    }
+
+    /** Returns the uppercase variant of a letter when possible */
+    fn ToUpper() char {
+        // TODO: We need to cover other formats such as Latin1 and not just ASCII
+        if self >= 97t && self <= 122t {
+            return self & 0xDFt
+        }
+
+        return self
+    }
+
+}

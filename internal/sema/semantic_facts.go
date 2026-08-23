@@ -133,9 +133,12 @@ type ResolvedTryHandler struct {
 	Variant     string
 	BindingName string
 	BindingType Type
-	Flow        ResolvedTryHandlerFlow
-	ResultType  Type
-	SourceIndex int
+	// PayloadDiscard implements explicit Ok(_)/Err(_) handling from
+	// rules/errors/errorhandling.txt and correction20.md.
+	PayloadDiscard bool
+	Flow           ResolvedTryHandlerFlow
+	ResultType     Type
+	SourceIndex    int
 }
 
 type ResolvedTryPlan struct {
@@ -234,6 +237,7 @@ type ResolvedEnumConversion struct {
 	Kind        ResolvedEnumConversionKind
 	EnumType    Type
 	IntegerType Type
+	Fallible    bool
 }
 
 type ResolvedUnionVariantKind string
@@ -311,6 +315,9 @@ func (a *Analyzer) ResolvedEnumConversionOf(call *ast.CallExpression) (ResolvedE
 	}
 	if operand.Kind == EnumType && isIntegerType(result) {
 		return ResolvedEnumConversion{Kind: ResolvedEnumToInteger, EnumType: operand, IntegerType: result}, true
+	}
+	if operand.Kind == EnumType && result.Kind == ResultType && len(result.TypeArgs) == 2 && isIntegerType(result.TypeArgs[0]) {
+		return ResolvedEnumConversion{Kind: ResolvedEnumToInteger, EnumType: operand, IntegerType: result.TypeArgs[0], Fallible: true}, true
 	}
 	return ResolvedEnumConversion{}, false
 }

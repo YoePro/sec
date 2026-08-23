@@ -531,7 +531,11 @@ func (g *Generator) emitLet(stmt *ast.LetStatement) error {
 	} else if initial != nil && initial.fnType != nil {
 		fnType = initial.fnType
 	}
-	g.locals[stmt.Name.Value] = local{typ: typ, ptr: ptr, fnType: fnType}
+	unsigned := initial != nil && initial.unsigned
+	if stmt.Type != nil {
+		unsigned = g.typeReferenceIsUnsigned(stmt.Type)
+	}
+	g.locals[stmt.Name.Value] = local{typ: typ, ptr: ptr, fnType: fnType, unsigned: unsigned}
 
 	if initial != nil {
 		if initial.typ != typ {
@@ -568,12 +572,12 @@ func (g *Generator) emitAssignment(stmt *ast.AssignmentStatement) error {
 			"+=": "add",
 			"-=": "sub",
 			"*=": "mul",
-			"/=": "sdiv",
+			"/=": signedLLVMOperator("sdiv", "udiv", slot.unsigned),
 		}[stmt.Operator]
 		if op == "" {
 			return fmt.Errorf("emit-llvm does not support assignment operator %q yet", stmt.Operator)
 		}
-		combined, err := g.emitIntegerBinary(op, value{typ: slot.typ, ref: current}, val)
+		combined, err := g.emitIntegerBinary(op, value{typ: slot.typ, ref: current, unsigned: slot.unsigned}, val)
 		if err != nil {
 			return err
 		}
@@ -1119,6 +1123,9 @@ func (g *Generator) emitExpressionStatement(expr ast.Expression) (value, error) 
 
 func (g *Generator) emitCallExpression(expr *ast.CallExpression) (value, error) {
 	name := callExpressionName(expr)
+	if name == "__StringSliceUnchecked" {
+		return g.emitStringSliceUnchecked(expr)
+	}
 	if _, ok := g.functions[name]; ok {
 		return g.emitFunctionCallExpression(expr)
 	}
@@ -1147,6 +1154,41 @@ func (g *Generator) emitCallExpression(expr *ast.CallExpression) (value, error) 
 	default:
 		return g.emitFunctionCallExpression(expr)
 	}
+}
+
+func (g *Generator) emitStringSliceUnchecked(expr *ast.CallExpression) (value, error) {
+	if len(expr.Arguments) != 3 {
+		return value{}, fmt.Errorf("__StringSliceUnchecked expects 3 arguments, got %d", len(expr.Arguments))
+	}
+	source, err := g.emitExpression(expr.Arguments[0])
+	if err != nil {
+		return value{}, err
+	}
+	if source.typ != "string" {
+		return value{}, fmt.Errorf("__StringSliceUnchecked requires a string source")
+	}
+	start, err := g.emitExpression(expr.Arguments[1])
+	if err != nil {
+		return value{}, err
+	}
+	start, err = g.coerceValue(start, "i64")
+	if err != nil {
+		return value{}, fmt.Errorf("__StringSliceUnchecked start must be uint: %w", err)
+	}
+	end, err := g.emitExpression(expr.Arguments[2])
+	if err != nil {
+		return value{}, err
+	}
+	end, err = g.coerceValue(end, "i64")
+	if err != nil {
+		return value{}, fmt.Errorf("__StringSliceUnchecked end must be uint: %w", err)
+	}
+
+	ptr := g.nextTemp()
+	g.write("  %s = getelementptr inbounds i8, ptr %s, i64 %s\n", ptr, source.ref, start.ref)
+	length := g.nextTemp()
+	g.write("  %s = sub i64 %s, %s\n", length, end.ref, start.ref)
+	return value{typ: "string", ref: ptr, lenRef: length}, nil
 }
 
 func isCodegenBuiltinConversion(name string) bool {

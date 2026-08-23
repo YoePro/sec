@@ -1925,6 +1925,61 @@ func TestParseInvalidStructFieldTag(t *testing.T) {
 	}
 }
 
+// rules/declarations/struct.md, Field tags; correction16.md.
+func TestParseStructFieldTagsKeepsQuotedWhitespaceAndEscapes(t *testing.T) {
+	input := "type Item struct { Label: string `ui:\"hello world\" empty:\"\" custom:\"a \\\"quoted\\\" value\"`, }"
+
+	p := New(lexer.New(input))
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	decl := program.Statements[0].(*ast.TypeDeclStatement)
+	tags := decl.StructType.Fields[0].Tags
+	if len(tags) != 3 {
+		t.Fatalf("tags = %+v, want three", tags)
+	}
+	if tags[0].Key != "ui" || tags[0].Value != "hello world" {
+		t.Fatalf("first tag = %+v", tags[0])
+	}
+	if tags[1].Key != "empty" || tags[1].Value != "" {
+		t.Fatalf("second tag = %+v", tags[1])
+	}
+	if tags[2].Key != "custom" || tags[2].Value != `a \"quoted\" value` {
+		t.Fatalf("third tag = %+v", tags[2])
+	}
+}
+
+// rules/declarations/struct.md, Field-tag recovery; correction16.md.
+func TestInvalidStructFieldTagRecoversAtNextField(t *testing.T) {
+	input := "type Item struct { ID: int `json:\"id\"`, Broken: int `json:\"\"id\"\"`, Label: string `ui:\"hello world\"`, }"
+
+	p := New(lexer.New(input))
+	program := p.ParseProgram()
+	if len(p.Errors()) != 1 || p.Errors()[0] != "invalid struct field tag" {
+		t.Fatalf("parser errors = %v", p.Errors())
+	}
+
+	decl := program.Statements[0].(*ast.TypeDeclStatement)
+	fields := decl.StructType.Fields
+	if len(fields) != 3 || fields[0].Name.Value != "ID" || fields[1].Name.Value != "Broken" || fields[2].Name.Value != "Label" {
+		t.Fatalf("recovered fields = %+v", fields)
+	}
+	if len(fields[2].Tags) != 1 || fields[2].Tags[0].Value != "hello world" {
+		t.Fatalf("recovered field tags = %+v", fields[2].Tags)
+	}
+}
+
+// rules/declarations/struct.md, Field-tag quoted values; correction16.md.
+func TestUnterminatedStructFieldTagValueIsRejected(t *testing.T) {
+	input := "type Item struct { ID: int `json:\"id`, Label: string, }"
+
+	p := New(lexer.New(input))
+	p.ParseProgram()
+	if len(p.Errors()) != 1 || p.Errors()[0] != "invalid struct field tag" {
+		t.Fatalf("parser errors = %v", p.Errors())
+	}
+}
+
 func TestParseImplWithProperty(t *testing.T) {
 	input := `
 impl Vehicle {
@@ -3302,8 +3357,8 @@ func TestParseTypesFile(t *testing.T) {
 		}
 	}
 
-	if len(program.Statements) != 43 {
-		t.Fatalf("expected 43 statements, got %d", len(program.Statements))
+	if len(program.Statements) != 44 {
+		t.Fatalf("expected 44 statements, got %d", len(program.Statements))
 	}
 }
 

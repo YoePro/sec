@@ -55,6 +55,8 @@ type Type struct {
 	ReferenceOriginMatchScoped bool
 	ReferenceOriginStorage     StorageOrigin
 	ReferenceOriginGeneration  int
+	ReferenceOriginDisplayName string
+	ArenaDomainID              string
 	MinInt                     *int64
 	MaxInt                     *int64
 	MinUint                    *uint64
@@ -72,6 +74,7 @@ type Type struct {
 	UnionDefault               string
 	TypeArgs                   []Type
 	ConstArgs                  []int64
+	StaticElementCount         *big.Int
 	Element                    *Type
 	ArrayLength                int64
 	EventCapacity              int64
@@ -236,29 +239,32 @@ const (
 )
 
 type UnitDefinition struct {
-	Name           string
-	LongName       string
-	Symbol         string
-	Category       UnitCategory
-	Dimension      Dimension
-	Kind           string
-	Scale          string
-	DefaultNumeric string
-	IsBaseUnit     bool
-	Status         UnitStatus
-	System         string
-	Transform      UnitTransform
-	Offset         string
-	Origin         string
-	LogBase        string
-	LogFactor      string
-	Reference      string
-	Token          lexer.Token
+	Name                 string
+	LongName             string
+	Symbol               string
+	Category             UnitCategory
+	Dimension            Dimension
+	DimensionEstablished bool
+	Kind                 string
+	Scale                string
+	DefaultNumeric       string
+	IsBaseUnit           bool
+	Status               UnitStatus
+	System               string
+	Transform            UnitTransform
+	Offset               string
+	Origin               string
+	LogBase              string
+	LogFactor            string
+	Reference            string
+	Token                lexer.Token
 }
 
 type Function struct {
 	Name              string
 	Module            string
+	CompilerKnownID   string
+	CompilerInternal  bool
 	GenericParameters []string
 	Parameters        []FunctionParameter
 	ReturnType        Type
@@ -657,6 +663,28 @@ func unsignedType(name string, max uint64) Type {
 	}
 }
 
+func targetSignedIntegerType(name string, width uint16) Type {
+	limit := new(big.Int).Lsh(big.NewInt(1), uint(width-1))
+	min := new(big.Int).Neg(new(big.Int).Set(limit))
+	max := new(big.Int).Sub(new(big.Int).Set(limit), big.NewInt(1))
+	typ := Type{Name: name, Kind: IntType, MinInteger: min, MaxInteger: max, BitWidth: int64(width), Intrinsic: true}
+	if width <= 64 {
+		min64, max64 := min.Int64(), max.Int64()
+		typ.MinInt, typ.MaxInt = &min64, &max64
+	}
+	return typ
+}
+
+func targetUnsignedIntegerType(name string, width uint16) Type {
+	max := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(width)), big.NewInt(1))
+	typ := Type{Name: name, Kind: UintType, MinInteger: big.NewInt(0), MaxInteger: max, BitWidth: int64(width), Intrinsic: true}
+	if width <= 64 {
+		min64, max64 := uint64(0), max.Uint64()
+		typ.MinUint, typ.MaxUint = &min64, &max64
+	}
+	return typ
+}
+
 func signedBigType(name string, min string, max string) Type {
 	return Type{
 		Name:       name,
@@ -714,6 +742,12 @@ func triviallyDestructible(typ Type, visiting map[string]bool) bool {
 		// substitute type arguments before destruction analysis relies on this.
 		return true
 	case ArrayType:
+		// rules/collections/collections.md; correction26.md: T[] owns
+		// dynamic storage and therefore always requires destruction. T[N]
+		// remains an inline aggregate whose trait follows its element type.
+		if typ.ArrayLength == dynamicArrayLength {
+			return false
+		}
 		if typ.Element == nil {
 			return true
 		}
@@ -731,6 +765,11 @@ func triviallyDestructible(typ Type, visiting map[string]bool) bool {
 		}
 		return true
 	case StructType:
+		// rules/memory/arena.md; correction29.md: destroying an Arena ends
+		// its domain and releases or returns its backing storage.
+		if typ.Name == "Arena" {
+			return false
+		}
 		key := typeDestructionKey(typ)
 		if key != "" {
 			if visiting[key] {
@@ -804,7 +843,9 @@ func equalityComparable(typ Type, visiting map[string]bool) bool {
 	case ReferenceType:
 		return typ.Element != nil && typ.Element.Kind != SliceType
 	case ArrayType:
-		return typ.Element != nil && equalityComparable(*typ.Element, visiting)
+		// rules/collections/collections.md; correction26.md does not define
+		// ordinary identity or content equality for owning dynamic arrays.
+		return typ.ArrayLength != dynamicArrayLength && typ.Element != nil && equalityComparable(*typ.Element, visiting)
 	case StructType:
 		// Compiler-known struct types without ordinary stored-field semantics
 		// represent resources, collections, or opaque runtime descriptors.
@@ -900,6 +941,7 @@ func copyClassificationOf(typ Type, visiting map[string]bool) CopyClassification
 		switch typ.Name {
 		case "Task",
 			"Thread",
+			"Arena",
 			"MutexGuard",
 			"Subscription",
 			"Channel",
@@ -932,6 +974,11 @@ func copyClassificationOf(typ Type, visiting map[string]bool) CopyClassification
 	case GenericType:
 		return CopyConditional
 	case ArrayType:
+		// rules/collections/collections.md; correction26.md: an owning
+		// dynamic array transfers its allocation regardless of element traits.
+		if typ.ArrayLength == dynamicArrayLength {
+			return CopyMoveOnly
+		}
 		if typ.Element == nil {
 			return CopyTrivial
 		}

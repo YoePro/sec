@@ -1239,6 +1239,32 @@ type ValidEvenMultiple int range 10..20 multipleOf 10 even
 	assertSemaErrors(t, errors, expected)
 }
 
+// rules/types/contracts.md; correction3.md combines every same-family integer
+// contract using range intersection and divisor LCM.
+func TestCombinedIntegerContractSetConsistency(t *testing.T) {
+	errors := analyzeSource(t, `
+type Disjoint int range 1..4 range 8..12
+type NoLCM int range 1..10 multipleOf 4 multipleOf 6
+type ValidLCM int range 1..20 multipleOf 4 multipleOf 6
+`)
+	if len(errors) != 2 || !errorsContainMessage(errors, "contracts cannot be satisfied together for Disjoint") || !errorsContainMessage(errors, "contracts cannot be satisfied together for NoLCM") {
+		t.Fatalf("combined contract errors = %v", errors)
+	}
+}
+
+// rules/types/contracts.md and rules/types/default_values.md; correction4.md
+// revalidates inherited membership against contracts introduced by derivation.
+func TestInheritedMembershipIsRevalidated(t *testing.T) {
+	errors := analyzeSource(t, `
+type Choices int in [1, 2]
+type Invalid Choices even
+type Compatible Choices range 1..3
+`)
+	if len(errors) != 1 || !strings.Contains(errors[0].Message, "membership value 1 violates another contract on Invalid") {
+		t.Fatalf("inherited membership errors = %v", errors)
+	}
+}
+
 func TestVariableLevelContractRequiresTryOnLaterAssignment(t *testing.T) {
 	input := `
 let mut percentage: int range 0..100 := 50
@@ -1541,6 +1567,24 @@ unit Packet
 	}
 	if unit := analyzer.units["Packet"]; unit.Category != OtherUnit || unit.Dimension.Base["Packet"] != 1 {
 		t.Fatalf("other default=%+v", unit)
+	}
+	if unit := analyzer.units["Percent"]; !unit.DimensionEstablished {
+		t.Fatalf("ratio dimension should be established: %+v", unit)
+	}
+}
+
+// rules/types/units.md; correction6.md removes the hidden spelling-based unit
+// catalog and preserves unresolved physical dimensions explicitly.
+func TestUnitsRequireDeclarationsAndPhysicalDimensionMetadata(t *testing.T) {
+	errors := analyzeSource(t, `type Distance decimal<m>`)
+	if len(errors) != 1 || !strings.Contains(errors[0].Message, "unknown unit m") {
+		t.Fatalf("undeclared unit errors = %v", errors)
+	}
+	analyzer, errors := analyzeSourceWithAnalyzer(t, `unit Temperature physical`)
+	assertSemaErrors(t, errors, nil)
+	unit := analyzer.units["Temperature"]
+	if unit.DimensionEstablished || !unit.Dimension.IsZero() {
+		t.Fatalf("physical unit dimension = %+v, want unresolved", unit)
 	}
 }
 
@@ -1910,6 +1954,50 @@ type High register[8] msb-first big-endian {
 	}
 	if high.RegisterFields[0].BitOffset != 6 || high.RegisterFields[1].BitOffset != 3 || high.RegisterFields[2].BitOffset != 0 {
 		t.Fatalf("wrong msb-first offsets: %+v", high.RegisterFields)
+	}
+}
+
+// rules/declarations/registers.md, Raw bit-field domains; correction13.md.
+func TestWideRegisterFieldUsesExactArbitraryPrecisionRange(t *testing.T) {
+	input := `
+module main
+
+type Wide65 register[65] {
+	Value: bit[65],
+}
+
+type Wide128 register[128] {
+	Value: bit[128],
+}
+
+@address(0x1000)
+let mut wide65: Wide65
+@address(0x2000)
+let mut wide128: Wide128
+
+fn Update() void {
+	wide65.Value = 18446744073709551616
+	wide65.Value = 36893488147419103231
+	wide65.Value = 36893488147419103232
+	wide128.Value = 1267650600228229401496703205376
+	wide128.Value = 340282366920938463463374607431768211455
+	wide128.Value = 340282366920938463463374607431768211456
+}
+`
+
+	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
+	assertSemaErrors(t, errors, []string{
+		"value 36893488147419103232 overflows bit[65] at 20:17",
+		"value 340282366920938463463374607431768211456 overflows bit[128] at 23:18",
+	})
+
+	field65 := analyzer.types["Wide65"].RegisterFields[0].Type
+	if field65.Name != "bit[65]" || field65.BitWidth != 65 || field65.MaxInteger.String() != "36893488147419103231" {
+		t.Fatalf("bit[65] field type = %+v", field65)
+	}
+	field128 := analyzer.types["Wide128"].RegisterFields[0].Type
+	if field128.Name != "bit[128]" || field128.BitWidth != 128 || field128.MaxInteger.String() != "340282366920938463463374607431768211455" {
+		t.Fatalf("bit[128] field type = %+v", field128)
 	}
 }
 
@@ -2575,6 +2663,54 @@ fn Test() int {
 		"len infers its element type from its argument at 11:18",
 	}
 	assertSemaErrors(t, errors, expected)
+}
+
+func TestCompilerKnownStringSliceIsRestrictedToCoreSource(t *testing.T) {
+	input := `module core
+
+fn Slice(value: string, start: uint, end: uint) string {
+	return __StringSliceUnchecked(value, start, end)
+}
+`
+	l := lexer.NewWithFile(input, "/tmp/project/sec/core/string.sec")
+	p := parser.New(l)
+	program := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("parser errors: %v", p.Errors())
+	}
+	program.SourceProvenance = map[string]ast.SourceProvenance{"/tmp/project/sec/core/string.sec": ast.SourceCore}
+	assertSemaErrors(t, NewAnalyzer().Analyze(program), nil)
+
+	delete(program.SourceProvenance, "/tmp/project/sec/core/string.sec")
+	forged := NewAnalyzer().Analyze(program)
+	if len(forged) != 1 || !strings.Contains(forged[0].Message, "privileged core source") {
+		t.Fatalf("forged core path errors = %v", forged)
+	}
+
+	errors := analyzeSource(t, input)
+	if len(errors) != 1 || !strings.Contains(errors[0].Message, "compiler-internal operation available only to privileged core source") {
+		t.Fatalf("ordinary source errors = %v", errors)
+	}
+}
+
+func TestCompilerKnownStringSliceValidatesArguments(t *testing.T) {
+	input := `module core
+
+fn Slice(value: string) string {
+	return __StringSliceUnchecked(value, true, 2u)
+}
+`
+	l := lexer.NewWithFile(input, "sec/core/string.sec")
+	p := parser.New(l)
+	program := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("parser errors: %v", p.Errors())
+	}
+	program.SourceProvenance = map[string]ast.SourceProvenance{"sec/core/string.sec": ast.SourceCore}
+	errors := NewAnalyzer().Analyze(program)
+	if len(errors) != 1 || !strings.Contains(errors[0].Message, "argument 2 to __StringSliceUnchecked must be uint, got bool") {
+		t.Fatalf("errors = %v", errors)
+	}
 }
 
 func TestTypeRangeBoundsFitBaseType(t *testing.T) {
@@ -3757,6 +3893,71 @@ fn Test() void {
 	current := analyzer.symbols["current"]
 	if current.Type.Name != "Speed" {
 		t.Fatalf("wrong property type. got=%q want=Speed", current.Type.Name)
+	}
+}
+
+// rules/declarations/properties.md, Read and compound access; correction12.md.
+func TestWriteOnlyPropertyReadAndCompoundAssignmentAreRejected(t *testing.T) {
+	input := `
+module main
+
+type Sink struct {
+	_value: int,
+}
+
+impl Sink {
+	property WriteOnly: int {
+		set next {
+			self._value = next
+		}
+	}
+
+	property ReadOnly: int {
+		get {
+			return self._value
+		}
+	}
+
+	fn ReadInside() int {
+		return WriteOnly
+	}
+
+	fn UpdateInside() void {
+		WriteOnly = 1
+		WriteOnly += 1
+		ReadOnly += 1
+	}
+}
+
+let mut sink := Sink { _value: 0 }
+let invalidRead := sink.WriteOnly
+
+fn UpdateOutside() void {
+	sink.WriteOnly = 1
+	sink.WriteOnly += 1
+	sink.ReadOnly += 1
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	if len(errors) != 6 {
+		t.Fatalf("errors = %v, want six accessor diagnostics", errors)
+	}
+	counts := map[string]int{}
+	for _, err := range errors {
+		switch {
+		case strings.Contains(err.Message, "property WriteOnly has no getter and cannot be used with +="):
+			counts["compound-no-getter"]++
+		case strings.Contains(err.Message, "property WriteOnly has no getter"):
+			counts["read-no-getter"]++
+		case strings.Contains(err.Message, "property ReadOnly has no setter"):
+			counts["write-no-setter"]++
+		}
+	}
+	for _, expected := range []string{"compound-no-getter", "read-no-getter", "write-no-setter"} {
+		if count := counts[expected]; count != 2 {
+			t.Fatalf("diagnostic %q occurred %d times in %v, want 2", expected, count, errors)
+		}
 	}
 }
 
@@ -5929,6 +6130,40 @@ fn Bad() Maybe[int] {
 	assertSemaErrors(t, errors, expected)
 }
 
+func TestRecursiveGenericUnionStorageIsRejected(t *testing.T) {
+	input := `
+module main
+
+type Direct[T] union {
+	Next(Direct[T]),
+	End,
+}
+
+type Named[T] union {
+	Next { value: Named[T] },
+	End,
+}
+
+type ArrayWrapped[T] union {
+	Next(ArrayWrapped[T][2]),
+	End,
+}
+
+type Diverging[T] union {
+	Next(Diverging[T[]]),
+	End,
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"recursive generic type Direct[T] has infinite size at 5:2",
+		"recursive generic type Named[T] has infinite size at 10:9",
+		"recursive generic type ArrayWrapped[T] has infinite size at 15:2",
+		"recursive generic instantiation does not converge for Diverging at 20:2",
+	})
+}
+
 func TestGenericUnionPayloadConstructor(t *testing.T) {
 	input := `
 module main
@@ -6014,6 +6249,34 @@ fn ExtraPayload() Maybe[int] {
 		"union variant Maybe[int].None expects 0 arguments, got 1 at 18:14",
 	}
 	assertSemaErrors(t, errors, expected)
+}
+
+func TestUnionPayloadConstructorChecksIntegerRepresentability(t *testing.T) {
+	input := `
+module main
+
+type Small union {
+	Value(uint8),
+	Named {
+		n: uint8,
+	},
+}
+
+fn Test() void {
+	let maximum := Small.Value(255)
+	let overflow := Small.Value(256)
+	let named := Small.Named { n: 300 }
+	discard maximum
+	discard overflow
+	discard named
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"value 256 overflows uint8 at 13:30",
+		"value 300 overflows uint8 at 14:32",
+	})
 }
 
 func TestUnionValidFixture(t *testing.T) {
@@ -6648,7 +6911,8 @@ fn Classify(character: rune) int {
 	}
 }
 
-func TestMatchErrDiscardPatternIsInvalid(t *testing.T) {
+// rules/control-flow/flowcontrol_match.md; correction20.md.
+func TestMatchErrDiscardPatternIsAccepted(t *testing.T) {
 	input := `
 module main
 
@@ -6669,12 +6933,43 @@ fn Test() int {
 `
 
 	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
 
-	expected := []string{
-		"Err payload must be named; use discard name inside the handler at 14:7",
+// rules/errors/errorhandling.txt and rules/control-flow/flowcontrol_match.md;
+// correction20.md makes Err(_) an exhaustive try-handler catch-all.
+func TestTryErrDiscardPatternIsAccepted(t *testing.T) {
+	input := `
+module main
+
+enum IOError {
+	InvalidValue,
+}
+
+fn Read() Result[int, IOError] {
+	return Ok(1)
+}
+
+fn Test() int {
+	return try Read() {
+		Err(_) => 0
 	}
+}
+`
 
-	assertSemaErrors(t, errors, expected)
+	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
+	assertSemaErrors(t, errors, nil)
+	foundDiscard := false
+	for _, plan := range analyzer.resolvedTryPlans {
+		for _, handler := range plan.Handlers {
+			if handler.PatternKind == TryHandlerErrCatchAll && handler.PayloadDiscard && handler.BindingName == "" {
+				foundDiscard = true
+			}
+		}
+	}
+	if !foundDiscard {
+		t.Fatal("missing explicit Err(_) payload-discard fact")
+	}
 }
 
 func TestDiscardRequiresDefinedName(t *testing.T) {
@@ -8833,8 +9128,24 @@ fn Invalid() void {
 	errors := analyzeSourceRaw(t, input)
 	expected := []string{
 		"cannot spread Resource into Resource; Resource is not implicitly copyable at 12:11",
+		"field \"view\" in struct Resource has no default value and must be initialized at 11:14",
 	}
 	assertSemaErrors(t, errors, expected)
+}
+
+// rules/declarations/spread.md; correction14.md requires consuming parameters
+// to consume prepared element copies rather than the fixed-array source.
+func TestCallSpreadIntoConsumingParametersKeepsArrayAvailable(t *testing.T) {
+	errors := analyzeSourceRaw(t, `
+module main
+fn Take(-> first: int, -> second: int) void {}
+fn Valid() int {
+	let values: int[2] := [1, 2]
+	Take(values...)
+	return values[0]
+}
+`)
+	assertSemaErrors(t, errors, nil)
 }
 
 func TestStructSpreadAllowsCopyableSource(t *testing.T) {
@@ -9198,6 +9509,44 @@ fn Test() int {
 	assertSemaErrors(t, errors, nil)
 }
 
+// rules/control-flow/flowcontrol_for.md; correction21.md requires a nested
+// loop's break to leave only that nested loop.
+func TestNestedWhileBreakDoesNotExitInfiniteOuterWhile(t *testing.T) {
+	input := `
+module main
+
+fn Test() int {
+	while true {
+		while true {
+			break
+		}
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+// rules/control-flow/flowcontrol_while.md; correction21.md excludes a break in
+// a statically unreachable branch from the outer loop's exit fact.
+func TestUnreachableBreakDoesNotExitInfiniteWhile(t *testing.T) {
+	input := `
+module main
+
+fn Test() int {
+	while true {
+		if false {
+			break
+		}
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
 func TestWhileTrueWithBreakRequiresReturnAfterLoop(t *testing.T) {
 	input := `
 module main
@@ -9469,6 +9818,44 @@ fn Test() int {
 	assertSemaErrors(t, errors, nil)
 }
 
+// rules/control-flow/flowcontrol_for.md; correction21.md requires target-aware
+// break classification for nested infinite for loops.
+func TestNestedForBreakDoesNotExitInfiniteOuterFor(t *testing.T) {
+	input := `
+module main
+
+fn Test() int {
+	for {
+		for {
+			break
+		}
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+// rules/control-flow/flowcontrol_for.md; correction21.md excludes a break in a
+// statically unreachable branch from the current loop's continuation paths.
+func TestUnreachableBreakDoesNotExitInfiniteFor(t *testing.T) {
+	input := `
+module main
+
+fn Test() int {
+	for {
+		if false {
+			break
+		}
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
 func TestInfiniteForWithContinueMakesFollowingReturnUnreachable(t *testing.T) {
 	input := `
 module main
@@ -9644,6 +10031,98 @@ fn Test() bool {
 `
 
 	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+// rules/declarations/lambda-functions.md; correction11.md distinguishes ordinary
+// module lookup from closure capture candidates.
+func TestLambdaModuleBindingLookupIsNotCapture(t *testing.T) {
+	errors := analyzeSourceRaw(t, `
+module main
+let answer: int := 42
+fn Read() int {
+	let reader := fn() int { return answer }
+	return reader()
+}
+`)
+	assertSemaErrors(t, errors, nil)
+
+	errors = analyzeSourceRaw(t, `
+module main
+let answer: int := 42
+fn Read() int {
+	let reader := capture(answer) fn() int { return answer }
+	return reader()
+}
+`)
+	if len(errors) != 1 || !strings.Contains(errors[0].Message, "cannot capture non-local declaration answer") {
+		t.Fatalf("explicit module capture errors = %v", errors)
+	}
+}
+
+// rules/declarations/static.md; correction15.md removes instance receiver
+// authority from static methods and rejects static free functions.
+func TestStaticFunctionDeclarationContextAndReceiver(t *testing.T) {
+	errors := analyzeSourceRaw(t, `
+module main
+type Counter struct { value: int, }
+impl Counter {
+	static fn Invalid() int { return self.value }
+}
+static fn Free() void {}
+`)
+	if len(errors) != 2 || !errorsContainMessage(errors, "undefined variable self") || !errorsContainMessage(errors, "static fn is only valid inside impl") {
+		t.Fatalf("static function errors = %v", errors)
+	}
+}
+
+func errorsContainMessage(errors []Error, fragment string) bool {
+	for _, err := range errors {
+		if strings.Contains(err.Message, fragment) {
+			return true
+		}
+	}
+	return false
+}
+
+// rules/control-flow/discard.md; correction19.md requires aggregate temporary
+// construction to consume transferred move-only sources before discard.
+func TestDiscardAggregateTemporaryCommitsMoves(t *testing.T) {
+	errors := analyzeSourceRaw(t, `
+module main
+@noCopy
+type Session struct { id: int, }
+type Holder struct { session: Session, }
+fn Use(value: ref Session) void {}
+fn Test() void {
+	let session := Session { id: 1 }
+	discard Holder { session: session }
+	Use(ref session)
+}
+`)
+	if len(errors) != 1 || !strings.Contains(errors[0].Message, "use of moved value session") {
+		t.Fatalf("aggregate discard errors = %v", errors)
+	}
+}
+
+// rules/foundations/operators.md, logical operators; correction22.md keeps
+// proven short-circuit RHS ownership effects out of the continuing path.
+func TestLogicalShortCircuitDoesNotCommitImpossibleMove(t *testing.T) {
+	errors := analyzeSourceRaw(t, `
+module main
+@noCopy
+type Token struct { id: int, }
+fn Consume(-> token: Token) bool { return true }
+fn Use(value: ref Token) void {}
+fn Test() void {
+	let first := Token { id: 1 }
+	let second := Token { id: 2 }
+	let a := false && Consume(first)
+	let b := true || Consume(second)
+	Use(ref first)
+	Use(ref second)
+}
+`)
 	assertSemaErrors(t, errors, nil)
 }
 
@@ -10276,8 +10755,29 @@ fn BadLeft(left: int, right: matrix[int, 2, 2]) matrix[int, 2, 2] {
 	errors := analyzeSourceRaw(t, invalid)
 	assertSemaErrors(t, errors, []string{
 		"matrix multiplication inner dimensions differ: 3 and 2 at 5:14",
-		"matrix multiplication element types differ: int and float32 at 9:14",
+		"cannot apply operator * to int and float32 at 9:14",
 		"left operand of x must be matrix, got int at 13:14",
+	})
+}
+
+func TestStaticShapedExtentProductUsesTargetUint(t *testing.T) {
+	valid := `
+module main
+
+fn Empty(value: tensor[int, 4294967296, 4294967296, 0]) void {
+	discard value
+}
+`
+	assertSemaErrors(t, analyzeSourceRaw(t, valid), nil)
+
+	invalid := `
+module main
+
+fn TooLarge(value: matrix[int, 4294967296, 4294967296]) void {
+}
+`
+	assertSemaErrors(t, analyzeSourceRaw(t, invalid), []string{
+		"matrix static element count 18446744073709551616 overflows target uint at 4:20",
 	})
 }
 
@@ -10377,6 +10877,57 @@ fn Invalid(value: Open) int {
 `)
 	if len(openMatch) != 1 || !strings.Contains(openMatch[0].Message, "open bit-backed enum Open") {
 		t.Fatalf("open enum match errors = %v", openMatch)
+	}
+}
+
+// rules/declarations/enums.md; correction7.md requires enum narrowing to use
+// ordinary checked integer conversion semantics.
+func TestEnumToIntegerNarrowingIsChecked(t *testing.T) {
+	errors := analyzeSourceRaw(t, `
+module main
+enum Wide int { Zero = 0, Big = 300, }
+enum Open bit[16] { Zero = 0, }
+fn Known() uint8 { return uint8(Wide.Zero) }
+fn Narrow(value: Wide) Result[uint8, ArithmeticError] { return Ok(try uint8(value)) }
+fn NarrowOpen(value: Open) Result[uint8, ArithmeticError] { return Ok(try uint8(value)) }
+`)
+	assertSemaErrors(t, errors, nil)
+
+	errors = analyzeSourceRaw(t, `
+module main
+enum Wide int { Big = 300, }
+fn Invalid() uint8 { return uint8(Wide.Big) }
+`)
+	if len(errors) != 1 || !strings.Contains(errors[0].Message, "overflows uint8") {
+		t.Fatalf("known enum narrowing errors = %v", errors)
+	}
+}
+
+// rules/declarations/interfaces.md and rules/declarations/functions.md;
+// correction10.md preserves distinct interface overload requirements.
+func TestInterfaceMethodOverloadSets(t *testing.T) {
+	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, `
+module main
+interface IntFormatter { fn Format(value: int) string }
+interface StringFormatter { fn Format(value: string) string }
+interface Formatter implements IntFormatter, StringFormatter {
+	fn Format(value: bool) string
+}
+`)
+	assertSemaErrors(t, errors, nil)
+	if got := len(analyzer.types["Formatter"].InterfaceMethods); got != 3 {
+		t.Fatalf("Formatter overload count = %d, want 3", got)
+	}
+
+	errors = analyzeSourceRaw(t, `
+module main
+interface Bad {
+	fn Read(value: int) string
+	fn Read(value: int) bool
+}
+`)
+	if len(errors) != 1 || !strings.Contains(errors[0].Message, "incompatible callable contract") {
+		t.Fatalf("interface overload conflict errors = %v", errors)
 	}
 }
 

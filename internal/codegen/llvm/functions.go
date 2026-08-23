@@ -47,7 +47,7 @@ func (g *Generator) emitFunction(fn *ast.FunctionDeclaration) error {
 			continue
 		}
 		g.write("%s %%%s", paramType, param.Name.Value)
-		g.locals[param.Name.Value] = local{typ: paramType, ref: "%" + param.Name.Value, direct: true}
+		g.locals[param.Name.Value] = local{typ: paramType, ref: "%" + param.Name.Value, direct: true, unsigned: g.typeReferenceIsUnsigned(param.Type)}
 	}
 	if declaration {
 		g.write(")\n\n")
@@ -147,7 +147,7 @@ func (g *Generator) emitLambdaExpression(expr *ast.LambdaExpression) (value, err
 		}
 		paramType := g.llvmType(param.Type)
 		g.write("%s %%%s", paramType, param.Name.Value)
-		g.locals[param.Name.Value] = local{typ: paramType, ref: "%" + param.Name.Value, direct: true}
+		g.locals[param.Name.Value] = local{typ: paramType, ref: "%" + param.Name.Value, direct: true, unsigned: g.typeReferenceIsUnsigned(param.Type)}
 	}
 	g.write(") {\n")
 	g.write("entry:\n")

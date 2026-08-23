@@ -130,8 +130,19 @@ func (ie *InvalidExpression) String() string {
 
 // Program is the root node for a parsed Sec source file.
 type Program struct {
-	Statements []Statement
+	Statements       []Statement
+	SourceProvenance map[string]SourceProvenance
 }
+
+// SourceProvenance is immutable trust metadata assigned by a source loader.
+type SourceProvenance string
+
+const (
+	SourceUser     SourceProvenance = "user"
+	SourceCore     SourceProvenance = "core"
+	SourceStdlib   SourceProvenance = "stdlib"
+	SourcePlatform SourceProvenance = "platform"
+)
 
 func (p *Program) TokenLiteral() string {
 	if len(p.Statements) == 0 {

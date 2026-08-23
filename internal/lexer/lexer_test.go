@@ -574,6 +574,45 @@ func TestPosition(t *testing.T) {
 	}
 }
 
+// rules/foundations/lexical_structure.md, Physical source lines;
+// correction.md requires LF, CRLF, and bare CR to have identical token boundaries.
+func TestPhysicalLineEndingsTerminateLineComments(t *testing.T) {
+	tests := []struct {
+		name       string
+		lineEnding string
+	}{
+		{name: "LF", lineEnding: "\n"},
+		{name: "CRLF", lineEnding: "\r\n"},
+		{name: "CR", lineEnding: "\r"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			l := New("// comment" + test.lineEnding + "let value := 1")
+			comment := l.NextToken()
+			if comment.Type != COMMENT || comment.Lexeme != "// comment" {
+				t.Fatalf("comment = %+v", comment)
+			}
+			let := l.NextToken()
+			if let.Type != LET || let.Line != 2 || let.Column != 1 {
+				t.Fatalf("token after line ending = %+v", let)
+			}
+		})
+	}
+}
+
+// rules/foundations/lexical_structure.md, String and character literals;
+// correction.md requires every physical line-ending form to terminate literals.
+func TestPhysicalLineEndingsRejectOrdinaryLiterals(t *testing.T) {
+	for _, lineEnding := range []string{"\n", "\r\n", "\r"} {
+		for _, source := range []string{"\"before" + lineEnding + "after\"", "'a" + lineEnding + "'"} {
+			if token := New(source).NextToken(); token.Type != ILLEGAL {
+				t.Fatalf("first token for %q = %+v, want ILLEGAL", source, token)
+			}
+		}
+	}
+}
+
 func TestInitialByteOrderMarkIsIgnored(t *testing.T) {
 	l := NewWithFile("\uFEFFmodule main", "main.sec")
 	module := l.NextToken()

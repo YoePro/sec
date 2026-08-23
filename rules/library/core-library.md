@@ -61,7 +61,9 @@ Sec code because they require knowledge of:
 - exact builtin type identity.
 
 Compiler-owned operations are exposed as intrinsic members or internal
-intrinsic functions.
+intrinsic functions when the compiler must own their semantic identity,
+availability, analysis facts, or lowering contract independently of core
+source.
 
 Examples:
 
@@ -78,6 +80,11 @@ len(slice)
 The public syntax behaves like ordinary member access.
 
 The implementation is compiler-defined.
+
+Representation-sensitive physical implementation alone does not require
+compiler-owned semantic identity. A small private `__...` helper in privileged
+core source may contain direct MLIR/LLVM where the supported low-level syntax
+and contracts permit it.
 
 ## 1.2 Core-owned functionality
 
@@ -98,6 +105,12 @@ Ordinary user modules may not add `impl` blocks to compiler-owned built-in
 types.
 
 The core library may do so because it is compiled as a trusted language module.
+
+Core may also keep narrow representation-sensitive behavior in private
+`__...` helpers. Such a helper may use a direct MLIR/LLVM body when ordinary Sec
+cannot express the operation, while the public checked operation remains
+ordinary core code. Low-level implementation does not exempt the helper from
+ownership, lifetime, effect, unsafe, target, or cleanup validation.
 
 ## 1.3 No duplicate wrapper type
 
@@ -149,6 +162,37 @@ or overloaded by user code.
 The existing intrinsic member properties `string.len`, `array.len` and
 `slice.len` remain `uint` in Sec 0.1. Compiler and standard-library code that
 performs signed index arithmetic should use the `len(...)` function.
+
+## 1.5 Private representation helpers
+
+A private core helper is distinct from a compiler-known intrinsic:
+
+```text
+private core helper
+    core owns its declaration and implementation
+    low-level body is permitted where defined
+    no compiler-known identity is implied
+
+compiler-known operation
+    compiler owns semantic identity or analysis/lowering contract
+    implementation may still delegate to core
+```
+
+For checked string substring extraction, the preferred boundary is:
+
+```text
+public string.Slice
+    validates start and end
+    returns Result[string, RangeError]
+
+private __StringSliceUnchecked
+    constructs the result string descriptor
+    performs no check, allocation, or content validation
+```
+
+The helper's intended representation operation is `data + start` with length
+`end - start`. Its exact body must use the supported privileged-core low-level
+syntax and preserve the declared string lifetime and ownership contract.
 
 ---
 

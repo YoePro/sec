@@ -321,6 +321,31 @@ fn main() int {
 	}
 }
 
+func TestGenerateCompilerKnownStringSliceUnchecked(t *testing.T) {
+	program := parseProgram(t, `module main
+
+fn main() int {
+	__StringSliceUnchecked("hello", 1u, 4u)
+	return 0
+}
+`)
+	got, err := GenerateWithTriple(program, "x86_64-pc-linux-gnu")
+	if err != nil {
+		t.Fatalf("GenerateWithTriple returned error: %v", err)
+	}
+	for _, want := range []string{
+		"getelementptr inbounds i8, ptr",
+		"sub i64 4, 1",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("generated LLVM missing %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "call ptr @__StringSliceUnchecked") {
+		t.Fatalf("compiler-known string slice emitted a helper call:\n%s", got)
+	}
+}
+
 func TestGenerateSwitch(t *testing.T) {
 	input := `
 module main
@@ -337,6 +362,7 @@ fn main() int {
 		return 20
 	}
 }
+
 `
 
 	program := parseAndAnalyze(t, input)
@@ -362,6 +388,41 @@ fn main() int {
 		if !strings.Contains(got, part) {
 			t.Fatalf("generated LLVM IR missing %q.\nIR:\n%s", part, got)
 		}
+	}
+}
+
+// rules/foundations/operators.md; correction2.md requires direct LLVM integer
+// operators to preserve source signedness instead of guessing signed semantics.
+func TestGenerateUnsignedDivisionComparisonAndMembership(t *testing.T) {
+	input := `
+module main
+fn Check(left: uint, right: uint) bool {
+	let quotient := left / right
+	return quotient < right && left in 1u..<right
+}
+fn main() int { return 0 }
+`
+	program := parseAndAnalyze(t, input)
+	got, err := Generate(program)
+	if err != nil {
+		t.Fatalf("Generate returned error: %v", err)
+	}
+	for _, part := range []string{"udiv i64", "icmp ult i64", "icmp uge i64"} {
+		if !strings.Contains(got, part) {
+			t.Fatalf("generated LLVM IR missing %q.\nIR:\n%s", part, got)
+		}
+	}
+}
+
+func TestGenerateStringComparisonFailsExplicitly(t *testing.T) {
+	program := parseAndAnalyze(t, `
+module main
+fn Equal(left: string, right: string) bool { return left == right }
+fn main() int { return 0 }
+`)
+	_, err := Generate(program)
+	if err == nil || !strings.Contains(err.Error(), "string comparison requires semantic string-comparison lowering") {
+		t.Fatalf("Generate string comparison error = %v", err)
 	}
 }
 

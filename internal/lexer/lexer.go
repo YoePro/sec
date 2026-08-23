@@ -205,11 +205,15 @@ func (l *Lexer) Diagnostics() []Diagnostic {
 	return result
 }
 
+// decodeSource validates source encoding and establishes diagnostic positions
+// under rules/foundations/lexical_structure.md. correction.md requires the
+// decoder and token cursor to share LF, CRLF, and bare-CR line semantics.
 func decodeSource(input string, file string) ([]rune, []Diagnostic) {
 	decoded := make([]rune, 0, utf8.RuneCountInString(input))
 	diagnostics := []Diagnostic{}
 	line, column := 1, 1
 	first := true
+	previousWasCR := false
 	for len(input) > 0 {
 		r, size := utf8.DecodeRuneInString(input)
 		lexeme := input[:size]
@@ -237,12 +241,20 @@ func decodeSource(input string, file string) ([]rune, []Diagnostic) {
 		} else {
 			decoded = append(decoded, r)
 		}
-		if r == '\n' {
+		// rules/foundations/lexical_structure.md, Physical source lines;
+		// correction.md: CRLF is one line ending and bare CR is also a line ending.
+		if r == '\r' {
 			line++
+			column = 1
+		} else if r == '\n' {
+			if !previousWasCR {
+				line++
+			}
 			column = 1
 		} else {
 			column++
 		}
+		previousWasCR = r == '\r'
 		input = input[size:]
 		first = false
 	}
@@ -518,7 +530,8 @@ func (l *Lexer) skipBlockComment() {
 	}
 }
 
-// Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
+// readLineComment implements rules/foundations/lexical_structure.md line-comment
+// boundaries. Per correction.md, LF, CRLF, and bare CR all terminate the token.
 func (l *Lexer) readLineComment() Token {
 	line := l.line
 	column := l.column
@@ -527,7 +540,7 @@ func (l *Lexer) readLineComment() Token {
 	l.advance()
 	l.advance()
 
-	for l.peek() != '\n' && l.peek() != 0 {
+	for !isPhysicalLineEnding(l.peek()) && l.peek() != 0 {
 		l.advance()
 	}
 
@@ -720,7 +733,8 @@ func (l *Lexer) readPlainString() Token {
 	return l.token(STRING, lit, line, column)
 }
 
-// Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
+// readCharLiteral implements rules/foundations/lexical_structure.md character
+// literal boundaries. Physical line endings are rejected per correction.md.
 func (l *Lexer) readCharLiteral() Token {
 	line := l.line
 	column := l.column
@@ -729,11 +743,14 @@ func (l *Lexer) readCharLiteral() Token {
 	l.advance()
 	for {
 		ch := l.peek()
-		if ch == 0 || ch == '\n' {
+		if ch == 0 || isPhysicalLineEnding(ch) {
 			return l.token(ILLEGAL, string(l.input[start:l.pos]), line, column)
 		}
 		if ch == '\\' {
 			l.advance()
+			if isPhysicalLineEnding(l.peek()) {
+				return l.token(ILLEGAL, string(l.input[start:l.pos]), line, column)
+			}
 			if l.peek() != 0 {
 				l.advance()
 			}
@@ -782,7 +799,8 @@ func (l *Lexer) readPrefixedString(typ TokenType) Token {
 	return l.token(typ, "$"+lit, line, column)
 }
 
-// Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
+// readStringBody implements rules/foundations/lexical_structure.md ordinary and
+// interpolated string boundaries. Physical line endings are rejected per correction.md.
 func (l *Lexer) readStringBody(prefixed bool) (string, bool) {
 	start := l.pos
 
@@ -795,12 +813,15 @@ func (l *Lexer) readStringBody(prefixed bool) (string, bool) {
 	for {
 		ch := l.peek()
 
-		if ch == 0 || ch == '\n' {
+		if ch == 0 || isPhysicalLineEnding(ch) {
 			return string(l.input[start:l.pos]), false
 		}
 
 		if ch == '\\' {
 			l.advance()
+			if isPhysicalLineEnding(l.peek()) {
+				return string(l.input[start:l.pos]), false
+			}
 			if l.peek() != 0 {
 				l.advance()
 			}
@@ -876,15 +897,26 @@ func (l *Lexer) peekOffset(offset int) rune {
 	return l.input[index]
 }
 
-// Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
+// advance maintains source positions according to
+// rules/foundations/lexical_structure.md. correction.md requires CRLF to be
+// consumed as one physical line ending and bare CR to advance one line.
 func (l *Lexer) advance() rune {
 	ch := l.peek()
 	if ch == 0 {
 		return 0
 	}
 
-	l.pos++
+	if ch == '\r' {
+		l.pos++
+		if l.peek() == '\n' {
+			l.pos++
+		}
+		l.line++
+		l.column = 1
+		return ch
+	}
 
+	l.pos++
 	if ch == '\n' {
 		l.line++
 		l.column = 1
@@ -893,6 +925,12 @@ func (l *Lexer) advance() rune {
 	}
 
 	return ch
+}
+
+// isPhysicalLineEnding is the canonical lexer boundary from
+// rules/foundations/lexical_structure.md and correction.md.
+func isPhysicalLineEnding(ch rune) bool {
+	return ch == '\n' || ch == '\r'
 }
 
 // Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.

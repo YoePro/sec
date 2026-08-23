@@ -11,6 +11,7 @@ import (
 
 	"sec/internal/ast"
 	"sec/internal/diagnostics"
+	"sec/internal/layout"
 	"sec/internal/lexer"
 	"sec/internal/parser"
 )
@@ -51,6 +52,7 @@ type Analyzer struct {
 	pitfallAnalysis             *PitfallAnalysis
 	currentCallable             CallableID
 	callGraphPathReachable      bool
+	nextArenaDomainID           uint64
 	spawnCallExpression         *ast.CallExpression
 	spawnCallExecution          CallExecutionRelation
 	typeDefinitionTokens        map[string]lexer.Token
@@ -88,6 +90,7 @@ type Analyzer struct {
 	loopBreakFrames             []loopBreakFrame
 	scopeDepth                  int
 	allocationContext           AllocationContext
+	trustedCoreSources          map[string]bool
 	errors                      []Error
 	errorKeys                   map[string]bool
 	warnings                    []Error
@@ -142,6 +145,7 @@ type loopBreakFrame struct {
 	continueBorrows            []map[string][]borrowRecord
 	continueLocalRefContainers []map[string]localReferenceOrigin
 	arenaGenerations           []map[string]int
+	continueArenaGenerations   []map[string]int
 }
 
 type genericInstanceKey struct {
@@ -168,8 +172,23 @@ func NewAnalyzerWithDepth(depth AnalysisDepth) *Analyzer {
 		analysisDepth:  depth,
 		analysisBudget: analysisBudget(depth),
 		types:          builtinTypes(),
-		units:          builtinUnits(),
+		// rules/types/units.md; correction6.md requires ordinary unit identities
+		// to enter Sema through declarations/imported catalogs, never spelling.
+		units: map[string]UnitDefinition{},
 	}
+}
+
+// NewAnalyzerWithScalarPlan derives target-sized source integer bounds from the
+// authoritative plan defined by rules/types/types.md and rules/memory/layout.md.
+// correction5.md forbids Sema from guessing widths from architecture strings.
+func NewAnalyzerWithScalarPlan(plan layout.ResolvedScalarPlan) *Analyzer {
+	analyzer := NewAnalyzer()
+	if plan.PointerWidthBits != 32 && plan.PointerWidthBits != 64 {
+		return analyzer
+	}
+	analyzer.types["int"] = targetSignedIntegerType("int", plan.PointerWidthBits)
+	analyzer.types["uint"] = targetUnsignedIntegerType("uint", plan.PointerWidthBits)
+	return analyzer
 }
 
 func (a *Analyzer) AnalysisDepth() AnalysisDepth { return a.analysisDepth }
@@ -178,6 +197,14 @@ func (a *Analyzer) AnalysisBudget() AnalysisBudget { return a.analysisBudget }
 
 func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.errors = nil
+	a.trustedCoreSources = map[string]bool{}
+	if program != nil {
+		for file, provenance := range program.SourceProvenance {
+			if provenance == ast.SourceCore {
+				a.trustedCoreSources[filepath.Clean(file)] = true
+			}
+		}
+	}
 	a.errorKeys = map[string]bool{}
 	a.warnings = nil
 	a.symbols = map[string]Symbol{}
@@ -784,12 +811,13 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 			if category == "" {
 				category = OtherUnit
 			}
-			dimension := defaultUnitDimension(stmt.Name.Value, category)
+			dimension, dimensionEstablished := defaultUnitDimension(stmt.Name.Value, category)
 			defaultNumeric := "decimal"
 			status := StatusActive
 			if existing, ok := a.units[stmt.Name.Value]; ok {
 				category = existing.Category
 				dimension = existing.Dimension
+				dimensionEstablished = existing.DimensionEstablished
 				if existing.DefaultNumeric != "" {
 					defaultNumeric = existing.DefaultNumeric
 				}
@@ -797,7 +825,7 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 					status = existing.Status
 				}
 			}
-			a.units[stmt.Name.Value] = UnitDefinition{Name: stmt.Name.Value, Category: category, Dimension: dimension, DefaultNumeric: defaultNumeric, Status: status, Transform: LinearUnitTransform, Token: stmt.Name.Token}
+			a.units[stmt.Name.Value] = UnitDefinition{Name: stmt.Name.Value, Category: category, Dimension: dimension, DimensionEstablished: dimensionEstablished, DefaultNumeric: defaultNumeric, Status: status, Transform: LinearUnitTransform, Token: stmt.Name.Token}
 			a.types[stmt.Name.Value] = Type{Name: stmt.Name.Value, Module: a.currentModule, Kind: InvalidType}
 		case *ast.EnumDeclaration:
 			if stmt.Name == nil {
@@ -1018,7 +1046,7 @@ func (a *Analyzer) validateImplTarget(impl *ast.ImplStatement) (Type, bool) {
 	if definition, exists := a.typeDefinitionTokens[impl.Target.Name]; exists {
 		a.bindDefinition(impl.Target.Token, definition)
 	}
-	if !target.Named && target.Kind != InvalidType && !isAllowedCoreBuiltinImpl(impl.Target.Name, impl.Target.Token) {
+	if !target.Named && target.Kind != InvalidType && !a.isAllowedCoreBuiltinImpl(impl.Target.Name, impl.Target.Token) {
 		a.addErrorAtToken(impl.Target.Token, "impl target %s is not a named type", impl.Target.Name)
 		return Type{}, false
 	}
@@ -1064,15 +1092,18 @@ func implNestedTypeName(member ast.ImplMember) (string, lexer.Token, bool) {
 	}
 }
 
-func isAllowedCoreBuiltinImpl(target string, token lexer.Token) bool {
-	if token.File == "" {
-		return false
-	}
-	path := filepath.ToSlash(filepath.Clean(token.File))
-	if !strings.Contains(path, "/sec/core/") && !strings.HasPrefix(path, "sec/core/") {
+func (a *Analyzer) isAllowedCoreBuiltinImpl(target string, token lexer.Token) bool {
+	if !a.isTrustedCoreSourceToken(token) {
 		return false
 	}
 	return isCoreBuiltinImplTarget(target)
+}
+
+// isTrustedCoreSourceToken enforces rules/library/core-library.md source
+// authority. correction9.md requires loader provenance rather than a forgeable
+// /sec/core/ pathname substring.
+func (a *Analyzer) isTrustedCoreSourceToken(token lexer.Token) bool {
+	return token.File != "" && a.trustedCoreSources[filepath.Clean(token.File)]
 }
 
 func isCoreBuiltinImplTarget(target string) bool {
@@ -1345,6 +1376,7 @@ func (a *Analyzer) analyzeUnitMetadata(program *ast.Program) {
 					continue
 				}
 				unit.Dimension = dimension
+				unit.DimensionEstablished = true
 				changed = true
 			case "system":
 				if len(value) != 1 || value[0].Type != lexer.IDENT {
@@ -2048,6 +2080,12 @@ func (a *Analyzer) analyzeDiscardStatement(stmt *ast.DiscardStatement) {
 
 	ident, ok := stmt.Value.(*ast.Identifier)
 	if !ok {
+		// rules/control-flow/discard.md, aggregate temporary discard;
+		// correction19.md requires construction-time moves to be committed before
+		// the resulting temporary is destroyed. Calls retain their parameter-mode
+		// ownership handling because markMoveSource deliberately does not descend
+		// into call expressions.
+		a.markMoveSource(stmt.Value)
 		return
 	}
 	symbol, exists := a.symbols[ident.Value]
@@ -2193,8 +2231,10 @@ func (a *Analyzer) analyzeDeferStatement(stmt *ast.DeferStatement) {
 	previousAssigned := a.assigned
 	previousMoved := a.moved
 	previousMoveReasons := a.moveReasons
+	previousClosedResources := a.closedResources
 	previousBorrows := a.borrows
 	previousLocalRefContainers := a.localRefContainers
+	previousArenaGenerations := a.arenaGenerations
 	previousInDeferBlock := a.inDeferBlock
 	previousDeferOuterSymbols := a.deferOuterSymbols
 	previousDeferCaptures := a.deferCaptures
@@ -2203,8 +2243,10 @@ func (a *Analyzer) analyzeDeferStatement(stmt *ast.DeferStatement) {
 	a.assigned = copyAssigned(previousAssigned)
 	a.moved = copyMoved(previousMoved)
 	a.moveReasons = copyMoveReasons(previousMoveReasons)
+	a.closedResources = copyMoved(previousClosedResources)
 	a.borrows = copyBorrows(previousBorrows)
 	a.localRefContainers = copyLocalRefContainers(previousLocalRefContainers)
+	a.arenaGenerations = copyArenaGenerations(previousArenaGenerations)
 	a.inDeferBlock = true
 	a.deferOuterSymbols = previousSymbols
 	a.deferCaptures = map[string]lexer.Token{}
@@ -2224,8 +2266,10 @@ func (a *Analyzer) analyzeDeferStatement(stmt *ast.DeferStatement) {
 		a.assigned = previousAssigned
 		a.moved = previousMoved
 		a.moveReasons = previousMoveReasons
+		a.closedResources = previousClosedResources
 		a.borrows = previousBorrows
 		a.localRefContainers = previousLocalRefContainers
+		a.arenaGenerations = previousArenaGenerations
 		a.inDeferBlock = previousInDeferBlock
 		a.deferOuterSymbols = previousDeferOuterSymbols
 		a.deferCaptures = previousDeferCaptures
@@ -2301,17 +2345,19 @@ func (a *Analyzer) analyzeForStatement(stmt *ast.ForStatement) {
 		}
 	}
 	a.loopBreakFrames[frame] = frameState
-	headerMoved, headerReasons := loopBackedgeMoveState(iterationEntry.moved, iterationEntry.moveReasons, loopMoved, loopMoveReasons, frameState, blockCanFallThrough(stmt.Body))
-	headerClosedResources := loopBackedgeClosedResourceState(iterationEntry.closedResources, loopClosedResources, frameState, blockCanFallThrough(stmt.Body))
-	headerBorrows := loopBackedgeBorrowState(iterationEntry.borrows, loopBorrows, frameState, blockCanFallThrough(stmt.Body))
-	headerLocalRefContainers := loopBackedgeReferenceState(iterationEntry.localRefContainers, loopLocalRefContainers, frameState, blockCanFallThrough(stmt.Body))
-	a.checkLoopBackedgeFixedPoint(nil, stmt.Body, iterationEntry, headerMoved, headerReasons, headerClosedResources, headerBorrows, headerLocalRefContainers)
+	bodyFallsThrough := a.blockCanFallThrough(stmt.Body)
+	headerMoved, headerReasons := loopBackedgeMoveState(iterationEntry.moved, iterationEntry.moveReasons, loopMoved, loopMoveReasons, frameState, bodyFallsThrough)
+	headerClosedResources := loopBackedgeClosedResourceState(iterationEntry.closedResources, loopClosedResources, frameState, bodyFallsThrough)
+	headerBorrows := loopBackedgeBorrowState(iterationEntry.borrows, loopBorrows, frameState, bodyFallsThrough)
+	headerLocalRefContainers := loopBackedgeReferenceState(iterationEntry.localRefContainers, loopLocalRefContainers, frameState, bodyFallsThrough)
+	headerArenaGenerations := loopBackedgeArenaGenerationState(iterationEntry.arenaGenerations, loopArenaGenerations, frameState, bodyFallsThrough)
+	a.checkLoopBackedgeFixedPoint(nil, stmt.Body, iterationEntry, headerMoved, headerReasons, headerClosedResources, headerBorrows, headerLocalRefContainers, headerArenaGenerations)
 	breakFrame := a.popLoopBreakFrame(frame)
 	a.symbols = previousSymbols
 	a.constInts = previousConstInts
 	a.assigned = previousAssigned
 	a.moved, a.moveReasons = mergeLoopMoveState(previousMoved, previousMoveReasons, loopMoved, loopMoveReasons, breakFrame)
-	a.closedResources = mergeLoopClosedResourceState(previousClosedResources, loopClosedResources, breakFrame, blockCanFallThrough(stmt.Body), false)
+	a.closedResources = mergeLoopClosedResourceState(previousClosedResources, loopClosedResources, breakFrame, bodyFallsThrough, false)
 	a.borrows = mergeLoopBorrowState(previousBorrows, loopBorrows, breakFrame)
 	a.localRefContainers = mergeLoopReferenceState(previousLocalRefContainers, loopLocalRefContainers, breakFrame)
 	a.arenaGenerations = mergeLoopArenaGenerations(previousArenaGenerations, loopArenaGenerations, breakFrame.arenaGenerations)
@@ -2362,11 +2408,13 @@ func (a *Analyzer) analyzeWhileStatement(stmt *ast.WhileStatement) {
 	loopLocalRefContainers := a.localRefContainers
 	loopArenaGenerations := a.arenaGenerations
 	frameState := a.loopBreakFrames[frame]
-	headerMoved, headerReasons := loopBackedgeMoveState(iterationEntry.moved, iterationEntry.moveReasons, loopMoved, loopMoveReasons, frameState, blockCanFallThrough(stmt.Body))
-	headerClosedResources := loopBackedgeClosedResourceState(iterationEntry.closedResources, loopClosedResources, frameState, blockCanFallThrough(stmt.Body))
-	headerBorrows := loopBackedgeBorrowState(iterationEntry.borrows, loopBorrows, frameState, blockCanFallThrough(stmt.Body))
-	headerLocalRefContainers := loopBackedgeReferenceState(iterationEntry.localRefContainers, loopLocalRefContainers, frameState, blockCanFallThrough(stmt.Body))
-	a.checkLoopBackedgeFixedPoint(stmt.Condition, stmt.Body, iterationEntry, headerMoved, headerReasons, headerClosedResources, headerBorrows, headerLocalRefContainers)
+	bodyFallsThrough := a.blockCanFallThrough(stmt.Body)
+	headerMoved, headerReasons := loopBackedgeMoveState(iterationEntry.moved, iterationEntry.moveReasons, loopMoved, loopMoveReasons, frameState, bodyFallsThrough)
+	headerClosedResources := loopBackedgeClosedResourceState(iterationEntry.closedResources, loopClosedResources, frameState, bodyFallsThrough)
+	headerBorrows := loopBackedgeBorrowState(iterationEntry.borrows, loopBorrows, frameState, bodyFallsThrough)
+	headerLocalRefContainers := loopBackedgeReferenceState(iterationEntry.localRefContainers, loopLocalRefContainers, frameState, bodyFallsThrough)
+	headerArenaGenerations := loopBackedgeArenaGenerationState(iterationEntry.arenaGenerations, loopArenaGenerations, frameState, bodyFallsThrough)
+	a.checkLoopBackedgeFixedPoint(stmt.Condition, stmt.Body, iterationEntry, headerMoved, headerReasons, headerClosedResources, headerBorrows, headerLocalRefContainers, headerArenaGenerations)
 	breakFrame := a.popLoopBreakFrame(frame)
 	a.symbols = previousSymbols
 	a.constInts = previousConstInts
@@ -2382,7 +2430,7 @@ func (a *Analyzer) analyzeWhileStatement(stmt *ast.WhileStatement) {
 		a.assigned = previousAssigned
 	}
 	a.moved, a.moveReasons = mergeLoopMoveState(previousMoved, previousMoveReasons, loopMoved, loopMoveReasons, breakFrame)
-	a.closedResources = mergeLoopClosedResourceState(previousClosedResources, loopClosedResources, breakFrame, blockCanFallThrough(stmt.Body), isBoolLiteral(stmt.Condition, true))
+	a.closedResources = mergeLoopClosedResourceState(previousClosedResources, loopClosedResources, breakFrame, bodyFallsThrough, isBoolLiteral(stmt.Condition, true))
 	a.borrows = mergeLoopBorrowState(previousBorrows, loopBorrows, breakFrame)
 	a.localRefContainers = mergeLoopReferenceState(previousLocalRefContainers, loopLocalRefContainers, breakFrame)
 	a.arenaGenerations = mergeLoopArenaGenerations(previousArenaGenerations, loopArenaGenerations, breakFrame.arenaGenerations)
@@ -2578,6 +2626,7 @@ type branchAnalysis struct {
 	localRefContainers map[string]localReferenceOrigin
 	arenaGenerations   map[string]int
 	continues          bool
+	fallsThrough       bool
 }
 
 type loopIterationAnalysisState struct {
@@ -2835,13 +2884,30 @@ func (a *Analyzer) analyzeSwitchStatement(stmt *ast.SwitchStatement) {
 	}
 
 	branches := make([]branchAnalysis, 0, len(clauses)+1)
+	var fallthroughEntry *branchAnalysis
 	for i, clause := range clauses {
 		if clause == nil {
 			continue
 		}
 		a.analyzeSwitchCaseItems(clause, hasSubject, subjectType, tracker)
 		a.analyzeSwitchFallthrough(clause, i == len(clauses)-1)
-		branches = append(branches, a.analyzeSwitchCaseBody(clause.Body))
+		// rules/control-flow/flowcontrol_switch.md; correction24.md: the
+		// direct case-test path and a preceding fallthrough edge meet at the
+		// destination body. Fallthrough bypasses this clause's test expressions.
+		directEntry := a.currentBranchAnalysisState()
+		if fallthroughEntry != nil {
+			a.applySwitchEntryMerge(directEntry, *fallthroughEntry)
+		}
+		branch := a.analyzeSwitchCaseBody(clause.Body)
+		branches = append(branches, branch)
+		a.applyBranchAnalysisState(directEntry)
+		if branch.fallsThrough {
+			copy := branch
+			copy.continues = true
+			fallthroughEntry = &copy
+		} else {
+			fallthroughEntry = nil
+		}
 	}
 	if stmt.Default == nil {
 		a.warnIncompleteEnumSwitch(stmt, tracker)
@@ -2856,6 +2922,17 @@ func (a *Analyzer) analyzeSwitchStatement(stmt *ast.SwitchStatement) {
 	a.borrows = mergeContinuingBorrows(beforeBorrows, branches...)
 	a.localRefContainers = mergeContinuingLocalRefContainers(beforeLocalRefContainers, branches...)
 	a.arenaGenerations = mergeContinuingArenaGenerations(beforeArenaGenerations, branches...)
+}
+
+func (a *Analyzer) applySwitchEntryMerge(direct, fallthroughEntry branchAnalysis) {
+	direct.continues = true
+	fallthroughEntry.continues = true
+	a.assigned = mergeContinuingAssigned(direct.assigned, direct, fallthroughEntry)
+	a.moved, a.moveReasons = mergeContinuingMoveState(direct.moved, direct.moveReasons, direct, fallthroughEntry)
+	a.closedResources = mergeContinuingClosedResources(direct.closedResources, direct, fallthroughEntry)
+	a.borrows = mergeContinuingBorrows(direct.borrows, direct, fallthroughEntry)
+	a.localRefContainers = mergeContinuingLocalRefContainers(direct.localRefContainers, direct, fallthroughEntry)
+	a.arenaGenerations = mergeContinuingArenaGenerations(direct.arenaGenerations, direct, fallthroughEntry)
 }
 
 func (a *Analyzer) analyzeSelectStatement(stmt *ast.SelectStatement) {
@@ -3179,7 +3256,8 @@ type switchCoverageTracker struct {
 	ranges       []switchConstRange
 	boolValues   map[bool]lexer.Token
 	stringValues map[string]lexer.Token
-	enumValues   map[string]lexer.Token
+	// enumValues is keyed by canonical numeric value, not declaration name.
+	enumValues map[string]lexer.Token
 }
 
 type switchConstRange struct {
@@ -3248,8 +3326,13 @@ func (a *Analyzer) checkSwitchValueCoverage(expr ast.Expression, tracker *switch
 		tracker.stringValues[literal.Value] = expressionToken(expr)
 		return
 	}
-	if variant, ok := a.switchEnumCaseVariant(expr, tracker.subjectType); ok {
-		tracker.enumValues[variant] = expressionToken(expr)
+	if _, numeric, ok := a.switchEnumCaseVariant(expr, tracker.subjectType); ok {
+		key := numeric.String()
+		if _, exists := tracker.enumValues[key]; exists {
+			a.addErrorAtToken(expressionToken(expr), "duplicate switch case enum value %s", key)
+			return
+		}
+		tracker.enumValues[key] = expressionToken(expr)
 		return
 	}
 	value, ok := constantIntegerValue(expr)
@@ -3270,41 +3353,51 @@ func (a *Analyzer) checkSwitchValueCoverage(expr ast.Expression, tracker *switch
 	tracker.values[key] = expressionToken(expr)
 }
 
-func (a *Analyzer) switchEnumCaseVariant(expr ast.Expression, subjectType Type) (string, bool) {
+func (a *Analyzer) switchEnumCaseVariant(expr ast.Expression, subjectType Type) (string, *big.Int, bool) {
 	if subjectType.Kind != EnumType {
-		return "", false
+		return "", nil, false
 	}
 	member, ok := expr.(*ast.MemberExpression)
 	if !ok || member.Property == nil {
-		return "", false
+		return "", nil, false
 	}
 	typeName, ok := typePathFromExpression(member.Object)
 	if !ok {
-		return "", false
+		return "", nil, false
 	}
 	typeName = a.resolveTypeName(typeName)
 	typ, ok := a.types[typeName]
 	if !ok || typ.Kind != EnumType || !sameConcreteType(subjectType, typ) {
-		return "", false
+		return "", nil, false
 	}
-	if _, ok := typ.EnumConsts[member.Property.Value]; !ok {
-		return "", false
+	value, ok := typ.EnumConsts[member.Property.Value]
+	if !ok || value.Value == nil {
+		return "", nil, false
 	}
-	return member.Property.Value, true
+	return member.Property.Value, new(big.Int).Set(value.Value), true
 }
 
 func (a *Analyzer) warnIncompleteEnumSwitch(stmt *ast.SwitchStatement, tracker *switchCoverageTracker) {
 	if stmt == nil || tracker == nil || tracker.subjectType.Kind != EnumType {
 		return
 	}
-	values, ok := a.enumValuesForType(tracker.subjectType)
-	if !ok {
+	if tracker.subjectType.BitWidth > 0 {
 		return
 	}
-	missing := make([]string, 0, len(values))
-	for _, value := range values {
-		if _, covered := tracker.enumValues[value]; !covered {
-			missing = append(missing, value)
+	missing := []string{}
+	seenNumeric := map[string]bool{}
+	for _, name := range tracker.subjectType.EnumValues {
+		value, ok := tracker.subjectType.EnumConsts[name]
+		if !ok || value.Value == nil {
+			continue
+		}
+		key := value.Value.String()
+		if seenNumeric[key] {
+			continue
+		}
+		seenNumeric[key] = true
+		if _, covered := tracker.enumValues[key]; !covered {
+			missing = append(missing, name)
 		}
 	}
 	if len(missing) == 0 {
@@ -3321,7 +3414,22 @@ func (a *Analyzer) warnIncompleteEnumSwitch(stmt *ast.SwitchStatement, tracker *
 }
 
 func (t *switchCoverageTracker) isExhaustive() bool {
-	return t != nil && t.subjectType.Kind == BoolType && len(t.boolValues) == 2
+	if t == nil {
+		return false
+	}
+	if t.subjectType.Kind == BoolType {
+		return len(t.boolValues) == 2
+	}
+	if t.subjectType.Kind != EnumType || t.subjectType.BitWidth > 0 {
+		return false
+	}
+	classes := map[string]bool{}
+	for _, value := range t.subjectType.EnumConsts {
+		if value.Value != nil {
+			classes[value.Value.String()] = true
+		}
+	}
+	return len(classes) > 0 && len(t.enumValues) == len(classes)
 }
 
 func (a *Analyzer) checkSwitchRangeCoverage(expr *ast.RangeExpression, tracker *switchCoverageTracker) {
@@ -3576,7 +3684,8 @@ func (a *Analyzer) analyzeSwitchCaseBody(block *ast.BlockStatement) branchAnalys
 		borrows:            copyBorrows(a.borrows),
 		localRefContainers: copyLocalRefContainers(a.localRefContainers),
 		arenaGenerations:   copyArenaGenerations(a.arenaGenerations),
-		continues:          blockCanFallThrough(block) && !hasFallthrough,
+		continues:          a.blockCanFallThrough(block) && !hasFallthrough,
+		fallsThrough:       hasFallthrough,
 	}
 }
 
@@ -3700,9 +3809,12 @@ func (a *Analyzer) registerFunctionDeclarationNamed(fn *ast.FunctionDeclaration,
 func (a *Analyzer) registerCompilerKnownFunctions() {
 	for _, known := range CompilerKnownFunctions() {
 		a.functions[known.Name] = []Function{{
-			Name:       known.Name,
-			Module:     "core",
-			ReturnType: known.Result,
+			Name:             known.Name,
+			Module:           "core",
+			CompilerKnownID:  known.ID,
+			CompilerInternal: known.Internal,
+			Parameters:       known.Parameters,
+			ReturnType:       known.Result,
 		}}
 	}
 }
@@ -3713,6 +3825,12 @@ func isCompilerKnownFunctionName(name string) bool {
 }
 
 func (a *Analyzer) registerFunctionDeclarationBody(fn *ast.FunctionDeclaration, name string) {
+	// rules/declarations/static.md, declaration context; correction15.md permits
+	// static functions only as type-associated members inside impl blocks.
+	if fn.Static && a.currentImplTarget == "" {
+		a.addErrorAtToken(fn.Token, "static fn is only valid inside impl; use fn for a module function")
+		return
+	}
 	a.recordDefinition(fn.Name.Token)
 	function := Function{
 		Name:              name,
@@ -3728,8 +3846,10 @@ func (a *Analyzer) registerFunctionDeclarationBody(fn *ast.FunctionDeclaration, 
 	}
 	if a.currentImplTarget != "" {
 		function.ImplTarget = a.currentImplTarget
-		if target, ok := a.types[a.currentImplTarget]; ok {
-			function.ReceiverMutable = a.functionBodyWritesTargetMember(fn.Body, target, functionParameterNames(fn))
+		if !fn.Static {
+			if target, ok := a.types[a.currentImplTarget]; ok {
+				function.ReceiverMutable = a.functionBodyWritesTargetMember(fn.Body, target, functionParameterNames(fn))
+			}
 		}
 	}
 	if fn.Extern && !isSupportedExternABI(fn.ABI) {
@@ -4232,7 +4352,7 @@ func (a *Analyzer) analyzeFunctionBodyInScope(fn *ast.FunctionDeclaration, name 
 		// Reference parameters retain their referent authority in the type, but
 		// the reference binding itself is not implicitly rebindable.
 		mutableBinding := !param.Ref && !param.MutableRef && param.Type.Kind != ReferenceType
-		symbol := Symbol{Name: param.Name, Type: param.Type, Mutable: mutableBinding, Token: param.Token, Storage: StorageOriginInline, Local: false, ScopeDepth: 0}
+		symbol := Symbol{Name: param.Name, Type: param.Type, Mutable: mutableBinding, Token: param.Token, Storage: StorageOriginInline, Local: true, ScopeDepth: 0}
 		a.symbols[param.Name] = symbol
 		completionSymbol := symbol
 		completionSymbol.Local = true
@@ -4243,7 +4363,11 @@ func (a *Analyzer) analyzeFunctionBodyInScope(fn *ast.FunctionDeclaration, name 
 		a.recordBinding(param.Token, BindingParameter, param.Name, param.Type, mutableBinding)
 		a.seedParameterReferenceOrigin(function, param)
 	}
-	a.defineImplicitImplInstanceSymbols(fn.Body, function.ReceiverMutable)
+	// rules/declarations/static.md, receiver semantics; correction15.md keeps the
+	// owning type on static methods but does not synthesize self or members.
+	if !function.Static {
+		a.defineImplicitImplInstanceSymbols(fn.Body, function.ReceiverMutable)
+	}
 
 	a.analyzeBlockStatements(fn.Body)
 	a.setFunctionReferenceSummary(function)
@@ -4761,9 +4885,9 @@ func statementDefinitelyReturns(stmt ast.Statement) bool {
 	case *ast.SelectStatement:
 		return selectDefinitelyReturns(stmt)
 	case *ast.ForStatement:
-		return len(stmt.Bindings) == 0 && stmt.Iterable == nil && !blockContainsBreak(stmt.Body)
+		return len(stmt.Bindings) == 0 && stmt.Iterable == nil && !blockHasReachableBreakToCurrentLoop(stmt.Body)
 	case *ast.WhileStatement:
-		return isBoolLiteral(stmt.Condition, true) && !blockContainsBreak(stmt.Body)
+		return isBoolLiteral(stmt.Condition, true) && !blockHasReachableBreakToCurrentLoop(stmt.Body)
 	case *ast.UnsafeStatement:
 		if unsafeAsmReturns(stmt) {
 			return true
@@ -4777,70 +4901,93 @@ func statementDefinitelyReturns(stmt ast.Statement) bool {
 }
 
 func (a *Analyzer) statementDefinitelyReturns(stmt ast.Statement) bool {
-	if matchStmt, ok := stmt.(*ast.MatchStatement); ok {
-		return a.matchStatementDefinitelyReturns(matchStmt)
+	switch stmt := stmt.(type) {
+	case *ast.MatchStatement:
+		return a.matchStatementDefinitelyReturns(stmt)
+	case *ast.SwitchStatement:
+		return a.switchStatementDefinitelyReturns(stmt)
 	}
 	return statementDefinitelyReturns(stmt)
 }
 
-func (a *Analyzer) matchStatementDefinitelyReturns(stmt *ast.MatchStatement) bool {
-	if stmt == nil || stmt.Match == nil || stmt.Match.Subject == nil || len(stmt.Match.Arms) == 0 {
+func (a *Analyzer) switchStatementDefinitelyReturns(stmt *ast.SwitchStatement) bool {
+	if stmt == nil {
 		return false
 	}
-
-	subjectType, ok := a.expressionTypes[stmt.Match.Subject]
-	if !ok || subjectType.Kind == InvalidType {
-		return false
-	}
-
-	seenKinds := map[string]bool{}
-	seenVariants := map[string]bool{}
-	catchAll := false
-
-	for _, arm := range stmt.Match.Arms {
-		if arm == nil || !matchArmDefinitelyReturns(arm) {
-			return false
-		}
-		if arm.Guard != nil {
-			continue
-		}
-		info, ok := a.matchPatternInfoNoDiagnostics(arm.Pattern.Expression(), subjectType)
-		if !ok {
-			return false
-		}
-		if info.Kind == "catchall" {
-			catchAll = true
-		}
-		if info.Kind != "" {
-			seenKinds[info.Kind] = true
-		}
-		if info.Variant != "" {
-			seenVariants[info.Variant] = true
-		}
-	}
-
-	if catchAll {
-		return true
-	}
-	if subjectType.Kind == ResultType && len(subjectType.TypeArgs) == 2 {
-		return seenKinds["Ok"] && seenKinds["Err"]
-	}
-	if enumValues, ok := a.enumValuesForType(subjectType); ok {
-		for _, variant := range enumValues {
-			if !seenVariants[variant] {
-				return false
+	exhaustive := stmt.Default != nil || switchCoversBoolLiterals(stmt)
+	if !exhaustive && stmt.Subject != nil {
+		if subjectType, ok := a.expressionTypes[stmt.Subject]; ok && subjectType.Kind == EnumType && subjectType.BitWidth == 0 {
+			tracker := newSwitchCoverageTracker()
+			tracker.subjectType = subjectType
+			for _, clause := range stmt.Cases {
+				if clause == nil {
+					continue
+				}
+				for _, item := range clause.Items {
+					valueCase, ok := item.(*ast.SwitchValueCase)
+					if !ok {
+						continue
+					}
+					_, value, ok := a.switchEnumCaseVariant(valueCase.Value, subjectType)
+					if ok {
+						tracker.enumValues[value.String()] = expressionToken(valueCase.Value)
+					}
+				}
 			}
+			exhaustive = tracker.isExhaustive()
 		}
-		return true
 	}
-	return false
+	if !exhaustive {
+		return false
+	}
+
+	nextTerminates := stmt.Default == nil
+	if stmt.Default != nil {
+		nextTerminates = a.blockDefinitelyReturns(stmt.Default.Body)
+		if !nextTerminates {
+			return false
+		}
+	}
+	for index := len(stmt.Cases) - 1; index >= 0; index-- {
+		clause := stmt.Cases[index]
+		if clause == nil {
+			return false
+		}
+		terminates := a.blockDefinitelyReturns(clause.Body) || blockEndsWithFallthrough(clause.Body) && nextTerminates
+		if !terminates {
+			return false
+		}
+		nextTerminates = true
+	}
+	return true
 }
 
-func matchArmDefinitelyReturns(arm *ast.MatchArm) bool {
+func (a *Analyzer) matchStatementDefinitelyReturns(stmt *ast.MatchStatement) bool {
+	if stmt == nil || stmt.Match == nil {
+		return false
+	}
+	// rules/control-flow/flowcontrol_match.md; correction23.md: termination
+	// consumes the canonical normalized coverage and arm-flow plan. Rebuilding
+	// coverage from pattern spellings loses enum aliases and union domains.
+	plan, ok := a.resolvedMatchPlans[stmt.Match]
+	if !ok || !plan.Exhaustive || len(plan.Arms) == 0 {
+		return false
+	}
+	for _, arm := range plan.Arms {
+		switch arm.Flow {
+		case MatchArmReturns, MatchArmTerminates, MatchArmLoopControl:
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func (a *Analyzer) matchArmDefinitelyReturns(arm *ast.MatchArm) bool {
 	if arm.ReturnBody != nil {
 		return true
 	}
-	return blockDefinitelyReturns(arm.BlockBody)
+	return a.blockDefinitelyReturns(arm.BlockBody)
 }
 
 func (a *Analyzer) matchPatternInfoNoDiagnostics(pattern ast.Expression, subjectType Type) (matchPatternInfo, bool) {
@@ -4917,6 +5064,43 @@ func blockCanFallThrough(block *ast.BlockStatement) bool {
 	return true
 }
 
+// blockCanFallThrough is the analyzer-aware control-flow query required by
+// rules/control-flow/flowcontrol_match.md (correction23.md). In particular, it
+// recognizes nested matches through their resolved plans.
+func (a *Analyzer) blockCanFallThrough(block *ast.BlockStatement) bool {
+	if block == nil {
+		return true
+	}
+	for _, stmt := range block.Statements {
+		if !a.statementCanFallThrough(stmt) {
+			return false
+		}
+	}
+	return true
+}
+
+func (a *Analyzer) statementCanFallThrough(stmt ast.Statement) bool {
+	switch stmt := stmt.(type) {
+	case *ast.MatchStatement:
+		return !a.matchStatementDefinitelyReturns(stmt)
+	case *ast.IfStatement:
+		if isBoolLiteral(stmt.Condition, true) {
+			return a.blockCanFallThrough(stmt.Consequence)
+		}
+		if isBoolLiteral(stmt.Condition, false) {
+			return a.blockCanFallThrough(stmt.Alternative)
+		}
+		if stmt.Alternative == nil {
+			return true
+		}
+		return a.blockCanFallThrough(stmt.Consequence) || a.blockCanFallThrough(stmt.Alternative)
+	case *ast.UnsafeStatement:
+		return a.blockCanFallThrough(stmt.Body)
+	default:
+		return statementCanFallThrough(stmt)
+	}
+}
+
 func statementCanFallThrough(stmt ast.Statement) bool {
 	switch stmt := stmt.(type) {
 	case *ast.ReturnStatement, *ast.BreakStatement, *ast.ContinueStatement, *ast.CancelStatement, *ast.FallthroughStatement:
@@ -4959,44 +5143,57 @@ func statementCanFallThrough(stmt ast.Statement) bool {
 	}
 }
 
-func blockContainsBreak(block *ast.BlockStatement) bool {
+// blockHasReachableBreakToCurrentLoop reports whether a reachable break in
+// block targets the loop that owns block. rules/control-flow/flowcontrol_for.md
+// assigns nested loop breaks to the nested loop; correction21.md also requires
+// constant-unreachable branches not to create false outer exits.
+func blockHasReachableBreakToCurrentLoop(block *ast.BlockStatement) bool {
 	if block == nil {
 		return false
 	}
 	for _, stmt := range block.Statements {
-		if statementContainsBreak(stmt) {
+		if statementHasReachableBreakToCurrentLoop(stmt) {
 			return true
 		}
 	}
 	return false
 }
 
-func statementContainsBreak(stmt ast.Statement) bool {
+// statementHasReachableBreakToCurrentLoop follows non-loop control-flow
+// containers but does not enter nested loops, as required by
+// flowcontrol_for.md and correction21.md.
+func statementHasReachableBreakToCurrentLoop(stmt ast.Statement) bool {
 	switch stmt := stmt.(type) {
 	case *ast.BreakStatement:
 		return true
 	case *ast.IfStatement:
-		return blockContainsBreak(stmt.Consequence) || blockContainsBreak(stmt.Alternative)
+		if isBoolLiteral(stmt.Condition, true) {
+			return blockHasReachableBreakToCurrentLoop(stmt.Consequence)
+		}
+		if isBoolLiteral(stmt.Condition, false) {
+			return blockHasReachableBreakToCurrentLoop(stmt.Alternative)
+		}
+		return blockHasReachableBreakToCurrentLoop(stmt.Consequence) || blockHasReachableBreakToCurrentLoop(stmt.Alternative)
 	case *ast.ForStatement:
-		return blockContainsBreak(stmt.Body)
+		return false
 	case *ast.WhileStatement:
-		return blockContainsBreak(stmt.Body)
+		return false
 	case *ast.SwitchStatement:
 		for _, clause := range stmt.Cases {
-			if blockContainsBreak(clause.Body) {
+			if blockHasReachableBreakToCurrentLoop(clause.Body) {
 				return true
 			}
 		}
-		return stmt.Default != nil && blockContainsBreak(stmt.Default.Body)
+		return stmt.Default != nil && blockHasReachableBreakToCurrentLoop(stmt.Default.Body)
 	case *ast.SelectStatement:
 		for _, branch := range stmt.Branches {
-			if branch != nil && blockContainsBreak(branch.Body) {
+			if branch != nil && blockHasReachableBreakToCurrentLoop(branch.Body) {
 				return true
 			}
 		}
 		return false
 	case *ast.UnsafeStatement:
-		return blockContainsBreak(stmt.Body)
+		return blockHasReachableBreakToCurrentLoop(stmt.Body)
 	default:
 		return false
 	}
@@ -6351,6 +6548,9 @@ func (a *Analyzer) recordLoopContinue() {
 	a.loopBreakFrames[top].continueClosedResources = append(a.loopBreakFrames[top].continueClosedResources, copyMoved(a.closedResources))
 	a.loopBreakFrames[top].continueBorrows = append(a.loopBreakFrames[top].continueBorrows, copyBorrows(a.borrows))
 	a.loopBreakFrames[top].continueLocalRefContainers = append(a.loopBreakFrames[top].continueLocalRefContainers, copyLocalRefContainers(a.localRefContainers))
+	// rules/control-flow/flowcontrol_while.md and flowcontrol_for.md;
+	// correction25.md: every continue edge carries the complete Arena epoch.
+	a.loopBreakFrames[top].continueArenaGenerations = append(a.loopBreakFrames[top].continueArenaGenerations, copyArenaGenerations(a.arenaGenerations))
 }
 
 func mergeMoveStateInto(mergedMoved map[string]lexer.Token, mergedReasons map[string]string, moved map[string]lexer.Token, reasons map[string]string) {
@@ -6484,6 +6684,20 @@ func loopBackedgeReferenceState(entry map[string]localReferenceOrigin, loop map[
 	}
 	states = append(states, frame.continueLocalRefContainers...)
 	return mergeReferenceOriginStates(states...)
+}
+
+func loopBackedgeArenaGenerationState(entry, loop map[string]int, frame loopBreakFrame, bodyFallsThrough bool) map[string]int {
+	// rules/control-flow/flowcontrol_while.md and flowcontrol_for.md;
+	// correction25.md: the next iteration sees the greatest epoch reachable
+	// through entry, normal fallthrough, or any continue edge.
+	header := copyArenaGenerations(entry)
+	if bodyFallsThrough {
+		mergeArenaGenerationMaxInto(header, loop)
+	}
+	for _, generations := range frame.continueArenaGenerations {
+		mergeArenaGenerationMaxInto(header, generations)
+	}
+	return header
 }
 
 func mergeLoopReferenceState(entry map[string]localReferenceOrigin, loop map[string]localReferenceOrigin, frame loopBreakFrame) map[string]localReferenceOrigin {
@@ -6638,6 +6852,7 @@ func (a *Analyzer) checkLoopBackedgeFixedPoint(
 	headerClosedResources map[string]lexer.Token,
 	headerBorrows map[string][]borrowRecord,
 	headerLocalRefContainers map[string]localReferenceOrigin,
+	headerArenaGenerations map[string]int,
 ) {
 	backedgePlaces := map[string]bool{}
 	for place := range headerMoved {
@@ -6645,7 +6860,7 @@ func (a *Analyzer) checkLoopBackedgeFixedPoint(
 			backedgePlaces[place] = true
 		}
 	}
-	if len(backedgePlaces) == 0 && tokenStateKeysEqual(entry.closedResources, headerClosedResources) && borrowStatesEqual(entry.borrows, headerBorrows) && referenceOriginStatesEqual(entry.localRefContainers, headerLocalRefContainers) {
+	if len(backedgePlaces) == 0 && tokenStateKeysEqual(entry.closedResources, headerClosedResources) && borrowStatesEqual(entry.borrows, headerBorrows) && referenceOriginStatesEqual(entry.localRefContainers, headerLocalRefContainers) && arenaGenerationStatesEqual(entry.arenaGenerations, headerArenaGenerations) {
 		return
 	}
 
@@ -6676,7 +6891,7 @@ func (a *Analyzer) checkLoopBackedgeFixedPoint(
 	a.closedResources = copyMoved(headerClosedResources)
 	a.borrows = copyBorrows(headerBorrows)
 	a.localRefContainers = copyLocalRefContainers(headerLocalRefContainers)
-	a.arenaGenerations = copyArenaGenerations(entry.arenaGenerations)
+	a.arenaGenerations = copyArenaGenerations(headerArenaGenerations)
 	a.scopeDepth = entry.scopeDepth
 	a.loopBackedgePlaces = backedgePlaces
 	a.callGraph = previousCallGraph.clone()
@@ -6747,6 +6962,18 @@ func referenceOriginStatesEqual(left, right map[string]localReferenceOrigin) boo
 	for name, leftOrigin := range left {
 		rightOrigin, ok := right[name]
 		if !ok || leftOrigin.Ambiguous != rightOrigin.Ambiguous || !sameReferenceOrigin(leftOrigin, rightOrigin) {
+			return false
+		}
+	}
+	return true
+}
+
+func arenaGenerationStatesEqual(left, right map[string]int) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for name, generation := range left {
+		if right[name] != generation {
 			return false
 		}
 	}
@@ -6931,18 +7158,30 @@ func (a *Analyzer) analyzeInterfaceDeclarationBody(stmt *ast.InterfaceDeclaratio
 
 	iface.Implements = a.resolveImplementedInterfaces(stmt.Implements, stmt.Name.Value)
 
-	seenMethods := map[string]lexer.Token{}
+	methodGroups := map[string][]Function{}
 	for _, method := range stmt.Methods {
 		if method == nil || method.Name == nil {
 			continue
 		}
-		if previous, exists := seenMethods[method.Name.Value]; exists {
-			_ = previous
-			a.addErrorAtToken(method.Name.Token, "duplicate interface method %q in %s", method.Name.Value, stmt.Name.Value)
+		requirement := a.interfaceMethodRequirement(stmt.Name.Value, method)
+		conflict := false
+		for _, previous := range methodGroups[requirement.Name] {
+			if !sameInterfaceOverloadIdentity(previous, requirement) {
+				continue
+			}
+			if sameInterfaceRequirementSignature(previous, requirement) && sameConcreteType(previous.ReturnType, requirement.ReturnType) {
+				a.addErrorAtTokenWithPrevious(method.Name.Token, previous.Token, "duplicate interface method requirement %q in %s", method.Name.Value, stmt.Name.Value)
+			} else {
+				a.addErrorAtTokenWithPrevious(method.Name.Token, previous.Token, "interface method requirement %s has incompatible callable contract in %s", method.Name.Value, stmt.Name.Value)
+			}
+			conflict = true
+			break
+		}
+		if conflict {
 			continue
 		}
-		seenMethods[method.Name.Value] = method.Name.Token
-		iface.InterfaceMethods = append(iface.InterfaceMethods, a.interfaceMethodRequirement(stmt.Name.Value, method))
+		methodGroups[requirement.Name] = append(methodGroups[requirement.Name], requirement)
+		iface.InterfaceMethods = append(iface.InterfaceMethods, requirement)
 	}
 
 	seenProperties := map[string]lexer.Token{}
@@ -7008,9 +7247,9 @@ func (a *Analyzer) mergeInheritedInterfaceRequirements(iface *Type) {
 		return
 	}
 
-	methods := map[string]Function{}
+	methods := map[string][]Function{}
 	for _, method := range iface.InterfaceMethods {
-		methods[method.Name] = method
+		methods[method.Name] = append(methods[method.Name], method)
 	}
 	properties := map[string]InterfaceProperty{}
 	for _, property := range iface.InterfaceProperties {
@@ -7027,13 +7266,21 @@ func (a *Analyzer) mergeInheritedInterfaceRequirements(iface *Type) {
 			continue
 		}
 		for _, method := range parentType.InterfaceMethods {
-			if existing, exists := methods[method.Name]; exists {
-				if !sameInterfaceRequirementSignature(existing, method) || !sameConcreteType(existing.ReturnType, method.ReturnType) {
-					a.addErrorAtToken(method.Token, "inherited interface method %s conflicts in %s", method.Name, iface.Name)
+			matched := false
+			for _, existing := range methods[method.Name] {
+				if !sameInterfaceOverloadIdentity(existing, method) {
+					continue
 				}
+				matched = true
+				if !sameInterfaceRequirementSignature(existing, method) || !sameConcreteType(existing.ReturnType, method.ReturnType) {
+					a.addErrorAtTokenWithPrevious(method.Token, existing.Token, "inherited interface method %s conflicts in %s", method.Name, iface.Name)
+				}
+				break
+			}
+			if matched {
 				continue
 			}
-			methods[method.Name] = method
+			methods[method.Name] = append(methods[method.Name], method)
 			iface.InterfaceMethods = append(iface.InterfaceMethods, method)
 		}
 		for _, property := range parentType.InterfaceProperties {
@@ -7135,6 +7382,22 @@ func sameInterfaceRequirementSignature(left Function, right Function) bool {
 	return true
 }
 
+// sameInterfaceOverloadIdentity follows rules/declarations/functions.md and
+// rules/declarations/interfaces.md. correction10.md requires parameter-type
+// identity to preserve overloads while return/receiver/ownership remain
+// callable-contract compatibility checks rather than overload discriminators.
+func sameInterfaceOverloadIdentity(left Function, right Function) bool {
+	if left.Name != right.Name || len(left.Parameters) != len(right.Parameters) {
+		return false
+	}
+	for i := range left.Parameters {
+		if !sameConcreteType(left.Parameters[i].Type, right.Parameters[i].Type) {
+			return false
+		}
+	}
+	return true
+}
+
 func (a *Analyzer) analyzeUnitDeclaration(stmt *ast.UnitDeclStatement) {
 	if stmt.Name == nil || stmt.BaseType == nil || a.invalidTypeDeclaration(stmt.Name.Token) {
 		return
@@ -7152,7 +7415,8 @@ func (a *Analyzer) analyzeUnitDeclaration(stmt *ast.UnitDeclStatement) {
 	unitName := stmt.Name.Value
 	unit := a.units[unitName]
 	if unit.Name == "" {
-		unit = UnitDefinition{Name: unitName, Category: OtherUnit, Dimension: defaultUnitDimension(unitName, OtherUnit), DefaultNumeric: "decimal", Status: StatusActive, Transform: LinearUnitTransform, Token: stmt.Name.Token}
+		dimension, established := defaultUnitDimension(unitName, OtherUnit)
+		unit = UnitDefinition{Name: unitName, Category: OtherUnit, Dimension: dimension, DimensionEstablished: established, DefaultNumeric: "decimal", Status: StatusActive, Transform: LinearUnitTransform, Token: stmt.Name.Token}
 	}
 	if stmt.Category != "" {
 		unit.Category = UnitCategory(stmt.Category)
@@ -7470,25 +7734,42 @@ func (a *Analyzer) typeFromRegisterDeclaration(name string, stmt *ast.TypeDeclSt
 	return typ
 }
 
+// registerFieldType implements exact raw field domains from
+// rules/declarations/registers.md. correction13.md requires arbitrary-precision
+// bit[N] bounds independent of host and target-sized uint widths.
 func (a *Analyzer) registerFieldType(field *ast.RegisterField) Type {
 	if field.Width == 1 && field.Unit == "" {
 		return Type{Name: "bool", Kind: BoolType}
 	}
-	max := uint64(0)
-	if field.Width >= 64 {
-		max = ^uint64(0)
-	} else if field.Width > 0 {
-		max = 1<<uint(field.Width) - 1
+	minInteger := big.NewInt(0)
+	maxInteger := new(big.Int).Lsh(big.NewInt(1), uint(field.Width))
+	maxInteger.Sub(maxInteger, big.NewInt(1))
+	typ := Type{
+		Name:       fmt.Sprintf("bit[%d]", field.Width),
+		Kind:       UintType,
+		BitWidth:   field.Width,
+		MinInteger: minInteger,
+		MaxInteger: maxInteger,
 	}
-	typ := unsignedType("uint", max)
+	if field.Width <= 64 {
+		min, max := uint64(0), maxInteger.Uint64()
+		typ.MinUint = &min
+		typ.MaxUint = &max
+	}
 	if field.Unit != "" {
 		if unitType, ok := a.types[field.Unit]; ok && unitType.Kind != InvalidType {
 			typ = unitType
-			min := uint64(0)
-			typ.MinUint = &min
-			typ.MaxUint = &max
-			typ.MinInteger = new(big.Int).SetUint64(min)
-			typ.MaxInteger = new(big.Int).SetUint64(max)
+			typ.MinInteger = new(big.Int).Set(minInteger)
+			typ.MaxInteger = new(big.Int).Set(maxInteger)
+			typ.BitWidth = field.Width
+			if field.Width <= 64 {
+				min, max := uint64(0), maxInteger.Uint64()
+				typ.MinUint = &min
+				typ.MaxUint = &max
+			} else {
+				typ.MinUint = nil
+				typ.MaxUint = nil
+			}
 		} else {
 			typ.Named = true
 			typ.Unit = field.Unit
@@ -7546,6 +7827,16 @@ func (a *Analyzer) typeFromUnionDeclaration(name string, stmt *ast.TypeDeclState
 			}
 		}
 		if variant.Payload != nil {
+			if len(stmt.GenericParameters) > 0 {
+				switch genericRecursiveStorageKind(name, genericParameterNameValues(stmt.GenericParameters), variant.Payload) {
+				case "direct":
+					a.addErrorAtToken(variant.Name.Token, "recursive generic type %s has infinite size", genericDeclarationDisplayName(name, stmt.GenericParameters))
+					continue
+				case "nonconverging":
+					a.addErrorAtToken(variant.Name.Token, "recursive generic instantiation does not converge for %s", name)
+					continue
+				}
+			}
 			payload, ok := a.resolveType(variant.Payload)
 			if !ok {
 				continue
@@ -7567,6 +7858,16 @@ func (a *Analyzer) typeFromUnionDeclaration(name string, stmt *ast.TypeDeclState
 					continue
 				}
 				fieldSeen[field.Name.Value] = field.Name.Token
+				if len(stmt.GenericParameters) > 0 {
+					switch genericRecursiveStorageKind(name, genericParameterNameValues(stmt.GenericParameters), field.Type) {
+					case "direct":
+						a.addErrorAtToken(field.Name.Token, "recursive generic type %s has infinite size", genericDeclarationDisplayName(name, stmt.GenericParameters))
+						continue
+					case "nonconverging":
+						a.addErrorAtToken(field.Name.Token, "recursive generic instantiation does not converge for %s", name)
+						continue
+					}
+				}
 
 				fieldType, ok := a.resolveType(field.Type)
 				if !ok {
@@ -7872,7 +8173,7 @@ func (a *Analyzer) registerImplStatement(stmt *ast.ImplStatement) {
 		return
 	}
 
-	if !target.Named && target.Kind != InvalidType && !isAllowedCoreBuiltinImpl(stmt.Target.Name, stmt.Target.Token) {
+	if !target.Named && target.Kind != InvalidType && !a.isAllowedCoreBuiltinImpl(stmt.Target.Name, stmt.Target.Token) {
 		return
 	}
 	if !a.validateImplGenericTarget(stmt, target) {
@@ -8345,7 +8646,7 @@ func (a *Analyzer) analyzeImplBody(stmt *ast.ImplStatement) {
 		return
 	}
 	target, ok := a.types[stmt.Target.Name]
-	if !ok || (!target.Named && !isAllowedCoreBuiltinImpl(stmt.Target.Name, stmt.Target.Token)) {
+	if !ok || (!target.Named && !a.isAllowedCoreBuiltinImpl(stmt.Target.Name, stmt.Target.Token)) {
 		return
 	}
 	genericParams := implGenericParametersForTarget(stmt, target)
@@ -8657,6 +8958,9 @@ func tokensSource(tokens []lexer.Token) string {
 	return strings.Join(parts, " ")
 }
 
+// inferPropertyBodyExpression performs the restricted early property-body
+// inference required by rules/declarations/properties.md. correction12.md
+// requires this path to enforce the same getter boundary as ordinary reads.
 func (a *Analyzer) inferPropertyBodyExpression(target Type, setter *ast.PropertySetter, setterType Type, expr ast.Expression) (Type, bool) {
 	switch expr := expr.(type) {
 	case *ast.Identifier:
@@ -8669,7 +8973,11 @@ func (a *Analyzer) inferPropertyBodyExpression(target Type, setter *ast.Property
 		if fieldType, ok := lookupStructField(target, expr.Value); ok {
 			return fieldType, true
 		}
-		if property, ok := lookupProperty(target, expr.Value); ok {
+		if _, exists := lookupProperty(target, expr.Value); exists {
+			property, readable := a.resolveReadableProperty(target, expr.Value, expr.Token)
+			if !readable {
+				return Type{Kind: InvalidType}, false
+			}
 			return property.Type, true
 		}
 		if symbol, ok := a.symbols[expr.Value]; ok {
@@ -8738,7 +9046,11 @@ func (a *Analyzer) inferPropertyBodyExpression(target Type, setter *ast.Property
 		if fieldType, ok := lookupRegisterField(objectType, expr.Property.Value); ok {
 			return fieldType, true
 		}
-		if property, ok := lookupProperty(objectType, expr.Property.Value); ok {
+		if _, exists := lookupProperty(objectType, expr.Property.Value); exists {
+			property, readable := a.resolveReadableProperty(objectType, expr.Property.Value, expr.Property.Token)
+			if !readable {
+				return Type{Kind: InvalidType}, false
+			}
 			return property.Type, true
 		}
 		a.addErrorAtToken(expr.Property.Token, "unknown member %s on %s", expr.Property.Value, typeDisplayName(objectType))
@@ -9066,11 +9378,20 @@ func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement, all
 	a.bindDefinition(target.Token, symbol.Token)
 	a.recordDeferCapture(target.Value, symbol, target.Token)
 
+	property, propertyOK := a.lookupCurrentImplProperty(target.Value)
+	if propertyOK && !property.HasSetter {
+		a.addErrorAtToken(target.Token, "property %s has no setter", target.Value)
+		return
+	}
+	if propertyOK && stmt.Operator != "=" && !property.HasGetter {
+		a.addErrorAtToken(target.Token, "property %s has no getter and cannot be used with %s", target.Value, stmt.Operator)
+		return
+	}
 	if !symbol.Mutable {
 		a.addErrorAtToken(target.Token, "cannot assign to immutable variable %s", target.Value)
 		return
 	}
-	if property, ok := a.lookupCurrentImplProperty(target.Value); ok && property.Fallible && !allowFallible {
+	if propertyOK && property.Fallible && !allowFallible {
 		a.addErrorAtToken(target.Token, "assigning fallible property %s requires try", target.Value)
 		return
 	}
@@ -9144,6 +9465,7 @@ func (a *Analyzer) applyLetOwnership(stmt *ast.LetStatement) {
 	if stmt == nil {
 		return
 	}
+	a.bindArenaDomainFromExpression(stmt.Name.Value, stmt.Value)
 	if stmt.Ownership == ast.OwnershipMove {
 		a.markExplicitMoveSource(stmt.Value)
 		return
@@ -9180,6 +9502,9 @@ func (a *Analyzer) validateMoveAssignmentTarget(stmt *ast.AssignmentStatement) b
 func (a *Analyzer) applyAssignmentOwnership(stmt *ast.AssignmentStatement) {
 	if stmt == nil {
 		return
+	}
+	if target, ok := stmt.Target.(*ast.Identifier); ok {
+		a.bindArenaDomainFromExpression(target.Value, stmt.Value)
 	}
 	if stmt.Ownership == ast.OwnershipMove {
 		a.markExplicitMoveSource(stmt.Value)
@@ -9401,8 +9726,35 @@ func (a *Analyzer) markMoveSource(expr ast.Expression) bool {
 		return a.markMoveSource(expr.Value)
 	case *ast.ConversionExpression:
 		return a.markMoveSource(expr.Value)
+	case *ast.CallExpression:
+		// rules/declarations/unions.md; correction17.md: constructing an
+		// unnamed union payload transfers ownership into the aggregate. Keep
+		// this specific to resolved union constructors; ordinary calls apply
+		// their ownership rules through markMovedCallArguments instead.
+		if payload, ok := a.unionConstructorPayload(expr); ok && requiresOwnershipTransfer(payload) {
+			return a.markMoveSource(expr.Arguments[0])
+		}
 	}
 	return false
+}
+
+func (a *Analyzer) unionConstructorPayload(expr *ast.CallExpression) (Type, bool) {
+	if expr == nil || len(expr.Arguments) != 1 {
+		return Type{}, false
+	}
+	member, ok := expr.Callee.(*ast.MemberExpression)
+	if !ok || member.Property == nil || !a.expressionNamesType(member.Object) {
+		return Type{}, false
+	}
+	unionType, ok := a.expressionTypes[expr]
+	if !ok || unionType.Kind != UnionType {
+		return Type{}, false
+	}
+	variant, ok := lookupUnionVariant(unionType, member.Property.Value)
+	if !ok || variant.Payload == nil || len(variant.PayloadFields) != 0 {
+		return Type{}, false
+	}
+	return *variant.Payload, true
 }
 
 func (a *Analyzer) markResourceTransfer(expr ast.Expression) bool {
@@ -9461,6 +9813,19 @@ func (a *Analyzer) bindBorrowHoldersFromExpression(expr ast.Expression, holder s
 	case *ast.ConversionExpression:
 		a.bindBorrowHoldersFromExpression(expr.Value, holder)
 	case *ast.CallExpression:
+		if member, ok := expr.Callee.(*ast.MemberExpression); ok && member.Property != nil && member.Property.Value == "FromBuffer" &&
+			a.expressionNamesType(member.Object) && len(expr.Arguments) == 1 {
+			// rules/memory/arena.md; correction29.md: borrowed backing is
+			// held exclusively by the Arena owner until Release/destruction.
+			if place, placeOK := a.resolvePlace(expr.Arguments[0]); placeOK {
+				for _, alternative := range placeOriginAlternatives(place) {
+					a.borrows[alternative.Root] = append(a.borrows[alternative.Root], borrowRecord{
+						Root: alternative.Root, Place: alternative, Holder: holder, Kind: mutableBorrow, Token: expr.Token,
+					})
+				}
+				return
+			}
+		}
 		if origin, ok := a.expressionReferenceOrigins[expr]; ok {
 			a.registerBorrowFromReturnedOrigin(holder, origin, expr.Token)
 		}
@@ -9493,10 +9858,58 @@ func (a *Analyzer) transferBorrowHolderFromExpression(expr ast.Expression, holde
 		return
 	}
 	symbol, ok := a.symbols[ident.Value]
-	if !ok || symbol.Type.Kind != ReferenceType || !MoveOnly(symbol.Type) {
+	if !ok || !MoveOnly(symbol.Type) || symbol.Type.Kind != ReferenceType && symbol.Type.Name != "Arena" {
 		return
 	}
 	a.transferBorrowHolder(ident.Value, holder)
+}
+
+// bindArenaDomainFromExpression implements the stable ArenaDomain ownership
+// identity from rules/memory/arena.md (correction29.md). Domain identity lives
+// on the semantic Arena value and therefore follows owner moves independently
+// of the current source binding name.
+func (a *Analyzer) bindArenaDomainFromExpression(holder string, expr ast.Expression) {
+	if holder == "" {
+		return
+	}
+	symbol, ok := a.symbols[holder]
+	if !ok || symbol.Type.Name != "Arena" {
+		return
+	}
+	domain := ""
+	if inferred, ok := a.expressionTypes[expr]; ok && inferred.Name == "Arena" {
+		domain = inferred.ArenaDomainID
+	}
+	if domain == "" {
+		if source, ok := expr.(*ast.Identifier); ok {
+			if sourceSymbol, exists := a.symbols[source.Value]; exists && sourceSymbol.Type.Name == "Arena" {
+				domain = sourceSymbol.Type.ArenaDomainID
+				a.transferBorrowHolder(source.Value, holder)
+			}
+		}
+	}
+	if call, ok := expr.(*ast.CallExpression); ok {
+		if member, memberOK := call.Callee.(*ast.MemberExpression); memberOK && member.Property != nil && member.Property.Value == "FromBuffer" && len(call.Arguments) == 1 {
+			a.transferBorrowHolder(arenaConstructorBorrowHolder(call), holder)
+			if place, placeOK := a.resolvePlace(call.Arguments[0]); placeOK {
+				for _, alternative := range placeOriginAlternatives(place) {
+					a.borrows[alternative.Root] = append(a.borrows[alternative.Root], borrowRecord{
+						Root: alternative.Root, Place: alternative, Holder: holder, Kind: mutableBorrow, Token: call.Token,
+					})
+				}
+			}
+		}
+	}
+	if domain == "" {
+		domain = a.newArenaDomainID()
+	}
+	symbol.Type.ArenaDomainID = domain
+	a.symbols[holder] = symbol
+}
+
+func (a *Analyzer) newArenaDomainID() string {
+	a.nextArenaDomainID++
+	return fmt.Sprintf("$arena-domain-%d", a.nextArenaDomainID)
 }
 
 func (a *Analyzer) registerBorrow(holder string, expr *ast.RefExpression) {
@@ -9557,6 +9970,7 @@ func referenceTypeWithOrigin(target Type, source Type) Type {
 	target.ReferenceOriginMatchScoped = source.ReferenceOriginMatchScoped
 	target.ReferenceOriginStorage = source.ReferenceOriginStorage
 	target.ReferenceOriginGeneration = source.ReferenceOriginGeneration
+	target.ReferenceOriginDisplayName = source.ReferenceOriginDisplayName
 	return target
 }
 
@@ -9607,7 +10021,11 @@ func (a *Analyzer) checkStaleArenaReference(symbol Symbol, token lexer.Token) bo
 	if symbol.Type.ReferenceOriginGeneration == current {
 		return false
 	}
-	a.addErrorAtTokenWithPrevious(token, symbol.Type.ReferenceOriginToken, "cannot use %s after arena %s was reset", symbol.Name, symbol.Type.ReferenceOriginName)
+	display := symbol.Type.ReferenceOriginDisplayName
+	if display == "" {
+		display = symbol.Type.ReferenceOriginName
+	}
+	a.addErrorAtTokenWithPrevious(token, symbol.Type.ReferenceOriginToken, "cannot use %s after arena %s was reset", symbol.Name, display)
 	return true
 }
 
@@ -9686,6 +10104,21 @@ func (a *Analyzer) checkBorrowedRead(name string, token lexer.Token) bool {
 		return false
 	}
 	return a.checkBorrowedReadPlace(place, token)
+}
+
+func (a *Analyzer) checkArenaBackingBorrowRead(name string, token lexer.Token) bool {
+	for _, record := range a.borrows[name] {
+		if record.Kind != mutableBorrow {
+			continue
+		}
+		holder, ok := a.symbols[record.Holder]
+		if !ok || holder.Type.Name != "Arena" {
+			continue
+		}
+		a.addErrorAtTokenWithPrevious(token, record.Token, "cannot read %s while its backing is exclusively borrowed by arena %s", name, record.Holder)
+		return true
+	}
+	return false
 }
 
 func (a *Analyzer) checkBorrowedReadPlace(place Place, token lexer.Token) bool {
@@ -9819,9 +10252,20 @@ func (a *Analyzer) indexAssignmentTargetIsMutable(expr ast.Expression) bool {
 }
 
 func (a *Analyzer) analyzeMemberAssignmentStatement(stmt *ast.AssignmentStatement, member *ast.MemberExpression, allowFallible bool) {
-	targetType, ok := a.inferMemberExpression(member)
-	if !ok {
-		return
+	// rules/declarations/properties.md, Assignment; correction12.md. Property
+	// metadata must be resolved without performing a getter read so write-only
+	// properties remain valid targets of simple assignment.
+	property, propertyOK := a.lookupPropertyOnMember(member)
+	var targetType Type
+	if propertyOK {
+		targetType = property.Type
+		a.bindDefinition(member.Property.Token, property.Token)
+	} else {
+		var ok bool
+		targetType, ok = a.inferMemberExpression(member)
+		if !ok {
+			return
+		}
 	}
 
 	if symbol, ok := a.symbolForMemberObject(member.Object); ok {
@@ -9835,9 +10279,12 @@ func (a *Analyzer) analyzeMemberAssignmentStatement(stmt *ast.AssignmentStatemen
 			return
 		}
 	}
-	property, propertyOK := a.lookupPropertyOnMember(member)
 	if propertyOK && !property.HasSetter {
 		a.addErrorAtToken(member.Property.Token, "property %s has no setter", member.Property.Value)
+		return
+	}
+	if propertyOK && stmt.Operator != "=" && !property.HasGetter {
+		a.addErrorAtToken(member.Property.Token, "property %s has no getter and cannot be used with %s", member.Property.Value, stmt.Operator)
 		return
 	}
 	place, placeOK := a.resolvePlace(member)
@@ -10157,7 +10604,7 @@ func (a *Analyzer) resolveType(ref *ast.TypeReference) (Type, bool) {
 		typ.EventCapacity = ref.EventCapacity
 		typ.EventCapacitySet = true
 	}
-	if !a.validateCompilerKnownGenericType(ref.Token, typ) {
+	if !a.validateCompilerKnownGenericType(ref.Token, &typ) {
 		return Type{Kind: InvalidType}, false
 	}
 	if ref.Unit != "" {
@@ -10176,48 +10623,51 @@ func (a *Analyzer) resolveType(ref *ast.TypeReference) (Type, bool) {
 	return typ, true
 }
 
-func (a *Analyzer) validateCompilerKnownGenericType(token lexer.Token, typ Type) bool {
+func (a *Analyzer) validateCompilerKnownGenericType(token lexer.Token, typ *Type) bool {
+	if typ == nil {
+		return false
+	}
 	switch typ.Name {
 	case "list":
 		if typ.Declared {
 			return true
 		}
-		return a.validateCompilerKnownTypeArity(token, typ, 1, 0, 1)
+		return a.validateCompilerKnownTypeArity(token, *typ, 1, 0, 1)
 	case "map":
 		if typ.Declared {
 			return true
 		}
-		return a.validateCompilerKnownTypeArity(token, typ, 2, 0, 1)
+		return a.validateCompilerKnownTypeArity(token, *typ, 2, 0, 1)
 	case "set":
 		if typ.Declared {
 			return true
 		}
-		return a.validateCompilerKnownTypeArity(token, typ, 1, 0, 1)
+		return a.validateCompilerKnownTypeArity(token, *typ, 1, 0, 1)
 	case "vector":
 		if typ.Declared {
 			return true
 		}
-		return a.validateCompilerKnownTypeArity(token, typ, 1, 1, 1)
+		return a.validateShapedStaticType(token, typ, 1, 1)
 	case "matrix":
 		if typ.Declared {
 			return true
 		}
-		return a.validateCompilerKnownTypeArity(token, typ, 1, 2, 2)
+		return a.validateShapedStaticType(token, typ, 2, 2)
 	case "tensor":
 		if typ.Declared {
 			return true
 		}
-		return a.validateCompilerKnownTypeArity(token, typ, 1, 1, -1)
+		return a.validateShapedStaticType(token, typ, 1, -1)
 	case "tensor_view":
 		if typ.Declared {
 			return true
 		}
-		return a.validateCompilerKnownTypeArity(token, typ, 1, 1, 1)
+		return a.validateShapedStaticType(token, typ, 1, 1)
 	case "Shape", "Strides", "TensorLayout":
 		if typ.Declared {
 			return true
 		}
-		return a.validateCompilerKnownTypeArity(token, typ, 0, 1, 1)
+		return a.validateCompilerKnownTypeArity(token, *typ, 0, 1, 1)
 	case "Atomic":
 		if len(typ.TypeArgs) != 1 {
 			return false
@@ -10255,6 +10705,36 @@ func (a *Analyzer) validateCompilerKnownGenericType(token lexer.Token, typ Type)
 		}
 		return true
 	}
+	return true
+}
+
+// validateShapedStaticType implements the static extent proof from
+// rules/collections/shaped-types.md (correction27.md). The product is computed
+// with arbitrary precision, checked against the target uint plan, and retained
+// on the resolved type for later semantic consumers.
+func (a *Analyzer) validateShapedStaticType(token lexer.Token, typ *Type, minConstArgs, maxConstArgs int) bool {
+	if !a.validateCompilerKnownTypeArity(token, *typ, 1, minConstArgs, maxConstArgs) {
+		return false
+	}
+	product := big.NewInt(1)
+	for _, extent := range typ.ConstArgs {
+		if extent == 0 {
+			product.SetInt64(0)
+			break
+		}
+		product.Mul(product, big.NewInt(extent))
+	}
+	uintType := a.types["uint"]
+	representation, _, representable := a.integerRepresentation(uintType)
+	maximum := representation.MaxInteger
+	if !representable || maximum == nil {
+		maximum = new(big.Int).SetUint64(^uint64(0))
+	}
+	if product.Cmp(maximum) > 0 {
+		a.addErrorAtToken(token, "%s static element count %s overflows target uint", typ.Name, product.String())
+		return false
+	}
+	typ.StaticElementCount = new(big.Int).Set(product)
 	return true
 }
 
@@ -10409,12 +10889,26 @@ func (a *Analyzer) instantiateGenericType(typ Type) Type {
 	for _, variant := range typ.UnionVariants {
 		if variant.Payload != nil {
 			payload := substituteGenericType(*variant.Payload, substitution)
+			if genericStructFieldHasDirectRecursiveStorage(out, payload) {
+				if !recursive {
+					a.addErrorAtToken(variant.Token, "recursive generic type %s has infinite size", typeDisplayName(out))
+				}
+				recursive = true
+				continue
+			}
 			variant.Payload = &payload
 		}
 		if len(variant.PayloadFields) > 0 {
 			fields := make([]StructField, 0, len(variant.PayloadFields))
 			for _, field := range variant.PayloadFields {
 				field.Type = substituteGenericType(field.Type, substitution)
+				if genericStructFieldHasDirectRecursiveStorage(out, field.Type) {
+					if !recursive {
+						a.addErrorAtToken(field.Token, "recursive generic type %s has infinite size", typeDisplayName(out))
+					}
+					recursive = true
+					continue
+				}
 				fields = append(fields, field)
 			}
 			variant.PayloadFields = fields
@@ -10595,8 +11089,7 @@ func (a *Analyzer) inferExpressionUnrecorded(expr ast.Expression) (Type, express
 			}
 			if a.currentImplTarget != "" {
 				if target, ok := a.types[a.currentImplTarget]; ok {
-					if property, ok := lookupProperty(target, expr.Value); ok {
-						a.bindDefinition(expr.Token, property.Token)
+					if property, ok := a.resolveReadableProperty(target, expr.Value, expr.Token); ok {
 						return property.Type, expressionValue{Display: expr.String()}
 					}
 				}
@@ -10605,6 +11098,15 @@ func (a *Analyzer) inferExpressionUnrecorded(expr ast.Expression) (Type, express
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
 		a.bindDefinition(expr.Token, symbol.Token)
+		// rules/declarations/properties.md, Read access; correction12.md.
+		// Implicit property symbols remain available for assignment lookup, but an
+		// expression read must independently require a getter.
+		if symbol.ImplicitMember {
+			if property, propertyOK := a.lookupCurrentImplProperty(expr.Value); propertyOK && !property.HasGetter {
+				a.addErrorAtToken(expr.Token, "property %s has no getter", expr.Value)
+				return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+			}
+		}
 		if assigned, ok := a.assigned[expr.Value]; ok && !assigned {
 			a.addErrorAtToken(expr.Token, "variable %s is unassigned", expr.Value)
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
@@ -10652,6 +11154,9 @@ func (a *Analyzer) inferExpressionUnrecorded(expr ast.Expression) (Type, express
 		a.addErrorAtToken(expr.Token, "spread operator is not valid as a standalone expression")
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	case *ast.MemberExpression:
+		if root := compilerKnownReceiverRoot(expr.Object); root != nil && a.checkArenaBackingBorrowRead(root.Value, expr.Property.Token) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
 		typ, ok := a.inferMemberExpression(expr)
 		if !ok {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
@@ -10897,6 +11402,9 @@ func (a *Analyzer) inferExpectedUnionVariantExpression(expr ast.Expression, expe
 			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "union variant %s.%s payload must be %s, got %s", typeDisplayName(expected), variant.Name, typeDisplayName(payloadType), typeDisplayName(valueType))
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
+		if valueType.Kind != InvalidType && a.checkIntegerExpressionRange(payloadType, expr.Arguments[0]) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
 		return expected, expressionValue{Display: expr.String()}, true
 	default:
 		return Type{}, expressionValue{}, false
@@ -10940,11 +11448,13 @@ func (a *Analyzer) inferStructLiteral(expr *ast.StructLiteral) (Type, expression
 				a.addErrorAtToken(field.Token, "cannot spread %s into %s; spread source must have type %s", typeDisplayName(spreadType), typeDisplayName(typ), typeDisplayName(typ))
 				continue
 			}
-			spreadSuppliesFields = true
 			if !implicitlyCopyable(spreadType) {
 				a.addErrorAtToken(field.Token, "cannot spread %s into %s; %s is not implicitly copyable", typeDisplayName(spreadType), typeDisplayName(typ), typeDisplayName(spreadType))
 				continue
 			}
+			// rules/declarations/spread.md; correction14.md permits only a fully
+			// validated spread to suppress omitted-field diagnostics.
+			spreadSuppliesFields = true
 			continue
 		}
 		if _, exists := seen[field.Name.Value]; exists {
@@ -11054,6 +11564,12 @@ func (a *Analyzer) checkUnionPayloadFields(unionType Type, variant UnionVariant,
 		valueType, _ := a.inferExpressionWithExpected(field.Value, expectedField.Type)
 		if valueType.Kind != InvalidType && !canInitialize(expectedField.Type, valueType, field.Value) {
 			a.addErrorAtToken(expressionToken(field.Value), "payload field %s for %s.%s must be %s, got %s", name, typeDisplayName(unionType), variant.Name, typeDisplayName(expectedField.Type), typeDisplayName(valueType))
+			continue
+		}
+		if valueType.Kind != InvalidType {
+			// rules/declarations/unions.md; correction17.md: union payload
+			// fields use the ordinary destination representability check.
+			a.checkIntegerExpressionRange(expectedField.Type, field.Value)
 		}
 	}
 
@@ -11113,14 +11629,29 @@ func (a *Analyzer) inferLambdaExpression(expr *ast.LambdaExpression) (Type, expr
 	previousLambdaOuterSymbols := a.lambdaOuterSymbols
 	previousLoopDepth := a.loopDepth
 
+	// rules/declarations/lambda-functions.md, capture eligibility; correction11.md
+	// separates enclosing locals from ordinary module/type lookup. Non-local
+	// declarations remain directly visible and cannot be captured.
+	captureCandidates := map[string]Symbol{}
 	a.symbols = map[string]Symbol{}
 	a.constInts = map[string]*big.Int{}
 	a.assigned = map[string]bool{}
+	for name, symbol := range previousSymbols {
+		if symbol.Local {
+			captureCandidates[name] = symbol
+			continue
+		}
+		a.symbols[name] = symbol
+		a.assigned[name] = previousAssigned[name]
+		if value, ok := previousConstInts[name]; ok {
+			a.constInts[name] = new(big.Int).Set(value)
+		}
+	}
 	a.currentFunctionName = "lambda"
 	a.currentFunctionReturn = returnType
 	a.inFunctionBody = true
 	a.inLambda = true
-	a.lambdaOuterSymbols = previousSymbols
+	a.lambdaOuterSymbols = captureCandidates
 	a.loopDepth = 0
 	defer func() {
 		a.symbols = previousSymbols
@@ -11134,7 +11665,7 @@ func (a *Analyzer) inferLambdaExpression(expr *ast.LambdaExpression) (Type, expr
 		a.loopDepth = previousLoopDepth
 	}()
 
-	a.defineLambdaCaptures(expr, previousSymbols, previousAssigned)
+	a.defineLambdaCaptures(expr, captureCandidates, previousAssigned)
 
 	for i, param := range expr.Parameters {
 		mutableBinding := !param.Ref && !param.MutableRef && params[i].Kind != ReferenceType
@@ -11167,7 +11698,11 @@ func (a *Analyzer) defineLambdaCaptures(expr *ast.LambdaExpression, outerSymbols
 		seen[name] = capture.Name.Token
 		symbol, ok := outerSymbols[name]
 		if !ok {
-			a.addErrorAtToken(capture.Name.Token, "undefined capture %s", name)
+			if symbol, exists := a.symbols[name]; exists && !symbol.Local {
+				a.addErrorAtToken(capture.Name.Token, "cannot capture non-local declaration %s; reference it directly", name)
+			} else {
+				a.addErrorAtToken(capture.Name.Token, "undefined capture %s", name)
+			}
 			continue
 		}
 		if assigned, exists := outerAssigned[name]; exists && !assigned {
@@ -11238,9 +11773,12 @@ func (a *Analyzer) inferMemberExpression(expr *ast.MemberExpression) (Type, bool
 			}
 			return fieldType, true
 		}
-		if property, ok := lookupProperty(protected, expr.Property.Value); ok {
-			a.bindDefinition(expr.Property.Token, property.Token)
-			return property.Type, true
+		if _, ok := lookupProperty(protected, expr.Property.Value); ok {
+			returnProperty, readable := a.resolveReadableProperty(protected, expr.Property.Value, expr.Property.Token)
+			if !readable {
+				return Type{Kind: InvalidType}, false
+			}
+			return returnProperty.Type, true
 		}
 	}
 	if fieldType, ok := lookupRegisterField(objectType, expr.Property.Value); ok {
@@ -11251,7 +11789,11 @@ func (a *Analyzer) inferMemberExpression(expr *ast.MemberExpression) (Type, bool
 		return Type{Kind: InvalidType}, false
 	}
 
-	if property, ok := lookupProperty(objectType, expr.Property.Value); ok {
+	if _, exists := lookupProperty(objectType, expr.Property.Value); exists {
+		property, readable := a.resolveReadableProperty(objectType, expr.Property.Value, expr.Property.Token)
+		if !readable {
+			return Type{Kind: InvalidType}, false
+		}
 		return property.Type, true
 	}
 
@@ -11843,6 +12385,22 @@ func lookupProperty(typ Type, name string) (Property, bool) {
 	return Property{}, false
 }
 
+// resolveReadableProperty implements the property read boundary from
+// rules/declarations/properties.md. correction12.md requires lookup metadata to
+// remain available for writes while expression reads reject missing getters.
+func (a *Analyzer) resolveReadableProperty(typ Type, name string, token lexer.Token) (Property, bool) {
+	property, ok := lookupProperty(typ, name)
+	if !ok {
+		return Property{}, false
+	}
+	a.bindDefinition(token, property.Token)
+	if !property.HasGetter {
+		a.addErrorAtToken(token, "property %s has no getter", name)
+		return Property{}, false
+	}
+	return property, true
+}
+
 func lookupEvent(typ Type, name string) (Event, bool) {
 	typ = dereferenceType(typ)
 	for _, event := range typ.Events {
@@ -11933,6 +12491,9 @@ func (a *Analyzer) inferConversionExpression(expr *ast.ConversionExpression) (Ty
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
 		return conversionType, expressionValue{Display: expr.String()}
+	}
+	if isIntegerType(targetType) && valueType.Kind == EnumType {
+		return a.enumToIntegerConversionResultType(targetType, valueType, expr.Value), expressionValue{Display: expr.String()}
 	}
 
 	return targetType, expressionValue{Display: expr.String()}
@@ -12185,7 +12746,7 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 	}
 	a.bindDefinitions(callCalleeDefinitionToken(expr), functionDeclarationTokens(functions))
 
-	sourceArgTypes, sourceArgs, ok := a.callArgumentTypes(expr.Arguments)
+	sourceArgTypes, sourceArgs, preparedSpreadValues, ok := a.callArgumentTypes(expr.Arguments)
 	if !ok {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
@@ -12291,7 +12852,7 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 			a.callGraph.addCall(a.currentCallable, best[0].Function, callCalleeDefinitionToken(expr), dispatch, execution)
 		}
 		a.setCallReferenceOrigin(expr, best[0].Function, sourceArgs, isMethodCall)
-		a.markMovedCallArguments(best[0].Function, sourceArgs, isMethodCall)
+		a.markMovedCallArguments(best[0].Function, sourceArgs, preparedSpreadValues, isMethodCall)
 		if isMethodCall && best[0].Function.ReceiverConsuming {
 			if member, ok := expr.Callee.(*ast.MemberExpression); ok {
 				a.consumeMethodReceiver(member.Object)
@@ -12419,8 +12980,12 @@ func (a *Analyzer) contextualCallArgumentType(arg ast.Expression, actual Type, e
 
 func (a *Analyzer) inferCompilerKnownFunction(expr *ast.CallExpression) (Type, expressionValue, bool) {
 	name := callExpressionName(expr)
-	if _, known := compilerKnownFunction(name); !known {
+	knownFunction, known := compilerKnownFunction(name)
+	if !known {
 		return Type{}, expressionValue{}, false
+	}
+	if knownFunction.Internal {
+		return a.inferCompilerInternalFunction(expr, knownFunction)
 	}
 	if name == "SizeOf" {
 		return a.inferCompilerKnownGlobalSizeOf(expr)
@@ -12448,6 +13013,35 @@ func (a *Analyzer) inferCompilerKnownFunction(expr *ast.CallExpression) (Type, e
 
 	a.addErrorAtToken(expressionToken(expr.Arguments[0]), "len requires a compiler-known sequence or collection, got %s", typeDisplayName(argumentType))
 	return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+}
+
+func (a *Analyzer) inferCompilerInternalFunction(expr *ast.CallExpression, known CompilerKnownFunction) (Type, expressionValue, bool) {
+	result := expressionValue{Display: expr.String()}
+	if !a.isTrustedCoreSourceToken(expr.Token) {
+		a.addErrorAtToken(expr.Token, "%s is a compiler-internal operation available only to privileged core source", known.Name)
+		return Type{Kind: InvalidType}, result, true
+	}
+	if len(expr.GenericArguments) > 0 {
+		a.addErrorAtToken(expr.Token, "%s does not accept generic arguments", known.Name)
+		return Type{Kind: InvalidType}, result, true
+	}
+	if len(expr.Arguments) != len(known.Parameters) {
+		a.addErrorAtToken(expr.Token, "%s expects %d arguments, got %d", known.Name, len(known.Parameters), len(expr.Arguments))
+		return Type{Kind: InvalidType}, result, true
+	}
+
+	valid := true
+	for index, parameter := range known.Parameters {
+		actual, _ := a.inferExpressionWithExpected(expr.Arguments[index], parameter.Type)
+		if !canInitialize(parameter.Type, actual, expr.Arguments[index]) {
+			a.addErrorAtToken(expressionToken(expr.Arguments[index]), "argument %d to %s must be %s, got %s", index+1, known.Name, typeDisplayName(parameter.Type), typeDisplayName(actual))
+			valid = false
+		}
+	}
+	if !valid {
+		return Type{Kind: InvalidType}, result, true
+	}
+	return known.Result, result, true
 }
 
 func (a *Analyzer) inferCompilerKnownGlobalSizeOf(expr *ast.CallExpression) (Type, expressionValue, bool) {
@@ -12761,8 +13355,22 @@ func (a *Analyzer) inferArenaConstructorCall(expr *ast.CallExpression, member Co
 			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "Arena.FromBuffer requires ref mut byte[], got %s", typeDisplayName(argumentType))
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
+		if origin, ok := a.directReferenceOrigin(expr.Arguments[0]); ok {
+			origin.Mutable = true
+			a.expressionReferenceOrigins[expr] = origin
+		}
+		if place, ok := a.resolvePlace(expr.Arguments[0]); ok {
+			holder := arenaConstructorBorrowHolder(expr)
+			for _, alternative := range placeOriginAlternatives(place) {
+				a.borrows[alternative.Root] = append(a.borrows[alternative.Root], borrowRecord{
+					Root: alternative.Root, Place: alternative, Holder: holder, Kind: mutableBorrow, Token: expr.Token,
+				})
+			}
+		}
 		a.recordArenaEffect(ArenaEffectCreateBorrowed, "", callCalleeDefinitionToken(expr), false)
-		return a.types["Arena"], expressionValue{Display: expr.String()}, true
+		arena := a.types["Arena"]
+		arena.ArenaDomainID = a.newArenaDomainID()
+		return arena, expressionValue{Display: expr.String()}, true
 	}
 	if !canInitialize(a.types["uint"], argumentType, expr.Arguments[0]) {
 		a.addErrorAtToken(expressionToken(expr.Arguments[0]), "Arena.%s capacity must be uint, got %s", member.Name, typeDisplayName(argumentType))
@@ -12773,11 +13381,20 @@ func (a *Analyzer) inferArenaConstructorCall(expr *ast.CallExpression, member Co
 		effect = ArenaEffectCreateGrowable
 	}
 	a.recordArenaEffect(effect, "", callCalleeDefinitionToken(expr), true)
-	return arenaResultType(a.types["Arena"], a.types["AllocationError"]), expressionValue{Display: expr.String()}, true
+	arena := a.types["Arena"]
+	arena.ArenaDomainID = a.newArenaDomainID()
+	return arenaResultType(arena, a.types["AllocationError"]), expressionValue{Display: expr.String()}, true
 }
 
 func arenaResultType(value Type, err Type) Type {
 	return Type{Name: "Result[" + typeDisplayName(value) + ", " + typeDisplayName(err) + "]", Kind: ResultType, TypeArgs: []Type{value, err}}
+}
+
+func arenaConstructorBorrowHolder(expr *ast.CallExpression) string {
+	if expr == nil {
+		return "$arena-backing"
+	}
+	return fmt.Sprintf("$arena-backing:%s:%d:%d", expr.Token.File, expr.Token.Line, expr.Token.Column)
 }
 
 // inferRuneArrayToStringCall recognizes the allocation-backed text
@@ -12957,6 +13574,12 @@ func (a *Analyzer) inferArenaCall(expr *ast.CallExpression) (Type, expressionVal
 	if !ok || symbol.Type.Name != "Arena" {
 		return Type{}, expressionValue{}, false
 	}
+	domain := symbol.Type.ArenaDomainID
+	if domain == "" {
+		domain = a.newArenaDomainID()
+		symbol.Type.ArenaDomainID = domain
+		a.symbols[receiver.Value] = symbol
+	}
 	switch member.Property.Value {
 	case "New":
 		if len(expr.GenericArguments) != 1 {
@@ -12980,7 +13603,7 @@ func (a *Analyzer) inferArenaCall(expr *ast.CallExpression) (Type, expressionVal
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		a.recordArenaEffect(ArenaEffectAllocate, receiver.Value, member.Property.Token, true)
-		refType := Type{Name: "ref mut " + typeDisplayName(elementType), Kind: ReferenceType, Element: &elementType, ReferenceMutable: true, ReferenceOriginName: receiver.Value, ReferenceOriginToken: receiver.Token, ReferenceOriginLocal: symbol.Local, ReferenceOriginStorage: StorageOriginArena, ReferenceOriginGeneration: a.arenaGenerations[receiver.Value]}
+		refType := Type{Name: "ref mut " + typeDisplayName(elementType), Kind: ReferenceType, Element: &elementType, ReferenceMutable: true, ReferenceOriginName: domain, ReferenceOriginDisplayName: receiver.Value, ReferenceOriginToken: receiver.Token, ReferenceOriginLocal: symbol.Local, ReferenceOriginStorage: StorageOriginArena, ReferenceOriginGeneration: a.arenaGenerations[domain]}
 		return arenaResultType(refType, a.types["AllocationError"]), expressionValue{Display: expr.String()}, true
 	case "Alloc":
 		if len(expr.GenericArguments) != 1 {
@@ -13010,15 +13633,16 @@ func (a *Analyzer) inferArenaCall(expr *ast.CallExpression) (Type, expressionVal
 			Element: &elementType,
 		}
 		refSliceType := Type{
-			Name:                      "ref mut " + typeDisplayName(sliceType),
-			Kind:                      ReferenceType,
-			Element:                   &sliceType,
-			ReferenceMutable:          true,
-			ReferenceOriginName:       receiver.Value,
-			ReferenceOriginToken:      receiver.Token,
-			ReferenceOriginLocal:      symbol.Local,
-			ReferenceOriginStorage:    StorageOriginArena,
-			ReferenceOriginGeneration: a.arenaGenerations[receiver.Value],
+			Name:                       "ref mut " + typeDisplayName(sliceType),
+			Kind:                       ReferenceType,
+			Element:                    &sliceType,
+			ReferenceMutable:           true,
+			ReferenceOriginName:        domain,
+			ReferenceOriginDisplayName: receiver.Value,
+			ReferenceOriginToken:       receiver.Token,
+			ReferenceOriginLocal:       symbol.Local,
+			ReferenceOriginStorage:     StorageOriginArena,
+			ReferenceOriginGeneration:  a.arenaGenerations[domain],
 		}
 		errType := a.types["AllocationError"]
 		a.recordArenaEffect(ArenaEffectAllocate, receiver.Value, member.Property.Token, true)
@@ -13040,7 +13664,10 @@ func (a *Analyzer) inferArenaCall(expr *ast.CallExpression) (Type, expressionVal
 			a.addErrorAtToken(receiver.Token, "Arena.Reset requires mutable arena %s", receiver.Value)
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
-		a.arenaGenerations[receiver.Value]++
+		if a.checkArenaInvalidationDependencies(domain, receiver.Value, member.Property.Token) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		a.arenaGenerations[domain]++
 		a.recordArenaEffect(ArenaEffectReset, receiver.Value, member.Property.Token, false)
 		return Type{Name: "void", Kind: VoidType}, expressionValue{Display: expr.String()}, true
 	case "Release":
@@ -13056,14 +13683,60 @@ func (a *Analyzer) inferArenaCall(expr *ast.CallExpression) (Type, expressionVal
 			a.addErrorAtToken(receiver.Token, "Arena.Release requires mutable arena %s", receiver.Value)
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
-		a.arenaGenerations[receiver.Value]++
+		if a.checkArenaInvalidationDependencies(domain, receiver.Value, member.Property.Token) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		a.arenaGenerations[domain]++
 		a.moved[receiver.Value] = expr.Token
 		a.moveReasons[receiver.Value] = "released"
+		a.endBorrowsHeldBy(receiver.Value)
 		a.recordArenaEffect(ArenaEffectRelease, receiver.Value, member.Property.Token, false)
 		return a.types["void"], expressionValue{Display: expr.String()}, true
 	default:
 		return Type{}, expressionValue{}, false
 	}
+}
+
+// checkArenaInvalidationDependencies enforces the Reset/Release dependency
+// boundary from rules/memory/arena.md and allocation.txt (correction28.md).
+// The current lexical frontend is conservative: any still-available local
+// carrying the current domain epoch blocks invalidation.
+func (a *Analyzer) checkArenaInvalidationDependencies(domain, owner string, token lexer.Token) bool {
+	current := a.arenaGenerations[domain]
+	for name, symbol := range a.symbols {
+		if name == owner {
+			continue
+		}
+		if _, unavailable := a.moved[name]; unavailable {
+			continue
+		}
+		if !typeCarriesReferenceOrigin(symbol.Type) || symbol.Type.ReferenceOriginStorage != StorageOriginArena ||
+			symbol.Type.ReferenceOriginName != domain || symbol.Type.ReferenceOriginGeneration != current {
+			continue
+		}
+		if !a.arenaDependencyEscapesImmediateLocal(name, owner) {
+			continue
+		}
+		a.addErrorAtTokenWithPrevious(token, symbol.Token, "cannot invalidate arena %s while dependency %s is still live", owner, name)
+		return true
+	}
+	return false
+}
+
+func (a *Analyzer) arenaDependencyEscapesImmediateLocal(name, owner string) bool {
+	for _, records := range a.borrows {
+		for _, record := range records {
+			if record.Holder == "$defer" && record.Root == name || record.Holder != "" && record.Holder != name && record.Holder != owner && record.Root == name {
+				return true
+			}
+		}
+	}
+	for holder, origin := range a.localRefContainers {
+		if holder != name && holder != owner && origin.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 func (a *Analyzer) inferCompilerKnownConstructor(expr *ast.CallExpression) (Type, expressionValue, bool) {
@@ -13485,43 +14158,46 @@ func (a *Analyzer) compilerKnownReceiverType(expr ast.Expression) (Type, bool) {
 	return symbol.Type, true
 }
 
-func (a *Analyzer) callArgumentTypes(args []ast.Expression) ([]Type, []ast.Expression, bool) {
+func (a *Analyzer) callArgumentTypes(args []ast.Expression) ([]Type, []ast.Expression, []bool, bool) {
 	types := []Type{}
 	expressions := []ast.Expression{}
+	preparedSpreadValues := []bool{}
 	for _, arg := range args {
 		if spread, ok := arg.(*ast.SpreadExpression); ok {
 			argType, _ := a.inferExpression(spread.Value)
 			if argType.Kind == InvalidType {
-				return nil, nil, false
+				return nil, nil, nil, false
 			}
 			sourceDisplay := typeDisplayName(argType)
 			argType = dereferenceType(argType)
 			if argType.Kind != ArrayType || argType.Element == nil {
 				a.addErrorAtToken(spread.Token, "cannot spread %s into fixed-arity call; expansion count is not known at compile time", sourceDisplay)
-				return nil, nil, false
+				return nil, nil, nil, false
 			}
 			if argType.ArrayLength == dynamicArrayLength {
 				a.addErrorAtToken(spread.Token, "cannot spread %s into fixed-arity call; expansion count is not known at compile time", sourceDisplay)
-				return nil, nil, false
+				return nil, nil, nil, false
 			}
 			if !implicitlyCopyable(*argType.Element) {
 				a.addErrorAtToken(spread.Token, "cannot spread %s into function arguments; indexed expansion would require unsupported consuming element reads", sourceDisplay)
-				return nil, nil, false
+				return nil, nil, nil, false
 			}
 			for i := int64(0); i < argType.ArrayLength; i++ {
 				types = append(types, *argType.Element)
 				expressions = append(expressions, spread.Value)
+				preparedSpreadValues = append(preparedSpreadValues, true)
 			}
 			continue
 		}
 		argType, _ := a.inferExpression(arg)
 		if argType.Kind == InvalidType {
-			return nil, nil, false
+			return nil, nil, nil, false
 		}
 		types = append(types, argType)
 		expressions = append(expressions, arg)
+		preparedSpreadValues = append(preparedSpreadValues, false)
 	}
-	return types, expressions, true
+	return types, expressions, preparedSpreadValues, true
 }
 
 func (a *Analyzer) consumeMethodReceiver(expression ast.Expression) {
@@ -13538,18 +14214,24 @@ func (a *Analyzer) consumeMethodReceiver(expression ast.Expression) {
 	a.endBorrowsHeldBy(identifier.Value)
 }
 
-func (a *Analyzer) markMovedCallArguments(function Function, sourceArgs []ast.Expression, isMethodCall bool) {
+func (a *Analyzer) markMovedCallArguments(function Function, sourceArgs []ast.Expression, preparedSpreadValues []bool, isMethodCall bool) {
 	sourceIndex := 0
 	for _, param := range function.Parameters {
 		if sourceIndex >= len(sourceArgs) {
 			return
 		}
 		arg := sourceArgs[sourceIndex]
+		preparedSpread := sourceIndex < len(preparedSpreadValues) && preparedSpreadValues[sourceIndex]
 		sourceIndex++
 		// Both shared and mutable-reference parameters borrow their argument.
 		// MutableRef is represented separately from Ref in FunctionParameter, so
 		// checking only Ref incorrectly consumed ref-mut reborrows after calls.
 		if param.Ref || param.MutableRef {
+			continue
+		}
+		// rules/declarations/spread.md; correction14.md says a consuming
+		// destination consumes the prepared copy, never the source array.
+		if preparedSpread {
 			continue
 		}
 		if param.Consuming {
@@ -13595,7 +14277,9 @@ func (a *Analyzer) callArgumentTypesForFunction(_ Function, sourceArgTypes []Typ
 }
 
 func functionUsesReceiver(function Function) bool {
-	return function.ImplTarget != ""
+	// rules/declarations/static.md, receiver semantics; correction15.md keeps an
+	// owning type for qualification without inventing a receiver for static fn.
+	return function.ImplTarget != "" && !function.Static
 }
 
 func (a *Analyzer) methodCallReceiver(expr *ast.CallExpression) (methodReceiverInfo, bool) {
@@ -13746,6 +14430,9 @@ func (a *Analyzer) inferCallAsUnionVariantConstructor(expr *ast.CallExpression, 
 		a.addErrorAtToken(expressionToken(expr.Arguments[0]), "union variant %s.%s payload must be %s, got %s", typeDisplayName(unionType), concreteVariant.Name, typeDisplayName(payloadType), typeDisplayName(valueType))
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 	}
+	if valueType.Kind != InvalidType && a.checkIntegerExpressionRange(payloadType, expr.Arguments[0]) {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+	}
 
 	return unionType, expressionValue{Display: expr.String()}, true
 }
@@ -13829,7 +14516,7 @@ func (a *Analyzer) inferCallExpressionWithExpected(expr *ast.CallExpression, exp
 		return Type{}, expressionValue{}, false
 	}
 
-	argTypes, args, argsOK := a.callArgumentTypes(expr.Arguments)
+	argTypes, args, _, argsOK := a.callArgumentTypes(expr.Arguments)
 	if !argsOK {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 	}
@@ -14356,8 +15043,59 @@ func (a *Analyzer) inferCallAsConversion(expr *ast.CallExpression) (Type, expres
 		}
 		return conversionType, expressionValue{Display: expr.String()}
 	}
+	if isIntegerType(targetType) && valueType.Kind == EnumType {
+		return a.enumToIntegerConversionResultType(targetType, valueType, expr.Arguments[0]), expressionValue{Display: expr.String()}
+	}
 
 	return targetType, expressionValue{Display: expr.String()}
+}
+
+// enumToIntegerConversionResultType implements the checked narrowing rule in
+// rules/declarations/enums.md. correction7.md reserves direct enum-to-integer
+// conversion for statically known values or complete enum domains that fit.
+func (a *Analyzer) enumToIntegerConversionResultType(target Type, source Type, expr ast.Expression) Type {
+	if value, ok := enumConstantValue(source, expr); ok {
+		if a.checkIntegerValueRange(target, value, expressionToken(expr)) {
+			return Type{Kind: InvalidType}
+		}
+		return target
+	}
+	if enumDomainFitsIntegerType(source, target) {
+		return target
+	}
+	errorType := a.types["ArithmeticError"]
+	return Type{Name: "Result", Kind: ResultType, TypeArgs: []Type{target, errorType}}
+}
+
+func enumConstantValue(enumType Type, expr ast.Expression) (*big.Int, bool) {
+	member, ok := expr.(*ast.MemberExpression)
+	if !ok || member.Property == nil {
+		return nil, false
+	}
+	constant, ok := enumType.EnumConsts[member.Property.Value]
+	if !ok || constant.Value == nil {
+		return nil, false
+	}
+	return new(big.Int).Set(constant.Value), true
+}
+
+func enumDomainFitsIntegerType(enumType Type, target Type) bool {
+	if target.MinInteger == nil || target.MaxInteger == nil {
+		return false
+	}
+	if enumType.BitWidth > 0 {
+		return enumType.MinInteger != nil && enumType.MaxInteger != nil &&
+			enumType.MinInteger.Cmp(target.MinInteger) >= 0 && enumType.MaxInteger.Cmp(target.MaxInteger) <= 0
+	}
+	if len(enumType.EnumConsts) == 0 {
+		return false
+	}
+	for _, constant := range enumType.EnumConsts {
+		if constant.Value == nil || constant.Value.Cmp(target.MinInteger) < 0 || constant.Value.Cmp(target.MaxInteger) > 0 {
+			return false
+		}
+	}
+	return true
 }
 
 func (a *Analyzer) enumConversionResultType(target Type, sourceType Type, source ast.Expression) (Type, bool) {
@@ -14503,6 +15241,9 @@ func (a *Analyzer) inferArithmeticTryExpression(expr *ast.TryExpression, operato
 	return operator.ResultType, result
 }
 
+// analyzeTryHandlers builds the resolved Result handler plan required by
+// rules/errors/errorhandling.txt and rules/control-flow/flowcontrol_match.md.
+// correction20.md includes payload-discard catch-alls in exhaustiveness.
 func (a *Analyzer) analyzeTryHandlers(expr *ast.TryExpression, resultType Type) (ResolvedTryPlan, bool) {
 	successType := resultType.TypeArgs[0]
 	errorType := resultType.TypeArgs[1]
@@ -14550,8 +15291,16 @@ func (a *Analyzer) analyzeTryHandlers(expr *ast.TryExpression, resultType Type) 
 		if bindingName != "" {
 			patternKind = TryHandlerErrCatchAll
 		}
-		flow := a.analyzeTryHandlerBody(handler, successType, bindingType, bindingName)
-		plan.Handlers = append(plan.Handlers, ResolvedTryHandler{PatternKind: patternKind, Variant: variantName, BindingName: bindingName, BindingType: bindingType, Flow: flow, ResultType: successType, SourceIndex: sourceIndex})
+		resolvedBindingName := bindingName
+		payloadDiscard := false
+		if bindingName == "_" {
+			// The resolved plan represents discard by the absence of a binding;
+			// underscore is only the source-level catch-all marker (correction20.md).
+			resolvedBindingName = ""
+			payloadDiscard = true
+		}
+		flow := a.analyzeTryHandlerBody(handler, successType, bindingType, resolvedBindingName)
+		plan.Handlers = append(plan.Handlers, ResolvedTryHandler{PatternKind: patternKind, Variant: variantName, BindingName: resolvedBindingName, BindingType: bindingType, PayloadDiscard: payloadDiscard, Flow: flow, ResultType: successType, SourceIndex: sourceIndex})
 	}
 
 	if errorCatchAllSeen {
@@ -14591,12 +15340,14 @@ func (a *Analyzer) analyzeTryHandlerPattern(handler *ast.TryHandler, successType
 	}
 }
 
+// analyzeTryErrHandlerPattern implements Result error patterns from
+// rules/control-flow/flowcontrol_match.md. correction20.md makes Err(_) an
+// exhaustive catch-all that discards the payload without introducing a binding.
 func (a *Analyzer) analyzeTryErrHandlerPattern(errPattern *ast.ErrExpression, errorType Type) (kind string, bindingName string, variantName string, bindingType Type, ok bool) {
 	switch pattern := errPattern.Value.(type) {
 	case *ast.Identifier:
 		if pattern.Value == "_" {
-			a.addErrorAtToken(pattern.Token, "Err payload must be named; use discard name inside the handler")
-			return "", "", "", Type{}, false
+			return "Err", "_", "", errorType, true
 		}
 		if enumHasValue(errorType, pattern.Value) {
 			return "Err", "", pattern.Value, errorType, true
@@ -14848,7 +15599,7 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 
 		armType, branch := a.analyzeMatchArmBody(arm, info)
 		branches = append(branches, branch)
-		resolvedArm := resolvedMatchArmFromAnalysis(subjectType, sourceIndex, arm, info, armType, valueContext)
+		resolvedArm := a.resolvedMatchArmFromAnalysis(subjectType, sourceIndex, arm, info, armType, valueContext)
 		if !guarded && matchCoverageComplete(subjectType, catchAll, seenKinds, seenVariants, seenEnumValues) {
 			resolvedArm.ResidualAlwaysMatches = true
 		}
@@ -14954,7 +15705,7 @@ func (a *Analyzer) analyzeMatchPattern(pattern ast.Expression, subjectType Type)
 			a.addErrorAtToken(pattern.Token, "Ok pattern requires Result subject")
 			return matchPatternInfo{}, false
 		}
-		return a.analyzeResultPayloadPattern("Ok", pattern.Value, pattern.Token, subjectType.TypeArgs[0], false)
+		return a.analyzeResultPayloadPattern("Ok", pattern.Value, pattern.Token, subjectType.TypeArgs[0])
 	case *ast.ErrExpression:
 		if subjectType.Kind == UnionType {
 			args := []ast.Expression{}
@@ -14967,7 +15718,7 @@ func (a *Analyzer) analyzeMatchPattern(pattern ast.Expression, subjectType Type)
 			a.addErrorAtToken(pattern.Token, "Err pattern requires Result subject")
 			return matchPatternInfo{}, false
 		}
-		return a.analyzeResultPayloadPattern("Err", pattern.Value, pattern.Token, subjectType.TypeArgs[1], true)
+		return a.analyzeResultPayloadPattern("Err", pattern.Value, pattern.Token, subjectType.TypeArgs[1])
 	case *ast.MemberExpression:
 		patternType, ok := a.inferMemberExpression(pattern)
 		if !ok || patternType.Kind == InvalidType {
@@ -15088,7 +15839,10 @@ func (a *Analyzer) analyzeUnionPayloadPattern(variantName string, arguments []as
 	return info, true
 }
 
-func (a *Analyzer) analyzeResultPayloadPattern(kind string, expr ast.Expression, token lexer.Token, payloadType Type, rejectDiscard bool) (matchPatternInfo, bool) {
+// analyzeResultPayloadPattern implements Result payload bindings from
+// rules/control-flow/flowcontrol_match.md. correction20.md permits underscore
+// to consume and discard either payload without creating a local symbol.
+func (a *Analyzer) analyzeResultPayloadPattern(kind string, expr ast.Expression, token lexer.Token, payloadType Type) (matchPatternInfo, bool) {
 	info := matchPatternInfo{Kind: kind, PayloadVariant: kind}
 	if expr == nil {
 		return info, true
@@ -15099,10 +15853,6 @@ func (a *Analyzer) analyzeResultPayloadPattern(kind string, expr ast.Expression,
 		return matchPatternInfo{}, false
 	}
 	if binding.Value == "_" {
-		if rejectDiscard {
-			a.addErrorAtToken(binding.Token, "Err payload must be named; use discard name inside the handler")
-			return matchPatternInfo{}, false
-		}
 		info.PayloadDiscard = true
 		return info, true
 	}
@@ -15218,7 +15968,7 @@ func (a *Analyzer) analyzeMatchArmBody(arm *ast.MatchArm, info matchPatternInfo)
 			borrows:            copyBorrows(a.borrows),
 			localRefContainers: copyLocalRefContainers(a.localRefContainers),
 			arenaGenerations:   copyArenaGenerations(a.arenaGenerations),
-			continues:          blockCanFallThrough(arm.BlockBody),
+			continues:          a.blockCanFallThrough(arm.BlockBody),
 		})
 	}
 	if arm.Body == nil {
@@ -15287,7 +16037,7 @@ func unionVariantIndex(subjectType Type, name string) uint32 {
 	return 0
 }
 
-func resolvedMatchArmFromAnalysis(subjectType Type, sourceIndex int, arm *ast.MatchArm, info matchPatternInfo, resultType Type, valueContext bool) ResolvedMatchArm {
+func (a *Analyzer) resolvedMatchArmFromAnalysis(subjectType Type, sourceIndex int, arm *ast.MatchArm, info matchPatternInfo, resultType Type, valueContext bool) ResolvedMatchArm {
 	resolved := ResolvedMatchArm{
 		SourceIndex:       sourceIndex,
 		EnumCaseName:      info.EnumCaseName,
@@ -15323,8 +16073,8 @@ func resolvedMatchArmFromAnalysis(subjectType Type, sourceIndex int, arm *ast.Ma
 	switch {
 	case arm.ReturnBody != nil:
 		resolved.Flow = MatchArmReturns
-	case arm.BlockBody != nil && !blockCanFallThrough(arm.BlockBody):
-		if blockDefinitelyReturns(arm.BlockBody) {
+	case arm.BlockBody != nil && !a.blockCanFallThrough(arm.BlockBody):
+		if a.blockDefinitelyReturns(arm.BlockBody) {
 			resolved.Flow = MatchArmReturns
 		} else {
 			resolved.Flow = MatchArmTerminates
@@ -15456,6 +16206,71 @@ func (a *Analyzer) enumValuesForType(typ Type) ([]string, bool) {
 	return registered.EnumValues, true
 }
 
+// inferLogicalExpression implements the short-circuit control-flow rule from
+// rules/control-flow/flowcontrol_if.md and rules/foundations/operators.md.
+// correction22.md requires RHS diagnostics to be retained while impossible or
+// conditional execution effects are isolated and merged into the live state.
+func (a *Analyzer) inferLogicalExpression(expr *ast.InfixExpression, leftType Type) (Type, expressionValue) {
+	if leftType.Kind != BoolType {
+		a.addErrorAtToken(expr.Token, "operator %s requires bool operands", expr.Operator)
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+
+	before := a.currentBranchAnalysisState()
+	shortCircuits := isBoolLiteral(expr.Left, expr.Operator == "||")
+	rhsRequired := isBoolLiteral(expr.Left, expr.Operator == "&&") || isBoolLiteral(expr.Left, false) && expr.Operator == "||"
+	previousReachable := a.callGraphPathReachable
+	if shortCircuits {
+		a.callGraphPathReachable = false
+	}
+	rightType, _ := a.inferExpression(expr.Right)
+	a.callGraphPathReachable = previousReachable
+
+	if shortCircuits {
+		a.applyBranchAnalysisState(before)
+	} else if !rhsRequired {
+		rhs := a.currentBranchAnalysisState()
+		a.assigned = mergeContinuingAssigned(before.assigned, before, rhs)
+		a.moved, a.moveReasons = mergeContinuingMoveState(before.moved, before.moveReasons, before, rhs)
+		a.closedResources = mergeContinuingClosedResources(before.closedResources, before, rhs)
+		a.borrows = mergeContinuingBorrows(before.borrows, before, rhs)
+		a.localRefContainers = mergeContinuingLocalRefContainers(before.localRefContainers, before, rhs)
+		a.arenaGenerations = mergeContinuingArenaGenerations(before.arenaGenerations, before, rhs)
+	}
+
+	if rightType.Kind == InvalidType {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+	if rightType.Kind != BoolType {
+		a.addErrorAtToken(expr.Token, "operator %s requires bool operands", expr.Operator)
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+	return Type{Name: "bool", Kind: BoolType}, expressionValue{Display: expr.String()}
+}
+
+func (a *Analyzer) currentBranchAnalysisState() branchAnalysis {
+	return branchAnalysis{
+		assigned:           copyAssigned(a.assigned),
+		moved:              copyMoved(a.moved),
+		moveReasons:        copyMoveReasons(a.moveReasons),
+		closedResources:    copyMoved(a.closedResources),
+		borrows:            copyBorrows(a.borrows),
+		localRefContainers: copyLocalRefContainers(a.localRefContainers),
+		arenaGenerations:   copyArenaGenerations(a.arenaGenerations),
+		continues:          true,
+	}
+}
+
+func (a *Analyzer) applyBranchAnalysisState(state branchAnalysis) {
+	a.assigned = copyAssigned(state.assigned)
+	a.moved = copyMoved(state.moved)
+	a.moveReasons = copyMoveReasons(state.moveReasons)
+	a.closedResources = copyMoved(state.closedResources)
+	a.borrows = copyBorrows(state.borrows)
+	a.localRefContainers = copyLocalRefContainers(state.localRefContainers)
+	a.arenaGenerations = copyArenaGenerations(state.arenaGenerations)
+}
+
 func (a *Analyzer) inferInfixExpression(expr *ast.InfixExpression) (Type, expressionValue) {
 	if isComparisonOperator(expr.Operator) && containsComparisonExpression(expr.Left) {
 		a.addErrorAtToken(expr.Token, "comparison chaining is not supported")
@@ -15469,6 +16284,9 @@ func (a *Analyzer) inferInfixExpression(expr *ast.InfixExpression) (Type, expres
 
 	if expr.Operator == "in" {
 		return a.inferMembershipExpression(expr, leftType)
+	}
+	if isLogicalOperator(expr.Operator) {
+		return a.inferLogicalExpression(expr, leftType)
 	}
 
 	rightType, _ := a.inferExpression(expr.Right)
@@ -15497,14 +16315,6 @@ func (a *Analyzer) inferInfixExpression(expr *ast.InfixExpression) (Type, expres
 		if !valid {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
-	}
-
-	if isLogicalOperator(expr.Operator) {
-		if leftType.Kind != BoolType || rightType.Kind != BoolType {
-			a.addErrorAtToken(expr.Token, "operator %s requires bool operands", expr.Operator)
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
-		}
-		return Type{Name: "bool", Kind: BoolType}, expressionValue{Display: expr.String()}
 	}
 
 	if isEqualityOperator(expr.Operator) {
@@ -15781,8 +16591,20 @@ func (a *Analyzer) inferMatrixMultiplyExpression(expr *ast.InfixExpression, left
 	if (rightType.Name != "matrix" && rightType.Name != "vector") || len(rightType.TypeArgs) != 1 {
 		return invalid("right operand of x must be matrix or vector, got %s", typeDisplayName(rightType))
 	}
-	if !sameConcreteType(leftType.TypeArgs[0], rightType.TypeArgs[0]) {
-		return invalid("matrix multiplication element types differ: %s and %s", typeDisplayName(leftType.TypeArgs[0]), typeDisplayName(rightType.TypeArgs[0]))
+	// rules/collections/shaped-types.md; correction27.md: x derives its
+	// element and accumulator types from ordinary scalar multiplication and
+	// addition. Equal operand element types are not a language requirement.
+	scalarProduct := *expr
+	scalarProduct.Operator = "*"
+	productType, _ := a.inferScalarOperatorType(&scalarProduct, leftType.TypeArgs[0], rightType.TypeArgs[0])
+	if productType.Kind == InvalidType {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+	scalarSum := *expr
+	scalarSum.Operator = "+"
+	accumulatorType, _ := a.inferScalarOperatorType(&scalarSum, productType, productType)
+	if accumulatorType.Kind == InvalidType || !sameConcreteType(productType, accumulatorType) {
+		return invalid("matrix multiplication product type %s is not stable under accumulation", typeDisplayName(productType))
 	}
 
 	inner := leftType.ConstArgs[1]
@@ -15795,6 +16617,7 @@ func (a *Analyzer) inferMatrixMultiplyExpression(expr *ast.InfixExpression, left
 			return invalid("matrix multiplication inner dimensions differ: %d and %d", inner, rightType.ConstArgs[0])
 		}
 		result := leftType
+		result.TypeArgs = []Type{productType}
 		result.ConstArgs = []int64{leftType.ConstArgs[0], rightType.ConstArgs[1]}
 		return result, expressionValue{Display: expr.String()}
 	case "vector":
@@ -15805,11 +16628,22 @@ func (a *Analyzer) inferMatrixMultiplyExpression(expr *ast.InfixExpression, left
 			return invalid("matrix-vector multiplication inner dimensions differ: %d and %d", inner, rightType.ConstArgs[0])
 		}
 		result := rightType
+		result.TypeArgs = []Type{productType}
 		result.ConstArgs = []int64{leftType.ConstArgs[0]}
 		return result, expressionValue{Display: expr.String()}
 	default:
 		return invalid("right operand of x must be matrix or vector, got %s", typeDisplayName(rightType))
 	}
+}
+
+func (a *Analyzer) inferScalarOperatorType(expr *ast.InfixExpression, left, right Type) (Type, expressionValue) {
+	if left.Kind == DecimalType || right.Kind == DecimalType {
+		return a.inferDecimalInfixExpression(expr, left, right)
+	}
+	if isNumericType(left) && isNumericType(right) && (!left.Dimension.IsZero() || !right.Dimension.IsZero()) {
+		return a.inferNumericUnitInfixExpression(expr, left, right)
+	}
+	return a.inferPlainArithmeticExpression(expr, left, right)
 }
 
 func compatiblePlainNumericAlias(left Type, right Type) bool {
@@ -16504,7 +17338,13 @@ func (a *Analyzer) defineSymbol(name string, typ Type, mutable bool, token lexer
 		}
 	}
 
-	symbol := Symbol{Name: name, Type: typ, Mutable: mutable, Token: token, Storage: StorageOriginInline, Local: a.inFunctionBody, ScopeDepth: a.scopeDepth}
+	storage := StorageOriginInline
+	if !a.inFunctionBody {
+		// rules/declarations/static.md, storage duration; correction15.md makes
+		// module storage static regardless of redundant source spelling.
+		storage = StorageOriginStatic
+	}
+	symbol := Symbol{Name: name, Type: typ, Mutable: mutable, Token: token, Storage: storage, Local: a.inFunctionBody, ScopeDepth: a.scopeDepth}
 	a.symbols[name] = symbol
 	a.completionSymbols[name] = symbol
 	a.recordDefinition(token)
@@ -16560,8 +17400,12 @@ func canInitialize(target Type, value Type, expr ast.Expression) bool {
 	}
 
 	if target.Kind == ArrayType || value.Kind == ArrayType || target.Kind == SliceType || value.Kind == SliceType {
-		if target.Kind == ArrayType && value.Kind == ArrayType && target.Element != nil && value.Element != nil &&
-			(target.ArrayLength == dynamicArrayLength || value.ArrayLength == dynamicArrayLength) {
+		// rules/collections/collections.md; correction26.md: T[] and T[N]
+		// are distinct owning representations. Dynamic owners initialize only
+		// from the same dynamic owner type; fixed arrays require exact extent.
+		if target.Kind == ArrayType && value.Kind == ArrayType &&
+			target.ArrayLength == dynamicArrayLength && value.ArrayLength == dynamicArrayLength &&
+			target.Element != nil && value.Element != nil {
 			return canInitialize(*target.Element, *value.Element, expr)
 		}
 		return sameConcreteType(target, value)

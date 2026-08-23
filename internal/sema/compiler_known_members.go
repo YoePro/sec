@@ -20,9 +20,11 @@ type CompilerKnownMember struct {
 }
 
 type CompilerKnownFunction struct {
-	ID     string
-	Name   string
-	Result Type
+	ID         string
+	Name       string
+	Parameters []FunctionParameter
+	Result     Type
+	Internal   bool
 }
 
 // CompilerKnownFunctions is the canonical catalog used to reserve and expose
@@ -34,6 +36,17 @@ func CompilerKnownFunctions() []CompilerKnownFunction {
 		{ID: "CKF-LEN", Name: "len", Result: types["int"]},
 		{ID: "CKF-SIZEOF-TYPE", Name: "SizeOf", Result: types["uint"]},
 		{ID: "CKF-FILL", Name: "fill", Result: Type{Kind: InvalidType}},
+		{
+			ID:   "CKF-STRING-SLICE-UNCHECKED",
+			Name: "__StringSliceUnchecked",
+			Parameters: []FunctionParameter{
+				{Name: "value", Type: types["string"]},
+				{Name: "start", Type: types["uint"]},
+				{Name: "end", Type: types["uint"]},
+			},
+			Result:   types["string"],
+			Internal: true,
+		},
 	}
 }
 

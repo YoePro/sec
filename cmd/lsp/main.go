@@ -1556,7 +1556,7 @@ func hoverForSource(uri string, text string, pos position, overlays ...sourceOve
 		}
 	}
 
-	if functions := analyzer.Functions()[name]; len(functions) > 0 {
+	if functions := analyzer.Functions()[name]; len(functions) > 0 && !internalCompilerOverloads(functions) {
 		contents := functionHoverContents(functions, text, path)
 		contents += callGraphHoverSuffix(analyzer, uri, text, pos)
 		return hoverResult{Contents: markupContent{Kind: "markdown", Value: contents}, Range: nameRange}, true
@@ -2534,7 +2534,7 @@ func globalCompletionItems(text string, analyzer *sema.Analyzer, context complet
 
 	if !context.TypeForm {
 		for name, overloads := range analyzer.Functions() {
-			if initializerOverloads(overloads) {
+			if initializerOverloads(overloads) || internalCompilerOverloads(overloads) {
 				continue
 			}
 			add(completionItem{Label: name, Kind: 3, Detail: functionCompletionDetail(overloads)})
@@ -2565,7 +2565,7 @@ func addReturnValueCompletionItems(text string, analyzer *sema.Analyzer, context
 	}
 
 	for name, overloads := range analyzer.Functions() {
-		if initializerOverloads(overloads) {
+		if initializerOverloads(overloads) || internalCompilerOverloads(overloads) {
 			continue
 		}
 		for _, function := range overloads {
@@ -2592,6 +2592,10 @@ func addReturnValueCompletionItems(text string, analyzer *sema.Analyzer, context
 
 func initializerOverloads(functions []sema.Function) bool {
 	return len(functions) > 0 && functions[0].Initializer
+}
+
+func internalCompilerOverloads(functions []sema.Function) bool {
+	return len(functions) > 0 && functions[0].CompilerInternal
 }
 
 func completionTypeMatches(expected sema.Type, actual sema.Type) bool {
@@ -3528,11 +3532,19 @@ func diagnosticBelongsToSource(err sema.Error, sourceFile string) bool {
 }
 
 func resolveCoreSources(program *ast.Program, sourceFile string, overlays ...sourceOverlay) {
-	if program == nil || lspProgramContainsCoreSource(program) {
+	if program == nil {
 		return
 	}
 	root := findSecSourceRoot(sourceFile)
-	matches, err := filepath.Glob(filepath.Join(root, "sec", "core", "*.sec"))
+	coreRoot := filepath.Join(root, "sec", "core")
+	if sourceCoreRoot, ok := lspCoreRootForSource(sourceFile); ok {
+		coreRoot = sourceCoreRoot
+	}
+	markLSPTrustedCoreSources(program, coreRoot)
+	if lspProgramContainsCoreSource(program) {
+		return
+	}
+	matches, err := filepath.Glob(filepath.Join(coreRoot, "*.sec"))
 	if err != nil || len(matches) == 0 {
 		return
 	}
@@ -3544,11 +3556,62 @@ func resolveCoreSources(program *ast.Program, sourceFile string, overlays ...sou
 			continue
 		}
 		coreStatements = append(coreStatements, imported.Statements...)
+		if program.SourceProvenance == nil {
+			program.SourceProvenance = map[string]ast.SourceProvenance{}
+		}
+		program.SourceProvenance[match] = ast.SourceCore
 	}
 	if len(coreStatements) == 0 {
 		return
 	}
 	program.Statements = append(append([]ast.Statement{}, coreStatements...), program.Statements...)
+}
+
+// lspCoreRootForSource recognizes an editor buffer that was loaded from the
+// compiler-owned core directory. The loader converts this location into trusted
+// provenance; Sema itself never grants authority from path spelling.
+func lspCoreRootForSource(sourceFile string) (string, bool) {
+	if sourceFile == "" {
+		return "", false
+	}
+	dir := filepath.Clean(filepath.Dir(sourceFile))
+	if filepath.Base(dir) != "core" || filepath.Base(filepath.Dir(dir)) != "sec" {
+		return "", false
+	}
+	return dir, true
+}
+
+// markLSPTrustedCoreSources mirrors the trusted workspace loader boundary from
+// rules/library/core-library.md and correction9.md. Sema consumes only the
+// resulting provenance and never grants privilege from token path spelling.
+func markLSPTrustedCoreSources(program *ast.Program, coreRoot string) {
+	root, err := filepath.Abs(coreRoot)
+	if err != nil {
+		return
+	}
+	if resolved, resolveErr := filepath.EvalSymlinks(root); resolveErr == nil {
+		root = resolved
+	}
+	if program.SourceProvenance == nil {
+		program.SourceProvenance = map[string]ast.SourceProvenance{}
+	}
+	for _, stmt := range program.Statements {
+		token, ok := lspStatementTokenForSource(stmt)
+		if !ok || token.File == "" {
+			continue
+		}
+		absolute, absErr := filepath.Abs(token.File)
+		if absErr != nil {
+			continue
+		}
+		if resolved, resolveErr := filepath.EvalSymlinks(absolute); resolveErr == nil {
+			absolute = resolved
+		}
+		relative, relErr := filepath.Rel(root, absolute)
+		if relErr == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+			program.SourceProvenance[token.File] = ast.SourceCore
+		}
+	}
 }
 
 func lspProgramContainsCoreSource(program *ast.Program) bool {

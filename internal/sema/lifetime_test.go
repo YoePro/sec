@@ -646,6 +646,22 @@ fn Invalid() Result[void, AllocationError] {
 	})
 }
 
+// rules/control-flow/defer.md and rules/memory/arena.md; correction18.md requires
+// defer registration analysis to restore the live Arena generation.
+func TestDeferredArenaResetDoesNotInvalidateBeforeScopeExit(t *testing.T) {
+	errors := analyzeSourceRaw(t, `
+module main
+fn Valid() Result[void, AllocationError] {
+	let mut mem: Arena := Arena {}
+	let storage := try mem.Alloc[byte](16)
+	defer { mem.Reset() }
+	let length := storage.len
+	return Ok()
+}
+`)
+	assertSemaErrors(t, errors, nil)
+}
+
 func TestArenaResetInContinuingBranchInvalidatesAllocatedSlice(t *testing.T) {
 	input := `
 module main
@@ -749,5 +765,44 @@ fn Invalid() Result[void, AllocationError] {
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
 		"cannot use storage after arena mem was reset at 11:19, previous declaration at 6:24",
+	})
+}
+
+// rules/memory/arena.md; correction29.md requires ArenaDomain identity to
+// survive an owner move rather than following the lexical owner name.
+func TestArenaDomainIdentitySurvivesOwnerMove(t *testing.T) {
+	input := `
+module main
+
+fn Invalid() Result[void, AllocationError] {
+	let mut original: Arena := Arena {}
+	let storage := try original.Alloc[byte](16u)
+	let mut moved :<- original
+	moved.Reset()
+	let length := storage.len
+	return Ok()
+}
+`
+	assertSemaErrors(t, analyzeSourceRaw(t, input), []string{
+		"cannot use storage after arena original was reset at 9:16, previous declaration at 6:21",
+	})
+}
+
+func TestBorrowedArenaRetainsBackingBorrowUntilRelease(t *testing.T) {
+	input := `
+module main
+
+fn Invalid(buffer: ref mut byte[]) void {
+	let mut arena := Arena.FromBuffer(buffer)
+	let before := buffer.len
+	arena.Release()
+	let later := buffer.len
+	discard before
+	discard later
+}
+`
+	_, errors := analyzeSourceWithAnalyzerRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"cannot read buffer while its backing is exclusively borrowed by arena arena at 6:23, previous declaration at 5:24",
 	})
 }

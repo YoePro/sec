@@ -3,44 +3,96 @@ module core
 impl rune {
     /** Returns the textual representation of this rune. */
     fn ToString() string {
-        // TODO: Implement rune.ToString.
-        return ""
+        return string.FromRuneArray([self])
     }
 
     /** Reports whether this rune is an ASCII decimal digit. */
-    fn IsDigit() bool {
-        return self >= 48r && self <= 57r
+    property IsDigit: bool {
+        get {
+            return self >= 48r && self <= 57r
+        }
     }
 
     /** Reports whether this rune is an ASCII letter. */
-    fn IsLetter() bool {
-        return (self >= 65r && self <= 90r) ||
-            (self >= 97r && self <= 122r)
+    property IsLetter: bool {
+        get {
+            return (self >= 65r && self <= 90r) || (self >= 97r && self <= 122r)
+        }
     }
 
     /** Reports whether this rune is an ASCII letter or decimal digit. */
-    fn IsLetterOrDigit() bool {
-        return self.IsLetter() || self.IsDigit()
+    property IsLetterOrDigit: bool {
+        get {
+            return self.IsLetter || self.IsDigit
+        }
     }
 
     /** Reports whether this rune is an ASCII whitespace character. */
-    fn IsWhitespace() bool {
-        return self == 9r || self == 10r || self == 13r || self == 32r
+    property IsWhitespace: bool {
+        get {
+            return self == 9r || self == 10r || self == 13r || self == 32r
+        }
     }
 
     /** Reports whether this rune is an ASCII control character. */
-    fn IsControl() bool {
-        return self < 32r || self == 127r
+    property IsControl: bool {
+        get {
+            return self < 32r || self == 127r
+        }
+    }
+
+    /** Reports whether this rune is a hexadecimal 'digit' */
+    property IsHexDigit: bool {
+        get {
+            // 0 - 9, A-F, a-f
+            return (self >= 48r && self <= 57r) || (self >= 65r && self <= 70r) || (self >= 97r && self <= 102r)
+        }
+    }
+
+    /** Returns the intvalue of a rune or None() */
+    fn ToNumericValue() Option[int] {
+        if self >= 48r && self <= 57r {
+            return Some(int(self - 48r))
+        }
+        return None()
     }
 
     /** Reports whether this rune belongs to the ASCII range. */
-    fn IsAscii() bool {
-        return self >= 0r && self <= 127r
+    property IsAscii: bool {
+        get {
+            return self >= 0r && self <= 127r
+        }
     }
 
     /** Returns the number of UTF-8 bytes needed to encode this rune. */
-    fn Utf8Length() uint {
-        // TODO: Implement rune.Utf8Length.
-        return 0
+    property Utf8Length: uint {
+        get {
+
+            return 1u + uint(int(self > 0x7Fr) + int(self > 0x7FFr) + int(self > 0xFFFFr))
+        }
+/*
+            switch {
+                case self <= 127r:
+                    return 1
+                case self <= 2047r:
+                    return 2
+                case self <= 65535r:
+                    return 3
+                default:
+                    return 4
+            }
+        }
+*/
     }
+
+    /** Returns the lowercase variant of a letter when possible */
+    fn ToLower() rune {
+        return 0r
+    }
+
+    /** Returns the uppercase variant of a letter when possible */
+    fn ToUpper() rune {
+        return 0r
+    }
+
 }

@@ -605,12 +605,13 @@ The first implementation should support:
     error
     value
 
-5. Optional wildcard later:
+5. Explicit payload discard:
 
-    _
+    Ok(_)
+    Err(_)
 
-Recommended:
-Support identifier binding first. Add `_` when discard semantics are finalized.
+`Err(_)` explicitly handles the Result error variant and discards its payload.
+A generic catch-all `_` must not silently hide an otherwise unhandled Err.
 
 
 Result matching

@@ -146,6 +146,13 @@ The tag uses the Go-inspired key/value form:
 key:"value" key:"value"
 ```
 
+Within the outer raw Sec string, a backslash preserves itself and the following
+code point as tag metadata. In particular, `\"` does not terminate the quoted
+tag value. The compiler uses that rule only to recognize the structural closing
+quote; it does not decode or normalize the preserved inner escape spelling.
+Domain-specific tag consumers may interpret the preserved value according to
+their own documented contracts.
+
 Rules:
 
 - tags are optional;

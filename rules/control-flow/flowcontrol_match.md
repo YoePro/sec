@@ -206,9 +206,8 @@ match result {
 }
 ```
 
-An `Err` payload must be named.
-
-This is invalid:
+An explicit `Err(_)` pattern handles the error variant and discards its payload
+without introducing a binding. This is valid:
 
 ```sec
 match result {
@@ -217,7 +216,8 @@ match result {
 }
 ```
 
-If an error is intentionally ignored, name it and use the normal discard rules:
+This differs from the catch-all `_`, which may not hide an unhandled `Err`.
+Name the payload only when the handler needs to use it:
 
 ```sec
 match result {

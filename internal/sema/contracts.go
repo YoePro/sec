@@ -73,23 +73,36 @@ func (a *Analyzer) applyContracts(typ Type, contractNode ast.Contract) Type {
 }
 
 func (a *Analyzer) checkMembershipContractValues(typ Type, contractNode ast.Contract) {
+	var token lexer.Token
 	for _, contract := range flattenASTContracts(contractNode) {
-		membership, ok := contract.(*ast.MembershipContract)
+		switch contract := contract.(type) {
+		case *ast.RangeContract:
+			token = contract.Token
+		case *ast.MarkerContract:
+			token = contract.Token
+		case *ast.MembershipContract:
+			token = contract.Token
+		}
+	}
+	// rules/types/contracts.md, inherited conjunction; correction4.md requires
+	// every semantic membership value, not only values in the current AST node,
+	// to be checked against the complete derived contract set.
+	for _, contract := range typ.Contracts {
+		membership, ok := contract.(MembershipContract)
 		if !ok {
 			continue
 		}
-		for _, expression := range membership.Values {
-			constant, ok := defaultConstantFromExpression(expression)
-			if !ok || !defaultConstantCompatible(typ, constant) {
+		for _, constant := range membership.Values {
+			if !defaultConstantCompatible(typ, constant) {
 				continue
 			}
 			if !defaultConstantSatisfies(typ, constant) {
 				a.addErrorAtTokenWithMetadata(
-					expressionToken(expression),
+					token,
 					diagnostics.InvalidMembershipValue,
 					"remove the value or change the other type contracts",
 					"membership value %s violates another contract on %s",
-					expression.String(),
+					constant.Lexeme,
 					typeDisplayName(typ),
 				)
 			}
@@ -202,7 +215,7 @@ func (a *Analyzer) checkContractSetConsistency(typ Type, contractNode ast.Contra
 	}
 
 	var token lexer.Token
-	var rangeContract *RangeContract
+	var effectiveRange *RangeContract
 	var multiple *big.Int
 	hasOdd := false
 	hasEven := false
@@ -219,11 +232,11 @@ func (a *Analyzer) checkContractSetConsistency(typ Type, contractNode ast.Contra
 	for _, contract := range typ.Contracts {
 		switch contract := contract.(type) {
 		case RangeContract:
-			c := contract
-			rangeContract = &c
+			effectiveRange = intersectIntegerRangeContracts(effectiveRange, contract)
 		case MultipleOfContract:
 			if contract.Value != nil && contract.Value.Sign() != 0 {
-				multiple = new(big.Int).Abs(contract.Value)
+				divisor := new(big.Int).Abs(contract.Value)
+				multiple = leastCommonMultiple(multiple, divisor)
 			}
 		case MarkerContract:
 			switch contract.Name {
@@ -243,12 +256,53 @@ func (a *Analyzer) checkContractSetConsistency(typ Type, contractNode ast.Contra
 		a.addErrorAtToken(token, "contracts multipleOf %s and odd cannot be combined because every multiple is even", multiple.String())
 		return
 	}
-	if rangeContract == nil {
+	if effectiveRange == nil {
 		return
 	}
-	if !integerRangeHasSatisfyingValue(rangeContract, multiple, hasOdd, hasEven) {
+	if !integerRangeHasSatisfyingValue(effectiveRange, multiple, hasOdd, hasEven) {
 		a.addErrorAtToken(token, "contracts cannot be satisfied together for %s", typeDisplayName(typ))
 	}
+}
+
+// intersectIntegerRangeContracts implements the exact integer conjunction from
+// rules/types/contracts.md. correction3.md requires every inherited and local
+// range to contribute instead of retaining only the last declaration.
+func intersectIntegerRangeContracts(current *RangeContract, next RangeContract) *RangeContract {
+	normalized := RangeContract{}
+	if next.Min != nil {
+		normalized.Min = new(big.Int).Set(next.Min)
+	}
+	if next.Max != nil {
+		normalized.Max = new(big.Int).Set(next.Max)
+		if next.Exclusive {
+			normalized.Max.Sub(normalized.Max, big.NewInt(1))
+		}
+	}
+	if current == nil {
+		return &normalized
+	}
+	result := RangeContract{}
+	if current.Min != nil {
+		result.Min = new(big.Int).Set(current.Min)
+	}
+	if normalized.Min != nil && (result.Min == nil || normalized.Min.Cmp(result.Min) > 0) {
+		result.Min = new(big.Int).Set(normalized.Min)
+	}
+	if current.Max != nil {
+		result.Max = new(big.Int).Set(current.Max)
+	}
+	if normalized.Max != nil && (result.Max == nil || normalized.Max.Cmp(result.Max) < 0) {
+		result.Max = new(big.Int).Set(normalized.Max)
+	}
+	return &result
+}
+
+func leastCommonMultiple(left, right *big.Int) *big.Int {
+	if left == nil {
+		return new(big.Int).Set(right)
+	}
+	gcd := new(big.Int).GCD(nil, nil, left, right)
+	return new(big.Int).Mul(new(big.Int).Quo(left, gcd), right)
 }
 
 func integerRangeHasSatisfyingValue(contract *RangeContract, multiple *big.Int, odd bool, even bool) bool {

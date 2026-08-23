@@ -261,6 +261,23 @@ obtain target ABI classification.
 
 Internal intrinsic operations are not automatically callable by user code.
 
+## Privileged internal core helper
+
+A representation-sensitive implementation helper may instead be an ordinary
+private core function whose name begins with `__`.
+
+Such a helper may contain a small direct MLIR/LLVM implementation when the
+supported privileged-core syntax and contracts permit it. The need for
+low-level implementation does not by itself make the helper compiler-known.
+
+Use compiler-known identity only when the compiler must own the operation's
+semantic identity, availability, resolution, analysis facts, or lowering
+contract independently of the core source declaration.
+
+An internal core helper remains subject to its declared ownership, lifetime,
+effect, unsafe, and target contracts. Direct low-level implementation does not
+bypass those contracts.
+
 ---
 
 # Compiler-known does not mean globally visible syntax
@@ -723,6 +740,51 @@ The call graph records the helper when it is a real callable.
 Effect analysis includes helper effects.
 
 Inlining or replacing the helper does not change the source member contract.
+
+---
+
+# Internal core string-slice helper
+
+The checked core string API may use the following private helper:
+
+```sec
+fn __StringSliceUnchecked(value: string, start: uint, end: uint) string
+```
+
+This is an implementation detail of `core/string.sec`, not a required
+compiler-known global function. Its leading `__` gives it source-file-private
+visibility under `names_scopes_visibility.md`; it must not be exposed by
+ordinary completion or public API discovery.
+
+The helper creates a `string` value for the byte interval `[start, end)` of
+`value`. Its result is a string, not an array slice, safe reference, or
+source-level borrow. Its low-level body may form a string descriptor over the
+existing backing storage and must preserve the string storage and lifetime
+rules.
+
+The helper performs no bounds validation, allocation, or string-content
+validation. Its caller must establish:
+
+```text
+start <= end
+end <= value.Len
+```
+
+Public core operations such as checked substring extraction own those checks
+and their error results. Code outside the declaring core source file cannot use
+the helper to bypass them.
+
+The intended representation-level operation is:
+
+```text
+result.data = value.data + start
+result.len  = end - start
+```
+
+This helper does not require a compiler-known registry entry or a
+name-specific backend call-emission case merely because its implementation is
+low-level. A compiler-known identity remains permitted only if separate
+semantic or analysis requirements make compiler ownership necessary.
 
 ---
 

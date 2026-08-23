@@ -297,19 +297,15 @@ The region dependency of the returned storage remains active.
 
 ## Storage origin
 
-Semantic analysis must record the origin of storage independently from the value
-type.
+Allocation and Arena analysis must preserve the canonical storage metadata
+defined by `rules/memory/storage.md`.
 
-Minimum storage origins:
+Arena-allocated storage has `StorageOrigin.Arena`.
 
-```text
-Inline
-Static
-Arena
-External
-Foreign
-FixedAddress
-```
+Other properties such as external backing, foreign provenance, fixed address,
+reclamation authority, or address stability are represented by their
+corresponding independent storage properties and must not be encoded as
+`StorageOrigin` values.
 
 A reference or slice propagates the storage origin and lifetime of its source.
 

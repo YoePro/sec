@@ -15,6 +15,10 @@ enum ParseError {
     InvalidCoverage
     InvalidSuffix
     ResourceFailure
+    MissingPrefix
+    MissingHardware
+    MissingTail
+    TooManySegments
 }
 
 enum Enrollment {
@@ -34,6 +38,12 @@ enum Coverage {
     Advanced
     Standard
     None
+}
+
+type ServiceSKUSegments struct {
+    Prefix: string,
+    Hardware: string,
+    Tail: string,
 }
 
 type SIN struct {
@@ -106,5 +116,35 @@ fn SplitSIN(value: string) Result[SINSegments, ParseError] {
         Prefix: segments[0],
         Hardware: segments[1],
         Tail: segments[2],
+    })
+}
+
+fn ParseSegments(value: string) Result[ServiceSKUSegments, ParseError] {
+    let mut parts := value.Split("-")
+
+    let prefix := match parts.Next() {
+        Some(part) => part
+        None() => return Err(ParseError.MissingPrefix)
+    }
+
+    let hardware := match parts.Next() {
+        Some(part) => part
+        None() => return Err(ParseError.MissingHardware)
+    }
+
+    let tail := match parts.Next() {
+        Some(part) => part
+        None() => return Err(ParseError.MissingTail)
+    }
+
+    match parts.Next() {
+        Some(_) => return Err(ParseError.TooManySegments)
+        None() =>  {}
+    }
+
+    return Ok(ServiceSKUSegments {
+        Prefix: prefix,
+        Hardware: hardware,
+        Tail: tail,
     })
 }

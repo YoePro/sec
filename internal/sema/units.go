@@ -8,26 +8,6 @@ import (
 	"unicode"
 )
 
-func builtinUnits() map[string]UnitDefinition {
-	units := map[string]UnitDefinition{}
-
-	addPhysical := func(names []string, dimension Dimension) {
-		for _, name := range names {
-			units[name] = UnitDefinition{Name: name, Category: PhysicalUnit, Dimension: dimension, DefaultNumeric: "decimal", Status: StatusActive, Transform: LinearUnitTransform}
-		}
-	}
-
-	addPhysical([]string{"m", "metre", "meter"}, dimensionFromBase("length", 1))
-	addPhysical([]string{"mm", "millimetre", "millimeter"}, dimensionFromBase("length", 1))
-	addPhysical([]string{"inch"}, dimensionFromBase("length", 1))
-	addPhysical([]string{"s", "second"}, dimensionFromBase("time", 1))
-	addPhysical([]string{"kg", "kilogram"}, dimensionFromBase("mass", 1))
-	addPhysical([]string{"Hz", "Hertz", "hertz"}, dimensionFromBase("time", -1))
-	addPhysical([]string{"rpm"}, Dimension{Base: map[string]int{"revolution": 1, "time": -1}})
-
-	return units
-}
-
 func dimensionFromBase(name string, exponent int) Dimension {
 	if exponent == 0 {
 		return Dimension{Base: map[string]int{}}
@@ -35,14 +15,19 @@ func dimensionFromBase(name string, exponent int) Dimension {
 	return Dimension{Base: map[string]int{name: exponent}}
 }
 
-func defaultUnitDimension(name string, category UnitCategory) Dimension {
+// defaultUnitDimension implements the category defaults in rules/types/units.md.
+// correction6.md distinguishes an unresolved physical dimension from known
+// dimensionless and category-derived dimensions.
+func defaultUnitDimension(name string, category UnitCategory) (Dimension, bool) {
 	switch category {
 	case RatioUnit:
-		return Dimension{Base: map[string]int{}}
+		return Dimension{Base: map[string]int{}}, true
 	case InformationUnit:
-		return dimensionFromBase("information", 1)
+		return dimensionFromBase("information", 1), true
+	case PhysicalUnit:
+		return Dimension{Base: map[string]int{}}, false
 	default:
-		return dimensionFromBase(name, 1)
+		return dimensionFromBase(name, 1), true
 	}
 }
 

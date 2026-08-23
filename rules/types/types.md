@@ -420,6 +420,12 @@ A string is not an implicit array of `char`, `rune`, or `byte`.
 
 Conversions between strings and arrays, slices, bytes, or runes use explicitly defined core/library operations.
 
+Array slice syntax does not apply directly to `string`. Checked substring
+extraction is provided by the public core string API. Core may implement it
+with a source-file-private unchecked helper as defined by
+`compiler_known_members.md`; that helper is not part of the public string API
+and does not become compiler-known solely because its body is low-level.
+
 String representation is not defined by this rulebook as an ABI-stable struct.
 
 ---

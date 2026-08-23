@@ -975,7 +975,21 @@ func analyzeProgramWithSourcesRetained(program *ast.Program, target CompilerTarg
 	resolveCoreLibraryWithSources(program, sourceFiles)
 	resolveStdlibImportsWithSources(program, target, sourceFiles)
 
-	analyzer := sema.NewAnalyzer()
+	targetDefinition, ok := findTargetDefinition(target)
+	if !ok {
+		fmt.Fprintf(os.Stderr, "target error: unsupported target %s\n", target.String())
+		summary.Errors++
+		printDiagnosticSummary(summary)
+		os.Exit(1)
+	}
+	scalarPlan, err := targetDefinition.scalarPlan()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "target error: %s\n", err)
+		summary.Errors++
+		printDiagnosticSummary(summary)
+		os.Exit(1)
+	}
+	analyzer := sema.NewAnalyzerWithScalarPlan(scalarPlan)
 	errors := analyzer.Analyze(program)
 	printSemaWarnings(analyzer)
 	summary.Warnings += len(analyzer.Warnings())
@@ -998,6 +1012,8 @@ func resolveCoreLibrary(program *ast.Program) {
 }
 
 func resolveCoreLibraryWithSources(program *ast.Program, sourceFiles []string) {
+	root := findCompilerSourceRoot(sourceFiles)
+	markTrustedCoreSources(program, root)
 	if programContainsCoreSource(program) {
 		return
 	}
@@ -1006,6 +1022,55 @@ func resolveCoreLibraryWithSources(program *ast.Program, sourceFiles []string) {
 		return
 	}
 	program.Statements = append(append([]ast.Statement{}, core.Statements...), program.Statements...)
+	mergeSourceProvenance(program, core)
+}
+
+func mergeSourceProvenance(destination, source *ast.Program) {
+	if destination == nil || source == nil {
+		return
+	}
+	if destination.SourceProvenance == nil {
+		destination.SourceProvenance = map[string]ast.SourceProvenance{}
+	}
+	for file, provenance := range source.SourceProvenance {
+		destination.SourceProvenance[file] = provenance
+	}
+}
+
+// markTrustedCoreSources is the compiler-loader trust boundary required by
+// rules/library/core-library.md and correction9.md. Canonical path containment
+// is converted here into explicit provenance consumed by Sema.
+func markTrustedCoreSources(program *ast.Program, root string) {
+	if program == nil {
+		return
+	}
+	coreRoot, err := filepath.Abs(filepath.Join(root, "sec", "core"))
+	if err != nil {
+		return
+	}
+	if resolved, resolveErr := filepath.EvalSymlinks(coreRoot); resolveErr == nil {
+		coreRoot = resolved
+	}
+	if program.SourceProvenance == nil {
+		program.SourceProvenance = map[string]ast.SourceProvenance{}
+	}
+	for _, stmt := range program.Statements {
+		file := statementTokenForSource(stmt).File
+		if file == "" {
+			continue
+		}
+		absolute, absErr := filepath.Abs(file)
+		if absErr != nil {
+			continue
+		}
+		if resolved, resolveErr := filepath.EvalSymlinks(absolute); resolveErr == nil {
+			absolute = resolved
+		}
+		relative, relErr := filepath.Rel(coreRoot, absolute)
+		if relErr == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+			program.SourceProvenance[file] = ast.SourceCore
+		}
+	}
 }
 
 func programContainsCoreSource(program *ast.Program) bool {
@@ -1057,6 +1122,7 @@ func parseCoreLibrary(sourceFiles []string) *ast.Program {
 		source := parseSourceInclude(path, CompilerTarget{})
 		core.Statements = append(core.Statements, source.Statements...)
 	}
+	markTrustedCoreSources(core, root)
 	return core
 }
 

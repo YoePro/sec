@@ -9,10 +9,11 @@ import (
 )
 
 type value struct {
-	typ    string
-	ref    string
-	lenRef string
-	fnType *ast.TypeReference
+	typ      string
+	ref      string
+	lenRef   string
+	fnType   *ast.TypeReference
+	unsigned bool
 }
 
 func (g *Generator) emitExpression(expr ast.Expression) (value, error) {
@@ -31,7 +32,7 @@ func (g *Generator) emitExpression(expr ast.Expression) (value, error) {
 		if expr.Suffix() == "u" {
 			typ = "i64"
 		}
-		return value{typ: typ, ref: parsed.String()}, nil
+		return value{typ: typ, ref: parsed.String(), unsigned: expr.Suffix() == "u"}, nil
 	case *ast.FloatLiteral:
 		if expr.Suffix() == "g" {
 			return value{}, fmt.Errorf("emit-llvm does not support float literals yet")
@@ -204,14 +205,14 @@ func (g *Generator) emitIdentifier(expr *ast.Identifier) (value, error) {
 		return value{}, fmt.Errorf("emit-llvm unknown identifier %s", expr.Value)
 	}
 	if slot.direct {
-		return value{typ: slot.typ, ref: slot.ref, lenRef: slot.lenRef, fnType: slot.fnType}, nil
+		return value{typ: slot.typ, ref: slot.ref, lenRef: slot.lenRef, fnType: slot.fnType, unsigned: slot.unsigned}, nil
 	}
 	if slot.typ == "string" {
 		return value{typ: "string", ref: slot.ref, lenRef: slot.lenRef}, nil
 	}
 	temp := g.nextTemp()
 	g.write("  %s = load %s, ptr %s\n", temp, slot.typ, slot.ptr)
-	return value{typ: slot.typ, ref: temp, fnType: slot.fnType}, nil
+	return value{typ: slot.typ, ref: temp, fnType: slot.fnType, unsigned: slot.unsigned}, nil
 }
 
 func (g *Generator) emitMemberExpression(expr *ast.MemberExpression) (value, error) {
@@ -291,6 +292,12 @@ func (g *Generator) emitInfixExpression(expr *ast.InfixExpression) (value, error
 	if left.typ == llvmDecimalType || right.typ == llvmDecimalType {
 		return g.emitDecimalInfixPlaceholder(expr.Operator, left, right)
 	}
+	if left.typ == "string" || right.typ == "string" {
+		// rules/foundations/operators.md, string comparison; correction2.md
+		// forbids the legacy backend from emitting invalid pointer-like icmp as a
+		// substitute for Unicode-scalar content semantics.
+		return value{}, fmt.Errorf("emit-llvm string comparison requires semantic string-comparison lowering")
+	}
 
 	switch expr.Operator {
 	case "+":
@@ -300,19 +307,19 @@ func (g *Generator) emitInfixExpression(expr *ast.InfixExpression) (value, error
 	case "*":
 		return g.emitIntegerBinary("mul", left, right)
 	case "/":
-		return g.emitIntegerBinary("sdiv", left, right)
+		return g.emitIntegerBinary(signedLLVMOperator("sdiv", "udiv", left.unsigned), left, right)
 	case "==":
 		return g.emitCompare("eq", left, right), nil
 	case "!=":
 		return g.emitCompare("ne", left, right), nil
 	case "<":
-		return g.emitCompare("slt", left, right), nil
+		return g.emitCompare(signedLLVMOperator("slt", "ult", left.unsigned), left, right), nil
 	case "<=":
-		return g.emitCompare("sle", left, right), nil
+		return g.emitCompare(signedLLVMOperator("sle", "ule", left.unsigned), left, right), nil
 	case ">":
-		return g.emitCompare("sgt", left, right), nil
+		return g.emitCompare(signedLLVMOperator("sgt", "ugt", left.unsigned), left, right), nil
 	case ">=":
-		return g.emitCompare("sge", left, right), nil
+		return g.emitCompare(signedLLVMOperator("sge", "uge", left.unsigned), left, right), nil
 	default:
 		return value{}, fmt.Errorf("emit-llvm does not support operator %q yet", expr.Operator)
 	}
@@ -343,10 +350,10 @@ func (g *Generator) emitMembershipExpression(left value, right ast.Expression) (
 		return value{}, err
 	}
 
-	lower := g.emitCompare("sge", left, start)
-	upperPredicate := "sle"
+	lower := g.emitCompare(signedLLVMOperator("sge", "uge", left.unsigned), left, start)
+	upperPredicate := signedLLVMOperator("sle", "ule", left.unsigned)
 	if rangeExpr.Exclusive {
-		upperPredicate = "slt"
+		upperPredicate = signedLLVMOperator("slt", "ult", left.unsigned)
 	}
 	upper := g.emitCompare(upperPredicate, left, end)
 	result := g.nextTemp()
@@ -457,7 +464,14 @@ func (g *Generator) emitIntegerBinary(op string, left value, right value) (value
 	}
 	temp := g.nextTemp()
 	g.write("  %s = %s %s %s, %s\n", temp, op, left.typ, left.ref, right.ref)
-	return value{typ: left.typ, ref: temp}, nil
+	return value{typ: left.typ, ref: temp, unsigned: left.unsigned}, nil
+}
+
+func signedLLVMOperator(signed, unsigned string, useUnsigned bool) string {
+	if useUnsigned {
+		return unsigned
+	}
+	return signed
 }
 
 func (g *Generator) emitCompare(predicate string, left value, right value) value {

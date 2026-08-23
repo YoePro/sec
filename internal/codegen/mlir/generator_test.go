@@ -1797,3 +1797,28 @@ fn main() int {
 		}
 	}
 }
+
+func TestGenerateCompilerKnownStringSliceUnchecked(t *testing.T) {
+	program := parseTestProgram(t, `module main
+
+fn main() int {
+	__StringSliceUnchecked("hello", 1u, 4u)
+	return 0
+}
+`)
+	got, err := GenerateWithTriple(program, "x86_64-pc-linux-gnu")
+	if err != nil {
+		t.Fatalf("GenerateWithTriple returned error: %v", err)
+	}
+	for _, want := range []string{
+		"llvm.getelementptr",
+		"llvm.sub",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("generated MLIR missing %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "llvm.call @__StringSliceUnchecked") {
+		t.Fatalf("compiler-known string slice emitted a helper call:\n%s", got)
+	}
+}

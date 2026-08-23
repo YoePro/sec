@@ -2509,6 +2509,9 @@ func (g *Generator) emitCallExpression(expr *ast.CallExpression) (value, error) 
 	if name == "" {
 		return value{}, fmt.Errorf("emit-mlir requires named function calls")
 	}
+	if name == "__StringSliceUnchecked" {
+		return g.emitStringSliceUnchecked(expr)
+	}
 	if info, ok := g.enums[name]; ok {
 		return g.emitEnumConversion(expr.Arguments, info)
 	}
@@ -2596,6 +2599,43 @@ func (g *Generator) emitCallExpression(expr *ast.CallExpression) (value, error) 
 		enumName:   g.enumName(fn.ReturnType),
 		unsigned:   returnUnsigned,
 	}, nil
+}
+
+func (g *Generator) emitStringSliceUnchecked(expr *ast.CallExpression) (value, error) {
+	if len(expr.Arguments) != 3 {
+		return value{}, fmt.Errorf("__StringSliceUnchecked expects 3 arguments, got %d", len(expr.Arguments))
+	}
+	source, err := g.emitExpression(expr.Arguments[0])
+	if err != nil {
+		return value{}, err
+	}
+	if source.typ != "string" {
+		return value{}, fmt.Errorf("__StringSliceUnchecked requires a string source")
+	}
+	start, err := g.emitExpressionForTargetUnsigned(expr.Arguments[1], "i64", true)
+	if err != nil {
+		return value{}, err
+	}
+	start, err = g.coerceValue(start, "i64", true)
+	if err != nil {
+		return value{}, fmt.Errorf("__StringSliceUnchecked start must be uint: %w", err)
+	}
+	end, err := g.emitExpressionForTargetUnsigned(expr.Arguments[2], "i64", true)
+	if err != nil {
+		return value{}, err
+	}
+	end, err = g.coerceValue(end, "i64", true)
+	if err != nil {
+		return value{}, fmt.Errorf("__StringSliceUnchecked end must be uint: %w", err)
+	}
+
+	ptr := g.nextTemp()
+	g.write("    %s = llvm.getelementptr %s[%s] : (!llvm.ptr, i64) -> !llvm.ptr, i8\n", ptr, source.ref, start.ref)
+	length, err := g.emitIntegerBinary("sub", end, start)
+	if err != nil {
+		return value{}, err
+	}
+	return value{typ: "string", ref: ptr, len: length.ref}, nil
 }
 
 func (g *Generator) emitConversionExpression(expr *ast.ConversionExpression) (value, error) {

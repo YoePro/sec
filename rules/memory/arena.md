@@ -3911,7 +3911,10 @@ An Arena is a move-only programmer-visible allocation-domain owner.
 
 The ArenaDomain identity is separate from physical backing addresses.
 
-Backing may be owned, borrowed, static, target-provided, fixed, or growable.
+Backing may be owned, borrowed, static, or target-provided.
+
+Independently, an Arena may be fixed or growable according to its capacity and
+growth policy.
 
 Borrowed Arenas take an exclusive borrow of mutable contiguous backing.
 

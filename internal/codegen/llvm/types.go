@@ -89,6 +89,24 @@ func (g *Generator) llvmParameterType(param *ast.Parameter) string {
 	return g.llvmType(param.Type)
 }
 
+// typeReferenceIsUnsigned preserves the integer signedness required by
+// rules/foundations/operators.md when the legacy direct LLVM backend is used.
+// See correction2.md.
+func (g *Generator) typeReferenceIsUnsigned(ref *ast.TypeReference) bool {
+	if ref == nil {
+		return false
+	}
+	if alias, ok := g.typeAliases[ref.Name]; ok {
+		return g.typeReferenceIsUnsigned(alias)
+	}
+	switch ref.Name {
+	case "uint", "uint8", "uint16", "uint32", "uint64", "uint128", "uint256", "byte", "bit":
+		return true
+	default:
+		return false
+	}
+}
+
 func (g *Generator) registerEnum(enumDecl *ast.EnumDeclaration, owner string) {
 	if enumDecl == nil || enumDecl.Name == nil {
 		return

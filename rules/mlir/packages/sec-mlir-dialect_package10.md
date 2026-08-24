@@ -35,7 +35,7 @@ general user enum/union lowering.
 Implementation follows:
 
 ```text
-rules/errors/errorhandling.txt
+rules/errors/errorhandling.md
 rules/errors/runtime_checks.md
 rules/foundations/operators.md
 rules/errors/panic.md

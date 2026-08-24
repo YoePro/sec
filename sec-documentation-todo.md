@@ -408,7 +408,7 @@ rules/concurrency/threads.md
 rules/concurrency/cancellation.md
 rules/errors/panic.md
 rules/errors/runtime_checks.md
-rules/target_profiles.md
+rules/platform/target_profiles.md
 ```
 
 ---
@@ -643,11 +643,11 @@ unsafe provenance.
 
 Recommended order:
 
-1. `target_profiles.md`
+1. `platform/target_profiles.md` — written
 2. `volatile.md`
 3. `interrupts.md`
-4. `abi.md`
-5. `platform_model.md`
+4. `platform/abi.md` — written
+5. `platform/platform_model.md` — written
 6. `inline_assembly.md`
 7. final synchronization of `isr_analysis.md`
 8. synchronize `ffi.txt`
@@ -656,7 +656,7 @@ Recommended order:
 
 ### Reasoning
 
-`target_profiles.md` defines which guarantees and services exist.
+`platform/target_profiles.md` defines which guarantees and services exist.
 
 `volatile.md` must be stable before interrupt and MMIO rules.
 

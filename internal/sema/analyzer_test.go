@@ -2471,6 +2471,39 @@ fn Allowed(opaque: RawPtr[void], result: Result[void, ContractError]) void {
 	}
 }
 
+func TestCallableCapabilitiesParticipateInSemanticTypeIdentity(t *testing.T) {
+	program := parser.New(lexer.New(`
+module main
+
+type Callables struct {
+    shared: fn(int) int,
+    mutable: mut fn(int) int,
+    consuming: -> fn(int) int,
+}
+`)).ParseProgram()
+	analyzer := NewAnalyzer()
+	if errors := analyzer.Analyze(program); len(errors) != 0 {
+		t.Fatalf("sema errors: %v", errors)
+	}
+	fields := analyzer.Types()["Callables"].Fields
+	wantCapabilities := []CallableCapability{CallableShared, CallableMutable, CallableConsuming}
+	wantNames := []string{"fn(int) int", "mut fn(int) int", "-> fn(int) int"}
+	for index := range wantCapabilities {
+		if got := normalizedCallableCapability(fields[index].Type.FunctionCapability); got != wantCapabilities[index] {
+			t.Fatalf("field %d capability = %q, want %q", index, got, wantCapabilities[index])
+		}
+		if got := typeDisplayName(fields[index].Type); got != wantNames[index] {
+			t.Fatalf("field %d display = %q, want %q", index, got, wantNames[index])
+		}
+	}
+	if sameFunctionType(fields[0].Type, fields[1].Type) || sameFunctionType(fields[1].Type, fields[2].Type) {
+		t.Fatal("distinct callable capabilities collapsed to one semantic type identity")
+	}
+	if canonicalTypeIdentity(fields[0].Type) == canonicalTypeIdentity(fields[1].Type) || canonicalTypeIdentity(fields[1].Type) == canonicalTypeIdentity(fields[2].Type) {
+		t.Fatal("distinct callable capabilities collapsed to one canonical type identity")
+	}
+}
+
 func TestTemporalBuiltinTypesResolveWithoutImport(t *testing.T) {
 	input := `
 module main
@@ -6936,7 +6969,7 @@ fn Test() int {
 	assertSemaErrors(t, errors, nil)
 }
 
-// rules/errors/errorhandling.txt and rules/control-flow/flowcontrol_match.md;
+// rules/errors/errorhandling.md and rules/control-flow/flowcontrol_match.md;
 // correction20.md makes Err(_) an exhaustive try-handler catch-all.
 func TestTryErrDiscardPatternIsAccepted(t *testing.T) {
 	input := `

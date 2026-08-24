@@ -386,10 +386,23 @@ type TypeReference struct {
 	EventCapacitySet bool
 
 	// FunctionParameterTypes and FunctionReturnType are used for function
-	// value types such as fn(int, string) bool.
+	// value types such as fn(int, string) bool. FunctionCapability preserves
+	// the callable authority prefix from rules/declarations/lambda-functions.md.
+	FunctionCapability     CallableCapability
 	FunctionParameterTypes []*TypeReference
 	FunctionReturnType     *TypeReference
 }
+
+// CallableCapability is the source-level authority required to invoke a
+// callable value under rules/declarations/lambda-functions.md. It is separate
+// from parameter ownership and method receiver capability.
+type CallableCapability string
+
+const (
+	CallableShared    CallableCapability = "shared"
+	CallableMutable   CallableCapability = "mutable"
+	CallableConsuming CallableCapability = "consuming"
+)
 
 func (tr *TypeReference) TokenLiteral() string {
 	return tr.Token.Lexeme

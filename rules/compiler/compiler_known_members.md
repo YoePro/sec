@@ -2520,6 +2520,24 @@ Allocation origin is resolved through `allocation.txt` and `arena.md`.
 
 # Ownership and borrow integration
 
+## Result projections
+
+The canonical registry includes these compiler-known `Result[T, E]` members:
+
+```text
+Ok()   -> Option[T]       consuming receiver
+Err()  -> Option[E]       consuming receiver
+OkRef  -> Option[ref T]   shared non-consuming property
+ErrRef -> Option[ref E]   shared non-consuming property
+```
+
+Consuming projections transfer the retained active payload without hidden
+clone and destroy the non-retained payload exactly once. Sema rejects a
+projection that might abandon a non-discardable obligation. Borrowed properties
+create a shared payload borrow only when active and cannot outlive the Result.
+Registry entries expose stable IDs, exact receiver/result types, receiver mode,
+effects, and normative source so compiler and LSP use identical facts.
+
 Registry entries specify whether the receiver is:
 
 ```text
@@ -3278,7 +3296,7 @@ reference_model.md
 semantic_ir.txt
 stdlib.md
 string memory rules
-target_profiles.md
+rules/platform/target_profiles.md
 types.md
 unsafe.md
 ```

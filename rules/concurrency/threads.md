@@ -1035,7 +1035,7 @@ ownership.md
 borrowing.txt
 lifetime_analysis.txt
 destruction.txt
-errorhandling.txt
+errorhandling.md
 semantic_ir.txt
 core-library.md
 rules_implementations.txt

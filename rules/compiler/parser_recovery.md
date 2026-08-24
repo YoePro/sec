@@ -3525,7 +3525,7 @@ flowcontrol_for.md
 flowcontrol_while.md
 flowcontrol_switch.md
 flowcontrol_match.md
-errorhandling.txt
+errorhandling.md
 inline_assembly.md
 language-rulebook-status.md
 rules_implementations.txt

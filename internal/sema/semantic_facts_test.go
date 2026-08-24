@@ -58,6 +58,38 @@ fn Main(flag: bool) bool {
 	}
 }
 
+func TestResolvedCallableCapabilityFactsAreCompilerOwned(t *testing.T) {
+	source := `module main
+fn Apply(mutable: mut fn(int) int, consuming: -> fn() int) int {
+  discard mutable(1)
+  return consuming()
+}`
+	p := parser.New(lexer.NewWithFile(source, "callable-facts.sec"))
+	result := p.Parse()
+	if result.HasErrors {
+		t.Fatalf("parse: %v", p.Errors())
+	}
+	a := NewAnalyzer()
+	if errs := a.Analyze(result.Program); len(errs) > 0 {
+		t.Fatalf("sema: %v", errs)
+	}
+	function := result.Program.Statements[1].(*ast.FunctionDeclaration)
+	mutableCall := function.Body.Statements[0].(*ast.DiscardStatement).Value.(*ast.CallExpression)
+	consumingCall := function.Body.Statements[1].(*ast.ReturnStatement).Value.(*ast.CallExpression)
+
+	mutable, ok := a.ResolvedCallableCapabilityOf(mutableCall.Callee)
+	if !ok || mutable.Capability != CallableMutable || mutable.Spelling != "mut fn" || mutable.ConsumesCallable {
+		t.Fatalf("mutable callable fact = %#v, %t", mutable, ok)
+	}
+	consuming, ok := a.ResolvedCallableCapabilityOf(consumingCall.Callee)
+	if !ok || consuming.Capability != CallableConsuming || consuming.Spelling != "-> fn" || !consuming.ConsumesCallable {
+		t.Fatalf("consuming callable fact = %#v, %t", consuming, ok)
+	}
+	if consuming.InvocationRequirement != "owned callable access" {
+		t.Fatalf("consuming invocation requirement = %q", consuming.InvocationRequirement)
+	}
+}
+
 func TestResolvedMatchPlanIsReadOnlyAndNumeric(t *testing.T) {
 	source := `module main
 enum Flag: bit[1] { Off = 0, On = 1 }

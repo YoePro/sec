@@ -1109,7 +1109,7 @@ rules/memory/copy_move.md
 rules/memory/borrowing.txt
 rules/memory/references.txt
 rules/memory/destruction.txt
-rules/errors/errorhandling.txt
+rules/errors/errorhandling.md
 rules/compiler/semantic_ir.txt
 rules/tooling/diagnostics.txt
 rules/tooling/formatter.md

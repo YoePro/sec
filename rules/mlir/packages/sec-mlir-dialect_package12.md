@@ -90,7 +90,7 @@ Implementation follows:
 rules/control-flow/flowcontrol_match.md
 rules/declarations/enums.md
 rules/declarations/unions.md
-rules/errors/errorhandling.txt
+rules/errors/errorhandling.md
 rules/memory/copy_move.md
 rules/memory/borrowing.txt
 rules/memory/ownership.md

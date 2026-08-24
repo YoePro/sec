@@ -1728,6 +1728,30 @@ diagnostics participate in project severity policy.
 The semantic conditions are defined by `rules/control-flow/discard.md`.
 
 =============================================================================================================================================================================================
+Errorhandling revision-2 diagnostic requirements
+=================================================
+
+Error-handling diagnostics follow the mentor principle. Primary messages state
+the source value or operation, the earlier operation that caused its current
+state, why the use is invalid, expected and actual success/error types, and a
+practical source-level fix when known. Compiler-theory terms such as affine
+projection or ownership lattice are optional secondary detail.
+
+Focused mandatory diagnostics cover at least non-error Result channels,
+invalid error narrowing or cross-concrete propagation, Result/Option pattern
+mismatch, forbidden Ok/Some try handlers, obsolete nested match wrappers,
+unreachable try handlers with their covering source, incompatible unmatched
+partial propagation, heterogeneous named Err binding, missing try on fallible
+assignment, missing explicit try-set error type, invalid return Ok in try-set,
+fallible getters, use after consuming Result projections, non-discardable
+abandoned projection payloads, and invalid negative Some binding.
+
+For consuming `.Ok()` / `.Err()`, diagnostics point to the consume location and
+explain that the original Result is unavailable, suggesting earlier use,
+OkRef/ErrRef borrowing, or restructuring where appropriate. Compiler and LSP
+consume the same resolved ownership and error facts.
+
+=============================================================================================================================================================================================
 Current implementation status
 =============================
 

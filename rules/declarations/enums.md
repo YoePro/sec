@@ -92,6 +92,25 @@ implementation range.
 
 An enum must declare at least one member.
 
+An ordinary closed enum may be marked as a Sec error type:
+
+```sec
+enum ParseError error {
+    EmptyInput
+    InvalidToken
+}
+
+enum ProtocolError uint16 error {
+    InvalidFrame = 1
+}
+```
+
+The marker follows representation information, preserves nominal closed-enum
+semantics, and makes the enum assignable to compiler-known `error`. Different
+concrete error enums remain non-assignable to one another. Widening preserves
+the concrete enum and member identity. Bit-backed enums are not automatically
+error types.
+
 ---
 
 ## 4. Enum members

@@ -89,6 +89,7 @@ any
 bool
 byte
 char
+error
 rune
 string
 void
@@ -1673,7 +1674,15 @@ Named unit types remain distinct according to their unit semantics.
 
 They are not special parser spellings for ordinary type references.
 
-`Result[T, E]` participates in explicit typed error handling.
+`Result[T, E]` participates in explicit typed error handling. `E` must be the
+compiler-known `error` root or a concrete Sec type declared as an error type.
+`Result[T, string]` is invalid.
+
+For a concrete error type, implicit widening `ConcreteError -> error` is valid
+and preserves concrete type identity, active variant, payload, ownership, and
+destruction obligations. Implicit `error -> ConcreteError` narrowing and
+cross-concrete error conversion remain invalid. This relation is error-specific
+and does not introduce general inheritance.
 
 `Option[T]` represents explicit optionality.
 
@@ -1875,7 +1884,7 @@ functions.md
 declarations/lambda-functions.md
 declarations/generics.md
 declarations/interfaces.md
-errorhandling.txt
+errorhandling.md
 declarations/registers.md
 platform/fixed-address-bindings.md
 platform/ffi.md

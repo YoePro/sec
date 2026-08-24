@@ -922,7 +922,7 @@ BinarySymbolIdentity
 
 This rulebook owns physical ABI contract identity.
 
-`linking.md` owns final binary symbol and artifact linkage semantics.
+`rules/compiler/linking.md` owns final binary symbol and artifact linkage semantics.
 
 A semantic declaration may retain the same identity while its ABI fingerprint
 changes.

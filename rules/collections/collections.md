@@ -2322,7 +2322,7 @@ borrowing.txt
 ownership.md
 copy_move.md
 destruction.txt
-errorhandling.txt
+errorhandling.md
 platform/ffi.md
 shaped-types.md
 semantic_ir.txt

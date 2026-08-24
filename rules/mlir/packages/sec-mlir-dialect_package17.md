@@ -61,7 +61,7 @@ rules/memory/destruction.txt
 rules/control-flow/defer.md
 rules/control-flow/discard.md
 rules/memory/borrowing.txt
-rules/errors/errorhandling.txt
+rules/errors/errorhandling.md
 rules/compiler/semantic_ir.txt
     ↓
 local P13-P16 normative amendments

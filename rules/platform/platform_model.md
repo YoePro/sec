@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-13
-- **Last updated:** 2026-08-13
+- **Last updated:** 2026-08-24
 - **Document revision:** 1
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/platform/platform_model.md`
@@ -50,7 +50,7 @@ TargetProfile versus BuildProfile distinction
 CompilationPlan construction and invariants
 canonical platform registry and identities
 CPU, TuneCPU, CPU feature, and Device selection
-resolved platform capabilities and activation state
+resolved platform capability availability and cross-domain compatibility
 resolved Architecture, Memory, Runtime, Execution, ABI, and Link submodels
 platform source selection
 compiler-target-support separation
@@ -63,6 +63,8 @@ This rulebook does not own the detailed semantics of:
 
 ```text
 project manifest syntax             -> projects rulebook
+target-profile activation, policy,
+resource, and resolution semantics  -> rules/platform/target_profiles.md
 ABI calling conventions             -> abi rulebook
 interrupt semantics                 -> interrupts rulebook
 volatile access                     -> volatile rulebook

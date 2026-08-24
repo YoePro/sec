@@ -1108,7 +1108,7 @@ Detailed semantics are owned by the narrow rulebooks where applicable:
 - `generics.md` — generic targets and parameters;
 - `interfaces.md` — interface conformance and interface implementations;
 - `destruction.txt` — destruction, partial construction, and `free` cleanup;
-- `errorhandling.txt` — `try`, error propagation, and exact error typing;
+- `errorhandling.md` — `try`, error propagation, and exact error typing;
 - `ownership.md` / `borrowing.md` — ownership and receiver/body access;
 - `names_scopes_visibility.md` — member namespaces, overload identity, visibility;
 - `grammar.md` — consolidated syntax;

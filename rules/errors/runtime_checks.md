@@ -1218,13 +1218,30 @@ A panic-capable program requires only the selected endpoint or trap.
 
 # Required synchronization
 
+## Errorhandling revision-2 integration
+
+A protected expression may contain several fallible sources with distinct
+concrete error types. The compiler tracks these as an internal failure set;
+this analysis metadata is not an inferred source union or public error type.
+
+Every unhandled failure propagated by naked `try` must be assignable to the
+enclosing Result error channel. Concrete Sec errors may widen to compiler-known
+`error`; the compiler never invents a user-union wrapper.
+
+Local try-handler lists are partial. Unmatched compatible failures propagate.
+`Err(_)` may handle a heterogeneous set without binding it, while `Err(name)`
+requires one already resolved binding type and cannot force inference of a
+hidden common type. Failures from a guard or handler body are outside the
+protected failure set and require their own handling. Option `None` remains
+ordinary absence under `errorhandling.md`.
+
 This document must remain synchronized with:
 
 ```text
 panic.md
 operators.md
 grammar.md
-errorhandling.txt
+errorhandling.md
 default_values.md
 contracts.md or variables_contracts.txt
 types.md

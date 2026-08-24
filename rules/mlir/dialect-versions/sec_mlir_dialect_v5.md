@@ -10,7 +10,7 @@ This rulebook is subordinate to:
 
 ```text
 rules/errors/runtime_checks.md
-rules/errors/errorhandling.txt
+rules/errors/errorhandling.md
 rules/foundations/operators.md
 rules/errors/panic.md
 rules/library/core-library.md

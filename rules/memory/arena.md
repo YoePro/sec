@@ -3855,7 +3855,7 @@ semantic_ir.txt
 spawn.md
 storage.md
 structured_concurrency.md
-target_profiles.md
+rules/platform/target_profiles.md
 tasks.txt
 threads.md
 unsafe.md

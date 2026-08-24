@@ -1947,6 +1947,14 @@ func distinctCallees(sites []sema.CallSite) int {
 
 func typedHover(rng lspRange, name string, typ sema.Type) hoverResult {
 	contents := fmt.Sprintf("```sec\n%s: %s\n```", name, lspTypeName(typ))
+	// rules/declarations/lambda-functions.md: callable authority is a resolved
+	// Sema fact. The LSP presents it and never re-parses fn/mut fn/-> fn syntax.
+	if capability, ok := sema.CallableCapabilityFactOf(typ); ok {
+		contents += fmt.Sprintf("\n\nCallable capability: `%s`\n\nInvocation requires: %s.", capability.Spelling, capability.InvocationRequirement)
+		if capability.ConsumesCallable {
+			contents += "\n\nA successful invocation consumes the callable value."
+		}
+	}
 	if value, source, ok := sema.DefaultValuePreview(typ, 8); ok {
 		contents += fmt.Sprintf("\n\nDefault: `%s`\n\nSource: `%s`", value, source)
 	} else {

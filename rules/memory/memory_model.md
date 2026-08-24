@@ -3649,7 +3649,7 @@ struct.md
 unions.md
 atomics rulebook
 mutex rulebook
-target_profiles.md
+rules/platform/target_profiles.md
 platform_model.md
 semantic_ir.txt
 compiler_pipeline.txt

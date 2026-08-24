@@ -1232,7 +1232,7 @@ declarations/generics.md
 declarations/interfaces.md
 impl.md
 properties.md
-errorhandling.txt
+errorhandling.md
 allocation.txt
 ownership.md
 borrowing.txt
@@ -1254,7 +1254,7 @@ platform/ffi.md
 projects.txt
 modules.md
 compiler/initialization.md
-target_profiles.md
+rules/platform/target_profiles.md
 platform_model.md
 platform/abi.md
 semantic_ir.txt

@@ -41,7 +41,7 @@ Implementation follows:
 
 ```text
 rules/errors/runtime_checks.md
-rules/errors/errorhandling.txt
+rules/errors/errorhandling.md
 rules/foundations/operators.md
 rules/errors/panic.md
 rules/library/core-library.md
@@ -96,7 +96,7 @@ Package 9 therefore uses the current `main` versions of:
 
 ```text
 runtime_checks.md
-errorhandling.txt
+errorhandling.md
 panic.md
 core-library.md
 types.md

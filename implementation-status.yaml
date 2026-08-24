@@ -1,5 +1,5 @@
 schema_version: 1
-updated: "2026-08-23"
+updated: "2026-08-24"
 purpose: >-
   Canonical implementation ledger for compiler and tooling work. Normative
   language behavior remains in rules/, while implementation status is migrated
@@ -31,7 +31,7 @@ integrations:
       - rules/foundations/grammar.md
       - rules/tooling/formatter.md
       - rules/tooling/diagnostics.txt
-      - rules/errors/errorhandling.txt
+      - rules/errors/errorhandling.md
       - rules/platform/ffi.md
     code:
       - internal/ast/ast.go
@@ -117,7 +117,7 @@ integrations:
       - rules/foundations/grammar.md
       - rules/tooling/formatter.md
       - rules/tooling/diagnostics.txt
-      - rules/errors/errorhandling.txt
+      - rules/errors/errorhandling.md
     code:
       - internal/ast/ast.go
       - internal/parser/parser.go
@@ -333,7 +333,7 @@ integrations:
       - rules/foundations/grammar.md
       - rules/declarations/unions.md
       - rules/declarations/enums.md
-      - rules/errors/errorhandling.txt
+      - rules/errors/errorhandling.md
       - rules/control-flow/discard.md
       - rules/memory/ownership.md
       - rules/memory/copy_move.md
@@ -672,7 +672,7 @@ integrations:
       - rules/memory/borrowing.txt
       - rules/memory/lifetime_analysis.txt
       - rules/memory/copy_move.md
-      - rules/errors/errorhandling.txt
+      - rules/errors/errorhandling.md
       - rules/errors/panic.md
       - rules/control-flow/discard.md
       - rules/compiler/semantic_ir.txt
@@ -967,7 +967,7 @@ integrations:
   - id: tooling.lsp-same-module-analysis
     area: tooling
     status: implemented
-    integrated: "2026-08-14"
+    integrated: "2026-08-24"
     summary: >-
       Analyzes every valid sibling source declaring the active file's module
       as one compiler-owned semantic program, including unsaved editor
@@ -1022,6 +1022,7 @@ integrations:
     code:
       - internal/modules/model.go
       - internal/modules/graph.go
+      - internal/modules/instance_graph.go
       - internal/parser/parser.go
       - internal/lsp/server/module_sources.go
       - cmd/compiler/main.go
@@ -1029,6 +1030,7 @@ integrations:
     tests:
       - internal/modules/model_test.go
       - internal/modules/graph_test.go
+      - internal/modules/instance_graph_test.go
       - internal/parser/parser_test.go
       - internal/lsp/server/module_sources_test.go
       - cmd/compiler/main_test.go
@@ -1042,6 +1044,10 @@ integrations:
       - cross-module platform syscall entry points made explicitly public instead of relying on legacy dotted-name visibility grouping
       - single, aliased, and grouped import syntax with canonical-path validation
       - deterministic ModuleGraph storage, duplicate-edge and self-import rejection, strongly connected components, representative cycle paths, and dependency-first topological ordering
+      - structured deterministic module-cycle diagnostics with a canonical primary import location and navigable related import-edge locations
+      - stable delimiter-safe CrossModuleDeclarationIdentity constructed from canonical ModuleIdentity and owning declaration identity, independent of short module names and import aliases
+      - CompilationPlan-scoped ModuleInstanceGraph with stable logical ModuleIdentity, independent per-Variant selected-source sets, selected-endpoint import validation, and dependency-first semantic processing order
+      - immutable defensive ModuleDependencyFacts snapshots for initialization consumers, retaining plan, module, source-selection, and import-edge facts without defining runtime initialization or deinitialization order
       - deterministic same-directory LSP module assembly with editor overlays and shared declaration analysis
       - partial project, std, and platform source import discovery with deterministic source-file ordering
     remaining:
@@ -1057,11 +1063,7 @@ integrations:
       - keep imported declarations qualified, prevent implicit name injection and re-export, and reject unsupported selective and wildcard imports
       - enforce internal-directory access during canonical resolution before declaration visibility checks
       - integrate the canonical ModuleGraph into compiler and LSP resolution, cycle diagnostics, and CompilationPlan processing
-      - retain deterministic navigable import-edge locations in cycle reports
-      - keep logical ModuleIdentity stable across Variants while separating plan-specific ModuleInstance graphs and selected sources
       - implement canonical ModuleSurface creation from public declarations and reject public signatures exposing inaccessible semantic types
-      - construct stable cross-module declaration identities from ModuleIdentity and owning declaration identity
-      - retain module graph facts for initialization consumers without treating dependency order as initialization order
       - discover only the source graph reachable for the active Target and CompilationPlan
       - add deterministic ModuleSurface fingerprints and compatible separate-compilation serialization
       - invalidate importer resolution only as permitted by semantic surface changes, with conservative fallback when equivalence is unproven
@@ -1080,6 +1082,107 @@ integrations:
     verification:
       - command: go test ./internal/modules ./internal/parser -run 'Module|Import' -count=1
         result: passed
+      - command: go test ./internal/modules -run 'CrossModuleDeclarationIdentity|ModuleCycleDiagnostic' -count=1
+        result: passed
+      - command: go test ./internal/modules -run 'ModuleInstanceGraph|ModuleDependencyFacts' -count=1
+        result: passed
+
+  - id: compiler.linking
+    area: compiler-linking-and-artifacts
+    status: planned
+    integrated: "2026-08-24"
+    document_revision: "1"
+    repository_baseline: "c515862"
+    summary: >-
+      Implements the canonical Sec linking model: CompilationPlan-specific LinkPlan and
+      LinkEnvironment authority, deterministic binary symbol identity, native/foreign
+      symbol resolution, typed dependency inputs and provenance, archive fixed-point
+      resolution, link roots/reachability, dead stripping/LTO constraints, reproducible
+      toolchain invocation, and final artifact verification.
+    rules:
+      - rules/compiler/linking.md
+      - rules/compiler/initialization.md
+      - rules/platform/platform_model.md
+      - rules/platform/target_profiles.md
+      - rules/platform/abi.md
+      - rules/platform/ffi.md
+      - rules/projects/modules.md
+      - rules/projects/projects.txt
+      - rules/declarations/static.md
+      - rules/memory/destruction.txt
+      - rules/concurrency/concurrency.md
+      - rules/mlir/sec_mlir.md
+      - rules/compiler/semantic_ir.txt
+    remaining:
+      - introduce one canonical LinkPlan for every concrete CompilationPlan that requires binary linkage
+      - make CompilationPlan.LinkEnvironment authoritative for object format, symbol model, entry convention, relocation model, platform linkage requirements, and linker capabilities
+      - replace unstructured canonical linker-argument construction with typed link inputs carrying dependency provenance
+      - resolve logical native dependencies into target-specific ResolvedNativeDependency and LinkInput forms before concrete invocation where supported
+      - preserve provenance for project, FFI binding, initialization, shutdown, runtime, platform, and explicit-build link inputs
+      - introduce deterministic collision-resistant BinarySymbolIdentity distinct from SemanticDeclarationIdentity, ABISignature/ABIFingerprint, and EncodedLinkSymbol
+      - separate Sec-native mangling from target object-format symbol encoding and keep import aliases, traversal order, host state, and worker scheduling out of native binary identity
+      - keep foreign @link_name limited to foreign linkage identity and independent from dependency selection, ABI family, ownership, effects, and Sec declaration identity
+      - define explicit binary linkage categories for private, native, foreign, generated-entry, generated-runtime, generated-callback, and platform-required symbols
+      - keep object-unit identity separate from Sec module/declaration identity and support module, multi-object, whole-program, and LTO unit strategies
+      - consume ProgramInitializationPlan and ProgramShutdownPlan requirements for startup objects, entry adapters, runtime/shutdown components, sections, and termination integration
+      - represent symbol definitions and references using canonical native BinarySymbolIdentity or foreign linkage identity rather than source spelling
+      - implement output-kind-specific symbol-resolution policy for executables, static libraries, shared libraries, and object outputs
+      - permit static-library/object outputs to preserve unresolved external references where later consumers are expected to provide them
+      - require final executable symbol requirements to resolve through included definitions or valid declared dynamic/platform imports
+      - reject duplicate non-coalescible native Sec definitions independent of link order and preserve diagnostics for all conflicting providers
+      - support explicitly coalescible compiler-generated/specialization definitions with canonical identity and ABI compatibility verification
+      - do not add a general Sec 0.1 source-level weak-linkage mechanism
+      - model static archives as containers of link units and implement canonical fixed-point member extraction from reachable unresolved requirements
+      - materialize archive rescans, groups, or equivalent target mechanisms as toolchain strategy rather than source/library-order semantics
+      - permit cyclic native-library dependency graphs when the selected LinkEnvironment can realize the required fixed-point resolution and reject plans when it cannot
+      - model shared libraries as dynamic provider dependencies and import libraries/frameworks as target-specific realizations of logical dependencies
+      - represent dynamic/provider ambiguity and interposition only when explicitly permitted by the selected LinkEnvironment
+      - carry target-specific foreign/provider version metadata where supplied without adding Sec source syntax
+      - introduce canonical LinkReachabilityGraph and LinkRoot concepts for executable, library, runtime, initialization, shutdown, static-storage, callback, and platform retention
+      - ensure Sec public visibility does not automatically make a declaration a binary root or externally exported symbol
+      - retain executable physical entry, generated startup chain, source-level main, required runtime/shutdown facilities, and platform retention roots
+      - integrate static-storage reachability with deterministic static-destruction requirements so linker GC cannot remove storage required by ProgramShutdownPlan
+      - avoid live foreign-import requirements for unused foreign declarations and create them only from reachable foreign references
+      - retain compiler-generated callback thunks only through actual live callback contracts while preserving their address-based foreign reachability
+      - support compiler-known PlatformRetentionRequirement inputs for reset vectors, interrupt vectors, fixed-address objects, hardware tables, and related target facilities
+      - permit dead stripping as an optimization while rejecting removal of any canonical root or reachable dependency
+      - materialize canonical retention into concrete linker garbage-collection/section mechanisms rather than treating external-linker GC as the definition of Sec reachability
+      - retain reusable library binary surface independently of internal call reachability while permitting removal of private implementation details
+      - allow LTO to inline, internalize, merge units, coalesce compatible definitions, and remove private dead code while preserving binary surfaces, ABI contracts, foreign requirements, initialization/shutdown requirements, dynamic-link constraints, and platform roots
+      - prevent whole-program optimization assumptions that violate LinkEnvironment dynamic-resolution, external-consumer, or interposition contracts
+      - run final artifact verification against the resolved LinkPlan after external linker/toolchain success
+      - verify target/output identity, entry contract, mandatory symbol resolution, permitted dynamic imports, required roots/surfaces, startup/shutdown facilities, ABI compatibility, native dependency realization, and stale-artifact constraints
+      - resolve concrete LinkToolchain through LinkEnvironment and reject toolchains lacking required object-format, relocation, archive, LTO, dynamic-link, response-file, or platform capabilities
+      - permit host configuration for locating compatible tools without allowing PATH/default-linker behavior to define target semantics
+      - make linker search paths explicit LinkPlan inputs with provenance and prohibit accidental current-directory/host-global resolution from becoming canonical dependency semantics
+      - reject ambiguous dependency resolution when no owning dependency rule defines canonical selection and avoid using search-path order as package/provider precedence
+      - expand target default libraries, runtime objects, startup objects, and similar driver defaults into canonical LinkPlan requirements even when materialized implicitly
+      - support explicit target/toolchain-specific raw linker options only as build escape-hatch inputs that participate in fingerprints and cannot silently invalidate canonical invariants
+      - treat response files as transport/serialization details and keep LinkPlan semantics identical between direct argv and response-file invocation
+      - materialize concrete linker inputs in deterministic plan-derived order independent of filesystem, map, source traversal, and worker completion order
+      - control or explicitly model output-affecting tool execution state such as working directory, toolchain path, SDK/sysroot, search paths, and relevant environment variables
+      - use reproducible-output toolchain facilities where supported without making non-semantic timestamps or random build IDs part of Sec program semantics
+      - include LinkPlan, LinkEnvironment, toolchain identity/version, input artifacts, resolved dependencies, generated startup/runtime/shutdown inputs, explicit options, LTO mode, output kind, and relevant reproducibility settings in link cache identity
+      - map external linker errors to BinarySymbolIdentity, ForeignSymbolRequirement, source use, dependency provenance, and LinkRoot information where possible
+      - distinguish ToolchainInvocationFailure, LinkResolutionFailure, and ArtifactVerificationFailure diagnostics
+      - expose resolved toolchain, inputs, dependencies, search paths, startup/runtime/shutdown components, effective explicit options, LTO mode, and output path for build diagnostics
+      - add cross-compilation tests proving host startup objects, host system libraries, host object defaults, and host linker behavior cannot leak into target LinkPlan
+      - add multi-Variant tests proving each selected Target Variant receives an independent LinkPlan, link operation, and output artifact
+      - add deterministic symbol, archive, provider, reachability, dead-stripping, LTO, toolchain-materialization, search-path, artifact-verification, cross-compilation, and diagnostic regression tests
+      - update repository-level implementation-status verification commands once the first canonical LinkPlan vertical slice is implemented
+    excluded:
+      - Sec module and source declaration identity semantics
+      - ABI parameter/return classification
+      - FFI source-position legality and foreign resource ownership
+      - program initialization and shutdown ordering semantics
+      - storage-layout semantics
+      - target-profile capability definitions
+      - general source-level weak linkage
+      - general source-level C ABI export of Sec functions
+      - source-level linker command, search-path, or library-order syntax
+      - one-object-per-module requirements
+      - universal object-format or linker implementation requirements
+      - byte-identical output on toolchains without reproducible-output support
 
   - id: compiler.program-initialization
     area: projects-initialization-and-build
@@ -1103,6 +1206,7 @@ integrations:
       - rules/concurrency/concurrency.md
       - rules/concurrency/structured_concurrency.md
       - rules/platform/platform_model.md
+      - rules/platform/target_profiles.md
       - rules/platform/abi.md
       - rules/mlir/sec_mlir.md
       - rules/compiler/semantic_ir.txt
@@ -1167,7 +1271,7 @@ integrations:
       path. This keeps ordinary absence in Option distinct from typed failure
       in Result and makes bodyless propagation visible to the user.
     rules:
-      - rules/errors/errorhandling.txt
+      - rules/errors/errorhandling.md
       - rules/tooling/lsp.md
     remaining:
       - show the operand callable's exact declared Option[T] or Result[T, E] return type
@@ -1339,7 +1443,7 @@ integrations:
       - rules/foundations/grammar.md
       - rules/memory/ownership.md
       - rules/memory/copy_move.md
-      - rules/errors/errorhandling.txt
+      - rules/errors/errorhandling.md
       - rules/compiler/semantic_ir.txt
     code:
       - internal/ast/ast.go
@@ -1415,10 +1519,12 @@ integrations:
       capture modes, and closure ownership. Basic anonymous functions, function
       values and calls, explicit plain captures, lambda scopes and returns, and
       non-capturing backend lowering already exist. Owned by-value lambda
-      parameters are now mutable like ordinary function parameters. Capture
-      modes beyond plain value capture, callable-capability types and inference,
-      escaping environments, and complete closure lowering remain substantial
-      work.
+      parameters are now mutable like ordinary function parameters. Shared,
+      mutable, and consuming callable capabilities are preserved across syntax,
+      AST, semantic type identity, formatting, and compiler-owned LSP facts.
+      Capability inference and compatibility, capture modes beyond plain value
+      capture, escaping environments, and complete closure lowering remain
+      substantial work.
     rules:
       - rules/declarations/lambda-functions.md
       - rules/declarations/functions.md
@@ -1430,22 +1536,33 @@ integrations:
       - rules/analysis/closure_analysis.md
       - rules/analysis/escape_analysis.md
       - rules/compiler/semantic_ir.txt
+      - rules/tooling/formatter.md
+      - rules/tooling/lsp.md
     code:
       - internal/ast/ast.go
       - internal/parser/expression.go
+      - internal/parser/parser.go
       - internal/sema/analyzer.go
+      - internal/sema/semantic_facts.go
       - internal/sema/types.go
       - internal/formatter/formatter.go
       - cmd/lsp/main.go
     tests:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
+      - internal/sema/semantic_facts_test.go
       - internal/formatter/formatter_test.go
+      - cmd/lsp/main_test.go
       - testdata/lambda_valid.sec
       - testdata/lambda_invalid.sec
     implemented:
       - anonymous `fn` expressions with explicit typed parameters, explicit result type, and block body
       - basic `fn(ParameterTypes) ReturnType` types, named function values, target-directed overload selection, and function-value calls
+      - parser and AST retention of shared `fn`, mutable `mut fn`, and consuming `-> fn` callable type capabilities independently of parameter ownership
+      - semantic callable capability identity, exact equality, generic substitution matching, and canonical `fn`, `mut fn`, and `-> fn` display names
+      - compiler-owned normalized callable capability facts for shared, mutable/exclusive, and owned consuming invocation authority
+      - formatter preservation and canonical spacing of all three callable type prefixes without changing the plain `fn` lambda introducer
+      - LSP hover presentation of capability spelling, invocation authority, and successful-call consumption from compiler-owned Sema facts
       - explicit plain-name capture lists with duplicate, undefined-name, parameter-conflict, and implicit-capture diagnostics
       - exactly-once plain capture analysis for the currently represented symbol subset and compiler-owned capture facts consumed by escape analysis
       - lambda-local scope, return validation, and control-flow boundary handling
@@ -1454,7 +1571,6 @@ integrations:
       - selected rejection of local-reference escape through captured lambdas
       - non-capturing lambda lowering through the maintained backends
     remaining:
-      - add `fn`, `mut fn`, and `-> fn` callable capabilities to parser, AST, semantic types, formatter, and compiler-owned LSP facts
       - infer callable capability from environment mutation and consumption and enforce capability compatibility
       - preserve parameter ownership modes and native variadic shape in first-class callable type identity and calls
       - parse, represent, format, and expose `capture(-> value)`, `capture(ref value)`, and `capture(ref mut value)`
@@ -1478,7 +1594,7 @@ integrations:
       - direct recursive self-binding syntax
       - callable equality, ordering, or null callable values
     verification:
-      - command: go test ./internal/parser ./internal/sema ./internal/formatter ./cmd/lsp -run 'Lambda|FunctionType|OwnedLambdaParameter' -count=1
+      - command: go test ./internal/parser ./internal/sema ./internal/formatter ./cmd/lsp -run 'Lambda|FunctionType|CallableCapability|OwnedLambdaParameter' -count=1
         result: passed
 
   - id: tooling.formatter-delimiter-handoff
@@ -1491,7 +1607,7 @@ integrations:
     rules:
       - rules/tooling/formatter.md
       - rules/foundations/grammar.md
-      - rules/errors/errorhandling.txt
+      - rules/errors/errorhandling.md
     code:
       - internal/formatter/formatter.go
     tests:
@@ -1506,6 +1622,30 @@ integrations:
       - command: go test ./internal/formatter -run TestFormatTryHandlerAfterStructLiteralCallArgument -v
         result: passed
       - command: go test ./cmd/lsp -run 'Format|Formatting' -v
+        result: passed
+
+  - id: tooling.formatter-single-line-call-spacing
+    area: tooling
+    status: implemented
+    integrated: "2026-08-24"
+    summary: >-
+      Normalizes whitespace and trailing commas in calls already written on one
+      physical line while preserving intentional multiline call layout.
+    rules:
+      - rules/tooling/formatter.md
+    code:
+      - internal/formatter/formatter.go
+    tests:
+      - internal/formatter/formatter_test.go
+      - cmd/lsp/main_test.go
+    implemented:
+      - join single-line call arguments with one space after commas
+      - remove a trailing argument comma only from single-line calls
+      - preserve all existing multiline call boundaries and their required trailing comma
+      - leave comment-bearing and incomplete single-line syntax unchanged
+      - preserve formatter idempotence and expose the behavior through the shared LSP formatter
+    verification:
+      - command: go test ./internal/formatter ./cmd/lsp -run 'Format|Formatting' -count=1
         result: passed
 
   - id: frontend.parser-recovery-result
@@ -2335,13 +2475,134 @@ integrations:
       - command: go test ./internal/sema -run TestCompilerKnownAppendAcceptsTypedStructLiteralUnderTry -v
         result: passed
 
+  - id: frontend.errorhandling-v2
+    area: frontend-error-control-flow-ownership-and-lowering
+    status: partial
+    integrated: "2026-08-24"
+    document_revision: "2.0"
+    repository_baseline: "b3315f6"
+    semantic_source_parent: "45e5cd4"
+    replaces: rules/errors/errorhandling.txt
+    summary: >-
+      Migrates error handling to the revision-2 compiler-known error model,
+      typed Result and Option short-circuiting, partial guarded try handlers,
+      consuming and borrowed Result projections, explicit fallible-setter
+      contracts, ownership-aware lowering, diagnostics, formatter, and LSP facts.
+    rules:
+      - rules/errors/errorhandling.md
+      - rules/foundations/grammar.md
+      - rules/types/types.md
+      - rules/declarations/enums.md
+      - rules/declarations/unions.md
+      - rules/declarations/properties.md
+      - rules/control-flow/flowcontrol_if.md
+      - rules/control-flow/flowcontrol_match.md
+      - rules/errors/runtime_checks.md
+      - rules/compiler/compiler_known_members.md
+      - rules/memory/ownership.md
+      - rules/compiler/semantic_ir.txt
+      - rules/tooling/lsp.md
+      - rules/tooling/diagnostics.txt
+      - rules/tooling/formatter.md
+    implemented:
+      - "Result[T, E], Ok(...), Err(...), ordinary Result propagation, and local Result handlers have substantial frontend and Semantic IR support."
+      - "checked arithmetic already participates in language-defined try semantics and binds try to the complete following arithmetic expression."
+      - "current Sema exposes immutable resolved try facts for ordinary Result propagation, handled Result, and checked arithmetic propagation."
+      - "current local try-handler lowering preserves source order and has an explicit resolved handler plan through Semantic IR and Sec MLIR."
+      - "parser and Sema accept Err(_) in Result match arms and try handlers."
+      - "named try and match error bindings may be explicitly discarded in the current frontend; tests exercise Err(error) with discard error successfully."
+      - "Result is compiler-known must-use for standalone-call validation and explicit discard is governed separately by recursive discardability."
+      - "try is already accepted in if conditions when its successful value is bool."
+      - "fallible property assignment requiring try is already represented in the frontend, including local try-assignment handlers."
+      - "property parser/Sema currently support try set accessors and interface fallible-setter requirements, but the setter error type is currently declared or inferred under the pre-v2 model."
+      - "current lifecycle rules already provide explicitly typed fallible init and try new semantics; revision 2 only references those rules."
+      - "match revision 2 already defines exhaustive matching, Err(_) acknowledgement, where guards, ownership-aware bindings, and contextual final-expression arm values."
+      - "runtime-check rules already define full-expression try scope, left-to-right evaluation, first failure, and propagation by error assignability."
+      - "current formatter supports attached try-handler blocks and delimiter handoff for multiline operands."
+      - "current LSP implementation-status work already plans compiler-owned try hover facts rather than reconstructing try semantics in the editor."
+      - "migrated the canonical rulebook from rules/errors/errorhandling.txt to revision-2 rules/errors/errorhandling.md and updated active rule references"
+      - "all fourteen revision-2 correction documents have been applied to their canonical owner rulebooks and archived"
+    remaining:
+      - "error-root-type: Add compiler-known lowercase fundamental type error. It is an error-specific root/assignability relation, not general inheritance, an exception base class, a mandatory heap object, or a fixed message/id structure."
+      - "error-enum-marker: Accept concrete fieldless error enums such as enum IOError error { ... }. Preserve ordinary enum closedness, underlying representation rules, and nominal identity while marking the declared type assignable to error."
+      - "error-union-marker: Accept payload-bearing error unions in canonical declaration order, for example type DetailedError union error { ... }. Error union payloads follow ordinary union ownership, borrowing, destruction, and match rules."
+      - "result-error-type-constraint: Require Result[T, E] error parameter E to be error or a declared Sec error type. Reject arbitrary non-error E types in revision 2."
+      - "error-widening-and-identity: Implement implicit concrete-error -> error widening without implicit error -> concrete narrowing or cross-concrete conversion. Widening must preserve concrete error type identity, active variant, payload, ownership state, and destruction obligations. Physical representation remains implementation-defined."
+      - "open-error-match-narrowing: Permit error-specific variant narrowing when matching Result[T, error] while keeping error an open domain. Concrete-only Err arms are not exhaustive; Err(errorValue) or Err(_) may cover the remaining open domain. Do not generalize this into arbitrary runtime type-pattern matching."
+      - "result-consuming-projections: Add consuming Result[T,E].Ok() -> Option[T] and Result[T,E].Err() -> Option[E]. The owned Result is consumed, retained move-only payload moves without hidden clone, and the non-retained active payload is destroyed exactly once."
+      - "result-borrowed-projections: Add non-consuming read-only Result properties OkRef -> Option[ref T] and ErrRef -> Option[ref E]. Their borrows are tied to the Result lifetime and normal borrow rules; the Result remains available after the borrow ends."
+      - "result-projection-discardability: Reject a consuming .Ok() or .Err() projection when the active side being intentionally forgotten may contain a non-discardable obligation, unless path-sensitive facts prove that state unreachable."
+      - "try-language-defined-short-circuit: Generalize try from a surface Result-only rule to compiler-known short-circuit/fallible expressions with a resolved success type and alternate/failure state, including Result, Option, checked arithmetic, indexing, constrained conversions, fallible new, and fallible assignment where defined by their owning rulebooks."
+      - "try-option: Support try over Option[T]: Some(T) is implicit success, None is the alternate state, local None handlers may recover with T, and naked None propagation is valid only through a compatible enclosing Option return. Do not introduce implicit Option/Result conversion."
+      - "try-failure-set: Represent multiple possible failures of one protected expression as compiler-internal failure facts without creating an anonymous source error union or automatic domain-error wrapper. Err(_) may handle a heterogeneous failure set."
+      - "try-heterogeneous-binding: Allow Err(name) catch-all binding only when the protected construct already provides one compiler-resolved binding type, such as one concrete error type or an explicitly declared error channel. Do not infer error solely to make an otherwise heterogeneous local binding possible."
+      - "try-partial-handlers: Change local try handlers from the old exhaustive-handler model to partial handling: locally unmatched Result failures propagate implicitly when assignable, and unmatched Option None propagates only through a compatible Option return. match remains exhaustive."
+      - "try-success-handler-removal: Reject Ok(...) handlers inside Result try and Some(...) handlers inside Option try. Success is implicit; code that needs explicit success and alternate branches must use match. Remove old lowering assumptions for explicit Ok try arms."
+      - "try-match-wrapper-removal: Remove and reject the legacy try expression { match { ... } } wrapper form. Try handlers are written directly in the attached handler block."
+      - "try-handler-order-reachability: Handlers are tested top-to-bottom and first match wins. Proven unreachable later handlers are compile errors, including handlers shadowed by an earlier unguarded Err(_) or otherwise subsumed pattern."
+      - "try-handler-where-guards: Support where guards on try handlers using the same pattern/guard ownership discipline as match. Guard false continues to later handlers; prospective move-only payload ownership must not commit until pattern and guard select the arm."
+      - "try-recovery-values: In value position, every handled path that continues must produce a value assignable to the try success type. Handler block final expressions are contextual result-position values; terminating paths need no recovery value and void success handlers may complete normally."
+      - "try-handler-failure-boundary: The attached handler set covers only failures from the protected expression. Failures originating in guards or handler bodies are outside that try and must use ordinary propagation or an explicit nested try."
+      - "try-expression-positions: Ensure try is usable anywhere its resolved success type is valid, including call arguments, boolean conditions, aggregate field initializers, nested/parenthesized expressions, and multiple argument positions. Assignment remains a statement and is not made into an expression."
+      - "bodyless-try-assignment-v2: Implement naked try assignment as ordinary implicit failure propagation for fallible assignment. Replace the old exact-error-only and no-Option wording with revision-2 channel compatibility rules owned by the relevant protected operation."
+      - "property-explicit-setter-error: Change fallible setter syntax to try set value ErrorType { ... } and require the same explicit error type in interface requirements. Do not infer a public setter error contract from its implementation."
+      - "property-setter-success-model: For try set, normal completion is implicit success, bare return is early success, return Err(error) is failure, and return Ok() is invalid. Property getters remain infallible in Sec 0.1."
+      - "return-try-result-forwarding: Support return try expression in a Result[T,E]-returning context: a success value assignable to T is returned as Ok(value), and a compatible failure propagates. This is return-position forwarding only and must not become a general implicit T -> Result[T,E] conversion."
+      - "if-some-binding-exception: Permit the narrow positive Option test if option is Some(value) { ... }. The binding exists only on the true path and follows ordinary copy/move rules. Keep negative binding such as is not Some(value) invalid and keep general destructuring in match."
+      - "result-err-none-tests: Accept non-binding Option state tests over Result projections, including if result.Err() is not None { ... }, with is not rather than a !is operator."
+      - "result-projection-ownership-diagnostics: Always diagnose use after consuming .Ok()/.Err() (and equivalent affine consumption) from compiler-owned facts. The diagnostic must identify the value, the consuming operation/location, why later use is invalid, and a practical correction."
+      - "mentor-error-diagnostics: Error-handling diagnostics must use programmer-facing mentor language. Explain Result versus Option pattern mismatches, incompatible propagation, missing try, ownership consumption, and likely fixes without requiring compiler-theory terminology."
+      - "errorhandling-semantic-ir-v2: Extend resolved try/result facts for partial handlers, implicit unmatched propagation, Option alternate paths, error widening/narrowing identity, consuming and borrowed projections, recovery-value merges, guarded ownership commit, nested failure boundaries, and return-try forwarding. Backends must not reconstruct these semantics from syntax or unused SSA."
+      - "errorhandling-lsp-v2: Replace the Result-only try-hover plan with compiler-resolved Result/Option/fallible-operation facts. Show success type, handled and propagated alternate states, concrete versus widened error identity, consuming versus borrowed projections, ownership consequences, and mentor diagnostics without reimplementing Sema in the LSP."
+      - "errorhandling-formatter-v2: Format direct try handlers canonically, preserve where guards and contextual handler block values, format new error declarations/setter error types/projections, and do not recreate the removed nested match wrapper or insert/remove semantic try operations."
+    required_tests:
+      - "error is compiler-known and import-free"
+      - "enum ErrorType error declaration"
+      - "explicit-underlying enum error declaration"
+      - "type DetailedError union error declaration"
+      - "concrete error implicitly widens to error without losing identity or payload"
+      - "error does not implicitly narrow and concrete error families do not cross-convert"
+      - "Result[T, concrete-error] and Result[T, error] accepted; Result[T, non-error] rejected"
+      - ".Ok() and .Err() consume an owned Result and transfer the retained payload without hidden clone"
+      - "use after .Ok() or .Err() is rejected with the consuming source location and mentor help"
+      - "non-retained Result payload is destroyed exactly once and non-discardable alternate state blocks unsafe consuming projection"
+      - "OkRef and ErrRef borrow without consuming and cannot outlive the Result"
+      - "try works in let initializers, call arguments, bool conditions, aggregate fields, parenthesized expressions, and multiple arguments"
+      - "assignment remains non-expression inside if"
+      - "try covers language-defined checked arithmetic, indexing, constrained conversion, fallible new, and fallible assignment"
+      - "try Option unwraps Some(T), locally handles None, and propagates None only through compatible Option return"
+      - "Some handler inside Option try and Ok handler inside Result try are rejected"
+      - "Result patterns against Option and Option patterns against Result receive mentor diagnostics"
+      - "no implicit Option-to-Result or Result-to-Option propagation"
+      - "Err(_) and Err(named) accepted in try handlers"
+      - "legacy try { match { ... } } wrapper rejected"
+      - "handlers execute top-to-bottom and first matching handler wins"
+      - "provably unreachable handlers, including after unguarded Err(_), are compile errors"
+      - "where guard false continues to later handlers and cannot prematurely consume a prospective move-only binding"
+      - "partial handlers propagate unmatched compatible failures and reject unmatched failures that cannot propagate"
+      - "Err(_) handles heterogeneous compiler failure sets; heterogeneous Err(named) without one declared binding type is rejected"
+      - "handler expression or final block expression may provide success-type recovery value"
+      - "terminating handlers need no recovery value and void success handlers may complete normally"
+      - "failure produced by guard or handler body is outside the outer protected try; nested try handles fallible recovery"
+      - "naked try assignment propagates; fallible assignment without try is rejected"
+      - "try set value ErrorType parses; missing ErrorType is rejected"
+      - "try setter normal completion and bare return succeed; return Err fails; return Ok is rejected"
+      - "fallible getter syntax is rejected in Sec 0.1"
+      - "interface fallible setter exposes and enforces the same declared error type"
+      - "return try Result forwards success as Ok and propagates compatible failure without general T-to-Result conversion"
+      - "Result[T,error] can match a concrete error variant while preserving payload; open error domain still requires a fallback for exhaustiveness"
+      - "if option is Some(value) binds only on the positive true path; is not Some(value) binding is rejected"
+      - "if result.Err() is not None is accepted"
+      - "LSP hover exposes try success/alternate facts, concrete and widened error identity, and consuming versus borrowed projections"
+      - "compiler and LSP diagnostics share resolved ownership facts and use mentor-style explanations"
+
   - id: frontend.bodyless-try-assignment
     area: frontend-analysis
     status: planned
     integrated: "2026-08-11"
     rules:
       - rules/foundations/grammar.md
-      - rules/errors/errorhandling.txt
+      - rules/errors/errorhandling.md
     remaining:
       - accept try Assignment without a handler block
       - require enclosing Result success/error shape with the setter's exact error type
@@ -2907,7 +3168,7 @@ integrations:
       - rules/foundations/lexical_structure.md
       - rules/foundations/grammar.md
       - rules/foundations/names_scopes_visibility.md
-      - rules/errors/errorhandling.txt
+      - rules/errors/errorhandling.md
       - rules/tooling/formatter.md
       - rules/tooling/lsp.md
     code:
@@ -3586,7 +3847,7 @@ integrations:
       - rules/types/default_values.md
       - rules/control-flow/flowcontrol_match.md
       - rules/declarations/registers.md
-      - rules/errors/errorhandling.txt
+      - rules/errors/errorhandling.md
       - rules/tooling/lsp.md
     code:
       - internal/ast/ast.go
@@ -4669,6 +4930,7 @@ integrations:
       target guessing or duplicated downstream platform resolution.
     rules:
       - rules/platform/platform_model.md
+      - rules/platform/target_profiles.md
       - rules/projects/projects.txt
       - rules/compiler/compiler.txt
       - rules/compiler/compiler_pipeline.txt
@@ -4737,6 +4999,76 @@ integrations:
       - reserve separately resolved accelerator devices without implementing GPU execution or memory semantics as part of the Sec 0.1 platform-model milestone
       - expose an inspectable read-only resolved-plan view for diagnostics, tests, LSP, and future target-info tooling
       - update implementation-status verification commands when the first conforming platform-model vertical slice is integrated
+
+  - id: platform.target-profiles
+    area: platform-and-target-profiles
+    status: planned
+    integrated: "2026-08-24"
+    document_revision: "1"
+    repository_baseline: "45e5cd4"
+    summary: >-
+      Implements canonical Hosted/RTOS/BareMetal target-profile resolution,
+      typed capabilities and policies, resource constraints/enforcement,
+      derived profiles and overrides, immutable ResolvedTargetProfile
+      identity/fingerprints, and consistent downstream consumption.
+    rules:
+      - rules/platform/target_profiles.md
+      - rules/platform/platform_model.md
+      - rules/compiler/initialization.md
+      - rules/compiler/linking.md
+      - rules/platform/abi.md
+      - rules/platform/ffi.md
+      - rules/concurrency/concurrency.md
+      - rules/declarations/static.md
+      - rules/analysis/isr_analysis.md
+      - rules/projects/projects.txt
+    remaining:
+      - introduce canonical TargetProfile and immutable ResolvedTargetProfile models distinct from platform, runtime, execution environment, device, architecture, and BuildProfile
+      - implement Hosted, RTOS, and BareMetal compiler-known profile families
+      - implement Required, EnabledIfSupported, Disabled, and TargetDefined family dispositions and resolve them completely before CompilationPlan freeze
+      - preserve capability availability separately from activation and reject attempts to enable unsupported capability
+      - implement the Sec 0.1 family baseline matrix for allocation, tasks, scheduler, threads, detached execution, TLS, synchronization, atomics, interrupts, MMIO, dynamic linking, static destruction, safety, and panic
+      - keep heap allocation separate from automatic/static storage semantics and support runtime-free BareMetal
+      - require RTOS task/scheduler support without equating Sec tasks with native threads
+      - require detached-execution shutdown/cancellation contracts independently of basic task support
+      - implement typed context-sensitive blocking, cancellation, panic, allocation, interrupt, and safety policies
+      - introduce SafetyCheckPolicy that preserves mandatory Sec safety through static proof or dynamic checking without implying a general Sec runtime
+      - prevent TargetProfile and BuildProfile from weakening mandatory safety to undefined behavior
+      - introduce typed KnownLimit, NoDeclaredLimit, and UnknownLimit resource states and never use UnknownLimit for positive proof
+      - support separate main/thread/task/interrupt stack policies and budgets
+      - support distinct task/thread resource constraints, heap budgets, and resource-domain typing
+      - implement StaticRequired, RuntimeEnforced, and Advisory resource enforcement policies
+      - introduce compiler-known Ordinary, Task, Thread, Interrupt, Startup, and Shutdown contexts where semantically relevant
+      - prevent context policy from enabling globally disabled/unavailable capability
+      - retain provenance for all relevant resolved profile facts
+      - implement explicit ResolveTargetProfile and ValidateTargetProfile phases
+      - support derived/custom profiles with one canonical base lineage and no Sec 0.1 multiple inheritance
+      - implement deterministic precedence from family baseline through target/platform defaults, device/runtime constraints, project Target/Variant policy, and legal CLI overrides
+      - classify facts as overridable, target/device-fixed, or derived where required and reject illegal overrides
+      - reject internally inconsistent profiles before source feature use is considered
+      - validate program requirements against the frozen profile without mutating it
+      - provide canonical typed capability/policy/context/resource query interfaces to Sema, analyses, initialization, lowering, linking, and LSP
+      - make LSP use the same profile resolution as CLI builds
+      - derive deterministic profile fingerprints and narrower dependency sub-fingerprints where useful
+      - implement dependency-based incremental invalidation across profile changes
+      - add diagnostics distinguishing unsupported, supported-but-disabled, inconsistent profile, illegal override, resource violation, unavailable proof, context violation, and panic restriction with provenance
+      - add family, capability, resource, safety, panic, derived-profile, override, consumer consistency, cross-compilation, fingerprint, and determinism regression tests
+      - update repository implementation-status verification commands when the first ResolvedTargetProfile vertical slice is implemented
+    excluded:
+      - architecture/CPU capability semantics
+      - device memory-map ownership
+      - ABI classification
+      - runtime implementation internals
+      - scheduler algorithms
+      - concurrency effect definitions
+      - interrupt semantics
+      - MMIO/volatile semantics
+      - stack/ISR analysis algorithms
+      - BuildProfile optimization/debug semantics
+      - linker mechanics
+      - exact project configuration syntax
+      - multiple profile inheritance in Sec 0.1
+      - mandatory finite numeric limits for all targets
 
   - id: core.string-slice-helper
     area: core-and-lowering
@@ -5209,7 +5541,7 @@ integrations:
     - rules/collections/collections.md
     - rules/foundations/operators.md
     - rules/foundations/grammar.md
-    - rules/errors/errorhandling.txt
+    - rules/errors/errorhandling.md
     - rules/tooling/diagnostics.txt
     code:
     - internal/ast/ast.go
@@ -5495,7 +5827,7 @@ integrations:
     rules:
     - rules/declarations/enums.md
     - rules/types/types.md
-    - rules/errors/errorhandling.txt
+    - rules/errors/errorhandling.md
     - rules/compiler/semantic_ir.txt
     - rules/mlir/packages/sec-mlir-dialect_package11.md
     - rules/mlir/semantic-ir/sec_semantic_ir_enum_union_v1.md

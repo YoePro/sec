@@ -6,6 +6,8 @@ import (
 	"strings"
 )
 
+// ImportEdge records one resolved module dependency and its navigable source
+// location as required by rules/projects/modules.md.
 type ImportEdge struct {
 	From       ModuleIdentity
 	To         ModuleIdentity
@@ -14,11 +16,23 @@ type ImportEdge struct {
 	Column     int
 }
 
+// Cycle is one deterministic representative module-import cycle together with
+// the exact import edges that form its path.
 type Cycle struct {
 	Modules []ModuleIdentity
 	Edges   []ImportEdge
 }
 
+// ModuleCycleDiagnostic is the compiler-owned, navigable cycle report required
+// by rules/projects/modules.md. Primary is always the edge leaving the canonical
+// first module; Related retains the remaining import sites in traversal order.
+type ModuleCycleDiagnostic struct {
+	Message string
+	Primary ImportEdge
+	Related []ImportEdge
+}
+
+// String returns the representative cycle as a readable closed module path.
 func (cycle Cycle) String() string {
 	parts := make([]string, 0, len(cycle.Modules))
 	for _, module := range cycle.Modules {
@@ -27,11 +41,27 @@ func (cycle Cycle) String() string {
 	return strings.Join(parts, " -> ")
 }
 
+// Diagnostic converts the canonical representative from
+// rules/projects/modules.md into a stable primary location plus ordered related
+// import locations suitable for compiler and LSP navigation.
+func (cycle Cycle) Diagnostic() ModuleCycleDiagnostic {
+	diagnostic := ModuleCycleDiagnostic{Message: "module import cycle: " + cycle.String()}
+	if len(cycle.Edges) == 0 {
+		return diagnostic
+	}
+	diagnostic.Primary = cycle.Edges[0]
+	diagnostic.Related = append([]ImportEdge(nil), cycle.Edges[1:]...)
+	return diagnostic
+}
+
+// ModuleGraph stores canonical module identities and their resolved dependency
+// edges independently of parser, Sema, filesystem, and traversal order.
 type ModuleGraph struct {
 	nodes map[ModuleIdentity]struct{}
 	edges map[ModuleIdentity]map[ModuleIdentity]ImportEdge
 }
 
+// NewModuleGraph creates an empty canonical dependency graph.
 func NewModuleGraph() *ModuleGraph {
 	return &ModuleGraph{
 		nodes: map[ModuleIdentity]struct{}{},
@@ -39,10 +69,14 @@ func NewModuleGraph() *ModuleGraph {
 	}
 }
 
+// AddModule ensures that an identity participates in the graph even when it
+// has no imports.
 func (graph *ModuleGraph) AddModule(identity ModuleIdentity) {
 	graph.nodes[identity] = struct{}{}
 }
 
+// AddImport applies the self-import and duplicate-edge prohibitions from
+// rules/projects/modules.md while retaining the edge's source location.
 func (graph *ModuleGraph) AddImport(edge ImportEdge) error {
 	if edge.From == edge.To {
 		return fmt.Errorf("module %s cannot import itself", edge.From)
@@ -57,6 +91,22 @@ func (graph *ModuleGraph) AddImport(edge ImportEdge) error {
 	}
 	graph.edges[edge.From][edge.To] = edge
 	return nil
+}
+
+// ImportEdges returns defensive copies of all resolved imports in canonical
+// importer/destination/location order. The order is deterministic storage and
+// diagnostic order from rules/projects/modules.md, not initialization order.
+func (graph *ModuleGraph) ImportEdges() []ImportEdge {
+	if graph == nil {
+		return nil
+	}
+	edges := make([]ImportEdge, 0)
+	for _, from := range graph.sortedNodes() {
+		for _, to := range graph.outgoing(from) {
+			edges = append(edges, graph.edges[from][to])
+		}
+	}
+	return edges
 }
 
 // Cycles returns one deterministic representative cycle per cyclic strongly

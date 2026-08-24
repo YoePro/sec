@@ -288,6 +288,31 @@ fn Use(value: Port) void {
 	}
 }
 
+func TestHoverUsesCompilerOwnedCallableCapabilityFacts(t *testing.T) {
+	source := `module main
+
+fn Apply(mutable: mut fn(int) int, consuming: -> fn() int) int {
+    discard mutable(1)
+    return consuming()
+}
+`
+	mutableOffset := strings.LastIndex(source, "mutable")
+	mutable, ok := hoverForSource("", source, offsetPosition(source, mutableOffset))
+	if !ok || !strings.Contains(mutable.Contents.Value, "mutable: mut fn(int) int") ||
+		!strings.Contains(mutable.Contents.Value, "Callable capability: `mut fn`") ||
+		!strings.Contains(mutable.Contents.Value, "mutable/exclusive callable access") {
+		t.Fatalf("mutable callable hover = %+v, %v", mutable, ok)
+	}
+
+	consumingOffset := strings.LastIndex(source, "consuming")
+	consuming, ok := hoverForSource("", source, offsetPosition(source, consumingOffset))
+	if !ok || !strings.Contains(consuming.Contents.Value, "consuming: -> fn() int") ||
+		!strings.Contains(consuming.Contents.Value, "Callable capability: `-> fn`") ||
+		!strings.Contains(consuming.Contents.Value, "successful invocation consumes the callable value") {
+		t.Fatalf("consuming callable hover = %+v, %v", consuming, ok)
+	}
+}
+
 func TestHoverAbbreviatesLargeArrayDefault(t *testing.T) {
 	source := `module main
 

@@ -1063,14 +1063,27 @@ The tested Result SSA value must dominate both projections; the true successor
 is the Err path and the false successor is the Ok path.
 
 Local handlers consume an immutable Sema-resolved handler plan. Semantic IR
-must preserve source order, explicit versus implicit Ok handling, exact
-handler-local binding types, exhaustiveness, and handler flow classification.
-Specific compiler-known errors use `CoreErrorIsVariant`; catch-all handlers
-receive the complete exact error value. Value-producing paths converge through
-a typed block parameter, while returning or terminating handlers have no merge
-edge. Checked arithmetic maps its failure reason directly to `ArithmeticError`
-before entering the same handler engine and must not construct a temporary
-Result merely to discriminate it again.
+preserves source order, partial local handling, unmatched propagation edges,
+exact handler-local binding types, where guards and guard-false continuation,
+binding copy/move/borrow actions, guard-success ownership commit, recovery-value
+merges, and handler flow classification. Explicit Ok/Some try handlers are not
+valid revision-2 source semantics. Specific compiler-known errors use
+`CoreErrorIsVariant`; catch-all handlers receive the resolved complete error
+value where a single binding type exists. Value-producing paths converge
+through a typed block parameter, while returning, propagating, or terminating
+handlers have no merge edge. Checked arithmetic maps its failure reason
+directly to `ArithmeticError` before entering the same handler engine and must
+not construct a temporary Result merely to discriminate it again.
+
+The semantic model additionally retains compiler-known `error` root identity,
+concrete error identity and payload after widening, precise versus open Result
+channels, Option try Some/None control flow, language-defined fallible-operation
+try, compiler-internal failure sets, handler failure boundaries, fallible
+assignment edges, return-try forwarding, consuming Result Ok/Err projections,
+borrowed OkRef/ErrRef projections, cleanup/destruction on every edge, and panic
+effects remaining outside try. Failure sets never become inferred anonymous
+source error unions. Physical representation of widened error is deferred to
+verified ABI/layout lowering.
 
 ## Option
 

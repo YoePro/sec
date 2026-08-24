@@ -63,6 +63,32 @@ func TestFormatConsumingFunctionParameter(t *testing.T) {
 	}
 }
 
+func TestFormatNormalizesSingleLineCallSpacing(t *testing.T) {
+	input := `fn NextToken() Token {
+return self.token(                lookupIdent(literal),                literal,                line,                column,             )
+}
+`
+	want := `fn NextToken() Token {
+    return self.token(lookupIdent(literal), literal, line, column)
+}
+`
+	got := Format(Source{Text: input}, Options{}).Text
+	if got != want {
+		t.Fatalf("single-line call spacing was not normalized:\n%s\nwant:\n%s", got, want)
+	}
+	if again := Format(Source{Text: got}, Options{}).Text; again != got {
+		t.Fatalf("single-line call formatting is not idempotent:\nfirst:\n%s\nsecond:\n%s", got, again)
+	}
+}
+
+func TestFormatPreservesMultilineCallLayout(t *testing.T) {
+	input := "fn Test() void {\nconsume(\nfirst,\nsecond,\n)\n}\n"
+	want := "fn Test() void {\n    consume(\n        first,\n        second,\n    )\n}\n"
+	if got := Format(Source{Text: input}, Options{}).Text; got != want {
+		t.Fatalf("formatter changed multiline call layout:\n%s\nwant:\n%s", got, want)
+	}
+}
+
 func TestFormatPreservesRegisterLayoutModifiers(t *testing.T) {
 	input := "type Header register[16] msb-first big-endian {\nVersion: bit[4],\nPayload: bit[12],\n}\n"
 	want := "type Header register[16] msb-first big-endian {\n    Version: bit[4],\n    Payload: bit[12],\n}\n"
@@ -189,5 +215,13 @@ func TestFormatInterfaceReceiverSignatures(t *testing.T) {
 	want := "interface Resource {\n    mut fn Update(value: int) void\n    -> fn Detach() int\n    static fn Create() int\n}\n"
 	if got := Format(Source{Text: input}, Options{}).Text; got != want {
 		t.Fatalf("formatted interface signatures:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestFormatCallableCapabilityTypes(t *testing.T) {
+	input := "fn Apply( shared: fn( int, ) int, mutable: mut fn( int, ) int, consuming: -> fn( int, ) int, ) void {\n}\n"
+	want := "fn Apply(shared: fn(int) int, mutable: mut fn(int) int, consuming: -> fn(int) int) void {\n}\n"
+	if got := Format(Source{Text: input}, Options{}).Text; got != want {
+		t.Fatalf("wrong callable capability formatting:\n%s\nwant:\n%s", got, want)
 	}
 }

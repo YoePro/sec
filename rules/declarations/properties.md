@@ -151,7 +151,7 @@ A fallible setter is declared with `try set`.
 
 ```sec
 property TopSpeed: Speed {
-    try set speed {
+    try set speed SpeedError {
         if speed < MinimumSpeed {
             return Err(SpeedError.TooLow)
         }
@@ -163,7 +163,13 @@ property TopSpeed: Speed {
 
 Normal completion is the success path.
 
-The effective setter error type is determined and validated according to the error-handling rules.
+The setter error type is an explicit public contract. It is required, must be
+`error` or a concrete Sec error type, and is not inferred from the body.
+
+Normal completion and bare `return` are success. `return Err(errorValue)` is
+failure. `return Ok()` is invalid because a `try set` body is not a source-level
+function returning `Result[void, E]`. Property getters are infallible in Sec
+0.1; there is no `try get` form.
 
 Assignment through a fallible setter requires explicit `try`.
 
@@ -312,7 +318,7 @@ Interfaces do not require stored instance fields.
 interface Positioned {
     property Position: Point {
         get
-        set position
+        try set position PositionError
     }
 }
 ```
@@ -321,7 +327,8 @@ An interface property requirement describes the observable contract.
 
 - `get` requires readable access.
 - `set name` requires infallible writable access.
-- `try set name` requires fallible writable access.
+- `try set name ErrorType` requires fallible writable access with that explicit
+  error contract.
 
 The explicit setter parameter is required even in an interface declaration.
 

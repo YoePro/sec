@@ -2310,6 +2310,23 @@ Select operations must also account for ownership of messages on:
 
 # Evaluation order and failure
 
+## Result projections and try paths
+
+`result.Ok()` and `result.Err()` consume an owned Result receiver. Every later
+read, borrow, move, projection, match, or discard of that value is invalid until
+a separately legal reinitialization. The retained payload transfers into the
+returned Option without hidden clone.
+
+`result.OkRef` and `result.ErrRef` are non-consuming shared payload borrows. The
+receiver remains alive and sufficiently available for the borrow lifetime.
+
+Try-handler payload bindings reuse match ownership rules. A guarded move-only
+binding commits only after pattern success, guard success, and handler
+selection. Partial handlers introduce implicit propagation paths; ownership
+after try merges every continuing success and recovery path, while propagation
+leaves through ordinary cleanup. Diagnostics identify the consuming operation
+and its source location in programmer-facing language.
+
 The compiler must preserve ownership across failures and early exits.
 
 For replacement:

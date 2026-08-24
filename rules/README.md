@@ -18,9 +18,9 @@ belongs in `implementation-status.yaml`.
 | `errors/` | Error handling, panic, and runtime checks. |
 | `concurrency/` | Tasks, threads, synchronization, scheduling, and the concurrency memory/runtime models. |
 | `analysis/` | Compiler analyses and their shared semantic contracts. |
-| `compiler/` | Compiler architecture, pipeline, parser recovery, and canonical Semantic IR. |
+| `compiler/` | Compiler architecture, pipeline, parser recovery, canonical Semantic IR, linking, and final artifacts. |
 | `mlir/` | Sec MLIR governance, dialect, lowering, version history, amendments, and implementation packages. |
-| `platform/` | FFI, registers, ABI-adjacent, and target-facing rules. |
+| `platform/` | Target profiles, platform resolution, FFI, fixed-address bindings, and ABI rules. |
 | `projects/` | Project and build organization. |
 | `tooling/` | Diagnostics, formatter, and LSP. |
 | `library/` | Core-library and standard-library contracts. |

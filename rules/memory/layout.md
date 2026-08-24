@@ -104,7 +104,7 @@ platform/ffi.md
 platform/abi.md
     function calling conventions, parameter passing, and return classification
 
-target_profiles.md
+rules/platform/target_profiles.md
     target data layout, supported memory spaces, and target constraints
 
 semantic_ir.txt

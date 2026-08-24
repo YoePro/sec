@@ -753,7 +753,7 @@ required termination adapter
 required initialization section
 ```
 
-`linking.md` owns how object files, libraries, symbols, sections, entry symbols,
+`rules/compiler/linking.md` owns how object files, libraries, symbols, sections, entry symbols,
 linker arguments, and final artifacts are assembled to satisfy those
 requirements.
 

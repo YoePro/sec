@@ -10997,12 +10997,27 @@ func (a *Analyzer) resolveFunctionType(ref *ast.TypeReference) (Type, bool) {
 		return Type{Kind: InvalidType}, false
 	}
 
+	capability := callableCapabilityFromAST(ref.FunctionCapability)
 	return Type{
-		Name:                   functionTypeName(params, returnType),
+		Name:                   functionTypeName(params, returnType, capability),
 		Kind:                   FunctionType,
 		FunctionParameterTypes: params,
 		FunctionReturnType:     &returnType,
+		FunctionCapability:     capability,
 	}, true
+}
+
+// callableCapabilityFromAST translates the syntax retained under
+// rules/declarations/lambda-functions.md into the Sema-owned capability fact.
+func callableCapabilityFromAST(capability ast.CallableCapability) CallableCapability {
+	switch capability {
+	case ast.CallableMutable:
+		return CallableMutable
+	case ast.CallableConsuming:
+		return CallableConsuming
+	default:
+		return CallableShared
+	}
 }
 
 type expressionValue struct {
@@ -11610,10 +11625,11 @@ func (a *Analyzer) inferLambdaExpression(expr *ast.LambdaExpression) (Type, expr
 	}
 
 	lambdaType := Type{
-		Name:                   functionTypeName(params, returnType),
+		Name:                   functionTypeName(params, returnType, CallableShared),
 		Kind:                   FunctionType,
 		FunctionParameterTypes: params,
 		FunctionReturnType:     &returnType,
+		FunctionCapability:     CallableShared,
 	}
 	if len(params) != len(expr.Parameters) {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
@@ -12732,6 +12748,10 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 	}
 	if !ok || len(functions) == 0 {
 		if symbol, exists := a.symbols[name]; exists && symbol.Type.Kind == FunctionType {
+			// rules/declarations/lambda-functions.md: retain the callable value's
+			// resolved capability on the callee expression so LSP and later
+			// compiler stages do not reconstruct it from source spelling.
+			a.expressionTypes[expr.Callee] = symbol.Type
 			return a.inferFunctionValueCall(expr, symbol.Type)
 		}
 		if typ, value, ok := a.inferCallAsUnionVariantConstructor(expr, nil); ok {
@@ -13905,10 +13925,11 @@ func (a *Analyzer) eventReceiverInfo(expr ast.Expression) (eventReceiverInfo, bo
 
 func eventHandlerType(payload Type) Type {
 	return Type{
-		Name:                   functionTypeName([]Type{payload}, Type{Name: "void", Kind: VoidType}),
+		Name:                   functionTypeName([]Type{payload}, Type{Name: "void", Kind: VoidType}, CallableShared),
 		Kind:                   FunctionType,
 		FunctionParameterTypes: []Type{payload},
 		FunctionReturnType:     &Type{Name: "void", Kind: VoidType},
+		FunctionCapability:     CallableShared,
 	}
 }
 
@@ -14715,7 +14736,7 @@ func canonicalTypeIdentity(typ Type) string {
 		if typ.FunctionReturnType != nil {
 			returnType = canonicalTypeIdentity(*typ.FunctionReturnType)
 		}
-		return "fn:(" + strings.Join(params, ",") + ")->" + returnType
+		return string(normalizedCallableCapability(typ.FunctionCapability)) + ":fn:(" + strings.Join(params, ",") + ")->" + returnType
 	default:
 		identity := typeDeclarationIdentity(typ)
 		if identity == "::" || typ.Name == "" {
@@ -14746,6 +14767,9 @@ func inferGenericTypeSubstitution(pattern Type, concrete Type, substitution map[
 
 	if pattern.Kind == FunctionType || concrete.Kind == FunctionType {
 		if pattern.Kind != FunctionType || concrete.Kind != FunctionType {
+			return false
+		}
+		if normalizedCallableCapability(pattern.FunctionCapability) != normalizedCallableCapability(concrete.FunctionCapability) {
 			return false
 		}
 		if len(pattern.FunctionParameterTypes) != len(concrete.FunctionParameterTypes) {
@@ -14858,12 +14882,26 @@ func functionTypeFromFunction(function Function) Type {
 	for _, param := range function.Parameters {
 		params = append(params, param.Type)
 	}
+	capability := functionCallableCapability(function)
 	return Type{
-		Name:                   functionTypeName(params, function.ReturnType),
+		Name:                   functionTypeName(params, function.ReturnType, capability),
 		Kind:                   FunctionType,
 		FunctionParameterTypes: params,
 		FunctionReturnType:     &function.ReturnType,
+		FunctionCapability:     capability,
 	}
+}
+
+// functionCallableCapability preserves an existing method/function authority
+// when it is represented as a first-class callable type.
+func functionCallableCapability(function Function) CallableCapability {
+	if function.ReceiverConsuming {
+		return CallableConsuming
+	}
+	if function.ReceiverMutable {
+		return CallableMutable
+	}
+	return CallableShared
 }
 
 func (a *Analyzer) accessibleFunctions(functions []Function) []Function {
@@ -15242,7 +15280,7 @@ func (a *Analyzer) inferArithmeticTryExpression(expr *ast.TryExpression, operato
 }
 
 // analyzeTryHandlers builds the resolved Result handler plan required by
-// rules/errors/errorhandling.txt and rules/control-flow/flowcontrol_match.md.
+// rules/errors/errorhandling.md and rules/control-flow/flowcontrol_match.md.
 // correction20.md includes payload-discard catch-alls in exhaustiveness.
 func (a *Analyzer) analyzeTryHandlers(expr *ast.TryExpression, resultType Type) (ResolvedTryPlan, bool) {
 	successType := resultType.TypeArgs[0]
@@ -17707,6 +17745,9 @@ func sameFunctionType(left Type, right Type) bool {
 	if left.FunctionReturnType == nil || right.FunctionReturnType == nil {
 		return false
 	}
+	if normalizedCallableCapability(left.FunctionCapability) != normalizedCallableCapability(right.FunctionCapability) {
+		return false
+	}
 	if len(left.FunctionParameterTypes) != len(right.FunctionParameterTypes) {
 		return false
 	}
@@ -17878,7 +17919,7 @@ func typeDisplayName(typ Type) string {
 		return typeDisplayName(*typ.Element) + "[]"
 	}
 	if typ.Kind == FunctionType {
-		return functionTypeName(typ.FunctionParameterTypes, functionReturnType(typ))
+		return functionTypeName(typ.FunctionParameterTypes, functionReturnType(typ), typ.FunctionCapability)
 	}
 	if typ.Name != "" && (len(typ.TypeArgs) > 0 || len(typ.ConstArgs) > 0) {
 		out := typ.Name + "["
@@ -17920,8 +17961,19 @@ func functionReturnType(typ Type) Type {
 	return *typ.FunctionReturnType
 }
 
-func functionTypeName(params []Type, returnType Type) string {
-	out := "fn("
+func functionTypeName(params []Type, returnType Type, capabilities ...CallableCapability) string {
+	capability := CallableShared
+	if len(capabilities) != 0 {
+		capability = normalizedCallableCapability(capabilities[0])
+	}
+	prefix := "fn"
+	switch capability {
+	case CallableMutable:
+		prefix = "mut fn"
+	case CallableConsuming:
+		prefix = "-> fn"
+	}
+	out := prefix + "("
 	for i, param := range params {
 		if i > 0 {
 			out += ", "
@@ -17930,6 +17982,17 @@ func functionTypeName(params []Type, returnType Type) string {
 	}
 	out += ") " + typeDisplayName(returnType)
 	return out
+}
+
+// normalizedCallableCapability gives pre-capability FunctionType values the
+// rules/declarations/lambda-functions.md default shared/reusable authority.
+func normalizedCallableCapability(capability CallableCapability) CallableCapability {
+	switch capability {
+	case CallableMutable, CallableConsuming:
+		return capability
+	default:
+		return CallableShared
+	}
 }
 
 func statementToken(stmt ast.Statement) lexer.Token {

@@ -65,6 +65,8 @@ The current LSP formatter already implements:
 - indentation of parenthesized type-first declaration groups;
 - indentation of nested blocks;
 - single-line function-parameter comma spacing;
+- single-line call argument spacing and trailing-comma removal without folding
+  intentional multiline calls;
 - single-line `let` declaration comma spacing;
 - unambiguous `func` to `fn` normalization;
 - canonical placement of an inline `@noCopy` attribute on its own line;
@@ -1515,6 +1517,21 @@ Single-line parameter lists use comma and one space.
 
 Single-line signatures do not have a trailing parameter comma.
 
+Callable value types preserve their source-level invocation capability and use
+canonical spacing:
+
+```sec
+fn(int) int
+mut fn(int) int
+-> fn(int) int
+```
+
+The formatter emits one space between `mut` and `fn`, and one space between
+`->` and `fn`. It emits no space between `fn` and the callable parameter list.
+These prefixes belong to callable types; a lambda expression itself continues
+to begin with plain `fn` as specified by
+`rules/declarations/lambda-functions.md`.
+
 ---
 
 # Multiline function parameters
@@ -1559,6 +1576,18 @@ CreateUser(
 Multiline argument lists use one argument per line and trailing commas.
 
 The formatter must preserve evaluation order.
+
+An invocation that is already on one physical line is normalized to one space
+after each comma and no trailing argument comma:
+
+```sec
+return self.token(lookupIdent(literal), literal, line, column)
+```
+
+An existing line break in an invocation is intentional source layout. The
+formatter must preserve the multiline form regardless of whether its arguments
+would fit on one line. Multiline calls retain one argument per line and the
+trailing comma.
 
 ---
 
@@ -1825,6 +1854,18 @@ match result {
     }
 }
 ```
+
+## Error handling revision 2
+
+The formatter preserves and canonicalizes error-marked enum/union declarations,
+`try set value ErrorType`, direct try handlers with `where` guards, positive
+`is Some(value)`, `return try expression`, consuming `.Ok()`/`.Err()` calls,
+and borrowed `OkRef`/`ErrRef` properties.
+
+It must not emit explicit Ok/Some try handlers, recreate the removed
+`try { match { ... } }` wrapper, omit the declared error type from valid try-set
+syntax, or rewrite consuming projections into borrowed projections (or the
+reverse). These operations have distinct semantics.
 
 ---
 

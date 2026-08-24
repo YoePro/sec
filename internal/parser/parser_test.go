@@ -4762,6 +4762,32 @@ fn Test() void {
 	}
 }
 
+func TestParseCallableCapabilityTypeReferences(t *testing.T) {
+	input := `
+fn Test(
+    shared: fn(int) int,
+    mutable: mut fn(int) int,
+    consuming: -> fn(int) int,
+) void {
+}
+`
+
+	p := New(lexer.New(input))
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	want := []ast.CallableCapability{ast.CallableShared, ast.CallableMutable, ast.CallableConsuming}
+	for index, capability := range want {
+		ref := fn.Parameters[index].Type
+		if ref.Name != "fn" || ref.FunctionCapability != capability {
+			t.Fatalf("parameter %d callable type = %#v, want fn capability %q", index, ref, capability)
+		}
+		if len(ref.FunctionParameterTypes) != 1 || ref.FunctionParameterTypes[0].Name != "int" || ref.FunctionReturnType.Name != "int" {
+			t.Fatalf("parameter %d lost callable signature: %#v", index, ref)
+		}
+	}
+}
+
 func TestParseCollectionShapedTypeReferences(t *testing.T) {
 	input := `
 fn Test() void {

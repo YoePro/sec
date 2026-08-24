@@ -1200,7 +1200,7 @@ flowcontrol_for.md
 flowcontrol_match.md
 projects/projects.txt
 projects/modules.md
-linking.md
+compiler/linking.md
 diagnostics.txt
 formatter.md
 semantic_ir.txt

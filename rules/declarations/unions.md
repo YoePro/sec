@@ -79,6 +79,23 @@ The following rules are normative:
 
 ## 3. Syntax
 
+A tagged union may be marked as a concrete Sec error type:
+
+```sec
+type IOError union error {
+    OpenError {
+        Path: string
+        Code: int
+    }
+}
+```
+
+The `error` marker makes the complete union assignable to compiler-known
+`error` without changing variant, layout, ownership, borrowing, destruction,
+default, or match semantics. Concrete identity, active variant, and payload
+remain available after widening. The concrete union is closed even though the
+root `error` domain is open.
+
 ### 3.1 Payload-less variants
 
 ```sec

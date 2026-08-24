@@ -1662,16 +1662,21 @@ Unknown facts must be omitted or explicitly marked unavailable.
 
 The LSP must never invent metadata that the compiler has not resolved.
 
-Hover on `try` and on its operand must make the value and error channels
-explicit. For an operand of type `Result[T, E]`, hover shows the declared
-`Result[T, E]`, the unwrapped success type `T` produced by the `try` expression,
-and the exact error type `E`. A bodyless `try` additionally shows the enclosing
-function's `Result[U, E]` return type and that failure propagates as an implicit
-`return Err(E)`; a handler-bearing `try` instead identifies the local handler.
-For an `Option[T]` operand, hover states that `None` is ordinary absence rather
-than an error channel and that `try` propagation is not applicable. These facts
-come from Sema's resolved call and try facts rather than from LSP-side type
-reconstruction.
+Hover on `try` and its operand consumes Sema's resolved revision-2 facts. It
+shows the protected carrier/operation, success type, locally handled states,
+unhandled states that propagate, propagation target, concrete-to-`error`
+widening, and remaining panic effect where relevant. For Option it explains
+Some success and None propagation/recovery; it must not claim Option cannot use
+try.
+
+Carrier-incompatible handler diagnostics explain the actual carrier and offer
+the correct Result or Option patterns. Completion and hover expose `.Ok()` and
+`.Err()` as consuming projections returning Option, and `OkRef`/`ErrRef` as
+shared borrowed properties. Later-use diagnostics link to a consuming
+projection. Fallible-setter hover/signature help shows its explicit error type,
+and open-error hover may distinguish static type `error` from a concrete error
+identity proven by Sema. The LSP never reconstructs a parallel Result, Option,
+error, or ownership model.
 
 ## Default information
 
@@ -3220,7 +3225,7 @@ borrowing.txt
 lifetime_analysis.txt
 contracts.md
 types/units.md
-target_profiles.md
+rules/platform/target_profiles.md
 platform_model.md
 call_graph.md
 stack_analysis.md

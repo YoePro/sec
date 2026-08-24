@@ -538,7 +538,7 @@ thread_local.md
 platform/ffi.md
 defer.md
 destruction.txt
-errorhandling.txt
+errorhandling.md
 semantic_ir.txt
 diagnostics.txt
 core-library.md

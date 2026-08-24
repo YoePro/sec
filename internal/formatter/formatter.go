@@ -54,7 +54,7 @@ func format(text string, options Options) string {
 		if options.Fix {
 			line = normalizeReversedTypeDeclaration(line)
 		}
-		line = formatMatchArm(formatLet(formatSignature(formatInitSignature(normalizeFunc(line)))))
+		line = formatSingleLineCallSpacing(formatMatchArm(formatLet(formatSignature(formatInitSignature(normalizeFunc(line))))))
 		level := indent - closing(line)
 		if level < 0 {
 			level = 0
@@ -102,6 +102,89 @@ func format(text string, options Options) string {
 		result = strings.ReplaceAll(result, "\n", eol)
 	}
 	return result
+}
+
+// formatSingleLineCallSpacing implements the single-line call rule in
+// rules/tooling/formatter.md. A newline is source layout chosen by the
+// programmer and is never removed by this pass.
+func formatSingleLineCallSpacing(line string) string {
+	if strings.Contains(line, "//") || strings.Contains(line, "/*") || strings.Contains(line, "*/") {
+		return line
+	}
+	return normalizeSingleLineCalls(line)
+}
+
+// normalizeSingleLineCalls recursively normalizes balanced call argument lists
+// on one line while leaving grouping parentheses and incomplete syntax intact.
+func normalizeSingleLineCalls(text string) string {
+	var out strings.Builder
+	for cursor := 0; cursor < len(text); {
+		open := nextStructuralParen(text, cursor)
+		if open < 0 {
+			out.WriteString(text[cursor:])
+			break
+		}
+		close := matchingParen(text, open)
+		if close < 0 {
+			out.WriteString(text[cursor:])
+			break
+		}
+
+		out.WriteString(text[cursor : open+1])
+		inner := normalizeSingleLineCalls(text[open+1 : close])
+		if callParen(text, open) && !strings.ContainsAny(inner, "{}") {
+			if parts := split(inner); parts != nil {
+				inner = strings.Join(parts, ", ")
+			}
+		}
+		out.WriteString(inner)
+		out.WriteByte(')')
+		cursor = close + 1
+	}
+	return out.String()
+}
+
+// nextStructuralParen finds an opening parenthesis outside quoted literals.
+func nextStructuralParen(text string, start int) int {
+	quote := byte(0)
+	escaped := false
+	for i := start; i < len(text); i++ {
+		ch := text[i]
+		if quote != 0 {
+			if escaped {
+				escaped = false
+			} else if ch == '\\' {
+				escaped = true
+			} else if ch == quote {
+				quote = 0
+			}
+			continue
+		}
+		if ch == '\'' || ch == '"' {
+			quote = ch
+			continue
+		}
+		if ch == '(' {
+			return i
+		}
+	}
+	return -1
+}
+
+// callParen distinguishes an adjacent callee delimiter from whitespace-led
+// grouping or declaration-group parentheses.
+func callParen(text string, open int) bool {
+	if open == 0 {
+		return false
+	}
+	last := rune(0)
+	for _, r := range text[:open] {
+		last = r
+	}
+	if unicode.IsSpace(last) {
+		return false
+	}
+	return last == '_' || last == ')' || last == ']' || unicode.IsLetter(last) || unicode.IsDigit(last)
 }
 
 func formatMatchArm(line string) string {

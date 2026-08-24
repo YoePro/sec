@@ -1732,10 +1732,10 @@ Sema inserts omitted field defaults.
 
 ```text
 EnumDeclaration
-    ::= "enum" Identifier [ EnumUnderlying ] EnumBody
+    ::= "enum" Identifier [ EnumUnderlying ] [ "error" ] EnumBody
 
 TypeEnumDeclaration
-    ::= "type" Identifier "enum" [ EnumUnderlying ] EnumBody
+    ::= "type" Identifier "enum" [ EnumUnderlying ] [ "error" ] EnumBody
 
 EnumUnderlying
     ::= [ ":" ] IntegerTypeReference
@@ -1789,6 +1789,9 @@ Parser recovery may accept `:` and emit a formatter warning.
 
 An enum must declare at least one value.
 
+When present, `error` is the final semantic marker before the enum body. It is
+not an underlying type and does not introduce general inheritance.
+
 ---
 
 # Union declaration
@@ -1797,6 +1800,7 @@ An enum must declare at least one value.
 UnionTypeDeclaration
     ::= "type" Identifier [ GenericParameterList ]
         "union"
+        [ "error" ]
         [ ImplementsClause ]
         UnionBody
 
@@ -2208,7 +2212,7 @@ Setter
     ::= Contextual("set") Identifier Block
 
 FallibleSetter
-    ::= "try" Contextual("set") Identifier Block
+    ::= "try" Contextual("set") Identifier TypeReference Block
 ```
 
 Example:
@@ -2219,7 +2223,7 @@ property TopSpeed: Speed {
         return _speed
     }
 
-    try set value {
+    try set value SpeedError {
         _speed = value
     }
 }
@@ -3735,12 +3739,14 @@ TryExpression
     ::= "try" Expression [ TryHandlerBlock ]
 
 TryHandlerBlock
-    ::= "{"
-        [ "match" "{" { TryHandler } "}" | { TryHandler } ]
-        "}"
+    ::= "{" TryHandler { TryHandler } "}"
 
 TryHandler
-    ::= MatchPattern "=>" TryHandlerBody
+    ::= TryPattern [ "where" Expression ] "=>" TryHandlerBody
+
+TryPattern
+    ::= ErrPattern
+      | "None"
 
 TryHandlerBody
     ::= Expression
@@ -3761,9 +3767,11 @@ let value := try Calculate() {
 }
 ```
 
-The explicit nested `match` wrapper is accepted for compatibility.
-
-The direct handler form is canonical.
+The protected expression determines the legal handler family. Result/error
+`try` accepts `Err(...)`; Option `try` accepts `None`. Explicit `Ok(...)` and
+`Some(...)` success handlers and the obsolete nested `match { ... }` wrapper
+are invalid. Handler lists are semantically partial; unmatched states propagate
+when compatible.
 
 ---
 
@@ -4741,7 +4749,7 @@ flowcontrol_for.md
 flowcontrol_while.md
 flowcontrol_switch.md
 flowcontrol_match.md
-errorhandling.txt
+errorhandling.md
 defer.md
 discard.md
 ownership.md

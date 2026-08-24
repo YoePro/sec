@@ -39,6 +39,17 @@ type ResolvedCall struct {
 	Kind     ResolvedCallKind
 }
 
+// CallableCapabilityFact is the compiler-owned editor/lowering view of the
+// invocation authority defined by rules/declarations/lambda-functions.md.
+// Tooling consumes these facts instead of reconstructing capability semantics
+// from source prefixes.
+type CallableCapabilityFact struct {
+	Capability            CallableCapability
+	Spelling              string
+	InvocationRequirement string
+	ConsumesCallable      bool
+}
+
 // ResolvedConstruction records the init overload selected by a new
 // expression. Construction remains distinct from both calls and conversions.
 type ResolvedConstruction struct {
@@ -134,7 +145,7 @@ type ResolvedTryHandler struct {
 	BindingName string
 	BindingType Type
 	// PayloadDiscard implements explicit Ok(_)/Err(_) handling from
-	// rules/errors/errorhandling.txt and correction20.md.
+	// rules/errors/errorhandling.md and correction20.md.
 	PayloadDiscard bool
 	Flow           ResolvedTryHandlerFlow
 	ResultType     Type
@@ -265,6 +276,45 @@ func (a *Analyzer) ResolvedTypeOf(expr ast.Expression) (Type, bool) {
 	}
 	typ, ok := a.expressionTypes[expr]
 	return typ, ok && typ.Kind != InvalidType
+}
+
+// CallableCapabilityFactOf returns the normalized capability contract for a
+// resolved FunctionType, including legacy shared-capability zero values.
+func CallableCapabilityFactOf(typ Type) (CallableCapabilityFact, bool) {
+	if typ.Kind != FunctionType {
+		return CallableCapabilityFact{}, false
+	}
+	switch normalizedCallableCapability(typ.FunctionCapability) {
+	case CallableMutable:
+		return CallableCapabilityFact{
+			Capability:            CallableMutable,
+			Spelling:              "mut fn",
+			InvocationRequirement: "mutable/exclusive callable access",
+		}, true
+	case CallableConsuming:
+		return CallableCapabilityFact{
+			Capability:            CallableConsuming,
+			Spelling:              "-> fn",
+			InvocationRequirement: "owned callable access",
+			ConsumesCallable:      true,
+		}, true
+	default:
+		return CallableCapabilityFact{
+			Capability:            CallableShared,
+			Spelling:              "fn",
+			InvocationRequirement: "shared reusable callable access",
+		}, true
+	}
+}
+
+// ResolvedCallableCapabilityOf reads an immutable expression type fact from a
+// completed analysis and exposes its callable capability to compiler clients.
+func (a *Analyzer) ResolvedCallableCapabilityOf(expr ast.Expression) (CallableCapabilityFact, bool) {
+	typ, ok := a.ResolvedTypeOf(expr)
+	if !ok {
+		return CallableCapabilityFact{}, false
+	}
+	return CallableCapabilityFactOf(typ)
 }
 
 // ResolvedTypeDeclarationLocation returns declaration provenance recorded by

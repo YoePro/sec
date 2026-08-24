@@ -342,11 +342,26 @@ unsafe {
 
 The `if` statement does not invent the states or the semantics of `is`; the owning type/FFI rulebook does.
 
-A state test does not introduce a payload binding.
+A state test normally does not introduce a payload binding. Sec 0.1 defines one
+narrow Option exception:
+
+```sec
+if option is Some(value) {
+    Use(value)
+}
+```
+
+The binding exists only on the positive true path and follows ordinary
+copy/move rules and path-sensitive ownership merging. Non-binding `None` and
+`is not None` tests remain valid.
 
 ## 13. No pattern binding in `if`
 
 Structural or payload-binding patterns are not part of Sec 0.1 `if` syntax.
+
+The sole payload-binding exception is positive `Option` presence testing with
+`is Some(binding)` as defined above. It does not generalize to Result or union
+patterns.
 
 Invalid:
 
@@ -367,6 +382,16 @@ if result is Ok(value) {
 Use `match` when a variant payload or structural pattern must be destructured.
 
 This rule does not prohibit non-binding boolean `is` state tests defined by another rulebook.
+
+Negative Option binding is invalid:
+
+```sec
+if option is not Some(value) {
+    Use(value)
+}
+```
+
+The true path has no payload to bind. Use `match` for general destructuring.
 
 ## 14. No declaration syntax in the header
 

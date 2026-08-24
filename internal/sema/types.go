@@ -81,19 +81,34 @@ type Type struct {
 	EventCapacitySet           bool
 	FunctionParameterTypes     []Type
 	FunctionReturnType         *Type
-	GenericParameters          []string
-	Fields                     []StructField
-	RegisterWidth              int64
-	RegisterAllocationOrder    string
-	RegisterByteOrder          string
-	RegisterFields             []RegisterField
-	Properties                 []Property
-	Events                     []Event
-	Implements                 []Type
-	InterfaceMethods           []Function
-	InterfaceProperties        []InterfaceProperty
-	InterfaceEvents            []InterfaceEvent
+	// FunctionCapability is the callable environment authority from
+	// rules/declarations/lambda-functions.md. The zero value is normalized to
+	// CallableShared for compatibility with pre-capability semantic facts.
+	FunctionCapability      CallableCapability
+	GenericParameters       []string
+	Fields                  []StructField
+	RegisterWidth           int64
+	RegisterAllocationOrder string
+	RegisterByteOrder       string
+	RegisterFields          []RegisterField
+	Properties              []Property
+	Events                  []Event
+	Implements              []Type
+	InterfaceMethods        []Function
+	InterfaceProperties     []InterfaceProperty
+	InterfaceEvents         []InterfaceEvent
 }
+
+// CallableCapability is the Sema-owned invocation authority of a function
+// value under rules/declarations/lambda-functions.md. It is independent of
+// parameter ownership modes and named-method receiver syntax.
+type CallableCapability string
+
+const (
+	CallableShared    CallableCapability = "shared"
+	CallableMutable   CallableCapability = "mutable"
+	CallableConsuming CallableCapability = "consuming"
+)
 
 type EnumValue struct {
 	Name  string

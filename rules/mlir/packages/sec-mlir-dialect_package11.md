@@ -43,7 +43,7 @@ Implementation follows:
 rules/declarations/enums.md
 rules/declarations/unions.md
 rules/memory/layout.md
-rules/errors/errorhandling.txt
+rules/errors/errorhandling.md
 rules/memory/destruction.txt
 rules/types/types.md
     ↓
@@ -1561,7 +1561,7 @@ No special whitelist of ArithmeticError variants remains in the handler engine.
 
 P11 provides generic union variant test/projection primitives.
 
-However `rules/errors/errorhandling.txt` currently defines the initial specific local
+However `rules/errors/errorhandling.md` currently defines the initial specific local
 error pattern in terms of a qualified error value and specifically describes
 static exhaustiveness for enum error types.
 

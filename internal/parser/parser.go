@@ -3535,6 +3535,9 @@ func (p *Parser) parseTypeReference() *ast.TypeReference {
 	if p.curToken.Type == lexer.FN {
 		return p.parseFunctionTypeReference()
 	}
+	if p.curToken.Type == lexer.MUT || p.curToken.Type == lexer.CONSUME_ARROW {
+		return p.parseCapabilityFunctionTypeReference()
+	}
 
 	if p.curToken.Type == lexer.LBRACKET {
 		return p.parsePrefixSequenceTypeReference()
@@ -3605,8 +3608,9 @@ func (p *Parser) parseReferenceTypeReference() *ast.TypeReference {
 
 func (p *Parser) parseFunctionTypeReference() *ast.TypeReference {
 	ref := &ast.TypeReference{
-		Token: p.curToken,
-		Name:  "fn",
+		Token:              p.curToken,
+		Name:               "fn",
+		FunctionCapability: ast.CallableShared,
 	}
 
 	if !p.expectPeek(lexer.LPAREN) {
@@ -3634,6 +3638,24 @@ func (p *Parser) parseFunctionTypeReference() *ast.TypeReference {
 	}
 	ref.FunctionReturnType = p.parseTypeReference()
 
+	return ref
+}
+
+// parseCapabilityFunctionTypeReference implements the callable type prefixes
+// from rules/declarations/lambda-functions.md. Lambda expressions themselves
+// still begin with plain fn; mut fn and -> fn are type syntax only.
+func (p *Parser) parseCapabilityFunctionTypeReference() *ast.TypeReference {
+	prefix := p.curToken
+	capability := ast.CallableMutable
+	if prefix.Type == lexer.CONSUME_ARROW {
+		capability = ast.CallableConsuming
+	}
+	if !p.expectPeek(lexer.FN) {
+		return p.invalidTypeReference(prefix, prefix.Lexeme)
+	}
+	ref := p.parseFunctionTypeReference()
+	ref.Token = prefix
+	ref.FunctionCapability = capability
 	return ref
 }
 
@@ -4221,7 +4243,7 @@ func (p *Parser) expectPeekContextualSet() bool {
 }
 
 func isTypeStart(tokenType lexer.TokenType) bool {
-	return tokenType == lexer.IDENT || tokenType == lexer.SET || tokenType == lexer.LT || tokenType == lexer.LBRACKET || tokenType == lexer.LPAREN || tokenType == lexer.VOID || tokenType == lexer.FN || tokenType == lexer.REF
+	return tokenType == lexer.IDENT || tokenType == lexer.SET || tokenType == lexer.LT || tokenType == lexer.LBRACKET || tokenType == lexer.LPAREN || tokenType == lexer.VOID || tokenType == lexer.FN || tokenType == lexer.MUT || tokenType == lexer.CONSUME_ARROW || tokenType == lexer.REF
 }
 
 func (p *Parser) isTypeNameToken(tokenType lexer.TokenType) bool {

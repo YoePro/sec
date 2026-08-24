@@ -331,7 +331,7 @@ memory/storage.md
 
 | Rulebook | Status | Notes |
 |---|---|---|
-| `errors/errorhandling.txt` | **Written — sync required** | Explicit `Result`, `Ok`, `Err`, `try`, and matching. |
+| `errors/errorhandling.md` | **Written** | Canonical revision 2.0 compiler-known `error`, typed Result channels, Result projections, general Result/Option/fallible-operation `try`, partial guarded handlers, explicit fallible-setter contracts, ownership, Semantic IR, diagnostics, and LSP requirements. Implementation progress is tracked by `frontend.errorhandling-v2`. |
 | `errors/panic.md` | **Written** | Canonical panic domains, containment, cleanup, assertions, checked unreachable, task/thread outcomes, panic information, no-panic verification, and runtime-free support model; exact explicit-panic and build-manifest syntax remain open. |
 | `errors/runtime_checks.md` | **Written** | Canonical checked-operation model, proof elimination, fallible `try` paths, panic-capable ordinary paths, typed propagation, no-panic integration, and runtime-free lowering requirements. |
 | `library/core-library.md` | **Written — sync required** | Must include the compiler/core access model and all language-level core errors. |
@@ -464,7 +464,7 @@ OrderedMap[K, V]
 | `compiler/parser_recovery.md` | **Written** | Canonical deterministic recovery model; structured implementation remains partial. |
 | `generics_lowering.md` | **Planned** | Semantic and MLIR lowering of generic code. |
 | `monomorphization.md` | **Planned** | Specialization, symbol identity, code size, and cross-module behavior. |
-| `linking.md` | **Planned** | Symbol identity, libraries, executables, dead stripping, and target linkage. |
+| `compiler/linking.md` | **Written** | Canonical CompilationPlan-specific LinkPlan, binary symbol identity, native/foreign resolution, archives, reachability, dead stripping/LTO, deterministic toolchain materialization, and artifact verification. Implementation is tracked by `compiler.linking`. |
 | `compile_time_evaluation.md` | **Planned** | User-visible compile-time evaluation semantics. |
 
 File extensions for new rulebooks should preferably converge on:
@@ -511,7 +511,7 @@ from the presence of a versioned document.
 | `platform/ffi.md` | **Written** | Canonical revision 2.0 foreign declarations, C ABI type families, data representations, callbacks, varargs, strings, ownership, effects, symbols, and legality. Implementation progress is tracked by `frontend.ffi-v2`. |
 | `platform/fixed-address-bindings.md` | **Written** | Canonical `@address`, MMIO volatility, binding mutability, validation, overlap, and addressed-access semantics. Implementation is tracked by `frontend.fixed-address-bindings`. |
 | `platform/abi.md` | **Written** | Canonical Sec, C, and system ABI families; plan-selected classification, call plans, signatures, fingerprints, MLIR staging, and separate-compilation compatibility. Implementation is tracked by `lowering.abi-model`. |
-| `target_profiles.md` | **Planned** | Hosted, RTOS, bare-metal, allocation, concurrency, checks, and capability profiles. |
+| `platform/target_profiles.md` | **Written** | Canonical Hosted, RTOS, and BareMetal profile families; capability activation, execution and safety policy, typed resource limits, derived profiles, immutable resolved identity, provenance, fingerprints, and compiler-consumer queries. Implementation is tracked by `platform.target-profiles`. |
 | `platform/platform_model.md` | **Written** | Canonical Target/Variant terminology, immutable CompilationPlan resolution, typed platform submodels, capabilities, source selection, fingerprints, diagnostics, and LSP invalidation. Implementation is tracked by `compiler.platform-model`. |
 | `inline_assembly.md` | **Planned** | Operands, constraints, clobbers, volatility, memory effects, and target restrictions. |
 | `volatile.md` | **Planned** | Volatile access, MMIO, compiler reordering, atomics distinction, and read-modify-write. |
@@ -532,7 +532,7 @@ as one compatible model.
 | `projects/projects.txt` | **Written** | Repository manifest, targets, outputs, internal directories, and build structure; module semantics are delegated to `projects/modules.md`. |
 | `projects/modules.md` | **Written** | Canonical module identity, membership, imports, cycles, visibility, resolution, surfaces, separate compilation, and incremental-tooling model. Implementation progress is tracked by `frontend.modules`. |
 | `compiler/initialization.md` | **Written** | Canonical executable entry, runtime-free startup, initialization/shutdown plans, dependency ordering, startup rollback, static-destruction integration, target termination, and lowering/linking boundaries. Implementation is tracked by `compiler.program-initialization`. |
-| `linking.md` | **Planned** | Link-time symbol and output semantics. |
+| `compiler/linking.md` | **Written** | Canonical link planning and final artifact semantics; implementation is tracked by `compiler.linking`. |
 
 The following must eventually be defined coherently:
 
@@ -585,6 +585,7 @@ compiler/compiler.txt
 compiler/compiler_analysis.txt
 compiler/compiler_pipeline.txt
 compiler/compiler_known_members.md
+compiler/linking.md
 concurrency/concurrency.md
 concurrency/concurrency_memory_model.md
 concurrency/concurrency_runtime_model.md
@@ -595,7 +596,7 @@ types/default_values.md
 memory/destruction.txt
 tooling/diagnostics.txt
 declarations/enums.md
-errors/errorhandling.txt
+errors/errorhandling.md
 analysis/effect_analysis.md
 concurrency/events.md
 platform/ffi.md
@@ -694,12 +695,9 @@ generics_lowering.md
 monomorphization.md
 compile_time_evaluation.md
 
-target_profiles.md
 inline_assembly.md
 volatile.md
 interrupts.md
-
-linking.md
 
 debug_information.md
 compiler_testing.md
@@ -785,13 +783,14 @@ Still deliberately deferred:
 
 ## Platform and hardware
 
-`foundations/attributes.md` now defines target-selection and interrupt-binding attribute
-syntax. Still to decide in the remaining platform rulebooks:
+`foundations/attributes.md` now defines target-selection and interrupt-binding
+attribute syntax. `platform/target_profiles.md` defines canonical profile
+families, activation, policy, resources, resolution, provenance, and typed
+compiler queries. Still to decide in the remaining platform rulebooks:
 
 - volatile and MMIO semantics;
 - inline assembly;
 - native platform views;
-- target capability queries.
 
 ## Closures
 

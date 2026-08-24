@@ -896,6 +896,25 @@ It is not the union initialization state `empty`.
 
 Whole-payload binding of `Some` follows the ownership rules in this document.
 
+### Open `error` narrowing
+
+`Result[T, error]` preserves the concrete identity and payload of widened Sec
+errors. Its `Err` branch may therefore use error-specific concrete patterns:
+
+```sec
+match result {
+    Ok(value) => Use(value)
+    Err(IOError.NotFound) => UseDefault()
+    Err(errorValue) => Handle(errorValue)
+}
+```
+
+The root `error` domain is open. Concrete error arms alone are not exhaustive;
+an `Err(errorValue)` or `Err(_)` fallback is required unless control-flow facts
+prove a narrower closed state. Generic `_` still may not hide an unhandled
+`Err`. This is an error-specific narrowing rule, not general runtime type
+matching.
+
 ---
 
 ## 30. Direct boolean matching is not part of Sec 0.1

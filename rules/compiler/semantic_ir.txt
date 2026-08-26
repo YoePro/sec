@@ -24,6 +24,47 @@ Semantic IR must not redefine language semantics.
 
 Semantic IR generation must fail when unresolved semantic errors remain.
 
+## Package 13 canonical struct value amendment
+
+This section incorporates `rules/mlir/semantic-ir/sec_semantic_ir_struct_v1.md`.
+
+`StructFieldID` is a zero-based declaration-order identity local to one nominal
+`StructDefinition`; it is never a physical offset. A `StructDefinition`
+records canonical `TypeID`/`SymbolID`, name, concrete type arguments,
+declaration-order `StructFieldDefinition` values, open source-order field tags,
+copy classification, trivial-destruction/defaultability facts, optional layout
+reference, source location, and optional synthetic union-payload origin. Empty,
+nested, concrete-generic and wide-field structs are representable. Properties
+and all other non-storage members are excluded.
+
+The Sema bridge provides immutable `ResolvedStructLiteralPlan` and
+`ResolvedStructMemberPlan` facts. Literal entries retain source order and are
+explicit-field or spread entries. Exactly one final record per stored field,
+in declaration order, selects explicit, spread or canonical-default origin,
+source entry/field identity and resolved transfer action. Queries do not rerun
+resolution or mutate AST/analyzer state. Legacy synthesized default AST nodes
+may remain for old backends but are not Semantic IR authority.
+
+Canonical operations are `StructConstructOp`, `StructSpreadFieldsOp`,
+`StructExtractFieldOp` and `StructReplaceFieldOp`. Construction has exactly one
+typed operand per stored field and no uninitialized value. Spread evaluates
+one source and yields declaration-order fields. Extraction uses resolved field
+identity. Replacement is a functional aggregate update. P13 executes only
+`construct-direct` and `copy-trivial` transfer, trivial replacement/storage,
+and recursively materializable semantic defaults. Other recorded ownership
+actions reject until later ownership/destruction packages provide their
+operations and cleanup.
+
+Struct-like union variants have one deterministic compiler-internal synthetic
+struct identity derived from owning union identity and stable variant index.
+On a proven matching path, guarded union field projections construct that
+whole semantic value for trivial P12 binding. It is not an additional physical
+payload representation.
+
+Struct Semantic IR contains no physical offsets, padding, size/alignment,
+packing, LLVM body, aggregate ABI, hidden copy/move/destruction, `undef` or
+poison defaults.
+
 ## Primary goals
 
 Semantic IR must:
@@ -1546,3 +1587,25 @@ Compiler-proven exhaustive residual paths terminate with synthesized
 UnreachableOp carrying reason `exhaustive-match-fallthrough`. P12 payload binding
 accepts only none, discard and copy-trivial; borrow, move, semantic copy and
 struct-like whole payload forms remain explicit unsupported boundaries.
+
+## Ownership availability amendment (ownership revision 2)
+
+Semantic IR carries or makes recoverable canonical place identity and
+projection, explicit ownership transfer and move-marker provenance, delayed
+outer-call transfer commit, explicit closure move capture, discard convergence,
+replacement/reinitialization, and cleanup responsibility.
+
+The canonical availability dimension is `Uninitialized`, `Available`,
+`PartiallyAvailable`, `Unavailable`, or `ConditionallyAvailable`. The reason and
+source provenance for unavailability, including moved, discarded, and detached,
+is a separate fact and may retain multiple possible reasons across joins.
+
+IR preserves partial aggregate ownership, still-owned sub-places, and path
+refinement from `is available` / `is not available`. It also distinguishes
+statically provable availability from runtime bookkeeping required only when
+proof is insufficient. `ConditionallyAvailable` must not be reconstructed as
+`Option`, nullability, or generational-reference validity.
+
+Lowering may use SSA state, control-flow splitting, or local drop flags without
+changing public type or ABI layout. A static-ownership target policy must be
+able to reject forbidden dynamic bookkeeping before lowering.

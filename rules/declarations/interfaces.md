@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-13
-- **Last updated:** 2026-08-14
+- **Last updated:** 2026-08-26
 - **Document revision:** 2.0
 - **Replaces:** `rules/declarations/interfaces.txt`
 - **Sec language version:** 0.1
@@ -59,17 +59,13 @@ interface Counter {
 
 `mut fn` requires mutable/exclusive receiver access.
 
-### 3.3 Consuming receiver
+### 3.3 No whole-self consuming receiver
 
-```sec
-interface Buffer {
-    -> fn IntoBytes() byte[]
-}
-```
-
-`-> fn` consumes ownership of the receiver. After a successful call, the original owned receiver is no longer usable.
-
-A consuming interface method cannot be called through `ref` or `ref mut`, because borrowing does not transfer ownership.
+Ordinary interface instance methods do not have a receiver contract that
+consumes the complete implementing value. Whole-instance lifetime termination
+belongs to `free` and the destruction model. A method may still consume an
+ordinary `->` parameter, or mutate/consume an owned member when its receiver
+contract supplies sufficient mutable/exclusive authority.
 
 ### 3.4 Static member
 
@@ -176,7 +172,7 @@ Conformance checks include, where applicable:
 - property access contract,
 - receiver capability,
 - static versus instance membership,
-- consuming ownership behavior.
+- ordinary parameter ownership behavior.
 
 Return type is not an overload discriminator.
 
@@ -186,8 +182,6 @@ Examples:
 
 - interface `fn` + concrete method requiring mutation: invalid;
 - interface `mut fn` + concrete non-mutating method: valid;
-- interface `-> fn` + concrete method that consumes the receiver: valid;
-- interface `-> fn` + concrete method that does not consume the receiver: valid if all other contract requirements are satisfied.
 
 ## 7. Interface values and borrowing
 
@@ -199,7 +193,7 @@ fn Inspect(value: ref Counter) void {
 }
 ```
 
-A shared borrow cannot call `mut fn` or `-> fn`.
+A shared borrow cannot call `mut fn`.
 
 ```sec
 fn Update(value: ref mut Counter) void {
@@ -207,9 +201,7 @@ fn Update(value: ref mut Counter) void {
 }
 ```
 
-A mutable borrow may call shared and mutable methods, but cannot call a consuming method.
-
-An owned interface value may call consuming methods.
+A mutable borrow may call shared and mutable methods.
 
 ## 8. Properties instead of required fields
 
@@ -324,7 +316,8 @@ The compiler must diagnose at least:
 - Prefer properties over exposing representation requirements.
 - Use plain `fn` whenever mutation is not part of the contract.
 - Use `mut fn` only when callers must provide mutable/exclusive receiver access.
-- Use `-> fn` only when consuming ownership is part of the semantic contract.
+- Use `->` on ordinary parameters when consuming that argument is part of the
+  semantic contract; whole-self consuming interface receivers do not exist.
 - Keep the `implements` list on the primary `impl` so programmers have one clear conformance entry point.
 - Prefer small, composable interfaces and use interface inheritance only when the semantic relationship is real.
 

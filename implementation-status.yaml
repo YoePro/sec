@@ -1,5 +1,5 @@
 schema_version: 1
-updated: "2026-08-24"
+updated: "2026-08-26"
 purpose: >-
   Canonical implementation ledger for compiler and tooling work. Normative
   language behavior remains in rules/, while implementation status is migrated
@@ -11,6 +11,101 @@ status_values:
   planned: The scope is documented but no implementation slice is integrated.
 
 integrations:
+  - id: frontend.ownership-v2
+    area: frontend-ownership-control-flow-and-lowering
+    status: partial
+    integrated: "2026-08-26"
+    document_revision: "2.0"
+    repository_baseline: "b3315f6"
+    governance_source: implementation-status-ownership.yaml
+    replaces: pre-v2 rules/memory/ownership.md
+    summary: >-
+      Tracks ownership revision 2.0. The existing frontend has structured Place
+      identity, explicit declaration/assignment moves, direct move provenance,
+      selected field-sensitive partial availability, borrow checks, recursive
+      copy and destruction classification, and delayed outer-call transfer
+      commit. It does not yet implement the revision-2 canonical Availability
+      dimension, explicit reusable-source moves in every consuming call/payload,
+      new closure move capture syntax, availability tests/refinement, discard
+      convergence, conditional cleanup/replacement, or static-ownership policy.
+    rules:
+      - rules/memory/ownership.md
+      - rules/memory/copy_move.md
+      - rules/memory/destruction.txt
+      - rules/control-flow/discard.md
+      - rules/declarations/functions.md
+      - rules/declarations/interfaces.md
+      - rules/declarations/unions.md
+      - rules/declarations/lambda-functions.md
+      - rules/analysis/closure_analysis.md
+      - rules/foundations/grammar.md
+      - rules/compiler/semantic_ir.txt
+      - rules/tooling/lsp.md
+      - rules/tooling/diagnostics.txt
+      - rules/tooling/formatter.md
+    implemented:
+      - canonical Place identity for roots, fields, selected indexes and slices, references, and union payload projections
+      - direct unavailable tracking with moved, discarded, and detached source provenance
+      - lexer, parser, AST, formatter, Sema, and initial LSP support for declaration and assignment move forms
+      - named-source implicit copy rejection for compiler-known and @noCopy move-only values in direct declaration and assignment paths
+      - selected nested field moves, sibling use, whole-aggregate rejection, and mutable field reinitialization
+      - projection-sensitive ownership facts across branches, matches, switches, selects, and loops, with a conservative pre-v2 merge model
+      - borrow validation before supported moves and overlapping self-move diagnostics
+      - independent copy and trivial-destruction classifications
+      - left-to-right call argument evaluation with outer-call transfer commit delayed until every argument is ready
+    remaining:
+      - availability-reason-separation
+      - explicit-consuming-call-arguments
+      - call-transfer-commit-with-explicit-move
+      - constructor-payload-explicit-move
+      - union-legacy-move-syntax
+      - fresh-temporary-forwarding
+      - return-boundary-optional-move-marker
+      - closure-capture-explicit-move
+      - ordinary-method-no-whole-self-consume
+      - method-member-consumption
+      - immutable-root-field-mutability
+      - partial-availability-v2
+      - immutable-partial-move
+      - custom-free-partial-move-ban
+      - conditional-availability
+      - ownership-is-available
+      - static-availability-elimination
+      - dynamic-ownership-state-policy
+      - discard-convergence
+      - conditional-replacement
+      - replacement-order-and-commit
+      - partial-destruction
+      - destruction-classification-boundary
+      - ownership-errorhandling-sync
+      - ownership-semantic-ir-v2
+      - ownership-lsp-v2
+      - ownership-mentor-diagnostics
+      - ownership-formatter-v2
+    corrections_applied:
+      - functions-ownership-v2-correction
+      - interfaces-ownership-v2-correction
+      - unions-ownership-v2-correction
+      - lambda-functions-ownership-v2-correction
+      - closure-analysis-ownership-v2-correction
+      - grammar-ownership-v2-correction
+      - copy-move-ownership-v2-correction
+      - discard-ownership-v2-correction
+      - destruction-ownership-v2-correction
+      - semantic-ir-ownership-v2-correction
+      - lsp-ownership-v2-correction
+      - diagnostics-ownership-v2-correction
+      - formatter-ownership-v2-correction
+    required_test_groups:
+      - explicit reusable-source move versus copy at calls, payloads, captures, declarations, assignments, and returns
+      - delayed call and guarded-match ownership commit
+      - method receiver and member ownership authority
+      - partial, conditional, immutable, and custom-free availability
+      - availability tests, static elimination, and target policy
+      - discard convergence, replacement, and exactly-once partial cleanup
+      - Result and try ownership integration
+      - canonical diagnostics, formatter preservation, LSP facts, and Semantic IR verification
+
   - id: frontend.if-statements-v2
     area: frontend-control-flow
     status: partial
@@ -351,6 +446,10 @@ integrations:
       - internal/sema/analyzer.go
       - internal/sema/place.go
       - internal/sema/semantic_facts.go
+      - internal/ir/semantic/model.go
+      - internal/ir/semantic/builder.go
+      - internal/ir/semantic/verifier.go
+      - internal/sema/semantic_facts.go
       - internal/sema/parameter_usage.go
       - internal/formatter/formatter.go
       - internal/ir/semantic/model.go
@@ -364,6 +463,8 @@ integrations:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
       - internal/sema/copy_move_test.go
+      - internal/sema/semantic_facts_test.go
+      - internal/ir/semantic/package13_test.go
       - internal/sema/semantic_facts_test.go
       - internal/ir/semantic/package12_test.go
       - internal/codegen/mlir/generator_test.go
@@ -839,7 +940,8 @@ integrations:
       - register stable IDs, symbolic names, structured notes and help, and related locations for implicit discard, unhandled must-use, non-discardable values, use-after-discard, borrow conflicts, useless discard, and redundant void discard
       - complete path-sensitive active-payload reasoning for wrapper and union discardability without weakening conservative defaults
       - generalize explicit discard from simple local identifiers to supported Places, including field-sensitive partial discard and exact availability state
-      - distinguish discarded-state joins from moved-state joins where source diagnostics require the distinction
+      - separate canonical Availability from moved/discarded/detached reason provenance across joins
+      - make discard of an already-Unavailable place a legal no-op and implement conditional discard convergence
       - lower explicit and implicit discard through the resolved deterministic destruction plan, cancel consumed cleanup responsibility, prevent double destruction, and register cleanup after legal reinitialization
       - introduce canonical Semantic IR DiscardValue ownership operations with explicit, implicit-call-result, and compiler-temporary provenance
       - ensure backend stages never infer semantic discard from unused SSA values
@@ -852,7 +954,8 @@ integrations:
       - explicit discard of move-only local resource
       - discarded binding becomes unavailable
       - use after discard reports related discard location
-      - double discard is rejected
+      - discard of an already unavailable place is a legal no-op
+      - discard of a conditionally available place converges every continuing path to unavailable
       - mutable whole binding may be reinitialized after discard
       - immutable binding cannot be reinitialized after discard
       - reinitialization after discard performs no old-value destruction
@@ -1470,14 +1573,14 @@ integrations:
       - basic overload sets distinguished by parameter signature with return types excluded as discriminators
       - exact matches preferred over conversions and ambiguity and no-match diagnostics
       - generic function templates, full explicit specialization, argument inference, expected-result inference, and concrete instance caching
-      - implicit concrete method receivers plus explicit shared, mutable, consuming, and static interface receiver contracts
+      - implicit concrete method receivers plus explicit shared, mutable, and static interface receiver contracts in the pre-ownership-v2 implementation
       - calls retain resolved concrete callable and call-dispatch facts for Sema, LSP, and call-graph consumers
       - call and spread-source expressions are analyzed left-to-right
       - outer-call move transfer is applied only after all arguments analyze successfully, so a failed later argument does not consume an earlier direct binding
       - fixed-array argument spread with exactly-once source analysis, increasing-index expansion, and copyability checks
       - owned by-value parameters are mutable callee-local bindings while shared and mutable-reference parameter bindings remain non-rebindable
       - "forced-consuming `-> name: T` parameter parsing and AST/Sema retention for ordinary, generic, method, interface, initializer, and lambda parameter-list consumers"
-      - forced consumption marks copyable as well as move-only caller Places unavailable only after successful outer-call argument analysis
+      - forced consumption marks copyable as well as move-only caller Places unavailable only after successful outer-call argument analysis, but reusable-source call-site marker enforcement remains unimplemented
       - consuming ref and ref mut parameter rejection with dedicated diagnostics
       - rejection of overload pairs differing only by ordinary versus consuming parameter mode
       - interface requirements and concrete conformance preserve consuming parameter contracts independently of receiver capability
@@ -1486,8 +1589,12 @@ integrations:
       - parameter-usage analysis records forced-consuming call demand
       - parameter mutability facts flow from Sema into LSP semantic-token readonly classification without LSP-owned language reconstruction
       - ordinary move-only by-value arguments consume the caller at successful call entry while reference parameters borrow
+      - canonical type-position ref and ref mut call parameters remain borrows during successful argument transfer and do not move caller Places
       - standalone discardable call results and compiler-known must-use result categories participate in Sema validation
     remaining:
+      - require explicit `<-` for every reusable source consumed by an ordinary move-only or explicit `->` parameter while preserving marker-free fresh temporaries
+      - accept optional `return <-value` with the same result ownership as `return value`
+      - remove whole-self consuming ordinary/interface receiver behavior while retaining consuming callable values and member consumption under mutable/exclusive authority
       - remove legacy ref name colon Type parameter spelling after migrating remaining formatter, bootstrap, diagnostics, and examples, and normalize legacy and canonical reference modes to one AST and signature identity during the transition
       - preserve forced-consuming parameter modes in first-class callable types, Semantic IR parameter ownership, call ArgumentActions, Sec MLIR, and LLVM lowering
       - "add native final `name: ...T` parameter syntax and reject multiple, non-final, and consuming variadic parameters"
@@ -1496,7 +1603,7 @@ integrations:
       - support runtime-length and multiple spread sources into native variadic destinations while rejecting consuming spread from move-only collections
       - prefer a fixed-arity overload over an otherwise equally ranked variadic overload
       - preserve consuming modes, variadic shape, and concrete specialization in function values and callable compatibility
-      - make receiver-capability inference include consuming concrete receivers and complete interface conformance for every parameter ownership and variadic contract
+      - make receiver-capability inference distinguish shared and mutable/exclusive ordinary methods, member ownership effects, and complete interface conformance for every parameter ownership and variadic contract
       - represent parameter modes, strict argument order, delayed transfer commit, cleanup edges, and native packs explicitly in Semantic IR
       - lower calls and native packs through Sec MLIR and LLVM without hidden heap allocation or confusion with foreign varargs
       - add exact revision-2.0 diagnostics and the full parser, Sema, ownership, formatter, LSP, Semantic IR, ABI, and backend test matrix from functions.md
@@ -1507,7 +1614,7 @@ integrations:
       - runtime-generic callables or unresolved overload sets as function values
       - native variadic ABI equivalence with C or foreign varargs
     verification:
-      - command: go test ./internal/parser ./internal/sema ./internal/formatter ./cmd/lsp -run 'Consuming|FunctionHoverShowsConsuming|OwnedParameters' -count=1
+      - command: go test ./internal/parser ./internal/sema ./internal/formatter ./cmd/lsp -run 'Consuming|FunctionHoverShowsConsuming|OwnedParameters|CanonicalReferenceTypeCallArguments' -count=1
         result: passed
 
   - id: frontend.lambda-functions-v2
@@ -1573,7 +1680,8 @@ integrations:
     remaining:
       - infer callable capability from environment mutation and consumption and enforce capability compatibility
       - preserve parameter ownership modes and native variadic shape in first-class callable type identity and calls
-      - parse, represent, format, and expose `capture(-> value)`, `capture(ref value)`, and `capture(ref mut value)`
+      - parse, represent, format, and expose `capture(<-value)`, `capture(ref value)`, and `capture(ref mut value)` while rejecting stale `capture(-> value)`
+      - enforce plain `capture(value)` as copy-only and reject non-copyable reusable sources instead of silently moving them
       - make owned capture bindings mutable and connect their mutation to `mut fn` inference
       - force transfer for consuming captures even when their values are copyable
       - establish shared and mutable capture borrows with canonical Place, provenance, lifetime, and conflict checking
@@ -2263,18 +2371,20 @@ integrations:
       - primary impl Type implements Interface conformance placement
       - rejection of obsolete type-level concrete conformance with a migration diagnostic
       - rejection of conformance lists on impl extends fragments
-      - shared fn, mutable mut fn, consuming -> fn, and static fn interface method syntax
+      - shared fn, mutable mut fn, consuming -> fn, and static fn interface method syntax in the pre-ownership-v2 implementation; consuming instance receiver syntax is now stale
       - dedicated -> punctuation token, formatter handling, TextMate highlighting, and LSP operator classification
       - concrete receiver mutation inference and rejection when stronger than a shared interface contract
       - mutable interface call rejection through shared references and acceptance through mutable references
-      - consuming interface call rejection through both shared and mutable references
-      - owned interface receiver consumption and later-use diagnostics
+      - pre-ownership-v2 consuming interface call rejection through borrowed references
+      - pre-ownership-v2 owned interface receiver consumption and later-use diagnostics
       - exact method parameter/result/static compatibility for represented interface requirements and property accessor compatibility; same-name overload sets remain partial
       - direct, indirect, and self-referential inheritance cycle diagnostics
       - defining-module ownership inherited from canonical primary impl validation
       - focused parser diagnostic for stored-field-shaped interface requirements
       - LSP outline display of conformance lists on primary impl symbols
     remaining:
+      - remove `-> fn` whole-self consuming instance receiver contracts from parser/Sema/tooling while preserving consuming ordinary parameters and consuming callable-value capability
+      - permit owned member consumption only through sufficient mutable/exclusive receiver authority and ordinary partial-ownership rules
       - preserve and validate same-name interface method overload sets through declaration, inheritance, conformance, and call resolution
       - complete generic interface instantiation and constraint conformance
       - support every associated and nested declaration category permitted by its owning rulebook
@@ -2522,12 +2632,13 @@ integrations:
       - "current LSP implementation-status work already plans compiler-owned try hover facts rather than reconstructing try semantics in the editor."
       - "migrated the canonical rulebook from rules/errors/errorhandling.txt to revision-2 rules/errors/errorhandling.md and updated active rule references"
       - "all fourteen revision-2 correction documents have been applied to their canonical owner rulebooks and archived"
+      - "compiler-known lowercase error resolves import-free as the open root of the error-specific assignability relation"
+      - "canonical enum Name error declarations and integer/bit-backed enum Name Representation error declarations preserve nominal enum identity while marking the type as a concrete error"
+      - "frontend initialization and bodyless Result try compatibility permit one-way marked concrete-error to error widening without implicit narrowing or cross-concrete conversion"
     remaining:
-      - "error-root-type: Add compiler-known lowercase fundamental type error. It is an error-specific root/assignability relation, not general inheritance, an exception base class, a mandatory heap object, or a fixed message/id structure."
-      - "error-enum-marker: Accept concrete fieldless error enums such as enum IOError error { ... }. Preserve ordinary enum closedness, underlying representation rules, and nominal identity while marking the declared type assignable to error."
       - "error-union-marker: Accept payload-bearing error unions in canonical declaration order, for example type DetailedError union error { ... }. Error union payloads follow ordinary union ownership, borrowing, destruction, and match rules."
       - "result-error-type-constraint: Require Result[T, E] error parameter E to be error or a declared Sec error type. Reject arbitrary non-error E types in revision 2."
-      - "error-widening-and-identity: Implement implicit concrete-error -> error widening without implicit error -> concrete narrowing or cross-concrete conversion. Widening must preserve concrete error type identity, active variant, payload, ownership state, and destruction obligations. Physical representation remains implementation-defined."
+      - "error-widening-representation-and-lowering: Preserve concrete error type identity, active variant, payload, ownership state, and destruction obligations through Semantic IR and maintained backends after frontend widening to error. Physical representation remains implementation-defined."
       - "open-error-match-narrowing: Permit error-specific variant narrowing when matching Result[T, error] while keeping error an open domain. Concrete-only Err arms are not exhaustive; Err(errorValue) or Err(_) may cover the remaining open domain. Do not generalize this into arbitrary runtime type-pattern matching."
       - "result-consuming-projections: Add consuming Result[T,E].Ok() -> Option[T] and Result[T,E].Err() -> Option[E]. The owned Result is consumed, retained move-only payload moves without hidden clone, and the non-retained active payload is destroyed exactly once."
       - "result-borrowed-projections: Add non-consuming read-only Result properties OkRef -> Option[ref T] and ErrRef -> Option[ref E]. Their borrows are tied to the Result lifetime and normal borrow rules; the Result remains available after the borrow ends."
@@ -2595,6 +2706,9 @@ integrations:
       - "if result.Err() is not None is accepted"
       - "LSP hover exposes try success/alternate facts, concrete and widened error identity, and consuming versus borrowed projections"
       - "compiler and LSP diagnostics share resolved ownership facts and use mentor-style explanations"
+    verification:
+      - command: go test ./internal/parser ./internal/formatter ./internal/sema -run 'ErrorEnumMarker|ErrorEnumMarkerRoot' -count=1
+        result: passed
 
   - id: frontend.bodyless-try-assignment
     area: frontend-analysis
@@ -3482,6 +3596,7 @@ integrations:
       - post-variant default marker parsing and AST retention with rejection of multiple marked variants
       - union Defaultable resolution for payload-less, single-payload, and struct-like explicit default variants
       - synthesized mutable union defaults through the canonical DefaultValueOf model
+      - contextual Option fields in struct literals accept None and None() through the field's expected union type
       - mutable NonDefaultable union declarations may omit initialization and use the existing unassigned-state dataflow until a real variant is assigned
       - omitted Defaultable struct-like construction fields receive canonical defaults while omitted NonDefaultable fields remain errors
       - payload-less and whole-payload union match patterns with exhaustiveness, duplicate, unreachable, and guard-aware coverage
@@ -3497,13 +3612,14 @@ integrations:
       - extend Place tracking from whole payloads to named destructured fields without hidden moves or cloning
       - complete layout-aware recursive-storage validation across every finite and infinite indirection form
       - support explicit generic constructor qualification such as Option[int].Some(10)
+      - require explicit `<-` when a reusable source is consumed into a union payload and reject legacy word-form move syntax
       - provide complete backend layout metadata, equality lowering, construction, match, destruction, and runtime-dependent empty-state lowering
       - expose empty-state, active-variant, ownership, and exhaustiveness facts through diagnostics and LSP
       - add complete parser recovery, formatter, valid/invalid, dataflow, LSP, Semantic IR, MLIR, and end-to-end coverage
     verification:
       - command: go test ./internal/parser -run UnionDefault -count=1
         result: passed
-      - command: go test ./internal/sema -run 'Union|Default|Match.*Payload' -count=1
+      - command: go test ./internal/sema -run 'Union|Default|Match.*Payload|StructLiteralOptionFields' -count=1
         result: passed
 
   - id: frontend.registers
@@ -3526,11 +3642,15 @@ integrations:
       - internal/sema/types.go
       - internal/sema/analyzer.go
       - internal/sema/place.go
+      - cmd/lsp/main.go
     tests:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
       - internal/sema/allocation_test.go
+      - internal/formatter/formatter_test.go
+      - cmd/lsp/main_test.go
       - testdata/register_valid.sec
+      - testdata/register8_valid.sec
       - testdata/register_invalid.sec
     implemented:
       - nominal declarations through type Name register[N] with positive integer-literal width
@@ -3542,18 +3662,23 @@ integrations:
       - independent little-endian and big-endian byte-order modifiers retained as semantic type facts
       - ordinary register values remain nonvolatile unless their storage binding supplies stronger semantics
       - impl blocks, methods, properties, and implicit self access without changing register storage width
+      - read-write, read-only, write-only, write-one-clear, write-zero-clear, and clear-on-read modifiers are parsed and retained as compiler-owned AST and semantic field facts, with read-write as the default
+      - direct frontend access rejects reads from write-only fields, writes to read-only fields, and compound read-modify-write operations on write-only or special-effect fields
+      - formatter preservation plus LSP hover and completion expose compiler-owned register access facts without editor-side language reconstruction
     remaining:
       - support nested register fields, finite-layout validation, and preservation of nested nominal and access semantics
       - accept general positive compile-time constant expressions for register and bit-field widths rather than only integer literals
-      - implement read-write, read-only, write-only, write-one-clear, write-zero-clear, and clear-on-read field semantics
       - complete compile-time and checked runtime integer-to-register conversion behavior
       - preserve unnamed open bit-backed enum encodings through field extraction and insertion
-      - provide semantics-preserving masks, shifts, extraction, insertion, reserved-bit handling, and special-field lowering
+      - carry ordinary and W1C, W0C, and clear-on-read field operations through Semantic IR and semantics-preserving lowering without unsafe read-modify-write, duplication, reordering, or speculation
+      - provide semantics-preserving masks, shifts, extraction, insertion, and reserved-bit handling
       - add complete parser, sema, LSP, Semantic IR, MLIR, diagnostics, and end-to-end coverage
     verification:
       - command: go test ./internal/parser -run Register -count=1
         result: passed
       - command: go test ./internal/sema -run Register -count=1
+        result: passed
+      - command: go test ./internal/parser ./internal/sema ./internal/formatter ./cmd/lsp -run 'RegisterFieldAccess|Register8Frontend|ErrorEnumMarker' -count=1
         result: passed
 
   - id: frontend.fixed-address-bindings
@@ -3937,11 +4062,17 @@ integrations:
       - derived frontend equality comparability when every stored field is comparable
       - derived copy and destruction classification from stored fields and nominal no-copy policy
       - concrete non-generic struct lowering with nested values and supported direct field reads and assignments
+      - immutable source-order struct literal and stored-member plans with declaration-order final fields, explicit spread/default provenance, and current ownership-action vocabulary
+      - verified Semantic IR struct definitions, full construction, explicit spread expansion, trivial field extraction, and functional replacement operation model
+      - schema-9 StructTagAttr, StructFieldAttr, nominal struct type, construct/spread/extract/replace operations, verifier coverage, and deterministic Sec MLIR emission
+      - defaulted mutable trivial struct storage and nested leaf-to-root field replacement with one root store
+      - synthetic struct-like union payload identity and guarded P12 whole-payload binding for the copy-trivial subset
+      - recursive target-sized scalar resolution inside preserved struct wrappers while trivial-core storage remains high-level
     remaining:
       - resolve forward and mutually recursive non-generic struct field graphs completely before field-dependent analysis
       - diagnose every direct or indirect by-value recursive struct cycle as infinite size
       - lower generic structs across all supported operations
-      - lower struct spread across copy, move, override, and ownership-sensitive cases
+      - extend the implemented schema-9 copy-trivial struct path with later-package move, semantic-copy, borrow, cleanup, and ownership-sensitive spread cases
       - support reference and slice fields consistently across every backend path
       - complete partial-move and partial-initialization masks for nested aggregates
       - represent and lower construction-failure cleanup for already initialized nontrivial fields
@@ -3953,6 +4084,12 @@ integrations:
         result: passed
       - command: go test ./internal/sema -run Struct -count=1
         result: passed
+      - command: go test ./internal/ir/semantic -run Package13 -count=1
+        result: passed
+      - command: SEC_MLIR_BIN=build/sec-mlir/bin go test ./internal/lowering/secmlir -run Package13 -count=1
+        result: passed
+      - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
+        result: passed (77/77)
 
   - id: frontend.spread
     area: frontend-analysis-and-semantic-ir
@@ -4240,6 +4377,9 @@ integrations:
       - loop fixed points remain conservative for imported, opaque, function-value, and unsupported recursive provenance; general cleanup/destruction lattices remain absent
       - string lowering currently has view/static-literal behavior and requires ownership-aware validation before any move support is relied upon
     remaining:
+      - require `<-` at call sites and owning payload positions whenever a reusable source is consumed, without requiring it for fresh temporaries
+      - accept optional `return <-value` and canonical `capture(<-value)` while rejecting stale implicit move capture behavior
+      - split canonical Availability from unavailability reason/provenance and implement conditional availability/refinement
       - complete indexed, sliced, aliased, fixed-array, dynamic-list, and multi-field active-variant move availability
       - add complete aggregate availability masks, relocation/address-stability/pinning classification, and owned-interface review
       - represent copy, move, replace, destination ownership, destruction, cleanup, and call consumption explicitly in Semantic IR
@@ -4637,6 +4777,7 @@ integrations:
       - rules/types/types.md
       - rules/types/default_values.md
       - rules/types/contracts.md
+      - rules/library/core-library.md
     code:
       - internal/lexer/lexer.go
       - internal/parser/parser.go
@@ -4645,6 +4786,8 @@ integrations:
       - internal/sema/types.go
       - internal/codegen/llvm
       - internal/codegen/mlir
+      - sec/core/char.sec
+      - sec/core/rune.sec
     tests:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
@@ -4659,6 +4802,8 @@ integrations:
       - redeclaration diagnostics that preserve the previous symbol
       - named range and unit types
       - explicit TargetType(value) conversions and explicit numeric-to-bool conversion
+      - explicit char and rune scalar conversion boundaries to integer types plus explicit integer, char, and rune construction without implicit cross-family assignment or arithmetic
+      - string iteration binds the canonical registered rune type so same-module core impl properties such as Utf8Length and IsWhitespace remain available
       - function-type parsing, semantic identity, assignability, direct callable-value invocation, and capture-independent source signatures
       - RawPtr[T] and RawPtr[void] semantic identities with unsafe conversion, dereference, and pointer-operation validation
       - compiler-known list, map, set, vector, matrix, tensor, tensor_view, Result, Option, Task, Thread, shape, layout, and memory-space identities
@@ -4694,6 +4839,8 @@ integrations:
         result: passed
       - command: go test ./internal/lexer ./internal/parser ./cmd/lsp with contextual-set tests and focused internal/sema any/void/intrinsic-type tests
         result: passed on 2026-08-12; the full internal/sema package still has pre-existing discard/resource diagnostics in three contract tests
+      - command: go test ./internal/sema -run 'ExplicitCharRuneIntegerConversions|StringIterationUsesCanonicalRuneImplProperties' -count=1
+        result: passed
 
   - id: frontend.literal-family-suffix-v2
     area: frontend-bootstrap-tooling

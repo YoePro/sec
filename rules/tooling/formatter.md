@@ -2645,3 +2645,15 @@ Comments, tag text, declaration order, copy syntax, and move syntax are
 preserved.
 
 Code-quality improvements and refactorings remain separate from formatting.
+
+## Ownership revision 2 markers
+
+The formatter preserves and canonically lays out every semantic ownership
+marker, including `:<-`, move assignment `<-`, `Consume(<-source)`, payload
+forms such as `Some(<-source)` and `Payload: <-source`,
+`capture(<-source)`, and optional `return <-source`. It must never add, remove,
+or relocate a move marker as a style-only rewrite.
+
+The legacy `capture(-> source)` spelling is invalid and must never be produced.
+Idempotence coverage includes declaration, assignment, call, payload, capture,
+and return marker positions.

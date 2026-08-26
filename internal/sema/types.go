@@ -32,18 +32,23 @@ const (
 	FunctionType  TypeKind = "function"
 	GenericType   TypeKind = "generic"
 	InterfaceType TypeKind = "interface"
+	ErrorRootType TypeKind = "error-root"
 	NeverType     TypeKind = "never"
 	VoidType      TypeKind = "void"
 )
 
 type Type struct {
-	Name                       string
-	Module                     string
-	Kind                       TypeKind
-	Named                      bool
-	Declared                   bool
-	Intrinsic                  bool
-	ExplicitlyNonCopyable      bool
+	Name                  string
+	Module                string
+	Kind                  TypeKind
+	Named                 bool
+	Declared              bool
+	Intrinsic             bool
+	ExplicitlyNonCopyable bool
+	// ErrorAssignable marks concrete error enums/unions and compiler-known
+	// error families assignable to the open lowercase error root defined by
+	// rules/errors/errorhandling.md.
+	ErrorAssignable            bool
 	NoCopyPolicyOrigin         string
 	Underlying                 string
 	Unit                       string
@@ -139,7 +144,19 @@ type RegisterField struct {
 	Unit      string
 	Type      Type
 	Token     lexer.Token
+	Access    RegisterFieldAccess
 }
+
+type RegisterFieldAccess string
+
+const (
+	RegisterReadWrite      RegisterFieldAccess = "read-write"
+	RegisterReadOnly       RegisterFieldAccess = "read-only"
+	RegisterWriteOnly      RegisterFieldAccess = "write-only"
+	RegisterWriteOneClear  RegisterFieldAccess = "write-one-clear"
+	RegisterWriteZeroClear RegisterFieldAccess = "write-zero-clear"
+	RegisterClearOnRead    RegisterFieldAccess = "clear-on-read"
+)
 
 type StructTag struct {
 	Key   string
@@ -464,6 +481,7 @@ type Symbol struct {
 	AddressStability AddressStability
 	Local            bool
 	ScopeDepth       int
+	RegisterAccess   RegisterFieldAccess
 }
 
 func builtinTypes() map[string]Type {
@@ -473,6 +491,7 @@ func builtinTypes() map[string]Type {
 		"byte":   unsignedType("byte", 255),
 		"char":   {Name: "char", Kind: CharType},
 		"rune":   {Name: "rune", Kind: RuneType},
+		"error":  {Name: "error", Kind: ErrorRootType},
 		"RawPtr": {Name: "RawPtr", Kind: RawPtrType, GenericParameters: []string{"T"}},
 		"never":  {Name: "never", Kind: NeverType},
 		"Arena":  {Name: "Arena", Kind: StructType},
@@ -637,6 +656,17 @@ func builtinTypes() map[string]Type {
 		"uint128":  unsignedBigType("uint128", "340282366920938463463374607431768211455"),
 		"uint256":  unsignedBigType("uint256", "115792089237316195423570985008687907853269984665640564039457584007913129639935"),
 		"void":     {Name: "void", Kind: VoidType},
+	}
+
+	// rules/errors/errorhandling.md defines these compiler-known failure
+	// families as concrete inhabitants of the open error root.
+	for _, name := range []string{
+		"AllocationError", "ArithmeticError", "EnumValueError", "ContractError", "CollectionError",
+		"ThreadSpawnError", "ThreadStartError", "ThreadSchedulingError", "ThreadTerminationError", "ThreadContextError",
+	} {
+		typ := types[name]
+		typ.ErrorAssignable = true
+		types[name] = typ
 	}
 
 	for name, typ := range types {

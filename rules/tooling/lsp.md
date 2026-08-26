@@ -3726,3 +3726,19 @@ It explains consequences before applying ownership-changing or multi-file edits.
 
 Knowledge Packs are reserved as a future enrichment system and are not required
 for Sec 0.1.
+
+## Ownership revision 2 integration
+
+The LSP consumes the same canonical ownership facts as Sema; it does not build a
+parallel ownership state machine. Hover, diagnostics, semantic tokens, and code
+actions may expose place availability (including partial and conditional
+states), unavailability reason and source location, copy-versus-consume,
+required `<-` markers, capture mode, and refinement from `is available` / `is
+not available`.
+
+When compiler facts make a repair unambiguous, the LSP may suggest forms such as
+`Consume(<-resource)`, `capture(<-resource)`, an appropriate borrow capture, or
+`discard place` for explicit convergence. It must also explain when selected
+target policy forbids required runtime ownership bookkeeping. These actions use
+programmer-facing mentor language and are offered only when Sema proves their
+ownership consequence.

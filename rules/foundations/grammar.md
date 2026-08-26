@@ -2749,7 +2749,7 @@ Must-use values require an appropriate consuming context or explicit discard.
 
 ```text
 ReturnStatement
-    ::= "return" [ Expression ]
+    ::= "return" [ [ "<-" ] Expression ]
 ```
 
 Examples:
@@ -2762,13 +2762,12 @@ return
 return value
 ```
 
-There is no:
-
 ```sec
 return <- value
 ```
 
-Returning a move-only value transfers it according to ownership semantics.
+Both forms are grammatical. Returning an owned value transfers it according to
+ownership semantics; the marker is optional at this terminal boundary.
 
 ---
 
@@ -3339,6 +3338,7 @@ PrimaryExpression
       | SpawnExpression
       | AwaitExpression
       | RefExpression
+      | MoveExpression
       | RuntimeCallExpression
       | PrefixExpression
 ```
@@ -3463,10 +3463,13 @@ CaptureClause
 
 CaptureEntry
     ::= Identifier
-      | "->" Identifier
+      | "<-" Identifier
       | "ref" Identifier
       | "ref" "mut" Identifier
 ```
+
+`capture(<-value)` is the consuming capture form. The legacy
+`capture(-> value)` spelling is not grammatical.
 
 Example:
 
@@ -3715,6 +3718,20 @@ expressions fold it without changing the operand value.
 RefExpression
     ::= "ref" [ "mut" ] PlaceExpression
 ```
+
+---
+
+# Move expression
+
+```text
+MoveExpression
+    ::= "<-" PlaceExpression
+```
+
+A move expression is accepted in owning expression positions such as call
+arguments and constructor, aggregate, `Option`, `Result`, and union payloads.
+Grammar acceptance does not decide whether the source is movable or the target
+consuming; Sema applies the ownership rules.
 
 Examples:
 

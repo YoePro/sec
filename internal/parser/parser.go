@@ -2032,17 +2032,25 @@ func (p *Parser) parseEnumUnderlying(enum *ast.EnumDeclaration) bool {
 		}
 		return true
 	}
+	if p.peekToken.Type == lexer.IDENT && p.peekToken.Lexeme == "error" {
+		p.nextToken()
+		enum.ErrorType = true
+		enum.ErrorToken = p.curToken
+		return true
+	}
 	if !p.expectPeekTypeStart() {
 		return false
 	}
 	if p.curToken.Lexeme != "bit" {
 		enum.UnderlyingType = p.parseTypeReference()
+		p.parseOptionalEnumErrorMarker(enum)
 		return true
 	}
 
 	enum.BitUnderlying = true
 	enum.UnderlyingBitWidth = 1
 	if p.peekToken.Type != lexer.LBRACKET {
+		p.parseOptionalEnumErrorMarker(enum)
 		return true
 	}
 	p.nextToken()
@@ -2051,7 +2059,23 @@ func (p *Parser) parseEnumUnderlying(enum *ast.EnumDeclaration) bool {
 		return false
 	}
 	enum.UnderlyingBitWidth = width
-	return p.expectPeek(lexer.RBRACKET)
+	if !p.expectPeek(lexer.RBRACKET) {
+		return false
+	}
+	p.parseOptionalEnumErrorMarker(enum)
+	return true
+}
+
+// parseOptionalEnumErrorMarker retains the canonical post-representation
+// marker from rules/declarations/enums.md. `error` is a marker here, not an
+// integer representation type.
+func (p *Parser) parseOptionalEnumErrorMarker(enum *ast.EnumDeclaration) {
+	if p.peekToken.Type != lexer.IDENT || p.peekToken.Lexeme != "error" {
+		return
+	}
+	p.nextToken()
+	enum.ErrorType = true
+	enum.ErrorToken = p.curToken
 }
 
 func (p *Parser) parseEnumBody(enum *ast.EnumDeclaration) *ast.EnumDeclaration {
@@ -2648,8 +2672,9 @@ func (p *Parser) parseRegisterFields() []*ast.RegisterField {
 		}
 
 		field := &ast.RegisterField{
-			Token: p.curToken,
-			Name:  &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme},
+			Token:  p.curToken,
+			Name:   &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme},
+			Access: ast.RegisterReadWrite,
 		}
 		if p.peekToken.Type != lexer.COLON {
 			p.addError("missing ':' after register field name %q at %d:%d", field.Name.Value, field.Name.Token.Line, field.Name.Token.Column)
@@ -2683,6 +2708,13 @@ func (p *Parser) parseRegisterFields() []*ast.RegisterField {
 		} else {
 			field.Type = p.parseTypeReference()
 		}
+		if isRegisterFieldAccessPrefix(p.peekToken) {
+			field.Access = p.parseRegisterFieldAccessModifier()
+			if isRegisterFieldAccessPrefix(p.peekToken) {
+				p.addError("register field %s has more than one access modifier at %d:%d", field.Name.Value, p.peekToken.Line, p.peekToken.Column)
+				return fields
+			}
+		}
 
 		fields = append(fields, field)
 		p.skipPeekComments()
@@ -2707,6 +2739,44 @@ func (p *Parser) parseRegisterFields() []*ast.RegisterField {
 	}
 
 	return fields
+}
+
+func isRegisterFieldAccessPrefix(token lexer.Token) bool {
+	if token.Type != lexer.IDENT {
+		return false
+	}
+	return token.Lexeme == "read" || token.Lexeme == "write" || token.Lexeme == "clear"
+}
+
+// parseRegisterFieldAccessModifier parses the closed hyphenated modifier set
+// owned by rules/declarations/registers.md. The AST stores one normalized fact
+// so Sema, tooling, and lowering do not reconstruct it from tokens.
+func (p *Parser) parseRegisterFieldAccessModifier() ast.RegisterFieldAccess {
+	p.nextToken()
+	prefix := p.curToken
+	if !p.expectPeek(lexer.MINUS) || !p.expectPeek(lexer.IDENT) {
+		return ast.RegisterFieldAccess("")
+	}
+	modifier := prefix.Lexeme + "-" + p.curToken.Lexeme
+	if p.peekToken.Type == lexer.MINUS && (modifier == "write-one" || modifier == "write-zero" || modifier == "clear-on") {
+		p.nextToken()
+		if !p.expectPeek(lexer.IDENT) {
+			return ast.RegisterFieldAccess("")
+		}
+		modifier += "-" + p.curToken.Lexeme
+	}
+	switch ast.RegisterFieldAccess(modifier) {
+	case ast.RegisterReadWrite,
+		ast.RegisterReadOnly,
+		ast.RegisterWriteOnly,
+		ast.RegisterWriteOneClear,
+		ast.RegisterWriteZeroClear,
+		ast.RegisterClearOnRead:
+		return ast.RegisterFieldAccess(modifier)
+	default:
+		p.addError("unknown register field access modifier %q at %d:%d", modifier, prefix.Line, prefix.Column)
+		return ast.RegisterFieldAccess("")
+	}
 }
 
 func (p *Parser) parseRegisterWidth(kind string) (int64, bool) {

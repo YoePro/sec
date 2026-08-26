@@ -1026,20 +1026,17 @@ The caller retains `value`.
 For a move-only argument:
 
 ```sec
-Consume(resource)
+Consume(<-resource)
 ```
 
 ownership transfers to the parameter.
 
 The caller's `resource` becomes unavailable after successful argument transfer.
 
-Sec 0.1 does not require call-site syntax:
-
-```sec
-Consume(<- resource)
-```
-
-The function signature and resolved type determine the transfer.
+`Consume(resource)` is invalid when it would silently consume a reusable
+source. The same explicit marker is required for a reusable source passed to a
+`->` parameter, even when its type is copyable. Fresh temporaries may be
+forwarded without `<-`.
 
 The LSP must expose consuming parameters.
 
@@ -1077,7 +1074,7 @@ argument.
 Example:
 
 ```sec
-Use(Consume(resource), Inspect(resource))
+Use(Consume(<-resource), Inspect(resource))
 ```
 
 must be rejected when the first argument consumes `resource`.
@@ -1116,13 +1113,12 @@ Canonical syntax:
 return value
 ```
 
-Sec does not use:
-
 ```sec
-return <- value
+return <-value
 ```
 
-`return` already identifies the result-transfer context.
+The two return forms have the same ownership effect. `return` already identifies
+the result-transfer context, so the marker is optional.
 
 ---
 
@@ -1221,14 +1217,14 @@ Example:
 ```sec
 let session := Session {
     Name: name,
-    File: file,
+    File: <-file,
 }
 ```
 
 For each field:
 
 - copyable named source is copied;
-- move-only named source transfers;
+- move-only named source requires an explicit `<-` and transfers;
 - temporary constructs directly;
 - reference field borrows or copies the reference according to type.
 
@@ -1244,10 +1240,11 @@ places.
 Example:
 
 ```sec
-return Ok(resource)
+return Ok(<-resource)
 ```
 
-If `resource` is move-only, it transfers into the `Ok` payload.
+If reusable `resource` is move-only, the explicit marker transfers it into the
+`Ok` payload.
 
 If the payload is copyable, it may be copied.
 
@@ -1273,7 +1270,9 @@ Example:
 let value := Some(resource)
 ```
 
-A move-only `resource` transfers into `Some`.
+For a move-only reusable `resource`, this is invalid because it would hide a
+destructive transfer. Use `Some(<-resource)`. Plain construction copies a
+copyable source, while a fresh temporary may be forwarded marker-free.
 
 `Option[T]` is copyable only when `T` is copyable.
 
@@ -1283,7 +1282,7 @@ A move-only `resource` transfers into `Some`.
 
 A union variant owns its active payload according to the union rule.
 
-Constructing a move-only payload transfers ownership.
+Constructing a move-only payload from a reusable source requires explicit `<-`.
 
 Copying a union requires safe copy behavior for every active possibility or
 proof of the active copyable variant.
@@ -2061,16 +2060,12 @@ A method receiver may be:
 ```text
 shared borrowed
 mutable borrowed
-owned consuming
 ordinary compiler-known instance receiver
 ```
 
-A consuming receiver transfers ownership of the receiver value.
-
-The source becomes unavailable.
-
-The exact method declaration syntax for consuming receivers requires its own
-rule if not already represented by value receiver semantics.
+Ordinary methods do not consume the complete receiver. Whole-instance lifetime
+termination belongs to `free`; a method with sufficient authority may consume
+an owned member under the partial-ownership rules.
 
 Implicit `self` does not remove ownership analysis.
 
@@ -2531,7 +2526,7 @@ Invalid:
 
 ```sec
 while running {
-    Consume(resource)
+    Consume(<-resource)
 }
 ```
 
@@ -3082,7 +3077,7 @@ fn Consume(value: Buffer) void {
 }
 
 let value := CreateBuffer()
-Consume(value)
+Consume(<-value)
 ```
 
 Later use is invalid.

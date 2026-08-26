@@ -262,7 +262,11 @@ type EnumDeclaration struct {
 	UnderlyingType     *TypeReference
 	BitUnderlying      bool
 	UnderlyingBitWidth int64
-	Values             []*EnumValue
+	// ErrorType preserves the canonical enum Name error marker from
+	// rules/declarations/enums.md and rules/errors/errorhandling.md.
+	ErrorType  bool
+	ErrorToken lexer.Token
+	Values     []*EnumValue
 }
 
 func (ed *EnumDeclaration) statementNode() {}
@@ -1139,7 +1143,22 @@ type RegisterField struct {
 	Type  *TypeReference
 	Width int64
 	Unit  string
+	// Access preserves the compiler-known field modifier defined by
+	// rules/declarations/registers.md. Empty input is normalized by the parser
+	// to RegisterReadWrite.
+	Access RegisterFieldAccess
 }
+
+type RegisterFieldAccess string
+
+const (
+	RegisterReadWrite      RegisterFieldAccess = "read-write"
+	RegisterReadOnly       RegisterFieldAccess = "read-only"
+	RegisterWriteOnly      RegisterFieldAccess = "write-only"
+	RegisterWriteOneClear  RegisterFieldAccess = "write-one-clear"
+	RegisterWriteZeroClear RegisterFieldAccess = "write-zero-clear"
+	RegisterClearOnRead    RegisterFieldAccess = "clear-on-read"
+)
 
 func (rf *RegisterField) TokenLiteral() string {
 	return rf.Token.Lexeme

@@ -17,6 +17,10 @@ type SymbolID string
 type EnumCaseID uint32
 type UnionVariantIndex uint32
 
+// StructFieldID is the declaration-order, non-layout identity defined by
+// rules/mlir/semantic-ir/sec_semantic_ir_struct_v1.md section 2.
+type StructFieldID uint32
+
 type Location struct {
 	File   string
 	Line   int
@@ -55,6 +59,7 @@ const (
 	TypeResult                  TypeKind = "result"
 	TypeEnum                    TypeKind = "enum"
 	TypeUnion                   TypeKind = "union"
+	TypeStruct                  TypeKind = "struct"
 )
 
 type Type struct {
@@ -117,7 +122,10 @@ type UnionVariantDefinition struct {
 	Kind          UnionVariantKind
 	Payload       TypeID
 	PayloadFields []UnionPayloadField
-	Location      Location
+	// SyntheticPayloadStruct is the canonical Package 13 whole-value view from
+	// rules/mlir/packages/sec-mlir-dialect_package13.md sections 18 and 66-68.
+	SyntheticPayloadStruct TypeID
+	Location               Location
 }
 
 type UnionDefinition struct {
@@ -129,6 +137,39 @@ type UnionDefinition struct {
 	CopyClassification    string
 	TriviallyDestructible bool
 	LayoutRef             string
+	Location              Location
+}
+
+// StructTag through StructDefinition implement the canonical value metadata in
+// rules/mlir/semantic-ir/sec_semantic_ir_struct_v1.md sections 2-6.
+type StructTag struct{ Key, Value string }
+
+type StructFieldDefinition struct {
+	ID       StructFieldID
+	Name     string
+	Type     TypeID
+	Tags     []StructTag
+	Location Location
+}
+
+type StructSyntheticOrigin string
+
+const (
+	StructSyntheticNone         StructSyntheticOrigin = ""
+	StructSyntheticUnionPayload StructSyntheticOrigin = "union-payload"
+)
+
+type StructDefinition struct {
+	TypeID                TypeID
+	SymbolID              SymbolID
+	Name                  string
+	TypeArguments         []TypeID
+	Fields                []StructFieldDefinition
+	CopyClassification    string
+	TriviallyDestructible bool
+	Defaultable           bool
+	LayoutRef             string
+	SyntheticOrigin       StructSyntheticOrigin
 	Location              Location
 }
 
@@ -214,6 +255,7 @@ type Module struct {
 	Functions   []*Function
 	Enums       []EnumDefinition
 	Unions      []UnionDefinition
+	Structs     []StructDefinition
 }
 
 type Function struct {
@@ -331,6 +373,10 @@ const (
 	OpUnionIsVariant                  OpKind = "union.is-variant"
 	OpUnionUnwrapPayload              OpKind = "union.unwrap-payload"
 	OpUnionUnwrapField                OpKind = "union.unwrap-field"
+	OpStructConstruct                 OpKind = "struct.construct"
+	OpStructSpreadFields              OpKind = "struct.spread-fields"
+	OpStructExtractField              OpKind = "struct.extract-field"
+	OpStructReplaceField              OpKind = "struct.replace-field"
 )
 
 type IntegerCheckedBinaryKind string
@@ -397,6 +443,23 @@ type UnionPayloadAction string
 
 const UnionPayloadCopyTrivial UnionPayloadAction = "copy-trivial"
 
+type StructFieldOrigin string
+
+const (
+	StructOriginExplicit StructFieldOrigin = "explicit"
+	StructOriginSpread   StructFieldOrigin = "spread"
+	StructOriginDefault  StructFieldOrigin = "default"
+)
+
+type StructFieldAction string
+
+const (
+	StructActionConstructDirect        StructFieldAction = "construct-direct"
+	StructActionCopyTrivial            StructFieldAction = "copy-trivial"
+	StructActionCopySemanticInfallible StructFieldAction = "copy-semantic-infallible"
+	StructActionMove                   StructFieldAction = "move"
+)
+
 type TryHandlerKind string
 
 const (
@@ -441,6 +504,9 @@ type Operation struct {
 	UnionField           string
 	UnionFields          []string
 	PayloadActions       []UnionPayloadAction
+	StructField          StructFieldID
+	StructOrigins        []StructFieldOrigin
+	StructActions        []StructFieldAction
 	TryHandlerKind       TryHandlerKind
 	TryHandlerIndex      int
 	TryHandlerExhaustive bool

@@ -108,7 +108,7 @@ In Sec 0.1:
 - optional absence is represented explicitly with `Option[fn(...)]`;
 - enclosing locals are never captured implicitly;
 - `capture(...)` explicitly identifies captured values;
-- capture modes are explicit value, forced-consuming value, shared reference,
+- capture modes are explicit copy, move, shared reference,
   and mutable reference;
 - owned capture bindings are mutable inside the closure, independently of the
   mutability of the outer binding;
@@ -440,13 +440,13 @@ lifetime, diagnostics, and dependency analysis.
 Sec 0.1 defines:
 
 ```text
-Value
-ForcedConsume
+CopyCapture
+MoveCapture
 SharedReference
 MutableReference
 ```
 
-These correspond to `capture(value)`, `capture(-> value)`,
+These correspond to `capture(value)`, `capture(<-value)`,
 `capture(ref value)`, and `capture(ref mut value)`. Capture mode is explicit;
 closure analysis must not infer reference capture from the captured value's
 type or outer-binding mutability.
@@ -464,7 +464,9 @@ Move
 Unknown
 ```
 
-The transfer is determined by normal Sec ownership and copy/move semantics.
+`CopyCapture` requires `Copy`; it must not be reclassified as `Move` because the
+source type is non-copyable. `MoveCapture` requires `Move`, including for a
+copyable source.
 
 Closure analysis records the resulting fact but does not independently decide
 whether the copy or move is legal.
@@ -491,7 +493,7 @@ Value capture does not erase those dependencies.
 
 ## Snapshot at closure creation
 
-A value capture observes and transfers the value at closure creation.
+A copy capture observes and copies the value at closure creation.
 
 Example:
 
@@ -510,8 +512,8 @@ The closure continues to observe the captured value `2`.
 Conceptually:
 
 ```text
-Value capture
-    = value transfer at closure creation
+Copy capture
+    = value copy at closure creation
     != alias to the outer binding
 ```
 
@@ -532,8 +534,8 @@ environment.capture[0]
 If transfer was `Copy`, both values remain available according to normal
 ownership rules.
 
-If transfer was `Move`, the outer source is moved according to normal ownership
-rules.
+An explicit `MoveCapture` makes the outer source unavailable only when closure
+environment construction successfully commits.
 
 The name used inside the lambda denotes the captured environment binding, not a
 continued access to the outer binding.
@@ -546,7 +548,7 @@ An owned value capture is a mutable closure-local binding regardless of whether
 the outer binding was mutable. Mutating it requires at least `mut fn` callable
 capability.
 
-`capture(-> value)` differs only in forcing the creation-time transfer to be a
+`capture(<-value)` explicitly requests the creation-time transfer and is a
 move even when the captured type is copyable. It does not introduce a distinct
 binding-mutability class.
 
@@ -2522,7 +2524,7 @@ move-only value capture
 invalid move capture
 invalid copy capture
 mutable owned captured binding and `mut fn` capability inference
-forced-consuming copyable capture and `-> fn` capability inference
+explicit move capture of a copyable value and `-> fn` capability inference
 shared and mutable reference capture lifetime and borrow conflicts
 outer mutation after capture does not change captured value
 duplicate capture
@@ -2724,7 +2726,7 @@ sound target coverage
 
 Closure analysis is complete for Sec 0.1 when all of the following hold:
 
-1. all Sec 0.1 value, forced-consuming, shared-reference, and
+1. all Sec 0.1 copy, move, shared-reference, and
    mutable-reference captures are represented correctly;
 2. capture Copy/Move transfer follows ownership semantics;
 3. captured reference/view/handle/callable values preserve transitive
@@ -2778,7 +2780,7 @@ are not part of function type identity.
 Named functions and non-capturing lambdas have no closure-environment
 dependency. Capturing callables depend on an explicit environment.
 
-Captures are explicit. Sec 0.1 supports owned value, forced-consuming value,
+Captures are explicit. Sec 0.1 supports owned copy, owned move,
 shared-reference, and mutable-reference capture. Owned environment bindings are
 mutable; borrowed captures retain their borrow and lifetime dependencies.
 
@@ -2788,7 +2790,9 @@ analyses.
 
 Capture mode and transfer mechanism are distinct. Plain value capture may use
 Copy or Move according to normal Sec ownership semantics, while
-forced-consuming capture requires Move even for a copyable value.
+explicit move capture requires Move even for a copyable value. Plain
+`capture(value)` is always a copy request and is invalid for a non-copyable
+reusable source.
 
 Capturing a reference-like, view-like, handle-like, or callable value by value
 preserves the value's underlying dependencies.

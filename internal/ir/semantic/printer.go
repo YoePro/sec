@@ -50,6 +50,17 @@ func Format(module *Module) string {
 		}
 		out.WriteString("  }\n")
 	}
+	if len(module.Structs) > 0 {
+		out.WriteString("\n  structs {\n")
+		for _, definition := range module.Structs {
+			fmt.Fprintf(&out, "    !%d %q copy=%s trivial-destroy=%t defaultable=%t {\n", definition.TypeID, definition.SymbolID, definition.CopyClassification, definition.TriviallyDestructible, definition.Defaultable)
+			for _, field := range definition.Fields {
+				fmt.Fprintf(&out, "      #%d %s:!%d %s\n", field.ID, field.Name, field.Type, formatLocation(field.Location))
+			}
+			out.WriteString("    }\n")
+		}
+		out.WriteString("  }\n")
+	}
 	for _, fn := range module.Functions {
 		formatFunction(&out, fn)
 	}
@@ -71,6 +82,9 @@ func formatType(t Type) string {
 	}
 	if t.Kind == TypeUnion {
 		return fmt.Sprintf("union %q", t.Identity)
+	}
+	if t.Kind == TypeStruct {
+		return fmt.Sprintf("struct %q", t.Identity)
 	}
 	s := t.Name
 	if s == "" {
@@ -221,6 +235,19 @@ func formatOperation(out *strings.Builder, op Operation) {
 		fmt.Fprintf(out, " %%%d variant=#%d[%s]", op.Operands[0], op.UnionVariant, op.PayloadActions[0])
 	case OpUnionUnwrapField:
 		fmt.Fprintf(out, " %%%d variant=#%d field=%s[%s]", op.Operands[0], op.UnionVariant, op.UnionField, op.PayloadActions[0])
+	case OpStructConstruct:
+		for index, operand := range op.Operands {
+			fmt.Fprintf(out, " #%d=%%%d[%s,%s]", index, operand, op.StructOrigins[index], op.StructActions[index])
+		}
+	case OpStructSpreadFields:
+		fmt.Fprintf(out, " %%%d", op.Operands[0])
+		for index, action := range op.StructActions {
+			fmt.Fprintf(out, " #%d[%s]", index, action)
+		}
+	case OpStructExtractField:
+		fmt.Fprintf(out, " %%%d field=#%d[%s]", op.Operands[0], op.StructField, op.StructActions[0])
+	case OpStructReplaceField:
+		fmt.Fprintf(out, " %%%d field=#%d value=%%%d", op.Operands[0], op.StructField, op.Operands[1])
 	}
 	if op.TryHandlerKind != "" {
 		fmt.Fprintf(out, " [handler=%s index=%d", op.TryHandlerKind, op.TryHandlerIndex)

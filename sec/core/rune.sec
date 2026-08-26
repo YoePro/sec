@@ -52,7 +52,7 @@ impl rune {
     /** Returns the intvalue of a rune or None() */
     fn ToNumericValue() Option[int] {
         if self >= 48r && self <= 57r {
-            return Some(int(self - 48r))
+            return Some(int(self) - 48)
         }
         return None()
     }
@@ -67,22 +67,17 @@ impl rune {
     /** Returns the number of UTF-8 bytes needed to encode this rune. */
     property Utf8Length: uint {
         get {
-
-            return 1u + uint(int(self > 0x7Fr) + int(self > 0x7FFr) + int(self > 0xFFFFr))
-        }
-/*
-            switch {
-                case self <= 127r:
-                    return 1
-                case self <= 2047r:
-                    return 2
-                case self <= 65535r:
-                    return 3
-                default:
-                    return 4
+            if self <= 0x7Fr {
+                return 1u
             }
+            if self <= 0x7FFr {
+                return 2u
+            }
+            if self <= 0xFFFFr {
+                return 3u
+            }
+            return 4u
         }
-*/
     }
 
     /** Returns the lowercase variant of a letter when possible */

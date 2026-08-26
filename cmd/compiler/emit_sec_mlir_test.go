@@ -103,7 +103,7 @@ fn CompareInIf(a: int32, b: int32) int32 {
 			}
 			text := string(output)
 			for _, expected := range []string{
-				"sec.dialect_version = 8 : i32", "sec.int.binary_checked",
+				"sec.dialect_version = 9 : i32", "sec.int.binary_checked",
 				"sec.int.neg_checked", "sec.int.bit_not", "sec.int.bitwise",
 				"sec.int.shift_checked", "sec.int.cmp", "sec.fail.arithmetic",
 				`kind = "subtract"`, `kind = "divide"`, `kind = "remainder"`,

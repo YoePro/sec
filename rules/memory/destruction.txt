@@ -731,8 +731,8 @@ Example:
 
 ```sec
 impl File {
-    fn Close(mut self) Result[void, IOError] {
-        return CloseHandleChecked(self.handle)
+    fn Close() Result[void, IOError] {
+        return CloseHandleChecked(ref mut self.handle)
     }
 
     free {
@@ -741,13 +741,15 @@ impl File {
 }
 ```
 
-The exact consuming receiver syntax may differ.
-
-A successful explicit Close must consume or transition ownership so automatic destruction does not release the same resource twice.
+A successful explicit Close must transition the resource's internal lifecycle
+state so automatic destruction does not release the same resource twice.
+Ordinary methods do not consume whole `self`; receiver authority is inferred as
+mutable/exclusive from the state transition.
 
 The type must represent closed state safely if the value remains usable.
 
-The compiler should prefer a consuming Close operation when practical.
+The compiler should prefer an explicit lifecycle-state transition when
+practical.
 
 ## Free must not panic by default
 
@@ -862,7 +864,7 @@ Example:
 
 ```sec
 let pair := Pair.Create()
-let first := move pair.first
+let first :<- pair.first
 ```
 
 When pair later leaves scope:
@@ -871,11 +873,8 @@ When pair later leaves scope:
 * pair.second is destroyed if still initialized
 * pair's custom free requires special handling
 
-The initial implementation should prohibit partial moves from a type with a custom free operation unless the compiler can prove that free does not access moved fields and remains semantically valid.
-
-A simpler initial rule is:
-
-Types with custom free operations cannot be partially moved.
+In Sec 0.1, types with custom `free` operations cannot be partially moved. This
+is a semantic rule, not a conservative implementation fallback.
 
 Whole-value moves remain permitted.
 
@@ -1409,3 +1408,25 @@ The compiler inserts destruction.
 The type defines custom free behavior only when automatic field destruction cannot release the owned resource.
 
 Ordinary Sec code must not manually manage destruction.
+
+## Ownership revision 2 availability integration
+
+Destruction follows the current ownership availability of each place. A former
+owner never destroys a moved, discarded, detached, or otherwise unavailable
+place. Cleanup of a partially available aggregate recursively destroys exactly
+the owned sub-places that remain `Available` on the current path.
+
+In Sec 0.1, a type with custom `free` forbids partial moves from its fields; the
+compiler must not dismantle it and substitute field-wise cleanup for its
+whole-value destructor.
+
+Assignment to an `Available` mutable place is replacement and ends the old
+value before installing the new one. Assignment to an `Unavailable` place is
+reinitialization and has no old value to destroy. Hosted assignment to a
+`ConditionallyAvailable` mutable place conditionally ends the old value on the
+paths that still own it and leaves the destination `Available`; a static-
+ownership target may require explicit `discard` convergence first.
+
+Copy/move classification remains independent of trivial/non-trivial destruction
+classification, which follows the resolved representation and recursively owned
+sub-values.

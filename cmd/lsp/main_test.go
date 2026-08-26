@@ -313,6 +313,26 @@ fn Apply(mutable: mut fn(int) int, consuming: -> fn() int) int {
 	}
 }
 
+func TestHoverUsesCompilerOwnedRegisterFieldAccess(t *testing.T) {
+	source := `module main
+
+type Device register[2] {
+    Ready: bit read-only,
+    Command: bit write-only,
+}
+
+fn Read(device: ref Device) bool {
+    return device.Ready
+}
+`
+	offset := strings.LastIndex(source, "Ready")
+	result, ok := hoverForSource("", source, offsetPosition(source, offset))
+	if !ok || !strings.Contains(result.Contents.Value, "register field Ready: bool") ||
+		!strings.Contains(result.Contents.Value, "Access: `read-only`") {
+		t.Fatalf("register access hover = %+v, %v", result, ok)
+	}
+}
+
 func TestHoverAbbreviatesLargeArrayDefault(t *testing.T) {
 	source := `module main
 

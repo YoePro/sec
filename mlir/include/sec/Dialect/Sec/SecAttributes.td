@@ -43,4 +43,26 @@ def Sec_UnionVariantAttr : Sec_Attr<"UnionVariant", "union_variant"> {
   let genVerifyDecl = 1;
 }
 
+def Sec_StructTagAttr : Sec_Attr<"StructTag", "struct_tag"> {
+  let summary = "Source-order metadata attached to a stored Sec struct field";
+  let parameters = (ins
+    "::mlir::StringAttr":$key,
+    "::mlir::StringAttr":$value
+  );
+  let assemblyFormat = "`<` struct(params) `>`";
+  let genVerifyDecl = 1;
+}
+
+def Sec_StructFieldAttr : Sec_Attr<"StructField", "struct_field"> {
+  let summary = "Declaration-order identity and metadata for a stored Sec struct field";
+  let parameters = (ins
+    "uint32_t":$ordinal,
+    "::mlir::StringAttr":$name,
+    "::mlir::Type":$type,
+    "::mlir::ArrayAttr":$tags
+  );
+  let assemblyFormat = "`<` struct(params) `>`";
+  let genVerifyDecl = 1;
+}
+
 #endif // SEC_DIALECT_SEC_ATTRIBUTES_TD

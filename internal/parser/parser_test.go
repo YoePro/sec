@@ -331,6 +331,38 @@ type Native register[8] lsb-first little-endian {
 	}
 }
 
+func TestParseRegisterFieldAccessModifiers(t *testing.T) {
+	input := `
+type Device register[6] msb-first little-endian {
+	Control: bit read-write,
+	Ready: bit read-only,
+	Command: bit write-only,
+	Pending: bit write-one-clear,
+	Fault: bit write-zero-clear,
+	Event: bit clear-on-read,
+}
+`
+
+	p := New(lexer.New(input))
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	register := program.Statements[0].(*ast.TypeDeclStatement).RegisterType
+	want := []ast.RegisterFieldAccess{
+		ast.RegisterReadWrite,
+		ast.RegisterReadOnly,
+		ast.RegisterWriteOnly,
+		ast.RegisterWriteOneClear,
+		ast.RegisterWriteZeroClear,
+		ast.RegisterClearOnRead,
+	}
+	for index, access := range want {
+		if got := register.Fields[index].Access; got != access {
+			t.Fatalf("field %s access = %q, want %q", register.Fields[index].Name.Value, got, access)
+		}
+	}
+}
+
 func TestParseBitBackedEnumAndRegisterField(t *testing.T) {
 	input := `
 enum ClockSource bit[2] {
@@ -2334,6 +2366,31 @@ enum Status int {
 	}
 	if enumDecl.Values[0].Initializer == nil || enumDecl.Values[2].Initializer != nil {
 		t.Fatalf("wrong enum initializers: %+v", enumDecl.Values)
+	}
+}
+
+func TestParseErrorEnumMarkerAfterNameOrRepresentation(t *testing.T) {
+	input := `
+enum ParseError error { Invalid }
+enum ProtocolError uint16 error { Invalid = 1 }
+enum WireError bit[3] error { Invalid = 1 }
+`
+
+	p := New(lexer.New(input))
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	for index, statement := range program.Statements {
+		enum := statement.(*ast.EnumDeclaration)
+		if !enum.ErrorType || enum.ErrorToken.Lexeme != "error" {
+			t.Fatalf("enum %d lost error marker: %#v", index, enum)
+		}
+	}
+	if got := program.Statements[1].(*ast.EnumDeclaration).UnderlyingType.Name; got != "uint16" {
+		t.Fatalf("ProtocolError underlying type = %q", got)
+	}
+	if got := program.Statements[2].(*ast.EnumDeclaration).UnderlyingBitWidth; got != 3 {
+		t.Fatalf("WireError bit width = %d", got)
 	}
 }
 

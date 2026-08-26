@@ -4,12 +4,16 @@
 
 Normative lowering specification.
 
-Current lowering specification version: `8`
+Current lowering specification version: `9`
 
 Version 8 retains the high-level enum/union representation boundary and adds
 resolved variant-oriented match lowering as explicit verified CFG.
 
 It does not perform physical tagged-union lowering.
+
+Version 9 additionally lowers canonical Semantic IR struct values to
+high-level Sec MLIR struct operations without choosing physical aggregate
+layout.
 
 ---
 
@@ -384,3 +388,63 @@ exhaustive residual emits `sec.unreachable`. The output carries deterministic
 function-local match provenance and runs `sec-verify-match-cfg` in addition to
 applicable Result/union verifiers. No physical representation or switch-table
 optimization is selected in this pass.
+
+---
+
+# 26. Struct type mapping
+
+A verified Semantic IR `StructDefinition` maps to nominal `!sec.struct` with
+its canonical identity, concrete type arguments, declaration-order stored
+fields, names, types and tags. Properties are excluded.
+
+# 27. Struct literal evaluation and construction
+
+Lowering evaluates explicit fields and spread sources in source-entry order.
+Each spread source is evaluated once and immediately expanded through
+`sec.struct.spread_fields`. Omitted canonical semantic defaults are materialized
+after source entries, recursively in declaration order. Final values are then
+selected according to the resolved override plan and passed to one
+`sec.struct.construct` in field declaration order. Lowering consumes the
+read-only Sema plan and `DefaultResolution`; it must not use AST-appended
+compatibility defaults, assume zero, or emit `undef`/poison.
+
+# 28. Struct fields and mutable storage
+
+Resolved stored-field reads lower to `sec.struct.extract`; properties do not.
+For a trivial mutable local, lowering evaluates the RHS, loads the whole root
+struct, applies `sec.struct.replace_field`, and stores the replacement. Nested
+assignment loads the root once, extracts nested aggregates, rebuilds leaf to
+root, and stores the root exactly once. Struct storage remains high-level and
+is not converted to MemRef by the trivial-core pass.
+
+# 29. Parameters, results and scalar passes
+
+Struct parameters and results retain `!sec.struct`; aggregate ABI
+classification is deferred. Target-sized scalar resolution recursively updates
+field and type-argument types while preserving the nominal wrapper, field
+identity and tags. Checked-integer signless normalization does not recurse into
+struct fields.
+
+# 30. Struct-like union payload binding
+
+On a proven matching struct-like union path, lowering projects every payload
+field with guarded `sec.union.unwrap_field`, constructs the deterministic
+synthetic payload `!sec.struct`, and binds that whole value. The representation
+is a semantic view, not a second physical payload layout. P13 permits only the
+copy-trivial subset.
+
+# 31. Ownership, destruction and layout gates
+
+P13 accepts only `construct-direct` and `copy-trivial` complete value actions.
+Move, semantic copy, borrows, conditional or non-copyable transfer, partial
+move and non-trivial destruction are rejected explicitly until their canonical
+lowering exists. Struct equality, physical fields/offsets, LLVM aggregate
+operations, aggregate ABI and runtime dependencies remain out of scope.
+
+# 32. Lowering-v9 completion
+
+Version 9 is complete when source order, spread source-once behavior, explicit
+defaults and origins, fully initialized declaration-order construction,
+resolved field identity, trivial leaf-to-root replacement, high-level storage,
+synthetic union payload materialization and ownership rejection all verify
+without selecting physical layout.

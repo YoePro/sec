@@ -44,6 +44,8 @@ type Analyzer struct {
 	resolvedTries               map[*ast.TryExpression]ResolvedTry
 	resolvedTryPlans            map[*ast.TryExpression]ResolvedTryPlan
 	resolvedMatchPlans          map[*ast.MatchExpression]ResolvedMatchPlan
+	resolvedStructLiteralPlans  map[*ast.StructLiteral]ResolvedStructLiteralPlan
+	resolvedStructMemberPlans   map[*ast.MemberExpression]ResolvedStructMemberPlan
 	nextBindingID               BindingID
 	definitionTokens            map[sourceTokenKey][]lexer.Token
 	callGraph                   *CallGraph
@@ -220,6 +222,8 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.resolvedTries = map[*ast.TryExpression]ResolvedTry{}
 	a.resolvedTryPlans = map[*ast.TryExpression]ResolvedTryPlan{}
 	a.resolvedMatchPlans = map[*ast.MatchExpression]ResolvedMatchPlan{}
+	a.resolvedStructLiteralPlans = map[*ast.StructLiteral]ResolvedStructLiteralPlan{}
+	a.resolvedStructMemberPlans = map[*ast.MemberExpression]ResolvedStructMemberPlan{}
 	a.nextBindingID = 1
 	a.definitionTokens = map[sourceTokenKey][]lexer.Token{}
 	a.callGraph = newCallGraph()
@@ -2488,7 +2492,12 @@ func (a *Analyzer) inferForIterableBindingTypes(stmt *ast.ForStatement) ([]Type,
 		}
 		indexType := Type{Name: "int", Kind: IntType}
 		if iterableType.Kind == StringType {
-			return a.inferSequentialForBindingTypes(stmt, Type{Name: "rune", Kind: RuneType}, indexType)
+			// rules/library/core-library.md: string iteration yields the canonical
+			// compiler-known rune type. Reusing the registered type is essential:
+			// same-module impl properties such as Utf8Length and IsWhitespace are
+			// attached there and must remain visible in the loop body.
+			runeType := a.types["rune"]
+			return a.inferSequentialForBindingTypes(stmt, runeType, indexType)
 		}
 		if (iterableType.Kind == ArrayType || iterableType.Kind == SliceType) && iterableType.Element != nil {
 			return a.inferSequentialForBindingTypes(stmt, *iterableType.Element, indexType)
@@ -4422,7 +4431,7 @@ func (a *Analyzer) defineInstanceSymbols(target Type, mutableSelf bool, selfToke
 		if _, exists := a.symbols[field.Name]; exists {
 			continue
 		}
-		a.symbols[field.Name] = Symbol{Name: field.Name, Type: field.Type, Mutable: mutableSelf, ImplicitMember: true, Token: field.Token, Storage: StorageOriginInline, Local: false, ScopeDepth: 0}
+		a.symbols[field.Name] = Symbol{Name: field.Name, Type: field.Type, Mutable: mutableSelf, ImplicitMember: true, Token: field.Token, Storage: StorageOriginInline, Local: false, ScopeDepth: 0, RegisterAccess: field.Access}
 		a.assigned[field.Name] = true
 		delete(a.constInts, field.Name)
 	}
@@ -7723,6 +7732,7 @@ func (a *Analyzer) typeFromRegisterDeclaration(name string, stmt *ast.TypeDeclSt
 			Unit:      field.Unit,
 			Type:      fieldType,
 			Token:     field.Name.Token,
+			Access:    registerFieldAccessFromAST(field.Access),
 		})
 		a.recordDefinition(field.Name.Token)
 	}
@@ -7732,6 +7742,25 @@ func (a *Analyzer) typeFromRegisterDeclaration(name string, stmt *ast.TypeDeclSt
 	}
 
 	return typ
+}
+
+// registerFieldAccessFromAST transfers the normalized field-access contract
+// from rules/declarations/registers.md into the canonical semantic type fact.
+func registerFieldAccessFromAST(access ast.RegisterFieldAccess) RegisterFieldAccess {
+	switch access {
+	case ast.RegisterReadOnly:
+		return RegisterReadOnly
+	case ast.RegisterWriteOnly:
+		return RegisterWriteOnly
+	case ast.RegisterWriteOneClear:
+		return RegisterWriteOneClear
+	case ast.RegisterWriteZeroClear:
+		return RegisterWriteZeroClear
+	case ast.RegisterClearOnRead:
+		return RegisterClearOnRead
+	default:
+		return RegisterReadWrite
+	}
 }
 
 // registerFieldType implements exact raw field domains from
@@ -7995,6 +8024,7 @@ func (a *Analyzer) typeFromEnumDeclaration(name string, enum *ast.EnumDeclaratio
 		Named:                 true,
 		Declared:              true,
 		ExplicitlyNonCopyable: noCopy,
+		ErrorAssignable:       enum.ErrorType,
 		Underlying:            underlying.Name,
 		MinInteger:            new(big.Int).Set(underlying.MinInteger),
 		MaxInteger:            new(big.Int).Set(underlying.MaxInteger),
@@ -9043,8 +9073,12 @@ func (a *Analyzer) inferPropertyBodyExpression(target Type, setter *ast.Property
 		if fieldType, ok := lookupStructField(objectType, expr.Property.Value); ok {
 			return fieldType, true
 		}
-		if fieldType, ok := lookupRegisterField(objectType, expr.Property.Value); ok {
-			return fieldType, true
+		if field, ok := lookupRegisterFieldInfo(objectType, expr.Property.Value); ok {
+			if field.Access == RegisterWriteOnly {
+				a.addErrorAtToken(expr.Property.Token, "register field %s.%s is write-only and cannot be read", typeDisplayName(objectType), expr.Property.Value)
+				return Type{Kind: InvalidType}, false
+			}
+			return field.Type, true
 		}
 		if _, exists := lookupProperty(objectType, expr.Property.Value); exists {
 			property, readable := a.resolveReadableProperty(objectType, expr.Property.Value, expr.Property.Token)
@@ -9386,6 +9420,12 @@ func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement, all
 	if propertyOK && stmt.Operator != "=" && !property.HasGetter {
 		a.addErrorAtToken(target.Token, "property %s has no getter and cannot be used with %s", target.Value, stmt.Operator)
 		return
+	}
+	if symbol.RegisterAccess != "" {
+		field := RegisterField{Name: target.Value, Access: symbol.RegisterAccess}
+		if !a.validateRegisterFieldWrite(field, stmt.Operator, target.Token) {
+			return
+		}
 	}
 	if !symbol.Mutable {
 		a.addErrorAtToken(target.Token, "cannot assign to immutable variable %s", target.Value)
@@ -10257,14 +10297,23 @@ func (a *Analyzer) analyzeMemberAssignmentStatement(stmt *ast.AssignmentStatemen
 	// properties remain valid targets of simple assignment.
 	property, propertyOK := a.lookupPropertyOnMember(member)
 	var targetType Type
+	registerField := RegisterField{}
+	registerFieldOK := false
 	if propertyOK {
 		targetType = property.Type
 		a.bindDefinition(member.Property.Token, property.Token)
 	} else {
-		var ok bool
-		targetType, ok = a.inferMemberExpression(member)
-		if !ok {
-			return
+		objectType, _ := a.inferPlaceBase(member.Object)
+		registerField, registerFieldOK = lookupRegisterFieldInfo(objectType, member.Property.Value)
+		if registerFieldOK {
+			targetType = registerField.Type
+			a.bindDefinition(member.Property.Token, registerField.Token)
+		} else {
+			var ok bool
+			targetType, ok = a.inferMemberExpression(member)
+			if !ok {
+				return
+			}
 		}
 	}
 
@@ -10285,6 +10334,9 @@ func (a *Analyzer) analyzeMemberAssignmentStatement(stmt *ast.AssignmentStatemen
 	}
 	if propertyOK && stmt.Operator != "=" && !property.HasGetter {
 		a.addErrorAtToken(member.Property.Token, "property %s has no getter and cannot be used with %s", member.Property.Value, stmt.Operator)
+		return
+	}
+	if registerFieldOK && !a.validateRegisterFieldWrite(registerField, stmt.Operator, member.Property.Token) {
 		return
 	}
 	place, placeOK := a.resolvePlace(member)
@@ -10350,6 +10402,29 @@ func (a *Analyzer) analyzeMemberAssignmentStatement(stmt *ast.AssignmentStatemen
 	if placeOK {
 		a.markPlaceAvailable(place)
 	}
+}
+
+// validateRegisterFieldWrite enforces the direct frontend access rules from
+// rules/declarations/registers.md. Special write lowering remains a later
+// Semantic IR/backend responsibility, but unsafe read-modify-write syntax is
+// rejected here rather than losing the field contract.
+func (a *Analyzer) validateRegisterFieldWrite(field RegisterField, operator string, token lexer.Token) bool {
+	switch field.Access {
+	case RegisterReadOnly:
+		a.addErrorAtToken(token, "register field %s is read-only and cannot be written", field.Name)
+		return false
+	case RegisterWriteOnly:
+		if operator != "=" {
+			a.addErrorAtToken(token, "write-only register field %s cannot be used with %s because compound assignment reads the field", field.Name, operator)
+			return false
+		}
+	case RegisterWriteOneClear, RegisterWriteZeroClear, RegisterClearOnRead:
+		if operator != "=" {
+			a.addErrorAtToken(token, "register field %s with %s semantics cannot use compound assignment", field.Name, field.Access)
+			return false
+		}
+	}
+	return true
 }
 
 func (a *Analyzer) isRegisterBitField(member *ast.MemberExpression) bool {
@@ -11121,6 +11196,10 @@ func (a *Analyzer) inferExpressionUnrecorded(expr ast.Expression) (Type, express
 				a.addErrorAtToken(expr.Token, "property %s has no getter", expr.Value)
 				return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 			}
+			if symbol.RegisterAccess == RegisterWriteOnly {
+				a.addErrorAtToken(expr.Token, "register field %s is write-only and cannot be read", expr.Value)
+				return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+			}
 		}
 		if assigned, ok := a.assigned[expr.Value]; ok && !assigned {
 			a.addErrorAtToken(expr.Token, "variable %s is unassigned", expr.Value)
@@ -11452,20 +11531,45 @@ func (a *Analyzer) inferStructLiteral(expr *ast.StructLiteral) (Type, expression
 	}
 
 	seen := map[string]lexer.Token{}
+	fieldIDs := map[string]uint32{}
+	finalFields := make([]ResolvedStructFinalField, len(typ.Fields))
+	for index, field := range typ.Fields {
+		fieldIDs[field.Name] = uint32(index)
+		finalFields[index] = ResolvedStructFinalField{
+			FieldID: uint32(index), FieldName: field.Name, FieldType: field.Type, SourceEntryIndex: -1,
+		}
+	}
+	entries := make([]ResolvedStructEntry, 0, len(expr.Fields))
+	planValid := true
 	spreadSuppliesFields := false
-	for _, field := range expr.Fields {
+	for sourceIndex, field := range expr.Fields {
 		if field.Spread {
 			spreadType, _ := a.inferExpression(field.Value)
 			if spreadType.Kind == InvalidType {
+				planValid = false
 				continue
 			}
 			if !sameConcreteType(typ, spreadType) {
 				a.addErrorAtToken(field.Token, "cannot spread %s into %s; spread source must have type %s", typeDisplayName(spreadType), typeDisplayName(typ), typeDisplayName(typ))
+				planValid = false
 				continue
 			}
 			if !implicitlyCopyable(spreadType) {
 				a.addErrorAtToken(field.Token, "cannot spread %s into %s; %s is not implicitly copyable", typeDisplayName(spreadType), typeDisplayName(typ), typeDisplayName(spreadType))
+				planValid = false
 				continue
+			}
+			entries = append(entries, ResolvedStructEntry{SourceIndex: sourceIndex, Kind: StructEntrySpread, Expression: field.Value, Type: spreadType})
+			for index, declared := range typ.Fields {
+				// rules/declarations/spread.md: a spread never overwrites an
+				// explicit field, but a later spread replaces an earlier spread.
+				if _, explicit := seen[declared.Name]; explicit {
+					continue
+				}
+				finalFields[index].SourceKind = StructFieldSourceSpread
+				finalFields[index].SourceEntryIndex = sourceIndex
+				finalFields[index].SpreadFieldID = uint32(index)
+				finalFields[index].Action = resolvedStructCopyAction(declared.Type)
 			}
 			// rules/declarations/spread.md; correction14.md permits only a fully
 			// validated spread to suppress omitted-field diagnostics.
@@ -11474,6 +11578,7 @@ func (a *Analyzer) inferStructLiteral(expr *ast.StructLiteral) (Type, expression
 		}
 		if _, exists := seen[field.Name.Value]; exists {
 			a.addErrorAtToken(field.Name.Token, "duplicate field %q in struct literal %s", field.Name.Value, typ.Name)
+			planValid = false
 			continue
 		}
 		seen[field.Name.Value] = field.Name.Token
@@ -11481,19 +11586,58 @@ func (a *Analyzer) inferStructLiteral(expr *ast.StructLiteral) (Type, expression
 		fieldType, ok := lookupStructField(typ, field.Name.Value)
 		if !ok {
 			a.addErrorAtToken(field.Name.Token, "unknown field %q in struct %s", field.Name.Value, typ.Name)
+			planValid = false
 			continue
 		}
 		if definition, exists := memberDefinitionToken(typ, field.Name.Value); exists {
 			a.bindDefinition(field.Name.Token, definition)
 		}
 
-		valueType, _ := a.inferExpression(field.Value)
+		// rules/types/types.md and rules/declarations/unions.md: aggregate
+		// fields provide the expected union type, allowing canonical contextual
+		// constructors such as None or None() for Option[T].
+		valueType, _ := a.inferExpressionWithExpected(field.Value, fieldType)
 		if valueType.Kind != InvalidType && !canInitialize(fieldType, valueType, field.Value) {
 			a.addErrorAtToken(expressionToken(field.Value), "cannot initialize field %s with %s", field.Name.Value, typeDisplayName(valueType))
+			planValid = false
 			continue
 		}
-		if valueType.Kind != InvalidType {
-			a.checkIntegerExpressionRange(fieldType, field.Value)
+		if valueType.Kind == InvalidType {
+			planValid = false
+			continue
+		}
+		if a.checkIntegerExpressionRange(fieldType, field.Value) {
+			planValid = false
+		}
+		fieldID := fieldIDs[field.Name.Value]
+		entries = append(entries, ResolvedStructEntry{SourceIndex: sourceIndex, Kind: StructEntryExplicit, FieldName: field.Name.Value, FieldID: fieldID, Expression: field.Value, Type: valueType})
+		finalFields[fieldID].SourceKind = StructFieldSourceExplicit
+		finalFields[fieldID].SourceEntryIndex = sourceIndex
+		finalFields[fieldID].Action = resolvedStructExpressionAction(field.Value, fieldType)
+	}
+	for index, field := range typ.Fields {
+		if finalFields[index].SourceKind != "" || isEventType(field.Type) {
+			continue
+		}
+		// A syntactically supplied explicit field may already have its own type
+		// diagnostic. Do not cascade with a misleading omitted-field error.
+		if _, supplied := seen[field.Name]; supplied {
+			planValid = false
+			continue
+		}
+		resolution := DefaultValueOf(field.Type)
+		if resolution.Kind == NoDefault {
+			a.addErrorAtTokenWithMetadata(expr.Token, diagnostics.MissingNonDefaultableField, "initialize the field explicitly", "field %q in struct %s has no default value and must be initialized", field.Name, typ.Name)
+			planValid = false
+			continue
+		}
+		finalFields[index].SourceKind = StructFieldSourceDefault
+		finalFields[index].Action = StructFieldConstructDirect
+		finalFields[index].Default = resolution
+	}
+	if planValid {
+		a.resolvedStructLiteralPlans[expr] = ResolvedStructLiteralPlan{
+			StructType: typ, Entries: entries, FinalFields: finalFields, FullyInitialized: true,
 		}
 	}
 	// A valid same-type spread supplies every direct field. Without one, apply
@@ -11509,7 +11653,6 @@ func (a *Analyzer) inferStructLiteral(expr *ast.StructLiteral) (Type, expression
 			resolution := DefaultValueOf(field.Type)
 			value := defaultExpression(resolution, field.Type, expr.Token)
 			if value == nil {
-				a.addErrorAtTokenWithMetadata(expr.Token, diagnostics.MissingNonDefaultableField, "initialize the field explicitly", "field %q in struct %s has no default value and must be initialized", field.Name, typ.Name)
 				continue
 			}
 			expr.Fields = append(expr.Fields, &ast.StructLiteralField{Token: expr.Token, Name: &ast.Identifier{Token: field.Token, Value: field.Name}, Value: value})
@@ -11517,6 +11660,32 @@ func (a *Analyzer) inferStructLiteral(expr *ast.StructLiteral) (Type, expression
 	}
 
 	return typ, expressionValue{Display: expr.String()}
+}
+
+func resolvedStructCopyAction(typ Type) ResolvedStructFieldAction {
+	switch CopyClassificationOf(typ) {
+	case CopyTrivial:
+		return StructFieldCopyTrivial
+	case CopySemantic:
+		return StructFieldCopySemanticInfallible
+	case CopyMoveOnly, CopyNonCopyable, CopyConditional:
+		return StructFieldMove
+	default:
+		return StructFieldConstructDirect
+	}
+}
+
+// resolvedStructExpressionAction records the current P13/P17 transfer fact.
+// Fresh expressions construct directly; reusable Places use their canonical
+// copy classification. Explicit move syntax for fields remains owned by the
+// source-language struct/copy-move rules rather than inferred here.
+func resolvedStructExpressionAction(expr ast.Expression, typ Type) ResolvedStructFieldAction {
+	switch expr.(type) {
+	case *ast.Identifier, *ast.MemberExpression, *ast.IndexExpression:
+		return resolvedStructCopyAction(typ)
+	default:
+		return StructFieldConstructDirect
+	}
 }
 
 func (a *Analyzer) inferStructLiteralAsUnionVariant(expr *ast.StructLiteral) (Type, expressionValue, bool) {
@@ -11773,6 +11942,16 @@ func (a *Analyzer) inferMemberExpression(expr *ast.MemberExpression) (Type, bool
 	}
 
 	if fieldType, ok := lookupStructField(objectType, expr.Property.Value); ok {
+		for fieldID, field := range objectType.Fields {
+			if field.Name != expr.Property.Value {
+				continue
+			}
+			a.resolvedStructMemberPlans[expr] = ResolvedStructMemberPlan{
+				Kind: MemberStoredField, OwnerType: objectType, MemberType: fieldType,
+				FieldID: uint32(fieldID), FieldName: field.Name, Action: resolvedStructCopyAction(fieldType),
+			}
+			break
+		}
 		if fieldType.Kind == ReferenceType {
 			fieldType = a.referenceTypeWithOriginFromExpression(fieldType, expr.Object)
 		}
@@ -11797,8 +11976,12 @@ func (a *Analyzer) inferMemberExpression(expr *ast.MemberExpression) (Type, bool
 			return returnProperty.Type, true
 		}
 	}
-	if fieldType, ok := lookupRegisterField(objectType, expr.Property.Value); ok {
-		return fieldType, true
+	if field, ok := lookupRegisterFieldInfo(objectType, expr.Property.Value); ok {
+		if field.Access == RegisterWriteOnly {
+			a.addErrorAtToken(expr.Property.Token, "register field %s.%s is write-only and cannot be read", typeDisplayName(objectType), expr.Property.Value)
+			return Type{Kind: InvalidType}, false
+		}
+		return field.Type, true
 	}
 	if objectType.Kind == RegisterType && expr.Property.Value == "_" {
 		a.addErrorAtToken(expr.Property.Token, "reserved register field _ cannot be accessed")
@@ -11809,6 +11992,9 @@ func (a *Analyzer) inferMemberExpression(expr *ast.MemberExpression) (Type, bool
 		property, readable := a.resolveReadableProperty(objectType, expr.Property.Value, expr.Property.Token)
 		if !readable {
 			return Type{Kind: InvalidType}, false
+		}
+		a.resolvedStructMemberPlans[expr] = ResolvedStructMemberPlan{
+			Kind: MemberProperty, OwnerType: objectType, MemberType: property.Type, FieldName: property.Name,
 		}
 		return property.Type, true
 	}
@@ -12372,16 +12558,26 @@ func lookupStructField(typ Type, name string) (Type, bool) {
 }
 
 func lookupRegisterField(typ Type, name string) (Type, bool) {
+	field, ok := lookupRegisterFieldInfo(typ, name)
+	if !ok {
+		return Type{}, false
+	}
+	return field.Type, true
+}
+
+// lookupRegisterFieldInfo returns the complete compiler-owned field contract;
+// callers that need access semantics must not reduce it to the value type.
+func lookupRegisterFieldInfo(typ Type, name string) (RegisterField, bool) {
 	typ = dereferenceType(typ)
 	if typ.Kind != RegisterType || name == "_" {
-		return Type{}, false
+		return RegisterField{}, false
 	}
 	for _, field := range typ.RegisterFields {
 		if field.Name == name {
-			return field.Type, true
+			return field, true
 		}
 	}
-	return Type{}, false
+	return RegisterField{}, false
 }
 
 func dereferenceType(typ Type) Type {
@@ -14247,7 +14443,11 @@ func (a *Analyzer) markMovedCallArguments(function Function, sourceArgs []ast.Ex
 		// Both shared and mutable-reference parameters borrow their argument.
 		// MutableRef is represented separately from Ref in FunctionParameter, so
 		// checking only Ref incorrectly consumed ref-mut reborrows after calls.
-		if param.Ref || param.MutableRef {
+		// rules/declarations/functions.md permits canonical type-position
+		// `name: ref T` and `name: ref mut T` in addition to legacy parameter
+		// flags. Both representations are borrows and must never consume the
+		// caller Place after a successful call.
+		if param.Ref || param.MutableRef || param.Type.Kind == ReferenceType {
 			continue
 		}
 		// rules/declarations/spread.md; correction14.md says a consuming
@@ -15228,7 +15428,7 @@ func (a *Analyzer) inferTryExpression(expr *ast.TryExpression) (Type, expression
 
 	valueErrorType := valueType.TypeArgs[1]
 	functionErrorType := a.currentFunctionReturn.TypeArgs[1]
-	if !sameConcreteType(valueErrorType, functionErrorType) {
+	if !canInitialize(functionErrorType, valueErrorType, expr.Expression) {
 		a.addErrorAtToken(expr.Token, "bodyless try propagates %s with return Err, but this function returns %s; add a local try handler or map %s to %s", typeDisplayName(valueErrorType), typeDisplayName(a.currentFunctionReturn), typeDisplayName(valueErrorType), typeDisplayName(functionErrorType))
 	}
 	a.resolvedTries[expr] = ResolvedTry{
@@ -15267,7 +15467,7 @@ func (a *Analyzer) inferArithmeticTryExpression(expr *ast.TryExpression, operato
 		return operator.ResultType, result
 	}
 	functionError := a.currentFunctionReturn.TypeArgs[1]
-	if !sameConcreteType(functionError, arithmeticError) {
+	if !canInitialize(functionError, arithmeticError, expr.Expression) {
 		a.addErrorAtToken(expr.Token, "bodyless arithmetic try propagates ArithmeticError with return Err, but this function returns %s; add a local try handler or map ArithmeticError to %s", typeDisplayName(a.currentFunctionReturn), typeDisplayName(functionError))
 		return operator.ResultType, result
 	}
@@ -17422,6 +17622,12 @@ func canInitialize(target Type, value Type, expr ast.Expression) bool {
 	if value.Kind == AnyType {
 		return target.Kind == AnyType
 	}
+	// rules/errors/errorhandling.md defines a one-way, error-specific widening
+	// relation. It is not general interface inheritance and never permits
+	// implicit narrowing from error to one concrete error family.
+	if target.Kind == ErrorRootType || value.Kind == ErrorRootType {
+		return target.Kind == ErrorRootType && (value.Kind == ErrorRootType || value.ErrorAssignable)
+	}
 
 	if target.Kind == FunctionType || value.Kind == FunctionType {
 		return sameFunctionType(target, value)
@@ -17532,7 +17738,11 @@ func canExplicitConvert(target Type, value Type) bool {
 		return true
 	}
 
-	if isIntegerType(target) && (isIntegerType(value) || value.Kind == DecimalType) {
+	// rules/types/types.md defines char and rune as distinct scalar types whose
+	// represented values cross the integer boundary only through an explicit
+	// conversion. This grants the conversion spelling, not implicit arithmetic
+	// or assignability between the families.
+	if isIntegerType(target) && (isIntegerType(value) || value.Kind == DecimalType || value.Kind == CharType || value.Kind == RuneType) {
 		return true
 	}
 
@@ -17540,7 +17750,11 @@ func canExplicitConvert(target Type, value Type) bool {
 		return true
 	}
 
-	if target.Kind == RuneType && isIntegerType(value) {
+	if target.Kind == CharType && (isIntegerType(value) || value.Kind == RuneType) {
+		return true
+	}
+
+	if target.Kind == RuneType && (isIntegerType(value) || value.Kind == CharType) {
 		return true
 	}
 

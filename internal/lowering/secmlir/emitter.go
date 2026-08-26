@@ -11,7 +11,7 @@ import (
 	"sec/internal/layout"
 )
 
-const dialectSchemaVersion = 8
+const dialectSchemaVersion = 9
 
 type emitter struct {
 	module    *semantic.Module
@@ -23,7 +23,8 @@ type emitter struct {
 }
 
 // Emit verifies Semantic IR version 1 and emits deterministic Sec MLIR schema
-// version 2. It performs no external tool invocation.
+// version 9. See rules/mlir/lowering-versions/sec_mlir_lowering_v9.md. It
+// performs no external tool invocation.
 func Emit(module *semantic.Module, plan layout.ResolvedScalarPlan) ([]byte, error) {
 	if err := semantic.Verify(module); err != nil {
 		return nil, fmt.Errorf("verify Semantic IR: %w", err)
@@ -414,12 +415,115 @@ func (e *emitter) emitOperation(function *semantic.Function, operation semantic.
 		return e.emitUnionUnwrap(operation, "sec.union.unwrap_payload", values)
 	case semantic.OpUnionUnwrapField:
 		return e.emitUnionUnwrap(operation, "sec.union.unwrap_field", values)
+	case semantic.OpStructConstruct:
+		return e.emitStructConstruct(operation, values)
+	case semantic.OpStructSpreadFields:
+		return e.emitStructSpreadFields(operation, values)
+	case semantic.OpStructExtractField:
+		return e.emitStructExtract(operation, values)
+	case semantic.OpStructReplaceField:
+		return e.emitStructReplaceField(operation, values)
 	default:
 		return &UnsupportedLoweringError{Feature: string(operation.Kind), Function: function.ID}
 	}
 	e.emitLocation(operation.Location)
 	e.out.WriteByte('\n')
 	return nil
+}
+
+// The four helpers below implement the schema-v9 struct operations specified
+// by rules/mlir/dialect-versions/sec_mlir_dialect_v9.md sections 7-13.
+func (e *emitter) emitStructConstruct(operation semantic.Operation, values map[semantic.ValueID]semantic.Value) error {
+	if len(operation.Results) != 1 || len(operation.StructOrigins) != len(operation.Operands) || len(operation.StructActions) != len(operation.Operands) {
+		return fmt.Errorf("invalid %s", operation.Kind)
+	}
+	if err := e.emitResult(operation); err != nil {
+		return err
+	}
+	e.out.WriteString("\"sec.struct.construct\"(")
+	for index, operand := range operation.Operands {
+		if index > 0 {
+			e.out.WriteString(", ")
+		}
+		e.out.WriteString(valueName(operand))
+	}
+	e.out.WriteString(") <{field_actions = [")
+	for index, action := range operation.StructActions {
+		if index > 0 {
+			e.out.WriteString(", ")
+		}
+		e.out.WriteString(mlirString(string(action)))
+	}
+	e.out.WriteString("], field_origins = [")
+	for index, origin := range operation.StructOrigins {
+		if index > 0 {
+			e.out.WriteString(", ")
+		}
+		e.out.WriteString(mlirString(string(origin)))
+	}
+	e.out.WriteString("]}> : (")
+	if err := e.emitOperandTypes(operation.Operands, values); err != nil {
+		return err
+	}
+	e.out.WriteString(") -> ")
+	return e.finishResultOperation(operation)
+}
+
+func (e *emitter) emitStructSpreadFields(operation semantic.Operation, values map[semantic.ValueID]semantic.Value) error {
+	if len(operation.Operands) != 1 || len(operation.Results) != len(operation.StructActions) {
+		return fmt.Errorf("invalid %s", operation.Kind)
+	}
+	if err := e.emitResults(operation); err != nil {
+		return err
+	}
+	fmt.Fprintf(&e.out, "\"sec.struct.spread_fields\"(%s) <{actions = [", valueName(operation.Operands[0]))
+	for index, action := range operation.StructActions {
+		if index > 0 {
+			e.out.WriteString(", ")
+		}
+		e.out.WriteString(mlirString(string(action)))
+	}
+	e.out.WriteString("]}> : (")
+	if err := e.emitOperandTypes(operation.Operands, values); err != nil {
+		return err
+	}
+	e.out.WriteString(") -> ")
+	if err := e.emitResultTypes(operation.Results); err != nil {
+		return err
+	}
+	e.emitLocation(operation.Location)
+	e.out.WriteByte('\n')
+	return nil
+}
+
+func (e *emitter) emitStructExtract(operation semantic.Operation, values map[semantic.ValueID]semantic.Value) error {
+	if len(operation.Operands) != 1 || len(operation.Results) != 1 || len(operation.StructActions) != 1 {
+		return fmt.Errorf("invalid %s", operation.Kind)
+	}
+	if err := e.emitResult(operation); err != nil {
+		return err
+	}
+	fmt.Fprintf(&e.out, "\"sec.struct.extract\"(%s) <{action = %s, field = %d : i32}> : (", valueName(operation.Operands[0]), mlirString(string(operation.StructActions[0])), operation.StructField)
+	if err := e.emitOperandTypes(operation.Operands, values); err != nil {
+		return err
+	}
+	e.out.WriteString(") -> ")
+	return e.finishResultOperation(operation)
+}
+
+func (e *emitter) emitStructReplaceField(operation semantic.Operation, values map[semantic.ValueID]semantic.Value) error {
+	if len(operation.Operands) != 2 || len(operation.Results) != 1 {
+		return fmt.Errorf("invalid %s", operation.Kind)
+	}
+	if err := e.emitResult(operation); err != nil {
+		return err
+	}
+	fmt.Fprintf(&e.out, "\"sec.struct.replace_field\"(%s, %s) <{field = %d : i32}> : (", valueName(operation.Operands[0]), valueName(operation.Operands[1]), operation.StructField)
+	if err := e.emitOperandTypes(operation.Operands, values); err != nil {
+		return err
+	}
+	e.out.WriteString(") -> ")
+	return e.finishResultOperation(operation)
 }
 
 func (e *emitter) emitUnionConstruct(operation semantic.Operation, values map[semantic.ValueID]semantic.Value) error {
@@ -884,6 +988,20 @@ func (e *emitter) typeText(id semantic.TypeID) (string, error) {
 			return "", err
 		}
 		text = fmt.Sprintf("!sec.union<identity = %s, typeArguments = %s, variants = %s>", mlirString(typeValue.Identity), arguments.String(), variants)
+	case semantic.TypeStruct:
+		definition, ok := e.structDefinition(id)
+		if !ok {
+			return "", fmt.Errorf("missing struct definition for semantic type %d", id)
+		}
+		arguments, err := e.typeArgumentsText(definition.TypeArguments)
+		if err != nil {
+			return "", err
+		}
+		fields, err := e.structFieldsText(definition)
+		if err != nil {
+			return "", err
+		}
+		text = fmt.Sprintf("!sec.struct<identity = %s, typeArguments = %s, fields = %s>", mlirString(typeValue.Identity), arguments, fields)
 	case semantic.TypeVoid:
 		return "", fmt.Errorf("void has no MLIR value type")
 	}
@@ -910,6 +1028,58 @@ func (e *emitter) unionDefinition(id semantic.TypeID) (semantic.UnionDefinition,
 		}
 	}
 	return semantic.UnionDefinition{}, false
+}
+
+func (e *emitter) structDefinition(id semantic.TypeID) (semantic.StructDefinition, bool) {
+	for _, definition := range e.module.Structs {
+		if definition.TypeID == id {
+			return definition, true
+		}
+	}
+	return semantic.StructDefinition{}, false
+}
+
+func (e *emitter) typeArgumentsText(arguments []semantic.TypeID) (string, error) {
+	var out strings.Builder
+	out.WriteByte('[')
+	for index, argument := range arguments {
+		if index > 0 {
+			out.WriteString(", ")
+		}
+		text, err := e.typeText(argument)
+		if err != nil {
+			return "", err
+		}
+		out.WriteString(text)
+	}
+	out.WriteByte(']')
+	return out.String(), nil
+}
+
+// structFieldsText preserves declaration ordinals and open tag metadata per
+// rules/mlir/dialect-versions/sec_mlir_dialect_v9.md sections 3, 4, and 25.
+func (e *emitter) structFieldsText(definition semantic.StructDefinition) (string, error) {
+	var out strings.Builder
+	out.WriteByte('[')
+	for index, field := range definition.Fields {
+		if index > 0 {
+			out.WriteString(", ")
+		}
+		typeText, err := e.typeText(field.Type)
+		if err != nil {
+			return "", err
+		}
+		fmt.Fprintf(&out, "#sec.struct_field<ordinal = %d, name = %s, type = %s, tags = [", field.ID, mlirString(field.Name), typeText)
+		for tagIndex, tag := range field.Tags {
+			if tagIndex > 0 {
+				out.WriteString(", ")
+			}
+			fmt.Fprintf(&out, "#sec.struct_tag<key = %s, value = %s>", mlirString(tag.Key), mlirString(tag.Value))
+		}
+		out.WriteString("]>")
+	}
+	out.WriteByte(']')
+	return out.String(), nil
 }
 
 func (e *emitter) enumUnderlyingText(id semantic.TypeID) (string, error) {

@@ -14,6 +14,9 @@ import (
 
 	"sec/internal/ir/semantic"
 	"sec/internal/layout"
+	"sec/internal/lexer"
+	"sec/internal/parser"
+	"sec/internal/sema"
 )
 
 func TestEmitIsDeterministicAndPreservesSchemaMetadata(t *testing.T) {
@@ -31,7 +34,7 @@ func TestEmitIsDeterministicAndPreservesSchemaMetadata(t *testing.T) {
 	}
 	text := string(first)
 	for _, expected := range []string{
-		"sec.dialect_version = 8 : i32",
+		"sec.dialect_version = 9 : i32",
 		"sec.semantic_ir_version = 1 : i32",
 		`sec.module_id = "main"`,
 		`sec.target_os = "linux"`,
@@ -185,7 +188,7 @@ func TestEmitSchema6CheckedIntegerGuard(t *testing.T) {
 	}
 	text := string(output)
 	for _, expected := range []string{
-		`sec.dialect_version = 8 : i32`,
+		`sec.dialect_version = 9 : i32`,
 		`%v2, %v3, %v4 = "sec.int.binary_checked"(%v0, %v1) <{kind = "add"}> : (si128, si128) -> (si128, i1, !sec.arithmetic_failure_reason)`,
 		`cf.cond_br %v3, ^bb1(%v4 : !sec.arithmetic_failure_reason), ^bb2`,
 		`^bb1(%v5: !sec.arithmetic_failure_reason):`,
@@ -277,6 +280,73 @@ func TestEmittedModuleLowersTrivialCoreWithRealTool(t *testing.T) {
 	if !strings.Contains(text, "arith.constant true") ||
 		strings.Contains(text, "sec.const.bool") || strings.Contains(text, "llvm.") {
 		t.Fatalf("unexpected trivial-core output:\n%s", text)
+	}
+}
+
+// rules/mlir/lowering-versions/sec_mlir_lowering_v9.md sections 2-11 define
+// the verified Semantic IR to schema-v9 struct bridge exercised here.
+func TestEmitPackage13StructsEndToEnd(t *testing.T) {
+	source := `module main
+type Pair struct { Wide: int128 ` + "`wire:\"signed\"`" + `, Limit: uint256 }
+type Position union { Unknown Known { X: int128, Y: uint256 } }
+fn Build(base: Pair) int128 {
+  let mut value := Pair { base..., Wide: 5 }
+  value.Limit = 9
+  return value.Wide
+}
+fn Read(position: Position, zero: int128) int128 {
+  return match position {
+    Unknown => zero
+    Known(payload) => payload.X
+  }
+}`
+	p := parser.New(lexer.NewWithFile(source, "package13-emitter.sec"))
+	parsed := p.Parse()
+	if parsed.HasErrors {
+		t.Fatalf("parse: %v", p.Errors())
+	}
+	analyzer := sema.NewAnalyzer()
+	if errors := analyzer.Analyze(parsed.Program); len(errors) != 0 {
+		t.Fatalf("sema: %v", errors)
+	}
+	module, err := semantic.Build(parsed.Program, analyzer, semantic.BuildOptions{RequestedModule: "main", SourceFiles: []string{"package13-emitter.sec"}, MaxPackage: 13})
+	if err != nil {
+		t.Fatalf("semantic build: %v", err)
+	}
+	output, err := Emit(module, testPlan(64))
+	if err != nil {
+		t.Fatalf("emit: %v", err)
+	}
+	text := string(output)
+	for _, expected := range []string{
+		`sec.dialect_version = 9 : i32`,
+		`!sec.struct<identity = "main::Pair"`,
+		`#sec.struct_tag<key = "wire", value = "signed">`,
+		`"sec.struct.spread_fields"`,
+		`"sec.struct.construct"`,
+		`"sec.struct.replace_field"`,
+		`"sec.struct.extract"`,
+		`!sec.storage<!sec.struct`,
+		`!sec.struct<identity = "main::Position#1$payload"`,
+		`"sec.union.unwrap_field"`,
+	} {
+		if !strings.Contains(text, expected) {
+			t.Errorf("missing %q in:\n%s", expected, text)
+		}
+	}
+	binDir := os.Getenv("SEC_MLIR_BIN")
+	if binDir == "" {
+		return
+	}
+	path := filepath.Join(t.TempDir(), "package13.mlir")
+	if err := os.WriteFile(path, output, 0600); err != nil {
+		t.Fatal(err)
+	}
+	command := exec.Command(filepath.Join(binDir, "sec-mlir-opt"), path,
+		"--sec-verify-union-guards", "--sec-verify-match-cfg",
+		"--sec-lower-scalar-core", "--sec-lower-trivial-core", "-o", os.DevNull)
+	if combined, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("sec-mlir-opt: %v\n%s\nGenerated:\n%s", err, combined, output)
 	}
 }
 

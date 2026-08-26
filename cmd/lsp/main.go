@@ -1817,7 +1817,7 @@ func memberHoverContentsForDefinition(types map[string]sema.Type, definition lex
 		}
 		for _, field := range typ.RegisterFields {
 			if sameSourceToken(field.Token, definition) {
-				return fmt.Sprintf("```sec\nregister field %s: %s\n```", field.Name, lspTypeName(field.Type)), true
+				return registerFieldHover(field), true
 			}
 		}
 		for _, property := range typ.Properties {
@@ -1974,7 +1974,7 @@ func selfMemberHoverContents(target sema.Type, name string, functions map[string
 	}
 	for _, field := range target.RegisterFields {
 		if field.Name == name {
-			return fmt.Sprintf("```sec\nregister field %s: %s\n```", name, lspTypeName(field.Type)), true
+			return registerFieldHover(field), true
 		}
 	}
 	for _, property := range target.Properties {
@@ -2463,7 +2463,11 @@ func memberCompletionItems(exprType sema.Type, functions map[string][]sema.Funct
 			}
 		case sema.RegisterType:
 			for _, field := range exprType.RegisterFields {
-				add(completionItem{Label: field.Name, Kind: 5, Detail: lspTypeName(field.Type)})
+				detail := lspTypeName(field.Type)
+				if field.Access != "" {
+					detail += " (" + string(field.Access) + ")"
+				}
+				add(completionItem{Label: field.Name, Kind: 5, Detail: detail})
 			}
 		case sema.EnumType:
 			for _, variant := range exprType.EnumValues {
@@ -2774,6 +2778,17 @@ func functionCompletionDetail(functions []sema.Function) string {
 		return fmt.Sprintf("%d overloads", len(functions))
 	}
 	return lspTypeName(functions[0].ReturnType)
+}
+
+// registerFieldHover presents the compiler-owned access contract retained from
+// rules/declarations/registers.md. The LSP must not infer read/write semantics
+// from hyphenated source tokens.
+func registerFieldHover(field sema.RegisterField) string {
+	contents := fmt.Sprintf("```sec\nregister field %s: %s\n```", field.Name, lspTypeName(field.Type))
+	if field.Access != "" {
+		contents += fmt.Sprintf("\n\nAccess: `%s`", field.Access)
+	}
+	return contents
 }
 
 func lspTypeName(typ sema.Type) string {

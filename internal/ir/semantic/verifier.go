@@ -31,6 +31,9 @@ func Verify(module *Module) error {
 	if err := verifyEnumUnionDefinitions(module); err != nil {
 		return err
 	}
+	if err := verifyStructDefinitions(module); err != nil {
+		return err
+	}
 	functions := map[FunctionID]*Function{}
 	for _, fn := range module.Functions {
 		if fn == nil {
@@ -47,6 +50,36 @@ func Verify(module *Module) error {
 	for _, fn := range module.Functions {
 		if err := verifyFunction(module, fn, functions); err != nil {
 			return fmt.Errorf("function %s: %w", fn.ID, err)
+		}
+	}
+	return nil
+}
+
+func verifyStructDefinitions(module *Module) error {
+	seen := map[TypeID]bool{}
+	for _, definition := range module.Structs {
+		typ, ok := module.Types.Lookup(definition.TypeID)
+		if !ok || typ.Kind != TypeStruct || typ.Identity == "" || definition.SymbolID != SymbolID(typ.Identity) || definition.Name != typ.Name || seen[definition.TypeID] {
+			return fmt.Errorf("invalid struct definition !%d", definition.TypeID)
+		}
+		seen[definition.TypeID] = true
+		if !sameTypeIDs(definition.TypeArguments, typ.TypeArgs) || !validCopyClassification(definition.CopyClassification) {
+			return fmt.Errorf("invalid struct metadata !%d", definition.TypeID)
+		}
+		names := map[string]bool{}
+		for index, field := range definition.Fields {
+			if field.ID != StructFieldID(index) || field.Name == "" || names[field.Name] {
+				return fmt.Errorf("invalid struct field in !%d", definition.TypeID)
+			}
+			if _, ok := module.Types.Lookup(field.Type); !ok {
+				return fmt.Errorf("struct field %s has invalid type", field.Name)
+			}
+			names[field.Name] = true
+		}
+	}
+	for index, typ := range module.Types.types {
+		if typ.Kind == TypeStruct && !seen[TypeID(index+1)] {
+			return fmt.Errorf("struct type !%d has no definition", index+1)
 		}
 	}
 	return nil
@@ -180,13 +213,24 @@ func verifyEnumUnionDefinitions(module *Module) error {
 				if variant.Payload != 0 || len(variant.PayloadFields) == 0 {
 					return fmt.Errorf("field union variant %s has invalid shape", variant.Name)
 				}
+				var synthetic StructDefinition
+				if variant.SyntheticPayloadStruct != 0 {
+					var ok bool
+					synthetic, ok = structDefinition(module, variant.SyntheticPayloadStruct)
+					if !ok || synthetic.SyntheticOrigin != StructSyntheticUnionPayload || len(synthetic.Fields) != len(variant.PayloadFields) {
+						return fmt.Errorf("field union variant %s has invalid synthetic struct", variant.Name)
+					}
+				}
 				fieldNames := map[string]bool{}
-				for _, field := range variant.PayloadFields {
+				for fieldIndex, field := range variant.PayloadFields {
 					if field.Name == "" || fieldNames[field.Name] {
 						return fmt.Errorf("invalid field in union variant %s", variant.Name)
 					}
 					if _, ok := module.Types.Lookup(field.Type); !ok {
 						return fmt.Errorf("union field %s has invalid type", field.Name)
+					}
+					if variant.SyntheticPayloadStruct != 0 && (synthetic.Fields[fieldIndex].Name != field.Name || synthetic.Fields[fieldIndex].Type != field.Type) {
+						return fmt.Errorf("synthetic union payload field %s mismatch", field.Name)
 					}
 					fieldNames[field.Name] = true
 				}
@@ -751,10 +795,65 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 		if !found {
 			return fmt.Errorf("union.unwrap-field field mismatch")
 		}
+	case OpStructConstruct:
+		definition, ok := structDefinition(module, resultType)
+		if !ok || len(op.Results) != 1 || len(op.Operands) != len(definition.Fields) || len(op.StructOrigins) != len(op.Operands) || len(op.StructActions) != len(op.Operands) {
+			return fmt.Errorf("invalid struct.construct")
+		}
+		for index, field := range definition.Fields {
+			if values[op.Operands[index]].Type != field.Type || !validP13StructAction(op.StructActions[index]) || !validStructOrigin(op.StructOrigins[index]) {
+				return fmt.Errorf("struct.construct field %d mismatch", index)
+			}
+		}
+	case OpStructSpreadFields:
+		if len(op.Operands) != 1 {
+			return fmt.Errorf("invalid struct.spread-fields")
+		}
+		definition, ok := structDefinition(module, values[op.Operands[0]].Type)
+		if !ok || len(op.Results) != len(definition.Fields) || len(op.StructActions) != len(definition.Fields) {
+			return fmt.Errorf("invalid struct.spread-fields results")
+		}
+		for index, field := range definition.Fields {
+			if op.Results[index].Type != field.Type || op.StructActions[index] != StructActionCopyTrivial {
+				return fmt.Errorf("struct spread field %d mismatch", index)
+			}
+		}
+	case OpStructExtractField:
+		if len(op.Operands) != 1 || len(op.Results) != 1 || len(op.StructActions) != 1 || op.StructActions[0] != StructActionCopyTrivial {
+			return fmt.Errorf("invalid struct.extract-field")
+		}
+		definition, ok := structDefinition(module, values[op.Operands[0]].Type)
+		if !ok || int(op.StructField) >= len(definition.Fields) || resultType != definition.Fields[op.StructField].Type {
+			return fmt.Errorf("struct extract field mismatch")
+		}
+	case OpStructReplaceField:
+		if len(op.Operands) != 2 || len(op.Results) != 1 || resultType != values[op.Operands[0]].Type {
+			return fmt.Errorf("invalid struct.replace-field")
+		}
+		definition, ok := structDefinition(module, resultType)
+		if !ok || definition.CopyClassification != "trivial" || !definition.TriviallyDestructible || int(op.StructField) >= len(definition.Fields) || values[op.Operands[1]].Type != definition.Fields[op.StructField].Type {
+			return fmt.Errorf("unsafe struct.replace-field")
+		}
 	default:
 		return fmt.Errorf("unknown operation %q", op.Kind)
 	}
 	return nil
+}
+
+func structDefinition(module *Module, typeID TypeID) (StructDefinition, bool) {
+	for _, definition := range module.Structs {
+		if definition.TypeID == typeID {
+			return definition, true
+		}
+	}
+	return StructDefinition{}, false
+}
+
+func validP13StructAction(action StructFieldAction) bool {
+	return action == StructActionConstructDirect || action == StructActionCopyTrivial
+}
+func validStructOrigin(origin StructFieldOrigin) bool {
+	return origin == StructOriginExplicit || origin == StructOriginSpread || origin == StructOriginDefault
 }
 
 func validArithmeticErrorVariant(variant string) bool {

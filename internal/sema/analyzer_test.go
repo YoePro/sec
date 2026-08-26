@@ -1957,6 +1957,158 @@ type High register[8] msb-first big-endian {
 	}
 }
 
+func TestRegisterFieldAccessFactsAndDirectValidation(t *testing.T) {
+	input := `
+module main
+
+type Device register[6] {
+	Control: bit read-write,
+	Ready: bit read-only,
+	Command: bit write-only,
+	Pending: bit write-one-clear,
+	Fault: bit write-zero-clear,
+	Event: bit clear-on-read,
+}
+
+fn Valid(device: ref mut Device) void {
+	let control := device.Control
+	let ready := device.Ready
+	let event := device.Event
+	device.Control = false
+	device.Command = true
+	device.Pending = true
+	device.Fault = false
+	discard control
+	discard ready
+	discard event
+}
+
+fn Invalid(device: ref mut Device) void {
+	let command := device.Command
+	device.Ready = false
+	device.Command += true
+	device.Pending += true
+	device.Event += true
+	discard command
+}
+`
+
+	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, input)
+	wantAccess := []RegisterFieldAccess{
+		RegisterReadWrite,
+		RegisterReadOnly,
+		RegisterWriteOnly,
+		RegisterWriteOneClear,
+		RegisterWriteZeroClear,
+		RegisterClearOnRead,
+	}
+	for index, access := range wantAccess {
+		if got := analyzer.types["Device"].RegisterFields[index].Access; got != access {
+			t.Fatalf("field %d access = %q, want %q", index, got, access)
+		}
+	}
+	messages := make([]string, 0, len(errors))
+	for _, err := range errors {
+		messages = append(messages, err.Message)
+	}
+	wantMessages := []string{
+		"register field Device.Command is write-only and cannot be read",
+		"register field Ready is read-only and cannot be written",
+		"write-only register field Command cannot be used with += because compound assignment reads the field",
+		"register field Pending with write-one-clear semantics cannot use compound assignment",
+		"register field Event with clear-on-read semantics cannot use compound assignment",
+	}
+	for _, want := range wantMessages {
+		found := false
+		for _, message := range messages {
+			if strings.Contains(message, want) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("missing %q in errors: %v", want, errors)
+		}
+	}
+}
+
+func TestErrorEnumMarkerRootTypeAndWidening(t *testing.T) {
+	input := `
+module main
+
+enum SensorError error { Failed }
+enum Plain { Failed }
+
+fn SensorFailure() Result[void, SensorError] {
+	return Err(SensorError.Failed)
+}
+
+fn Widen() Result[void, error] {
+	try SensorFailure()
+	return Err(SensorError.Failed)
+}
+
+fn RejectPlain() Result[void, error] {
+	return Err(Plain.Failed)
+}
+`
+
+	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, input)
+	if got := analyzer.types["error"]; got.Kind != ErrorRootType || !got.Intrinsic {
+		t.Fatalf("compiler-known error root = %#v", got)
+	}
+	if got := analyzer.types["SensorError"]; !got.ErrorAssignable || got.Kind != EnumType {
+		t.Fatalf("marked error enum = %#v", got)
+	}
+	if got := analyzer.types["Plain"]; got.ErrorAssignable {
+		t.Fatalf("ordinary enum became error-assignable: %#v", got)
+	}
+	if len(errors) != 1 || !strings.Contains(errors[0].Message, "must return Err(error), got Err(Plain)") {
+		t.Fatalf("error-root diagnostics = %v", errors)
+	}
+}
+
+func TestStructLiteralOptionFieldsAcceptContextualNone(t *testing.T) {
+	input := `
+module main
+
+type State struct {
+	First: Option[int],
+	Second: Option[string],
+}
+
+fn Build() State {
+	return State {
+		First: None,
+		Second: None(),
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestCanonicalReferenceTypeCallArgumentsRemainAvailable(t *testing.T) {
+	input := `
+module main
+
+type Device struct { Count: uint }
+
+fn Touch(device: ref mut Device) void {
+	device.Count += 1
+}
+
+fn Twice(device: ref mut Device) void {
+	Touch(device)
+	Touch(device)
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
 // rules/declarations/registers.md, Raw bit-field domains; correction13.md.
 func TestWideRegisterFieldUsesExactArbitraryPrecisionRange(t *testing.T) {
 	input := `
@@ -2125,6 +2277,70 @@ func TestRegister7TryAndMatchFixture(t *testing.T) {
 
 	errors := analyzeSourceRaw(t, string(input))
 	assertSemaErrors(t, errors, nil)
+}
+
+func TestRegister8FrontendFeaturesExceptKnownProgramError(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/register8_valid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	errors := analyzeSourceRaw(t, string(input))
+	if len(errors) != 1 || !strings.Contains(errors[0].Message, "unknown member AnyHigh on Tmp4719HighLimitStatus") {
+		t.Fatalf("register8 frontend errors = %v; want only the documented Some(status) program error", errors)
+	}
+}
+
+func TestExplicitCharRuneIntegerConversions(t *testing.T) {
+	input := `
+fn Scalars(value: char, scalar: rune) void {
+	let encoded: byte := byte(value)
+	let code: int := int(value)
+	let runeCode: int := int(scalar)
+	let restored: char := char(code | 0x20)
+	let widened: rune := rune(value)
+}
+`
+	if errors := analyzeSource(t, input); len(errors) != 0 {
+		t.Fatalf("explicit scalar conversions produced errors: %v", errors)
+	}
+}
+
+func TestStringIterationUsesCanonicalRuneImplProperties(t *testing.T) {
+	input := `
+module core
+
+impl rune {
+	property Utf8Length: uint {
+		get { return 1u }
+	}
+	property IsWhitespace: bool {
+		get { return false }
+	}
+}
+
+fn Inspect(text: string) uint {
+	let mut width: uint := 0u
+	for character in text {
+		if character.IsWhitespace {
+			continue
+		}
+		width += character.Utf8Length
+	}
+	return width
+}
+`
+	const sourceFile = "sec/core/scalar_iteration.sec"
+	l := lexer.NewWithFile(input, sourceFile)
+	p := parser.New(l)
+	program := p.ParseProgram()
+	if len(p.Errors()) != 0 {
+		t.Fatalf("parser errors: %v", p.Errors())
+	}
+	program.SourceProvenance = map[string]ast.SourceProvenance{sourceFile: ast.SourceCore}
+	if errors := NewAnalyzer().Analyze(program); len(errors) != 0 {
+		t.Fatalf("string iteration lost rune impl properties: %v", errors)
+	}
 }
 
 func TestRegisterInvalidFixture(t *testing.T) {

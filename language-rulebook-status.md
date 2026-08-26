@@ -291,7 +291,7 @@ The remaining details to close are:
 |---|---|---|
 | `memory/allocation.txt` | **Written — sync required** | Must be synchronized with collections, threads, explicit backing storage, and shaped buffers. |
 | `memory/arena.md` | **Written** | Canonical Arena ownership, backing, allocation, reset/release, validity epoch, effects, analysis and lowering model. Recognized operations now produce direct graph events, synchronous `MayAllocate` summaries, cause paths, and LSP hover; context, demand, dependency, and lowering work remains partial. |
-| `memory/ownership.md` | **Living** | Defines explicit move syntax; remaining collection and lifecycle integration is tracked in the rulebook. |
+| `memory/ownership.md` | **Written** | Canonical revision 2.0 ownership, explicit reusable-source consumption, place availability, conditional refinement, discard convergence, method/member ownership, destruction responsibility, diagnostics, formatter and LSP requirements. Implementation progress is tracked by `frontend.ownership-v2` in `implementation-status.yaml`. |
 | `memory/borrowing.txt` | **Written — sync required** | Must include views, thread-local references, and discard interactions. |
 | `memory/references.txt` | **Written — sync required** | Must include shaped views and thread-bound references. |
 | `memory/reference_model.md` | **Written** | Canonical safe-reference guarantees, validity epochs, stable and weak handles, relocation, profile representations, and `RawPtr` boundaries. |
@@ -488,8 +488,8 @@ lifecycles.
 | Rulebook group | Status | Notes |
 |---|---|---|
 | `mlir/sec_mlir.md` | **Written** | Governance and canonical high-level Sec MLIR boundary. |
-| `mlir/sec_mlir_dialect.md` | **Written** | Current canonical dialect specification. |
-| `mlir/sec_mlir_lowering.md` | **Written** | Current canonical lowering specification. |
+| `mlir/sec_mlir_dialect.md` | **Written** | Current canonical dialect specification, synchronized through schema 9 / SEC-MLIR-P13. |
+| `mlir/sec_mlir_lowering.md` | **Written** | Current canonical lowering specification, synchronized through lowering version 9 / SEC-MLIR-P13. |
 | `mlir/mlir.txt` | **Written — sync required** | General MLIR architecture notes. |
 | `mlir/mlir-optimize.txt` | **Living** | Updated as optimization support grows. |
 | `mlir/packages/` | **Living** | Numbered implementation packages 1–19 with separate package YAML files. |

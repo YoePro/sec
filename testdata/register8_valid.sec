@@ -1,0 +1,509 @@
+module blackpill_temperature_fan
+
+// -----------------------------------------------------------------------------
+// Example purpose
+//
+// This example demonstrates an important Sec design rule:
+//
+//   register declaration -> physical/logical bit representation
+//   impl register        -> behavior only
+//   ordinary struct      -> persistent software state
+//
+// Target:
+//   STM32F411 "Black Pill"
+//
+// Connections:
+//   PB6 -> I2C1_SCL
+//   PB7 -> I2C1_SDA
+//   PA6 -> TIM3_CH1 PWM -> fan driver
+//
+// Sensor:
+//   Texas Instruments TMP4719
+//   7-bit I2C address: 0x4D
+//
+// The TMP4719 High_Limit_Status register at address 0x35 is read-to-clear
+// in Interrupt Mode. Therefore a software component that needs to know the
+// most recently observed value must explicitly store a snapshot.
+//
+// The STM32 I2C and PWM types below are deliberately small platform stubs.
+// Their purpose is to make every type used by this example defined.
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// Error types
+//
+// These use the canonical Sec error-type syntax.
+//
+// The language rule exists even if the compiler implementation has not yet
+// caught up with the complete `error` model.
+// -----------------------------------------------------------------------------
+
+enum I2cError error {
+    TransferFailed
+    UnsupportedRegister
+}
+
+enum SensorError error {
+    BusError
+}
+
+enum FanError error {
+    InvalidDuty
+    PwmError
+}
+
+// -----------------------------------------------------------------------------
+// STM32 pin names used by this sample.
+// -----------------------------------------------------------------------------
+
+enum Pin {
+    PA6
+    PB6
+    PB7
+}
+
+// -----------------------------------------------------------------------------
+// Minimal STM32F411 I2C1 abstraction.
+//
+// This is ordinary software state, not a hardware register declaration.
+//
+// ReadRegister8() is currently a stub. A real platform implementation would
+// configure and operate the STM32F411 I2C1 peripheral.
+// -----------------------------------------------------------------------------
+
+type Stm32I2c1 struct {
+    Scl: Pin,
+    Sda: Pin,
+    Frequency: uint,
+    TransactionCount: uint,
+}
+
+impl Stm32I2c1 {
+    fn ReadRegister8(address: byte, registerAddress: byte) Result[byte, I2cError] {
+        self.TransactionCount += 1
+
+        if address != 0x4D {
+            return Err(I2cError.TransferFailed)
+        }
+
+        // Temporary simulation values.
+        //
+        // 0x00:
+        //   Local temperature = 42 degrees C.
+        //
+        // 0x35:
+        //   bit 0 = LocalHigh
+        //   bit 2 = Remote2High
+        //
+        // A real implementation performs the actual I2C transaction here.
+        switch registerAddress {
+            case 0x00:
+                return Ok(42)
+
+            case 0x35:
+                return Ok(0b00000101)
+
+            default:
+                return Err(I2cError.UnsupportedRegister)
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Minimal STM32 TIM3 PWM abstraction.
+//
+// PA6 is used as TIM3_CH1.
+//
+// This is also an ordinary software object. A later STM32 platform
+// implementation would write the actual timer registers.
+// -----------------------------------------------------------------------------
+
+type Stm32Tim3Pwm struct {
+    OutputPin: Pin,
+    Frequency: uint,
+    LastDutyPermille: uint16,
+    WriteCount: uint,
+}
+
+impl Stm32Tim3Pwm {
+    fn SetDutyPermille(duty: uint16) Result[void, FanError] {
+        if duty > 1000 {
+            return Err(FanError.InvalidDuty)
+        }
+
+        // Platform register writes will eventually occur here.
+        self.LastDutyPermille = duty
+        self.WriteCount += 1
+
+        return Ok()
+    }
+}
+
+// -----------------------------------------------------------------------------
+// TMP4719 High_Limit_Status snapshot.
+//
+// The physical TMP4719 register is read-to-clear at the I2C device.
+//
+// This Sec value represents the byte AFTER it has been read from the device.
+// Reading fields from this local value must therefore not trigger another
+// hardware read and must not clear the stored snapshot.
+//
+// This distinction is important:
+//
+//   destructive operation:
+//       the I2C read of device register 0x35
+//
+//   ordinary local observation:
+//       reading fields from Tmp4719HighLimitStatus afterward
+// -----------------------------------------------------------------------------
+
+type Tmp4719HighLimitStatus register[8] {
+    LocalHigh: bit,
+    Remote1High: bit,
+    Remote2High: bit,
+    _: bit[5],
+}
+
+// -----------------------------------------------------------------------------
+// Pure behavior belonging to the register value.
+//
+// No persistent state is added by this impl.
+// Tmp4719HighLimitStatus remains exactly eight bits.
+// -----------------------------------------------------------------------------
+
+impl Tmp4719HighLimitStatus {
+    init(fromByte: byte) {
+        self.LocalHigh = (fromByte &   0b10000000) != 0
+        self.Remote1High = (fromByte & 0b01000000) != 0
+        self.Remote2High = (fromByte & 0b00100000) != 0
+    }
+
+    property AnyHigh: bool {
+        get {
+            return self.LocalHigh || self.Remote1High || self.Remote2High
+        }
+    }
+
+    property AnyRemoteHigh: bool {
+        get {
+            return self.Remote1High || self.Remote2High
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// TMP4719 device identity.
+//
+// The device abstraction contains only ordinary software information needed
+// to communicate with the external sensor.
+// -----------------------------------------------------------------------------
+
+type Tmp4719 struct {
+    Address: byte,
+}
+
+impl Tmp4719 {
+    fn ReadHighLimitStatus(bus: ref mut Stm32I2c1) Result[Tmp4719HighLimitStatus, SensorError] {
+        // IMPORTANT:
+        //
+        // The I2C transaction itself is destructive.
+        //
+        // In TMP4719 Interrupt Mode, reading register 0x35 clears the
+        // High_Limit_Status bits in the physical device.
+
+        let raw := try bus.ReadRegister8(self.Address, 0x35) {
+            Err(_) => {
+                return Err(SensorError.BusError)
+            }
+        }
+
+        // byte -> register[8] is an exact-width conversion.
+        //
+        // The returned register value is now an ordinary software snapshot.
+        return Ok(new Tmp4719HighLimitStatus(raw))
+    }
+
+    fn ReadLocalTemperature(bus: ref mut Stm32I2c1) Result[int, SensorError] {
+        let raw := try bus.ReadRegister8(self.Address, 0x00) {
+            Err(_) => {
+                return Err(SensorError.BusError)
+            }
+        }
+
+        return Ok(DecodeSignedTemperature(raw))
+    }
+}
+
+// -----------------------------------------------------------------------------
+// TMP4719 local temperature is an 8-bit two's-complement integer.
+//
+// Avoid a checked byte -> int8 conversion here because values 0x80..0xFF
+// represent valid negative temperatures rather than conversion failures.
+// -----------------------------------------------------------------------------
+
+fn DecodeSignedTemperature(raw: byte) int {
+    if raw < 0x80 {
+        return int(raw)
+    }
+
+    return int(raw) - 256
+}
+
+// -----------------------------------------------------------------------------
+// Fan abstraction.
+//
+// This separates application-level fan state from the underlying PWM channel.
+// -----------------------------------------------------------------------------
+
+type FanPwm struct {
+    Channel: Stm32Tim3Pwm,
+    DutyPermille: uint16,
+}
+
+impl FanPwm {
+    fn SetDuty(
+        duty: uint16,
+    ) Result[void, FanError] {
+        if duty > 1000 {
+            return Err(FanError.InvalidDuty)
+        }
+
+        try self.Channel.SetDutyPermille(duty)
+
+        self.DutyPermille = duty
+        return Ok()
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Persistent controller state.
+//
+// THIS is where the "last observed register value" belongs.
+//
+// These values do NOT belong in:
+//
+//     impl Tmp4719HighLimitStatus
+//
+// because an impl must not add stored instance representation.
+//
+// The controller owns ordinary RAM containing:
+//   - the last temperature observation,
+//   - the last destructive status-register observation,
+//   - fan state,
+//   - statistics.
+//
+// The hardware-register representation remains completely separate.
+// -----------------------------------------------------------------------------
+
+type CoolingController struct {
+    Sensor: Tmp4719,
+
+    LastTemperature: Option[int],
+    LastHighLimitStatus: Option[Tmp4719HighLimitStatus],
+
+    FanDutyPermille: uint16,
+
+    TemperatureReads: uint,
+    StatusReads: uint,
+}
+
+// -----------------------------------------------------------------------------
+// Stateful controller behavior.
+// -----------------------------------------------------------------------------
+
+impl CoolingController {
+    fn RefreshTemperature(
+        bus: ref mut Stm32I2c1,
+    ) Result[void, SensorError] {
+        let temperature := try self.Sensor.ReadLocalTemperature(bus)
+
+        self.LastTemperature = Some(temperature)
+        self.TemperatureReads += 1
+
+        return Ok()
+    }
+
+    fn RefreshHighLimitStatus(
+        bus: ref mut Stm32I2c1,
+    ) Result[void, SensorError] {
+        // This performs the destructive I2C read exactly once.
+        let status := try self.Sensor.ReadHighLimitStatus(bus)
+
+        // Preserve the observation in normal software-owned RAM.
+        self.LastHighLimitStatus = Some(status)
+        self.StatusReads += 1
+
+        return Ok()
+    }
+
+    property Temperature: Option[int] {
+        get {
+            // No hardware access occurs here.
+            return self.LastTemperature
+        }
+    }
+
+    property HighLimitStatus: Option[Tmp4719HighLimitStatus] {
+        get {
+            // No hardware access occurs here.
+            //
+            // Repeated access returns the cached snapshot and must never
+            // perform another read of TMP4719 register 0x35.
+            return self.LastHighLimitStatus
+        }
+    }
+
+    property HasHighLimitAlarm: bool {
+        get {
+            return match self.LastHighLimitStatus {
+                Some(status) => status.AnyHigh
+                None => false
+            }
+        }
+    }
+
+    fn UpdateFan(fan: ref mut FanPwm) Result[void, FanError] {
+        let mut desiredDuty: uint16
+
+        match self.LastTemperature {
+            None => {
+                // Fail safe until the first valid sensor reading exists.
+                desiredDuty = 1000
+            }
+
+            Some(temperature) => {
+                // A subjectless switch is appropriate here because these
+                // are ordered conditions, not structural patterns.
+                switch {
+                    case self.HasHighLimitAlarm:
+                        desiredDuty = 1000
+
+                    case temperature >= 70:
+                        desiredDuty = 1000
+
+                    case temperature >= 60:
+                        desiredDuty = 750
+
+                    case temperature >= 50:
+                        desiredDuty = 500
+
+                    case temperature >= 40:
+                        desiredDuty = 250
+
+                    default:
+                        desiredDuty = 0
+                }
+            }
+        }
+
+        try fan.SetDuty(desiredDuty)
+
+        self.FanDutyPermille = desiredDuty
+        return Ok()
+    }
+}
+
+// -----------------------------------------------------------------------------
+// One complete control cycle.
+//
+// The open `error` channel is intentional here.
+//
+// RefreshTemperature() and RefreshHighLimitStatus() return SensorError.
+// UpdateFan() returns FanError.
+//
+// Both concrete error families can widen to the compiler-known `error` root.
+// No artificial application error enum is necessary merely to combine them.
+// -----------------------------------------------------------------------------
+
+fn RunCycle(controller: ref mut CoolingController, bus: ref mut Stm32I2c1, fan: ref mut FanPwm) Result[void, error] {
+    try controller.RefreshTemperature(bus)
+    try controller.RefreshHighLimitStatus(bus)
+    try controller.UpdateFan(fan)
+
+    return Ok()
+}
+
+// -----------------------------------------------------------------------------
+// Placeholder telemetry function.
+//
+// This exists so the example is self-contained until a real output/telemetry
+// API is available.
+// -----------------------------------------------------------------------------
+
+fn ProcessTelemetry(temperature: Option[int], alarm: Option[Tmp4719HighLimitStatus]) void {
+    discard temperature
+    discard alarm
+}
+
+// -----------------------------------------------------------------------------
+// Placeholder delay.
+//
+// A real bare-metal implementation will eventually use SysTick, a hardware
+// timer, or the platform timing API.
+// -----------------------------------------------------------------------------
+
+fn DelayMilliseconds(milliseconds: uint) void {
+    discard milliseconds
+}
+
+// -----------------------------------------------------------------------------
+// Main
+// -----------------------------------------------------------------------------
+
+fn main() int {
+    let mut bus := Stm32I2c1 {
+        Scl: Pin.PB6,
+        Sda: Pin.PB7,
+        Frequency: 400000,
+        TransactionCount: 0,
+    }
+
+    let mut fan := FanPwm {
+        Channel: Stm32Tim3Pwm {
+            OutputPin: Pin.PA6,
+            Frequency: 25000,
+            LastDutyPermille: 0,
+            WriteCount: 0,
+        },
+        DutyPermille: 0,
+    }
+
+    let sensor := Tmp4719 {
+        Address: 0x4D,
+    }
+
+    let mut controller := CoolingController {
+        Sensor: sensor,
+
+        LastTemperature: None(),
+        LastHighLimitStatus: None(),
+
+        FanDutyPermille: 0,
+
+        TemperatureReads: 0,
+        StatusReads: 0,
+    }
+
+    // A finite loop keeps this documentation example simple.
+    // Real firmware would normally run the controller continuously.
+    for cycle in 0..<10 {
+        try RunCycle(controller, bus, fan) {
+            Err(_) => {
+                // Fail safe: sensor/control failure -> full fan speed.
+                try fan.SetDuty(1000) {
+                    Err(_) => {
+                        return 1
+                    }
+                }
+            }
+        }
+
+        let lastTemperature := controller.Temperature
+        let lastAlarm := controller.HighLimitStatus
+
+        ProcessTelemetry(lastTemperature, lastAlarm)
+        DelayMilliseconds(250)
+    }
+
+    return 0
+}

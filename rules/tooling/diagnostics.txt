@@ -1885,3 +1885,22 @@ Normative summary
 28. Every emitted primary diagnostic must exist in the central diagnostic registry.
 29. LSP and machine-readable output use the diagnostic ID as the stable interface.
 30. Earlier warning classifications for proven dead or unused code are superseded by this document.
+
+## Ownership revision 2 mentor diagnostics
+
+An ownership diagnostic identifies the affected place, the earlier operation
+and source location that moved, discarded, or detached it, the practical reason
+the requested operation is invalid, and a concrete correction when safe. A
+missing explicit reusable-source transfer should show the canonical repair, for
+example `Consume(<-resource)`.
+
+Conditional-availability diagnostics explain which continuing path may have
+consumed the place and may suggest `is available` refinement or `discard`
+convergence. A static-ownership-policy error explains that the source semantics
+would require forbidden runtime bookkeeping and suggests restructuring or
+explicit convergence; it is not described as an arbitrary backend failure.
+
+Discarding a statically known already-unavailable place is a legal no-op. It may
+receive only a policy-controlled redundancy advisory, never an ownership error.
+Compiler-theory terminology may be secondary detail but not the primary
+explanation.

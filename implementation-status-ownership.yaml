@@ -1,0 +1,209 @@
+rulebook: "rules/memory/ownership.md"
+document_revision: "2.0"
+status_kind: "delta-only"
+reviewed_date: "2026-08-26"
+synced_to_canonical_ledger: "2026-08-26"
+canonical_integration: "frontend.ownership-v2"
+repository_baseline:
+  commit: "b3315f6"
+  semantic_source_parent: "45e5cd4"
+replaces: "pre-v2 rules/memory/ownership.md"
+
+baseline_confirmed:
+  - "The frontend already has canonical Place identity for roots, fields, selected indexes/slices, references, and union payload projections."
+  - "The frontend already tracks direct moved/unavailable state with source locations and move reasons including move, discard, and detach."
+  - "Explicit :<- and <- declaration/assignment forms are lexed, parsed, represented in AST, formatted, semantically validated, and surfaced in initial LSP tooling."
+  - "Named-source implicit copy of compiler-known and @noCopy move-only values is already rejected in direct declaration/assignment paths."
+  - "Nested struct-field moves, sibling-field continued access, whole-aggregate rejection while a field is unavailable, and field reinitialization are already implemented for supported places."
+  - "Branch, match, switch, select, and loop analysis already carries projection-sensitive move facts, but the current merge model remains more conservative than revision-2 ConditionallyAvailable refinement."
+  - "Borrow checks are already consulted before supported moves, and overlapping self-moves are diagnosed."
+  - "Current Sema already distinguishes copy classification from TriviallyDestructible-style destruction classification."
+  - "Call argument evaluation is left-to-right and ownership transfer to callee-owned parameters is already committed only after all arguments for the outer call are ready."
+  - "Current Sema still consumes reusable named arguments for move-only/by-value and -> parameters without requiring a call-site <- marker; this is stale relative to revision 2."
+  - "Current union/Option/Result/aggregate construction paths still contain implicit move-only payload transfer from reusable named sources; this is stale relative to revision 2."
+  - "Current lambda revision-2 rules and related analysis still use capture(-> value) and permit plain capture(value) to move move-only sources; this is stale relative to revision 2."
+  - "Current discard revision-2 rules reject a second discard of an unavailable binding; revision-2 ownership now defines discard as convergence to Unavailable, making already-unavailable discard a legal no-op."
+  - "Current functions/interfaces rulebooks still permit whole-self consuming method receivers and interface -> fn receiver contracts; revision-2 ownership removes ordinary whole-self-consuming methods."
+  - "Current grammar explicitly says return <- value does not exist; revision-2 ownership now permits the marker optionally at the return boundary."
+  - "Current availability tracking primarily models moved places/reasons and does not yet expose Availability plus UnavailableReason as separate canonical semantic dimensions."
+  - "Current implementation has no source-level is available / is not available ownership-state test or path refinement."
+  - "Current implementation does not yet expose a project/target policy that rejects runtime ownership bookkeeping when dynamic availability state would otherwise be required."
+  - "Direct field-place mutability propagation requires focused regression coverage because current source inspection indicates a risk that a projected field may be marked mutable independently of an immutable root."
+  - "Custom-free partial-move rejection is not yet sufficiently explicit in implementation status or focused tests and must be verified/enforced."
+
+required_sync:
+  - id: "ownership-rulebook-migration"
+    areas: ["documentation", "implementation-status"]
+    note: "Replace the pre-v2 ownership content in rules/memory/ownership.md with revision 2, remove embedded implementation-status prose and implementation plans from the normative file, and keep mutable progress only in implementation-status.yaml."
+
+  - id: "availability-reason-separation"
+    areas: ["sema", "control-flow", "ownership", "diagnostics", "lsp", "semantic-ir", "tests"]
+    note: "Replace the current top-level moved/discarded/detached state split with canonical Availability {Uninitialized, Available, PartiallyAvailable, Unavailable, ConditionallyAvailable} plus separate UnavailableReason/provenance. Preserve multiple possible reasons across joins for diagnostics without multiplying availability states."
+
+  - id: "explicit-consuming-call-arguments"
+    areas: ["parser", "ast", "sema", "functions", "interfaces", "copy-move", "formatter", "diagnostics", "lsp", "tests"]
+    note: "Require <- at the call site whenever ownership leaves a reusable source place. This includes ordinary by-value move-only parameters and explicit -> parameters. For example Consume(<-resource>) is required; Consume(resource) must not silently consume the reusable source. Fresh temporaries remain marker-free."
+
+  - id: "call-transfer-commit-with-explicit-move"
+    areas: ["sema", "control-flow", "ownership", "cleanup", "tests"]
+    note: "Retain delayed outer-call transfer commit with explicit <- arguments: evaluate arguments left-to-right, validate all arguments, then commit source unavailability at call entry. Failure while evaluating a later argument must not consume an earlier reusable source for that outer call."
+
+  - id: "constructor-payload-explicit-move"
+    areas: ["parser", "ast", "sema", "copy-move", "ownership", "unions", "types", "formatter", "diagnostics", "lsp", "tests"]
+    note: "Require explicit <- when a reusable named/place source is consumed into Option, Result, union, struct/aggregate, or equivalent owning payload construction. Examples: Some(<-resource), Ok(<-resource), Payload: <-resource. Ordinary payload syntax may copy copyable values but must not infer a destructive move."
+
+  - id: "union-legacy-move-syntax"
+    areas: ["unions", "documentation", "parser", "sema", "tests"]
+    note: "Replace stale word-form union move examples such as `let target := move source` with canonical :<- / <- ownership syntax, and ensure union construction follows explicit reusable-source move rules."
+
+  - id: "fresh-temporary-forwarding"
+    areas: ["sema", "ownership", "copy-move", "tests"]
+    note: "Keep fresh temporaries marker-free when forwarded directly into their first owner, including ownership-taking calls and payload construction. Do not manufacture <- boilerplate where no reusable source place can remain visible."
+
+  - id: "return-boundary-optional-move-marker"
+    areas: ["parser", "ast", "sema", "grammar", "functions", "copy-move", "formatter", "diagnostics", "tests"]
+    note: "Permit both return value and return <-value for owned returns. The move marker is optional because return is already a terminal ownership-transfer boundary. Receiving a fresh returned value through ordinary initialization also requires no move marker."
+
+  - id: "closure-capture-explicit-move"
+    areas: ["parser", "ast", "sema", "lambda-functions", "closure-analysis", "grammar", "copy-move", "formatter", "diagnostics", "lsp", "tests"]
+    note: "Replace capture(-> value) with capture(<-value). Plain capture(value) is copy capture and must reject a non-copyable reusable source instead of moving it implicitly. capture(<-value) consumes even a copyable source; ref/ref mut capture semantics remain unchanged."
+
+  - id: "ordinary-method-no-whole-self-consume"
+    areas: ["sema", "functions", "interfaces", "impl", "ownership", "diagnostics", "lsp", "tests"]
+    note: "Remove ordinary whole-self-consuming method receivers. Concrete methods may require shared or mutable/exclusive self authority but must not consume the complete self. Interface instance methods must no longer use -> fn as a receiver contract. Whole-instance lifetime termination belongs to free/lifecycle destruction."
+
+  - id: "method-member-consumption"
+    areas: ["sema", "ownership", "borrowing", "destruction", "tests"]
+    note: "Permit a method with sufficient mutable/exclusive receiver authority to move/discard/replace owned members of self when partial-move and borrow rules allow it. Member fields do not require independent mut declarations; mutation authority derives from the access path/receiver."
+
+  - id: "immutable-root-field-mutability"
+    areas: ["sema", "place", "ownership", "diagnostics", "tests"]
+    note: "Audit and correct Place mutability propagation so an ordinary field projection from an immutable root does not become externally mutable merely because it is a direct struct field. Add regression tests for immutable-root field assignment and mutable-receiver member mutation."
+
+  - id: "partial-availability-v2"
+    areas: ["sema", "place", "control-flow", "ownership", "destruction", "diagnostics", "lsp", "semantic-ir", "tests"]
+    note: "Represent partial aggregate availability recursively enough to keep available sibling sub-places usable while rejecting whole-value operations. Whole-value operations require whole Available; sub-place operations require only the addressed sub-place to be Available."
+
+  - id: "immutable-partial-move"
+    areas: ["sema", "ownership", "tests"]
+    note: "Permit explicit partial move from an immutable binding when the addressed sub-place is otherwise legally movable. The immutable aggregate may remain PartiallyAvailable but cannot repair/reinitialize the moved sub-place by assignment."
+
+  - id: "custom-free-partial-move-ban"
+    areas: ["sema", "ownership", "destruction", "impl", "diagnostics", "tests"]
+    note: "Reject partial moves from a type with custom free in Sec 0.1. The compiler must not dismantle the value and silently replace custom whole-self destruction with field-wise cleanup."
+
+  - id: "conditional-availability"
+    areas: ["sema", "control-flow", "place", "ownership", "diagnostics", "lsp", "semantic-ir", "tests"]
+    note: "Introduce ConditionallyAvailable when continuing control-flow paths disagree on ownership availability. Exclude non-continuing paths from joins. Preserve field sensitivity and reasons/provenance through joins."
+
+  - id: "ownership-is-available"
+    areas: ["lexer-or-contextual-token", "parser", "ast", "sema", "control-flow", "ownership", "formatter", "diagnostics", "lsp", "semantic-ir", "tests"]
+    note: "Implement compiler-known boolean place tests `place is available` and `place is not available`. They test current ownership availability only, not Option/None, nullability, generation validity, or borrow permission. Refine the true/false paths using canonical availability facts."
+
+  - id: "static-availability-elimination"
+    areas: ["sema", "control-flow", "optimizer", "lowering", "tests"]
+    note: "Statically resolve availability whenever compiler control-flow facts suffice. Do not emit runtime availability bookkeeping for a test or cleanup decision that can be proven statically. Route proven unreachable statements through the canonical unreachable-code policy."
+
+  - id: "dynamic-ownership-state-policy"
+    areas: ["projects", "targets", "sema", "ownership", "lowering", "diagnostics", "tests"]
+    note: "Provide a target/project policy that rejects code requiring dynamic ownership bookkeeping. Exact configuration syntax is owned by project/target rulebooks and is not locked here. Diagnostics should recommend restructuring or explicit discard convergence."
+
+  - id: "discard-convergence"
+    areas: ["sema", "discard", "ownership", "destruction", "control-flow", "diagnostics", "lsp", "semantic-ir", "tests"]
+    note: "Change discard of a tracked place to converge ownership to Unavailable. Available input destroys when required; already-Unavailable input is a legal no-op; ConditionallyAvailable input destroys only on paths still owning a value and leaves all outgoing paths Unavailable. Preserve discardability and borrow restrictions."
+
+  - id: "conditional-replacement"
+    areas: ["sema", "ownership", "destruction", "control-flow", "lowering", "diagnostics", "tests"]
+    note: "Assignment to a mutable ConditionallyAvailable place is legal and repairs it to Available. On paths still owning an old value, end/destroy it before replacement; on already-unavailable paths, perform reinitialization without old destruction. Hosted systems may do this automatically. Static-ownership policy may require explicit discard convergence first."
+
+  - id: "replacement-order-and-commit"
+    areas: ["sema", "ownership", "destruction", "semantic-ir", "lowering", "tests"]
+    note: "For assignment/move-assignment into an Available destination, semantically validate the complete operation before committing source transfer. The old destination value is ended according to destruction rules before the new value becomes owned by the destination."
+
+  - id: "partial-destruction"
+    areas: ["sema", "ownership", "destruction", "cleanup", "semantic-ir", "lowering", "tests"]
+    note: "At scope exit or other cleanup, destroy exactly the sub-places still owned and Available. Never destroy a moved/discarded/detached sub-place again. Preserve recursive partial cleanup where partial moves are permitted."
+
+  - id: "destruction-classification-boundary"
+    areas: ["sema", "types", "ownership", "destruction", "analysis", "tests"]
+    note: "Keep destruction classification independent from copy/move classification. Correctness uses TriviallyDestructible versus non-trivial cleanup requirements derived from the canonical representation and owned sub-values. Performance significance of a cleanup is a separate analysis/policy concern."
+
+  - id: "ownership-errorhandling-sync"
+    areas: ["sema", "ownership", "errorhandling", "match", "control-flow", "diagnostics", "lsp", "tests"]
+    note: "Integrate consuming Result.Ok()/Err(), borrowed OkRef/ErrRef, partial try-handler joins, guarded move commit, Err(_) discardability, and return-try forwarding with the revision-2 availability model."
+
+  - id: "ownership-semantic-ir-v2"
+    areas: ["semantic-ir", "verifier", "mlir", "lowering", "ownership", "cleanup", "tests"]
+    note: "Represent ownership operations explicitly enough that lowerings do not infer move, replace, reinitialize, discard convergence, conditional availability, or cleanup responsibility from unused SSA or syntax reconstruction."
+
+  - id: "ownership-lsp-v2"
+    areas: ["lsp", "sema", "diagnostics", "tests"]
+    note: "Expose canonical availability, reason/provenance, copy-versus-consume, required move markers, capture ownership, partial state, and availability-test refinement from compiler facts. Do not rebuild the ownership lattice in the LSP."
+
+  - id: "ownership-mentor-diagnostics"
+    areas: ["diagnostics", "sema", "lsp", "tests"]
+    note: "Ownership diagnostics must identify the affected value/place, the earlier consuming/discarding operation, why the later operation is invalid, and a practical correction in ordinary programmer language."
+
+  - id: "ownership-formatter-v2"
+    areas: ["formatter", "parser", "tests"]
+    note: "Preserve semantic ownership markers including :<-, <-, call/payload move expressions, capture(<-value), and optional return <-value. The formatter must never add or remove a semantic move marker as a style-only rewrite."
+
+corrections_applied:
+  - "rules/corrections/applied/functions-ownership-v2-correction-20260826.md"
+  - "rules/corrections/applied/interfaces-ownership-v2-correction-20260826.md"
+  - "rules/corrections/applied/unions-ownership-v2-correction-20260826.md"
+  - "rules/corrections/applied/lambda-functions-ownership-v2-correction-20260826.md"
+  - "rules/corrections/applied/closure-analysis-ownership-v2-correction-20260826.md"
+  - "rules/corrections/applied/grammar-ownership-v2-correction-20260826.md"
+  - "rules/corrections/applied/copy-move-ownership-v2-correction-20260826.md"
+  - "rules/corrections/applied/discard-ownership-v2-correction-20260826.md"
+  - "rules/corrections/applied/destruction-ownership-v2-correction-20260826.md"
+  - "rules/corrections/applied/semantic-ir-ownership-v2-correction-20260826.md"
+  - "rules/corrections/applied/lsp-ownership-v2-correction-20260826.md"
+  - "rules/corrections/applied/diagnostics-ownership-v2-correction-20260826.md"
+  - "rules/corrections/applied/formatter-ownership-v2-correction-20260826.md"
+
+tests_required:
+  - "ordinary copy of copyable reusable source preserves source availability"
+  - "ordinary value syntax never silently moves a reusable @noCopy/move-only source"
+  - "explicit move initialization :<- consumes reusable source"
+  - "explicit move assignment <- consumes reusable source and handles destination replacement"
+  - "explicit <- may consume a copyable reusable source"
+  - "ordinary by-value move-only call requires Call(<-source)"
+  - "explicit -> parameter requires Call(<-source) even when source type is copyable"
+  - "fresh temporary to ownership-taking parameter requires no <- marker"
+  - "later argument failure does not commit earlier outer-call source move"
+  - "Some(source), Ok(source), union payload, and aggregate payload reject implicit move-only reusable source transfer"
+  - "Some(<-source), Ok(<-source), union payload <-source, and aggregate field <-source transfer ownership"
+  - "legacy union `move source` spelling is rejected in favor of :<- / <-"
+  - "capture(value) copies and rejects non-copyable reusable source"
+  - "capture(<-value) consumes source and capture(-> value) is rejected"
+  - "return value and return <-value both transfer owned local"
+  - "fresh returned value can initialize destination without move marker"
+  - "ordinary method cannot consume whole self"
+  - "method may move/discard an owned member with sufficient receiver authority"
+  - "immutable root does not permit ordinary field assignment"
+  - "mutable/exclusive self permits member mutation without per-field mut declaration"
+  - "partial move leaves sibling field usable and whole aggregate unusable"
+  - "immutable aggregate permits explicit partial move but not field reinitialization"
+  - "mutable aggregate field reinitialization restores whole availability when complete"
+  - "custom free type rejects partial move"
+  - "Available plus Unavailable continuing paths merge to ConditionallyAvailable"
+  - "terminating moved path is excluded from post-branch availability merge"
+  - "is available and is not available refine ownership state without Option/null/generation semantics"
+  - "statically provable availability tests require no runtime bookkeeping"
+  - "static-ownership target rejects ownership code that genuinely requires runtime state"
+  - "discard Available destroys when required and converges to Unavailable"
+  - "discard already-Unavailable place is legal no-op"
+  - "discard ConditionallyAvailable converges all paths to Unavailable"
+  - "discard remains blocked by non-discardable obligation and incompatible active borrow"
+  - "assignment to Unavailable mutable place is reinitialization"
+  - "assignment to Available mutable place automatically ends old value before replacement"
+  - "hosted assignment to ConditionallyAvailable mutable place conditionally ends old value and repairs to Available"
+  - "static-ownership policy may require discard convergence before conditional replacement"
+  - "partial aggregate cleanup destroys only still-owned available sub-places"
+  - "moved/discarded/detached sub-place is never destroyed twice"
+  - "Result.Ok()/Err() consumption and OkRef/ErrRef borrowing integrate with availability"
+  - "try/match guarded move ownership commits only on selected guard success"
+  - "formatter preserves ownership markers and LSP reports canonical compiler facts"
+  - "mentor diagnostics show source operation, ownership consequence, and practical correction"

@@ -70,6 +70,29 @@ LogicalResult UnionVariantAttr::verify(
   return success();
 }
 
+LogicalResult StructTagAttr::verify(
+    function_ref<InFlightDiagnostic()> emitError, StringAttr key,
+    StringAttr value) {
+  if (!key || key.getValue().empty())
+    return emitError() << "struct tag key must not be empty";
+  if (!value)
+    return emitError() << "struct tag value must be present";
+  return success();
+}
+
+LogicalResult StructFieldAttr::verify(
+    function_ref<InFlightDiagnostic()> emitError, uint32_t ordinal,
+    StringAttr name, Type type, ArrayAttr tags) {
+  if (!name || name.getValue().empty())
+    return emitError() << "struct field name must not be empty";
+  if (!type || isa<NoneType>(type))
+    return emitError() << "struct field type must be non-void";
+  for (Attribute attribute : tags)
+    if (!isa<StructTagAttr>(attribute))
+      return emitError() << "struct field tags must be #sec.struct_tag attributes";
+  return success();
+}
+
 void SecDialect::registerAttributes() {
   addAttributes<
 #define GET_ATTRDEF_LIST

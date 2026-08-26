@@ -156,6 +156,29 @@ LogicalResult UnionType::verify(
   return success();
 }
 
+LogicalResult StructType::verify(
+    function_ref<InFlightDiagnostic()> emitError, StringAttr identity,
+    ArrayAttr typeArguments, ArrayAttr fields) {
+  if (!identity || identity.getValue().empty())
+    return emitError() << "sec.struct identity must not be empty";
+  for (Attribute argument : typeArguments) {
+    auto typeAttribute = dyn_cast<TypeAttr>(argument);
+    if (!typeAttribute || isa<NoneType>(typeAttribute.getValue()))
+      return emitError() << "sec.struct type arguments must be concrete type attributes";
+  }
+  llvm::StringSet<> names;
+  for (auto [ordinal, attribute] : llvm::enumerate(fields)) {
+    auto field = dyn_cast<StructFieldAttr>(attribute);
+    if (!field)
+      return emitError() << "struct fields must be #sec.struct_field attributes";
+    if (field.getOrdinal() != ordinal)
+      return emitError() << "sec.struct field ordinals must be contiguous from zero";
+    if (!names.insert(field.getName().getValue()).second)
+      return emitError() << "sec.struct field names must be unique";
+  }
+  return success();
+}
+
 void SecDialect::registerTypes() {
   addTypes<
 #define GET_TYPEDEF_LIST

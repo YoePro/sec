@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-14
-- **Last updated:** 2026-08-14
+- **Last updated:** 2026-08-26
 - **Document revision:** 2.0
 - **Language version:** Sec 0.1
 - **Replaces:** `rules/declarations/functions.txt`
@@ -254,7 +254,10 @@ caller ownership -> parameter ownership
 caller source becomes unavailable after successful call entry
 ```
 
-The function signature does not need a `move` keyword to express ordinary move-only transfer.
+When the argument is a reusable source place, the call site must make the
+transfer visible as `Process(<-resource>)`. `Process(resource)` is invalid when
+it would silently consume a non-copyable reusable source. A fresh temporary may
+still be forwarded without a redundant marker.
 
 ## 9. Explicit consuming parameter
 
@@ -276,7 +279,7 @@ Example:
 
 ```sec
 let data := CreateLargeArray()
-let result := Transform(data)
+let result := Transform(<-data)
 
 Use(data)
 ```
@@ -285,13 +288,16 @@ The final use is invalid because `Transform` consumes `data`.
 
 A consuming parameter is an ownership contract, not a hint about machine-level ABI passing.
 
-The call-site spelling remains an ordinary call:
+The call site must show consumption of a reusable source:
 
 ```sec
-Transform(data)
+Transform(<-data)
 ```
 
-The callee signature determines that the argument is consuming.
+`Transform(data)` is invalid because the callee contract is consuming. The
+requirement also applies when the concrete type is copyable. Fresh temporaries
+remain marker-free. Transfer into the outer callee commits only after all its
+arguments are valid and ready.
 
 ## 10. Restrictions on consuming parameters
 
@@ -414,6 +420,10 @@ fn CreateBuffer() Buffer {
 ```
 
 After successful return, the caller owns the returned value.
+
+The explicit spelling `return <-buffer` is also valid. The marker is optional
+at this terminal ownership boundary, and receiving the fresh result needs no
+move marker.
 
 Borrowed returns must satisfy the borrowing and lifetime rules.
 
@@ -623,10 +633,15 @@ in the method parameter list.
 Sema analyzes the method body and infers whether the receiver is:
 
 - shared/non-mutating;
-- mutable/exclusive;
-- consuming.
+- mutable/exclusive.
 
 That inferred requirement participates in interface conformance and call legality.
+
+An ordinary instance method never consumes the complete `self` value. Whole
+instance lifetime termination belongs to `free`. With sufficient
+mutable/exclusive receiver authority, a method may still move, discard,
+replace, or reinitialize an owned member when partial-ownership and borrow rules
+permit it.
 
 ## 23. Static methods
 
@@ -656,7 +671,6 @@ Therefore interface method declarations explicitly state receiver capability.
 interface Resource {
     fn Status() Status
     mut fn Reset() void
-    -> fn Detach() Handle
     static fn Parse(value: string) Result[Resource, ParseError]
 }
 ```
@@ -666,9 +680,11 @@ The meanings are:
 ```text
 fn         shared/non-mutating receiver contract
 mut fn     mutable/exclusive receiver contract
--> fn      consuming receiver contract
 static fn  no receiver
 ```
+
+Ordinary interface instance methods have no whole-`self` consuming receiver
+mode. `->` remains valid on ordinary parameters inside method signatures.
 
 Concrete implementations continue to use ordinary `fn`; Sema verifies inferred concrete receiver behavior against the interface contract.
 

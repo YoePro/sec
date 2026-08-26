@@ -90,6 +90,55 @@ fn Apply(mutable: mut fn(int) int, consuming: -> fn() int) int {
 	}
 }
 
+func TestResolvedStructPlansPreserveSourceOrderOverridesDefaultsAndMembers(t *testing.T) {
+	source := `module main
+type Settings struct { Count: int, Enabled: bool, Limit: uint }
+fn Build(base: Settings) int {
+  let merged := Settings { base..., Enabled: true }
+  let defaults := Settings { Count: 4 }
+  return merged.Count
+}`
+	p := parser.New(lexer.NewWithFile(source, "struct-plan.sec"))
+	result := p.Parse()
+	if result.HasErrors {
+		t.Fatalf("parse: %v", p.Errors())
+	}
+	a := NewAnalyzer()
+	if errs := a.Analyze(result.Program); len(errs) > 0 {
+		t.Fatalf("sema: %v", errs)
+	}
+	function := result.Program.Statements[2].(*ast.FunctionDeclaration)
+	merged := function.Body.Statements[0].(*ast.LetStatement).Value.(*ast.StructLiteral)
+	defaults := function.Body.Statements[1].(*ast.LetStatement).Value.(*ast.StructLiteral)
+	member := function.Body.Statements[2].(*ast.ReturnStatement).Value.(*ast.MemberExpression)
+
+	plan, ok := a.ResolvedStructLiteralPlanOf(merged)
+	if !ok || !plan.FullyInitialized || len(plan.Entries) != 2 || len(plan.FinalFields) != 3 {
+		t.Fatalf("merged plan = %#v, %t", plan, ok)
+	}
+	if plan.Entries[0].Kind != StructEntrySpread || plan.Entries[0].SourceIndex != 0 || plan.Entries[1].Kind != StructEntryExplicit || plan.Entries[1].SourceIndex != 1 {
+		t.Fatalf("source entries = %#v", plan.Entries)
+	}
+	if plan.FinalFields[0].SourceKind != StructFieldSourceSpread || plan.FinalFields[1].SourceKind != StructFieldSourceExplicit || plan.FinalFields[2].SourceKind != StructFieldSourceSpread {
+		t.Fatalf("merged final fields = %#v", plan.FinalFields)
+	}
+
+	defaultPlan, ok := a.ResolvedStructLiteralPlanOf(defaults)
+	if !ok || defaultPlan.FinalFields[0].SourceKind != StructFieldSourceExplicit || defaultPlan.FinalFields[1].SourceKind != StructFieldSourceDefault || defaultPlan.FinalFields[2].SourceKind != StructFieldSourceDefault {
+		t.Fatalf("default plan = %#v, %t", defaultPlan, ok)
+	}
+	defaultPlan.FinalFields = nil
+	again, _ := a.ResolvedStructLiteralPlanOf(defaults)
+	if len(again.FinalFields) != 3 {
+		t.Fatal("read-only struct plan query exposed analyzer slice storage")
+	}
+
+	memberPlan, ok := a.ResolvedStructMemberOf(member)
+	if !ok || memberPlan.Kind != MemberStoredField || memberPlan.FieldID != 0 || memberPlan.FieldName != "Count" || memberPlan.Action != StructFieldCopyTrivial {
+		t.Fatalf("member plan = %#v, %t", memberPlan, ok)
+	}
+}
+
 func TestResolvedMatchPlanIsReadOnlyAndNumeric(t *testing.T) {
 	source := `module main
 enum Flag: bit[1] { Off = 0, On = 1 }

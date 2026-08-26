@@ -4,7 +4,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-13
-- **Last updated:** 2026-08-13
+- **Last updated:** 2026-08-26
 - **Document revision:** 2
 - **Replaces:** unions.txt
 - **Sec language version:** 0.1
@@ -457,7 +457,7 @@ It does not become an observable `empty` state.
 
 ```sec
 let mut source := State.Idle
-let target := move source
+let target :<- source
 
 // Invalid: moved-from storage is not an empty union state.
 if source is empty {
@@ -478,6 +478,15 @@ if condition {
 ```
 
 If later code observes `empty`, the compiler may carry an internal initialization flag, SSA state, or equivalent representation required to preserve the semantics.
+
+### 7.8 Payload ownership transfer
+
+Union construction never silently consumes a reusable source place. A
+non-copyable reusable payload requires an explicit move, for example
+`Choice.Some(<-resource)` or `Payload: <-resource` in a struct-like variant.
+Plain payload syntax may copy a copyable source; fresh temporaries need no move
+marker. A moved-from union is unavailable under the ownership rules and is not
+the union-specific `empty` state.
 
 Such implementation state is not part of the source-level union value or its declared variant set.
 

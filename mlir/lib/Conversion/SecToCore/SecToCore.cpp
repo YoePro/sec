@@ -634,6 +634,39 @@ public:
               ArrayAttr::get(context, variants));
         });
     typeConverter.addConversion(
+        [&](sec::StructType type) -> std::optional<Type> {
+          SmallVector<Attribute> arguments;
+          SmallVector<Attribute> fields;
+          bool changed = false;
+          for (Attribute attribute : type.getTypeArguments()) {
+            auto typeAttribute = dyn_cast<TypeAttr>(attribute);
+            if (!typeAttribute)
+              return std::nullopt;
+            Type converted = typeConverter.convertType(typeAttribute.getValue());
+            if (!converted)
+              return std::nullopt;
+            changed |= converted != typeAttribute.getValue();
+            arguments.push_back(TypeAttr::get(converted));
+          }
+          for (Attribute attribute : type.getFields()) {
+            auto field = dyn_cast<sec::StructFieldAttr>(attribute);
+            if (!field)
+              return std::nullopt;
+            Type converted = typeConverter.convertType(field.getType());
+            if (!converted)
+              return std::nullopt;
+            changed |= converted != field.getType();
+            fields.push_back(sec::StructFieldAttr::get(
+                context, field.getOrdinal(), field.getName(), converted,
+                field.getTags()));
+          }
+          if (!changed)
+            return type;
+          return sec::StructType::get(
+              context, type.getIdentity(), ArrayAttr::get(context, arguments),
+              ArrayAttr::get(context, fields));
+        });
+    typeConverter.addConversion(
         [&](sec::StorageType type) -> std::optional<Type> {
           Type element = type.getElementType();
           if (auto integer = dyn_cast<IntegerType>(element);
@@ -683,6 +716,8 @@ public:
         sec::EnumFromIntegerOp, sec::EnumToIntegerOp, sec::EnumCmpOp,
         sec::UnionConstructOp, sec::UnionIsVariantOp,
         sec::UnionUnwrapPayloadOp, sec::UnionUnwrapFieldOp,
+        sec::StructConstructOp, sec::StructSpreadFieldsOp,
+        sec::StructExtractOp, sec::StructReplaceFieldOp,
         sec::ArithmeticErrorFromReasonOp, sec::ResultOkOp, sec::ResultErrOp,
         sec::ResultIsErrOp, sec::ResultUnwrapOkOp, sec::ResultUnwrapErrOp>(
         [&](Operation *op) { return typeConverter.isLegal(op); });
@@ -712,6 +747,10 @@ public:
              sec::UnionIsVariantOp::getOperationName(),
              sec::UnionUnwrapPayloadOp::getOperationName(),
              sec::UnionUnwrapFieldOp::getOperationName(),
+             sec::StructConstructOp::getOperationName(),
+             sec::StructSpreadFieldsOp::getOperationName(),
+             sec::StructExtractOp::getOperationName(),
+             sec::StructReplaceFieldOp::getOperationName(),
              sec::ArithmeticErrorFromReasonOp::getOperationName(),
              sec::ResultOkOp::getOperationName(),
              sec::ResultErrOp::getOperationName(),

@@ -266,4 +266,33 @@ def Sec_UnionUnwrapFieldOp : Sec_Op<"union.unwrap_field", [Pure]> {
   let hasVerifier = 1;
 }
 
+def Sec_StructConstructOp : Sec_Op<"struct.construct", [Pure]> {
+  let summary = "Construct a fully initialized high-level Sec struct value";
+  let arguments = (ins ArrayAttr:$field_origins, ArrayAttr:$field_actions,
+                       Variadic<AnyType>:$fields);
+  let results = (outs AnyType:$result);
+  let hasVerifier = 1;
+}
+
+def Sec_StructSpreadFieldsOp : Sec_Op<"struct.spread_fields", [Pure]> {
+  let summary = "Project every stored field from one evaluated struct source";
+  let arguments = (ins ArrayAttr:$actions, AnyType:$source);
+  let results = (outs Variadic<AnyType>:$fields);
+  let hasVerifier = 1;
+}
+
+def Sec_StructExtractOp : Sec_Op<"struct.extract", [Pure]> {
+  let summary = "Project one resolved stored field from a Sec struct";
+  let arguments = (ins I32Attr:$field, StrAttr:$action, AnyType:$source);
+  let results = (outs AnyType:$result);
+  let hasVerifier = 1;
+}
+
+def Sec_StructReplaceFieldOp : Sec_Op<"struct.replace_field", [Pure]> {
+  let summary = "Functionally replace one resolved field in a trivial Sec struct";
+  let arguments = (ins I32Attr:$field, AnyType:$source, AnyType:$replacement);
+  let results = (outs AnyType:$result);
+  let hasVerifier = 1;
+}
+
 #endif // SEC_DIALECT_SEC_OPS_TD

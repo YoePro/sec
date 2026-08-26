@@ -4,7 +4,7 @@
 
 Normative detailed representation specification.
 
-Current Sec MLIR dialect schema version: `8`
+Current Sec MLIR dialect schema version: `9`
 
 Schema version 7 adds canonical high-level enum and tagged-union semantic value
 representation.
@@ -14,6 +14,9 @@ ordinary enum representation.
 
 Schema version 8 additionally defines verified explicit match CFG and the
 synthesized `sec.unreachable` terminator. Physical union layout remains deferred.
+
+Schema version 9 adds canonical high-level struct semantic values. Physical
+struct layout remains deferred.
 
 ---
 
@@ -28,15 +31,16 @@ v5  typed arithmetic failure and high-level Result construction
 v6  Result branching and local try handlers
 v7  enum and tagged-union semantic value representation
 v8  verified match CFG support and synthesized unreachable
+v9  canonical high-level struct semantic values
 ```
 
-Compiler-generated v8 modules carry:
+Compiler-generated v9 modules carry:
 
 ```mlir
-sec.dialect_version = 8 : i32
+sec.dialect_version = 9 : i32
 ```
 
-Schema versions 1 through 7 remain valid regression inputs.
+Schema versions 1 through 8 remain valid regression inputs.
 
 ---
 
@@ -705,3 +709,82 @@ Compiler-generated CFG may carry positive `sec.match_id`, non-negative
 verification but does not define semantics. `--sec-verify-match-cfg` validates
 source order, false/true edges, guarded projections, merge types and exhaustive
 residual termination.
+
+---
+
+# 36. Schema-v9 struct attributes
+
+`#sec.struct_tag<key, value>` preserves open, source-order field metadata and
+does not affect type compatibility. `#sec.struct_field<ordinal, name, type,
+tags>` identifies one stored field. Ordinals are non-negative and contiguous
+from zero, names are non-empty and unique, types are valid non-void types, and
+every tag is a `StructTagAttr`. Properties, methods and other non-storage
+members must not appear as fields.
+
+# 37. `!sec.struct`
+
+The canonical form is:
+
+```text
+!sec.struct<identity, [concrete-type-arguments], [stored-fields]>
+```
+
+Identity is non-empty and nominal. Empty field lists are valid. Runtime type
+arguments are concrete. Stored fields remain in declaration order; names,
+ordinals and tags are semantic metadata, not physical byte offsets. Nested
+structs and wide active builtins (`int128`, `int256`, `uint128`, `uint256`,
+`decimal128`) are valid field types. Compiler-internal identities derived from
+union identity plus variant index may represent struct-like union payloads and
+are not separately source-nameable.
+
+# 38. `sec.struct.construct`
+
+The operation consumes exactly one value per stored field and produces one
+`!sec.struct`. Required `field_origins` entries are `explicit`, `spread` or
+`default`; required schema-v9 `field_actions` entries are `construct-direct` or
+`copy-trivial`. Counts must equal the field count and operand types must match
+the declaration-order field types exactly. It always represents a fully
+initialized semantic value; `undef`, poison and omitted operands are invalid.
+
+# 39. `sec.struct.spread_fields`
+
+The operation consumes one already evaluated `!sec.struct` and produces one
+result per stored field in declaration order. Its `actions` count equals the
+result count, every schema-v9 compiler action is `copy-trivial`, and result
+types exactly match field types. The operation never re-evaluates its source.
+
+# 40. Field projection and replacement
+
+`sec.struct.extract` consumes a struct plus a valid field ordinal and
+`copy-trivial` action, and returns the exact selected field type.
+`sec.struct.replace_field` consumes a source struct and replacement value and
+returns the exact same struct type. The replacement type must match the
+selected field. Replacement is functional semantic aggregation; it does not
+imply an offset, store, destruction, `insertvalue` or `memcpy`.
+
+# 41. Effects and ownership boundary
+
+Schema-v9 construct, spread, extract and replacement forms are pure because
+their executable transfer subset is limited to `construct-direct` and
+`copy-trivial`. This purity must not be generalized to later move,
+semantic-copy or ownership-aware forms. Properties never lower through these
+field operations merely because their source syntax is member access.
+
+# 42. Storage and pass compatibility
+
+High-level `!sec.storage<!sec.struct<...>>` is legal for the P13 trivial subset.
+`--sec-lower-trivial-core` must leave it high-level. Target-sized scalar
+resolution recurses through struct type arguments and fields while preserving
+the struct wrapper, identity, field ordinals, names and tags, including nested
+structs. Checked-integer signless normalization must not recurse through the
+wrapper.
+
+# 43. Layout and schema-v9 completion
+
+An optional `sec.layout_ref` may name separately resolved layout information,
+but schema 9 embeds no field offsets, size, alignment, padding, packing, LLVM
+struct body or ABI classification. Completion requires tag/field/type
+parse-print-verify, empty/nested/concrete-generic/wide types, all four struct
+operation verifiers, scalar-wrapper preservation, high-level struct storage,
+synthetic union payload structs, schema-8 regression compatibility and no
+physical layout selection.

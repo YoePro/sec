@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-14
-- **Last updated:** 2026-08-14
+- **Last updated:** 2026-08-26
 - **Document revision:** 2.0
 - **Language version:** Sec 0.1
 - **Replaces:** `rules/declarations/functions_lambda.txt`
@@ -460,7 +460,7 @@ Sec 0.1 supports four capture forms:
 
 ```sec
 capture(value)
-capture(-> value)
+capture(<-value)
 capture(ref value)
 capture(ref mut value)
 ```
@@ -468,8 +468,8 @@ capture(ref mut value)
 They mean:
 
 ```text
-value          ordinary owned capture
--> value       forced-consuming owned capture
+value          owned copy capture
+<-value        consuming owned capture
 ref value      shared borrowed capture
 ref mut value  exclusive mutable borrowed capture
 ```
@@ -478,7 +478,7 @@ Capture modes are explicit.
 
 ## 16. Ordinary owned capture
 
-A plain capture follows ordinary by-value ownership semantics.
+A plain capture requests an owned copy.
 
 ```sec
 capture(value) fn() T {
@@ -490,25 +490,25 @@ For a copyable captured type, the closure receives an owned copy.
 
 The outer binding remains valid.
 
-For a move-only captured type, ownership moves into the closure environment.
-
-The outer binding becomes unavailable after successful closure construction.
+For a non-copyable reusable source, plain capture is invalid; it never silently
+changes into a destructive move.
 
 The compiler must never silently clone a move-only value.
 
-## 17. Forced-consuming capture
+## 17. Consuming capture
 
-A capture may force ownership transfer with `->`.
+A capture may explicitly transfer ownership with `<-`.
 
 ```sec
-capture(-> value) fn() int {
+capture(<-value) fn() int {
     ...
 }
 ```
 
 This consumes the outer binding into the closure environment even if the value would otherwise be implicitly copyable.
 
-`->` on a capture affects closure construction.
+`<-` on a capture affects closure construction and may intentionally consume a
+copyable value. The old `capture(-> value)` spelling is invalid.
 
 It does not automatically make the resulting callable a `-> fn`.
 
@@ -626,7 +626,7 @@ A lambda expression inside a loop constructs a new callable each time execution 
 
 Capture validity is determined before the closure value becomes available.
 
-For owned move/forced-consuming captures, ownership transfers into the environment when closure construction succeeds.
+For explicit move captures, ownership transfers into the environment when closure construction succeeds.
 
 After successful construction, an outer binding moved into the closure may not be used.
 
@@ -1003,8 +1003,8 @@ Each capture must preserve:
 ```text
 capture name
 capture mode:
-    owned
-    forced-consuming
+    copy
+    move
     shared-borrow
     mutable-borrow
 source location
@@ -1027,8 +1027,8 @@ Sema must:
 - reject duplicate captures;
 - reject capture/parameter conflicts;
 - classify capture ownership/borrow mode;
-- copy or move owned captures according to type semantics;
-- enforce forced-consuming capture;
+- require a copy for `capture(value)` and reject a non-copyable reusable source;
+- enforce explicit `capture(<-value)` move capture;
 - begin and validate borrow lifetimes for `ref`/`ref mut` captures;
 - treat owned captured bindings as mutable environment state;
 - infer `fn`, `mut fn`, or `-> fn` callable capability;

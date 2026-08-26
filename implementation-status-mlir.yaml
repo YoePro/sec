@@ -1,0 +1,90 @@
+schema_version: 1
+updated: "2026-08-26"
+purpose: >-
+  Canonical implementation ledger for Semantic IR, Sec MLIR dialect, verifier,
+  and lowering packages. Source-language compiler status remains in
+  implementation-status.yaml.
+
+packages:
+  - id: SEC-MLIR-P13
+    name: Struct Semantic Value Representation
+    status: partial
+    implementation_phase: complete
+    acceptance_blocked_by: repository-wide Go regressions outside the Package 13 change set
+    baseline: current repository plus completed SEC-MLIR-P12 schema 8
+    repository_head: fc8d6324ace4e06f659b9b64c7967f2c19b0c0d2
+    mlir_toolchain: LLVM 24.0.0git optimized build with assertions
+    rules:
+      - rules/mlir/packages/sec-mlir-dialect_package13.md
+      - rules/mlir/packages/sec-mlir-dialect_package13.yaml
+      - rules/mlir/semantic-ir/sec_semantic_ir_struct_v1.md
+      - rules/mlir/dialect-versions/sec_mlir_dialect_v9.md
+      - rules/mlir/lowering-versions/sec_mlir_lowering_v9.md
+      - rules/mlir/packages/sec-mlir-dialect_package15.md
+      - rules/mlir/packages/sec-mlir-dialect_package16.md
+      - rules/mlir/packages/sec-mlir-dialect_package17.md
+      - rules/mlir/packages/sec-mlir-dialect_package18.md
+      - rules/declarations/struct.md
+      - rules/declarations/spread.md
+      - rules/types/default_values.md
+      - rules/memory/copy_move.md
+      - rules/memory/ownership.md
+    code:
+      - internal/sema/analyzer.go
+      - internal/sema/semantic_facts.go
+      - internal/ir/semantic/model.go
+      - internal/ir/semantic/builder.go
+      - internal/ir/semantic/printer.go
+      - internal/ir/semantic/verifier.go
+      - internal/lowering/secmlir/emitter.go
+      - mlir/include/sec/Dialect/Sec/SecAttributes.td
+      - mlir/include/sec/Dialect/Sec/SecTypes.td
+      - mlir/include/sec/Dialect/Sec/SecOps.td
+      - mlir/lib/Dialect/Sec/SecAttributes.cpp
+      - mlir/lib/Dialect/Sec/SecTypes.cpp
+      - mlir/lib/Dialect/Sec/SecOps.cpp
+      - mlir/lib/Dialect/Sec/SecDialect.cpp
+      - mlir/lib/Conversion/SecToCore/SecToCore.cpp
+    tests:
+      - internal/sema/semantic_facts_test.go
+      - internal/ir/semantic/package13_test.go
+      - internal/lowering/secmlir/emitter_test.go
+      - mlir/test/Dialect/Sec/schema9-structs.mlir
+      - mlir/test/Dialect/Sec/invalid-schema9-structs.mlir
+      - mlir/test/Conversion/SecToCore/schema9-struct-scalar-layout.mlir
+    implemented:
+      - immutable Sema ResolvedStructLiteralPlanOf and ResolvedStructMemberOf queries
+      - source-order explicit and spread entries with declaration-order final fields
+      - explicit, spread, and omitted-default provenance without Semantic IR dependence on synthesized AST defaults
+      - current P17-compatible action vocabulary while the executable P13 subset remains construct-direct and copy-trivial
+      - Semantic IR StructFieldID, StructTag, StructFieldDefinition, StructDefinition, and nominal TypeStruct identity
+      - empty, nested, concrete generic, wide-field-capable struct definition model where constituent value types are supported
+      - Semantic IR struct.construct, struct.spread-fields, struct.extract-field, and struct.replace-field operation model
+      - verifier coverage for field identity/order/type, full construction, origins/actions, spread results, extraction, and trivial replacement
+      - deterministic Semantic IR printing and end-to-end Sema-to-verified-Semantic-IR tests
+      - schema-9 StructTagAttr, StructFieldAttr, nominal !sec.struct, and all four ODS/C++ struct operations with exact verifier checks
+      - schema-9 emission from verified Semantic IR with declaration-order fields, tags, origins, actions, and exact nominal identities
+      - recursive target-sized scalar resolution inside preserved struct wrappers; checked-integer signless normalization remains outside wrappers
+      - high-level struct storage remains legal through the trivial-core pass
+      - canonical defaulted mutable locals and leaf-to-root nested replacement with one root store
+      - deterministic synthetic union-payload struct identities and guarded P11 projections for P12 trivial whole-payload bindings
+      - real sec-mlir-opt roundtrip, invalid verifier, scalar-layout, storage-boundary, and source-to-schema-9 coverage
+      - canonical Semantic IR, dialect, and lowering rulebooks synchronized to Package 13
+    remaining:
+      - restore the pre-existing repository-wide cmd/compiler and internal/sema regressions so the mandatory go test ./... acceptance gate is green
+    later_rule_reconciliation:
+      - P15 field borrowing uses Place and reference operations rather than copying the containing struct
+      - P16 permits shared-slice fields with contained-origin tracking and keeps mutable-slice aggregates move-only
+      - P17 extends construction actions with move and copy-semantic-infallible and replaces non-trivial field updates through owned Places
+      - P18 permits owning dynamic-array fields with derived move-only and destruction plans
+    verification:
+      - command: go test ./internal/sema -run ResolvedStructPlans -count=1
+        result: passed
+      - command: go test ./internal/ir/semantic -run Package13 -count=1
+        result: passed
+      - command: SEC_MLIR_BIN=build/sec-mlir/bin go test ./internal/lowering/secmlir -run Package13 -count=1
+        result: passed
+      - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
+        result: passed (77/77)
+      - command: go test ./...
+        result: failed in pre-existing unrelated frontend/compiler tests; Package 13 packages and MLIR regressions passed

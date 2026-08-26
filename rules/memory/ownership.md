@@ -1,197 +1,53 @@
 # Ownership
 
-## Status
-
-This document is the canonical ownership rulebook for Sec. The former legacy
-text rulebook has been replaced and is no longer canonical.
-
-This rulebook defines the source-language ownership model.
-
-Detailed copy classification, borrowing, lifetimes, destruction, discard,
-transferability, and lowering remain synchronized with their specialized
-rulebooks.
-
-`copy_move.md` is the canonical rulebook for copy classification, derived
-copyability, named duplication, and explicit move syntax.
-
-Default initialization establishes an available owned value when the type is
-owning. Defaultability is independent of copyability and move-only status.
-Default construction creates the type's ordinary destruction responsibility,
-but it must not silently allocate or acquire a unique external resource. See
-`default_values.md`.
+- **Status:** Normative
+- **Created:** 2026-08-26
+- **Last updated:** 2026-08-26
+- **Document revision:** 2.0
+- **Sec language version:** 0.1
+- **Canonical path:** `rules/memory/ownership.md`
+- **Replaces:** pre-v2 content at `rules/memory/ownership.md` and the legacy ownership rulebook
+- **Repository baseline reviewed:** `b3315f6` (latest semantic source/rulebook parent: `45e5cd4`)
 
 ---
 
-# Current implementation status
+## 1. Purpose
 
-## Implemented
+Ownership defines which Sec place is responsible for an owned value, when that
+responsibility transfers, when a source becomes unavailable, and which value must
+be destroyed when ownership ends.
 
-The current compiler already implements substantial ownership foundations:
+The ownership model has these primary goals:
 
-- local symbol state for assigned and moved values;
-- source locations for moves;
-- move reasons including ordinary move, discard, and detach;
-- hard diagnostics for use after move;
-- hard diagnostics for use after discard;
-- related source locations identifying where a value became unavailable;
-- basic move-only type classification;
-- ownership transfer from move-only values in existing consuming contexts;
-- transfer of move-only by-value function arguments;
-- transfer of returned move-only locals;
-- transfer of move-only payloads used in aggregate and result construction;
-- borrow checks before moving a tracked local;
-- branch-sensitive moved-state propagation through several control-flow forms;
-- unresolved task and thread checks at scope exit;
-- tracked resource checks for open file-like resources;
-- reinitialization of a moved mutable binding through ordinary assignment;
-- clearing of moved state after successful mutable reinitialization;
-- explicit `discard` state tracking;
-- rejection of indexed extraction of move-only elements from arrays and slices;
-- AST assignment nodes that retain the source assignment operator as text;
-- lexer and parser support for `:<-` and `<-`;
-- AST ownership mode for declarations and assignments;
-- rejection of ordinary copy syntax for named move-only sources;
-- explicit moves from named sources, including copyable values;
-- `@noCopy` parsing and AST storage on nominal type declarations;
-- propagation of explicit nominal non-copyability through generic instances
-  and containing aggregates;
-- semantic-token and TextMate grammar classification for move operators and
-  `@noCopy`;
-- a user-invoked LSP quick fix for the proven `S1007` implicit-move diagnostic,
-  which changes `:=` to `:<-` or `=` to `<-` and explains that the source
-  becomes unavailable.
-- a structured compile-time `Place` representation with root identity, field,
-  property, constant/dynamic index, slice, and reference-dereference
-  projections;
-- place mutability and addressability classification without runtime metadata;
-- conservative place-overlap analysis with disjoint struct fields, distinct
-  constant array indices and normalized static slice intervals;
-- place-sensitive borrow creation, read, assignment, and self-move overlap
-  checks on the integrated expression forms;
-- canonical referent Places for directly created local reference and slice
-  aliases, including field/index reborrows and provenance preservation across
-  shared-reference copies and mutable-reference moves, with the granting borrow
-  transferred to the new mutable-reference binding;
-- normalized static slice Place intervals with disjoint-range, slice/index,
-  empty-range and composed local-alias overlap analysis;
-- rejection of borrows from temporary and non-addressable expressions;
-- explicit moves from nested struct-field places;
-- field-sensitive unavailable state for moved struct fields, preserving access
-  to disjoint sibling fields;
-- rejection of whole-aggregate use while a field remains moved;
-- reinitialization of a moved field through successful field assignment;
-- conservative rejection of partial moves through references, properties,
-  registers, indexes, slices, fixed-address storage, and other nonlocal roots;
-- projection-sensitive move-state merging across continuing `if`, `switch`,
-  `select`, and statement-`match` paths, including all-branch field
-  reinitialization;
-- a Place-availability loop fixed point that joins entry, normal back-edge and
-  `continue` states, then rechecks the next condition and iteration;
-- separation of `break` exits from back-edges and per-iteration restoration of
-  `for` bindings;
-- loop-header may-state joins for active borrows and local reference origins,
-  including normal fallthrough and `continue`, with next-iteration rechecking;
-- post-loop joins including explicit `break` borrow/reference states and
-  bounded path-disjunctive provenance for known origins and conservative
-  rejection only after provenance becomes missing or over-limit;
-- nested, field-sensitive reference provenance for locally constructed struct
-  and fixed-array aggregates through transfer, replacement assignment,
-  constant/dynamic indexing and control-flow joins;
-- compile-time function summaries that instantiate returned parameter/receiver
-  Place sets, projections and aggregate paths at direct calls and transfer the
-  returned reference's granting borrow to its caller-side holder;
-- compile-time must-closed state for local `io.File` and `io.Directory`, joined
-  by intersection across branches and across loop entry, fallthrough,
-  `continue`, and `break` cleanup edges;
-- union variant payload Place projections, including payloads nested below
-  ordinary struct fields;
-- inferred move of move-only payload bindings from reusable local union
-  subjects, ordinary copy of copyable payloads, and forwarding from temporary
-  subjects;
-- union-payload availability merging for statement and expression `match`,
-  whole-subject invalidation, reinitialization, and overlapping-borrow checks.
-- explicit branch-scoped `ref` and `ref mut` bindings for named-union and Result
-  payload Places, including mutability, conflict and escape validation;
-
-These implementation facts do not override the normative rules below.
-
----
-
-## Partially implemented
-
-The current ownership implementation is incomplete or follows older semantics in
-these areas:
-
-- move availability uses places for roots and nested struct-field projections;
-  indexes, slices and aliased move state remain incomplete even though local
-  reference-alias borrow provenance is canonicalized;
-- aliased field availability remains incomplete;
-- copy classification is incomplete for several core and collection types;
-- compiler-known and source-declared `@noCopy` types are classified and
-  enforced for direct named-source copy;
-- `string` is not yet fully enforced as the source-level copyable value defined
-  by this rulebook;
-- branch merging distinguishes available and unavailable nested-field paths,
-  but does not yet expose the complete initialization and destruction lattice;
-- destruction responsibility is tracked only indirectly;
-- move diagnostics do not yet consistently use stable registered IDs beyond
-  ordinary-copy rejection;
-- Semantic IR does not yet record every copy, move, initialization, and
-  reinitialization operation explicitly;
-- MLIR lowering still relies on frontend-specific behavior for some values.
-
----
-
-## Not implemented
-
-The following are not yet implemented:
-
-- aliased aggregate partial-move analysis;
-- multi-field active-variant borrowed destructuring;
-- recursive aggregate availability analysis;
-- dynamic-list indexed consuming extraction;
-- full collection-specific consuming extraction;
-- complete type-level copy classification;
-- the complete general attribute parser beyond the implemented `@noCopy`
-  nominal-type path;
-- user-defined must-use and ownership attributes;
-- complete FFI ownership contracts;
-- explicit Semantic IR operations for construction, copy, move, replacement,
-  and reinitialization;
-- `sec fmt --fix` ownership corrections;
-- LSP ownership visualization and additional code actions;
-- complete ownership integration tests.
-
----
-
-# Purpose
-
-Ownership determines which value or storage place is responsible for a value's
-lifetime and destruction.
-
-Sec ownership must guarantee:
-
-- every owned value has one current owner;
-- every owned value is destroyed at most once;
-- ownership transfer is statically known;
-- use after move is rejected;
-- use after discard is rejected;
-- reinitialization is distinguished from replacement;
-- references do not silently become owners;
+- every owned value has one current owner unless another rulebook explicitly
+  defines shared ownership;
+- ownership transfer is deterministic;
+- destructive transfer from a reusable source is visible in source code;
+- use after move, discard, detach, or destruction is rejected;
+- a value is destroyed at most once;
+- partial ownership of aggregates is tracked by place;
+- mutability and availability remain separate concepts;
+- borrowing does not silently become ownership;
 - raw pointers do not imply ownership;
-- no runtime ownership table is required;
-- backend representation does not redefine source semantics.
+- source semantics do not depend on backend representation;
+- the compiler explains ownership errors in ordinary programmer language.
 
-Ownership complexity belongs primarily in the compiler.
+Ownership analysis is mandatory semantic analysis. It is not an optional lint,
+optimization, or deep-analysis feature.
 
-Source syntax must still make destructive transfer between reusable places
-visible.
+Detailed copy classification belongs to `rules/memory/copy_move.md`.
+Detailed borrowing belongs to `rules/memory/borrowing.txt` until that rulebook is
+replaced by its revision-2 successor.
+Detailed destruction belongs to `rules/memory/destruction.txt` until that
+rulebook is replaced by its revision-2 successor.
+The abstract value/place/storage model is anchored by
+`rules/memory/memory_model.md`.
 
 ---
 
-# Core terminology
+## 2. Core terminology
 
-## Value
+### 2.1 Value
 
 A value is a typed semantic entity.
 
@@ -203,6 +59,7 @@ string value
 struct value
 array value
 list value
+tensor value
 file handle wrapper
 thread handle
 reference value
@@ -210,85 +67,99 @@ reference value
 
 A value may or may not own storage or an external resource.
 
----
+### 2.2 Place
 
-## Place
-
-A place is a source location that can contain a value.
+A place is a source-level location that may contain a value.
 
 Examples:
 
 ```sec
 value
-person.name
+packet.Header
+packet.Payload
 array[index]
-object.property
+object.Property
 ```
+
+Places may be projected from other places. A projected place may refer to a
+field, a statically proven element, a union payload, or another place form whose
+owning rulebook permits independent ownership tracking.
 
 Not every expression is a reusable place.
 
-A function call result is normally a temporary value rather than a reusable
-source place.
+### 2.3 Reusable source place
 
----
+A reusable source place is a place whose source spelling could otherwise be used
+again after the current expression or statement.
 
-## Binding
+Examples:
 
-A binding associates a source name with a place or value.
+```sec
+resource
+packet.Payload
+items[0]
+```
 
-Example:
+when the relevant place rules establish stable reusable ownership identity.
+
+The distinction matters because Sec requires destructive transfer from a
+reusable source place to be visible.
+
+### 2.4 Binding
+
+A binding associates a name with a place or value.
 
 ```sec
 let value := CreateValue()
 ```
 
-`value` is the binding.
+The binding name may remain lexically in scope after its current value has
+become unavailable.
 
-The created result is the value owned by that binding.
+### 2.5 Owner
 
-A binding may continue to exist lexically after its value has been moved or
-discarded.
+The owner is the semantic location responsible for a value's lifetime.
 
-The binding then has no available value.
+An owner may be:
 
----
+```text
+local binding
+parameter binding
+struct field
+aggregate element where independent ownership is permitted
+union payload
+closure environment field
+return result
+task or thread handle holder
+another rulebook-defined owned location
+```
 
-## Owner
+Ownership is not the same thing as physical address.
 
-The owner is the binding, aggregate field, collection slot, return result,
-runtime handle, or other semantic location responsible for a value's lifetime.
+A semantic move may transfer ownership without moving bytes.
 
-Ownership is not necessarily equal to physical memory location.
-
-Moving a value may transfer ownership without moving bytes.
-
----
-
-## Temporary
+### 2.6 Temporary
 
 A temporary is a value produced during expression evaluation without a reusable
-user-visible source binding.
+user-visible source place.
 
 Examples:
 
 ```sec
 CreateBuffer()
 left + right
-Person {
-    name: "Ada",
+Packet {
+    Header: header,
+    Payload: CreateBuffer(),
 }
 ```
 
-A temporary may directly initialize or replace a destination.
+A fresh temporary does not require an explicit move marker merely because it is
+forwarded into its first owner.
 
-It does not require explicit move syntax because there is no reusable named
-source that could be accidentally consumed.
+### 2.7 Storage
 
----
-
-## Storage
-
-Storage is the physical location or abstract backend value holding a value.
+Storage is the physical or abstract backend location used to represent a value.
 
 Examples include:
 
@@ -298,3648 +169,1574 @@ register
 static storage
 arena allocation
 heap allocation
+SSA value
 MLIR tensor value
 memref-backed buffer
 device handle field
 ```
 
-Ownership semantics are defined before backend storage selection.
+Ownership is defined before backend storage selection.
 
 ---
 
-# Ownership guarantees
+## 3. Fundamental ownership guarantees
 
-For every owned value, the compiler must determine:
+For every tracked owned value, the compiler must determine at every relevant
+program point:
 
-- where ownership begins;
-- who currently owns the value;
-- whether the value is available;
-- whether an operation copies or moves it;
-- which borrows exist;
-- who is responsible for destruction;
+- where ownership began;
+- the current owner;
+- whether the relevant place is available;
+- whether an operation copies or consumes;
+- which active borrows restrict an operation;
+- which owner is responsible for destruction;
+- whether the value is partially available;
+- whether availability differs across continuing control-flow paths;
 - where ownership ends or transfers;
-- whether a lifecycle obligation remains unresolved.
+- which source operation caused unavailability.
 
-No valid program may:
+No valid Sec program may:
 
-- read a moved value;
-- read a discarded value;
-- move a value twice;
+- read an unavailable value;
+- copy an unavailable value;
+- borrow an unavailable value;
+- move an unavailable value again;
 - destroy a value twice;
-- silently copy a move-only value;
+- silently copy a non-copyable value;
+- silently consume a reusable named source through ordinary value syntax;
 - move through an incompatible active borrow;
-- abandon a non-discardable lifecycle obligation;
 - infer ownership from `RawPtr[T]`;
-- silently create shared ownership.
+- silently create shared ownership;
+- use a whole aggregate while a required owned sub-place is unavailable.
 
 ---
 
-# Ownership and target hardware
+## 4. Independent semantic dimensions
 
-Ownership is source-language semantics and does not depend on target
-architecture.
+Ownership availability is not the same concept as mutability, borrow access, or
+reference-generation validity.
 
-The physical implementation may differ by target.
-
-Examples:
+The compiler must keep these dimensions separate.
 
 ```text
-hosted target
-    an owned value may use allocator-backed storage
+mutability
+    may this place be written or reinitialized?
 
-bare-metal target
-    an owned value may use static, stack, arena, or device-specific storage
+availability
+    does this owner still own a value in this place on this path?
 
-GPU target
-    an owned shaped value may lower through device memory or SSA tensor values
+borrow/access authority
+    may this place be accessed while current borrows are active?
 
-MMIO target
-    a source declaration may represent fixed-address volatile storage
+generation validity
+    does this reference still designate the correct live invalidation domain?
 ```
 
-A semantic move may lower to:
-
-- no machine instruction;
-- register assignment;
-- descriptor copy;
-- pointer transfer;
-- resource-handle transfer;
-- destination-style bufferization;
-- target-specific operation.
-
-Ownership transfer must never be inferred from the emitted machine instructions.
-
-Moving responsibility for a hardware handle does not necessarily read, write, or
-relocate the underlying hardware resource.
-
-Addressed registers, MMIO storage, and volatile hardware state are not ordinary
-movable owned values unless their dedicated rules explicitly define such an
-operation.
+A place may be immutable and available.
+A place may be immutable and unavailable after a move.
+A mutable place may be unavailable and later reinitialized.
+An available place may still be temporarily inaccessible because of an active
+incompatible borrow.
+A valid generation does not prove ownership availability of every sub-place.
 
 ---
 
-# Ownership states
+## 5. Availability model
 
-A binding or tracked place may have one of these semantic states:
+Revision 2 separates availability from the reason that a place became
+unavailable.
+
+### 5.1 Availability states
+
+A tracked place has one of these source-semantic availability states:
 
 ```text
 Uninitialized
 Available
 PartiallyAvailable
-Moved
-Discarded
-Detached
+Unavailable
 ConditionallyAvailable
 ```
 
-The implementation may use a more detailed internal lattice.
+The compiler may use a richer internal lattice, but diagnostics and rulebook
+reasoning must preserve these meanings.
 
----
-
-## Uninitialized
+### 5.2 Uninitialized
 
 The place exists but no value has been constructed in it.
-
-Example:
 
 ```sec
 let mut resource: Resource
 ```
 
-An uninitialized value cannot be read, copied, moved, borrowed, or destroyed.
+An uninitialized place cannot be read, copied, moved, borrowed, or destroyed.
 
----
+### 5.3 Available
 
-## Available
+The place contains a valid owned value.
 
-The place contains a valid initialized value.
+Normal operations are permitted subject to:
 
-Normal operations are permitted according to mutability, copy classification,
-borrows, and type rules.
+- mutability;
+- copy/move classification;
+- borrowing;
+- contracts;
+- type-specific rules.
 
----
+### 5.4 PartiallyAvailable
 
-## Partially available
+An aggregate is `PartiallyAvailable` when at least one independently tracked
+owned sub-place is unavailable while another remains available.
 
-An aggregate has one or more unavailable owned fields while other fields remain
-available.
+Example:
 
-The complete aggregate cannot be used as a whole.
+```sec
+let package := LoadPackage()
+let payload :<- package.Payload
+```
 
-Supported direct fields may still be used independently.
+After the move:
 
-Partial availability is initially limited to specifically permitted struct
-fields.
+```text
+package.Payload    Unavailable
+package.Header     Available
+package            PartiallyAvailable
+```
 
----
+### 5.5 Unavailable
 
-## Moved
+A place is `Unavailable` when the current owner no longer owns a source-level
+value there.
 
-Ownership has transferred elsewhere.
-
-The source no longer contains an available source-level value.
-
-The source must not be:
+An unavailable place cannot be:
 
 - read;
 - copied;
 - borrowed;
 - moved again;
-- destroyed.
+- used as an available sub-place;
+- destroyed as if a value were still present.
 
-A mutable binding may later be reinitialized.
+A mutable unavailable place may later be reinitialized.
 
----
+### 5.6 ConditionallyAvailable
 
-## Discarded
+A place is `ConditionallyAvailable` when continuing control-flow paths disagree
+about whether the current owner still owns a value there.
 
-The previous value was explicitly consumed and destroyed.
+Example:
 
-The binding remains unavailable.
+```sec
+let package := LoadPackage()
 
-A mutable binding may later be reinitialized.
+if condition {
+    Consume(<-package.Payload)
+}
+```
 
----
+After the `if`, when both paths continue:
 
-## Detached
+```text
+package.Payload    ConditionallyAvailable
+package            conditionally partial
+```
 
-A lifecycle handle was consumed by an explicit detach operation.
-
-The binding remains unavailable.
-
-Detach-specific rules determine what happens to the execution result and
-lifecycle obligation.
-
----
-
-## Conditionally available
-
-Control flow does not prove that the value is available on every continuing
-path.
-
-The value cannot be used until analysis proves one valid state on all relevant
-paths.
+A conditionally available place cannot be used as an ordinary available place
+unless control-flow refinement proves it available on the current path.
 
 ---
 
-# Mutability and availability
+## 6. Unavailability reason
 
-Mutability and availability are separate.
+`Unavailable` has a separate reason used for semantic provenance and mentor
+diagnostics.
+
+Initial reasons include:
+
+```text
+Moved
+Discarded
+Detached
+```
+
+The implementation may retain multiple possible reasons after a control-flow
+join.
+
+Example:
+
+```text
+Availability: Unavailable
+Reason: Moved
+Source: Consume(<-buffer)
+```
+
+or:
+
+```text
+Availability: Unavailable
+Reason: Discarded
+Source: discard buffer
+```
+
+The reason does not create a distinct top-level availability state.
+
+For continued use, both are unavailable.
+
+This separation avoids multiplying states such as
+`PartiallyMovedAndPartiallyDiscarded`.
+
+---
+
+## 7. Mutability and availability
+
+Mutability controls writing and reinitialization.
+Availability controls whether a currently owned value exists.
+
+They are orthogonal.
 
 ```text
 immutable binding
-    cannot be assigned a new value after initialization
+    ordinary assignment/reinitialization is forbidden
 
 mutable binding
-    may be replaced or reinitialized
+    ordinary replacement/reinitialization may be permitted
 
-available binding
-    currently contains a valid value
+available place
+    currently owns a value
 
-unavailable binding
-    currently contains no source-level value
+unavailable place
+    currently owns no value
 ```
 
-A mutable binding may be unavailable.
+A move is not ordinary assignment.
 
-An immutable binding may also be unavailable after move.
-
----
-
-# Reinitialization after move or discard
-
-A mutable binding may be reused after its previous value has been moved or
-discarded.
-
-Example after move:
+Therefore an immutable binding may be consumed:
 
 ```sec
-let mut source := CreateBuffer()
-let destination :<- source
-
-source = CreateBuffer()
-Use(source)
+let resource := OpenResource()
+Consume(<-resource)
 ```
 
-Example after discard:
+and may be partially consumed when partial moves are otherwise legal:
 
 ```sec
-let mut resource := OpenResource()
-discard resource
-
-resource = OpenResource()
-Use(resource)
+let package := LoadPackage()
+let payload :<- package.Payload
+Use(package.Header)
 ```
 
-The assignment is reinitialization.
-
-It does not destroy an old value because no old value remains available.
-
-The compiler must update the binding state to `Available`.
-
-An immutable binding cannot be reinitialized:
+The immutable `package` cannot later repair the moved field by assignment.
 
 ```sec
-let source := CreateBuffer()
-let destination :<- source
-
-source = CreateBuffer()
+package.Payload = CreateBuffer()
 ```
 
-Expected error:
-
-```text
-cannot reinitialize immutable binding source after move
-```
-
-The source spelling remains in scope even when its value is unavailable.
+is invalid because the root binding is immutable.
 
 ---
 
-# Move does not create a default value
+## 8. Field mutability and receiver authority
 
-Moving from a binding does not assign a source-level default value.
+Stored data members are not independently frozen merely because the language
+does not put `mut` on each field declaration.
 
-Example:
+The authority to mutate a member is derived from the access path and receiver
+context.
+
+For ordinary external access through an immutable root:
 
 ```sec
-let mut text := "hello"
-let moved :<- text
+let package := LoadPackage()
+package.Header.Version = 2
 ```
 
-Afterward, `text` is unavailable.
+is invalid.
 
-It is not automatically:
+For a method executing with mutable/exclusive receiver authority, owned data
+members may be mutated, replaced, reinitialized, discarded, or moved when all
+other ownership and borrow rules permit the operation.
+
+A method may therefore consume a member:
 
 ```sec
-""
+impl Package {
+    fn ReleasePayload() void {
+        Destroy(<-self.Payload)
+    }
+}
 ```
 
-The compiler may physically clear storage for safety, optimization, debugging,
-or target requirements.
+The compiler derives the required mutable/exclusive receiver authority from the method body and validates the call accordingly.
 
-That physical state is not observable as a valid Sec value.
-
-The programmer must explicitly reinitialize a mutable binding:
-
-```sec
-text = ""
-```
-
-This rule applies equally to:
-
-- mutable sources;
-- immutable sources;
-- strings;
-- scalars;
-- structs;
-- handles;
-- collections.
+A method does not need per-field `mut` declarations to modify its owned state.
 
 ---
 
-# Copy and move classification
+## 9. Whole-self consumption is forbidden for ordinary methods
 
-Every resolved type has a copy classification.
+An ordinary instance method must not consume the complete `self` value.
 
-Initial categories are:
+The end of the entire instance lifetime is owned by lifecycle destruction,
+including `free` where a custom destructor exists.
 
-```text
-TriviallyCopyable
-SemanticallyCopyable
-ConditionallyCopyable
-MoveOnly
-ExplicitlyNonCopyable
-```
+Therefore ordinary methods do not have a source-language whole-self consuming
+receiver mode.
 
-The exact internal names may differ.
+A method may consume or discard owned members of `self`, producing partial
+availability when permitted.
 
----
+This rule does not remove consuming callable semantics for closure/function
+values. It applies to ordinary instance-method receivers.
 
-## Trivially copyable
-
-A trivially copyable value can be duplicated without type-defined behavior.
-
-Typical examples:
-
-```text
-bool
-byte
-char
-rune
-integers
-unsigned integers
-ordinary floats
-simple decimals
-fieldless enums
-RawPtr[T]
-shared references
-arrays of trivially copyable elements
-structs whose fields and type semantics permit trivial copy
-```
-
-Representation equality alone does not make a type semantically copyable.
+`free` is the lifecycle operation whose purpose is to finalize the complete
+instance.
 
 ---
 
-## Semantically copyable
+## 10. Explicit move syntax
 
-A semantically copyable value may use compiler-known copy semantics beyond a
-raw bitwise copy.
+### 10.1 Principle
 
-Implicit semantic copy must be:
+A reusable source place is never silently consumed by ordinary value syntax.
 
-- infallible;
-- bounded;
-- free from hidden heap allocation;
-- free from hidden external resource acquisition;
-- free from externally observable side effects;
-- unsurprising for the type.
+If ownership leaves a reusable source place, the consuming source must be
+explicitly marked with `<-`, except at the function return boundary described in
+Section 17.
 
-A copy that may allocate, fail, block, perform I/O, or duplicate an external
-resource must use an explicit named operation.
+This is a readability rule as well as an ownership rule.
 
----
+The caller should be able to see where a reusable value disappears.
 
-## Conditionally copyable
-
-A generic or aggregate type is copyable only when its relevant contained types
-are copyable.
-
-Examples:
-
-```text
-Option[T]
-Result[T, E]
-array T[N]
-struct Box[T]
-closure with captures
-```
-
-The compiler resolves the classification for each concrete instantiation.
-
----
-
-## Move-only
-
-A move-only type cannot be duplicated through ordinary copy syntax.
-
-Typical examples include:
-
-```text
-file ownership
-socket ownership
-device handle ownership
-memory mapping ownership
-unique allocation ownership
-MutexGuard[T]
-ref mut T
-unresolved Task[T]
-unresolved Thread[T]
-types with move-only fields
-types with a custom free operation unless explicit copy semantics exist
-```
-
-Move-only classification belongs to the type, not to an individual variable.
-
----
-
-## Explicitly non-copyable nominal types
-
-A nominal type may need to forbid copy even when its representation would
-otherwise be copyable.
-
-The canonical source declaration is `@noCopy` on a nominal type as defined by
-`attributes.md`. The frontend parses and enforces this path. Compiler-known
-core types may carry the same internal classification directly.
-
-Explicit non-copyability is a nominal policy. It forbids implicit copy but does
-not by itself forbid source-level ownership transfer.
-
----
-
-## Separate ownership and storage properties
-
-Copyability, movability, relocatability, address stability, and pinning are
-separate compiler properties.
-
-- non-copyable does not imply non-movable;
-- movable does not imply freely relocatable;
-- source-level move does not require physical relocation;
-- explicitly non-copyable may arise from nominal policy;
-- move-only may instead be derived from resource ownership or lifecycle;
-- pinning and address stability constrain storage even when ownership can be
-  transferred.
-
-A valid explicit move may reuse storage, transfer ownership metadata, be
-elided, or construct directly in destination storage. It does not establish a
-general permission to relocate bytes.
-
----
-
-# No move-only variable modifier
-
-Sec does not make an individual variable move-only independently of its type.
-
-Invalid conceptual syntax:
-
-```sec
-let moveOnly value: string := "hello"
-```
-
-A binding is:
-
-```text
-mutable or immutable
-available or unavailable
-```
-
-The type determines whether ordinary copy is legal.
-
-The programmer may still explicitly move a copyable value.
-
----
-
-# Copy and move syntax
-
-Sec distinguishes ordinary initialization/assignment from explicit ownership
-transfer.
-
-The canonical forms are:
-
-```sec
-let destination := source
-let destination :<- source
-
-let destination: Type := source
-let destination: Type <- source
-
-destination = source
-destination <- source
-```
-
----
-
-## Tokens
-
-The ownership tokens are:
-
-```text
-:<-     move initialization
-<-      move assignment or move replacement
-```
-
-They are dedicated ownership-transfer tokens.
-
-They do not imply that `->` exists as an operator.
-
-`->` has no meaning in Sec 0.1 unless another rulebook explicitly assigns one.
-
----
-
-## Ordinary inferred declaration
-
-```sec
-let destination := expression
-```
-
-performs ordinary initialization.
-
-Its exact behavior depends on the right-hand expression category.
-
-From an existing reusable place:
-
-```sec
-let destination := source
-```
-
-the operation requires `source` to be implicitly copyable.
-
-It copies and preserves `source`.
-
-From a fresh temporary:
-
-```sec
-let destination := CreateBuffer()
-```
-
-the temporary initializes `destination` directly.
-
-No explicit move token is required.
-
-There is no reusable source binding to preserve.
-
----
-
-## Explicit move declaration
+### 10.2 Move initialization
 
 ```sec
 let destination :<- source
 ```
 
-moves from the existing source place.
+consumes `source` and initializes `destination` with the transferred value.
 
-Afterward:
-
-```text
-destination
-    Available
-
-source
-    Moved
-```
-
-This syntax is valid even when the source type is copyable.
-
-It explicitly requests ownership transfer instead of copy.
-
-Example with `string`:
-
-```sec
-let original := "hello"
-let moved :<- original
-```
-
-`original` becomes unavailable.
-
----
-
-## Typed ordinary initialization
-
-```sec
-let destination: Type := expression
-```
-
-uses the same ordinary initialization rules.
-
-A named reusable source must be copyable.
-
-A fresh temporary may directly initialize the destination.
-
----
-
-## Typed move initialization
-
-```sec
-let destination: Type <- source
-```
-
-moves from the existing source place into a typed declaration.
-
-The canonical syntax does not use:
-
-```sec
-let destination: Type :<- source
-```
-
-because the colon already introduces the explicit type.
-
-Canonical forms:
-
-```sec
-let inferred :<- source
-let explicit: Type <- source
-```
-
----
-
-## Ordinary assignment
-
-```sec
-destination = expression
-```
-
-performs replacement when `destination` is available.
-
-Conceptually:
-
-1. evaluate the complete right-hand expression;
-2. validate copy or direct temporary initialization;
-3. validate aliases and borrows;
-4. destroy the old destination value;
-5. install the new value;
-6. transfer destruction responsibility to the destination.
-
-From an existing reusable source place, `=` requires copyability.
-
-From a fresh temporary, direct replacement is allowed:
-
-```sec
-current = CreateBuffer()
-```
-
-No explicit move token is required.
-
----
-
-## Move assignment
+### 10.3 Move assignment
 
 ```sec
 destination <- source
 ```
 
-moves from the source place and replaces or initializes the destination.
+moves the source value into an existing mutable destination according to the
+replacement/reinitialization rules.
 
-When the destination is available:
+### 10.4 Move expression in a consuming context
 
-1. evaluate and validate the source;
-2. validate that source and destination do not conflict;
-3. validate borrows;
-4. destroy the previous destination value;
-5. move the source value into the destination;
-6. mark the source `Moved`;
-7. mark the destination `Available`.
-
-When the mutable destination is unavailable:
-
-1. validate the source;
-2. move the source value into the destination;
-3. mark the source `Moved`;
-4. mark the destination `Available`.
-
-No old destination destruction occurs in the unavailable case.
-
----
-
-# Copy syntax never silently moves a named source
-
-When the right-hand side is an existing reusable source place:
+When a consuming context accepts an expression argument or payload, `<-` marks
+the reusable source being consumed:
 
 ```sec
-let destination := source
+Consume(<-resource)
+Some(<-resource)
 ```
-
-and the source type is move-only, this is a hard error.
-
-Likewise:
 
 ```sec
-destination = source
-```
-
-is a hard error when copying the named source is impossible.
-
-The compiler must not silently reinterpret these forms as move.
-
-Suggested diagnostic:
-
-```text
-Buffer cannot be copied from source
-```
-
-Suggested help:
-
-```text
-use `let destination :<- source` to transfer ownership
-```
-
-or:
-
-```text
-use `destination <- source` to transfer ownership
-```
-
-This rule keeps source ownership visible.
-
----
-
-# Automatic correction of an obvious move error
-
-When all of the following are proven:
-
-- the ordinary source form is invalid only because the named source is
-  move-only;
-- the destination accepts the source type;
-- moving is legal;
-- no borrow conflict exists;
-- no overload or conversion meaning changes;
-- the source and destination do not alias illegally;
-
-the compiler may offer an automatic fix:
-
-```text
-:=  ->  :<-
-=   ->  <-
-```
-
-The correction is available through:
-
-```text
-LSP code action
-sec fmt --fix
-another explicit compiler fix command
-```
-
-Ordinary `sec fmt` must not apply this semantic correction.
-
-The fix must never be applied when the type is copyable.
-
-If copy is legal, `:=` or `=` means copy and must remain unchanged.
-
----
-
-# Fresh temporaries
-
-A fresh temporary may initialize an owned destination without explicit move
-syntax.
-
-Examples:
-
-```sec
-let buffer := CreateBuffer()
-let file: File := OpenFile()
-current = CreateBuffer()
-```
-
-This is direct construction or temporary transfer.
-
-It is not an implicit move from an existing user-visible place.
-
-The compiler may use:
-
-- copy elision;
-- return-value optimization;
-- destination passing;
-- MLIR destination-style operations;
-- register forwarding;
-- bufferization.
-
-These optimizations do not change ownership semantics.
-
----
-
-# Chained temporary expressions
-
-An expression derived entirely from a temporary may transfer into its final
-destination without explicit move syntax.
-
-Conceptual example:
-
-```sec
-let value := CreateContainer().TakeValue()
-```
-
-The compiler must still validate that no intermediate borrowed view escapes and
-that each intermediate value is destroyed exactly once.
-
-If an intermediate expression names reusable source storage, ordinary copy and
-explicit move rules apply to that source.
-
----
-
-# Function parameters
-
-## By-value parameters
-
-A by-value parameter owns its received value for the duration defined by the
-function.
-
-Its local binding is mutable by default. Reassignment replaces the callee-owned
-working value under the ordinary destruction and definite-assignment rules.
-For a copyable argument this cannot mutate the caller's retained copy.
-
-For a copyable argument:
-
-```sec
-Process(value)
-```
-
-the caller's value is copied.
-
-The caller retains its source value.
-
-For a move-only argument:
-
-```sec
-Consume(resource)
-```
-
-ownership transfers to the parameter.
-
-The caller's `resource` becomes unavailable after successful argument
-evaluation.
-
-No call-site `<-` expression syntax is required in Sec 0.1.
-
-The function signature and resolved type determine whether the by-value
-parameter consumes a move-only value.
-
-An explicit `-> name: T` parameter forces consumption even when `T` would
-otherwise be copied. It consumes the value itself, not a pointee merely
-represented by that value, and cannot be combined with `ref` or `ref mut`.
-Overloads may not differ only by ordinary versus forced-consuming mode.
-
-The LSP must make this ownership effect visible.
-
----
-
-## Borrowed parameters
-
-A reference parameter does not take ownership of the referent.
-
-```sec
-Inspect(ref value)
-Modify(ref mut value)
-```
-
-The caller remains owner.
-
-Borrowing restrictions apply for the duration of the borrow.
-
-The reference parameter binding itself is not implicitly rebindable. `ref mut`
-grants exclusive mutable access to the referent, not mutable binding syntax.
-
----
-
-## Argument evaluation
-
-Arguments and spread sources are evaluated strictly left-to-right. Ownership
-transfer into the outer callee is committed only after every argument has
-evaluated successfully and the call is ready to enter the callee.
-
-If a later argument fails, earlier caller bindings have not been consumed by
-that outer call and caller-owned temporaries are cleaned normally. Effects and
-ownership transfers performed inside an earlier argument expression are not
-rolled back.
-
-If one argument moves a value needed by another argument, the compiler must
-reject the call or enforce the defined evaluation order without use after move.
-
----
-
-## Function-call diagnostics
-
-A call consuming a move-only argument is valid.
-
-The LSP should display:
-
-```text
-resource is moved into parameter resource
-```
-
-A later source use is a hard error.
-
-A function wanting a non-consuming view must declare a reference parameter.
-
----
-
-# Return values
-
-## Return is an ownership-transfer context
-
-```sec
-return value
-```
-
-transfers the function result to the caller.
-
-An owned local returned as the result is not copied merely to preserve a local
-whose scope is ending.
-
-Example:
-
-```sec
-fn CreateBuffer() Buffer {
-    let buffer := Buffer.Create()
-    return buffer
+let packet := Packet {
+    Header: header,
+    Payload: <-resource,
 }
 ```
 
-`buffer` transfers into the return result.
+### 10.5 Explicit move of a copyable value
 
-The callee must not destroy it afterward.
-
-The caller becomes the owner.
-
----
-
-## No return move arrow
-
-Sec 0.1 does not use:
+`<-` may intentionally consume a value whose type would otherwise be copyable.
 
 ```sec
-return <- value
+let value := 42
+ConsumeNumber(<-value)
 ```
 
-The syntax is unnecessary.
-
-`return` already identifies a consuming result context.
-
-The lexer and parser should not introduce `return <-` as a separate ownership
-form.
+After a successful committed move, the source is unavailable even though its
+type is copyable.
 
 ---
 
-## Returning copyable locals
+## 11. Ordinary copy syntax must not become an implicit move
 
-Returning a copyable local still establishes ownership of the returned result.
+Ordinary copy-like source syntax means copy when copying is legal.
 
-The compiler should transfer or directly materialize the local into the return
-result rather than preserve an unnecessary local copy.
+For a non-copyable reusable source, it must be rejected rather than silently
+changed into a move.
 
-For trivial machine values, copy and move may lower identically.
-
-Semantic IR should use one consistent return-transfer operation.
-
----
-
-## Returning from non-owned storage
-
-Return does not permit moving from storage the function does not own.
-
-Example:
+Invalid for `@noCopy` or otherwise move-only `resource`:
 
 ```sec
-fn Name(person: ref Person) string {
-    return person.name
-}
-```
-
-If `string` is copyable, the field value is copied into the returned result.
-
-If the field type is move-only, returning it by value from a shared reference is
-invalid.
-
-A mutable reference also does not automatically grant ownership transfer from
-the referent.
-
-A dedicated consuming operation is required.
-
----
-
-## Returning references
-
-Returning a reference does not transfer ownership of the referent.
-
-Lifetime analysis must prove that the referenced storage survives the return.
-
-Returning a reference to local storage is invalid.
-
----
-
-# Result, Option, unions, and aggregate construction
-
-Constructing an owning payload is a consuming context for move-only input.
-
-Examples:
-
-```sec
-return Ok(resource)
-
 let option := Some(resource)
-
-let response := Response {
-    Data: resource,
-}
 ```
-
-A copyable payload is copied.
-
-A move-only payload transfers ownership.
-
-The source becomes unavailable.
-
-The compiler must track ownership separately for each constructed payload.
-
-Fallible or branching construction must ensure partially constructed payloads
-are destroyed exactly once.
-
----
-
-# Struct construction
-
-A struct literal constructs a new aggregate.
-
-Example:
-
-```sec
-let session := Session {
-    name: name,
-    file: file,
-}
-```
-
-For each field:
-
-- copyable source values are copied;
-- move-only source values are transferred;
-- borrowed fields follow reference rules;
-- fresh temporaries construct directly.
-
-The compiler must track partial construction when later field evaluation fails
-or exits.
-
-The struct becomes owner of all successfully installed owning fields.
-
----
-
-# Field reads
-
-Reading a copyable field copies it:
-
-```sec
-let name := person.name
-```
-
-Both remain available.
-
-Reading a move-only field through ordinary initialization is invalid:
-
-```sec
-let file := session.file
-```
-
-when `File` is move-only.
-
-Suggested help:
-
-```text
-use `let file :<- session.file` to transfer ownership
-```
-
----
-
-# Partial move from struct fields
-
-Sec may move an eligible directly named struct field:
-
-```sec
-let file :<- session.file
-```
-
-Afterward:
-
-```text
-file
-    Available
-
-session.file
-    Moved
-
-other session fields
-    individually available
-
-session as a complete value
-    PartiallyAvailable
-```
-
-Methods requiring complete `self` cannot be called while a required field is
-unavailable.
-
-Whole-value copy, move, borrow, return, and destruction must account for the
-partial state.
-
----
-
-## Initial partial-move requirements
-
-A direct struct-field move is permitted only when all applicable conditions
-hold:
-
-- the source aggregate is owned;
-- the field is directly named;
-- the field type is movable;
-- no active borrow conflicts;
-- no alias can observe an invalid complete aggregate;
-- the containing type has no opaque ownership invariant;
-- the containing type has no custom `free` requiring complete state;
-- the field is not volatile;
-- the field is not a register field;
-- the field is not accessed through `RawPtr`;
-- the layout is not foreign-opaque;
-- Sema can track the field independently.
-
-The initial implementation may support only local struct bindings.
-
----
-
-## Field reinitialization
-
-A moved field in a mutable struct may be reinitialized:
-
-```sec
-session.file = OpenFile()
-```
-
-The fresh temporary initializes the unavailable field.
-
-No old field value is destroyed.
-
-After every missing required field is reinitialized, the complete struct becomes
-`Available` again.
-
-From an existing move-only source:
-
-```sec
-session.file <- replacement
-```
-
-explicit move syntax is required.
-
-An immutable struct cannot have a moved field reinitialized.
-
----
-
-# Custom destruction and partial move
-
-A type with custom destruction is move-only by default.
-
-Partial move from such a type is initially forbidden unless the type's ownership
-contract explicitly supports field-wise destruction.
-
-Reason:
-
-> A custom destructor may require invariants spanning multiple fields.
-
-The compiler must not call custom destruction on a semantically incomplete value
-unless the type rule explicitly defines that behavior.
-
----
-
-# Arrays and fixed-size collections
-
-## Ordinary element read
-
-Reading an element copies it when the element type is copyable:
-
-```sec
-let item := values[23]
-```
-
-The array remains complete.
-
----
-
-## Move-only element read
-
-Ordinary indexing must not silently move a move-only element.
-
-Invalid:
-
-```sec
-let item := resources[23]
-```
-
-Suggested help should recommend:
-
-- borrow;
-- replacement;
-- a collection-specific consuming operation;
-- another supported API.
-
----
-
-## Move-out from fixed arrays
-
-Sec 0.1 does not permit:
-
-```sec
-let item :<- resources[23]
-```
-
-through ordinary fixed-array indexing.
-
-A fixed array has fixed length, but moving an element out would also create a
-partially initialized array.
-
-Compile-time and runtime indexes require different tracking strategies.
-
-This is deferred until the language defines:
-
-- empty fixed slots;
-- partial fixed-array initialization;
-- compile-time index tracking;
-- runtime initialization bitmap policy;
-- destruction of partially initialized fixed arrays;
-- complete-value restrictions.
-
----
-
-## Replacing a fixed-array element
-
-A mutable fixed array may replace an element:
-
-```sec
-resources[23] = CreateResource()
-```
-
-when the right-hand side is a temporary.
-
-The old element is destroyed after the replacement source has been safely
-evaluated.
-
-A named move-only source requires a dedicated move replacement form once indexed
-move targets are supported:
-
-```sec
-resources[23] <- replacement
-```
-
-Support for indexed move targets must be specified by `collections.md`.
-
-An API such as:
-
-```sec
-values.Replace(index, replacement)
-```
-
-may return the previous element without leaving the array incomplete.
-
-Its exact API belongs to core.
-
----
-
-# Dynamic collections
-
-Dynamic collections may support consuming extraction because their logical
-membership and length may change.
-
-The collection rule defines:
-
-- whether indexed extraction exists;
-- whether an item is removed;
-- whether order is preserved;
-- whether the operation is fallible;
-- which bounds or missing-key result is returned;
-- how iteration freeze applies.
-
----
-
-## list
-
-For `list[T]`, consuming indexed extraction is a natural operation.
-
-Canonical ownership syntax may be:
-
-```sec
-let item :<- values[index]
-```
-
-Semantically it:
-
-- validates the index;
-- moves the selected element into `item`;
-- removes the element from the list;
-- decreases list length;
-- preserves or updates order according to list semantics;
-- performs structural mutation;
-- invalidates relevant iterators and views;
-- preserves ownership of remaining elements.
-
-This syntax is valid only for mutable list storage.
-
-It must not be treated as a copy followed by removal.
-
-Core may implement it directly, through Sec code, Semantic IR, MLIR, or
-target-specific lowering.
-
-The collection rulebook must be synchronized before implementation.
-
----
-
-## map
-
-Map lookup does not yet use `<-` syntax for consuming extraction.
-
-Use an explicit core operation such as:
-
-```sec
-let removed := values.Remove(key)
-```
-
-or:
-
-```sec
-let removed := values.Take(key)
-```
-
-The final API must define missing-key behavior and return type.
-
-Possible results include `Option[V]` or another explicit type.
-
-The ownership rule does not choose the final map API.
-
----
-
-## set
-
-Set removal or consuming extraction uses an explicit operation until its exact
-API is locked.
-
-Conceptual form:
-
-```sec
-let stored := values.Take(probe)
-```
-
-This may return the actual stored value while removing it.
-
-`set` does not gain arbitrary integer indexing merely to support move.
-
----
-
-## Other dynamic collections
-
-Queue, deque, stack, ring buffer, heap, and other stdlib types expose
-type-specific consuming operations.
-
-Examples may include:
-
-```text
-Pop
-Take
-Remove
-Dequeue
-Extract
-```
-
-Their return types and failure behavior are defined by stdlib.
-
----
-
-# Slices and views
-
-A slice or view is normally non-owning.
-
-Copying a shared slice copies the descriptor and borrow relationship.
-
-It does not copy elements.
-
-A mutable slice or mutable view is move-only or reborrowed according to
-borrowing rules.
-
-Moving a view transfers the view's borrow obligation.
-
-It does not transfer ownership of the underlying elements.
-
-Discarding a view ends the view binding, not the referent lifetime.
-
----
-
-# string
-
-`string` is an immutable, implicitly copyable source-language value.
-
-Example:
-
-```sec
-let first := "hello"
-let second := first
-```
-
-Both remain available.
-
-The copy must be:
-
-- infallible;
-- free from hidden allocation;
-- free from mutable aliasing;
-- free from observable side effects.
-
-The compiler and core may implement string copy as:
-
-- descriptor copy;
-- reference to immutable static storage;
-- shared immutable backing with compiler-proven lifetime;
-- arena-backed immutable storage;
-- another representation preserving source semantics.
-
-No garbage collector or hidden reference-counting requirement follows from this
-rule.
-
-A string may be explicitly moved:
-
-```sec
-let moved :<- first
-```
-
-Afterward `first` is unavailable.
-
-Move and copy may use identical machine instructions while retaining different
-source semantics.
-
----
-
-# Resource-owning types
-
-A type owning an external or unique resource is move-only unless it defines a
-safe independent copy operation.
-
-Examples:
-
-```text
-File
-Socket
-DeviceHandle
-MemoryMap
-UniqueAllocation[T]
-MutexGuard[T]
-```
-
-A raw handle field being integer-sized does not make the wrapper copyable.
-
-A custom `free` operation makes the type move-only by default.
-
-Duplicating an operating-system or hardware resource requires an explicit named
-operation.
-
-If duplication can fail, it must return `Result`.
-
-It must not be hidden inside `:=` or `=`.
-
----
-
-# Hardware handles and MMIO
-
-Ownership is especially important for hardware-facing values.
-
-Moving a hardware handle transfers responsibility for:
-
-- finalization;
-- release;
-- disable;
-- interrupt unregistration;
-- DMA completion;
-- buffer ownership;
-- exclusive device access.
-
-It does not imply copying or relocating the device itself.
-
-An addressed register declaration such as an `@address(...)` binding represents
-volatile external storage.
-
-It is not an ordinary owned value that may be moved away from its hardware
-address.
-
-Reading or writing such storage follows register and volatile rules.
-
-A wrapper owning permission to use a device may be move-only even when the
-underlying register block remains fixed.
-
----
-
-# References
-
-References do not own their referents.
-
-```text
-ref T
-    shared non-owning access
-
-ref mut T
-    exclusive non-owning access
-
-RawPtr[T]
-    raw non-owning address with no ownership inference
-```
-
-A shared reference is normally copyable.
-
-A mutable reference is move-only unless safely reborrowed.
-
-Moving a reference transfers the reference binding and its borrow obligation.
-
-It does not transfer the referent's ownership.
-
----
-
-# Raw pointers
-
-`RawPtr[T]` never implies ownership.
-
-Copying a raw pointer copies only the address value.
-
-Moving a raw pointer may make the source binding unavailable when explicit move
-syntax is used, but it still does not transfer ownership of the pointed-to
-storage.
-
-Ownership may cross FFI through a raw pointer only when an explicit FFI contract
-defines:
-
-- allocation origin;
-- owner before the call;
-- owner after success;
-- owner after failure;
-- required release operation;
-- nullability;
-- lifetime;
-- thread restrictions.
-
----
-
-# Borrow conflicts
-
-A value cannot be moved or discarded while an incompatible borrow remains live.
-
-Invalid:
-
-```sec
-let view := ref value
-let moved :<- value
-```
-
-The diagnostic must point to:
-
-- the attempted move;
-- the active borrow;
-- the borrow holder when known.
-
-A mutable borrow is itself exclusive and normally move-only.
-
-Reinitialization must not invalidate active references to the old value.
-
-Borrow analysis determines when last use ends a borrow.
-
----
-
-# Destruction
-
-Every available owned value is destroyed exactly once unless ownership transfers
-elsewhere.
-
-Move transfers destruction responsibility.
-
-The source is not destroyed after move.
-
-Replacement assignment destroys the old destination value after safe evaluation
-of the new value.
-
-Reinitialization of an unavailable destination destroys no old value.
-
-A partially available aggregate destroys only its still-initialized fields,
-unless a type-specific rule forbids partial state.
-
-Destruction order is defined by `destruction.txt`.
-
----
-
-# Discard
-
-```sec
-discard value
-```
-
-consumes the current value, performs deterministic destruction, and marks the
-source unavailable.
-
-A mutable discarded binding may later be reinitialized.
-
-This rule supersedes the current implementation behavior that rejects assignment
-to a discarded binding.
-
-Implicit discard of an ordinary call result follows `discard.md`.
-
-Must-use and non-discardable obligations remain enforced.
-
----
-
-# Must-use and lifecycle ownership
-
-Ownership and must-use are related but distinct.
-
-```text
-ownership
-    identifies responsibility for a value
-
-must-use
-    forbids implicit loss of a semantic obligation
-
-discardability
-    determines whether explicit discard is permitted
-```
-
-Unresolved lifecycle handles such as:
-
-```text
-Task[T]
-Thread[T]
-Process
-```
-
-must be:
-
-- awaited;
-- joined;
-- detached;
-- returned;
-- transferred;
-- otherwise resolved by their type rule.
-
-They cannot be silently destroyed.
-
-A successful spawn result containing such a handle is not discardable as a
-whole.
-
----
-
-# Channels and transfer
-
-Sending a move-only value through an owning channel transfers ownership to the
-channel operation or receiver according to channel semantics.
-
-After successful transfer, the sender's source becomes unavailable.
-
-A revocable or fallible send must define ownership on every outcome:
-
-```text
-success
-    receiver or channel owns the value
-
-failure
-    sender retains or regains ownership
-
-cancellation
-    rule must define who owns the value
-
-revocation
-    rule must define whether ownership returns
-```
-
-The compiler must not lose ownership on an error path.
-
-Copyable values may be copied when channel semantics request copy.
-
----
-
-# Tasks and threads
-
-Values captured or passed into task and thread entry contexts follow
-transferability and ownership rules.
-
-A move-only capture transfers ownership into the execution context.
-
-A copyable capture may copy.
-
-Detached execution requires every captured owned value to remain valid for the
-execution lifetime.
-
-The owner of a task or thread handle remains responsible for its lifecycle
-obligation.
-
----
-
-# Closures
-
-Capture modes are explicit:
-
-```text
-value          ordinary owned copy/move capture
--> value       forced-consuming owned capture
-ref value      shared borrowed capture
-ref mut value  exclusive mutable borrowed capture
-```
-
-Owned capture bindings are mutable inside the closure. `->` forces transfer
-even for a copyable value. No `capture(mut value)` form exists.
-
-A closure is copyable only when:
-
-- every owned capture is copyable;
-- no mutable reference would be duplicated;
-- the closure representation permits copy;
-- capture semantics permit independent use.
-
-A closure capturing a move-only value becomes move-only.
-
-A closure capturing `ref mut` becomes move-only.
-
-A consuming `-> fn` closure is move-only. Invocation consumes it when moving
-environment state out leaves the callable unusable.
-
-Moving the closure transfers its captures.
-
-The source closure becomes unavailable.
-
----
-
-# Generics
-
-Generic code must preserve copy and move distinctions for every instantiation.
-
-A generic operation using ordinary source copy:
-
-```sec
-let second := first
-```
-
-requires the resolved `T` to be copyable.
-
-If `T` may be move-only, the generic must:
-
-- express a copy constraint;
-- use explicit move syntax where applicable;
-- restructure into a consuming context;
-- use a named duplication operation;
-- borrow instead.
-
-The compiler must not generate one instantiation that copies and another that
-silently moves for the same ordinary source syntax.
-
-That would violate source-level predictability.
-
----
-
-# Named types
-
-A named type does not automatically inherit implicit copy merely because its
-base representation is copyable.
-
-Its copy classification depends on:
-
-- declared semantics;
-- contracts;
-- units;
-- custom destruction;
-- owned fields;
-- external resource ownership;
-- explicit non-copyability;
-- core-defined behavior.
-
-A simple named numeric type is normally copyable.
-
-A named resource wrapper is normally move-only.
-
----
-
-# Interfaces
-
-An interface value must distinguish:
-
-```text
-borrowed interface reference
-owned interface value
-descriptor referring to externally owned storage
-move-only erased owner
-```
-
-Copying an owning interface must not duplicate ownership accidentally.
-
-The initial rule should make an owning erased interface value move-only unless
-independent copy semantics are known.
-
-Borrowed interface references follow normal reference rules.
-
-Interface receiver capability is part of the interface contract:
-
-```sec
-fn Inspect() Data
-mut fn Update() void
--> fn Consume() ResultData
-```
-
-A shared borrow may call only shared methods. A mutable borrow may call shared
-and mutable methods but does not transfer ownership and therefore cannot call a
-consuming method. A consuming method requires an owned interface value and
-consumes that receiver on successful invocation.
-
----
-
-# Static values
-
-A static binding owns its value for the program or explicitly defined static
-lifetime.
-
-A static owned value is not moved into a shorter-lived local by ordinary copy
-syntax when it is move-only.
-
-Access may instead require:
-
-- borrow;
-- explicit static handoff;
-- a synchronization guard;
-- a type-specific operation.
-
-Executable initialization and shutdown planning belong to
-`rules/compiler/initialization.md`; compile-time static initialization belongs
-to `rules/declarations/static.md`.
-
----
-
-# Arena ownership
-
-An arena owns its allocated storage.
-
-A value placed in an arena may own logical subresources while the arena owns the
-storage.
-
-References into the arena cannot outlive its generation.
-
-Moving an arena-backed value transfers the value's semantic ownership only when
-the arena and lifetime rules permit it.
-
-It does not transfer the arena itself unless the arena handle is moved.
-
-Reset invalidates values and references according to arena rules.
-
----
-
-# Shared ownership
-
-Sec 0.1 has no implicit shared ownership.
-
-The language does not automatically introduce:
-
-- reference counting;
-- garbage collection;
-- shared owner tables;
-- weak references;
-- ownership cycles.
-
-Multiple shared references may point to one owner.
-
-Those references remain non-owning.
-
-A future explicit nominal type such as:
-
-```sec
-Shared[T]
-Weak[T]
-```
-
-would require a separate rulebook and explicit allocation, destruction, cycle,
-thread-safety, and failure semantics.
-
----
-
-# Self-move and aliasing
-
-Explicit move must reject invalid self-transfer:
-
-```sec
-value <- value
-```
-
-For a copyable type:
-
-```sec
-value = value
-```
-
-may be accepted and optimized to no operation.
-
-For a move-only type, ordinary `=` is already invalid because copy is not
-available.
-
-The compiler must also detect overlapping move source and destination places
-when they would cause destruction before a required read.
-
-Example conceptual hazard:
-
-```sec
-object.field <- object
-```
-
-Alias and place analysis determine legality.
-
----
-
-# Control flow
-
-Ownership state is path-sensitive.
-
-Example:
-
-```sec
-if condition {
-    let moved :<- value
-}
-```
-
-After the `if`, `value` is not definitely available because one continuing path
-moved it.
-
-Use is invalid unless all continuing paths establish an available value.
-
----
-
-## Branch merge
-
-At control-flow merge, the compiler must combine states conservatively.
-
-Conceptual examples:
-
-```text
-Available + Available
-    Available
-
-Moved + Moved
-    Moved
-
-Discarded + Discarded
-    Discarded
-
-Available + Moved
-    ConditionallyAvailable
-
-Available + Discarded
-    ConditionallyAvailable
-
-PartiallyAvailable + Available
-    conditionally complete state requiring field analysis
-```
-
-A branch that cannot continue does not affect availability after the merge.
-
----
-
-## Loops
-
-Loop ownership analysis requires a fixed point.
-
-A value moved during one iteration cannot be assumed available in the next
-iteration unless every continuing path reinitializes it.
-
-Example:
-
-```sec
-while condition {
-    Consume(resource)
-}
-```
-
-is invalid for move-only `resource` unless `resource` is reinitialized before
-the loop continues.
-
----
-
-## switch, match, and select
-
-Every continuing arm contributes ownership state.
-
-Values moved in multiple mutually exclusive arms may be valid when each arm owns
-the transfer independently.
-
-A value moved by one arm and retained by another becomes conditionally
-available after the construct.
-
-For a whole-payload plain match binding, an implicitly copyable payload is
-copied, a move-only payload is moved only from an owned reusable Place that may
-legally transfer it, and a fresh temporary payload may be forwarded directly.
-The compiler must not silently clone or turn a by-value binding into a borrow.
-
-A subject available only through `ref` or `ref mut` cannot transfer ownership
-of a move-only payload. Such access requires copyability or an explicit pattern
-`ref` / `ref mut` borrow as permitted by the subject authority.
-
-For a guarded move-only by-value binding, pattern success creates only a
-prospective binding. The move commits after guard success when the arm is
-selected. Consuming the prospective binding inside the guard is invalid. A
-guard-false edge retains the subject's ownership state except for actual guard
-side effects, and candidate arm borrows end before the next arm is tested.
-
-Plain shallow named-field match bindings are copy-only. A move-only field must
-be borrowed or ownership must be taken through a legal whole-payload binding;
-shallow destructuring never creates a hidden partial union move.
-
-Every continuing match arm contributes its availability state to the
-post-match merge. Available plus moved becomes conditionally available, and a
-later whole-value use is rejected unless every continuing path establishes
-availability. Terminating arms do not contribute a post-match state. Match
-ownership facts retain the subject Place, affected payload, arm and binding,
-guard-success commit point, and merge provenance for diagnostics and tooling.
-
-Select operations must also account for ownership of messages on:
-
-- selected arm;
-- unselected arms;
-- cancellation;
-- default;
-- failed send or receive.
-
----
-
-# Evaluation order and failure
-
-## Result projections and try paths
-
-`result.Ok()` and `result.Err()` consume an owned Result receiver. Every later
-read, borrow, move, projection, match, or discard of that value is invalid until
-a separately legal reinitialization. The retained payload transfers into the
-returned Option without hidden clone.
-
-`result.OkRef` and `result.ErrRef` are non-consuming shared payload borrows. The
-receiver remains alive and sufficiently available for the borrow lifetime.
-
-Try-handler payload bindings reuse match ownership rules. A guarded move-only
-binding commits only after pattern success, guard success, and handler
-selection. Partial handlers introduce implicit propagation paths; ownership
-after try merges every continuing success and recovery path, while propagation
-leaves through ordinary cleanup. Diagnostics identify the consuming operation
-and its source location in programmer-facing language.
-
-The compiler must preserve ownership across failures and early exits.
-
-For replacement:
-
-```sec
-destination <- CreateOrGetSource()
-```
-
-the old destination remains valid until the right-hand evaluation has completed
-successfully enough to commit replacement.
-
-For fallible operations:
-
-```text
-before success
-    old destination remains owned
-
-after success
-    old destination is destroyed
-    new destination owns the value
-
-on failure
-    ownership follows the operation's Result contract
-```
-
-The compiler must not destroy a destination before a source expression that
-depends on it finishes evaluation.
-
----
-
-# Exceptions and panic
-
-Sec does not use hidden exception ownership semantics.
-
-Future panic rules must define cleanup on unwind or abort profiles.
-
-Ownership analysis must still determine:
-
-- initialized values at the panic point;
-- which destructors run;
-- which values were already moved;
-- which partial aggregates require cleanup;
-- which lifecycle obligations cannot be abandoned.
-
-No value may be destroyed twice during panic cleanup.
-
----
-
-# FFI
-
-Ownership crossing FFI must be explicit.
-
-An FFI declaration must eventually express enough information to determine:
-
-- whether an argument is borrowed;
-- whether ownership transfers on call;
-- whether ownership transfers only on success;
-- whether a return value is owned;
-- who releases returned storage;
-- whether the foreign function retains a pointer;
-- thread and lifetime restrictions.
-
-In the absence of an explicit ownership contract:
-
-- references may not escape;
-- `RawPtr[T]` remains non-owning;
-- move-only ownership must not be assumed transferred;
-- returned foreign pointers do not automatically become owned values.
-
-Unsafe does not disable ownership rules.
-
----
-
-# Semantic analysis
-
-Sema must determine for every relevant value use:
-
-```text
-Construct
-Copy
-Move
-BorrowShared
-BorrowMutable
-Read
-Mutate
-Replace
-Reinitialize
-Discard
-Destroy
-TransferToReturn
-TransferToArgument
-TransferToAggregate
-TransferToCollection
-TransferAcrossChannel
-TransferAcrossFFI
-```
-
-Sema must also determine:
-
-- source place;
-- destination place;
-- copy classification;
-- source availability;
-- destination availability;
-- mutability;
-- active borrows;
-- partial aggregate state;
-- lifecycle obligations;
-- destruction responsibility;
-- control-flow successor state.
-
----
-
-# Semantic IR
-
-Semantic IR must make ownership explicit.
-
-At minimum, the IR should support operations equivalent to:
-
-```text
-ConstructValue
-CopyValue
-MoveValue
-BorrowShared
-BorrowMutable
-ReplaceValue
-ReinitializeValue
-DiscardValue
-DestroyValue
-ReturnValue
-TransferArgument
-TransferField
-TransferCollectionElement
-```
-
-Each operation records, where relevant:
-
-```text
-source
-destination
-type
-ownership classification
-source state before
-source state after
-destination state before
-destination state after
-destruction action
-borrow relation
-source location
-explicit or inferred origin
-```
-
-Move origin should distinguish:
-
-```text
-ExplicitMoveInitialization
-ExplicitMoveAssignment
-InferredReturnTransfer
-InferredArgumentTransfer
-InferredAggregateTransfer
-InferredTemporaryTransfer
-LifecycleTransfer
-```
-
-The backend must not infer ownership from unused SSA values, loads, stores,
-pointers, or MLIR types.
-
----
-
-# MLIR and lowering
-
-MLIR lowering receives validated ownership operations.
-
-It may optimize:
-
-- copy elision;
-- return-value optimization;
-- destination passing;
-- buffer reuse;
-- in-place update;
-- tensor bufferization;
-- register forwarding;
-- dead temporary destruction;
-- trivial move elimination.
-
-It must preserve:
-
-- source unavailability;
-- destruction count;
-- borrow validity;
-- external resource responsibility;
-- failure-path ownership;
-- volatile and hardware semantics.
-
-A move may lower to no operation.
-
-It remains semantically real.
-
----
-
-# Diagnostics
-
-Ownership safety diagnostics are hard errors.
-
-They cannot be disabled or demoted.
-
-Stable IDs must identify the rule rather than severity.
-
----
-
-## Copy of move-only source
-
-Symbolic rule:
-
-```text
-ownership.copy-of-move-only
-```
-
-Example:
-
-```sec
-let destination := source
-```
-
-Suggested diagnostic:
-
-```text
-error[S....]: Buffer cannot be copied from source
-```
-
-Suggested help:
-
-```text
-use `let destination :<- source` to transfer ownership
-```
-
-The diagnostic should provide a machine-applicable fix when safe.
-
----
-
-## Move assignment required
-
-Example:
-
-```sec
-destination = source
-```
-
-Suggested diagnostic:
-
-```text
-error[S....]: File cannot be copied into destination
-```
-
-Suggested help:
-
-```text
-use `destination <- source` to transfer ownership
-```
-
----
-
-## Use after move
-
-Symbolic rule:
-
-```text
-ownership.use-after-move
-```
-
-Example:
-
-```text
-error[S....]: value source is unavailable because it was moved
-```
-
-The diagnostic must include the source location where the move occurred.
-
----
-
-## Use after discard
-
-Canonical rule remains defined by `discard.md`.
-
-The diagnostic includes the discard location.
-
----
-
-## Reinitializing immutable binding
-
-Symbolic rule:
-
-```text
-ownership.reinitialize-immutable
-```
-
-Example:
-
-```text
-error[S....]: cannot reinitialize immutable binding source after move
-```
-
----
-
-## Move while borrowed
-
-Symbolic rule:
-
-```text
-ownership.move-while-borrowed
-```
-
-The diagnostic identifies:
-
-- move location;
-- borrow origin;
-- holder;
-- expected borrow end where available.
-
----
-
-## Partial move unsupported
-
-Symbolic rule:
-
-```text
-ownership.partial-move-unsupported
-```
-
-The diagnostic explains which condition prevents the field move.
-
----
-
-## Fixed-array move-out
-
-Symbolic rule:
-
-```text
-ownership.fixed-index-move-out
-```
-
-Suggested message:
-
-```text
-cannot move Resource out through fixed-array indexing in Sec 0.1
-```
-
-Suggested help:
-
-```text
-borrow the element or use a replacement operation that keeps the array initialized
-```
-
----
-
-## Non-discardable lifecycle
-
-Defined jointly with `discard.md`, task, thread, and process rules.
-
----
-
-# Formatter requirements
-
-The canonical formatter rulebook remains separate.
-
-Ownership requires these canonical spellings:
-
-```sec
-let destination :<- source
-let destination: Type <- source
-destination <- source
-```
-
-There is one space before and after `:<-` and `<-`.
-
-The formatter must preserve:
-
-```text
-:= versus :<-
-= versus <-
-```
-
-Ordinary formatting must not change copy semantics into move semantics.
-
-In particular, ordinary formatting must never change:
-
-```sec
-let value := Create()
-```
-
-into:
-
-```sec
-let value :<- Create()
-```
-
-The first form is already canonical direct initialization from a temporary.
-
-The formatter must also not change:
-
-```sec
-let destination := source
-```
-
-into move syntax merely because Sema reports that `source` is move-only.
-
-That change belongs to `--fix` or an LSP code action.
-
----
-
-# `sec fmt --fix`
-
-`sec fmt --fix` may apply obvious, local, machine-proven corrections.
-
-For ownership, it may change:
-
-```text
-:= to :<-
-= to <-
-```
-
-only when ordinary copy is impossible and move is the one unambiguous valid
-correction.
-
-The fix must not run when:
-
-- the source is copyable;
-- multiple overloads would change;
-- a borrow conflict exists;
-- conversion behavior changes;
-- source and destination may alias illegally;
-- moving would create another error;
-- the source is not a reusable place;
-- the result is already a temporary direct initialization.
-
----
-
-# Non-ownership formatter normalization
-
-The formatter rulebook must separately define these accepted-input
-normalizations:
-
-```text
-func  -> fn
-x++   -> x += 1
-x--   -> x -= 1
-```
-
-These do not require `--fix` when parsing is unambiguous.
-
-They are canonical syntax normalization rather than ownership inference.
-
-The resulting compound assignment remains subject to normal type, mutability,
-contract, and `try` rules.
-
-Example:
-
-```sec
-count++
-```
-
-formats as:
-
-```sec
-count += 1
-```
-
-For a constrained type requiring fallible assignment, noncanonical increment
-input does not bypass the required `try` semantics.
-
----
-
-# LSP requirements
-
-A dedicated:
-
-```text
-lsp.md
-```
-
-rulebook is required.
-
-It will be written after this ownership rule is locked.
-
-The ownership model reserves at least these LSP responsibilities:
-
-- semantic highlighting of moved and unavailable bindings;
-- hover display of copy classification;
-- inlay hints for consuming by-value parameters;
-- inlay hints for inferred return transfer;
-- code action `:=` to `:<-`;
-- code action `=` to `<-`;
-- navigation to move origin;
-- navigation to active borrow origin;
-- explanation of partial aggregate state;
-- suggestion to borrow instead of transfer;
-- warning before a rename or edit creates use after move;
-- generic-instantiation copyability display;
-- collection extraction guidance;
-- fixed-array move-out explanation;
-- ownership data for debugger and code lens features.
-
-The LSP must not silently edit source without an explicit user action.
-
----
-
-# Required tests
-
-## Declaration tests
 
 Valid:
 
 ```sec
-let first := "hello"
-let second := first
-
-let moved :<- first
+let option := Some(<-resource)
 ```
 
-Invalid:
+Likewise invalid:
 
 ```sec
-let first := OpenFile()
 let second := first
 ```
 
-Expected fix:
+when `first` is a reusable move-only source.
+
+Use:
 
 ```sec
 let second :<- first
 ```
 
----
-
-## Typed declaration tests
-
-Valid:
-
-```sec
-let first := OpenFile()
-let second: File <- first
-```
-
-Invalid copy:
-
-```sec
-let second: File := first
-```
+The same principle applies across function arguments, aggregate fields, union
+payloads, `Option`, `Result`, closure captures, and other ownership-taking
+construction forms.
 
 ---
 
-## Assignment tests
+## 12. Fresh temporaries do not require move markers
 
-Valid:
+A fresh temporary has no reusable source place that can later surprise the
+programmer by becoming unavailable.
 
-```sec
-let mut destination := CreateBuffer()
-let source := CreateBuffer()
-
-destination <- source
-```
-
-Valid temporary replacement:
+Therefore these forms do not require `<-`:
 
 ```sec
-destination = CreateBuffer()
+let buffer := CreateBuffer()
+Consume(CreateBuffer())
+let option := Some(CreateBuffer())
 ```
-
-Invalid named copy:
 
 ```sec
-destination = source
+let packet := Packet {
+    Payload: CreateBuffer(),
+}
 ```
 
-when `Buffer` is move-only.
+The temporary is forwarded into its destination according to ordinary
+construction and call semantics.
+
+The compiler may lower forwarding without physically materializing an
+intermediate value.
 
 ---
 
-## Reinitialization tests
+## 13. Function parameters and call-site consumption
 
-Valid:
+### 13.1 Ordinary by-value parameter
 
-```sec
-let mut source := CreateBuffer()
-let destination :<- source
-
-source = CreateBuffer()
-```
-
-Valid after discard:
+An ordinary by-value parameter is an owned callee-local value.
 
 ```sec
-let mut source := CreateBuffer()
-discard source
-
-source = CreateBuffer()
+fn Process(value: T) void {
+    ...
+}
 ```
 
-Invalid immutable reinitialization:
+If the argument type is copyable, a plain reusable source may be copied:
 
 ```sec
-let source := CreateBuffer()
-let destination :<- source
-
-source = CreateBuffer()
+Process(value)
 ```
 
----
+If the argument type is non-copyable and a reusable named/place source must
+transfer ownership, the call site must show the move:
 
-## Use-after-move tests
+```sec
+Process(<-resource)
+```
+
+This replaces older rules that allowed a named move-only argument to disappear
+through an ordinary call spelling.
+
+### 13.2 Explicit consuming parameter
+
+A parameter may force ownership consumption even for a copyable type:
+
+```sec
+fn Consume(-> value: T) void {
+    ...
+}
+```
+
+A reusable source passed to that parameter must always carry an explicit move
+marker:
+
+```sec
+Consume(<-resource)
+```
 
 Invalid:
 
 ```sec
-let source := CreateBuffer()
-let destination :<- source
-
-Use(source)
+Consume(resource)
 ```
 
-The diagnostic must point to both move and use.
+when `resource` is a reusable source place.
+
+The compiler must diagnose the missing explicit ownership transfer and suggest
+the `<-` form.
+
+### 13.3 Temporary argument to a consuming parameter
+
+A fresh temporary may be passed without redundant move syntax:
+
+```sec
+Consume(CreateResource())
+```
+
+No reusable caller-owned source is hidden by this transfer.
+
+### 13.4 Parameter contract and type copyability are independent
+
+`->` is an explicit API contract.
+
+A copyable type passed to `->` is consumed.
+A move-only type passed by ordinary by-value parameter still requires `<-` when
+a reusable named source is transferred.
+
+The compiler must not use overload resolution to decide whether the caller
+loses ownership.
 
 ---
 
-## Return tests
+## 14. Call transfer commit
+
+Arguments are evaluated left-to-right.
+
+Ownership transfer from prepared reusable sources into the callee is committed
+only when all arguments for that outer call have evaluated successfully and the
+call is ready to enter the callee.
+
+Conceptually:
+
+```text
+1. resolve callable
+2. evaluate arguments left-to-right
+3. validate borrows, conversions, and explicit move requirements
+4. if argument evaluation fails, do not commit the outer call transfer
+5. clean caller-owned temporaries created for the failed call
+6. when all arguments are ready, commit the ownership transfers
+7. enter the callee
+```
+
+Example:
+
+```sec
+let resource := OpenResource()
+
+try Use(
+    <-resource,
+    LoadConfiguration(),
+) {
+    Err(error) => Handle(error)
+}
+```
+
+If evaluating `LoadConfiguration()` fails before `Use` is entered, the outer
+call has not committed ownership of `resource` to `Use`.
+
+Effects and ownership transfers completed inside evaluation of an earlier
+argument expression are not rolled back.
+
+---
+
+## 15. Aggregate, union, Option, and Result construction
+
+Construction owns its stored payloads according to the containing type.
+
+A reusable source that must be consumed into a payload requires `<-`.
+
+```sec
+let optional := Some(<-resource)
+```
+
+```sec
+let response := Ok(<-resource)
+```
+
+```sec
+let message := Message {
+    Payload: <-resource,
+}
+```
+
+The same rule applies to a tagged-union payload constructor.
+
+A copyable reusable source may be used without `<-` when ordinary construction
+copies it.
+
+A fresh temporary may be forwarded without `<-`.
+
+Construction must never infer a destructive move solely because the payload type
+is move-only.
+
+---
+
+## 16. Closure captures
+
+Closure captures are explicit.
+
+Revision 2 uses these ownership forms:
+
+```sec
+capture(value)
+capture(<-value)
+capture(ref value)
+capture(ref mut value)
+```
+
+Their meanings are:
+
+```text
+capture(value)
+    ordinary owned copy capture; the source must be copyable
+
+capture(<-value)
+    consuming owned capture; ownership leaves the outer source
+
+capture(ref value)
+    shared borrowed capture
+
+capture(ref mut value)
+    exclusive mutable borrowed capture
+```
+
+Plain capture does not silently move a move-only outer source.
+
+Invalid for a non-copyable reusable source:
+
+```sec
+capture(resource) fn() void {
+    Use(resource)
+}
+```
 
 Valid:
 
 ```sec
-fn Create() Buffer {
-    let value := CreateBuffer()
-    return value
+capture(<-resource) fn() void {
+    Use(resource)
 }
 ```
 
-No `return <-` is required or accepted.
+`capture(<-value)` may also force consuming capture for a copyable value.
+
+The old `capture(-> value)` spelling is not canonical revision-2 syntax.
 
 ---
 
-## Parameter tests
+## 17. Function return boundary
 
-Valid move-only consumption:
+Returning an owned local transfers or forwards the returned value to the
+caller's result ownership.
+
+The return boundary already makes this transfer explicit enough that a move
+marker is not required.
+
+Canonical concise form:
 
 ```sec
-fn Consume(value: Buffer) void {
+return resource
+```
+
+An explicit marker is also permitted when the programmer wants to emphasize the
+move:
+
+```sec
+return <-resource
+```
+
+Both forms have the same ownership result when returning the owned value.
+
+The marker is optional at the return boundary only; this does not weaken the
+requirement for reusable source moves inside continuing caller control flow.
+
+Receiving a fresh function result does not require a move marker:
+
+```sec
+let resource := CreateResource()
+```
+
+The call result is a fresh value owned by the receiving context.
+
+---
+
+## 18. Partial moves
+
+### 18.1 Basic rule
+
+A partial move transfers ownership from an independently tracked sub-place while
+leaving disjoint owned sub-places with the original aggregate owner.
+
+Example:
+
+```sec
+type Package struct {
+    Header: Header
+    Payload: Buffer
 }
 
-let value := CreateBuffer()
-Consume(value)
+let package := LoadPackage()
+let payload :<- package.Payload
 ```
 
-Later use is invalid.
+After the move:
 
-Valid copyable argument:
+```text
+package.Payload    Unavailable / Moved
+package.Header     Available
+package            PartiallyAvailable
+```
+
+### 18.2 Whole-value and sub-place operations
+
+The normative rule is:
+
+> Whole-value operations require the whole value to be `Available`.
+> Sub-place operations require only the addressed sub-place to be `Available`.
+
+Therefore:
 
 ```sec
-let text := "hello"
-Print(text)
-Print(text)
+Use(package.Header)
 ```
+
+may remain valid, while:
+
+```sec
+Use(package)
+```
+
+is invalid until the aggregate has returned to complete availability.
+
+### 18.3 Immutable aggregates
+
+Partial moves may occur from an immutable binding when otherwise legal:
+
+```sec
+let package := LoadPackage()
+let payload :<- package.Payload
+```
+
+Immutability prevents later assignment/reinitialization; it does not prevent an
+explicit ownership transfer.
+
+### 18.4 Mutable aggregates
+
+A mutable aggregate may repair a moved field:
+
+```sec
+let mut package := LoadPackage()
+let payload :<- package.Payload
+
+package.Payload = CreateBuffer()
+```
+
+After successful field reinitialization, the field is `Available` again.
+If every required field is available, the aggregate returns to `Available`.
+
+### 18.5 Supported partial-move places
+
+A partial move is legal only when Sema can establish a stable independently
+owned sub-place and the relevant type/storage rule permits independent transfer.
+
+The compiler must conservatively reject partial moves through unsupported or
+ambiguous aliases, properties, volatile/fixed-address hardware state, or other
+places whose ownership cannot be separated safely.
 
 ---
 
-## Struct tests
+## 19. Custom `free` forbids partial moves in Sec 0.1
 
-Valid copyable field read:
+A type that defines custom `free` does not permit partial moves from its owned
+fields in Sec 0.1.
 
-```sec
-let name := person.name
-```
-
-Valid field move when supported:
+Example:
 
 ```sec
-let file :<- session.file
-```
+type ResourcePair struct {
+    First: Resource
+    Second: Resource
+}
 
-Invalid whole-value use while partial:
-
-```sec
-Use(session)
-```
-
-Valid mutable field reinitialization:
-
-```sec
-session.file = OpenFile()
-Use(session)
-```
-
----
-
-## Fixed-array tests
-
-Valid copyable read:
-
-```sec
-let item := values[2]
-```
-
-Invalid move-only ordinary read:
-
-```sec
-let item := resources[2]
-```
-
-Invalid explicit move-out in Sec 0.1:
-
-```sec
-let item :<- resources[2]
-```
-
----
-
-## list tests
-
-When list extraction is implemented:
-
-```sec
-let item :<- values[index]
-```
-
-must:
-
-- return the selected owned value;
-- reduce length by one;
-- mutate structurally;
-- reject immutable list storage;
-- reject conflicting iteration or borrows;
-- report bounds failure through the collection rule.
-
----
-
-## Formatter tests
-
-Input:
-
-```sec
-let destination:<-source
-```
-
-Output:
-
-```sec
-let destination :<- source
-```
-
-Input:
-
-```sec
-destination<-source
-```
-
-Output:
-
-```sec
-destination <- source
-```
-
-Ordinary formatter must not change:
-
-```sec
-let destination := source
-```
-
-to move syntax.
-
-`--fix` may change it only after a machine-proven move-only copy error.
-
-Input:
-
-```sec
-value++
-value--
-```
-
-Output:
-
-```sec
-value += 1
-value -= 1
-```
-
-Input:
-
-```sec
-func Run() void {
+impl ResourcePair {
+    free {
+        ...
+    }
 }
 ```
 
-Output:
+This is invalid:
 
 ```sec
-fn Run() void {
+let first :<- pair.First
+```
+
+The reason is semantic, not merely implementation convenience.
+A custom `free` may rely on invariants over the complete valid `self` state.
+The compiler must not silently replace that destructor with ad-hoc field-wise
+cleanup after dismantling the value.
+
+A future rulebook may define an explicit opt-in contract for partial destruction
+of custom-destructor types. Sec 0.1 does not.
+
+---
+
+## 20. Control-flow availability merge
+
+Ownership availability is path-sensitive.
+
+At a control-flow join, the compiler merges only continuing paths.
+
+Terminating paths such as `return`, propagation, panic/termination, or another
+non-continuing edge do not poison availability after the join.
+
+### 20.1 Same state on all paths
+
+If all continuing paths prove the place `Available`, it remains `Available`.
+
+If all continuing paths prove it `Unavailable`, it becomes `Unavailable`.
+The compiler may retain a set of unavailability reasons for diagnostics.
+
+### 20.2 Different availability on continuing paths
+
+If some continuing paths prove `Available` and others prove `Unavailable`, the
+place becomes `ConditionallyAvailable`.
+
+Example:
+
+```sec
+let package := LoadPackage()
+
+if condition {
+    Consume(<-package.Payload)
 }
 ```
 
----
-
-# Required synchronization
-
-This rulebook must remain synchronized with:
-
-```text
-copy_move.md
-contracts.md
-types.md
-functions.md
-struct.md
-collections.md
-shaped-types.md
-borrowing.txt
-references.txt
-lifetime_analysis.txt
-destruction.txt
-discard.md
-transferability.md
-channels.md
-tasks.txt
-threads.md
-processes.txt
-platform/ffi.md
-declarations/registers.md
-platform/fixed-address-bindings.md
-static.md
-allocation.txt
-memory_model.md
-semantic_ir.txt
-compiler_pipeline.txt
-diagnostics.txt
-lexical_structure.md
-operators.md
-grammar.md
-formatter.md
-lsp.md
-rules_implementations.txt
-language-rulebook-status.md
-```
-
-The canonical ownership, copy/move and formatter documents use their `.md`
-filenames; legacy text filenames are not canonical.
-
----
-
-# Appendix A — Codex synchronization plan
-
-## Purpose
-
-This appendix is an implementation and documentation checklist intended for
-Codex.
-
-It is not a separate language proposal.
-
-The normative decisions are in the main rulebook.
-
-Codex must update dependent files without redesigning the decisions below.
-
----
-
-## A.1 Canonical decisions to preserve
-
-Codex must preserve these decisions exactly:
-
-```text
-1. `:=` and `=` never silently move from an existing reusable named place.
-
-2. `:<-` is move initialization for an inferred declaration.
-
-3. `<-` is move initialization after an explicit type and move assignment for
-   existing destinations.
-
-4. Fresh temporaries may initialize or replace without explicit move syntax.
-
-5. `return expression` is already a consuming return context.
-
-6. `return <- expression` is not introduced.
-
-7. By-value parameters copy copyable values and consume move-only values.
-
-8. Struct, Result, Option, union, and owning collection construction may infer
-   transfer for move-only inputs.
-
-9. Explicit move is allowed for copyable values and makes the source
-   unavailable.
-
-10. A moved mutable binding may be reinitialized.
-
-11. A moved immutable binding may not be reinitialized.
-
-12. Move never assigns a source-level default value.
-
-13. Use after move is a mandatory error.
-
-14. `string` is immutable and implicitly copyable.
-
-15. Sec 0.1 has no implicit shared ownership.
-
-16. Fixed-array indexed move-out is not supported in Sec 0.1.
-
-17. Dynamic `list` may support indexed consuming extraction.
-
-18. Ordinary formatting does not change copy syntax into move syntax.
-
-19. `sec fmt --fix` may apply a proven `:=` to `:<-` or `=` to `<-` fix.
-
-20. `func` to `fn` and `x++`/`x--` canonicalization do not require `--fix`.
-```
-
----
-
-## A.2 File migration
-
-The ownership, copy/move and formatter filename migrations are complete.
-Repository references use the canonical `.md` names and no duplicate canonical
-files remain.
-
----
-
-## A.3 Lexer
-
-Add tokens for:
-
-```text
-<-
-:<-
-++
---
-```
-
-Requirements:
-
-- longest match chooses `:<-` before `:` and `<-`;
-- longest match chooses `<-` before `<` and `-`;
-- `++` and `--` are accepted as noncanonical source input;
-- `->` remains unassigned;
-- source locations cover the complete token;
-- lexer tests cover adjacency, whitespace, malformed forms, and range/operator
-  interactions.
-
-Update:
-
-```text
-lexical_structure.md
-lexer implementation
-lexer token definitions
-lexer tests
-VS Code grammar
-future LSP lexical classification
-```
-
----
-
-## A.4 Parser
-
-Add declaration forms:
+### 20.3 Terminating moved path
 
 ```sec
-let value :<- source
-let value: Type <- source
+let package := LoadPackage()
+
+if condition {
+    Consume(<-package.Payload)
+    return
+}
+
+Use(package)
 ```
 
-Add assignment form:
+`Use(package)` may be valid because the path that consumed `Payload` does not
+reach the continuation.
+
+---
+
+## 21. `is available` and `is not available`
+
+Sec defines compiler-known ownership-state tests:
 
 ```sec
-target <- source
+place is available
+place is not available
 ```
 
-Parser must distinguish:
+These tests answer:
 
-```text
-:
-:=
-:<-
-=
-<-
-```
+> Does the current owner still own a value in this place on this runtime path?
 
-Add noncanonical postfix forms:
+They do not answer:
+
+- whether a value is `None`;
+- whether a raw pointer is `null`;
+- whether a reference generation is valid;
+- whether an active borrow currently permits access;
+- whether the value itself encodes an empty state.
+
+### 21.1 Example
 
 ```sec
-value++
-value--
-```
-
-Normalize them in AST or a dedicated syntax-normalization phase to:
-
-```sec
-value += 1
-value -= 1
-```
-
-Do not implement them as expressions returning a value.
-
-They are statement-only aliases.
-
-Parser recovery may recognize:
-
-```sec
-func Name() void {
+if package.Payload is available {
+    Use(package.Payload)
 }
 ```
 
-as an unambiguous noncanonical function declaration so the formatter can emit
-`fn`.
+Within the true branch, ownership analysis refines the tested place to
+`Available` unless another operation changes it.
 
-Do not add `return <-`.
+```sec
+if package.Payload is not available {
+    RecoverWithoutPayload()
+}
+```
+
+Within the true branch, ownership analysis refines the tested place to
+`Unavailable` for that path.
+
+### 21.2 Static resolution is mandatory
+
+The compiler must resolve availability statically whenever control-flow facts are
+sufficient.
+
+A runtime ownership-state check must not be generated when Sema can already
+prove the answer.
+
+If a test is statically known and makes contained statements unreachable, the
+normal Sec unreachable-code policy applies.
+
+### 21.3 Dynamic ownership state
+
+A genuinely conditionally available place may require runtime state if the
+program later asks `is available` and source control-flow facts cannot represent
+the answer without runtime bookkeeping.
+
+The language does not mandate a fat pointer or a specific hidden flag layout.
+Possible lowering includes:
+
+```text
+existing control-flow condition
+SSA state
+hidden local/drop flag
+another equivalent backend representation
+```
+
+The representation is implementation-defined and must not change public type or
+ABI layout merely because local ownership analysis needs state.
 
 ---
 
-## A.5 AST
+## 22. Static-ownership target policy
 
-Extend `LetStatement` with an ownership initialization mode.
+Sec must support a compilation policy that rejects code requiring dynamic
+ownership bookkeeping.
 
-Conceptual field:
+This is important for bare-metal, realtime, and other targets where hidden state
+or conditional cleanup cost must be avoided.
 
-```text
-InitializationMode
-    Ordinary
-    Move
-```
+The source syntax for that project/target policy is defined elsewhere and is not
+locked by this rulebook.
 
-Do not infer move merely from the token string in later phases.
+Under such a policy, code that leaves a place `ConditionallyAvailable` may still
+be legal when all later ownership decisions are statically resolvable.
 
-Extend or reuse `AssignmentStatement.Operator` for:
+The compiler must reject only the point where correct semantics would require
+forbidden dynamic ownership state.
 
-```text
-<-
-```
-
-Ensure normalized increment/decrement becomes a compound assignment AST or
-equivalent canonical node.
-
-Preserve original source ranges for diagnostics and formatter fixes.
+Diagnostics must explain how to restructure the code, commonly by converging
+ownership explicitly with `discard`.
 
 ---
 
-## A.6 Sema copy and move selection
+## 23. `discard` as ownership convergence
 
-Replace current blanket `markMoveSource` behavior for declarations and
-assignments.
+`discard place` means:
 
-Required logic for ordinary declaration/assignment:
+> After this statement, the programmer intentionally owns no value in this
+> place.
 
-```text
-if RHS is a reusable source place:
-    if source type is implicitly copyable:
-        Copy
-    else:
-        emit ownership.copy-of-move-only
-        attach safe move fix when possible
+It therefore converges availability to `Unavailable`.
 
-if RHS is a fresh temporary:
-    direct construction or temporary transfer
-```
+### 23.1 Available input
 
-Required logic for explicit move:
+For an available discardable place:
 
 ```text
-require movable source place
-require available source
-require no conflicting borrow
-require legal destination
-mark source Moved
-mark destination Available
-```
-
-Do not mark a source moved merely because its type is move-only when the source
-syntax requested ordinary copy.
-
----
-
-## A.7 Availability state
-
-Replace or extend identifier-only maps with a structured ownership-state model.
-
-It must support:
-
-```text
-Uninitialized
 Available
-PartiallyAvailable
-Moved
-Discarded
-Detached
+    -> destroy current value when required
+    -> Unavailable / Discarded
+```
+
+### 23.2 Already unavailable input
+
+For an already unavailable place:
+
+```text
+Unavailable
+    -> no destruction
+    -> remains Unavailable
+```
+
+This is valid.
+
+A statically redundant discard may receive an advisory under the existing
+project diagnostic policy, but it is not a semantic error.
+
+### 23.3 Conditionally available input
+
+For a conditionally available place:
+
+```text
 ConditionallyAvailable
+    -> destroy only on paths where the value is still owned
+    -> do nothing on paths where it is already unavailable
+    -> Unavailable on every outgoing path
 ```
 
-Record:
-
-```text
-reason
-source token
-source range
-field path where applicable
-control-flow origin
-```
-
-Use stable queries such as:
-
-```text
-RequireAvailable
-CanCopy
-CanMove
-CanReinitialize
-MergeOwnershipState
-```
-
-Do not rely on one boolean moved map for final field-sensitive analysis.
-
----
-
-## A.8 Reinitialization
-
-Update mutable assignment handling:
-
-```text
-Moved mutable binding + valid assignment
-    reinitialization
-
-Discarded mutable binding + valid assignment
-    reinitialization
-
-Uninitialized mutable binding + valid assignment
-    initialization
-
-Available mutable binding + valid assignment
-    replacement
-```
-
-Remove the current rule that rejects all assignment to a discarded mutable
-binding.
-
-Do not destroy an old value during initialization or reinitialization.
-
-Reject reinitialization of immutable bindings.
-
----
-
-## A.9 Function calls
-
-Preserve current by-value move-only argument transfer.
-
-Ensure:
-
-- copyable argument remains available;
-- move-only by-value argument becomes unavailable;
-- ref parameter does not transfer referent ownership;
-- `ref mut` follows exclusive-borrow rules;
-- argument evaluation order is respected;
-- ownership on fallible call paths is defined;
-- LSP metadata records consuming parameters.
-
-Do not introduce call-site `<-` syntax in this task.
-
----
-
-## A.10 Returns
-
-Preserve and formalize:
-
-```text
-return local owned value
-    transfer into return result
-
-return fresh temporary
-    direct return construction
-
-return copyable field through non-owning reference
-    copy
-
-return move-only field through non-owning reference
-    error
-```
-
-Do not add `return <-`.
-
-Semantic IR must record return ownership transfer explicitly.
-
----
-
-## A.11 Structs and partial moves
-
-Implement in stages.
-
-Stage 1:
-
-- ordinary copyable field reads;
-- hard error for ordinary read of move-only field;
-- diagnostic suggesting `:<-`;
-- no partial move yet if place tracking is not ready.
-
-Stage 2:
-
-- direct local struct field move;
-- field-specific unavailable state;
-- complete aggregate becomes partial;
-- unaffected fields remain available;
-- complete-self method calls rejected;
-- mutable field reinitialization;
-- complete state restoration;
-- destruction of only initialized fields.
-
-Do not permit partial move for:
-
-```text
-custom free
-register
-volatile
-RawPtr access
-foreign-opaque layout
-borrowed aggregate
-unresolved union variant
-```
-
----
-
-## A.12 Arrays and slices
-
-Keep current Sec 0.1 rule:
-
-```text
-copyable indexed read
-    copy
-
-move-only indexed ordinary read
-    error
-
-explicit indexed move-out
-    error
-```
-
-Do not add hidden initialization bitmaps.
-
-Document future fixed-slot empty-state work separately.
-
-Update diagnostics to mention borrowing or replacement.
-
----
-
-## A.13 Collections
-
-Update `collections.md` and `shaped-types.md`:
-
-- ordinary collection reads copy when the element is copyable;
-- `list` may support `let value :<- list[index]` as structural consuming
-  extraction;
-- fixed arrays do not use this behavior;
-- map and set retain explicit `Remove` or `Take` APIs until their return
-  semantics are locked;
-- collection extraction must preserve iteration-freeze and borrow rules.
-
-Implement list extraction only after parser, Sema place analysis, and core API
-semantics agree.
-
-Owning dynamic arrays `T[]` are `MoveOnly` for every element type. The owner is
-the sole authority that destroys initialized elements and reclaims its backing
-allocation. No descriptor copy may duplicate that authority. `RemoveAt`
-performs explicit consuming extraction; ordinary indexing never silently moves
-an element. Slices carry no reclamation authority.
-
----
-
-## A.14 string
-
-Update type classification:
-
-```text
-string
-    immutable
-    implicitly copyable
-    explicitly movable
-```
-
-Ensure implicit string copy:
-
-- cannot allocate;
-- cannot fail;
-- cannot create mutable aliasing;
-- preserves backing lifetime.
-
-Update:
-
-```text
-types.md
-core-library.md
-sec/core/string.sec
-copy_move.md
-memory_model.md
-Semantic IR
-MLIR lowering
-tests
-```
-
----
-
-## A.15 Discard and destruction
-
-Keep `discard.md` semantics.
-
-Change current discarded-binding assignment behavior:
-
-```text
-mutable discarded binding
-    may be reinitialized
-
-immutable discarded binding
-    may not be reinitialized
-```
-
-Ensure explicit move transfers destruction responsibility.
-
-Ensure source destruction is suppressed after move.
-
-Ensure replacement and reinitialization are distinct in Semantic IR.
-
----
-
-## A.16 Diagnostics
-
-Register stable diagnostic IDs for:
-
-```text
-ownership.copy-of-move-only
-ownership.use-after-move
-ownership.reinitialize-immutable
-ownership.move-while-borrowed
-ownership.partial-move-unsupported
-ownership.fixed-index-move-out
-ownership.invalid-self-move
-```
-
-Diagnostics must include:
-
-- concrete type;
-- source name or place;
-- move origin;
-- related source location;
-- machine-applicable fix when safe;
-- explanatory note when hardware or lifecycle ownership is involved.
-
-Safety errors are mandatory.
-
----
-
-## A.17 Semantic IR
-
-Add or finalize:
-
-```text
-ConstructValue
-CopyValue
-MoveValue
-ReplaceValue
-ReinitializeValue
-DiscardValue
-DestroyValue
-ReturnValue
-TransferArgument
-TransferField
-TransferCollectionElement
-```
-
-Record explicit versus inferred transfer origin.
-
-Semantic IR creation must fail internally if ownership selection remains
-unresolved.
-
-MLIR must not choose copy versus move.
-
----
-
-## A.18 Formatter migration and update
-
-Rename:
-
-```text
-formatter.md
-    -> formatter.md
-```
-
-Add canonical ownership formatting:
+Example:
 
 ```sec
-let value :<- source
-let value: Type <- source
-target <- source
+let mut package := LoadPackage()
+
+if condition {
+    Consume(<-package.Payload)
+}
+
+discard package.Payload
+package.Payload = CreateBuffer()
 ```
 
-Ordinary formatter:
+After the `discard`, the field is definitely unavailable.
+The subsequent assignment is ordinary reinitialization.
 
-- preserves ordinary versus move syntax;
-- does not require Sema;
-- never rewrites `let x := Function()` to `let x :<- Function()`;
-- normalizes unambiguous `func` to `fn`;
-- normalizes `x++` to `x += 1`;
-- normalizes `x--` to `x -= 1`.
+### 23.4 Discardability still applies
 
-`sec fmt --fix`:
+Convergence does not bypass non-discardable lifecycle obligations.
 
-- may use Sema;
-- may apply ownership fixes only when unambiguous;
-- reports which fixes were applied;
-- preserves diagnostics when a fix is unsafe;
-- supports dry-run/check output if formatter CLI rules provide it.
-
-Add formatter golden tests.
+`discard` remains legal only when the relevant current/possible owned value is
+discardable under the canonical discard rules.
 
 ---
 
-## A.19 LSP reservation
+## 24. Reinitialization and replacement
 
-Move `lsp.md` in `language-rulebook-status.md` from:
+### 24.1 Unavailable destination
 
-```text
-Candidate
-```
-
-to:
-
-```text
-Planned
-```
-
-Do not write the complete LSP rulebook until ownership implementation contracts
-are stable.
-
-Reserve LSP data structures and protocol-independent semantic facts for:
-
-```text
-copy classification
-move origin
-availability state
-consuming parameter
-safe code action
-borrow conflict
-partial move
-reinitialization
-```
-
----
-
-## A.20 Rulebook synchronization
-
-Update all relevant references and contradictions.
-
-Highest-priority files:
-
-```text
-copy_move.md
-contracts.md
-types.md
-functions.md
-struct.md
-collections.md
-shaped-types.md
-borrowing.txt
-references.txt
-lifetime_analysis.txt
-destruction.txt
-discard.md
-memory_model.md
-transferability.md
-semantic_ir.txt
-compiler_pipeline.txt
-diagnostics.txt
-lexical_structure.md
-formatter.md
-rules_implementations.txt
-language-rulebook-status.md
-```
-
-`copy_move.md` requires a substantial rewrite because its current ordinary
-initialization and assignment rules allow implicit move from named move-only
-sources.
-
----
-
-## A.21 Status document
-
-The synchronized status is:
-
-```text
-ownership.md
-    Living
-
-copy_move.md
-    Written
-
-formatter.md
-    Written — implementation partial
-
-lsp.md
-    Living
-```
-
-All four documents belong to the canonical written set.
-
----
-
-## A.22 Tests
-
-Create or update:
-
-```text
-ownership_valid.sec
-ownership_invalid.sec
-ownership_control_flow_valid.sec
-ownership_control_flow_invalid.sec
-ownership_struct_valid.sec
-ownership_struct_invalid.sec
-ownership_collections_valid.sec
-ownership_collections_invalid.sec
-```
-
-Add Go unit tests for:
-
-```text
-copy classification
-move selection
-place classification
-state merge
-reinitialization
-safe fix generation
-field state
-list extraction state
-```
-
-Every invalid Sec case must contain:
+Assignment to an unavailable mutable place is reinitialization.
 
 ```sec
-/* Expected error: ...
- * Reason: ...
- */
+let mut resource := OpenResource()
+Consume(<-resource)
+
+resource = OpenResource()
 ```
 
-Verify:
+No old value remains to destroy.
 
-- no use after move reaches Semantic IR;
-- no moved value is destroyed;
-- no unavailable destination old value is destroyed during reinitialization;
-- every available owned value is destroyed exactly once;
-- diagnostic source and related locations are stable;
-- formatter output is idempotent;
-- `--fix` does not alter already valid copy semantics.
+After successful initialization, the place becomes `Available` and receives a
+new destruction responsibility.
 
----
+### 24.2 Available destination
 
-## A.23 Implementation order
-
-Recommended implementation order:
-
-```text
-1. Rename and synchronize rulebook references.
-2. Add lexer tokens.
-3. Add parser and AST ownership mode.
-4. Implement ordinary-copy versus explicit-move selection.
-5. Implement mutable reinitialization after move/discard.
-6. Add hard diagnostics and safe fixes.
-7. Add Semantic IR ownership operations.
-8. Update formatter.
-9. Add LSP semantic metadata hooks.
-10. Implement struct field partial moves.
-11. Implement list consuming extraction.
-12. Complete MLIR and backend verification.
-```
-
-Do not start list extraction before explicit move and place-state analysis are
-stable.
-
----
-
-# Design summary
-
-Sec has one-owner semantics without runtime ownership tracking.
-
-Ordinary initialization and assignment copy from an existing reusable source
-place.
-
-They never silently move that source.
-
-Explicit move uses:
+Assignment to an available mutable place is replacement.
 
 ```sec
-let destination :<- source
-let destination: Type <- source
+let mut destination := CreateBuffer()
+destination = CreateBuffer()
+```
+
+The old destination value is ended/destructed according to ordinary destruction
+rules before the new value becomes the destination's owned value.
+
+Hosted Sec code does not require an explicit `discard` before ordinary
+replacement.
+
+### 24.3 Move assignment into an available destination
+
+```sec
 destination <- source
 ```
 
-Fresh temporaries initialize directly without move syntax.
+replaces the old destination value and transfers ownership from `source`.
 
-Return is already a consuming ownership-transfer context and does not use
-`return <-`.
+The complete operation must be semantically validated before ownership transfer
+is committed.
 
-By-value parameters and aggregate construction infer transfer for move-only
-values.
+The compiler must not destroy the destination and only afterward discover that
+the source move was illegal.
 
-Moving any value makes the source unavailable.
+### 24.4 Conditionally available destination
 
-A mutable source may later be explicitly reinitialized.
+A mutable `ConditionallyAvailable` place may be repaired by assignment.
 
-An immutable source cannot.
+```sec
+package.Payload = CreateBuffer()
+```
 
-Move does not assign an empty or default value.
+Semantically:
 
-Use after move is always a hard compiler error.
+```text
+if an old value is still owned on this path:
+    end/destroy the old value
+otherwise:
+    no old destruction
+initialize the new value
+mark the place Available
+```
 
-`string` is immutable and copyable, but may be explicitly moved.
+Hosted implementations may perform the necessary conditional cleanup
+automatically.
 
-Fixed-array indexed move-out is deferred.
+A target/project policy that forbids dynamic ownership bookkeeping may require
+explicit convergence first:
 
-Dynamic `list` may support indexed consuming extraction.
+```sec
+discard package.Payload
+package.Payload = CreateBuffer()
+```
 
-Sec 0.1 introduces no implicit shared ownership.
+### 24.5 Immutable place
 
-The formatter preserves ownership semantics, while `sec fmt --fix` and the
-future LSP may apply explicit, machine-proven ownership corrections.
+An immutable place cannot be reinitialized or replaced through ordinary
+assignment.
+
+Explicit ownership transfer may still make it unavailable.
+
+---
+
+## 25. Destruction follows current availability
+
+Destruction responsibility follows the value still owned by each place.
+
+An unavailable place is never destroyed again by its former owner.
+
+A partially available aggregate destroys exactly its still-owned available
+sub-places unless a valid whole-value custom destruction rule owns the complete
+state.
+
+Example:
+
+```sec
+let package := LoadPackage()
+Consume(<-package.Payload)
+```
+
+At scope exit:
+
+```text
+package.Payload    not destroyed by package; ownership left earlier
+package.Header     destroyed if its type requires destruction
+```
+
+Nested partial availability follows the same rule recursively where partial
+moves are permitted.
+
+This is a mandatory safeguard against double destruction.
+
+---
+
+## 26. Destruction classification
+
+Every resolved Sec type has a compiler-derived destruction classification.
+
+At minimum:
+
+```text
+TriviallyDestructible
+NonTriviallyDestructible
+```
+
+A trivially destructible value requires no observable cleanup when its owned
+lifetime ends.
+
+A non-trivially destructible value may require cleanup directly or recursively
+through owned sub-values.
+
+This classification is independent of copy/move classification.
+
+Examples that are typically trivially destructible include ordinary scalar
+values and aggregates containing only trivially destructible fields.
+
+Examples that may be non-trivially destructible include:
+
+```text
+owning collections
+owned allocations
+large owned shaped buffers when their representation owns storage
+file/socket/device handles
+memory mappings
+foreign owned resources
+types with custom free
+aggregates containing non-trivially destructible owned fields
+```
+
+A language type such as `string` must not be classified solely from its source
+name. Classification follows the actual canonical ownership representation
+specified for that type.
+
+The correctness classification determines cleanup requirements.
+Separate performance analyses may decide whether a particular implicit cleanup
+is noteworthy; they do not change ownership semantics.
+
+---
+
+## 27. Borrow interaction
+
+Ownership transfer requires authority to remove the value from the source place.
+
+A move or discard must be rejected when an incompatible live borrow overlaps the
+source place.
+
+Shared and mutable references do not become owners of their referents merely
+because the reference value itself is copied, moved, returned, or discarded.
+
+`ref mut T` may itself have move-only value semantics while still representing
+borrowed authority rather than ownership of `T`.
+
+Place overlap and borrow lifetime are governed by the borrowing rulebook.
+
+---
+
+## 28. `try`, `match`, `Result`, and ownership
+
+Error handling and matching reuse the normal ownership model rather than
+inventing parallel move semantics.
+
+### 28.1 Match bindings
+
+By-value match payload bindings copy copyable payloads and move move-only
+payloads only when the canonical match rules permit a visible consuming binding
+context.
+
+`ref` and `ref mut` bindings borrow.
+
+Path-sensitive ownership merges apply after continuing arms.
+
+### 28.2 Guarded moves
+
+A prospective move-only binding guarded by `where` must not commit ownership
+merely because its pattern structurally matched.
+
+Ownership commit occurs only after the guard succeeds and the arm is selected.
+
+### 28.3 Try handlers
+
+`try` is specialized control-flow sugar and uses the same payload ownership facts
+as the corresponding match semantics.
+
+Partial handlers add implicit propagation exits.
+Only continuing success/recovery paths participate in post-try ownership merge.
+
+### 28.4 Consuming Result projections
+
+The error-handling rulebook defines:
+
+```sec
+result.Ok()
+result.Err()
+```
+
+as consuming transformations of an owned `Result`.
+
+After such a call the original owned `Result` is unavailable.
+
+Borrowed projections such as `OkRef` and `ErrRef` remain non-consuming and obey
+ordinary borrow lifetimes.
+
+### 28.5 `return try`
+
+`return try expression` forwards ownership through the return boundary according
+to the error-handling rulebook.
+
+The return boundary retains the optional-move-marker rule from Section 17.
+
+---
+
+## 29. Generational references are not availability flags
+
+Generational references and place availability solve different problems.
+
+Generation validity answers whether a reference still designates the correct
+live storage/invalidation generation.
+
+Ownership availability answers whether the current owner still owns a value in a
+specific place.
+
+A partial move may make `package.Payload` unavailable while `package` storage and
+its generation remain live and valid.
+
+Therefore generation checking must not replace ownership availability analysis.
+
+---
+
+## 30. Hardware, fixed-address storage, and FFI
+
+Ownership is source-language semantics and does not depend on target
+architecture.
+
+However, not every storage-backed value is an ordinary movable owner.
+
+Addressed registers, MMIO, volatile fixed-address storage, and foreign storage
+must not be moved merely because they are representable as places.
+
+Their dedicated rulebooks define whether ownership transfer is meaningful.
+
+`RawPtr[T]` is a plain address value and does not imply ownership of pointed-to
+storage.
+
+FFI ownership may cross the language boundary only through explicit foreign
+contracts or wrappers that state retention and ownership behavior.
+
+---
+
+## 31. Runtime bookkeeping and ABI
+
+Ownership semantics do not mandate a runtime ownership table.
+
+When `ConditionallyAvailable` source semantics genuinely require runtime state,
+the compiler may use a local implementation detail such as SSA state or a drop
+flag.
+
+Such bookkeeping:
+
+- must not silently alter the public source type;
+- must not be interpreted as `Option[T]`;
+- must not be interpreted as nullable storage;
+- must not make a reference generational merely for availability;
+- must be statically eliminated when the answer is provable;
+- may be forbidden by a target/project static-ownership policy.
+
+A public ABI must not change merely because one local function uses an
+availability test, unless the relevant ABI rulebook explicitly defines such a
+representation.
+
+---
+
+## 32. Compiler implementation requirements
+
+The compiler must maintain canonical ownership facts rather than reconstructing
+ownership independently in each subsystem.
+
+At minimum, semantic analysis must represent enough information to determine:
+
+```text
+Place identity
+Availability
+UnavailableReason/provenance
+partial aggregate availability
+conditional availability
+copy versus consuming operation
+explicit move source
+active borrow overlap
+reinitialization versus replacement
+destruction responsibility
+call-transfer commit
+return forwarding
+```
+
+The frontend must not rely on backend instruction shape to infer a move.
+
+Semantic IR must eventually preserve explicit ownership operations and cleanup
+responsibility so lowerings do not guess from unused SSA values.
+
+LSP and formatter behavior must consume compiler-owned semantic facts rather than
+reimplementing the ownership state machine.
+
+---
+
+## 33. Mentor diagnostics
+
+Ownership diagnostics are part of the language experience.
+
+The compiler must describe the programmer's situation rather than requiring
+knowledge of compiler theory.
+
+A diagnostic should identify:
+
+1. which value/place cannot be used;
+2. what earlier operation changed its ownership state;
+3. why the requested operation is unsafe or invalid;
+4. what source-level correction is likely appropriate.
+
+### 33.1 Missing move marker at a call
+
+For:
+
+```sec
+Consume(resource)
+```
+
+when `Consume` takes ownership of the reusable source, prefer a message such as:
+
+```text
+`Consume` takes ownership of `resource`.
+
+Passing this value will make `resource` unavailable, so the ownership transfer
+must be written explicitly.
+
+help: write `Consume(<-resource)`
+```
+
+### 33.2 Use after move
+
+```text
+`result` cannot be used here because ownership was transferred earlier.
+
+The consuming operation was here:
+    ...
+
+help: use `result` before that operation, borrow it instead when appropriate,
+      or reinitialize a mutable binding before using it again.
+```
+
+### 33.3 Conditional availability
+
+```text
+`package.Payload` may no longer be available here.
+
+It was consumed on one possible execution path.
+
+help: test `package.Payload is available` before using it, or restructure the
+      control flow so availability is known statically.
+```
+
+### 33.4 Static-ownership target
+
+```text
+this ownership decision would require runtime state
+
+`package.Payload` is present on some paths and already consumed on others.
+This build forbids dynamic ownership bookkeeping.
+
+help: converge ownership explicitly, for example with `discard package.Payload`,
+      or restructure the control flow so availability is statically known.
+```
+
+Technical terms such as affine state, lattice join, or path-sensitive merge may
+appear as secondary detail, but must not be required to understand the primary
+diagnostic.
+
+---
+
+## 34. Formatter and LSP requirements
+
+The formatter must preserve semantic ownership syntax, including:
+
+```sec
+:<-
+<-
+Consume(<-value)
+capture(<-value)
+return <-value
+```
+
+It must not insert or remove a semantic move marker merely as a style rewrite.
+
+LSP semantic tokens, hover, diagnostics, and code actions should expose, where
+useful:
+
+- whether a place is available, unavailable, partial, or conditional;
+- the reason and source location for unavailability;
+- whether an argument is copied or consumed;
+- when a call requires explicit `<-`;
+- when a capture copies, borrows, or consumes;
+- whether `is available` is statically known or runtime-dependent;
+- whether a target policy forbids required runtime ownership state.
+
+Automatic fixes must only be offered when compiler facts prove the ownership
+change intended by the fix.
+
+---
+
+## 35. Required semantic tests
+
+At minimum, revision-2 ownership conformance must cover:
+
+1. ordinary copy of a copyable reusable source preserves the source;
+2. ordinary copy syntax for a non-copyable reusable source is rejected;
+3. `let destination :<- source` consumes the source;
+4. `destination <- source` performs move assignment;
+5. explicit `<-` may consume a copyable source;
+6. consuming function parameter requires `Consume(<-resource)` for a reusable source;
+7. plain `Consume(resource)` is rejected when the reusable source would be consumed;
+8. ordinary by-value move-only parameter also requires `<-` for a reusable source;
+9. fresh temporary argument to an ownership-taking call requires no move marker;
+10. call transfer commits only after all outer-call arguments evaluate successfully;
+11. `Some(resource)` is rejected when reusable move-only `resource` would be consumed;
+12. `Some(<-resource)` transfers ownership;
+13. aggregate and union payload construction require explicit `<-` for reusable consuming sources;
+14. `capture(value)` copies only and rejects a non-copyable reusable source;
+15. `capture(<-value)` consumes the capture source;
+16. `capture(ref value)` and `capture(ref mut value)` remain borrow captures;
+17. `capture(-> value)` is rejected as stale syntax;
+18. `return resource` transfers ownership without requiring `<-`;
+19. `return <-resource` is also accepted;
+20. receiving a fresh move-only return value with ordinary initialization is accepted;
+21. ordinary methods cannot consume whole `self`;
+22. methods may consume an owned member when receiver authority and partial-move rules permit it;
+23. immutable root field assignment is rejected;
+24. mutable receiver authority permits member mutation without per-field `mut` declarations;
+25. partial move leaves sibling fields usable and rejects whole-value use;
+26. partial move from immutable aggregate is accepted but reinitialization is rejected;
+27. moved field of mutable aggregate may be reinitialized and restore whole availability;
+28. partial move from a type with custom `free` is rejected;
+29. branch with Available/Unavailable continuing paths produces `ConditionallyAvailable`;
+30. terminating moved path does not poison post-branch availability;
+31. `is available` refines true path to available;
+32. `is not available` refines true path to unavailable;
+33. statically known availability tests are folded without runtime ownership state;
+34. `is available` does not behave as `None`, `null`, or a generation check;
+35. strict static-ownership target rejects a genuinely required runtime availability flag;
+36. discard of available place destroys when required and converges to unavailable;
+37. discard of already unavailable place is legal no-op;
+38. discard of conditionally available place converges all continuing paths to unavailable;
+39. discard does not bypass non-discardable lifecycle obligations;
+40. assignment to unavailable mutable place is reinitialization;
+41. assignment to available mutable place automatically ends the old value before replacement;
+42. hosted assignment to conditionally available mutable place repairs it to available;
+43. static-ownership target may require explicit discard convergence before such replacement;
+44. partial aggregate destruction destroys only still-owned available sub-places;
+45. moved/discarded sub-place is never destroyed twice;
+46. incompatible active borrow blocks move/discard;
+47. consuming `Result.Ok()` / `Result.Err()` makes the original Result unavailable;
+48. borrowed Result projections remain non-consuming;
+49. try/match guarded move commits only after selected guard success;
+50. mentor diagnostics identify source operation and practical correction;
+51. formatter preserves every ownership marker;
+52. LSP uses the same canonical ownership facts as Sema.
+
+---
+
+## 36. Cross-rulebook ownership
+
+This rulebook owns:
+
+- source-level ownership responsibility;
+- availability states and unavailability reasons;
+- the separation of mutability, availability, borrowing, and generation validity;
+- the general rule requiring visible consumption of reusable sources;
+- whole-value versus sub-place availability requirements;
+- partial availability and conditional availability;
+- `is available` / `is not available` ownership-state semantics;
+- discard as ownership-state convergence, in coordination with `discard.md`;
+- ownership consequences of reinitialization and replacement;
+- the prohibition on ordinary whole-self-consuming methods;
+- the static-first/runtime-when-needed availability principle;
+- mentor-level ownership diagnostics requirements.
+
+Other rulebooks own:
+
+- exact copy/move classification and copy operators: `copy_move.md`;
+- borrow lifetime and overlap legality: borrowing rulebook;
+- detailed cleanup ordering and custom destruction: destruction rulebook;
+- `discard` syntax and discardability: `rules/control-flow/discard.md`;
+- function signature and overload syntax: `rules/declarations/functions.md`;
+- lambda syntax and callable types: `rules/declarations/lambda-functions.md`;
+- match patterns and guards: `rules/control-flow/flowcontrol_match.md`;
+- error and try semantics: `rules/errors/errorhandling.md`;
+- generation and reference validity: reference-model rulebooks;
+- fixed-address/register/FFI ownership boundaries: platform and FFI rulebooks;
+- diagnostic severity policy: canonical diagnostics/project policy rules;
+- target/project spelling for static-ownership policy: project/target rulebooks;
+- Semantic IR and backend representation: compiler/MLIR rulebooks.
+
+---
+
+## 37. Summary
+
+The revision-2 ownership model can be summarized as:
+
+```text
+Own values explicitly.
+Copy when copying is legal.
+Show destructive transfer from reusable sources with <-.
+Do not require move boilerplate for fresh temporaries or function-return boundaries.
+Track availability per place.
+Keep availability separate from mutability, borrowing, and generation validity.
+Allow partial ownership only where the compiler can prove safe independent places.
+Treat custom free as requiring complete self in Sec 0.1.
+Use is available only for ownership-state refinement, never as null/Option semantics.
+Use discard to converge ownership to Unavailable.
+Destroy exactly what is still owned, exactly once.
+Prefer static proof; permit checked runtime ownership state only when policy allows it.
+Explain mistakes like a mentor, not like a compiler textbook.
+```

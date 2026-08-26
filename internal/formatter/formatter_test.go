@@ -98,6 +98,22 @@ func TestFormatPreservesRegisterLayoutModifiers(t *testing.T) {
 	}
 }
 
+func TestFormatPreservesRegisterFieldAccessModifiers(t *testing.T) {
+	input := "type Device register[3] {\nReady: bit read-only,\nCommand: bit write-only,\nPending: bit write-one-clear,\n}\n"
+	want := "type Device register[3] {\n    Ready: bit read-only,\n    Command: bit write-only,\n    Pending: bit write-one-clear,\n}\n"
+	if got := Format(Source{Text: input}, Options{}).Text; got != want {
+		t.Fatalf("wrong register field modifier formatting:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestFormatPreservesErrorEnumMarker(t *testing.T) {
+	input := "enum ProtocolError uint16 error {\nInvalid = 1,\n}\n"
+	want := "enum ProtocolError uint16 error {\n    Invalid = 1,\n}\n"
+	if got := Format(Source{Text: input}, Options{}).Text; got != want {
+		t.Fatalf("wrong error enum formatting:\n%s\nwant:\n%s", got, want)
+	}
+}
+
 func TestFormatPreservesUnionDefaultVariantMarker(t *testing.T) {
 	input := "type State union {\nIdle default\nRunning\n}\n"
 	want := "type State union {\n    Idle default\n    Running\n}\n"

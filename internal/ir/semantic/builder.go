@@ -22,14 +22,14 @@ func Build(program *ast.Program, analyzer *sema.Analyzer, options BuildOptions) 
 		return nil, fmt.Errorf("program and completed analyzer are required")
 	}
 	if options.MaxPackage == 0 {
-		options.MaxPackage = 12
+		options.MaxPackage = 13
 	}
 	identity := options.RequestedModule
 	if identity == "" {
 		identity = requestedModule(program, options.SourceFiles)
 	}
 	module := &Module{Version: Version, Identity: identity, Types: NewTypeTable(), SourceFiles: uniqueSorted(options.SourceFiles)}
-	b := &builder{module: module, analyzer: analyzer, maxPackage: options.MaxPackage, definedEnums: map[TypeID]bool{}, definedUnions: map[TypeID]bool{}}
+	b := &builder{module: module, analyzer: analyzer, maxPackage: options.MaxPackage, definedEnums: map[TypeID]bool{}, definedUnions: map[TypeID]bool{}, definedStructs: map[TypeID]bool{}}
 	currentModule := ""
 	for _, statement := range program.Statements {
 		if declaration, ok := statement.(*ast.ModuleStatement); ok {
@@ -48,11 +48,12 @@ func Build(program *ast.Program, analyzer *sema.Analyzer, options BuildOptions) 
 }
 
 type builder struct {
-	module        *Module
-	analyzer      *sema.Analyzer
-	maxPackage    uint8
-	definedEnums  map[TypeID]bool
-	definedUnions map[TypeID]bool
+	module         *Module
+	analyzer       *sema.Analyzer
+	maxPackage     uint8
+	definedEnums   map[TypeID]bool
+	definedUnions  map[TypeID]bool
+	definedStructs map[TypeID]bool
 }
 type functionBuilder struct {
 	owner       *builder
@@ -146,6 +147,12 @@ func (b *builder) internType(t sema.Type) (TypeID, error) {
 		}
 		return b.internUnionType(t)
 	}
+	if t.Kind == sema.StructType && !t.Intrinsic {
+		if b.maxPackage < 13 {
+			return 0, &UnsupportedFeatureError{Feature: "struct type " + t.Name, Package: b.maxPackage}
+		}
+		return b.internStructType(t)
+	}
 	kind, signed, width, target, ok := builtinType(t)
 	if !ok {
 		return 0, &UnsupportedFeatureError{Feature: "type " + t.Name}
@@ -163,6 +170,65 @@ func (b *builder) internType(t sema.Type) (TypeID, error) {
 		return b.module.Types.Intern(Type{Kind: TypeNamed, Name: t.Name, Module: module, Identity: module + "::" + t.Name, Base: baseID}), nil
 	}
 	return b.module.Types.Intern(base), nil
+}
+
+// internStructType implements rules/mlir/semantic-ir/
+// sec_semantic_ir_struct_v1.md sections 2-6 while retaining the later
+// P14-P18-compatible concrete field types and P17 ownership metadata.
+func (b *builder) internStructType(t sema.Type) (TypeID, error) {
+	if len(t.GenericParameters) != 0 {
+		return 0, &UnsupportedFeatureError{Feature: "unresolved generic struct " + t.Name, Package: b.maxPackage}
+	}
+	// Sema names a struct-like union binding as Union.Variant. Sections 18 and
+	// 66 of rules/mlir/packages/sec-mlir-dialect_package13.md require that view
+	// to reuse the union-index-derived synthetic identity from internUnionType.
+	for _, definition := range b.module.Structs {
+		if definition.SyntheticOrigin != StructSyntheticUnionPayload || definition.Name != t.Name || len(definition.Fields) != len(t.Fields) {
+			continue
+		}
+		matches := true
+		for index, field := range t.Fields {
+			if definition.Fields[index].Name != field.Name {
+				matches = false
+				break
+			}
+		}
+		if matches {
+			return definition.TypeID, nil
+		}
+	}
+	module, identity := b.semanticIdentity(t)
+	args := make([]TypeID, 0, len(t.TypeArgs))
+	for _, arg := range t.TypeArgs {
+		id, err := b.internType(arg)
+		if err != nil {
+			return 0, err
+		}
+		args = append(args, id)
+	}
+	typeID := b.module.Types.Intern(Type{Kind: TypeStruct, Name: t.Name, Module: module, Identity: identity, TypeArgs: args})
+	if b.definedStructs[typeID] {
+		return typeID, nil
+	}
+	b.definedStructs[typeID] = true
+	definition := StructDefinition{TypeID: typeID, SymbolID: SymbolID(identity), Name: t.Name, TypeArguments: args,
+		CopyClassification: string(sema.CopyClassificationOf(t)), TriviallyDestructible: sema.TriviallyDestructible(t), Defaultable: sema.IsDefaultable(t)}
+	if token, ok := b.analyzer.ResolvedTypeDeclarationLocation(t); ok {
+		definition.Location = location(token)
+	}
+	for index, field := range t.Fields {
+		fieldType, err := b.internType(field.Type)
+		if err != nil {
+			return 0, err
+		}
+		resolved := StructFieldDefinition{ID: StructFieldID(index), Name: field.Name, Type: fieldType, Location: location(field.Token)}
+		for _, tag := range field.Tags {
+			resolved.Tags = append(resolved.Tags, StructTag{Key: tag.Key, Value: tag.Value})
+		}
+		definition.Fields = append(definition.Fields, resolved)
+	}
+	b.module.Structs = append(b.module.Structs, definition)
+	return typeID, nil
 }
 
 func (b *builder) internEnumType(t sema.Type) (TypeID, error) {
@@ -248,12 +314,36 @@ func (b *builder) internUnionType(t sema.Type) (TypeID, error) {
 			resolved.Payload = payload
 		case len(variant.PayloadFields) != 0:
 			resolved.Kind = UnionVariantFields
-			for _, field := range variant.PayloadFields {
+			syntheticIdentity := fmt.Sprintf("%s#%d$payload", identity, index)
+			syntheticType := b.module.Types.Intern(Type{
+				Kind: TypeStruct, Name: t.Name + "." + variant.Name,
+				Module: module, Identity: syntheticIdentity,
+			})
+			resolved.SyntheticPayloadStruct = syntheticType
+			syntheticSemaType := sema.Type{Kind: sema.StructType, Fields: variant.PayloadFields}
+			syntheticDefinition := StructDefinition{
+				TypeID: syntheticType, SymbolID: SymbolID(syntheticIdentity),
+				Name:                  t.Name + "." + variant.Name,
+				CopyClassification:    string(sema.CopyClassificationOf(syntheticSemaType)),
+				TriviallyDestructible: sema.TriviallyDestructible(syntheticSemaType),
+				Defaultable:           sema.IsDefaultable(syntheticSemaType),
+				SyntheticOrigin:       StructSyntheticUnionPayload, Location: location(variant.Token),
+			}
+			for fieldIndex, field := range variant.PayloadFields {
 				fieldType, err := b.internType(field.Type)
 				if err != nil {
 					return 0, err
 				}
 				resolved.PayloadFields = append(resolved.PayloadFields, UnionPayloadField{Name: field.Name, Type: fieldType, Location: location(field.Token)})
+				syntheticField := StructFieldDefinition{ID: StructFieldID(fieldIndex), Name: field.Name, Type: fieldType, Location: location(field.Token)}
+				for _, tag := range field.Tags {
+					syntheticField.Tags = append(syntheticField.Tags, StructTag{Key: tag.Key, Value: tag.Value})
+				}
+				syntheticDefinition.Fields = append(syntheticDefinition.Fields, syntheticField)
+			}
+			if !b.definedStructs[syntheticType] {
+				b.definedStructs[syntheticType] = true
+				b.module.Structs = append(b.module.Structs, syntheticDefinition)
 			}
 		default:
 			resolved.Kind = UnionVariantEmpty
@@ -412,19 +502,25 @@ func (fb *functionBuilder) buildStatements(statements []ast.Statement) error {
 }
 
 func (fb *functionBuilder) buildLet(stmt *ast.LetStatement) error {
-	if stmt.SynthesizedDefault {
-		return fb.unsupported("mutable local declaration without initializer", stmt.Token)
-	}
 	if stmt.Value == nil {
 		return fb.unsupported("mutable local declaration without initializer", stmt.Token)
-	}
-	value, err := fb.buildExpr(stmt.Value, 0)
-	if err != nil {
-		return err
 	}
 	fact, ok := fb.owner.analyzer.ResolvedBindingOf(stmt.Name)
 	if !ok {
 		return fmt.Errorf("missing resolved binding for %s", stmt.Name.Value)
+	}
+	var value builtValue
+	var err error
+	if stmt.SynthesizedDefault && fb.owner.maxPackage >= 13 && fact.Type.Kind == sema.StructType {
+		// Package 13 section 26 requires the new IR to consume the canonical
+		// DefaultResolution instead of treating Sema's compatibility AST node as
+		// semantic authority.
+		value, err = fb.buildResolvedDefault(fact.Type, sema.DefaultValueOf(fact.Type), location(stmt.Token))
+	} else {
+		value, err = fb.buildExpr(stmt.Value, 0)
+	}
+	if err != nil {
+		return err
 	}
 	if stmt.Mutable {
 		if fb.owner.maxPackage < 3 {
@@ -453,6 +549,9 @@ func (fb *functionBuilder) buildAssignment(stmt *ast.AssignmentStatement) error 
 	if stmt.Operator != "=" {
 		return fb.unsupported("compound assignment", stmt.Token)
 	}
+	if member, ok := stmt.Target.(*ast.MemberExpression); ok && fb.owner.maxPackage >= 13 {
+		return fb.buildStructFieldAssignment(stmt, member)
+	}
 	id, ok := stmt.Target.(*ast.Identifier)
 	if !ok {
 		return fb.unsupported("non-local assignment", stmt.Token)
@@ -470,6 +569,72 @@ func (fb *functionBuilder) buildAssignment(stmt *ast.AssignmentStatement) error 
 		return err
 	}
 	fb.emit(Operation{Kind: OpStorageStore, Storage: bind.storage, Operands: []ValueID{value.id}, Location: location(stmt.Token)})
+	return nil
+}
+
+// buildStructFieldAssignment implements the leaf-to-root aggregate rebuild in
+// rules/mlir/lowering-versions/sec_mlir_lowering_v9.md sections 10-11. The RHS
+// is evaluated first and the root storage is written exactly once.
+func (fb *functionBuilder) buildStructFieldAssignment(stmt *ast.AssignmentStatement, target *ast.MemberExpression) error {
+	var reversed []sema.ResolvedStructMemberPlan
+	var root *ast.Identifier
+	for expression := ast.Expression(target); ; {
+		switch current := expression.(type) {
+		case *ast.MemberExpression:
+			plan, ok := fb.owner.analyzer.ResolvedStructMemberOf(current)
+			if !ok || plan.Kind != sema.MemberStoredField || plan.Action != sema.StructFieldCopyTrivial {
+				return fb.unsupported("non-trivial or unresolved struct field assignment", current.Token)
+			}
+			reversed = append(reversed, plan)
+			expression = current.Object
+		case *ast.Identifier:
+			root = current
+		default:
+			return fb.unsupported("non-local struct field assignment", target.Token)
+		}
+		if root != nil {
+			break
+		}
+	}
+	plans := make([]sema.ResolvedStructMemberPlan, len(reversed))
+	for index := range reversed {
+		plans[len(reversed)-1-index] = reversed[index]
+	}
+	if len(plans) == 0 {
+		return fb.unsupported("empty struct field assignment", target.Token)
+	}
+	fact, ok := fb.owner.analyzer.ResolvedBindingOf(root)
+	if !ok {
+		return fmt.Errorf("missing resolved struct root binding")
+	}
+	bind, ok := fb.bindings[fact.ID]
+	if !ok || bind.storage == 0 || !bind.mutable || !fb.storageAllowed(bind.typ) {
+		return fb.unsupported("struct field assignment without trivial mutable root storage", root.Token)
+	}
+	leafType, err := fb.owner.internType(plans[len(plans)-1].MemberType)
+	if err != nil {
+		return err
+	}
+	replacement, err := fb.buildExpr(stmt.Value, leafType)
+	if err != nil {
+		return err
+	}
+	rootValue := fb.result(Operation{Kind: OpStorageLoad, Storage: bind.storage, Location: location(stmt.Token)}, bind.typ)
+	parents := make([]builtValue, len(plans))
+	current := rootValue
+	for index := 0; index < len(plans)-1; index++ {
+		parents[index] = current
+		fieldType, internErr := fb.owner.internType(plans[index].MemberType)
+		if internErr != nil {
+			return internErr
+		}
+		current = fb.result(Operation{Kind: OpStructExtractField, Operands: []ValueID{current.id}, StructField: StructFieldID(plans[index].FieldID), StructActions: []StructFieldAction{StructActionCopyTrivial}, Location: location(stmt.Token)}, fieldType)
+	}
+	parents[len(plans)-1] = current
+	for index := len(plans) - 1; index >= 0; index-- {
+		replacement = fb.result(Operation{Kind: OpStructReplaceField, Operands: []ValueID{parents[index].id, replacement.id}, StructField: StructFieldID(plans[index].FieldID), Location: location(stmt.Token)}, parents[index].typ)
+	}
+	fb.emit(Operation{Kind: OpStorageStore, Storage: bind.storage, Operands: []ValueID{replacement.id}, Location: location(stmt.Token)})
 	return nil
 }
 
@@ -627,6 +792,18 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 		}
 		return builtValue{id: bind.value, typ: bind.typ}, nil
 	case *ast.MemberExpression:
+		if fb.owner.maxPackage >= 13 {
+			if plan, resolved := fb.owner.analyzer.ResolvedStructMemberOf(e); resolved && plan.Kind == sema.MemberStoredField {
+				if plan.Action != sema.StructFieldCopyTrivial {
+					return builtValue{}, fb.unsupported("non-trivial struct field read", e.Token)
+				}
+				source, err := fb.buildExpr(e.Object, 0)
+				if err != nil {
+					return builtValue{}, err
+				}
+				return fb.result(Operation{Kind: OpStructExtractField, Operands: []ValueID{source.id}, StructField: StructFieldID(plan.FieldID), StructActions: []StructFieldAction{StructActionCopyTrivial}, Location: loc}, typeID), nil
+			}
+		}
 		if fb.owner.maxPackage >= 11 {
 			if enumCase, resolved := fb.owner.analyzer.ResolvedEnumCaseOf(e); resolved {
 				return fb.result(Operation{Kind: OpEnumConstant, EnumCase: EnumCaseID(enumCase.Ordinal), Location: loc}, typeID), nil
@@ -655,6 +832,11 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 		}
 		return fb.buildResolvedOperator(expr)
 	case *ast.StructLiteral:
+		if fb.owner.maxPackage >= 13 {
+			if plan, resolved := fb.owner.analyzer.ResolvedStructLiteralPlanOf(e); resolved {
+				return fb.buildStructLiteral(e, plan, typeID)
+			}
+		}
 		if fb.owner.maxPackage >= 11 {
 			if plan, resolved := fb.owner.analyzer.ResolvedUnionConstructionOf(e); resolved {
 				return fb.buildUnionConstruction(e, plan, typeID)
@@ -674,6 +856,139 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 	default:
 		return builtValue{}, fb.unsupported(fmt.Sprintf("expression %T", expr), expressionToken(expr))
 	}
+}
+
+func (fb *functionBuilder) buildStructLiteral(expr *ast.StructLiteral, plan sema.ResolvedStructLiteralPlan, resultType TypeID) (builtValue, error) {
+	definition, ok := fb.owner.structDefinition(resultType)
+	if !ok || len(definition.Fields) != len(plan.FinalFields) || !plan.FullyInitialized {
+		return builtValue{}, fb.unsupported("struct construction without complete definition/plan", expr.Token)
+	}
+	explicit := map[int]builtValue{}
+	spread := map[int][]builtValue{}
+	for _, entry := range plan.Entries {
+		switch entry.Kind {
+		case sema.StructEntryExplicit:
+			fieldType := definition.Fields[entry.FieldID].Type
+			value, err := fb.buildExpr(entry.Expression, fieldType)
+			if err != nil {
+				return builtValue{}, err
+			}
+			explicit[entry.SourceIndex] = value
+		case sema.StructEntrySpread:
+			source, err := fb.buildExpr(entry.Expression, resultType)
+			if err != nil {
+				return builtValue{}, err
+			}
+			op := Operation{Kind: OpStructSpreadFields, Operands: []ValueID{source.id}, Location: locationFromExpression(entry.Expression)}
+			values := make([]builtValue, len(definition.Fields))
+			for index, field := range definition.Fields {
+				if sema.CopyClassificationOf(plan.FinalFields[index].FieldType) != sema.CopyTrivial {
+					return builtValue{}, fb.unsupported("non-trivial struct spread", expressionToken(entry.Expression))
+				}
+				value := fb.newValue(field.Type, OwnershipImmediate, op.Location)
+				op.Results = append(op.Results, value)
+				op.StructActions = append(op.StructActions, StructActionCopyTrivial)
+				values[index] = builtValue{id: value.ID, typ: value.Type}
+			}
+			fb.emit(op)
+			spread[entry.SourceIndex] = values
+		}
+	}
+	op := Operation{Kind: OpStructConstruct, Location: location(expr.Token)}
+	for index, field := range plan.FinalFields {
+		var value builtValue
+		var err error
+		switch field.SourceKind {
+		case sema.StructFieldSourceExplicit:
+			value = explicit[field.SourceEntryIndex]
+			op.StructOrigins = append(op.StructOrigins, StructOriginExplicit)
+		case sema.StructFieldSourceSpread:
+			value = spread[field.SourceEntryIndex][field.SpreadFieldID]
+			op.StructOrigins = append(op.StructOrigins, StructOriginSpread)
+		case sema.StructFieldSourceDefault:
+			value, err = fb.buildResolvedDefault(field.FieldType, field.Default, location(expr.Token))
+			if err != nil {
+				return builtValue{}, err
+			}
+			op.StructOrigins = append(op.StructOrigins, StructOriginDefault)
+		default:
+			return builtValue{}, fmt.Errorf("struct field %d has no resolved source", index)
+		}
+		action, ok := semanticStructAction(field.Action)
+		if !ok || action != StructActionConstructDirect && action != StructActionCopyTrivial {
+			return builtValue{}, fb.unsupported("non-trivial struct field action "+string(field.Action), expr.Token)
+		}
+		op.Operands = append(op.Operands, value.id)
+		op.StructActions = append(op.StructActions, action)
+	}
+	return fb.result(op, resultType), nil
+}
+
+func semanticStructAction(action sema.ResolvedStructFieldAction) (StructFieldAction, bool) {
+	switch action {
+	case sema.StructFieldConstructDirect:
+		return StructActionConstructDirect, true
+	case sema.StructFieldCopyTrivial:
+		return StructActionCopyTrivial, true
+	case sema.StructFieldCopySemanticInfallible:
+		return StructActionCopySemanticInfallible, true
+	case sema.StructFieldMove:
+		return StructActionMove, true
+	default:
+		return "", false
+	}
+}
+
+func (fb *functionBuilder) buildResolvedDefault(typ sema.Type, resolution sema.DefaultResolution, loc Location) (builtValue, error) {
+	typeID, err := fb.owner.internType(typ)
+	if err != nil {
+		return builtValue{}, err
+	}
+	switch resolution.Kind {
+	case sema.PrimitiveDefault, sema.NamedDefault, sema.RangeDefault, sema.MembershipDefault, sema.ExplicitTypeDefault:
+		switch typ.Kind {
+		case sema.BoolType:
+			value := resolution.Value.Bool
+			return fb.result(Operation{Kind: OpConstBool, Bool: &value, Location: loc}, typeID), nil
+		case sema.StringType:
+			return fb.result(Operation{Kind: OpConstString, String: resolution.Value.String, Location: loc}, typeID), nil
+		case sema.IntType, sema.UintType, sema.CharType, sema.RuneType:
+			if resolution.Value.Integer == nil {
+				return builtValue{}, fb.unsupported("non-integer scalar default", lexer.Token{})
+			}
+			return fb.result(Operation{Kind: OpConstInt, Integer: new(big.Int).Set(resolution.Value.Integer), Location: loc}, typeID), nil
+		case sema.FloatType:
+			return fb.result(Operation{Kind: OpConstFloat, FloatLexeme: resolution.Value.Lexeme, Location: loc}, typeID), nil
+		case sema.DecimalType:
+			decimal, parseErr := parseDecimal(resolution.Value.Lexeme)
+			if parseErr != nil {
+				return builtValue{}, parseErr
+			}
+			return fb.result(Operation{Kind: OpConstDecimal, Decimal: &decimal, Location: loc}, typeID), nil
+		}
+	case sema.StructDefault:
+		definition, ok := fb.owner.structDefinition(typeID)
+		if !ok {
+			break
+		}
+		op := Operation{Kind: OpStructConstruct, Location: loc}
+		resolvedByName := map[string]sema.DefaultResolution{}
+		for _, field := range resolution.Fields {
+			resolvedByName[field.Name] = field.Value
+		}
+		for index, field := range typ.Fields {
+			value, valueErr := fb.buildResolvedDefault(field.Type, resolvedByName[field.Name], loc)
+			if valueErr != nil {
+				return builtValue{}, valueErr
+			}
+			op.Operands = append(op.Operands, value.id)
+			op.StructOrigins = append(op.StructOrigins, StructOriginDefault)
+			op.StructActions = append(op.StructActions, StructActionConstructDirect)
+			_ = definition.Fields[index]
+		}
+		return fb.result(op, typeID), nil
+	}
+	return builtValue{}, fb.unsupported("resolved default "+string(resolution.Kind)+" for "+typ.Name, lexer.Token{})
 }
 
 func (fb *functionBuilder) buildEnumConversion(call *ast.CallExpression, conversion sema.ResolvedEnumConversion, resultType TypeID) (builtValue, error) {
@@ -777,6 +1092,15 @@ func (b *builder) unionDefinition(typeID TypeID) (UnionDefinition, bool) {
 		}
 	}
 	return UnionDefinition{}, false
+}
+
+func (b *builder) structDefinition(typeID TypeID) (StructDefinition, bool) {
+	for _, definition := range b.module.Structs {
+		if definition.TypeID == typeID {
+			return definition, true
+		}
+	}
+	return StructDefinition{}, false
 }
 
 func (b *builder) enumDefinition(typeID TypeID) (EnumDefinition, bool) {
@@ -1036,10 +1360,6 @@ func (fb *functionBuilder) projectMatchPayload(subject builtValue, arm sema.Reso
 		return builtValue{}, false, fb.unsupported("ownership-sensitive match payload binding "+string(arm.BindingAction), token)
 	}
 
-	bindingType, err := fb.owner.internType(arm.BindingType)
-	if err != nil {
-		return builtValue{}, false, err
-	}
 	meta := Operation{
 		Operands: []ValueID{subject.id}, MatchID: matchID, MatchArmIndex: arm.SourceIndex,
 		MatchStage: "pattern", MatchPatternKind: string(arm.PatternKind), Location: location(token),
@@ -1051,13 +1371,38 @@ func (fb *functionBuilder) projectMatchPayload(subject builtValue, arm sema.Reso
 			return builtValue{}, false, fb.unsupported("unresolved union match payload", token)
 		}
 		variant := definition.Variants[arm.UnionVariantIndex]
+		if variant.Kind == UnionVariantFields && variant.SyntheticPayloadStruct != 0 {
+			// Package 13 sections 66-68 materialize a whole struct-like payload
+			// only on the proven variant path, using guarded P11 projections.
+			construct := Operation{Kind: OpStructConstruct, MatchID: matchID, MatchArmIndex: arm.SourceIndex, MatchStage: "pattern", MatchPatternKind: string(arm.PatternKind), Location: location(token)}
+			for _, field := range variant.PayloadFields {
+				projection := meta
+				projection.Kind = OpUnionUnwrapField
+				projection.UnionVariant = UnionVariantIndex(arm.UnionVariantIndex)
+				projection.UnionField = field.Name
+				projection.PayloadActions = []UnionPayloadAction{UnionPayloadCopyTrivial}
+				value := fb.result(projection, field.Type)
+				construct.Operands = append(construct.Operands, value.id)
+				construct.StructOrigins = append(construct.StructOrigins, StructOriginExplicit)
+				construct.StructActions = append(construct.StructActions, StructActionCopyTrivial)
+			}
+			return fb.result(construct, variant.SyntheticPayloadStruct), true, nil
+		}
+		bindingType, err := fb.owner.internType(arm.BindingType)
+		if err != nil {
+			return builtValue{}, false, err
+		}
 		if variant.Kind != UnionVariantSingle || variant.Payload != bindingType {
-			return builtValue{}, false, fb.unsupported("non-single or mismatched union match payload", token)
+			return builtValue{}, false, fb.unsupported("mismatched union match payload", token)
 		}
 		meta.Kind = OpUnionUnwrapPayload
 		meta.UnionVariant = UnionVariantIndex(arm.UnionVariantIndex)
 		meta.PayloadActions = []UnionPayloadAction{UnionPayloadCopyTrivial}
 	case sema.MatchPatternResultOk, sema.MatchPatternResultErr:
+		bindingType, err := fb.owner.internType(arm.BindingType)
+		if err != nil {
+			return builtValue{}, false, err
+		}
 		result, ok := fb.owner.module.Types.Lookup(subject.typ)
 		if !ok || result.Kind != TypeResult {
 			return builtValue{}, false, fb.unsupported("Result match payload without Result subject", token)
@@ -1073,6 +1418,10 @@ func (fb *functionBuilder) projectMatchPayload(subject builtValue, arm sema.Reso
 		}
 	default:
 		return builtValue{}, false, fb.unsupported("payload binding for "+string(arm.PatternKind), token)
+	}
+	bindingType, err := fb.owner.internType(arm.BindingType)
+	if err != nil {
+		return builtValue{}, false, err
 	}
 	return fb.result(meta, bindingType), true, nil
 }
@@ -1768,6 +2117,10 @@ func (fb *functionBuilder) storageAllowed(id TypeID) bool {
 		definition, ok := fb.owner.unionDefinition(id)
 		return ok && definition.CopyClassification == string(sema.CopyTrivial) && definition.TriviallyDestructible
 	}
+	if t.Kind == TypeStruct {
+		definition, ok := fb.owner.structDefinition(id)
+		return ok && definition.CopyClassification == string(sema.CopyTrivial) && definition.TriviallyDestructible
+	}
 	return t.Kind != TypeString && t.Kind != TypeVoid && t.Kind != TypeNever
 }
 
@@ -1783,7 +2136,7 @@ func ownershipForParameter(p sema.FunctionParameter) (OwnershipClass, error) {
 		return OwnershipRawPointer, nil
 	case sema.BoolType, sema.IntType, sema.UintType, sema.FloatType, sema.DecimalType, sema.CharType, sema.RuneType, sema.EnumType:
 		return OwnershipImmediate, nil
-	case sema.UnionType, sema.ResultType:
+	case sema.UnionType, sema.ResultType, sema.StructType:
 		if sema.CopyClassificationOf(p.Type) == sema.CopyTrivial && sema.TriviallyDestructible(p.Type) {
 			return OwnershipImmediate, nil
 		}

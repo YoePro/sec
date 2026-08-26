@@ -2,11 +2,11 @@
 
 - **Status:** Normative
 - **Created:** 2026-07-31
-- **Last updated:** 2026-08-16
+- **Last updated:** 2026-08-26
 - **Document revision:** 2.0
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/control-flow/discard.md`
-- **Repository baseline reviewed:** `56be75d`
+- **Repository baseline reviewed:** `b3315f6`
 
 ---
 
@@ -120,7 +120,9 @@ discard resource
 
 After the statement, the current value of `resource` is unavailable.
 
-A later read, borrow, move, or second discard is invalid until a legal reinitialization occurs.
+A later read, borrow, or move is invalid until a legal reinitialization occurs.
+A second discard is a legal no-op because `discard` converges the place to
+`Unavailable`; tooling may issue a low-priority redundancy advisory.
 
 ```sec
 Use(resource)
@@ -129,6 +131,11 @@ Use(resource)
 must be rejected.
 
 A diagnostic must identify the discard that made the value unavailable.
+
+If the incoming place is `ConditionallyAvailable`, discard ends/destroys the
+value only on paths that still own it and leaves every outgoing path
+`Unavailable`. Discardability and incompatible-borrow checks still apply before
+this convergence commits.
 
 `discard` ends the lifetime of the binding's current value. It does not remove the binding name from scope.
 

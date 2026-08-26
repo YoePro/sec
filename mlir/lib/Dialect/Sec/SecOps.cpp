@@ -596,6 +596,108 @@ LogicalResult UnionUnwrapFieldOp::verify() {
   return emitOpError("field does not exist with the projected result type");
 }
 
+namespace {
+FailureOr<StructType> requireStructType(Type type, Operation *operation) {
+  auto structType = dyn_cast<StructType>(type);
+  if (!structType)
+    return operation->emitOpError("value must have !sec.struct type");
+  return structType;
+}
+
+LogicalResult verifyStringArrayValues(Operation *operation, ArrayAttr values,
+                                      ArrayRef<StringRef> allowed,
+                                      StringRef description) {
+  for (Attribute attribute : values) {
+    auto value = dyn_cast<StringAttr>(attribute);
+    if (!value || !llvm::is_contained(allowed, value.getValue()))
+      return operation->emitOpError()
+             << description << " contains an invalid value";
+  }
+  return success();
+}
+
+FailureOr<StructFieldAttr> lookupStructField(StructType type,
+                                             IntegerAttr ordinal,
+                                             Operation *operation) {
+  int64_t index = ordinal.getInt();
+  if (index < 0 || static_cast<uint64_t>(index) >= type.getFields().size())
+    return operation->emitOpError("struct field ordinal is out of range");
+  auto field = dyn_cast<StructFieldAttr>(type.getFields()[index]);
+  if (!field || field.getOrdinal() != static_cast<uint32_t>(index))
+    return operation->emitOpError("struct field table is not canonical");
+  return field;
+}
+} // namespace
+
+LogicalResult StructConstructOp::verify() {
+  auto type = requireStructType(getResult().getType(), *this);
+  if (failed(type))
+    return failure();
+  if (getFields().size() != type->getFields().size() ||
+      getFieldOrigins().size() != getFields().size() ||
+      getFieldActions().size() != getFields().size())
+    return emitOpError("field operands, origins, and actions must match the stored-field count");
+  if (failed(verifyStringArrayValues(
+          *this, getFieldOrigins(), {"explicit", "spread", "default"},
+          "field origins")) ||
+      failed(verifyStringArrayValues(
+          *this, getFieldActions(), {"construct-direct", "copy-trivial"},
+          "field actions")))
+    return failure();
+  for (auto [index, attribute] : llvm::enumerate(type->getFields())) {
+    auto field = cast<StructFieldAttr>(attribute);
+    if (getFields()[index].getType() != field.getType())
+      return emitOpError("field operands must use declaration order and exact types");
+  }
+  return success();
+}
+
+LogicalResult StructSpreadFieldsOp::verify() {
+  auto type = requireStructType(getSource().getType(), *this);
+  if (failed(type))
+    return failure();
+  if (getFields().size() != type->getFields().size() ||
+      getActions().size() != getFields().size())
+    return emitOpError("results and actions must match the stored-field count");
+  if (failed(verifyStringArrayValues(*this, getActions(), {"copy-trivial"},
+                                     "spread actions")))
+    return failure();
+  for (auto [index, attribute] : llvm::enumerate(type->getFields())) {
+    auto field = cast<StructFieldAttr>(attribute);
+    if (getFields()[index].getType() != field.getType())
+      return emitOpError("results must use declaration-order field types");
+  }
+  return success();
+}
+
+LogicalResult StructExtractOp::verify() {
+  auto type = requireStructType(getSource().getType(), *this);
+  if (failed(type))
+    return failure();
+  auto field = lookupStructField(*type, getFieldAttr(), *this);
+  if (failed(field))
+    return failure();
+  if (getAction() != "copy-trivial")
+    return emitOpError("schema 9 struct extract action must be copy-trivial");
+  if (getResult().getType() != field->getType())
+    return emitOpError("result type must exactly match the selected field type");
+  return success();
+}
+
+LogicalResult StructReplaceFieldOp::verify() {
+  auto type = requireStructType(getSource().getType(), *this);
+  if (failed(type))
+    return failure();
+  auto field = lookupStructField(*type, getFieldAttr(), *this);
+  if (failed(field))
+    return failure();
+  if (getResult().getType() != getSource().getType())
+    return emitOpError("source and result struct types must match exactly");
+  if (getReplacement().getType() != field->getType())
+    return emitOpError("replacement type must exactly match the selected field type");
+  return success();
+}
+
 LogicalResult UnreachableOp::verify() {
   auto synthesized = (*this)->getAttrOfType<BoolAttr>("sec.synthesized");
   if (!synthesized || !synthesized.getValue())

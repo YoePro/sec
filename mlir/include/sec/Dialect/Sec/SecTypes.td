@@ -83,6 +83,17 @@ def Sec_UnionType : Sec_Type<"Union", "union"> {
   let genVerifyDecl = 1;
 }
 
+def Sec_StructType : Sec_Type<"Struct", "struct"> {
+  let summary = "Nominal Sec struct semantic value without physical layout";
+  let parameters = (ins
+    "::mlir::StringAttr":$identity,
+    "::mlir::ArrayAttr":$typeArguments,
+    "::mlir::ArrayAttr":$fields
+  );
+  let assemblyFormat = "`<` struct(params) `>`";
+  let genVerifyDecl = 1;
+}
+
 def Sec_DecimalType : Sec_SingletonType<"Decimal", "decimal"> {
   let summary = "Sec exact decimal type";
 }

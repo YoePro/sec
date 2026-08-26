@@ -2,7 +2,7 @@ module core
 
 impl char {
     fn ToString() string {
-        return string.FromByteArray([self])
+        return string.FromByteArray([byte(self)])
     }
 
     property IsDigit: bool {
@@ -57,7 +57,7 @@ impl char {
     /** Returns the intvalue of a char or None() */
     fn ToNumericValue() Option[int] {
         if self >= 48t && self <= 57t {
-            return Some(int(self - 48t))
+            return Some(int(self) - 48)
         }
         return None()
     }
@@ -66,7 +66,7 @@ impl char {
     fn ToLower() char {
         // TODO: We need to cover other formats such as Latin1 and not just ASCII
         if self >= 65t && self <= 90t {
-            return self | 0x20t
+            return char(int(self) | 0x20)
         }
 
         return self
@@ -76,7 +76,7 @@ impl char {
     fn ToUpper() char {
         // TODO: We need to cover other formats such as Latin1 and not just ASCII
         if self >= 97t && self <= 122t {
-            return self & 0xDFt
+            return char(int(self) & 0xDF)
         }
 
         return self

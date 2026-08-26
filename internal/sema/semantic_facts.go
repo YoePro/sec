@@ -268,6 +268,82 @@ type ResolvedUnionConstruction struct {
 	SourceFieldOrder []string
 }
 
+// ResolvedStructEntryKind and the adjacent struct plan types implement the
+// read-only facts from rules/mlir/semantic-ir/sec_semantic_ir_struct_v1.md
+// sections 7-15.
+type ResolvedStructEntryKind string
+
+const (
+	StructEntryExplicit ResolvedStructEntryKind = "explicit"
+	StructEntrySpread   ResolvedStructEntryKind = "spread"
+)
+
+type ResolvedStructFieldSourceKind string
+
+const (
+	StructFieldSourceExplicit ResolvedStructFieldSourceKind = "explicit"
+	StructFieldSourceSpread   ResolvedStructFieldSourceKind = "spread"
+	StructFieldSourceDefault  ResolvedStructFieldSourceKind = "default"
+)
+
+// ResolvedStructFieldAction uses the current P13 plus P17 action vocabulary.
+// Later lowering must consume this fact and may reject actions outside the
+// package subset it implements; it must not reconstruct ownership from syntax.
+type ResolvedStructFieldAction string
+
+const (
+	StructFieldConstructDirect        ResolvedStructFieldAction = "construct-direct"
+	StructFieldCopyTrivial            ResolvedStructFieldAction = "copy-trivial"
+	StructFieldMove                   ResolvedStructFieldAction = "move"
+	StructFieldCopySemanticInfallible ResolvedStructFieldAction = "copy-semantic-infallible"
+	StructFieldBorrowShared           ResolvedStructFieldAction = "borrow-shared"
+	StructFieldBorrowMutable          ResolvedStructFieldAction = "borrow-mutable"
+)
+
+type ResolvedStructEntry struct {
+	SourceIndex int
+	Kind        ResolvedStructEntryKind
+	FieldName   string
+	FieldID     uint32
+	Expression  ast.Expression
+	Type        Type
+}
+
+type ResolvedStructFinalField struct {
+	FieldID          uint32
+	FieldName        string
+	FieldType        Type
+	SourceKind       ResolvedStructFieldSourceKind
+	SourceEntryIndex int
+	SpreadFieldID    uint32
+	Action           ResolvedStructFieldAction
+	Default          DefaultResolution
+}
+
+type ResolvedStructLiteralPlan struct {
+	StructType       Type
+	Entries          []ResolvedStructEntry
+	FinalFields      []ResolvedStructFinalField
+	FullyInitialized bool
+}
+
+type ResolvedMemberKind string
+
+const (
+	MemberStoredField ResolvedMemberKind = "stored-field"
+	MemberProperty    ResolvedMemberKind = "property"
+	MemberOther       ResolvedMemberKind = "other"
+)
+
+type ResolvedStructMemberPlan struct {
+	Kind       ResolvedMemberKind
+	OwnerType  Type
+	MemberType Type
+	FieldID    uint32
+	FieldName  string
+	Action     ResolvedStructFieldAction
+}
+
 // ResolvedTypeOf returns only facts recorded by the completed analysis. It
 // never invokes inference and does not mutate Analyzer state.
 func (a *Analyzer) ResolvedTypeOf(expr ast.Expression) (Type, bool) {
@@ -429,6 +505,31 @@ func (a *Analyzer) ResolvedUnionConstructionOf(expr ast.Expression) (ResolvedUni
 		return resolved, true
 	}
 	return ResolvedUnionConstruction{}, false
+}
+
+// ResolvedStructLiteralPlanOf returns the immutable construction decision
+// recorded during Sema according to the current struct/spread/default rules.
+func (a *Analyzer) ResolvedStructLiteralPlanOf(expr *ast.StructLiteral) (ResolvedStructLiteralPlan, bool) {
+	if a == nil || expr == nil {
+		return ResolvedStructLiteralPlan{}, false
+	}
+	plan, ok := a.resolvedStructLiteralPlans[expr]
+	if !ok {
+		return ResolvedStructLiteralPlan{}, false
+	}
+	plan.Entries = append([]ResolvedStructEntry(nil), plan.Entries...)
+	plan.FinalFields = append([]ResolvedStructFinalField(nil), plan.FinalFields...)
+	return plan, true
+}
+
+// ResolvedStructMemberOf distinguishes stored fields from properties using
+// compiler-owned facts. It never resolves a member again from its spelling.
+func (a *Analyzer) ResolvedStructMemberOf(expr *ast.MemberExpression) (ResolvedStructMemberPlan, bool) {
+	if a == nil || expr == nil {
+		return ResolvedStructMemberPlan{}, false
+	}
+	plan, ok := a.resolvedStructMemberPlans[expr]
+	return plan, ok
 }
 
 // ResolvedFunctionForDeclaration returns the already registered declaration.

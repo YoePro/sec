@@ -1,0 +1,85 @@
+# Merge/governance fragment for repository-level implementation-status.yaml.
+# This file records implementation state only.
+# Normative volatile behavior belongs in rules/platform/volatile.md.
+#
+# Repository baseline reviewed: fc8d632
+# Merge the integration entry below into the top-level `integrations:` sequence.
+
+- id: platform.volatile
+  area: platform-memory-and-volatile-access
+  status: planned
+  summary: Implements Sec volatile physical-storage semantics, including explicit RawPtr VolatileRead/VolatileWrite operations,
+    canonical @address region validation, target access contracts, address-space/width/alignment/order preservation,
+    optimizer constraints, representation eligibility, and lowering/tooling support.
+  rules:
+  - rules/platform/volatile.md
+  - rules/platform/fixed-address-bindings.md
+  - rules/platform/platform_model.md
+  - rules/platform/target_profiles.md
+  - rules/foundations/attributes.md
+  - rules/memory/memory_model.md
+  - rules/memory/raw_pointers.txt
+  - rules/declarations/registers.md
+  - rules/compiler/semantic_ir.txt
+  - rules/mlir/sec_mlir.md
+  remaining:
+  - introduce canonical volatile/external-storage access semantics distinct from type qualification
+  - add compiler-known RawPtr[T].VolatileRead() and RawPtr[T].VolatileWrite(value) operations
+  - keep ordinary RawPtr Read/Write distinct from explicit volatile access
+  - require unsafe for ordinary RawPtr volatile access while preserving known target restrictions inside unsafe
+  - make every @address binding resolve against an applicable canonical address-region/storage contract for its complete
+    extent
+  - reject numerically valid @address bindings that are not covered by an applicable target region
+  - permit Hosted @address only for explicitly modeled compatible mapped regions rather than arbitrary process addresses
+  - ensure unsafe cannot waive @address region validation
+  - model physical access contracts containing applicable address domain/space, permissions, widths, alignment, byte
+    order, ordering, memory attributes, and side effects
+  - support Harvard/modified-Harvard and other non-unified address-space models without using compiler-host address assumptions
+  - preserve exact physical access width where required and reject illegal split/merged/narrowed/widened operations
+  - validate @address alignment statically and preserve dynamic RawPtr alignment obligations
+  - resolve MMIO/device byte order from target/device contracts rather than compiler-host endian behavior
+  - keep volatile distinct from cacheability, coherence, DMA ownership, atomics, synchronization, and hardware barriers
+  - preserve distinct volatile reads/writes and prevent removal, duplication, speculation, loop hoisting, coalescing,
+    and equal-write deduplication
+  - keep volatile from acting as a global compiler barrier and emit stronger device ordering only when required by the
+    target/storage contract
+  - represent compiler ordering and hardware ordering separately
+  - ensure ordinary shared-memory concurrency cannot use volatile as a substitute for Atomic/Mutex/channel/synchronization
+    semantics
+  - preserve stronger register/device effects such as clear-on-read, write-one-clear, FIFO reads, and command writes
+    without defining their field transaction model in volatile.md
+  - allow read-modify-write only where the complete owning register/storage/device contract defines a semantics-preserving
+    operation
+  - introduce CompilationPlan-sensitive volatile readable/writable eligibility for physical types
+  - reject direct volatile materialization that would bypass constrained-type domains, closed enum domains, ownership,
+    borrow/generation validity, destruction obligations, or managed-runtime invariants
+  - require explicit physical layout/access contracts for aggregate volatile access rather than inferring legality from
+    ordinary Sec size/layout
+  - prevent unconstrained generic T from implicitly satisfying volatile eligibility
+  - ensure @address declarations themselves perform no physical access or implicit initialization
+  - carry explicit external-storage/volatile effects and resolved access contracts through Semantic IR and Sec MLIR
+  - make target lowering consume resolved volatile/MMIO contracts and reject impossible physical materialization instead
+    of approximating semantics
+  - ensure volatile access has no intrinsic Sec runtime dependency
+  - allow target/device knowledge sources to provide regions/address spaces/access contracts without making volatile.md
+    own a knowledge-pack format
+  - make LSP use the same CompilationPlan region/access facts as CLI builds
+  - add diagnostics for region, address-space, permission, width, alignment, representability, unsafe-context, ordering,
+    and target-lowering failures
+  - add regression coverage for basic volatility, @address, RawPtr, representability, physical access, ordering/concurrency,
+    stronger device semantics, IR/lowering, Hosted mapped devices, and cross-target address spaces
+  - apply the normative @address validation corrections to fixed-address-bindings.md and foundations/attributes.md
+  - update repository-level implementation-status verification commands after the first end-to-end volatile vertical
+    slice is implemented
+  excluded:
+  - logical register-field transaction semantics
+  - register physical read groups
+  - selective field observation
+  - register snapshot semantics
+  - destructive-read grouping
+  - interrupt semantics
+  - DMA ownership protocol definitions
+  - cache-maintenance API definitions
+  - atomic memory-order semantics
+  - target/device knowledge-pack format
+  - general C-style volatile types or @volatile source syntax

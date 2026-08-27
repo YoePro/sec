@@ -91,8 +91,10 @@ fn Apply(mutable: mut fn(int) int, consuming: -> fn() int) int {
 }
 
 func TestResolvedStructPlansPreserveSourceOrderOverridesDefaultsAndMembers(t *testing.T) {
+	// rules/declarations/struct.md section 4 requires read-only semantic
+	// consumers to retain ordered open-key metadata and raw escape spelling.
 	source := `module main
-type Settings struct { Count: int, Enabled: bool, Limit: uint }
+type Settings struct { Count: int ` + "`wire:\"signed\\\"little\" json:\"count value\"`" + `, Enabled: bool, Limit: uint }
 fn Build(base: Settings) int {
   let merged := Settings { base..., Enabled: true }
   let defaults := Settings { Count: 4 }
@@ -136,6 +138,23 @@ fn Build(base: Settings) int {
 	memberPlan, ok := a.ResolvedStructMemberOf(member)
 	if !ok || memberPlan.Kind != MemberStoredField || memberPlan.FieldID != 0 || memberPlan.FieldName != "Count" || memberPlan.Action != StructFieldCopyTrivial {
 		t.Fatalf("member plan = %#v, %t", memberPlan, ok)
+	}
+	if len(memberPlan.Tags) != 2 || memberPlan.Tags[0].Value != `signed\"little` || memberPlan.Tags[1].Value != "count value" {
+		t.Fatalf("member tags = %#v", memberPlan.Tags)
+	}
+	memberPlan.Tags[0].Value = "mutated"
+	againMember, _ := a.ResolvedStructMemberOf(member)
+	if againMember.Tags[0].Value != `signed\"little` {
+		t.Fatalf("read-only member metadata exposed analyzer storage: %#v", againMember.Tags)
+	}
+	metadata, ok := a.ResolvedStructFieldAt(memberPlan.OwnerType.Fields[0].Token)
+	if !ok || metadata.FieldID != 0 || len(metadata.Field.Tags) != 2 || metadata.Field.Tags[1].Key != "json" {
+		t.Fatalf("resolved field metadata = %#v, %t", metadata, ok)
+	}
+	metadata.Field.Tags[0].Value = "mutated"
+	againMetadata, _ := a.ResolvedStructFieldAt(memberPlan.OwnerType.Fields[0].Token)
+	if againMetadata.Field.Tags[0].Value != `signed\"little` {
+		t.Fatalf("read-only field metadata exposed analyzer storage: %#v", againMetadata.Field.Tags)
 	}
 }
 

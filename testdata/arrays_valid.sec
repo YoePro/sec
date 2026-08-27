@@ -65,8 +65,8 @@ fn TrailingCommaAndEmptyArray() void {
 
     let empty: int[0] := []
 
-    let valueLength := values.len
-    let emptyLength := empty.len
+    let valueLength := values.Len
+    let emptyLength := empty.Len
 
     return
 }
@@ -119,12 +119,12 @@ fn ByteRuntimeIndex(index: byte) int {
 
 fn ArrayLength() uint {
     let values: int[7] := [1, 2, 3, 4, 5, 6, 7]
-    return values.len
+    return values.Len
 }
 
 fn ZeroArrayLength() uint {
     let values: byte[0] := []
-    return values.len
+    return values.Len
 }
 
 // -----------------------------------------------------------------------------
@@ -267,7 +267,7 @@ fn ArrayOfSharedReferences() uint {
     ref second,
 ]
 
-    return references.len
+    return references.Len
 }
 
 // -----------------------------------------------------------------------------

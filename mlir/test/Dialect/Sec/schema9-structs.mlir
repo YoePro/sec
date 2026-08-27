@@ -1,4 +1,5 @@
 // RUN: sec-mlir-opt %s | sec-mlir-opt | FileCheck %s
+// RUN: sec-mlir-opt %S/schema8-unreachable.mlir | FileCheck %S/schema8-unreachable.mlir
 
 module attributes {
   dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 64>>,
@@ -25,13 +26,13 @@ module attributes {
   func.func @values(
       %wide: si128,
       %limit: ui256,
-      %source: !sec.struct<identity = "main::Pair<int128,uint256>", typeArguments = [si128, ui256], fields = [#sec.struct_field<ordinal = 0, name = "wide", type = si128, tags = [#sec.struct_tag<key = "wire", value = "signed">]>, #sec.struct_field<ordinal = 1, name = "limit", type = ui256, tags = []>]>)
-      -> !sec.struct<identity = "main::Pair<int128,uint256>", typeArguments = [si128, ui256], fields = [#sec.struct_field<ordinal = 0, name = "wide", type = si128, tags = [#sec.struct_tag<key = "wire", value = "signed">]>, #sec.struct_field<ordinal = 1, name = "limit", type = ui256, tags = []>]> {
-    %first, %second = "sec.struct.spread_fields"(%source) <{actions = ["copy-trivial", "copy-trivial"]}> : (!sec.struct<identity = "main::Pair<int128,uint256>", typeArguments = [si128, ui256], fields = [#sec.struct_field<ordinal = 0, name = "wide", type = si128, tags = [#sec.struct_tag<key = "wire", value = "signed">]>, #sec.struct_field<ordinal = 1, name = "limit", type = ui256, tags = []>]>) -> (si128, ui256)
-    %made = "sec.struct.construct"(%wide, %second) <{field_actions = ["construct-direct", "copy-trivial"], field_origins = ["explicit", "spread"]}> : (si128, ui256) -> !sec.struct<identity = "main::Pair<int128,uint256>", typeArguments = [si128, ui256], fields = [#sec.struct_field<ordinal = 0, name = "wide", type = si128, tags = [#sec.struct_tag<key = "wire", value = "signed">]>, #sec.struct_field<ordinal = 1, name = "limit", type = ui256, tags = []>]>
-    %read = "sec.struct.extract"(%made) <{action = "copy-trivial", field = 0 : i32}> : (!sec.struct<identity = "main::Pair<int128,uint256>", typeArguments = [si128, ui256], fields = [#sec.struct_field<ordinal = 0, name = "wide", type = si128, tags = [#sec.struct_tag<key = "wire", value = "signed">]>, #sec.struct_field<ordinal = 1, name = "limit", type = ui256, tags = []>]>) -> si128
-    %replaced = "sec.struct.replace_field"(%made, %limit) <{field = 1 : i32}> : (!sec.struct<identity = "main::Pair<int128,uint256>", typeArguments = [si128, ui256], fields = [#sec.struct_field<ordinal = 0, name = "wide", type = si128, tags = [#sec.struct_tag<key = "wire", value = "signed">]>, #sec.struct_field<ordinal = 1, name = "limit", type = ui256, tags = []>]>, ui256) -> !sec.struct<identity = "main::Pair<int128,uint256>", typeArguments = [si128, ui256], fields = [#sec.struct_field<ordinal = 0, name = "wide", type = si128, tags = [#sec.struct_tag<key = "wire", value = "signed">]>, #sec.struct_field<ordinal = 1, name = "limit", type = ui256, tags = []>]>
-    return %replaced : !sec.struct<identity = "main::Pair<int128,uint256>", typeArguments = [si128, ui256], fields = [#sec.struct_field<ordinal = 0, name = "wide", type = si128, tags = [#sec.struct_tag<key = "wire", value = "signed">]>, #sec.struct_field<ordinal = 1, name = "limit", type = ui256, tags = []>]>
+      %source: !sec.struct<identity = "main::Pair<int128,uint256>", typeArguments = [si128, ui256], fields = [#sec.struct_field<ordinal = 0, name = "wide", type = si128, tags = [#sec.struct_tag<key = "wire", value = "signed">, #sec.struct_tag<key = "json", value = "wide_value">]>, #sec.struct_field<ordinal = 1, name = "limit", type = ui256, tags = []>]>)
+      -> !sec.struct<identity = "main::Pair<int128,uint256>", typeArguments = [si128, ui256], fields = [#sec.struct_field<ordinal = 0, name = "wide", type = si128, tags = [#sec.struct_tag<key = "wire", value = "signed">, #sec.struct_tag<key = "json", value = "wide_value">]>, #sec.struct_field<ordinal = 1, name = "limit", type = ui256, tags = []>]> {
+    %first, %second = "sec.struct.spread_fields"(%source) <{actions = ["copy-trivial", "copy-trivial"]}> : (!sec.struct<identity = "main::Pair<int128,uint256>", typeArguments = [si128, ui256], fields = [#sec.struct_field<ordinal = 0, name = "wide", type = si128, tags = [#sec.struct_tag<key = "wire", value = "signed">, #sec.struct_tag<key = "json", value = "wide_value">]>, #sec.struct_field<ordinal = 1, name = "limit", type = ui256, tags = []>]>) -> (si128, ui256)
+    %made = "sec.struct.construct"(%wide, %second) <{field_actions = ["construct-direct", "copy-trivial"], field_origins = ["explicit", "spread"]}> : (si128, ui256) -> !sec.struct<identity = "main::Pair<int128,uint256>", typeArguments = [si128, ui256], fields = [#sec.struct_field<ordinal = 0, name = "wide", type = si128, tags = [#sec.struct_tag<key = "wire", value = "signed">, #sec.struct_tag<key = "json", value = "wide_value">]>, #sec.struct_field<ordinal = 1, name = "limit", type = ui256, tags = []>]>
+    %read = "sec.struct.extract"(%made) <{action = "copy-trivial", field = 0 : i32}> : (!sec.struct<identity = "main::Pair<int128,uint256>", typeArguments = [si128, ui256], fields = [#sec.struct_field<ordinal = 0, name = "wide", type = si128, tags = [#sec.struct_tag<key = "wire", value = "signed">, #sec.struct_tag<key = "json", value = "wide_value">]>, #sec.struct_field<ordinal = 1, name = "limit", type = ui256, tags = []>]>) -> si128
+    %replaced = "sec.struct.replace_field"(%made, %limit) <{field = 1 : i32}> : (!sec.struct<identity = "main::Pair<int128,uint256>", typeArguments = [si128, ui256], fields = [#sec.struct_field<ordinal = 0, name = "wide", type = si128, tags = [#sec.struct_tag<key = "wire", value = "signed">, #sec.struct_tag<key = "json", value = "wide_value">]>, #sec.struct_field<ordinal = 1, name = "limit", type = ui256, tags = []>]>, ui256) -> !sec.struct<identity = "main::Pair<int128,uint256>", typeArguments = [si128, ui256], fields = [#sec.struct_field<ordinal = 0, name = "wide", type = si128, tags = [#sec.struct_tag<key = "wire", value = "signed">, #sec.struct_tag<key = "json", value = "wide_value">]>, #sec.struct_field<ordinal = 1, name = "limit", type = ui256, tags = []>]>
+    return %replaced : !sec.struct<identity = "main::Pair<int128,uint256>", typeArguments = [si128, ui256], fields = [#sec.struct_field<ordinal = 0, name = "wide", type = si128, tags = [#sec.struct_tag<key = "wire", value = "signed">, #sec.struct_tag<key = "json", value = "wide_value">]>, #sec.struct_field<ordinal = 1, name = "limit", type = ui256, tags = []>]>
   }
 }
 
@@ -39,7 +40,7 @@ module attributes {
 // CHECK: !sec.struct<identity = "main::Empty", typeArguments = [], fields = []>
 // CHECK: "sec.struct.construct"
 // CHECK: !sec.struct<identity = "main::Outer"
-// CHECK: #sec.struct_tag<key = "wire", value = "signed">
+// CHECK: tags = [#sec.struct_tag<key = "wire", value = "signed">, #sec.struct_tag<key = "json", value = "wide_value">]
 // CHECK: "sec.struct.spread_fields"
 // CHECK: "sec.struct.construct"
 // CHECK: "sec.struct.extract"

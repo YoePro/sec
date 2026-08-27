@@ -31,6 +31,32 @@ func TestDiagnosticCountLabel(t *testing.T) {
 	}
 }
 
+func TestRunFmtCommandUsesSharedTrailingCommentAlignment(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "status.sec")
+	input := "enum Status {\nNew, // new\nInProgress, // active\n}\n"
+	if err := os.WriteFile(path, []byte(input), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	if err := runFmtCommand([]string{path}); err != nil {
+		t.Fatal(err)
+	}
+	formatted, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "enum Status {\n    New,           // new\n    InProgress,    // active\n}\n"
+	if string(formatted) != want {
+		t.Fatalf("sec fmt output:\n%s\nwant:\n%s", formatted, want)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o640 {
+		t.Fatalf("formatted file permissions = %o, want 640", got)
+	}
+}
+
 func TestStdlibModuleName(t *testing.T) {
 	tests := []struct {
 		path string
@@ -312,24 +338,13 @@ func TestSourceIncludePathsLoadsProjectImportsFromSecProjectRoot(t *testing.T) {
 }
 
 func TestCompilerAllowsCoreStringImpl(t *testing.T) {
-	dir := t.TempDir()
-	sourcePath := filepath.Join(dir, "sec", "core", "string.sec")
-	if err := os.MkdirAll(filepath.Dir(sourcePath), 0755); err != nil {
-		t.Fatal(err)
+	// rules/library/core-library.md: exercise the compiler-selected canonical
+	// core root. A temporary user-owned sec/core path must not acquire this
+	// authority merely from its spelling.
+	program := parseCoreLibrary(nil)
+	if program == nil {
+		t.Fatal("compiler core library was not found")
 	}
-	source := `module string
-
-impl string {
-	fn Len() uint {
-		return self.len
-	}
-}
-`
-	if err := os.WriteFile(sourcePath, []byte(source), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	program := parseSourceFile(sourcePath)
 	analyzer := sema.NewAnalyzer()
 	if errors := analyzer.Analyze(program); len(errors) > 0 {
 		t.Fatalf("Analyze(core string) errors: %v", errors)
@@ -340,7 +355,7 @@ func TestCompilerLoadsCoreLibraryBeforeUserAnalysis(t *testing.T) {
 	source := `module main
 
 fn IsBlank(value: string) bool {
-	return value.IsEmpty()
+	return value.IsEmpty
 }
 `
 
@@ -370,7 +385,7 @@ fn Display(value: rune) string {
 }
 
 fn IsIdentifierStart(value: rune) bool {
-	return value.IsLetter()
+	return value.IsLetter
 }
 `
 

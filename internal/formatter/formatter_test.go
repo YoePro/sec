@@ -47,6 +47,15 @@ func TestFormatImplExtension(t *testing.T) {
 	}
 }
 
+// rules/declarations/static.md, sections 3 and 25.
+func TestFormatRemovesOnlyRedundantModuleStatic(t *testing.T) {
+	input := "static let Global: int := 1\n\nimpl Counter {\nstatic let Value: int := 2\nstatic property Current: int {\nget { return Counter.Value }\n}\n}\n\nfn Use() void {\nstatic let Calls: int := 0\n}\n"
+	want := "let Global: int := 1\n\nimpl Counter {\n    static let Value: int := 2\n    static property Current: int {\n        get { return Counter.Value }\n    }\n}\n\nfn Use() void {\n    static let Calls: int := 0\n}\n"
+	if got := Format(Source{Text: input}, Options{}).Text; got != want {
+		t.Fatalf("wrong static formatting:\n%s\nwant:\n%s", got, want)
+	}
+}
+
 func TestFormatInitAndNewLifecycleSyntax(t *testing.T) {
 	input := "impl Buffer {\ninit( size: uint, alignment: uint, ) AllocationError {\n}\n}\n\nfn Make() Result[Buffer, AllocationError] {\nreturn try new Buffer(4096, 16)\n}\n"
 	want := "impl Buffer {\n    init(size: uint, alignment: uint) AllocationError {\n    }\n}\n\nfn Make() Result[Buffer, AllocationError] {\n    return try new Buffer(4096, 16)\n}\n"
@@ -103,6 +112,88 @@ func TestFormatPreservesRegisterFieldAccessModifiers(t *testing.T) {
 	want := "type Device register[3] {\n    Ready: bit read-only,\n    Command: bit write-only,\n    Pending: bit write-one-clear,\n}\n"
 	if got := Format(Source{Text: input}, Options{}).Text; got != want {
 		t.Fatalf("wrong register field modifier formatting:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+// rules/tooling/formatter.md, General trailing-comment alignment. Nominal
+// declaration items share one local comment column with a four-space gutter.
+func TestFormatAlignsTrailingCommentsInNominalDeclarations(t *testing.T) {
+	input := `enum test {
+  a,   // kommentar 1
+  longer, // kommentar 2
+  c,        // kommentar 3
+}
+
+type Packet struct {
+short: int, // field
+longerName: string,      // text
+plain: string,
+}
+
+type Device register[4] {
+Ready: bit, // ready
+Mode: bit[3],          // mode
+}
+
+type State union {
+Idle // idle
+Running // running
+}
+`
+	want := `enum test {
+    a,         // kommentar 1
+    longer,    // kommentar 2
+    c,         // kommentar 3
+}
+
+type Packet struct {
+    short: int,            // field
+    longerName: string,    // text
+    plain: string,
+}
+
+type Device register[4] {
+    Ready: bit,      // ready
+    Mode: bit[3],    // mode
+}
+
+type State union {
+    Idle       // idle
+    Running    // running
+}
+`
+	got := Format(Source{Text: input}, Options{}).Text
+	if got != want {
+		t.Fatalf("trailing comments were not aligned:\n%s\nwant:\n%s", got, want)
+	}
+	if again := Format(Source{Text: got}, Options{}).Text; again != got {
+		t.Fatalf("trailing-comment alignment is not idempotent:\nfirst:\n%s\nsecond:\n%s", got, again)
+	}
+}
+
+func TestFormatKeepsTrailingCommentAlignmentGroupsLocal(t *testing.T) {
+	input := `type Config struct {
+ID: int, // identity
+Name: string, // display
+
+// Network settings.
+Endpoint: string, // endpoint
+VeryLongTimeoutName: int, // timeout
+URL: string = "https://example.test/a//b", // URL
+}
+`
+	want := `type Config struct {
+    ID: int,         // identity
+    Name: string,    // display
+
+    // Network settings.
+    Endpoint: string,                             // endpoint
+    VeryLongTimeoutName: int,                     // timeout
+    URL: string = "https://example.test/a//b",    // URL
+}
+`
+	if got := Format(Source{Text: input}, Options{}).Text; got != want {
+		t.Fatalf("local trailing-comment groups were formatted incorrectly:\n%s\nwant:\n%s", got, want)
 	}
 }
 

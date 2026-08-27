@@ -4,6 +4,7 @@ package formatter
 import (
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 type Options struct{ Fix bool }
@@ -42,6 +43,11 @@ func format(text string, options Options) string {
 				blank = true
 			}
 			continue
+		}
+		// rules/declarations/static.md, sections 3 and 25. Module storage is
+		// already static; canonical formatting removes the redundant modifier.
+		if indent == 0 && strings.HasPrefix(line, "static let ") {
+			line = strings.TrimPrefix(line, "static ")
 		}
 		if strings.HasPrefix(line, "@noCopy ") {
 			if blank && len(out) > 0 {
@@ -94,6 +100,10 @@ func format(text string, options Options) string {
 			branches[at].active = true
 		}
 	}
+	// rules/tooling/formatter.md, Alignment groups and General trailing-comment
+	// alignment. Run after indentation so CLI and LSP observe identical visual
+	// columns and comment text never participates in structural indentation.
+	out = alignDeclarationTrailingComments(out)
 	result := strings.Join(out, "\n")
 	if hadFinal || result != "" {
 		result += "\n"
@@ -102,6 +112,146 @@ func format(text string, options Options) string {
 		result = strings.ReplaceAll(result, "\n", eol)
 	}
 	return result
+}
+
+// alignDeclarationTrailingComments aligns local groups inside nominal
+// declaration blocks. A blank line, standalone comment, multiline item, or
+// nested block ends a group. The comment column starts four spaces after the
+// widest code item, as required by rules/tooling/formatter.md, Line comments.
+func alignDeclarationTrailingComments(lines []string) []string {
+	for opener := 0; opener < len(lines); opener++ {
+		if !isDeclarationAlignmentOpener(lines[opener]) {
+			continue
+		}
+		baseIndent := leadingSpaces(lines[opener])
+		end := declarationBlockEnd(lines, opener, baseIndent)
+		if end < 0 {
+			continue
+		}
+		alignDeclarationBodyGroups(lines, opener+1, end, baseIndent+4)
+	}
+	return lines
+}
+
+func isDeclarationAlignmentOpener(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	if !strings.HasSuffix(codeBeforeTrailingComment(trimmed), "{") {
+		return false
+	}
+	if strings.HasPrefix(trimmed, "enum ") || strings.HasPrefix(trimmed, "interface ") {
+		return true
+	}
+	if !strings.HasPrefix(trimmed, "type ") {
+		return false
+	}
+	return strings.Contains(trimmed, " struct {") ||
+		strings.Contains(trimmed, " register[") ||
+		strings.Contains(trimmed, " union {") ||
+		strings.Contains(trimmed, " enum {")
+}
+
+func declarationBlockEnd(lines []string, opener int, baseIndent int) int {
+	for index := opener + 1; index < len(lines); index++ {
+		trimmed := strings.TrimSpace(lines[index])
+		if leadingSpaces(lines[index]) == baseIndent && strings.HasPrefix(trimmed, "}") {
+			return index
+		}
+	}
+	return -1
+}
+
+func alignDeclarationBodyGroups(lines []string, start int, end int, itemIndent int) {
+	group := []int{}
+	flush := func() {
+		alignTrailingCommentGroup(lines, group)
+		group = group[:0]
+	}
+	for index := start; index < end; index++ {
+		line := lines[index]
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || leadingSpaces(line) != itemIndent || isStandaloneComment(trimmed) || delimiters(codeBeforeTrailingComment(trimmed)) > 0 {
+			flush()
+			continue
+		}
+		group = append(group, index)
+	}
+	flush()
+}
+
+func alignTrailingCommentGroup(lines []string, group []int) {
+	maxCodeWidth := 0
+	commented := 0
+	for _, index := range group {
+		code, _, hasComment := splitTrailingLineComment(lines[index])
+		if width := utf8.RuneCountInString(code); width > maxCodeWidth {
+			maxCodeWidth = width
+		}
+		if hasComment {
+			commented++
+		}
+	}
+	if commented == 0 {
+		return
+	}
+	for _, index := range group {
+		code, comment, hasComment := splitTrailingLineComment(lines[index])
+		if !hasComment {
+			continue
+		}
+		padding := maxCodeWidth - utf8.RuneCountInString(code) + 4
+		lines[index] = code + strings.Repeat(" ", padding) + comment
+	}
+}
+
+func splitTrailingLineComment(line string) (string, string, bool) {
+	index := trailingLineCommentIndex(line)
+	if index < 0 {
+		return strings.TrimRight(line, " \t"), "", false
+	}
+	return strings.TrimRight(line[:index], " \t"), line[index:], true
+}
+
+func codeBeforeTrailingComment(line string) string {
+	code, _, _ := splitTrailingLineComment(line)
+	return strings.TrimSpace(code)
+}
+
+func trailingLineCommentIndex(line string) int {
+	quote := byte(0)
+	escaped := false
+	for index := 0; index+1 < len(line); index++ {
+		character := line[index]
+		if quote != 0 {
+			if escaped {
+				escaped = false
+				continue
+			}
+			if character == '\\' && quote != '`' {
+				escaped = true
+				continue
+			}
+			if character == quote {
+				quote = 0
+			}
+			continue
+		}
+		if character == '"' || character == '\'' || character == '`' {
+			quote = character
+			continue
+		}
+		if character == '/' && line[index+1] == '/' {
+			return index
+		}
+	}
+	return -1
+}
+
+func isStandaloneComment(trimmed string) bool {
+	return strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "/*") || strings.HasPrefix(trimmed, "*") || strings.HasPrefix(trimmed, "*/")
+}
+
+func leadingSpaces(line string) int {
+	return len(line) - len(strings.TrimLeft(line, " "))
 }
 
 // formatUnitExpressions implements rules/types/units.md and

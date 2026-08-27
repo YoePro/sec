@@ -28,5 +28,5 @@ fn Make() Token {
 
 fn main() int {
     let token := Make()
-    return int(token.kind.len + token.lexeme.len)
+    return int(token.kind.Len + token.lexeme.Len)
 }

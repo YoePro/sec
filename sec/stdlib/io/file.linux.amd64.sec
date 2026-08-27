@@ -376,9 +376,12 @@ fn WriteStringFile(path: string, data: string) Result[void, IOError] {
 /** Reads a complete file into caller-owned storage without silent truncation. */
 fn ReadFileInto(path: string, buffer: ref mut byte[]) Result[uint, IOError] {
     let mut file := try Open(path)
-    match file.ReadAllInto(ref mut buffer[..]) {
+    let readResult := file.ReadAllInto(ref mut buffer[..])
+    let closeResult := file.Close()
+
+    match readResult {
         Err(readError) => {
-            match file.Close() {
+            match closeResult {
                 Ok(_) => return Err(readError)
                 Err(closeError) => {
                     discard closeError
@@ -387,13 +390,12 @@ fn ReadFileInto(path: string, buffer: ref mut byte[]) Result[uint, IOError] {
             }
         }
         Ok(count) => {
-            match file.Close() {
+            match closeResult {
                 Ok(_) => return Ok(count)
                 Err(closeError) => return Err(closeError)
             }
         }
     }
-    return Err(IOError.Unknown)
 }
 
 fn ReadFile(path: string) Result[string, IOError] {
@@ -405,7 +407,7 @@ fn ReadFile(path: string) Result[string, IOError] {
 
 /** Copies from the current source position until EOF using caller-owned storage. */
 fn Copy(source: ref mut File, destination: ref mut File, buffer: ref mut byte[]) Result[uint, IOError] {
-    if buffer.len == 0u {
+    if buffer.Len == 0u {
         return Err(IOError.InvalidArgument)
     }
 
@@ -471,7 +473,7 @@ impl File {
         }
 
         let mut read := 0u
-        while read < buffer.len {
+        while read < buffer.Len {
             match _readFd(self.fd, ref mut buffer[int(read)..]) {
                 Err(error) => {
                     if error != IOError.Interrupted {
@@ -506,7 +508,7 @@ impl File {
         }
 
         let mut written := 0u
-        while written < data.len {
+        while written < data.Len {
             match _writeFd(self.fd, ref data[int(written)..]) {
                 Err(error) => {
                     if error != IOError.Interrupted {
@@ -530,7 +532,7 @@ impl File {
         }
 
         let mut written := 0u
-        while written < data.len {
+        while written < data.Len {
             match _writeStringFd(self.fd, data, written) {
                 Err(error) => {
                     if error != IOError.Interrupted {
@@ -619,7 +621,7 @@ impl File {
         }
 
         let mut read := 0u
-        while read < buffer.len {
+        while read < buffer.Len {
             match _readFd(self.fd, ref mut buffer[int(read)..]) {
                 Err(error) => {
                     if error != IOError.Interrupted {
@@ -780,7 +782,7 @@ fn _readDirectoryIntoOpen(directory: ref mut Directory, entries: ref mut Directo
         let next := try directory.Next()
         match next {
             Some(entry) => {
-                if count >= entries.len {
+                if count >= entries.Len {
                     discard entry
                     return Err(IOError.TooLarge)
                 }
@@ -795,9 +797,12 @@ fn _readDirectoryIntoOpen(directory: ref mut Directory, entries: ref mut Directo
 /** Reads every non-dot directory entry into caller-owned storage. */
 fn ReadDirectoryInto(path: string, entries: ref mut DirectoryEntry[]) Result[uint, IOError] {
     let mut directory := try OpenDirectory(path)
-    match _readDirectoryIntoOpen(ref mut directory, ref mut entries[..]) {
+    let readResult := _readDirectoryIntoOpen(ref mut directory, ref mut entries[..])
+    let closeResult := directory.Close()
+
+    match readResult {
         Err(readError) => {
-            match directory.Close() {
+            match closeResult {
                 Ok(_) => return Err(readError)
                 Err(closeError) => {
                     discard closeError
@@ -806,11 +811,10 @@ fn ReadDirectoryInto(path: string, entries: ref mut DirectoryEntry[]) Result[uin
             }
         }
         Ok(count) => {
-            match directory.Close() {
+            match closeResult {
                 Ok(_) => return Ok(count)
                 Err(closeError) => return Err(closeError)
             }
         }
     }
-    return Err(IOError.Unknown)
 }

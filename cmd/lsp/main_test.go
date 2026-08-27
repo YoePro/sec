@@ -355,6 +355,29 @@ fn Read(device: ref Device) bool {
 	}
 }
 
+func TestNestedRegisterHoverAndCheckedConversionUseSemaFacts(t *testing.T) {
+	source := `module main
+
+type Outer register[4] { Flags: Flags }
+type Flags register[4] { Ready: bit read-only, _: bit[3] }
+
+fn Inspect(value: ref Outer, raw: uint16) void {
+    let ready := value.Flags.Ready
+    let checked := Outer(raw)
+}
+`
+	readyOffset := strings.LastIndex(source, "Ready")
+	ready, ok := hoverForSource("", source, offsetPosition(source, readyOffset))
+	if !ok || !strings.Contains(ready.Contents.Value, "register field Ready: bool") || !strings.Contains(ready.Contents.Value, "Access: `read-only`") {
+		t.Fatalf("nested register hover = %+v, %v", ready, ok)
+	}
+	checkedOffset := strings.Index(source, "checked")
+	checked, ok := hoverForSource("", source, offsetPosition(source, checkedOffset))
+	if !ok || !strings.Contains(checked.Contents.Value, "checked: Result[Outer, ArithmeticError]") {
+		t.Fatalf("checked conversion hover = %+v, %v", checked, ok)
+	}
+}
+
 func TestHoverAbbreviatesLargeArrayDefault(t *testing.T) {
 	source := `module main
 
@@ -1029,6 +1052,30 @@ impl Lexer {
 	}
 	if strings.Contains(hover.Contents.Value, "fn Lexer.Diagnostics") {
 		t.Fatalf("struct literal field hover resolved the same-named method: %s", hover.Contents.Value)
+	}
+}
+
+// rules/declarations/struct.md section 4 and rules/tooling/lsp.md's Hover
+// requirements expose resolved tag metadata without decoding consumer values.
+func TestStructFieldHoverPreservesOpenTagMetadata(t *testing.T) {
+	source := `module main
+
+type Packet struct {
+    Payload: string ` + "`wire:\"signed\\\"little\" json:\"wide value\"`" + `,
+}
+
+fn Read(packet: Packet) string {
+    return packet.Payload
+}
+`
+	use := strings.LastIndex(source, "Payload") + 1
+	hover, ok := hoverForSource("", source, offsetPosition(source, use))
+	if !ok {
+		t.Fatal("missing struct field hover")
+	}
+	want := "field Payload: string `wire:\"signed\\\"little\" json:\"wide value\"`"
+	if !strings.Contains(hover.Contents.Value, want) {
+		t.Fatalf("struct field hover = %q, want %q", hover.Contents.Value, want)
 	}
 }
 
@@ -2361,6 +2408,24 @@ import (
 	}
 }
 
+func TestFormatSourceAlignsDeclarationTrailingComments(t *testing.T) {
+	input := `enum Status {
+New, // new
+InProgress,   // active
+Done,        // done
+}
+`
+	want := `enum Status {
+    New,           // new
+    InProgress,    // active
+    Done,          // done
+}
+`
+	if got := formatSource(input); got != want {
+		t.Fatalf("LSP formatter did not use shared comment alignment:\n%s\nwant:\n%s", got, want)
+	}
+}
+
 func TestFormatSourceHandlesBootstrapLexerDelimiters(t *testing.T) {
 	input := `fn NewWithFile(input: string,file: string) Result[Lexer, AllocationError] {
 let runes := try input.ToRuneArray()
@@ -2587,6 +2652,28 @@ impl Counter {
 			t.Fatalf("advance completion detail. got=%q want=int", item.Detail)
 		}
 	}
+}
+
+// rules/declarations/static.md, sections 8 and 11.
+func TestCompletionSeparatesStaticAndInstanceMembers(t *testing.T) {
+	declarations := `module main
+
+type Counter struct { value: int }
+
+impl Counter {
+    static let Maximum: int := 100
+    static property Current: int { get { return Counter.Maximum } }
+    property Value: int { get { return self.value } }
+    static fn Make() Counter { return Counter { value: 0 } }
+    fn Read() int { return self.value }
+}
+`
+	source := declarations + "\nfn Use() void {\n    Counter.\n}\n"
+	staticOffset := strings.Index(source, "Counter.\n") + len("Counter.")
+	assertCompletionLabels(t, completeSource("", source, staticOffset), []string{"Current", "Make", "Maximum", "SizeOf"})
+	source = declarations + "\nfn Use(counter: Counter) void {\n    counter.\n}\n"
+	instanceOffset := strings.Index(source, "counter.\n") + len("counter.")
+	assertCompletionLabels(t, completeSource("", source, instanceOffset), []string{"Read", "SizeOf", "Value", "value"})
 }
 
 func TestLSPAnalysisDepthFromProjectManifest(t *testing.T) {

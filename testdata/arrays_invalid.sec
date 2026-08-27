@@ -301,5 +301,5 @@ fn SafeArrayHasNoPtrMember() RawPtr[int] {
     let values: int[4] := [1, 2, 3, 4]
 
     // error: int[4] has no member ptr
-    return values.ptr
+    return values.Ptr
 }

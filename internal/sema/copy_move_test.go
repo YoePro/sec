@@ -583,7 +583,7 @@ fn Test() void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"use of moved value first at 11:19, previous declaration at 10:10",
+		"cannot copy move-only value first; use explicit move syntax :<- at 11:19",
 	})
 }
 
@@ -2405,12 +2405,13 @@ fn Test(condition: bool) void {
 	while condition {
 		view = ref mut second
 	}
+	second = 3
 }
 `
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"cannot create mutable reference to second because an overlapping borrow may remain active from a previous loop iteration at 9:10, previous declaration at 9:10",
+		"cannot assign to second while it is mutably borrowed at 11:2, previous declaration at 9:10",
 	})
 }
 

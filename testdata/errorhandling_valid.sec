@@ -83,3 +83,5 @@ fn StatementMatch() void {
 }
 
 unit SEK currency
+unit m physical
+unit s physical

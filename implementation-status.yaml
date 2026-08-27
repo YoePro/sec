@@ -87,7 +87,6 @@ integrations:
     area: semantic-ir-sec-mlir-and-lowering
     status: partial
     implementation_phase: complete
-    acceptance_blocked_by: repository-wide Go regressions outside the Package 13 change set
     integrated: "2026-08-26"
     baseline: current repository plus completed SEC-MLIR-P12 schema 8
     repository_head: fc8d6324ace4e06f659b9b64c7967f2c19b0c0d2
@@ -130,6 +129,7 @@ integrations:
       - mlir/test/Dialect/Sec/schema9-structs.mlir
       - mlir/test/Dialect/Sec/invalid-schema9-structs.mlir
       - mlir/test/Conversion/SecToCore/schema9-struct-scalar-layout.mlir
+      - mlir/test/Conversion/SecToCore/schema9-struct-scalar-layout-64.mlir
     implemented:
       - immutable Sema ResolvedStructLiteralPlanOf and ResolvedStructMemberOf queries
       - source-order explicit and spread entries with declaration-order final fields
@@ -147,9 +147,23 @@ integrations:
       - canonical defaulted mutable locals and leaf-to-root nested replacement with one root store
       - deterministic synthetic union-payload struct identities and guarded P11 projections for P12 trivial whole-payload bindings
       - real sec-mlir-opt roundtrip, invalid verifier, scalar-layout, storage-boundary, and source-to-schema-9 coverage
+      - reproducible real-tool verification through an absolute SEC_MLIR_BIN path with regression coverage rejecting relative paths
+      - complete schema-9 struct verifier mismatch matrix for field ordinals, operands, metadata counts, spread results, extraction, and replacement
+      - ordered-tag round trips and explicit adjacent schema-8 compatibility coverage
+      - nested 32-bit and 64-bit struct scalar resolution with checked-integer and high-level trivial-core boundaries preserved
+      - trusted compiler-core builtin impl acceptance without path-based privilege escalation
+      - current compiler-core IsEmpty and IsLetter property resolution
+      - locally handled checked Linux errno conversion into the exact LinuxError carrier across file and filesystem syscalls
+      - path-complete file and directory cleanup with one unconditional close before result selection
+      - static-v2 module storage classification and handler-local move/discard availability state
+      - explicit unit declarations in struct, property, and Result fixtures without implicit spelling-based unit authority
+      - reference-holder rebind transitions that release replaced borrows transactionally
+      - branch-scoped union provenance priority and caller-owned projected-place escape rejection
+      - interprocedural parameter reference origins preserved through field and slice projection
+      - repository-wide Go and vet acceptance gates restored
       - canonical Semantic IR, dialect, and lowering rulebooks synchronized to Package 13
     remaining:
-      - restore the pre-existing repository-wide cmd/compiler and internal/sema regressions so the mandatory go test ./... acceptance gate is green
+      - complete the focused P13 semantic evidence, unsupported-boundary, final acceptance, and implementation-report tasks P13-28 through P13-53
     later_rule_reconciliation:
       - P15 field borrowing uses Place and reference operations rather than copying the containing struct
       - P16 permits shared-slice fields with contained-origin tracking and keeps mutable-slice aggregates move-only
@@ -160,12 +174,18 @@ integrations:
         result: passed
       - command: go test ./internal/ir/semantic -run Package13 -count=1
         result: passed
-      - command: SEC_MLIR_BIN=build/sec-mlir/bin go test ./internal/lowering/secmlir -run Package13 -count=1
+      - command: SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./internal/lowering/secmlir -run 'Package13|ConfiguredSecMLIRBin' -count=1
         result: passed
       - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
-        result: passed (77/77)
-      - command: go test ./...
-        result: failed in pre-existing unrelated frontend/compiler tests; Package 13 packages and MLIR regressions passed
+        result: passed (78/78)
+      - command: go test ./cmd/compiler -count=1
+        result: passed
+      - command: go test ./internal/sema -count=1
+        result: passed
+      - command: SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./...
+        result: passed
+      - command: go vet ./...
+        result: passed
 
   - id: frontend.ownership-v2
     area: frontend-ownership-control-flow-and-lowering
@@ -1581,11 +1601,12 @@ integrations:
     integrated: "2026-08-14"
     summary: >-
       Tracks revision-2.0 static storage and type-associated member semantics.
-      The frontend recognizes static storage and functions and resolves the
-      established type-qualified storage path, while compile-time
-      initialization, static properties, specialization, concurrency proofs,
-      deterministic destruction, and explicit backend representation remain
-      incomplete.
+      The frontend recognizes static storage, functions, and properties,
+      separates instance and type-qualified access, validates interface
+      property category and static initialization dependencies, and rejects
+      hidden runtime initialization. Generic specialization, concurrency
+      proofs, deterministic destruction, and explicit backend representation
+      remain incomplete.
     rules:
       - rules/declarations/static.md
       - rules/declarations/impl.md
@@ -1618,15 +1639,23 @@ integrations:
       - static storage declarations in primary and same-module impl extends fragments enter the combined semantic member surface
       - static members remain separate from nominal instance fields and layout
       - compiler-known static properties and functions participate in LSP member completion through the shared Sema registry
+      - static properties are classified in impl and interface AST, require explicit setter parameters, and are validated without an implicit receiver
+      - static property reads and writes use Type.Name while instance-qualified static and type-qualified instance property access are rejected
+      - interface property conformance and inherited requirement merging preserve the static-versus-instance category
+      - LSP hover and completion expose static properties and separate type-qualified members from instance members
+      - canonical formatting removes redundant module-level static while preserving impl and function-local static declarations
+      - explicitly typed module storage is predeclared independently of source order for frontend dependency analysis
+      - known runtime calls and invocation-local captures are rejected in static initializers, and static dependency cycles receive deterministic diagnostics
+      - function-local static declarations retain Static storage classification rather than automatic Inline classification in Sema
     remaining:
       - prevent static fn bodies from receiving implicit self or unqualified instance-member access
       - classify ordinary module-level bindings as static storage and reject static fn outside valid impl/interface contexts
       - verify and complete static overload/member distinction and duplicate diagnostics across every primary and extension fragment member category
-      - complete Type.Name writes and targeted diagnostics rejecting instance-qualified access to static storage, methods, and properties
-      - add static property AST classification, parser, formatter, Sema, LSP, interface conformance, and lowering support with mandatory explicit setter parameters
-      - ensure function-local static declarations use one persistent storage location rather than ordinary per-invocation local lowering
-      - enforce compile-time-evaluable static initializers and reject runtime calls without synthesizing startup or lazy-init functions
-      - resolve source-order-independent static initializer dependencies and diagnose cycles
+      - complete targeted diagnostics rejecting instance-qualified access to static methods and every remaining storage edge case
+      - lower static properties through Semantic IR, Sec MLIR, and the backend
+      - materialize function-local static declarations as one persistent storage location in Semantic IR and backend lowering
+      - extend static compile-time evaluation from known runtime-call and local-capture rejection to the complete compiler-known evaluator contract
+      - extend source-order-independent dependency inference to untyped static declarations and generic specializations
       - specialize generic static storage independently for every concrete monomorphization
       - analyze statically provable unsynchronized shared mutable access and unsafe mutable-reference escape
       - remove redundant module-level static during canonical formatting and optionally provide an informational LSP diagnostic
@@ -1636,8 +1665,8 @@ integrations:
       - verify that static never implies linker section, absolute address, MMIO, memory space, or another physical placement policy
       - add the revision-2.0 parser, Sema, formatter, LSP, concurrency, Semantic IR, and backend regression matrix recorded by the static rulebook
     verification:
-      - command: go test ./internal/lexer ./internal/parser ./internal/sema ./cmd/lsp -run 'Static|static' -count=1
-        result: passed; current matching parser, Sema, and LSP coverage confirms the integrated frontend subset
+      - command: go test ./internal/lexer ./internal/parser ./internal/formatter ./internal/sema ./cmd/lsp -run 'Static|static' -count=1
+        result: passed on 2026-08-27; lexer, parser, formatter, Sema, and LSP coverage confirms the integrated frontend subset
 
   - id: frontend.generics-v2
     area: frontend-analysis-and-lowering
@@ -1944,6 +1973,39 @@ integrations:
       - preserve formatter idempotence and expose the behavior through the shared LSP formatter
     verification:
       - command: go test ./internal/formatter ./cmd/lsp -run 'Format|Formatting' -count=1
+        result: passed
+
+  - id: tooling.formatter-declaration-comment-alignment
+    area: tooling
+    status: implemented
+    integrated: "2026-08-27"
+    summary: >-
+      Aligns trailing line comments within local nominal-declaration groups and
+      exposes the shared behavior through both LSP formatting and the initial
+      in-place sec fmt command.
+    rules:
+      - rules/tooling/formatter.md
+    code:
+      - internal/formatter/formatter.go
+      - cmd/compiler/main.go
+      - cmd/lsp/main.go
+    tests:
+      - internal/formatter/formatter_test.go
+      - cmd/compiler/main_test.go
+      - cmd/lsp/main_test.go
+    implemented:
+      - align trailing comments in consecutive struct, enum, register, union, and equivalent nominal declaration items to one visual column
+      - place the aligned comment column at least four spaces after the widest code item in its local group
+      - end groups at blank lines, standalone or documentation comments, multiline items, and nested block boundaries
+      - ignore comment-like text inside quoted strings, character literals, and struct tags while locating trailing line comments
+      - preserve LF or CRLF, comment text, indentation, and formatter idempotence through the shared formatter package
+      - provide in-place sec fmt formatting for one or more explicit source files with atomic replacement and permission preservation
+      - expose identical output through LSP document formatting without editor-side alignment logic
+    remaining:
+      - extend the generic alignment engine to typed declaration groups, struct field/type/tag columns, and compatible non-nominal declaration groups
+      - complete sec fmt check, stdin, recursive project, range, on-type, minimal-edit, and fix modes
+    verification:
+      - command: go test ./internal/formatter ./cmd/compiler ./cmd/lsp -run 'TrailingComment|AlignsDeclaration|RunFmtCommand' -count=1
         result: passed
 
   - id: frontend.parser-recovery-result
@@ -2473,7 +2535,7 @@ integrations:
     integrated: "2026-08-13"
     summary: >-
       Parses, registers, and semantically checks impl properties, including
-      ordinary and fallible accessors, without claiming property lowering.
+      ordinary, static, and fallible accessors, without claiming property lowering.
     rules:
       - rules/declarations/properties.md
       - rules/declarations/interfaces.md
@@ -2486,10 +2548,13 @@ integrations:
       - internal/parser/parser.go
       - internal/sema/analyzer.go
       - internal/sema/types.go
+      - internal/formatter/formatter.go
+      - cmd/lsp/main.go
     tests:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
       - cmd/lsp/main_test.go
+      - internal/formatter/formatter_test.go
     implemented:
       - property declarations with get, set value, and try set value accessors
       - parser recovery for missing property names, types, colons, and setter parameters
@@ -2507,6 +2572,11 @@ integrations:
       - LSP completion, hover, definition, symbols, and semantic-token support for properties
       - LSP semantic-token classification of bodyless interface setter names as parameters
       - duplicate property checks across the combined primary impl and impl extends surface
+      - static property AST and parser classification in impl and interface declarations
+      - receiver-free static getter and setter analysis with mandatory explicit setter parameters
+      - Type.Name static-property reads and writes with static-versus-instance access diagnostics
+      - static-versus-instance property category checks in interface conformance and inheritance
+      - formatter preservation and receiver-aware LSP completion, hover, and definition support for static properties
     verification:
       - command: go test ./internal/parser ./internal/sema ./internal/formatter -run 'InterfaceProperty|InterfaceImplementation|Properties|PropertyAccessAndFallibleAssignment|FormatInterface' -count=1
         result: passed
@@ -2515,7 +2585,6 @@ integrations:
       - command: validate implementation-status.yaml
         result: passed
     remaining:
-      - static property parser, AST, Sema, formatter, LSP, and conformance support
       - explicit property read/write operation implementation in Semantic IR and lowering through MLIR and LLVM
       - complete self borrow and mutability rules for property accessors
       - explicit property effect model
@@ -3848,8 +3917,8 @@ integrations:
       - testdata/register8_valid.sec
       - testdata/register_invalid.sec
     implemented:
-      - nominal declarations through type Name register[N] with positive integer-literal width
-      - bit and bit[N] fields with positive integer-literal widths and exact total-width validation
+      - nominal declarations through type Name register[N] with positive allocation-free compile-time integer expressions, including source-order-independent immutable module constants
+      - bit and bit[N] fields with positive compile-time integer-expression widths and exact total-width validation
       - duplicate named-field rejection and inaccessible reserved underscore fields that retain layout width
       - unit annotations and arbitrary-precision constant assignment range checks against exact raw bit-field width
       - bit-backed enum fields with exact backing width and retained nominal field type
@@ -3860,18 +3929,20 @@ integrations:
       - read-write, read-only, write-only, write-one-clear, write-zero-clear, and clear-on-read modifiers are parsed and retained as compiler-owned AST and semantic field facts, with read-write as the default
       - direct frontend access rejects reads from write-only fields, writes to read-only fields, and compound read-modify-write operations on write-only or special-effect fields
       - formatter preservation plus LSP hover and completion expose compiler-owned register access facts without editor-side language reconstruction
+      - finite source-order-independent nested register fields occupy the nested nominal width and preserve inner layout, nominal field types, and access semantics across every projection; recursive storage and unsafe whole-nested writes are diagnosed
+      - explicit integer-to-register conversion rejects statically out-of-range values, converts proven fitting integer domains directly, and exposes uncertain runtime narrowing as Result[Register, ArithmeticError] for try handling
+      - parser AST preserves width expressions while Sema owns evaluation, and LSP renders nested nominal fields plus checked conversion result types from the same semantic facts
     remaining:
-      - support nested register fields, finite-layout validation, and preservation of nested nominal and access semantics
-      - accept general positive compile-time constant expressions for register and bit-field widths rather than only integer literals
-      - complete compile-time and checked runtime integer-to-register conversion behavior
       - preserve unnamed open bit-backed enum encodings through field extraction and insertion
       - carry ordinary and W1C, W0C, and clear-on-read field operations through Semantic IR and semantics-preserving lowering without unsafe read-modify-write, duplication, reordering, or speculation
       - provide semantics-preserving masks, shifts, extraction, insertion, and reserved-bit handling
-      - add complete parser, sema, LSP, Semantic IR, MLIR, diagnostics, and end-to-end coverage
+      - add complete Semantic IR, MLIR, special-access lowering, and end-to-end coverage beyond the completed parser, Sema, diagnostics, and compiler-fact-driven LSP slice
     verification:
       - command: go test ./internal/parser -run Register -count=1
         result: passed
       - command: go test ./internal/sema -run Register -count=1
+        result: passed
+      - command: go test ./cmd/lsp -run Register -count=1
         result: passed
       - command: go test ./internal/parser ./internal/sema ./internal/formatter ./cmd/lsp -run 'RegisterFieldAccess|Register8Frontend|ErrorEnumMarker' -count=1
         result: passed
@@ -4284,10 +4355,10 @@ integrations:
         result: passed
       - command: go test ./internal/ir/semantic -run Package13 -count=1
         result: passed
-      - command: SEC_MLIR_BIN=build/sec-mlir/bin go test ./internal/lowering/secmlir -run Package13 -count=1
+      - command: SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./internal/lowering/secmlir -run 'Package13|ConfiguredSecMLIRBin' -count=1
         result: passed
       - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
-        result: passed (77/77)
+        result: passed (78/78)
 
   - id: frontend.spread
     area: frontend-analysis-and-semantic-ir
@@ -7419,8 +7490,8 @@ integrations:
 
   - id: frontend.struct-field-tags
     area: frontend-struct-parser-and-metadata
-    status: partial
-    audited: '2026-08-19'
+    status: implemented
+    audited: '2026-08-27'
     repository_baseline: c515862
     document_revision: '2.0'
     document_created: '2026-08-13'
@@ -7428,7 +7499,10 @@ integrations:
     summary: Supplements frontend.structs with quote-aware field-tag parsing. The parser now scans key/value entries
       left-to-right, recognizes separators only outside quoted values, preserves whitespace and escape spelling,
       rejects malformed quote structure, and recovers at the current field comma. AST and Sema retain ordered open-key
-      metadata. A fully normative escape interpretation and broader metadata coverage remain partial.
+      metadata. Section 4 supplies the normative raw-escape behavior where the compiler preserves escape spelling while
+      recognizing the structural quote. The existing generic-specialization, Semantic IR, and Sec-MLIR paths preserve
+      the resulting ordered metadata and now have regression coverage. Sema exposes immutable field metadata and LSP
+      field hover consumes it without decoding values or assigning built-in meaning to open tag keys.
     rules:
     - rules/declarations/struct.md
     - rules/foundations/grammar.md
@@ -7437,9 +7511,17 @@ integrations:
     - internal/ast/ast.go
     - internal/sema/analyzer.go
     - internal/sema/types.go
+    - internal/sema/semantic_facts.go
+    - internal/ir/semantic/builder.go
+    - internal/lowering/secmlir/emitter.go
+    - cmd/lsp/main.go
     tests:
     - internal/parser/parser_test.go
     - internal/sema/analyzer_test.go
+    - internal/sema/semantic_facts_test.go
+    - internal/ir/semantic/package13_test.go
+    - internal/lowering/secmlir/emitter_test.go
+    - cmd/lsp/main_test.go
     implemented:
     - optional raw-string tag token recognized after a stored field type
     - multiple simple whitespace-separated key/value entries represented in AST
@@ -7451,25 +7533,33 @@ integrations:
     - malformed internal and unterminated quote structure is rejected
     - escape spelling is preserved while escaped quotes do not terminate the value
     - malformed tags recover at the current field comma and retain later fields
-    partial:
-    - struct.md does not yet define whether preserved inner escape spelling is decoded by the compiler or interpreted
-      only by metadata consumers
-    - complete end-to-end metadata preservation coverage across every generic, reflection, serialization, FFI, and
-      tooling consumer remains incomplete
-    remaining:
-    - define or consume the canonical quoted-value escape rules explicitly
-    - add complete semantic metadata-preservation and downstream-consumer tests
+    - canonical raw escape semantics are consumed exactly as section 4 specifies; escapes remain metadata and are not
+      decoded or normalized by the compiler
+    - generic specialization, Semantic IR construction, and Sec-MLIR schema-v9 lowering preserve ordered tag metadata
+    - resolved stored-field member facts expose ordered tag metadata through an immutable snapshot
+    - declaration-oriented consumers can query immutable ResolvedStructFieldMetadata by semantic definition identity
+    - LSP field hover displays compiler-resolved open-key metadata while retaining raw escapes, whitespace, and order
     verification:
     - command: go test ./internal/parser -run StructFieldTag -count=1
+      result: passed
+    - command: go test ./internal/sema -run GenericStructAndFunctionHeaders -count=1
+      result: passed
+    - command: go test ./internal/sema -run ResolvedStructPlansPreserveSourceOrderOverridesDefaultsAndMembers -count=1
+      result: passed
+    - command: go test ./internal/ir/semantic -run Package13BuildsEmptyAndConcreteGenericWideStructs -count=1
+      result: passed
+    - command: go test ./internal/lowering/secmlir -run EmitPackage13StructsEndToEnd -count=1
+      result: passed
+    - command: go test ./cmd/lsp -run StructFieldHoverPreservesOpenTagMetadata -count=1
       result: passed
     bug_reference:
     - correction16.md
     governance_reconciliation:
-    - Narrow frontend.structs implemented wording "raw-string field tags parsed and preserved as open-key metadata".
-      Metadata preservation and open-key behavior are implemented, but the full revision-2.0 tag grammar and malformed-tag
-      recovery are not.
-    - The generic remaining struct diagnostics/recovery item does not make the current implemented tag-parser claim
-      accurate; record this limitation explicitly.
+    - The correction16 quote-aware parsing and recovery requirements, together with the later canonical escape semantics
+      in struct.md section 4, are now covered through parser, Sema, Semantic IR, and Sec-MLIR lowering.
+    - struct.md requires metadata preservation for consumers but does not define built-in meanings for tag keys; package
+      13 sections 12.2 and 70 explicitly keep reflection and serialization behavior out of scope while requiring the
+      metadata bridge now implemented and exposed to tooling.
     required_tests:
     - simple tag entry accepted
     - multiple simple tag entries accepted
@@ -7481,6 +7571,12 @@ integrations:
     - tag source order preserved
     - malformed first-field tag still permits parsing later valid fields
     - malformed middle-field tag recovers at field boundary
+    - generic specialization preserves ordered field tags
+    - resolved member tag facts are immutable snapshots
+    - declaration field-metadata facts are immutable snapshots
+    - Semantic IR preserves field tags on concrete generic structs
+    - Sec-MLIR emission preserves raw escapes, whitespace, and tag order
+    - LSP field hover exposes resolved open-key metadata without decoding values
 
   - id: frontend.switch-cfg-and-enum-coverage
     area: frontend-control-flow

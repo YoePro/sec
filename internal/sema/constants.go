@@ -57,6 +57,12 @@ func constantIntegerValue(expr ast.Expression) (*big.Int, bool) {
 				return nil, false
 			}
 			return value.Rem(left, right), true
+		case "&":
+			return value.And(left, right), true
+		case "|":
+			return value.Or(left, right), true
+		case "^":
+			return value.Xor(left, right), true
 		case "<<":
 			if !right.IsUint64() {
 				return nil, false
@@ -76,39 +82,43 @@ func constantIntegerValue(expr ast.Expression) (*big.Int, bool) {
 }
 
 func (a *Analyzer) integerConstantValue(expr ast.Expression) (*big.Int, bool) {
+	return a.integerConstantValueUsing(expr, a.constInts)
+}
+
+func (a *Analyzer) integerConstantValueUsing(expr ast.Expression, bindings map[string]*big.Int) (*big.Int, bool) {
 	switch expr := expr.(type) {
 	case *ast.Identifier:
-		value, ok := a.constInts[expr.Value]
+		value, ok := bindings[expr.Value]
 		if !ok {
 			return nil, false
 		}
 		return new(big.Int).Set(value), true
 	case *ast.ConversionExpression:
-		return a.integerConstantValue(expr.Value)
+		return a.integerConstantValueUsing(expr.Value, bindings)
 	case *ast.CallExpression:
 		if a.isExplicitConversionExpression(expr) {
-			return a.integerConstantValue(expr.Arguments[0])
+			return a.integerConstantValueUsing(expr.Arguments[0], bindings)
 		}
 		return nil, false
 	case *ast.PrefixExpression:
 		if expr.Operator == "+" {
-			return a.integerConstantValue(expr.Right)
+			return a.integerConstantValueUsing(expr.Right, bindings)
 		}
 		if expr.Operator != "-" {
 			return nil, false
 		}
-		value, ok := a.integerConstantValue(expr.Right)
+		value, ok := a.integerConstantValueUsing(expr.Right, bindings)
 		if !ok {
 			return nil, false
 		}
 		return value.Neg(value), true
 	case *ast.InfixExpression:
-		left, ok := a.integerConstantValue(expr.Left)
+		left, ok := a.integerConstantValueUsing(expr.Left, bindings)
 		if !ok {
 			return nil, false
 		}
 
-		right, ok := a.integerConstantValue(expr.Right)
+		right, ok := a.integerConstantValueUsing(expr.Right, bindings)
 		if !ok {
 			return nil, false
 		}
@@ -121,6 +131,22 @@ func (a *Analyzer) integerConstantValue(expr ast.Expression) (*big.Int, bool) {
 			return value.Sub(left, right), true
 		case "*":
 			return value.Mul(left, right), true
+		case "/":
+			if right.Sign() == 0 {
+				return nil, false
+			}
+			return value.Quo(left, right), true
+		case "%":
+			if right.Sign() == 0 {
+				return nil, false
+			}
+			return value.Rem(left, right), true
+		case "&":
+			return value.And(left, right), true
+		case "|":
+			return value.Or(left, right), true
+		case "^":
+			return value.Xor(left, right), true
 		case "<<":
 			if !right.IsUint64() {
 				return nil, false

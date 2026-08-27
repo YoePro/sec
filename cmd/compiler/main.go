@@ -13,6 +13,7 @@ import (
 	"sec/internal/ast"
 	llvmcodegen "sec/internal/codegen/llvm"
 	mlircodegen "sec/internal/codegen/mlir"
+	secformatter "sec/internal/formatter"
 	semantic "sec/internal/ir/semantic"
 	"sec/internal/lexer"
 	secmlirlowering "sec/internal/lowering/secmlir"
@@ -66,6 +67,14 @@ func main() {
 
 	if command == "build" {
 		runBuildCommand(flag.Args()[1:])
+		return
+	}
+
+	if command == "fmt" {
+		if err := runFmtCommand(flag.Args()[1:]); err != nil {
+			fmt.Fprintf(os.Stderr, "fmt error: %v\n", err)
+			os.Exit(1)
+		}
 		return
 	}
 
@@ -128,11 +137,72 @@ func printUsage() {
 	fmt.Fprintln(os.Stderr, "       sec diagnostics [--json]")
 	fmt.Fprintln(os.Stderr, "       sec init [path] [--name <name>] [--target <os-arch>] [--profile <profile>]")
 	fmt.Fprintln(os.Stderr, "       sec <parse|ast|sema> <file.sec|dir|glob>...")
+	fmt.Fprintln(os.Stderr, "       sec fmt <file.sec>...")
 	fmt.Fprintln(os.Stderr, "       sec emit-llvm <file.sec> -o <file.ll|-> [--target <os-arch>]")
 	fmt.Fprintln(os.Stderr, "       sec emit-ir <file.sec> [-o <file.sir|->] [--target <os-arch>]")
 	fmt.Fprintln(os.Stderr, "       sec emit-sec-mlir <file.sec> [-o <file.mlir|->] [--target <os-arch>] [--mlir-bin <path>]")
 	fmt.Fprintln(os.Stderr, "       sec emit-mlir <file.sec> -o <file.mlir|-> [--target <os-arch>] [--mlir-bin <path>] [--verify]")
 	fmt.Fprintln(os.Stderr, "       sec build <file.sec> [-o <program>] [--target <os-arch>] [--pipeline <llvm|mlir>] [--keep-mlir] [--keep-llvm] [--mlir-bin <path>] [--clang <path>]")
+}
+
+// runFmtCommand applies the canonical shared formatter in place. LSP document
+// formatting calls the same internal/formatter package, as required by
+// rules/tooling/formatter.md, Shared implementation.
+func runFmtCommand(paths []string) error {
+	if len(paths) == 0 {
+		return fmt.Errorf("expected at least one source file")
+	}
+	for _, path := range paths {
+		info, err := os.Stat(path)
+		if err != nil {
+			return fmt.Errorf("%s: %w", path, err)
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("%s is not a regular source file", path)
+		}
+		input, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("%s: %w", path, err)
+		}
+		formatted := secformatter.Format(secformatter.Source{Text: string(input)}, secformatter.Options{}).Text
+		if formatted == string(input) {
+			continue
+		}
+		if err := replaceFormattedFile(path, []byte(formatted), info.Mode().Perm()); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func replaceFormattedFile(path string, contents []byte, mode os.FileMode) error {
+	temporary, err := os.CreateTemp(filepath.Dir(path), ".sec-fmt-*")
+	if err != nil {
+		return fmt.Errorf("%s: create temporary file: %w", path, err)
+	}
+	temporaryPath := temporary.Name()
+	removeTemporary := true
+	defer func() {
+		if removeTemporary {
+			_ = os.Remove(temporaryPath)
+		}
+	}()
+	if err := temporary.Chmod(mode); err != nil {
+		_ = temporary.Close()
+		return fmt.Errorf("%s: preserve permissions: %w", path, err)
+	}
+	if _, err := temporary.Write(contents); err != nil {
+		_ = temporary.Close()
+		return fmt.Errorf("%s: write formatted source: %w", path, err)
+	}
+	if err := temporary.Close(); err != nil {
+		return fmt.Errorf("%s: close formatted source: %w", path, err)
+	}
+	if err := os.Rename(temporaryPath, path); err != nil {
+		return fmt.Errorf("%s: replace source: %w", path, err)
+	}
+	removeTemporary = false
+	return nil
 }
 
 func runLex(input string) {
@@ -2829,7 +2899,7 @@ func printASTTypeDecl(stmt *ast.TypeDeclStatement, prefix string, last bool) {
 		}
 	}
 	if stmt.RegisterType != nil {
-		printASTBranch(childrenPrefix, true, fmt.Sprintf("Register[%d]", stmt.RegisterType.Width))
+		printASTBranch(childrenPrefix, true, "Register["+formatRegisterWidth(stmt.RegisterType.WidthExpression, stmt.RegisterType.Width)+"]")
 		registerPrefix := childPrefix(childrenPrefix, true)
 		for i, field := range stmt.RegisterType.Fields {
 			printASTRegisterField(registerPrefix, field, i == len(stmt.RegisterType.Fields)-1)
@@ -2946,7 +3016,7 @@ func printASTField(prefix string, field *ast.StructField, last bool) {
 
 func printASTRegisterField(prefix string, field *ast.RegisterField, last bool) {
 	printASTBranch(prefix, last, "Field")
-	fieldType := fmt.Sprintf("bit[%d]", field.Width)
+	fieldType := "bit[" + formatRegisterWidth(field.WidthExpression, field.Width) + "]"
 	if field.Type != nil {
 		fieldType = formatTypeRef(field.Type)
 	}
@@ -3313,7 +3383,7 @@ func printTypeDecl(stmt *ast.TypeDeclStatement) {
 	case stmt.StructType != nil:
 		fmt.Print(" struct")
 	case stmt.RegisterType != nil:
-		fmt.Printf(" register[%d]", stmt.RegisterType.Width)
+		fmt.Printf(" register[%s]", formatRegisterWidth(stmt.RegisterType.WidthExpression, stmt.RegisterType.Width))
 	}
 
 	if stmt.Contract != nil {
@@ -3551,14 +3621,24 @@ func printRegisterFields(fields []*ast.RegisterField) {
 			continue
 		}
 		fmt.Printf("  Field %s bit", field.Name.Value)
-		if field.Width != 1 {
-			fmt.Printf("[%d]", field.Width)
+		if field.WidthExpression != nil || field.Width != 1 {
+			fmt.Printf("[%s]", formatRegisterWidth(field.WidthExpression, field.Width))
 		}
 		if field.Unit != "" {
 			fmt.Printf("<%s>", field.Unit)
 		}
 		fmt.Println()
 	}
+}
+
+// formatRegisterWidth prints the preserved source expression introduced by
+// rules/declarations/registers.md section 3, falling back to the literal cache
+// for older AST producers.
+func formatRegisterWidth(expression ast.Expression, width int64) string {
+	if expression != nil {
+		return expression.String()
+	}
+	return fmt.Sprintf("%d", width)
 }
 
 func formatTypeRef(ref *ast.TypeReference) string {

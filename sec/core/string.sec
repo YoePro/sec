@@ -19,19 +19,19 @@ impl StringSplitIterator {
             return None()
         }
 
-        if self.position > self.source.len {
+        if self.position > self.source.Len {
             self.finished = true
             return None()
         }
 
         // yield one rune at a time, with no leading/trailing empty strings.
-        if self.separator.len == 0 {
-            if self.position == self.source.len {
+        if self.separator.Len == 0 {
+            if self.position == self.source.Len {
                 self.finished = true
                 return None()
             }
 
-            let rest := __StringSliceUnchecked(self.source, self.position, self.source.len)
+            let rest := __StringSliceUnchecked(self.source, self.position, self.source.Len)
 
             for character in rest {
                 let end := self.position + character.Utf8Length
@@ -45,8 +45,8 @@ impl StringSplitIterator {
         }
 
         // Separator cannot possibly occur in the remaining bytes.
-        if self.separator.len > self.source.len - self.position {
-            let part := __StringSliceUnchecked(self.source, self.position, self.source.len)
+        if self.separator.Len > self.source.Len - self.position {
+            let part := __StringSliceUnchecked(self.source, self.position, self.source.Len)
             self.finished = true
             return Some(part)
         }
@@ -55,13 +55,13 @@ impl StringSplitIterator {
 
         return match found {
             Some(index) => {
-                if index < self.position || index > self.source.len {
+                if index < self.position || index > self.source.Len {
                     // Internal invariant
                     self.finished = true
                     return None()
                 }
 
-                if self.separator.len > self.source.len - index {
+                if self.separator.Len > self.source.Len - index {
                     // IndexOf must never return a match that extends beyond the source.
                     self.finished = true
                     return None()
@@ -69,12 +69,12 @@ impl StringSplitIterator {
 
                 let part := __StringSliceUnchecked(self.source, self.position, index)
 
-                self.position = index + self.separator.len
+                self.position = index + self.separator.Len
                 return Some(part)
             }
 
             None => {
-                let part := __StringSliceUnchecked(self.source, self.position, self.source.len)
+                let part := __StringSliceUnchecked(self.source, self.position, self.source.Len)
 
                 self.finished = true
                 return Some(part)
@@ -86,13 +86,15 @@ impl StringSplitIterator {
 impl string {
     property Len: uint {
         get {
+            // The core implementation reads the intrinsic backing length;
+            // public source uses the canonical .Len property.
             return self.len
         }
     }
 
     property IsEmpty: bool {
         get {
-            return self.len == 0
+            return self.Len == 0
         }
     }
 
@@ -103,7 +105,7 @@ impl string {
     fn Compare(other: string) int {
         uint mut: index := 0
 
-        while index < self.len && index < other.len {
+        while index < self.Len && index < other.Len {
             let left := self.ByteAt(index)
             let right := other.ByteAt(index)
 
@@ -118,11 +120,11 @@ impl string {
             index += 1
         }
 
-        if self.len < other.len {
+        if self.Len < other.Len {
             return -1
         }
 
-        if self.len > other.len {
+        if self.Len > other.Len {
             return 1
         }
 
@@ -152,13 +154,13 @@ impl string {
     }
 
     fn StartsWith(prefix: string) bool {
-        if prefix.len > self.len {
+        if prefix.Len > self.Len {
             return false
         }
 
         let mut index: uint := 0
 
-        while index < prefix.len {
+        while index < prefix.Len {
             if self.ByteAt(index) != prefix.ByteAt(index) {
                 return false
             }
@@ -170,14 +172,14 @@ impl string {
     }
 
     fn EndsWith(suffix: string) bool {
-        if suffix.len > self.len {
+        if suffix.Len > self.Len {
             return false
         }
 
-        let start := self.len - suffix.len
+        let start := self.Len - suffix.Len
         let mut index: uint := 0
 
-        while index < suffix.len {
+        while index < suffix.Len {
             if self.ByteAt(start + index) != suffix.ByteAt(index) {
                 return false
             }
@@ -200,24 +202,24 @@ impl string {
     }
 
     fn IndexOf(value: string, start: uint) Option[uint] {
-        if start > self.len {
+        if start > self.Len {
             return None()
         }
 
-        if value.len == 0 {
+        if value.Len == 0 {
             return Some(start)
         }
 
-        if value.len > self.len - start {
+        if value.Len > self.Len - start {
             return None()
         }
 
         // Fast path: one-byte separator/search value.
-        if value.len == 1 {
+        if value.Len == 1 {
             let needle := value.ByteAt(0)
             let mut index := start
 
-            while index < self.len {
+            while index < self.Len {
                 if self.ByteAt(index) == needle {
                     return Some(index)
                 }
@@ -228,13 +230,13 @@ impl string {
             return None()
         }
 
-        let lastStart := self.len - value.len
+        let lastStart := self.Len - value.Len
         let mut index := start
 
         while index <= lastStart {
             let mut needleIndex: uint := 0
 
-            while needleIndex < value.len {
+            while needleIndex < value.Len {
                 if self.ByteAt(index + needleIndex) != value.ByteAt(needleIndex) {
                     break
                 }
@@ -242,7 +244,7 @@ impl string {
                 needleIndex += 1
             }
 
-            if needleIndex == value.len {
+            if needleIndex == value.Len {
                 return Some(index)
             }
 
@@ -253,20 +255,20 @@ impl string {
     }
 
     fn LastIndexOf(value: string) Option[uint] {
-        if value.len == 0 {
-            return Some(self.len)
+        if value.Len == 0 {
+            return Some(self.Len)
         }
 
-        if value.len > self.len {
+        if value.Len > self.Len {
             return None()
         }
 
-        let mut index := self.len - value.len
+        let mut index := self.Len - value.Len
 
         for {
             let mut needleIndex: uint := 0
 
-            while needleIndex < value.len {
+            while needleIndex < value.Len {
                 if self.ByteAt(index + needleIndex) != value.ByteAt(needleIndex) {
                     break
                 }
@@ -274,7 +276,7 @@ impl string {
                 needleIndex += 1
             }
 
-            if needleIndex == value.len {
+            if needleIndex == value.Len {
                 return Some(index)
             }
 
@@ -325,7 +327,7 @@ impl string {
             start += character.Utf8Length
         }
 
-        return __StringSliceUnchecked(self, start, self.len)
+        return __StringSliceUnchecked(self, start, self.Len)
     }
 
     fn TrimEnd() string {
@@ -347,7 +349,7 @@ impl string {
             return Err(RangeError.StartAfterEnd)
         }
 
-        if end > self.len {
+        if end > self.Len {
             return Err(RangeError.OutOfBounds)
         }
 

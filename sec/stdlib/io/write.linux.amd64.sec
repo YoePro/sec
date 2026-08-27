@@ -15,16 +15,16 @@ unsafe fn Write(fd: int, ptr: RawPtr[byte], len: uint) int {
 
 fn WriteString(value: string) void {
     unsafe {
-        _sysWrite(STDOUT, value.ptr, value.len)
+        _sysWrite(STDOUT, value.Ptr, value.Len)
     }
 }
 
 fn Println(value: string) void {
     unsafe {
-        _sysWrite(STDOUT, value.ptr, value.len)
+        _sysWrite(STDOUT, value.Ptr, value.Len)
 
         let nl := "\n"
-        _sysWrite(STDOUT, nl.ptr, 1)
+        _sysWrite(STDOUT, nl.Ptr, 1)
     }
 }
 

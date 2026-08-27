@@ -192,7 +192,7 @@ fn NumberIsPositive(number: Number) bool {
         Integer(value) => value == 0 || value < 0
         Unsigned(value) => value > uint(0)
         Decimal(value) => value > decimal(0)
-        Text(value) => value.len > uint(0)
+        Text(value) => value.Len > uint(0)
     }
 }
 

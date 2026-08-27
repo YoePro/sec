@@ -170,6 +170,7 @@ type Property struct {
 	Name      string
 	Type      Type
 	Token     lexer.Token
+	Static    bool
 	Fallible  bool
 	Error     *Type
 	HasGetter bool
@@ -242,6 +243,7 @@ type InterfaceProperty struct {
 	Name           string
 	Type           Type
 	Token          lexer.Token
+	Static         bool
 	RequiresGet    bool
 	RequiresSet    bool
 	SetterFallible bool

@@ -310,6 +310,7 @@ type InterfaceProperty struct {
 	Token           lexer.Token
 	Name            *Identifier
 	Type            *TypeReference
+	Static          bool
 	RequiresGet     bool
 	RequiresSet     bool
 	SetterParameter *Identifier
@@ -1182,8 +1183,12 @@ func (st *StructType) TokenLiteral() string {
 }
 
 type RegisterType struct {
-	Token           lexer.Token
-	Width           int64
+	Token lexer.Token
+	Width int64
+	// WidthExpression preserves the compile-time expression from register[N].
+	// Sema, rather than the parser, owns constant evaluation as required by
+	// rules/declarations/registers.md, section 3.
+	WidthExpression Expression
 	AllocationOrder string
 	ByteOrder       string
 	Fields          []*RegisterField
@@ -1198,7 +1203,11 @@ type RegisterField struct {
 	Name  *Identifier
 	Type  *TypeReference
 	Width int64
-	Unit  string
+	// WidthExpression is the compiler-owned syntax fact for bit[N]. Width keeps
+	// the literal fast path for existing AST consumers; Sema resolves this
+	// expression to the canonical semantic width.
+	WidthExpression Expression
+	Unit            string
 	// UnitExpression mirrors TypeReference.UnitExpression for bit-field unit
 	// annotations so register semantics do not retain a string-only unit model.
 	UnitExpression *UnitExpression
@@ -1814,6 +1823,7 @@ type PropertyDeclaration struct {
 	Token  lexer.Token
 	Name   *Identifier
 	Type   *TypeReference
+	Static bool
 	Getter *BlockStatement
 	Setter *PropertySetter
 }

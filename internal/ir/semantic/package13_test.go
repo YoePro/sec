@@ -152,12 +152,13 @@ fn Read(position: Position, zero: int128) int128 {
 	}
 }
 
-// rules/mlir/packages/sec-mlir-dialect_package13.md sections 8-10 require
-// empty, concrete-generic, nested-identity, and active wide-field support.
+// rules/declarations/struct.md section 4 and
+// rules/mlir/semantic-ir/sec_semantic_ir_struct_v1.md sections 2-6 require
+// generic field tags to survive into the canonical Semantic IR definition.
 func TestPackage13BuildsEmptyAndConcreteGenericWideStructs(t *testing.T) {
 	source := `module main
 type Empty struct {}
-type Box[T] struct { Value: T }
+type Box[T] struct { Value: T ` + "`wire:\"value\"`" + ` }
 fn Read(empty: Empty, box: Box[int256]) int256 { return box.Value }`
 	p := parser.New(lexer.NewWithFile(source, "package13-types.sec"))
 	parsed := p.Parse()
@@ -184,5 +185,8 @@ fn Read(empty: Empty, box: Box[int256]) int256 { return box.Value }`
 	}
 	if len(byName["Empty"].Fields) != 0 || len(byName["Box"].TypeArguments) != 1 || len(byName["Box"].Fields) != 1 {
 		t.Fatalf("structs = %#v", module.Structs)
+	}
+	if tags := byName["Box"].Fields[0].Tags; len(tags) != 1 || tags[0] != (StructTag{Key: "wire", Value: "value"}) {
+		t.Fatalf("Box field tags = %#v", tags)
 	}
 }

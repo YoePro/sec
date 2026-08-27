@@ -46,8 +46,8 @@ let mut peripheral: Peripheral
 	assertSemaErrors(t, errors, nil)
 
 	ordinary := analyzer.symbols["ordinary"]
-	if ordinary.Storage != StorageOriginInline {
-		t.Fatalf("ordinary local storage origin = %q, want %q", ordinary.Storage, StorageOriginInline)
+	if ordinary.Storage != StorageOriginStatic {
+		t.Fatalf("ordinary module storage origin = %q, want %q", ordinary.Storage, StorageOriginStatic)
 	}
 
 	peripheral := analyzer.symbols["peripheral"]

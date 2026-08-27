@@ -313,7 +313,7 @@ fn SliceHasNoCapacity(values: ref int[]) uint {
 
 fn SafeSliceHasNoPtrMember(values: ref int[]) RawPtr[int] {
     // error: ref int[] has no member ptr
-    return values.ptr
+    return values.Ptr
 }
 
 // -----------------------------------------------------------------------------

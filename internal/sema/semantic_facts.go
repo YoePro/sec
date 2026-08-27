@@ -341,7 +341,17 @@ type ResolvedStructMemberPlan struct {
 	MemberType Type
 	FieldID    uint32
 	FieldName  string
+	Tags       []StructTag
 	Action     ResolvedStructFieldAction
+}
+
+// ResolvedStructFieldMetadata exposes the open, ordered field metadata required
+// by rules/declarations/struct.md section 4 and the P13 Semantic IR amendment,
+// rules/mlir/semantic-ir/sec_semantic_ir_struct_v1.md sections 1-2.
+type ResolvedStructFieldMetadata struct {
+	OwnerTypeName string
+	FieldID       uint32
+	Field         StructField
 }
 
 // ResolvedTypeOf returns only facts recorded by the completed analysis. It
@@ -529,7 +539,34 @@ func (a *Analyzer) ResolvedStructMemberOf(expr *ast.MemberExpression) (ResolvedS
 		return ResolvedStructMemberPlan{}, false
 	}
 	plan, ok := a.resolvedStructMemberPlans[expr]
+	plan.Tags = cloneStructTags(plan.Tags)
 	return plan, ok
+}
+
+// ResolvedStructFieldAt returns an immutable snapshot for tooling and other
+// metadata consumers. It follows rules/tooling/lsp.md's one-semantic-source
+// requirement instead of making clients reconstruct tags from source text.
+func (a *Analyzer) ResolvedStructFieldAt(definition lexer.Token) (ResolvedStructFieldMetadata, bool) {
+	if a == nil {
+		return ResolvedStructFieldMetadata{}, false
+	}
+	wanted := sourceTokenLocation(definition)
+	for _, owner := range a.types {
+		for fieldID, field := range owner.Fields {
+			if sourceTokenLocation(field.Token) != wanted {
+				continue
+			}
+			field.Tags = cloneStructTags(field.Tags)
+			return ResolvedStructFieldMetadata{OwnerTypeName: typeDisplayName(owner), FieldID: uint32(fieldID), Field: field}, true
+		}
+	}
+	return ResolvedStructFieldMetadata{}, false
+}
+
+// cloneStructTags preserves the source order and raw values defined by
+// rules/declarations/struct.md section 4 while isolating consumer mutations.
+func cloneStructTags(tags []StructTag) []StructTag {
+	return append([]StructTag(nil), tags...)
 }
 
 // ResolvedFunctionForDeclaration returns the already registered declaration.

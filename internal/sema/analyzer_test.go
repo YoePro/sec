@@ -1959,6 +1959,123 @@ type High register[8] msb-first big-endian {
 	}
 }
 
+// rules/declarations/registers.md, sections 3, 10, and 11.6. Nested nominal
+// fields are source-order independent and retain their own access contracts.
+func TestNestedRegisterFieldsAndCompileTimeWidths(t *testing.T) {
+	input := `
+module main
+
+let QUARTER := 1 << 2
+
+type StatusWord register[QUARTER * 4] {
+	Flags: Flags,
+	Mode: bit[QUARTER],
+	_: bit[QUARTER * 2],
+}
+
+type Flags register[QUARTER] msb-first {
+	Ready: bit read-only,
+	Command: bit write-only,
+	_: bit[2],
+}
+
+type Locked register[QUARTER] {
+	Flags: Flags read-only,
+}
+
+fn Update(status: ref mut StatusWord, locked: ref mut Locked, replacement: Flags) void {
+	status.Flags.Ready = true
+	status.Flags = replacement
+	locked.Flags.Command = true
+}
+`
+	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
+	assertSemaErrors(t, errors, []string{
+		"register field Ready is read-only and cannot be written at 23:15",
+		"cannot write whole nested register field Flags because contained field Flags.Ready has read-only semantics at 24:9",
+		"cannot write through nested register field Flags with read-only semantics at 25:15",
+	})
+	status := analyzer.types["StatusWord"]
+	if status.RegisterWidth != 16 || len(status.RegisterFields) != 3 {
+		t.Fatalf("StatusWord = %+v", status)
+	}
+	flags := status.RegisterFields[0]
+	if flags.Width != 4 || flags.Type.Name != "Flags" || flags.Type.Kind != RegisterType || len(flags.Type.RegisterFields) != 3 {
+		t.Fatalf("nested Flags field = %+v", flags)
+	}
+	if ready := flags.Type.RegisterFields[0]; ready.Access != RegisterReadOnly || ready.BitOffset != 3 {
+		t.Fatalf("nested Ready field = %+v", ready)
+	}
+}
+
+func TestNestedRegisterRejectsRecursiveLayout(t *testing.T) {
+	input := `
+module main
+
+type First register[8] { Next: Second }
+type Second register[8] { Next: First }
+`
+	errors := analyzeSourceRaw(t, input)
+	found := false
+	for _, diagnostic := range errors {
+		if strings.Contains(diagnostic.Message, "recursive or infinitely sized nested layout") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("errors = %v; want recursive nested-register diagnostic", errors)
+	}
+}
+
+func TestRegisterWidthsRejectRuntimeAndNonPositiveExpressions(t *testing.T) {
+	input := `
+module main
+
+fn RuntimeWidth() int { return 8 }
+type Dynamic register[RuntimeWidth()] { Value: bit[8] }
+type Zero register[2 - 2] { Value: bit }
+`
+	errors := analyzeSourceRaw(t, input)
+	wanted := []string{
+		"register Dynamic width must be a compile-time integer",
+		"register Zero width must be positive",
+	}
+	for _, fragment := range wanted {
+		found := false
+		for _, diagnostic := range errors {
+			if strings.Contains(diagnostic.Message, fragment) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("errors = %v; missing %q", errors, fragment)
+		}
+	}
+}
+
+// rules/declarations/registers.md, section 12. Integer conversion is direct
+// only for constants or complete source domains proven to fit.
+func TestCheckedIntegerToRegisterConversion(t *testing.T) {
+	input := `
+module main
+
+type Packet12 register[12] { Value: bit[12] }
+
+fn Exact(raw: uint8) Packet12 { return Packet12(raw) }
+fn Checked(raw: uint16) Result[Packet12, ArithmeticError] { return Ok(try Packet12(raw)) }
+fn Handled(raw: uint16) Result[Packet12, ArithmeticError] { return Ok(try Packet12(raw)) }
+
+let valid := Packet12(0xFFF)
+let invalid := Packet12(0x1000)
+`
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"integer value 4096 does not fit register Packet12 width 12 at 11:25",
+	})
+}
+
 func TestRegisterFieldAccessFactsAndDirectValidation(t *testing.T) {
 	input := `
 module main
@@ -2201,7 +2318,7 @@ fn Test() void {
 
 	expected := []string{
 		"register InvalidProtocol declares 8 bits but its fields occupy 7 bits at 6:22",
-		"register field BadField.Value width must be positive at 13:2",
+		"register field BadField.Value width must be positive at 13:13",
 		"reserved register field _ cannot be accessed at 36:30",
 		"cannot assign to field Running on read-only addressed register motorStatus at 37:14",
 		"value 19 overflows rpm at 38:24",
@@ -3154,6 +3271,8 @@ type Coordinate struct {
 }
 
 let mut c: Coordinate
+
+unit m physical
 `
 
 	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
@@ -3288,10 +3407,36 @@ impl string {
 	}
 
 	analyzer := NewAnalyzer()
+	// rules/library/core-library.md grants builtin implementation authority
+	// through loader-owned provenance, never through the file name alone.
+	program.SourceProvenance = map[string]ast.SourceProvenance{
+		filepath.Join("sec", "core", "string.sec"): ast.SourceCore,
+	}
 	assertSemaErrors(t, analyzer.Analyze(program), nil)
 	if len(analyzer.functions["string.Len"]) == 0 {
 		t.Fatal("core string impl did not register string.Len")
 	}
+}
+
+func TestCoreLookingPathCannotImplementBuiltinStringWithoutProvenance(t *testing.T) {
+	input := `module core
+
+impl string {
+}
+`
+
+	const sourceFile = "/tmp/project/sec/core/string.sec"
+	l := lexer.NewWithFile(input, sourceFile)
+	p := parser.New(l)
+	program := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("parser errors: %v", p.Errors())
+	}
+
+	expected := []string{
+		"impl target string is not a named type at /tmp/project/sec/core/string.sec:3:6",
+	}
+	assertSemaErrors(t, NewAnalyzer().Analyze(program), expected)
 }
 
 func TestUserCodeCannotImplementBuiltinString(t *testing.T) {
@@ -3771,6 +3916,9 @@ impl extends Vehicle {
 		}
 	}
 }
+
+unit m physical
+unit s physical
 `
 
 	errors := analyzeSource(t, input)
@@ -4067,7 +4215,7 @@ type InvalidFields register[2] {
 
 	errors := analyzeSource(t, input)
 	expected := []string{
-		"register field InvalidFields.Mode type must be bit or a bit-backed enum, got PlainMode at 13:8",
+		"register field InvalidFields.Mode type must be bit, a bit-backed enum, or a register, got PlainMode at 13:8",
 		"reserved register field _ must use bit or bit[N] at 14:5",
 	}
 	assertSemaErrors(t, errors, expected)
@@ -4189,6 +4337,9 @@ impl Vehicle {
 		}
 	}
 }
+
+unit m physical
+unit s physical
 `
 
 	errors := analyzeSource(t, input)
@@ -4222,6 +4373,125 @@ impl Vehicle {
 	assertSemaErrors(t, errors, expected)
 }
 
+// rules/declarations/static.md, sections 6-12; properties.md, section 10.
+func TestStaticPropertyFrontendSemantics(t *testing.T) {
+	valid := `
+module main
+
+interface CurrentSource {
+    static property Current: int { get set value }
+}
+
+type Counter struct { value: int }
+
+impl Counter implements CurrentSource {
+    static let mut Storage: int := 1
+
+    static property Current: int {
+        get { return Counter.Storage }
+        set value { Counter.Storage = value }
+    }
+
+    property Instance: int {
+        get { return self.value }
+    }
+}
+
+fn Read() int { return Counter.Current }
+fn Update() void { Counter.Current = 2 }
+`
+	assertSemaErrors(t, analyzeSourceRaw(t, valid), nil)
+
+	invalid := `
+module main
+
+type Counter struct { value: int }
+
+impl Counter {
+    static let Fixed: int := 1
+    static property Current: int {
+        get { return self.value }
+    }
+    property Instance: int { get { return self.value } }
+}
+
+let counter := Counter { value: 0 }
+let a := counter.Current
+let b := Counter.Instance
+fn Update() void { Counter.Fixed = 2 }
+`
+	errors := analyzeSourceRaw(t, invalid)
+	wants := []string{
+		"undefined variable self",
+		"static property Counter.Current must be accessed through type Counter",
+		"instance property Counter.Instance requires a value receiver",
+		"cannot assign to immutable static storage Counter.Fixed",
+	}
+	for _, want := range wants {
+		found := false
+		for _, err := range errors {
+			if strings.Contains(err.Message, want) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("missing %q in errors: %v", want, errors)
+		}
+	}
+}
+
+// rules/declarations/static.md, sections 15-16.
+func TestStaticInitializerValidationAndDependencyOrder(t *testing.T) {
+	valid := `
+module main
+
+static let First: int := Second + 1
+static let Second: int := 2
+let result := First
+`
+	assertSemaErrors(t, analyzeSourceRaw(t, valid), nil)
+
+	invalid := `
+module main
+
+fn LoadConfiguration() int { return 1 }
+
+static let RuntimeValue: int := LoadConfiguration()
+static let A: int := B
+static let B: int := A
+
+fn Cached() int {
+    static let Value: int := LoadConfiguration()
+    return Value
+}
+
+fn Captured(input: int) int {
+    static let ValueFromInput: int := input
+    return ValueFromInput
+}
+`
+	errors := analyzeSourceRaw(t, invalid)
+	wants := []string{
+		"static initializer for RuntimeValue must be compile-time evaluable",
+		"cyclic static initialization: A -> B -> A",
+		"static initializer for Value must be compile-time evaluable",
+		"static initializer for ValueFromInput must be compile-time evaluable",
+	}
+	for _, want := range wants {
+		found := false
+		for _, err := range errors {
+			if strings.Contains(err.Message, want) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("missing %q in errors: %v", want, errors)
+		}
+	}
+}
+
 func TestStructLiteralAndFieldAccess(t *testing.T) {
 	input := `
 type Speed decimal<m/s>
@@ -4233,6 +4503,9 @@ type Vehicle struct {
 let speed: Speed := 10
 let vehicle := Vehicle{ _speed: speed }
 let current := vehicle._speed
+
+unit m physical
+unit s physical
 `
 
 	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
@@ -4253,6 +4526,9 @@ type Vehicle struct {
 }
 
 let bad := Vehicle{ missing: Speed(1), _speed: "fast" }
+
+unit m physical
+unit s physical
 `
 
 	errors := analyzeSource(t, input)
@@ -4290,6 +4566,9 @@ let current := vehicle.TopSpeed
 fn Test() void {
 	vehicle.TopSpeed = speed
 }
+
+unit m physical
+unit s physical
 `
 
 	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
@@ -4489,6 +4768,9 @@ fn Test(car: Vehicle, current_speed: Speed) void {
 		Err(error) => Log(error)
 	}
 }
+
+unit m physical
+unit s physical
 `
 
 	errors := analyzeSource(t, input)
@@ -4528,6 +4810,9 @@ fn Test(car: Vehicle, current_speed: Speed) void {
 		Err(error) => Log(error)
 	}
 }
+
+unit m physical
+unit s physical
 `
 
 	errors := analyzeSource(t, input)
@@ -4577,6 +4862,9 @@ impl Vehicle {
 		}
 	}
 }
+
+unit m physical
+unit s physical
 `
 
 	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
@@ -4609,6 +4897,9 @@ impl Vehicle {
 		}
 	}
 }
+
+unit m physical
+unit s physical
 `
 
 	errors := analyzeSource(t, input)
@@ -4682,6 +4973,8 @@ impl Vehicle {
 }
 
 unit SEK currency
+unit m physical
+unit s physical
 `
 
 	errors := analyzeSource(t, input)
@@ -5041,7 +5334,10 @@ let s := Pick("hello")
 `
 
 	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
-	assertSemaErrors(t, errors, nil)
+	assertSemaErrors(t, errors, []string{
+		"static initializer for i must be compile-time evaluable; runtime execution or invocation-local state is not allowed at 10:5",
+		"static initializer for s must be compile-time evaluable; runtime execution or invocation-local state is not allowed at 11:5",
+	})
 
 	if len(analyzer.functions["Pick"]) != 2 {
 		t.Fatalf("wrong overload count. got=%d want=2", len(analyzer.functions["Pick"]))
@@ -5184,6 +5480,7 @@ let p := Pick(10)
 	errors := analyzeSource(t, input)
 
 	expected := []string{
+		"static initializer for p must be compile-time evaluable; runtime execution or invocation-local state is not allowed at 13:5",
 		"ambiguous call to Pick at 13:10",
 	}
 
@@ -5204,7 +5501,9 @@ let x := Print(10)
 `
 
 	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
-	assertSemaErrors(t, errors, nil)
+	assertSemaErrors(t, errors, []string{
+		"static initializer for x must be compile-time evaluable; runtime execution or invocation-local state is not allowed at 10:5",
+	})
 
 	if analyzer.symbols["x"].Type.Name != "int" {
 		t.Fatalf("wrong x type. got=%q want=int", analyzer.symbols["x"].Type.Name)
@@ -5229,7 +5528,10 @@ let selectedInt := Set(50)
 `
 
 	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
-	assertSemaErrors(t, errors, nil)
+	assertSemaErrors(t, errors, []string{
+		"static initializer for selectedNamed must be compile-time evaluable; runtime execution or invocation-local state is not allowed at 13:5",
+		"static initializer for selectedInt must be compile-time evaluable; runtime execution or invocation-local state is not allowed at 14:5",
+	})
 
 	if analyzer.symbols["selectedNamed"].Type.Name != "Percent" {
 		t.Fatalf("wrong selectedNamed type. got=%q want=Percent", analyzer.symbols["selectedNamed"].Type.Name)
@@ -5250,7 +5552,10 @@ let y: int := Add(3, 4)
 `
 
 	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
-	assertSemaErrors(t, errors, nil)
+	assertSemaErrors(t, errors, []string{
+		"static initializer for x must be compile-time evaluable; runtime execution or invocation-local state is not allowed at 6:5",
+		"static initializer for y must be compile-time evaluable; runtime execution or invocation-local state is not allowed at 7:5",
+	})
 
 	if analyzer.symbols["x"].Type.Name != "int" {
 		t.Fatalf("wrong x type: %+v", analyzer.symbols["x"])
@@ -5273,6 +5578,8 @@ let w: int := Add(1.5, 1.5)
 	errors := analyzeSource(t, input)
 
 	expected := []string{
+		"static initializer for v must be compile-time evaluable; runtime execution or invocation-local state is not allowed at 6:5",
+		"static initializer for w must be compile-time evaluable; runtime execution or invocation-local state is not allowed at 7:5",
 		"cannot initialize float with int at 6:17",
 		"argument 1 to Add must be int, got decimal at 7:19",
 		"argument 2 to Add must be int, got decimal at 7:24",
@@ -5293,6 +5600,7 @@ let wrongCount := Add(1)
 	errors := analyzeSource(t, input)
 
 	expected := []string{
+		"static initializer for wrongCount must be compile-time evaluable; runtime execution or invocation-local state is not allowed at 6:5",
 		"function Add expects 2 arguments, got 1 at 6:19",
 	}
 
@@ -5550,6 +5858,9 @@ fn UseResult() Result[Speed, IOError] {
 
 	return Ok(speed)
 }
+
+unit m physical
+unit s physical
 `
 
 	errors := analyzeSource(t, input)
@@ -5585,6 +5896,9 @@ fn InvalidTry() Speed {
 
 	return speed
 }
+
+unit m physical
+unit s physical
 `
 
 	errors := analyzeSource(t, input)
@@ -5629,6 +5943,9 @@ fn WrongPropagation() Result[Speed, IOError] {
 fn CannotPropagate() Speed {
 	return try ReadSpeed()
 }
+
+unit m physical
+unit s physical
 `
 
 	errors := analyzeSource(t, input)
@@ -5672,6 +5989,9 @@ fn ConvertError() Result[Speed, IOError] {
 	}
 	return Ok(speed)
 }
+
+unit m physical
+unit s physical
 `
 
 	errors := analyzeSource(t, input)
@@ -5701,6 +6021,9 @@ fn UseFallback() Speed {
 	}
 	return speed
 }
+
+unit m physical
+unit s physical
 `
 
 	errors := analyzeSource(t, input)
@@ -5738,6 +6061,8 @@ fn MissingHandler() Speed {
 }
 
 unit SEK currency
+unit m physical
+unit s physical
 `
 
 	errors := analyzeSource(t, input)
@@ -6032,11 +6357,13 @@ func TestEnumValidFixture(t *testing.T) {
 }
 
 func TestGenericStructAndFunctionHeaders(t *testing.T) {
+	// rules/declarations/struct.md section 4 requires generic specialization to
+	// retain ordered, open-key field-tag metadata while substituting field types.
 	input := `
 module main
 
 type Stack[T] struct {
-	value: T,
+	value: T ` + "`wire:\"value\" json:\"payload\"`" + `,
 }
 
 type Pair[A, B] struct {
@@ -6082,6 +6409,9 @@ fn Read(value: Stack[int]) int {
 	}
 	if len(paramType.Fields) != 1 || paramType.Fields[0].Type.Name != "int" {
 		t.Fatalf("Stack[int] field was not substituted: %+v", paramType.Fields)
+	}
+	if tags := paramType.Fields[0].Tags; len(tags) != 2 || tags[0].Key != "wire" || tags[0].Value != "value" || tags[1].Key != "json" || tags[1].Value != "payload" {
+		t.Fatalf("Stack[int] field tags were not preserved: %+v", tags)
 	}
 }
 

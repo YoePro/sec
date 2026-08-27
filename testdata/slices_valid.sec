@@ -14,7 +14,7 @@ fn First(values: ref int[]) int {
 }
 
 fn Last(values: ref int[]) int {
-    return values[values.len - 1]
+    return values[values.Len - 1]
 }
 
 fn SetFirst(values: ref mut int[], value: int) void {
@@ -28,7 +28,7 @@ fn SetAt(values: ref mut int[], index: uint, value: int) void {
 }
 
 fn SliceLength(values: ref int[]) uint {
-    return values.len
+    return values.Len
 }
 
 // -----------------------------------------------------------------------------
@@ -111,21 +111,21 @@ fn EmptySliceFromZeroLengthArray() uint {
     let storage: byte[0] := []
     let empty := ref storage[..]
 
-    return empty.len
+    return empty.Len
 }
 
 fn EmptySliceFromExclusiveRange() uint {
     let values: int[4] := [10, 20, 30, 40]
     let empty := ref values[2..<2]
 
-    return empty.len
+    return empty.Len
 }
 
 fn EmptySliceAtEnd() uint {
     let values: int[4] := [10, 20, 30, 40]
-    let empty := ref values[values.len..<values.len]
+    let empty := ref values[values.Len..<values.Len]
 
-    return empty.len
+    return empty.Len
 }
 
 // -----------------------------------------------------------------------------
@@ -133,7 +133,7 @@ fn EmptySliceAtEnd() uint {
 // -----------------------------------------------------------------------------
 
 fn SharedSubslice(values: ref int[]) ref int[] {
-    return ref values[1..<values.len]
+    return ref values[1..<values.Len]
 }
 
 fn Prefix(values: ref byte[], count: uint) ref byte[] {

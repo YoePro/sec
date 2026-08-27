@@ -68,6 +68,10 @@ The current LSP formatter already implements:
 - single-line call argument spacing and trailing-comma removal without folding
   intentional multiline calls;
 - single-line `let` declaration comma spacing;
+- local trailing-line-comment alignment with a four-space gutter in struct,
+  enum, register, union, and similar nominal declaration blocks;
+- initial in-place `sec fmt <file.sec>...` integration through the shared
+  formatter package;
 - unambiguous `func` to `fn` normalization;
 - canonical placement of an inline `@noCopy` attribute on its own line;
 - preservation of ordinary identifiers and calls named `func`;
@@ -87,8 +91,8 @@ The current formatter is partially implemented in these areas:
   forms;
 - the LSP emits one whole-document edit rather than minimal edits;
 - grouped declarations are indented but not comprehensively aligned;
-- line comments retain indentation but are not aligned into declaration
-  columns;
+- line comments outside the implemented nominal-declaration groups retain
+  indentation but are not yet comprehensively aligned;
 - struct tags are preserved as source text but are not aligned;
 - ordinary formatting and safe fixing do not yet share a structured edit model.
 
@@ -97,7 +101,8 @@ The current formatter is partially implemented in these areas:
 The following are not yet implemented:
 
 - a shared `internal/fixes` package;
-- the complete `sec fmt` command model defined here;
+- the complete `sec fmt` command model defined here beyond initial in-place
+  formatting of explicit source files;
 - `sec fmt --fix`;
 - `sec fmt --check`;
 - recursive directory and project formatting;
@@ -111,7 +116,7 @@ The following are not yet implemented:
 - missing-colon repair;
 - struct-field column alignment;
 - struct-tag column alignment;
-- end-of-line comment alignment;
+- end-of-line comment alignment outside nominal declaration groups;
 - declaration-table alignment;
 - multiline width-based layout;
 - canonical import sorting policy;
@@ -1029,7 +1034,7 @@ let file := OpenFile()
 A line comment after code belongs to that source item.
 
 ```sec
-let retryCount := 3  // Maximum retry attempts.
+let retryCount := 3    // Maximum retry attempts.
 ```
 
 ## Detached comment
@@ -1062,10 +1067,10 @@ fn main() void {
 }
 ```
 
-A trailing line comment has at least two spaces before `//`:
+A trailing line comment has at least four spaces before `//`:
 
 ```sec
-let value := 10  // Explanation.
+let value := 10    // Explanation.
 ```
 
 Within an alignment group, trailing comments align to one column.
@@ -1236,9 +1241,9 @@ Canonical example:
 
 ```sec
 type User struct {
-    ID:       int    `json:"id"`,    // Stable database identifier.
-    Name:     string `json:"name"`,  // Display name.
-    Password: string `json:"-"`,     // Never serialize.
+    ID:       int    `json:"id"`,      // Stable database identifier.
+    Name:     string `json:"name"`,    // Display name.
+    Password: string `json:"-"`,       // Never serialize.
 }
 ```
 
@@ -1259,8 +1264,8 @@ When a field has no tag:
 
 ```sec
 type User struct {
-    ID:      int    `json:"id"`,  // Stable identifier.
-    Enabled: bool,                // Runtime state only.
+    ID:      int    `json:"id"`,    // Stable identifier.
+    Enabled: bool,                  // Runtime state only.
 }
 ```
 
@@ -1285,8 +1290,8 @@ Example:
 
 ```sec
 type Config struct {
-    ID:   int,     // Identity.
-    Name: string,  // Display name.
+    ID:   int,       // Identity.
+    Name: string,    // Display name.
 
     // Network configuration.
     Endpoint: string `json:"endpoint"`,
@@ -1336,9 +1341,9 @@ Trailing comments may align:
 
 ```sec
 enum Status int {
-    New      = 0,   // Created but not processed.
-    Invoiced = 1,   // Invoice generated.
-    Paid     = 10,  // Payment completed.
+    New      = 0,     // Created but not processed.
+    Invoiced = 1,     // Invoice generated.
+    Paid     = 10,    // Payment completed.
 }
 ```
 
@@ -1371,9 +1376,9 @@ Example:
 
 ```sec
 TokenType (
-    ILLEGAL := "ILLEGAL",  // Invalid token.
-    EOF     := "EOF",      // End of input.
-    IDENT   := "IDENT",    // Identifier.
+    ILLEGAL := "ILLEGAL",    // Invalid token.
+    EOF     := "EOF",        // End of input.
+    IDENT   := "IDENT",      // Identifier.
 )
 ```
 
@@ -1417,7 +1422,7 @@ Example not automatically aligned as one group:
 
 ```sec
 let input := Read()
-Process(input)  // Performs validation.
+Process(input)    // Performs validation.
 ```
 
 ---
@@ -2266,9 +2271,9 @@ Expected:
 
 ```sec
 type User struct {
-    ID:       int    `json:"id"`,    // Stable identifier.
-    Name:     string `json:"name"`,  // Display name.
-    Password: string `json:"-"`,     // Never serialize.
+    ID:       int    `json:"id"`,      // Stable identifier.
+    Name:     string `json:"name"`,    // Display name.
+    Password: string `json:"-"`,       // Never serialize.
 }
 ```
 

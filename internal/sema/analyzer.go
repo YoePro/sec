@@ -33,6 +33,7 @@ type Analyzer struct {
 	genericFuncInstances        map[genericInstanceKey]Function
 	symbols                     map[string]Symbol
 	completionSymbols           map[string]Symbol
+	predeclaredStatic           map[sourceTokenKey]bool
 	expressionTypes             map[ast.Expression]Type
 	expectedExpressionTypes     map[ast.Expression]Type
 	bindingIDs                  map[sourceTokenKey]BindingID
@@ -61,6 +62,9 @@ type Analyzer struct {
 	invalidTypeDeclarations     map[sourceTokenKey]bool
 	genericTypeDefinitions      map[string]lexer.Token
 	invalidInterfaceInheritance map[string]bool
+	registerDeclarations        map[string]*ast.TypeDeclStatement
+	registerResolutionState     map[string]uint8
+	registerWidthConstants      map[string]map[string]*big.Int
 	constInts                   map[string]*big.Int
 	assigned                    map[string]bool
 	moved                       map[string]lexer.Token
@@ -211,6 +215,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.warnings = nil
 	a.symbols = map[string]Symbol{}
 	a.completionSymbols = map[string]Symbol{}
+	a.predeclaredStatic = map[sourceTokenKey]bool{}
 	a.expressionTypes = map[ast.Expression]Type{}
 	a.expectedExpressionTypes = map[ast.Expression]Type{}
 	a.bindingIDs = map[sourceTokenKey]BindingID{}
@@ -238,6 +243,9 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.invalidTypeDeclarations = map[sourceTokenKey]bool{}
 	a.genericTypeDefinitions = nil
 	a.invalidInterfaceInheritance = map[string]bool{}
+	a.registerDeclarations = map[string]*ast.TypeDeclStatement{}
+	a.registerResolutionState = map[string]uint8{}
+	a.registerWidthConstants = map[string]map[string]*big.Int{}
 	a.constInts = map[string]*big.Int{}
 	a.assigned = map[string]bool{}
 	a.moved = map[string]lexer.Token{}
@@ -281,6 +289,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.validateModuleDeclaration(program)
 	a.validateModuleDeclarationNamespace(program)
 	a.registerTypeDeclarations(program)
+	a.collectCompileTimeIntegerBindings(program)
 	a.registerImplTypeDeclarations(program)
 	a.analyzeInterfaceDeclarations(program)
 	a.analyzeEarlyEnumDeclarations(program)
@@ -288,8 +297,10 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.analyzeEnumDeclarations(program)
 	a.analyzeImplTypeDeclarations(program)
 	a.analyzeUnitMetadata(program)
+	a.predeclareModuleStaticStorage(program)
 	a.registerImplDeclarations(program)
 	a.registerFunctionDeclarations(program)
+	a.validateStaticInitialization(program)
 	a.validateInterfaceConformance()
 	a.inferFunctionReferenceSummaries(program)
 	a.expressionTypes = map[ast.Expression]Type{}
@@ -798,6 +809,9 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 				origin = stmt.Name.Value
 			}
 			a.types[stmt.Name.Value] = Type{Name: stmt.Name.Value, Module: a.currentModule, Kind: InvalidType, GenericParameters: params, ExplicitlyNonCopyable: noCopy, NoCopyPolicyOrigin: origin}
+			if stmt.RegisterType != nil {
+				a.registerDeclarations[stmt.Name.Value] = stmt
+			}
 		case *ast.UnitDeclStatement:
 			if stmt.Name == nil {
 				return
@@ -857,6 +871,59 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 			a.types[stmt.Name.Value] = Type{Name: stmt.Name.Value, Module: a.currentModule, Kind: InterfaceType, Named: true, Declared: true, Underlying: "interface", GenericParameters: params}
 		}
 	})
+}
+
+// collectCompileTimeIntegerBindings makes allocation-free module constants
+// available to declaration widths before ordinary statement analysis. This is
+// the same compiler-owned integer evaluator used later for constant folding;
+// no runtime initialization is introduced.
+//
+// rules/declarations/registers.md, section 3.
+func (a *Analyzer) collectCompileTimeIntegerBindings(program *ast.Program) {
+	type moduleBinding struct {
+		module  string
+		binding *ast.LetStatement
+	}
+	pending := []moduleBinding{}
+	a.withProgramModules(program, func(statement ast.Statement) {
+		switch statement := statement.(type) {
+		case *ast.LetStatement:
+			if !statement.Mutable && statement.Address == nil && statement.Value != nil {
+				pending = append(pending, moduleBinding{module: a.currentModule, binding: statement})
+			}
+		case *ast.LetGroupStatement:
+			for _, binding := range statement.Lets {
+				if binding != nil && !binding.Mutable && binding.Address == nil && binding.Value != nil {
+					pending = append(pending, moduleBinding{module: a.currentModule, binding: binding})
+				}
+			}
+		}
+	})
+
+	// Iterate to a fixed point so constants may refer to earlier or later
+	// allocation-free constants without making declaration order semantic.
+	for changed := true; changed; {
+		changed = false
+		for _, candidate := range pending {
+			binding := candidate.binding
+			if binding.Name == nil {
+				continue
+			}
+			bindings := a.registerWidthConstants[candidate.module]
+			if bindings == nil {
+				bindings = map[string]*big.Int{}
+				a.registerWidthConstants[candidate.module] = bindings
+			}
+			value, ok := a.integerConstantValueUsing(binding.Value, bindings)
+			if !ok {
+				continue
+			}
+			if _, exists := bindings[binding.Name.Value]; !exists {
+				bindings[binding.Name.Value] = new(big.Int).Set(value)
+				changed = true
+			}
+		}
+	}
 }
 
 func (a *Analyzer) rejectIntrinsicTypeRedeclaration(name string, token lexer.Token) bool {
@@ -4448,6 +4515,9 @@ func (a *Analyzer) defineInstanceSymbols(target Type, mutableSelf bool, selfToke
 		delete(a.constInts, field.Name)
 	}
 	for _, property := range target.Properties {
+		if property.Static {
+			continue
+		}
 		if _, exists := a.symbols[property.Name]; exists {
 			continue
 		}
@@ -5364,10 +5434,10 @@ func (a *Analyzer) analyzeReturnStatement(functionName string, returnType Type, 
 	if a.checkReturningReferenceToLocal(functionName, returnType, valueType, stmt.Value) {
 		return
 	}
-	if a.checkExpressionEscapesLocalReference(functionName, stmt.Value) {
+	if a.checkExpressionEscapesMatchPayload(functionName, stmt.Value) {
 		return
 	}
-	if a.checkExpressionEscapesMatchPayload(functionName, stmt.Value) {
+	if a.checkExpressionEscapesLocalReference(functionName, stmt.Value) {
 		return
 	}
 	a.markResourceTransfer(stmt.Value)
@@ -5659,7 +5729,10 @@ func (a *Analyzer) checkAssignmentEscapesLocalReference(target ast.Expression, v
 	if !ok {
 		return false
 	}
-	if targetSymbol.Local {
+	// A reference parameter is a local binding over caller-owned storage. Writes
+	// through its projected Place therefore cross the function boundary even
+	// though the parameter symbol itself is local.
+	if targetSymbol.Local && targetSymbol.Type.Kind != ReferenceType {
 		return false
 	}
 	if originName == "" {
@@ -7054,6 +7127,17 @@ func (a *Analyzer) analyzeTypeDeclaration(stmt *ast.TypeDeclStatement) {
 	if stmt == nil || stmt.Name == nil || a.invalidTypeDeclaration(stmt.Name.Token) {
 		return
 	}
+	if stmt.RegisterType != nil {
+		switch a.registerResolutionState[stmt.Name.Value] {
+		case 1:
+			a.addErrorAtToken(stmt.Name.Token, "register %s has a recursive or infinitely sized nested layout", stmt.Name.Value)
+			return
+		case 2:
+			return
+		}
+		a.registerResolutionState[stmt.Name.Value] = 1
+		defer func() { a.registerResolutionState[stmt.Name.Value] = 2 }()
+	}
 	if len(stmt.GenericParameters) > 0 {
 		a.validateGenericParameterConstraints(stmt.GenericParameters)
 		a.withGenericTypeParameters(stmt.GenericParameters, func() {
@@ -7241,6 +7325,7 @@ func (a *Analyzer) analyzeInterfaceDeclarationBody(stmt *ast.InterfaceDeclaratio
 			Name:           property.Name.Value,
 			Type:           propertyType,
 			Token:          property.Name.Token,
+			Static:         property.Static,
 			RequiresGet:    property.RequiresGet,
 			RequiresSet:    property.RequiresSet,
 			SetterFallible: property.SetterFallible,
@@ -7319,7 +7404,8 @@ func (a *Analyzer) mergeInheritedInterfaceRequirements(iface *Type) {
 		}
 		for _, property := range parentType.InterfaceProperties {
 			if existing, exists := properties[property.Name]; exists {
-				if !sameConcreteType(existing.Type, property.Type) ||
+				if existing.Static != property.Static ||
+					!sameConcreteType(existing.Type, property.Type) ||
 					(property.RequiresGet && !existing.RequiresGet) ||
 					(property.RequiresSet && !existing.RequiresSet) ||
 					(property.RequiresSet && existing.SetterFallible != property.SetterFallible) {
@@ -7676,6 +7762,12 @@ func (a *Analyzer) typeFromStructDeclarationWithName(name string, stmt *ast.Type
 
 func (a *Analyzer) typeFromRegisterDeclaration(name string, stmt *ast.TypeDeclStatement) Type {
 	noCopy := hasAttribute(stmt.Attributes, "noCopy")
+	registerWidth, registerWidthOK := a.resolveRegisterWidth(
+		stmt.RegisterType.WidthExpression,
+		stmt.RegisterType.Width,
+		stmt.RegisterType.Token,
+		fmt.Sprintf("register %s width", name),
+	)
 	typ := Type{
 		Name:                    name,
 		Module:                  a.currentModule,
@@ -7684,7 +7776,7 @@ func (a *Analyzer) typeFromRegisterDeclaration(name string, stmt *ast.TypeDeclSt
 		Declared:                true,
 		ExplicitlyNonCopyable:   noCopy,
 		Underlying:              "register",
-		RegisterWidth:           stmt.RegisterType.Width,
+		RegisterWidth:           registerWidth,
 		RegisterAllocationOrder: stmt.RegisterType.AllocationOrder,
 		RegisterByteOrder:       stmt.RegisterType.ByteOrder,
 		GenericParameters:       genericParameterNameValues(stmt.GenericParameters),
@@ -7693,12 +7785,8 @@ func (a *Analyzer) typeFromRegisterDeclaration(name string, stmt *ast.TypeDeclSt
 		typ.NoCopyPolicyOrigin = name
 	}
 
-	if stmt.RegisterType.Width <= 0 {
-		a.addErrorAtToken(stmt.RegisterType.Token, "register %s width must be positive", name)
-	}
-
 	used := int64(0)
-	invalidFieldWidth := false
+	invalidFieldWidth := !registerWidthOK
 	seen := map[string]lexer.Token{}
 	for _, field := range stmt.RegisterType.Fields {
 		if field == nil || field.Name == nil {
@@ -7712,23 +7800,34 @@ func (a *Analyzer) typeFromRegisterDeclaration(name string, stmt *ast.TypeDeclSt
 				invalidFieldWidth = true
 				continue
 			}
-			resolved, ok := a.resolveType(field.Type)
+			resolved, ok := a.resolveRegisterFieldType(field.Type)
 			if !ok {
 				invalidFieldWidth = true
 				continue
 			}
-			if resolved.Kind != EnumType || resolved.BitWidth <= 0 {
-				a.addErrorAtToken(field.Type.Token, "register field %s.%s type must be bit or a bit-backed enum, got %s", name, field.Name.Value, typeDisplayName(resolved))
+			if resolved.Kind != RegisterType && (resolved.Kind != EnumType || resolved.BitWidth <= 0) {
+				a.addErrorAtToken(field.Type.Token, "register field %s.%s type must be bit, a bit-backed enum, or a register, got %s", name, field.Name.Value, typeDisplayName(resolved))
 				invalidFieldWidth = true
 				continue
 			}
-			fieldWidth = resolved.BitWidth
+			if resolved.Kind == RegisterType {
+				fieldWidth = resolved.RegisterWidth
+			} else {
+				fieldWidth = resolved.BitWidth
+			}
 			fieldType = resolved
-		}
-		if fieldWidth <= 0 {
-			a.addErrorAtToken(field.Token, "register field %s.%s width must be positive", name, field.Name.Value)
-			invalidFieldWidth = true
-			continue
+		} else {
+			var widthOK bool
+			fieldWidth, widthOK = a.resolveRegisterWidth(
+				field.WidthExpression,
+				field.Width,
+				field.Token,
+				fmt.Sprintf("register field %s.%s width", name, field.Name.Value),
+			)
+			if !widthOK {
+				invalidFieldWidth = true
+				continue
+			}
 		}
 		used += fieldWidth
 
@@ -7742,7 +7841,7 @@ func (a *Analyzer) typeFromRegisterDeclaration(name string, stmt *ast.TypeDeclSt
 		}
 
 		if field.Type == nil {
-			fieldType = a.registerFieldType(field)
+			fieldType = a.registerFieldType(field, fieldWidth)
 		}
 		if field.Unit != "" {
 			if _, ok := a.units[field.Unit]; !ok {
@@ -7752,7 +7851,7 @@ func (a *Analyzer) typeFromRegisterDeclaration(name string, stmt *ast.TypeDeclSt
 
 		bitOffset := used - fieldWidth
 		if stmt.RegisterType.AllocationOrder == "msb-first" {
-			bitOffset = stmt.RegisterType.Width - used
+			bitOffset = registerWidth - used
 		}
 		typ.RegisterFields = append(typ.RegisterFields, RegisterField{
 			Name:      field.Name.Value,
@@ -7766,11 +7865,60 @@ func (a *Analyzer) typeFromRegisterDeclaration(name string, stmt *ast.TypeDeclSt
 		a.recordDefinition(field.Name.Token)
 	}
 
-	if stmt.RegisterType.Width > 0 && !invalidFieldWidth && used != stmt.RegisterType.Width {
-		a.addErrorAtToken(stmt.RegisterType.Token, "register %s declares %d bits but its fields occupy %d bits", name, stmt.RegisterType.Width, used)
+	if registerWidth > 0 && !invalidFieldWidth && used != registerWidth {
+		a.addErrorAtToken(stmt.RegisterType.Token, "register %s declares %d bits but its fields occupy %d bits", name, registerWidth, used)
 	}
 
 	return typ
+}
+
+// resolveRegisterFieldType recursively materializes nominal register fields.
+// This makes finite nested layouts source-order independent while the visiting
+// state in analyzeTypeDeclaration rejects recursive storage.
+//
+// rules/declarations/registers.md, sections 10 and 11.6.
+func (a *Analyzer) resolveRegisterFieldType(reference *ast.TypeReference) (Type, bool) {
+	resolved, ok := a.resolveType(reference)
+	if ok && resolved.Kind != InvalidType {
+		return resolved, true
+	}
+	declaration, nested := a.registerDeclarations[reference.Name]
+	if !nested || declaration == nil || declaration.Name == nil {
+		return resolved, ok
+	}
+	if a.registerResolutionState[reference.Name] == 1 {
+		a.addErrorAtToken(reference.Token, "register %s has a recursive or infinitely sized nested layout through %s", reference.Name, reference.Name)
+		return Type{Kind: InvalidType}, false
+	}
+	a.analyzeTypeDeclaration(declaration)
+	resolved = a.types[reference.Name]
+	return resolved, resolved.Kind == RegisterType && resolved.RegisterWidth > 0
+}
+
+// resolveRegisterWidth evaluates the positive compile-time integer contract
+// shared by register[N] and raw bit[N] fields without introducing runtime work.
+func (a *Analyzer) resolveRegisterWidth(expression ast.Expression, literal int64, token lexer.Token, subject string) (int64, bool) {
+	if expression == nil {
+		if literal > 0 {
+			return literal, true
+		}
+		a.addErrorAtToken(token, "%s must be positive", subject)
+		return 0, false
+	}
+	value, ok := a.integerConstantValueUsing(expression, a.registerWidthConstants[a.currentModule])
+	if !ok {
+		a.addErrorAtToken(expressionToken(expression), "%s must be a compile-time integer", subject)
+		return 0, false
+	}
+	if value.Sign() <= 0 {
+		a.addErrorAtToken(expressionToken(expression), "%s must be positive", subject)
+		return 0, false
+	}
+	if !value.IsInt64() {
+		a.addErrorAtToken(expressionToken(expression), "%s cannot be represented by int64", subject)
+		return 0, false
+	}
+	return value.Int64(), true
 }
 
 // registerFieldAccessFromAST transfers the normalized field-access contract
@@ -7795,21 +7943,21 @@ func registerFieldAccessFromAST(access ast.RegisterFieldAccess) RegisterFieldAcc
 // registerFieldType implements exact raw field domains from
 // rules/declarations/registers.md. correction13.md requires arbitrary-precision
 // bit[N] bounds independent of host and target-sized uint widths.
-func (a *Analyzer) registerFieldType(field *ast.RegisterField) Type {
-	if field.Width == 1 && field.Unit == "" {
+func (a *Analyzer) registerFieldType(field *ast.RegisterField, width int64) Type {
+	if width == 1 && field.Unit == "" {
 		return Type{Name: "bool", Kind: BoolType}
 	}
 	minInteger := big.NewInt(0)
-	maxInteger := new(big.Int).Lsh(big.NewInt(1), uint(field.Width))
+	maxInteger := new(big.Int).Lsh(big.NewInt(1), uint(width))
 	maxInteger.Sub(maxInteger, big.NewInt(1))
 	typ := Type{
-		Name:       fmt.Sprintf("bit[%d]", field.Width),
+		Name:       fmt.Sprintf("bit[%d]", width),
 		Kind:       UintType,
-		BitWidth:   field.Width,
+		BitWidth:   width,
 		MinInteger: minInteger,
 		MaxInteger: maxInteger,
 	}
-	if field.Width <= 64 {
+	if width <= 64 {
 		min, max := uint64(0), maxInteger.Uint64()
 		typ.MinUint = &min
 		typ.MaxUint = &max
@@ -7819,8 +7967,8 @@ func (a *Analyzer) registerFieldType(field *ast.RegisterField) Type {
 			typ = unitType
 			typ.MinInteger = new(big.Int).Set(minInteger)
 			typ.MaxInteger = new(big.Int).Set(maxInteger)
-			typ.BitWidth = field.Width
-			if field.Width <= 64 {
+			typ.BitWidth = width
+			if width <= 64 {
 				min, max := uint64(0), maxInteger.Uint64()
 				typ.MinUint = &min
 				typ.MaxUint = &max
@@ -8396,6 +8544,7 @@ func (a *Analyzer) registerImplStatement(stmt *ast.ImplStatement) {
 			Name:      property.Name.Value,
 			Type:      propertyType,
 			Token:     property.Name.Token,
+			Static:    property.Static,
 			Fallible:  property.Setter != nil && property.Setter.Fallible,
 			Error:     errorType,
 			HasGetter: property.Getter != nil,
@@ -8629,6 +8778,16 @@ func (a *Analyzer) validateTypeImplementsInterface(typ Type, iface Type) {
 			a.addErrorAtToken(required.Token, "type %s property %s must be %s for interface %s, got %s", typ.Name, required.Name, typeDisplayName(required.Type), iface.Name, typeDisplayName(property.Type))
 			continue
 		}
+		// rules/declarations/properties.md, section 10. Interface
+		// conformance includes the static-versus-instance category.
+		if property.Static != required.Static {
+			requiredKind, actualKind := "instance", "static"
+			if required.Static {
+				requiredKind, actualKind = "static", "instance"
+			}
+			a.addErrorAtToken(required.Token, "type %s property %s must be %s for interface %s, got %s property", typ.Name, required.Name, requiredKind, iface.Name, actualKind)
+			continue
+		}
 		if required.RequiresGet && !property.HasGetter {
 			a.addErrorAtToken(required.Token, "type %s property %s must provide get for interface %s", typ.Name, required.Name, iface.Name)
 		}
@@ -8771,7 +8930,7 @@ func (a *Analyzer) analyzePropertyBody(target Type, property *ast.PropertyDeclar
 }
 
 func (a *Analyzer) analyzeGetterBody(target Type, property *ast.PropertyDeclaration, propertyType Type) {
-	a.analyzePropertyAccessorBody(target, property.Name.Value+".get", property.Getter, propertyType, false, nil, Type{})
+	a.analyzePropertyAccessorBody(target, property.Name.Value+".get", property.Getter, propertyType, false, property.Static, nil, Type{})
 	if !a.blockDefinitelyReturns(property.Getter) {
 		a.addErrorAtToken(property.Name.Token, "getter %s must return %s", property.Name.Value, typeDisplayName(propertyType))
 	}
@@ -8793,10 +8952,10 @@ func (a *Analyzer) analyzeSetterBody(target Type, property *ast.PropertyDeclarat
 			returnType = Type{Name: "Result", Kind: ResultType, TypeArgs: []Type{{Name: "void", Kind: VoidType}, errorType}}
 		}
 	}
-	a.analyzePropertyAccessorBody(target, property.Name.Value+".set", property.Setter.Body, returnType, true, property.Setter.Parameter, propertyType)
+	a.analyzePropertyAccessorBody(target, property.Name.Value+".set", property.Setter.Body, returnType, true, property.Static, property.Setter.Parameter, propertyType)
 }
 
-func (a *Analyzer) analyzePropertyAccessorBody(target Type, name string, body *ast.BlockStatement, returnType Type, mutableSelf bool, setterParameter *ast.Identifier, setterType Type) {
+func (a *Analyzer) analyzePropertyAccessorBody(target Type, name string, body *ast.BlockStatement, returnType Type, mutableSelf, static bool, setterParameter *ast.Identifier, setterType Type) {
 	if body == nil || returnType.Kind == InvalidType {
 		return
 	}
@@ -8840,7 +8999,11 @@ func (a *Analyzer) analyzePropertyAccessorBody(target Type, name string, body *a
 		a.scopeDepth = previousScopeDepth
 	}()
 
-	a.defineInstanceSymbols(target, mutableSelf, body.Token)
+	// rules/declarations/static.md, sections 9 and 12. Static accessors have
+	// no implicit receiver and cannot see instance fields or properties.
+	if !static {
+		a.defineInstanceSymbols(target, mutableSelf, body.Token)
+	}
 	if setterParameter != nil {
 		a.symbols[setterParameter.Value] = Symbol{Name: setterParameter.Value, Type: setterType, Mutable: false, Token: setterParameter.Token, Storage: StorageOriginInline, Local: true, ScopeDepth: 0}
 		a.assigned[setterParameter.Value] = true
@@ -9167,6 +9330,9 @@ func (a *Analyzer) inferPropertyBodyCallAsConversion(target Type, setter *ast.Pr
 		}
 		return conversionType, true
 	}
+	if targetType.Kind == RegisterType && isIntegerType(valueType) {
+		return a.integerToRegisterConversionResultType(targetType, valueType, expr.Arguments[0]), true
+	}
 	return targetType, true
 }
 
@@ -9237,6 +9403,9 @@ func (a *Analyzer) resolveBodyValueType(target Type, setter *ast.PropertySetter,
 }
 
 func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
+	if stmt != nil && stmt.Static && a.inFunctionBody {
+		a.validateStaticInitializerExpression(stmt.Name.Value, stmt.Value, stmt.Name.Token)
+	}
 	var declaredType Type
 	var ok bool
 
@@ -9289,13 +9458,13 @@ func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
 		// Keep a poisoned binding after an invalid initializer. Later references
 		// then retain the root diagnostic instead of becoming unrelated
 		// "undefined variable" errors.
-		defined = a.defineSymbol(stmt.Name.Value, Type{Kind: InvalidType}, stmt.Mutable, stmt.Name.Token)
+		defined = a.defineOrReuseStaticSymbol(stmt.Name.Value, Type{Kind: InvalidType}, stmt.Mutable, stmt.Name.Token)
 		if defined {
 			a.assigned[stmt.Name.Value] = true
 		}
 	}
 	if ok {
-		defined = a.defineSymbol(stmt.Name.Value, declaredType, stmt.Mutable, stmt.Name.Token)
+		defined = a.defineOrReuseStaticSymbol(stmt.Name.Value, declaredType, stmt.Mutable, stmt.Name.Token)
 		if defined {
 			if stmt.Static {
 				symbol := a.symbols[stmt.Name.Value]
@@ -9375,6 +9544,19 @@ func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
 		}
 		a.setConstInt(stmt.Name.Value, stmt.Value)
 	}
+}
+
+func (a *Analyzer) defineOrReuseStaticSymbol(name string, typ Type, mutable bool, token lexer.Token) bool {
+	key := sourceTokenLocation(token)
+	if a.predeclaredStatic[key] {
+		symbol := a.symbols[name]
+		symbol.Type = typ
+		symbol.Mutable = mutable
+		a.symbols[name] = symbol
+		a.completionSymbols[name] = symbol
+		return true
+	}
+	return a.defineSymbol(name, typ, mutable, token)
 }
 
 func (a *Analyzer) analyzeAddressedLetStatement(stmt *ast.LetStatement, declaredType Type) {
@@ -9475,7 +9657,22 @@ func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement, all
 		a.addErrorAtToken(target.Token, "assigning fallible property %s requires try", target.Value)
 		return
 	}
-	if a.checkBorrowedMutation(target.Value, target.Token) {
+	// rules/memory/borrowing.txt: rebinding a mutable reference holder replaces
+	// its borrowed authority; it does not mutate the referent. Release the old
+	// holder edge before creating the replacement borrow, but restore it if the
+	// assignment fails before commit.
+	rebindingReference := stmt.Operator == "=" && symbol.Type.Kind == ReferenceType
+	previousBorrows := map[string][]borrowRecord(nil)
+	referenceRebindCommitted := false
+	if rebindingReference {
+		previousBorrows = copyBorrows(a.borrows)
+		a.endBorrowsHeldBy(symbol.Name)
+		defer func() {
+			if !referenceRebindCommitted {
+				a.borrows = previousBorrows
+			}
+		}()
+	} else if a.checkBorrowedMutation(target.Value, target.Token) {
 		return
 	}
 
@@ -9522,6 +9719,7 @@ func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement, all
 		}
 		a.endBorrowsHeldBy(symbol.Name)
 		a.bindBorrowHoldersFromExpression(stmt.Value, symbol.Name)
+		referenceRebindCommitted = true
 		if typeCarriesReferenceOrigin(symbol.Type) && typeCarriesReferenceOrigin(exprType) {
 			symbol.Type = referenceTypeWithOrigin(symbol.Type, exprType)
 			a.symbols[symbol.Name] = symbol
@@ -10083,6 +10281,16 @@ func (a *Analyzer) referenceOriginForExpression(expr ast.Expression) (string, le
 	if !ok {
 		return root, expressionToken(expr), true, StorageOriginUnknown, 0
 	}
+	// rules/memory/reference_model.md: parameter roots use the symbolic origin
+	// seeded by seedParameterReferenceOrigin. The binding is local, while the
+	// referenced storage remains caller-owned.
+	if origin, exists := a.localRefContainers[root]; exists && !origin.Unknown {
+		name, token := origin.Name, origin.Token
+		if name == "" {
+			name, token = root, symbol.Token
+		}
+		return name, token, origin.Local, symbol.Storage, a.arenaGenerations[name]
+	}
 	if typeCarriesReferenceOrigin(symbol.Type) && symbol.Type.ReferenceOriginName != "" {
 		return symbol.Type.ReferenceOriginName, symbol.Type.ReferenceOriginToken, symbol.Type.ReferenceOriginLocal, symbol.Type.ReferenceOriginStorage, symbol.Type.ReferenceOriginGeneration
 	}
@@ -10335,13 +10543,21 @@ func (a *Analyzer) analyzeMemberAssignmentStatement(stmt *ast.AssignmentStatemen
 	// rules/declarations/properties.md, Assignment; correction12.md. Property
 	// metadata must be resolved without performing a getter read so write-only
 	// properties remain valid targets of simple assignment.
-	property, propertyOK := a.lookupPropertyOnMember(member)
+	property, staticProperty := a.lookupStaticPropertyOnMember(member)
+	propertyOK := staticProperty
+	staticSymbol, staticSymbolOK := a.lookupStaticSymbolOnMember(member)
+	if !propertyOK && !staticSymbolOK {
+		property, propertyOK = a.lookupPropertyOnMember(member)
+	}
 	var targetType Type
 	registerField := RegisterField{}
 	registerFieldOK := false
 	if propertyOK {
 		targetType = property.Type
 		a.bindDefinition(member.Property.Token, property.Token)
+	} else if staticSymbolOK {
+		targetType = staticSymbol.Type
+		a.bindDefinition(member.Property.Token, staticSymbol.Token)
 	} else {
 		objectType, _ := a.inferPlaceBase(member.Object)
 		registerField, registerFieldOK = lookupRegisterFieldInfo(objectType, member.Property.Value)
@@ -10372,6 +10588,10 @@ func (a *Analyzer) analyzeMemberAssignmentStatement(stmt *ast.AssignmentStatemen
 		a.addErrorAtToken(member.Property.Token, "property %s has no setter", member.Property.Value)
 		return
 	}
+	if staticSymbolOK && !staticSymbol.Mutable {
+		a.addErrorAtToken(member.Property.Token, "cannot assign to immutable static storage %s", staticSymbol.Name)
+		return
+	}
 	if propertyOK && stmt.Operator != "=" && !property.HasGetter {
 		a.addErrorAtToken(member.Property.Token, "property %s has no getter and cannot be used with %s", member.Property.Value, stmt.Operator)
 		return
@@ -10379,7 +10599,13 @@ func (a *Analyzer) analyzeMemberAssignmentStatement(stmt *ast.AssignmentStatemen
 	if registerFieldOK && !a.validateRegisterFieldWrite(registerField, stmt.Operator, member.Property.Token) {
 		return
 	}
-	place, placeOK := a.resolvePlace(member)
+	if registerFieldOK && !a.validateRegisterFieldWriteAncestors(member.Object, member.Property.Token) {
+		return
+	}
+	place, placeOK := Place{}, false
+	if !staticProperty && !staticSymbolOK {
+		place, placeOK = a.resolvePlace(member)
+	}
 	if placeOK && !place.Mutable {
 		a.addErrorAtToken(member.Property.Token, "cannot assign to immutable place %s", place.String())
 		return
@@ -10411,7 +10637,7 @@ func (a *Analyzer) analyzeMemberAssignmentStatement(stmt *ast.AssignmentStatemen
 		return
 	}
 
-	if stmt.Operator == "=" && a.isRegisterBitField(member) && a.isZeroOrOneIntegerConstant(stmt.Value) {
+	if !staticProperty && !staticSymbolOK && stmt.Operator == "=" && a.isRegisterBitField(member) && a.isZeroOrOneIntegerConstant(stmt.Value) {
 		return
 	}
 
@@ -10436,7 +10662,7 @@ func (a *Analyzer) analyzeMemberAssignmentStatement(stmt *ast.AssignmentStatemen
 		return
 	}
 	a.applyAssignmentOwnership(stmt)
-	if stmt.Operator == "=" && !propertyOK {
+	if stmt.Operator == "=" && !propertyOK && !staticSymbolOK {
 		a.updateContainedOriginsForAssignment(member, stmt.Value)
 	}
 	if placeOK {
@@ -10464,7 +10690,50 @@ func (a *Analyzer) validateRegisterFieldWrite(field RegisterField, operator stri
 			return false
 		}
 	}
+	if field.Type.Kind == RegisterType {
+		if path, access, special := nestedRegisterSpecialAccess(field.Type, field.Name); special {
+			a.addErrorAtToken(token, "cannot write whole nested register field %s because contained field %s has %s semantics", field.Name, path, access)
+			return false
+		}
+	}
 	return true
+}
+
+// validateRegisterFieldWriteAncestors preserves access semantics on every
+// nominal projection in Outer.Inner.Field, not merely on the final field.
+func (a *Analyzer) validateRegisterFieldWriteAncestors(expression ast.Expression, token lexer.Token) bool {
+	member, ok := expression.(*ast.MemberExpression)
+	if !ok || member.Property == nil {
+		return true
+	}
+	if !a.validateRegisterFieldWriteAncestors(member.Object, token) {
+		return false
+	}
+	objectType, _ := a.inferPlaceBase(member.Object)
+	field, ok := lookupRegisterFieldInfo(objectType, member.Property.Value)
+	if !ok || field.Access == "" || field.Access == RegisterReadWrite {
+		return true
+	}
+	a.addErrorAtToken(token, "cannot write through nested register field %s with %s semantics", member.Property.Value, field.Access)
+	return false
+}
+
+// nestedRegisterSpecialAccess walks the retained nominal layout rather than
+// flattening it. Whole-field writes are rejected when they would erase an
+// inner access contract; direct writes to ordinary nested fields remain legal.
+func nestedRegisterSpecialAccess(register Type, prefix string) (string, RegisterFieldAccess, bool) {
+	for _, field := range register.RegisterFields {
+		path := prefix + "." + field.Name
+		if field.Access != "" && field.Access != RegisterReadWrite {
+			return path, field.Access, true
+		}
+		if field.Type.Kind == RegisterType {
+			if nestedPath, access, ok := nestedRegisterSpecialAccess(field.Type, path); ok {
+				return nestedPath, access, true
+			}
+		}
+	}
+	return "", "", false
 }
 
 func (a *Analyzer) isRegisterBitField(member *ast.MemberExpression) bool {
@@ -12008,7 +12277,8 @@ func (a *Analyzer) inferMemberExpression(expr *ast.MemberExpression) (Type, bool
 			}
 			a.resolvedStructMemberPlans[expr] = ResolvedStructMemberPlan{
 				Kind: MemberStoredField, OwnerType: objectType, MemberType: fieldType,
-				FieldID: uint32(fieldID), FieldName: field.Name, Action: resolvedStructCopyAction(fieldType),
+				FieldID: uint32(fieldID), FieldName: field.Name, Tags: cloneStructTags(field.Tags),
+				Action: resolvedStructCopyAction(fieldType),
 			}
 			break
 		}
@@ -12048,7 +12318,11 @@ func (a *Analyzer) inferMemberExpression(expr *ast.MemberExpression) (Type, bool
 		return Type{Kind: InvalidType}, false
 	}
 
-	if _, exists := lookupProperty(objectType, expr.Property.Value); exists {
+	if candidate, exists := lookupProperty(objectType, expr.Property.Value); exists {
+		if candidate.Static {
+			a.addErrorAtToken(expr.Property.Token, "static property %s.%s must be accessed through type %s", typeDisplayName(objectType), expr.Property.Value, typeDisplayName(objectType))
+			return Type{Kind: InvalidType}, false
+		}
 		property, readable := a.resolveReadableProperty(objectType, expr.Property.Value, expr.Property.Token)
 		if !readable {
 			return Type{Kind: InvalidType}, false
@@ -12114,6 +12388,11 @@ func (a *Analyzer) inferChannelMember(expr *ast.MemberExpression, objectType Typ
 }
 
 func (a *Analyzer) inferStaticMemberExpression(expr *ast.MemberExpression) (Type, bool) {
+	// A lexical value (including self) wins over a same-shaped type path.
+	// rules/declarations/static.md, section 8 requires a type-qualified access.
+	if root, ok := expressionRootIdentifier(expr.Object); ok && root == "self" {
+		return Type{}, false
+	}
 	path, ok := typePathFromExpression(expr.Object)
 	if !ok {
 		return Type{}, false
@@ -12126,6 +12405,23 @@ func (a *Analyzer) inferStaticMemberExpression(expr *ast.MemberExpression) (Type
 	memberName := typeName + "." + expr.Property.Value
 	symbol, exists := a.symbols[memberName]
 	if !exists {
+		// rules/declarations/static.md, sections 8 and 11. Static
+		// properties use type-qualified lookup and getter semantics.
+		if property, found := lookupProperty(typ, expr.Property.Value); found {
+			if !property.Static {
+				a.addErrorAtToken(expr.Property.Token, "instance property %s.%s requires a value receiver", typeDisplayName(typ), expr.Property.Value)
+				return Type{Kind: InvalidType}, true
+			}
+			a.bindDefinition(expr.Property.Token, property.Token)
+			if !property.HasGetter {
+				a.addErrorAtToken(expr.Property.Token, "property %s has no getter", expr.Property.Value)
+				return Type{Kind: InvalidType}, true
+			}
+			a.resolvedStructMemberPlans[expr] = ResolvedStructMemberPlan{
+				Kind: MemberProperty, OwnerType: typ, MemberType: property.Type, FieldName: property.Name,
+			}
+			return property.Type, true
+		}
 		if member, ok := compilerKnownMember(typ, expr.Property.Value, true); ok && member.Kind == CompilerKnownProperty {
 			a.compilerKnownMemberFacts[sourceTokenLocation(expr.Property.Token)] = member
 			return member.Result, true
@@ -12579,12 +12875,60 @@ func typePathFromExpression(expr ast.Expression) (string, bool) {
 	}
 }
 
+func expressionRootIdentifier(expr ast.Expression) (string, bool) {
+	switch expr := expr.(type) {
+	case *ast.Identifier:
+		return expr.Value, true
+	case *ast.MemberExpression:
+		return expressionRootIdentifier(expr.Object)
+	default:
+		return "", false
+	}
+}
+
 func (a *Analyzer) lookupPropertyOnMember(expr *ast.MemberExpression) (Property, bool) {
 	objectType, _ := a.inferPlaceBase(expr.Object)
 	if objectType.Kind == InvalidType {
 		return Property{}, false
 	}
-	return lookupProperty(objectType, expr.Property.Value)
+	property, ok := lookupProperty(objectType, expr.Property.Value)
+	return property, ok && !property.Static
+}
+
+// lookupStaticPropertyOnMember implements the type-qualified write boundary
+// from rules/declarations/static.md, sections 8 and 11.
+func (a *Analyzer) lookupStaticPropertyOnMember(expr *ast.MemberExpression) (Property, bool) {
+	if root, ok := expressionRootIdentifier(expr.Object); ok && root == "self" {
+		return Property{}, false
+	}
+	path, ok := typePathFromExpression(expr.Object)
+	if !ok {
+		return Property{}, false
+	}
+	typ, ok := a.types[a.resolveTypeName(path)]
+	if !ok {
+		return Property{}, false
+	}
+	property, ok := lookupProperty(typ, expr.Property.Value)
+	return property, ok && property.Static
+}
+
+// lookupStaticSymbolOnMember enforces type-qualified static storage writes as
+// specified by rules/declarations/static.md, sections 6-8.
+func (a *Analyzer) lookupStaticSymbolOnMember(expr *ast.MemberExpression) (Symbol, bool) {
+	if root, ok := expressionRootIdentifier(expr.Object); ok && root == "self" {
+		return Symbol{}, false
+	}
+	path, ok := typePathFromExpression(expr.Object)
+	if !ok {
+		return Symbol{}, false
+	}
+	typeName := a.resolveTypeName(path)
+	if _, ok := a.types[typeName]; !ok {
+		return Symbol{}, false
+	}
+	symbol, ok := a.symbols[typeName+"."+expr.Property.Value]
+	return symbol, ok && symbol.Storage == StorageOriginStatic
 }
 
 func (a *Analyzer) lookupCurrentImplProperty(name string) (Property, bool) {
@@ -12769,6 +13113,9 @@ func (a *Analyzer) inferConversionExpression(expr *ast.ConversionExpression) (Ty
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
 		return conversionType, expressionValue{Display: expr.String()}
+	}
+	if targetType.Kind == RegisterType && isIntegerType(valueType) {
+		return a.integerToRegisterConversionResultType(targetType, valueType, expr.Value), expressionValue{Display: expr.String()}
 	}
 	if isIntegerType(targetType) && valueType.Kind == EnumType {
 		return a.enumToIntegerConversionResultType(targetType, valueType, expr.Value), expressionValue{Display: expr.String()}
@@ -15424,6 +15771,9 @@ func (a *Analyzer) inferCallAsConversion(expr *ast.CallExpression) (Type, expres
 		}
 		return conversionType, expressionValue{Display: expr.String()}
 	}
+	if targetType.Kind == RegisterType && isIntegerType(valueType) {
+		return a.integerToRegisterConversionResultType(targetType, valueType, expr.Arguments[0]), expressionValue{Display: expr.String()}
+	}
 	if isIntegerType(targetType) && valueType.Kind == EnumType {
 		return a.enumToIntegerConversionResultType(targetType, valueType, expr.Arguments[0]), expressionValue{Display: expr.String()}
 	}
@@ -15510,6 +15860,30 @@ func (a *Analyzer) enumConversionResultType(target Type, sourceType Type, source
 
 func (a *Analyzer) fallibleEnumConversionType(target Type) Type {
 	errorType := a.types["EnumValueError"]
+	return Type{Name: "Result", Kind: ResultType, TypeArgs: []Type{target, errorType}}
+}
+
+// integerToRegisterConversionResultType implements the checked conversion in
+// rules/declarations/registers.md, section 12. Constants outside the exact
+// unsigned bit domain are rejected; proven source domains convert directly;
+// every other runtime value yields Result[T, ArithmeticError] for explicit try
+// handling, with no hidden runtime or implicit trap.
+func (a *Analyzer) integerToRegisterConversionResultType(target Type, source Type, expression ast.Expression) Type {
+	minimum := big.NewInt(0)
+	maximum := new(big.Int).Lsh(big.NewInt(1), uint(target.RegisterWidth))
+	maximum.Sub(maximum, big.NewInt(1))
+	if value, constant := a.integerConstantValue(expression); constant {
+		if value.Cmp(minimum) < 0 || value.Cmp(maximum) > 0 {
+			a.addErrorAtToken(expressionToken(expression), "integer value %s does not fit register %s width %d", value.String(), target.Name, target.RegisterWidth)
+			return Type{Kind: InvalidType}
+		}
+		return target
+	}
+	if source.MinInteger != nil && source.MaxInteger != nil &&
+		source.MinInteger.Cmp(minimum) >= 0 && source.MaxInteger.Cmp(maximum) <= 0 {
+		return target
+	}
+	errorType := a.types["ArithmeticError"]
 	return Type{Name: "Result", Kind: ResultType, TypeArgs: []Type{target, errorType}}
 }
 
@@ -15772,9 +16146,15 @@ func tryHandlerBindingName(expr ast.Expression) (string, bool) {
 func (a *Analyzer) analyzeTryHandlerBody(handler *ast.TryHandler, successType Type, errorType Type, bindingName string) ResolvedTryHandlerFlow {
 	previousSymbols := a.symbols
 	previousConstInts := a.constInts
+	// rules/errors/errorhandling.md section 15: handler bindings are local to
+	// one handler arm. Preserve any shadowed outer Place state and remove every
+	// move/discard marker created for the handler binding when the arm ends.
+	previousBindingMoved := rootPlaceMovedState(a.moved, bindingName)
+	previousBindingMoveReasons := rootPlaceReasonState(a.moveReasons, bindingName)
 	a.symbols = copySymbols(previousSymbols)
 	a.constInts = copyConstInts(previousConstInts)
 	if bindingName != "" {
+		clearRootPlaceStateMaps(a.moved, a.moveReasons, bindingName)
 		bindingIdentifier := tryHandlerBindingIdentifier(handler)
 		bindingToken := handler.Token
 		if bindingIdentifier != nil {
@@ -15786,6 +16166,15 @@ func (a *Analyzer) analyzeTryHandlerBody(handler *ast.TryHandler, successType Ty
 		delete(a.constInts, bindingName)
 	}
 	defer func() {
+		if bindingName != "" {
+			clearRootPlaceStateMaps(a.moved, a.moveReasons, bindingName)
+			for place, token := range previousBindingMoved {
+				a.moved[place] = token
+			}
+			for place, reason := range previousBindingMoveReasons {
+				a.moveReasons[place] = reason
+			}
+		}
 		a.symbols = previousSymbols
 		a.constInts = previousConstInts
 	}()
@@ -15829,6 +16218,32 @@ func (a *Analyzer) analyzeTryHandlerBody(handler *ast.TryHandler, successType Ty
 		a.addErrorAtToken(expressionToken(handler.Body), "try handler must produce %s, got %s", typeDisplayName(successType), typeDisplayName(bodyType))
 	}
 	return TryHandlerProducesValue
+}
+
+func rootPlaceMovedState(state map[string]lexer.Token, root string) map[string]lexer.Token {
+	result := map[string]lexer.Token{}
+	if root == "" {
+		return result
+	}
+	for place, token := range state {
+		if place == root || strings.HasPrefix(place, root+".") || strings.HasPrefix(place, root+"[") {
+			result[place] = token
+		}
+	}
+	return result
+}
+
+func rootPlaceReasonState(state map[string]string, root string) map[string]string {
+	result := map[string]string{}
+	if root == "" {
+		return result
+	}
+	for place, reason := range state {
+		if place == root || strings.HasPrefix(place, root+".") || strings.HasPrefix(place, root+"[") {
+			result[place] = reason
+		}
+	}
+	return result
 }
 
 func tryHandlerBindingIdentifier(handler *ast.TryHandler) *ast.Identifier {
@@ -18001,6 +18416,9 @@ func canExplicitConvert(target Type, value Type) bool {
 	}
 
 	if target.Kind == EnumType && isIntegerType(value) {
+		return true
+	}
+	if target.Kind == RegisterType && isIntegerType(value) {
 		return true
 	}
 

@@ -17,7 +17,7 @@ impl StringBuilder {
     // Append a raw string literal or variable
     fn AppendStr(val: string) void {
         let mut i := 0
-        while i < val.len {
+        while i < val.Len {
             // Check if buffer is full, flush if necessary
             if self.len == 512 {
                 self.Flush()
@@ -25,7 +25,7 @@ impl StringBuilder {
 
             // Write directly to the internal byte buffer
             unsafe {
-                self.buf[self.len] = val.ptr[i]
+                self.buf[self.len] = val.Ptr[i]
             }
             self.len = self.len + 1
             i = i + 1
@@ -81,7 +81,7 @@ impl StringBuilder {
         if self.len > 0 {
             // Pass the first byte by reference; io.Write forwards its address to the syscall.
             unsafe {
-                io.Write(1, self.buf[0].ptr, uint(self.len))
+                io.Write(1, self.buf[0].Ptr, uint(self.len))
             }
             self.len = 0 // Reset buffer length
         }

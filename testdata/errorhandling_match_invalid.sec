@@ -69,3 +69,5 @@ fn UnreachableArm(error: IOError) int {
 }
 
 unit SEK currency
+unit m physical
+unit s physical

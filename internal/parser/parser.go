@@ -1824,15 +1824,30 @@ func (p *Parser) parseInterfaceDeclaration() ast.Statement {
 			fn.ReceiverCapability = ast.ReceiverConsuming
 			stmt.Methods = append(stmt.Methods, fn)
 		case lexer.STATIC:
-			if !p.expectPeek(lexer.FN) {
-				return nil
+			// rules/declarations/static.md, sections 11-12; properties.md,
+			// section 10. Interfaces preserve the static/instance category.
+			if p.peekToken.Type == lexer.FN {
+				p.nextToken()
+				fn := p.parseFunctionSignature()
+				if fn == nil {
+					return nil
+				}
+				fn.Static = true
+				stmt.Methods = append(stmt.Methods, fn)
+				break
 			}
-			fn := p.parseFunctionSignature()
-			if fn == nil {
-				return nil
+			if p.peekToken.Type == lexer.PROPERTY {
+				p.nextToken()
+				property := p.parseInterfaceProperty()
+				if property == nil {
+					return nil
+				}
+				property.Static = true
+				stmt.Properties = append(stmt.Properties, property)
+				break
 			}
-			fn.Static = true
-			stmt.Methods = append(stmt.Methods, fn)
+			p.addError("static inside interface must modify fn or property at %d:%d", p.curToken.Line, p.curToken.Column)
+			return nil
 		case lexer.PROPERTY:
 			property := p.parseInterfaceProperty()
 			if property == nil {
@@ -2585,11 +2600,12 @@ func (p *Parser) parseRegisterType() *ast.RegisterType {
 	if !p.expectPeek(lexer.LBRACKET) {
 		return registerType
 	}
-	width, ok := p.parseRegisterWidth("register width")
+	widthExpression, width, ok := p.parseRegisterWidthExpression("register width")
 	if !ok {
 		return registerType
 	}
 	registerType.Width = width
+	registerType.WidthExpression = widthExpression
 	if !p.expectPeek(lexer.RBRACKET) {
 		return registerType
 	}
@@ -2692,11 +2708,12 @@ func (p *Parser) parseRegisterFields() []*ast.RegisterField {
 			field.Width = 1
 			if p.peekToken.Type == lexer.LBRACKET {
 				p.nextToken()
-				width, ok := p.parseRegisterWidth("bit field width")
+				widthExpression, width, ok := p.parseRegisterWidthExpression("bit field width")
 				if !ok {
 					return fields
 				}
 				field.Width = width
+				field.WidthExpression = widthExpression
 				if !p.expectPeek(lexer.RBRACKET) {
 					return fields
 				}
@@ -2803,6 +2820,50 @@ func (p *Parser) parseRegisterWidth(kind string) (int64, bool) {
 		return 0, false
 	}
 	return width, true
+}
+
+// parseRegisterWidthExpression preserves the complete constant expression
+// accepted by rules/declarations/registers.md. Positivity and constantness are
+// semantic properties and are deliberately checked by Sema, not reconstructed
+// in the parser. The cached int64 value keeps literal AST consumers stable.
+func (p *Parser) parseRegisterWidthExpression(kind string) (ast.Expression, int64, bool) {
+	if p.peekToken.Type == lexer.RBRACKET || p.peekToken.Type == lexer.EOF {
+		p.addError("missing %s at %d:%d", kind, p.peekToken.Line, p.peekToken.Column)
+		return nil, 0, false
+	}
+	p.nextToken()
+	expression := p.parseExpression(LOWEST)
+	if expression == nil {
+		return nil, 0, false
+	}
+	width := int64(0)
+	if value, ok := parserRegisterLiteralWidth(expression); ok {
+		width = value
+	}
+	return expression, width, true
+}
+
+// parserRegisterLiteralWidth only supplies the compatibility cache above. It does
+// not decide whether an expression is a legal compile-time constant; that
+// decision remains in Sema where named constants are available.
+func parserRegisterLiteralWidth(expression ast.Expression) (int64, bool) {
+	switch expression := expression.(type) {
+	case *ast.IntegerLiteral:
+		return ast.ParseIntegerLiteralInt64(expression.Token.Lexeme)
+	case *ast.PrefixExpression:
+		if expression.Operator != "+" && expression.Operator != "-" {
+			return 0, false
+		}
+		value, ok := parserRegisterLiteralWidth(expression.Right)
+		if !ok {
+			return 0, false
+		}
+		if expression.Operator == "-" {
+			value = -value
+		}
+		return value, true
+	}
+	return 0, false
 }
 
 func (p *Parser) parseUnionType() []*ast.UnionVariant {
@@ -3168,8 +3229,20 @@ func (p *Parser) parseImplStatement() ast.Statement {
 				}
 				continue
 			}
+			if p.peekToken.Type == lexer.PROPERTY {
+				// rules/declarations/static.md, sections 11-12. A static
+				// property is an impl member with no implicit receiver.
+				p.nextToken()
+				property := p.parsePropertyDeclaration()
+				if property == nil {
+					continue
+				}
+				property.Static = true
+				stmt.Members = append(stmt.Members, property)
+				continue
+			}
 			start, diagnosticStart := p.curToken, len(p.diagnostics)
-			message := "static inside impl must modify fn or let"
+			message := "static inside impl must modify fn, let, or property"
 			recovery := p.skipInvalidImplMember()
 			stmt.Members = append(stmt.Members, p.invalidMember(start, diagnosticStart, recovery, message))
 		case lexer.FREE:

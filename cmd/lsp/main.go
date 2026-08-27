@@ -1550,7 +1550,7 @@ func hoverForSource(uri string, text string, pos position, overlays ...sourceOve
 		}
 		definitions := uniqueDefinitionTokens(analyzer.DefinitionsAt(token.File, token.Line, token.Column))
 		if len(definitions) == 1 {
-			if contents, found := memberHoverContentsForDefinition(analyzer.Types(), definitions[0]); found {
+			if contents, found := memberHoverContentsForDefinition(analyzer, definitions[0]); found {
 				return hoverResult{Contents: markupContent{Kind: "markdown", Value: contents}, Range: nameRange}, true
 			}
 		}
@@ -1808,13 +1808,12 @@ func compilerKnownMemberHover(sourceRange lspRange, member sema.CompilerKnownMem
 	return hoverResult{Contents: markupContent{Kind: "markdown", Value: contents}, Range: sourceRange}
 }
 
-func memberHoverContentsForDefinition(types map[string]sema.Type, definition lexer.Token) (string, bool) {
+func memberHoverContentsForDefinition(analyzer *sema.Analyzer, definition lexer.Token) (string, bool) {
+	if metadata, ok := analyzer.ResolvedStructFieldAt(definition); ok {
+		return structFieldHover(metadata.Field), true
+	}
+	types := analyzer.Types()
 	for _, typ := range types {
-		for _, field := range typ.Fields {
-			if sameSourceToken(field.Token, definition) {
-				return fmt.Sprintf("```sec\nfield %s: %s\n```", field.Name, lspTypeName(field.Type)), true
-			}
-		}
 		for _, field := range typ.RegisterFields {
 			if sameSourceToken(field.Token, definition) {
 				return registerFieldHover(field), true
@@ -1822,7 +1821,11 @@ func memberHoverContentsForDefinition(types map[string]sema.Type, definition lex
 		}
 		for _, property := range typ.Properties {
 			if sameSourceToken(property.Token, definition) {
-				return fmt.Sprintf("```sec\nproperty %s: %s\n```", property.Name, lspTypeName(property.Type)), true
+				modifier := ""
+				if property.Static {
+					modifier = "static "
+				}
+				return fmt.Sprintf("```sec\n%sproperty %s: %s\n```", modifier, property.Name, lspTypeName(property.Type)), true
 			}
 		}
 		for _, event := range typ.Events {
@@ -2010,7 +2013,7 @@ func unitQuantityHoverSuffix(typ sema.Type) string {
 func selfMemberHoverContents(target sema.Type, name string, functions map[string][]sema.Function, text string, sourcePath string) (string, bool) {
 	for _, field := range target.Fields {
 		if field.Name == name {
-			return fmt.Sprintf("```sec\nfield %s: %s\n```", name, lspTypeName(field.Type)), true
+			return structFieldHover(field), true
 		}
 	}
 	for _, field := range target.RegisterFields {
@@ -2019,7 +2022,7 @@ func selfMemberHoverContents(target sema.Type, name string, functions map[string
 		}
 	}
 	for _, property := range target.Properties {
-		if property.Name == name {
+		if property.Name == name && !property.Static {
 			return fmt.Sprintf("```sec\nproperty %s: %s\n```", name, lspTypeName(property.Type)), true
 		}
 	}
@@ -2032,6 +2035,21 @@ func selfMemberHoverContents(target sema.Type, name string, functions map[string
 		return functionHoverContents(overloads, text, sourcePath), true
 	}
 	return "", false
+}
+
+// structFieldHover exposes compiler-resolved open metadata according to
+// rules/declarations/struct.md section 4 and rules/tooling/lsp.md's Hover and
+// One semantic source of truth requirements. Values are never decoded here.
+func structFieldHover(field sema.StructField) string {
+	signature := fmt.Sprintf("field %s: %s", field.Name, lspTypeName(field.Type))
+	if len(field.Tags) > 0 {
+		entries := make([]string, 0, len(field.Tags))
+		for _, tag := range field.Tags {
+			entries = append(entries, tag.Key+`:"`+tag.Value+`"`)
+		}
+		signature += " `" + strings.Join(entries, " ") + "`"
+	}
+	return "```sec\n" + signature + "\n```"
 }
 
 func functionHoverContents(functions []sema.Function, text string, sourcePath string) string {
@@ -2521,11 +2539,17 @@ func memberCompletionItems(exprType sema.Type, functions map[string][]sema.Funct
 		}
 	}
 
+	// rules/declarations/static.md, sections 8 and 11. Completion keeps the
+	// static and instance member namespaces on their legal receiver forms.
 	for _, property := range exprType.Properties {
-		add(completionItem{Label: property.Name, Kind: 10, Detail: lspTypeName(property.Type)})
+		if property.Static == static {
+			add(completionItem{Label: property.Name, Kind: 10, Detail: lspTypeName(property.Type)})
+		}
 	}
-	for _, event := range exprType.Events {
-		add(completionItem{Label: event.Name, Kind: 24, Detail: lspTypeName(event.Type)})
+	if !static {
+		for _, event := range exprType.Events {
+			add(completionItem{Label: event.Name, Kind: 24, Detail: lspTypeName(event.Type)})
+		}
 	}
 
 	typeName := exprType.Name
@@ -2536,15 +2560,25 @@ func memberCompletionItems(exprType sema.Type, functions map[string][]sema.Funct
 				continue
 			}
 			methodName := strings.TrimPrefix(name, methodPrefix)
-			add(completionItem{Label: methodName, Kind: 2, Detail: functionCompletionDetail(overloads)})
-		}
-		staticPrefix := typeName + "."
-		for name, symbol := range symbols {
-			if !strings.HasPrefix(name, staticPrefix) {
-				continue
+			matching := make([]sema.Function, 0, len(overloads))
+			for _, overload := range overloads {
+				if overload.Static == static {
+					matching = append(matching, overload)
+				}
 			}
-			memberName := strings.TrimPrefix(name, staticPrefix)
-			add(completionItem{Label: memberName, Kind: 6, Detail: lspTypeName(symbol.Type)})
+			if len(matching) > 0 {
+				add(completionItem{Label: methodName, Kind: 2, Detail: functionCompletionDetail(matching)})
+			}
+		}
+		if static {
+			staticPrefix := typeName + "."
+			for name, symbol := range symbols {
+				if !strings.HasPrefix(name, staticPrefix) {
+					continue
+				}
+				memberName := strings.TrimPrefix(name, staticPrefix)
+				add(completionItem{Label: memberName, Kind: 6, Detail: lspTypeName(symbol.Type)})
+			}
 		}
 	}
 
@@ -2834,7 +2868,14 @@ func registerFieldHover(field sema.RegisterField) string {
 
 func lspTypeName(typ sema.Type) string {
 	if typ.Name != "" {
-		return typ.Name
+		if len(typ.TypeArgs) == 0 || strings.Contains(typ.Name, "[") {
+			return typ.Name
+		}
+		arguments := make([]string, 0, len(typ.TypeArgs))
+		for _, argument := range typ.TypeArgs {
+			arguments = append(arguments, lspTypeName(argument))
+		}
+		return typ.Name + "[" + strings.Join(arguments, ", ") + "]"
 	}
 	if typ.Kind != "" {
 		return string(typ.Kind)

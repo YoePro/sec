@@ -1,0 +1,414 @@
+module net
+
+// =====================================================================
+// ERRORS
+// =====================================================================
+
+enum NetError error {
+    ConnectionRefused,
+    Timeout,
+    InvalidPacketStructure,
+    NetworkUnreachable,
+    BufferTooSmall,
+    UnsupportedIpVersion,
+}
+
+// =====================================================================
+// PROTOCOL DEFINITIONS & WIRE FORMAT
+// =====================================================================
+
+// Open bit-enum for IPv4 Protocol / IPv6 Next Header values.
+//
+// Source:
+//   IANA Assigned Internet Protocol Numbers
+//   https://www.iana.org/assignments/protocol-numbers
+//
+// Unknown, unassigned, reserved, experimental, and future values remain valid
+// because bit-backed Sec enums are open over their complete bit width.
+//
+// IANA keywords that are not valid Sec identifiers are normalized using
+// underscores or an equivalent readable identifier.
+enum IpProtocol bit[8] {
+    HOPOPT = 0,          // RFC8200 - IPv6 Hop-by-Hop Option
+    ICMP = 1,            // RFC792 - Internet Control Message
+    IGMP = 2,            // RFC1112 - Internet Group Management
+    GGP = 3,             // RFC823 - Gateway-to-Gateway
+    IPv4 = 4,            // RFC2003 - IPv4 encapsulation
+    ST = 5,              // RFC1190, RFC1819 - Stream
+    TCP = 6,             // RFC9293 - Transmission Control
+    CBT = 7,             // CBT
+    EGP = 8,             // RFC888 - Exterior Gateway Protocol
+    IGP = 9,             // Any private interior gateway
+    BBN_RCC_MON = 10,    // BBN RCC Monitoring
+    NVP_II = 11,         // RFC741 - Network Voice Protocol
+    PUP = 12,            // PUP
+    ARGUS = 13,          // Deprecated - ARGUS
+    EMCON = 14,          // EMCON
+    XNET = 15,           // Cross Net Debugger
+    CHAOS = 16,          // Chaos
+    UDP = 17,            // RFC768 - User Datagram
+    MUX = 18,            // Multiplexing
+    DCN_MEAS = 19,       // DCN Measurement Subsystems
+    HMP = 20,            // RFC869 - Host Monitoring
+    PRM = 21,            // Packet Radio Measurement
+    XNS_IDP = 22,        // XEROX NS IDP
+    TRUNK_1 = 23,        // Trunk-1
+    TRUNK_2 = 24,        // Trunk-2
+    LEAF_1 = 25,         // Leaf-1
+    LEAF_2 = 26,         // Leaf-2
+    RDP = 27,            // RFC908 - Reliable Data Protocol
+    IRTP = 28,           // RFC938 - Internet Reliable Transaction
+    ISO_TP4 = 29,        // RFC905 - ISO Transport Protocol Class 4
+    NETBLT = 30,         // RFC969 - Bulk Data Transfer Protocol
+    MFE_NSP = 31,        // MFE Network Services Protocol
+    MERIT_INP = 32,      // MERIT Internodal Protocol
+    DCCP = 33,           // RFC4340 - Datagram Congestion Control Protocol
+    THREEPC = 34,        // IANA keyword: 3PC - Third Party Connect Protocol
+    IDPR = 35,           // Inter-Domain Policy Routing Protocol
+    XTP = 36,            // XTP
+    DDP = 37,            // Datagram Delivery Protocol
+    IDPR_CMTP = 38,      // IDPR Control Message Transport Protocol
+    TPPP = 39,           // IANA keyword: TP++ - TP++ Transport Protocol
+    IL = 40,             // IL Transport Protocol
+    IPv6 = 41,           // RFC2473 - IPv6 encapsulation
+    SDRP = 42,           // Source Demand Routing Protocol
+    IPv6_ROUTE = 43,     // IPv6 Routing Header
+    IPv6_FRAG = 44,      // IPv6 Fragment Header
+    IDRP = 45,           // Inter-Domain Routing Protocol
+    RSVP = 46,           // RFC2205, RFC3209 - Reservation Protocol
+    GRE = 47,            // RFC2784 - Generic Routing Encapsulation
+    DSR = 48,            // RFC4728 - Dynamic Source Routing Protocol
+    BNA = 49,            // BNA
+    ESP = 50,            // RFC4303 - Encapsulating Security Payload
+    AH = 51,             // RFC4302 - Authentication Header
+    I_NLSP = 52,         // Integrated Net Layer Security TUBA
+    SWIPE = 53,          // Deprecated - IP with Encryption
+    NARP = 54,           // RFC1735 - NBMA Address Resolution Protocol
+    MIN_IPv4 = 55,       // RFC2004 - Minimal IPv4 Encapsulation
+    TLSP = 56,           // Transport Layer Security Protocol using Kryptonet
+    SKIP = 57,           // SKIP
+    IPv6_ICMP = 58,      // RFC8200 - ICMP for IPv6
+    IPv6_NONXT = 59,     // RFC8200 - No Next Header for IPv6
+    IPv6_OPTS = 60,      // RFC8200 - Destination Options for IPv6
+
+    // 61 has no IANA keyword: any host internal protocol
+
+    CFTP = 62,    // CFTP
+
+    // 63 has no IANA keyword: any local network
+
+    SAT_EXPAK = 64,    // SATNET and Backroom EXPAK
+    KRYPTOLAN = 65,    // Kryptolan
+    RVD = 66,          // MIT Remote Virtual Disk Protocol
+    IPPC = 67,         // Internet Pluribus Packet Core
+
+    // 68 has no IANA keyword: any distributed file system
+
+    SAT_MON = 69,        // SATNET Monitoring
+    VISA = 70,           // VISA Protocol
+    IPCV = 71,           // Internet Packet Core Utility
+    CPNX = 72,           // Computer Protocol Network Executive
+    CPHB = 73,           // Computer Protocol Heart Beat
+    WSN = 74,            // Wang Span Network
+    PVP = 75,            // Packet Video Protocol
+    BR_SAT_MON = 76,     // Backroom SATNET Monitoring
+    SUN_ND = 77,         // SUN ND PROTOCOL-Temporary
+    WB_MON = 78,         // WIDEBAND Monitoring
+    WB_EXPAK = 79,       // WIDEBAND EXPAK
+    ISO_IP = 80,         // ISO Internet Protocol
+    VMTP = 81,           // VMTP
+    SECURE_VMTP = 82,    // SECURE-VMTP
+    VINES = 83,          // VINES
+    IPTM = 84,           // Internet Protocol Traffic Manager
+    NSFNET_IGP = 85,     // NSFNET-IGP
+    DGP = 86,            // Dissimilar Gateway Protocol
+    TCF = 87,            // TCF
+    EIGRP = 88,          // RFC7868 - Enhanced Interior Gateway Routing Protocol
+    OSPFIGP = 89,        // RFC1583, RFC2328, RFC5340 - OSPF
+    SPRITE_RPC = 90,     // Sprite RPC Protocol
+    LARP = 91,           // Locus Address Resolution Protocol
+    MTP = 92,            // Multicast Transport Protocol
+    AX25 = 93,           // IANA keyword: AX.25 - AX.25 Frames
+    IPIP = 94,           // IP-within-IP Encapsulation Protocol
+    MICP = 95,           // Deprecated - Mobile Internetworking Control Protocol
+    SCC_SP = 96,         // Semaphore Communications Security Protocol
+    ETHERIP = 97,        // RFC3378 - Ethernet-within-IP Encapsulation
+    ENCAP = 98,          // RFC1241 - Encapsulation Header
+
+    // 99 has no IANA keyword: any private encryption scheme
+
+    GMTP = 100,           // GMTP
+    IFMP = 101,           // Ipsilon Flow Management Protocol
+    PNNI = 102,           // PNNI over IP
+    PIM = 103,            // RFC7761 - Protocol Independent Multicast
+    ARIS = 104,           // ARIS
+    SCPS = 105,           // SCPS
+    QNX = 106,            // QNX
+    A_N = 107,            // IANA keyword: A/N - Active Networks
+    IPCOMP = 108,         // RFC2393 - IP Payload Compression Protocol
+    SNP = 109,            // Sitara Networks Protocol
+    COMPAQ_PEER = 110,    // Compaq Peer Protocol
+    IPX_IN_IP = 111,      // IPX in IP
+    VRRP = 112,           // RFC9568 - Virtual Router Redundancy Protocol
+    PGM = 113,            // PGM Reliable Transport Protocol
+
+    // 114 has no IANA keyword: any 0-hop protocol
+
+    L2TP = 115,               // RFC3931 - Layer Two Tunneling Protocol
+    DDX = 116,                // D-II Data Exchange
+    IATP = 117,               // Interactive Agent Transfer Protocol
+    STP = 118,                // Schedule Transfer Protocol
+    SRP = 119,                // SpectraLink Radio Protocol
+    UTI = 120,                // UTI
+    SMP = 121,                // Simple Message Protocol
+    SM = 122,                 // Deprecated - Simple Multicast Protocol
+    PTP = 123,                // Performance Transparency Protocol
+    ISIS_OVER_IPv4 = 124,     // IANA keyword: "ISIS over IPv4"
+    FIRE = 125,               // FIRE
+    CRTP = 126,               // Combat Radio Transport Protocol
+    CRUDP = 127,              // Combat Radio User Datagram
+    SSCOPMCE = 128,           // SSCOPMCE
+    IPLT = 129,               // IPLT
+    SPS = 130,                // Secure Packet Shield
+    PIPE = 131,               // Private IP Encapsulation within IP
+    SCTP = 132,               // Stream Control Transmission Protocol
+    FC = 133,                 // RFC6172 - Fibre Channel
+    RSVP_E2E_IGNORE = 134,    // RFC3175 - RSVP-E2E-IGNORE
+    MOBILITY_HEADER = 135,    // RFC6275 - IPv6 Mobility Header
+    UDPLITE = 136,            // RFC3828 - UDP-Lite
+    MPLS_IN_IP = 137,         // RFC4023 - MPLS-in-IP
+    MANET = 138,              // RFC5498 - MANET Protocols
+    HIP = 139,                // RFC7401 - Host Identity Protocol
+    SHIM6 = 140,              // RFC5533 - Shim6 Protocol
+    WESP = 141,               // RFC5840 - Wrapped Encapsulating Security Payload
+    ROHC = 142,               // RFC5858 - Robust Header Compression
+    ETHERNET = 143,           // RFC8986 - Ethernet
+    AGGFRAG = 144,            // RFC9347 - AGGFRAG encapsulation payload for ESP
+    NSH = 145,                // RFC9491 - Network Service Header
+    HOMA = 146,               // Homa
+    BIT_EMU = 147,            // RFC9801 - Bit-stream Emulation
+
+    // 148..252 are currently unassigned.
+    // 253 and 254 are reserved for experimentation and testing (RFC3692).
+    // 255 is reserved.
+}
+
+// =====================================================================
+// IPv4
+// =====================================================================
+
+// Explicit Congestion Notification (ECN) field.
+enum IpEcn bit[2] {
+    NotEct = 0b00,
+    Ect1 = 0b01,
+    Ect0 = 0b10,
+    Ce = 0b11,
+}
+
+// Nested register for IPv4 flags.
+type Ipv4Flags register[3] msb-first {
+    Reserved: bit,
+    DontFragment: bit,
+    MoreFragments: bit,
+}
+
+// Nested register for IPv4 addresses.
+type Ipv4Address register[32] msb-first big-endian {
+    A: bit[8],
+    B: bit[8],
+    C: bit[8],
+    D: bit[8],
+}
+
+// Fixed-width wire layout for IPv4 header.
+// msb-first maps fields correctly within bytes.
+// big-endian aligns with network byte order.
+// Total size: 20 bytes (160 bits).
+type Ipv4WireHeader register[160] msb-first big-endian {
+    Version: bit[4],
+    Ihl: bit[4],
+    Dscp: bit[6],
+    Ecn: IpEcn,
+    TotalLength: bit[16],
+    Identification: bit[16],
+    Flags: Ipv4Flags,
+    FragmentOffset: bit[13],
+    TimeToLive: bit[8],
+    Protocol: IpProtocol,
+    HeaderChecksum: bit[16],
+    SourceIp: Ipv4Address,
+    DestinationIp: Ipv4Address,
+}
+
+impl Ipv4WireHeader {
+    init(buffer: ref byte[]) NetError {
+        if buffer.len < 20 {
+            return NetError.BufferTooSmall
+        }
+
+        // Explicit byte-to-register decoding implementation goes here,
+        // mapping network byte order (big-endian) into the register fields.
+    }
+}
+
+// =====================================================================
+// IPv6
+// =====================================================================
+
+// Nested register for IPv6 addresses (128 bits).
+// Mapped as eight 16-bit segments corresponding to standard IPv6 hex notation.
+type Ipv6Address register[128] msb-first big-endian {
+    Segment0: bit[16],
+    Segment1: bit[16],
+    Segment2: bit[16],
+    Segment3: bit[16],
+    Segment4: bit[16],
+    Segment5: bit[16],
+    Segment6: bit[16],
+    Segment7: bit[16],
+}
+
+// Fixed-width wire layout for IPv6 header.
+// Total size: 40 bytes (320 bits).
+type Ipv6WireHeader register[320] msb-first big-endian {
+    Version: bit[4],
+    Dscp: bit[6],
+    Ecn: IpEcn,
+    FlowLabel: bit[20],
+    PayloadLength: bit[16],
+    NextHeader: IpProtocol,
+    HopLimit: bit[8],
+    SourceIp: Ipv6Address,
+    DestinationIp: Ipv6Address,
+}
+
+// =====================================================================
+// SEMANTIC REPRESENTATION (ZERO-COPY)
+// =====================================================================
+
+type Ipv4Packet struct {
+    Header: Ipv4WireHeader,
+    // Slice referencing the payload inside the original borrowed buffer
+    Payload: ref byte[],
+}
+
+type Ipv6Packet struct {
+    Header: Ipv6WireHeader,
+    // Slice referencing the payload inside the original borrowed buffer
+    Payload: ref byte[],
+}
+
+// Tagged runtime union for semantic alternatives after parsing
+type IpPacket union {
+    V4(Ipv4Packet),
+    V6(Ipv6Packet),
+}
+
+// =====================================================================
+// PARSING
+// =====================================================================
+
+// Takes a non-owning slice and parses it into an IpPacket.
+// Does not allocate memory or copy the payload.
+fn ParseIpPacket(buffer: ref byte[]) Result[IpPacket, NetError] {
+    if buffer.len < 20 {
+        return Err(NetError.BufferTooSmall)
+    }
+
+    // The first byte contains Version (top 4 bits) and IHL (bottom 4 bits) in IPv4.
+    // In IPv6, the top 4 bits are also the Version.
+    let firstByte: byte := buffer[0]
+    let version: uint8 := uint8(firstByte >> 4)
+
+    if version == 4 {
+        // Extract IHL via bitmask
+        let ihl: uint8 := uint8(firstByte & 0x0F)
+        let headerBytes: int := int(ihl) * 4
+
+        if buffer.len < headerBytes {
+            return Err(NetError.BufferTooSmall)
+        }
+
+        // Decode the wire header from the raw bytes using a binary decoding primitive
+        // (Assumes existence of an endian-aware decoder in stdlib/encoding)
+        let header: Ipv4WireHeader := binary.DecodeRegister[Ipv4WireHeader](buffer[0..headerBytes])
+
+        // Slice the remaining bytes as the payload
+        let payload: ref byte[] := buffer[headerBytes..]
+
+        return Ok(IpPacket.V4(new Ipv4Packet {
+            Header: header,
+            Payload: payload,
+        }))
+
+    } else if version == 6 {
+        let headerBytes: int := 40 // IPv6 header is always 40 bytes
+
+        if buffer.len < headerBytes {
+            return Err(NetError.BufferTooSmall)
+        }
+
+        let header: Ipv6WireHeader := binary.DecodeRegister[Ipv6WireHeader](buffer[0..headerBytes])
+
+        let payload: ref byte[] := buffer[headerBytes..]
+
+        return Ok(IpPacket.V6(new Ipv6Packet {
+            Header: header,
+            Payload: payload,
+        }))
+    }
+
+    return Err(NetError.UnsupportedIpVersion)
+}
+
+// =====================================================================
+// SOCKETS & OWNERSHIP
+// =====================================================================
+
+type TcpStream struct {
+    _handle: int,
+}
+
+impl TcpStream {
+    // Fallible initializer. Returns NetError if the connection fails.
+    // Does not expose native OS handles to the caller.
+    init(address: uint32, port: uint16) NetError {
+        // Platform specific logic would go here
+        self._handle = 1 // Mock valid handle
+    }
+
+    free {
+        // Cleanup OS resource when stream is destroyed or goes out of scope
+        if self._handle != 0 {
+            // Close native socket
+        }
+    }
+
+    // Send borrows a slice. No ownership transfer of the data.
+    fn Send(data: ref byte[]) Result[int, NetError] {
+        // Write to native socket
+        return Ok(0)
+    }
+}
+
+// Consuming function that takes ownership of a stream
+fn TerminateConnection(->stream: TcpStream) void {
+    // Stream is moved here. The destructor (free) runs when this scope ends.
+}
+
+// =====================================================================
+// USAGE EXAMPLE
+// =====================================================================
+
+fn NetworkTask() void {
+    // @NoCopy enforces that this socket cannot be accidentally copied.
+    @NoCopy
+    let mut client: TcpStream := try new TcpStream(0x7F000001, 80) {
+        Err(_) => { return }
+    }
+
+    // Explicitly pass ownership of the client to the terminating function
+    TerminateConnection(<-client)
+
+    // Using 'client' here would cause a compile-time error
+}

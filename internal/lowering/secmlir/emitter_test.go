@@ -19,6 +19,46 @@ import (
 	"sec/internal/sema"
 )
 
+// configuredSecMLIROptPath implements the absolute-tool-path acceptance rule
+// in rules/mlir/packages/sec-mlir-dialect_package13.md section 90:
+// SEC_MLIR_BIN names an absolute tool directory so tests remain independent of
+// the package working directory selected by `go test`.
+func configuredSecMLIROptPath(binDir string) (string, error) {
+	if !filepath.IsAbs(binDir) {
+		return "", fmt.Errorf("SEC_MLIR_BIN must be an absolute path, got %q", binDir)
+	}
+	return filepath.Join(binDir, "sec-mlir-opt"), nil
+}
+
+// requiredSecMLIROptPath resolves the Package 13 verifier or skips a real-tool
+// test when the caller has not configured the optional MLIR toolchain.
+func requiredSecMLIROptPath(t *testing.T) string {
+	t.Helper()
+	binDir := os.Getenv("SEC_MLIR_BIN")
+	if binDir == "" {
+		t.Skip("SEC_MLIR_BIN is not set")
+	}
+	path, err := configuredSecMLIROptPath(binDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestConfiguredSecMLIRBinRequiresAbsolutePath(t *testing.T) {
+	if _, err := configuredSecMLIROptPath("build/sec-mlir/bin"); err == nil {
+		t.Fatal("relative SEC_MLIR_BIN unexpectedly accepted")
+	}
+	want := filepath.Join(string(filepath.Separator), "tmp", "sec-tools", "sec-mlir-opt")
+	got, err := configuredSecMLIROptPath(filepath.Dir(want))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatalf("configured tool path = %q, want %q", got, want)
+	}
+}
+
 func TestEmitIsDeterministicAndPreservesSchemaMetadata(t *testing.T) {
 	module := representativeModule(t)
 	first, err := Emit(module, testPlan(64))
@@ -239,10 +279,7 @@ func TestEmitterDependencyBoundary(t *testing.T) {
 }
 
 func TestEmittedModuleVerifiesWithRealTool(t *testing.T) {
-	binDir := os.Getenv("SEC_MLIR_BIN")
-	if binDir == "" {
-		t.Skip("SEC_MLIR_BIN is not set")
-	}
+	tool := requiredSecMLIROptPath(t)
 	output, err := Emit(representativeModule(t), testPlan(64))
 	if err != nil {
 		t.Fatal(err)
@@ -251,17 +288,14 @@ func TestEmittedModuleVerifiesWithRealTool(t *testing.T) {
 	if err := os.WriteFile(path, output, 0600); err != nil {
 		t.Fatal(err)
 	}
-	command := exec.Command(filepath.Join(binDir, "sec-mlir-opt"), path, "-o", os.DevNull)
+	command := exec.Command(tool, path, "-o", os.DevNull)
 	if combined, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("sec-mlir-opt: %v\n%s\nGenerated:\n%s", err, combined, output)
 	}
 }
 
 func TestEmittedModuleLowersTrivialCoreWithRealTool(t *testing.T) {
-	binDir := os.Getenv("SEC_MLIR_BIN")
-	if binDir == "" {
-		t.Skip("SEC_MLIR_BIN is not set")
-	}
+	tool := requiredSecMLIROptPath(t)
 	output, err := Emit(boolModule(t), testPlan(64))
 	if err != nil {
 		t.Fatal(err)
@@ -270,7 +304,7 @@ func TestEmittedModuleLowersTrivialCoreWithRealTool(t *testing.T) {
 	if err := os.WriteFile(path, output, 0600); err != nil {
 		t.Fatal(err)
 	}
-	command := exec.Command(filepath.Join(binDir, "sec-mlir-opt"), path,
+	command := exec.Command(tool, path,
 		"--sec-lower-trivial-core")
 	lowered, err := command.CombinedOutput()
 	if err != nil {
@@ -283,11 +317,12 @@ func TestEmittedModuleLowersTrivialCoreWithRealTool(t *testing.T) {
 	}
 }
 
+// rules/declarations/struct.md section 4 and
 // rules/mlir/lowering-versions/sec_mlir_lowering_v9.md sections 2-11 define
-// the verified Semantic IR to schema-v9 struct bridge exercised here.
+// the verified raw tag-metadata bridge from Semantic IR to schema-v9 structs.
 func TestEmitPackage13StructsEndToEnd(t *testing.T) {
 	source := `module main
-type Pair struct { Wide: int128 ` + "`wire:\"signed\"`" + `, Limit: uint256 }
+type Pair struct { Wide: int128 ` + "`wire:\"signed\\\"little\" json:\"wide value\"`" + `, Limit: uint256 }
 type Position union { Unknown Known { X: int128, Y: uint256 } }
 fn Build(base: Pair) int128 {
   let mut value := Pair { base..., Wide: 5 }
@@ -321,7 +356,8 @@ fn Read(position: Position, zero: int128) int128 {
 	for _, expected := range []string{
 		`sec.dialect_version = 9 : i32`,
 		`!sec.struct<identity = "main::Pair"`,
-		`#sec.struct_tag<key = "wire", value = "signed">`,
+		`#sec.struct_tag<key = "wire", value = "signed\5C\22little">`,
+		`#sec.struct_tag<key = "json", value = "wide value">`,
 		`"sec.struct.spread_fields"`,
 		`"sec.struct.construct"`,
 		`"sec.struct.replace_field"`,
@@ -338,11 +374,15 @@ fn Read(position: Position, zero: int128) int128 {
 	if binDir == "" {
 		return
 	}
+	tool, err := configuredSecMLIROptPath(binDir)
+	if err != nil {
+		t.Fatal(err)
+	}
 	path := filepath.Join(t.TempDir(), "package13.mlir")
 	if err := os.WriteFile(path, output, 0600); err != nil {
 		t.Fatal(err)
 	}
-	command := exec.Command(filepath.Join(binDir, "sec-mlir-opt"), path,
+	command := exec.Command(tool, path,
 		"--sec-verify-union-guards", "--sec-verify-match-cfg",
 		"--sec-lower-scalar-core", "--sec-lower-trivial-core", "-o", os.DevNull)
 	if combined, err := command.CombinedOutput(); err != nil {
@@ -351,10 +391,7 @@ fn Read(position: Position, zero: int128) int128 {
 }
 
 func TestEmittedModuleLowersScalarCoreFor32And64BitPlans(t *testing.T) {
-	binDir := os.Getenv("SEC_MLIR_BIN")
-	if binDir == "" {
-		t.Skip("SEC_MLIR_BIN is not set")
-	}
+	tool := requiredSecMLIROptPath(t)
 	for _, width := range []uint16{32, 64} {
 		t.Run(strconv.Itoa(int(width)), func(t *testing.T) {
 			output, err := Emit(representativeModule(t), testPlan(width))
@@ -365,7 +402,7 @@ func TestEmittedModuleLowersScalarCoreFor32And64BitPlans(t *testing.T) {
 			if err := os.WriteFile(path, output, 0600); err != nil {
 				t.Fatal(err)
 			}
-			command := exec.Command(filepath.Join(binDir, "sec-mlir-opt"), path,
+			command := exec.Command(tool, path,
 				"--sec-lower-scalar-core", "--sec-lower-scalar-core")
 			lowered, err := command.CombinedOutput()
 			if err != nil {

@@ -331,6 +331,32 @@ type Native register[8] lsb-first little-endian {
 	}
 }
 
+// rules/declarations/registers.md, section 3: width syntax preserves general
+// compile-time expressions for Sema rather than reducing the grammar to a
+// decimal literal special case.
+func TestParseRegisterCompileTimeWidthExpressions(t *testing.T) {
+	input := `
+type Packet register[(2 + 2) * 4] {
+	Header: bit[1 << 2],
+	Payload: bit[WIDTH * 3],
+}
+`
+	p := New(lexer.New(input))
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+	if len(program.Statements) != 1 {
+		t.Fatalf("statement count = %d, want 1", len(program.Statements))
+	}
+	declaration := program.Statements[0].(*ast.TypeDeclStatement)
+	if declaration.RegisterType.WidthExpression == nil || declaration.RegisterType.Width != 0 {
+		t.Fatalf("register width syntax = %#v, cached width %d", declaration.RegisterType.WidthExpression, declaration.RegisterType.Width)
+	}
+	fields := declaration.RegisterType.Fields
+	if len(fields) != 2 || fields[0].WidthExpression == nil || fields[0].Width != 0 || fields[1].WidthExpression == nil {
+		t.Fatalf("register field width syntax = %#v", fields)
+	}
+}
+
 func TestParseRegisterFieldAccessModifiers(t *testing.T) {
 	input := `
 type Device register[6] msb-first little-endian {
@@ -2043,6 +2069,7 @@ impl Vehicle {
 		}
 	}
 }
+
 `
 
 	l := lexer.New(input)
@@ -2066,6 +2093,35 @@ impl Vehicle {
 	}
 	if property.Getter == nil || property.Setter == nil || !property.Setter.Fallible {
 		t.Fatalf("expected getter and fallible setter, got %+v", property)
+	}
+}
+
+// rules/declarations/static.md, sections 11-12; properties.md, section 10.
+func TestParseStaticImplAndInterfaceProperties(t *testing.T) {
+	input := `
+interface Source {
+    static property Current: int { get set value }
+}
+
+impl Counter {
+    static property Current: int {
+        get { return Counter.Value }
+        set value { Counter.Value = value }
+    }
+}
+`
+	p := New(lexer.New(input))
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	iface := program.Statements[0].(*ast.InterfaceDeclaration)
+	if len(iface.Properties) != 1 || !iface.Properties[0].Static || iface.Properties[0].SetterParameter.Value != "value" {
+		t.Fatalf("wrong static interface property: %+v", iface.Properties)
+	}
+	impl := program.Statements[1].(*ast.ImplStatement)
+	property := impl.Members[0].(*ast.PropertyDeclaration)
+	if !property.Static || property.Getter == nil || property.Setter == nil || property.Setter.Parameter.Value != "value" {
+		t.Fatalf("wrong static impl property: %+v", property)
 	}
 }
 

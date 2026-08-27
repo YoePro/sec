@@ -156,6 +156,22 @@ func TestFormatPreservesCanonicalNumericFamilySuffixes(t *testing.T) {
 	}
 }
 
+func TestFormatCompactsUnitExpressionWithoutReordering(t *testing.T) {
+	input := "type Flux decimal<( kg * m ) / ( s ^ 2 * A )>\n"
+	want := "type Flux decimal<(kg*m)/(s^2*A)>\n"
+	if got := Format(Source{Text: input}, Options{}).Text; got != want {
+		t.Fatalf("unit expression formatting changed identity or order: %q, want %q", got, want)
+	}
+}
+
+func TestFormatDoesNotTreatComparisonAsUnitExpression(t *testing.T) {
+	input := "fn Compare(a: int, b: int, c: int, d: int) bool {\nreturn a < b / c > d\n}\n"
+	got := Format(Source{Text: input}, Options{}).Text
+	if !strings.Contains(got, "return a < b / c > d") {
+		t.Fatalf("comparison was rewritten as a unit expression: %q", got)
+	}
+}
+
 func TestFormatTryHandlerAfterStructLiteralCallArgument(t *testing.T) {
 	input := `fn NextToken() Token {
 if invalid {

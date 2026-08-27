@@ -829,7 +829,7 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 					status = existing.Status
 				}
 			}
-			a.units[stmt.Name.Value] = UnitDefinition{Name: stmt.Name.Value, Category: category, Dimension: dimension, DimensionEstablished: dimensionEstablished, DefaultNumeric: defaultNumeric, Status: status, Transform: LinearUnitTransform, Token: stmt.Name.Token}
+			a.units[stmt.Name.Value] = UnitDefinition{Name: stmt.Name.Value, Category: category, Dimension: dimension, DimensionEstablished: dimensionEstablished, DefaultNumeric: defaultNumeric, Status: status, Transform: LinearUnitTransform, ScaleValue: big.NewRat(1, 1), Token: stmt.Name.Token}
 			a.types[stmt.Name.Value] = Type{Name: stmt.Name.Value, Module: a.currentModule, Kind: InvalidType}
 		case *ast.EnumDeclaration:
 			if stmt.Name == nil {
@@ -1390,11 +1390,13 @@ func (a *Analyzer) analyzeUnitMetadata(program *ast.Program) {
 				unit.System = value[0].Lexeme
 				changed = true
 			case "scale":
-				if len(value) == 0 {
+				scale, ok := exactUnitMetadataValue(value)
+				if !ok || scale.Sign() <= 0 {
 					a.addErrorAtToken(metadata.Token, "invalid scale metadata for unit %s", impl.Target.Name)
 					continue
 				}
 				unit.Scale = tokensDisplay(value)
+				unit.ScaleValue = scale
 				changed = true
 			case "longname":
 				text, ok := parseUnitMetadataString(value)
@@ -1446,10 +1448,12 @@ func (a *Analyzer) analyzeUnitMetadata(program *ast.Program) {
 				changed = true
 			case "offset":
 				unit.Offset, ok = parseUnitMetadataExpression(value)
-				if !ok {
+				offset, exact := exactUnitMetadataValue(value)
+				if !ok || !exact {
 					a.addErrorAtToken(metadata.Token, "invalid Offset metadata for unit %s", impl.Target.Name)
 					continue
 				}
+				unit.OffsetValue = offset
 				changed = true
 			case "origin":
 				unit.Origin, ok = parseUnitMetadataExpression(value)
@@ -1460,17 +1464,21 @@ func (a *Analyzer) analyzeUnitMetadata(program *ast.Program) {
 				changed = true
 			case "logbase":
 				unit.LogBase, ok = parseUnitMetadataExpression(value)
-				if !ok {
+				logBase, exact := exactUnitMetadataValue(value)
+				if !ok || !exact || logBase.Sign() <= 0 || logBase.Cmp(big.NewRat(1, 1)) == 0 {
 					a.addErrorAtToken(metadata.Token, "invalid LogBase metadata for unit %s", impl.Target.Name)
 					continue
 				}
+				unit.LogBaseValue = logBase
 				changed = true
 			case "logfactor":
 				unit.LogFactor, ok = parseUnitMetadataExpression(value)
-				if !ok {
+				logFactor, exact := exactUnitMetadataValue(value)
+				if !ok || !exact || logFactor.Sign() == 0 {
 					a.addErrorAtToken(metadata.Token, "invalid LogFactor metadata for unit %s", impl.Target.Name)
 					continue
 				}
+				unit.LogFactorValue = logFactor
 				changed = true
 			case "reference":
 				unit.Reference, ok = parseUnitMetadataExpression(value)
@@ -1492,6 +1500,10 @@ func (a *Analyzer) analyzeUnitMetadata(program *ast.Program) {
 		typ := a.types[impl.Target.Name]
 		if typ.Kind != InvalidType {
 			typ.Dimension = unit.Dimension
+			if semantics, dimension, err := resolveNamedUnitSemantics(impl.Target.Name, a.units); err == nil {
+				typ.UnitSemantics = semantics
+				typ.Dimension = dimension
+			}
 			a.types[impl.Target.Name] = typ
 		}
 	}
@@ -5340,7 +5352,7 @@ func (a *Analyzer) analyzeReturnStatement(functionName string, returnType Type, 
 		return
 	}
 
-	if !canInitialize(returnType, valueType, stmt.Value) {
+	if !canInitialize(returnType, valueType, stmt.Value) && !a.isExplicitUnitConversionReturn(returnType, valueType) {
 		if functionName == "lambda" {
 			a.addErrorAtToken(expressionToken(stmt.Value), "lambda must return %s, got %s", typeDisplayName(returnType), typeDisplayName(valueType))
 			return
@@ -5360,6 +5372,19 @@ func (a *Analyzer) analyzeReturnStatement(functionName string, returnType Type, 
 	}
 	a.markResourceTransfer(stmt.Value)
 	a.markMoveSource(stmt.Value)
+}
+
+// isExplicitUnitConversionReturn recognizes the declaration form described by
+// rules/types/units.md, "Conversions": a same-named one-argument unit function
+// is an explicit conversion boundary and may cross named identity or Kind after
+// declaration validation has established compatible dimensions.
+func (a *Analyzer) isExplicitUnitConversionReturn(target, source Type) bool {
+	fn := a.currentFunctionMetadata
+	if a.currentFunctionName != target.Name || fn.ImplTarget != target.Name || target.Unit != target.Name || len(fn.Parameters) != 1 ||
+		!hasUnitSemantics(source) || !target.Dimension.Equal(source.Dimension) {
+		return false
+	}
+	return isLinearRatioSemantics(target.UnitSemantics) && isLinearRatioSemantics(source.UnitSemantics)
 }
 
 func (a *Analyzer) seedParameterReferenceOrigin(function Function, param FunctionParameter) {
@@ -7425,7 +7450,7 @@ func (a *Analyzer) analyzeUnitDeclaration(stmt *ast.UnitDeclStatement) {
 	unit := a.units[unitName]
 	if unit.Name == "" {
 		dimension, established := defaultUnitDimension(unitName, OtherUnit)
-		unit = UnitDefinition{Name: unitName, Category: OtherUnit, Dimension: dimension, DimensionEstablished: established, DefaultNumeric: "decimal", Status: StatusActive, Transform: LinearUnitTransform, Token: stmt.Name.Token}
+		unit = UnitDefinition{Name: unitName, Category: OtherUnit, Dimension: dimension, DimensionEstablished: established, DefaultNumeric: "decimal", Status: StatusActive, Transform: LinearUnitTransform, ScaleValue: big.NewRat(1, 1), Token: stmt.Name.Token}
 	}
 	if stmt.Category != "" {
 		unit.Category = UnitCategory(stmt.Category)
@@ -7444,6 +7469,10 @@ func (a *Analyzer) analyzeUnitDeclaration(stmt *ast.UnitDeclStatement) {
 	typ.Underlying = baseType.Name
 	typ.Unit = unitName
 	typ.Dimension = unit.Dimension
+	if semantics, dimension, err := resolveNamedUnitSemantics(unitName, a.units); err == nil {
+		typ.UnitSemantics = semantics
+		typ.Dimension = dimension
+	}
 	a.types[unitName] = typ
 }
 
@@ -7802,7 +7831,13 @@ func (a *Analyzer) registerFieldType(field *ast.RegisterField) Type {
 		} else {
 			typ.Named = true
 			typ.Unit = field.Unit
-			typ.Dimension = a.parseDimension(field.Unit)
+			semantics, dimension, err := resolveUnitSemantics(field.Unit, field.UnitExpression, a.units)
+			if err == nil {
+				typ.Dimension = dimension
+				typ.UnitSemantics = semantics
+			} else {
+				typ.Dimension = a.parseDimension(field.Unit)
+			}
 		}
 	}
 	return typ
@@ -9119,6 +9154,11 @@ func (a *Analyzer) inferPropertyBodyCallAsConversion(target Type, setter *ast.Pr
 	if !canExplicitConvert(targetType, valueType) {
 		a.addErrorAtToken(expr.Token, "cannot convert %s to %s", typeDisplayName(valueType), typeDisplayName(targetType))
 		return Type{Kind: InvalidType}, true
+	}
+	if hasUnitSemantics(targetType) || hasUnitSemantics(valueType) {
+		if !a.validateExplicitUnitConversion(expr.Token, targetType, valueType) {
+			return Type{Kind: InvalidType}, true
+		}
 	}
 	if targetType.Kind == EnumType {
 		conversionType, valid := a.enumConversionResultType(targetType, valueType, expr.Arguments[0])
@@ -10683,7 +10723,7 @@ func (a *Analyzer) resolveType(ref *ast.TypeReference) (Type, bool) {
 		return Type{Kind: InvalidType}, false
 	}
 	if ref.Unit != "" {
-		dimension, err := resolveUnitExpression(ref.Unit, a.units)
+		semantics, dimension, err := resolveUnitSemantics(ref.Unit, ref.UnitExpression, a.units)
 		if err != nil {
 			a.addErrorAtToken(ref.Token, "invalid unit expression %s: %s", ref.Unit, err)
 			return Type{Kind: InvalidType}, false
@@ -10691,6 +10731,7 @@ func (a *Analyzer) resolveType(ref *ast.TypeReference) (Type, bool) {
 		a.warnUnitStatus(ref.Token, ref.Unit)
 		typ.Unit = ref.Unit
 		typ.Dimension = dimension
+		typ.UnitSemantics = semantics
 	}
 	if (typ.Kind == StructType || typ.Kind == UnionType) && len(typ.GenericParameters) > 0 {
 		typ = a.instantiateGenericType(typ)
@@ -10909,7 +10950,7 @@ func (a *Analyzer) resolveUnitOnlyType(ref *ast.TypeReference) (Type, bool) {
 		a.addErrorAtToken(ref.Token, "unit expression %s has invalid default numeric type %s", ref.Unit, numeric)
 		return Type{Kind: InvalidType}, false
 	}
-	dimension, err := resolveUnitExpression(ref.Unit, a.units)
+	semantics, dimension, err := resolveUnitSemantics(ref.Unit, ref.UnitExpression, a.units)
 	if err != nil {
 		a.addErrorAtToken(ref.Token, "invalid unit expression %s: %s", ref.Unit, err)
 		return Type{Kind: InvalidType}, false
@@ -10920,6 +10961,7 @@ func (a *Analyzer) resolveUnitOnlyType(ref *ast.TypeReference) (Type, bool) {
 	typ := baseType
 	typ.Unit = ref.Unit
 	typ.Dimension = dimension
+	typ.UnitSemantics = semantics
 	return typ, true
 }
 
@@ -11319,7 +11361,7 @@ func (a *Analyzer) inferExpressionWithExpected(expr ast.Expression, expected Typ
 	call, ok := expr.(*ast.CallExpression)
 	if !ok || expected.Kind == InvalidType || expected.Kind == "" {
 		typ, value := a.inferExpression(expr)
-		return typeWithExpectedDimension(expr, typ, value, expected)
+		return a.typeWithExpectedDimension(expr, typ, value, expected)
 	}
 	if typ, value, ok := a.inferCallAsUnionVariantConstructor(call, &expected); ok {
 		a.expressionTypes[expr] = typ
@@ -11335,7 +11377,7 @@ func (a *Analyzer) inferExpressionWithExpected(expr ast.Expression, expected Typ
 		return typ, value
 	}
 	typ, value := a.inferExpression(expr)
-	return typeWithExpectedDimension(expr, typ, value, expected)
+	return a.typeWithExpectedDimension(expr, typ, value, expected)
 }
 
 func (a *Analyzer) inferSpawnExpression(expr *ast.SpawnExpression) (Type, expressionValue) {
@@ -11505,9 +11547,27 @@ func (a *Analyzer) inferExpectedUnionVariantExpression(expr ast.Expression, expe
 	}
 }
 
-func typeWithExpectedDimension(expr ast.Expression, typ Type, value expressionValue, expected Type) (Type, expressionValue) {
+func (a *Analyzer) typeWithExpectedDimension(expr ast.Expression, typ Type, value expressionValue, expected Type) (Type, expressionValue) {
 	if _, ok := expr.(*ast.InfixExpression); !ok {
 		return typ, value
+	}
+	if !isNumericType(typ) || typ.Kind != expected.Kind || !typ.Dimension.Equal(expected.Dimension) {
+		return typ, value
+	}
+	if hasUnitSemantics(typ) || hasUnitSemantics(expected) {
+		actualUnit, expectedUnit := effectiveUnitSemantics(typ), effectiveUnitSemantics(expected)
+		// rules/types/units.md, "Kind inference": target context may select a
+		// named unit only after validating the structural quantity.
+		if !unitKindCompatible(actualUnit, expectedUnit) || !unitOriginCompatible(actualUnit, expectedUnit) ||
+			actualUnit.Transform == LogarithmicUnitTransform || expectedUnit.Transform == LogarithmicUnitTransform {
+			return typ, value
+		}
+		if expected.Named && (typ.UnitSemantics.Identity == StructuralUnitIdentity || !hasUnitSemantics(typ)) {
+			return expected, value
+		}
+		if !hasUnitSemantics(expected) && typ.Dimension.IsZero() {
+			return expected, value
+		}
 	}
 	if typ.Kind == DecimalType && expected.Kind == DecimalType && expected.Named && typ.Dimension.Equal(expected.Dimension) {
 		return expected, value
@@ -12697,6 +12757,12 @@ func (a *Analyzer) inferConversionExpression(expr *ast.ConversionExpression) (Ty
 		a.addErrorAtToken(expr.Token, "cannot convert %s to %s", typeDisplayName(valueType), typeDisplayName(targetType))
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
+	if (hasUnitSemantics(targetType) || hasUnitSemantics(valueType)) && !a.validateExplicitUnitConversion(expr.Token, targetType, valueType) {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+	if converted, ok := numericCarrierConversionResult(targetType, valueType); ok {
+		return converted, expressionValue{Display: expr.String()}
+	}
 	if targetType.Kind == EnumType {
 		conversionType, valid := a.enumConversionResultType(targetType, valueType, expr.Value)
 		if !valid {
@@ -12709,6 +12775,74 @@ func (a *Analyzer) inferConversionExpression(expr *ast.ConversionExpression) (Ty
 	}
 
 	return targetType, expressionValue{Display: expr.String()}
+}
+
+// inferFactorProvidedUnitConversion implements rules/types/units.md,
+// "Runtime/configured currency conversion". The frontend proves the unit
+// equation source*factor=target but deliberately does not inspect factor value.
+func (a *Analyzer) inferFactorProvidedUnitConversion(expr *ast.CallExpression, target Type) (Type, expressionValue) {
+	source, _ := a.inferExpression(expr.Arguments[0])
+	factor, _ := a.inferExpression(expr.Arguments[1])
+	if source.Kind == InvalidType || factor.Kind == InvalidType {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+	to, from := effectiveUnitSemantics(target), effectiveUnitSemantics(source)
+	if !isNumericType(source) || !isNumericType(factor) || !hasUnitSemantics(source) || !hasUnitSemantics(factor) ||
+		!isLinearRatioSemantics(to) || !isLinearRatioSemantics(from) || !isLinearRatioSemantics(factor.UnitSemantics) {
+		a.addErrorAtToken(expr.Token, "factor-provided conversion to %s requires linear unit-bearing source and factor quantities", typeDisplayName(target))
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+	expectedFactorDimension := target.Dimension.Div(source.Dimension)
+	if !factor.Dimension.Equal(expectedFactorDimension) {
+		a.addErrorAtToken(expressionToken(expr.Arguments[1]), "conversion factor for %s from %s must have unit dimension %v", typeDisplayName(target), typeDisplayName(source), expectedFactorDimension.Base)
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+	return target, expressionValue{Display: expr.String()}
+}
+
+// validateExplicitUnitConversion covers compiler-known fixed transformations;
+// unlike implicit conversion it may cross Kind, but currency needs the runtime
+// factor form and logarithmic conversion needs a specialized operation.
+func (a *Analyzer) validateExplicitUnitConversion(token lexer.Token, target, source Type) bool {
+	to, from := effectiveUnitSemantics(target), effectiveUnitSemantics(source)
+	// An explicit numeric value may construct a coordinate in the target unit;
+	// this is not a conversion between two unit identities.
+	if hasUnitSemantics(target) && !hasUnitSemantics(source) && source.Dimension.IsZero() {
+		return true
+	}
+	// A carrier cast preserves the source unit descriptor. The apparent scalar
+	// target describes only the new carrier, not unit erasure.
+	if !hasUnitSemantics(target) && hasUnitSemantics(source) && target.Dimension.IsZero() {
+		return true
+	}
+	if !target.Dimension.Equal(source.Dimension) || to.Role != from.Role || !unitOriginCompatible(to, from) {
+		a.addErrorAtToken(token, "cannot convert incompatible unit quantity %s to %s", typeDisplayName(source), typeDisplayName(target))
+		return false
+	}
+	if to.Transform == LogarithmicUnitTransform || from.Transform == LogarithmicUnitTransform {
+		if to.Named != from.Named {
+			a.addErrorAtToken(token, "logarithmic unit conversion requires a specialized conversion operation")
+			return false
+		}
+	}
+	if to.Categories[CurrencyUnit] && from.Categories[CurrencyUnit] && to.Named != from.Named {
+		a.addErrorAtToken(token, "currency conversion from %s to %s requires an explicit factor", typeDisplayName(source), typeDisplayName(target))
+		return false
+	}
+	return true
+}
+
+// numericCarrierConversionResult implements rules/types/units.md, "Numeric
+// carrier conversion": changing the carrier must not erase quantity semantics.
+func numericCarrierConversionResult(target, source Type) (Type, bool) {
+	if !isNumericType(target) || !isNumericType(source) || hasUnitSemantics(target) || !hasUnitSemantics(source) {
+		return Type{}, false
+	}
+	result := target
+	result.Unit = source.Unit
+	result.Dimension = source.Dimension
+	result.UnitSemantics = source.UnitSemantics
+	return result, true
 }
 
 func (a *Analyzer) setCallReferenceOrigin(expr *ast.CallExpression, function Function, args []ast.Expression, isMethodCall bool) {
@@ -15254,9 +15388,12 @@ func (a *Analyzer) inferCallAsConversion(expr *ast.CallExpression) (Type, expres
 	if !ok {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
+	if len(expr.Arguments) == 2 && hasUnitSemantics(targetType) {
+		return a.inferFactorProvidedUnitConversion(expr, targetType)
+	}
 
 	if len(expr.Arguments) != 1 {
-		a.addErrorAtToken(expr.Token, "conversion to %s expects 1 argument, got %d", name, len(expr.Arguments))
+		a.addErrorAtToken(expr.Token, "conversion to %s expects 1 argument, or 2 for a factor-provided unit conversion; got %d", name, len(expr.Arguments))
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 
@@ -15273,6 +15410,12 @@ func (a *Analyzer) inferCallAsConversion(expr *ast.CallExpression) (Type, expres
 	if !canExplicitConvert(targetType, valueType) {
 		a.addErrorAtToken(expr.Token, "cannot convert %s to %s", typeDisplayName(valueType), typeDisplayName(targetType))
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+	if (hasUnitSemantics(targetType) || hasUnitSemantics(valueType)) && !a.validateExplicitUnitConversion(expr.Token, targetType, valueType) {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+	if converted, ok := numericCarrierConversionResult(targetType, valueType); ok {
+		return converted, expressionValue{Display: expr.String()}
 	}
 	if targetType.Kind == EnumType {
 		conversionType, valid := a.enumConversionResultType(targetType, valueType, expr.Arguments[0])
@@ -16553,6 +16696,12 @@ func (a *Analyzer) inferInfixExpression(expr *ast.InfixExpression) (Type, expres
 		if !valid {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
+		if hasUnitSemantics(leftType) || hasUnitSemantics(rightType) {
+			if !a.validateUnitComparison(expr, leftType, rightType) {
+				return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+			}
+			return Type{Name: "bool", Kind: BoolType}, expressionValue{Display: expr.String()}
+		}
 	}
 
 	if isEqualityOperator(expr.Operator) {
@@ -16623,6 +16772,10 @@ func (a *Analyzer) inferInfixExpression(expr *ast.InfixExpression) (Type, expres
 
 	if expr.Operator == "+" && (isTextConcatKind(leftType) || isTextConcatKind(rightType)) {
 		return a.inferPlainArithmeticExpression(expr, leftType, rightType)
+	}
+
+	if isNumericType(leftType) && isNumericType(rightType) && (hasUnitSemantics(leftType) || hasUnitSemantics(rightType)) {
+		return a.inferNumericUnitInfixExpression(expr, leftType, rightType)
 	}
 
 	if leftType.Kind == DecimalType || rightType.Kind == DecimalType {
@@ -16875,6 +17028,9 @@ func (a *Analyzer) inferMatrixMultiplyExpression(expr *ast.InfixExpression, left
 }
 
 func (a *Analyzer) inferScalarOperatorType(expr *ast.InfixExpression, left, right Type) (Type, expressionValue) {
+	if isNumericType(left) && isNumericType(right) && (hasUnitSemantics(left) || hasUnitSemantics(right)) {
+		return a.inferNumericUnitInfixExpression(expr, left, right)
+	}
 	if left.Kind == DecimalType || right.Kind == DecimalType {
 		return a.inferDecimalInfixExpression(expr, left, right)
 	}
@@ -16906,48 +17062,132 @@ func compatiblePlainNumericAlias(left Type, right Type) bool {
 }
 
 func (a *Analyzer) inferNumericUnitInfixExpression(expr *ast.InfixExpression, leftType Type, rightType Type) (Type, expressionValue) {
-	if isComparisonOperator(expr.Operator) {
-		if isEqualityOperator(expr.Operator) && !canCompareEquality(leftType, rightType) {
-			a.addErrorAtToken(expr.Token, "cannot compare %s and %s", typeDisplayName(leftType), typeDisplayName(rightType))
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
-		}
-		return Type{Name: "bool", Kind: BoolType}, expressionValue{Display: expr.String()}
+	left := effectiveUnitSemantics(leftType)
+	right := effectiveUnitSemantics(rightType)
+	invalid := func(format string, args ...any) (Type, expressionValue) {
+		a.addErrorAtToken(expr.Token, format, args...)
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+	carrier, carrierOK := unitArithmeticCarrier(leftType, rightType, expr.Operator)
+	if !carrierOK {
+		return invalid("cannot apply operator %s to numeric carriers %s and %s", expr.Operator, typeDisplayName(leftType), typeDisplayName(rightType))
 	}
 
+	// rules/types/units.md, "Logarithmic transform": logarithmic coordinates
+	// never fall through to ordinary linear arithmetic.
+	if left.Transform == LogarithmicUnitTransform || right.Transform == LogarithmicUnitTransform {
+		return invalid("operator %s is not defined for logarithmic unit quantities", expr.Operator)
+	}
 	switch expr.Operator {
-	case "+", "-":
-		if sameConcreteType(leftType, rightType) {
-			return leftType, expressionValue{Display: expr.String()}
+	case "+", "-", "%":
+		if !leftType.Dimension.Equal(rightType.Dimension) || !unitKindCompatible(left, right) {
+			return invalid("cannot %s %s to %s: incompatible unit dimension or Kind", infixVerb(expr.Operator), typeDisplayName(rightType), typeDisplayName(leftType))
 		}
-		if leftType.Dimension.Equal(rightType.Dimension) {
-			if isNominal(leftType) || isNominal(rightType) {
-				a.addErrorAtToken(expr.Token, "cannot %s %s to %s", infixVerb(expr.Operator), typeDisplayName(rightType), typeDisplayName(leftType))
-				return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		if left.Role == UnitPointRolePoint && right.Role == UnitPointRolePoint && !unitOriginCompatible(left, right) {
+			return invalid("cannot %s unit points with different origins", infixVerb(expr.Operator))
+		}
+		if expr.Operator == "%" && (left.Role == UnitPointRolePoint || right.Role == UnitPointRolePoint) {
+			return invalid("remainder is not defined for unit points")
+		}
+		exactConversion := exactImplicitUnitConversion(right, left, carrier.Kind)
+		if (left.Role == UnitPointRolePoint) != (right.Role == UnitPointRolePoint) {
+			leftCoordinate, rightCoordinate := left, right
+			leftCoordinate.Role, rightCoordinate.Role = UnitVectorRole, UnitVectorRole
+			leftCoordinate.Origin, rightCoordinate.Origin = "", ""
+			leftCoordinate.Offset, rightCoordinate.Offset = big.NewRat(0, 1), big.NewRat(0, 1)
+			exactConversion = exactImplicitUnitConversion(rightCoordinate, leftCoordinate, carrier.Kind)
+		}
+		if !sameConcreteType(leftType, rightType) && !exactConversion {
+			return invalid("cannot implicitly convert %s to %s without loss", typeDisplayName(rightType), typeDisplayName(leftType))
+		}
+
+		// rules/types/units.md, "Point algebra".
+		if left.Role == UnitPointRolePoint || right.Role == UnitPointRolePoint {
+			if left.Role == UnitPointRolePoint && right.Role == UnitPointRolePoint {
+				if expr.Operator != "-" {
+					return invalid("operator %s is not defined for two unit points", expr.Operator)
+				}
+				result := left
+				result.Identity, result.Named, result.Source = StructuralUnitIdentity, "", "difference("+left.Source+")"
+				result.Role, result.Transform, result.Offset = UnitDifferenceRole, LinearUnitTransform, big.NewRat(0, 1)
+				return unitResultType(carrier, result, leftType.Dimension), expressionValue{Display: expr.String()}
 			}
-			return a.typeForDimension(DecimalType, leftType.Dimension), expressionValue{Display: expr.String()}
+			if left.Role == UnitPointRolePoint {
+				return leftType, expressionValue{Display: expr.String()}
+			}
+			if expr.Operator == "+" && right.Role == UnitPointRolePoint {
+				return rightType, expressionValue{Display: expr.String()}
+			}
+			return invalid("cannot subtract a unit point from a difference")
 		}
-		a.addErrorAtToken(expr.Token, "cannot %s %s to %s", infixVerb(expr.Operator), typeDisplayName(rightType), typeDisplayName(leftType))
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
-	case "*":
-		if leftType.Dimension.IsZero() {
+		return leftType, expressionValue{Display: expr.String()}
+	case "*", "/":
+		if left.Role == UnitPointRolePoint || right.Role == UnitPointRolePoint {
+			return invalid("operator %s is not defined for unit points", expr.Operator)
+		}
+		result := combineQuantitySemantics(left, right, expr.Operator)
+		dimension := leftType.Dimension.Mul(rightType.Dimension)
+		if expr.Operator == "/" {
+			dimension = leftType.Dimension.Div(rightType.Dimension)
+		}
+		if result.Categories[CurrencyUnit] {
+			a.addWarningAtToken(expr.Token, "anonymous derived unit %s contains currency", result.Source)
+		}
+		// Scaling by a plain scalar preserves the named operand. Named ratios are
+		// not plain scalars and therefore retain structural provenance.
+		if expr.Operator == "*" && !hasUnitSemantics(leftType) {
 			return rightType, expressionValue{Display: expr.String()}
 		}
-		if rightType.Dimension.IsZero() {
+		if (expr.Operator == "*" || expr.Operator == "/") && !hasUnitSemantics(rightType) {
 			return leftType, expressionValue{Display: expr.String()}
 		}
-		if leftType.Dimension.Equal(rightType.Dimension) && leftType.Dimension.HasCurrencyBase() {
-			a.addErrorAtToken(expr.Token, "cannot multiply %s by %s", typeDisplayName(leftType), typeDisplayName(rightType))
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
-		}
-		return a.typeForDimension(DecimalType, leftType.Dimension.Mul(rightType.Dimension)), expressionValue{Display: expr.String()}
-	case "/":
-		if rightType.Dimension.IsZero() {
-			return leftType, expressionValue{Display: expr.String()}
-		}
-		return a.typeForDimension(DecimalType, leftType.Dimension.Div(rightType.Dimension)), expressionValue{Display: expr.String()}
+		return unitResultType(carrier, result, dimension), expressionValue{Display: expr.String()}
 	}
 
 	return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+}
+
+// unitArithmeticCarrier enforces the ordinary numeric operator contract before
+// applying rules/types/units.md unit algebra.
+func unitArithmeticCarrier(left, right Type, operator string) (Type, bool) {
+	if left.Kind == right.Kind {
+		result := left
+		result.Name, result.Named, result.Declared, result.Underlying = string(left.Kind), false, false, ""
+		return result, true
+	}
+	if ((left.Kind == DecimalType || left.Kind == FloatType) && (right.Kind == IntType || right.Kind == UintType)) ||
+		((right.Kind == DecimalType || right.Kind == FloatType) && (left.Kind == IntType || left.Kind == UintType)) {
+		if operator == "*" || operator == "/" {
+			if left.Kind == FloatType || right.Kind == FloatType {
+				return Type{Name: "float", Kind: FloatType}, true
+			}
+			return Type{Name: "decimal", Kind: DecimalType}, true
+		}
+	}
+	return Type{}, false
+}
+
+// validateUnitComparison implements rules/types/units.md, "Comparison".
+func (a *Analyzer) validateUnitComparison(expr *ast.InfixExpression, leftType, rightType Type) bool {
+	left, right := effectiveUnitSemantics(leftType), effectiveUnitSemantics(rightType)
+	if !isNumericType(leftType) || !isNumericType(rightType) || !leftType.Dimension.Equal(rightType.Dimension) ||
+		!unitKindCompatible(left, right) || !unitOriginCompatible(left, right) || left.Role != right.Role {
+		a.addErrorAtToken(expr.Token, "cannot compare incompatible unit quantities %s and %s", typeDisplayName(leftType), typeDisplayName(rightType))
+		return false
+	}
+	if left.Transform == LogarithmicUnitTransform || right.Transform == LogarithmicUnitTransform {
+		if left.Named != right.Named || left.Named == "" {
+			a.addErrorAtToken(expr.Token, "cannot implicitly compare logarithmic unit quantities")
+			return false
+		}
+		return true
+	}
+	carrier, ok := unitArithmeticCarrier(leftType, rightType, "+")
+	if !ok || (!sameConcreteType(leftType, rightType) && !exactImplicitUnitConversion(right, left, carrier.Kind)) {
+		a.addErrorAtToken(expr.Token, "cannot compare %s and %s without a lossless unit conversion", typeDisplayName(leftType), typeDisplayName(rightType))
+		return false
+	}
+	return true
 }
 
 func (a *Analyzer) inferMembershipExpression(expr *ast.InfixExpression, leftType Type) (Type, expressionValue) {
@@ -17622,6 +17862,9 @@ func canInitialize(target Type, value Type, expr ast.Expression) bool {
 	if value.Kind == AnyType {
 		return target.Kind == AnyType
 	}
+	if hasUnitSemantics(target) || hasUnitSemantics(value) {
+		return canInitializeUnitQuantity(target, value, expr)
+	}
 	// rules/errors/errorhandling.md defines a one-way, error-specific widening
 	// relation. It is not general interface inheritance and never permits
 	// implicit narrowing from error to one concrete error family.
@@ -17703,6 +17946,29 @@ func canInitialize(target Type, value Type, expr ast.Expression) bool {
 	}
 
 	return false
+}
+
+// canInitializeUnitQuantity applies the implicit fixed-conversion policy from
+// rules/types/units.md before nominal numeric initialization is considered.
+func canInitializeUnitQuantity(target Type, value Type, expr ast.Expression) bool {
+	if isUntypedNumericExpression(expr) && hasUnitSemantics(target) && !hasUnitSemantics(value) &&
+		isNumericType(target) && isNumericType(value) {
+		return target.Kind == value.Kind ||
+			(target.Kind == UintType && value.Kind == IntType) ||
+			(target.Kind == DecimalType && (value.Kind == IntType || value.Kind == UintType || value.Kind == DecimalType || value.Kind == FloatType)) ||
+			(target.Kind == FloatType && (value.Kind == IntType || value.Kind == UintType || value.Kind == DecimalType || value.Kind == FloatType))
+	}
+	if !isNumericType(target) || !isNumericType(value) || target.Kind != value.Kind || !target.Dimension.Equal(value.Dimension) {
+		return false
+	}
+	to, from := effectiveUnitSemantics(target), effectiveUnitSemantics(value)
+	if !unitKindCompatible(to, from) || !unitOriginCompatible(to, from) || to.Role != from.Role {
+		return false
+	}
+	if sameConcreteType(target, value) {
+		return true
+	}
+	return exactImplicitUnitConversion(from, to, target.Kind)
 }
 
 func canUntypedNumericInitializeNominal(target Type, value Type, expr ast.Expression) bool {

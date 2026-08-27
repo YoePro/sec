@@ -572,7 +572,7 @@ Changing the active variant ends the lifetime of the old payload.
 Example conceptual operation:
 
 ```sec
-mut state := Some(resource)
+mut state := Some(<-resource)
 state = None
 ```
 

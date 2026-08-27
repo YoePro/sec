@@ -1,5 +1,5 @@
 schema_version: 1
-updated: "2026-08-26"
+updated: "2026-08-27"
 purpose: >-
   Canonical implementation ledger for compiler and tooling work. Normative
   language behavior remains in rules/, while implementation status is migrated
@@ -11,13 +11,168 @@ status_values:
   planned: The scope is documented but no implementation slice is integrated.
 
 integrations:
+  - id: platform.volatile
+    area: platform-memory-and-volatile-access
+    status: planned
+    integrated: "2026-08-27"
+    document_revision: 1
+    repository_baseline: "fc8d632"
+    summary: >-
+      Implements Sec volatile physical-storage semantics, including explicit
+      RawPtr VolatileRead/VolatileWrite operations, canonical @address region
+      validation, target access contracts, address-space, width, alignment and
+      ordering preservation, optimizer constraints, representation eligibility,
+      and lowering/tooling support. No conforming vertical slice is claimed yet.
+    rules:
+      - rules/platform/volatile.md
+      - rules/platform/fixed-address-bindings.md
+      - rules/platform/platform_model.md
+      - rules/platform/target_profiles.md
+      - rules/foundations/attributes.md
+      - rules/memory/memory_model.md
+      - rules/memory/raw_pointers.txt
+      - rules/declarations/registers.md
+      - rules/compiler/semantic_ir.txt
+      - rules/mlir/sec_mlir.md
+    remaining:
+      - introduce canonical volatile/external-storage access semantics distinct from type qualification
+      - add compiler-known RawPtr[T].VolatileRead() and RawPtr[T].VolatileWrite(value) operations
+      - keep ordinary RawPtr Read/Write distinct from explicit volatile access
+      - require unsafe for ordinary RawPtr volatile access while preserving known target restrictions inside unsafe
+      - make every @address binding resolve against an applicable canonical region/storage contract for its complete extent
+      - reject numerically valid @address bindings not covered by an applicable target region
+      - permit Hosted @address only for explicitly modeled compatible mapped regions rather than arbitrary process addresses
+      - ensure unsafe cannot waive @address region validation
+      - model physical access contracts with address domain/space, permissions, widths, alignment, byte order, ordering, memory attributes, and side effects
+      - support non-unified address-space models without compiler-host address assumptions
+      - preserve exact physical access width and reject illegal split, merge, narrow, or widen transformations
+      - validate @address alignment statically and preserve dynamic RawPtr alignment obligations
+      - resolve MMIO/device byte order from target/device contracts rather than compiler-host endian behavior
+      - keep volatile distinct from cacheability, coherence, DMA ownership, atomics, synchronization, and hardware barriers
+      - preserve distinct volatile reads/writes against removal, duplication, speculation, hoisting, coalescing, and deduplication
+      - keep volatile from acting as a global compiler barrier and emit stronger ordering only when its contract requires it
+      - represent compiler ordering and hardware ordering separately
+      - prevent volatile from substituting for shared-memory atomic or synchronization semantics
+      - preserve stronger register/device effects without redefining their transaction model in volatile.md
+      - allow read-modify-write only when the complete owning contract defines a semantics-preserving operation
+      - introduce CompilationPlan-sensitive volatile readable and writable eligibility
+      - reject physical materialization that bypasses value domains, ownership, validity, destruction, or runtime invariants
+      - require explicit physical layout/access contracts for aggregate volatile access
+      - prevent unconstrained generic T from implicitly satisfying volatile eligibility
+      - ensure @address declarations themselves perform no physical access or implicit initialization
+      - carry external-storage/volatile effects and resolved contracts through Semantic IR and Sec MLIR
+      - make target lowering reject impossible physical materialization rather than approximate semantics
+      - ensure volatile access has no intrinsic Sec runtime dependency
+      - consume target/device region knowledge without making volatile.md own its package format
+      - make LSP and CLI use the same CompilationPlan region/access facts
+      - add diagnostics for region, space, permission, width, alignment, representation, unsafe, ordering, and lowering failures
+      - add the complete volatile, @address, RawPtr, representation, physical-access, ordering, device, IR, Hosted, and cross-target regression matrix
+      - update verification commands after the first end-to-end volatile vertical slice is implemented
+    corrections_applied:
+      - rules/corrections/applied/foundations-correction-20260827.md
+      - rules/corrections/applied/platform-correction-20260827.md
+    excluded:
+      - logical register-field transaction semantics
+      - register physical read groups and selective field observation
+      - register snapshot and destructive-read grouping semantics
+      - interrupt semantics
+      - DMA ownership protocol and cache-maintenance API definitions
+      - atomic memory-order semantics
+      - target/device knowledge-pack format
+      - general C-style volatile types or @volatile source syntax
+
+  - id: lowering.sec-mlir-package13
+    package: SEC-MLIR-P13
+    name: Struct Semantic Value Representation
+    area: semantic-ir-sec-mlir-and-lowering
+    status: partial
+    implementation_phase: complete
+    acceptance_blocked_by: repository-wide Go regressions outside the Package 13 change set
+    integrated: "2026-08-26"
+    baseline: current repository plus completed SEC-MLIR-P12 schema 8
+    repository_head: fc8d6324ace4e06f659b9b64c7967f2c19b0c0d2
+    mlir_toolchain: LLVM 24.0.0git optimized build with assertions
+    rules:
+      - rules/mlir/packages/sec-mlir-dialect_package13.md
+      - rules/mlir/packages/sec-mlir-dialect_package13.yaml
+      - rules/mlir/semantic-ir/sec_semantic_ir_struct_v1.md
+      - rules/mlir/dialect-versions/sec_mlir_dialect_v9.md
+      - rules/mlir/lowering-versions/sec_mlir_lowering_v9.md
+      - rules/mlir/packages/sec-mlir-dialect_package15.md
+      - rules/mlir/packages/sec-mlir-dialect_package16.md
+      - rules/mlir/packages/sec-mlir-dialect_package17.md
+      - rules/mlir/packages/sec-mlir-dialect_package18.md
+      - rules/declarations/struct.md
+      - rules/declarations/spread.md
+      - rules/types/default_values.md
+      - rules/memory/copy_move.md
+      - rules/memory/ownership.md
+    code:
+      - internal/sema/analyzer.go
+      - internal/sema/semantic_facts.go
+      - internal/ir/semantic/model.go
+      - internal/ir/semantic/builder.go
+      - internal/ir/semantic/printer.go
+      - internal/ir/semantic/verifier.go
+      - internal/lowering/secmlir/emitter.go
+      - mlir/include/sec/Dialect/Sec/SecAttributes.td
+      - mlir/include/sec/Dialect/Sec/SecTypes.td
+      - mlir/include/sec/Dialect/Sec/SecOps.td
+      - mlir/lib/Dialect/Sec/SecAttributes.cpp
+      - mlir/lib/Dialect/Sec/SecTypes.cpp
+      - mlir/lib/Dialect/Sec/SecOps.cpp
+      - mlir/lib/Dialect/Sec/SecDialect.cpp
+      - mlir/lib/Conversion/SecToCore/SecToCore.cpp
+    tests:
+      - internal/sema/semantic_facts_test.go
+      - internal/ir/semantic/package13_test.go
+      - internal/lowering/secmlir/emitter_test.go
+      - mlir/test/Dialect/Sec/schema9-structs.mlir
+      - mlir/test/Dialect/Sec/invalid-schema9-structs.mlir
+      - mlir/test/Conversion/SecToCore/schema9-struct-scalar-layout.mlir
+    implemented:
+      - immutable Sema ResolvedStructLiteralPlanOf and ResolvedStructMemberOf queries
+      - source-order explicit and spread entries with declaration-order final fields
+      - explicit, spread, and omitted-default provenance without Semantic IR dependence on synthesized AST defaults
+      - current P17-compatible action vocabulary while the executable P13 subset remains construct-direct and copy-trivial
+      - Semantic IR StructFieldID, StructTag, StructFieldDefinition, StructDefinition, and nominal TypeStruct identity
+      - empty, nested, concrete generic, wide-field-capable struct definitions where constituent value types are supported
+      - Semantic IR struct.construct, struct.spread-fields, struct.extract-field, and struct.replace-field operations
+      - verifier coverage for field identity/order/type, full construction, origins/actions, spread results, extraction, and trivial replacement
+      - deterministic Semantic IR printing and end-to-end Sema-to-verified-Semantic-IR tests
+      - schema-9 StructTagAttr, StructFieldAttr, nominal !sec.struct, and all four ODS/C++ struct operations with exact verifier checks
+      - schema-9 emission from verified Semantic IR with declaration-order fields, tags, origins, actions, and exact nominal identities
+      - recursive target-sized scalar resolution inside preserved struct wrappers; checked-integer signless normalization remains outside wrappers
+      - high-level struct storage remains legal through the trivial-core pass
+      - canonical defaulted mutable locals and leaf-to-root nested replacement with one root store
+      - deterministic synthetic union-payload struct identities and guarded P11 projections for P12 trivial whole-payload bindings
+      - real sec-mlir-opt roundtrip, invalid verifier, scalar-layout, storage-boundary, and source-to-schema-9 coverage
+      - canonical Semantic IR, dialect, and lowering rulebooks synchronized to Package 13
+    remaining:
+      - restore the pre-existing repository-wide cmd/compiler and internal/sema regressions so the mandatory go test ./... acceptance gate is green
+    later_rule_reconciliation:
+      - P15 field borrowing uses Place and reference operations rather than copying the containing struct
+      - P16 permits shared-slice fields with contained-origin tracking and keeps mutable-slice aggregates move-only
+      - P17 extends construction actions with move and copy-semantic-infallible and replaces non-trivial field updates through owned Places
+      - P18 permits owning dynamic-array fields with derived move-only and destruction plans
+    verification:
+      - command: go test ./internal/sema -run ResolvedStructPlans -count=1
+        result: passed
+      - command: go test ./internal/ir/semantic -run Package13 -count=1
+        result: passed
+      - command: SEC_MLIR_BIN=build/sec-mlir/bin go test ./internal/lowering/secmlir -run Package13 -count=1
+        result: passed
+      - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
+        result: passed (77/77)
+      - command: go test ./...
+        result: failed in pre-existing unrelated frontend/compiler tests; Package 13 packages and MLIR regressions passed
+
   - id: frontend.ownership-v2
     area: frontend-ownership-control-flow-and-lowering
     status: partial
     integrated: "2026-08-26"
     document_revision: "2.0"
     repository_baseline: "b3315f6"
-    governance_source: implementation-status-ownership.yaml
     replaces: pre-v2 rules/memory/ownership.md
     summary: >-
       Tracks ownership revision 2.0. The existing frontend has structured Place
@@ -96,15 +251,50 @@ integrations:
       - lsp-ownership-v2-correction
       - diagnostics-ownership-v2-correction
       - formatter-ownership-v2-correction
-    required_test_groups:
-      - explicit reusable-source move versus copy at calls, payloads, captures, declarations, assignments, and returns
-      - delayed call and guarded-match ownership commit
-      - method receiver and member ownership authority
-      - partial, conditional, immutable, and custom-free availability
-      - availability tests, static elimination, and target policy
-      - discard convergence, replacement, and exactly-once partial cleanup
-      - Result and try ownership integration
-      - canonical diagnostics, formatter preservation, LSP facts, and Semantic IR verification
+    required_tests:
+      - ordinary copy of copyable reusable source preserves source availability
+      - ordinary value syntax never silently moves a reusable @noCopy/move-only source
+      - explicit move initialization :<- consumes reusable source
+      - explicit move assignment <- consumes reusable source and handles destination replacement
+      - explicit <- may consume a copyable reusable source
+      - ordinary by-value move-only call requires Call(<-source)
+      - explicit -> parameter requires Call(<-source) even when source type is copyable
+      - fresh temporary to ownership-taking parameter requires no <- marker
+      - later argument failure does not commit earlier outer-call source move
+      - Some(source), Ok(source), union payload, and aggregate payload reject implicit move-only reusable source transfer
+      - Some(<-source), Ok(<-source), union payload <-source, and aggregate field <-source transfer ownership
+      - legacy union move-word spelling is rejected in favor of :<- / <-
+      - capture(value) copies and rejects non-copyable reusable source
+      - capture(<-value) consumes source and capture(-> value) is rejected
+      - return value and return <-value both transfer owned local
+      - fresh returned value can initialize destination without move marker
+      - ordinary method cannot consume whole self
+      - method may move/discard an owned member with sufficient receiver authority
+      - immutable root does not permit ordinary field assignment
+      - mutable/exclusive self permits member mutation without per-field mut declaration
+      - partial move leaves sibling field usable and whole aggregate unusable
+      - immutable aggregate permits explicit partial move but not field reinitialization
+      - mutable aggregate field reinitialization restores whole availability when complete
+      - custom free type rejects partial move
+      - Available plus Unavailable continuing paths merge to ConditionallyAvailable
+      - terminating moved path is excluded from post-branch availability merge
+      - is available and is not available refine ownership state without Option/null/generation semantics
+      - statically provable availability tests require no runtime bookkeeping
+      - static-ownership target rejects ownership code that genuinely requires runtime state
+      - discard Available destroys when required and converges to Unavailable
+      - discard already-Unavailable place is legal no-op
+      - discard ConditionallyAvailable converges all paths to Unavailable
+      - discard remains blocked by non-discardable obligation and incompatible active borrow
+      - assignment to Unavailable mutable place is reinitialization
+      - assignment to Available mutable place automatically ends old value before replacement
+      - hosted assignment to ConditionallyAvailable mutable place conditionally ends old value and repairs to Available
+      - static-ownership policy may require discard convergence before conditional replacement
+      - partial aggregate cleanup destroys only still-owned available sub-places
+      - moved/discarded/detached sub-place is never destroyed twice
+      - Result.Ok()/Err() consumption and OkRef/ErrRef borrowing integrate with availability
+      - try/match guarded move ownership commits only on selected guard success
+      - formatter preserves ownership markers and LSP reports canonical compiler facts
+      - mentor diagnostics show source operation, ownership consequence, and practical correction
 
   - id: frontend.if-statements-v2
     area: frontend-control-flow
@@ -2078,16 +2268,19 @@ integrations:
     area: frontend-analysis-tooling-and-semantic-ir
     status: partial
     integrated: "2026-08-18"
+    audited: "2026-08-27"
     document_revision: "2.0"
     repository_baseline: "20b3606"
     replaces: rules/types/units.txt
     summary: >-
       Tracks the carrier-independent quantity model, structural unit expressions,
       category policy, Kind and transform metadata, conversion exactness, and
-      compiler-owned tooling facts defined by units revision 2.0. Declaration,
-      type-resolution, structural dimension, and metadata foundations are in
-      place; complete Kind, transform, conversion, operator, warning, LSP, and
-      Semantic IR behavior remains partial.
+      compiler-owned tooling facts defined by units revision 2.0. The frontend now
+      retains a structural unit AST and resolved quantity descriptor, applies Kind,
+      point, logarithmic, exact fixed-conversion, currency, factor-conversion, and
+      structural-result rules, and exposes the facts through hover and formatting;
+      specialized transform conversion, standard-library migration, and Semantic IR
+      propagation remain partial.
     rules:
       - rules/types/units.md
       - rules/foundations/grammar.md
@@ -2120,33 +2313,31 @@ integrations:
       - compiler-known unit-name collisions including bit, byte, and intrinsic type constructors are rejected
       - structural unit expressions validate named factors, identity 1, multiplication, division, non-zero signed integer exponents, and grouping
       - structural dimensions normalize exponent addition, subtraction, multiplication, and cancellation without rewriting source spelling
-      - named and structural source identity remains distinguishable in the retained Unit spelling
+      - type references retain a first-class unit-expression AST with exact source spelling, grouping, factor order, and explicit named-versus-structural identity
+      - resolved Type quantity facts retain source factors, normalized factors, category provenance, Kind, exact scale and offset, transform, origin, point role, and conversion exactness
       - Dimension metadata validates canonical ^ exponents, duplicate axes, zero exponents, and order-independent normalized dimensions
       - LongName, Symbol, BaseUnit, Status, Dimension, Kind, Scale, System, Transform, Offset, Origin, LogBase, LogFactor, and Reference metadata parse and are stored
-      - Transform defaults to linear; affine and logarithmic declarations validate their required metadata sets
+      - Scale, Offset, LogBase, and LogFactor use exact rational constant evaluation; Scale must be positive and non-zero and logarithmic base/factor constraints are checked
+      - Transform defaults to linear; affine and logarithmic declarations validate their required metadata sets and logarithmic values cannot fall through to ordinary arithmetic
+      - addition, subtraction, remainder, comparison, multiplication, and division validate normalized dimension, known or unknown Kind policy, transform, origin, point/difference role, and carrier compatibility
+      - point algebra implements P-P to anonymous linear difference, P+D and P-D to P, difference arithmetic, and rejects P+P and point multiplication or division
+      - multiplication and division retain anonymous structural identity, source factor order, category provenance, and compatible ratio Kind instead of selecting a named type by dimension
+      - valid anonymous derived currency expressions produce warning-class diagnostics instead of being rejected
+      - two-argument TargetUnit(source, factor) conversions validate the normalized linear factor dimension without inventing the runtime factor value
+      - implicit fixed conversion requires compatible Kind, role, origin, transform, and exact carrier representation; numeric carrier casts preserve the unit descriptor
       - direct named use of deprecated and obsolete units produces compiler-owned warnings
-      - explicit conversion functions are registered and currently validate normalized source and target dimensions for implemented numeric unit forms
+      - explicit conversion functions validate normalized dimensions and act as explicit linear cross-identity or cross-Kind boundaries
+      - LSP hover presents compiler-owned identity, source expression, Kind, categories, transform, point role, origin, and exact scale facts
+      - formatter compacts structural unit operators while preserving named factors, grouping, and source factor order
       - revision-2 corrections were consumed into grammar, types, operators, Semantic IR, LSP, diagnostics, and formatter rulebooks
     remaining:
-      - replace the retained unit-expression string with a first-class structural AST while preserving exact source identity
-      - preserve category provenance through every derived structural operation
-      - represent named versus structural identity explicitly throughout Type and Semantic IR rather than relying on source spelling
-      - add complete Kind compatibility and propagation rules without inferring Kind from dimension alone
       - migrate safety-relevant standard-library Kind metadata, especially frequency versus rotational frequency and energy versus torque
-      - validate Scale as a positive non-zero compile-time exact expression
-      - implement complete affine point and anonymous difference semantics, Origin compatibility, and offset cancellation
-      - implement logarithmic conversion and arithmetic restrictions
-      - preserve named ratio identity while allowing valid ratio scaling
-      - emit warning-class diagnostics for valid anonymous currency-derived structural expressions
-      - implement explicit factor-provided TargetUnit(source, factor) conversion with normalized factor-unit validation
-      - complete fixed scale and transform conversion planning with exact carrier representability
-      - reject every implicit conversion that would hide rounding, truncation, overflow, or precision loss
-      - generalize explicit conversion functions to the carrier-independent and Kind-aware model
-      - stop dimension-only result inference from selecting an arbitrary named unit when multiple units are compatible
+      - validate affine and logarithmic Reference compatibility and implement their specialized explicit conversion plans
+      - complete value-aware fixed conversion planning for bounded integer and binary-floating carriers, including overflow proofs and explicit rounding policy integration
       - preserve carrier, identity, factors, category provenance, Kind, transform, point role, and conversion plan in Semantic IR
-      - expose resolved unit quantity facts and currency warnings through LSP hover, diagnostics, derivation views, and safe code actions
-      - implement canonical unit metadata and compact structural-expression formatting without semantic rewriting or factor reordering
-      - complete parser, Sema, operator, constant-evaluation, diagnostics, LSP, formatter, Semantic IR, MLIR, runtime, and end-to-end coverage
+      - add LSP derivation views and safe unit-conversion code actions
+      - canonicalize legacy unit metadata names to PascalCase in formatter output using parsed unit-impl context
+      - complete Semantic IR, MLIR, runtime, standard-library, and end-to-end unit coverage
       - keep unit-polymorphic generic parameters reserved for a future language revision
     required_tests:
       - one named unit works with decimal, float, signed integer, and unsigned integer carriers where numeric rules permit
@@ -2168,7 +2359,11 @@ integrations:
     verification:
       - command: go test ./internal/parser -run Unit -count=1
         result: passed
-      - command: go test ./internal/sema -run 'Test.*Unit|TestStructuralUnit' -count=1
+      - command: go test ./internal/sema -run 'Test.*Unit|TestUnitsV2|TestStructuralUnit|FunctionOverloadsIncludeNumericKindAndUnits' -count=1
+        result: passed
+      - command: go test ./internal/formatter -run UnitExpression -count=1
+        result: passed
+      - command: go test ./cmd/lsp -run UnitQuantityFacts -count=1
         result: passed
 
   - id: stdlib.units-catalog
@@ -3690,6 +3885,7 @@ integrations:
       contracts independent from register type identity and storage origin.
     rules:
       - rules/platform/fixed-address-bindings.md
+      - rules/platform/volatile.md
       - rules/memory/storage.md
       - rules/declarations/registers.md
       - rules/memory/unsafe.md
@@ -3712,7 +3908,9 @@ integrations:
       - reject field writes through non-mut addressed register bindings
     remaining:
       - propagate AddressStability.Fixed independently from storage origin through Place, Semantic IR, MLIR, and tooling facts
-      - validate target address domain, alignment, extent, access width, memory space, layout, and permissions
+      - require every binding, including raw numeric spelling, to resolve against a canonical target region covering its complete extent
+      - validate target address domain/space, alignment, extent, access width, memory space, layout, representation, availability, and permissions
+      - reject unmodeled Hosted process addresses and ensure unsafe cannot waive canonical region validation
       - accept arbitrary compile-time-known integer address expressions rather than only integer literals
       - diagnose statically known incompatible overlapping bindings
       - preserve volatile semantics through impl receivers and all field/property access paths
@@ -5333,6 +5531,7 @@ integrations:
     - rules/memory/allocation.txt
     - rules/memory/storage.md
     - rules/platform/fixed-address-bindings.md
+    - rules/platform/volatile.md
     implemented:
     - obsolete allocation.txt origin list removed
     - canonical storage classification delegated to rules/memory/storage.md
@@ -5545,8 +5744,9 @@ integrations:
     - implement target-variant overlap detection, no-active-variant handling, and public-shape compatibility checks
     - implement '@when' and typed 'config.<name>' compile-time parameter access with the restricted Sec 0.1 boolean
       expression language
-    - complete '@address' compile-time-address evaluation, target pointer-width and address-domain validation, alignment,
-      extent, permissions, overlap checking, target knowledge-pack constants, volatile lowering, and end-to-end tests
+    - complete '@address' compile-time-address evaluation and mandatory canonical full-extent region resolution, target
+      pointer-width and address-domain/space validation, alignment, permissions, physical representation, access widths,
+      overlap checking, target knowledge constants, volatile lowering, and end-to-end tests; unsafe must not waive this validation
     - implement '@interrupt(vector: '...)'', ''@isr'', and ''@interruptSafe'' parsing, implication, target-profile
         validation, call-graph restrictions, vector uniqueness, and lowering'
     - implement '@noAlloc', '@noPanic', and '@noBlock' source attributes with transitive verified-effect analysis

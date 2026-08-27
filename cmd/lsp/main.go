@@ -1947,6 +1947,7 @@ func distinctCallees(sites []sema.CallSite) int {
 
 func typedHover(rng lspRange, name string, typ sema.Type) hoverResult {
 	contents := fmt.Sprintf("```sec\n%s: %s\n```", name, lspTypeName(typ))
+	contents += unitQuantityHoverSuffix(typ)
 	// rules/declarations/lambda-functions.md: callable authority is a resolved
 	// Sema fact. The LSP presents it and never re-parses fn/mut fn/-> fn syntax.
 	if capability, ok := sema.CallableCapabilityFactOf(typ); ok {
@@ -1964,6 +1965,46 @@ func typedHover(rng lspRange, name string, typ sema.Type) hoverResult {
 		Contents: markupContent{Kind: "markdown", Value: contents},
 		Range:    rng,
 	}
+}
+
+// unitQuantityHoverSuffix exposes the compiler-owned facts required by
+// rules/types/units.md, "Tooling and LSP requirements". The LSP does not
+// reconstruct quantity meaning from display spelling.
+func unitQuantityHoverSuffix(typ sema.Type) string {
+	unit := typ.UnitSemantics
+	if unit.Identity == "" {
+		return ""
+	}
+	identity := string(unit.Identity)
+	if unit.Named != "" {
+		identity += " (`" + unit.Named + "`)"
+	}
+	lines := []string{
+		"Unit identity: " + identity,
+		"Unit expression: `" + unit.Source + "`",
+		"Transform: `" + string(unit.Transform) + "`",
+		"Point role: `" + string(unit.Role) + "`",
+	}
+	if unit.Kind == "" {
+		lines = append(lines, "Kind: `unknown`")
+	} else {
+		lines = append(lines, "Kind: `"+unit.Kind+"`")
+	}
+	categories := make([]string, 0, len(unit.Categories))
+	for category := range unit.Categories {
+		categories = append(categories, string(category))
+	}
+	sort.Strings(categories)
+	if len(categories) > 0 {
+		lines = append(lines, "Categories: `"+strings.Join(categories, "`, `")+"`")
+	}
+	if unit.Origin != "" {
+		lines = append(lines, "Origin: `"+unit.Origin+"`")
+	}
+	if unit.Scale != nil {
+		lines = append(lines, "Exact scale: `"+unit.Scale.RatString()+"`")
+	}
+	return "\n\n" + strings.Join(lines, "\n\n")
 }
 
 func selfMemberHoverContents(target sema.Type, name string, functions map[string][]sema.Function, text string, sourcePath string) (string, bool) {

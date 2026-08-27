@@ -1466,7 +1466,7 @@ func (p *Parser) parseUnitConversionExpression(left ast.Expression) ast.Expressi
 	errorCount := len(p.errors)
 	warningCount := len(p.warnings)
 
-	unit := p.parseUnit()
+	unit, unitExpression := p.parseUnit()
 	if unit == "" || p.peekToken.Type != lexer.LPAREN {
 		p.curToken = curToken
 		p.peekToken = peekToken
@@ -1489,9 +1489,10 @@ func (p *Parser) parseUnitConversionExpression(left ast.Expression) ast.Expressi
 	return &ast.ConversionExpression{
 		Token: ident.Token,
 		Type: &ast.TypeReference{
-			Token: ident.Token,
-			Name:  ident.Value,
-			Unit:  unit,
+			Token:          ident.Token,
+			Name:           ident.Value,
+			Unit:           unit,
+			UnitExpression: unitExpression,
 		},
 		Value: args[0],
 	}

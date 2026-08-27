@@ -443,7 +443,7 @@ impl EUR {
     system: Currency
 }
 
-unit ItemsPerBatch decimal other
+unit ItemsPerBatch uint other
 impl ItemsPerBatch {
     dimension: [item^1, batch^-1]
     scale: 1

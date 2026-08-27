@@ -48,11 +48,14 @@ type Type struct {
 	// ErrorAssignable marks concrete error enums/unions and compiler-known
 	// error families assignable to the open lowercase error root defined by
 	// rules/errors/errorhandling.md.
-	ErrorAssignable            bool
-	NoCopyPolicyOrigin         string
-	Underlying                 string
-	Unit                       string
-	Dimension                  Dimension
+	ErrorAssignable    bool
+	NoCopyPolicyOrigin string
+	Underlying         string
+	Unit               string
+	Dimension          Dimension
+	// UnitSemantics retains the complete resolved quantity identity from
+	// rules/types/units.md through frontend analysis and tooling.
+	UnitSemantics              UnitSemantics
 	ReferenceMutable           bool
 	ReferenceOriginName        string
 	ReferenceOriginToken       lexer.Token
@@ -270,6 +273,47 @@ const (
 	StatusObsolete   UnitStatus = "obsolete"
 )
 
+// UnitIdentityKind preserves the named-versus-structural distinction required
+// by rules/types/units.md. Dimension equality alone must never manufacture a
+// named unit result.
+type UnitIdentityKind string
+
+const (
+	NamedUnitIdentity      UnitIdentityKind = "named"
+	StructuralUnitIdentity UnitIdentityKind = "structural"
+)
+
+type UnitPointRole string
+
+const (
+	UnitVectorRole     UnitPointRole = "vector"
+	UnitPointRolePoint UnitPointRole = "point"
+	UnitDifferenceRole UnitPointRole = "difference"
+)
+
+// UnitSemantics is the compiler-owned resolved quantity descriptor shared by
+// Sema and tooling. SourceFactors retains source order while Factors and
+// Dimension are normalized for algebra.
+type UnitSemantics struct {
+	Identity           UnitIdentityKind
+	Named              string
+	Source             string
+	SourceFactors      []string
+	Factors            map[string]int
+	Categories         map[UnitCategory]bool
+	Kind               string
+	Transform          UnitTransform
+	Scale              *big.Rat
+	Offset             *big.Rat
+	Origin             string
+	LogBase            *big.Rat
+	LogFactor          *big.Rat
+	Reference          string
+	Role               UnitPointRole
+	ConversionRequired bool
+	ConversionExact    bool
+}
+
 type UnitDefinition struct {
 	Name                 string
 	LongName             string
@@ -279,15 +323,19 @@ type UnitDefinition struct {
 	DimensionEstablished bool
 	Kind                 string
 	Scale                string
+	ScaleValue           *big.Rat
 	DefaultNumeric       string
 	IsBaseUnit           bool
 	Status               UnitStatus
 	System               string
 	Transform            UnitTransform
 	Offset               string
+	OffsetValue          *big.Rat
 	Origin               string
 	LogBase              string
+	LogBaseValue         *big.Rat
 	LogFactor            string
+	LogFactorValue       *big.Rat
 	Reference            string
 	Token                lexer.Token
 }

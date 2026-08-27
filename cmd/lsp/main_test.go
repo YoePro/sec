@@ -288,6 +288,28 @@ fn Use(value: Port) void {
 	}
 }
 
+func TestHoverShowsCompilerOwnedUnitQuantityFacts(t *testing.T) {
+	source := `module main
+
+unit m physical
+impl m {
+    Dimension: [length^1]
+    Kind: length
+    Scale: 1 / 1000
+}
+
+fn Use(distance: m) void {
+}
+`
+	offset := strings.LastIndex(source, "distance")
+	result, ok := hoverForSource("", source, offsetPosition(source, offset))
+	if !ok || !strings.Contains(result.Contents.Value, "Unit identity: named (`m`)") ||
+		!strings.Contains(result.Contents.Value, "Kind: `length`") ||
+		!strings.Contains(result.Contents.Value, "Exact scale: `1/1000`") {
+		t.Fatalf("unit hover = %+v, %v", result, ok)
+	}
+}
+
 func TestHoverUsesCompilerOwnedCallableCapabilityFacts(t *testing.T) {
 	source := `module main
 

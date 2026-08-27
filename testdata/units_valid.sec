@@ -14,6 +14,30 @@ unit s decimal physical
 unit kg decimal physical
 unit Hz decimal physical
 unit rpm decimal physical
+unit metre decimal physical
+unit meter decimal physical
+
+impl m {
+    Dimension: [length^1]
+}
+impl s {
+    Dimension: [time^1]
+}
+impl kg {
+    Dimension: [mass^1]
+}
+impl Hz {
+    Dimension: [time^-1]
+}
+impl rpm {
+    Dimension: [time^-1]
+}
+impl metre {
+    Dimension: [length^1]
+}
+impl meter {
+    Dimension: [length^1]
+}
 
 // Domain units.
 unit SEK decimal other

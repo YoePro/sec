@@ -1075,6 +1075,12 @@ the declaration has address-stability restrictions
 ordinary relocation does not apply to the storage
 ```
 
+The spelling supplies an address expression; it does not independently prove a
+valid binding. Every `@address` declaration must resolve against a canonical
+target-owned address-region or storage contract from the active
+`CompilationPlan`, `MemoryEnvironment`, `DeviceModel`, or equivalent source.
+The contract must cover the complete bound extent.
+
 `@address` implies volatile access.
 
 A separate `@volatile` is not required for addressed storage.
@@ -1110,12 +1116,18 @@ The compiler validates:
 
 ```text
 representability in target pointer width
-alignment for declared type
-target address-space legality
-required privilege
-known peripheral availability where named
+canonical region coverage for the complete bound extent
+address domain and address-space legality
+region availability and read/write permissions
+alignment and permitted physical access widths
+physical representation and storage/device compatibility
+required privilege where applicable
 overlap with other absolute declarations where detectable
 ```
+
+A compile-time numeric value is necessary for raw numeric syntax but is not
+sufficient for validity. If no applicable canonical region covers the complete
+binding, the declaration is invalid. `unsafe` does not waive this validation.
 
 ---
 
@@ -1219,6 +1231,10 @@ application-specific hardware
 external memory-mapped devices
 early platform development
 ```
+
+These forms preserve low ceremony, but the selected target definition must
+still provide the region facts needed to validate the complete binding. Raw
+numeric spelling is never an implicit trust boundary.
 
 ---
 

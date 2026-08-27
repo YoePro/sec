@@ -87,6 +87,7 @@ analysis/stack_analysis.md
 analysis/data_races.md
 analysis/deadlock_analysis.md
 analysis/isr_analysis.md
+platform/volatile.md
 ```
 
 These were written after the older temporary checklist was last synchronized.
@@ -513,8 +514,8 @@ from the presence of a versioned document.
 | `platform/abi.md` | **Written** | Canonical Sec, C, and system ABI families; plan-selected classification, call plans, signatures, fingerprints, MLIR staging, and separate-compilation compatibility. Implementation is tracked by `lowering.abi-model`. |
 | `platform/target_profiles.md` | **Written** | Canonical Hosted, RTOS, and BareMetal profile families; capability activation, execution and safety policy, typed resource limits, derived profiles, immutable resolved identity, provenance, fingerprints, and compiler-consumer queries. Implementation is tracked by `platform.target-profiles`. |
 | `platform/platform_model.md` | **Written** | Canonical Target/Variant terminology, immutable CompilationPlan resolution, typed platform submodels, capabilities, source selection, fingerprints, diagnostics, and LSP invalidation. Implementation is tracked by `compiler.platform-model`. |
+| `platform/volatile.md` | **Written** | Canonical volatile physical-access semantics, mandatory `@address` region validation, explicit raw volatile operations, physical access contracts, optimizer invariants, representation eligibility, lowering, diagnostics, and tooling. Implementation is tracked by `platform.volatile`. |
 | `inline_assembly.md` | **Planned** | Operands, constraints, clobbers, volatility, memory effects, and target restrictions. |
-| `volatile.md` | **Planned** | Volatile access, MMIO, compiler reordering, atomics distinction, and read-modify-write. |
 | `interrupts.md` | **Planned** | ISR syntax, vector binding, nesting, priorities, stacks, and deferred work. |
 | `analysis/isr_analysis.md` | **Written** | Compiler verification for profile-scoped interrupt safety using canonical analysis results; implementation status is tracked by `sema.isr-analysis`. |
 
@@ -636,6 +637,7 @@ memory/reference_model.md
 memory/references.txt
 declarations/registers.md
 platform/fixed-address-bindings.md
+platform/volatile.md
 compiler/rules_implementations.txt
 errors/runtime_checks.md
 concurrency/scheduling.md
@@ -696,7 +698,6 @@ monomorphization.md
 compile_time_evaluation.md
 
 inline_assembly.md
-volatile.md
 interrupts.md
 
 debug_information.md

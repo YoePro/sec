@@ -54,7 +54,7 @@ func format(text string, options Options) string {
 		if options.Fix {
 			line = normalizeReversedTypeDeclaration(line)
 		}
-		line = formatSingleLineCallSpacing(formatMatchArm(formatLet(formatSignature(formatInitSignature(normalizeFunc(line))))))
+		line = formatUnitExpressions(formatSingleLineCallSpacing(formatMatchArm(formatLet(formatSignature(formatInitSignature(normalizeFunc(line)))))))
 		level := indent - closing(line)
 		if level < 0 {
 			level = 0
@@ -102,6 +102,68 @@ func format(text string, options Options) string {
 		result = strings.ReplaceAll(result, "\n", eol)
 	}
 	return result
+}
+
+// formatUnitExpressions implements rules/types/units.md and
+// rules/tooling/formatter.md compact structural-unit spacing. It only edits a
+// balanced type-annotation angle group and never reorders factors or removes
+// source grouping.
+func formatUnitExpressions(line string) string {
+	if strings.Contains(line, "//") || strings.Contains(line, "/*") || strings.Contains(line, "*/") {
+		return line
+	}
+	var out strings.Builder
+	for cursor := 0; cursor < len(line); {
+		open := strings.IndexByte(line[cursor:], '<')
+		if open < 0 {
+			out.WriteString(line[cursor:])
+			break
+		}
+		open += cursor
+		close := strings.IndexByte(line[open+1:], '>')
+		if close < 0 {
+			out.WriteString(line[cursor:])
+			break
+		}
+		close += open + 1
+		content := line[open+1 : close]
+		if !strings.ContainsAny(content, "*/^()") || !looksLikeUnitAnnotation(line, open) {
+			out.WriteString(line[cursor : open+1])
+			cursor = open + 1
+			continue
+		}
+		out.WriteString(line[cursor : open+1])
+		out.WriteString(compactUnitOperators(content))
+		out.WriteByte('>')
+		cursor = close + 1
+	}
+	return out.String()
+}
+
+func looksLikeUnitAnnotation(line string, open int) bool {
+	spaced := open > 0 && unicode.IsSpace(rune(line[open-1]))
+	for i := open - 1; i >= 0; i-- {
+		if unicode.IsSpace(rune(line[i])) {
+			continue
+		}
+		if spaced {
+			// A whitespace-led '<' after an operand is a comparison, not a
+			// unit-only type annotation.
+			return line[i] == ':' || line[i] == '[' || line[i] == ',' || line[i] == '(' || line[i] == '='
+		}
+		return line[i] == '_' || line[i] == ']' || unicode.IsLetter(rune(line[i])) || unicode.IsDigit(rune(line[i]))
+	}
+	return true
+}
+
+func compactUnitOperators(content string) string {
+	fields := strings.Fields(content)
+	compact := strings.Join(fields, " ")
+	for _, operator := range []string{"*", "/", "^", "(", ")"} {
+		compact = strings.ReplaceAll(compact, " "+operator, operator)
+		compact = strings.ReplaceAll(compact, operator+" ", operator)
+	}
+	return compact
 }
 
 // formatSingleLineCallSpacing implements the single-line call rule in

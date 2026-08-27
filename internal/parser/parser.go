@@ -2703,7 +2703,7 @@ func (p *Parser) parseRegisterFields() []*ast.RegisterField {
 			}
 			if p.peekToken.Type == lexer.LT {
 				p.nextToken()
-				field.Unit = p.parseUnit()
+				field.Unit, field.UnitExpression = p.parseUnit()
 			}
 		} else {
 			field.Type = p.parseTypeReference()
@@ -3593,12 +3593,13 @@ func (p *Parser) parseTypeReference() *ast.TypeReference {
 
 	if p.curToken.Type == lexer.LT {
 		token := p.curToken
-		unit := p.parseUnit()
+		unit, unitExpression := p.parseUnit()
 		return &ast.TypeReference{
-			Token:    token,
-			Name:     "",
-			Unit:     unit,
-			UnitOnly: true,
+			Token:          token,
+			Name:           "",
+			Unit:           unit,
+			UnitExpression: unitExpression,
+			UnitOnly:       true,
 		}
 	}
 
@@ -3633,12 +3634,13 @@ func (p *Parser) parseTypeReference() *ast.TypeReference {
 	if p.peekToken.Type == lexer.LT {
 		p.nextToken()
 
-		unit := p.parseUnit()
+		unit, unitExpression := p.parseUnit()
 		if unit == "" {
 			return ref
 		}
 
 		ref.Unit = unit
+		ref.UnitExpression = unitExpression
 	}
 
 	return p.parsePostfixTypeReference(ref)
@@ -3932,27 +3934,141 @@ func (p *Parser) parsePrefixSequenceTypeReference() *ast.TypeReference {
 	return ref
 }
 
-func (p *Parser) parseUnit() string {
+func (p *Parser) parseUnit() (string, *ast.UnitExpression) {
 	if p.curToken.Type != lexer.LT {
 		p.addError("expected unit to start with '<', got %q", p.curToken.Lexeme)
-		return ""
+		return "", nil
 	}
 
 	p.nextToken()
 
 	unit := ""
+	tokens := []lexer.Token{}
 
 	for p.curToken.Type != lexer.GT && p.curToken.Type != lexer.EOF {
 		unit += p.curToken.Lexeme
+		tokens = append(tokens, p.curToken)
 		p.nextToken()
 	}
 
 	if p.curToken.Type != lexer.GT {
 		p.addError("unterminated unit type")
-		return ""
+		return "", nil
 	}
 
-	return unit
+	expression, err := parseUnitExpressionTokens(tokens)
+	if err != nil {
+		p.addError("invalid unit expression %s: %s", unit, err)
+		return unit, nil
+	}
+	expression.Source = unit
+	return unit, expression
+}
+
+// unitSyntaxParser implements the structural grammar in
+// rules/types/units.md, "Structural unit expressions". It constructs a
+// first-class AST while the outer parser keeps the exact compact source
+// spelling used by formatter and diagnostics.
+type unitSyntaxParser struct {
+	tokens []lexer.Token
+	pos    int
+}
+
+func parseUnitExpressionTokens(tokens []lexer.Token) (*ast.UnitExpression, error) {
+	if len(tokens) == 0 {
+		return nil, fmt.Errorf("expected a unit factor")
+	}
+	p := unitSyntaxParser{tokens: tokens}
+	expression, err := p.parseProduct()
+	if err != nil {
+		return nil, err
+	}
+	if p.pos != len(p.tokens) {
+		return nil, fmt.Errorf("unexpected %q", p.tokens[p.pos].Lexeme)
+	}
+	return expression, nil
+}
+
+func (p *unitSyntaxParser) parseProduct() (*ast.UnitExpression, error) {
+	left, err := p.parseFactor()
+	if err != nil {
+		return nil, err
+	}
+	for p.pos < len(p.tokens) && (p.tokens[p.pos].Type == lexer.ASTERISK || p.tokens[p.pos].Type == lexer.SLASH) {
+		op := p.tokens[p.pos]
+		p.pos++
+		right, err := p.parseFactor()
+		if err != nil {
+			return nil, err
+		}
+		kind := ast.UnitExpressionMultiply
+		if op.Type == lexer.SLASH {
+			kind = ast.UnitExpressionDivide
+		}
+		left = &ast.UnitExpression{Token: op, Kind: kind, Left: left, Right: right}
+	}
+	return left, nil
+}
+
+func (p *unitSyntaxParser) parseFactor() (*ast.UnitExpression, error) {
+	atom, err := p.parseAtom()
+	if err != nil {
+		return nil, err
+	}
+	if p.pos >= len(p.tokens) || p.tokens[p.pos].Type != lexer.BIT_XOR {
+		return atom, nil
+	}
+	token := p.tokens[p.pos]
+	p.pos++
+	sign := 1
+	if p.pos < len(p.tokens) && (p.tokens[p.pos].Type == lexer.PLUS || p.tokens[p.pos].Type == lexer.MINUS) {
+		if p.tokens[p.pos].Type == lexer.MINUS {
+			sign = -1
+		}
+		p.pos++
+	}
+	if p.pos >= len(p.tokens) || p.tokens[p.pos].Type != lexer.INT {
+		return nil, fmt.Errorf("unit exponent must be a signed integer")
+	}
+	exponent64, err := strconv.ParseInt(p.tokens[p.pos].Lexeme, 10, 32)
+	if err != nil || exponent64 == 0 {
+		return nil, fmt.Errorf("unit exponent must be a non-zero signed integer")
+	}
+	p.pos++
+	return &ast.UnitExpression{Token: token, Kind: ast.UnitExpressionPower, Left: atom, Exponent: sign * int(exponent64)}, nil
+}
+
+func (p *unitSyntaxParser) parseAtom() (*ast.UnitExpression, error) {
+	if p.pos >= len(p.tokens) {
+		return nil, fmt.Errorf("expected a unit factor")
+	}
+	token := p.tokens[p.pos]
+	if token.Type == lexer.LPAREN {
+		p.pos++
+		expression, err := p.parseProduct()
+		if err != nil {
+			return nil, err
+		}
+		if p.pos >= len(p.tokens) || p.tokens[p.pos].Type != lexer.RPAREN {
+			return nil, fmt.Errorf("expected ')' in unit expression")
+		}
+		p.pos++
+		return &ast.UnitExpression{Token: token, Kind: ast.UnitExpressionGroup, Left: expression}, nil
+	}
+	if token.Type == lexer.INT && token.Lexeme == "1" {
+		p.pos++
+		return &ast.UnitExpression{Token: token, Kind: ast.UnitExpressionIdentity}, nil
+	}
+	if token.Type != lexer.IDENT {
+		return nil, fmt.Errorf("expected a unit name, 1, or parenthesized unit expression")
+	}
+	name := token.Lexeme
+	p.pos++
+	for p.pos+1 < len(p.tokens) && p.tokens[p.pos].Type == lexer.DOT && p.tokens[p.pos+1].Type == lexer.IDENT {
+		name += "." + p.tokens[p.pos+1].Lexeme
+		p.pos += 2
+	}
+	return &ast.UnitExpression{Token: token, Kind: ast.UnitExpressionName, Name: name}, nil
 }
 
 func (p *Parser) parseTypeArgs() []*ast.TypeReference {

@@ -1376,6 +1376,8 @@ fn Invalid(
 func TestNamedUnitTypeRegistryStoresUnit(t *testing.T) {
 	input := `
 unit SEK currency
+unit m physical
+unit s physical
 type Money decimal<SEK>
 type Speed decimal<m/s>
 `
@@ -2358,6 +2360,8 @@ func TestRegisterInvalidFixture(t *testing.T) {
 func TestUnitAliasTypesAreNominal(t *testing.T) {
 	input := `
 unit SEK currency
+unit m physical
+unit s physical
 type Money decimal<SEK>
 type Speed decimal<m/s>
 
@@ -2370,15 +2374,15 @@ fn Test() void {
 
 	errors := analyzeSource(t, input)
 
-	expected := []string{
-		"cannot add Speed to Money at 9:8",
+	if len(errors) != 1 || !strings.Contains(errors[0].Message, "cannot add Speed to Money") {
+		t.Fatalf("nominal unit errors = %v", errors)
 	}
-
-	assertSemaErrors(t, errors, expected)
 }
 
-func TestUnitDivisionCanInferDeclaredDimensionType(t *testing.T) {
+func TestUnitDivisionKeepsAnonymousStructuralType(t *testing.T) {
 	input := `
+unit m physical
+unit s physical
 type Meter decimal<m>
 type Second decimal<s>
 type Speed decimal<m/s>
@@ -2392,13 +2396,15 @@ let v := d / t
 	assertSemaErrors(t, errors, nil)
 
 	v := analyzer.symbols["v"]
-	if v.Type.Name != "Speed" {
-		t.Fatalf("wrong inferred type. got=%q want=%q", v.Type.Name, "Speed")
+	if v.Type.Name == "Speed" || v.Type.UnitSemantics.Identity != StructuralUnitIdentity || v.Type.Unit != "m/s" {
+		t.Fatalf("division invented a named result: %+v", v.Type)
 	}
 }
 
-func TestUnitMultiplicationCanInferDeclaredDimensionType(t *testing.T) {
+func TestUnitMultiplicationKeepsAnonymousStructuralType(t *testing.T) {
 	input := `
+unit m physical
+unit s physical
 type Meter decimal<m>
 type Second decimal<s>
 type Speed decimal<m/s>
@@ -2412,8 +2418,8 @@ let d := v * t
 	assertSemaErrors(t, errors, nil)
 
 	d := analyzer.symbols["d"]
-	if d.Type.Name != "Meter" {
-		t.Fatalf("wrong inferred type. got=%q want=%q", d.Type.Name, "Meter")
+	if d.Type.Name == "Meter" || d.Type.UnitSemantics.Identity != StructuralUnitIdentity {
+		t.Fatalf("multiplication invented a named result: %+v", d.Type)
 	}
 }
 
@@ -2435,7 +2441,164 @@ let doubled := m * 2
 	}
 }
 
-func TestMoneyTimesMoneyIsInvalid(t *testing.T) {
+func TestUnitsV2KindBlocksDimensionOnlyAddition(t *testing.T) {
+	input := `
+unit Hz physical
+unit rpm physical
+impl Hz {
+ Dimension: [time^-1]
+ Kind: frequency
+ Scale: 1
+}
+impl rpm {
+ Dimension: [time^-1]
+ Kind: rotational_frequency
+ Scale: 1 / 60
+}
+fn Invalid(left: Hz, right: rpm) Hz { return left + right }
+`
+	errors := analyzeSource(t, input)
+	if len(errors) != 1 || !strings.Contains(errors[0].Message, "incompatible unit dimension or Kind") {
+		t.Fatalf("Kind mismatch errors = %v", errors)
+	}
+}
+
+func TestUnitsV2StructuralResultDoesNotInventNamedUnit(t *testing.T) {
+	input := `
+unit m physical
+unit s physical
+unit Speed physical
+impl m {
+ Dimension: [length^1]
+ Kind: length
+ Scale: 1
+}
+impl s {
+ Dimension: [time^1]
+ Kind: duration
+ Scale: 1
+}
+impl Speed {
+ Dimension: [length^1, time^-1]
+ Kind: speed
+ Scale: 1
+}
+fn Derive(distance: m, duration: s) decimal<m/s> { return distance / duration }
+`
+	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
+	assertSemaErrors(t, errors, nil)
+	derived := analyzer.functions["Derive"][0].ReturnType
+	if derived.UnitSemantics.Identity != StructuralUnitIdentity || derived.Unit != "m/s" || derived.Name == "Speed" {
+		t.Fatalf("derived unit lost structural identity: %+v", derived)
+	}
+}
+
+func TestUnitsV2PointAndLogarithmicArithmetic(t *testing.T) {
+	input := `
+unit C physical
+unit DeltaC physical
+unit dB ratio
+impl C {
+ Dimension: [temperature^1]
+ Kind: temperature
+ Scale: 1
+ Transform: affine
+ Offset: 27315 / 100
+ Origin: absolute_zero
+}
+impl DeltaC {
+ Dimension: [temperature^1]
+ Kind: temperature
+ Scale: 1
+}
+impl dB {
+ Dimension: []
+ Kind: ratio
+ Transform: logarithmic
+ LogBase: 10
+ LogFactor: 10
+ Reference: 1
+}
+fn Shift(point: C, delta: DeltaC) C { return point + delta }
+fn Difference(left: C, right: C) void { let difference := left - right }
+fn Bad(left: C, right: C) C { return left + right }
+fn BadLog(left: dB, right: dB) dB { return left + right }
+`
+	errors := analyzeSource(t, input)
+	if len(errors) != 2 || !strings.Contains(errors[0].Message, "two unit points") || !strings.Contains(errors[1].Message, "logarithmic") {
+		t.Fatalf("point/logarithmic errors = %v", errors)
+	}
+}
+
+func TestUnitsV2CurrencyDerivationWarnsAndFactorConversionValidates(t *testing.T) {
+	input := `
+unit EUR currency
+unit SEK currency
+fn Convert(value: SEK, factor: decimal<EUR/SEK>) EUR { return EUR(value, factor) }
+fn Rate(value: EUR, seconds: decimal) decimal<EUR> { return value / seconds }
+`
+	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
+	assertSemaErrors(t, errors, nil)
+	if warnings := analyzer.Warnings(); len(warnings) == 0 || !strings.Contains(warnings[0].Message, "contains currency") {
+		t.Fatalf("currency warnings = %v", warnings)
+	}
+}
+
+func TestUnitsV2RejectsNonPositiveOrInexactMetadata(t *testing.T) {
+	input := `
+unit Zero physical
+unit Dynamic physical
+impl Zero {
+ Dimension: [length^1]
+ Scale: 0
+}
+impl Dynamic {
+ Dimension: [length^1]
+ Scale: runtime_value
+}
+`
+	errors := analyzeSource(t, input)
+	if len(errors) != 2 || !strings.Contains(errors[0].Message, "invalid scale metadata") || !strings.Contains(errors[1].Message, "invalid scale metadata") {
+		t.Fatalf("scale metadata errors = %v", errors)
+	}
+}
+
+func TestUnitsV2RejectsLossyImplicitFixedConversion(t *testing.T) {
+	input := `
+unit Whole physical
+unit Third physical
+impl Whole {
+ Dimension: [length^1]
+ Kind: length
+ Scale: 1
+}
+impl Third {
+ Dimension: [length^1]
+ Kind: length
+ Scale: 1 / 3
+}
+fn Add(left: Whole, right: Third) Whole { return left + right }
+`
+	errors := analyzeSource(t, input)
+	if len(errors) != 1 || !strings.Contains(errors[0].Message, "without loss") {
+		t.Fatalf("lossy implicit conversion errors = %v", errors)
+	}
+}
+
+func TestUnitsV2FactorConversionRejectsWrongAlgebra(t *testing.T) {
+	input := `
+unit EUR currency
+unit SEK currency
+unit s physical
+fn Invalid(value: SEK, factor: decimal<s>) EUR { return EUR(value, factor) }
+`
+	errors := analyzeSource(t, input)
+	if len(errors) != 1 || !strings.Contains(errors[0].Message, "conversion factor") {
+		t.Fatalf("factor algebra errors = %v", errors)
+	}
+}
+
+func TestMoneyTimesMoneyIsStructuralAndWarns(t *testing.T) {
 	input := `
 unit SEK currency
 type Money decimal<SEK>
@@ -2445,13 +2608,11 @@ let b: Money := 2
 let invalid := a * b
 `
 
-	errors := analyzeSource(t, input)
-
-	expected := []string{
-		"cannot multiply Money by Money at 7:18",
+	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
+	assertSemaErrors(t, errors, nil)
+	if analyzer.symbols["invalid"].Type.UnitSemantics.Identity != StructuralUnitIdentity || len(analyzer.Warnings()) == 0 {
+		t.Fatalf("currency product did not remain structural with a warning: type=%+v warnings=%v", analyzer.symbols["invalid"].Type, analyzer.Warnings())
 	}
-
-	assertSemaErrors(t, errors, expected)
 }
 
 func TestSameUnitDivisionInfersDecimal(t *testing.T) {
@@ -4948,11 +5109,11 @@ impl Hz {
 }
 
 fn Convert(value: decimal<s>) decimal<Hz> {
-	return decimal<Hz>(decimal(1.0) / decimal(value))
+	return decimal<Hz>(1.0)
 }
 
 fn Convert(value: float<s>) float<Hz> {
-	return float<Hz>(float(1.0) / float(value))
+	return float<Hz>(1.0g)
 }
 `
 

@@ -3228,8 +3228,9 @@ Fresh temporaries require no move token.
 
 `return expression` is already a result-transfer context.
 
-By-value parameters and aggregate payload construction infer transfer for
-move-only values.
+By-value parameters and aggregate payload construction never infer destructive
+transfer from a reusable source. A move-only reusable source requires explicit
+`<-`; fresh temporaries remain marker-free.
 
 A copyable value, including `string`, may be explicitly moved.
 

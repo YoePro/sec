@@ -2,7 +2,7 @@
 
 **Status:** Normative  
 **Created:** 2026-08-13  
-**Last updated:** 2026-08-13  
+**Last updated:** 2026-08-27
 **Replaces:** `rules/platform/registers.txt`  
 **Document revision:** 1  
 **Sec language version:** 0.1
@@ -162,8 +162,11 @@ No platform rule may reinterpret field allocation order as byte endianness.
 ## 8. Address validation
 
 The current `@address` form requires a compile-time-known integer address. The
-compiler and selected target profile must validate every statically knowable
-requirement, including as applicable:
+numeric value is not by itself sufficient. Every binding must resolve against
+an applicable canonical address-region or storage contract supplied by the
+active `CompilationPlan`, `MemoryEnvironment`, `DeviceModel`, or equivalent
+target-owned source. The complete bound extent must satisfy every applicable
+requirement, including:
 
 ```text
 address-domain validity
@@ -180,9 +183,14 @@ A target may define a linear integer address domain or another compiler-known
 target address domain. `@address` does not grant permission to bypass known
 target restrictions.
 
-Dynamic or otherwise unverifiable access requires a separately specified
-checked compiler-known API or an explicit `unsafe` boundary. Ordinary
-statically validated `@address` use does not require `RawPtr`.
+If no applicable region covers the complete binding, the declaration is
+invalid. `unsafe` does not waive region, extent, permission, alignment,
+representation, width, storage, or address-space validation. Dynamic or
+otherwise unverifiable address access uses an applicable explicit `RawPtr` or
+checked low-level mechanism rather than an unverified `@address` declaration.
+This applies to Hosted, RTOS, and BareMetal targets. A Hosted target may permit
+explicitly modeled mapped device regions, but not arbitrary process virtual
+addresses merely because their spelling is constant.
 
 ## 9. Initialization
 

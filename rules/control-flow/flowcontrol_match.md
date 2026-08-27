@@ -547,7 +547,7 @@ Example:
 
 ```sec
 match value {
-    Some(resource) => Consume(resource)
+    Some(resource) => Consume(<-resource)
     None => Nothing()
 }
 

@@ -788,6 +788,24 @@ func assertTypeDecl(
 	assertLiteralValue(t, rangeContract.Max, max)
 }
 
+func TestStructuralUnitExpressionRetainsASTAndSourceOrder(t *testing.T) {
+	input := `type Flux decimal<(kg*m)/(s^2*A)>`
+	p := New(lexer.New(input))
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+	decl := program.Statements[0].(*ast.TypeDeclStatement)
+	unit := decl.BaseType.UnitExpression
+	if unit == nil || unit.Kind != ast.UnitExpressionDivide || unit.Source != "(kg*m)/(s^2*A)" {
+		t.Fatalf("wrong structural unit root: %+v", unit)
+	}
+	if unit.Left == nil || unit.Left.Kind != ast.UnitExpressionGroup || unit.Right == nil || unit.Right.Kind != ast.UnitExpressionGroup {
+		t.Fatalf("grouping was not retained: %+v", unit)
+	}
+	if got := unit.String(); got != "(kg*m)/(s^2*A)" {
+		t.Fatalf("unit AST string = %q", got)
+	}
+}
+
 func assertLetDecl(t *testing.T, stmt ast.Statement, name string, typeName string, mutable bool) {
 	t.Helper()
 

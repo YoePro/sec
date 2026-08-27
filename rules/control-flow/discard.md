@@ -1073,7 +1073,7 @@ The language test suite must cover at least:
 - explicit discard of a trivially destructible binding;
 - explicit discard of a move-only resource;
 - use after discard;
-- double discard;
+- second discard of an already unavailable place as a legal no-op, with only an optional redundancy advisory;
 - mutable reinitialization after discard;
 - immutable reinitialization rejection after discard;
 - implicit ordinary non-`void` call-result discard;

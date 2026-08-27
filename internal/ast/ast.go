@@ -1,6 +1,7 @@
 package ast
 
 import (
+	"fmt"
 	"math/big"
 	"sec/internal/lexer"
 	"strconv"
@@ -373,6 +374,11 @@ type TypeReference struct {
 
 	// Unit is used for unit types such as decimal<m> or decimal<SEK>.
 	Unit string
+	// UnitExpression is the first-class structural syntax tree required by
+	// rules/types/units.md, "Structural unit expressions". Unit retains the
+	// exact compact source spelling for compatibility and diagnostics; semantic
+	// consumers use this tree rather than reparsing that string.
+	UnitExpression *UnitExpression
 	// UnitOnly is used for shorthand unit types such as <m>. Semantic analysis
 	// expands it to the unit's default numeric representation.
 	UnitOnly bool
@@ -395,6 +401,56 @@ type TypeReference struct {
 	FunctionCapability     CallableCapability
 	FunctionParameterTypes []*TypeReference
 	FunctionReturnType     *TypeReference
+}
+
+// UnitExpressionKind classifies the source structure of a unit annotation.
+// rules/types/units.md distinguishes named identity, structural algebra,
+// grouping, exponents, and the dimensionless identity without rewriting the
+// programmer's factor order.
+type UnitExpressionKind string
+
+const (
+	UnitExpressionName     UnitExpressionKind = "name"
+	UnitExpressionIdentity UnitExpressionKind = "identity"
+	UnitExpressionMultiply UnitExpressionKind = "multiply"
+	UnitExpressionDivide   UnitExpressionKind = "divide"
+	UnitExpressionPower    UnitExpressionKind = "power"
+	UnitExpressionGroup    UnitExpressionKind = "group"
+)
+
+type UnitExpression struct {
+	Token    lexer.Token
+	Kind     UnitExpressionKind
+	Name     string
+	Left     *UnitExpression
+	Right    *UnitExpression
+	Exponent int
+	Source   string
+}
+
+func (u *UnitExpression) String() string {
+	if u == nil {
+		return ""
+	}
+	if u.Source != "" {
+		return u.Source
+	}
+	switch u.Kind {
+	case UnitExpressionName:
+		return u.Name
+	case UnitExpressionIdentity:
+		return "1"
+	case UnitExpressionMultiply:
+		return u.Left.String() + "*" + u.Right.String()
+	case UnitExpressionDivide:
+		return u.Left.String() + "/" + u.Right.String()
+	case UnitExpressionPower:
+		return fmt.Sprintf("%s^%d", u.Left.String(), u.Exponent)
+	case UnitExpressionGroup:
+		return "(" + u.Left.String() + ")"
+	default:
+		return ""
+	}
 }
 
 // CallableCapability is the source-level authority required to invoke a
@@ -1143,6 +1199,9 @@ type RegisterField struct {
 	Type  *TypeReference
 	Width int64
 	Unit  string
+	// UnitExpression mirrors TypeReference.UnitExpression for bit-field unit
+	// annotations so register semantics do not retain a string-only unit model.
+	UnitExpression *UnitExpression
 	// Access preserves the compiler-known field modifier defined by
 	// rules/declarations/registers.md. Empty input is normalized by the parser
 	// to RegisterReadWrite.

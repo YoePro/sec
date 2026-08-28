@@ -1,5 +1,15 @@
 # Type Contracts
 
+- **Status:** Normative
+- **Created:** 2026-08-13
+- **Last updated:** 2026-08-13
+- **Document revision:** 2.0
+- **Sec language version:** 0.1
+- **Canonical path:** `rules/types/contracts.md`
+- **Replaces:** `rules/types/variable-contracts.txt`
+
+---
+
 ## Status
 
 This is the canonical Sec rulebook for type contracts. Its canonical filename is

@@ -141,6 +141,18 @@ func (g *Generator) Generate(program *ast.Program) (string, error) {
 				}
 			}
 		case *ast.TypeDeclStatement:
+			if stmt.BaseType != nil {
+				if err := validateLegacyMLIRArrayType(stmt.BaseType); err != nil {
+					return "", err
+				}
+			}
+			if stmt.StructType != nil {
+				for _, field := range stmt.StructType.Fields {
+					if err := validateLegacyMLIRArrayType(field.Type); err != nil {
+						return "", err
+					}
+				}
+			}
 			if stmt.Name != nil && stmt.StructType != nil {
 				if len(stmt.GenericParameters) > 0 {
 					return "", fmt.Errorf("emit-mlir does not support generic struct %s yet", stmt.Name.Value)
@@ -235,6 +247,14 @@ func (g *Generator) Generate(program *ast.Program) (string, error) {
 }
 
 func (g *Generator) emitFunction(fn *ast.FunctionDeclaration) error {
+	for _, parameter := range fn.Parameters {
+		if err := validateLegacyMLIRArrayType(parameter.Type); err != nil {
+			return err
+		}
+	}
+	if err := validateLegacyMLIRArrayType(fn.ReturnType); err != nil {
+		return err
+	}
 	var body strings.Builder
 	var signature strings.Builder
 	previousActiveOut := g.activeOut
@@ -3416,6 +3436,40 @@ func mlirArrayLength(ref *ast.TypeReference) (int64, bool) {
 		return 0, false
 	}
 	return value.Int64(), true
+}
+
+// validateLegacyMLIRArrayType is the checked Package 14 section-16 boundary:
+// the pre-Sec-MLIR physical backend may reject an unrepresentable layout, but
+// that limitation never changes frontend source-language validity.
+func validateLegacyMLIRArrayType(ref *ast.TypeReference) error {
+	if ref == nil {
+		return nil
+	}
+	if ref.ElementType != nil && !ref.Slice {
+		if _, ok := mlirArrayLength(ref); !ok {
+			length := "<non-constant>"
+			if ref.ArrayLengthExpression != nil {
+				if exact, exactOK := enumIntegerConstant(ref.ArrayLengthExpression, big.NewInt(0)); exactOK {
+					length = exact.String()
+				}
+			}
+			return fmt.Errorf("emit-mlir legacy fixed-array layout does not support exact length %s; use the Package 14 Sec MLIR path", length)
+		}
+	}
+	if err := validateLegacyMLIRArrayType(ref.ElementType); err != nil {
+		return err
+	}
+	for _, argument := range ref.TypeArgs {
+		if err := validateLegacyMLIRArrayType(argument); err != nil {
+			return err
+		}
+	}
+	for _, parameter := range ref.FunctionParameterTypes {
+		if err := validateLegacyMLIRArrayType(parameter); err != nil {
+			return err
+		}
+	}
+	return validateLegacyMLIRArrayType(ref.FunctionReturnType)
 }
 
 func (g *Generator) mlirParameterType(param *ast.Parameter) string {

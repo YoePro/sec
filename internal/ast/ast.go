@@ -372,8 +372,10 @@ type TypeReference struct {
 	MutableRef bool
 
 	// ElementType is used for slice and array types such as byte[] and int[3].
-	ElementType           *TypeReference
-	Slice                 bool
+	ElementType *TypeReference
+	Slice       bool
+	// ArrayLength is a parser compatibility cache only. The source expression
+	// below is authoritative until Sema creates the exact Package 14 shape.
 	ArrayLength           int64
 	ArrayLengthExpression Expression
 

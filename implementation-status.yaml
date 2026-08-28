@@ -1,5 +1,5 @@
 schema_version: 1
-updated: "2026-08-27"
+updated: "2026-08-28"
 purpose: >-
   Canonical implementation ledger for compiler and tooling work. Normative
   language behavior remains in rules/, while implementation status is migrated
@@ -13,7 +13,7 @@ status_values:
 integrations:
   - id: platform.volatile
     area: platform-memory-and-volatile-access
-    status: planned
+    status: partial
     integrated: "2026-08-27"
     document_revision: 1
     repository_baseline: "fc8d632"
@@ -22,7 +22,9 @@ integrations:
       RawPtr VolatileRead/VolatileWrite operations, canonical @address region
       validation, target access contracts, address-space, width, alignment and
       ordering preservation, optimizer constraints, representation eligibility,
-      and lowering/tooling support. No conforming vertical slice is claimed yet.
+      and lowering/tooling support. The canonical compiler-known RawPtr frontend
+      slice is integrated; physical eligibility, CompilationPlan validation,
+      Semantic IR, lowering and target realization remain.
     rules:
       - rules/platform/volatile.md
       - rules/platform/fixed-address-bindings.md
@@ -34,11 +36,29 @@ integrations:
       - rules/declarations/registers.md
       - rules/compiler/semantic_ir.txt
       - rules/mlir/sec_mlir.md
+    code:
+      - internal/sema/compiler_known_members.go
+      - internal/sema/analyzer.go
+      - internal/sema/call_graph.go
+      - cmd/lsp/main.go
+    implemented:
+      - accepted @address bindings retain Addressed and Volatile metadata while binding mutability remains separate
+      - ordinary RawPtr Read, Write, Offset, AddBytes and Difference remain distinct compiler-known operations
+      - RawPtr[T].VolatileRead() has stable identity CKM-RAWPTR-VOLATILE-READ and resolves to T
+      - RawPtr[T].VolatileWrite(value) has stable identity CKM-RAWPTR-VOLATILE-WRITE and resolves to void
+      - both volatile operations require unsafe and reject invalid arity or value types
+      - RawPtr[void] direct volatile read and write are rejected before value materialization
+      - successful volatile calls publish ordered volatile-read or volatile-write effect sites
+      - LSP completion, semantic classification and hover consume the same compiler-known registry entries
+      - LSP completion marks the operations unsafe and effectful while hover exposes their stable identity and effect
+    incorrect_or_partial:
+      - current accepted @address Symbol.Volatile metadata is not end-to-end volatile support
+      - volatile frontend eligibility is currently limited to concrete non-void pointee and assignment compatibility
+      - physical VolatileReadable and VolatileWritable eligibility is not CompilationPlan-sensitive yet
+      - the effect sites do not yet carry resolved physical-access contracts or occurrence identities into Semantic IR
     remaining:
       - introduce canonical volatile/external-storage access semantics distinct from type qualification
-      - add compiler-known RawPtr[T].VolatileRead() and RawPtr[T].VolatileWrite(value) operations
       - keep ordinary RawPtr Read/Write distinct from explicit volatile access
-      - require unsafe for ordinary RawPtr volatile access while preserving known target restrictions inside unsafe
       - make every @address binding resolve against an applicable canonical region/storage contract for its complete extent
       - reject numerically valid @address bindings not covered by an applicable target region
       - permit Hosted @address only for explicitly modeled compatible mapped regions rather than arbitrary process addresses
@@ -71,6 +91,12 @@ integrations:
     corrections_applied:
       - rules/corrections/applied/foundations-correction-20260827.md
       - rules/corrections/applied/platform-correction-20260827.md
+      - rules/corrections/applied/correction31-20260828.md
+    governance_reconciliation:
+      - keep frontend.fixed-address-bindings as the @address-specific slice and cross-link it to this integration
+      - keep this existing platform.volatile integration canonical rather than adding duplicate frontend.volatile-access governance
+      - synchronize rules/compiler/compiler_known_members.md with rules/platform/volatile.md
+      - do not treat current Symbol.Volatile metadata as end-to-end volatile support
     excluded:
       - logical register-field transaction semantics
       - register physical read groups and selective field observation
@@ -209,6 +235,109 @@ integrations:
       - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
         result: passed (78/78)
 
+  - id: lowering.sec-mlir-package14
+    package: SEC-MLIR-P14
+    name: Fixed Array Semantic Value Representation
+    area: frontend-semantic-ir-sec-mlir-and-lowering
+    status: partial
+    implementation_phase: canonical-frontend-shape
+    integrated: "2026-08-28"
+    baseline: repository HEAD with completed SEC-MLIR-P13 schema 9
+    repository_head: 069c111b96714ee4c9423f5f7a64d1e7a6045f31
+    mlir_toolchain: LLVM 24.0.0git optimized build with assertions
+    summary: >-
+      Tracks the migration from the existing int64/sentinel-based fixed-array
+      frontend and legacy physical backend to canonical arbitrary-precision
+      array shapes, compact Sema plans, verified Semantic IR, and high-level
+      schema-10 Sec MLIR. Package 14 introduces no mandatory runtime or physical
+      array representation.
+    rules:
+      - rules/mlir/packages/sec-mlir-dialect_package14.md
+      - rules/mlir/packages/sec-mlir-dialect_package14.yaml
+      - rules/mlir/semantic-ir/sec_semantic_ir_fixed_array_v1.md
+      - rules/mlir/dialect-versions/sec_mlir_dialect_v10.md
+      - rules/mlir/lowering-versions/sec_mlir_lowering_v10.md
+      - rules/collections/collections.md
+      - rules/declarations/spread.md
+      - rules/types/default_values.md
+      - rules/errors/runtime_checks.md
+      - rules/errors/errorhandling.md
+      - rules/library/core-library.md
+      - rules/compiler/semantic_ir.txt
+      - rules/analysis/effect_analysis.md
+      - rules/memory/ownership.md
+      - rules/mlir/packages/sec-mlir-dialect_package15.md
+      - rules/mlir/packages/sec-mlir-dialect_package17.md
+      - package14-todo.md
+    code:
+      - internal/ast/ast.go
+      - internal/parser/parser.go
+      - internal/sema/types.go
+      - internal/sema/analyzer.go
+      - internal/sema/defaults.go
+      - internal/sema/place.go
+      - internal/sema/compiler_known_members.go
+      - internal/sema/escape_analysis.go
+      - cmd/compiler/main.go
+      - cmd/lsp/main.go
+      - internal/ir/semantic/model.go
+      - internal/ir/semantic/builder.go
+      - internal/ir/semantic/verifier.go
+      - internal/lowering/secmlir/emitter.go
+      - internal/codegen/mlir/generator.go
+    tests:
+      - internal/parser/parser_test.go
+      - internal/sema/analyzer_test.go
+      - internal/sema/defaults_test.go
+      - internal/sema/array_shape_test.go
+      - internal/ir/semantic/package13_test.go
+      - internal/lowering/secmlir/emitter_test.go
+      - internal/codegen/mlir/generator_test.go
+      - testdata/ir/test_arrays_basic.sec
+    implemented:
+      - completed Package 13 predecessor with schema-9 structs and high-level aggregate storage
+      - canonical fixed-array literal spread wording synchronized in collections and spread rulebooks
+      - fixed-index failure synchronized to the concrete error IndexError.OutOfBounds
+      - schema-v10 dialect, lowering-v10, and fixed-array Semantic IR rulebooks installed
+      - existing parser and AST support for postfix fixed-array types, literals, spreads, and index expressions
+      - existing Sema support for selected fixed-array inference, compact checked spread length accounting, constant bounds diagnostics, defaults, copy/destruction classification, Places, iteration, and call spread
+      - existing legacy physical MLIR fixed-array iteration retained as a compatibility path and explicitly excluded as P14 semantic authority
+      - absolute SEC_MLIR_BIN resolution shared by Package 13 and Package 14 acceptance tests
+      - green pre-P14 repository gates for Go, vet, and all 78 Sec MLIR tests
+      - explicit fixed/dynamic Sema array shape with immutable exact decimal fixed length and defensive big.Int access
+      - AST length expressions retained as authority with int64 populated only as a checked compatibility cache
+      - exact array type identity, display, generic matching, equality, bounds/slice checks, and target-shaped diagnostics
+      - shape-aware defaults, copy/destruction, membership, Place, compiler-known members, call spread, escape snapshots, and LSP type presentation
+      - compact arbitrary-precision array-literal spread accounting and exact compact fixed-array defaults with bounded legacy expansion
+      - zero-length fixed-array defaults without inspecting or constructing an element default
+      - independent 32-bit and 64-bit target-uint validation of one resolved array fact
+      - explicit unsupported diagnostic at the legacy LLVM-array layout boundary for lengths outside int64
+      - Package 14 section-90 frontend length and target-plan regression matrix
+    remaining:
+      - expose immutable compiler-owned ResolvedArrayLiteralPlan and its read-only query
+      - implement FixedArrayTypeData and all Package 14 Semantic IR array/bounds operations
+      - implement ResolvedArrayIndexPlan, arbitrary-precision proofs, runtime guards, typed try flow, and bounds effects
+      - implement trivial high-level mutable array storage and nested transactional replacement
+      - implement schema-10 !sec.array, array operations, sec.fail.bounds, emission, and the array-index guard verifier
+      - prove P5/P6/P8/P11/P12/P13 integration on 32-bit and 64-bit plans
+      - explicitly reject deferred ownership, dynamic-array, slice, equality, membership, ABI, and physical-layout paths
+      - complete Package 14 section-107 acceptance and the section-108 implementation report
+    deferred:
+      - Package 15 element references and canonical Places
+      - Package 16 slices and array-to-slice borrowing
+      - Package 17 move-out, semantic copy, and non-trivial array ownership/destruction
+      - equality and membership lowering
+      - physical array layout, aggregate ABI, foreign ABI, MemRef, LLVM, and runtime helpers
+    verification:
+      - command: go test ./...
+        result: passed
+      - command: go vet ./...
+        result: passed
+      - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
+        result: passed (78/78)
+      - command: go test ./internal/lowering/secmlir -run TestConfiguredSecMLIRBinRequiresAbsolutePathForPackage13And14 -count=1
+        result: passed
+
   - id: frontend.ownership-v2
     area: frontend-ownership-control-flow-and-lowering
     status: partial
@@ -221,25 +350,39 @@ integrations:
       identity, explicit declaration/assignment moves, direct move provenance,
       selected field-sensitive partial availability, borrow checks, recursive
       copy and destruction classification, and delayed outer-call transfer
-      commit. It does not yet implement the revision-2 canonical Availability
+      commit. Correction 30 clarifies that negative availability refinement must
+      preserve partial/conditional masks, explicit outer-call moves require
+      Place-sensitive pending reservations, and runtime ownership state may be
+      required by any ownership-dependent operation. The frontend does not yet
+      implement the revision-2 canonical Availability
       dimension, explicit reusable-source moves in every consuming call/payload,
       new closure move capture syntax, availability tests/refinement, discard
       convergence, conditional cleanup/replacement, or static-ownership policy.
     rules:
       - rules/memory/ownership.md
       - rules/memory/copy_move.md
+      - rules/memory/borrowing.txt
       - rules/memory/destruction.txt
       - rules/control-flow/discard.md
+      - rules/control-flow/flowcontrol_match.md
       - rules/declarations/functions.md
       - rules/declarations/interfaces.md
       - rules/declarations/unions.md
       - rules/declarations/lambda-functions.md
+      - rules/errors/errorhandling.md
       - rules/analysis/closure_analysis.md
       - rules/foundations/grammar.md
       - rules/compiler/semantic_ir.txt
       - rules/tooling/lsp.md
       - rules/tooling/diagnostics.txt
       - rules/tooling/formatter.md
+      - rules/corrections/applied/correction30-20260828.md
+    related_integrations:
+      - frontend.copy-move
+      - sema.place-analysis
+      - frontend.match-v2
+      - frontend.discard-v2
+      - frontend.defer-v2
     implemented:
       - canonical Place identity for roots, fields, selected indexes and slices, references, and union payload projections
       - direct unavailable tracking with moved, discarded, and detached source provenance
@@ -267,11 +410,20 @@ integrations:
       - custom-free-partial-move-ban
       - conditional-availability
       - ownership-is-available
+      - negative-availability-refinement-preserves-recursive-mask
       - static-availability-elimination
       - dynamic-ownership-state-policy
+      - runtime-ownership-state-requirement-analysis
       - discard-convergence
       - conditional-replacement
       - replacement-order-and-commit
+      - pending-call-transfer-reservation
+      - nested-call-transfer-transactions
+      - conditional-scope-exit-cleanup
+      - return-forwarding
+      - result-projection-ownership-sync
+      - guarded-match-try-ownership-fact-reuse
+      - fixed-address-register-volatile-foreign-transfer-policy
       - partial-destruction
       - destruction-classification-boundary
       - ownership-errorhandling-sync
@@ -279,6 +431,35 @@ integrations:
       - ownership-lsp-v2
       - ownership-mentor-diagnostics
       - ownership-formatter-v2
+    semantic_ir_remaining:
+      - represent copy versus consume explicitly
+      - represent move source Place and destination ownership
+      - represent Availability plus recursive partial and conditional masks where lowering needs them
+      - preserve UnavailableReason and source provenance for tooling
+      - represent pending and committed call-transfer facts or an equivalent resolved ownership plan
+      - distinguish replacement from reinitialization
+      - represent conditional destruction and cleanup responsibility
+      - represent return forwarding explicitly
+      - verify ownership operations instead of inferring moves from unused SSA values
+      - retain source Place and rule provenance for diagnostics and LSP
+    lowering_remaining:
+      - lower static ownership state without unnecessary runtime flags
+      - lower genuinely dynamic conditional ownership through local SSA or drop-state when policy permits
+      - eliminate runtime ownership state when static proof is sufficient
+      - conditionally destroy exactly once for discard, replacement, and scope exit
+      - commit call transfers atomically at the callee-entry boundary
+      - retain caller ownership when failure occurs before outer-call commit
+      - preserve completed nested argument-expression effects
+      - verify Sec MLIR and LLVM ownership and cleanup behavior
+      - keep local ownership bookkeeping out of public ABI unless an ABI rule requires it
+    tooling_remaining:
+      - stable ownership diagnostic IDs
+      - mentor diagnostics with Place, earlier operation, reason, and practical correction
+      - missing call-site move quick fix only for compiler-proven consuming intent
+      - hover for availability state, unavailability provenance, and copied versus consumed arguments
+      - expose pending versus committed transfer where useful
+      - expose static versus runtime-dependent availability and target-policy rejection
+      - preserve every ownership marker without formatter insertion or removal
     corrections_applied:
       - functions-ownership-v2-correction
       - interfaces-ownership-v2-correction
@@ -293,6 +474,7 @@ integrations:
       - lsp-ownership-v2-correction
       - diagnostics-ownership-v2-correction
       - formatter-ownership-v2-correction
+      - correction30
     required_tests:
       - ordinary copy of copyable reusable source preserves source availability
       - ordinary value syntax never silently moves a reusable @noCopy/move-only source
@@ -321,8 +503,18 @@ integrations:
       - Available plus Unavailable continuing paths merge to ConditionallyAvailable
       - terminating moved path is excluded from post-branch availability merge
       - is available and is not available refine ownership state without Option/null/generation semantics
+      - partial aggregate whole is available is false
+      - partial aggregate is not available preserves available sibling fields and recursive masks
+      - uninitialized is not available preserves uninitialized provenance
+      - availability tests never invent moved, discarded, or detached provenance
       - statically provable availability tests require no runtime bookkeeping
       - static-ownership target rejects ownership code that genuinely requires runtime state
+      - earlier explicit call move reserves against later overlapping read, borrow, move, discard, and mutation
+      - pending call-transfer reservation permits proven-disjoint sibling Places
+      - later argument failure cancels only the outer reservation
+      - successful outer call commits every prepared transfer exactly once
+      - committed nested-call transfer is not rolled back by outer-call failure
+      - conditional discard, replacement, and scope-exit cleanup can require runtime state without an availability query
       - discard Available destroys when required and converges to Unavailable
       - discard already-Unavailable place is legal no-op
       - discard ConditionallyAvailable converges all paths to Unavailable
@@ -337,6 +529,10 @@ integrations:
       - try/match guarded move ownership commits only on selected guard success
       - formatter preserves ownership markers and LSP reports canonical compiler facts
       - mentor diagnostics show source operation, ownership consequence, and practical correction
+    traceability:
+      availability_and_refinement: rules/memory/ownership.md sections 5, 18, and 20-25
+      call_transfer: rules/memory/ownership.md sections 13-14 and 18
+      runtime_state_and_policy: rules/memory/ownership.md sections 21-25 and 31-32
 
   - id: frontend.if-statements-v2
     area: frontend-control-flow
@@ -1424,7 +1620,7 @@ integrations:
 
   - id: compiler.linking
     area: compiler-linking-and-artifacts
-    status: planned
+    status: partial
     integrated: "2026-08-24"
     document_revision: "1"
     repository_baseline: "c515862"
@@ -1434,6 +1630,8 @@ integrations:
       symbol resolution, typed dependency inputs and provenance, archive fixed-point
       resolution, link roots/reachability, dead stripping/LTO constraints, reproducible
       toolchain invocation, and final artifact verification.
+      The current sec build direct clang-driver path is recorded only as a
+      legacy implementation slice, not as the canonical model.
     rules:
       - rules/compiler/linking.md
       - rules/compiler/initialization.md
@@ -1448,6 +1646,23 @@ integrations:
       - rules/concurrency/concurrency.md
       - rules/mlir/sec_mlir.md
       - rules/compiler/semantic_ir.txt
+    code:
+      - cmd/compiler/main.go
+      - cmd/compiler/target.go
+    implemented:
+      - sec build has a concrete external clang-driver invocation after LLVM or MLIR generation
+      - target definitions provide an LLVM triple and coarse CanLink compiler-support gate
+      - build accepts an explicit clang executable candidate override
+      - external process stdout and stderr are surfaced and unsupported CanLink targets are rejected
+    incorrect_or_partial:
+      - no canonical LinkPlan is constructed before concrete invocation
+      - no resolved LinkEnvironment owns target linkage semantics
+      - the default clang executable is resolved through host PATH
+      - explicit clang override compatibility is not validated against LinkEnvironment capabilities
+      - target linkage currently depends on LLVMTriple and external driver defaults
+      - link inputs, dependencies, roots and symbols are not typed provenance-bearing canonical facts
+      - output-affecting host environment is not modeled as canonical link state
+      - successful external process exit is accepted without canonical artifact verification
     remaining:
       - introduce one canonical LinkPlan for every concrete CompilationPlan that requires binary linkage
       - make CompilationPlan.LinkEnvironment authoritative for object format, symbol model, entry convention, relocation model, platform linkage requirements, and linker capabilities
@@ -1518,6 +1733,13 @@ integrations:
       - one-object-per-module requirements
       - universal object-format or linker implementation requirements
       - byte-identical output on toolchains without reproducible-output support
+    corrections_applied:
+      - rules/corrections/applied/correction32-20260828.md
+    governance_reconciliation:
+      - cross-link compiler.program-initialization linking-facing handoff
+      - cross-link platform model LinkEnvironment work and ABI stale-artifact checks
+      - keep CanLink as a coarse compiler/toolchain support summary rather than target-linkage semantics
+      - do not describe the existing direct clang invocation as canonical linking completion
 
   - id: compiler.program-initialization
     area: projects-initialization-and-build

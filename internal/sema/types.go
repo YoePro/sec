@@ -1,13 +1,25 @@
 package sema
 
 import (
+	"fmt"
 	"math/big"
 	"unicode"
 
+	"sec/internal/layout"
 	"sec/internal/lexer"
 )
 
 type TypeKind string
+
+// ArrayShapeKind is the canonical fixed-versus-dynamic distinction required by
+// rules/mlir/packages/sec-mlir-dialect_package14.md sections 9-12. The empty
+// value belongs to non-array types.
+type ArrayShapeKind string
+
+const (
+	ArrayShapeFixed   ArrayShapeKind = "fixed"
+	ArrayShapeDynamic ArrayShapeKind = "dynamic"
+)
 
 const (
 	InvalidType   TypeKind = "invalid"
@@ -84,11 +96,20 @@ type Type struct {
 	ConstArgs                  []int64
 	StaticElementCount         *big.Int
 	Element                    *Type
-	ArrayLength                int64
-	EventCapacity              int64
-	EventCapacitySet           bool
-	FunctionParameterTypes     []Type
-	FunctionReturnType         *Type
+	ArrayShape                 ArrayShapeKind
+	// ArrayLengthDecimal is the immutable, exact semantic length of a fixed
+	// array. Canonical values contain unsigned base-10 digits with no leading
+	// zeroes (except "0"). Dynamic arrays leave it empty.
+	ArrayLengthDecimal string
+	// ArrayLength is a deprecated compatibility cache for legacy consumers and
+	// old tests. It is populated only when the exact fixed length fits int64;
+	// -1 is reserved for translation into the old dynamic-array model and is
+	// never canonical semantic authority.
+	ArrayLength            int64
+	EventCapacity          int64
+	EventCapacitySet       bool
+	FunctionParameterTypes []Type
+	FunctionReturnType     *Type
 	// FunctionCapability is the callable environment authority from
 	// rules/declarations/lambda-functions.md. The zero value is normalized to
 	// CallableShared for compatibility with pre-capability semantic facts.
@@ -105,6 +126,124 @@ type Type struct {
 	InterfaceMethods        []Function
 	InterfaceProperties     []InterfaceProperty
 	InterfaceEvents         []InterfaceEvent
+}
+
+// NewFixedArrayType constructs the Package 14 canonical fixed-array shape.
+// The length is copied into immutable decimal form and never host-truncated.
+func NewFixedArrayType(element Type, length *big.Int) Type {
+	if length == nil || length.Sign() < 0 {
+		return Type{Kind: InvalidType}
+	}
+	exact := length.String()
+	legacy := int64(0)
+	if length.IsInt64() {
+		legacy = length.Int64()
+	}
+	return Type{
+		Name:               typeDisplayName(element) + "[" + exact + "]",
+		Kind:               ArrayType,
+		Element:            &element,
+		ArrayShape:         ArrayShapeFixed,
+		ArrayLengthDecimal: exact,
+		ArrayLength:        legacy,
+	}
+}
+
+// NewDynamicArrayType constructs an owning dynamic array without a semantic
+// length. The sentinel exists only in the legacy compatibility cache.
+func NewDynamicArrayType(element Type) Type {
+	return Type{
+		Name:        typeDisplayName(element) + "[]",
+		Kind:        ArrayType,
+		Element:     &element,
+		ArrayShape:  ArrayShapeDynamic,
+		ArrayLength: dynamicArrayLength,
+	}
+}
+
+// arrayShapeOf reads the explicit Package 14 shape. The legacy int64 cache is
+// intentionally not consulted by canonical semantic consumers.
+func arrayShapeOf(typ Type) ArrayShapeKind {
+	if typ.Kind != ArrayType {
+		return ""
+	}
+	return typ.ArrayShape
+}
+
+// exactFixedArrayLength returns a defensive arbitrary-precision copy.
+func exactFixedArrayLength(typ Type) (*big.Int, bool) {
+	if arrayShapeOf(typ) != ArrayShapeFixed {
+		return nil, false
+	}
+	if typ.ArrayLengthDecimal == "" {
+		return nil, false
+	}
+	length, ok := new(big.Int).SetString(typ.ArrayLengthDecimal, 10)
+	if !ok || length.Sign() < 0 || length.String() != typ.ArrayLengthDecimal {
+		return nil, false
+	}
+	return length, true
+}
+
+// FixedArrayLength returns a defensive copy of the exact Package 14 length.
+func FixedArrayLength(typ Type) (*big.Int, bool) {
+	return exactFixedArrayLength(typ)
+}
+
+// ValidateArrayTypeForScalarPlan independently applies one CompilationPlan's
+// target-uint bound to an already resolved type. Callers may validate the same
+// immutable Sema fact for multiple outputs without reparsing or truncation.
+func ValidateArrayTypeForScalarPlan(typ Type, plan layout.ResolvedScalarPlan) error {
+	if plan.PointerWidthBits != 32 && plan.PointerWidthBits != 64 {
+		return fmt.Errorf("array length validation requires a 32- or 64-bit scalar plan")
+	}
+	if typ.Kind == ArrayType && arrayShapeOf(typ) == ArrayShapeFixed {
+		length, ok := exactFixedArrayLength(typ)
+		if !ok {
+			return fmt.Errorf("fixed array has no canonical exact length")
+		}
+		if !arrayLengthFitsUint(length, plan.PointerWidthBits) {
+			return fmt.Errorf("fixed-array length %s overflows target uint%d", length.String(), plan.PointerWidthBits)
+		}
+	}
+	if typ.Element != nil {
+		if err := ValidateArrayTypeForScalarPlan(*typ.Element, plan); err != nil {
+			return err
+		}
+	}
+	for _, argument := range typ.TypeArgs {
+		if err := ValidateArrayTypeForScalarPlan(argument, plan); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// legacyArrayLength is the sole checked bridge from Package 14 shape facts to
+// the old int64/sentinel model. Canonical consumers must use ArrayShape and the
+// exact decimal length instead.
+func legacyArrayLength(typ Type) (int64, bool) {
+	if arrayShapeOf(typ) == ArrayShapeDynamic {
+		return dynamicArrayLength, true
+	}
+	length, ok := exactFixedArrayLength(typ)
+	if !ok || !length.IsInt64() {
+		return 0, false
+	}
+	return length.Int64(), true
+}
+
+func sameArrayShape(left, right Type) bool {
+	leftShape, rightShape := arrayShapeOf(left), arrayShapeOf(right)
+	if leftShape != rightShape {
+		return false
+	}
+	if leftShape == ArrayShapeDynamic {
+		return true
+	}
+	leftLength, leftOK := exactFixedArrayLength(left)
+	rightLength, rightOK := exactFixedArrayLength(right)
+	return leftOK && rightOK && leftLength.Cmp(rightLength) == 0
 }
 
 // CallableCapability is the Sema-owned invocation authority of a function
@@ -485,12 +624,16 @@ const (
 )
 
 type DefaultResolution struct {
-	Kind     DefaultKind
-	Value    DefaultConstant
-	Fields   []DefaultField
-	Elements []DefaultResolution
-	Variant  string
-	Payload  *DefaultResolution
+	Kind   DefaultKind
+	Value  DefaultConstant
+	Fields []DefaultField
+	// Elements is a bounded legacy materialization only. Package 14 consumers
+	// use ArrayLengthDecimal and ArrayElementDefault as the compact authority.
+	Elements            []DefaultResolution
+	ArrayLengthDecimal  string
+	ArrayElementDefault *DefaultResolution
+	Variant             string
+	Payload             *DefaultResolution
 }
 
 type DefaultField struct {
@@ -840,7 +983,7 @@ func triviallyDestructible(typ Type, visiting map[string]bool) bool {
 		// rules/collections/collections.md; correction26.md: T[] owns
 		// dynamic storage and therefore always requires destruction. T[N]
 		// remains an inline aggregate whose trait follows its element type.
-		if typ.ArrayLength == dynamicArrayLength {
+		if arrayShapeOf(typ) == ArrayShapeDynamic {
 			return false
 		}
 		if typ.Element == nil {
@@ -940,7 +1083,7 @@ func equalityComparable(typ Type, visiting map[string]bool) bool {
 	case ArrayType:
 		// rules/collections/collections.md; correction26.md does not define
 		// ordinary identity or content equality for owning dynamic arrays.
-		return typ.ArrayLength != dynamicArrayLength && typ.Element != nil && equalityComparable(*typ.Element, visiting)
+		return arrayShapeOf(typ) == ArrayShapeFixed && typ.Element != nil && equalityComparable(*typ.Element, visiting)
 	case StructType:
 		// Compiler-known struct types without ordinary stored-field semantics
 		// represent resources, collections, or opaque runtime descriptors.
@@ -1071,7 +1214,7 @@ func copyClassificationOf(typ Type, visiting map[string]bool) CopyClassification
 	case ArrayType:
 		// rules/collections/collections.md; correction26.md: an owning
 		// dynamic array transfers its allocation regardless of element traits.
-		if typ.ArrayLength == dynamicArrayLength {
+		if arrayShapeOf(typ) == ArrayShapeDynamic {
 			return CopyMoveOnly
 		}
 		if typ.Element == nil {

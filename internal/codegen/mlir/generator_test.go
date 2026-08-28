@@ -21,6 +21,21 @@ func parseTestProgram(t *testing.T, input string) *ast.Program {
 	return program
 }
 
+func TestLegacyGeneratorRejectsAboveInt64ArrayLayoutExplicitly(t *testing.T) {
+	program := parseTestProgram(t, `module main
+
+type Huge struct {
+	values: int[9223372036854775808],
+}
+
+fn main() int { return 0 }
+`)
+	_, err := GenerateWithTriple(program, "x86_64-pc-linux-gnu")
+	if err == nil || !strings.Contains(err.Error(), "legacy fixed-array layout does not support exact length 9223372036854775808") {
+		t.Fatalf("legacy layout error = %v", err)
+	}
+}
+
 func TestGenerateMinimalMain(t *testing.T) {
 	input := `
 module main

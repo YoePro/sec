@@ -1992,7 +1992,31 @@ fn Use(ptr: RawPtr[byte]) void {
 `
 
 	items := completeSource("", source, strings.Index(source, "ptr.")+len("ptr."))
-	assertCompletionLabels(t, items, []string{"Offset", "AddBytes", "Difference"})
+	assertCompletionLabels(t, items, []string{"Offset", "AddBytes", "Difference", "VolatileRead", "VolatileWrite"})
+	wantDetail := map[string]string{"VolatileRead": "unsafe byte (effectful)", "VolatileWrite": "unsafe void (effectful)"}
+	for _, item := range items {
+		if detail, wanted := wantDetail[item.Label]; wanted && item.Detail != detail {
+			t.Fatalf("volatile completion %s detail = %q", item.Label, item.Detail)
+		}
+	}
+}
+
+func TestRawPtrVolatileHoverUsesCompilerOwnedEffects(t *testing.T) {
+	source := `module main
+
+fn Use(ptr: RawPtr[byte]) byte {
+	unsafe {
+		return ptr.VolatileRead()
+	}
+}
+`
+	hoverOffset := strings.Index(source, "VolatileRead") + 2
+	hover, ok := hoverForSource("", source, offsetPosition(source, hoverOffset))
+	if !ok || !strings.Contains(hover.Contents.Value, "unsafe method VolatileRead: byte") ||
+		!strings.Contains(hover.Contents.Value, "CKM-RAWPTR-VOLATILE-READ") ||
+		!strings.Contains(hover.Contents.Value, "Effects: `volatile-read`") {
+		t.Fatalf("volatile compiler-known hover = %+v, %v", hover, ok)
+	}
 }
 
 func TestCompletionIncludesCompilerKnownMembers(t *testing.T) {

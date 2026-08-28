@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-26
-- **Last updated:** 2026-08-26
+- **Last updated:** 2026-08-28
 - **Document revision:** 2.0
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/memory/ownership.md`
@@ -739,6 +739,54 @@ call has not committed ownership of `resource` to `Use`.
 Effects and ownership transfers completed inside evaluation of an earlier
 argument expression are not rolled back.
 
+### 14.1 Pending call-transfer reservation
+
+Preparing an explicit destructive transfer from a reusable Place in an outer
+call argument creates a compiler-owned pending reservation for that exact
+source Place. The caller still owns the value until call entry, but evaluation
+of later sibling arguments may not read, copy, borrow, move, discard, replace,
+reinitialize, consume, or mutate an overlapping Place.
+
+The reservation follows the canonical overlap relation from Section 18. A
+proven-disjoint sibling may remain usable:
+
+```sec
+Use(
+    <-package.Payload,
+    Inspect(package.Header),
+)
+```
+
+Using the whole overlapping aggregate is invalid:
+
+```sec
+Use(
+    <-package.Payload,
+    Inspect(package),
+)
+```
+
+Unsupported or ambiguous aliasing is conservative.
+
+### 14.2 Commit and cancellation
+
+If a later outer argument fails before call entry, only reservations belonging
+to that outer call are canceled. The caller retains ownership of those reserved
+sources, subject to effects that independently completed while evaluating
+earlier argument expressions.
+
+When every argument and call constraint succeeds, every prepared transfer is
+committed exactly once: the caller Place becomes `Unavailable` and the callee
+receives ownership.
+
+### 14.3 Nested call transactions
+
+Each call owns its own reservation transaction. A nested call that successfully
+commits a transfer has completed an argument-evaluation effect; an outer-call
+failure must not roll that nested transfer back. Compiler-known calls and
+constructors with equivalent multi-argument ownership semantics follow the same
+transaction rule.
+
 ---
 
 ## 15. Aggregate, union, Option, and Result construction
@@ -1043,7 +1091,13 @@ place is not available
 
 These tests answer:
 
-> Does the current owner still own a value in this place on this runtime path?
+> Does the exact tested Place contain a complete currently owned value available
+> for an ordinary operation on that Place on this runtime path?
+
+For an aggregate Place, `is available` requires the complete recursive
+availability mask to be `Available`. A partially available aggregate therefore
+tests false as a whole even when one or more disjoint sub-places remain
+available. Testing a projected sub-place observes only that exact sub-place.
 
 They do not answer:
 
@@ -1070,8 +1124,33 @@ if package.Payload is not available {
 }
 ```
 
-Within the true branch, ownership analysis refines the tested place to
-`Unavailable` for that path.
+The negative test is the logical negation of whole availability. Its true branch
+therefore means that the exact tested Place is not wholly `Available`; it does
+not generally mean that every sub-place is `Unavailable`.
+
+Canonical refinement is:
+
+```text
+true branch of `place is available`
+    -> tested exact Place is Available
+
+false branch of `place is available`
+    -> tested exact Place is not wholly Available;
+       preserve every still-possible sub-place/state alternative
+
+true branch of `place is not available`
+    -> same negative refinement
+
+false branch of `place is not available`
+    -> tested exact Place is Available
+```
+
+Only when prior facts restrict a leaf to exactly `Available|Unavailable` may a
+true `is not available` branch refine directly to `Unavailable`. A partial or
+conditional aggregate retains its surviving recursive mask, and an
+`Uninitialized` Place remains distinguishable from an unavailable formerly
+owned value. An availability test observes state and must not invent a moved,
+discarded, detached, or other `UnavailableReason`.
 
 ### 21.2 Static resolution is mandatory
 
@@ -1086,9 +1165,12 @@ normal Sec unreachable-code policy applies.
 
 ### 21.3 Dynamic ownership state
 
-A genuinely conditionally available place may require runtime state if the
-program later asks `is available` and source control-flow facts cannot represent
-the answer without runtime bookkeeping.
+A genuinely conditional ownership fact may require runtime state whenever a
+later ownership-dependent operation cannot be implemented correctly from
+static control-flow facts alone. This includes availability tests, discard,
+replacement/reinitialization, destruction/cleanup, ownership-sensitive
+transfer/return, and other rulebook-defined ownership decisions. Source code
+need not spell `is available` for runtime ownership state to be necessary.
 
 The language does not mandate a fat pointer or a specific hidden flag layout.
 Possible lowering includes:
@@ -1662,10 +1744,10 @@ At minimum, revision-2 ownership conformance must cover:
 29. branch with Available/Unavailable continuing paths produces `ConditionallyAvailable`;
 30. terminating moved path does not poison post-branch availability;
 31. `is available` refines true path to available;
-32. `is not available` refines true path to unavailable;
+32. binary `Available|Unavailable` leaf refines the true `is not available` path to unavailable;
 33. statically known availability tests are folded without runtime ownership state;
 34. `is available` does not behave as `None`, `null`, or a generation check;
-35. strict static-ownership target rejects a genuinely required runtime availability flag;
+35. strict static-ownership target rejects an ownership-dependent operation that genuinely requires forbidden runtime state;
 36. discard of available place destroys when required and converges to unavailable;
 37. discard of already unavailable place is legal no-op;
 38. discard of conditionally available place converges all continuing paths to unavailable;
@@ -1683,6 +1765,20 @@ At minimum, revision-2 ownership conformance must cover:
 50. mentor diagnostics identify source operation and practical correction;
 51. formatter preserves every ownership marker;
 52. LSP uses the same canonical ownership facts as Sema.
+53. whole `is available` is false for a partially available aggregate;
+54. whole `is not available` preserves still-owned sibling fields and its recursive mask;
+55. uninitialized `is not available` preserves uninitialized provenance;
+56. availability tests never invent moved, discarded, or detached reasons;
+57. an earlier `<-source` call argument reserves against later overlapping read and borrow;
+58. a reservation blocks a later overlapping second move;
+59. a proven-disjoint sibling Place remains usable during reservation;
+60. later outer-argument failure cancels only the outer reservation;
+61. a successful outer call commits every prepared transfer exactly once;
+62. a committed nested-call transfer is not rolled back by outer-call failure;
+63. conditional discard can require runtime ownership state without an availability query;
+64. conditional replacement can require runtime ownership state without an availability query;
+65. conditional scope-exit cleanup can require runtime ownership state without an availability query;
+66. strict static-ownership policy rejects the actual operation requiring forbidden runtime state.
 
 ---
 
@@ -1694,6 +1790,7 @@ This rulebook owns:
 - availability states and unavailability reasons;
 - the separation of mutability, availability, borrowing, and generation validity;
 - the general rule requiring visible consumption of reusable sources;
+- pending call-transfer reservations and atomic commit/cancellation;
 - whole-value versus sub-place availability requirements;
 - partial availability and conditional availability;
 - `is available` / `is not available` ownership-state semantics;
@@ -1701,6 +1798,7 @@ This rulebook owns:
 - ownership consequences of reinitialization and replacement;
 - the prohibition on ordinary whole-self-consuming methods;
 - the static-first/runtime-when-needed availability principle;
+- runtime ownership-state necessity for every ownership-dependent operation;
 - mentor-level ownership diagnostics requirements.
 
 Other rulebooks own:

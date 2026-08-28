@@ -20,7 +20,8 @@ import (
 )
 
 // configuredSecMLIROptPath implements the absolute-tool-path acceptance rule
-// in rules/mlir/packages/sec-mlir-dialect_package13.md section 90:
+// shared by rules/mlir/packages/sec-mlir-dialect_package13.md section 90 and
+// the Package 14 acceptance/report workflow in sections 107-108:
 // SEC_MLIR_BIN names an absolute tool directory so tests remain independent of
 // the package working directory selected by `go test`.
 func configuredSecMLIROptPath(binDir string) (string, error) {
@@ -30,8 +31,8 @@ func configuredSecMLIROptPath(binDir string) (string, error) {
 	return filepath.Join(binDir, "sec-mlir-opt"), nil
 }
 
-// requiredSecMLIROptPath resolves the Package 13 verifier or skips a real-tool
-// test when the caller has not configured the optional MLIR toolchain.
+// requiredSecMLIROptPath resolves the maintained Sec MLIR verifier for package
+// acceptance tests or skips when the optional toolchain is not configured.
 func requiredSecMLIROptPath(t *testing.T) string {
 	t.Helper()
 	binDir := os.Getenv("SEC_MLIR_BIN")
@@ -45,7 +46,7 @@ func requiredSecMLIROptPath(t *testing.T) string {
 	return path
 }
 
-func TestConfiguredSecMLIRBinRequiresAbsolutePath(t *testing.T) {
+func TestConfiguredSecMLIRBinRequiresAbsolutePathForPackage13And14(t *testing.T) {
 	if _, err := configuredSecMLIROptPath("build/sec-mlir/bin"); err == nil {
 		t.Fatal("relative SEC_MLIR_BIN unexpectedly accepted")
 	}

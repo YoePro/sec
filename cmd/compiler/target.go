@@ -452,6 +452,8 @@ func requireTargetCanEmitLLVM(target CompilerTarget) (TargetDefinition, error) {
 }
 
 func requireTargetCanLink(target CompilerTarget) (TargetDefinition, error) {
+	// rules/compiler/linking.md section 8: CanLink is only a coarse compiler
+	// support gate. It does not define target linkage or replace LinkEnvironment.
 	definition, err := requireTargetCanEmitLLVM(target)
 	if err != nil {
 		return TargetDefinition{}, err

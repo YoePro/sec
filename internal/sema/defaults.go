@@ -33,13 +33,14 @@ func DefaultValuePreview(typ Type, maxArrayElements int) (string, DefaultKind, b
 	if typ.Element == nil {
 		return "", NoDefault, false
 	}
-	if typ.ArrayLength == dynamicArrayLength {
+	if arrayShapeOf(typ) == ArrayShapeDynamic {
 		return "[]", ArrayDefault, true
 	}
-	if typ.ArrayLength < 0 {
+	length, ok := exactFixedArrayLength(typ)
+	if !ok {
 		return "", NoDefault, false
 	}
-	if typ.ArrayLength == 0 {
+	if length.Sign() == 0 {
 		return "[]", ArrayDefault, true
 	}
 
@@ -50,11 +51,11 @@ func DefaultValuePreview(typ Type, maxArrayElements int) (string, DefaultKind, b
 	if maxArrayElements < 1 {
 		maxArrayElements = 1
 	}
-	if typ.ArrayLength > int64(maxArrayElements) {
+	if length.Cmp(big.NewInt(int64(maxArrayElements))) > 0 {
 		return "[" + element + ", ...]", ArrayDefault, true
 	}
 
-	elements := make([]string, int(typ.ArrayLength))
+	elements := make([]string, int(length.Int64()))
 	for index := range elements {
 		elements[index] = element
 	}
@@ -94,6 +95,9 @@ func defaultResolutionDisplay(typ Type, resolution DefaultResolution) string {
 		}
 		return typ.Name + " { " + strings.Join(parts, ", ") + " }"
 	case ArrayDefault:
+		if len(resolution.Elements) == 0 && resolution.ArrayElementDefault != nil {
+			return "[" + defaultResolutionDisplay(*typ.Element, *resolution.ArrayElementDefault) + ", ...]"
+		}
 		parts := make([]string, 0, len(resolution.Elements))
 		if typ.Element != nil {
 			for _, element := range resolution.Elements {
@@ -216,22 +220,31 @@ func defaultValueOf(typ Type, visiting map[string]bool) DefaultResolution {
 		if typ.Element == nil {
 			return DefaultResolution{Kind: NoDefault}
 		}
-		if typ.ArrayLength == dynamicArrayLength {
+		if arrayShapeOf(typ) == ArrayShapeDynamic {
 			return DefaultResolution{Kind: ArrayDefault}
 		}
-		if typ.ArrayLength < 0 {
+		length, ok := exactFixedArrayLength(typ)
+		if !ok {
 			return DefaultResolution{Kind: NoDefault}
 		}
-		if typ.ArrayLength == 0 {
-			return DefaultResolution{Kind: ArrayDefault}
+		if length.Sign() == 0 {
+			return DefaultResolution{Kind: ArrayDefault, ArrayLengthDecimal: "0"}
 		}
 		element := defaultValueOf(*typ.Element, visiting)
 		if element.Kind == NoDefault {
 			return DefaultResolution{Kind: NoDefault}
 		}
-		result := DefaultResolution{Kind: ArrayDefault}
-		for i := int64(0); i < typ.ArrayLength; i++ {
-			result.Elements = append(result.Elements, element)
+		result := DefaultResolution{
+			Kind:                ArrayDefault,
+			ArrayLengthDecimal:  length.String(),
+			ArrayElementDefault: &element,
+		}
+		// Preserve the old data only for bounded consumers. Large defaults remain
+		// O(1), as required by Package 14 sections 24-25.
+		if length.IsInt64() && length.Int64() <= 4096 {
+			for i := int64(0); i < length.Int64(); i++ {
+				result.Elements = append(result.Elements, element)
+			}
 		}
 		return result
 	case StructType:

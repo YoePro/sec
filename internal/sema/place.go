@@ -351,9 +351,11 @@ func (a *Analyzer) slicePlaceProjection(expr *ast.SliceExpression, containerType
 		}
 		projection.SliceEnd = end
 		projection.SliceEndKnown = ok
-	} else if containerType.Kind == ArrayType && containerType.ArrayLength != dynamicArrayLength {
-		projection.SliceEnd = containerType.ArrayLength
-		projection.SliceEndKnown = true
+	} else if containerType.Kind == ArrayType && arrayShapeOf(containerType) == ArrayShapeFixed {
+		if length, ok := legacyArrayLength(containerType); ok {
+			projection.SliceEnd = length
+			projection.SliceEndKnown = true
+		}
 	}
 	return projection
 }

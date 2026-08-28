@@ -17,6 +17,7 @@ type CompilerKnownMember struct {
 	Kind        CompilerKnownMemberKind
 	Result      Type
 	Unsafe      bool
+	Effects     []EffectKind
 }
 
 type CompilerKnownFunction struct {
@@ -88,7 +89,7 @@ func compilerKnownValueMembers(typ Type) []CompilerKnownMember {
 		members = append(members, CompilerKnownMember{ID: compilerKnownToStringID(typ), Name: "ToString", Kind: CompilerKnownMethod, Result: stringType})
 	}
 	sequence := dereferenceType(typ)
-	if sequence.Kind == ArrayType && sequence.ArrayLength == dynamicArrayLength && sequence.Element != nil {
+	if sequence.Kind == ArrayType && arrayShapeOf(sequence) == ArrayShapeDynamic && sequence.Element != nil {
 		members = append(members,
 			CompilerKnownMember{ID: "CKM-DYNAMIC-ARRAY-APPEND", Name: "Append", Kind: CompilerKnownMethod, Result: compilerKnownResult(builtinTypes()["void"], builtinTypes()["CollectionError"])},
 			CompilerKnownMember{ID: "CKM-DYNAMIC-ARRAY-CLEAR", Name: "Clear", Kind: CompilerKnownMethod, Result: builtinTypes()["void"]},
@@ -147,6 +148,10 @@ func compilerKnownValueMembers(typ Type) []CompilerKnownMember {
 		members = append(members,
 			CompilerKnownMember{ID: "CKM-RAWPTR-READ", Name: "Read", Kind: CompilerKnownMethod, Result: compilerKnownRawPointerElement(typ), Unsafe: true},
 			CompilerKnownMember{ID: "CKM-RAWPTR-WRITE", Name: "Write", Kind: CompilerKnownMethod, Result: builtinTypes()["void"], Unsafe: true},
+			// rules/platform/volatile.md sections 9-11: volatile access is a
+			// distinct unsafe, effectful operation, not an alias for Read/Write.
+			CompilerKnownMember{ID: "CKM-RAWPTR-VOLATILE-READ", Name: "VolatileRead", Kind: CompilerKnownMethod, Result: compilerKnownRawPointerElement(typ), Unsafe: true, Effects: []EffectKind{EffectVolatileRead}},
+			CompilerKnownMember{ID: "CKM-RAWPTR-VOLATILE-WRITE", Name: "VolatileWrite", Kind: CompilerKnownMethod, Result: builtinTypes()["void"], Unsafe: true, Effects: []EffectKind{EffectVolatileWrite}},
 			CompilerKnownMember{ID: "CKM-RAWPTR-OFFSET", Name: "Offset", Kind: CompilerKnownMethod, Result: typ, Unsafe: true},
 			CompilerKnownMember{ID: "CKM-RAWPTR-ADDBYTES", Name: "AddBytes", Kind: CompilerKnownMethod, Result: typ, Unsafe: true},
 			CompilerKnownMember{ID: "CKM-RAWPTR-DIFFERENCE", Name: "Difference", Kind: CompilerKnownMethod, Result: builtinTypes()["int"], Unsafe: true},
@@ -284,7 +289,7 @@ func compilerKnownRawPointerElement(typ Type) Type {
 }
 
 func compilerKnownDynamicArray(element Type) Type {
-	return Type{Name: typeDisplayName(element) + "[]", Kind: ArrayType, Element: &element, ArrayLength: dynamicArrayLength}
+	return NewDynamicArrayType(element)
 }
 
 func compilerKnownLenID(typ Type) string {

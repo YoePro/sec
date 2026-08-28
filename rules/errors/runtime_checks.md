@@ -407,7 +407,7 @@ checked arithmetic
     ArithmeticError
 
 bounds access
-    BoundsError
+    IndexError
 
 contract construction
     ContractError
@@ -468,7 +468,7 @@ The compiler must not choose the wrapper variant.
 Sec does not infer hidden unions such as:
 
 ```text
-ParseError | BoundsError | ArithmeticError
+ParseError | IndexError | ArithmeticError
 ```
 
 from implementation details.
@@ -653,7 +653,7 @@ Fallible:
 let value := try values[index]
 ```
 
-Failure produces `BoundsError` or the canonical equivalent.
+Failure produces the canonical concrete error `IndexError.OutOfBounds`.
 
 ---
 

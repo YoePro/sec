@@ -45,22 +45,22 @@ func TestDefaultValueOfPrimitiveAndConstrainedTypes(t *testing.T) {
 	if resolved := DefaultValueOf(point); resolved.Kind != StructDefault || len(resolved.Fields) != 2 {
 		t.Fatalf("struct default = %#v", resolved)
 	}
-	array := Type{Name: "int[3]", Kind: ArrayType, Element: &Type{Name: "int", Kind: IntType}, ArrayLength: 3}
+	array := NewFixedArrayType(Type{Name: "int", Kind: IntType}, big.NewInt(3))
 	if resolved := DefaultValueOf(array); resolved.Kind != ArrayDefault || len(resolved.Elements) != 3 {
 		t.Fatalf("array default = %#v", resolved)
 	}
-	largeArray := Type{Name: "int[2048]", Kind: ArrayType, Element: &Type{Name: "int", Kind: IntType}, ArrayLength: 2048}
+	largeArray := NewFixedArrayType(Type{Name: "int", Kind: IntType}, big.NewInt(2048))
 	if display, kind, ok := DefaultValuePreview(largeArray, 8); !ok || kind != ArrayDefault || display != "[0, ...]" {
 		t.Fatalf("large array default preview = %q, %q, %v; want [0, ...], array, true", display, kind, ok)
 	}
 	if display, kind, ok := DefaultValuePreview(array, 8); !ok || kind != ArrayDefault || display != "[0, 0, 0]" {
 		t.Fatalf("small array default preview = %q, %q, %v", display, kind, ok)
 	}
-	emptyRefs := Type{Name: "ref int[0]", Kind: ArrayType, Element: &Type{Name: "ref int", Kind: ReferenceType}, ArrayLength: 0}
+	emptyRefs := NewFixedArrayType(Type{Name: "ref int", Kind: ReferenceType}, big.NewInt(0))
 	if resolved := DefaultValueOf(emptyRefs); resolved.Kind != ArrayDefault || len(resolved.Elements) != 0 {
 		t.Fatalf("zero-length array default = %#v", resolved)
 	}
-	dynamic := Type{Name: "int[]", Kind: ArrayType, Element: &Type{Name: "int", Kind: IntType}, ArrayLength: dynamicArrayLength}
+	dynamic := NewDynamicArrayType(Type{Name: "int", Kind: IntType})
 	if resolved := DefaultValueOf(dynamic); resolved.Kind != ArrayDefault || len(resolved.Elements) != 0 {
 		t.Fatalf("dynamic array default = %#v", resolved)
 	}

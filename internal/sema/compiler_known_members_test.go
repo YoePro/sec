@@ -36,6 +36,78 @@ fn Test(text: string, runes: rune[2], ptr: RawPtr[int]) void {
 	assertSemaErrors(t, analyzeSourceRaw(t, input), nil)
 }
 
+func TestCompilerKnownRawPointerVolatileAccess(t *testing.T) {
+	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, `
+module main
+
+fn Access(pointer: RawPtr[int], value: int) int {
+	unsafe {
+		pointer.VolatileWrite(value)
+		return pointer.VolatileRead()
+	}
+}
+`)
+	assertSemaErrors(t, errors, nil)
+
+	wantRegistry := map[string]EffectKind{
+		"CKM-RAWPTR-VOLATILE-READ":  EffectVolatileRead,
+		"CKM-RAWPTR-VOLATILE-WRITE": EffectVolatileWrite,
+	}
+	rawPointer := Type{Kind: RawPtrType, Name: "RawPtr", TypeArgs: []Type{builtinTypes()["int"]}}
+	for _, member := range CompilerKnownMembersForType(rawPointer, false) {
+		effect, wanted := wantRegistry[member.ID]
+		if !wanted {
+			continue
+		}
+		if !member.Unsafe || len(member.Effects) != 1 || member.Effects[0] != effect {
+			t.Fatalf("volatile registry member %s = %+v", member.ID, member)
+		}
+		delete(wantRegistry, member.ID)
+	}
+	if len(wantRegistry) != 0 {
+		t.Fatalf("volatile registry entries missing: %v", wantRegistry)
+	}
+
+	id := callGraphNodeIDByName(t, analyzer.CallGraph(), "Access")
+	effects := analyzer.CallGraph().EffectSummary(id).DirectEffects
+	if len(effects) != 2 || effects[0].Kind != EffectVolatileWrite || effects[1].Kind != EffectVolatileRead {
+		t.Fatalf("volatile effects = %+v", effects)
+	}
+}
+
+func TestCompilerKnownRawPointerVolatileAccessRejectsUnsafeVoidAndWrongValue(t *testing.T) {
+	input := `
+module main
+
+fn Test(pointer: RawPtr[int], opaque: RawPtr[void]) void {
+	let outside := pointer.VolatileRead()
+	unsafe {
+		let noValue := opaque.VolatileRead()
+		opaque.VolatileWrite(1)
+		pointer.VolatileWrite("wrong")
+	}
+}
+`
+	errors := analyzeSourceRaw(t, input)
+	for _, fragment := range []string{
+		"RawPtr.VolatileRead requires unsafe",
+		"RawPtr[void].VolatileRead cannot materialize a value",
+		"RawPtr[void].VolatileWrite cannot consume a value",
+		"RawPtr.VolatileWrite value must be int, got string",
+	} {
+		found := false
+		for _, err := range errors {
+			if strings.Contains(err.Message, fragment) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("missing error containing %q; errors=%v", fragment, errors)
+		}
+	}
+}
+
 func TestCompilerKnownCollectionPropertiesAndMethods(t *testing.T) {
 	input := `
 module main

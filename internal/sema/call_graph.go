@@ -73,6 +73,8 @@ type EffectKind string
 
 const (
 	EffectMayPanicArithmetic EffectKind = "may-panic-arithmetic"
+	EffectVolatileRead       EffectKind = "volatile-read"
+	EffectVolatileWrite      EffectKind = "volatile-write"
 )
 
 type EffectSite struct {

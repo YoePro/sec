@@ -3845,30 +3845,22 @@ func (p *Parser) parsePostfixTypeReference(ref *ast.TypeReference) *ast.TypeRefe
 			suffixes = append(suffixes, typeSequenceSuffix{slice: true, token: token})
 		case lexer.INT:
 			p.nextToken()
-			_, suffix := ast.SplitNumericLiteralSuffix(p.curToken.Lexeme)
-			if suffix == "t" || suffix == "r" {
-				bigValue, _ := ast.ParseIntegerLiteralLexeme(p.curToken.Lexeme)
-				lengthExpr := &ast.IntegerLiteral{Token: p.curToken, BigValue: bigValue}
-				if !p.expectPeek(lexer.RBRACKET) {
-					return ref
-				}
-				suffixes = append(suffixes, typeSequenceSuffix{lengthExpression: lengthExpr, token: token})
-				continue
-			}
-			length, ok := ast.ParseIntegerLiteralInt64(p.curToken.Lexeme)
-			if !ok {
-				bigValue, _ := ast.ParseIntegerLiteralLexeme(p.curToken.Lexeme)
-				lengthExpr := &ast.IntegerLiteral{Token: p.curToken, BigValue: bigValue}
-				if !p.expectPeek(lexer.RBRACKET) {
-					return ref
-				}
-				suffixes = append(suffixes, typeSequenceSuffix{lengthExpression: lengthExpr, token: token})
-				continue
+			lengthExpr := p.parseExpression(LOWEST)
+			if lengthExpr == nil {
+				return ref
 			}
 			if !p.expectPeek(lexer.RBRACKET) {
 				return ref
 			}
-			suffixes = append(suffixes, typeSequenceSuffix{length: length, token: token})
+			var length int64
+			if literal, ok := lengthExpr.(*ast.IntegerLiteral); ok {
+				if cached, representable := ast.ParseIntegerLiteralInt64(literal.Token.Lexeme); representable {
+					length = cached
+				}
+			}
+			// Keep the int64 field only as a checked parser compatibility cache;
+			// Sema always consumes the exact expression.
+			suffixes = append(suffixes, typeSequenceSuffix{length: length, lengthExpression: lengthExpr, token: token})
 		case lexer.MINUS, lexer.FLOAT, lexer.TRUE, lexer.FALSE:
 			p.nextToken()
 			lengthExpr := p.parseExpression(LOWEST)
@@ -3992,12 +3984,15 @@ func (p *Parser) parsePrefixSequenceTypeReference() *ast.TypeReference {
 
 	if p.peekToken.Type == lexer.INT {
 		p.nextToken()
-		length, ok := ast.ParseIntegerLiteralInt64(p.curToken.Lexeme)
+		bigValue, ok := ast.ParseIntegerLiteralLexeme(p.curToken.Lexeme)
 		if !ok {
 			p.addError("invalid array length %q at %d:%d", p.curToken.Lexeme, p.curToken.Line, p.curToken.Column)
 			return ref
 		}
-		ref.ArrayLength = length
+		ref.ArrayLengthExpression = &ast.IntegerLiteral{Token: p.curToken, BigValue: bigValue}
+		if length, representable := ast.ParseIntegerLiteralInt64(p.curToken.Lexeme); representable {
+			ref.ArrayLength = length
+		}
 	} else {
 		ref.Slice = true
 	}

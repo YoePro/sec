@@ -2157,12 +2157,17 @@ The registry includes required raw-pointer operations such as:
 ```sec
 unsafe pointer.Read()
 unsafe pointer.Write(value)
+unsafe pointer.VolatileRead()
+unsafe pointer.VolatileWrite(value)
 unsafe pointer.Offset(elements)
 unsafe pointer.AddBytes(bytes)
 unsafe pointer.Difference(other)
 ```
 
-Their semantics are owned by `unsafe.md` and `reference_model.md`.
+Ordinary raw access and pointer arithmetic are owned by `unsafe.md` and
+`reference_model.md`. `VolatileRead` and `VolatileWrite` are distinct observable
+physical-storage effects owned by `rules/platform/volatile.md`; they must not be
+implemented as aliases for ordinary `Read` and `Write`.
 
 They remain explicit Semantic IR operations until pointer provenance and ABI
 lowering are complete.
@@ -2821,6 +2826,8 @@ Scale where canonically defined
 ```text
 Read
 Write
+VolatileRead
+VolatileWrite
 Offset
 AddBytes
 Difference
@@ -3245,7 +3252,9 @@ fundamental and char/rune-sequence ToString type resolution;
 string ToByteArray, ToCharArray, and ToRuneArray type resolution;
 string.FromByteArray and string.FromRuneArray type resolution;
 integer Min, Max, and Bits and floating representation property lookup;
-RawPtr Read, Write, Offset, AddBytes, and Difference validation;
+RawPtr Read, Write, VolatileRead, VolatileWrite, Offset, AddBytes, and Difference validation;
+stable CKM-RAWPTR-VOLATILE-READ and CKM-RAWPTR-VOLATILE-WRITE identities;
+unsafe, non-void, argument-type, and explicit volatile-effect validation;
 Arena constructor and instance-member validation;
 LSP value and static member completion sourced from the same registry;
 canonical compiler-known member TextMate highlighting.
@@ -3297,6 +3306,7 @@ semantic_ir.txt
 stdlib.md
 string memory rules
 rules/platform/target_profiles.md
+rules/platform/volatile.md
 types.md
 unsafe.md
 ```

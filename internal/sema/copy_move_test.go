@@ -2,6 +2,7 @@ package sema
 
 import (
 	"fmt"
+	"math/big"
 	"strings"
 	"testing"
 
@@ -49,7 +50,7 @@ func TestCopyClassificationPrimitiveReferenceAndAggregates(t *testing.T) {
 		t.Fatalf("move-only struct classification = %q, want %q", CopyClassificationOf(moveOnlyStruct), CopyMoveOnly)
 	}
 
-	arrayOfMutableRefs := Type{Name: "ref mut int[2]", Kind: ArrayType, Element: &mutableRef, ArrayLength: 2}
+	arrayOfMutableRefs := NewFixedArrayType(mutableRef, big.NewInt(2))
 	if CopyClassificationOf(arrayOfMutableRefs) != CopyMoveOnly {
 		t.Fatalf("array classification = %q, want %q", CopyClassificationOf(arrayOfMutableRefs), CopyMoveOnly)
 	}
@@ -57,8 +58,8 @@ func TestCopyClassificationPrimitiveReferenceAndAggregates(t *testing.T) {
 
 func TestOwningDynamicArrayAndArenaTraits(t *testing.T) {
 	intType := Type{Name: "int", Kind: IntType}
-	dynamic := Type{Name: "int[]", Kind: ArrayType, Element: &intType, ArrayLength: dynamicArrayLength}
-	fixed := Type{Name: "int[4]", Kind: ArrayType, Element: &intType, ArrayLength: 4}
+	dynamic := NewDynamicArrayType(intType)
+	fixed := NewFixedArrayType(intType, big.NewInt(4))
 	arena := Type{Name: "Arena", Kind: StructType, Intrinsic: true}
 
 	if got := CopyClassificationOf(dynamic); got != CopyMoveOnly {

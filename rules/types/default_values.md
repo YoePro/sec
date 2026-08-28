@@ -1,5 +1,12 @@
 # Default Values
 
+- **Status:** Normative
+- **Created:** 2026-08-13
+- **Last updated:** 2026-08-13
+- **Document revision:** 1.0
+- **Sec language version:** 0.1
+- **Canonical path:** `rules/types/default_values.md`
+
 ## Status
 
 This document is the canonical default-value and default-initialization rulebook

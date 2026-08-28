@@ -1389,7 +1389,7 @@ enum RangeError {
     OutOfBounds
 }
 
-enum IndexError {
+enum IndexError error {
     OutOfBounds
 }
 

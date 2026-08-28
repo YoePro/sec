@@ -1,6 +1,9 @@
 package sema
 
-import "testing"
+import (
+	"math/big"
+	"testing"
+)
 
 func TestTriviallyDestructiblePrimitiveAndViewTypes(t *testing.T) {
 	for _, typ := range []Type{
@@ -36,7 +39,7 @@ func TestTriviallyDestructibleAggregates(t *testing.T) {
 			{Name: "dir", Type: enumType},
 		},
 	}
-	arrayType := Type{Name: "int[4]", Kind: ArrayType, Element: &intType, ArrayLength: 4}
+	arrayType := NewFixedArrayType(intType, big.NewInt(4))
 	unionType := Type{
 		Name: "MaybePoint",
 		Kind: UnionType,

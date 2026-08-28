@@ -660,6 +660,9 @@ func runBuildCommand(args []string) {
 		os.Exit(1)
 	}
 
+	// rules/compiler/linking.md sections 8, 29, and 37: this is the legacy
+	// direct-driver path. The selected executable and argv are not a canonical
+	// LinkEnvironment/LinkPlan and must eventually be materialized from one.
 	clangPath, err := exec.LookPath(options.Clang)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "build error: clang not found: %v\n", err)
@@ -3671,6 +3674,9 @@ func formatTypeRef(ref *ast.TypeReference) string {
 		element := formatTypeRef(ref.ElementType)
 		if ref.Slice {
 			return refPrefix + element + "[]"
+		}
+		if ref.ArrayLengthExpression != nil {
+			return refPrefix + element + "[" + ref.ArrayLengthExpression.String() + "]"
 		}
 		return refPrefix + fmt.Sprintf("%s[%d]", element, ref.ArrayLength)
 	}

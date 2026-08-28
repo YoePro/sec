@@ -1804,7 +1804,15 @@ func compilerKnownMemberHover(sourceRange lspRange, member sema.CompilerKnownMem
 	if member.Result.Kind == sema.InvalidType || member.Result.Kind == "" {
 		result = "context-dependent"
 	}
-	contents := fmt.Sprintf("```sec\n%s %s: %s\n```\n\nCompiler-known `%s`.", kind, member.Name, result, member.ID)
+	effects := ""
+	if len(member.Effects) > 0 {
+		names := make([]string, 0, len(member.Effects))
+		for _, effect := range member.Effects {
+			names = append(names, string(effect))
+		}
+		effects = "\n\nEffects: `" + strings.Join(names, "`, `") + "`."
+	}
+	contents := fmt.Sprintf("```sec\n%s %s: %s\n```\n\nCompiler-known `%s`.%s", kind, member.Name, result, member.ID, effects)
 	return hoverResult{Contents: markupContent{Kind: "markdown", Value: contents}, Range: sourceRange}
 }
 
@@ -2277,7 +2285,9 @@ func typeReferenceName(ref *ast.TypeReference) string {
 	if ref.Slice {
 		name += "[]"
 	}
-	if ref.ArrayLength > 0 {
+	if ref.ArrayLengthExpression != nil {
+		name += "[" + ref.ArrayLengthExpression.String() + "]"
+	} else if ref.ArrayLength > 0 {
 		name += fmt.Sprintf("[%d]", ref.ArrayLength)
 	}
 	if len(ref.TypeArgs) > 0 {
@@ -2510,6 +2520,9 @@ func memberCompletionItems(exprType sema.Type, functions map[string][]sema.Funct
 		}
 		if member.Unsafe {
 			detail = "unsafe " + detail
+		}
+		if len(member.Effects) > 0 {
+			detail += " (effectful)"
 		}
 		add(completionItem{Label: member.Name, Kind: kind, Detail: detail})
 	}

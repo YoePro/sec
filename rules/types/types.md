@@ -1,5 +1,13 @@
 # Types
 
+- **Status:** Normative
+- **Created:** 2026-08-12
+- **Last updated:** 2026-08-24
+- **Document revision:** 2.0
+- **Sec language version:** 0.1
+- **Canonical path:** `rules/types/types.md`
+- **Replaces:** `rules/types/types.txt`
+
 ## Purpose
 
 This rulebook defines the central type model of Sec.

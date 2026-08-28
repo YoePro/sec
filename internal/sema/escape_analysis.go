@@ -449,6 +449,8 @@ func escapeSnapshotType(typ Type) Type {
 		Underlying:            typ.Underlying,
 		Unit:                  typ.Unit,
 		ReferenceMutable:      typ.ReferenceMutable,
+		ArrayShape:            typ.ArrayShape,
+		ArrayLengthDecimal:    typ.ArrayLengthDecimal,
 		ArrayLength:           typ.ArrayLength,
 		EventCapacity:         typ.EventCapacity,
 		EventCapacitySet:      typ.EventCapacitySet,

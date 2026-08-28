@@ -9985,7 +9985,7 @@ fn Invalid(source: Source) Target {
 	assertSemaErrors(t, errors, expected)
 }
 
-func TestArrayLiteralSpreadLengthUsesCheckedCompactAccounting(t *testing.T) {
+func TestArrayLiteralSpreadLengthUsesExactCompactAccounting(t *testing.T) {
 	input := `
 module main
 
@@ -9995,10 +9995,7 @@ fn Invalid(first: int[9223372036854775807], second: int[1]) void {
 `
 
 	errors := analyzeSourceRaw(t, input)
-	expected := []string{
-		"fixed-array literal result length overflows int64 at 5:33",
-	}
-	assertSemaErrors(t, errors, expected)
+	assertSemaErrors(t, errors, nil)
 }
 
 func TestResultTypeArgumentCountErrors(t *testing.T) {
@@ -10211,11 +10208,11 @@ fn Use(values: int[]) int {
 	assertSemaErrors(t, errors, nil)
 
 	packet := analyzer.types["Packet"]
-	if len(packet.Fields) != 1 || packet.Fields[0].Type.Kind != ArrayType || packet.Fields[0].Type.ArrayLength != dynamicArrayLength {
+	if len(packet.Fields) != 1 || packet.Fields[0].Type.Kind != ArrayType || packet.Fields[0].Type.ArrayShape != ArrayShapeDynamic || packet.Fields[0].Type.ArrayLengthDecimal != "" {
 		t.Fatalf("Packet.payload should be owned byte[] array, got %+v", packet.Fields)
 	}
 	lexer := analyzer.types["Lexer"]
-	if len(lexer.Fields) != 2 || lexer.Fields[0].Type.Kind != ArrayType || lexer.Fields[0].Type.ArrayLength != dynamicArrayLength {
+	if len(lexer.Fields) != 2 || lexer.Fields[0].Type.Kind != ArrayType || lexer.Fields[0].Type.ArrayShape != ArrayShapeDynamic || lexer.Fields[0].Type.ArrayLengthDecimal != "" {
 		t.Fatalf("Lexer.input should be owned rune[] array, got %+v", lexer.Fields)
 	}
 }

@@ -19,6 +19,7 @@ import (
 type Analyzer struct {
 	analysisDepth               AnalysisDepth
 	analysisBudget              AnalysisBudget
+	targetUintWidthBits         uint16
 	legacyDefaultAST            bool
 	types                       map[string]Type
 	units                       map[string]UnitDefinition
@@ -176,10 +177,11 @@ func NewAnalyzerWithDepth(depth AnalysisDepth) *Analyzer {
 		depth = AnalysisStandard
 	}
 	return &Analyzer{
-		analysisDepth:    depth,
-		analysisBudget:   analysisBudget(depth),
-		legacyDefaultAST: true,
-		types:            builtinTypes(),
+		analysisDepth:       depth,
+		analysisBudget:      analysisBudget(depth),
+		targetUintWidthBits: 64,
+		legacyDefaultAST:    true,
+		types:               builtinTypes(),
 		// rules/types/units.md; correction6.md requires ordinary unit identities
 		// to enter Sema through declarations/imported catalogs, never spelling.
 		units: map[string]UnitDefinition{},
@@ -206,6 +208,7 @@ func NewAnalyzerWithScalarPlan(plan layout.ResolvedScalarPlan) *Analyzer {
 	}
 	analyzer.types["int"] = targetSignedIntegerType("int", plan.PointerWidthBits)
 	analyzer.types["uint"] = targetUnsignedIntegerType("uint", plan.PointerWidthBits)
+	analyzer.targetUintWidthBits = plan.PointerWidthBits
 	return analyzer
 }
 
@@ -450,6 +453,17 @@ func (a *Analyzer) recordResolvedOperatorEffect(expr ast.Expression) {
 		Kind:   EffectMayPanicArithmetic,
 		Source: expressionToken(expr),
 	})
+}
+
+// recordCompilerKnownEffects publishes effects owned by the canonical member
+// registry. See compiler_known_members.md and volatile.md sections 9 and 38.
+func (a *Analyzer) recordCompilerKnownEffects(member CompilerKnownMember, source lexer.Token) {
+	if a.summaryPass || !a.callGraphPathReachable {
+		return
+	}
+	for _, kind := range member.Effects {
+		a.callGraph.addEffect(a.currentCallable, EffectSite{Kind: kind, Source: source})
+	}
 }
 
 func (a *Analyzer) resolveArithmeticFailureEffect(expr ast.Expression) {
@@ -4166,14 +4180,18 @@ func estimatedTypeSizeBytes(typ Type, visiting map[string]bool) (int64, bool) {
 	case StringType, ReferenceType, RawPtrType, SliceType, FunctionType:
 		return 16, true
 	case ArrayType:
-		if typ.Element == nil || typ.ArrayLength < 0 {
+		length, ok := legacyArrayLength(typ)
+		if typ.Element == nil || !ok || length < 0 {
 			return 0, false
 		}
 		elementSize, ok := estimatedTypeSizeBytes(*typ.Element, visiting)
 		if !ok {
 			return 0, false
 		}
-		return elementSize * typ.ArrayLength, true
+		if length != 0 && elementSize > int64(^uint64(0)>>1)/length {
+			return 0, false
+		}
+		return elementSize * length, true
 	case StructType:
 		key := typeDisplayName(typ)
 		if visiting[key] {
@@ -8160,7 +8178,13 @@ func genericRecursiveStorageKind(owner string, parameters []string, ref *ast.Typ
 	}
 
 	if ref.ElementType != nil {
-		if ref.ArrayLength > 0 {
+		length := big.NewInt(ref.ArrayLength)
+		if ref.ArrayLengthExpression != nil {
+			if exact, ok := constantIntegerValue(ref.ArrayLengthExpression); ok {
+				length = exact
+			}
+		}
+		if !ref.Slice && length.Sign() > 0 {
 			return genericRecursiveStorageKind(owner, parameters, ref.ElementType)
 		}
 		return ""
@@ -10942,19 +10966,13 @@ func (a *Analyzer) resolveType(ref *ast.TypeReference) (Type, bool) {
 			if !ok {
 				return Type{Kind: InvalidType}, false
 			}
-			return Type{
-				Name:        fmt.Sprintf("%s[%d]", typeDisplayName(element), length),
-				Kind:        ArrayType,
-				Element:     &element,
-				ArrayLength: length,
-			}, true
+			if !arrayLengthFitsUint(length, a.targetUintWidthBits) {
+				a.addErrorAtToken(ref.Token, "fixed-array length %s overflows target uint%d", length.String(), a.targetUintWidthBits)
+				return Type{Kind: InvalidType}, false
+			}
+			return NewFixedArrayType(element, length), true
 		}
-		return Type{
-			Name:        typeDisplayName(element) + "[]",
-			Kind:        ArrayType,
-			Element:     &element,
-			ArrayLength: dynamicArrayLength,
-		}, true
+		return NewDynamicArrayType(element), true
 	}
 
 	if genericType, ok := a.genericTypes[ref.Name]; ok {
@@ -11246,29 +11264,35 @@ func atomicElementTypeSupported(typ Type) bool {
 	return false
 }
 
-func (a *Analyzer) resolveArrayLength(ref *ast.TypeReference) (int64, bool) {
+// resolveArrayLength implements Package 14 sections 10-12: source expressions
+// are evaluated exactly and source validity is independent of host int64.
+func (a *Analyzer) resolveArrayLength(ref *ast.TypeReference) (*big.Int, bool) {
 	if ref.ArrayLengthExpression == nil {
 		if ref.ArrayLength < 0 {
 			a.addErrorAtToken(ref.Token, "array length must be non-negative")
-			return 0, false
+			return nil, false
 		}
-		return ref.ArrayLength, true
+		return big.NewInt(ref.ArrayLength), true
 	}
 
 	value, ok := a.integerConstantValue(ref.ArrayLengthExpression)
 	if !ok {
 		a.addErrorAtToken(expressionToken(ref.ArrayLengthExpression), "array length must be a compile-time integer")
-		return 0, false
+		return nil, false
 	}
 	if value.Sign() < 0 {
 		a.addErrorAtToken(expressionToken(ref.ArrayLengthExpression), "array length must be non-negative")
-		return 0, false
+		return nil, false
 	}
-	if !value.IsInt64() {
-		a.addErrorAtToken(expressionToken(ref.ArrayLengthExpression), "array length cannot be represented by int64")
-		return 0, false
+	return new(big.Int).Set(value), true
+}
+
+func arrayLengthFitsUint(length *big.Int, width uint16) bool {
+	if length == nil || length.Sign() < 0 || width == 0 {
+		return false
 	}
-	return value.Int64(), true
+	maximum := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(width)), big.NewInt(1))
+	return length.Cmp(maximum) <= 0
 }
 
 func (a *Analyzer) resolveUnitOnlyType(ref *ast.TypeReference) (Type, bool) {
@@ -12542,7 +12566,7 @@ func (a *Analyzer) inferArrayLiteral(expr *ast.ArrayLiteral) (Type, expressionVa
 	if !ok {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
-	if length == 0 {
+	if length.Sign() == 0 {
 		a.addErrorAtToken(expr.Token, "cannot infer element type of empty array literal")
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
@@ -12562,12 +12586,7 @@ func (a *Analyzer) inferArrayLiteral(expr *ast.ArrayLiteral) (Type, expressionVa
 		}
 	}
 
-	return Type{
-		Name:        fmt.Sprintf("%s[%d]", typeDisplayName(firstType), length),
-		Kind:        ArrayType,
-		Element:     &firstType,
-		ArrayLength: length,
-	}, expressionValue{Display: expr.String()}
+	return NewFixedArrayType(firstType, length), expressionValue{Display: expr.String()}
 }
 
 func (a *Analyzer) inferArrayLiteralWithExpected(expr *ast.ArrayLiteral, expected Type) (Type, expressionValue) {
@@ -12578,23 +12597,24 @@ func (a *Analyzer) inferArrayLiteralWithExpected(expr *ast.ArrayLiteral, expecte
 	if !ok {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
-	if length != expected.ArrayLength {
-		if expected.ArrayLength != dynamicArrayLength {
-			a.addErrorAtToken(expr.Token, "array literal has %d elements, expected %d", length, expected.ArrayLength)
+	expectedLength, fixedExpected := exactFixedArrayLength(expected)
+	if fixedExpected && length.Cmp(expectedLength) != 0 {
+		if arrayShapeOf(expected) == ArrayShapeFixed {
+			a.addErrorAtToken(expr.Token, "array literal has %s elements, expected %s", length.String(), expectedLength.String())
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
 	}
-	var elementIndex int64
+	elementIndex := new(big.Int)
 	for _, segment := range segments {
 		elementType := segment.typ
 		if elementType.Kind == InvalidType {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
 		if !canInitialize(*expected.Element, elementType, segment.expression) {
-			a.addErrorAtToken(expressionToken(segment.expression), "array element %d must be %s, got %s", elementIndex+1, typeDisplayName(*expected.Element), typeDisplayName(elementType))
+			a.addErrorAtToken(expressionToken(segment.expression), "array element %s must be %s, got %s", new(big.Int).Add(elementIndex, big.NewInt(1)).String(), typeDisplayName(*expected.Element), typeDisplayName(elementType))
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
-		elementIndex += segment.count
+		elementIndex.Add(elementIndex, segment.count)
 	}
 	return expected, expressionValue{Display: expr.String()}
 }
@@ -12602,37 +12622,35 @@ func (a *Analyzer) inferArrayLiteralWithExpected(expr *ast.ArrayLiteral, expecte
 type arrayLiteralSegment struct {
 	typ        Type
 	expression ast.Expression
-	count      int64
+	count      *big.Int
 }
 
-func (a *Analyzer) arrayLiteralSegments(expr *ast.ArrayLiteral, expected Type) ([]arrayLiteralSegment, int64, bool) {
+// arrayLiteralSegments keeps one compact entry per source expression and uses
+// exact length accounting per Package 14 sections 20-23.
+func (a *Analyzer) arrayLiteralSegments(expr *ast.ArrayLiteral, expected Type) ([]arrayLiteralSegment, *big.Int, bool) {
 	segments := make([]arrayLiteralSegment, 0, len(expr.Elements))
-	var length int64
-	const maxFixedArrayLength = int64(^uint64(0) >> 1)
+	length := new(big.Int)
 	for _, element := range expr.Elements {
 		if spread, ok := element.(*ast.SpreadExpression); ok {
 			sourceType, _ := a.inferExpression(spread.Value)
 			if sourceType.Kind == InvalidType {
-				return nil, 0, false
+				return nil, nil, false
 			}
 			sourceDisplay := typeDisplayName(sourceType)
 			concreteSource := dereferenceType(sourceType)
-			if concreteSource.Kind != ArrayType || concreteSource.Element == nil || concreteSource.ArrayLength == dynamicArrayLength {
+			sourceLength, fixedSource := exactFixedArrayLength(concreteSource)
+			if concreteSource.Kind != ArrayType || concreteSource.Element == nil || !fixedSource {
 				a.addErrorAtToken(spread.Token, "cannot spread %s into fixed-array literal; expansion count is not known at compile time", sourceDisplay)
-				return nil, 0, false
+				return nil, nil, false
 			}
 			if !implicitlyCopyable(*concreteSource.Element) {
 				a.addErrorAtToken(spread.Token, "cannot spread %s into fixed-array literal; indexed expansion would require unsupported consuming element reads", sourceDisplay)
-				return nil, 0, false
+				return nil, nil, false
 			}
-			if concreteSource.ArrayLength > maxFixedArrayLength-length {
-				a.addErrorAtToken(spread.Token, "fixed-array literal result length overflows int64")
-				return nil, 0, false
+			if sourceLength.Sign() > 0 {
+				segments = append(segments, arrayLiteralSegment{typ: *concreteSource.Element, expression: spread.Value, count: new(big.Int).Set(sourceLength)})
 			}
-			if concreteSource.ArrayLength > 0 {
-				segments = append(segments, arrayLiteralSegment{typ: *concreteSource.Element, expression: spread.Value, count: concreteSource.ArrayLength})
-			}
-			length += concreteSource.ArrayLength
+			length.Add(length, sourceLength)
 			continue
 		}
 		var elementType Type
@@ -12642,16 +12660,12 @@ func (a *Analyzer) arrayLiteralSegments(expr *ast.ArrayLiteral, expected Type) (
 			elementType, _ = a.inferExpression(element)
 		}
 		if elementType.Kind == InvalidType {
-			return nil, 0, false
+			return nil, nil, false
 		}
-		if length == maxFixedArrayLength {
-			a.addErrorAtToken(expressionToken(element), "fixed-array literal result length overflows int64")
-			return nil, 0, false
-		}
-		segments = append(segments, arrayLiteralSegment{typ: elementType, expression: element, count: 1})
-		length++
+		segments = append(segments, arrayLiteralSegment{typ: elementType, expression: element, count: big.NewInt(1)})
+		length.Add(length, big.NewInt(1))
 	}
-	return segments, length, true
+	return segments, new(big.Int).Set(length), true
 }
 
 func (a *Analyzer) inferIndexExpression(expr *ast.IndexExpression) (Type, expressionValue) {
@@ -12788,64 +12802,64 @@ func indexableKindName(typ Type) string {
 }
 
 func (a *Analyzer) checkConstantIndexBounds(expr *ast.IndexExpression, typ Type) {
-	index, ok := a.integerExpressionInt64(expr.Index)
-	if !ok || typ.Kind != ArrayType || typ.ArrayLength == dynamicArrayLength {
+	index, ok := a.integerConstantValue(expr.Index)
+	length, fixed := exactFixedArrayLength(typ)
+	if !ok || typ.Kind != ArrayType || !fixed {
 		return
 	}
-	if index < 0 || index >= typ.ArrayLength {
-		a.addErrorAtToken(expressionToken(expr.Index), "array index %d is out of bounds for %s", index, typeDisplayName(typ))
+	if index.Sign() < 0 || index.Cmp(length) >= 0 {
+		a.addErrorAtToken(expressionToken(expr.Index), "array index %s is out of bounds for %s", index.String(), typeDisplayName(typ))
 	}
 }
 
 func (a *Analyzer) checkSliceBounds(expr *ast.SliceExpression, typ Type) {
+	start, startOK := a.integerConstantValue(expr.Start)
+	end, endOK := a.integerConstantValue(expr.End)
 	if expr.Start != nil {
-		start, ok := a.integerExpressionInt64(expr.Start)
-		if ok && start < 0 {
+		if startOK && start.Sign() < 0 {
 			a.addErrorAtToken(expressionToken(expr.Start), "slice lower bound must be non-negative")
 		}
 	}
 	if expr.End != nil {
-		end, ok := a.integerExpressionInt64(expr.End)
-		if ok && end < 0 {
+		if endOK && end.Sign() < 0 {
 			a.addErrorAtToken(expressionToken(expr.End), "slice upper bound must be non-negative")
 		}
 	}
 	if typ.Kind != ArrayType {
 		return
 	}
-	if typ.ArrayLength == dynamicArrayLength {
+	length, fixed := exactFixedArrayLength(typ)
+	if !fixed {
 		return
 	}
-	start, startOK := a.integerExpressionInt64(expr.Start)
-	end, endOK := a.integerExpressionInt64(expr.End)
 	if expr.Start == nil {
-		start, startOK = 0, true
+		start, startOK = new(big.Int), true
 	}
 	if expr.End == nil {
-		end, endOK = typ.ArrayLength, true
+		end, endOK = new(big.Int).Set(length), true
 	}
-	if startOK && start > typ.ArrayLength {
-		a.addErrorAtToken(expr.Token, "slice lower bound %d exceeds length %d", start, typ.ArrayLength)
+	if startOK && start.Cmp(length) > 0 {
+		a.addErrorAtToken(expr.Token, "slice lower bound %s exceeds length %s", start.String(), length.String())
 	}
 	if endOK {
-		limit := typ.ArrayLength
+		limit := new(big.Int).Set(length)
 		if !expr.Exclusive && expr.End != nil {
-			limit = typ.ArrayLength - 1
+			limit.Sub(limit, big.NewInt(1))
 		}
-		if end > limit {
+		if end.Cmp(limit) > 0 {
 			if expr.Exclusive || expr.End == nil {
-				a.addErrorAtToken(expr.Token, "exclusive slice upper bound %d exceeds length %d", end, typ.ArrayLength)
+				a.addErrorAtToken(expr.Token, "exclusive slice upper bound %s exceeds length %s", end.String(), length.String())
 			} else {
-				a.addErrorAtToken(expr.Token, "inclusive slice upper bound %d exceeds final index %d", end, typ.ArrayLength-1)
+				a.addErrorAtToken(expr.Token, "inclusive slice upper bound %s exceeds final index %s", end.String(), limit.String())
 			}
 		}
 	}
-	if startOK && endOK && expr.End != nil && start > end {
+	if startOK && endOK && expr.End != nil && start.Cmp(end) > 0 {
 		op := ".."
 		if expr.Exclusive {
 			op = "..<"
 		}
-		a.addErrorAtToken(expr.Token, "descending slice range %d%s%d is invalid", start, op, end)
+		a.addErrorAtToken(expr.Token, "descending slice range %s%s%s is invalid", start.String(), op, end.String())
 	}
 }
 
@@ -13844,7 +13858,7 @@ func (a *Analyzer) inferCompilerKnownFill(expr *ast.CallExpression, expected Typ
 		return Type{Kind: InvalidType}, result, true
 	}
 	if expected.Kind == ArrayType && expected.Element != nil {
-		if expected.ArrayLength != dynamicArrayLength {
+		if arrayShapeOf(expected) == ArrayShapeFixed {
 			if !a.checkCompilerKnownCallArity(expr, "fill", 1, 1) {
 				return Type{Kind: InvalidType}, result, true
 			}
@@ -14199,6 +14213,7 @@ func (a *Analyzer) inferRawPointerCall(expr *ast.CallExpression) (Type, expressi
 	if receiverType.Kind != RawPtrType {
 		return Type{}, expressionValue{}, false
 	}
+	knownMember, known := compilerKnownMember(receiverType, member.Property.Value, false)
 
 	switch member.Property.Value {
 	case "Read":
@@ -14228,6 +14243,45 @@ func (a *Analyzer) inferRawPointerCall(expr *ast.CallExpression) (Type, expressi
 		if element.Kind == InvalidType || element.Kind == VoidType || !canInitialize(element, valueType, expr.Arguments[0]) {
 			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "RawPtr.Write value must be %s, got %s", typeDisplayName(element), typeDisplayName(valueType))
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		return a.types["void"], expressionValue{Display: expr.String()}, true
+	case "VolatileRead":
+		if !a.inUnsafe {
+			a.addErrorAtToken(member.Property.Token, "RawPtr.VolatileRead requires unsafe because it performs observable physical-storage access")
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		if !a.checkCompilerKnownCallArity(expr, "RawPtr.VolatileRead", 0, 0) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		element := compilerKnownRawPointerElement(receiverType)
+		if element.Kind == InvalidType || element.Kind == VoidType {
+			a.addErrorAtToken(member.Property.Token, "RawPtr[void].VolatileRead cannot materialize a value; select a concrete physical pointee type")
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		if known {
+			a.recordCompilerKnownEffects(knownMember, member.Property.Token)
+		}
+		return element, expressionValue{Display: expr.String()}, true
+	case "VolatileWrite":
+		if !a.inUnsafe {
+			a.addErrorAtToken(member.Property.Token, "RawPtr.VolatileWrite requires unsafe because it performs observable physical-storage access")
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		if !a.checkCompilerKnownCallArity(expr, "RawPtr.VolatileWrite", 1, 1) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		element := compilerKnownRawPointerElement(receiverType)
+		if element.Kind == InvalidType || element.Kind == VoidType {
+			a.addErrorAtToken(member.Property.Token, "RawPtr[void].VolatileWrite cannot consume a value; select a concrete physical pointee type")
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		valueType, _ := a.inferExpressionWithExpected(expr.Arguments[0], element)
+		if !canInitialize(element, valueType, expr.Arguments[0]) {
+			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "RawPtr.VolatileWrite value must be %s, got %s", typeDisplayName(element), typeDisplayName(valueType))
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		if known {
+			a.recordCompilerKnownEffects(knownMember, member.Property.Token)
 		}
 		return a.types["void"], expressionValue{Display: expr.String()}, true
 	case "Offset":
@@ -14938,7 +14992,7 @@ func (a *Analyzer) callArgumentTypes(args []ast.Expression) ([]Type, []ast.Expre
 				a.addErrorAtToken(spread.Token, "cannot spread %s into fixed-arity call; expansion count is not known at compile time", sourceDisplay)
 				return nil, nil, nil, false
 			}
-			if argType.ArrayLength == dynamicArrayLength {
+			if arrayShapeOf(argType) == ArrayShapeDynamic {
 				a.addErrorAtToken(spread.Token, "cannot spread %s into fixed-arity call; expansion count is not known at compile time", sourceDisplay)
 				return nil, nil, nil, false
 			}
@@ -14946,7 +15000,12 @@ func (a *Analyzer) callArgumentTypes(args []ast.Expression) ([]Type, []ast.Expre
 				a.addErrorAtToken(spread.Token, "cannot spread %s into function arguments; indexed expansion would require unsupported consuming element reads", sourceDisplay)
 				return nil, nil, nil, false
 			}
-			for i := int64(0); i < argType.ArrayLength; i++ {
+			length, representable := legacyArrayLength(argType)
+			if !representable {
+				a.addErrorAtToken(spread.Token, "cannot spread %s into fixed-arity call; exact expansion exceeds the legacy call-arity limit", sourceDisplay)
+				return nil, nil, nil, false
+			}
+			for i := int64(0); i < length; i++ {
 				types = append(types, *argType.Element)
 				expressions = append(expressions, spread.Value)
 				preparedSpreadValues = append(preparedSpreadValues, true)
@@ -15465,10 +15524,14 @@ func canonicalTypeArgumentsKey(args []Type) string {
 func canonicalTypeIdentity(typ Type) string {
 	switch typ.Kind {
 	case ArrayType:
-		if typ.Element == nil {
-			return fmt.Sprintf("array:%d:<nil>", typ.ArrayLength)
+		shape := string(arrayShapeOf(typ))
+		if length, ok := exactFixedArrayLength(typ); ok {
+			shape += ":" + length.String()
 		}
-		return fmt.Sprintf("array:%d:%s", typ.ArrayLength, canonicalTypeIdentity(*typ.Element))
+		if typ.Element == nil {
+			return "array:" + shape + ":<nil>"
+		}
+		return "array:" + shape + ":" + canonicalTypeIdentity(*typ.Element)
 	case SliceType:
 		if typ.Element == nil {
 			return "slice:<nil>"
@@ -15534,7 +15597,8 @@ func inferGenericTypeSubstitution(pattern Type, concrete Type, substitution map[
 	}
 
 	if pattern.Element != nil || concrete.Element != nil {
-		if pattern.Element == nil || concrete.Element == nil || pattern.Kind != concrete.Kind || pattern.ArrayLength != concrete.ArrayLength {
+		if pattern.Element == nil || concrete.Element == nil || pattern.Kind != concrete.Kind ||
+			(pattern.Kind == ArrayType && !sameArrayShape(pattern, concrete)) {
 			return false
 		}
 		return inferGenericTypeSubstitution(*pattern.Element, *concrete.Element, substitution)
@@ -17757,7 +17821,7 @@ func membershipElementType(collection Type) (Type, bool) {
 
 	switch collection.Kind {
 	case ArrayType:
-		if collection.ArrayLength == dynamicArrayLength {
+		if arrayShapeOf(collection) == ArrayShapeDynamic {
 			return Type{}, false
 		}
 		return *collection.Element, true
@@ -17835,7 +17899,7 @@ func canCompareEquality(left Type, right Type) bool {
 }
 
 func sameComparableArrayType(left Type, right Type) bool {
-	if left.Kind != ArrayType || right.Kind != ArrayType || left.ArrayLength != right.ArrayLength || left.Element == nil || right.Element == nil {
+	if left.Kind != ArrayType || right.Kind != ArrayType || !sameArrayShape(left, right) || left.Element == nil || right.Element == nil {
 		return false
 	}
 	if left.Element.Kind == ArrayType || right.Element.Kind == ArrayType {
@@ -18372,7 +18436,7 @@ func canInitialize(target Type, value Type, expr ast.Expression) bool {
 		// are distinct owning representations. Dynamic owners initialize only
 		// from the same dynamic owner type; fixed arrays require exact extent.
 		if target.Kind == ArrayType && value.Kind == ArrayType &&
-			target.ArrayLength == dynamicArrayLength && value.ArrayLength == dynamicArrayLength &&
+			arrayShapeOf(target) == ArrayShapeDynamic && arrayShapeOf(value) == ArrayShapeDynamic &&
 			target.Element != nil && value.Element != nil {
 			return canInitialize(*target.Element, *value.Element, expr)
 		}
@@ -18646,6 +18710,11 @@ func sameConcreteType(left Type, right Type) bool {
 	if left.Kind == FunctionType || right.Kind == FunctionType {
 		return sameFunctionType(left, right)
 	}
+	if left.Kind == ArrayType || right.Kind == ArrayType {
+		return left.Kind == ArrayType && right.Kind == ArrayType &&
+			sameArrayShape(left, right) && left.Element != nil && right.Element != nil &&
+			sameConcreteType(*left.Element, *right.Element)
+	}
 	if left.Unit != "" || right.Unit != "" {
 		return left.Kind == right.Kind &&
 			left.Name == right.Name &&
@@ -18874,10 +18943,13 @@ func typeDisplayName(typ Type) string {
 		return "ref " + typeDisplayName(*typ.Element)
 	}
 	if typ.Kind == ArrayType && typ.Element != nil {
-		if typ.ArrayLength == dynamicArrayLength {
+		if arrayShapeOf(typ) == ArrayShapeDynamic {
 			return typeDisplayName(*typ.Element) + "[]"
 		}
-		return fmt.Sprintf("%s[%d]", typeDisplayName(*typ.Element), typ.ArrayLength)
+		if length, ok := exactFixedArrayLength(typ); ok {
+			return typeDisplayName(*typ.Element) + "[" + length.String() + "]"
+		}
+		return typeDisplayName(*typ.Element) + "[invalid]"
 	}
 	if typ.Kind == SliceType && typ.Element != nil {
 		return typeDisplayName(*typ.Element) + "[]"

@@ -41,12 +41,16 @@ const (
 	StructType    TypeKind = "struct"
 	SliceType     TypeKind = "slice"
 	ArrayType     TypeKind = "array"
-	FunctionType  TypeKind = "function"
-	GenericType   TypeKind = "generic"
-	InterfaceType TypeKind = "interface"
-	ErrorRootType TypeKind = "error-root"
-	NeverType     TypeKind = "never"
-	VoidType      TypeKind = "void"
+	// VariadicPackType is the compiler-known invocation-lifetime pack defined
+	// by rules/declarations/functions.md sections 29-34. It is deliberately
+	// distinct from arrays and slices because it has no source-visible layout.
+	VariadicPackType TypeKind = "variadic-pack"
+	FunctionType     TypeKind = "function"
+	GenericType      TypeKind = "generic"
+	InterfaceType    TypeKind = "interface"
+	ErrorRootType    TypeKind = "error-root"
+	NeverType        TypeKind = "never"
+	VoidType         TypeKind = "void"
 )
 
 type Type struct {
@@ -110,6 +114,9 @@ type Type struct {
 	EventCapacitySet       bool
 	FunctionParameterTypes []Type
 	FunctionReturnType     *Type
+	// FunctionVariadic preserves native variadic shape for function values.
+	// The final FunctionParameterTypes item is the element type when true.
+	FunctionVariadic bool
 	// FunctionCapability is the callable environment authority from
 	// rules/declarations/lambda-functions.md. The zero value is normalized to
 	// CallableShared for compatibility with pre-capability semantic facts.
@@ -126,6 +133,17 @@ type Type struct {
 	InterfaceMethods        []Function
 	InterfaceProperties     []InterfaceProperty
 	InterfaceEvents         []InterfaceEvent
+}
+
+// NewVariadicPackType constructs the ephemeral compiler-known parameter pack
+// mandated by rules/declarations/functions.md sections 29-31. It represents
+// neither storage nor a source-level collection type.
+func NewVariadicPackType(element Type) Type {
+	return Type{
+		Name:    "..." + typeDisplayName(element),
+		Kind:    VariadicPackType,
+		Element: &element,
+	}
 }
 
 // NewFixedArrayType constructs the Package 14 canonical fixed-array shape.
@@ -513,6 +531,9 @@ type FunctionParameter struct {
 	Ref        bool
 	MutableRef bool
 	Consuming  bool
+	// Variadic marks the final `name: ...T` parameter defined by
+	// rules/declarations/functions.md sections 28 and 36. Type remains T.
+	Variadic bool
 }
 
 type Dimension struct {

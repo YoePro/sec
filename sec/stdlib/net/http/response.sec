@@ -1,0 +1,9 @@
+module http
+
+type HttpResponse struct {
+
+}
+
+type HttpResponseWriter struct {
+
+}

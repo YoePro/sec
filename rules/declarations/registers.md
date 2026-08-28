@@ -2,9 +2,9 @@
 
 **Status:** Normative  
 **Created:** 2026-08-13  
-**Last updated:** 2026-08-13  
+**Last updated:** 2026-08-28
 **Replaces:** register-type portions of `rules/platform/registers.txt`  
-**Document revision:** 2  
+**Document revision:** 3
 **Sec language version:** 0.1
 
 ## 1. Purpose
@@ -318,35 +318,69 @@ Reading a `write-only` field is a compile-time error.
 
 Writing a `read-only` field is a compile-time error.
 
-### 11.3 Write-one-clear
+### 11.3 Specialized write semantics
 
 ```sec
 Pending: bit write-one-clear,
+Enable: bit write-one-set,
+Invert: bit write-one-toggle,
+Error: bit write-zero-clear,
+Disable: bit write-zero-set,
+Restore: bit write-zero-toggle,
 ```
 
-Writing one performs the field's defined clear operation.
+The complete compiler-known write-behavior family is:
+
+```text
+write-one-clear
+write-one-set
+write-one-toggle
+write-zero-clear
+write-zero-set
+write-zero-toggle
+```
+
+Writing the named trigger value performs the corresponding clear, set, or
+toggle operation. These modifiers describe one logical field write; they do not
+describe a multi-register device protocol.
 
 The compiler must not lower such an operation as an ordinary read-modify-write when doing so could change the defined semantics of the physical register or other fields.
 
-### 11.4 Write-zero-clear
+### 11.4 Specialized read semantics
 
 ```sec
-Error: bit write-zero-clear,
+Event: bit read-clear,
+Flag: bit read-set,
 ```
 
-Writing zero performs the field's defined clear operation.
+`read-clear` is the canonical spelling for a read whose hardware-defined side
+effect clears the field. `read-set` is the symmetric declared behavior whose
+hardware-defined side effect sets the field.
 
-The compiler must preserve this semantic operation and must not replace it with an unsafe ordinary read-modify-write sequence.
+The compiler and analyses must treat both reads as effectful and must not duplicate, remove, reorder, or speculate them as ordinary pure reads.
 
-### 11.5 Clear-on-read
+### 11.5 Shadow policy modifiers
+
+The compiler-known `shadow` and `noshadow` modifiers select hardware-access
+shadow policy without changing field permission or logical field layout.
+
+The global default is `noshadow`. A register declaration may establish a local
+default:
 
 ```sec
-Event: bit clear-on-read,
+type Configuration register[16] shadow {
+    Mode: bit[3],
+    CurrentInput: bit read-only noshadow,
+    _: bit[12],
+}
 ```
 
-Reading the field has a semantic side effect: the field is cleared according to the backing storage or device contract.
+A field-level `shadow` or `noshadow` overrides the register-level default.
+Contradictory policy modifiers on the same declaration are invalid.
 
-The compiler and analyses must treat such reads as effectful and must not duplicate, remove, reorder, or speculate them as ordinary pure reads.
+This rulebook owns modifier syntax, inheritance, and validation.
+`rules/platform/hardware-register-access.md` owns the resulting hardware
+binding, shadow-state, explicit `Read()`/`Write()`, and transaction semantics.
 
 ### 11.6 Composition of access semantics
 
@@ -469,9 +503,10 @@ The compiler must diagnose at least:
 - invalid field types;
 - recursive or infinitely sized nested register layouts;
 - invalid or contradictory field access semantics;
+- invalid or contradictory `shadow`/`noshadow` policy, including invalid register-level defaults;
 - reads from `write-only` fields;
 - writes to `read-only` fields;
-- operations that cannot be lowered without violating W1C, W0C, clear-on-read, or nested access semantics;
+- operations that cannot be lowered without violating specialized read/write, shadow, or nested access semantics;
 - integer-to-register conversions whose out-of-range value is statically known;
 - runtime integer-to-register conversions lacking required checked handling when fit cannot be proven.
 
@@ -490,3 +525,5 @@ A conforming implementation must preserve the following invariants:
 9. special field access semantics are compiler-known and cannot be erased by lowering;
 10. register declarations do not themselves imply fixed-address or MMIO storage;
 11. register types may have implementations under the normal `impl` rules.
+12. `read-clear` is the canonical destructive-read spelling;
+13. shadow policy does not add fields to or otherwise change a register's logical bit layout.

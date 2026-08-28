@@ -1344,6 +1344,29 @@ Each platform operation must define supported targets.
 
 Unsupported operations must be rejected before MLIR lowering for the selected target.
 
+## Hardware-register operation plans
+
+Hardware-register access must remain an explicit semantic operation or an
+equivalent verified immutable plan until target-aware lowering materializes it.
+The representation preserves at least:
+
+* the requested logical register operation
+* canonical hardware resource identity
+* endpoint and physical operation identity
+* the selected physical operation plan
+* read and write projections
+* transaction footprints
+* specialized field read/write effects
+* shadow observations, invalidations and pending-write effects
+* hardware ordering and completion edges as separate requirements
+* access-context requirements
+* target/environment fault behavior
+
+Semantic IR must not collapse these facts into a generic integer load/store or
+require LLVM lowering to reconstruct them from an address, width, or naming
+convention. The planner and verifier rules are owned by
+`rules/platform/hardware-register-access.md`.
+
 ## Unsafe operations
 
 Unsafe operations must remain marked in Semantic IR.

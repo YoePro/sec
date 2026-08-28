@@ -1734,8 +1734,8 @@ rules/declarations/unions.md
 rules/types/types.md
 rules/memory/ownership.md
 rules/memory/copy_move.md
-rules/memory/borrowing.txt
-rules/memory/destruction.txt
+rules/memory/borrowing.md
+rules/memory/destruction.md
 rules/foundations/grammar.md
 rules/compiler/compiler_known_members.md
 rules/compiler/semantic_ir.txt

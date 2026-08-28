@@ -36,10 +36,8 @@ Ownership analysis is mandatory semantic analysis. It is not an optional lint,
 optimization, or deep-analysis feature.
 
 Detailed copy classification belongs to `rules/memory/copy_move.md`.
-Detailed borrowing belongs to `rules/memory/borrowing.txt` until that rulebook is
-replaced by its revision-2 successor.
-Detailed destruction belongs to `rules/memory/destruction.txt` until that
-rulebook is replaced by its revision-2 successor.
+Detailed borrowing belongs to `rules/memory/borrowing.md`.
+Detailed destruction belongs to `rules/memory/destruction.md`.
 The abstract value/place/storage model is anchored by
 `rules/memory/memory_model.md`.
 
@@ -1542,8 +1540,15 @@ must not be moved merely because they are representable as places.
 
 Their dedicated rulebooks define whether ownership transfer is meaningful.
 
+A compiler-known runtime hardware mapping defined by
+`rules/platform/hardware-register-access.md` is an ordinary move-only resource
+value. The mapping owner controls its mapping lifetime; typed register views
+borrow that owner and must not outlive it. Moving the mapping transfers the
+resource responsibility rather than copying hardware authority.
+
 `RawPtr[T]` is a plain address value and does not imply ownership of pointed-to
-storage.
+storage, ownership of a hardware mapping, canonical endpoint identity, mapping
+authority, privilege, or security-domain authority.
 
 FFI ownership may cross the language boundary only through explicit foreign
 contracts or wrappers that state retention and ownership behavior.

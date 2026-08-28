@@ -28,6 +28,7 @@ integrations:
     rules:
       - rules/platform/volatile.md
       - rules/platform/fixed-address-bindings.md
+      - rules/platform/hardware-register-access.md
       - rules/platform/platform_model.md
       - rules/platform/target_profiles.md
       - rules/foundations/attributes.md
@@ -106,6 +107,107 @@ integrations:
       - atomic memory-order semantics
       - target/device knowledge-pack format
       - general C-style volatile types or @volatile source syntax
+
+  - id: platform.hardware-register-access
+    area: platform-register-access-and-lowering
+    status: planned
+    reviewed: "2026-08-28"
+    document_revision: 1.0
+    repository_baseline: "6a63b37"
+    summary: >-
+      Implements canonical Sec hardware-register access semantics above register layout and volatile access,
+      including safe implicit field observation, explicit register Read/Write, shadow state, hardware
+      resource/endpoint identity, alias operations, transaction planning, width/alignment/footprints,
+      coherence, ordering/completion, access context, runtime mappings, fault semantics, and verified
+      Semantic IR/MLIR lowering.
+    rules:
+      - rules/platform/hardware-register-access.md
+      - rules/declarations/registers.md
+      - rules/platform/volatile.md
+      - rules/platform/fixed-address-bindings.md
+      - rules/platform/target_profiles.md
+      - rules/memory/storage.md
+      - rules/memory/ownership.md
+      - rules/memory/borrowing.md
+      - rules/memory/destruction.md
+      - rules/memory/raw_pointers.txt
+      - rules/compiler/semantic_ir.txt
+      - rules/mlir/sec_mlir.md
+    confirmed_existing_foundations:
+      - register[N] is already canonical as a nominal fixed-width bit-layout type independent of MMIO
+      - register field permissions already include read-write default, read-only, and write-only in the v2 rulebook
+      - register frontend already recognizes W1C, W0C, and destructive-read semantics in the current design/implementation work
+      - "@address already implies hardware-facing volatile access and canonical region validation"
+      - volatile.md already separates compiler ordering from hardware ordering and delegates stronger register/device transaction semantics
+      - Sec ownership/destruction already forbids hidden runtime ownership tracking and implicit hardware access at register-view destruction
+    remaining:
+      - rename canonical destructive-read source spelling from clear-on-read to read-clear across parser/sema/formatter/tests/status
+      - add read-set and the complete write-one/write-zero clear/set/toggle modifier family
+      - add shadow and noshadow field modifiers plus register-level default inheritance
+      - implement shadow observed-state and pending-logical-write analysis without a global runtime manager
+      - add compiler-known hardware register Read() returning a detached coherent snapshot
+      - add compiler-known shadow commit Write() and legal whole-register Write(value) semantics
+      - implement safe-only implicit hardware field observation with collateral-effect rejection
+      - introduce canonical HardwareResourceIdentity, EndpointIdentity, and physical operation identities
+      - model endpoint kinds including memory-mapped, port-mapped, instruction-encoded, runtime-mapped, and target-defined
+      - represent read/write aliases and set/clear/toggle operations by resource effects rather than address heuristics
+      - implement RegisterOperationPlanner candidate enumeration, validation, and deterministic selection
+      - model legal read/write widths independently from field/register widths and reject arbitrary narrowing/widening/splitting/merging
+      - model required alignment and runtime view alignment validation
+      - model physical read/write transaction footprints and collateral side-effect analysis
+      - implement coherent multi-step read plans, including target-defined latch sequences
+      - carry operation atomicity and failure-atomicity contracts
+      - represent hardware ordering and completion edges separately from generic volatility
+      - lower semantic ordering/completion requirements to target-specific barriers/read-backs/stronger operations
+      - add context-sensitive hardware access requirements for privilege, security, execution unit/mode, virtualization, and acquired authority
+      - "extend @address to one named canonical endpoint expression while retaining validated numeric canonical-linear form"
+      - implement compiler-known move-only runtime mapped hardware region resources
+      - implement lifetime-bounded checked RegisterView[T] derivation from runtime mappings
+      - ensure RawPtr does not acquire endpoint identity, authority, ownership, alias, or transaction semantics implicitly
+      - model legal-but-fault-capable hardware operations without converting ordinary hardware access automatically to Result
+      - model explicit checked mapping/access failure separately from architecture/platform faults
+      - preserve special operations, shadow effects, footprints, context, ordering, completion, and fault facts through Semantic IR and Sec MLIR
+      - reject any target lowering that cannot materialize the required hardware semantics exactly
+      - add LSP hover/diagnostics for resource, endpoint, shadow, access widths, implicit-read safety, aliases, and context requirements
+    required_test_families:
+      - field permissions and specialized read/write semantics
+      - safe implicit field observation and destructive collateral rejection
+      - explicit Read snapshots and no duplicate hardware access from detached values
+      - shadow field/register inheritance, Unknown/Known state, pending operation commits, and no automatic write-back
+      - read/write aliases and resource identity
+      - width, alignment, footprint, and coherent multi-step accesses
+      - ordering, completion, and posted writes
+      - access context and runtime-acquired authority
+      - runtime mapping ownership and RegisterView lifetime
+      - fault-capable versus Result-returning operations
+      - Semantic IR/MLIR preservation and target lowering
+    corrections_applied:
+      - rules/corrections/applied/hardware-register-access-cross-rulebook-correction-20260828.md
+      - rules/corrections/applied/stdlib-hw-correction-20260828.md
+
+  - id: stdlib.hardware-bus-infrastructure
+    area: standard-library
+    status: planned
+    reviewed: "2026-08-28"
+    summary: >-
+      Tracks the canonical runtime-independent stdlib/hw area and reusable,
+      target-aware bus/controller infrastructure reserved for SPI, I2C, I2S,
+      and UART above compiler/core hardware-register semantics.
+    rules:
+      - rules/library/stdlib.md
+      - rules/platform/hardware-register-access.md
+      - rules/platform/target_profiles.md
+    remaining:
+      - define the public ownership, borrowing, failure, effect, target-availability, ordering, completion, blocking, suspension, and allocation contracts for hw/spi
+      - define the corresponding public contracts for hw/i2c
+      - define the corresponding public contracts for hw/i2s
+      - define the corresponding public contracts for hw/uart
+      - select ordinary Sec, compiler-known, intrinsic, Semantic IR/MLIR, FFI, or platform implementations per target without changing public contracts
+      - implement and test direct bare-metal/RTOS realizations without an intrinsic general-runtime dependency
+      - implement hosted realizations only where the selected target profile exposes a compatible platform/OS facility
+      - keep device-specific addressing, register indexes, command protocols, polling, reset, and initialization in drivers or device libraries
+    corrections_applied:
+      - rules/corrections/applied/stdlib-hw-correction-20260828.md
 
   - id: lowering.sec-mlir-package13
     package: SEC-MLIR-P13
@@ -240,7 +342,7 @@ integrations:
     name: Fixed Array Semantic Value Representation
     area: frontend-semantic-ir-sec-mlir-and-lowering
     status: partial
-    implementation_phase: canonical-frontend-shape
+    implementation_phase: literal-plan-spreads
     integrated: "2026-08-28"
     baseline: repository HEAD with completed SEC-MLIR-P13 schema 9
     repository_head: 069c111b96714ee4c9423f5f7a64d1e7a6045f31
@@ -274,6 +376,7 @@ integrations:
       - internal/parser/parser.go
       - internal/sema/types.go
       - internal/sema/analyzer.go
+      - internal/sema/semantic_facts.go
       - internal/sema/defaults.go
       - internal/sema/place.go
       - internal/sema/compiler_known_members.go
@@ -290,6 +393,7 @@ integrations:
       - internal/sema/analyzer_test.go
       - internal/sema/defaults_test.go
       - internal/sema/array_shape_test.go
+      - internal/sema/semantic_facts_test.go
       - internal/ir/semantic/package13_test.go
       - internal/lowering/secmlir/emitter_test.go
       - internal/codegen/mlir/generator_test.go
@@ -313,8 +417,11 @@ integrations:
       - independent 32-bit and 64-bit target-uint validation of one resolved array fact
       - explicit unsupported diagnostic at the legacy LLVM-array layout boundary for lengths outside int64
       - Package 14 section-90 frontend length and target-plan regression matrix
+      - immutable compact ResolvedArrayLiteralPlan data model with exact per-source-entry lengths, Sema-owned defensive copies, and a read-only query that performs no inference, expansion, or analyzer mutation
+      - authoritative array-literal analysis publishes source-ordered plans for inferred, target-shaped, spread-containing, and target-required empty fixed-array literals while result typing consumes the same plan
+      - multiple fixed-array literal spreads retain distinct source indices, exact big.Int contribution lengths, runtime/mismatch rejection, and O(source entries) plans for conceptual lengths above host int64
     remaining:
-      - expose immutable compiler-owned ResolvedArrayLiteralPlan and its read-only query
+      - complete P14 transfer-action acceptance/rejection at the new Semantic IR boundary and finish the section-91/93 literal/default matrix
       - implement FixedArrayTypeData and all Package 14 Semantic IR array/bounds operations
       - implement ResolvedArrayIndexPlan, arbitrary-precision proofs, runtime guards, typed try flow, and bounds effects
       - implement trivial high-level mutable array storage and nested transactional replacement
@@ -336,6 +443,10 @@ integrations:
       - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
         result: passed (78/78)
       - command: go test ./internal/lowering/secmlir -run TestConfiguredSecMLIRBinRequiresAbsolutePathForPackage13And14 -count=1
+        result: passed
+      - command: go test ./internal/sema -run 'Test(ResolvedArrayLiteralPlan|ArrayLiteralAnalysisPopulatesAuthoritativePlans)' -count=1
+        result: passed
+      - command: go test ./internal/sema -run 'TestArrayLiteralPlans' -count=1
         result: passed
 
   - id: frontend.ownership-v2
@@ -361,8 +472,8 @@ integrations:
     rules:
       - rules/memory/ownership.md
       - rules/memory/copy_move.md
-      - rules/memory/borrowing.txt
-      - rules/memory/destruction.txt
+      - rules/memory/borrowing.md
+      - rules/memory/destruction.md
       - rules/control-flow/discard.md
       - rules/control-flow/flowcontrol_match.md
       - rules/declarations/functions.md
@@ -860,8 +971,8 @@ integrations:
       - rules/control-flow/discard.md
       - rules/memory/ownership.md
       - rules/memory/copy_move.md
-      - rules/memory/borrowing.txt
-      - rules/memory/destruction.txt
+      - rules/memory/borrowing.md
+      - rules/memory/destruction.md
       - rules/compiler/semantic_ir.txt
       - rules/tooling/formatter.md
       - rules/tooling/diagnostics.txt
@@ -1054,8 +1165,8 @@ integrations:
       - rules/collections/shaped-types.md
       - rules/memory/copy_move.md
       - rules/memory/ownership.md
-      - rules/memory/borrowing.txt
-      - rules/memory/destruction.txt
+      - rules/memory/borrowing.md
+      - rules/memory/destruction.md
       - rules/control-flow/defer.md
       - rules/foundations/grammar.md
       - rules/compiler/semantic_ir.txt
@@ -1196,9 +1307,9 @@ integrations:
       remain incomplete.
     rules:
       - rules/control-flow/defer.md
-      - rules/memory/destruction.txt
+      - rules/memory/destruction.md
       - rules/memory/ownership.md
-      - rules/memory/borrowing.txt
+      - rules/memory/borrowing.md
       - rules/memory/lifetime_analysis.txt
       - rules/memory/copy_move.md
       - rules/errors/errorhandling.md
@@ -1306,8 +1417,8 @@ integrations:
       - rules/declarations/functions.md
       - rules/memory/ownership.md
       - rules/memory/copy_move.md
-      - rules/memory/borrowing.txt
-      - rules/memory/destruction.txt
+      - rules/memory/borrowing.md
+      - rules/memory/destruction.md
       - rules/control-flow/defer.md
       - rules/concurrency/tasks.txt
       - rules/concurrency/threads.md
@@ -1359,7 +1470,7 @@ integrations:
       - normative implementation-status prose was removed from the discard rulebook and migrated here
       - mutable reinitialization semantics were reconciled with ownership.md and copy_move.md
       - types.md now defines must-use and discardability as distinct recursive semantic properties
-      - destruction.txt now defines discard as terminal ownership with deterministic cleanup cancellation
+      - destruction.md now defines discard as terminal ownership with deterministic cleanup cancellation
       - semantic_ir.txt now specifies canonical DiscardValue provenance and forbids backend inference from unused SSA
       - diagnostics.txt now specifies discard-related mandatory and advisory diagnostic identities
       - formatter.md now preserves explicit discard without policy-driven insertion or removal
@@ -1441,7 +1552,7 @@ integrations:
       - rules/memory/layout.md
       - rules/memory/copy_move.md
       - rules/memory/ownership.md
-      - rules/memory/borrowing.txt
+      - rules/memory/borrowing.md
       - rules/memory/raw_pointers.txt
       - rules/declarations/functions.md
       - rules/projects/modules.md
@@ -1642,7 +1753,7 @@ integrations:
       - rules/projects/modules.md
       - rules/projects/projects.txt
       - rules/declarations/static.md
-      - rules/memory/destruction.txt
+      - rules/memory/destruction.md
       - rules/concurrency/concurrency.md
       - rules/mlir/sec_mlir.md
       - rules/compiler/semantic_ir.txt
@@ -1759,7 +1870,7 @@ integrations:
       - rules/projects/modules.md
       - rules/projects/projects.txt
       - rules/declarations/static.md
-      - rules/memory/destruction.txt
+      - rules/memory/destruction.md
       - rules/concurrency/concurrency.md
       - rules/concurrency/structured_concurrency.md
       - rules/platform/platform_model.md
@@ -1998,9 +2109,9 @@ integrations:
       spread, and receiver contracts. Owned by-value parameter bindings now
       have the required callee-local mutability and call ownership is committed
       only after every source argument has analyzed successfully; consuming
-      arrow parameters now have a verified parser/Sema/tooling slice, while
-      native variadic packs and complete callable/backend ownership metadata
-      remain major work.
+      arrow parameters and native typed variadics now have verified parser and
+      Sema slices, while complete callable/backend ownership metadata remains
+      major work.
     rules:
       - rules/declarations/functions.md
       - rules/declarations/generics.md
@@ -2015,11 +2126,14 @@ integrations:
       - internal/ast/ast.go
       - internal/parser/parser.go
       - internal/parser/expression.go
+      - internal/parser/variadic_parameters_test.go
       - internal/sema/analyzer.go
       - internal/sema/types.go
+      - internal/sema/variadic_parameters_test.go
       - internal/sema/semantic_facts.go
       - internal/sema/parameter_usage.go
       - internal/formatter/formatter.go
+      - cmd/compiler/main.go
       - cmd/lsp/main.go
     tests:
       - internal/parser/parser_test.go
@@ -2054,18 +2168,18 @@ integrations:
       - ordinary move-only by-value arguments consume the caller at successful call entry while reference parameters borrow
       - canonical type-position ref and ref mut call parameters remain borrows during successful argument transfer and do not move caller Places
       - standalone discardable call results and compiler-known must-use result categories participate in Sema validation
+      - native final `name: ...T` parameter parsing for ordinary Sec functions, methods, and interface requirements, with parser/Sema rejection of non-final, duplicate, consuming, and reference pack forms
+      - compiler-known call-lifetime variadic pack types that remain distinct from arrays, slices, and foreign varargs and expose read-only Len, indexing, iteration, and re-spread behavior without Ptr
+      - variadic pack escape, direct pack reference exposure, mutation, and move-out rejection in Sema
+      - direct zero-or-more typed variadic arguments, generic instantiation, runtime-length array/slice/pack spread sources, multiple mixed spread sources, and fixed-arity preference over equally ranked variadic overloads
+      - variadic callable shape retained by inferred function values, callable identity, compatibility, and concrete generic instances
     remaining:
       - require explicit `<-` for every reusable source consumed by an ordinary move-only or explicit `->` parameter while preserving marker-free fresh temporaries
       - accept optional `return <-value` with the same result ownership as `return value`
       - remove whole-self consuming ordinary/interface receiver behavior while retaining consuming callable values and member consumption under mutable/exclusive authority
       - remove legacy ref name colon Type parameter spelling after migrating remaining formatter, bootstrap, diagnostics, and examples, and normalize legacy and canonical reference modes to one AST and signature identity during the transition
       - preserve forced-consuming parameter modes in first-class callable types, Semantic IR parameter ownership, call ArgumentActions, Sec MLIR, and LLVM lowering
-      - "add native final `name: ...T` parameter syntax and reject multiple, non-final, and consuming variadic parameters"
-      - model compiler-known call-lifetime variadic packs with Len, indexing, iteration, re-spread, structural read-only behavior, no Ptr, no escape, and no element move-out
       - implement per-element copy or move transfer for direct variadic arguments and destruction of remaining owned pack elements
-      - support runtime-length and multiple spread sources into native variadic destinations while rejecting consuming spread from move-only collections
-      - prefer a fixed-arity overload over an otherwise equally ranked variadic overload
-      - preserve consuming modes, variadic shape, and concrete specialization in function values and callable compatibility
       - make receiver-capability inference distinguish shared and mutable/exclusive ordinary methods, member ownership effects, and complete interface conformance for every parameter ownership and variadic contract
       - represent parameter modes, strict argument order, delayed transfer commit, cleanup edges, and native packs explicitly in Semantic IR
       - lower calls and native packs through Sec MLIR and LLVM without hidden heap allocation or confusion with foreign varargs
@@ -2078,6 +2192,8 @@ integrations:
       - native variadic ABI equivalence with C or foreign varargs
     verification:
       - command: go test ./internal/parser ./internal/sema ./internal/formatter ./cmd/lsp -run 'Consuming|FunctionHoverShowsConsuming|OwnedParameters|CanonicalReferenceTypeCallArguments' -count=1
+        result: passed
+      - command: go test ./internal/parser ./internal/sema -run 'Test(ParseNativeVariadic|ParseRejectsNonFinalNativeVariadic|NativeVariadic)' -count=1
         result: passed
 
   - id: frontend.lambda-functions-v2
@@ -2102,7 +2218,7 @@ integrations:
       - rules/foundations/grammar.md
       - rules/memory/ownership.md
       - rules/memory/copy_move.md
-      - rules/memory/borrowing.txt
+      - rules/memory/borrowing.md
       - rules/analysis/closure_analysis.md
       - rules/analysis/escape_analysis.md
       - rules/compiler/semantic_ir.txt
@@ -2341,7 +2457,7 @@ integrations:
     rules:
       - rules/memory/ownership.md
       - rules/memory/copy_move.md
-      - rules/memory/borrowing.txt
+      - rules/memory/borrowing.md
       - rules/memory/lifetime_analysis.txt
       - rules/collections/collections.md
       - rules/declarations/properties.md
@@ -2422,7 +2538,7 @@ integrations:
       resources across branches and loop control-flow edges without runtime
       ownership tables or cleanup tracking.
     rules:
-      - rules/memory/destruction.txt
+      - rules/memory/destruction.md
       - rules/memory/ownership.md
       - rules/memory/copy_move.md
       - rules/memory/lifetime_analysis.txt
@@ -2463,7 +2579,7 @@ integrations:
     rules:
       - rules/control-flow/defer.md
       - rules/memory/lifetime_analysis.txt
-      - rules/memory/borrowing.txt
+      - rules/memory/borrowing.md
       - rules/memory/copy_move.md
       - rules/memory/memory_model.md
     code:
@@ -2499,7 +2615,7 @@ integrations:
       - rules/foundations/attributes.md
       - rules/types/types.md
       - rules/memory/raw_pointers.txt
-      - rules/memory/borrowing.txt
+      - rules/memory/borrowing.md
       - rules/memory/layout.md
       - rules/memory/unsafe.md
       - rules/compiler/semantic_ir.txt
@@ -2851,7 +2967,7 @@ integrations:
       - rules/declarations/generics.md
       - rules/declarations/properties.md
       - rules/memory/ownership.md
-      - rules/memory/borrowing.txt
+      - rules/memory/borrowing.md
       - rules/foundations/grammar.md
       - rules/foundations/lexical_structure.md
       - rules/tooling/formatter.md
@@ -3400,7 +3516,7 @@ integrations:
       - rules/memory/reference_model.md
       - rules/memory/ownership.md
       - rules/memory/copy_move.md
-      - rules/memory/borrowing.txt
+      - rules/memory/borrowing.md
       - rules/collections/collections.md
       - rules/declarations/lambda-functions.md
       - rules/platform/ffi.md
@@ -3484,7 +3600,7 @@ integrations:
       - rules/memory/lifetime_analysis.txt
       - rules/memory/ownership.md
       - rules/memory/copy_move.md
-      - rules/memory/borrowing.txt
+      - rules/memory/borrowing.md
       - rules/memory/storage.md
       - rules/analysis/effect_analysis.md
       - rules/compiler/compiler_analysis.txt
@@ -3882,7 +3998,7 @@ integrations:
       - rules/analysis/parameter_usage_analysis.md
       - rules/memory/ownership.md
       - rules/memory/copy_move.md
-      - rules/memory/borrowing.txt
+      - rules/memory/borrowing.md
       - rules/memory/lifetime_analysis.txt
       - rules/analysis/escape_analysis.md
       - rules/analysis/closure_analysis.md
@@ -3951,7 +4067,7 @@ integrations:
       - rules/analysis/call_graph.md
       - rules/analysis/effect_analysis.md
       - rules/memory/ownership.md
-      - rules/memory/borrowing.txt
+      - rules/memory/borrowing.md
       - rules/memory/lifetime_analysis.txt
       - rules/analysis/escape_analysis.md
       - rules/analysis/closure_analysis.md
@@ -4037,8 +4153,8 @@ integrations:
       - rules/analysis/closure_analysis.md
       - rules/memory/ownership.md
       - rules/memory/copy_move.md
-      - rules/memory/borrowing.txt
-      - rules/memory/destruction.txt
+      - rules/memory/borrowing.md
+      - rules/memory/destruction.md
       - rules/control-flow/defer.md
       - rules/collections/collections.md
       - rules/platform/ffi.md
@@ -4156,6 +4272,7 @@ integrations:
       conversions, impl integration, diagnostics, and lowering.
     rules:
       - rules/declarations/registers.md
+      - rules/platform/hardware-register-access.md
       - rules/declarations/enums.md
       - rules/declarations/impl.md
       - rules/foundations/grammar.md
@@ -4186,7 +4303,7 @@ integrations:
       - independent little-endian and big-endian byte-order modifiers retained as semantic type facts
       - ordinary register values remain nonvolatile unless their storage binding supplies stronger semantics
       - impl blocks, methods, properties, and implicit self access without changing register storage width
-      - read-write, read-only, write-only, write-one-clear, write-zero-clear, and clear-on-read modifiers are parsed and retained as compiler-owned AST and semantic field facts, with read-write as the default
+      - read-write, read-only, write-only, write-one-clear, write-zero-clear, and the legacy clear-on-read modifier are parsed and retained as compiler-owned AST and semantic field facts, with read-write as the default; the canonical read-clear rename is not implemented yet
       - direct frontend access rejects reads from write-only fields, writes to read-only fields, and compound read-modify-write operations on write-only or special-effect fields
       - formatter preservation plus LSP hover and completion expose compiler-owned register access facts without editor-side language reconstruction
       - finite source-order-independent nested register fields occupy the nested nominal width and preserve inner layout, nominal field types, and access semantics across every projection; recursive storage and unsafe whole-nested writes are diagnosed
@@ -4194,7 +4311,7 @@ integrations:
       - parser AST preserves width expressions while Sema owns evaluation, and LSP renders nested nominal fields plus checked conversion result types from the same semantic facts
     remaining:
       - preserve unnamed open bit-backed enum encodings through field extraction and insertion
-      - carry ordinary and W1C, W0C, and clear-on-read field operations through Semantic IR and semantics-preserving lowering without unsafe read-modify-write, duplication, reordering, or speculation
+      - carry ordinary and W1C, W0C, and canonical read-clear field operations through Semantic IR and semantics-preserving lowering without unsafe read-modify-write, duplication, reordering, or speculation
       - provide semantics-preserving masks, shifts, extraction, insertion, and reserved-bit handling
       - add complete Semantic IR, MLIR, special-access lowering, and end-to-end coverage beyond the completed parser, Sema, diagnostics, and compiler-fact-driven LSP slice
     verification:
@@ -4217,6 +4334,7 @@ integrations:
     rules:
       - rules/platform/fixed-address-bindings.md
       - rules/platform/volatile.md
+      - rules/platform/hardware-register-access.md
       - rules/memory/storage.md
       - rules/declarations/registers.md
       - rules/memory/unsafe.md
@@ -4243,10 +4361,11 @@ integrations:
       - validate target address domain/space, alignment, extent, access width, memory space, layout, representation, availability, and permissions
       - reject unmodeled Hosted process addresses and ensure unsafe cannot waive canonical region validation
       - accept arbitrary compile-time-known integer address expressions rather than only integer literals
+      - accept exactly one named canonical Platform or Project endpoint expression while retaining the validated numeric canonical-linear form
       - diagnose statically known incompatible overlapping bindings
       - preserve volatile semantics through impl receivers and all field/property access paths
       - lower volatile loads/stores and safe addressed field updates
-      - preserve read-only, write-only, W1C, W0C, clear-on-read, nested-register, and byte-order semantics at addressed boundaries
+      - preserve read-only, write-only, W1C, W0C, canonical read-clear, nested-register, shadow, and byte-order semantics at addressed boundaries
       - specify and implement the separate checked or unsafe dynamic-address mechanism
       - add complete target-profile, diagnostics, LSP, IR, lowering, and end-to-end coverage
     verification:
@@ -4279,7 +4398,7 @@ integrations:
       - rules/memory/storage.md
       - rules/memory/layout.md
       - rules/memory/ownership.md
-      - rules/memory/borrowing.txt
+      - rules/memory/borrowing.md
       - rules/platform/ffi.md
       - rules/concurrency/concurrency_memory_model.md
       - rules/tooling/lsp.md
@@ -4848,87 +4967,576 @@ integrations:
       - command: go vet ./...
         result: passed
 
-  - id: frontend.copy-move
-    area: frontend-analysis-and-lowering
-    status: partial
-    integrated: "2026-08-08"
-    summary: >-
-      Implements the first explicit-copy and explicit-move frontend slice with
-      recursive copy classification, direct and place-sensitive move-state
-      validation, operator-aware formatter/LSP support, and selected resource,
-      branch, loop, borrow, provenance, and union-payload behavior. Explicit
-      ownership operations in Semantic IR and backend ownership verification
-      remain deferred.
+  - id: "frontend.copy-move"
+    area: "frontend-copy-move"
+    status: "partial"
+    integrated: "2026-08-28"
+    document_revision: "2.0"
+    repository_baseline: "069c111"
     rules:
-      - rules/memory/copy_move.md
-      - rules/memory/ownership.md
-      - rules/memory/borrowing.txt
-      - rules/memory/destruction.txt
-      - rules/memory/lifetime_analysis.txt
-      - rules/collections/collections.md
-      - rules/compiler/semantic_ir.txt
-      - rules/mlir/sec_mlir.md
-      - rules/tooling/formatter.md
-      - rules/tooling/lsp.md
+      - "rules/memory/copy_move.md"
+      - "rules/memory/ownership.md"
+      - "rules/platform/volatile.md"
+      - "rules/declarations/functions.md"
+      - "rules/declarations/lambda-functions.md"
+      - "rules/declarations/unions.md"
+      - "rules/control-flow/discard.md"
     code:
-      - internal/ast/ast.go
-      - internal/lexer/lexer.go
-      - internal/parser/parser.go
-      - internal/sema/analyzer.go
-      - internal/sema/place.go
-      - internal/sema/types.go
-      - internal/formatter
-      - internal/lsp
+      - "internal/ast/ast.go"
+      - "internal/lexer/lexer.go"
+      - "internal/parser/parser.go"
+      - "internal/sema/analyzer.go"
+      - "internal/sema/place.go"
+      - "internal/sema/types.go"
     tests:
-      - internal/sema/copy_move_test.go
-      - internal/sema/lifetime_test.go
-      - internal/sema/destruction_test.go
-      - internal/parser/parser_test.go
-      - internal/lexer/lexer_test.go
-      - internal/formatter/formatter_test.go
-      - cmd/lsp/main_test.go
+      - "internal/sema/copy_move_test.go"
+      - "internal/sema/lifetime_test.go"
+      - "internal/sema/destruction_test.go"
+      - "internal/parser/parser_test.go"
+      - "internal/lexer/lexer_test.go"
     implemented:
-      - CopyClassification, CopyClassificationOf, TriviallyCopyable, and MoveOnly with trivial, semantic, move-only, conditional, and non-copyable classes
-      - recursive primitive, reference, RawPtr, fixed-array, struct, custom-destruction, compiler-known, @noCopy, generic-instance, and aggregate-field classification; owning dynamic arrays remain incorrectly conflated with fixed arrays
-      - direct local move tracking with moved, returned, discarded, and detached reasons plus related source locations
-      - diagnostics for use after move/discard, moving borrowed roots, defer-retained values, implicit copy of named move-only values, unproven generic copies, and overlapping self-moves
-      - lexer/parser/AST support for :<-, <-, explicit ownership modes, inferred and typed move initialization, and rejected invalid operator forms
-      - explicit moves of copyable and move-only named values; selected by-value parameter, return, aggregate literal, Result, Option, union payload, spread, and conversion transfer handling
-      - assignment reinitialization after move or discard and close-tracked resource-state clearing
-      - structured Place identity, overlap, nested-field availability, static slice intervals, local reference-alias provenance, union payload projections, and field-sensitive reinitialization
-      - move, borrow, reference-origin, resource-close, and availability joins across if, switch, select, match, loops, continue, and break edges
-      - direct function and method returned-reference summaries with transitive supported call instantiation
-      - formatter preservation, semantic-token classification, and initial S1007 move quick fixes
-    partial:
-      - move availability is precise for roots, nested fields, selected union payloads, static slice intervals, and local aliases but not all indexed, sliced, or opaque/foreign aliases
-      - destruction responsibility and destination ownership are inferred through frontend state instead of explicit Semantic IR operations
-      - semantic-copy lowering, structured argument-consumption metadata, stable diagnostic ownership IDs, and universally safe LSP automatic fixes remain incomplete
-      - loop fixed points remain conservative for imported, opaque, function-value, and unsupported recursive provenance; general cleanup/destruction lattices remain absent
-      - string lowering currently has view/static-literal behavior and requires ownership-aware validation before any move support is relied upon
+      - "Recursive CopyClassification/CopyClassificationOf support including trivial, semantic, conditional, move-only, and explicitly non-copyable classes."
+      - "@noCopy is already recognized as a type-level copy prohibition in current frontend classification."
+      - "Explicit :<- and <- parsing/AST/Sema support for established declaration and assignment forms."
+      - "Place-sensitive move tracking for roots, nested fields, selected union payloads, static slice intervals, and local alias provenance."
+      - "Reinitialization of supported moved/discarded Places and field-sensitive aggregate restoration."
+      - "Initial branch/loop/match/select ownership joins, borrow-conflict checks, defer-retention checks, overlapping self-move rejection, formatter preservation, and LSP move quick fixes."
     remaining:
-      - require `<-` at call sites and owning payload positions whenever a reusable source is consumed, without requiring it for fresh temporaries
-      - accept optional `return <-value` and canonical `capture(<-value)` while rejecting stale implicit move capture behavior
-      - split canonical Availability from unavailability reason/provenance and implement conditional availability/refinement
-      - complete indexed, sliced, aliased, fixed-array, dynamic-list, and multi-field active-variant move availability
-      - add complete aggregate availability masks, relocation/address-stability/pinning classification, and owned-interface review
-      - represent copy, move, replace, destination ownership, destruction, cleanup, and call consumption explicitly in Semantic IR
-      - lower and verify ownership through Sec MLIR, LLVM, ABI, destruction responsibility, and fixed-address non-relocation rules
-      - complete diagnostic registry, test matrix, LSP ownership hints, move navigation, partial-state display, consequence preview, and universally safe code actions
-      - add consuming list extraction only after list API, parser, Place, borrow invalidation, iteration-freeze, and bounds-result contracts are synchronized
-    implementation_order:
-      - lexer tokens and longest-match handling
-      - parser and AST ownership modes
-      - source Place classification and ordinary named move-only copy rejection
-      - explicit moves, reinitialization, diagnostics, and formatter/LSP support
-      - field-sensitive places and partial aggregate state
-      - collection extraction and complete destruction state
-      - Semantic IR ownership operations
-      - Sec MLIR, LLVM, and ABI ownership verification
-    verification:
-      - command: go test ./...
-        result: passed
-      - command: validate implementation-status.yaml
-        result: passed
+      - "explicit-consuming-call-arguments: require reusable caller Places passed to -> parameters to use <-; ordinary by-value parameters must copy and must never be upgraded to consuming solely because the type is move-only"
+      - "constructor-payload-explicit-move: require explicit <- for reusable named/projected move-only sources transferred into struct fields, Option, Result outside terminal return context, union payloads, and equivalent owning constructors"
+      - "fresh-temporary-forwarding: keep fresh temporaries marker-free when they are forwarded into their first owner, including consuming calls and owning payload construction"
+      - "return-boundary-optional-marker: accept both return value and return <-value with identical transfer semantics; receiving a fresh returned value remains marker-free"
+      - "closure-capture-explicit-move: replace capture(-> value) and implicit move-through-capture(value) with capture(<-value); plain capture(value) is copy capture"
+      - "ordinary-by-value-copy-contract: reject non-copyable reusable arguments to ordinary by-value parameters and preserve the source when copy is valid"
+      - "result-projection-consumption: model Result.Ok()/Err() as consuming transformations with correct payload transfer, cleanup, and source unavailability"
+      - "whole-self-consumption-ban: reject ordinary methods that consume complete self; allow explicit member moves when receiver authority and partial-move rules permit"
+      - "complete Place availability integration including nested/indexed/sliced/opaque alias cases and the ownership-v2 Availability/UnavailableReason model"
+      - "align discard convergence, conditional availability, conditional replacement, and custom-free partial-move prohibition with ownership-v2"
+      - "volatile-boundary-validation: reject ownership move-out from volatile/MMIO storage while preserving ordinary copy/move semantics for snapshots produced by volatile reads"
+      - "stable diagnostic IDs and mentor diagnostics for missing <-, implicit consuming construction, use-after-move, move while borrowed, invalid overlap, and move from non-owned/fixed storage"
+    required_tests:
+      - "ordinary by-value parameter copies a copyable reusable argument and leaves the source available"
+      - "ordinary by-value parameter rejects a reusable @noCopy/move-only argument instead of consuming it implicitly"
+      - "-> parameter with reusable source rejects Consume(resource) and accepts Consume(<-resource)"
+      - "-> parameter accepts a fresh temporary without synthetic <- boilerplate"
+      - "Some(resource) rejects reusable move-only source while Some(<-resource) consumes it"
+      - "struct owning field rejects plain reusable move-only source and accepts Field: <-resource"
+      - "non-terminal Ok(resource) rejects reusable move-only source while Ok(<-resource) is valid"
+      - "return Ok(resource) remains valid as a terminal return transfer and return Ok(<-resource) is also accepted"
+      - "return resource and return <-resource have identical ownership results"
+      - "caller receives fresh move-only function result with ordinary initialization and no marker"
+      - "capture(value) copies only copyable sources; capture(<-value) consumes reusable source"
+      - "@noCopy forbids copy but still permits explicit move"
+      - "explicit move of a copyable source makes the source unavailable"
+      - "volatile source read produces ordinary snapshot; later copy of snapshot performs no extra volatile access"
+      - "attempted :<- or <- ownership move from physical volatile/MMIO Place is rejected"
+      - "ordinary method cannot consume whole self but may explicitly move an eligible owned member"
+      - "Result.Ok()/Err() consume owned reusable Result and mentor-diagnose later whole-result use"
+      - "large-copy analysis can recommend ref/slice/view without changing by-value source semantics"
+
+  - id: "semantic-ir.copy-move"
+    area: "semantic-ir-ownership"
+    status: "planned"
+    integrated: "2026-08-28"
+    document_revision: "2.0"
+    repository_baseline: "069c111"
+    rules:
+      - "rules/memory/copy_move.md"
+      - "rules/memory/ownership.md"
+      - "rules/compiler/semantic_ir.txt"
+    implemented:
+      - "Current Semantic IR carries selected call argument actions and ownership-adjacent facts, but the root implementation-status still records explicit copy/move/replace/destruction operations as deferred."
+    remaining:
+      - "represent Copy, Move, Replace, Reinitialize, Discard, Destroy, TransferToReturn, TransferToArgument, and TransferToAggregate explicitly when needed for downstream ownership correctness"
+      - "preserve source Place/projection identity, copy classification, destination ownership, partial availability, transfer commit, and destruction responsibility"
+      - "preserve explicit <- call/payload actions instead of reconstructing them from types in lowering"
+      - "represent volatile access boundaries separately from ordinary value copy/move operations"
+      - "fail explicitly when an ownership-sensitive construct cannot be represented without losing semantics"
+    required_tests:
+      - "Semantic IR distinguishes copy from move even when both could lower to identical machine operations"
+      - "Semantic IR preserves reusable-source explicit consuming call action"
+      - "Semantic IR preserves explicit aggregate/Option/Result/union payload move"
+      - "Semantic IR preserves return transfer with optional source marker normalized to one semantic transfer"
+      - "Semantic IR preserves replacement versus reinitialization and cleanup responsibility"
+      - "Semantic IR never models a volatile hardware read itself as ownership move-out"
+
+  - id: "lowering.copy-move"
+    area: "sec-mlir-llvm-abi-copy-move"
+    status: "planned"
+    integrated: "2026-08-28"
+    document_revision: "2.0"
+    repository_baseline: "069c111"
+    rules:
+      - "rules/memory/copy_move.md"
+      - "rules/memory/ownership.md"
+      - "rules/platform/volatile.md"
+      - "rules/mlir/sec_mlir.md"
+    implemented:
+      - "SEC-MLIR packages already lower many scalar, call, enum/union, match, and struct operations, including P13 struct semantics, but root governance still defers explicit ownership verification for general copy/move."
+    remaining:
+      - "lower resolved copy/move/replace/reinitialize operations without re-deciding source semantics from physical representation"
+      - "preserve source unavailability and exactly-once destination/destruction responsibility through copy elision, move elision, destination passing, buffer reuse, and stack-slot reuse"
+      - "verify argument transfer commit after fallible left-to-right argument preparation"
+      - "preserve partial aggregate ownership and conditional cleanup through supported control flow"
+      - "preserve volatile access ordering and never merge source-level volatile observations because local snapshots are copyable"
+      - "respect address stability/pinning/fixed-storage constraints independently of ownership transfer"
+      - "verify ABI and FFI ownership contracts rather than inferring ownership from register/pointer passing strategy"
+    required_tests:
+      - "copy elision preserves source availability"
+      - "move elision preserves source unavailability"
+      - "replacement destroys old destination exactly once before new ownership is established"
+      - "failed later call argument does not commit an earlier reserved reusable-source transfer"
+      - "volatile snapshot copy does not emit an additional volatile read"
+      - "physical MMIO/register storage is never relocated by value move lowering"
+      - "P13 struct ownership-sensitive cases reject unsupported non-trivial ownership paths rather than silently copying"
+
+  - id: "tooling.copy-move"
+    area: "formatter-lsp-diagnostics-analysis"
+    status: "partial"
+    integrated: "2026-08-28"
+    document_revision: "2.0"
+    repository_baseline: "069c111"
+    rules:
+      - "rules/memory/copy_move.md"
+      - "rules/tooling/formatter.md"
+      - "rules/tooling/lsp.md"
+      - "rules/tooling/diagnostics.txt"
+      - "rules/analysis/escape_analysis.md"
+    implemented:
+      - "Formatter preserves established :<- and <- move operators."
+      - "LSP exposes initial move-related semantic facts and selected S1007 quick fixes."
+      - "Frontend already reports several move/copy safety errors with related source locations."
+    remaining:
+      - "format and expose explicit consuming argument/payload syntax everywhere, capture(<-value), and optional return <-value"
+      - "mentor diagnostics must state what value was consumed, where, why a later use is invalid, and a safe next step when provable"
+      - "add missing-<- diagnostic for -> call sites and owning payload constructors"
+      - "add copy-of-move-only ordinary by-value call diagnostic that recommends ref/slice/view or an explicitly consuming API rather than silently changing semantics"
+      - "integrate reverse escape/parameter-usage advice for large valid copies without turning performance advice into ownership errors"
+      - "surface copy classification, operation at cursor, move origin, destination, availability, consuming parameter, partial aggregate state, and consequence preview"
+      - "make automatic <- fixes conditional on proof that later source uses and borrow/destruction rules remain valid"
+    required_tests:
+      - "formatter round-trips Consume(<-resource), Field: <-resource, Some(<-resource), capture(<-value), and return <-value"
+      - "LSP marks a -> parameter and the corresponding <- call argument as one ownership transfer"
+      - "diagnostic for Consume(resource) explains that the callee takes ownership and suggests Consume(<-resource)"
+      - "diagnostic for ordinary by-value move-only argument explains that the parameter copies and suggests ref/slice/view or API redesign"
+      - "large-copy advisory references known size/use facts and never changes program validity"
+      - "use-after-Result.Ok()/Err() diagnostic identifies the consuming projection call"
+
+  - id: "frontend.borrowing"
+    area: "frontend-borrowing-place-liveness"
+    status: "partial"
+    integrated: "2026-08-28"
+    document_revision: "2.0"
+    repository_baseline: "069c111"
+    rules:
+      - "rules/memory/borrowing.md"
+      - "rules/memory/ownership.md"
+      - "rules/memory/copy_move.md"
+      - "rules/memory/reference_model.md"
+      - "rules/declarations/functions.md"
+      - "rules/declarations/lambda-functions.md"
+      - "rules/control-flow/flowcontrol_match.md"
+      - "rules/control-flow/defer.md"
+    code:
+      - "internal/sema/analyzer.go"
+      - "internal/sema/place.go"
+      - "internal/sema/types.go"
+      - "internal/ast/ast.go"
+      - "internal/parser/parser.go"
+    tests:
+      - "internal/sema/analyzer_test.go"
+      - "internal/sema/copy_move_test.go"
+      - "internal/sema/lifetime_test.go"
+      - "internal/parser/parser_test.go"
+    implemented:
+      - "ref and ref mut parameter parsing/type representation and call-site borrow handling."
+      - "Place-sensitive active borrow tracking with fields, properties, constant/dynamic indices, slices, dereference, and union payload projections."
+      - "Shared/shared coexistence, exclusive mutable conflicts, immutable-owner mutable-borrow rejection, owner read blocking during mutable borrow, owner mutation blocking during shared/mutable borrow, and move blocking during overlapping borrows."
+      - "Local reference-holder tracking, holder reassignment, shared-reference copy provenance, mutable-reference move holder transfer, and aggregate-contained reference-origin preservation."
+      - "Call reborrow behavior for ref mut parameters without consuming the caller's mutable-reference holder."
+      - "Disjoint struct fields, distinct constant array indices, normalized static slice intervals, empty ranges, and conservative dynamic-index/symbolic-range overlap."
+      - "Branch and loop borrow joins, loop-carried conflict diagnostics, break/continue handling, finite reference-origin alternative sets, and deterministic conservative widening."
+      - "Match whole-payload ref/ref mut Place borrowing with guard/arm scope, mutability checks, overlapping-borrow validation, and several escape rejections."
+      - "Delayed defer root uses that block incompatible move/discard before deferred execution."
+      - "Declaration-order-independent direct function/method returned-reference origin summaries and supported transitive call-site origin instantiation."
+    remaining:
+      - "non-lexical-final-use: make borrow live ranges end at the final proven use/path dependency rather than relying on holder lexical scope where current implementation remains conservative"
+      - "availability-integration: reject borrow creation from ownership-v2 Unavailable and unresolved ConditionallyAvailable Places while allowing control-flow-refined Available sub-Places; keep is available distinct from borrow authority"
+      - "complete-holder-graph: model every shared-reference copy, nested aggregate holder, closure capture, returned reference, view/slice, and derived reborrow so borrow end occurs only when all surviving dependencies end"
+      - "nested-reborrow-authority: explicitly model parent/child shared and mutable reborrow suspension/restoration, including shared reborrow from ref mut and nested mutable reborrow"
+      - "complete-call-borrow-effects: verify multi-argument overlap, method receiver/argument overlap, fallible later-argument preparation, generic/imported/opaque calls, and call-retention summaries"
+      - "property-effects: replace conservative receiver-wide property overlap only when canonical property/effect summaries prove narrower addressability and storage effects"
+      - "symbolic-range-disjointness: extend safe proof for symbolic/runtime index and slice ranges without unsound assumptions"
+      - "borrowed-match-destructuring: extend beyond one whole/positional payload binding only after match/unions define supported field-borrow forms; preserve guard-false borrow end and no hidden escape"
+      - "closure-borrow-escape: integrate complete lambda/closure escape summaries for capture(ref ...) and capture(ref mut ...), including nested captured references/views and function-value calls"
+      - "defer-place-precision: replace root-only delayed-use tracking with canonical Place-sensitive dependencies and distinguish ordinary future value use from actual retained reference holders"
+      - "returned-reference-summary-completeness: persist and consume summary metadata across separate compilation, function values, generic instantiations, imported modules, recursive/mutually recursive SCCs, and opaque call contracts"
+      - "storage-invalidation-integration: connect collections, arena reset/release, relocation, replacement, physical-addressing contracts, and reference-model invalidation events to borrow legality"
+      - "ffi-retention-contracts: integrate explicit foreign retain/no-retain contracts and conservatively reject safe-borrow assumptions for unknown retained foreign pointers"
+      - "concurrency-integration: reuse Place/provenance/borrow facts in send/share/data-race analysis without treating borrow exclusivity as sufficient synchronization"
+      - "mentor-diagnostic-completeness: consistently report both borrow origin/holder and conflicting access/move/discard/destruction with path/loop explanation and safe restructuring help"
+    required_tests:
+      - "multiple shared borrows of overlapping Place accepted"
+      - "shared plus overlapping mutable borrow rejected"
+      - "two overlapping mutable borrows rejected"
+      - "mutable borrow from immutable Place rejected"
+      - "owner read rejected during overlapping mutable borrow"
+      - "owner mutation/replacement rejected during overlapping shared or mutable borrow"
+      - "borrow can end before lexical scope exit after final proven use"
+      - "copied shared-reference holder keeps borrow live after original holder final use"
+      - "moving ref mut holder transfers borrow and moved-from holder becomes unavailable"
+      - "ref mut argument to ref mut parameter reborrows and caller reference is usable after call"
+      - "shared reborrow from ref mut blocks parent mutation only for child borrow live range"
+      - "disjoint struct-field mutable borrows accepted"
+      - "whole aggregate borrow overlaps every field"
+      - "distinct constant indices accepted; dynamic indices conservative"
+      - "disjoint static slice intervals accepted and empty interval borrows no elements"
+      - "symbolic slice overlap remains conservative unless proven"
+      - "borrow from Unavailable Place rejected"
+      - "borrow from ConditionallyAvailable Place rejected until is available/control-flow refinement proves Available"
+      - "is available does not bypass active mutable/shared borrow conflict"
+      - "move/discard/destruction/replacement rejected while overlapping borrow live"
+      - "proven disjoint sibling move remains valid while another field is borrowed"
+      - "outer holder borrow retained on one branch remains active after merge"
+      - "branch-local holder ends before merge and terminating branch does not pollute later borrow state"
+      - "loop-carried borrow conflicts are detected across backedge and related to prior-iteration origin"
+      - "Some(ref value) and Some(ref mut value) obey arm/guard scope and subject authority"
+      - "guard-false match candidate borrow ends before next arm"
+      - "borrowed match subject cannot transfer move-only payload ownership"
+      - "capture(ref value) cannot escape referent lifetime"
+      - "capture(ref mut value) blocks conflicting outer access and remains move-only"
+      - "defer future use blocks earlier invalidating move/discard/destruction"
+      - "extern ref/ref mut call-bounded borrow cannot be retained absent explicit retention contract"
+      - "generation/epoch validity check does not permit otherwise conflicting borrow"
+
+  - id: "semantic-ir.borrowing"
+    area: "semantic-ir-borrowing-reference-authority"
+    status: "planned"
+    integrated: "2026-08-28"
+    document_revision: "2.0"
+    repository_baseline: "069c111"
+    rules:
+      - "rules/memory/borrowing.md"
+      - "rules/memory/reference_model.md"
+      - "rules/memory/ownership.md"
+      - "rules/compiler/semantic_ir.txt"
+    implemented:
+      - "Current Semantic IR carries selected reference/call/match facts, but root governance does not yet establish one complete explicit borrowing/reference-authority model for downstream ownership verification."
+    remaining:
+      - "represent BorrowShared, BorrowMutable, ReborrowShared, ReborrowMutable or equivalent resolved operations/facts"
+      - "preserve source Place/provenance set, holder identity, mutable authority, range/extent, borrow begin/end live range, and parent-child reborrow relationship"
+      - "distinguish borrowed call arguments/method receivers from copy/move ownership transfers"
+      - "preserve ref mut call reborrow without consuming caller holder"
+      - "preserve match-arm candidate borrow and guard-false end semantics"
+      - "preserve closure/defer/returned-reference retention dependencies and storage invalidation dependencies"
+      - "carry reference-model generation/epoch/address-space/bounds facts separately from borrow compatibility"
+      - "fail explicitly when borrowing semantics cannot be represented without downstream rediscovery or weakening"
+    required_tests:
+      - "Semantic IR distinguishes shared borrow, mutable borrow, copy, and move"
+      - "Semantic IR preserves ref mut reborrow parent holder"
+      - "Semantic IR preserves branch/loop borrow live-range edges"
+      - "Semantic IR preserves match guard-false borrow termination"
+      - "Semantic IR preserves returned-reference origin and borrow dependency"
+      - "Semantic IR keeps generation validity separate from alias authority"
+
+  - id: "lowering.borrowing"
+    area: "sec-mlir-llvm-reference-borrow-lowering"
+    status: "partial"
+    integrated: "2026-08-28"
+    document_revision: "2.0"
+    repository_baseline: "069c111"
+    rules:
+      - "rules/memory/borrowing.md"
+      - "rules/memory/reference_model.md"
+      - "rules/mlir/sec_mlir.md"
+      - "rules/platform/ffi.md"
+    code:
+      - "internal/codegen/mlir/generator.go"
+      - "internal/codegen/llvm/functions.go"
+      - "internal/codegen/llvm/statements.go"
+      - "internal/codegen/llvm/types.go"
+    implemented:
+      - "Existing MLIR/LLVM infrastructure lowers broad function, control-flow, aggregate, Result/Option, and reference-adjacent operations; compile-time borrow checking already removes the need for runtime borrow counters in established cases."
+    remaining:
+      - "consume resolved Semantic IR borrow/reference facts rather than reconstructing source borrow legality from pointer shapes"
+      - "erase compile-time-only borrow bookkeeping when safe while preserving required provenance/bounds/address-space/generation checks"
+      - "preserve final-use ordering so invalidating move/replacement/destruction cannot be scheduled before the last required borrow use"
+      - "lower ref/ref mut function and method ABI values without turning raw address uniqueness into source borrow authority"
+      - "lower FFI call-bounded ref/ref mut adaptation with no-retain semantics and selected target representation"
+      - "preserve volatile/MMIO access ordering when a safe reference/view to permitted physical storage is eventually defined by specialized platform rules"
+      - "ensure LLVM optimization cannot introduce aliasing behavior forbidden by Sec borrow semantics"
+    required_tests:
+      - "borrow-only program lowers with no runtime borrow counter/table"
+      - "ref mut call reborrow lowers without consuming caller reference storage"
+      - "final borrow use precedes invalidating replacement/destruction in lowered control flow"
+      - "generation/epoch check remains when required even though borrow legality was compile-time"
+      - "FFI call-bounded borrow address is not retained by generated wrapper"
+      - "volatile access count/order remains unchanged by snapshot borrow optimization"
+
+  - id: "tooling.borrowing"
+    area: "diagnostics-lsp-formatter-traceability-borrowing"
+    status: "partial"
+    integrated: "2026-08-28"
+    document_revision: "2.0"
+    repository_baseline: "069c111"
+    rules:
+      - "rules/memory/borrowing.md"
+      - "rules/tooling/diagnostics.txt"
+      - "rules/tooling/lsp.md"
+      - "rules/tooling/formatter.md"
+    implemented:
+      - "Current frontend already emits several borrow-conflict diagnostics with a previous/source location and exposes foundational semantic facts to LSP/formatter infrastructure."
+      - "Formatter preserves established ref/ref mut syntax in functions and supported patterns."
+    remaining:
+      - "register stable mentor-oriented diagnostic IDs for shared/mutable conflicts, owner-read conflict, mutation/replacement conflict, move/discard/destruction while borrowed, loop-carried conflict, invalid mutable authority, unknown provenance, and borrow escape"
+      - "ensure diagnostics point to both borrow origin/holder and conflicting action and explain why Places overlap"
+      - "distinguish availability from borrow authority in messages; when is available succeeds but access is borrowed, say so directly"
+      - "surface referent Place/provenance alternatives, borrow kind, holder, live-range/end reason, reborrow parent, mutability authority, and temporal validity dependencies in hover/analysis where useful"
+      - "provide navigation to borrow origin/holder and previous-iteration source for loop-carried conflicts"
+      - "offer only safe code actions such as narrowing/reordering use, changing an explicitly compatible API to ref/ref mut when user edits declaration, or restructuring scope; do not silently change ownership semantics"
+      - "preserve capture(ref ...), capture(ref mut ...), ref/ref mut pattern bindings, and parameter borrow syntax under formatting"
+      - "update stale borrowing.txt references to borrowing.md opportunistically after canonical replacement without creating fake normative corrections"
+      - "support source/code traceability comments referring to stable borrowing § clauses"
+    required_tests:
+      - "borrow conflict diagnostic includes related borrow origin"
+      - "loop-carried diagnostic explains previous iteration"
+      - "is available plus borrow conflict diagnostic distinguishes ownership presence from access authority"
+      - "LSP hover shows shared versus mutable borrow and canonical referent Place"
+      - "LSP handles finite alternative origins conservatively without presenting one false definitive origin"
+      - "formatter round-trips ref/ref mut function, match, and capture syntax"
+
+  - id: "frontend.destruction"
+    area: "frontend-destruction-and-cleanup-analysis"
+    status: "partial"
+    integrated: "2026-08-28"
+    document_revision: "2.0"
+    repository_baseline: "069c111"
+    rules:
+      - "rules/memory/destruction.md"
+      - "rules/memory/ownership.md"
+      - "rules/memory/copy_move.md"
+      - "rules/control-flow/discard.md"
+      - "rules/control-flow/defer.md"
+      - "rules/declarations/impl.md"
+      - "rules/errors/errorhandling.md"
+      - "rules/platform/volatile.md"
+    code:
+      - "internal/sema/analyzer.go"
+      - "internal/sema/place.go"
+      - "internal/sema/types.go"
+      - "internal/ast/ast.go"
+      - "internal/parser/parser.go"
+    tests:
+      - "internal/sema/destruction_test.go"
+      - "internal/sema/copy_move_test.go"
+      - "internal/sema/lifetime_test.go"
+      - "internal/sema/analyzer_test.go"
+      - "internal/parser/parser_test.go"
+    implemented:
+      - "Established frontend ownership/move state for direct Places, nested fields, selected union payloads, static slice intervals, branches, loops, break/continue, and local aliases."
+      - "Initial must-closed resource cleanup state for local io.File/io.Directory across branch and loop control flow."
+      - "Initial defer delayed-use analysis preventing conflicting move/discard before deferred reads."
+      - "Initial destruction tests and conservative resolved-type destruction classification used by current compiler code."
+      - "Current frontend already distinguishes several moved, returned, discarded, and detached reasons for related diagnostics."
+    remaining:
+      - "destruction-classification: make TriviallyDestructible/NonTriviallyDestructible a complete compiler-derived property for every resolved supported type and generic instantiation, independent of copy classification"
+      - "general-cleanup-responsibility: replace narrow File/Directory must-closed tracking with general exact-once destruction responsibility for every non-trivial owned value"
+      - "availability-integration: consume ownership-v2 Available/PartiallyAvailable/Unavailable/ConditionallyAvailable plus separate UnavailableReason/provenance when computing cleanup"
+      - "partial-aggregate-destruction: recursively destroy exactly still-owned Available sub-Places and skip moved/discarded/uninitialized sub-Places"
+      - "conditional-destruction: preserve branch/path-specific ownership and statically eliminate conditional cleanup whenever possible"
+      - "discard-convergence: implement legal no-op second discard, conditional discard convergence, no-double-destruction, and new cleanup registration after reinitialization; remove stale double-discard-rejected expectations"
+      - "replacement-reinitialization: distinguish Available replacement from Unavailable reinitialization and ConditionallyAvailable mixed replacement/reinitialization with pre-commit semantic validation"
+      - "custom-free-frontend: implement free AST/parser/member registration/Sema body rules, non-callability, no Result/value return, no defer, no self escape/resurrection, no whole-self transfer, and no owned-field move-out in Sec 0.1"
+      - "custom-free-partial-move-ban: reject partial field moves for types defining custom free and identify the free declaration in diagnostics"
+      - "free-field-cleanup: model free body followed by remaining initialized owned-field destruction without duplicate release"
+      - "construction-failure-cleanup: track staged init field/resource acquisition and clean only successfully initialized obligations without invoking completed-value free"
+      - "defer-unified-order: model automatic destruction and defer registration in one source-ordered LIFO cleanup plan while preserving earliest legal destruction"
+      - "result-option-union-cleanup: destroy only active retained payloads and integrate moved-out payload state"
+      - "result-projection-cleanup: implement consuming Result.Ok()/Err() retained-payload transfer and inactive-side destruction/end semantics"
+      - "try-return-cleanup: integrate bodyless try, partial handlers, handler-produced failures, and return try with exact transferred-payload exclusion from local cleanup"
+      - "borrow-cleanup-conflicts: block destruction/discard/replacement while incompatible live borrow/defer use requires the Place to remain valid"
+      - "ffi-allocator-authority: preserve release/deallocator authority and accepted-ownership state for foreign transfers"
+      - "volatile-boundary: ensure ending local snapshots never creates additional volatile/MMIO accesses or hardware reset/clear behavior"
+      - "static-global-destruction: defer to canonical ProgramShutdownPlan/TargetProfile support instead of applying the old blanket global-destruction restriction"
+      - "interface-generic-destruction: resolve owning interface concrete cleanup and monomorphized generic destruction plans"
+    required_tests:
+      - "trivial scalar has no required runtime destruction operation"
+      - "non-trivial local is destroyed exactly once"
+      - "locals clean in reverse successful registration order when lifetimes otherwise overlap"
+      - "struct fields destroy in reverse declaration order"
+      - "fixed array initialized elements destroy in reverse index order"
+      - "move cancels former-owner cleanup"
+      - "consuming -> call cancels caller cleanup only after transfer commitment"
+      - "return value and return <-value both transfer cleanup responsibility"
+      - "partially moved aggregate destroys only still-owned fields"
+      - "moved/discarded field is never destroyed twice"
+      - "custom-free type rejects partial field move"
+      - "conditional move yields conditional cleanup only on paths still owning the value"
+      - "statically resolvable conditional ownership requires no runtime availability flag"
+      - "discard available value destroys once and converges to unavailable"
+      - "second discard of unavailable Place is legal no-op and performs no destruction"
+      - "discard conditionally available Place destroys only still-owned paths and converges every outgoing path"
+      - "reinitialization of unavailable mutable Place performs no old cleanup and registers new cleanup"
+      - "replacement of available mutable Place destroys old value exactly once before new ownership commits"
+      - "conditional replacement destroys old value only on paths where it still exists"
+      - "create first, defer, create second exits second then defer then first"
+      - "defer-referenced value remains alive until deferred execution"
+      - "fallible init failure cleans only successfully initialized owned fields/resources"
+      - "completed-value free is not invoked for failed partial construction"
+      - "direct value.free() is rejected"
+      - "free cannot return value or Result"
+      - "defer inside free is rejected"
+      - "whole self escape/move from free is rejected"
+      - "owned field move-out from free is rejected in Sec 0.1"
+      - "remaining owned fields destroy after custom free exactly once"
+      - "Result destroys only active retained payload"
+      - "Option destroys Some payload only"
+      - "Result.Ok()/Err() consume correctly without double destruction"
+      - "bodyless try propagation cleans unrelated still-owned locals"
+      - "return try establishes transferred result before local cleanup"
+      - "break/continue clean only exited regions and preserve loop-carried values"
+      - "zero-iteration loop does not destroy never-created iteration locals"
+      - "RawPtr lifetime end does not infer deallocation"
+      - "foreign ownership transfer cancels Sec cleanup only after contract-defined acceptance"
+      - "volatile snapshot destruction emits no additional volatile read/write"
+
+  - id: "semantic-ir.destruction"
+    area: "semantic-ir-destruction"
+    status: "planned"
+    integrated: "2026-08-28"
+    document_revision: "2.0"
+    repository_baseline: "069c111"
+    rules:
+      - "rules/memory/destruction.md"
+      - "rules/memory/ownership.md"
+      - "rules/memory/copy_move.md"
+      - "rules/compiler/semantic_ir.txt"
+    implemented:
+      - "Current Semantic IR/lowering pipeline carries selected ownership-adjacent call/control-flow facts, but root governance still defers explicit general destruction operations and cleanup-state representation."
+    remaining:
+      - "represent DestroyValue/DestroyPlace/DestroySubPlace/DestroyActiveVariant/ConditionalDestroy or equivalent explicit terminal cleanup semantics"
+      - "represent InvokeFree, allocator-aware DeallocateOwnedStorage, cleanup registration/order, and cleanup regions"
+      - "preserve cancellation of cleanup after move, discard, return, consuming argument, aggregate transfer, and FFI transfer"
+      - "represent Replace versus Reinitialize and the old-destination destruction plan"
+      - "preserve partial and conditional availability masks/reasons/provenance needed for exact cleanup"
+      - "represent construction-failure cleanup without manufacturing a completed outer value/free call"
+      - "preserve defer/automatic destruction in one ordered cleanup plan"
+      - "preserve return try and error propagation payload transfer before local cleanup"
+      - "preserve allocator/release authority, custom free identity, active union variant, concrete interface destruction, and target policy requirements"
+      - "fail explicitly when source destruction semantics cannot be represented without losing exact-once guarantees"
+    required_tests:
+      - "Semantic IR has one terminal ownership action for every represented non-trivial owned value on each reachable path"
+      - "moved/discarded sub-Place has no remaining former-owner destroy action"
+      - "partial aggregate cleanup names/masks only still-owned sub-Places"
+      - "conditional destruction remains explicit until control-flow lowering resolves it"
+      - "free body and remaining-field cleanup are separately represented in correct order"
+      - "defer and automatic destroy entries preserve source registration order"
+      - "construction-failure cleanup excludes completed-value free"
+      - "replacement and reinitialization remain semantically distinct"
+      - "return/error transfer excludes transferred payload from callee cleanup"
+
+  - id: "lowering.destruction"
+    area: "sec-mlir-llvm-destruction"
+    status: "partial"
+    integrated: "2026-08-28"
+    document_revision: "2.0"
+    repository_baseline: "069c111"
+    rules:
+      - "rules/memory/destruction.md"
+      - "rules/control-flow/defer.md"
+      - "rules/memory/ownership.md"
+      - "rules/mlir/sec_mlir.md"
+    code:
+      - "internal/codegen/mlir/generator.go"
+      - "internal/codegen/llvm/statements.go"
+    tests:
+      - "internal/codegen/mlir/generator_test.go"
+      - "testdata/ir"
+    implemented:
+      - "MLIR currently emits multiple statically represented deferred blocks in reverse registration order and has selected cleanup-adjacent return/error behavior."
+      - "Existing SEC MLIR packages lower broad control-flow, Result/Option/union/struct, and typed-error semantics, providing infrastructure for explicit destruction lowering."
+    remaining:
+      - "lower one unified cleanup plan containing defer and automatic destruction across ordinary return, error propagation, branches, loops, break, continue, and invocation exit"
+      - "preserve earliest legal destruction for unrelated locals while extending values retained by defer/borrows"
+      - "lower partial aggregate destruction and active variant destruction without touching moved/discarded payloads"
+      - "lower conditional destruction using static control-flow facts first and hidden runtime state only when permitted/required"
+      - "lower custom free before remaining owned-field destruction and representation deallocation"
+      - "lower construction-failure cleanup for only successfully initialized obligations"
+      - "lower conditional replacement/reinitialization with exact old-value cleanup"
+      - "preserve allocator/deallocator and foreign release pairing"
+      - "integrate owning interface/generic destruction specialization"
+      - "integrate target-supported static destruction through ProgramShutdownPlan rather than a hidden registry"
+      - "by LLVM translation, make every cleanup branch/call explicit and remove all unresolved Sec destruction decisions"
+      - "ensure LLVM optimization cannot infer, duplicate, omit, or reorder source-observable destruction"
+    required_tests:
+      - "unified defer/automatic cleanup order survives MLIR and LLVM lowering"
+      - "move/discard eliminates former-owner destroy in lowered IR"
+      - "conditional destruction executes on exactly the runtime paths still owning the value"
+      - "strict target policy rejects required hidden ownership flag before backend codegen"
+      - "custom free executes before remaining field destruction"
+      - "fallible construction rollback destroys only successful prior acquisitions"
+      - "return try and bodyless try cleanup preserve transferred payload"
+      - "break/continue loop cleanup does not destroy loop-carried values"
+      - "volatile snapshot cleanup does not emit a hardware access"
+      - "LLVM contains no unresolved semantic destroy-placement decision"
+
+  - id: "target-policy.destruction"
+    area: "target-runtime-static-ownership-destruction-policy"
+    status: "planned"
+    integrated: "2026-08-28"
+    document_revision: "2.0"
+    repository_baseline: "069c111"
+    rules:
+      - "rules/memory/destruction.md"
+      - "rules/memory/ownership.md"
+      - "rules/compiler/initialization.md"
+      - "rules/platform/volatile.md"
+    remaining:
+      - "provide a project/target compilation policy that rejects code requiring dynamic ownership/destruction bookkeeping when deterministic runtime-free ownership is required"
+      - "resolve conditional ownership statically whenever control-flow facts suffice before considering hidden flags"
+      - "permit explicit discard convergence to normalize conditional ownership before replacement/cleanup-sensitive operations"
+      - "integrate static/global owned destruction only when TargetProfile and ProgramShutdownPlan support deterministic teardown"
+      - "avoid hidden global destruction registries in runtime-free/freestanding profiles"
+      - "respect ISR/execution-context restrictions once the canonical ISR rulebook defines permitted cleanup/effect behavior"
+      - "respect future physical-addressing/register contracts without treating scope exit as device/reset/register-clear semantics"
+    required_tests:
+      - "runtime-free target accepts statically resolvable partial/conditional ownership without hidden flag"
+      - "runtime-free target rejects ownership state that genuinely requires forbidden runtime bookkeeping"
+      - "explicit discard convergence makes a previously rejected conditional replacement statically resolvable where applicable"
+      - "target lacking static teardown rejects unsupported global owned destruction"
+      - "target with supported ProgramShutdownPlan lowers deterministic static destruction in dependency-constrained order"
+
+  - id: "tooling.destruction"
+    area: "diagnostics-lsp-formatter-traceability-destruction"
+    status: "partial"
+    integrated: "2026-08-28"
+    document_revision: "2.0"
+    repository_baseline: "069c111"
+    rules:
+      - "rules/memory/destruction.md"
+      - "rules/tooling/diagnostics.txt"
+      - "rules/tooling/lsp.md"
+      - "rules/tooling/formatter.md"
+    implemented:
+      - "Current frontend already emits selected move/resource/defer diagnostics with related source locations."
+      - "Formatter/LSP already preserve several ownership/move constructs and expose initial ownership facts."
+    remaining:
+      - "mentor diagnostics must explain which value is affected, where ownership/destruction responsibility originated, what earlier move/discard/replacement changed it, and how to fix the source safely"
+      - "diagnose custom-free partial move by pointing to the free declaration and explaining the complete-self invariant"
+      - "diagnose conditional cleanup requiring forbidden runtime bookkeeping and suggest static restructuring or explicit discard convergence"
+      - "treat second discard of already unavailable Place as legal; optionally surface only the configured redundancy advisory"
+      - "surface destruction classification, custom free, cleanup owner, pending deferred use, partial/conditional state, allocator/release authority, and expected terminal action in hover/analysis where useful"
+      - "add navigation from destruction/use-after-move diagnostics to move/discard/return/transfer origin"
+      - "preserve source-level discard/defer/free/move syntax in formatter and never insert/remove semantic cleanup operations purely as formatting"
+      - "update stale rulebook paths from destruction.txt to destruction.md opportunistically without creating fake normative corrections"
+      - "support compiler source comments/traceability references to stable destruction § clauses"
+    required_tests:
+      - "use-after-destruction/move diagnostic links to earlier terminal ownership action"
+      - "custom-free partial-move diagnostic identifies free and suggests moving whole value or redesigning ownership"
+      - "conditional-destruction policy diagnostic explains differing paths and suggests discard convergence when valid"
+      - "already unavailable discard remains valid under every advisory severity policy"
+      - "LSP hover can show non-trivial destruction and cleanup owner without implying null/Option semantics"
+      - "formatter round-trips free, defer, discard, and ownership move syntax without semantic change"
 
   - id: frontend.lexical-structure
     area: frontend-and-tooling
@@ -5084,7 +5692,7 @@ integrations:
       - rules/analysis/escape_analysis.md
       - rules/analysis/closure_analysis.md
       - rules/memory/ownership.md
-      - rules/memory/borrowing.txt
+      - rules/memory/borrowing.md
       - rules/memory/copy_move.md
       - rules/collections/collections.md
       - rules/analysis/effect_analysis.md
@@ -5516,9 +6124,9 @@ integrations:
       - rules/analysis/escape_analysis.md
       - rules/analysis/closure_analysis.md
       - rules/memory/ownership.md
-      - rules/memory/borrowing.txt
+      - rules/memory/borrowing.md
       - rules/memory/copy_move.md
-      - rules/memory/destruction.txt
+      - rules/memory/destruction.md
       - rules/control-flow/defer.md
       - rules/collections/collections.md
       - rules/analysis/effect_analysis.md
@@ -5887,7 +6495,7 @@ integrations:
     - rules/memory/arena.md
     - rules/memory/copy_move.md
     - rules/memory/ownership.md
-    - rules/memory/destruction.txt
+    - rules/memory/destruction.md
     - rules/memory/reference_model.md
     code:
     - internal/sema/types.go
@@ -5946,7 +6554,7 @@ integrations:
       integration remains partial.
     rules:
     - rules/memory/arena.md
-    - rules/memory/borrowing.txt
+    - rules/memory/borrowing.md
     - rules/memory/lifetime_analysis.txt
     - rules/memory/reference_model.md
     code:
@@ -6133,7 +6741,7 @@ integrations:
     - rules/collections/collections.md
     - rules/memory/copy_move.md
     - rules/memory/ownership.md
-    - rules/memory/destruction.txt
+    - rules/memory/destruction.md
     - rules/compiler/semantic_ir.txt
     code:
     - internal/sema/types.go
@@ -6368,7 +6976,7 @@ integrations:
     rules:
     - rules/control-flow/defer.md
     - rules/memory/ownership.md
-    - rules/memory/borrowing.txt
+    - rules/memory/borrowing.md
     - rules/memory/lifetime_analysis.txt
     - rules/compiler/semantic_ir.txt
     code:
@@ -6438,7 +7046,7 @@ integrations:
     - rules/control-flow/discard.md
     - rules/memory/ownership.md
     - rules/memory/copy_move.md
-    - rules/memory/destruction.txt
+    - rules/memory/destruction.md
     - rules/declarations/struct.md
     - rules/declarations/unions.md
     - rules/compiler/semantic_ir.txt
@@ -6900,7 +7508,7 @@ integrations:
     - rules/control-flow/flowcontrol_while.md
     - rules/foundations/operators.md
     - rules/memory/ownership.md
-    - rules/memory/borrowing.txt
+    - rules/memory/borrowing.md
     - rules/compiler/semantic_ir.txt
     code:
     - internal/sema/analyzer.go
@@ -7860,7 +8468,7 @@ integrations:
     - rules/control-flow/flowcontrol_if.md
     - rules/declarations/enums.md
     - rules/memory/ownership.md
-    - rules/memory/borrowing.txt
+    - rules/memory/borrowing.md
     - rules/compiler/semantic_ir.txt
     code:
     - internal/sema/analyzer.go

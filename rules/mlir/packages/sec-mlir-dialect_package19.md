@@ -67,8 +67,8 @@ rules/library/core-library.md
 rules/analysis/effect_analysis.md
 rules/analysis/call_graph.md
 rules/memory/ownership.md
-rules/memory/borrowing.txt
-rules/memory/destruction.txt
+rules/memory/borrowing.md
+rules/memory/destruction.md
 rules/errors/panic.md
     ↓
 local P13-P18 normative amendments

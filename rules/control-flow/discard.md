@@ -1113,9 +1113,9 @@ rules/types/types.md
 rules/declarations/functions.md
 rules/memory/ownership.md
 rules/memory/copy_move.md
-rules/memory/borrowing.txt
+rules/memory/borrowing.md
 rules/memory/references.txt
-rules/memory/destruction.txt
+rules/memory/destruction.md
 rules/errors/errorhandling.md
 rules/compiler/semantic_ir.txt
 rules/tooling/diagnostics.txt

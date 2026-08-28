@@ -870,6 +870,10 @@ type Parameter struct {
 	Ref        bool
 	MutableRef bool
 	Consuming  bool
+	// Variadic marks the final native Sec `name: ...T` parameter from
+	// rules/declarations/functions.md sections 28 and 41. The element type
+	// remains Type; `...` is parameter shape, not a standalone type spelling.
+	Variadic bool
 }
 
 func (p *Parameter) TokenLiteral() string {

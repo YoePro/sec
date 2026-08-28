@@ -79,7 +79,11 @@ func compilerKnownValueMembers(typ Type) []CompilerKnownMember {
 	if compilerKnownValueSizeReceiver(typ) {
 		members = append(members, CompilerKnownMember{ID: "CKM-SIZEOF-VALUE", Name: "SizeOf", Kind: CompilerKnownProperty, Result: uintType})
 	}
-	if compilerKnownSequenceType(typ) {
+	if dereferenceType(typ).Kind == VariadicPackType {
+		// rules/declarations/functions.md section 30 exposes Len on a native
+		// pack without implying array/slice methods, contiguity, or a pointer.
+		members = append(members, CompilerKnownMember{ID: "CKM-LEN-VARIADIC-PACK", Name: "Len", LegacyNames: []string{"len"}, Kind: CompilerKnownProperty, Result: uintType})
+	} else if compilerKnownSequenceType(typ) {
 		members = append(members, CompilerKnownMember{ID: compilerKnownLenID(typ), Name: "Len", LegacyNames: []string{"len"}, Kind: CompilerKnownProperty, Result: uintType})
 		if dereferenceType(typ).Kind != StringType {
 			members = append(members, CompilerKnownMember{ID: compilerKnownIsEmptyID(typ), Name: "IsEmpty", Kind: CompilerKnownProperty, Result: boolType})
@@ -259,7 +263,7 @@ func compilerKnownMutableSlice(typ Type) bool {
 
 func compilerKnownSizedType(typ Type) bool {
 	switch typ.Kind {
-	case InvalidType, VoidType, NeverType, GenericType, InterfaceType:
+	case InvalidType, VoidType, NeverType, GenericType, InterfaceType, VariadicPackType:
 		return false
 	default:
 		return true

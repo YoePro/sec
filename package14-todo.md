@@ -153,22 +153,22 @@ no huge allocation.
 
 ## C. Add compact compiler-owned literal and default plans
 
-- [ ] P14-18 — Define immutable `ResolvedArrayLiteralEntryKind`, transfer-action,
+- [x] P14-18 — Define immutable `ResolvedArrayLiteralEntryKind`, transfer-action,
   entry, and plan facts. Each source element/spread is one entry with exact
   length; the plan owns no duplicate AST nodes.
-- [ ] P14-19 — Add read-only
+- [x] P14-19 — Add read-only
   `ResolvedArrayLiteralPlanOf(*ast.ArrayLiteral)` returning defensive copies and
   never re-inferring, mutating Sema, or allocating O(expanded length) records.
-- [ ] P14-20 — Refactor current `arrayLiteralSegments` analysis into the
+- [x] P14-20 — Refactor current `arrayLiteralSegments` analysis into the
   authoritative plan while preserving left-to-right source order, target-shaped
   literals, exact inference, and the target-required empty literal rule.
-- [ ] P14-21 — Preserve every fixed-array spread as one source entry; evaluate
+- [x] P14-21 — Preserve every fixed-array spread as one source entry; evaluate
   its expression once, allow multiple spreads, add exact lengths with `big.Int`,
   and reject runtime-length sources or mismatched element types.
 - [ ] P14-22 — Record `construct-direct`, `copy-trivial`, and the later action
   vocabulary from compiler-owned copy facts. Accept only the P14 trivial subset
   in the new IR and reject semantic-copy/move/borrow actions explicitly.
-- [ ] P14-23 — Prove a literal containing a spread of conceptual length above
+- [x] P14-23 — Prove a literal containing a spread of conceptual length above
   `int64` remains O(number of source entries) in Sema and diagnostics.
 - [x] P14-24 — Replace expanded fixed-array `DefaultResolution.Elements` as new
   IR authority with one compact exact-length default fact. Preserve old expanded
@@ -180,6 +180,22 @@ no huge allocation.
   ordinary/target/inferred/empty literals, multiple spreads, read-only query,
   compact large lengths, nested defaults, non-defaultable elements, and no
   `undef`/poison substitute.
+
+Completed 2026-08-28: P14-18 adds the compiler-owned compact literal-plan data
+model, including the full transfer-action vocabulary and defensive copying of
+every exact `big.Int` length and entry slice as the fact enters Sema ownership.
+The facts are keyed by the original `*ast.ArrayLiteral`, but plan entries store
+semantic decisions only, never duplicate AST nodes. P14-19 now exposes the
+public read-only query with defensive slice and exact-length copies, nil/unknown
+handling, no inference or analyzer mutation, and compact huge-length coverage.
+P14-20 now makes the compact plan authoritative during ordinary literal
+analysis. Inferred, target-shaped, spread-containing, and target-required empty
+literals publish exact source-order plans; fixed-array result typing and current
+diagnostics consume the same plan rather than a parallel segment model.
+P14-21 and P14-23 preserve multiple spreads as distinct, source-indexed entries,
+reject runtime-length and element-mismatched sources, and prove that a spread
+longer than host `int64` still produces only one plan entry plus its neighboring
+source elements. No test allocates or expands the conceptual array.
 
 ## D. Implement fixed arrays in Semantic IR
 

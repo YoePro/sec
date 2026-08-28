@@ -55,7 +55,7 @@ rules/declarations/spread.md
 rules/memory/layout.md
 rules/memory/copy_move.md
 rules/memory/ownership.md
-rules/memory/destruction.txt
+rules/memory/destruction.md
 rules/declarations/properties.md
     ↓
 rules/compiler/semantic_ir.txt

@@ -268,6 +268,52 @@ type ResolvedUnionConstruction struct {
 	SourceFieldOrder []string
 }
 
+// ResolvedArrayLiteralEntryKind identifies one source entry in the compact
+// fixed-array construction plan required by SEC-MLIR Package 14 sections 14-15.
+// A spread remains one entry regardless of its conceptual element count.
+type ResolvedArrayLiteralEntryKind string
+
+const (
+	ArrayLiteralElement ResolvedArrayLiteralEntryKind = "element"
+	ArrayLiteralSpread  ResolvedArrayLiteralEntryKind = "spread"
+)
+
+// ResolvedArrayTransferAction records the ownership decision already made by
+// Sema. SEC-MLIR Package 14 sections 14 and 21 require later IR consumers to
+// consume this fact rather than reconstruct transfer behavior from syntax.
+type ResolvedArrayTransferAction string
+
+const (
+	ArrayTransferConstructDirect ResolvedArrayTransferAction = "construct-direct"
+	ArrayTransferCopyTrivial     ResolvedArrayTransferAction = "copy-trivial"
+	ArrayTransferMove            ResolvedArrayTransferAction = "move"
+	ArrayTransferCopySemantic    ResolvedArrayTransferAction = "copy-semantic"
+	ArrayTransferBorrowShared    ResolvedArrayTransferAction = "borrow-shared"
+	ArrayTransferBorrowMutable   ResolvedArrayTransferAction = "borrow-mutable"
+)
+
+// ResolvedArrayLiteralEntry is one source-ordered fixed-array literal entry.
+// Per SEC-MLIR Package 14 sections 15 and 20-23, it deliberately stores no
+// AST expression: source syntax remains in the keyed ast.ArrayLiteral, while
+// this fact retains only the semantic decision and exact contribution length.
+type ResolvedArrayLiteralEntry struct {
+	SourceIndex int
+	Kind        ResolvedArrayLiteralEntryKind
+	Type        Type
+	Length      *big.Int
+	Action      ResolvedArrayTransferAction
+}
+
+// ResolvedArrayLiteralPlan is the compiler-owned compact fixed-array literal
+// plan from SEC-MLIR Package 14 sections 14-16. Length and entry lengths are
+// arbitrary-precision facts; the plan has one entry per source element/spread,
+// never one entry per expanded array element.
+type ResolvedArrayLiteralPlan struct {
+	ElementType Type
+	Length      *big.Int
+	Entries     []ResolvedArrayLiteralEntry
+}
+
 // ResolvedStructEntryKind and the adjacent struct plan types implement the
 // read-only facts from rules/mlir/semantic-ir/sec_semantic_ir_struct_v1.md
 // sections 7-15.
@@ -530,6 +576,51 @@ func (a *Analyzer) ResolvedStructLiteralPlanOf(expr *ast.StructLiteral) (Resolve
 	plan.Entries = append([]ResolvedStructEntry(nil), plan.Entries...)
 	plan.FinalFields = append([]ResolvedStructFinalField(nil), plan.FinalFields...)
 	return plan, true
+}
+
+// ResolvedArrayLiteralPlanOf returns the immutable compact construction fact
+// recorded during Sema. SEC-MLIR Package 14 section 17 requires this query to
+// perform no inference or expansion and to expose no mutable plan storage.
+func (a *Analyzer) ResolvedArrayLiteralPlanOf(expr *ast.ArrayLiteral) (ResolvedArrayLiteralPlan, bool) {
+	if a == nil || expr == nil {
+		return ResolvedArrayLiteralPlan{}, false
+	}
+	plan, ok := a.resolvedArrayLiteralPlans[expr]
+	if !ok {
+		return ResolvedArrayLiteralPlan{}, false
+	}
+	return cloneResolvedArrayLiteralPlan(plan), true
+}
+
+// recordResolvedArrayLiteralPlan retains an immutable Sema-owned copy of a
+// Package 14 sections 14-16 literal-plan fact. Literal analysis will populate
+// this map in the P14-20 migration; cloning here already prevents a caller's
+// temporary big.Int values or entry slice from becoming mutable analyzer state.
+func (a *Analyzer) recordResolvedArrayLiteralPlan(expr *ast.ArrayLiteral, plan ResolvedArrayLiteralPlan) {
+	if a == nil || expr == nil {
+		return
+	}
+	if a.resolvedArrayLiteralPlans == nil {
+		a.resolvedArrayLiteralPlans = map[*ast.ArrayLiteral]ResolvedArrayLiteralPlan{}
+	}
+	a.resolvedArrayLiteralPlans[expr] = cloneResolvedArrayLiteralPlan(plan)
+}
+
+// cloneResolvedArrayLiteralPlan preserves the exact-length immutability
+// boundary required by SEC-MLIR Package 14 sections 15-17. Type values are
+// already resolved immutable Sema facts; mutable big.Int and slice storage is
+// copied at the plan boundary.
+func cloneResolvedArrayLiteralPlan(plan ResolvedArrayLiteralPlan) ResolvedArrayLiteralPlan {
+	if plan.Length != nil {
+		plan.Length = new(big.Int).Set(plan.Length)
+	}
+	plan.Entries = append([]ResolvedArrayLiteralEntry(nil), plan.Entries...)
+	for index := range plan.Entries {
+		if plan.Entries[index].Length != nil {
+			plan.Entries[index].Length = new(big.Int).Set(plan.Entries[index].Length)
+		}
+	}
+	return plan
 }
 
 // ResolvedStructMemberOf distinguishes stored fields from properties using

@@ -7578,6 +7578,74 @@ fn Next(found: Option[int]) Option[int] {
 	}
 }
 
+func TestMatchExpressionResolvesUnqualifiedEnumCases(t *testing.T) {
+	input := `
+module main
+
+enum HttpKnownMethod {
+	GET,
+	POST,
+}
+
+impl HttpKnownMethod {
+	property Name: string {
+		get {
+			return match self {
+				GET => "GET"
+				POST => "POST"
+			}
+		}
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestMatchAnalysisRejectsNilRecoveredArmWithoutPanic(t *testing.T) {
+	program := &ast.Program{Statements: []ast.Statement{
+		&ast.ModuleStatement{
+			Token: lexer.Token{Type: lexer.MODULE, Line: 1, Column: 1, Lexeme: "module"},
+			Path:  "main",
+		},
+		&ast.EnumDeclaration{
+			Token: lexer.Token{Line: 4, Column: 1, Lexeme: "enum"},
+			Name:  &ast.Identifier{Token: lexer.Token{Line: 4, Column: 6, Lexeme: "Status"}, Value: "Status"},
+			Values: []*ast.EnumValue{
+				{Name: &ast.Identifier{Token: lexer.Token{Line: 5, Column: 2, Lexeme: "Ready"}, Value: "Ready"}},
+			},
+		},
+		&ast.FunctionDeclaration{
+			Token:      lexer.Token{Line: 8, Column: 1, Lexeme: "fn"},
+			Name:       &ast.Identifier{Token: lexer.Token{Line: 8, Column: 4, Lexeme: "Test"}, Value: "Test"},
+			ReturnType: &ast.TypeReference{Token: lexer.Token{Line: 8, Column: 25, Lexeme: "string"}, Name: "string"},
+			Parameters: []*ast.Parameter{
+				{Name: &ast.Identifier{Token: lexer.Token{Line: 8, Column: 9, Lexeme: "status"}, Value: "status"}, Type: &ast.TypeReference{Token: lexer.Token{Line: 8, Column: 17, Lexeme: "Status"}, Name: "Status"}},
+			},
+			Body: &ast.BlockStatement{Statements: []ast.Statement{
+				&ast.ReturnStatement{
+					Token: lexer.Token{Line: 9, Column: 2, Lexeme: "return"},
+					Value: &ast.MatchExpression{
+						Token:   lexer.Token{Line: 9, Column: 9, Lexeme: "match"},
+						Subject: &ast.Identifier{Token: lexer.Token{Line: 9, Column: 15, Lexeme: "status"}, Value: "status"},
+						Arms: []*ast.MatchArm{
+							nil,
+							{Token: lexer.Token{Line: 10, Column: 3, Lexeme: "Ready"}},
+						},
+					},
+				},
+			}},
+		},
+	}}
+
+	errors := NewAnalyzer().Analyze(program)
+	assertSemaErrors(t, errors, []string{
+		"invalid match arm at 9:9",
+		"match expression must produce a value at 9:9",
+	})
+}
+
 func TestMatchStatementAssignmentsMergeAcrossExhaustiveArms(t *testing.T) {
 	input := `
 module main

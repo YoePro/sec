@@ -2,8 +2,8 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-26
-- **Last updated:** 2026-08-26
-- **Document revision:** 1
+- **Last updated:** 2026-08-28
+- **Document revision:** 2
 - **Sec language version:** 0.1
 - **Repository baseline reviewed:** `fc8d632`
 - **Canonical path:** `rules/platform/volatile.md`
@@ -33,7 +33,7 @@ This rulebook does not define:
 - logical register-field transaction semantics;
 - destructive-read field grouping;
 - physical register read groups or selective field observation;
-- clear-on-read, FIFO-advancing, latch-on-read, or similar register-specific
+- read-clear, FIFO-advancing, latch-on-read, or similar register-specific
   transaction models beyond requiring their stronger effects to be preserved;
 - interrupt semantics;
 - DMA ownership protocols;
@@ -41,8 +41,9 @@ This rulebook does not define:
 - atomic memory ordering;
 - a target/device knowledge-pack format.
 
-Those concerns remain owned by their canonical rulebooks or future dedicated
-rules.
+Logical hardware-register observation, transaction footprints, destructive-read
+grouping, aliases, shadow state, and register-operation planning are owned
+canonically by `rules/platform/hardware-register-access.md`.
 
 ---
 
@@ -731,7 +732,7 @@ read/write.
 Examples include:
 
 ```text
-clear-on-read
+read-clear
 write-one-clear
 write-zero-clear
 FIFO-advancing read
@@ -764,7 +765,7 @@ If an ordinary read-modify-write would incorrectly interact with:
 read-only fields
 write-only fields
 reserved fields
-clear-on-read fields
+read-clear fields
 write-one-clear fields
 other device side effects
 ```
@@ -774,7 +775,8 @@ one exists.
 
 Otherwise the operation is rejected.
 
-Detailed register-field transaction legality belongs to the register rules.
+Detailed hardware-register transaction legality belongs to
+`rules/platform/hardware-register-access.md`.
 
 ---
 
@@ -1234,7 +1236,7 @@ Test:
 Test:
 
 - stronger side-effecting read/write survives lowering;
-- volatile lowering does not weaken clear-on-read/FIFO/etc. operations;
+- volatile lowering does not weaken read-clear/FIFO/etc. operations;
 - unsafe read-modify-write is rejected when the known storage contract forbids
   the required sequence;
 - canonical target operation is used when one exists.

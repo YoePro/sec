@@ -92,7 +92,7 @@ rules/declarations/enums.md
 rules/declarations/unions.md
 rules/errors/errorhandling.md
 rules/memory/copy_move.md
-rules/memory/borrowing.txt
+rules/memory/borrowing.md
 rules/memory/ownership.md
     ↓
 rules/compiler/semantic_ir.txt

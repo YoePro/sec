@@ -2,9 +2,9 @@
 
 **Status:** Normative  
 **Created:** 2026-08-13  
-**Last updated:** 2026-08-27
+**Last updated:** 2026-08-28
 **Replaces:** `rules/platform/registers.txt`  
-**Document revision:** 1  
+**Document revision:** 2
 **Sec language version:** 0.1
 
 ## 1. Purpose
@@ -20,8 +20,24 @@ The abstract fixed-address storage contract is defined by
 
 ## 2. Addressed bindings
 
-The current Sec 0.1 source form binds an explicitly typed register value to a
-compile-time-known address:
+The Sec 0.1 source form binds an explicitly typed register value to exactly one
+statically resolvable address or endpoint expression. A named canonical
+endpoint is preferred:
+
+```sec
+@address(Platform.GPIOA)
+let mut gpio: GpioRegisters
+```
+
+Project-defined canonical endpoints are valid as well:
+
+```sec
+@address(Project.FpgaControl)
+let mut control: FpgaControlRegisters
+```
+
+A numeric form remains available for the target's canonical linear hardware
+address domain:
 
 ```sec
 @address(0x40021000)
@@ -89,7 +105,7 @@ Required volatile semantics include:
 - required writes are not removed merely because their results are unused;
 - accesses are not merged, duplicated, speculated, or reordered when that
   changes observable platform behavior;
-- a read with additional semantics such as `clear-on-read` remains effectful
+- a read with additional semantics such as `read-clear` remains effectful
   and receives the stronger ordering required by that semantic.
 
 Sec does not require a separate source-level `volatile` keyword for an
@@ -114,35 +130,19 @@ let mut control: DeviceControl
 
 `mut` grants Sec write authority when the type and field semantics permit it.
 It does not override `read-only`, `write-only`, `write-one-clear`,
-`write-zero-clear`, or `clear-on-read` register field semantics.
+`write-zero-clear`, or `read-clear` register field semantics.
 
 ## 6. Addressed field operations
 
 Register field meaning is defined by `rules/declarations/registers.md`. This
-rulebook owns the storage-access consequences when those operations target an
-addressed binding.
+rulebook owns fixed binding, region validation, binding mutability,
+initialization restrictions, and the volatility consequence of `@address`.
 
-For an ordinary `read-write` field, a volatile read-modify-write is permitted
-only when it is semantically safe for the complete physical register access.
-The compiler must account for:
-
-```text
-reserved bits
-read-only fields
-write-only fields
-write-one-clear fields
-write-zero-clear fields
-clear-on-read fields
-nested register fields containing special semantics
-target-specific write masks and access restrictions
-```
-
-If ordinary read-modify-write would produce an unintended read or write side
-effect, the compiler must use a semantics-preserving target operation. If none
-is available, compilation must fail rather than emit an unsafe sequence.
-
-The programmer is not required to reproduce masks and shifts for a correctly
-declared register field.
+`rules/platform/hardware-register-access.md` exclusively owns hardware-register
+transaction planning, including implicit observation safety, projections,
+footprints, aliases, special field effects, shadow state, access widths,
+ordering, completion, and selection of a semantics-preserving physical plan.
+If no legal plan exists, compilation fails.
 
 ## 7. Bit allocation and byte order
 
@@ -159,11 +159,18 @@ declaration, the applicable target/native contract controls the representation.
 
 No platform rule may reinterpret field allocation order as byte endianness.
 
-## 8. Address validation
+## 8. Address and endpoint validation
 
-The current `@address` form requires a compile-time-known integer address. The
-numeric value is not by itself sufficient. Every binding must resolve against
-an applicable canonical address-region or storage contract supplied by the
+The `@address` form accepts exactly one statically resolvable expression. A
+named endpoint is a compiler-known descriptor rather than an integer constant;
+it retains canonical facts including address domain/space, location, extent,
+access contract, aliases, resource identity, ordering requirements, and
+access-context requirements.
+
+A numeric expression is valid only in the selected target's canonical linear
+hardware address domain. Its numeric value is not by itself sufficient. Every
+named or numeric binding must resolve against an applicable canonical endpoint,
+address-region, or storage contract supplied by the
 active `CompilationPlan`, `MemoryEnvironment`, `DeviceModel`, or equivalent
 target-owned source. The complete bound extent must satisfy every applicable
 requirement, including:
@@ -179,15 +186,15 @@ read and write permission
 forbidden or unavailable address ranges
 ```
 
-A target may define a linear integer address domain or another compiler-known
-target address domain. `@address` does not grant permission to bypass known
-target restrictions.
+`@address` does not grant permission to bypass known target restrictions.
 
 If no applicable region covers the complete binding, the declaration is
 invalid. `unsafe` does not waive region, extent, permission, alignment,
-representation, width, storage, or address-space validation. Dynamic or
-otherwise unverifiable address access uses an applicable explicit `RawPtr` or
-checked low-level mechanism rather than an unverified `@address` declaration.
+representation, width, storage, or address-space validation. Runtime-discovered
+addresses are not valid `@address` arguments. Runtime hardware access uses the
+checked mapping/resource model defined by
+`rules/platform/hardware-register-access.md`, or explicit `RawPtr`/unsafe
+operations where that separate low-level contract applies.
 This applies to Hosted, RTOS, and BareMetal targets. A Hosted target may permit
 explicitly modeled mapped device regions, but not arbitrary process virtual
 addresses merely because their spelling is constant.
@@ -257,13 +264,13 @@ struct layout.
 
 The compiler must diagnose at least:
 
-- an invalid `@address` argument form;
-- a non-constant address where the current syntax requires a constant;
+- an invalid `@address` argument count or expression form;
+- an expression that cannot resolve statically to a canonical endpoint or permitted numeric address;
 - a target-invalid or misaligned address;
 - an incompatible extent, layout, access width, or memory space;
 - a write through a non-`mut` addressed binding;
 - a read or write forbidden by register field semantics;
-- field lowering that would violate W1C, W0C, clear-on-read, or nested special
+- field lowering that would violate specialized read/write, shadow, or nested
   semantics;
 - statically known incompatible overlapping bindings;
 - an initializer on an addressed binding;
@@ -285,7 +292,7 @@ initializer rejection
 target address and alignment failures
 incompatible overlap
 ordinary and restricted addressed field operations
-W1C, W0C, and clear-on-read lowering constraints
+specialized read/write and shadow lowering constraints
 nested register special semantics
 explicit register byte order at the addressed boundary
 impl access through addressed and ordinary receivers

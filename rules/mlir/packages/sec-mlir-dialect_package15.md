@@ -52,7 +52,7 @@ Implementation follows:
 ```text
 rules/memory/reference_model.md
 rules/memory/references.txt
-rules/memory/borrowing.txt
+rules/memory/borrowing.md
 rules/memory/memory_model.md
 rules/memory/lifetime_analysis.txt
 rules/memory/storage.md

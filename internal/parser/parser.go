@@ -1805,7 +1805,7 @@ func (p *Parser) parseInterfaceDeclaration() ast.Statement {
 		}
 		switch p.curToken.Type {
 		case lexer.FN:
-			fn := p.parseFunctionSignature()
+			fn := p.parseFunctionSignature(true)
 			if fn == nil {
 				return nil
 			}
@@ -1814,7 +1814,7 @@ func (p *Parser) parseInterfaceDeclaration() ast.Statement {
 			if !p.expectPeek(lexer.FN) {
 				return nil
 			}
-			fn := p.parseFunctionSignature()
+			fn := p.parseFunctionSignature(true)
 			if fn == nil {
 				return nil
 			}
@@ -1824,7 +1824,7 @@ func (p *Parser) parseInterfaceDeclaration() ast.Statement {
 			if !p.expectPeek(lexer.FN) {
 				return nil
 			}
-			fn := p.parseFunctionSignature()
+			fn := p.parseFunctionSignature(true)
 			if fn == nil {
 				return nil
 			}
@@ -1835,7 +1835,7 @@ func (p *Parser) parseInterfaceDeclaration() ast.Statement {
 			// section 10. Interfaces preserve the static/instance category.
 			if p.peekToken.Type == lexer.FN {
 				p.nextToken()
-				fn := p.parseFunctionSignature()
+				fn := p.parseFunctionSignature(true)
 				if fn == nil {
 					return nil
 				}
@@ -2189,7 +2189,7 @@ func (p *Parser) parseFunctionDeclaration() *ast.FunctionDeclaration {
 		return nil
 	}
 
-	fn.Parameters = p.parseParameters()
+	fn.Parameters = p.parseParameters(true)
 	if fn.Parameters == nil {
 		return nil
 	}
@@ -2218,7 +2218,7 @@ func (p *Parser) parseExternFunctionDeclaration() *ast.FunctionDeclaration {
 		return nil
 	}
 
-	fn := p.parseFunctionSignature()
+	fn := p.parseFunctionSignature(abi == "Sec")
 	if fn == nil {
 		return nil
 	}
@@ -2235,7 +2235,7 @@ func (p *Parser) parseExternFunctionDeclaration() *ast.FunctionDeclaration {
 	return fn
 }
 
-func (p *Parser) parseFunctionSignature() *ast.FunctionDeclaration {
+func (p *Parser) parseFunctionSignature(allowVariadic bool) *ast.FunctionDeclaration {
 	fn := &ast.FunctionDeclaration{Token: p.curToken}
 
 	if !p.expectPeek(lexer.IDENT) {
@@ -2255,7 +2255,7 @@ func (p *Parser) parseFunctionSignature() *ast.FunctionDeclaration {
 		return nil
 	}
 
-	fn.Parameters = p.parseParameters()
+	fn.Parameters = p.parseParameters(allowVariadic)
 	if fn.Parameters == nil {
 		return nil
 	}
@@ -2367,7 +2367,11 @@ func (p *Parser) parseUnsafeFunctionDeclaration() *ast.FunctionDeclaration {
 	return fn
 }
 
-func (p *Parser) parseParameters() []*ast.Parameter {
+// parseParameters parses a parameter list. Native variadic parameters belong
+// only to ordinary Sec function/method declarations under
+// rules/declarations/functions.md sections 28, 36, and 41; initializers and
+// lambdas intentionally pass false until their own rulebooks permit them.
+func (p *Parser) parseParameters(allowVariadic bool) []*ast.Parameter {
 	parameters := []*ast.Parameter{}
 
 	if p.peekToken.Type == lexer.RPAREN {
@@ -2433,15 +2437,48 @@ func (p *Parser) parseParameters() []*ast.Parameter {
 			return nil
 		}
 
+		variadic := false
+		if p.peekToken.Type == lexer.SPREAD {
+			if !allowVariadic {
+				p.addError("native variadic parameters are not supported in this declaration at %d:%d", p.peekToken.Line, p.peekToken.Column)
+				return nil
+			}
+			if consuming {
+				p.addError("consuming variadic parameters are not supported at %d:%d", p.peekToken.Line, p.peekToken.Column)
+				return nil
+			}
+			if ref || mutableRef {
+				p.addError("variadic parameter cannot use ref type at %d:%d", p.peekToken.Line, p.peekToken.Column)
+				return nil
+			}
+			p.nextToken()
+			variadic = true
+		}
 		if !p.expectPeekTypeStart() {
 			return nil
 		}
 		parameter.Type = p.parseTypeReference()
+		parameter.Variadic = variadic
 		if ref {
 			parameter.Type.Ref = true
 			parameter.Type.MutableRef = mutableRef
 		}
 		parameters = append(parameters, parameter)
+		if variadic {
+			switch p.peekToken.Type {
+			case lexer.RPAREN:
+				p.nextToken()
+				return parameters
+			case lexer.COMMA:
+				p.nextToken()
+				if p.peekToken.Type == lexer.RPAREN {
+					p.nextToken()
+					return parameters
+				}
+			}
+			p.addError("variadic parameter must be last at %d:%d", parameter.Token.Line, parameter.Token.Column)
+			return nil
+		}
 
 		switch p.peekToken.Type {
 		case lexer.COMMA:
@@ -3307,7 +3344,7 @@ func (p *Parser) parseInitDeclaration() *ast.InitDeclaration {
 	initializer := &ast.InitDeclaration{Token: p.curToken}
 	// curToken is contextual identifier `init`, peekToken is `(`.
 	p.nextToken()
-	initializer.Parameters = p.parseParameters()
+	initializer.Parameters = p.parseParameters(false)
 	if initializer.Parameters == nil {
 		return nil
 	}

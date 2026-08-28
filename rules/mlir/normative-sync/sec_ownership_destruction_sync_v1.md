@@ -7,7 +7,7 @@ Normative synchronization for:
 ```text
 rules/memory/ownership.md
 rules/memory/copy_move.md
-rules/memory/destruction.txt
+rules/memory/destruction.md
 rules/control-flow/defer.md
 rules/control-flow/discard.md
 rules/compiler/semantic_ir.txt

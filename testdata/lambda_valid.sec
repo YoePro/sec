@@ -444,3 +444,14 @@ fn RunLambdaTests(value: int) Result[int, LambdaError] {
 
     return Err(LambdaError.InvalidValue)
 }
+
+fn Sum(numbers: ...int) int {
+    let add := fn(total: int, n: int) int { return total + n }
+
+    let mut total := 0
+    for number in numbers {
+        total = add(total, number)
+    }
+
+    return total
+}

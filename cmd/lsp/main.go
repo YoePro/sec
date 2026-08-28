@@ -1639,6 +1639,11 @@ func initializerParameterLabel(parameter sema.FunctionParameter) string {
 	if parameter.Consuming {
 		return fmt.Sprintf("-> %s: %s", parameter.Name, lspTypeName(parameter.Type))
 	}
+	if parameter.Variadic {
+		// rules/declarations/functions.md sections 28 and 37 require tooling
+		// to preserve the distinct native variadic callable shape.
+		return fmt.Sprintf("%s: ...%s", parameter.Name, lspTypeName(parameter.Type))
+	}
 	return fmt.Sprintf("%s: %s", parameter.Name, lspTypeName(parameter.Type))
 }
 

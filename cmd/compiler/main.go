@@ -3575,7 +3575,13 @@ func formatParameters(parameters []*ast.Parameter) string {
 		if param.Type != nil && param.Type.Name == "self" {
 			continue
 		}
-		out += ": " + formatTypeRef(param.Type)
+		out += ": "
+		if param.Variadic {
+			// rules/declarations/functions.md section 28: `...` is parameter
+			// shape and must remain visible in the compiler AST presentation.
+			out += "..."
+		}
+		out += formatTypeRef(param.Type)
 	}
 	return out
 }

@@ -59,8 +59,8 @@ rules/types/types.md
 rules/declarations/functions.md
 rules/memory/copy_move.md
 rules/memory/ownership.md
-rules/memory/borrowing.txt
-rules/memory/destruction.txt
+rules/memory/borrowing.md
+rules/memory/destruction.md
 rules/platform/ffi.md
 rules/analysis/call_graph.md
 rules/analysis/effect_analysis.md

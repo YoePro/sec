@@ -1085,26 +1085,24 @@ When fully verified, ordinary typed access does not require unsafe context.
 
 # Raw numeric addresses
 
-A raw numeric `@address` value is an explicit trusted target assertion.
-
-The compiler may still verify:
+A raw numeric `@address` value is valid only for the selected target's canonical
+linear hardware address domain. It is not an unchecked or merely trusted
+assertion. The compiler must validate the complete binding against canonical
+target, platform, device, or project facts, including:
 
 ```text
-pointer-width representability;
+address-domain applicability;
+canonical region coverage;
+complete bound extent;
 alignment;
-known overlap;
-known address-space restrictions;
-compatibility with selected target metadata.
+address space;
+access width and permissions;
+layout and representation compatibility;
+known overlap and alias policy.
 ```
 
-The programmer remains responsible for facts not proven by the selected target
-knowledge pack.
-
-The compiler records trust provenance such as:
-
-```text
-trusted raw target address
-```
+If those facts cannot be resolved, the `@address` declaration is rejected.
+Neither an unsafe context nor raw numeric spelling waives validation.
 
 ---
 
@@ -1134,8 +1132,14 @@ tracked by effect analysis.
 
 # Raw target access
 
+Runtime-discovered hardware addresses use the checked mapping/resource model in
+`rules/platform/hardware-register-access.md`, or explicit `RawPtr[T]` and unsafe
+operations under the applicable low-level contract.
+
 Converting an arbitrary integer address to `RawPtr[T]` and dereferencing it is
-unsafe.
+unsafe. Possessing the `RawPtr[T]` does not grant hardware privilege, mapping
+authority, security-domain authority, resource ownership, or canonical endpoint
+identity.
 
 Example:
 
@@ -2353,6 +2357,7 @@ destruction rulebook
 FFI rulebook
 inline assembly rulebook
 addressed-storage rulebook
+hardware-register-access rulebook
 register rulebook
 interrupt and ISR rulebook
 target knowledge rulebook
@@ -2544,7 +2549,8 @@ compiler-verified where possible.
 Raw numeric address:
 
 ```text
-trusted target assertion with retained provenance.
+compiler-validated canonical-linear target binding;
+reject when complete region/storage validation cannot be established.
 ```
 
 Do not require `unsafe @address`.
@@ -2689,7 +2695,7 @@ integration, or diagnostics are partial.
 | Inline assembly | Yes | Accept machine-level trust obligations |
 | Unchecked construction | Yes | Bypass ordinary invariant validation |
 | Named knowledge-pack `@address` | No | Compiler-validated target binding where possible |
-| Raw numeric `@address` | No extra syntax | Explicit trusted target assertion |
+| Raw numeric `@address` | No extra syntax | Compiler-validated binding in the target's canonical linear hardware address domain |
 | Typed access through accepted `@address` | No | Volatile typed target access |
 
 ---
@@ -2761,10 +2767,10 @@ Unsafe construction uses unsafe constructors or factory functions.
 
 `@address` is not prefixed with unsafe.
 
-Knowledge-pack addresses may be compiler-verified.
-
-Raw numeric addresses are explicit trusted target assertions with retained trust
-provenance.
+Named endpoint and raw numeric `@address` bindings are compiler-validated
+against canonical target/platform/device/project contracts. Numeric spelling is
+limited to the target's canonical linear hardware address domain and does not
+create a trust bypass.
 
 Ordinary typed access to accepted addressed storage does not require unsafe
 context.

@@ -1,0 +1,6 @@
+module http
+
+
+type HttpRequest struct {
+
+}

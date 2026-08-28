@@ -17,36 +17,40 @@ import (
 )
 
 type Analyzer struct {
-	analysisDepth               AnalysisDepth
-	analysisBudget              AnalysisBudget
-	targetUintWidthBits         uint16
-	legacyDefaultAST            bool
-	types                       map[string]Type
-	units                       map[string]UnitDefinition
-	functions                   map[string][]Function
-	externSymbols               map[string]Function
-	implBlocks                  map[string]lexer.Token
-	implBlockModules            map[string]string
-	validImplStatements         map[*ast.ImplStatement]bool
-	currentImplTarget           string
-	currentModule               string
-	genericTypes                map[string]Type
-	genericTypeInstances        map[genericInstanceKey]Type
-	genericFuncInstances        map[genericInstanceKey]Function
-	symbols                     map[string]Symbol
-	completionSymbols           map[string]Symbol
-	predeclaredStatic           map[sourceTokenKey]bool
-	expressionTypes             map[ast.Expression]Type
-	expectedExpressionTypes     map[ast.Expression]Type
-	bindingIDs                  map[sourceTokenKey]BindingID
-	bindingFacts                map[sourceTokenKey]ResolvedBinding
-	compilerKnownMemberFacts    map[sourceTokenKey]CompilerKnownMember
-	resolvedCalls               map[*ast.CallExpression]ResolvedCall
-	resolvedConstructions       map[*ast.NewExpression]ResolvedConstruction
-	resolvedOperators           map[ast.Expression]ResolvedOperator
-	resolvedTries               map[*ast.TryExpression]ResolvedTry
-	resolvedTryPlans            map[*ast.TryExpression]ResolvedTryPlan
-	resolvedMatchPlans          map[*ast.MatchExpression]ResolvedMatchPlan
+	analysisDepth            AnalysisDepth
+	analysisBudget           AnalysisBudget
+	targetUintWidthBits      uint16
+	legacyDefaultAST         bool
+	types                    map[string]Type
+	units                    map[string]UnitDefinition
+	functions                map[string][]Function
+	externSymbols            map[string]Function
+	implBlocks               map[string]lexer.Token
+	implBlockModules         map[string]string
+	validImplStatements      map[*ast.ImplStatement]bool
+	currentImplTarget        string
+	currentModule            string
+	genericTypes             map[string]Type
+	genericTypeInstances     map[genericInstanceKey]Type
+	genericFuncInstances     map[genericInstanceKey]Function
+	symbols                  map[string]Symbol
+	completionSymbols        map[string]Symbol
+	predeclaredStatic        map[sourceTokenKey]bool
+	expressionTypes          map[ast.Expression]Type
+	expectedExpressionTypes  map[ast.Expression]Type
+	bindingIDs               map[sourceTokenKey]BindingID
+	bindingFacts             map[sourceTokenKey]ResolvedBinding
+	compilerKnownMemberFacts map[sourceTokenKey]CompilerKnownMember
+	resolvedCalls            map[*ast.CallExpression]ResolvedCall
+	resolvedConstructions    map[*ast.NewExpression]ResolvedConstruction
+	resolvedOperators        map[ast.Expression]ResolvedOperator
+	resolvedTries            map[*ast.TryExpression]ResolvedTry
+	resolvedTryPlans         map[*ast.TryExpression]ResolvedTryPlan
+	resolvedMatchPlans       map[*ast.MatchExpression]ResolvedMatchPlan
+	// SEC-MLIR Package 14 sections 14-17: compact Sema-owned array literal
+	// facts keyed by source syntax. Consumers will use the read-only query
+	// introduced in P14-19 instead of rebuilding the literal from the AST.
+	resolvedArrayLiteralPlans   map[*ast.ArrayLiteral]ResolvedArrayLiteralPlan
 	resolvedStructLiteralPlans  map[*ast.StructLiteral]ResolvedStructLiteralPlan
 	resolvedStructMemberPlans   map[*ast.MemberExpression]ResolvedStructMemberPlan
 	nextBindingID               BindingID
@@ -242,6 +246,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.resolvedTries = map[*ast.TryExpression]ResolvedTry{}
 	a.resolvedTryPlans = map[*ast.TryExpression]ResolvedTryPlan{}
 	a.resolvedMatchPlans = map[*ast.MatchExpression]ResolvedMatchPlan{}
+	a.resolvedArrayLiteralPlans = map[*ast.ArrayLiteral]ResolvedArrayLiteralPlan{}
 	a.resolvedStructLiteralPlans = map[*ast.StructLiteral]ResolvedStructLiteralPlan{}
 	a.resolvedStructMemberPlans = map[*ast.MemberExpression]ResolvedStructMemberPlan{}
 	a.nextBindingID = 1
@@ -2634,7 +2639,9 @@ func (a *Analyzer) inferForIterableBindingTypes(stmt *ast.ForStatement) ([]Type,
 			runeType := a.types["rune"]
 			return a.inferSequentialForBindingTypes(stmt, runeType, indexType)
 		}
-		if (iterableType.Kind == ArrayType || iterableType.Kind == SliceType) && iterableType.Element != nil {
+		if (iterableType.Kind == ArrayType || iterableType.Kind == SliceType || iterableType.Kind == VariadicPackType) && iterableType.Element != nil {
+			// rules/declarations/functions.md section 30 permits read-only
+			// iteration over native variadic packs with their element type.
 			return a.inferSequentialForBindingTypes(stmt, *iterableType.Element, indexType)
 		}
 		if (iterableType.Name == "Vec" || iterableType.Name == "list") && len(iterableType.TypeArgs) == 1 {
@@ -4001,8 +4008,9 @@ func (a *Analyzer) registerFunctionDeclarationBody(fn *ast.FunctionDeclaration, 
 	}
 
 	seenParams := map[string]lexer.Token{}
+	seenVariadic := false
 	a.rejectExplicitImplSelfParameter(fn)
-	for _, param := range fn.Parameters {
+	for parameterIndex, param := range fn.Parameters {
 		if a.currentImplTarget != "" && param.Name != nil && param.Name.Value == "self" {
 			continue
 		}
@@ -4033,6 +4041,28 @@ func (a *Analyzer) registerFunctionDeclarationBody(fn *ast.FunctionDeclaration, 
 			}
 			continue
 		}
+		if param.Variadic {
+			// rules/declarations/functions.md sections 28 and 36: a native
+			// pack is final, unique, and always uses ordinary per-element
+			// transfer rather than `->` or a reference parameter mode.
+			if seenVariadic {
+				a.addErrorAtToken(param.Name.Token, "function may declare only one variadic parameter")
+				continue
+			}
+			seenVariadic = true
+			if parameterIndex != len(fn.Parameters)-1 {
+				a.addErrorAtToken(param.Name.Token, "variadic parameter must be last")
+				continue
+			}
+			if param.Consuming {
+				a.addErrorAtToken(param.Name.Token, "consuming variadic parameters are not supported")
+				continue
+			}
+			if param.Ref || param.MutableRef || paramType.Kind == ReferenceType {
+				a.addErrorAtToken(param.Name.Token, "variadic parameter cannot use ref type")
+				continue
+			}
+		}
 		a.warnLargeByValueParameter(param.Name.Value, paramType, param.Ref, param.MutableRef, param.Name.Token)
 		function.Parameters = append(function.Parameters, FunctionParameter{
 			Name:       param.Name.Value,
@@ -4041,6 +4071,7 @@ func (a *Analyzer) registerFunctionDeclarationBody(fn *ast.FunctionDeclaration, 
 			Ref:        param.Ref,
 			MutableRef: param.MutableRef,
 			Consuming:  param.Consuming,
+			Variadic:   param.Variadic,
 		})
 	}
 
@@ -4107,7 +4138,7 @@ func sameFunctionSignature(left Function, right Function) bool {
 		return false
 	}
 	for i := range left.Parameters {
-		if left.Parameters[i].Ref != right.Parameters[i].Ref || left.Parameters[i].MutableRef != right.Parameters[i].MutableRef {
+		if left.Parameters[i].Ref != right.Parameters[i].Ref || left.Parameters[i].MutableRef != right.Parameters[i].MutableRef || left.Parameters[i].Variadic != right.Parameters[i].Variadic {
 			return false
 		}
 		if !sameConcreteType(left.Parameters[i].Type, right.Parameters[i].Type) {
@@ -4123,11 +4154,89 @@ func functionParametersDifferOnlyByConsumingMode(left []FunctionParameter, right
 	}
 	different := false
 	for i := range left {
+		if left[i].Variadic != right[i].Variadic || !sameConcreteType(left[i].Type, right[i].Type) || left[i].Ref != right[i].Ref || left[i].MutableRef != right[i].MutableRef {
+			return false
+		}
 		if left[i].Consuming != right[i].Consuming {
 			different = true
 		}
 	}
 	return different
+}
+
+// functionVariadicParameter returns the final native parameter pack described
+// by rules/declarations/functions.md sections 28 and 35. Function.Parameters
+// stores its element type; the pack itself only exists in the callee body.
+func functionVariadicParameter(function Function) (FunctionParameter, bool) {
+	if len(function.Parameters) == 0 {
+		return FunctionParameter{}, false
+	}
+	parameter := function.Parameters[len(function.Parameters)-1]
+	return parameter, parameter.Variadic
+}
+
+// functionFixedParameterCount separates the required prefix from the final
+// native pack required by rules/declarations/functions.md section 28.
+func functionFixedParameterCount(function Function) int {
+	if _, ok := functionVariadicParameter(function); ok {
+		return len(function.Parameters) - 1
+	}
+	return len(function.Parameters)
+}
+
+// functionAcceptsArgumentCount admits zero or more trailing pack elements as
+// required by rules/declarations/functions.md section 28.
+func functionAcceptsArgumentCount(function Function, argumentCount int) bool {
+	if _, variadic := functionVariadicParameter(function); variadic {
+		return argumentCount >= functionFixedParameterCount(function)
+	}
+	return argumentCount == len(function.Parameters)
+}
+
+// functionAcceptsCallArguments additionally verifies that a runtime-length
+// spread begins only after every fixed parameter. A possibly empty source
+// cannot safely satisfy a required fixed parameter; rules/declarations/
+// functions.md section 35 reserves runtime arity for the trailing pack.
+func functionAcceptsCallArguments(function Function, argumentCount int, runtimeSpreadValues []bool) bool {
+	if len(runtimeSpreadValues) != argumentCount {
+		return false
+	}
+	for argumentIndex, runtimeSpread := range runtimeSpreadValues {
+		if runtimeSpread {
+			if _, variadic := functionVariadicParameter(function); !variadic || argumentIndex < functionFixedParameterCount(function) {
+				return false
+			}
+		}
+	}
+	return functionAcceptsArgumentCount(function, argumentCount)
+}
+
+// functionParameterForArgument maps every trailing source argument to the
+// variadic element parameter. rules/declarations/functions.md section 33
+// specifies ordinary by-value processing separately for each such element.
+func functionParameterForArgument(function Function, argumentIndex int) (FunctionParameter, bool) {
+	if argumentIndex < 0 {
+		return FunctionParameter{}, false
+	}
+	fixedCount := functionFixedParameterCount(function)
+	if argumentIndex < fixedCount {
+		return function.Parameters[argumentIndex], true
+	}
+	if parameter, variadic := functionVariadicParameter(function); variadic {
+		return parameter, true
+	}
+	return FunctionParameter{}, false
+}
+
+// anyFunctionIsVariadic decides whether source spread evaluation may use the
+// runtime-arity path defined by rules/declarations/functions.md section 35.
+func anyFunctionIsVariadic(functions []Function) bool {
+	for _, function := range functions {
+		if _, ok := functionVariadicParameter(function); ok {
+			return true
+		}
+	}
+	return false
 }
 
 func isSupportedExternABI(abi string) bool {
@@ -4499,8 +4608,15 @@ func (a *Analyzer) analyzeFunctionBodyInScope(fn *ast.FunctionDeclaration, name 
 		// An owned by-value parameter is the callee's mutable working binding.
 		// Reference parameters retain their referent authority in the type, but
 		// the reference binding itself is not implicitly rebindable.
+		bindingType := param.Type
 		mutableBinding := !param.Ref && !param.MutableRef && param.Type.Kind != ReferenceType
-		symbol := Symbol{Name: param.Name, Type: param.Type, Mutable: mutableBinding, Token: param.Token, Storage: StorageOriginInline, Local: true, ScopeDepth: 0}
+		if param.Variadic {
+			// rules/declarations/functions.md sections 29-31: the callee sees
+			// one ephemeral, structurally read-only pack, never a mutable array.
+			bindingType = NewVariadicPackType(param.Type)
+			mutableBinding = false
+		}
+		symbol := Symbol{Name: param.Name, Type: bindingType, Mutable: mutableBinding, Token: param.Token, Storage: StorageOriginInline, Local: true, ScopeDepth: 0}
 		a.symbols[param.Name] = symbol
 		completionSymbol := symbol
 		completionSymbol.Local = true
@@ -4508,7 +4624,7 @@ func (a *Analyzer) analyzeFunctionBodyInScope(fn *ast.FunctionDeclaration, name 
 		delete(a.constInts, param.Name)
 		a.assigned[param.Name] = true
 		a.recordDefinition(param.Token)
-		a.recordBinding(param.Token, BindingParameter, param.Name, param.Type, mutableBinding)
+		a.recordBinding(param.Token, BindingParameter, param.Name, bindingType, mutableBinding)
 		a.seedParameterReferenceOrigin(function, param)
 	}
 	// rules/declarations/static.md, receiver semantics; correction15.md keeps the
@@ -5470,6 +5586,18 @@ func (a *Analyzer) analyzeReturnStatement(functionName string, returnType Type, 
 
 	valueType, _ := a.inferExpressionWithExpected(stmt.Value, returnType)
 	if valueType.Kind == InvalidType {
+		return
+	}
+	if variadicPackValue(valueType) {
+		// rules/declarations/functions.md section 32: a pack may not escape
+		// the invocation through the function result.
+		a.addErrorAtToken(expressionToken(stmt.Value), "variadic parameter pack cannot escape this call")
+		return
+	}
+	if a.variadicPackElementExpression(stmt.Value) && requiresOwnershipTransfer(valueType) {
+		// rules/declarations/functions.md section 34: a pack permits indexed
+		// observation, not ownership extraction of one of its elements.
+		a.addErrorAtToken(expressionToken(stmt.Value), "cannot move element out of variadic parameter pack")
 		return
 	}
 
@@ -7526,6 +7654,7 @@ func (a *Analyzer) interfaceMethodRequirement(interfaceName string, fn *ast.Func
 				Ref:        param.Ref,
 				MutableRef: param.MutableRef,
 				Consuming:  param.Consuming,
+				Variadic:   param.Variadic,
 			})
 		}
 		returnType, ok := a.resolveType(fn.ReturnType)
@@ -7546,7 +7675,7 @@ func sameInterfaceRequirementSignature(left Function, right Function) bool {
 		return false
 	}
 	for i := range left.Parameters {
-		if left.Parameters[i].Ref != right.Parameters[i].Ref || left.Parameters[i].MutableRef != right.Parameters[i].MutableRef || left.Parameters[i].Consuming != right.Parameters[i].Consuming {
+		if left.Parameters[i].Ref != right.Parameters[i].Ref || left.Parameters[i].MutableRef != right.Parameters[i].MutableRef || left.Parameters[i].Consuming != right.Parameters[i].Consuming || left.Parameters[i].Variadic != right.Parameters[i].Variadic {
 			return false
 		}
 		if isSelfParameter(left.Parameters[i]) && isSelfParameter(right.Parameters[i]) {
@@ -7571,6 +7700,9 @@ func sameInterfaceOverloadIdentity(left Function, right Function) bool {
 		return false
 	}
 	for i := range left.Parameters {
+		if left.Parameters[i].Variadic != right.Parameters[i].Variadic {
+			return false
+		}
 		if !sameConcreteType(left.Parameters[i].Type, right.Parameters[i].Type) {
 			return false
 		}
@@ -9869,6 +10001,12 @@ func (a *Analyzer) validateNamedOwnershipSource(mode ast.OwnershipMode, value as
 		}
 		return true
 	}
+	if a.variadicPackElementExpression(value) && (mode == ast.OwnershipMove || requiresOwnershipTransfer(place.Type)) {
+		// rules/declarations/functions.md section 34: no direct or partial
+		// move may extract an element from the invocation-lifetime pack.
+		a.addErrorAtToken(expressionToken(value), "cannot move element out of variadic parameter pack")
+		return false
+	}
 	if _, _, _, unavailable := a.unavailablePlace(place); unavailable {
 		// inferExpression has already emitted the primary use-after-move error;
 		// do not apply ownership again and overwrite the original move site.
@@ -9994,6 +10132,12 @@ func (a *Analyzer) markExplicitMoveSource(expr ast.Expression) bool {
 func (a *Analyzer) analyzeIndexAssignmentStatement(stmt *ast.AssignmentStatement, index *ast.IndexExpression) {
 	targetType, _ := a.inferIndexExpression(index)
 	if targetType.Kind == InvalidType {
+		return
+	}
+	if packType, _ := a.inferExpression(index.Left); variadicPackValue(packType) {
+		// rules/declarations/functions.md section 31: neither the pack nor
+		// an element reached through it is mutable source-level storage.
+		a.addErrorAtToken(expressionToken(index.Left), "cannot mutate variadic parameter pack")
 		return
 	}
 	if !a.indexAssignmentTargetIsMutable(index.Left) {
@@ -10387,6 +10531,12 @@ func (a *Analyzer) checkStaleArenaReference(symbol Symbol, token lexer.Token) bo
 }
 
 func (a *Analyzer) checkBorrowCreation(expr ast.Expression, mutable bool, token lexer.Token) bool {
+	if identifier, ok := expr.(*ast.Identifier); ok && a.variadicPackSymbol(identifier.Value) {
+		// rules/declarations/functions.md section 32 forbids references into
+		// an invocation-lifetime pack from becoming independently observable.
+		a.addErrorAtToken(token, "variadic parameter pack cannot expose references")
+		return true
+	}
 	place, ok := a.resolvePlace(expr)
 	if !ok {
 		switch expr.(type) {
@@ -10398,6 +10548,35 @@ func (a *Analyzer) checkBorrowCreation(expr ast.Expression, mutable bool, token 
 		}
 	}
 	return a.checkBorrowCreationPlace(place, mutable, token)
+}
+
+// variadicPackSymbol identifies a callee-local pack binding for the pack
+// escape restrictions in rules/declarations/functions.md sections 32 and 34.
+func (a *Analyzer) variadicPackSymbol(name string) bool {
+	symbol, ok := a.symbols[name]
+	return ok && variadicPackValue(symbol.Type)
+}
+
+// variadicPackElementExpression traces projections rooted at a pack so the
+// no-element-move rule in rules/declarations/functions.md section 34 applies
+// to both an indexed element and a field projected from that element.
+func (a *Analyzer) variadicPackElementExpression(expr ast.Expression) bool {
+	switch value := expr.(type) {
+	case *ast.IndexExpression:
+		if identifier, ok := value.Left.(*ast.Identifier); ok {
+			return a.variadicPackSymbol(identifier.Value)
+		}
+		return a.variadicPackElementExpression(value.Left)
+	case *ast.MemberExpression:
+		return a.variadicPackElementExpression(value.Object)
+	default:
+		return false
+	}
+}
+
+func variadicPackValue(typ Type) bool {
+	typ = dereferenceType(typ)
+	return typ.Kind == VariadicPackType
 }
 
 func (a *Analyzer) checkBorrowCreationPlace(place Place, mutable bool, token lexer.Token) bool {
@@ -12562,95 +12741,105 @@ func memberDefinitionToken(typ Type, name string) (lexer.Token, bool) {
 }
 
 func (a *Analyzer) inferArrayLiteral(expr *ast.ArrayLiteral) (Type, expressionValue) {
-	segments, length, ok := a.arrayLiteralSegments(expr, Type{Kind: InvalidType})
+	plan, ok := a.resolveArrayLiteralPlan(expr, Type{Kind: InvalidType})
 	if !ok {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
-	if length.Sign() == 0 {
+	if len(plan.Entries) == 0 {
 		a.addErrorAtToken(expr.Token, "cannot infer element type of empty array literal")
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 
-	firstType := segments[0].typ
+	firstType := arrayLiteralEntryElementType(plan.Entries[0])
 	if firstType.Kind == InvalidType {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
-	for _, segment := range segments[1:] {
-		elementType := segment.typ
+	for _, entry := range plan.Entries[1:] {
+		elementType := arrayLiteralEntryElementType(entry)
 		if elementType.Kind == InvalidType {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
 		if !sameConcreteType(firstType, elementType) {
-			a.addErrorAtToken(expressionToken(segment.expression), "array literal elements must have one identical type")
+			a.addErrorAtToken(expressionToken(arrayLiteralEntryExpression(expr, entry)), "array literal elements must have one identical type")
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
 	}
 
-	return NewFixedArrayType(firstType, length), expressionValue{Display: expr.String()}
+	plan.ElementType = firstType
+	a.recordResolvedArrayLiteralPlan(expr, plan)
+	return NewFixedArrayType(firstType, plan.Length), expressionValue{Display: expr.String()}
 }
 
 func (a *Analyzer) inferArrayLiteralWithExpected(expr *ast.ArrayLiteral, expected Type) (Type, expressionValue) {
 	if expected.Kind != ArrayType || expected.Element == nil {
 		return a.inferArrayLiteral(expr)
 	}
-	segments, length, ok := a.arrayLiteralSegments(expr, *expected.Element)
+	plan, ok := a.resolveArrayLiteralPlan(expr, *expected.Element)
 	if !ok {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 	expectedLength, fixedExpected := exactFixedArrayLength(expected)
-	if fixedExpected && length.Cmp(expectedLength) != 0 {
+	if fixedExpected && plan.Length.Cmp(expectedLength) != 0 {
 		if arrayShapeOf(expected) == ArrayShapeFixed {
-			a.addErrorAtToken(expr.Token, "array literal has %s elements, expected %s", length.String(), expectedLength.String())
+			a.addErrorAtToken(expr.Token, "array literal has %s elements, expected %s", plan.Length.String(), expectedLength.String())
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
 	}
 	elementIndex := new(big.Int)
-	for _, segment := range segments {
-		elementType := segment.typ
+	for _, entry := range plan.Entries {
+		elementType := arrayLiteralEntryElementType(entry)
 		if elementType.Kind == InvalidType {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
-		if !canInitialize(*expected.Element, elementType, segment.expression) {
-			a.addErrorAtToken(expressionToken(segment.expression), "array element %s must be %s, got %s", new(big.Int).Add(elementIndex, big.NewInt(1)).String(), typeDisplayName(*expected.Element), typeDisplayName(elementType))
+		source := arrayLiteralEntryExpression(expr, entry)
+		if !canInitialize(*expected.Element, elementType, source) {
+			a.addErrorAtToken(expressionToken(source), "array element %s must be %s, got %s", new(big.Int).Add(elementIndex, big.NewInt(1)).String(), typeDisplayName(*expected.Element), typeDisplayName(elementType))
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
-		elementIndex.Add(elementIndex, segment.count)
+		elementIndex.Add(elementIndex, entry.Length)
+	}
+	plan.ElementType = *expected.Element
+	if fixedExpected {
+		a.recordResolvedArrayLiteralPlan(expr, plan)
 	}
 	return expected, expressionValue{Display: expr.String()}
 }
 
-type arrayLiteralSegment struct {
-	typ        Type
-	expression ast.Expression
-	count      *big.Int
-}
-
-// arrayLiteralSegments keeps one compact entry per source expression and uses
-// exact length accounting per Package 14 sections 20-23.
-func (a *Analyzer) arrayLiteralSegments(expr *ast.ArrayLiteral, expected Type) ([]arrayLiteralSegment, *big.Int, bool) {
-	segments := make([]arrayLiteralSegment, 0, len(expr.Elements))
-	length := new(big.Int)
-	for _, element := range expr.Elements {
+// resolveArrayLiteralPlan is the authoritative source-order literal analysis
+// required by SEC-MLIR Package 14 sections 18-21. It evaluates each source
+// expression once and retains one compact fact per element or spread.
+func (a *Analyzer) resolveArrayLiteralPlan(expr *ast.ArrayLiteral, expected Type) (ResolvedArrayLiteralPlan, bool) {
+	plan := ResolvedArrayLiteralPlan{ElementType: expected, Length: new(big.Int), Entries: make([]ResolvedArrayLiteralEntry, 0, len(expr.Elements))}
+	for sourceIndex, element := range expr.Elements {
 		if spread, ok := element.(*ast.SpreadExpression); ok {
 			sourceType, _ := a.inferExpression(spread.Value)
 			if sourceType.Kind == InvalidType {
-				return nil, nil, false
+				return ResolvedArrayLiteralPlan{}, false
 			}
 			sourceDisplay := typeDisplayName(sourceType)
 			concreteSource := dereferenceType(sourceType)
 			sourceLength, fixedSource := exactFixedArrayLength(concreteSource)
 			if concreteSource.Kind != ArrayType || concreteSource.Element == nil || !fixedSource {
 				a.addErrorAtToken(spread.Token, "cannot spread %s into fixed-array literal; expansion count is not known at compile time", sourceDisplay)
-				return nil, nil, false
+				return ResolvedArrayLiteralPlan{}, false
 			}
-			if !implicitlyCopyable(*concreteSource.Element) {
+			action := ArrayTransferCopyTrivial
+			switch CopyClassificationOf(*concreteSource.Element) {
+			case CopyTrivial:
+			case CopySemantic:
+				action = ArrayTransferCopySemantic
+			default:
 				a.addErrorAtToken(spread.Token, "cannot spread %s into fixed-array literal; indexed expansion would require unsupported consuming element reads", sourceDisplay)
-				return nil, nil, false
+				return ResolvedArrayLiteralPlan{}, false
 			}
-			if sourceLength.Sign() > 0 {
-				segments = append(segments, arrayLiteralSegment{typ: *concreteSource.Element, expression: spread.Value, count: new(big.Int).Set(sourceLength)})
-			}
-			length.Add(length, sourceLength)
+			plan.Entries = append(plan.Entries, ResolvedArrayLiteralEntry{
+				SourceIndex: sourceIndex,
+				Kind:        ArrayLiteralSpread,
+				Type:        concreteSource,
+				Length:      new(big.Int).Set(sourceLength),
+				Action:      action,
+			})
+			plan.Length.Add(plan.Length, sourceLength)
 			continue
 		}
 		var elementType Type
@@ -12660,12 +12849,41 @@ func (a *Analyzer) arrayLiteralSegments(expr *ast.ArrayLiteral, expected Type) (
 			elementType, _ = a.inferExpression(element)
 		}
 		if elementType.Kind == InvalidType {
-			return nil, nil, false
+			return ResolvedArrayLiteralPlan{}, false
 		}
-		segments = append(segments, arrayLiteralSegment{typ: elementType, expression: element, count: big.NewInt(1)})
-		length.Add(length, big.NewInt(1))
+		plan.Entries = append(plan.Entries, ResolvedArrayLiteralEntry{
+			SourceIndex: sourceIndex,
+			Kind:        ArrayLiteralElement,
+			Type:        elementType,
+			Length:      big.NewInt(1),
+			Action:      ArrayTransferConstructDirect,
+		})
+		plan.Length.Add(plan.Length, big.NewInt(1))
 	}
-	return segments, new(big.Int).Set(length), true
+	return plan, true
+}
+
+// arrayLiteralEntryElementType interprets the entry Type field according to
+// SEC-MLIR Package 14 section 15: an element stores T, while a spread stores
+// its complete T[N] source type.
+func arrayLiteralEntryElementType(entry ResolvedArrayLiteralEntry) Type {
+	if entry.Kind == ArrayLiteralSpread && entry.Type.Element != nil {
+		return *entry.Type.Element
+	}
+	return entry.Type
+}
+
+// arrayLiteralEntryExpression recovers the original source expression without
+// duplicating AST nodes in the Package 14 semantic plan.
+func arrayLiteralEntryExpression(expr *ast.ArrayLiteral, entry ResolvedArrayLiteralEntry) ast.Expression {
+	if expr == nil || entry.SourceIndex < 0 || entry.SourceIndex >= len(expr.Elements) {
+		return nil
+	}
+	source := expr.Elements[entry.SourceIndex]
+	if spread, ok := source.(*ast.SpreadExpression); ok {
+		return spread.Value
+	}
+	return source
 }
 
 func (a *Analyzer) inferIndexExpression(expr *ast.IndexExpression) (Type, expressionValue) {
@@ -12686,11 +12904,13 @@ func (a *Analyzer) inferIndexExpression(expr *ast.IndexExpression) (Type, expres
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 	switch leftType.Kind {
-	case ArrayType, SliceType:
+	case ArrayType, SliceType, VariadicPackType:
 		if leftType.Element == nil {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
-		a.checkConstantIndexBounds(expr, leftType)
+		if leftType.Kind != VariadicPackType {
+			a.checkConstantIndexBounds(expr, leftType)
+		}
 		elementType := *leftType.Element
 		if elementType.Kind == ReferenceType {
 			elementType = a.referenceTypeWithOriginFromExpression(elementType, expr.Left)
@@ -12796,6 +13016,8 @@ func indexableKindName(typ Type) string {
 		return "slice"
 	case ArrayType:
 		return "array"
+	case VariadicPackType:
+		return "variadic parameter pack"
 	default:
 		return typeDisplayName(typ)
 	}
@@ -13523,7 +13745,7 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 	}
 	a.bindDefinitions(callCalleeDefinitionToken(expr), functionDeclarationTokens(functions))
 
-	sourceArgTypes, sourceArgs, preparedSpreadValues, ok := a.callArgumentTypes(expr.Arguments)
+	sourceArgTypes, sourceArgs, preparedSpreadValues, runtimeSpreadValues, ok := a.callArgumentTypes(expr.Arguments, anyFunctionIsVariadic(functions))
 	if !ok {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
@@ -13531,7 +13753,7 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 	arityMatches := []Function{}
 	for _, function := range functions {
 		argTypes := a.callArgumentTypesForFunction(function, sourceArgTypes, methodReceiver, isMethodCall)
-		if len(function.Parameters) == len(argTypes) {
+		if functionAcceptsCallArguments(function, len(argTypes), runtimeSpreadValues) {
 			arityMatches = append(arityMatches, function)
 		}
 	}
@@ -13594,12 +13816,17 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 			}
 			var arg ast.Expression
 			arg = sourceArgs[i]
-			argType := a.contextualCallArgumentType(arg, argTypes[i], function.Parameters[i].Type)
-			if !canInitialize(function.Parameters[i].Type, argType, arg) {
+			parameter, parameterOK := functionParameterForArgument(function, i)
+			if !parameterOK {
 				matchesArguments = false
 				break
 			}
-			rank += overloadArgumentRank(function.Parameters[i].Type, argType)
+			argType := a.contextualCallArgumentType(arg, argTypes[i], parameter.Type)
+			if !canInitialize(parameter.Type, argType, arg) {
+				matchesArguments = false
+				break
+			}
+			rank += overloadArgumentRank(parameter.Type, argType)
 		}
 		if matchesArguments {
 			matches = append(matches, overloadMatch{Function: function, Rank: rank})
@@ -13696,7 +13923,10 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 		argTypes := a.callArgumentTypesForFunction(function, sourceArgTypes, methodReceiver, isMethodCall)
 		for i := range argTypes {
 			arg := sourceArgs[i]
-			param := function.Parameters[i]
+			param, parameterOK := functionParameterForArgument(function, i)
+			if !parameterOK {
+				break
+			}
 			argType := a.contextualCallArgumentType(arg, argTypes[i], param.Type)
 			if !canInitialize(param.Type, argType, arg) {
 				a.addErrorAtToken(expressionToken(arg), "argument %d to %s must be %s, got %s", i+1, displayName, typeDisplayName(param.Type), typeDisplayName(argType))
@@ -14976,51 +15206,71 @@ func (a *Analyzer) compilerKnownReceiverType(expr ast.Expression) (Type, bool) {
 	return symbol.Type, true
 }
 
-func (a *Analyzer) callArgumentTypes(args []ast.Expression) ([]Type, []ast.Expression, []bool, bool) {
+// callArgumentTypes expands statically sized spreads. A runtime-sized array or
+// parameter pack is accepted only when the candidate set has a native
+// variadic destination, per rules/declarations/functions.md section 35.
+func (a *Analyzer) callArgumentTypes(args []ast.Expression, allowVariadicSpread bool) ([]Type, []ast.Expression, []bool, []bool, bool) {
 	types := []Type{}
 	expressions := []ast.Expression{}
 	preparedSpreadValues := []bool{}
+	runtimeSpreadValues := []bool{}
 	for _, arg := range args {
 		if spread, ok := arg.(*ast.SpreadExpression); ok {
 			argType, _ := a.inferExpression(spread.Value)
 			if argType.Kind == InvalidType {
-				return nil, nil, nil, false
+				return nil, nil, nil, nil, false
 			}
 			sourceDisplay := typeDisplayName(argType)
 			argType = dereferenceType(argType)
-			if argType.Kind != ArrayType || argType.Element == nil {
+			if argType.Element == nil || (argType.Kind != ArrayType && argType.Kind != SliceType && argType.Kind != VariadicPackType) {
 				a.addErrorAtToken(spread.Token, "cannot spread %s into fixed-arity call; expansion count is not known at compile time", sourceDisplay)
-				return nil, nil, nil, false
+				return nil, nil, nil, nil, false
 			}
-			if arrayShapeOf(argType) == ArrayShapeDynamic {
+			if argType.Kind == VariadicPackType || argType.Kind == SliceType || (argType.Kind == ArrayType && arrayShapeOf(argType) == ArrayShapeDynamic) {
+				if allowVariadicSpread {
+					if !implicitlyCopyable(*argType.Element) {
+						a.addErrorAtToken(spread.Token, "cannot spread %s into function arguments; indexed expansion would require unsupported consuming element reads", sourceDisplay)
+						return nil, nil, nil, nil, false
+					}
+					// A dynamic source contributes elements of its element type to
+					// the trailing pack. The call checker validates that no fixed
+					// parameter is left unsupplied before accepting this form.
+					types = append(types, *argType.Element)
+					expressions = append(expressions, spread.Value)
+					preparedSpreadValues = append(preparedSpreadValues, true)
+					runtimeSpreadValues = append(runtimeSpreadValues, true)
+					continue
+				}
 				a.addErrorAtToken(spread.Token, "cannot spread %s into fixed-arity call; expansion count is not known at compile time", sourceDisplay)
-				return nil, nil, nil, false
+				return nil, nil, nil, nil, false
 			}
 			if !implicitlyCopyable(*argType.Element) {
 				a.addErrorAtToken(spread.Token, "cannot spread %s into function arguments; indexed expansion would require unsupported consuming element reads", sourceDisplay)
-				return nil, nil, nil, false
+				return nil, nil, nil, nil, false
 			}
 			length, representable := legacyArrayLength(argType)
 			if !representable {
 				a.addErrorAtToken(spread.Token, "cannot spread %s into fixed-arity call; exact expansion exceeds the legacy call-arity limit", sourceDisplay)
-				return nil, nil, nil, false
+				return nil, nil, nil, nil, false
 			}
 			for i := int64(0); i < length; i++ {
 				types = append(types, *argType.Element)
 				expressions = append(expressions, spread.Value)
 				preparedSpreadValues = append(preparedSpreadValues, true)
+				runtimeSpreadValues = append(runtimeSpreadValues, false)
 			}
 			continue
 		}
 		argType, _ := a.inferExpression(arg)
 		if argType.Kind == InvalidType {
-			return nil, nil, nil, false
+			return nil, nil, nil, nil, false
 		}
 		types = append(types, argType)
 		expressions = append(expressions, arg)
 		preparedSpreadValues = append(preparedSpreadValues, false)
+		runtimeSpreadValues = append(runtimeSpreadValues, false)
 	}
-	return types, expressions, preparedSpreadValues, true
+	return types, expressions, preparedSpreadValues, runtimeSpreadValues, true
 }
 
 func (a *Analyzer) consumeMethodReceiver(expression ast.Expression) {
@@ -15038,14 +15288,12 @@ func (a *Analyzer) consumeMethodReceiver(expression ast.Expression) {
 }
 
 func (a *Analyzer) markMovedCallArguments(function Function, sourceArgs []ast.Expression, preparedSpreadValues []bool, isMethodCall bool) {
-	sourceIndex := 0
-	for _, param := range function.Parameters {
-		if sourceIndex >= len(sourceArgs) {
+	for sourceIndex, arg := range sourceArgs {
+		param, parameterOK := functionParameterForArgument(function, sourceIndex)
+		if !parameterOK {
 			return
 		}
-		arg := sourceArgs[sourceIndex]
 		preparedSpread := sourceIndex < len(preparedSpreadValues) && preparedSpreadValues[sourceIndex]
-		sourceIndex++
 		// Both shared and mutable-reference parameters borrow their argument.
 		// MutableRef is represented separately from Ref in FunctionParameter, so
 		// checking only Ref incorrectly consumed ref-mut reborrows after calls.
@@ -15343,14 +15591,14 @@ func (a *Analyzer) inferCallExpressionWithExpected(expr *ast.CallExpression, exp
 		return Type{}, expressionValue{}, false
 	}
 
-	argTypes, args, _, argsOK := a.callArgumentTypes(expr.Arguments)
+	argTypes, args, _, runtimeSpreadValues, argsOK := a.callArgumentTypes(expr.Arguments, anyFunctionIsVariadic(functions))
 	if !argsOK {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 	}
 
 	matches := []overloadMatch{}
 	for _, function := range functions {
-		if len(function.Parameters) != len(argTypes) || len(function.GenericParameters) == 0 {
+		if !functionAcceptsCallArguments(function, len(argTypes), runtimeSpreadValues) || len(function.GenericParameters) == 0 {
 			continue
 		}
 		instantiated, ok := a.inferGenericFunctionInstanceWithExpected(function, argTypes, expected)
@@ -15361,11 +15609,12 @@ func (a *Analyzer) inferCallExpressionWithExpected(expr *ast.CallExpression, exp
 		matchesArguments := true
 		rank := 0
 		for i, arg := range args {
-			if !canInitialize(instantiated.Parameters[i].Type, argTypes[i], arg) {
+			parameter, parameterOK := functionParameterForArgument(instantiated, i)
+			if !parameterOK || !canInitialize(parameter.Type, argTypes[i], arg) {
 				matchesArguments = false
 				break
 			}
-			rank += overloadArgumentRank(instantiated.Parameters[i].Type, argTypes[i])
+			rank += overloadArgumentRank(parameter.Type, argTypes[i])
 		}
 		if matchesArguments {
 			matches = append(matches, overloadMatch{Function: instantiated, Rank: rank})
@@ -15408,13 +15657,14 @@ func (a *Analyzer) explicitGenericFunctionInstance(function Function, refs []*as
 }
 
 func (a *Analyzer) inferGenericFunctionInstance(function Function, argTypes []Type) (Function, bool) {
-	if len(function.Parameters) != len(argTypes) {
+	if !functionAcceptsArgumentCount(function, len(argTypes)) {
 		return Function{}, false
 	}
 
 	substitution := map[string]Type{}
-	for i, param := range function.Parameters {
-		if !inferGenericTypeSubstitution(param.Type, argTypes[i], substitution) {
+	for i, argType := range argTypes {
+		parameter, parameterOK := functionParameterForArgument(function, i)
+		if !parameterOK || !inferGenericTypeSubstitution(parameter.Type, argType, substitution) {
 			return Function{}, false
 		}
 	}
@@ -15428,13 +15678,14 @@ func (a *Analyzer) inferGenericFunctionInstance(function Function, argTypes []Ty
 }
 
 func (a *Analyzer) inferGenericFunctionInstanceWithExpected(function Function, argTypes []Type, expected Type) (Function, bool) {
-	if len(function.Parameters) != len(argTypes) {
+	if !functionAcceptsArgumentCount(function, len(argTypes)) {
 		return Function{}, false
 	}
 
 	substitution := map[string]Type{}
-	for i, param := range function.Parameters {
-		if !inferGenericTypeSubstitution(param.Type, argTypes[i], substitution) {
+	for i, argType := range argTypes {
+		parameter, parameterOK := functionParameterForArgument(function, i)
+		if !parameterOK || !inferGenericTypeSubstitution(parameter.Type, argType, substitution) {
 			return Function{}, false
 		}
 	}
@@ -15537,6 +15788,11 @@ func canonicalTypeIdentity(typ Type) string {
 			return "slice:<nil>"
 		}
 		return "slice:" + canonicalTypeIdentity(*typ.Element)
+	case VariadicPackType:
+		if typ.Element == nil {
+			return "variadic-pack:<nil>"
+		}
+		return "variadic-pack:" + canonicalTypeIdentity(*typ.Element)
 	case FunctionType:
 		params := make([]string, 0, len(typ.FunctionParameterTypes))
 		for _, param := range typ.FunctionParameterTypes {
@@ -15546,7 +15802,11 @@ func canonicalTypeIdentity(typ Type) string {
 		if typ.FunctionReturnType != nil {
 			returnType = canonicalTypeIdentity(*typ.FunctionReturnType)
 		}
-		return string(normalizedCallableCapability(typ.FunctionCapability)) + ":fn:(" + strings.Join(params, ",") + ")->" + returnType
+		shape := "fixed"
+		if typ.FunctionVariadic {
+			shape = "variadic"
+		}
+		return string(normalizedCallableCapability(typ.FunctionCapability)) + ":fn:" + shape + ":(" + strings.Join(params, ",") + ")->" + returnType
 	default:
 		identity := typeDeclarationIdentity(typ)
 		if identity == "::" || typ.Name == "" {
@@ -15638,8 +15898,12 @@ func (a *Analyzer) inferFunctionValueCall(expr *ast.CallExpression, calleeType T
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 
-	if len(calleeType.FunctionParameterTypes) != len(expr.Arguments) {
-		a.addErrorAtToken(expr.Token, "function value expects %d arguments, got %d", len(calleeType.FunctionParameterTypes), len(expr.Arguments))
+	if !functionTypeAcceptsArgumentCount(calleeType, len(expr.Arguments)) {
+		expected := fmt.Sprintf("%d", len(calleeType.FunctionParameterTypes))
+		if calleeType.FunctionVariadic {
+			expected = fmt.Sprintf("at least %d", len(calleeType.FunctionParameterTypes)-1)
+		}
+		a.addErrorAtToken(expr.Token, "function value expects %s arguments, got %d", expected, len(expr.Arguments))
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 
@@ -15648,7 +15912,10 @@ func (a *Analyzer) inferFunctionValueCall(expr *ast.CallExpression, calleeType T
 		if argType.Kind == InvalidType {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
-		expected := calleeType.FunctionParameterTypes[i]
+		expected, parameterOK := functionTypeParameterForArgument(calleeType, i)
+		if !parameterOK {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
 		if !canInitialize(expected, argType, arg) {
 			a.addErrorAtToken(expressionToken(arg), "argument %d must be %s, got %s", i+1, typeDisplayName(expected), typeDisplayName(argType))
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
@@ -15695,12 +15962,48 @@ func functionTypeFromFunction(function Function) Type {
 	}
 	capability := functionCallableCapability(function)
 	return Type{
-		Name:                   functionTypeName(params, function.ReturnType, capability),
+		Name:                   functionTypeName(params, function.ReturnType, capability, functionHasVariadicParameter(function)),
 		Kind:                   FunctionType,
 		FunctionParameterTypes: params,
 		FunctionReturnType:     &function.ReturnType,
 		FunctionCapability:     capability,
+		FunctionVariadic:       functionHasVariadicParameter(function),
 	}
+}
+
+// functionHasVariadicParameter preserves the callable-shape distinction from
+// rules/declarations/functions.md section 37 for first-class function values.
+func functionHasVariadicParameter(function Function) bool {
+	_, ok := functionVariadicParameter(function)
+	return ok
+}
+
+// functionTypeAcceptsArgumentCount applies the native pack arity rule from
+// rules/declarations/functions.md section 28 to a function value.
+func functionTypeAcceptsArgumentCount(typ Type, argumentCount int) bool {
+	if typ.FunctionVariadic {
+		return argumentCount >= len(typ.FunctionParameterTypes)-1
+	}
+	return argumentCount == len(typ.FunctionParameterTypes)
+}
+
+// functionTypeParameterForArgument maps trailing arguments to the element type
+// of a first-class native variadic callable under functions.md section 37.
+func functionTypeParameterForArgument(typ Type, argumentIndex int) (Type, bool) {
+	if argumentIndex < 0 {
+		return Type{}, false
+	}
+	fixedCount := len(typ.FunctionParameterTypes)
+	if typ.FunctionVariadic {
+		fixedCount--
+	}
+	if argumentIndex < fixedCount {
+		return typ.FunctionParameterTypes[argumentIndex], true
+	}
+	if typ.FunctionVariadic && len(typ.FunctionParameterTypes) > 0 {
+		return typ.FunctionParameterTypes[len(typ.FunctionParameterTypes)-1], true
+	}
+	return Type{}, false
 }
 
 // functionCallableCapability preserves an existing method/function authority
@@ -15828,14 +16131,30 @@ func bestOverloadMatches(matches []overloadMatch) []overloadMatch {
 			best = append(best, match)
 		}
 	}
+	// rules/declarations/functions.md section 37: once ordinary conversion
+	// ranking ties, the fixed-arity overload wins over a native variadic one.
+	if len(best) > 1 {
+		fixed := make([]overloadMatch, 0, len(best))
+		for _, match := range best {
+			if _, variadic := functionVariadicParameter(match.Function); !variadic {
+				fixed = append(fixed, match)
+			}
+		}
+		if len(fixed) > 0 {
+			return fixed
+		}
+	}
 	return best
 }
 
 func formatFunctionArities(functions []Function) string {
-	seen := map[int]bool{}
+	seen := map[string]bool{}
 	out := ""
 	for _, function := range functions {
-		arity := len(function.Parameters)
+		arity := fmt.Sprintf("%d", len(function.Parameters))
+		if _, variadic := functionVariadicParameter(function); variadic {
+			arity = fmt.Sprintf("at least %d", functionFixedParameterCount(function))
+		}
 		if seen[arity] {
 			continue
 		}
@@ -15843,7 +16162,7 @@ func formatFunctionArities(functions []Function) string {
 		if out != "" {
 			out += " or "
 		}
-		out += fmt.Sprintf("%d", arity)
+		out += arity
 	}
 	return out
 }
@@ -16450,6 +16769,11 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 	patternError := false
 
 	for sourceIndex, arm := range expr.Arms {
+		if arm == nil || arm.Pattern == nil {
+			a.addErrorAtToken(expr.Token, "invalid match arm")
+			patternError = true
+			continue
+		}
 		if arm.Pattern.Kind == ast.MatchPatternEmpty {
 			a.addErrorAtToken(arm.Pattern.Token, "compiler-known empty match patterns are not implemented yet")
 			patternError = true
@@ -16679,6 +17003,16 @@ func (a *Analyzer) analyzeMatchPattern(pattern ast.Expression, subjectType Type)
 					return matchPatternInfo{}, false
 				}
 				return matchPatternInfo{Kind: "variant", Variant: variant.Name, VariantIndex: unionVariantIndex(subjectType, variant.Name)}, true
+			}
+		}
+		if subjectType.Kind == EnumType {
+			if enumCase, exists := subjectType.EnumConsts[pattern.Value]; exists && enumCase.Value != nil {
+				return matchPatternInfo{
+					Kind:             "variant",
+					Variant:          pattern.Value,
+					EnumNumericValue: new(big.Int).Set(enumCase.Value),
+					EnumCaseName:     enumCase.Name,
+				}, true
 			}
 		}
 		return matchPatternInfo{BindingName: pattern.Value, BindingType: subjectType, Kind: "catchall"}, true
@@ -18715,6 +19049,10 @@ func sameConcreteType(left Type, right Type) bool {
 			sameArrayShape(left, right) && left.Element != nil && right.Element != nil &&
 			sameConcreteType(*left.Element, *right.Element)
 	}
+	if left.Kind == VariadicPackType || right.Kind == VariadicPackType {
+		return left.Kind == VariadicPackType && right.Kind == VariadicPackType &&
+			left.Element != nil && right.Element != nil && sameConcreteType(*left.Element, *right.Element)
+	}
 	if left.Unit != "" || right.Unit != "" {
 		return left.Kind == right.Kind &&
 			left.Name == right.Name &&
@@ -18779,6 +19117,9 @@ func sameFunctionType(left Type, right Type) bool {
 		return false
 	}
 	if normalizedCallableCapability(left.FunctionCapability) != normalizedCallableCapability(right.FunctionCapability) {
+		return false
+	}
+	if left.FunctionVariadic != right.FunctionVariadic {
 		return false
 	}
 	if len(left.FunctionParameterTypes) != len(right.FunctionParameterTypes) {
@@ -18954,8 +19295,11 @@ func typeDisplayName(typ Type) string {
 	if typ.Kind == SliceType && typ.Element != nil {
 		return typeDisplayName(*typ.Element) + "[]"
 	}
+	if typ.Kind == VariadicPackType && typ.Element != nil {
+		return "..." + typeDisplayName(*typ.Element)
+	}
 	if typ.Kind == FunctionType {
-		return functionTypeName(typ.FunctionParameterTypes, functionReturnType(typ), typ.FunctionCapability)
+		return functionTypeName(typ.FunctionParameterTypes, functionReturnType(typ), typ.FunctionCapability, typ.FunctionVariadic)
 	}
 	if typ.Name != "" && (len(typ.TypeArgs) > 0 || len(typ.ConstArgs) > 0) {
 		out := typ.Name + "["
@@ -18997,11 +19341,9 @@ func functionReturnType(typ Type) Type {
 	return *typ.FunctionReturnType
 }
 
-func functionTypeName(params []Type, returnType Type, capabilities ...CallableCapability) string {
-	capability := CallableShared
-	if len(capabilities) != 0 {
-		capability = normalizedCallableCapability(capabilities[0])
-	}
+func functionTypeName(params []Type, returnType Type, capability CallableCapability, variadicShape ...bool) string {
+	capability = normalizedCallableCapability(capability)
+	variadic := len(variadicShape) != 0 && variadicShape[0]
 	prefix := "fn"
 	switch capability {
 	case CallableMutable:
@@ -19013,6 +19355,9 @@ func functionTypeName(params []Type, returnType Type, capabilities ...CallableCa
 	for i, param := range params {
 		if i > 0 {
 			out += ", "
+		}
+		if variadic && i == len(params)-1 {
+			out += "..."
 		}
 		out += typeDisplayName(param)
 	}

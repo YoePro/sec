@@ -1,0 +1,118 @@
+module http
+
+// HTTP methods registered by IANA.
+//
+// HTTP method names on the wire are case-sensitive tokens.
+// This enum represents methods known to this stdlib version.
+//
+// Unknown extension methods must still be preserved by the HTTP parser.
+//
+// Registry:
+// https://www.iana.org/assignments/http-methods
+enum HttpKnownMethod {
+    // Core HTTP semantics - RFC 9110
+    GET,
+    HEAD,
+    POST,
+    PUT,
+    DELETE,
+    CONNECT,
+    OPTIONS,
+    TRACE,
+
+    // RFC 5789
+    PATCH,
+
+    // WebDAV and extensions
+    ACL,
+    BASELINE_CONTROL,
+    BIND,
+    CHECKIN,
+    CHECKOUT,
+    COPY,
+    LABEL,
+    LINK,
+    LOCK,
+    MERGE,
+    MKACTIVITY,
+    MKCALENDAR,
+    MKCOL,
+    MKREDIRECTREF,
+    MKWORKSPACE,
+    MOVE,
+    ORDERPATCH,
+    PROPFIND,
+    PROPPATCH,
+    REBIND,
+    REPORT,
+    SEARCH,
+    UNBIND,
+    UNCHECKOUT,
+    UNLINK,
+    UNLOCK,
+    UPDATE,
+    UPDATEREDIRECTREF,
+    VERSION_CONTROL,
+
+    // HTTP/2 connection preface
+    PRI,
+
+    // RFC 10008
+    QUERY,
+}
+
+type HttpMethod union {
+    Known(HttpKnownMethod)
+    Extension(string)
+}
+
+impl HttpKnownMethod {
+    property Name: string {
+        get {
+            return match self {
+                GET => "GET"
+                HEAD => "HEAD"
+                POST => "POST"
+                PUT => "PUT"
+                DELETE => "DELETE"
+                CONNECT => "CONNECT"
+                OPTIONS => "OPTIONS"
+                TRACE => "TRACE"
+                PATCH => "PATCH"
+
+                ACL => "ACL"
+                BASELINE_CONTROL => "BASELINE-CONTROL"
+                BIND => "BIND"
+                CHECKIN => "CHECKIN"
+                CHECKOUT => "CHECKOUT"
+                COPY => "COPY"
+                LABEL => "LABEL"
+                LINK => "LINK"
+                LOCK => "LOCK"
+                MERGE => "MERGE"
+                MKACTIVITY => "MKACTIVITY"
+                MKCALENDAR => "MKCALENDAR"
+                MKCOL => "MKCOL"
+                MKREDIRECTREF => "MKREDIRECTREF"
+                MKWORKSPACE => "MKWORKSPACE"
+                MOVE => "MOVE"
+                ORDERPATCH => "ORDERPATCH"
+                PROPFIND => "PROPFIND"
+                PROPPATCH => "PROPPATCH"
+                REBIND => "REBIND"
+                REPORT => "REPORT"
+                SEARCH => "SEARCH"
+                UNBIND => "UNBIND"
+                UNCHECKOUT => "UNCHECKOUT"
+                UNLINK => "UNLINK"
+                UNLOCK => "UNLOCK"
+                UPDATE => "UPDATE"
+                UPDATEREDIRECTREF => "UPDATEREDIRECTREF"
+                VERSION_CONTROL => "VERSION-CONTROL"
+
+                PRI => "PRI"
+                QUERY => "QUERY"
+            }
+        }
+    }
+}

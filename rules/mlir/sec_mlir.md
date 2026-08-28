@@ -1177,10 +1177,18 @@ would be insufficient.
 Possible concerns include:
 
 ```text
+requested logical register operation
+hardware resource and endpoint identity
+verified physical operation plan
+read/write projection and transaction footprint
+specialized field and shadow effects
 register read/write
 MMIO access
 volatile access
 barrier
+hardware ordering and completion edges
+access-context requirements
+fault model
 fixed-address access
 special-width access
 target-known hardware operation
@@ -1198,6 +1206,13 @@ Hardware lowering must preserve:
 - fixed-address semantics;
 - memory spaces;
 - observable side effects.
+
+Hardware ordering and completion remain distinct. The Sec MLIR operation or
+verified plan must retain all facts required by
+`rules/platform/hardware-register-access.md` until a target-specific operation,
+barrier, completion mechanism, or checked mapping action materializes them.
+Lowering to LLVM must not re-derive register semantics from generic integer
+loads/stores, numeric address proximity, or symbol naming.
 
 # Functions
 
@@ -2093,6 +2108,9 @@ MMIO
 volatile
 fixed-address access
 barriers
+hardware resource/endpoint identities and operation plans
+transaction projections, footprints, shadow effects, ordering/completion,
+access context, and fault behavior
 target-known operations
 memory-space-sensitive operations
 ```

@@ -109,6 +109,7 @@ It provides:
 - higher-level synchronization;
 - operating-system integration;
 - networking;
+- reusable hardware bus/controller infrastructure;
 - formatting, I/O, logging, and predefined units.
 
 A standard-library feature may also be implemented through:
@@ -319,6 +320,7 @@ time
 sync
 os
 net
+hw
 fmt
 io
 log
@@ -341,9 +343,47 @@ math/signal
 net/http
 net/dns
 net/tls
+
+hw/spi
+hw/i2c
+hw/i2s
+hw/uart
 ```
 
 Exact submodule names are established by their own API work.
+
+## 6.1 Standard hardware infrastructure
+
+The canonical standard-library hardware root is `stdlib/hw`, with repository
+source under `sec/stdlib/hw`. It provides or reserves reusable target-aware
+infrastructure for at least `hw/spi`, `hw/i2c`, `hw/i2s`, and `hw/uart`.
+
+Compiler/core and platform rules retain responsibility for `register[N]`,
+volatile physical access, fixed and runtime-resolved hardware bindings,
+register transaction planning, target endpoint operations, and hardware
+ordering/completion primitives.
+
+`stdlib/hw` owns reusable bus/controller-facing abstractions such as controller
+interfaces, transfer descriptions and helpers, portable coordination and
+configuration, ownership/borrowing contracts for controller handles, fallible
+transfer APIs, and portable driver-facing helper types. Exact public APIs belong
+to their module-specific design work.
+
+Device-specific addressing and multi-step protocols remain driver/library
+concerns, including bus device addresses or selection conventions, device
+register indexes, unlock sequences, command/response workflows, polling, reset,
+and initialization. These protocols are not generic register field modifiers.
+
+An `hw` module may use ordinary Sec source, compiler-known declarations, target
+intrinsics, direct Semantic IR/Sec MLIR lowering, FFI, or platform services.
+Every implementation technique must preserve its public ownership, borrowing,
+failure, effects, target availability, ordering, completion,
+blocking/suspension, and allocation contracts.
+
+Using `stdlib/hw` does not intrinsically require a general Sec runtime.
+Bare-metal and RTOS targets may provide direct target-specific implementations;
+hosted targets may use platform/OS-backed implementations when the active
+target profile provides them.
 
 ---
 
@@ -360,6 +400,7 @@ time
 sync
 os
 net
+hw
 ```
 
 Standard-library nominal types begin with an uppercase letter:
@@ -1201,6 +1242,7 @@ time
 sync
 os
 net
+hw
 ```
 
 The following are also incomplete until implemented and tested:
@@ -1255,6 +1297,7 @@ projects.txt
 modules.md
 compiler/initialization.md
 rules/platform/target_profiles.md
+rules/platform/hardware-register-access.md
 platform_model.md
 platform/abi.md
 semantic_ir.txt

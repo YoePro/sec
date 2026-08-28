@@ -1,6 +1,7 @@
 package sema
 
 import (
+	"math/big"
 	"reflect"
 	"strings"
 	"testing"
@@ -9,6 +10,231 @@ import (
 	"sec/internal/lexer"
 	"sec/internal/parser"
 )
+
+// TestResolvedArrayLiteralPlanFactCopiesCompactExactEntries verifies the
+// immutable compiler-owned fact model required by SEC-MLIR Package 14 sections
+// 14-16 before P14-20 makes array-literal analysis populate it.
+func TestResolvedArrayLiteralPlanFactCopiesCompactExactEntries(t *testing.T) {
+	analyzer := NewAnalyzer()
+	literal := &ast.ArrayLiteral{}
+	largeLength, ok := new(big.Int).SetString("18446744073709551616", 10)
+	if !ok {
+		t.Fatal("could not construct exact test length")
+	}
+	plan := ResolvedArrayLiteralPlan{
+		ElementType: Type{Name: "int", Kind: IntType},
+		Length:      new(big.Int).Add(largeLength, big.NewInt(1)),
+		Entries: []ResolvedArrayLiteralEntry{
+			{
+				SourceIndex: 0,
+				Kind:        ArrayLiteralSpread,
+				Type:        NewFixedArrayType(Type{Name: "int", Kind: IntType}, largeLength),
+				Length:      largeLength,
+				Action:      ArrayTransferCopyTrivial,
+			},
+			{
+				SourceIndex: 1,
+				Kind:        ArrayLiteralElement,
+				Type:        Type{Name: "int", Kind: IntType},
+				Length:      big.NewInt(1),
+				Action:      ArrayTransferConstructDirect,
+			},
+		},
+	}
+
+	analyzer.recordResolvedArrayLiteralPlan(literal, plan)
+	largeLength.SetInt64(0)
+	plan.Length.SetInt64(0)
+	plan.Entries[1].Length.SetInt64(99)
+	plan.Entries = nil
+
+	recorded, found := analyzer.resolvedArrayLiteralPlans[literal]
+	if !found || len(recorded.Entries) != 2 {
+		t.Fatalf("recorded compact entries = %#v, found=%t", recorded, found)
+	}
+	if recorded.Length.String() != "18446744073709551617" || recorded.Entries[0].Length.String() != "18446744073709551616" || recorded.Entries[1].Length.String() != "1" {
+		t.Fatalf("recorded exact lengths = total %v, entries %#v", recorded.Length, recorded.Entries)
+	}
+	if recorded.Entries[0].Kind != ArrayLiteralSpread || recorded.Entries[0].Action != ArrayTransferCopyTrivial || recorded.Entries[1].Kind != ArrayLiteralElement || recorded.Entries[1].Action != ArrayTransferConstructDirect {
+		t.Fatalf("recorded source entries = %#v", recorded.Entries)
+	}
+}
+
+// TestResolvedArrayLiteralPlanQueryIsReadOnlyAndCompact covers SEC-MLIR
+// Package 14 section 17: querying clones mutable storage, performs no Sema
+// work, and keeps one record per source entry even for enormous lengths.
+func TestResolvedArrayLiteralPlanQueryIsReadOnlyAndCompact(t *testing.T) {
+	analyzer := NewAnalyzer()
+	literal := &ast.ArrayLiteral{}
+	hugeLength, ok := new(big.Int).SetString("100000000000000000000000000000000000000000000000000", 10)
+	if !ok {
+		t.Fatal("could not construct exact test length")
+	}
+	analyzer.recordResolvedArrayLiteralPlan(literal, ResolvedArrayLiteralPlan{
+		ElementType: Type{Name: "byte", Kind: UintType},
+		Length:      hugeLength,
+		Entries: []ResolvedArrayLiteralEntry{
+			{SourceIndex: 0, Kind: ArrayLiteralSpread, Type: NewFixedArrayType(Type{Name: "byte", Kind: UintType}, hugeLength), Length: hugeLength, Action: ArrayTransferCopyTrivial},
+			{SourceIndex: 1, Kind: ArrayLiteralElement, Type: Type{Name: "byte", Kind: UintType}, Length: big.NewInt(1), Action: ArrayTransferConstructDirect},
+		},
+	})
+
+	planCount := len(analyzer.resolvedArrayLiteralPlans)
+	expressionTypeCount := len(analyzer.expressionTypes)
+	queried, found := analyzer.ResolvedArrayLiteralPlanOf(literal)
+	if !found || len(queried.Entries) != 2 || queried.Length.String() != hugeLength.String() {
+		t.Fatalf("queried compact plan = %#v, found=%t", queried, found)
+	}
+	if len(analyzer.resolvedArrayLiteralPlans) != planCount || len(analyzer.expressionTypes) != expressionTypeCount {
+		t.Fatal("read-only array literal query mutated analyzer state")
+	}
+
+	queried.Length.SetInt64(0)
+	queried.Entries[0].Length.SetInt64(0)
+	queried.Entries[0].Kind = ArrayLiteralElement
+	queried.Entries = append(queried.Entries, ResolvedArrayLiteralEntry{})
+	again, found := analyzer.ResolvedArrayLiteralPlanOf(literal)
+	if !found || len(again.Entries) != 2 || again.Length.String() != hugeLength.String() || again.Entries[0].Length.String() != hugeLength.String() || again.Entries[0].Kind != ArrayLiteralSpread {
+		t.Fatalf("query exposed analyzer-owned plan storage: %#v", again)
+	}
+
+	unknownPlans := len(analyzer.resolvedArrayLiteralPlans)
+	if _, found := analyzer.ResolvedArrayLiteralPlanOf(&ast.ArrayLiteral{}); found {
+		t.Fatal("unrecorded array literal unexpectedly had a plan")
+	}
+	if len(analyzer.resolvedArrayLiteralPlans) != unknownPlans {
+		t.Fatal("unknown query inserted analyzer state")
+	}
+	var nilAnalyzer *Analyzer
+	if _, found := nilAnalyzer.ResolvedArrayLiteralPlanOf(literal); found {
+		t.Fatal("nil analyzer unexpectedly returned an array literal plan")
+	}
+}
+
+// TestArrayLiteralAnalysisPopulatesAuthoritativePlans covers SEC-MLIR Package
+// 14 sections 18-20: inferred, target-shaped, spread, and target-empty literals
+// all publish the exact source-order plan produced by ordinary Sema analysis.
+func TestArrayLiteralAnalysisPopulatesAuthoritativePlans(t *testing.T) {
+	source := `module main
+fn Source() int[2] { return [2, 3] }
+fn Build(source: int[2]) int[5] { return [1, source..., 4, 5] }
+fn Empty() int[0] { return [] }
+fn Inferred() int[2] {
+  let values := [7, 8]
+  return values
+}`
+	parser := parser.New(lexer.NewWithFile(source, "array-literal-plans.sec"))
+	result := parser.Parse()
+	if result.HasErrors {
+		t.Fatalf("parse: %v", parser.Errors())
+	}
+	analyzer := NewAnalyzer()
+	if errors := analyzer.Analyze(result.Program); len(errors) != 0 {
+		t.Fatalf("sema: %v", errors)
+	}
+
+	sourceLiteral := result.Program.Statements[1].(*ast.FunctionDeclaration).Body.Statements[0].(*ast.ReturnStatement).Value.(*ast.ArrayLiteral)
+	buildLiteral := result.Program.Statements[2].(*ast.FunctionDeclaration).Body.Statements[0].(*ast.ReturnStatement).Value.(*ast.ArrayLiteral)
+	emptyLiteral := result.Program.Statements[3].(*ast.FunctionDeclaration).Body.Statements[0].(*ast.ReturnStatement).Value.(*ast.ArrayLiteral)
+	inferredLiteral := result.Program.Statements[4].(*ast.FunctionDeclaration).Body.Statements[0].(*ast.LetStatement).Value.(*ast.ArrayLiteral)
+
+	for name, literal := range map[string]*ast.ArrayLiteral{
+		"source": sourceLiteral, "build": buildLiteral, "empty": emptyLiteral, "inferred": inferredLiteral,
+	} {
+		if _, found := analyzer.ResolvedArrayLiteralPlanOf(literal); !found {
+			t.Fatalf("%s literal has no resolved plan", name)
+		}
+	}
+
+	build, _ := analyzer.ResolvedArrayLiteralPlanOf(buildLiteral)
+	if build.ElementType.Name != "int" || build.Length.String() != "5" || len(build.Entries) != 4 {
+		t.Fatalf("build plan = %#v", build)
+	}
+	wantKinds := []ResolvedArrayLiteralEntryKind{ArrayLiteralElement, ArrayLiteralSpread, ArrayLiteralElement, ArrayLiteralElement}
+	wantActions := []ResolvedArrayTransferAction{ArrayTransferConstructDirect, ArrayTransferCopyTrivial, ArrayTransferConstructDirect, ArrayTransferConstructDirect}
+	wantLengths := []string{"1", "2", "1", "1"}
+	for index, entry := range build.Entries {
+		if entry.SourceIndex != index || entry.Kind != wantKinds[index] || entry.Action != wantActions[index] || entry.Length.String() != wantLengths[index] {
+			t.Fatalf("build entry %d = %#v", index, entry)
+		}
+	}
+	spreadLength, fixedSpread := exactFixedArrayLength(build.Entries[1].Type)
+	if build.Entries[1].Type.Kind != ArrayType || !fixedSpread || spreadLength.String() != "2" {
+		t.Fatalf("spread source type = %#v", build.Entries[1].Type)
+	}
+
+	empty, _ := analyzer.ResolvedArrayLiteralPlanOf(emptyLiteral)
+	if empty.ElementType.Name != "int" || empty.Length.Sign() != 0 || len(empty.Entries) != 0 {
+		t.Fatalf("target-empty plan = %#v", empty)
+	}
+	inferred, _ := analyzer.ResolvedArrayLiteralPlanOf(inferredLiteral)
+	if inferred.ElementType.Name != "int" || inferred.Length.String() != "2" || len(inferred.Entries) != 2 {
+		t.Fatalf("inferred plan = %#v", inferred)
+	}
+}
+
+// TestArrayLiteralPlansPreserveMultipleAndHugeSpreads covers SEC-MLIR Package
+// 14 sections 20-23: every spread remains one source entry, exact lengths add
+// without host-width conversion, and plan size follows source size rather than N.
+func TestArrayLiteralPlansPreserveMultipleAndHugeSpreads(t *testing.T) {
+	const huge = "9223372036854775808"
+	const hugePlusOne = "9223372036854775809"
+	source := `module main
+fn Merge(left: int[2], right: int[3]) int[7] {
+  return [0, left..., 1, right...]
+}
+fn Huge(source: int[` + huge + `]) int[` + hugePlusOne + `] {
+  return [source..., 9]
+}`
+	parser := parser.New(lexer.NewWithFile(source, "array-literal-spread-plans.sec"))
+	result := parser.Parse()
+	if result.HasErrors {
+		t.Fatalf("parse: %v", parser.Errors())
+	}
+	analyzer := NewAnalyzer()
+	if errors := analyzer.Analyze(result.Program); len(errors) != 0 {
+		t.Fatalf("sema: %v", errors)
+	}
+
+	mergeLiteral := result.Program.Statements[1].(*ast.FunctionDeclaration).Body.Statements[0].(*ast.ReturnStatement).Value.(*ast.ArrayLiteral)
+	merge, found := analyzer.ResolvedArrayLiteralPlanOf(mergeLiteral)
+	if !found || merge.Length.String() != "7" || len(merge.Entries) != 4 {
+		t.Fatalf("multiple-spread plan = %#v, found=%t", merge, found)
+	}
+	wantKinds := []ResolvedArrayLiteralEntryKind{ArrayLiteralElement, ArrayLiteralSpread, ArrayLiteralElement, ArrayLiteralSpread}
+	wantLengths := []string{"1", "2", "1", "3"}
+	for index, entry := range merge.Entries {
+		if entry.SourceIndex != index || entry.Kind != wantKinds[index] || entry.Length.String() != wantLengths[index] {
+			t.Fatalf("multiple-spread entry %d = %#v", index, entry)
+		}
+	}
+
+	hugeLiteral := result.Program.Statements[2].(*ast.FunctionDeclaration).Body.Statements[0].(*ast.ReturnStatement).Value.(*ast.ArrayLiteral)
+	hugePlan, found := analyzer.ResolvedArrayLiteralPlanOf(hugeLiteral)
+	if !found || hugePlan.Length.String() != hugePlusOne || hugePlan.Length.IsInt64() || len(hugePlan.Entries) != 2 {
+		t.Fatalf("huge compact spread plan = %#v, found=%t", hugePlan, found)
+	}
+	if hugePlan.Entries[0].Kind != ArrayLiteralSpread || hugePlan.Entries[0].Length.String() != huge || hugePlan.Entries[1].Kind != ArrayLiteralElement {
+		t.Fatalf("huge source entries = %#v", hugePlan.Entries)
+	}
+}
+
+func TestArrayLiteralPlansRejectRuntimeAndMismatchedSpreadSources(t *testing.T) {
+	// SEC-MLIR Package 14 sections 18 and 21 keep runtime-length sources out
+	// of fixed-array literals and require exact element identity when inferred.
+	errors := analyzeSourceRaw(t, `module main
+fn Runtime(values: ref int[]) void {
+  let result := [values...]
+}
+fn Mismatch(left: int[1], right: bool[1]) void {
+  let result := [left..., right...]
+}`)
+	joined := joinedSemaErrors(errors)
+	if !strings.Contains(joined, "cannot spread ref int[] into fixed-array literal; expansion count is not known at compile time") ||
+		!strings.Contains(joined, "array literal elements must have one identical type") {
+		t.Fatalf("spread rejection diagnostics = %v", errors)
+	}
+}
 
 // analyzeStructPlanWithLegacyDefaults exercises the compatibility boundary in
 // rules/mlir/packages/sec-mlir-dialect_package13.md section 26. The returned

@@ -1,8 +1,8 @@
 # ISR Analysis
 
 **Created:** 2026-08-11  
-**Last updated:** 2026-08-11  
-**Document revision:** 1  
+**Last updated:** 2026-08-28
+**Document revision:** 2
 **Language version:** Sec 0.1  
 **Status:** Draft for Sec 0.1
 
@@ -75,7 +75,14 @@ storage/lifetime           -> storage and lifetime rules
 ownership/borrowing        -> ownership and borrowing rules
 foreign behavior           -> FFI contracts
 runtime behavior           -> runtime/compiler-known contracts
+hardware register access   -> platform/hardware-register-access.md
 ```
+
+The hardware-register rulebook owns register access legality, access context,
+hardware ordering and completion, hardware access faults, register side
+effects, and target-specific transaction plans. ISR analysis consumes those
+facts and checks them against the resolved ISR profile; it does not redefine
+register transactions, barrier instructions, or completion mechanisms.
 
 ISR analysis owns:
 
@@ -338,6 +345,7 @@ Acquire
 Release
 Allocation
 StorageAccess
+HardwareRegisterOperation
 ForeignCall
 Panic
 Cleanup

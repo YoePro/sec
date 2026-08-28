@@ -44,7 +44,7 @@ rules/declarations/enums.md
 rules/declarations/unions.md
 rules/memory/layout.md
 rules/errors/errorhandling.md
-rules/memory/destruction.txt
+rules/memory/destruction.md
 rules/types/types.md
     ↓
 rules/compiler/semantic_ir.txt

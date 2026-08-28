@@ -386,7 +386,7 @@ func (p *Parser) parseLambdaExpression(captures []ast.LambdaCapture) ast.Express
 		return nil
 	}
 
-	expr.Parameters = p.parseParameters()
+	expr.Parameters = p.parseParameters(false)
 	if expr.Parameters == nil {
 		return nil
 	}

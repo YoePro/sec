@@ -70,7 +70,7 @@ Implementation follows:
 ```text
 rules/collections/collections.md
 rules/memory/reference_model.md
-rules/memory/borrowing.txt
+rules/memory/borrowing.md
 rules/errors/runtime_checks.md
 rules/library/core-library.md
 rules/errors/panic.md

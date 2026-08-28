@@ -1304,8 +1304,8 @@ Related rules remain authoritative for their own domains:
 - `rules/collections/collections.md` for collection storage and mutation invariants;
 - `rules/memory/ownership.md` for ownership;
 - `rules/memory/copy_move.md` for copy and move classification;
-- `rules/memory/borrowing.txt` or its canonical replacement for borrow validity;
-- `rules/memory/destruction.txt` or its canonical replacement for cleanup;
+- `rules/memory/borrowing.md` for borrow validity;
+- `rules/memory/destruction.md` for cleanup;
 - `rules/control-flow/defer.md` for deferred cleanup;
 - `rules/foundations/grammar.md` for canonical grammar;
 - shaped-type rulebooks for `vector` and other shaped collection behavior.

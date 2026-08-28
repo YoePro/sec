@@ -74,7 +74,7 @@ rules/foundations/operators.md
 rules/memory/layout.md
 rules/memory/copy_move.md
 rules/memory/ownership.md
-rules/memory/destruction.txt
+rules/memory/destruction.md
     ↓
 rules/compiler/semantic_ir.txt
     ↓

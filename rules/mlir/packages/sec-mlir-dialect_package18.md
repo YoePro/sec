@@ -67,7 +67,7 @@ rules/library/core-library.md
 rules/memory/reference_model.md
 rules/memory/ownership.md
 rules/memory/copy_move.md
-rules/memory/destruction.txt
+rules/memory/destruction.md
     ↓
 local P13-P17 normative amendments
     ↓

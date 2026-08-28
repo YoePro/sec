@@ -60,9 +60,11 @@ control-flow/discard.md
 declarations/generics.md
 declarations/static.md
 memory/ownership.md
+memory/borrowing.md
 tooling/lsp.md
 tooling/formatter.md
 memory/copy_move.md
+memory/destruction.md
 memory/memory_model.md
 foundations/operators.md
 types/default_values.md
@@ -88,6 +90,7 @@ analysis/data_races.md
 analysis/deadlock_analysis.md
 analysis/isr_analysis.md
 platform/volatile.md
+platform/hardware-register-access.md
 ```
 
 These were written after the older temporary checklist was last synchronized.
@@ -293,14 +296,14 @@ The remaining details to close are:
 | `memory/allocation.txt` | **Written — sync required** | Must be synchronized with collections, threads, explicit backing storage, and shaped buffers. |
 | `memory/arena.md` | **Written** | Canonical Arena ownership, backing, allocation, reset/release, validity epoch, effects, analysis and lowering model. Recognized operations now produce direct graph events, synchronous `MayAllocate` summaries, cause paths, and LSP hover; context, demand, dependency, and lowering work remains partial. |
 | `memory/ownership.md` | **Written** | Canonical revision 2.0 ownership, including Correction 30 exact-Place availability tests, mask-preserving negative refinement, pending call-transfer reservations, and runtime-state requirements for discard/replacement/cleanup as well as explicit queries. Implementation progress is tracked by `frontend.ownership-v2` in `implementation-status.yaml`. |
-| `memory/borrowing.txt` | **Written — sync required** | Must include views, thread-local references, and discard interactions. |
+| `memory/borrowing.md` | **Written** | Canonical revision 2.0 borrowing, including shared/mutable borrow authority, reborrowing, Place overlap, control-flow merging, match/defer interactions, and reference-origin obligations. Implementation progress is tracked by `frontend.borrowing`, `semantic-ir.borrowing`, `lowering.borrowing`, and `tooling.borrowing` in `implementation-status.yaml`. |
 | `memory/references.txt` | **Written — sync required** | Must include shaped views and thread-bound references. |
 | `memory/reference_model.md` | **Written** | Canonical safe-reference guarantees, validity epochs, stable and weak handles, relocation, profile representations, and `RawPtr` boundaries. |
 | `generational_references.md` | **Covered** | Generational validity is canonical in `memory/reference_model.md`; no separate rulebook is required. |
 | `memory/raw_pointers.txt` | **Written — sync required** | Must be synchronized with memory spaces, ABI, and unsafe rules. |
 | `memory/copy_move.md` | **Living** | Canonical copy/move semantics. Implementation status is tracked by `frontend.copy-move` in `implementation-status.yaml`. |
 | `memory/lifetime_analysis.txt` | **Written — sync required** | Must include detached work, thread-local values, views, and explicit storage. |
-| `memory/destruction.txt` | **Written — sync required** | Must include discard, panic, cancellation, collection elements, and TLS destruction. |
+| `memory/destruction.md` | **Written** | Canonical revision 2.0 deterministic destruction, exact-once cleanup responsibility, partial and conditional aggregate cleanup, custom `free`, construction-failure cleanup, unified defer/destruction ordering, and target-policy boundaries. Implementation progress is tracked by `frontend.destruction`, `semantic-ir.destruction`, `lowering.destruction`, `target-policy.destruction`, and `tooling.destruction` in `implementation-status.yaml`. |
 | `memory/memory_model.md` | **Written** | Canonical source and compiler memory model, including default lifetime and origin rules. |
 | `declarations/static.md` | **Written** | Canonical revision 2.0 for module, function-local, and type-associated static storage; static methods/properties, generic specialization, compile-time initialization, dependency order, concurrency, destruction, placement boundaries, Semantic IR, and diagnostics. Implementation progress is tracked by `frontend.static-declarations-members`. |
 | `control-flow/discard.md` | **Written** | Canonical revision 2.0 explicit and implicit discard, must-use/discardability, reinitialization, lifecycle-handle, and deterministic destruction semantics. The implemented frontend slice and remaining lowering, Place, diagnostics, and path-sensitive work are tracked by `frontend.discard-v2`. |
@@ -408,7 +411,7 @@ Process spawning and IPC do not block the immediate language closure.
 | `declarations/properties.md` | **Written** | Implementation progress is tracked by `frontend.properties`. |
 | `library/core-library.md` | **Written — sync required** | Compiler-known core declarations and privileged impl access. |
 | `compiler/compiler_known_members.md` | **Written** | Canonical typed registry, stable member identities, lookup, builtin and shaped member surfaces, core boundary and tooling behavior. Initial Sema/LSP registry integration is implemented. |
-| `library/stdlib.md` | **Written — partially implemented** | Standard-library boundaries and target contracts plus Linux/amd64 streaming file IO, exact and complete caller-buffer reads, writes/copy, seek/flush/truncate/close, directory iteration, non-recursive path operations, path bridging, and explicit resource lifecycle diagnostics. Allocating complete-file and directory-list APIs remain pending. |
+| `library/stdlib.md` | **Written — partially implemented** | Standard-library boundaries and target contracts, including the canonical `stdlib/hw` area and reserved `hw/spi`, `hw/i2c`, `hw/i2s`, and `hw/uart` infrastructure, plus Linux/amd64 streaming file IO, exact and complete caller-buffer reads, writes/copy, seek/flush/truncate/close, directory iteration, non-recursive path operations, path bridging, and explicit resource lifecycle diagnostics. Hardware-bus APIs, allocating complete-file APIs, and directory-list APIs remain pending. |
 
 Built-in lowercase types may receive privileged implementations in core.
 
@@ -515,8 +518,9 @@ from the presence of a versioned document.
 | `platform/target_profiles.md` | **Written** | Canonical Hosted, RTOS, and BareMetal profile families; capability activation, execution and safety policy, typed resource limits, derived profiles, immutable resolved identity, provenance, fingerprints, and compiler-consumer queries. Implementation is tracked by `platform.target-profiles`. |
 | `platform/platform_model.md` | **Written** | Canonical Target/Variant terminology, immutable CompilationPlan resolution, typed platform submodels, capabilities, source selection, fingerprints, diagnostics, and LSP invalidation. Implementation is tracked by `compiler.platform-model`. |
 | `platform/volatile.md` | **Written** | Canonical volatile physical-access semantics, mandatory `@address` region validation, explicit raw volatile operations, physical access contracts, optimizer invariants, representation eligibility, lowering, diagnostics, and tooling. Compiler-known RawPtr volatile methods, unsafe/non-void frontend validation, effect facts, and shared LSP exposure are implemented; target validation and lowering remain under `platform.volatile`. |
+| `platform/hardware-register-access.md` | **Written** | Canonical logical hardware-register access, safe implicit observation, explicit `Read()`/`Write()`, shadow state, resource/endpoint identity, transaction planning, width/alignment/footprints, ordering/completion, access context, runtime mappings, faults, and verified IR/lowering. Implementation is tracked by `platform.hardware-register-access`. |
 | `inline_assembly.md` | **Planned** | Operands, constraints, clobbers, volatility, memory effects, and target restrictions. |
-| `interrupts.md` | **Planned** | ISR syntax, vector binding, nesting, priorities, stacks, and deferred work. |
+| `interrupts.md` | **Planned** | ISR syntax, vector binding, nesting, priorities, stacks, and deferred work; hardware-access legality, access context, ordering/completion, faults, and register side effects must be consumed from `platform/hardware-register-access.md`. |
 | `analysis/isr_analysis.md` | **Written** | Compiler verification for profile-scoped interrupt safety using canonical analysis results; implementation status is tracked by `sema.isr-analysis`. |
 
 This group is a central remaining language-closure block.
@@ -578,7 +582,7 @@ foundations/attributes.md
 concurrency/atomics.md
 concurrency/await.md
 concurrency/blocking.md
-memory/borrowing.txt
+memory/borrowing.md
 concurrency/cancellation.md
 analysis/call_graph.md
 concurrency/channels.md
@@ -594,7 +598,7 @@ memory/copy_move.md
 library/core-library.md
 control-flow/defer.md
 types/default_values.md
-memory/destruction.txt
+memory/destruction.md
 tooling/diagnostics.txt
 declarations/enums.md
 errors/errorhandling.md
@@ -638,6 +642,7 @@ memory/references.txt
 declarations/registers.md
 platform/fixed-address-bindings.md
 platform/volatile.md
+platform/hardware-register-access.md
 compiler/rules_implementations.txt
 errors/runtime_checks.md
 concurrency/scheduling.md
@@ -787,9 +792,11 @@ Still deliberately deferred:
 `foundations/attributes.md` now defines target-selection and interrupt-binding
 attribute syntax. `platform/target_profiles.md` defines canonical profile
 families, activation, policy, resources, resolution, provenance, and typed
-compiler queries. Still to decide in the remaining platform rulebooks:
+compiler queries. `platform/volatile.md`, `platform/fixed-address-bindings.md`,
+and `platform/hardware-register-access.md` now define the volatile, MMIO-binding,
+and hardware-register transaction model. Still to decide in the remaining
+platform rulebooks:
 
-- volatile and MMIO semantics;
 - inline assembly;
 - native platform views;
 

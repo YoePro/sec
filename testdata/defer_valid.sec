@@ -2,7 +2,7 @@ module main
 // defer_valid.sec
 // All declarations and uses in this file must pass semantic analysis.
 
-enum CleanupError {
+enum CleanupError error {
     failed,
 }
 

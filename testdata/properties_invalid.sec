@@ -6,7 +6,7 @@ module properties
 type Speed int
 type Money decimal
 
-type PropertyError enum {
+type PropertyError enum error {
     InvalidValue
 }
 

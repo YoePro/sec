@@ -11,12 +11,12 @@ module functions
 type Percent int range 0..100
 type Age int range 0..150
 
-type ParseError enum {
+type ParseError enum error {
     InvalidInput
     Overflow
 }
 
-type StorageError enum {
+type StorageError enum error {
     Unavailable
     Corrupt
 }

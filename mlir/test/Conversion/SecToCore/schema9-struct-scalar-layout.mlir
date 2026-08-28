@@ -23,7 +23,9 @@ module attributes {
   }
 
   func.func @nested(%source: !sec.struct<identity = "main::Outer", typeArguments = [], fields = [#sec.struct_field<ordinal = 0, name = "inner", type = !sec.struct<identity = "main::Inner", typeArguments = [], fields = [#sec.struct_field<ordinal = 0, name = "value", type = !sec.int, tags = []>]>, tags = []>]>) -> !sec.struct<identity = "main::Outer", typeArguments = [], fields = [#sec.struct_field<ordinal = 0, name = "inner", type = !sec.struct<identity = "main::Inner", typeArguments = [], fields = [#sec.struct_field<ordinal = 0, name = "value", type = !sec.int, tags = []>]>, tags = []>]> {
-    return %source : !sec.struct<identity = "main::Outer", typeArguments = [], fields = [#sec.struct_field<ordinal = 0, name = "inner", type = !sec.struct<identity = "main::Inner", typeArguments = [], fields = [#sec.struct_field<ordinal = 0, name = "value", type = !sec.int, tags = []>]>, tags = []>]>
+    %inner = "sec.struct.extract"(%source) <{action = "copy-trivial", field = 0 : i32}> : (!sec.struct<identity = "main::Outer", typeArguments = [], fields = [#sec.struct_field<ordinal = 0, name = "inner", type = !sec.struct<identity = "main::Inner", typeArguments = [], fields = [#sec.struct_field<ordinal = 0, name = "value", type = !sec.int, tags = []>]>, tags = []>]>) -> !sec.struct<identity = "main::Inner", typeArguments = [], fields = [#sec.struct_field<ordinal = 0, name = "value", type = !sec.int, tags = []>]>
+    %replaced = "sec.struct.replace_field"(%source, %inner) <{field = 0 : i32}> : (!sec.struct<identity = "main::Outer", typeArguments = [], fields = [#sec.struct_field<ordinal = 0, name = "inner", type = !sec.struct<identity = "main::Inner", typeArguments = [], fields = [#sec.struct_field<ordinal = 0, name = "value", type = !sec.int, tags = []>]>, tags = []>]>, !sec.struct<identity = "main::Inner", typeArguments = [], fields = [#sec.struct_field<ordinal = 0, name = "value", type = !sec.int, tags = []>]>) -> !sec.struct<identity = "main::Outer", typeArguments = [], fields = [#sec.struct_field<ordinal = 0, name = "inner", type = !sec.struct<identity = "main::Inner", typeArguments = [], fields = [#sec.struct_field<ordinal = 0, name = "value", type = !sec.int, tags = []>]>, tags = []>]>
+    return %replaced : !sec.struct<identity = "main::Outer", typeArguments = [], fields = [#sec.struct_field<ordinal = 0, name = "inner", type = !sec.struct<identity = "main::Inner", typeArguments = [], fields = [#sec.struct_field<ordinal = 0, name = "value", type = !sec.int, tags = []>]>, tags = []>]>
   }
 }
 
@@ -34,8 +36,18 @@ module attributes {
 // CHECK: !sec.struct<identity = "main::Outer"
 // CHECK-SAME: !sec.struct<identity = "main::Inner"
 // CHECK-SAME: type = si32
+// CHECK: "sec.struct.extract"({{.*}}) {{.*}} : (!sec.struct<identity = "main::Outer"
+// CHECK: "sec.struct.replace_field"({{.*}}) {{.*}} : (!sec.struct<identity = "main::Outer"
 // CHECK-NOT: unrealized_conversion_cast
-// TRIVIAL: !sec.storage<!sec.struct<identity = "main::TargetPair"
+// TRIVIAL: "sec.storage.declare"
+// TRIVIAL-SAME: !sec.storage<!sec.struct<identity = "main::TargetPair"
+// TRIVIAL: "sec.storage.init"
+// TRIVIAL: "sec.storage.load"
+// TRIVIAL: "sec.struct.extract"
+// TRIVIAL: "sec.struct.replace_field"
 // TRIVIAL-NOT: memref<!sec.struct
 // SIGNED: !sec.struct<identity = "main::TargetPair", typeArguments = [si32]
+// SIGNED: "sec.struct.extract"({{.*}}) {{.*}} : (!sec.struct<identity = "main::Outer"
+// SIGNED-SAME: type = si32
+// SIGNED: "sec.struct.replace_field"({{.*}}) {{.*}} : (!sec.struct<identity = "main::Outer"
 // SIGNED-NOT: typeArguments = [i32]

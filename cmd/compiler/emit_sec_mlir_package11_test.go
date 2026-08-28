@@ -79,7 +79,7 @@ func TestPackage11SourceEmitsAndVerifiesEnumUnionValues(t *testing.T) {
 
 func TestPackage11ResultEnumHandlersAndArithmeticUseSchema7Enums(t *testing.T) {
 	source := `module main
-enum Failure { invalid, exhausted, }
+enum Failure error { invalid, exhausted, }
 fn WideSource(value: int128) Result[int128, Failure] { return Ok(value) }
 fn WideForward(value: int128) Result[int128, Failure] {
   let resolved := try WideSource(value)

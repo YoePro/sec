@@ -110,7 +110,7 @@ fn Build() Box { return Box.Item(Holder { text: "value" }) }
 
 func TestPackage11UsesOrdinaryEnumForUserErrorHandler(t *testing.T) {
 	module, err := analyzedModule(t, `module main
-enum Failure { failed }
+enum Failure error { failed }
 fn Source(value: int) Result[int, Failure] { return Ok(value) }
 fn Handle(value: int) int {
   return try Source(value) {

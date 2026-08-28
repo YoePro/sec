@@ -38,7 +38,7 @@ func TestLifecycleInitAndNewSemantics(t *testing.T) {
 	errors := analyzeSource(t, `
 module main
 
-type BuildError enum {
+type BuildError enum error {
     Invalid,
 }
 
@@ -88,7 +88,7 @@ fn DefaultValue() Defaults {
 
 	errors = analyzeSource(t, `
 module main
-type BuildError enum { Invalid }
+type BuildError enum error { Invalid }
 type Resource struct { value: int, }
 impl Resource {
     init(value: int) BuildError { self.value = value }
@@ -105,8 +105,8 @@ fn Invalid() void {
 func TestInitOverloadIdentityIgnoresConstructionErrorType(t *testing.T) {
 	errors := analyzeSource(t, `
 module main
-type FirstError enum { Failed }
-type SecondError enum { Failed }
+type FirstError enum error { Failed }
+type SecondError enum error { Failed }
 type Resource struct { value: int, }
 impl Resource {
     init(value: int) FirstError { self.value = value }
@@ -2185,6 +2185,52 @@ fn RejectPlain() Result[void, error] {
 	if len(errors) != 1 || !strings.Contains(errors[0].Message, "must return Err(error), got Err(Plain)") {
 		t.Fatalf("error-root diagnostics = %v", errors)
 	}
+}
+
+func TestErrorUnionMarkerAndResultErrorChannelConstraint(t *testing.T) {
+	input := `
+module main
+
+type DetailedError union error {
+    Open { Path: string, Code: int }
+    Read(string)
+}
+type PlainFailure union { Failed }
+enum PlainEnum { Failed }
+
+fn Precise(value: DetailedError) Result[void, DetailedError] {
+    return Err(value)
+}
+
+fn Widen(value: DetailedError) Result[void, error] {
+    return Err(value)
+}
+
+fn InvalidUnion() Result[int, PlainFailure] {
+    return Ok(1)
+}
+
+fn InvalidEnum() Result[int, PlainEnum] {
+    return Ok(1)
+}
+
+fn InvalidBuiltin() Result[int, string] {
+    return Ok(1)
+}
+`
+
+	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, input)
+	if got := analyzer.types["DetailedError"]; got.Kind != UnionType || !got.ErrorAssignable || len(got.UnionVariants) != 2 {
+		t.Fatalf("marked payload error union = %#v", got)
+	}
+	if got := analyzer.types["PlainFailure"]; got.ErrorAssignable {
+		t.Fatalf("ordinary union became error-assignable: %#v", got)
+	}
+	assertSemaErrors(t, errors, []string{
+		"Result error type PlainFailure is not an error type; use error or declare PlainFailure with the error marker at 19:31",
+		"Result error type PlainEnum is not an error type; use error or declare PlainEnum with the error marker at 23:30",
+		"Result error type string is not an error type; use error or declare string with the error marker at 27:33",
+	})
 }
 
 func TestStructLiteralOptionFieldsAcceptContextualNone(t *testing.T) {
@@ -4652,7 +4698,7 @@ fn UpdateOutside() void {
 
 func TestInterfacePropertySetterFallibilityConformance(t *testing.T) {
 	input := `
-enum ConfigError {
+enum ConfigError error {
 	Invalid,
 }
 
@@ -4740,7 +4786,7 @@ func TestTryAssignmentHandlersUseImplicitOk(t *testing.T) {
 	input := `
 type Speed decimal<m/s>
 
-enum IOError {
+enum IOError error {
 	InvalidValue,
 }
 
@@ -4781,7 +4827,7 @@ func TestTryAssignmentAllowsExplicitOkHandler(t *testing.T) {
 	input := `
 type Speed decimal<m/s>
 
-enum IOError {
+enum IOError error {
 	InvalidValue,
 }
 
@@ -4821,7 +4867,7 @@ unit s physical
 
 func TestTryExpressionAllowsExplicitOkHandler(t *testing.T) {
 	input := `
-enum IOError {
+enum IOError error {
 	InvalidValue,
 }
 
@@ -5022,7 +5068,7 @@ func TestPropertyShortNameFallibleAssignmentRequiresTry(t *testing.T) {
 	input := `
 module main
 
-enum PropertyError {
+enum PropertyError error {
 	Rejected,
 }
 
@@ -5059,7 +5105,7 @@ func TestPropertyShortNameTryAssignmentUsesPropertyErrorType(t *testing.T) {
 	input := `
 module main
 
-enum PropertyError {
+enum PropertyError error {
 	Rejected,
 }
 
@@ -5777,7 +5823,7 @@ fn UnknownReturn() UnknownType {
 
 func TestResultReturnExpressions(t *testing.T) {
 	input := `
-enum IOError {
+enum IOError error {
 	InvalidValue,
 }
 
@@ -5800,7 +5846,7 @@ fn ErrResult() Result[int, IOError] {
 
 func TestResultReturnExpressionErrors(t *testing.T) {
 	input := `
-enum IOError {
+enum IOError error {
 	InvalidValue,
 }
 
@@ -5839,7 +5885,7 @@ module main
 
 type Speed decimal<m/s>
 
-enum IOError {
+enum IOError error {
 	FileNotFound,
 	AccessDenied,
 	InvalidValue,
@@ -5873,7 +5919,7 @@ module main
 
 type Speed decimal<m/s>
 
-enum IOError {
+enum IOError error {
 	FileNotFound,
 	AccessDenied,
 	InvalidValue,
@@ -5919,11 +5965,11 @@ module main
 
 type Speed decimal<m/s>
 
-enum IOError {
+enum IOError error {
 	InvalidValue,
 }
 
-enum ParseError {
+enum ParseError error {
 	InvalidNumber,
 }
 
@@ -5964,11 +6010,11 @@ module main
 
 type Speed decimal<m/s>
 
-enum IOError {
+enum IOError error {
 	InvalidValue,
 }
 
-enum ParseError {
+enum ParseError error {
 	InvalidNumber,
 }
 
@@ -6004,7 +6050,7 @@ module main
 
 type Speed decimal<m/s>
 
-enum IOError {
+enum IOError error {
 	InvalidValue,
 }
 
@@ -6037,7 +6083,7 @@ module main
 type Speed decimal<m/s>
 type Money decimal<SEK>
 
-enum IOError {
+enum IOError error {
 	InvalidValue,
 	AccessDenied,
 }
@@ -6257,7 +6303,7 @@ fn Test() void {
 
 func TestDeferRejectsTryPropagation(t *testing.T) {
 	input := `
-enum IOError {
+enum IOError error {
 	Failed,
 }
 
@@ -6282,7 +6328,7 @@ fn Test() Result[int, IOError] {
 
 func TestDeferRejectsUnhandledResultExpression(t *testing.T) {
 	input := `
-enum CleanupError {
+enum CleanupError error {
 	failed,
 }
 
@@ -6738,7 +6784,7 @@ func TestGenericExpectedResultInference(t *testing.T) {
 	input := `
 module main
 
-enum IOError {
+enum IOError error {
 	failed,
 }
 
@@ -6764,7 +6810,7 @@ func TestGenericExpectedResultInferenceDoesNotOverrideArguments(t *testing.T) {
 	input := `
 module main
 
-enum IOError {
+enum IOError error {
 	failed,
 }
 
@@ -6933,7 +6979,7 @@ func TestBuiltinOptionShorthandConstructors(t *testing.T) {
 	input := `
 module main
 
-enum IOError {
+enum IOError error {
 	failed,
 }
 
@@ -7271,7 +7317,7 @@ func TestMatchRequiresAtLeastOneBranch(t *testing.T) {
 	input := `
 module main
 
-enum IOError {
+enum IOError error {
 	InvalidValue,
 }
 
@@ -7295,7 +7341,7 @@ func TestMatchCatchAllMayNotHideResultErr(t *testing.T) {
 	input := `
 module main
 
-enum IOError {
+enum IOError error {
 	InvalidValue,
 }
 
@@ -7325,7 +7371,7 @@ func TestMatchGuardMustBeBool(t *testing.T) {
 	input := `
 module main
 
-enum IOError {
+enum IOError error {
 	InvalidValue,
 }
 
@@ -7356,7 +7402,7 @@ func TestGuardedMatchArmDoesNotExhaustPattern(t *testing.T) {
 	input := `
 module main
 
-enum IOError {
+enum IOError error {
 	InvalidValue,
 }
 
@@ -7386,7 +7432,7 @@ func TestMatchDuplicateResultArms(t *testing.T) {
 	input := `
 module main
 
-enum IOError {
+enum IOError error {
 	InvalidValue,
 }
 
@@ -7423,7 +7469,7 @@ func TestMatchDiscardSuccessPayloadAndExplicitErrorDiscard(t *testing.T) {
 	input := `
 module main
 
-enum IOError {
+enum IOError error {
 	InvalidValue,
 }
 
@@ -7450,7 +7496,7 @@ func TestMatchPatternBindingCannotShadowOuterVariable(t *testing.T) {
 	input := `
 module main
 
-enum IOError {
+enum IOError error {
 	InvalidValue,
 }
 
@@ -7487,7 +7533,7 @@ func TestMatchStatementReturnArmsSatisfyFunctionReturn(t *testing.T) {
 	input := `
 module main
 
-enum IOError {
+enum IOError error {
 	InvalidValue,
 }
 
@@ -7541,7 +7587,7 @@ enum Direction {
 	East,
 }
 
-enum IOError {
+enum IOError error {
 	InvalidValue,
 }
 
@@ -7656,7 +7702,7 @@ func TestMatchErrDiscardPatternIsAccepted(t *testing.T) {
 	input := `
 module main
 
-enum IOError {
+enum IOError error {
 	InvalidValue,
 }
 
@@ -7682,7 +7728,7 @@ func TestTryErrDiscardPatternIsAccepted(t *testing.T) {
 	input := `
 module main
 
-enum IOError {
+enum IOError error {
 	InvalidValue,
 }
 
@@ -7775,7 +7821,7 @@ func TestStandaloneResultCallRequiresHandling(t *testing.T) {
 	errors := analyzeSourceRaw(t, `
 module main
 
-enum Failure {
+enum Failure error {
 	failed,
 }
 
@@ -9453,11 +9499,11 @@ func TestUnsafeFunctionAllowsAsmAndNamedOutput(t *testing.T) {
 	input := `
 module platform_linux_amd64
 
-type ErrorNumber int
+enum ErrorNumber int error { Native = 1 }
 
 fn _decodeSyscallResult(result: int) Result[uint, ErrorNumber] {
 	if result < 0 {
-		return Err(ErrorNumber(-result))
+		return Err(ErrorNumber.Native)
 	}
 
 	return Ok(uint(result))
@@ -9959,7 +10005,7 @@ func TestResultTypeArgumentCountErrors(t *testing.T) {
 	input := `
 module main
 
-enum IOError {
+enum IOError error {
 	InvalidValue,
 }
 

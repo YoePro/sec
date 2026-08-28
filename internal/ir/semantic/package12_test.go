@@ -110,7 +110,7 @@ fn ReadOptional(number: Option[int]) int {
 
 func TestPackage12BuildsResultMatchWithBindingDiscardAndGuard(t *testing.T) {
 	module, err := analyzedModule(t, `module main
-enum Failure { Missing, Other, }
+enum Failure error { Missing, Other, }
 fn Read(result: Result[int, Failure], enabled: bool) int {
   return match result {
     Ok(value) where enabled => value

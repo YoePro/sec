@@ -388,7 +388,7 @@ func TestPackage7ReportsUnsupportedOperatorBoundaries(t *testing.T) {
 		{
 			name: "try arithmetic",
 			source: `module main
-enum Failure { failed, }
+enum Failure error { failed, }
 fn Use() int {
     return try Calculate() {
         Ok(value) => value

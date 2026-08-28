@@ -85,15 +85,17 @@ integrations:
     package: SEC-MLIR-P13
     name: Struct Semantic Value Representation
     area: semantic-ir-sec-mlir-and-lowering
-    status: partial
+    status: implemented
     implementation_phase: complete
-    integrated: "2026-08-26"
+    integrated: "2026-08-28"
     baseline: current repository plus completed SEC-MLIR-P12 schema 8
-    repository_head: fc8d6324ace4e06f659b9b64c7967f2c19b0c0d2
+    repository_head: e3d17698d756678cfb94bd9f8df1f11977635375
+    audited_state: repository HEAD plus pending Package 13 completion diff
     mlir_toolchain: LLVM 24.0.0git optimized build with assertions
     rules:
       - rules/mlir/packages/sec-mlir-dialect_package13.md
       - rules/mlir/packages/sec-mlir-dialect_package13.yaml
+      - rules/mlir/packages/sec-mlir-dialect_package13-implementation-report.md
       - rules/mlir/semantic-ir/sec_semantic_ir_struct_v1.md
       - rules/mlir/dialect-versions/sec_mlir_dialect_v9.md
       - rules/mlir/lowering-versions/sec_mlir_lowering_v9.md
@@ -150,7 +152,8 @@ integrations:
       - reproducible real-tool verification through an absolute SEC_MLIR_BIN path with regression coverage rejecting relative paths
       - complete schema-9 struct verifier mismatch matrix for field ordinals, operands, metadata counts, spread results, extraction, and replacement
       - ordered-tag round trips and explicit adjacent schema-8 compatibility coverage
-      - nested 32-bit and 64-bit struct scalar resolution with checked-integer and high-level trivial-core boundaries preserved
+      - nested 32-bit and 64-bit struct scalar resolution with identities, tags, ordinals, executable extract/replace operations, and checked-integer boundaries preserved
+      - trivial-core preserves high-level struct storage declare, init, and load operations without memref conversion
       - trusted compiler-core builtin impl acceptance without path-based privilege escalation
       - current compiler-core IsEmpty and IsLetter property resolution
       - locally handled checked Linux errno conversion into the exact LinuxError carrier across file and filesystem syscalls
@@ -162,8 +165,19 @@ integrations:
       - interprocedural parameter reference origins preserved through field and slice projection
       - repository-wide Go and vet acceptance gates restored
       - canonical Semantic IR, dialect, and lowering rulebooks synchronized to Package 13
-    remaining:
-      - complete the focused P13 semantic evidence, unsupported-boundary, final acceptance, and implementation-report tasks P13-28 through P13-53
+      - complete Package 13 section-74 struct type matrix, including nested impl identities, generic and wide fields, tags, property exclusion, and optional LayoutRef
+      - strict Semantic IR rejection tests for duplicate or non-contiguous struct field identities and duplicate field names
+      - ResolvedStructLiteralPlan independence from optional legacy AST default materialization, with default and multiple-spread matrices
+      - source-ordered, exactly-once struct evaluation with declaration-ordered construction and the P13 trivial action boundary
+      - scalar, wide, nested, parameter, and return-value field reads while property members remain distinct compiler-owned facts
+      - explicit and defaulted mutable struct locals with RHS-first, leaf-to-root replacement and one root store
+      - stable guarded synthetic union-payload structs with wide fields and explicit non-trivial payload rejection
+      - package-tagged parser, Sema, and Semantic IR rejection matrix for non-trivial struct ownership, borrow, property, method, equality, lifecycle, and foreign-ABI paths
+      - unsupported Semantic IR builds return no partial module and never substitute placeholder operations
+      - successful construction, spread, and field-read paths contain no hidden storage, physical offsets, poison, undef, or LLVM aggregate vocabulary
+      - source-to-schema-9 verification on both 32-bit and 64-bit scalar plans with target-sized struct fields resolved to the exact signed and unsigned widths
+      - Package 13 section-90 acceptance completed and the mandatory section-91 implementation report recorded
+    remaining: []
     later_rule_reconciliation:
       - P15 field borrowing uses Place and reference operations rather than copying the containing struct
       - P16 permits shared-slice fields with contained-origin tracking and keeps mutable-slice aggregates move-only
@@ -186,6 +200,14 @@ integrations:
         result: passed
       - command: go vet ./...
         result: passed
+      - command: fresh detached worktree at e3d17698d756678cfb94bd9f8df1f11977635375 plus exact P13 diff; go test ./...
+        result: passed without pre-existing build artifacts
+      - command: SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./internal/lowering/secmlir -run TestEmitPackage13StructsEndToEnd -count=1 -v
+        result: passed for 32-bit and 64-bit scalar plans using an absolute tool path
+      - command: SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./...
+        result: passed
+      - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
+        result: passed (78/78)
 
   - id: frontend.ownership-v2
     area: frontend-ownership-control-flow-and-lowering
@@ -2852,7 +2874,7 @@ integrations:
   - id: frontend.errorhandling-v2
     area: frontend-error-control-flow-ownership-and-lowering
     status: partial
-    integrated: "2026-08-24"
+    integrated: "2026-08-28"
     document_revision: "2.0"
     repository_baseline: "b3315f6"
     semantic_source_parent: "45e5cd4"
@@ -2878,6 +2900,16 @@ integrations:
       - rules/tooling/lsp.md
       - rules/tooling/diagnostics.txt
       - rules/tooling/formatter.md
+    code:
+      - internal/ast/ast.go
+      - internal/parser/parser.go
+      - internal/sema/analyzer.go
+      - internal/sema/types.go
+      - internal/formatter/formatter.go
+    tests:
+      - internal/parser/parser_test.go
+      - internal/sema/analyzer_test.go
+      - internal/formatter/formatter_test.go
     implemented:
       - "Result[T, E], Ok(...), Err(...), ordinary Result propagation, and local Result handlers have substantial frontend and Semantic IR support."
       - "checked arithmetic already participates in language-defined try semantics and binds try to the complete following arithmetic expression."
@@ -2899,9 +2931,11 @@ integrations:
       - "compiler-known lowercase error resolves import-free as the open root of the error-specific assignability relation"
       - "canonical enum Name error declarations and integer/bit-backed enum Name Representation error declarations preserve nominal enum identity while marking the type as a concrete error"
       - "frontend initialization and bodyless Result try compatibility permit one-way marked concrete-error to error widening without implicit narrowing or cross-concrete conversion"
+      - "payload-bearing type Name union error declarations preserve the marker and payload AST, retain ordinary union semantics, and become one-way assignable to compiler-known error"
+      - "Result[T, E] now rejects non-error failure channels; E must be compiler-known error or a concrete enum/union declared with the error marker"
+      - "invalid Result failure channels produce a programmer-facing diagnostic naming the invalid type and the explicit error marker correction"
+      - "canonical compiler, stdlib, platform, and test fixtures declare their concrete Result error channels explicitly; raw Linux errno retains its numeric payload in an error union"
     remaining:
-      - "error-union-marker: Accept payload-bearing error unions in canonical declaration order, for example type DetailedError union error { ... }. Error union payloads follow ordinary union ownership, borrowing, destruction, and match rules."
-      - "result-error-type-constraint: Require Result[T, E] error parameter E to be error or a declared Sec error type. Reject arbitrary non-error E types in revision 2."
       - "error-widening-representation-and-lowering: Preserve concrete error type identity, active variant, payload, ownership state, and destruction obligations through Semantic IR and maintained backends after frontend widening to error. Physical representation remains implementation-defined."
       - "open-error-match-narrowing: Permit error-specific variant narrowing when matching Result[T, error] while keeping error an open domain. Concrete-only Err arms are not exhaustive; Err(errorValue) or Err(_) may cover the remaining open domain. Do not generalize this into arbitrary runtime type-pattern matching."
       - "result-consuming-projections: Add consuming Result[T,E].Ok() -> Option[T] and Result[T,E].Err() -> Option[E]. The owned Result is consumed, retained move-only payload moves without hidden clone, and the non-retained active payload is destroyed exactly once."
@@ -2972,6 +3006,10 @@ integrations:
       - "compiler and LSP diagnostics share resolved ownership facts and use mentor-style explanations"
     verification:
       - command: go test ./internal/parser ./internal/formatter ./internal/sema -run 'ErrorEnumMarker|ErrorEnumMarkerRoot' -count=1
+        result: passed
+      - command: go test ./internal/parser ./internal/formatter ./internal/sema -run 'ErrorUnion|ResultErrorChannel|ErrorEnum' -count=1
+        result: passed
+      - command: go test ./...
         result: passed
 
   - id: frontend.bodyless-try-assignment

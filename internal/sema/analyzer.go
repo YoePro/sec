@@ -19,6 +19,7 @@ import (
 type Analyzer struct {
 	analysisDepth               AnalysisDepth
 	analysisBudget              AnalysisBudget
+	legacyDefaultAST            bool
 	types                       map[string]Type
 	units                       map[string]UnitDefinition
 	functions                   map[string][]Function
@@ -175,12 +176,23 @@ func NewAnalyzerWithDepth(depth AnalysisDepth) *Analyzer {
 		depth = AnalysisStandard
 	}
 	return &Analyzer{
-		analysisDepth:  depth,
-		analysisBudget: analysisBudget(depth),
-		types:          builtinTypes(),
+		analysisDepth:    depth,
+		analysisBudget:   analysisBudget(depth),
+		legacyDefaultAST: true,
+		types:            builtinTypes(),
 		// rules/types/units.md; correction6.md requires ordinary unit identities
 		// to enter Sema through declarations/imported catalogs, never spelling.
 		units: map[string]UnitDefinition{},
+	}
+}
+
+// SetLegacyASTDefaultMaterialization controls only the temporary compatibility
+// mutation described by rules/mlir/packages/sec-mlir-dialect_package13.md
+// section 26. ResolvedStructLiteralPlan is recorded before this helper runs and
+// remains the compiler-owned semantic authority regardless of this setting.
+func (a *Analyzer) SetLegacyASTDefaultMaterialization(enabled bool) {
+	if a != nil {
+		a.legacyDefaultAST = enabled
 	}
 }
 
@@ -296,6 +308,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.analyzeTypeDeclarations(program)
 	a.analyzeEnumDeclarations(program)
 	a.analyzeImplTypeDeclarations(program)
+	a.refreshTypesResolvedThroughNestedImplDeclarations(program)
 	a.analyzeUnitMetadata(program)
 	a.predeclareModuleStaticStorage(program)
 	a.registerImplDeclarations(program)
@@ -324,6 +337,35 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.pitfallAnalysis = buildPitfallAnalysis(program, a)
 
 	return a.errors
+}
+
+// refreshTypesResolvedThroughNestedImplDeclarations closes the forward
+// declaration cycle permitted by rules/declarations/impl.md sections 6 and 10:
+// a module-level struct may store a qualified nested type whose definition is
+// owned by the struct's impl. Package 13 requires the resulting field to carry
+// the nested struct's qualified identity, not the InvalidType placeholder used
+// during declaration registration.
+func (a *Analyzer) refreshTypesResolvedThroughNestedImplDeclarations(program *ast.Program) {
+	a.withProgramModules(program, func(statement ast.Statement) {
+		declaration, ok := statement.(*ast.TypeDeclStatement)
+		if !ok || declaration == nil || declaration.Name == nil || declaration.StructType == nil {
+			return
+		}
+		current, ok := a.types[declaration.Name.Value]
+		if !ok || !structContainsInvalidFieldType(current) {
+			return
+		}
+		a.types[declaration.Name.Value] = a.typeFromStructDeclaration(declaration)
+	})
+}
+
+func structContainsInvalidFieldType(typ Type) bool {
+	for _, field := range typ.Fields {
+		if field.Type.Kind == InvalidType {
+			return true
+		}
+	}
+	return false
 }
 
 func (a *Analyzer) Warnings() []Error {
@@ -8000,8 +8042,11 @@ func (a *Analyzer) typeFromUnionDeclaration(name string, stmt *ast.TypeDeclState
 		Named:                 true,
 		Declared:              true,
 		ExplicitlyNonCopyable: noCopy,
-		Underlying:            "union",
-		GenericParameters:     genericParameterNameValues(stmt.GenericParameters),
+		// rules/errors/errorhandling.md section 3.2: the marker changes
+		// error assignability, never the union's ordinary payload semantics.
+		ErrorAssignable:   stmt.ErrorType,
+		Underlying:        "union",
+		GenericParameters: genericParameterNameValues(stmt.GenericParameters),
 	}
 	if noCopy {
 		typ.NoCopyPolicyOrigin = name
@@ -10984,6 +11029,9 @@ func (a *Analyzer) resolveType(ref *ast.TypeReference) (Type, bool) {
 	if !a.validateVoidTypeArguments(ref.Token, typ) {
 		return Type{Kind: InvalidType}, false
 	}
+	if !a.validateResultErrorChannel(ref, typ) {
+		return Type{Kind: InvalidType}, false
+	}
 	if ref.EventCapacitySet {
 		typ.EventCapacity = ref.EventCapacity
 		typ.EventCapacitySet = true
@@ -11006,6 +11054,24 @@ func (a *Analyzer) resolveType(ref *ast.TypeReference) (Type, bool) {
 		typ = a.instantiateGenericType(typ)
 	}
 	return typ, true
+}
+
+// validateResultErrorChannel enforces rules/errors/errorhandling.md section 4.
+// Result is not a general two-value union: its second argument is a declared
+// failure channel and therefore must inhabit the compiler-known error domain.
+func (a *Analyzer) validateResultErrorChannel(ref *ast.TypeReference, typ Type) bool {
+	if typ.Kind != ResultType || len(typ.TypeArgs) != 2 || len(ref.TypeArgs) != 2 {
+		return true
+	}
+	errorType := typ.TypeArgs[1]
+	if errorType.Kind == ErrorRootType || errorType.ErrorAssignable {
+		return true
+	}
+	token := ref.TypeArgs[1].Token
+	a.addErrorAtToken(token,
+		"Result error type %s is not an error type; use error or declare %s with the error marker",
+		typeDisplayName(errorType), typeDisplayName(errorType))
+	return false
 }
 
 func (a *Analyzer) validateCompilerKnownGenericType(token lexer.Token, typ *Type) bool {
@@ -11971,7 +12037,7 @@ func (a *Analyzer) inferStructLiteral(expr *ast.StructLiteral) (Type, expression
 	}
 	// A valid same-type spread supplies every direct field. Without one, apply
 	// semantic defaults only after all explicit entries have been resolved.
-	if !spreadSuppliesFields {
+	if a.legacyDefaultAST && !spreadSuppliesFields {
 		for _, field := range typ.Fields {
 			if isEventType(field.Type) {
 				continue

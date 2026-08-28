@@ -1,6 +1,7 @@
 package sema
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -8,6 +9,44 @@ import (
 	"sec/internal/lexer"
 	"sec/internal/parser"
 )
+
+// analyzeStructPlanWithLegacyDefaults exercises the compatibility boundary in
+// rules/mlir/packages/sec-mlir-dialect_package13.md section 26. The returned
+// plan must be independent of the optional synthesized AST fields.
+func analyzeStructPlanWithLegacyDefaults(t *testing.T, source string, materialize bool) (ResolvedStructLiteralPlan, int) {
+	t.Helper()
+	p := parser.New(lexer.NewWithFile(source, "struct-default-plan.sec"))
+	result := p.Parse()
+	if result.HasErrors {
+		t.Fatalf("parse: %v", p.Errors())
+	}
+	a := NewAnalyzer()
+	a.SetLegacyASTDefaultMaterialization(materialize)
+	if errs := a.Analyze(result.Program); len(errs) != 0 {
+		t.Fatalf("sema: %v", errs)
+	}
+	function := result.Program.Statements[2].(*ast.FunctionDeclaration)
+	literal := function.Body.Statements[0].(*ast.ReturnStatement).Value.(*ast.StructLiteral)
+	plan, ok := a.ResolvedStructLiteralPlanOf(literal)
+	if !ok {
+		t.Fatal("missing resolved struct literal plan")
+	}
+	return plan, len(literal.Fields)
+}
+
+func TestResolvedStructPlanIgnoresLegacyASTDefaultMaterialization(t *testing.T) {
+	source := `module main
+type Defaults struct { Count: int, Enabled: bool }
+fn Build() Defaults { return Defaults {} }`
+	withLegacy, materializedFields := analyzeStructPlanWithLegacyDefaults(t, source, true)
+	withoutLegacy, sourceFields := analyzeStructPlanWithLegacyDefaults(t, source, false)
+	if materializedFields != 2 || sourceFields != 0 {
+		t.Fatalf("legacy fields = %d, source-only fields = %d", materializedFields, sourceFields)
+	}
+	if !reflect.DeepEqual(withLegacy, withoutLegacy) {
+		t.Fatalf("semantic plan depends on legacy AST materialization:\nwith: %#v\nwithout: %#v", withLegacy, withoutLegacy)
+	}
+}
 
 func TestSemanticFactsRetainBindingAndExactCallTarget(t *testing.T) {
 	source := `module main
@@ -155,6 +194,118 @@ fn Build(base: Settings) int {
 	againMetadata, _ := a.ResolvedStructFieldAt(memberPlan.OwnerType.Fields[0].Token)
 	if againMetadata.Field.Tags[0].Value != `signed\"little` {
 		t.Fatalf("read-only field metadata exposed analyzer storage: %#v", againMetadata.Field.Tags)
+	}
+}
+
+// rules/types/default_values.md and Package 13 sections 27 and 75 require the
+// plan to retain canonical defaults, including recursive and constrained ones,
+// rather than reconstructing them in a backend.
+func TestResolvedStructPlansCoverDefaultMatrix(t *testing.T) {
+	source := `module main
+type Port int range 1..65535 default 8080
+type Positive int range 1..10
+type Inner struct { Value: Port }
+type Config struct { Inner: Inner, Enabled: bool, Port: Port, Positive: Positive }
+fn Build() Config {
+  let all := Config {}
+  return Config { Enabled: true }
+}`
+	p := parser.New(lexer.NewWithFile(source, "struct-default-matrix.sec"))
+	result := p.Parse()
+	if result.HasErrors {
+		t.Fatalf("parse: %v", p.Errors())
+	}
+	a := NewAnalyzer()
+	a.SetLegacyASTDefaultMaterialization(false)
+	if errs := a.Analyze(result.Program); len(errs) != 0 {
+		t.Fatalf("sema: %v", errs)
+	}
+	function := result.Program.Statements[5].(*ast.FunctionDeclaration)
+	all := function.Body.Statements[0].(*ast.LetStatement).Value.(*ast.StructLiteral)
+	partial := function.Body.Statements[1].(*ast.ReturnStatement).Value.(*ast.StructLiteral)
+	allPlan, allOK := a.ResolvedStructLiteralPlanOf(all)
+	partialPlan, partialOK := a.ResolvedStructLiteralPlanOf(partial)
+	if !allOK || !partialOK || len(allPlan.Entries) != 0 || len(allPlan.FinalFields) != 4 {
+		t.Fatalf("all=%#v (%t), partial=%#v (%t)", allPlan, allOK, partialPlan, partialOK)
+	}
+	wantDefaults := []DefaultKind{StructDefault, PrimitiveDefault, ExplicitTypeDefault, RangeDefault}
+	for index, want := range wantDefaults {
+		if field := allPlan.FinalFields[index]; field.SourceKind != StructFieldSourceDefault || field.Default.Kind != want {
+			t.Fatalf("all default field %d = %#v, want %s", index, field, want)
+		}
+	}
+	if partialPlan.FinalFields[1].SourceKind != StructFieldSourceExplicit || partialPlan.FinalFields[0].Default.Kind != StructDefault || partialPlan.FinalFields[2].Default.Kind != ExplicitTypeDefault {
+		t.Fatalf("partial plan = %#v", partialPlan)
+	}
+}
+
+func TestResolvedStructPlanRejectsNonDefaultableOmission(t *testing.T) {
+	errs := analyzeSourceRaw(t, `module main
+type Required struct { Value: ref int }
+fn Build() Required { return Required {} }`)
+	if len(errs) == 0 || !strings.Contains(errs[0].Message, "has no default value and must be initialized") {
+		t.Fatalf("errors = %v", errs)
+	}
+}
+
+// rules/declarations/spread.md and Package 13 sections 24-25 and 75 require
+// source entries to stay ordered while final fields use declaration order.
+func TestResolvedStructPlanUsesLaterSpreadWithoutOverwritingExplicitField(t *testing.T) {
+	source := `module main
+type Triple struct { First: int, Second: int, Third: int }
+fn Build(first: Triple, second: Triple) Triple {
+  return Triple { first..., Second: 20, second... }
+}`
+	p := parser.New(lexer.NewWithFile(source, "struct-multiple-spreads.sec"))
+	result := p.Parse()
+	if result.HasErrors {
+		t.Fatalf("parse: %v", p.Errors())
+	}
+	a := NewAnalyzer()
+	if errs := a.Analyze(result.Program); len(errs) != 0 {
+		t.Fatalf("sema: %v", errs)
+	}
+	function := result.Program.Statements[2].(*ast.FunctionDeclaration)
+	literal := function.Body.Statements[0].(*ast.ReturnStatement).Value.(*ast.StructLiteral)
+	plan, ok := a.ResolvedStructLiteralPlanOf(literal)
+	if !ok || len(plan.Entries) != 3 || len(plan.FinalFields) != 3 {
+		t.Fatalf("plan = %#v, %t", plan, ok)
+	}
+	for index, entry := range plan.Entries {
+		if entry.SourceIndex != index {
+			t.Fatalf("source entries = %#v", plan.Entries)
+		}
+	}
+	if plan.FinalFields[0].FieldName != "First" || plan.FinalFields[0].SourceEntryIndex != 2 ||
+		plan.FinalFields[1].FieldName != "Second" || plan.FinalFields[1].SourceKind != StructFieldSourceExplicit || plan.FinalFields[1].SourceEntryIndex != 1 ||
+		plan.FinalFields[2].FieldName != "Third" || plan.FinalFields[2].SourceEntryIndex != 2 {
+		t.Fatalf("final fields = %#v", plan.FinalFields)
+	}
+}
+
+// rules/declarations/properties.md and Package 13 sections 32 and 39 keep
+// property syntax out of the stored-field lowering path.
+func TestResolvedStructMemberDistinguishesPropertyFromStoredField(t *testing.T) {
+	source := `module main
+type Meter struct { Stored: int }
+impl Meter {
+  property Value: int { get { return self.Stored } }
+}
+fn Read(meter: Meter) int { return meter.Value }`
+	p := parser.New(lexer.NewWithFile(source, "struct-property-member.sec"))
+	result := p.Parse()
+	if result.HasErrors {
+		t.Fatalf("parse: %v", p.Errors())
+	}
+	a := NewAnalyzer()
+	if errs := a.Analyze(result.Program); len(errs) != 0 {
+		t.Fatalf("sema: %v", errs)
+	}
+	function := result.Program.Statements[3].(*ast.FunctionDeclaration)
+	member := function.Body.Statements[0].(*ast.ReturnStatement).Value.(*ast.MemberExpression)
+	plan, ok := a.ResolvedStructMemberOf(member)
+	if !ok || plan.Kind != MemberProperty || plan.FieldName != "Value" || plan.Action != "" {
+		t.Fatalf("property member plan = %#v, %t", plan, ok)
 	}
 }
 
@@ -360,7 +511,7 @@ fn Shift(left: uint256, right: int) Result[uint256, ArithmeticError] {
 
 func TestArithmeticTryRejectsNonResultAndDifferentError(t *testing.T) {
 	source := `module main
-enum OtherError { Failed }
+enum OtherError error { Failed }
 fn Plain(left: int, right: int) int { return try left + right }
 fn Other(left: int, right: int) Result[int, OtherError] {
   return Ok(try left / right)

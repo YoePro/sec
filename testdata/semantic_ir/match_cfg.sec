@@ -6,7 +6,7 @@ enum Flag: bit[1] {
     On = 1,
 }
 
-enum Failure {
+enum Failure error {
     Missing,
     Other,
 }

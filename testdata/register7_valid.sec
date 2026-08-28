@@ -17,7 +17,7 @@ enum IpFlags bit[3] {
     MORE_FRAGMENTS = 0b001,
 }
 
-enum IpError {
+enum IpError error {
     InvalidVersion,
     HeaderTooShort,
     TtlExpired,
@@ -25,7 +25,7 @@ enum IpError {
     UnsupportedProtocol,
 }
 
-enum TcpError {
+enum TcpError error {
     PortClosed,
     InvalidFlags,
     BufferFull,

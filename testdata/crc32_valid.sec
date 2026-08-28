@@ -4,7 +4,7 @@ module crc32_crypto
 // ERRORS & ENUMS
 // =====================================================================
 
-enum CrcError {
+enum CrcError error {
     InvalidDataLength,
     PolynomialNotSupported,
 }

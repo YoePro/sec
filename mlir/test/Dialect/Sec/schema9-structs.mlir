@@ -40,6 +40,7 @@ module attributes {
 // CHECK: !sec.struct<identity = "main::Empty", typeArguments = [], fields = []>
 // CHECK: "sec.struct.construct"
 // CHECK: !sec.struct<identity = "main::Outer"
+// CHECK: !sec.struct<identity = "main::Pair<int128,uint256>", typeArguments = [si128, ui256]
 // CHECK: tags = [#sec.struct_tag<key = "wire", value = "signed">, #sec.struct_tag<key = "json", value = "wide_value">]
 // CHECK: "sec.struct.spread_fields"
 // CHECK: "sec.struct.construct"

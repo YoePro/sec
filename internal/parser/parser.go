@@ -1651,6 +1651,13 @@ func (p *Parser) parseTypeDeclStatement() ast.Statement {
 	if p.peekToken.Type == lexer.UNION {
 		p.nextToken()
 		stmt.Union = true
+		// rules/errors/errorhandling.md section 3.2 places the concrete-error
+		// marker after the union kind: `type Name union error { ... }`.
+		if p.peekToken.Type == lexer.IDENT && p.peekToken.Lexeme == "error" {
+			p.nextToken()
+			stmt.ErrorType = true
+			stmt.ErrorToken = p.curToken
+		}
 		if p.peekToken.Type == lexer.IMPLEMENTS {
 			p.rejectTypeImplementsClause(stmt.Name.Value)
 		}

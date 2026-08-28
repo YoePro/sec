@@ -29,7 +29,7 @@ fn Huge(left: uint256, right: uint256) uint256 {
 
 func TestPackage10RejectsUnsupportedUserErrorLoweringExplicitly(t *testing.T) {
 	_, err := analyzedModule(t, `module main
-enum Failure { failed, }
+enum Failure error { failed, }
 fn Source(value: int) Result[int, Failure] { return Ok(value) }
 fn Handle(value: int) int {
   return try Source(value) { Err(Failure.failed) => 0 }

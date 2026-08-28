@@ -207,11 +207,15 @@ type TypeDeclStatement struct {
 	StructType        *StructType
 	RegisterType      *RegisterType
 	Union             bool
-	UnionVariants     []*UnionVariant
-	Implements        []*TypeReference
-	Contract          Contract
-	DefaultToken      lexer.Token
-	Default           Expression
+	// ErrorType preserves the canonical `type Name union error` marker from
+	// rules/declarations/unions.md and rules/errors/errorhandling.md.
+	ErrorType     bool
+	ErrorToken    lexer.Token
+	UnionVariants []*UnionVariant
+	Implements    []*TypeReference
+	Contract      Contract
+	DefaultToken  lexer.Token
+	Default       Expression
 }
 
 func (tds *TypeDeclStatement) statementNode() {}

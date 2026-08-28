@@ -243,7 +243,7 @@ type Ipv4WireHeader register[160] msb-first big-endian {
 impl Ipv4WireHeader {
     init(buffer: ref byte[]) NetError {
         if buffer.len < 20 {
-            return NetError.BufferTooSmall
+            return Err(NetError.BufferTooSmall)
         }
 
         // Explicit byte-to-register decoding implementation goes here,
@@ -311,7 +311,7 @@ type IpPacket union {
 // Takes a non-owning slice and parses it into an IpPacket.
 // Does not allocate memory or copy the payload.
 fn ParseIpPacket(buffer: ref byte[]) Result[IpPacket, NetError] {
-    if buffer.len < 20 {
+    if buffer.Len < 20 {
         return Err(NetError.BufferTooSmall)
     }
 
@@ -325,37 +325,24 @@ fn ParseIpPacket(buffer: ref byte[]) Result[IpPacket, NetError] {
         let ihl: uint8 := uint8(firstByte & 0x0F)
         let headerBytes: int := int(ihl) * 4
 
-        if buffer.len < headerBytes {
+        if buffer.Len < headerBytes {
             return Err(NetError.BufferTooSmall)
         }
 
-        // Decode the wire header from the raw bytes using a binary decoding primitive
-        // (Assumes existence of an endian-aware decoder in stdlib/encoding)
-        let header: Ipv4WireHeader := binary.DecodeRegister[Ipv4WireHeader](buffer[0..headerBytes])
-
-        // Slice the remaining bytes as the payload
-        let payload: ref byte[] := buffer[headerBytes..]
-
-        return Ok(IpPacket.V4(new Ipv4Packet {
-            Header: header,
-            Payload: payload,
-        }))
+        // Register byte decoding is not available without a lowering-backed,
+        // endian-aware primitive. Do not invent a runtime-only binary API.
+        return Err(NetError.InvalidPacketStructure)
 
     } else if version == 6 {
         let headerBytes: int := 40 // IPv6 header is always 40 bytes
 
-        if buffer.len < headerBytes {
+        if buffer.Len < headerBytes {
             return Err(NetError.BufferTooSmall)
         }
 
-        let header: Ipv6WireHeader := binary.DecodeRegister[Ipv6WireHeader](buffer[0..headerBytes])
-
-        let payload: ref byte[] := buffer[headerBytes..]
-
-        return Ok(IpPacket.V6(new Ipv6Packet {
-            Header: header,
-            Payload: payload,
-        }))
+        // See the IPv4 branch: decoding remains explicitly unavailable until
+        // register extraction/insertion has a semantics-preserving lowering.
+        return Err(NetError.InvalidPacketStructure)
     }
 
     return Err(NetError.UnsupportedIpVersion)
@@ -365,6 +352,7 @@ fn ParseIpPacket(buffer: ref byte[]) Result[IpPacket, NetError] {
 // SOCKETS & OWNERSHIP
 // =====================================================================
 
+@noCopy
 type TcpStream struct {
     _handle: int,
 }
@@ -377,13 +365,6 @@ impl TcpStream {
         self._handle = 1 // Mock valid handle
     }
 
-    free {
-        // Cleanup OS resource when stream is destroyed or goes out of scope
-        if self._handle != 0 {
-            // Close native socket
-        }
-    }
-
     // Send borrows a slice. No ownership transfer of the data.
     fn Send(data: ref byte[]) Result[int, NetError] {
         // Write to native socket
@@ -393,7 +374,8 @@ impl TcpStream {
 
 // Consuming function that takes ownership of a stream
 fn TerminateConnection(->stream: TcpStream) void {
-    // Stream is moved here. The destructor (free) runs when this scope ends.
+    // Stream ownership ends here. Native socket cleanup remains pending until
+    // destruction lowering and the platform socket binding are available.
 }
 
 // =====================================================================
@@ -401,14 +383,13 @@ fn TerminateConnection(->stream: TcpStream) void {
 // =====================================================================
 
 fn NetworkTask() void {
-    // @NoCopy enforces that this socket cannot be accidentally copied.
-    @NoCopy
+    // TcpStream is @noCopy, so this client cannot be accidentally copied.
     let mut client: TcpStream := try new TcpStream(0x7F000001, 80) {
         Err(_) => { return }
     }
 
     // Explicitly pass ownership of the client to the terminating function
-    TerminateConnection(<-client)
+    TerminateConnection(client)
 
     // Using 'client' here would cause a compile-time error
 }

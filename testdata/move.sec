@@ -1,6 +1,6 @@
 module resource_management
 
-enum BufferError {
+enum BufferError error {
     AllocationFailed,
     CleanupFailed,
 }

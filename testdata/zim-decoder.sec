@@ -4,7 +4,7 @@ fn main() int {
     return 0
 }
 
-enum ParseError {
+enum ParseError error {
     NoServiceSKU
     InvalidSegmentCount
     InvalidIdentifier

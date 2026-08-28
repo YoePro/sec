@@ -1,43 +1,43 @@
 module core
 
-enum OverflowError {
+enum OverflowError error {
     Overflow,
 }
 
-enum DivisionByZeroError {
+enum DivisionByZeroError error {
     DivisionByZero,
 }
 
-enum RangeError {
+enum RangeError error {
     InvalidRange,
     StartAfterEnd,
     OutOfBounds,
 }
 
-enum IndexError {
+enum IndexError error {
     OutOfBounds,
 }
 
-enum PrecisionError {
+enum PrecisionError error {
     PrecisionLoss,
     ScaleOverflow,
     PrecisionExhausted,
 }
 
-enum FormatError {
+enum FormatError error {
     InvalidFormat,
     UnsupportedFormat,
     InvalidSpecifier,
     InvalidPrecision,
 }
 
-enum EncodingError {
+enum EncodingError error {
     InvalidEncoding,
     InvalidUtf8,
     InvalidCodePoint,
 }
 
-enum MathError {
+enum MathError error {
     DomainError,
     Overflow,
     Underflow,

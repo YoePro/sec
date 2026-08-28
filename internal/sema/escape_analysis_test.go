@@ -145,11 +145,13 @@ func TestEscapeAnalysisRecordsResultPayloadReturns(t *testing.T) {
 	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, `
 module main
 
-fn ReturnValue(value: ref int) Result[ref int, string] {
+type EscapeError union error { Message(string) }
+
+fn ReturnValue(value: ref int) Result[ref int, EscapeError] {
     return Ok(value)
 }
 
-fn ReturnError(message: string) Result[int, string] {
+fn ReturnError(message: EscapeError) Result[int, EscapeError] {
     return Err(message)
 }
 `)

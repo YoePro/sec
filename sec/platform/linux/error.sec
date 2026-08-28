@@ -1,7 +1,7 @@
 #target(os: "linux", arch: "any")
 module linux
 
-enum LinuxError int {
+enum LinuxError int error {
     success = 0,                        // Success (Not an error)
     permDenied = 1,                     // EPERM: Operation not permitted
     noSuchFile = 2,                     // ENOENT: No such file or directory
@@ -146,7 +146,7 @@ enum StandardStream {
     Error = 2,
 }
 
-enum ErrorNumber {
+enum ErrorNumber error {
     PermissionDenied = 1,
     NoSuchFile = 2,
     Interrupted = 4,
@@ -154,18 +154,27 @@ enum ErrorNumber {
     BrokenPipe = 32,
 }
 
-type RawErrorNumber int
+// rules/errors/errorhandling.md section 3.2: unknown kernel errno values retain
+// their numeric payload in a concrete error union instead of using a non-error
+// scalar as Result's failure channel.
+type RawErrorNumber union error {
+    Number(int)
+}
 
 fn _decodeSyscallResult(result: int) Result[uint, RawErrorNumber] {
     if result < 0  { // >
-        return Err(RawErrorNumber(-result))
+        return Err(RawErrorNumber.Number(-result))
     }
 
     return Ok(uint(result))
 }
 
 fn _knownError(number: RawErrorNumber) Option[ErrorNumber] {
-    switch int(number) {
+    let raw := match number {
+        Number(value) => value
+    }
+
+    switch raw {
         case 1:
             return Some(ErrorNumber.PermissionDenied)
 

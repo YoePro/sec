@@ -464,6 +464,8 @@ type Resource struct {
     lock: Mutex[int],
 }
 
+enum DuplicateError error { Failed }
+
 impl Resource {
     fn Copy() int {
         return 1
@@ -473,7 +475,7 @@ impl Resource {
         return Resource { lock: Mutex(1) }
     }
 
-    fn Duplicate() Result[Resource, string] {
+    fn Duplicate() Result[Resource, DuplicateError] {
         return Ok(Resource { lock: Mutex(1) })
     }
 }
@@ -486,7 +488,7 @@ fn Test() void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"Resource value first cannot be copied because field lock has non-copyable type Mutex[int]; use explicit move syntax :<- at 24:19",
+		"Resource value first cannot be copied because field lock has non-copyable type Mutex[int]; use explicit move syntax :<- at 26:19",
 	})
 }
 
@@ -2296,7 +2298,9 @@ func TestResultPayloadReferencePatternsBorrowActiveVariants(t *testing.T) {
 	input := `
 module main
 
-fn Test(result: Result[int, int]) void {
+enum TestError error { Failed }
+
+fn Test(result: Result[int, TestError]) void {
 	match result {
 		Ok(ref value) => {
 			let alias := value

@@ -2,11 +2,11 @@ module main
 
 type Speed decimal<m/s>
 
-enum IOError {
+enum IOError error {
     InvalidValue,
 }
 
-enum ParseError {
+enum ParseError error {
     InvalidNumber,
 }
 

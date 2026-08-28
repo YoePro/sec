@@ -3,7 +3,7 @@ module lambdas
 // Every marked construct in this file is expected to produce a parser or
 // semantic diagnostic. Malformed syntax is kept at the end for recovery.
 
-type LambdaError enum {
+type LambdaError enum error {
     InvalidValue
     MissingValue
 }

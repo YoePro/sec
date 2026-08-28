@@ -8,7 +8,7 @@ module main
 //
 // Keeping it out of this file allows all semantic errors below to be found.
 
-enum CleanupError {
+enum CleanupError error {
     failed,
 }
 

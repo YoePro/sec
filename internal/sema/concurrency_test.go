@@ -25,7 +25,7 @@ func TestSpawnPreservesResultReturnType(t *testing.T) {
 	input := `
 module main
 
-enum IOError {
+enum IOError error {
     Invalid,
 }
 

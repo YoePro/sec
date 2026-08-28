@@ -147,6 +147,7 @@ func isDeclarationAlignmentOpener(line string) bool {
 	return strings.Contains(trimmed, " struct {") ||
 		strings.Contains(trimmed, " register[") ||
 		strings.Contains(trimmed, " union {") ||
+		strings.Contains(trimmed, " union error {") ||
 		strings.Contains(trimmed, " enum {")
 }
 

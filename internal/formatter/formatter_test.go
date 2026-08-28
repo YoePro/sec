@@ -205,6 +205,14 @@ func TestFormatPreservesErrorEnumMarker(t *testing.T) {
 	}
 }
 
+func TestFormatPreservesPayloadUnionErrorMarker(t *testing.T) {
+	input := "type DetailedError union error {\nOpen {\nPath: string\n}\nRead(string)\n}\n"
+	want := "type DetailedError union error {\n    Open {\n        Path: string\n    }\n    Read(string)\n}\n"
+	if got := Format(Source{Text: input}, Options{}).Text; got != want {
+		t.Fatalf("wrong error union formatting:\n%s\nwant:\n%s", got, want)
+	}
+}
+
 func TestFormatPreservesUnionDefaultVariantMarker(t *testing.T) {
 	input := "type State union {\nIdle default\nRunning\n}\n"
 	want := "type State union {\n    Idle default\n    Running\n}\n"

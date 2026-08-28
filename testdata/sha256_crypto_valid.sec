@@ -4,7 +4,7 @@ module sha256_crypto
 // ERRORS & TYPES
 // =====================================================================
 
-enum CryptoError {
+enum CryptoError error {
     BufferTooLarge,
     InvalidDataLength,
     StateCorrupted,

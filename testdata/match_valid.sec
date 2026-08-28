@@ -3,7 +3,7 @@ module main
 type Speed decimal
 type Money decimal
 
-enum IOError {
+enum IOError error {
     InvalidValue,
     NotFound,
     PermissionDenied,

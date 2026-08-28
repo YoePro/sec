@@ -155,34 +155,47 @@ repository Go suite, Go vet suite, and 78-test MLIR suite pass.
 These are test/audit tasks first. If a case is already covered elsewhere,
 record the exact existing test and mark it complete rather than duplicating it.
 
-- [ ] P13-28 — Map section 74 type cases: empty, nested qualified identity,
+- [x] P13-28 — Map section 74 type cases: empty, nested qualified identity,
   concrete generic identity, all active wide types, tags, optional `LayoutRef`,
   and property exclusion.
-- [ ] P13-29 — Add Semantic IR verifier tests for duplicate field ID, duplicate
+- [x] P13-29 — Add Semantic IR verifier tests for duplicate field ID, duplicate
   field name, and non-contiguous field ID rejection.
-- [ ] P13-30 — Prove `ResolvedStructLiteralPlan` is unchanged when legacy AST
+- [x] P13-30 — Prove `ResolvedStructLiteralPlan` is unchanged when legacy AST
   default materialization is enabled versus disabled.
-- [ ] P13-31 — Cover an empty/default-only literal, partial defaults, nested
+- [x] P13-31 — Cover an empty/default-only literal, partial defaults, nested
   defaults, named constrained defaults, and a non-defaultable omitted field.
-- [ ] P13-32 — Cover multiple spreads and later-spread override, preserving
+- [x] P13-32 — Cover multiple spreads and later-spread override, preserving
   source-entry order while final fields remain declaration ordered.
-- [ ] P13-33 — Cover explicit source evaluation order differing from field
+- [x] P13-33 — Cover explicit source evaluation order differing from field
   declaration order, including a spread source evaluated exactly once.
-- [ ] P13-34 — Cover all P13-supported construction actions
+- [x] P13-34 — Cover all P13-supported construction actions
   (`construct-direct`, `copy-trivial`) and explicit rejection of move and
   semantic-copy in the P13 executable path.
-- [ ] P13-35 — Cover scalar, wide, nested, parameter, and return-value stored
+- [x] P13-35 — Cover scalar, wide, nested, parameter, and return-value stored
   field reads, plus a property with identical syntax that must not become
   `StructExtractFieldOp`.
-- [ ] P13-36 — Cover defaulted and explicitly initialized mutable locals;
+- [x] P13-36 — Cover defaulted and explicitly initialized mutable locals;
   assert RHS-before-load ordering, one root store for nested replacement, and
   only leaf-to-root `StructReplaceFieldOp` operations.
-- [ ] P13-37 — Cover synthetic payload identity stability by union TypeID plus
+- [x] P13-37 — Cover synthetic payload identity stability by union TypeID plus
   variant index, wide fields, non-trivial payload rejection, and guard
   dominance for every unwrap.
-- [ ] P13-38 — Audit P17 compatibility: P13 records the current action
+- [x] P13-38 — Audit P17 compatibility: P13 records the current action
   vocabulary but emits only its verified trivial subset; add a regression that
   prevents accidental non-trivial P13 lowering.
+
+Completed 2026-08-28: `TestPackage13BuildsEmptyAndConcreteGenericWideStructs`
+maps section 74, including qualified nested-impl identities, all five active
+wide scalars, tags, property exclusion, and optional `LayoutRef`.
+`TestPackage13StructDefinitionVerifierRejectsFieldIdentityErrors` supplies the
+three negative definition cases. The Sema fact tests now prove plan independence
+from optional legacy AST default materialization, the complete default matrix,
+non-defaultable omission, and multiple-spread precedence/order. Package 13
+Semantic IR tests prove source evaluation order and single spread evaluation,
+the trivial construction-action boundary against the current P17 vocabulary,
+stored-field reads across scalar/wide/nested/parameter/return sources, property
+separation, transactional mutable replacement, and stable guarded synthetic
+union payloads including explicit rejection of a non-trivial payload type.
 
 ## D. Complete schema-9 MLIR evidence
 
@@ -206,30 +219,61 @@ round-trip beside schema 9, and cover nested target-sized fields on both
 32-bit and 64-bit data layouts. The checked-integer and trivial-core checks
 prove that struct wrappers and struct storage remain high-level.
 
+Revalidated 2026-08-28: the round-trip now asserts the concrete generic
+identity and wide type arguments directly. The 32-bit P6/P8 regression executes
+real nested `sec.struct.extract` and `sec.struct.replace_field` operations and
+proves that checked-integer lowering preserves both those operations and their
+nested signed field type. Its trivial-core branch now asserts declare, init,
+and load individually and rejects struct storage conversion to `memref`.
+
 ## E. End-to-end unsupported-boundary evidence
 
-- [ ] P13-45 — Add source-to-Semantic-IR rejection tests for move-only,
+- [x] P13-45 — Add source-to-Semantic-IR rejection tests for move-only,
   semantic-copy, borrowed/reference, and resource-owning struct value paths.
-- [ ] P13-46 — Add explicit rejection tests for field borrow/ref/ref-mut,
+- [x] P13-46 — Add explicit rejection tests for field borrow/ref/ref-mut,
   partial move, non-trivial replacement, property read/write, struct equality,
   method receiver lowering, and foreign struct ABI.
-- [ ] P13-47 — Assert rejected cases produce `UnsupportedFeatureError` (or the
+- [x] P13-47 — Assert rejected cases produce `UnsupportedFeatureError` (or the
   source-level diagnostic where required) and never placeholder/partial IR.
-- [ ] P13-48 — Assert every successful P13 construction has no `undef`, poison,
+- [x] P13-48 — Assert every successful P13 construction has no `undef`, poison,
   hidden allocation, physical offset, or LLVM aggregate operation.
+
+Completed 2026-08-28: `TestPackage13RejectsUnsupportedStructValuePathsWithoutPartialIR`
+drives move-only reads and partial moves, shared and mutable references, owning
+dynamic arrays, field borrows, non-trivial replacement, properties, equality,
+method receivers, custom-free syntax, and foreign-struct syntax through their
+current canonical parser, Sema, or Package 13 Semantic IR boundary. Every IR
+rejection is a package-tagged `UnsupportedFeatureError` and returns no partial
+module. Semantic-copy has no source-producible type classification yet; its
+current P17-compatible fact is covered by
+`TestPackage13AcceptsOnlyTrivialStructConstructionActions`, which forces the
+compiler-owned action through the executable literal builder and proves P13
+rejects it. `TestPackage13SuccessfulStructPathHasNoPlaceholderOrPhysicalLowering`
+executes construction, spread, and field read while excluding placeholder,
+allocation, physical-layout, and LLVM aggregate vocabulary.
 
 ## F. Final acceptance and governance
 
-- [ ] P13-49 — Run `go test ./...` from a clean checkout; it must pass.
-- [ ] P13-50 — Run `go vet ./...` and the full `check-sec-mlir` target.
-- [ ] P13-51 — Run the package-specific source → verified Semantic IR →
+- [x] P13-49 — Run `go test ./...` from a clean checkout; it must pass.
+- [x] P13-50 — Run `go vet ./...` and the full `check-sec-mlir` target.
+- [x] P13-51 — Run the package-specific source → verified Semantic IR →
   schema-9 Sec MLIR test with an absolute tool path on both 32-bit and 64-bit
   scalar plans where applicable.
-- [ ] P13-52 — Update `implementation-status.yaml` with exact final commands,
+- [x] P13-52 — Update `implementation-status.yaml` with exact final commands,
   results, audited commit, and status `implemented` only when P13 section 90
   is fully satisfied.
-- [ ] P13-53 — Write the required P13 implementation report (rulebook section
+- [x] P13-53 — Write the required P13 implementation report (rulebook section
   91), including explicit deviations and the boundary to P14/P15/P17.
+
+Completed 2026-08-28 against repository HEAD
+`e3d17698d756678cfb94bd9f8df1f11977635375` plus the exact pending Package 13
+diff. A fresh detached worktree without inherited build artifacts passed
+`go test ./...`; `go vet ./...`, the full absolute-path
+`SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./...`, and
+`cmake --build build/sec-mlir --target check-sec-mlir -j2` also passed. The
+package-specific end-to-end test executes both 32- and 64-bit target plans and
+verifies target-sized struct fields after scalar lowering. The required report
+is `rules/mlir/packages/sec-mlir-dialect_package13-implementation-report.md`.
 
 ## Recommended execution order
 

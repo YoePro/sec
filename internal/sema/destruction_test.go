@@ -66,7 +66,7 @@ module main
 
 unit m
 
-enum IOError {
+enum IOError error {
     failed,
 }
 
@@ -136,7 +136,7 @@ func TestOpenFileMustBeClosedBeforeScopeExit(t *testing.T) {
 	input := `
 module io
 
-enum IOError {
+enum IOError error {
     BadFileDescriptor,
 }
 
@@ -163,7 +163,7 @@ func TestClosedOrReturnedFileDoesNotLeakAtScopeExit(t *testing.T) {
 	input := `
 module io
 
-enum IOError {
+enum IOError error {
     BadFileDescriptor,
 }
 
@@ -227,7 +227,7 @@ func TestResourceCloseMustReachEveryContinuingBranch(t *testing.T) {
 	input := `
 module io
 
-enum IOError { Failed }
+enum IOError error { Failed }
 
 type File struct {
 	is_closed: bool,
@@ -263,7 +263,7 @@ func TestResourceCloseOnEveryBranchSatisfiesCleanup(t *testing.T) {
 	input := `
 module io
 
-enum IOError { Failed }
+enum IOError error { Failed }
 
 type File struct {
 	is_closed: bool,
@@ -299,7 +299,7 @@ func TestConditionalLoopCloseDoesNotSatisfyZeroIterationExit(t *testing.T) {
 	input := `
 module io
 
-enum IOError { Failed }
+enum IOError error { Failed }
 
 type File struct {
 	is_closed: bool,
@@ -336,7 +336,7 @@ func TestWhileTrueCleanupStateComesFromBreakExits(t *testing.T) {
 	input := `
 module io
 
-enum IOError { Failed }
+enum IOError error { Failed }
 
 type File struct {
 	is_closed: bool,
@@ -371,7 +371,7 @@ func TestContinueEdgeCanReopenLoopCarriedResource(t *testing.T) {
 	input := `
 module io
 
-enum IOError { Failed }
+enum IOError error { Failed }
 
 type File struct {
 	is_closed: bool,
@@ -409,7 +409,7 @@ func TestSwitchResourceCloseStateUsesAllContinuingCases(t *testing.T) {
 	input := `
 module io
 
-enum IOError { Failed }
+enum IOError error { Failed }
 
 type File struct {
 	is_closed: bool,

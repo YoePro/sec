@@ -3,7 +3,7 @@ module io
 
 import linux "platform/linux"
 
-enum IOError {
+enum IOError error {
     PermissionDenied,
     NotFound,
     Interrupted,

@@ -2468,6 +2468,30 @@ enum WireError bit[3] error { Invalid = 1 }
 	}
 }
 
+func TestParsePayloadUnionErrorMarker(t *testing.T) {
+	input := `
+type DetailedError union error {
+    Open { Path: string, Code: int }
+    Read(string)
+}
+`
+
+	p := New(lexer.New(input))
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	declaration, ok := program.Statements[0].(*ast.TypeDeclStatement)
+	if !ok {
+		t.Fatalf("statement is not TypeDeclStatement. got=%T", program.Statements[0])
+	}
+	if !declaration.Union || !declaration.ErrorType || declaration.ErrorToken.Lexeme != "error" {
+		t.Fatalf("error union marker was not preserved: %#v", declaration)
+	}
+	if len(declaration.UnionVariants) != 2 || len(declaration.UnionVariants[0].PayloadFields) != 2 || declaration.UnionVariants[1].Payload == nil {
+		t.Fatalf("payload-bearing variants were not preserved: %#v", declaration.UnionVariants)
+	}
+}
+
 func TestParseFunctionDeclaration(t *testing.T) {
 	input := `
 fn add(a: int, b: int,) int {

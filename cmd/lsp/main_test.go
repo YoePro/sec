@@ -996,7 +996,7 @@ func TestReferencesConnectInitializerDeclarationAndConstruction(t *testing.T) {
 func TestInitializerHoverSeparatesConstructionErrorFromReturnType(t *testing.T) {
 	source := `module sample
 
-type BuildError enum { Invalid }
+type BuildError enum error { Invalid }
 type Resource struct { value: int, }
 impl Resource {
     init(value: int) BuildError { self.value = value }

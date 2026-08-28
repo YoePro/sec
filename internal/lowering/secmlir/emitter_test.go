@@ -323,11 +323,16 @@ func TestEmittedModuleLowersTrivialCoreWithRealTool(t *testing.T) {
 func TestEmitPackage13StructsEndToEnd(t *testing.T) {
 	source := `module main
 type Pair struct { Wide: int128 ` + "`wire:\"signed\\\"little\" json:\"wide value\"`" + `, Limit: uint256 }
+type TargetPair struct { Count: int, Limit: uint }
 type Position union { Unknown Known { X: int128, Y: uint256 } }
 fn Build(base: Pair) int128 {
   let mut value := Pair { base..., Wide: 5 }
   value.Limit = 9
   return value.Wide
+}
+fn BuildTarget(base: TargetPair) uint {
+  let value := TargetPair { base..., Count: 3 }
+  return value.Limit
 }
 fn Read(position: Position, zero: int128) int128 {
   return match position {
@@ -348,45 +353,69 @@ fn Read(position: Position, zero: int128) int128 {
 	if err != nil {
 		t.Fatalf("semantic build: %v", err)
 	}
-	output, err := Emit(module, testPlan(64))
-	if err != nil {
-		t.Fatalf("emit: %v", err)
-	}
-	text := string(output)
-	for _, expected := range []string{
-		`sec.dialect_version = 9 : i32`,
-		`!sec.struct<identity = "main::Pair"`,
-		`#sec.struct_tag<key = "wire", value = "signed\5C\22little">`,
-		`#sec.struct_tag<key = "json", value = "wide value">`,
-		`"sec.struct.spread_fields"`,
-		`"sec.struct.construct"`,
-		`"sec.struct.replace_field"`,
-		`"sec.struct.extract"`,
-		`!sec.storage<!sec.struct`,
-		`!sec.struct<identity = "main::Position#1$payload"`,
-		`"sec.union.unwrap_field"`,
-	} {
-		if !strings.Contains(text, expected) {
-			t.Errorf("missing %q in:\n%s", expected, text)
-		}
-	}
 	binDir := os.Getenv("SEC_MLIR_BIN")
-	if binDir == "" {
-		return
-	}
-	tool, err := configuredSecMLIROptPath(binDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	path := filepath.Join(t.TempDir(), "package13.mlir")
-	if err := os.WriteFile(path, output, 0600); err != nil {
-		t.Fatal(err)
-	}
-	command := exec.Command(tool, path,
-		"--sec-verify-union-guards", "--sec-verify-match-cfg",
-		"--sec-lower-scalar-core", "--sec-lower-trivial-core", "-o", os.DevNull)
-	if combined, err := command.CombinedOutput(); err != nil {
-		t.Fatalf("sec-mlir-opt: %v\n%s\nGenerated:\n%s", err, combined, output)
+	for _, width := range []uint16{32, 64} {
+		t.Run(strconv.Itoa(int(width)), func(t *testing.T) {
+			output, err := Emit(module, testPlan(width))
+			if err != nil {
+				t.Fatalf("emit: %v", err)
+			}
+			text := string(output)
+			for _, expected := range []string{
+				`sec.dialect_version = 9 : i32`,
+				`!sec.struct<identity = "main::Pair"`,
+				`!sec.struct<identity = "main::TargetPair"`,
+				`#sec.struct_field<ordinal = 0, name = "Count", type = !sec.int`,
+				`#sec.struct_field<ordinal = 1, name = "Limit", type = !sec.uint`,
+				`#sec.struct_tag<key = "wire", value = "signed\5C\22little">`,
+				`#sec.struct_tag<key = "json", value = "wide value">`,
+				`"sec.struct.spread_fields"`,
+				`"sec.struct.construct"`,
+				`"sec.struct.replace_field"`,
+				`"sec.struct.extract"`,
+				`!sec.storage<!sec.struct`,
+				`!sec.struct<identity = "main::Position#1$payload"`,
+				`"sec.union.unwrap_field"`,
+			} {
+				if !strings.Contains(text, expected) {
+					t.Errorf("missing %q in:\n%s", expected, text)
+				}
+			}
+			if binDir == "" {
+				return
+			}
+			tool, err := configuredSecMLIROptPath(binDir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(t.TempDir(), "package13.mlir")
+			if err := os.WriteFile(path, output, 0600); err != nil {
+				t.Fatal(err)
+			}
+			// Package 13 sections 82 and 90 require the same source-built
+			// schema-v9 module to verify on both scalar target plans.
+			command := exec.Command(tool, path,
+				"--sec-verify-union-guards", "--sec-verify-match-cfg",
+				"--sec-lower-scalar-core", "--sec-lower-trivial-core")
+			lowered, err := command.CombinedOutput()
+			if err != nil {
+				t.Fatalf("sec-mlir-opt: %v\n%s\nGenerated:\n%s", err, lowered, output)
+			}
+			loweredText := string(lowered)
+			for _, expected := range []string{
+				fmt.Sprintf(`type = si%d`, width),
+				fmt.Sprintf(`type = ui%d`, width),
+			} {
+				if !strings.Contains(loweredText, expected) {
+					t.Errorf("lowered %d-bit module missing %q:\n%s", width, expected, loweredText)
+				}
+			}
+			for _, forbidden := range []string{"!sec.int", "!sec.uint", "unrealized_conversion_cast", "llvm."} {
+				if strings.Contains(loweredText, forbidden) {
+					t.Errorf("lowered %d-bit module contains %q:\n%s", width, forbidden, loweredText)
+				}
+			}
+		})
 	}
 }
 

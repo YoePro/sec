@@ -89,7 +89,7 @@ func (b *builder) buildFunction(decl *ast.FunctionDeclaration) error {
 		if err != nil {
 			return err
 		}
-		ownership, err := ownershipForParameter(parameter)
+		ownership, err := ownershipForParameter(parameter, b.maxPackage)
 		if err != nil {
 			return err
 		}
@@ -155,12 +155,12 @@ func (b *builder) internType(t sema.Type) (TypeID, error) {
 	}
 	kind, signed, width, target, ok := builtinType(t)
 	if !ok {
-		return 0, &UnsupportedFeatureError{Feature: "type " + t.Name}
+		return 0, &UnsupportedFeatureError{Feature: "type " + t.Name, Package: b.maxPackage}
 	}
 	base := Type{Kind: kind, Name: t.Name, Signed: signed, BitWidth: width, TargetSize: target}
 	if t.Named || t.Declared {
 		if len(t.Contracts) > 0 || t.Unit != "" || !t.Dimension.IsZero() {
-			return 0, &UnsupportedFeatureError{Feature: "named type contracts or units"}
+			return 0, &UnsupportedFeatureError{Feature: "named type contracts or units", Package: b.maxPackage}
 		}
 		baseID := b.module.Types.Intern(base)
 		module := t.Module
@@ -2124,7 +2124,11 @@ func (fb *functionBuilder) storageAllowed(id TypeID) bool {
 	return t.Kind != TypeString && t.Kind != TypeVoid && t.Kind != TypeNever
 }
 
-func ownershipForParameter(p sema.FunctionParameter) (OwnershipClass, error) {
+// ownershipForParameter enforces the package-owned value boundary from
+// rules/mlir/packages/sec-mlir-dialect_package13.md sections 83-86. Rejections
+// retain the active package so callers can distinguish a deliberate P13 stop
+// from an unclassified legacy-backend failure.
+func ownershipForParameter(p sema.FunctionParameter, maxPackage uint8) (OwnershipClass, error) {
 	if p.MutableRef {
 		return OwnershipMutableReference, nil
 	}
@@ -2141,7 +2145,7 @@ func ownershipForParameter(p sema.FunctionParameter) (OwnershipClass, error) {
 			return OwnershipImmediate, nil
 		}
 	}
-	return "", &UnsupportedFeatureError{Feature: "non-scalar parameter type " + p.Type.Name}
+	return "", &UnsupportedFeatureError{Feature: "non-scalar parameter type " + p.Type.Name, Package: maxPackage}
 }
 func functionID(f sema.Function, types *TypeTable) FunctionID {
 	parts := make([]string, len(f.Parameters))

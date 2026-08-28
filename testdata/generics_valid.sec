@@ -25,7 +25,7 @@ type Maybe[T] union {
     None
 }
 
-enum IOError {
+enum IOError error {
     failed,
 }
 

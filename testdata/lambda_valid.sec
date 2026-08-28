@@ -4,7 +4,7 @@ module lambdas
 // The file covers function types, non-capturing lambdas, function values,
 // higher-order functions and explicit non-escaping value captures.
 
-type LambdaError enum {
+type LambdaError enum error {
     InvalidValue
     MissingValue
 }

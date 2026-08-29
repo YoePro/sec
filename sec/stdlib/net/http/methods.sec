@@ -9,7 +9,7 @@ module http
 //
 // Registry:
 // https://www.iana.org/assignments/http-methods
-enum HttpKnownMethod {
+enum Method {
     // Core HTTP semantics - RFC 9110
     GET,
     HEAD,
@@ -59,60 +59,188 @@ enum HttpKnownMethod {
 
     // RFC 10008
     QUERY,
+
+    UNKNOWN,
 }
 
-type HttpMethod union {
-    Known(HttpKnownMethod)
-    Extension(string)
-}
+impl Method {
+    fn ToString() string {
+        return match self {
+            GET => "GET"
+            HEAD => "HEAD"
+            POST => "POST"
+            PUT => "PUT"
+            DELETE => "DELETE"
+            CONNECT => "CONNECT"
+            OPTIONS => "OPTIONS"
+            TRACE => "TRACE"
+            PATCH => "PATCH"
 
-impl HttpKnownMethod {
-    property Name: string {
-        get {
-            return match self {
-                GET => "GET"
-                HEAD => "HEAD"
-                POST => "POST"
-                PUT => "PUT"
-                DELETE => "DELETE"
-                CONNECT => "CONNECT"
-                OPTIONS => "OPTIONS"
-                TRACE => "TRACE"
-                PATCH => "PATCH"
+            ACL => "ACL"
+            BASELINE_CONTROL => "BASELINE-CONTROL"
+            BIND => "BIND"
+            CHECKIN => "CHECKIN"
+            CHECKOUT => "CHECKOUT"
+            COPY => "COPY"
+            LABEL => "LABEL"
+            LINK => "LINK"
+            LOCK => "LOCK"
+            MERGE => "MERGE"
+            MKACTIVITY => "MKACTIVITY"
+            MKCALENDAR => "MKCALENDAR"
+            MKCOL => "MKCOL"
+            MKREDIRECTREF => "MKREDIRECTREF"
+            MKWORKSPACE => "MKWORKSPACE"
+            MOVE => "MOVE"
+            ORDERPATCH => "ORDERPATCH"
+            PROPFIND => "PROPFIND"
+            PROPPATCH => "PROPPATCH"
+            REBIND => "REBIND"
+            REPORT => "REPORT"
+            SEARCH => "SEARCH"
+            UNBIND => "UNBIND"
+            UNCHECKOUT => "UNCHECKOUT"
+            UNLINK => "UNLINK"
+            UNLOCK => "UNLOCK"
+            UPDATE => "UPDATE"
+            UPDATEREDIRECTREF => "UPDATEREDIRECTREF"
+            VERSION_CONTROL => "VERSION-CONTROL"
 
-                ACL => "ACL"
-                BASELINE_CONTROL => "BASELINE-CONTROL"
-                BIND => "BIND"
-                CHECKIN => "CHECKIN"
-                CHECKOUT => "CHECKOUT"
-                COPY => "COPY"
-                LABEL => "LABEL"
-                LINK => "LINK"
-                LOCK => "LOCK"
-                MERGE => "MERGE"
-                MKACTIVITY => "MKACTIVITY"
-                MKCALENDAR => "MKCALENDAR"
-                MKCOL => "MKCOL"
-                MKREDIRECTREF => "MKREDIRECTREF"
-                MKWORKSPACE => "MKWORKSPACE"
-                MOVE => "MOVE"
-                ORDERPATCH => "ORDERPATCH"
-                PROPFIND => "PROPFIND"
-                PROPPATCH => "PROPPATCH"
-                REBIND => "REBIND"
-                REPORT => "REPORT"
-                SEARCH => "SEARCH"
-                UNBIND => "UNBIND"
-                UNCHECKOUT => "UNCHECKOUT"
-                UNLINK => "UNLINK"
-                UNLOCK => "UNLOCK"
-                UPDATE => "UPDATE"
-                UPDATEREDIRECTREF => "UPDATEREDIRECTREF"
-                VERSION_CONTROL => "VERSION-CONTROL"
+            PRI => "PRI"
+            QUERY => "QUERY"
+        }
+    }
 
-                PRI => "PRI"
-                QUERY => "QUERY"
-            }
+    static fn FromString(In: string) Method {
+        let normalized := In.ToLower()
+
+        switch normalized {
+            case "get":
+                return Method.GET
+
+            case "head":
+                return Method.HEAD
+
+            case "post":
+                return Method.POST
+
+            case "put":
+                return Method.PUT
+
+            case "delete":
+                return Method.DELETE
+
+            case "connect":
+                return Method.CONNECT
+
+            case "options":
+                return Method.OPTIONS
+
+            case "trace":
+                return Method.TRACE
+
+            case "patch":
+                return Method.PATCH
+
+            case "acl":
+                return Method.ACL
+
+            case "baseline-control":
+                return Method.BASELINE_CONTROL
+
+            case "bind":
+                return Method.BIND
+
+            case "checkin":
+                return Method.CHECKIN
+
+            case "checkout":
+                return Method.CHECKOUT
+
+            case "copy":
+                return Method.COPY
+
+            case "label":
+                return Method.LABEL
+
+            case "link":
+                return Method.LINK
+
+            case "lock":
+                return Method.LOCK
+
+            case "merge":
+                return Method.MERGE
+
+            case "mkactivity":
+                return Method.MKACTIVITY
+
+            case "mkcalendar":
+                return Method.MKCALENDAR
+
+            case "mkcol":
+                return Method.MKCOL
+
+            case "mkredirectref":
+                return Method.MKREDIRECTREF
+
+            case "mkworkspace":
+                return Method.MKWORKSPACE
+
+            case "move":
+                return Method.MOVE
+
+            case "orderpatch":
+                return Method.ORDERPATCH
+
+            case "propfind":
+                return Method.PROPFIND
+
+            case "proppatch":
+                return Method.PROPPATCH
+
+            case "rebind":
+                return Method.REBIND
+
+            case "report":
+                return Method.REPORT
+
+            case "search":
+                return Method.SEARCH
+
+            case "unbind":
+                return Method.UNBIND
+
+            case "uncheckout":
+                return Method.UNCHECKOUT
+
+            case "unlink":
+                return Method.UNLINK
+
+            case "unlock":
+                return Method.UNLOCK
+
+            case "update":
+                return Method.UPDATE
+
+            case "updateredirectref":
+                return Method.UPDATEREDIRECTREF
+
+            case "version-control":
+                return Method.VERSION_CONTROL
+
+            case "pri":
+                return Method.PRI
+
+            case "query":
+                return Method.QUERY
+
+            default:
+                // Unknown extension methods are legal HTTP methods.
+                //
+                // Preserve the original spelling because HTTP method tokens
+                // are case-sensitive. Only known methods are canonicalized.
+                return Method(In)
         }
     }
 }

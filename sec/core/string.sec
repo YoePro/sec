@@ -366,6 +366,15 @@ impl string {
         }
     }
 
+    fn ToLower() string {
+        // TODO: Implement a correct version of the ToLower-function
+        let mut s: string
+        for r in self {
+            s += r.ToLower()
+        }
+        return s
+    }
+
     /** Returns a copy of self */
     fn ToString() string {
         return self

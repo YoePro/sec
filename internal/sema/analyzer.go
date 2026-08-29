@@ -480,6 +480,22 @@ func (a *Analyzer) resolveArithmeticFailureEffect(expr ast.Expression) {
 	a.callGraph.removeEffect(a.currentCallable, EffectMayPanicArithmetic, expressionToken(expr))
 }
 
+// recordArrayIndexEffect publishes the ordinary runtime bounds effect required
+// by rules/mlir/packages/sec-mlir-dialect_package14.md section 54. Proven-safe
+// indexes remove the effect; future fallible indexing will use the same
+// boundary without reporting panic.
+func (a *Analyzer) recordArrayIndexEffect(expr *ast.IndexExpression, plan ResolvedArrayIndexPlan) {
+	if a.summaryPass || expr == nil {
+		return
+	}
+	source := expressionToken(expr)
+	a.callGraph.removeEffect(a.currentCallable, EffectMayPanicBounds, source)
+	if !a.callGraphPathReachable || plan.CheckKind != ArrayIndexRuntimeCheck || plan.FailureMode != ArrayIndexFailureOrdinary {
+		return
+	}
+	a.callGraph.addEffect(a.currentCallable, EffectSite{Kind: EffectMayPanicBounds, Source: source})
+}
+
 func (a *Analyzer) recordDefinition(token lexer.Token) {
 	if !validDefinitionToken(token) {
 		return
@@ -9708,7 +9724,14 @@ func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
 	}
 
 	var exprType Type
-	if declaredType.Kind == FunctionType {
+	if stmt.SynthesizedDefault && declaredType.Kind == ArrayType && arrayShapeOf(declaredType) == ArrayShapeFixed {
+		// SEC-MLIR Package 14 sections 24-26: the compact DefaultResolution is
+		// authoritative. The bounded legacy ArrayLiteral may be empty for large N
+		// and must never be reinterpreted as a user-written zero-length literal.
+		exprType = declaredType
+		a.expressionTypes[stmt.Value] = declaredType
+	}
+	if exprType.Kind == "" && declaredType.Kind == FunctionType {
 		if fnType, resolved := a.resolveFunctionValueInitializer(declaredType, stmt.Value); resolved {
 			exprType = fnType
 		}
@@ -12826,12 +12849,8 @@ func (a *Analyzer) resolveArrayLiteralPlan(expr *ast.ArrayLiteral, expected Type
 				a.addErrorAtToken(spread.Token, "cannot spread %s into fixed-array literal; expansion count is not known at compile time", sourceDisplay)
 				return ResolvedArrayLiteralPlan{}, false
 			}
-			action := ArrayTransferCopyTrivial
-			switch CopyClassificationOf(*concreteSource.Element) {
-			case CopyTrivial:
-			case CopySemantic:
-				action = ArrayTransferCopySemantic
-			default:
+			action, supported := arraySpreadTransferAction(CopyClassificationOf(*concreteSource.Element))
+			if !supported {
 				a.addErrorAtToken(spread.Token, "cannot spread %s into fixed-array literal; indexed expansion would require unsupported consuming element reads", sourceDisplay)
 				return ResolvedArrayLiteralPlan{}, false
 			}
@@ -12864,6 +12883,21 @@ func (a *Analyzer) resolveArrayLiteralPlan(expr *ast.ArrayLiteral, expected Type
 		plan.Length.Add(plan.Length, big.NewInt(1))
 	}
 	return plan, true
+}
+
+// arraySpreadTransferAction records the compiler-owned copy classification in
+// the action vocabulary required by SEC-MLIR Package 14 sections 21-23. Sema
+// may record semantic copy, while the P14 Semantic IR executable subset admits
+// only copy-trivial and rejects the later actions explicitly.
+func arraySpreadTransferAction(classification CopyClassification) (ResolvedArrayTransferAction, bool) {
+	switch classification {
+	case CopyTrivial:
+		return ArrayTransferCopyTrivial, true
+	case CopySemantic:
+		return ArrayTransferCopySemantic, true
+	default:
+		return "", false
+	}
 }
 
 // arrayLiteralEntryElementType interprets the entry Type field according to
@@ -13084,6 +13118,7 @@ func (a *Analyzer) recordFixedArrayIndexPlan(expr *ast.IndexExpression, arrayTyp
 		plan.ErrorType = Type{}
 	}
 	a.recordResolvedArrayIndexPlan(expr, plan)
+	a.recordArrayIndexEffect(expr, plan)
 }
 
 // indexErrorType resolves the core declaration when it is part of the module

@@ -355,6 +355,8 @@ Implemented:
 - core type completion;
 - contract-modifier completion;
 - member completion for fields, properties, events, and methods;
+- type-qualified completion for enum members, union variants, and legal static
+  struct/union members;
 - completion for `self`;
 - expected return-type filtering;
 - limited completion recovery for incomplete member expressions;

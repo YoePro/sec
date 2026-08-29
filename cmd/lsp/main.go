@@ -2532,13 +2532,19 @@ func memberCompletionItems(exprType sema.Type, functions map[string][]sema.Funct
 		add(completionItem{Label: member.Name, Kind: kind, Detail: detail})
 	}
 
-	if !static {
-		switch exprType.Kind {
-		case sema.StructType:
+	// rules/declarations/enums.md section 16 and unions.md section 4 place
+	// enum members and union variants in the declared type's namespace. Stored
+	// struct/register fields remain instance members; offering them on Type.
+	// would suggest an expression that Sema correctly rejects.
+	switch exprType.Kind {
+	case sema.StructType:
+		if !static {
 			for _, field := range exprType.Fields {
 				add(completionItem{Label: field.Name, Kind: 5, Detail: lspTypeName(field.Type)})
 			}
-		case sema.RegisterType:
+		}
+	case sema.RegisterType:
+		if !static {
 			for _, field := range exprType.RegisterFields {
 				detail := lspTypeName(field.Type)
 				if field.Access != "" {
@@ -2546,11 +2552,15 @@ func memberCompletionItems(exprType sema.Type, functions map[string][]sema.Funct
 				}
 				add(completionItem{Label: field.Name, Kind: 5, Detail: detail})
 			}
-		case sema.EnumType:
+		}
+	case sema.EnumType:
+		if static {
 			for _, variant := range exprType.EnumValues {
 				add(completionItem{Label: variant, Kind: 20, Detail: lspTypeName(exprType)})
 			}
-		case sema.UnionType:
+		}
+	case sema.UnionType:
+		if static {
 			for _, variant := range exprType.UnionVariants {
 				add(completionItem{Label: variant.Name, Kind: 20, Detail: lspTypeName(exprType)})
 			}

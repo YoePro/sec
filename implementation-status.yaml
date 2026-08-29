@@ -482,7 +482,7 @@ integrations:
     name: Fixed Array Semantic Value Representation
     area: frontend-semantic-ir-sec-mlir-and-lowering
     status: partial
-    implementation_phase: sema-index-plan-layer
+    implementation_phase: ordinary-index-cfg
     integrated: "2026-08-28"
     baseline: repository HEAD with completed SEC-MLIR-P13 schema 9
     repository_head: 069c111b96714ee4c9423f5f7a64d1e7a6045f31
@@ -516,6 +516,7 @@ integrations:
       - internal/parser/parser.go
       - internal/sema/types.go
       - internal/sema/analyzer.go
+      - internal/sema/call_graph.go
       - internal/sema/semantic_facts.go
       - internal/sema/defaults.go
       - internal/sema/place.go
@@ -535,6 +536,7 @@ integrations:
       - internal/sema/defaults_test.go
       - internal/sema/array_shape_test.go
       - internal/sema/semantic_facts_test.go
+      - internal/sema/effect_analysis_test.go
       - internal/ir/semantic/package14_test.go
       - internal/ir/semantic/package13_test.go
       - internal/lowering/secmlir/emitter_test.go
@@ -542,6 +544,8 @@ integrations:
       - testdata/ir/test_arrays_basic.sec
       - testdata/semantic_ir/fixed_array_index_plans.sec
       - testdata/semantic_ir/fixed_array_index_plans_invalid.sec
+      - testdata/semantic_ir/fixed_array_defaults.sec
+      - testdata/semantic_ir/fixed_array_defaults_deferred.sec
     implemented:
       - completed Package 13 predecessor with schema-9 structs and high-level aggregate storage
       - canonical fixed-array literal spread wording synchronized in collections and spread rulebooks
@@ -564,6 +568,13 @@ integrations:
       - immutable compact ResolvedArrayLiteralPlan data model with exact per-source-entry lengths, Sema-owned defensive copies, and a read-only query that performs no inference, expansion, or analyzer mutation
       - authoritative array-literal analysis publishes source-ordered plans for inferred, target-shaped, spread-containing, and target-required empty fixed-array literals while result typing consumes the same plan
       - multiple fixed-array literal spreads retain distinct source indices, exact big.Int contribution lengths, runtime/mismatch rejection, and O(source entries) plans for conceptual lengths above host int64
+      - array-literal transfer actions derive from compiler-owned copy classification; P14 admits construct-direct/copy-trivial and explicitly rejects semantic-copy, move, and borrow actions at the Semantic IR boundary
+      - complete section-91/93 compact default matrix for scalar, wide, struct, nested, zero-length non-defaultable, positive non-defaultable, and huge fixed arrays
+      - source-to-Semantic-IR compact array.default lowering with exact lengths, no undef/poison substitute, and package-tagged rejection without a partial module for deferred non-trivial ownership
+      - complete Package 14 Semantic IR value-layer printer/verifier matrix for empty, scalar-wide, nested, struct, enum, compact huge, exact segment-sum, default, length, bounds, projection, replacement, guard, and failure operations
+      - source-built ordinary fixed-array reads consume ResolvedArrayIndexPlan facts, preserve array-before-index exactly-once evaluation, and emit either proof-carrying extraction or one guarded runtime bounds CFG
+      - runtime ordinary indexing preserves signed int128, unsigned uint128, target uint, and zero-length semantics and terminates failure in fixed-array-index fail.bounds
+      - compiler-owned effect summaries record direct and transitive may-panic-bounds for runtime ordinary indexes while constant/range-proven indexes contribute no bounds panic
       - Semantic IR TypeArray keyed by element TypeID plus canonical exact decimal length, with deterministic interning, formatting, and verifier diagnostics
       - Semantic IR builder admits fixed-array function parameter and return types at Package 14, keeps dynamic array types gated as UnsupportedFeatureError, and does not introduce array operations before P14-29
       - Semantic IR array.construct, array.default, and array.len operation records with compact segment metadata, exact length strings, P14 action gating, formatter output, and verifier checks
@@ -575,10 +586,9 @@ integrations:
       - named integer ranges wholly contained in 0..<N produce explicit range-proven index plans while zero-length arrays remain runtime-checked unless rejected as an invalid constant
       - Package 14 source-builder unsupported boundary for array literals returns UnsupportedFeatureError without returning a partial module or placeholder operation
     remaining:
-      - complete P14 transfer-action acceptance/rejection at the new Semantic IR boundary and finish the section-91/93 literal/default matrix
-      - connect Sema literal/default/Len facts to the new Package 14 Semantic IR array operations
-      - connect the Package 14 Semantic IR bounds endpoints to source-resolved ordinary and fallible indexing
-      - extend index proofs with branch/assertion analysis, connect runtime guards, implement typed try flow, and bounds effects
+      - connect Sema literal and Len facts to the new Package 14 Semantic IR array operations
+      - connect Package 14 bounds endpoints to fallible indexing, handlers, and indexed replacement
+      - extend index proofs with branch/assertion analysis, implement typed try flow, and complete fallible bounds-effect handling
       - implement trivial high-level mutable array storage and nested transactional replacement
       - implement schema-10 !sec.array, array operations, sec.fail.bounds, emission, and the array-index guard verifier
       - prove P5/P6/P8/P11/P12/P13 integration on 32-bit and 64-bit plans
@@ -608,6 +618,14 @@ integrations:
       - command: go test ./internal/ir/semantic -run 'TestPackage14|TestTypeTableInternsStructuralIdentity' -count=1
         result: passed
       - command: go test ./internal/ir/semantic -run TestPackage14 -count=1
+        result: passed
+      - command: go test ./internal/sema ./internal/ir/semantic -run 'Test(Package14|ArraySpreadTransferActionVocabulary)' -count=1
+        result: passed
+      - command: go test ./internal/ir/semantic -run 'TestPackage14Array(ConstructionTypeAndWidthMatrix|OperationVerifierMatrix|ConstructDefaultAndLengthVerifyAndFormat)' -count=1
+        result: passed
+      - command: go test ./internal/sema -run 'Test(FixedArrayBoundsEffectsDistinguishRuntimeAndProvenIndexes|ResolvedFixedArrayIndexPlans)' -count=1
+        result: passed
+      - command: go test ./internal/ir/semantic -run 'TestPackage14(BuildsOrdinaryArrayIndexControlFlowAndOrder|ArrayIndex)' -count=1
         result: passed
 
   - id: frontend.ownership-v2
@@ -1797,6 +1815,33 @@ integrations:
       - malformed siblings are isolated until their own document analysis instead of poisoning every open file in the module
     verification:
       - command: go test ./cmd/lsp -run 'SameModule|CoreInt|OpenSibling|DifferentModule' -count=1
+        result: passed
+
+  - id: tooling.lsp-type-member-completion
+    area: tooling
+    status: implemented
+    integrated: "2026-08-29"
+    summary: >-
+      Completes type-qualified aggregate member discovery so enum namespaces
+      expose every declared enum member and union namespaces expose every
+      declared variant while preserving the language's static/instance split.
+    rules:
+      - rules/tooling/lsp.md
+      - rules/declarations/enums.md
+      - rules/declarations/unions.md
+      - rules/declarations/static.md
+    code:
+      - cmd/lsp/main.go
+    tests:
+      - cmd/lsp/main_test.go
+    implemented:
+      - Method. completion returns all compiler-resolved enum members with EnumMember kind and the owning enum as detail
+      - union type completion returns payload-less, single-payload, and struct-like declared variants from Sema type facts
+      - stored struct and register fields remain instance-only while legal static properties, methods, storage, and compiler-known members remain type-qualified
+      - enum members and union variants are no longer incorrectly offered on value receivers
+      - prefix filtering and deterministic completion sorting remain shared with ordinary member completion
+    verification:
+      - command: go test ./cmd/lsp -run 'TestCompletion(ReturnsEnumMembersAndUnionVariantsAfterTypeDot|SeparatesStaticAndInstanceMembers|ReturnsStructMembersAfterDot)' -count=1
         result: passed
 
   - id: frontend.modules

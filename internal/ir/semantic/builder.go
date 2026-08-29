@@ -540,10 +540,11 @@ func (fb *functionBuilder) buildLet(stmt *ast.LetStatement) error {
 	}
 	var value builtValue
 	var err error
-	if stmt.SynthesizedDefault && fb.owner.maxPackage >= 13 && fact.Type.Kind == sema.StructType {
-		// Package 13 section 26 requires the new IR to consume the canonical
-		// DefaultResolution instead of treating Sema's compatibility AST node as
-		// semantic authority.
+	if stmt.SynthesizedDefault && ((fb.owner.maxPackage >= 13 && fact.Type.Kind == sema.StructType) ||
+		(fb.owner.maxPackage >= 14 && fact.Type.Kind == sema.ArrayType)) {
+		// Package 13 section 26 and Package 14 sections 24-26 require the new IR
+		// to consume canonical compact DefaultResolution facts instead of
+		// treating Sema's bounded compatibility AST nodes as semantic authority.
 		value, err = fb.buildResolvedDefault(fact.Type, sema.DefaultValueOf(fact.Type), location(stmt.Token))
 	} else {
 		value, err = fb.buildExpr(stmt.Value, 0)
@@ -878,6 +879,11 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 			}
 		}
 		return builtValue{}, fb.unsupported("struct literal", e.Token)
+	case *ast.IndexExpression:
+		if fb.owner.maxPackage < 14 {
+			return builtValue{}, fb.unsupported("fixed-array index", e.Token)
+		}
+		return fb.buildArrayIndexRead(e, typeID)
 	case *ast.TryExpression:
 		if fb.owner.maxPackage < 9 {
 			return builtValue{}, fb.unsupported("try expression", e.Token)
@@ -890,6 +896,95 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 		return fb.buildMatchExpression(e, typeID)
 	default:
 		return builtValue{}, fb.unsupported(fmt.Sprintf("expression %T", expr), expressionToken(expr))
+	}
+}
+
+// buildArrayIndexRead implements
+// rules/mlir/packages/sec-mlir-dialect_package14.md sections 42, 48, 71, and
+// 73. The array expression is evaluated first and the index second, each
+// exactly once. Runtime checks branch through one canonical predicate;
+// proven-safe reads carry Sema's explicit proof and emit no failure path.
+func (fb *functionBuilder) buildArrayIndexRead(expr *ast.IndexExpression, resultType TypeID) (builtValue, error) {
+	plan, ok := fb.owner.analyzer.ResolvedArrayIndexPlanOf(expr)
+	if !ok || plan.UseKind != sema.ArrayIndexRead {
+		return builtValue{}, fb.unsupported("unresolved or non-read fixed-array index", expr.Token)
+	}
+	if plan.Action != sema.ArrayTransferCopyTrivial {
+		return builtValue{}, fb.unsupported("non-trivial fixed-array element read", expr.Token)
+	}
+	arrayType, err := fb.owner.internType(plan.ArrayType)
+	if err != nil {
+		return builtValue{}, err
+	}
+	indexType, err := fb.owner.internType(plan.IndexType)
+	if err != nil {
+		return builtValue{}, err
+	}
+	array, err := fb.buildExpr(expr.Left, arrayType)
+	if err != nil {
+		return builtValue{}, err
+	}
+	index, err := fb.buildExpr(expr.Index, indexType)
+	if err != nil {
+		return builtValue{}, err
+	}
+	if array.typ != arrayType || index.typ != indexType {
+		return builtValue{}, fmt.Errorf("fixed-array index operand type mismatch")
+	}
+
+	op := Operation{
+		Kind: OpArrayExtract, Operands: []ValueID{array.id, index.id},
+		ArrayActions: []ArrayTransferAction{ArrayActionCopyTrivial}, Location: location(expr.Token),
+	}
+	if plan.CheckKind == sema.ArrayIndexProvenSafe {
+		proof, proofOK := semanticArrayIndexProof(plan.ProofKind)
+		if !proofOK || plan.FailureMode != sema.ArrayIndexFailureNone {
+			return builtValue{}, fmt.Errorf("invalid proven-safe fixed-array index plan")
+		}
+		op.ArrayCheckKind = ArrayIndexProvenSafe
+		op.ArrayProofKind = proof
+		return fb.result(op, resultType), nil
+	}
+	if plan.CheckKind != sema.ArrayIndexRuntimeCheck || plan.FailureMode != sema.ArrayIndexFailureOrdinary {
+		return builtValue{}, fb.unsupported("non-ordinary fixed-array index failure mode", expr.Token)
+	}
+	boolType, err := fb.owner.internType(sema.Type{Name: "bool", Kind: sema.BoolType})
+	if err != nil {
+		return builtValue{}, err
+	}
+	predicate := fb.result(Operation{
+		Kind: OpArrayIndexInBounds, Operands: []ValueID{array.id, index.id},
+		ArrayIndexSigned: plan.IndexSigned, Location: location(expr.Token),
+	}, boolType)
+	success := fb.newBlock()
+	failure := fb.newBlock()
+	fb.emit(Operation{
+		Kind: OpCondBranch, Operands: []ValueID{predicate.id},
+		Successors: []BranchTarget{{Block: success.ID}, {Block: failure.ID}}, Location: location(expr.Token),
+	})
+	fb.current = failure
+	fb.emit(Operation{Kind: OpBoundsFailure, ArrayOperation: "fixed-array-index", Location: location(expr.Token)})
+	fb.current = success
+	op.ArrayCheckKind = ArrayIndexRuntimeCheck
+	op.ArrayProofKind = ArrayIndexProofGuarded
+	op.ArrayGuard = predicate.id
+	return fb.result(op, resultType), nil
+}
+
+func semanticArrayIndexProof(proof sema.ArrayIndexProofKind) (ArrayIndexProofKind, bool) {
+	switch proof {
+	case sema.ArrayIndexProofConstant:
+		return ArrayIndexProofConstant, true
+	case sema.ArrayIndexProofRange:
+		return ArrayIndexProofRange, true
+	case sema.ArrayIndexProofBranch:
+		return ArrayIndexProofBranch, true
+	case sema.ArrayIndexProofContract:
+		return ArrayIndexProofContract, true
+	case sema.ArrayIndexProofOther:
+		return ArrayIndexProofAnalysis, true
+	default:
+		return "", false
 	}
 }
 
@@ -1022,6 +1117,30 @@ func (fb *functionBuilder) buildResolvedDefault(typ sema.Type, resolution sema.D
 			_ = definition.Fields[index]
 		}
 		return fb.result(op, typeID), nil
+	case sema.ArrayDefault:
+		// SEC-MLIR Package 14 sections 24-27: array defaults remain one compact
+		// semantic operation. Zero length never queries or constructs an element;
+		// positive lengths are restricted to the infallible trivial P14 subset.
+		length, fixed := sema.FixedArrayLength(typ)
+		if typ.Kind != sema.ArrayType || typ.Element == nil || !fixed {
+			return builtValue{}, fb.unsupported("dynamic or malformed array default", lexer.Token{})
+		}
+		if resolution.ArrayLengthDecimal != length.String() {
+			return builtValue{}, fmt.Errorf("array default length fact mismatch for %s", typ.Name)
+		}
+		if length.Sign() != 0 {
+			if resolution.ArrayElementDefault == nil || sema.CopyClassificationOf(*typ.Element) != sema.CopyTrivial || !sema.TriviallyDestructible(*typ.Element) {
+				return builtValue{}, fb.unsupported("non-trivial fixed-array default for "+typ.Name, lexer.Token{})
+			}
+		}
+		elementType, elementErr := fb.owner.internType(*typ.Element)
+		if elementErr != nil {
+			return builtValue{}, elementErr
+		}
+		return fb.result(Operation{
+			Kind: OpArrayDefault, ArrayElementType: elementType,
+			ArrayLength: length.String(), Location: loc,
+		}, typeID), nil
 	}
 	return builtValue{}, fb.unsupported("resolved default "+string(resolution.Kind)+" for "+typ.Name, lexer.Token{})
 }

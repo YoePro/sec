@@ -1,0 +1,31 @@
+module main
+
+type Pair struct {
+    left: int32,
+    right: int128,
+}
+
+fn ScalarDefault() int32[4] {
+    let mut values: int32[4]
+    return values
+}
+
+fn WideDefault() int128[3] {
+    let mut values: int128[3]
+    return values
+}
+
+fn StructDefault() Pair[2] {
+    let mut values: Pair[2]
+    return values
+}
+
+fn NestedArrayDefault() int32[2][3] {
+    let mut values: int32[2][3]
+    return values
+}
+
+fn HugeCompactDefault() int32[1000000] {
+    let mut values: int32[1000000]
+    return values
+}

@@ -2700,6 +2700,55 @@ impl Counter {
 	assertCompletionLabels(t, completeSource("", source, instanceOffset), []string{"Read", "SizeOf", "Value", "value"})
 }
 
+func TestCompletionReturnsEnumMembersAndUnionVariantsAfterTypeDot(t *testing.T) {
+	enumSource := `module main
+
+enum Method {
+    GET,
+    HEAD,
+    POST,
+    PUT,
+    DELETE,
+    CONNECT,
+    OPTIONS,
+    TRACE,
+    PATCH,
+}
+
+fn FromString(In: string) Method {
+    let mut mt: Method
+    mt = Method.
+    return mt
+}
+`
+	enumOffset := strings.Index(enumSource, "Method.\n") + len("Method.")
+	enumItems := completeSource("", enumSource, enumOffset)
+	assertCompletionLabels(t, enumItems, []string{"CONNECT", "DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT", "TRACE"})
+	for _, item := range enumItems {
+		if item.Label == "PATCH" && (item.Kind != 20 || item.Detail != "Method") {
+			t.Fatalf("PATCH completion = %+v, want enum member of Method", item)
+		}
+	}
+
+	unionSource := `module main
+
+type Response union {
+    Success(string),
+    Empty,
+    Detailed {
+        code: int,
+    },
+}
+
+fn Build() void {
+    Response.
+}
+`
+	unionOffset := strings.Index(unionSource, "Response.\n") + len("Response.")
+	unionItems := completeSource("", unionSource, unionOffset)
+	assertCompletionLabels(t, unionItems, []string{"Detailed", "Empty", "Success"})
+}
+
 func TestLSPAnalysisDepthFromProjectManifest(t *testing.T) {
 	dir := t.TempDir()
 	manifestDir := filepath.Join(dir, ".sec")

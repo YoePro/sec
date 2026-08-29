@@ -2,7 +2,9 @@ package semantic
 
 import (
 	"errors"
+	"fmt"
 	"math/big"
+	"os"
 	"strings"
 	"testing"
 
@@ -163,6 +165,147 @@ func TestPackage14ArrayConstructDefaultAndLengthVerifyAndFormat(t *testing.T) {
 	}
 }
 
+// TestPackage14ArrayConstructionTypeAndWidthMatrix covers the Package 14
+// sections 92 and 94 value-layer matrix. The huge spread is represented by one
+// operand and one segment regardless of its conceptual element count.
+func TestPackage14ArrayConstructionTypeAndWidthMatrix(t *testing.T) {
+	module := package14ArrayConstructionMatrixModule()
+	if err := Verify(module); err != nil {
+		t.Fatalf("verify construction matrix: %v\n%s", err, Format(module))
+	}
+
+	wantConstructs := map[string]int{
+		"0": 0, "2": 2, "3": 3, "4": 4,
+		"18446744073709551616": 1,
+	}
+	seenLengths := map[string]int{}
+	for _, operation := range module.Functions[0].Blocks[0].Operations {
+		switch operation.Kind {
+		case OpArrayConstruct:
+			resultType, ok := module.Types.Lookup(operation.Results[0].Type)
+			if !ok || resultType.Kind != TypeArray || resultType.Element != operation.ArrayElementType || resultType.Length != operation.ArrayLength {
+				t.Fatalf("construct result does not preserve its exact array type: %#v", operation)
+			}
+			seenLengths[operation.ArrayLength]++
+			if operation.ArrayLength == "18446744073709551616" && (len(operation.Operands) != 1 || len(operation.ArraySegmentLengths) != 1) {
+				t.Fatalf("huge construction expanded in Semantic IR: %#v", operation)
+			}
+		case OpArrayLength:
+			resultType, ok := module.Types.Lookup(operation.Results[0].Type)
+			if !ok || resultType.Kind != TypeUint || !resultType.TargetSize {
+				t.Fatalf("array.len result is not target-sized uint: %#v", operation)
+			}
+		}
+	}
+	for length, minimumSegments := range wantConstructs {
+		if seenLengths[length] == 0 {
+			t.Fatalf("missing array.construct length %s in matrix", length)
+		}
+		if length == "0" || length == "18446744073709551616" {
+			continue
+		}
+		found := false
+		for _, operation := range module.Functions[0].Blocks[0].Operations {
+			if operation.Kind == OpArrayConstruct && operation.ArrayLength == length && len(operation.ArraySegmentLengths) == minimumSegments {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("missing compact %s-element construction", length)
+		}
+	}
+
+	text := Format(module)
+	for _, want := range []string{
+		`length="0"`, `length="18446744073709551616"`,
+		`array.len %18 exact="18446744073709551616"`, `array.len %26 exact="0"`,
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("formatted construction matrix missing %q:\n%s", want, text)
+		}
+	}
+}
+
+// TestPackage14BuildsCompactFixedArrayDefaultMatrix covers the source-to-IR
+// portion of Package 14 sections 24-27 and 93. Every default remains one
+// array.default operation regardless of N or recursive trivial element shape.
+func TestPackage14BuildsCompactFixedArrayDefaultMatrix(t *testing.T) {
+	source, err := os.ReadFile("../../../testdata/semantic_ir/fixed_array_defaults.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := parser.New(lexer.NewWithFile(string(source), "fixed_array_defaults.sec"))
+	parsed := p.Parse()
+	if parsed.HasErrors {
+		t.Fatalf("parse: %v", p.Errors())
+	}
+	analyzer := sema.NewAnalyzer()
+	if semaErrors := analyzer.Analyze(parsed.Program); len(semaErrors) != 0 {
+		t.Fatalf("sema: %v", semaErrors)
+	}
+	module, err := Build(parsed.Program, analyzer, BuildOptions{RequestedModule: "main", SourceFiles: []string{"fixed_array_defaults.sec"}, MaxPackage: 14})
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	if err := Verify(module); err != nil {
+		t.Fatalf("verify: %v\n%s", err, Format(module))
+	}
+
+	wantLengths := map[string]string{
+		"ScalarDefault": "4", "WideDefault": "3", "StructDefault": "2",
+		"NestedArrayDefault": "2", "HugeCompactDefault": "1000000",
+	}
+	for _, function := range module.Functions {
+		defaults := []Operation{}
+		for _, block := range function.Blocks {
+			for _, operation := range block.Operations {
+				if operation.Kind == OpArrayDefault {
+					defaults = append(defaults, operation)
+				}
+			}
+		}
+		want, relevant := wantLengths[function.Name]
+		if !relevant {
+			continue
+		}
+		if len(defaults) != 1 || defaults[0].ArrayLength != want || len(defaults[0].Operands) != 0 {
+			t.Fatalf("%s compact defaults = %#v", function.Name, defaults)
+		}
+	}
+	text := Format(module)
+	if strings.Contains(text, "undef") || strings.Contains(text, "poison") {
+		t.Fatalf("fixed-array default introduced unreadable state:\n%s", text)
+	}
+}
+
+// TestPackage14RejectsNonTrivialFixedArrayDefaultWithoutPartialModule proves
+// the Package 14 section-26 ownership gate returns an explicit package-tagged
+// unsupported result instead of substituting zero/undef or partial IR.
+func TestPackage14RejectsNonTrivialFixedArrayDefaultWithoutPartialModule(t *testing.T) {
+	source, err := os.ReadFile("../../../testdata/semantic_ir/fixed_array_defaults_deferred.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := parser.New(lexer.NewWithFile(string(source), "fixed_array_defaults_deferred.sec"))
+	parsed := p.Parse()
+	if parsed.HasErrors {
+		t.Fatalf("parse: %v", p.Errors())
+	}
+	analyzer := sema.NewAnalyzer()
+	if semaErrors := analyzer.Analyze(parsed.Program); len(semaErrors) != 0 {
+		t.Fatalf("valid source default rejected by Sema: %v", semaErrors)
+	}
+	module, err := Build(parsed.Program, analyzer, BuildOptions{RequestedModule: "main", MaxPackage: 14})
+	if module != nil {
+		t.Fatalf("unsupported default returned partial module:\n%s", Format(module))
+	}
+	var unsupported *UnsupportedFeatureError
+	if !errors.As(err, &unsupported) || unsupported.Package != 14 || !strings.Contains(unsupported.Feature, "non-trivial fixed-array default") {
+		t.Fatalf("error = %#v, want Package 14 non-trivial fixed-array default", err)
+	}
+}
+
 func TestPackage14ArrayOperationVerifierMatrix(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -177,6 +320,17 @@ func TestPackage14ArrayOperationVerifierMatrix(t *testing.T) {
 			wantError: "array.construct result type mismatch",
 		},
 		{
+			name: "construct bad exact segment sum",
+			mutate: func(module *Module) {
+				operation := &module.Functions[0].Blocks[0].Operations[1]
+				operation.Operands[1] = operation.Operands[0]
+				operation.ArraySegmentKinds[1] = ArraySegmentElement
+				operation.ArraySegmentLengths[1] = "1"
+				operation.ArrayActions[1] = ArrayActionConstructDirect
+			},
+			wantError: "array.construct length mismatch",
+		},
+		{
 			name: "element bad action",
 			mutate: func(module *Module) {
 				module.Functions[0].Blocks[0].Operations[1].ArrayActions[0] = ArrayActionCopyTrivial
@@ -187,6 +341,34 @@ func TestPackage14ArrayOperationVerifierMatrix(t *testing.T) {
 			name: "spread bad type",
 			mutate: func(module *Module) {
 				module.Functions[0].Parameters[0].Value.Type = module.Functions[0].ReturnType
+			},
+			wantError: "spread segment 1 mismatch",
+		},
+		{
+			name: "spread semantic copy deferred",
+			mutate: func(module *Module) {
+				module.Functions[0].Blocks[0].Operations[1].ArrayActions[1] = ArrayActionCopySemanticInfallible
+			},
+			wantError: "spread segment 1 mismatch",
+		},
+		{
+			name: "spread move deferred",
+			mutate: func(module *Module) {
+				module.Functions[0].Blocks[0].Operations[1].ArrayActions[1] = ArrayActionMove
+			},
+			wantError: "spread segment 1 mismatch",
+		},
+		{
+			name: "spread shared borrow deferred",
+			mutate: func(module *Module) {
+				module.Functions[0].Blocks[0].Operations[1].ArrayActions[1] = ArrayActionBorrowShared
+			},
+			wantError: "spread segment 1 mismatch",
+		},
+		{
+			name: "spread mutable borrow deferred",
+			mutate: func(module *Module) {
+				module.Functions[0].Blocks[0].Operations[1].ArrayActions[1] = ArrayActionBorrowMutable
 			},
 			wantError: "spread segment 1 mismatch",
 		},
@@ -237,6 +419,103 @@ func TestPackage14ArrayIndexExtractReplaceVerifyAndFormat(t *testing.T) {
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("formatted Semantic IR missing %q:\n%s", want, text)
+		}
+	}
+}
+
+func TestPackage14BuildsOrdinaryArrayIndexControlFlowAndOrder(t *testing.T) {
+	module, err := analyzedModule(t, `module main
+
+fn Identity(values: int32[3]) int32[3] {
+    return values
+}
+
+fn Next() int128 {
+    return 1
+}
+
+fn Proven(values: int32[3]) int32 {
+    return values[1]
+}
+
+fn Runtime(values: int32[3]) int32 {
+    return Identity(values)[Next()]
+}
+
+fn RuntimeUnsigned(values: int32[3], index: uint128) int32 {
+    return values[index]
+}
+
+fn ZeroLength(values: int32[0], index: uint) int32 {
+    return values[index]
+}
+`, 14)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Verify(module); err != nil {
+		t.Fatalf("verify source-built array indexes: %v\n%s", err, Format(module))
+	}
+
+	var proven, runtime, runtimeUnsigned, zeroLength *Function
+	for _, function := range module.Functions {
+		switch function.Name {
+		case "Proven":
+			proven = function
+		case "Runtime":
+			runtime = function
+		case "RuntimeUnsigned":
+			runtimeUnsigned = function
+		case "ZeroLength":
+			zeroLength = function
+		}
+	}
+	if proven == nil || runtime == nil || runtimeUnsigned == nil || zeroLength == nil {
+		t.Fatalf("missing source-built functions: %#v", module.Functions)
+	}
+	if len(proven.Blocks) != 1 || len(proven.Blocks[0].Operations) != 3 ||
+		proven.Blocks[0].Operations[0].Kind != OpConstInt ||
+		proven.Blocks[0].Operations[1].Kind != OpArrayExtract ||
+		proven.Blocks[0].Operations[1].ArrayCheckKind != ArrayIndexProvenSafe ||
+		proven.Blocks[0].Operations[1].ArrayProofKind != ArrayIndexProofConstant ||
+		proven.Blocks[0].Operations[2].Kind != OpReturn {
+		t.Fatalf("proven-safe index emitted unexpected control flow:\n%s", Format(module))
+	}
+
+	if len(runtime.Blocks) != 3 {
+		t.Fatalf("runtime index blocks = %d, want entry/success/failure\n%s", len(runtime.Blocks), Format(module))
+	}
+	entry := runtime.Blocks[0]
+	wantEntry := []OpKind{OpDirectCall, OpDirectCall, OpArrayIndexInBounds, OpCondBranch}
+	if len(entry.Operations) != len(wantEntry) {
+		t.Fatalf("runtime entry operations = %#v", entry.Operations)
+	}
+	for index, want := range wantEntry {
+		if entry.Operations[index].Kind != want {
+			t.Fatalf("runtime entry operation %d = %s, want %s", index, entry.Operations[index].Kind, want)
+		}
+	}
+	if entry.Operations[0].Callee == entry.Operations[1].Callee {
+		t.Fatal("array and index calls collapsed into one evaluation")
+	}
+	predicate := entry.Operations[2].Results[0].ID
+	success := runtime.Blocks[1]
+	failure := runtime.Blocks[2]
+	if len(success.Operations) != 2 || success.Operations[0].Kind != OpArrayExtract || success.Operations[0].ArrayGuard != predicate || success.Operations[1].Kind != OpReturn {
+		t.Fatalf("runtime success path = %#v", success.Operations)
+	}
+	if len(failure.Operations) != 1 || failure.Operations[0].Kind != OpBoundsFailure || failure.Operations[0].ArrayOperation != "fixed-array-index" {
+		t.Fatalf("runtime failure path = %#v", failure.Operations)
+	}
+	if !entry.Operations[2].ArrayIndexSigned {
+		t.Fatal("int128 source index signedness was not preserved")
+	}
+	for _, function := range []*Function{runtimeUnsigned, zeroLength} {
+		if len(function.Blocks) != 3 || len(function.Blocks[0].Operations) != 2 ||
+			function.Blocks[0].Operations[0].Kind != OpArrayIndexInBounds ||
+			function.Blocks[0].Operations[0].ArrayIndexSigned ||
+			len(function.Blocks[2].Operations) != 1 || function.Blocks[2].Operations[0].Kind != OpBoundsFailure {
+			t.Fatalf("%s did not preserve unsigned runtime bounds flow:\n%s", function.Name, Format(module))
 		}
 	}
 }
@@ -345,6 +624,111 @@ func package14ArrayOpsModule() *Module {
 		},
 	}}
 	return &Module{Version: Version, Identity: "main", Types: types, Functions: []*Function{fn}}
+}
+
+func package14ArrayConstructionMatrixModule() *Module {
+	types := NewTypeTable()
+	voidType := types.Intern(Type{Kind: TypeVoid, Name: "void"})
+	int32Type := types.Intern(Type{Kind: TypeInt, Name: "int32", Signed: true, BitWidth: 32})
+	int128Type := types.Intern(Type{Kind: TypeInt, Name: "int128", Signed: true, BitWidth: 128})
+	uint256Type := types.Intern(Type{Kind: TypeUint, Name: "uint256", BitWidth: 256})
+	uintType := types.Intern(Type{Kind: TypeUint, Name: "uint", TargetSize: true})
+	pairType := types.Intern(Type{Kind: TypeStruct, Name: "Pair", Module: "main", Identity: "main::Pair"})
+	modeType := types.Intern(Type{Kind: TypeEnum, Name: "Mode", Module: "main", Identity: "main::Mode", Underlying: uint256Type})
+	int32Array4 := types.Intern(Type{Kind: TypeArray, Name: "int32[4]", Element: int32Type, Length: "4"})
+	int128Array2 := types.Intern(Type{Kind: TypeArray, Name: "int128[2]", Element: int128Type, Length: "2"})
+	uint256Array2 := types.Intern(Type{Kind: TypeArray, Name: "uint256[2]", Element: uint256Type, Length: "2"})
+	int32Array2 := types.Intern(Type{Kind: TypeArray, Name: "int32[2]", Element: int32Type, Length: "2"})
+	nestedArray := types.Intern(Type{Kind: TypeArray, Name: "int32[2][3]", Element: int32Array2, Length: "3"})
+	pairArray2 := types.Intern(Type{Kind: TypeArray, Name: "Pair[2]", Element: pairType, Length: "2"})
+	modeArray4 := types.Intern(Type{Kind: TypeArray, Name: "Mode[4]", Element: modeType, Length: "4"})
+	hugeLength := "18446744073709551616"
+	hugeArray := types.Intern(Type{Kind: TypeArray, Name: "int32[" + hugeLength + "]", Element: int32Type, Length: hugeLength})
+	zeroArray := types.Intern(Type{Kind: TypeArray, Name: "int32[0]", Element: int32Type, Length: "0"})
+
+	parameterTypes := []TypeID{
+		int32Type, int32Type, int32Type, int32Type,
+		int128Type, int128Type,
+		uint256Type, uint256Type,
+		int32Array2, int32Array2, int32Array2,
+		pairType, pairType,
+		modeType, modeType, modeType, modeType,
+		hugeArray,
+	}
+	parameters := make([]Parameter, len(parameterTypes))
+	for index, typ := range parameterTypes {
+		parameters[index] = Parameter{Name: fmt.Sprintf("value%d", index+1), Value: Value{ID: ValueID(index + 1), Type: typ, Ownership: OwnershipImmediate}}
+	}
+	nextResult := ValueID(len(parameters) + 1)
+	construct := func(element TypeID, result TypeID, length string, operands []ValueID, kinds []ArrayConstructSegmentKind, lengths []string, actions []ArrayTransferAction) Operation {
+		op := Operation{
+			Kind: OpArrayConstruct, Operands: operands,
+			Results:          []Value{{ID: nextResult, Type: result, Ownership: OwnershipImmediate}},
+			ArrayElementType: element, ArrayLength: length,
+			ArraySegmentKinds: kinds, ArraySegmentLengths: lengths, ArrayActions: actions,
+		}
+		nextResult++
+		return op
+	}
+	elements := func(first ValueID, count int) ([]ValueID, []ArrayConstructSegmentKind, []string, []ArrayTransferAction) {
+		operands := make([]ValueID, count)
+		kinds := make([]ArrayConstructSegmentKind, count)
+		lengths := make([]string, count)
+		actions := make([]ArrayTransferAction, count)
+		for index := 0; index < count; index++ {
+			operands[index] = first + ValueID(index)
+			kinds[index] = ArraySegmentElement
+			lengths[index] = "1"
+			actions[index] = ArrayActionConstructDirect
+		}
+		return operands, kinds, lengths, actions
+	}
+	operations := []Operation{}
+	for _, test := range []struct {
+		element TypeID
+		result  TypeID
+		length  string
+		first   ValueID
+		count   int
+	}{
+		{int32Type, int32Array4, "4", 1, 4},
+		{int128Type, int128Array2, "2", 5, 2},
+		{uint256Type, uint256Array2, "2", 7, 2},
+		{int32Array2, nestedArray, "3", 9, 3},
+		{pairType, pairArray2, "2", 12, 2},
+		{modeType, modeArray4, "4", 14, 4},
+	} {
+		operands, kinds, lengths, actions := elements(test.first, test.count)
+		operations = append(operations, construct(test.element, test.result, test.length, operands, kinds, lengths, actions))
+	}
+	operations = append(operations,
+		construct(int32Type, hugeArray, hugeLength, []ValueID{18}, []ArrayConstructSegmentKind{ArraySegmentSpread}, []string{hugeLength}, []ArrayTransferAction{ArrayActionCopyTrivial}),
+		construct(int32Type, zeroArray, "0", nil, nil, nil, nil),
+		Operation{Kind: OpArrayLength, Operands: []ValueID{18}, Results: []Value{{ID: nextResult, Type: uintType, Ownership: OwnershipImmediate}}, ArrayLength: hugeLength},
+	)
+	nextResult++
+	operations = append(operations,
+		Operation{Kind: OpArrayLength, Operands: []ValueID{nextResult - 2}, Results: []Value{{ID: nextResult, Type: uintType, Ownership: OwnershipImmediate}}, ArrayLength: "0"},
+		Operation{Kind: OpReturn},
+	)
+
+	return &Module{
+		Version: Version, Identity: "main", Types: types,
+		Structs: []StructDefinition{{
+			TypeID: pairType, SymbolID: "main::Pair", Name: "Pair",
+			Fields:             []StructFieldDefinition{{ID: 0, Name: "value", Type: int32Type}},
+			CopyClassification: "trivial", TriviallyDestructible: true, Defaultable: true,
+		}},
+		Enums: []EnumDefinition{{
+			TypeID: modeType, SymbolID: "main::Mode", Name: "Mode", Underlying: uint256Type,
+			RepresentationKind: EnumRepresentationInteger,
+			Cases:              []EnumCase{{ID: 0, Name: "Off", Value: big.NewInt(0)}, {ID: 1, Name: "On", Value: big.NewInt(1)}},
+		}},
+		Functions: []*Function{{
+			ID: "main::ConstructionMatrix", Name: "ConstructionMatrix", ReturnType: voidType,
+			Entry: 0, Parameters: parameters, Blocks: []*Block{{ID: 0, Operations: operations}},
+		}},
+	}
 }
 
 func package14ArrayIndexModule() *Module {

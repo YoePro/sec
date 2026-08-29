@@ -1,0 +1,10 @@
+module main
+
+@noCopy
+type Token struct {
+    value: int,
+}
+
+fn DeferredNonTrivialDefault() void {
+    let mut values: Token[1]
+}

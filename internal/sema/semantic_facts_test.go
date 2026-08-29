@@ -329,6 +329,29 @@ fn Mismatch(left: int[1], right: bool[1]) void {
 	}
 }
 
+// TestArraySpreadTransferActionVocabulary covers SEC-MLIR Package 14 section
+// 21: Sema records the actual copy fact, while consuming and conditional cases
+// are rejected instead of being mislabeled as trivial copies.
+func TestArraySpreadTransferActionVocabulary(t *testing.T) {
+	tests := []struct {
+		classification CopyClassification
+		want           ResolvedArrayTransferAction
+		ok             bool
+	}{
+		{CopyTrivial, ArrayTransferCopyTrivial, true},
+		{CopySemantic, ArrayTransferCopySemantic, true},
+		{CopyMoveOnly, "", false},
+		{CopyConditional, "", false},
+		{CopyNonCopyable, "", false},
+	}
+	for _, test := range tests {
+		got, ok := arraySpreadTransferAction(test.classification)
+		if got != test.want || ok != test.ok {
+			t.Fatalf("spread action for %q = %q, %t; want %q, %t", test.classification, got, ok, test.want, test.ok)
+		}
+	}
+}
+
 // analyzeStructPlanWithLegacyDefaults exercises the compatibility boundary in
 // rules/mlir/packages/sec-mlir-dialect_package13.md section 26. The returned
 // plan must be independent of the optional synthesized AST fields.

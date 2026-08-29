@@ -86,6 +86,52 @@ func TestDefaultValueOfPrimitiveAndConstrainedTypes(t *testing.T) {
 	}
 }
 
+// TestPackage14CompactFixedArrayDefaultMatrix covers the Sema-owned section-93
+// default facts without allocating or materializing one record per large array
+// element.
+func TestPackage14CompactFixedArrayDefaultMatrix(t *testing.T) {
+	int32Type := Type{Name: "int32", Kind: IntType}
+	int128Type := Type{Name: "int128", Kind: IntType}
+	pairType := Type{Name: "Pair", Module: "main", Kind: StructType, Named: true, Fields: []StructField{
+		{Name: "left", Type: int32Type},
+		{Name: "right", Type: int128Type},
+	}}
+	innerArray := NewFixedArrayType(int32Type, big.NewInt(2))
+	nonDefaultable := Type{Name: "ref mut int", Kind: ReferenceType, ReferenceMutable: true, Element: &int32Type}
+
+	tests := []struct {
+		name          string
+		typ           Type
+		wantKind      DefaultKind
+		wantLength    string
+		wantElement   DefaultKind
+		wantLegacyLen int
+	}{
+		{"int32", NewFixedArrayType(int32Type, big.NewInt(4)), ArrayDefault, "4", PrimitiveDefault, 4},
+		{"int128", NewFixedArrayType(int128Type, big.NewInt(3)), ArrayDefault, "3", PrimitiveDefault, 3},
+		{"struct", NewFixedArrayType(pairType, big.NewInt(2)), ArrayDefault, "2", StructDefault, 2},
+		{"nested-array", NewFixedArrayType(innerArray, big.NewInt(3)), ArrayDefault, "3", ArrayDefault, 3},
+		{"zero-non-defaultable", NewFixedArrayType(nonDefaultable, big.NewInt(0)), ArrayDefault, "0", NoDefault, 0},
+		{"nonzero-non-defaultable", NewFixedArrayType(nonDefaultable, big.NewInt(1)), NoDefault, "", NoDefault, 0},
+		{"huge-compact", NewFixedArrayType(int32Type, mustArrayLength(t, "100000000000000000000")), ArrayDefault, "100000000000000000000", PrimitiveDefault, 0},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			resolved := DefaultValueOf(test.typ)
+			if resolved.Kind != test.wantKind || resolved.ArrayLengthDecimal != test.wantLength || len(resolved.Elements) != test.wantLegacyLen {
+				t.Fatalf("default = %#v", resolved)
+			}
+			if test.wantElement == NoDefault {
+				if resolved.ArrayElementDefault != nil {
+					t.Fatalf("unexpected element default: %#v", resolved.ArrayElementDefault)
+				}
+			} else if resolved.ArrayElementDefault == nil || resolved.ArrayElementDefault.Kind != test.wantElement {
+				t.Fatalf("element default = %#v, want %q", resolved.ArrayElementDefault, test.wantElement)
+			}
+		})
+	}
+}
+
 func TestAnalyzerMaterializesDefaultsWithoutRuntime(t *testing.T) {
 	input := `module main
 

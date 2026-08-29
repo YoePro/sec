@@ -165,7 +165,7 @@ no huge allocation.
 - [x] P14-21 — Preserve every fixed-array spread as one source entry; evaluate
   its expression once, allow multiple spreads, add exact lengths with `big.Int`,
   and reject runtime-length sources or mismatched element types.
-- [ ] P14-22 — Record `construct-direct`, `copy-trivial`, and the later action
+- [x] P14-22 — Record `construct-direct`, `copy-trivial`, and the later action
   vocabulary from compiler-owned copy facts. Accept only the P14 trivial subset
   in the new IR and reject semantic-copy/move/borrow actions explicitly.
 - [x] P14-23 — Prove a literal containing a spread of conceptual length above
@@ -176,7 +176,7 @@ no huge allocation.
 - [x] P14-25 — Implement the zero-length exception: `T[0]` is defaultable even
   when T is non-defaultable, and querying/building the default must not construct
   or inspect a T value.
-- [ ] P14-26 — Add the complete section-91/93 plan and default tests, including
+- [x] P14-26 — Add the complete section-91/93 plan and default tests, including
   ordinary/target/inferred/empty literals, multiple spreads, read-only query,
   compact large lengths, nested defaults, non-defaultable elements, and no
   `undef`/poison substitute.
@@ -196,6 +196,16 @@ P14-21 and P14-23 preserve multiple spreads as distinct, source-indexed entries,
 reject runtime-length and element-mismatched sources, and prove that a spread
 longer than host `int64` still produces only one plan entry plus its neighboring
 source elements. No test allocates or expands the conceptual array.
+
+Completed 2026-08-29: P14-22 derives spread actions from compiler-owned copy
+classification, preserves semantic-copy as a later action, and explicitly
+rejects move-only/conditional/non-copyable sources. Semantic IR verifier tests
+admit only construct-direct/copy-trivial and reject semantic-copy, move, and
+shared/mutable borrow actions at the P14 boundary. P14-26 completes the compact
+default matrix for scalar, wide, struct, nested, zero-length non-defaultable,
+positive non-defaultable, and huge arrays. Source-to-IR tests prove one compact
+`array.default`, no partial module for deferred ownership, and no `undef` or
+poison substitute.
 
 ## D. Implement fixed arrays in Semantic IR
 
@@ -221,7 +231,7 @@ source elements. No test allocates or expands the conceptual array.
 - [x] P14-34 — Add terminating `BoundsFailureOp` for ordinary failed bounds
   checks and the explicit `IndexError.OutOfBounds` construction/branch for the
   fallible path.
-- [ ] P14-35 — Extend Semantic IR printer/verifier tests for zero/large lengths,
+- [x] P14-35 — Extend Semantic IR printer/verifier tests for zero/large lengths,
   nested arrays, wide/struct/enum elements, compact segments/defaults, exact
   result types, bad sums, guard mismatches, and every P14 operation.
 - [x] P14-36 — Ensure every P14 `UnsupportedFeatureError` retains package 14,
@@ -258,6 +268,14 @@ must end either there or in an explicit `core::IndexError.OutOfBounds` enum
 construction followed by the existing typed `Result.err` return path; no
 special bounds-error type or runtime symbol is introduced.
 
+Completed 2026-08-29: P14-35 completes the Semantic IR value-layer
+printer/verifier matrix. Construction now covers empty, `int32`, `int128`,
+`uint256`, nested-array, trivial-struct, enum, and compact above-`uint64`
+spread cases with exact result types. Negative tests distinguish result-type
+mismatches from exact segment-sum failures, while the combined operation tests
+cover defaults, length, bounds predicates, extraction, replacement, guard
+provenance, ordinary bounds failure, and fallible `IndexError.OutOfBounds`.
+
 ## E. Resolve indexing, bounds control flow, `try`, and effects
 
 - [x] P14-37 — Define immutable `ResolvedArrayIndexPlan` facts with exact array
@@ -278,7 +296,7 @@ special bounds-error type or runtime symbol is introduced.
 - [ ] P14-42 — Preserve evaluation order and exactly-once behavior: evaluate the
   array/place first and index second; for assignment evaluate target/index,
   then RHS completely, then commit replacement.
-- [ ] P14-43 — Build the ordinary runtime CFG from one predicate: success
+- [x] P14-43 — Build the ordinary runtime CFG from one predicate: success
   dominates extraction/replacement and failure terminates in
   `BoundsFailureOp`. Negative signed and `>= N` cases must fail.
 - [ ] P14-44 — Implement `try array[index]` as a resolved fallible operation:
@@ -311,6 +329,22 @@ signed and unsigned integer indexes are runtime-checked without changing their
 source type. Named integer ranges wholly inside `0..<N` are also recorded as
 range-proven; P14-40 remains open for branch, assertion/contract-refinement,
 and other analysis provenance beyond the currently materialized type range.
+
+Completed 2026-08-29: P14-43 connects ordinary fixed-array reads from their
+compiler-owned index plans to verified Semantic IR. Proven-safe reads emit one
+`array.extract` with the recorded proof and no runtime CFG. Runtime reads
+evaluate array then index exactly once, emit one `array.index-in-bounds`, branch
+to a guarded extraction, and terminate the false path in `fail.bounds` for
+`fixed-array-index`; the existing verifier applies the same guard contract to
+`array.replace`. Signed `int128`, unsigned `uint128`, target `uint`, and
+zero-length runtime cases retain their source index semantics.
+
+Progress 2026-08-29: the read half of P14-42 is now source-to-IR tested with
+effectful array/index calls in exact source order. P14-46 now records direct and
+transitive `may-panic-bounds` effects for ordinary runtime indexes while
+constant/range-proven indexes remain bounds-panic-free. P14-42 stays open for
+indexed assignment ordering; P14-46/P14-48 stay open for fallible indexing,
+handlers, `@noPanic`, and the remaining section-95–98 matrix.
 
 ## F. Add trivial mutable storage and nested replacement
 

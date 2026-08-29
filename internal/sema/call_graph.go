@@ -73,6 +73,7 @@ type EffectKind string
 
 const (
 	EffectMayPanicArithmetic EffectKind = "may-panic-arithmetic"
+	EffectMayPanicBounds     EffectKind = "may-panic-bounds"
 	EffectVolatileRead       EffectKind = "volatile-read"
 	EffectVolatileWrite      EffectKind = "volatile-write"
 )
@@ -495,7 +496,7 @@ func (g *CallGraph) EffectSummary(id CallableID) CallableEffectSummary {
 	summary := CallableEffectSummary{DirectEffects: append([]EffectSite(nil), g.effects[id]...)}
 	summary.PanicPath = g.synchronousPathTo(id, func(candidate CallableID) bool {
 		for _, effect := range g.effects[candidate] {
-			if effect.Kind == EffectMayPanicArithmetic {
+			if effect.Kind == EffectMayPanicArithmetic || effect.Kind == EffectMayPanicBounds {
 				return true
 			}
 		}

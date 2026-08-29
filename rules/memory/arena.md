@@ -3845,7 +3845,7 @@ platform/ffi.md
 declarations/interfaces.md
 isr_analysis.md
 layout.md
-lifetime_analysis.txt
+lifetime_analysis.md
 lsp.md
 ownership.md
 panic.md

@@ -3140,7 +3140,7 @@ runtime_checks.md
 allocation.txt
 ownership.md
 borrowing.txt
-lifetime_analysis.txt
+lifetime_analysis.md
 semantic_ir.txt
 compiler_analysis.txt
 compiler_pipeline.txt

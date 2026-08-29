@@ -2,6 +2,7 @@ package sema
 
 import (
 	"math/big"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -10,6 +11,98 @@ import (
 	"sec/internal/lexer"
 	"sec/internal/parser"
 )
+
+// TestResolvedFixedArrayIndexPlans covers SEC-MLIR Package 14 sections 31-36:
+// exact wide constants, preserved source index types, named range proofs,
+// runtime failure typing, and indexed-write use/action classification.
+func TestResolvedFixedArrayIndexPlans(t *testing.T) {
+	source, err := os.ReadFile("../../testdata/semantic_ir/fixed_array_index_plans.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := parser.New(lexer.NewWithFile(string(source), "fixed_array_index_plans.sec"))
+	result := p.Parse()
+	if result.HasErrors {
+		t.Fatalf("parse: %v", p.Errors())
+	}
+	a := NewAnalyzer()
+	if errors := a.Analyze(result.Program); len(errors) != 0 {
+		t.Fatalf("sema: %v", errors)
+	}
+
+	indexExpressions := make([]*ast.IndexExpression, 0, 4)
+	for _, statement := range result.Program.Statements {
+		function, ok := statement.(*ast.FunctionDeclaration)
+		if !ok || function.Body == nil {
+			continue
+		}
+		for _, bodyStatement := range function.Body.Statements {
+			indexExpressions = append(indexExpressions, indexesInStatement(bodyStatement)...)
+		}
+	}
+	if len(indexExpressions) != 4 {
+		t.Fatalf("index expression count = %d, want 4", len(indexExpressions))
+	}
+
+	huge, found := a.ResolvedArrayIndexPlanOf(indexExpressions[0])
+	if !found || huge.ArrayLength.String() != "9223372036854775809" || huge.ConstantIndex.String() != "9223372036854775808" || huge.CheckKind != ArrayIndexProvenSafe || huge.ProofKind != ArrayIndexProofConstant || huge.IndexType.Name != "uint256" || huge.IndexSigned || huge.FailureMode != ArrayIndexFailureNone || huge.ErrorType.Kind != "" {
+		t.Fatalf("huge constant plan = %#v, found=%t", huge, found)
+	}
+
+	dynamic, found := a.ResolvedArrayIndexPlanOf(indexExpressions[1])
+	if !found || dynamic.CheckKind != ArrayIndexRuntimeCheck || dynamic.IndexType.Name != "int128" || !dynamic.IndexSigned || dynamic.FailureMode != ArrayIndexFailureOrdinary || dynamic.ErrorType.Name != "IndexError" || !dynamic.ErrorType.ErrorAssignable || dynamic.UseKind != ArrayIndexRead || dynamic.Action != ArrayTransferCopyTrivial {
+		t.Fatalf("dynamic signed plan = %#v, found=%t", dynamic, found)
+	}
+
+	ranged, found := a.ResolvedArrayIndexPlanOf(indexExpressions[2])
+	if !found || ranged.CheckKind != ArrayIndexProvenSafe || ranged.ProofKind != ArrayIndexProofRange || ranged.IndexType.Name != "Slot" || ranged.FailureMode != ArrayIndexFailureNone {
+		t.Fatalf("range-proven plan = %#v, found=%t", ranged, found)
+	}
+
+	write, found := a.ResolvedArrayIndexPlanOf(indexExpressions[3])
+	if !found || write.CheckKind != ArrayIndexRuntimeCheck || write.IndexType.Name != "uint128" || write.IndexSigned || write.UseKind != ArrayIndexWrite || write.Action != ArrayTransferConstructDirect || write.ErrorType.Name != "IndexError" {
+		t.Fatalf("write plan = %#v, found=%t", write, found)
+	}
+
+	// Query results own their mutable exact integers and unknown queries do not
+	// trigger inference or mutate the analyzer.
+	huge.ArrayLength.SetInt64(0)
+	huge.ConstantIndex.SetInt64(0)
+	again, _ := a.ResolvedArrayIndexPlanOf(indexExpressions[0])
+	if again.ArrayLength.String() != "9223372036854775809" || again.ConstantIndex.String() != "9223372036854775808" {
+		t.Fatalf("query exposed analyzer-owned exact integers: %#v", again)
+	}
+	count := len(a.resolvedArrayIndexPlans)
+	if _, ok := a.ResolvedArrayIndexPlanOf(&ast.IndexExpression{}); ok || len(a.resolvedArrayIndexPlans) != count {
+		t.Fatal("unknown read-only query inferred or inserted an index plan")
+	}
+}
+
+// TestFixedArrayIndexPlansRejectExactWideBounds covers the invalid half of
+// Package 14 section 35 without relying on int64 conversion.
+func TestFixedArrayIndexPlansRejectExactWideBounds(t *testing.T) {
+	source, err := os.ReadFile("../../testdata/semantic_ir/fixed_array_index_plans_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := parser.New(lexer.NewWithFile(string(source), "fixed_array_index_plans_invalid.sec"))
+	result := p.Parse()
+	if result.HasErrors {
+		t.Fatalf("parse: %v", p.Errors())
+	}
+	a := NewAnalyzer()
+	errors := a.Analyze(result.Program)
+	joined := joinedSemaErrors(errors)
+	for _, want := range []string{
+		"array index -1 is out of bounds for int[4]",
+		"array index 4 is out of bounds for int[4]",
+		"array index 9223372036854775810 is out of bounds for int[9223372036854775809]",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("missing %q in diagnostics: %v", want, errors)
+		}
+	}
+}
 
 // TestResolvedArrayLiteralPlanFactCopiesCompactExactEntries verifies the
 // immutable compiler-owned fact model required by SEC-MLIR Package 14 sections

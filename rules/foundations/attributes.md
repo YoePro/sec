@@ -1292,7 +1292,9 @@ target.
 
 # Named interrupt vectors
 
-Target knowledge packs may expose typed vector constants.
+The resolved platform/Device interrupt catalog may expose typed vector
+constants through the active `CompilationPlan`, as defined by
+`rules/platform/interrupts.md`.
 
 Examples:
 
@@ -1304,7 +1306,7 @@ Interrupt.Timer0
 Interrupt.UART1
 ```
 
-The knowledge pack owns target facts such as:
+The resolved interrupt definition supplies target facts such as:
 
 ```text
 numeric vector

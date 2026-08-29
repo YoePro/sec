@@ -3222,7 +3222,7 @@ compiler_testing.md
 ownership.md
 copy_move.md
 borrowing.txt
-lifetime_analysis.txt
+lifetime_analysis.md
 contracts.md
 types/units.md
 rules/platform/target_profiles.md

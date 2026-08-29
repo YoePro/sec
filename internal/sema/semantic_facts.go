@@ -314,6 +314,66 @@ type ResolvedArrayLiteralPlan struct {
 	Entries     []ResolvedArrayLiteralEntry
 }
 
+// ArrayIndexCheckKind records whether a fixed-array projection needs the
+// runtime predicate required by SEC-MLIR Package 14 sections 31-36.
+type ArrayIndexCheckKind string
+
+const (
+	ArrayIndexProvenSafe   ArrayIndexCheckKind = "proven-safe"
+	ArrayIndexRuntimeCheck ArrayIndexCheckKind = "runtime-check"
+)
+
+// ArrayIndexUseKind preserves the source use selected before Semantic IR
+// chooses extraction, replacement, or a later-package borrow operation.
+type ArrayIndexUseKind string
+
+const (
+	ArrayIndexRead      ArrayIndexUseKind = "read"
+	ArrayIndexWrite     ArrayIndexUseKind = "write"
+	ArrayIndexBorrow    ArrayIndexUseKind = "borrow"
+	ArrayIndexMutBorrow ArrayIndexUseKind = "mut-borrow"
+)
+
+// ArrayIndexProofKind is compiler provenance for a proven-safe projection,
+// as defined by SEC-MLIR Package 14 section 32.
+type ArrayIndexProofKind string
+
+const (
+	ArrayIndexProofConstant ArrayIndexProofKind = "constant"
+	ArrayIndexProofRange    ArrayIndexProofKind = "range"
+	ArrayIndexProofBranch   ArrayIndexProofKind = "branch"
+	ArrayIndexProofContract ArrayIndexProofKind = "contract"
+	ArrayIndexProofOther    ArrayIndexProofKind = "analysis"
+)
+
+// ArrayIndexFailureMode distinguishes ordinary terminating bounds failure
+// from the typed fallible path introduced later in Package 14 sections 48-53.
+type ArrayIndexFailureMode string
+
+const (
+	ArrayIndexFailureNone     ArrayIndexFailureMode = "none"
+	ArrayIndexFailureOrdinary ArrayIndexFailureMode = "ordinary"
+	ArrayIndexFailureFallible ArrayIndexFailureMode = "fallible"
+)
+
+// ResolvedArrayIndexPlan is the immutable Sema authority required by
+// SEC-MLIR Package 14 sections 31-36. Exact values are never narrowed to a
+// host integer, and downstream builders must not reconstruct this decision.
+type ResolvedArrayIndexPlan struct {
+	ArrayType     Type
+	ArrayLength   *big.Int
+	ElementType   Type
+	IndexType     Type
+	IndexSigned   bool
+	ConstantIndex *big.Int
+	CheckKind     ArrayIndexCheckKind
+	ProofKind     ArrayIndexProofKind
+	UseKind       ArrayIndexUseKind
+	Action        ResolvedArrayTransferAction
+	FailureMode   ArrayIndexFailureMode
+	ErrorType     Type
+}
+
 // ResolvedStructEntryKind and the adjacent struct plan types implement the
 // read-only facts from rules/mlir/semantic-ir/sec_semantic_ir_struct_v1.md
 // sections 7-15.
@@ -619,6 +679,41 @@ func cloneResolvedArrayLiteralPlan(plan ResolvedArrayLiteralPlan) ResolvedArrayL
 		if plan.Entries[index].Length != nil {
 			plan.Entries[index].Length = new(big.Int).Set(plan.Entries[index].Length)
 		}
+	}
+	return plan
+}
+
+// ResolvedArrayIndexPlanOf returns a defensive snapshot and performs no
+// inference. This is the read-only query mandated by Package 14 section 34.
+func (a *Analyzer) ResolvedArrayIndexPlanOf(expr *ast.IndexExpression) (ResolvedArrayIndexPlan, bool) {
+	if a == nil || expr == nil {
+		return ResolvedArrayIndexPlan{}, false
+	}
+	plan, ok := a.resolvedArrayIndexPlans[expr]
+	if !ok {
+		return ResolvedArrayIndexPlan{}, false
+	}
+	return cloneResolvedArrayIndexPlan(plan), true
+}
+
+// recordResolvedArrayIndexPlan retains an analyzer-owned copy of the exact
+// Package 14 sections 31-36 index decision.
+func (a *Analyzer) recordResolvedArrayIndexPlan(expr *ast.IndexExpression, plan ResolvedArrayIndexPlan) {
+	if a == nil || expr == nil {
+		return
+	}
+	if a.resolvedArrayIndexPlans == nil {
+		a.resolvedArrayIndexPlans = map[*ast.IndexExpression]ResolvedArrayIndexPlan{}
+	}
+	a.resolvedArrayIndexPlans[expr] = cloneResolvedArrayIndexPlan(plan)
+}
+
+func cloneResolvedArrayIndexPlan(plan ResolvedArrayIndexPlan) ResolvedArrayIndexPlan {
+	if plan.ArrayLength != nil {
+		plan.ArrayLength = new(big.Int).Set(plan.ArrayLength)
+	}
+	if plan.ConstantIndex != nil {
+		plan.ConstantIndex = new(big.Int).Set(plan.ConstantIndex)
 	}
 	return plan
 }

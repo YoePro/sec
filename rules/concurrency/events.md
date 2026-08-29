@@ -616,7 +616,7 @@ functions.md
 closures.txt
 ownership.md
 borrowing.txt
-lifetime_analysis.txt
+lifetime_analysis.md
 allocation.txt
 layout.txt
 static.txt

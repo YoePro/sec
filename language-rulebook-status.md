@@ -91,6 +91,7 @@ analysis/deadlock_analysis.md
 analysis/isr_analysis.md
 platform/volatile.md
 platform/hardware-register-access.md
+platform/interrupts.md
 ```
 
 These were written after the older temporary checklist was last synchronized.
@@ -302,7 +303,7 @@ The remaining details to close are:
 | `generational_references.md` | **Covered** | Generational validity is canonical in `memory/reference_model.md`; no separate rulebook is required. |
 | `memory/raw_pointers.txt` | **Written — sync required** | Must be synchronized with memory spaces, ABI, and unsafe rules. |
 | `memory/copy_move.md` | **Living** | Canonical copy/move semantics. Implementation status is tracked by `frontend.copy-move` in `implementation-status.yaml`. |
-| `memory/lifetime_analysis.txt` | **Written — sync required** | Must include detached work, thread-local values, views, and explicit storage. |
+| `memory/lifetime_analysis.md` | **Written** | Canonical revision 2.0 lifetime analysis, including value/storage/reference lifetimes, Place-sensitive invalidation, non-lexical borrows, control-flow and loop joins, returned-reference summaries, defer/capture dependencies, arena epochs, fixed-address and runtime-mapping boundaries, Semantic IR obligations, and diagnostics. Implementation progress is tracked by `frontend.lifetime-analysis`, `interprocedural.lifetime-analysis`, `semantic-ir.lifetime-analysis`, `lowering.lifetime-analysis`, `platform.lifetime-analysis`, and `tooling.lifetime-analysis` in `implementation-status.yaml`. |
 | `memory/destruction.md` | **Written** | Canonical revision 2.0 deterministic destruction, exact-once cleanup responsibility, partial and conditional aggregate cleanup, custom `free`, construction-failure cleanup, unified defer/destruction ordering, and target-policy boundaries. Implementation progress is tracked by `frontend.destruction`, `semantic-ir.destruction`, `lowering.destruction`, `target-policy.destruction`, and `tooling.destruction` in `implementation-status.yaml`. |
 | `memory/memory_model.md` | **Written** | Canonical source and compiler memory model, including default lifetime and origin rules. |
 | `declarations/static.md` | **Written** | Canonical revision 2.0 for module, function-local, and type-associated static storage; static methods/properties, generic specialization, compile-time initialization, dependency order, concurrency, destruction, placement boundaries, Semantic IR, and diagnostics. Implementation progress is tracked by `frontend.static-declarations-members`. |
@@ -520,7 +521,7 @@ from the presence of a versioned document.
 | `platform/volatile.md` | **Written** | Canonical volatile physical-access semantics, mandatory `@address` region validation, explicit raw volatile operations, physical access contracts, optimizer invariants, representation eligibility, lowering, diagnostics, and tooling. Compiler-known RawPtr volatile methods, unsafe/non-void frontend validation, effect facts, and shared LSP exposure are implemented; target validation and lowering remain under `platform.volatile`. |
 | `platform/hardware-register-access.md` | **Written** | Canonical logical hardware-register access, safe implicit observation, explicit `Read()`/`Write()`, shadow state, resource/endpoint identity, transaction planning, width/alignment/footprints, ordering/completion, access context, runtime mappings, faults, and verified IR/lowering. Implementation is tracked by `platform.hardware-register-access`. |
 | `inline_assembly.md` | **Planned** | Operands, constraints, clobbers, volatility, memory effects, and target restrictions. |
-| `interrupts.md` | **Planned** | ISR syntax, vector binding, nesting, priorities, stacks, and deferred work; hardware-access legality, access context, ordering/completion, faults, and register side effects must be consumed from `platform/hardware-register-access.md`. |
+| `platform/interrupts.md` | **Written** | Canonical interrupt identities/binding, ISR roots, priority/preemption/nesting/masking, classes and lifecycle, configuration capabilities, ISR-safe execution, concurrency/stack integration, startup/linking, diagnostics, tooling, and completion. Implementation is tracked by `platform.interrupts-v1`. |
 | `analysis/isr_analysis.md` | **Written** | Compiler verification for profile-scoped interrupt safety using canonical analysis results; implementation status is tracked by `sema.isr-analysis`. |
 
 This group is a central remaining language-closure block.
@@ -621,7 +622,7 @@ analysis/isr_analysis.md
 foundations/language_philosophy.md
 foundations/lexical_structure.md
 memory/layout.md
-memory/lifetime_analysis.txt
+memory/lifetime_analysis.md
 memory/memory_model.md
 mlir/mlir-optimize.txt
 mlir/mlir.txt
@@ -643,6 +644,7 @@ declarations/registers.md
 platform/fixed-address-bindings.md
 platform/volatile.md
 platform/hardware-register-access.md
+platform/interrupts.md
 compiler/rules_implementations.txt
 errors/runtime_checks.md
 concurrency/scheduling.md
@@ -683,6 +685,7 @@ analysis/stack_analysis.md
 analysis/data_races.md
 analysis/deadlock_analysis.md
 analysis/isr_analysis.md
+platform/interrupts.md
 ```
 
 The package-local MLIR documents under `mlir/packages/`, historical dialect and
@@ -703,7 +706,6 @@ monomorphization.md
 compile_time_evaluation.md
 
 inline_assembly.md
-interrupts.md
 
 debug_information.md
 compiler_testing.md
@@ -794,8 +796,9 @@ attribute syntax. `platform/target_profiles.md` defines canonical profile
 families, activation, policy, resources, resolution, provenance, and typed
 compiler queries. `platform/volatile.md`, `platform/fixed-address-bindings.md`,
 and `platform/hardware-register-access.md` now define the volatile, MMIO-binding,
-and hardware-register transaction model. Still to decide in the remaining
-platform rulebooks:
+and hardware-register transaction model. `platform/interrupts.md` defines the
+canonical interrupt model and consumes those platform facts without redefining
+hardware access. Still to decide in the remaining platform rulebooks:
 
 - inline assembly;
 - native platform views;

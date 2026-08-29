@@ -1,8 +1,8 @@
 # ISR Analysis
 
 **Created:** 2026-08-11  
-**Last updated:** 2026-08-28
-**Document revision:** 2
+**Last updated:** 2026-08-29
+**Document revision:** 3
 **Language version:** Sec 0.1  
 **Status:** Draft for Sec 0.1
 
@@ -45,7 +45,8 @@ by the repository-level `implementation-status.yaml` ledger.
 
 ## 2. Normative ownership and dependencies
 
-The active platform and `CompilationPlan` own interrupt execution semantics,
+`rules/platform/interrupts.md` owns interrupt execution semantics. The active
+platform and frozen `CompilationPlan` supply the resolved facts consumed here,
 including, where applicable:
 
 ```text

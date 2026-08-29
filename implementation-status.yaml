@@ -1,5 +1,5 @@
 schema_version: 1
-updated: "2026-08-28"
+updated: "2026-08-29"
 purpose: >-
   Canonical implementation ledger for compiler and tooling work. Normative
   language behavior remains in rules/, while implementation status is migrated
@@ -185,6 +185,146 @@ integrations:
       - rules/corrections/applied/hardware-register-access-cross-rulebook-correction-20260828.md
       - rules/corrections/applied/stdlib-hw-correction-20260828.md
 
+  - id: platform.interrupts-v1
+    area: platform-interrupts
+    status: planned
+    integrated: "2026-08-29"
+    document_revision: "1.0"
+    repository_baseline: fafd8cb
+    summary: >-
+      Tracks Sec 0.1 interrupt semantics across platform identity/binding, ISR
+      roots, priority/preemption/nesting/masking, interrupt classes,
+      source/route/entry lifecycle, generated claim/dispatch/completion,
+      configuration, ISR-safe effects, concurrency, stack/resources,
+      startup/linking, and compiler/LSP analysis.
+    rules:
+      - rules/platform/interrupts.md
+      - rules/foundations/attributes.md
+      - rules/platform/platform_model.md
+      - rules/platform/target_profiles.md
+      - rules/platform/hardware-register-access.md
+      - rules/memory/memory_model.md
+      - rules/memory/destruction.md
+      - rules/control-flow/defer.md
+      - rules/compiler/initialization.md
+      - rules/compiler/linking.md
+      - rules/analysis/isr_analysis.md
+      - rules/analysis/stack_analysis.md
+    implemented: []
+    remaining:
+      - add canonical platform interrupt identities and resolution into CompilationPlan, including domains, logical sources, routes, entries, classes, bindability, ABI, priority/masking, pending/active, claim/completion, stack domains, profiles, and provenance
+      - resolve @interrupt named identities and raw numeric bindings through the same canonical platform interrupt model
+      - reject ordinary calls to ISR entry functions while preserving ordinary reusable @interruptSafe helpers
+      - model directional MayPreempt, MayNest, and MayReenter relations independently of raw numeric priority ordering
+      - model target entry/return mask effects, unmaskable classes, and effective masking relationships
+      - model external IRQ, software-triggered, fault/exception, non-maskable, and target-defined interrupt classes
+      - distinguish pending and active state and avoid treating repeated occurrence as implicit reentrancy or counted queueing
+      - support target-defined synchronous/asynchronous classes and handler context shapes
+      - distinguish logical interrupt source, route, and physical entry for multiplexed controllers
+      - model peripheral source generation, controller pending/active, claim/accept, source service, and completion/EOI as distinct concepts
+      - generate canonical claim/dispatch/completion around source handlers where the resolved platform fully defines the controller lifecycle
+      - keep peripheral-specific source service device-owned and do not invent device protocols from interrupt metadata
+      - carry interrupt completion obligations into canonical hardware-register ordering/completion planning before interrupt return
+      - add target-defined interrupt control capabilities for enable/disable, pending, priority, software trigger, routing/affinity, and masking
+      - ensure @interrupt binding alone never enables, unmasks, clears pending, configures priority, starts a peripheral, or otherwise activates delivery
+      - support structured save/apply/restore masking that restores exact previous relevant state on ordinary Sec exits
+      - enforce noPanic, noAlloc, and noBlock transitively through direct/indirect calls, generics, callbacks, FFI, runtime helpers, defer, destruction, cleanup, error paths, and compiler helpers
+      - verify @interruptSafe as a compiler-checked contract while allowing ordinary helpers proven equivalent for the active CompilationPlan
+      - ensure unsafe cannot waive ISR execution-context requirements
+      - integrate canonical ISR/FFI contracts and preserve ISR context across synchronous foreign callbacks
+      - integrate interrupt execution with the canonical concurrency model without creating a separate interrupt memory model
+      - permit masking-based exclusion only for execution contexts the resolved platform proves excluded
+      - reject local interrupt masking as universal protection against other cores, non-maskable execution, DMA, devices, or other external actors
+      - allow atomic/nonblocking synchronization in ISR only when target lowering and race/deadlock/progress proofs satisfy the ISR contract
+      - reject blocking synchronization and ISR-incompatible atomic emulation
+      - support preallocated nonblocking ISR handoff structures such as queues/ring buffers
+      - integrate roots, nesting, ABI wrappers, dispatchers, and physical stack topology with canonical stack analysis
+      - enforce interrupt stack budgets using exact/upper-bound/unknown/unbounded proof semantics and preserve UnknownLimit versus NoDeclaredLimit
+      - support resolved bounded-execution/realtime requirements without making numeric WCET mandatory for every Sec 0.1 ISR
+      - include generated wrappers, controller lifecycle, cleanup, and target helpers in applicable resource proofs
+      - preserve ordinary Sec defer/destruction ordering on normal ISR exits and prevent interrupt return from bypassing required cleanup
+      - keep machine faults/exceptions distinct from ordinary Result/error exits and do not promise normal cleanup after target faults unless the target contract does
+      - provide canonical platform/device interrupt catalogs exposing named Interrupt.* identities
+      - validate platform interrupt registry data before freezing CompilationPlan
+      - generate target-correct vector tables, entry wrappers, dispatchers, ABI adapters, and required platform interrupt data
+      - treat generated vector tables, wrappers, dispatchers, and source handlers as explicit link roots/retained artifacts
+      - keep source visibility separate from ISR binary reachability and avoid requiring general source-level weak handlers
+      - contribute required interrupt infrastructure to ProgramInitializationPlan without conflating infrastructure setup with delivery enablement
+      - model early-startup interrupt availability using runtime/context facts actually established in that phase
+      - make interrupt integration Variant-scoped, deterministic, cross-compilation safe, and based only on target CompilationPlan/LinkEnvironment facts
+      - invalidate dependent ISR analysis, generated artifacts, initialization requirements, and LinkPlan work when relevant platform interrupt semantics change
+      - integrate interrupt resolution and ISR results consistently across compiler builds, sec analyse, LSP, separate-compilation summaries, and incremental recomputation
+      - produce provenance-rich diagnostics that identify logical interrupt roots and distinguish Invalid, Unproven, and tooling Pending
+      - add complete semantic, analysis, target-integration, startup/linking, cross-compilation, incremental, false-positive, and determinism regression coverage
+    excluded:
+      - platform registry file syntax for interrupt metadata
+      - logical hardware-register transaction semantics
+      - hardware-register access width, ordering, completion mechanism, and fault semantics
+      - a separate interrupt-specific memory model
+      - atomic memory-order definitions
+      - race-analysis algorithm definitions
+      - deadlock-analysis algorithm definitions
+      - stack-analysis algorithm definitions
+      - a universal WCET algorithm
+      - one universal numeric priority convention
+      - one universal interrupt-controller model
+      - one universal InterruptContext source type
+      - general source-level weak linkage
+      - hidden interrupt activation caused solely by handler declaration
+    required_tests:
+      - named interrupt identity resolves through CompilationPlan
+      - raw numeric interrupt resolves through canonical platform metadata
+      - unknown or non-bindable interrupt identity is rejected
+      - duplicate active interrupt binding is rejected
+      - mutually exclusive target bindings are accepted when only one survives resolution
+      - bound ISR entry cannot be called as an ordinary function
+      - directional preemption, nesting, and self-reentry are modeled independently
+      - pending while active does not imply self-reentry
+      - ordinary masking does not exclude non-maskable execution
+      - structured masking restores exact previous state
+      - runtime priority or route mutation invalidates or widens dependent proofs
+      - fault/exception is not lowered as ordinary Result propagation
+      - shared physical entry dispatches distinct logical sources
+      - generated claim/dispatch/completion is emitted where required
+      - spurious/no-source claim does not fabricate a handler invocation
+      - peripheral source service remains distinct from controller completion
+      - required hardware completion is satisfied before interrupt return
+      - "@interrupt declaration alone does not enable or configure delivery"
+      - enable and disable do not imply clear-pending
+      - SetPending remains distinct from SoftwareTrigger where target distinguishes them
+      - panic, dynamic allocation, and blocking are rejected from ISR
+      - preallocated non-allocating operations are accepted from ISR
+      - "@interruptSafe is verified transitively"
+      - ordinary helper with equivalent compiler proof is accepted from ISR
+      - unsafe does not waive ISR requirements
+      - synchronous FFI callback remains under ISR context
+      - safe defer/destruction is accepted and unsafe cleanup is rejected
+      - compiler-generated ISR-incompatible helper rejects otherwise simple source
+      - volatile shared memory is not accepted as synchronization
+      - target-supported atomic ISR operation is accepted and incompatible atomic emulation is rejected
+      - single-core masking can prove exclusion where the platform establishes it
+      - local masking does not protect against another core or DMA
+      - blocking mutex acquisition is rejected
+      - nonblocking synchronization requires complete proofs
+      - spin waiting on a preempted owner is rejected
+      - preallocated ISR queue/ring-buffer handoff is accepted when contracts succeed
+      - nested stack accounting uses physical stack topology and separate stack domains are not double-counted
+      - generated ABI/wrapper stack cost is included where required
+      - finite stack budget succeeds only with sufficient proof and unknown stack yields Unproven
+      - bounded recursion is accepted where proven and unbounded recursion is rejected where a finite bound is required
+      - noBlock polling remains distinguishable from bounded execution
+      - vector table, wrapper, dispatcher, and source ISR remain link-live where required
+      - startup establishes interrupt infrastructure without implicitly enabling delivery
+      - early ISR is checked against early runtime/profile facts
+      - Variant-specific interrupt artifacts remain isolated
+      - cross-compilation never uses host interrupt ABI/vector assumptions
+      - LTO preserves required interrupt roots, lifecycle, ABI, and completion
+      - LSP and compiler resolve the same logical interrupt identity
+      - diagnostics preserve logical root/provenance and distinguish Invalid, Unproven, and Pending
+      - relevant platform edits invalidate dependent ISR work while unrelated edits preserve unrelated caches
+      - stale separate-compilation summaries cannot serve as positive ISR-safety proofs
+      - interrupt analysis and generated artifact identities are deterministic
+
   - id: stdlib.hardware-bus-infrastructure
     area: standard-library
     status: planned
@@ -342,7 +482,7 @@ integrations:
     name: Fixed Array Semantic Value Representation
     area: frontend-semantic-ir-sec-mlir-and-lowering
     status: partial
-    implementation_phase: literal-plan-spreads
+    implementation_phase: sema-index-plan-layer
     integrated: "2026-08-28"
     baseline: repository HEAD with completed SEC-MLIR-P13 schema 9
     repository_head: 069c111b96714ee4c9423f5f7a64d1e7a6045f31
@@ -385,6 +525,7 @@ integrations:
       - cmd/lsp/main.go
       - internal/ir/semantic/model.go
       - internal/ir/semantic/builder.go
+      - internal/ir/semantic/printer.go
       - internal/ir/semantic/verifier.go
       - internal/lowering/secmlir/emitter.go
       - internal/codegen/mlir/generator.go
@@ -394,10 +535,13 @@ integrations:
       - internal/sema/defaults_test.go
       - internal/sema/array_shape_test.go
       - internal/sema/semantic_facts_test.go
+      - internal/ir/semantic/package14_test.go
       - internal/ir/semantic/package13_test.go
       - internal/lowering/secmlir/emitter_test.go
       - internal/codegen/mlir/generator_test.go
       - testdata/ir/test_arrays_basic.sec
+      - testdata/semantic_ir/fixed_array_index_plans.sec
+      - testdata/semantic_ir/fixed_array_index_plans_invalid.sec
     implemented:
       - completed Package 13 predecessor with schema-9 structs and high-level aggregate storage
       - canonical fixed-array literal spread wording synchronized in collections and spread rulebooks
@@ -420,10 +564,21 @@ integrations:
       - immutable compact ResolvedArrayLiteralPlan data model with exact per-source-entry lengths, Sema-owned defensive copies, and a read-only query that performs no inference, expansion, or analyzer mutation
       - authoritative array-literal analysis publishes source-ordered plans for inferred, target-shaped, spread-containing, and target-required empty fixed-array literals while result typing consumes the same plan
       - multiple fixed-array literal spreads retain distinct source indices, exact big.Int contribution lengths, runtime/mismatch rejection, and O(source entries) plans for conceptual lengths above host int64
+      - Semantic IR TypeArray keyed by element TypeID plus canonical exact decimal length, with deterministic interning, formatting, and verifier diagnostics
+      - Semantic IR builder admits fixed-array function parameter and return types at Package 14, keeps dynamic array types gated as UnsupportedFeatureError, and does not introduce array operations before P14-29
+      - Semantic IR array.construct, array.default, and array.len operation records with compact segment metadata, exact length strings, P14 action gating, formatter output, and verifier checks
+      - Semantic IR array.index-in-bounds, array.extract, and array.replace records preserving source index signedness, explicit proof/check metadata, and trivial ownership boundaries
+      - fixed-array runtime projection verification requires a named dominating guard for the same array/index SSA pair and rejects any projection reachable from the guard's false edge
+      - terminating Semantic IR fail.bounds endpoint for ordinary indexing plus explicit core::IndexError.OutOfBounds and Result.err validation for fallible bounds paths
+      - immutable read-only ResolvedArrayIndexPlan facts preserve exact array length, array/element/index types, signedness, use/action, proof/check kind, failure mode, and runtime IndexError typing without downstream AST reconstruction
+      - arbitrary-precision constant index plans cover valid uint256 values above host int64 and exact negative, at-length, and above-length rejection; remaining indexes preserve their signed or unsigned source type as runtime-checked
+      - named integer ranges wholly contained in 0..<N produce explicit range-proven index plans while zero-length arrays remain runtime-checked unless rejected as an invalid constant
+      - Package 14 source-builder unsupported boundary for array literals returns UnsupportedFeatureError without returning a partial module or placeholder operation
     remaining:
       - complete P14 transfer-action acceptance/rejection at the new Semantic IR boundary and finish the section-91/93 literal/default matrix
-      - implement FixedArrayTypeData and all Package 14 Semantic IR array/bounds operations
-      - implement ResolvedArrayIndexPlan, arbitrary-precision proofs, runtime guards, typed try flow, and bounds effects
+      - connect Sema literal/default/Len facts to the new Package 14 Semantic IR array operations
+      - connect the Package 14 Semantic IR bounds endpoints to source-resolved ordinary and fallible indexing
+      - extend index proofs with branch/assertion analysis, connect runtime guards, implement typed try flow, and bounds effects
       - implement trivial high-level mutable array storage and nested transactional replacement
       - implement schema-10 !sec.array, array operations, sec.fail.bounds, emission, and the array-index guard verifier
       - prove P5/P6/P8/P11/P12/P13 integration on 32-bit and 64-bit plans
@@ -447,6 +602,12 @@ integrations:
       - command: go test ./internal/sema -run 'Test(ResolvedArrayLiteralPlan|ArrayLiteralAnalysisPopulatesAuthoritativePlans)' -count=1
         result: passed
       - command: go test ./internal/sema -run 'TestArrayLiteralPlans' -count=1
+        result: passed
+      - command: go test ./internal/sema -run 'Test(ResolvedFixedArrayIndexPlans|FixedArrayIndexPlansRejectExactWideBounds)' -count=1
+        result: passed
+      - command: go test ./internal/ir/semantic -run 'TestPackage14|TestTypeTableInternsStructuralIdentity' -count=1
+        result: passed
+      - command: go test ./internal/ir/semantic -run TestPackage14 -count=1
         result: passed
 
   - id: frontend.ownership-v2
@@ -1310,7 +1471,7 @@ integrations:
       - rules/memory/destruction.md
       - rules/memory/ownership.md
       - rules/memory/borrowing.md
-      - rules/memory/lifetime_analysis.txt
+      - rules/memory/lifetime_analysis.md
       - rules/memory/copy_move.md
       - rules/errors/errorhandling.md
       - rules/errors/panic.md
@@ -1748,6 +1909,7 @@ integrations:
       - rules/compiler/initialization.md
       - rules/platform/platform_model.md
       - rules/platform/target_profiles.md
+      - rules/platform/interrupts.md
       - rules/platform/abi.md
       - rules/platform/ffi.md
       - rules/projects/modules.md
@@ -1875,6 +2037,7 @@ integrations:
       - rules/concurrency/structured_concurrency.md
       - rules/platform/platform_model.md
       - rules/platform/target_profiles.md
+      - rules/platform/interrupts.md
       - rules/platform/abi.md
       - rules/mlir/sec_mlir.md
       - rules/compiler/semantic_ir.txt
@@ -2458,7 +2621,7 @@ integrations:
       - rules/memory/ownership.md
       - rules/memory/copy_move.md
       - rules/memory/borrowing.md
-      - rules/memory/lifetime_analysis.txt
+      - rules/memory/lifetime_analysis.md
       - rules/collections/collections.md
       - rules/declarations/properties.md
     code:
@@ -2541,7 +2704,7 @@ integrations:
       - rules/memory/destruction.md
       - rules/memory/ownership.md
       - rules/memory/copy_move.md
-      - rules/memory/lifetime_analysis.txt
+      - rules/memory/lifetime_analysis.md
     code:
       - internal/sema/analyzer.go
     tests:
@@ -2578,7 +2741,7 @@ integrations:
       earlier move or discard without introducing runtime borrow tracking.
     rules:
       - rules/control-flow/defer.md
-      - rules/memory/lifetime_analysis.txt
+      - rules/memory/lifetime_analysis.md
       - rules/memory/borrowing.md
       - rules/memory/copy_move.md
       - rules/memory/memory_model.md
@@ -3511,7 +3674,7 @@ integrations:
       and foreign-retention analysis remains.
     rules:
       - rules/analysis/escape_analysis.md
-      - rules/memory/lifetime_analysis.txt
+      - rules/memory/lifetime_analysis.md
       - rules/memory/storage.md
       - rules/memory/reference_model.md
       - rules/memory/ownership.md
@@ -3597,7 +3760,7 @@ integrations:
       - rules/declarations/lambda-functions.md
       - rules/analysis/call_graph.md
       - rules/analysis/escape_analysis.md
-      - rules/memory/lifetime_analysis.txt
+      - rules/memory/lifetime_analysis.md
       - rules/memory/ownership.md
       - rules/memory/copy_move.md
       - rules/memory/borrowing.md
@@ -3999,7 +4162,7 @@ integrations:
       - rules/memory/ownership.md
       - rules/memory/copy_move.md
       - rules/memory/borrowing.md
-      - rules/memory/lifetime_analysis.txt
+      - rules/memory/lifetime_analysis.md
       - rules/analysis/escape_analysis.md
       - rules/analysis/closure_analysis.md
       - rules/analysis/call_graph.md
@@ -4068,7 +4231,7 @@ integrations:
       - rules/analysis/effect_analysis.md
       - rules/memory/ownership.md
       - rules/memory/borrowing.md
-      - rules/memory/lifetime_analysis.txt
+      - rules/memory/lifetime_analysis.md
       - rules/analysis/escape_analysis.md
       - rules/analysis/closure_analysis.md
       - rules/memory/storage.md
@@ -4148,7 +4311,7 @@ integrations:
       - rules/compiler/compiler_analysis.txt
       - rules/memory/storage.md
       - rules/memory/layout.md
-      - rules/memory/lifetime_analysis.txt
+      - rules/memory/lifetime_analysis.md
       - rules/analysis/escape_analysis.md
       - rules/analysis/closure_analysis.md
       - rules/memory/ownership.md
@@ -4158,6 +4321,7 @@ integrations:
       - rules/control-flow/defer.md
       - rules/collections/collections.md
       - rules/platform/ffi.md
+      - rules/platform/interrupts.md
       - rules/analysis/effect_analysis.md
       - rules/projects/projects.txt
       - rules/tooling/lsp.md
@@ -4386,6 +4550,7 @@ integrations:
       classification without duplicating the supporting analyses.
     rules:
       - rules/analysis/isr_analysis.md
+      - rules/platform/interrupts.md
       - rules/analysis/call_graph.md
       - rules/compiler/compiler_analysis.txt
       - rules/analysis/effect_analysis.md
@@ -4394,7 +4559,7 @@ integrations:
       - rules/analysis/deadlock_analysis.md
       - rules/analysis/closure_analysis.md
       - rules/analysis/escape_analysis.md
-      - rules/memory/lifetime_analysis.txt
+      - rules/memory/lifetime_analysis.md
       - rules/memory/storage.md
       - rules/memory/layout.md
       - rules/memory/ownership.md
@@ -5688,7 +5853,7 @@ integrations:
       - rules/compiler/compiler_analysis.txt
       - rules/memory/storage.md
       - rules/memory/layout.md
-      - rules/memory/lifetime_analysis.txt
+      - rules/memory/lifetime_analysis.md
       - rules/analysis/escape_analysis.md
       - rules/analysis/closure_analysis.md
       - rules/memory/ownership.md
@@ -6120,7 +6285,7 @@ integrations:
       - rules/compiler/compiler_analysis.txt
       - rules/memory/storage.md
       - rules/memory/layout.md
-      - rules/memory/lifetime_analysis.txt
+      - rules/memory/lifetime_analysis.md
       - rules/analysis/escape_analysis.md
       - rules/analysis/closure_analysis.md
       - rules/memory/ownership.md
@@ -6215,6 +6380,7 @@ integrations:
     rules:
       - rules/platform/platform_model.md
       - rules/platform/target_profiles.md
+      - rules/platform/interrupts.md
       - rules/projects/projects.txt
       - rules/compiler/compiler.txt
       - rules/compiler/compiler_pipeline.txt
@@ -6298,6 +6464,7 @@ integrations:
     rules:
       - rules/platform/target_profiles.md
       - rules/platform/platform_model.md
+      - rules/platform/interrupts.md
       - rules/compiler/initialization.md
       - rules/compiler/linking.md
       - rules/platform/abi.md
@@ -6555,7 +6722,7 @@ integrations:
     rules:
     - rules/memory/arena.md
     - rules/memory/borrowing.md
-    - rules/memory/lifetime_analysis.txt
+    - rules/memory/lifetime_analysis.md
     - rules/memory/reference_model.md
     code:
     - internal/sema/analyzer.go
@@ -6977,7 +7144,7 @@ integrations:
     - rules/control-flow/defer.md
     - rules/memory/ownership.md
     - rules/memory/borrowing.md
-    - rules/memory/lifetime_analysis.txt
+    - rules/memory/lifetime_analysis.md
     - rules/compiler/semantic_ir.txt
     code:
     - internal/sema/analyzer.go
@@ -8857,3 +9024,212 @@ integrations:
       - contextualMatrixMultiplyAhead
       - curPrecedence
       - inferMatrixMultiplyExpression
+
+  - id: "frontend.lifetime-analysis"
+    area: "frontend-lifetime-provenance-dataflow"
+    status: "partial"
+    integrated: "2026-08-29"
+    document_revision: "2.0"
+    repository_baseline: "fafd8cb"
+    rules:
+      - "rules/memory/lifetime_analysis.md"
+      - "rules/memory/ownership.md"
+      - "rules/memory/borrowing.md"
+      - "rules/memory/destruction.md"
+      - "rules/memory/copy_move.md"
+      - "rules/memory/reference_model.md"
+      - "rules/memory/storage.md"
+      - "rules/analysis/escape_analysis.md"
+      - "rules/control-flow/defer.md"
+      - "rules/platform/hardware-register-access.md"
+      - "rules/platform/fixed-address-bindings.md"
+    code:
+      - "internal/sema/analyzer.go"
+      - "internal/sema/place.go"
+      - "internal/sema/types.go"
+      - "internal/sema/escape_analysis.go"
+    tests:
+      - "internal/sema/lifetime_test.go"
+      - "internal/sema/copy_move_test.go"
+      - "internal/sema/analyzer_test.go"
+      - "internal/sema/escape_analysis_test.go"
+    implemented:
+      - "reference origin metadata for local bindings, parameters, direct local aliases, slices, fields, constant/dynamic indices, and selected aggregate-contained paths"
+      - "rejection of returned references to ordinary local function storage, including selected Result payload, aggregate, and lambda escape paths"
+      - "caller-owned parameter origins and direct function/method returned-reference summaries with declaration-order-independent fixed point"
+      - "symbolic parameter, receiver, projection, finite multi-source, aggregate return-origin summaries and supported transitive direct-call instantiation"
+      - "Place-sensitive borrow/move interactions and control-flow joins across if/switch/select/match and for/while including continue/break state"
+      - "finite path-disjunctive reference-origin sets with deterministic conservative unknown-origin fallback"
+      - "nested field-sensitive reference origins for locally constructed structs and fixed arrays"
+      - "aggregate reference-origin preservation through whole-value transfer/replacement for supported forms"
+      - "arena generation metadata and rejection of arena-backed references/slices after reset, with conservative branch/loop generation merging"
+      - "selected closure/reference escape rejection and explicit capture facts"
+      - "delayed defer root uses preventing earlier incompatible move/discard"
+      - "match branch-scoped ref/ref mut payload provenance for named unions and Result variants"
+    remaining:
+      - "replace remaining legacy lifetime-analysis bookkeeping with canonical ownership-v2 availability, borrowing-v2 live-range, destruction-v2 cleanup, storage, reference-model, and escape-analysis facts rather than parallel state"
+      - "complete non-lexical final-use lifetime solving for every holder/reborrow/capture/defer dependency"
+      - "complete recursive aggregate, dynamic container, symbolic slice/range, imported/opaque, and foreign provenance propagation"
+      - "complete ConditionallyAvailable path refinement integration with safe reference/view creation while keeping is available separate from borrow/generation/platform validity"
+      - "complete destruction/replacement/deallocation/remap invalidation effects on every live reference and reference-containing aggregate"
+      - "complete closure/callback retention lifetime validation across indirect calls and escaping environments"
+      - "integrate runtime hardware mapping/view ownership and lifetime dependencies, fixed-address storage contracts, remap invalidation, and mapping-versus-device-liveness separation"
+      - "complete generic and interface returned-reference relationships and opaque/bodyless lifetime contracts without introducing source lifetime names"
+      - "complete FFI retain/no-retain and returned-borrow lifetime contracts"
+      - "produce canonical mentor diagnostics with source/cause paths for every lifetime failure"
+    required_tests:
+      - "borrow ends after final proven use and later owner move is accepted"
+      - "copied shared-reference holder keeps referent lifetime dependency live"
+      - "moved ref mut holder transfers lifetime/borrow obligation"
+      - "returned local and temporary references rejected"
+      - "single-source parameter and receiver returned references accepted and summarized"
+      - "multi-source returned reference is conservatively bounded or rejected"
+      - "partial move ends only the moved field value lifetime"
+      - "field reinitialization begins a new field lifetime"
+      - "branch termination removes dead-path lifetime constraint"
+      - "loop fixed point rejects later-iteration stale reference/use"
+      - "defer extends required local/reference lifetime until deferred execution"
+      - "ConditionallyAvailable ownership state does not by itself authorize borrow/reference use"
+      - "arena reset invalidates prior generation references"
+      - "RawPtr copy does not extend pointee lifetime"
+      - "no hidden local-to-heap promotion repairs escaping references"
+
+  - id: "interprocedural.lifetime-analysis"
+    area: "interprocedural-lifetime-summaries"
+    status: "partial"
+    integrated: "2026-08-29"
+    document_revision: "2.0"
+    repository_baseline: "fafd8cb"
+    rules:
+      - "rules/memory/lifetime_analysis.md"
+      - "rules/analysis/escape_analysis.md"
+      - "rules/analysis/call_graph.md"
+      - "rules/declarations/functions.md"
+      - "rules/declarations/interfaces.md"
+      - "rules/declarations/lambda-functions.md"
+    code:
+      - "internal/sema/analyzer.go"
+      - "internal/sema/escape_analysis.go"
+      - "internal/sema/types.go"
+    implemented:
+      - "direct function/method returned-reference summaries independent of declaration order"
+      - "symbolic parameter, receiver, projection, finite multi-source, aggregate return paths"
+      - "supported transitive direct-call return-origin instantiation"
+      - "selected immutable escape/capture facts"
+    remaining:
+      - "persist versioned validated lifetime/return-origin summaries in module metadata for separate compilation"
+      - "compose summaries through function values, callable target sets, interfaces, imported modules, generic instantiations, and opaque contracts"
+      - "implement recursive and mutually recursive SCC fixed points with deterministic widening/termination"
+      - "encode explicit retention/no-retention and returned-borrow relations needed by bodyless declarations without inventing general source lifetime parameters"
+      - "integrate mapping/view, storage-domain, generation/epoch, closure-environment, FFI retention, task/thread, and future ISR callback dependencies"
+    required_tests:
+      - "summary stable regardless of declaration order"
+      - "summary stable across separate compilation serialization/deserialization"
+      - "interface implementation cannot weaken declared lifetime relationship"
+      - "indirect call with unknown retention is conservative"
+      - "recursive summary fixed point terminates deterministically"
+
+  - id: "semantic-ir.lifetime-analysis"
+    area: "semantic-ir-lifetime-facts"
+    status: "planned"
+    integrated: "2026-08-29"
+    document_revision: "2.0"
+    repository_baseline: "fafd8cb"
+    rules:
+      - "rules/memory/lifetime_analysis.md"
+      - "rules/compiler/semantic_ir.txt"
+      - "rules/memory/ownership.md"
+      - "rules/memory/borrowing.md"
+      - "rules/memory/destruction.md"
+    remaining:
+      - "represent canonical storage origin/domain and reference provenance dependencies needed after Sema"
+      - "represent borrow/reborrow live-range or equivalent verified dependency facts"
+      - "represent ownership invalidation, replacement/reinitialization, destruction and deallocation lifetime effects"
+      - "represent returned-reference source relations and callable retention summaries"
+      - "represent arena generation/epoch and runtime mapping/register-view lifetime dependencies"
+      - "represent defer-delayed dependencies and closure/callback capture lifetime obligations"
+      - "verify contradictory or impossible lifetime state before lower-level lowering"
+      - "erase high-level facts only after equivalent lowering constraints/plans exist"
+    required_tests:
+      - "reference origin retained in Semantic IR"
+      - "reborrow relation retained"
+      - "returned-reference dependency retained"
+      - "defer delayed lifetime dependency retained"
+      - "arena generation dependency retained"
+      - "mapping/view lifetime dependency retained"
+      - "invalid lifetime IR rejected by verifier"
+
+  - id: "lowering.lifetime-analysis"
+    area: "mlir-llvm-lifetime-lowering"
+    status: "planned"
+    integrated: "2026-08-29"
+    document_revision: "2.0"
+    repository_baseline: "fafd8cb"
+    rules:
+      - "rules/memory/lifetime_analysis.md"
+      - "rules/memory/destruction.md"
+      - "rules/platform/hardware-register-access.md"
+      - "rules/platform/volatile.md"
+    remaining:
+      - "lower verified storage lifetime without using backend lifetime metadata as source semantics"
+      - "preserve destruction/deallocation/remap ordering and all live reference/view dependencies"
+      - "emit LLVM lifetime markers only within proven Sec storage lifetime boundaries"
+      - "preserve borrow-derived alias/noalias assumptions only where canonical provenance proves them"
+      - "avoid over-strong alias/lifetime optimization around RawPtr, FFI, volatile, hardware aliases, or opaque calls"
+      - "preserve fixed-address and runtime mapping address stability while dependent views remain live"
+      - "prove no hidden heap promotion is introduced solely to repair source lifetime errors"
+    required_tests:
+      - "no early lifetime.end while reference or defer dependency remains"
+      - "no hidden heap promotion for returned local reference"
+      - "mapping cannot unmap before dependent view ends"
+      - "volatile access remains observable despite dead-value/lifetime optimization"
+      - "noalias emitted only for proven borrow/provenance cases"
+
+  - id: "platform.lifetime-analysis"
+    area: "platform-storage-mapping-lifetime"
+    status: "planned"
+    integrated: "2026-08-29"
+    document_revision: "2.0"
+    repository_baseline: "fafd8cb"
+    rules:
+      - "rules/memory/lifetime_analysis.md"
+      - "rules/platform/hardware-register-access.md"
+      - "rules/platform/fixed-address-bindings.md"
+      - "rules/platform/volatile.md"
+    remaining:
+      - "consume fixed-address storage lifetime/availability contracts without treating physical address as lifetime proof"
+      - "model owning runtime mapping lifetime and borrowed typed register-view bounds"
+      - "invalidate old views on remap unless canonical platform contract proves semantic/address stability"
+      - "keep device liveness separate from mapping lifetime and ownership is available"
+      - "keep access-context authority, volatility, ordering and synchronization separate from lifetime proof"
+      - "provide future ISR rulebooks a stable generic escaping-execution lifetime contract without defining ISR syntax here"
+    required_tests:
+      - "fixed-address binding with unknown lifetime does not gain static lifetime"
+      - "register view cannot escape mapping owner"
+      - "mapping move preserves owner lifetime relationship"
+      - "mapping destruction invalidates dependent view"
+      - "remap invalidates old view unless contract proves stability"
+      - "device liveness failure does not mutate ownership availability state"
+
+  - id: "tooling.lifetime-analysis"
+    area: "diagnostics-lsp-analysis-tooling"
+    status: "planned"
+    integrated: "2026-08-29"
+    document_revision: "2.0"
+    repository_baseline: "fafd8cb"
+    rules:
+      - "rules/memory/lifetime_analysis.md"
+      - "rules/tooling/lsp.md"
+      - "rules/tooling/diagnostics.md"
+    remaining:
+      - "expose lifetime origin/dependency/invalidation facts from shared Sema analysis without a second LSP lifetime engine"
+      - "mentor diagnostics identify origin, invalidating operation, rejected use, relevant path and practical safe restructuring"
+      - "hover/navigation can show returned-reference source, generation/epoch, mapping owner and retained-borrow dependency when useful"
+      - "code actions are offered only when semantically proven and never invent hidden allocation or weaken hardware/volatile behavior"
+      - "integrate lifetime findings with existing Interactive/Standard/Deep analysis surfaces while mandatory safety proof always runs"
+    required_tests:
+      - "returned-local-reference diagnostic explains stack/local lifetime and suggests owned or caller-backed alternative"
+      - "arena reset diagnostic identifies invalidating reset"
+      - "mapping/view diagnostic identifies mapping owner"
+      - "defer diagnostic identifies delayed use"
+      - "LSP and compiler report the same lifetime cause chain"

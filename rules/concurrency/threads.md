@@ -1033,7 +1033,7 @@ select.md
 copy_move.md
 ownership.md
 borrowing.txt
-lifetime_analysis.txt
+lifetime_analysis.md
 destruction.txt
 errorhandling.md
 semantic_ir.txt

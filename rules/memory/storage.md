@@ -68,7 +68,7 @@ borrowing.txt
 reference_model.md
     references, handles, provenance, bounds, and generation-bearing access
 
-lifetime_analysis.txt
+lifetime_analysis.md
     lifetime and escape proofs
 
 destruction.txt

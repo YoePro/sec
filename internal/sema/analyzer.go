@@ -51,6 +51,7 @@ type Analyzer struct {
 	// facts keyed by source syntax. Consumers will use the read-only query
 	// introduced in P14-19 instead of rebuilding the literal from the AST.
 	resolvedArrayLiteralPlans   map[*ast.ArrayLiteral]ResolvedArrayLiteralPlan
+	resolvedArrayIndexPlans     map[*ast.IndexExpression]ResolvedArrayIndexPlan
 	resolvedStructLiteralPlans  map[*ast.StructLiteral]ResolvedStructLiteralPlan
 	resolvedStructMemberPlans   map[*ast.MemberExpression]ResolvedStructMemberPlan
 	nextBindingID               BindingID
@@ -247,6 +248,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.resolvedTryPlans = map[*ast.TryExpression]ResolvedTryPlan{}
 	a.resolvedMatchPlans = map[*ast.MatchExpression]ResolvedMatchPlan{}
 	a.resolvedArrayLiteralPlans = map[*ast.ArrayLiteral]ResolvedArrayLiteralPlan{}
+	a.resolvedArrayIndexPlans = map[*ast.IndexExpression]ResolvedArrayIndexPlan{}
 	a.resolvedStructLiteralPlans = map[*ast.StructLiteral]ResolvedStructLiteralPlan{}
 	a.resolvedStructMemberPlans = map[*ast.MemberExpression]ResolvedStructMemberPlan{}
 	a.nextBindingID = 1
@@ -10134,6 +10136,7 @@ func (a *Analyzer) analyzeIndexAssignmentStatement(stmt *ast.AssignmentStatement
 	if targetType.Kind == InvalidType {
 		return
 	}
+	a.setResolvedArrayIndexUse(index, ArrayIndexWrite)
 	if packType, _ := a.inferExpression(index.Left); variadicPackValue(packType) {
 		// rules/declarations/functions.md section 31: neither the pack nor
 		// an element reached through it is mutable source-level storage.
@@ -12908,10 +12911,13 @@ func (a *Analyzer) inferIndexExpression(expr *ast.IndexExpression) (Type, expres
 		if leftType.Element == nil {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
-		if leftType.Kind != VariadicPackType {
-			a.checkConstantIndexBounds(expr, leftType)
+		if leftType.Kind != VariadicPackType && !a.checkConstantIndexBounds(expr, leftType) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
 		elementType := *leftType.Element
+		if leftType.Kind == ArrayType && arrayShapeOf(leftType) == ArrayShapeFixed {
+			a.recordFixedArrayIndexPlan(expr, leftType, elementType, indexType, ArrayIndexRead)
+		}
 		if elementType.Kind == ReferenceType {
 			elementType = a.referenceTypeWithOriginFromExpression(elementType, expr.Left)
 		}
@@ -12988,6 +12994,13 @@ func (a *Analyzer) inferRefExpression(expr *ast.RefExpression) (Type, expression
 	if valueType.Kind == InvalidType {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
+	if index, ok := expr.Value.(*ast.IndexExpression); ok {
+		use := ArrayIndexBorrow
+		if expr.Mutable {
+			use = ArrayIndexMutBorrow
+		}
+		a.setResolvedArrayIndexUse(index, use)
+	}
 	originName, originToken, originLocal, originStorage, generation := a.referenceOriginForExpression(expr.Value)
 	return Type{
 		Name:                       referenceTypeName(valueType, expr.Mutable),
@@ -13023,15 +13036,131 @@ func indexableKindName(typ Type) string {
 	}
 }
 
-func (a *Analyzer) checkConstantIndexBounds(expr *ast.IndexExpression, typ Type) {
+// checkConstantIndexBounds enforces the exact I >= 0 && I < N rule from
+// SEC-MLIR Package 14 section 35 without narrowing either operand.
+func (a *Analyzer) checkConstantIndexBounds(expr *ast.IndexExpression, typ Type) bool {
 	index, ok := a.integerConstantValue(expr.Index)
 	length, fixed := exactFixedArrayLength(typ)
 	if !ok || typ.Kind != ArrayType || !fixed {
-		return
+		return true
 	}
 	if index.Sign() < 0 || index.Cmp(length) >= 0 {
 		a.addErrorAtToken(expressionToken(expr.Index), "array index %s is out of bounds for %s", index.String(), typeDisplayName(typ))
+		return false
 	}
+	return true
+}
+
+// recordFixedArrayIndexPlan publishes the already-resolved index decision
+// required by SEC-MLIR Package 14 sections 31-36. It preserves the source
+// integer type and uses exact constants/type ranges as proof provenance.
+func (a *Analyzer) recordFixedArrayIndexPlan(expr *ast.IndexExpression, arrayType, elementType, indexType Type, use ArrayIndexUseKind) {
+	length, ok := exactFixedArrayLength(arrayType)
+	if !ok {
+		return
+	}
+	plan := ResolvedArrayIndexPlan{
+		ArrayType:   arrayType,
+		ArrayLength: length,
+		ElementType: elementType,
+		IndexType:   indexType,
+		IndexSigned: indexType.Kind == IntType,
+		CheckKind:   ArrayIndexRuntimeCheck,
+		UseKind:     use,
+		Action:      arrayIndexTransferAction(elementType, use),
+		FailureMode: ArrayIndexFailureOrdinary,
+		ErrorType:   a.indexErrorType(),
+	}
+	if constant, constantOK := a.integerConstantValue(expr.Index); constantOK {
+		plan.ConstantIndex = new(big.Int).Set(constant)
+		plan.CheckKind = ArrayIndexProvenSafe
+		plan.ProofKind = ArrayIndexProofConstant
+		plan.FailureMode = ArrayIndexFailureNone
+		plan.ErrorType = Type{}
+	} else if integerTypeRangeProvesArrayIndex(indexType, length) {
+		plan.CheckKind = ArrayIndexProvenSafe
+		plan.ProofKind = ArrayIndexProofRange
+		plan.FailureMode = ArrayIndexFailureNone
+		plan.ErrorType = Type{}
+	}
+	a.recordResolvedArrayIndexPlan(expr, plan)
+}
+
+// indexErrorType resolves the core declaration when it is part of the module
+// graph and otherwise provides the same compiler-owned semantic identity for
+// standalone Sema analysis. IndexError remains declarable by sec/core and is
+// not reserved as a language intrinsic.
+func (a *Analyzer) indexErrorType() Type {
+	if typ, ok := a.types["IndexError"]; ok && typ.Kind != InvalidType {
+		return typ
+	}
+	return Type{
+		Name:            "IndexError",
+		Kind:            EnumType,
+		Underlying:      "uint",
+		ErrorAssignable: true,
+		EnumValues:      []string{"OutOfBounds"},
+		EnumConsts:      builtinEnumConsts([]string{"OutOfBounds"}),
+	}
+}
+
+// integerTypeRangeProvesArrayIndex recognizes the named/builtin range facts
+// currently present in Sema. Branch/assertion refinements can extend the same
+// proof-kind boundary without changing downstream IR consumers.
+func integerTypeRangeProvesArrayIndex(indexType Type, length *big.Int) bool {
+	if length == nil || length.Sign() == 0 || indexType.MinInteger == nil || indexType.MaxInteger == nil {
+		return false
+	}
+	minimum := new(big.Int).Set(indexType.MinInteger)
+	maximum := new(big.Int).Set(indexType.MaxInteger)
+	for _, contract := range indexType.Contracts {
+		rangeContract, ok := contract.(RangeContract)
+		if !ok {
+			continue
+		}
+		if rangeContract.Min != nil && rangeContract.Min.Cmp(minimum) > 0 {
+			minimum.Set(rangeContract.Min)
+		}
+		if rangeContract.Max != nil {
+			contractMaximum := new(big.Int).Set(rangeContract.Max)
+			if rangeContract.Exclusive {
+				contractMaximum.Sub(contractMaximum, big.NewInt(1))
+			}
+			if contractMaximum.Cmp(maximum) < 0 {
+				maximum.Set(contractMaximum)
+			}
+		}
+	}
+	return minimum.Sign() >= 0 && maximum.Cmp(length) < 0
+}
+
+func arrayIndexTransferAction(elementType Type, use ArrayIndexUseKind) ResolvedArrayTransferAction {
+	switch use {
+	case ArrayIndexWrite:
+		return ArrayTransferConstructDirect
+	case ArrayIndexBorrow:
+		return ArrayTransferBorrowShared
+	case ArrayIndexMutBorrow:
+		return ArrayTransferBorrowMutable
+	}
+	switch CopyClassificationOf(elementType) {
+	case CopyTrivial:
+		return ArrayTransferCopyTrivial
+	case CopySemantic:
+		return ArrayTransferCopySemantic
+	default:
+		return ArrayTransferMove
+	}
+}
+
+func (a *Analyzer) setResolvedArrayIndexUse(expr *ast.IndexExpression, use ArrayIndexUseKind) {
+	plan, ok := a.resolvedArrayIndexPlans[expr]
+	if !ok {
+		return
+	}
+	plan.UseKind = use
+	plan.Action = arrayIndexTransferAction(plan.ElementType, use)
+	a.recordResolvedArrayIndexPlan(expr, plan)
 }
 
 func (a *Analyzer) checkSliceBounds(expr *ast.SliceExpression, typ Type) {

@@ -199,49 +199,80 @@ source elements. No test allocates or expands the conceptual array.
 
 ## D. Implement fixed arrays in Semantic IR
 
-- [ ] P14-27 — Add canonical fixed-array type data keyed by element `TypeID` and
+- [x] P14-27 — Add canonical fixed-array type data keyed by element `TypeID` and
   exact immutable length; intern, compare, clone, print, and verify it without
   host-width conversion.
-- [ ] P14-28 — Extend the module/type verifier with fixed/dynamic separation,
+- [x] P14-28 — Extend the module/type verifier with fixed/dynamic separation,
   canonical non-negative decimal length, supported element type, exact nominal
   nesting, and deterministic diagnostics.
-- [ ] P14-29 — Add compact array construction segments (`element`/`spread`) and
+- [x] P14-29 — Add compact array construction segments (`element`/`spread`) and
   `ArrayConstructOp`. Verify operand type, action, segment length, exact total,
   result type, and full initialization.
-- [ ] P14-30 — Add `ArrayDefaultOp` with one element type and exact length.
+- [x] P14-30 — Add `ArrayDefaultOp` with one element type and exact length.
   Permit zero length or the supported infallible trivial default subset and
   reject unrepresented cleanup obligations.
-- [ ] P14-31 — Add `ArrayLengthOp` returning compiler-known target-sized `uint`;
+- [x] P14-31 — Add `ArrayLengthOp` returning compiler-known target-sized `uint`;
   retain its exact compile-time value as a foldable semantic fact.
-- [ ] P14-32 — Add `ArrayIndexInBoundsOp` producing the canonical bounds
+- [x] P14-32 — Add `ArrayIndexInBoundsOp` producing the canonical bounds
   predicate from one array value and one source-typed index value.
-- [ ] P14-33 — Add guarded `ArrayExtractOp` for copy-trivial reads and
+- [x] P14-33 — Add guarded `ArrayExtractOp` for copy-trivial reads and
   `ArrayReplaceOp` for trivial replacement, carrying exact index-plan proof or
   guard provenance rather than guessing safety from CFG shape.
-- [ ] P14-34 — Add terminating `BoundsFailureOp` for ordinary failed bounds
+- [x] P14-34 — Add terminating `BoundsFailureOp` for ordinary failed bounds
   checks and the explicit `IndexError.OutOfBounds` construction/branch for the
   fallible path.
 - [ ] P14-35 — Extend Semantic IR printer/verifier tests for zero/large lengths,
   nested arrays, wide/struct/enum elements, compact segments/defaults, exact
   result types, bad sums, guard mismatches, and every P14 operation.
-- [ ] P14-36 — Ensure every P14 `UnsupportedFeatureError` retains package 14,
+- [x] P14-36 — Ensure every P14 `UnsupportedFeatureError` retains package 14,
   returns no partial module, and emits no placeholder operation.
+
+Completed 2026-08-29: P14-27/P14-28 add the first Semantic IR fixed-array
+type slice. `TypeArray` is keyed by element `TypeID` plus canonical exact
+decimal length, participates in type interning, prints deterministically, and is
+verified without host-width conversion. The builder now admits fixed-array
+function parameter and return types only at `MaxPackage >= 14`, rejects dynamic
+array types at the package boundary, and keeps array construction/index/storage
+operations deferred to P14-29 and later.
+
+Completed 2026-08-29: P14-29/P14-30/P14-31 add Semantic IR operation records
+for `array.construct`, `array.default`, and `array.len`. The verifier checks
+compact element/spread segments, exact segment sums, result type agreement,
+construct-direct/copy-trivial P14 actions, zero-length construction, trivial
+default eligibility, and target-sized `uint` length results. P14-36 now has a
+source-builder boundary test proving unsupported array literal lowering returns
+a Package 14 `UnsupportedFeatureError`, no partial module, and no placeholder
+operation.
+
+Completed 2026-08-29: P14-32/P14-33 add source-typed signed/unsigned bounds
+predicates plus functional extract/replace records. Semantic IR verifies exact
+array/index/result types, P14 trivial ownership gates, non-empty proven-safe
+provenance, and runtime guard provenance. Runtime projections must name a
+dominating predicate for the same array and index and remain unreachable from
+that predicate's false edge; the verifier never reconstructs a Sema range
+proof.
+
+Completed 2026-08-29: P14-34 adds the terminating `fail.bounds` endpoint with
+the required `fixed-array-index` operation identity. Guard failure edges now
+must end either there or in an explicit `core::IndexError.OutOfBounds` enum
+construction followed by the existing typed `Result.err` return path; no
+special bounds-error type or runtime symbol is introduced.
 
 ## E. Resolve indexing, bounds control flow, `try`, and effects
 
-- [ ] P14-37 — Define immutable `ResolvedArrayIndexPlan` facts with exact array
+- [x] P14-37 — Define immutable `ResolvedArrayIndexPlan` facts with exact array
   type/length, element type, original index type, use kind, check kind,
   proof kind/provenance, and ordinary versus fallible failure mode.
-- [ ] P14-38 — Add read-only
+- [x] P14-38 — Add read-only
   `ResolvedArrayIndexPlanOf(*ast.IndexExpression)` and make all new IR consumers
   use it instead of recomputing constant bounds or member syntax.
-- [ ] P14-39 — Perform constant bounds evaluation with arbitrary precision for
+- [x] P14-39 — Perform constant bounds evaluation with arbitrary precision for
   signed/unsigned and wide constants. Reject negative, N, and greater-than-N at
   compile time; valid constants are proven-safe and emit no failure operation.
 - [ ] P14-40 — Integrate existing range, branch, assertion/contract, and analysis
   refinements as explicit proof kinds. Zero-length arrays never have a
   proven-valid element index.
-- [ ] P14-41 — Classify every remaining integer index as runtime-checked while
+- [x] P14-41 — Classify every remaining integer index as runtime-checked while
   preserving its source type through comparison and downstream operations; do
   not normalize it to a hard-coded `i64`.
 - [ ] P14-42 — Preserve evaluation order and exactly-once behavior: evaluate the
@@ -265,6 +296,21 @@ source elements. No test allocates or expands the conceptual array.
   indexing, wide indexes, zero length, negative signed runtime values,
   exactly-once evaluation, local/catch-all handlers, `@noPanic`, and absence of
   `sec.fail.bounds` on proven/fallible success models.
+
+Completed 2026-08-29: P14-37/P14-38 add immutable, read-only fixed-array
+index-plan facts keyed by the original `*ast.IndexExpression`. Plans retain the
+exact array length, array/element/index types, signedness, read/write/borrow use,
+transfer action, check/proof kind, failure mode, and concrete `IndexError` only
+when runtime failure remains possible. Exact mutable integers are defensively
+copied and unknown queries perform no inference or analyzer mutation.
+
+Completed 2026-08-29: P14-39/P14-41 make valid constants proven-safe using
+arbitrary-precision arithmetic, including `uint256` values above host `int64`,
+and reject negative, at-length, and above-length constants exactly. Remaining
+signed and unsigned integer indexes are runtime-checked without changing their
+source type. Named integer ranges wholly inside `0..<N` are also recorded as
+range-proven; P14-40 remains open for branch, assertion/contract-refinement,
+and other analysis provenance beyond the currently materialized type range.
 
 ## F. Add trivial mutable storage and nested replacement
 

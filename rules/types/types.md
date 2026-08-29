@@ -1886,7 +1886,7 @@ reference_model.md
 ownership.md
 copy_move.md
 borrowing.txt
-lifetime_analysis.txt
+lifetime_analysis.md
 raw_pointers.txt
 functions.md
 declarations/lambda-functions.md

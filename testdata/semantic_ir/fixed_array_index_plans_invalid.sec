@@ -1,0 +1,13 @@
+module main
+
+fn Negative(values: int[4]) int {
+    return values[int256(-1)]
+}
+
+fn AtLength(values: int[4]) int {
+    return values[uint256(4)]
+}
+
+fn AboveWideLength(values: int[9223372036854775809]) int {
+    return values[uint256(9223372036854775810)]
+}

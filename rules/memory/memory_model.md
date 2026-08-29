@@ -13,7 +13,7 @@ copy_move.md
 borrowing.txt
 references.txt
 raw_pointers.txt
-lifetime_analysis.txt
+lifetime_analysis.md
 destruction.txt
 allocation.txt
 concurrency_memory_model.txt
@@ -247,7 +247,7 @@ references.txt
 raw_pointers.txt
     unsafe address values and operations
 
-lifetime_analysis.txt
+lifetime_analysis.md
     how the compiler proves lifetime relations
 
 destruction.txt
@@ -3631,7 +3631,7 @@ discard.md
 borrowing.txt
 references.txt
 raw_pointers.txt
-lifetime_analysis.txt
+lifetime_analysis.md
 destruction.txt
 allocation.txt
 concurrency_memory_model.txt

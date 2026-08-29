@@ -128,9 +128,40 @@ func verifyTypes(table *TypeTable) error {
 			if _, ok := table.Lookup(t.Error); !ok {
 				return fmt.Errorf("result !%d has invalid error type", id)
 			}
+		case TypeArray:
+			if _, ok := table.Lookup(t.Element); !ok {
+				return fmt.Errorf("array !%d has invalid element type !%d", id, t.Element)
+			}
+			if !canonicalArrayLength(t.Length) {
+				return fmt.Errorf("array !%d has non-canonical length %q", id, t.Length)
+			}
+			if typeHasKind(table, t.Element, TypeVoid, TypeNever) {
+				return fmt.Errorf("array !%d has unsupported element type", id)
+			}
 		}
 	}
 	return nil
+}
+
+// canonicalArrayLength enforces the exact decimal fixed length spelling used by
+// SEC-MLIR Package 14 sections 27-28. The string form avoids host-width
+// conversion and remains stable across 32- and 64-bit compilation plans.
+func canonicalArrayLength(length string) bool {
+	if length == "" {
+		return false
+	}
+	if length == "0" {
+		return true
+	}
+	if length[0] == '-' || length[0] == '+' || length[0] == '0' {
+		return false
+	}
+	for _, ch := range length {
+		if ch < '0' || ch > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func verifyEnumUnionDefinitions(module *Module) error {
@@ -458,6 +489,9 @@ func verifyFunction(module *Module, fn *Function, functions map[FunctionID]*Func
 		return err
 	}
 	if err := verifyMatchRecords(module.Types, fn, blocks, values); err != nil {
+		return err
+	}
+	if err := verifyArrayIndexGuards(module, fn, blocks, values, dom); err != nil {
 		return err
 	}
 	return nil
@@ -834,10 +868,278 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 		if !ok || definition.CopyClassification != "trivial" || !definition.TriviallyDestructible || int(op.StructField) >= len(definition.Fields) || values[op.Operands[1]].Type != definition.Fields[op.StructField].Type {
 			return fmt.Errorf("unsafe struct.replace-field")
 		}
+	case OpArrayConstruct:
+		if err := verifyArrayConstruct(module.Types, op, values); err != nil {
+			return err
+		}
+	case OpArrayDefault:
+		if err := verifyArrayDefault(module, op); err != nil {
+			return err
+		}
+	case OpArrayLength:
+		if err := verifyArrayLength(module.Types, op, values); err != nil {
+			return err
+		}
+	case OpArrayIndexInBounds:
+		if err := verifyArrayIndexInBounds(module.Types, op, values); err != nil {
+			return err
+		}
+	case OpArrayExtract:
+		if err := verifyArrayExtract(module, op, values); err != nil {
+			return err
+		}
+	case OpArrayReplace:
+		if err := verifyArrayReplace(module, op, values); err != nil {
+			return err
+		}
+	case OpBoundsFailure:
+		if len(op.Operands) != 0 || len(op.Results) != 0 || len(op.Successors) != 0 || op.ArrayOperation != "fixed-array-index" {
+			return fmt.Errorf("invalid fail.bounds")
+		}
 	default:
 		return fmt.Errorf("unknown operation %q", op.Kind)
 	}
 	return nil
+}
+
+func verifyArrayConstruct(types *TypeTable, op Operation, values map[ValueID]Value) error {
+	if len(op.Results) != 1 ||
+		len(op.ArraySegmentKinds) != len(op.Operands) ||
+		len(op.ArraySegmentLengths) != len(op.Operands) ||
+		len(op.ArrayActions) != len(op.Operands) {
+		return fmt.Errorf("invalid array.construct")
+	}
+	result, ok := types.Lookup(op.Results[0].Type)
+	if !ok || result.Kind != TypeArray || result.Element != op.ArrayElementType || result.Length != op.ArrayLength {
+		return fmt.Errorf("array.construct result type mismatch")
+	}
+	if len(op.Operands) == 0 {
+		if op.ArrayLength != "0" {
+			return fmt.Errorf("array.construct length mismatch")
+		}
+		return nil
+	}
+	total := new(big.Int)
+	for index, operand := range op.Operands {
+		length, ok := parseCanonicalArrayLength(op.ArraySegmentLengths[index])
+		if !ok || length.Sign() == 0 {
+			return fmt.Errorf("array.construct segment %d has invalid length", index)
+		}
+		total.Add(total, length)
+		operandType := values[operand].Type
+		switch op.ArraySegmentKinds[index] {
+		case ArraySegmentElement:
+			if op.ArrayActions[index] != ArrayActionConstructDirect || op.ArraySegmentLengths[index] != "1" || operandType != op.ArrayElementType {
+				return fmt.Errorf("array.construct element segment %d mismatch", index)
+			}
+		case ArraySegmentSpread:
+			spread, ok := types.Lookup(operandType)
+			if !ok || spread.Kind != TypeArray || spread.Element != op.ArrayElementType || spread.Length != op.ArraySegmentLengths[index] || op.ArrayActions[index] != ArrayActionCopyTrivial {
+				return fmt.Errorf("array.construct spread segment %d mismatch", index)
+			}
+		default:
+			return fmt.Errorf("array.construct segment %d has invalid kind", index)
+		}
+	}
+	if total.String() != op.ArrayLength {
+		return fmt.Errorf("array.construct length mismatch")
+	}
+	return nil
+}
+
+func verifyArrayDefault(module *Module, op Operation) error {
+	if len(op.Results) != 1 || len(op.Operands) != 0 {
+		return fmt.Errorf("invalid array.default")
+	}
+	result, ok := module.Types.Lookup(op.Results[0].Type)
+	if !ok || result.Kind != TypeArray || result.Element != op.ArrayElementType || result.Length != op.ArrayLength {
+		return fmt.Errorf("array.default result type mismatch")
+	}
+	length, ok := parseCanonicalArrayLength(op.ArrayLength)
+	if !ok {
+		return fmt.Errorf("array.default has invalid length")
+	}
+	if length.Sign() == 0 {
+		return nil
+	}
+	if !arrayElementDefaultable(module, op.ArrayElementType) {
+		return fmt.Errorf("array.default element has unsupported default")
+	}
+	return nil
+}
+
+func verifyArrayLength(types *TypeTable, op Operation, values map[ValueID]Value) error {
+	if len(op.Operands) != 1 || len(op.Results) != 1 {
+		return fmt.Errorf("invalid array.len")
+	}
+	array, ok := types.Lookup(values[op.Operands[0]].Type)
+	if !ok || array.Kind != TypeArray || array.Length != op.ArrayLength {
+		return fmt.Errorf("array.len operand mismatch")
+	}
+	if !typeHasKind(types, op.Results[0].Type, TypeUint) {
+		return fmt.Errorf("array.len result must be uint")
+	}
+	return nil
+}
+
+// verifyArrayIndexInBounds implements the total semantic predicate from
+// SEC-MLIR Package 14 sections 37 and 66. The source index type and signedness
+// remain intact; target-width normalization belongs to later scalar lowering.
+func verifyArrayIndexInBounds(types *TypeTable, op Operation, values map[ValueID]Value) error {
+	if len(op.Operands) != 2 || len(op.Results) != 1 || !typeHasKind(types, op.Results[0].Type, TypeBool) {
+		return fmt.Errorf("invalid array.index-in-bounds")
+	}
+	array, ok := types.Lookup(values[op.Operands[0]].Type)
+	if !ok || array.Kind != TypeArray {
+		return fmt.Errorf("array.index-in-bounds operand is not a fixed array")
+	}
+	signed, ok := semanticIntegerSigned(types, values[op.Operands[1]].Type)
+	if !ok {
+		return fmt.Errorf("array.index-in-bounds index is not an integer")
+	}
+	if op.ArrayIndexSigned != signed {
+		return fmt.Errorf("array.index-in-bounds signedness mismatch")
+	}
+	return nil
+}
+
+func verifyArrayExtract(module *Module, op Operation, values map[ValueID]Value) error {
+	if len(op.Operands) != 2 || len(op.Results) != 1 || len(op.ArrayActions) != 1 || op.ArrayActions[0] != ArrayActionCopyTrivial {
+		return fmt.Errorf("invalid array.extract")
+	}
+	array, ok := module.Types.Lookup(values[op.Operands[0]].Type)
+	if !ok || array.Kind != TypeArray || op.Results[0].Type != array.Element {
+		return fmt.Errorf("array.extract type mismatch")
+	}
+	if _, ok := semanticIntegerSigned(module.Types, values[op.Operands[1]].Type); !ok {
+		return fmt.Errorf("array.extract index is not an integer")
+	}
+	if !package14TrivialValue(module, array.Element) {
+		return fmt.Errorf("array.extract requires copy-trivial element")
+	}
+	return verifyArrayBoundsMetadata(op)
+}
+
+func verifyArrayReplace(module *Module, op Operation, values map[ValueID]Value) error {
+	if len(op.Operands) != 3 || len(op.Results) != 1 {
+		return fmt.Errorf("invalid array.replace")
+	}
+	arrayType := values[op.Operands[0]].Type
+	array, ok := module.Types.Lookup(arrayType)
+	if !ok || array.Kind != TypeArray || op.Results[0].Type != arrayType || values[op.Operands[2]].Type != array.Element {
+		return fmt.Errorf("array.replace type mismatch")
+	}
+	if _, ok := semanticIntegerSigned(module.Types, values[op.Operands[1]].Type); !ok {
+		return fmt.Errorf("array.replace index is not an integer")
+	}
+	if !package14TrivialValue(module, array.Element) {
+		return fmt.Errorf("array.replace requires trivial array and element")
+	}
+	return verifyArrayBoundsMetadata(op)
+}
+
+func verifyArrayBoundsMetadata(op Operation) error {
+	switch op.ArrayCheckKind {
+	case ArrayIndexProvenSafe:
+		if !validArrayProof(op.ArrayProofKind) || op.ArrayGuard != 0 {
+			return fmt.Errorf("%s has invalid proven-safe bounds provenance", op.Kind)
+		}
+	case ArrayIndexRuntimeCheck:
+		if op.ArrayProofKind != ArrayIndexProofGuarded || op.ArrayGuard == 0 {
+			return fmt.Errorf("%s has invalid runtime bounds provenance", op.Kind)
+		}
+	default:
+		return fmt.Errorf("%s has invalid bounds kind", op.Kind)
+	}
+	return nil
+}
+
+func validArrayProof(proof ArrayIndexProofKind) bool {
+	switch proof {
+	case ArrayIndexProofConstant, ArrayIndexProofRange, ArrayIndexProofBranch, ArrayIndexProofContract, ArrayIndexProofAnalysis:
+		return true
+	default:
+		return false
+	}
+}
+
+func semanticIntegerSigned(types *TypeTable, id TypeID) (bool, bool) {
+	typ, ok := types.Lookup(id)
+	if !ok {
+		return false, false
+	}
+	if typ.Kind == TypeNamed {
+		return semanticIntegerSigned(types, typ.Base)
+	}
+	switch typ.Kind {
+	case TypeInt:
+		return true, true
+	case TypeUint:
+		return false, true
+	default:
+		return false, false
+	}
+}
+
+func package14TrivialValue(module *Module, id TypeID) bool {
+	typ, ok := module.Types.Lookup(id)
+	if !ok {
+		return false
+	}
+	if typ.Kind == TypeNamed {
+		return package14TrivialValue(module, typ.Base)
+	}
+	switch typ.Kind {
+	case TypeBool, TypeByte, TypeChar, TypeRune, TypeDecimal128, TypeInt, TypeUint, TypeFloat, TypeEnum:
+		return true
+	case TypeArray:
+		return package14TrivialValue(module, typ.Element)
+	case TypeStruct:
+		definition, ok := structDefinition(module, id)
+		return ok && definition.CopyClassification == "trivial" && definition.TriviallyDestructible
+	case TypeUnion:
+		for _, definition := range module.Unions {
+			if definition.TypeID == id {
+				return definition.CopyClassification == "trivial" && definition.TriviallyDestructible
+			}
+		}
+		return false
+	default:
+		return false
+	}
+}
+
+func parseCanonicalArrayLength(length string) (*big.Int, bool) {
+	if !canonicalArrayLength(length) {
+		return nil, false
+	}
+	value, ok := new(big.Int).SetString(length, 10)
+	if !ok {
+		return nil, false
+	}
+	return value, true
+}
+
+func arrayElementDefaultable(module *Module, id TypeID) bool {
+	typ, ok := module.Types.Lookup(id)
+	if !ok {
+		return false
+	}
+	if typ.Kind == TypeNamed {
+		return arrayElementDefaultable(module, typ.Base)
+	}
+	switch typ.Kind {
+	case TypeBool, TypeByte, TypeChar, TypeRune, TypeString, TypeDecimal, TypeDecimal128, TypeInt, TypeUint, TypeFloat, TypeEnum:
+		return true
+	case TypeArray:
+		length, ok := parseCanonicalArrayLength(typ.Length)
+		return ok && (length.Sign() == 0 || arrayElementDefaultable(module, typ.Element))
+	case TypeStruct:
+		definition, ok := structDefinition(module, id)
+		return ok && definition.Defaultable && definition.CopyClassification == "trivial" && definition.TriviallyDestructible
+	default:
+		return false
+	}
 }
 
 func structDefinition(module *Module, typeID TypeID) (StructDefinition, bool) {
@@ -1114,6 +1416,120 @@ func verifyUnionGuards(fn *Function, blocks map[BlockID]*Block) error {
 		}
 	}
 	return nil
+}
+
+// verifyArrayIndexGuards enforces the explicit P14 guard provenance contract.
+// A runtime extraction/replacement must name the predicate that guarded the
+// same array and index SSA values, and its block must be reachable only from
+// that predicate's true edge. This deliberately does not redo Sema analysis.
+func verifyArrayIndexGuards(module *Module, fn *Function, blocks map[BlockID]*Block, values map[ValueID]Value, dom map[BlockID]map[BlockID]bool) error {
+	type guard struct {
+		array      ValueID
+		index      ValueID
+		block      BlockID
+		trueBlock  BlockID
+		falseBlock BlockID
+	}
+	guards := map[ValueID]guard{}
+	uses := map[ValueID]int{}
+	graph := map[BlockID][]BlockID{}
+	for _, block := range fn.Blocks {
+		for _, op := range block.Operations {
+			for _, operand := range operationOperands(op) {
+				uses[operand]++
+			}
+			for _, successor := range op.Successors {
+				graph[block.ID] = append(graph[block.ID], successor.Block)
+			}
+		}
+	}
+	for _, block := range fn.Blocks {
+		for index, op := range block.Operations {
+			if op.Kind != OpArrayIndexInBounds {
+				continue
+			}
+			if len(op.Operands) != 2 || len(op.Results) != 1 || index+1 != len(block.Operations)-1 {
+				return fmt.Errorf("array.index-in-bounds in ^%d must be immediately guarded", block.ID)
+			}
+			predicate := op.Results[0].ID
+			branch := block.Operations[index+1]
+			if uses[predicate] != 1 || branch.Kind != OpCondBranch || len(branch.Operands) != 1 || branch.Operands[0] != predicate || len(branch.Successors) != 2 {
+				return fmt.Errorf("array bounds predicate %%%d must feed one conditional branch", predicate)
+			}
+			guards[predicate] = guard{
+				array:      op.Operands[0],
+				index:      op.Operands[1],
+				block:      block.ID,
+				trueBlock:  branch.Successors[0].Block,
+				falseBlock: branch.Successors[1].Block,
+			}
+			if failure := blocks[branch.Successors[1].Block]; !validArrayBoundsFailureBlock(module, failure, values) {
+				return fmt.Errorf("array bounds predicate %%%d has invalid failure endpoint", predicate)
+			}
+		}
+	}
+	for _, block := range fn.Blocks {
+		for _, op := range block.Operations {
+			if (op.Kind != OpArrayExtract && op.Kind != OpArrayReplace) || op.ArrayCheckKind != ArrayIndexRuntimeCheck {
+				continue
+			}
+			guard, ok := guards[op.ArrayGuard]
+			if !ok || len(op.Operands) < 2 || op.Operands[0] != guard.array || op.Operands[1] != guard.index {
+				return fmt.Errorf("%s in ^%d does not match its array bounds guard", op.Kind, block.ID)
+			}
+			if !dom[block.ID][guard.trueBlock] || reachableBlock(graph, guard.falseBlock, block.ID) {
+				return fmt.Errorf("%s in ^%d is not confined to its bounds guard true edge", op.Kind, block.ID)
+			}
+		}
+	}
+	return nil
+}
+
+func validArrayBoundsFailureBlock(module *Module, block *Block, values map[ValueID]Value) bool {
+	if block == nil || len(block.Operations) == 0 {
+		return false
+	}
+	if len(block.Operations) == 1 {
+		failure := block.Operations[0]
+		return failure.Kind == OpBoundsFailure && failure.ArrayOperation == "fixed-array-index"
+	}
+	constant := block.Operations[0]
+	if constant.Kind != OpEnumConstant || len(constant.Results) != 1 {
+		return false
+	}
+	definition, ok := enumDefinition(module, constant.Results[0].Type)
+	if !ok || definition.SymbolID != "core::IndexError" || int(constant.EnumCase) >= len(definition.Cases) || definition.Cases[constant.EnumCase].Name != "OutOfBounds" {
+		return false
+	}
+	errorValue := constant.Results[0].ID
+	construct := block.Operations[1]
+	if construct.Kind != OpResultErr || len(construct.Operands) != 1 || construct.Operands[0] != errorValue || len(construct.Results) != 1 {
+		return false
+	}
+	result, ok := module.Types.Lookup(construct.Results[0].Type)
+	if !ok || result.Kind != TypeResult || result.Error != values[errorValue].Type {
+		return false
+	}
+	last := block.Operations[len(block.Operations)-1]
+	return len(block.Operations) == 3 && last.Kind == OpReturn && len(last.Operands) == 1 && last.Operands[0] == construct.Results[0].ID
+}
+
+func reachableBlock(graph map[BlockID][]BlockID, from, target BlockID) bool {
+	work := []BlockID{from}
+	seen := map[BlockID]bool{}
+	for len(work) != 0 {
+		block := work[len(work)-1]
+		work = work[:len(work)-1]
+		if block == target {
+			return true
+		}
+		if seen[block] {
+			continue
+		}
+		seen[block] = true
+		work = append(work, graph[block]...)
+	}
+	return false
 }
 
 func verifyTryHandlers(fn *Function) error {

@@ -60,6 +60,7 @@ const (
 	TypeEnum                    TypeKind = "enum"
 	TypeUnion                   TypeKind = "union"
 	TypeStruct                  TypeKind = "struct"
+	TypeArray                   TypeKind = "array"
 )
 
 type Type struct {
@@ -71,6 +72,8 @@ type Type struct {
 	Success    TypeID
 	Error      TypeID
 	Underlying TypeID
+	Element    TypeID
+	Length     string
 	TypeArgs   []TypeID
 	Signed     bool
 	BitWidth   uint16
@@ -220,7 +223,8 @@ func (t *TypeTable) All() []Type {
 func typeKey(t Type) string {
 	key := string(t.Kind) + "\x00" + t.Module + "\x00" + t.Name + "\x00" + t.Identity + "\x00" +
 		fmtUint(uint64(t.Base)) + "\x00" + fmtUint(uint64(t.Success)) + "\x00" + fmtUint(uint64(t.Error)) + "\x00" +
-		fmtUint(uint64(t.Underlying)) + "\x00" + fmtUint(uint64(t.BitWidth)) + "\x00" + boolKey(t.Signed) + boolKey(t.TargetSize)
+		fmtUint(uint64(t.Underlying)) + "\x00" + fmtUint(uint64(t.Element)) + "\x00" + t.Length + "\x00" +
+		fmtUint(uint64(t.BitWidth)) + "\x00" + boolKey(t.Signed) + boolKey(t.TargetSize)
 	for _, argument := range t.TypeArgs {
 		key += "\x00" + fmtUint(uint64(argument))
 	}
@@ -377,6 +381,13 @@ const (
 	OpStructSpreadFields              OpKind = "struct.spread-fields"
 	OpStructExtractField              OpKind = "struct.extract-field"
 	OpStructReplaceField              OpKind = "struct.replace-field"
+	OpArrayConstruct                  OpKind = "array.construct"
+	OpArrayDefault                    OpKind = "array.default"
+	OpArrayLength                     OpKind = "array.len"
+	OpArrayIndexInBounds              OpKind = "array.index-in-bounds"
+	OpArrayExtract                    OpKind = "array.extract"
+	OpArrayReplace                    OpKind = "array.replace"
+	OpBoundsFailure                   OpKind = "fail.bounds"
 )
 
 type IntegerCheckedBinaryKind string
@@ -460,6 +471,45 @@ const (
 	StructActionMove                   StructFieldAction = "move"
 )
 
+type ArrayConstructSegmentKind string
+
+const (
+	ArraySegmentElement ArrayConstructSegmentKind = "element"
+	ArraySegmentSpread  ArrayConstructSegmentKind = "spread"
+)
+
+type ArrayTransferAction string
+
+const (
+	ArrayActionConstructDirect        ArrayTransferAction = "construct-direct"
+	ArrayActionCopyTrivial            ArrayTransferAction = "copy-trivial"
+	ArrayActionCopySemanticInfallible ArrayTransferAction = "copy-semantic-infallible"
+	ArrayActionMove                   ArrayTransferAction = "move"
+	ArrayActionBorrowShared           ArrayTransferAction = "borrow-shared"
+	ArrayActionBorrowMutable          ArrayTransferAction = "borrow-mutable"
+)
+
+// ArrayIndexCheckKind and ArrayIndexProofKind preserve the compiler-owned
+// safety decision required by SEC-MLIR Package 14 sections 31-41. Semantic IR
+// consumers must not reconstruct range proofs from source syntax or CFG shape.
+type ArrayIndexCheckKind string
+
+const (
+	ArrayIndexProvenSafe   ArrayIndexCheckKind = "proven-safe"
+	ArrayIndexRuntimeCheck ArrayIndexCheckKind = "runtime-check"
+)
+
+type ArrayIndexProofKind string
+
+const (
+	ArrayIndexProofConstant ArrayIndexProofKind = "constant"
+	ArrayIndexProofRange    ArrayIndexProofKind = "range"
+	ArrayIndexProofBranch   ArrayIndexProofKind = "branch"
+	ArrayIndexProofContract ArrayIndexProofKind = "contract"
+	ArrayIndexProofAnalysis ArrayIndexProofKind = "analysis"
+	ArrayIndexProofGuarded  ArrayIndexProofKind = "guarded"
+)
+
 type TryHandlerKind string
 
 const (
@@ -507,6 +557,16 @@ type Operation struct {
 	StructField          StructFieldID
 	StructOrigins        []StructFieldOrigin
 	StructActions        []StructFieldAction
+	ArrayElementType     TypeID
+	ArrayLength          string
+	ArraySegmentKinds    []ArrayConstructSegmentKind
+	ArraySegmentLengths  []string
+	ArrayActions         []ArrayTransferAction
+	ArrayIndexSigned     bool
+	ArrayCheckKind       ArrayIndexCheckKind
+	ArrayProofKind       ArrayIndexProofKind
+	ArrayGuard           ValueID
+	ArrayOperation       string
 	TryHandlerKind       TryHandlerKind
 	TryHandlerIndex      int
 	TryHandlerExhaustive bool
@@ -520,5 +580,5 @@ type Operation struct {
 }
 
 func (o Operation) IsTerminator() bool {
-	return o.Kind == OpReturn || o.Kind == OpBranch || o.Kind == OpCondBranch || o.Kind == OpArithmeticFailure || o.Kind == OpUnreachable
+	return o.Kind == OpReturn || o.Kind == OpBranch || o.Kind == OpCondBranch || o.Kind == OpArithmeticFailure || o.Kind == OpBoundsFailure || o.Kind == OpUnreachable
 }

@@ -121,6 +121,12 @@ func (b *builder) buildFunction(decl *ast.FunctionDeclaration) error {
 }
 
 func (b *builder) internType(t sema.Type) (TypeID, error) {
+	if t.Kind == sema.ArrayType {
+		if b.maxPackage < 14 {
+			return 0, &UnsupportedFeatureError{Feature: "array type " + t.Name, Package: b.maxPackage}
+		}
+		return b.internArrayType(t)
+	}
 	if t.Kind == sema.ResultType && len(t.TypeArgs) == 2 {
 		success, err := b.internType(t.TypeArgs[0])
 		if err != nil {
@@ -170,6 +176,29 @@ func (b *builder) internType(t sema.Type) (TypeID, error) {
 		return b.module.Types.Intern(Type{Kind: TypeNamed, Name: t.Name, Module: module, Identity: module + "::" + t.Name, Base: baseID}), nil
 	}
 	return b.module.Types.Intern(base), nil
+}
+
+// internArrayType implements SEC-MLIR Package 14 sections 9-13 and 27-28 for
+// the Semantic IR type layer only. Array construction, indexing and storage
+// operations remain separate Package 14 work items.
+func (b *builder) internArrayType(t sema.Type) (TypeID, error) {
+	if t.Element == nil {
+		return 0, &UnsupportedFeatureError{Feature: "array type with missing element", Package: b.maxPackage}
+	}
+	length, fixed := sema.FixedArrayLength(t)
+	if !fixed {
+		return 0, &UnsupportedFeatureError{Feature: "dynamic array type " + t.Name, Package: b.maxPackage}
+	}
+	element, err := b.internType(*t.Element)
+	if err != nil {
+		return 0, err
+	}
+	return b.module.Types.Intern(Type{
+		Kind:    TypeArray,
+		Name:    t.Name,
+		Element: element,
+		Length:  length.String(),
+	}), nil
 }
 
 // internStructType implements rules/mlir/semantic-ir/
@@ -708,6 +737,12 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 	}
 	if errExpr, ok := expr.(*ast.ErrExpression); ok {
 		return fb.buildResultConstructor(errExpr.Value, expected, false, location(errExpr.Token))
+	}
+	if arrayLiteral, ok := expr.(*ast.ArrayLiteral); ok && fb.owner.maxPackage >= 14 {
+		// SEC-MLIR Package 14 section 36: until P14-29 source lowering is
+		// wired, array literals must fail as a package-scoped unsupported
+		// feature instead of leaking a partial module or placeholder op.
+		return builtValue{}, fb.unsupported("array literal", arrayLiteral.Token)
 	}
 	resolved, ok := fb.owner.analyzer.ResolvedTypeOf(expr)
 	if !ok {
@@ -2140,6 +2175,10 @@ func ownershipForParameter(p sema.FunctionParameter, maxPackage uint8) (Ownershi
 		return OwnershipRawPointer, nil
 	case sema.BoolType, sema.IntType, sema.UintType, sema.FloatType, sema.DecimalType, sema.CharType, sema.RuneType, sema.EnumType:
 		return OwnershipImmediate, nil
+	case sema.ArrayType:
+		if maxPackage >= 14 && sema.CopyClassificationOf(p.Type) == sema.CopyTrivial && sema.TriviallyDestructible(p.Type) {
+			return OwnershipImmediate, nil
+		}
 	case sema.UnionType, sema.ResultType, sema.StructType:
 		if sema.CopyClassificationOf(p.Type) == sema.CopyTrivial && sema.TriviallyDestructible(p.Type) {
 			return OwnershipImmediate, nil

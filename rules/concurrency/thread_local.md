@@ -509,7 +509,7 @@ functions.md
 ownership.md
 borrowing.txt
 references.txt
-lifetime_analysis.txt
+lifetime_analysis.md
 destruction.txt
 platform/ffi.md
 compiler_analysis.txt

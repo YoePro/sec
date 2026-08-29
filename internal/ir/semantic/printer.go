@@ -86,6 +86,9 @@ func formatType(t Type) string {
 	if t.Kind == TypeStruct {
 		return fmt.Sprintf("struct %q", t.Identity)
 	}
+	if t.Kind == TypeArray {
+		return fmt.Sprintf("array<!%d, %q>", t.Element, t.Length)
+	}
 	s := t.Name
 	if s == "" {
 		s = string(t.Kind)
@@ -248,6 +251,29 @@ func formatOperation(out *strings.Builder, op Operation) {
 		fmt.Fprintf(out, " %%%d field=#%d[%s]", op.Operands[0], op.StructField, op.StructActions[0])
 	case OpStructReplaceField:
 		fmt.Fprintf(out, " %%%d field=#%d value=%%%d", op.Operands[0], op.StructField, op.Operands[1])
+	case OpArrayConstruct:
+		fmt.Fprintf(out, " element=!%d length=%q", op.ArrayElementType, op.ArrayLength)
+		for index, operand := range op.Operands {
+			fmt.Fprintf(out, " #%d=%%%d[%s,%s,%s]", index, operand, op.ArraySegmentKinds[index], op.ArraySegmentLengths[index], op.ArrayActions[index])
+		}
+	case OpArrayDefault:
+		fmt.Fprintf(out, " element=!%d length=%q", op.ArrayElementType, op.ArrayLength)
+	case OpArrayLength:
+		fmt.Fprintf(out, " %%%d exact=%q", op.Operands[0], op.ArrayLength)
+	case OpArrayIndexInBounds:
+		fmt.Fprintf(out, " %%%d, %%%d signed=%t", op.Operands[0], op.Operands[1], op.ArrayIndexSigned)
+	case OpArrayExtract:
+		fmt.Fprintf(out, " %%%d, %%%d bounds=%s proof=%s action=%s", op.Operands[0], op.Operands[1], op.ArrayCheckKind, op.ArrayProofKind, op.ArrayActions[0])
+		if op.ArrayGuard != 0 {
+			fmt.Fprintf(out, " guard=%%%d", op.ArrayGuard)
+		}
+	case OpArrayReplace:
+		fmt.Fprintf(out, " %%%d, %%%d value=%%%d bounds=%s proof=%s", op.Operands[0], op.Operands[1], op.Operands[2], op.ArrayCheckKind, op.ArrayProofKind)
+		if op.ArrayGuard != 0 {
+			fmt.Fprintf(out, " guard=%%%d", op.ArrayGuard)
+		}
+	case OpBoundsFailure:
+		fmt.Fprintf(out, " operation=%q", op.ArrayOperation)
 	}
 	if op.TryHandlerKind != "" {
 		fmt.Fprintf(out, " [handler=%s index=%d", op.TryHandlerKind, op.TryHandlerIndex)

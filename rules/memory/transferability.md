@@ -522,7 +522,7 @@ borrowing.txt
 references.txt
 raw_pointers.txt
 copy_move.md
-lifetime_analysis.txt
+lifetime_analysis.md
 destruction.txt
 platform/ffi.md
 concurrency.md

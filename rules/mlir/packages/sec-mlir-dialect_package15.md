@@ -54,7 +54,7 @@ rules/memory/reference_model.md
 rules/memory/references.txt
 rules/memory/borrowing.md
 rules/memory/memory_model.md
-rules/memory/lifetime_analysis.txt
+rules/memory/lifetime_analysis.md
 rules/memory/storage.md
 rules/memory/ownership.md
 rules/memory/copy_move.md

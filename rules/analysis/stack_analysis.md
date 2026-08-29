@@ -489,9 +489,9 @@ thread frame chain
 
 may share one physical stack domain.
 
-The ISR rulebook determines which ISR call paths and nesting relationships are
-valid. Stack analysis consumes those relationships and computes their resource
-contribution.
+`rules/platform/interrupts.md` determines the canonical nesting relationships;
+`rules/analysis/isr_analysis.md` validates each root against its profile. Stack
+analysis consumes those facts and computes their resource contribution.
 
 ---
 

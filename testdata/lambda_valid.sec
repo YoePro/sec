@@ -442,6 +442,12 @@ fn RunLambdaTests(value: int) Result[int, LambdaError] {
         return Ok(basic + inlineValue + returned + captured + nested + parsed)
     }
 
+    let factor := 10
+
+    let multiply := capture(factor) fn(value: int) int {
+        return value * factor
+    }
+
     return Err(LambdaError.InvalidValue)
 }
 
@@ -454,4 +460,12 @@ fn Sum(numbers: ...int) int {
     }
 
     return total
+}
+
+fn GetSummer() fn(int, int) int {
+    let s := fn(total: int, n: int) int {
+        return total + n
+    }
+
+    return s
 }

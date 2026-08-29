@@ -3,3 +3,5 @@ vscode/node_modules/
 automation/
 manual/task1_manual.yaml
 /build/
+
+codex.md

@@ -508,7 +508,7 @@ types.md
 functions.md
 ownership.md
 borrowing.txt
-references.txt
+references.md
 lifetime_analysis.md
 destruction.txt
 platform/ffi.md

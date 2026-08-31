@@ -1343,7 +1343,7 @@ cancellation.md
 threads.md
 unsafe.md
 platform/ffi.md
-allocation.txt
+allocation.md
 diagnostics.txt
 lsp.md
 formatter.md

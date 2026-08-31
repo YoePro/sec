@@ -294,11 +294,11 @@ The remaining details to close are:
 
 | Rulebook | Status | Notes |
 |---|---|---|
-| `memory/allocation.txt` | **Written — sync required** | Must be synchronized with collections, threads, explicit backing storage, and shaped buffers. |
+| `memory/allocation.md` | **Written** | Canonical revision 2.0 allocation contexts, effects, Arena integration, failure, capacity, target policy, Semantic IR, lowering, diagnostics, and LSP. Implementation progress is tracked by the six `*.allocation` entries in `implementation-status.yaml`. |
 | `memory/arena.md` | **Written** | Canonical Arena ownership, backing, allocation, reset/release, validity epoch, effects, analysis and lowering model. Recognized operations now produce direct graph events, synchronous `MayAllocate` summaries, cause paths, and LSP hover; context, demand, dependency, and lowering work remains partial. |
 | `memory/ownership.md` | **Written** | Canonical revision 2.0 ownership, including Correction 30 exact-Place availability tests, mask-preserving negative refinement, pending call-transfer reservations, and runtime-state requirements for discard/replacement/cleanup as well as explicit queries. Implementation progress is tracked by `frontend.ownership-v2` in `implementation-status.yaml`. |
 | `memory/borrowing.md` | **Written** | Canonical revision 2.0 borrowing, including shared/mutable borrow authority, reborrowing, Place overlap, control-flow merging, match/defer interactions, and reference-origin obligations. Implementation progress is tracked by `frontend.borrowing`, `semantic-ir.borrowing`, `lowering.borrowing`, and `tooling.borrowing` in `implementation-status.yaml`. |
-| `memory/references.txt` | **Written — sync required** | Must include shaped views and thread-bound references. |
+| `memory/references.md` | **Written** | Canonical revision 2.0 safe-reference semantics, including provenance, views, returned references, generations, relocation, hardware/ISR boundaries, Semantic IR, lowering, diagnostics, and LSP. Implementation progress is tracked by the six `*.references` entries in `implementation-status.yaml`. |
 | `memory/reference_model.md` | **Written** | Canonical safe-reference guarantees, validity epochs, stable and weak handles, relocation, profile representations, and `RawPtr` boundaries. |
 | `generational_references.md` | **Covered** | Generational validity is canonical in `memory/reference_model.md`; no separate rulebook is required. |
 | `memory/raw_pointers.txt` | **Written — sync required** | Must be synchronized with memory spaces, ABI, and unsafe rules. |
@@ -321,7 +321,7 @@ memory/storage.md
 Allocation policy remains in:
 
 ```text
-memory/allocation.txt
+memory/allocation.md
 ```
 
 Physical storage categories and placement belong in:
@@ -576,7 +576,7 @@ multiple target outputs
 The following rulebooks are currently considered written.
 
 ```text
-memory/allocation.txt
+memory/allocation.md
 collections/collections.md
 memory/arena.md
 foundations/attributes.md
@@ -639,7 +639,7 @@ projects/modules.md
 declarations/properties.md
 memory/raw_pointers.txt
 memory/reference_model.md
-memory/references.txt
+memory/references.md
 declarations/registers.md
 platform/fixed-address-bindings.md
 platform/volatile.md

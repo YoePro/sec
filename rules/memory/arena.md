@@ -32,7 +32,7 @@ It defines:
 
 All normative Arena semantics belong to this document.
 
-General allocation semantics remain owned by `allocation.txt`.
+General allocation semantics remain owned by `allocation.md`.
 
 Safe reference semantics, storage identity, validity epochs, stable handles, weak
 handles, and `RawPtr[T]` remain owned by `reference_model.md`.
@@ -3826,7 +3826,7 @@ that this list remains current.
 This rulebook must remain synchronized with:
 
 ```text
-allocation.txt
+allocation.md
 attributes.md
 borrowing.txt
 call_graph.md
@@ -3872,7 +3872,7 @@ Arena semantics from this document rather than redefine them.
 arena.md
     owns Arena source and compiler semantics
 
-allocation.txt
+allocation.md
     owns general allocation semantics and allocation-context policy
 
 reference_model.md

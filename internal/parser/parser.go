@@ -352,6 +352,9 @@ func (p *Parser) parseStatement() ast.Statement {
 		if p.peekToken.Type == lexer.IDENT && p.peekToken.Lexeme == "noCopy" {
 			return p.parseNoCopyDeclaration()
 		}
+		if p.peekToken.Type == lexer.IDENT && p.peekToken.Lexeme == "noPanic" {
+			return p.parseNoPanicDeclaration()
+		}
 		return p.parseExpressionOrAssignmentStatement()
 
 	case lexer.IDENT:
@@ -3226,6 +3229,13 @@ func (p *Parser) parseImplStatement() ast.Statement {
 				continue
 			}
 			stmt.Members = append(stmt.Members, fn)
+		case lexer.AT:
+			parsed := p.parseNoPanicDeclaration()
+			fn, ok := parsed.(*ast.FunctionDeclaration)
+			if !ok || fn == nil {
+				continue
+			}
+			stmt.Members = append(stmt.Members, fn)
 		case lexer.IDENT:
 			if p.curToken.Lexeme == "init" && p.peekToken.Type == lexer.LPAREN {
 				initializer := p.parseInitDeclaration()
@@ -5305,6 +5315,44 @@ func (p *Parser) parseNoCopyDeclaration() ast.Statement {
 		return nil
 	}
 	return stmt
+}
+
+// parseNoPanicDeclaration implements the verified, argument-free function
+// attribute from attributes.md. Effect verification is performed by Sema.
+func (p *Parser) parseNoPanicDeclaration() ast.Statement {
+	attributeToken := p.curToken
+	if !p.expectPeek(lexer.IDENT) {
+		return nil
+	}
+	nameToken := p.curToken
+	attribute := &ast.Attribute{
+		Token: attributeToken,
+		Name:  &ast.Identifier{Token: nameToken, Value: nameToken.Lexeme},
+	}
+	if p.peekToken.Type == lexer.LPAREN {
+		argumentToken := p.peekToken
+		p.addError("@noPanic does not take arguments at %d:%d", argumentToken.Line, argumentToken.Column)
+		p.consumeAttributeArguments()
+	}
+
+	p.skipPeekComments()
+	if p.peekToken.Type == lexer.AT {
+		p.addError("duplicate or unsupported attribute after @noPanic at %d:%d", p.peekToken.Line, p.peekToken.Column)
+		return nil
+	}
+	if p.peekToken.Type != lexer.FN && p.peekToken.Type != lexer.UNSAFE {
+		p.addError("@noPanic may only annotate a function or method at %d:%d", p.peekToken.Line, p.peekToken.Column)
+		return nil
+	}
+	p.nextToken()
+	parsed := p.parseStatement()
+	fn, ok := parsed.(*ast.FunctionDeclaration)
+	if !ok || fn == nil {
+		p.addError("@noPanic may only annotate a function or method at %d:%d", p.curToken.Line, p.curToken.Column)
+		return nil
+	}
+	fn.Attributes = append(fn.Attributes, attribute)
+	return fn
 }
 
 func (p *Parser) consumeAttributeArguments() RecoveryEvent {

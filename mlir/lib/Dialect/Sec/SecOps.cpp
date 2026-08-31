@@ -698,6 +698,97 @@ LogicalResult StructReplaceFieldOp::verify() {
   return success();
 }
 
+namespace {
+FailureOr<APInt> parseCanonicalArrayLength(Attribute attribute,
+                                           Operation *operation) {
+  auto string = dyn_cast<StringAttr>(attribute);
+  if (!string)
+    return operation->emitOpError(
+        "array segment lengths must be string attributes");
+  StringRef spelling = string.getValue();
+  if (spelling.empty() ||
+      (spelling.size() > 1 && spelling.front() == '0') ||
+      !llvm::all_of(spelling, [](char value) {
+        return value >= '0' && value <= '9';
+      }))
+    return operation->emitOpError(
+        "array segment lengths must be canonical unsigned decimal");
+  APInt value;
+  if (spelling.getAsInteger(10, value))
+    return operation->emitOpError("array segment length is not decimal");
+  return value;
+}
+
+APInt addUnsignedExact(APInt left, const APInt &right) {
+  unsigned width = std::max(left.getBitWidth(), right.getBitWidth()) + 1;
+  return left.zext(width) + right.zext(width);
+}
+} // namespace
+
+// ArrayConstructOp::verify enforces compact source-ordered fixed-array
+// construction without expanding spreads. Rules:
+// rules/mlir/packages/sec-mlir-dialect_package14.md sections 62-63 and
+// rules/mlir/dialect-versions/sec_mlir_dialect_v10.md sections 7-10.
+LogicalResult ArrayConstructOp::verify() {
+  auto resultType = dyn_cast<ArrayType>(getResult().getType());
+  if (!resultType)
+    return emitOpError("result must have !sec.array type");
+  if (getSegmentKinds().size() != getSegments().size() ||
+      getSegmentLengths().size() != getSegments().size() ||
+      getSegmentActions().size() != getSegments().size())
+    return emitOpError(
+        "segment operands, kinds, lengths, and actions must have equal counts");
+
+  APInt total(1, 0);
+  for (auto [index, operand] : llvm::enumerate(getSegments())) {
+    auto kind = dyn_cast<StringAttr>(getSegmentKinds()[index]);
+    auto action = dyn_cast<StringAttr>(getSegmentActions()[index]);
+    if (!kind || !action)
+      return emitOpError("array segment kinds and actions must be strings");
+    auto length = parseCanonicalArrayLength(getSegmentLengths()[index], *this);
+    if (failed(length))
+      return failure();
+
+    if (kind.getValue() == "element") {
+      if (action.getValue() != "construct-direct")
+        return emitOpError(
+            "element segment action must be construct-direct");
+      if (*length != 1)
+        return emitOpError("element segment length must be 1");
+      if (operand.getType() != resultType.getElementType())
+        return emitOpError(
+            "element segment type must match the result element type");
+    } else if (kind.getValue() == "spread") {
+      if (action.getValue() != "copy-trivial")
+        return emitOpError("spread segment action must be copy-trivial");
+      auto spreadType = dyn_cast<ArrayType>(operand.getType());
+      if (!spreadType ||
+          spreadType.getElementType() != resultType.getElementType())
+        return emitOpError(
+            "spread segment must be an array of the result element type");
+      auto spreadLength =
+          parseCanonicalArrayLength(spreadType.getLength(), *this);
+      if (failed(spreadLength))
+        return failure();
+      if (*length != *spreadLength)
+        return emitOpError(
+            "spread segment length must match its operand array length");
+    } else {
+      return emitOpError("array segment kind must be element or spread");
+    }
+    total = addUnsignedExact(std::move(total), *length);
+  }
+
+  auto expected = parseCanonicalArrayLength(resultType.getLength(), *this);
+  if (failed(expected))
+    return failure();
+  unsigned width = std::max(total.getBitWidth(), expected->getBitWidth());
+  if (total.zext(width) != expected->zext(width))
+    return emitOpError(
+        "exact segment length sum must match the result array length");
+  return success();
+}
+
 LogicalResult UnreachableOp::verify() {
   auto synthesized = (*this)->getAttrOfType<BoolAttr>("sec.synthesized");
   if (!synthesized || !synthesized.getValue())

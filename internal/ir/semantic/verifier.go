@@ -1485,6 +1485,9 @@ func verifyArrayIndexGuards(module *Module, fn *Function, blocks map[BlockID]*Bl
 	return nil
 }
 
+// validArrayBoundsFailureBlock accepts either the ordinary terminating bounds
+// endpoint or typed IndexError.OutOfBounds propagation/handler flow. Rules:
+// rules/mlir/packages/sec-mlir-dialect_package14.md sections 48-54.
 func validArrayBoundsFailureBlock(module *Module, block *Block, values map[ValueID]Value) bool {
 	if block == nil || len(block.Operations) == 0 {
 		return false
@@ -1503,7 +1506,18 @@ func validArrayBoundsFailureBlock(module *Module, block *Block, values map[Value
 	}
 	errorValue := constant.Results[0].ID
 	construct := block.Operations[1]
-	if construct.Kind != OpResultErr || len(construct.Operands) != 1 || construct.Operands[0] != errorValue || len(construct.Results) != 1 {
+	if construct.Kind != OpResultErr {
+		// A locally handled fallible bounds edge may execute the selected handler
+		// directly after materializing the sole concrete IndexError variant. The
+		// shared try-handler verifier validates its dispatch/merge metadata.
+		for _, operation := range block.Operations[1:] {
+			if operation.Kind == OpBoundsFailure {
+				return false
+			}
+		}
+		return block.Operations[len(block.Operations)-1].IsTerminator()
+	}
+	if len(construct.Operands) != 1 || construct.Operands[0] != errorValue || len(construct.Results) != 1 {
 		return false
 	}
 	result, ok := module.Types.Lookup(construct.Results[0].Type)

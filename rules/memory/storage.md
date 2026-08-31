@@ -50,7 +50,7 @@ Adjacent rulebooks retain responsibility for their specialized areas:
 memory_model.md
     the common abstract memory machine
 
-allocation.txt
+allocation.md
     allocation operations, allocation contexts, providers, and failure
 
 arena.md
@@ -1568,7 +1568,7 @@ Dynamic storage may be established only through:
 - an explicit allocating operation;
 - an operation whose documented semantics allocate;
 - an explicit or compiler-propagated allocation context defined by
-  `allocation.txt`;
+  `allocation.md`;
 - a target contract that explicitly provides storage.
 
 If the required storage lifetime cannot be proved or explicitly supplied, the
@@ -2552,9 +2552,9 @@ invalidation, and runtime-generation model from this document.
 Reference-specific bounds, provenance, handle resolution, equality, and stale
 failure behavior remain owned by `reference_model.md`.
 
-## `allocation.txt`
+## `allocation.md`
 
-Allocation selection and failure remain owned by `allocation.txt`.
+Allocation selection and failure remain owned by `allocation.md`.
 
 It must use `AllocatorBacked` and `Arena` origins consistently and preserve the
 no-hidden-promotion rule.

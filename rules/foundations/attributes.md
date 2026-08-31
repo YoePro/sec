@@ -2648,7 +2648,7 @@ copy_move.md
 ownership.md
 runtime_checks.md
 panic.md
-allocation.txt
+allocation.md
 defer.md
 destruction.txt
 inline_assembly.md

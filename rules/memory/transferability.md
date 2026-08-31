@@ -519,7 +519,7 @@ atomics.md
 events.md
 ownership.md
 borrowing.txt
-references.txt
+references.md
 raw_pointers.txt
 copy_move.md
 lifetime_analysis.md

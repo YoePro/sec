@@ -882,6 +882,7 @@ fn Divide(left: int64, right: int64) int64 {
   }
   return value
 }
+
 fn Add(left: int128, right: int128) Result[int128, ArithmeticError] {
   let value := try left + right {
     Err(error) => return Err(error)
@@ -929,6 +930,55 @@ fn Add(left: int128, right: int128) Result[int128, ArithmeticError] {
 	before := len(a.resolvedTryPlans)
 	if _, ok := a.ResolvedTryPlanOf(&ast.TryExpression{}); ok || len(a.resolvedTryPlans) != before {
 		t.Fatal("read-only try-plan query resolved or mutated an unknown expression")
+	}
+}
+
+func TestFixedArrayBoundsTryPublishesTypedFlowAndRemovesPanicEffect(t *testing.T) {
+	source := `module main
+fn Read(values: int[4], index: int) Result[int, IndexError] {
+  return Ok(try values[index])
+}
+fn Local(values: int[4], index: int) int {
+  return try values[index] {
+    Err(IndexError.OutOfBounds) => 0
+  }
+}
+`
+	p := parser.New(lexer.NewWithFile(source, "bounds-try.sec"))
+	result := p.Parse()
+	if result.HasErrors {
+		t.Fatalf("parse: %v", p.Errors())
+	}
+	a := NewAnalyzer()
+	if errors := a.Analyze(result.Program); len(errors) != 0 {
+		t.Fatalf("sema: %v", errors)
+	}
+
+	for index, wantKind := range []ResolvedTryKind{ResolvedTryBoundsPropagation, ResolvedTryHandledBounds} {
+		function := result.Program.Statements[index+1].(*ast.FunctionDeclaration)
+		ret := function.Body.Statements[0].(*ast.ReturnStatement)
+		var tryExpr *ast.TryExpression
+		switch value := ret.Value.(type) {
+		case *ast.TryExpression:
+			tryExpr = value
+		case *ast.OkExpression:
+			tryExpr = value.Value.(*ast.TryExpression)
+		default:
+			t.Fatalf("%s return value = %T", function.Name.Value, ret.Value)
+		}
+		fact, found := a.ResolvedTryOf(tryExpr)
+		if !found || fact.Kind != wantKind || fact.ErrorType.Name != "IndexError" {
+			t.Fatalf("%s try fact = %#v, found=%t", function.Name.Value, fact, found)
+		}
+		indexExpr := tryExpr.Expression.(*ast.IndexExpression)
+		plan, found := a.ResolvedArrayIndexPlanOf(indexExpr)
+		if !found || plan.FailureMode != ArrayIndexFailureFallible || plan.ErrorType.Name != "IndexError" {
+			t.Fatalf("%s index plan = %#v, found=%t", function.Name.Value, plan, found)
+		}
+		id := callGraphNodeIDByName(t, a.CallGraph(), function.Name.Value)
+		if summary := a.CallGraph().EffectSummary(id); summary.MayPanic || len(summary.DirectEffects) != 0 {
+			t.Fatalf("%s effects = %#v, want typed bounds flow without panic", function.Name.Value, summary)
+		}
 	}
 }
 

@@ -1977,7 +1977,7 @@ memory_model.md
 ownership.md
 copy_move.md
 destruction.txt
-allocation.txt
+allocation.md
 formatter.md
 operators.md
 grammar.md

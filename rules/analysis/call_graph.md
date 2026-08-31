@@ -3137,7 +3137,7 @@ defer.md
 destruction.txt
 panic.md
 runtime_checks.md
-allocation.txt
+allocation.md
 ownership.md
 borrowing.txt
 lifetime_analysis.md

@@ -579,7 +579,16 @@ func (fb *functionBuilder) buildAssignment(stmt *ast.AssignmentStatement) error 
 	if stmt.Operator != "=" {
 		return fb.unsupported("compound assignment", stmt.Token)
 	}
+	if index, ok := stmt.Target.(*ast.IndexExpression); ok && fb.owner.maxPackage >= 14 {
+		if _, simple := index.Left.(*ast.Identifier); !simple {
+			return fb.buildNestedAggregateAssignment(stmt)
+		}
+		return fb.buildArrayIndexAssignment(stmt, index)
+	}
 	if member, ok := stmt.Target.(*ast.MemberExpression); ok && fb.owner.maxPackage >= 13 {
+		if fb.owner.maxPackage >= 14 && aggregatePathContainsIndex(member) {
+			return fb.buildNestedAggregateAssignment(stmt)
+		}
 		return fb.buildStructFieldAssignment(stmt, member)
 	}
 	id, ok := stmt.Target.(*ast.Identifier)
@@ -599,6 +608,305 @@ func (fb *functionBuilder) buildAssignment(stmt *ast.AssignmentStatement) error 
 		return err
 	}
 	fb.emit(Operation{Kind: OpStorageStore, Storage: bind.storage, Operands: []ValueID{value.id}, Location: location(stmt.Token)})
+	return nil
+}
+
+type aggregateProjectionKind uint8
+
+const (
+	aggregateProjectionField aggregateProjectionKind = iota + 1
+	aggregateProjectionIndex
+)
+
+type aggregateAssignmentProjection struct {
+	kind       aggregateProjectionKind
+	field      sema.ResolvedStructMemberPlan
+	index      sema.ResolvedArrayIndexPlan
+	indexExpr  ast.Expression
+	parent     builtValue
+	indexValue builtValue
+	checkKind  ArrayIndexCheckKind
+	proofKind  ArrayIndexProofKind
+	guard      ValueID
+}
+
+func aggregatePathContainsIndex(expr ast.Expression) bool {
+	switch expression := expr.(type) {
+	case *ast.IndexExpression:
+		return true
+	case *ast.MemberExpression:
+		return aggregatePathContainsIndex(expression.Object)
+	default:
+		return false
+	}
+}
+
+// buildNestedAggregateAssignment implements the leaf-to-root rebuild required
+// by rules/mlir/packages/sec-mlir-dialect_package14.md section 47. It supports
+// stored struct fields and fixed-array indexes rooted in one trivial mutable
+// local. Each index is evaluated and guarded once before the RHS; reverse
+// replacement commits the exact root type through one storage.store.
+func (fb *functionBuilder) buildNestedAggregateAssignment(stmt *ast.AssignmentStatement) error {
+	root, projections, err := fb.resolveAggregateAssignmentPath(stmt.Target)
+	if err != nil {
+		return err
+	}
+	if root == nil || len(projections) < 2 {
+		return fb.unsupported("non-nested aggregate assignment", statementToken(stmt))
+	}
+	fact, ok := fb.owner.analyzer.ResolvedBindingOf(root)
+	if !ok {
+		return fmt.Errorf("missing resolved aggregate root binding")
+	}
+	bind, ok := fb.bindings[fact.ID]
+	if !ok || bind.storage == 0 || !bind.mutable || !fb.storageAllowed(bind.typ) {
+		return fb.unsupported("nested assignment without trivial mutable root storage", root.Token)
+	}
+
+	current := fb.result(Operation{Kind: OpStorageLoad, Storage: bind.storage, Location: location(stmt.Token)}, bind.typ)
+	for index := range projections {
+		projection := &projections[index]
+		projection.parent = current
+		last := index == len(projections)-1
+		switch projection.kind {
+		case aggregateProjectionField:
+			if projection.field.Kind != sema.MemberStoredField || projection.field.Action != sema.StructFieldCopyTrivial {
+				return fb.unsupported("non-trivial nested struct field", expressionToken(stmt.Target))
+			}
+			if !last {
+				fieldType, internErr := fb.owner.internType(projection.field.MemberType)
+				if internErr != nil {
+					return internErr
+				}
+				current = fb.result(Operation{
+					Kind: OpStructExtractField, Operands: []ValueID{current.id},
+					StructField:   StructFieldID(projection.field.FieldID),
+					StructActions: []StructFieldAction{StructActionCopyTrivial}, Location: location(stmt.Token),
+				}, fieldType)
+			}
+		case aggregateProjectionIndex:
+			indexType, internErr := fb.owner.internType(projection.index.IndexType)
+			if internErr != nil {
+				return internErr
+			}
+			projection.indexValue, internErr = fb.buildExpr(projection.indexExpr, indexType)
+			if internErr != nil {
+				return internErr
+			}
+			if projection.index.CheckKind == sema.ArrayIndexRuntimeCheck {
+				if projection.index.FailureMode != sema.ArrayIndexFailureOrdinary {
+					return fb.unsupported("non-ordinary nested array index", expressionToken(projection.indexExpr))
+				}
+				boolType, boolErr := fb.owner.internType(sema.Type{Name: "bool", Kind: sema.BoolType})
+				if boolErr != nil {
+					return boolErr
+				}
+				predicate := fb.result(Operation{
+					Kind: OpArrayIndexInBounds, Operands: []ValueID{current.id, projection.indexValue.id},
+					ArrayIndexSigned: projection.index.IndexSigned, Location: location(stmt.Token),
+				}, boolType)
+				success := fb.newBlock()
+				failure := fb.newBlock()
+				fb.emit(Operation{
+					Kind: OpCondBranch, Operands: []ValueID{predicate.id},
+					Successors: []BranchTarget{{Block: success.ID}, {Block: failure.ID}}, Location: location(stmt.Token),
+				})
+				fb.current = failure
+				fb.emit(Operation{Kind: OpBoundsFailure, ArrayOperation: "fixed-array-index", Location: location(stmt.Token)})
+				fb.current = success
+				projection.checkKind = ArrayIndexRuntimeCheck
+				projection.proofKind = ArrayIndexProofGuarded
+				projection.guard = predicate.id
+			} else {
+				proof, proofOK := semanticArrayIndexProof(projection.index.ProofKind)
+				if projection.index.CheckKind != sema.ArrayIndexProvenSafe || projection.index.FailureMode != sema.ArrayIndexFailureNone || !proofOK {
+					return fmt.Errorf("invalid proven-safe nested array index plan")
+				}
+				projection.checkKind = ArrayIndexProvenSafe
+				projection.proofKind = proof
+			}
+			if !last {
+				if projection.index.Action != sema.ArrayTransferCopyTrivial {
+					return fb.unsupported("non-trivial nested array traversal", expressionToken(projection.indexExpr))
+				}
+				elementType, elementErr := fb.owner.internType(projection.index.ElementType)
+				if elementErr != nil {
+					return elementErr
+				}
+				current = fb.result(Operation{
+					Kind: OpArrayExtract, Operands: []ValueID{current.id, projection.indexValue.id},
+					ArrayCheckKind: projection.checkKind, ArrayProofKind: projection.proofKind, ArrayGuard: projection.guard,
+					ArrayActions: []ArrayTransferAction{ArrayActionCopyTrivial}, Location: location(stmt.Token),
+				}, elementType)
+			}
+		default:
+			return fmt.Errorf("unknown aggregate assignment projection")
+		}
+	}
+
+	leaf := projections[len(projections)-1]
+	var leafType TypeID
+	if leaf.kind == aggregateProjectionField {
+		leafType, err = fb.owner.internType(leaf.field.MemberType)
+	} else {
+		leafType, err = fb.owner.internType(leaf.index.ElementType)
+	}
+	if err != nil {
+		return err
+	}
+	replacement, err := fb.buildExpr(stmt.Value, leafType)
+	if err != nil {
+		return err
+	}
+	for index := len(projections) - 1; index >= 0; index-- {
+		projection := projections[index]
+		switch projection.kind {
+		case aggregateProjectionField:
+			replacement = fb.result(Operation{
+				Kind: OpStructReplaceField, Operands: []ValueID{projection.parent.id, replacement.id},
+				StructField: StructFieldID(projection.field.FieldID), Location: location(stmt.Token),
+			}, projection.parent.typ)
+		case aggregateProjectionIndex:
+			replacement = fb.result(Operation{
+				Kind: OpArrayReplace, Operands: []ValueID{projection.parent.id, projection.indexValue.id, replacement.id},
+				ArrayCheckKind: projection.checkKind, ArrayProofKind: projection.proofKind,
+				ArrayGuard: projection.guard, Location: location(stmt.Token),
+			}, projection.parent.typ)
+		}
+	}
+	fb.emit(Operation{Kind: OpStorageStore, Storage: bind.storage, Operands: []ValueID{replacement.id}, Location: location(stmt.Token)})
+	return nil
+}
+
+func (fb *functionBuilder) resolveAggregateAssignmentPath(target ast.Expression) (*ast.Identifier, []aggregateAssignmentProjection, error) {
+	projections := []aggregateAssignmentProjection{}
+	var walk func(ast.Expression) (*ast.Identifier, error)
+	walk = func(expression ast.Expression) (*ast.Identifier, error) {
+		switch current := expression.(type) {
+		case *ast.Identifier:
+			return current, nil
+		case *ast.MemberExpression:
+			root, err := walk(current.Object)
+			if err != nil {
+				return nil, err
+			}
+			plan, ok := fb.owner.analyzer.ResolvedStructMemberOf(current)
+			if !ok {
+				return nil, fb.unsupported("unresolved nested struct member", current.Token)
+			}
+			projections = append(projections, aggregateAssignmentProjection{kind: aggregateProjectionField, field: plan})
+			return root, nil
+		case *ast.IndexExpression:
+			root, err := walk(current.Left)
+			if err != nil {
+				return nil, err
+			}
+			plan, ok := fb.owner.analyzer.ResolvedArrayIndexPlanOf(current)
+			if !ok {
+				return nil, fb.unsupported("unresolved nested array index", current.Token)
+			}
+			projections = append(projections, aggregateAssignmentProjection{kind: aggregateProjectionIndex, index: plan, indexExpr: current.Index})
+			return root, nil
+		default:
+			return nil, fb.unsupported("non-local nested aggregate assignment", expressionToken(expression))
+		}
+	}
+	root, err := walk(target)
+	return root, projections, err
+}
+
+// buildArrayIndexAssignment implements the simple-root transactional update in
+// rules/mlir/packages/sec-mlir-dialect_package14.md sections 43 and 46. Root
+// and index are resolved once, runtime bounds failure precedes RHS evaluation,
+// and successful replacement commits through exactly one storage.store.
+// Nested aggregate paths remain the separate P14-52 boundary.
+func (fb *functionBuilder) buildArrayIndexAssignment(stmt *ast.AssignmentStatement, target *ast.IndexExpression) error {
+	root, ok := target.Left.(*ast.Identifier)
+	if !ok {
+		return fb.unsupported("nested fixed-array index assignment", target.Token)
+	}
+	plan, ok := fb.owner.analyzer.ResolvedArrayIndexPlanOf(target)
+	if !ok || plan.UseKind != sema.ArrayIndexWrite || plan.Action != sema.ArrayTransferConstructDirect {
+		return fb.unsupported("unresolved or non-trivial fixed-array index assignment", target.Token)
+	}
+	fact, ok := fb.owner.analyzer.ResolvedBindingOf(root)
+	if !ok {
+		return fmt.Errorf("missing resolved array assignment root binding")
+	}
+	bind, ok := fb.bindings[fact.ID]
+	if !ok || bind.storage == 0 || !bind.mutable || !fb.storageAllowed(bind.typ) {
+		return fb.unsupported("fixed-array assignment without trivial mutable root storage", root.Token)
+	}
+	arrayType, err := fb.owner.internType(plan.ArrayType)
+	if err != nil {
+		return err
+	}
+	if bind.typ != arrayType {
+		return fmt.Errorf("fixed-array assignment root type mismatch")
+	}
+	indexType, err := fb.owner.internType(plan.IndexType)
+	if err != nil {
+		return err
+	}
+	elementType, err := fb.owner.internType(plan.ElementType)
+	if err != nil {
+		return err
+	}
+	index, err := fb.buildExpr(target.Index, indexType)
+	if err != nil {
+		return err
+	}
+	loc := location(target.Token)
+
+	var current builtValue
+	checkKind := ArrayIndexProvenSafe
+	proofKind, proofOK := semanticArrayIndexProof(plan.ProofKind)
+	guard := ValueID(0)
+	if plan.CheckKind == sema.ArrayIndexRuntimeCheck {
+		if plan.FailureMode != sema.ArrayIndexFailureOrdinary {
+			return fb.unsupported("non-ordinary fixed-array assignment failure mode", target.Token)
+		}
+		current = fb.result(Operation{Kind: OpStorageLoad, Storage: bind.storage, Location: loc}, bind.typ)
+		boolType, boolErr := fb.owner.internType(sema.Type{Name: "bool", Kind: sema.BoolType})
+		if boolErr != nil {
+			return boolErr
+		}
+		predicate := fb.result(Operation{
+			Kind: OpArrayIndexInBounds, Operands: []ValueID{current.id, index.id},
+			ArrayIndexSigned: plan.IndexSigned, Location: loc,
+		}, boolType)
+		success := fb.newBlock()
+		failure := fb.newBlock()
+		fb.emit(Operation{
+			Kind: OpCondBranch, Operands: []ValueID{predicate.id},
+			Successors: []BranchTarget{{Block: success.ID}, {Block: failure.ID}}, Location: loc,
+		})
+		fb.current = failure
+		fb.emit(Operation{Kind: OpBoundsFailure, ArrayOperation: "fixed-array-index", Location: loc})
+		fb.current = success
+		checkKind = ArrayIndexRuntimeCheck
+		proofKind = ArrayIndexProofGuarded
+		guard = predicate.id
+	} else {
+		if plan.CheckKind != sema.ArrayIndexProvenSafe || plan.FailureMode != sema.ArrayIndexFailureNone || !proofOK {
+			return fmt.Errorf("invalid proven-safe fixed-array assignment plan")
+		}
+	}
+
+	replacement, err := fb.buildExpr(stmt.Value, elementType)
+	if err != nil {
+		return err
+	}
+	if plan.CheckKind == sema.ArrayIndexProvenSafe {
+		// With no runtime predicate, defer the whole-array load until the RHS is
+		// complete as required by Package 14 section 46.
+		current = fb.result(Operation{Kind: OpStorageLoad, Storage: bind.storage, Location: loc}, bind.typ)
+	}
+	updated := fb.result(Operation{
+		Kind: OpArrayReplace, Operands: []ValueID{current.id, index.id, replacement.id},
+		ArrayCheckKind: checkKind, ArrayProofKind: proofKind, ArrayGuard: guard, Location: loc,
+	}, bind.typ)
+	fb.emit(Operation{Kind: OpStorageStore, Storage: bind.storage, Operands: []ValueID{updated.id}, Location: location(stmt.Token)})
 	return nil
 }
 
@@ -740,10 +1048,19 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 		return fb.buildResultConstructor(errExpr.Value, expected, false, location(errExpr.Token))
 	}
 	if arrayLiteral, ok := expr.(*ast.ArrayLiteral); ok && fb.owner.maxPackage >= 14 {
-		// SEC-MLIR Package 14 section 36: until P14-29 source lowering is
-		// wired, array literals must fail as a package-scoped unsupported
-		// feature instead of leaking a partial module or placeholder op.
-		return builtValue{}, fb.unsupported("array literal", arrayLiteral.Token)
+		plan, resolved := fb.owner.analyzer.ResolvedArrayLiteralPlanOf(arrayLiteral)
+		if !resolved || plan.Length == nil {
+			return builtValue{}, fb.unsupported("unresolved array literal", arrayLiteral.Token)
+		}
+		resultType := expected
+		if resultType == 0 {
+			var err error
+			resultType, err = fb.owner.internType(sema.NewFixedArrayType(plan.ElementType, plan.Length))
+			if err != nil {
+				return builtValue{}, err
+			}
+		}
+		return fb.buildArrayLiteral(arrayLiteral, resultType)
 	}
 	resolved, ok := fb.owner.analyzer.ResolvedTypeOf(expr)
 	if !ok {
@@ -879,6 +1196,11 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 			}
 		}
 		return builtValue{}, fb.unsupported("struct literal", e.Token)
+	case *ast.ArrayLiteral:
+		if fb.owner.maxPackage < 14 {
+			return builtValue{}, fb.unsupported("array literal", e.Token)
+		}
+		return fb.buildArrayLiteral(e, typeID)
 	case *ast.IndexExpression:
 		if fb.owner.maxPackage < 14 {
 			return builtValue{}, fb.unsupported("fixed-array index", e.Token)
@@ -897,6 +1219,62 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 	default:
 		return builtValue{}, fb.unsupported(fmt.Sprintf("expression %T", expr), expressionToken(expr))
 	}
+}
+
+// buildArrayLiteral consumes the compact compiler-owned plan required by
+// rules/mlir/packages/sec-mlir-dialect_package14.md sections 14-23 and 62-63.
+// It emits one segment per source entry and never expands a spread by N.
+func (fb *functionBuilder) buildArrayLiteral(expr *ast.ArrayLiteral, resultType TypeID) (builtValue, error) {
+	plan, ok := fb.owner.analyzer.ResolvedArrayLiteralPlanOf(expr)
+	if !ok || plan.Length == nil {
+		return builtValue{}, fb.unsupported("unresolved array literal", expr.Token)
+	}
+	if sema.CopyClassificationOf(plan.ElementType) != sema.CopyTrivial || !sema.TriviallyDestructible(plan.ElementType) {
+		return builtValue{}, fb.unsupported("non-trivial array literal element", expr.Token)
+	}
+	resolvedResult, resultOK := fb.owner.module.Types.Lookup(resultType)
+	if !resultOK || resolvedResult.Kind != TypeArray || resolvedResult.Length != plan.Length.String() {
+		return builtValue{}, fmt.Errorf("array literal result type disagrees with resolved plan")
+	}
+	elementType := resolvedResult.Element
+	op := Operation{
+		Kind: OpArrayConstruct, ArrayElementType: elementType,
+		ArrayLength: plan.Length.String(), Location: location(expr.Token),
+	}
+	for _, entry := range plan.Entries {
+		if entry.SourceIndex < 0 || entry.SourceIndex >= len(expr.Elements) || entry.Length == nil {
+			return builtValue{}, fmt.Errorf("array literal plan has invalid source entry")
+		}
+		source := expr.Elements[entry.SourceIndex]
+		expected := elementType
+		kind := ArraySegmentElement
+		action := ArrayActionConstructDirect
+		if entry.Kind == sema.ArrayLiteralSpread {
+			spread, spreadOK := source.(*ast.SpreadExpression)
+			if !spreadOK || entry.Action != sema.ArrayTransferCopyTrivial {
+				return builtValue{}, fb.unsupported("non-trivial array spread action "+string(entry.Action), expressionToken(source))
+			}
+			source = spread.Value
+			var internErr error
+			expected, internErr = fb.owner.internType(entry.Type)
+			if internErr != nil {
+				return builtValue{}, internErr
+			}
+			kind = ArraySegmentSpread
+			action = ArrayActionCopyTrivial
+		} else if entry.Kind != sema.ArrayLiteralElement || entry.Action != sema.ArrayTransferConstructDirect {
+			return builtValue{}, fb.unsupported("non-trivial array element action "+string(entry.Action), expressionToken(source))
+		}
+		value, buildErr := fb.buildExpr(source, expected)
+		if buildErr != nil {
+			return builtValue{}, buildErr
+		}
+		op.Operands = append(op.Operands, value.id)
+		op.ArraySegmentKinds = append(op.ArraySegmentKinds, kind)
+		op.ArraySegmentLengths = append(op.ArraySegmentLengths, entry.Length.String())
+		op.ArrayActions = append(op.ArrayActions, action)
+	}
+	return fb.result(op, resultType), nil
 }
 
 // buildArrayIndexRead implements
@@ -1757,9 +2135,84 @@ func (fb *functionBuilder) buildTryExpression(expr *ast.TryExpression) (builtVal
 			return builtValue{}, fb.unsupported("handled arithmetic try", expr.Token)
 		}
 		return fb.buildResolvedOperatorWithFailure(expr.Expression, nil, expr)
+	case sema.ResolvedTryBoundsPropagation, sema.ResolvedTryHandledBounds:
+		return fb.buildBoundsTryExpression(expr, resolved)
 	default:
 		return builtValue{}, fb.unsupported("handled try expression", expr.Token)
 	}
+}
+
+// buildBoundsTryExpression lowers one Sema-resolved fixed-array check to typed
+// IndexError.OutOfBounds flow without a panic endpoint. Rules:
+// rules/mlir/packages/sec-mlir-dialect_package14.md sections 50-54.
+func (fb *functionBuilder) buildBoundsTryExpression(expr *ast.TryExpression, resolved sema.ResolvedTry) (builtValue, error) {
+	indexExpr, ok := expr.Expression.(*ast.IndexExpression)
+	if !ok {
+		return builtValue{}, fb.unsupported("bounds try without index expression", expr.Token)
+	}
+	plan, ok := fb.owner.analyzer.ResolvedArrayIndexPlanOf(indexExpr)
+	if !ok || plan.CheckKind != sema.ArrayIndexRuntimeCheck || plan.FailureMode != sema.ArrayIndexFailureFallible || plan.Action != sema.ArrayTransferCopyTrivial {
+		return builtValue{}, fb.unsupported("non-runtime fallible fixed-array index", expr.Token)
+	}
+	arrayType, err := fb.owner.internType(plan.ArrayType)
+	if err != nil {
+		return builtValue{}, err
+	}
+	indexType, err := fb.owner.internType(plan.IndexType)
+	if err != nil {
+		return builtValue{}, err
+	}
+	elementType, err := fb.owner.internType(plan.ElementType)
+	if err != nil {
+		return builtValue{}, err
+	}
+	array, err := fb.buildExpr(indexExpr.Left, arrayType)
+	if err != nil {
+		return builtValue{}, err
+	}
+	index, err := fb.buildExpr(indexExpr.Index, indexType)
+	if err != nil {
+		return builtValue{}, err
+	}
+	boolType, err := fb.owner.internType(sema.Type{Name: "bool", Kind: sema.BoolType})
+	if err != nil {
+		return builtValue{}, err
+	}
+	predicate := fb.result(Operation{Kind: OpArrayIndexInBounds, Operands: []ValueID{array.id, index.id}, ArrayIndexSigned: plan.IndexSigned, Location: location(indexExpr.Token)}, boolType)
+	successBlock, errorBlock := fb.newBlock(), fb.newBlock()
+	fb.emit(Operation{Kind: OpCondBranch, Operands: []ValueID{predicate.id}, Successors: []BranchTarget{{Block: successBlock.ID}, {Block: errorBlock.ID}}, Location: location(expr.Token)})
+	fb.current = successBlock
+	successValue := fb.result(Operation{Kind: OpArrayExtract, Operands: []ValueID{array.id, index.id}, ArrayCheckKind: ArrayIndexRuntimeCheck, ArrayProofKind: ArrayIndexProofGuarded, ArrayGuard: predicate.id, ArrayActions: []ArrayTransferAction{ArrayActionCopyTrivial}, Location: location(indexExpr.Token)}, elementType)
+
+	errorType, err := fb.owner.internType(resolved.ErrorType)
+	if err != nil {
+		return builtValue{}, err
+	}
+	definition, ok := fb.owner.enumDefinition(errorType)
+	if !ok {
+		return builtValue{}, fb.unsupported("IndexError enum definition", expr.Token)
+	}
+	caseID, ok := enumCaseIDByName(definition, "OutOfBounds")
+	if !ok {
+		return builtValue{}, fb.unsupported("IndexError.OutOfBounds", expr.Token)
+	}
+	fb.current = errorBlock
+	errorValue := fb.result(Operation{Kind: OpEnumConstant, EnumCase: caseID, Location: location(expr.Token)}, errorType)
+	if resolved.Kind == sema.ResolvedTryHandledBounds {
+		plan, ok := fb.owner.analyzer.ResolvedTryPlanOf(expr)
+		if !ok || !plan.Exhaustive {
+			return builtValue{}, fb.unsupported("unresolved bounds handlers", expr.Token)
+		}
+		return fb.buildLocalTryHandlers(expr, plan, successBlock, successValue, errorBlock, errorValue)
+	}
+	enclosingResult, err := fb.owner.internType(resolved.EnclosingResultType)
+	if err != nil {
+		return builtValue{}, err
+	}
+	propagated := fb.result(Operation{Kind: OpResultErr, Operands: []ValueID{errorValue.id}, Location: location(expr.Token)}, enclosingResult)
+	fb.emit(Operation{Kind: OpReturn, Operands: []ValueID{propagated.id}, Location: location(expr.Token)})
+	fb.current = successBlock
+	return successValue, nil
 }
 
 func (fb *functionBuilder) buildHandledResult(expr *ast.TryExpression) (builtValue, error) {
@@ -2266,6 +2719,12 @@ func (fb *functionBuilder) storageAllowed(id TypeID) bool {
 	}
 	if t.Kind == TypeNamed {
 		return fb.storageAllowed(t.Base)
+	}
+	if t.Kind == TypeArray {
+		// rules/mlir/packages/sec-mlir-dialect_package14.md sections 44-45:
+		// only recursively copy-trivial, trivially destructible fixed-array
+		// values enter P5 high-level storage. No physical layout is selected.
+		return fb.owner.maxPackage >= 14 && fb.storageAllowed(t.Element)
 	}
 	if t.Kind == TypeUnion {
 		definition, ok := fb.owner.unionDefinition(id)

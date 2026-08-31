@@ -572,7 +572,7 @@ func TestPackage13RejectsUnsupportedStructValuePathsWithoutPartialIR(t *testing.
 type Session struct { Value: int }
 type Holder struct { Session: Session }
 fn Move(value: Session) Holder { return Holder { Session: <-value } }`,
-			stage: parserStage, wantDetail: "no prefix parse function",
+			stage: semaStage, wantDetail: "explicit <- move in this expression is not implemented",
 		},
 		{
 			name: "ordinary move-only field read",
@@ -598,7 +598,7 @@ fn Build(value: ref int) View { return View { Value: value } }`,
 			source: `module main
 type View struct { Value: ref mut int }
 fn Build(value: ref mut int) View { return View { Value: <-value } }`,
-			stage: parserStage, wantDetail: "no prefix parse function",
+			stage: semaStage, wantDetail: "explicit <- move in this expression is not implemented",
 		},
 		{
 			name: "resource-owning dynamic array field",

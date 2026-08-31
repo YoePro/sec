@@ -27,7 +27,7 @@
 
 **§ 1(7)** `rules/memory/reference_model.md` owns safe-reference validity, provenance, generation/epoch semantics, address-space validity, stable/weak handle semantics, and runtime representation choices.
 
-**§ 1(8)** `rules/memory/references.txt` retains its specialized responsibility until replaced by a revision-2 successor. Canonical lifetime-analysis responsibilities are defined by `rules/memory/lifetime_analysis.md` revision 2. This rulebook must not invent visible lifetime parameters or pre-empt future physical-addressing rules.
+**§ 1(8)** `rules/memory/references.md` owns source-level safe-reference semantics. Canonical lifetime-analysis responsibilities are defined by `rules/memory/lifetime_analysis.md` revision 2. This rulebook must not invent visible lifetime parameters or pre-empt future physical-addressing rules.
 
 **§ 1(9)** `rules/declarations/functions.md`, `rules/declarations/lambda-functions.md`, `rules/control-flow/flowcontrol_match.md`, `rules/control-flow/defer.md`, collection rulebooks, FFI rulebooks, and concurrency rulebooks may impose context-specific restrictions in addition to the core borrow rules here.
 

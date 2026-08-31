@@ -5327,7 +5327,7 @@ fn Consume(-> value: int) void {}
 
 fn Use() void {
 	let value := 1
-	Consume(value)
+	Consume(<-value)
 	discard value
 }
 `
@@ -6166,7 +6166,7 @@ fn Invalid() void {
 	let mut value := 1
 	let handle := Handle{ view: ref mut value }
 	defer {
-		Consume(handle)
+		Consume(<-handle)
 	}
 	let moved :<- handle
 	discard moved
@@ -6175,7 +6175,7 @@ fn Invalid() void {
 
 	errors := analyzeSourceRaw(t, input)
 	expected := []string{
-		"cannot move handle while it is required by defer at 17:16, previous declaration at 15:11",
+		"cannot move handle while it is required by defer at 17:16, previous declaration at 15:13",
 	}
 	assertSemaErrors(t, errors, expected)
 }
@@ -6214,7 +6214,7 @@ fn Invalid(condition: bool) void {
 	let handle := Handle{ view: ref mut value }
 	if condition {
 		defer {
-			Consume(handle)
+			Consume(<-handle)
 		}
 	}
 	let moved :<- handle
@@ -6224,7 +6224,7 @@ fn Invalid(condition: bool) void {
 
 	errors := analyzeSourceRaw(t, input)
 	expected := []string{
-		"cannot move handle while it is required by defer at 19:16, previous declaration at 16:12",
+		"cannot move handle while it is required by defer at 19:16, previous declaration at 16:14",
 	}
 	assertSemaErrors(t, errors, expected)
 }
@@ -6246,7 +6246,7 @@ fn Valid() void {
 	defer {
 		let mut innerValue := 2
 		let inner := Handle{ view: ref mut innerValue }
-		Consume(inner)
+		Consume(<-inner)
 	}
 	let moved :<- handle
 	discard moved
@@ -7923,7 +7923,7 @@ fn Pass(value: Option[Task[int]]) Option[Task[int]] {
 }
 
 fn Test(value: Option[Task[int]]) void {
-	Pass(value)
+	Pass(<-value)
 }
 `)
 	implicitExpected := []string{
@@ -7942,7 +7942,7 @@ fn Pass(value: Option[Task[int]]) Option[Task[int]] {
 }
 
 fn Test(value: Option[Task[int]]) void {
-	discard Pass(value)
+	discard Pass(<-value)
 }
 `)
 	discardExpected := []string{
@@ -9507,7 +9507,7 @@ fn Consume(guard: MutexGuard[State]) void {
 
 fn Use(mutex: Mutex[State], rx: Receiver[int]) void {
 	let guard := mutex.lock()
-	Consume(guard)
+	Consume(<-guard)
 	select {
 		value := rx.Receive() => {
 			discard value
@@ -9769,7 +9769,7 @@ fn Consume(handle: Handle) void {
 fn Valid() void {
 	let mut value := 1
 	let handle := Handle{ view: ref mut value }
-	Consume(handle)
+	Consume(<-handle)
 	let copy := value
 }
 `
@@ -9793,13 +9793,13 @@ fn Invalid() void {
 	let mut value := 1
 	let handle := Handle{ view: ref mut value }
 	let borrow := ref handle
-	Consume(handle)
+	Consume(<-handle)
 }
 `
 
 	errors := analyzeSourceRaw(t, input)
 	expected := []string{
-		"cannot move handle while it is borrowed at 15:10, previous declaration at 14:16",
+		"cannot move handle while it is borrowed at 15:12, previous declaration at 14:16",
 	}
 	assertSemaErrors(t, errors, expected)
 }
@@ -10968,8 +10968,8 @@ fn Use(value: ref Token) void {}
 fn Test() void {
 	let first := Token { id: 1 }
 	let second := Token { id: 2 }
-	let a := false && Consume(first)
-	let b := true || Consume(second)
+	let a := false && Consume(<-first)
+	let b := true || Consume(<-second)
 	Use(ref first)
 	Use(ref second)
 }

@@ -250,9 +250,9 @@ for `array.construct`, `array.default`, and `array.len`. The verifier checks
 compact element/spread segments, exact segment sums, result type agreement,
 construct-direct/copy-trivial P14 actions, zero-length construction, trivial
 default eligibility, and target-sized `uint` length results. P14-36 now has a
-source-builder boundary test proving unsupported array literal lowering returns
+source-builder boundary test proving non-trivial array literal lowering returns
 a Package 14 `UnsupportedFeatureError`, no partial module, and no placeholder
-operation.
+operation; the trivial compact literal path is now connected by P14-50.
 
 Completed 2026-08-29: P14-32/P14-33 add source-typed signed/unsigned bounds
 predicates plus functional extract/replace records. Semantic IR verifies exact
@@ -293,22 +293,22 @@ provenance, ordinary bounds failure, and fallible `IndexError.OutOfBounds`.
 - [x] P14-41 — Classify every remaining integer index as runtime-checked while
   preserving its source type through comparison and downstream operations; do
   not normalize it to a hard-coded `i64`.
-- [ ] P14-42 — Preserve evaluation order and exactly-once behavior: evaluate the
+- [x] P14-42 — Preserve evaluation order and exactly-once behavior: evaluate the
   array/place first and index second; for assignment evaluate target/index,
   then RHS completely, then commit replacement.
 - [x] P14-43 — Build the ordinary runtime CFG from one predicate: success
   dominates extraction/replacement and failure terminates in
   `BoundsFailureOp`. Negative signed and `>= N` cases must fail.
-- [ ] P14-44 — Implement `try array[index]` as a resolved fallible operation:
+- [x] P14-44 — Implement `try array[index]` as a resolved fallible operation:
   success produces T and failure produces precisely `IndexError.OutOfBounds`,
   with compatible naked propagation and direct local handlers.
-- [ ] P14-45 — Extend compiler-owned try facts with bounds-propagation/handled
+- [x] P14-45 — Extend compiler-owned try facts with bounds-propagation/handled
   bounds kinds. The backend must not reconstruct fallibility from unused Result
   values or textual `try`.
-- [ ] P14-46 — Integrate effects: unproven ordinary access adds
+- [x] P14-46 — Integrate effects: unproven ordinary access adds
   `MayBoundsPanic`; proven-safe access removes that effect; fallible access moves
   bounds failure into the typed error flow while retaining operand effects.
-- [ ] P14-47 — Enforce `@noPanic` for ordinary dynamic access and accept proven
+- [x] P14-47 — Enforce `@noPanic` for ordinary dynamic access and accept proven
   or fallible indexing. `unsafe` must never bypass fixed-array bounds checks.
 - [ ] P14-48 — Add sections 95–98 tests for constant/proven/runtime/fallible
   indexing, wide indexes, zero length, negative signed runtime values,
@@ -339,37 +339,93 @@ to a guarded extraction, and terminate the false path in `fail.bounds` for
 `array.replace`. Signed `int128`, unsigned `uint128`, target `uint`, and
 zero-length runtime cases retain their source index semantics.
 
-Progress 2026-08-29: the read half of P14-42 is now source-to-IR tested with
+Progress 2026-08-29: the read half of P14-42 became source-to-IR tested with
 effectful array/index calls in exact source order. P14-46 now records direct and
 transitive `may-panic-bounds` effects for ordinary runtime indexes while
-constant/range-proven indexes remain bounds-panic-free. P14-42 stays open for
-indexed assignment ordering; P14-46/P14-48 stay open for fallible indexing,
-handlers, `@noPanic`, and the remaining section-95–98 matrix.
+constant/range-proven indexes remain bounds-panic-free. P14-46/P14-48 stay open
+for fallible indexing, handlers, `@noPanic`, and the remaining section-95–98
+matrix.
+
+Completed 2026-08-30: P14-44/P14-45 make runtime fixed-array indexing a
+compiler-resolved fallible source under `try`. Sema records distinct
+`bounds-propagation` and `handled-bounds` try kinds, changes the index plan from
+ordinary panic failure to typed `IndexError`, and removes the bounds-panic
+effect. Semantic IR evaluates array/index once, branches on the shared bounds
+predicate, extracts only on success, and materializes exactly
+`IndexError.OutOfBounds` for naked `Result` propagation or the existing local
+handler engine. No `fail.bounds` is emitted on either fallible path.
+
+Completed 2026-08-31: P14-46 now covers the full bounds-effect transition.
+Ordinary unproven indexes contribute direct and transitive
+`may-panic-bounds`; constant/range-proven and validated fallible indexes do
+not. Fallible propagation and local handlers retain panic effects from array
+and index operand calls and handler bodies. Invalid `try` constructs retain the
+ordinary bounds effect and therefore cannot become false positive evidence for
+panic freedom.
+
+Completed 2026-08-31: P14-47 adds parsed, argument-free `@noPanic` attributes
+for functions and methods and verifies them against the compiler-owned
+transitive call-graph effect summary. Proven-safe and otherwise panic-free
+fallible fixed-array access is accepted. Ordinary dynamic access, panic-capable
+fallible operands, and the same access inside `unsafe` are rejected with the
+introducing effect location and synchronous call chain.
+
+Completed 2026-08-30: P14-42 now covers both reads and transactional writes.
+Simple and nested mutable paths evaluate the root/place and each index once,
+complete every required bounds guard before evaluating the RHS, evaluate the
+RHS once only on the successful path, and commit no destination mutation until
+the functional replacement value is complete.
 
 ## F. Add trivial mutable storage and nested replacement
 
-- [ ] P14-49 — Extend P5 high-level storage eligibility to copy-trivial,
+- [x] P14-49 — Extend P5 high-level storage eligibility to copy-trivial,
   trivially destructible fixed arrays whose element representation is already
   supported. Never memref-lower the wrapper in P14.
-- [ ] P14-50 — Lower defaulted and explicit mutable local fixed arrays through
+- [x] P14-50 — Lower defaulted and explicit mutable local fixed arrays through
   semantic storage declare/init/load/store operations with no physical layout.
-- [ ] P14-51 — Implement indexed assignment as RHS-first whole-array load,
+- [x] P14-51 — Implement indexed assignment as RHS-first whole-array load,
   guarded/proven `ArrayReplaceOp`, and exactly one root store.
-- [ ] P14-52 — Rebuild nested array/struct paths leaf-to-root using P13 struct
+- [x] P14-52 — Rebuild nested array/struct paths leaf-to-root using P13 struct
   replacement and P14 array replacement, preserving the exact root type and one
   commit.
-- [ ] P14-53 — Add section-99 tests for scalar/wide replacement, runtime guard,
+- [x] P14-53 — Add section-99 tests for scalar/wide replacement, runtime guard,
   nested arrays/structs, RHS exactly once/before commit, one root store,
   high-level storage, and explicit non-trivial rejection.
+
+Completed 2026-08-30: P14-49/P14-50 restrict P5 high-level array storage to
+recursively copy-trivial, trivially destructible fixed-array values and reject
+even zero-length storage when the element ownership representation is deferred.
+The Semantic IR builder now consumes compact literal plans directly, emits one
+`array.construct` segment per source element/spread, and supports explicit,
+defaulted, spread-containing, and nested mutable fixed-array locals through
+`storage.declare/init/load`. Tests prove non-trivial rejection returns no
+partial module and the successful representation contains no MemRef,
+`llvm.array`, `undef`, or poison substitute.
+
+Completed 2026-08-30: P14-51 lowers simple-root mutable local indexed
+assignment transactionally. Proven-safe updates evaluate the index and RHS,
+then load, replace, and commit once with explicit proof provenance. Runtime
+updates evaluate the index once, validate through one array/index predicate,
+evaluate the RHS only on the success path, reuse the exact guarded array/index
+SSA pair in `array.replace`, and perform exactly one `storage.store`; failure
+terminates in `fail.bounds`. Nested aggregate paths remain P14-52.
+
+Completed 2026-08-30: P14-52/P14-53 add one compiler-owned nested aggregate
+path from a mutable local root through stored struct fields and fixed-array
+indexes. Bounds predicates and guarded extracts are emitted root-to-leaf;
+`array.replace` and P13 `struct.replace-field` rebuild leaf-to-root before one
+root store. The section-99 matrix covers `int32`, `int128`, two-dimensional
+arrays, struct-in-array, array-in-struct, multiple runtime guards, RHS ordering,
+one store, high-level storage, and the explicit non-trivial storage boundary.
 
 ## G. Implement Sec MLIR schema 10 and verification
 
 - [ ] P14-54 — Bump generated modules to schema 10 only after schema 9 remains a
   checked compatibility input; update ODS/C++ registration and version gates.
-- [ ] P14-55 — Implement `!sec.array<T, "N">` with canonical arbitrary-precision
+- [x] P14-55 — Implement `!sec.array<T, "N">` with canonical arbitrary-precision
   decimal `StringAttr`; reject empty, signed, leading-zero, negative, or otherwise
   non-canonical length spelling except canonical `"0"`.
-- [ ] P14-56 — Implement `sec.array.construct` with compact ordered segment
+- [x] P14-56 — Implement `sec.array.construct` with compact ordered segment
   metadata/actions and exact C++ verification of operands, spread types, and sum.
 - [ ] P14-57 — Implement `sec.array.default`, `sec.array.len`,
   `sec.array.index_in_bounds`, `sec.array.extract`, `sec.array.replace`, and
@@ -383,6 +439,20 @@ handlers, `@noPanic`, and the remaining section-95–98 matrix.
 - [ ] P14-60 — Add all section-100/101 MLIR round-trip and invalid tests,
   including large lengths, multiple segments, bad sums/types, all operations,
   guard failures, proven-safe provenance, and explicit schema-9 regression.
+
+Completed 2026-08-30: P14-55 registers the high-level `!sec.array<T, "N">`
+type in ODS/C++, preserves the exact arbitrary-precision length as canonical
+decimal `StringAttr`, admits zero, huge, nested-array, and struct-element forms,
+and rejects empty, signed, whitespace-padded, leading-zero, storage, and
+function-element forms. Schema-9 emission remains unchanged until P14-54's
+schema-10 gate can be opened together with the remaining array operations.
+
+Completed 2026-08-30: P14-56 registers pure `sec.array.construct` with one
+operand per source segment and exact `segment_kinds`, `segment_lengths`, and
+`segment_actions` arrays. Its C++ verifier enforces element/spread types and
+actions, canonical arbitrary-precision lengths, exact spread-length identity,
+and an overflow-free exact segment sum equal to the result array length; empty
+and above-`uint64` constructions remain compact.
 
 ## H. Prove package compatibility and source-to-schema-10 integration
 

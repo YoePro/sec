@@ -337,7 +337,7 @@ declarations/spread.md
 types/units.md
     unit compatibility and unit algebra
 
-references.txt
+references.md
     references and borrowing
 
 raw_pointers.txt
@@ -4081,9 +4081,9 @@ enums.md
 unions.md
 struct.md
 types/units.md
-references.txt
+references.md
 raw_pointers.txt
-allocation.txt
+allocation.md
 destruction.txt
 concurrency_memory_model.txt
 semantic_ir.txt

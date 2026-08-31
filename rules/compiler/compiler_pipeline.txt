@@ -349,7 +349,7 @@ It is responsible for:
 
 Ownership analysis rules are defined in ownership.md.
 
-Reference rules are defined in references.txt.
+Reference rules are defined in references.md.
 
 Borrow rules are defined in borrowing.txt.
 

@@ -35,7 +35,7 @@ All normative compiler-known-member semantics belong to this document.
 `rules/declarations/impl.md` owns ordinary user-defined implementation blocks.
 
 `types.md`, `collections.md`, `reference_model.md`, `unsafe.md`,
-`allocation.txt`, `arena.md`, `layout.md`, `effect_analysis.md`, and
+`allocation.md`, `arena.md`, `layout.md`, `effect_analysis.md`, and
 `semantic_ir.txt` own their respective semantic domains.
 
 This document consumes those rules and determines when the compiler must know a
@@ -1801,7 +1801,7 @@ The exact failure surface and owning string representation must remain
 synchronized with:
 
 ```text
-allocation.txt;
+allocation.md;
 arena.md;
 string memory rules;
 core-library.md.
@@ -2519,7 +2519,7 @@ are unavailable in a no-allocation profile.
 
 The compiler-known registry must not embed one universal heap provider.
 
-Allocation origin is resolved through `allocation.txt` and `arena.md`.
+Allocation origin is resolved through `allocation.md` and `arena.md`.
 
 ---
 
@@ -3282,7 +3282,7 @@ It does not weaken the normative rules.
 This rulebook must remain synchronized with:
 
 ```text
-allocation.txt
+allocation.md
 arena.md
 collections.md
 attributes.md
@@ -3343,7 +3343,7 @@ reference_model.md
 unsafe.md
     owns unsafe obligations
 
-allocation.txt and arena.md
+allocation.md and arena.md
     own allocation-context and storage allocation
 
 effect_analysis.md

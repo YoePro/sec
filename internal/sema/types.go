@@ -723,6 +723,13 @@ func builtinTypes() map[string]Type {
 			EnumValues: []string{"Overflow", "DivisionByZero", "InvalidShift"},
 			EnumConsts: builtinEnumConsts([]string{"Overflow", "DivisionByZero", "InvalidShift"}),
 		},
+		"IndexError": {
+			Name:       "IndexError",
+			Kind:       EnumType,
+			Underlying: "uint",
+			EnumValues: []string{"OutOfBounds"},
+			EnumConsts: builtinEnumConsts([]string{"OutOfBounds"}),
+		},
 		"EnumValueError": {
 			Name:        "EnumValueError",
 			Kind:        EnumType,
@@ -875,7 +882,7 @@ func builtinTypes() map[string]Type {
 	// rules/errors/errorhandling.md defines these compiler-known failure
 	// families as concrete inhabitants of the open error root.
 	for _, name := range []string{
-		"AllocationError", "ArithmeticError", "EnumValueError", "ContractError", "CollectionError",
+		"AllocationError", "ArithmeticError", "IndexError", "EnumValueError", "ContractError", "CollectionError",
 		"ThreadSpawnError", "ThreadStartError", "ThreadSchedulingError", "ThreadTerminationError", "ThreadContextError",
 	} {
 		typ := types[name]

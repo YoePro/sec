@@ -92,7 +92,7 @@ compiler_known_members.md
 reference_model.md
     safe-reference guarantees and profile-selected reference representation
 
-allocation.txt
+allocation.md
     allocation operations and allocation failure
 
 destruction.txt

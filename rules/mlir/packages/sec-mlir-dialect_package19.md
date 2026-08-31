@@ -58,7 +58,7 @@ Implementation follows:
 
 ```text
 rules/memory/arena.md
-rules/memory/allocation.txt
+rules/memory/allocation.md
 rules/memory/storage.md
 rules/memory/reference_model.md
 rules/memory/layout.md

@@ -61,7 +61,7 @@ Implementation follows:
 rules/collections/collections.md
 rules/memory/layout.md
 rules/memory/storage.md
-rules/memory/allocation.txt
+rules/memory/allocation.md
 rules/types/default_values.md
 rules/library/core-library.md
 rules/memory/reference_model.md
@@ -415,7 +415,7 @@ Creating non-empty owned backing storage is allocation-capable.
 Allocation must be explicit in Semantic IR.
 
 The selected allocation context may be implicit in source according to
-`allocation.txt`.
+`allocation.md`.
 
 No copy, move, return, escape, or borrow may introduce backing allocation.
 
@@ -2610,7 +2610,7 @@ Reason:
 P18 now consumes allocation-context and storage-domain semantics, but physical
 Arena/allocation behavior is still only represented abstractly.
 
-P19 should make the existing `allocation.txt` and Arena frontend semantics real
+P19 should make the existing `allocation.md` and Arena frontend semantics real
 in the new pipeline without yet selecting a universal heap.
 
 Recommended scope:

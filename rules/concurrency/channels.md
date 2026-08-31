@@ -928,7 +928,7 @@ mutex.txt
 atomics.txt
 static.txt
 concurrency_memory_model.txt
-allocation.txt
+allocation.md
 processes.txt
 ipc.txt
 ```

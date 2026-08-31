@@ -1247,13 +1247,13 @@ contracts.md or variables_contracts.txt
 types.md
 collections.md
 shaped-types.md
-references.txt
+references.md
 ownership.md
 copy_move.md
 defer.md
 discard.md
 destruction.txt
-allocation.txt
+allocation.md
 unsafe.md
 platform/ffi.md
 attributes.md

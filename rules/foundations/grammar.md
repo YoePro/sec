@@ -4771,7 +4771,7 @@ defer.md
 discard.md
 ownership.md
 copy_move.md
-references.txt
+references.md
 raw_pointers.txt
 unsafe.md
 inline_assembly.md

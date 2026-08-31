@@ -617,7 +617,7 @@ closures.txt
 ownership.md
 borrowing.txt
 lifetime_analysis.md
-allocation.txt
+allocation.md
 layout.txt
 static.txt
 channels.md

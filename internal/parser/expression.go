@@ -109,7 +109,7 @@ func (p *Parser) parseExpression(currentPrecedence precedence) ast.Expression {
 	case lexer.TRUE, lexer.FALSE:
 		left = p.parseBooleanLiteral()
 
-	case lexer.PLUS, lexer.MINUS, lexer.NOT, lexer.BIT_NOT:
+	case lexer.PLUS, lexer.MINUS, lexer.NOT, lexer.BIT_NOT, lexer.MOVE_ASSIGN:
 		left = p.parsePrefixExpression()
 
 	case lexer.TRY:

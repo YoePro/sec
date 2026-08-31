@@ -834,6 +834,7 @@ func (es *ExpressionStatement) TokenLiteral() string {
 
 type FunctionDeclaration struct {
 	Token              lexer.Token
+	Attributes         []*Attribute
 	Name               *Identifier
 	GenericParameters  []*GenericParameter
 	Parameters         []*Parameter

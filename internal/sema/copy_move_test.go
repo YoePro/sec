@@ -205,6 +205,105 @@ fn Test() void {
 	})
 }
 
+func TestCallArgumentsRequireVisibleReusableSourceTransfer(t *testing.T) {
+	tests := []struct {
+		name       string
+		source     string
+		wantErrors int
+		want       []string
+	}{
+		{
+			name: "ordinary move-only reusable source",
+			source: `
+module main
+@noCopy type Resource struct { value: int }
+fn Inspect(value: Resource) void {}
+fn Test() void {
+    let resource := Resource { value: 1 }
+    Inspect(resource)
+    discard resource
+}
+`,
+			wantErrors: 1,
+			want:       []string{"reusable source resource", "must use explicit <- ownership transfer"},
+		},
+		{
+			name: "forced consuming copyable reusable source",
+			source: `
+module main
+fn Consume(-> value: int) void {}
+fn Test() void {
+    let value := 1
+    Consume(value)
+    discard value
+}
+`,
+			wantErrors: 1,
+			want:       []string{"reusable source value", "must use explicit <- ownership transfer"},
+		},
+		{
+			name: "marker-free fresh temporaries",
+			source: `
+module main
+@noCopy type Resource struct { value: int }
+fn Inspect(value: Resource) void {}
+fn Consume(-> value: int) void {}
+fn Test() void {
+    Inspect(Resource { value: 1 })
+    Consume(2)
+}
+`,
+		},
+		{
+			name: "explicit ordinary copyable transfer",
+			source: `
+module main
+fn Inspect(value: int) void {}
+fn Test() void {
+    let value := 1
+    Inspect(<-value)
+    discard value
+}
+`,
+			wantErrors: 1,
+			want:       []string{"value value was consumed by call here and is no longer available"},
+		},
+		{
+			name: "failed later argument does not commit move",
+			source: `
+module main
+fn Consume(-> value: int, label: string) void {}
+fn Test() void {
+    let value := 1
+    Consume(<-value, 2)
+    discard value
+}
+`,
+			wantErrors: 1,
+			want:       []string{"argument 2 to Consume must be string, got int"},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			errors := analyzeSourceRaw(t, test.source)
+			if len(errors) != test.wantErrors {
+				t.Fatalf("errors = %v, want %d", errors, test.wantErrors)
+			}
+			for _, want := range test.want {
+				if !strings.Contains(errors[0].Message, want) {
+					t.Fatalf("error = %q, want %q", errors[0].Message, want)
+				}
+			}
+			if len(errors) == 1 && strings.Contains(errors[0].Message, "must use explicit <- ownership transfer") {
+				if errors[0].ID != diagnostics.ImplicitMoveDisallowed || !strings.Contains(errors[0].Help, "<-") {
+					t.Fatalf("missing-marker metadata = %#v", errors[0])
+				}
+			}
+		})
+	}
+}
+
 func TestNoCopyAttributeSurvivesGenericInstantiation(t *testing.T) {
 	input := `
 module main

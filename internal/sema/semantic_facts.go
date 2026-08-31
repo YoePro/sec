@@ -110,6 +110,8 @@ const (
 	ResolvedTryHandledResult         ResolvedTryKind = "handled-result"
 	ResolvedTryHandledArithmetic     ResolvedTryKind = "handled-arithmetic"
 	ResolvedTryArithmeticPropagation ResolvedTryKind = "arithmetic-propagation"
+	ResolvedTryHandledBounds         ResolvedTryKind = "handled-bounds"
+	ResolvedTryBoundsPropagation     ResolvedTryKind = "bounds-propagation"
 )
 
 // ResolvedTry records the exact success/error contract selected by Sema.

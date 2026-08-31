@@ -11,11 +11,11 @@ This rulebook defines the common memory concepts used by:
 ownership.md
 copy_move.md
 borrowing.txt
-references.txt
+references.md
 raw_pointers.txt
 lifetime_analysis.md
 destruction.txt
-allocation.txt
+allocation.md
 concurrency_memory_model.txt
 platform/ffi.md
 declarations/registers.md
@@ -241,7 +241,7 @@ copy_move.md
 borrowing.txt
     simultaneous non-owning access
 
-references.txt
+references.md
     safe reference syntax and validity
 
 raw_pointers.txt
@@ -253,7 +253,7 @@ lifetime_analysis.md
 destruction.txt
     deterministic destruction and cleanup order
 
-allocation.txt
+allocation.md
     allocation contexts, arenas, and allocation failure
 
 concurrency_memory_model.txt
@@ -3629,11 +3629,11 @@ ownership.md
 copy_move.md
 discard.md
 borrowing.txt
-references.txt
+references.md
 raw_pointers.txt
 lifetime_analysis.md
 destruction.txt
-allocation.txt
+allocation.md
 concurrency_memory_model.txt
 data_races.md
 deadlock_analysis.md

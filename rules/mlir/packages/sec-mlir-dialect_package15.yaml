@@ -19,7 +19,7 @@ package:
   next_package: Slice Semantic Value Representation
 normative_updates:
 - repository_paths:
-  - rules/memory/references.txt
+  - rules/memory/references.md
   - rules/errors/runtime_checks.md
   - rules/memory/reference_model.md
   - rules/errors/panic.md

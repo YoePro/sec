@@ -1,5 +1,5 @@
 schema_version: 1
-updated: "2026-08-29"
+updated: "2026-08-31"
 purpose: >-
   Canonical implementation ledger for compiler and tooling work. Normative
   language behavior remains in rules/, while implementation status is migrated
@@ -482,7 +482,7 @@ integrations:
     name: Fixed Array Semantic Value Representation
     area: frontend-semantic-ir-sec-mlir-and-lowering
     status: partial
-    implementation_phase: ordinary-index-cfg
+    implementation_phase: no-panic-fixed-array-indexing
     integrated: "2026-08-28"
     baseline: repository HEAD with completed SEC-MLIR-P13 schema 9
     repository_head: 069c111b96714ee4c9423f5f7a64d1e7a6045f31
@@ -530,6 +530,10 @@ integrations:
       - internal/ir/semantic/verifier.go
       - internal/lowering/secmlir/emitter.go
       - internal/codegen/mlir/generator.go
+      - mlir/include/sec/Dialect/Sec/SecTypes.td
+      - mlir/lib/Dialect/Sec/SecTypes.cpp
+      - mlir/include/sec/Dialect/Sec/SecOps.td
+      - mlir/lib/Dialect/Sec/SecOps.cpp
     tests:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
@@ -546,6 +550,10 @@ integrations:
       - testdata/semantic_ir/fixed_array_index_plans_invalid.sec
       - testdata/semantic_ir/fixed_array_defaults.sec
       - testdata/semantic_ir/fixed_array_defaults_deferred.sec
+      - mlir/test/Dialect/Sec/schema10-array-type.mlir
+      - mlir/test/Dialect/Sec/invalid-schema10-array-type.mlir
+      - mlir/test/Dialect/Sec/schema10-array-construct.mlir
+      - mlir/test/Dialect/Sec/invalid-schema10-array-construct.mlir
     implemented:
       - completed Package 13 predecessor with schema-9 structs and high-level aggregate storage
       - canonical fixed-array literal spread wording synchronized in collections and spread rulebooks
@@ -575,6 +583,22 @@ integrations:
       - source-built ordinary fixed-array reads consume ResolvedArrayIndexPlan facts, preserve array-before-index exactly-once evaluation, and emit either proof-carrying extraction or one guarded runtime bounds CFG
       - runtime ordinary indexing preserves signed int128, unsigned uint128, target uint, and zero-length semantics and terminates failure in fixed-array-index fail.bounds
       - compiler-owned effect summaries record direct and transitive may-panic-bounds for runtime ordinary indexes while constant/range-proven indexes contribute no bounds panic
+      - compact Sema array-literal plans lower source-order element/spread entries directly to one array.construct segment each without expansion
+      - P5 high-level storage admits recursively trivial fixed arrays and lowers explicit, defaulted, spread-containing, and nested mutable locals through storage declare/init/load without selecting MemRef or LLVM array layout
+      - non-trivial fixed-array literal and storage boundaries return Package 14 UnsupportedFeatureError without a partial module, placeholder, undef, or poison
+      - simple-root mutable local indexed assignment lowers transactionally for proven-safe and runtime-checked plans with bounds-before-RHS ordering, exact guard SSA reuse, proof provenance, one RHS evaluation, one array.replace, and one root storage.store
+      - nested fixed-array and stored-struct assignment paths evaluate root/index projections once, guard root-to-leaf, rebuild with array.replace and struct.replace-field leaf-to-root, and commit exactly one root store after the RHS completes
+      - Package 14 section-99 replacement matrix covers scalar and int128 elements, runtime guards, two-dimensional arrays, struct-in-array, array-in-struct, RHS ordering, one store, high-level storage, and non-trivial rejection
+      - schema-10 !sec.array<T, "N"> is registered as a high-level ODS/C++ type with exact canonical decimal StringAttr identity, arbitrary-precision lengths, nested arrays and struct elements, and no physical layout selection
+      - the !sec.array verifier rejects empty, signed, whitespace-padded, and unnecessarily zero-prefixed lengths plus storage/function element types while accepting canonical zero and lengths above uint64
+      - schema-10 sec.array.construct preserves one operand per source segment and verifies exact kind/length/action arrays, element and spread types, canonical arbitrary-precision lengths, spread-length identity, and an overflow-free exact sum equal to the result length
+      - try fixed-array indexing publishes distinct bounds-propagation and handled-bounds Sema facts, converts runtime failure to IndexError.OutOfBounds, and removes the index check's MayBoundsPanic effect
+      - source-built fallible bounds CFG evaluates array/index once, shares one guard with extraction, emits typed Result.err propagation or local enum handler flow, and contains no fail.bounds endpoint
+      - validated fallible bounds flow removes only its own MayBoundsPanic site while preserving transitive panic effects from array/index operands and handler bodies; invalid try constructs retain the ordinary bounds effect
+      - unsafe blocks do not bypass fixed-array runtime bounds checks or their MayBoundsPanic effect
+      - argument-free @noPanic is parsed on functions and methods and verified against transitive callable panic summaries with a cause chain and introducing source location
+      - "@noPanic accepts proven-safe and otherwise panic-free fallible fixed-array indexing while rejecting ordinary dynamic indexing, panic-capable operands, and unsafe-block attempts to bypass the guarantee"
+      - the standalone compiler-owned IndexError fallback converges with the trusted sec/core declaration while ordinary source redeclaration remains rejected
       - Semantic IR TypeArray keyed by element TypeID plus canonical exact decimal length, with deterministic interning, formatting, and verifier diagnostics
       - Semantic IR builder admits fixed-array function parameter and return types at Package 14, keeps dynamic array types gated as UnsupportedFeatureError, and does not introduce array operations before P14-29
       - Semantic IR array.construct, array.default, and array.len operation records with compact segment metadata, exact length strings, P14 action gating, formatter output, and verifier checks
@@ -584,13 +608,12 @@ integrations:
       - immutable read-only ResolvedArrayIndexPlan facts preserve exact array length, array/element/index types, signedness, use/action, proof/check kind, failure mode, and runtime IndexError typing without downstream AST reconstruction
       - arbitrary-precision constant index plans cover valid uint256 values above host int64 and exact negative, at-length, and above-length rejection; remaining indexes preserve their signed or unsigned source type as runtime-checked
       - named integer ranges wholly contained in 0..<N produce explicit range-proven index plans while zero-length arrays remain runtime-checked unless rejected as an invalid constant
-      - Package 14 source-builder unsupported boundary for array literals returns UnsupportedFeatureError without returning a partial module or placeholder operation
+      - Package 14 source-builder unsupported boundary for non-trivial array literals returns UnsupportedFeatureError without returning a partial module or placeholder operation
     remaining:
-      - connect Sema literal and Len facts to the new Package 14 Semantic IR array operations
-      - connect Package 14 bounds endpoints to fallible indexing, handlers, and indexed replacement
-      - extend index proofs with branch/assertion analysis, implement typed try flow, and complete fallible bounds-effect handling
-      - implement trivial high-level mutable array storage and nested transactional replacement
-      - implement schema-10 !sec.array, array operations, sec.fail.bounds, emission, and the array-index guard verifier
+      - connect the Sema Len fact to the new Package 14 Semantic IR array.len operation
+      - connect Package 14 bounds endpoints to fallible indexed replacement
+      - extend index proofs with branch/assertion analysis
+      - implement schema-10 array default/len/index/extract/replace operations, sec.fail.bounds, emission, the schema-version gate, and the array-index guard verifier
       - prove P5/P6/P8/P11/P12/P13 integration on 32-bit and 64-bit plans
       - explicitly reject deferred ownership, dynamic-array, slice, equality, membership, ABI, and physical-layout paths
       - complete Package 14 section-107 acceptance and the section-108 implementation report
@@ -606,7 +629,7 @@ integrations:
       - command: go vet ./...
         result: passed
       - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
-        result: passed (78/78)
+        result: passed (82/82), including schema-10 array type/construct round-trip and verifier failures
       - command: go test ./internal/lowering/secmlir -run TestConfiguredSecMLIRBinRequiresAbsolutePathForPackage13And14 -count=1
         result: passed
       - command: go test ./internal/sema -run 'Test(ResolvedArrayLiteralPlan|ArrayLiteralAnalysisPopulatesAuthoritativePlans)' -count=1
@@ -627,6 +650,24 @@ integrations:
         result: passed
       - command: go test ./internal/ir/semantic -run 'TestPackage14(BuildsOrdinaryArrayIndexControlFlowAndOrder|ArrayIndex)' -count=1
         result: passed
+      - command: go test ./internal/ir/semantic -run 'TestPackage14(BuildsTrivialMutableFixedArrayStorage|RejectsNonTrivialFixedArrayStorageWithoutPartialModule|UnsupportedArrayLiteralReturnsNoPartialModule|BuildsCompactFixedArrayDefaultMatrix)' -count=1
+        result: passed
+      - command: go test ./internal/ir/semantic -run TestPackage14BuildsTransactionalIndexedLocalReplacement -count=1
+        result: passed
+      - command: go test ./internal/ir/semantic -run 'TestPackage14Builds(NestedArrayStructReplacementMatrix|TransactionalIndexedLocalReplacement)' -count=1
+        result: passed
+      - command: go test ./internal/sema -run TestFixedArrayBoundsTryPublishesTypedFlowAndRemovesPanicEffect -count=1
+        result: passed
+      - command: go test ./internal/sema -run 'Test(FallibleFixedArrayBoundsRetainOnlyOperandEffects|InvalidBoundsTryDoesNotBecomePositiveNoPanicEvidence|FixedArrayBoundsEffectsDistinguishRuntimeAndProvenIndexes)' -count=1
+        result: passed
+      - command: go test ./internal/parser -run TestParseNoPanicFunctionAndMethodAttributes -count=1
+        result: passed
+      - command: go test ./internal/sema -run TestNoPanicFixedArrayIndexGuarantees -count=1
+        result: passed
+      - command: go test ./...
+        result: passed after trusted core IndexError integration
+      - command: go test ./internal/ir/semantic -run TestPackage14BuildsFallibleBoundsPropagationAndLocalHandler -count=1
+        result: passed
 
   - id: frontend.ownership-v2
     area: frontend-ownership-control-flow-and-lowering
@@ -645,7 +686,7 @@ integrations:
       Place-sensitive pending reservations, and runtime ownership state may be
       required by any ownership-dependent operation. The frontend does not yet
       implement the revision-2 canonical Availability
-      dimension, explicit reusable-source moves in every consuming call/payload,
+      dimension, explicit reusable-source moves in every owning payload,
       new closure move capture syntax, availability tests/refinement, discard
       convergence, conditional cleanup/replacement, or static-ownership policy.
     rules:
@@ -2365,7 +2406,9 @@ integrations:
       - fixed-array argument spread with exactly-once source analysis, increasing-index expansion, and copyability checks
       - owned by-value parameters are mutable callee-local bindings while shared and mutable-reference parameter bindings remain non-rebindable
       - "forced-consuming `-> name: T` parameter parsing and AST/Sema retention for ordinary, generic, method, interface, initializer, and lambda parameter-list consumers"
-      - forced consumption marks copyable as well as move-only caller Places unavailable only after successful outer-call argument analysis, but reusable-source call-site marker enforcement remains unimplemented
+      - forced consumption marks copyable as well as move-only caller Places unavailable only after successful outer-call argument analysis
+      - direct call arguments parse explicit `<-`, require it for reusable Places passed to ordinary move-only or explicit `->` parameters, preserve marker-free fresh temporaries, and commit explicit transfer only after complete successful outer-call analysis
+      - ordinary by-value calls copy reusable copyable Places, reject unmarked reusable move-only Places instead of silently consuming them, and permit explicit `<-` to force transfer of copyable Places
       - consuming ref and ref mut parameter rejection with dedicated diagnostics
       - rejection of overload pairs differing only by ordinary versus consuming parameter mode
       - interface requirements and concrete conformance preserve consuming parameter contracts independently of receiver capability
@@ -2382,7 +2425,6 @@ integrations:
       - direct zero-or-more typed variadic arguments, generic instantiation, runtime-length array/slice/pack spread sources, multiple mixed spread sources, and fixed-arity preference over equally ranked variadic overloads
       - variadic callable shape retained by inferred function values, callable identity, compatibility, and concrete generic instances
     remaining:
-      - require explicit `<-` for every reusable source consumed by an ordinary move-only or explicit `->` parameter while preserving marker-free fresh temporaries
       - accept optional `return <-value` with the same result ownership as `return value`
       - remove whole-self consuming ordinary/interface receiver behavior while retaining consuming callable values and member consumption under mutable/exclusive authority
       - remove legacy ref name colon Type parameter spelling after migrating remaining formatter, bootstrap, diagnostics, and examples, and normalize legacy and canonical reference modes to one AST and signature identity during the transition
@@ -2402,6 +2444,8 @@ integrations:
       - command: go test ./internal/parser ./internal/sema ./internal/formatter ./cmd/lsp -run 'Consuming|FunctionHoverShowsConsuming|OwnedParameters|CanonicalReferenceTypeCallArguments' -count=1
         result: passed
       - command: go test ./internal/parser ./internal/sema -run 'Test(ParseNativeVariadic|ParseRejectsNonFinalNativeVariadic|NativeVariadic)' -count=1
+        result: passed
+      - command: go test ./internal/parser ./internal/sema -run 'Test(ParseExplicitMoveCallArgument|CallArgumentsRequireVisibleReusableSourceTransfer|ConsumingParameterConsumesCopyableArgument)' -count=1
         result: passed
 
   - id: frontend.lambda-functions-v2
@@ -3238,7 +3282,7 @@ integrations:
       Provides compiler-known Arena allocation validation, allocation generation
       tracking, and stale-reference diagnostics without allocator lowering.
     rules:
-      - rules/memory/allocation.txt
+      - rules/memory/allocation.md
       - rules/memory/arena.md
     code:
       - internal/sema/analyzer.go
@@ -5211,13 +5255,12 @@ integrations:
       - "Place-sensitive move tracking for roots, nested fields, selected union payloads, static slice intervals, and local alias provenance."
       - "Reinitialization of supported moved/discarded Places and field-sensitive aggregate restoration."
       - "Initial branch/loop/match/select ownership joins, borrow-conflict checks, defer-retention checks, overlapping self-move rejection, formatter preservation, and LSP move quick fixes."
+      - "Direct call-site <- markers are parsed and enforced for reusable ordinary move-only and explicit -> arguments; copyable ordinary arguments remain copies, fresh temporaries remain marker-free, and transfer commits only after successful full-call analysis."
     remaining:
-      - "explicit-consuming-call-arguments: require reusable caller Places passed to -> parameters to use <-; ordinary by-value parameters must copy and must never be upgraded to consuming solely because the type is move-only"
       - "constructor-payload-explicit-move: require explicit <- for reusable named/projected move-only sources transferred into struct fields, Option, Result outside terminal return context, union payloads, and equivalent owning constructors"
-      - "fresh-temporary-forwarding: keep fresh temporaries marker-free when they are forwarded into their first owner, including consuming calls and owning payload construction"
+      - "fresh-temporary-forwarding: keep fresh temporaries marker-free when they are forwarded into their first owning payload construction"
       - "return-boundary-optional-marker: accept both return value and return <-value with identical transfer semantics; receiving a fresh returned value remains marker-free"
       - "closure-capture-explicit-move: replace capture(-> value) and implicit move-through-capture(value) with capture(<-value); plain capture(value) is copy capture"
-      - "ordinary-by-value-copy-contract: reject non-copyable reusable arguments to ordinary by-value parameters and preserve the source when copy is valid"
       - "result-projection-consumption: model Result.Ok()/Err() as consuming transformations with correct payload transfer, cleanup, and source unavailability"
       - "whole-self-consumption-ban: reject ordinary methods that consume complete self; allow explicit member moves when receiver authority and partial-move rules permit"
       - "complete Place availability integration including nested/indexed/sliced/opaque alias cases and the ownership-v2 Availability/UnavailableReason model"
@@ -5243,6 +5286,13 @@ integrations:
       - "ordinary method cannot consume whole self but may explicitly move an eligible owned member"
       - "Result.Ok()/Err() consume owned reusable Result and mentor-diagnose later whole-result use"
       - "large-copy analysis can recommend ref/slice/view without changing by-value source semantics"
+    verification:
+      - command: go test ./internal/parser ./internal/sema -run 'Test(ParseExplicitMoveCallArgument|CallArgumentsRequireVisibleReusableSourceTransfer|ConsumingParameterConsumesCopyableArgument)' -count=1
+        result: passed
+      - command: go test ./...
+        result: passed
+      - command: go vet ./...
+        result: passed
 
   - id: "semantic-ir.copy-move"
     area: "semantic-ir-ownership"
@@ -6621,7 +6671,7 @@ integrations:
     status: partial
     audited: '2026-08-20'
     repository_baseline: c515862
-    primary_rule: rules/memory/allocation.txt
+    primary_rule: rules/memory/allocation.md
     canonical_arena_rule: rules/memory/arena.md
     summary: Arena.Reset and Arena.Release perform an operation-point dependency query in addition to receiver, arity,
       and generation/domain validation. The implemented query rejects represented escaping dependencies while allowing
@@ -6676,15 +6726,15 @@ integrations:
     status: implemented
     audited: '2026-08-20'
     repository_baseline: c515862
-    summary: allocation.txt delegates canonical storage-origin classification to storage.md. Arena remains an origin;
+    summary: allocation.md delegates canonical storage-origin classification to storage.md. Arena remains an origin;
       inline layout, external/foreign provenance, and fixed address stability are documented as independent properties.
     rules:
-    - rules/memory/allocation.txt
+    - rules/memory/allocation.md
     - rules/memory/storage.md
     - rules/platform/fixed-address-bindings.md
     - rules/platform/volatile.md
     implemented:
-    - obsolete allocation.txt origin list removed
+    - obsolete allocation origin list removed
     - canonical storage classification delegated to rules/memory/storage.md
     - Arena retained as a canonical storage origin
     - foreign, external, fixed-address, and inline properties separated from storage origin
@@ -9265,7 +9315,7 @@ integrations:
     rules:
       - "rules/memory/lifetime_analysis.md"
       - "rules/tooling/lsp.md"
-      - "rules/tooling/diagnostics.md"
+      - "rules/tooling/diagnostics.txt"
     remaining:
       - "expose lifetime origin/dependency/invalidation facts from shared Sema analysis without a second LSP lifetime engine"
       - "mentor diagnostics identify origin, invalidating operation, rejected use, relevant path and practical safe restructuring"
@@ -9278,3 +9328,340 @@ integrations:
       - "mapping/view diagnostic identifies mapping owner"
       - "defer diagnostic identifies delayed use"
       - "LSP and compiler report the same lifetime cause chain"
+  - id: frontend.references
+    area: frontend-reference-provenance-lifetime
+    status: partial
+    integrated: '2026-08-29'
+    document_revision: '2.0'
+    repository_baseline: fafd8cb
+    rules:
+    - rules/memory/references.md
+    - rules/memory/reference_model.md
+    - rules/memory/borrowing.md
+    - rules/memory/lifetime_analysis.md
+    - rules/memory/ownership.md
+    - rules/memory/copy_move.md
+    code:
+    - internal/sema/analyzer.go
+    - internal/sema/place.go
+    - internal/sema/types.go
+    - internal/sema/escape_analysis.go
+    implemented:
+    - semantic reference types carry origin metadata including source symbol/token, local-storage indication and known storage
+      origin
+    - ref creation attaches origin metadata and local reference variables preserve it
+    - returned references to local function storage are rejected in direct, local-reference, Result payload, aggregate and selected
+      lambda escape paths
+    - caller-owned reference parameters may be returned when origin proof is sufficient
+    - field/index/slice projections propagate reference-origin metadata
+    - local reference and slice bindings retain canonical structured referent Places
+    - shared-reference copy and mutable-reference move preserve referent Place; moved mutable-reference holder takes over the
+      granting borrow
+    - match ref/ref mut payload bindings carry active-variant Place provenance and branch-scoped non-escaping origin
+    - locally constructed struct/fixed-array values retain contained reference origins across supported transfers, assignments
+      and control-flow joins
+    - finite path-disjunctive origin sets are maintained with conservative unknown fallback beyond supported limits
+    - functions infer deterministic returned-reference summaries over supported parameters, receiver projections, finite multi-source
+      sets and aggregate result paths
+    - arena-backed references/slices carry generation dependencies and stale use after Arena.Reset is rejected
+    remaining:
+    - complete canonical references-v2 integration with lifetime-analysis-v2 and borrowing-v2 facts instead of legacy parallel
+      checks
+    - complete reference creation/refinement from ownership-v2 ConditionallyAvailable Places while keeping is available distinct
+      from borrow/generation/platform validity
+    - complete provenance for dynamic containers, nested opaque aggregates, imported/foreign aggregates and symbolic range relationships
+    - complete closure/reference escape validation for every callable/capture form
+    - complete generic/interface/indirect/recursive returned-reference relationships
+    - complete fixed-address, runtime mapping, register-view, remap and platform-lifetime integration
+    - complete ISR/local/deferred-work reference escape checks using interrupts.md execution contexts
+    - complete FFI retain/no-retain and raw-to-safe reference proof integration
+    - complete mentor diagnostics and LSP parity for all reference failures
+    required_tests:
+    - shared ref creation does not consume owner
+    - ref mut establishes exclusive authority without ownership transfer
+    - Unavailable Place cannot be referenced
+    - ConditionallyAvailable Place requires path refinement before safe ref creation
+    - returned local reference rejected
+    - returned caller-owned parameter accepted
+    - finite multi-origin return accepted only when every origin is valid
+    - aggregate-contained local reference escape rejected
+    - shared-reference copy preserves origin
+    - mutable-reference move transfers holder and granting borrow
+    - arena reset invalidates prior reference
+    - reference equality uses live storage identity plus location
+  - id: interprocedural.references
+    area: returned-reference-retention-summaries
+    status: partial
+    integrated: '2026-08-29'
+    document_revision: '2.0'
+    repository_baseline: fafd8cb
+    rules:
+    - rules/memory/references.md
+    - rules/memory/lifetime_analysis.md
+    - rules/analysis/escape_analysis.md
+    - rules/declarations/functions.md
+    - rules/declarations/interfaces.md
+    - rules/declarations/lambda-functions.md
+    implemented:
+    - deterministic direct function/method returned-reference summaries for supported parameter, receiver, projection, multi-source
+      and aggregate paths
+    - supported direct-call instantiation of returned-reference summaries
+    remaining:
+    - persist and validate versioned returned-reference/retention metadata for separate compilation
+    - support imported modules, function values, indirect target sets, interfaces and generic specializations
+    - support recursive and mutually recursive summary fixed points
+    - represent bodyless/opaque callable retention and returned-borrow relationships without source lifetime parameters
+    - integrate closure callback, foreign retention, task/thread/deferred-work and ISR execution relationships
+    required_tests:
+    - summary independent of declaration order
+    - summary survives serialization/import validation
+    - interface implementation cannot weaken declared reference relationship
+    - unknown indirect retention is conservative
+    - recursive summary convergence deterministic
+  - id: semantic-ir.references
+    area: semantic-ir-reference-facts
+    status: planned
+    integrated: '2026-08-29'
+    document_revision: '2.0'
+    repository_baseline: fafd8cb
+    rules:
+    - rules/memory/references.md
+    - rules/memory/reference_model.md
+    - rules/memory/lifetime_analysis.md
+    - rules/memory/borrowing.md
+    remaining:
+    - represent reference kind/mutability and canonical provenance required after Sema
+    - represent storage domain/address space and generation/epoch dependencies where required
+    - represent bounds/view information needed for safe lowering
+    - represent returned-reference and callable retention relations
+    - represent runtime mapping/register-view dependencies
+    - represent relevant borrow/reborrow and escape facts until equivalent lower-level constraints exist
+    - verify impossible or contradictory safe-reference facts before lowering
+    required_tests:
+    - reference provenance retained in Semantic IR
+    - returned-reference relationship retained
+    - arena epoch dependency retained
+    - mapping/view dependency retained
+    - invalid reference IR rejected
+  - id: lowering.references
+    area: reference-representation-lowering
+    status: planned
+    integrated: '2026-08-29'
+    document_revision: '2.0'
+    repository_baseline: fafd8cb
+    rules:
+    - rules/memory/references.md
+    - rules/memory/reference_model.md
+    - rules/platform/hardware-register-access.md
+    - rules/platform/volatile.md
+    remaining:
+    - select reference representation from target/profile and proven semantic requirements
+    - lower proven ordinary references without unnecessary runtime metadata
+    - preserve required bounds, epochs, address spaces, hardware capabilities and mapping dependencies
+    - preserve stale-reference deterministic panic/trap semantics where dynamic checks are required
+    - preserve safe-reference equality semantics beyond raw address equality when storage identity requires it
+    - avoid over-strong noalias/lifetime metadata around RawPtr, FFI, volatile, ISR shared state and hardware aliases
+    - prove no hidden heap promotion is introduced to repair illegal reference escape
+    required_tests:
+    - statically proven ref may lower to address only
+    - slice lowers with required bounds
+    - required epoch metadata preserved
+    - unneeded epoch support eliminated
+    - safe-reference equality distinguishes reused storage identity when required
+    - no hidden heap promotion
+  - id: platform.references
+    area: hardware-fixed-address-isr-reference-integration
+    status: planned
+    integrated: '2026-08-29'
+    document_revision: '2.0'
+    repository_baseline: fafd8cb
+    rules:
+    - rules/memory/references.md
+    - rules/platform/fixed-address-bindings.md
+    - rules/platform/hardware-register-access.md
+    - rules/platform/interrupts.md
+    - rules/platform/volatile.md
+    remaining:
+    - consume fixed-address storage lifetime/availability contracts without treating numeric address as permanent lifetime proof
+    - model runtime mapping owners and borrowed typed register views
+    - invalidate dependent views on mapping destruction/remap unless canonical stability proof exists
+    - keep external device liveness separate from safe-reference validity and ownership availability
+    - enforce hardware access-context authority independently from ref/ref mut authority
+    - enforce ISR-local reference non-escape and deferred-work lifetime rules
+    - combine ISR preemption/nesting facts with ordinary borrowing/concurrency proof without a separate ISR reference model
+    required_tests:
+    - fixed-address ref requires lifetime/storage contract
+    - register view cannot outlive mapping
+    - remap invalidates old view
+    - device unavailable is not None or ownership unavailable
+    - ISR valid static reference accepted
+    - ISR local reference escape rejected
+    - deferred work cannot retain ISR-local reference
+  - id: tooling.references
+    area: diagnostics-lsp-reference-tooling
+    status: planned
+    integrated: '2026-08-29'
+    document_revision: '2.0'
+    repository_baseline: fafd8cb
+    rules:
+    - rules/memory/references.md
+    - rules/tooling/lsp.md
+    - rules/tooling/diagnostics.txt
+    remaining:
+    - expose canonical origin, possible-origin set, lifetime/borrow dependency, storage domain and invalidation cause from shared
+      Sema facts
+    - show returned-reference and retention summaries where useful
+    - show mapping/view and generation dependencies without exposing implementation-only jargon as primary UX
+    - produce mentor diagnostics identifying source origin, invalidating/escape operation, rejected use and practical remedy
+    - include ISR root/context as related information when reference failure occurs under interrupt execution
+    - ensure LSP/compiler/sec analyse parity and dependency-driven incremental invalidation
+    required_tests:
+    - returned-local diagnostic points to local origin and return
+    - arena-reset diagnostic points to reset and stale use
+    - mapping-view diagnostic points to mapping lifetime boundary
+    - ISR escape diagnostic points to handler-local origin and escaping handoff
+    - compiler and LSP agree on reference validity
+  - id: frontend.allocation
+    area: frontend-allocation-semantics
+    status: partial
+    repository_baseline: 57cd774
+    rules:
+    - rules/memory/allocation.md
+    - rules/memory/arena.md
+    - rules/memory/storage.md
+    - rules/memory/ownership.md
+    - rules/memory/borrowing.md
+    - rules/memory/lifetime_analysis.md
+    - rules/memory/references.md
+    - rules/memory/destruction.md
+    code:
+    - internal/sema/analyzer.go
+    - internal/sema/types.go
+    - internal/sema/call_graph.go
+    - internal/sema/allocation_test.go
+    - internal/sema/lifetime_test.go
+    implemented:
+    - compiler-known Arena type and AllocationError enum in the represented frontend subset
+    - recognition for represented Arena constructors/members including Alloc, Reset and Release
+    - Arena.Alloc[T](count) validation with Result[ref mut T[], AllocationError] typing
+    - Reset/Release receiver and arity checks with represented generation mutation
+    - initial Arena identity/generation metadata on arena-backed references and slices
+    - initial allocation-context, storage-origin, allocation-effect and direct MayAllocate call-graph facts
+    - selected stale-reference rejection after represented Arena.Reset
+    remaining:
+    - classify every Sec 0.1 allocation-capable operation using one allocation-effect model
+    - enforce no hidden allocation in copy, move, borrow, parameter passing, return, reference creation, control-flow joins
+      or escape repair
+    - complete context propagation through functions, methods, lambdas, properties, init, interfaces, generics and indirect
+      calls
+    - replace lexical Arena binding identity with stable compiler-owned ArenaDomain identity
+    - integrate Arena.FromBuffer backing identity as an exclusive mutable-borrow dependency for the Arena lifetime
+    - complete size/default-initialization/destruction/overflow/alignment checks for safe manual allocation
+    - integrate ownership-v2, borrowing-v2, lifetime-analysis-v2, references-v2 and destruction-v2 facts canonically
+    - complete failure behavior and only treat allocation as infallible when storage/capacity is proven
+    - integrate collection, string, shaped-type, closure, FFI and platform allocation-capable operations
+    required_tests:
+    - ordinary copy does not allocate
+    - explicit move does not allocate
+    - borrow/reference creation does not allocate
+    - parameter passing and return do not allocate
+    - invalid local-reference escape is rejected rather than heap-promoted
+    - closure escape is rejected rather than silently allocated
+    - Arena.Alloc count overflow rejected before allocation
+    - Arena.Alloc alignment derived from T
+    - repeated Arena allocation does not invalidate earlier allocation
+  - id: analysis.allocation
+    area: allocation-effects-context-capacity-analysis
+    status: partial
+    repository_baseline: 57cd774
+    implemented:
+    - initial synchronous MayAllocate summaries
+    - initial source-ordered direct Arena event facts
+    - initial allocation-context facts
+    remaining:
+    - infer allocation effects transitively through every callable form
+    - persist/import validated allocation-effect summaries
+    - support recursive/mutually recursive fixed points
+    - propagate allocation contexts without forcing source-level Arena threading
+    - feed allocation-free facts into ISR, stack, target-policy and diagnostics analysis
+    - implement static Arena capacity analysis including loops, recursion, target layout and simultaneous live allocations
+    - keep allocation effect separate from panic, I/O, volatile, FFI, blocking, synchronization and mutation
+    - support static placement/allocation elimination proof without hidden escape repair
+    required_tests:
+    - transitive allocation effect propagation
+    - recursive allocation-effect convergence
+    - unknown indirect call conservative under noalloc
+    - ISR root rejects prohibited transitive allocation
+    - static capacity proof accounts for loops/recursion
+  - id: semantic-ir.allocation
+    area: semantic-ir-allocation
+    status: planned
+    repository_baseline: 57cd774
+    remaining:
+    - represent surviving dynamic allocations explicitly
+    - represent allocation context/domain, type/count/size, alignment and fallibility
+    - represent resulting storage origin/domain, lifetime/generation dependency, ownership/borrow mode and destruction responsibility
+    - keep allocation, initialization, destruction and reclamation distinct
+    - verify contradictory or incomplete allocation facts before lowering
+    required_tests:
+    - explicit allocation op
+    - context/domain preserved
+    - count/size/alignment/fallibility preserved
+    - storage origin and generation dependency preserved
+    - invalid allocation IR rejected
+  - id: lowering.allocation
+    area: allocation-lowering-backends
+    status: planned
+    repository_baseline: 57cd774
+    remaining:
+    - lower allocation operations through maintained Sec MLIR and LLVM paths
+    - preserve selected allocation domain and never invent allocator choice in backend
+    - lower overflow, alignment, capacity and allocation failure semantics
+    - preserve value destruction before storage reclamation
+    - implement target-specific Arena backing storage/allocator behavior
+    - eliminate allocations only after lifetime/capacity/address-stability/concurrency/failure/cleanup proof
+    - support valid stack/static placement without hidden escape promotion
+    - prove allocation-free paths contain no runtime allocation helper
+    required_tests:
+    - allocating operation lowers with correct domain
+    - allocation-free copy/move/ref path has no allocator call
+    - overflow/failure path preserved
+    - value destruction before Arena reclamation
+    - proven static placement removes allocation without semantic change
+  - id: target-policy.allocation
+    area: allocation-target-profile-policy
+    status: planned
+    repository_baseline: 57cd774
+    remaining:
+    - define canonical capability facts for dynamic allocation, fixed/preallocated Arena and noalloc builds
+    - enforce noalloc over complete reachable call graphs
+    - enforce ISR restrictions from shared allocation-effect facts
+    - support runtime-free bare-metal with static/fixed/preallocated storage
+    - permit statically eliminated allocation-capable operations only after complete proof
+    - keep MMIO/fixed-address storage separate from Arena allocation
+    - integrate capacity/alignment/layout guarantees supplied by target profiles
+    required_tests:
+    - hosted allocation accepted
+    - embedded preallocated Arena accepted
+    - noalloc rejects unresolved dynamic allocation
+    - ISR rejects prohibited allocating path
+    - MMIO/fixed-address access not classified as Arena allocation
+    - runtime-free bare-metal allocation-free build has no allocator dependency
+  - id: tooling.allocation
+    area: allocation-diagnostics-lsp-tooling
+    status: planned
+    repository_baseline: 57cd774
+    remaining:
+    - expose allocation-free/may-allocate/unknown callable facts from canonical analysis
+    - show allocation domain/context where useful
+    - trace transitive allocation violations to the operation/callee introducing allocation
+    - provide mentor diagnostics for noalloc, ISR, capacity, overflow, alignment, unsupported context and hidden-allocation
+      violations
+    - ensure compiler/LSP/sec analyse parity
+    - invalidate allocation summaries when bodies, profiles, imports or allocating API contracts change
+    required_tests:
+    - compiler/LSP may-allocate parity
+    - noalloc diagnostic identifies transitive source
+    - invalid escape is diagnosed instead of silently promoted
+    - capacity diagnostic explains requirement when known
+    - ISR allocation diagnostic includes ISR root/context

@@ -676,7 +676,7 @@ atomics.md
 thread_local.md
 concurrency.md
 concurrency_memory_model.txt
-allocation.txt
+allocation.md
 static.md
 platform/ffi.md
 compiler.txt

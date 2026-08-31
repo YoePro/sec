@@ -102,7 +102,7 @@ destruction.txt
 effect_analysis.md
 panic.md
 runtime_checks.md
-allocation.txt
+allocation.md
 arena.md
 operators.md
 collections.md

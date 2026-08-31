@@ -51,7 +51,7 @@ Implementation follows:
 
 ```text
 rules/memory/reference_model.md
-rules/memory/references.txt
+rules/memory/references.md
 rules/memory/borrowing.md
 rules/memory/memory_model.md
 rules/memory/lifetime_analysis.md
@@ -121,14 +121,14 @@ must report the new HEAD and verify semantic equivalence.
 
 `rules/memory/reference_model.md` is the canonical Sec 0.1 reference model.
 
-Older compact statements in:
+The source-level and runtime-check rules in:
 
 ```text
-rules/memory/references.txt
+rules/memory/references.md
 rules/errors/runtime_checks.md
 ```
 
-must be interpreted consistently with it.
+must be interpreted consistently with the complete reference model.
 
 In particular:
 

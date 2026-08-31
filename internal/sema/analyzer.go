@@ -343,10 +343,73 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 
 	a.analyzeFunctionBodies(program)
 	a.analyzeImplBodies(program)
+	a.validateNoPanicGuarantees(program)
 	a.parameterUsageAnalysis = buildParameterUsageAnalysis(program, a)
 	a.pitfallAnalysis = buildPitfallAnalysis(program, a)
 
 	return a.errors
+}
+
+// validateNoPanicGuarantees enforces the transitive verified guarantee from
+// attributes.md and effect_analysis.md. Package 14 section 55 consumes this
+// shared call-graph fact for fixed-array indexing.
+func (a *Analyzer) validateNoPanicGuarantees(program *ast.Program) {
+	a.withProgramModules(program, func(statement ast.Statement) {
+		switch statement := statement.(type) {
+		case *ast.FunctionDeclaration:
+			a.validateFunctionNoPanicGuarantee(statement, statement.Name.Value)
+		case *ast.ImplStatement:
+			if statement.Target == nil || !a.validImplStatements[statement] {
+				return
+			}
+			for _, member := range statement.Members {
+				fn, ok := member.(*ast.FunctionDeclaration)
+				if ok && fn != nil {
+					a.validateFunctionNoPanicGuarantee(fn, statement.Target.Name+"."+fn.Name.Value)
+				}
+			}
+		}
+	})
+}
+
+func (a *Analyzer) validateFunctionNoPanicGuarantee(fn *ast.FunctionDeclaration, name string) {
+	var attribute *ast.Attribute
+	for _, candidate := range fn.Attributes {
+		if candidate != nil && candidate.Name != nil && candidate.Name.Value == "noPanic" {
+			attribute = candidate
+			break
+		}
+	}
+	if attribute == nil {
+		return
+	}
+	function, ok := a.lookupFunctionByToken(name, fn.Name.Token)
+	if !ok || function.ReturnType.Kind == InvalidType {
+		return
+	}
+	summary := a.callGraph.EffectSummary(callableID(function))
+	if !summary.MayPanic || len(summary.PanicPath) == 0 {
+		return
+	}
+	chain := make([]string, 0, len(summary.PanicPath))
+	for _, id := range summary.PanicPath {
+		if node, exists := a.callGraph.Node(id); exists {
+			chain = append(chain, node.Name)
+		}
+	}
+	introducingID := summary.PanicPath[len(summary.PanicPath)-1]
+	introducing := a.callGraph.EffectSummary(introducingID)
+	kind := EffectKind("may-panic")
+	source := lexer.Token{}
+	if len(introducing.DirectEffects) != 0 {
+		kind = introducing.DirectEffects[0].Kind
+		source = introducing.DirectEffects[0].Source
+	}
+	message := fmt.Sprintf("function %s does not satisfy @noPanic: reachable %s effect via %s", name, kind, strings.Join(chain, " -> "))
+	if source.Line > 0 && source.Column > 0 {
+		message += fmt.Sprintf("; effect introduced at %s", formatLocation(source.File, source.Line, source.Column))
+	}
+	a.addErrorAtToken(attribute.Token, "%s", message)
 }
 
 // refreshTypesResolvedThroughNestedImplDeclarations closes the forward
@@ -482,8 +545,7 @@ func (a *Analyzer) resolveArithmeticFailureEffect(expr ast.Expression) {
 
 // recordArrayIndexEffect publishes the ordinary runtime bounds effect required
 // by rules/mlir/packages/sec-mlir-dialect_package14.md section 54. Proven-safe
-// indexes remove the effect; future fallible indexing will use the same
-// boundary without reporting panic.
+// and validated fallible indexes use the same boundary to remove the effect.
 func (a *Analyzer) recordArrayIndexEffect(expr *ast.IndexExpression, plan ResolvedArrayIndexPlan) {
 	if a.summaryPass || expr == nil {
 		return
@@ -1008,6 +1070,13 @@ func (a *Analyzer) collectCompileTimeIntegerBindings(program *ast.Program) {
 func (a *Analyzer) rejectIntrinsicTypeRedeclaration(name string, token lexer.Token) bool {
 	existing, exists := a.types[name]
 	if !exists || !existing.Intrinsic {
+		return false
+	}
+	// IndexError has a compiler-owned fallback for standalone analysis, while
+	// the trusted core module remains its canonical source declaration. Package
+	// 14 sections 50-54 require both identities to converge without allowing
+	// ordinary user code to shadow the name.
+	if name == "IndexError" && a.isTrustedCoreSourceToken(token) {
 		return false
 	}
 	a.addErrorAtToken(token, "type name %s is compiler-known and cannot be redeclared", name)
@@ -14007,6 +14076,9 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 			a.addErrorAtToken(expr.Token, "calling unsafe %s %s requires unsafe", kind, name)
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
+		if !a.validateCallArgumentOwnership(best[0].Function, sourceArgs, preparedSpreadValues) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
 		a.setDefinitions(callCalleeDefinitionToken(expr), best[0].Function.Token)
 		dispatch := CallDispatchDirect
 		if isMethodCall {
@@ -14141,6 +14213,7 @@ func functionDeclarationTokens(functions []Function) []lexer.Token {
 }
 
 func (a *Analyzer) contextualCallArgumentType(arg ast.Expression, actual Type, expected Type) Type {
+	arg = explicitMoveSource(arg)
 	if _, ok := arg.(*ast.CharLiteral); ok && expected.Kind == RuneType {
 		runeType := Type{Name: "rune", Kind: RuneType}
 		a.expressionTypes[arg] = runeType
@@ -14909,7 +14982,7 @@ func (a *Analyzer) inferArenaCall(expr *ast.CallExpression) (Type, expressionVal
 }
 
 // checkArenaInvalidationDependencies enforces the Reset/Release dependency
-// boundary from rules/memory/arena.md and allocation.txt (correction28.md).
+// boundary from rules/memory/arena.md and rules/memory/allocation.md (correction28.md).
 // The current lexical frontend is conservative: any still-available local
 // carrying the current domain epoch blocks invalidation.
 func (a *Analyzer) checkArenaInvalidationDependencies(domain, owner string, token lexer.Token) bool {
@@ -15425,7 +15498,7 @@ func (a *Analyzer) callArgumentTypes(args []ast.Expression, allowVariadicSpread 
 			}
 			continue
 		}
-		argType, _ := a.inferExpression(arg)
+		argType, _ := a.inferCallArgumentExpression(arg)
 		if argType.Kind == InvalidType {
 			return nil, nil, nil, nil, false
 		}
@@ -15435,6 +15508,82 @@ func (a *Analyzer) callArgumentTypes(args []ast.Expression, allowVariadicSpread 
 		runtimeSpreadValues = append(runtimeSpreadValues, false)
 	}
 	return types, expressions, preparedSpreadValues, runtimeSpreadValues, true
+}
+
+// inferCallArgumentExpression admits the ownership marker only at the direct
+// argument boundary. Its transfer is validated after overload selection and
+// committed only after every outer-call argument succeeds. See ownership.md
+// sections 10.4 and 13-14 and copy_move.md sections 7-8.
+func (a *Analyzer) inferCallArgumentExpression(arg ast.Expression) (Type, expressionValue) {
+	move, explicit := explicitMoveArgument(arg)
+	if !explicit {
+		return a.inferExpression(arg)
+	}
+	typ, value := a.inferExpression(move.Right)
+	if typ.Kind != InvalidType {
+		a.expressionTypes[arg] = typ
+	}
+	return typ, value
+}
+
+func explicitMoveArgument(expr ast.Expression) (*ast.PrefixExpression, bool) {
+	move, ok := expr.(*ast.PrefixExpression)
+	return move, ok && move.Operator == "<-" && move.Right != nil
+}
+
+func explicitMoveSource(expr ast.Expression) ast.Expression {
+	if move, ok := explicitMoveArgument(expr); ok {
+		return move.Right
+	}
+	return expr
+}
+
+// validateCallArgumentOwnership enforces visible transfer from every reusable
+// Place while preserving marker-free forwarding of fresh temporaries.
+func (a *Analyzer) validateCallArgumentOwnership(function Function, sourceArgs []ast.Expression, preparedSpreadValues []bool) bool {
+	valid := true
+	for sourceIndex, arg := range sourceArgs {
+		param, ok := functionParameterForArgument(function, sourceIndex)
+		if !ok {
+			return false
+		}
+		preparedSpread := sourceIndex < len(preparedSpreadValues) && preparedSpreadValues[sourceIndex]
+		move, explicit := explicitMoveArgument(arg)
+		source := explicitMoveSource(arg)
+		borrowParameter := param.Ref || param.MutableRef || param.Type.Kind == ReferenceType
+		if explicit {
+			if preparedSpread || borrowParameter {
+				a.addErrorAtToken(move.Token, "explicit <- argument requires an owning value parameter")
+				valid = false
+				continue
+			}
+			if !a.validateNamedOwnershipSource(ast.OwnershipMove, source, move.Token, false, false) {
+				valid = false
+			}
+			continue
+		}
+		if preparedSpread || borrowParameter {
+			continue
+		}
+		place, reusable := a.resolvePlace(source)
+		if !reusable {
+			continue
+		}
+		needsTransfer := param.Consuming || requiresOwnershipTransfer(place.Type)
+		if !needsTransfer {
+			continue
+		}
+		a.addErrorAtTokenWithMetadata(
+			expressionToken(source),
+			diagnostics.ImplicitMoveDisallowed,
+			fmt.Sprintf("write `<-%s` to make the ownership transfer explicit", place.String()),
+			"reusable source %s passed to %s must use explicit <- ownership transfer",
+			place.String(),
+			function.Name,
+		)
+		valid = false
+	}
+	return valid
 }
 
 func (a *Analyzer) consumeMethodReceiver(expression ast.Expression) {
@@ -15473,17 +15622,19 @@ func (a *Analyzer) markMovedCallArguments(function Function, sourceArgs []ast.Ex
 		if preparedSpread {
 			continue
 		}
-		if param.Consuming {
-			if a.markExplicitMoveSource(arg) {
-				if ident, ok := arg.(*ast.Identifier); ok {
+		source := explicitMoveSource(arg)
+		_, explicit := explicitMoveArgument(arg)
+		if param.Consuming || explicit {
+			if a.markExplicitMoveSource(source) {
+				if ident, ok := source.(*ast.Identifier); ok {
 					a.moveReasons[ident.Value] = "consumed by call"
 					a.endBorrowsHeldBy(ident.Value)
 				}
 			}
 			continue
 		}
-		if a.markMoveSource(arg) {
-			if ident, ok := arg.(*ast.Identifier); ok {
+		if a.markMoveSource(source) {
+			if ident, ok := source.(*ast.Identifier); ok {
 				a.endBorrowsHeldBy(ident.Value)
 			}
 		}
@@ -16517,6 +16668,11 @@ func (a *Analyzer) inferTryExpression(expr *ast.TryExpression) (Type, expression
 	if operator, ok := a.ResolvedOperatorOf(expr.Expression); ok && operator.RuntimeCheck {
 		return a.inferArithmeticTryExpression(expr, operator)
 	}
+	if index, ok := expr.Expression.(*ast.IndexExpression); ok {
+		if plan, exists := a.resolvedArrayIndexPlans[index]; exists {
+			return a.inferBoundsTryExpression(expr, index, plan)
+		}
+	}
 
 	if valueType.Kind != ResultType || len(valueType.TypeArgs) != 2 {
 		a.addErrorAtToken(expr.Token, "try requires Result expression")
@@ -16567,6 +16723,60 @@ func (a *Analyzer) inferTryExpression(expr *ast.TryExpression) (Type, expression
 	}
 
 	return valueType.TypeArgs[0], expressionValue{Display: expr.String()}
+}
+
+// inferBoundsTryExpression converts a fixed-array runtime bounds check into
+// typed IndexError flow. Rules: rules/errors/errorhandling.md section 10.3 and
+// rules/mlir/packages/sec-mlir-dialect_package14.md sections 50-54.
+func (a *Analyzer) inferBoundsTryExpression(expr *ast.TryExpression, index *ast.IndexExpression, plan ResolvedArrayIndexPlan) (Type, expressionValue) {
+	result := expressionValue{Display: expr.String()}
+	errorType := plan.ErrorType
+	if errorType.Kind == InvalidType || errorType.Kind == "" {
+		errorType = a.indexErrorType()
+	}
+
+	if len(expr.Handlers) != 0 {
+		resultType := Type{Name: "Result", Kind: ResultType, TypeArgs: []Type{plan.ElementType, errorType}}
+		handlerPlan, valid := a.analyzeTryHandlers(expr, resultType)
+		a.resolvedTries[expr] = ResolvedTry{Kind: ResolvedTryHandledBounds, SuccessType: plan.ElementType, ErrorType: errorType}
+		if valid {
+			a.commitFallibleBoundsIndex(index, plan, errorType)
+			a.resolvedTryPlans[expr] = handlerPlan
+		}
+		return plan.ElementType, result
+	}
+	if a.inDeferBlock {
+		a.addErrorAtToken(expr.Token, "bodyless try cannot propagate from inside defer; add a local try handler")
+		return plan.ElementType, result
+	}
+	if !a.inFunctionBody {
+		a.addErrorAtToken(expr.Token, "bodyless bounds try cannot propagate outside a function; add a local try handler")
+		return plan.ElementType, result
+	}
+	if a.currentFunctionReturn.Kind != ResultType || len(a.currentFunctionReturn.TypeArgs) != 2 {
+		a.addErrorAtToken(expr.Token, "bodyless bounds try propagates IndexError with return Err, but this function returns %s", typeDisplayName(a.currentFunctionReturn))
+		return plan.ElementType, result
+	}
+	functionError := a.currentFunctionReturn.TypeArgs[1]
+	if !canInitialize(functionError, errorType, expr.Expression) {
+		a.addErrorAtToken(expr.Token, "bodyless bounds try propagates IndexError with return Err, but this function returns %s", typeDisplayName(a.currentFunctionReturn))
+		return plan.ElementType, result
+	}
+	a.resolvedTries[expr] = ResolvedTry{Kind: ResolvedTryBoundsPropagation, SuccessType: plan.ElementType, ErrorType: errorType, EnclosingResultType: a.currentFunctionReturn}
+	a.commitFallibleBoundsIndex(index, plan, errorType)
+	return plan.ElementType, result
+}
+
+// commitFallibleBoundsIndex publishes positive evidence only after the complete
+// try construct has validated. This keeps invalid try syntax from erasing the
+// ordinary MayBoundsPanic effect. See Package 14 section 54.
+func (a *Analyzer) commitFallibleBoundsIndex(index *ast.IndexExpression, plan ResolvedArrayIndexPlan, errorType Type) {
+	if plan.CheckKind == ArrayIndexRuntimeCheck {
+		plan.FailureMode = ArrayIndexFailureFallible
+	}
+	plan.ErrorType = errorType
+	a.recordResolvedArrayIndexPlan(index, plan)
+	a.recordArrayIndexEffect(index, plan)
 }
 
 func (a *Analyzer) inferArithmeticTryExpression(expr *ast.TryExpression, operator ResolvedOperator) (Type, expressionValue) {
@@ -18602,6 +18812,10 @@ func (a *Analyzer) inferDecimalInfixExpression(expr *ast.InfixExpression, leftTy
 }
 
 func (a *Analyzer) inferPrefixExpression(expr *ast.PrefixExpression) (Type, expressionValue) {
+	if expr.Operator == "<-" {
+		a.addErrorAtToken(expr.Token, "explicit <- move in this expression is not implemented; direct call arguments are supported")
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
 	rightType, rightValue := a.inferExpression(expr.Right)
 	if rightType.Kind == InvalidType {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}

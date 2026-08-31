@@ -124,8 +124,12 @@ fn Identity(values: int[2]) int[2] {
 
 func TestPackage14UnsupportedArrayLiteralReturnsNoPartialModule(t *testing.T) {
 	p := parser.New(lexer.NewWithFile(`module main
-fn Build() int[2] {
-  return [1, 2]
+
+@noCopy
+type Token struct { value: int }
+
+fn Build() Token[1] {
+  return [Token{ value: 1 }]
 }
 `, "package14-unsupported.sec"))
 	parsed := p.Parse()
@@ -141,8 +145,305 @@ fn Build() int[2] {
 		t.Fatalf("unsupported P14 source lowering returned partial module:\n%s", Format(module))
 	}
 	var unsupported *UnsupportedFeatureError
-	if !errors.As(err, &unsupported) || unsupported.Package != 14 || unsupported.Feature != "array literal" {
-		t.Fatalf("error = %#v, want Package 14 array-literal UnsupportedFeatureError", err)
+	if !errors.As(err, &unsupported) || unsupported.Package != 14 || unsupported.Feature != "non-trivial array literal element" {
+		t.Fatalf("error = %#v, want Package 14 non-trivial array-literal UnsupportedFeatureError", err)
+	}
+}
+
+func TestPackage14BuildsTrivialMutableFixedArrayStorage(t *testing.T) {
+	module, err := analyzedModule(t, `module main
+
+fn Explicit(source: int32[2]) int32[4] {
+    let mut values: int32[4] := [1, source..., 4]
+    return values
+}
+
+fn Defaulted() int128[3] {
+    let mut values: int128[3]
+    return values
+}
+
+fn Nested() int32[2][2] {
+    let mut values: int32[2][2] := [[1, 2], [3, 4]]
+    return values
+}
+`, 14)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Verify(module); err != nil {
+		t.Fatalf("verify mutable fixed-array storage: %v\n%s", err, Format(module))
+	}
+	formatted := Format(module)
+	for _, forbidden := range []string{"memref", "llvm.array", "undef", "poison"} {
+		if strings.Contains(strings.ToLower(formatted), forbidden) {
+			t.Fatalf("mutable fixed-array storage introduced %q:\n%s", forbidden, formatted)
+		}
+	}
+
+	for _, function := range module.Functions {
+		if len(function.Storages) != 1 {
+			t.Fatalf("%s storages = %#v, want one high-level array storage", function.Name, function.Storages)
+		}
+		storageType, ok := module.Types.Lookup(function.Storages[0].Type)
+		if !ok || storageType.Kind != TypeArray {
+			t.Fatalf("%s storage type = %#v, want TypeArray", function.Name, storageType)
+		}
+		counts := map[OpKind]int{}
+		for _, block := range function.Blocks {
+			for _, operation := range block.Operations {
+				counts[operation.Kind]++
+			}
+		}
+		for _, kind := range []OpKind{OpStorageDeclare, OpStorageInit, OpStorageLoad} {
+			if counts[kind] != 1 {
+				t.Fatalf("%s %s count = %d, want 1\n%s", function.Name, kind, counts[kind], formatted)
+			}
+		}
+		if counts[OpStorageStore] != 0 {
+			t.Fatalf("%s unexpectedly stored after initialization", function.Name)
+		}
+	}
+
+	var explicit *Function
+	for _, function := range module.Functions {
+		if function.Name == "Explicit" {
+			explicit = function
+		}
+	}
+	if explicit == nil {
+		t.Fatal("missing Explicit function")
+	}
+	constructs := []Operation{}
+	for _, operation := range explicit.Blocks[0].Operations {
+		if operation.Kind == OpArrayConstruct {
+			constructs = append(constructs, operation)
+		}
+	}
+	if len(constructs) != 1 || len(constructs[0].Operands) != 3 ||
+		constructs[0].ArraySegmentKinds[1] != ArraySegmentSpread ||
+		constructs[0].ArraySegmentLengths[1] != "2" ||
+		constructs[0].ArrayActions[1] != ArrayActionCopyTrivial {
+		t.Fatalf("explicit compact construction = %#v", constructs)
+	}
+}
+
+func TestPackage14RejectsNonTrivialFixedArrayStorageWithoutPartialModule(t *testing.T) {
+	p := parser.New(lexer.NewWithFile(`module main
+
+@noCopy
+type Token struct { value: int }
+
+fn Rejected() void {
+    let mut values: Token[0]
+}
+`, "package14-nontrivial-storage.sec"))
+	parsed := p.Parse()
+	if parsed.HasErrors {
+		t.Fatalf("parse: %v", p.Errors())
+	}
+	analyzer := sema.NewAnalyzer()
+	if semaErrors := analyzer.Analyze(parsed.Program); len(semaErrors) != 0 {
+		t.Fatalf("zero-length non-defaultable array should pass Sema: %v", semaErrors)
+	}
+	module, err := Build(parsed.Program, analyzer, BuildOptions{RequestedModule: "main", MaxPackage: 14})
+	if module != nil {
+		t.Fatalf("unsupported storage returned partial module:\n%s", Format(module))
+	}
+	var unsupported *UnsupportedFeatureError
+	if !errors.As(err, &unsupported) || unsupported.Package != 14 || unsupported.Feature != "non-trivial mutable local storage" {
+		t.Fatalf("error = %#v, want Package 14 non-trivial storage boundary", err)
+	}
+}
+
+func TestPackage14BuildsTransactionalIndexedLocalReplacement(t *testing.T) {
+	module, err := analyzedModule(t, `module main
+
+fn NextIndex() int128 {
+    return 1
+}
+
+fn NextValue() int32 {
+    return 9
+}
+
+fn Runtime() int32[4] {
+    let mut values: int32[4] := [1, 2, 3, 4]
+    values[NextIndex()] = NextValue()
+    return values
+}
+
+fn Proven() int32[4] {
+    let mut values: int32[4] := [1, 2, 3, 4]
+    values[2] = NextValue()
+    return values
+}
+`, 14)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Verify(module); err != nil {
+		t.Fatalf("verify indexed local replacement: %v\n%s", err, Format(module))
+	}
+
+	functions := map[string]*Function{}
+	for _, function := range module.Functions {
+		functions[function.Name] = function
+	}
+	runtime, proven := functions["Runtime"], functions["Proven"]
+	if runtime == nil || proven == nil {
+		t.Fatalf("missing replacement functions: %#v", functions)
+	}
+	if len(runtime.Blocks) != 3 {
+		t.Fatalf("Runtime blocks = %d, want entry/success/failure", len(runtime.Blocks))
+	}
+	entry, success, failure := runtime.Blocks[0], runtime.Blocks[1], runtime.Blocks[2]
+	if len(entry.Operations) < 4 || entry.Operations[len(entry.Operations)-1].Kind != OpCondBranch ||
+		entry.Operations[len(entry.Operations)-2].Kind != OpArrayIndexInBounds ||
+		entry.Operations[len(entry.Operations)-3].Kind != OpStorageLoad ||
+		entry.Operations[len(entry.Operations)-4].Kind != OpDirectCall {
+		t.Fatalf("Runtime did not evaluate index then bounds before RHS:\n%s", Format(module))
+	}
+	if len(failure.Operations) != 1 || failure.Operations[0].Kind != OpBoundsFailure {
+		t.Fatalf("Runtime failure path = %#v", failure.Operations)
+	}
+	replaceIndex, storeCount, rhsCalls := -1, 0, 0
+	for index, operation := range success.Operations {
+		switch operation.Kind {
+		case OpDirectCall:
+			rhsCalls++
+		case OpArrayReplace:
+			replaceIndex = index
+			predicate := entry.Operations[len(entry.Operations)-2]
+			if operation.ArrayGuard != predicate.Results[0].ID || operation.Operands[0] != predicate.Operands[0] || operation.Operands[1] != predicate.Operands[1] {
+				t.Fatalf("replacement does not reuse its exact guard array/index: %#v", operation)
+			}
+		case OpStorageStore:
+			storeCount++
+		}
+	}
+	if rhsCalls != 1 || replaceIndex < 1 || success.Operations[replaceIndex-1].Kind != OpDirectCall || storeCount != 1 || success.Operations[replaceIndex+1].Kind != OpStorageStore {
+		t.Fatalf("Runtime RHS/replace/store order = %#v", success.Operations)
+	}
+
+	provenOps := proven.Blocks[0].Operations
+	provenReplace, provenStore := -1, 0
+	for index, operation := range provenOps {
+		if operation.Kind == OpArrayReplace {
+			provenReplace = index
+			if operation.ArrayCheckKind != ArrayIndexProvenSafe || operation.ArrayProofKind != ArrayIndexProofConstant || operation.ArrayGuard != 0 {
+				t.Fatalf("proven replacement metadata = %#v", operation)
+			}
+		}
+		if operation.Kind == OpStorageStore {
+			provenStore++
+		}
+	}
+	if provenReplace < 2 || provenOps[provenReplace-2].Kind != OpDirectCall || provenOps[provenReplace-1].Kind != OpStorageLoad || provenStore != 1 || provenOps[provenReplace+1].Kind != OpStorageStore {
+		t.Fatalf("Proven RHS/load/replace/store order = %#v", provenOps)
+	}
+}
+
+func TestPackage14BuildsNestedArrayStructReplacementMatrix(t *testing.T) {
+	module, err := analyzedModule(t, `module main
+
+type Pair struct {
+    left: int32,
+    right: int32,
+}
+
+type Holder struct {
+    values: int32[2],
+    tag: int32,
+}
+
+fn Next32() int32 {
+    return 9
+}
+
+fn Next128() int128 {
+    return 99
+}
+
+fn NestedArrays(row: uint, column: uint) int32[2][2] {
+    let mut matrix: int32[2][2] := [[1, 2], [3, 4]]
+    matrix[row][column] = Next32()
+    return matrix
+}
+
+fn StructInArray(index: uint) Pair[2] {
+    let mut pairs: Pair[2] := [Pair{ left: 1, right: 2 }, Pair{ left: 3, right: 4 }]
+    pairs[index].right = Next32()
+    return pairs
+}
+
+fn ArrayInStruct(index: uint) Holder {
+    let mut holder: Holder := Holder{ values: [1, 2], tag: 3 }
+    holder.values[index] = Next32()
+    return holder
+}
+
+fn Wide(index: uint) int128[2] {
+    let mut values: int128[2] := [1, 2]
+    values[index] = Next128()
+    return values
+}
+`, 14)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Verify(module); err != nil {
+		t.Fatalf("verify nested replacement matrix: %v\n%s", err, Format(module))
+	}
+
+	type counts struct {
+		arrayExtract, arrayReplace   int
+		structExtract, structReplace int
+		bounds, rhsCalls, stores     int
+	}
+	want := map[string]counts{
+		"NestedArrays":  {arrayExtract: 1, arrayReplace: 2, bounds: 2, rhsCalls: 1, stores: 1},
+		"StructInArray": {arrayExtract: 1, arrayReplace: 1, structReplace: 1, bounds: 1, rhsCalls: 1, stores: 1},
+		"ArrayInStruct": {arrayReplace: 1, structExtract: 1, structReplace: 1, bounds: 1, rhsCalls: 1, stores: 1},
+		"Wide":          {arrayReplace: 1, bounds: 1, rhsCalls: 1, stores: 1},
+	}
+	for _, function := range module.Functions {
+		expected, relevant := want[function.Name]
+		if !relevant {
+			continue
+		}
+		got := counts{}
+		rhsBeforeReplacement := false
+		for _, block := range function.Blocks {
+			sawRHS := false
+			for _, operation := range block.Operations {
+				switch operation.Kind {
+				case OpDirectCall:
+					got.rhsCalls++
+					sawRHS = true
+				case OpArrayIndexInBounds:
+					got.bounds++
+				case OpArrayExtract:
+					got.arrayExtract++
+				case OpArrayReplace:
+					got.arrayReplace++
+					rhsBeforeReplacement = rhsBeforeReplacement || sawRHS
+				case OpStructExtractField:
+					got.structExtract++
+				case OpStructReplaceField:
+					got.structReplace++
+					rhsBeforeReplacement = rhsBeforeReplacement || sawRHS
+				case OpStorageStore:
+					got.stores++
+				}
+			}
+		}
+		if got != expected || !rhsBeforeReplacement {
+			t.Fatalf("%s replacement counts/order = %+v, want %+v\n%s", function.Name, got, expected, Format(module))
+		}
+		if len(function.Storages) != 1 {
+			t.Fatalf("%s root storage = %#v", function.Name, function.Storages)
+		}
 	}
 }
 
@@ -780,6 +1081,39 @@ func TestPackage14FallibleBoundsBuildsIndexError(t *testing.T) {
 	text := Format(module)
 	if !strings.Contains(text, `enum.constant case=#0`) || !strings.Contains(text, `result.err %6`) {
 		t.Fatalf("fallible path does not construct IndexError.OutOfBounds:\n%s", text)
+	}
+}
+
+func TestPackage14BuildsFallibleBoundsPropagationAndLocalHandler(t *testing.T) {
+	module, err := analyzedModule(t, `module main
+fn Read(values: int[4], index: int) Result[int, IndexError] {
+  return Ok(try values[index])
+}
+fn Local(values: int[4], index: int) int {
+  return try values[index] {
+    Err(IndexError.OutOfBounds) => 0
+  }
+}
+`, 14)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Verify(module); err != nil {
+		t.Fatalf("verify: %v\n%s", err, Format(module))
+	}
+	for _, function := range module.Functions {
+		kinds := map[OpKind]int{}
+		for _, block := range function.Blocks {
+			for _, operation := range block.Operations {
+				kinds[operation.Kind]++
+			}
+		}
+		if kinds[OpArrayIndexInBounds] != 1 || kinds[OpArrayExtract] != 1 || kinds[OpEnumConstant] == 0 || kinds[OpBoundsFailure] != 0 {
+			t.Fatalf("%s fallible bounds operations = %#v\n%s", function.Name, kinds, Format(module))
+		}
+		if function.Name == "Read" && kinds[OpResultErr] != 1 {
+			t.Fatalf("Read must propagate exactly one typed Result.err: %#v", kinds)
+		}
 	}
 }
 

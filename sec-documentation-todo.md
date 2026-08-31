@@ -393,7 +393,7 @@ Synchronize with:
 
 ```text
 rules/memory/reference_model.md
-rules/memory/allocation.txt
+rules/memory/allocation.md
 rules/memory/storage.md
 rules/memory/layout.md
 rules/memory/ownership.md

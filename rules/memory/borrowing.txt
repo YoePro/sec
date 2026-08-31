@@ -164,7 +164,7 @@ A returned reference must originate from a valid external owner.
 
 A reference to a local value may not be returned.
 
-A returned reference must follow the reference-origin rules defined in references.txt.
+A returned reference must follow the reference-origin rules defined in references.md.
 
 Borrows created inside a function end when the function returns unless the returned reference explicitly propagates an allowed input reference.
 

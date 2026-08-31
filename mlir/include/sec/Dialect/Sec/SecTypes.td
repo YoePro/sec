@@ -94,6 +94,16 @@ def Sec_StructType : Sec_Type<"Struct", "struct"> {
   let genVerifyDecl = 1;
 }
 
+def Sec_ArrayType : Sec_Type<"Array", "array"> {
+  let summary = "Fixed Sec array semantic value without physical layout";
+  let parameters = (ins
+    "::mlir::Type":$elementType,
+    "::mlir::StringAttr":$length
+  );
+  let assemblyFormat = "`<` $elementType `,` $length `>`";
+  let genVerifyDecl = 1;
+}
+
 def Sec_DecimalType : Sec_SingletonType<"Decimal", "decimal"> {
   let summary = "Sec exact decimal type";
 }

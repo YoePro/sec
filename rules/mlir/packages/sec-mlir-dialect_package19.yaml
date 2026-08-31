@@ -24,7 +24,7 @@ package:
 normative_updates:
 - repository_paths:
   - rules/memory/arena.md
-  - rules/memory/allocation.txt
+  - rules/memory/allocation.md
   - rules/memory/storage.md
   - rules/memory/reference_model.md
   - rules/library/core-library.md

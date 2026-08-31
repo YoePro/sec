@@ -29,7 +29,7 @@ normative_updates:
   - rules/library/core-library.md
   - rules/memory/layout.md
   - rules/memory/storage.md
-  - rules/memory/allocation.txt
+  - rules/memory/allocation.md
   supplied_file: sec_dynamic_array_sync_package18.md
 - repository_path: rules/compiler/semantic_ir.txt
   supplied_file: sec_semantic_ir_dynamic_array_package18.md

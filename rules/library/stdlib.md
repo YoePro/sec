@@ -1275,7 +1275,7 @@ declarations/interfaces.md
 impl.md
 properties.md
 errorhandling.md
-allocation.txt
+allocation.md
 ownership.md
 borrowing.txt
 copy_move.md

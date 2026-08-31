@@ -1,0 +1,145 @@
+module http
+
+// One normalized HTTP field name/value occurrence.
+//
+// _HeaderField is internal representation detail for Header. Field names are
+// stored in lowercase so every lookup follows HTTP's case-insensitive field
+// name semantics. Repeated names represent repeated values in insertion order.
+type _HeaderField struct {
+    Name: string,
+    Value: string,
+}
+
+// HTTP message fields.
+//
+// Mutation can grow an owning collection and is therefore explicitly
+// fallible. A Header preserves the order in which values were added for one
+// field; callers must not depend on ordering between different field names.
+type Header struct {
+    _fields: list[_HeaderField],
+}
+
+impl Header {
+    /** New returns an empty Header with no allocated field entries. */
+    static fn New() Header {
+        return Header {
+            _fields: list[_HeaderField] {},
+        }
+    }
+
+    /** Add appends Value to the values associated with Name.
+    *
+    * Name matching is case-insensitive. The new value remains after all
+    * previously added values for the same field. CollectionError reports that
+    * the internal collection could not grow; the Header remains unchanged. */
+    fn Add(Name: string, Value: string) Result[void, CollectionError] {
+        let normalized := Header.NormalizeName(Name)
+
+        try self._fields.Append(_HeaderField {
+            Name: normalized,
+            Value: Value,
+        })
+        return Ok()
+    }
+
+    /** Set replaces every value associated with Name with exactly Value.
+    *
+    * Name matching is case-insensitive. The replacement is prepared before it
+    * is committed, so CollectionError leaves the Header unchanged. */
+    fn Set(Name: string, Value: string) Result[void, CollectionError] {
+        let normalized := Header.NormalizeName(Name)
+
+        // Rebuild first so allocation failure leaves the Header unchanged.
+        let mut replacement := list[_HeaderField] {}
+        for field in self._fields {
+            if field.Name != normalized {
+                try replacement.Append(field)
+            }
+        }
+        try replacement.Append(_HeaderField {
+            Name: normalized,
+            Value: Value,
+        })
+        self._fields <- replacement
+        return Ok()
+    }
+
+    /** Get returns the first value associated with Name.
+    *
+    * Name matching is case-insensitive. None is returned when the field is not
+    * present. */
+    fn Get(Name: string) Option[string] {
+        let normalized := Header.NormalizeName(Name)
+
+        for field in self._fields {
+            if field.Name == normalized {
+                return Some(field.Value)
+            }
+        }
+
+        return None
+    }
+
+    /** GetAll returns a new array containing every value associated with Name.
+    *
+    * Values retain their insertion order. A missing field produces an empty
+    * array. CollectionError reports failure while creating the returned copy;
+    * the Header itself is never modified. */
+    fn GetAll(Name: string) Result[string[], CollectionError] {
+        let normalized := Header.NormalizeName(Name)
+        let mut result: string[]
+
+        for field in self._fields {
+            if field.Name == normalized {
+                try result.Append(field.Value)
+            }
+        }
+
+        return Ok(result)
+    }
+
+    /** Contains reports whether at least one value is associated with Name.
+    *
+    * Name matching is case-insensitive. */
+    fn Contains(Name: string) bool {
+        let normalized := Header.NormalizeName(Name)
+
+        for field in self._fields {
+            if field.Name == normalized {
+                return true
+            }
+        }
+
+        return false
+    }
+
+    /** Remove removes every value associated with Name.
+    *
+    * Removing a missing field succeeds without changing the Header. The
+    * replacement collection is prepared before commit, so CollectionError
+    * leaves the Header unchanged. */
+    fn Remove(Name: string) Result[void, CollectionError] {
+        let normalized := Header.NormalizeName(Name)
+        let mut replacement := list[_HeaderField] {}
+
+        for field in self._fields {
+            if field.Name != normalized {
+                try replacement.Append(field)
+            }
+        }
+        self._fields <- replacement
+        return Ok()
+    }
+
+    /** Clear removes every field and value from the Header. */
+    fn Clear() void {
+        self._fields.Clear()
+    }
+
+    /** NormalizeName returns the canonical case-insensitive lookup key.
+    *
+    * The original field-name spelling is not retained by Header. */
+    static fn NormalizeName(Name: string) string {
+        return Name.ToLower()
+    }
+}

@@ -179,6 +179,32 @@ LogicalResult StructType::verify(
   return success();
 }
 
+// ArrayType::verify preserves the canonical arbitrary-precision fixed length
+// and high-level element boundary from
+// rules/mlir/packages/sec-mlir-dialect_package14.md sections 59-61 and
+// rules/mlir/dialect-versions/sec_mlir_dialect_v10.md sections 2-6.
+LogicalResult ArrayType::verify(
+    function_ref<InFlightDiagnostic()> emitError, Type elementType,
+    StringAttr length) {
+  if (!elementType || isa<NoneType, FunctionType, StorageType>(elementType))
+    return emitError()
+           << "sec.array element type must be a sized semantic value type";
+  if (!length)
+    return emitError() << "sec.array length must be present";
+
+  StringRef spelling = length.getValue();
+  if (spelling.empty())
+    return emitError() << "sec.array length must be canonical unsigned decimal";
+  if (spelling.size() > 1 && spelling.front() == '0')
+    return emitError()
+           << "sec.array length must not contain unnecessary leading zeroes";
+  if (!llvm::all_of(spelling, [](char value) {
+        return value >= '0' && value <= '9';
+      }))
+    return emitError() << "sec.array length must be canonical unsigned decimal";
+  return success();
+}
+
 void SecDialect::registerTypes() {
   addTypes<
 #define GET_TYPEDEF_LIST

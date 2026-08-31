@@ -634,6 +634,42 @@ type Choice union {
 	}
 }
 
+func TestParseNoPanicFunctionAndMethodAttributes(t *testing.T) {
+	input := `
+module main
+
+@noPanic
+fn Read(values: int[4]) int {
+    return values[0]
+}
+
+type Reader struct {}
+
+impl Reader {
+    @noPanic
+    fn Read(values: int[4]) int {
+        return values[0]
+    }
+}
+`
+	p := New(lexer.New(input))
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	fn, ok := program.Statements[1].(*ast.FunctionDeclaration)
+	if !ok || len(fn.Attributes) != 1 || fn.Attributes[0].Name.Value != "noPanic" {
+		t.Fatalf("top-level function attributes = %#v", fn)
+	}
+	impl, ok := program.Statements[3].(*ast.ImplStatement)
+	if !ok || len(impl.Members) != 1 {
+		t.Fatalf("impl = %#v", program.Statements[3])
+	}
+	method, ok := impl.Members[0].(*ast.FunctionDeclaration)
+	if !ok || len(method.Attributes) != 1 || method.Attributes[0].Name.Value != "noPanic" {
+		t.Fatalf("method attributes = %#v", impl.Members[0])
+	}
+}
+
 func TestParseUnionDefaultVariantMarkers(t *testing.T) {
 	input := `type State union {
     Idle default
@@ -980,6 +1016,25 @@ target <- replacement`
 	}
 	if assignment.Ownership != ast.OwnershipMove || assignment.Operator != "<-" || assignment.Value.String() != "replacement" {
 		t.Fatalf("wrong move assignment: ownership=%q operator=%q value=%v", assignment.Ownership, assignment.Operator, assignment.Value)
+	}
+}
+
+func TestParseExplicitMoveCallArgument(t *testing.T) {
+	p := New(lexer.New(`Consume(<-resource)`))
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	statement, ok := program.Statements[0].(*ast.ExpressionStatement)
+	if !ok {
+		t.Fatalf("statement = %T, want ExpressionStatement", program.Statements[0])
+	}
+	call, ok := statement.Expression.(*ast.CallExpression)
+	if !ok || len(call.Arguments) != 1 {
+		t.Fatalf("expression = %#v, want one-argument call", statement.Expression)
+	}
+	move, ok := call.Arguments[0].(*ast.PrefixExpression)
+	if !ok || move.Operator != "<-" || move.Right.String() != "resource" {
+		t.Fatalf("argument = %#v, want <-resource", call.Arguments[0])
 	}
 }
 

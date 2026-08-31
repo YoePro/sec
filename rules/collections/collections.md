@@ -2314,7 +2314,7 @@ compiler_known_members.md
 core-library.md
 default_values.md
 declarations/spread.md
-allocation.txt
+allocation.md
 storage.md
 layout.md
 reference_model.md

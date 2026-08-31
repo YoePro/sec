@@ -295,4 +295,14 @@ def Sec_StructReplaceFieldOp : Sec_Op<"struct.replace_field", [Pure]> {
   let hasVerifier = 1;
 }
 
+def Sec_ArrayConstructOp : Sec_Op<"array.construct", [Pure]> {
+  let summary = "Construct a fixed Sec array from compact ordered segments";
+  let arguments = (ins ArrayAttr:$segment_kinds,
+                       ArrayAttr:$segment_lengths,
+                       ArrayAttr:$segment_actions,
+                       Variadic<AnyType>:$segments);
+  let results = (outs AnyType:$result);
+  let hasVerifier = 1;
+}
+
 #endif // SEC_DIALECT_SEC_OPS_TD

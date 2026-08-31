@@ -1,6 +1,198 @@
 module http
 
+/** HTTP protocol version.
+*
+* Kept as a separate nominal type because Request should not carry */
+type Version struct {
+    Major: uint8,
+    Minor: uint8,
+}
 
-type HttpRequest struct {
+// HTTP request.
+//
+// Request represents the protocol-level HTTP message.
+//
+// Transport-specific information such as the remote network endpoint,
+// TLS connection state, cancellation and server context does not belong
+// directly in this type and will be modeled separately.
+type Request struct {
+    // HTTP method, including extension methods.
+    Method: Method,
 
+    // Raw request-target as it appeared on the wire.
+    //
+    // Examples:
+    //   /
+    //   /users/42
+    //   /search?q=sec
+    //   *
+    //
+    // Parsing into path/query components will be provided by Request
+    // behavior and/or the future URL support.
+    Target: string,
+
+    // HTTP protocol version.
+    Version: Version,
+
+    // Request headers.
+    //
+    // Header will become a dedicated HTTP type because field names are
+    // case-insensitive and one field may contain multiple values.
+    Headers: Header,
+
+    // Request trailers.
+    Trailers: Header,
+
+    // Effective host/authority for the request.
+    Host: string,
+
+    // Message body.
+    //
+    // byte[] is a temporary groundwork representation.
+    // The final API should support streamed bodies without requiring the
+    // complete request body to be allocated in memory.
+    Body: byte[],
+
+    // Declared content length.
+    //
+    // None means that no Content-Length is known or declared.
+    ContentLength: Option[uint64],
+}
+
+impl Request {
+    // -------------------------------------------------------------------------
+    // Target helpers
+    // -------------------------------------------------------------------------
+
+    property Path: string {
+        get {
+            // TODO:
+            // Parse and return the path portion of Target.
+            return self.Target
+        }
+    }
+
+    property Query: string {
+        get {
+            // TODO:
+            // Return the query component without the leading '?'.
+            return ""
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Body helpers
+    // -------------------------------------------------------------------------
+
+    property HasBody: bool {
+        get {
+            // TODO:
+            // This must be revisited when Body becomes stream-capable.
+            return !self.Body.IsEmpty
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Header helpers
+    // -------------------------------------------------------------------------
+
+    fn HeaderValue(Name: string) Option[string] {
+        // TODO:
+        // Header lookup is case-insensitive.
+        //
+        // Define how multiple field values are treated by this helper.
+        discard Name
+        return None
+    }
+
+    fn HeaderValues(Name: string) string[] {
+        // TODO:
+        // Return all values for the requested field name.
+        discard Name
+
+        let mut values: string[]
+        return values
+    }
+
+    fn SetHeader(
+        Name: string,
+        Value: string,
+    ) void {
+        // TODO:
+        // Replace existing values for Name.
+        discard Name
+        discard Value
+    }
+
+    fn AddHeader(
+        Name: string,
+        Value: string,
+    ) void {
+        // TODO:
+        // Append another field value without replacing existing values.
+        discard Name
+        discard Value
+    }
+
+    fn RemoveHeader(Name: string) void {
+        // TODO:
+        discard Name
+    }
+
+    // -------------------------------------------------------------------------
+    // Common HTTP conveniences
+    // -------------------------------------------------------------------------
+
+    property UserAgent: string {
+        get {
+            // TODO:
+            return ""
+        }
+    }
+
+    property Referer: string {
+        get {
+            // TODO:
+            return ""
+        }
+    }
+
+    property ContentType: string {
+        get {
+            // TODO:
+            return ""
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Authentication helpers
+    // -------------------------------------------------------------------------
+
+    fn BasicAuth() Option[BasicAuthentication] {
+        // TODO:
+        // Decode Authorization: Basic ...
+        return None
+    }
+
+    // -------------------------------------------------------------------------
+    // Serialization
+    // -------------------------------------------------------------------------
+
+    fn ToString() string {
+        // TODO:
+        // Serialize the request head.
+        //
+        // Body serialization should eventually be handled through an
+        // io.Writer/streaming API rather than materializing the entire
+        // request as one string.
+        return ""
+    }
+}
+
+// Parsed HTTP Basic authentication credentials.
+//
+// This is intentionally a struct instead of returning two unrelated strings.
+type BasicAuthentication struct {
+    Username: string,
+    Password: string,
 }

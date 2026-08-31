@@ -1,0 +1,7 @@
+module http
+
+fn Get(url: string) void { }
+
+fn Post(url: string) void {}
+
+fn Head(url: string) void {}

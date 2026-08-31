@@ -1,114 +1,108 @@
 module http
 
-// HTTP methods registered by IANA.
-//
-// HTTP method names on the wire are case-sensitive tokens.
-// This enum represents methods known to this stdlib version.
-//
-// Unknown extension methods must still be preserved by the HTTP parser.
-//
-// Registry:
-// https://www.iana.org/assignments/http-methods
-enum Method {
-    // Core HTTP semantics - RFC 9110
-    GET,
-    HEAD,
-    POST,
-    PUT,
-    DELETE,
-    CONNECT,
-    OPTIONS,
-    TRACE,
-
-    // RFC 5789
-    PATCH,
-
-    // WebDAV and extensions
-    ACL,
-    BASELINE_CONTROL,
-    BIND,
-    CHECKIN,
-    CHECKOUT,
-    COPY,
-    LABEL,
-    LINK,
-    LOCK,
-    MERGE,
-    MKACTIVITY,
-    MKCALENDAR,
-    MKCOL,
-    MKREDIRECTREF,
-    MKWORKSPACE,
-    MOVE,
-    ORDERPATCH,
-    PROPFIND,
-    PROPPATCH,
-    REBIND,
-    REPORT,
-    SEARCH,
-    UNBIND,
-    UNCHECKOUT,
-    UNLINK,
-    UNLOCK,
-    UPDATE,
-    UPDATEREDIRECTREF,
-    VERSION_CONTROL,
-
-    // HTTP/2 connection preface
-    PRI,
-
-    // RFC 10008
-    QUERY,
-
-    UNKNOWN,
-}
+/*
+* Sec Standard Library - HTTP Methods
+*
+* File:        stdlib/net/http/methods.sec
+* Module:      http
+* Revision:    1
+* Created:     2026-08-30
+* Updated:     2026-08-30
+* Author:      Jonas Engström
+*
+* Purpose:
+*   Defines the HTTP Method type and the well-known HTTP methods used by
+*   the Sec standard library.
+*
+*   HTTP method names are case-sensitive tokens on the wire. Method is
+*   therefore represented as a nominal string type rather than a closed
+*   enum, allowing standard, extension, vendor-specific, and future methods
+*   to remain representable.
+*
+*   Well-known methods registered by IANA are exposed as type-associated
+*   static values, for example:
+*
+*       http.Method.GET
+*       http.Method.POST
+*       http.Method.PATCH
+*
+*   Unknown extension methods preserve their original wire representation.
+*
+*   FromString() recognizes known methods and returns their canonical form.
+*   Unknown methods are preserved unchanged.
+*
+*   ToString() returns the exact method token represented by the value.
+*
+* References:
+*   - RFC 9110 - HTTP Semantics
+*     https://www.rfc-editor.org/rfc/rfc9110
+*
+*   - RFC 5789 - PATCH Method for HTTP
+*     https://www.rfc-editor.org/rfc/rfc5789
+*
+*   - IANA HTTP Method Registry
+*     https://www.iana.org/assignments/http-methods/
+*
+* Notes:
+*   The set of HTTP methods is intentionally not treated as closed.
+*   Applications and protocols may define additional valid method tokens
+*   without requiring changes to this file.
+*/
+type Method string
 
 impl Method {
+    // Core HTTP semantics - RFC 9110
+    static let GET: Method := "GET"
+    static let HEAD: Method := "HEAD"
+    static let POST: Method := "POST"
+    static let PUT: Method := "PUT"
+    static let DELETE: Method := "DELETE"
+    static let CONNECT: Method := "CONNECT"
+    static let OPTIONS: Method := "OPTIONS"
+    static let TRACE: Method := "TRACE"
+
+    // RFC 5789
+    static let PATCH: Method := "PATCH"
+
+    // WebDAV and extensions
+    static let ACL: Method := "ACL"
+    static let BASELINE_CONTROL: Method := "BASELINE-CONTROL"
+    static let BIND: Method := "BIND"
+    static let CHECKIN: Method := "CHECKIN"
+    static let CHECKOUT: Method := "CHECKOUT"
+    static let COPY: Method := "COPY"
+    static let LABEL: Method := "LABEL"
+    static let LINK: Method := "LINK"
+    static let LOCK: Method := "LOCK"
+    static let MERGE: Method := "MERGE"
+    static let MKACTIVITY: Method := "MKACTIVITY"
+    static let MKCALENDAR: Method := "MKCALENDAR"
+    static let MKCOL: Method := "MKCOL"
+    static let MKREDIRECTREF: Method := "MKREDIRECTREF"
+    static let MKWORKSPACE: Method := "MKWORKSPACE"
+    static let MOVE: Method := "MOVE"
+    static let ORDERPATCH: Method := "ORDERPATCH"
+    static let PROPFIND: Method := "PROPFIND"
+    static let PROPPATCH: Method := "PROPPATCH"
+    static let REBIND: Method := "REBIND"
+    static let REPORT: Method := "REPORT"
+    static let SEARCH: Method := "SEARCH"
+    static let UNBIND: Method := "UNBIND"
+    static let UNCHECKOUT: Method := "UNCHECKOUT"
+    static let UNLINK: Method := "UNLINK"
+    static let UNLOCK: Method := "UNLOCK"
+    static let UPDATE: Method := "UPDATE"
+    static let UPDATEREDIRECTREF: Method := "UPDATEREDIRECTREF"
+    static let VERSION_CONTROL: Method := "VERSION-CONTROL"
+
+    // HTTP/2 connection preface
+    static let PRI: Method := "PRI"
+
+    // RFC 10008
+    static let QUERY: Method := "QUERY"
+
     fn ToString() string {
-        return match self {
-            GET => "GET"
-            HEAD => "HEAD"
-            POST => "POST"
-            PUT => "PUT"
-            DELETE => "DELETE"
-            CONNECT => "CONNECT"
-            OPTIONS => "OPTIONS"
-            TRACE => "TRACE"
-            PATCH => "PATCH"
-
-            ACL => "ACL"
-            BASELINE_CONTROL => "BASELINE-CONTROL"
-            BIND => "BIND"
-            CHECKIN => "CHECKIN"
-            CHECKOUT => "CHECKOUT"
-            COPY => "COPY"
-            LABEL => "LABEL"
-            LINK => "LINK"
-            LOCK => "LOCK"
-            MERGE => "MERGE"
-            MKACTIVITY => "MKACTIVITY"
-            MKCALENDAR => "MKCALENDAR"
-            MKCOL => "MKCOL"
-            MKREDIRECTREF => "MKREDIRECTREF"
-            MKWORKSPACE => "MKWORKSPACE"
-            MOVE => "MOVE"
-            ORDERPATCH => "ORDERPATCH"
-            PROPFIND => "PROPFIND"
-            PROPPATCH => "PROPPATCH"
-            REBIND => "REBIND"
-            REPORT => "REPORT"
-            SEARCH => "SEARCH"
-            UNBIND => "UNBIND"
-            UNCHECKOUT => "UNCHECKOUT"
-            UNLINK => "UNLINK"
-            UNLOCK => "UNLOCK"
-            UPDATE => "UPDATE"
-            UPDATEREDIRECTREF => "UPDATEREDIRECTREF"
-            VERSION_CONTROL => "VERSION-CONTROL"
-
-            PRI => "PRI"
-            QUERY => "QUERY"
-        }
+        return string(self)
     }
 
     static fn FromString(In: string) Method {
@@ -236,10 +230,8 @@ impl Method {
                 return Method.QUERY
 
             default:
-                // Unknown extension methods are legal HTTP methods.
-                //
-                // Preserve the original spelling because HTTP method tokens
-                // are case-sensitive. Only known methods are canonicalized.
+                // Unknown extension methods remain valid and preserve their
+                // original case-sensitive wire representation.
                 return Method(In)
         }
     }

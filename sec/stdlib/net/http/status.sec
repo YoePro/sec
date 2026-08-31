@@ -1,10 +1,135 @@
 module http
+/*
+* Sec Standard Library - HTTP Status Codes
+*
+* File:        stdlib/net/http/status.sec
+* Module:      http
+* Revision:    1
+* Created:     2026-08-30
+* Updated:     2026-08-30
+* Author:      Jonas Engström
+*
+* Purpose:
+*   Defines the HTTP Status type and the well-known HTTP status values used
+*   by the Sec standard library.
+*
+*   Status is an open numeric domain represented by:
+*
+*       type Status int range 100..999
+*
+*   Standard and commonly recognized status codes are exposed as
+*   type-associated static values, for example:
+*
+*       http.Status.Ok
+*       http.Status.NotFound
+*       http.Status.InternalServerError
+*
+*   Values not explicitly named by this file may still be represented as
+*   Status values when they fall within the permitted numeric range.
+*
+*   ToString() provides the conventional textual description for known
+*   status codes.
+*
+* References:
+*   - RFC 9110 - HTTP Semantics
+*     https://www.rfc-editor.org/rfc/rfc9110
+*
+*   - IANA HTTP Status Code Registry
+*     https://www.iana.org/assignments/http-status-codes/
+*
+* Notes:
+*   HTTP status 418 is intentionally exposed as Status.Teapot for practical
+*   compatibility and development use, despite its current reserved/unused
+*   status in the IANA registry.
+*/
 
-type Status int range 100..999
+/** HTTP Reply Status */
+type Status int range 100..999 default 199
 
 impl Status {
 
-    static Ok := 200
+    // Informational
+    static let Continue: Status := 100
+    static let SwitchingProtocols: Status := 101
+    static let Processing: Status := 102
+    static let EarlyHints: Status := 103
+
+    // Temporary IANA registration.
+    // Expires 2026-11-13 unless extended or made permanent.
+    static let UploadResumptionSupported: Status := 104
+
+    // SEC-unitialized
+    static let Uninitialized: Status := 199
+
+    // Successfull
+    static let Ok: Status := 200
+    static let Created: Status := 201
+    static let Accepted: Status := 202
+    static let NonAuthoritativeInformation: Status := 203
+    static let NoContent: Status := 204
+    static let ResetContent: Status := 205
+    static let PartialContent: Status := 206
+    static let MultiStatus: Status := 207
+    static let AlreadyReported: Status := 208
+    static let ImUsed: Status := 226
+
+    // Redirection
+    static let MultipleChoices: Status := 300
+    static let MovedPermanently: Status := 301
+    static let Found: Status := 302
+    static let SeeOther: Status := 303
+    static let NotModified: Status := 304
+    static let UseProxy: Status := 305
+    // 306 is unused.
+    static let TemporaryRedirect: Status := 307
+    static let PermanentRedirect: Status := 308
+
+    // Client errors
+    static let BadRequest: Status := 400
+    static let Unauthorized: Status := 401
+    static let PaymentRequired: Status := 402
+    static let Forbidden: Status := 403
+    static let NotFound: Status := 404
+    static let MethodNotAllowed: Status := 405
+    static let NotAcceptable: Status := 406
+    static let ProxyAuthenticationRequired: Status := 407
+    static let RequestTimeout: Status := 408
+    static let Conflict: Status := 409
+    static let Gone: Status := 410
+    static let LengthRequired: Status := 411
+    static let PreconditionFailed: Status := 412
+    static let ContentTooLarge: Status := 413
+    static let UriTooLong: Status := 414
+    static let UnsupportedMediaType: Status := 415
+    static let RangeNotSatisfiable: Status := 416
+    static let ExpectationFailed: Status := 417
+    // IANA currently marks 418 as unused.
+    // Sec HTTP intentionally keeps the traditional name for practical use.
+    static let Teapot: Status := 418
+    static let MisdirectedRequest: Status := 421
+    static let UnprocessableContent: Status := 422
+    static let Locked: Status := 423
+    static let FailedDependency: Status := 424
+    static let TooEarly: Status := 425
+    static let UpgradeRequired: Status := 426
+    static let PreconditionRequired: Status := 428
+    static let TooManyRequests: Status := 429
+    static let RequestHeaderFieldsTooLarge: Status := 431
+    static let UnavailableForLegalReasons: Status := 451
+
+    // Server errors
+    static let InternalServerError: Status := 500
+    static let NotImplemented: Status := 501
+    static let BadGateway: Status := 502
+    static let ServiceUnavailable: Status := 503
+    static let GatewayTimeout: Status := 504
+    static let HttpVersionNotSupported: Status := 505
+    static let VariantAlsoNegotiates: Status := 506
+    static let InsufficientStorage: Status := 507
+    static let LoopDetected: Status := 508
+    // Obsolete, but retained because it is a known registered status code.
+    static let NotExtended: Status := 510
+    static let NetworkAuthenticationRequired: Status := 511
 
     fn ToString() string {
         switch int(self) {

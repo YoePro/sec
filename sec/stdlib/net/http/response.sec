@@ -1,9 +1,9 @@
 module http
 
-type HttpResponse struct {
+type Response struct {
 
 }
 
-type HttpResponseWriter struct {
+type ResponseWriter struct {
 
 }

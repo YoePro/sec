@@ -257,6 +257,21 @@ continuation.
 The parser also accepts `Value: expression` as formatter-recovery syntax and
 warns that `=` is canonical.
 
+An explicit ordinary enum underlying type may be an integer type or `string`.
+A string-backed enum requires an explicit compile-time string initializer for
+every member:
+
+```sec
+enum Program string {
+    OneCare = "Zebra OneCare",
+    VIQ = "Z1C+VIQ",
+}
+```
+
+Omitted member initializers and `iota` are not part of string-backed enum
+syntax semantics; the parser preserves the syntax and Sema emits the required
+specialized diagnostic.
+
 ## Union syntax
 
 Implemented:
@@ -719,6 +734,19 @@ Still partial:
 ## Impl blocks
 
 Methods, properties, events, static members, and nested declarations are parsed.
+
+A direct immutable `let` in an `impl` is the canonical syntax for a
+type-associated immutable value:
+
+```sec
+impl Program {
+    let OneCare := "Zebra OneCare"
+}
+```
+
+`static let` in the same position is accepted as an equivalent compatibility
+spelling and canonical formatting removes `static`. Mutable associated storage
+continues to require `static let mut`; bare `let mut` in an `impl` is invalid.
 
 Still partial:
 
@@ -1739,7 +1767,11 @@ TypeEnumDeclaration
 
 EnumUnderlying
     ::= [ ":" ] IntegerTypeReference
+      | [ ":" ] StringTypeReference
       | [ ":" ] BitUnderlying
+
+StringTypeReference
+    ::= Contextual("string")
 
 BitUnderlying
     ::= Contextual("bit") [ "[" IntegerConstant "]" ]
@@ -2075,6 +2107,7 @@ ImplBody
 ImplMember
     ::= FunctionDeclaration
       | StaticFunctionDeclaration
+      | AssociatedLetDeclaration
       | StaticLetDeclaration
       | StaticPropertyDeclaration
       | PropertyDeclaration
@@ -2086,7 +2119,14 @@ ImplMember
       | FreeDeclaration
       | NestedImplDeclaration
       | UnitMetadataDeclaration
+
+AssociatedLetDeclaration
+    ::= "let" Identifier [ ":" TypeReference ] ":=" Expression
 ```
+
+`AssociatedLetDeclaration` is immutable. `let mut` does not match this
+production and is invalid directly inside `impl`; mutable associated storage
+uses `StaticLetDeclaration` with `let mut`.
 
 Lifecycle and construction syntax:
 
@@ -2459,6 +2499,11 @@ same mandatory explicit identifier as instance setters:
 ```
 
 There is no implicit setter-value binding.
+
+Inside `impl`, immutable `StaticLetDeclaration` is compatibility syntax for
+`AssociatedLetDeclaration`. It has identical semantics, and the canonical
+formatter removes `static`. `static let mut` remains the only mutable
+type-associated storage form.
 
 Compile-time static dependency order belongs to `rules/declarations/static.md`.
 Executable startup and shutdown planning belong to

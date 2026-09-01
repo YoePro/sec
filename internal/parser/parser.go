@@ -3322,10 +3322,19 @@ func (p *Parser) parseImplStatement() ast.Statement {
 			recovery := p.skipInvalidImplMember()
 			stmt.Members = append(stmt.Members, p.invalidMember(start, diagnosticStart, recovery, message))
 		case lexer.LET:
-			start, diagnosticStart := p.curToken, len(p.diagnostics)
-			message := "variable declarations are not allowed inside impl"
-			recovery := p.skipInvalidImplMember()
-			stmt.Members = append(stmt.Members, p.invalidMember(start, diagnosticStart, recovery, message))
+			// rules/declarations/static.md section 6 and
+			// rules/declarations/impl.md section 13 make a direct immutable let
+			// the canonical associated-value spelling. Sema retains let mut so
+			// it can issue the dedicated mutable-storage diagnostic.
+			parsed := p.parseLetStatement()
+			switch declaration := parsed.(type) {
+			case *ast.LetStatement:
+				stmt.Members = append(stmt.Members, declaration)
+			case *ast.LetGroupStatement:
+				for _, member := range declaration.Lets {
+					stmt.Members = append(stmt.Members, member)
+				}
+			}
 		default:
 			message := "impl block may only contain type, unit, enum, property, event, and fn declarations"
 			if p.curToken.Type == lexer.IDENT && p.peekToken.Type == lexer.COLON {

@@ -28,7 +28,7 @@ enum UnknownUnderlyingType MissingIntegerType {
     value,
 }
 
-enum NonIntegerUnderlyingType string {
+enum NonIntegerUnderlyingType bool {
     value,
 }
 

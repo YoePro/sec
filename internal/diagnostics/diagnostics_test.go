@@ -32,6 +32,7 @@ func TestKnownDiagnosticSeverities(t *testing.T) {
 		OperatorIntegerOverflow:      SeverityError,
 		OperatorDivisionByZero:       SeverityError,
 		OperatorRemainderByZero:      SeverityError,
+		RedundantAssociatedStatic:    SeverityInformation,
 		LargeValueParameter:          SeverityInformation,
 	}
 

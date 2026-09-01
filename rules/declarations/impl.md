@@ -1,10 +1,10 @@
 # Impl
 
 **Status:** Normative  
-**Document revision:** 2.0  
+**Document revision:** 2.1
 **Sec language version:** 0.1  
 **Created:** 2026-08-13  
-**Last updated:** 2026-08-14
+**Last updated:** 2026-09-01
 
 **Supersedes:** `rules/declarations/impl.txt`
 
@@ -236,6 +236,7 @@ Subject to the specialized rulebooks, an implementation may contain:
 - static methods;
 - static properties;
 - static storage/value declarations;
+- immutable associated value declarations using direct `let`;
 - lifecycle `init` declarations;
 - lifecycle `free` declarations;
 - associated/nested type declarations;
@@ -491,10 +492,12 @@ defined by `properties.md`.
 ## 13. Static members
 
 Type-associated members use explicit `static` where required by `static.md`.
+An immutable associated value is the deliberate exception: direct `let` is
+its canonical implementation-member spelling.
 
 ```sec
 impl Counter {
-    static let Maximum: int := 100
+    let Maximum: int := 100
 
     static fn IsValid(value: int) bool {
         return value <= Counter.Maximum
@@ -506,10 +509,24 @@ Static members do not contribute to instance layout.
 
 Static members do not receive `self`.
 
+For immutable implementation members, `static let Maximum := value` is accepted
+as semantically identical compatibility syntax for `let Maximum := value`.
+Both spellings register one type-associated immutable member category and use
+the same qualified access, initialization, visibility, lifetime, duplicate,
+and lowering rules. Canonical formatting removes the redundant `static`.
+
+This equivalence does not extend to mutation. Shared mutable type storage must
+be declared `static let mut`; bare `let mut` directly inside an implementation
+is invalid. A bare implementation `let` never declares an instance field.
+
 Static storage, methods, and properties may occur in either the primary
 implementation or a same-module `impl extends` fragment. All fragments
 contribute to one combined static member surface, and duplicate or conflicting
 members are rejected across that complete surface.
+
+The combined-surface check treats `let Name` and `static let Name` as the same
+member category and identity. Mixing the two spellings cannot evade a duplicate
+diagnostic.
 
 Static members are accessed through the target type, never through an
 instance. An ordinary `fn` remains instance-bound with implicit `self`; only

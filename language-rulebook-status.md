@@ -106,11 +106,11 @@ These were written after the older temporary checklist was last synchronized.
 | `foundations/lexical_structure.md` | **Written** | Canonical lexical rules; implementation status is tracked by `frontend.lexical-structure` in `implementation-status.yaml`. |
 | `types/types.md` | **Written** | Canonical replacement for the retired `types.txt`; implementation is tracked by `frontend.types-core`, `frontend.literal-family-suffix-v2`, `frontend.temporal-builtin-types`, and `frontend.wide-numeric-language-types`. |
 | `types/contracts.md` | **Written** | Canonical named-type contracts; replaces the obsolete variable-contract model. |
-| `types/default_values.md` | **Written** | Canonical primitive, constrained, aggregate, list and explicit-default semantics. |
+| `types/default_values.md` | **Written** | Canonical primitive, constrained, aggregate, list and explicit-default semantics, including declared-member defaults for integer-, string-, and bit-backed enums. |
 | `types/units.md` | **Written** | Canonical revision 2.0 carrier-independent unit model; implementation progress is tracked by `frontend.units-v2` and `stdlib.units-catalog` in `implementation-status.yaml`. |
-| `foundations/grammar.md` | **Written** | Canonical consolidated grammar for Sec 0.1. |
+| `foundations/grammar.md` | **Written** | Canonical consolidated grammar for Sec 0.1, including string-backed enum declarations and canonical immutable associated `let` members. |
 | `foundations/operators.md` | **Written** | Canonical operator semantics; compiler progress belongs in `implementation-status.yaml`. |
-| `foundations/names_scopes_visibility.md` | **Written — sync required** | Top-level module declaration namespace conflicts are partially implemented; remaining scope, visibility, reserved-name and naming-rule audit still needed. |
+| `foundations/names_scopes_visibility.md` | **Written — sync required** | Defines one member identity for canonical immutable impl `let` and compatibility `static let`; top-level conflicts are partially implemented and the remaining scope, visibility, reserved-name and naming-rule audit is still needed. |
 | `foundations/attributes.md` | **Written** | Canonical closed Sec 0.1 attribute set, syntax, attachment, selection, target binding, `@noCopy`, verified guarantees, conflicts, formatter/LSP behavior, and explicit implementation status. |
 | `memory/unsafe.md` | **Written** | Canonical unsafe contexts, operations, functions and extern declarations, caller obligations, raw pointers, trust boundaries and provenance; compiler support remains partial. |
 
@@ -175,7 +175,7 @@ LSP token classification
 | Rulebook | Status | Notes |
 |---|---|---|
 | `declarations/struct.md` | **Written** | Canonical named aggregate declarations, field tags, complete/partial/spread construction, recursive defaults, field Places, copy/move, equality, destruction, and layout boundaries. Implementation is tracked by `frontend.structs`. |
-| `declarations/enums.md` | **Written** | Canonical closed ordinary and open bit-backed enum domains, Go-style `iota` repetition, declared-member defaults, aliases, checked conversions, match semantics, and lowering requirements. Implementation is tracked by `frontend.enums`. |
+| `declarations/enums.md` | **Written** | Revision 2.0 defines closed integer- and string-backed ordinary enums, open bit-backed domains, integer-only `iota` repetition, declared-member defaults, aliases, checked conversions, match semantics, and lowering requirements. Implementation is tracked by `frontend.enums`. |
 | `declarations/unions.md` | **Written** | Canonical closed nominal unions, payload construction, explicit defaults, empty initialization state, matching, ownership, equality, generics, recursion, and representation requirements. Implementation is tracked by `frontend.unions`. |
 | `declarations/registers.md` | **Written** | Canonical nominal `register[N]` types, logical bit layout, nested registers, field access semantics, conversions, and impl eligibility. Implementation is tracked by `frontend.registers`. |
 | `declarations/functions.md` | **Written** | Canonical revision 2.0 functions, owned/borrowed/consuming parameters, call-transfer commit, overloads, and native typed variadics. Frontend and lowering progress is tracked by `frontend.functions-v2`. |
@@ -184,7 +184,7 @@ LSP token classification
 | `closures.md` | **Covered** | Covered by `declarations/lambda-functions.md`; no duplicate rulebook expected. |
 | `declarations/generics.md` | **Written** | Canonical revision 2.0 compile-time type generics, constraints, inference, method generics, generic interfaces/named types, monomorphization, ABI boundaries, and diagnostics. Implementation progress is tracked by `frontend.generics-v2`. |
 | `declarations/interfaces.md` | **Written** | Canonical behavioral interfaces, receiver capabilities, inheritance, and primary-impl conformance. Frontend progress is tracked by `frontend.interfaces`. |
-| `declarations/impl.md` | **Written** | Revision 2.0 defines primary/extensions, implicit self, associated declarations, and lifecycle `init`/`free` with `new`; frontend lifecycle status is tracked by `frontend.impl-lifecycle-construction`. |
+| `declarations/impl.md` | **Written** | Revision 2.1 additionally makes immutable impl `let` the canonical associated-value spelling and immutable impl `static let` its equivalent compatibility form; lifecycle status is tracked by `frontend.impl-lifecycle-construction` and associated values by `frontend.static-declarations-members`. |
 | `declarations/properties.md` | **Written** | Canonical property declarations, explicit setter parameters, fallible setters, impl fragments, static properties, and interface requirements. Frontend progress is tracked by `frontend.properties`. |
 | `control-flow/defer.md` | **Written** | Canonical revision 2.0 invocation-scoped deferred cleanup, unified LIFO ordering with automatic destruction, lifetime extension, forbidden control transfer, and callable-context boundaries. Implementation progress is tracked by `frontend.defer-v2`. |
 | `declarations/spread.md` | **Written** | Canonical postfix spread for fixed-array calls/literals and same-type struct construction. Frontend progress is tracked by `frontend.spread`. |
@@ -306,7 +306,7 @@ The remaining details to close are:
 | `memory/lifetime_analysis.md` | **Written** | Canonical revision 2.0 lifetime analysis, including value/storage/reference lifetimes, Place-sensitive invalidation, non-lexical borrows, control-flow and loop joins, returned-reference summaries, defer/capture dependencies, arena epochs, fixed-address and runtime-mapping boundaries, Semantic IR obligations, and diagnostics. Implementation progress is tracked by `frontend.lifetime-analysis`, `interprocedural.lifetime-analysis`, `semantic-ir.lifetime-analysis`, `lowering.lifetime-analysis`, `platform.lifetime-analysis`, and `tooling.lifetime-analysis` in `implementation-status.yaml`. |
 | `memory/destruction.md` | **Written** | Canonical revision 2.0 deterministic destruction, exact-once cleanup responsibility, partial and conditional aggregate cleanup, custom `free`, construction-failure cleanup, unified defer/destruction ordering, and target-policy boundaries. Implementation progress is tracked by `frontend.destruction`, `semantic-ir.destruction`, `lowering.destruction`, `target-policy.destruction`, and `tooling.destruction` in `implementation-status.yaml`. |
 | `memory/memory_model.md` | **Written** | Canonical source and compiler memory model, including default lifetime and origin rules. |
-| `declarations/static.md` | **Written** | Canonical revision 2.0 for module, function-local, and type-associated static storage; static methods/properties, generic specialization, compile-time initialization, dependency order, concurrency, destruction, placement boundaries, Semantic IR, and diagnostics. Implementation progress is tracked by `frontend.static-declarations-members`. |
+| `declarations/static.md` | **Written** | Revision 2.1 defines module and function-local static storage plus type-associated members; immutable impl `let` is canonical and immutable impl `static let` is equivalent compatibility syntax, while mutable associated storage remains explicit. Implementation progress is tracked by `frontend.static-declarations-members`. |
 | `control-flow/discard.md` | **Written** | Canonical revision 2.0 explicit and implicit discard, must-use/discardability, reinitialization, lifecycle-handle, and deterministic destruction semantics. The implemented frontend slice and remaining lowering, Place, diagnostics, and path-sensitive work are tracked by `frontend.discard-v2`. |
 | `memory/storage.md` | **Written** | Canonical storage origin, backing relation, reclamation authority, address stability, regions, invalidation domains, validity epochs, memory spaces, placement guarantees, and shaped `StorageRequest` integration; implementation remains partial. |
 | `memory/layout.md` | **Written** | Canonical semantic/native layout, size, alignment, stride, padding, aggregate representation, explicit contracts, plan-specific queries, and compatibility; the shared layout phase remains partial. |
@@ -562,12 +562,12 @@ multiple target outputs
 | Rulebook | Status | Notes |
 |---|---|---|
 | `tooling/diagnostics.txt` | **Written — sync required** | Central registry and `sec diagnostics [--json]` expose all registered definitions plus complete definition/parser/sema/token field schemas; LSP exposes parser/sema codes. Full ID migration, localization and machine-readable emitted-diagnostic output remain. |
-| `tooling/formatter.md` | **Written** | Canonical formatting behavior; implementation progress belongs in `implementation-status.yaml`. |
+| `tooling/formatter.md` | **Written** | Canonical formatting behavior, including string-enum initializer preservation and immutable impl `static let` normalization to `let`; implementation progress belongs in `implementation-status.yaml`. |
 | `compiler_diagnostics.md` | **Covered** | Compiler diagnostic policy remains canonical in `tooling/diagnostics.txt`; avoid duplication. |
 | `debug_information.md` | **Planned** | Source mapping, variables, optimized code, generics, async/task frames, and targets. |
 | `compiler_testing.md` | **Planned** | Compiler unit, integration, invalid, regression, lowering, and backend tests. |
 | `incremental_compilation.md` | **Planned** | Dependency invalidation, generic specialization caches, and target-aware rebuilds. |
-| `tooling/lsp.md` | **Living** | Canonical language-server architecture and feature rulebook; definition, Sema-backed highlights, direct/task/thread call hierarchy, and compiler-owned root/recursion/spawn/Arena-allocation hover summaries are implemented, while the workspace index, complete per-plan graph views, and broader navigation/reference features remain partial. |
+| `tooling/lsp.md` | **Living** | Canonical language-server architecture and feature rulebook, now including string-backed enum facts and one readonly type-qualified category for both associated-value spellings; implementation remains partial as detailed in governance. |
 
 ---
 

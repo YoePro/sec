@@ -1105,6 +1105,7 @@ integrations:
       - compile-time integer range overlap and value-covered-by-range diagnostics
       - basic relational reachability diagnostics with partial overlap retained
       - enum non-exhaustiveness warning without default and bool-domain coverage
+      - enum cases normalize to integer/string underlying value classes and complete closed-enum coverage participates in continuation and return analysis
       - unreachable statements inside case bodies routed through the canonical error policy
       - LLVM lowering for the currently supported subject, subjectless, range, relational, and fallthrough subset
       - MLIR lowering for integer and bool subject switches with value alternatives
@@ -1113,7 +1114,6 @@ integrations:
       - add focused Sema and lowering tests proving switch creates no break or continue target and nested switch control resolves only to an enclosing loop
       - add dedicated parser and Sema diagnostics for switch value use, case where guards, and structural or payload-binding patterns
       - analyze lazy case tests and explicit fallthrough with path-specific runtime state instead of committing skipped-case effects or dropping fallthrough state
-      - normalize enum cases to numeric value classes and recognize complete closed-enum coverage in continuation and return analysis
       - route every statically covered case and item through the canonical unreachable-code policy with useful earlier-case provenance
       - preserve independent case scopes and emit correct ownership, destruction, cleanup, and control-flow edges across fallthrough
       - lower subjectless switch through MLIR
@@ -1245,7 +1245,7 @@ integrations:
       - explicit whole-payload ref and ref mut bindings work for reusable union and Result subjects
       - branch-scoped payload borrows use active-variant Places and enforce overlap and escape restrictions
       - ordinary enum variant matching is supported
-      - enum aliases normalize to numeric value classes for coverage
+      - enum aliases normalize to integer/string underlying value classes for coverage
       - open bit-backed enum exhaustiveness uses the complete representable domain
       - Result and enum exhaustiveness are checked
       - duplicate and unreachable match arms are diagnosed in implemented cases
@@ -1302,7 +1302,7 @@ integrations:
       - direct bool match is rejected
       - general literal match pattern is rejected
       - range match pattern is rejected
-      - ordinary enum match uses unique numeric value classes for coverage
+      - ordinary enum match uses unique underlying value classes for coverage
       - ordinary enum aliases are duplicate or unreachable by normalized value class
       - open bit-backed enum requires coverage of complete bit domain or catch-all
       - Result match requires explicit Err handling
@@ -2203,6 +2203,8 @@ integrations:
     area: frontend-analysis-and-lowering
     status: partial
     integrated: "2026-08-14"
+    revised: "2026-09-01"
+    document_revision: "2.1"
     summary: >-
       Tracks revision-2.0 static storage and type-associated member semantics.
       The frontend recognizes static storage, functions, and properties,
@@ -2210,14 +2212,21 @@ integrations:
       property category and static initialization dependencies, and rejects
       hidden runtime initialization. Generic specialization, concurrency
       proofs, deterministic destruction, and explicit backend representation
-      remain incomplete.
+      remain incomplete. Revision 2.1 direct immutable let and compatibility
+      static let now share one frontend associated-value category, including
+      parsing, Sema, type-qualified lookup, formatting, CLI/LSP information
+      diagnostics, and completion. Semantic IR and backend representation of
+      associated values remain incomplete.
     rules:
       - rules/declarations/static.md
       - rules/declarations/impl.md
       - rules/declarations/properties.md
       - rules/foundations/grammar.md
+      - rules/foundations/names_scopes_visibility.md
       - rules/foundations/attributes.md
       - rules/compiler/semantic_ir.txt
+      - rules/tooling/formatter.md
+      - rules/tooling/lsp.md
     code:
       - internal/lexer/lexer.go
       - internal/ast/ast.go
@@ -2225,6 +2234,10 @@ integrations:
       - internal/sema/analyzer.go
       - internal/sema/types.go
       - internal/sema/call_graph.go
+      - internal/formatter/formatter.go
+      - internal/ir/semantic/model.go
+      - internal/ir/semantic/builder.go
+      - internal/lowering/secmlir/emitter.go
       - cmd/lsp/main.go
     tests:
       - internal/lexer/lexer_test.go
@@ -2232,6 +2245,15 @@ integrations:
       - internal/sema/analyzer_test.go
       - internal/sema/concurrency_test.go
       - cmd/lsp/main_test.go
+      - testdata/associated_values_valid.sec
+    normative_delta:
+      - direct immutable let in a primary impl or same-module impl extends fragment declares a readonly type-associated member
+      - immutable impl let and immutable impl static let have identical member identity, type, lifetime, initialization, visibility, qualification, and lowering semantics
+      - direct immutable let is canonical source and immutable static let is accepted compatibility syntax with a redundant-modifier rewrite
+      - bare let mut remains invalid in impl and cannot be interpreted as an instance field or implicit shared storage
+      - mutable associated storage continues to require explicit static let mut
+      - canonical and compatibility spellings participate in one combined member namespace and conflict across all impl fragments
+      - associated immutable values use Type.Name access and are never offered or resolved through an instance
     implemented:
       - static keyword tokenization and declaration-position parsing
       - static let and static let mut parsing at module, function, and impl-member positions
@@ -2251,7 +2273,20 @@ integrations:
       - explicitly typed module storage is predeclared independently of source order for frontend dependency analysis
       - known runtime calls and invocation-local captures are rejected in static initializers, and static dependency cycles receive deterministic diagnostics
       - function-local static declarations retain Static storage classification rather than automatic Inline classification in Sema
+      - direct immutable let parses as an impl member while bare let mut is retained for the dedicated mutable-associated-storage error
+      - canonical let and compatibility static let resolve through the same qualified static-origin symbol category and compile-time initialization graph
+      - immutable static let emits S1026 as information with canonical remove-static help in CLI and LSP
+      - canonical formatting removes redundant static only from direct immutable impl members while preserving static let mut, static fn, static property, and function-local static
+      - canonical and compatibility associated values participate in type-qualified completion and remain absent from instance completion
+      - duplicate canonical and compatibility spellings resolve to the same qualified identity and are rejected by the existing duplicate-symbol boundary
+      - testdata/associated_values_valid.sec exercises canonical, compatibility, and mutable-static forms through the compiler CLI
     remaining:
+      - represent associated immutable values unambiguously in Semantic IR and retain one representation independent of source spelling
+      - lower compile-time associated values and addressable immutable associated storage consistently through Sec MLIR and every backend
+      - complete focused nested-impl and generic-specialization identity tests for associated immutable values
+      - complete cross-category duplicate diagnostics against fields, properties, methods, events, and nested types in every impl fragment ordering
+      - add a dedicated LSP code action rather than relying only on canonical document formatting for the remove-static rewrite
+      - complete hover, references, document-symbol, and semantic-token regression coverage for both associated-value spellings
       - prevent static fn bodies from receiving implicit self or unqualified instance-member access
       - classify ordinary module-level bindings as static storage and reject static fn outside valid impl/interface contexts
       - verify and complete static overload/member distinction and duplicate diagnostics across every primary and extension fragment member category
@@ -2268,9 +2303,24 @@ integrations:
       - preserve dependency- and use-constrained shutdown order without promising destruction after forced termination
       - verify that static never implies linker section, absolute address, MMIO, memory space, or another physical placement policy
       - add the revision-2.0 parser, Sema, formatter, LSP, concurrency, Semantic IR, and backend regression matrix recorded by the static rulebook
+    required_tests:
+      - canonical impl let parses and resolves as Type.Name
+      - compatibility impl static let resolves to the same semantic member category
+      - canonical formatting rewrites immutable impl static let to let and is idempotent
+      - static let mut, static fn, and static property are never stripped
+      - bare impl let mut is rejected with the dedicated shared-storage diagnostic
+      - impl let is absent from instance member lookup and completion
+      - canonical and compatibility spellings conflict across primary and extension fragments
+      - associated immutable values work in nested and generic impls with correct specialization identity
+      - initializer type inference, explicit type checking, forward dependency, cycle, ownership, and visibility behavior agree for both spellings
+      - Semantic IR, Sec MLIR, and backend output are identical for both accepted source spellings
     verification:
       - command: go test ./internal/lexer ./internal/parser ./internal/formatter ./internal/sema ./cmd/lsp -run 'Static|static' -count=1
-        result: passed on 2026-08-27; lexer, parser, formatter, Sema, and LSP coverage confirms the integrated frontend subset
+        result: passed on 2026-08-27; confirms the pre-revision-2.1 integrated subset and does not verify the new associated-let delta
+      - command: go test ./internal/parser ./internal/sema ./internal/formatter ./internal/diagnostics ./cmd/lsp ./cmd/compiler -count=1
+        result: passed on 2026-09-01 with associated let parsing, S1026 information severity, formatter normalization, qualified completion, and CLI coverage
+      - command: go run ./cmd/compiler sema testdata/associated_values_valid.sec
+        result: passed on 2026-09-01 with 0 errors, 0 warnings, and 1 information diagnostic
 
   - id: frontend.generics-v2
     area: frontend-analysis-and-lowering
@@ -4864,10 +4914,18 @@ integrations:
     area: frontend-analysis-and-tooling
     status: partial
     integrated: "2026-08-13"
+    revised: "2026-09-01"
+    document_revision: "2.0"
     summary: >-
       Tracks the canonical closed ordinary and open bit-backed enum model,
-      Go-style iota initializer repetition, declared-member defaults, aliases,
-      conversions, match coverage, register integration, and tooling.
+      including integer-backed and string-backed closed enums, Go-style iota
+      initializer repetition for integer-backed enums, declared-member
+      defaults, aliases, checked underlying-value conversions, match coverage,
+      register integration, and tooling. The frontend now covers string-backed
+      declarations, constant members and aliases, defaults, member lookup,
+      equality-compatible nominal typing, switch/match coverage, explicit
+      conversions, diagnostics, and LSP completion. Semantic IR, Sec MLIR, and
+      executable backend representation remain integer-enum-only.
     rules:
       - rules/declarations/enums.md
       - rules/foundations/grammar.md
@@ -4875,6 +4933,7 @@ integrations:
       - rules/control-flow/flowcontrol_match.md
       - rules/declarations/registers.md
       - rules/errors/errorhandling.md
+      - rules/tooling/formatter.md
       - rules/tooling/lsp.md
     code:
       - internal/ast/ast.go
@@ -4882,12 +4941,35 @@ integrations:
       - internal/sema/types.go
       - internal/sema/defaults.go
       - internal/sema/analyzer.go
+      - internal/formatter/formatter.go
+      - internal/ir/semantic/model.go
+      - internal/ir/semantic/builder.go
+      - internal/lowering/secmlir/emitter.go
+      - internal/codegen/mlir/generator.go
+      - internal/codegen/llvm/generator.go
+      - cmd/lsp/main.go
     tests:
       - internal/parser/parser_test.go
       - internal/sema/defaults_test.go
       - internal/sema/analyzer_test.go
+      - internal/formatter/formatter_test.go
+      - internal/ir/semantic/package14_test.go
+      - internal/lowering/secmlir/emitter_test.go
+      - cmd/lsp/main_test.go
       - testdata/enum_valid.sec
       - testdata/errorhandling_match_invalid.sec
+      - testdata/zim-decoder.sec
+    normative_delta:
+      - enum Name string declares a nominal closed enum backed by canonical Sec string representation
+      - every string-backed enum member requires an explicit compile-time string initializer
+      - iota and omitted-initializer repetition remain exclusive to integer-backed enums
+      - equal underlying strings form aliases and one runtime coverage class while retaining distinct declared names
+      - the default remains the explicit default member or first declaration and is never selected from the empty string
+      - enum-to-string conversion is explicit and infallible
+      - constant string-to-enum conversion must equal a declared value class
+      - runtime string-to-enum conversion is checked and requires try unless Sema proves membership
+      - failed runtime string conversion produces EnumValueError.UndeclaredValue and never OutOfRange
+      - match exhaustiveness, equality, switch comparison, member completion, hover, and lowering operate on declared string value classes while preserving nominal identity
     implemented:
       - ordinary enum declarations with default int or explicit integer underlying representation
       - exact-width open bit and bit[N] enum identities from width 1 through 256
@@ -4906,18 +4988,62 @@ integrations:
       - open bit-backed match exhaustiveness over the complete bit[N] domain
       - alias normalization for duplicate and unreachable match analysis
       - bit-backed enum register-field width validation and nominal type retention
+      - explicit string underlying representation for nominal closed enums
+      - mandatory literal string initializers with dedicated missing, non-string, non-constant, and iota diagnostics
+      - string alias normalization through canonical underlying value-class keys without merging declaration names
+      - first-member and explicit-member defaults for string-backed enums
+      - explicit infallible enum-to-string conversion and rejection of implicit enum/string assignment
+      - declared-value validation for constant string-to-enum conversion
+      - Result-valued runtime string-to-enum conversion using EnumValueError with ordinary try handling
+      - string-backed enum equality compatibility, switch duplicate/exhaustive tracking, and match exhaustiveness over unique underlying value classes
+      - member definition facts and LSP type-qualified completion for every string-backed enum member
+      - canonical formatter preservation of string underlying syntax and explicit initializers
+      - testdata/zim-decoder.sec uses the canonical Program string enum and passes compiler Sema
     remaining:
+      - extend compile-time string constant evaluation beyond direct literals when the canonical constant evaluator supports composed string expressions
+      - extend proof-based runtime string membership analysis beyond direct literal construction
+      - expose string underlying type, closed domain, declared values, aliases, defaults, and checked conversion behavior through richer LSP hover and conversion diagnostics
+      - add focused definition, references, document-symbol, semantic-token, switch, default-initialization, and formatter tests for string-backed enums
+      - represent string-backed enum types, constants, value classes, conversions, equality, switch, and match plans in Semantic IR
+      - add Sec MLIR types, attributes, operations, or canonical lowering needed to preserve nominal string-enum identity and checked construction
+      - lower string-enum constants, comparisons, switches, matches, conversions, and failure flow through supported backends
       - preserve unnamed bit-backed enum register encodings through register extraction and insertion lowering
       - prove enum-to-integer representability over the known value or complete enum domain and use the canonical checked Result path when narrowing may fail
       - expose closed/open domain and checked-conversion facts in LSP hover and match diagnostics
       - synchronize Semantic IR and Sec MLIR conversion operations with checked EnumValueError control flow and runtime validation
       - add formatter coverage for the enum default marker and recovery from noncanonical initializer spelling
       - add complete valid, invalid, recovery, LSP, Semantic IR, and end-to-end enum coverage
+    required_tests:
+      - string-backed enum declaration and member access
+      - explicit initializer required for every string-backed member
+      - non-string and non-constant initializer rejection
+      - iota rejection in string-backed enum
+      - equal string aliases compare equal and share one match coverage class
+      - first-member and explicit-member defaults for string-backed enums
+      - explicit enum-to-string conversion
+      - accepted and rejected constant string-to-enum conversion
+      - runtime string conversion requires try and produces UndeclaredValue on failure
+      - proof-known runtime membership eliminates unnecessary failure handling where canonical analysis permits
+      - no implicit assignment or comparison between enum and plain string
+      - exhaustive match over unique declared string value classes
+      - switch cases compare string-backed enum values without losing nominal typing
+      - formatter alignment and idempotence for string-backed members
+      - LSP completion, hover, definition, symbols, semantic tokens, and conversion diagnostics
+      - Semantic IR verification and deterministic Sec MLIR emission
+      - end-to-end backend execution for constants, conversion success and failure, equality, switch, and match
     verification:
       - command: go test ./internal/parser -run EnumDefault -count=1
         result: passed
       - command: go test ./internal/sema -run 'TestEnum(Default|Rejects|Initializer|ClosedAndOpen|ValuesAndNamespace|ValidFixture|MatchEnumNumericCoverage)|TestErrorHandlingMatchInvalidFixture' -count=1
         result: passed
+      - command: pending revision-2.0 string-backed enum verification
+        result: superseded by the 2026-09-01 frontend verification below
+      - command: go test ./internal/sema -run 'StringBackedEnum|EnumUnderlying|MatchEnum|ErrorHandlingMatchInvalid' -count=1
+        result: passed on 2026-09-01 with declaration, aliases, defaults, conversions, diagnostics, and closed-domain match coverage
+      - command: go test ./cmd/lsp -run 'StringBackedEnum|EnumMembers' -count=1
+        result: passed on 2026-09-01 with type-qualified member completion
+      - command: go run ./cmd/compiler sema testdata/zim-decoder.sec
+        result: passed on 2026-09-01 with 0 errors and 0 warnings
 
   - id: frontend.structs
     area: frontend-analysis-and-lowering
@@ -7425,8 +7551,8 @@ integrations:
       text explicitly says the enum conversion fixtures remain inside the Sema-proven infallible boundary.
     - Qualify Package 11's implemented enum-to-integer conversion as the Sema-proven infallible form. The missing
       functionality is frontend proof and checked/fallible conversion outside that boundary.
-    - frontend.enums currently tracks Result-valued integer-to-enum runtime conversion but does not explicitly list
-      the reciprocal enum-to-integer checked narrowing rule.
+    - frontend.enums tracks Result-valued integer-to-enum and string-to-string-enum runtime conversion; this
+      integration remains the reciprocal integer-backed enum-to-integer checked narrowing slice.
     required_tests:
     - closed enum whose complete domain fits target integer converts infallibly
     - closed enum with one out-of-range member produces a fallible runtime conversion

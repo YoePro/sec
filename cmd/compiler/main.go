@@ -13,6 +13,7 @@ import (
 	"sec/internal/ast"
 	llvmcodegen "sec/internal/codegen/llvm"
 	mlircodegen "sec/internal/codegen/mlir"
+	"sec/internal/diagnostics"
 	secformatter "sec/internal/formatter"
 	semantic "sec/internal/ir/semantic"
 	"sec/internal/lexer"
@@ -1065,7 +1066,13 @@ func analyzeProgramWithSourcesRetained(program *ast.Program, target CompilerTarg
 	analyzer := sema.NewAnalyzerWithScalarPlan(scalarPlan)
 	errors := analyzer.Analyze(program)
 	printSemaWarnings(analyzer)
-	summary.Warnings += len(analyzer.Warnings())
+	for _, warning := range analyzer.Warnings() {
+		if warning.Severity == diagnostics.SeverityInformation {
+			summary.Information++
+		} else {
+			summary.Warnings++
+		}
+	}
 	if len(errors) > 0 {
 		for _, err := range errors {
 			fmt.Fprintf(os.Stderr, "sema error: %s\n", err)
@@ -1390,19 +1397,35 @@ func printParserWarningsForFile(path string, warnings []string) {
 	}
 }
 
+// printSemaWarnings preserves the registered information/warning distinction
+// for optional semantic diagnostics instead of relabeling every advisory as a
+// warning.
+//
+// Rules:
+//   - rules/declarations/static.md — "Diagnostics"
+//   - rules/tooling/diagnostics.txt — diagnostic severity
 func printSemaWarnings(analyzer *sema.Analyzer) {
 	for _, warning := range analyzer.Warnings() {
-		fmt.Fprintf(os.Stderr, "Warning: %s\n", warning)
+		label := "Warning"
+		if warning.Severity == diagnostics.SeverityInformation {
+			label = "Info"
+		}
+		fmt.Fprintf(os.Stderr, "%s: %s\n", label, warning)
 	}
 }
 
 type diagnosticSummary struct {
-	Errors   int
-	Warnings int
+	Errors      int
+	Warnings    int
+	Information int
 }
 
 func printDiagnosticSummary(summary diagnosticSummary) {
-	fmt.Fprintf(os.Stderr, "summary: %s, %s\n", diagnosticCountLabel(summary.Errors, "error"), diagnosticCountLabel(summary.Warnings, "warning"))
+	fmt.Fprintf(os.Stderr, "summary: %s, %s", diagnosticCountLabel(summary.Errors, "error"), diagnosticCountLabel(summary.Warnings, "warning"))
+	if summary.Information > 0 {
+		fmt.Fprintf(os.Stderr, ", %s", diagnosticCountLabel(summary.Information, "information diagnostic"))
+	}
+	fmt.Fprintln(os.Stderr)
 }
 
 func diagnosticCountLabel(count int, singular string) string {

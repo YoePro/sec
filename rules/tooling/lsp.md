@@ -363,6 +363,17 @@ Implemented:
 - limited completion recovery for incomplete `if` conditions;
 - survival of incomplete function source in tested cases.
 
+Type-qualified completion for a string-backed enum exposes its declared
+members exactly like an integer-backed closed enum. Hover shows the nominal enum
+type, `string` underlying representation, closed domain, and declared constant
+value. Associated immutable `let` members and compatibility-spelled `static
+let` members share one readonly type-qualified member category; tooling must
+not offer either on an instance receiver.
+
+For immutable `static let` inside an `impl`, the LSP may offer the canonical
+rewrite to `let` and an informational redundant-modifier diagnostic. It must
+not offer that rewrite for `static let mut`, `static fn`, or `static property`.
+
 ### Hover
 
 Implemented:
@@ -2040,7 +2051,7 @@ Configurable inlay hints may show `copy`, `move`, `ref`, `ref mut`, or `moves if
 selected`. Disabling hints never disables ownership analysis or diagnostics.
 
 Exhaustiveness diagnostics and generated-match actions use the resolved
-coverage domain, including ordinary enum numeric value classes, open bit-enum
+coverage domain, including ordinary enum underlying value classes, open bit-enum
 domains, guarded residual coverage, and reachable compiler-known union `empty`
 state. Generated patterns must not introduce direct bool, general literal,
 range, nested recursive, or ordinary struct-subject patterns.

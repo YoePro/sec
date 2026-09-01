@@ -63,6 +63,12 @@ type SINSegments struct {
     Tail: string,
 }
 
+enum Program string {
+    OneCare = "Zebra OneCare",
+    VIQ = "Z1C+VIQ",
+    AdvancedExchange = "Advanced Exchange",
+}
+
 fn Tokenize(value: string) Result[string[], ParseError] {
     let mut result: string[]
     let mut current: rune[]
@@ -124,22 +130,22 @@ fn ParseSegments(value: string) Result[ServiceSKUSegments, ParseError] {
 
     let prefix := match parts.Next() {
         Some(part) => part
-        None() => return Err(ParseError.MissingPrefix)
+        None => return Err(ParseError.MissingPrefix)
     }
 
     let hardware := match parts.Next() {
         Some(part) => part
-        None() => return Err(ParseError.MissingHardware)
+        None => return Err(ParseError.MissingHardware)
     }
 
     let tail := match parts.Next() {
         Some(part) => part
-        None() => return Err(ParseError.MissingTail)
+        None => return Err(ParseError.MissingTail)
     }
 
     match parts.Next() {
         Some(_) => return Err(ParseError.TooManySegments)
-        None() =>  {}
+        None => {}
     }
 
     return Ok(ServiceSKUSegments {

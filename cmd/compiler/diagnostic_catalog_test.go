@@ -94,6 +94,7 @@ func TestDiagnosticCatalogTextAndJSONOutput(t *testing.T) {
 		diagnostics.ParserSyntaxError,
 		diagnostics.OperatorInvalidMembership,
 		diagnostics.OperatorInvalidConcatOperand,
+		diagnostics.RedundantAssociatedStatic,
 		diagnostics.LargeValueParameter,
 	} {
 		if !strings.Contains(textOutput.String(), required) {

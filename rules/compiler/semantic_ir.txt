@@ -992,7 +992,7 @@ Semantic IR must retain:
 * matched type
 * one evaluated subject and its Place or temporary identity
 * selected variant tests
-* resolved variant identity and enum numeric value class
+* resolved variant identity and enum underlying value class
 * reachable compiler-known union `empty` state
 * payload and shallow-field binding identities
 * binding actions: None, Discard, Copy, Move, SharedBorrow, MutableBorrow, or TemporaryForward

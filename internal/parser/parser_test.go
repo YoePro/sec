@@ -3048,10 +3048,13 @@ fn ScopeTest(value: bool) void {
 	}
 }
 
-func TestParseImplRejectsLet(t *testing.T) {
+// rules/declarations/static.md section 6: immutable impl let is canonical
+// associated-value syntax and mutable let is retained for a Sema diagnostic.
+func TestParseImplAssociatedLets(t *testing.T) {
 	input := `
 impl Vehicle {
 	let x := 1
+	let mut shared := 2
 }
 `
 
@@ -3064,18 +3067,16 @@ impl Vehicle {
 	if !ok {
 		t.Fatalf("statement 0 is not ImplStatement. got=%T", program.Statements[0])
 	}
-	if len(impl.Members) != 1 {
-		t.Fatalf("wrong impl member count. got=%d want=1", len(impl.Members))
+	if len(impl.Members) != 2 {
+		t.Fatalf("wrong impl member count. got=%d want=2", len(impl.Members))
 	}
-	invalid, ok := impl.Members[0].(*ast.InvalidMember)
-	if !ok {
-		t.Fatalf("impl member is not InvalidMember. got=%T", impl.Members[0])
+	immutable, ok := impl.Members[0].(*ast.LetStatement)
+	if !ok || immutable.Static || immutable.Mutable || immutable.Name.Value != "x" {
+		t.Fatalf("first impl member is not canonical immutable let: %#v", impl.Members[0])
 	}
-	if invalid.Message != "variable declarations are not allowed inside impl" {
-		t.Fatalf("wrong invalid message. got=%q", invalid.Message)
-	}
-	if invalid.Recovery == nil || invalid.Recovery.DiagnosticID != diagnostics.ParserInvalidBlockMember {
-		t.Fatalf("missing invalid-member recovery: %#v", invalid.Recovery)
+	mutable, ok := impl.Members[1].(*ast.LetStatement)
+	if !ok || mutable.Static || !mutable.Mutable || mutable.Name.Value != "shared" {
+		t.Fatalf("second impl member is not retained mutable let: %#v", impl.Members[1])
 	}
 }
 

@@ -232,11 +232,12 @@ type ResolvedMatchPlan struct {
 }
 
 type ResolvedEnumCase struct {
-	EnumType Type
-	Name     string
-	Ordinal  uint32
-	Value    *big.Int
-	Token    lexer.Token
+	EnumType    Type
+	Name        string
+	Ordinal     uint32
+	Value       *big.Int
+	StringValue *string
+	Token       lexer.Token
 }
 
 type ResolvedEnumConversionKind string
@@ -532,12 +533,23 @@ func (a *Analyzer) ResolvedEnumCaseOf(expr *ast.MemberExpression) (ResolvedEnumC
 		return ResolvedEnumCase{}, false
 	}
 	value, ok := typ.EnumConsts[expr.Property.Value]
-	if !ok || value.Value == nil {
+	if !ok {
 		return ResolvedEnumCase{}, false
 	}
 	for ordinal, name := range typ.EnumValues {
 		if name == value.Name {
-			return ResolvedEnumCase{EnumType: typ, Name: value.Name, Ordinal: uint32(ordinal), Value: new(big.Int).Set(value.Value), Token: value.Token}, true
+			resolved := ResolvedEnumCase{EnumType: typ, Name: value.Name, Ordinal: uint32(ordinal), Token: value.Token}
+			if value.Value != nil {
+				resolved.Value = new(big.Int).Set(value.Value)
+			}
+			if value.StringValue != nil {
+				stringValue := *value.StringValue
+				resolved.StringValue = &stringValue
+			}
+			if resolved.Value == nil && resolved.StringValue == nil {
+				return ResolvedEnumCase{}, false
+			}
+			return resolved, true
 		}
 	}
 	return ResolvedEnumCase{}, false

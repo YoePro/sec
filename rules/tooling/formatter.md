@@ -1337,6 +1337,10 @@ enum Permission uint {
 }
 ```
 
+String-backed enums use the same member ordering, comma, and assignment
+alignment rules. Formatting preserves the explicit `string` underlying type and
+must not remove required string member initializers.
+
 Trailing comments may align:
 
 ```sec
@@ -1725,6 +1729,19 @@ impl Vehicle {
     }
 }
 ```
+
+Immutable associated values use direct `let` in canonical output:
+
+```sec
+impl Program {
+    let OneCare := "Zebra OneCare"
+}
+```
+
+When the parser accepts `static let OneCare := "Zebra OneCare"` in an `impl`,
+ordinary canonical formatting removes the redundant `static`. It preserves
+`static let mut`, `static fn`, and `static property`; those forms are not
+equivalent to an immutable associated value.
 
 Nested types and enums follow their ordinary formatting rules.
 

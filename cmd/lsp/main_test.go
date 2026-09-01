@@ -2685,7 +2685,7 @@ func TestCompletionSeparatesStaticAndInstanceMembers(t *testing.T) {
 type Counter struct { value: int }
 
 impl Counter {
-    static let Maximum: int := 100
+	let Maximum: int := 100
     static property Current: int { get { return Counter.Maximum } }
     property Value: int { get { return self.value } }
     static fn Make() Counter { return Counter { value: 0 } }
@@ -2698,6 +2698,62 @@ impl Counter {
 	source = declarations + "\nfn Use(counter: Counter) void {\n    counter.\n}\n"
 	instanceOffset := strings.Index(source, "counter.\n") + len("counter.")
 	assertCompletionLabels(t, completeSource("", source, instanceOffset), []string{"Read", "SizeOf", "Value", "value"})
+}
+
+// rules/declarations/static.md section 6: compatibility static let produces
+// one information diagnostic and canonical associated let shares completion.
+func TestAssociatedLetCompletionAndRedundantStaticInformation(t *testing.T) {
+	source := `module main
+
+type Program string
+
+impl Program {
+	let OneCare := "Zebra OneCare"
+	static let VIQ := "Z1C+VIQ"
+}
+
+fn Use() void {
+	Program.
+}
+`
+	offset := strings.Index(source, "Program.\n") + len("Program.")
+	assertCompletionLabels(t, completeSource("", source, offset), []string{"OneCare", "SizeOf", "VIQ"})
+
+	items := analyze("", source)
+	found := false
+	for _, item := range items {
+		if item.Code == diagnostics.RedundantAssociatedStatic {
+			found = true
+			if item.Severity != 3 || !strings.Contains(item.Message, "static is redundant on immutable associated declaration VIQ") {
+				t.Fatalf("wrong redundant-static LSP diagnostic: %+v", item)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("missing redundant-static LSP diagnostic: %+v", items)
+	}
+}
+
+func TestCompletionReturnsStringBackedEnumMembers(t *testing.T) {
+	source := `module main
+
+enum Program string {
+	OneCare = "Zebra OneCare",
+	VIQ = "Z1C+VIQ",
+}
+
+fn Use() void {
+	Program.
+}
+`
+	offset := strings.Index(source, "Program.\n") + len("Program.")
+	items := completeSource("", source, offset)
+	assertCompletionLabels(t, items, []string{"OneCare", "VIQ"})
+	for _, item := range items {
+		if item.Label == "OneCare" && (item.Kind != 20 || item.Detail != "Program") {
+			t.Fatalf("string enum completion = %+v, want enum member of Program", item)
+		}
+	}
 }
 
 func TestCompletionReturnsEnumMembersAndUnionVariantsAfterTypeDot(t *testing.T) {

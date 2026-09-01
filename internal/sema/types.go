@@ -276,9 +276,27 @@ const (
 )
 
 type EnumValue struct {
-	Name  string
-	Value *big.Int
-	Token lexer.Token
+	Name        string
+	Value       *big.Int
+	StringValue *string
+	Token       lexer.Token
+}
+
+// enumValueClassKey returns the canonical closed-enum coverage identity for
+// integer- and string-backed members. Declared aliases intentionally share a
+// key while retaining separate EnumValue names.
+//
+// Rules:
+//   - rules/declarations/enums.md — "Value aliases"
+//   - rules/declarations/enums.md — "match and exhaustiveness"
+func enumValueClassKey(value EnumValue) (string, bool) {
+	if value.Value != nil {
+		return "integer:" + value.Value.String(), true
+	}
+	if value.StringValue != nil {
+		return "string:" + *value.StringValue, true
+	}
+	return "", false
 }
 
 type UnionVariant struct {

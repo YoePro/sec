@@ -4329,7 +4329,7 @@ enum BadUnknown Missing {
 	a,
 }
 
-enum BadString string {
+enum BadBool bool {
 	a,
 }
 `
@@ -4338,10 +4338,101 @@ enum BadString string {
 
 	expected := []string{
 		"unknown type Missing at 2:17",
-		"enum BadString underlying type must be integer, got string at 6:16",
+		"enum BadBool underlying type must be integer or string, got bool at 6:14",
 	}
 
 	assertSemaErrors(t, errors, expected)
+}
+
+// rules/declarations/enums.md revision 2.0: string-backed enums are closed
+// nominal enums with explicit constant member values and value-class aliases.
+func TestStringBackedEnumSemantics(t *testing.T) {
+	input := `
+module main
+
+enum Program string {
+	OneCare = "Zebra OneCare",
+	LegacyOneCare = "Zebra OneCare",
+	VIQ default = "Z1C+VIQ",
+}
+
+let mut Current: Program
+
+fn Name(value: Program) string {
+	return string(value)
+}
+
+fn Parse(value: string) Result[Program, EnumValueError] {
+	return Ok(try Program(value))
+}
+
+fn Classify(value: Program) int {
+	return match value {
+		Program.OneCare => 1
+		Program.VIQ => 2
+	}
+}
+
+fn SwitchClassify(value: Program) int {
+	switch value {
+		case Program.OneCare:
+			return 1
+		case Program.VIQ:
+			return 2
+	}
+}
+`
+	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+
+	program := analyzer.Types()["Program"]
+	if program.Kind != EnumType || program.Underlying != "string" || program.EnumDefault != "VIQ" {
+		t.Fatalf("wrong string enum type: %+v", program)
+	}
+	if current, ok := analyzer.symbols["Current"]; !ok || current.Type.Name != "Program" || !analyzer.assigned["Current"] {
+		t.Fatalf("string enum default initialization was not synthesized: symbol=%+v assigned=%v", current, analyzer.assigned["Current"])
+	}
+	oneCare := program.EnumConsts["OneCare"]
+	legacy := program.EnumConsts["LegacyOneCare"]
+	viq := program.EnumConsts["VIQ"]
+	if oneCare.StringValue == nil || legacy.StringValue == nil || viq.StringValue == nil ||
+		*oneCare.StringValue != "Zebra OneCare" || *legacy.StringValue != "Zebra OneCare" || *viq.StringValue != "Z1C+VIQ" {
+		t.Fatalf("wrong string enum constants: %+v", program.EnumConsts)
+	}
+	if first, _ := enumValueClassKey(oneCare); first == "" {
+		t.Fatal("string enum member has no value-class key")
+	} else if alias, _ := enumValueClassKey(legacy); first != alias {
+		t.Fatalf("string aliases have different value classes: %q and %q", first, alias)
+	}
+}
+
+func TestStringBackedEnumRejectsInvalidMembersAndConversion(t *testing.T) {
+	input := `
+enum Missing string {
+	Value,
+}
+
+enum Wrong string {
+	Value = 1,
+}
+
+enum Iota string {
+	Value = iota,
+}
+
+enum Program string {
+	OneCare = "Zebra OneCare",
+}
+
+let invalid := Program("Unknown")
+`
+	errors := analyzeSource(t, input)
+	assertSemaErrors(t, errors, []string{
+		"string-backed enum member Missing.Value requires an explicit initializer at 3:2",
+		"string-backed enum value Wrong.Value initializer must be a compile-time string constant at 7:10",
+		"iota is not available in string-backed enum Iota at 11:10",
+		"string value \"Unknown\" is not a declared value of closed enum Program at 18:24",
+	})
 }
 
 func TestEnumInitializerMustBeIntegerConstant(t *testing.T) {
@@ -4420,6 +4511,44 @@ impl Vehicle {
 }
 
 // rules/declarations/static.md, sections 6-12; properties.md, section 10.
+// rules/declarations/static.md section 6: immutable let and static let share
+// one associated member category, while bare mutable impl storage is invalid.
+func TestImplAssociatedLetAndRedundantStaticInformation(t *testing.T) {
+	input := `
+module main
+
+type Program string
+
+impl Program {
+	let OneCare := "Zebra OneCare"
+	static let VIQ := "Z1C+VIQ"
+	let mut Invalid := "shared"
+}
+
+fn Read() string {
+	return Program.OneCare
+}
+`
+	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"mutable associated storage must be declared with static let mut at 9:2",
+	})
+
+	oneCare, ok := analyzer.symbols["Program.OneCare"]
+	if !ok || oneCare.Mutable || oneCare.Storage != StorageOriginStatic || oneCare.Type.Kind != StringType {
+		t.Fatalf("canonical associated let was not registered correctly: %+v", oneCare)
+	}
+	viq, ok := analyzer.symbols["Program.VIQ"]
+	if !ok || viq.Mutable || viq.Storage != StorageOriginStatic || viq.Type.Kind != StringType {
+		t.Fatalf("compatibility associated static let was not registered correctly: %+v", viq)
+	}
+	warnings := analyzer.Warnings()
+	if len(warnings) != 1 || warnings[0].ID != diagnostics.RedundantAssociatedStatic || warnings[0].Severity != diagnostics.SeverityInformation ||
+		warnings[0].Message != "static is redundant on immutable associated declaration VIQ" {
+		t.Fatalf("wrong redundant-static information diagnostic: %+v", warnings)
+	}
+}
+
 func TestStaticPropertyFrontendSemantics(t *testing.T) {
 	valid := `
 module main
@@ -7302,11 +7431,11 @@ func TestErrorHandlingMatchInvalidFixture(t *testing.T) {
 
 	expected := []string{
 		"non-exhaustive match for Result[Speed, IOError]: missing Err at 17:18",
-		"non-exhaustive match for closed enum IOError; cover every declared numeric value class or add _ at 25:17",
+		"non-exhaustive match for closed enum IOError; cover every declared underlying value class or add _ at 25:17",
 		"match arms must produce compatible types, got int and string at 36:29",
 		"match pattern must match Result[Speed, IOError], got IOError at 45:16",
 		"catch-all pattern may not hide Err at 44:18",
-		"unreachable enum match arm; numeric value is already covered by InvalidValue at 55:9",
+		"unreachable enum match arm; underlying value is already covered by InvalidValue at 55:9",
 		"unreachable match arm at 65:9",
 	}
 
@@ -7736,7 +7865,7 @@ fn OpenDomain(value: Open) int {
 `
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"unreachable enum match arm; numeric value is already covered by Off at 20:3",
+		"unreachable enum match arm; underlying value is already covered by Off at 20:3",
 	})
 }
 

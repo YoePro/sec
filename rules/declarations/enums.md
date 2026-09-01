@@ -2,10 +2,10 @@
 
 **Status:** Canonical normative rulebook
 **Language version:** Sec 0.1
-**Document revision:** 1.0
+**Document revision:** 2.0
 **Created:** 2026-08-13
-**Last updated:** 2026-08-13
-**Repository baseline reviewed:** `ae227c1`
+**Last updated:** 2026-09-01
+**Repository baseline reviewed:** `f22b07a`
 **Replaces:** the previous enum rulebook revision
 
 ## 1. Purpose
@@ -20,12 +20,13 @@ Implementation status does not belong in this rulebook. It is tracked separately
 
 ## 2. Core model
 
-An enum is a nominal value type with named members and an integer-compatible underlying
-representation.
+An enum is a nominal value type with named members and a canonical underlying
+representation. Sec 0.1 supports integer-compatible and `string` underlying
+representations.
 
 Sec distinguishes two semantic enum domains:
 
-1. **ordinary enums are closed**;
+1. **ordinary value enums are closed**;
 2. **bit-backed hardware enums are open over their complete bit width**.
 
 The distinction is semantic and must not be inferred merely from machine representation.
@@ -63,7 +64,20 @@ type Operation enum {
 
 The default underlying type of an ordinary enum is `int`.
 
-An explicit ordinary underlying type must be an integer type.
+An explicit ordinary underlying type may be an integer type or `string`.
+
+A string-backed enum is written with an explicit `string` underlying type:
+
+```sec
+enum Program string {
+    OneCare = "Zebra OneCare",
+    VIQ = "Z1C+VIQ",
+    AdvancedExchange = "Advanced Exchange",
+}
+```
+
+String-backed enums are closed ordinary enums. They are not open merely because
+the underlying string type can represent values not named by a member.
 
 Hardware-backed enums may use `bit` or `bit[N]`:
 
@@ -135,7 +149,8 @@ Different enums may reuse the same member names.
 Members may be separated by commas or line breaks where the canonical grammar permits it.
 A trailing comma is allowed.
 
-An enum member has the enum type, not the underlying integer type.
+An enum member has the nominal enum type, not its underlying integer or string
+type.
 
 ---
 
@@ -150,8 +165,22 @@ enum HttpStatus int {
 }
 ```
 
-The initializer must be an integer constant expression representable by the enum's
-underlying representation.
+For an integer-backed enum, the initializer must be an integer constant
+expression representable by the enum's underlying representation.
+
+For a string-backed enum, every member must have an explicit initializer and
+that initializer must be a compile-time `string` constant. Omitted initializers
+are invalid because string enums have no implicit sequence or repetition rule:
+
+```sec
+enum Program string {
+    OneCare = "Zebra OneCare",
+    VIQ = "Z1C+VIQ",
+}
+```
+
+The member still has the nominal enum type. Its initializer does not make the
+member an ordinary `string` binding.
 
 `Member: expression` is not canonical enum initializer syntax. A parser may accept it only
 as recovery syntax so diagnostics or the formatter can rewrite it to `=`.
@@ -160,8 +189,9 @@ as recovery syntax so diagnostics or the formatter can rewrite it to `=`.
 
 ## 6. `iota`
 
-`iota` is a compile-time integer constant available only while evaluating enum member
-initializers.
+`iota` is a compile-time integer constant available only while evaluating
+integer-backed enum member initializers. It is not available in a string-backed
+enum.
 
 For each enum declaration:
 
@@ -174,7 +204,7 @@ For each enum declaration:
 
 `iota` is not visible outside enum initializer evaluation.
 
-### 6.1 First omitted initializer
+### 6.1 First omitted initializer in an integer-backed enum
 
 If the first member omits its initializer, its implicit initializer expression is `iota`.
 
@@ -209,7 +239,7 @@ SOUTH = 2
 WEST  = 3
 ```
 
-### 6.2 Omitted initializer repeats the preceding initializer expression
+### 6.2 Omitted initializer repetition in an integer-backed enum
 
 After the first member, an omitted initializer repeats the preceding explicit or implicit
 initializer expression and evaluates that expression using the current member's `iota`.
@@ -272,9 +302,9 @@ substitution of the current `iota` value.
 
 ---
 
-## 7. Numeric aliases
+## 7. Value aliases
 
-Multiple member names may have the same numeric value.
+Multiple member names may have the same underlying value.
 
 ```sec
 enum ResultCode int {
@@ -285,10 +315,19 @@ enum ResultCode int {
 }
 ```
 
-Duplicate numeric values are valid aliases and must not be rejected.
+Duplicate underlying values are valid aliases and must not be rejected. This
+also applies to string-backed enums:
 
-Alias names remain distinct declared names, but values with the same numeric representation
-belong to the same runtime value class for equality and pattern coverage.
+```sec
+enum Program string {
+    OneCare = "Zebra OneCare",
+    LegacyOneCare = "Zebra OneCare",
+}
+```
+
+Alias names remain distinct declared names, but values with the same underlying
+representation belong to the same runtime value class for equality and pattern
+coverage.
 
 ---
 
@@ -381,8 +420,8 @@ enum ResultCode int {
 }
 ```
 
-The declared default member is `ResultCode.OK` even though `SUCCESS` has the same runtime
-numeric value.
+The declared default member is `ResultCode.OK` even though `SUCCESS` has the same
+runtime underlying value.
 
 ### 8.3 Default initialization
 
@@ -418,8 +457,8 @@ is invalid under the normal immutable-binding rule.
 
 ## 9. Ordinary enums are closed
 
-An ordinary enum's semantic value domain consists only of the unique numeric values named by
-its declared members.
+An ordinary enum's semantic value domain consists only of the unique underlying
+values named by its declared members.
 
 Example:
 
@@ -436,8 +475,12 @@ Valid `Color` values are the declared runtime value classes `1`, `2`, and `3`.
 The fact that the underlying integer representation can represent other integers does not
 make those integers valid `Color` values.
 
-No ordinary enum value may exist outside the declared domain through safe language
-semantics.
+The same closed-domain rule applies to string-backed enums. For example, a
+`Program` value cannot contain `"Unknown"` unless that value is declared by a
+`Program` member.
+
+No ordinary enum value may exist outside the declared domain through safe
+language semantics.
 
 ---
 
@@ -521,24 +564,34 @@ Reserved register fields named `_` continue to use `bit` or `bit[N]`.
 
 ## 12. Conversions
 
-Enums do not implicitly convert to or from integers.
+Enums do not implicitly convert to or from their underlying representations.
 
 Different enum types do not implicitly convert to each other even when their representations
 are identical.
 
-### 12.1 Enum to integer
+### 12.1 Enum to underlying representation
 
-Explicit enum-to-integer conversion uses normal conversion syntax:
+Explicit enum-to-underlying conversion uses normal conversion syntax:
 
 ```sec
 let raw := int(Color.RED)
 ```
 
-The numeric value represented by the enum is converted under the normal checked integer
-conversion rules.
+For an integer-backed enum, the numeric value represented by the enum is
+converted under the normal checked integer conversion rules.
 
-If the target integer type cannot represent every possible runtime value and the actual value
-is not statically known, the normal fallible conversion rules apply.
+If the target integer type cannot represent every possible runtime value and the
+actual value is not statically known, the normal fallible conversion rules
+apply.
+
+A string-backed enum converts explicitly to `string`:
+
+```sec
+let name := string(Program.OneCare)
+```
+
+This conversion is infallible because every valid string-backed enum value has
+one declared underlying string value.
 
 ### 12.2 Integer constant to ordinary closed enum
 
@@ -628,15 +681,39 @@ enum.
 
 Conversion between different enum types is never implicit.
 
-When required, code converts explicitly through an integer representation and the target
-enum's checked conversion semantics:
+When required for integer-backed enums, code converts explicitly through an
+integer representation and the target enum's checked conversion semantics:
 
 ```sec
 let raw := int(SourceMode.ACTIVE)
 let target := try TargetMode(raw)
 ```
 
-The target enum determines whether the numeric value is valid.
+The target enum determines whether the underlying value is valid. Both enums
+must use compatible underlying representation families. String-backed enums
+use an explicit `string` intermediary and the target enum's checked string
+conversion semantics.
+
+### 12.6 String to string-backed enum
+
+A compile-time string constant converts to a string-backed enum only when it
+equals a declared member value:
+
+```sec
+let program := Program("Zebra OneCare")
+```
+
+An undeclared constant is a compile-time error.
+
+A runtime `string` conversion is checked. When Sema cannot prove that the input
+equals a declared value class, ordinary `try` handling is required:
+
+```sec
+let program := try Program(input)
+```
+
+Failure uses `EnumValueError.UndeclaredValue`. `OutOfRange` is not produced for
+a `string` source because strings have no enum representation-width failure.
 
 ---
 
@@ -646,7 +723,7 @@ Assignment between values of the same enum type follows ordinary value assignmen
 
 No implicit assignment exists between:
 
-- an enum and an integer;
+- an enum and its underlying integer or string type;
 - two different enum types.
 
 Equality and inequality are defined between values of the same enum type:
@@ -657,10 +734,10 @@ if color == Color.RED {
 }
 ```
 
-Equality compares the semantic numeric enum value. Aliases with the same numeric value are
-equal.
+Equality compares the semantic underlying enum value. Aliases with the same
+underlying value are equal.
 
-Direct arithmetic and ordering are not defined on enum values.
+Direct arithmetic, concatenation, and ordering are not defined on enum values.
 
 Convert explicitly to an appropriate integer type when numeric arithmetic is genuinely
 intended.
@@ -669,9 +746,9 @@ intended.
 
 ## 14. `match` and exhaustiveness
 
-Enum patterns match semantic numeric enum values.
+Enum patterns match semantic underlying enum values.
 
-Aliases sharing a numeric value cover the same runtime value class.
+Aliases sharing an underlying value cover the same runtime value class.
 
 ### 14.1 Ordinary closed enum
 
@@ -696,8 +773,8 @@ match direction {
 }
 ```
 
-No underlying integer values outside those declared members belong to the ordinary enum's
-semantic domain.
+No underlying values outside those declared members belong to the ordinary
+enum's semantic domain.
 
 ### 14.2 Open bit-backed enum
 
@@ -776,18 +853,22 @@ Sema must:
 - register every enum as a distinct nominal type;
 - resolve the underlying type;
 - use `int` when an ordinary underlying type is omitted;
-- reject invalid ordinary underlying types;
+- accept integer and `string` ordinary underlying types and reject every other
+  ordinary underlying type in Sec 0.1;
 - preserve exact `bit[N]` width for hardware enums;
 - reject bit widths outside the canonical supported language range;
 - reject empty enums;
 - reject duplicate member names;
-- allow duplicate numeric values as aliases;
+- allow duplicate underlying values as aliases;
 - evaluate explicit enum initializer expressions at compile time;
-- make `iota` available only during enum initializer evaluation;
-- assign the current zero-based member index to `iota`;
-- treat a missing first initializer as implicit `iota`;
-- make later omitted initializers repeat the preceding initializer expression;
-- evaluate repeated expressions using the current member's `iota`;
+- require every string-backed member to have an explicit compile-time `string`
+  initializer;
+- make `iota` available only during integer-backed enum initializer evaluation;
+- assign the current zero-based member index to `iota` for integer-backed enums;
+- treat a missing first integer-backed initializer as implicit `iota`;
+- make later omitted integer-backed initializers repeat the preceding
+  initializer expression;
+- evaluate repeated integer expressions using the current member's `iota`;
 - detect overflow and underlying-representation violations;
 - resolve exactly one enum default member;
 - reject more than one explicit `default` marker;
@@ -795,13 +876,14 @@ Sema must:
 - default-initialize mutable enum declarations that omit an initializer;
 - distinguish closed ordinary enum domains from open bit-backed domains;
 - preserve undeclared in-range bit-backed values;
-- validate checked integer-to-enum conversions;
+- validate checked integer-to-enum and string-to-string-enum conversions;
 - require `try` when a runtime conversion may fail;
 - preserve normal proof-based elimination of impossible runtime checks;
-- reject implicit integer/enum and cross-enum conversion;
-- validate ordinary-enum `match` coverage against declared value classes;
+- reject implicit underlying-value/enum and cross-enum conversion;
+- validate ordinary-enum `match` coverage against declared underlying value
+  classes;
 - validate open bit-enum `match` coverage against the complete bit domain;
-- treat numeric aliases as one pattern-coverage class;
+- treat aliases with equal underlying values as one pattern-coverage class;
 - preserve enum nominal identity through lowering metadata.
 
 ---
@@ -816,16 +898,19 @@ invalid enum underlying type
 empty enum declaration
 enum initializer is not a constant expression
 enum initializer is not representable by the underlying type
+string-backed enum member requires an explicit initializer
+string-backed enum initializer must be a compile-time string constant
+iota is not available in a string-backed enum
 multiple enum members marked default
 iota is only available inside enum member initialization
-integer value is not a declared member of closed enum
+underlying value is not a declared member of closed enum
 integer value does not fit bit-backed enum width
 fallible enum conversion requires try
 non-exhaustive match for closed enum
 non-exhaustive match for open bit-backed enum; undeclared hardware encodings remain possible
 ```
 
-The LSP should expose in hover information whether an enum is:
+The LSP should expose the underlying type and whether an enum is:
 
 ```text
 closed ordinary enum
@@ -864,6 +949,11 @@ Open bit-backed enum reads must preserve all representable N-bit patterns.
 Member constants, default resolution, `iota`, repeated initializer expressions, aliases, and
 checked constant conversions are resolved before backend constant emission.
 
+A string-backed enum lowers through the canonical Sec `string`
+representation while retaining nominal enum identity. Lowering must not replace
+it with an unconstrained plain string, and checked runtime construction must
+compare against the declared string value classes before producing the enum.
+
 Checked runtime conversions must lower to explicit validation and failure control flow when
 Sema cannot prove success.
 
@@ -878,7 +968,8 @@ Detailed MLIR operation and lowering contracts belong to `rules/mlir/`.
 ```text
 ordinary enum
     closed domain
-    valid runtime values are declared numeric value classes only
+    integer- or string-backed
+    valid runtime values are declared underlying value classes only
 
 bit-backed enum
     open domain
@@ -886,9 +977,9 @@ bit-backed enum
     declared members name known encodings
 
 member initialization
-    first omitted initializer -> implicit iota
-    later omitted initializer -> repeat preceding initializer expression
-    evaluate repeated expression using current iota
+    integer-backed first omitted initializer -> implicit iota
+    integer-backed later omitted initializer -> repeat preceding expression
+    string-backed -> explicit compile-time string initializer required
 
 explicit numeric jump
     does not reset iota
@@ -902,6 +993,7 @@ default
 iota
     zero-based declaration position
     independent of resolved numeric values
+    integer-backed enums only
 
 ordinary integer -> closed enum
     constant: must name a declared value class
@@ -910,6 +1002,10 @@ ordinary integer -> closed enum
 integer -> bit-backed enum
     any in-range bit pattern is valid
     runtime: `try` only when width fit is not provable
+
+string -> string-backed enum
+    constant: must name a declared value class
+    runtime: checked, `try` when failure is possible
 
 match
     ordinary enum: declared value classes define exhaustive domain

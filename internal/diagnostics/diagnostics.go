@@ -69,6 +69,7 @@ const (
 	OperatorIntegerOverflow      = "S1023"
 	OperatorDivisionByZero       = "S1024"
 	OperatorRemainderByZero      = "S1025"
+	RedundantAssociatedStatic    = "S1026"
 	LargeValueParameter          = "A2001"
 )
 
@@ -217,6 +218,13 @@ var registry = map[string]Definition{
 	},
 	OperatorRemainderByZero: {
 		ID: OperatorRemainderByZero, Name: "operator.constant-remainder-by-zero", Family: "operators", DefaultSeverity: SeverityError, Mandatory: true,
+	},
+	RedundantAssociatedStatic: {
+		ID:              RedundantAssociatedStatic,
+		Name:            "associated-values.redundant-static",
+		Family:          "declarations",
+		DefaultSeverity: SeverityInformation,
+		Mandatory:       false,
 	},
 	LargeValueParameter: {
 		ID:              LargeValueParameter,

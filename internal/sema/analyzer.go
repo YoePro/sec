@@ -3494,7 +3494,7 @@ type switchCoverageTracker struct {
 	ranges       []switchConstRange
 	boolValues   map[bool]lexer.Token
 	stringValues map[string]lexer.Token
-	// enumValues is keyed by canonical numeric value, not declaration name.
+	// enumValues is keyed by canonical integer/string value class, not declaration name.
 	enumValues map[string]lexer.Token
 }
 
@@ -3538,6 +3538,12 @@ func (a *Analyzer) analyzeSwitchRangeCase(item *ast.SwitchRangeCase, subjectType
 	}
 }
 
+// checkSwitchValueCoverage rejects duplicate bool, string, integer, and
+// nominal enum value classes while retaining declared enum aliases.
+//
+// Rules:
+//   - rules/control-flow/flowcontrol_switch.md — compile-time case coverage
+//   - rules/declarations/enums.md — "switch"
 func (a *Analyzer) checkSwitchValueCoverage(expr ast.Expression, tracker *switchCoverageTracker) {
 	if tracker == nil {
 		return
@@ -3564,10 +3570,9 @@ func (a *Analyzer) checkSwitchValueCoverage(expr ast.Expression, tracker *switch
 		tracker.stringValues[literal.Value] = expressionToken(expr)
 		return
 	}
-	if _, numeric, ok := a.switchEnumCaseVariant(expr, tracker.subjectType); ok {
-		key := numeric.String()
+	if _, key, ok := a.switchEnumCaseVariant(expr, tracker.subjectType); ok {
 		if _, exists := tracker.enumValues[key]; exists {
-			a.addErrorAtToken(expressionToken(expr), "duplicate switch case enum value %s", key)
+			a.addErrorAtToken(expressionToken(expr), "duplicate switch case enum underlying value")
 			return
 		}
 		tracker.enumValues[key] = expressionToken(expr)
@@ -3591,28 +3596,35 @@ func (a *Analyzer) checkSwitchValueCoverage(expr ast.Expression, tracker *switch
 	tracker.values[key] = expressionToken(expr)
 }
 
-func (a *Analyzer) switchEnumCaseVariant(expr ast.Expression, subjectType Type) (string, *big.Int, bool) {
+// switchEnumCaseVariant resolves a type-qualified enum member to its canonical
+// integer/string value-class key for switch coverage.
+//
+// Rules:
+//   - rules/declarations/enums.md — "Value aliases"
+//   - rules/declarations/enums.md — "switch"
+func (a *Analyzer) switchEnumCaseVariant(expr ast.Expression, subjectType Type) (string, string, bool) {
 	if subjectType.Kind != EnumType {
-		return "", nil, false
+		return "", "", false
 	}
 	member, ok := expr.(*ast.MemberExpression)
 	if !ok || member.Property == nil {
-		return "", nil, false
+		return "", "", false
 	}
 	typeName, ok := typePathFromExpression(member.Object)
 	if !ok {
-		return "", nil, false
+		return "", "", false
 	}
 	typeName = a.resolveTypeName(typeName)
 	typ, ok := a.types[typeName]
 	if !ok || typ.Kind != EnumType || !sameConcreteType(subjectType, typ) {
-		return "", nil, false
+		return "", "", false
 	}
 	value, ok := typ.EnumConsts[member.Property.Value]
-	if !ok || value.Value == nil {
-		return "", nil, false
+	key, ok := enumValueClassKey(value)
+	if !ok {
+		return "", "", false
 	}
-	return member.Property.Value, new(big.Int).Set(value.Value), true
+	return member.Property.Value, key, true
 }
 
 func (a *Analyzer) warnIncompleteEnumSwitch(stmt *ast.SwitchStatement, tracker *switchCoverageTracker) {
@@ -3623,17 +3635,17 @@ func (a *Analyzer) warnIncompleteEnumSwitch(stmt *ast.SwitchStatement, tracker *
 		return
 	}
 	missing := []string{}
-	seenNumeric := map[string]bool{}
+	seenValues := map[string]bool{}
 	for _, name := range tracker.subjectType.EnumValues {
 		value, ok := tracker.subjectType.EnumConsts[name]
-		if !ok || value.Value == nil {
+		if !ok {
 			continue
 		}
-		key := value.Value.String()
-		if seenNumeric[key] {
+		key, ok := enumValueClassKey(value)
+		if !ok || seenValues[key] {
 			continue
 		}
-		seenNumeric[key] = true
+		seenValues[key] = true
 		if _, covered := tracker.enumValues[key]; !covered {
 			missing = append(missing, name)
 		}
@@ -3663,8 +3675,8 @@ func (t *switchCoverageTracker) isExhaustive() bool {
 	}
 	classes := map[string]bool{}
 	for _, value := range t.subjectType.EnumConsts {
-		if value.Value != nil {
-			classes[value.Value.String()] = true
+		if key, ok := enumValueClassKey(value); ok {
+			classes[key] = true
 		}
 	}
 	return len(classes) > 0 && len(t.enumValues) == len(classes)
@@ -5284,7 +5296,7 @@ func (a *Analyzer) switchStatementDefinitelyReturns(stmt *ast.SwitchStatement) b
 					}
 					_, value, ok := a.switchEnumCaseVariant(valueCase.Value, subjectType)
 					if ok {
-						tracker.enumValues[value.String()] = expressionToken(valueCase.Value)
+						tracker.enumValues[value] = expressionToken(valueCase.Value)
 					}
 				}
 			}
@@ -5363,13 +5375,18 @@ func (a *Analyzer) matchPatternInfoNoDiagnostics(pattern ast.Expression, subject
 		}
 		if subjectType.Kind == EnumType {
 			enumCase, exists := subjectType.EnumConsts[pattern.Property.Value]
-			if !exists || enumCase.Value == nil {
+			key, keyed := enumValueClassKey(enumCase)
+			if !exists || !keyed {
 				return matchPatternInfo{}, false
 			}
-			return matchPatternInfo{
+			info := matchPatternInfo{
 				Kind: "variant", Variant: pattern.Property.Value,
-				EnumNumericValue: new(big.Int).Set(enumCase.Value), EnumCaseName: enumCase.Name,
-			}, true
+				EnumValueKey: key, EnumCaseName: enumCase.Name,
+			}
+			if enumCase.Value != nil {
+				info.EnumNumericValue = new(big.Int).Set(enumCase.Value)
+			}
+			return info, true
 		}
 		return matchPatternInfo{Kind: "variant", Variant: pattern.Property.Value, VariantIndex: unionVariantIndex(subjectType, pattern.Property.Value)}, true
 	case *ast.CallExpression:
@@ -8454,6 +8471,13 @@ func (a *Analyzer) typeFromVariantDeclaration(name string, variants []*ast.Ident
 	return a.typeFromEnumDeclaration(name, enum)
 }
 
+// typeFromEnumDeclaration resolves integer-, string-, and bit-backed enum
+// domains, member constants, aliases, and defaults into one nominal Type.
+//
+// Rules:
+//   - rules/declarations/enums.md — "Core model"
+//   - rules/declarations/enums.md — "Member initializer syntax"
+//   - rules/declarations/enums.md — "Enum defaults"
 func (a *Analyzer) typeFromEnumDeclaration(name string, enum *ast.EnumDeclaration) Type {
 	underlying := a.types["int"]
 	if enum.BitUnderlying {
@@ -8478,12 +8502,12 @@ func (a *Analyzer) typeFromEnumDeclaration(name string, enum *ast.EnumDeclaratio
 		underlying = resolved
 	}
 
-	if underlying.Kind != IntType && underlying.Kind != UintType {
+	if underlying.Kind != IntType && underlying.Kind != UintType && underlying.Kind != StringType {
 		token := enum.Name.Token
 		if enum.UnderlyingType != nil {
 			token = enum.UnderlyingType.Token
 		}
-		a.addErrorAtToken(token, "enum %s underlying type must be integer, got %s", name, typeDisplayName(underlying))
+		a.addErrorAtToken(token, "enum %s underlying type must be integer or string, got %s", name, typeDisplayName(underlying))
 		return Type{Name: name, Kind: InvalidType}
 	}
 
@@ -8497,9 +8521,13 @@ func (a *Analyzer) typeFromEnumDeclaration(name string, enum *ast.EnumDeclaratio
 		ExplicitlyNonCopyable: noCopy,
 		ErrorAssignable:       enum.ErrorType,
 		Underlying:            underlying.Name,
-		MinInteger:            new(big.Int).Set(underlying.MinInteger),
-		MaxInteger:            new(big.Int).Set(underlying.MaxInteger),
 		EnumConsts:            map[string]EnumValue{},
+	}
+	if underlying.MinInteger != nil {
+		typ.MinInteger = new(big.Int).Set(underlying.MinInteger)
+	}
+	if underlying.MaxInteger != nil {
+		typ.MaxInteger = new(big.Int).Set(underlying.MaxInteger)
 	}
 	if noCopy {
 		typ.NoCopyPolicyOrigin = name
@@ -8528,6 +8556,30 @@ func (a *Analyzer) typeFromEnumDeclaration(name string, enum *ast.EnumDeclaratio
 		}
 
 		initializer := value.Initializer
+		if underlying.Kind == StringType {
+			if initializer == nil {
+				a.addErrorAtToken(value.Token, "string-backed enum member %s.%s requires an explicit initializer", name, value.Name.Value)
+				continue
+			}
+			literal, ok := initializer.(*ast.StringLiteral)
+			if !ok {
+				if identifier, isIdentifier := initializer.(*ast.Identifier); isIdentifier && identifier.Value == "iota" {
+					a.addErrorAtToken(identifier.Token, "iota is not available in string-backed enum %s", name)
+					continue
+				}
+				a.addErrorAtToken(expressionToken(initializer), "string-backed enum value %s.%s initializer must be a compile-time string constant", name, value.Name.Value)
+				continue
+			}
+			stringValue := literal.Value
+			typ.EnumValues = append(typ.EnumValues, value.Name.Value)
+			typ.EnumConsts[value.Name.Value] = EnumValue{
+				Name:        value.Name.Value,
+				StringValue: &stringValue,
+				Token:       value.Token,
+			}
+			a.recordDefinition(value.Name.Token)
+			continue
+		}
 		if initializer != nil {
 			repeatedInitializer = initializer
 		} else if repeatedInitializer != nil {
@@ -8722,11 +8774,20 @@ func (a *Analyzer) registerImplStatement(stmt *ast.ImplStatement) {
 			continue
 		}
 		if let, ok := member.(*ast.LetStatement); ok {
-			if !let.Static {
-				a.addErrorAtToken(let.Token, "variable declarations inside impl must be static")
+			if !let.Static && let.Mutable {
+				a.addErrorAtToken(let.Token, "mutable associated storage must be declared with static let mut")
 				continue
 			}
-			a.analyzeImplStaticLet(stmt.Target.Name, let)
+			if let.Static && !let.Mutable {
+				a.addWarningAtTokenWithMetadata(
+					let.Token,
+					diagnostics.RedundantAssociatedStatic,
+					"Remove static; immutable let is already type-associated inside impl.",
+					"static is redundant on immutable associated declaration %s",
+					let.Name.Value,
+				)
+			}
+			a.analyzeImplAssociatedLet(stmt.Target.Name, let)
 			continue
 		}
 		if initializer, ok := member.(*ast.InitDeclaration); ok {
@@ -8891,7 +8952,13 @@ func (a *Analyzer) registerInitDeclaration(targetName string, target Type, initi
 	a.functions[key] = functions
 }
 
-func (a *Analyzer) analyzeImplStaticLet(targetName string, stmt *ast.LetStatement) {
+// analyzeImplAssociatedLet registers the single immutable-associated/static
+// storage category shared by `let` and compatibility `static let` in impl.
+//
+// Rules:
+//   - rules/declarations/static.md — "Static declarations in implementations"
+//   - rules/declarations/impl.md — "Static members"
+func (a *Analyzer) analyzeImplAssociatedLet(targetName string, stmt *ast.LetStatement) {
 	if stmt == nil || stmt.Name == nil {
 		return
 	}
@@ -8921,7 +8988,7 @@ func (a *Analyzer) analyzeImplStaticLet(targetName string, stmt *ast.LetStatemen
 		}
 	}
 	if previous, exists := a.symbols[qualifiedName]; exists {
-		a.addErrorAtToken(stmt.Name.Token, "static member %s already declared at %d:%d, previous declaration at %d:%d", qualifiedName, stmt.Name.Token.Line, stmt.Name.Token.Column, previous.Token.Line, previous.Token.Column)
+		a.addErrorAtToken(stmt.Name.Token, "associated member %s already declared at %d:%d, previous declaration at %d:%d", qualifiedName, stmt.Name.Token.Line, stmt.Name.Token.Column, previous.Token.Line, previous.Token.Column)
 		return
 	}
 	symbol := Symbol{Name: qualifiedName, Type: declaredType, Mutable: stmt.Mutable, Token: stmt.Name.Token, Storage: StorageOriginStatic, Local: false}
@@ -13655,6 +13722,9 @@ func (a *Analyzer) inferConversionExpression(expr *ast.ConversionExpression) (Ty
 	if isIntegerType(targetType) && valueType.Kind == EnumType {
 		return a.enumToIntegerConversionResultType(targetType, valueType, expr.Value), expressionValue{Display: expr.String()}
 	}
+	if targetType.Kind == StringType && valueType.Kind == EnumType && valueType.Underlying == "string" {
+		return targetType, expressionValue{Display: expr.String()}
+	}
 
 	return targetType, expressionValue{Display: expr.String()}
 }
@@ -16541,6 +16611,9 @@ func (a *Analyzer) inferCallAsConversion(expr *ast.CallExpression) (Type, expres
 	if isIntegerType(targetType) && valueType.Kind == EnumType {
 		return a.enumToIntegerConversionResultType(targetType, valueType, expr.Arguments[0]), expressionValue{Display: expr.String()}
 	}
+	if targetType.Kind == StringType && valueType.Kind == EnumType && valueType.Underlying == "string" {
+		return targetType, expressionValue{Display: expr.String()}
+	}
 
 	return targetType, expressionValue{Display: expr.String()}
 }
@@ -16593,7 +16666,29 @@ func enumDomainFitsIntegerType(enumType Type, target Type) bool {
 	return true
 }
 
+// enumConversionResultType validates explicit construction from the enum's
+// integer or string underlying family and selects direct versus Result-valued
+// runtime conversion.
+//
+// Rules:
+//   - rules/declarations/enums.md — "Conversions"
+//   - rules/declarations/enums.md — "String to string-backed enum"
 func (a *Analyzer) enumConversionResultType(target Type, sourceType Type, source ast.Expression) (Type, bool) {
+	if target.Underlying == "string" {
+		if sourceType.Kind != StringType || sourceType.Named {
+			return Type{Kind: InvalidType}, false
+		}
+		if literal, constant := source.(*ast.StringLiteral); constant {
+			for _, enumCase := range target.EnumConsts {
+				if enumCase.StringValue != nil && *enumCase.StringValue == literal.Value {
+					return target, true
+				}
+			}
+			a.addErrorAtToken(expressionToken(source), "string value %q is not a declared value of closed enum %s", literal.Value, target.Name)
+			return Type{Kind: InvalidType}, false
+		}
+		return a.fallibleEnumConversionType(target), true
+	}
 	if target.BitWidth > 0 {
 		if value, constant := a.integerConstantValue(source); constant {
 			return target, !a.checkIntegerValueRange(target, value, expressionToken(source))
@@ -17103,6 +17198,7 @@ type matchPatternInfo struct {
 	Kind                 string
 	Variant              string
 	EnumNumericValue     *big.Int
+	EnumValueKey         string
 	EnumCaseName         string
 	VariantIndex         uint32
 	PayloadVariant       string
@@ -17205,10 +17301,10 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 			} else if info.Kind != "" {
 				seenKinds[info.Kind] = true
 			}
-			if info.EnumNumericValue != nil {
-				key := info.EnumNumericValue.String()
+			if info.EnumValueKey != "" {
+				key := info.EnumValueKey
 				if previous, exists := seenEnumValues[key]; exists {
-					a.addErrorAtToken(arm.Token, "unreachable enum match arm; numeric value is already covered by %s", previous)
+					a.addErrorAtToken(arm.Token, "unreachable enum match arm; underlying value is already covered by %s", previous)
 					continue
 				}
 				seenEnumValues[key] = info.EnumCaseName
@@ -17300,8 +17396,8 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 }
 
 func matchPatternAlreadyCovered(info matchPatternInfo, seenKinds map[string]bool, seenVariants map[string]bool, seenEnumValues map[string]string) bool {
-	if info.EnumNumericValue != nil {
-		_, covered := seenEnumValues[info.EnumNumericValue.String()]
+	if info.EnumValueKey != "" {
+		_, covered := seenEnumValues[info.EnumValueKey]
 		return covered
 	}
 	if info.Variant != "" {
@@ -17354,13 +17450,18 @@ func (a *Analyzer) analyzeMatchPattern(pattern ast.Expression, subjectType Type)
 		}
 		if subjectType.Kind == EnumType {
 			enumCase, exists := subjectType.EnumConsts[pattern.Property.Value]
-			if !exists || enumCase.Value == nil {
+			key, keyed := enumValueClassKey(enumCase)
+			if !exists || !keyed {
 				return matchPatternInfo{}, false
 			}
-			return matchPatternInfo{
+			info := matchPatternInfo{
 				Kind: "variant", Variant: pattern.Property.Value,
-				EnumNumericValue: new(big.Int).Set(enumCase.Value), EnumCaseName: enumCase.Name,
-			}, true
+				EnumValueKey: key, EnumCaseName: enumCase.Name,
+			}
+			if enumCase.Value != nil {
+				info.EnumNumericValue = new(big.Int).Set(enumCase.Value)
+			}
+			return info, true
 		}
 		return matchPatternInfo{Kind: "variant", Variant: pattern.Property.Value, VariantIndex: unionVariantIndex(subjectType, pattern.Property.Value)}, true
 	case *ast.CallExpression:
@@ -17380,13 +17481,21 @@ func (a *Analyzer) analyzeMatchPattern(pattern ast.Expression, subjectType Type)
 			}
 		}
 		if subjectType.Kind == EnumType {
-			if enumCase, exists := subjectType.EnumConsts[pattern.Value]; exists && enumCase.Value != nil {
-				return matchPatternInfo{
-					Kind:             "variant",
-					Variant:          pattern.Value,
-					EnumNumericValue: new(big.Int).Set(enumCase.Value),
-					EnumCaseName:     enumCase.Name,
-				}, true
+			if enumCase, exists := subjectType.EnumConsts[pattern.Value]; exists {
+				key, keyed := enumValueClassKey(enumCase)
+				if !keyed {
+					return matchPatternInfo{}, false
+				}
+				info := matchPatternInfo{
+					Kind:         "variant",
+					Variant:      pattern.Value,
+					EnumValueKey: key,
+					EnumCaseName: enumCase.Name,
+				}
+				if enumCase.Value != nil {
+					info.EnumNumericValue = new(big.Int).Set(enumCase.Value)
+				}
+				return info, true
 			}
 		}
 		return matchPatternInfo{BindingName: pattern.Value, BindingType: subjectType, Kind: "catchall"}, true
@@ -17755,7 +17864,7 @@ func matchCoverageComplete(subjectType Type, catchAll bool, seenKinds map[string
 		return seenKinds["Ok"] && seenKinds["Err"]
 	}
 	if subjectType.Kind == EnumType {
-		return enumNumericDomainCovered(subjectType, seenEnumValues)
+		return enumDomainCovered(subjectType, seenEnumValues)
 	}
 	if subjectType.Kind == UnionType {
 		for _, variant := range subjectType.UnionVariants {
@@ -17768,7 +17877,12 @@ func matchCoverageComplete(subjectType Type, catchAll bool, seenKinds map[string
 	return false
 }
 
-func enumNumericDomainCovered(subjectType Type, seenEnumValues map[string]string) bool {
+// enumDomainCovered checks closed integer/string aliases by underlying value
+// class and open bit enums by their complete representable domain.
+//
+// Rules:
+//   - rules/declarations/enums.md — "match and exhaustiveness"
+func enumDomainCovered(subjectType Type, seenEnumValues map[string]string) bool {
 	if subjectType.Kind != EnumType {
 		return false
 	}
@@ -17778,8 +17892,8 @@ func enumNumericDomainCovered(subjectType Type, seenEnumValues map[string]string
 	}
 	declared := map[string]bool{}
 	for _, enumCase := range subjectType.EnumConsts {
-		if enumCase.Value != nil {
-			declared[enumCase.Value.String()] = true
+		if key, ok := enumValueClassKey(enumCase); ok {
+			declared[key] = true
 		}
 	}
 	for value := range declared {
@@ -17807,7 +17921,7 @@ func (a *Analyzer) checkMatchExhaustive(expr *ast.MatchExpression, subjectType T
 		if subjectType.BitWidth > 0 {
 			a.addErrorAtToken(expr.Token, "non-exhaustive match for open bit-backed enum %s; undeclared hardware encodings remain possible; add _ or cover the complete bit[%d] domain", typeDisplayName(subjectType), subjectType.BitWidth)
 		} else {
-			a.addErrorAtToken(expr.Token, "non-exhaustive match for closed enum %s; cover every declared numeric value class or add _", typeDisplayName(subjectType))
+			a.addErrorAtToken(expr.Token, "non-exhaustive match for closed enum %s; cover every declared underlying value class or add _", typeDisplayName(subjectType))
 		}
 		return false
 	}
@@ -19246,6 +19360,13 @@ func canUntypedNumericInitializeNominal(target Type, value Type, expr ast.Expres
 	}
 }
 
+// canExplicitConvert admits only conversion spellings authorized by the
+// source and target type families; enum/string permission remains nominal and
+// explicit.
+//
+// Rules:
+//   - rules/declarations/enums.md — "Conversions"
+//   - rules/types/types.md — explicit conversions
 func canExplicitConvert(target Type, value Type) bool {
 	if target.Kind == InvalidType || value.Kind == InvalidType {
 		return false
@@ -19258,6 +19379,9 @@ func canExplicitConvert(target Type, value Type) bool {
 	}
 
 	if target.Kind == EnumType && isIntegerType(value) {
+		return true
+	}
+	if target.Kind == EnumType && target.Underlying == "string" && value.Kind == StringType && !value.Named {
 		return true
 	}
 	if target.Kind == RegisterType && isIntegerType(value) {
@@ -19273,6 +19397,9 @@ func canExplicitConvert(target Type, value Type) bool {
 	}
 
 	if isIntegerType(target) && value.Kind == EnumType {
+		return true
+	}
+	if target.Kind == StringType && !target.Named && value.Kind == EnumType && value.Underlying == "string" {
 		return true
 	}
 

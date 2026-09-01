@@ -817,11 +817,14 @@ match option {
 
 ## 26. Ordinary enums
 
-Ordinary enums are closed over their declared numeric value classes.
+Ordinary enums are closed over their declared underlying value classes,
+including integer and string values.
 
 Exhaustiveness is based on distinct reachable declared values, not merely member spellings.
 
-If multiple enum members are aliases for the same numeric value, they represent one runtime value class for coverage and duplicate/unreachable analysis.
+If multiple enum members are aliases for the same underlying value, they
+represent one runtime value class for coverage and duplicate/unreachable
+analysis.
 
 A match need not contain separate arms for every alias spelling.
 
@@ -1049,7 +1052,7 @@ Before lowering, Sema and ownership/borrow analysis must resolve at least:
 - subject initialization state, including reachable union `empty`;
 - normalized pattern identity;
 - variant identity;
-- enum numeric value class when applicable;
+- enum underlying value class when applicable;
 - open versus closed enum domain;
 - pattern-binding type;
 - binding action for each bound payload or field;
@@ -1159,7 +1162,7 @@ Semantic IR must preserve or encode:
 - source arm order;
 - pattern tests;
 - resolved variant identities;
-- enum numeric value classes;
+- enum underlying value classes;
 - reachable `empty` state where applicable;
 - guard control flow;
 - candidate binding identity;
@@ -1234,7 +1237,7 @@ Sec 0.1 `match` follows these rules:
 14. Statement match obeys the ordinary discard and must-use rules.
 15. Expression match requires a common result type on every continuing arm.
 16. A match-arm block may contextually produce its value from its final expression without creating general block-expression semantics.
-17. Ordinary enums are closed over distinct declared numeric value classes.
+17. Ordinary enums are closed over distinct declared underlying value classes.
 18. Bit-backed enums are open over their complete representable domain.
 19. Direct bool, literal, range, runtime-type, recursive nested, and ordinary-struct patterns are not part of Sec 0.1.
 20. Compiler and LSP must expose the same resolved ownership and coverage facts.

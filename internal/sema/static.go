@@ -101,8 +101,14 @@ func (a *Analyzer) validateStaticInitialization(program *ast.Program) {
 	a.validateStaticDependencyCycles(declarations)
 }
 
+// addStaticDeclaration adds module storage and impl-associated immutable or
+// explicit static storage to the shared compile-time dependency graph.
+//
+// Rules:
+//   - rules/declarations/static.md — "Static initialization"
+//   - rules/declarations/static.md — "Static initialization dependency order"
 func (a *Analyzer) addStaticDeclaration(declarations map[string]staticDeclaration, owner string, declaration *ast.LetStatement, module bool) {
-	if declaration == nil || declaration.Name == nil || (!module && !declaration.Static) {
+	if declaration == nil || declaration.Name == nil || (!module && !declaration.Static && declaration.Mutable) {
 		return
 	}
 	name := declaration.Name.Value

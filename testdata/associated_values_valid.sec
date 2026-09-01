@@ -1,0 +1,15 @@
+// Canonical and compatibility associated immutable values.
+// Rules: rules/declarations/static.md, section 6.
+module main
+
+type Program string
+
+impl Program {
+    let OneCare := "Zebra OneCare"
+    static let VIQ := "Z1C+VIQ"
+    static let mut Observations: uint := 0u
+}
+
+fn OneCareName() string {
+    return Program.OneCare
+}

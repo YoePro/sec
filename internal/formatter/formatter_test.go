@@ -47,10 +47,10 @@ func TestFormatImplExtension(t *testing.T) {
 	}
 }
 
-// rules/declarations/static.md, sections 3 and 25.
+// rules/declarations/static.md, sections 3, 6, and 25.
 func TestFormatRemovesOnlyRedundantModuleStatic(t *testing.T) {
-	input := "static let Global: int := 1\n\nimpl Counter {\nstatic let Value: int := 2\nstatic property Current: int {\nget { return Counter.Value }\n}\n}\n\nfn Use() void {\nstatic let Calls: int := 0\n}\n"
-	want := "let Global: int := 1\n\nimpl Counter {\n    static let Value: int := 2\n    static property Current: int {\n        get { return Counter.Value }\n    }\n}\n\nfn Use() void {\n    static let Calls: int := 0\n}\n"
+	input := "static let Global: int := 1\n\nimpl Counter {\nstatic let Value: int := 2\nstatic let mut Total: int := 0\nstatic property Current: int {\nget { return Counter.Value }\n}\n}\n\nfn Use() void {\nstatic let Calls: int := 0\n}\n"
+	want := "let Global: int := 1\n\nimpl Counter {\n    let Value: int := 2\n    static let mut Total: int := 0\n    static property Current: int {\n        get { return Counter.Value }\n    }\n}\n\nfn Use() void {\n    static let Calls: int := 0\n}\n"
 	if got := Format(Source{Text: input}, Options{}).Text; got != want {
 		t.Fatalf("wrong static formatting:\n%s\nwant:\n%s", got, want)
 	}

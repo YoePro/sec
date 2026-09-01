@@ -2,8 +2,8 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-13
-- **Last updated:** 2026-08-13
-- **Document revision:** 1.0
+- **Last updated:** 2026-09-01
+- **Document revision:** 1.1
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/types/default_values.md`
 
@@ -1203,7 +1203,8 @@ governed by their own collection rules.
 
 Every valid enum is non-empty and defaultable. Its default is the single member
 marked `default`, when present, and otherwise its first declared member. Member
-identity selects the default; underlying numeric zero has no special priority.
+identity selects the default; underlying numeric zero or an empty string has no
+special priority.
 
 ```sec
 enum Status int {
@@ -1222,6 +1223,18 @@ The defaults are `Status.UNKNOWN` and `ConnectionState.DISCONNECTED`.
 The marker does not alter the initializer, `iota`, aliases, or initializer
 repetition. For an open bit-backed enum, the default is still a declared member;
 an unnamed raw pattern is never selected merely because it is zero.
+
+The same member-selection rule applies to string-backed enums:
+
+```sec
+enum Program string {
+    OneCare = "Zebra OneCare",
+    VIQ default = "Z1C+VIQ",
+}
+```
+
+The default is `Program.VIQ`. The empty string has no special default priority,
+and every string-backed member must still provide an explicit initializer.
 
 A mutable enum declaration without an initializer is initialized with the
 resolved enum default. This is initialized storage and does not require a later

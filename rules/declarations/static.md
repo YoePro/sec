@@ -2,8 +2,8 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-13
-- **Last updated:** 2026-08-14
-- **Document revision:** 2.0
+- **Last updated:** 2026-09-01
+- **Document revision:** 2.1
 - **Language version:** Sec 0.1
 - **Supersedes:** document revision 1.0
 - **Canonical path:** `rules/declarations/static.md`
@@ -146,7 +146,7 @@ fn GetState() ref mut ApplicationState {
 
 ## 6. Static declarations in implementations
 
-Type-associated static members belong in `impl`.
+Type-associated storage and values belong in `impl`.
 
 ```sec
 type Counter struct {
@@ -154,10 +154,55 @@ type Counter struct {
 }
 
 impl Counter {
-    static let Maximum: int := 100
+    let Maximum: int := 100
     static let mut Total: int := 0
 }
 ```
+
+An immutable `let` directly inside an `impl` is a type-associated immutable
+value. It has no instance receiver, is accessed through the type, and does not
+contribute to instance layout:
+
+```sec
+impl Program {
+    let OneCare := "Zebra OneCare"
+}
+
+let name := Program.OneCare
+```
+
+For an immutable implementation member, `static let` and `let` have exactly the
+same language semantics. Sec has no separate distinction between an associated
+constant and a "static constant". The canonical spelling omits `static`:
+
+```sec
+impl Program {
+    let OneCare := "Zebra OneCare"
+}
+```
+
+The following compatibility spelling is accepted and resolves to the same
+member identity, type, lifetime, initialization rule, visibility, and access
+rule:
+
+```sec
+impl Program {
+    static let OneCare := "Zebra OneCare"
+}
+```
+
+This equivalence applies only to immutable implementation members. Mutable
+shared type storage must remain explicit:
+
+```sec
+impl Counter {
+    static let mut Total: int := 0
+}
+```
+
+Bare `let mut` is invalid directly inside an `impl`; it is neither an instance
+field nor an implicit shared static variable. Instance fields remain owned by
+the type declaration.
 
 A static declaration may also appear in an `impl extends` fragment.
 
@@ -172,6 +217,10 @@ impl extends Counter {
 Primary and extended implementation fragments form one combined member surface.
 
 Duplicate or conflicting static members are invalid across the complete implementation.
+
+Canonical and compatibility spellings do not create separate overload or
+member categories. `let Maximum` conflicts with `static let Maximum` across the
+combined primary and extension surface.
 
 ## 7. Static members never change instance representation
 
@@ -396,7 +445,7 @@ Example:
 type UserID int
 
 impl UserID {
-    static let Invalid: UserID := UserID(-1)
+    let Invalid: UserID := UserID(-1)
 
     static fn Parse(value: string) Result[UserID, ParseError] {
         ...
@@ -654,7 +703,8 @@ The formatter must:
 - remove redundant module-level `static`;
 - preserve `static fn`;
 - preserve `static property`;
-- preserve `static let`;
+- remove redundant `static` from an immutable `static let` implementation
+  member;
 - preserve `static let mut`;
 - preserve explicit static-property setter parameters;
 - never rewrite an instance `fn` into `static fn` merely because `self` is not textually referenced.
@@ -666,6 +716,11 @@ The compiler must determine at least:
 - whether `static` is valid in the declaration context;
 - whether module-level `static` is redundant;
 - whether a member is static or instance-bound;
+- whether a direct immutable `let` implementation member is the canonical
+  spelling of a type-associated immutable value;
+- whether `static let` in an implementation is the equivalent compatibility
+  spelling and should receive a redundant-modifier diagnostic or rewrite;
+- whether a bare mutable `let mut` implementation member is rejected;
 - whether `self` use is invalid in a static member;
 - whether a static initializer is compile-time evaluable;
 - whether initialization dependencies contain a cycle;
@@ -713,6 +768,14 @@ Required diagnostics include at least:
 
 ```text
 static is redundant on module-level declaration State
+```
+
+```text
+static is redundant on immutable associated declaration Maximum
+```
+
+```text
+mutable associated storage must be declared with static let mut
 ```
 
 ```text
@@ -764,9 +827,10 @@ Diagnostics must identify the relevant declaration and violated rule.
 
 - Use module-level bindings directly instead of redundant `static`.
 - Use function-local `static` only when one persistent storage location is genuinely part of the function's semantics.
-- Prefer immutable static bindings whenever possible.
+- Prefer immutable bindings whenever possible; omit redundant `static` from an
+  immutable associated value in `impl`.
 - Prefer synchronization objects over exposing mutable references to shared static state.
-- Keep type-associated static API close to the type's primary behavior; use `impl extends` when splitting a large implementation improves readability.
+- Keep type-associated API close to the type's primary behavior; use `impl extends` when splitting a large implementation improves readability.
 - Use `static fn` only for genuinely type-level behavior.
 - Do not use a static factory where lifecycle `new Type(...)` better expresses actual construction through `init`.
 - Keep runtime setup explicit in ordinary program flow.

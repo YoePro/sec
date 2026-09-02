@@ -60,7 +60,7 @@ rules/memory/ownership.md
 rules/memory/copy_move.md
 rules/errors/runtime_checks.md
 rules/errors/panic.md
-rules/memory/raw_pointers.txt
+rules/memory/raw_pointers.md
 rules/collections/collections.md
 rules/declarations/struct.md
 rules/declarations/unions.md

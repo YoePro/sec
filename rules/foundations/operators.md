@@ -340,7 +340,7 @@ types/units.md
 references.md
     references and borrowing
 
-raw_pointers.txt
+raw_pointers.md
     unsafe pointer operations
 
 concurrency_memory_model.txt
@@ -2203,7 +2203,7 @@ operators.
 # Raw pointer equality
 
 `RawPtr[T]` may support address-value equality in unsafe or low-level contexts
-according to `raw_pointers.txt`.
+according to `raw_pointers.md`.
 
 Such equality compares address representation only.
 
@@ -3160,7 +3160,7 @@ bounds-aware where known
 target-representable
 ```
 
-Address-value equality may be permitted by `raw_pointers.txt`.
+Address-value equality may be permitted by `raw_pointers.md`.
 
 Ordered raw-pointer comparison is not part of ordinary Sec 0.1 operators.
 
@@ -4082,7 +4082,7 @@ unions.md
 struct.md
 types/units.md
 references.md
-raw_pointers.txt
+raw_pointers.md
 allocation.md
 destruction.txt
 concurrency_memory_model.txt

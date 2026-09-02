@@ -579,7 +579,7 @@ helpers, and the LLVM dialect.
   semantic-copy spread, move-only element reads, element borrows, move-out,
   non-trivial replacement/destruction, dynamic owning arrays, slices, and
   array-to-slice conversion.
-- [ ] P14-68 — Reject equality/membership lowering, foreign fixed-array ABI, and
+- [x] P14-68 — Reject equality/membership lowering, foreign fixed-array ABI, and
   any physical layout request at the P14 package boundary while leaving their
   already-valid frontend typing or legacy path intact where applicable.
 - [x] P14-69 — Assert successful P14 modules contain no `undef`, poison, partial
@@ -593,7 +593,9 @@ Completed 2026-09-02: P14-67 adds maintained invalid source fixtures and one
 pipeline matrix for move-only spread/read, shared and mutable element borrow,
 indexed move-out, non-trivial replacement/destruction, owning dynamic arrays,
 slices, and array-to-slice creation. Move-only spread/read and indexed move-out
-are diagnosed by Sema and therefore by the LSP; valid-but-deferred forms return
+are diagnosed by Sema and therefore by the LSP, including indexed move-only
+reads wrapped by the dedicated terminal `Ok(...)` Result-return path;
+valid-but-deferred forms return
 Package-14 `UnsupportedFeatureError`, and no failed build exposes its partially
 assembled module. Element borrow and move-out also have defensive builder gates,
 and owned non-trivial fixed-array
@@ -601,6 +603,14 @@ parameters retain honest ownership until a specific operation or missing-cleanup
 boundary rejects them. Current Sema has no source-reachable `CopySemantic` type,
 so semantic-copy spread is locked directly at the immutable action-to-IR adapter
 alongside move and borrow actions rather than being fabricated as source syntax.
+
+Completed 2026-09-02: P14-68 preserves valid frontend typing for fixed-array
+`==`, `!=`, and `in`, then rejects them by name at the Package-14 Semantic IR
+operator boundary without exposing a partial module. Schema-10 emission also
+rejects verified foreign functions with fixed arrays in either parameter or
+result position, plus physical `LayoutRef` requests on structs or unions that
+contain a fixed array. The boundary walks semantic type identity only; it does
+not calculate or invent array size, alignment, stride, storage, or ABI shape.
 
 Completed 2026-09-02: P14-69 runs the maintained section-102 source module
 through verified Semantic IR and schema-10 emission on both 32-bit and 64-bit

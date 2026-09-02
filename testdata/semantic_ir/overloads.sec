@@ -1,9 +1,9 @@
 module main
 
-fn Value(value: int) int {
+fn Value2(value: int) int {
     return value
 }
 
-fn Value(value: bool) bool {
+fn Value2(value: bool) bool {
     return value
 }

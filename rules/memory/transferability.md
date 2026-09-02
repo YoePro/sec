@@ -520,7 +520,7 @@ events.md
 ownership.md
 borrowing.txt
 references.md
-raw_pointers.txt
+raw_pointers.md
 copy_move.md
 lifetime_analysis.md
 destruction.txt

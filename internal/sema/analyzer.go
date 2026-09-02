@@ -5748,19 +5748,16 @@ func (a *Analyzer) analyzeReturnStatement(functionName string, returnType Type, 
 	if valueType.Kind == InvalidType {
 		return
 	}
-	if a.rejectImplicitIndexedReturnExtraction(stmt.Value, valueType) {
-		return
-	}
 	if variadicPackValue(valueType) {
 		// rules/declarations/functions.md section 32: a pack may not escape
 		// the invocation through the function result.
 		a.addErrorAtToken(expressionToken(stmt.Value), "variadic parameter pack cannot escape this call")
 		return
 	}
-	if a.variadicPackElementExpression(stmt.Value) && requiresOwnershipTransfer(valueType) {
-		// rules/declarations/functions.md section 34: a pack permits indexed
-		// observation, not ownership extraction of one of its elements.
-		a.addErrorAtToken(expressionToken(stmt.Value), "cannot move element out of variadic parameter pack")
+	if a.rejectVariadicPackElementReturn(stmt.Value, valueType) {
+		return
+	}
+	if a.rejectImplicitIndexedReturnExtraction(stmt.Value, valueType) {
 		return
 	}
 
@@ -5822,6 +5819,22 @@ func (a *Analyzer) rejectImplicitIndexedReturnExtraction(expr ast.Expression, el
 		typeDisplayName(elementType),
 		source,
 	)
+	return true
+}
+
+// rejectVariadicPackElementReturn preserves the invocation-lifetime pack
+// boundary before applying the more general move-only collection-read rule.
+// A pack element may be observed but cannot be transferred out by a return,
+// including a terminal Ok or Err payload return.
+//
+// Rules:
+//   - rules/declarations/functions.md — section 34 "Ownership and lifetime"
+//   - rules/collections/collections.md — §8.5 "Move-only indexed reads"
+func (a *Analyzer) rejectVariadicPackElementReturn(expr ast.Expression, elementType Type) bool {
+	if !a.variadicPackElementExpression(expr) || !requiresOwnershipTransfer(elementType) {
+		return false
+	}
+	a.addErrorAtToken(expressionToken(expr), "cannot move element out of variadic parameter pack")
 	return true
 }
 
@@ -6801,6 +6814,14 @@ func (a *Analyzer) localReferenceOriginInExpression(expr ast.Expression) (string
 	return "", lexer.Token{}, false
 }
 
+// analyzeResultReturnStatement validates the Result arm and its terminal payload
+// transfer. The terminal Ok/Err exception permits omission of an explicit move
+// marker, but it does not turn an ordinary indexed read into owning extraction.
+//
+// Rules:
+//   - rules/memory/copy_move.md — §9 "Return boundaries"
+//   - rules/memory/copy_move.md — §10.3 "Result construction"
+//   - rules/collections/collections.md — §8.5 "Move-only indexed reads"
 func (a *Analyzer) analyzeResultReturnStatement(functionName string, returnType Type, stmt *ast.ReturnStatement) {
 	if len(returnType.TypeArgs) != 2 {
 		return
@@ -6823,6 +6844,9 @@ func (a *Analyzer) analyzeResultReturnStatement(functionName string, returnType 
 		if valueType.Kind == InvalidType {
 			return
 		}
+		if a.rejectVariadicPackElementReturn(expr.Value, valueType) || a.rejectImplicitIndexedReturnExtraction(expr.Value, valueType) {
+			return
+		}
 		if !canInitialize(expected, valueType, expr.Value) {
 			a.addErrorAtToken(expressionToken(expr.Value), "function %s must return Ok(%s), got Ok(%s)", functionName, typeDisplayName(expected), typeDisplayName(valueType))
 			return
@@ -6843,6 +6867,9 @@ func (a *Analyzer) analyzeResultReturnStatement(functionName string, returnType 
 		}
 		valueType, _ := a.inferExpression(expr.Value)
 		if valueType.Kind == InvalidType {
+			return
+		}
+		if a.rejectVariadicPackElementReturn(expr.Value, valueType) || a.rejectImplicitIndexedReturnExtraction(expr.Value, valueType) {
 			return
 		}
 		expected := returnType.TypeArgs[1]

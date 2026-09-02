@@ -2564,8 +2564,49 @@ func (fb *functionBuilder) buildResultPropagation(expr *ast.TryExpression, resol
 	return fb.result(Operation{Kind: OpResultUnwrapOk, Operands: []ValueID{resultValue.id}, Location: location(expr.Token)}, resultType.Success), nil
 }
 
+// buildResolvedOperator applies package capability gates before lowering a
+// Sema-resolved operator into the current Semantic IR vocabulary.
+//
+// Rules:
+//   - rules/compiler/semantic_ir.txt — "Unsupported lowerings"
+//   - rules/mlir/packages/sec-mlir-dialect_package14.md — sections 82-83, 103
 func (fb *functionBuilder) buildResolvedOperator(expr ast.Expression) (builtValue, error) {
+	if feature, deferred := fb.package14DeferredArrayOperator(expr); deferred {
+		return builtValue{}, fb.unsupported(feature, expressionToken(expr))
+	}
 	return fb.buildResolvedOperatorWithFailure(expr, nil, nil)
+}
+
+// package14DeferredArrayOperator identifies source-valid fixed-array operators
+// whose exact-once aggregate lowering is deliberately deferred beyond P14.
+// The check consumes Sema's resolved operand types and does not reinterpret
+// equality or membership typing in the Semantic IR builder.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package14.md — sections 82-83, 103
+func (fb *functionBuilder) package14DeferredArrayOperator(expr ast.Expression) (string, bool) {
+	if fb.owner.maxPackage < 14 {
+		return "", false
+	}
+	infix, ok := expr.(*ast.InfixExpression)
+	if !ok {
+		return "", false
+	}
+	left, leftResolved := fb.owner.analyzer.ResolvedTypeOf(infix.Left)
+	right, rightResolved := fb.owner.analyzer.ResolvedTypeOf(infix.Right)
+	_, leftArray := sema.FixedArrayLength(left)
+	_, rightArray := sema.FixedArrayLength(right)
+	switch infix.Operator {
+	case "==", "!=":
+		if leftResolved && rightResolved && (leftArray || rightArray) {
+			return "fixed-array equality lowering", true
+		}
+	case "in":
+		if rightResolved && rightArray {
+			return "fixed-array membership lowering", true
+		}
+	}
+	return "", false
 }
 
 func (fb *functionBuilder) buildResolvedOperatorWithFailure(expr ast.Expression, arithmeticTry *sema.ResolvedTry, localTry *ast.TryExpression) (builtValue, error) {

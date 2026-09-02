@@ -29,7 +29,7 @@
 
 § 1(8) `rules/memory/copy_move.md` owns copy/move classification and explicit transfer syntax.
 
-§ 1(9) `rules/memory/raw_pointers.txt` owns raw-pointer operations until replaced by its v2 successor.
+§ 1(9) `rules/memory/raw_pointers.md` owns raw-pointer operations and the unsafe boundary to safe references.
 
 § 1(10) `rules/platform/fixed-address-bindings.md`, `rules/platform/hardware-register-access.md`, and `rules/platform/volatile.md` own physical-address, hardware-storage, mapping, access-context, and volatile semantics.
 

@@ -53,6 +53,12 @@ enum ConstantExpressions int {
     eight = 2 << 2,
 }
 
+enum testEnum string {
+    R = "red",
+    G = "green",
+    B = "blue",
+}
+
 enum OtherColor {
     red,
     green,
@@ -162,22 +168,22 @@ fn AutomaticContinuation() bool {
 
 fn IotaValues() bool {
     return int(Permission.none) == 0 &&
-        uint(Permission.read) == 2 &&
-        uint(Permission.write) == 4 &&
-        uint(Permission.execute) == 8 &&
-        int(IotaSequence.first) == 0 &&
-        int(IotaSequence.second) == 100 &&
-        int(IotaSequence.third) == 2
+    uint(Permission.read) == 2 &&
+    uint(Permission.write) == 4 &&
+    uint(Permission.execute) == 8 &&
+    int(IotaSequence.first) == 0 &&
+    int(IotaSequence.second) == 100 &&
+    int(IotaSequence.third) == 2
 }
 
 fn EnumInSwitch(value: Color) int {
     switch value {
-    case Color.red:
-        return 1
-    case Color.green:
-        return 2
-    default:
-        return 3
+        case Color.red:
+            return 1
+        case Color.green:
+            return 2
+        default:
+            return 3
     }
 }
 
@@ -187,7 +193,7 @@ fn EnumInMatch(value: Direction) int {
         Direction.east => 1
         Direction.south => 2
         Direction.west => 3
-		_ => -1
+        _ => -1
     }
 }
 

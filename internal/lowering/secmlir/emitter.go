@@ -44,6 +44,9 @@ func Emit(module *semantic.Module, plan layout.ResolvedScalarPlan) ([]byte, erro
 		module: module, types: map[semantic.TypeID]string{},
 		visiting: map[semantic.TypeID]bool{}, functions: map[semantic.FunctionID]string{}, plan: plan,
 	}
+	if err := e.validatePackage14ArrayBoundaries(); err != nil {
+		return nil, err
+	}
 	for index, function := range module.Functions {
 		e.functions[function.ID] = fmt.Sprintf("sec_fn_%d", index)
 	}
@@ -51,6 +54,92 @@ func Emit(module *semantic.Module, plan layout.ResolvedScalarPlan) ([]byte, erro
 		return nil, err
 	}
 	return []byte(e.out.String()), nil
+}
+
+// validatePackage14ArrayBoundaries rejects representation requests that schema
+// 10 deliberately leaves to later aggregate ABI and physical-layout packages.
+// Verified Semantic IR may retain foreign functions and optional aggregate
+// LayoutRef metadata, but neither is permission to select an array ABI/layout.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package14.md — sections 81, 85, 103-104
+func (e *emitter) validatePackage14ArrayBoundaries() error {
+	for _, function := range e.module.Functions {
+		if function == nil || !function.Extern {
+			continue
+		}
+		if e.typeContainsFixedArray(function.ReturnType, map[semantic.TypeID]bool{}) {
+			return &UnsupportedLoweringError{Feature: "foreign fixed-array ABI return", Function: function.ID}
+		}
+		for _, parameter := range function.Parameters {
+			if e.typeContainsFixedArray(parameter.Value.Type, map[semantic.TypeID]bool{}) {
+				return &UnsupportedLoweringError{Feature: "foreign fixed-array ABI parameter", Function: function.ID}
+			}
+		}
+	}
+	for _, definition := range e.module.Structs {
+		if definition.LayoutRef != "" && e.typeContainsFixedArray(definition.TypeID, map[semantic.TypeID]bool{}) {
+			return &UnsupportedLoweringError{Feature: "physical fixed-array layout request " + definition.LayoutRef}
+		}
+	}
+	for _, definition := range e.module.Unions {
+		if definition.LayoutRef != "" && e.typeContainsFixedArray(definition.TypeID, map[semantic.TypeID]bool{}) {
+			return &UnsupportedLoweringError{Feature: "physical fixed-array layout request " + definition.LayoutRef}
+		}
+	}
+	return nil
+}
+
+// typeContainsFixedArray follows semantic type identity and declaration-order
+// aggregate metadata without computing size, alignment, stride, or ABI shape.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package14.md — sections 6, 27, 85
+func (e *emitter) typeContainsFixedArray(id semantic.TypeID, visiting map[semantic.TypeID]bool) bool {
+	if id == 0 || visiting[id] {
+		return false
+	}
+	visiting[id] = true
+	defer delete(visiting, id)
+	typ, ok := e.module.Types.Lookup(id)
+	if !ok {
+		return false
+	}
+	switch typ.Kind {
+	case semantic.TypeArray:
+		return true
+	case semantic.TypeNamed:
+		return e.typeContainsFixedArray(typ.Base, visiting)
+	case semantic.TypeResult:
+		return e.typeContainsFixedArray(typ.Success, visiting) || e.typeContainsFixedArray(typ.Error, visiting)
+	case semantic.TypeStruct:
+		if definition, found := e.structDefinition(id); found {
+			for _, field := range definition.Fields {
+				if e.typeContainsFixedArray(field.Type, visiting) {
+					return true
+				}
+			}
+		}
+	case semantic.TypeUnion:
+		if definition, found := e.unionDefinition(id); found {
+			for _, variant := range definition.Variants {
+				if e.typeContainsFixedArray(variant.Payload, visiting) {
+					return true
+				}
+				for _, field := range variant.PayloadFields {
+					if e.typeContainsFixedArray(field.Type, visiting) {
+						return true
+					}
+				}
+			}
+		}
+	}
+	for _, argument := range typ.TypeArgs {
+		if e.typeContainsFixedArray(argument, visiting) {
+			return true
+		}
+	}
+	return false
 }
 
 func (e *emitter) emitModule() error {

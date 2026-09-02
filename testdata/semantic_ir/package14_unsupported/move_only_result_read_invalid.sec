@@ -1,0 +1,17 @@
+module main
+
+@noCopy
+type Token struct { value: int }
+
+enum ReadError error { Failed }
+
+@noCopy
+type MoveError enum error { Failed }
+
+fn Read(values: Token[1]) Result[Token, ReadError] {
+    return Ok(values[0])
+}
+
+fn Fail(values: MoveError[1]) Result[int, MoveError] {
+    return Err(values[0])
+}

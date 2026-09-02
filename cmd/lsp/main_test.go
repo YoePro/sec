@@ -633,6 +633,45 @@ func TestAnalyzePublishesMoveOnlyIndexedReturnDiagnostic(t *testing.T) {
 	}
 }
 
+// TestAnalyzePublishesMoveOnlyIndexedResultReturnDiagnostics proves that both
+// terminal Result arms retain the ordinary-index ownership restriction and
+// publish the canonical diagnostic through the LSP.
+//
+// Rules:
+//   - rules/collections/collections.md — "Move-only indexed reads"
+//   - rules/memory/copy_move.md — §10.3 "Result construction"
+//   - rules/tooling/lsp.md — semantic diagnostics
+func TestAnalyzePublishesMoveOnlyIndexedResultReturnDiagnostics(t *testing.T) {
+	source, err := os.ReadFile("../../testdata/semantic_ir/package14_unsupported/move_only_result_read_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	reported := analyze("file:///tmp/sec-lsp-array-ownership/result.sec", string(source))
+	if len(reported) != 2 {
+		t.Fatalf("diagnostics = %+v, want Ok and Err ownership diagnostics", reported)
+	}
+	want := []struct {
+		typeName  string
+		line      int
+		character int
+	}{
+		{typeName: "Token", line: 11, character: 20},
+		{typeName: "MoveError", line: 15, character: 21},
+	}
+	for index, diagnostic := range reported {
+		if diagnostic.Code != diagnostics.ImplicitMoveDisallowed {
+			t.Fatalf("diagnostic %d code = %q, want %s", index, diagnostic.Code, diagnostics.ImplicitMoveDisallowed)
+		}
+		message := "cannot return " + want[index].typeName + " element values[0] by ordinary indexing because it is not implicitly copyable"
+		if !strings.Contains(diagnostic.Message, message) || !strings.Contains(diagnostic.Message, "help: move the containing collection or return a reference to the element") {
+			t.Fatalf("diagnostic %d message = %q, want ownership message and help", index, diagnostic.Message)
+		}
+		if diagnostic.Range.Start.Line != want[index].line || diagnostic.Range.Start.Character != want[index].character {
+			t.Fatalf("diagnostic %d start = %+v, want line %d character %d", index, diagnostic.Range.Start, want[index].line, want[index].character)
+		}
+	}
+}
+
 // TestAnalyzePackage14UnsupportedFixturesRespectFrontendBoundary keeps LSP
 // diagnostics distinct from the later Package 14 lowering capability boundary:
 // frontend-invalid ownership operations are reported, while valid arrays,
@@ -645,8 +684,9 @@ func TestAnalyzePublishesMoveOnlyIndexedReturnDiagnostic(t *testing.T) {
 func TestAnalyzePackage14UnsupportedFixturesRespectFrontendBoundary(t *testing.T) {
 	directory := "../../testdata/semantic_ir/package14_unsupported"
 	frontendErrors := map[string]string{
-		"move_only_spread_invalid.sec": "unsupported consuming element reads",
-		"element_move_out_invalid.sec": "explicit indexed extraction is not implemented",
+		"move_only_spread_invalid.sec":      "unsupported consuming element reads",
+		"element_move_out_invalid.sec":      "explicit indexed extraction is not implemented",
+		"move_only_result_read_invalid.sec": "cannot return Token element values[0] by ordinary indexing",
 	}
 	frontendValid := []string{
 		"array_to_slice_invalid.sec",

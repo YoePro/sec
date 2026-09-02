@@ -323,7 +323,7 @@ rules/declarations/properties.md
 rules/types/types.md
 rules/collections/collections.md
 rules/memory/reference_model.md
-rules/memory/raw_pointers.txt
+rules/memory/raw_pointers.md
 rules/memory/unsafe.md
 rules/platform/ffi.txt
 rules/memory/layout.md

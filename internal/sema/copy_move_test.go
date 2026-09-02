@@ -1918,6 +1918,49 @@ fn Test() void {
 	})
 }
 
+// TestResultReturnRejectsMoveOnlyIndexedRead keeps the Result-specific return
+// path aligned with ordinary terminal returns: Ok may omit a move marker for an
+// owned source, but ordinary indexing cannot extract a move-only element.
+//
+// Rules:
+//   - rules/memory/copy_move.md — §10.3 "Result construction"
+//   - rules/collections/collections.md — §8.5 "Move-only indexed reads"
+func TestResultReturnRejectsMoveOnlyIndexedRead(t *testing.T) {
+	input := `
+module main
+
+@noCopy
+type Token struct { value: int }
+
+enum ReadError error { Failed }
+
+@noCopy
+type MoveError enum error { Failed }
+
+fn Read(values: Token[1]) Result[Token, ReadError] {
+    return Ok(values[0])
+}
+
+fn Fail(values: MoveError[1]) Result[int, MoveError] {
+    return Err(values[0])
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"cannot return Token element values[0] by ordinary indexing because it is not implicitly copyable at 13:21",
+		"cannot return MoveError element values[0] by ordinary indexing because it is not implicitly copyable at 17:22",
+	})
+	for _, diagnostic := range errors {
+		if diagnostic.ID != diagnostics.ImplicitMoveDisallowed {
+			t.Fatalf("wrong diagnostic ID. got=%q want=%q", diagnostic.ID, diagnostics.ImplicitMoveDisallowed)
+		}
+		if diagnostic.Help != "move the containing collection or return a reference to the element" {
+			t.Fatalf("wrong diagnostic help. got=%q", diagnostic.Help)
+		}
+	}
+}
+
 func TestLargeByValueArrayParameterWarns(t *testing.T) {
 	input := `
 module main

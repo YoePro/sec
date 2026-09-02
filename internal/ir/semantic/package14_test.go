@@ -823,6 +823,10 @@ func TestPackage14RejectsDeferredArraySourcePathsWithoutPartialIR(t *testing.T) 
 			stage: semaStage, wantDetail: "cannot return Token element values[0] by ordinary indexing because it is not implicitly copyable",
 		},
 		{
+			name: "move-only result element read", file: "move_only_result_read_invalid.sec",
+			stage: semaStage, wantDetail: "cannot return Token element values[0] by ordinary indexing because it is not implicitly copyable",
+		},
+		{
 			name: "shared element borrow", file: "shared_element_borrow_invalid.sec",
 			stage: buildStage, wantDetail: "shared fixed-array element borrow",
 		},
@@ -912,6 +916,68 @@ func TestPackage14RejectsDeferredArraySpreadActions(t *testing.T) {
 		if action, ok := semanticArraySpreadAction(deferred); ok || action != "" {
 			t.Errorf("deferred spread action %q mapped to %q, %t", deferred, action, ok)
 		}
+	}
+}
+
+// TestPackage14RejectsDeferredArrayOperatorsAtSemanticIRBoundary proves that
+// equality and membership remain valid frontend semantics but cannot fall
+// through the generic operator path or expose partial Package 14 IR.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package14.md — sections 82-83, 103
+func TestPackage14RejectsDeferredArrayOperatorsAtSemanticIRBoundary(t *testing.T) {
+	tests := []struct {
+		name       string
+		source     string
+		wantDetail string
+	}{
+		{
+			name: "equality",
+			source: `module main
+fn Equal(left: int[2], right: int[2]) bool {
+    return left == right
+}`,
+			wantDetail: "fixed-array equality lowering",
+		},
+		{
+			name: "inequality",
+			source: `module main
+fn Different(left: int[2], right: int[2]) bool {
+    return left != right
+}`,
+			wantDetail: "fixed-array equality lowering",
+		},
+		{
+			name: "membership",
+			source: `module main
+fn Contains(value: int, values: int[2]) bool {
+    return value in values
+}`,
+			wantDetail: "fixed-array membership lowering",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			p := parser.New(lexer.NewWithFile(test.source, "package14-operator-boundary.sec"))
+			parsed := p.Parse()
+			if parsed.HasErrors {
+				t.Fatalf("parse errors: %v", p.Errors())
+			}
+			analyzer := sema.NewAnalyzer()
+			if semaErrors := analyzer.Analyze(parsed.Program); len(semaErrors) != 0 {
+				t.Fatalf("valid frontend operator produced errors: %v", semaErrors)
+			}
+			module, err := Build(parsed.Program, analyzer, BuildOptions{
+				RequestedModule: "main", SourceFiles: []string{"package14-operator-boundary.sec"}, MaxPackage: 14,
+			})
+			if module != nil {
+				t.Fatalf("unsupported operator exposed partial IR:\n%s", Format(module))
+			}
+			var unsupported *UnsupportedFeatureError
+			if !errors.As(err, &unsupported) || unsupported.Package != 14 || unsupported.Feature != test.wantDetail {
+				t.Fatalf("build error = %#v, want Package 14 UnsupportedFeatureError %q", err, test.wantDetail)
+			}
+		})
 	}
 }
 

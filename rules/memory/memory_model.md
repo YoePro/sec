@@ -12,7 +12,7 @@ ownership.md
 copy_move.md
 borrowing.txt
 references.md
-raw_pointers.txt
+raw_pointers.md
 lifetime_analysis.md
 destruction.txt
 allocation.md
@@ -244,7 +244,7 @@ borrowing.txt
 references.md
     safe reference syntax and validity
 
-raw_pointers.txt
+raw_pointers.md
     unsafe address values and operations
 
 lifetime_analysis.md
@@ -3630,7 +3630,7 @@ copy_move.md
 discard.md
 borrowing.txt
 references.md
-raw_pointers.txt
+raw_pointers.md
 lifetime_analysis.md
 destruction.txt
 allocation.md

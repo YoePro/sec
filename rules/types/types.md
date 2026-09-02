@@ -1887,7 +1887,7 @@ ownership.md
 copy_move.md
 borrowing.txt
 lifetime_analysis.md
-raw_pointers.txt
+raw_pointers.md
 functions.md
 declarations/lambda-functions.md
 declarations/generics.md

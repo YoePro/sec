@@ -33,7 +33,7 @@ integrations:
       - rules/platform/target_profiles.md
       - rules/foundations/attributes.md
       - rules/memory/memory_model.md
-      - rules/memory/raw_pointers.txt
+      - rules/memory/raw_pointers.md
       - rules/declarations/registers.md
       - rules/compiler/semantic_ir.txt
       - rules/mlir/sec_mlir.md
@@ -130,7 +130,7 @@ integrations:
       - rules/memory/ownership.md
       - rules/memory/borrowing.md
       - rules/memory/destruction.md
-      - rules/memory/raw_pointers.txt
+      - rules/memory/raw_pointers.md
       - rules/compiler/semantic_ir.txt
       - rules/mlir/sec_mlir.md
     confirmed_existing_foundations:
@@ -647,12 +647,13 @@ integrations:
       - Package 6 scalar-layout conversion covers every schema-10 fixed-array operation, including default, length, bounds predicate, extraction, and replacement rather than only construction
       - Package 14 explicitly rejects deferred move-only spread/read, indexed move-out, element borrow, non-trivial replacement/destruction, dynamic-array, slice, and array-to-slice source paths without returning partial Semantic IR
       - the fixed-array spread action adapter admits only copy-trivial and explicitly rejects semantic-copy, move, shared-borrow, and mutable-borrow actions; semantic-copy is tested at this immutable boundary because no current source type resolves to CopySemantic
-      - ordinary indexed return of a non-copyable element is rejected by canonical Sema ownership diagnostics and published by the LSP, while language-valid P14 lowering boundaries remain free of false frontend errors
+      - ordinary indexed return of a non-copyable element is rejected by canonical Sema ownership diagnostics and published by the LSP for both direct and Result-wrapped terminal returns, while language-valid P14 lowering boundaries remain free of false frontend errors
+      - source-valid fixed-array equality, inequality, and membership receive explicit Package 14 Semantic IR boundary errors without partial modules instead of falling through a generic unsupported-operator path
+      - schema-10 emission explicitly rejects verified foreign fixed-array parameter/result ABI and physical LayoutRef requests on array-containing structs or unions without computing layout
       - successful source-built Package 14 modules prove exact full construction coverage and compact defaults, and contain no unreadable placeholder, hidden allocation, physical array layout, hard-coded signless i64 array index, trap, runtime symbol, mandatory helper call, or LLVM dialect on either 32-bit or 64-bit plans
     remaining:
       - connect Package 14 bounds endpoints to fallible indexed replacement
       - prove the remaining P5 integration on 32-bit and 64-bit plans
-      - explicitly reject equality, membership, ABI, and physical-layout paths
       - complete Package 14 section-107 acceptance and the section-108 implementation report
     deferred:
       - Package 15 element references and canonical Places
@@ -771,12 +772,20 @@ integrations:
         result: passed after P14-69 successful-module architecture-boundary coverage
       - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
         result: passed (91/91) after P14-69 successful-module architecture-boundary coverage
-      - command: go test ./cmd/lsp -run 'TestAnalyze(PublishesMoveOnlyIndexedReturnDiagnostic|Package14UnsupportedFixturesRespectFrontendBoundary)' -count=1 -v
-        result: passed, publishing the three frontend ownership failures and leaving seven language-valid Package 14 lowering boundaries diagnostic-free
+      - command: go test ./cmd/lsp -run 'TestAnalyze(PublishesMoveOnlyIndexed(ReturnDiagnostic|ResultReturnDiagnostics)|Package14UnsupportedFixturesRespectFrontendBoundary)' -count=1
+        result: passed, publishing the four frontend ownership failures including both Result arms and leaving seven language-valid Package 14 lowering boundaries diagnostic-free
       - command: go test ./... && go vet ./...
-        result: passed after indexed-return ownership diagnostics were connected to LSP
+        result: passed after direct and Result-wrapped indexed-return ownership diagnostics were connected to LSP with variadic-pack diagnostic priority preserved
       - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
         result: passed (91/91) after the frontend/LSP diagnostic correction
+      - command: go test ./internal/ir/semantic -run TestPackage14RejectsDeferredArrayOperatorsAtSemanticIRBoundary -count=1
+        result: passed for source-valid fixed-array equality, inequality, and membership with exact Package 14 boundary diagnostics and no partial Semantic IR
+      - command: go test ./internal/lowering/secmlir -run 'TestPackage14Rejects(ForeignFixedArrayABI|PhysicalFixedArrayLayoutRequest)' -count=1
+        result: passed for foreign parameter/result ABI and struct/union physical-layout requests containing fixed arrays
+      - command: go test ./... && go vet ./...
+        result: passed after P14-68 unsupported operator, ABI, and physical-layout boundaries
+      - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
+        result: passed (91/91) after P14-68 schema-10 emitter boundary validation
 
   - id: frontend.ownership-v2
     area: frontend-ownership-control-flow-and-lowering
@@ -1885,7 +1894,7 @@ integrations:
       - rules/memory/copy_move.md
       - rules/memory/ownership.md
       - rules/memory/borrowing.md
-      - rules/memory/raw_pointers.txt
+      - rules/memory/raw_pointers.md
       - rules/declarations/functions.md
       - rules/projects/modules.md
       - rules/compiler/semantic_ir.txt
@@ -3028,7 +3037,7 @@ integrations:
       - rules/foundations/grammar.md
       - rules/foundations/attributes.md
       - rules/types/types.md
-      - rules/memory/raw_pointers.txt
+      - rules/memory/raw_pointers.md
       - rules/memory/borrowing.md
       - rules/memory/layout.md
       - rules/memory/unsafe.md
@@ -10070,3 +10079,195 @@ integrations:
       - noPanic diagnostic identifies transitive root cause
       - ISR diagnostic identifies interrupt root and panic cause
       - missing assert comma receives focused diagnostic
+
+  - id: frontend.raw-pointers
+    area: raw-pointer-types-and-operations
+    status: partial
+    document_revision: "2.0"
+    reviewed: "2026-09-01"
+    repository_baseline: "814a584"
+    summary: >-
+      Tracks the revision-2.0 RawPtr address-value model and its integration
+      with unsafe operations, ownership, borrowing, lifetime, references,
+      allocation, destruction, target address spaces, volatile access and ISR
+      policy. The bare type grants no pointee ownership, borrow, lifetime,
+      bounds, generation or hardware authority. Exact RawPtr-to-reference and
+      reference-to-RawPtr source spelling remains intentionally unresolved.
+    rules:
+      - rules/memory/raw_pointers.md
+      - rules/memory/unsafe.md
+      - rules/memory/references.md
+      - rules/memory/borrowing.md
+      - rules/memory/lifetime_analysis.md
+      - rules/memory/ownership.md
+    code:
+      - internal/sema/compiler_known_members.go
+      - internal/sema/analyzer.go
+      - internal/sema/types.go
+      - cmd/lsp/main.go
+    implemented:
+      - RawPtr[T] is registered as a compiler-known generic type
+      - RawPtr[T] is usable in locals, parameters, returns and extern declarations
+      - RawPtr is treated as a copyable non-owning address value
+      - ordinary compiler-known RawPtr Read, Write, Offset, AddBytes and Difference members exist
+      - Offset, AddBytes and Difference require unsafe and validate represented argument and pointee constraints
+      - VolatileRead and VolatileWrite have stable compiler-known identities, unsafe gating and effect publication
+      - LSP completion and hover consume compiler-known raw-pointer member definitions for represented operations
+      - basic explicit conversions between uint, RawPtr and compatible RawPtr forms are recognized under unsafe gating in the represented frontend
+    remaining:
+      - implement canonical null source syntax and rules end to end
+      - implement ordinary Read and Write frontend semantics completely where compiler-known member classification is incomplete
+      - implement complete target-pointer-width and address-space validation for integer/raw conversions
+      - implement complete RawPtr arithmetic target layout and range validation
+      - integrate ownership-v2, borrowing-v2, lifetime-analysis-v2 and references-v2 proof facts into raw-to-safe conversion validation
+      - reject compiler-known null, dangling, unaligned, uninitialized and conflicting raw-to-safe operations even inside unsafe
+      - complete RawPtr[void] operation restrictions across every compiler-known member
+      - lock and implement exact source spelling for ref/ref mut to and from RawPtr in a dedicated conversion decision
+    required_tests:
+      - RawPtr[T] and RawPtr[void] type construction
+      - copy, move, store and return RawPtr without pointee ownership transfer
+      - Read and Write require unsafe
+      - RawPtr[void].Read and Write rejected
+      - known null dereference rejected in unsafe
+      - known dangling raw use rejected when lifetime fact exists
+      - known alias-conflicting raw-to-ref mut conversion rejected
+      - target-width overflow rejected
+    corrections_applied:
+      - rules/corrections/applied/raw-pointers-null-domain-correction-20260816.md
+
+  - id: analysis.raw-pointers
+    area: raw-pointer-provenance-effects-and-safety-facts
+    status: partial
+    document_revision: "2.0"
+    reviewed: "2026-09-01"
+    repository_baseline: "814a584"
+    rules:
+      - rules/memory/raw_pointers.md
+      - rules/memory/unsafe.md
+      - rules/analysis/effect_analysis.md
+    implemented:
+      - compiler-known member identity and unsafe classification exist for represented RawPtr operations
+      - volatile raw-pointer operations publish ordered volatile effect sites
+      - some raw-pointer type and argument constraints are known to Sema
+    remaining:
+      - retain optional known raw origin, range, alignment, nullability and lifetime facts without pretending the bare RawPtr type guarantees them
+      - feed known raw-pointer contradictions into compile-time rejection even inside unsafe
+      - integrate raw-pointer effects into noPanic, noAlloc, noBlock, ISR and call-graph analyses
+      - connect FFI retention, ownership and extent contracts to raw-pointer facts
+      - connect runtime mapping lifetime and address-space contracts to raw-pointer facts
+      - distinguish ordinary memory Read and Write effects from volatile and MMIO effects
+    required_tests:
+      - known-null fact reaches raw read diagnostic
+      - known mapping end marks dependent raw pointer potentially dangling without extending mapping lifetime
+      - volatile operations contribute volatile effects
+      - raw pointer possession alone contributes no dereference effect
+      - ISR call path includes raw helper effects
+
+  - id: semantic-ir.raw-pointers
+    area: semantic-ir-raw-pointer-facts
+    status: planned
+    document_revision: "2.0"
+    reviewed: "2026-09-01"
+    repository_baseline: "814a584"
+    rules:
+      - rules/memory/raw_pointers.md
+      - rules/compiler/semantic_ir.txt
+      - rules/platform/volatile.md
+    remaining:
+      - represent RawPtr distinctly from safe references
+      - represent pointee type and target address space
+      - represent raw Read, Write, VolatileRead, VolatileWrite, Offset, AddBytes and Difference operation identity
+      - preserve unsafe and trust provenance plus known null, range, alignment and origin facts where needed
+      - preserve target and platform access contracts and effects
+      - represent raw-to-safe conversion as explicit establishment of safe-reference facts
+      - verify contradictory raw-pointer facts before lowering
+    required_tests:
+      - RawPtr IR carries no implicit ownership, non-null or lifetime guarantee
+      - address space retained
+      - ordinary and volatile accesses remain distinct
+      - raw-to-safe conversion establishes explicit safe-reference facts
+      - invalid contradictory raw facts rejected
+
+  - id: lowering.raw-pointers
+    area: raw-pointer-lowering
+    status: partial
+    document_revision: "2.0"
+    reviewed: "2026-09-01"
+    repository_baseline: "814a584"
+    rules:
+      - rules/memory/raw_pointers.md
+      - rules/mlir/sec_mlir_lowering.md
+      - rules/platform/volatile.md
+    remaining:
+      - lower ordinary RawPtr Read and Write for maintained targets with target-correct type size and alignment
+      - lower Offset, AddBytes and Difference using target layout and pointer width
+      - lower integer/raw conversions without host-width assumptions or silent truncation
+      - support non-default address spaces where the target model requires them
+      - preserve volatile access semantics and exact physical-access constraints
+      - avoid attaching nonnull, dereferenceable, noalias or lifetime metadata unless independently proven
+      - reject unsupported target pointer and address-space operations rather than changing semantics
+    required_tests:
+      - Offset uses sizeof(T)
+      - AddBytes uses byte arithmetic
+      - Difference uses compatible target pointer semantics
+      - pointer-width overflow is not silently truncated
+      - RawPtr receives no automatic nonnull or noalias metadata
+      - VolatileRead and VolatileWrite remain volatile in the backend
+
+  - id: platform.raw-pointers
+    area: raw-pointer-hardware-and-address-space-integration
+    status: partial
+    document_revision: "2.0"
+    reviewed: "2026-09-01"
+    repository_baseline: "814a584"
+    rules:
+      - rules/memory/raw_pointers.md
+      - rules/platform/volatile.md
+      - rules/platform/fixed-address-bindings.md
+      - rules/platform/hardware-register-access.md
+      - rules/platform/interrupts.md
+    implemented:
+      - RawPtr VolatileRead and VolatileWrite frontend members and volatile effect sites
+      - fixed @address declarations and raw-pointer operations remain distinct semantic mechanisms
+    remaining:
+      - resolve RawPtr access against selected target address-space and access contracts where platform knowledge exists
+      - keep arbitrary RawPtr possession from granting hardware privilege, mapping or resource ownership
+      - preserve runtime mapping lifetime separately from raw address values
+      - enforce complete physical eligibility for volatile operations through CompilationPlan
+      - feed raw-pointer effects into ISR noPanic, noAlloc, noBlock and interrupt-safe analysis
+      - support non-unified address-space targets
+    required_tests:
+      - '@address validation is stronger than arbitrary RawPtr construction'
+      - RawPtr into mapping does not keep mapping alive
+      - device liveness is not inferred from RawPtr
+      - volatile raw access is not synchronization
+      - ISR raw access remains subject to interrupt policy
+
+  - id: tooling.raw-pointers
+    area: raw-pointer-lsp-diagnostics-formatter
+    status: partial
+    document_revision: "2.0"
+    reviewed: "2026-09-01"
+    repository_baseline: "814a584"
+    rules:
+      - rules/memory/raw_pointers.md
+      - rules/tooling/lsp.md
+      - rules/tooling/formatter.md
+      - rules/tooling/diagnostics.txt
+    implemented:
+      - LSP completion exposes represented compiler-known raw-pointer arithmetic members
+      - LSP completion and hover expose VolatileRead and VolatileWrite unsafe and effect identity
+    remaining:
+      - expose Read, Write and every canonical member consistently from one compiler-known registry
+      - show unsafe requirement and caller obligations in hover and signature help
+      - show known address-space, nullability, range, alignment and lifetime facts where useful
+      - produce mentor diagnostics distinguishing missing unsafe from compiler-proven invalid operations
+      - format canonical raw-pointer operations without inventing C-style syntax
+      - add conversion formatting only after canonical conversion spelling is locked
+      - ensure compiler, LSP and sec analyse parity
+    required_tests:
+      - completion includes canonical RawPtr members
+      - unsafe members are clearly marked
+      - known-null diagnostic explains that unsafe does not legalize null dereference
+      - formatter preserves RawPtr[T] and member spellings
+      - compiler and LSP agree on raw-pointer validity diagnostics

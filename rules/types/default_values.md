@@ -1338,7 +1338,7 @@ semantics.
 
 # Raw pointers
 
-`RawPtr[T]` default semantics must be defined by `raw_pointers.txt`.
+`RawPtr[T]` default semantics must be defined by `raw_pointers.md`.
 
 If a null raw pointer value is supported, it may be a valid explicit raw-pointer
 default.

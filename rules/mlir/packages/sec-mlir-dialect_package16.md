@@ -77,7 +77,7 @@ rules/errors/panic.md
 rules/memory/layout.md
 rules/memory/copy_move.md
 rules/memory/ownership.md
-rules/memory/raw_pointers.txt
+rules/memory/raw_pointers.md
     ↓
 rules/compiler/semantic_ir.txt
     ↓

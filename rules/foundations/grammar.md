@@ -4817,7 +4817,7 @@ discard.md
 ownership.md
 copy_move.md
 references.md
-raw_pointers.txt
+raw_pointers.md
 unsafe.md
 inline_assembly.md
 spawn.md

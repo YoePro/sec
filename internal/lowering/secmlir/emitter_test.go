@@ -750,6 +750,99 @@ func TestPackage14SuccessfulModuleContainsNoPhysicalArrayShortcut(t *testing.T) 
 	}
 }
 
+// TestPackage14RejectsForeignFixedArrayABI proves schema 10 cannot silently
+// assign a foreign calling convention to a high-level fixed-array parameter or
+// result retained in otherwise verified Semantic IR.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package14.md — sections 81, 103
+func TestPackage14RejectsForeignFixedArrayABI(t *testing.T) {
+	for _, position := range []string{"parameter", "return"} {
+		t.Run(position, func(t *testing.T) {
+			types := semantic.NewTypeTable()
+			voidType := types.Intern(semantic.Type{Kind: semantic.TypeVoid, Name: "void"})
+			intType := types.Intern(semantic.Type{Kind: semantic.TypeInt, Name: "int", Signed: true, TargetSize: true})
+			arrayType := types.Intern(semantic.Type{Kind: semantic.TypeArray, Name: "int[2]", Element: intType, Length: "2"})
+			function := &semantic.Function{
+				ID: "main::foreign_array", Name: "foreign_array", ReturnType: voidType,
+				Extern: true, ABI: "C", Location: semantic.Location{File: "foreign-array.sec", Line: 1, Column: 1},
+			}
+			if position == "parameter" {
+				function.Parameters = []semantic.Parameter{{Name: "values", Value: semantic.Value{ID: 0, Type: arrayType, Ownership: semantic.OwnershipImmediate}}}
+			} else {
+				function.ReturnType = arrayType
+			}
+			module := &semantic.Module{Version: semantic.Version, Identity: "main", Types: types, Functions: []*semantic.Function{function}}
+			if err := semantic.Verify(module); err != nil {
+				t.Fatalf("test module: %v", err)
+			}
+			output, err := Emit(module, testPlan(64))
+			if output != nil {
+				t.Fatalf("foreign array ABI emitted partial schema: %s", output)
+			}
+			var unsupported *UnsupportedLoweringError
+			if !errors.As(err, &unsupported) || unsupported.Feature != "foreign fixed-array ABI "+position || unsupported.Function != function.ID {
+				t.Fatalf("emit error = %#v, want foreign fixed-array ABI %s boundary", err, position)
+			}
+		})
+	}
+}
+
+// TestPackage14RejectsPhysicalFixedArrayLayoutRequest proves optional physical
+// layout metadata inherited from earlier aggregate IR cannot authorize array
+// stride/size/alignment selection in schema 10.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package14.md — sections 85, 103-104
+func TestPackage14RejectsPhysicalFixedArrayLayoutRequest(t *testing.T) {
+	t.Run("struct", func(t *testing.T) {
+		module := package14SourceIntegrationModule(t)
+		found := false
+		for index := range module.Structs {
+			if module.Structs[index].Name == "Holder" {
+				module.Structs[index].LayoutRef = "layout::holder-with-array"
+				found = true
+			}
+		}
+		if !found {
+			t.Fatal("Package 14 integration module has no Holder definition")
+		}
+		assertPhysicalArrayLayoutRejected(t, module, "layout::holder-with-array")
+	})
+
+	t.Run("union", func(t *testing.T) {
+		types := semantic.NewTypeTable()
+		intType := types.Intern(semantic.Type{Kind: semantic.TypeInt, Name: "int", Signed: true, TargetSize: true})
+		arrayType := types.Intern(semantic.Type{Kind: semantic.TypeArray, Name: "int[2]", Element: intType, Length: "2"})
+		unionType := types.Intern(semantic.Type{Kind: semantic.TypeUnion, Name: "Carrier", Module: "main", Identity: "main::Carrier"})
+		module := &semantic.Module{
+			Version: semantic.Version, Identity: "main", Types: types,
+			Unions: []semantic.UnionDefinition{{
+				TypeID: unionType, SymbolID: "main::Carrier", Name: "Carrier",
+				Variants:           []semantic.UnionVariantDefinition{{Index: 0, Name: "Values", Kind: semantic.UnionVariantSingle, Payload: arrayType}},
+				CopyClassification: string(sema.CopyTrivial), TriviallyDestructible: true,
+				LayoutRef: "layout::carrier-with-array",
+			}},
+		}
+		assertPhysicalArrayLayoutRejected(t, module, "layout::carrier-with-array")
+	})
+}
+
+func assertPhysicalArrayLayoutRejected(t *testing.T, module *semantic.Module, layoutRef string) {
+	t.Helper()
+	if err := semantic.Verify(module); err != nil {
+		t.Fatalf("layout-bearing Semantic IR must remain valid before the P14 lowering boundary: %v", err)
+	}
+	output, err := Emit(module, testPlan(64))
+	if output != nil {
+		t.Fatalf("physical array layout emitted partial schema: %s", output)
+	}
+	var unsupported *UnsupportedLoweringError
+	if !errors.As(err, &unsupported) || unsupported.Feature != "physical fixed-array layout request "+layoutRef {
+		t.Fatalf("emit error = %#v, want physical fixed-array layout boundary", err)
+	}
+}
+
 func TestEmittedModuleLowersScalarCoreFor32And64BitPlans(t *testing.T) {
 	tool := requiredSecMLIROptPath(t)
 	for _, width := range []uint16{32, 64} {

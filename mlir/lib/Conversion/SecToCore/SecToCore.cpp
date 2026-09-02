@@ -573,6 +573,18 @@ public:
             return std::nullopt;
           return sec::DistinctType::get(context, type.getIdentity(), base);
         });
+    // SEC-MLIR Package 14 section 102 and P14-61 require Package 6 scalar
+    // resolution to recurse through fixed arrays without changing their exact
+    // length or introducing a physical array representation.
+    typeConverter.addConversion(
+        [&](sec::ArrayType type) -> std::optional<Type> {
+          Type element = typeConverter.convertType(type.getElementType());
+          if (!element)
+            return std::nullopt;
+          if (element == type.getElementType())
+            return type;
+          return sec::ArrayType::get(context, element, type.getLength());
+        });
     typeConverter.addConversion(
         [&](sec::EnumType type) -> std::optional<Type> {
           Type underlying = typeConverter.convertType(type.getUnderlying());
@@ -718,6 +730,8 @@ public:
         sec::UnionUnwrapPayloadOp, sec::UnionUnwrapFieldOp,
         sec::StructConstructOp, sec::StructSpreadFieldsOp,
         sec::StructExtractOp, sec::StructReplaceFieldOp,
+        sec::ArrayConstructOp, sec::ArrayDefaultOp, sec::ArrayLenOp,
+        sec::ArrayIndexInBoundsOp, sec::ArrayExtractOp, sec::ArrayReplaceOp,
         sec::ArithmeticErrorFromReasonOp, sec::ResultOkOp, sec::ResultErrOp,
         sec::ResultIsErrOp, sec::ResultUnwrapOkOp, sec::ResultUnwrapErrOp>(
         [&](Operation *op) { return typeConverter.isLegal(op); });
@@ -751,6 +765,15 @@ public:
              sec::StructSpreadFieldsOp::getOperationName(),
              sec::StructExtractOp::getOperationName(),
              sec::StructReplaceFieldOp::getOperationName(),
+             // SEC-MLIR Package 14 sections 102 and 107 require the complete
+             // high-level array operation family to participate in Package 6
+             // scalar type conversion without selecting physical layout.
+             sec::ArrayConstructOp::getOperationName(),
+             sec::ArrayDefaultOp::getOperationName(),
+             sec::ArrayLenOp::getOperationName(),
+             sec::ArrayIndexInBoundsOp::getOperationName(),
+             sec::ArrayExtractOp::getOperationName(),
+             sec::ArrayReplaceOp::getOperationName(),
              sec::ArithmeticErrorFromReasonOp::getOperationName(),
              sec::ResultOkOp::getOperationName(),
              sec::ResultErrOp::getOperationName(),

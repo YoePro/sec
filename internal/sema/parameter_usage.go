@@ -440,6 +440,8 @@ func (b *parameterUsageBuilder) walkStatement(statement ast.Statement) {
 		b.walkExpression(statement.Expression)
 	case *ast.DiscardStatement:
 		b.walkExpression(statement.Value)
+	case *ast.AssertStatement:
+		b.walkExpression(statement.Condition)
 	case *ast.DetachStatement:
 		b.walkExpression(statement.Value)
 	case *ast.ReturnStatement:

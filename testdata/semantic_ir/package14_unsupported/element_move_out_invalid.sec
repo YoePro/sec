@@ -1,0 +1,6 @@
+module main
+
+fn Move(values: int[2]) void {
+    let element :<- values[0]
+    return
+}

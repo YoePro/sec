@@ -1,0 +1,6 @@
+module main
+
+fn Borrow2(values: int[2]) void {
+    let element := ref values[0]
+    return
+}

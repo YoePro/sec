@@ -287,7 +287,7 @@ provenance, ordinary bounds failure, and fallible `IndexError.OutOfBounds`.
 - [x] P14-39 — Perform constant bounds evaluation with arbitrary precision for
   signed/unsigned and wide constants. Reject negative, N, and greater-than-N at
   compile time; valid constants are proven-safe and emit no failure operation.
-- [ ] P14-40 — Integrate existing range, branch, assertion/contract, and analysis
+- [x] P14-40 — Integrate existing range, branch, assertion/contract, and analysis
   refinements as explicit proof kinds. Zero-length arrays never have a
   proven-valid element index.
 - [x] P14-41 — Classify every remaining integer index as runtime-checked while
@@ -327,8 +327,21 @@ arbitrary-precision arithmetic, including `uint256` values above host `int64`,
 and reject negative, at-length, and above-length constants exactly. Remaining
 signed and unsigned integer indexes are runtime-checked without changing their
 source type. Named integer ranges wholly inside `0..<N` are also recorded as
-range-proven; P14-40 remains open for branch, assertion/contract-refinement,
-and other analysis provenance beyond the currently materialized type range.
+range-proven; this was the initial range slice later completed by P14-40's
+branch, assertion/contract, and analysis provenance.
+
+Completed 2026-09-02: P14-40 adds dominating branch and assertion refinement
+to the compiler-owned fixed-array index plan. Exact conjunctions/equalities,
+reversed comparisons, inclusive/exclusive constant bounds, and the fixed-array
+`Len` property can establish the required `0 <= index < N` predicate. Branch,
+inline range-contract, and general assertion/analysis provenance remain
+distinct through Sema and Semantic IR. Proof matching uses resolved binding
+identity rather than identifier spelling; any intervening assignment
+conservatively invalidates the active value proof. Tests retain runtime checks
+for incomplete/disjunctive proofs, proof use outside its dominating branch,
+post-mutation access, and every zero-length access. A source-built Semantic IR
+regression proves that accepted branch provenance emits `array.extract`
+without a redundant array bounds predicate or `fail.bounds` path.
 
 Completed 2026-08-29: P14-43 connects ordinary fixed-array reads from their
 compiler-owned index plans to verified Semantic IR. Proven-safe reads emit one
@@ -420,23 +433,23 @@ one store, high-level storage, and the explicit non-trivial storage boundary.
 
 ## G. Implement Sec MLIR schema 10 and verification
 
-- [ ] P14-54 — Bump generated modules to schema 10 only after schema 9 remains a
+- [x] P14-54 — Bump generated modules to schema 10 only after schema 9 remains a
   checked compatibility input; update ODS/C++ registration and version gates.
 - [x] P14-55 — Implement `!sec.array<T, "N">` with canonical arbitrary-precision
   decimal `StringAttr`; reject empty, signed, leading-zero, negative, or otherwise
   non-canonical length spelling except canonical `"0"`.
 - [x] P14-56 — Implement `sec.array.construct` with compact ordered segment
   metadata/actions and exact C++ verification of operands, spread types, and sum.
-- [ ] P14-57 — Implement `sec.array.default`, `sec.array.len`,
+- [x] P14-57 — Implement `sec.array.default`, `sec.array.len`,
   `sec.array.index_in_bounds`, `sec.array.extract`, `sec.array.replace`, and
   terminating `sec.fail.bounds` with exact schema-v10 verifiers.
-- [ ] P14-58 — Register `--sec-verify-array-index-guards`. Verify dominance,
+- [x] P14-58 — Register `--sec-verify-array-index-guards`. Verify dominance,
   true-path use, same array/index SSA, runtime versus proven-safe modes, and
   mandatory proof provenance for unchecked proven-safe operations.
-- [ ] P14-59 — Extend the Go schema-10 emitter from verified Semantic IR;
+- [x] P14-59 — Extend the Go schema-10 emitter from verified Semantic IR;
   preserve exact lengths, source segment order, actions, proof kinds, locations,
   target index types, and high-level storage.
-- [ ] P14-60 — Add all section-100/101 MLIR round-trip and invalid tests,
+- [x] P14-60 — Add all section-100/101 MLIR round-trip and invalid tests,
   including large lengths, multiple segments, bad sums/types, all operations,
   guard failures, proven-safe provenance, and explicit schema-9 regression.
 
@@ -444,8 +457,8 @@ Completed 2026-08-30: P14-55 registers the high-level `!sec.array<T, "N">`
 type in ODS/C++, preserves the exact arbitrary-precision length as canonical
 decimal `StringAttr`, admits zero, huge, nested-array, and struct-element forms,
 and rejects empty, signed, whitespace-padded, leading-zero, storage, and
-function-element forms. Schema-9 emission remains unchanged until P14-54's
-schema-10 gate can be opened together with the remaining array operations.
+function-element forms. At that stage schema-9 emission remained unchanged;
+P14-54 later opened schema-10 generation with the complete array operation set.
 
 Completed 2026-08-30: P14-56 registers pure `sec.array.construct` with one
 operand per source segment and exact `segment_kinds`, `segment_lengths`, and
@@ -454,39 +467,148 @@ actions, canonical arbitrary-precision lengths, exact spread-length identity,
 and an overflow-free exact segment sum equal to the result array length; empty
 and above-`uint64` constructions remain compact.
 
+Completed 2026-09-01: P14-57 registers all remaining schema-10 fixed-array
+operations. Local C++ verifiers enforce array/element/result identity, resolved
+integer index types and signedness, target-width unsigned length results,
+`copy-trivial`, the exact proven/runtime bounds metadata vocabulary, functional
+replacement identity, and terminating `fixed-array-index` bounds failure. The
+focused round-trip and negative suite covers every operation; cross-block guard
+dominance and true-edge validation remain exclusively P14-58.
+
+Completed 2026-09-02: P14-58 registers the dedicated fixed-array index-guard
+pass. Runtime extract/replace operations now require a single-use matching
+`array.index_in_bounds` predicate on the same array and index SSA values, an
+immediately following conditional branch, and a dedicated true successor that
+dominates the operation. This rejects missing, mismatched, false-edge, and
+post-merge guards. Proven-safe operations require one of the closed
+compiler-owned proof kinds and do not require a runtime predicate.
+
+Completed 2026-09-02: P14-54/P14-59 open compiler-generated schema 10 after the
+complete verified array operation set and guard pass became available. The Go
+emitter now maps exact nested array types, compact construction segments,
+defaults, semantic length, signed/unsigned bounds predicates, proven and
+runtime-guarded extraction/replacement, terminating bounds failure, locations,
+and high-level array storage without choosing physical layout. It independently
+checks every nested exact length against the selected target `uint`. Generated
+modules verify through `sec-mlir-opt` on 32- and 64-bit plans; schema 9 remains
+a passing compatibility input and schema 11 remains rejected.
+
+Completed 2026-09-02: P14-60 audits the complete section-100/101 matrix across
+the schema-10 array type, construction and operation suites plus the dedicated
+guard-pass suites. Coverage includes zero and arbitrary-precision lengths,
+canonical spelling failures, compact element/spread segments and bad sums or
+types, every array operation, both missing extract/replace guards, false-edge
+and non-dominating use, distinct array/index SSA values, all proven-safe proof
+classes, missing proof provenance, and an accepted schema-9 compatibility
+module.
+
 ## H. Prove package compatibility and source-to-schema-10 integration
 
-- [ ] P14-61 — P6: recursively resolve target-sized `int`/`uint` in array
+- [x] P14-61 — P6: recursively resolve target-sized `int`/`uint` in array
   elements for 32- and 64-bit plans while preserving array length, nesting,
   operations, tags, and surrounding P13 struct wrappers.
-- [ ] P14-62 — P8: prove checked-integer signless normalization neither recurses
+- [x] P14-62 — P8: prove checked-integer signless normalization neither recurses
   through `!sec.array` nor lowers array operations.
-- [ ] P14-63 — P13: cover array-in-struct, struct-in-array, nested replacement,
+- [x] P14-63 — P13: cover array-in-struct, struct-in-array, nested replacement,
   defaults, wide fields/elements, and exact nominal identities in both directions.
-- [ ] P14-64 — P11/P12: allow supported trivial fixed arrays in union payloads
+- [x] P14-64 — P11/P12: allow supported trivial fixed arrays in union payloads
   and match values without introducing array patterns or weakening union guards.
-- [ ] P14-65 — Add source-to-verified-Semantic-IR-to-schema-10 tests for every
+- [x] P14-65 — Add source-to-verified-Semantic-IR-to-schema-10 tests for every
   section-102 case: literals/spreads/defaults/zero/nesting/functions/Len,
   constant and dynamic ordinary/fallible indexing, handlers, and replacement.
-- [ ] P14-66 — Run the same source-built schema-10 module through an absolute
+- [x] P14-66 — Run the same source-built schema-10 module through an absolute
   `sec-mlir-opt` path on 32- and 64-bit CompilationPlans and assert no unresolved
   casts, physical array layout, runtime helper, or LLVM dialect.
 
+Completed 2026-09-01: P14-61 extends the Package 6 scalar-layout type
+conversion recursively through `!sec.array` and includes `sec.array.construct`
+in operation type conversion. Focused 32- and 64-bit MLIR regressions preserve
+canonical array lengths, nesting, construction attributes, struct identities,
+type arguments, field tags, and surrounding P13 struct wrappers while resolving
+only target-sized `!sec.int`/`!sec.uint` elements to signed/unsigned target-width
+integers. The pass introduces neither physical array layout nor unrealized
+conversion casts. These focused handwritten pass inputs deliberately omit the
+generated-module schema attribute; P14-54 separately proves that generated
+modules now carry schema 10.
+
+Completed 2026-09-01: P14-62 adds a mixed Package 8 regression where an ordinary
+checked signed addition is lowered to signless Arith while zero-length, spread,
+and nested fixed arrays retain their signed/unsigned element types, exact
+lengths, and high-level `sec.array.construct` operations. The result contains no
+array-wrapper signless normalization, unrealized cast, or LLVM operation.
+
+Completed 2026-09-01: P14-63 strengthens the source-built Semantic IR matrix in
+both P13 nesting directions. `main::Pair[2]` retains the exact nominal Pair
+element identity with an `int128` field, while `main::Holder` retains an
+`int128[2]` field plus `uint256` metadata through extract, guarded replacement,
+leaf-to-root rebuild, and one root commit. Recursive default coverage now proves
+that a Holder default contains one compact `array.default` inside one
+`struct.construct`; the existing struct-in-array, nested-array, and wide default
+cases remain compact and verified.
+
+Completed 2026-09-01: P14-64 proves the existing P11/P12 value path accepts a
+copy-trivial `int128[2]` as a single union payload and as the result of ordinary
+and guarded match expressions. Construction and projection retain
+`copy-trivial`, every match arm remains an ordinary `union-variant` pattern,
+array-valued fallback arms use compact `array.construct`, and a negative
+mutation confirms the existing matching-variant guard still rejects an array
+payload projection on the wrong path.
+
+Completed 2026-09-02: P14-65 adds one unedited Sec source fixture that passes
+through parsing, target-aware Sema, Package-14 Semantic IR construction and
+verification, and schema-10 emission. It covers literals, compact spread,
+zero/default arrays, both P13 nesting directions, nested arrays, array
+parameters/results, `Len`, constant and dynamic ordinary indexing, fallible
+propagation, a local `IndexError.OutOfBounds` handler, trivial replacement, and
+nested replacement. The matrix exposed and closed the missing source-builder
+bridge from the compiler-known fixed-array `Len` fact to `ArrayLengthOp`.
+
+Completed 2026-09-02: P14-66 emits that same verified source-built module for
+both 32-bit and 64-bit CompilationPlans, invokes `sec-mlir-opt` through the
+required absolute `SEC_MLIR_BIN` path, verifies array-index guards, and runs
+Package 6 scalar-layout resolution. The integration exposed and closed missing
+type-conversion registration for `array.default`, `array.len`,
+`array.index_in_bounds`, `array.extract`, and `array.replace`. Both outputs keep
+schema 10, exact high-level array types and operations while rejecting unresolved
+semantic scalars/casts, MemRef or LLVM array layout, GEPs, allocation/runtime
+helpers, and the LLVM dialect.
+
 ## I. Prove unsupported boundaries are explicit and safe
 
-- [ ] P14-67 — Add source-to-Semantic-IR rejection tests for move-only and
+- [x] P14-67 — Add source-to-Semantic-IR rejection tests for move-only and
   semantic-copy spread, move-only element reads, element borrows, move-out,
   non-trivial replacement/destruction, dynamic owning arrays, slices, and
   array-to-slice conversion.
 - [ ] P14-68 — Reject equality/membership lowering, foreign fixed-array ABI, and
   any physical layout request at the P14 package boundary while leaving their
   already-valid frontend typing or legacy path intact where applicable.
-- [ ] P14-69 — Assert successful P14 modules contain no `undef`, poison, partial
+- [x] P14-69 — Assert successful P14 modules contain no `undef`, poison, partial
   readable array, hidden allocation, MemRef array layout, `!llvm.array`, GEP,
   hard-coded semantic `i64` index, LLVM dialect, or mandatory runtime call.
 - [ ] P14-70 — Prove determinism: canonical decimal lengths, type/segment/source
   order, nested printing, diagnostics, and 32/64 multi-output validation must be
   independent of host word size and map traversal.
+
+Completed 2026-09-02: P14-67 adds maintained invalid source fixtures and one
+pipeline matrix for move-only spread/read, shared and mutable element borrow,
+indexed move-out, non-trivial replacement/destruction, owning dynamic arrays,
+slices, and array-to-slice creation. Move-only spread/read and indexed move-out
+are diagnosed by Sema and therefore by the LSP; valid-but-deferred forms return
+Package-14 `UnsupportedFeatureError`, and no failed build exposes its partially
+assembled module. Element borrow and move-out also have defensive builder gates,
+and owned non-trivial fixed-array
+parameters retain honest ownership until a specific operation or missing-cleanup
+boundary rejects them. Current Sema has no source-reachable `CopySemantic` type,
+so semantic-copy spread is locked directly at the immutable action-to-IR adapter
+alongside move and borrow actions rather than being fabricated as source syntax.
+
+Completed 2026-09-02: P14-69 runs the maintained section-102 source module
+through verified Semantic IR and schema-10 emission on both 32-bit and 64-bit
+plans. Every compact construction is independently checked for exact complete
+segment coverage and P14-supported transfer actions, while defaults remain
+compact and operand-free. The emitted modules reject unreadable placeholders,
+hidden allocation, MemRef/LLVM array layout, insertvalue/GEP shortcuts,
+signless hard-coded `i64` array indexes, traps, runtime symbols, and helper calls.
 
 ## J. Final acceptance, governance, and report
 

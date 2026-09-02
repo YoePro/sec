@@ -5,6 +5,11 @@ type Pair struct {
     right: int128,
 }
 
+type Holder struct {
+    values: int128[2],
+    marker: uint256,
+}
+
 fn ScalarDefault() int32[4] {
     let mut values: int32[4]
     return values
@@ -23,6 +28,11 @@ fn StructDefault() Pair[2] {
 fn NestedArrayDefault() int32[2][3] {
     let mut values: int32[2][3]
     return values
+}
+
+fn StructWithArrayDefault() Holder {
+    let mut value: Holder
+    return value
 }
 
 fn HugeCompactDefault() int32[1000000] {

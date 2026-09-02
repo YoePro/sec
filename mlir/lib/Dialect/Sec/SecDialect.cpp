@@ -26,6 +26,12 @@ void SecDialect::registerOperations() {
       >();
 }
 
+// SecDialect::verifyOperationAttribute validates versioned module and operation
+// metadata while retaining schemas 1-9 as compatibility inputs.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package14.md section 58
+//   - rules/mlir/dialect-versions/sec_mlir_dialect_v10.md section 1
 LogicalResult SecDialect::verifyOperationAttribute(Operation *operation,
                                                    NamedAttribute attribute) {
   StringRef name = attribute.getName().getValue();
@@ -52,7 +58,7 @@ LogicalResult SecDialect::verifyOperationAttribute(Operation *operation,
     int64_t number = version.getInt();
     if (number != 1 && number != 2 && number != 3 && number != 4 &&
         number != 5 && number != 6 && number != 7 && number != 8 &&
-        number != 9)
+        number != 9 && number != 10)
       return operation->emitError("unsupported Sec dialect schema version");
     if (number == 1)
       return success();

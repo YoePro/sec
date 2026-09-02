@@ -1,5 +1,5 @@
 schema_version: 1
-updated: "2026-08-31"
+updated: "2026-09-02"
 purpose: >-
   Canonical implementation ledger for compiler and tooling work. Normative
   language behavior remains in rules/, while implementation status is migrated
@@ -396,6 +396,9 @@ integrations:
       - internal/sema/semantic_facts_test.go
       - internal/ir/semantic/package13_test.go
       - internal/lowering/secmlir/emitter_test.go
+      - cmd/compiler/emit_sec_mlir_test.go
+      - cmd/compiler/emit_sec_mlir_package10_test.go
+      - cmd/compiler/emit_sec_mlir_package11_test.go
       - mlir/test/Dialect/Sec/schema9-structs.mlir
       - mlir/test/Dialect/Sec/invalid-schema9-structs.mlir
       - mlir/test/Conversion/SecToCore/schema9-struct-scalar-layout.mlir
@@ -482,7 +485,7 @@ integrations:
     name: Fixed Array Semantic Value Representation
     area: frontend-semantic-ir-sec-mlir-and-lowering
     status: partial
-    implementation_phase: no-panic-fixed-array-indexing
+    implementation_phase: schema10-array-operations
     integrated: "2026-08-28"
     baseline: repository HEAD with completed SEC-MLIR-P13 schema 9
     repository_head: 069c111b96714ee4c9423f5f7a64d1e7a6045f31
@@ -532,8 +535,14 @@ integrations:
       - internal/codegen/mlir/generator.go
       - mlir/include/sec/Dialect/Sec/SecTypes.td
       - mlir/lib/Dialect/Sec/SecTypes.cpp
+      - mlir/include/sec/Dialect/Sec/SecDialect.td
+      - mlir/lib/Dialect/Sec/SecDialect.cpp
       - mlir/include/sec/Dialect/Sec/SecOps.td
       - mlir/lib/Dialect/Sec/SecOps.cpp
+      - mlir/include/sec/Analysis/Passes.h
+      - mlir/include/sec/Analysis/Passes.td
+      - mlir/lib/Analysis/VerifyCheckedIntegerGuards.cpp
+      - mlir/lib/Conversion/SecToCore/SecToCore.cpp
     tests:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
@@ -550,10 +559,21 @@ integrations:
       - testdata/semantic_ir/fixed_array_index_plans_invalid.sec
       - testdata/semantic_ir/fixed_array_defaults.sec
       - testdata/semantic_ir/fixed_array_defaults_deferred.sec
+      - testdata/semantic_ir/package14_schema10_integration.sec
+      - testdata/semantic_ir/package14_unsupported/
       - mlir/test/Dialect/Sec/schema10-array-type.mlir
       - mlir/test/Dialect/Sec/invalid-schema10-array-type.mlir
       - mlir/test/Dialect/Sec/schema10-array-construct.mlir
       - mlir/test/Dialect/Sec/invalid-schema10-array-construct.mlir
+      - mlir/test/Dialect/Sec/schema10-array-ops.mlir
+      - mlir/test/Dialect/Sec/invalid-schema10-array-ops.mlir
+      - mlir/test/Dialect/Sec/schema10-module-metadata.mlir
+      - mlir/test/Dialect/Sec/invalid-schema11-module-metadata.mlir
+      - mlir/test/Analysis/schema10-array-index-guards.mlir
+      - mlir/test/Analysis/invalid-schema10-array-index-guards.mlir
+      - mlir/test/Conversion/SecToCore/schema10-array-scalar-layout-32.mlir
+      - mlir/test/Conversion/SecToCore/schema10-array-scalar-layout-64.mlir
+      - mlir/test/Conversion/SecIntegerToArith/schema10-array-boundary.mlir
     implemented:
       - completed Package 13 predecessor with schema-9 structs and high-level aggregate storage
       - canonical fixed-array literal spread wording synchronized in collections and spread rulebooks
@@ -608,14 +628,31 @@ integrations:
       - immutable read-only ResolvedArrayIndexPlan facts preserve exact array length, array/element/index types, signedness, use/action, proof/check kind, failure mode, and runtime IndexError typing without downstream AST reconstruction
       - arbitrary-precision constant index plans cover valid uint256 values above host int64 and exact negative, at-length, and above-length rejection; remaining indexes preserve their signed or unsigned source type as runtime-checked
       - named integer ranges wholly contained in 0..<N produce explicit range-proven index plans while zero-length arrays remain runtime-checked unless rejected as an invalid constant
+      - dominating branch and assertion conditions publish explicit branch or analysis index-proof provenance; inline range contracts retain contract provenance, binding identity prevents textual shadowing, and intervening assignments invalidate value proofs conservatively
+      - source-built branch-proven extraction consumes the Sema proof in verified Semantic IR without array.index-in-bounds or fail.bounds while incomplete, disjunctive, out-of-scope, mutated, and zero-length cases remain runtime-checked
       - Package 14 source-builder unsupported boundary for non-trivial array literals returns UnsupportedFeatureError without returning a partial module or placeholder operation
+      - Package 6 scalar-layout resolution recursively converts target-sized int/uint through fixed-array elements, nested arrays, type arguments, and surrounding P13 struct fields while preserving exact lengths, nominal identities, field tags, and high-level array operations on both 32-bit and 64-bit plans
+      - Package 8 checked-integer lowering normalizes ordinary scalar operations to signless Arith without recursing through fixed-array wrappers or lowering zero-length, spread, or nested sec.array.construct operations
+      - Package 13 integration preserves exact nominal struct identities for struct-in-array and array-in-struct values, including int128/uint256 fields, compact recursive defaults, guarded nested replacement, leaf-to-root rebuild, and one root commit
+      - Package 11/12 integration admits copy-trivial fixed arrays as union payloads and match values while retaining ordinary union-variant patterns, copy-trivial transfer, compact fallback construction, and the existing matching-variant projection guard
+      - schema-10 sec.array.default, sec.array.len, sec.array.index_in_bounds, sec.array.extract, sec.array.replace, and terminating sec.fail.bounds operations with exact local type, signedness, bounds-metadata, action, and result-identity verifiers
+      - sec-verify-array-index-guards enforces same-array/index SSA identity, immediate single-use predicate branching, dedicated true-edge dominance, and closed proven-safe provenance for schema-10 extraction and replacement
+      - generated high-level modules use schema 10 while schemas 1 through 9 remain accepted regression inputs and schema 11 remains rejected
+      - Go schema-10 emission preserves exact nested array types, compact ordered construction segments and actions, defaults, length, source-typed bounds predicates, proof metadata, guarded extraction/replacement, bounds failure, locations, and high-level storage
+      - schema-10 emission independently rejects nested fixed-array lengths that overflow the selected 32-bit or 64-bit target uint without host-width conversion
+      - the complete Package 14 section-100/101 dialect matrix covers canonical and invalid array types, compact construction, every array operation, guard dominance and SSA identity, proven provenance, and schema-9 compatibility
+      - compiler-known fixed-array Len lowers from its resolved Sema receiver fact to compact foldable ArrayLengthOp with exact decimal length
+      - one unedited source fixture covers every section-102 case through parsing, target-aware Sema, verified Semantic IR, and deterministic schema-10 emission
+      - the complete source-built section-102 module passes the absolute sec-mlir-opt guard-verification and scalar-layout pipeline on 32-bit and 64-bit CompilationPlans while preserving high-level arrays and introducing no unresolved cast, physical array layout, runtime helper, or LLVM dialect
+      - Package 6 scalar-layout conversion covers every schema-10 fixed-array operation, including default, length, bounds predicate, extraction, and replacement rather than only construction
+      - Package 14 explicitly rejects deferred move-only spread/read, indexed move-out, element borrow, non-trivial replacement/destruction, dynamic-array, slice, and array-to-slice source paths without returning partial Semantic IR
+      - the fixed-array spread action adapter admits only copy-trivial and explicitly rejects semantic-copy, move, shared-borrow, and mutable-borrow actions; semantic-copy is tested at this immutable boundary because no current source type resolves to CopySemantic
+      - ordinary indexed return of a non-copyable element is rejected by canonical Sema ownership diagnostics and published by the LSP, while language-valid P14 lowering boundaries remain free of false frontend errors
+      - successful source-built Package 14 modules prove exact full construction coverage and compact defaults, and contain no unreadable placeholder, hidden allocation, physical array layout, hard-coded signless i64 array index, trap, runtime symbol, mandatory helper call, or LLVM dialect on either 32-bit or 64-bit plans
     remaining:
-      - connect the Sema Len fact to the new Package 14 Semantic IR array.len operation
       - connect Package 14 bounds endpoints to fallible indexed replacement
-      - extend index proofs with branch/assertion analysis
-      - implement schema-10 array default/len/index/extract/replace operations, sec.fail.bounds, emission, the schema-version gate, and the array-index guard verifier
-      - prove P5/P6/P8/P11/P12/P13 integration on 32-bit and 64-bit plans
-      - explicitly reject deferred ownership, dynamic-array, slice, equality, membership, ABI, and physical-layout paths
+      - prove the remaining P5 integration on 32-bit and 64-bit plans
+      - explicitly reject equality, membership, ABI, and physical-layout paths
       - complete Package 14 section-107 acceptance and the section-108 implementation report
     deferred:
       - Package 15 element references and canonical Places
@@ -668,6 +705,78 @@ integrations:
         result: passed after trusted core IndexError integration
       - command: go test ./internal/ir/semantic -run TestPackage14BuildsFallibleBoundsPropagationAndLocalHandler -count=1
         result: passed
+      - command: /home/jonas/mlir/llvm-project/build/bin/llvm-lit -sv --filter='schema10-array-scalar-layout-(32|64)' $PWD/build/sec-mlir/test
+        result: passed (2/2), resolving nested array and struct-wrapped target-sized elements for 32-bit and 64-bit plans
+      - command: /home/jonas/mlir/llvm-project/build/bin/llvm-lit -sv $PWD/build/sec-mlir/test
+        result: passed (84/84) after Package 6 fixed-array scalar-layout integration
+      - command: /home/jonas/mlir/llvm-project/build/bin/llvm-lit -sv --filter='schema10-array-boundary' $PWD/build/sec-mlir/test
+        result: passed (1/1), lowering ordinary checked arithmetic while preserving signed and unsigned fixed-array wrappers and operations
+      - command: /home/jonas/mlir/llvm-project/build/bin/llvm-lit -sv $PWD/build/sec-mlir/test
+        result: passed (85/85) after Package 8 fixed-array normalization-boundary coverage
+      - command: go test ./internal/ir/semantic -run 'TestPackage14(BuildsNestedArrayStructReplacementMatrix|BuildsCompactFixedArrayDefaultMatrix)' -count=1 -v
+        result: passed, preserving exact Pair/Holder identities, wide nested fields, recursive defaults, and both array/struct replacement directions
+      - command: go test ./... && go vet ./...
+        result: passed after Package 13 fixed-array nesting integration coverage
+      - command: go test ./internal/ir/semantic -run TestPackage14BuildsArrayUnionPayloadAndMatchValues -count=1 -v
+        result: passed, including negative matching-variant guard enforcement for an int128[2] union payload
+      - command: go test ./... && go vet ./...
+        result: passed after Package 11/12 fixed-array union and match value integration
+      - command: /home/jonas/mlir/llvm-project/build/bin/llvm-lit -sv --filter='schema10-array-ops' $PWD/build/sec-mlir/test
+        result: passed (2/2), covering round-trip and local verifier failures for every P14-57 operation
+      - command: /home/jonas/mlir/llvm-project/build/bin/llvm-lit -sv $PWD/build/sec-mlir/test
+        result: passed (87/87) after the complete schema-10 fixed-array operation set
+      - command: go test ./internal/sema -run TestResolvedFixedArrayIndexRefinementProofs -count=1 -v
+        result: passed, covering branch, assertion/analysis and contract provenance plus incomplete, disjunctive, out-of-scope, mutated and zero-length negative cases
+      - command: go test ./internal/ir/semantic -run TestPackage14BuildsBranchRefinedArrayIndexWithoutBoundsFailure -count=1 -v
+        result: passed, consuming branch proof provenance without array bounds or failure operations
+      - command: go test ./... && go vet ./...
+        result: passed after P14-40 refinement integration
+      - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
+        result: passed (87/87) after P14-40 refinement integration
+      - command: /home/jonas/mlir/llvm-project/build/bin/llvm-lit -sv --filter='array-index-guards' $PWD/build/sec-mlir/test
+        result: passed (2/2), covering runtime extract/replace, proven-safe access, SSA mismatches, false-edge use, and post-merge use
+      - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
+        result: passed (89/89) after P14-58 array-index guard verification
+      - command: go test ./... && go vet ./...
+        result: passed after P14-58 array-index guard verification
+      - command: SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./internal/lowering/secmlir -run 'TestEmitPackage(13Structs|14Arrays|14ArrayLength)' -count=1 -v
+        result: passed on 32-bit and 64-bit plans, including schema-10 verifier execution and schema-9 struct compatibility
+      - command: go test ./... && go vet ./...
+        result: passed after P14-54/P14-59 schema-10 emission and version-gate integration
+      - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
+        result: passed (91/91) after P14-54/P14-59 schema-10 emission and version-gate integration
+      - command: /home/jonas/mlir/llvm-project/build/bin/llvm-lit -sv --filter='array-index-guards' $PWD/build/sec-mlir/test
+        result: passed (2/2) for the complete section-101 extract/replace guard, edge-dominance, SSA-identity, and proven-provenance matrix
+      - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
+        result: passed (91/91) after the P14-60 section-100/101 audit
+      - command: go test ./internal/lowering/secmlir -run TestEmitPackage14SourceIntegrationMatrix -count=1 -v
+        result: passed for every Package 14 section-102 source-to-Sema-to-verified-Semantic-IR-to-schema-10 case
+      - command: go test ./... && go vet ./...
+        result: passed after P14-65 source integration and fixed-array Len builder connection
+      - command: SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./internal/lowering/secmlir -run TestEmitPackage14SourceModuleVerifiesOn32And64BitPlans -count=1 -v
+        result: passed on 32-bit and 64-bit CompilationPlans after complete schema-10 fixed-array operation scalar conversion
+      - command: go test ./... && go vet ./...
+        result: passed after P14-66 absolute 32-bit and 64-bit source-module pipeline integration
+      - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
+        result: passed (91/91) after P14-66 complete fixed-array operation scalar conversion
+      - command: go test ./internal/ir/semantic -run 'TestPackage14RejectsDeferredArray(SourcePathsWithoutPartialIR|SpreadActions)' -count=1 -v
+        result: passed for all Package 14 deferred ownership, dynamic-array, slice, and array-to-slice boundaries without partial Semantic IR
+      - command: go test ./... && go vet ./...
+        result: passed after P14-67 unsupported source-pipeline boundary coverage
+      - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
+        result: passed (91/91) after P14-67 unsupported source-pipeline boundary coverage
+      - command: go test ./internal/lowering/secmlir -run TestPackage14SuccessfulModuleContainsNoPhysicalArrayShortcut -count=1 -v
+        result: passed on 32-bit and 64-bit plans with complete readable arrays and no physical/runtime shortcut
+      - command: go test ./... && go vet ./...
+        result: passed after P14-69 successful-module architecture-boundary coverage
+      - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
+        result: passed (91/91) after P14-69 successful-module architecture-boundary coverage
+      - command: go test ./cmd/lsp -run 'TestAnalyze(PublishesMoveOnlyIndexedReturnDiagnostic|Package14UnsupportedFixturesRespectFrontendBoundary)' -count=1 -v
+        result: passed, publishing the three frontend ownership failures and leaving seven language-valid Package 14 lowering boundaries diagnostic-free
+      - command: go test ./... && go vet ./...
+        result: passed after indexed-return ownership diagnostics were connected to LSP
+      - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
+        result: passed (91/91) after the frontend/LSP diagnostic correction
 
   - id: frontend.ownership-v2
     area: frontend-ownership-control-flow-and-lowering
@@ -719,6 +828,7 @@ integrations:
       - direct unavailable tracking with moved, discarded, and detached source provenance
       - lexer, parser, AST, formatter, Sema, and initial LSP support for declaration and assignment move forms
       - named-source implicit copy rejection for compiler-known and @noCopy move-only values in direct declaration and assignment paths
+      - intrinsically transferring returns reject ordinary indexed extraction of non-copyable collection elements with canonical ownership code, source range, and corrective help shared by CLI and LSP
       - selected nested field moves, sibling use, whole-aggregate rejection, and mutable field reinitialization
       - projection-sensitive ownership facts across branches, matches, switches, selects, and loops, with a conservative pre-v2 merge model
       - borrow validation before supported moves and overlapping self-move diagnostics
@@ -1252,6 +1362,7 @@ integrations:
       - MatchArm stores a closed MatchPattern AST instead of an arbitrary expression pattern
       - parser accepts only catch-all, compiler-known empty, variant, one whole-payload binding, and shallow named-field patterns
       - parser rejects boolean, literal, range, alternative, nested, and arbitrary expression patterns, with focused guidance for boolean, literal, range, and nested cases and arm-level recovery
+      - parser diagnoses empty variant-pattern parentheses generically and explains the bare payload-less form versus the required single payload binding, including for Option None and user-defined unions
       - formatter normalizes only structurally proven canonical match patterns and leaves invalid expression-like patterns unchanged
       - empty zero-arm matches are rejected
       - catch-all hiding Result Err is rejected in implemented error-sensitive cases
@@ -1309,6 +1420,7 @@ integrations:
       - Err underscore is accepted as explicit error-payload discard
       - named Err payload plus explicit discard is accepted when discardable
       - Option Some and None exhaustiveness
+      - empty payload parentheses in Option and user-defined union match patterns receive focused variant guidance
       - reachable union empty state participates in exhaustiveness
       - proven initialized union does not require empty arm
       - underscore covers reachable empty state
@@ -9791,3 +9903,170 @@ integrations:
     - invalid escape is diagnosed instead of silently promoted
     - capacity diagnostic explains requirement when known
     - ISR allocation diagnostic includes ISR root/context
+
+  - id: frontend.panic
+    area: panic-assert-unreachable-frontend
+    status: partial
+    document_revision: "2.0"
+    reviewed: "2026-09-01"
+    repository_baseline: 814a584
+    rules:
+      - rules/errors/panic.md
+      - rules/errors/runtime_checks.md
+      - rules/foundations/attributes.md
+    implemented:
+      - canonical assert statement AST and parsing support both Sec 0.1 forms, including optional comma plus string-literal metadata
+      - parser emits focused diagnostics for missing message comma, dynamic message forms, and non-canonical function-like spelling
+      - semantic analysis requires the assertion condition to have exact bool type without truthiness conversion
+      - focused parser and semantic tests cover accepted forms and the locked syntax/type diagnostics
+    remaining:
+      - represent assertion source metadata/message and AssertionFailed reason
+      - implement assertion refinement using canonical semantic facts
+      - classify unproven assertions as MayPanic and remove panic effect after complete proof
+      - implement checked unreachable as defined panic semantics rather than backend undefined behavior
+      - extend the existing function/method @noPanic slice to every callable form, cleanup path, foreign boundary, and canonical panic source
+      - keep explicit panic syntax unimplemented until its separate grammar decision is locked
+    required_tests:
+      - assert condition parses
+      - assert condition, message-literal parses
+      - formatter preserves comma form
+      - assertion message without comma rejected
+      - non-bool assertion rejected
+      - dynamic assertion message rejected in Sec 0.1
+      - proven assertion refines later analysis
+      - unproven assertion records MayPanic
+      - reachable unreachable records MayPanic
+
+  - id: analysis.panic
+    area: panic-effects-and-no-panic-proof
+    status: partial
+    document_revision: "2.0"
+    reviewed: "2026-09-01"
+    repository_baseline: 814a584
+    rules:
+      - rules/errors/panic.md
+      - rules/analysis/effect_analysis.md
+      - rules/platform/interrupts.md
+    implemented:
+      - compiler-owned callable effect summaries record direct checked-arithmetic and fixed-array-bounds MayPanic sites
+      - deterministic transitive synchronous cause paths exist for the implemented checked-arithmetic and fixed-array-bounds verticals
+      - handled or propagated arithmetic and fixed-array bounds try removes only its own resolved panic path while preserving nested operand-call panic effects
+      - argument-free @noPanic on functions and methods verifies the currently modeled direct and transitive arithmetic/bounds effects with cause locations
+    remaining:
+      - integrate assertions, checked unreachable, contracts, invalid-reference generation, foreign abort, and future explicit panic into the existing canonical panic-effect model
+      - complete transitive @noPanic verification across direct and indirect calls, interfaces, generics, recursion, callbacks, FFI, compiler helpers, defer, destruction, and cleanup
+      - version and validate separate-compilation panic summaries
+      - preserve detailed panic causes and source provenance
+      - distinguish child-domain contained panic from synchronous parent panic effect according to concurrency rules
+      - feed canonical panic facts into ISR analysis, target-profile validation, LSP, and call hierarchy
+    required_tests:
+      - direct assertion MayPanic
+      - transitive assertion MayPanic
+      - proven assertion removes panic effect
+      - recursive noPanic convergence
+      - unknown indirect or foreign behavior is conservative
+      - ISR root reports transitive panic path
+
+  - id: semantic-ir.panic
+    area: semantic-ir-panic
+    status: partial
+    document_revision: "2.0"
+    reviewed: "2026-09-01"
+    repository_baseline: 814a584
+    rules:
+      - rules/errors/panic.md
+      - rules/compiler/semantic_ir.txt
+    implemented:
+      - typed arithmetic failure reasons and panic-related effect metadata exist in the maintained checked-arithmetic Semantic IR and Sec MLIR vertical
+      - fixed-array ordinary failure is represented by terminating fail.bounds with fixed-array-index provenance while fallible bounds flow remains typed IndexError
+    remaining:
+      - add canonical assertion check representation with AssertionFailed reason and static message or ID metadata
+      - add checked-unreachable representation that remains defined until proven or lowered through panic endpoint
+      - represent canonical panic reason, source provenance, and relevant execution-domain facts
+      - represent panic and noPanic verification facts needed by later stages
+      - represent cleanup and containment relationships where required
+      - verify contradictory panic/noPanic facts before lowering
+    required_tests:
+      - unproven assertion emits explicit Semantic IR check
+      - proven assertion emits no panic operation but keeps required refinement
+      - checked unreachable retains defined panic reason
+      - static assertion message or ID preserved without allocation
+      - invalid contradictory panic facts rejected
+
+  - id: lowering.panic
+    area: panic-lowering-runtime-free-endpoints
+    status: partial
+    document_revision: "2.0"
+    reviewed: "2026-09-01"
+    repository_baseline: 814a584
+    rules:
+      - rules/errors/panic.md
+      - rules/mlir/sec_mlir_lowering.md
+    implemented:
+      - maintained checked-integer Sec MLIR path has typed failure-reason flow and MayPanic cause information
+    remaining:
+      - lower assertion failure to selected non-returning panic endpoint without dynamic allocation
+      - lower checked unreachable through defined panic endpoint before backend unreachable unless statically eliminated
+      - preserve stable panic reason IDs and static source or message metadata
+      - implement target-profile root panic endpoint selection
+      - implement managed task or thread containment outcomes when their concurrency vertical exists
+      - preserve selected cleanup policy without introducing implicit general unwinding runtime
+      - remove panic support completely from binaries proven panic-free where linkage and reachability permit
+    required_tests:
+      - assert false reaches AssertionFailed endpoint
+      - assertion message path performs no heap allocation
+      - reachable unreachable reaches UnreachableReached endpoint
+      - backend unreachable never replaces an unmaterialized defined panic path
+      - bare-metal root panic needs no general runtime
+      - panic-free binary can omit panic endpoint
+
+  - id: platform.panic
+    area: panic-target-isr-policy
+    status: partial
+    document_revision: "2.0"
+    reviewed: "2026-09-01"
+    repository_baseline: 814a584
+    rules:
+      - rules/errors/panic.md
+      - rules/platform/interrupts.md
+    implemented:
+      - interrupts.md normatively requires noPanic/noAlloc/noBlock for @isr and @interruptSafe
+      - root governance tracks ISR analysis requirements including transitive panic rejection
+    remaining:
+      - resolve target-profile panic endpoint and cleanup policy into canonical CompilationPlan facts
+      - enforce ISR noPanic using the same general panic-effect summaries
+      - include generated interrupt wrappers and helpers, FFI callbacks, and cleanup paths in panic proof
+      - support freestanding trap, reset, halt, and custom endpoints without mandatory runtime
+      - keep unsafe from waiving target or ISR panic requirements
+    required_tests:
+      - ISR direct assert rejected unless proven true
+      - ISR transitive panic rejected
+      - ISR unsafe does not waive noPanic
+      - target root trap endpoint selected correctly
+      - profile declaring no root cleanup does not emit cleanup assumptions
+
+  - id: tooling.panic
+    area: panic-diagnostics-lsp-formatter
+    status: partial
+    document_revision: "2.0"
+    reviewed: "2026-09-01"
+    repository_baseline: 814a584
+    rules:
+      - rules/errors/panic.md
+      - rules/tooling/formatter.md
+      - rules/tooling/lsp.md
+    implemented:
+      - formatter preserves both assertion forms and canonicalizes one space after the optional message comma without confusing nested or quoted commas
+      - formatter assertion coverage verifies canonical output and idempotence
+    remaining:
+      - LSP exposes noPanic or may-panic and cause paths from canonical analysis
+      - hover exposes assertion refinement and panic causes where useful
+      - call hierarchy reveals transitive panic-capable paths
+      - mentor diagnostics explain assertion type and syntax errors, noPanic violations, ISR panic paths, unknown foreign effects, and invalid cleanup
+      - incrementally invalidate panic summaries when relevant dependencies change
+    required_tests:
+      - formatter round-trip for both assertion forms
+      - LSP and compiler agree on MayPanic
+      - noPanic diagnostic identifies transitive root cause
+      - ISR diagnostic identifies interrupt root and panic cause
+      - missing assert comma receives focused diagnostic

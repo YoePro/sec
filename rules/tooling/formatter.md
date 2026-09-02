@@ -1915,6 +1915,22 @@ requested semantic code action, not an unconditional formatter rewrite.
 
 ---
 
+# Assertion statements
+
+The formatter preserves both assertion forms defined by `rules/errors/panic.md`
+and emits exactly one space after the optional message comma:
+
+```sec
+assert condition
+assert condition, "message"
+```
+
+Commas nested in the condition or contained in the message literal are not the
+assertion-message separator and remain governed by their owning expression or
+literal rules. Formatting never converts `assert` into function-call syntax.
+
+---
+
 # Contextual `x`
 
 The matrix multiplication operator is formatted as a binary operator:

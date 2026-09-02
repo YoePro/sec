@@ -1,0 +1,10 @@
+module main
+
+@noCopy
+type Token2 struct { value: int }
+
+fn Replace() Token2[1] {
+    let mut values: Token2[1] := [Token2 { value: 1 }]
+    values[0] = Token2 { value: 2 }
+    return values
+}

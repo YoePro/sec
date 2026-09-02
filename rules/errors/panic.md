@@ -1,243 +1,158 @@
 # Panic
 
-## Status
-
-This document is the canonical panic, assertion, checked-unreachable, and panic
-containment rulebook for Sec.
-
-It defines:
-
-- what panic means;
-- what panic is not;
-- panic domains;
-- containment;
-- task and thread outcomes;
-- root process behavior;
-- defer and destructor behavior;
-- assertions;
-- checked unreachable;
-- panic information;
-- allocation-free panic reporting;
-- no-panic verification;
-- detached-task requirements;
-- absence of a mandatory runtime.
-
-This document must be read with:
-
-```text
-runtime_checks.md
-defer.md
-destruction.txt
-spawn.md
-await.md
-select.md
-cancellation.md
-ownership.md
-```
+- Status: Normative
+- Created: 2026-09-01
+- Last updated: 2026-09-01
+- Document revision: 2.0
+- Sec language version: 0.1
+- Canonical path: `rules/errors/panic.md`
+- Replaces: previous revision of `rules/errors/panic.md`
+- Repository baseline reviewed: `814a584`
 
 ---
 
-# No mandatory runtime
+## § 1 Purpose and authority
 
-Panic support must not introduce a required general Sec runtime.
+**§ 1(1)** This rulebook defines panic, assertions, checked `unreachable`, panic effects, containment, panic reporting, and no-panic verification in Sec.
 
-A panic endpoint may be:
+**§ 1(2)** Panic represents a broken internal invariant or another failure path whose canonical rule explicitly selects panic semantics.
 
-```text
-a compiler-emitted non-returning function
-a user-provided function
-a target support symbol
-a scheduler hook when a scheduler is explicitly used
-a direct target trap
-a test harness boundary
-```
+**§ 1(3)** Panic is not the ordinary mechanism for expected business or technical errors.
 
-A freestanding Sec program may define panic behavior without linking a Sec
-runtime library.
+**§ 1(4)** Expected failures use explicit values such as `Result`, `Option` where semantically appropriate, named unions, status types, `try`, `match`, and ordinary control flow.
 
-A panic-free program may contain no panic endpoint at all after proof and dead
-code elimination.
+**§ 1(5)** `rules/errors/runtime_checks.md` owns the panic-versus-fallible behavior of checked arithmetic, bounds, contracts, shifts, and other runtime safety checks.
 
----
+**§ 1(6)** `rules/errors/errorhandling.md` owns `Result`, `Option`, `try`, error propagation, and typed recoverable failures.
 
-# Purpose
+**§ 1(7)** `rules/control-flow/defer.md` owns defer syntax, registration, and ordinary cleanup ordering.
 
-Panic represents a broken internal invariant or another explicitly
-panic-selected failure path.
+**§ 1(8)** `rules/memory/destruction.md` owns automatic destruction and lifecycle cleanup.
 
-Panic is not the ordinary mechanism for expected errors.
+**§ 1(9)** `rules/platform/interrupts.md` owns ISR execution-context restrictions, including Sec 0.1 `noPanic` requirements.
 
-Expected errors use:
+**§ 1(10)** Concurrency rulebooks own task/thread construction, awaiting/joining, cancellation, supervision, and execution-domain mechanics; this rulebook owns the meaning of panic when such domains exist.
 
-```text
-Result
-Option where semantically appropriate
-named unions
-explicit status types
-try
-match
-ordinary control flow
-```
+**§ 1(11)** Target/build rulebooks own exact panic endpoint configuration and platform integration.
+
+**§ 1(12)** This revision locks the Sec 0.1 assertion syntax defined in § 15.
 
 ---
 
-# Error versus panic
+## § 2 No mandatory runtime
 
-## Expected business error
+**§ 2(1)** Panic support must not introduce a mandatory general Sec runtime.
 
-Examples:
-
-```text
-customer not found
-invoice already posted
-credit limit exceeded
-inventory unavailable
-concurrent update
-invalid user input
-```
-
-These return explicit values.
-
-They are not panic.
-
-## Expected technical error
-
-Examples:
+**§ 2(2)** A panic endpoint may be implemented as:
 
 ```text
-file not found
-disk full
-allocation failure
-timeout
-connection failure
-unsupported target feature
+compiler-emitted non-returning function
+user-provided function
+target support symbol
+scheduler hook when a scheduler is explicitly used
+direct target trap
+test-harness boundary
 ```
 
-These require a panic-free result path.
+**§ 2(3)** A freestanding Sec program may define panic behavior without linking a general Sec runtime library.
 
-They are not necessarily panic.
+**§ 2(4)** A program proven panic-free may contain no panic endpoint after semantic proof, reachability analysis, lowering, dead-code elimination, and linking.
 
-## Runtime safety failure
+**§ 2(5)** Panic reporting must have an allocation-free minimum path.
 
-Examples:
-
-```text
-overflow
-division by zero
-bounds failure
-contract failure
-invalid shift
-```
-
-These have both:
-
-```text
-fallible path
-panic-capable ordinary path
-```
-
-as defined by `runtime_checks.md`.
-
-## Broken invariant
-
-Examples:
-
-```text
-assertion failure
-checked unreachable reached
-corrupt internal state
-impossible compiler-generated state reached
-```
-
-These are natural panic reasons.
-
-## External catastrophe
-
-Examples:
-
-```text
-power loss
-hardware failure
-operating-system termination
-foreign memory corruption
-external process kill
-```
-
-Sec cannot guarantee containment or reporting for all such events.
+**§ 2(6)** Managed task/thread panic containment may require feature-specific support only when those features are used.
 
 ---
 
-# Core panic rule
+## § 3 Error versus panic
 
-> Panic terminates the current panic domain and never resumes the failed stack.
+### § 3.1 Expected failures
 
-Panic is not catch-and-resume exception handling.
+**§ 3.1(1)** Expected business outcomes are ordinary values and are not panic.
 
-No code continues at the panic site.
+Examples include customer absence, insufficient credit, unavailable inventory, concurrent update, and invalid user input.
 
----
+**§ 3.1(2)** Expected technical failures such as file-not-found, disk-full, allocation failure, timeout, and connection failure are not automatically panic.
 
-# No general panic catching
+**§ 3.1(3)** Where a failure is expected to be handled, the canonical API must provide a panic-free recoverable path.
 
-Sec does not provide a general user-level construct equivalent to:
+### § 3.2 Runtime safety failure
 
-```text
-try/catch panic
-recover and resume
-catch all exceptions
-```
+**§ 3.2(1)** Runtime safety failures include checked arithmetic overflow, division by zero, invalid shift, bounds failure, and contract failure.
 
-A panic may be observed only at an explicit containment boundary.
+**§ 3.2(2)** Their ordinary and fallible forms are defined by `runtime_checks.md`.
 
-Examples:
+### § 3.3 Broken invariant
 
-```text
-awaiting a managed task
-joining a managed thread
-a declared supervisor
-a test harness
-the root panic endpoint
-```
+**§ 3.3(1)** Assertion failure and reached checked `unreachable` are canonical panic reasons.
 
-Containment observes termination.
+**§ 3.3(2)** Corrupt internal state and impossible compiler-generated states may also select panic when their owning rule defines that behavior.
 
-It does not resume the failed execution.
+### § 3.4 External catastrophe
+
+**§ 3.4(1)** Power loss, hardware failure, operating-system termination, foreign memory corruption, and external process kill are not guaranteed to obey Sec containment or panic-reporting semantics.
 
 ---
 
-# Panic domains
+## § 4 Core panic rule
 
-A panic domain is the execution unit terminated by panic.
+**§ 4(1)** Panic terminates the current panic domain and never resumes the failed stack.
 
-Canonical domains:
+**§ 4(2)** Code after the panic point does not continue in that execution domain.
 
-```text
-managed task
-managed thread
-root process domain
-freestanding or bare-metal root domain
-```
+**§ 4(3)** Panic is not catch-and-resume exception handling.
 
-A function is not a panic domain.
+**§ 4(4)** Panic is compiler-visible as an execution effect.
 
-Returning from a panic as an implicit hidden error would create exception-like
-control flow and is not permitted.
+**§ 4(5)** Panic does not implicitly change a function's declared return type.
+
+**§ 4(6)** Panic does not implicitly become `Err`.
+
+**§ 4(7)** A panic path is non-returning with respect to the failed stack even when another execution domain later observes the panic outcome.
 
 ---
 
-# Managed task panic
+## § 5 No general panic catching
 
-A panic in a managed task:
+**§ 5(1)** Sec 0.1 provides no general user-level construct equivalent to `try/catch panic`, `recover and resume`, or catch-all exceptions.
 
-1. stops the task;
-2. runs permitted panic cleanup;
-3. marks the task outcome as panicked;
-4. records panic information;
-5. notifies awaiter or supervisor;
-6. does not automatically terminate the process;
-7. never resumes the task stack.
+**§ 5(2)** Panic may be observed only at a canonical containment boundary, such as awaiting a managed task, joining a managed thread, a declared supervisor, a test harness, or the root panic endpoint.
 
-Conceptual outcome:
+**§ 5(3)** Containment observes termination; it does not resume the failed operation.
+
+**§ 5(4)** A containment boundary must not pretend that the failed function returned normally.
+
+---
+
+## § 6 Panic domains
+
+**§ 6(1)** A panic domain is the execution unit terminated by panic.
+
+**§ 6(2)** Canonical categories include managed task, managed thread, root process domain, and freestanding/bare-metal root domain.
+
+**§ 6(3)** An ordinary function invocation is not by itself a panic domain.
+
+**§ 6(4)** Returning panic as a hidden error from every function is forbidden.
+
+**§ 6(5)** Panic-domain identity is an execution-context fact available to analysis/lowering where containment behavior depends on it.
+
+---
+
+## § 7 Managed task and thread panic
+
+**§ 7(1)** A panic in a managed task or managed thread terminates that execution domain and never resumes its failed stack.
+
+**§ 7(2)** The domain outcome records that execution panicked and carries bounded panic information.
+
+**§ 7(3)** The awaiter, joiner, or supervisor is notified according to the concurrency contract.
+
+**§ 7(4)** An ordinary contained task/thread panic does not automatically terminate the process.
+
+**§ 7(5)** Where the selected containment policy guarantees panic cleanup, cleanup runs according to the canonical defer/destruction order before the panicked outcome is published.
+
+**§ 7(6)** No task/thread implementation may assume cleanup on a path whose selected panic policy does not provide it.
+
+Conceptually:
 
 ```sec
 type TaskOutcome[T] union {
@@ -247,650 +162,138 @@ type TaskOutcome[T] union {
 }
 ```
 
-Exact standard type naming belongs to concurrency rulebooks.
+**§ 7(7)** Exact standard-library naming belongs to the concurrency rulebooks.
 
 ---
 
-# Managed thread panic
+## § 8 Root panic
 
-A panic in a managed Sec thread:
+### § 8.1 Hosted root
 
-1. stops the thread;
-2. runs permitted panic cleanup;
-3. marks the join outcome as panicked;
-4. notifies joiner or supervisor;
-5. does not automatically terminate the process;
-6. never resumes the failed thread.
+**§ 8.1(1)** A panic in the root process domain terminates the process.
 
-A thread hosting indispensable scheduler or process infrastructure may be
-declared noncontainable by its profile.
+**§ 8.1(2)** No normal continuation occurs after root panic.
 
-That is a target or execution-policy property.
+**§ 8.1(3)** Before termination, the selected policy may perform only panic-safe bounded reporting, permitted cleanup, debugger trap, or user hook.
 
-It is not the default for ordinary managed threads.
+### § 8.2 Freestanding and bare metal
 
----
+**§ 8.2(1)** A root panic on a freestanding target transfers control to the configured non-returning panic endpoint.
 
-# Root process panic
-
-A panic in the root process domain terminates the process.
-
-Before termination, the selected panic policy may:
+Possible policies include:
 
 ```text
-run permitted cleanup
-write structured panic information
-flush a preallocated panic sink
-invoke a user hook
-trigger a debugger trap
-```
-
-No normal continuation occurs.
-
----
-
-# Bare-metal and freestanding panic
-
-A root panic on a freestanding target transfers control to the configured
-non-returning panic endpoint.
-
-Possible policies:
-
-```text
-disable interrupts and halt
+halt
 reset
 enter safe state
 write diagnostic register
 signal watchdog
-blink or signal hardware
-trap to monitor
+signal hardware
+trap to monitor/debugger
 ```
 
-Sec does not prescribe one mandatory runtime behavior.
+**§ 8.2(2)** Sec does not prescribe one mandatory bare-metal root behavior.
 
-The handler is part of the target or application contract.
+**§ 8.2(3)** Portable code must not depend on root-domain cleanup after panic unless the resolved profile explicitly guarantees it.
 
 ---
 
-# Panic containment
+## § 9 Containment, escalation, and observation
 
-Containment means:
+**§ 9(1)** Containment means the failed domain terminates while another domain may observe that failure and continue.
+
+**§ 9(2)** Containment does not mean the failed operation returned `Result`, the failed stack resumed, the invariant became valid, or shared mutable state became trustworthy.
+
+**§ 9(3)** A contained panic does not automatically escalate to process panic.
+
+**§ 9(4)** Supervisor policy may explicitly record, restart, disable, cancel siblings, escalate, or terminate the process.
+
+**§ 9(5)** A contained managed panic must not disappear silently.
+
+**§ 9(6)** Every contained managed panic must reach a canonical observer such as an awaiter, joiner, supervisor, panic sink, test harness, or root handler.
+
+**§ 9(7)** Detached managed work without an ordinary awaiter must have a supervisor or declared panic sink.
+
+---
+
+## § 10 Shared mutable state and poisoning
+
+**§ 10(1)** Panic containment does not automatically preserve consistency of shared mutable state.
+
+**§ 10(2)** Code that mutates shared state and can panic may leave partially committed logical state even when locks are correctly released.
+
+**§ 10(3)** Programs requiring continued service should use explicit consistency strategies such as transactional update, copy-then-commit, message passing, task-owned state, version validation, rollback, or poisoning.
+
+**§ 10(4)** A synchronization abstraction may define poisoning when panic occurs during protected mutation.
+
+**§ 10(5)** Poisoning is not mandatory for every synchronization primitive.
+
+---
+
+## § 11 Panic cleanup
+
+**§ 11(1)** Panic cleanup is governed jointly by this rulebook, `defer.md`, and `destruction.md`.
+
+**§ 11(2)** Cleanup may include reached defer entries, automatic destruction, task/thread-local cleanup, containment bookkeeping, and panic-sink notification where the selected panic policy guarantees those actions.
+
+**§ 11(3)** Cleanup that is required to run on panic must itself be transitively `noPanic`.
+
+**§ 11(4)** Panic cleanup must preserve the canonical unified LIFO cleanup order where defer/destruction rules require cleanup to execute.
+
+**§ 11(5)** Panic cleanup must not silently introduce a general exception-unwinding runtime.
+
+**§ 11(6)** If a target/profile selects immediate trap/reset/no-cleanup root behavior, pending ordinary cleanup is not guaranteed.
+
+### § 11.1 Defer
+
+**§ 11.1(1)** A defer body that may run during panic cleanup must be transitively `noPanic`.
+
+**§ 11.1(2)** Fallible cleanup inside defer must handle its recoverable error locally without converting it to panic.
+
+### § 11.2 Destruction
+
+**§ 11.2(1)** Destruction required on a panic path must not panic.
+
+**§ 11.2(2)** Custom `free` and automatic destruction must not silently translate recoverable cleanup failure into panic.
+
+**§ 11.2(3)** The compiler must not assume that every panic path performs destruction when the selected panic policy does not guarantee cleanup.
+
+---
+
+## § 12 Double panic
+
+**§ 12(1)** A panic during panic cleanup violates the required no-panic cleanup contract.
+
+**§ 12(2)** If a second panic nevertheless occurs because of unsafe code, foreign code, compiler defect, hardware corruption, or incorrect trusted metadata, the current panic domain terminates immediately through the minimal panic endpoint.
+
+**§ 12(3)** A second cleanup/unwind sequence must not be started.
+
+---
+
+## § 13 Panic information and reason IDs
+
+**§ 13(1)** Every implicit language panic has a stable canonical reason identifier.
+
+Canonical reason categories include at least:
 
 ```text
-the failed domain terminates
-another domain observes the failure
-the process may continue
+arithmetic overflow
+division by zero
+invalid shift
+bounds failure
+contract failure
+assertion failure
+checked unreachable reached
+invalid reference generation
+explicit panic
+foreign abort/trusted-boundary failure
 ```
 
-Containment does not mean:
+**§ 13(2)** Exact registry spelling and numeric representation belong to the diagnostics/panic registry.
 
-```text
-the failed operation returned an ordinary Result
-the stack resumed
-the invariant became valid
-shared mutable state is automatically trustworthy
-```
+**§ 13(3)** Panic observation uses a bounded structured panic-information value.
 
----
-
-# No automatic escalation
-
-A contained task or thread panic does not automatically escalate to the process.
-
-A supervisor may explicitly choose:
-
-```text
-record
-restart
-disable work item
-cancel siblings
-escalate to parent
-terminate process
-```
-
-Escalation is policy.
-
-It is not the default language action.
-
----
-
-# Mandatory observation
-
-A contained panic may never disappear silently.
-
-Every managed panic must reach one of:
-
-```text
-awaiter
-joiner
-supervisor
-panic sink
-test harness
-root handler
-```
-
----
-
-# Detached tasks
-
-A detached task has no ordinary awaiter.
-
-A detached task must therefore have:
-
-```text
-a supervisor
-or a declared panic sink
-```
-
-Detaching a task without any panic observation path is invalid.
-
-The exact supervisor syntax belongs to concurrency rulebooks.
-
----
-
-# Shared mutable state
-
-Panic containment does not automatically preserve shared-state consistency.
-
-Example:
-
-```text
-state mutation begins
-some fields are updated
-panic occurs
-cleanup releases a lock
-state remains partially updated
-```
-
-Programs requiring continued service should use:
-
-```text
-transactional updates
-copy-then-commit
-message passing
-task-owned state
-version validation
-rollback
-poisoning
-```
-
----
-
-# Poisoning
-
-A synchronization or shared-state guard may be marked poisoned when panic occurs
-during protected mutation.
-
-A later acquisition may return:
-
-```sec
-type LockError union {
-    Poisoned(PanicInfo)
-}
-```
-
-Exact synchronization semantics belong to future lock and concurrency rules.
-
-Poisoning is not mandatory for every lock.
-
-The type or profile declares the policy.
-
----
-
-# Panic cleanup
-
-Panic cleanup may include:
-
-```text
-defer bodies
-destructors
-task-local cleanup
-thread-local cleanup
-containment bookkeeping
-panic-sink notification
-```
-
-All panic cleanup must be noPanic.
-
----
-
-# Defer is noPanic
-
-Every defer body is implicitly transitively noPanic.
-
-This applies during:
-
-```text
-normal return
-early return
-panic cleanup
-cancellation cleanup where defer applies
-```
-
-A defer body that may panic is a compile-time error.
-
----
-
-# Destructors are noPanic
-
-Every destructor is transitively noPanic.
-
-A destructor may not:
-
-```text
-assert dynamically
-perform unhandled checked arithmetic
-perform unhandled bounds access
-call a panic-capable function
-invoke unknown foreign code
-use a panic-capable allocation shortcut
-```
-
----
-
-# Fallible cleanup
-
-A cleanup operation may return an error.
-
-The defer or destructor must handle it locally without panic.
-
-```sec
-defer {
-    match resource.TryClose() {
-        Ok() => {
-        }
-
-        Err(error) => {
-            cleanupLog.Record(error)
-        }
-    }
-}
-```
-
-The error-recording path must also be noPanic.
-
----
-
-# Double panic
-
-A panic during panic cleanup violates the noPanic cleanup contract.
-
-If it nevertheless occurs because of:
-
-```text
-unsafe code
-foreign code
-compiler defect
-hardware corruption
-incorrect trusted annotation
-```
-
-the current panic domain terminates immediately through the minimal panic
-endpoint.
-
-No second unwinding sequence is started.
-
----
-
-# Panic cleanup guarantee
-
-For managed tasks and managed threads, the canonical containment policy performs
-panic cleanup before reporting `Panicked`.
-
-For a root process or bare-metal domain, the selected profile declares whether
-cleanup is:
-
-```text
-full domain cleanup
-limited cleanup
-none
-```
-
-Portable code must not rely on root-domain cleanup after panic.
-
-Critical application paths should use `@noPanic`.
-
----
-
-# No-panic code
-
-Conceptual:
-
-```sec
-@noPanic
-fn ProcessInvoice(...) Result[void, InvoiceError] {
-}
-```
-
-`@noPanic` is transitively verified by the compiler.
-
-It guarantees:
-
-```text
-no language-defined panic
-no panic-capable reachable call
-no unproven assertion
-no reachable checked unreachable
-no unknown foreign abort path
-```
-
-It does not guarantee protection from external catastrophe.
-
----
-
-# No-panic entrypoints
-
-Build configuration may require:
-
-```text
-selected entrypoints are noPanic
-all reachable program code is noPanic
-all interrupt handlers are noPanic
-all transaction handlers are noPanic
-```
-
-Exact manifest syntax belongs to build rules.
-
----
-
-# Assertions
-
-`assert` states an internal invariant.
-
-Canonical conceptual form:
-
-```sec
-assert condition
-```
-
-An optional message or structured reason may be added by later grammar
-synchronization.
-
----
-
-# Assertion meaning
-
-If the condition is true:
-
-```text
-execution continues
-analysis may refine facts
-the check may be optimized away
-```
-
-If the condition is false:
-
-```text
-panic current domain with AssertionFailed
-```
-
----
-
-# Assertions are always active
-
-`assert` is not removed merely because the build is optimized.
-
-Debug and release builds have the same assertion semantics.
-
-The compiler may remove an assertion only when it proves the condition true.
-
----
-
-# Assertions are not business validation
-
-Invalid:
-
-```sec
-assert customer.Exists
-```
-
-when customer absence is expected input.
-
-Invalid:
-
-```sec
-assert account.Balance >= amount
-```
-
-when insufficient funds is a normal business result.
-
-Use explicit error handling.
-
----
-
-# Assertions in no-panic code
-
-An assertion is allowed in `@noPanic` code only when the compiler proves it
-always true.
-
-```sec
-type NonNegative int range 0..int.Max
-
-@noPanic
-fn Use(value: NonNegative) int {
-    assert value >= 0
-    return value
-}
-```
-
-The assertion may be eliminated.
-
-An unproven assertion makes the function panic-capable.
-
----
-
-# Assertion refinement
-
-After a successful assertion, the compiler may use the condition for later
-analysis.
-
-```sec
-assert index >= 0 && index < values.Length
-let value := values[index]
-```
-
-The later bounds check may be removed.
-
----
-
-# Assertion messages
-
-If message syntax is provided:
-
-```sec
-assert condition, "message"
-```
-
-the message expression is evaluated only on failure.
-
-A panic-critical or no-allocation profile may restrict messages to:
-
-```text
-static strings
-stable panic codes
-constant metadata
-allocation-free formatting
-```
-
-Dynamic formatting must not be required for panic reporting.
-
----
-
-# Debug assertions
-
-A future separate form may exist:
-
-```sec
-debug assert condition
-```
-
-It is not required for Sec 0.1.
-
-If introduced:
-
-```text
-it may be omitted by profile
-its condition must be pure
-it must have no observable side effects
-it must not establish facts required for correctness when omitted
-```
-
-Ordinary `assert` remains always active.
-
----
-
-# Assert versus assume
-
-`assert` performs a checked validation.
-
-It is not an unchecked optimizer promise.
-
-Sec 0.1 does not expose a normal safe-language `assume`.
-
-A future unchecked assumption would require:
-
-```text
-unsafe syntax
-explicit proof responsibility
-no panic semantics
-clear invalid-behavior contract
-```
-
-It must remain distinct from `assert`.
-
----
-
-# Checked unreachable
-
-Canonical:
-
-```sec
-unreachable
-```
-
-It means:
-
-> Control flow must not reach this point. If it does, panic the current domain.
-
-It is a checked control-flow assertion.
-
----
-
-# Unreachable behavior
-
-If the compiler proves the statement unreachable:
-
-```text
-no code is emitted
-no panic effect remains
-```
-
-If reachability remains possible:
-
-```text
-the statement is panic-capable
-reaching it panics with UnreachableReached
-```
-
----
-
-# Unreachable in no-panic code
-
-`unreachable` is valid in `@noPanic` code only when the compiler proves the
-statement cannot execute.
-
-Otherwise the function is not noPanic.
-
----
-
-# Unreachable is not optimizer undefined behavior
-
-Sec 0.1 does not expose an unchecked user-level unreachable promise.
-
-The compiler may lower checked unreachable conceptually as:
-
-```text
-call selected non-returning panic endpoint
-backend unreachable
-```
-
-The backend `unreachable` appears only after the defined non-returning Sec panic
-path.
-
----
-
-# Compiler-proven dead code
-
-Code proven unreachable after:
-
-```text
-return
-break
-continue
-panic
-unreachable
-exhaustive control flow
-```
-
-is a compile-time error according to Sec diagnostics policy.
-
-The existence of an `unreachable` statement does not permit arbitrary dead code
-after it.
-
----
-
-# Explicit panic
-
-The lexer reserves `panic`.
-
-Canonical explicit panic syntax and payload shape remain to be finalized.
-
-The semantic requirements are fixed:
-
-```text
-panic terminates the current domain
-panic never returns
-panic is visible in effect analysis
-panic is forbidden in noPanic code
-panic information has an allocation-free minimum representation
-```
-
-Illustrative only:
-
-```sec
-panic InvariantError.InvalidLedgerState
-```
-
-Do not lock exact source syntax from this example alone.
-
----
-
-# Panic reason IDs
-
-Every implicit language panic has a stable reason ID.
-
-Examples:
-
-```text
-panic.arithmetic-overflow
-panic.division-by-zero
-panic.invalid-shift
-panic.bounds
-panic.contract
-panic.assertion-failed
-panic.unreachable-reached
-panic.explicit
-panic.invalid-reference-generation
-panic.foreign-abort
-```
-
-Final IDs belong to the diagnostics and panic registry.
-
----
-
-# PanicInfo
-
-Conceptual form:
+Conceptually:
 
 ```sec
 type PanicInfo struct {
@@ -902,613 +305,440 @@ type PanicInfo struct {
 }
 ```
 
-Optional profile data may include:
+**§ 13(4)** The exact public ABI/layout/name of `PanicInfo` is not fixed by the conceptual example.
 
-```text
-message
-operation
-type
-task ID
-thread ID
-source expression
-call stack
-related panic
-```
+**§ 13(5)** Optional profile information may include message, operation, type, task/thread ID, source expression, call stack, and related panic.
 
-The minimum representation must not require dynamic allocation.
+**§ 13(6)** The minimum representation must not require dynamic allocation.
 
 ---
 
-# Allocation-free panic path
+## § 14 Allocation-free panic path
 
-Panic may occur during allocation failure or memory pressure.
+**§ 14(1)** The minimum panic path must not require heap allocation, dynamic string concatenation, growing collections, symbolization, filesystem/network access, or blocking on a potentially poisoned allocator.
 
-The minimum panic path may not require:
+**§ 14(2)** A profile may provide richer reporting only when doing so does not violate active panic-context guarantees.
 
-```text
-heap allocation
-dynamic string concatenation
-growing collection
-symbolization
-filesystem access
-network access
-locking a potentially poisoned allocator
-```
-
-A profile may add richer reporting only when resources are available.
+**§ 14(3)** Static source/message metadata may be represented through stable IDs or constant tables.
 
 ---
 
-# Panic sink
+## § 15 Assertions
 
-A panic sink receives structured panic information.
+### § 15.1 Canonical syntax
 
-It must be:
-
-```text
-noPanic
-non-returning for root panic
-or bounded and noPanic for contained reporting
-allocation-free in the minimum path
-```
-
-A sink may:
-
-```text
-write to a preopened descriptor
-write to a fixed ring buffer
-emit a target debug instruction
-store in static memory
-notify a supervisor
-```
-
----
-
-# Root panic endpoint
-
-The root endpoint does not return.
-
-Conceptual signature:
+**§ 15.1(1)** Sec 0.1 defines exactly these ordinary assertion forms:
 
 ```sec
-unsafe extern "Sec" fn PanicRoot(info: ref PanicInfo) never
+assert condition
+assert condition, "message"
 ```
 
-This signature is illustrative.
-
-The final `never` surface syntax is not required by this rulebook.
-
-The endpoint may instead be compiler-known.
-
----
-
-# Contained panic reporting
-
-A task or thread panic endpoint may return control to supervisor machinery, not
-to the failed stack.
-
-Conceptual sequence:
+**§ 15.1(2)** Conceptual grammar:
 
 ```text
-failed-domain cleanup
-construct bounded PanicInfo
-mark outcome Panicked
-wake awaiter or joiner
-destroy domain control block when safe
-scheduler continues
+assert_statement :=
+    "assert" boolean_expression
+    [ "," string_literal ]
 ```
 
-This requires scheduler support only when managed tasks or threads are used.
+**§ 15.1(3)** The comma is the canonical separator before the optional assertion message.
 
-It does not impose scheduler support on programs that do not use them.
+**§ 15.1(4)** Function-like `assert(...)` is not the canonical Sec 0.1 form.
 
----
+**§ 15.1(5)** The optional message is a string literal in Sec 0.1.
 
-# No mandatory scheduler
+**§ 15.1(6)** Sec 0.1 does not define dynamically constructed assertion messages.
 
-A program using no managed tasks or threads requires no scheduler.
+### § 15.2 Condition typing
 
-Task and thread panic containment belongs to those features' support code.
+**§ 15.2(1)** The assertion condition must have type `bool`.
 
-It is not a global Sec runtime requirement.
+**§ 15.2(2)** Sec applies no truthiness conversion.
 
----
-
-# Foreign panic and unwind
-
-Foreign exceptions or unwinding may not cross Sec frames by default.
-
-FFI declarations must classify foreign behavior.
-
-Possible effects:
-
-```text
-no unwind
-may abort
-may return error
-may unwind to foreign boundary
-```
-
-Unknown foreign behavior is not noPanic.
-
----
-
-# Unsafe panic violations
-
-Unsafe code may break panic guarantees only through an explicitly trusted
-boundary.
-
-A false trusted annotation is a program defect.
-
-The compiler may report:
-
-```text
-panic guarantee depends on trusted foreign or unsafe promise
-```
-
----
-
-# Task outcome
-
-A task outcome distinguishes panic from ordinary errors returned by the task.
-
-Given:
+Valid:
 
 ```sec
-fn Worker() Result[Value, WorkerError]
+assert count > 0
+assert state == State.Ready, "state must be ready"
 ```
 
-completion is conceptually:
+Invalid when `count` is not `bool`:
 
 ```sec
-TaskOutcome[Result[Value, WorkerError]]
+assert count
 ```
 
-Possible outcomes:
+### § 15.3 Meaning
 
-```text
-Completed(Ok(value))
-Completed(Err(workerError))
-Cancelled
-Panicked(panicInfo)
-```
+**§ 15.3(1)** If the condition evaluates true, execution continues.
 
-A returned `Err` is not a panic.
+**§ 15.3(2)** If the condition evaluates false, the current panic domain panics with the stable assertion-failure reason.
 
----
+**§ 15.3(3)** The optional message adds diagnostic information and does not create a separate recoverable error value.
 
-# Thread outcome
+**§ 15.3(4)** Assertion condition evaluation follows ordinary Sec expression evaluation order and side-effect rules.
 
-Joining a thread follows the same distinction:
+### § 15.4 Messages
 
-```text
-normal returned value
-normal returned error value
-cancelled where supported
-panicked
-```
+**§ 15.4(1)** The message literal is compile-time/static diagnostic metadata.
 
-Exact naming belongs to thread rules.
+**§ 15.4(2)** The minimum panic path must be able to identify assertion failure without dynamic string construction or allocation.
 
----
+**§ 15.4(3)** A target/profile may omit full message text only when a stable source/message identifier preserves its declared diagnostic contract.
 
-# Supervisor policy
+**§ 15.4(4)** Stripping message text must not change program control flow.
 
-A supervisor may configure reactions.
+### § 15.5 Assertions are always active
 
-Conceptual policies:
+**§ 15.5(1)** Ordinary `assert` has identical semantic meaning in debug and optimized builds.
 
-```text
-Report
-Restart
-RestartWithLimit
-Disable
-CancelGroup
-Escalate
-TerminateProcess
-```
+**§ 15.5(2)** The compiler may eliminate an assertion only when it proves the condition true on every path reaching it.
 
-No policy is implied by panic beyond reporting and containment.
+**§ 15.5(3)** Optimization level must not by itself disable ordinary assertions.
 
----
+### § 15.6 Assertion refinement
 
-# Panic and cancellation
-
-Cancellation is not panic.
-
-Cancellation uses separate explicit control flow and cleanup rules.
-
-A supervisor may cancel sibling tasks after a panic.
-
-That is policy, not equivalence.
-
----
-
-# Panic and Result
-
-Panic is not automatically converted to `Err`.
-
-A containment boundary reports `Panicked(PanicInfo)` as execution outcome.
-
-It does not pretend that the function returned its declared error type.
-
----
-
-# Panic and transactions
-
-Critical transaction paths should be noPanic.
+**§ 15.6(1)** After a successful assertion, the compiler may use the proven condition as a fact for subsequent semantic analysis.
 
 ```sec
+assert index >= 0 && index < values.Length
+let value := values[index]
+```
+
+**§ 15.6(2)** Later redundant checks may be removed when proof is complete.
+
+**§ 15.6(3)** Assertion-based refinement must use the same canonical fact system as ordinary control-flow refinement.
+
+### § 15.7 Not business validation
+
+**§ 15.7(1)** `assert` is for programmer/internal invariants, not expected input or business outcomes.
+
+**§ 15.7(2)** Expected validation failure must use explicit recoverable error/control-flow mechanisms.
+
+### § 15.8 Assertions in `@noPanic`
+
+**§ 15.8(1)** An assertion is valid in `@noPanic` code only when the compiler proves its condition true for every path reaching it.
+
+```sec
+type NonNegative int range 0..int.Max
+
 @noPanic
-fn PostInvoice(...) Result[PostedInvoice, PostInvoiceError] {
+fn Use(value: NonNegative) int {
+    assert value >= 0
+    return value
 }
 ```
 
-Rollback should be explicit or performed through verified noPanic cleanup.
+**§ 15.8(2)** An unproven assertion contributes `MayPanic`.
 
-Panic containment is an isolation boundary, not ordinary transaction control
-flow.
+**§ 15.8(3)** A proven assertion may be eliminated and contributes no remaining panic effect.
 
----
+### § 15.9 Debug assertions and assume
 
-# Panic and logging
+**§ 15.9(1)** Sec 0.1 defines no separate `debug assert` form.
 
-Panic reporting should not depend on ordinary application logging being healthy.
+**§ 15.9(2)** `assert` is a checked validation, not an unchecked optimizer promise.
 
-The minimum panic sink should be independent where possible.
-
-Application logging may receive a copy after containment.
+**§ 15.9(3)** Sec 0.1 exposes no ordinary safe-language `assume`.
 
 ---
 
-# Panic and testing
+## § 16 Checked `unreachable`
 
-A test harness may be a declared containment boundary.
+**§ 16(1)** Canonical syntax is:
 
-Tests may assert that an operation panics with a stable panic ID.
+```sec
+unreachable
+```
 
-The harness observes termination of the test domain.
+**§ 16(2)** Reaching `unreachable` panics the current domain with the stable unreachable reason.
 
-It does not create general production catch-and-resume behavior.
+**§ 16(3)** If the compiler proves the statement unreachable, no panic path is emitted for it.
+
+**§ 16(4)** A proven-unreachable statement contributes no remaining panic effect.
+
+**§ 16(5)** If reachability remains possible, `unreachable` is panic-capable.
+
+**§ 16(6)** `unreachable` is valid in `@noPanic` code only when the compiler proves execution cannot reach it.
+
+**§ 16(7)** Checked `unreachable` is not optimizer undefined behavior.
+
+**§ 16(8)** Backend `unreachable` may appear only after a defined non-returning Sec panic/trap path or after the source path is proven impossible.
 
 ---
 
-# Panic strategy and portability
+## § 17 Explicit panic
 
-A profile may choose root behavior such as:
+**§ 17(1)** The exact Sec 0.1 explicit-panic source syntax and payload shape are not locked by this revision.
 
-```text
-cleanup then terminate
-immediate terminate
-trap
-reset
-```
+**§ 17(2)** Regardless of future syntax, explicit panic must terminate the current panic domain, never return to the failed stack, be visible in effect analysis, violate unresolved `@noPanic`, and support an allocation-free minimum representation.
 
-Portable application logic must not depend on root panic cleanup.
-
-Managed task and thread containment remains explicit when those features are
-used.
+**§ 17(3)** Illustrative syntax from older material is non-normative until a separate grammar decision locks it.
 
 ---
 
-# Panic strategy configuration
+## § 18 Panic sinks and root endpoints
 
-Illustrative build choices:
+**§ 18(1)** A minimum-path panic sink must be `noPanic` and allocation-free.
 
-```text
-panic = "forbid"
-panic = "process-terminate"
-panic = "trap"
-panic = "custom"
-```
+**§ 18(2)** Root panic reporting ultimately transfers to a non-returning root endpoint.
 
-Task and thread containment are feature policies at their own domain levels.
+**§ 18(3)** A contained-domain sink may return to supervisor/scheduler machinery but never to the failed stack.
 
-Exact manifest syntax is not locked here.
+**§ 18(4)** The endpoint may be compiler-known, user-provided, target-provided, or a direct target trap.
+
+**§ 18(5)** This rulebook does not require a public `never` source type merely to express the endpoint.
 
 ---
 
-# Runtime-free implementation examples
+## § 19 Foreign code and unsafe boundaries
 
-## Hosted process without tasks
+**§ 19(1)** Foreign exceptions/unwinding must not cross Sec frames unless a dedicated FFI rule explicitly defines and proves such behavior.
 
-Checks branch directly to a user or compiler-provided non-returning endpoint.
+**§ 19(2)** FFI contracts must classify relevant panic/abort/unwind behavior.
 
-No scheduler or Sec runtime is required.
+**§ 19(3)** Unknown foreign behavior is not positive proof of `noPanic`.
 
-## Bare metal
+**§ 19(4)** `unsafe` does not automatically waive `noPanic` or panic-domain requirements.
 
-Checks branch to a target trap or application panic handler.
-
-No allocator, unwinder, or runtime library is required.
-
-## Managed tasks
-
-The explicitly used task implementation supplies domain bookkeeping and
-containment.
-
-Programs not using tasks do not link it.
-
-## Panic-free program
-
-All reachable panic paths are proven absent.
-
-No panic endpoint need remain in the binary.
+**§ 19(5)** A trusted foreign/unsafe annotation may provide an explicit proof boundary only where canonical FFI/unsafe rules permit it.
 
 ---
 
-# Diagnostics
+## § 20 Panic, `Result`, and cancellation
 
-Suggested diagnostic families:
+**§ 20(1)** Panic is not automatically converted into `Err`.
 
-```text
-panic.assert-used-for-expected-error
-panic.assert-not-proven-in-no-panic
-panic.unreachable-not-proven
-panic.explicit-in-no-panic
-panic.defer-may-panic
-panic.destructor-may-panic
-panic.detached-without-supervisor
-panic.unknown-foreign-effect
-panic.root-handler-may-return
-panic.sink-may-panic
-panic.cleanup-may-panic
-panic.unobserved-contained-panic
-panic.shared-state-may-be-poisoned
-```
+**§ 20(2)** Returned `Err(error)` is normal completion of the function's recoverable result channel.
+
+**§ 20(3)** A contained panic is abnormal termination of the execution domain.
+
+**§ 20(4)** A containment API must preserve the distinction between returned recoverable error and panicked execution.
+
+**§ 20(5)** Cancellation is not panic.
+
+**§ 20(6)** A supervisor may cancel sibling work after observing panic; that policy does not make cancellation and panic equivalent.
 
 ---
 
-# Tests
+## § 21 `@noPanic`
 
-Required files:
+**§ 21(1)** `@noPanic` is a compiler-verified transitive guarantee.
 
-```text
-panic_valid.sec
-panic_invalid.sec
-panic_assert_valid.sec
-panic_assert_invalid.sec
-panic_unreachable_valid.sec
-panic_unreachable_invalid.sec
-panic_no_panic_valid.sec
-panic_no_panic_invalid.sec
-panic_task_containment_valid.sec
-panic_task_containment_invalid.sec
-panic_thread_containment_valid.sec
-panic_thread_containment_invalid.sec
-panic_defer_valid.sec
-panic_defer_invalid.sec
-panic_destructor_valid.sec
-panic_destructor_invalid.sec
-```
+**§ 21(2)** A callable satisfying `@noPanic` has no reachable language-defined panic on any valid execution path covered by the contract.
+
+**§ 21(3)** Proof includes direct operations, direct/indirect calls, relevant generic specializations, callbacks, FFI effects, compiler helpers, cleanup, defer, destruction, and runtime checks.
+
+**§ 21(4)** Unknown mandatory effect information is not positive proof of `noPanic`.
+
+**§ 21(5)** Panic capability may arise from unhandled checked runtime operations, unproven assertions, reachable checked `unreachable`, future explicit panic, panic-capable calls, unknown/foreign abort paths, compiler/runtime helpers, and required panic-capable cleanup.
+
+**§ 21(6)** A source proven unreachable contributes no panic effect.
+
+**§ 21(7)** A checked operation whose panic path is eliminated by proof or replaced by a canonical handled fallible path contributes no panic effect for that resolved operation.
 
 ---
 
-# Behavior tests
+## § 22 ISR interaction
 
-Verify:
+**§ 22(1)** Sec 0.1 `@isr` and `@interruptSafe` imply `noPanic`, `noAlloc`, and `noBlock` according to `interrupts.md`.
 
-```text
-assert true continues
-assert false terminates current domain
-proven assert removed
-unproven assert rejected in noPanic
-proven unreachable removed
-reachable unreachable panics
-task panic reported as Panicked
-thread panic reported as Panicked
-contained panic does not kill process
-root panic terminates process
-detached panic reaches sink
-defer runs in managed-domain cleanup
-defer cannot panic
-destructor cannot panic
-double panic uses immediate minimal endpoint
-```
+**§ 22(2)** An unproven assertion is invalid in ISR code.
+
+**§ 22(3)** A proven assertion may remain as a source-level invariant and be eliminated without violating `noPanic`.
+
+**§ 22(4)** Reachable checked `unreachable`, future explicit panic, panic-capable helper calls, panic-capable runtime checks, unsafe cleanup, or unknown foreign abort behavior make an ISR invalid.
+
+**§ 22(5)** `unsafe` does not waive ISR `noPanic`.
+
+**§ 22(6)** ISR panic analysis includes generated wrappers/helpers and reachable cleanup paths according to `interrupts.md`.
 
 ---
 
-# Binary dependency tests
+## § 23 Panic strategy and portability
 
-Verify:
+**§ 23(1)** A resolved target/profile may select root behavior such as cleanup-then-terminate, limited cleanup, immediate termination, trap, reset, or custom endpoint.
 
-```text
-panic-free binary links no panic support
-bare-metal panic uses target handler or trap
-hosted root panic needs no general runtime
-task containment support links only when tasks are used
-thread containment support links only when managed threads are used
-panic minimum path allocates nothing
-```
+**§ 23(2)** Exact configuration syntax is owned by build/profile/platform rulebooks.
 
----
+**§ 23(3)** Portable application logic must not depend on one root panic cleanup strategy unless it targets a profile guaranteeing it.
 
-# Required synchronization
+**§ 23(4)** Managed task/thread containment remains a feature-domain policy separate from root panic strategy.
 
-This document must remain synchronized with:
-
-```text
-runtime_checks.md
-attributes.md
-grammar.md
-operators.md
-defer.md
-destruction.txt
-ownership.md
-copy_move.md
-spawn.md
-await.md
-select.md
-cancellation.md
-threads.md
-unsafe.md
-platform/ffi.md
-allocation.md
-diagnostics.txt
-lsp.md
-formatter.md
-compiler_pipeline.txt
-semantic_ir.txt
-build rules
-language-rulebook-status.md
-rules_implementations.txt
-```
+**§ 23(5)** No target/profile may redefine panic as recoverable hidden exception flow.
 
 ---
 
-# Appendix A — Codex implementation plan
+## § 24 Runtime-free implementation
 
-## A.1 Add rulebook
+**§ 24(1)** A hosted process with no managed tasks may branch directly from a panic site to a user/compiler/target-provided non-returning endpoint.
 
-Add:
+**§ 24(2)** A bare-metal program may branch directly to trap/reset/halt/custom panic code without allocator, scheduler, unwinder, or general runtime library.
 
-```text
-rules/errors/panic.md
-```
+**§ 24(3)** Programs using managed tasks/threads may link only the containment machinery required by those used features.
 
-Update status and implementation trackers.
-
-## A.2 Panic effect
-
-Add compiler-visible effects:
-
-```text
-NoPanic
-MayPanic
-```
-
-Retain detailed internal causes.
-
-## A.3 Panic domains
-
-Represent:
-
-```text
-TaskDomain
-ThreadDomain
-RootProcessDomain
-FreestandingRootDomain
-```
-
-## A.4 Assertions
-
-Add parser and AST support once grammar is locked.
-
-Sema:
-
-```text
-type-check bool condition
-attempt proof
-add refinement on success path
-mark panic effect if unproven
-reject in noPanic if unproven
-```
-
-## A.5 Unreachable
-
-Add checked unreachable statement.
-
-Prove where possible.
-
-Otherwise lower through a defined panic endpoint before backend unreachable.
-
-## A.6 Cleanup verification
-
-Mark defer bodies and destructors implicit noPanic.
-
-Reject complete call-chain causes.
-
-## A.7 PanicInfo
-
-Define an allocation-free minimum representation.
-
-Use static source metadata where possible.
-
-## A.8 Root endpoint
-
-Support:
-
-```text
-target trap
-user handler
-compiler helper
-```
-
-Verify non-returning behavior.
-
-## A.9 Task and thread containment
-
-Extend control blocks with panic outcomes.
-
-Do not convert panic into the function's declared Result.
-
-Wake awaiters and joiners.
-
-## A.10 Detached observation
-
-Reject detached managed work without supervisor or panic sink.
-
-## A.11 Double panic
-
-Install an immediate minimal path for trusted-boundary violations during cleanup.
-
-## A.12 No-runtime verification
-
-Add link and object-file tests proving:
-
-```text
-no general runtime dependency
-support linked only when feature used
-panic-free binary removes endpoint
-```
-
-## A.13 Tooling
-
-LSP hover should show:
-
-```text
-noPanic
-may panic
-panic causes
-containment domain
-```
-
-Call hierarchy should reveal panic paths.
+**§ 24(4)** A program proven entirely panic-free may remove unreachable panic support.
 
 ---
 
-# Design summary
+## § 25 Effect analysis
 
-Panic is not ordinary error handling.
+**§ 25(1)** Panic is represented by canonical compiler effect facts.
 
-Expected failures use explicit values and `try`.
+**§ 25(2)** Analysis must distinguish at least proven no-panic behavior from behavior that may panic.
 
-Panic terminates the current panic domain and never resumes the failed stack.
+**§ 25(3)** Internal facts should retain detailed panic causes and source provenance.
 
-Managed task and thread panic is contained and reported without automatic
-process escalation.
+**§ 25(4)** Panic effects propagate synchronously through reachable calls.
 
-Root process panic terminates the process.
+**§ 25(5)** Contained asynchronous child panic is not automatically a synchronous panic effect of the parent; concurrency rules define observation/escalation behavior.
 
-Bare-metal panic uses a configured non-returning target or application handler.
+**§ 25(6)** Separate-compilation effect summaries must be versioned/validated before serving as positive `noPanic` proof.
 
-Every panic must be observed.
+**§ 25(7)** Panic effects remain distinct from allocation, blocking, I/O, volatile, FFI, synchronization, and mutation effects.
 
-Detached panic requires a supervisor or sink.
+---
 
-Defer bodies and destructors are always noPanic.
+## § 26 Semantic IR
 
-Assertions are always active internal-invariant checks.
+**§ 26(1)** Semantic IR must preserve explicit panic-producing operations that remain after semantic proof.
 
-Unproven assertions are forbidden in noPanic code.
+**§ 26(2)** Semantic IR must preserve enough information to recover panic reason/category, source provenance, panic effect, relevant execution-domain facts, assertion/unreachable origin, static diagnostic message/ID where present, and required cleanup relationships.
 
-`unreachable` is always checked and never an unchecked optimizer promise in Sec
-0.1.
+**§ 26(3)** A proven assertion may be absent from Semantic IR after its refinement facts are incorporated canonically.
 
-Panic information has stable IDs and an allocation-free minimum path.
+**§ 26(4)** An unproven assertion must lower as an explicit checked branch to the assertion panic path.
 
-Panic support does not require a general Sec runtime.
+**§ 26(5)** Checked `unreachable` retains defined semantics until proof removes it or lowering materializes its non-returning panic endpoint.
 
-Programs using no managed concurrency do not link scheduler support.
+**§ 26(6)** Semantic IR verification must reject contradictory panic/no-panic facts.
 
-Panic-free programs may link no panic support at all.
+---
+
+## § 27 Lowering
+
+**§ 27(1)** Lowering must preserve panic reason, non-returning behavior, and selected containment/root endpoint semantics.
+
+**§ 27(2)** Backend `unreachable` must not turn a defined Sec panic into undefined behavior.
+
+**§ 27(3)** Assertion failure lowering must not allocate merely to report a string-literal message.
+
+**§ 27(4)** Static source/message metadata may be encoded as constant data or stable IDs.
+
+**§ 27(5)** Root panic lowering must respect target/profile cleanup policy.
+
+**§ 27(6)** Managed containment lowering must never resume the failed stack.
+
+**§ 27(7)** Optimizations may remove panic checks only when canonical analysis proves the panic condition impossible.
+
+**§ 27(8)** Lowering must not introduce a general unwinding runtime merely for convenience.
+
+---
+
+## § 28 Diagnostics and tooling
+
+**§ 28(1)** Panic diagnostics follow the mentor-compiler principle.
+
+**§ 28(2)** Diagnostics should explain the panic-capable operation, concrete cause, source/call path, violated guarantee, missing proof, and a practical alternative when known.
+
+**§ 28(3)** An `@noPanic` diagnostic should identify the first relevant panic-capable operation and transitive path from the verified root.
+
+**§ 28(4)** Assertion diagnostics distinguish syntax/type errors, unproven assertion under `@noPanic`, and inappropriate use where an owning rule requires recoverable validation.
+
+**§ 28(5)** ISR panic diagnostics identify the interrupt root/context and reachable panic cause.
+
+**§ 28(6)** LSP and `sec analyse` must consume the same canonical panic-effect and proof facts as compilation.
+
+**§ 28(7)** Tooling may expose `noPanic`, `may panic`, panic reasons, source causes, transitive cause paths, containment domains, and assertion refinement.
+
+**§ 28(8)** Incremental analysis invalidates panic summaries when relevant bodies, targets, generic specializations, FFI contracts, runtime-check rules, cleanup plans, target profiles, or imports change.
+
+---
+
+## § 29 Required tests
+
+**§ 29(1)** Assertion syntax/semantics tests include:
+
+```text
+assert true
+assert false
+assert boolean_expression
+assert boolean_expression, "message"
+formatter preserves comma separator
+missing comma before message rejected
+non-bool condition rejected
+non-literal Sec 0.1 message form rejected
+proven assertion refines analysis
+proven assertion removable
+unproven assertion contributes MayPanic
+unproven assertion rejected under @noPanic
+assertion message path allocates nothing
+```
+
+**§ 29(2)** Checked-unreachable tests include proven elimination, reachable panic, `MayPanic`, rejection under `@noPanic` when unproven, and defined panic before backend `unreachable`.
+
+**§ 29(3)** Error/panic separation tests include returned `Err`, contained `Panicked`, no implicit panic-to-Err conversion, and `try` not catching panic.
+
+**§ 29(4)** Containment tests include managed task/thread reporting, no automatic process escalation, root termination, detached observation, and no failed-stack resumption.
+
+**§ 29(5)** Cleanup tests include policy-guaranteed cleanup ordering, no assumed cleanup under no-cleanup profile, no-panic cleanup, local handling of fallible cleanup, and double-panic minimal termination.
+
+**§ 29(6)** ISR tests include direct/transitive panic rejection, unproven assert rejection, proven assert acceptance/elimination, unknown foreign behavior, and unsafe not waiving `noPanic`.
+
+**§ 29(7)** Binary tests include allocation-free minimum panic path, bare-metal target endpoint, hosted root without general runtime, feature-only containment linkage, and removal of panic support from proven panic-free binary.
+
+**§ 29(8)** Compiler, LSP, `sec analyse`, formatter, Semantic IR, and maintained backend tests must agree on assertion syntax, panic effects, no-panic proof, and panic reason provenance.
+
+---
+
+## § 30 Completion criteria
+
+**§ 30(1)** Frontend support is complete when canonical `assert` and checked `unreachable` parse/format/type-check, panic-producing operations are classified, assertion refinement is represented, and direct diagnostics are complete.
+
+**§ 30(2)** Effect analysis is complete when every panic source and callable form participates in deterministic transitive `MayPanic`/`noPanic` proof, including indirect calls, generics, callbacks, FFI, cleanup, compiler helpers, recursion, and separate compilation.
+
+**§ 30(3)** Cleanup integration is complete when every panic policy preserves exactly the cleanup guarantees defined jointly by panic/defer/destruction without assuming nonexistent unwinding.
+
+**§ 30(4)** Concurrency containment is complete when managed task/thread panic is recorded and observed without resuming failed execution or collapsing panic into returned `Result`.
+
+**§ 30(5)** ISR integration is complete when interrupt roots consume the same canonical panic effects and enforce Sec 0.1 `noPanic` transitively.
+
+**§ 30(6)** Semantic IR/lowering is complete when reasons, checks, endpoints, source provenance, assertion messages/IDs, and containment/root policy are represented and lowered without undefined-behavior substitution or hidden runtime allocation.
+
+**§ 30(7)** Tooling is complete when compiler, LSP, `sec analyse`, diagnostics, formatter, and call hierarchy use the same canonical panic facts.
+
+**§ 30(8)** Panic must not be marked fully implemented merely because checked arithmetic already records `MayPanic`.
+
+---
+
+## § 31 Core summary
+
+**§ 31(1)** Panic terminates the current panic domain and never resumes the failed stack.
+
+**§ 31(2)** Expected failures use explicit recoverable values and control flow.
+
+**§ 31(3)** Sec 0.1 provides no general catch-and-resume panic mechanism.
+
+**§ 31(4)** Ordinary assertions are written:
+
+```sec
+assert condition
+assert condition, "message"
+```
+
+**§ 31(5)** Assertions are always semantically active and may be removed only after proof.
+
+**§ 31(6)** Assertion messages are string literals/static diagnostic metadata in Sec 0.1.
+
+**§ 31(7)** Checked `unreachable` has defined panic behavior and is never an unchecked optimizer promise.
+
+**§ 31(8)** `@noPanic` is a transitive compiler-verified guarantee.
+
+**§ 31(9)** Sec 0.1 ISR execution is `noPanic`.
+
+**§ 31(10)** The minimum panic path is allocation-free and does not require a general Sec runtime.
+
+**§ 31(11)** Exact explicit `panic` source syntax remains intentionally unresolved by this revision.
+
+**§ 31(12)** Panic cleanup occurs only where the selected canonical panic policy guarantees it; no rule may silently invent exception unwinding.

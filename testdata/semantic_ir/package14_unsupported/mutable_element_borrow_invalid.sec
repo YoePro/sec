@@ -1,0 +1,7 @@
+module main
+
+fn Borrow() void {
+    let mut values: int[2] := [1, 2]
+    let element := ref mut values[0]
+    return
+}

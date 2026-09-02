@@ -356,3 +356,17 @@ func TestFormatCallableCapabilityTypes(t *testing.T) {
 		t.Fatalf("wrong callable capability formatting:\n%s\nwant:\n%s", got, want)
 	}
 }
+
+// rules/errors/panic.md § 15.1 and rules/tooling/formatter.md "Assertion
+// statements" require one space after the assertion-message comma.
+func TestFormatAssertStatements(t *testing.T) {
+	input := "fn Check(ready: bool, value: int) void {\nassert ready\nassert value > Select(1, 2),\"message, // preserved\" // invariant\n}\n"
+	want := "fn Check(ready: bool, value: int) void {\n    assert ready\n    assert value > Select(1, 2), \"message, // preserved\" // invariant\n}\n"
+	got := Format(Source{Text: input}, Options{}).Text
+	if got != want {
+		t.Fatalf("wrong assertion formatting:\n%s\nwant:\n%s", got, want)
+	}
+	if again := Format(Source{Text: got}, Options{}).Text; again != got {
+		t.Fatalf("assertion formatting is not idempotent:\n%s", again)
+	}
+}

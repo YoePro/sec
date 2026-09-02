@@ -1,0 +1,6 @@
+module main
+
+fn Borrow(values: int[2]) void {
+    let view := ref values[..]
+    return
+}

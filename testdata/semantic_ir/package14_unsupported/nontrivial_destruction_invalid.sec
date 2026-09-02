@@ -1,0 +1,7 @@
+module main
+
+type Owner struct { values: int[] }
+
+fn Ignore(values: Owner[1]) void {
+    return
+}

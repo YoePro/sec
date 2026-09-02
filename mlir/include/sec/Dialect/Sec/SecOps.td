@@ -305,4 +305,46 @@ def Sec_ArrayConstructOp : Sec_Op<"array.construct", [Pure]> {
   let hasVerifier = 1;
 }
 
+def Sec_ArrayDefaultOp : Sec_Op<"array.default", [Pure]> {
+  let summary = "Construct the canonical semantic default of a fixed Sec array";
+  let results = (outs AnyType:$result);
+  let hasVerifier = 1;
+}
+
+def Sec_ArrayLenOp : Sec_Op<"array.len", [Pure]> {
+  let summary = "Return the exact compile-time length of a fixed Sec array";
+  let arguments = (ins AnyType:$array);
+  let results = (outs AnyType:$result);
+  let hasVerifier = 1;
+}
+
+def Sec_ArrayIndexInBoundsOp : Sec_Op<"array.index_in_bounds", [Pure]> {
+  let summary = "Test a resolved integer index against fixed Sec array bounds";
+  let arguments = (ins BoolAttr:$index_signed, AnyType:$array,
+                       AnyType:$index);
+  let results = (outs I1:$result);
+  let hasVerifier = 1;
+}
+
+def Sec_ArrayExtractOp : Sec_Op<"array.extract", [Pure]> {
+  let summary = "Copy one proven or guarded trivial fixed-array element";
+  let arguments = (ins StrAttr:$bounds_kind, StrAttr:$bounds_proof,
+                       StrAttr:$action, AnyType:$array, AnyType:$index);
+  let results = (outs AnyType:$result);
+  let hasVerifier = 1;
+}
+
+def Sec_ArrayReplaceOp : Sec_Op<"array.replace", [Pure]> {
+  let summary = "Functionally replace one proven or guarded fixed-array element";
+  let arguments = (ins StrAttr:$bounds_kind, StrAttr:$bounds_proof,
+                       AnyType:$array, AnyType:$index, AnyType:$new_value);
+  let results = (outs AnyType:$result);
+  let hasVerifier = 1;
+}
+
+def Sec_FailBoundsOp : Sec_Op<"fail.bounds", [Terminator]> {
+  let summary = "Deterministic non-returning Sec fixed-array bounds failure";
+  let hasVerifier = 1;
+}
+
 #endif // SEC_DIALECT_SEC_OPS_TD

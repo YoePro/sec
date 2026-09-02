@@ -789,6 +789,100 @@ LogicalResult ArrayConstructOp::verify() {
   return success();
 }
 
+// The fixed-array operation verifiers below implement the local schema-v10
+// contracts from rules/mlir/packages/sec-mlir-dialect_package14.md sections
+// 64-69. Cross-block guard dominance and true-edge use belong to P14-58.
+LogicalResult ArrayDefaultOp::verify() {
+  if (!isa<ArrayType>(getResult().getType()))
+    return emitOpError("result must have !sec.array type");
+  return success();
+}
+
+LogicalResult ArrayLenOp::verify() {
+  if (!isa<ArrayType>(getArray().getType()))
+    return emitOpError("operand must have !sec.array type");
+  Type result = getResult().getType();
+  if (isa<UIntType>(result))
+    return success();
+  auto integer = dyn_cast<IntegerType>(result);
+  if (!integer || !integer.isUnsigned() ||
+      (integer.getWidth() != 32 && integer.getWidth() != 64))
+    return emitOpError(
+        "result must be !sec.uint or resolved unsigned pointer-width integer");
+  return success();
+}
+
+namespace {
+LogicalResult verifyArrayIndex(Operation *operation, Value array, Value index,
+                               bool *signedIndex = nullptr) {
+  if (!isa<ArrayType>(array.getType()))
+    return operation->emitOpError("array operand must have !sec.array type");
+  if (!isBuiltinIntegerSemanticType(index.getType()))
+    return operation->emitOpError(
+        "index must have a builtin Sec integer semantic type");
+  if (signedIndex)
+    *signedIndex = isSignedIntegerSemanticType(index.getType());
+  return success();
+}
+
+LogicalResult verifyArrayBoundsMetadata(Operation *operation,
+                                        StringRef boundsKind,
+                                        StringRef boundsProof) {
+  if (boundsKind == "runtime-check") {
+    if (boundsProof != "guarded")
+      return operation->emitOpError(
+          "runtime-check bounds proof must be guarded");
+    return success();
+  }
+  if (boundsKind != "proven-safe")
+    return operation->emitOpError(
+        "bounds_kind must be proven-safe or runtime-check");
+  if (!isOneOf(boundsProof,
+               {"constant", "range", "branch", "contract", "analysis"}))
+    return operation->emitOpError(
+        "proven-safe bounds proof must be constant, range, branch, contract, or analysis");
+  return success();
+}
+} // namespace
+
+LogicalResult ArrayIndexInBoundsOp::verify() {
+  bool signedIndex = false;
+  if (failed(verifyArrayIndex(*this, getArray(), getIndex(), &signedIndex)))
+    return failure();
+  if (getIndexSigned() != signedIndex)
+    return emitOpError("index_signed must match the index semantic type");
+  return success();
+}
+
+LogicalResult ArrayExtractOp::verify() {
+  if (failed(verifyArrayIndex(*this, getArray(), getIndex())))
+    return failure();
+  auto array = cast<ArrayType>(getArray().getType());
+  if (getResult().getType() != array.getElementType())
+    return emitOpError("result type must match the array element type");
+  if (getAction() != "copy-trivial")
+    return emitOpError("action must be copy-trivial");
+  return verifyArrayBoundsMetadata(*this, getBoundsKind(), getBoundsProof());
+}
+
+LogicalResult ArrayReplaceOp::verify() {
+  if (failed(verifyArrayIndex(*this, getArray(), getIndex())))
+    return failure();
+  auto array = cast<ArrayType>(getArray().getType());
+  if (getNewValue().getType() != array.getElementType())
+    return emitOpError("new value type must match the array element type");
+  if (getResult().getType() != getArray().getType())
+    return emitOpError("result type must exactly match the source array type");
+  return verifyArrayBoundsMetadata(*this, getBoundsKind(), getBoundsProof());
+}
+
+LogicalResult FailBoundsOp::verify() {
+  auto operation = (*this)->getAttrOfType<StringAttr>("operation");
+  if (!operation || operation.getValue() != "fixed-array-index")
+    return emitOpError("operation must be fixed-array-index");
+  return success();
+}
+
 LogicalResult UnreachableOp::verify() {
   auto synthesized = (*this)->getAttrOfType<BoolAttr>("sec.synthesized");
   if (!synthesized || !synthesized.getValue())

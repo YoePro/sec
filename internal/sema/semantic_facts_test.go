@@ -104,6 +104,63 @@ func TestFixedArrayIndexPlansRejectExactWideBounds(t *testing.T) {
 	}
 }
 
+// SEC-MLIR Package 14 sections 32, 36, and 96 require dominating branch and
+// assertion refinements to become explicit proof provenance. Incomplete and
+// zero-length proofs must remain runtime checked.
+func TestResolvedFixedArrayIndexRefinementProofs(t *testing.T) {
+	source, err := os.ReadFile("../../testdata/semantic_ir/fixed_array_refinement_proofs.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := parser.New(lexer.NewWithFile(string(source), "fixed_array_refinement_proofs.sec"))
+	result := p.Parse()
+	if result.HasErrors {
+		t.Fatalf("parse: %v", p.Errors())
+	}
+	a := NewAnalyzer()
+	if errors := a.Analyze(result.Program); len(errors) != 0 {
+		t.Fatalf("sema: %v", errors)
+	}
+
+	wants := []struct {
+		function string
+		check    ArrayIndexCheckKind
+		proof    ArrayIndexProofKind
+	}{
+		{function: "Branch", check: ArrayIndexProvenSafe, proof: ArrayIndexProofBranch},
+		{function: "Asserted", check: ArrayIndexProvenSafe, proof: ArrayIndexProofOther},
+		{function: "UnsignedBranch", check: ArrayIndexProvenSafe, proof: ArrayIndexProofBranch},
+		{function: "MissingLower", check: ArrayIndexRuntimeCheck},
+		{function: "ZeroLength", check: ArrayIndexRuntimeCheck},
+		{function: "MutableIndex", check: ArrayIndexRuntimeCheck},
+		{function: "OutsideBranch", check: ArrayIndexRuntimeCheck},
+		{function: "Disjunction", check: ArrayIndexRuntimeCheck},
+	}
+	for index, want := range wants {
+		function := result.Program.Statements[index+1].(*ast.FunctionDeclaration)
+		if function.Name.Value != want.function {
+			t.Fatalf("function %d = %s, want %s", index, function.Name.Value, want.function)
+		}
+		indexes := make([]*ast.IndexExpression, 0, 1)
+		for _, statement := range function.Body.Statements {
+			indexes = append(indexes, indexesInStatement(statement)...)
+		}
+		if len(indexes) != 1 {
+			t.Fatalf("%s index count = %d, want 1", want.function, len(indexes))
+		}
+		plan, found := a.ResolvedArrayIndexPlanOf(indexes[0])
+		if !found || plan.CheckKind != want.check || plan.ProofKind != want.proof {
+			t.Fatalf("%s plan = %#v, found=%t", want.function, plan, found)
+		}
+	}
+
+	contracted := builtinTypes()["int"]
+	contracted.Contracts = []Contract{RangeContract{Min: big.NewInt(0), Max: big.NewInt(4), Exclusive: true}}
+	if proof, proven := integerTypeRangeArrayIndexProof(contracted, big.NewInt(4)); !proven || proof != ArrayIndexProofContract {
+		t.Fatalf("inline contract proof = %q, proven=%t", proof, proven)
+	}
+}
+
 // TestResolvedArrayLiteralPlanFactCopiesCompactExactEntries verifies the
 // immutable compiler-owned fact model required by SEC-MLIR Package 14 sections
 // 14-16 before P14-20 makes array-literal analysis populate it.

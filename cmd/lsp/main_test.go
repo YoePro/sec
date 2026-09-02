@@ -604,6 +604,85 @@ fn main() void {
 	}
 }
 
+// TestAnalyzePublishesMoveOnlyIndexedReturnDiagnostic proves that the LSP uses
+// the canonical ownership diagnostic for an invalid ordinary element read at a
+// transferring return boundary.
+//
+// Rules:
+//   - rules/collections/collections.md — "Move-only indexed reads"
+//   - rules/tooling/lsp.md — semantic diagnostics
+func TestAnalyzePublishesMoveOnlyIndexedReturnDiagnostic(t *testing.T) {
+	source, err := os.ReadFile("../../testdata/semantic_ir/package14_unsupported/move_only_read_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	reported := analyze("file:///tmp/sec-lsp-array-ownership/main.sec", string(source))
+	if len(reported) != 1 {
+		t.Fatalf("diagnostics = %+v, want one ownership diagnostic", reported)
+	}
+	diagnostic := reported[0]
+	if diagnostic.Code != diagnostics.ImplicitMoveDisallowed {
+		t.Fatalf("diagnostic code = %q, want %s", diagnostic.Code, diagnostics.ImplicitMoveDisallowed)
+	}
+	want := "cannot return Token element values[0] by ordinary indexing because it is not implicitly copyable"
+	if !strings.Contains(diagnostic.Message, want) || !strings.Contains(diagnostic.Message, "help: move the containing collection or return a reference to the element") {
+		t.Fatalf("diagnostic message = %q, want ownership message and help", diagnostic.Message)
+	}
+	if diagnostic.Range.Start.Line != 6 || diagnostic.Range.Start.Character != 17 {
+		t.Fatalf("diagnostic start = %+v, want line 6 character 17", diagnostic.Range.Start)
+	}
+}
+
+// TestAnalyzePackage14UnsupportedFixturesRespectFrontendBoundary keeps LSP
+// diagnostics distinct from the later Package 14 lowering capability boundary:
+// frontend-invalid ownership operations are reported, while valid arrays,
+// element borrows, slices and replacement remain valid source programs.
+//
+// Rules:
+//   - rules/collections/collections.md — "Move-only indexed reads"
+//   - rules/mlir/packages/sec-mlir-dialect_package14.md — section 103
+//   - rules/tooling/lsp.md — semantic diagnostics
+func TestAnalyzePackage14UnsupportedFixturesRespectFrontendBoundary(t *testing.T) {
+	directory := "../../testdata/semantic_ir/package14_unsupported"
+	frontendErrors := map[string]string{
+		"move_only_spread_invalid.sec": "unsupported consuming element reads",
+		"element_move_out_invalid.sec": "explicit indexed extraction is not implemented",
+	}
+	frontendValid := []string{
+		"array_to_slice_invalid.sec",
+		"dynamic_array_invalid.sec",
+		"mutable_element_borrow_invalid.sec",
+		"nontrivial_destruction_invalid.sec",
+		"nontrivial_replacement_invalid.sec",
+		"shared_element_borrow_invalid.sec",
+		"slice_value_invalid.sec",
+	}
+	for file, expected := range frontendErrors {
+		t.Run(file, func(t *testing.T) {
+			source, err := os.ReadFile(filepath.Join(directory, file))
+			if err != nil {
+				t.Fatal(err)
+			}
+			reported := analyze("file:///tmp/sec-lsp-p14-boundary/"+file, string(source))
+			if len(reported) == 0 {
+				t.Fatalf("missing frontend diagnostic containing %q", expected)
+			}
+			assertDiagnosticMessage(t, reported, expected)
+		})
+	}
+	for _, file := range frontendValid {
+		t.Run(file, func(t *testing.T) {
+			source, err := os.ReadFile(filepath.Join(directory, file))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if reported := analyze("file:///tmp/sec-lsp-p14-boundary/"+file, string(source)); len(reported) != 0 {
+				t.Fatalf("valid source was confused with a lowering boundary: %+v", reported)
+			}
+		})
+	}
+}
+
 func TestAnalyzeContinuesDeclarationAnalysisAfterRecoveredBodyError(t *testing.T) {
 	source := `module core
 

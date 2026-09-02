@@ -1898,6 +1898,8 @@ func rewriteQualifierInStatement(stmt ast.Statement, from string, to string) {
 		rewriteQualifierInExpression(stmt.Value, from, to)
 	case *ast.ExpressionStatement:
 		rewriteQualifierInExpression(stmt.Expression, from, to)
+	case *ast.AssertStatement:
+		rewriteQualifierInExpression(stmt.Condition, from, to)
 	case *ast.ReturnStatement:
 		rewriteQualifierInExpression(stmt.Value, from, to)
 	case *ast.MatchStatement:
@@ -2087,6 +2089,11 @@ func qualifyLocalTypeReferencesInStatement(stmt ast.Statement, module string, lo
 			return
 		}
 		qualifyLocalTypesInExpression(stmt.Expression, module, localTypes)
+	case *ast.AssertStatement:
+		if stmt == nil {
+			return
+		}
+		qualifyLocalTypesInExpression(stmt.Condition, module, localTypes)
 	case *ast.ReturnStatement:
 		if stmt == nil {
 			return
@@ -2326,6 +2333,8 @@ func qualifyLocalCallsInStatement(stmt ast.Statement, module string, localFuncti
 		}
 	case *ast.ExpressionStatement:
 		qualifyLocalCallsInExpression(stmt.Expression, module, localFunctions)
+	case *ast.AssertStatement:
+		qualifyLocalCallsInExpression(stmt.Condition, module, localFunctions)
 	case *ast.ReturnStatement:
 		qualifyLocalCallsInExpression(stmt.Value, module, localFunctions)
 	case *ast.MatchStatement:
@@ -2496,6 +2505,18 @@ func printASTStatement(stmt ast.Statement, prefix string, last bool) {
 			value = stmt.Value.String()
 		}
 		printASTLeaf(childPrefix(prefix, last), true, "Value: "+value)
+
+	case *ast.AssertStatement:
+		printASTBranch(prefix, last, "Assert")
+		condition := "<nil>"
+		if stmt.Condition != nil {
+			condition = stmt.Condition.String()
+		}
+		children := []string{"Condition: " + condition}
+		if stmt.Message != nil {
+			children = append(children, "Message: "+stmt.Message.String())
+		}
+		printASTLeaves(childPrefix(prefix, last), children)
 
 	case *ast.DetachStatement:
 		printASTBranch(prefix, last, "Detach")
@@ -3324,6 +3345,17 @@ func printStatement(stmt ast.Statement) {
 			value = stmt.Value.String()
 		}
 		fmt.Printf("Discard %s\n", value)
+
+	case *ast.AssertStatement:
+		condition := "<nil>"
+		if stmt.Condition != nil {
+			condition = stmt.Condition.String()
+		}
+		if stmt.Message != nil {
+			fmt.Printf("Assert %s, %s\n", condition, stmt.Message.String())
+			return
+		}
+		fmt.Printf("Assert %s\n", condition)
 
 	case *ast.DetachStatement:
 		value := "<nil>"

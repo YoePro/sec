@@ -1,0 +1,8 @@
+module main
+
+@noCopy
+type Token struct { value: int }
+
+fn Spread(values: Token[1]) Token[2] {
+    return [values..., Token { value: 2 }]
+}

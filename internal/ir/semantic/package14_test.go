@@ -349,12 +349,12 @@ func TestPackage14BuildsNestedArrayStructReplacementMatrix(t *testing.T) {
 
 type Pair struct {
     left: int32,
-    right: int32,
+    right: int128,
 }
 
 type Holder struct {
-    values: int32[2],
-    tag: int32,
+    values: int128[2],
+    tag: uint256,
 }
 
 fn Next32() int32 {
@@ -373,13 +373,13 @@ fn NestedArrays(row: uint, column: uint) int32[2][2] {
 
 fn StructInArray(index: uint) Pair[2] {
     let mut pairs: Pair[2] := [Pair{ left: 1, right: 2 }, Pair{ left: 3, right: 4 }]
-    pairs[index].right = Next32()
+    pairs[index].right = Next128()
     return pairs
 }
 
 fn ArrayInStruct(index: uint) Holder {
     let mut holder: Holder := Holder{ values: [1, 2], tag: 3 }
-    holder.values[index] = Next32()
+    holder.values[index] = Next128()
     return holder
 }
 
@@ -394,6 +394,29 @@ fn Wide(index: uint) int128[2] {
 	}
 	if err := Verify(module); err != nil {
 		t.Fatalf("verify nested replacement matrix: %v\n%s", err, Format(module))
+	}
+
+	definitions := map[string]StructDefinition{}
+	for _, definition := range module.Structs {
+		definitions[definition.Name] = definition
+	}
+	pair, pairOK := definitions["Pair"]
+	holder, holderOK := definitions["Holder"]
+	if !pairOK || !holderOK || pair.SymbolID != "main::Pair" || holder.SymbolID != "main::Holder" {
+		t.Fatalf("nominal struct identities = Pair:%#v Holder:%#v", pair, holder)
+	}
+	if len(pair.Fields) != 2 || len(holder.Fields) != 2 {
+		t.Fatalf("nested struct fields = Pair:%#v Holder:%#v", pair.Fields, holder.Fields)
+	}
+	pairWide, _ := module.Types.Lookup(pair.Fields[1].Type)
+	holderArray, _ := module.Types.Lookup(holder.Fields[0].Type)
+	holderWide, _ := module.Types.Lookup(holder.Fields[1].Type)
+	holderElement, _ := module.Types.Lookup(holderArray.Element)
+	if pairWide.Kind != TypeInt || pairWide.BitWidth != 128 ||
+		holderArray.Kind != TypeArray || holderArray.Length != "2" ||
+		holderElement.Kind != TypeInt || holderElement.BitWidth != 128 ||
+		holderWide.Kind != TypeUint || holderWide.BitWidth != 256 {
+		t.Fatalf("wide nested types = pair:%#v holder-array:%#v holder-element:%#v holder-wide:%#v", pairWide, holderArray, holderElement, holderWide)
 	}
 
 	type counts struct {
@@ -444,7 +467,156 @@ fn Wide(index: uint) int128[2] {
 		if len(function.Storages) != 1 {
 			t.Fatalf("%s root storage = %#v", function.Name, function.Storages)
 		}
+		switch function.Name {
+		case "StructInArray":
+			result, _ := module.Types.Lookup(function.ReturnType)
+			if result.Kind != TypeArray || result.Element != pair.TypeID || result.Length != "2" {
+				t.Fatalf("StructInArray return type = %#v, want exact main::Pair[2]", result)
+			}
+		case "ArrayInStruct":
+			if function.ReturnType != holder.TypeID {
+				t.Fatalf("ArrayInStruct return type = %d, want exact main::Holder type %d", function.ReturnType, holder.TypeID)
+			}
+		}
 	}
+}
+
+// TestPackage14BuildsArrayUnionPayloadAndMatchValues covers Package 14
+// sections 79-80: P11/P12 retain their ordinary union-variant patterns and
+// guarded projections when the copy-trivial payload and match result are fixed
+// arrays. No array-specific pattern or physical representation is introduced.
+// SEC-MLIR Package 14 sections 36 and 96 require a branch-refined index to
+// reach Semantic IR as proven-safe provenance without a bounds-failure CFG.
+func TestPackage14BuildsBranchRefinedArrayIndexWithoutBoundsFailure(t *testing.T) {
+	module, err := analyzedModule(t, `module main
+
+fn Branch(values: int[4], index: int) int {
+    if index == 2 {
+        return values[index]
+    }
+    return 0
+}
+`, 14)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Verify(module); err != nil {
+		t.Fatalf("verify branch-refined index: %v\n%s", err, Format(module))
+	}
+
+	foundExtract := false
+	for _, block := range module.Functions[0].Blocks {
+		for _, operation := range block.Operations {
+			if operation.Kind == OpBoundsFailure || operation.Kind == OpArrayIndexInBounds {
+				t.Fatalf("branch-refined index emitted a bounds check:\n%s", Format(module))
+			}
+			if operation.Kind == OpArrayExtract {
+				foundExtract = true
+				if operation.ArrayCheckKind != ArrayIndexProvenSafe || operation.ArrayProofKind != ArrayIndexProofBranch || operation.ArrayGuard != 0 {
+					t.Fatalf("branch-refined extraction metadata = %#v", operation)
+				}
+			}
+		}
+	}
+	if !foundExtract {
+		t.Fatalf("missing branch-refined extraction:\n%s", Format(module))
+	}
+}
+
+func TestPackage14BuildsArrayUnionPayloadAndMatchValues(t *testing.T) {
+	module, err := analyzedModule(t, `module main
+
+type ArrayChoice union {
+    Values(int128[2])
+    Empty
+}
+
+fn Wrap(values: int128[2]) ArrayChoice {
+    return ArrayChoice.Values(values)
+}
+
+fn Read(choice: ArrayChoice) int128[2] {
+	let empty: int128[2] := [0, 0]
+    return match choice {
+        Values(values) => values
+        Empty => empty
+    }
+}
+
+fn ReadGuarded(choice: ArrayChoice, enabled: bool) int128[2] {
+	let empty: int128[2] := [0, 0]
+    return match choice {
+        Values(values) where enabled => values
+        Values(values) => values
+        Empty => empty
+    }
+}
+`, 14)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Verify(module); err != nil {
+		t.Fatalf("verify array union/match integration: %v\n%s", err, Format(module))
+	}
+	if len(module.Unions) != 1 || module.Unions[0].SymbolID != "main::ArrayChoice" || len(module.Unions[0].Variants) != 2 {
+		t.Fatalf("array union definition = %#v", module.Unions)
+	}
+	payload, ok := module.Types.Lookup(module.Unions[0].Variants[0].Payload)
+	element, elementOK := module.Types.Lookup(payload.Element)
+	if !ok || !elementOK || payload.Kind != TypeArray || payload.Length != "2" || element.Kind != TypeInt || element.BitWidth != 128 {
+		t.Fatalf("array union payload = %#v, element = %#v", payload, element)
+	}
+
+	counts := package12OperationCounts(module)
+	if counts[OpUnionConstruct] != 1 || counts[OpUnionIsVariant] != 5 || counts[OpUnionUnwrapPayload] != 3 || counts[OpArrayConstruct] != 2 {
+		t.Fatalf("array union/match operations = %#v\n%s", counts, Format(module))
+	}
+	for _, function := range module.Functions {
+		if function.Name == "Wrap" {
+			for _, operation := range function.Blocks[0].Operations {
+				if operation.Kind == OpUnionConstruct && (len(operation.PayloadActions) != 1 || operation.PayloadActions[0] != UnionPayloadCopyTrivial) {
+					t.Fatalf("array union construction action = %#v", operation.PayloadActions)
+				}
+			}
+			continue
+		}
+		if len(function.Matches) != 1 || !function.Matches[0].ValueContext {
+			t.Fatalf("%s match facts = %#v", function.Name, function.Matches)
+		}
+		for _, arm := range function.Matches[0].Arms {
+			if arm.PatternKind != string(sema.MatchPatternUnionVariant) {
+				t.Fatalf("%s introduced non-union array pattern %q", function.Name, arm.PatternKind)
+			}
+		}
+		result, _ := module.Types.Lookup(function.ReturnType)
+		if function.ReturnType != module.Unions[0].Variants[0].Payload {
+			t.Fatalf("%s result = %#v, want exact payload array %#v", function.Name, result, payload)
+		}
+	}
+
+	// The existing P11 guard contract must remain active for array payloads.
+	for _, function := range module.Functions {
+		for _, block := range function.Blocks {
+			for index := range block.Operations {
+				if block.Operations[index].Kind == OpUnionUnwrapPayload {
+					unwrap := block.Operations[index]
+					for _, candidateBlock := range function.Blocks {
+						for candidateIndex := range candidateBlock.Operations {
+							candidate := &candidateBlock.Operations[candidateIndex]
+							if candidate.Kind == OpUnionIsVariant && candidate.MatchID == unwrap.MatchID && candidate.MatchArmIndex == unwrap.MatchArmIndex {
+								candidate.UnionVariant = 1
+							}
+						}
+					}
+					if err := Verify(module); err == nil || !strings.Contains(err.Error(), "not on its matching guarded path") {
+						t.Fatalf("mismatched array payload guard error = %v", err)
+					}
+					return
+				}
+			}
+		}
+	}
+	t.Fatal("missing array payload projection to test guard enforcement")
 }
 
 func TestPackage14ArrayConstructDefaultAndLengthVerifyAndFormat(t *testing.T) {
@@ -555,7 +727,8 @@ func TestPackage14BuildsCompactFixedArrayDefaultMatrix(t *testing.T) {
 
 	wantLengths := map[string]string{
 		"ScalarDefault": "4", "WideDefault": "3", "StructDefault": "2",
-		"NestedArrayDefault": "2", "HugeCompactDefault": "1000000",
+		"NestedArrayDefault": "2", "StructWithArrayDefault": "2",
+		"HugeCompactDefault": "1000000",
 	}
 	for _, function := range module.Functions {
 		defaults := []Operation{}
@@ -572,6 +745,19 @@ func TestPackage14BuildsCompactFixedArrayDefaultMatrix(t *testing.T) {
 		}
 		if len(defaults) != 1 || defaults[0].ArrayLength != want || len(defaults[0].Operands) != 0 {
 			t.Fatalf("%s compact defaults = %#v", function.Name, defaults)
+		}
+		if function.Name == "StructWithArrayDefault" {
+			constructs := 0
+			for _, block := range function.Blocks {
+				for _, operation := range block.Operations {
+					if operation.Kind == OpStructConstruct {
+						constructs++
+					}
+				}
+			}
+			if constructs != 1 {
+				t.Fatalf("StructWithArrayDefault struct.construct count = %d, want 1", constructs)
+			}
 		}
 	}
 	text := Format(module)
@@ -604,6 +790,128 @@ func TestPackage14RejectsNonTrivialFixedArrayDefaultWithoutPartialModule(t *test
 	var unsupported *UnsupportedFeatureError
 	if !errors.As(err, &unsupported) || unsupported.Package != 14 || !strings.Contains(unsupported.Feature, "non-trivial fixed-array default") {
 		t.Fatalf("error = %#v, want Package 14 non-trivial fixed-array default", err)
+	}
+}
+
+// TestPackage14RejectsDeferredArraySourcePathsWithoutPartialIR covers the
+// source-pipeline ownership and view boundary required by Package 14 section
+// 103. Some invalid operations are rejected by Sema before IR construction;
+// valid-but-deferred operations must return a package-tagged unsupported error
+// and never expose the module assembled before the boundary was encountered.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package14.md — sections 88-89, 103
+//   - rules/compiler/semantic_ir.txt — "Unsupported lowerings"
+func TestPackage14RejectsDeferredArraySourcePathsWithoutPartialIR(t *testing.T) {
+	type rejectionStage string
+	const (
+		semaStage  rejectionStage = "sema"
+		buildStage rejectionStage = "semantic-ir"
+	)
+	tests := []struct {
+		name       string
+		file       string
+		stage      rejectionStage
+		wantDetail string
+	}{
+		{
+			name: "move-only literal spread", file: "move_only_spread_invalid.sec",
+			stage: semaStage, wantDetail: "unsupported consuming element reads",
+		},
+		{
+			name: "move-only element read", file: "move_only_read_invalid.sec",
+			stage: semaStage, wantDetail: "cannot return Token element values[0] by ordinary indexing because it is not implicitly copyable",
+		},
+		{
+			name: "shared element borrow", file: "shared_element_borrow_invalid.sec",
+			stage: buildStage, wantDetail: "shared fixed-array element borrow",
+		},
+		{
+			name: "mutable element borrow", file: "mutable_element_borrow_invalid.sec",
+			stage: buildStage, wantDetail: "mutable fixed-array element borrow",
+		},
+		{
+			name: "element move-out", file: "element_move_out_invalid.sec",
+			stage: semaStage, wantDetail: "explicit indexed extraction is not implemented",
+		},
+		{
+			name: "non-trivial replacement", file: "nontrivial_replacement_invalid.sec",
+			stage: buildStage, wantDetail: "non-trivial array literal element",
+		},
+		{
+			name: "non-trivial parameter destruction", file: "nontrivial_destruction_invalid.sec",
+			stage: buildStage, wantDetail: "dynamic array type int[]",
+		},
+		{
+			name: "dynamic owning array", file: "dynamic_array_invalid.sec",
+			stage: buildStage, wantDetail: "dynamic array type",
+		},
+		{
+			name: "slice value", file: "slice_value_invalid.sec",
+			stage: buildStage, wantDetail: "type ref int[]",
+		},
+		{
+			name: "array-to-slice creation", file: "array_to_slice_invalid.sec",
+			stage: buildStage, wantDetail: "array-to-slice creation",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			path := "../../../testdata/semantic_ir/package14_unsupported/" + test.file
+			source, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			p := parser.New(lexer.NewWithFile(string(source), path))
+			parsed := p.Parse()
+			if parsed.HasErrors {
+				t.Fatalf("parse errors: %v", p.Errors())
+			}
+			analyzer := sema.NewAnalyzer()
+			semaErrors := analyzer.Analyze(parsed.Program)
+			if test.stage == semaStage {
+				if len(semaErrors) == 0 || !strings.Contains(fmt.Sprint(semaErrors), test.wantDetail) {
+					t.Fatalf("sema errors = %v, want detail %q", semaErrors, test.wantDetail)
+				}
+				return
+			}
+			if len(semaErrors) != 0 {
+				t.Fatalf("unexpected sema errors: %v", semaErrors)
+			}
+			module, err := Build(parsed.Program, analyzer, BuildOptions{
+				RequestedModule: "main", SourceFiles: []string{path}, MaxPackage: 14,
+			})
+			if module != nil {
+				t.Fatalf("unsupported P14 build exposed partial IR:\n%s", Format(module))
+			}
+			var unsupported *UnsupportedFeatureError
+			if !errors.As(err, &unsupported) || unsupported.Package != 14 || !strings.Contains(unsupported.Feature, test.wantDetail) {
+				t.Fatalf("build error = %#v, want Package 14 UnsupportedFeatureError containing %q", err, test.wantDetail)
+			}
+		})
+	}
+}
+
+// TestPackage14RejectsDeferredArraySpreadActions locks the Semantic IR boundary
+// for semantic-copy and later ownership actions even though current source Sema
+// has no concrete type whose implicit copy classification is CopySemantic.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package14.md — sections 21, 89, 103
+func TestPackage14RejectsDeferredArraySpreadActions(t *testing.T) {
+	if action, ok := semanticArraySpreadAction(sema.ArrayTransferCopyTrivial); !ok || action != ArrayActionCopyTrivial {
+		t.Fatalf("copy-trivial spread action = %q, %t", action, ok)
+	}
+	for _, deferred := range []sema.ResolvedArrayTransferAction{
+		sema.ArrayTransferCopySemantic,
+		sema.ArrayTransferMove,
+		sema.ArrayTransferBorrowShared,
+		sema.ArrayTransferBorrowMutable,
+	} {
+		if action, ok := semanticArraySpreadAction(deferred); ok || action != "" {
+			t.Errorf("deferred spread action %q mapped to %q, %t", deferred, action, ok)
+		}
 	}
 }
 

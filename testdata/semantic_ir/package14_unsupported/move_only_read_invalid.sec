@@ -1,0 +1,8 @@
+module main
+
+@noCopy
+type Token struct { value: int }
+
+fn Read(values: Token[1]) Token {
+    return values[0]
+}

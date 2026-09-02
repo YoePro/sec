@@ -117,6 +117,17 @@ func (b *builder) buildFunction(decl *ast.FunctionDeclaration) error {
 		fb.emit(Operation{Kind: OpReturn, Location: location(decl.Token)})
 		fb.current = nil
 	}
+	// Package 14 sections 88-89 and 103 permit fixed-array type identity but
+	// defer owned parameter cleanup for arrays whose elements are not trivially
+	// destructible. Reject after the body so a more specific unsupported array
+	// operation encountered there remains the primary boundary diagnostic.
+	if b.maxPackage >= 14 && !resolved.Extern {
+		for _, parameter := range resolved.Parameters {
+			if _, fixed := sema.FixedArrayLength(parameter.Type); fixed && !sema.TriviallyDestructible(parameter.Type) {
+				return fb.unsupported("non-trivial fixed-array parameter destruction", decl.Token)
+			}
+		}
+	}
 	return nil
 }
 
@@ -533,6 +544,17 @@ func (fb *functionBuilder) buildStatements(statements []ast.Statement) error {
 func (fb *functionBuilder) buildLet(stmt *ast.LetStatement) error {
 	if stmt.Value == nil {
 		return fb.unsupported("mutable local declaration without initializer", stmt.Token)
+	}
+	// Package 14 sections 44 and 103 defer element move-out until the ownership
+	// packages can represent partial array availability and cleanup explicitly.
+	if stmt.Ownership == ast.OwnershipMove {
+		if index, ok := stmt.Value.(*ast.IndexExpression); ok {
+			if plan, resolved := fb.owner.analyzer.ResolvedArrayIndexPlanOf(index); resolved {
+				if _, fixed := sema.FixedArrayLength(plan.ArrayType); fixed {
+					return fb.unsupported("fixed-array element move-out", index.Token)
+				}
+			}
+		}
 	}
 	fact, ok := fb.owner.analyzer.ResolvedBindingOf(stmt.Name)
 	if !ok {
@@ -1040,6 +1062,12 @@ type builtValue struct {
 	typ TypeID
 }
 
+// buildExpr lowers expressions supported by the selected Semantic IR package
+// and stops deferred ownership/view operations at their explicit package gate.
+//
+// Rules:
+//   - rules/compiler/semantic_ir.txt — "Unsupported lowerings"
+//   - rules/mlir/packages/sec-mlir-dialect_package14.md — sections 44, 89, 103
 func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (builtValue, error) {
 	if okExpr, ok := expr.(*ast.OkExpression); ok {
 		return fb.buildResultConstructor(okExpr.Value, expected, true, location(okExpr.Token))
@@ -1061,6 +1089,25 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 			}
 		}
 		return fb.buildArrayLiteral(arrayLiteral, resultType)
+	}
+	if reference, ok := expr.(*ast.RefExpression); ok && fb.owner.maxPackage >= 14 {
+		if index, indexed := reference.Value.(*ast.IndexExpression); indexed {
+			if plan, resolved := fb.owner.analyzer.ResolvedArrayIndexPlanOf(index); resolved {
+				if _, fixed := sema.FixedArrayLength(plan.ArrayType); fixed {
+					kind := "shared"
+					if reference.Mutable {
+						kind = "mutable"
+					}
+					return builtValue{}, fb.unsupported(kind+" fixed-array element borrow", reference.Token)
+				}
+			}
+		}
+		if _, sliced := reference.Value.(*ast.SliceExpression); sliced {
+			return builtValue{}, fb.unsupported("array-to-slice creation", reference.Token)
+		}
+	}
+	if slice, ok := expr.(*ast.SliceExpression); ok && fb.owner.maxPackage >= 14 {
+		return builtValue{}, fb.unsupported("slice expression", slice.Token)
 	}
 	resolved, ok := fb.owner.analyzer.ResolvedTypeOf(expr)
 	if !ok {
@@ -1140,11 +1187,20 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 		if !ok {
 			return builtValue{}, fmt.Errorf("binding %d has no IR value", fact.ID)
 		}
+		if _, fixed := sema.FixedArrayLength(fact.Type); fixed && sema.CopyClassificationOf(fact.Type) != sema.CopyTrivial {
+			return builtValue{}, fb.unsupported("non-trivial fixed-array value transfer", e.Token)
+		}
 		if bind.storage != 0 {
 			return fb.result(Operation{Kind: OpStorageLoad, Storage: bind.storage, Location: loc}, bind.typ), nil
 		}
 		return builtValue{id: bind.value, typ: bind.typ}, nil
 	case *ast.MemberExpression:
+		if fb.owner.maxPackage >= 14 && e.Property != nil {
+			member, resolved := fb.owner.analyzer.CompilerKnownMemberAt(e.Property.Token.File, e.Property.Token.Line, e.Property.Token.Column)
+			if resolved && member.ID == "CKM-LEN-ARRAY" {
+				return fb.buildFixedArrayLength(e, typeID)
+			}
+		}
 		if fb.owner.maxPackage >= 13 {
 			if plan, resolved := fb.owner.analyzer.ResolvedStructMemberOf(e); resolved && plan.Kind == sema.MemberStoredField {
 				if plan.Action != sema.StructFieldCopyTrivial {
@@ -1221,6 +1277,39 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 	}
 }
 
+// buildFixedArrayLength connects the compiler-known fixed-array Len property to
+// the compact, foldable Semantic IR array.len operation without reconstructing
+// member semantics from its source spelling.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package14.md sections 29 and 65
+//   - rules/mlir/semantic-ir/sec_semantic_ir_fixed_array_v1.md — "Array length"
+func (fb *functionBuilder) buildFixedArrayLength(expr *ast.MemberExpression, resultType TypeID) (builtValue, error) {
+	receiverType, ok := fb.owner.analyzer.ResolvedTypeOf(expr.Object)
+	if !ok {
+		return builtValue{}, fmt.Errorf("fixed-array Len receiver has no resolved type")
+	}
+	length, fixed := sema.FixedArrayLength(receiverType)
+	if !fixed {
+		return builtValue{}, fb.unsupported("non-fixed array Len", expr.Token)
+	}
+	arrayType, err := fb.owner.internType(receiverType)
+	if err != nil {
+		return builtValue{}, err
+	}
+	receiver, err := fb.buildExpr(expr.Object, arrayType)
+	if err != nil {
+		return builtValue{}, err
+	}
+	if receiver.typ != arrayType {
+		return builtValue{}, fmt.Errorf("fixed-array Len receiver type mismatch")
+	}
+	return fb.result(Operation{
+		Kind: OpArrayLength, Operands: []ValueID{receiver.id},
+		ArrayLength: length.String(), Location: location(expr.Property.Token),
+	}, resultType), nil
+}
+
 // buildArrayLiteral consumes the compact compiler-owned plan required by
 // rules/mlir/packages/sec-mlir-dialect_package14.md sections 14-23 and 62-63.
 // It emits one segment per source entry and never expands a spread by N.
@@ -1251,7 +1340,8 @@ func (fb *functionBuilder) buildArrayLiteral(expr *ast.ArrayLiteral, resultType 
 		action := ArrayActionConstructDirect
 		if entry.Kind == sema.ArrayLiteralSpread {
 			spread, spreadOK := source.(*ast.SpreadExpression)
-			if !spreadOK || entry.Action != sema.ArrayTransferCopyTrivial {
+			resolvedAction, supported := semanticArraySpreadAction(entry.Action)
+			if !spreadOK || !supported {
 				return builtValue{}, fb.unsupported("non-trivial array spread action "+string(entry.Action), expressionToken(source))
 			}
 			source = spread.Value
@@ -1261,7 +1351,7 @@ func (fb *functionBuilder) buildArrayLiteral(expr *ast.ArrayLiteral, resultType 
 				return builtValue{}, internErr
 			}
 			kind = ArraySegmentSpread
-			action = ArrayActionCopyTrivial
+			action = resolvedAction
 		} else if entry.Kind != sema.ArrayLiteralElement || entry.Action != sema.ArrayTransferConstructDirect {
 			return builtValue{}, fb.unsupported("non-trivial array element action "+string(entry.Action), expressionToken(source))
 		}
@@ -1275,6 +1365,19 @@ func (fb *functionBuilder) buildArrayLiteral(expr *ast.ArrayLiteral, resultType 
 		op.ArrayActions = append(op.ArrayActions, action)
 	}
 	return fb.result(op, resultType), nil
+}
+
+// semanticArraySpreadAction admits only the transfer represented by Package 14
+// and keeps semantic copy, move and borrow actions visible for later packages.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package14.md — sections 21, 89, 103
+//   - rules/mlir/semantic-ir/sec_semantic_ir_fixed_array_v1.md — "Array construction"
+func semanticArraySpreadAction(action sema.ResolvedArrayTransferAction) (ArrayTransferAction, bool) {
+	if action == sema.ArrayTransferCopyTrivial {
+		return ArrayActionCopyTrivial, true
+	}
+	return "", false
 }
 
 // buildArrayIndexRead implements
@@ -2737,10 +2840,14 @@ func (fb *functionBuilder) storageAllowed(id TypeID) bool {
 	return t.Kind != TypeString && t.Kind != TypeVoid && t.Kind != TypeNever
 }
 
-// ownershipForParameter enforces the package-owned value boundary from
-// rules/mlir/packages/sec-mlir-dialect_package13.md sections 83-86. Rejections
-// retain the active package so callers can distinguish a deliberate P13 stop
-// from an unclassified legacy-backend failure.
+// ownershipForParameter classifies parameter ownership at the package boundary.
+// Package 14 may temporarily admit an owned non-trivial fixed-array parameter
+// so its exact operation boundary can be diagnosed; buildFunction still rejects
+// the function if the deferred parameter cleanup obligation remains.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package13.md — sections 83-86
+//   - rules/mlir/packages/sec-mlir-dialect_package14.md — sections 88-89, 103
 func ownershipForParameter(p sema.FunctionParameter, maxPackage uint8) (OwnershipClass, error) {
 	if p.MutableRef {
 		return OwnershipMutableReference, nil
@@ -2756,6 +2863,9 @@ func ownershipForParameter(p sema.FunctionParameter, maxPackage uint8) (Ownershi
 	case sema.ArrayType:
 		if maxPackage >= 14 && sema.CopyClassificationOf(p.Type) == sema.CopyTrivial && sema.TriviallyDestructible(p.Type) {
 			return OwnershipImmediate, nil
+		}
+		if maxPackage >= 14 {
+			return OwnershipOwned, nil
 		}
 	case sema.UnionType, sema.ResultType, sema.StructType:
 		if sema.CopyClassificationOf(p.Type) == sema.CopyTrivial && sema.TriviallyDestructible(p.Type) {
@@ -2867,6 +2977,8 @@ func statementToken(s ast.Statement) lexer.Token {
 	case *ast.AssignmentStatement:
 		return x.Token
 	case *ast.ReturnStatement:
+		return x.Token
+	case *ast.AssertStatement:
 		return x.Token
 	case *ast.IfStatement:
 		return x.Token

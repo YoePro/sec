@@ -4,6 +4,7 @@ package secmlir
 
 import (
 	"fmt"
+	"math/big"
 	"strconv"
 	"strings"
 
@@ -11,7 +12,7 @@ import (
 	"sec/internal/layout"
 )
 
-const dialectSchemaVersion = 9
+const dialectSchemaVersion = 10
 
 type emitter struct {
 	module    *semantic.Module
@@ -23,8 +24,12 @@ type emitter struct {
 }
 
 // Emit verifies Semantic IR version 1 and emits deterministic Sec MLIR schema
-// version 9. See rules/mlir/lowering-versions/sec_mlir_lowering_v9.md. It
-// performs no external tool invocation.
+// version 10. It preserves high-level fixed-array values and performs no
+// external tool invocation.
+//
+// Rules:
+//   - rules/mlir/lowering-versions/sec_mlir_lowering_v10.md — sections 1-23
+//   - rules/mlir/packages/sec-mlir-dialect_package14.md — sections 58-85
 func Emit(module *semantic.Module, plan layout.ResolvedScalarPlan) ([]byte, error) {
 	if err := semantic.Verify(module); err != nil {
 		return nil, fmt.Errorf("verify Semantic IR: %w", err)
@@ -423,12 +428,116 @@ func (e *emitter) emitOperation(function *semantic.Function, operation semantic.
 		return e.emitStructExtract(operation, values)
 	case semantic.OpStructReplaceField:
 		return e.emitStructReplaceField(operation, values)
+	case semantic.OpArrayConstruct:
+		return e.emitArrayConstruct(operation, values)
+	case semantic.OpArrayDefault:
+		if err := e.emitResult(operation); err != nil {
+			return err
+		}
+		e.out.WriteString("\"sec.array.default\"() : () -> ")
+		return e.finishResultOperation(operation)
+	case semantic.OpArrayLength:
+		return e.emitUnarySemanticOperation(operation, "sec.array.len", values)
+	case semantic.OpArrayIndexInBounds:
+		return e.emitArrayIndexInBounds(operation, values)
+	case semantic.OpArrayExtract:
+		return e.emitArrayExtract(operation, values)
+	case semantic.OpArrayReplace:
+		return e.emitArrayReplace(operation, values)
+	case semantic.OpBoundsFailure:
+		fmt.Fprintf(&e.out, "\"sec.fail.bounds\"() {operation = %s} : () -> ()", mlirString(operation.ArrayOperation))
 	default:
 		return &UnsupportedLoweringError{Feature: string(operation.Kind), Function: function.ID}
 	}
 	e.emitLocation(operation.Location)
 	e.out.WriteByte('\n')
 	return nil
+}
+
+// The fixed-array helpers below implement the schema-v10 operation mapping
+// without expanding aggregate values or selecting physical array layout.
+//
+// Rules:
+//   - rules/mlir/lowering-versions/sec_mlir_lowering_v10.md — sections 2-13
+//   - rules/mlir/dialect-versions/sec_mlir_dialect_v10.md — sections 7-21
+func (e *emitter) emitArrayConstruct(operation semantic.Operation, values map[semantic.ValueID]semantic.Value) error {
+	if err := e.emitResult(operation); err != nil {
+		return err
+	}
+	e.out.WriteString("\"sec.array.construct\"(")
+	for index, operand := range operation.Operands {
+		if index > 0 {
+			e.out.WriteString(", ")
+		}
+		e.out.WriteString(valueName(operand))
+	}
+	e.out.WriteString(") <{segment_actions = [")
+	for index, action := range operation.ArrayActions {
+		if index > 0 {
+			e.out.WriteString(", ")
+		}
+		e.out.WriteString(mlirString(string(action)))
+	}
+	e.out.WriteString("], segment_kinds = [")
+	for index, kind := range operation.ArraySegmentKinds {
+		if index > 0 {
+			e.out.WriteString(", ")
+		}
+		e.out.WriteString(mlirString(string(kind)))
+	}
+	e.out.WriteString("], segment_lengths = [")
+	for index, length := range operation.ArraySegmentLengths {
+		if index > 0 {
+			e.out.WriteString(", ")
+		}
+		e.out.WriteString(mlirString(length))
+	}
+	e.out.WriteString("]}> : (")
+	if err := e.emitOperandTypes(operation.Operands, values); err != nil {
+		return err
+	}
+	e.out.WriteString(") -> ")
+	return e.finishResultOperation(operation)
+}
+
+func (e *emitter) emitArrayIndexInBounds(operation semantic.Operation, values map[semantic.ValueID]semantic.Value) error {
+	if err := e.emitResult(operation); err != nil {
+		return err
+	}
+	fmt.Fprintf(&e.out, "\"sec.array.index_in_bounds\"(%s, %s) <{index_signed = %t}> : (", valueName(operation.Operands[0]), valueName(operation.Operands[1]), operation.ArrayIndexSigned)
+	if err := e.emitOperandTypes(operation.Operands, values); err != nil {
+		return err
+	}
+	e.out.WriteString(") -> ")
+	return e.finishResultOperation(operation)
+}
+
+func (e *emitter) emitArrayExtract(operation semantic.Operation, values map[semantic.ValueID]semantic.Value) error {
+	if err := e.emitResult(operation); err != nil {
+		return err
+	}
+	fmt.Fprintf(&e.out, "\"sec.array.extract\"(%s, %s) <{action = %s, bounds_kind = %s, bounds_proof = %s}> : (",
+		valueName(operation.Operands[0]), valueName(operation.Operands[1]), mlirString(string(operation.ArrayActions[0])),
+		mlirString(string(operation.ArrayCheckKind)), mlirString(string(operation.ArrayProofKind)))
+	if err := e.emitOperandTypes(operation.Operands, values); err != nil {
+		return err
+	}
+	e.out.WriteString(") -> ")
+	return e.finishResultOperation(operation)
+}
+
+func (e *emitter) emitArrayReplace(operation semantic.Operation, values map[semantic.ValueID]semantic.Value) error {
+	if err := e.emitResult(operation); err != nil {
+		return err
+	}
+	fmt.Fprintf(&e.out, "\"sec.array.replace\"(%s, %s, %s) <{bounds_kind = %s, bounds_proof = %s}> : (",
+		valueName(operation.Operands[0]), valueName(operation.Operands[1]), valueName(operation.Operands[2]),
+		mlirString(string(operation.ArrayCheckKind)), mlirString(string(operation.ArrayProofKind)))
+	if err := e.emitOperandTypes(operation.Operands, values); err != nil {
+		return err
+	}
+	e.out.WriteString(") -> ")
+	return e.finishResultOperation(operation)
 }
 
 // The four helpers below implement the schema-v9 struct operations specified
@@ -1002,6 +1111,15 @@ func (e *emitter) typeText(id semantic.TypeID) (string, error) {
 			return "", err
 		}
 		text = fmt.Sprintf("!sec.struct<identity = %s, typeArguments = %s, fields = %s>", mlirString(typeValue.Identity), arguments, fields)
+	case semantic.TypeArray:
+		if err := e.validateArrayLengthForPlan(typeValue.Length); err != nil {
+			return "", err
+		}
+		element, err := e.typeText(typeValue.Element)
+		if err != nil {
+			return "", err
+		}
+		text = fmt.Sprintf("!sec.array<%s, %s>", element, mlirString(typeValue.Length))
 	case semantic.TypeVoid:
 		return "", fmt.Errorf("void has no MLIR value type")
 	}
@@ -1010,6 +1128,25 @@ func (e *emitter) typeText(id semantic.TypeID) (string, error) {
 	}
 	e.types[id] = text
 	return text, nil
+}
+
+// validateArrayLengthForPlan applies the schema-v10 CompilationPlan boundary
+// without converting the canonical arbitrary-precision length to a host-sized
+// integer.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package14.md — sections 10 and 60
+//   - rules/mlir/lowering-versions/sec_mlir_lowering_v10.md — sections 1 and 15
+func (e *emitter) validateArrayLengthForPlan(length string) error {
+	value, ok := new(big.Int).SetString(length, 10)
+	if !ok || value.Sign() < 0 {
+		return fmt.Errorf("invalid fixed-array length %q", length)
+	}
+	maximum := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(e.plan.PointerWidthBits)), big.NewInt(1))
+	if value.Cmp(maximum) > 0 {
+		return fmt.Errorf("fixed-array length %s overflows target uint%d", length, e.plan.PointerWidthBits)
+	}
+	return nil
 }
 
 func (e *emitter) enumDefinition(id semantic.TypeID) (semantic.EnumDefinition, bool) {

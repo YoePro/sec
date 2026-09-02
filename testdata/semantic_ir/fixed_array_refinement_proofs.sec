@@ -1,0 +1,58 @@
+module main
+
+fn Branch(values: int[4], index: int) int {
+    if index >= 0 && index < 4 {
+        return values[index]
+    }
+    return 0
+}
+
+fn Asserted(values: int[4], index: int) int {
+    assert index >= 0
+    assert index < 4
+    return values[index]
+}
+
+fn UnsignedBranch(values: int[4], index: uint) int {
+    if index < values.Len {
+        return values[index]
+    }
+    return 0
+}
+
+fn MissingLower(values: int[4], index: int) int {
+    if index < 4 {
+        return values[index]
+    }
+    return 0
+}
+
+fn ZeroLength(values: int[0], index: uint) int {
+    if index < values.Len {
+        return values[index]
+    }
+    return 0
+}
+
+fn MutableIndex(values: int[4], index: int, replacement: int) int {
+    let mut selected := index
+    if selected >= 0 && selected < 4 {
+        selected = replacement
+        return values[selected]
+    }
+    return 0
+}
+
+fn OutsideBranch(values: int[4], index: int) int {
+    if index >= 0 && index < 4 {
+        let marker := true
+    }
+    return values[index]
+}
+
+fn Disjunction(values: int[4], index: int) int {
+    if index >= 0 || index < 4 {
+        return values[index]
+    }
+    return 0
+}

@@ -4141,6 +4141,8 @@ func findSelectorLHS(node any, text string, dotOffset int) ast.Expression {
 		return findSelectorLHS(n.Value, text, dotOffset)
 	case *ast.ExpressionStatement:
 		return findSelectorLHS(n.Expression, text, dotOffset)
+	case *ast.AssertStatement:
+		return findSelectorLHS(n.Condition, text, dotOffset)
 	case *ast.AssignmentStatement:
 		return findSelectorLHS(n.Value, text, dotOffset)
 	case *ast.ReturnStatement:
@@ -4438,6 +4440,8 @@ func rewriteQualifierInStatement(stmt ast.Statement, from string, to string) {
 		rewriteQualifierInExpression(stmt.Value, from, to)
 	case *ast.ExpressionStatement:
 		rewriteQualifierInExpression(stmt.Expression, from, to)
+	case *ast.AssertStatement:
+		rewriteQualifierInExpression(stmt.Condition, from, to)
 	case *ast.ReturnStatement:
 		rewriteQualifierInExpression(stmt.Value, from, to)
 	case *ast.MatchStatement:
@@ -4639,6 +4643,11 @@ func qualifyLocalTypeReferencesInStatement(stmt ast.Statement, module string, lo
 			return
 		}
 		qualifyLocalTypesInExpression(stmt.Expression, module, localTypes)
+	case *ast.AssertStatement:
+		if stmt == nil {
+			return
+		}
+		qualifyLocalTypesInExpression(stmt.Condition, module, localTypes)
 	case *ast.ReturnStatement:
 		if stmt == nil {
 			return
@@ -4898,6 +4907,8 @@ func qualifyLocalCallsInStatement(stmt ast.Statement, module string, localFuncti
 		}
 	case *ast.ExpressionStatement:
 		qualifyLocalCallsInExpression(stmt.Expression, module, localFunctions)
+	case *ast.AssertStatement:
+		qualifyLocalCallsInExpression(stmt.Condition, module, localFunctions)
 	case *ast.ReturnStatement:
 		qualifyLocalCallsInExpression(stmt.Value, module, localFunctions)
 	case *ast.MatchStatement:

@@ -1,0 +1,78 @@
+module main
+
+type Pair struct {
+    left: int32,
+    right: int128,
+}
+
+type Holder struct {
+    values: int128[2],
+    marker: uint256,
+}
+
+fn Literal() int32[3] {
+    return [1, 2, 3]
+}
+
+fn Spread(source: int32[2]) int32[4] {
+    return [1, source..., 4]
+}
+
+fn Zero() int32[0] {
+    return []
+}
+
+fn Defaulted() int32[4] {
+    let mut values: int32[4]
+    return values
+}
+
+fn ArrayInStruct() Holder {
+    return Holder { values: [1, 2], marker: 3 }
+}
+
+fn StructInArray() Pair[2] {
+    return [Pair { left: 1, right: 2 }, Pair { left: 3, right: 4 }]
+}
+
+fn Nested() int32[2][2] {
+    return [[1, 2], [3, 4]]
+}
+
+fn Identity(values: int32[3]) int32[3] {
+    return values
+}
+
+fn Length(values: int32[3]) uint {
+    return values.Len
+}
+
+fn Constant(values: int32[3]) int32 {
+    return values[2]
+}
+
+fn Dynamic(values: int32[3], index: int128) int32 {
+    return values[index]
+}
+
+fn Fallible(values: int32[3], index: int128) Result[int32, IndexError] {
+    return Ok(try values[index])
+}
+
+fn LocalHandler(values: int32[3], index: int128) int32 {
+    return try values[index] {
+        Err(IndexError.OutOfBounds) => 0
+    }
+}
+
+fn Replace(index: uint128) int32[3] {
+    let mut values: int32[3] := [1, 2, 3]
+    values[index] = 9
+    return values
+}
+
+fn NestedReplace(row: uint, column: uint) int32[2][2] {
+    let mut matrix: int32[2][2] := [[1, 2], [3, 4]]
+    matrix[row][column] = 9
+    return matrix
+}

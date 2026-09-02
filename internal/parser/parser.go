@@ -294,6 +294,9 @@ func (p *Parser) parseStatement() ast.Statement {
 	case lexer.DISCARD:
 		return p.parseDiscardStatement()
 
+	case lexer.ASSERT:
+		return p.parseAssertStatement()
+
 	case lexer.CANCEL:
 		return &ast.CancelStatement{Token: p.curToken}
 
@@ -489,6 +492,56 @@ func (p *Parser) parseDiscardStatement() ast.Statement {
 	stmt.Value = p.parseExpression(LOWEST)
 	if ident, ok := stmt.Value.(*ast.Identifier); ok {
 		stmt.Name = ident
+	}
+	return stmt
+}
+
+// parseAssertStatement parses the two Sec 0.1 assertion forms and rejects
+// function-call spelling, a missing message comma, and dynamic messages.
+//
+// Rules:
+//   - rules/errors/panic.md — § 15.1 "Canonical syntax"
+//   - rules/errors/panic.md — § 15.4 "Messages"
+func (p *Parser) parseAssertStatement() ast.Statement {
+	stmt := &ast.AssertStatement{Token: p.curToken}
+	if p.peekToken.Type == lexer.RBRACE || p.peekToken.Type == lexer.EOF ||
+		(p.peekToken.Line > p.curToken.Line && p.isReturnTerminator(p.peekToken.Type)) {
+		p.addError("assert requires a condition at %d:%d", p.peekToken.Line, p.peekToken.Column)
+		return stmt
+	}
+
+	functionLike := p.peekToken.Type == lexer.LPAREN &&
+		p.peekToken.Line == p.curToken.Line &&
+		p.peekToken.Column == p.curToken.Column+len(p.curToken.Lexeme)
+	if functionLike {
+		p.addError("function-like assert(...) is not valid; write assert condition at %d:%d", p.curToken.Line, p.curToken.Column)
+	}
+
+	p.nextToken()
+	stmt.Condition = p.parseExpression(LOWEST)
+	if stmt.Condition == nil {
+		p.addError("assert requires a condition at %d:%d", p.curToken.Line, p.curToken.Column)
+		return stmt
+	}
+
+	if p.peekToken.Type == lexer.COMMA {
+		p.nextToken()
+		if p.peekToken.Type != lexer.STRING {
+			p.addError("assert message must be a string literal at %d:%d", p.peekToken.Line, p.peekToken.Column)
+			if p.peekToken.Type != lexer.RBRACE && p.peekToken.Type != lexer.EOF {
+				p.nextToken()
+				p.parseExpression(LOWEST)
+			}
+			return stmt
+		}
+		p.nextToken()
+		stmt.Message = &ast.StringLiteral{Token: p.curToken, Value: trimStringQuotes(p.curToken.Lexeme)}
+		return stmt
+	}
+
+	if p.peekToken.Type == lexer.STRING && p.peekToken.Line == p.curToken.Line {
+		p.addError("assert message requires ',' before the string literal at %d:%d", p.peekToken.Line, p.peekToken.Column)
+		p.nextToken()
 	}
 	return stmt
 }
@@ -2587,7 +2640,8 @@ func (p *Parser) isReturnTerminator(t lexer.TokenType) bool {
 		lexer.UNSAFE,
 		lexer.ASM,
 		lexer.DEFER,
-		lexer.DISCARD:
+		lexer.DISCARD,
+		lexer.ASSERT:
 		return true
 	default:
 		return false

@@ -2,9 +2,11 @@
 
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/Dominance.h"
 #include "sec/Dialect/Sec/SecOps.h"
 #include "sec/Dialect/Sec/SecTypes.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 
 #include <map>
 #include <optional>
@@ -16,6 +18,7 @@ namespace sec {
 #define GEN_PASS_DEF_SECVERIFYTRYHANDLERS
 #define GEN_PASS_DEF_SECVERIFYUNIONGUARDS
 #define GEN_PASS_DEF_SECVERIFYMATCHCFG
+#define GEN_PASS_DEF_SECVERIFYARRAYINDEXGUARDS
 #include "sec/Analysis/Passes.h.inc"
 } // namespace sec
 
@@ -452,6 +455,76 @@ LogicalResult sec::verifyMatchCFG(func::FuncOp function) {
   return success();
 }
 
+// verifyArrayIndexGuards checks the cross-block safety contract for high-level
+// fixed-array projections and replacements. A runtime operation is legal only
+// below the exclusive true edge of a matching predicate; a proven operation
+// instead carries one of Sema's closed proof-provenance values.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package14.md sections 68 and 101
+//   - rules/mlir/dialect-versions/sec_mlir_dialect_v10.md sections 16 and 18-20
+//   - rules/mlir/lowering-versions/sec_mlir_lowering_v10.md sections 7-9
+LogicalResult sec::verifyArrayIndexGuards(func::FuncOp function) {
+  SmallVector<sec::ArrayIndexInBoundsOp> predicates;
+  function.walk([&](sec::ArrayIndexInBoundsOp predicate) {
+    predicates.push_back(predicate);
+  });
+  DominanceInfo dominance(function);
+
+  WalkResult result = function.walk([&](Operation *operation) {
+    auto extract = dyn_cast<sec::ArrayExtractOp>(operation);
+    auto replace = dyn_cast<sec::ArrayReplaceOp>(operation);
+    if (!extract && !replace)
+      return WalkResult::advance();
+
+    StringRef boundsKind = extract ? extract.getBoundsKind()
+                                   : replace.getBoundsKind();
+    StringRef boundsProof = extract ? extract.getBoundsProof()
+                                    : replace.getBoundsProof();
+    if (boundsKind == "proven-safe") {
+      if (!llvm::is_contained(
+              {StringRef("constant"), StringRef("range"),
+               StringRef("branch"), StringRef("contract"),
+               StringRef("analysis")},
+              boundsProof))
+        return operation->emitOpError(
+                   "proven-safe array operation requires constant, range, branch, contract, or analysis proof provenance"),
+               WalkResult::interrupt();
+      return WalkResult::advance();
+    }
+    if (boundsKind != "runtime-check" || boundsProof != "guarded")
+      return operation->emitOpError(
+                 "array bounds metadata is neither proven-safe nor runtime guarded"),
+             WalkResult::interrupt();
+
+    Value array = extract ? extract.getArray() : replace.getArray();
+    Value index = extract ? extract.getIndex() : replace.getIndex();
+    bool guarded = llvm::any_of(predicates, [&](auto predicate) {
+      if (predicate.getArray() != array || predicate.getIndex() != index ||
+          !predicate.getResult().hasOneUse())
+        return false;
+      auto branch = dyn_cast_or_null<cf::CondBranchOp>(
+          predicate->getNextNode());
+      if (!branch || branch.getCondition() != predicate.getResult() ||
+          branch.getTrueDest() == branch.getFalseDest())
+        return false;
+
+      // A dedicated true successor turns block dominance into edge dominance:
+      // no path can enter the guarded region without traversing this true edge.
+      Block *trueBlock = branch.getTrueDest();
+      if (trueBlock->getSinglePredecessor() != branch->getBlock())
+        return false;
+      return dominance.dominates(trueBlock, operation->getBlock());
+    });
+    if (!guarded)
+      return operation->emitOpError(
+                 "runtime-check array operation requires a dominating true edge from sec.array.index_in_bounds on the same array and index SSA values"),
+             WalkResult::interrupt();
+    return WalkResult::advance();
+  });
+  return result.wasInterrupted() ? failure() : success();
+}
+
 namespace {
 
 class VerifyCheckedIntegerGuardsPass final
@@ -500,6 +573,16 @@ public:
   }
 };
 
+class VerifyArrayIndexGuardsPass final
+    : public sec::impl::SecVerifyArrayIndexGuardsBase<
+          VerifyArrayIndexGuardsPass> {
+public:
+  void runOnOperation() override {
+    if (failed(sec::verifyArrayIndexGuards(getOperation())))
+      signalPassFailure();
+  }
+};
+
 } // namespace
 
 std::unique_ptr<mlir::Pass> sec::createSecVerifyCheckedIntegerGuardsPass() {
@@ -520,4 +603,8 @@ std::unique_ptr<mlir::Pass> sec::createSecVerifyUnionGuardsPass() {
 
 std::unique_ptr<mlir::Pass> sec::createSecVerifyMatchCFGPass() {
   return std::make_unique<VerifyMatchCFGPass>();
+}
+
+std::unique_ptr<mlir::Pass> sec::createSecVerifyArrayIndexGuardsPass() {
+  return std::make_unique<VerifyArrayIndexGuardsPass>();
 }

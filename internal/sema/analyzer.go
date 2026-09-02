@@ -52,6 +52,8 @@ type Analyzer struct {
 	// introduced in P14-19 instead of rebuilding the literal from the AST.
 	resolvedArrayLiteralPlans   map[*ast.ArrayLiteral]ResolvedArrayLiteralPlan
 	resolvedArrayIndexPlans     map[*ast.IndexExpression]ResolvedArrayIndexPlan
+	arrayIndexRefinements       []arrayIndexRefinement
+	arrayIndexMutationEpoch     uint64
 	resolvedStructLiteralPlans  map[*ast.StructLiteral]ResolvedStructLiteralPlan
 	resolvedStructMemberPlans   map[*ast.MemberExpression]ResolvedStructMemberPlan
 	nextBindingID               BindingID
@@ -249,6 +251,8 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.resolvedMatchPlans = map[*ast.MatchExpression]ResolvedMatchPlan{}
 	a.resolvedArrayLiteralPlans = map[*ast.ArrayLiteral]ResolvedArrayLiteralPlan{}
 	a.resolvedArrayIndexPlans = map[*ast.IndexExpression]ResolvedArrayIndexPlan{}
+	a.arrayIndexRefinements = nil
+	a.arrayIndexMutationEpoch = 0
 	a.resolvedStructLiteralPlans = map[*ast.StructLiteral]ResolvedStructLiteralPlan{}
 	a.resolvedStructMemberPlans = map[*ast.MemberExpression]ResolvedStructMemberPlan{}
 	a.nextBindingID = 1
@@ -767,6 +771,8 @@ func isNilStatement(stmt ast.Statement) bool {
 	case *ast.DeferStatement:
 		return stmt == nil
 	case *ast.DiscardStatement:
+		return stmt == nil
+	case *ast.AssertStatement:
 		return stmt == nil
 	case *ast.DetachStatement:
 		return stmt == nil
@@ -1935,6 +1941,8 @@ func (a *Analyzer) analyzeStatement(stmt ast.Statement) {
 		a.analyzeDeferStatement(stmt)
 	case *ast.DiscardStatement:
 		a.analyzeDiscardStatement(stmt)
+	case *ast.AssertStatement:
+		a.analyzeAssertStatement(stmt)
 	case *ast.DetachStatement:
 		a.analyzeDetachStatement(stmt)
 	case *ast.CancelStatement:
@@ -2022,7 +2030,9 @@ func (a *Analyzer) analyzeBlockStatements(block *ast.BlockStatement) {
 		symbolsBefore[name] = true
 	}
 	a.scopeDepth++
+	refinementCount := len(a.arrayIndexRefinements)
 	defer func() {
+		a.arrayIndexRefinements = a.arrayIndexRefinements[:refinementCount]
 		newNames := make([]string, 0)
 		for name := range a.symbols {
 			if !symbolsBefore[name] {
@@ -2335,6 +2345,31 @@ func (a *Analyzer) analyzeDiscardStatement(stmt *ast.DiscardStatement) {
 	}
 }
 
+// analyzeAssertStatement enforces exact bool typing for assertion conditions;
+// Sec does not apply a truthiness conversion.
+//
+// Rules:
+//   - rules/errors/panic.md — § 15.2 "Condition typing"
+func (a *Analyzer) analyzeAssertStatement(stmt *ast.AssertStatement) {
+	if stmt == nil || stmt.Condition == nil {
+		return
+	}
+	conditionType, _ := a.inferExpression(stmt.Condition)
+	if conditionType.Kind != InvalidType && conditionType.Kind != BoolType {
+		a.addErrorAtToken(expressionToken(stmt.Condition), "assert condition must be bool, got %s", typeDisplayName(conditionType))
+		return
+	}
+	if conditionType.Kind == BoolType {
+		// Package 14 section 36 routes assertion-derived bounds through the
+		// canonical analysis provenance; the proof kind is not source syntax.
+		a.arrayIndexRefinements = append(a.arrayIndexRefinements, arrayIndexRefinement{
+			condition: stmt.Condition,
+			proof:     ArrayIndexProofOther,
+			epoch:     a.arrayIndexMutationEpoch,
+		})
+	}
+}
+
 func (a *Analyzer) analyzeDetachStatement(stmt *ast.DetachStatement) {
 	if stmt.Value == nil {
 		a.addErrorAtToken(stmt.Token, "detach requires task or thread handle")
@@ -2396,7 +2431,16 @@ func (a *Analyzer) analyzeIfStatement(stmt *ast.IfStatement) {
 	} else if isBoolLiteral(stmt.Condition, false) {
 		thenReachable = false
 	}
+	refinementCount := len(a.arrayIndexRefinements)
+	if stmt.Condition != nil && thenReachable {
+		a.arrayIndexRefinements = append(a.arrayIndexRefinements, arrayIndexRefinement{
+			condition: stmt.Condition,
+			proof:     ArrayIndexProofBranch,
+			epoch:     a.arrayIndexMutationEpoch,
+		})
+	}
 	thenBranch := a.analyzeBranchBlockWithCallGraphReachability(stmt.Consequence, thenReachable)
+	a.arrayIndexRefinements = a.arrayIndexRefinements[:refinementCount]
 	if !thenReachable {
 		thenBranch.continues = false
 	}
@@ -2865,6 +2909,14 @@ type branchAnalysis struct {
 	arenaGenerations   map[string]int
 	continues          bool
 	fallsThrough       bool
+}
+
+// arrayIndexRefinement retains one currently dominating source condition and
+// the Package 14 provenance assigned to bounds facts derived from it.
+type arrayIndexRefinement struct {
+	condition ast.Expression
+	proof     ArrayIndexProofKind
+	epoch     uint64
 }
 
 type loopIterationAnalysisState struct {
@@ -4888,6 +4940,8 @@ func statementUsesSelf(stmt ast.Statement) bool {
 		return stmt.Assignment != nil && statementUsesSelf(stmt.Assignment)
 	case *ast.ExpressionStatement:
 		return expressionUsesSelf(stmt.Expression)
+	case *ast.AssertStatement:
+		return expressionUsesSelf(stmt.Condition)
 	case *ast.DetachStatement:
 		return expressionUsesSelf(stmt.Value)
 	case *ast.ReturnStatement:
@@ -4972,6 +5026,8 @@ func (a *Analyzer) statementWritesTargetMember(stmt ast.Statement, target Type, 
 		return a.expressionCallsMutableTargetMethod(stmt.Expression, target)
 	case *ast.DiscardStatement:
 		return a.expressionCallsMutableTargetMethod(stmt.Value, target)
+	case *ast.AssertStatement:
+		return a.expressionCallsMutableTargetMethod(stmt.Condition, target)
 	case *ast.ReturnStatement:
 		return a.expressionCallsMutableTargetMethod(stmt.Value, target)
 	case *ast.IfStatement:
@@ -5692,6 +5748,9 @@ func (a *Analyzer) analyzeReturnStatement(functionName string, returnType Type, 
 	if valueType.Kind == InvalidType {
 		return
 	}
+	if a.rejectImplicitIndexedReturnExtraction(stmt.Value, valueType) {
+		return
+	}
 	if variadicPackValue(valueType) {
 		// rules/declarations/functions.md section 32: a pack may not escape
 		// the invocation through the function result.
@@ -5734,6 +5793,36 @@ func (a *Analyzer) analyzeReturnStatement(functionName string, returnType Type, 
 	}
 	a.markResourceTransfer(stmt.Value)
 	a.markMoveSource(stmt.Value)
+}
+
+// rejectImplicitIndexedReturnExtraction prevents the intrinsically transferring
+// return context from turning ordinary collection indexing into an implicit
+// move of an element that is not copyable. The collection must instead expose
+// an owning extraction operation, or the program must move the containing value
+// or return an appropriate borrow.
+//
+// Rules:
+//   - rules/collections/collections.md — "Move-only indexed reads"
+//   - rules/memory/copy_move.md — §5.3 "Copy of a copyable field or element"
+//   - rules/memory/copy_move.md — §9.1 "Return is intrinsically transferring"
+func (a *Analyzer) rejectImplicitIndexedReturnExtraction(expr ast.Expression, elementType Type) bool {
+	index, indexed := expr.(*ast.IndexExpression)
+	if !indexed || !requiresOwnershipTransfer(elementType) {
+		return false
+	}
+	source := index.String()
+	if place, resolved := a.resolvePlace(index); resolved {
+		source = place.String()
+	}
+	a.addErrorAtTokenWithMetadata(
+		index.Token,
+		diagnostics.ImplicitMoveDisallowed,
+		"move the containing collection or return a reference to the element",
+		"cannot return %s element %s by ordinary indexing because it is not implicitly copyable",
+		typeDisplayName(elementType),
+		source,
+	)
+	return true
 }
 
 // isExplicitUnitConversionReturn recognizes the declaration form described by
@@ -9973,6 +10062,10 @@ func (a *Analyzer) resolveResultValueInitializer(resultType Type, expr ast.Expre
 }
 
 func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement, allowFallible bool) {
+	// Package 14 section 36 requires a dominating value proof. Conservatively
+	// invalidate active comparison facts after any assignment; this is safe
+	// until the general refinement engine tracks per-binding SSA versions.
+	defer func() { a.arrayIndexMutationEpoch++ }()
 	if member, ok := stmt.Target.(*ast.MemberExpression); ok {
 		a.analyzeMemberAssignmentStatement(stmt, member, allowFallible)
 		return
@@ -13247,14 +13340,204 @@ func (a *Analyzer) recordFixedArrayIndexPlan(expr *ast.IndexExpression, arrayTyp
 		plan.ProofKind = ArrayIndexProofConstant
 		plan.FailureMode = ArrayIndexFailureNone
 		plan.ErrorType = Type{}
-	} else if integerTypeRangeProvesArrayIndex(indexType, length) {
+	} else if proof, proven := integerTypeRangeArrayIndexProof(indexType, length); proven {
 		plan.CheckKind = ArrayIndexProvenSafe
-		plan.ProofKind = ArrayIndexProofRange
+		plan.ProofKind = proof
+		plan.FailureMode = ArrayIndexFailureNone
+		plan.ErrorType = Type{}
+	} else if proof, proven := a.refinementProvesArrayIndex(expr.Left, expr.Index, indexType, length); proven {
+		plan.CheckKind = ArrayIndexProvenSafe
+		plan.ProofKind = proof
 		plan.FailureMode = ArrayIndexFailureNone
 		plan.ErrorType = Type{}
 	}
 	a.recordResolvedArrayIndexPlan(expr, plan)
 	a.recordArrayIndexEffect(expr, plan)
+}
+
+// refinementProvesArrayIndex combines currently dominating branch/assertion
+// conditions into the exact 0 <= index < N proof required for a fixed array.
+// It never proves an index into a zero-length array.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package14.md — sections 32 and 36
+//   - rules/errors/panic.md — § 15.6 "Assertion refinement"
+func (a *Analyzer) refinementProvesArrayIndex(array, index ast.Expression, indexType Type, length *big.Int) (ArrayIndexProofKind, bool) {
+	if array == nil || index == nil || length == nil || length.Sign() == 0 {
+		return "", false
+	}
+	lower := integerTypeMinimumIsNonNegative(indexType)
+	upper := false
+	proofKinds := map[ArrayIndexProofKind]bool{}
+	for _, refinement := range a.arrayIndexRefinements {
+		if refinement.epoch != a.arrayIndexMutationEpoch {
+			continue
+		}
+		conditionLower, conditionUpper := a.conditionBoundsArrayIndex(refinement.condition, array, index, length)
+		if conditionLower && !lower {
+			lower = true
+			proofKinds[refinement.proof] = true
+		}
+		if conditionUpper && !upper {
+			upper = true
+			proofKinds[refinement.proof] = true
+		}
+	}
+	if !lower || !upper || len(proofKinds) == 0 {
+		return "", false
+	}
+	if len(proofKinds) == 1 {
+		for proof := range proofKinds {
+			return proof, true
+		}
+	}
+	return ArrayIndexProofOther, true
+}
+
+// conditionBoundsArrayIndex recognizes only conjunctions of exact integer
+// comparisons. Disjunctions and unrelated expressions cannot establish facts.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package14.md — section 36
+func (a *Analyzer) conditionBoundsArrayIndex(condition, array, index ast.Expression, length *big.Int) (bool, bool) {
+	comparison, ok := condition.(*ast.InfixExpression)
+	if !ok || comparison == nil {
+		return false, false
+	}
+	if comparison.Operator == "&&" {
+		leftLower, leftUpper := a.conditionBoundsArrayIndex(comparison.Left, array, index, length)
+		rightLower, rightUpper := a.conditionBoundsArrayIndex(comparison.Right, array, index, length)
+		return leftLower || rightLower, leftUpper || rightUpper
+	}
+	leftIndex := a.sameResolvedExpression(comparison.Left, index)
+	rightIndex := a.sameResolvedExpression(comparison.Right, index)
+	if !leftIndex && !rightIndex {
+		return false, false
+	}
+	if comparison.Operator == "==" {
+		other := comparison.Right
+		if rightIndex {
+			other = comparison.Left
+		}
+		constant, constantOK := a.integerConstantValue(other)
+		return constantOK && constant.Sign() >= 0, constantOK && constant.Sign() >= 0 && constant.Cmp(length) < 0
+	}
+	if leftIndex {
+		switch comparison.Operator {
+		case ">=":
+			return a.lowerComparisonProvesNonNegative(comparison.Right, false), false
+		case ">":
+			return a.lowerComparisonProvesNonNegative(comparison.Right, true), false
+		case "<":
+			return false, a.upperComparisonProvesInBounds(comparison.Right, array, length, false)
+		case "<=":
+			return false, a.upperComparisonProvesInBounds(comparison.Right, array, length, true)
+		}
+	}
+	switch comparison.Operator {
+	case "<=":
+		return a.lowerComparisonProvesNonNegative(comparison.Left, false), false
+	case "<":
+		return a.lowerComparisonProvesNonNegative(comparison.Left, true), false
+	case ">":
+		return false, a.upperComparisonProvesInBounds(comparison.Left, array, length, false)
+	case ">=":
+		return false, a.upperComparisonProvesInBounds(comparison.Left, array, length, true)
+	}
+	return false, false
+}
+
+// lowerComparisonProvesNonNegative evaluates the exact constant side of a
+// lower-bound comparison without host-width narrowing.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package14.md — sections 35-36
+func (a *Analyzer) lowerComparisonProvesNonNegative(bound ast.Expression, strict bool) bool {
+	constant, ok := a.integerConstantValue(bound)
+	if !ok {
+		return false
+	}
+	if strict {
+		return constant.Cmp(big.NewInt(-1)) >= 0
+	}
+	return constant.Sign() >= 0
+}
+
+// upperComparisonProvesInBounds accepts an exact constant boundary or the Len
+// property of the same resolved fixed-array binding.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package14.md — sections 35-36
+func (a *Analyzer) upperComparisonProvesInBounds(bound, array ast.Expression, length *big.Int, inclusive bool) bool {
+	if !inclusive && a.isLengthOfArray(bound, array) {
+		return true
+	}
+	constant, ok := a.integerConstantValue(bound)
+	if !ok {
+		return false
+	}
+	if inclusive {
+		return constant.Cmp(length) < 0
+	}
+	return constant.Cmp(length) <= 0
+}
+
+// sameResolvedExpression compares identifier/member paths by compiler-owned
+// binding identity so shadowed names cannot forge a bounds proof.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package14.md — section 36
+func (a *Analyzer) sameResolvedExpression(left, right ast.Expression) bool {
+	switch left := left.(type) {
+	case *ast.Identifier:
+		right, ok := right.(*ast.Identifier)
+		if !ok {
+			return false
+		}
+		leftBinding, leftOK := a.ResolvedBindingOf(left)
+		rightBinding, rightOK := a.ResolvedBindingOf(right)
+		return leftOK && rightOK && leftBinding.ID == rightBinding.ID
+	case *ast.MemberExpression:
+		right, ok := right.(*ast.MemberExpression)
+		return ok && left.Property != nil && right.Property != nil &&
+			left.Property.Value == right.Property.Value && a.sameResolvedExpression(left.Object, right.Object)
+	default:
+		return false
+	}
+}
+
+// isLengthOfArray recognizes only the canonical/accepted Len property on the
+// exact resolved array expression used by the indexed access.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package14.md — section 36
+//   - rules/library/core-library.md — fixed-array Len
+func (a *Analyzer) isLengthOfArray(expression, array ast.Expression) bool {
+	member, ok := expression.(*ast.MemberExpression)
+	if !ok || member == nil || member.Property == nil || member.Object == nil {
+		return false
+	}
+	return (member.Property.Value == "Len" || member.Property.Value == "len") && a.sameResolvedExpression(member.Object, array)
+}
+
+// integerTypeMinimumIsNonNegative derives only the lower-bound half of the
+// Package 14 index predicate from canonical integer range facts.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package14.md — section 36
+//   - rules/types/contracts.md — range contracts
+func integerTypeMinimumIsNonNegative(indexType Type) bool {
+	if indexType.MinInteger == nil {
+		return false
+	}
+	minimum := new(big.Int).Set(indexType.MinInteger)
+	for _, contract := range indexType.Contracts {
+		rangeContract, ok := contract.(RangeContract)
+		if ok && rangeContract.Min != nil && rangeContract.Min.Cmp(minimum) > 0 {
+			minimum.Set(rangeContract.Min)
+		}
+	}
+	return minimum.Sign() >= 0
 }
 
 // indexErrorType resolves the core declaration when it is part of the module
@@ -13275,20 +13558,26 @@ func (a *Analyzer) indexErrorType() Type {
 	}
 }
 
-// integerTypeRangeProvesArrayIndex recognizes the named/builtin range facts
-// currently present in Sema. Branch/assertion refinements can extend the same
-// proof-kind boundary without changing downstream IR consumers.
-func integerTypeRangeProvesArrayIndex(indexType Type, length *big.Int) bool {
+// integerTypeRangeArrayIndexProof distinguishes a named integer range from an
+// inline declaration contract while proving the same exact 0 <= index < N
+// predicate.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package14.md — sections 32 and 36
+//   - rules/types/contracts.md — range contracts
+func integerTypeRangeArrayIndexProof(indexType Type, length *big.Int) (ArrayIndexProofKind, bool) {
 	if length == nil || length.Sign() == 0 || indexType.MinInteger == nil || indexType.MaxInteger == nil {
-		return false
+		return "", false
 	}
 	minimum := new(big.Int).Set(indexType.MinInteger)
 	maximum := new(big.Int).Set(indexType.MaxInteger)
+	hasRangeContract := false
 	for _, contract := range indexType.Contracts {
 		rangeContract, ok := contract.(RangeContract)
 		if !ok {
 			continue
 		}
+		hasRangeContract = true
 		if rangeContract.Min != nil && rangeContract.Min.Cmp(minimum) > 0 {
 			minimum.Set(rangeContract.Min)
 		}
@@ -13302,7 +13591,13 @@ func integerTypeRangeProvesArrayIndex(indexType Type, length *big.Int) bool {
 			}
 		}
 	}
-	return minimum.Sign() >= 0 && maximum.Cmp(length) < 0
+	if minimum.Sign() < 0 || maximum.Cmp(length) >= 0 {
+		return "", false
+	}
+	if hasRangeContract && !indexType.Named {
+		return ArrayIndexProofContract, true
+	}
+	return ArrayIndexProofRange, true
 }
 
 func arrayIndexTransferAction(elementType Type, use ArrayIndexUseKind) ResolvedArrayTransferAction {
@@ -19944,6 +20239,11 @@ func statementToken(stmt ast.Statement) lexer.Token {
 		}
 		return stmt.Token
 	case *ast.DiscardStatement:
+		if stmt == nil {
+			return lexer.Token{}
+		}
+		return stmt.Token
+	case *ast.AssertStatement:
 		if stmt == nil {
 			return lexer.Token{}
 		}

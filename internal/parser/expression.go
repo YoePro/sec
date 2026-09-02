@@ -510,6 +510,13 @@ func (p *Parser) parseMatchArm() *ast.MatchArm {
 	return arm
 }
 
+// parseMatchPattern parses Sec's closed match-pattern grammar and rejects
+// expression-like spellings before semantic variant resolution.
+//
+// Rules:
+//   - rules/control-flow/flowcontrol_match.md — "Variant patterns"
+//   - rules/control-flow/flowcontrol_match.md — "Whole-payload binding"
+//   - rules/declarations/unions.md — "match"
 func (p *Parser) parseMatchPattern() *ast.MatchPattern {
 	start := p.curToken
 	if start.Type == lexer.UNDERSCORE {
@@ -541,6 +548,17 @@ func (p *Parser) parseMatchPattern() *ast.MatchPattern {
 	case lexer.LPAREN:
 		p.nextToken()
 		p.nextToken()
+		if p.curToken.Type == lexer.RPAREN {
+			p.addError(
+				"match variant %s cannot use empty payload parentheses; write %s for a payload-less variant or %s(binding) for a payload-bearing variant at %d:%d",
+				pattern.Name,
+				pattern.Name,
+				pattern.Name,
+				p.curToken.Line,
+				p.curToken.Column,
+			)
+			return nil
+		}
 		pattern.Binding = p.parseMatchPatternBinding()
 		if pattern.Binding == nil {
 			return nil

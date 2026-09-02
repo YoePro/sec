@@ -67,7 +67,7 @@ func format(text string, options Options) string {
 		if options.Fix {
 			line = normalizeReversedTypeDeclaration(line)
 		}
-		line = formatUnitExpressions(formatSingleLineCallSpacing(formatMatchArm(formatLet(formatSignature(formatInitSignature(normalizeFunc(line)))))))
+		line = formatAssert(formatUnitExpressions(formatSingleLineCallSpacing(formatMatchArm(formatLet(formatSignature(formatInitSignature(normalizeFunc(line))))))))
 		level := indent - closing(line)
 		if level < 0 {
 			level = 0
@@ -634,6 +634,58 @@ func formatLet(line string) string {
 		}
 	}
 	return "let " + strings.Join(parts, ", ")
+}
+
+// formatAssert canonicalizes the comma separator before an assertion message
+// while preserving commas nested in the condition and inside quoted literals.
+//
+// Rules:
+//   - rules/errors/panic.md — § 15.1 "Canonical syntax"
+//   - rules/tooling/formatter.md — "Assertion statements"
+func formatAssert(line string) string {
+	if !strings.HasPrefix(line, "assert ") || strings.Contains(line, "/*") {
+		return line
+	}
+	code, comment, hasComment := splitTrailingLineComment(line)
+	depth := 0
+	quote := byte(0)
+	escaped := false
+	separator := -1
+	for i := 0; i < len(code); i++ {
+		ch := code[i]
+		if quote != 0 {
+			if escaped {
+				escaped = false
+			} else if ch == '\\' {
+				escaped = true
+			} else if ch == quote {
+				quote = 0
+			}
+			continue
+		}
+		switch ch {
+		case '"', '\'':
+			quote = ch
+		case '(', '[', '{':
+			depth++
+		case ')', ']', '}':
+			if depth > 0 {
+				depth--
+			}
+		case ',':
+			if depth == 0 && strings.HasPrefix(strings.TrimSpace(code[i+1:]), "\"") {
+				separator = i
+			}
+		}
+	}
+	if separator < 0 {
+		return line
+	}
+	formatted := strings.TrimSpace(code[:separator]) + ", " + strings.TrimSpace(code[separator+1:])
+	if hasComment {
+		formatted += " " + comment
+	}
+	return formatted
 }
 func matchingParen(s string, open int) int {
 	depth, angle := 0, 0

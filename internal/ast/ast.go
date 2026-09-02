@@ -70,6 +70,24 @@ func (ds *DiscardStatement) TokenLiteral() string {
 	return ds.Token.Lexeme
 }
 
+// AssertStatement represents an always-active invariant check with optional
+// static diagnostic metadata.
+//
+// Rules:
+//   - rules/errors/panic.md — § 15.1 "Canonical syntax"
+//   - rules/errors/panic.md — § 15.4 "Messages"
+type AssertStatement struct {
+	Token     lexer.Token
+	Condition Expression
+	Message   *StringLiteral
+}
+
+func (as *AssertStatement) statementNode() {}
+
+func (as *AssertStatement) TokenLiteral() string {
+	return as.Token.Lexeme
+}
+
 type DetachStatement struct {
 	Token         lexer.Token
 	Value         Expression

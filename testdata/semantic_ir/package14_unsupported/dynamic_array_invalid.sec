@@ -1,0 +1,5 @@
+module main
+
+fn Keep(values: int[]) int[] {
+    return values
+}

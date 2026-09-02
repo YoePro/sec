@@ -35,4 +35,15 @@ def SecVerifyMatchCFG : Pass<"sec-verify-match-cfg", "mlir::func::FuncOp"> {
   let dependentDialects = ["mlir::cf::ControlFlowDialect"];
 }
 
+def SecVerifyArrayIndexGuards : Pass<"sec-verify-array-index-guards", "mlir::func::FuncOp"> {
+  let summary = "Verify canonical Sec fixed-array index guards";
+  let description = [{
+    Verifies that every runtime-checked fixed-array extract or replacement is
+    dominated by the true edge of a matching sec.array.index_in_bounds test on
+    the same array and index SSA values. Proven-safe operations must instead
+    carry compiler-owned proof provenance.
+  }];
+  let dependentDialects = ["mlir::cf::ControlFlowDialect"];
+}
+
 #endif // SEC_ANALYSIS_PASSES_TD

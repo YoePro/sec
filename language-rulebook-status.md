@@ -337,7 +337,7 @@ memory/storage.md
 | Rulebook | Status | Notes |
 |---|---|---|
 | `errors/errorhandling.md` | **Written** | Canonical revision 2.0 compiler-known `error`, typed Result channels, Result projections, general Result/Option/fallible-operation `try`, partial guarded handlers, explicit fallible-setter contracts, ownership, Semantic IR, diagnostics, and LSP requirements. Implementation progress is tracked by `frontend.errorhandling-v2`. |
-| `errors/panic.md` | **Written** | Canonical panic domains, containment, cleanup, assertions, checked unreachable, task/thread outcomes, panic information, no-panic verification, and runtime-free support model; exact explicit-panic and build-manifest syntax remain open. |
+| `errors/panic.md` | **Written — revision 2.0** | Canonical panic domains, containment, cleanup, checked unreachable, task/thread outcomes, panic information, no-panic verification, and runtime-free support model. Sec 0.1 assertion syntax is locked to `assert condition` or `assert condition, "message"`; exact explicit-panic and build-manifest syntax remain open. |
 | `errors/runtime_checks.md` | **Written** | Canonical checked-operation model, proof elimination, fallible `try` paths, panic-capable ordinary paths, typed propagation, no-panic integration, and runtime-free lowering requirements. |
 | `library/core-library.md` | **Written — sync required** | Must include the compiler/core access model and all language-level core errors. |
 | `core/errors.sec` | **Implementation artifact** | Every language-level runtime error type must be declared here. |
@@ -562,7 +562,7 @@ multiple target outputs
 | Rulebook | Status | Notes |
 |---|---|---|
 | `tooling/diagnostics.txt` | **Written — sync required** | Central registry and `sec diagnostics [--json]` expose all registered definitions plus complete definition/parser/sema/token field schemas; LSP exposes parser/sema codes. Full ID migration, localization and machine-readable emitted-diagnostic output remain. |
-| `tooling/formatter.md` | **Written** | Canonical formatting behavior, including string-enum initializer preservation and immutable impl `static let` normalization to `let`; implementation progress belongs in `implementation-status.yaml`. |
+| `tooling/formatter.md` | **Written** | Canonical formatting behavior, including string-enum initializer preservation, immutable impl `static let` normalization to `let`, and canonical assertion-message comma spacing; implementation progress belongs in `implementation-status.yaml`. |
 | `compiler_diagnostics.md` | **Covered** | Compiler diagnostic policy remains canonical in `tooling/diagnostics.txt`; avoid duplication. |
 | `debug_information.md` | **Planned** | Source mapping, variables, optimized code, generics, async/task frames, and targets. |
 | `compiler_testing.md` | **Planned** | Compiler unit, integration, invalid, regression, lowering, and backend tests. |

@@ -75,7 +75,7 @@ func TestEmitIsDeterministicAndPreservesSchemaMetadata(t *testing.T) {
 	}
 	text := string(first)
 	for _, expected := range []string{
-		"sec.dialect_version = 9 : i32",
+		"sec.dialect_version = 10 : i32",
 		"sec.semantic_ir_version = 1 : i32",
 		`sec.module_id = "main"`,
 		`sec.target_os = "linux"`,
@@ -229,7 +229,7 @@ func TestEmitSchema6CheckedIntegerGuard(t *testing.T) {
 	}
 	text := string(output)
 	for _, expected := range []string{
-		`sec.dialect_version = 9 : i32`,
+		`sec.dialect_version = 10 : i32`,
 		`%v2, %v3, %v4 = "sec.int.binary_checked"(%v0, %v1) <{kind = "add"}> : (si128, si128) -> (si128, i1, !sec.arithmetic_failure_reason)`,
 		`cf.cond_br %v3, ^bb1(%v4 : !sec.arithmetic_failure_reason), ^bb2`,
 		`^bb1(%v5: !sec.arithmetic_failure_reason):`,
@@ -318,9 +318,9 @@ func TestEmittedModuleLowersTrivialCoreWithRealTool(t *testing.T) {
 	}
 }
 
-// rules/declarations/struct.md section 4 and
-// rules/mlir/lowering-versions/sec_mlir_lowering_v9.md sections 2-11 define
-// the verified raw tag-metadata bridge from Semantic IR to schema-v9 structs.
+// rules/declarations/struct.md section 4 and the maintained schema-v9 struct
+// contract, retained by lowering v10, define the verified raw tag-metadata
+// bridge from Semantic IR to Sec MLIR structs.
 func TestEmitPackage13StructsEndToEnd(t *testing.T) {
 	source := `module main
 type Pair struct { Wide: int128 ` + "`wire:\"signed\\\"little\" json:\"wide value\"`" + `, Limit: uint256 }
@@ -363,7 +363,7 @@ fn Read(position: Position, zero: int128) int128 {
 			}
 			text := string(output)
 			for _, expected := range []string{
-				`sec.dialect_version = 9 : i32`,
+				`sec.dialect_version = 10 : i32`,
 				`!sec.struct<identity = "main::Pair"`,
 				`!sec.struct<identity = "main::TargetPair"`,
 				`#sec.struct_field<ordinal = 0, name = "Count", type = !sec.int`,
@@ -393,8 +393,8 @@ fn Read(position: Position, zero: int128) int128 {
 			if err := os.WriteFile(path, output, 0600); err != nil {
 				t.Fatal(err)
 			}
-			// Package 13 sections 82 and 90 require the same source-built
-			// schema-v9 module to verify on both scalar target plans.
+			// Package 13 sections 82 and 90 require its struct representation
+			// to keep verifying under the current schema on both scalar plans.
 			command := exec.Command(tool, path,
 				"--sec-verify-union-guards", "--sec-verify-match-cfg",
 				"--sec-lower-scalar-core", "--sec-lower-trivial-core")
@@ -414,6 +414,336 @@ fn Read(position: Position, zero: int128) int128 {
 			for _, forbidden := range []string{"!sec.int", "!sec.uint", "unrealized_conversion_cast", "llvm."} {
 				if strings.Contains(loweredText, forbidden) {
 					t.Errorf("lowered %d-bit module contains %q:\n%s", width, forbidden, loweredText)
+				}
+			}
+		})
+	}
+}
+
+// TestEmitPackage14ArraysEndToEnd covers the complete verified Semantic IR to
+// schema-v10 fixed-array mapping while keeping arrays high-level and compact.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package14.md — sections 58-85 and 102
+//   - rules/mlir/lowering-versions/sec_mlir_lowering_v10.md — sections 1-23
+func TestEmitPackage14ArraysEndToEnd(t *testing.T) {
+	module := package14EmitterModule(t)
+	for _, width := range []uint16{32, 64} {
+		t.Run(strconv.Itoa(int(width)), func(t *testing.T) {
+			output, err := Emit(module, testPlan(width))
+			if err != nil {
+				t.Fatalf("emit: %v", err)
+			}
+			text := string(output)
+			for _, expected := range []string{
+				`sec.dialect_version = 10 : i32`,
+				`!sec.array<!sec.int, "0">`,
+				`!sec.array<!sec.int, "2">`,
+				`!sec.array<!sec.int, "3">`,
+				`"sec.array.construct"`,
+				`segment_actions = ["construct-direct", "copy-trivial"]`,
+				`segment_kinds = ["element", "spread"]`,
+				`segment_lengths = ["1", "2"]`,
+				`"sec.array.default"()`,
+				`"sec.array.len"`,
+				`"sec.array.index_in_bounds"`,
+				`index_signed = true`,
+				`"sec.array.extract"`,
+				`action = "copy-trivial", bounds_kind = "runtime-check", bounds_proof = "guarded"`,
+				`"sec.array.replace"`,
+				`bounds_kind = "proven-safe", bounds_proof = "analysis"`,
+				`"sec.fail.bounds"() {operation = "fixed-array-index"}`,
+			} {
+				if !strings.Contains(text, expected) {
+					t.Errorf("missing %q in:\n%s", expected, text)
+				}
+			}
+			for _, forbidden := range []string{"!llvm.array", "llvm.", "memref<", "getelementptr", "undef", "poison", "@malloc", "@calloc"} {
+				if strings.Contains(text, forbidden) {
+					t.Errorf("schema-v10 array module contains %q:\n%s", forbidden, text)
+				}
+			}
+
+			binDir := os.Getenv("SEC_MLIR_BIN")
+			if binDir == "" {
+				return
+			}
+			tool, err := configuredSecMLIROptPath(binDir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(t.TempDir(), "package14.mlir")
+			if err := os.WriteFile(path, output, 0600); err != nil {
+				t.Fatal(err)
+			}
+			verified, err := exec.Command(tool, path, "--sec-verify-array-index-guards").CombinedOutput()
+			if err != nil {
+				t.Fatalf("sec-mlir-opt: %v\n%s\nGenerated:\n%s", err, verified, output)
+			}
+		})
+	}
+}
+
+func TestEmitPackage14ArrayLengthUsesTargetUintBoundary(t *testing.T) {
+	types := semantic.NewTypeTable()
+	voidType := types.Intern(semantic.Type{Kind: semantic.TypeVoid, Name: "void"})
+	intType := types.Intern(semantic.Type{Kind: semantic.TypeInt, Name: "int32", Signed: true, BitWidth: 32})
+	arrayType := types.Intern(semantic.Type{Kind: semantic.TypeArray, Name: "int32[4294967296]", Element: intType, Length: "4294967296"})
+	function := &semantic.Function{
+		ID: "main::Boundary(int32[4294967296])", Name: "Boundary", ReturnType: voidType, Entry: 0,
+		Parameters: []semantic.Parameter{{Name: "value", Value: semantic.Value{ID: 1, Type: arrayType, Ownership: semantic.OwnershipImmediate}}},
+		Blocks:     []*semantic.Block{{ID: 0, Operations: []semantic.Operation{{Kind: semantic.OpReturn}}}},
+	}
+	module := &semantic.Module{Version: semantic.Version, Identity: "main", Types: types, Functions: []*semantic.Function{function}}
+	if _, err := Emit(module, testPlan(32)); err == nil || !strings.Contains(err.Error(), "fixed-array length 4294967296 overflows target uint32") {
+		t.Fatalf("32-bit emit error = %v", err)
+	}
+	if _, err := Emit(module, testPlan(64)); err != nil {
+		t.Fatalf("64-bit emit: %v", err)
+	}
+}
+
+// TestEmitPackage14SourceIntegrationMatrix proves every Package 14 section-102
+// case through source parsing, Sema, verified Semantic IR, and schema-v10 text.
+// No generated IR is patched or reconstructed by the test.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package14.md — section 102
+//   - rules/mlir/lowering-versions/sec_mlir_lowering_v10.md — section 23
+func TestEmitPackage14SourceIntegrationMatrix(t *testing.T) {
+	module := package14SourceIntegrationModule(t)
+
+	type operationMinimums map[semantic.OpKind]int
+	want := map[string]operationMinimums{
+		"Literal":       {semantic.OpArrayConstruct: 1},
+		"Spread":        {semantic.OpArrayConstruct: 1},
+		"Zero":          {semantic.OpArrayConstruct: 1},
+		"Defaulted":     {semantic.OpArrayDefault: 1},
+		"ArrayInStruct": {semantic.OpArrayConstruct: 1, semantic.OpStructConstruct: 1},
+		"StructInArray": {semantic.OpArrayConstruct: 1, semantic.OpStructConstruct: 2},
+		"Nested":        {semantic.OpArrayConstruct: 3},
+		"Identity":      {},
+		"Length":        {semantic.OpArrayLength: 1},
+		"Constant":      {semantic.OpArrayExtract: 1},
+		"Dynamic":       {semantic.OpArrayIndexInBounds: 1, semantic.OpArrayExtract: 1, semantic.OpBoundsFailure: 1},
+		"Fallible":      {semantic.OpArrayIndexInBounds: 1, semantic.OpArrayExtract: 1, semantic.OpEnumConstant: 1, semantic.OpResultErr: 1},
+		"LocalHandler":  {semantic.OpArrayIndexInBounds: 1, semantic.OpArrayExtract: 1, semantic.OpEnumConstant: 1},
+		"Replace":       {semantic.OpArrayReplace: 1, semantic.OpStorageStore: 1},
+		"NestedReplace": {semantic.OpArrayIndexInBounds: 2, semantic.OpArrayExtract: 1, semantic.OpArrayReplace: 2, semantic.OpStorageStore: 1},
+	}
+	seen := map[string]bool{}
+	for _, function := range module.Functions {
+		expected, relevant := want[function.Name]
+		if !relevant {
+			continue
+		}
+		seen[function.Name] = true
+		counts := map[semantic.OpKind]int{}
+		for _, block := range function.Blocks {
+			for _, operation := range block.Operations {
+				counts[operation.Kind]++
+			}
+		}
+		for kind, minimum := range expected {
+			if counts[kind] < minimum {
+				t.Errorf("%s has %d %s operations, want at least %d\n%s", function.Name, counts[kind], kind, minimum, semantic.Format(module))
+			}
+		}
+	}
+	for name := range want {
+		if !seen[name] {
+			t.Errorf("missing source-built function %s", name)
+		}
+	}
+
+	output, err := Emit(module, testPlan(64))
+	if err != nil {
+		t.Fatalf("schema-v10 emit: %v", err)
+	}
+	text := string(output)
+	for _, expected := range []string{
+		`sec.dialect_version = 10 : i32`,
+		`!sec.array<si32, "0">`,
+		`!sec.array<si32, "3">`,
+		`!sec.array<!sec.struct<identity = "main::Pair"`,
+		`!sec.struct<identity = "main::Holder"`,
+		`type = !sec.array<si128, "2">`,
+		`!sec.array<!sec.array<si32, "2">, "2">`,
+		`segment_kinds = ["element", "spread", "element"]`,
+		`"sec.array.default"`,
+		`"sec.array.len"`,
+		`bounds_kind = "proven-safe", bounds_proof = "constant"`,
+		`bounds_kind = "runtime-check", bounds_proof = "guarded"`,
+		`"sec.fail.bounds"`,
+		`"sec.result.err"`,
+		`"sec.array.replace"`,
+		`!sec.storage<!sec.array`,
+	} {
+		if !strings.Contains(text, expected) {
+			t.Errorf("schema-v10 integration output missing %q:\n%s", expected, text)
+		}
+	}
+}
+
+func package14SourceIntegrationModule(t *testing.T) *semantic.Module {
+	t.Helper()
+	sourcePath := filepath.Join("..", "..", "..", "testdata", "semantic_ir", "package14_schema10_integration.sec")
+	source, err := os.ReadFile(sourcePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := parser.New(lexer.NewWithFile(string(source), sourcePath))
+	parsed := p.Parse()
+	if parsed.HasErrors {
+		t.Fatalf("parse: %v", p.Errors())
+	}
+	analyzer := sema.NewAnalyzerWithScalarPlan(testPlan(64))
+	if diagnostics := analyzer.Analyze(parsed.Program); len(diagnostics) != 0 {
+		t.Fatalf("sema: %v", diagnostics)
+	}
+	module, err := semantic.Build(parsed.Program, analyzer, semantic.BuildOptions{
+		RequestedModule: "main", SourceFiles: []string{sourcePath}, MaxPackage: 14,
+	})
+	if err != nil {
+		t.Fatalf("semantic build: %v", err)
+	}
+	if err := semantic.Verify(module); err != nil {
+		t.Fatalf("semantic verify: %v\n%s", err, semantic.Format(module))
+	}
+	return module
+}
+
+// TestEmitPackage14SourceModuleVerifiesOn32And64BitPlans proves that the same
+// source-built Package 14 module survives the maintained absolute verifier and
+// scalar-layout pipeline without selecting an array ABI or runtime strategy.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package14.md — sections 102, 107
+//   - rules/mlir/lowering-versions/sec_mlir_lowering_v10.md — sections 23, 25
+func TestEmitPackage14SourceModuleVerifiesOn32And64BitPlans(t *testing.T) {
+	tool := requiredSecMLIROptPath(t)
+	module := package14SourceIntegrationModule(t)
+	for _, width := range []uint16{32, 64} {
+		t.Run(strconv.Itoa(int(width)), func(t *testing.T) {
+			output, err := Emit(module, testPlan(width))
+			if err != nil {
+				t.Fatalf("schema-v10 emit: %v", err)
+			}
+			path := filepath.Join(t.TempDir(), "package14.mlir")
+			if err := os.WriteFile(path, output, 0600); err != nil {
+				t.Fatal(err)
+			}
+			command := exec.Command(tool, path,
+				"--sec-verify-array-index-guards", "--sec-lower-scalar-core")
+			lowered, err := command.CombinedOutput()
+			if err != nil {
+				t.Fatalf("sec-mlir-opt: %v\n%s\nGenerated:\n%s", err, lowered, output)
+			}
+			text := string(lowered)
+			for _, expected := range []string{
+				`sec.dialect_version = 10 : i32`,
+				fmt.Sprintf("ui%d", width),
+				`!sec.array<si32, "3">`,
+				`!sec.array<!sec.array<si32, "2">, "2">`,
+				`"sec.array.construct"`,
+				`"sec.array.len"`,
+				`"sec.array.index_in_bounds"`,
+				`"sec.array.extract"`,
+				`"sec.array.replace"`,
+			} {
+				if !strings.Contains(text, expected) {
+					t.Errorf("lowered schema-v10 module missing %q:\n%s", expected, text)
+				}
+			}
+			for _, forbidden := range []string{
+				"!sec.int", "!sec.uint", "unrealized_conversion_cast",
+				"memref<", "!llvm.array", "llvm.", "getelementptr",
+				"@malloc", "@calloc", "sec.runtime", "runtime.",
+			} {
+				if strings.Contains(text, forbidden) {
+					t.Errorf("unexpected physical/runtime lowering %q in:\n%s", forbidden, text)
+				}
+			}
+		})
+	}
+}
+
+// TestPackage14SuccessfulModuleContainsNoPhysicalArrayShortcut consolidates the
+// Package 14 full-initialization and representation boundary on the maintained
+// source-built integration module. Verification proves readable construction;
+// schema emission must retain semantic arrays without inventing layout/runtime.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package14.md — sections 27, 104, 106
+//   - rules/mlir/semantic-ir/sec_semantic_ir_fixed_array_v1.md — "Full initialization"
+func TestPackage14SuccessfulModuleContainsNoPhysicalArrayShortcut(t *testing.T) {
+	module := package14SourceIntegrationModule(t)
+	constructs, defaults := 0, 0
+	for _, function := range module.Functions {
+		for _, block := range function.Blocks {
+			for _, operation := range block.Operations {
+				switch operation.Kind {
+				case semantic.OpArrayConstruct:
+					constructs++
+					total := new(big.Int)
+					for _, length := range operation.ArraySegmentLengths {
+						part, ok := new(big.Int).SetString(length, 10)
+						if !ok {
+							t.Fatalf("non-decimal construction segment %q", length)
+						}
+						total.Add(total, part)
+					}
+					if total.String() != operation.ArrayLength || len(operation.Operands) != len(operation.ArraySegmentLengths) {
+						t.Fatalf("partial array construction escaped verification: %#v", operation)
+					}
+					for _, action := range operation.ArrayActions {
+						if action != semantic.ArrayActionConstructDirect && action != semantic.ArrayActionCopyTrivial {
+							t.Fatalf("deferred array construction action %q escaped Package 14", action)
+						}
+					}
+				case semantic.OpArrayDefault:
+					defaults++
+					if len(operation.Operands) != 0 {
+						t.Fatalf("array.default is not compact and complete: %#v", operation)
+					}
+				}
+			}
+		}
+	}
+	if constructs == 0 || defaults == 0 {
+		t.Fatalf("integration module lacks construction/default coverage: constructs=%d defaults=%d", constructs, defaults)
+	}
+
+	semanticText := strings.ToLower(semantic.Format(module))
+	for _, forbidden := range []string{"undef", "poison", "partial-readable", "uninitialized"} {
+		if strings.Contains(semanticText, forbidden) {
+			t.Errorf("verified Semantic IR contains forbidden state %q:\n%s", forbidden, semanticText)
+		}
+	}
+
+	for _, width := range []uint16{32, 64} {
+		t.Run(strconv.Itoa(int(width)), func(t *testing.T) {
+			output, err := Emit(module, testPlan(width))
+			if err != nil {
+				t.Fatalf("emit: %v", err)
+			}
+			text := strings.ToLower(string(output))
+			for _, forbidden := range []string{
+				"undef", "poison", "memref<", "memref.alloc", "!llvm.array",
+				"llvm.", "llvm.insertvalue", "getelementptr", "alloca", "@malloc",
+				"@calloc", "sec.alloc", "sec.runtime", "@sec_runtime", "runtime.",
+				"call @", "func.call", "llvm.intr.trap",
+			} {
+				if strings.Contains(text, forbidden) {
+					t.Errorf("schema-v10 module contains forbidden shortcut %q:\n%s", forbidden, text)
+				}
+			}
+			for _, line := range strings.Split(text, "\n") {
+				if (strings.Contains(line, `"sec.array.index_in_bounds"`) ||
+					strings.Contains(line, `"sec.array.extract"`) ||
+					strings.Contains(line, `"sec.array.replace"`)) &&
+					strings.Contains(line, ", i64") {
+					t.Errorf("array operation hard-codes a signless semantic i64 index: %s", line)
 				}
 			}
 		})
@@ -473,6 +803,73 @@ func boolModule(t *testing.T) *semantic.Module {
 	module := &semantic.Module{Version: semantic.Version, Identity: "main", Types: types, Functions: []*semantic.Function{function}}
 	if err := semantic.Verify(module); err != nil {
 		t.Fatalf("test module: %v", err)
+	}
+	return module
+}
+
+func package14EmitterModule(t *testing.T) *semantic.Module {
+	t.Helper()
+	types := semantic.NewTypeTable()
+	intType := types.Intern(semantic.Type{Kind: semantic.TypeInt, Name: "int", Signed: true, TargetSize: true})
+	indexType := types.Intern(semantic.Type{Kind: semantic.TypeInt, Name: "int128", Signed: true, BitWidth: 128})
+	uintType := types.Intern(semantic.Type{Kind: semantic.TypeUint, Name: "uint", TargetSize: true})
+	boolType := types.Intern(semantic.Type{Kind: semantic.TypeBool, Name: "bool", BitWidth: 1})
+	array0 := types.Intern(semantic.Type{Kind: semantic.TypeArray, Name: "int[0]", Element: intType, Length: "0"})
+	array2 := types.Intern(semantic.Type{Kind: semantic.TypeArray, Name: "int[2]", Element: intType, Length: "2"})
+	array3 := types.Intern(semantic.Type{Kind: semantic.TypeArray, Name: "int[3]", Element: intType, Length: "3"})
+	location := semantic.Location{File: "package14-emitter.sec", Line: 1, Column: 1}
+
+	build := &semantic.Function{
+		ID: "main::Build(int[2],int)", Name: "Build", ReturnType: array3, Entry: 0, Location: location,
+		Parameters: []semantic.Parameter{
+			{Name: "source", Value: semantic.Value{ID: 1, Type: array2, Ownership: semantic.OwnershipImmediate}},
+			{Name: "element", Value: semantic.Value{ID: 2, Type: intType, Ownership: semantic.OwnershipImmediate}},
+		},
+		Blocks: []*semantic.Block{{ID: 0, Operations: []semantic.Operation{
+			{Kind: semantic.OpArrayConstruct, Operands: []semantic.ValueID{2, 1}, Results: []semantic.Value{{ID: 3, Type: array3, Ownership: semantic.OwnershipImmediate}}, ArrayElementType: intType, ArrayLength: "3", ArraySegmentKinds: []semantic.ArrayConstructSegmentKind{semantic.ArraySegmentElement, semantic.ArraySegmentSpread}, ArraySegmentLengths: []string{"1", "2"}, ArrayActions: []semantic.ArrayTransferAction{semantic.ArrayActionConstructDirect, semantic.ArrayActionCopyTrivial}, Location: location},
+			{Kind: semantic.OpArrayDefault, Results: []semantic.Value{{ID: 4, Type: array0, Ownership: semantic.OwnershipImmediate}}, ArrayElementType: intType, ArrayLength: "0", Location: location},
+			{Kind: semantic.OpArrayDefault, Results: []semantic.Value{{ID: 5, Type: array3, Ownership: semantic.OwnershipImmediate}}, ArrayElementType: intType, ArrayLength: "3", Location: location},
+			{Kind: semantic.OpArrayLength, Operands: []semantic.ValueID{3}, Results: []semantic.Value{{ID: 6, Type: uintType, Ownership: semantic.OwnershipImmediate}}, ArrayLength: "3", Location: location},
+			{Kind: semantic.OpReturn, Operands: []semantic.ValueID{3}, Location: location},
+		}}},
+	}
+
+	runtime := &semantic.Function{
+		ID: "main::Update(int[3],int128,int)", Name: "Update", ReturnType: array3, Entry: 0, Location: location,
+		Parameters: []semantic.Parameter{
+			{Name: "array", Value: semantic.Value{ID: 1, Type: array3, Ownership: semantic.OwnershipImmediate}},
+			{Name: "index", Value: semantic.Value{ID: 2, Type: indexType, Ownership: semantic.OwnershipImmediate}},
+			{Name: "newValue", Value: semantic.Value{ID: 3, Type: intType, Ownership: semantic.OwnershipImmediate}},
+		},
+		Blocks: []*semantic.Block{
+			{ID: 0, Operations: []semantic.Operation{
+				{Kind: semantic.OpArrayIndexInBounds, Operands: []semantic.ValueID{1, 2}, Results: []semantic.Value{{ID: 4, Type: boolType, Ownership: semantic.OwnershipImmediate}}, ArrayIndexSigned: true, Location: location},
+				{Kind: semantic.OpCondBranch, Operands: []semantic.ValueID{4}, Successors: []semantic.BranchTarget{{Block: 1}, {Block: 2}}, Location: location},
+			}},
+			{ID: 1, Operations: []semantic.Operation{
+				{Kind: semantic.OpArrayExtract, Operands: []semantic.ValueID{1, 2}, Results: []semantic.Value{{ID: 5, Type: intType, Ownership: semantic.OwnershipImmediate}}, ArrayCheckKind: semantic.ArrayIndexRuntimeCheck, ArrayProofKind: semantic.ArrayIndexProofGuarded, ArrayGuard: 4, ArrayActions: []semantic.ArrayTransferAction{semantic.ArrayActionCopyTrivial}, Location: location},
+				{Kind: semantic.OpArrayReplace, Operands: []semantic.ValueID{1, 2, 3}, Results: []semantic.Value{{ID: 6, Type: array3, Ownership: semantic.OwnershipImmediate}}, ArrayCheckKind: semantic.ArrayIndexRuntimeCheck, ArrayProofKind: semantic.ArrayIndexProofGuarded, ArrayGuard: 4, Location: location},
+				{Kind: semantic.OpReturn, Operands: []semantic.ValueID{6}, Location: location},
+			}},
+			{ID: 2, Operations: []semantic.Operation{{Kind: semantic.OpBoundsFailure, ArrayOperation: "fixed-array-index", Location: location}}},
+		},
+	}
+
+	proven := &semantic.Function{
+		ID: "main::Read(int[3],int128)", Name: "Read", ReturnType: intType, Entry: 0, Location: location,
+		Parameters: []semantic.Parameter{
+			{Name: "array", Value: semantic.Value{ID: 1, Type: array3, Ownership: semantic.OwnershipImmediate}},
+			{Name: "index", Value: semantic.Value{ID: 2, Type: indexType, Ownership: semantic.OwnershipImmediate}},
+		},
+		Blocks: []*semantic.Block{{ID: 0, Operations: []semantic.Operation{
+			{Kind: semantic.OpArrayExtract, Operands: []semantic.ValueID{1, 2}, Results: []semantic.Value{{ID: 3, Type: intType, Ownership: semantic.OwnershipImmediate}}, ArrayCheckKind: semantic.ArrayIndexProvenSafe, ArrayProofKind: semantic.ArrayIndexProofAnalysis, ArrayActions: []semantic.ArrayTransferAction{semantic.ArrayActionCopyTrivial}, Location: location},
+			{Kind: semantic.OpReturn, Operands: []semantic.ValueID{3}, Location: location},
+		}}},
+	}
+
+	module := &semantic.Module{Version: semantic.Version, Identity: "main", SourceFiles: []string{location.File}, Types: types, Functions: []*semantic.Function{build, runtime, proven}}
+	if err := semantic.Verify(module); err != nil {
+		t.Fatalf("test module: %v\n%s", err, semantic.Format(module))
 	}
 	return module
 }

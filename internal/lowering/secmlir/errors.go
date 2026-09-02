@@ -6,8 +6,9 @@ import (
 	"sec/internal/ir/semantic"
 )
 
-// UnsupportedLoweringError marks valid Semantic IR that schema 2 cannot
-// represent. It is intentionally distinct from Semantic IR verification.
+// UnsupportedLoweringError marks valid Semantic IR that the current high-level
+// Sec MLIR schema cannot represent. It is intentionally distinct from Semantic
+// IR verification.
 type UnsupportedLoweringError struct {
 	Feature  string
 	Function semantic.FunctionID
@@ -15,7 +16,7 @@ type UnsupportedLoweringError struct {
 
 func (e *UnsupportedLoweringError) Error() string {
 	if e.Function == "" {
-		return fmt.Sprintf("Sec MLIR schema 2 does not support %s", e.Feature)
+		return fmt.Sprintf("Sec MLIR schema %d does not support %s", dialectSchemaVersion, e.Feature)
 	}
-	return fmt.Sprintf("Sec MLIR schema 2 does not support %s in %s", e.Feature, e.Function)
+	return fmt.Sprintf("Sec MLIR schema %d does not support %s in %s", dialectSchemaVersion, e.Feature, e.Function)
 }

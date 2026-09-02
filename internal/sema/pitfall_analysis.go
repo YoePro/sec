@@ -320,6 +320,8 @@ func (b *pitfallBuilder) walkStatement(statement ast.Statement) {
 		b.walkExpression(statement.Expression)
 	case *ast.DiscardStatement:
 		b.walkExpression(statement.Value)
+	case *ast.AssertStatement:
+		b.walkExpression(statement.Condition)
 	case *ast.DetachStatement:
 		b.walkExpression(statement.Value)
 	case *ast.ReturnStatement:
@@ -906,6 +908,8 @@ func visitStatementExpressions(statement ast.Statement, visit func(ast.Expressio
 		walkExpression(statement.Expression)
 	case *ast.DiscardStatement:
 		walkExpression(statement.Value)
+	case *ast.AssertStatement:
+		walkExpression(statement.Condition)
 	case *ast.DetachStatement:
 		walkExpression(statement.Value)
 	case *ast.ReturnStatement:

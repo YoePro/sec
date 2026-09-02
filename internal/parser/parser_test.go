@@ -486,6 +486,58 @@ fn Test() void {
 	}
 }
 
+// rules/errors/panic.md § 15.1 locks the two ordinary Sec 0.1 assertion forms.
+func TestParseAssertStatements(t *testing.T) {
+	input := `
+fn Check(ready: bool, count: int) void {
+	assert ready
+	assert count > 0, "count must be positive"
+}
+`
+	p := New(lexer.New(input))
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	if len(fn.Body.Statements) != 2 {
+		t.Fatalf("assert statement count = %d, want 2", len(fn.Body.Statements))
+	}
+	plain, ok := fn.Body.Statements[0].(*ast.AssertStatement)
+	if !ok || plain.Condition == nil || plain.Condition.String() != "ready" || plain.Message != nil {
+		t.Fatalf("plain assertion = %#v", fn.Body.Statements[0])
+	}
+	withMessage, ok := fn.Body.Statements[1].(*ast.AssertStatement)
+	if !ok || withMessage.Condition == nil || withMessage.Condition.String() != "(count > 0)" {
+		t.Fatalf("message assertion = %#v", fn.Body.Statements[1])
+	}
+	if withMessage.Message == nil || withMessage.Message.Value != "count must be positive" {
+		t.Fatalf("assertion message = %#v", withMessage.Message)
+	}
+}
+
+// rules/errors/panic.md § 15.1 requires a comma and a literal message, and
+// deliberately excludes function-like assertion spelling.
+func TestParseRejectsInvalidAssertSyntax(t *testing.T) {
+	tests := []struct {
+		name string
+		line string
+		want string
+	}{
+		{name: "missing comma", line: `assert ready "message"`, want: "assert message requires ',' before the string literal"},
+		{name: "dynamic message", line: `assert ready, BuildMessage()`, want: "assert message must be a string literal"},
+		{name: "function like", line: `assert(ready)`, want: "function-like assert(...) is not valid; write assert condition"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := New(lexer.New("fn Check(ready: bool) void {\n" + tt.line + "\n}\n"))
+			p.ParseProgram()
+			if len(p.Errors()) != 1 || !strings.Contains(p.Errors()[0], tt.want) {
+				t.Fatalf("parser errors = %v, want one containing %q", p.Errors(), tt.want)
+			}
+		})
+	}
+}
+
 func TestParseGenericFunctionDeclaration(t *testing.T) {
 	input := `
 fn Identity[T](value: T) T {
@@ -4621,6 +4673,30 @@ func TestRejectsNonCanonicalMatchExpressionPatternsAndRecovers(t *testing.T) {
 			}
 			if len(program.Statements) == 0 {
 				t.Fatal("recovery lost enclosing function")
+			}
+		})
+	}
+}
+
+func TestRejectsEmptyMatchPayloadParenthesesWithVariantGuidance(t *testing.T) {
+	for _, variant := range []string{"None", "Choice.Ready"} {
+		t.Run(variant, func(t *testing.T) {
+			input := "fn Test(value: Choice) int { return match value { " + variant + "() => 1 _ => 0 } }"
+			p := New(lexer.New(input))
+			program := p.ParseProgram()
+			if len(program.Statements) == 0 {
+				t.Fatal("recovery lost enclosing function")
+			}
+			want := "match variant " + variant + " cannot use empty payload parentheses; write " + variant + " for a payload-less variant or " + variant + "(binding) for a payload-bearing variant"
+			found := false
+			for _, diagnostic := range p.Diagnostics() {
+				if strings.Contains(diagnostic.Message, want) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Fatalf("missing focused empty-payload diagnostic; got %v", p.Errors())
 			}
 		})
 	}

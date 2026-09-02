@@ -1,0 +1,58 @@
+rulebook: rules/memory/memory_model.md
+document_revision: '2.0'
+status_kind: delta-only
+reviewed_date: '2026-09-02'
+repository_baseline:
+  commit: 814a584
+  note: latest publicly verifiable main; current main content reviewed
+baseline_confirmed:
+- Current memory_model.md is already the canonical abstract memory model and explicitly replaces the former legacy text rulebook.
+- It embeds a large Current implementation status and migration appendix that are implementation governance rather than normative
+  memory semantics.
+- Current rules already define Places/subplaces/place paths, overlap/disjointness, value/storage distinctions, ownership/copy/move/borrow/reference/lifetime/allocation/destruction,
+  memory spaces, volatile/fixed-address, and Semantic IR requirements.
+- Current implementation is partial and still uses legacy storage-origin/root-symbol approximations in several analyses.
+integrations:
+- id: frontend.memory-model
+  status: partial
+  remaining:
+  - establish one canonical Place/root/subplace identity service across all source forms
+  - complete availability/reason and partial/conditional state tracking
+  - complete initialization masks and replacement/reinitialization state
+  - replace root-symbol reference/storage approximations with canonical identities
+- id: analysis.memory-model
+  status: partial
+  remaining:
+  - share Place/location identity across ownership/borrow/lifetime/concurrency/transfer analyses
+  - complete field/index/range overlap proofs
+  - complete lifetime/storage dependency graphs
+  - complete resource-state versus ownership-state separation
+  - complete target/addressability/relocation/memory-space facts
+- id: semantic-ir.memory-model
+  status: planned
+  remaining:
+  - normalize explicit memory operations
+  - represent canonical value/storage state separately
+  - retain ownership/borrow/reference/storage/layout/transfer facts required by lowering
+  - add verifier rules for invalid memory states
+- id: lowering.memory-model
+  status: partial
+  remaining:
+  - lower canonical destruction/reclamation and replacement/reinitialization
+  - eliminate runtime metadata only after proof
+  - avoid stronger backend alias/lifetime/nonnull assumptions
+  - complete volatile/fixed-address/memory-space lowering
+- id: platform.memory-model
+  status: partial
+  remaining:
+  - complete FFI/mapping/hardware-address integration
+  - complete target memory-space/addressability constraints
+  - share canonical memory facts with ISR/concurrency analyses
+  - preserve runtime-free target support
+- id: tooling.memory-model
+  status: planned
+  remaining:
+  - expose canonical memory state/provenance in LSP and sec analyse
+  - provide mentor diagnostics with state-transition provenance
+  - remove legacy terminology from user-facing output
+  - ensure compiler/LSP parity

@@ -586,6 +586,10 @@ func TestEmitPackage14SourceIntegrationMatrix(t *testing.T) {
 }
 
 func package14SourceIntegrationModule(t *testing.T) *semantic.Module {
+	return package14SourceIntegrationModuleWithFiles(t, nil)
+}
+
+func package14SourceIntegrationModuleWithFiles(t *testing.T, sourceFiles []string) *semantic.Module {
 	t.Helper()
 	sourcePath := filepath.Join("..", "..", "..", "testdata", "semantic_ir", "package14_schema10_integration.sec")
 	source, err := os.ReadFile(sourcePath)
@@ -601,8 +605,11 @@ func package14SourceIntegrationModule(t *testing.T) *semantic.Module {
 	if diagnostics := analyzer.Analyze(parsed.Program); len(diagnostics) != 0 {
 		t.Fatalf("sema: %v", diagnostics)
 	}
+	if len(sourceFiles) == 0 {
+		sourceFiles = []string{sourcePath}
+	}
 	module, err := semantic.Build(parsed.Program, analyzer, semantic.BuildOptions{
-		RequestedModule: "main", SourceFiles: []string{sourcePath}, MaxPackage: 14,
+		RequestedModule: "main", SourceFiles: sourceFiles, MaxPackage: 14,
 	})
 	if err != nil {
 		t.Fatalf("semantic build: %v", err)
@@ -611,6 +618,129 @@ func package14SourceIntegrationModule(t *testing.T) *semantic.Module {
 		t.Fatalf("semantic verify: %v\n%s", err, semantic.Format(module))
 	}
 	return module
+}
+
+// TestPackage14SourceBuildAndMultiOutputAreDeterministic rebuilds the complete
+// source fixture with differently ordered duplicate metadata and alternates the
+// 32/64 emission order. Fresh analyzers/builders recreate all internal maps on
+// every iteration; observable type, function, segment, source and nested-type
+// order must nevertheless remain byte-identical for each target plan.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package14.md — sections 105-106
+//   - rules/mlir/lowering-versions/sec_mlir_lowering_v10.md — deterministic emission
+func TestPackage14SourceBuildAndMultiOutputAreDeterministic(t *testing.T) {
+	sourcePath := filepath.Join("..", "..", "..", "testdata", "semantic_ir", "package14_schema10_integration.sec")
+	fileOrders := [][]string{
+		{"z-last.sec", sourcePath, "a-first.sec", sourcePath},
+		{sourcePath, "a-first.sec", "z-last.sec"},
+		{"a-first.sec", "z-last.sec", sourcePath, "a-first.sec"},
+	}
+	wantFunctions := []string{
+		"Literal", "Spread", "Zero", "Defaulted", "ArrayInStruct", "StructInArray", "Nested",
+		"Identity", "Length", "Constant", "Dynamic", "Fallible", "LocalHandler", "Replace", "NestedReplace",
+	}
+	var semanticBaseline string
+	emissionBaselines := map[uint16][]byte{}
+	for iteration := 0; iteration < 12; iteration++ {
+		module := package14SourceIntegrationModuleWithFiles(t, fileOrders[iteration%len(fileOrders)])
+		if got := module.SourceFiles; !reflect.DeepEqual(got, []string{sourcePath, "a-first.sec", "z-last.sec"}) {
+			t.Fatalf("iteration %d source order = %#v", iteration, got)
+		}
+		functionNames := make([]string, len(module.Functions))
+		for index, function := range module.Functions {
+			functionNames[index] = function.Name
+		}
+		if !reflect.DeepEqual(functionNames, wantFunctions) {
+			t.Fatalf("iteration %d function order = %#v", iteration, functionNames)
+		}
+		assertPackage14CanonicalArrayFacts(t, module)
+
+		semanticText := semantic.Format(module)
+		if iteration == 0 {
+			semanticBaseline = semanticText
+		} else if semanticText != semanticBaseline {
+			t.Fatalf("iteration %d produced nondeterministic Semantic IR", iteration)
+		}
+
+		widths := []uint16{32, 64}
+		if iteration%2 != 0 {
+			widths[0], widths[1] = widths[1], widths[0]
+		}
+		for _, width := range widths {
+			output, err := Emit(module, testPlan(width))
+			if err != nil {
+				t.Fatalf("iteration %d uint%d emit: %v", iteration, width, err)
+			}
+			if baseline, exists := emissionBaselines[width]; exists {
+				if !reflect.DeepEqual(output, baseline) {
+					t.Fatalf("iteration %d produced nondeterministic uint%d schema output", iteration, width)
+				}
+			} else {
+				emissionBaselines[width] = append([]byte(nil), output...)
+			}
+		}
+		if after := semantic.Format(module); after != semanticText {
+			t.Fatalf("iteration %d target emission mutated shared Semantic IR", iteration)
+		}
+	}
+	if reflect.DeepEqual(emissionBaselines[32], emissionBaselines[64]) {
+		t.Fatal("32-bit and 64-bit outputs lost their independent target plans")
+	}
+	for width, output := range emissionBaselines {
+		text := string(output)
+		for _, expected := range []string{
+			fmt.Sprintf("#dlti.dl_entry<index, %d>", width),
+			`sec.source_files = ["../../../testdata/semantic_ir/package14_schema10_integration.sec", "a-first.sec", "z-last.sec"]`,
+			`!sec.array<!sec.array<si32, "2">, "2">`,
+			`segment_kinds = ["element", "spread", "element"]`,
+			`segment_lengths = ["1", "2", "1"]`,
+		} {
+			if !strings.Contains(text, expected) {
+				t.Fatalf("uint%d deterministic output missing %q:\n%s", width, expected, text)
+			}
+		}
+	}
+}
+
+func assertPackage14CanonicalArrayFacts(t *testing.T, module *semantic.Module) {
+	t.Helper()
+	nested := false
+	for index, typ := range module.Types.All() {
+		if typ.Kind != semantic.TypeArray {
+			continue
+		}
+		if typ.Length == "" || typ.Length != "0" && (typ.Length[0] == '0' || strings.Trim(typ.Length, "0123456789") != "") {
+			t.Fatalf("array type !%d has non-canonical decimal length %q", index+1, typ.Length)
+		}
+		if element, ok := module.Types.Lookup(typ.Element); ok && element.Kind == semantic.TypeArray {
+			nested = true
+			want := fmt.Sprintf("array<!%d, %q>", typ.Element, typ.Length)
+			if !strings.Contains(semantic.Format(module), want) {
+				t.Fatalf("nested array type missing canonical print %q", want)
+			}
+		}
+	}
+	if !nested {
+		t.Fatal("determinism fixture contains no nested fixed-array type")
+	}
+	for _, function := range module.Functions {
+		if function.Name != "Spread" {
+			continue
+		}
+		for _, block := range function.Blocks {
+			for _, operation := range block.Operations {
+				if operation.Kind == semantic.OpArrayConstruct {
+					wantKinds := []semantic.ArrayConstructSegmentKind{semantic.ArraySegmentElement, semantic.ArraySegmentSpread, semantic.ArraySegmentElement}
+					if !reflect.DeepEqual(operation.ArraySegmentKinds, wantKinds) || !reflect.DeepEqual(operation.ArraySegmentLengths, []string{"1", "2", "1"}) {
+						t.Fatalf("Spread segment order = %#v / %#v", operation.ArraySegmentKinds, operation.ArraySegmentLengths)
+					}
+					return
+				}
+			}
+		}
+	}
+	t.Fatal("determinism fixture has no Spread array construction")
 }
 
 // TestEmitPackage14SourceModuleVerifiesOn32And64BitPlans proves that the same

@@ -484,21 +484,53 @@ integrations:
     package: SEC-MLIR-P14
     name: Fixed Array Semantic Value Representation
     area: frontend-semantic-ir-sec-mlir-and-lowering
-    status: partial
-    implementation_phase: schema10-array-operations
-    integrated: "2026-08-28"
-    baseline: repository HEAD with completed SEC-MLIR-P13 schema 9
-    repository_head: 069c111b96714ee4c9423f5f7a64d1e7a6045f31
+    status: implemented
+    implementation_phase: complete
+    integrated: "2026-09-02"
+    baseline: repository HEAD 069c111b96714ee4c9423f5f7a64d1e7a6045f31 with completed SEC-MLIR-P13 schema 9
+    repository_head: 475add863959208ea2af90dfe0c8755352617ec8
+    audited_state: repository HEAD 475add863959208ea2af90dfe0c8755352617ec8 plus the pending P14-48 and P14-70 through P14-77 completion diff
     mlir_toolchain: LLVM 24.0.0git optimized build with assertions
+    lit_toolchain: lit 24.0.0dev
     summary: >-
-      Tracks the migration from the existing int64/sentinel-based fixed-array
-      frontend and legacy physical backend to canonical arbitrary-precision
-      array shapes, compact Sema plans, verified Semantic IR, and high-level
-      schema-10 Sec MLIR. Package 14 introduces no mandatory runtime or physical
-      array representation.
+      Implements canonical arbitrary-precision fixed-array shapes, compact Sema
+      literal/default/index plans, verified fixed-array Semantic IR, and the
+      high-level schema-10 Sec MLIR type, operations, emitter, guard verifier,
+      and target-scalar compatibility. Package 14 introduces no mandatory
+      runtime or physical array representation.
+    integrated_surface:
+      frontend_and_sema: >-
+        Explicit fixed/dynamic shape, exact decimal length identity,
+        plan-specific target-uint validation, compact literal/spread/default
+        facts, exact bounds classification and proof provenance, typed
+        IndexError fallibility, bounds effects, noPanic enforcement, and
+        explicit ownership diagnostics.
+      semantic_ir: >-
+        Canonical fixed-array types; compact construct/default/length,
+        bounds-predicate, guarded/proven extract, trivial replace, and bounds
+        failure operations; high-level trivial storage; nested transactional
+        replacement; complete type, operation, CFG, and no-partial-module
+        verification.
+      sec_mlir_schema10: >-
+        High-level !sec.array with canonical arbitrary-precision StringAttr
+        length; all six sec.array operations plus terminating sec.fail.bounds;
+        schema-10 metadata and local verifiers; the registered array-index guard
+        dominance/SSA verifier.
+      lowering_and_compatibility: >-
+        Deterministic Go emission for 32-bit and 64-bit plans, recursive P6
+        target-scalar conversion, P8 wrapper boundary, P11/P12 union values,
+        P13 struct nesting, schema-9 compatibility, and maintained legacy array
+        paths behind explicit representability checks.
+      safety_boundary: >-
+        Dynamic arrays, slices, element references, array-to-slice borrowing,
+        move-out, semantic-copy/non-trivial ownership, equality/membership
+        lowering, foreign array ABI, physical layout, MemRef, LLVM arrays, GEP,
+        allocation, and runtime helpers remain explicitly rejected or deferred.
     rules:
       - rules/mlir/packages/sec-mlir-dialect_package14.md
       - rules/mlir/packages/sec-mlir-dialect_package14.yaml
+      - rules/mlir/packages/sec-mlir-dialect_package14-acceptance-matrix.md
+      - rules/mlir/packages/sec-mlir-dialect_package14-implementation-report.md
       - rules/mlir/semantic-ir/sec_semantic_ir_fixed_array_v1.md
       - rules/mlir/dialect-versions/sec_mlir_dialect_v10.md
       - rules/mlir/lowering-versions/sec_mlir_lowering_v10.md
@@ -544,6 +576,7 @@ integrations:
       - mlir/lib/Analysis/VerifyCheckedIntegerGuards.cpp
       - mlir/lib/Conversion/SecToCore/SecToCore.cpp
     tests:
+      - cmd/lsp/main_test.go
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
       - internal/sema/defaults_test.go
@@ -569,10 +602,14 @@ integrations:
       - mlir/test/Dialect/Sec/invalid-schema10-array-ops.mlir
       - mlir/test/Dialect/Sec/schema10-module-metadata.mlir
       - mlir/test/Dialect/Sec/invalid-schema11-module-metadata.mlir
+      - mlir/test/Dialect/Sec/schema9-structs.mlir
+      - mlir/test/Dialect/Sec/invalid-schema9-structs.mlir
       - mlir/test/Analysis/schema10-array-index-guards.mlir
       - mlir/test/Analysis/invalid-schema10-array-index-guards.mlir
       - mlir/test/Conversion/SecToCore/schema10-array-scalar-layout-32.mlir
       - mlir/test/Conversion/SecToCore/schema10-array-scalar-layout-64.mlir
+      - mlir/test/Conversion/SecToCore/schema9-struct-scalar-layout.mlir
+      - mlir/test/Conversion/SecToCore/schema9-struct-scalar-layout-64.mlir
       - mlir/test/Conversion/SecIntegerToArith/schema10-array-boundary.mlir
     implemented:
       - completed Package 13 predecessor with schema-9 structs and high-level aggregate storage
@@ -651,10 +688,11 @@ integrations:
       - source-valid fixed-array equality, inequality, and membership receive explicit Package 14 Semantic IR boundary errors without partial modules instead of falling through a generic unsupported-operator path
       - schema-10 emission explicitly rejects verified foreign fixed-array parameter/result ABI and physical LayoutRef requests on array-containing structs or unions without computing layout
       - successful source-built Package 14 modules prove exact full construction coverage and compact defaults, and contain no unreadable placeholder, hidden allocation, physical array layout, hard-coded signless i64 array index, trap, runtime symbol, mandatory helper call, or LLVM dialect on either 32-bit or 64-bit plans
-    remaining:
-      - connect Package 14 bounds endpoints to fallible indexed replacement
-      - prove the remaining P5 integration on 32-bit and 64-bit plans
-      - complete Package 14 section-107 acceptance and the section-108 implementation report
+      - repeated fresh source builds prove canonical decimal lengths, lexicographic source metadata, source-declaration function order, nested type printing, compact spread segment order, stable diagnostics, and byte-identical per-plan 32/64 schema output independent of build and target-validation order
+      - all 56 Package 14 section-107 acceptance criteria are mapped individually to named focused tests or exact implementation and rule locations without promoting the still-partial package from aggregate suite success
+      - the complete sections-95-through-98 indexing matrix covers exact constant widths and failures, proof provenance, signed/unsigned runtime boundaries and SSA guard reuse, fallible int32/int128 propagation, exact and catch-all handlers, effects, noPanic, and absence of partial or fallible fail.bounds IR
+    remaining: []
+    post_implementation_acceptance: []
     deferred:
       - Package 15 element references and canonical Places
       - Package 16 slices and array-to-slice borrowing
@@ -786,6 +824,42 @@ integrations:
         result: passed after P14-68 unsupported operator, ABI, and physical-layout boundaries
       - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
         result: passed (91/91) after P14-68 schema-10 emitter boundary validation
+      - command: go test ./internal/sema -run TestPackage14ArrayDiagnosticsAreDeterministicAcrossPlans -count=1
+        result: passed across twelve alternating uint32/uint64 analyses with stable source-ordered exact-decimal diagnostics per plan
+      - command: go test ./internal/lowering/secmlir -run TestPackage14SourceBuildAndMultiOutputAreDeterministic -count=1
+        result: passed across twelve fresh source builds, permuted source metadata, alternating 32/64 emission order, stable nested type/segment order, and byte-identical per-plan output
+      - command: go test ./... && go vet ./...
+        result: passed after P14-70 determinism coverage
+      - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
+        result: passed (91/91) after P14-70 determinism coverage
+      - command: isolated detached snapshot 8b2266b8da6d18c9daaf42eb20fe86bda8d743fd (tree 42802a3733a0d5032390ea355e14c6d2ebed814f) from HEAD 475add863959208ea2af90dfe0c8755352617ec8 plus the exact pending P14-70/P14-71 files; go test ./...
+        result: passed in a clean worktree before and after execution
+      - command: isolated detached snapshot 8b2266b8da6d18c9daaf42eb20fe86bda8d743fd (tree 42802a3733a0d5032390ea355e14c6d2ebed814f) from HEAD 475add863959208ea2af90dfe0c8755352617ec8 plus the exact pending P14-70/P14-71 files; go vet ./...
+        result: passed in a clean worktree before and after execution
+      - command: build/sec-mlir/bin/sec-mlir-opt --version; /home/jonas/mlir/llvm-project/build/bin/llvm-lit --version
+        result: LLVM 24.0.0git optimized build with assertions; lit 24.0.0dev
+      - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
+        result: passed (91/91) for P14-73
+      - command: /home/jonas/mlir/llvm-project/build/bin/llvm-lit -sv --filter='schema(9|10|11)' /home/jonas/small-projects/sec/build/sec-mlir/test
+        result: passed all 17 selected adjacent schema-9, schema-10, and schema-11 regressions (74 unrelated tests excluded)
+      - command: SEC_MLIR_BIN=/home/jonas/small-projects/sec/build/sec-mlir/bin go test ./internal/lowering/secmlir -run '^TestEmitPackage14SourceModuleVerifiesOn32And64BitPlans$' -count=1 -v
+        result: passed 32-bit and 64-bit source-to-Sema-to-verified-Semantic-IR-to-schema-10 guard-verification and scalar-lowering pipelines for P14-74
+      - command: go test ./internal/sema -run 'Test(Package14Section95ConstantIndexMatrix|FixedArrayIndexPlansRejectExactWideBounds|ResolvedFixedArrayIndexRefinementProofs|FixedArrayBoundsTryPublishesTypedFlowAndRemovesPanicEffect|NoPanicFixedArrayIndexGuarantees|FallibleFixedArrayBoundsRetainOnlyOperandEffects)' -count=1 -v
+        result: passed the focused P14-48 Sema constant, proof, fallible, effect, and noPanic matrix
+      - command: go test ./internal/ir/semantic -run 'TestPackage14(Section97RuntimeBoundaryMatrix|RejectsCompileTimeInvalidIndexWithoutPartialIR|BuildsOrdinaryArrayIndexControlFlowAndOrder|BuildsBranchRefinedArrayIndexWithoutBoundsFailure|BuildsFallibleBoundsPropagationAndLocalHandler)' -count=1 -v
+        result: passed the focused P14-48 verified Semantic IR runtime, no-partial-module, proven, and fallible matrix
+      - command: go test ./... && go vet ./...
+        result: passed after completing P14-48
+      - command: GIT_INDEX_FILE=<isolated temporary P14 index> git diff --cached --check HEAD
+        result: passed for the complete P14 handoff diff, including the new acceptance matrix and implementation report
+      - command: python3 inline governance audit of implementation-status.yaml and the section-108 report
+        result: passed with 164 unique integration IDs, implemented status, existing referenced paths, and exactly 41 ordered report items
+      - command: SEC_MLIR_BIN=/home/jonas/small-projects/sec/build/sec-mlir/bin go test ./...
+        result: passed for P14-77
+      - command: go vet ./...
+        result: passed for P14-77
+      - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
+        result: passed (91/91) for P14-77 final handoff
 
   - id: frontend.ownership-v2
     area: frontend-ownership-control-flow-and-lowering

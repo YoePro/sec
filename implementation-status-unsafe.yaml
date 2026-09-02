@@ -1,0 +1,59 @@
+rulebook: rules/memory/unsafe.md
+document_revision: '2.0'
+status_kind: delta-only
+reviewed_date: '2026-09-02'
+repository_baseline:
+  commit: 814a584
+  note: latest publicly verifiable main; current main content reviewed
+baseline_confirmed:
+- Current unsafe.md already defines single-operation and block unsafe syntax, unsafe fn/method, unsafe extern, caller obligations,
+  safe wrappers, trust provenance, raw-pointer operations, FFI/asm/address boundaries, compile-time rejection and no mandatory
+  runtime.
+- Current book explicitly states that the body of unsafe fn is not implicitly unsafe.
+- Current book embeds a Current implementation status section plus an implementation plan; both are extracted from the v2
+  normative book.
+- Current raw_pointers.md v2 now owns the detailed RawPtr model while unsafe owns lexical trust/context and caller obligations.
+integrations:
+- id: frontend.unsafe
+  status: partial
+  remaining:
+  - complete both unsafe context forms across parser/AST/Sema/formatter
+  - complete unsafe fn/method and unsafe extern callable safety checking
+  - centralize unsafe operation classification
+  - preserve caller obligations and safe-wrapper boundaries
+- id: analysis.unsafe
+  status: partial
+  remaining:
+  - build trust-provenance graph
+  - propagate unsafe callable compatibility through interfaces/function values/generics/dynamic dispatch
+  - integrate canonical effects without suppressing them
+  - reject compiler-known false caller obligations even inside unsafe
+- id: semantic-ir.unsafe
+  status: planned
+  remaining:
+  - represent unsafe operation identity, accepted obligations, trust provenance and source location
+  - retain target/foreign facts and safe-wrapper boundary where needed
+  - keep unsafe status distinct from effect summaries
+  - verify contradictory trusted facts
+- id: lowering.unsafe
+  status: partial
+  remaining:
+  - lower raw/FFI/assembly/hardware operations using canonical target semantics
+  - avoid runtime unsafe flags or general runtime
+  - avoid backend assumptions stronger than source proof/trust
+  - preserve volatile/address-space/ABI/clobber contracts
+- id: platform.unsafe
+  status: partial
+  remaining:
+  - complete target-knowledge/raw-address provenance
+  - complete mapping/hardware/ISR unsafe integration
+  - complete foreign ownership/effect/callback contracts
+  - complete inline-assembly effect trust integration
+- id: tooling.unsafe
+  status: partial
+  remaining:
+  - complete unsafe-aware formatter/LSP
+  - show caller obligations/trust provenance
+  - provide wrap/remove unsafe code actions safely
+  - produce mentor diagnostics distinguishing missing context from proven invalidity
+  - provide optional whole-program trust reports

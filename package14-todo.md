@@ -310,7 +310,7 @@ provenance, ordinary bounds failure, and fallible `IndexError.OutOfBounds`.
   bounds failure into the typed error flow while retaining operand effects.
 - [x] P14-47 — Enforce `@noPanic` for ordinary dynamic access and accept proven
   or fallible indexing. `unsafe` must never bypass fixed-array bounds checks.
-- [ ] P14-48 — Add sections 95–98 tests for constant/proven/runtime/fallible
+- [x] P14-48 — Add sections 95–98 tests for constant/proven/runtime/fallible
   indexing, wide indexes, zero length, negative signed runtime values,
   exactly-once evaluation, local/catch-all handlers, `@noPanic`, and absence of
   `sec.fail.bounds` on proven/fallible success models.
@@ -355,9 +355,9 @@ zero-length runtime cases retain their source index semantics.
 Progress 2026-08-29: the read half of P14-42 became source-to-IR tested with
 effectful array/index calls in exact source order. P14-46 now records direct and
 transitive `may-panic-bounds` effects for ordinary runtime indexes while
-constant/range-proven indexes remain bounds-panic-free. P14-46/P14-48 stay open
-for fallible indexing, handlers, `@noPanic`, and the remaining section-95–98
-matrix.
+constant/range-proven indexes remain bounds-panic-free. P14-46/P14-48 were
+still open at this checkpoint for fallible indexing, handlers, `@noPanic`, and
+the remaining section-95–98 matrix.
 
 Completed 2026-08-30: P14-44/P14-45 make runtime fixed-array indexing a
 compiler-resolved fallible source under `try`. Sema records distinct
@@ -388,6 +388,18 @@ Simple and nested mutable paths evaluate the root/place and each index once,
 complete every required bounds guard before evaluating the RHS, evaluate the
 RHS once only on the successful path, and commit no destination mutation until
 the functional replacement value is complete.
+
+Completed 2026-09-02: P14-48 closes the sections-95–98 matrix. New focused
+tests cover zero and `N-1`, constant `int128`/`uint128`/`uint256`, a semantic
+length above `int64`, and compile-time invalid rejection without a partial
+runtime-failure module. Runtime tests cover a signed negative-capable index,
+exact `N`, greater than `N`, unsigned flow, one guard/extraction/failure path,
+and exact guard array/index SSA reuse; the existing zero-length and
+array-before-index exactly-once cases remain explicit. Fallible source tests now
+cover `Result[int32, IndexError]`, `Result[int128, IndexError]`, the exact
+`OutOfBounds` fallback, `Err(_)`, and absence of `fail.bounds`. Existing focused
+tests retain assertion/branch/range provenance, operand effects, and
+`@noPanic`. The focused matrix, full `go test ./...`, and `go vet ./...` pass.
 
 ## F. Add trivial mutable storage and nested replacement
 
@@ -585,7 +597,7 @@ helpers, and the LLVM dialect.
 - [x] P14-69 — Assert successful P14 modules contain no `undef`, poison, partial
   readable array, hidden allocation, MemRef array layout, `!llvm.array`, GEP,
   hard-coded semantic `i64` index, LLVM dialect, or mandatory runtime call.
-- [ ] P14-70 — Prove determinism: canonical decimal lengths, type/segment/source
+- [x] P14-70 — Prove determinism: canonical decimal lengths, type/segment/source
   order, nested printing, diagnostics, and 32/64 multi-output validation must be
   independent of host word size and map traversal.
 
@@ -620,24 +632,101 @@ compact and operand-free. The emitted modules reject unreadable placeholders,
 hidden allocation, MemRef/LLVM array layout, insertvalue/GEP shortcuts,
 signless hard-coded `i64` array indexes, traps, runtime symbols, and helper calls.
 
+Completed 2026-09-02: P14-70 rebuilds the complete section-102 source fixture
+twelve times with fresh parser, Sema, Semantic IR builder, type table and
+internal maps. Permuted and duplicated source-file metadata canonicalizes to one
+lexicographic order; function, type, nested-type and compact spread segment
+order remains byte-identical. Alternating 32/64 emission order produces stable
+per-plan schema-10 bytes without mutating the shared Semantic IR. A separate
+target-width matrix rebuilds invalid array declarations and proves exact decimal
+diagnostic text and source order remain stable while the expected uint32/uint64
+differences stay independent.
+
 ## J. Final acceptance, governance, and report
 
-- [ ] P14-71 — Map every section-107 acceptance item to a focused test or exact
+- [x] P14-71 — Map every section-107 acceptance item to a focused test or exact
   implementation location. Do not mark the package implemented from aggregate
   test success alone.
-- [ ] P14-72 — From a fresh isolated worktree containing the exact P14 diff, run
+- [x] P14-72 — From a fresh isolated worktree containing the exact P14 diff, run
   `go test ./...` and `go vet ./...`; record commands, HEAD, and results.
-- [ ] P14-73 — Run the full `check-sec-mlir` target and every adjacent schema
+- [x] P14-73 — Run the full `check-sec-mlir` target and every adjacent schema
   regression with the exact LLVM/MLIR version recorded.
-- [ ] P14-74 — Run the package-specific 32/64 source → Sema → verified Semantic
+- [x] P14-74 — Run the package-specific 32/64 source → Sema → verified Semantic
   IR → schema-10 → verifier pipeline with an absolute tool path.
-- [ ] P14-75 — Update `lowering.sec-mlir-package14` with the exact integrated
+- [x] P14-75 — Update `lowering.sec-mlir-package14` with the exact integrated
   surface, deferred P15/P16/P17 boundaries, commands, results, audited HEAD, and
   `status: implemented` only when every section-107 criterion is satisfied.
-- [ ] P14-76 — Write the mandatory section-108 implementation report covering
+- [x] P14-76 — Write the mandatory section-108 implementation report covering
   all 41 requested topics, deviations, and Package 15 recommendations.
-- [ ] P14-77 — Re-run `git diff --check`, unique-key YAML validation, complete Go
+- [x] P14-77 — Re-run `git diff --check`, unique-key YAML validation, complete Go
   tests with absolute `SEC_MLIR_BIN`, and the full MLIR suite before handoff.
+
+Completed 2026-09-02: P14-71 adds
+`rules/mlir/packages/sec-mlir-dialect_package14-acceptance-matrix.md`, mapping
+all 56 section-107 criteria to named focused tests or exact implementation and
+rule locations. Aggregate suite results are evidence only for the three
+criteria that explicitly concern repository-wide regression gates. At that
+checkpoint Package 14 stayed `partial`: P14-48 was still open, and P14-72–77
+owned isolated validation, governance closure, the mandatory report, and final
+handoff; those steps are now complete below.
+
+Completed 2026-09-02: P14-72 built an isolated detached snapshot from audited
+HEAD `475add863959208ea2af90dfe0c8755352617ec8` plus the exact pending
+P14-70/P14-71 files. The resulting snapshot commit was
+`8b2266b8da6d18c9daaf42eb20fe86bda8d743fd`, with tree
+`42802a3733a0d5032390ea355e14c6d2ebed814f`. Its worktree was clean before and
+after `go test ./...` and `go vet ./...`; both commands passed. An initial
+invocation that accidentally remained in the primary worktree is deliberately
+excluded from the recorded result.
+
+Completed 2026-09-02: P14-73 records `sec-mlir-opt` as LLVM
+`24.0.0git`, optimized with assertions, and `llvm-lit` as `24.0.0dev`.
+`cmake --build build/sec-mlir --target check-sec-mlir -j2` passed all 91
+tests. The adjacent schema-9/10/11 set was then selected explicitly with
+`llvm-lit --filter='schema(9|10|11)'` and passed all 17 selected regressions,
+including valid and invalid dialect metadata, array types/operations/guards,
+P6 scalar-layout conversion, P8 normalization boundaries, and schema-9
+compatibility.
+
+Completed 2026-09-02: P14-74 ran
+`TestEmitPackage14SourceModuleVerifiesOn32And64BitPlans` with the absolute
+`SEC_MLIR_BIN=/home/jonas/small-projects/sec/build/sec-mlir/bin`. Both the
+32-bit and 64-bit subtests passed through source parsing, target-aware Sema,
+verified Semantic IR, schema-10 emission, array-index guard verification, and
+scalar-core lowering. The outputs retained high-level fixed arrays and every
+required schema-10 array operation, resolved target `uint` independently, and
+contained no unresolved semantic scalar/cast, MemRef/LLVM layout, allocation,
+runtime symbol, or helper path.
+
+Completed 2026-09-02: P14-75 promotes
+`lowering.sec-mlir-package14` from `partial` to `implemented` only after P14-48
+closed the final focused test gap and the acceptance matrix accounted for all
+56 section-107 criteria. Governance now records audited repository HEAD
+`475add863959208ea2af90dfe0c8755352617ec8` plus the pending P14-48 and
+P14-70–75 diff,
+the exact frontend/Sema, Semantic IR, schema-10, lowering, compatibility, and
+safety-boundary surfaces, LLVM/lit versions, commands, and results. P15 owns
+element Places/references, P16 owns slices and array-to-slice borrowing, and
+P17 owns move-out, semantic-copy, and non-trivial array ownership/destruction.
+P14-76 and P14-77 were report and final-validation work, not missing Package
+14 implementation; both are now complete below.
+
+Completed 2026-09-02: P14-76 adds
+`rules/mlir/packages/sec-mlir-dialect_package14-implementation-report.md` with
+all 41 section-108 topics in the required order. It records the audited
+HEAD/P13 basis, exact P14 file and implementation surfaces, array semantics,
+Sema and Semantic IR APIs, schema 10 and compatibility, tests and commands,
+toolchain/results, explicit deviations, and the Package 15 recommendation.
+
+Completed 2026-09-02: P14-77 validated the complete Package 14 handoff diff,
+including the previously untracked acceptance matrix and implementation report,
+with an isolated temporary Git index and `git diff --cached --check HEAD`.
+`implementation-status.yaml` parses with 164 unique integration IDs and the
+mandatory report has exactly 41 ordered items. With
+`SEC_MLIR_BIN=/home/jonas/small-projects/sec/build/sec-mlir/bin`, the complete
+`go test ./...` suite passed; `go vet ./...` also passed. Finally,
+`cmake --build build/sec-mlir --target check-sec-mlir -j2` passed all 91 Sec
+MLIR regressions. Package 14 has no open TODO item.
 
 ## Recommended execution order
 

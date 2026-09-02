@@ -104,6 +104,57 @@ func TestFixedArrayIndexPlansRejectExactWideBounds(t *testing.T) {
 	}
 }
 
+// TestPackage14Section95ConstantIndexMatrix locks every valid constant-index
+// class required by SEC-MLIR Package 14 section 95. Constants and array lengths
+// remain exact arbitrary-precision facts; none is reclassified as a runtime
+// check merely because its source type or value is wider than the host.
+func TestPackage14Section95ConstantIndexMatrix(t *testing.T) {
+	source := `module main
+fn Zero(values: int32[1]) int32 { return values[0] }
+fn Last(values: int32[4]) int32 { return values[3] }
+fn Signed128(values: int32[4]) int32 { return values[int128(2)] }
+fn Unsigned128(values: int32[4]) int32 { return values[uint128(2)] }
+fn Unsigned256(values: int32[4]) int32 { return values[uint256(2)] }
+fn AboveInt64(values: int32[9223372036854775809]) int32 {
+    return values[uint256(9223372036854775808)]
+}
+`
+	p := parser.New(lexer.NewWithFile(source, "package14-section95.sec"))
+	result := p.Parse()
+	if result.HasErrors {
+		t.Fatalf("parse: %v", p.Errors())
+	}
+	a := NewAnalyzer()
+	if errors := a.Analyze(result.Program); len(errors) != 0 {
+		t.Fatalf("sema: %v", errors)
+	}
+
+	wants := []struct {
+		function, constant, length, indexType string
+	}{
+		{"Zero", "0", "1", ""},
+		{"Last", "3", "4", ""},
+		{"Signed128", "2", "4", "int128"},
+		{"Unsigned128", "2", "4", "uint128"},
+		{"Unsigned256", "2", "4", "uint256"},
+		{"AboveInt64", "9223372036854775808", "9223372036854775809", "uint256"},
+	}
+	for index, want := range wants {
+		function := result.Program.Statements[index+1].(*ast.FunctionDeclaration)
+		indexes := indexesInStatement(function.Body.Statements[0])
+		if function.Name.Value != want.function || len(indexes) != 1 {
+			t.Fatalf("function %d = %s with %d indexes, want %s with one", index, function.Name.Value, len(indexes), want.function)
+		}
+		plan, found := a.ResolvedArrayIndexPlanOf(indexes[0])
+		if !found || plan.CheckKind != ArrayIndexProvenSafe || plan.ProofKind != ArrayIndexProofConstant || plan.FailureMode != ArrayIndexFailureNone || plan.ConstantIndex == nil || plan.ConstantIndex.String() != want.constant || plan.ArrayLength == nil || plan.ArrayLength.String() != want.length {
+			t.Fatalf("%s constant plan = %#v, found=%t", want.function, plan, found)
+		}
+		if want.indexType != "" && plan.IndexType.Name != want.indexType {
+			t.Fatalf("%s index type = %s, want %s", want.function, plan.IndexType.Name, want.indexType)
+		}
+	}
+}
+
 // SEC-MLIR Package 14 sections 32, 36, and 96 require dominating branch and
 // assertion refinements to become explicit proof provenance. Incomplete and
 // zero-length proofs must remain runtime checked.

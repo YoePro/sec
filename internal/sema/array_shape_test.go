@@ -99,6 +99,61 @@ fn NonInteger(value: int[1.5]) void {}
 	}
 }
 
+// TestPackage14ArrayDiagnosticsAreDeterministicAcrossPlans rebuilds the same
+// invalid source for alternating target widths. Diagnostic source order and
+// exact decimal values must depend only on source plus the selected plan, never
+// on host word size or internal map traversal.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package14.md — sections 10, 60, 105
+func TestPackage14ArrayDiagnosticsAreDeterministicAcrossPlans(t *testing.T) {
+	const source = `module main
+fn Above32(value: int[4294967296]) void {}
+fn Above64(value: int[18446744073709551616]) void {}
+fn Negative(value: int[-1]) void {}
+fn Runtime(n: int, value: int[1 + n]) void {}
+`
+	baselines := map[uint16]string{}
+	for iteration := 0; iteration < 12; iteration++ {
+		widths := []uint16{32, 64}
+		if iteration%2 != 0 {
+			widths[0], widths[1] = widths[1], widths[0]
+		}
+		for _, width := range widths {
+			_, diagnostics := analyzeArraySourceWithWidth(t, source, width)
+			got := joinedSemaErrors(diagnostics)
+			if baseline, exists := baselines[width]; exists {
+				if got != baseline {
+					t.Fatalf("iteration %d uint%d diagnostics changed:\n%s\n--- baseline ---\n%s", iteration, width, got, baseline)
+				}
+			} else {
+				baselines[width] = got
+			}
+		}
+	}
+	want32 := []string{
+		"fixed-array length 4294967296 overflows target uint32",
+		"fixed-array length 18446744073709551616 overflows target uint32",
+		"array length must be non-negative",
+		"array length must be a compile-time integer",
+	}
+	want64 := []string{
+		"fixed-array length 18446744073709551616 overflows target uint64",
+		"array length must be non-negative",
+		"array length must be a compile-time integer",
+	}
+	for width, expected := range map[uint16][]string{32: want32, 64: want64} {
+		position := -1
+		for _, message := range expected {
+			next := strings.Index(baselines[width][position+1:], message)
+			if next < 0 {
+				t.Fatalf("uint%d diagnostics missing %q in source order:\n%s", width, message, baselines[width])
+			}
+			position += next + 1
+		}
+	}
+}
+
 func TestCanonicalArrayIdentityUsesExactDecimalLength(t *testing.T) {
 	element := Type{Name: "int", Kind: IntType}
 	a := NewFixedArrayType(element, mustArrayLength(t, "9223372036854775808"))

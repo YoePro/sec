@@ -1,0 +1,60 @@
+rulebook: rules/memory/storage.md
+document_revision: '2.0'
+status_kind: delta-only
+reviewed_date: '2026-09-02'
+repository_baseline:
+  commit: 814a584
+  note: latest publicly verifiable main; current main content reviewed
+baseline_confirmed:
+- The current storage.md is already the canonical modern storage model and defines independent StorageOrigin, BackingRelation,
+  ReclamationAuthority, AddressStability, MemorySpaceKind, RegionDependencies, InvalidationDomain and ValidityEpoch facts.
+- The current book embeds a large Current implementation status section that is non-normative and is removed in v2.
+- Current storage origins are Automatic, Static, ThreadLocal, Arena, AllocatorBacked and Unknown; legacy Inline/External/Foreign/FixedAddress
+  categories are explicitly non-canonical.
+- Current Semantic IR requirements distinguish stable facts, path-dependent state and explicit domain/object/backing/pin/protection
+  operations.
+integrations:
+- id: frontend.storage
+  status: partial
+  remaining:
+  - migrate all legacy storage-origin categories to the canonical orthogonal storage model
+  - propagate storage facts through every Place/value/reference/aggregate and control-flow join
+  - introduce stable compiler-owned storage-domain and invalidation-domain identities
+  - complete initialization/object-lifetime and replacement/reinitialization integration
+  - integrate mapped/foreign/fixed-address contracts canonically
+- id: analysis.storage
+  status: partial
+  remaining:
+  - unify lifetime region dependencies with storage-domain identities
+  - complete address-stability/relocation/invalidation analysis
+  - complete generation/epoch analysis beyond Arena-specific cases
+  - integrate concurrent reclamation protection without a universal runtime protocol
+  - share location/storage identity with concurrency analysis
+- id: semantic-ir.storage
+  status: planned
+  remaining:
+  - represent canonical stable storage facts
+  - represent path-dependent epoch/object/pin/protection state
+  - represent domain/object/backing/relocation/protection operations
+  - verify contradictory storage facts before lowering
+- id: lowering.storage
+  status: planned
+  remaining:
+  - lower storage epochs and invalidation where runtime checks are required
+  - preserve memory spaces, mapping, volatile and fixed-address contracts
+  - preserve destruction before reclamation
+  - eliminate metadata/checks only after proof
+- id: platform.storage
+  status: partial
+  remaining:
+  - complete target-defined memory-space contracts
+  - complete mapping/remap storage-domain integration
+  - complete foreign-storage and fixed-address alias validation
+  - integrate DMA/coherence/storage accessibility contracts
+- id: tooling.storage
+  status: planned
+  remaining:
+  - expose canonical storage facts in diagnostics/LSP
+  - remove legacy storage-category terminology from user-facing tooling
+  - provide invalidation/reclamation provenance and mentor diagnostics
+  - ensure compiler/LSP/sec analyse parity

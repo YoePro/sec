@@ -1,0 +1,165 @@
+rulebook: rules/memory/transferability.md
+document_revision: '2.0'
+status_kind: delta-only
+reviewed_date: '2026-09-02'
+repository_baseline:
+  commit: 814a584
+  note: latest publicly verifiable main commit at generation time; user reported a newer commit that had not yet appeared
+    in the GitHub commit index
+baseline_confirmed:
+- The existing transferability.md already defines task, physical-thread, process, interrupt and foreign-callback boundaries.
+- The existing rulebook already treats transferability as recursively derived over the complete value graph and names TaskTransferable,
+  ThreadTransferable, ProcessTransferable, ISRTransferable and ThreadSafeShared as compiler semantic capabilities rather than
+  necessarily user-written interfaces.
+- The existing rulebook already separates exclusive ownership transfer from simultaneous sharing, forbids ordinary MutexGuard
+  transfer, makes thread-local references thread-bound, derives closure transferability from captures, and treats RawPtr/FFI
+  handles conservatively.
+- The existing rulebook already requires explicit process adapters and ISR-safe handoff mechanisms.
+- The existing final synchronization list contains stale paths such as borrowing.txt, raw_pointers.txt, destruction.txt and
+  concurrency_memory_model.txt; v2 removes the stale synchronization checklist and references canonical rulebook ownership
+  instead.
+normative_changes_in_v2:
+- clarifies that transferability is a proof for a specific value, boundary and execution policy rather than one universal
+  property of a nominal type
+- separates exclusive transfer from ThreadSafeShared shareability throughout the rulebook
+- makes task migration/pinning an explicit input to transferability so thread-bound state cannot silently cross migration-capable
+  await/scheduling points
+- makes ProcessTransferable explicitly adapter/representation dependent instead of implying raw in-memory representation transfer
+- makes ISRTransferable direction- and operation-sensitive and integrates ownership handoff plus noPanic/noAlloc/noBlock/bounded-work
+  requirements
+- integrates v2 ownership availability, partial/conditional ownership, borrowing live ranges, lifetime analysis, raw pointers,
+  allocation domains and destruction context
+- removes stale cross-reference checklist and embeds no implementation status in the normative book
+integrations:
+- id: frontend.transferability
+  area: boundary-transfer-validation
+  status: planned
+  repository_baseline: 814a584
+  rules:
+  - rules/memory/transferability.md
+  - rules/memory/ownership.md
+  - rules/memory/copy_move.md
+  - rules/memory/borrowing.md
+  - rules/memory/lifetime_analysis.md
+  - rules/memory/references.md
+  - rules/memory/raw_pointers.md
+  - rules/memory/destruction.md
+  - rules/concurrency/spawn.md
+  - rules/concurrency/threads.md
+  - rules/concurrency/channels.md
+  - rules/concurrency/thread_local.md
+  - rules/platform/interrupts.md
+  remaining:
+  - introduce one canonical boundary-transfer validation path instead of ad-hoc per-feature checks
+  - derive boundary-specific transfer facts recursively from the semantic value graph
+  - integrate ownership-v2 availability/partial/conditional state and copy/move commit semantics
+  - integrate borrowing-v2 live ranges and lifetime-analysis-v2 escape facts
+  - model task migration/pinning when validating thread-bound captures/references
+  - validate destination destruction affinity and allocation/storage-domain restrictions
+  - validate closures from capture facts without hiding them behind callable representation
+  - validate Method receiver transfer exactly like explicit arguments
+  - validate RawPtr/FFI handles conservatively from explicit contracts rather than machine-value copyability
+  required_tests:
+  - move-only task transfer consumes source
+  - copyable but thread-affine value rejected
+  - detached local borrow rejected
+  - migratable task rejects thread-local reference
+  - pinned-task thread-local case accepted when canonical scheduling rule permits it
+  - active MutexGuard blocks transfer
+  - partial aggregate allows disjoint transferable sub-Place but not whole-value transfer
+- id: analysis.transferability
+  area: transfer-capability-and-boundary-analysis
+  status: planned
+  repository_baseline: 814a584
+  remaining:
+  - derive TaskTransferable, ThreadTransferable, ProcessTransferable, ISRTransferable and ThreadSafeShared as conditional
+    compiler facts
+  - compute recursive/cyclic transferability with deterministic fixed-point analysis
+  - retain value-specific restrictions instead of over-generalizing nominal type summaries
+  - consume scheduler migration/pinning facts
+  - consume allocation/storage-domain and destination destruction-context facts
+  - consume FFI handle/callback affinity and retention contracts
+  - consume process adapter/serialization/shared-memory contracts
+  - consume ISR synchronization/noPanic/noAlloc/noBlock/bounded-work facts
+  - persist and validate separate-compilation transfer summaries
+  required_tests:
+  - recursive type analysis terminates deterministically
+  - conditional summary depends on destination context
+  - unknown dynamic/interface target is conservative
+  - foreign unknown handle is conservative
+  - process transfer depends on selected adapter
+  - ISR transfer depends on direction/operation
+- id: semantic-ir.transferability
+  area: semantic-ir-boundary-transfer
+  status: planned
+  repository_baseline: 814a584
+  remaining:
+  - represent task/thread owned and borrowed transfers explicitly where semantically relevant
+  - represent observer/lifecycle-handle transfer distinctly
+  - represent process-adapter transfer distinctly from in-process pointer/value transfer
+  - represent ISR-to-ordinary and ordinary-to-ISR handoff direction
+  - represent foreign callback-context transfer where required
+  - preserve source/destination owner, copied/moved state, retained borrow, transfer proof and affinity/destruction restrictions
+  - verify contradictory transfer/sharing facts before lowering
+  required_tests:
+  - owned and borrowed task transfer remain distinct
+  - thread transfer retains destination destruction restriction
+  - process adapter retained
+  - ISR direction retained
+  - invalid contradictory transfer facts rejected
+- id: lowering.transferability
+  area: boundary-transfer-lowering
+  status: planned
+  repository_baseline: 814a584
+  remaining:
+  - preserve consuming transfer commit/failure ownership semantics
+  - avoid hidden copying of move-only lifecycle/resources
+  - avoid hidden heap promotion/allocation to repair illegal borrowed transfer
+  - preserve synchronization required for shared state
+  - lower process transfer through selected serialization/IPC/shared-memory/handle adapter
+  - lower ISR handoff with bounded/noalloc/noblock/nopanic requirements
+  - preserve task/thread affinity and pinning requirements
+  required_tests:
+  - failed consuming send preserves owner when API contract says not committed
+  - committed consuming send leaves source unavailable
+  - move-only resource not duplicated by runtime helper
+  - borrowed local not heap-promoted to permit detached work
+  - process transfer uses selected adapter
+  - ISR handoff uses only permitted primitives
+- id: platform.transferability
+  area: thread-process-isr-ffi-platform-boundaries
+  status: planned
+  repository_baseline: 814a584
+  remaining:
+  - resolve target/runtime thread affinity and destruction restrictions
+  - resolve scheduler migration/pinning guarantees
+  - integrate platform/native handle transfer and process-local restrictions
+  - integrate shared-memory mapping and process-compatible synchronization
+  - integrate ISR access-context and handoff capabilities
+  - integrate foreign callback thread/reentrancy/retention restrictions
+  - ensure unsafe does not waive platform boundary constraints
+  required_tests:
+  - thread-affine platform handle rejected on wrong thread
+  - native process handle follows duplication/transfer contract
+  - shared-memory mapping lifetime covers process use
+  - ISR-safe value rejected when platform says operation not interrupt-safe
+  - foreign callback thread-bound state enforced
+- id: tooling.transferability
+  area: transfer-diagnostics-lsp-tooling
+  status: planned
+  repository_baseline: 814a584
+  remaining:
+  - expose boundary-specific transferability/shareability conditions from canonical analysis
+  - show nested blocking field/capture/reference/foreign contract in diagnostics
+  - show task migration/pinning relevance for thread-local failures
+  - show process adapter requirement for process boundaries
+  - show ISR direction/context for interrupt handoff failures
+  - ensure compiler/LSP/sec analyse parity
+  - invalidate transfer summaries incrementally when ownership/type/concurrency/FFI/platform facts change
+  required_tests:
+  - diagnostic names concrete task/thread/process/ISR boundary
+  - diagnostic traces nested non-transferable field
+  - thread-local migration diagnostic explains scheduling boundary
+  - process diagnostic recommends explicit adapter
+  - ISR diagnostic identifies forbidden capability/effect
+  - compiler and LSP agree

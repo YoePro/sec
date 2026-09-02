@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/big"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -1195,6 +1196,84 @@ fn ZeroLength(values: int32[0], index: uint) int32 {
 	}
 }
 
+// TestPackage14Section97RuntimeBoundaryMatrix covers the concrete dynamic
+// boundary classes from SEC-MLIR Package 14 section 97. The semantic layer
+// preserves the signed source index for -1 and emits the same total guard for
+// index == N and index > N; every path reuses one array/index SSA pair, extracts
+// only on success, and terminates ordinary failure in fail.bounds.
+func TestPackage14Section97RuntimeBoundaryMatrix(t *testing.T) {
+	module, err := analyzedModule(t, `module main
+fn AtLength() int128 { return 4 }
+fn AboveLength() uint128 { return 5 }
+fn NegativeRuntime(values: int32[4], index: int128) int32 { return values[index] }
+fn AtLengthRuntime(values: int32[4]) int32 { return values[AtLength()] }
+fn AboveLengthRuntime(values: int32[4]) int32 { return values[AboveLength()] }
+`, 14)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Verify(module); err != nil {
+		t.Fatalf("verify runtime boundary matrix: %v\n%s", err, Format(module))
+	}
+
+	wants := map[string]struct {
+		signed bool
+		calls  int
+	}{
+		"NegativeRuntime":    {signed: true, calls: 0},
+		"AtLengthRuntime":    {signed: true, calls: 1},
+		"AboveLengthRuntime": {signed: false, calls: 1},
+	}
+	for _, function := range module.Functions {
+		want, relevant := wants[function.Name]
+		if !relevant {
+			continue
+		}
+		counts := map[OpKind]int{}
+		var predicate, extract *Operation
+		for _, block := range function.Blocks {
+			for index := range block.Operations {
+				op := &block.Operations[index]
+				counts[op.Kind]++
+				if op.Kind == OpArrayIndexInBounds {
+					predicate = op
+				}
+				if op.Kind == OpArrayExtract {
+					extract = op
+				}
+			}
+		}
+		if counts[OpDirectCall] != want.calls || counts[OpArrayIndexInBounds] != 1 || counts[OpArrayExtract] != 1 || counts[OpBoundsFailure] != 1 || predicate == nil || extract == nil {
+			t.Fatalf("%s runtime operation counts = %#v\n%s", function.Name, counts, Format(module))
+		}
+		if predicate.ArrayIndexSigned != want.signed || len(predicate.Operands) != 2 || !reflect.DeepEqual(extract.Operands, predicate.Operands) || extract.ArrayGuard != predicate.Results[0].ID {
+			t.Fatalf("%s did not preserve and reuse its guarded array/index pair: predicate=%#v extract=%#v", function.Name, predicate, extract)
+		}
+	}
+}
+
+// TestPackage14RejectsCompileTimeInvalidIndexWithoutPartialIR proves the
+// section-95 boundary: an exact constant source error cannot escape as a
+// runtime bounds branch, fail.bounds endpoint, or any other partial module.
+func TestPackage14RejectsCompileTimeInvalidIndexWithoutPartialIR(t *testing.T) {
+	p := parser.New(lexer.NewWithFile(`module main
+fn Invalid(values: int32[4]) int32 { return values[uint256(4)] }
+`, "package14-invalid-constant-index.sec"))
+	parsed := p.Parse()
+	if parsed.HasErrors {
+		t.Fatalf("parse: %v", p.Errors())
+	}
+	analyzer := sema.NewAnalyzer()
+	errors := analyzer.Analyze(parsed.Program)
+	if len(errors) != 1 || !strings.Contains(errors[0].Message, "array index 4 is out of bounds for int32[4]") {
+		t.Fatalf("sema errors = %v, want exact compile-time bounds failure", errors)
+	}
+	module, err := Build(parsed.Program, analyzer, BuildOptions{RequestedModule: "main", MaxPackage: 14})
+	if err == nil || module != nil {
+		t.Fatalf("invalid constant index returned module=%#v error=%v", module, err)
+	}
+}
+
 func TestPackage14ArrayIndexVerifierMatrix(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -1460,12 +1539,20 @@ func TestPackage14FallibleBoundsBuildsIndexError(t *testing.T) {
 
 func TestPackage14BuildsFallibleBoundsPropagationAndLocalHandler(t *testing.T) {
 	module, err := analyzedModule(t, `module main
-fn Read(values: int[4], index: int) Result[int, IndexError] {
+fn Read32(values: int32[4], index: int) Result[int32, IndexError] {
   return Ok(try values[index])
 }
-fn Local(values: int[4], index: int) int {
+fn Read128(values: int128[4], index: int) Result[int128, IndexError] {
+  return Ok(try values[index])
+}
+fn Local(values: int32[4], index: int) int32 {
   return try values[index] {
     Err(IndexError.OutOfBounds) => 0
+  }
+}
+fn CatchAll(values: int128[4], index: int) int128 {
+  return try values[index] {
+    Err(_) => 0
   }
 }
 `, 14)
@@ -1485,8 +1572,19 @@ fn Local(values: int[4], index: int) int {
 		if kinds[OpArrayIndexInBounds] != 1 || kinds[OpArrayExtract] != 1 || kinds[OpEnumConstant] == 0 || kinds[OpBoundsFailure] != 0 {
 			t.Fatalf("%s fallible bounds operations = %#v\n%s", function.Name, kinds, Format(module))
 		}
-		if function.Name == "Read" && kinds[OpResultErr] != 1 {
-			t.Fatalf("Read must propagate exactly one typed Result.err: %#v", kinds)
+		if function.Name == "Read32" || function.Name == "Read128" {
+			if kinds[OpResultErr] != 1 {
+				t.Fatalf("%s must propagate exactly one typed Result.err: %#v", function.Name, kinds)
+			}
+			result, ok := module.Types.Lookup(function.ReturnType)
+			if !ok || result.Kind != TypeResult {
+				t.Fatalf("%s return type = %#v, want Result", function.Name, result)
+			}
+			success, _ := module.Types.Lookup(result.Success)
+			want := strings.TrimPrefix(function.Name, "Read")
+			if success.Name != "int"+want {
+				t.Fatalf("%s success type = %s, want int%s", function.Name, success.Name, want)
+			}
 		}
 	}
 }

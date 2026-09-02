@@ -1904,3 +1904,16 @@ Discarding a statically known already-unavailable place is a legal no-op. It may
 receive only a policy-controlled redundancy advisory, never an ownership error.
 Compiler-theory terminology may be secondary detail but not the primary
 explanation.
+
+## Source-testing diagnostics
+
+The central registry must assign stable primary IDs for test declarations
+outside `*_test.sec`, nested tests, empty or duplicate test identity, parameters
+or return types on tests, returning a value from a test, production dependency
+on test-only declarations, `testing` outside test context, invalid expectation
+operands, and invalid or duplicate sibling subtest names.
+
+Compiler diagnostics remain distinct from structured runtime test results.
+`Failed`, `Skipped`, execution unavailability, target reset, timeout, and other
+runner records must not be invented as compile-time diagnostic categories.
+Canonical testing semantics are defined by `rules/tooling/testing.md`.

@@ -3234,7 +3234,7 @@ incremental_compilation.md
 compiler_testing.md
 ownership.md
 copy_move.md
-borrowing.txt
+borrowing.md
 lifetime_analysis.md
 contracts.md
 types/units.md
@@ -3755,3 +3755,19 @@ When compiler facts make a repair unambiguous, the LSP may suggest forms such as
 target policy forbids required runtime ownership bookkeeping. These actions use
 programmer-facing mentor language and are offered only when Sema proves their
 ownership consequence.
+
+## Source-test discovery and execution integration
+
+The compiler workspace is the sole authority for test declaration discovery,
+stable identity, source range, category, and test-compilation diagnostics. The
+LSP supports an explicit `TestCompilationPlan` view so same-directory
+`*_test.sec`, project `tests/` modules, and compiler-known `testing.*` resolve
+without contaminating production analysis.
+
+The server exposes compiler-owned runnable metadata for Run Test, Debug Test,
+tests in a file/module, and project tests where the client supports those
+actions. Editor extensions may map this metadata to a native testing UI but
+must not parse Sec independently or invent an editor-specific runner. Every
+editor invocation uses the same discovery, selection, plan, harness, cleanup,
+and execution-provider semantics as `sec test` in
+`rules/tooling/testing.md`.

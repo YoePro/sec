@@ -1,95 +1,101 @@
 # Reference Model
 
-## Status
-
-This document is the canonical reference-model rulebook for Sec 0.1.
-
-It defines:
-
-- the semantic guarantees of safe references;
-- the distinction between safe references, slices, stable handles, weak handles,
-  addressed storage, and `RawPtr[T]`;
-- temporal validity, spatial validity, storage identity, provenance, type
-  validity, access authority, nullability, relocation correctness, address-space
-  correctness, and concurrency correctness;
-- validity epochs and generational reference checks;
-- allocation generations, arena epochs, collection storage epochs, and slot
-  generations;
-- direct references, stable handles, and weak handles;
-- compile-time-selected epoch widths;
-- generation exhaustion and stale-reference prevention;
-- profile-dependent runtime representations;
-- initialization requirements for safe typed allocation;
-- failure semantics for stale references and stale handles;
-- reference equality;
-- FFI and `RawPtr[T]` boundaries;
-- Semantic IR, diagnostics, LSP behavior, tests, and implementation planning;
-- the rule that no mandatory runtime, handle table, garbage collector, or
-  generation manager is introduced.
-
-This document incorporates the previously planned generational-reference
-rulebook. No separate `generational_references.md` rulebook is required.
+- Status: Normative
+- Created: 2026-09-02
+- Last updated: 2026-09-02
+- Document revision: 2.0
+- Sec language version: 0.1
+- Canonical path: `rules/memory/reference_model.md`
+- Replaces: previous revision of `rules/memory/reference_model.md`
+- Repository baseline reviewed: `814a584` (latest publicly verifiable `main`; current `main` contents reviewed 2026-09-02)
 
 ---
 
-# Purpose
+## § 1 Purpose and authority
 
-Sec references must provide strong memory-safety guarantees without forcing one
-physical pointer representation on every target.
+§ 1(1) This rulebook defines the underlying validity and representation model for Sec safe references and handle-like reference identities.
 
-The language therefore defines reference semantics independently of runtime
-representation.
+§ 1(2) It defines:
 
-A compiler may represent a reference as:
+```text
+safe-reference guarantees;
+reference categories;
+storage identity;
+provenance;
+spatial validity;
+temporal validity;
+type validity;
+access authority;
+nullability;
+address-space compatibility;
+relocation correctness;
+validity epochs;
+generation representation;
+generation exhaustion;
+stable handles;
+weak handles;
+profile-selected runtime representations;
+reference equality;
+stale-reference failure;
+stale-handle resolution;
+FFI/raw-pointer boundaries;
+Semantic IR requirements;
+lowering constraints;
+diagnostics and tooling.
+```
+
+§ 1(3) `rules/memory/references.md` owns the source-facing semantics of `ref T`, `ref mut T`, reference creation, source forms, call behavior, returned references, and ordinary reference use.
+
+§ 1(4) This rulebook owns the lower-level semantic guarantees and representation choices that make those source-facing rules safe.
+
+§ 1(5) `borrowing.md` owns borrow authority and borrow live ranges.
+
+§ 1(6) `lifetime_analysis.md` owns lifetime and escape proof.
+
+§ 1(7) `storage.md` owns storage identity, storage domains, invalidation domains, epochs, relocation, pinning, backing storage, and memory spaces.
+
+§ 1(8) `memory_model.md` owns the common Place/object/storage/value model.
+
+§ 1(9) `raw_pointers.md` owns `RawPtr[T]` semantics.
+
+§ 1(10) `unsafe.md` owns unsafe contexts and caller proof obligations for raw-to-safe conversion.
+
+§ 1(11) `allocation.md`, `arena.md`, collections rulebooks, FFI rulebooks, concurrency rulebooks, and platform rulebooks own their respective invalidation/storage/retention/access contracts.
+
+§ 1(12) This book incorporates the generational-reference model; no separate `generational_references.md` rulebook is required.
+
+---
+
+## § 2 Core principle
+
+§ 2(1) Sec defines reference semantics independently of physical runtime representation.
+
+§ 2(2) A compiler may represent a safe reference using:
 
 ```text
 an address;
 an address and length;
 an address and expected epoch;
 a slot identity and generation;
-a hardware capability;
+a capability pointer;
 a target-specific tagged pointer;
 a side-table key;
-or another representation that preserves the required semantics.
+or another representation preserving every required semantic guarantee.
 ```
 
-The selected representation must preserve every semantic guarantee of the
-reference kind.
+§ 2(3) A target/profile may change runtime cost, metadata shape, check placement, check elimination, address width, epoch width, hardware assistance, side-table use, or slot-table use.
+
+§ 2(4) A profile must not silently weaken the source-level meaning of `ref`.
+
+§ 2(5) In particular, a profile must not silently reinterpret `ref T` as a raw pointer.
+
+§ 2(6) Where a safe-reference guarantee cannot be proven or dynamically preserved, the safe operation is rejected or an explicit raw/unsafe boundary is required.
 
 ---
 
-# Core principle
+## § 3 Non-goals
 
-```text
-Sec defines the semantic guarantees of a reference independently of its
-physical runtime representation.
-
-A target or build profile may select another representation only when the same
-source-level guarantees remain valid.
-```
-
-A profile may change:
-
-```text
-runtime cost;
-metadata layout;
-check placement;
-check elimination;
-address width;
-epoch width;
-hardware assistance;
-side-table use;
-slot-table use.
-```
-
-A profile may not silently change `ref T` from a safe reference into a raw
-pointer.
-
----
-
-# Non-goals
-
-The reference model does not introduce:
+§ 3(1) The reference model does not introduce:
 
 ```text
 visible lifetime parameters;
@@ -105,612 +111,509 @@ implicit RawPtr conversion;
 general pointer arithmetic on safe references.
 ```
 
-The compiler may use internal lifetime, region, epoch, and provenance identities
-without exposing them in Sec source.
+§ 3(2) The compiler may use internal lifetime, region, epoch, domain, provenance, and handle identities without exposing them in Sec source.
+
+§ 3(3) Stable handles and weak handles are semantic mechanisms whose final public source APIs are not fixed by Sec 0.1 through this book.
 
 ---
 
-# Terminology
+## § 4 Reference guarantee decomposition
 
-## Storage identity
+§ 4(1) Safe-reference validity is composed from separate guarantees.
 
-A compiler-recognized identity for one storage domain or one live incarnation
-of storage.
+§ 4(2) At minimum the compiler must distinguish:
 
-A storage identity is not merely a numeric address.
+```text
+temporal validity;
+spatial validity;
+storage identity;
+provenance;
+type validity;
+initialization;
+access authority;
+nullability;
+borrow compatibility;
+relocation correctness;
+address-space correctness;
+concurrency correctness;
+trust provenance where applicable.
+```
 
-## Validity epoch
+§ 4(3) A single `IsSafePointer` boolean is insufficient as the canonical model.
 
-A logical identity value describing one live incarnation of an invalidation
-domain.
+§ 4(4) Satisfying one guarantee does not imply the others.
 
-A generation is a common representation of a validity epoch.
+§ 4(5) A generation match alone does not establish a safe reference.
 
-## Invalidation domain
+---
 
-A storage owner or storage group whose existing references become invalid after
-one semantic event.
+## § 5 Storage identity
 
-Examples:
+§ 5(1) A storage identity identifies the semantic storage domain/incarnation referenced by a safe reference.
+
+§ 5(2) Storage identity is not merely a numeric address.
+
+§ 5(3) Reuse of the same numeric address for a later storage incarnation does not preserve the old identity.
+
+§ 5(4) Safe references tied to an ended identity must not become valid for later storage at the same address.
+
+§ 5(5) Storage identity is shared with the canonical storage/memory model and must not be reimplemented independently by reference analysis.
+
+---
+
+## § 6 Invalidation domain
+
+§ 6(1) An invalidation domain is the smallest domain whose previous dependencies become invalid after one semantic invalidating event.
+
+§ 6(2) Examples include:
 
 ```text
 one allocation;
-one arena;
-one collection storage buffer;
+one Arena;
+one collection backing store;
 one reusable slot;
-one registry domain.
+one registry domain;
+one owner control block;
+one runtime mapping.
 ```
 
-## Direct reference
+§ 6(3) An invalidation domain may contain many objects or references.
 
-A safe reference whose access ultimately resolves directly to the current
-storage address.
-
-## Stable handle
-
-A long-lived identity that resolves through a stable slot or equivalent lookup
-mechanism and may therefore survive physical relocation.
-
-## Weak handle
-
-A handle that does not itself keep the target alive and whose resolution is
-normally fallible.
-
-## Stale reference
-
-A reference whose expected storage identity or validity epoch no longer matches
-the live storage.
-
-## Stale handle
-
-A handle whose domain, slot, or generation no longer identifies a live target.
-
-## Provenance
-
-Compiler-tracked evidence describing where a reference came from and which
-storage identity it is authorized to access.
+§ 6(4) Invalidation may advance an epoch or end the domain.
 
 ---
 
-# Reference categories
+## § 7 Validity epoch
 
-Sec distinguishes several pointer-like categories.
+§ 7(1) A validity epoch identifies one live incarnation of an invalidation domain.
 
-They must not be collapsed into one universal pointer type.
+§ 7(2) A generation is a common numeric representation of an epoch.
+
+§ 7(3) An epoch belongs to an invalidation domain, not merely to an address.
+
+§ 7(4) Physical epoch representation may be:
+
+```text
+counter;
+compound identity;
+randomized token;
+domain identity plus slot generation;
+hardware tag;
+retired identity plus replacement.
+```
+
+§ 7(5) Source-level semantics depend on identity/incarnation validity, not on one required counter representation.
 
 ---
 
-# `ref T`
+## § 8 Provenance
 
-`ref T` is a safe, non-null, typed shared reference to one valid `T`.
+§ 8(1) Provenance is compiler-tracked evidence describing where a reference came from and which storage identity/location it is authorized to access.
 
-Conceptual example:
+§ 8(2) Provenance may be static, dynamic, target-assisted, trusted, or a combination.
 
-```sec
-fn Read(value: ref Item) int {
-    return value.count
-}
-```
+§ 8(3) Safe derivation preserves or narrows provenance.
 
-A valid `ref T` guarantees:
+§ 8(4) Arbitrary `RawPtr` manipulation may lose compiler-proven provenance.
 
-```text
-non-nullness;
-correct alignment for T;
-valid initialized T representation;
-read authority;
-valid storage for the complete borrow live range;
-correct storage provenance;
-no access outside the referenced T or valid subobjects;
-address-space compatibility;
-borrow compatibility.
-```
+§ 8(5) Raw-to-safe conversion must re-establish sufficient provenance through a trusted owner/platform/unsafe contract.
 
-A `ref T` does not imply ownership.
-
-A `ref T` does not imply that the storage is globally immutable.
-
-It means that mutation through this reference is not permitted and that all
-other mutation must obey Sec's aliasing and concurrency rules.
+§ 8(6) Numeric address equality is not provenance.
 
 ---
 
-# `ref mut T`
+## § 9 Direct references
 
-`ref mut T` is a safe, non-null, typed mutable reference with exclusive mutable
-authority for its borrow live range.
+§ 9(1) A direct reference is a safe reference whose access resolves directly to the current storage address.
 
-Conceptual example:
-
-```sec
-fn Increment(ref mut value: int) void {
-    value += 1
-}
-```
-
-In addition to the guarantees of `ref T`, `ref mut T` guarantees:
+§ 9(2) A direct reference may additionally depend on:
 
 ```text
-write authority;
-exclusive mutable access for the borrow live range;
-no conflicting shared or mutable borrow;
-writable storage;
-compatible synchronization and address-space rules.
+bounds;
+expected epoch;
+provenance;
+address space;
+borrow authority;
+pin dependency;
+mapping/domain identity.
 ```
 
-The type system and borrow checker enforce these guarantees.
+§ 9(3) Direct references are appropriate for short-lived borrows, stable allocations, Arena allocations before invalidation, pinned values, addressed storage, fields, and elements when all guarantees are preserved.
 
-A runtime generation check does not replace exclusive-borrow analysis.
+§ 9(4) While a direct reference is live, physical relocation is forbidden unless the compiler proves every affected use remains correct through the transformation.
+
+§ 9(5) A direct reference is not required to carry runtime metadata when static proof already establishes validity.
 
 ---
 
-# `ref T[]`
+## § 10 Stable handles
 
-`ref T[]` is a safe bounded view over zero or more `T` elements.
+§ 10(1) A stable handle is a long-lived identity that resolves through a stable slot or equivalent lookup mechanism.
 
-A valid slice reference guarantees:
+§ 10(2) A stable handle may survive physical relocation of its target.
 
-```text
-one storage identity;
-a valid element type;
-a defined length;
-a valid bounded range;
-valid storage for the borrow live range;
-correct element alignment;
-read authority;
-borrow compatibility.
-```
-
-A mutable slice uses the corresponding mutable-reference form according to the
-canonical array and slice rulebook.
-
-A slice may be empty.
-
-An empty slice remains semantically valid even when its physical base field uses
-a target-specific null or sentinel representation, provided that:
+§ 10(3) Conceptually it contains or identifies:
 
 ```text
-length is zero;
-the base is never dereferenced;
-no safe ref T is constructed from the base alone;
-all slice operations respect the zero length.
+domain identity;
+slot identity;
+expected generation.
 ```
 
-This representation detail does not make safe references nullable.
+§ 10(4) Resolution obtains the current target address from the slot/table/target mechanism.
+
+§ 10(5) Stable-handle identity is independent of current physical target address.
+
+§ 10(6) A stable handle does not imply ownership unless its handle kind explicitly defines ownership/retention.
+
+§ 10(7) Stable handles must not replace ordinary short-lived direct `ref` values by default.
+
+§ 10(8) Stable handles may require metadata, indirection, synchronization, or slot tables only when the selected profile/API uses them.
+
+§ 10(9) The exact source-level stable-handle API is not fixed by Sec 0.1 in this book.
 
 ---
 
-# Stable handles
+## § 11 Weak handles
 
-A stable handle is a compiler- or library-supported identity for a target that
-may:
+§ 11(1) A weak handle does not keep its target alive.
 
-```text
-relocate;
-be removed;
-reuse storage slots;
-outlive a short lexical borrow;
-be resolved later.
-```
+§ 11(2) Resolution of a weak handle is fallible ordinary program behavior.
 
-The canonical conceptual representation is:
-
-```text
-domain identity + slot identity + expected generation
-```
-
-A stable handle may survive physical relocation because resolution obtains the
-current address from a slot table or equivalent mechanism.
-
-A stable handle does not keep the target alive unless its handle kind explicitly
-defines ownership.
-
-The source-level spelling and standard APIs for stable handles are not fixed by
-Sec 0.1.
-
-The semantic model is fixed by this rulebook.
-
----
-
-# Weak handles
-
-A weak handle does not guarantee that the target remains alive.
-
-Resolution is normal fallible program behavior.
-
-Conceptual forms:
-
-```sec
-let value := handle.Resolve()
-```
-
-Possible result types include:
+§ 11(3) Conceptual resolution may return:
 
 ```text
 Option[ref T]
 Result[ref T, StaleReferenceError]
 ```
 
-The exact source API is deferred.
+§ 11(4) The exact public API and error type are not fixed by this book.
 
-A stale weak handle must not require panic merely because the target has been
-removed.
+§ 11(5) A missing/removed target must not cause panic merely because weak resolution failed.
+
+§ 11(6) A separate asserting resolution API may panic if its explicit contract says so.
 
 ---
 
-# `RawPtr[T]`
+## § 12 `ref T`
 
-`RawPtr[T]` is the raw unsafe and FFI-oriented pointer representation.
+§ 12(1) `ref T` is a safe, non-null, typed shared reference.
 
-It may:
+§ 12(2) A valid `ref T` guarantees:
 
 ```text
-be null;
-be invalid;
-be misaligned;
-refer to uninitialized storage;
-have no known bounds;
-have no known lifetime;
-have no known ownership;
-have no runtime generation;
-have no compiler-valid provenance after foreign manipulation.
+non-nullness;
+correct alignment for T;
+valid initialized T representation;
+read authority;
+live storage for the borrow live range;
+correct storage identity/provenance;
+spatial validity for T/subobjects;
+address-space compatibility;
+borrow compatibility;
+relocation correctness.
 ```
 
-Possessing, storing, moving, comparing, or passing a `RawPtr[T]` is not by
-itself an unsafe operation.
+§ 12(3) `ref T` is non-owning.
 
-Interpreting it as live typed storage is unsafe.
+§ 12(4) `ref T` does not mean globally immutable storage.
 
-The complete unsafe rules belong to `unsafe.md`.
+§ 12(5) Mutation through another authority must still satisfy aliasing/concurrency rules.
+
+§ 12(6) Physical representation is profile-selected.
 
 ---
 
-# Addressed storage
+## § 13 `ref mut T`
 
-Addressed storage is bound through target-aware declarations such as:
+§ 13(1) `ref mut T` is a safe, non-null, typed mutable reference with exclusive mutable authority for its borrow live range.
+
+§ 13(2) In addition to shared-reference guarantees it requires:
+
+```text
+write authority;
+writable storage;
+exclusive mutable access;
+no conflicting shared or mutable borrow;
+compatible synchronization;
+compatible address-space rules.
+```
+
+§ 13(3) A runtime generation check does not replace exclusive-borrow analysis.
+
+§ 13(4) Safe derivation cannot upgrade `ref T` into `ref mut T`.
+
+---
+
+## § 14 Slice references
+
+§ 14(1) `ref T[]` is a safe bounded shared view over zero or more elements.
+
+§ 14(2) A mutable slice uses the corresponding mutable-reference form defined by array/slice rules.
+
+§ 14(3) A slice reference guarantees:
+
+```text
+one compatible storage identity/domain;
+valid element type;
+defined length;
+valid bounded extent;
+live storage for the borrow live range;
+correct element alignment;
+read or mutable authority as applicable;
+borrow compatibility;
+address-space compatibility.
+```
+
+§ 14(4) Permitted indices are `0..<length`.
+
+§ 14(5) An empty slice is semantically valid.
+
+§ 14(6) An empty slice may use a hidden null/sentinel physical base only when length is zero, the base is never dereferenced, no scalar safe reference is fabricated from it, and all operations respect zero length.
+
+§ 14(7) This representation detail does not make safe references nullable.
+
+---
+
+## § 15 `RawPtr[T]`
+
+§ 15(1) `RawPtr[T]` is not a safe-reference category.
+
+§ 15(2) It may be null, dangling, misaligned, out of bounds, uninitialized, unowned, unbounded, provenance-unknown, or generation-untracked.
+
+§ 15(3) Merely possessing/storing/copying/moving/comparing/passing a raw pointer does not by itself require unsafe where `raw_pointers.md` says otherwise.
+
+§ 15(4) Interpreting raw storage as live typed safe storage requires the unsafe/raw-pointer proof boundary.
+
+§ 15(5) Raw-pointer equality remains raw address equality and must not be reused as safe-reference equality.
+
+---
+
+## § 16 Addressed storage
+
+§ 16(1) Platform-addressed storage may be exposed through target-aware declarations such as:
 
 ```sec
 @address(Peripheral.GPIOA)
 let mut GPIOA: GPIORegisters
 ```
 
-It is:
+§ 16(2) Addressed storage may be typed, target-bound, fixed/stable by contract, volatile by hardware rules, and outside allocator generation domains.
 
-```text
-target-bound;
-typed;
-volatile according to addressed-storage rules;
-stable according to the target binding;
-not an ordinary allocator-owned generation domain.
-```
+§ 16(3) Addressed storage normally does not require allocation generations merely because it has a fixed address.
 
-Addressed storage normally does not use allocation generations.
+§ 16(4) Reference validity still depends on platform/mapping/device/storage contracts.
 
-Raw numeric addresses remain trusted target assertions according to
-`attributes.md` and `unsafe.md`.
+§ 16(5) Fixed numeric address does not imply compiler ownership or permanent device liveness.
 
 ---
 
-# Safe-reference guarantees
+## § 17 Temporal validity
 
-Safe reference validity is composed from several separate guarantees.
+§ 17(1) Referenced storage/object state must remain valid for the complete reference use.
 
-A generation match alone is not enough.
-
----
-
-# Temporal validity
-
-The referenced storage must remain live for the complete reference use.
-
-Temporal validity protects against:
+§ 17(2) Temporal validity protects against at least:
 
 ```text
+use after object lifetime end;
 use after destruction;
 use after free;
-use after arena reset;
-use after arena release;
-use after collection storage replacement;
-use after slot removal and reuse;
-use after owner invalidation.
+use after Arena reset;
+use after Arena release;
+use after collection backing replacement;
+use after slot removal/reuse;
+use after mapping invalidation;
+use after owner-domain invalidation.
 ```
 
-Temporal validity may be proven statically or checked dynamically.
+§ 17(3) Temporal validity may be statically proven or dynamically checked according to the selected profile.
 
-Generation or epoch checks are one implementation mechanism.
+§ 17(4) Epoch/generation validation is one temporal-validity mechanism.
+
+§ 17(5) A live numeric address is insufficient when the referenced storage incarnation has ended.
 
 ---
 
-# Spatial validity
+## § 18 Spatial validity
 
-Every access must remain within the permitted storage extent.
+§ 18(1) Every safe-reference access must remain inside its authorized spatial extent.
 
-For `ref T`, the permitted extent is:
+§ 18(2) For `ref T`, the extent is the referenced `T` and valid subobjects derived from it.
 
-```text
-the referenced T and valid subobjects derived from it.
-```
+§ 18(3) For slice references, the extent is the represented bounded element range.
 
-For `ref T[]`, the permitted indices are:
+§ 18(4) Temporal validity does not imply spatial validity.
 
-```text
-0..<length
-```
+§ 18(5) A live allocation can still be accessed out of bounds.
 
-Temporal validity does not imply spatial validity.
-
-A live allocation can still be accessed out of bounds.
+§ 18(6) Spatial narrowing through field/index/range derivation must be preserved.
 
 ---
 
-# Storage provenance
+## § 19 Type validity
 
-A safe reference must originate from the correct live storage identity.
+§ 19(1) A safe reference guarantees a valid typed object/view.
 
-Example:
-
-```text
-allocation A uses address X;
-A is destroyed;
-allocation B later reuses address X.
-```
-
-A stale reference to A must not become valid for B merely because the numeric
-address is reused.
-
-Reference validity therefore depends on storage identity, not address alone.
-
----
-
-# Type validity
-
-A safe `ref T` guarantees:
+§ 19(2) Type validity includes:
 
 ```text
-correct alignment for T;
+required alignment;
 initialized storage;
-a valid T representation;
+valid T representation;
+valid discriminants/union state;
 compatible access width;
-valid representation invariants;
-valid target address space for T.
+address-space compatibility;
+representation invariants.
 ```
 
-A `RawPtr[T]` does not automatically establish these guarantees.
+§ 19(3) `RawPtr[T]` does not automatically establish type validity.
 
-Converting `RawPtr[T]` into `ref T` or `ref mut T` is unsafe.
+§ 19(4) Unsafe proof cannot make a compiler-proven invalid representation valid.
 
 ---
 
-# Access authority
+## § 20 Access authority
 
-The reference kind defines its access authority.
+§ 20(1) Reference category determines ordinary access authority.
 
 ```text
-ref T
+ref T:
     read authority
 
-ref mut T
-    exclusive read and write authority
+ref mut T:
+    exclusive read/write authority
 ```
 
-Additional operation-specific authorities may exist for:
+§ 20(2) Additional operation-specific authority may exist for:
 
 ```text
 volatile access;
 atomic access;
 execute access;
 DMA ownership;
-foreign retention.
+foreign retention;
+MMIO privilege;
+mapping access.
 ```
 
-These authorities are not inferred merely from numeric addressability.
+§ 20(3) These authorities are separate from numeric addressability.
+
+§ 20(4) Possessing a safe reference does not grant unrelated device/platform authority.
 
 ---
 
-# Nullability
+## § 21 Nullability
 
-Safe references are never null.
+§ 21(1) Safe scalar references are non-null.
 
-```text
-ref T
-ref mut T
-ref T[]
-```
-
-represent valid reference values according to their category.
-
-Optional references use an explicit optional type:
+§ 21(2) Optionality is explicit:
 
 ```sec
 Option[ref T]
 ```
 
-`RawPtr[T]` may be null.
+§ 21(3) `RawPtr[T]` may be null.
 
-An empty slice may use a null-like internal base representation only as a hidden
-implementation detail with length zero.
+§ 21(4) Slice internal representation may use a hidden null/sentinel only under § 14(6).
 
----
-
-# Borrow compatibility
-
-A valid generation does not grant alias authority.
-
-Sec continues to enforce:
-
-```text
-compatible shared borrows;
-one exclusive mutable borrow;
-field-split borrows when non-overlap is proven;
-no conflicting ref and ref mut;
-no use after the borrow ends.
-```
-
-Borrow live ranges may be non-lexical and end at last use.
+§ 21(5) A raw-to-safe conversion must prove non-nullness for scalar references.
 
 ---
 
-# Subreferences and narrowing
+## § 22 Borrow compatibility
 
-A safe reference derived from another safe reference may only retain or narrow
-its authority.
+§ 22(1) Generation validity does not grant alias authority.
 
-Example:
+§ 22(2) Shared/mutable borrow compatibility is governed by `borrowing.md`.
 
-```sec
-let header := ref packet.header
-```
+§ 22(3) Reference validation must consume canonical borrow live-range facts.
 
-The derived reference has:
+§ 22(4) Field/range/index disjointness proven by the Place model may permit independent references.
+
+§ 22(5) No dynamic generation mechanism may be used as a substitute for compile-time borrow exclusivity.
+
+---
+
+## § 23 Subreferences
+
+§ 23(1) A safe reference derived from another safe reference may retain or narrow authority.
+
+§ 23(2) A derived subreference has:
 
 ```text
-the same storage identity;
+the same compatible storage identity;
 the same or shorter lifetime;
-narrower spatial bounds;
+equal or narrower spatial bounds;
 the same or weaker access authority;
 compatible address space;
 compatible epoch dependency.
 ```
 
-A shared reference cannot become mutable through safe derivation.
+§ 23(3) A shared reference cannot become mutable through safe derivation.
 
-A field reference cannot reconstruct unrestricted access to the containing
-allocation without an explicit unsafe boundary.
+§ 23(4) A field/subobject reference cannot reconstruct unrestricted access to its container without an explicit valid boundary.
 
-For slices:
-
-```sec
-let part := values[10..<20]
-```
-
-The new slice obtains narrower bounds and the same storage identity.
+§ 23(5) Slice/range derivation narrows bounds and preserves compatible storage identity.
 
 ---
 
-# Relocation correctness
+## § 24 Reference derivation provenance
 
-A live reference must remain correct when storage moves, or physical relocation
-must be forbidden while that reference is live.
+§ 24(1) Reference derivation must retain a chain or equivalent proof sufficient to relate the child reference to its source storage/object.
 
-Generation matching alone does not solve relocation.
+§ 24(2) The compiler need not retain source-level syntax after canonical provenance facts are established.
 
-A direct reference contains or resolves to the current address.
+§ 24(3) Derivation through field/index/range/deref/view mappings must preserve bounds and authority.
 
-If the object moves and the reference is not updated or indirected, the direct
-reference becomes invalid.
+§ 24(4) A derived reference must not outlive any parent/source dependency required for validity.
 
 ---
 
-# Direct references
+## § 25 Relocation correctness
 
-A direct reference conceptually resolves to:
+§ 25(1) A live direct reference must remain correct if storage relocates, or relocation must be forbidden.
 
-```text
-current storage address
-```
+§ 25(2) Generation matching alone does not solve relocation.
 
-It may additionally carry or depend on:
+§ 25(3) If a direct reference stores/resolves to an old address and storage moves, that direct reference becomes invalid unless the compiler updates every use through a semantics-preserving transformation.
 
-```text
-bounds;
-expected epoch;
-provenance metadata;
-address-space metadata.
-```
+§ 25(4) Stable handles may survive relocation because they resolve current address indirectly.
 
-A direct reference is suitable for:
-
-```text
-stack values;
-short-lived borrows;
-stable heap allocations;
-arena allocations before invalidation;
-pinned values;
-addressed storage;
-fields and slice elements under active borrows.
-```
-
-While a direct reference is live, the target may not physically relocate unless
-the compiler proves every use remains correct through transformation.
+§ 25(5) Relocation legality consumes canonical address-stability and pinning/storage facts.
 
 ---
 
-# Stable handle resolution
+## § 26 Pinning
 
-A stable handle conceptually resolves through:
+§ 26(1) Pinning prevents physical relocation for a defined interval.
 
-```text
-domain -> slot -> current address
-```
-
-The handle checks:
+§ 26(2) Pinning may be required by:
 
 ```text
-domain identity;
-slot identity;
-expected generation;
-slot live state;
-type and access compatibility.
-```
-
-Because the slot contains the current address, the target may relocate without
-changing the handle identity.
-
-The cost may include:
-
-```text
-one indirection;
-slot metadata;
-generation comparison;
-synchronization.
-```
-
-Stable handles must not replace ordinary short-lived `ref` values by default.
-
----
-
-# Pinning
-
-Pinning prevents physical relocation for a defined lifetime.
-
-Pinning may be required for:
-
-```text
-self-referential structures;
-foreign APIs retaining addresses;
+foreign retention;
 DMA;
 OS registration;
-intrusive data structures;
+intrusive structures;
 hardware descriptors;
+self-referential layouts;
 target-specific address contracts.
 ```
 
-Pinning does not by itself imply:
+§ 26(3) Pinning does not by itself imply ownership, permanent lifetime, thread safety, copyability, allocation, or reference counting.
 
-```text
-ownership;
-thread safety;
-copyability;
-permanent lifetime;
-allocation;
-reference counting.
-```
+§ 26(4) An active pin dependency forbids incompatible physical relocation.
 
-The exact source syntax for pinning is deferred.
+§ 26(5) The exact general source-level pin syntax is not fixed by this book.
 
-The semantic relationship is fixed:
-
-```text
-active pin dependency prevents physical relocation.
-```
+§ 26(6) Specialized APIs may provide pin guards/contracts.
 
 ---
 
-# Address spaces
+## § 27 Address spaces
 
-A reference belongs to a compiler- and target-recognized address space.
+§ 27(1) Every reference belongs to a compiler/target-recognized address space.
 
-Examples include:
+§ 27(2) Examples include:
 
 ```text
 ordinary RAM;
@@ -723,710 +626,508 @@ device-local memory;
 foreign address spaces.
 ```
 
-Numerically equal addresses in different address spaces are not automatically
-interchangeable.
+§ 27(3) Numerically equal addresses in different address spaces are not automatically interchangeable.
 
-Safe conversion requires compiler knowledge and semantic compatibility.
+§ 27(4) Safe conversion across spaces requires compiler-known semantic compatibility.
 
-Raw conversion requires an unsafe boundary.
+§ 27(5) Raw conversion requires an explicit unsafe boundary where the source rules permit it.
+
+§ 27(6) A target may reject a safe-reference form in an address space whose guarantees cannot be preserved.
 
 ---
 
-# Concurrency correctness
+## § 28 Concurrency correctness
 
-Generation checking does not prevent data races.
+§ 28(1) Generation checking does not prevent data races.
 
-Concurrency safety continues to depend on:
+§ 28(2) A reference used concurrently must satisfy ownership, sharing, mutability, synchronization, atomic, memory-ordering, reclamation, and ISR rules.
 
-```text
-ownership;
-sharing rules;
-mutability;
-synchronization;
-atomic operations;
-memory ordering;
-reclamation protocol;
-ISR rules.
-```
+§ 28(3) A generation check followed by a load is insufficient when another execution context can invalidate/reclaim the object between check and use.
 
-A generation check followed by a load is not sufficient when another execution
-context can invalidate the object between the check and the load.
-
-Concurrent invalidation may require:
+§ 28(4) Concurrent invalidation may require:
 
 ```text
-ownership preventing invalidation;
-a lock;
-an atomic slot protocol;
-a critical section;
-hazard references;
+ownership excluding invalidation;
+lock;
+atomic slot protocol;
+critical section;
+hazard reference/protection;
 epoch-based reclamation;
 reference counting;
 pinning during access;
 target-specific synchronization.
 ```
 
-Sec 0.1 does not require one universal concurrent reclamation mechanism.
+§ 28(5) Sec 0.1 does not require one universal concurrent reclamation mechanism.
+
+§ 28(6) Generation width does not imply atomicity.
 
 ---
 
-# Validity epochs
+## § 29 Allocation generations
 
-A validity epoch identifies one live incarnation of an invalidation domain.
+§ 29(1) An allocation generation identifies one live incarnation of one allocation identity where the selected mechanism uses generations.
 
-When an invalidating event occurs, the epoch changes or the domain ends.
+§ 29(2) The generation changes or the allocation identity is retired when storage is reclaimed/reused/replaced in a way that could otherwise revive stale references.
 
-A generation is the usual numeric representation of an epoch.
+§ 29(3) Generation metadata may reside in allocation metadata, side tables, owner control blocks, hardware tags, encoded pointers/handles, or elsewhere.
 
-The language semantics use the broader term validity epoch because the physical
-representation may be:
+§ 29(4) No particular representation is mandatory.
 
-```text
-a counter;
-a compound identity;
-a randomized token;
-a domain identity plus slot generation;
-a hardware tag;
-a retired identity with replacement.
-```
+§ 29(5) A provider may omit runtime generation metadata when static proof already prevents stale safe-reference use.
 
 ---
 
-# Epoch ownership
+## § 30 Arena epochs
 
-An epoch belongs to an invalidation domain, not merely to an address.
+§ 30(1) An Arena may use one shared owner-wide validity epoch.
 
-This rule is canonical:
+§ 30(2) References requiring runtime validation retain the expected Arena epoch.
 
-```text
-A generation belongs to an invalidation domain, not merely to a numeric
-address.
-```
+§ 30(3) Ordinary allocation does not advance the Arena epoch.
 
-Possible invalidation domains include:
+§ 30(4) Arena reset advances/replaces the current epoch while preserving the Arena domain as specified by `arena.md`.
 
-```text
-allocation;
-arena;
-collection storage;
-slot;
-registry;
-owner control block.
-```
+§ 30(5) Reset invalidates prior Arena allocations and dependent references.
+
+§ 30(6) Arena release ends the Arena domain and invalidates all dependent references.
+
+§ 30(7) One Arena epoch may cover many allocations; one generation field per allocation is not required.
 
 ---
 
-# Allocation generations
+## § 31 Collection storage epochs
 
-An allocation generation identifies one live incarnation of one dynamically
-owned allocation identity.
+§ 31(1) A collection may use one epoch for its backing-storage invalidation domain.
 
-The generation changes or the identity is retired when the allocation is:
-
-```text
-destroyed;
-freed;
-reused;
-replaced by another logical allocation.
-```
-
-The allocator may store the generation in:
-
-```text
-allocation metadata;
-a side table;
-an owner control block;
-a hardware tag;
-an encoded pointer or handle.
-```
-
-No particular representation is mandatory.
-
----
-
-# Arena epochs
-
-An arena may use one owner-wide epoch.
-
-Conceptual state:
-
-```text
-Arena {
-    identity
-    current epoch
-}
-```
-
-Arena-backed references that require runtime validation retain the expected
-arena epoch.
-
-On reset:
-
-```text
-the arena remains live;
-the epoch changes;
-all previous arena allocations are invalidated;
-all references depending on previous allocations become stale;
-capacity is restored according to the arena rules.
-```
-
-On release:
-
-```text
-the domain ends;
-all arena-backed storage is invalidated;
-all dependent references become stale;
-future ordinary arena use is forbidden.
-```
-
-One arena epoch may invalidate many allocations at once.
-
-The implementation does not need one generation field per arena allocation.
-
----
-
-# Collection storage epochs
-
-A collection may use one storage epoch for its backing storage.
-
-The epoch may change when storage is:
+§ 31(2) The epoch may change when backing storage is:
 
 ```text
 reallocated;
 replaced;
 structurally rebuilt;
-compacted in a way that invalidates direct references.
+compacted with direct-reference invalidation.
 ```
 
-Element mutation that preserves storage identity and reference validity does not
-necessarily change the storage epoch.
+§ 31(3) Element mutation preserving storage identity/reference validity does not necessarily advance the epoch.
 
-Structural mutation rules remain coordinated with iteration freeze, borrowing,
-and collection semantics.
+§ 31(4) Collection mutation rules remain coordinated with borrowing, iterator/view, freeze, and transfer semantics.
 
 ---
 
-# Slot generations
+## § 32 Slot generations
 
-A reusable slot uses a slot generation to distinguish successive live occupants.
+§ 32(1) A reusable slot may use a slot generation to distinguish successive occupants.
 
-Conceptual slot:
+§ 32(2) A stable handle retains domain identity, slot identity, and expected generation.
 
-```text
-Slot {
-    current address
-    current generation
-    live state
-}
-```
+§ 32(3) Slot reuse must advance/replace the generation or otherwise create a distinguishable new identity.
 
-A stable handle contains:
-
-```text
-domain identity
-slot identity
-expected generation
-```
-
-When an element is removed and the slot is reused, the slot generation changes.
-
-An old handle must not resolve to the new occupant.
+§ 32(4) An old handle must never resolve to the new occupant solely because the slot number was reused.
 
 ---
 
-# Runtime generation width
+## § 33 Default logical epoch width
 
-Validity epochs use a 64-bit logical width by default.
+§ 33(1) The default logical validity-epoch width is 64 bits.
 
-This default also applies to 32-bit general-purpose targets.
+§ 33(2) This default also applies to 32-bit general-purpose targets.
 
-Pointer width and epoch width are separate concerns.
+§ 33(3) Pointer width and epoch width are independent.
 
-Example:
+§ 33(4) A 64-bit logical epoch may use multiple machine words on a narrower target.
 
-```text
-32-bit target address:
-    32 bits
-
-logical epoch:
-    64 bits
-```
-
-A 64-bit epoch may be stored as two machine words on a 32-bit target.
-
-The physical representation may be optimized or omitted where proof permits.
+§ 33(5) Runtime representation may be optimized or omitted when proof permits.
 
 ---
 
-# Compile-time-selected shorter widths
+## § 34 Compile-time-selected shorter widths
 
-A target or build profile may select a shorter epoch width only at compile time.
+§ 34(1) A target/build profile may select a shorter epoch/generation width only at compile time.
 
-Epoch width is never selected dynamically at runtime.
+§ 34(2) Epoch width is never dynamically selected as ordinary runtime program state.
 
-A shorter width is permitted only when the compiler can preserve the
-stale-reference guarantee through one or more of:
+§ 34(3) A shorter width is valid only when stale-reference safety is preserved through one or more of:
 
 ```text
 statically bounded invalidation count;
 slot retirement;
 domain retirement;
 explicit exhaustion handling;
-proof that stale references cannot survive reuse;
-an equivalent target-specific guarantee.
+proof stale references cannot survive reuse;
+equivalent target-specific guarantee.
 ```
 
-The selected width is part of the concrete compilation plan.
+§ 34(4) The profile must reject unsafe reuse patterns it cannot prove/check.
+
+§ 34(5) Shorter width is a representation policy, not weaker reference semantics.
 
 ---
 
-# Future wider widths
+## § 35 Wider widths
 
-Future targets or hardened profiles may use wider epochs such as 128 bits.
+§ 35(1) Future hardened/target profiles may use wider logical epochs such as 128 bits.
 
-This does not change source-level reference semantics.
+§ 35(2) Wider width does not alter source-level reference semantics.
 
-The language does not expose epoch width as ordinary runtime program state.
+§ 35(3) Epoch width is not exposed as ordinary mutable program state through this model.
 
 ---
 
-# Constrained bare-metal profiles
+## § 36 Constrained bare-metal profiles
 
-A constrained profile should omit runtime generation metadata when validity is
-statically proven.
+§ 36(1) Constrained profiles should omit runtime reference metadata whenever all required validity is statically proven.
 
-Common cases include:
+§ 36(2) Common examples include:
 
 ```text
-stack borrows;
-fixed addressed storage;
-short-lived arena borrows proven not to cross reset;
+bounded lexical borrows;
+fixed-address storage;
 fixed arrays;
-non-relocating statically allocated values.
+non-relocating statically allocated values;
+Arena references proven not to cross reset/release.
 ```
 
-A constrained target may use a shorter compile-time-selected generation when the
-required proof or exhaustion behavior exists.
+§ 36(3) A constrained profile may use compact compile-time-selected generations where required safety/exhaustion behavior exists.
 
-When validity cannot be proven or checked, the compiler must:
+§ 36(4) When validity cannot be proven or checked, the compiler rejects the safe operation or requires a raw/unsafe form.
+
+§ 36(5) A constrained profile must not silently weaken safe-reference guarantees.
+
+---
+
+## § 37 Generation increment
+
+§ 37(1) Numeric generation/epoch increments use checked arithmetic.
+
+§ 37(2) Generations must never silently wrap.
+
+§ 37(3) A generation or epoch must never wrap into a value that can make an older stale reference valid again.
+
+§ 37(4) If the physical mechanism is non-numeric, it must provide the equivalent non-revival guarantee.
+
+---
+
+## § 38 Generation exhaustion
+
+§ 38(1) Finite generation spaces may exhaust.
+
+§ 38(2) Exhaustion may exhaust/retire an identity domain.
+
+§ 38(3) Exhaustion must never revive stale references.
+
+§ 38(4) Valid exhaustion strategies include:
 
 ```text
-reject the safe operation;
-or require an explicit RawPtr/unsafe boundary.
+retire slot permanently;
+retire allocation identity;
+replace Arena/domain with fresh independent identity;
+rekey domain preserving old-domain distinction;
+return explicit exhaustion error when API is fallible;
+deterministic panic or target trap when recovery is unavailable.
 ```
 
-The profile may not silently weaken safe-reference semantics.
+§ 38(5) Simple wraparound to zero is forbidden when any old matching identity may still exist.
+
+§ 38(6) The owning API/rulebook determines whether exhaustion is fallible, panic-producing, or prevented by proof/retirement.
 
 ---
 
-# Generation increments
+## § 39 Slot retirement
 
-Generation and epoch increments use checked arithmetic.
+§ 39(1) A reusable slot whose generation space exhausts may be permanently retired.
 
-They never silently wrap.
+§ 39(2) A retired slot must not receive a new live occupant under the exhausted identity.
 
-Canonical rule:
+§ 39(3) New allocations may use another slot/identity.
+
+§ 39(4) Slot retirement permits compact generations where the resulting capacity/resource policy is acceptable.
+
+---
+
+## § 40 Arena epoch exhaustion
+
+§ 40(1) Arena epoch exhaustion may be handled by:
 
 ```text
-A generation or validity epoch must never wrap into a value that can make an
-older stale reference valid again.
+replace complete Arena identity domain;
+recreate Arena with fresh independent identity;
+return reset failure where API is fallible;
+deterministic panic or target trap otherwise.
 ```
+
+§ 40(2) A replacement domain must remain distinguishable from every prior live/stale represented domain identity.
+
+§ 40(3) The Arena API/rulebook owns the programmer-visible exhaustion behavior.
 
 ---
 
-# Generation exhaustion
+## § 41 Atomicity and generation representation
 
-Finite generations may eventually reach their maximum representable value.
+§ 41(1) Generation width does not imply atomicity.
 
-Exhaustion is allowed to exhaust an identity domain.
+§ 41(2) A 64-bit epoch may not be atomically readable/writable on a 32-bit target.
 
-Exhaustion must never revive a stale reference.
+§ 41(3) Concurrent invalidation/resolution requires a safe synchronized protocol.
 
-At exhaustion, an implementation may:
+§ 41(4) Valid mechanisms may include target atomics, locks, critical sections, versioned-slot protocols, compact atomic generation plus retirement, or ownership excluding concurrent invalidation.
 
-```text
-retire the slot permanently;
-retire the allocation identity;
-replace the arena control domain with a fresh independent identity;
-rekey the domain while preserving old-domain distinction;
-return an explicit exhaustion error when the API is fallible;
-produce a deterministic panic or target trap when recovery is unavailable.
-```
-
-The implementation must not continue with:
-
-```text
-MAX_GENERATION + 1 = 0
-```
-
-when an older matching identity may still exist.
+§ 41(5) A torn unsynchronized epoch protocol is invalid.
 
 ---
 
-# Slot retirement
+## § 42 Initialization requirements
 
-When a reusable slot exhausts its generation range, the implementation may
-retire the slot permanently and allocate another slot.
+§ 42(1) A safe typed reference may only observe initialized valid typed storage.
 
-The retired slot must not receive a new live occupant under the exhausted
-identity.
+§ 42(2) Safe typed allocation returns a fully initialized valid value according to the allocation/default/constructor/type rules.
 
-This permits compact slot generations when slot retirement is acceptable.
+§ 42(3) This does not require redundant physical zeroing.
 
----
+§ 42(4) The compiler may directly initialize semantic fields and omit dead/redundant writes.
 
-# Arena exhaustion
+§ 42(5) Uninitialized typed storage is not readable through a safe reference.
 
-When an arena epoch is exhausted, safe choices include:
+§ 42(6) Internal/raw uninitialized storage remains outside safe reference access until initialization validity is established.
 
-```text
-replace the complete identity domain;
-recreate the arena with a fresh independent identity;
-make reset fail when the API is fallible;
-produce deterministic panic or target trap otherwise.
-```
-
-A fresh domain identity must remain distinguishable from every previous live or
-stale domain identity that may still be represented.
+§ 42(7) Sec 0.1 does not require a public `Uninit[T]` type through this rulebook.
 
 ---
 
-# Atomicity and generation width
+## § 43 Check placement
 
-Generation width does not imply atomicity.
+§ 43(1) Dynamic validity checks are inserted only when required by profile and proof state.
 
-A 64-bit epoch may not be atomically readable or writable on a 32-bit target.
-
-Concurrent invalidation and resolution require an atomic or otherwise
-synchronized protocol.
-
-Possible mechanisms include:
-
-```text
-target-supported atomic operations;
-locks;
-critical sections;
-versioned slot protocols;
-32-bit atomic generations with retirement;
-ownership preventing concurrent invalidation.
-```
-
-The compiler must not generate an unsynchronized torn epoch protocol and call it
-safe.
-
----
-
-# Allocation initialization
-
-Safe typed allocation always produces a fully initialized valid value.
-
-Example:
-
-```sec
-let value := allocator.New[Value]()
-```
-
-The resulting storage must contain a valid `Value` according to:
-
-```text
-type defaults;
-field defaults;
-constructors;
-contracts;
-representation validity.
-```
-
-This does not require every physical byte to be zeroed before initialization.
-
-The compiler may initialize fields directly and omit redundant writes.
-
----
-
-# Zeroing and allocation identity
-
-Memory is not universally zeroed merely to establish allocation identity.
-
-Zeroing does not prevent stale references from matching reused addresses.
-
-Storage identity and epoch validity solve that problem.
-
-Zeroing may still be required by:
-
-```text
-type defaults;
-security policy;
-secret erasure;
-allocator contract;
-explicit zeroed allocation API;
-target requirements.
-```
-
-These concerns remain separate from reference identity.
-
----
-
-# Uninitialized storage
-
-Uninitialized typed storage is not readable through a safe reference.
-
-Raw uninitialized allocation remains unsafe until a dedicated initialized-state
-model is defined.
-
-Sec 0.1 does not require a public `Uninit[T]` type.
-
-Compiler and core implementation may use internal uninitialized storage only
-while preserving all initialization rules before safe access.
-
----
-
-# Check placement
-
-Dynamic validity checks are inserted only when required by the selected profile
-and proof state.
-
-Possible checks include:
+§ 43(2) Checks may include:
 
 ```text
 epoch comparison;
-slot live-state check;
+slot live-state validation;
 bounds check;
 address-space check;
-type-tag check;
-hardware capability validation.
+type/tag check;
+hardware-capability validation;
+mapping/domain validation.
 ```
 
-The compiler should remove checks when validity is statically proven.
+§ 43(3) Statically proven guarantees should remove corresponding runtime checks.
+
+§ 43(4) Eliminating one check must not remove unrelated guarantees.
+
+§ 43(5) Check placement must preserve concurrency/reclamation correctness; a check must not be moved outside the interval where its proof remains valid.
 
 ---
 
-# Safe ordinary references
+## § 44 Ordinary safe references should not become stale
 
-Safe Sec code should not normally create stale ordinary `ref` values.
+§ 44(1) Safe Sec code should normally prevent creation/use of stale ordinary `ref` values.
 
-The compiler prevents stale references through:
+§ 44(2) Static prevention uses ownership, borrowing, lifetime/escape analysis, Arena analysis, relocation restrictions, collection mutation rules, call/effect analysis, storage facts, and target knowledge.
+
+§ 44(3) Runtime validation of ordinary `ref` values is primarily a hardening/dynamic-model/foreign-trust/target-safety mechanism rather than normal business control flow.
+
+§ 44(4) The programmer is not required to `try` every ordinary safe-reference access.
+
+---
+
+## § 45 Stale ordinary-reference failure
+
+§ 45(1) A stale ordinary safe reference represents violation of a safe-reference guarantee.
+
+§ 45(2) Use/dereference of such a stale ordinary safe reference results in deterministic panic or target trap according to the active profile.
+
+§ 45(3) This is not normal recoverable business failure.
+
+§ 45(4) `try` does not catch this panic under Sec 0.1 panic semantics.
+
+§ 45(5) A profile may statically prove the stale path impossible and remove the check.
+
+---
+
+## § 46 Stale stable/weak-handle resolution
+
+§ 46(1) Resolution failure of a stable/weak handle whose target was removed/replaced is normal fallible behavior.
+
+§ 46(2) Canonical handle APIs return explicit optional/error results for fallible resolution.
+
+§ 46(3) They do not panic merely because the target is no longer live.
+
+§ 46(4) An explicitly asserting handle-resolution operation may panic by contract.
+
+§ 46(5) This distinction between ordinary `ref` failure and handle resolution failure is normative.
+
+---
+
+## § 47 Safe-reference equality
+
+§ 47(1) Safe-reference equality means:
 
 ```text
-ownership analysis;
-borrow checking;
-escape analysis;
-arena lifetime analysis;
-relocation restrictions;
-collection mutation rules;
-call and effect analysis;
-target knowledge.
+same live storage identity;
+and same referenced semantic location within that storage.
 ```
 
-Runtime reference checks are therefore primarily:
+§ 47(2) Numeric address equality alone is insufficient.
+
+§ 47(3) References to the same live field/element/location may compare equal.
+
+§ 47(4) References to different live incarnations at the same reused address are not equal.
+
+§ 47(5) Equality must respect address-space identity where relevant.
+
+---
+
+## § 48 Stable-handle equality
+
+§ 48(1) Stable-handle equality means:
 
 ```text
-hardening;
-defense against unsafe violations;
-defense against foreign contract violations;
-protection in dynamic lifetime models;
-target-specific safety support.
+same domain identity;
+same slot identity;
+same generation/epoch identity.
 ```
 
----
+§ 48(2) A stale handle and a later handle to a new occupant are not equal even if the slot number and physical address are reused.
 
-# Stale ordinary reference failure
-
-A stale ordinary safe reference indicates a violated safety guarantee.
-
-Dereferencing or otherwise using it results in:
-
-```text
-deterministic panic;
-or target trap where the profile uses trap semantics.
-```
-
-It is not normal fallible business logic.
-
-The programmer does not write `try` for every ordinary reference access.
+§ 48(3) Equality does not imply the target is currently resolvable unless the handle API explicitly guarantees liveness.
 
 ---
 
-# Stale handle resolution
+## § 49 Raw-pointer equality
 
-A stale weak or stable handle is normal fallible resolution.
+§ 49(1) `RawPtr[T]` equality uses target raw-address equality according to raw-pointer/address-space rules.
 
-The resolution API returns an explicit optional or error result.
-
-It does not panic merely because the referenced object was removed.
-
-A handle API may separately provide an asserting resolution operation whose
-failure panics according to its explicit contract.
-
----
-
-# Reference equality
-
-Safe-reference equality means:
-
-```text
-the same live storage identity;
-and the same referenced location within that storage.
-```
-
-Numeric address equality alone is insufficient when storage identity differs.
-
-Two references to the same live field or element may compare equal.
-
-Two references to different live incarnations at the same reused address are
-not equal.
-
----
-
-# Stable-handle equality
-
-Stable-handle equality means:
-
-```text
-the same domain identity;
-the same slot identity;
-the same generation.
-```
-
-A stale handle and a later handle to a new slot occupant are not equal even when
-the slot number is reused.
-
----
-
-# `RawPtr` equality
-
-`RawPtr[T]` equality is raw address equality according to the target and FFI
-rules.
-
-It does not imply:
+§ 49(2) It does not imply:
 
 ```text
 same live allocation;
+same storage identity;
 same provenance;
 same generation;
 safe dereference;
-same address space unless the pointer types establish it.
+same owner;
+same address space unless established by the pointer types/target.
 ```
+
+§ 49(3) Raw equality must not be substituted for safe-reference equality.
 
 ---
 
-# Safe reference to `RawPtr`
+## § 50 Safe reference to RawPtr
 
-Conversion from a safe reference to `RawPtr[T]` may be permitted for an explicit
-foreign or unsafe operation.
+§ 50(1) Conversion from a safe reference to `RawPtr[T]` may be permitted through an explicit unsafe/FFI/platform operation.
 
-The compiler must preserve or verify:
+§ 50(2) The conversion/use must preserve or verify where applicable:
 
 ```text
-the safe borrow remains live;
-the foreign call does not retain the pointer unless declared;
-mutability is compatible;
-the address space is ABI-compatible;
-the object does not relocate during the foreign use;
-all pinning requirements are satisfied.
+source borrow remains live;
+foreign use is call-bounded or declared retained;
+mutability compatibility;
+address-space/ABI compatibility;
+no invalid relocation during use;
+pinning requirements;
+mapping/storage lifetime.
 ```
 
-The resulting `RawPtr[T]` is raw.
+§ 50(3) The resulting raw pointer is raw and must not be assumed to preserve safe-reference guarantees after arbitrary manipulation.
 
-It must not be assumed to retain safe-reference guarantees after arbitrary
-foreign manipulation.
+§ 50(4) Exact source spelling belongs to the canonical conversion/raw-pointer rules.
 
 ---
 
-# `RawPtr` to safe reference
+## § 51 RawPtr to safe reference
 
-Converting `RawPtr[T]` to `ref T`, `ref mut T`, or `ref T[]` is unsafe.
+§ 51(1) Converting raw storage to `ref T`, `ref mut T`, or a safe slice/view is unsafe unless a specialized trusted adapter proves the full contract.
 
-The programmer or trusted wrapper must establish:
+§ 51(2) Required proof includes:
 
 ```text
-non-nullness;
-correct alignment;
-initialized valid T representation;
-valid bounds;
-valid lifetime;
+non-nullness where required;
+alignment;
+valid initialized representation;
+bounds;
+lifetime;
 ownership compatibility;
-alias compatibility;
+borrow/alias compatibility;
 address-space compatibility;
-read or write authority;
+read/write authority;
 foreign retention compatibility;
-relocation safety.
+relocation safety;
+storage identity/provenance;
+mapping/domain validity.
 ```
 
-Generation or provenance may need to be established through a trusted storage
-owner or target mechanism.
+§ 51(3) Generation/provenance may be established through a trusted storage owner/platform mechanism.
+
+§ 51(4) Known contradictory facts cause compile-time rejection even inside unsafe.
 
 ---
 
-# Foreign retention
+## § 52 Foreign retention
 
-An FFI declaration must distinguish whether foreign code may retain a pointer
-beyond the call.
+§ 52(1) FFI declarations/contracts must distinguish call-bounded from retained pointer use.
 
-When retention is not declared, the compiler may treat the foreign use as
-bounded by the call.
+§ 52(2) Non-retained pointer use may be bounded by the foreign call.
 
-When retention is declared or unknown, the compiler must require sufficient
-lifetime, pinning, ownership, and effect guarantees.
+§ 52(3) Retained or unknown retention requires sufficient lifetime, ownership, pinning/relocation, synchronization, and foreign effect proof.
 
-Unknown retention is conservative.
+§ 52(4) Unknown retention is conservative.
 
-Exact FFI syntax belongs to the FFI rulebook.
+§ 52(5) Exact FFI source syntax belongs to the FFI rulebook.
 
 ---
 
-# Serialization and persistence
+## § 53 Serialization and persistence
 
-Safe references and stable handles are not automatically serializable or
-persistent.
+§ 53(1) Safe references and stable/weak handles are not automatically serializable or persistent.
 
-Their identities are normally valid only within one domain such as:
+§ 53(2) Their identities are normally scoped to domains such as:
 
 ```text
 one process;
-one allocator instance;
+one allocator/provider instance;
 one registry;
-one arena instance;
-one device lifetime;
+one Arena;
+one mapping/device lifetime;
 one runtime domain.
 ```
 
-A persistent identifier is a domain-specific ID, not a memory reference.
+§ 53(3) Persistent identity is a domain/application-specific ID rather than an ordinary memory reference.
 
-Serialization must use explicit persistent identity semantics.
+§ 53(4) Serialization must use explicit persistent identity/representation semantics.
+
+§ 53(5) Process transfer follows transferability/IPC rules rather than serializing in-process reference bits.
 
 ---
 
-# Moves and physical relocation
+## § 54 Language move versus relocation
 
-A language-level move does not always imply physical relocation.
+§ 54(1) Ownership move and physical storage relocation are distinct.
 
-Reference analysis must distinguish:
+§ 54(2) Reference analysis must distinguish:
 
 ```text
 ownership transfer;
 logical move;
 physical address change;
 slot relocation;
-copying;
+copy;
 pinning.
 ```
 
-A move that preserves the effective storage address may preserve direct
-references when all ownership and borrow rules permit it.
+§ 54(3) A move preserving effective storage address may preserve direct references when ownership/borrow/lifetime rules permit it.
 
-A move that changes the physical address invalidates direct references unless
-they are updated through a compiler-proven transformation or represented as
-stable handles.
+§ 54(4) A move causing physical relocation invalidates direct references unless the compiler proves/upgrades all uses correctly or the reference kind is relocation-stable.
 
-The copy and move rulebook remains authoritative for value semantics.
+§ 54(5) `copy_move.md` remains authoritative for value ownership semantics.
 
 ---
 
-# Collection relocation
+## § 55 Collection relocation
 
-Collections must declare or infer whether structural operations preserve element
-addresses.
+§ 55(1) Collection operations must declare/derive whether they preserve element addresses and backing identity.
 
-Operations that may relocate storage must:
+§ 55(2) Operations that may relocate backing storage must:
 
 ```text
 be forbidden while conflicting direct references are live;
@@ -1435,106 +1136,156 @@ or use stable indirection;
 or be proven not to affect the referenced element.
 ```
 
-Element mutation that does not relocate storage remains subject to ordinary
-borrow rules.
+§ 55(3) Element mutation preserving storage identity remains subject to ordinary borrowing/concurrency rules.
+
+§ 55(4) Collection-specific rules determine which structural operations invalidate which references/views/iterators.
 
 ---
 
-# Arena integration
+## § 56 Arena integration
 
-Arena-backed references depend on:
+§ 56(1) Arena-backed reference validity depends on:
 
 ```text
-arena identity;
-current arena epoch;
-allocation extent;
+Arena domain identity;
+current Arena epoch where needed;
+allocation/object extent;
 borrow live range;
-escape restrictions.
+escape restrictions;
+mapping/address-space facts where applicable.
 ```
 
-Arena reset and release are invalidating events.
+§ 56(2) Arena reset and release are invalidating events.
 
-Non-lexical borrow liveness may permit reset after the last use even when the
-reference variable remains lexically in scope.
+§ 56(3) NLL/final-use analysis may permit reset after the final use of all dependent borrows even when source variables remain lexically in scope.
 
-The arena rulebook defines programmer-visible arena APIs.
-
-This document defines the reference validity consequences.
+§ 56(4) `arena.md` owns source API; this book owns reference-validity consequences.
 
 ---
 
-# Effect analysis integration
+## § 57 Allocation integration
 
-Reference validity operations may introduce effects according to their actual
-semantics.
+§ 57(1) Dynamic allocation does not require generations when static reference safety already prevents stale use.
 
-Examples:
+§ 57(2) Allocator-backed dynamic lifetime models may use allocation generations/control blocks/side tables as profile-selected mechanisms.
+
+§ 57(3) Allocation identity and reference epoch are distinct facts even when represented together.
+
+§ 57(4) Hidden allocation must not be introduced solely to obtain a convenient reference representation.
+
+---
+
+## § 58 Storage integration
+
+§ 58(1) The reference model consumes canonical `StorageOrigin`, `AddressStability`, `MemorySpaceKind`, storage-domain identity, invalidation-domain identity, validity epoch, mapping lifetime, and backing relations from `storage.md`.
+
+§ 58(2) Reference analysis must not infer these from lexical variable names or raw addresses.
+
+§ 58(3) Storage-domain end or epoch advance invalidates dependent references according to their dependency.
+
+§ 58(4) Physical storage reuse after end does not preserve old reference identity.
+
+---
+
+## § 59 Borrowing integration
+
+§ 59(1) Reference validity consumes canonical borrow live ranges and Place-overlap relationships.
+
+§ 59(2) NLL/final-use shortening may remove relocation/reset/transfer conflicts after the final use.
+
+§ 59(3) Runtime reference metadata does not replace borrow checking.
+
+§ 59(4) Reborrow relationships must preserve origin/provenance and authority.
+
+---
+
+## § 60 Lifetime-analysis integration
+
+§ 60(1) The reference model consumes canonical origin/lifetime dependency sets from `lifetime_analysis.md`.
+
+§ 60(2) Returned references may have multiple possible origins when every origin satisfies the required return lifetime.
+
+§ 60(3) Multiple finite origins do not by themselves make a returned reference invalid.
+
+§ 60(4) Dynamic representation may encode whichever origin/domain facts are required by the selected profile.
+
+§ 60(5) Lifetime analysis must not be duplicated by the reference model.
+
+---
+
+## § 61 Transferability integration
+
+§ 61(1) Reference transfer across tasks/threads/processes/ISR/foreign callbacks is governed by `transferability.md`.
+
+§ 61(2) A reference may be lifetime-valid yet non-transferable due to thread affinity, process locality, address space, mapping, synchronization, destruction, or execution policy.
+
+§ 61(3) Ordinary safe references do not become valid process references merely by copying their representation.
+
+§ 61(4) Stable-handle transferability depends on handle-domain/thread/process contracts.
+
+---
+
+## § 62 Effect analysis
+
+§ 62(1) Reference validity and effects are separate semantic dimensions.
+
+§ 62(2) Examples:
 
 ```text
-handle resolution may read shared metadata;
+generation comparison alone does not imply allocation/blocking;
 slot-table growth may allocate;
-foreign pointer conversion may cross unsafe provenance;
+concurrent handle resolution may block if implemented with a lock;
+foreign conversion may cross unsafe/trust boundaries;
 addressed storage access may be volatile;
-concurrent resolution may block if its API uses a lock.
+handle resolution may read shared metadata.
 ```
 
-Generation checking itself does not imply allocation or blocking.
+§ 62(3) Reference operations publish their actual effects.
 
-Effect summaries remain separate from reference validity.
+§ 62(4) Profile-selected implementation must satisfy effect contracts such as `noAlloc`, `noBlock`, and ISR restrictions.
 
 ---
 
-# Unsafe integration
+## § 63 Unsafe integration
 
-`unsafe` does not disable the reference model.
+§ 63(1) Unsafe does not disable the reference model.
 
-It permits specific operations whose proof obligations are accepted by the
-programmer or trusted implementation.
+§ 63(2) Unsafe may accept specific obligations concerning raw pointer validity, lifetime, alignment, provenance, foreign retention, ownership, and address-space assumptions.
 
-Unsafe operations may establish:
+§ 63(3) Only explicitly accepted obligations become trusted rather than compiler-proven.
 
-```text
-raw pointer validity;
-manual lifetime assumptions;
-manual alignment assumptions;
-manual provenance assumptions;
-manual foreign retention assumptions.
-```
+§ 63(4) Unrelated rules remain active.
 
-Only the specific assumed obligation loses compiler proof.
-
-All unrelated Sec rules remain active.
+§ 63(5) Compiler-proven contradictions remain errors.
 
 ---
 
-# No mandatory runtime
+## § 64 No mandatory runtime
 
-The reference model introduces no mandatory runtime.
-
-It does not require:
+§ 64(1) The reference model introduces no mandatory:
 
 ```text
-garbage collection;
+garbage collector;
 reference counting;
-a global allocation table;
-a global handle table;
-a scheduler;
-a generation manager;
-a tracing collector;
-a runtime exception system.
+global allocation table;
+global handle table;
+scheduler;
+generation manager;
+tracing collector;
+runtime exception system.
 ```
 
-A profile may use metadata or helpers when needed.
+§ 64(2) Profiles may use metadata/helpers when required.
 
-The compiler may lower proven references to plain machine addresses.
+§ 64(3) Proven direct references may lower to plain machine addresses.
+
+§ 64(4) Programs not using dynamic handle/generation mechanisms need not link them.
 
 ---
 
-# Profile examples
+## § 65 Hosted optimized profile
 
-## Hosted optimized profile
-
-Typical lowering:
+§ 65(1) A hosted optimized profile may typically lower:
 
 ```text
 short-lived ref T:
@@ -1546,13 +1297,19 @@ slice:
 stable handle:
     slot + generation
 
-arena dynamic hardening:
-    address + expected arena epoch where required
+Arena reference needing dynamic hardening:
+    address + expected Arena epoch
 ```
 
-## Hosted hardened profile
+§ 65(2) This is illustrative profile policy, not mandatory layout.
 
-Possible lowering:
+§ 65(3) Static proof may remove metadata/checks.
+
+---
+
+## § 66 Hosted hardened profile
+
+§ 66(1) A hardened profile may use:
 
 ```text
 address + epoch;
@@ -1562,46 +1319,89 @@ capability bounds;
 additional provenance checks.
 ```
 
-## 32-bit general-purpose profile
+§ 66(2) Additional hardening must preserve ordinary source semantics and effects.
 
-Typical policy:
-
-```text
-32-bit address;
-64-bit logical owner epoch by default;
-compile-time-selected compact slot generation where retirement is supported;
-no runtime generation on statically proven references.
-```
-
-## Constrained bare-metal profile
-
-Typical policy:
-
-```text
-address-only proven references;
-no generation for fixed MMIO;
-no generation for bounded lexical borrows;
-compile-time-selected compact generations only where proof permits;
-reject dynamic safe-reference patterns that cannot be proven or checked.
-```
+§ 66(3) Hardened metadata must not become visible as ordinary mutable program state unless another explicit API exposes it.
 
 ---
 
-# Semantic IR requirements
+## § 67 32-bit general-purpose profile
 
-Semantic IR must represent enough information to preserve reference semantics.
+§ 67(1) A typical 32-bit general-purpose policy may use:
 
-At minimum, it must be able to represent:
+```text
+32-bit address;
+64-bit logical owner/domain epoch by default;
+compile-time-selected compact slot generation where retirement is supported;
+no runtime generation on fully proven references.
+```
+
+§ 67(2) A 32-bit target must not truncate the logical epoch merely for representation convenience.
+
+§ 67(3) Concurrent use still requires an atomic/synchronized protocol appropriate to the target.
+
+---
+
+## § 68 Constrained bare-metal profile
+
+§ 68(1) A constrained bare-metal policy may use:
+
+```text
+address-only proven references;
+no generation for fixed MMIO bindings;
+no generation for bounded lexical borrows;
+compact generations only where proof/exhaustion policy permits;
+rejection of dynamic safe-reference patterns that cannot be proven or checked.
+```
+
+§ 68(2) Such a profile may remain runtime-free.
+
+§ 68(3) Target constraints do not weaken safe-reference semantics.
+
+---
+
+## § 69 Reference-analysis domains
+
+§ 69(1) The compiler should keep separate analysis facts for:
+
+```text
+lifetime validity;
+spatial bounds;
+provenance;
+initialization;
+type validity;
+borrow compatibility;
+relocation;
+pinning;
+address space;
+validity epoch;
+concurrency/reclamation protocol;
+trust provenance;
+handle domain/slot identity;
+mapping/platform validity.
+```
+
+§ 69(2) These facts may share underlying canonical storage/Place identities.
+
+§ 69(3) A compact summary may exist only if it can be expanded/traced to the required underlying guarantees for diagnostics and verification.
+
+---
+
+## § 70 Semantic IR requirements
+
+§ 70(1) Semantic IR must preserve enough information to implement all required reference semantics.
+
+§ 70(2) It must be able to represent:
 
 ```text
 reference category;
 source storage identity;
+invalidation-domain identity;
 address space;
 spatial extent;
-borrow kind;
-borrow live range;
-mutability authority;
-validity epoch dependency;
+borrow kind/live range;
+access authority;
+validity-epoch dependency;
 slot identity;
 handle resolution;
 reference derivation;
@@ -1610,884 +1410,409 @@ physical relocation;
 pinning dependency;
 unsafe raw conversion;
 foreign retention;
+mapping/platform dependency;
 invalidation event;
 stale failure behavior.
 ```
 
-These facts may be explicit nodes, attributes, or analysis side tables.
+§ 70(3) These may be nodes, attributes, references to canonical side tables, or equivalent facts.
+
+§ 70(4) Semantic IR must distinguish direct safe references from stable/weak handles and from `RawPtr`.
+
+§ 70(5) Semantic IR verification must reject contradictory reference guarantees.
 
 ---
 
-# Reference-analysis domains
+## § 71 Canonical semantic operations
 
-The compiler should keep separate analysis facts for:
+§ 71(1) Semantic IR must support distinctions equivalent to:
 
 ```text
-lifetime validity;
-bounds;
-provenance;
-initialization;
-type validity;
-borrow compatibility;
-relocation;
-pinning;
-address space;
-generation or epoch;
-concurrency protocol;
-trust provenance.
+CreateDirectReference
+CreateSliceReference
+DeriveSubreference
+NarrowReferenceBounds
+ValidateReference
+ValidateEpoch
+ResolveStableHandle
+ResolveWeakHandle
+AcquirePinDependency
+ReleasePinDependency
+RecordInvalidation
+RecordRelocation
+ConvertSafeReferenceToRaw
+ConvertRawToSafeReference
+EndReferenceDependency
 ```
 
-A single `IsSafePointer` boolean is insufficient.
+§ 71(2) Exact internal operation names are implementation details.
+
+§ 71(3) A backend load/store is not an adequate substitute for the semantic operation before its proof obligations have been resolved.
 
 ---
 
-# Invalidation events
+## § 72 Semantic IR invalidation facts
 
-The compiler must model invalidation events explicitly.
+§ 72(1) Invalidating events must be explicit or canonically represented where they affect reference validity.
 
-Initial events include:
+§ 72(2) Events include allocation end, Arena reset/release, collection backing replacement, slot reuse/removal, mapping remap/unmap, and domain retirement.
+
+§ 72(3) The verifier must be able to relate a reference dependency to an invalidating event.
+
+§ 72(4) Static proof may eliminate runtime invalidation metadata after the semantic relationship is verified.
+
+---
+
+## § 73 Lowering
+
+§ 73(1) Lowering consumes Semantic-IR/Sema reference facts.
+
+§ 73(2) It may choose address-only representation only when all omitted guarantees are proven elsewhere.
+
+§ 73(3) Runtime epoch/slot/provenance metadata must be preserved where required.
+
+§ 73(4) Backend `nonnull`, `dereferenceable`, `noalias`, alignment, lifetime, or address-space metadata must not exceed proven Sec guarantees.
+
+§ 73(5) A stale-reference panic/trap must remain defined Sec behavior where the check remains dynamic.
+
+§ 73(6) A stale-handle resolution must remain fallible rather than be lowered to UB or unconditional trap.
+
+§ 73(7) Address-space/capability semantics must be preserved.
+
+§ 73(8) Lowering must not introduce a global handle table/generation manager unless the selected representation actually requires one.
+
+---
+
+## § 74 Check elimination
+
+§ 74(1) The compiler should eliminate runtime reference checks when equivalent safety is statically proven.
+
+§ 74(2) Check elimination must be guarantee-specific.
+
+§ 74(3) Proving lifetime does not automatically prove bounds.
+
+§ 74(4) Proving generation does not automatically prove borrow exclusivity.
+
+§ 74(5) Proving address-space compatibility does not automatically prove type validity.
+
+§ 74(6) Profile hardening checks may remain even where language-level proof would otherwise suffice if the profile contract intentionally retains them.
+
+---
+
+## § 75 Optimization and relocation
+
+§ 75(1) Optimization may promote values to SSA/registers, relocate storage, elide checks, merge identities, or remove metadata only when every observable reference guarantee is preserved.
+
+§ 75(2) Optimizations must not cause a direct reference to silently follow relocated storage unless an equivalent reference transformation is proven.
+
+§ 75(3) Stable-handle indirection may enable relocation where direct references would forbid it.
+
+§ 75(4) Address-observable unsafe/FFI/hardware operations constrain optimization according to their contracts.
+
+---
+
+## § 76 Panic and stale references
+
+§ 76(1) Dynamic stale ordinary-reference detection uses the panic semantics defined by `panic.md`.
+
+§ 76(2) The stable panic reason should distinguish invalid/stale reference generation or equivalent canonical cause.
+
+§ 76(3) The minimum stale-reference failure path must respect panic profile/runtime-free requirements.
+
+§ 76(4) Handle-resolution failure is not automatically a panic source.
+
+---
+
+## § 77 Diagnostics
+
+§ 77(1) Reference diagnostics must follow the mentor-compiler principle.
+
+§ 77(2) Diagnostics should show:
 
 ```text
-owner destruction;
-allocation free;
-arena reset;
-arena release;
-collection storage replacement;
-slot removal;
-slot reuse;
-physical relocation of direct-reference target;
-foreign invalidation declared by contract;
-target-specific memory-domain reset.
+reference creation/origin;
+reference category;
+storage/domain identity where meaningful;
+borrow/lifetime dependency;
+invalidating event;
+invalid use;
+relocation/pin issue;
+selected profile where relevant;
+selected epoch/generation policy where relevant;
+trusted boundary;
+safe alternative.
 ```
 
-Every invalidation event identifies which references and handles are affected.
-
----
-
-# Static check elimination
-
-A runtime validity check may be removed when the compiler proves:
+§ 77(3) Diagnostics should distinguish:
 
 ```text
-the storage identity remains live;
-no invalidating event reaches the use;
-the epoch cannot change;
-the borrow remains valid;
-the reference remains within bounds;
-no physical relocation occurs;
-concurrent invalidation is impossible;
-address-space compatibility is fixed.
+lifetime ended;
+storage/domain invalidated;
+out of bounds;
+wrong provenance;
+invalid representation;
+borrow conflict;
+relocation conflict;
+address-space mismatch;
+stale ordinary ref;
+stale handle resolution;
+unknown proof.
 ```
 
-Check elimination must be semantic proof, not an optional optimization required
-for correctness.
+§ 77(4) Diagnostics must not tell users to add `unsafe` when the compiler already proves the operation invalid.
 
 ---
 
-# Diagnostics
+## § 78 Informational diagnostics
 
-Reference diagnostics must explain:
+§ 78(1) Compiler/LSP may report informational facts such as:
 
 ```text
-which guarantee failed;
-where the reference or handle was created;
-which storage identity it depends on;
-which invalidating event occurred;
-where the invalid use or resolution occurred;
-whether the failure is static, dynamic, trusted, or unknown;
-the active target and profile;
-which safe alternative exists where defined.
+reference validity fully proven; runtime epoch check removed;
+stable handle uses compact slot generation with retirement;
+Arena uses one shared epoch for all Arena allocations;
+reference lowered as address-only under this profile.
 ```
+
+§ 78(2) Such diagnostics are optional/configurable.
+
+§ 78(3) Informational output must not be required for semantic correctness.
 
 ---
 
-# Use-after-reset diagnostic
+## § 79 LSP and tooling
 
-Example:
+§ 79(1) LSP and `sec analyse` consume the same canonical reference facts as compilation.
 
-```text
-error: reference `view` depends on arena storage invalidated by reset
-
-reference created:
-    parser.sec:40
-
-arena reset:
-    parser.sec:46
-
-invalid use:
-    parser.sec:49
-```
-
----
-
-# Relocation diagnostic
-
-Example:
-
-```text
-error: direct reference `item` may be invalidated by collection relocation
-
-reference created:
-    registry.sec:71
-
-relocating operation:
-    registry.sec:78
-
-help:
-    end the borrow before the structural mutation,
-    use a stable handle,
-    or use storage with stable addresses
-```
-
----
-
-# Epoch exhaustion diagnostic
-
-Example:
-
-```text
-error: arena epoch domain is exhausted
-
-arena:
-    scratch
-
-epoch width selected by profile:
-    32 bits
-
-help:
-    use the default 64-bit epoch profile,
-    recreate the arena with a fresh domain identity,
-    or use an API that reports reset exhaustion
-```
-
----
-
-# Unsafe conversion diagnostic
-
-Example:
-
-```text
-error: RawPtr[Value] cannot be converted to ref Value in safe code
-
-missing proof obligations:
-    lifetime
-    alignment
-    initialization
-    alias compatibility
-    provenance
-
-help:
-    validate the pointer inside a narrow unsafe context or use a safe wrapper
-```
-
----
-
-# LSP behavior
-
-The LSP should display:
+§ 79(2) Tooling may expose:
 
 ```text
 reference category;
-borrow kind;
-storage identity where useful;
-known bounds;
-address space;
+bounds;
+origin/provenance;
+borrow status/live range;
+storage identity/domain;
 relocation stability;
-pinning status;
-epoch or generation dependency;
-static versus runtime validation;
-unsafe trust provenance;
-invalidating operations;
-handle fallibility;
-selected profile representation when available.
-```
-
-Hover information should remain readable and avoid exposing unnecessary
-compiler-internal identifiers by default.
-
----
-
-# Information diagnostics
-
-The compiler or LSP may report information such as:
-
-```text
-reference validity is fully proven; runtime epoch check removed
-
-stable handle uses compile-time-selected 32-bit slot generation with slot
-retirement
-
-arena uses one shared 64-bit epoch for all arena-backed allocations
-```
-
-These diagnostics may be configurable.
-
----
-
-# Implementation status
-
-The rulebook is normative even when compiler support is incomplete.
-
-Implementation tracking must distinguish:
-
-```text
-reference syntax;
-borrow checking;
-escape analysis;
-bounds analysis;
-provenance analysis;
-relocation analysis;
-pinning;
-epoch analysis;
-stable handles;
-weak handles;
+pin dependency;
+epoch dependency;
+handle domain/slot identity;
+invalidation source;
 profile representation;
-FFI retention;
-concurrent invalidation;
-diagnostics;
-LSP support.
+trust provenance;
+address space.
 ```
 
-Do not mark the complete rulebook implemented when only generation checks exist.
+§ 79(3) Tooling must not reconstruct reference semantics independently from syntax.
+
+§ 79(4) Hover should distinguish source-level guarantee from selected runtime representation.
+
+§ 79(5) Incremental invalidation must account for ownership/borrow/lifetime/storage/layout/profile/FFI/platform/concurrency changes.
 
 ---
 
-# Required tests
+## § 80 Required basic tests
 
-Create or update:
-
-```text
-references_valid.sec
-references_invalid.sec
-reference_nullability_valid.sec
-reference_nullability_invalid.sec
-reference_bounds_valid.sec
-reference_bounds_invalid.sec
-reference_provenance_valid.sec
-reference_provenance_invalid.sec
-reference_relocation_valid.sec
-reference_relocation_invalid.sec
-reference_epochs_valid.sec
-reference_epochs_invalid.sec
-stable_handles_valid.sec
-stable_handles_invalid.sec
-weak_handles_valid.sec
-weak_handles_invalid.sec
-reference_ffi_valid.sec
-reference_ffi_invalid.sec
-reference_concurrency_valid.sec
-reference_concurrency_invalid.sec
-reference_profiles_valid.sec
-reference_profiles_invalid.sec
-```
-
----
-
-# Basic reference tests
-
-Test:
+§ 80(1) Required tests include:
 
 ```text
 ref T is non-null;
-Option[ref T] is valid optionality;
+Option[ref T] optionality;
 ref mut exclusivity;
 shared borrow compatibility;
 field-split borrows;
 subreference narrowing;
 slice bounds;
-empty slice;
-reference equality;
+empty slice representation does not make ref nullable;
+safe-reference equality;
 RawPtr equality distinction.
 ```
 
 ---
 
-# Temporal-validity tests
+## § 81 Temporal/provenance tests
 
-Test:
+§ 81(1) Required tests include:
 
 ```text
 use after owner destruction rejected;
 use after free rejected;
-use after arena reset rejected;
-use after arena release rejected;
-use after collection relocation rejected;
+use after Arena reset rejected;
+use after Arena release rejected;
+use after collection backing replacement rejected;
 use after slot reuse rejected;
+mapping remap invalidates dependent reference;
+same numeric address/new identity does not revive stale ref;
 last-use borrow ending before reset accepted;
-static proof removes dynamic check.
+static proof removes dynamic validity check.
 ```
 
 ---
 
-# Generation tests
+## § 82 Generation tests
 
-Test:
+§ 82(1) Required tests include:
 
 ```text
-64-bit default epoch on 32-bit general-purpose profile;
-no epoch for statically proven reference;
-shorter compile-time-selected epoch with bounded proof;
-runtime width selection rejected;
+64-bit logical default epoch on 32-bit general-purpose profile;
+no epoch metadata for fully proven ref;
+shorter compile-time-selected generation with bounded proof;
+runtime-selected generation width rejected;
 checked increment;
 no wrap;
 slot retirement at exhaustion;
-arena domain replacement;
+Arena domain replacement;
 explicit exhaustion error;
-deterministic trap where recovery is unavailable.
+deterministic panic/trap where recovery unavailable;
+concurrent generation protocol cannot tear.
 ```
 
 ---
 
-# Stable-handle tests
+## § 83 Stable/weak handle tests
 
-Test:
+§ 83(1) Required tests include:
 
 ```text
 relocation preserves stable handle;
 slot reuse invalidates old handle;
-fallible resolution returns no target;
-handle equality includes domain, slot, and generation;
+weak/stable resolution returns no target fallibly;
+handle equality includes domain/slot/generation;
 handle does not imply ownership;
-owning handle kind retains target only when explicitly defined;
-concurrent resolution requires valid protocol.
+owning handle retains target only when explicit;
+concurrent resolution requires valid reclamation/synchronization protocol.
 ```
 
 ---
 
-# Allocation initialization tests
+## § 84 Initialization tests
 
-Test:
+§ 84(1) Required tests include:
 
 ```text
-safe typed allocation returns initialized valid T;
-zero-default arrays are semantically zero-initialized;
+safe typed allocation yields initialized valid T;
+semantic default initialization need not zero all bytes;
 compiler may omit redundant whole-buffer zeroing;
-uninitialized storage cannot be read through safe ref;
-raw uninitialized allocation requires unsafe handling.
+safe ref cannot read uninitialized storage;
+raw uninitialized storage requires unsafe initialization workflow.
 ```
 
 ---
 
-# FFI tests
+## § 85 FFI/raw tests
 
-Test:
+§ 85(1) Required tests include:
 
 ```text
 safe reference passed for call-bounded foreign use;
-foreign retention requires declared lifetime support;
+foreign retention requires declared lifetime/pinning support;
 mutable foreign use requires compatible borrow;
-RawPtr to ref requires unsafe;
-foreign pointer return does not automatically gain provenance;
-pinning required for retained direct address;
-address-space incompatibility rejected.
+RawPtr to ref requires unsafe/trusted proof;
+foreign raw return does not automatically gain provenance;
+pinning required for retained direct address when relocation possible;
+address-space mismatch rejected;
+known-invalid raw-to-safe conversion rejected inside unsafe.
 ```
 
 ---
 
-# Binary and representation tests
+## § 86 Profile/binary tests
 
-Verify:
+§ 86(1) Required tests include:
 
 ```text
 proven ref lowers to address only;
-proven slice lowers to address and length;
-unused epoch support is omitted;
-no global generation manager is linked;
-32-bit target may use 64-bit epoch control metadata;
-constrained profile omits epoch metadata when proven;
-shorter profile width is compile-time constant;
-hardware capability lowering preserves semantics.
+proven slice lowers to address plus length where selected;
+unused epoch support omitted;
+no global generation manager linked;
+32-bit target may retain 64-bit logical epoch;
+constrained profile omits metadata when proven;
+compact generation width is compile-time constant;
+hardware-capability lowering preserves guarantees.
 ```
 
 ---
 
-# Required synchronization
+## § 87 Concurrency tests
 
-This rulebook must remain synchronized with:
+§ 87(1) Required tests include:
 
 ```text
-memory_model.md
-ownership.md
-copy_move.md
-unsafe.md
-effect_analysis.md
-allocation rulebook
-arena rulebook
-arrays and slices rulebook
-collections rulebook
-FFI rulebook
-attributes.md
-addressed-storage rules
-concurrency rulebook
-thread and task rulebooks
-interrupt and ISR rulebooks
-stack analysis rulebook
-call_graph.md
-Semantic IR rulebook
-compiler pipeline rulebook
-formatter.md
-lsp.md
-diagnostics rulebook
-language-rulebook-status.md
-rules_implementations.txt
+generation check alone does not make racing invalidation safe;
+lock/atomic/critical-section protocol preserves handle resolution;
+torn multiword epoch protocol rejected;
+reference transfer respects thread/task affinity;
+ISR references obey interrupt synchronization/lifetime rules;
+volatile access is not synchronization.
 ```
 
-The separate planned entry for `generational_references.md` must be removed or
-marked merged into `reference_model.md`.
-
 ---
 
-# Appendix A — Canonical guarantee table
+## § 88 Semantic IR/lowering tests
 
-| Guarantee | Meaning | Primary mechanisms |
-|---|---|---|
-| Temporal validity | Storage remains live | ownership, borrow checking, epochs |
-| Spatial validity | Access remains within extent | type bounds, slice length, bounds checks |
-| Provenance | Reference belongs to correct storage identity | compiler provenance, domain identity |
-| Type validity | Storage is valid initialized `T` | initialization analysis, type rules |
-| Access authority | Read/write rights are valid | `ref`, `ref mut`, borrow checker |
-| Nullability | Safe references are never null | type system, `Option[ref T]` |
-| Relocation correctness | Address remains correct or indirected | pinning, stable handles, relocation proof |
-| Address-space correctness | Reference uses compatible memory domain | target knowledge, address-space typing |
-| Concurrency correctness | Access and invalidation are synchronized | ownership, atomics, locks, reclamation |
-
----
-
-# Appendix B — Canonical representation examples
-
-| Reference kind | Possible representation |
-|---|---|
-| Proven `ref T` | address |
-| Proven `ref T[]` | address + length |
-| Hardened direct reference | address + expected epoch |
-| Arena-backed hardened reference | address + arena epoch |
-| Stable handle | domain + slot + generation |
-| Weak handle | domain + slot + generation with fallible resolution |
-| Addressed storage | target-known fixed address |
-| `RawPtr[T]` | raw ABI-compatible address |
-| Capability target reference | hardware capability |
-
----
-
-# Appendix C — Canonical invalidation table
-
-| Event | Invalidates |
-|---|---|
-| Owner destruction | references depending on owner storage |
-| Allocation free | references to that allocation incarnation |
-| Arena reset | prior arena-backed allocations and references |
-| Arena release | all arena-backed storage and arena use |
-| Collection reallocation | direct references to old backing storage |
-| Slot removal | handles and references to removed occupant |
-| Slot reuse | old generation handles |
-| Physical relocation | direct references unless preserved by proof or indirection |
-| Foreign invalidation | references covered by the foreign contract |
-
----
-
-# Appendix D — Codex implementation plan
-
-## D.1 Add the rulebook
-
-Add:
+§ 88(1) Required tests include:
 
 ```text
-rules/memory/reference_model.md
-```
-
-Remove or merge the planned entry:
-
-```text
-generational_references.md
-```
-
-Update:
-
-```text
-language-rulebook-status.md
-rules/compiler/rules_implementations.txt
-```
-
-Mark `reference_model.md` Written.
-
-Do not mark the complete reference model Implemented.
-
----
-
-## D.2 Inventory existing compiler support
-
-Locate current logic for:
-
-```text
-ref and ref mut syntax;
-slice references;
-borrow checking;
-escape analysis;
-array and slice bounds;
-move invalidation;
-arena invalidation;
-collection relocation;
-RawPtr;
-FFI pointer conversion;
-addressed storage;
-target address spaces;
-pinning or stable-address assumptions;
-existing generation metadata;
-LSP reference diagnostics.
-```
-
-Reuse existing facts instead of introducing parallel models.
-
----
-
-## D.3 Add storage identities
-
-Introduce stable compiler identities for:
-
-```text
-allocation domains;
-arena domains;
-collection storage domains;
-slot domains;
-addressed target storage;
-foreign storage where declared.
-```
-
-Do not use numeric address as the sole identity.
-
----
-
-## D.4 Add reference fact structure
-
-A conceptual structure may include:
-
-```go
-type ReferenceFacts struct {
-    Kind             ReferenceKind
-    Storage          StorageIdentity
-    AddressSpace     AddressSpaceID
-    Bounds           BoundsValue
-    BorrowKind       BorrowKind
-    Lifetime         LifetimeID
-    EpochDependency  *EpochIdentity
-    Relocation       RelocationClass
-    PinDependency    *PinIdentity
-    Provenance       ProvenanceKind
-}
-```
-
-This is illustrative, not mandatory source architecture.
-
----
-
-## D.5 Add invalidation events
-
-Represent:
-
-```text
-free;
-destroy;
-arena reset;
-arena release;
-collection storage replacement;
-slot removal;
-slot reuse;
-physical relocation;
-foreign invalidation.
-```
-
-Connect each event to affected storage identities.
-
----
-
-## D.6 Integrate non-lexical borrow liveness
-
-Use control-flow last-use analysis.
-
-Permit borrow end before lexical scope exit.
-
-Reject every use after invalidation.
-
----
-
-## D.7 Add epoch domains
-
-Implement epoch metadata as an analysis abstraction first.
-
-Support:
-
-```text
-allocation generation;
-arena epoch;
-collection storage epoch;
-slot generation.
-```
-
-Do not force runtime metadata where proof eliminates it.
-
----
-
-## D.8 Add profile selection
-
-The concrete CompilationPlan selects:
-
-```text
-default epoch width;
-shorter proven widths;
-metadata placement;
-check policy;
-hardware assistance;
-concurrent protocol support.
-```
-
-Width selection is compile-time only.
-
-Default logical epoch width is 64 bits.
-
----
-
-## D.9 Implement checked generation changes
-
-Generation increments must use checked arithmetic.
-
-Implement:
-
-```text
-no wrap;
-slot retirement;
-domain retirement;
-explicit exhaustion;
-deterministic trap fallback.
-```
-
-Add tests near maximum values without requiring billions of operations.
-
----
-
-## D.10 Add stable-handle analysis
-
-Prepare compiler representation for:
-
-```text
-domain identity;
-slot identity;
-expected generation;
-fallible resolution;
-relocation survival;
-ownership-independent handle semantics.
-```
-
-Do not invent source syntax beyond accepted language rules.
-
----
-
-## D.11 Add relocation analysis
-
-Classify storage as:
-
-```text
-stable address;
-may relocate;
-pinned;
-indirect stable slot;
-unknown.
-```
-
-Reject direct references that cross possible relocation.
-
----
-
-## D.12 Add initialization integration
-
-Ensure safe typed allocation produces initialized valid `T`.
-
-Do not mandate redundant zeroing.
-
-Reject safe reads of uninitialized storage.
-
----
-
-## D.13 Integrate FFI
-
-Track:
-
-```text
-call-bounded pointer use;
-foreign retention;
-foreign mutation;
-pinning requirement;
-address-space compatibility;
-RawPtr provenance loss;
-trusted pointer-to-reference conversion.
-```
-
-Unknown foreign behavior is conservative.
-
----
-
-## D.14 Integrate concurrency
-
-Do not treat generation checks as sufficient synchronization.
-
-Require:
-
-```text
-ownership exclusion;
-atomic protocol;
-lock;
-critical section;
-or another verified reclamation mechanism.
-```
-
-Reject unsupported concurrent handle models on constrained profiles.
-
----
-
-## D.15 Semantic IR
-
-Expose reference derivation, narrowing, invalidation, relocation, pinning, handle
-resolution, and unsafe conversion explicitly enough for analysis and lowering.
-
----
-
-## D.16 Diagnostics
-
-Add cause chains showing:
-
-```text
-reference creation;
-storage identity;
-invalidating event;
-invalid use;
-selected profile;
-selected epoch width;
-trusted boundary;
-safe alternative.
-```
-
-Use stable diagnostic IDs.
-
----
-
-## D.17 LSP
-
-Add hover and navigation for:
-
-```text
-reference kind;
-bounds;
-borrow status;
-relocation stability;
-epoch dependency;
-handle identity;
-invalidation source;
-profile representation;
-trust provenance.
+direct ref distinct from stable handle, weak handle and RawPtr;
+reference origin/storage identity preserved;
+subreference narrowing preserved;
+epoch dependency preserved where needed;
+invalidating event visible to verifier;
+stale ordinary ref lowers to defined panic/trap;
+stale handle remains fallible;
+backend metadata no stronger than proven Sec facts;
+static proof removes runtime reference metadata/checks.
 ```
 
 ---
 
-## D.18 Tests
+## § 89 Completion criteria
 
-Run:
+§ 89(1) Source/reference integration is complete when `references.md` source forms map to one canonical reference-validity model.
 
-```text
-go test ./...
-compiler build
-LSP build
-formatter tests
-reference fixtures
-arena fixtures
-collection relocation fixtures
-FFI fixtures
-target profile matrix
-binary dependency tests
-```
+§ 89(2) Borrow/lifetime integration is complete when reference validity consumes canonical Place, borrow-live-range, origin, and escape facts without duplicating those analyses.
 
-Do not claim implementation complete until all reference-safety domains are
-integrated.
+§ 89(3) Storage integration is complete when storage identity, invalidation domain, epoch, relocation, pinning, and mapping facts use the canonical storage model.
+
+§ 89(4) Generation support is complete when default/compact widths, checked increment, exhaustion, retirement, and no-stale-revival semantics are implemented across relevant domains.
+
+§ 89(5) Stable/weak handles are complete when identity, relocation, fallible resolution, equality, ownership distinction, concurrency, and profile representation are all implemented.
+
+§ 89(6) FFI/raw support is complete when retention, pinning, address spaces, raw provenance loss, and trusted reconstruction participate in canonical analysis.
+
+§ 89(7) Semantic IR/lowering is complete when every surviving reference guarantee and invalidation/handle operation is explicit or equivalently proven.
+
+§ 89(8) Tooling is complete when compiler, LSP, diagnostics, and `sec analyse` consume the same reference facts.
+
+§ 89(9) This rulebook must not be marked implemented merely because generation checks exist.
 
 ---
 
-# Final canonical summary
+## § 90 Core summary
 
-Sec safe-reference semantics are independent of physical runtime
-representation.
+§ 90(1) Sec safe-reference guarantees are defined independently of physical representation.
 
-`ref T`, `ref mut T`, and `ref T[]` are safe, non-null, typed, bounded, lifetime-
-valid references.
+§ 90(2) Safe references are non-null typed non-owning access values whose validity combines lifetime, bounds, provenance, initialization/type validity, authority, borrow compatibility, relocation, address space, and concurrency correctness.
 
-`RawPtr[T]` remains a separate raw unsafe and FFI-oriented representation.
+§ 90(3) A validity epoch identifies one live incarnation of an invalidation domain; generation is one possible representation.
 
-Reference safety consists of distinct guarantees:
+§ 90(4) The default logical epoch width is 64 bits, including on 32-bit general-purpose targets.
 
-```text
-temporal validity;
-spatial validity;
-storage provenance;
-type and initialization validity;
-access authority;
-nullability;
-borrow compatibility;
-relocation correctness;
-address-space correctness;
-concurrency correctness.
-```
+§ 90(5) Shorter widths are compile-time profile decisions permitted only with proof/retirement/exhaustion semantics preserving stale-reference safety.
 
-Generation matching is one temporal-validity mechanism, not the complete memory-
-safety model.
+§ 90(6) Generations never silently wrap into values that can revive stale references.
 
-A validity epoch belongs to an invalidation domain, not merely to an address.
+§ 90(7) Ordinary stale `ref` use is a safety violation producing deterministic panic/trap when dynamically detected.
 
-Invalidation domains include allocations, arenas, collection storage, and
-reusable slots.
+§ 90(8) Stable/weak-handle target disappearance is normal fallible resolution.
 
-Validity epochs use a 64-bit logical width by default, including on 32-bit
-general-purpose targets.
+§ 90(9) Stable handles may survive physical relocation through indirection and do not imply ownership unless explicitly defined.
 
-Shorter widths are permitted only when selected at compile time and when the
-compiler preserves stale-reference safety through bounded reuse, retirement,
-explicit exhaustion handling, or equivalent proof.
+§ 90(10) Safe-reference equality uses live storage identity plus referenced location; RawPtr equality uses raw address semantics.
 
-Future profiles may use wider epochs without changing source semantics.
+§ 90(11) Generation checks never replace borrowing, bounds, initialization, relocation, address-space, or concurrency proof.
 
-Generation increments are checked and never wrap into a value that can revive a
-stale reference.
+§ 90(12) The compiler may eliminate runtime metadata/checks when it proves equivalent guarantees.
 
-At exhaustion, the domain is retired, safely replaced, or reports deterministic
-failure.
+§ 90(13) Profiles that cannot prove or check a safe-reference guarantee reject the safe operation or require an explicit RawPtr/unsafe boundary.
 
-A safe typed allocation produces a fully initialized valid value.
-
-Memory is not universally zeroed merely to establish allocation identity.
-
-Safe ordinary references are expected to remain valid.
-
-A stale ordinary safe reference produces deterministic panic or target trap.
-
-A stale weak or stable handle resolves fallibly.
-
-A stable handle identifies a domain, slot, and generation and may survive
-physical relocation.
-
-A stable handle does not imply ownership unless its handle kind explicitly says
-so.
-
-Safe-reference equality compares live storage identity and referenced location.
-
-Stable-handle equality compares domain, slot, and generation.
-
-`RawPtr` equality is raw address equality.
-
-Generation checks do not replace borrow checking, bounds checking,
-initialization analysis, relocation analysis, address-space validation, or
-concurrency synchronization.
-
-Profiles may omit runtime metadata and checks when the compiler proves the same
-guarantees.
-
-A profile that cannot prove or check a safe-reference guarantee must reject the
-safe operation or require an explicit `RawPtr` and unsafe boundary.
-
-The reference model introduces no mandatory runtime, garbage collector,
-reference counter, handle table, allocator, or generation manager.
+§ 90(14) The reference model requires no mandatory garbage collector, reference counter, handle table, allocator, generation manager, or general runtime.

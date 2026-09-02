@@ -3139,7 +3139,7 @@ panic.md
 runtime_checks.md
 allocation.md
 ownership.md
-borrowing.txt
+borrowing.md
 lifetime_analysis.md
 semantic_ir.txt
 compiler_analysis.txt

@@ -1885,7 +1885,7 @@ shaped-types.md
 reference_model.md
 ownership.md
 copy_move.md
-borrowing.txt
+borrowing.md
 lifetime_analysis.md
 raw_pointers.md
 functions.md

@@ -7,232 +7,101 @@
     <link rel="stylesheet" href="manual.css">
 </head>
 <body>
+<header class="site-header">
+    <div class="header-inner">
+        <a href="index.html" class="site-logo">
+            <img src="logo.svg" alt="Sec" />
+            <span class="site-title">Sec</span>
+        </a>
+                <nav class="header-nav">
+            <a href="01-introduction.html">Language</a>
+            <a href="stdlib.html">Stdlib</a>
+            <a href="syntax-reference.html">Syntax</a>
+            <a href="best-practices.html">Best Practices</a>
+            <a href="https://github.com/YoePro/sec">GitHub</a>
+        </nav>
+    </div>
+</header>
 <div class="layout">
     <nav class="sidebar" aria-label="Section navigation">
         <h2 class="sidebar-title">Sec Manual</h2>
-
         <div class="sidebar-section">Indexing</div>
-        <a href="#indexing">Overview</a>
-        <a href="#index-syntax">Syntax</a>
-        <a href="#index-types">Valid Index Types</a>
-        <a href="#indexing-result">Indexing Result</a>
-        <a href="#indexed-assignment">Assignment Through Indexing</a>
-        <a href="#reading-elements">Reading and Moving Elements</a>
-        <a href="#bounds-checking">Bounds Checking</a>
-        <a href="#array-length-member">Array Length Member</a>
-        <a href="#len-function">The len() Function</a>
-        <a href="#pointer-access">Pointer Access</a>
-        <a href="#iteration">Iteration</a>
-
-        <div class="sidebar-section">Pages</div>
-        <a href="index.html">Index</a>
+        <a href="#21-indexing">Overview</a>
+                <div class="sidebar-section">Language</div>
         <a href="01-introduction.html">Introduction</a>
         <a href="02-basic-syntax.html">Basic Syntax</a>
         <a href="03-types.html">Types</a>
+        <a href="04-named-types-contracts-and-units.html">Named Types, Contracts &amp; Units</a>
+        <a href="05-structs-properties-and-impl.html">Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html">Functions</a>
+        <a href="07-if.html">If Statements</a>
+        <a href="08-switch.html">Switch Statements</a>
+        <a href="09-match.html">Match Expressions</a>
+        <a href="10-enums.html">Enums</a>
+        <a href="11-unions.html">Unions</a>
+        <a href="12-registers.html">Registers</a>
+        <a href="13-units.html">Units</a>
+        <a href="14-generics.html">Generics</a>
+        <a href="15-structs.html">Structs</a>
+        <a href="16-impl.html">Impl Blocks</a>
+        <a href="17-properties.html">Properties</a>
+        <a href="18-interfaces.html">Interfaces</a>
         <a href="19-arrays.html">Arrays</a>
         <a href="20-slices.html">Slices</a>
+        <a href="21-indexing.html" class="active">Indexing</a>
+        <a href="22-constants.html">Constants</a>
+        <a href="23-references.html">References</a>
+        <a href="24-ownership.html">Ownership</a>
+        <a href="25-borrowing.html">Borrowing</a>
+        <a href="26-unsafe.html">Unsafe</a>
+        <a href="27-spread.html">Spread</a>
+        <a href="30-modules.html">Modules and Imports</a>
+        <a href="31-projects.html">Projects and sec.module</a>
+        <a href="32-visibility.html">Visibility</a>
+        <a href="33-result-and-option.html">Result and Option</a>
+        <a href="34-try.html">Error Propagation</a>
+        <a href="35-defer.html">Deferred Cleanup</a>
+        <a href="36-attributes.html">Attributes</a>
+        <a href="37-build-directives.html">Build Directives</a>
+        <a href="38-ffi.html">Foreign Function Interfaces</a>
+        <a href="39-tasks.html">Tasks</a>
+        <a href="40-spawn.html">Spawning Work</a>
+        <a href="41-await.html">Awaiting Tasks</a>
+        <a href="42-channels.html">Channels and Coordination</a>
+        <a href="43-testing.html">Tests and Benchmarks</a>
+        <a href="44-formatting.html">Formatting</a>
+        <a href="45-diagnostics.html">Understanding Compiler Diagnostics</a>
+        <div class="sidebar-section">Reference</div>
+        <a href="stdlib.html">Standard Library</a>
+        <a href="syntax-reference.html">Syntax Reference</a>
+        <a href="best-practices.html">Best Practices</a>
+        <div class="sidebar-section">Status</div>
+        <a href="test-status.html">Implementation Status</a>
+        <div class="sidebar-section">Community</div>
+        <a href="bug-report.html">Report a Bug</a>
+        <a href="join.html">Join</a>
     </nav>
 
     <main class="content">
         <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Indexing</div>
 
-        <h1 id="indexing">Indexing</h1>
+        <h1 id="21-indexing">Indexing</h1>
 
-        <p>
-            Indexing provides element access for arrays, slices, and other sequence types. It is a fundamental
-            operation that produces a place expression — a location that can be read from, written to, or borrowed.
-        </p>
+        <p>Indexing provides element access for arrays, slices, and other indexable types.</p>
 
-        <div class="section" id="index-syntax">
-            <h2>Syntax</h2>
+        <p>This chapter is a placeholder. Content will be added.</p>
 
-            <pre><code>target[index]</code></pre>
-
-            <p>The target may be:</p>
-
-            <ul>
-                <li>an array</li>
-                <li>a shared slice (<code>ref T[]</code>)</li>
-                <li>a mutable slice (<code>ref mut T[]</code>)</li>
-                <li>a nested indexing expression</li>
-            </ul>
-
-            <p>Examples:</p>
-
-            <pre><code>let value := values[3]
-matrix[row][column]
-buffer[index + offset]</code></pre>
-        </div>
-
-        <div class="section" id="index-types">
-            <h2>Valid Index Types</h2>
-
-            <p>The index must have an integer type:</p>
-
-            <ul>
-                <li>All built-in signed and unsigned integer types are valid.</li>
-                <li>A named integer type may be used when its underlying representation is integer and it has no incompatible unit dimension.</li>
-            </ul>
-
-            <div class="rule">
-                <strong>Rule:</strong> Floating-point, decimal, boolean, string, and unit-bearing indexes are invalid. Negative signed indexes are invalid.
-            </div>
-        </div>
-
-        <div class="section" id="indexing-result">
-            <h2>Indexing Result</h2>
-
-            <p>Indexing produces a place expression. It does not inherently copy, move, or borrow an element — the use context determines the operation.</p>
-
-            <p>Read or copy:</p>
-
-            <pre><code>let value := values[index]</code></pre>
-
-            <p>Assignment:</p>
-
-            <pre><code>values[index] = value</code></pre>
-
-            <p>Shared element borrow:</p>
-
-            <pre><code>let element := ref values[index]</code></pre>
-
-            <p>Mutable element borrow:</p>
-
-            <pre><code>let element := ref mut values[index]</code></pre>
-
-            <p>The place type is the array or slice element type. The place mutability is derived from the target:</p>
-
-            <div class="table-wrap">
-                <table>
-                    <thead>
-                        <tr><th>Target</th><th>Element Place Mutability</th></tr>
-                    </thead>
-                    <tbody>
-                        <tr><td>immutable array binding</td><td>read-only</td></tr>
-                        <tr><td>mutable array binding</td><td>mutable</td></tr>
-                        <tr><td><code>ref T[]</code></td><td>read-only</td></tr>
-                        <tr><td><code>ref mut T[]</code></td><td>mutable</td></tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <div class="section" id="indexed-assignment">
-            <h2>Assignment Through Indexing</h2>
-
-            <p>Assignment requires:</p>
-
-            <ul>
-                <li>a mutable element place</li>
-                <li>a right-hand value assignable to the element type</li>
-                <li>no conflicting active borrow</li>
-                <li>a valid runtime index</li>
-                <li>a completely evaluated right-hand expression before replacement</li>
-            </ul>
-
-            <p>When replacing an owned non-trivial array element, the old element is destroyed exactly once after the replacement value has been successfully evaluated and ownership transfer has been validated.</p>
-        </div>
-
-        <div class="section" id="reading-elements">
-            <h2>Reading and Moving Elements</h2>
-
-            <p>Reading an implicitly copyable element copies it:</p>
-
-            <pre><code>let value := numbers[index]</code></pre>
-
-            <p>For the initial implementation, moving a move-only element out through array or slice indexing is invalid:</p>
-
-            <pre><code>let resource := resources[index]  // Invalid for move-only Resource</code></pre>
-
-            <p>The programmer must borrow the element instead:</p>
-
-            <pre><code>let resource := ref resources[index]</code></pre>
-
-            <div class="rule">
-                <strong>Rule:</strong> A slice can never transfer ownership of an element merely through indexing because the slice does not own the element.
-            </div>
-        </div>
-
-        <div class="section" id="bounds-checking">
-            <h2>Bounds Checking</h2>
-
-            <p>Safe array and slice indexing is bounds checked.</p>
-
-            <p>For an array <code>T[N]</code>, a valid index satisfies:</p>
-
-            <pre><code>0 &lt;= index &lt; N</code></pre>
-
-            <p>For a slice, a valid index satisfies:</p>
-
-            <pre><code>0 &lt;= index &lt; slice.len</code></pre>
-
-            <p>A constant invalid index is a compile-time error:</p>
-
-            <pre><code>let values: int[4] := [1, 2, 3, 4]
-let invalid := values[4]  // Compile-time error</code></pre>
-
-            <p>A runtime index requires a runtime bounds check. Safe bounds checks remain required inside an <code>unsafe</code> block.</p>
-
-            <div class="rule">
-                <strong>Rule:</strong> Unchecked access belongs to explicit <code>RawPtr[T]</code> operations and is not ordinary array or slice indexing.
-            </div>
-        </div>
-
-        <div class="section" id="array-length-member">
-            <h2>Array Length Member</h2>
-
-            <p>Arrays expose <code>.len</code>:</p>
-
-            <pre><code>let arrayLength := values.len</code></pre>
-
-            <p>The type of <code>len</code> is <code>uint</code>. For arrays, <code>len</code> is a compile-time constant equal to <code>N</code>.</p>
-        </div>
-
-        <div class="section" id="len-function">
-            <h2>The len() Function</h2>
-
-            <p>The compiler-known core function <code>len</code> is the canonical length operation for index arithmetic:</p>
-
-            <pre><code>let arrayLength := len(values)
-let sliceLength := len(view)</code></pre>
-
-            <p>It accepts an owning <code>T[]</code>, <code>ref T[]</code>, or <code>ref mut T[]</code>, and returns <code>int</code>. This avoids conversions when comparing a length to <code>int</code> indexes or offsets.</p>
-
-            <div class="rule">
-                <strong>Rule:</strong> The member property <code>.len</code> remains <code>uint</code>; use <code>len(...)</code> when an <code>int</code> result is required.
-            </div>
-        </div>
-
-        <div class="section" id="pointer-access">
-            <h2>Pointer Access</h2>
-
-            <p>Direct <code>.ptr</code> access is not part of the initial safe array and slice implementation. Conversion of an array or slice address into <code>RawPtr[T]</code> follows the raw-pointer rules and requires an explicit unsafe operation.</p>
-        </div>
-
-        <div class="section" id="iteration">
-            <h2>Iteration</h2>
-
-            <p>Arrays and slices may participate in <code>for</code> iteration. Iteration must use the same indexing, copy, and borrow rules defined by the array and slice chapters.</p>
-
-            <pre><code>// Element iteration
-for value in values {
-    Process(value)
-}
-
-// Index and element iteration
-for index, value in values {
-    Print(index, value)
-}</code></pre>
-
-            <p>The initial implementation must not silently move move-only elements out of an array or slice during iteration.</p>
-        </div>
-
-        <nav class="page-navigation" aria-label="Page navigation">
-            <a href="20-slices.html">Previous: Slices</a>
-            <a href="index.html">Manual Index</a>
+        <div class="page-navigation">
+                <a href="20-slices.html">Previous: Slices</a>
             <a href="22-constants.html">Next: Constants</a>
-        </nav>
+        </div>
     </main>
 </div>
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <p>&copy; 2026 Sec Language</p>
+        <a href="https://github.com/YoePro/sec">GitHub</a>
+    </div>
+</footer>
 </body>
 </html>

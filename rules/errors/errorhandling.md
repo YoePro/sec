@@ -1775,3 +1775,16 @@ try never catches panic
 ownership is checked on every error-handling path
 diagnostics explain programmer-visible cause and remedy
 ```
+
+## 41. Test propagation boundary
+
+A top-level test invocation and each `testing.Run` subtest invocation are
+compiler-known error-propagation boundaries. An otherwise unhandled
+`Err(errorValue)` propagated by ordinary `try` to that boundary terminates only
+the current invocation, performs ordinary `defer` and destruction cleanup,
+records `Failed`, and reports the unexpected error.
+
+This boundary does not give a `test` declaration a source-visible `Result`
+return type and does not introduce a parallel testing error system. Expected
+errors continue to use ordinary `try` handlers and `match`. Canonical invocation
+outcome behavior is owned by `rules/tooling/testing.md`.

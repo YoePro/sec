@@ -2695,3 +2695,18 @@ or relocate a move marker as a style-only rewrite.
 The legacy `capture(-> source)` spelling is invalid and must never be produced.
 Idempotence coverage includes declaration, assignment, call, payload, capture,
 and return marker positions.
+
+## Source test formatting
+
+The formatter accepts `*_test.sec` as ordinary Sec input and formats the
+canonical top-level form without changing its test identity:
+
+```sec
+test "name" {
+    testing.Expect(true)
+}
+```
+
+The test name string and ordinary `testing.*` calls follow existing literal,
+call, block, comment, and line-breaking rules. Formatting must not rewrite a
+test into an attributed function or infer test semantics from a filename alone.

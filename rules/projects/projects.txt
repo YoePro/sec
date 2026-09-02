@@ -622,14 +622,25 @@ A directory named `modules` is not required, reserved or treated specially.
 Standard library and platform modules
 =====================================
 
-The import roots below are compiler-reserved:
+The import root below is compiler-reserved:
 
 ```
-std
 platform
 ```
 
-They identify compiler-provided source trees.
+It identifies the compiler-provided platform source tree.
+
+Standard-library modules use direct canonical logical paths:
+
+```sec
+import "io"
+import "net/http"
+```
+
+The compiler may distinguish core, standard-library, project, dependency, and
+platform sources internally, but `std/` is not a Sec source import prefix. A
+project-local or external module must not silently replace a canonical
+standard-library module with the same logical path.
 
 They do not introduce dotted module declarations.
 
@@ -747,6 +758,26 @@ A target owns:
 The target source and target kind do not vary per platform variant.
 
 If two platform outputs require different entry modules or represent different products, they are separate targets.
+
+Test compilation
+----------------
+
+`sec test` creates an explicit `TestCompilationPlan`; it is not an ad-hoc
+post-production source inclusion step. Production builds exclude `*_test.sec`
+and the project-root `tests/` tree. A test plan may include same-directory
+`*_test.sec` white-box tests, `tests/` black-box/integration modules, test-only
+dependencies, compiler-known testing support, selected generated harness roots,
+and execution metadata.
+
+Directories below `tests/` follow ordinary module naming and import rules and
+receive no friend visibility. Test code may depend on production and test-only
+code; production code may not depend on test-only declarations.
+
+The manifest target kind `test`, when used, denotes an explicitly buildable
+test-oriented target or artifact. Ordinary `test "name" { ... }` declarations,
+`*_test.sec`, and `sec test` do not require such a manifest target, and the
+target kind does not itself grant test visibility or replace
+`TestCompilationPlan` semantics.
 
 =============================================================================================================================================================================================
 Variants
@@ -1717,7 +1748,7 @@ Normative summary
 12. Internal access restrictions are mandatory whenever `internal` appears in an import path.
 13. `internal` is not part of the source module name.
 14. `modules` and similar organizational directories have no special language meaning.
-15. `std` and `platform` are compiler-reserved import roots, not dotted-module exceptions.
+15. Standard-library modules use direct logical imports; `platform` is a compiler-reserved import root.
 16. Ordinary source modules do not require manifest entries.
 17. Independently buildable products are declared as targets in the single manifest.
 18. A target is a logical product.

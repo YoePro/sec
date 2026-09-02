@@ -726,3 +726,15 @@ Other rulebooks own:
 - switch `fallthrough`;
 - unused-result/must-use/discard policy;
 - target/backend cleanup lowering details.
+
+## 34. Test-invocation cleanup
+
+Controlled termination of a test invocation through `testing.Pass`,
+`testing.Fail`, `testing.Skip`, a failed `testing.Require` or
+`testing.RequireEqual`, or an unexpected `Err` reaching the test boundary must
+run every already-registered defer belonging to that invocation according to
+the ordinary source-ordered cleanup model.
+
+A subtest has its own invocation cleanup boundary. Test termination is not
+panic and must not bypass deterministic cleanup. Testing outcome semantics are
+defined by `rules/tooling/testing.md`.

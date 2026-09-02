@@ -3,231 +3,105 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Constants and Static - Sec Language Manual</title>
+    <title>Constants - Sec Language Manual</title>
     <link rel="stylesheet" href="manual.css">
 </head>
 <body>
+<header class="site-header">
+    <div class="header-inner">
+        <a href="index.html" class="site-logo">
+            <img src="logo.svg" alt="Sec" />
+            <span class="site-title">Sec</span>
+        </a>
+                <nav class="header-nav">
+            <a href="01-introduction.html">Language</a>
+            <a href="stdlib.html">Stdlib</a>
+            <a href="syntax-reference.html">Syntax</a>
+            <a href="best-practices.html">Best Practices</a>
+            <a href="https://github.com/YoePro/sec">GitHub</a>
+        </nav>
+    </div>
+</header>
 <div class="layout">
     <nav class="sidebar" aria-label="Section navigation">
         <h2 class="sidebar-title">Sec Manual</h2>
-
-        <div class="sidebar-section">Constants and Static</div>
-        <a href="#constants">Constants</a>
-        <a href="#immutable-declarations">Immutable Declarations</a>
-        <a href="#constant-expressions">Constant Expressions</a>
-        <a href="#static-storage">Static Storage</a>
-        <a href="#module-level-static">Module-Level Static</a>
-        <a href="#function-local-static">Function-Local Static</a>
-        <a href="#static-in-impl">Static in Impl</a>
-        <a href="#static-members">Static Members</a>
-        <a href="#static-methods">Static Methods</a>
-        <a href="#static-properties">Static Properties</a>
-        <a href="#static-constraints">Static Constraints</a>
-
-        <div class="sidebar-section">Pages</div>
-        <a href="index.html">Index</a>
+        <div class="sidebar-section">Constants</div>
+        <a href="#22-constants">Overview</a>
+                <div class="sidebar-section">Language</div>
         <a href="01-introduction.html">Introduction</a>
         <a href="02-basic-syntax.html">Basic Syntax</a>
         <a href="03-types.html">Types</a>
+        <a href="04-named-types-contracts-and-units.html">Named Types, Contracts &amp; Units</a>
+        <a href="05-structs-properties-and-impl.html">Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html">Functions</a>
+        <a href="07-if.html">If Statements</a>
+        <a href="08-switch.html">Switch Statements</a>
+        <a href="09-match.html">Match Expressions</a>
+        <a href="10-enums.html">Enums</a>
+        <a href="11-unions.html">Unions</a>
+        <a href="12-registers.html">Registers</a>
+        <a href="13-units.html">Units</a>
+        <a href="14-generics.html">Generics</a>
+        <a href="15-structs.html">Structs</a>
+        <a href="16-impl.html">Impl Blocks</a>
+        <a href="17-properties.html">Properties</a>
+        <a href="18-interfaces.html">Interfaces</a>
         <a href="19-arrays.html">Arrays</a>
         <a href="20-slices.html">Slices</a>
         <a href="21-indexing.html">Indexing</a>
+        <a href="22-constants.html" class="active">Constants</a>
+        <a href="23-references.html">References</a>
+        <a href="24-ownership.html">Ownership</a>
+        <a href="25-borrowing.html">Borrowing</a>
+        <a href="26-unsafe.html">Unsafe</a>
+        <a href="27-spread.html">Spread</a>
+        <a href="30-modules.html">Modules and Imports</a>
+        <a href="31-projects.html">Projects and sec.module</a>
+        <a href="32-visibility.html">Visibility</a>
+        <a href="33-result-and-option.html">Result and Option</a>
+        <a href="34-try.html">Error Propagation</a>
+        <a href="35-defer.html">Deferred Cleanup</a>
+        <a href="36-attributes.html">Attributes</a>
+        <a href="37-build-directives.html">Build Directives</a>
+        <a href="38-ffi.html">Foreign Function Interfaces</a>
+        <a href="39-tasks.html">Tasks</a>
+        <a href="40-spawn.html">Spawning Work</a>
+        <a href="41-await.html">Awaiting Tasks</a>
+        <a href="42-channels.html">Channels and Coordination</a>
+        <a href="43-testing.html">Tests and Benchmarks</a>
+        <a href="44-formatting.html">Formatting</a>
+        <a href="45-diagnostics.html">Understanding Compiler Diagnostics</a>
+        <div class="sidebar-section">Reference</div>
+        <a href="stdlib.html">Standard Library</a>
+        <a href="syntax-reference.html">Syntax Reference</a>
+        <a href="best-practices.html">Best Practices</a>
+        <div class="sidebar-section">Status</div>
+        <a href="test-status.html">Implementation Status</a>
+        <div class="sidebar-section">Community</div>
+        <a href="bug-report.html">Report a Bug</a>
+        <a href="join.html">Join</a>
     </nav>
 
     <main class="content">
-        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Constants and Static</div>
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Constants</div>
 
-        <h1 id="constants">Constants</h1>
+        <h1 id="22-constants">Constants</h1>
 
-        <p>
-            Sec does not use a <code>const</code> keyword. Immutable declarations use the
-            <code>let</code> keyword, which creates an immutable binding — a value that cannot be
-            reassigned after initialization.
-        </p>
+        <p>Constants are immutable values known at compile time.</p>
 
-        <div class="section" id="immutable-declarations">
-            <h2>Immutable Declarations</h2>
+        <p>This chapter is a placeholder. Content will be added.</p>
 
-            <p>An immutable declaration binds a name to a value that cannot be changed:</p>
-
-            <pre><code>let MaximumSize: int := 1024
-let Name: string = "example"
-let Pi: float64 = 3.14159</code></pre>
-
-            <p>The right-hand side must be provided at the point of declaration. An immutable binding without an initializer is invalid.</p>
-
-            <div class="rule">
-                <strong>Rule:</strong> Immutable declarations use <code>let</code>. Mutable declarations use <code>let mut</code>. There is no separate <code>const</code> keyword in Sec.
-            </div>
-        </div>
-
-        <div class="section" id="constant-expressions">
-            <h2>Constant Expressions</h2>
-
-            <p>A constant expression is an expression whose value can be determined at compile time. Constant expressions are used in:</p>
-
-            <ul>
-                <li>array length declarations</li>
-                <li>type contract ranges</li>
-                <li>default value clauses</li>
-                <li>enum variant values</li>
-                <li>compile-time parameter values</li>
-            </ul>
-
-            <p>A constant expression must not allocate, depend on runtime state, or invoke non-constant functions.</p>
-
-            <div class="rule">
-                <strong>Rule:</strong> An invalid constant operation invalidates the default, and the expression may not allocate or depend on runtime state.
-            </div>
-        </div>
-
-        <h1 id="static-storage">Static Storage</h1>
-
-        <p>
-            <code>static</code> declares storage or members that belong to a type, function, or program
-            rather than to one ordinary instance. <code>static</code> is a declaration modifier, not a type modifier.
-        </p>
-
-        <div class="section" id="module-level-static">
-            <h2>Module-Level Static</h2>
-
-            <p>Module-level bindings have static storage duration implicitly:</p>
-
-            <pre><code>let Configuration: ApplicationConfiguration
-let mut State: ApplicationState</code></pre>
-
-            <p>These values exist for the lifetime defined for the module or program. The programmer may write <code>static</code> explicitly, but it is semantically redundant at module level:</p>
-
-            <pre><code>static let Configuration: ApplicationConfiguration  // valid but redundant</code></pre>
-
-            <div class="rule">
-                <strong>Rule:</strong> The explicit <code>static</code> modifier at module level is accepted by the compiler but should be removed by the formatter as redundant.
-            </div>
-        </div>
-
-        <div class="section" id="function-local-static">
-            <h2>Function-Local Static</h2>
-
-            <p>A local declaration may use <code>static</code> to preserve one storage location across function calls:</p>
-
-            <pre><code>fn NextID() int {
-    static let mut value: int := 0
-    value += 1
-    return value
-}</code></pre>
-
-            <p>A static local variable:</p>
-
-            <ul>
-                <li>is visible only inside the declaring function</li>
-                <li>is initialized once</li>
-                <li>retains its value between calls</li>
-                <li>is shared by all concurrent calls to the function</li>
-                <li>has static storage duration</li>
-            </ul>
-
-            <p>It is not allocated separately for each invocation.</p>
-
-            <div class="rule">
-                <strong>Rule:</strong> Mutable static storage accessed by tasks, threads, or mixed task/thread execution requires valid synchronization (e.g., <code>Mutex[T]</code>, <code>Atomic[T]</code>, or channel ownership transfer).
-            </div>
-        </div>
-
-        <div class="section" id="static-in-impl">
-            <h2>Static in Impl</h2>
-
-            <p>Static type-associated storage belongs in <code>impl</code>:</p>
-
-            <pre><code>type Counter struct {
-    value: int
-}
-
-impl Counter {
-    static let Maximum: int := 100
-    static let mut Total: int := 0
-}</code></pre>
-
-            <p>Static declarations do not belong in the struct field list. Static members are not instance fields — they do not affect:</p>
-
-            <ul>
-                <li><code>sizeof(Counter)</code></li>
-                <li>alignment of <code>Counter</code></li>
-                <li>field offsets</li>
-                <li>ABI layout</li>
-                <li>object construction</li>
-            </ul>
-
-            <p>Every <code>Counter</code> instance contains only its declared instance fields.</p>
-        </div>
-
-        <div class="section" id="static-members">
-            <h2>Static Members</h2>
-
-            <p>Static members are accessed through the type name, not an instance:</p>
-
-            <pre><code>// Valid
-Counter.Total
-Counter.Create()
-
-// Invalid — must use type-qualified access
-counter.Total  // error: static member must be accessed through type Counter</code></pre>
-
-            <div class="rule">
-                <strong>Rule:</strong> The compiler should require type-qualified access to make shared type-level state explicit.
-            </div>
-        </div>
-
-        <div class="section" id="static-methods">
-            <h2>Static Methods</h2>
-
-            <p>A method that belongs to the type rather than an instance must be declared explicitly with <code>static fn</code>:</p>
-
-            <pre><code>impl Counter {
-    static fn Create() Counter {
-        return Counter { value: 0 }
-    }
-}</code></pre>
-
-            <p>Sec does not infer static membership merely because <code>self</code> is absent. A non-static method without a valid <code>self</code> parameter is invalid.</p>
-
-            <div class="rule">
-                <strong>Rule:</strong> An explicit <code>static fn</code> is required for semantic clarity. A static method must not use <code>self</code>.
-            </div>
-        </div>
-
-        <div class="section" id="static-properties">
-            <h2>Static Properties</h2>
-
-            <p>A property that belongs to a type must be declared explicitly:</p>
-
-            <pre><code>impl Counter {
-    static property Total: int {
-        get { return total }
-    }
-}</code></pre>
-
-            <p>Static properties follow the same access rules as static members — they are accessed through the type name.</p>
-        </div>
-
-        <div class="section" id="static-constraints">
-            <h2>Static Constraints</h2>
-
-            <ul>
-                <li>Static mutable storage requires valid synchronization when accessed concurrently.</li>
-                <li>Using a physical thread does not bypass static mutability or borrowing rules.</li>
-                <li>Lifetime validity of static storage does not imply concurrency safety.</li>
-                <li>Static members are not instance fields and do not affect object layout.</li>
-            </ul>
-
-            <p>Sec v0.1 does not define thread-local storage syntax.</p>
-        </div>
-
-        <nav class="page-navigation" aria-label="Page navigation">
-            <a href="21-indexing.html">Previous: Indexing</a>
-            <a href="index.html">Manual Index</a>
+        <div class="page-navigation">
+                <a href="21-indexing.html">Previous: Indexing</a>
             <a href="23-references.html">Next: References</a>
-        </nav>
+        </div>
     </main>
 </div>
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <p>&copy; 2026 Sec Language</p>
+        <a href="https://github.com/YoePro/sec">GitHub</a>
+    </div>
+</footer>
 </body>
 </html>

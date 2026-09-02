@@ -1372,6 +1372,7 @@ TopLevelDeclaration
       | TypedDeclaration
       | TypedDeclarationGroup
       | AddressedLetDeclaration
+      | TestDeclaration
       | CompatibilityStructDeclaration
       | Comment
 ```
@@ -1379,6 +1380,19 @@ TopLevelDeclaration
 Ordinary executable statements are invalid at module scope.
 
 Top-level mutable storage remains subject to static and initialization rules.
+
+Test source adds the contextual top-level declaration:
+
+```text
+TestDeclaration
+    ::= "test" StringLiteral Block
+```
+
+It is legal only in `*_test.sec` selected by a `TestCompilationPlan`. It has no
+parameters or source return type, may not be nested, and is governed by
+`rules/tooling/testing.md`. Lexer, parser, formatter, editor grammar, and Sema
+must share one contextual treatment of `test` rather than reserving or inferring
+it independently.
 
 ---
 
@@ -4788,6 +4802,7 @@ This document must remain synchronized with:
 lexical_structure.md
 operators.md
 formatter.md
+tooling/testing.md
 default_values.md
 types.md
 contracts.md

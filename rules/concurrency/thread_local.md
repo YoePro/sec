@@ -507,7 +507,7 @@ properties.md
 types.md
 functions.md
 ownership.md
-borrowing.txt
+borrowing.md
 references.md
 lifetime_analysis.md
 destruction.txt

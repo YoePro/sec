@@ -690,7 +690,7 @@ compatibility.
 
 Completed 2026-09-02: P14-74 ran
 `TestEmitPackage14SourceModuleVerifiesOn32And64BitPlans` with the absolute
-`SEC_MLIR_BIN=/home/jonas/small-projects/sec/build/sec-mlir/bin`. Both the
+`SEC_MLIR_BIN=~/small-projects/sec/build/sec-mlir/bin`. Both the
 32-bit and 64-bit subtests passed through source parsing, target-aware Sema,
 verified Semantic IR, schema-10 emission, array-index guard verification, and
 scalar-core lowering. The outputs retained high-level fixed arrays and every
@@ -723,7 +723,7 @@ including the previously untracked acceptance matrix and implementation report,
 with an isolated temporary Git index and `git diff --cached --check HEAD`.
 `implementation-status.yaml` parses with 164 unique integration IDs and the
 mandatory report has exactly 41 ordered items. With
-`SEC_MLIR_BIN=/home/jonas/small-projects/sec/build/sec-mlir/bin`, the complete
+`SEC_MLIR_BIN=~/small-projects/sec/build/sec-mlir/bin`, the complete
 `go test ./...` suite passed; `go vet ./...` also passed. Finally,
 `cmake --build build/sec-mlir --target check-sec-mlir -j2` passed all 91 Sec
 MLIR regressions. Package 14 has no open TODO item.

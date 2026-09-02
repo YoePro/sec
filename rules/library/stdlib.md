@@ -1277,7 +1277,7 @@ properties.md
 errorhandling.md
 allocation.md
 ownership.md
-borrowing.txt
+borrowing.md
 copy_move.md
 destruction.txt
 collections.md

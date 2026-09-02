@@ -526,6 +526,12 @@ type Resources struct {
 
 **§ 15.3(4)** A type with custom `free` is not partially movable in Sec 0.1, so the `free` body may rely on the complete ownership invariant required by the type.
 
+**§ 15.3(5)** The prohibition on ordinary whole-`self`-consuming methods does not prohibit a compiler-known terminal lifecycle operation on a semantic builtin when a canonical rulebook defines the operation and the compiler owns its complete ownership transition.
+
+**§ 15.3(6)** After such an operation consumes the builtin owner, the source Place is unavailable and automatic destruction must recognize the consumed state so it does not repeat the terminal release.
+
+**§ 15.3(7)** `Arena.Release()` is the Sec 0.1 instance of this rule. It terminates the ArenaDomain and suppresses a second automatic Release; its exact lifecycle semantics are defined by `rules/memory/arena.md`. This exception creates no general user-defined whole-`self`-consuming method facility.
+
 ### § 15.4 Owned fields during `free`
 
 **§ 15.4(1)** In Sec 0.1, custom `free` should release resources not already represented by ordinary owned fields.
@@ -1225,3 +1231,11 @@ Semantic IR and Sec MLIR must carry resolved destruction semantics rather than l
 ```
 
 **§ 38(3)** Implementation status, known gaps, migration actions, and required verification commands belong in `implementation-status-destruction.yaml`, not in this normative rulebook.
+
+## § 39 Test-invocation termination
+
+**§ 39(1)** Controlled test termination through `testing.Pass`, `testing.Fail`, `testing.Skip`, failed `testing.Require`/`RequireEqual`, or unexpected `Err` propagation must destroy every still-owned value in the current invocation according to the ordinary cleanup plan.
+
+**§ 39(2)** A test outcome transition does not waive exact-once destruction, skip registered `defer`, or convert owned values into leaked test-runner state.
+
+**§ 39(3)** Each subtest is a separate invocation cleanup boundary. The parent resumes only after child cleanup completes. Source-level testing semantics are owned by `rules/tooling/testing.md`.

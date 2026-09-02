@@ -134,7 +134,7 @@ Borrow analysis determines:
 * mutable aliasing
 * borrow termination
 
-Borrow analysis follows borrowing.txt.
+Borrow analysis follows borrowing.md.
 
 ## Lifetime analysis
 

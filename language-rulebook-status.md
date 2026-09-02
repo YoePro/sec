@@ -112,7 +112,7 @@ These were written after the older temporary checklist was last synchronized.
 | `foundations/operators.md` | **Written** | Canonical operator semantics; compiler progress belongs in `implementation-status.yaml`. |
 | `foundations/names_scopes_visibility.md` | **Written — sync required** | Defines one member identity for canonical immutable impl `let` and compatibility `static let`; top-level conflicts are partially implemented and the remaining scope, visibility, reserved-name and naming-rule audit is still needed. |
 | `foundations/attributes.md` | **Written** | Canonical closed Sec 0.1 attribute set, syntax, attachment, selection, target binding, `@noCopy`, verified guarantees, conflicts, formatter/LSP behavior, and explicit implementation status. |
-| `memory/unsafe.md` | **Written** | Canonical unsafe contexts, operations, functions and extern declarations, caller obligations, raw pointers, trust boundaries and provenance; compiler support remains partial. |
+| `memory/unsafe.md` | **Written** | Canonical revision 2.0 unsafe contexts, operation-level obligations, unsafe functions/extern calls, trusted declarations, safe wrappers, trust provenance, target/FFI/assembly boundaries, Semantic IR, lowering, diagnostics, and tooling. Implementation progress is tracked by the six `*.unsafe` entries in `implementation-status.yaml`. |
 
 ## Contextual words and operators
 
@@ -295,21 +295,21 @@ The remaining details to close are:
 | Rulebook | Status | Notes |
 |---|---|---|
 | `memory/allocation.md` | **Written** | Canonical revision 2.0 allocation contexts, effects, Arena integration, failure, capacity, target policy, Semantic IR, lowering, diagnostics, and LSP. Implementation progress is tracked by the six `*.allocation` entries in `implementation-status.yaml`. |
-| `memory/arena.md` | **Written** | Canonical Arena ownership, backing, allocation, reset/release, validity epoch, effects, analysis and lowering model. Recognized operations now produce direct graph events, synchronous `MayAllocate` summaries, cause paths, and LSP hover; context, demand, dependency, and lowering work remains partial. |
+| `memory/arena.md` | **Written** | Canonical revision 2.0 Arena ownership, ArenaDomain identity, backing/providers, allocation, Reset/Release lifecycle, validity epochs, execution dependencies, effects, capacity analysis, Semantic IR, lowering, target profiles, diagnostics, and tooling. The restored §1.1 cross-reference index names all adjacent authorities. Implementation progress is tracked by the six `*.arena` entries in `implementation-status.yaml`. |
 | `memory/ownership.md` | **Written** | Canonical revision 2.0 ownership, including Correction 30 exact-Place availability tests, mask-preserving negative refinement, pending call-transfer reservations, and runtime-state requirements for discard/replacement/cleanup as well as explicit queries. Implementation progress is tracked by `frontend.ownership-v2` in `implementation-status.yaml`. |
 | `memory/borrowing.md` | **Written** | Canonical revision 2.0 borrowing, including shared/mutable borrow authority, reborrowing, Place overlap, control-flow merging, match/defer interactions, and reference-origin obligations. Implementation progress is tracked by `frontend.borrowing`, `semantic-ir.borrowing`, `lowering.borrowing`, and `tooling.borrowing` in `implementation-status.yaml`. |
 | `memory/references.md` | **Written** | Canonical revision 2.0 safe-reference semantics, including provenance, views, returned references, generations, relocation, hardware/ISR boundaries, Semantic IR, lowering, diagnostics, and LSP. Implementation progress is tracked by the six `*.references` entries in `implementation-status.yaml`. |
-| `memory/reference_model.md` | **Written** | Canonical safe-reference guarantees, validity epochs, stable and weak handles, relocation, profile representations, and `RawPtr` boundaries. |
+| `memory/reference_model.md` | **Written** | Canonical revision 2.0 validity and representation model for safe references, stable and weak handles, storage identity, provenance, spatial/temporal/type validity, authority, relocation, address spaces, epochs, target profiles, FFI/ISR boundaries, Semantic IR, lowering, and diagnostics. Implementation progress is tracked by the six `*.reference-model` entries in `implementation-status.yaml`. |
 | `generational_references.md` | **Covered** | Generational validity is canonical in `memory/reference_model.md`; no separate rulebook is required. |
 | `memory/raw_pointers.md` | **Written** | Canonical revision 2.0 unchecked raw-address semantics, operations, unsafe obligations, target/address-space rules, ownership/lifetime boundaries, Semantic IR, lowering, diagnostics, and tooling. Implementation progress is tracked by the six `*.raw-pointers` entries in `implementation-status.yaml`. |
 | `memory/copy_move.md` | **Living** | Canonical copy/move semantics. Implementation status is tracked by `frontend.copy-move` in `implementation-status.yaml`. |
 | `memory/lifetime_analysis.md` | **Written** | Canonical revision 2.0 lifetime analysis, including value/storage/reference lifetimes, Place-sensitive invalidation, non-lexical borrows, control-flow and loop joins, returned-reference summaries, defer/capture dependencies, arena epochs, fixed-address and runtime-mapping boundaries, Semantic IR obligations, and diagnostics. Implementation progress is tracked by `frontend.lifetime-analysis`, `interprocedural.lifetime-analysis`, `semantic-ir.lifetime-analysis`, `lowering.lifetime-analysis`, `platform.lifetime-analysis`, and `tooling.lifetime-analysis` in `implementation-status.yaml`. |
 | `memory/destruction.md` | **Written** | Canonical revision 2.0 deterministic destruction, exact-once cleanup responsibility, partial and conditional aggregate cleanup, custom `free`, construction-failure cleanup, unified defer/destruction ordering, and target-policy boundaries. Implementation progress is tracked by `frontend.destruction`, `semantic-ir.destruction`, `lowering.destruction`, `target-policy.destruction`, and `tooling.destruction` in `implementation-status.yaml`. |
-| `memory/memory_model.md` | **Written** | Canonical source and compiler memory model, including default lifetime and origin rules. |
+| `memory/memory_model.md` | **Written** | Canonical revision 2.0 abstract memory machine separating values, objects, bindings, Places, storage, representations, ownership, borrows, provenance, validity, concurrency, hardware effects, and lowering obligations. Implementation progress is tracked by the six `*.memory-model` entries in `implementation-status.yaml`. |
 | `declarations/static.md` | **Written** | Revision 2.1 defines module and function-local static storage plus type-associated members; immutable impl `let` is canonical and immutable impl `static let` is equivalent compatibility syntax, while mutable associated storage remains explicit. Implementation progress is tracked by `frontend.static-declarations-members`. |
 | `control-flow/discard.md` | **Written** | Canonical revision 2.0 explicit and implicit discard, must-use/discardability, reinitialization, lifecycle-handle, and deterministic destruction semantics. The implemented frontend slice and remaining lowering, Place, diagnostics, and path-sensitive work are tracked by `frontend.discard-v2`. |
-| `memory/storage.md` | **Written** | Canonical storage origin, backing relation, reclamation authority, address stability, regions, invalidation domains, validity epochs, memory spaces, placement guarantees, and shaped `StorageRequest` integration; implementation remains partial. |
-| `memory/layout.md` | **Written** | Canonical semantic/native layout, size, alignment, stride, padding, aggregate representation, explicit contracts, plan-specific queries, and compatibility; the shared layout phase remains partial. |
+| `memory/storage.md` | **Written** | Canonical revision 2.0 storage origin, backing relation, reclamation authority, address stability, regions, invalidation domains, epochs, pin/protection state, memory spaces, placement, concurrency, Semantic IR, lowering, and diagnostics. Implementation progress is tracked by the six `*.storage` entries in `implementation-status.yaml`. |
+| `memory/layout.md` | **Written** | Canonical revision 2.0 semantic/native/explicit layout, size, alignment, stride, padding, aggregate and union representation, completeness, validity, target plans, ABI/register integration, Semantic IR, lowering, and tooling. Implementation progress is tracked by the six `*.layout` entries in `implementation-status.yaml`. |
 
 `storage_allocation.txt` from the old checklist is replaced by the clearer
 canonical rulebook:
@@ -373,7 +373,7 @@ implementation remains tracked separately.
 | `concurrency/blocking.md` | **Written — sync required** | |
 | `concurrency/cancellation.md` | **Written — sync required** | |
 | `concurrency/structured_concurrency.md` | **Written — sync required** | |
-| `memory/transferability.md` | **Written — sync required** | |
+| `memory/transferability.md` | **Written** | Canonical revision 2.0 boundary-specific transferability and shareability across tasks, physical threads, processes, interrupts, and foreign callbacks, including closure/reference/capability dependencies and platform constraints. Implementation progress is tracked by the six `*.transferability` entries in `implementation-status.yaml`. |
 | `analysis/data_races.md` | **Written** | Canonical data-race analysis rules; implementation status is tracked by `sema.data-race-analysis` in `implementation-status.yaml`. |
 | `analysis/deadlock_analysis.md` | **Written** | Canonical deadlock-analysis rules; implementation status is tracked by `sema.deadlock-analysis` in `implementation-status.yaml`. |
 | `concurrency/channels.md` | **Written — sync required** | |
@@ -563,6 +563,7 @@ multiple target outputs
 |---|---|---|
 | `tooling/diagnostics.txt` | **Written — sync required** | Central registry and `sec diagnostics [--json]` expose all registered definitions plus complete definition/parser/sema/token field schemas; LSP exposes parser/sema codes. Full ID migration, localization and machine-readable emitted-diagnostic output remain. |
 | `tooling/formatter.md` | **Written** | Canonical formatting behavior, including string-enum initializer preservation, immutable impl `static let` normalization to `let`, and canonical assertion-message comma spacing; implementation progress belongs in `implementation-status.yaml`. |
+| `tooling/testing.md` | **Written** | Canonical source-level `test`, `*_test.sec`, `sec test`, compiler-known `testing.*`, subtests, integration tests, `TestCompilationPlan`, execution-provider, structured-result, LSP and editor-integration semantics. Implementation progress is tracked by `tooling.language-testing`. |
 | `compiler_diagnostics.md` | **Covered** | Compiler diagnostic policy remains canonical in `tooling/diagnostics.txt`; avoid duplication. |
 | `debug_information.md` | **Planned** | Source mapping, variables, optimized code, generics, async/task frames, and targets. |
 | `compiler_testing.md` | **Planned** | Compiler unit, integration, invalid, regression, lowering, and backend tests. |
@@ -613,6 +614,7 @@ control-flow/flowcontrol_match.md
 control-flow/flowcontrol_switch.md
 control-flow/flowcontrol_while.md
 tooling/formatter.md
+tooling/testing.md
 declarations/functions.md
 declarations/lambda-functions.md
 declarations/generics.md

@@ -1,291 +1,287 @@
 # Arena
 
-## Status
-
-This document is the canonical arena rulebook for Sec 0.1.
-
-It defines:
-
-- the programmer-visible `Arena` type;
-- arena allocation domains;
-- owned, borrowed, static, and target-provided backing storage;
-- fixed and growable arenas;
-- implicit allocation-context propagation;
-- manual typed arena allocation;
-- allocation failure;
-- initialization;
-- ownership and destruction;
-- reset and release;
-- validity epochs;
-- nested arenas;
-- task and thread dependencies;
-- cancellation and cleanup;
-- static capacity analysis;
-- Semantic IR requirements;
-- Sec MLIR dialect requirements;
-- lowering and optimization constraints;
-- target-profile restrictions;
-- diagnostics;
-- LSP behavior;
-- tests;
-- staged compiler implementation.
-
-All normative Arena semantics belong to this document.
-
-General allocation semantics remain owned by `allocation.md`.
-
-Safe reference semantics, storage identity, validity epochs, stable handles, weak
-handles, and `RawPtr[T]` remain owned by `reference_model.md`.
-
-Effect inference and ordered arena effects remain owned by
-`effect_analysis.md`.
-
-Task, thread, cancellation, destruction, panic, call-graph, ownership, borrow,
-and lifetime semantics remain owned by their corresponding canonical
-rulebooks.
-
-This rulebook consumes those semantics and defines their Arena-specific
-application.
+- Status: Normative
+- Created: 2026-09-02
+- Last updated: 2026-09-02
+- Document revision: 2.0
+- Sec language version: 0.1
+- Canonical path: `rules/memory/arena.md`
+- Replaces: previous revision of `rules/memory/arena.md`
+- Repository baseline reviewed: `814a584` (latest publicly verifiable `main`; current `main` contents reviewed 2026-09-02)
 
 ---
 
-# Purpose
+## § 1 Purpose and authority
 
-An Arena is a programmer-visible allocation domain for typed storage.
+§ 1(1) This rulebook defines the programmer-visible `Arena` type and Arena-specific allocation-domain semantics.
 
-It provides:
+§ 1(2) It defines:
 
 ```text
-explicit dynamic-storage operations;
-bulk reclamation;
-predictable storage lifetime;
-target-independent source semantics;
-compiler-visible ownership and invalidation;
-optional static capacity proof;
-implementation without a mandatory runtime.
+Arena ownership;
+ArenaDomain identity;
+owned, borrowed, static, and target-provided backing;
+fixed and growable Arenas;
+capacity and alignment;
+typed safe allocation;
+allocation failure;
+initialization;
+Reset;
+Release;
+Arena destruction;
+validity epochs;
+nested Arenas;
+task/thread dependencies;
+allocation-context interaction;
+ordered Arena effects;
+capacity-demand analysis;
+Semantic IR requirements;
+Sec MLIR requirements;
+lowering and optimization constraints;
+target-profile restrictions;
+diagnostics;
+tooling;
+required tests.
 ```
 
-The normal programmer should not need to select or propagate an Arena through
-ordinary application code.
+§ 1(3) `rules/memory/allocation.md` owns general allocation semantics, allocation effects, no-hidden-allocation rules, and allocation-context policy.
 
-The compiler may maintain and propagate an active allocation context for
-operations whose semantics explicitly allocate.
+§ 1(4) This Arena rulebook owns the Arena-specific realization of those general allocation semantics.
 
-Systems, embedded, FFI, allocator, bootstrap, and performance-sensitive code may
-use an Arena explicitly.
+§ 1(5) `storage.md` owns canonical storage origin/domain/backing/address-stability/memory-space semantics.
+
+§ 1(6) `reference_model.md` owns safe-reference validity, storage identity, invalidation domains, epochs/generations, stable handles, weak handles, and profile-selected representation.
+
+§ 1(7) `references.md`, `borrowing.md`, and `lifetime_analysis.md` own source reference, borrow, and lifetime rules.
+
+§ 1(8) `ownership.md`, `copy_move.md`, and `destruction.md` own ordinary ownership, moves, cleanup, and destruction.
+
+§ 1(9) `layout.md` owns `SizeOf`, `AlignOf`, alignment, stride, representation validity, and plan-resolved layout.
+
+§ 1(10) Effect/call-graph rulebooks own transitive effect inference and call relationships.
+
+§ 1(11) Concurrency rulebooks own task/thread lifecycle, synchronization, cancellation, and structured concurrency.
+
+§ 1(12) FFI/platform/interrupt rulebooks own foreign retention, providers, MMIO, target memory spaces, and ISR restrictions.
+
+§ 1(13) This rulebook introduces no mandatory general runtime.
+
+### § 1.1 Canonical cross-reference index
+
+§ 1.1(1) Arena semantics must remain synchronized with the following canonical
+rulebooks. These references identify authority; they do not move normative
+Arena behavior out of this document.
+
+| Concern | Canonical rulebooks |
+|---|---|
+| Allocation, storage, initialization, and layout | `rules/memory/allocation.md`, `rules/memory/storage.md`, `rules/memory/layout.md`, `rules/types/default_values.md` |
+| Ownership, transfer, cleanup, and unsafe boundaries | `rules/memory/ownership.md`, `rules/memory/copy_move.md`, `rules/memory/destruction.md`, `rules/memory/unsafe.md` |
+| References, borrowing, provenance, and lifetime | `rules/memory/references.md`, `rules/memory/reference_model.md`, `rules/memory/borrowing.md`, `rules/memory/lifetime_analysis.md` |
+| Compiler-known surface and compiler pipeline | `rules/compiler/compiler_known_members.md`, `rules/compiler/compiler_analysis.txt`, `rules/compiler/compiler_pipeline.txt`, `rules/compiler/semantic_ir.txt`, `rules/foundations/attributes.md` |
+| Effects, reachability, escape, panic, and runtime checks | `rules/analysis/effect_analysis.md`, `rules/analysis/call_graph.md`, `rules/analysis/escape_analysis.md`, `rules/errors/panic.md`, `rules/errors/runtime_checks.md` |
+| Tasks, threads, cancellation, and concurrency memory semantics | `rules/concurrency/concurrency.md`, `rules/concurrency/concurrency_memory_model.md`, `rules/concurrency/tasks.txt`, `rules/concurrency/spawn.md`, `rules/concurrency/threads.md`, `rules/concurrency/cancellation.md`, `rules/concurrency/structured_concurrency.md` |
+| FFI, targets, and interrupt restrictions | `rules/platform/ffi.md`, `rules/platform/target_profiles.md`, `rules/analysis/isr_analysis.md` |
+| Diagnostics and language tooling | `rules/tooling/diagnostics.txt`, `rules/tooling/lsp.md` |
+
+§ 1.1(2) If a referenced rulebook is revised, it must consume ArenaDomain,
+backing, epoch, ownership, dependency, allocation-context, and lifecycle facts
+from this rulebook rather than redefining them.
 
 ---
 
-# Core rule
+## § 2 Core rule
+
+§ 2(1) An `Arena` is a move-only programmer-visible owner/controller of one allocation domain.
+
+§ 2(2) The compiler-visible identity of that domain is an `ArenaDomain`.
+
+§ 2(3) An `ArenaDomain` is independent of the physical address of its backing storage.
+
+§ 2(4) Allocations produced from an Arena belong to:
 
 ```text
-An Arena owns and controls one allocation domain.
-
-The Arena may own, borrow, or otherwise control its physical backing storage.
-
-Allocations produced from the Arena belong to the ArenaDomain and its current
-validity epoch.
-
-Reset reclaims allocations while keeping the Arena alive.
-
-Release terminates the ArenaDomain.
+one ArenaDomain;
+the Arena's current validity epoch;
+one concrete bounded allocation extent;
+one storage/memory-space contract;
+one allocation site.
 ```
+
+§ 2(5) Ordinary Arena allocation does not advance the Arena validity epoch.
+
+§ 2(6) `Reset()` ends the current allocation epoch and starts a new epoch while preserving the ArenaDomain.
+
+§ 2(7) `Release()` terminates the ArenaDomain.
+
+§ 2(8) Arena destruction performs terminal Release semantics when the Arena is still owned and live.
+
+§ 2(9) Arena allocation is bulk-reclamation storage management, not per-allocation deallocation.
 
 ---
 
-# Non-goals
+## § 3 Non-goals
 
-Sec 0.1 Arena does not define:
+§ 3(1) Sec 0.1 Arena does not define:
 
 ```text
 garbage collection;
 reference counting;
-individual deallocation;
+individual Arena allocation Free;
 automatic heap promotion;
 relocating compaction;
 automatic trimming on Reset;
-a destructor registry;
+general destructor registry;
 general placement construction;
-safe uninitialized typed storage;
-public raw access to the complete Arena backing store;
-a concurrent Arena type;
-a lock-free Arena type;
-a self-referential Arena owner/result wrapper;
+general safe uninitialized typed storage;
+public raw access to the complete Arena backing;
+concurrent Arena mutation;
+lock-free Arena mutation;
+self-referential Arena owner/result wrappers;
 runtime reflection over Arena allocations;
-a universal runtime allocator;
-a universal Arena ABI.
+universal allocator ABI;
+universal Arena ABI.
 ```
 
-These may be designed separately in a later language version.
+§ 3(2) Future specialized APIs may add separate semantics without changing this base Arena contract.
 
 ---
 
-# Terminology
+## § 4 Terminology
 
-## Arena
+### § 4.1 Arena
 
-The programmer-visible move-only value that controls an allocation domain.
+§ 4.1(1) `Arena` is the programmer-visible move-only semantic builtin controlling one ArenaDomain.
 
-## ArenaDomain
+### § 4.2 ArenaDomain
 
-The compiler-visible storage identity controlled by an Arena.
+§ 4.2(1) `ArenaDomain` is the compiler-visible identity of one live Arena allocation domain.
 
-An ArenaDomain is not source-level region syntax.
+§ 4.2(2) It is not source-level region syntax.
 
-It identifies one live allocation domain independently of the physical address
-of its backing storage.
+§ 4.2(3) It remains stable across Arena ownership moves.
 
-## Backing storage
+§ 4.2(4) It remains stable across ordinary allocation and Reset.
 
-The physical bytes from which Arena allocations are produced.
+§ 4.2(5) It ends at Release/destruction.
 
-Backing storage may be:
+### § 4.3 Backing storage
 
-```text
-owned;
-borrowed;
-statically reserved;
-target-provided;
-segmented;
-virtually reserved;
-or otherwise supplied by the active CompilationPlan.
-```
+§ 4.3(1) Backing storage is the physical storage from which Arena allocations are produced.
 
-## Arena state version
+### § 4.4 Arena state version
 
-The compiler SSA state produced after a mutating Arena operation.
+§ 4.4(1) Arena state version is the compiler SSA state after a mutating Arena operation.
 
-Allocation, growth, Reset, and Release affect Arena state.
+§ 4.4(2) State version is distinct from validity epoch.
 
-## Validity epoch
+### § 4.5 Validity epoch
 
-The logical incarnation of allocations within one ArenaDomain.
+§ 4.5(1) The Arena validity epoch identifies one live incarnation of allocations in the ArenaDomain.
 
-Ordinary allocation does not advance the epoch.
+§ 4.5(2) Ordinary allocation changes state version but not epoch.
 
-Reset advances the epoch.
+§ 4.5(3) Reset changes state version and epoch.
 
-Release ends the complete ArenaDomain.
+§ 4.5(4) Release ends the domain rather than merely advancing the epoch.
 
-## Allocation context
+### § 4.6 Allocation context
 
-Compiler-visible semantic state through which an allocation-capable operation
-obtains storage without a source-level Arena argument.
+§ 4.6(1) Allocation context is compiler-visible semantic state through which implicit allocation-capable operations obtain storage.
 
-## Fixed Arena
+§ 4.6(2) It is not an automatically visible source variable.
 
-An Arena whose available backing capacity cannot grow.
+### § 4.7 Arena dependency
 
-## Growable Arena
-
-An Arena that may acquire additional stable backing without relocating any
-existing live allocation.
-
-## Arena dependency
-
-A compiler-visible requirement that an ArenaDomain and, where relevant, one
-validity epoch remain valid.
+§ 4.7(1) An Arena dependency is a compiler-visible requirement that an ArenaDomain and, where applicable, one validity epoch remain live.
 
 ---
 
-# Arena is a semantic builtin
+## § 5 `Arena` is a semantic builtin
 
-`Arena` is a semantic builtin type.
+§ 5(1) `Arena` is a compiler-known semantic builtin type.
 
-Its existence does not require an ordinary source declaration in core.
+§ 5(2) Its existence does not require an ordinary source declaration.
 
-Core or target code may provide helper implementations.
-
-The compiler owns:
+§ 5(3) The compiler owns:
 
 ```text
 member existence;
-type checking;
+member signatures;
 ownership behavior;
-allocation-domain identity;
+ArenaDomain identity;
 effect classification;
+dependency semantics;
 Semantic IR meaning;
-lowering requirements.
+target/profile requirements.
 ```
 
-The exact helper implementation may vary by target and CompilationPlan.
+§ 5(4) Core/target libraries may provide helper implementations.
+
+§ 5(5) Helper implementation details must not redefine Arena semantics.
 
 ---
 
-# The lowercase `arena` identifier
+## § 6 Lowercase `arena`
 
-Sec 0.1 does not require `arena` as a language keyword.
+§ 6(1) Lowercase `arena` is not a Sec 0.1 keyword through this rulebook.
 
-`Arena` is the builtin type.
+§ 6(2) It is an ordinary identifier.
 
-A lowercase identifier such as:
+Valid:
 
 ```sec
 let mut arena := try Arena.WithCapacity(4096)
 ```
 
-is an ordinary identifier.
+§ 6(3) A lexer/parser implementation must not reserve lowercase `arena` unless another canonical rulebook later assigns syntax to it.
 
-An implementation that currently reserves `arena` must remove that reservation
-unless another canonical rulebook later assigns source syntax to the keyword.
-
-No special scoped-arena syntax is introduced by this rulebook.
+§ 6(4) This rulebook introduces no scoped `arena { ... }` syntax.
 
 ---
 
-# Arena ownership
+## § 7 Arena ownership
 
-Arena is move-only and non-copyable.
+§ 7(1) `Arena` is move-only and non-copyable.
 
-This is required because an Arena contains or controls:
+§ 7(2) Copying an Arena would create multiple apparent owners/controllers of one allocation domain and is invalid.
 
-```text
-allocation-domain identity;
-backing-storage authority;
-allocation cursor state;
-capacity policy;
-validity epoch;
-provider state;
-dependent storage.
-```
-
-Ordinary copying would create two apparent owners of one allocation domain.
-
-This is invalid:
+Invalid:
 
 ```sec
 let second := first
 ```
 
-when `first` has type `Arena`.
+when `first: Arena`.
 
-An ownership move is valid:
+§ 7(3) Ownership move is valid using the canonical move syntax.
+
+Conceptually:
 
 ```sec
 let second :<- first
 ```
 
-After the move:
+§ 7(4) After the move:
 
 ```text
 second owns the same ArenaDomain;
-second retains the same epoch;
-second retains the same backing;
-second retains the same allocation state;
-first is moved-from and cannot be used.
+the same validity epoch remains current;
+the same backing remains controlled;
+the same allocation state continues;
+first becomes unavailable.
 ```
 
-Moving an Arena does not invalidate Arena-backed references.
+§ 7(5) Moving an Arena does not invalidate Arena-backed references.
 
-Moving an Arena does not create a new ArenaDomain.
+§ 7(6) Moving an Arena does not create a new ArenaDomain.
 
-Moving an Arena normally requires no runtime operation.
+§ 7(7) Moving an Arena need not perform a runtime operation.
 
 ---
 
-# Arena composition
+## § 8 Arena composition
 
-A type containing an Arena is move-only by composition.
+§ 8(1) A type containing an Arena is move-only by composition unless another canonical representation abstracts Arena ownership away.
 
 Example:
 
@@ -295,21 +291,23 @@ type WorkerStorage struct {
 }
 ```
 
-Moving `WorkerStorage` moves the Arena owner.
+§ 8(2) Moving the containing value transfers Arena ownership.
 
-Destroying `WorkerStorage` destroys the Arena field if the field is still owned.
+§ 8(3) Destruction of the containing value destroys the Arena field if still owned.
 
-The compiler must preserve normal field destruction order.
+§ 8(4) Field destruction order follows `destruction.md`.
 
 ---
 
-# Allocation-domain ownership versus backing ownership
+## § 9 Allocation-domain ownership versus backing ownership
 
-An Arena always owns and controls its ArenaDomain.
+§ 9(1) An Arena always owns/controls its ArenaDomain.
 
-The Arena does not necessarily own the physical backing bytes.
+§ 9(2) It does not necessarily own the physical backing bytes.
 
-The backing ownership kind is one of:
+§ 9(3) Arena backing relation is represented through the canonical storage model.
+
+§ 9(4) Arena-specific backing categories include conceptually:
 
 ```text
 Owned
@@ -318,154 +316,110 @@ Static
 TargetProvided
 ```
 
-A growable Arena may contain multiple backing segments whose ownership kind is
-defined by its provider.
+§ 9(5) These categories describe how the Arena obtains/releases backing and map onto canonical storage/backing/reclamation facts.
 
-The ownership kind must be known to Semantic IR before physical lowering.
+§ 9(6) They are not replacement `StorageOrigin` values.
+
+§ 9(7) A growable Arena may control multiple stable backing segments.
 
 ---
 
-# Borrowed fixed Arena
+## § 10 Borrowed fixed Arena
 
-A borrowed fixed Arena is created from mutable contiguous backing storage.
-
-Canonical source form:
+§ 10(1) Canonical source form:
 
 ```sec
 let mut arena := Arena.FromBuffer(ref mut buffer)
 ```
 
-Conceptual declaration:
+§ 10(2) Conceptual declaration:
 
 ```sec
 fn FromBuffer(buffer: ref mut byte[]) Arena
 ```
 
-`self` is implicit for instance methods in Sec and is not written as a parameter.
+§ 10(3) `FromBuffer` creates a new ArenaDomain using the supplied mutable contiguous storage as fixed backing.
 
-`FromBuffer`:
+§ 10(4) It is allocation-free with respect to acquiring new backing.
 
-```text
-creates a new ArenaDomain;
-uses the supplied view as fixed backing;
-takes an exclusive borrow of the supplied view;
-does not allocate new backing storage;
-does not grow;
-is infallible;
-keeps the backing owner outside the Arena;
-does not deallocate the backing when released.
-```
+§ 10(5) It is infallible when the supplied safe view already satisfies all static requirements.
 
-The supplied view must be:
+§ 10(6) It takes exclusive authority over allocation use of that backing for the Arena lifetime.
+
+§ 10(7) It does not deallocate/destroy the backing owner when the Arena ends.
+
+§ 10(8) The supplied storage must be:
 
 ```text
 mutable;
 contiguous;
 addressable;
-valid for the complete Arena lifetime;
-large enough to represent its own bounds;
-compatible with the target address space.
+live for the complete Arena lifetime;
+representably bounded;
+compatible with required address space;
+capable of satisfying requested allocation alignments.
 ```
 
-The Arena exclusively controls allocation from the borrowed view for the
-Arena's live range.
-
-Conflicting direct use of the backing view is invalid while the Arena owns the
-borrow.
-
-Example:
-
-```sec
-let mut arena := Arena.FromBuffer(ref mut buffer)
-
-// Conflicting direct access to buffer is invalid here.
-
-arena.Release()
-
-// The borrow has ended.
-// Direct use of buffer may be valid again.
-```
+§ 10(9) Direct conflicting use of the borrowed backing is invalid while the Arena controls it.
 
 ---
 
-# Empty borrowed Arena
+## § 11 Empty borrowed Arena
 
-A zero-length backing view may create a valid borrowed Arena.
+§ 11(1) A zero-length mutable backing view may create a valid borrowed Arena.
 
-```sec
-let mut arena := Arena.FromBuffer(ref mut emptyBuffer)
-```
-
-The Arena:
+§ 11(2) Such an Arena:
 
 ```text
 is live;
-has zero capacity;
-can perform zero-element allocations;
-cannot satisfy an allocation requiring positive storage;
-may be Reset;
-may be Released.
+has zero byte capacity;
+may satisfy zero-element allocations;
+cannot satisfy positive-storage allocation;
+may Reset;
+may Release.
 ```
 
-A statically obvious zero-capacity Arena produces an informational diagnostic by
-default.
+§ 11(3) A statically obvious zero-capacity Arena may produce configurable informational diagnostics.
 
-The diagnostic is configurable and may be promoted to a warning.
-
-It is not a semantic error.
+§ 11(4) Zero capacity is not itself a semantic error.
 
 ---
 
-# Owned fixed Arena
+## § 12 Owned fixed Arena
 
-Canonical source form:
+§ 12(1) Canonical source form:
 
 ```sec
 let mut arena := try Arena.WithCapacity(4096)
 ```
 
-Conceptual declaration:
+§ 12(2) Conceptual declaration:
 
 ```sec
 fn WithCapacity(capacity: uint) Result[Arena, AllocationError]
 ```
 
-`WithCapacity`:
+§ 12(3) `WithCapacity` creates a fresh ArenaDomain.
 
-```text
-creates a new ArenaDomain;
-requests owned backing from the active target/profile provider;
-creates fixed capacity;
-does not grow;
-may fail;
-returns Result;
-releases owned backing when the Arena is released or destroyed.
-```
+§ 12(4) It requests owned backing through the selected target/profile provider.
 
-`WithCapacity` is available only when the active CompilationPlan supplies a
-compatible backing provider.
+§ 12(5) It creates fixed capacity and does not grow.
 
-The provider may be:
+§ 12(6) It may fail.
 
-```text
-a core helper;
-a target intrinsic;
-an operating-system service;
-a platform allocator;
-a statically selected memory pool;
-another verified provider.
-```
+§ 12(7) The constructor is available only when the active `CompilationPlan` provides a compatible backing provider.
 
-The provider contract must expose all effects and trust provenance required by
-effect analysis and the call graph.
+§ 12(8) Provider effects and trust provenance remain visible to analysis/call graph.
+
+§ 12(9) Arena destruction/Release returns owned backing through the matching provider contract.
 
 ---
 
-# Growable Arena
+## § 13 Growable Arena
 
-Sec 0.1 defines growable Arena semantics.
+§ 13(1) Sec 0.1 defines growable Arena semantics.
 
-Canonical source form when the constructor is available:
+Canonical source form where exposed:
 
 ```sec
 let mut arena := try Arena.Growable(4096)
@@ -477,60 +431,48 @@ Conceptual declaration:
 fn Growable(initialCapacity: uint) Result[Arena, AllocationError]
 ```
 
-The initial compiler implementation may defer the public `Growable`
-constructor.
+§ 13(2) A growable Arena may acquire additional backing only through a strategy preserving every existing live allocation address and validity guarantee.
 
-The semantic model must still support growable compiler-managed or
-target-provided allocation contexts.
-
-A growable Arena may acquire additional backing only through a strategy that
-does not relocate any existing live allocation.
-
-Permitted strategies include:
+§ 13(3) Permitted strategies include:
 
 ```text
 additional stable segments;
 reserved virtual address space;
 target-provided non-relocating extension;
-another profile-defined stable strategy.
+another CompilationPlan-defined stable strategy.
 ```
 
-This strategy is forbidden:
+§ 13(4) The following strategy is forbidden while prior allocations remain live:
 
 ```text
 allocate a larger buffer;
-copy prior Arena allocations;
+copy old Arena allocations;
 change their addresses;
-continue using prior references.
+continue using old references as if nothing changed.
 ```
 
-Growth must preserve:
+§ 13(5) Growth preserves:
 
 ```text
 ArenaDomain identity;
 current validity epoch;
-all prior allocation addresses;
-all prior allocation bounds;
-all prior reference validity;
-all prior ownership facts.
+prior allocation addresses;
+prior allocation bounds;
+prior safe-reference validity;
+prior ownership/dependency facts.
 ```
+
+§ 13(6) Growth is not Arena Reset.
 
 ---
 
-# Growth policy
+## § 14 Growth policy
 
-The growth policy is selected by:
+§ 14(1) Growth policy is selected by constructor, target profile, `CompilationPlan`, or compiler-managed allocation-context policy.
 
-```text
-constructor;
-target profile;
-CompilationPlan;
-compiler-managed allocation-context policy.
-```
+§ 14(2) It is fixed for the live ArenaDomain.
 
-It must be fixed for the live ArenaDomain.
-
-The policy may include:
+§ 14(3) Policy may include:
 
 ```text
 initial capacity;
@@ -538,45 +480,40 @@ next-segment policy;
 maximum capacity;
 provider;
 alignment constraints;
-address-space constraints.
+memory-space/address-space constraints.
 ```
 
-Exact public syntax for a maximum capacity is not required by Sec 0.1.
+§ 14(4) Sec 0.1 does not require public source syntax for every policy field.
 
-A bounded growable Arena becomes effectively fixed when its maximum capacity has
-been acquired.
+§ 14(5) A bounded growable Arena becomes effectively fixed after its maximum capacity is acquired.
 
 ---
 
-# Capacity
+## § 15 Capacity
 
-Arena capacity is measured in bytes.
+§ 15(1) Arena capacity is measured in bytes.
 
-Conceptual quantitative facts include:
+§ 15(2) Compiler-visible quantitative facts may include:
 
 ```text
 reserved capacity;
 used capacity;
 current-segment capacity;
-total growable capacity;
+total acquired growable capacity;
 maximum capacity;
 alignment padding;
-peak demand.
+peak logical demand.
 ```
 
-The rulebook does not require public properties for every quantitative fact.
+§ 15(3) This rulebook does not require public properties for all such facts.
 
-Public `Capacity`, `Used`, or `Remaining` members are not introduced here.
-
-Compiler-known member naming belongs to `compiler_known_members.md`.
+§ 15(4) Public compiler-known member inventory is owned by `compiler_known_members.md`.
 
 ---
 
-# Typed count
+## § 16 Typed allocation count
 
-`Arena.Alloc[T](count)` interprets `count` as the number of `T` elements.
-
-It is not a byte count.
+§ 16(1) `Arena.Alloc[T](count)` interprets `count` as element count, not byte count.
 
 Example:
 
@@ -584,61 +521,54 @@ Example:
 let values := try arena.Alloc[int32](100)
 ```
 
-The requested payload is conceptually:
+§ 16(2) Required payload bytes are conceptually:
 
 ```text
-CheckedMultiply(100, SizeOf(int32))
+CheckedMultiply(count, SizeOf(T))
 ```
 
-The required start offset is aligned according to `T`.
+§ 16(3) Allocation start is aligned according to `AlignOf(T)`.
 
-Alignment padding consumes Arena capacity.
+§ 16(4) Alignment padding consumes Arena capacity.
 
-The complete end offset is conceptually:
+§ 16(5) A fixed-arena request is conceptually valid when:
 
 ```text
 alignedOffset = AlignUp(currentOffset, AlignOf(T))
 payloadSize   = CheckedMultiply(count, SizeOf(T))
 endOffset     = CheckedAdd(alignedOffset, payloadSize)
-```
 
-A fixed Arena can satisfy the allocation when:
-
-```text
 endOffset <= capacity
 ```
 
+§ 16(6) Every arithmetic operation affecting capacity/offset is checked.
+
 ---
 
-# Alignment
+## § 17 Alignment
 
-Every Arena allocation respects the layout and alignment of `T` for the active
-CompilationPlan.
+§ 17(1) Every Arena allocation satisfies the canonical layout/alignment of `T` under the active `CompilationPlan`.
 
-Alignment comes from the canonical layout model.
-
-An Arena implementation must not assume that:
+§ 17(2) Arena implementation must not assume:
 
 ```text
 SizeOf(T) == AlignOf(T);
-all target alignments are powers of two without target proof;
-the current cursor is already aligned;
-all backing bases satisfy every possible alignment.
+every target alignment is a power of two;
+cursor is already aligned;
+all backing bases satisfy every possible T alignment.
 ```
 
-`Arena.FromBuffer` is valid only for allocations whose alignment can be
-satisfied by the backing view and cursor arithmetic.
+§ 17(3) `FromBuffer` can allocate `T` only where backing base/range permits required alignment.
 
-An allocation that cannot satisfy required alignment returns
-`AllocationError`.
+§ 17(4) Dynamic inability to satisfy alignment returns `AllocationError`.
 
-A statically impossible alignment produces a compile-time error.
+§ 17(5) Statically impossible alignment is a compile-time error.
 
 ---
 
-# Safe typed allocation
+## § 18 Safe typed allocation
 
-The initial safe operations are:
+§ 18(1) Canonical safe typed operations are:
 
 ```sec
 let value := try arena.New[Value]()
@@ -650,400 +580,333 @@ Conceptual declarations:
 ```sec
 fn New[T]() Result[ref mut T, AllocationError]
 
-fn Alloc[T](
-    count: uint,
-) Result[ref mut T[], AllocationError]
+fn Alloc[T](count: uint) Result[ref mut T[], AllocationError]
 ```
 
-These are instance methods.
+§ 18(2) These are compiler-known instance operations.
 
-The implicit Arena receiver is mutated.
+§ 18(3) They temporarily require mutable authority over Arena control state.
 
-The call requires mutable authority over the Arena owner for the duration of the
-operation.
+§ 18(4) The temporary mutable borrow of Arena control state ends when the allocation operation returns.
 
-The temporary mutable borrow of Arena control state ends when the operation
-returns.
+§ 18(5) The returned reference/slice retains a storage dependency on the ArenaDomain/current epoch.
 
-The returned reference or slice retains a storage dependency on the
-ArenaDomain.
+§ 18(6) It does not retain an exclusive borrow of the entire Arena control value.
 
-It does not retain an exclusive borrow of the complete Arena control value.
-
-Repeated allocation is therefore permitted when capacity remains available.
+§ 18(7) Repeated Arena allocations are therefore permitted when capacity remains and no conflicting operation exists.
 
 ---
 
-# Type requirements
+## § 19 Type requirements
 
-Safe `New[T]` and `Alloc[T]` require:
+§ 19(1) Safe `New[T]`/`Alloc[T]` require:
 
 ```text
-T has complete layout for the active CompilationPlan;
-T is sized;
-T has known alignment;
-T has a valid compiler-defined default;
-T is safely initializable;
-T is trivially destructible.
+complete layout under active CompilationPlan;
+sized T;
+known supported alignment;
+valid compiler-defined default;
+safe initialization;
+trivial destruction classification.
 ```
 
-Exact layout semantics belong to `layout.md`.
+§ 19(2) Exact layout/default/destruction rules remain owned by their canonical rulebooks.
 
-Exact default semantics belong to `default_values.md`.
+§ 19(3) These safe parameterless/default allocation forms do not accept types lacking a valid infallible default.
 
-Exact trivial-destruction classification belongs to the destruction and
-copy/move rulebooks.
+§ 19(4) These safe forms do not directly allocate non-trivially-destructible `T` in Sec 0.1.
 
 ---
 
-# `Arena.New[T]`
+## § 20 `Arena.New[T]`
 
-`New[T]` allocates storage for exactly one `T`.
+§ 20(1) `New[T]` allocates storage for exactly one `T`.
 
-It:
+§ 20(2) It:
 
 ```text
-checks layout;
-checks alignment;
-checks capacity or growth;
+validates T/layout/alignment;
+checks capacity or performs valid growth;
 fully initializes one T;
 returns ref mut T;
 never exposes uninitialized T;
 returns AllocationError on allocation failure.
 ```
 
-The returned reference:
+§ 20(3) The result is:
 
 ```text
-is non-null;
-is bounded to one T;
-belongs to the current ArenaDomain;
-belongs to the current validity epoch;
-has mutable authority;
-does not own the backing storage;
-does not individually deallocate its storage.
+non-null;
+bounded to one T;
+associated with the current ArenaDomain;
+associated with the current epoch;
+mutable;
+non-owning with respect to backing storage;
+not individually deallocatable.
 ```
 
 ---
 
-# `Arena.Alloc[T]`
+## § 21 `Arena.Alloc[T]`
 
-`Alloc[T](count)` allocates storage for exactly `count` `T` elements.
+§ 21(1) `Alloc[T](count)` allocates exactly `count` values.
 
-It:
+§ 21(2) It:
 
 ```text
 checks count arithmetic;
-checks layout;
-checks alignment;
-checks fixed capacity or performs valid growth;
+checks layout/alignment;
+checks capacity or performs valid non-relocating growth;
 fully initializes every element;
 returns ref mut T[];
 never returns a shorter slice;
-never returns a partially initialized slice;
+never exposes partial initialization;
 returns AllocationError on allocation failure.
 ```
 
-The returned slice:
+§ 21(3) The returned slice:
 
 ```text
-has element count equal to count;
-has bounds equal to the complete allocation;
-belongs to the current ArenaDomain;
-belongs to the current validity epoch;
+has exactly count elements;
+has bounds matching the complete allocation;
+belongs to the current ArenaDomain/epoch;
 has mutable authority;
-does not own the Arena backing;
-does not individually deallocate its storage.
+does not own/reclaim backing.
 ```
 
 ---
 
-# Zero-element allocation
+## § 22 Zero-element allocation
 
-This is valid:
+§ 22(1) `Alloc[T](0)` is valid.
+
+Example:
 
 ```sec
 let values := try arena.Alloc[int](0)
 ```
 
-It:
+§ 22(2) It:
 
 ```text
 succeeds;
 returns a valid empty mutable slice;
 consumes no capacity;
 requires no growth;
-does not create a dereferenceable element;
-does not advance the epoch;
-normally produces no diagnostic.
+creates no dereferenceable element;
+does not advance epoch.
 ```
 
-Zero-element allocation is common in generic code.
+§ 22(3) Literal zero count is not inherently suspicious.
 
-A literal zero count is not inherently suspicious.
-
-A general useless-operation diagnostic may apply when the result and operation
-are provably meaningless, but that is not an Arena-specific rule.
+§ 22(4) General useless-operation diagnostics may still apply when appropriate.
 
 ---
 
-# Zero-sized types
+## § 23 Zero-sized types
 
-The canonical layout rulebook owns whether user-visible zero-sized types exist.
+§ 23(1) Layout rules own whether a concrete zero-sized `T` is valid.
 
-When `SizeOf(T) == 0` is permitted:
+§ 23(2) When `SizeOf(T) == 0` is valid:
 
 ```text
 Alloc[T](count) may consume no payload bytes;
-the result still has count elements semantically;
-the implementation must preserve bounds and element identity semantics;
-no dereferenceable byte address is implied merely by the count.
+the result retains semantic count;
+element identity/bounds semantics must remain valid;
+no dereferenceable byte location is implied merely by count.
 ```
 
-This rulebook does not require zero-sized user types in Sec 0.1.
+§ 23(3) Arena does not independently create zero-sized type semantics.
 
 ---
 
-# Full initialization
+## § 24 Full initialization
 
-Safe Arena allocation always exposes fully initialized typed values.
+§ 24(1) Safe Arena typed allocation exposes only fully initialized semantic values.
 
-Full initialization means:
-
-```text
-every value satisfies the semantic default rules for T;
-every readable field or element has a valid value;
-all type invariants required by the default are established.
-```
-
-It does not mean:
+§ 24(2) Full initialization means:
 
 ```text
-every physical byte is zero;
-padding bytes have a defined value;
-all targets use bulk memset;
-all representations have an all-zero default.
+every result value satisfies canonical default semantics;
+every readable field/element is valid;
+required type invariants are established.
 ```
 
-The compiler may initialize through:
+§ 24(3) It does not require:
 
 ```text
-bulk zeroing where valid;
-field stores;
-element loops;
-vectorized stores;
-target intrinsics;
-elided stores after proof.
+zeroing every physical byte;
+defined padding contents;
+bulk memset;
+all-zero representation.
 ```
 
-Padding remains governed by layout, ABI, unsafe, and FFI rules.
+§ 24(4) Compiler implementation may use field stores, loops, vectorized stores, target intrinsics, valid bulk zeroing, or proof-driven store elimination.
 
 ---
 
-# Default initialization failure
+## § 25 Default initialization
 
-The compiler-defined default used by parameterless `New[T]` and `Alloc[T]`
-must be infallible.
+§ 25(1) The default used by `New[T]`/`Alloc[T]` must be infallible.
 
-Allocation may fail.
+§ 25(2) Allocation may fail independently.
 
-Canonical default initialization for an accepted `T` may not introduce a second
-independent fallible construction protocol.
+§ 25(3) A missing/invalid default rejects these safe allocation forms.
 
-A type without a valid canonical default is rejected by these allocation forms.
-
-A later explicit initializer or placement-construction API requires a separate
-rulebook.
+§ 25(4) A future explicit initializer/placement-construction operation requires separate canonical semantics.
 
 ---
 
-# Trivial destruction restriction
+## § 26 Trivial-destruction restriction
 
-Safe `New[T]` and `Alloc[T]` initially require `T` to be trivially destructible.
+§ 26(1) Safe `New[T]`/`Alloc[T]` require `T` to be trivially destructible in Sec 0.1.
 
-Reason:
+§ 26(2) The reason is that Arena performs bulk reclamation and is not an implicit registry of arbitrary destructors.
 
-```text
-Reset reclaims storage in bulk;
-Release terminates the ArenaDomain;
-the Arena is not an implicit registry of arbitrary destructors.
-```
-
-Supporting arbitrary non-trivial `T` directly would require Arena metadata such
-as:
+§ 26(3) The Arena does not automatically store:
 
 ```text
-destructor callable;
-element count;
-element type;
-initialization state;
-destruction order;
-partial-construction state.
+destructor callables;
+per-allocation type metadata;
+element counts for destruction;
+per-allocation initialization masks;
+destruction ordering records.
 ```
 
-Sec 0.1 does not require such a runtime registry.
-
-Types owning external resources, custom destruction, locks, files, or owning
-containers are not accepted directly by safe `New[T]` or `Alloc[T]` unless they
-are classified as trivially destructible by the canonical rules.
+§ 26(4) A type owning files, locks, sockets, owning collections, custom-free resources, or other nontrivial lifecycle state is rejected by the direct safe forms unless its canonical classification is trivial.
 
 ---
 
-# Owning containers and Arena backing
+## § 27 Owning containers using Arena backing
 
-The trivial-destruction restriction does not prevent an owning container from
-using Arena-backed raw or element storage.
+§ 27(1) The trivial-destruction restriction does not forbid an owning collection/container from using Arena-backed element/raw storage when its own rulebook defines the lifecycle protocol.
 
-The responsibilities remain distinct:
+§ 27(2) Responsibilities remain distinct:
 
 ```text
 Arena:
-    owns or controls the storage domain
+    controls storage domain/backing
 
 owning container:
-    owns initialized elements
+    owns initialized logical elements
     tracks element count
-    runs required destruction
-    ends its storage dependency before Arena Reset or Release
+    performs required element destruction
+    ends dependencies before Reset/Release
 ```
 
-An owning container may use Arena backing only when its own rulebook defines the
-ownership and destruction protocol.
-
-The Arena does not silently take over element ownership.
+§ 27(3) Arena never silently takes over logical element ownership/destruction.
 
 ---
 
-# Uninitialized storage
+## § 28 Uninitialized storage
 
-General safe uninitialized typed Arena allocation is not part of Sec 0.1.
+§ 28(1) General safe uninitialized typed Arena allocation is not part of Sec 0.1.
 
-An operation must not expose uninitialized storage as:
+§ 28(2) An Arena operation must not expose uninitialized storage directly as ordinary:
 
 ```text
 ref mut T
 ref mut T[]
 ```
 
-A future API must use:
+§ 28(3) A future API must use an explicit uninitialized-storage abstraction or unsafe operation.
 
-```text
-an explicit uninitialized-memory type;
-or
-an explicit unsafe operation.
-```
+§ 28(4) Safe `ref`/slice may be produced only after initialization validity is established.
 
-The API must prove initialization before producing an ordinary safe reference.
-
-Raw byte storage used internally by core or compiler lowering is not ordinary
-safe typed allocation.
+§ 28(5) Internal/compiler raw byte allocation is not ordinary safe typed Arena allocation.
 
 ---
 
-# Allocation failure
+## § 29 Allocation failure
 
-Arena allocation failure uses:
+§ 29(1) Arena creation/allocation failure uses `AllocationError`.
 
-```sec
-AllocationError
-```
+§ 29(2) Exact variants belong to canonical error/core rules.
 
-The exact error variants are defined by the canonical core/error rules.
-
-Arena creation or allocation must not silently:
+§ 29(3) Arena creation/allocation must not silently:
 
 ```text
 return null;
-return an invalid reference;
-return a shorter slice;
+return invalid reference;
+return shorter slice;
 expose partial initialization;
-fall back to an unrelated heap;
+fall back to unrelated allocator/heap;
 select another Arena;
 panic merely because capacity is exhausted;
-terminate the process.
+terminate process merely because capacity is exhausted.
 ```
 
-The caller handles or propagates the failure through normal `Result` and `try`
-rules.
+§ 29(4) Caller handles/propagates failure using normal `Result`/`try`.
 
 ---
 
-# Stable source result type
+## § 30 Stable source result type
 
-`New[T]` and `Alloc[T]` return `Result` in their stable source contract.
+§ 30(1) `New[T]`/`Alloc[T]` retain `Result` in their source signature even if compiler proof removes the dynamic failure path.
 
-A compiler proof that capacity is sufficient may eliminate the failure path in
-Semantic IR or lowered code.
+§ 30(2) Proof may eliminate runtime checks/error construction in Semantic IR/lowering.
 
-The proof does not change the source-level method type.
+§ 30(3) Proof does not rewrite the public callable type.
 
-This keeps:
-
-```text
-generics;
-interfaces;
-function values;
-module metadata;
-callable contracts;
-separate compilation
-```
-
-stable.
+§ 30(4) This stability applies across generics, interfaces, function values, module metadata, callable contracts, and separate compilation.
 
 ---
 
-# Atomic allocation
+## § 31 Allocation atomicity
 
-An allocation is atomic from the Sec program's perspective.
+§ 31(1) Arena allocation is atomic from Sec program semantics.
 
-Conceptual sequence:
+§ 31(2) Conceptual sequence:
 
 ```text
 validate Arena state;
 validate T;
 compute checked payload size;
 compute alignment padding;
-check fixed capacity or acquire complete growth;
-reserve the complete range;
-fully initialize every value;
-publish the reference or slice.
+ensure complete fixed/growth capacity;
+reserve complete range;
+fully initialize all result values;
+publish reference/slice.
 ```
 
-If the operation fails before publication:
+§ 31(3) If failure occurs before publication:
 
 ```text
-the Arena remains live;
-the ArenaDomain is unchanged;
-the validity epoch is unchanged;
-the allocation cursor is unchanged;
-all prior allocations remain valid;
-no partial slice is returned;
-no partially initialized value becomes observable.
+Arena remains live;
+ArenaDomain unchanged;
+epoch unchanged;
+allocation cursor unchanged;
+prior allocations remain valid;
+no partial result is published;
+no partially initialized typed value becomes observable.
 ```
+
+§ 31(4) Allocation failure therefore does not partially consume the requested capacity.
 
 ---
 
-# Growable allocation failure
+## § 32 Growable allocation failure
 
-When a growable Arena needs another segment and the provider fails:
+§ 32(1) If growth requires a new backing segment and provider acquisition fails:
 
 ```text
-the allocation returns Err;
-the prior Arena state remains physically unchanged;
-existing segments remain linked and valid;
+allocation returns Err;
+prior Arena physical state remains equivalent to input;
+existing segments remain linked/valid;
 existing allocations remain valid;
-no partial segment becomes observable;
-the current epoch remains unchanged.
+no partial segment becomes visible;
+epoch remains unchanged.
 ```
 
-A newly acquired segment becomes part of the Arena only after the acquisition
-has completed successfully.
+§ 32(2) A new segment joins the Arena only after successful complete acquisition.
+
+§ 32(3) Provider effects/failure remain observable according to effect/error rules.
 
 ---
 
-# Repeated allocation
+## § 33 Repeated allocation
 
-Allocating again from an Arena does not invalidate previous allocations.
+§ 33(1) Successful allocation does not invalidate earlier allocations in the current epoch.
 
 Example:
 
@@ -1052,52 +915,29 @@ let first := try arena.Alloc[byte](100)
 let second := try arena.Alloc[byte](200)
 ```
 
-When both succeed:
+§ 33(2) Positive-sized allocation ranges are non-overlapping.
 
-```text
-first remains valid;
-second remains valid;
-their positive-sized storage ranges do not overlap;
-both belong to the same ArenaDomain;
-both normally belong to the same epoch.
-```
+§ 33(3) They belong to the same ArenaDomain and normally current epoch.
 
-The compiler may use non-overlap facts for alias analysis.
+§ 33(4) Compiler alias analysis may consume these proven non-overlap facts.
+
+§ 33(5) Zero-sized/zero-element cases do not imply a dereferenceable disjoint byte range.
 
 ---
 
-# No individual reclamation
+## § 34 No individual reclamation
 
-The end of an individual reference's live range does not reclaim its Arena
-bytes.
+§ 34(1) Ending a reference live range does not reclaim Arena bytes.
 
-Example:
+§ 34(2) Storage consumed by successful allocation remains consumed in the current epoch until Reset/Release or another future explicitly defined bulk reclamation operation.
 
-```sec
-let first := try arena.Alloc[byte](100)
-Use(first)
-
-// The reference may be dead here.
-// The first 100 bytes remain consumed in the current epoch.
-
-let second := try arena.Alloc[byte](200)
-```
-
-Arena storage is reclaimed by:
-
-```text
-Reset;
-Release;
-another future explicitly defined reclamation operation.
-```
-
-Sec 0.1 has no individual `Free` operation for Arena allocations.
+§ 34(3) Sec 0.1 defines no `Arena.Free(allocation)`.
 
 ---
 
-# Reset
+## § 35 `Reset()`
 
-Canonical source form:
+§ 35(1) Canonical source form:
 
 ```sec
 arena.Reset()
@@ -1109,35 +949,34 @@ Conceptual declaration:
 fn Reset() void
 ```
 
-`Reset`:
+§ 35(2) `Reset()`:
 
 ```text
-keeps the Arena owner alive;
-keeps the ArenaDomain identity;
-ends the current validity epoch;
-invalidates prior Arena allocations;
+keeps Arena owner live;
+keeps same ArenaDomain;
+ends current validity epoch;
+invalidates prior allocations;
 resets allocation cursors;
 retains reusable backing;
 starts a new validity epoch;
-permits later allocation.
+allows later allocation.
 ```
 
-Reset is not Release.
+§ 35(3) Reset is not Release.
+
+§ 35(4) Reset is an ordinary mutable Arena operation, not a consuming whole-self operation.
 
 ---
 
-# Reset requirements
+## § 36 Reset requirements
 
-Reset is valid only when no validity-preserving dependency crosses the reset
-point.
+§ 36(1) Reset is valid only when no validity-preserving dependency crosses the Reset point.
 
-This includes:
+§ 36(2) Relevant dependencies include:
 
 ```text
-owned values stored in the Arena;
-ordinary shared references;
-ordinary mutable references;
-slices;
+ordinary shared/mutable references;
+slices/views;
 nested Arenas;
 containers using Arena backing;
 closure captures;
@@ -1145,13 +984,11 @@ task captures;
 thread arguments;
 deferred operations;
 foreign-retained dependencies;
-strong handles;
-returned values that remain live.
+strong validity-preserving handles;
+returned/result values still depending on Arena storage.
 ```
 
-The compiler uses non-lexical lifetime analysis.
-
-A binding may remain lexically in scope when its last use has passed.
+§ 36(3) NLL/final-use analysis determines whether a dependency still crosses Reset.
 
 Valid:
 
@@ -1159,9 +996,10 @@ Valid:
 let values := try arena.Alloc[int](100)
 Process(values)
 
-// Last use has passed.
 arena.Reset()
 ```
+
+when `Process(values)` is the final use.
 
 Invalid:
 
@@ -1171,196 +1009,142 @@ arena.Reset()
 Process(values)
 ```
 
----
-
-# Reset and weak handles
-
-Weak or explicitly stale-capable handles may survive Reset.
-
-After Reset, resolution fails according to the handle contract.
-
-Such a handle does not block Reset merely because the identity value remains
-live.
-
-A strong validity-preserving handle blocks Reset.
-
-Canonical rule:
-
-```text
-A dependency blocks Reset when its contract requires storage validity to
-continue.
-
-A fallibly resolved stale-capable identity does not block Reset.
-```
+§ 36(4) Lexical scope alone does not keep a dead reference dependency alive.
 
 ---
 
-# Reset epoch
+## § 37 Reset and stale-capable handles
 
-Reset advances the logical validity epoch.
+§ 37(1) Weak or explicitly stale-capable handles may survive Reset when their contract permits fallible resolution.
 
-The epoch belongs to the ArenaDomain.
+§ 37(2) Such handle identities do not block Reset solely because the handle value remains live.
 
-Ordinary references from the old epoch must be dead.
+§ 37(3) A strong validity-preserving dependency blocks Reset.
 
-Weak and stale-capable handles may retain the old expected epoch and fail
-resolution.
-
-Epoch increments are checked.
-
-They must never wrap and revive stale references.
-
-At epoch exhaustion the compiler/runtime strategy must:
-
-```text
-safely rekey the ArenaDomain;
-or
-produce deterministic panic/target trap.
-```
-
-A finite-width epoch may never silently wrap.
-
-The default logical epoch width follows `reference_model.md`.
-
-Runtime epoch metadata may be eliminated when proof makes it unnecessary.
+§ 37(4) After Reset, stale-capable handle resolution follows `reference_model.md`.
 
 ---
 
-# Reset capacity behavior
+## § 38 Reset epoch
 
-## Fixed Arena
+§ 38(1) Reset advances/replaces the logical Arena validity epoch.
 
-Reset:
+§ 38(2) The epoch belongs to the ArenaDomain.
 
-```text
-sets used capacity to zero;
-retains total capacity;
-retains backing;
-retains the ArenaDomain;
-advances epoch.
-```
+§ 38(3) Ordinary references from the old epoch must be dead before Reset.
 
-## Borrowed Arena
+§ 38(4) Stale-capable handles may retain the old expected epoch and fail resolution after Reset.
 
-Reset:
+§ 38(5) Epoch increments/rekeys must never revive stale references.
 
-```text
-sets the cursor to the beginning of the borrowed view;
-retains the exclusive borrow;
-does not return the view to its owner;
-does not zero backing bytes;
-advances epoch.
-```
+§ 38(6) Default logical epoch policy follows `reference_model.md`.
 
-## Growable Arena
-
-Reset:
-
-```text
-retains all currently acquired segments;
-resets all segment cursors;
-makes the reserved capacity reusable;
-does not automatically trim segments;
-does not return individual segments;
-advances epoch.
-```
-
-A future `Trim` operation requires separate semantics.
+§ 38(7) Runtime epoch metadata may be eliminated when proof makes it unnecessary.
 
 ---
 
-# Reset does not zero storage
+## § 39 Arena epoch exhaustion
 
-Reset does not require clearing every backing byte.
-
-After Reset, prior typed values no longer exist.
-
-A later safe typed allocation must initialize its new values before exposure.
-
-The compiler may choose to zero storage when:
+§ 39(1) Arena epoch exhaustion must use one canonical safe strategy:
 
 ```text
-the target benefits;
-the type default permits it;
-security policy requires it;
-debug policy requests it.
+fresh distinguishable ArenaDomain identity/rekey;
+explicit fallible behavior if Arena API/profile defines it;
+deterministic panic/target trap when recovery is unavailable.
 ```
 
-Zeroing is an implementation strategy, not the base Reset semantics.
+§ 39(2) Finite epoch representation must never silently wrap.
+
+§ 39(3) Reuse must never make old references/handles match the new live incarnation.
 
 ---
 
-# Reset atomicity
+## § 40 Reset capacity behavior
 
-Reset is atomic from the program's perspective.
+§ 40(1) Fixed Arena Reset sets used capacity/cursor to zero, retains total capacity/backing/domain, and advances epoch.
 
-Conceptual ordering:
+§ 40(2) Borrowed Arena Reset retains the exclusive borrow of backing.
+
+§ 40(3) Borrowed backing is not returned to the owner by Reset.
+
+§ 40(4) Growable Arena Reset retains acquired stable segments and resets their allocation cursors.
+
+§ 40(5) Reset does not automatically trim/release extra growable segments.
+
+§ 40(6) Future `Trim` semantics require a separate canonical operation.
+
+---
+
+## § 41 Reset does not zero backing
+
+§ 41(1) Reset does not require clearing every backing byte.
+
+§ 41(2) After Reset, prior typed object lifetimes in the Arena have ended.
+
+§ 41(3) Later safe typed allocations must fully initialize new objects before exposure.
+
+§ 41(4) Compiler/profile may zero backing for security/debug/performance reasons when semantically valid.
+
+§ 41(5) Such zeroing is implementation/profile policy, not base Reset semantics.
+
+---
+
+## § 42 Reset atomicity
+
+§ 42(1) Reset is atomic from program semantics.
+
+§ 42(2) Conceptually:
 
 ```text
 verify Reset is permitted;
 prepare a distinguishable next epoch;
-end the old epoch;
+end old epoch;
 reset all allocation cursors;
-publish the next epoch.
+publish next epoch.
 ```
 
-No code may observe:
+§ 42(3) No program observation may see a mixture of old/new Arena allocation state.
 
-```text
-partially reset segments;
-reused storage with the old epoch;
-a mixture of old and new allocation state.
-```
-
-Concurrent observation is already forbidden for ordinary Arena.
+§ 42(4) Ordinary Arena is not concurrently mutable, so concurrent observation is independently restricted.
 
 ---
 
-# Release
+## § 43 `Release()` lifecycle operation
 
-Canonical source form:
+§ 43(1) Canonical source form:
 
 ```sec
 arena.Release()
 ```
 
-Conceptual declaration:
+§ 43(2) `Release()` is a compiler-known Arena lifecycle termination operation.
 
-```sec
-fn Release() void
-```
+§ 43(3) It uses method-form source syntax but is not an ordinary user-defined whole-self-consuming method.
 
-`Release` is a consuming terminal operation.
+§ 43(4) Therefore `Release()` does not weaken the general Sec 0.1 rule that ordinary user-defined methods do not consume whole `self`.
 
-It:
+§ 43(5) `Release()`:
 
 ```text
-consumes the Arena owner;
-terminates the ArenaDomain;
+consumes Arena ownership;
+terminates ArenaDomain;
 invalidates validity-preserving dependencies;
-returns owned backing to its provider;
-ends borrowed backing access;
-permits no later Arena use.
+returns owned backing to provider where required;
+ends borrowed-backing control;
+permits no later use of that Arena value.
 ```
 
-After Release, the source Arena value is consumed.
+§ 43(6) After successful Release, the source Arena Place is unavailable.
 
-These are invalid:
+§ 43(7) `Release()` returns `void`.
 
-```sec
-arena.Reset()
-discard try arena.New[int]()
-discard try arena.Alloc[byte](100)
-arena.Release()
-```
-
-when performed on the consumed value.
+§ 43(8) Release is terminal and cannot fail in the base Arena contract; provider contracts used by safe Arena must provide a non-fallible terminal release path or expose a different resource abstraction.
 
 ---
 
-# Release requirements
+## § 44 Release requirements
 
-Ordinary safe dependencies may not cross Release.
+§ 44(1) No ordinary validity-preserving dependency may cross Release.
 
 Invalid:
 
@@ -1370,95 +1154,63 @@ arena.Release()
 Process(values)
 ```
 
-Weak stale-capable handles may remain as non-resolving identities.
+§ 44(2) Stale-capable weak handle identities may remain, but cannot resolve into the ended ArenaDomain.
 
-A future Arena reusing the same physical address receives a new ArenaDomain.
+§ 44(3) A later Arena using the same physical address receives a distinct ArenaDomain identity.
 
-Old handles must never resolve to the new domain merely because addresses match.
-
----
-
-# Release by backing kind
-
-## Owned backing
-
-Release returns all owned backing segments to their provider.
-
-## Borrowed backing
-
-Release ends the exclusive borrow.
-
-It does not deallocate or destroy the borrowed backing owner.
-
-## Static backing
-
-Release ends the ArenaDomain.
-
-It does not deallocate static storage.
-
-## Target-provided backing
-
-Release follows the target provider contract.
-
-It ends the ArenaDomain even when the target retains the physical bytes.
+§ 44(4) Old handles/references never revive through address reuse.
 
 ---
 
-# Implicit Arena destruction
+## § 45 Release by backing relation
 
-The programmer does not need to call `Release()` at every normal scope exit.
+§ 45(1) Owned backing is returned to the provider.
 
-When a still-owned Arena reaches its normal destruction boundary, Arena
-destruction performs terminal Release semantics.
+§ 45(2) Borrowed backing is not deallocated; Release ends the Arena's exclusive control/borrow.
 
-This applies to:
+§ 45(3) Static backing is not deallocated; Release ends ArenaDomain semantics over it.
 
-```text
-normal function return;
-early return through Result propagation;
-normal scope exit;
-destruction of an owning field;
-task or thread cleanup;
-another canonical ownership boundary.
-```
+§ 45(4) Target-provided backing follows the provider/platform contract.
 
-If explicit `Release()` already consumed the Arena, no second implicit Release
-is generated.
-
-Double Release is invalid.
+§ 45(5) ArenaDomain ends even if target/platform retains physical bytes.
 
 ---
 
-# Destruction versus value destruction
+## § 46 Implicit Arena destruction
 
-Arena storage ownership and value ownership are distinct.
+§ 46(1) The programmer need not explicitly call `Release()` on every normal path.
 
-```text
-Arena:
-    controls raw storage
+§ 46(2) Destruction of a still-owned Arena performs terminal Release semantics.
 
-value:
-    owns its fields, elements, and external resources
+§ 46(3) This may occur through normal scope exit, early return/error propagation cleanup, field destruction, task/thread cleanup, or another canonical ownership boundary.
 
-reference:
-    borrows an initialized value
-```
+§ 46(4) If explicit `Release()` already consumed the Arena, no implicit second Release occurs.
 
-Destroying an ordinary value does not necessarily reclaim its Arena bytes.
+§ 46(5) Double Release is invalid.
 
-Reset or Release does not replace ordinary value destruction.
-
-The safe initial Arena allocation restriction avoids directly placing
-non-trivially-destructible values under an implicit bulk-reclamation protocol.
+§ 46(6) Arena's compiler-known lifecycle cleanup composes with the ordinary destruction model.
 
 ---
 
-# Early return
+## § 47 Arena storage versus logical value destruction
 
-Return expressions are evaluated before local destruction.
+§ 47(1) Arena controls storage; Arena-backed logical values may have separate ownership/lifecycle rules.
 
-A returned value must not depend on an Arena that is destroyed during function
-exit.
+§ 47(2) Destroying an ordinary value does not necessarily reclaim its Arena bytes.
+
+§ 47(3) Reset/Release do not replace required nontrivial logical destruction.
+
+§ 47(4) The direct safe `New`/`Alloc` trivial-destruction restriction exists so bulk reclamation never silently skips required object destruction.
+
+§ 47(5) Specialized owning containers may perform element destruction before their Arena dependency ends.
+
+---
+
+## § 48 Early return and escape
+
+§ 48(1) Return expressions/results are established before local destruction according to ordinary destruction rules.
+
+§ 48(2) A returned reference/value must not depend on a local Arena destroyed during function exit.
 
 Invalid:
 
@@ -1470,17 +1222,15 @@ fn Invalid() Result[ref int, AllocationError] {
 }
 ```
 
-The compiler must not repair this by silently promoting the Arena.
+§ 48(3) Compiler must not repair this through hidden Arena/heap promotion.
 
-An Arena-backed reference may escape only when the Arena owner already exists
-outside the callable and outlives the result.
+§ 48(4) Arena-backed reference escape is valid only when its ArenaDomain already outlives the result through an external owner/context.
 
 ---
 
-# Returning an Arena
+## § 49 Returning Arena ownership
 
-Returning the Arena owner itself is valid when no invalid internal reference is
-returned with it.
+§ 49(1) Returning the Arena owner itself is valid.
 
 Example:
 
@@ -1491,18 +1241,19 @@ fn CreateArena() Result[Arena, AllocationError] {
 }
 ```
 
-Ownership moves to the result.
+§ 49(2) Ownership moves to result.
 
-The same ArenaDomain continues.
+§ 49(3) The same ArenaDomain/current epoch continues.
+
+§ 49(4) Return of Arena ownership does not by itself invalidate Arena-backed storage.
 
 ---
 
-# Self-referential Arena results
+## § 50 Self-referential Arena results
 
-A local Arena and a reference into that Arena are not automatically bundled into
-an ordinary self-referential result.
+§ 50(1) Sec 0.1 Arena does not automatically support ordinary values bundling an Arena owner and a direct reference into that same Arena.
 
-Example:
+Example shape:
 
 ```sec
 type ArenaResult struct {
@@ -1511,16 +1262,15 @@ type ArenaResult struct {
 }
 ```
 
-This shape requires explicit ownership and self-reference semantics not defined
-by Sec 0.1 Arena.
+§ 50(2) Such a shape requires explicit self-reference/relocation ownership semantics not introduced by this rulebook.
 
-The compiler must not infer such a relationship merely from field order.
+§ 50(3) Compiler must not infer self-reference correctness from field order.
 
 ---
 
-# Nested Arenas
+## § 51 Nested Arenas
 
-Nested Arenas require no special syntax.
+§ 51(1) Nested Arenas require no special source syntax.
 
 Example:
 
@@ -1529,34 +1279,25 @@ let childBuffer := try parent.Alloc[byte](4096)
 let mut child := Arena.FromBuffer(childBuffer)
 ```
 
-The child:
+§ 51(2) Child has its own ArenaDomain and validity epoch.
 
-```text
-has its own ArenaDomain;
-has its own epoch;
-borrows backing from a parent allocation;
-depends on the parent ArenaDomain and parent epoch.
-```
+§ 51(3) Child borrows backing from one parent allocation.
 
-The parent cannot Reset or Release while the child remains live.
+§ 51(4) Child therefore depends on parent ArenaDomain/current epoch.
 
-Releasing the child:
+§ 51(5) Parent cannot Reset/Release while child remains live.
 
-```text
-ends the child ArenaDomain;
-ends the child borrow;
-does not individually reclaim childBuffer from the parent.
-```
+§ 51(6) Releasing child ends child domain/borrow but does not individually reclaim `childBuffer` from parent.
 
-A later parent Reset may reclaim the parent allocation.
+§ 51(7) Later parent Reset may reclaim the parent allocation after child dependency ends.
 
 ---
 
-# `defer`
+## § 52 `defer`
 
-Arena operations in `defer` follow canonical LIFO cleanup semantics.
+§ 52(1) Arena operations in defer follow canonical common LIFO cleanup ordering.
 
-A deferred use of Arena-backed storage must execute before deferred Release.
+§ 52(2) A deferred use of Arena-backed storage must execute before a deferred/implicit Arena release invalidates it.
 
 Example concept:
 
@@ -1574,151 +1315,88 @@ defer {
 }
 ```
 
-LIFO order is:
+§ 52(3) LIFO order executes `FinalUse(values)` before `arena.Release()`.
 
-```text
-FinalUse(values)
-Arena.Release()
-```
+§ 52(4) A cleanup plan releasing Arena before a required dependent cleanup use is invalid.
 
-A cleanup order that releases the Arena before a later dependent cleanup use is
-invalid.
-
-Ordered Arena effects and the call graph must preserve the cleanup order.
+§ 52(5) Panic cleanup occurs only where `panic.md`/`destruction.md` guarantee cleanup.
 
 ---
 
-# Panic
+## § 53 Cancellation
 
-Arena follows the canonical panic model.
+§ 53(1) Cancellation does not erase Arena dependencies until the canonical cancellation/completion boundary proves execution can no longer access the storage.
 
-## Cleanup-capable panic path
+§ 53(2) Task cancellation request alone is not completion proof.
 
-When the active CompilationPlan performs cleanup during panic:
+§ 53(3) Cleanup/destruction performed during cancellation must complete before a dependency is considered ended where concurrency rules require it.
 
-```text
-defer bodies execute according to canonical order;
-owned values are destroyed;
-owned Arenas are released unless ownership was transferred;
-borrowed Arena access ends.
-```
-
-## Immediate trap or abort
-
-When panic becomes an immediate target trap or abort:
-
-```text
-Arena destruction is not guaranteed;
-owned backing may not be explicitly returned;
-the current execution context does not continue.
-```
-
-Code requiring guaranteed cleanup must use a profile and guarantee compatible
-with that requirement.
-
-Arena does not introduce a universal unwinder.
+§ 53(4) Arena reset/release after cancellation therefore requires canonical completion/cleanup proof.
 
 ---
 
-# Cancellation
+## § 54 Arena and tasks
 
-A cancellation request is not task completion.
+§ 54(1) Ordinary Arena is not implicitly concurrent.
 
-A parent may not Reset or Release storage merely because cancellation has been
-requested.
+§ 54(2) Spawned task does not automatically inherit the parent's mutable Arena allocation context.
 
-The parent must reach a semantic completion boundary proving that the child:
+§ 54(3) Hidden inheritance would create implicit concurrent mutation and is forbidden.
 
-```text
-has stopped executing;
-has completed required cleanup;
-can no longer access captured Arena storage.
-```
-
-When cancellation performs normal task cleanup:
+§ 54(4) A task obtains allocation capability through one of:
 
 ```text
-task-local Arenas are destroyed;
-moved Arena ownership is released unless transferred to the result;
-captured Arena dependencies end at task completion.
-```
-
-A hard-termination model that skips required cleanup is governed by the
-cancellation and target-profile rules.
-
----
-
-# Arena and tasks
-
-Ordinary Arena is not implicitly concurrent.
-
-A spawned task does not automatically inherit the parent's mutable allocation
-context.
-
-This would create hidden concurrent mutation of Arena state.
-
-A task receives allocation capability through:
-
-```text
-a task-specific target/compiler context;
-an Arena explicitly moved into the task;
-another explicit task allocation contract;
-or no allocation context.
+task-specific target/compiler context;
+Arena explicitly moved into task;
+explicit task allocation contract;
+no allocation capability.
 ```
 
 ---
 
-# Borrowed Arena storage captured by a task
+## § 55 Borrowed Arena storage captured by task
 
-Example:
-
-```sec
-let values := try arena.Alloc[int](100)
-let task := spawn Process(values)
-```
-
-The task retains a dependency on:
+§ 55(1) A task capturing an Arena-backed reference retains dependency on:
 
 ```text
-the ArenaDomain;
-the allocation epoch;
-the allocation bounds;
-the captured authority.
+ArenaDomain;
+allocation epoch;
+allocation bounds;
+capture/borrow authority.
 ```
 
-The parent cannot Reset or Release the Arena while task execution may access the
-storage.
+§ 55(2) Parent cannot Reset/Release while task may still access the storage.
+
+§ 55(3) Dependency is tracked through task lifecycle and result transfer.
 
 ---
 
-# Task completion proof
+## § 56 Task completion proof
 
-Physical completion timing does not determine static validity.
+§ 56(1) Static validity uses semantic completion boundaries, not physical timing guesses.
 
-A parent needs a semantic completion boundary such as:
+§ 56(2) Valid boundaries may include:
 
 ```text
 await;
 join;
 structured-concurrency scope completion;
-another statically proven completion event.
+another compiler-proven completion event.
 ```
 
-Runtime observation that a task probably finished is insufficient.
+§ 56(3) Runtime observation that a task likely/actually finished without the canonical synchronization/lifecycle boundary is insufficient for static dependency release.
 
 ---
 
-# `await`
+## § 57 `await` and Arena dependency
 
-`await`:
+§ 57(1) `await` proves canonical task completion according to task rules.
 
-```text
-proves task execution completion;
-ends execution-local task captures;
-establishes canonical memory visibility;
-transfers result dependencies to the continuation;
-consumes Task[T] according to await rules.
-```
+§ 57(2) Execution-local captures/dependencies end after task completion cleanup.
+
+§ 57(3) Result dependencies transfer to the continuation.
+
+§ 57(4) Reset may become valid after `await` only when no Arena dependency remains in the returned result or elsewhere.
 
 Example:
 
@@ -1729,33 +1407,25 @@ discard await task
 arena.Reset()
 ```
 
-Reset may be valid after `await` when no dependency was transferred through the
-task result and no other dependency remains.
-
-`await` does not call the task body again.
+§ 57(5) `await` does not call task body again.
 
 ---
 
-# `join`
+## § 58 `join` and Arena dependency
 
-`join` proves task completion while preserving the task handle.
+§ 58(1) `join` may prove task/thread completion while retaining an observer/handle according to concurrency rules.
 
-Execution-local Arena dependencies may end at join.
+§ 58(2) Execution-local Arena dependency may end at join.
 
-The retained handle does not itself keep borrowed Arena storage live unless:
-
-```text
-the handle stores a result with such a dependency;
-the handle contract explicitly preserves such a dependency.
-```
+§ 58(3) A retained handle does not keep Arena storage live unless it stores/owns a result/dependency or its contract explicitly does so.
 
 ---
 
-# Task result dependencies
+## § 59 Task result dependencies
 
-Completion ends execution-local dependencies.
+§ 59(1) Task completion ends execution-local captures.
 
-Dependencies transferred through the task result remain live.
+§ 59(2) Arena dependencies transferred through a task result remain live.
 
 Example concept:
 
@@ -1768,201 +1438,162 @@ Use(found)
 arena.Reset()
 ```
 
-When `found` refers into the Arena, Reset is valid only after the last use of
-`found`.
+§ 59(3) Reset is valid only after final use of `found` if it references the Arena.
 
-Task completion alone does not erase result dependencies.
+§ 59(4) Completion alone does not erase result-borne dependency.
 
 ---
 
-# Moving an Arena into a task
+## § 60 Moving Arena into a task
+
+§ 60(1) Arena may be transferred exclusively to a task according to transferability/concurrency rules.
 
 Example:
 
 ```sec
-let task := spawn Worker(<- arena)
+let task := spawn Worker(<-arena)
 ```
 
-After spawn:
+§ 60(2) After committed spawn transfer, parent no longer owns Arena.
 
-```text
-the parent no longer owns the Arena;
-the parent cannot use the Arena;
-the task owns the Arena.
-```
+§ 60(3) Task owns Arena.
 
-At task completion:
+§ 60(4) Task destroys Arena at completion unless ownership is transferred into result.
 
-```text
-the Arena is destroyed in the task when still local;
-or
-ownership is moved into the task result.
-```
-
-If returned:
-
-```sec
-fn Worker(arena: Arena) Arena {
-    return <- arena
-}
-```
-
-and later awaited:
-
-```sec
-let arena := await task
-```
-
-the receiving owner controls the same ArenaDomain and current epoch.
+§ 60(5) ArenaDomain remains the same across the ownership transfer.
 
 ---
 
-# Task completion point
+## § 61 Task completion point
 
-A task completion event occurs after:
+§ 61(1) Arena execution-local dependencies end only after the canonical task completion point.
+
+§ 61(2) That point occurs after:
 
 ```text
-the task body has ended;
-the result has been moved into outcome storage;
-required defer bodies have completed;
-required local destruction has completed;
-task-owned Arenas have been released unless transferred;
-execution can no longer access captured storage.
+task body ends;
+result is moved into outcome storage;
+required defers run where guaranteed;
+required local destruction runs;
+task-owned Arenas are released unless transferred;
+task can no longer access captured storage.
 ```
 
-`await`, `join`, and structured concurrency observe this semantic point.
+§ 61(3) Await/join/structured concurrency observe this semantic completion point.
 
 ---
 
-# Arena and threads
+## § 62 Arena and threads
 
-The same dependency rules apply to threads.
+§ 62(1) Thread dependency rules mirror task rules plus physical-thread transfer/synchronization requirements.
 
-Additional thread requirements include:
+§ 62(2) Borrowing Arena-backed storage into another physical thread requires proof of:
 
 ```text
+storage lifetime beyond thread execution;
+valid access authority;
+exclusive mutation where needed;
+no conflicting Arena mutation;
+no Reset/Release during use;
 transferability;
-thread-safety;
 memory synchronization;
-target thread support;
-address-space compatibility.
-```
-
-A thread may borrow Arena-backed storage only when the compiler proves:
-
-```text
-storage outlives thread execution;
-access authority is valid;
-mutable access is exclusive;
-the Arena is not concurrently allocated from;
-the Arena is not Reset or Released;
-the target memory model permits the transfer.
+address-space compatibility;
+target thread support.
 ```
 
 ---
 
-# Thread completion
+## § 63 Thread completion
 
-The canonical thread join/completion operation:
+§ 63(1) Canonical thread completion/join proves execution ended and required synchronization occurred.
 
-```text
-proves thread execution ended;
-establishes required memory synchronization;
-ends thread-local borrowed dependencies;
-permits Reset or Release when no dependency was returned.
-```
+§ 63(2) It may end execution-local Arena dependencies.
 
-Physical completion without the semantic boundary is insufficient.
+§ 63(3) Reset/Release becomes valid only if no result/other dependency remains.
+
+§ 63(4) Physical thread termination without a canonical observed completion boundary is insufficient where synchronization/dependency proof is required.
 
 ---
 
-# Moving an Arena into a thread
+## § 64 Moving Arena into a thread
 
-An Arena may be moved into a thread when:
+§ 64(1) Arena may be transferred to a physical thread only when:
 
 ```text
-the backing is transferable;
-the provider permits transfer;
-the target profile permits transfer;
+backing is transferable;
+provider permits destination-thread use/release;
+target/profile permits transfer;
 no parent dependency conflicts;
-the Arena does not depend on immovable thread-local state.
+Arena does not rely on immovable thread-local state.
 ```
 
-The thread owns and destroys the Arena unless ownership is transferred through
-its result.
+§ 64(2) Destination thread owns/destructs Arena unless ownership is transferred onward/result.
 
 ---
 
-# Structured concurrency
+## § 65 Structured concurrency
 
-A structured-concurrency scope may end child Arena dependencies when the
-canonical scope semantics guarantee:
+§ 65(1) A structured-concurrency scope may discharge child Arena dependencies when it proves:
 
 ```text
 all relevant children completed;
 required cleanup completed;
-no detached child retained the dependency;
-no result transferred the dependency out of the scope.
+no detached child retained dependency;
+no result transferred dependency outside scope.
 ```
 
-A detached child prevents the scope from acting as a completion proof for its
-captured Arena storage.
+§ 65(2) Detached child prevents the scope itself from proving completion for that child's retained Arena dependency.
 
 ---
 
-# Concurrent Arena access
+## § 66 Concurrent Arena access
 
-Ordinary Arena does not support:
+§ 66(1) Ordinary `Arena` does not support concurrent mutation.
+
+§ 66(2) Forbidden without a distinct synchronization abstraction include:
 
 ```text
-concurrent New or Alloc;
-parent allocation while child allocation occurs;
+concurrent New/Alloc;
 concurrent Reset;
 concurrent Release;
-Reset concurrent with storage access;
-Release concurrent with storage access.
+allocation concurrent with Reset/Release;
+Reset/Release concurrent with access requiring old epoch;
+parent/child Arena mutation that conflicts through shared backing.
 ```
 
-Ownership and borrow analysis reject these cases.
+§ 66(3) Ownership/borrow/concurrency analyses reject these cases.
 
-A future synchronized or concurrent Arena is a separate type or explicit
-implementation.
-
-It must not silently change ordinary Arena semantics.
+§ 66(4) Future synchronized/concurrent Arena must be a distinct explicit abstraction/contract.
 
 ---
 
-# Allocation context
+## § 67 Allocation context
 
-Every callable invocation has zero or one active allocation context.
+§ 67(1) Each callable invocation has zero or one active allocation context according to `allocation.md`.
 
-The context is compiler-visible semantic state.
+§ 67(2) Allocation context is compiler-visible semantic state.
 
-It is not:
+§ 67(3) It is not:
 
 ```text
-a source-level global;
-an automatically visible Arena variable;
-a universal thread-local allocator;
-an implicit heap;
-a mandatory runtime object.
+source global;
+automatically visible Arena variable;
+universal thread-local allocator;
+implicit heap;
+mandatory runtime object.
 ```
+
+§ 67(4) Arena is a primary concrete allocation-domain realization but allocation context and explicit Arena values are distinct concepts.
 
 ---
 
-# `MayAllocate` versus `RequiresAllocationContext`
+## § 68 `MayAllocate` versus `RequiresAllocationContext`
 
-These facts are distinct.
+§ 68(1) `MayAllocate` and `RequiresAllocationContext` are separate facts.
 
-## `MayAllocate`
+§ 68(2) `MayAllocate` means reachable execution may perform allocation.
 
-A summary effect indicating that reachable execution may perform an allocation
-operation.
-
-## `RequiresAllocationContext`
-
-A callable requirement indicating that the callable contains or reaches an
-implicit allocation operation that needs an active context.
+§ 68(3) `RequiresAllocationContext` means a callable reaches implicit allocation that needs an ambient context.
 
 Example:
 
@@ -1972,19 +1603,15 @@ fn Fill(arena: ref mut Arena) Result[ref mut byte[], AllocationError] {
 }
 ```
 
-This function may allocate through an explicit Arena.
+§ 68(4) `Fill` may allocate using explicit Arena without requiring ambient allocation context.
 
-It need not require an ambient allocation context.
-
-A function using an allocating string or collection operation without an
-explicit Arena may require the ambient context.
+§ 68(5) An allocating string/collection operation without explicit Arena may require ambient allocation context.
 
 ---
 
-# Synchronous propagation
+## § 69 Synchronous allocation-context propagation
 
-A synchronous call propagates the active allocation context when the callee
-requires it.
+§ 69(1) A synchronous call propagates the active allocation context when the callee requires it.
 
 Conceptually:
 
@@ -1994,15 +1621,15 @@ A(context X)
         -> C(context X)
 ```
 
-A function that does not require the context receives no mandatory runtime
-parameter.
+§ 69(2) A callable that does not require context needs no mandatory runtime context argument.
+
+§ 69(3) Propagation may be compile-time-only when no runtime parameter is necessary.
 
 ---
 
-# Explicit Arenas are not ambient candidates
+## § 70 Explicit Arenas are not ambient candidates
 
-The compiler must not choose among ordinary Arena values merely because they are
-in lexical scope.
+§ 70(1) Compiler must not guess among ordinary Arena values in lexical scope.
 
 Example:
 
@@ -2013,224 +1640,154 @@ let outputArena := ...
 let result := try Build()
 ```
 
-The compiler must not guess which Arena should become ambient.
+§ 70(2) Compiler must not choose either variable as ambient context merely because it is visible.
 
-An explicit Arena argument is an ordinary value and does not automatically
-rebind the ambient context.
+§ 70(3) Passing an explicit Arena as an ordinary argument does not automatically rebind ambient allocation context.
 
 ---
 
-# Allocation-context selection
+## § 71 Allocation-context selection
 
-For an allocating operation, selection follows this semantic order:
+§ 71(1) General allocation-context selection order is owned by `allocation.md`.
+
+§ 71(2) Arena-specific realization recognizes conceptually:
 
 ```text
-explicit Arena selected by the operation;
-propagated ambient allocation context;
-compiler-managed local Arena with proven backing and non-escape;
+explicit Arena selected by operation;
+propagated ambient context;
+compiler-managed local Arena with proven backing/non-escape;
 target-provided context;
-no context, producing a compile-time error.
+no valid context -> compile-time error.
 ```
 
-The decision is made before physical lowering.
+§ 71(3) Selection occurs before physical lowering.
 
-The backend must not change allocation origin or failure semantics.
+§ 71(4) Backend cannot change allocation origin/failure semantics.
 
 ---
 
-# Compiler-managed local Arena
+## § 72 Compiler-managed local Arena
 
-A compiler-managed local Arena is permitted only when:
+§ 72(1) Compiler-managed local Arena is permitted only when:
 
 ```text
-a concrete backing strategy exists;
-the required lifetime is proven;
-non-owning references do not escape;
+concrete backing strategy exists;
+required lifetime is proven;
+references do not illegally escape;
 failure semantics remain correct;
-the selected profile permits it.
+selected profile permits it.
 ```
 
-Possible backing includes:
+§ 72(2) Possible backing includes:
 
 ```text
-bounded stack storage;
+bounded automatic storage;
 static storage;
 caller-context-backed stable storage;
 target-provided local storage.
 ```
 
-The compiler must not silently move escaping local storage into an Arena.
+§ 72(3) Compiler must not silently move escaping local storage into longer-lived Arena/heap storage to repair lifetime.
 
 ---
 
-# Escaping results
+## § 73 Escaping allocation-context results
 
-An owning result may allocate through a caller-propagated context when its
-owning type and storage model permit it.
+§ 73(1) A result depending on ambient/local Arena storage may escape only when the context/domain lifetime relation guarantees the result.
 
-A compiler-local Arena may not back an escaping non-owning reference.
+§ 73(2) Compiler-managed local Arena cannot be selected for an allocation whose non-owning reference escapes beyond that local domain.
 
-Invalid conceptual behavior:
-
-```text
-create compiler-local Arena;
-allocate temporary storage;
-return ref into that storage;
-destroy Arena.
-```
-
-The compiler rejects the escape.
+§ 73(3) Hidden lifetime extension/promotion is forbidden.
 
 ---
 
-# Spawned allocation contexts
+## § 74 Spawned allocation contexts
 
-A spawned task or thread is a new execution context.
+§ 74(1) Spawned task/thread is a new execution context.
 
-It does not automatically receive the parent's mutable Arena context.
+§ 74(2) It does not automatically receive parent's mutable Arena context.
 
-Its context comes from:
+§ 74(3) Its context comes from task/thread profile, target-provided context, explicitly transferred Arena, explicit execution contract, or no allocation capability.
 
-```text
-task/thread profile;
-target-provided context;
-explicitly transferred Arena;
-or absence of allocation capability.
-```
+§ 74(4) Process receives separate address-space allocation context.
 
-A process receives a separate address-space allocation context.
-
-An interrupt root has no allocation context unless the target/profile
-explicitly supplies one and ISR rules permit its use.
+§ 74(5) ISR has no ordinary allocation context unless interrupts/target rules explicitly provide and permit one.
 
 ---
 
-# Foreign entrypoints
+## § 75 Foreign entrypoints
 
-Foreign code does not automatically supply a Sec allocation context.
+§ 75(1) Foreign code does not automatically supply a Sec allocation context.
 
-An exported Sec callable requiring one needs:
+§ 75(2) Exported Sec callable requiring one needs an explicit Sec-aware ABI/wrapper/target-provided context or export is rejected.
 
-```text
-a generated wrapper selecting a target-provided context;
-an explicit Sec-aware ABI contract;
-or rejection of the export.
-```
-
-A hidden Sec allocation-context parameter must not be added to an ordinary
-foreign ABI without an explicit contract.
+§ 75(3) Hidden Sec allocation-context parameters must not be added to ordinary foreign ABI without explicit contract.
 
 ---
 
-# Effect classification
+## § 76 Arena ordered effects
 
-Arena operations contribute ordered effects:
+§ 76(1) Arena operations contribute ordered semantic effects/events.
+
+Conceptual identities:
 
 ```text
-ArenaCreate(A, capacity)
+ArenaCreate(A, policy)
 ArenaAllocate(A, size)
 ArenaReset(A)
 ArenaRelease(A)
 ```
 
-Order matters.
+§ 76(2) Order is semantically significant.
 
-These events are associated with one ArenaDomain.
+§ 76(3) Effects are associated with ArenaDomain identity.
 
-They are not reduced to one unordered boolean.
-
----
-
-# Summary effects
-
-## `Arena.FromBuffer`
-
-Contributes:
-
-```text
-ArenaCreate
-```
-
-It does not contribute `MayAllocate` merely for creating the view.
-
-## `Arena.WithCapacity`
-
-Contributes:
-
-```text
-ArenaCreate
-MayAllocate
-```
-
-It also includes effects of the backing provider.
-
-## `Arena.Growable`
-
-Contributes:
-
-```text
-ArenaCreate
-MayAllocate
-```
-
-Growth later contributes allocation/provider effects.
-
-## `Arena.New` and `Arena.Alloc`
-
-Contribute:
-
-```text
-ArenaAllocate
-MayAllocate
-```
-
-This remains true when capacity already exists.
-
-## `Arena.Reset`
-
-Contributes:
-
-```text
-ArenaReset
-```
-
-## `Arena.Release`
-
-Contributes:
-
-```text
-ArenaRelease
-```
-
-It may also include backing-provider effects.
+§ 76(4) They are not reducible to one unordered boolean.
 
 ---
 
-# `@noAlloc`
+## § 77 Operation effect summaries
 
-Arena allocation is allocation for the canonical effect model.
+§ 77(1) `Arena.FromBuffer` contributes Arena creation but not backing `MayAllocate`.
 
-Therefore `@noAlloc` forbids reachable `Arena.New` and `Arena.Alloc` unless the
-effect rulebook later defines a narrower guarantee.
+§ 77(2) `Arena.WithCapacity` contributes Arena creation and `MayAllocate`, plus provider effects.
 
-Creating a borrowed Arena view through `FromBuffer` does not itself imply
-`MayAllocate`.
+§ 77(3) `Arena.Growable` contributes Arena creation and `MayAllocate`; later growth contributes provider effects.
 
-This rulebook does not introduce new effect attributes such as
-`@noBackingAlloc`.
+§ 77(4) `Arena.New`/`Arena.Alloc` contribute Arena allocation and `MayAllocate`, even when backing capacity already exists.
+
+§ 77(5) `Arena.Reset` contributes ArenaReset.
+
+§ 77(6) `Arena.Release` contributes ArenaRelease and any required provider-release effects.
 
 ---
 
-# Ordered-effect validity
+## § 78 `@noAlloc`
 
-The compiler must reject invalid sequences such as:
+§ 78(1) Arena typed allocation is allocation for canonical effect semantics.
+
+§ 78(2) `@noAlloc` forbids reachable `Arena.New`/`Arena.Alloc` under current Sec 0.1 semantics.
+
+§ 78(3) `FromBuffer` does not itself add backing allocation.
+
+§ 78(4) This rulebook introduces no separate `@noBackingAlloc`.
+
+§ 78(5) Profile/static lowering of Arena operations does not retroactively change source-level allocation effect unless canonical effect rules explicitly define proof-based guarantee semantics.
+
+---
+
+## § 79 Ordered-effect validity
+
+§ 79(1) Compiler must reject invalid ordered Arena sequences.
+
+Invalid:
 
 ```text
 ArenaRelease(A)
 ArenaAllocate(A, size)
 ```
 
-It must preserve valid ordering such as:
+Valid concept:
 
 ```text
 ArenaCreate(A)
@@ -2240,40 +1797,36 @@ ArenaAllocate(A)
 ArenaRelease(A)
 ```
 
-Defer, destruction, branches, loops, tasks, threads, and implicit operations
-participate in ordered-effect analysis.
+§ 79(2) Branches, loops, defer, destruction, tasks, threads, implicit allocation-context operations, and provider calls participate in ordered-effect analysis.
 
 ---
 
-# Call-graph integration
+## § 80 Call-graph integration
 
-Call graph nodes and call sites retain:
+§ 80(1) Call graph retains where relevant:
 
 ```text
 Arena effects;
-allocation-context requirement;
+RequiresAllocationContext;
 Arena-demand summary;
-explicit Arena argument identity where known;
+explicit Arena argument/domain identity where known;
 task/thread dependency transfer;
-destruction and defer operations;
+destruction/defer operations;
 provider calls;
 open callable contracts.
 ```
 
-Synchronous callees propagate Arena effects according to normal call-graph
-rules.
+§ 80(2) Synchronous callees propagate Arena effects normally.
 
-Spawned body effects belong to the new execution context.
-
-Task creation effects belong to the spawner.
+§ 80(3) Spawned body effects belong to new execution context; spawn creation effects belong to spawner.
 
 ---
 
-# Arena-demand analysis
+## § 81 Arena-demand analysis
 
-The compiler analyzes capacity per ArenaDomain and validity epoch.
+§ 81(1) Compiler analyzes capacity demand per ArenaDomain and epoch.
 
-Each result is classified as:
+§ 81(2) Demand classification is:
 
 ```text
 Exact
@@ -2282,7 +1835,7 @@ Unknown
 Unbounded
 ```
 
-The analysis records:
+§ 81(3) Analysis records where relevant:
 
 ```text
 known capacity;
@@ -2290,108 +1843,61 @@ minimum required capacity;
 maximum proven use;
 alignment overhead;
 worst-case path;
-contributing allocation sites;
-unknown call or loop causes.
+allocation sites;
+unknown loop/call/recursion causes.
 ```
 
 ---
 
-# Sequential demand
+## § 82 Sequential demand
 
-Sequential allocations in one epoch accumulate.
+§ 82(1) Successful allocations in one epoch accumulate.
 
-The end of a reference live range does not subtract its bytes.
+§ 82(2) End of reference live range does not subtract Arena bytes.
 
-Example:
-
-```sec
-discard try arena.Alloc[byte](100)
-discard try arena.Alloc[byte](200)
-```
-
-The demand is at least:
-
-```text
-100 + 200 + alignment padding
-```
+§ 82(3) Sequential demand includes alignment padding.
 
 ---
 
-# Branch demand
+## § 83 Branch demand
 
-Mutually exclusive branches combine by maximum when they start from the same
-Arena state.
+§ 83(1) Mutually exclusive branches starting from the same Arena state combine using maximum continuing demand.
 
-Example:
+§ 83(2) Later continuing allocations add to the joined maximum state.
 
-```sec
-if condition {
-    discard try arena.Alloc[byte](100)
-} else {
-    discard try arena.Alloc[byte](500)
-}
-```
-
-The branch contribution is:
-
-```text
-max(100, 500)
-```
-
-A later allocation is added to the maximum continuing state.
+§ 83(3) Path analysis must preserve differing Arena state versions.
 
 ---
 
-# Loop demand
+## § 84 Loop demand
 
-A bounded loop without Reset multiplies per-iteration demand.
+§ 84(1) Bounded loop without Reset accumulates per-iteration Arena demand.
 
-The compiler may use:
+§ 84(2) Compiler may use constant/range/compile-time/proven upper bounds.
 
-```text
-constant bounds;
-range contracts;
-compile-time values;
-proven upper bounds.
-```
+§ 84(3) Valid Reset per iteration separates epochs; peak demand becomes per-epoch maximum rather than cumulative across reset boundaries.
 
-A valid Reset per iteration separates epochs.
-
-The peak then becomes the maximum per-iteration demand rather than the sum
-across all iterations.
-
-An unknown loop with accumulating allocation produces unknown or unbounded
-demand.
+§ 84(4) Unknown loop with accumulating allocation is `Unknown` or `Unbounded`.
 
 ---
 
-# Recursion demand
+## § 85 Recursion demand
 
-Recursive Arena demand uses the same-stack call graph.
+§ 85(1) Same-stack recursive Arena demand uses call-graph recursion analysis.
 
-A proven recursion bound may produce bounded demand.
+§ 85(2) Proven recursion bound may produce bounded demand.
 
-Without a bound:
+§ 85(3) Unbounded/unknown recursive allocating depth yields `Unknown`/`Unbounded`.
 
-```text
-allocation per recursive depth may become Unknown or Unbounded.
-```
-
-Spawn recursion is analyzed as concurrent resource creation, not same-stack
-Arena accumulation.
+§ 85(4) Spawn recursion is analyzed as execution/resource creation, not same-stack Arena cursor accumulation.
 
 ---
 
-# Function summaries
+## § 86 Callable demand summaries
 
-A callable may expose Arena-demand summaries for:
+§ 86(1) Callable summaries may describe demand on explicit Arena parameters and ambient allocation context.
 
-```text
-each explicit Arena parameter;
-the ambient allocation context.
-```
-
-Initial summary forms may support:
+§ 86(2) Summary algebra may include:
 
 ```text
 constant;
@@ -2403,81 +1909,59 @@ unknown;
 unbounded.
 ```
 
-Sec 0.1 does not require a general theorem prover.
+§ 86(3) Sec 0.1 does not require a general theorem prover.
+
+§ 86(4) Separate-compilation summaries must be validated/version-compatible.
 
 ---
 
-# Indirect calls
+## § 87 Indirect calls
 
-For a closed target set, Arena demand uses the maximum possible target demand.
+§ 87(1) Closed target set uses maximum possible target demand.
 
-For an open callable contract:
+§ 87(2) Open callable contract uses declared Arena bound when available.
 
-```text
-use the declared Arena bound when present;
-otherwise classify the contribution as Unknown.
-```
+§ 87(3) Otherwise contribution is `Unknown`.
 
-A missing bound may be accepted in a permissive hosted profile.
+§ 87(4) Permissive hosted profile may accept Unknown with diagnostics.
 
-It blocks proof in a strict bounded-memory profile.
+§ 87(5) Strict bounded-memory profile may reject when full bound proof is required.
 
 ---
 
-# Growable demand
+## § 88 Growable demand
 
-Growable Arenas still receive logical demand analysis.
+§ 88(1) Growable Arena still receives logical capacity-demand analysis.
 
-The report may distinguish:
+§ 88(2) Report may distinguish:
 
 ```text
 initial capacity;
 maximum proven logical demand;
-minimum required growth;
+minimum growth;
 maximum configured capacity;
 provider failure possibility.
 ```
 
-Growability does not make capacity analysis irrelevant.
+§ 88(3) Growability does not eliminate bounded-memory analysis.
 
 ---
 
-# Statically impossible allocation
+## § 89 Statically impossible allocation
 
-When an allocation can never succeed and source uses `try`, the success
-continuation is unreachable.
+§ 89(1) If compiler proves an allocation can never succeed, the success continuation is unreachable.
 
-Because proven dead code is an error in Sec, this is a compile-time error.
+§ 89(2) Source/control-flow diagnostics follow canonical dead-code/unreachable rules.
 
-Example:
+§ 89(3) In a `try` form whose success path is provably impossible, compiler reports the impossible allocation with required/available bytes, element count/type, alignment, and active `CompilationPlan`.
 
-```sec
-let mut arena := try Arena.WithCapacity(16)
-let values := try arena.Alloc[int64](10)
-```
-
-A mentor diagnostic reports:
-
-```text
-required bytes;
-available bytes;
-element count;
-element type;
-alignment;
-active CompilationPlan.
-```
-
-Explicit exhaustion testing remains valid when the caller handles the `Result`
-directly.
-
-Normal unreachable-branch rules still apply to a provably impossible `Ok`
-branch.
+§ 89(4) Explicit direct handling of the failure `Result` remains valid where the programmer intentionally tests exhaustion and no unreachable source path is formed.
 
 ---
 
-# Proven sufficient capacity
+## § 90 Proven sufficient capacity
 
-When the compiler proves capacity and arithmetic safety, it may eliminate:
+§ 90(1) When capacity/alignment/arithmetic proof guarantees success, compiler may eliminate:
 
 ```text
 runtime capacity branch;
@@ -2486,88 +1970,52 @@ AllocationError construction;
 dynamic offset computation.
 ```
 
-The source method type remains `Result`.
+§ 90(2) Source method type remains `Result`.
 
-The success-only proof is represented in Semantic IR and lowering.
-
----
-
-# Zero-capacity diagnostic
-
-A statically explicit zero-capacity Arena produces configurable information.
-
-Examples include:
-
-```sec
-let arena := try Arena.WithCapacity(0)
-```
-
-and a statically known empty backing view.
-
-Suggested message:
-
-```text
-information: Arena is created with zero capacity
-
-the Arena cannot satisfy an allocation requiring storage
-
-help:
-    provide positive capacity
-    or retain zero capacity when testing exhaustion behavior
-```
-
-No diagnostic is required when capacity may be zero only at runtime.
+§ 90(3) Proof is represented in Semantic IR/lowering.
 
 ---
 
-# Semantic IR requirements
+## § 91 Semantic IR requirements
 
-Arena semantics remain explicit in Semantic IR until:
+§ 91(1) Arena semantics remain explicit in Semantic IR until ownership, dependencies, Reset/Release ordering, task/thread completion, effects, capacity planning, and target strategy are established.
 
-```text
-ownership is verified;
-borrows and dependencies are verified;
-Reset and Release ordering is verified;
-task/thread completion is verified;
-effects are inferred;
-capacity planning is complete;
-target strategy is selected.
-```
-
-LLVM or MLIR lowering must not invent Arena semantics.
+§ 91(2) Lower MLIR/backend stages must not invent Arena semantics.
 
 ---
 
-# Semantic IR concepts
+## § 92 Semantic IR Arena concepts
 
-Semantic IR distinguishes:
+§ 92(1) Semantic IR distinguishes at least:
 
 ```text
 Arena owner state;
 ArenaDomain identity;
+Arena state version;
 validity epoch;
 allocation context;
-backing kind;
+backing relation/policy;
 growth policy;
 typed allocation;
-dependency;
-ordered effect;
-failure path.
+Arena dependency;
+ordered Arena effect;
+failure path;
+provider operation.
 ```
 
-Arena state version and validity epoch are different.
+§ 92(2) Arena state version and validity epoch are distinct.
 
-Allocation changes state version but not epoch.
+§ 92(3) Allocation advances state version but not epoch.
 
-Reset changes both state version and epoch.
+§ 92(4) Reset advances state version and epoch.
 
-Release consumes state and ends the ArenaDomain.
+§ 92(5) Release consumes owner state and ends ArenaDomain.
 
 ---
 
-# Required Semantic IR operations
+## § 93 Required Semantic IR operations
 
-Semantic IR must represent at least:
+§ 93(1) Semantic IR must represent distinctions equivalent to:
 
 ```text
 ArenaCreateBorrowed
@@ -2580,7 +2028,7 @@ ArenaRelease
 ArenaDestroy
 ```
 
-It must also represent:
+§ 93(2) It must additionally represent/relate:
 
 ```text
 allocation-context propagation;
@@ -2589,18 +2037,18 @@ task/thread Arena dependency;
 await/join completion;
 result dependency transfer;
 provider invocation;
-try success and failure flow.
+try success/failure flow;
+capacity/demand facts;
+epoch invalidation.
 ```
 
-Exact implementation names may differ.
-
-The semantic distinctions may not be erased prematurely.
+§ 93(3) Exact implementation operation names are non-normative.
 
 ---
 
-# SSA Arena state
+## § 94 SSA Arena state
 
-Mutating Arena operations use SSA state versions.
+§ 94(1) Mutating Arena operations use SSA-style state versions in Semantic IR/MLIR.
 
 Conceptually:
 
@@ -2612,110 +2060,76 @@ arena4 = reset(arena3)
 release(arena4)
 ```
 
-One input owner is consumed.
+§ 94(2) One owner-state input is consumed by each mutating Arena operation.
 
-Exactly one continuing owner state exists after each non-terminal operation.
+§ 94(3) Exactly one continuing Arena state exists after each non-terminal operation.
 
-Release produces no continuing Arena owner.
+§ 94(4) Release produces no continuing Arena owner state.
 
----
-
-# Allocation failure in SSA
-
-An allocation operation produces:
-
-```text
-one continuing Arena state;
-one Result value.
-```
-
-On success, the state contains the advanced cursor or new segment.
-
-On failure, the state is physically equivalent to the input state.
-
-The input owner is still consumed so that two usable Arena control values do
-not exist.
-
-Error propagation cleanup uses the continuing Arena state.
+§ 94(5) SSA state consumption is compiler representation of unique Arena control and does not imply source value return syntax.
 
 ---
 
-# Reference provenance in Semantic IR
+## § 95 Allocation failure in SSA
 
-A successful Arena allocation records:
+§ 95(1) Allocation produces one continuing Arena state plus one allocation `Result`.
+
+§ 95(2) On success, continuing state contains advanced cursor/new stable segment.
+
+§ 95(3) On failure, continuing state is physically equivalent to input state.
+
+§ 95(4) Input SSA control state is nevertheless consumed and replaced by one continuing state to avoid duplicate owners.
+
+§ 95(5) Error propagation cleanup uses continuing Arena state.
+
+---
+
+## § 96 Arena reference provenance in IR
+
+§ 96(1) Successful Arena allocation records at least:
 
 ```text
 ArenaDomain;
-validity epoch;
-element type;
+validity epoch dependency;
+T;
 bounds;
 mutability authority;
-storage origin;
-allocation site.
+storage origin/domain;
+allocation identity/site.
 ```
 
-Allocation does not change the epoch.
+§ 96(2) Allocation does not change epoch.
 
-Reset creates a new epoch.
+§ 96(3) Reset creates new epoch.
 
-Release ends the domain.
+§ 96(4) Release ends domain.
 
-This metadata may live in:
+§ 96(5) Metadata may be represented in SSA types, operation attributes, side tables, canonical identities, or combinations.
 
-```text
-SSA types;
-operation attributes;
-analysis side tables;
-symbol metadata;
-a combination.
-```
-
-It need not always exist in runtime representation.
+§ 96(6) Metadata need not all survive to runtime.
 
 ---
 
-# Sec MLIR path
+## § 97 Sec MLIR path
 
-The intended lowering path is:
+§ 97(1) Intended semantic lowering path is:
 
 ```text
 Sec source
-    ↓
-Sec Semantic IR
-    ↓
-high-level Sec MLIR dialect
-    ↓
-Arena planning and specialized Sec lowering
-    ↓
-standard MLIR dialects
-    ↓
-LLVM dialect and target code
+    -> Sec Semantic IR
+    -> high-level Sec MLIR
+    -> Arena planning/specialization
+    -> standard MLIR dialects
+    -> LLVM dialect/target code
 ```
 
-Arena semantics must not be lowered directly to ordinary allocation operations
-before Sec analyses have completed.
+§ 97(2) Arena must not be flattened to ordinary generic allocation before Arena-specific proof/planning is complete.
 
 ---
 
-# Sec and MLIR region terminology
+## § 98 Sec MLIR types and operations
 
-Sec compiler-internal storage identities should use names such as:
-
-```text
-ArenaDomain
-StorageRegion
-LifetimeRegion
-```
-
-MLIR `Region` refers to operation/block nesting.
-
-Compiler code and documentation must not use the two meanings ambiguously.
-
----
-
-# Recommended Sec MLIR types
-
-Conceptual high-level types include:
+§ 98(1) High-level Sec MLIR may define types conceptually equivalent to:
 
 ```text
 !sec.arena<backing, growth, profile>
@@ -2728,321 +2142,220 @@ Conceptual high-level types include:
 !sec.allocation_error
 ```
 
-Exact textual syntax is implementation-defined.
+§ 98(2) It may define operations equivalent to Arena create/new/alloc/reset/release.
 
-The semantic distinctions are required.
+§ 98(3) Exact textual MLIR syntax is implementation-defined.
 
----
-
-# Recommended Sec MLIR operations
-
-Conceptual operations include:
-
-```mlir
-%arena = sec.arena.create_borrowed %buffer
-
-%arena, %result =
-    sec.arena.create_owned_fixed %capacity
-
-%arena, %result =
-    sec.arena.create_growable %initial_capacity
-
-%next, %result =
-    sec.arena.new %arena
-
-%next, %result =
-    sec.arena.alloc %arena, %count
-
-%next =
-    sec.arena.reset %arena
-
-sec.arena.release %arena
-```
-
-The examples are implementation guidance.
-
-They do not create source syntax.
+§ 98(4) Required semantic distinctions are normative.
 
 ---
 
-# Multi-result IR
+## § 99 Multi-result IR
 
-Sec 0.1 source functions return one value.
+§ 99(1) Sec source functions returning one source value do not restrict internal IR/MLIR from using multiple SSA results.
 
-Semantic IR and MLIR may use multiple SSA results.
-
-Arena allocation naturally produces:
+§ 99(2) Arena allocation naturally produces:
 
 ```text
 next Arena state;
-Result of allocation.
+allocation Result.
 ```
 
-This does not violate the source-language single-return rule.
+§ 99(3) This does not change source-language return semantics.
 
 ---
 
-# MLIR effects
+## § 100 MLIR effects
 
-Sec Arena operations should integrate with MLIR effect infrastructure.
+§ 100(1) High-level Arena operations integrate with MLIR effects where appropriate.
 
-The implementation should provide:
+§ 100(2) Standard generic `Allocate`/`Free` effects alone are insufficient.
 
-```text
-MemoryEffectOpInterface where applicable;
-a Sec-specific Arena effect interface;
-ArenaDomain-aware resources;
-ownership-consumption verification.
-```
+§ 100(3) Reset is not ordinary free because backing/domain remain live/reusable.
 
-Standard `Allocate` or `Free` effects alone are insufficient.
-
-`Reset` is not ordinary `Free` because backing remains live and reusable.
-
-A conceptual custom resource may be:
-
-```text
-ArenaResource(ArenaDomain)
-```
+§ 100(4) MLIR representation must preserve ArenaDomain-aware resource/effect identity and owner-state consumption.
 
 ---
 
-# Alias analysis
+## § 101 Alias analysis
 
-Two successful positive-sized allocations from one Arena epoch are
-non-overlapping.
+§ 101(1) Distinct successful positive-sized Arena allocations in one epoch are non-overlapping.
 
-The compiler may expose this to MLIR alias analysis.
+§ 101(2) Compiler may expose this to alias analysis.
 
-The compiler must not infer overlap merely because both references derive from
-one backing base.
+§ 101(3) Same backing base does not mean allocations overlap.
 
-The compiler must preserve:
+§ 101(4) Bounds, allocation identity/order, domain, and epoch remain relevant.
 
-```text
-separate bounds;
-allocation order;
-epoch;
-domain identity.
-```
-
-Zero-element allocations do not imply a dereferenceable address.
+§ 101(5) Zero-element allocations do not imply dereferenceable address ranges.
 
 ---
 
-# `memref`
+## § 102 `memref`
 
-MLIR `memref` may represent a typed bounded view after Arena semantics have been
-analyzed.
+§ 102(1) MLIR `memref` may represent a lowered typed bounded Arena view after Arena semantics are verified.
 
-`memref.alloc` is not the canonical high-level representation of
-`Arena.Alloc`.
+§ 102(2) `memref.alloc` is not the canonical high-level meaning of `Arena.Alloc`.
 
-An Arena represents:
+§ 102(3) Arena represents one domain with shared capacity, many allocations, bulk Reset/Release, backing relation, epoch, ownership, and execution dependencies.
 
-```text
-one allocation domain;
-many suballocations;
-shared capacity;
-bulk Reset;
-bulk Release;
-borrowed or segmented backing;
-shared validity epoch;
-move-only ownership;
-task/thread dependencies.
-```
-
-Lowering each Arena allocation immediately to independent `memref.alloc` would
-lose these semantics.
+§ 102(4) Lowering every source Arena allocation immediately to independent `memref.alloc` is invalid when it loses these semantics.
 
 ---
 
-# Physical Arena planning
+## § 103 Physical Arena planning
 
-After verification, the compiler selects a physical strategy such as:
+§ 103(1) After semantic verification, compiler selects a concrete physical strategy per `CompilationPlan`.
+
+Possible strategies:
 
 ```text
-stack-backed fixed Arena;
+automatic/stack-backed fixed Arena;
 static-backed fixed Arena;
 borrowed descriptor;
 owned fixed descriptor;
 segmented growable descriptor;
 reserved-address-space Arena;
-fully scalarized and eliminated Arena.
+fully scalarized/eliminated Arena.
 ```
 
-The strategy belongs to one concrete CompilationPlan.
+§ 103(2) Strategy is implementation/profile choice preserving source semantics.
 
 ---
 
-# Example physical descriptor
+## § 104 Physical descriptors
 
-A fixed Arena may lower conceptually to:
+§ 104(1) A fixed Arena may lower conceptually to:
 
 ```text
-base pointer;
+base;
 capacity;
 cursor;
-optional epoch.
+optional epoch;
+provider/domain metadata where required.
 ```
 
-A growable Arena may lower to:
+§ 104(2) A growable Arena may lower conceptually to:
 
 ```text
 current segment;
-segment list or equivalent;
+stable segment list/equivalent;
 cursor;
 capacity;
 optional epoch;
 provider state.
 ```
 
-This is not a universal ABI.
+§ 104(3) No universal runtime ABI/layout is required.
 
-Fields may be removed, combined, or represented differently after proof.
-
----
-
-# Epoch lowering
-
-Logical epoch semantics remain even when runtime epoch storage is absent.
-
-Runtime epoch metadata may be:
-
-```text
-eliminated;
-stored inline;
-stored in a side table;
-represented by a domain token;
-represented by a target capability.
-```
-
-Elimination is valid when the compiler proves that no runtime stale-resolution
-mechanism needs it.
+§ 104(4) Fields may be removed/compressed/replaced after proof.
 
 ---
 
-# Fixed borrowed lowering
+## § 105 Epoch lowering
 
-`Arena.FromBuffer` may lower conceptually to:
+§ 105(1) Logical epoch semantics remain even when runtime epoch storage is eliminated.
 
-```text
-base = buffer.Ptr
-capacity = buffer.Len
-cursor = 0
-domain = fresh logical identity
-epoch = initial logical epoch
-```
+§ 105(2) Runtime representation may be inline metadata, side table, domain token, capability, compact generation, or absent after proof.
 
-`ArenaAlloc[T](count)` may lower to:
-
-```text
-payload = checked count * SizeOf(T)
-aligned = checked AlignUp(cursor, AlignOf(T))
-end = checked aligned + payload
-if end > capacity:
-    return AllocationError
-cursor = end
-initialize T elements
-return typed bounded view
-```
-
-Proof may remove checks.
+§ 105(3) Epoch metadata may be eliminated only when no runtime stale-reference/handle mechanism requires it.
 
 ---
 
-# Growable lowering
+## § 106 Fixed borrowed lowering
 
-When the current segment cannot satisfy the request:
+§ 106(1) Borrowed fixed Arena may lower conceptually by storing base/capacity/cursor plus fresh logical domain/epoch.
+
+§ 106(2) Typed allocation computes checked size/alignment/end offset, verifies capacity, initializes values, advances cursor, and returns a typed bounded safe view.
+
+§ 106(3) Proof may remove redundant arithmetic/capacity checks.
+
+§ 106(4) Lowering must preserve borrowed-backing lifetime/exclusive-control semantics.
+
+---
+
+## § 107 Growable lowering
+
+§ 107(1) When current segment cannot satisfy complete request:
 
 ```text
 compute complete request;
-request a stable segment;
+request stable segment;
 if provider fails:
     preserve prior state and return Err;
-link the complete segment;
-allocate from the segment.
+link complete segment after successful acquisition;
+allocate from new segment.
 ```
 
-Provider calls remain visible to call graph, effect analysis, stack analysis,
-and trust provenance unless represented by a compiler intrinsic with a complete
-summary.
+§ 107(2) Provider call remains visible to effects/call graph/trust/stack analysis unless represented by a compiler intrinsic with complete canonical summary.
+
+§ 107(3) Existing allocation addresses must never be changed by growth.
 
 ---
 
-# Optimization rules
+## § 108 Permitted optimizations after proof
 
-## Permitted after proof
-
-The compiler may:
+§ 108(1) Compiler may after proof:
 
 ```text
-fold SizeOf and AlignOf;
+fold SizeOf/AlignOf;
 precompute offsets;
 combine capacity checks;
-eliminate proven capacity checks;
-eliminate proven overflow checks;
+eliminate proven capacity/overflow checks;
 eliminate runtime epoch metadata;
 scalar-replace Arena-backed values;
-stack-lower a local Arena;
-remove an unused zero-element allocation;
-remove Reset immediately before Release;
-remove the complete Arena descriptor;
+automatic/stack-lower local Arena;
+remove unused zero-element allocation;
+remove semantically redundant Reset immediately before terminal Release;
+remove Arena descriptor entirely;
 inline Arena operations.
 ```
 
-## Forbidden without proof
+§ 108(2) Every optimization must preserve effects, failure behavior, dependencies, identity, cleanup, and source-visible semantics.
 
-The compiler must not:
+---
+
+## § 109 Forbidden transformations without proof
+
+§ 109(1) Compiler must not without valid proof:
 
 ```text
 move allocation across Reset;
-move access across Reset or Release;
+move access across Reset/Release;
 CSE distinct Arena allocations;
-merge different epochs;
+merge distinct epochs;
 replace fixed exhaustion with hidden growth;
-fall back to another allocator;
+fall back to another allocator/provider;
 relocate live allocations during growth;
 release before deferred dependent use;
-share ordinary Arena mutation between tasks;
+share ordinary Arena mutation between execution contexts;
 drop task/thread completion dependencies;
 change allocation failure behavior;
-change backing ownership.
+change backing ownership/reclamation semantics.
 ```
 
 ---
 
-# CSE, DCE, and LICM
+## § 110 CSE, DCE, and LICM
 
-Arena allocation is not pure.
+§ 110(1) Arena allocation is not pure.
 
-Common-subexpression elimination must not merge two allocations.
+§ 110(2) CSE must not merge distinct allocations.
 
-Reset and Release have ownership and effect semantics even when they produce no
-ordinary value.
+§ 110(3) Reset/Release have ownership/effect/lifetime semantics even without result value.
 
-Dead-code elimination may remove them only when the compiler proves that all
-semantic effects are unobservable and ownership remains correct.
+§ 110(4) DCE removes them only after proof that every semantic effect is unobservable and ownership remains correct.
 
-Loop-invariant code motion must not move allocation, Reset, or Release when the
-transformation changes:
-
-```text
-allocation count;
-failure timing;
-capacity demand;
-epoch boundary;
-resource lifetime.
-```
+§ 110(5) LICM must not change allocation count, failure timing, capacity demand, epoch boundary, resource lifetime, or dependency ordering.
 
 ---
 
-# MLIR verification
+## § 111 Verification
 
-Local operation verification checks:
+§ 111(1) Local Arena operation verification covers:
 
 ```text
-operand and result types;
+operand/result types;
 backing-policy compatibility;
 count type;
 complete T layout;
@@ -3052,157 +2365,114 @@ result shape;
 constructor policy.
 ```
 
-Global analysis verifies:
+§ 111(2) Global Arena analysis verifies:
 
 ```text
-no live dependency crosses Reset;
-no dependency crosses Release;
-no use after move;
+no live dependency across Reset;
+no validity dependency across Release;
+no use after move/Release;
 no double Release;
 task/thread completion;
-valid cleanup order;
-valid allocation-context propagation;
-capacity/profile requirements.
+cleanup/defer ordering;
+allocation-context propagation;
+capacity/profile requirements;
+provider contracts.
 ```
 
-Local operation verifiers alone are insufficient.
+§ 111(3) Local IR verifier alone is insufficient for complete Arena correctness.
 
 ---
 
-# Compiler pipeline
+## § 112 Target profiles
 
-A recommended implementation pipeline is:
+§ 112(1) Arena source semantics remain stable across profiles.
 
-```text
-1. Parse ordinary member syntax.
-2. Resolve Arena compiler-known members.
-3. Validate type, layout, alignment, default, and destruction.
-4. Build ownership and borrow facts.
-5. Build explicit Semantic IR Arena operations.
-6. Expand control flow, try, defer, and destruction.
-7. Assign ArenaDomain identities and backing policies.
-8. Verify lifetimes and dependencies.
-9. Analyze task/thread transfers and completion.
-10. Infer ordered and summary effects.
-11. Compute call-graph Arena summaries.
-12. Compute static capacity demand.
-13. Verify target/profile requirements.
-14. Emit mentor diagnostics.
-15. Generate high-level Sec MLIR.
-16. Select physical Arena strategy.
-17. Apply proof-driven canonicalization.
-18. Lower to standard MLIR dialects.
-19. Lower to LLVM dialect and target code.
-20. Perform final ownership, effect-order, ABI, and cleanup verification.
-```
-
-The exact pass names are implementation-defined.
-
-The semantic order is required.
-
----
-
-# Target profiles
-
-Arena source semantics remain stable across profiles.
-
-Profiles may differ in:
+§ 112(2) Profiles may differ in:
 
 ```text
 available constructors;
 backing providers;
 growth;
-capacity proof requirements;
+capacity-proof strictness;
 runtime metadata;
-failure guarantees;
+provider failure guarantees;
 thread transfer;
-ISR use.
+ISR use;
+memory spaces.
 ```
+
+§ 112(3) Profile must not weaken ownership, domain/epoch identity, failure atomicity, reference validity, or no-relocation growth semantics.
 
 ---
 
-# Hosted profile
+## § 113 Hosted profile
 
-A hosted profile normally supports:
+§ 113(1) Hosted profile may support borrowed/owned/growable Arena and compiler-managed ambient allocation context.
 
-```text
-Arena.FromBuffer;
-Arena.WithCapacity;
-growable Arena strategy;
-compiler-managed ambient allocation context.
-```
+§ 113(2) Unknown capacity demand may be accepted with diagnostic in permissive mode.
 
-Unknown capacity demand may be accepted with information or warning.
-
-Provider failure remains represented unless proven impossible.
+§ 113(3) Provider failure remains represented unless proven impossible.
 
 ---
 
-# Embedded fixed profile
+## § 114 Embedded fixed profile
 
-An embedded fixed profile normally uses:
+§ 114(1) Embedded fixed profile may prefer:
 
 ```text
-borrowed fixed Arenas;
+borrowed fixed Arena;
 static backing;
 caller-provided backing;
 target-provided fixed pools.
 ```
 
-Owned or growable constructors are target-dependent.
+§ 114(2) Owned/growable constructor availability is target-dependent.
 
-Unknown or unbounded demand is normally an error when the profile requires a
-complete capacity proof.
+§ 114(3) Unknown/unbounded demand may be an error under strict bounded-memory policy.
 
 ---
 
-# Bare-metal bounded profile
+## § 115 Bare-metal bounded profile
 
-A bare-metal bounded profile may require:
+§ 115(1) Bare-metal bounded profile may require:
 
 ```text
-all required capacity statically bounded;
-no operating-system backing provider;
+statically bounded capacity demand;
+no OS backing provider;
 no hidden growth;
 no mandatory runtime epoch metadata;
-no allocation context without explicit backing.
+no allocation context without explicit/provable backing.
 ```
 
-The compiler may eliminate all Arena descriptor state when offsets and lifetime
-are fully static.
+§ 115(2) Compiler may eliminate entire Arena descriptor when all offsets/lifetime/identity facts are static.
 
 ---
 
-# No-allocation profile
+## § 116 No-allocation profile
 
-A profile may make dynamic allocation unavailable.
+§ 116(1) A profile may make dynamic allocation unavailable.
 
-`Arena.FromBuffer` may remain available because it does not acquire backing.
+§ 116(2) `Arena.FromBuffer` may remain available because it acquires no backing.
 
-`Arena.New` and `Arena.Alloc` still have `MayAllocate` and `ArenaAllocate`
-according to the canonical effect model.
+§ 116(3) `Arena.New`/`Arena.Alloc` retain canonical allocation effects and may be rejected by `@noAlloc`/profile policy even when physical bytes are pre-reserved.
 
-A profile or guarantee forbidding allocation may reject them even when backing
-already exists.
-
-This rulebook does not redefine `@noAlloc`.
+§ 116(4) This rulebook does not redefine `@noAlloc`.
 
 ---
 
-# ISR use
+## § 117 ISR use
 
-Ordinary ISR code must not:
+§ 117(1) Ordinary ISR code must not:
 
 ```text
 create owned backing;
-grow an Arena;
-allocate from a shared Arena;
+grow Arena;
+allocate from shared ordinary Arena;
 Reset storage visible to interrupted code;
 Release storage visible to interrupted code.
 ```
 
-A target may permit an ISR-exclusive preallocated Arena only when the canonical
-ISR analysis proves:
+§ 117(2) A target may permit an ISR-exclusive preallocated Arena only when canonical interrupt analysis proves:
 
 ```text
 bounded demand;
@@ -3210,61 +2480,68 @@ no blocking;
 no suspension;
 no conflicting access;
 safe Reset boundary;
-bounded execution behavior;
-target support.
+bounded execution;
+target support;
+noPanic/noAlloc semantics as required by interrupts.md.
 ```
+
+§ 117(3) Because current Sec 0.1 ISR policy implies `noAlloc`, ordinary `Arena.New`/`Alloc` are not ISR-valid unless the canonical effect/interrupt rules later introduce a narrower explicit exception; preallocated storage use must therefore normally be exposed through an ISR-safe non-allocating abstraction.
+
+§ 117(4) Unsafe does not waive ISR restrictions.
 
 ---
 
-# FFI
+## § 118 FFI
 
-Arena-backed storage passed to foreign code follows FFI retention contracts.
+§ 118(1) Arena-backed storage passed to foreign code follows FFI retention contracts.
 
-Passing `slice.Ptr` and `slice.Len` for the duration of a synchronous call may
-be valid when:
+§ 118(2) Call-bounded pointer/view use may be valid when:
 
 ```text
-the foreign call does not retain the pointer;
-the Arena cannot Reset or Release during the call;
-mutability and aliasing match the ABI contract;
-address space and alignment are valid.
+foreign code does not retain;
+Arena cannot Reset/Release during call;
+mutability/aliasing matches contract;
+address space/alignment is valid.
 ```
 
-A foreign function that may retain the pointer creates a dependency extending
-according to the declared retention contract.
+§ 118(3) Retained foreign pointer creates dependency for declared retention lifetime.
 
-Unknown retention must be treated conservatively.
+§ 118(4) Unknown retention is conservative.
 
-`RawPtr[T]` does not keep the Arena alive.
+§ 118(5) `RawPtr[T]` does not keep ArenaDomain alive.
+
+§ 118(6) Retained direct addresses may require pin/stable backing guarantees.
 
 ---
 
-# Diagnostics
+## § 119 Diagnostics
 
-Arena diagnostics are cause-aware mentor diagnostics.
+§ 119(1) Arena diagnostics follow the mentor-compiler principle.
 
-They must retain:
+§ 119(2) Diagnostic provenance should retain:
 
 ```text
-Arena declaration;
-ArenaDomain identity where useful;
+Arena declaration/domain;
 allocation site;
-Reset or Release site;
+Reset/Release site;
 task/thread capture;
-await/join state;
+await/join/completion state;
 defer/destruction path;
-required and available bytes;
+required/available bytes;
 alignment;
-active CompilationPlan;
-call-graph path;
+active CompilationPlan/profile;
+call-graph/effect path;
+provider contract;
 help.
 ```
 
+§ 119(3) User-facing wording should distinguish storage capacity, lifetime dependency, ownership state, and epoch invalidation.
+
 ---
 
-# Required error categories
+## § 120 Required error categories
 
-Errors include:
+§ 120(1) Required error families include:
 
 ```text
 Arena copy;
@@ -3275,185 +2552,80 @@ Reset with live dependency;
 Release with live dependency;
 allocation from consumed Arena;
 returning reference into local Arena;
-parent Reset while nested Arena lives;
-task/thread dependency crossing Reset or Release;
+parent Reset/Release while nested Arena lives;
+task/thread dependency crossing invalidation;
 missing allocation context;
 unsupported backing provider;
 invalid alignment;
-incomplete or unsized T;
+incomplete/unsized T;
 missing default;
 non-trivially-destructible T;
-statically impossible allocation through try;
-unbounded demand in a strict profile;
+statically impossible allocation;
+unbounded demand under strict profile;
 epoch exhaustion without safe handling;
 invalid foreign retention;
-invalid ISR use.
+invalid ISR use;
+invalid provider/reclamation contract.
 ```
 
 ---
 
-# Warning categories
+## § 121 Warnings and information
 
-Warnings may include:
+§ 121(1) Configurable warnings may include unknown peak demand, open callable without Arena bound, unknown recursive accumulation, high growable demand, or conservative foreign retention.
 
-```text
-unknown peak demand in a permissive profile;
-open callable contract without Arena bound;
-recursive accumulation with unknown bound;
-growable demand above a profile recommendation;
-foreign callback retention with conservative unknown lifetime.
-```
-
-Warning severity is configurable.
-
----
-
-# Information categories
-
-Information may include:
+§ 121(2) Configurable information may include:
 
 ```text
-statically explicit zero-capacity Arena;
-runtime capacity check eliminated;
-Arena fully stack-lowered;
+zero-capacity Arena;
+eliminated runtime capacity check;
+Arena fully automatic/stack-lowered;
 runtime epoch metadata eliminated;
-Reset immediately before Release;
-capacity-utilization report;
+redundant Reset before Release;
+capacity utilization;
 Arena descriptor eliminated.
 ```
 
-Analysis-only facts should normally appear in LSP or explicit compiler reports
-rather than ordinary build output.
+§ 121(3) Analysis-only information should normally appear in LSP/explicit analysis output rather than default build output.
 
 ---
 
-# Diagnostic examples
+## § 122 LSP and tooling
 
-## Reset blocked by task
+§ 122(1) LSP consumes compiler-owned Arena analysis; it must not implement a separate model.
 
-```text
-error: Arena cannot be reset while a spawned task may access its storage
-
-Arena:
-    scratch
-
-allocation:
-    values
-
-captured by:
-    task created in StartWorkers
-
-completion:
-    not proven before Reset
-
-help:
-    await or join the task
-    use a structured task scope
-    or move the Arena into the task
-```
-
-## Impossible allocation
+§ 122(2) Tooling may expose:
 
 ```text
-error: Arena allocation can never succeed
-
-required:
-    80 bytes
-
-available:
-    16 bytes
-
-allocation:
-    10 elements of int64
-
-help:
-    increase capacity
-    reduce the element count
-    or use a growable Arena
+backing relation/provider;
+capacity;
+ArenaDomain/epoch;
+profile;
+allocation origin;
+live dependencies;
+Reset/Release blockers;
+task/thread captures;
+capacity summary;
+allocation-context origin;
+effect path;
+physical-lowering plan;
+diagnostic cause chain;
+peak demand/utilization.
 ```
 
-## Deferred order
-
-```text
-error: deferred Arena release occurs before deferred use of Arena storage
-
-release defer:
-    line 14
-
-dependent cleanup:
-    line 18
-
-help:
-    register Release earlier so dependent cleanup executes first
-```
+§ 122(3) Tooling facts belong to one active compilation snapshot/plan.
 
 ---
 
-# LSP behavior
+## § 123 Separate compilation
 
-The LSP consumes compiler-owned Arena analysis.
+§ 123(1) Module metadata preserves Arena-related callable facts needed by callers.
 
-It must not build a separate Arena model.
-
-Useful LSP features include:
-
-```text
-hover showing Arena backing, capacity, epoch, and profile;
-go to Arena allocation origin;
-find dependencies;
-show Reset/Release blockers;
-show task/thread captures;
-show capacity summary;
-show allocation-context origin;
-show effect path;
-show physical-lowering plan in analysis mode;
-show diagnostic cause chain;
-code lens for peak demand and utilization.
-```
-
-All results belong to one active CompilationPlan and snapshot.
-
----
-
-# Static capacity reports
-
-A capacity report may show:
-
-```text
-Arena:
-    scratch
-
-Backing:
-    borrowed fixed
-
-Capacity:
-    4096 bytes
-
-Maximum proven use:
-    2720 bytes
-
-Alignment padding:
-    16 bytes
-
-Remaining at peak:
-    1376 bytes
-
-Status:
-    bounded
-```
-
-For unknown demand, the report shows the introducing loop, recursion component,
-indirect call, or open callable contract.
-
----
-
-# Separate compilation
-
-Module metadata must preserve Arena-related callable facts required by callers:
+Relevant facts include:
 
 ```text
 RequiresAllocationContext;
-declared and inferred allocation effects;
+allocation effects;
 Arena-demand summary;
 explicit Arena parameter summaries;
 provider requirements;
@@ -3462,522 +2634,202 @@ open callable bounds;
 trust provenance.
 ```
 
-Public callers must not rely on undeclared stronger implementation facts.
+§ 123(2) Public caller must not rely on stronger undeclared implementation facts.
 
-Changing a public allocation-context requirement or Arena bound may require
-dependent recompilation.
+§ 123(3) Changes to public allocation-context requirement/Arena bound/provider contract may require dependent recompilation.
 
 ---
 
-# Incremental compilation
+## § 124 Incremental compilation
 
-Arena analysis invalidation includes changes to:
+§ 124(1) Arena analysis must invalidate when relevant facts change.
+
+Examples:
 
 ```text
 capacity;
 allocation count;
-T layout;
-T alignment;
-T default;
-T destruction classification;
-loop bound;
-control-flow reachability;
-callee Arena demand;
+T layout/alignment/default/destruction;
+loop bound/control-flow reachability;
+callee demand;
 call target set;
 effect contract;
 target profile;
 task/thread capture;
-Reset or Release location;
-provider contract.
+Reset/Release placement;
+provider contract;
+foreign retention;
+storage/reference model.
 ```
 
-Stable ArenaDomain and call-site identities should be preserved across unrelated
-edits where possible.
+§ 124(2) Stable ArenaDomain/call-site identities should survive unrelated edits where possible.
 
 ---
 
-# Required source tests
+## § 125 Required source tests
 
-Create or update:
-
-```text
-arena_from_buffer_valid.sec
-arena_with_capacity_valid.sec
-arena_growable_valid.sec
-arena_new_valid.sec
-arena_alloc_valid.sec
-arena_zero_length_valid.sec
-arena_zero_capacity_valid.sec
-arena_reset_valid.sec
-arena_release_valid.sec
-arena_move_valid.sec
-arena_nested_valid.sec
-arena_task_borrow_valid.sec
-arena_task_move_valid.sec
-arena_thread_borrow_valid.sec
-arena_thread_move_valid.sec
-arena_await_dependency_valid.sec
-arena_join_dependency_valid.sec
-arena_result_dependency_valid.sec
-arena_defer_order_valid.sec
-arena_early_return_valid.sec
-arena_failure_handling_valid.sec
-arena_bounded_loop_valid.sec
-arena_branch_capacity_valid.sec
-arena_ambient_context_valid.sec
-arena_explicit_context_valid.sec
-```
-
----
-
-# Required invalid tests
-
-Create or update:
+§ 125(1) Required positive families include:
 
 ```text
-arena_copy_invalid.sec
-arena_use_after_move_invalid.sec
-arena_use_after_release_invalid.sec
-arena_double_release_invalid.sec
-arena_reset_live_ref_invalid.sec
-arena_release_live_ref_invalid.sec
-arena_return_local_ref_invalid.sec
-arena_nested_parent_reset_invalid.sec
-arena_task_reset_invalid.sec
-arena_thread_release_invalid.sec
-arena_missing_context_invalid.sec
-arena_nontrivial_type_invalid.sec
-arena_incomplete_type_invalid.sec
-arena_alignment_invalid.sec
-arena_impossible_try_allocation_invalid.sec
-arena_unbounded_embedded_invalid.sec
-arena_defer_order_invalid.sec
-arena_result_reset_invalid.sec
-arena_foreign_retention_invalid.sec
-arena_isr_invalid.sec
-```
-
----
-
-# Semantic IR tests
-
-Golden tests must cover:
-
-```text
-borrowed creation;
-owned fixed creation;
-growable creation;
+FromBuffer;
+WithCapacity;
+Growable;
 New;
 Alloc;
-zero-element allocation;
-allocation failure state;
-try propagation;
-Reset epoch;
-Release consumption;
-implicit destruction;
+zero-element;
+zero-capacity;
+Reset;
+Release;
 move;
+implicit destruction;
 nested Arena;
-task capture;
-task ownership transfer;
-await completion;
-join completion;
-thread completion;
-result dependency transfer;
-allocation-context propagation.
+task borrow;
+task move;
+thread borrow;
+thread move;
+await dependency;
+join dependency;
+result dependency;
+defer order;
+early return;
+failure handling;
+bounded loop;
+branch capacity;
+ambient context;
+explicit Arena context.
 ```
 
----
-
-# Sec MLIR tests
-
-Tests must cover:
+§ 125(2) Required negative families include:
 
 ```text
-operation parsing and printing;
-type verification;
-effect interfaces;
-ArenaResource identity;
-ownership consumption;
-invalid operation sequences;
-source locations;
-canonicalization;
-CSE rejection;
-DCE behavior;
-LICM barriers;
-Reset and Release ordering;
-lowering to memref/LLVM views;
-provider calls;
-epoch elimination.
+copy;
+use after move;
+use after Release;
+double Release;
+Reset live reference;
+Release live reference;
+return local reference;
+nested parent invalidation;
+task/thread invalidation;
+missing context;
+nontrivial T;
+incomplete T;
+invalid alignment;
+impossible try allocation;
+unbounded strict-profile demand;
+defer cleanup order;
+result dependency invalidation;
+foreign retention;
+ISR use.
 ```
 
 ---
 
-# Capacity-analysis tests
+## § 126 Semantic IR and MLIR tests
 
-Tests must cover:
+§ 126(1) Golden Semantic IR tests cover creation forms, New/Alloc, zero-element, failure state, `try`, Reset epoch, Release consumption, destruction, move, nesting, task/thread captures/transfers/completion, result dependencies, and allocation-context propagation.
+
+§ 126(2) Sec MLIR tests cover operation parsing/printing, type verification, effect interfaces, ArenaDomain resource identity, ownership consumption, invalid sequences, source locations, canonicalization, CSE/DCE/LICM, Reset/Release ordering, provider calls, and epoch elimination.
+
+---
+
+## § 127 Capacity-analysis tests
+
+§ 127(1) Tests include:
 
 ```text
 exact sequential demand;
 branch maximum;
 branch plus continuation;
-constant loop multiplication;
+bounded loop multiplication;
 range-bounded loop;
 Reset per iteration;
 unknown loop;
 unbounded recursion;
 closed indirect target maximum;
-open callable unknown bound;
+open callable unknown;
 alignment padding;
 overflow;
-zero-element allocation;
-growable initial capacity;
-maximum capacity;
+zero-element;
+growable initial/max capacity;
 statically impossible allocation;
 proven sufficient capacity.
 ```
 
 ---
 
-# Backend tests
+## § 128 Backend/profile tests
 
-At minimum test:
+§ 128(1) Maintained backend tests cover representative hosted and bare-metal targets.
 
-```text
-Linux amd64;
-Linux arm64;
-Linux arm32;
-one representative bare-metal target.
-```
+§ 128(2) They verify target pointer width/layout/alignment, checked size arithmetic, cursor arithmetic, epoch representation/elimination, borrowed backing, provider calls, segment growth, Release, and absence of mandatory general runtime.
 
-Verify:
-
-```text
-pointer width;
-SizeOf;
-alignment;
-checked multiplication;
-cursor arithmetic;
-epoch representation;
-borrowed backing;
-provider calls;
-segment growth;
-Release;
-absence of mandatory runtime dependencies.
-```
+§ 128(3) Optimization tests must prove permitted check/descriptor elimination and reject invalid CSE/hoisting/epoch merging/relocation.
 
 ---
 
-# Optimization tests
+## § 129 Governance completion criteria
 
-Verify that the compiler may:
+§ 129(1) Frontend Arena support is complete when builtin/member/source forms, move-only ownership, lifecycle state, typed allocation validation, and all source diagnostics are implemented.
 
-```text
-eliminate a proven capacity check;
-eliminate runtime epoch metadata;
-stack-lower a local Arena;
-fold fixed offsets;
-remove redundant Reset before Release;
-remove unused zero-element allocation.
-```
+§ 129(2) Storage/reference integration is complete when ArenaDomain/epoch/backing identities use canonical storage/reference facts and all Reset/Release dependencies are proven.
 
-Verify that it may not:
+§ 129(3) Allocation-context integration is complete when explicit/ambient/provider contexts propagate correctly across synchronous calls and execution boundaries.
 
-```text
-CSE two allocations;
-move allocation across Reset;
-move use across Release;
-hoist per-iteration allocation incorrectly;
-remove required Release;
-merge different epochs;
-relocate a live allocation.
-```
+§ 129(4) Task/thread integration is complete when captures, ownership transfer, completion, result dependencies, cancellation, and structured concurrency preserve Arena lifetime.
+
+§ 129(5) Capacity analysis is complete when byte-accurate alignment-aware demand is modeled per CompilationPlan across control flow, loops, recursion, indirect calls, and separate compilation.
+
+§ 129(6) Semantic IR/MLIR support is complete when Arena state, domain, epoch, backing, allocation, failure, dependency, effect, and provider semantics remain explicit until safely lowered.
+
+§ 129(7) Lowering is complete when fixed/borrowed/owned/growable/profile strategies preserve all semantics without hidden allocator changes or live relocation.
+
+§ 129(8) Tooling is complete when compiler/LSP/sec analyse consume one canonical Arena model.
+
+§ 129(9) Arena is not fully implemented merely because compiler-known member recognition and partial generation checks exist.
 
 ---
 
-# Implementation graph nodes
-
-The implementation graph should contain separate Arena work nodes such as:
-
-```text
-ARENA-TYPE
-ARENA-COMPILER-KNOWN-MEMBERS
-ARENA-CREATE-BORROWED
-ARENA-CREATE-OWNED
-ARENA-CREATE-GROWABLE
-ARENA-TYPED-ALLOCATION
-ARENA-DEFAULT-INITIALIZATION
-ARENA-RESET
-ARENA-RELEASE
-ARENA-DESTRUCTION
-ARENA-OWNERSHIP
-ARENA-LIFETIME
-ARENA-EPOCH
-ARENA-TASK-DEPENDENCIES
-ARENA-THREAD-DEPENDENCIES
-ARENA-EFFECTS
-ARENA-CALL-SUMMARIES
-ARENA-CAPACITY-ANALYSIS
-ARENA-SEMANTIC-IR
-ARENA-MLIR-DIALECT
-ARENA-MLIR-LOWERING
-ARENA-DIAGNOSTICS
-ARENA-LSP
-ARENA-TARGET-PROFILES
-ARENA-TESTS
-```
-
-Codex must not implement the complete Arena model as one undifferentiated task.
-
----
-
-# Initial implementation order
-
-Recommended order:
-
-```text
-1. Normalize the Arena builtin and remove the unused lowercase keyword.
-2. Add stable ArenaDomain identity.
-3. Add move-only Arena ownership.
-4. Add borrowed fixed Arena construction.
-5. Add typed New and Alloc validation.
-6. Add allocation failure and atomic state flow.
-7. Add Reset and Release ownership transitions.
-8. Add implicit Arena destruction.
-9. Add reference and epoch dependency verification.
-10. Add allocation-context propagation.
-11. Add task and thread dependency integration.
-12. Add ordered Arena effects.
-13. Add call-graph summaries.
-14. Add static capacity analysis.
-15. Add high-level Sec MLIR Arena operations.
-16. Add fixed borrowed lowering.
-17. Add owned fixed provider lowering.
-18. Add growable segmented lowering.
-19. Add optimization and metadata elimination.
-20. Add LSP and complete diagnostics.
-21. Verify the target matrix.
-```
-
----
-
-# Current implementation synchronization
-
-The existing compiler already has partial Arena-related support through the
-general allocation implementation.
-
-The repository must be inventoried before implementation work begins.
-
-Known partial areas include:
-
-```text
-Arena semantic builtin;
-AllocationError semantic builtin;
-Arena.Alloc recognition;
-Arena.Reset recognition;
-Arena.New recognition;
-Arena.Release recognition and released-owner use rejection;
-Arena.FromBuffer, Arena.WithCapacity, and Arena.Growable recognition;
-typed compiler-known member registry entries with stable IDs;
-LSP completion sourced from the compiler-known member registry;
-lowercase arena lexed as an ordinary identifier rather than a keyword;
-initial generation metadata;
-initial stale-generation rejection;
-initial branch and loop generation merging;
-active allocation-context representation;
-initial storage-origin metadata;
-compiler-owned task-spawn and thread-start call-graph relationships;
-derived task-entry and thread-entry roots for reachable spawn sites;
-source-ordered direct call-graph effect sites for borrowed/owned/growable Arena
-creation, typed allocation, Reset, and Release;
-synchronous call-graph `MayAllocate` propagation with a concrete shortest
-callable cause path;
-LSP hover for direct Arena effects and propagated allocation cause paths;
-```
-
-The implementation is not complete merely because these partial pieces exist.
-
-Known missing or incomplete areas include:
-
-```text
-allocation-context propagation;
-path-aware ordered Arena effect-state merging across branches and loops;
-complete effect inference beyond the current Arena `MayAllocate` summary;
-complete ownership and move tracking;
-complete default/layout/destruction validation;
-Semantic IR Arena operations;
-MLIR Arena dialect and lowering;
-backing providers;
-Arena dependency propagation and completion boundaries across the existing
-task/thread call-graph relationships;
-byte-accurate, alignment-aware capacity and demand analysis per
-`CompilationPlan`;
-complete diagnostics;
-complete LSP definitions, capacity/effect details, and Arena-specific
-diagnostics.
-```
-
-An implementation inventory must verify the repository rather than assuming
-that this list remains current.
-
----
-
-# Required synchronization
-
-This rulebook must remain synchronized with:
-
-```text
-allocation.md
-attributes.md
-borrowing.txt
-call_graph.md
-cancellation.md
-compiler_analysis.txt
-compiler_known_members.md
-compiler_pipeline.txt
-concurrency.md
-concurrency_memory_model.txt
-default_values.md
-destruction.txt
-diagnostics.txt
-effect_analysis.md
-escape_analysis.md
-platform/ffi.md
-declarations/interfaces.md
-isr_analysis.md
-layout.md
-lifetime_analysis.md
-lsp.md
-ownership.md
-panic.md
-reference_model.md
-runtime_checks.md
-semantic_ir.txt
-spawn.md
-storage.md
-structured_concurrency.md
-rules/platform/target_profiles.md
-tasks.txt
-threads.md
-unsafe.md
-```
+## § 130 Core summary
 
-When one of these files is not yet written, its future rulebook must consume
-Arena semantics from this document rather than redefine them.
+§ 130(1) `Arena` is a move-only programmer-visible owner/controller of one ArenaDomain.
 
----
+§ 130(2) ArenaDomain identity is separate from physical backing address.
 
-# Rulebook ownership summary
+§ 130(3) Backing may be owned, borrowed, static, or target-provided through canonical storage/provider contracts.
 
-```text
-arena.md
-    owns Arena source and compiler semantics
+§ 130(4) Arena may be fixed or growable; growable Arena may add stable backing but may never relocate live allocations.
 
-allocation.md
-    owns general allocation semantics and allocation-context policy
+§ 130(5) Capacity is measured in bytes; `Alloc[T](count)` uses element count plus checked size/alignment arithmetic.
 
-reference_model.md
-    owns reference validity and physical representation freedom
+§ 130(6) Safe `New[T]`/`Alloc[T]` fully initialize results and in Sec 0.1 require sized/defaultable/trivially-destructible `T`.
 
-effect_analysis.md
-    owns effect inference and guarantee verification
+§ 130(7) Allocation returns `Result`, is atomic, never publishes null/partial/uninitialized result, and never silently switches allocation source.
 
-call_graph.md
-    owns callable reachability and execution relationships
+§ 130(8) Zero-element allocation is valid and consumes no capacity.
 
-tasks.txt / spawn.md / await.md
-    own task lifecycle and synchronization semantics
+§ 130(9) Repeated allocation preserves prior allocation validity.
 
-threads.md
-    owns thread lifecycle and synchronization semantics
+§ 130(10) Reset retains ArenaDomain/backing, advances validity epoch, and requires no validity-preserving dependency across the boundary.
 
-destruction.txt
-    owns ordinary destruction order
+§ 130(11) `Release()` is a compiler-known Arena lifecycle termination operation that consumes Arena ownership and ends ArenaDomain; it is not a general precedent for user-defined whole-self-consuming methods.
 
-layout.md
-    owns SizeOf, AlignOf, and physical layout
+§ 130(12) Normal Arena destruction performs equivalent terminal Release semantics if Arena remains owned.
 
-compiler_known_members.md
-    owns compiler-known member inventory and naming
+§ 130(13) Arena dependencies flow through references, nested Arenas, closures, tasks, threads, results, defer/cleanup, and FFI retention.
 
-lsp.md
-    owns tooling presentation, not Arena truth
-```
+§ 130(14) Task/thread completion ends execution-local dependencies only at a canonical semantic completion boundary; result dependencies may continue.
 
----
+§ 130(15) Parent allocation context is not automatically inherited by spawned execution.
 
-# Final canonical summary
+§ 130(16) `MayAllocate` and `RequiresAllocationContext` are distinct facts.
 
-An Arena is a move-only programmer-visible allocation-domain owner.
+§ 130(17) Arena operations remain explicit in Semantic IR/high-level Sec MLIR until ownership, lifetime, effects, capacity, execution dependencies, and target planning are complete.
 
-The ArenaDomain identity is separate from physical backing addresses.
+§ 130(18) Arena state versions use SSA; validity epochs are distinct from state versions.
 
-Backing may be owned, borrowed, static, or target-provided.
+§ 130(19) MLIR `memref` may represent lowered Arena views but does not replace Arena semantics.
 
-Independently, an Arena may be fixed or growable according to its capacity and
-growth policy.
+§ 130(20) Compiler may remove checks/metadata/descriptors only after proof.
 
-Borrowed Arenas take an exclusive borrow of mutable contiguous backing.
-
-Owned Arenas acquire backing through a target/profile provider.
-
-Growable Arenas may add stable segments but may never relocate a live
-allocation.
-
-Capacity is measured in bytes.
-
-`Alloc[T](count)` interprets count as element count and includes checked size
-arithmetic and alignment padding.
-
-Safe `New[T]` and `Alloc[T]` fully initialize values and initially require sized,
-defaultable, trivially destructible types.
-
-Allocation returns `Result`, is atomic, never returns null or partial storage,
-and never silently falls back to another allocation source.
-
-Zero-element allocation is valid and normally silent.
-
-A statically explicit zero-capacity Arena produces configurable information.
-
-Repeated allocation does not invalidate prior allocations.
-
-Reset retains the Arena and backing, reclaims the current epoch, advances the
-validity epoch, and requires that no validity-preserving dependency crosses the
-reset point.
-
-Release consumes the Arena and terminates the ArenaDomain.
-
-Normal Arena destruction performs terminal Release when the Arena remains
-owned.
-
-Arena storage dependencies extend through references, nested Arenas, closures,
-tasks, threads, results, and foreign retention.
-
-Task or thread completion ends execution-local dependencies only after a
-semantic completion boundary.
-
-Dependencies transferred through results remain live.
-
-A task or thread does not automatically inherit the parent's mutable Arena
-context.
-
-Arena allocation context is compiler-visible and may be propagated through
-synchronous calls without source-level boilerplate.
-
-`MayAllocate` and `RequiresAllocationContext` are distinct facts.
-
-Arena operations remain explicit in Semantic IR and high-level Sec MLIR until
-ownership, lifetime, effects, task/thread dependencies, capacity, and target
-planning are complete.
-
-Arena state versions use SSA.
-
-Validity epochs are separate from state versions.
-
-MLIR `memref` may represent lowered typed views but does not replace high-level
-Arena semantics.
-
-Optimizers may remove checks and metadata only after proof.
-
-The Arena model supports hosted, embedded, bare-metal, and no-runtime targets
-without requiring a universal Sec runtime, garbage collector, reference
-counter, or runtime Arena registry.
+§ 130(21) Arena supports hosted, embedded, bare-metal, and runtime-free implementations without universal GC, reference counting, allocator runtime, handle table, or Arena registry.

@@ -302,19 +302,22 @@ module identity to accommodate host filesystem case folding.
 
 Import resolution first selects one canonical import root.
 
-Sec 0.1 includes compiler-reserved roots:
+Sec 0.1 includes the compiler-reserved platform root:
 
 ```text
-std
 platform
 ```
 
-These roots resolve only within their compiler-provided source trees.
+Standard-library modules instead use their canonical logical paths directly.
+The compiler resolves those paths through the standard-library namespace before
+project/dependency fallback, and a project-local module must not silently
+replace a canonical standard-library module with the same path.
 
 Example:
 
 ```sec
-import "std/io"
+import "io"
+import "net/http"
 import "platform/linux/amd64"
 ```
 
@@ -677,10 +680,23 @@ A project directory that is not selected into the active source graph is not
 compiled merely because it contains `.sec` files somewhere below the project
 root.
 
-Compiler-reserved roots such as `std` and `platform` use the same
+Compiler-provided standard-library modules and reserved roots such as `platform` use the same
 `ModuleIdentity`, `ModuleName`, `ModuleInstance`, and `ModuleSurface` concepts as
 project-local modules. Their distinction lies in their import-root identity,
 source-selection ownership, and access rules.
+
+### 19.1 Test-compilation module participation
+
+An ordinary production `ModuleInstance` excludes every `*_test.sec` file.
+A `TestCompilationPlan` may construct a test view containing the ordinary
+production files plus same-directory `*_test.sec` files. Those test files have
+ordinary same-module visibility, but no additional access to declarations that
+remain private to another source file.
+
+The dependency direction is `Test -> Production` and `Test -> Test`.
+Production declarations must remain valid without test-only declarations, so
+`Production -> Test` is invalid. Project-root `tests/` modules are test-only
+modules and use ordinary imports and external visibility.
 
 ---
 
@@ -882,7 +898,7 @@ The implementation test suite must include at least:
 ### Resolution
 
 - project-local import;
-- `std` import;
+- direct canonical standard-library import such as `io` or `net/http`;
 - `platform` import;
 - unknown reserved-root import without project fallback;
 - case-sensitive path handling;
@@ -962,6 +978,7 @@ rules/compiler/semantic_ir.txt
 rules/platform/platform_model.md
 rules/tooling/diagnostics.txt
 rules/tooling/lsp.md
+rules/tooling/testing.md
 ```
 
 `rules/compiler/initialization.md`, future linking, dependency/package, and

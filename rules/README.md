@@ -22,7 +22,7 @@ belongs in `implementation-status.yaml`.
 | `mlir/` | Sec MLIR governance, dialect, lowering, version history, amendments, and implementation packages. |
 | `platform/` | Target profiles, platform resolution, interrupts, FFI, fixed-address and volatile access, hardware-register access, and ABI rules. |
 | `projects/` | Project and build organization. |
-| `tooling/` | Diagnostics, formatter, and LSP. |
+| `tooling/` | Diagnostics, formatter, source-level testing/toolchain integration, and LSP/editor integration. |
 | `library/` | Core-library and standard-library contracts. |
 
 ## MLIR layout

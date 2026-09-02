@@ -1749,3 +1749,16 @@ Core contains standard errors required by language-level operations.
 
 This rule defines the minimum required core surface, not the complete final core
 library.
+
+# 26. Compiler-known testing context
+
+`testing` is a compiler-known namespace available only while analyzing a
+`TestCompilationPlan`. It is not a hidden standard-library import and cannot be
+obtained in production source by importing or declaring an unrelated module
+named `testing`.
+
+The Sec 0.1 surface—`Pass`, `Fail`, `Skip`, `Log`, `Expect`, `Require`,
+`ExpectEqual`, `RequireEqual`, `Run`, and `TestResult`—is defined by
+`rules/tooling/testing.md`. The compiler owns the test-context identity and
+boundary effects while ordinary value, equality, error, ownership, and cleanup
+semantics remain governed by their canonical rulebooks.

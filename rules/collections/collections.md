@@ -2318,7 +2318,7 @@ allocation.md
 storage.md
 layout.md
 reference_model.md
-borrowing.txt
+borrowing.md
 ownership.md
 copy_move.md
 destruction.txt

@@ -351,9 +351,9 @@ Ownership analysis rules are defined in ownership.md.
 
 Reference rules are defined in references.md.
 
-Borrow rules are defined in borrowing.txt.
+Borrow rules are defined in `rules/memory/borrowing.md`.
 
-Unsafe rules are defined in unsafe.txt.
+Unsafe rules are defined in `rules/memory/unsafe.md`.
 
 Unsafe code does not bypass ownership analysis for normal Sec values.
 
@@ -887,3 +887,17 @@ MLIR lowers and optimizes that meaning.
 LLVM generates machine code for that meaning.
 
 No backend stage may redefine the language.
+
+## Test compilation mode
+
+The pipeline represents compilation mode explicitly, with at least
+`Production` and `Test`; test mode is not a late boolean source-inclusion hack.
+A `TestCompilationPlan` retains selected `*_test.sec` and `tests/` provenance,
+test-only dependency direction, compiler-known testing context, stable
+`TestIdentity`, selected static harness roots, and execution metadata.
+
+Test selection occurs early enough that constrained target artifacts need only
+link selected tests and their reachable dependencies. Later stages must not
+reconstruct test identity from generated function or linker names. `sec test`
+uses the same pipeline and plan model as compiler/LSP test views defined by
+`rules/tooling/testing.md`.

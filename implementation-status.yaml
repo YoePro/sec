@@ -5868,6 +5868,7 @@ integrations:
     implemented:
       - "Current frontend already emits several borrow-conflict diagnostics with a previous/source location and exposes foundational semantic facts to LSP/formatter infrastructure."
       - "Formatter preserves established ref/ref mut syntax in functions and supported patterns."
+      - "Active rulebooks and governance use the canonical borrowing.md revision-2 path; the replaced borrowing.txt rulebook has been removed."
     remaining:
       - "register stable mentor-oriented diagnostic IDs for shared/mutable conflicts, owner-read conflict, mutation/replacement conflict, move/discard/destruction while borrowed, loop-carried conflict, invalid mutable authority, unknown provenance, and borrow escape"
       - "ensure diagnostics point to both borrow origin/holder and conflicting action and explain why Places overlap"
@@ -5876,7 +5877,6 @@ integrations:
       - "provide navigation to borrow origin/holder and previous-iteration source for loop-carried conflicts"
       - "offer only safe code actions such as narrowing/reordering use, changing an explicitly compatible API to ref/ref mut when user edits declaration, or restructuring scope; do not silently change ownership semantics"
       - "preserve capture(ref ...), capture(ref mut ...), ref/ref mut pattern bindings, and parameter borrow syntax under formatting"
-      - "update stale borrowing.txt references to borrowing.md opportunistically after canonical replacement without creating fake normative corrections"
       - "support source/code traceability comments referring to stable borrowing § clauses"
     required_tests:
       - "borrow conflict diagnostic includes related borrow origin"
@@ -9649,6 +9649,312 @@ integrations:
       - "mapping/view diagnostic identifies mapping owner"
       - "defer diagnostic identifies delayed use"
       - "LSP and compiler report the same lifetime cause chain"
+
+  - id: frontend.transferability
+    area: boundary-transfer-validation
+    status: planned
+    repository_baseline: 814a584
+    rules:
+    - rules/memory/transferability.md
+    - rules/memory/ownership.md
+    - rules/memory/copy_move.md
+    - rules/memory/borrowing.md
+    - rules/memory/lifetime_analysis.md
+    - rules/memory/references.md
+    - rules/memory/raw_pointers.md
+    - rules/memory/destruction.md
+    - rules/concurrency/spawn.md
+    - rules/concurrency/threads.md
+    - rules/concurrency/channels.md
+    - rules/concurrency/thread_local.md
+    - rules/platform/interrupts.md
+    remaining:
+    - introduce one canonical boundary-transfer validation path instead of ad-hoc per-feature checks
+    - derive boundary-specific transfer facts recursively from the semantic value graph
+    - integrate ownership-v2 availability/partial/conditional state and copy/move commit semantics
+    - integrate borrowing-v2 live ranges and lifetime-analysis-v2 escape facts
+    - model task migration/pinning when validating thread-bound captures/references
+    - validate destination destruction affinity and allocation/storage-domain restrictions
+    - validate closures from capture facts without hiding them behind callable representation
+    - validate Method receiver transfer exactly like explicit arguments
+    - validate RawPtr/FFI handles conservatively from explicit contracts rather than machine-value copyability
+    required_tests:
+    - move-only task transfer consumes source
+    - copyable but thread-affine value rejected
+    - detached local borrow rejected
+    - migratable task rejects thread-local reference
+    - pinned-task thread-local case accepted when canonical scheduling rule permits it
+    - active MutexGuard blocks transfer
+    - partial aggregate allows disjoint transferable sub-Place but not whole-value transfer
+  - id: analysis.transferability
+    area: transfer-capability-and-boundary-analysis
+    status: planned
+    repository_baseline: 814a584
+    remaining:
+    - derive TaskTransferable, ThreadTransferable, ProcessTransferable, ISRTransferable and ThreadSafeShared as conditional
+      compiler facts
+    - compute recursive/cyclic transferability with deterministic fixed-point analysis
+    - retain value-specific restrictions instead of over-generalizing nominal type summaries
+    - consume scheduler migration/pinning facts
+    - consume allocation/storage-domain and destination destruction-context facts
+    - consume FFI handle/callback affinity and retention contracts
+    - consume process adapter/serialization/shared-memory contracts
+    - consume ISR synchronization/noPanic/noAlloc/noBlock/bounded-work facts
+    - persist and validate separate-compilation transfer summaries
+    required_tests:
+    - recursive type analysis terminates deterministically
+    - conditional summary depends on destination context
+    - unknown dynamic/interface target is conservative
+    - foreign unknown handle is conservative
+    - process transfer depends on selected adapter
+    - ISR transfer depends on direction/operation
+  - id: semantic-ir.transferability
+    area: semantic-ir-boundary-transfer
+    status: planned
+    repository_baseline: 814a584
+    remaining:
+    - represent task/thread owned and borrowed transfers explicitly where semantically relevant
+    - represent observer/lifecycle-handle transfer distinctly
+    - represent process-adapter transfer distinctly from in-process pointer/value transfer
+    - represent ISR-to-ordinary and ordinary-to-ISR handoff direction
+    - represent foreign callback-context transfer where required
+    - preserve source/destination owner, copied/moved state, retained borrow, transfer proof and affinity/destruction restrictions
+    - verify contradictory transfer/sharing facts before lowering
+    required_tests:
+    - owned and borrowed task transfer remain distinct
+    - thread transfer retains destination destruction restriction
+    - process adapter retained
+    - ISR direction retained
+    - invalid contradictory transfer facts rejected
+  - id: lowering.transferability
+    area: boundary-transfer-lowering
+    status: planned
+    repository_baseline: 814a584
+    remaining:
+    - preserve consuming transfer commit/failure ownership semantics
+    - avoid hidden copying of move-only lifecycle/resources
+    - avoid hidden heap promotion/allocation to repair illegal borrowed transfer
+    - preserve synchronization required for shared state
+    - lower process transfer through selected serialization/IPC/shared-memory/handle adapter
+    - lower ISR handoff with bounded/noalloc/noblock/nopanic requirements
+    - preserve task/thread affinity and pinning requirements
+    required_tests:
+    - failed consuming send preserves owner when API contract says not committed
+    - committed consuming send leaves source unavailable
+    - move-only resource not duplicated by runtime helper
+    - borrowed local not heap-promoted to permit detached work
+    - process transfer uses selected adapter
+    - ISR handoff uses only permitted primitives
+  - id: platform.transferability
+    area: thread-process-isr-ffi-platform-boundaries
+    status: planned
+    repository_baseline: 814a584
+    remaining:
+    - resolve target/runtime thread affinity and destruction restrictions
+    - resolve scheduler migration/pinning guarantees
+    - integrate platform/native handle transfer and process-local restrictions
+    - integrate shared-memory mapping and process-compatible synchronization
+    - integrate ISR access-context and handoff capabilities
+    - integrate foreign callback thread/reentrancy/retention restrictions
+    - ensure unsafe does not waive platform boundary constraints
+    required_tests:
+    - thread-affine platform handle rejected on wrong thread
+    - native process handle follows duplication/transfer contract
+    - shared-memory mapping lifetime covers process use
+    - ISR-safe value rejected when platform says operation not interrupt-safe
+    - foreign callback thread-bound state enforced
+  - id: tooling.transferability
+    area: transfer-diagnostics-lsp-tooling
+    status: planned
+    repository_baseline: 814a584
+    remaining:
+    - expose boundary-specific transferability/shareability conditions from canonical analysis
+    - show nested blocking field/capture/reference/foreign contract in diagnostics
+    - show task migration/pinning relevance for thread-local failures
+    - show process adapter requirement for process boundaries
+    - show ISR direction/context for interrupt handoff failures
+    - ensure compiler/LSP/sec analyse parity
+    - invalidate transfer summaries incrementally when ownership/type/concurrency/FFI/platform facts change
+    required_tests:
+    - diagnostic names concrete task/thread/process/ISR boundary
+    - diagnostic traces nested non-transferable field
+    - thread-local migration diagnostic explains scheduling boundary
+    - process diagnostic recommends explicit adapter
+    - ISR diagnostic identifies forbidden capability/effect
+    - compiler and LSP agree
+  - id: frontend.layout
+    status: partial
+    remaining:
+    - build one shared canonical layout-resolution service
+    - complete int/uint target-width consistency
+    - complete enum/union/descriptor/reference resolved representations
+    - complete representation-validity analysis
+    - complete explicit layout contract parsing via owning syntax rulebooks
+  - id: analysis.layout
+    status: partial
+    remaining:
+    - build by-value dependency graph and recursive-cycle diagnostics
+    - cache generic layout by type identity plus CompilationPlan
+    - track native/target/contract stability
+    - complete padding-leak and zero-init validity analysis
+  - id: semantic-ir.layout
+    status: planned
+    remaining:
+    - introduce canonical ResolvedLayout/ResolvedFieldLayout or equivalent
+    - retain size/alignment/offset/stride/padding/union/representation-validity facts
+    - attach target-resolved layout before layout-sensitive lowering
+    - verify contradictory/incomplete layout facts
+  - id: lowering.layout
+    status: partial
+    remaining:
+    - make maintained MLIR/LLVM paths consume Sec-resolved layout
+    - remove legacy hardcoded enum/int/decimal layout differences
+    - support validated unaligned/packed lowering
+    - preserve explicit layout and representation validity
+  - id: platform.layout
+    status: partial
+    remaining:
+    - complete FFI layout compatibility
+    - complete register access-unit/alignment validation
+    - complete target-specific memory/address-space representation integration
+    - validate explicit target layout contracts
+  - id: tooling.layout
+    status: planned
+    remaining:
+    - expose canonical SizeOf/AlignOf/StrideOf/FieldOffset from shared layout facts
+    - show target dependence and stability
+    - provide recursive/explicit-layout mentor diagnostics
+    - ensure compiler/LSP/sec analyse parity
+  - id: frontend.memory-model
+    status: partial
+    remaining:
+    - establish one canonical Place/root/subplace identity service across all source forms
+    - complete availability/reason and partial/conditional state tracking
+    - complete initialization masks and replacement/reinitialization state
+    - replace root-symbol reference/storage approximations with canonical identities
+  - id: analysis.memory-model
+    status: partial
+    remaining:
+    - share Place/location identity across ownership/borrow/lifetime/concurrency/transfer analyses
+    - complete field/index/range overlap proofs
+    - complete lifetime/storage dependency graphs
+    - complete resource-state versus ownership-state separation
+    - complete target/addressability/relocation/memory-space facts
+  - id: semantic-ir.memory-model
+    status: planned
+    remaining:
+    - normalize explicit memory operations
+    - represent canonical value/storage state separately
+    - retain ownership/borrow/reference/storage/layout/transfer facts required by lowering
+    - add verifier rules for invalid memory states
+  - id: lowering.memory-model
+    status: partial
+    remaining:
+    - lower canonical destruction/reclamation and replacement/reinitialization
+    - eliminate runtime metadata only after proof
+    - avoid stronger backend alias/lifetime/nonnull assumptions
+    - complete volatile/fixed-address/memory-space lowering
+  - id: platform.memory-model
+    status: partial
+    remaining:
+    - complete FFI/mapping/hardware-address integration
+    - complete target memory-space/addressability constraints
+    - share canonical memory facts with ISR/concurrency analyses
+    - preserve runtime-free target support
+  - id: tooling.memory-model
+    status: planned
+    remaining:
+    - expose canonical memory state/provenance in LSP and sec analyse
+    - provide mentor diagnostics with state-transition provenance
+    - remove legacy terminology from user-facing output
+    - ensure compiler/LSP parity
+  - id: frontend.storage
+    status: partial
+    remaining:
+    - migrate all legacy storage-origin categories to the canonical orthogonal storage model
+    - propagate storage facts through every Place/value/reference/aggregate and control-flow join
+    - introduce stable compiler-owned storage-domain and invalidation-domain identities
+    - complete initialization/object-lifetime and replacement/reinitialization integration
+    - integrate mapped/foreign/fixed-address contracts canonically
+  - id: analysis.storage
+    status: partial
+    remaining:
+    - unify lifetime region dependencies with storage-domain identities
+    - complete address-stability/relocation/invalidation analysis
+    - complete generation/epoch analysis beyond Arena-specific cases
+    - integrate concurrent reclamation protection without a universal runtime protocol
+    - share location/storage identity with concurrency analysis
+  - id: semantic-ir.storage
+    status: planned
+    remaining:
+    - represent canonical stable storage facts
+    - represent path-dependent epoch/object/pin/protection state
+    - represent domain/object/backing/relocation/protection operations
+    - verify contradictory storage facts before lowering
+  - id: lowering.storage
+    status: planned
+    remaining:
+    - lower storage epochs and invalidation where runtime checks are required
+    - preserve memory spaces, mapping, volatile and fixed-address contracts
+    - preserve destruction before reclamation
+    - eliminate metadata/checks only after proof
+  - id: platform.storage
+    status: partial
+    remaining:
+    - complete target-defined memory-space contracts
+    - complete mapping/remap storage-domain integration
+    - complete foreign-storage and fixed-address alias validation
+    - integrate DMA/coherence/storage accessibility contracts
+  - id: tooling.storage
+    status: planned
+    remaining:
+    - expose canonical storage facts in diagnostics/LSP
+    - remove legacy storage-category terminology from user-facing tooling
+    - provide invalidation/reclamation provenance and mentor diagnostics
+    - ensure compiler/LSP/sec analyse parity
+  - id: frontend.unsafe
+    status: partial
+    remaining:
+    - complete both unsafe context forms across parser/AST/Sema/formatter
+    - complete unsafe fn/method and unsafe extern callable safety checking
+    - centralize unsafe operation classification
+    - preserve caller obligations and safe-wrapper boundaries
+  - id: analysis.unsafe
+    status: partial
+    remaining:
+    - build trust-provenance graph
+    - propagate unsafe callable compatibility through interfaces/function values/generics/dynamic dispatch
+    - integrate canonical effects without suppressing them
+    - reject compiler-known false caller obligations even inside unsafe
+  - id: semantic-ir.unsafe
+    status: planned
+    remaining:
+    - represent unsafe operation identity, accepted obligations, trust provenance and source location
+    - retain target/foreign facts and safe-wrapper boundary where needed
+    - keep unsafe status distinct from effect summaries
+    - verify contradictory trusted facts
+  - id: lowering.unsafe
+    status: partial
+    remaining:
+    - lower raw/FFI/assembly/hardware operations using canonical target semantics
+    - avoid runtime unsafe flags or general runtime
+    - avoid backend assumptions stronger than source proof/trust
+    - preserve volatile/address-space/ABI/clobber contracts
+  - id: platform.unsafe
+    status: partial
+    remaining:
+    - complete target-knowledge/raw-address provenance
+    - complete mapping/hardware/ISR unsafe integration
+    - complete foreign ownership/effect/callback contracts
+    - complete inline-assembly effect trust integration
+  - id: tooling.unsafe
+    status: partial
+    remaining:
+    - complete unsafe-aware formatter/LSP
+    - show caller obligations/trust provenance
+    - provide wrap/remove unsafe code actions safely
+    - produce mentor diagnostics distinguishing missing context from proven invalidity
+    - provide optional whole-program trust reports
   - id: frontend.references
     area: frontend-reference-provenance-lifetime
     status: partial
@@ -10345,3 +10651,287 @@ integrations:
       - known-null diagnostic explains that unsafe does not legalize null dereference
       - formatter preserves RawPtr[T] and member spellings
       - compiler and LSP agree on raw-pointer validity diagnostics
+
+  - id: frontend.reference-model
+    area: reference-validity-and-category-model
+    status: partial
+    repository_baseline: 814a584
+    remaining:
+    - map every source-level ref/ref mut/slice creation and derivation to canonical storage/provenance/reference facts
+    - complete safe-reference equality semantics using live storage identity plus referenced location
+    - complete address-space and representation-validity checks
+    - complete raw-to-safe conversion validation using raw/unsafe proof obligations
+    - remove root-symbol/address approximations where canonical storage identities are available
+    required_tests:
+    - ref non-nullness
+    - subreference provenance/bounds narrowing
+    - safe-reference equality across reused address identities
+    - raw-to-safe known-invalid rejection
+    - address-space mismatch rejection
+  - id: analysis.reference-model
+    area: reference-validity-epoch-relocation-analysis
+    status: partial
+    repository_baseline: 814a584
+    remaining:
+    - integrate canonical storage/invalidation-domain identities
+    - complete temporal/spatial/provenance/type/borrow/relocation/address-space validity as separate analysis facts
+    - complete generation/epoch analysis across allocation, Arena, collection, slot, mapping and owner-control domains
+    - implement checked generation increment and exhaustion/retirement proof
+    - integrate concurrency reclamation protection without treating generation checks as synchronization
+    - integrate task/thread/process/ISR transfer constraints
+    required_tests:
+    - Arena reset invalidation
+    - collection backing replacement invalidation
+    - slot reuse invalidation
+    - same-address/new-identity stale rejection
+    - concurrent multiword epoch protocol rejection
+    - static proof removes runtime validation
+  - id: semantic-ir.reference-model
+    area: semantic-ir-reference-validity
+    status: planned
+    repository_baseline: 814a584
+    remaining:
+    - represent direct ref, stable handle, weak handle and RawPtr distinctly
+    - represent source storage/invalidation-domain identity, bounds, authority, borrow live range and epoch dependency
+    - represent handle resolution, invalidation, relocation, pinning and raw conversion operations
+    - retain stale-reference versus stale-handle failure behavior
+    - verify contradictory reference facts before lowering
+    required_tests:
+    - direct ref versus handle distinction
+    - epoch dependency preserved
+    - invalidation visible to verifier
+    - stale ordinary ref failure category preserved
+    - stale handle remains fallible
+  - id: lowering.reference-model
+    area: profile-selected-reference-lowering
+    status: partial
+    repository_baseline: 814a584
+    remaining:
+    - lower proven direct refs to address-only where valid
+    - lower dynamic epoch/generation checks where required
+    - lower stable/weak handle resolution with domain/slot/generation identity
+    - preserve address-space/capability semantics
+    - preserve defined panic/trap for dynamically detected stale ordinary refs
+    - avoid backend nonnull/noalias/dereferenceable/lifetime assumptions stronger than Sec proof
+    - omit unused handle/generation runtime support
+    required_tests:
+    - address-only optimized ref
+    - 32-bit target with 64-bit logical epoch
+    - compact slot generation with retirement
+    - no global generation manager when unused
+    - stale handle not lowered to trap/UB
+  - id: platform.reference-model
+    area: reference-profile-address-space-ffi-isr
+    status: partial
+    repository_baseline: 814a584
+    remaining:
+    - resolve target/profile reference representations and epoch widths through CompilationPlan
+    - integrate mapped/fixed/MMIO/address-space validity
+    - integrate FFI retention and pinning requirements
+    - integrate target capability/tagged-pointer mechanisms where present
+    - enforce ISR/concurrency protocols for dynamic validation and shared invalidation
+    required_tests:
+    - fixed MMIO reference without unnecessary generation
+    - retained foreign pointer requires pin/lifetime contract
+    - capability/address-space mismatch rejected
+    - ISR generation/handle path obeys noPanic/noAlloc/noBlock policy
+  - id: tooling.reference-model
+    area: reference-diagnostics-lsp-analysis
+    status: planned
+    repository_baseline: 814a584
+    remaining:
+    - show reference kind/origin/bounds/storage identity/epoch dependency and invalidation source in LSP
+    - show selected runtime representation separately from source guarantee
+    - provide cause-chain mentor diagnostics from reference creation to invalidating event to invalid use
+    - show compact/default epoch policy where useful
+    - ensure compiler/LSP/sec analyse parity and incremental invalidation
+    required_tests:
+    - stale-reference diagnostic traces invalidating event
+    - handle diagnostic distinguishes fallible stale resolution
+    - LSP hover shows source guarantee versus representation
+    - compiler/LSP agree on address-space/provenance failures
+
+  - id: frontend.arena
+    area: arena-builtin-members-ownership-lifecycle
+    status: partial
+    repository_baseline: 814a584
+    implemented:
+    - Arena semantic builtin exists
+    - AllocationError semantic builtin exists
+    - Arena.FromBuffer, WithCapacity, Growable, New, Alloc, Reset and Release are recognized as compiler-known members
+    - lowercase arena is treated as ordinary identifier
+    - LSP completion is sourced from compiler-known member registry for represented Arena members
+    - initial released-owner use rejection exists
+    remaining:
+    - complete move-only Arena ownership and composition across every source form
+    - represent Release as compiler-known terminal lifecycle consumption without generalizing ordinary consuming methods
+    - complete borrowed backing exclusive-lifetime validation
+    - complete constructor/provider policy validation
+    - complete New/Alloc layout/default/trivial-destruction validation
+    - complete atomic allocation state on success/failure
+    - complete Reset/Release dependency validation through canonical memory identities
+    - complete nested Arena/source diagnostics
+  - id: analysis.arena
+    area: arena-domain-epoch-dependency-capacity-effects
+    status: partial
+    repository_baseline: 814a584
+    implemented:
+    - initial generation metadata and stale-generation rejection
+    - initial branch/loop generation merging
+    - active allocation-context representation
+    - initial storage-origin metadata
+    - compiler-owned task-spawn/thread-start call graph relationships
+    - derived task/thread entry roots
+    - source-ordered direct Arena effect sites
+    - synchronous MayAllocate propagation with shortest cause path
+    remaining:
+    - replace legacy storage-origin/root approximations with canonical ArenaDomain/storage identities
+    - complete path-aware Arena owner/state/epoch merging
+    - complete Reset/Release blockers through references, closures, results, defer, nested Arenas and FFI retention
+    - complete task/thread/cancellation/structured-concurrency dependency propagation
+    - complete allocation-context propagation
+    - complete ordered Arena effects beyond summary MayAllocate
+    - implement byte-accurate alignment-aware Exact/Bounded/Unknown/Unbounded demand analysis
+    - implement recursion/indirect-call/separate-compilation Arena demand summaries
+    - implement safe epoch exhaustion/rekey/retirement handling
+  - id: semantic-ir.arena
+    area: arena-semantic-ir
+    status: planned
+    repository_baseline: 814a584
+    remaining:
+    - represent ArenaCreateBorrowed, ArenaCreateOwnedFixed, ArenaCreateGrowable, ArenaNew, ArenaAlloc, ArenaReset, ArenaRelease
+      and ArenaDestroy
+    - represent ArenaDomain, Arena state version and validity epoch distinctly
+    - represent atomic allocation success/failure with one continuing Arena state
+    - represent backing/growth/provider policy
+    - represent allocation context and task/thread dependency transfer
+    - represent capacity proof and failure-path facts
+    - verify no dependency across Reset/Release and no duplicate owner state
+  - id: lowering.arena
+    area: arena-mlir-physical-planning
+    status: planned
+    repository_baseline: 814a584
+    remaining:
+    - add high-level Sec MLIR Arena types/operations or equivalent
+    - integrate ArenaDomain-aware MLIR effects/resources
+    - lower borrowed fixed Arenas
+    - lower owned fixed Arenas through target provider
+    - lower growable Arenas using non-relocating stable segments/reservation
+    - preserve Result/failure atomicity and provider effects
+    - lower/erase epoch metadata only after proof
+    - support scalarized/automatic/static Arena elimination
+    - prevent CSE/LICM/DCE transformations that change allocation or lifecycle semantics
+  - id: platform.arena
+    area: arena-target-profiles-providers-ffi-isr
+    status: partial
+    repository_baseline: 814a584
+    remaining:
+    - define/resolve owned backing providers through CompilationPlan
+    - validate target address spaces/alignment/provider release contracts
+    - support hosted, embedded fixed and bare-metal bounded policies
+    - support strict bounded-demand/no-runtime configurations
+    - integrate FFI retention/pinning of Arena-backed storage
+    - integrate ISR policy consistently with noPanic/noAlloc/noBlock and bounded-work requirements
+    - avoid hidden general runtime/provider fallbacks
+  - id: tooling.arena
+    area: arena-diagnostics-lsp-reports
+    status: partial
+    repository_baseline: 814a584
+    implemented:
+    - LSP completion for represented Arena compiler-known members
+    - LSP hover for direct Arena effects and propagated allocation cause paths
+    remaining:
+    - show Arena backing/provider/capacity/domain/epoch/profile
+    - show Reset/Release blockers with cause chains
+    - show task/thread/foreign dependencies
+    - show allocation-context origin
+    - show byte-accurate capacity-demand reports
+    - show physical planning/proof-based check elimination in analysis mode
+    - provide mentor diagnostics for lifecycle, impossible allocation, alignment, provider and cleanup-order failures
+    - ensure compiler/LSP/sec analyse parity and incremental invalidation
+
+  - id: tooling.language-testing
+    area: language-testing-and-tooling
+    status: planned
+    repository_baseline: "814a584"
+    summary: >-
+      Implements the canonical Sec 0.1 source testing model: *_test.sec source
+      selection, top-level test declarations, compiler-known testing operations,
+      same-module white-box tests, project tests/ integration modules,
+      TestCompilationPlan, static harness generation, subtests, structured test
+      outcomes, sec test execution, execution-provider integration, and compiler-
+      owned LSP/editor test discovery. Benchmarking and fuzzing are future design
+      areas and are not part of this integration.
+    rules:
+      - rules/tooling/testing.md
+      - rules/foundations/grammar.md
+      - rules/projects/modules.md
+      - rules/projects/projects.txt
+      - rules/library/core-library.md
+      - rules/errors/errorhandling.md
+      - rules/errors/panic.md
+      - rules/control-flow/defer.md
+      - rules/memory/destruction.md
+      - rules/declarations/lambda-functions.md
+      - rules/compiler/compiler_pipeline.txt
+      - rules/compiler/semantic_ir.txt
+      - rules/tooling/diagnostics.txt
+      - rules/tooling/formatter.md
+      - rules/tooling/lsp.md
+    implemented: []
+    remaining:
+      - parse and retain canonical top-level `test "name" { ... }` declarations
+        only in *_test.sec source and add integrated grammar/formatter support
+      - add stable TestIdentity and source metadata independent of generated
+        function names or linker symbols
+      - add TestCompilationPlan as an explicit compilation mode and keep
+        production validity independent from test-only declarations
+      - select same-directory *_test.sec only in test compilation and add the
+        project-root tests/ test-only source universe
+      - implement test-only dependency direction so Test may depend on Production
+        and Test while Production may not depend on Test
+      - add the compiler-known test-context testing namespace with Pass, Fail,
+        Skip, Log, Expect, Require, ExpectEqual, RequireEqual, Run, and TestResult
+      - implement test-boundary `try` propagation so unexpected Err terminates the
+        current invocation as a structured test failure after ordinary cleanup
+      - implement monotonic failure state and controlled cleanup for Pass, Fail,
+        Skip, Require failures, bare return, and unexpected Err
+      - implement synchronous hierarchical subtests, runtime sibling-name
+        validation, child result attribution, and child-failure propagation to
+        the parent
+      - generate a static selected-test harness without runtime reflection,
+        constructor registration, or a mandatory heap
+      - implement canonical `sec test` project discovery, scoped selection,
+        deterministic filtering, fail-fast scheduling policy, result aggregation,
+        structured results, and exit status
+      - keep dependency module tests out of a scoped test run unless those tests
+        are explicitly selected
+      - support selection before final linking so constrained target artifacts may
+        include only the selected test set and required code
+      - add hosted native TestExecutionProvider support and distinguish
+        CompilationFailed, ExecutionUnavailable, ExecutionFailed, and completed
+        test outcomes
+      - define execution-provider interfaces sufficient for later simulator,
+        emulator, debug-probe, hardware-farm, reset, fault, and timeout reporting
+        without making transport a source-language rule
+      - add compiler-workspace/LSP test discovery and test compilation views with
+        Run Test and Debug Test metadata for editor clients
+      - integrate the VS Code extension with compiler-owned test metadata and the
+        editor-native test UI without adding an independent Sec test parser
+      - add required parser, Sema, cleanup, subtest, discovery, CLI, LSP, hosted,
+        and provider regression tests from rules/tooling/testing.md
+      - synchronize rules/projects/modules.md and rules/projects/projects.txt to
+        remove the obsolete source-visible std/... standard-library import prefix
+        and preserve direct logical imports such as `import "io"` and
+        `import "net/http"`
+      - update language-rulebook-status.md and rules/README.md for the new written
+        source-level testing rulebook while keeping compiler_testing.md as a
+        separate planned compiler-verification document
+    deferred:
+      - benchmark source syntax and sec benchmark semantics
+      - fuzz source syntax and sec fuzz semantics
+      - executable documentation examples
+      - general system/end-to-end process orchestration
+      - universal portable test-resource embedding
+      - explicit source-level per-test timeout syntax
+      - testing.Parallel and runner-controlled source-visible parallel scheduling

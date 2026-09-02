@@ -7,388 +7,101 @@
     <link rel="stylesheet" href="manual.css">
 </head>
 <body>
+<header class="site-header">
+    <div class="header-inner">
+        <a href="index.html" class="site-logo">
+            <img src="logo.svg" alt="Sec" />
+            <span class="site-title">Sec</span>
+        </a>
+                <nav class="header-nav">
+            <a href="01-introduction.html">Language</a>
+            <a href="stdlib.html">Stdlib</a>
+            <a href="syntax-reference.html">Syntax</a>
+            <a href="best-practices.html">Best Practices</a>
+            <a href="https://github.com/YoePro/sec">GitHub</a>
+        </nav>
+    </div>
+</header>
 <div class="layout">
     <nav class="sidebar" aria-label="Section navigation">
         <h2 class="sidebar-title">Sec Manual</h2>
-
         <div class="sidebar-section">Interfaces</div>
-        <a href="#interfaces">Overview</a>
-        <a href="#declaring-an-interface">Declaring an Interface</a>
-        <a href="#interface-members">Interface Members</a>
-        <a href="#methods">Methods</a>
-        <a href="#properties">Properties</a>
-        <a href="#variables-and-constants">Variables and Constants</a>
-        <a href="#associated-declarations">Associated Declarations</a>
-        <a href="#implementing-an-interface">Implementing an Interface</a>
-        <a href="#multiple-interfaces">Multiple Interfaces</a>
-        <a href="#implementation-validation">Implementation Validation</a>
-        <a href="#generic-interfaces">Generic Interfaces</a>
-        <a href="#interface-constraints">Interface Constraints</a>
-        <a href="#interface-inheritance">Interface Inheritance</a>
-        <a href="#interface-values">Interface Values</a>
-        <a href="#ownership-and-interfaces">Ownership and Interfaces</a>
-        <a href="#visibility">Visibility</a>
-        <a href="#restrictions">Restrictions</a>
-        <a href="#complete-example">Complete Example</a>
-
-        <div class="sidebar-section">Pages</div>
-        <a href="index.html">Index</a>
+        <a href="#18-interfaces">Overview</a>
+                <div class="sidebar-section">Language</div>
         <a href="01-introduction.html">Introduction</a>
         <a href="02-basic-syntax.html">Basic Syntax</a>
         <a href="03-types.html">Types</a>
-        <a href="04-named-types-contracts-and-units.html">Named Types, Contracts and Units</a>
-        <a href="05-structs-properties-and-impl.html">Structs, Properties and Impl</a>
+        <a href="04-named-types-contracts-and-units.html">Named Types, Contracts &amp; Units</a>
+        <a href="05-structs-properties-and-impl.html">Structs, Properties &amp; Impl</a>
         <a href="06-functions.html">Functions</a>
+        <a href="07-if.html">If Statements</a>
+        <a href="08-switch.html">Switch Statements</a>
+        <a href="09-match.html">Match Expressions</a>
+        <a href="10-enums.html">Enums</a>
+        <a href="11-unions.html">Unions</a>
+        <a href="12-registers.html">Registers</a>
+        <a href="13-units.html">Units</a>
+        <a href="14-generics.html">Generics</a>
+        <a href="15-structs.html">Structs</a>
+        <a href="16-impl.html">Impl Blocks</a>
         <a href="17-properties.html">Properties</a>
+        <a href="18-interfaces.html" class="active">Interfaces</a>
+        <a href="19-arrays.html">Arrays</a>
+        <a href="20-slices.html">Slices</a>
+        <a href="21-indexing.html">Indexing</a>
+        <a href="22-constants.html">Constants</a>
+        <a href="23-references.html">References</a>
+        <a href="24-ownership.html">Ownership</a>
+        <a href="25-borrowing.html">Borrowing</a>
+        <a href="26-unsafe.html">Unsafe</a>
+        <a href="27-spread.html">Spread</a>
+        <a href="30-modules.html">Modules and Imports</a>
+        <a href="31-projects.html">Projects and sec.module</a>
+        <a href="32-visibility.html">Visibility</a>
+        <a href="33-result-and-option.html">Result and Option</a>
+        <a href="34-try.html">Error Propagation</a>
+        <a href="35-defer.html">Deferred Cleanup</a>
+        <a href="36-attributes.html">Attributes</a>
+        <a href="37-build-directives.html">Build Directives</a>
+        <a href="38-ffi.html">Foreign Function Interfaces</a>
+        <a href="39-tasks.html">Tasks</a>
+        <a href="40-spawn.html">Spawning Work</a>
+        <a href="41-await.html">Awaiting Tasks</a>
+        <a href="42-channels.html">Channels and Coordination</a>
+        <a href="43-testing.html">Tests and Benchmarks</a>
+        <a href="44-formatting.html">Formatting</a>
+        <a href="45-diagnostics.html">Understanding Compiler Diagnostics</a>
+        <div class="sidebar-section">Reference</div>
+        <a href="stdlib.html">Standard Library</a>
+        <a href="syntax-reference.html">Syntax Reference</a>
+        <a href="best-practices.html">Best Practices</a>
+        <div class="sidebar-section">Status</div>
+        <a href="test-status.html">Implementation Status</a>
+        <div class="sidebar-section">Community</div>
+        <a href="bug-report.html">Report a Bug</a>
+        <a href="join.html">Join</a>
     </nav>
 
     <main class="content">
         <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Interfaces</div>
 
-        <h1 id="interfaces">Interfaces</h1>
+        <h1 id="18-interfaces">Interfaces</h1>
 
-        <p>
-            An interface defines a named contract that types may implement. It describes required members
-            and associated declarations without specifying how those members are implemented.
-        </p>
+        <p>An interface defines a contract of methods and properties that a type must implement.</p>
 
-        <p>
-            Interfaces enable polymorphism through explicit conformance. A type declares which interfaces it
-            implements, and the compiler validates that all required members are present with compatible
-            signatures.
-        </p>
+        <p>This chapter is a placeholder. Content will be added.</p>
 
-        <div class="section" id="declaring-an-interface">
-            <h2>Declaring an Interface</h2>
-
-            <p>An interface declaration uses the <code>interface</code> keyword:</p>
-
-            <pre><code>interface Vehicle {
-    fn Start() void
-    fn Stop() void
-}</code></pre>
-
-            <p>
-                An interface declaration creates a named type. The interface name follows normal naming rules
-                and uses uppercase, consistent with other nominal types.
-            </p>
-
-            <div class="rule">
-                <strong>Rule:</strong> Interfaces are declared with <code>interface Name { ... }</code>.
-                The old syntax <code>type Name interface { ... }</code> is not part of the current language.
-            </div>
-        </div>
-
-        <div class="section" id="interface-members">
-            <h2>Interface Members</h2>
-
-            <p>An interface may contain the following member types:</p>
-
-            <ul>
-                <li><strong>Methods</strong> — function signatures that implementing types must provide.</li>
-                <li><strong>Properties</strong> — property declarations with required accessors (get, set).</li>
-                <li><strong>Variables</strong> — mutable or immutable member declarations.</li>
-                <li><strong>Constants</strong> — named constant declarations.</li>
-                <li><strong>Enums</strong> — nested enum declarations.</li>
-                <li><strong>Named types</strong> — nested type aliases or new type declarations.</li>
-                <li><strong>Nested interfaces</strong> — interfaces declared inside other interfaces.</li>
-            </ul>
-
-            <p>Interface members define requirements unless the language explicitly permits an implementation body.</p>
-        </div>
-
-        <div class="section" id="methods">
-            <h2>Methods</h2>
-
-            <p>A required method has no body. It declares the signature that implementing types must match:</p>
-
-            <pre><code>interface Reader {
-    fn Read(buffer: ref mut [byte]) Result[int, IOError]
-}</code></pre>
-
-            <p>The compiler validates:</p>
-
-            <ul>
-                <li>member name</li>
-                <li>parameter count and order</li>
-                <li>parameter types and ownership</li>
-                <li>parameter mutability</li>
-                <li>receiver type and mutability</li>
-                <li>return type</li>
-                <li>generic parameters</li>
-                <li>unsafe requirements</li>
-                <li>error type compatibility</li>
-            </ul>
-
-            <p>A method with a different signature does not satisfy the interface.</p>
-        </div>
-
-        <div class="section" id="properties">
-            <h2>Properties</h2>
-
-            <p>An interface may require properties with specific accessors:</p>
-
-            <pre><code>interface Named {
-    property Name: string {
-        get
-    }
-}
-
-interface MutableNamed {
-    property Name: string {
-        get
-        set
-    }
-}</code></pre>
-
-            <p>A property requiring only <code>get</code> may be implemented by a property that provides both <code>get</code> and <code>set</code>. A property requiring <code>set</code> must provide a compatible setter. Property types must match exactly.</p>
-        </div>
-
-        <div class="section" id="variables-and-constants">
-            <h2>Variables and Constants</h2>
-
-            <p>An interface may require variables:</p>
-
-            <pre><code>interface Positioned {
-    mut Position: Point
-}</code></pre>
-
-            <p>A required variable declares the member name, type, and mutability expected from the implementing type. A mutable interface variable cannot be satisfied by an immutable member.</p>
-
-            <p>An interface may require constants:</p>
-
-            <pre><code>interface Limited {
-    const MaximumSize: int
-}</code></pre>
-
-            <p>A required constant must be available through the implementing type with a matching type. Its value may differ between implementing types unless the interface specifies a required value.</p>
-        </div>
-
-        <div class="section" id="associated-declarations">
-            <h2>Associated Declarations</h2>
-
-            <p>Enums and named types declared inside an interface belong to the interface namespace:</p>
-
-            <pre><code>interface Connection {
-    enum State {
-        Closed
-        Connecting
-        Open
-    }
-
-    type Identifier uint64
-}</code></pre>
-
-            <p>They are accessed through the interface name:</p>
-
-            <pre><code>let state: Connection.State
-let id: Connection.Identifier</code></pre>
-
-            <p>Associated declarations are defined by the interface itself and are not redeclared by each implementing type unless explicitly required.</p>
-        </div>
-
-        <div class="section" id="implementing-an-interface">
-            <h2>Implementing an Interface</h2>
-
-            <p>A type declares implemented interfaces in its type declaration using the <code>implements</code> keyword:</p>
-
-            <pre><code>type Car struct implements Vehicle {
-    engine: Engine
-}</code></pre>
-
-            <p>The implementation is explicit. Sec does not use structural or implicit interface implementation.</p>
-
-            <div class="rule">
-                <strong>Rule:</strong> A type implements only the interfaces explicitly listed in its declaration.
-                There is no duck typing or structural conformance.
-            </div>
-
-            <p>Required members are implemented in the type's ordinary <code>impl</code> block:</p>
-
-            <pre><code>impl Car {
-    fn Start() void {
-        // ...
-    }
-
-    fn Stop() void {
-        // ...
-    }
-}</code></pre>
-        </div>
-
-        <div class="section" id="multiple-interfaces">
-            <h2>Multiple Interfaces</h2>
-
-            <p>A type may implement multiple interfaces:</p>
-
-            <pre><code>type Car struct implements Vehicle, Serializable, Inspectable {
-    engine: Engine
-}</code></pre>
-
-            <p>Duplicate interface names are invalid.</p>
-        </div>
-
-        <div class="section" id="implementation-validation">
-            <h2>Implementation Validation</h2>
-
-            <p>The compiler validates that:</p>
-
-            <ul>
-                <li>every named interface exists</li>
-                <li>every implemented target is an interface</li>
-                <li>implemented interfaces are not duplicated</li>
-                <li>all required members are present</li>
-                <li>all member signatures are compatible</li>
-                <li>required variables and constants exist</li>
-                <li>property accessors are compatible</li>
-                <li>inherited interface requirements are satisfied</li>
-                <li>generic arguments are valid</li>
-                <li>visibility is sufficient</li>
-                <li>no inheritance cycle exists</li>
-            </ul>
-
-            <p>Conformance is checked after the type and its ordinary impl members have been collected. Member declaration order must not affect validation.</p>
-        </div>
-
-        <div class="section" id="generic-interfaces">
-            <h2>Generic Interfaces</h2>
-
-            <p>Interfaces may have generic parameters:</p>
-
-            <pre><code>interface Collection[T] {
-    property Length: uint {
-        get
-    }
-
-    fn Get(index: uint) ref T
-}</code></pre>
-
-            <p>A type specifies the complete interface type it implements:</p>
-
-            <pre><code>type Names struct implements Collection[string] {
-    values: []string
-}</code></pre>
-        </div>
-
-        <div class="section" id="interface-constraints">
-            <h2>Interface Constraints</h2>
-
-            <p>Interfaces may be used as generic constraints:</p>
-
-            <pre><code>fn Print[T implements Printable](value: ref T) void {
-    value.Print()
-}</code></pre>
-
-            <p>A type satisfies the constraint only when it explicitly declares the interface.</p>
-        </div>
-
-        <div class="section" id="interface-inheritance">
-            <h2>Interface Inheritance</h2>
-
-            <p>An interface may extend one or more interfaces:</p>
-
-            <pre><code>interface ReadWriter implements Reader, Writer {
-}</code></pre>
-
-            <p>An implementing type must satisfy all inherited members. Cycles in interface inheritance are invalid. Duplicate inherited members are allowed only when their declarations are compatible.</p>
-        </div>
-
-        <div class="section" id="interface-values">
-            <h2>Interface Values</h2>
-
-            <p>An interface may be used as a value type:</p>
-
-            <pre><code>fn StartVehicle(vehicle: ref Vehicle) void {
-    vehicle.Start()
-}</code></pre>
-
-            <p>The interface value preserves the concrete target, the implemented interface, ownership or reference mode, and dynamic dispatch information. Using an interface must not erase ownership, mutability, or lifetime rules.</p>
-        </div>
-
-        <div class="section" id="ownership-and-interfaces">
-            <h2>Ownership and Interfaces</h2>
-
-            <p>Declaring an interface does not define ownership. Ownership is determined by how the interface is used:</p>
-
-            <pre><code>fn Inspect(vehicle: ref Vehicle) void       // shared borrowing
-fn Update(vehicle: ref mut Vehicle) void    // mutable borrowing
-fn Store(vehicle: Vehicle) void             // ownership</code></pre>
-
-            <p>An owning erased interface value is move-only unless independent copy semantics are known.</p>
-        </div>
-
-        <div class="section" id="visibility">
-            <h2>Visibility</h2>
-
-            <p>An interface must be visible wherever it is named in <code>implements</code>. Members used to satisfy a visible interface must have sufficient visibility for calls through that interface. Private helper members do not affect interface conformance.</p>
-        </div>
-
-        <div class="section" id="restrictions">
-            <h2>Restrictions</h2>
-
-            <p>An interface must not:</p>
-
-            <ul>
-                <li>contain ordinary executable statements</li>
-                <li>contain unnamed declarations</li>
-                <li>implicitly apply to a type</li>
-                <li>add stored fields to an implementing type</li>
-                <li>override ownership rules</li>
-                <li>bypass visibility rules</li>
-                <li>bypass unsafe requirements</li>
-            </ul>
-
-            <p>Interface declarations are compile-time constructs. Interface values may require runtime representation for dynamic dispatch, but the representation is chosen by the compiler and must not change interface semantics.</p>
-        </div>
-
-        <div class="section" id="complete-example">
-            <h2>Complete Example</h2>
-
-            <pre><code>interface Vehicle {
-    fn Start() void
-    fn Stop() void
-
-    property IsRunning: bool {
-        get
-    }
-}
-
-type Car struct implements Vehicle {
-    engine: Engine
-    running: bool
-}
-
-impl Car {
-    fn Start() void {
-        engine.Start()
-        running = true
-    }
-
-    fn Stop() void {
-        engine.Stop()
-        running = false
-    }
-
-    property IsRunning: bool {
-        get {
-            return running
-        }
-    }
-}
-
-fn Drive(vehicle: ref Vehicle) void {
-    vehicle.Start()
-    // ...
-    vehicle.Stop()
-}</code></pre>
-        </div>
-
-        <nav class="page-navigation" aria-label="Page navigation">
-            <a href="17-properties.html">Previous: Properties</a>
-            <a href="index.html">Manual Index</a>
+        <div class="page-navigation">
+                <a href="17-properties.html">Previous: Properties</a>
             <a href="19-arrays.html">Next: Arrays</a>
-        </nav>
+        </div>
     </main>
 </div>
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <p>&copy; 2026 Sec Language</p>
+        <a href="https://github.com/YoePro/sec">GitHub</a>
+    </div>
+</footer>
 </body>
 </html>

@@ -96,7 +96,7 @@ semantic_ir.txt
 storage.md
 layout.md
 ownership.md
-borrowing.txt
+borrowing.md
 reference_model.md
 destruction.txt
 effect_analysis.md

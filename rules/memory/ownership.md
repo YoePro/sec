@@ -486,6 +486,18 @@ availability when permitted.
 This rule does not remove consuming callable semantics for closure/function
 values. It applies to ordinary instance-method receivers.
 
+A semantic builtin may define a compiler-known terminal lifecycle operation
+when a canonical rulebook defines the operation, the compiler owns its
+ownership transition, the operation consumes the source owner without
+producing a continuing whole-`self` value, and automatic destruction can
+recognize that the owner has already been consumed. This is not a general
+source-language facility for user-defined consuming methods.
+
+For Sec 0.1, `Arena.Release()` is such an operation. After successful Release,
+the Arena owner Place is unavailable and later automatic destruction must not
+release the same ArenaDomain again. Exact Arena lifecycle semantics remain
+owned by `rules/memory/arena.md`.
+
 `free` is the lifecycle operation whose purpose is to finalize the complete
 instance.
 

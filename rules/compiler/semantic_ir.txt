@@ -1632,3 +1632,17 @@ proof is insufficient. `ConditionallyAvailable` must not be reconstructed as
 Lowering may use SSA state, control-flow splitting, or local drop flags without
 changing public type or ABI layout. A static-ownership target policy must be
 able to reject forbidden dynamic bookkeeping before lowering.
+
+## Source-testing amendment
+
+Semantic IR retains the resolved compilation mode, stable test declaration and
+invocation identities, test-only source provenance, selected harness roots,
+and the controlled test-boundary behavior required before lowering. Where
+subtest or structured-result operations remain above the physical provider
+boundary, their parent/child identity, outcome transition, cleanup edge, and
+reporting semantics remain explicit and verifiable.
+
+No IR or backend stage may identify tests by parsing generated function names.
+Production IR must not retain test-only declarations or compiler-known testing
+support unless selected by a `TestCompilationPlan`. The source authority is
+`rules/tooling/testing.md`.

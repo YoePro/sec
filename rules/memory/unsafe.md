@@ -1,237 +1,172 @@
 # Unsafe
 
-## Status
+- Status: Normative
+- Created: 2026-09-02
+- Last updated: 2026-09-02
+- Document revision: 2.0
+- Sec language version: 0.1
+- Canonical path: `rules/memory/unsafe.md`
+- Replaces: previous revision of `rules/memory/unsafe.md`
+- Repository baseline reviewed: `814a584` (latest publicly verifiable `main`; current `main` contents reviewed 2026-09-02)
 
-This document is the canonical unsafe rulebook for Sec 0.1.
+---
 
-It defines:
+## § 1 Purpose and authority
 
-- what `unsafe` means;
-- which operations require an unsafe context;
-- single-operation and block syntax;
-- `unsafe fn` and `unsafe extern`;
-- caller proof obligations;
-- safe wrappers around unsafe implementation details;
-- raw-pointer rules;
-- unchecked construction and representation conversion;
-- FFI and inline assembly trust boundaries;
-- addressed storage and target knowledge;
-- interaction with ownership, borrowing, arenas, effects, cleanup, generics,
-  interfaces, and function values;
-- trust provenance;
-- diagnostics, formatter, LSP, tests, and implementation requirements.
+§ 1(1) This rulebook defines Sec 0.1 unsafe contexts, unsafe functions, unsafe foreign calls, caller proof obligations, trusted declarations, safe wrappers, and trust provenance.
 
-Sec 0.1 does not define:
+§ 1(2) Unsafe applies to operations and caller/trust contracts.
+
+§ 1(3) Sec 0.1 does not define:
 
 ```text
 unsafe struct
 unsafe type
 ```
 
-Unsafe applies to operations, caller contracts, and foreign or machine-level
-trust boundaries.
+§ 1(4) A data shape containing raw pointers or foreign handles is not automatically an unsafe type.
 
-It does not classify an entire data shape as inherently unsafe.
+§ 1(5) `raw_pointers.md` owns `RawPtr[T]` semantics and canonical raw-pointer operations.
+
+§ 1(6) Ownership, borrowing, lifetime, references, storage, layout, allocation, destruction, transferability, panic, effects, FFI, hardware, ISR, and target rules remain active inside unsafe code.
+
+§ 1(7) Inline assembly has its own canonical rulebook; this book defines its unsafe/trust boundary relationship.
+
+§ 1(8) Unsafe introduces no mandatory runtime mechanism.
 
 ---
 
-# Core principle
+## § 2 Core principle
 
-`unsafe` disables no compiler analysis.
+§ 2(1) `unsafe` disables no compiler analysis.
 
-It permits a compiler-known operation whose complete safety obligations cannot
-be proven automatically.
+§ 2(2) `unsafe` permits a compiler-known operation whose complete safety obligations cannot be proven automatically.
 
-The programmer accepts only the specific proof obligations attached to that
-operation.
+§ 2(3) The programmer accepts only the specific proof obligations attached to that operation or unsafe callable contract.
 
-Unsafe does not mean:
+§ 2(4) Unsafe does not mean:
 
 ```text
-stop type checking;
-stop ownership checking;
-stop borrow checking;
-stop effect analysis;
-stop contract checking;
-ignore moves or invalidation;
-ignore cleanup rules;
-ignore target rules;
-permit arbitrary backend undefined behavior.
+stop type checking
+stop ownership checking
+stop borrow checking
+stop lifetime analysis
+stop effect analysis
+stop contract checking
+ignore moves or invalidation
+ignore cleanup rules
+ignore target rules
+permit arbitrary backend undefined behavior
 ```
 
-The compiler continues every analysis that remains applicable.
+§ 2(5) The compiler continues every analysis that remains applicable.
+
+§ 2(6) A compiler-proven false safety obligation is rejected even inside unsafe.
 
 ---
 
-# Unsafe terminology
+## § 3 Terminology
 
-Sec distinguishes four concepts.
+### § 3.1 Unsafe operation
 
-## Unsafe operation
-
-An operation whose safety depends on conditions the compiler cannot fully
-prove.
+§ 3.1(1) An unsafe operation is one whose safety depends on conditions the compiler cannot fully prove at the ordinary safe call site.
 
 Examples include:
 
 ```text
-raw-pointer dereference;
-raw-pointer write;
-raw-pointer arithmetic;
-constructing a reference from a raw pointer;
-constructing a slice from raw parts;
-calling an unsafe function;
-calling an unsafe foreign declaration;
-inline assembly;
-unchecked representation construction;
-unchecked union or enum tag construction.
+raw-pointer dereference
+raw-pointer write
+raw-pointer arithmetic
+raw-to-safe reference construction
+slice construction from raw parts
+call to unsafe fn
+call to unsafe extern
+inline assembly
+unchecked representation construction
+unchecked enum/union construction
+raw numeric address interpretation
+ownership adoption from raw/foreign storage
 ```
 
-## Unsafe context
+### § 3.2 Unsafe context
 
-A lexically explicit source context in which unsafe operations may be written.
+§ 3.2(1) An unsafe context is a lexically explicit source context in which unsafe operations may be written.
 
-An unsafe context does not make ordinary surrounding operations unchecked.
+§ 3.2(2) It does not make ordinary surrounding operations unchecked.
 
-## Unsafe function
+### § 3.3 Unsafe function
 
-A Sec function or method whose caller must satisfy additional proof obligations
-that the compiler cannot fully verify at the call site.
+§ 3.3(1) An unsafe function/method is a Sec callable whose caller must satisfy additional proof obligations that ordinary type/semantic checking does not fully establish.
 
-## Trusted declaration
+### § 3.4 Trusted declaration
 
-A declaration whose implementation or target fact lies outside ordinary Sec
-source verification.
+§ 3.4(1) A trusted declaration is one whose implementation or target fact lies outside ordinary Sec source verification.
 
 Examples include:
 
 ```text
-foreign functions;
-inline assembly contracts;
-raw numeric target addresses;
-compiler intrinsics;
-target knowledge-pack facts.
+foreign functions
+inline assembly contracts
+raw numeric target addresses
+compiler intrinsics
+target knowledge-pack facts
+platform-provided ABI/layout facts
 ```
 
 ---
 
-# Unsafe context syntax
+## § 4 Unsafe context syntax
 
-Sec supports both a single-operation form and a block form.
+§ 4(1) Sec supports both single-operation and block forms.
 
-## Single-operation form
-
-```sec
-unsafe pointer.Write(value)
-```
-
-The unsafe context applies only to the immediately following operation.
-
-The operation may be an expression statement or an expression used inside a
-larger valid grammatical context.
-
-Examples:
-
-```sec
-unsafe pointer.Write(value)
-```
+§ 4(2) Canonical single-operation expression form:
 
 ```sec
 let value := unsafe pointer.Read()
 ```
 
-```sec
-return unsafe pointer.Read()
-```
-
-## Block form
-
-```sec
-let value := unsafe {
-    pointer.Read()
-}
-```
-
-Use braces when the unsafe context contains more than one operation or requires
-multiple statements.
-
-Example:
-
-```sec
-let value := unsafe {
-    ValidateRawState(pointer)
-    pointer.Read()
-}
-```
-
-An unsafe block is an expression when its body produces a value according to
-ordinary block-expression rules.
-
----
-
-# Braces
-
-Braces are optional for one unsafe operation.
-
-Braces are required when the unsafe context contains more than one operation or
-statement.
-
-Valid:
+§ 4(3) Canonical single-operation statement form:
 
 ```sec
 unsafe pointer.Write(value)
 ```
 
-Valid:
+§ 4(4) Canonical block form:
 
 ```sec
 let value := unsafe {
-    let raw := pointer.Read()
-    Convert(raw)
+    Validate(pointer)
+    pointer.Read()
 }
 ```
 
-Invalid:
+§ 4(5) An unsafe block follows ordinary block-expression result semantics.
 
-```sec
-unsafe
-    Validate(pointer)
-    pointer.Write(value)
-```
+§ 4(6) The `unsafe` marker applies only to the syntactic operation/block it introduces.
 
-The multi-operation form must use braces.
+§ 4(7) Parent scopes do not become implicitly unsafe.
+
+§ 4(8) Nested unsafe contexts are permitted but may be diagnosed as redundant where no additional boundary clarity is gained.
 
 ---
 
-# Scope of an unsafe context
+## § 5 Empty and redundant unsafe contexts
 
-An unsafe context permits only compiler-classified unsafe operations within its
-lexical extent.
+§ 5(1) An empty unsafe block is valid syntax.
 
-It does not:
+§ 5(2) An unsafe context containing no operation requiring unsafe is valid.
 
-```text
-change variable visibility;
-extend lifetimes;
-change move semantics;
-change effect guarantees;
-change target selection;
-change error propagation;
-make nested function bodies unsafe;
-make called safe functions unsafe;
-make later statements unsafe.
-```
+§ 5(3) By default such contexts produce informational diagnostics rather than hard errors.
 
-A closure or nested function declared inside an unsafe block does not inherit an
-unsafe body merely because its declaration occurs there.
+§ 5(4) Tooling/project policy may promote redundant/empty unsafe diagnostics to warnings.
 
-Its own unsafe operations still require explicit unsafe context.
+§ 5(5) Removing a redundant unsafe marker must not change semantics.
 
 ---
 
-# `unsafe fn`
+## § 6 `unsafe fn`
 
-Sec supports unsafe functions and methods.
+§ 6(1) Sec supports unsafe functions and methods.
 
 Canonical form:
 
@@ -244,36 +179,25 @@ unsafe fn FromRawParts(
 }
 ```
 
-An unsafe function states:
-
-> Calling this function requires proof obligations that ordinary Sec typing and
-> analysis do not fully establish.
-
-Calling an unsafe function requires an unsafe context.
-
-Example:
+§ 6(2) Calling an unsafe function requires an unsafe context.
 
 ```sec
 let buffer := unsafe Buffer.FromRawParts(pointer, length)
 ```
 
-or:
+§ 6(3) Unsafe function status is part of the callable safety contract.
 
-```sec
-let buffer := unsafe {
-    Buffer.FromRawParts(pointer, length)
-}
-```
+§ 6(4) Unsafe status is not a claim about return type or error behavior.
+
+§ 6(5) Unsafe status is not equivalent to `MayPanic`, `MayAllocate`, `MayBlock`, or any other effect.
 
 ---
 
-# Unsafe function bodies
+## § 7 Unsafe function body remains explicit
 
-The body of an `unsafe fn` is not implicitly an unsafe context.
+§ 7(1) The body of an `unsafe fn` is not implicitly an unsafe context.
 
-Unsafe operations inside the function body remain explicit.
-
-Example:
+§ 7(2) Each actual unsafe operation inside it remains explicitly marked.
 
 ```sec
 unsafe fn ReadRaw(pointer: RawPtr[byte]) byte {
@@ -281,88 +205,62 @@ unsafe fn ReadRaw(pointer: RawPtr[byte]) byte {
 }
 ```
 
-This is intentionally more explicit than treating the entire body as unsafe.
+§ 7(3) This rule localizes trust and makes the exact implementation operation reviewable.
 
-It shows exactly which implementation operations depend on the caller's proof
-obligations.
+§ 7(4) An unsafe function may contain no unsafe operation when its caller obligations are required for a safe internal operation or future implementation strategy.
 
-Invalid:
-
-```sec
-unsafe fn ReadRaw(pointer: RawPtr[byte]) byte {
-    return pointer.Read()
-}
-```
-
-when `RawPtr.Read()` is classified as unsafe.
+§ 7(5) Such a function remains unsafe to call because the public contract carries proof obligations.
 
 ---
 
-# Caller proof obligations
+## § 8 Caller proof obligations
 
-Every unsafe function must have defined caller obligations.
+§ 8(1) Every unsafe callable must have defined caller obligations.
 
-Typical obligations include:
+§ 8(2) Obligations may include:
 
 ```text
-pointer is non-null where required;
-pointer is correctly aligned;
-storage is valid for the required size;
-storage contains initialized values of the declared representation;
-storage remains live for the required lifetime;
-read or write access is permitted;
-no conflicting mutable or shared access exists;
-length and capacity are correct;
-foreign ABI assumptions are correct;
-the operation is valid for the selected target;
-required synchronization has been established.
+pointer non-null
+pointer aligned
+valid address range
+storage live for a stated lifetime
+initialized representation
+exclusive mutable authority
+no conflicting aliases
+correct ownership/deallocation contract
+valid target address space
+correct hardware access context
+correct foreign ABI
+callback/thread affinity
+no concurrent invalidation
+length/capacity relationship
 ```
 
-The obligations are normative even when they are described in documentation
-rather than encoded directly in the type system.
+§ 8(3) The compiler may verify some obligations at a particular call site.
 
-Violating an unsafe obligation removes only the guarantees that depend on that
-obligation, subject to unavoidable backend consequences.
+§ 8(4) Verified obligations need not be treated as unknown merely because the callable is unsafe.
+
+§ 8(5) Remaining obligations are accepted by the explicit unsafe context.
+
+§ 8(6) A compiler-proven violation remains a compile-time error.
 
 ---
 
-# Safety documentation
+## § 9 Safety documentation
 
-Public or reusable unsafe APIs should document their caller obligations.
+§ 9(1) Public unsafe APIs should document caller obligations in source documentation.
 
-Recommended form:
+§ 9(2) Safety documentation is strongly recommended rather than a hard language requirement in Sec 0.1.
 
-```sec
-/**
- * Creates a buffer over foreign storage.
- *
- * Safety:
- * - pointer must be non-null and correctly aligned;
- * - pointer must be valid for length initialized bytes;
- * - storage must remain live for the buffer lifetime;
- * - no conflicting owner or mutable reference may exist.
- */
-unsafe fn FromRawParts(
-    pointer: RawPtr[byte],
-    length: int,
-) Buffer {
-    // ...
-}
-```
+§ 9(3) Tooling may diagnose missing safety documentation for exported/public unsafe APIs where a project policy requests it.
 
-A `Safety:` section is strongly recommended.
-
-It is not a hard grammar or language requirement in Sec 0.1.
-
-Tooling may report missing safety documentation according to project policy.
-
-The default diagnostic may be informational and configurable.
+§ 9(4) Compiler-known unsafe operations must have machine-readable obligation metadata independent of comments.
 
 ---
 
-# `unsafe extern`
+## § 10 `unsafe extern`
 
-Canonical foreign declaration form:
+§ 10(1) Canonical foreign form:
 
 ```sec
 unsafe extern "system" fn rawSysCall(
@@ -371,73 +269,41 @@ unsafe extern "system" fn rawSysCall(
 ) int64
 ```
 
-The tokens have separate meanings:
+§ 10(2) `unsafe`, `extern "system"`, and `fn` have separate meanings.
 
-```text
-unsafe
-    caller has additional proof obligations;
+§ 10(3) `unsafe` specifies caller proof obligations.
 
-extern "system"
-    implementation uses foreign system linkage;
+§ 10(4) `extern "system"` specifies foreign linkage/ABI selection.
 
-fn
-    declares a callable function.
-```
+§ 10(5) `fn` declares a callable function.
 
-`unsafe extern` is not one indivisible keyword.
+§ 10(6) `unsafe extern` is not one indivisible keyword.
 
-Other linkage forms remain defined by the FFI rulebook.
+§ 10(7) Other linkage forms are defined by the FFI rulebook.
 
-Bare foreign `...` is defined only by the FFI rules for final C varargs and is
-not native Sec typed-variadic syntax.
-
-Examples include:
-
-```sec
-unsafe extern "C" fn CCreateContext()
-    Result[RawPtr[Context], NullError]
-```
-
-```sec
-unsafe extern "system" fn rawSysCall(
-    number: int,
-    argument1: uint64,
-) int64
-```
+§ 10(8) C `...` varargs remain foreign ABI syntax only where FFI rules explicitly support them.
 
 ---
 
-# Calling unsafe extern functions
+## § 11 Calling unsafe extern functions
 
-Calling an unsafe extern function requires an unsafe context.
-
-Example:
+§ 11(1) Calling an unsafe extern function requires unsafe context.
 
 ```sec
 let result := unsafe rawSysCall(number, argument)
 ```
 
-The unsafe call does not automatically establish:
+§ 11(2) The marker does not establish correct arguments, pointer validity, ownership, foreign lifetime, effect claims, or ABI declaration.
 
-```text
-correct arguments;
-correct pointer validity;
-correct ownership;
-correct foreign lifetime;
-correct effect claims;
-correct ABI declaration.
-```
+§ 11(3) Those obligations belong to the declaration/call contract.
 
-Those obligations belong to the declaration and call site.
+§ 11(4) Foreign undefined behavior caused by a false contract is not repaired by Sec's unsafe marker.
 
 ---
 
-# Safe wrappers
+## § 12 Safe wrappers
 
-A safe Sec function may use unsafe operations internally and present a safe API
-when it validates or establishes every caller obligation.
-
-Example:
+§ 12(1) A safe function may use unsafe operations internally and expose a safe API when it validates or establishes every caller obligation.
 
 ```sec
 fn CreateBuffer(
@@ -457,1429 +323,578 @@ fn CreateBuffer(
 }
 ```
 
-The caller of `CreateBuffer` does not require unsafe context if the wrapper
-fully establishes the contract.
+§ 12(2) A safe wrapper must not leave hidden caller obligations that its safe type/API contract cannot express or enforce.
+
+§ 12(3) Recoverable validation failures should use ordinary `Result`/Option/control flow rather than hidden panic where appropriate.
+
+§ 12(4) A safe wrapper may rely on compiler-proven target/platform facts.
 
 ---
 
-# Unsafe does not propagate through safe wrappers
+## § 13 Unsafe does not propagate through safe wrappers
 
-Unsafe is not a transitive caller marker.
+§ 13(1) Unsafe is not a transitive caller marker.
 
-A safe function remains safe to call when it correctly encapsulates unsafe
-implementation details.
+§ 13(2) A correct safe wrapper remains safe to call.
 
-Conceptually:
+§ 13(3) Actual effects remain transitive.
 
-```text
-unsafe implementation operation
-    may be encapsulated by a safe function
+§ 13(4) A safe wrapper around a blocking foreign call remains blocking.
 
-safe caller
-    does not inherit unsafe status
-```
+§ 13(5) A safe wrapper around an allocating intrinsic remains allocating.
 
-Actual effects still propagate.
-
-A safe wrapper around a blocking foreign call remains blocking.
-
-A safe wrapper around an allocating intrinsic remains allocating.
-
-A safe wrapper around volatile access still has volatile-access effects.
+§ 13(6) A safe wrapper around a panic-capable operation remains panic-capable unless panic is proven absent/handled by canonical semantics.
 
 ---
 
-# Trust provenance through wrappers
+## § 14 Trust provenance
 
-A safe wrapper does not erase internal trust provenance.
+§ 14(1) A safe wrapper does not erase internal trust provenance.
 
-The compiler may record:
-
-```text
-caller-facing safety:
-    safe
-
-implementation provenance:
-    depends on unsafe foreign call
-```
-
-This information may be used for:
+§ 14(2) The compiler may record:
 
 ```text
-auditing;
-security review;
-ISR reports;
-LSP navigation;
-whole-program trust reports;
-diagnostics;
-certification profiles.
+caller-facing safety: safe
+implementation provenance: depends on unsafe foreign call
 ```
 
-Trust provenance is not automatically part of the source-level function type.
+§ 14(3) Trust provenance may support auditing, security review, ISR reports, LSP navigation, whole-program trust reports, diagnostics, and certification profiles.
+
+§ 14(4) Trust provenance is not automatically part of the source-level callable type.
+
+§ 14(5) Trusted facts must identify their provenance sufficiently to invalidate/review them when the target/FFI/platform contract changes.
 
 ---
 
-# Rules unsafe cannot bypass
+## § 15 Effects remain active
 
-Unsafe context does not automatically permit:
+§ 15(1) Unsafe does not suppress effects.
+
+§ 15(2) Effects may include:
 
 ```text
-use after move;
-copy of an @noCopy value;
-use after arena reset;
-use after arena release;
-reference escape from local or arena storage;
-conflicting ref and ref mut borrows;
-ordinary type mismatch;
-ignored required Result handling;
-unhandled constrained-type assignment;
-contract violation;
-violation of @noPanic;
-violation of @noAlloc;
-violation of @noBlock;
-blocking or suspension in ISR code;
-panic-capable destructor or defer;
-proven unreachable code;
-invalid target selection;
-invalid visibility access.
+MayPanic
+MayAllocate
+MayBlock
+MaySuspend
+MaySpawn
+MayIO
+MayAccessVolatile
+MayMutateExternalState
+MayUseNondeterministicInput
 ```
 
-Only the precise unsafe operation transfers a specific proof obligation.
+§ 15(3) An unsafe operation may have multiple effects.
+
+§ 15(4) Unsafe status and effect set are separate semantic dimensions.
+
+§ 15(5) `@noPanic`, `@noAlloc`, `@noBlock`, ISR, and other verified effect contracts continue to apply.
 
 ---
 
-# Unsafe and effect analysis
+## § 16 Unsafe and panic
 
-Unsafe status and effects are separate dimensions.
+§ 16(1) Unsafe does not make panic-capable code compatible with `@noPanic`.
 
-Examples:
+§ 16(2) A trusted foreign no-panic claim may provide proof only when the FFI contract explicitly supports such trust.
 
-```text
-safe and MayAllocate;
-unsafe and noAlloc;
-unsafe and MayBlock;
-safe and MayAccessVolatile.
-```
+§ 16(3) Trust provenance must remain attached to accepted external claims.
 
-An unsafe context does not remove effects.
+§ 16(4) Unsafe cleanup that must run on panic remains subject to panic/destruction no-panic requirements.
 
-Example:
+---
+
+## § 17 Unsafe and allocation
+
+§ 17(1) Unsafe does not authorize hidden allocation.
+
+§ 17(2) Raw-pointer/reference conversion, ownership adoption, or closure escape must not allocate merely to make the operation legal.
+
+§ 17(3) Allocation-capable unsafe intrinsics retain `MayAllocate`.
+
+§ 17(4) `@noAlloc`/ISR allocation restrictions remain enforced.
+
+---
+
+## § 18 Unsafe and blocking/suspension
+
+§ 18(1) Unsafe does not authorize blocking or suspension in a context that forbids them.
+
+§ 18(2) Foreign/assembly/target operations must publish blocking/suspension effects or be treated conservatively.
+
+§ 18(3) An ISR cannot call an unsafe blocking operation merely because it is marked unsafe.
+
+---
+
+## § 19 Raw-pointer storage and value operations
+
+§ 19(1) Merely storing, copying, moving, returning, passing, equality-testing, or null-testing `RawPtr[T]` is not inherently unsafe when `raw_pointers.md` defines the operation as safe.
+
+§ 19(2) These operations do not assert pointee validity.
+
+§ 19(3) A type containing `RawPtr[T]` is not automatically unsafe.
+
+---
+
+## § 20 Raw-pointer interpretation operations
+
+§ 20(1) Canonical raw-pointer interpretation operations requiring unsafe include:
 
 ```sec
-@noAlloc
-fn Work() void {
-    unsafe allocator.New[Value]()
-}
+pointer.Read()
+pointer.Write(value)
+pointer.VolatileRead()
+pointer.VolatileWrite(value)
+pointer.Offset(elements)
+pointer.AddBytes(bytes)
+pointer.Difference(other)
 ```
 
-This remains invalid because the operation contributes `MayAllocate`.
+where the dedicated raw-pointer rule classifies the operation as unsafe.
 
-Example:
+§ 20(2) Integer-to-pointer construction, raw-to-safe reference construction, slice-from-raw-parts, and ownership adoption also require unsafe.
 
-```sec
-@noBlock
-fn Work() void {
-    unsafe BlockingForeignCall()
-}
-```
-
-This remains invalid because the call contributes `MayBlock`.
+§ 20(3) Exact safe-reference/RawPtr conversion spelling remains owned by the canonical conversion/raw-pointer rule and must not be invented by this book.
 
 ---
 
-# Unsafe and `@noPanic`
+## § 21 Raw-pointer obligations
 
-Unsafe does not make panic-capable code compatible with `@noPanic`.
+§ 21(1) Unsafe raw reads/writes require the complete relevant non-null, alignment, lifetime, representation, range, address-space, alias, ownership, and target obligations from `raw_pointers.md`.
 
-Example:
+§ 21(2) Unsafe context does not make null dereference valid.
 
-```sec
-@noPanic
-fn Work() void {
-    unsafe PanicCapableOperation()
-}
-```
+§ 21(3) Unsafe context does not make a stale/dangling known address valid.
 
-The function remains invalid unless effect analysis proves the operation cannot
-panic or an explicit trusted foreign contract supplies a valid no-panic claim.
+§ 21(4) Unsafe context does not make misaligned safe-reference construction valid.
 
-Trust provenance must remain visible when such a claim is accepted.
+§ 21(5) Unsafe context does not permit manufacturing conflicting `ref mut` values.
 
 ---
 
-# Unsafe and `@noAlloc`
+## § 22 Raw-to-safe reference construction
 
-Unsafe does not permit allocation inside `@noAlloc`.
+§ 22(1) Constructing a safe reference from raw storage requires unsafe unless a specialized trusted adapter proves all guarantees.
 
-This includes:
+§ 22(2) Required shared-reference obligations include at least:
 
 ```text
-heap allocation;
-arena capacity consumption;
-collection growth;
-boxing;
-closure environment allocation;
-foreign allocation;
-compiler helper allocation.
+non-null
+alignment
+valid initialized T
+readable storage
+lifetime covers reference
+canonical provenance established
+no conflicting mutable access
+foreign/hardware mutation compatible with shared semantics
+address-space/platform compatibility
 ```
 
----
+§ 22(3) `ref mut T` additionally requires writable storage and exclusive mutable authority for the complete borrow live range.
 
-# Unsafe and `@noBlock`
-
-Unsafe does not permit synchronous blocking inside `@noBlock`.
-
-It also does not permit blocking or suspension inside `@isr` or
-`@interruptSafe`.
+§ 22(4) Compiler-proven contradictions are rejected even in unsafe.
 
 ---
 
-# Unsafe and `try`
+## § 23 Slice from raw parts
 
-`try` and unsafe solve different problems.
+§ 23(1) Constructing a safe slice/view from raw pointer plus extent is unsafe unless a trusted wrapper establishes the complete contract.
+
+§ 23(2) Obligations include range, nonnegative/representable extent, multiplication overflow, alignment, element initialization, lifetime, alias/mutability, one compatible storage region where required, and target address-space validity.
+
+§ 23(3) Slice construction must not introduce hidden allocation.
+
+§ 23(4) A zero-length slice does not permit fabricating an arbitrary valid scalar reference.
+
+---
+
+## § 24 Unchecked representation construction
+
+§ 24(1) Creating typed values from raw bits/storage without ordinary constructors is unsafe unless a compiler-verified representation operation proves validity.
+
+§ 24(2) Unsafe does not make every bit pattern a valid value.
+
+§ 24(3) Obligations may include enum discriminants, union active variant, bool/rune validity, named-type contracts, reference invariants, ownership state, alignment, padding, and FFI layout.
+
+§ 24(4) Compiler-proven invalid representation is rejected.
+
+---
+
+## § 25 Unchecked enum/union operations
+
+§ 25(1) Constructing an enum from an unverified underlying value may require unsafe when the value may not name a valid enum member/state.
+
+§ 25(2) Constructing/selecting a union payload/tag without ordinary validated constructors/match state may require unsafe.
+
+§ 25(3) Unsafe operations must preserve active-variant/destruction semantics or explicitly transfer the corresponding proof obligations.
+
+§ 25(4) Inactive union payload reads remain invalid.
+
+---
+
+## § 26 Ownership adoption
+
+§ 26(1) Adopting ownership from raw/foreign storage is unsafe unless a specialized safe wrapper establishes the ownership contract.
+
+§ 26(2) Obligations include correct allocator/provider, matching reclamation operation, extent/alignment, uniqueness, initialized objects, destruction responsibilities, and foreign lifetime/retention rules.
+
+§ 26(3) Numeric address alone never proves ownership.
+
+§ 26(4) Double adoption of the same exclusive resource is invalid.
+
+§ 26(5) Unsafe does not permit double-free/double-destruction.
+
+---
+
+## § 27 Ownership release to foreign code
+
+§ 27(1) Transferring Sec ownership to foreign code requires an explicit FFI ownership contract.
+
+§ 27(2) Raw pointer passing alone does not imply ownership transfer.
+
+§ 27(3) After a committed consuming foreign transfer, the Sec source Place becomes unavailable according to ownership rules.
+
+§ 27(4) Failure/non-commit behavior must be defined by the foreign wrapper contract.
+
+---
+
+## § 28 Unsafe and borrowing
+
+§ 28(1) Unsafe does not disable borrow checking for safe references.
+
+§ 28(2) Raw aliases may exist outside the safe borrow model, but using them in ways that violate live safe-reference guarantees is invalid.
+
+§ 28(3) Raw-to-safe reconstruction must re-establish borrow compatibility.
+
+§ 28(4) Known overlap/conflict is rejected.
+
+§ 28(5) Unknown external mutation may make a safe reference wrapper impossible unless the contract provides synchronization/exclusivity guarantees.
+
+---
+
+## § 29 Unsafe and lifetime
+
+§ 29(1) Unsafe does not extend storage/object/reference lifetime.
+
+§ 29(2) A raw pointer may outlive storage, but dereference after lifetime end is invalid.
+
+§ 29(3) Safe wrappers must not return references whose lifetime depends on ended local storage.
+
+§ 29(4) Unsafe must not trigger hidden heap/Arena promotion to repair lifetime.
+
+§ 29(5) Known use-after-domain-end is rejected even inside unsafe.
+
+---
+
+## § 30 Unsafe and destruction
+
+§ 30(1) Unsafe does not disable deterministic destruction.
+
+§ 30(2) Raw writes must not overwrite a live non-trivial object while bypassing required destruction unless an explicit low-level replacement/adoption contract proves the lifecycle transition.
+
+§ 30(3) Unsafe operations inside `defer`, `free`, or other cleanup remain explicitly marked where permitted.
+
+§ 30(4) `free` restrictions from `destruction.md` remain active.
+
+§ 30(5) Unsafe does not make panic-capable required cleanup legal.
+
+---
+
+## § 31 Unsafe and transferability/concurrency
+
+§ 31(1) Unsafe does not make a non-transferable value transferable.
+
+§ 31(2) Unsafe does not legalize a data race.
+
+§ 31(3) Unsafe does not waive thread affinity, task migration, process boundary, ISR, or destruction-context restrictions.
+
+§ 31(4) Volatile access is not synchronization.
+
+§ 31(5) Foreign/raw concurrency requires explicit synchronization/ownership contracts.
+
+---
+
+## § 32 FFI trust boundary
+
+§ 32(1) Foreign declarations may be trusted/unsafe because Sec cannot verify their implementation.
+
+§ 32(2) FFI contracts should publish:
 
 ```text
-try
-    converts supported failure into explicit fallible control flow;
-
-unsafe
-    accepts a proof obligation the compiler cannot fully establish.
+ABI/linkage
+nullability
+ownership transfer
+borrowing/retention
+lifetime
+thread/callback affinity
+allocation/deallocation
+panic/abort/unwind behavior
+blocking/suspension
+I/O/external mutation
+layout/alignment/extent
 ```
 
-An unsafe call may still return `Result`.
+§ 32(3) Unknown foreign behavior is conservative where proof is required.
 
-Example:
-
-```sec
-let result := try unsafe ForeignOperation(pointer)
-```
-
-The unsafe context accepts the foreign safety obligations.
-
-`try` handles the declared explicit error.
-
-Neither substitutes for the other.
+§ 32(4) Foreign exceptions/unwinding must not cross Sec frames unless a dedicated FFI rule explicitly permits/proves it.
 
 ---
 
-# `RawPtr[T]`
+## § 33 Safe foreign wrappers
 
-`RawPtr[T]` is the primary boundary between safe Sec references and raw address
-handling.
+§ 33(1) Safe wrappers may translate foreign null/error/status results into typed Sec `Option`/`Result`.
 
-Possessing a `RawPtr[T]` is not automatically unsafe.
+§ 33(2) Safe wrappers may construct safe references/owners only after establishing every required FFI/raw/storage/lifetime contract.
 
-The unsafe classification depends on the operation performed with it.
+§ 33(3) Safe wrappers must preserve actual effects and trust provenance.
+
+§ 33(4) A safe wrapper must not claim cross-thread/ISR safety that the foreign contract does not provide.
 
 ---
 
-# Safe raw-pointer operations
+## § 34 Inline assembly
 
-The following may be safe when their dedicated rule permits them:
+§ 34(1) Inline assembly is an unsafe operation and trust boundary.
+
+§ 34(2) It requires explicit unsafe context unless its dedicated grammar includes an equivalent explicit unsafe marker.
+
+§ 34(3) Assembly contracts must describe enough behavior for compiler correctness.
+
+§ 34(4) At minimum the model must support register inputs/outputs/clobbers, memory reads/writes, volatile behavior, control flow, stack behavior, possible trap/abort, blocking, I/O, and external mutation.
+
+§ 34(5) Exact assembly syntax belongs to the inline-assembly rulebook.
+
+§ 34(6) Assembly effects remain active inside unsafe.
+
+---
+
+## § 35 Target knowledge and fixed addresses
+
+§ 35(1) Compiler-verified target knowledge is not inherently unsafe merely because it describes hardware.
+
+§ 35(2) `@address` is not automatically prefixed with `unsafe`.
+
+§ 35(3) A canonical target-known peripheral/address may be validated by the compiler/platform contract.
+
+§ 35(4) Raw numeric address interpretation requires unsafe when the compiler cannot prove the complete storage/access contract.
+
+§ 35(5) Unknown/unverified target facts retain trust provenance or are rejected by target policy.
+
+---
+
+## § 36 Hardware register access
+
+§ 36(1) Safe typed hardware register access may be provided by compiler/platform-verified declarations.
+
+§ 36(2) Raw-pointer MMIO access remains unsafe according to raw-pointer/volatile rules.
+
+§ 36(3) Unsafe does not bypass exact access width, volatile ordering, mapping, device, privilege, or ISR restrictions.
+
+§ 36(4) Hardware signal polarity remains application/driver semantics.
+
+---
+
+## § 37 Runtime mappings
+
+§ 37(1) Mapping creation/destruction is governed by platform mapping/resource rules.
+
+§ 37(2) Unsafe raw access inside a mapping requires mapping lifetime/extent/address-space validity.
+
+§ 37(3) Raw pointers do not keep mappings alive.
+
+§ 37(4) Remap/unmap can invalidate prior raw/safe views.
+
+§ 37(5) Safe mapping wrappers may encapsulate raw OS/platform operations.
+
+---
+
+## § 38 Interrupt vectors and ISR
+
+§ 38(1) Named target-known interrupt vectors may be compiler-verified without unsafe.
+
+§ 38(2) Raw numeric vector/address use is validated by target rules and may require trust/unsafe boundaries.
+
+§ 38(3) Unsafe does not waive `@isr` or `@interruptSafe` `noPanic`, `noAlloc`, `noBlock`, bounded-work, synchronization, or hardware-access requirements.
+
+§ 38(4) Unsafe helper calls reachable from ISR must publish complete effects/trust facts.
+
+---
+
+## § 39 Function values
+
+§ 39(1) Unsafe status is part of callable compatibility.
+
+§ 39(2) An unsafe function must not implicitly convert to a safe function value.
+
+§ 39(3) A safe wrapper may produce a safe callable after discharging caller obligations.
+
+§ 39(4) Calling through an unsafe function value requires unsafe context.
+
+§ 39(5) Effect and trust summaries remain attached to the callable value/target set.
+
+---
+
+## § 40 Interfaces
+
+§ 40(1) Interface callable safety contracts must be preserved by implementations.
+
+§ 40(2) A safe interface method must not be implemented by a callable requiring additional unsafe caller obligations.
+
+§ 40(3) An unsafe interface method may be implemented internally with safe code while remaining unsafe to call through the interface contract.
+
+§ 40(4) Dynamic dispatch must not erase unsafe status.
+
+§ 40(5) Unknown dynamic target safety is conservative.
+
+---
+
+## § 41 Generics
+
+§ 41(1) Generic code must preserve unsafe requirements of operations on instantiated types/callables.
+
+§ 41(2) A generic constraint must not silently assume a callback/operation is safe when safety status is unknown.
+
+§ 41(3) Specialization may prove an operation safe and remove an unnecessary unsafe boundary only when canonical semantics permit it.
+
+§ 41(4) Trust provenance from unsafe generic dependencies remains available for analysis/tooling.
+
+---
+
+## § 42 Closures and captures
+
+§ 42(1) Unsafe status of a called operation is independent of closure capture ownership.
+
+§ 42(2) A closure may capture `RawPtr` safely as a value while later dereference remains unsafe.
+
+§ 42(3) Closure transferability/lifetime remains checked normally.
+
+§ 42(4) A closure invoking an unsafe callable must do so in explicit unsafe context.
+
+§ 42(5) Safe closure wrappers may encapsulate unsafe operations only when all caller/environment obligations are established.
+
+---
+
+## § 43 Properties, init, and lifecycle bodies
+
+§ 43(1) Unsafe operations in property accessors, `init`, methods, functions, and other ordinary executable bodies require explicit unsafe context.
+
+§ 43(2) Unsafe does not create new locations where a syntactic construct is otherwise forbidden.
+
+§ 43(3) `free` restrictions remain governed by destruction rules; unsafe does not make prohibited defer/escape behavior legal.
+
+---
+
+## § 44 Compile-time evaluation
+
+§ 44(1) Ordinary compile-time evaluation rejects unsafe operations.
+
+§ 44(2) The compiler does not ordinarily execute raw-pointer dereference, FFI call, inline assembly, addressed-storage access, raw target memory access, or unsafe ownership adoption during compile-time evaluation.
+
+§ 44(3) A compiler-known intrinsic may be compile-time evaluable only when explicitly specified.
+
+§ 44(4) Unsafe context does not force compile-time execution.
+
+§ 44(5) Compile-time rejection is independent from runtime safety.
+
+---
+
+## § 45 Backend undefined behavior
+
+§ 45(1) Sec should minimize backend undefined behavior.
+
+§ 45(2) Unsafe is not permission to lower arbitrary source into unrestricted backend UB.
+
+§ 45(3) Where practical, unsafe operations should lower to defined target instructions, explicit traps, validated intrinsics, well-specified foreign ABI operations, or carefully bounded backend assumptions.
+
+§ 45(4) When a false unsafe obligation necessarily violates backend assumptions, documentation/tooling must describe that risk honestly.
+
+§ 45(5) Backend assumptions must be no stronger than the obligations/trusted facts accepted at the source/Semantic IR boundary.
+
+---
+
+## § 46 No mandatory runtime
+
+§ 46(1) Unsafe is a compile-time language/analysis feature.
+
+§ 46(2) It requires no runtime unsafe flags, dynamic trust checks, mandatory pointer metadata, mandatory provenance objects, mandatory generational references, exception machinery, or general Sec runtime.
+
+§ 46(3) Profiles may independently use runtime checks for other safety models.
+
+§ 46(4) Trust provenance may be erased from release binaries where not required by the selected diagnostics/certification profile.
+
+---
+
+## § 47 Canonical unsafe-operation registry
+
+§ 47(1) The compiler should maintain one canonical registry or equivalent shared source of unsafe operation definitions.
+
+§ 47(2) Each operation entry should define:
 
 ```text
-store a RawPtr value;
-move a RawPtr value;
-return a RawPtr value;
-pass a RawPtr through FFI;
-compare raw pointers for equality;
-test a raw pointer for null;
-convert between explicitly representation-compatible raw-pointer types without
-  dereference;
-format or inspect an address for diagnostics where permitted.
+stable identity
+source operation/member
+required unsafe context
+caller obligations
+effects
+trust provenance
+allowed targets
+diagnostics
+safe alternatives where available
 ```
 
-These operations do not assert that the pointed-to storage is valid.
+§ 47(3) Unsafe classification must not be distributed as unrelated ad-hoc checks.
+
+§ 47(4) Compiler and LSP must consume the same registry.
 
 ---
 
-# Unsafe raw-pointer operations
+## § 48 Semantic representation
 
-The following require unsafe context:
+§ 48(1) Sema/Semantic IR preserve where required:
 
 ```text
-dereference;
-read through RawPtr;
-write through RawPtr;
-pointer arithmetic;
-convert an arbitrary integer to RawPtr;
-construct ref T;
-construct ref mut T;
-construct a slice from pointer and length;
-assume alignment;
-assume initialized representation;
-adopt ownership from a pointer;
-construct a callable function pointer from a raw address;
-reinterpret unrelated pointer representations when validity is not proven.
+unsafe operation kind
+lexical unsafe context
+unsafe callable contract
+caller obligations
+trust provenance
+effect summary
+source location
+resolved target/foreign facts
+safe-wrapper boundary
 ```
 
-The list is compiler-known and may grow through later rulebooks.
+§ 48(2) Unsafe and effect properties must not be stored as one boolean.
 
----
+§ 48(3) A safe wrapper may remain caller-safe while retaining internal trust provenance/effects.
 
-# Raw-pointer read
-
-Conceptual:
-
-```sec
-let value := unsafe pointer.Read()
-```
-
-The programmer must guarantee at least:
-
-```text
-pointer is non-null where required;
-pointer is aligned for T;
-pointer addresses readable storage;
-storage contains a valid initialized T;
-storage remains live for the operation;
-read does not violate ownership or alias rules;
-address space permits the access.
-```
-
-The operation may also contribute effects such as:
-
-```text
-MayAccessVolatile;
-MayIO;
-MayUseNondeterministicInput.
-```
-
-The pointer operation definition determines the effects.
+§ 48(4) Contradictory trusted facts must be diagnosed/invalidated before lowering where possible.
 
 ---
 
-# Raw-pointer write
+## § 49 Lowering
 
-Conceptual:
+§ 49(1) Lowering preserves unsafe operation semantics and target constraints.
 
-```sec
-unsafe pointer.Write(value)
-```
+§ 49(2) Raw operations lower according to `raw_pointers.md` and target layout/address-space rules.
 
-The programmer must guarantee at least:
+§ 49(3) Volatile/hardware operations preserve exact physical access semantics.
 
-```text
-pointer is non-null where required;
-pointer is aligned for T;
-pointer addresses writable storage;
-storage is valid for one T;
-write does not violate exclusive-access rules;
-write does not overwrite a live value without valid destruction semantics;
-address space permits the access.
-```
+§ 49(4) FFI calls preserve declared ABI.
+
+§ 49(5) Inline assembly preserves declared clobber/memory/control-flow/effect contracts.
+
+§ 49(6) Unsafe marker itself need not produce runtime code.
+
+§ 49(7) Unused unsafe/FFI helpers need not be linked.
 
 ---
 
-# Raw pointer to shared reference
+## § 50 Diagnostics
 
-Constructing `ref T` from `RawPtr[T]` is unsafe.
+§ 50(1) Unsafe diagnostics must follow the mentor-compiler principle.
 
-The caller must guarantee:
-
-```text
-non-null where required;
-correct alignment;
-valid initialized T representation;
-readable storage;
-storage remains live for the complete borrow live range;
-no conflicting mutable reference exists;
-foreign code will not mutate the storage contrary to the shared-reference
-  contract;
-the reference does not escape its valid lifetime.
-```
-
-Unsafe context permits the construction.
-
-It does not make the obligations optional.
-
----
-
-# Raw pointer to mutable reference
-
-Constructing `ref mut T` from `RawPtr[T]` is unsafe.
-
-The caller must additionally guarantee:
-
-```text
-exclusive access for the complete mutable borrow live range;
-writable storage;
-no shared references conflict;
-no foreign or hardware mutation violates exclusivity unless the type and
-  volatile model explicitly permit it;
-correct destruction and replacement behavior.
-```
-
----
-
-# Slice from raw parts
-
-Constructing a slice or array view from raw pointer and length is unsafe.
-
-Typical obligations:
-
-```text
-pointer is valid for length elements;
-length is non-negative and representable;
-required byte-size multiplication does not overflow;
-all elements satisfy representation requirements;
-alignment is correct;
-storage remains live for the complete slice lifetime;
-alias and mutability rules are satisfied;
-the memory range belongs to one compatible allocation or target region where
-  required.
-```
-
----
-
-# Pointer arithmetic
-
-Raw-pointer arithmetic is unsafe.
-
-It does not create a valid reference by itself.
-
-The caller must establish:
-
-```text
-correct unit: bytes or elements as defined by the operation;
-address calculation does not wrap into an invalid address;
-result remains within the permitted storage object or target range;
-alignment remains valid for later typed access;
-object provenance remains valid where required by backend semantics.
-```
-
-Exact raw-pointer arithmetic APIs belong to the pointer rulebook.
-
----
-
-# Null pointers
-
-Testing a raw pointer for null may be safe.
-
-Dereferencing null is never made valid by an unsafe context.
-
-Unsafe merely transfers the proof obligation that null cannot be reached.
-
-A compiler-proven null dereference remains a compile error even inside unsafe
-code.
-
----
-
-# Uninitialized storage
-
-Reading uninitialized storage as `T` is invalid unless a dedicated unsafe
-operation defines a valid uninitialized representation workflow.
-
-Unsafe context does not automatically make every bit pattern a valid `T`.
-
-A type may have:
-
-```text
-invalid bit patterns;
-invalid enum tags;
-invalid union states;
-contract requirements;
-ownership invariants;
-foreign layout requirements.
-```
-
----
-
-# Unchecked construction
-
-Bypassing normal construction, validation, or contracts is unsafe.
-
-Conceptual:
-
-```sec
-let value := unsafe Percent.FromRepresentationUnchecked(raw)
-```
-
-The caller assumes responsibility for every invariant normally established by
-construction.
-
-If the value does not satisfy the invariant, the relevant Sec safety guarantees
-no longer apply.
-
----
-
-# Unsafe constructors
-
-Types with invariant-bearing private or hidden fields should expose unsafe
-constructors rather than making the entire type unsafe.
-
-Example:
-
-```sec
-type RawSlice[T] struct {
-    _pointer: RawPtr[T]
-    _length: int
-}
-
-impl RawSlice[T] {
-    unsafe fn FromRawParts(
-        pointer: RawPtr[T],
-        length: int,
-    ) RawSlice[T] {
-        return RawSlice[T] {
-            _pointer: pointer,
-            _length: length,
-        }
-    }
-}
-```
-
-The unsafe boundary belongs to construction or use.
-
-The type itself is not declared `unsafe`.
-
----
-
-# No `unsafe struct`
-
-Sec 0.1 does not define:
-
-```sec
-unsafe type RawSlice[T] struct {
-}
-```
-
-or:
-
-```sec
-unsafe struct RawSlice[T] {
-}
-```
-
-A struct is a data shape.
-
-Its existence is not automatically an unsafe operation.
-
-The safety boundary belongs to:
-
-```text
-construction;
-raw interpretation;
-methods with caller obligations;
-FFI interaction;
-layout assumptions;
-dereference;
-ownership adoption.
-```
-
----
-
-# Types containing `RawPtr`
-
-A type containing `RawPtr` is not automatically unsafe.
-
-Example:
-
-```sec
-type RawHandle struct {
-    pointer: RawPtr[void]
-}
-```
-
-It may be safe to:
-
-```text
-store the handle;
-move the handle;
-compare its pointer with null;
-return it;
-pass it back to foreign code.
-```
-
-Operations that interpret or dereference the pointer remain unsafe.
-
----
-
-# No `unsafe type`
-
-A named type is not declared globally unsafe in Sec 0.1.
-
-Unsafe behavior is expressed through:
-
-```text
-unsafe functions;
-unsafe methods;
-unsafe constructors;
-unsafe raw operations;
-unsafe foreign declarations;
-inline assembly;
-trusted target declarations.
-```
-
-This keeps safety boundaries operation-specific.
-
----
-
-# Layout
-
-Foreign or hardware layout requirements use dedicated layout and target
-mechanisms.
-
-They do not use `unsafe struct`.
-
-Conceptual future form:
-
-```sec
-@layout("C")
-type NativePoint struct {
-    x: int32
-    y: int32
-}
-```
-
-Exact layout syntax belongs to the layout and FFI rulebooks.
-
-A compiler-verified layout attribute may be safe.
-
-An unverified layout assumption carries trust provenance.
-
----
-
-# `@address`
-
-`@address` does not use an `unsafe` modifier.
-
-Canonical:
-
-```sec
-@address(Peripheral.GPIOA)
-let mut GPIOA: GPIORegisters
-```
-
-or:
-
-```sec
-@address(0x40021000)
-let mut GPIOA: GPIORegisters
-```
-
-The declaration itself is already an explicit target binding.
-
----
-
-# Knowledge-pack addresses
-
-A named target knowledge-pack address may be compiler-verified.
-
-The compiler may validate:
-
-```text
-device availability;
-address;
-alignment;
-address space;
-register-block compatibility;
-read and write capability;
-access width;
-reserved status.
-```
-
-When fully verified, ordinary typed access does not require unsafe context.
-
----
-
-# Raw numeric addresses
-
-A raw numeric `@address` value is valid only for the selected target's canonical
-linear hardware address domain. It is not an unchecked or merely trusted
-assertion. The compiler must validate the complete binding against canonical
-target, platform, device, or project facts, including:
-
-```text
-address-domain applicability;
-canonical region coverage;
-complete bound extent;
-alignment;
-address space;
-access width and permissions;
-layout and representation compatibility;
-known overlap and alias policy.
-```
-
-If those facts cannot be resolved, the `@address` declaration is rejected.
-Neither an unsafe context nor raw numeric spelling waives validation.
-
----
-
-# Typed addressed access
-
-After an addressed declaration has been accepted, ordinary typed access does not
-require unsafe context.
-
-Example:
-
-```sec
-let status := GPIOA.status
-GPIOA.control := command
-```
-
-The access remains:
-
-```text
-typed;
-volatile;
-checked against mutability;
-checked against register layout;
-tracked by effect analysis.
-```
-
----
-
-# Raw target access
-
-Runtime-discovered hardware addresses use the checked mapping/resource model in
-`rules/platform/hardware-register-access.md`, or explicit `RawPtr[T]` and unsafe
-operations under the applicable low-level contract.
-
-Converting an arbitrary integer address to `RawPtr[T]` and dereferencing it is
-unsafe. Possessing the `RawPtr[T]` does not grant hardware privilege, mapping
-authority, security-domain authority, resource ownership, or canonical endpoint
-identity.
-
-Example:
-
-```sec
-let pointer := unsafe RawPtr[Register].FromAddress(address)
-let value := unsafe pointer.Read()
-```
-
-The dedicated `@address` declaration is preferred for stable module-level
-hardware storage.
-
----
-
-# Interrupt vectors
-
-A named interrupt vector from target knowledge may be compiler-verified.
-
-A raw numeric vector may still be validated against the selected target.
-
-`@interrupt(vector: value)` does not automatically require unsafe syntax.
-
-Unknown or unverified target facts retain trust provenance or are rejected
-according to the target rulebook.
-
----
-
-# FFI trust boundary
-
-Foreign code is outside ordinary Sec body verification.
-
-The compiler must not infer from `extern` alone that the function is:
-
-```text
-memory-safe;
-noPanic;
-noAlloc;
-noBlock;
-interrupt-safe;
-non-retaining;
-thread-safe;
-ABI-correct.
-```
-
-The FFI rulebook defines the declaration contract.
-
----
-
-# Foreign effect summaries
-
-Unknown foreign effects are conservative.
-
-Unless explicitly declared through a future trusted FFI effect form, a foreign
-call may contribute:
-
-```text
-MayPanic or foreign abort/unwind;
-MayAllocate;
-MayBlock;
-MaySuspend where applicable;
-MaySpawn;
-MayIO;
-MayAccessVolatile;
-MayMutateExternalState;
-MayUseNondeterministicInput.
-```
-
-Unsafe context does not remove these effects.
-
----
-
-# Trusted foreign effect claims
-
-A future FFI form may declare narrower effects.
-
-Conceptual only:
-
-```sec
-@noPanic
-@noAlloc
-@noBlock
-unsafe extern "C" fn ReadRegister(
-    address: RawPtr[uint32],
-) uint32
-```
-
-For foreign code, these are trusted claims rather than proof from a Sec body.
-
-The exact source syntax for trusted foreign effect claims is not decided here.
-
-The compiler must retain provenance:
-
-```text
-effect guarantee trusted from foreign declaration
-```
-
----
-
-# Foreign ownership contracts
-
-Foreign declarations may require facts such as:
-
-```text
-pointer borrowed only for the call;
-pointer retained after return;
-ownership transferred to foreign code;
-ownership returned to Sec;
-foreign code may mutate storage;
-foreign code may invoke callback later;
-foreign code may call concurrently;
-foreign code may free storage.
-```
-
-Unknown ownership behavior is conservative.
-
-Exact FFI annotation syntax belongs to the FFI rulebook.
-
----
-
-# Inline assembly
-
-Inline assembly is an unsafe operation and a trust boundary.
-
-It requires explicit unsafe context unless a dedicated declaration form already
-contains the unsafe marker according to the inline-assembly grammar.
-
-The compiler cannot infer arbitrary machine-code behavior from assembly text.
-
----
-
-# Inline assembly contract
-
-Inline assembly must describe enough information for compiler correctness.
-
-At minimum, the model must support:
-
-```text
-register inputs;
-register outputs;
-register clobbers;
-memory reads;
-memory writes;
-volatile behavior;
-control-flow behavior;
-stack behavior;
-possible trap or abort;
-possible blocking;
-possible I/O;
-possible external mutation.
-```
-
-Exact syntax belongs to the inline-assembly rulebook.
-
----
-
-# Inline assembly effects
-
-Inline assembly effects remain active inside unsafe context.
-
-Example:
-
-```sec
-@noBlock
-fn Work() void {
-    unsafe {
-        asm ...
-    }
-}
-```
-
-The function is invalid when the asm contract includes blocking behavior.
-
----
-
-# Compiler intrinsics
-
-A compiler intrinsic may be classified as:
-
-```text
-safe;
-unsafe;
-compiler-verified for selected targets;
-trusted target operation.
-```
-
-Unsafe intrinsics require unsafe context.
-
-Their effect summaries come from compiler definitions and target knowledge.
-
----
-
-# Interfaces
-
-Unsafe status is part of interface method semantics.
-
-Conceptual:
-
-```sec
-interface RawStorage {
-    unsafe fn Adopt(
-        pointer: RawPtr[byte],
-        length: int,
-    ) Buffer
-}
-```
-
-Every implementation must preserve the caller-facing unsafe contract.
-
----
-
-# Interface compatibility
-
-A safe interface method may not be implemented by a method that requires
-additional unsafe caller obligations.
-
-Invalid:
-
-```text
-interface method:
-    safe
-
-implementation:
-    unsafe
-```
-
-An implementation may safely implement an unsafe interface operation internally,
-but calls through the interface remain unsafe because callers only know the
-interface contract.
-
----
-
-# Function values
-
-Unsafe status is part of function-value compatibility.
-
-An unsafe function must not silently convert to an ordinary safe function value.
-
-Conceptually:
-
-```text
-unsafe fn(T) R
-    is not assignable to
-fn(T) R
-```
-
-A safe wrapper may expose a safe function value after establishing all required
-conditions.
-
-Exact function-type syntax for unsafe callables may be defined separately.
-
----
-
-# Callbacks
-
-A callback contract must preserve whether invocation is unsafe.
-
-Generic or interface code must not call a callback with unknown safety status as
-though it were safe.
-
-An unsafe callback invocation requires unsafe context and satisfaction of the
-callback's caller obligations.
-
----
-
-# Generics
-
-Unsafe status is preserved through generic constraints and specialization.
-
-Generic code may invoke an operation safely only when the generic contract proves
-that invocation is safe.
-
-Otherwise:
-
-```text
-invocation requires unsafe context;
-or
-the generic code must reject the operation.
-```
-
-The compiler must not infer a stable safe callable contract only because current
-specializations happen to be safe.
-
----
-
-# Unsafe and ownership
-
-Unsafe does not disable ownership analysis.
-
-The compiler still enforces:
-
-```text
-move validity;
-source invalidation;
-ownership transfer;
-double-destruction prevention;
-@noCopy policy;
-owner lifetime;
-arena ownership;
-value initialization state.
-```
-
-A dedicated unsafe operation may transfer responsibility for one ownership fact,
-such as adopting a foreign allocation.
-
-That operation must define the obligation precisely.
-
----
-
-# Ownership adoption
-
-Creating an owned Sec value from raw or foreign storage is unsafe unless a
-compiler-known API proves the ownership transfer.
-
-Typical obligations:
-
-```text
-caller owns the storage;
-no other owner will release it;
-correct allocator and deallocator are paired;
-storage contains a valid value;
-foreign code no longer retains ownership;
-destruction may run exactly once.
-```
-
----
-
-# Unsafe and borrowing
-
-Unsafe does not globally disable borrow checking.
-
-Normal `ref` and `ref mut` conflicts remain errors.
-
-Constructing a reference from raw storage transfers the obligation to establish:
-
-```text
-valid lifetime;
-valid aliasing;
-valid mutability;
-valid storage;
-no conflicting foreign access.
-```
-
-After the reference is constructed, ordinary Sec borrow rules apply.
-
----
-
-# Unsafe and escape analysis
-
-Unsafe does not permit returning a reference to dead storage.
-
-If the compiler can prove that a reference escapes invalid storage, it rejects
-the program even inside unsafe context.
-
-Unsafe construction may accept a lifetime assumption the compiler cannot prove,
-but an explicit contradiction remains an error.
-
----
-
-# Unsafe and arenas
-
-Unsafe does not permit:
-
-```text
-use after arena reset;
-use after arena release;
-reference escape beyond arena lifetime;
-allocation from a released arena.
-```
-
-An unsafe operation may construct an arena-backed reference only when the caller
-accepts the corresponding lifetime obligation.
-
-Effect and arena analyses continue afterward.
-
----
-
-# Unsafe and copy/move
-
-Unsafe does not permit implicit copy of an `@noCopy` type.
-
-Unsafe does not permit use after explicit move.
-
-Unsafe does not change whether a type is:
-
-```text
-copyable;
-move-only;
-relocatable;
-pinned.
-```
-
-Dedicated low-level operations may define explicit representation transfer, but
-they must not silently become ordinary copy semantics.
-
----
-
-# Unsafe and contracts
-
-Unsafe construction may bypass normal contract checking only through a dedicated
-unchecked operation.
-
-An unsafe context around ordinary construction does not suppress the contract.
-
-Invalid conceptual usage:
-
-```sec
-let value := unsafe Percent(1000)
-```
-
-when ordinary `Percent` construction validates its contract.
-
-Use an explicitly unsafe unchecked constructor when such a low-level operation
-is intentionally provided.
-
----
-
-# Unsafe and destruction
-
-Unsafe operations may appear in destructors only through explicit unsafe
-context.
-
-Example:
-
-```sec
-unsafe ForeignRelease(pointer)
-```
-
-The destructor remains subject to every destruction rule.
-
-In particular:
-
-```text
-destructor remains noPanic;
-effect guarantees remain active;
-double release remains invalid;
-invalid ownership remains invalid.
-```
-
----
-
-# Unsafe and `defer`
-
-Unsafe operations in deferred code require explicit unsafe context.
-
-Example:
-
-```sec
-defer {
-    unsafe ForeignRelease(pointer)
-}
-```
-
-The deferred body remains subject to:
-
-```text
-noPanic cleanup requirements;
-@noAlloc where applicable;
-@noBlock where applicable;
-ownership validity;
-call-graph effects.
-```
-
----
-
-# Panic during unsafe cleanup
-
-Unsafe does not permit cleanup code to panic when cleanup is required to be
-noPanic.
-
-A foreign release function with unknown panic or unwind behavior cannot be used
-in such cleanup without a valid trusted contract.
-
----
-
-# Compile-time evaluation
-
-Ordinary compile-time evaluation rejects unsafe operations.
-
-The compiler does not ordinarily execute:
-
-```text
-raw-pointer dereference;
-FFI call;
-inline assembly;
-addressed storage access;
-raw target memory access;
-unsafe ownership adoption.
-```
-
-A compiler-known intrinsic may be compile-time evaluable only when explicitly
-specified.
-
-Unsafe context does not force compile-time execution.
-
----
-
-# Target-dependent unsafe code
-
-Unsafe code is analyzed after target and configuration selection.
-
-Only active source contributes to the active unsafe and effect graph.
-
-A trusted claim may be valid on one target and invalid on another.
-
-Declared guarantees must hold for every active target variant.
-
----
-
-# Redundant unsafe contexts
-
-Nested unsafe context is valid but redundant when the inner context adds no new
-lexical boundary.
-
-Example:
-
-```sec
-unsafe {
-    unsafe pointer.Write(value)
-}
-```
-
-Default diagnostic:
-
-```text
-information: redundant unsafe context
-```
-
-The diagnostic may be promoted to warning through configuration.
-
----
-
-# Unsafe context without unsafe operations
-
-An unsafe context containing no unsafe operation is valid.
-
-Example:
-
-```sec
-unsafe {
-    let value := 10
-}
-```
-
-Default diagnostic:
-
-```text
-information: unsafe context contains no unsafe operation
-```
-
-The diagnostic may be promoted to warning through configuration.
-
-This assists refactoring and keeps unsafe boundaries narrow.
-
----
-
-# Unsafe scope size
-
-Small unsafe contexts are recommended.
-
-Preferred:
-
-```sec
-let value := unsafe pointer.Read()
-```
-
-Less desirable:
-
-```sec
-unsafe {
-    // Hundreds of lines of mostly ordinary code.
-}
-```
-
-Large unsafe contexts remain valid unless another rule is violated.
-
-Tooling may report an informational or configurable warning based on project
-policy.
-
----
-
-# Formatter behavior
-
-The formatter preserves explicit unsafe boundaries.
-
-It must not:
-
-```text
-remove unsafe;
-add unsafe automatically;
-expand one-operation unsafe into a block without formatting need;
-collapse a multi-operation block into an invalid short form;
-move ordinary code into or out of unsafe context;
-rewrite safety semantics.
-```
-
-Canonical examples:
-
-```sec
-let value := unsafe pointer.Read()
-```
-
-```sec
-let value := unsafe {
-    Validate(pointer)
-    pointer.Read()
-}
-```
-
-```sec
-unsafe extern "system" fn rawSysCall(number: int, argument1: uint64) int64
-```
-
----
-
-# Modifier order
-
-Sec currently does not assume a `pub` modifier.
-
-Visibility and scope use the language's established `_` and `__` conventions.
-
-Canonical unsafe foreign order is:
-
-```sec
-unsafe extern "system" fn rawSysCall(number: int, argument1: uint64) int64
-```
-
-Canonical Sec unsafe function order is:
-
-```sec
-unsafe fn FromRawParts(...) Buffer {
-}
-```
-
-Future modifiers must define their order without changing these meanings.
-
----
-
-# Parser representation
-
-Unsafe syntax should have explicit AST representation.
-
-Conceptual:
-
-```go
-type UnsafeExpression struct {
-    Token      lexer.Token
-    Expression ast.Expression
-}
-
-type UnsafeBlockExpression struct {
-    Token lexer.Token
-    Body  *ast.BlockStatement
-}
-```
-
-Function declarations should retain:
-
-```go
-IsUnsafe bool
-```
-
-Foreign linkage remains separate.
-
----
-
-# Semantic representation
-
-Sema should represent:
-
-```text
-unsafe operation kind;
-unsafe lexical context;
-unsafe caller contract;
-trust provenance;
-effect summary;
-source location;
-required obligations;
-resolved target facts.
-```
-
-Unsafe and effect properties must not be stored as one boolean.
-
----
-
-# Unsafe operation registry
-
-The compiler should maintain a central registry of unsafe operation kinds.
-
-Each entry should define:
-
-```text
-stable internal identity;
-source operation;
-required unsafe context;
-caller obligations;
-effects;
-trust provenance;
-allowed targets;
-diagnostics;
-safe alternatives where available.
-```
-
-Do not distribute unsafe classification through unrelated ad hoc checks.
-
----
-
-# Initial unsafe operation set
-
-The initial compiler-known set includes:
-
-```text
-RawPointerRead
-RawPointerWrite
-RawPointerArithmetic
-RawPointerFromInteger
-ReferenceFromRawPointer
-MutableReferenceFromRawPointer
-SliceFromRawParts
-AssumeAlignment
-AssumeInitialized
-AdoptRawOwnership
-UncheckedTypeConstruction
-UncheckedRepresentationCast
-UncheckedEnumTag
-UncheckedUnionTag
-UnsafeFunctionCall
-UnsafeForeignCall
-InlineAssembly
-UnsafeIntrinsic
-CallableFromRawAddress
-```
-
-Exact internal names may differ.
-
-The semantic categories must remain distinguishable.
-
----
-
-# Diagnostics
-
-Suggested diagnostic families:
+§ 50(2) Stable diagnostic categories should include at least:
 
 ```text
 unsafe.required
@@ -1907,720 +922,19 @@ unsafe.target-trust
 unsafe.address-unverified
 unsafe.cleanup-effect
 unsafe.compile-time-forbidden
-unsafe.missing-safety-documentation
 ```
 
-Final stable IDs belong to the diagnostics registry.
+§ 50(3) A diagnostic must distinguish missing unsafe context from a proven-invalid operation.
+
+§ 50(4) Diagnostics should show caller obligations and known violated facts.
+
+§ 50(5) Redundant/empty unsafe diagnostics are informational by default.
 
 ---
 
-# Required diagnostic quality
+## § 51 Formatter
 
-Diagnostics should state:
-
-```text
-which operation is unsafe;
-why unsafe is required;
-which proof obligation the programmer accepts;
-which effect remains active;
-which target or foreign claim is trusted;
-where the nearest unsafe context begins;
-which safe alternative exists, when canonical.
-```
-
-Example:
-
-```text
-raw pointer dereference requires unsafe context
-
-required obligations:
-    pointer must be aligned for Value
-    storage must contain an initialized Value
-    storage must remain live for the read
-
-help:
-    use `unsafe pointer.Read()` after establishing these conditions
-```
-
----
-
-# Effect diagnostic example
-
-```text
-error: `ReadStatus` does not satisfy @noBlock
-
-ReadStatus
-  -> calls unsafe foreign function `device_read`
-  -> foreign declaration may block
-
-unsafe context does not suppress MayBlock
-```
-
----
-
-# Provenance diagnostic example
-
-```text
-information: function safety depends on a trusted raw target address
-
-address declaration:
-    hardware.sec:12
-
-selected target:
-    device = controller-a
-```
-
----
-
-# LSP behavior
-
-The LSP should display:
-
-```text
-unsafe-operation explanation;
-caller obligations;
-unsafe function status;
-foreign trust status;
-effect summary;
-trust provenance;
-nearest unsafe context;
-safe-wrapper boundary;
-raw-address verification status;
-target knowledge source;
-interface and function-value compatibility.
-```
-
----
-
-# LSP completion
-
-Inside an unsafe context, completion remains ordinary completion.
-
-The LSP may additionally identify operations that are permitted only because of
-the unsafe context.
-
-At an unsafe call site, completion may show:
-
-```text
-Unsafe function
-Caller obligations:
-    pointer valid for length bytes
-    storage live for returned buffer lifetime
-```
-
----
-
-# LSP code actions
-
-Possible code actions include:
-
-```text
-wrap operation in `unsafe ...`;
-wrap multiple selected statements in `unsafe { ... }`;
-navigate to safety documentation;
-create a safe wrapper skeleton;
-show trusted-effect chain;
-replace raw address with knowledge-pack name where an exact verified mapping
-  exists;
-remove redundant unsafe context;
-```
-
-The LSP must not insert unsafe automatically without an explicit user action.
-
----
-
-# No mandatory runtime
-
-Unsafe is a compile-time language and analysis feature.
-
-It does not require:
-
-```text
-runtime unsafe flags;
-dynamic trust checks;
-mandatory pointer metadata;
-mandatory provenance objects;
-mandatory generational references;
-exception machinery;
-a general Sec runtime.
-```
-
-Specific profiles may add runtime checks independently.
-
----
-
-# Relationship to backend undefined behavior
-
-Sec should minimize backend undefined behavior.
-
-Unsafe is not permission to lower arbitrary source into unrestricted backend UB.
-
-Where practical, unsafe operations should lower to:
-
-```text
-defined target instructions;
-explicit traps;
-validated intrinsics;
-well-specified foreign ABI operations;
-carefully bounded backend assumptions.
-```
-
-When a false unsafe obligation necessarily violates backend assumptions, the
-compiler and documentation must describe the risk honestly.
-
-Only the guarantees depending on the violated obligation are intentionally
-surrendered at the language level, though memory corruption may cause wider
-physical consequences.
-
----
-
-# Current implementation status
-
-## Known implemented or established syntax
-
-The current language direction already uses forms such as:
-
-```sec
-unsafe extern "system" fn rawSysCall(number: int, argument1: uint64) int64
-```
-
-and:
-
-```sec
-unsafe extern "C" fn CCreateContext()
-    Result[RawPtr[Context], NullError]
-```
-
-`RawPtr[T]` is the established foreign raw-pointer abstraction.
-
-The exact repository implementation must be verified before changing status
-entries.
-
----
-
-# Partly implemented
-
-Likely existing foundations include:
-
-```text
-unsafe token or modifier handling;
-extern linkage declarations;
-RawPtr type recognition;
-FFI declaration parsing;
-inline assembly planning or partial support;
-addressed-storage parsing;
-ownership and borrow analysis foundations;
-effect and call-graph foundations.
-```
-
-Codex must inspect current repository state rather than assume completion.
-
----
-
-# Not implemented unless repository code proves otherwise
-
-```text
-single-operation unsafe expression;
-unsafe block expression;
-unsafe fn for Sec bodies;
-explicit unsafe-call checking;
-unsafe function-value compatibility;
-unsafe interface compatibility;
-unsafe generic callable constraints;
-central unsafe-operation registry;
-caller-obligation metadata;
-trust provenance graph;
-raw-pointer operation classification;
-unchecked constructor classification;
-foreign effect trust declarations;
-foreign ownership contracts;
-inline assembly effect trust integration;
-raw numeric address provenance;
-unsafe-aware formatter;
-unsafe-aware LSP;
-complete diagnostics;
-compile-time evaluation rejection;
-trust reports.
-```
-
----
-
-# Required tests
-
-Create or update:
-
-```text
-unsafe_valid.sec
-unsafe_invalid.sec
-unsafe_functions_valid.sec
-unsafe_functions_invalid.sec
-unsafe_extern_valid.sec
-unsafe_extern_invalid.sec
-unsafe_raw_ptr_valid.sec
-unsafe_raw_ptr_invalid.sec
-unsafe_construction_valid.sec
-unsafe_construction_invalid.sec
-unsafe_interfaces_valid.sec
-unsafe_interfaces_invalid.sec
-unsafe_function_values_valid.sec
-unsafe_function_values_invalid.sec
-unsafe_generics_valid.sec
-unsafe_generics_invalid.sec
-unsafe_effects_valid.sec
-unsafe_effects_invalid.sec
-unsafe_cleanup_valid.sec
-unsafe_cleanup_invalid.sec
-unsafe_address_valid.sec
-unsafe_address_invalid.sec
-unsafe_compile_time_valid.sec
-unsafe_compile_time_invalid.sec
-```
-
----
-
-# Syntax tests
-
-Test:
-
-```text
-single-operation unsafe statement;
-single-operation unsafe expression;
-unsafe block expression;
-block with multiple statements;
-block returning value;
-unclosed unsafe block;
-unsafe without operation;
-redundant nested unsafe;
-unsafe fn;
-unsafe method;
-unsafe extern "system";
-unsafe extern "C".
-```
-
----
-
-# Raw-pointer tests
-
-Test:
-
-```text
-store RawPtr safely;
-move RawPtr safely;
-compare RawPtr with null safely;
-pass RawPtr through FFI safely;
-read requires unsafe;
-write requires unsafe;
-arithmetic requires unsafe;
-integer conversion requires unsafe;
-ref construction requires unsafe;
-ref mut construction requires unsafe;
-slice from raw parts requires unsafe;
-explicit null contradiction rejected;
-explicit invalid alignment rejected;
-use after known lifetime rejected;
-conflicting known alias rejected;
-uninitialized read rejected.
-```
-
----
-
-# Unsafe function tests
-
-Test:
-
-```text
-unsafe call outside context rejected;
-unsafe call in single-operation context accepted;
-unsafe call in block accepted;
-unsafe function body still requires explicit context;
-safe wrapper accepted;
-unsafe status does not propagate to safe caller;
-effects do propagate through safe wrapper;
-caller obligations shown in diagnostics and LSP.
-```
-
----
-
-# Interface and function-value tests
-
-Test:
-
-```text
-safe interface method cannot have unsafe implementation;
-unsafe interface method may have safe internal implementation;
-call through unsafe interface remains unsafe;
-unsafe function does not convert to safe function value;
-safe wrapper can produce safe callable;
-unknown generic callback safety is conservative.
-```
-
----
-
-# Effect tests
-
-Test:
-
-```text
-unsafe allocation violates @noAlloc;
-unsafe blocking call violates @noBlock;
-unsafe panic-capable call violates @noPanic;
-unsafe suspension violates @isr;
-volatile effect remains through safe wrapper;
-foreign unknown effects remain conservative;
-trusted effect provenance is retained.
-```
-
----
-
-# Cleanup tests
-
-Test:
-
-```text
-unsafe operation in defer requires context;
-unsafe operation in destructor requires context;
-cleanup remains noPanic;
-blocking foreign release rejected in @noBlock cleanup;
-unknown foreign unwind rejected in destructor;
-double release remains rejected.
-```
-
----
-
-# Address tests
-
-Test:
-
-```text
-knowledge-pack address verified;
-raw numeric address accepted with trust provenance;
-ordinary typed addressed access does not require unsafe;
-raw integer-to-pointer conversion requires unsafe;
-misaligned raw address diagnosed;
-known invalid device address diagnosed;
-address trust shown in LSP.
-```
-
----
-
-# Compile-time evaluation tests
-
-Test:
-
-```text
-raw pointer read rejected in compile-time evaluation;
-FFI call rejected;
-inline assembly rejected;
-addressed storage access rejected;
-compiler-known explicitly supported intrinsic accepted;
-unsafe context does not override compile-time restriction.
-```
-
----
-
-# Binary tests
-
-Verify:
-
-```text
-unsafe introduces no runtime support;
-no dynamic unsafe flag is emitted;
-safe wrappers add no mandatory runtime;
-trust provenance may be omitted from release binary unless requested;
-raw-pointer operations lower directly according to target rules;
-unused FFI and unsafe helpers are not linked.
-```
-
----
-
-# Required synchronization
-
-This rulebook must remain synchronized with:
-
-```text
-attributes.md
-effect_analysis.md
-runtime_checks.md
-panic.md
-ownership.md
-copy_move.md
-memory_model.md
-arena rulebook
-allocation rulebook
-borrow and escape rules
-functions rulebook
-interfaces rulebook
-generics rulebook
-closures and lambdas rulebook
-defer rulebook
-destruction rulebook
-FFI rulebook
-inline assembly rulebook
-addressed-storage rulebook
-hardware-register-access rulebook
-register rulebook
-interrupt and ISR rulebook
-target knowledge rulebook
-compiler pipeline rulebook
-Semantic IR rulebook
-formatter.md
-lsp.md
-diagnostics rulebook
-language-rulebook-status.md
-rules_implementations.txt
-```
-
----
-
-# Appendix A — Codex implementation plan
-
-## A.1 Add the rulebook
-
-Add:
-
-```text
-rules/memory/unsafe.md
-```
-
-Update:
-
-```text
-language-rulebook-status.md
-rules/compiler/rules_implementations.txt
-```
-
-Mark the rulebook Written.
-
-Do not mark all unsafe functionality implemented.
-
----
-
-## A.2 Inspect existing syntax
-
-Locate current parsing and AST support for:
-
-```text
-unsafe;
-extern;
-linkage strings;
-RawPtr;
-FFI declarations;
-inline assembly;
-@address.
-```
-
-Preserve already canonical syntax.
-
-Do not invent `pub`, `unsafe struct`, or `unsafe type`.
-
----
-
-## A.3 Parse unsafe contexts
-
-Implement:
-
-```sec
-unsafe operation
-```
-
-and:
-
-```sec
-unsafe {
-    // ...
-}
-```
-
-The block must integrate with ordinary block-expression semantics.
-
----
-
-## A.4 Parse `unsafe fn`
-
-Support Sec functions and methods:
-
-```sec
-unsafe fn Name(...) ReturnType {
-}
-```
-
-The body is not implicitly unsafe.
-
----
-
-## A.5 Preserve `unsafe extern`
-
-Support canonical:
-
-```sec
-unsafe extern "system" fn rawSysCall(number: int, argument1: uint64) int64
-```
-
-Keep unsafe status separate from linkage.
-
----
-
-## A.6 Add semantic unsafe context tracking
-
-Track lexical unsafe depth or an equivalent context representation.
-
-Require context for every compiler-known unsafe operation.
-
-Do not disable unrelated diagnostics inside the context.
-
----
-
-## A.7 Add unsafe operation registry
-
-Centralize operation kinds, obligations, effects, and diagnostics.
-
-Do not implement unsafe requirements through method-name matching alone.
-
-Raw-pointer APIs and intrinsics should carry semantic classification.
-
----
-
-## A.8 Add caller obligation metadata
-
-Unsafe functions and intrinsics should expose structured caller-obligation data
-for diagnostics, docs, and LSP.
-
-Free-form safety documentation remains recommended rather than mandatory.
-
----
-
-## A.9 Implement RawPtr classifications
-
-Distinguish safe handling from unsafe interpretation.
-
-Implement at least:
-
-```text
-read;
-write;
-arithmetic;
-integer conversion;
-reference construction;
-mutable-reference construction;
-slice construction;
-ownership adoption.
-```
-
----
-
-## A.10 Integrate effects
-
-Unsafe context must not suppress:
-
-```text
-MayPanic;
-MayAllocate;
-MayBlock;
-MaySuspend;
-MaySpawn;
-MayIO;
-MayAccessVolatile;
-MayMutateExternalState;
-MayUseNondeterministicInput.
-```
-
-Retain trust provenance.
-
----
-
-## A.11 Integrate FFI
-
-Treat unknown foreign effects and ownership conservatively.
-
-Prepare representation for future trusted effect and ownership declarations.
-
-Do not invent their source syntax.
-
----
-
-## A.12 Integrate address provenance
-
-Named knowledge-pack address:
-
-```text
-compiler-verified where possible.
-```
-
-Raw numeric address:
-
-```text
-compiler-validated canonical-linear target binding;
-reject when complete region/storage validation cannot be established.
-```
-
-Do not require `unsafe @address`.
-
----
-
-## A.13 Integrate interfaces and function values
-
-Preserve unsafe caller status through:
-
-```text
-interface methods;
-method implementations;
-function values;
-callbacks;
-generic callable constraints.
-```
-
-Reject silent unsafe-to-safe conversion.
-
----
-
-## A.14 Integrate cleanup
-
-Require explicit unsafe context inside:
-
-```text
-defer;
-destructors;
-cleanup helpers.
-```
-
-Continue all cleanup effect checks.
-
----
-
-## A.15 Compile-time evaluation
-
-Reject ordinary unsafe operations in compile-time evaluation.
-
-Allow only explicitly supported compiler-known intrinsics.
-
----
-
-## A.16 Diagnostics
-
-Add stable diagnostics for:
-
-```text
-missing unsafe context;
-redundant unsafe context;
-empty unsafe context;
-unsafe function-value mismatch;
-interface safety mismatch;
-unknown foreign effect;
-unknown ownership;
-raw-pointer obligation;
-trusted target provenance;
-compile-time rejection.
-```
-
-Default redundant and empty-context diagnostics to information.
-
-Permit severity configuration.
-
----
-
-## A.17 Formatter
-
-Support canonical formatting for:
+§ 51(1) Formatter preserves canonical forms:
 
 ```sec
 unsafe pointer.Write(value)
@@ -2633,163 +947,96 @@ let value := unsafe {
 ```
 
 ```sec
-unsafe extern "system" fn rawSysCall(number: int, argument1: uint64) int64
-```
-
-Do not add or remove unsafe semantics.
-
----
-
-## A.18 LSP
-
-Add:
-
-```text
-unsafe-operation hover;
-caller-obligation hover;
-trust-provenance navigation;
-wrap-in-unsafe code action;
-remove-redundant-unsafe code action;
-function safety compatibility diagnostics;
-knowledge-pack address replacement where exact and safe.
-```
-
----
-
-## A.19 Tests
-
-Run:
-
-```text
-go test ./...
-compiler build
-LSP build
-formatter tests
-fixture validation
-unsafe test suite
-effect test suite
-FFI tests
-binary dependency tests
-```
-
-Do not claim completion while unsafe syntax, RawPtr classification, effect
-integration, or diagnostics are partial.
-
----
-
-# Appendix B — Canonical unsafe table
-
-| Construct | Requires unsafe context | Meaning |
-|---|---:|---|
-| Store or move `RawPtr[T]` | No | Preserve an uninterpreted raw address |
-| Compare `RawPtr[T]` with null | No | Inspect pointer value without dereference |
-| Raw-pointer read | Yes | Read typed storage under caller obligations |
-| Raw-pointer write | Yes | Write typed storage under caller obligations |
-| Raw-pointer arithmetic | Yes | Compute a new raw address |
-| Integer to raw pointer | Yes | Assert an address interpretation |
-| Raw pointer to `ref T` | Yes | Assert shared-reference validity |
-| Raw pointer to `ref mut T` | Yes | Assert exclusive mutable-reference validity |
-| Slice from raw parts | Yes | Assert range, lifetime, layout, and alias validity |
-| Call `unsafe fn` | Yes | Accept the function's caller obligations |
-| Call `unsafe extern` | Yes | Accept foreign caller and ABI obligations |
-| Inline assembly | Yes | Accept machine-level trust obligations |
-| Unchecked construction | Yes | Bypass ordinary invariant validation |
-| Named knowledge-pack `@address` | No | Compiler-validated target binding where possible |
-| Raw numeric `@address` | No extra syntax | Compiler-validated binding in the target's canonical linear hardware address domain |
-| Typed access through accepted `@address` | No | Volatile typed target access |
-
----
-
-# Final canonical summary
-
-`unsafe` permits specific compiler-known operations whose complete safety
-obligations cannot be proven automatically.
-
-It disables no compiler analysis.
-
-Sec supports:
-
-```sec
-unsafe pointer.Write(value)
-```
-
-for one operation, and:
-
-```sec
-let value := unsafe {
-    pointer.Read()
+unsafe fn FromRawParts(...) Buffer {
 }
 ```
-
-for a block or value-producing unsafe context.
-
-Braces are required when more than one operation or statement belongs to the
-unsafe context.
-
-Sec supports:
-
-```sec
-unsafe fn Name(...) ReturnType {
-}
-```
-
-and:
 
 ```sec
 unsafe extern "system" fn rawSysCall(number: int, argument1: uint64) int64
 ```
 
-Calling either requires unsafe context.
+§ 51(2) Formatter must not add/remove unsafe semantics.
 
-The body of an unsafe function is not implicitly unsafe.
+§ 51(3) Modifier order preserves `unsafe extern "<abi>" fn` and `unsafe fn`.
 
-Every unsafe operation inside it remains explicit.
+§ 51(4) Formatter must not invent `pub`, `unsafe struct`, or `unsafe type`.
 
-Safe functions may encapsulate unsafe implementation details after establishing
-all caller obligations.
+---
 
-Unsafe does not transitively mark callers.
+## § 52 LSP and tooling
 
-Actual effects still propagate.
+§ 52(1) LSP should display unsafe-operation explanation, caller obligations, callable safety, foreign trust, effects, trust provenance, nearest unsafe context, safe-wrapper boundary, raw-address verification, target-knowledge source, and callable compatibility where relevant.
 
-`RawPtr[T]` is not inherently unsafe to store, move, compare, return, or pass
-through FFI.
+§ 52(2) Completion inside unsafe remains ordinary completion with additional marking for operations permitted only by the context.
 
-Dereference, write, arithmetic, integer conversion, reference construction,
-slice construction, ownership adoption, and similar interpretation operations
-are unsafe.
+§ 52(3) Code actions may wrap an exact operation/block in unsafe or remove redundant unsafe when semantics are preserved.
 
-Sec 0.1 does not define `unsafe struct` or `unsafe type`.
+§ 52(4) Tooling must not imply that wrapping a compiler-proven invalid operation in unsafe will fix it.
 
-Types containing raw pointers are not automatically unsafe.
+§ 52(5) Compiler/LSP/sec analyse must agree.
 
-Unsafe construction uses unsafe constructors or factory functions.
+---
 
-`@address` is not prefixed with unsafe.
+## § 53 Required test families
 
-Named endpoint and raw numeric `@address` bindings are compiler-validated
-against canonical target/platform/device/project contracts. Numeric spelling is
-limited to the target's canonical linear hardware address domain and does not
-create a trust bypass.
+§ 53(1) Syntax tests include single-operation statement/expression, block expression, block result, unclosed block, empty/redundant unsafe, unsafe fn/method, and unsafe extern linkage forms.
 
-Ordinary typed access to accepted addressed storage does not require unsafe
-context.
+§ 53(2) Unsafe-function tests include call outside context rejected, calls inside both context forms accepted, body remains explicit, safe wrapper accepted, and effects/trust preserved.
 
-Unsafe does not suppress `MayPanic`, `MayAllocate`, `MayBlock`, `MaySuspend`, or
-any other effect.
+§ 53(3) Callable compatibility tests include interfaces, function values, callbacks, dynamic dispatch, and generic unknown safety.
 
-Unsafe operations in `defer` and destructors still require explicit unsafe
-context and remain subject to all cleanup rules.
+§ 53(4) Raw-pointer tests include read/write/volatile/arithmetic gating, null/alignment/lifetime/alias/range obligations, RawPtr storage operations, and raw-to-safe conversion.
 
-Unsafe status is preserved in interfaces, function values, callbacks, and
-generics.
+§ 53(5) Construction tests include invalid representation, unchecked enum/union, uninitialized storage, ownership adoption, and double ownership rejection.
 
-Ordinary compile-time evaluation rejects unsafe operations.
+§ 53(6) FFI tests include ABI, ownership/retention/effects, unknown contracts, safe wrappers, and foreign unwind restrictions.
 
-Redundant and empty unsafe contexts are valid and produce informational
-diagnostics by default; configuration may promote them to warnings.
+§ 53(7) Hardware tests include knowledge-pack address, raw numeric address, misalignment, device mapping lifetime, MMIO, ISR effects, and volatile-not-synchronization.
 
-Public unsafe API safety documentation is strongly recommended, not a hard
-language requirement.
+§ 53(8) Compile-time tests reject ordinary unsafe operations except explicitly supported intrinsics.
 
-Unsafe and trust provenance require no mandatory Sec runtime.
+§ 53(9) Binary tests verify no runtime unsafe flag/general runtime and direct target lowering of used operations.
+
+§ 53(10) Tooling tests verify diagnostics/formatter/LSP parity.
+
+---
+
+## § 54 Completion criteria
+
+§ 54(1) Frontend unsafe support is complete when both unsafe-context forms, unsafe fn/method, unsafe extern, unsafe-call checking, and all canonical operation classifications are implemented.
+
+§ 54(2) Contract support is complete when caller obligations and trust provenance are compiler-owned facts across direct/indirect/interface/generic/FFI calls.
+
+§ 54(3) Raw/representation support is complete when every unsafe low-level operation consumes the canonical raw/layout/storage/ownership/reference facts.
+
+§ 54(4) Effect integration is complete when unsafe never suppresses panic/allocation/blocking/volatile/I/O/external-mutation or other effects.
+
+§ 54(5) Platform/FFI support is complete when target knowledge, raw addresses, mappings, hardware, assembly, callbacks, and foreign contracts preserve trust/effect provenance.
+
+§ 54(6) Semantic IR/lowering support is complete when unsafe operations lower with no invented runtime and no stronger backend assumptions than accepted proof/trust.
+
+§ 54(7) Tooling support is complete when compiler, LSP, formatter, diagnostics, and audit/report tooling consume one canonical unsafe registry.
+
+---
+
+## § 55 Core summary
+
+§ 55(1) Unsafe permits an operation whose complete safety obligations are not automatically proven; it disables no compiler analysis.
+
+§ 55(2) Sec supports `unsafe operation` and `unsafe { ... }`.
+
+§ 55(3) Sec supports `unsafe fn` and `unsafe extern "<abi>" fn`.
+
+§ 55(4) Calling an unsafe callable requires unsafe context.
+
+§ 55(5) The body of `unsafe fn` is not implicitly unsafe; each unsafe operation remains explicit.
+
+§ 55(6) Safe wrappers may encapsulate unsafe implementation details after discharging all caller obligations.
+
+§ 55(7) Unsafe does not transitively mark callers, but actual effects/trust provenance remain visible.
+
+§ 55(8) Raw-pointer interpretation, raw-to-safe conversion, slice-from-raw-parts, unchecked representation, ownership adoption, FFI, assembly, and unverified target addressing are principal unsafe boundaries.
+
+§ 55(9) Unsafe does not legalize null/dangling/alias/lifetime/data-race/target violations that the compiler can prove.
+
+§ 55(10) Unsafe is not a general backend-UB switch and requires no mandatory Sec runtime.

@@ -1032,7 +1032,7 @@ channels.md
 select.md
 copy_move.md
 ownership.md
-borrowing.txt
+borrowing.md
 lifetime_analysis.md
 destruction.txt
 errorhandling.md

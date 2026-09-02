@@ -7,6 +7,21 @@
     <link rel="stylesheet" href="manual.css">
 </head>
 <body>
+<header class="site-header">
+    <div class="header-inner">
+        <a href="index.html" class="site-logo">
+            <img src="logo.svg" alt="Sec" />
+            <span class="site-title">Sec</span>
+        </a>
+                <nav class="header-nav">
+            <a href="01-introduction.html">Language</a>
+            <a href="stdlib.html">Stdlib</a>
+            <a href="syntax-reference.html">Syntax</a>
+            <a href="best-practices.html">Best Practices</a>
+            <a href="https://github.com/YoePro/sec">GitHub</a>
+        </nav>
+    </div>
+</header>
 <div class="layout">
     <nav class="sidebar" aria-label="Section navigation">
         <h2 class="sidebar-title">Sec Manual</h2>
@@ -19,10 +34,59 @@
         <a href="#runtime-model">Runtime Model</a>
         <a href="#example-program">Example Program</a>
         <a href="#non-goals">Non-Goals</a>
-        <div class="sidebar-section">Pages</div>
-        <a href="index.html">Index</a>
+                        <div class="sidebar-section">Language</div>
+        <a href="01-introduction.html" class="active">Introduction</a>
         <a href="02-basic-syntax.html">Basic Syntax</a>
         <a href="03-types.html">Types</a>
+        <a href="04-named-types-contracts-and-units.html">Named Types, Contracts &amp; Units</a>
+        <a href="05-structs-properties-and-impl.html">Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html">Functions</a>
+        <a href="07-if.html">If Statements</a>
+        <a href="08-switch.html">Switch Statements</a>
+        <a href="09-match.html">Match Expressions</a>
+        <a href="10-enums.html">Enums</a>
+        <a href="11-unions.html">Unions</a>
+        <a href="12-registers.html">Registers</a>
+        <a href="13-units.html">Units</a>
+        <a href="14-generics.html">Generics</a>
+        <a href="15-structs.html">Structs</a>
+        <a href="16-impl.html">Impl Blocks</a>
+        <a href="17-properties.html">Properties</a>
+        <a href="18-interfaces.html">Interfaces</a>
+        <a href="19-arrays.html">Arrays</a>
+        <a href="20-slices.html">Slices</a>
+        <a href="21-indexing.html">Indexing</a>
+        <a href="22-constants.html">Constants</a>
+        <a href="23-references.html">References</a>
+        <a href="24-ownership.html">Ownership</a>
+        <a href="25-borrowing.html">Borrowing</a>
+        <a href="26-unsafe.html">Unsafe</a>
+        <a href="27-spread.html">Spread</a>
+        <a href="30-modules.html">Modules and Imports</a>
+        <a href="31-projects.html">Projects and sec.module</a>
+        <a href="32-visibility.html">Visibility</a>
+        <a href="33-result-and-option.html">Result and Option</a>
+        <a href="34-try.html">Error Propagation</a>
+        <a href="35-defer.html">Deferred Cleanup</a>
+        <a href="36-attributes.html">Attributes</a>
+        <a href="37-build-directives.html">Build Directives</a>
+        <a href="38-ffi.html">Foreign Function Interfaces</a>
+        <a href="39-tasks.html">Tasks</a>
+        <a href="40-spawn.html">Spawning Work</a>
+        <a href="41-await.html">Awaiting Tasks</a>
+        <a href="42-channels.html">Channels and Coordination</a>
+        <a href="43-testing.html">Tests and Benchmarks</a>
+        <a href="44-formatting.html">Formatting</a>
+        <a href="45-diagnostics.html">Understanding Compiler Diagnostics</a>
+        <div class="sidebar-section">Reference</div>
+        <a href="stdlib.html">Standard Library</a>
+        <a href="syntax-reference.html">Syntax Reference</a>
+        <a href="best-practices.html">Best Practices</a>
+        <div class="sidebar-section">Status</div>
+        <a href="test-status.html">Implementation Status</a>
+        <div class="sidebar-section">Community</div>
+        <a href="bug-report.html">Report a Bug</a>
+        <a href="join.html">Join</a>
     </nav>
 
     <main class="content">
@@ -157,11 +221,16 @@ fn main() void {
             </ul>
         </div>
 
-        <div class="next-links">
-            <a href="index.html">Previous: Index</a>
-            <a href="02-basic-syntax.html">Next: Basic Syntax</a>
+                <div class="page-navigation">
+                <a href="02-basic-syntax.html">Next: Basic Syntax</a>
         </div>
     </main>
 </div>
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <p>&copy; 2026 Sec Language</p>
+        <a href="https://github.com/YoePro/sec">GitHub</a>
+    </div>
+</footer>
 </body>
 </html>

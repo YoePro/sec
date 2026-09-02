@@ -615,10 +615,10 @@ declarations/interfaces.md
 functions.md
 closures.txt
 ownership.md
-borrowing.txt
+borrowing.md
 lifetime_analysis.md
 allocation.md
-layout.txt
+layout.md
 static.txt
 channels.md
 concurrency.md

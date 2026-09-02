@@ -75,16 +75,59 @@
         <a href="#complete-examples">Complete Examples</a>
         <a href="#summary-rules">Summary of Rules</a>
 
-        <div class="sidebar-section">Pages</div>
-        <a href="index.html">Index</a>
+                <div class="sidebar-section">Language</div>
         <a href="01-introduction.html">Introduction</a>
         <a href="02-basic-syntax.html">Basic Syntax</a>
-        <a href="03-variables-and-basic-types.html">Variables and Basic Types</a>
-        <a href="04-named-types-contracts-and-units.html">Named Types, Contracts and Units</a>
-        <a href="05-structs-properties-and-impl.html">Structs, Properties and Impl</a>
-        <a href="07-if.html">if</a>
-        <a href="08-switch.html">switch</a>
-        <a href="09-match.html">match</a>
+        <a href="03-types.html">Types</a>
+        <a href="04-named-types-contracts-and-units.html">Named Types, Contracts &amp; Units</a>
+        <a href="05-structs-properties-and-impl.html">Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html" class="active">Functions</a>
+        <a href="07-if.html">If Statements</a>
+        <a href="08-switch.html">Switch Statements</a>
+        <a href="09-match.html">Match Expressions</a>
+        <a href="10-enums.html">Enums</a>
+        <a href="11-unions.html">Unions</a>
+        <a href="12-registers.html">Registers</a>
+        <a href="13-units.html">Units</a>
+        <a href="14-generics.html">Generics</a>
+        <a href="15-structs.html">Structs</a>
+        <a href="16-impl.html">Impl Blocks</a>
+        <a href="17-properties.html">Properties</a>
+        <a href="18-interfaces.html">Interfaces</a>
+        <a href="19-arrays.html">Arrays</a>
+        <a href="20-slices.html">Slices</a>
+        <a href="21-indexing.html">Indexing</a>
+        <a href="22-constants.html">Constants</a>
+        <a href="23-references.html">References</a>
+        <a href="24-ownership.html">Ownership</a>
+        <a href="25-borrowing.html">Borrowing</a>
+        <a href="26-unsafe.html">Unsafe</a>
+        <a href="27-spread.html">Spread</a>
+        <a href="30-modules.html">Modules and Imports</a>
+        <a href="31-projects.html">Projects and sec.module</a>
+        <a href="32-visibility.html">Visibility</a>
+        <a href="33-result-and-option.html">Result and Option</a>
+        <a href="34-try.html">Error Propagation</a>
+        <a href="35-defer.html">Deferred Cleanup</a>
+        <a href="36-attributes.html">Attributes</a>
+        <a href="37-build-directives.html">Build Directives</a>
+        <a href="38-ffi.html">Foreign Function Interfaces</a>
+        <a href="39-tasks.html">Tasks</a>
+        <a href="40-spawn.html">Spawning Work</a>
+        <a href="41-await.html">Awaiting Tasks</a>
+        <a href="42-channels.html">Channels and Coordination</a>
+        <a href="43-testing.html">Tests and Benchmarks</a>
+        <a href="44-formatting.html">Formatting</a>
+        <a href="45-diagnostics.html">Understanding Compiler Diagnostics</a>
+        <div class="sidebar-section">Reference</div>
+        <a href="stdlib.html">Standard Library</a>
+        <a href="syntax-reference.html">Syntax Reference</a>
+        <a href="best-practices.html">Best Practices</a>
+        <div class="sidebar-section">Status</div>
+        <a href="test-status.html">Implementation Status</a>
+        <div class="sidebar-section">Community</div>
+        <a href="bug-report.html">Report a Bug</a>
+        <a href="join.html">Join</a>
     </nav>
 
     <main class="content">
@@ -1199,9 +1242,8 @@ fn main() int {
             <h2>Capture by Value</h2>
 
             <p>
-                A plain capture entry captures the value when the lambda expression is evaluated. The owned
-                captured binding is mutable inside the lambda; mutating it gives the callable at least
-                <code>mut fn</code> capability.
+                A plain capture entry captures the value when the lambda expression is evaluated. The captured
+                binding is immutable inside the lambda.
             </p>
 
             <pre><code>let mut factor: int := 2
@@ -1216,17 +1258,14 @@ let result := multiply(10) // result is 20.</code></pre>
 
             <p>
                 Changing the outer variable later does not change the already captured value. A mutable outer
-                variable may therefore be captured, but the captured value remains an independent environment
-                binding.
+                variable may therefore be captured, but the captured copy remains immutable.
             </p>
 
             <pre><code>let mut factor: int := 2
 
-let mut operation := capture(factor) fn() void {
+let operation := capture(factor) fn() void {
     factor = 4
-}
-
-operation() // The outer factor is still 2.</code></pre>
+} // Error: captured value factor is immutable.</code></pre>
 
             <p>
                 Copyable values may be copied into the closure environment. Capturing a non-copyable value may
@@ -1476,8 +1515,7 @@ fn ReadSpeed() Result[Speed, IOError] {
                 <li>Lambda parameter and return types are currently explicit.</li>
                 <li>Lambdas and named functions follow the same call and return rules.</li>
                 <li>Enclosing local variables are never captured implicitly.</li>
-                <li><code>capture(value)</code>, <code>capture(-&gt; value)</code>, <code>capture(ref value)</code>, and <code>capture(ref mut value)</code> select explicit capture modes.</li>
-                <li>Callable environment capability is <code>fn</code>, <code>mut fn</code>, or <code>-&gt; fn</code>.</li>
+                <li><code>capture(...)</code> creates explicit immutable value captures.</li>
                 <li>Capture occurs when the lambda expression is evaluated.</li>
                 <li>A lambda creates its own scope and function boundary.</li>
                 <li>Function values do not support equality, ordering, or null.</li>
@@ -1485,11 +1523,16 @@ fn ReadSpeed() Result[Speed, IOError] {
         </div>
 
         <div class="page-nav">
-            <a href="05-structs-properties-and-impl.html">Previous: Structs, Properties and Impl</a>
-            <a href="index.html">Manual Index</a>
+            <a href="05-structs-properties-and-impl.html">Previous: Structs, Properties and Impl</a>          
             <a href="07-if.html">Next: if</a>
         </div>
     </main>
 </div>
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <p>&copy; 2026 Sec Language</p>
+        <a href="https://github.com/YoePro/sec">GitHub</a>
+    </div>
+</footer>
 </body>
 </html>

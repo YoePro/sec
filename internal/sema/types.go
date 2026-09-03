@@ -773,6 +773,29 @@ func builtinTypes() map[string]Type {
 				{Name: "None"},
 			},
 		},
+		// Iterator is the compiler-known, statically dispatched iteration
+		// contract from rules/control-flow/flowcontrol_for.md section 37. It has
+		// no runtime representation or dynamic-dispatch requirement: a concrete
+		// type participates only through explicit implements Iterator[T].
+		"Iterator": {
+			Name:              "Iterator",
+			Kind:              InterfaceType,
+			GenericParameters: []string{"T"},
+			InterfaceMethods: []Function{
+				{
+					Name:            "Next",
+					CompilerKnownID: "CKM-ITERATOR-NEXT",
+					ReceiverMutable: true,
+					ReturnType: Type{
+						Name: "Option",
+						Kind: UnionType,
+						TypeArgs: []Type{
+							{Name: "T", Kind: GenericType},
+						},
+					},
+				},
+			},
+		},
 		"Vec":                   {Name: "Vec", Kind: StructType, GenericParameters: []string{"T"}},
 		"Set":                   {Name: "Set", Kind: StructType, GenericParameters: []string{"T"}},
 		"Map":                   {Name: "Map", Kind: StructType, GenericParameters: []string{"K", "V"}},

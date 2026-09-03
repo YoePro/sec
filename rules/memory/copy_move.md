@@ -361,29 +361,50 @@ return <-value
 
 **§ 9.1(5)** The optional marker in § 9.1(4) changes no ownership semantics. It is explicit documentation only.
 
-### § 9.2 Returned temporaries and caller reception
+### § 9.2 Terminal return context through construction
 
-**§ 9.2(1)** A temporary may construct or forward directly into the return result:
+**§ 9.2(1)** The terminal return context propagates recursively through structural owning construction that directly forms the returned value.
+
+This includes aggregate fields, union payloads, `Option.Some`, `Result.Ok`, `Result.Err`, and nested combinations of those forms:
+
+```sec
+return Some(resource)
+return Packet.Data(resource)
+return Response { Body: resource }
+return Ok(Response { Body: resource })
+```
+
+**§ 9.2(2)** A reusable move-only source on such a direct return-construction path may transfer without an inner `<-`. An explicit `<-` remains permitted as documentation and has identical ownership semantics.
+
+**§ 9.2(3)** A value-producing control-flow expression that directly supplies the return value propagates the terminal context into each continuing value-producing arm.
+
+**§ 9.2(4)** An ordinary function call is not structural return forwarding. Its arguments retain their declared copy, borrow, and consuming parameter modes even when the call result is returned.
+
+**§ 9.2(5)** Terminal forwarding does not permit move-out from borrowed, indexed, static, foreign, volatile, MMIO, unavailable, or otherwise restricted storage.
+
+### § 9.3 Returned temporaries and caller reception
+
+**§ 9.3(1)** A temporary may construct or forward directly into the return result:
 
 ```sec
 return CreateBuffer()
 ```
 
-**§ 9.2(2)** Receiving a fresh returned value requires no move marker:
+**§ 9.3(2)** Receiving a fresh returned value requires no move marker:
 
 ```sec
 let buffer := CreateBuffer()
 ```
 
-**§ 9.2(3)** The language must not require move syntax at both ends of an already-obvious return transfer.
+**§ 9.3(3)** The language must not require move syntax at both ends of an already-obvious return transfer.
 
-### § 9.3 Returning from borrowed storage
+### § 9.4 Returning from borrowed storage
 
-**§ 9.3(1)** A borrowed Place does not grant ownership transfer.
+**§ 9.4(1)** A borrowed Place does not grant ownership transfer.
 
-**§ 9.3(2)** Returning a field by value from borrowed storage is valid only if that field can be copied under ordinary copy rules.
+**§ 9.4(2)** Returning a field by value from borrowed storage is valid only if that field can be copied under ordinary copy rules.
 
-**§ 9.3(3)** A move-only value cannot be removed from shared, borrowed, static, or foreign storage without a separate ownership-taking contract.
+**§ 9.4(3)** A move-only value cannot be removed from shared, borrowed, static, or foreign storage without a separate ownership-taking contract.
 
 ---
 
@@ -406,6 +427,8 @@ let session := Session {
 
 **§ 10.1(4)** A fresh temporary may construct an owning field directly without `<-`.
 
+**§ 10.1(5)** When the aggregate directly forms a returned value, § 9.2 makes an inner move marker optional and propagates through nested aggregate construction.
+
 ### § 10.2 Option construction
 
 **§ 10.2(1)** A reusable move-only source transferred into `Some` must be explicit:
@@ -416,6 +439,8 @@ let value := Some(<-resource)
 
 **§ 10.2(2)** Plain `Some(resource)` copies when `resource` is copyable and is invalid when consuming ownership would be required.
 
+**§ 10.2(3)** When `Some` directly forms a returned value, § 9.2 permits terminal forwarding without an inner move marker.
+
 ### § 10.3 Result construction
 
 **§ 10.3(1)** Outside a terminal return boundary, a reusable move-only source transferred into `Ok` or `Err` must use explicit `<-`.
@@ -424,7 +449,7 @@ let value := Some(<-resource)
 let result := Ok(<-resource)
 ```
 
-**§ 10.3(2)** At a return boundary, the return context itself is terminal and the inner payload move marker is optional:
+**§ 10.3(2)** When `Ok` or `Err` directly forms a returned value, the general terminal-construction rule in § 9.2 makes the inner payload move marker optional:
 
 ```sec
 return Ok(resource)
@@ -436,7 +461,7 @@ return Ok(resource)
 return Ok(<-resource)
 ```
 
-**§ 10.3(4)** § 10.3(2) is a return-boundary exception. It must not be generalized into implicit destructive payload transfer for non-terminal construction.
+**§ 10.3(4)** § 9.2 is a return-boundary exception. It must not be generalized into implicit destructive payload transfer for non-terminal construction.
 
 ### § 10.4 Union construction
 
@@ -445,6 +470,8 @@ return Ok(<-resource)
 **§ 10.4(2)** A reusable named move-only source transferred into an owning union payload must use `<-` at the source position.
 
 **§ 10.4(3)** Moving a complete union transfers ownership of its active payload without exposing representation details.
+
+**§ 10.4(4)** When a union variant directly forms a returned value, § 9.2 permits terminal payload forwarding without an inner move marker.
 
 ### § 10.5 Conversion expressions
 

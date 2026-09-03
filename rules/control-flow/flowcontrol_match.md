@@ -2,8 +2,8 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-17
-- **Last updated:** 2026-08-17
-- **Document revision:** 2.0
+- **Last updated:** 2026-09-03
+- **Document revision:** 2.1
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/control-flow/flowcontrol_match.md`
 - **Replaces:** `rules/control-flow/flowcontrol_match.txt`
@@ -128,6 +128,14 @@ Every reachable semantic state of the subject must be covered by the arm set or 
 Coverage is based on the resolved subject type and proven control-flow state, not merely on source spelling.
 
 A guarded arm does not by itself exhaust its underlying pattern because the guard may evaluate to `false`.
+
+A finite set of guarded whole-payload arms may jointly cover a variant when
+the payload is a closed enum and every reachable underlying enum value class is
+selected by a direct equality guard on the payload binding. For example,
+`Some(site) where site == SameSite.Strict` contributes the `Strict` value class.
+The `Some` variant is covered only after the complete closed enum domain is
+covered. This is a narrow finite-domain proof; arbitrary boolean guards do not
+contribute exhaustiveness.
 
 ```sec
 match option {

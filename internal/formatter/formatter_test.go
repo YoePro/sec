@@ -98,6 +98,45 @@ func TestFormatPreservesMultilineCallLayout(t *testing.T) {
 	}
 }
 
+func TestFormatNormalizesSameLineDelimiterSpacing(t *testing.T) {
+	input := `fn Render() void {
+match self.Domain {
+Some(domain) => {                 out += "; Domain=" + domain            }
+None => {             }
+}
+let values := [         first,          Build("(", [ second, third ]),      ]
+let item := Build(      Item {       Left: first, Right: second       },      third,    )
+let grouped := (             first + second              )
+}
+`
+	want := `fn Render() void {
+    match self.Domain {
+        Some(domain) => { out += "; Domain=" + domain }
+        None => {}
+    }
+    let values := [first, Build("(", [second, third])]
+    let item := Build(Item { Left: first, Right: second }, third)
+    let grouped := (first + second)
+}
+`
+
+	got := Format(Source{Text: input}, Options{}).Text
+	if got != want {
+		t.Fatalf("single-line delimiter spacing was not normalized:\n%s\nwant:\n%s", got, want)
+	}
+	if again := Format(Source{Text: got}, Options{}).Text; again != got {
+		t.Fatalf("single-line delimiter formatting is not idempotent:\nfirst:\n%s\nsecond:\n%s", got, again)
+	}
+}
+
+func TestFormatPreservesMultilineDelimiterPadding(t *testing.T) {
+	input := "fn Test() void {\nconsume(\n    first,\n)\nlet values := [\n    first,\n]\nif ready {\n    Run()\n}\n}\n"
+	want := "fn Test() void {\n    consume(\n        first,\n    )\n    let values := [\n        first,\n    ]\n    if ready {\n        Run()\n    }\n}\n"
+	if got := Format(Source{Text: input}, Options{}).Text; got != want {
+		t.Fatalf("formatter changed multiline delimiter layout:\n%s\nwant:\n%s", got, want)
+	}
+}
+
 func TestFormatPreservesRegisterLayoutModifiers(t *testing.T) {
 	input := "type Header register[16] msb-first big-endian {\nVersion: bit[4],\nPayload: bit[12],\n}\n"
 	want := "type Header register[16] msb-first big-endian {\n    Version: bit[4],\n    Payload: bit[12],\n}\n"

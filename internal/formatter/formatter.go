@@ -67,7 +67,7 @@ func format(text string, options Options) string {
 		if options.Fix {
 			line = normalizeReversedTypeDeclaration(line)
 		}
-		line = formatAssert(formatUnitExpressions(formatSingleLineCallSpacing(formatMatchArm(formatLet(formatSignature(formatInitSignature(normalizeFunc(line))))))))
+		line = formatAssert(formatUnitExpressions(formatSingleLineDelimiterSpacing(formatSingleLineCallSpacing(formatMatchArm(formatLet(formatSignature(formatInitSignature(normalizeFunc(line)))))))))
 		level := indent - closing(line)
 		if level < 0 {
 			level = 0
@@ -340,6 +340,144 @@ func formatSingleLineCallSpacing(line string) string {
 		return line
 	}
 	return normalizeSingleLineCalls(line)
+}
+
+// formatSingleLineDelimiterSpacing is the line-based migration step toward the
+// lossless CST required by rules/tooling/formatter.md. It treats balanced
+// delimiter groups as structural nodes, retains quoted contents verbatim, and
+// never joins or rewrites a group whose matching delimiter is on another line.
+func formatSingleLineDelimiterSpacing(line string) string {
+	if strings.Contains(line, "//") || strings.Contains(line, "/*") || strings.Contains(line, "*/") {
+		return line
+	}
+	return normalizeSingleLineDelimiters(line)
+}
+
+func normalizeSingleLineDelimiters(text string) string {
+	var out strings.Builder
+	for cursor := 0; cursor < len(text); {
+		open := nextStructuralDelimiter(text, cursor)
+		if open < 0 {
+			out.WriteString(text[cursor:])
+			break
+		}
+		close := matchingDelimiter(text, open)
+		if close < 0 {
+			// The group continues on another physical line (or is incomplete).
+			// Preserve the rest of this line byte-for-byte for the future CST.
+			out.WriteString(text[cursor:])
+			break
+		}
+
+		opener := text[open]
+		inner := normalizeSingleLineDelimiters(text[open+1 : close])
+		inner = strings.TrimSpace(inner)
+		if opener == '(' || opener == '[' {
+			if parts := split(inner); parts != nil && strings.Contains(inner, ",") {
+				inner = strings.Join(parts, ", ")
+			}
+		}
+
+		out.WriteString(text[cursor : open+1])
+		if opener == '{' && inner != "" {
+			out.WriteByte(' ')
+			out.WriteString(inner)
+			out.WriteByte(' ')
+		} else {
+			out.WriteString(inner)
+		}
+		out.WriteByte(text[close])
+		cursor = close + 1
+	}
+	return out.String()
+}
+
+func nextStructuralDelimiter(text string, start int) int {
+	quote := byte(0)
+	escaped := false
+	for index := start; index < len(text); index++ {
+		character := text[index]
+		if quote != 0 {
+			if escaped {
+				escaped = false
+			} else if character == '\\' && quote != '`' {
+				escaped = true
+			} else if character == quote {
+				quote = 0
+			}
+			continue
+		}
+		if character == '"' || character == '\'' || character == '`' {
+			quote = character
+			continue
+		}
+		if character == '(' || character == '[' || character == '{' {
+			return index
+		}
+	}
+	return -1
+}
+
+func matchingDelimiter(text string, open int) int {
+	if open < 0 || open >= len(text) || !isOpeningDelimiter(text[open]) {
+		return -1
+	}
+	stack := []byte{}
+	quote := byte(0)
+	escaped := false
+	for index := open; index < len(text); index++ {
+		character := text[index]
+		if quote != 0 {
+			if escaped {
+				escaped = false
+			} else if character == '\\' && quote != '`' {
+				escaped = true
+			} else if character == quote {
+				quote = 0
+			}
+			continue
+		}
+		if character == '"' || character == '\'' || character == '`' {
+			quote = character
+			continue
+		}
+		if isOpeningDelimiter(character) {
+			stack = append(stack, character)
+			continue
+		}
+		if !isClosingDelimiter(character) {
+			continue
+		}
+		if len(stack) == 0 || closingDelimiter(stack[len(stack)-1]) != character {
+			return -1
+		}
+		stack = stack[:len(stack)-1]
+		if len(stack) == 0 {
+			return index
+		}
+	}
+	return -1
+}
+
+func isOpeningDelimiter(character byte) bool {
+	return character == '(' || character == '[' || character == '{'
+}
+
+func isClosingDelimiter(character byte) bool {
+	return character == ')' || character == ']' || character == '}'
+}
+
+func closingDelimiter(open byte) byte {
+	switch open {
+	case '(':
+		return ')'
+	case '[':
+		return ']'
+	case '{':
+		return '}'
+	default:
+		return 0
+	}
 }
 
 // normalizeSingleLineCalls recursively normalizes balanced call argument lists
@@ -726,7 +864,7 @@ func matchingParen(s string, open int) int {
 }
 func split(s string) []string {
 	parts := []string{}
-	start, paren, bracket, angle := 0, 0, 0, 0
+	start, paren, bracket, brace, angle := 0, 0, 0, 0, 0
 	quote := rune(0)
 	esc := false
 	for i, r := range s {
@@ -753,6 +891,10 @@ func split(s string) []string {
 			bracket++
 		case ']':
 			bracket--
+		case '{':
+			brace++
+		case '}':
+			brace--
 		case '<':
 			angle++
 		case '>':
@@ -760,7 +902,7 @@ func split(s string) []string {
 				angle--
 			}
 		case ',':
-			if paren == 0 && bracket == 0 && angle == 0 {
+			if paren == 0 && bracket == 0 && brace == 0 && angle == 0 {
 				if p := strings.TrimSpace(s[start:i]); p != "" {
 					parts = append(parts, p)
 				}
@@ -768,7 +910,7 @@ func split(s string) []string {
 			}
 		}
 	}
-	if quote != 0 || paren != 0 || bracket != 0 || angle != 0 {
+	if quote != 0 || paren != 0 || bracket != 0 || brace != 0 || angle != 0 {
 		return nil
 	}
 	if p := strings.TrimSpace(s[start:]); p != "" {

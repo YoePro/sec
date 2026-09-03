@@ -2254,6 +2254,72 @@ fn Build() State {
 	assertSemaErrors(t, errors, nil)
 }
 
+func TestMemberAssignmentsAcceptQualifiedContextualOptionNone(t *testing.T) {
+	input := `
+module main
+
+type State struct {
+	Text: Option[string],
+	Count: Option[int],
+}
+
+impl State {
+	init() {
+		self.Text = Option.None
+		self.Count = Option.None
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestOptionEnumPayloadCanBeSelectedWithBindingGuard(t *testing.T) {
+	input := `
+module main
+
+enum Mode {
+	Strict,
+	Lax,
+}
+
+fn Render(mode: Option[Mode]) int {
+	return match mode {
+		Option.Some(value) where value == Mode.Strict => 1
+		Option.Some(value) where value == Mode.Lax => 2
+		Option.None => 0
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestOptionEnumPayloadGuardsRemainNonExhaustiveWhenValueClassIsMissing(t *testing.T) {
+	input := `
+module main
+
+enum Mode {
+	Strict,
+	Lax,
+}
+
+fn Render(mode: Option[Mode]) int {
+	return match mode {
+		Option.Some(value) where value == Mode.Strict => 1
+		Option.None => 0
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"non-exhaustive match for Option[Mode]: missing Some at 10:9",
+	})
+}
+
 func TestCanonicalReferenceTypeCallArgumentsRemainAvailable(t *testing.T) {
 	input := `
 module main
@@ -2905,6 +2971,9 @@ enum Result {
 interface any {
 }
 
+interface Iterator[T] {
+}
+
 unit string decimal physical
 
 fn Preserve(value: any) int {
@@ -2917,6 +2986,7 @@ fn Preserve(value: any) int {
 		"type name int is compiler-known and cannot be redeclared",
 		"type name Result is compiler-known and cannot be redeclared",
 		"type name any is compiler-known and cannot be redeclared",
+		"type name Iterator is compiler-known and cannot be redeclared",
 		"unit name string is compiler-known and cannot be declared",
 	}
 	if len(errors) != len(wants) {
@@ -3462,6 +3532,84 @@ impl string {
 	if len(analyzer.functions["string.Len"]) == 0 {
 		t.Fatal("core string impl did not register string.Len")
 	}
+}
+
+func TestTrustedCoreCanImplementTemporalBuiltins(t *testing.T) {
+	for _, target := range []string{"date", "time", "datetime", "duration"} {
+		t.Run(target, func(t *testing.T) {
+			sourceFile := filepath.Join("sec", "core", target+".sec")
+			input := "module core\n\nimpl " + target + " {\n\tfn Identity() " + target + " { return self }\n}\n"
+			program := parser.New(lexer.NewWithFile(input, sourceFile)).ParseProgram()
+			program.SourceProvenance = map[string]ast.SourceProvenance{sourceFile: ast.SourceCore}
+
+			analyzer := NewAnalyzer()
+			assertSemaErrors(t, analyzer.Analyze(program), nil)
+			if len(analyzer.functions[target+".Identity"]) == 0 {
+				t.Fatalf("trusted core impl did not register %s.Identity", target)
+			}
+		})
+	}
+}
+
+func TestUserCodeCannotImplementTemporalBuiltin(t *testing.T) {
+	input := `module app
+
+impl duration {
+}
+`
+	program := parser.New(lexer.NewWithFile(input, filepath.Join("app", "duration.sec"))).ParseProgram()
+	assertSemaErrors(t, NewAnalyzer().Analyze(program), []string{
+		"impl target duration is not a named type at app/duration.sec:3:6",
+	})
+}
+
+func TestTrustedCoreCanImplementCompilerKnownCollectionAndShapedTypes(t *testing.T) {
+	// rules/collections/collections.md sections 1-2 and
+	// rules/collections/shaped-types.md section 34 allow ordinary core helpers
+	// on these compiler-known identities without granting user monkey-patching.
+	targets := []struct {
+		name   string
+		target string
+	}{
+		{name: "list", target: "list[T]"},
+		{name: "map", target: "map[K, V]"},
+		{name: "set", target: "set[T]"},
+		{name: "vector", target: "vector[T]"},
+		{name: "matrix", target: "matrix[T]"},
+		{name: "tensor", target: "tensor[T]"},
+		{name: "tensor_view", target: "tensor_view[T]"},
+		{name: "Shape", target: "Shape"},
+		{name: "Strides", target: "Strides"},
+		{name: "TensorLayout", target: "TensorLayout"},
+		{name: "MemorySpace", target: "MemorySpace"},
+	}
+
+	for _, test := range targets {
+		t.Run(test.name, func(t *testing.T) {
+			sourceFile := filepath.Join("sec", "core", test.name+".sec")
+			input := "module core\n\nimpl " + test.target + " {\n\tfn CoreMarker() void {}\n}\n"
+			program := parser.New(lexer.NewWithFile(input, sourceFile)).ParseProgram()
+			program.SourceProvenance = map[string]ast.SourceProvenance{sourceFile: ast.SourceCore}
+
+			analyzer := NewAnalyzer()
+			assertSemaErrors(t, analyzer.Analyze(program), nil)
+			if len(analyzer.functions[test.name+".CoreMarker"]) == 0 {
+				t.Fatalf("trusted core impl did not register %s.CoreMarker", test.name)
+			}
+		})
+	}
+}
+
+func TestUserCodeCannotImplementCompilerKnownCollection(t *testing.T) {
+	input := `module app
+
+impl list[T] {
+}
+`
+	program := parser.New(lexer.NewWithFile(input, filepath.Join("app", "list.sec"))).ParseProgram()
+	assertSemaErrors(t, NewAnalyzer().Analyze(program), []string{
+		"impl target list is not a named type at app/list.sec:3:6",
+	})
 }
 
 func TestCoreLookingPathCannotImplementBuiltinStringWithoutProvenance(t *testing.T) {
@@ -9011,6 +9159,7 @@ func TestCompilerIntrinsicTypesAreRegistered(t *testing.T) {
 		"void",
 		"RawPtr",
 		"Option",
+		"Iterator",
 		"Result",
 		"Vec",
 		"Set",
@@ -10348,6 +10497,98 @@ fn MapLoop(values: Map[string, int]) void {
 	assertSemaErrors(t, errors, nil)
 }
 
+func TestForCompilerKnownIteratorUsesExplicitGenericConformance(t *testing.T) {
+	input := `
+module main
+
+type Counter struct {
+	current: int,
+}
+
+impl Counter implements Iterator[int] {
+	fn Next() Option[int] {
+		self.current += 1
+		return Some(self.current)
+	}
+}
+
+fn MakeCounter() Counter {
+	return Counter { current: 0 }
+}
+
+fn FromMutableStorage() void {
+	let mut counter := Counter { current: 0 }
+	for value in counter {
+		let typed: int := value
+	}
+}
+
+fn FromOwnedTemporary() void {
+	for value in MakeCounter() {
+		let typed: int := value
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestForCompilerKnownIteratorRejectsImmutableStorageAndDuckTyping(t *testing.T) {
+	input := `
+module main
+
+type Explicit struct {}
+impl Explicit implements Iterator[int] {
+	fn Next() Option[int] { return None() }
+}
+
+type Accidental struct {}
+impl Accidental {
+	fn Next() Option[int] { return None() }
+}
+
+fn Test() void {
+	let immutable := Explicit {}
+	for value in immutable {}
+
+	let mut accidental := Accidental {}
+	for value in accidental {}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	if len(errors) != 2 {
+		t.Fatalf("wrong iterator diagnostics: %v", errors)
+	}
+	if !strings.Contains(errors[0].Message, "iteration requires a mutable iterator source") {
+		t.Fatalf("missing immutable iterator diagnostic: %v", errors)
+	}
+	if !strings.Contains(errors[1].Message, "type Accidental is not iterable") {
+		t.Fatalf("naming convention unexpectedly enabled iteration: %v", errors)
+	}
+}
+
+func TestCompilerKnownIteratorConformanceSubstitutesElementType(t *testing.T) {
+	errors := analyzeSourceRaw(t, `
+module main
+
+type Correct struct {}
+impl Correct implements Iterator[string] {
+	fn Next() Option[string] { return None() }
+}
+
+type Wrong struct {}
+impl Wrong implements Iterator[string] {
+	fn Next() Option[int] { return None() }
+}
+`)
+
+	if len(errors) != 1 || !strings.Contains(errors[0].Message, "type Wrong method Next does not match interface Iterator") {
+		t.Fatalf("generic Iterator conformance was not substituted: %v", errors)
+	}
+}
+
 func TestForCompilerKnownCollectionLoopBindingErrors(t *testing.T) {
 	input := `
 module main
@@ -11065,8 +11306,9 @@ func errorsContainMessage(errors []Error, fragment string) bool {
 	return false
 }
 
-// rules/control-flow/discard.md; correction19.md requires aggregate temporary
-// construction to consume transferred move-only sources before discard.
+// rules/control-flow/discard.md and rules/memory/copy_move.md require an
+// explicit move into a non-terminal aggregate temporary, then commit it before
+// the aggregate itself is discarded.
 func TestDiscardAggregateTemporaryCommitsMoves(t *testing.T) {
 	errors := analyzeSourceRaw(t, `
 module main
@@ -11076,7 +11318,7 @@ type Holder struct { session: Session, }
 fn Use(value: ref Session) void {}
 fn Test() void {
 	let session := Session { id: 1 }
-	discard Holder { session: session }
+	discard Holder { session: <-session }
 	Use(ref session)
 }
 `)

@@ -2845,6 +2845,21 @@ Reset
 Release
 ```
 
+## Iteration protocol
+
+```text
+CKM-ITERATOR-NEXT
+    source contract: explicit implements Iterator[T]
+    concrete operation: mut Next() Option[T]
+    dispatch: statically resolved
+    runtime support: none
+```
+
+The `Iterator[T]` interface and `for` behavior are defined by
+`rules/control-flow/flowcontrol_for.md`, section 37. This registry identity lets
+Semantic IR, lowering, and tooling consume the exact Sema-selected method. A
+member named `Next` without explicit conformance never acquires this identity.
+
 Other compiler-known entries may exist when owned by their canonical
 rulebooks.
 
@@ -3256,6 +3271,7 @@ RawPtr Read, Write, VolatileRead, VolatileWrite, Offset, AddBytes, and Differenc
 stable CKM-RAWPTR-VOLATILE-READ and CKM-RAWPTR-VOLATILE-WRITE identities;
 unsafe, non-void, argument-type, and explicit volatile-effect validation;
 Arena constructor and instance-member validation;
+compiler-known Iterator[T] identity and CKM-ITERATOR-NEXT Sema resolution;
 LSP value and static member completion sourced from the same registry;
 canonical compiler-known member TextMate highlighting.
 ```

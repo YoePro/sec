@@ -59,6 +59,88 @@ fn IsLetter(ch: rune) bool {
 	t.Fatalf("analyze returned diagnostics for unicode import:\n%s", strings.Join(messages, "\n"))
 }
 
+// rules/tooling/lsp.md requires semantic diagnostics to come from the shared
+// frontend. Keep qualified Option constructors contextual in both assignments
+// and match patterns instead of letting the LSP infer an open Option type.
+func TestAnalyzeUsesContextualTypeForQualifiedOptionNone(t *testing.T) {
+	source := `module main
+
+enum Mode {
+	Strict,
+	Lax,
+	None,
+	Unspecified,
+}
+
+type State struct {
+	Mode: Option[Mode],
+}
+
+impl State {
+	init() {
+		self.Mode = Option.None
+	}
+}
+
+fn Render(mode: Option[Mode]) int {
+	return match mode {
+		Option.Some(value) where value == Mode.Strict => 1
+		Option.Some(value) where value == Mode.Lax => 2
+		Option.Some(value) where value == Mode.None => 3
+		Option.Some(value) where value == Mode.Unspecified => 4
+		Option.None => 0
+	}
+}
+`
+
+	reported := analyze("file:///tmp/sec-lsp-option-context/main.sec", source)
+	if len(reported) != 0 {
+		t.Fatalf("analyze returned diagnostics for contextual Option variants: %+v", reported)
+	}
+}
+
+// Parser recovery must not erase the expected field type before Sema analyzes
+// an earlier initializer assignment in the same document.
+func TestAnalyzeRecoveryDoesNotReportOpenOptionAssignment(t *testing.T) {
+	source := `module main
+
+enum Mode {
+	Strict,
+}
+
+type State struct {
+	Mode: Option[Mode],
+}
+
+impl State {
+	init() {
+		self.Mode = Option.None
+	}
+}
+
+fn Render(mode: Option[Mode]) void {
+	match mode {
+		Option.Some(Mode.Strict) => {}
+		Option.None => {}
+	}
+}
+`
+
+	reported := analyze("file:///tmp/sec-lsp-option-recovery/main.sec", source)
+	foundNestedPattern := false
+	for _, diagnostic := range reported {
+		if strings.Contains(diagnostic.Message, "cannot assign Option to Option[Mode]") {
+			t.Fatalf("parser recovery lost contextual Option type: %+v", reported)
+		}
+		if strings.Contains(diagnostic.Message, "nested match patterns are not part of Sec 0.1") {
+			foundNestedPattern = true
+		}
+	}
+	if !foundNestedPattern {
+		t.Fatalf("missing focused nested-pattern diagnostic: %+v", reported)
+	}
+}
+
 func TestAnalyzeLoadsDeclarationsFromSameModuleFiles(t *testing.T) {
 	dir := t.TempDir()
 	errorPath := filepath.Join(dir, "error.sec")
@@ -467,6 +549,38 @@ impl string {
 	t.Fatalf("analyze returned diagnostics for core string impl:\n%s", strings.Join(messages, "\n"))
 }
 
+func TestAnalyzeAllowsCoreTemporalImpls(t *testing.T) {
+	for _, target := range []string{"date", "time", "datetime", "duration"} {
+		t.Run(target, func(t *testing.T) {
+			source := "module core\n\nimpl " + target + " {\n\tfn Identity() " + target + " { return self }\n}\n"
+			uri := "file:///tmp/sec-lsp-core-temporal/sec/core/" + target + ".sec"
+			if reported := analyze(uri, source); len(reported) != 0 {
+				t.Fatalf("analyze returned diagnostics for core %s impl: %+v", target, reported)
+			}
+		})
+	}
+}
+
+func TestAnalyzeAllowsCoreCollectionImpls(t *testing.T) {
+	targets := []struct {
+		name   string
+		target string
+	}{
+		{name: "list", target: "list[T]"},
+		{name: "map", target: "map[K, V]"},
+		{name: "set", target: "set[T]"},
+	}
+	for _, test := range targets {
+		t.Run(test.name, func(t *testing.T) {
+			source := "module core\n\nimpl " + test.target + " {\n\tfn CoreMarker() void {}\n}\n"
+			uri := "file:///tmp/sec-lsp-core-collection/sec/core/" + test.name + ".sec"
+			if reported := analyze(uri, source); len(reported) != 0 {
+				t.Fatalf("analyze returned diagnostics for core %s impl: %+v", test.name, reported)
+			}
+		})
+	}
+}
+
 func TestAnalyzeLoadsCoreLibrary(t *testing.T) {
 	source := `module main
 
@@ -484,6 +598,21 @@ fn IsBlank(value: string) bool {
 		messages = append(messages, diagnostic.Message)
 	}
 	t.Fatalf("analyze returned diagnostics for core method without import:\n%s", strings.Join(messages, "\n"))
+}
+
+func TestAnalyzeUsesCoreStringSplitIteratorInForLoop(t *testing.T) {
+	source := `module main
+
+fn VisitParts(value: string) void {
+	for part in value.Split(";") {
+		let typed: string := part
+	}
+}
+`
+
+	if reported := analyze("file:///tmp/sec-lsp-core-iterator/main.sec", source); len(reported) != 0 {
+		t.Fatalf("analyze returned diagnostics for string split iteration: %+v", reported)
+	}
 }
 
 func TestLSPSourceIncludePathsLoadsProjectImportsFromSecProjectRoot(t *testing.T) {
@@ -2084,6 +2213,8 @@ type Holder struct {
 	elapsed: duration,
 	wall: time,
 }
+
+impl Holder implements Iterator[int] {}
 `
 
 	items := completeSource("", source, strings.Index(source, "RawPtr")+len("Ra"))
@@ -2100,6 +2231,9 @@ type Holder struct {
 
 	items = completeSource("", source, strings.LastIndex(source, "time")+len("ti"))
 	assertCompletionLabels(t, items, []string{"time"})
+
+	items = completeSource("", source, strings.Index(source, "Iterator")+len("Iter"))
+	assertCompletionLabels(t, items, []string{"Iterator"})
 }
 
 func TestCompletionIncludesRawPtrMembers(t *testing.T) {
@@ -2647,6 +2781,23 @@ return Token{}
 
 	want := `fn token(typ: TokenType, lexeme: string, line: int, column: int) Token {
     return Token{}
+}
+`
+
+	if got := formatSource(input); got != want {
+		t.Fatalf("formatSource() mismatch\n--- got ---\n%s--- want ---\n%s", got, want)
+	}
+}
+
+func TestFormatSourceNormalizesSameLineMatchBlockSpacing(t *testing.T) {
+	input := `match self.Domain {
+Some(domain) => {                 out += "; Domain=" + domain            }
+None => {             }
+}
+`
+	want := `match self.Domain {
+    Some(domain) => { out += "; Domain=" + domain }
+    None => {}
 }
 `
 

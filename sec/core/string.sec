@@ -7,7 +7,9 @@ type StringSplitIterator struct {
     finished: bool,
 }
 
-impl StringSplitIterator {
+// rules/control-flow/flowcontrol_for.md section 37: explicit compiler-known
+// Iterator conformance makes Split() results valid sources for `for value in`.
+impl StringSplitIterator implements Iterator[string] {
     property IsFinished: bool {
         get {
             return self.finished
@@ -84,11 +86,20 @@ impl StringSplitIterator {
 }
 
 impl string {
-    property Len: uint {
+    /** Return the number of bytes the string has */
+    property ByteLen: uint {
         get {
             // The core implementation reads the intrinsic backing length;
             // public source uses the canonical .Len property.
             return self.len
+        }
+    }
+
+    /** Return the number of runes the string contains */
+    property RuneLen: uint {
+        get {
+            // TODO: implement this
+            return 0
         }
     }
 
@@ -357,6 +368,18 @@ impl string {
         return Ok(__StringSliceUnchecked(self, start, end))
     }
 
+    /**
+    * Creates a lazy iterator that yields substrings separated by `separator`.
+    *
+    * The operation does not materialize the complete result and does not allocate
+    * merely to perform the split. The returned iterator keeps the source string,
+    * separator, and current iteration state.
+    *
+    * Rules:
+    *   - rules/library/core-library.md — §5 String
+    *   - rules/library/core-library.md — §5.3 Required instance methods
+    *   - rules/library/core-library.md — §5.6 Allocation visibility
+    */
     fn Split(separator: string) StringSplitIterator {
         return StringSplitIterator {
             source: self,
@@ -366,11 +389,80 @@ impl string {
         }
     }
 
+    /**
+    * Splits the string using `separator` and materializes all resulting substrings
+    * into a dynamic string array.
+    *
+    * This is the allocating counterpart to `Split()`. It consumes the lazy
+    * `StringSplitIterator` produced by `Split()` and appends each produced
+    * substring to the result array. Collection growth failures are propagated as
+    * `CollectionError`.
+    *
+    * Rules:
+    *   - rules/library/core-library.md — §5 String
+    *   - rules/library/core-library.md — §5.6 Allocation visibility
+    *   - rules/collections/collections.md — §6.7 Append
+    *   - rules/collections/collections.md — §16 Collection errors
+    */
+    fn SplitToArray(separator: string) Result[string[], CollectionError] {
+        let mut result: string[]
+
+        for part in self.Split(separator) {
+            try result.Append(part)
+        }
+
+        return Ok(result)
+    }
+
+    /**
+    * Splits the string at the first occurrence of `separator`.
+    *
+    * Returns `Some` containing exactly two strings when the separator is found:
+    * the part before the first occurrence and the remaining part after it.
+    * Returns `None` when the separator is not present.
+    *
+    * The operation does not materialize a dynamic collection and uses string
+    * slices for the two returned parts.
+    *
+    * Rules:
+    *   - rules/library/core-library.md — §5 String
+    *   - rules/library/core-library.md — §1.5 Private representation helpers
+    *
+    * NOTE:
+    *   SplitOnce is not yet listed explicitly in the current core-library
+    *   rulebook and must be added to the canonical string API specification.
+    */
+    fn SplitOnce(separator: string) Option[string[2]] {
+        match self.IndexOf(separator) {
+            Some(index) => {
+                let afterSeparator := index + separator.Len
+
+                return Some([
+                    __StringSliceUnchecked(self, 0, index),
+                    __StringSliceUnchecked(self, afterSeparator, self.Len),
+                ])
+            }
+
+            None => {
+                return None
+            }
+        }
+    }
+
     fn ToLower() string {
         // TODO: Implement a correct version of the ToLower-function
         let mut s: string
         for r in self {
             s += r.ToLower()
+        }
+        return s
+    }
+
+    fn ToUpper() string {
+        // TODO: Implement a correct version of the ToUpper-function
+        let mut s: string
+        for r in self {
+            s += r.ToUpper()
         }
         return s
     }

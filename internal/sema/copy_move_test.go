@@ -1692,7 +1692,7 @@ fn Test() void {
 	})
 }
 
-func TestUnionConstructorMovesNonCopyablePayloadSource(t *testing.T) {
+func TestExplicitUnionConstructorMoveConsumesNonCopyablePayloadSource(t *testing.T) {
 	input := `
 module main
 
@@ -1708,7 +1708,7 @@ type Choice union {
 
 fn Test() void {
 	let session := Session { value: 1 }
-	let choice := Choice.Some(session)
+	let choice := Choice.Some(<-session)
 	discard session
 	discard choice
 }
@@ -1716,7 +1716,7 @@ fn Test() void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"use of moved value session at 17:10, previous declaration at 16:28",
+		"use of moved value session at 17:10, previous declaration at 16:30",
 	})
 }
 
@@ -1959,6 +1959,166 @@ fn Fail(values: MoveError[1]) Result[int, MoveError] {
 			t.Fatalf("wrong diagnostic help. got=%q", diagnostic.Help)
 		}
 	}
+}
+
+// rules/memory/ownership.md section 17 and rules/memory/copy_move.md sections
+// 9-10: terminal return ownership propagates through structural construction.
+func TestTerminalReturnForwardsMoveOnlyValuesThroughConstruction(t *testing.T) {
+	input := `
+module main
+
+@noCopy
+type Resource struct { value: int }
+
+type Container struct { Value: Resource }
+
+type Choice union {
+	Payload(Resource),
+	Empty,
+}
+
+enum BuildError error { Failed }
+
+fn Direct(resource: Resource) Resource {
+	return resource
+}
+
+fn DirectExplicit(resource: Resource) Resource {
+	return <-resource
+}
+
+fn Optional(resource: Resource) Option[Resource] {
+	return Some(resource)
+}
+
+fn OptionalExplicit(resource: Resource) Option[Resource] {
+	return Some(<-resource)
+}
+
+fn Variant(resource: Resource) Choice {
+	return Choice.Payload(resource)
+}
+
+fn Aggregate(resource: Resource) Container {
+	return Container { Value: resource }
+}
+
+fn Nested(resource: Resource) Result[Container, BuildError] {
+	return Ok(Container { Value: resource })
+}
+
+fn Selected(choice: Choice, resource: Resource) Option[Resource] {
+	return match choice {
+		Choice.Payload(_) => Option.Some(resource)
+		Choice.Empty => Option.None
+	}
+}
+`
+
+	assertSemaErrors(t, analyzeSourceRaw(t, input), nil)
+}
+
+func TestNonTerminalConstructionRequiresExplicitMove(t *testing.T) {
+	input := `
+module main
+
+@noCopy
+type Resource struct { value: int }
+
+type Container struct { Value: Resource }
+
+type Choice union {
+	Payload(Resource),
+	Empty,
+}
+
+fn Use(value: ref Resource) void {}
+
+fn TestStruct() void {
+	let resource := Resource { value: 1 }
+	let container := Container { Value: resource }
+	discard container
+}
+
+fn TestUnion() void {
+	let resource := Resource { value: 1 }
+	let choice := Choice.Payload(resource)
+	discard choice
+}
+
+fn TestOption() void {
+	let resource := Resource { value: 1 }
+	let option: Option[Resource] := Some(resource)
+	discard option
+}
+
+fn TestExplicit() void {
+	let resource := Resource { value: 1 }
+	let container := Container { Value: <-resource }
+	Use(ref resource)
+	discard container
+	let resource2 := Resource { value: 2 }
+	let option := Option.Some(<-resource2)
+	Use(ref resource2)
+	discard option
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	if len(errors) != 5 {
+		t.Fatalf("errors = %v, want 5", errors)
+	}
+	if !strings.Contains(errors[0].Message, "Resource value resource cannot be copied") ||
+		!strings.Contains(errors[1].Message, "Resource value resource cannot be copied") ||
+		!strings.Contains(errors[2].Message, "Resource value resource cannot be copied") ||
+		!strings.Contains(errors[3].Message, "use of moved value resource") ||
+		!strings.Contains(errors[4].Message, "use of moved value resource2") {
+		t.Fatalf("unexpected construction ownership diagnostics: %v", errors)
+	}
+	for _, diagnostic := range errors[:3] {
+		if diagnostic.ID != diagnostics.ImplicitMoveDisallowed || !strings.Contains(diagnostic.Help, "<-") {
+			t.Fatalf("missing ownership diagnostic metadata: %#v", diagnostic)
+		}
+	}
+}
+
+func TestTerminalReturnDoesNotConsumeOrdinaryCallArgument(t *testing.T) {
+	input := `
+module main
+
+@noCopy
+type Resource struct { value: int }
+
+fn Wrap(value: Resource) Resource { return value }
+
+fn Build(resource: Resource) Resource {
+	return Wrap(resource)
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	if len(errors) != 1 || !strings.Contains(errors[0].Message, "reusable source resource passed to Wrap must use explicit <- ownership transfer") {
+		t.Fatalf("ordinary call inherited terminal structural forwarding: %v", errors)
+	}
+}
+
+func TestNestedTerminalReturnStillRejectsIndexedMoveOnlyExtraction(t *testing.T) {
+	input := `
+module main
+
+@noCopy
+type Resource struct { value: int }
+type Container struct { Value: Resource }
+
+fn Build(values: Resource[1]) Container {
+	return Container { Value: values[0] }
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"cannot return Resource element values[0] by ordinary indexing because it is not implicitly copyable at 9:34",
+	})
 }
 
 func TestLargeByValueArrayParameterWarns(t *testing.T) {

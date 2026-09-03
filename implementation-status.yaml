@@ -900,6 +900,7 @@ integrations:
       - rules/tooling/diagnostics.txt
       - rules/tooling/formatter.md
       - rules/corrections/applied/correction30-20260828.md
+      - rules/corrections/applied/return-context-ownership-forwarding-correction-20260903.md
     related_integrations:
       - frontend.copy-move
       - sema.place-analysis
@@ -912,6 +913,10 @@ integrations:
       - lexer, parser, AST, formatter, Sema, and initial LSP support for declaration and assignment move forms
       - named-source implicit copy rejection for compiler-known and @noCopy move-only values in direct declaration and assignment paths
       - intrinsically transferring returns reject ordinary indexed extraction of non-copyable collection elements with canonical ownership code, source range, and corrective help shared by CLI and LSP
+      - terminal return ownership context propagates recursively through aggregate, Option, Result, union, and
+        value-producing match construction while ordinary calls retain their declared argument ownership modes
+      - reusable move-only aggregate and union/Option payload sources require explicit <- outside terminal returns;
+        fresh temporaries remain marker-free and explicit terminal markers are ownership-equivalent
       - selected nested field moves, sibling use, whole-aggregate rejection, and mutable field reinitialization
       - projection-sensitive ownership facts across branches, matches, switches, selects, and loops, with a conservative pre-v2 merge model
       - borrow validation before supported moves and overlapping self-move diagnostics
@@ -921,10 +926,7 @@ integrations:
       - availability-reason-separation
       - explicit-consuming-call-arguments
       - call-transfer-commit-with-explicit-move
-      - constructor-payload-explicit-move
       - union-legacy-move-syntax
-      - fresh-temporary-forwarding
-      - return-boundary-optional-move-marker
       - closure-capture-explicit-move
       - ordinary-method-no-whole-self-consume
       - method-member-consumption
@@ -944,7 +946,6 @@ integrations:
       - pending-call-transfer-reservation
       - nested-call-transfer-transactions
       - conditional-scope-exit-cleanup
-      - return-forwarding
       - result-projection-ownership-sync
       - guarded-match-try-ownership-fact-reuse
       - fixed-address-register-volatile-foreign-transfer-policy
@@ -1432,8 +1433,10 @@ integrations:
       - parser supports underscore catch-all and payload-discard spelling such as Ok underscore
       - parser supports return match and where guards
       - Sema requires bool guards and guarded arms do not independently exhaust their pattern
+      - direct equality guards over a whole closed-enum payload jointly cover their outer variant once every underlying enum value class is covered
       - Sema supports Result Ok and Err matching with payload bindings
       - Sema supports Option Some and None matching
+      - qualified payload-less generic union patterns such as Option.None resolve through the concrete match subject type
       - Sema supports named union variants with positional payload bindings
       - explicit whole-payload ref and ref mut bindings work for reusable union and Result subjects
       - branch-scoped payload borrows use active-variant Places and enforce overlap and escape restrictions
@@ -1560,22 +1563,26 @@ integrations:
   - id: frontend.for-loops-v2
     area: frontend-control-flow-ownership-and-lowering
     status: partial
-    integrated: "2026-08-16"
-    document_revision: "2.0"
-    repository_baseline: "56be75d"
+    integrated: "2026-09-03"
+    document_revision: "2.1"
+    repository_baseline: "998d8d1"
     replaces: rules/control-flow/flowcontrol_for.txt
     summary: >-
-      Tracks revision-2.0 infinite, finite-range, and compiler-known iterable
+      Tracks revision-2.1 infinite, finite-range, and compiler-known iterable
       loops. The established parser and Sema cover plain/discard bindings,
       sequential index/value and map key/value arity, iterable inference,
       finite range validation, immutable lexical bindings, loop-control flow,
-      and zero/non-continuing path analysis. LLVM lowers infinite and integer
+      zero/non-continuing path analysis, and explicit compiler-known
+      Iterator[T] conformance with a Sema-owned static Next plan. LLVM lowers infinite and integer
       range loops; MLIR additionally lowers fixed arrays and explicit floating
       ranges. Explicit ref/ref-mut binding modes, copy-only value iteration,
       canonical ascending default steps, structural iteration borrows, and
       broad collection lowering remain incomplete.
     rules:
       - rules/control-flow/flowcontrol_for.md
+      - rules/declarations/interfaces.md
+      - rules/types/types.md
+      - rules/compiler/compiler_known_members.md
       - rules/collections/collections.md
       - rules/collections/shaped-types.md
       - rules/memory/copy_move.md
@@ -1591,9 +1598,11 @@ integrations:
       - internal/parser/parser.go
       - internal/sema/analyzer.go
       - internal/sema/place.go
+      - internal/sema/semantic_facts.go
       - internal/formatter/formatter.go
       - internal/codegen/mlir/generator.go
       - internal/codegen/llvm/statements.go
+      - sec/core/string.sec
     tests:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
@@ -1601,6 +1610,7 @@ integrations:
       - internal/sema/destruction_test.go
       - internal/codegen/mlir/generator_test.go
       - internal/codegen/llvm/generator_test.go
+      - cmd/lsp/main_test.go
       - testdata/for_valid.sec
       - testdata/for_invalid.sec
       - testdata/ir/test_arrays_basic.sec
@@ -1625,6 +1635,11 @@ integrations:
       - LLVM lowering for infinite loops, integer ranges, explicit integer steps, break, and continue
       - MLIR lowering for infinite loops, integer and explicit floating ranges, break, and continue
       - MLIR fixed-array iteration with one value or two index/value bindings and discard support without runtime allocation
+      - compiler-known generic Iterator[T] interface requiring mutable Next() Option[T], with explicit primary-impl conformance and no naming-based discovery
+      - concrete generic interface method, property, and event type substitution for resolved instances
+      - Iterator[T] loop inference for one owned value or discard binding, including mutable reusable-source enforcement and fresh-temporary acceptance
+      - immutable Sema ResolvedForIteration fact carrying concrete source, element, Next method, compiler-known operation ID, and receiver authority for tooling and lowering
+      - StringSplitIterator explicitly implements Iterator[string], enabling direct for iteration over string.Split results in core and HTTP clients
       - canonical grammar, collections, and copy/move documentation synchronized to explicit value, ref, ref-mut, and discard semantics
     remaining:
       - carry Arena generation through the shared loop-header and backedge fixed-point analysis, including continue edges and replay
@@ -1643,13 +1658,16 @@ integrations:
       - complete float and decimal range lowering with resolved-type arithmetic and stable source-visible endpoint behavior
       - lower dynamic arrays, lists, slices, strings, maps, sets, and vectors through Semantic IR and maintained backends
       - reject structural operations that invalidate active iteration state or element references while preserving legal mutation through iterator-provided ref mut
-      - keep user-defined naming-based and interface-based iterable discovery excluded from Sec 0.1 with dedicated diagnostics and tests
+      - lower compiler-known Iterator[T] loops through Semantic IR and maintained backends as repeated statically resolved Next calls with Some/None control flow and cleanup
+      - expose Iterator[T], resolved element type, and selected Next operation in dedicated LSP hover and completion contexts beyond ordinary shared Sema diagnostics
+      - complete iterator ownership and cleanup validation for move-only yielded T, break, continue, return, and error exits
       - represent yielded component modes, iteration state, source authority, structural stability, and cleanup edges explicitly in Semantic IR
       - complete the revision-2.0 parser, Sema, ownership, borrowing, flow, cleanup, formatter, diagnostics, LSP, Semantic IR, and backend regression matrix
     excluded:
       - condition-only and C-style for loops
       - consuming for bindings or move-source iteration in Sec 0.1
-      - user-defined iterable protocols or discovery by member names
+      - iterable discovery by member names without explicit Iterator[T] conformance
+      - implicit Iterable factory discovery and runtime-dispatched Iterator interface values
       - reference binding to synthesized range values or decoded string runes
       - mutable map-key or set-element iteration
       - single-binding map iteration
@@ -1687,11 +1705,24 @@ integrations:
       - open-ended range is rejected as direct for iterable
       - string iteration yields rune
       - string ref and ref-mut rune binding is rejected
+      - explicit Iterator[int] conformance gives the loop binding type int
+      - a Next method without Iterator[T] conformance does not make a type iterable
+      - Iterator[T] conformance substitutes T in the required Option[T] return type
+      - reusable immutable and shared-reference iterator sources are rejected while mutable storage and fresh owned temporaries are accepted
+      - Iterator[T] loops publish one read-only compiler-owned resolved operation fact
       - finite loop preserves zero-iteration path in definite-assignment analysis
       - infinite for block without reachable break is non-continuing
       - reachable break restores a continuing post-loop path
       - break and continue execute required cleanup edges
     verification:
+      - command: go test ./internal/sema -run 'Iterator|TestResolvedForIteration|TestForCompilerKnown' -count=1
+        result: passed on 2026-09-03
+      - command: go test ./cmd/lsp -run 'TestAnalyzeUsesCoreStringSplitIteratorInForLoop|TestCompletionIncludesIntrinsicTypesInTypePosition' -count=1
+        result: passed on 2026-09-03
+      - command: GOMAXPROCS=2 go test ./...
+        result: passed on 2026-09-03
+      - command: GOMAXPROCS=2 go vet ./...
+        result: passed on 2026-09-03
       - command: go test ./internal/parser -run For -count=1
         result: passed
       - command: go test ./internal/sema -run '^(TestFor|TestInfiniteFor)' -count=1
@@ -2559,6 +2590,7 @@ integrations:
       - generic union template registration, concrete payload substitution, and empty and single-payload construction paths
       - generic impl target correspondence, owning parameter scopes, and concrete nested type and property substitution paths
       - generic interface declaration parsing, header registration, and use of interface-owned parameters in requirement types
+      - concrete generic interface method, property, and event type substitution, exercised by compiler-known Iterator[T] conformance
       - rejection of unknown constraints and constraints that do not name interfaces
       - conservative copy/move treatment when a generic parameter lacks a proven copy capability
       - direct, array-mediated, and changing-argument recursive generic struct storage diagnostics with indirection cases retained
@@ -2569,7 +2601,7 @@ integrations:
       - implement method-level generics for instance and static methods, including nested owning/method scopes, overload resolution, monomorphization, and lowering
       - reject additional method-level generic parameters on interface requirements while permitting use of the interface's own parameters
       - complete generic named-type semantics for type ID[T] int and valid type Wrapped[T] T forms, including identity, conversions, contracts, and lowering
-      - complete concrete generic interface instantiation, inheritance, conformance substitution, and canonical identity
+      - complete generic interface inheritance validation and canonical cross-module specialization identity beyond the implemented concrete requirement substitution
       - require valid explicit interface conformance when satisfying every generic constraint; matching members alone are insufficient
       - retain ordered constraint sets in templates and recheck them for every explicit or inferred concrete substitution
       - ensure generic templates use only operations guaranteed by their declared constraints
@@ -2830,6 +2862,31 @@ integrations:
       - preserve formatter idempotence and expose the behavior through the shared LSP formatter
     verification:
       - command: go test ./internal/formatter ./cmd/lsp -run 'Format|Formatting' -count=1
+        result: passed
+
+  - id: tooling.formatter-single-line-delimiter-spacing
+    area: tooling
+    status: implemented
+    integrated: "2026-09-03"
+    summary: >-
+      Normalizes boundary trivia inside balanced parentheses, brackets, and
+      braces that stay on one physical line while preserving intentional
+      multiline delimiter layout for the future lossless CST formatter.
+    rules:
+      - rules/tooling/formatter.md
+    code:
+      - internal/formatter/formatter.go
+    tests:
+      - internal/formatter/formatter_test.go
+      - cmd/lsp/main_test.go
+    implemented:
+      - remove inner boundary padding from same-line parenthesized and bracketed groups
+      - normalize top-level comma spacing and remove trailing commas in same-line parenthesized and bracketed groups
+      - retain one inner space for non-empty same-line braced groups and compact whitespace-only groups to `{}`
+      - preserve quoted contents, comment-bearing lines, incomplete syntax, and every multiline delimiter boundary
+      - expose identical behavior through sec fmt and the shared LSP formatter
+    verification:
+      - command: go test ./internal/formatter ./cmd/lsp -run 'Delimiter|SameLineMatchBlock' -count=1
         result: passed
 
   - id: tooling.formatter-declaration-comment-alignment
@@ -3452,7 +3509,8 @@ integrations:
   - id: frontend.interfaces
     area: frontend-analysis-and-tooling
     status: partial
-    integrated: "2026-08-13"
+    integrated: "2026-09-03"
+    document_revision: "2.1"
     summary: >-
       Implements canonical behavioral interface declarations, inherited
       requirements, explicit conformance on primary impl blocks, and shared,
@@ -3460,6 +3518,7 @@ integrations:
       dynamic-dispatch or backend support.
     rules:
       - rules/declarations/interfaces.md
+      - rules/control-flow/flowcontrol_for.md
       - rules/declarations/impl.md
       - rules/declarations/generics.md
       - rules/declarations/properties.md
@@ -3475,6 +3534,7 @@ integrations:
       - internal/parser/parser.go
       - internal/sema/analyzer.go
       - internal/sema/types.go
+      - internal/sema/semantic_facts.go
       - internal/formatter/formatter.go
       - internal/lsp/features/semantic_tokens.go
       - cmd/lsp/main.go
@@ -3503,11 +3563,14 @@ integrations:
       - defining-module ownership inherited from canonical primary impl validation
       - focused parser diagnostic for stored-field-shaped interface requirements
       - LSP outline display of conformance lists on primary impl symbols
+      - compiler-known generic Iterator[T] interface identity protected from source redeclaration
+      - concrete generic interface method, property, and event requirement substitution before conformance validation
+      - statically resolved Iterator[T] conformance publishes the selected concrete Next operation without runtime dispatch
     remaining:
       - remove `-> fn` whole-self consuming instance receiver contracts from parser/Sema/tooling while preserving consuming ordinary parameters and consuming callable-value capability
       - permit owned member consumption only through sufficient mutable/exclusive receiver authority and ordinary partial-ownership rules
       - preserve and validate same-name interface method overload sets through declaration, inheritance, conformance, and call resolution
-      - complete generic interface instantiation and constraint conformance
+      - complete generic interface inheritance, constraint conformance, and canonical cross-module specialization identity beyond concrete requirement substitution
       - support every associated and nested declaration category permitted by its owning rulebook
       - complete interface visibility and cross-module accessible-member validation
       - represent interface values, dispatch targets, receiver ownership, and conformance explicitly in Semantic IR
@@ -3580,6 +3643,8 @@ integrations:
     implemented:
       - parser and AST support for canonical fixed-array, dynamic-array, slice, list, map, and set type forms
       - Sema recognition and arity validation for compiler-known collection families
+      - loader-proven core sources may define ordinary impl members for list, map, and set through the shared
+        compiler/LSP privilege gate; stdlib and user sources remain rejected
       - Place-backed fixed-array and slice indexing used by borrow and ownership analysis
       - contextual collection type identities exposed to formatter and LSP registries
       - omitted initialization of mutable owning T[] produces its canonical allocation-free empty default
@@ -3609,6 +3674,8 @@ integrations:
     implemented:
       - parser and AST accept mixed type/value generic arguments used by shaped types
       - Sema recognizes vector, matrix, tensor, and tensor_view identities and validates basic arity and dimensions
+      - loader-proven core sources may attach additive impl helpers to all shaped families and their Shape, Strides,
+        TensorLayout, and MemorySpace support identities without redefining compiler-owned intrinsic semantics
       - rank-one vector values participate in iterable type inference
       - contextual x parsing, multiplicative precedence, and static matrix/matrix and matrix/vector Sema with inner-dimension checks; scalar result algebra is partial
     remaining:
@@ -4735,6 +4802,7 @@ integrations:
       - union Defaultable resolution for payload-less, single-payload, and struct-like explicit default variants
       - synthesized mutable union defaults through the canonical DefaultValueOf model
       - contextual Option fields in struct literals accept None and None() through the field's expected union type
+      - expected-type union resolution accepts qualified payload-less constructors such as Option.None in mutable variable and member assignments
       - mutable NonDefaultable union declarations may omit initialization and use the existing unassigned-state dataflow until a real variant is assigned
       - omitted Defaultable struct-like construction fields receive canonical defaults while omitted NonDefaultable fields remain errors
       - payload-less and whole-payload union match patterns with exhaustiveness, duplicate, unreachable, and guard-aware coverage
@@ -5556,6 +5624,7 @@ integrations:
       - "rules/declarations/lambda-functions.md"
       - "rules/declarations/unions.md"
       - "rules/control-flow/discard.md"
+      - "rules/corrections/applied/return-context-ownership-forwarding-correction-20260903.md"
     code:
       - "internal/ast/ast.go"
       - "internal/lexer/lexer.go"
@@ -5577,10 +5646,9 @@ integrations:
       - "Reinitialization of supported moved/discarded Places and field-sensitive aggregate restoration."
       - "Initial branch/loop/match/select ownership joins, borrow-conflict checks, defer-retention checks, overlapping self-move rejection, formatter preservation, and LSP move quick fixes."
       - "Direct call-site <- markers are parsed and enforced for reusable ordinary move-only and explicit -> arguments; copyable ordinary arguments remain copies, fresh temporaries remain marker-free, and transfer commits only after successful full-call analysis."
+      - "Terminal return ownership context recursively forwards reusable move-only sources through aggregate, Option, Result, union, nested, and value-producing match construction; explicit <- remains accepted and ordinary calls do not inherit hidden consumption."
+      - "Non-terminal aggregate and union/Option construction rejects hidden consumption of reusable move-only sources, accepts explicit <-, commits it, and preserves marker-free fresh-temporary forwarding."
     remaining:
-      - "constructor-payload-explicit-move: require explicit <- for reusable named/projected move-only sources transferred into struct fields, Option, Result outside terminal return context, union payloads, and equivalent owning constructors"
-      - "fresh-temporary-forwarding: keep fresh temporaries marker-free when they are forwarded into their first owning payload construction"
-      - "return-boundary-optional-marker: accept both return value and return <-value with identical transfer semantics; receiving a fresh returned value remains marker-free"
       - "closure-capture-explicit-move: replace capture(-> value) and implicit move-through-capture(value) with capture(<-value); plain capture(value) is copy capture"
       - "result-projection-consumption: model Result.Ok()/Err() as consuming transformations with correct payload transfer, cleanup, and source unavailability"
       - "whole-self-consumption-ban: reject ordinary methods that consume complete self; allow explicit member moves when receiver authority and partial-move rules permit"
@@ -5598,6 +5666,9 @@ integrations:
       - "non-terminal Ok(resource) rejects reusable move-only source while Ok(<-resource) is valid"
       - "return Ok(resource) remains valid as a terminal return transfer and return Ok(<-resource) is also accepted"
       - "return resource and return <-resource have identical ownership results"
+      - "return Some(resource), returned union payloads, returned aggregates, and recursively nested returned construction forward reusable move-only sources"
+      - "value-producing match arms inherit terminal ownership only when the match directly supplies return"
+      - "ordinary calls and illegal indexed, borrowed, volatile, MMIO, or unavailable extraction do not inherit terminal structural forwarding"
       - "caller receives fresh move-only function result with ordinary initialization and no marker"
       - "capture(value) copies only copyable sources; capture(<-value) consumes reusable source"
       - "@noCopy forbids copy but still permits explicit move"
@@ -5631,6 +5702,7 @@ integrations:
       - "represent Copy, Move, Replace, Reinitialize, Discard, Destroy, TransferToReturn, TransferToArgument, and TransferToAggregate explicitly when needed for downstream ownership correctness"
       - "preserve source Place/projection identity, copy classification, destination ownership, partial availability, transfer commit, and destruction responsibility"
       - "preserve explicit <- call/payload actions instead of reconstructing them from types in lowering"
+      - "represent recursive aggregate, Option, Result, union, and value-producing control-flow return forwarding without requiring source markers at every nested edge"
       - "represent volatile access boundaries separately from ordinary value copy/move operations"
       - "fail explicitly when an ownership-sensitive construct cannot be represented without losing semantics"
     required_tests:
@@ -6630,6 +6702,7 @@ integrations:
     implemented:
       - intrinsic type-name resolution for date, time, datetime, and duration
       - declaration and function-signature use without imports
+      - trusted core sources may attach ordinary implementations to all four temporal builtins while user modules remain rejected by the provenance-gated builtin allowlist
       - LSP completion and TextMate type classification
       - no implicit numeric or string initialization
       - no inferred zero, epoch, empty, or backend-derived default
@@ -8165,16 +8238,26 @@ integrations:
     rules:
     - rules/declarations/impl.md
     - rules/projects/modules.md
+    - rules/collections/collections.md
+    - rules/collections/shaped-types.md
     code:
     - internal/sema/analyzer.go
     - cmd/compiler/main.go
+    - cmd/lsp/main.go
     tests:
     - internal/sema/analyzer_test.go
+    - cmd/lsp/main_test.go
     implemented:
     - ordinary non-named compiler-known types are rejected as user impl targets unless the core privilege predicate
       succeeds
     - interface types are rejected as ordinary impl targets
     - an explicit allowlist limits which compiler-known targets may receive core implementations
+    - the allowlist includes the compiler-known temporal identities date, time, datetime, and duration for trusted core sources
+    - trusted core sources may attach ordinary methods to the canonical list, map, and set collection families while
+      stdlib and user sources remain unable to monkey-patch them
+    - trusted core sources may attach additive helpers to vector, matrix, tensor, tensor_view, Shape, Strides,
+      TensorLayout, and MemorySpace without replacing their compiler-owned intrinsic semantics
+    - compiler and LSP analysis share the same provenance gate and builtin-target allowlist for collection impls
     - ast.Program carries explicit source provenance independently of token path text
     - compiler and LSP core loaders canonicalize roots and resolve symlinks before assigning trusted-core provenance
     - Sema requires trusted-core provenance and the target allowlist for compiler-known implementations

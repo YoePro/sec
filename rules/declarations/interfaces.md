@@ -2,8 +2,8 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-13
-- **Last updated:** 2026-08-26
-- **Document revision:** 2.0
+- **Last updated:** 2026-09-03
+- **Document revision:** 2.1
 - **Replaces:** `rules/declarations/interfaces.txt`
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/declarations/interfaces.md`
@@ -275,6 +275,17 @@ interface Mapper[T] {
 
 Interface inheritance and explicit implementation participate in generic
 constraint satisfaction.
+
+### 9.1 Compiler-known generic interfaces
+
+A compiler-known interface follows the same explicit conformance and generic
+substitution rules as a source-declared interface, but its identity and required
+members are supplied by the compiler and cannot be redeclared by source code.
+
+`Iterator[T]` is the initial compiler-known interface. Its exact loop behavior
+is owned by `rules/control-flow/flowcontrol_for.md`, section 37. Conformance is
+resolved to a concrete method statically and does not imply runtime interface
+values, boxing, virtual dispatch, or runtime generic dispatch.
 
 ## 10. Associated and nested declarations
 

@@ -907,6 +907,27 @@ return <-resource
 
 Both forms have the same ownership result when returning the owned value.
 
+The terminal return context propagates recursively through structural owning
+construction that directly forms the returned value. Consequently, reusable
+move-only sources need no repeated inner marker in forms such as:
+
+```sec
+return Some(resource)
+return Packet.Data(resource)
+return Response { Body: resource }
+return Ok(Response { Body: resource })
+```
+
+This propagation also reaches every continuing value-producing arm of a
+`match` or equivalent control-flow expression that directly supplies the
+return. It does not rewrite ordinary call parameter modes: `return
+Wrap(resource)` validates `resource` according to `Wrap`'s declared parameter.
+
+Terminal forwarding remains subject to Place availability, borrow, lifetime,
+storage-origin, partial-move, indexed-extraction, volatile/MMIO, and related
+ownership restrictions. An explicit `<-` remains legal at any equivalent
+terminal structural edge and changes no ownership result.
+
 The marker is optional at the return boundary only; this does not weaken the
 requirement for reusable source moves inside continuing caller control flow.
 
@@ -1750,52 +1771,56 @@ At minimum, revision-2 ownership conformance must cover:
 18. `return resource` transfers ownership without requiring `<-`;
 19. `return <-resource` is also accepted;
 20. receiving a fresh move-only return value with ordinary initialization is accepted;
-21. ordinary methods cannot consume whole `self`;
-22. methods may consume an owned member when receiver authority and partial-move rules permit it;
-23. immutable root field assignment is rejected;
-24. mutable receiver authority permits member mutation without per-field `mut` declarations;
-25. partial move leaves sibling fields usable and rejects whole-value use;
-26. partial move from immutable aggregate is accepted but reinitialization is rejected;
-27. moved field of mutable aggregate may be reinitialized and restore whole availability;
-28. partial move from a type with custom `free` is rejected;
-29. branch with Available/Unavailable continuing paths produces `ConditionallyAvailable`;
-30. terminating moved path does not poison post-branch availability;
-31. `is available` refines true path to available;
-32. binary `Available|Unavailable` leaf refines the true `is not available` path to unavailable;
-33. statically known availability tests are folded without runtime ownership state;
-34. `is available` does not behave as `None`, `null`, or a generation check;
-35. strict static-ownership target rejects an ownership-dependent operation that genuinely requires forbidden runtime state;
-36. discard of available place destroys when required and converges to unavailable;
-37. discard of already unavailable place is legal no-op;
-38. discard of conditionally available place converges all continuing paths to unavailable;
-39. discard does not bypass non-discardable lifecycle obligations;
-40. assignment to unavailable mutable place is reinitialization;
-41. assignment to available mutable place automatically ends the old value before replacement;
-42. hosted assignment to conditionally available mutable place repairs it to available;
-43. static-ownership target may require explicit discard convergence before such replacement;
-44. partial aggregate destruction destroys only still-owned available sub-places;
-45. moved/discarded sub-place is never destroyed twice;
-46. incompatible active borrow blocks move/discard;
-47. consuming `Result.Ok()` / `Result.Err()` makes the original Result unavailable;
-48. borrowed Result projections remain non-consuming;
-49. try/match guarded move commits only after selected guard success;
-50. mentor diagnostics identify source operation and practical correction;
-51. formatter preserves every ownership marker;
-52. LSP uses the same canonical ownership facts as Sema.
-53. whole `is available` is false for a partially available aggregate;
-54. whole `is not available` preserves still-owned sibling fields and its recursive mask;
-55. uninitialized `is not available` preserves uninitialized provenance;
-56. availability tests never invent moved, discarded, or detached reasons;
-57. an earlier `<-source` call argument reserves against later overlapping read and borrow;
-58. a reservation blocks a later overlapping second move;
-59. a proven-disjoint sibling Place remains usable during reservation;
-60. later outer-argument failure cancels only the outer reservation;
-61. a successful outer call commits every prepared transfer exactly once;
-62. a committed nested-call transfer is not rolled back by outer-call failure;
-63. conditional discard can require runtime ownership state without an availability query;
-64. conditional replacement can require runtime ownership state without an availability query;
-65. conditional scope-exit cleanup can require runtime ownership state without an availability query;
-66. strict static-ownership policy rejects the actual operation requiring forbidden runtime state.
+21. terminal return context forwards reusable move-only values recursively through aggregate, Option, Result, union, and value-producing match construction;
+22. explicit `<-` remains accepted and ownership-equivalent on those terminal construction paths;
+23. equivalent non-terminal construction still requires explicit `<-` and never hides destructive consumption;
+24. nested terminal construction still rejects illegal borrowed, indexed, volatile, MMIO, or unavailable extraction;
+25. ordinary methods cannot consume whole `self`;
+26. methods may consume an owned member when receiver authority and partial-move rules permit it;
+27. immutable root field assignment is rejected;
+28. mutable receiver authority permits member mutation without per-field `mut` declarations;
+29. partial move leaves sibling fields usable and rejects whole-value use;
+30. partial move from immutable aggregate is accepted but reinitialization is rejected;
+31. moved field of mutable aggregate may be reinitialized and restore whole availability;
+32. partial move from a type with custom `free` is rejected;
+33. branch with Available/Unavailable continuing paths produces `ConditionallyAvailable`;
+34. terminating moved path does not poison post-branch availability;
+35. `is available` refines true path to available;
+36. binary `Available|Unavailable` leaf refines the true `is not available` path to unavailable;
+37. statically known availability tests are folded without runtime ownership state;
+38. `is available` does not behave as `None`, `null`, or a generation check;
+39. strict static-ownership target rejects an ownership-dependent operation that genuinely requires forbidden runtime state;
+40. discard of available place destroys when required and converges to unavailable;
+41. discard of already unavailable place is legal no-op;
+42. discard of conditionally available place converges all continuing paths to unavailable;
+43. discard does not bypass non-discardable lifecycle obligations;
+44. assignment to unavailable mutable place is reinitialization;
+45. assignment to available mutable place automatically ends the old value before replacement;
+46. hosted assignment to conditionally available mutable place repairs it to available;
+47. static-ownership target may require explicit discard convergence before such replacement;
+48. partial aggregate destruction destroys only still-owned available sub-places;
+49. moved/discarded sub-place is never destroyed twice;
+50. incompatible active borrow blocks move/discard;
+51. consuming `Result.Ok()` / `Result.Err()` makes the original Result unavailable;
+52. borrowed Result projections remain non-consuming;
+53. try/match guarded move commits only after selected guard success;
+54. mentor diagnostics identify source operation and practical correction;
+55. formatter preserves every ownership marker;
+56. LSP uses the same canonical ownership facts as Sema.
+57. whole `is available` is false for a partially available aggregate;
+58. whole `is not available` preserves still-owned sibling fields and its recursive mask;
+59. uninitialized `is not available` preserves uninitialized provenance;
+60. availability tests never invent moved, discarded, or detached reasons;
+61. an earlier `<-source` call argument reserves against later overlapping read and borrow;
+62. a reservation blocks a later overlapping second move;
+63. a proven-disjoint sibling Place remains usable during reservation;
+64. later outer-argument failure cancels only the outer reservation;
+65. a successful outer call commits every prepared transfer exactly once;
+66. a committed nested-call transfer is not rolled back by outer-call failure;
+67. conditional discard can require runtime ownership state without an availability query;
+68. conditional replacement can require runtime ownership state without an availability query;
+69. conditional scope-exit cleanup can require runtime ownership state without an availability query;
+70. strict static-ownership policy rejects the actual operation requiring forbidden runtime state.
 
 ---
 

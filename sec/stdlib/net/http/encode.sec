@@ -1,0 +1,9 @@
+module http
+
+fn URLEncode(raw: string) string {
+    return ""
+}
+
+fn URLDecode(raw: string) string {
+    return ""
+}

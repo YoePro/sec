@@ -2,8 +2,8 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-12
-- **Last updated:** 2026-08-24
-- **Document revision:** 2.0
+- **Last updated:** 2026-09-03
+- **Document revision:** 2.1
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/types/types.md`
 - **Replaces:** `rules/types/types.txt`
@@ -76,6 +76,7 @@ The categories are semantic. They do not require one common runtime representati
 | first-class shaped types | `vector`, `matrix`, `tensor`, `tensor_view` |
 | hardware layout forms | `bit`, `bit[N]`, `register[N]` |
 | nominal core types | `Result[T, E]`, `Option[T]`, `Task[T]`, `Thread[T]`, `Shape[Rank]`, `Strides[Rank]`, `TensorLayout[Rank]`, `MemorySpace` |
+| compiler-known interfaces | `Iterator[T]` |
 | user-defined nominal types | named scalar types, structs, enums, unions, interfaces, units, registers |
 
 This table is an overview.
@@ -246,15 +247,17 @@ The parser resolves the role from context.
 
 ---
 
-# Predeclared nominal core types
+# Predeclared uppercase compiler and core types
 
-Some types are available without an ordinary user import while retaining uppercase nominal names.
+Some types and interfaces are available without an ordinary user import while
+retaining uppercase names.
 
 Examples include:
 
 ```sec
 Result[T, E]
 Option[T]
+Iterator[T]
 
 Task[T]
 Thread[T]
@@ -270,6 +273,11 @@ RawPtr[T]
 Being compiler-known does not make these types structural.
 
 Their identity and behavior remain nominal or otherwise defined by their owning rulebooks.
+
+`Iterator[T]` is a compiler-known interface rather than a storable collection
+type. Its explicit conformance, yielded type, and static `for` resolution are
+defined by `rules/control-flow/flowcontrol_for.md`. Compiler knowledge of the
+interface does not create a runtime interface representation.
 
 ---
 

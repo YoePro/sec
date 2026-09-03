@@ -67,6 +67,8 @@ The current LSP formatter already implements:
 - single-line function-parameter comma spacing;
 - single-line call argument spacing and trailing-comma removal without folding
   intentional multiline calls;
+- same-line parenthesis, bracket, and brace boundary-trivia normalization
+  without folding intentional multiline groups;
 - single-line `let` declaration comma spacing;
 - local trailing-line-comment alignment with a four-space gutter in struct,
   enum, register, union, and similar nominal declaration blocks;
@@ -1597,6 +1599,29 @@ An existing line break in an invocation is intentional source layout. The
 formatter must preserve the multiline form regardless of whether its arguments
 would fit on one line. Multiline calls retain one argument per line and the
 trailing comma.
+
+## Same-line delimiter trivia
+
+A balanced delimiter group whose opening and closing delimiter occur on the
+same physical line uses canonical boundary whitespace:
+
+```sec
+Call(value)
+[first, second]
+{ statement }
+{}
+```
+
+Parenthesized and bracketed groups have no padding immediately inside their
+delimiters. Top-level comma-separated items in those groups use one space after
+each comma and no trailing comma. A non-empty braced group has one space after
+`{` and before `}`; an empty braced group is `{}`.
+
+This normalization does not collapse whitespace inside quoted literals or
+comments. It does not join, fold, or otherwise rewrite a delimiter group whose
+matching delimiter occurs on another physical line. Multiline `()`, `[]`, and
+`{}` retain their existing source line boundaries and follow their respective
+multiline layout rules.
 
 ---
 

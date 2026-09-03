@@ -42,6 +42,7 @@ type Analyzer struct {
 	bindingFacts             map[sourceTokenKey]ResolvedBinding
 	compilerKnownMemberFacts map[sourceTokenKey]CompilerKnownMember
 	resolvedCalls            map[*ast.CallExpression]ResolvedCall
+	resolvedForIterations    map[*ast.ForStatement]ResolvedForIteration
 	resolvedConstructions    map[*ast.NewExpression]ResolvedConstruction
 	resolvedOperators        map[ast.Expression]ResolvedOperator
 	resolvedTries            map[*ast.TryExpression]ResolvedTry
@@ -101,14 +102,20 @@ type Analyzer struct {
 	suppressPlaceRootRead       int
 	loopBackedgePlaces          map[string]bool
 	cancellableDepth            int
-	loopDepth                   int
-	loopBreakFrames             []loopBreakFrame
-	scopeDepth                  int
-	allocationContext           AllocationContext
-	trustedCoreSources          map[string]bool
-	errors                      []Error
-	errorKeys                   map[string]bool
-	warnings                    []Error
+	// terminalReturnDepth carries the intrinsically transferring return
+	// context through structural construction. constructionOwnershipDepth is
+	// narrower: it admits explicit <- only while an owning field or payload is
+	// being formed. See ownership.md section 17 and copy_move.md sections 9-10.
+	terminalReturnDepth        int
+	constructionOwnershipDepth int
+	loopDepth                  int
+	loopBreakFrames            []loopBreakFrame
+	scopeDepth                 int
+	allocationContext          AllocationContext
+	trustedCoreSources         map[string]bool
+	errors                     []Error
+	errorKeys                  map[string]bool
+	warnings                   []Error
 }
 
 type borrowKind string
@@ -244,6 +251,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.bindingFacts = map[sourceTokenKey]ResolvedBinding{}
 	a.compilerKnownMemberFacts = map[sourceTokenKey]CompilerKnownMember{}
 	a.resolvedCalls = map[*ast.CallExpression]ResolvedCall{}
+	a.resolvedForIterations = map[*ast.ForStatement]ResolvedForIteration{}
 	a.resolvedConstructions = map[*ast.NewExpression]ResolvedConstruction{}
 	a.resolvedOperators = map[ast.Expression]ResolvedOperator{}
 	a.resolvedTries = map[*ast.TryExpression]ResolvedTry{}
@@ -1357,9 +1365,31 @@ func isCoreBuiltinImplTarget(target string) bool {
 		"float64",
 		"decimal",
 		"decimal128",
+		"date",
+		"time",
+		"datetime",
+		"duration",
 		"RawPtr",
 		"Option",
-		"Result":
+		"Result",
+		// rules/collections/collections.md sections 1-2 and 13-15 make
+		// these compiler-known collection families part of the core surface.
+		// Only loader-proven core sources reach this allowlist; stdlib and user
+		// modules therefore cannot use it to monkey-patch the families.
+		"list",
+		"map",
+		"set",
+		// rules/collections/shaped-types.md sections 34-35 reserve the
+		// canonical shaped semantics for the compiler while permitting core
+		// helpers and additive algorithms on these compiler-known identities.
+		"vector",
+		"matrix",
+		"tensor",
+		"tensor_view",
+		"Shape",
+		"Strides",
+		"TensorLayout",
+		"MemorySpace":
 		return true
 	default:
 		return false
@@ -2757,6 +2787,36 @@ func (a *Analyzer) inferForIterableBindingTypes(stmt *ast.ForStatement) ([]Type,
 		if iterableType.Kind == InvalidType {
 			return nil, false
 		}
+		if elementType, next, ok := a.compilerKnownIterator(iterableType); ok {
+			if len(stmt.Bindings) != 1 {
+				token := expressionToken(iterable)
+				if len(stmt.Bindings) > 0 {
+					token = stmt.Bindings[0].Token
+				}
+				a.addErrorAtToken(token, "Iterator[%s] iteration requires exactly one loop binding, got %d", typeDisplayName(elementType), len(stmt.Bindings))
+				return nil, false
+			}
+			// Iterator.Next advances compiler-visible state. A fresh owned
+			// temporary may become the loop's hidden local; reusable storage must
+			// already carry mutable authority. No runtime borrow flag is created.
+			if place, reusable := a.resolvePlace(iterable); reusable && place.Addressable {
+				if !place.Mutable {
+					a.addErrorAtToken(expressionToken(iterable), "Iterator[%s] iteration requires a mutable iterator source", typeDisplayName(elementType))
+					return nil, false
+				}
+				if a.checkBorrowedMutationPlace(place, expressionToken(iterable)) {
+					return nil, false
+				}
+			}
+			a.resolvedForIterations[stmt] = ResolvedForIteration{
+				Kind:                    ForIterationCompilerKnownIterator,
+				SourceType:              iterableType,
+				ElementType:             elementType,
+				Next:                    next,
+				RequiresMutableReceiver: true,
+			}
+			return []Type{elementType}, true
+		}
 		if iterableType.Kind == ReferenceType && iterableType.Element != nil &&
 			(iterableType.Element.Kind == ArrayType || iterableType.Element.Kind == SliceType || isForCollectionFamily(*iterableType.Element)) {
 			iterableType = *iterableType.Element
@@ -2798,6 +2858,35 @@ func (a *Analyzer) inferForIterableBindingTypes(stmt *ast.ForStatement) ([]Type,
 		a.addErrorAtToken(expressionToken(iterable), "type %s is not iterable", typeDisplayName(iterableType))
 		return nil, false
 	}
+}
+
+// compilerKnownIterator resolves only explicit Iterator[T] conformance. The
+// method name Next alone is deliberately insufficient: flowcontrol_for.md
+// section 37 forbids naming-convention discovery, and no interface value or
+// dynamic-dispatch runtime is introduced here.
+func (a *Analyzer) compilerKnownIterator(source Type) (Type, Function, bool) {
+	concrete := dereferenceType(source)
+	for _, iface := range concrete.Implements {
+		if iface.Name != "Iterator" || iface.Kind != InterfaceType || len(iface.TypeArgs) != 1 {
+			continue
+		}
+		element := iface.TypeArgs[0]
+		for _, method := range a.functions[concrete.Name+".Next"] {
+			if method.Static || len(explicitInterfaceComparableParameters(method.Parameters)) != 0 {
+				continue
+			}
+			if method.ReturnType.Name != "Option" || len(method.ReturnType.TypeArgs) != 1 || !sameConcreteType(method.ReturnType.TypeArgs[0], element) {
+				continue
+			}
+			method.CompilerKnownID = "CKM-ITERATOR-NEXT"
+			return element, method, true
+		}
+		// Preserve useful loop binding inference while ordinary interface
+		// conformance emits the canonical missing/signature diagnostic.
+		required := Function{Name: "Next", ImplTarget: concrete.Name, CompilerKnownID: "CKM-ITERATOR-NEXT", ReceiverMutable: true, ReturnType: Type{Name: "Option", Kind: UnionType, TypeArgs: []Type{element}}}
+		return element, required, true
+	}
+	return Type{}, Function{}, false
 }
 
 func (a *Analyzer) inferSequentialForBindingTypes(stmt *ast.ForStatement, valueType Type, indexType Type) ([]Type, bool) {
@@ -5425,6 +5514,20 @@ func (a *Analyzer) matchPatternInfoNoDiagnostics(pattern ast.Expression, subject
 		}
 		return matchPatternInfo{Kind: "Err"}, true
 	case *ast.MemberExpression:
+		// rules/control-flow/flowcontrol_match.md, "Variant patterns": the
+		// match subject supplies generic arguments for a qualified payload-less
+		// union variant such as Option.None. Resolving the open Option symbol
+		// first would incorrectly compare Option against Option[T].
+		if subjectType.Kind == UnionType {
+			owner, ownerOK := typePathFromExpression(pattern.Object)
+			variant, variantOK := lookupUnionVariant(subjectType, pattern.Property.Value)
+			if ownerOK && a.resolveTypeName(owner) == subjectType.Name && variantOK {
+				if variant.Payload != nil || len(variant.PayloadFields) > 0 {
+					return matchPatternInfo{}, false
+				}
+				return matchPatternInfo{Kind: "variant", Variant: variant.Name, VariantIndex: unionVariantIndex(subjectType, variant.Name)}, true
+			}
+		}
 		patternType, ok := a.inferMemberExpression(pattern)
 		if !ok || patternType.Kind == InvalidType || !sameConcreteType(patternType, subjectType) {
 			return matchPatternInfo{}, false
@@ -5706,6 +5809,12 @@ func switchCoversBoolLiterals(stmt *ast.SwitchStatement) bool {
 }
 
 func (a *Analyzer) analyzeReturnStatement(functionName string, returnType Type, stmt *ast.ReturnStatement) {
+	// A return is terminal even when reached through a match/try arm. Keeping
+	// this as analyzer context lets aggregate and union inference apply the same
+	// rule recursively without teaching each constructor about ReturnStatement.
+	a.terminalReturnDepth++
+	defer func() { a.terminalReturnDepth-- }()
+
 	if a.currentFunctionMetadata.Initializer {
 		if stmt.Value == nil {
 			return
@@ -5754,10 +5863,7 @@ func (a *Analyzer) analyzeReturnStatement(functionName string, returnType Type, 
 		a.addErrorAtToken(expressionToken(stmt.Value), "variadic parameter pack cannot escape this call")
 		return
 	}
-	if a.rejectVariadicPackElementReturn(stmt.Value, valueType) {
-		return
-	}
-	if a.rejectImplicitIndexedReturnExtraction(stmt.Value, valueType) {
+	if a.validateTerminalReturnConstruction(stmt.Value) {
 		return
 	}
 
@@ -5820,6 +5926,70 @@ func (a *Analyzer) rejectImplicitIndexedReturnExtraction(expr ast.Expression, el
 		source,
 	)
 	return true
+}
+
+// validateTerminalReturnConstruction recursively validates only structural
+// ownership edges that directly form the returned value. Ordinary calls remain
+// governed by their declared parameter modes and are deliberately opaque here.
+//
+// Rules:
+//   - rules/memory/ownership.md — section 17 "Function return boundary"
+//   - rules/memory/copy_move.md — sections 9-10
+func (a *Analyzer) validateTerminalReturnConstruction(expr ast.Expression) bool {
+	if expr == nil {
+		return false
+	}
+	switch expr := expr.(type) {
+	case *ast.StructLiteral:
+		invalid := false
+		for _, field := range expr.Fields {
+			if field != nil && a.validateTerminalReturnConstruction(field.Value) {
+				invalid = true
+			}
+		}
+		return invalid
+	case *ast.ArrayLiteral:
+		invalid := false
+		for _, element := range expr.Elements {
+			if a.validateTerminalReturnConstruction(element) {
+				invalid = true
+			}
+		}
+		return invalid
+	case *ast.OkExpression:
+		return a.validateTerminalReturnConstruction(expr.Value)
+	case *ast.ErrExpression:
+		return a.validateTerminalReturnConstruction(expr.Value)
+	case *ast.SpreadExpression:
+		return a.validateTerminalReturnConstruction(expr.Value)
+	case *ast.ConversionExpression:
+		return a.validateTerminalReturnConstruction(expr.Value)
+	case *ast.PrefixExpression:
+		if expr.Operator == "<-" {
+			return false // inferPrefixExpression already validated the explicit move.
+		}
+	case *ast.CallExpression:
+		if _, structural := a.unionConstructorPayload(expr); structural {
+			return a.validateTerminalReturnConstruction(expr.Arguments[0])
+		}
+		return false
+	case *ast.MatchExpression:
+		// Match arms are checked in their branch-local ownership state. Doing
+		// so again after the merge would lose the relevant Place context.
+		return false
+	}
+	typ, ok := a.expressionTypes[expr]
+	if !ok || typ.Kind == InvalidType {
+		return false
+	}
+	if a.rejectVariadicPackElementReturn(expr, typ) || a.rejectImplicitIndexedReturnExtraction(expr, typ) {
+		return true
+	}
+	place, reusable := a.resolvePlace(expr)
+	if !reusable || !requiresOwnershipTransfer(place.Type) {
+		return false
+	}
+	return !a.validateNamedOwnershipSource(ast.OwnershipMove, expr, expressionToken(expr), false, false)
 }
 
 // rejectVariadicPackElementReturn preserves the invocation-lifetime pack
@@ -6844,7 +7014,7 @@ func (a *Analyzer) analyzeResultReturnStatement(functionName string, returnType 
 		if valueType.Kind == InvalidType {
 			return
 		}
-		if a.rejectVariadicPackElementReturn(expr.Value, valueType) || a.rejectImplicitIndexedReturnExtraction(expr.Value, valueType) {
+		if a.validateTerminalReturnConstruction(expr.Value) {
 			return
 		}
 		if !canInitialize(expected, valueType, expr.Value) {
@@ -6869,7 +7039,7 @@ func (a *Analyzer) analyzeResultReturnStatement(functionName string, returnType 
 		if valueType.Kind == InvalidType {
 			return
 		}
-		if a.rejectVariadicPackElementReturn(expr.Value, valueType) || a.rejectImplicitIndexedReturnExtraction(expr.Value, valueType) {
+		if a.validateTerminalReturnConstruction(expr.Value) {
 			return
 		}
 		expected := returnType.TypeArgs[1]
@@ -8042,6 +8212,20 @@ func (a *Analyzer) resolveImplementedInterfaces(refs []*ast.TypeReference, targe
 		if typ.Kind != InterfaceType {
 			a.addErrorAtToken(ref.Token, "implemented type %s on %s is not an interface", typeDisplayName(typ), targetName)
 			continue
+		}
+		// Compiler-known interfaces have no source declaration token. Anchor
+		// conformance diagnostics at the explicit implements clause instead of
+		// leaking a synthetic 0:0 location to CLI and LSP consumers.
+		if typ.Intrinsic {
+			for index := range typ.InterfaceMethods {
+				typ.InterfaceMethods[index].Token = ref.Token
+			}
+			for index := range typ.InterfaceProperties {
+				typ.InterfaceProperties[index].Token = ref.Token
+			}
+			for index := range typ.InterfaceEvents {
+				typ.InterfaceEvents[index].Token = ref.Token
+			}
 		}
 		if previous, exists := seen[typ.Name]; exists {
 			_ = previous
@@ -10471,6 +10655,13 @@ func (a *Analyzer) markMoveSource(expr ast.Expression) bool {
 		a.moved[expr.Value] = expr.Token
 		a.moveReasons[expr.Value] = "moved"
 		return true
+	case *ast.MemberExpression:
+		place, ok := a.resolvePlace(expr)
+		if !ok || !requiresOwnershipTransfer(place.Type) || a.checkBorrowedMovePlace(place, expr.Property.Token) {
+			return false
+		}
+		a.markPlaceUnavailable(place, expr.Property.Token, "moved")
+		return true
 	case *ast.StructLiteral:
 		moved := false
 		for _, field := range expr.Fields {
@@ -10495,6 +10686,10 @@ func (a *Analyzer) markMoveSource(expr ast.Expression) bool {
 		if expr.Value != nil {
 			return a.markMoveSource(expr.Value)
 		}
+	case *ast.PrefixExpression:
+		if expr.Operator == "<-" && expr.Right != nil {
+			return a.markExplicitMoveSource(expr.Right)
+		}
 	case *ast.SpreadExpression:
 		return a.markMoveSource(expr.Value)
 	case *ast.ConversionExpression:
@@ -10515,15 +10710,25 @@ func (a *Analyzer) unionConstructorPayload(expr *ast.CallExpression) (Type, bool
 	if expr == nil || len(expr.Arguments) != 1 {
 		return Type{}, false
 	}
-	member, ok := expr.Callee.(*ast.MemberExpression)
-	if !ok || member.Property == nil || !a.expressionNamesType(member.Object) {
-		return Type{}, false
-	}
 	unionType, ok := a.expressionTypes[expr]
 	if !ok || unionType.Kind != UnionType {
 		return Type{}, false
 	}
-	variant, ok := lookupUnionVariant(unionType, member.Property.Value)
+	variantName := ""
+	switch callee := expr.Callee.(type) {
+	case *ast.Identifier:
+		// Contextual constructors such as Some(value) are resolved from the
+		// expected union type before ownership forwarding reaches this point.
+		variantName = callee.Value
+	case *ast.MemberExpression:
+		if callee.Property == nil || !a.expressionNamesType(callee.Object) {
+			return Type{}, false
+		}
+		variantName = callee.Property.Value
+	default:
+		return Type{}, false
+	}
+	variant, ok := lookupUnionVariant(unionType, variantName)
 	if !ok || variant.Payload == nil || len(variant.PayloadFields) != 0 {
 		return Type{}, false
 	}
@@ -10547,6 +10752,34 @@ func (a *Analyzer) markResourceTransfer(expr ast.Expression) bool {
 	case *ast.OkExpression:
 		if expr.Value != nil {
 			return a.markResourceTransfer(expr.Value)
+		}
+	case *ast.ErrExpression:
+		if expr.Value != nil {
+			return a.markResourceTransfer(expr.Value)
+		}
+	case *ast.StructLiteral:
+		transferred := false
+		for _, field := range expr.Fields {
+			if field != nil && a.markResourceTransfer(field.Value) {
+				transferred = true
+			}
+		}
+		return transferred
+	case *ast.ArrayLiteral:
+		transferred := false
+		for _, element := range expr.Elements {
+			if a.markResourceTransfer(element) {
+				transferred = true
+			}
+		}
+		return transferred
+	case *ast.PrefixExpression:
+		if expr.Operator == "<-" {
+			return a.markResourceTransfer(expr.Right)
+		}
+	case *ast.CallExpression:
+		if _, structural := a.unionConstructorPayload(expr); structural {
+			return a.markResourceTransfer(expr.Arguments[0])
 		}
 	case *ast.ConversionExpression:
 		return a.markResourceTransfer(expr.Value)
@@ -11529,7 +11762,7 @@ func (a *Analyzer) resolveType(ref *ast.TypeReference) (Type, bool) {
 		typ.Dimension = dimension
 		typ.UnitSemantics = semantics
 	}
-	if (typ.Kind == StructType || typ.Kind == UnionType) && len(typ.GenericParameters) > 0 {
+	if (typ.Kind == StructType || typ.Kind == UnionType || typ.Kind == InterfaceType) && len(typ.GenericParameters) > 0 {
 		typ = a.instantiateGenericType(typ)
 	}
 	return typ, true
@@ -11802,6 +12035,10 @@ func (a *Analyzer) instantiateGenericType(typ Type) Type {
 	out.Fields = make([]StructField, 0, len(typ.Fields))
 	out.Properties = make([]Property, 0, len(typ.Properties))
 	out.UnionVariants = make([]UnionVariant, 0, len(typ.UnionVariants))
+	out.Implements = make([]Type, 0, len(typ.Implements))
+	out.InterfaceMethods = make([]Function, 0, len(typ.InterfaceMethods))
+	out.InterfaceProperties = make([]InterfaceProperty, 0, len(typ.InterfaceProperties))
+	out.InterfaceEvents = make([]InterfaceEvent, 0, len(typ.InterfaceEvents))
 	out.GenericParameters = nil
 	recursive := false
 	for _, field := range typ.Fields {
@@ -11851,6 +12088,25 @@ func (a *Analyzer) instantiateGenericType(typ Type) Type {
 			variant.PayloadFields = fields
 		}
 		out.UnionVariants = append(out.UnionVariants, variant)
+	}
+	for _, implemented := range typ.Implements {
+		out.Implements = append(out.Implements, substituteGenericType(implemented, substitution))
+	}
+	for _, method := range typ.InterfaceMethods {
+		method.ReturnType = substituteGenericType(method.ReturnType, substitution)
+		method.Parameters = append([]FunctionParameter(nil), method.Parameters...)
+		for index := range method.Parameters {
+			method.Parameters[index].Type = substituteGenericType(method.Parameters[index].Type, substitution)
+		}
+		out.InterfaceMethods = append(out.InterfaceMethods, method)
+	}
+	for _, property := range typ.InterfaceProperties {
+		property.Type = substituteGenericType(property.Type, substitution)
+		out.InterfaceProperties = append(out.InterfaceProperties, property)
+	}
+	for _, event := range typ.InterfaceEvents {
+		event.Payload = substituteGenericType(event.Payload, substitution)
+		out.InterfaceEvents = append(out.InterfaceEvents, event)
 	}
 	a.genericTypeInstances[key] = out
 	return out
@@ -12328,6 +12584,25 @@ func (a *Analyzer) inferExpectedUnionVariantExpression(expr ast.Expression, expe
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		return expected, expressionValue{Display: expr.String()}, true
+	case *ast.MemberExpression:
+		// rules/declarations/unions.md and rules/types/types.md: an expected
+		// generic union type supplies the missing type arguments for a
+		// qualified payload-less constructor such as Option.None. Resolve the
+		// qualifier here instead of first producing the open Option type.
+		owner, ok := typePathFromExpression(expr.Object)
+		if !ok || a.resolveTypeName(owner) != expected.Name {
+			return Type{}, expressionValue{}, false
+		}
+		variant, ok := lookupUnionVariant(expected, expr.Property.Value)
+		if !ok {
+			return Type{}, expressionValue{}, false
+		}
+		if variant.Payload != nil || len(variant.PayloadFields) > 0 {
+			a.addErrorAtToken(expr.Property.Token, "union variant %s.%s requires payload", typeDisplayName(expected), variant.Name)
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		a.bindDefinition(expr.Property.Token, variant.Token)
+		return expected, expressionValue{Display: expr.String()}, true
 	case *ast.CallExpression:
 		name := callExpressionName(expr)
 		if name == "" {
@@ -12353,12 +12628,15 @@ func (a *Analyzer) inferExpectedUnionVariantExpression(expr ast.Expression, expe
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		payloadType := *variant.Payload
-		valueType, _ := a.inferExpressionWithExpected(expr.Arguments[0], payloadType)
+		valueType, _ := a.inferOwningConstructionValue(expr.Arguments[0], payloadType)
 		if valueType.Kind != InvalidType && !canInitialize(payloadType, valueType, expr.Arguments[0]) {
 			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "union variant %s.%s payload must be %s, got %s", typeDisplayName(expected), variant.Name, typeDisplayName(payloadType), typeDisplayName(valueType))
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		if valueType.Kind != InvalidType && a.checkIntegerExpressionRange(payloadType, expr.Arguments[0]) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		if valueType.Kind != InvalidType && !a.validateOwningConstructionSource(expr.Arguments[0]) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		return expected, expressionValue{Display: expr.String()}, true
@@ -12421,6 +12699,7 @@ func (a *Analyzer) inferStructLiteral(expr *ast.StructLiteral) (Type, expression
 	}
 	entries := make([]ResolvedStructEntry, 0, len(expr.Fields))
 	planValid := true
+	ownershipValid := true
 	spreadSuppliesFields := false
 	for sourceIndex, field := range expr.Fields {
 		if field.Spread {
@@ -12476,7 +12755,7 @@ func (a *Analyzer) inferStructLiteral(expr *ast.StructLiteral) (Type, expression
 		// rules/types/types.md and rules/declarations/unions.md: aggregate
 		// fields provide the expected union type, allowing canonical contextual
 		// constructors such as None or None() for Option[T].
-		valueType, _ := a.inferExpressionWithExpected(field.Value, fieldType)
+		valueType, _ := a.inferOwningConstructionValue(field.Value, fieldType)
 		if valueType.Kind != InvalidType && !canInitialize(fieldType, valueType, field.Value) {
 			a.addErrorAtToken(expressionToken(field.Value), "cannot initialize field %s with %s", field.Name.Value, typeDisplayName(valueType))
 			planValid = false
@@ -12488,6 +12767,11 @@ func (a *Analyzer) inferStructLiteral(expr *ast.StructLiteral) (Type, expression
 		}
 		if a.checkIntegerExpressionRange(fieldType, field.Value) {
 			planValid = false
+		}
+		if !a.validateOwningConstructionSource(field.Value) {
+			planValid = false
+			ownershipValid = false
+			continue
 		}
 		fieldID := fieldIDs[field.Name.Value]
 		entries = append(entries, ResolvedStructEntry{SourceIndex: sourceIndex, Kind: StructEntryExplicit, FieldName: field.Name.Value, FieldID: fieldID, Expression: field.Value, Type: valueType})
@@ -12519,6 +12803,9 @@ func (a *Analyzer) inferStructLiteral(expr *ast.StructLiteral) (Type, expression
 		a.resolvedStructLiteralPlans[expr] = ResolvedStructLiteralPlan{
 			StructType: typ, Entries: entries, FinalFields: finalFields, FullyInitialized: true,
 		}
+	}
+	if !ownershipValid {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 	// A valid same-type spread supplies every direct field. Without one, apply
 	// semantic defaults only after all explicit entries have been resolved.
@@ -12566,6 +12853,32 @@ func resolvedStructExpressionAction(expr ast.Expression, typ Type) ResolvedStruc
 	default:
 		return StructFieldConstructDirect
 	}
+}
+
+// inferOwningConstructionValue admits expression-level <- exactly where an
+// aggregate or union payload owns its value. The surrounding return context,
+// when present, is inherited by nested construction.
+func (a *Analyzer) inferOwningConstructionValue(expr ast.Expression, expected Type) (Type, expressionValue) {
+	a.constructionOwnershipDepth++
+	defer func() { a.constructionOwnershipDepth-- }()
+	return a.inferExpressionWithExpected(expr, expected)
+}
+
+// validateOwningConstructionSource preserves ordinary copy semantics outside
+// terminal return construction. A reusable move-only Place must carry <-;
+// temporaries and copyable Places remain marker-free.
+func (a *Analyzer) validateOwningConstructionSource(expr ast.Expression) bool {
+	if a.terminalReturnDepth > 0 {
+		return true
+	}
+	if _, explicit := explicitMoveArgument(expr); explicit {
+		return true // inferPrefixExpression already validated the source Place.
+	}
+	place, reusable := a.resolvePlace(expr)
+	if !reusable || !requiresOwnershipTransfer(place.Type) {
+		return true
+	}
+	return a.validateNamedOwnershipSource(ast.OwnershipCopy, expr, expressionToken(expr), false, false)
 }
 
 func (a *Analyzer) inferStructLiteralAsUnionVariant(expr *ast.StructLiteral) (Type, expressionValue, bool) {
@@ -12625,7 +12938,7 @@ func (a *Analyzer) checkUnionPayloadFields(unionType Type, variant UnionVariant,
 			continue
 		}
 
-		valueType, _ := a.inferExpressionWithExpected(field.Value, expectedField.Type)
+		valueType, _ := a.inferOwningConstructionValue(field.Value, expectedField.Type)
 		if valueType.Kind != InvalidType && !canInitialize(expectedField.Type, valueType, field.Value) {
 			a.addErrorAtToken(expressionToken(field.Value), "payload field %s for %s.%s must be %s, got %s", name, typeDisplayName(unionType), variant.Name, typeDisplayName(expectedField.Type), typeDisplayName(valueType))
 			continue
@@ -12634,6 +12947,9 @@ func (a *Analyzer) checkUnionPayloadFields(unionType Type, variant UnionVariant,
 			// rules/declarations/unions.md; correction17.md: union payload
 			// fields use the ordinary destination representability check.
 			a.checkIntegerExpressionRange(expectedField.Type, field.Value)
+		}
+		if valueType.Kind != InvalidType {
+			a.validateOwningConstructionSource(field.Value)
 		}
 	}
 
@@ -16175,7 +16491,11 @@ func (a *Analyzer) inferCallAsUnionVariantConstructor(expr *ast.CallExpression, 
 	} else if expected != nil && expected.Kind == UnionType && expected.Name == template.Name {
 		unionType = *expected
 	} else if len(template.GenericParameters) > 0 {
+		// Generic inference observes the same owning-payload context as the
+		// subsequent concrete payload check, including explicit <- syntax.
+		a.constructionOwnershipDepth++
 		concrete, ok := a.inferGenericUnionVariantInstance(template, variant, expr)
+		a.constructionOwnershipDepth--
 		if !ok {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
@@ -16207,12 +16527,15 @@ func (a *Analyzer) inferCallAsUnionVariantConstructor(expr *ast.CallExpression, 
 	}
 
 	payloadType := *concreteVariant.Payload
-	valueType, _ := a.inferExpressionWithExpected(expr.Arguments[0], payloadType)
+	valueType, _ := a.inferOwningConstructionValue(expr.Arguments[0], payloadType)
 	if valueType.Kind != InvalidType && !canInitialize(payloadType, valueType, expr.Arguments[0]) {
 		a.addErrorAtToken(expressionToken(expr.Arguments[0]), "union variant %s.%s payload must be %s, got %s", typeDisplayName(unionType), concreteVariant.Name, typeDisplayName(payloadType), typeDisplayName(valueType))
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 	}
 	if valueType.Kind != InvalidType && a.checkIntegerExpressionRange(payloadType, expr.Arguments[0]) {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+	}
+	if valueType.Kind != InvalidType && !a.validateOwningConstructionSource(expr.Arguments[0]) {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 	}
 
@@ -17546,6 +17869,7 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 	seenKinds := map[string]bool{}
 	seenVariants := map[string]bool{}
 	seenEnumValues := map[string]string{}
+	guardedPayloadEnumValues := map[string]map[string]string{}
 	catchAll := false
 	plan := ResolvedMatchPlan{SubjectKind: resolvedMatchSubjectKind(subjectType), SubjectType: subjectType, ValueContext: valueContext}
 	var resultType Type
@@ -17609,6 +17933,9 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 		if guarded && matchPatternAlreadyCovered(info, seenKinds, seenVariants, seenEnumValues) {
 			a.addErrorAtToken(arm.Token, "unreachable match arm")
 			continue
+		}
+		if guarded {
+			a.recordGuardedPayloadEnumCoverage(info, arm.Guard, guardedPayloadEnumValues, seenKinds, seenVariants)
 		}
 		if !guarded {
 			if info.Kind == "catchall" {
@@ -17717,6 +18044,86 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 	return Type{Name: "void", Kind: VoidType}
 }
 
+// recordGuardedPayloadEnumCoverage recognizes the narrow finite-domain proof
+// formed by repeated whole-payload guards such as
+// Some(value) where value == ClosedEnum.Member. A general guard never covers
+// its pattern; the outer variant becomes covered only after equality guards
+// cover every reachable underlying value class of the closed enum payload.
+//
+// Rules:
+//   - rules/control-flow/flowcontrol_match.md — Exhaustiveness
+//   - rules/control-flow/flowcontrol_match.md — Guards
+//   - rules/declarations/enums.md — match and exhaustiveness
+func (a *Analyzer) recordGuardedPayloadEnumCoverage(info matchPatternInfo, guard ast.Expression, covered map[string]map[string]string, seenKinds, seenVariants map[string]bool) {
+	if info.BindingName == "" || info.PayloadBorrow || info.BindingType.Kind != EnumType || info.BindingType.BitWidth > 0 {
+		return
+	}
+	valueKey, caseName, ok := a.guardedPayloadEnumEquality(info.BindingName, info.BindingType, guard)
+	if !ok {
+		return
+	}
+	patternKey := info.Variant
+	if patternKey == "" {
+		patternKey = info.Kind
+	}
+	if patternKey == "" || patternKey == "catchall" {
+		return
+	}
+	values := covered[patternKey]
+	if values == nil {
+		values = map[string]string{}
+		covered[patternKey] = values
+	}
+	values[valueKey] = caseName
+	if !enumDomainCovered(info.BindingType, values) {
+		return
+	}
+	if info.Variant != "" {
+		seenVariants[info.Variant] = true
+		return
+	}
+	seenKinds[info.Kind] = true
+}
+
+func (a *Analyzer) guardedPayloadEnumEquality(bindingName string, enumType Type, guard ast.Expression) (string, string, bool) {
+	equality, ok := guard.(*ast.InfixExpression)
+	if !ok || equality.Operator != "==" {
+		return "", "", false
+	}
+	if key, name, ok := a.guardedPayloadEnumOperand(bindingName, enumType, equality.Left, equality.Right); ok {
+		return key, name, true
+	}
+	return a.guardedPayloadEnumOperand(bindingName, enumType, equality.Right, equality.Left)
+}
+
+func (a *Analyzer) guardedPayloadEnumOperand(bindingName string, enumType Type, bindingExpr, valueExpr ast.Expression) (string, string, bool) {
+	binding, ok := bindingExpr.(*ast.Identifier)
+	if !ok || binding.Value != bindingName {
+		return "", "", false
+	}
+	member, ok := valueExpr.(*ast.MemberExpression)
+	if !ok {
+		return "", "", false
+	}
+	owner, ok := typePathFromExpression(member.Object)
+	if !ok {
+		return "", "", false
+	}
+	ownerName := a.resolveTypeName(owner)
+	if ownerName != enumType.Name {
+		ownerType, exists := a.types[ownerName]
+		if !exists || !sameConcreteType(ownerType, enumType) {
+			return "", "", false
+		}
+	}
+	enumCase, exists := enumType.EnumConsts[member.Property.Value]
+	if !exists {
+		return "", "", false
+	}
+	valueKey, keyed := enumValueClassKey(enumCase)
+	return valueKey, enumCase.Name, keyed
+}
+
 func matchPatternAlreadyCovered(info matchPatternInfo, seenKinds map[string]bool, seenVariants map[string]bool, seenEnumValues map[string]string) bool {
 	if info.EnumValueKey != "" {
 		_, covered := seenEnumValues[info.EnumValueKey]
@@ -17762,6 +18169,21 @@ func (a *Analyzer) analyzeMatchPattern(pattern ast.Expression, subjectType Type)
 		}
 		return a.analyzeResultPayloadPattern("Err", pattern.Value, pattern.Token, subjectType.TypeArgs[1])
 	case *ast.MemberExpression:
+		// rules/control-flow/flowcontrol_match.md, "Variant patterns": use the
+		// concrete generic subject when resolving qualified payload-less union
+		// variants such as Option.None.
+		if subjectType.Kind == UnionType {
+			owner, ownerOK := typePathFromExpression(pattern.Object)
+			variant, variantOK := lookupUnionVariant(subjectType, pattern.Property.Value)
+			if ownerOK && a.resolveTypeName(owner) == subjectType.Name && variantOK {
+				if variant.Payload != nil || len(variant.PayloadFields) > 0 {
+					a.addErrorAtToken(pattern.Property.Token, "union variant %s.%s requires payload binding", typeDisplayName(subjectType), variant.Name)
+					return matchPatternInfo{}, false
+				}
+				a.bindDefinition(pattern.Property.Token, variant.Token)
+				return matchPatternInfo{Kind: "variant", Variant: variant.Name, VariantIndex: unionVariantIndex(subjectType, variant.Name)}, true
+			}
+		}
 		patternType, ok := a.inferMemberExpression(pattern)
 		if !ok || patternType.Kind == InvalidType {
 			return matchPatternInfo{}, false
@@ -18039,8 +18461,18 @@ func (a *Analyzer) analyzeMatchArmBody(arm *ast.MatchArm, info matchPatternInfo)
 	if arm.Body == nil {
 		return Type{Kind: InvalidType}, a.finalizeMatchBranch(info, branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), moveReasons: copyMoveReasons(a.moveReasons), closedResources: copyMoved(a.closedResources), borrows: copyBorrows(a.borrows), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), continues: true})
 	}
+	a.constructionOwnershipDepth++
 	bodyType, _ := a.inferExpression(arm.Body)
-	a.markMoveSource(arm.Body)
+	a.constructionOwnershipDepth--
+	ownershipValid := true
+	if a.terminalReturnDepth > 0 {
+		ownershipValid = !a.validateTerminalReturnConstruction(arm.Body)
+	} else {
+		ownershipValid = a.validateOwningConstructionSource(arm.Body)
+	}
+	if ownershipValid {
+		a.markMoveSource(arm.Body)
+	}
 	return bodyType, a.finalizeMatchBranch(info, branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), moveReasons: copyMoveReasons(a.moveReasons), closedResources: copyMoved(a.closedResources), borrows: copyBorrows(a.borrows), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), continues: true})
 }
 
@@ -19249,8 +19681,15 @@ func (a *Analyzer) inferDecimalInfixExpression(expr *ast.InfixExpression, leftTy
 
 func (a *Analyzer) inferPrefixExpression(expr *ast.PrefixExpression) (Type, expressionValue) {
 	if expr.Operator == "<-" {
-		a.addErrorAtToken(expr.Token, "explicit <- move in this expression is not implemented; direct call arguments are supported")
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		if a.terminalReturnDepth == 0 && a.constructionOwnershipDepth == 0 {
+			a.addErrorAtToken(expr.Token, "explicit <- move requires a return, consuming argument, aggregate field, or union payload context")
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
+		rightType, rightValue := a.inferExpression(expr.Right)
+		if rightType.Kind == InvalidType || !a.validateNamedOwnershipSource(ast.OwnershipMove, expr.Right, expr.Token, false, false) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
+		return rightType, rightValue
 	}
 	rightType, rightValue := a.inferExpression(expr.Right)
 	if rightType.Kind == InvalidType {

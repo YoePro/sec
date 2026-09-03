@@ -795,6 +795,38 @@ fn Choose(flag: Flag, condition: bool) int {
 	}
 }
 
+func TestResolvedForIterationPublishesCompilerKnownIteratorPlan(t *testing.T) {
+	source := `module main
+type Counter struct { current: int }
+impl Counter implements Iterator[int] {
+  fn Next() Option[int] {
+    self.current += 1
+    return Some(self.current)
+  }
+}
+fn Consume() void {
+  let mut counter := Counter { current: 0 }
+  for value in counter {
+    let typed: int := value
+  }
+}`
+	p := parser.New(lexer.NewWithFile(source, "iterator-plan.sec"))
+	result := p.Parse()
+	if result.HasErrors {
+		t.Fatalf("parse: %v", p.Errors())
+	}
+	a := NewAnalyzer()
+	if errs := a.Analyze(result.Program); len(errs) != 0 {
+		t.Fatalf("sema: %v", errs)
+	}
+	function := result.Program.Statements[3].(*ast.FunctionDeclaration)
+	loop := function.Body.Statements[1].(*ast.ForStatement)
+	plan, ok := a.ResolvedForIterationOf(loop)
+	if !ok || plan.Kind != ForIterationCompilerKnownIterator || typeDisplayName(plan.SourceType) != "Counter" || typeDisplayName(plan.ElementType) != "int" || plan.Next.Name != "Counter.Next" || plan.Next.CompilerKnownID != "CKM-ITERATOR-NEXT" || !plan.RequiresMutableReceiver {
+		t.Fatalf("iterator plan = %#v, %t", plan, ok)
+	}
+}
+
 func TestResolvedMatchPlanRetainsAllTerminatingExpressionFlow(t *testing.T) {
 	source := `module main
 fn Choose(value: Option[int]) int {

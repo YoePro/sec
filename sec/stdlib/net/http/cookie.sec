@@ -10,15 +10,179 @@ enum SameSite {
 type Cookie struct {
     Name: string,
     Value: string,
-    Path: string,
-    Domain: string,
-    Expires: datetime,
-    MaxAge: int,
+    Path: Option[string],
+    Domain: Option[string],
+    Expires: Option[datetime],
+    MaxAge: Option[int64],
     Secure: bool,
     HTTPOnly: bool,
-    SameSite: SameSite,
+    SameSite: Option[SameSite],
 }
 
 impl Cookie {
+    /** Creates a Cookie using only Cookie Name and Value */
+    init(name: string, value: string) {
+        self.Name = name
+        self.Value = value
+        self.Path = Option.None
+        self.Domain = Option.None
+        self.Expires = Option.None
+        self.MaxAge = Option.None
+        self.SameSite = Option.None
+        self.Secure = false
+        self.HTTPOnly = false
+    }
 
+    /** Serialiserar kakan till en fullständig HTTP Set-Cookie-sträng.
+    *  Värdet blir automatiskt URL-kodat för att säkra mot ogiltiga tecken.
+    */
+    fn ToString() string {
+        let mut out := self.Name + "=" + self.Value
+
+        // Pattern matching på alla valfria attribut
+        match self.Path {
+            Some(path) => { out += "; Path=" + path }
+            None => {}
+        }
+
+        match self.Domain {
+            Some(domain) => { out += "; Domain=" + domain }
+            None => {}
+        }
+
+        match self.MaxAge {
+            Some(max_age) => { out += "; Max-Age=" + max_age.ToString() }
+            None => {}
+        }
+
+        match self.Expires {
+            Some(expires) => { out += "; Expires=" + expires.ToString() }
+            None => {}
+        }
+
+        match self.SameSite {
+            Some(site) => {
+                match site {
+                    SameSite.Strict => { out += "; SameSite=Strict" }
+                    SameSite.Lax => { out += "; SameSite=Lax" }
+                    SameSite.None => { out += "; SameSite=None" }
+                    SameSite.Unspecified => {}
+                }
+            }
+
+            None => {}
+        }
+
+        if self.Secure {
+            out += "; Secure"
+        }
+
+        if self.HTTPOnly {
+            out += "; HttpOnly"
+        }
+
+        return out
+    }
+
+}
+
+// Tar emot en sträng som "session=123; theme=dark"
+fn ParseHeaders(header_value: string) list[Cookie] {
+    let mut cookies := list[Cookie]
+
+    // Vi splittar upp alla kakor (separerade med semikolon)
+    let pairs := header_value.Split(";")
+
+    for pair in pairs {
+        let trimmed := pair.Trim()
+
+        // Här använder vi din nya core-funktion!
+        match trimmed.SplitOnce("=") {
+            Option.Some((name, value)) => {
+                let cookie := new Cookie(name, value)
+                cookies.Append(cookie)
+            }
+            Option.None => {
+                // Om det inte finns något '=' är kakan trasig, ignorera
+            }
+        }
+    }
+
+    return cookies
+}
+
+/** Ersätter en kaka i listan om en kaka med samma namn redan finns.
+*  Om kakan inte finns i listan, läggs den till i slutet.
+*  Returnerar den uppdaterade listan.
+*/
+fn SetInList(cookies: list[Cookie], new_cookie: Cookie) list[Cookie] {
+    let mut found := false
+    let mut i := 0
+
+    // Loopa igenom listan för att leta efter en eksisterande kaka med samma namn
+    while i < cookies.len {
+        // Vi antar att list[T] har en index-accessor eller get()-metod
+        let current := cookies[i]
+
+        if current.Name == new_cookie.Name {
+            cookies[i] = new_cookie
+            found = true
+            // Vi har hittat och ersatt kakan, så vi kan avbryta loopen
+            break
+        }
+        i += 1
+    }
+
+    // Om kakan inte fanns i listan lägger vi till den som ny
+    if found == false {
+        try cookies.Append(new_cookie) {
+            Err(_) => {} // We could not add cookie
+        }
+    }
+
+    return cookies
+}
+
+/** Ersätter eller lägger till en kaka i en lista med säker felhantering för allokering. */
+fn SetCookie(cookies: list[Cookie], new_cookie: Cookie) list[Cookie] {
+    let mut found := false
+    let mut i := 0
+
+    while i < cookies.Len {
+        let current := cookies[i]
+
+        if current.name == new_cookie.name {
+            cookies[i] = new_cookie
+            found = true
+            break
+        }
+        i += 1
+    }
+
+    if found == false {
+        // Hanterar att Append kan returnera ett allokeringsfel (Result)
+        try cookies.Append(new_cookie) {
+            Err(_) => {} // Ignorerar fel om listan inte kunde växa
+        }
+    }
+
+    return cookies
+}
+
+/** Söker efter en specifik kaka i en lista baserat på dess namn.
+*  Returnerar Option.Some(Cookie) om den hittas, annars Option.None.
+*/
+fn GetFromList(cookies: list[Cookie], name: string) Option[Cookie] {
+    let mut i := 0
+
+    while i < cookies.len {
+        let current := cookies[i]
+
+        if current.name == name {
+            return Option.Some(current)
+        }
+        i += 1
+    }
+
+    return Option.None
 }

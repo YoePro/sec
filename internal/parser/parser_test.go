@@ -4571,6 +4571,40 @@ fn Test(value: bool) int {
 	}
 }
 
+func TestParseNestedQualifiedMatchPayloadReportsCanonicalAlternative(t *testing.T) {
+	input := `
+fn Test(value: Option[bool]) void {
+	match value {
+		Option.Some(State.Ready) => {}
+		Option.None => {}
+	}
+}
+`
+
+	p := New(lexer.New(input))
+	p.ParseProgram()
+	if len(p.Errors()) != 1 || !strings.Contains(p.Errors()[0], "nested match patterns are not part of Sec 0.1; bind the payload and use a where guard or another match") {
+		t.Fatalf("parser errors = %v, want focused nested-pattern diagnostic", p.Errors())
+	}
+}
+
+func TestParseTupleMatchPayloadReportsCanonicalAlternativeOnce(t *testing.T) {
+	input := `
+fn Test(value: Option[Pair]) void {
+	match value {
+		Option.Some((left, right)) => {}
+		Option.None => {}
+	}
+}
+`
+
+	p := New(lexer.New(input))
+	p.ParseProgram()
+	if len(p.Errors()) != 1 || !strings.Contains(p.Errors()[0], "nested match patterns are not part of Sec 0.1; bind the payload and use another match") {
+		t.Fatalf("parser errors = %v, want one focused nested-pattern diagnostic", p.Errors())
+	}
+}
+
 func TestParseReturnMatchExpression(t *testing.T) {
 	input := `
 fn Test(value: bool) int {

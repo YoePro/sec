@@ -1,0 +1,12 @@
+module core
+
+enum DateTimeFormats {
+    HTTP_RFC_7231
+}
+
+impl datetime {
+
+    fn ToString() string {
+        return ""
+    }
+}

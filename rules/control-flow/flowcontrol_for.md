@@ -2,12 +2,12 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-16
-- **Last updated:** 2026-08-16
-- **Document revision:** 2.0
+- **Last updated:** 2026-09-03
+- **Document revision:** 2.1
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/control-flow/flowcontrol_for.md`
 - **Replaces:** `rules/control-flow/flowcontrol_for.txt`
-- **Repository baseline reviewed:** `56be75d`
+- **Repository baseline reviewed:** `998d8d1`
 
 ---
 
@@ -32,7 +32,6 @@ Sec 0.1 does not support:
 - C-style `for` loops;
 - condition-only `for` loops;
 - implicit consuming iteration;
-- a user-defined `Iterable` or iterator protocol;
 - iterator discovery by naming convention.
 
 ---
@@ -455,6 +454,7 @@ The canonical categories include:
 - `string`;
 - finite ranges;
 - `vector[T, N]` where the shaped-type rules define sequential iteration.
+- concrete types with explicit compiler-known `Iterator[T]` conformance.
 
 A type is not iterable merely because it has members such as:
 
@@ -466,9 +466,9 @@ HasNext
 Contains
 ```
 
-Sec 0.1 does not define a general user-written iterable interface or iterator protocol.
-
-User-defined iteration may be introduced later by a separate normative design.
+An ordinary member named `Next` does not establish iteration. Section 37 defines
+the sole user-type participation point: explicit conformance to the
+compiler-known `Iterator[T]` interface.
 
 ---
 
@@ -1169,11 +1169,29 @@ When ownership of stored elements must be extracted, use the explicit owning ope
 
 ---
 
-## 37. No user-defined iterable protocol in Sec 0.1
+## 37. Compiler-known `Iterator[T]`
 
-Sec 0.1 does not define a general source-level iterable or iterator interface.
+Sec 0.1 defines one compiler-known generic interface for stateful, pull-based
+iteration:
 
-The compiler must not decide that a type is iterable because it happens to expose names such as:
+```sec
+interface Iterator[T] {
+    mut fn Next() Option[T]
+}
+```
+
+A concrete type becomes a `for` source only through explicit conformance on its
+primary implementation:
+
+```sec
+impl NumberStream implements Iterator[int] {
+    fn Next() Option[int] {
+        // Return Some(value), or None when iteration is complete.
+    }
+}
+```
+
+The compiler must not decide that a type is iterable merely because it exposes names such as:
 
 ```text
 Next
@@ -1183,9 +1201,35 @@ Len
 Iterator
 ```
 
-Ordinary `for` support is compiler-known for the approved language types.
+The following rules apply:
 
-A future user-defined iterator protocol must be specified by its own normative rule before user types can participate in `for` through such a protocol.
+- `for value in source` repeatedly invokes the statically resolved concrete
+  `Next()` implementation;
+- `Some(value)` initializes the single loop binding and executes the body;
+- `None` terminates the loop without executing the body again;
+- the source expression is evaluated exactly once;
+- reusable iterator storage must provide mutable authority, while a fresh owned
+  temporary is retained as compiler-generated local state for the loop;
+- iterator loops have exactly one value binding or discard binding;
+- the returned `T` is an owned yielded value, not an implicit reference into
+  iterator storage;
+- `ref` and `ref mut` iterator-result bindings are not defined by this protocol;
+- conformance and the concrete `Next` call are resolved at compile time;
+- the protocol introduces no interface object, virtual dispatch, boxing,
+  allocation, runtime type inspection, or runtime borrow state.
+
+`Iterator[T]` does not define a separate `Iterable[T]` factory protocol. A
+collection may expose an ordinary method that returns a concrete iterator, and
+that returned value may be used directly:
+
+```sec
+for part in text.Split(";") {
+    Process(part)
+}
+```
+
+Lowering must consume Sema's resolved iterator operation. A backend must not
+rediscover the protocol from the spelling `Next`.
 
 ---
 
@@ -1238,8 +1282,9 @@ mutable set element iteration
 mutable map key iteration
 single-binding map iteration
 general pattern destructuring in for headers
-user-defined iterable protocol
 iterator discovery by member names
+implicit Iterable factory discovery
+runtime-dispatched Iterator interface values
 ```
 
 A future rule may add a feature from this list only by explicitly defining its syntax, ownership, borrowing, cleanup, and lowering behavior.
@@ -1252,6 +1297,9 @@ Diagnostics should distinguish at least:
 
 - non-iterable source;
 - invalid number of bindings;
+- `Iterator[T]` use without explicit conformance;
+- iterator source without mutable authority;
+- iterator `Next` signature incompatible with `Option[T]`;
 - invalid binding mode for the iterable category;
 - plain by-value iteration of a move-only element;
 - mutable iteration without mutable authority;
@@ -1353,6 +1401,9 @@ set
     one value binding
     value cannot be ref mut
 
-user-defined iterable protocol
-    not Sec 0.1
+explicit implements Iterator[T]
+    one owned T binding; repeated statically resolved Next() calls until None
+
+member named Next without conformance
+    not iterable
 ```

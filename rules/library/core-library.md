@@ -1646,8 +1646,10 @@ Partially implemented:
   still pending.
 - Other core method bodies that require allocation, string scanning, Unicode,
   formatting, iterators or owned slices remain deterministic stubs.
-- `StringSplitIterator` exists as a minimal core type so `string.Split` can
-  have a real return type, but iterator behavior is not implemented.
+- `StringSplitIterator` explicitly implements the compiler-known
+  `Iterator[string]` contract. Frontend `for part in text.Split(separator)`
+  resolution is implemented; Semantic IR and backend lowering of the resolved
+  static `Next()` loop remain pending in `frontend.for-loops-v2`.
 
 Pending:
 

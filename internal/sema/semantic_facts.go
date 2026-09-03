@@ -39,6 +39,25 @@ type ResolvedCall struct {
 	Kind     ResolvedCallKind
 }
 
+type ResolvedForIterationKind string
+
+const (
+	// ForIterationCompilerKnownIterator is the explicit, statically dispatched
+	// Iterator[T] protocol from rules/control-flow/flowcontrol_for.md section 37.
+	ForIterationCompilerKnownIterator ResolvedForIterationKind = "compiler-known-iterator"
+)
+
+// ResolvedForIteration records the operation selected by Sema for a protocol-
+// based loop. Lowering and tooling consume this fact instead of rediscovering
+// iteration from member names. It is compile-time metadata only.
+type ResolvedForIteration struct {
+	Kind                    ResolvedForIterationKind
+	SourceType              Type
+	ElementType             Type
+	Next                    Function
+	RequiresMutableReceiver bool
+}
+
 // CallableCapabilityFact is the compiler-owned editor/lowering view of the
 // invocation authority defined by rules/declarations/lambda-functions.md.
 // Tooling consumes these facts instead of reconstructing capability semantics
@@ -471,6 +490,17 @@ func (a *Analyzer) ResolvedTypeOf(expr ast.Expression) (Type, bool) {
 	}
 	typ, ok := a.expressionTypes[expr]
 	return typ, ok && typ.Kind != InvalidType
+}
+
+// ResolvedForIterationOf returns the immutable compiler-owned iteration plan
+// selected for stmt. Built-in collection loops currently retain their existing
+// lowering paths; protocol-based loops always publish this fact.
+func (a *Analyzer) ResolvedForIterationOf(stmt *ast.ForStatement) (ResolvedForIteration, bool) {
+	if a == nil || stmt == nil {
+		return ResolvedForIteration{}, false
+	}
+	resolved, ok := a.resolvedForIterations[stmt]
+	return resolved, ok
 }
 
 // CallableCapabilityFactOf returns the normalized capability contract for a

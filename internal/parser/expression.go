@@ -561,14 +561,16 @@ func (p *Parser) parseMatchPattern() *ast.MatchPattern {
 		}
 		pattern.Binding = p.parseMatchPatternBinding()
 		if pattern.Binding == nil {
+			p.skipRejectedMatchPayload()
 			return nil
 		}
 		if p.peekToken.Type != lexer.RPAREN {
-			if p.peekToken.Type == lexer.LPAREN {
-				p.addError("nested match patterns are not part of Sec 0.1; use another match at %d:%d", p.peekToken.Line, p.peekToken.Column)
+			if p.peekToken.Type == lexer.LPAREN || p.peekToken.Type == lexer.DOT {
+				p.addError("nested match patterns are not part of Sec 0.1; bind the payload and use a where guard or another match at %d:%d", p.peekToken.Line, p.peekToken.Column)
 			} else {
 				p.addError("match variant payload must contain exactly one binding at %d:%d", p.peekToken.Line, p.peekToken.Column)
 			}
+			p.skipRejectedMatchPayload()
 			return nil
 		}
 		p.nextToken()
@@ -585,6 +587,10 @@ func (p *Parser) parseMatchPattern() *ast.MatchPattern {
 
 func (p *Parser) parseMatchPatternBinding() *ast.MatchPatternBinding {
 	binding := &ast.MatchPatternBinding{Token: p.curToken, Mode: ast.MatchBindingValue}
+	if p.curToken.Type == lexer.LPAREN {
+		p.addError("nested match patterns are not part of Sec 0.1; bind the payload and use another match at %d:%d", p.curToken.Line, p.curToken.Column)
+		return nil
+	}
 	if p.curToken.Type == lexer.REF {
 		binding.Mode = ast.MatchBindingSharedRef
 		if p.peekToken.Type == lexer.MUT {
@@ -603,6 +609,32 @@ func (p *Parser) parseMatchPatternBinding() *ast.MatchPatternBinding {
 	}
 	binding.Name = &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme}
 	return binding
+}
+
+// skipRejectedMatchPayload keeps the invalid arm as one recovery episode. The
+// outer payload '(' was already consumed, so the first unmatched ')' is its
+// boundary; nested parentheses are balanced while scanning toward it.
+//
+// Rule: rules/compiler/parser_recovery.md, match-arm synchronization.
+func (p *Parser) skipRejectedMatchPayload() {
+	depth := 0
+	if p.curToken.Type == lexer.LPAREN {
+		depth = 1
+	}
+	for p.peekToken.Type != lexer.EOF {
+		switch p.peekToken.Type {
+		case lexer.LPAREN:
+			depth++
+		case lexer.RPAREN:
+			p.nextToken()
+			if depth == 0 {
+				return
+			}
+			depth--
+			continue
+		}
+		p.nextToken()
+	}
 }
 
 func (p *Parser) parseMatchFieldPatterns() []*ast.MatchFieldPattern {

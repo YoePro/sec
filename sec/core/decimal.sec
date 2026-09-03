@@ -1,0 +1,8 @@
+module core
+
+impl decimal {
+    fn ToString() string {
+        // TODO: Implement decimal.ToString()
+        return ""
+    }
+}
